@@ -429,6 +429,14 @@ def evaluate_reuse(
             reason="no prior reuse identity is available",
             contract_ready=True,
         )
+    if previous_verdict is None:
+        return _result(
+            current_identity,
+            reuse=False,
+            reason_code="missing-verdict",
+            reason="a prior passing verdict is required for reuse",
+            contract_ready=True,
+        )
     if previous_verdict in _WARN_VERDICTS:
         return _result(
             current_identity,
@@ -438,7 +446,7 @@ def evaluate_reuse(
             contract_ready=True,
             previous_verdict=previous_verdict,
         )
-    if previous_verdict is not None and previous_verdict not in _PASS_VERDICTS:
+    if previous_verdict not in _PASS_VERDICTS:
         return _result(
             current_identity,
             reuse=False,

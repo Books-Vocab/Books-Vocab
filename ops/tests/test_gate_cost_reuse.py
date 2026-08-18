@@ -120,6 +120,17 @@ def test_warn_verdict_is_never_reused_even_when_identity_matches() -> None:
     assert result["reason_code"] == "warn-not-reusable"
 
 
+def test_missing_previous_verdict_is_fail_closed() -> None:
+    identity = _identity()
+
+    result = reuse.evaluate_reuse(
+        {"identity": identity}, identity, now=NOW,
+    )
+
+    assert result["reuse"] is False
+    assert result["reason_code"] == "missing-verdict"
+
+
 @pytest.mark.parametrize("previous", [None, {}, {"identity": {}}])
 def test_missing_previous_identity_is_explicitly_false(
     previous: object,
