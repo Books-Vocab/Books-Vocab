@@ -114,6 +114,8 @@ def _reserved_ticket_ids(existing_reservations: Iterable[dict[str, Any]]) -> dic
             continue
         ticket_ids = reservation.get("ticket_ids")
         if ticket_ids is None:
+            ticket_ids = reservation.get("backlog")
+        if ticket_ids is None:
             ticket_ids = [
                 ticket_id
                 for partition in (reservation.get("partitions") or {}).values()
@@ -136,6 +138,196 @@ def _reservation_ticket_details(
         if isinstance(ticket_id, str) and isinstance(detail, dict):
             details[ticket_id] = detail
     return details
+
+
+def _manifest_ticket_details(
+    manifest: dict[str, Any],
+) -> tuple[dict[str, dict[str, Any]] | None, list[dict[str, Any]]]:
+    """Project persisted manifest tickets into the reservation detail shape."""
+    raw_tickets = manifest.get("tickets")
+    if not isinstance(raw_tickets, list):
+        return None, [_problem("existing-manifest-scope-drift",
+                               "persisted campaign manifest has no ticket list")]
+    details: dict[str, dict[str, Any]] = {}
+    problems: list[dict[str, Any]] = []
+    for item in raw_tickets:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+            problems.append(_problem("existing-manifest-scope-drift",
+                                     "persisted campaign manifest has an invalid ticket"))
+            continue
+        ticket_id = item["id"]
+        if ticket_id in details:
+            problems.append(_problem("existing-manifest-scope-drift",
+                                     "persisted campaign manifest repeats a ticket",
+                                     ticket=ticket_id))
+            continue
+        site_problems: list[dict[str, Any]] = []
+        sites = _normalise_sites(item, site_problems)
+        if site_problems:
+            problems.append(_problem("existing-manifest-scope-drift",
+                                     "persisted campaign manifest has invalid write sites",
+                                     ticket=ticket_id, details=site_problems))
+            continue
+        details[ticket_id] = {
+            "id": ticket_id,
+            "partition": item.get("partition"),
+            "write_sites": sites,
+            "blocked_by": sorted(item.get("blocked_by") or []),
+            "co_land_group": item.get("co_land_group"),
+        }
+    return details, problems
+
+
+def _persisted_reservation_projection(
+    reservation: dict[str, Any],
+    *,
+    current_base: str,
+) -> tuple[dict[str, dict[str, Any]] | None, list[dict[str, Any]]]:
+    """Read a reservation's immutable manifest before trusting its sites."""
+    manifest_path = reservation.get("manifest_path")
+    if manifest_path is None:
+        return _reservation_ticket_details(reservation), []
+    if not isinstance(manifest_path, str) or not manifest_path:
+        return None, [_problem("existing-manifest-missing",
+                               "existing campaign manifest path is invalid",
+                               owner=reservation.get("campaign_id"))]
+    try:
+        manifest_bytes = Path(manifest_path).read_bytes()
+        manifest = json.loads(manifest_bytes)
+    except (OSError, ValueError, TypeError) as exc:
+        return None, [_problem("existing-manifest-missing",
+                               "existing campaign manifest is missing or unreadable",
+                               owner=reservation.get("campaign_id"),
+                               manifest_path=manifest_path, detail=str(exc))]
+    if not isinstance(manifest, dict) or manifest.get("schema") != SCHEMA:
+        return None, [_problem("existing-manifest-scope-drift",
+                               "existing campaign manifest schema is invalid",
+                               owner=reservation.get("campaign_id"),
+                               manifest_path=manifest_path)]
+    if manifest.get("campaign_id") != reservation.get("campaign_id"):
+        return None, [_problem("existing-manifest-scope-drift",
+                               "existing campaign manifest campaign id differs",
+                               owner=reservation.get("campaign_id"),
+                               actual=manifest.get("campaign_id"))]
+    expected_base = reservation.get("base")
+    if expected_base != current_base or manifest.get("base") != expected_base:
+        return None, [_problem("existing-manifest-base-drift",
+                               "existing campaign manifest base is stale",
+                               owner=reservation.get("campaign_id"),
+                               expected=current_base,
+                               reservation_base=expected_base,
+                               manifest_base=manifest.get("base"))]
+    expected_digest = reservation.get("manifest_digest")
+    actual_digest = hashlib.sha256(manifest_bytes).hexdigest()
+    if not isinstance(expected_digest, str) or actual_digest != expected_digest:
+        return None, [_problem("existing-manifest-digest-drift",
+                               "existing campaign manifest digest differs",
+                               owner=reservation.get("campaign_id"),
+                               expected=expected_digest, actual=actual_digest)]
+    details, problems = _manifest_ticket_details(manifest)
+    if problems or details is None:
+        return None, problems
+    stored_details = _reservation_ticket_details(reservation)
+    if stored_details is not None and stored_details != details:
+        return None, [_problem("existing-manifest-scope-drift",
+                               "registry ticket details differ from persisted manifest",
+                               owner=reservation.get("campaign_id"))]
+    return details, []
+
+
+def _active_record_ticket_ids(record: dict[str, Any]) -> list[str]:
+    values = record.get("ticket_ids")
+    if values is None:
+        values = record.get("backlog")
+    if not isinstance(values, list):
+        return []
+    return [str(value) for value in values if isinstance(value, str) and value]
+
+
+def _claimed_branch_ticket_ids(
+    reservation: dict[str, Any], branch: str,
+) -> set[str]:
+    return {
+        str(ticket_id)
+        for partition in (reservation.get("partitions") or {}).values()
+        if isinstance(partition, dict)
+        for ticket_id, claim in (partition.get("claimed") or {}).items()
+        if isinstance(claim, dict) and claim.get("branch") == branch
+    }
+
+
+def _project_active_record(
+    record: dict[str, Any],
+    reservations: list[dict[str, Any]],
+    *,
+    current_base: str,
+) -> tuple[dict[str, dict[str, Any]] | None, dict[str, Any] | None,
+           list[dict[str, Any]]]:
+    """Resolve a registry active claim back to one immutable campaign manifest."""
+    ticket_ids = set(_active_record_ticket_ids(record))
+    campaign_id = record.get("campaign_id")
+    synthetic = isinstance(campaign_id, str) and campaign_id.startswith("active:")
+    branch = record.get("branch")
+    if synthetic:
+        branch = campaign_id.removeprefix("active:")
+        campaign_id = None
+    if not ticket_ids or not isinstance(branch, str) or not branch:
+        return None, None, [_problem(
+            "existing-active-provenance-unknown",
+            "active record has no campaign, branch, and ticket provenance",
+            owner=record.get("campaign_id"),
+        )]
+    candidates = []
+    for reservation in reservations:
+        if campaign_id is not None and reservation.get("campaign_id") != campaign_id:
+            continue
+        if _claimed_branch_ticket_ids(reservation, branch) != ticket_ids:
+            continue
+        candidates.append(reservation)
+    if len(candidates) != 1:
+        return None, None, [_problem(
+            "existing-active-provenance-unknown",
+            "active record cannot be mapped to one campaign reservation",
+            owner=record.get("campaign_id"), branch=branch,
+        )]
+    reservation = candidates[0]
+    details, problems = _persisted_reservation_projection(
+        reservation, current_base=current_base,
+    )
+    if problems or details is None:
+        return None, reservation, problems
+    expected_digest = reservation.get("manifest_digest")
+    actual_digest = record.get("manifest_digest") or record.get("campaign_manifest_digest")
+    if actual_digest is not None and actual_digest != expected_digest:
+        return None, reservation, [_problem(
+            "existing-manifest-digest-drift",
+            "active record manifest digest differs from campaign reservation",
+            owner=reservation.get("campaign_id"), expected=expected_digest,
+            actual=actual_digest,
+        )]
+    record_base = record.get("base_sha")
+    if record_base is not None and record_base != reservation.get("base"):
+        return None, reservation, [_problem(
+            "existing-manifest-base-drift",
+            "active record base differs from campaign reservation",
+            owner=reservation.get("campaign_id"), expected=reservation.get("base"),
+            actual=record_base,
+        )]
+    partition_id = record.get("partition_id")
+    if partition_id is not None:
+        projected_partitions = {
+            details[ticket_id].get("partition")
+            for ticket_id in ticket_ids
+            if ticket_id in details
+        }
+        if projected_partitions != {partition_id}:
+            return None, reservation, [_problem(
+                "existing-manifest-scope-drift",
+                "active record partition differs from persisted manifest",
+                owner=reservation.get("campaign_id"), expected=projected_partitions,
+                actual=partition_id,
+            )]
+    return {ticket_id: details[ticket_id] for ticket_id in ticket_ids}, reservation, []
 
 
 def validate_manifest(
@@ -251,31 +443,72 @@ def validate_manifest(
                                      partition=partition_id, quota=partition["quota"],
                                      ticket_count=counts[partition_id]))
 
-    owners = _reserved_ticket_ids(existing_reservations)
+    existing_items = [
+        item for item in existing_reservations if isinstance(item, dict)
+    ]
+    owners = _reserved_ticket_ids(existing_items)
     for ticket_id in tickets:
         owner = owners.get(ticket_id)
         if owner is not None and owner.get("campaign_id") != request.get("campaign_id"):
             problems.append(_problem("ticket-already-reserved", "ticket belongs to another campaign",
                                      ticket=ticket_id, owner=owner.get("campaign_id")))
 
+    campaign_reservations = []
+    active_records = []
+    for item in existing_items:
+        campaign_id = item.get("campaign_id")
+        is_active_record = "backlog" in item or (
+            isinstance(campaign_id, str)
+            and campaign_id.startswith("active:")
+            and "partitions" not in item
+        )
+        (active_records if is_active_record else campaign_reservations).append(item)
+
     # A reservation from another campaign is a write-site owner, not just a set
-    # of ticket ids.  Legacy/ordinary active records without structured sites are
-    # deliberately unknown and therefore block a new campaign: free-text
-    # fix_site cannot prove disjointness.
+    # of ticket ids.  The registry's active-record compatibility projection is
+    # resolved through its claimed branch back to the persisted campaign
+    # manifest.  Legacy/ordinary active records remain deliberately unknown:
+    # free-text fix_site cannot prove disjointness.
     requested_tickets = list(tickets.values())
-    for reservation in existing_reservations:
-        if not isinstance(reservation, dict):
-            continue
-        if reservation.get("campaign_id") == request.get("campaign_id"):
-            continue
-        existing_details = _reservation_ticket_details(reservation)
-        if existing_details is None:
-            if reservation.get("ticket_ids"):
+    existing_projections: list[tuple[dict[str, Any], dict[str, dict[str, Any]]]] = []
+    for reservation in campaign_reservations:
+        details, projection_problems = _persisted_reservation_projection(
+            reservation, current_base=current_base,
+        )
+        problems.extend(projection_problems)
+        if details is None:
+            if not projection_problems and reservation.get("ticket_ids"):
                 problems.append(_problem(
                     "existing-sites-unknown",
                     "existing reservation has no structured write sites",
                     owner=reservation.get("campaign_id"),
                 ))
+            continue
+        existing_projections.append((reservation, details))
+
+    for record in active_records:
+        existing_details, owner_reservation, projection_problems = _project_active_record(
+            record, campaign_reservations, current_base=current_base,
+        )
+        problems.extend(projection_problems)
+        if existing_details is not None and owner_reservation is None:
+            problems.append(_problem(
+                "existing-sites-unknown",
+                "active record has no canonical campaign owner",
+                owner=record.get("campaign_id"),
+            ))
+        if (
+            existing_details is not None
+            and owner_reservation is not None
+            and id(owner_reservation) not in {id(item[0]) for item in existing_projections}
+        ):
+            # The reservation itself is already the canonical projection.  Do
+            # not check the compatibility record a second time and emit
+            # duplicate collision problems.
+            existing_projections.append((owner_reservation, existing_details))
+
+    for reservation, existing_details in existing_projections:
+        if reservation.get("campaign_id") == request.get("campaign_id"):
             continue
         for existing_id, existing_ticket in existing_details.items():
             existing_ticket = {"id": existing_id, **existing_ticket}
