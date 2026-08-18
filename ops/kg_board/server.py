@@ -70,13 +70,19 @@ except ModuleNotFoundError:  # direct launch via the release checkout
 try:
     from ops.kg_board.model import (
         MODEL_FLOW,
+        MODEL_RESPONSIBILITY_FLOW,
+        MODEL_ROLES,
         MODEL_SCHEMA,
         MODEL_TERMS,
+        MODEL_WORK_MODES,
         classify_decision,
         scope_audit,
     )
 except ModuleNotFoundError:  # direct launch via the release checkout
-    from model import MODEL_FLOW, MODEL_SCHEMA, MODEL_TERMS, classify_decision, scope_audit
+    from model import (
+        MODEL_FLOW, MODEL_RESPONSIBILITY_FLOW, MODEL_ROLES, MODEL_SCHEMA,
+        MODEL_TERMS, MODEL_WORK_MODES, classify_decision, scope_audit,
+    )
 
 TZ = ZoneInfo("Asia/Taipei")
 
@@ -1322,6 +1328,9 @@ def model_payload() -> dict:
         "schema": MODEL_SCHEMA,
         "terms": MODEL_TERMS,
         "flow": MODEL_FLOW,
+        "roles": MODEL_ROLES,
+        "work_modes": MODEL_WORK_MODES,
+        "responsibility_flow": MODEL_RESPONSIBILITY_FLOW,
         "source": {
             "backlog_cli": "list --ungroomed + dispatch --json",
             "scope_schema": "kg.backlog.scope.v1",

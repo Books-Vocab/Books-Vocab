@@ -142,6 +142,104 @@ MODEL_TERMS = (
         "definition": "把多個 SoT 的當下資料整理成適合人閱讀的畫面。",
         "rule": "看板不回寫票面、不取代 CLI，也不自創另一個 dispatch predicate。",
     },
+    {
+        "id": "manager",
+        "english": "Manager",
+        "chinese": "落地主管",
+        "definition": "唯一負責把 staging handoff 經 Gate 收斂到 primary 與 origin/main 的角色。",
+        "rule": "只有 Manager 可執行 gated continuation、cutover、resolve --via-integration、sync；deploy 另需 release 意圖。",
+    },
+    {
+        "id": "integrator",
+        "english": "Integrator",
+        "chinese": "扇出／暫存協調者",
+        "definition": "依 Scope 矩陣 fan-out child，將已 hand-back 的來源組裝成 staging tree。",
+        "rule": "只可 integrate --no-gate、append、處理衝突與清理未落地 staging；不改 primary、不重簽 child seal。",
+    },
+    {
+        "id": "child",
+        "english": "Child",
+        "chinese": "局部交付者",
+        "definition": "在自己的 worktree Scope 內完成局部實作與最低必要驗證的執行者。",
+        "rule": "只跑 S0＋受影響 S1，commit 後直接以 exact source thread、HEAD、seal typed hand-back 給 Manager。",
+    },
+    {
+        "id": "staging-handoff",
+        "english": "Staging handoff",
+        "chinese": "暫存交接",
+        "definition": "Integrator 將多個 child hand-back 組成可供 Manager 驗證的整合樹。",
+        "rule": "state 必須保留 source hand-back SHA、phase 與 next_action=manager-gate；它不是 primary landed，也不是 child receipt。",
+    },
+    {
+        "id": "verification-tiers",
+        "english": "S0–S4",
+        "chinese": "分層驗證",
+        "definition": "依變更範圍與發布風險逐級增加成本的驗證模型。",
+        "rule": "Child=S0＋受影響 S1；Manager 整合=S0＋受影響 S2；跨模組才升 S3；真正發布才做 S4。",
+    },
+)
+
+MODEL_ROLES = (
+    {
+        "id": "manager",
+        "english": "Manager",
+        "chinese": "落地主管",
+        "owns": ("primary", "origin/main", "final delivery decision"),
+        "can_do": ("gated continuation", "close-wave --commit", "cutover --commit", "resolve --via-integration", "sync --commit"),
+        "stops_at": "primary 與 origin/main 完成收斂；deploy 仍需另外的 release 意圖",
+    },
+    {
+        "id": "integrator",
+        "english": "Integrator",
+        "chinese": "扇出／暫存協調者",
+        "owns": ("Scope／檔案佔用矩陣", "fan-out", "staging"),
+        "can_do": ("integrate --commit --no-gate", "--append", "衝突處理", "未落地 staging tree 清理"),
+        "stops_at": "把 source hand-back 與 staging manifest 交給 Manager；不改 primary main",
+    },
+    {
+        "id": "child",
+        "english": "Child",
+        "chinese": "局部交付者",
+        "owns": ("宣告的 worktree Scope", "局部實作", "局部驗證"),
+        "can_do": ("S0", "受影響的 S1", "commit", "typed hand-back"),
+        "stops_at": "commit + hand-back：直接把 exact HEAD、source thread、seal 與證據交回 Manager",
+    },
+)
+
+MODEL_WORK_MODES = (
+    {
+        "id": "direct-assignment",
+        "english": "Direct assignment",
+        "chinese": "直接派工",
+        "admission": "開工前必須有 structured Scope；不持有 delivery ticket",
+        "scope_source": "agent／使用者明示 Scope",
+        "handback": "child 直接 hand-back 給 Manager",
+    },
+    {
+        "id": "ticket-factory",
+        "english": "Ticket Factory",
+        "chinese": "票務工廠",
+        "admission": "先產生／梳理可派工 ticket；本身不 claim delivery ticket，仍需 structured Scope",
+        "scope_source": "factory 任務明示 Scope",
+        "handback": "factory 結果回到派工佇列，不冒充 delivery 完成",
+    },
+    {
+        "id": "ticket-delivery",
+        "english": "Ticket delivery",
+        "chinese": "票務交付",
+        "admission": "由 dispatch／campaign 取得 ticket；不另宣告 direct Scope",
+        "scope_source": "ticket 的 scope.files[]",
+        "handback": "child 以 ticket outcomes、exact HEAD 與 typed seal 直接交回 Manager",
+    },
+)
+
+MODEL_RESPONSIBILITY_FLOW = (
+    {"id": "scope", "owner": "Integrator／Manager", "label": "定 Scope", "detail": "先看檔案佔用矩陣，決定可否 fan-out。"},
+    {"id": "child", "owner": "Child", "label": "局部實作", "detail": "依三種 work mode 開工；只跑 S0＋受影響 S1。"},
+    {"id": "handback", "owner": "Child → Manager", "label": "Typed hand-back", "detail": "交回 exact source thread、HEAD、seal、測試與耗時。"},
+    {"id": "staging", "owner": "Integrator", "label": "Fan-in staging", "detail": "可先 integrate／append／處理衝突；保留 source provenance，不重簽 child seal。"},
+    {"id": "gate", "owner": "Manager", "label": "Gate／落地", "detail": "整合後跑受影響 S2；跨模組才升 S3，必要時才做 S4 發布級驗證。"},
+    {"id": "sync", "owner": "Manager", "label": "Sync／Release", "detail": "cutover、resolve、sync；deploy 另需 release 意圖。"},
 )
 
 MODEL_FLOW = {

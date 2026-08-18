@@ -16,6 +16,14 @@ function renderLive(payload){
   scopeMount.innerHTML=`<div><strong>Scope audit</strong><p>未結案 ${esc(audit.unresolved||0)} 張：結構化 ${esc(audit.unresolved_structured||0)}、legacy 文字 ${esc(audit.unresolved_legacy_text||0)}、缺值 ${esc(audit.unresolved_missing||0)}。</p></div><p class="${unknown?"warning":""}">${unknown?`目前有 ${unknown} 張未結案票的檔案範圍未知；它們進入 Scope 回填債，不會被猜成碰撞。`:"所有未結案票都有可機讀 Scope。"}</p>`;
   document.getElementById("live-source").textContent=`未結案 ${counts.unresolved||0} · SHA ${String(payload.source?.clone_head||"unknown").slice(0,9)}`;
 }
+function renderRoles(payload){
+  const roles=payload.roles||[];
+  document.getElementById("roles").innerHTML=roles.map(role=>`<article class="role-card role-${esc(role.id)}"><span class="eyebrow">${esc(role.english)}</span><h3>${esc(role.chinese)}</h3><p><strong>負責：</strong>${esc((role.owns||[]).join("、"))}</p><p><strong>可以：</strong>${esc((role.can_do||[]).join("、"))}</p><p class="role-stop"><strong>停止點：</strong>${esc(role.stops_at)}</p></article>`).join("");
+  document.getElementById("responsibility-flow").innerHTML=(payload.responsibility_flow||[]).map((item,index)=>`<div class="responsibility-step"><span class="step-no">${index+1}</span><div><strong>${esc(item.label)}</strong><small>${esc(item.owner)}</small><p>${esc(item.detail)}</p></div></div>`).join("");
+}
+function renderWorkModes(payload){
+  document.getElementById("work-modes").innerHTML=(payload.work_modes||[]).map(mode=>`<article class="work-mode-card"><span class="eyebrow">${esc(mode.english)}</span><h3>${esc(mode.chinese)}</h3><p><strong>開工條件：</strong>${esc(mode.admission)}</p><p><strong>Scope 來源：</strong>${esc(mode.scope_source)}</p><p class="mode-stop"><strong>交回：</strong>${esc(mode.handback)}</p></article>`).join("");
+}
 function renderFlow(payload){
   const flow=payload.flow||{};
   document.getElementById("flow-main").innerHTML=(flow.main_path||[]).map(node=>`<div class="flow-node"><strong>${esc(node.chinese)}</strong><span>${esc(node.english)}</span></div>`).join("");
@@ -29,7 +37,7 @@ async function load(){
   const response=await fetch("/api/model",{cache:"no-store"});
   if(!response.ok)throw new Error(`model HTTP ${response.status}`);
   const payload=await response.json();
-  renderLive(payload);renderFlow(payload);renderTerms(payload);
+  renderRoles(payload);renderWorkModes(payload);renderLive(payload);renderFlow(payload);renderTerms(payload);
   const freshness=payload.freshness||{};
   document.getElementById("model-trust").textContent=freshness.freshness_state==="current"?"資料已追平":`資料${freshness.freshness_state||"未知"}`;
   document.getElementById("source-note").textContent=`Schema ${payload.schema||"unknown"} · 票面讀取 ${payload.source?.entries_read_at||"unknown"} · backlog CLI：${payload.source?.backlog_cli||"unknown"}`;

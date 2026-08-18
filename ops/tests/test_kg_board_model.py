@@ -14,7 +14,14 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from ops.kg_board import server
-from ops.kg_board.model import classify_decision, scope_audit
+from ops.kg_board.model import (
+    MODEL_RESPONSIBILITY_FLOW,
+    MODEL_ROLES,
+    MODEL_TERMS,
+    MODEL_WORK_MODES,
+    classify_decision,
+    scope_audit,
+)
 
 
 def _ticket(
@@ -55,6 +62,27 @@ def test_delivery_model_separates_grooming_contract_and_dependency_states():
                              blocked_ids={"DEPENDENCY"}, ungroomed_ids=set()) == "dependency-blocked"
     assert classify_decision(entries[3], held_ids=set(), dispatch_ids={"DISPATCH"},
                              blocked_ids=set(), ungroomed_ids=set()) == "dispatchable"
+
+
+def test_model_contains_role_and_work_mode_contract():
+    roles = {item["id"]: item for item in MODEL_ROLES}
+    assert set(roles) == {"manager", "integrator", "child"}
+    assert "primary" in roles["manager"]["owns"]
+    assert "staging" in roles["integrator"]["owns"]
+    assert "hand-back" in roles["child"]["stops_at"]
+
+    modes = {item["id"]: item for item in MODEL_WORK_MODES}
+    assert set(modes) == {"direct-assignment", "ticket-factory", "ticket-delivery"}
+    assert "structured Scope" in modes["direct-assignment"]["admission"]
+    assert "ticket" in modes["ticket-delivery"]["scope_source"]
+
+    terms = {item["id"]: item for item in MODEL_TERMS}
+    assert {"manager", "integrator", "child", "staging-handoff", "verification-tiers"} <= set(terms)
+    assert "唯一負責" in terms["manager"]["definition"]
+    assert "S0" in terms["verification-tiers"]["rule"]
+    assert [step["owner"] for step in MODEL_RESPONSIBILITY_FLOW] == [
+        "Integrator／Manager", "Child", "Child → Manager", "Integrator", "Manager", "Manager",
+    ]
 
 
 def test_scope_audit_does_not_treat_legacy_prose_as_file_scope():
