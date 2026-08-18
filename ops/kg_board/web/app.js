@@ -1179,28 +1179,21 @@ async function loadHistory(){
   if(!response.ok)throw new Error(`history HTTP ${response.status}`);
   history=await response.json();
 }
-let loadInFlight=false;
-let loadQueued=false;
-const LIVE_LOAD_DEADLINE_MS=650;
-async function load(){
-  if(loadInFlight){loadQueued=true;return}
-  loadInFlight=true;
-  const controller=new AbortController();
-  const deadline=setTimeout(()=>controller.abort(),LIVE_LOAD_DEADLINE_MS);
-  try{
-    const requestOptions={cache:"no-store",signal:controller.signal};
-    const [boardResponse,treeResponse,scopeResponse]=await Promise.all([fetch("/api/board",requestOptions),fetch("/api/git-tree",requestOptions),fetch("/api/scope-matrix",requestOptions)]);
-    if(!boardResponse.ok)throw new Error(`board HTTP ${boardResponse.status}`);
-    if(!treeResponse.ok)throw new Error(`git tree HTTP ${treeResponse.status}`);
-    if(!scopeResponse.ok)throw new Error(`scope matrix HTTP ${scopeResponse.status}`);
-    board=await boardResponse.json();tree=await treeResponse.json();scopeMatrix=await scopeResponse.json();setTrust(board.freshness);render();renderTree();
-    if(!treeFitInitialized&&treeBaseWidth)treeFitInitialized=fitTreeZoom();
-  }finally{
-    clearTimeout(deadline);
-    loadInFlight=false;
-    if(loadQueued){loadQueued=false;queueMicrotask(()=>load().catch(showLoadError))}
-  }
+const showLoadError=error=>{document.getElementById("trust-state").textContent="資料讀取錯誤";document.getElementById("trust-detail").textContent=error.message;document.getElementById("tree-alert").textContent=`看板資料讀取錯誤：${error.message}`};
+async function loadData({signal}){
+  const requestOptions={cache:"no-store",signal};
+  const [boardResponse,treeResponse,scopeResponse]=await Promise.all([fetch("/api/board",requestOptions),fetch("/api/git-tree",requestOptions),fetch("/api/scope-matrix",requestOptions)]);
+  if(!boardResponse.ok)throw new Error(`board HTTP ${boardResponse.status}`);
+  if(!treeResponse.ok)throw new Error(`git tree HTTP ${treeResponse.status}`);
+  if(!scopeResponse.ok)throw new Error(`scope matrix HTTP ${scopeResponse.status}`);
+  const nextBoard=await boardResponse.json();
+  const nextTree=await treeResponse.json();
+  const nextScopeMatrix=await scopeResponse.json();
+  if(signal.aborted)return;
+  board=nextBoard;tree=nextTree;scopeMatrix=nextScopeMatrix;setTrust(board.freshness);render();renderTree();
+  if(!treeFitInitialized&&treeBaseWidth)treeFitInitialized=fitTreeZoom();
 }
+const liveRefresh=window.KgBoardLiveRefresh.createLiveRefreshController({load:loadData,onError:showLoadError});
 document.getElementById("tabs").addEventListener("click",async event=>{const button=event.target.closest("[data-tab]");if(!button)return;tab=button.dataset.tab;render();if(tab==="history"){try{await loadHistory();render()}catch(error){document.getElementById("status").textContent=error.message}}});
 document.getElementById("search").addEventListener("input",event=>{query=event.target.value;render()});
 const scopeZoomInput=document.getElementById("scope-zoom");
@@ -1262,60 +1255,15 @@ fullscreenCanvasNode.addEventListener("click",event=>{
 document.addEventListener("fullscreenchange",()=>{
   if(treeFullscreen.open&&treeFullscreen.nativeFullscreen&&!document.fullscreenElement)closeTreeFullscreen({restoreFocus:false});
 });
-const showLoadError=error=>{document.getElementById("trust-state").textContent="資料讀取錯誤";document.getElementById("trust-detail").textContent=error.message;document.getElementById("tree-alert").textContent=`看板資料讀取錯誤：${error.message}`};
-const LIVE_RELOAD_DELAY_MS=25;
-const LIVE_RELOAD_MAX_WAIT_MS=250;
-let liveReloadTimer=null;
-let liveReloadMaxTimer=null;
 let liveEvents=null;
-let liveStreamConnected=false;
-function flushLiveReload(){
-  if(liveReloadTimer!==null){clearTimeout(liveReloadTimer);liveReloadTimer=null}
-  if(liveReloadMaxTimer!==null){clearTimeout(liveReloadMaxTimer);liveReloadMaxTimer=null}
-  load().catch(showLoadError);
-}
-function scheduleLiveReload(){
-  if(liveReloadTimer!==null)clearTimeout(liveReloadTimer);
-  if(liveReloadMaxTimer===null)liveReloadMaxTimer=setTimeout(flushLiveReload,LIVE_RELOAD_MAX_WAIT_MS);
-  liveReloadTimer=setTimeout(flushLiveReload,LIVE_RELOAD_DELAY_MS);
-}
-const LIVE_FALLBACK_BASE_DELAY_MS=250;
-const LIVE_FALLBACK_MAX_DELAY_MS=750;
-let liveFallbackTimer=null;
-let liveFallbackAttempts=0;
-function clearLiveFallbackTimer(){
-  if(liveFallbackTimer===null)return;
-  clearTimeout(liveFallbackTimer);liveFallbackTimer=null;
-}
-async function runLiveFallbackLoad(){
-  const request=async()=>{
-    if(loadInFlight)return;
-    try{await load()}catch(error){showLoadError(error)}
-  };
-  if(navigator.locks?.request){
-    await navigator.locks.request("kg-board-live-fallback",{ifAvailable:true},async lock=>{if(lock)await request()});
-  }else await request();
-  liveFallbackAttempts=Math.min(liveFallbackAttempts+1,2);
-}
-function scheduleLiveFallback(){
-  if(liveFallbackTimer!==null)return;
-  const exponential=Math.min(LIVE_FALLBACK_MAX_DELAY_MS,LIVE_FALLBACK_BASE_DELAY_MS*(2 ** Math.min(liveFallbackAttempts,2)));
-  const delay=exponential+Math.floor(Math.random()*50);
-  liveFallbackTimer=setTimeout(async()=>{
-    liveFallbackTimer=null;
-    if(liveStreamConnected){return}
-    await runLiveFallbackLoad();
-    scheduleLiveFallback();
-  },delay);
-}
 function connectLiveEvents(){
   if(typeof EventSource==="undefined")return;
   liveEvents=new EventSource("/api/events");
-  liveEvents.addEventListener("open",()=>{liveStreamConnected=true;liveFallbackAttempts=0;clearLiveFallbackTimer();scheduleLiveReload()});
-  liveEvents.addEventListener("error",()=>{liveStreamConnected=false;scheduleLiveFallback()});
-  liveEvents.addEventListener("snapshot",scheduleLiveReload);
+  liveEvents.addEventListener("open",()=>{liveRefresh.streamOpened();liveRefresh.scheduleLiveReload()});
+  liveEvents.addEventListener("error",()=>liveRefresh.streamErrored());
+  liveEvents.addEventListener("snapshot",()=>liveRefresh.scheduleLiveReload());
 }
 renderTreeZoom();
 connectLiveEvents();
-load().catch(showLoadError);
-scheduleLiveFallback();
+liveRefresh.loadInitial().catch(showLoadError);
+liveRefresh.scheduleLiveFallback();
