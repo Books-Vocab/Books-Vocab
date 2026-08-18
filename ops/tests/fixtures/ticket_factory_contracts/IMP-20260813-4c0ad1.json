@@ -1,8 +1,10 @@
 {
   "ticket_id": "IMP-20260813-4c0ad1",
-  "status": "pending",
+  "status": "verified",
   "spawned_processes": [],
-  "verdict": "",
-  "exact_head": "",
-  "evidence_path": ""
+  "verdict": "refused:missing-index; no implicit Xcode build; index=not-supplied",
+  "exact_head": "53c19c459827c5eda14f72eb2a48e4c6fcf8e3b4",
+  "evidence_path": "ops/tests/test_ui_graph_contract.py::test_type_query_refuses_implicit_build_and_reports_missing_index",
+  "query": "./ops/ui_graph.py --type SettingsStatusValue --json",
+  "index_identity": "not-supplied"
 }

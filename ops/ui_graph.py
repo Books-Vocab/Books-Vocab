@@ -19,9 +19,10 @@ kept only when BOTH endpoints are nodes; references whose container is outside t
 scanned set (an enum/protocol, or a stdlib type) are counted as external and not
 drawn. Widen --kinds to bring more types into the graph.
 
-Inputs (mutually exclusive): --build (default, isolated clean build) / --store-path
-/ --records-json (test & fast-iterate seam). Outputs: human (--type focus), --json
-(schema kg.ui.graph.v1), --dot (Graphviz).
+Inputs (mutually exclusive): --build (explicit isolated clean build) / --store-path
+/ --records-json (test & fast-iterate seam). With no input, the read-only query
+returns a named missing-index refusal instead of starting an implicit build.
+Outputs: human (--type focus), --json (schema kg.ui.graph.v1), --dot (Graphviz).
 """
 from __future__ import annotations
 
@@ -235,6 +236,37 @@ def build_payload(graph: dict, source_root: str) -> dict:
     }
 
 
+def build_missing_index_payload(
+    source_root: str,
+    kinds: tuple[str, ...],
+    *,
+    type_name: str | None,
+    surface_name: str | None,
+) -> dict:
+    """Return a stable, machine-readable refusal without touching Xcode."""
+    return {
+        "schema": SCHEMA,
+        "status": "refused",
+        "reason": "missing-index",
+        "message": (
+            "No IndexStore input was supplied; refusing an implicit Xcode build. "
+            "Pass --records-json, --store-path, or explicit --build."
+        ),
+        "sourceRoot": source_root,
+        "kinds": list(kinds),
+        "nodeCount": 0,
+        "edgeCount": 0,
+        "nodes": [],
+        "edges": [],
+        "query": {"type": type_name, "surface": surface_name},
+        "index": {"path": None, "identity": "not-supplied"},
+    }
+
+
+def print_missing_index(payload: dict) -> None:
+    print(f"UI dependency graph refused — {payload['reason']}: {payload['message']}")
+
+
 def to_dot(graph: dict) -> str:
     lines = ["digraph kg_ui {", "  rankdir=LR;", '  node [shape=box, fontsize=10];']
     for u in sorted(graph["nodes"]):
@@ -310,7 +342,7 @@ def print_human(payload: dict, graph: dict) -> None:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     src = p.add_mutually_exclusive_group()
-    src.add_argument("--build", action="store_true", help="run an isolated clean build, then scan (default)")
+    src.add_argument("--build", action="store_true", help="explicitly run an isolated clean build, then scan")
     src.add_argument("--store-path", help="scan an existing IndexStore DataStore, skip build")
     src.add_argument("--records-json", help="read pre-captured kgindex records JSON, skip build+scan")
     p.add_argument("--catalog-index", help="catalog_index.json path (default: sibling of --records-json only)")
@@ -323,6 +355,19 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     kinds = tuple(k.strip() for k in args.kinds.split(",") if k.strip())
+    if not (args.build or args.store_path or args.records_json):
+        payload = build_missing_index_payload(
+            args.source_root,
+            kinds,
+            type_name=args.type_name,
+            surface_name=args.surface,
+        )
+        if args.json:
+            print(json.dumps(payload, indent=2, ensure_ascii=False))
+        else:
+            print_missing_index(payload)
+        return 0
+
     records, source_root = kgindex_records.acquire(
         args.source_root, kinds,
         records_json=args.records_json, store_path=args.store_path, label="ui_graph",
