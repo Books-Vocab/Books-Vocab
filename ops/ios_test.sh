@@ -858,7 +858,7 @@ release_build_lock() {
   [[ "$LOCK_HELD" -eq 1 ]] || return 0
   # Only remove the lock if we still own it — another agent may have acquired it
   # after we released, and we must never delete someone else's lock.
-  [[ "$(cat "$LOCK_FILE" 2>/dev/null || echo "")" == "$$" ]] && rm -f "$LOCK_FILE"
+  kg_ios_release_shlock_if_owner "$LOCK_FILE" "$$"
   LOCK_HELD=0
 }
 
@@ -927,7 +927,7 @@ acquire_test_device_lock() {
 
 release_test_device_lock() {
   [[ "$TEST_DEVICE_LOCK_HELD" -eq 1 ]] || return 0
-  [[ "$(cat "$TEST_DEVICE_LOCK_FILE" 2>/dev/null || echo "")" == "$$" ]] && rm -f "$TEST_DEVICE_LOCK_FILE"
+  kg_ios_release_shlock_if_owner "$TEST_DEVICE_LOCK_FILE" "$$"
   TEST_DEVICE_LOCK_HELD=0
 }
 # cleanup exactly once, and DIE with 128+N on a signal instead of resuming with
@@ -1589,7 +1589,7 @@ stop_ui_test_recording() {
   fi
   UI_TEST_VIDEO_STARTED=0
   if [[ "${UI_TEST_VIDEO_LOCK_HELD:-0}" -eq 1 ]]; then
-    [[ "$(cat "$UI_TEST_VIDEO_LOCK_FILE" 2>/dev/null || echo "")" == "$$" ]] && rm -f "$UI_TEST_VIDEO_LOCK_FILE"
+    kg_ios_release_shlock_if_owner "$UI_TEST_VIDEO_LOCK_FILE" "$$"
     UI_TEST_VIDEO_LOCK_HELD=0
   fi
 }

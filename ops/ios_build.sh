@@ -168,7 +168,7 @@ fi
 # --- Lock acquire (shlock spin-wait) ---
 MONITOR_PID=""
 cleanup() {
-  rm -f "$LOCK_FILE"
+  kg_ios_release_shlock_if_owner "$LOCK_FILE" "$$"
   [[ -n "$MONITOR_PID" ]] && kill "$MONITOR_PID" 2>/dev/null || true
   if [[ "$CATALYST" == "1" && "${KG_IOS_CATALYST_KEEP_DERIVED_DATA:-0}" != "1" ]]; then
     rm -rf "$DERIVED_DATA_ROOT" 2>/dev/null ||
