@@ -156,6 +156,19 @@ def test_parent_snapshot_requires_campaign_manifest_digest():
                for problem in result["problems"]), result
 
 
+@pytest.mark.parametrize("invalid_outcome", [None, [], {}])
+def test_parent_snapshot_rejects_non_string_outcome_without_raising(invalid_outcome):
+    res = reservation()
+    rows = complete_records(res)
+    rows[0]["child_receipt"]["outcomes"][0]["outcome"] = invalid_outcome
+    result = CAMPAIGN.parent_child_snapshot(
+        res, rows, campaign_id="campaign-parent", base_sha=BASE,
+    )
+    assert result["ok"] is False, result
+    assert any(problem["kind"] == "outcome-invalid"
+               for problem in result["problems"]), result
+
+
 def test_parent_snapshot_rejects_source_branch_outside_partition_claims():
     res = reservation()
     rows = complete_records(res)
@@ -306,3 +319,51 @@ def test_child_manifest_projects_to_receipt_with_tip_and_typed_outcomes(tmp_path
     assert receipt["manifest_digest"]
     assert receipt["campaign_manifest_digest"] == res["manifest_digest"]
     assert receipt["ticket_ids"] == ["IMP-p1"]
+
+
+def test_handback_normalisation_preserves_explicit_closure_and_requires_it():
+    complete = [{
+        "ticket_id": "IMP-p1",
+        "outcome": "changed",
+        "acceptance_status": "green",
+        "evidence": "focused test passed",
+        "closure": "fixed",
+    }]
+    problems, normalised = REGISTRY._outcome_problems(
+        complete, claimed=["IMP-p1"], base_sha=BASE, worktree=ROOT,
+    )
+    assert problems == []
+    assert normalised[0]["closure"] == "fixed"
+
+    incomplete = [dict(complete[0])]
+    incomplete[0].pop("closure")
+    problems, _ = REGISTRY._outcome_problems(
+        incomplete, claimed=["IMP-p1"], base_sha=BASE, worktree=ROOT,
+    )
+    assert problems == []
+
+    blocked = [{
+        "ticket_id": "IMP-p1",
+        "outcome": "changed-but-not-closable",
+        "acceptance_status": "inconclusive",
+        "evidence": "simulator evidence unavailable",
+    }]
+    problems, normalised = REGISTRY._outcome_problems(
+        blocked, claimed=["IMP-p1"], base_sha=BASE, worktree=ROOT,
+    )
+    assert problems == []
+    assert "closure" not in normalised[0]
+
+    parent_problems, _ = CAMPAIGN._parent_child_outcomes(
+        {"outcomes": [dict(incomplete[0])]}, {"IMP-p1"},
+    )
+    assert any(problem["kind"] == "closure-missing"
+               for problem in parent_problems)
+
+    nonintegrable_parent_problems, _ = CAMPAIGN._parent_child_outcomes(
+        {"outcomes": [dict(blocked[0])]}, {"IMP-p1"},
+    )
+    assert any(problem["kind"] == "outcome-not-integrable"
+               for problem in nonintegrable_parent_problems)
+    assert not any(problem["kind"] == "closure-missing"
+                   for problem in nonintegrable_parent_problems)

@@ -64,13 +64,17 @@ def _register_feature(repo: Path, state: Path, base_sha: str) -> str:
 
 
 def _write_outcomes(path: Path, *, outcome: str = "changed",
-                    status: str = "green", evidence: str = "pytest passed") -> None:
-    path.write_text(json.dumps({"outcomes": [{
+                    status: str = "green", evidence: str = "pytest passed",
+                    closure: str | None = None) -> None:
+    outcome_row = {
         "ticket_id": "IMP-TEST-1",
         "outcome": outcome,
         "acceptance_status": status,
         "evidence": evidence,
-    }]}))
+    }
+    if closure is not None:
+        outcome_row["closure"] = closure
+    path.write_text(json.dumps({"outcomes": [outcome_row]}))
 
 
 def test_hand_back_outcomes_help_identifies_json_file_path(capsys):
@@ -105,6 +109,26 @@ def test_changed_hand_back_creates_sealed_typed_outcome(tmp_path, capsys):
     assert seal["outcomes"][0]["outcome"] == "changed"
     assert len(seal["digest"]) == 64
     record = json.loads(state.read_text())["records"][0]
+    assert REGISTRY.validate_handback_seal(record, repo=repo) == []
+
+
+def test_explicit_campaign_closure_survives_hand_back_seal(tmp_path, capsys):
+    repo, base_sha = _repo(tmp_path)
+    state = tmp_path / "registry.json"
+    _register_feature(repo, state, base_sha)
+    capsys.readouterr()
+    outcomes = tmp_path / "outcomes.json"
+    _write_outcomes(outcomes, closure="fixed")
+
+    rc = REGISTRY.main([
+        "hand-back", "--state", str(state), "--path", str(repo),
+        "--branch", "feat/a", "--outcomes", str(outcomes), "--json",
+    ])
+    assert rc == REGISTRY.EXIT_OK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["handback_seal"]["outcomes"][0]["closure"] == "fixed"
+    record = json.loads(state.read_text())["records"][0]
+    assert record["handback_outcomes"][0]["closure"] == "fixed"
     assert REGISTRY.validate_handback_seal(record, repo=repo) == []
 
 

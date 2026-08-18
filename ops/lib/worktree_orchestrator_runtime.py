@@ -319,6 +319,20 @@ def build_parser() -> argparse.ArgumentParser:
     add_operator(ca)
     ca.set_defaults(func=cmd_campaign_abort)
 
+    crt = sub.add_parser(
+        "campaign-retire",
+        help="Manager-only archive of a clean campaign whose work was not landed",
+    )
+    add_common(crt)
+    crt.add_argument("--campaign", required=True, metavar="ID",
+                     help="campaign reservation to retire")
+    crt.add_argument("--reason", required=True,
+                     help="具名說明為何保留 child receipt 但不落地本 campaign")
+    crt.add_argument("--commit", action="store_true",
+                     help="archive the manifest and release all clean active children")
+    add_operator(crt)
+    crt.set_defaults(func=cmd_campaign_retire)
+
     pf = sub.add_parser("preflight", help="fetch + registry sweep --exclude-current "
                         "(clear crash residue; dry-run default)")
     add_common(pf)

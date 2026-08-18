@@ -434,7 +434,8 @@ def _parent_child_outcomes(receipt: dict[str, Any], expected: set[str]) -> tuple
             problems.append(_parent_problem("outcome-invalid", "child outcome must be an object"))
             continue
         ticket_id = item.get("ticket_id")
-        outcome = item.get("outcome")
+        raw_outcome = item.get("outcome")
+        outcome = raw_outcome if isinstance(raw_outcome, str) else ""
         acceptance = str(item.get("acceptance_status") or "").strip().lower().replace(" ", "-")
         closure = str(item.get("closure") or "").strip().lower()
         if not isinstance(ticket_id, str) or not ticket_id:
@@ -443,15 +444,20 @@ def _parent_child_outcomes(receipt: dict[str, Any], expected: set[str]) -> tuple
         if ticket_id in seen:
             problems.append(_parent_problem("duplicate-ticket", "ticket appears in more than one child outcome", ticket=ticket_id))
         seen.add(ticket_id)
-        if outcome not in INTEGRABLE_OUTCOMES:
+        if not isinstance(raw_outcome, str):
+            problems.append(_parent_problem(
+                "outcome-invalid", "child outcome must use a string status",
+                ticket=ticket_id, outcome_type=type(raw_outcome).__name__,
+            ))
+        elif outcome not in INTEGRABLE_OUTCOMES:
             problems.append(_parent_problem("outcome-not-integrable", "child outcome is not integrable", ticket=ticket_id, outcome=outcome))
         if acceptance not in GREEN_OUTCOME_STATUSES:
             problems.append(_parent_problem("acceptance-not-green", "child acceptance is not green", ticket=ticket_id, acceptance_status=acceptance))
-        if closure not in {"fixed", "accepted", "closed"}:
+        if outcome in INTEGRABLE_OUTCOMES and closure not in {"fixed", "accepted", "closed"}:
             problems.append(_parent_problem("closure-missing", "child outcome has no fixed/accepted closure", ticket=ticket_id))
         normalised.append({
             "ticket_id": ticket_id,
-            "outcome": outcome,
+            "outcome": raw_outcome,
             "acceptance_status": acceptance,
             "closure": closure,
         })

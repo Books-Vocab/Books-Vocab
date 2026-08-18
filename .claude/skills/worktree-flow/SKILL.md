@@ -1,6 +1,6 @@
 ---
 name: worktree-flow
-description: "KG 的隔離工作樹與多 team delivery-loop。當使用者要求 Delivery Team、隔離工作樹、把一輪工作整合進本地 main，或發布上生產時觸發；Ticket Factory Child 的 add／verify／groom 只走 backlog lifecycle，不因產票載入本 skill。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / catchup / land / integrate / close-wave / cutover / resolve / sync / deploy / sync-main / freeze / campaign-abort）串起 P1 健康判定、P2 登記簿與既有 gate；純 research/唯讀不開 worktree。五種 identity 中，三種 Child 預設 commit＋typed hand-back；Integrator 只做 fan-out 與 staging fan-in；Manager 才能完成 Gate、cutover、resolve、sync。三平面：cutover=develop、sync=backup、deploy=release。"
+description: "KG 的隔離工作樹與多 team delivery-loop。當使用者要求 Delivery Team、隔離工作樹、把一輪工作整合進本地 main，或發布上生產時觸發；Ticket Factory Child 的 add／verify／groom 只走 backlog lifecycle，不因產票載入本 skill。編排 ops/worktree_orchestrate.py 原語（preflight / open / adopt / gate / catchup / land / integrate / close-wave / cutover / resolve / sync / deploy / sync-main / freeze / campaign-abort / campaign-retire）串起 P1 健康判定、P2 登記簿與既有 gate；純 research/唯讀不開 worktree。五種 identity 中，三種 Child 預設 commit＋typed hand-back；Integrator 只做 fan-out 與 staging fan-in；Manager 才能完成 Gate、cutover、resolve、sync。三平面：cutover=develop、sync=backup、deploy=release。"
 user-invocable: true
 version: 2.3.0
 ---
@@ -82,7 +82,7 @@ ops/worktree_orchestrate.py open --intent "<原始 intent 文字>" --slug <kebab
 
 需要先把多票分區、quota、structured write sites 與 blocked/co-land 關係一次凍結時，使用 `campaign-reserve --request-file <manifest.json> --commit --json`；它在 canonical registry lock 內重讀 primary base、backlog 與 active claims，驗證通過後才原子保存 campaign manifest 與 registry reservation。之後以 `open --next-backlog --campaign <campaign-id> --partition <partition-id>` 從該分區逐票轉移 reservation→active claim；selector 會在 claim 前重新尊重 manifest 的 reservation-local `blocked_by`，被前置票擋住的候選會留在 reservation 中，直到前置票已結案。若 coordinator 已明確知道要取哪一張，也可使用 `open --backlog <one-ticket> --campaign <campaign-id> --partition <partition-id>`；這條路徑必須驗證 ticket 屬於該 partition，並把 campaign provenance 寫進 active record，不得跨 partition 或繞過 dependency。普通 `open --next-backlog` 會排除尚未轉移的 reserved tickets。path/symbol/mode 不明或跨票 collision 預設 fail-closed，除非 request 具名 `blocked_by` 或相同 `co_land_group` 的序列化證據。
 
-一個沒有產生 child hand-back 的 stale admission 只能由 Manager 執行 `campaign-abort --campaign <id> --reason <具名原因> --commit` 收尾；有 active child、active parent 或既有 hand-back receipt 時，abort fail-closed。abort 會把 reservation 移出 live admission 集合並保存 archive，不能用刪檔或手改 registry 取代。
+一個沒有產生 child hand-back 的 stale admission 只能由 Manager 執行 `campaign-abort --campaign <id> --reason <具名原因> --commit` 收尾；有 active child、active parent 或既有 hand-back receipt 時，abort fail-closed。若已有 child hand-back receipt、但本輪必須在未落地前重建，Manager 改用 `campaign-retire --campaign <id> --reason <具名原因> --commit`；它會在 archive 前重驗 live manifest digest、partition/ticket claims、branch/path/tip、clean worktree、seal 與 child receipt provenance，成功才標記 `resolved_without_landing=true` 並保留證據。physical worktree removal 是獨立 teardown。兩條命令都會把 reservation 移出 live admission 集合並保存 archive，不能用刪檔或手改 registry 取代。
 
 `dispatch`（＝`list --dispatch`）的集合是已梳理 ∧ 未解 ∧ 未被認領 ∧ 未被阻擋 ∧ 契約就緒，worst-first。**不要用 `list` 挑票**——它含已結案、別人認領中的，或仍在等未結案前置票的。它仍有兩個範圍邊界：認領由**本機**登記簿推導（跨機時樂觀），看板的**延後不套用**。
 

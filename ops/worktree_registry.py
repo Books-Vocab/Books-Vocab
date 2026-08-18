@@ -208,6 +208,7 @@ def _outcome_problems(
         outcome = str(item.get("outcome") or "").strip()
         status = str(item.get("acceptance_status") or "").strip()
         evidence = str(item.get("evidence") or "").strip()
+        closure = str(item.get("closure") or "").strip().lower()
         if not ticket_id:
             problems.append({"kind": "ticket-id-missing"})
             continue
@@ -231,7 +232,6 @@ def _outcome_problems(
                 and _acceptance_is_green(status):
             problems.append({"kind": "nonintegrable-outcome-is-green",
                              "ticket_id": ticket_id, "outcome": outcome})
-
         provenance = item.get("provenance")
         canonical: dict[str, Any] = {
             "ticket_id": ticket_id,
@@ -239,6 +239,8 @@ def _outcome_problems(
             "acceptance_status": status,
             "evidence": evidence,
         }
+        if closure:
+            canonical["closure"] = closure
         if provenance is not None:
             if not isinstance(provenance, dict):
                 problems.append({"kind": "provenance-invalid", "ticket_id": ticket_id})
@@ -1468,6 +1470,352 @@ def abort_campaign(
         archive_dir = manifest_archive_path.parent
         archive_dir_existed = archive_dir.exists()
         try:
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            os.replace(manifest_path, manifest_archive_path)
+            state["campaign_reservations"] = [
+                item for item in reservations if item is not reservation
+            ]
+            campaign_archives.append(archived)
+            state["campaign_archives"] = campaign_archives
+            save_state(state_path, state)
+        except Exception:
+            _restore_bytes(state_path, state_before)
+            if manifest_archive_path.exists():
+                manifest_archive_path.unlink()
+            _restore_bytes(manifest_path, manifest_before)
+            if not archive_dir_existed:
+                try:
+                    archive_dir.rmdir()
+                except OSError:
+                    pass
+            raise
+        return result
+
+
+CAMPAIGN_RETIRE_SCHEMA = "kg.worktree.campaign-retire.v1"
+
+
+def retire_campaign(
+    state_path: Path,
+    *,
+    campaign_id: str,
+    reason: str,
+    commit: bool = False,
+    now_iso: str | None = None,
+) -> dict[str, Any]:
+    """Archive a campaign whose child evidence must be preserved but not landed.
+
+    ``campaign-abort`` deliberately handles only unused admission.  Once a child
+    has handed back a receipt, Manager needs a separate, explicit disposition for
+    retiring the reservation without changing ``merged`` semantics or deleting
+    the evidence.  This operation only closes clean, provenance-checked child
+    records; physical worktree removal remains a separate, named teardown step.
+    """
+    state_path = Path(state_path).resolve()
+    timestamp = now_iso or datetime.now(timezone.utc).isoformat()
+    reason = str(reason).strip()
+    if not reason:
+        return {"ok": False, "reason": "campaign retirement reason is required"}
+
+    def child_problems(record: dict[str, Any], reservation: dict[str, Any]) -> list[dict[str, Any]]:
+        path_value = record.get("path")
+        path = Path(path_value) if isinstance(path_value, str) else None
+        if path is None or not path.is_dir():
+            return [{"kind": "child-worktree-missing", "branch": record.get("branch"),
+                     "path": path_value}]
+        if _norm(str(path)) == _norm(str(common_anchor())) \
+                or record.get("branch") in {"main", "master"}:
+            return [{"kind": "primary-protected", "branch": record.get("branch"),
+                     "path": str(path)}]
+        problems: list[dict[str, Any]] = []
+        rc, actual_branch = _git_ok(["branch", "--show-current"], cwd=path)
+        if rc != 0 or actual_branch != record.get("branch"):
+            problems.append({"kind": "child-branch-drift",
+                             "expected": record.get("branch"),
+                             "actual": actual_branch})
+        rc, dirty = _git_ok(["status", "--porcelain=v1"], cwd=path)
+        if rc != 0 or dirty:
+            problems.append({"kind": "child-worktree-dirty",
+                             "branch": record.get("branch"),
+                             "files": dirty.splitlines()})
+        rc, tip_sha = _git_ok(["rev-parse", "--verify", "HEAD^{commit}"], cwd=path)
+        if rc != 0 or not tip_sha:
+            problems.append({"kind": "child-tip-unreadable", "branch": record.get("branch")})
+        else:
+            recorded_tip = str(record.get("handed_back_sha") or "")
+            base_sha = str(record.get("base_sha") or "")
+            if recorded_tip and tip_sha != recorded_tip:
+                problems.append({"kind": "child-tip-drift",
+                                 "branch": record.get("branch"),
+                                 "recorded": recorded_tip, "actual": tip_sha})
+            elif not recorded_tip and tip_sha != base_sha:
+                problems.append({"kind": "child-unhanded-work",
+                                 "branch": record.get("branch"),
+                                 "base_sha": base_sha, "actual": tip_sha})
+        if record.get("handed_back_sha") \
+                and record.get("handed_back_sha") != record.get("base_sha") \
+                and not record.get("handback_seal") and not record.get("child_receipt"):
+            problems.append({"kind": "child-seal-missing", "branch": record.get("branch")})
+        if record.get("base_sha") != reservation.get("base"):
+            problems.append({"kind": "child-campaign-base-mismatch",
+                             "branch": record.get("branch"),
+                             "expected": reservation.get("base"),
+                             "actual": record.get("base_sha")})
+        # Retirement is only for a completed child hand-back. An active claim
+        # without both seal and receipt belongs to campaign-abort/recovery, not
+        # this evidence-preserving path.
+        needs_receipt = True
+        if needs_receipt:
+            problems.extend(
+                problem for problem in validate_handback_seal(
+                    record, repo=path, require_seal=True,
+                )
+                # Retirement preserves a typed blocked/inconclusive receipt; the
+                # non-integrable outcome is the disposition, not a seal defect.
+                if problem.get("kind") != "handback-outcome-not-integrable"
+            )
+            receipt = record.get("child_receipt")
+            seal = record.get("handback_seal")
+            if not isinstance(receipt, dict):
+                problems.append({"kind": "child-receipt-missing",
+                                 "branch": record.get("branch")})
+            else:
+                expected_tickets = sorted(str(ticket) for ticket in (record.get("backlog") or []))
+                checks = (
+                    (receipt.get("schema") == wc.CHILD_RECEIPT_SCHEMA, "schema"),
+                    (receipt.get("role") == "child", "role"),
+                    (receipt.get("campaign_id") == reservation.get("campaign_id"), "campaign_id"),
+                    (receipt.get("partition_id") == record.get("partition_id"), "partition_id"),
+                    (receipt.get("branch") == record.get("branch"), "branch"),
+                    (receipt.get("manifest_head_sha") == record.get("handed_back_sha"), "manifest_head_sha"),
+                    (receipt.get("campaign_manifest_digest") == reservation.get("manifest_digest"),
+                     "campaign_manifest_digest"),
+                    (receipt.get("ticket_ids") == expected_tickets, "ticket_ids"),
+                    (isinstance(receipt.get("source_branches"), list)
+                     and receipt.get("source_branches") == [record.get("branch")],
+                     "source_branches"),
+                    (isinstance(seal, dict)
+                     and receipt.get("outcome_seal_digest") == seal.get("digest"),
+                     "outcome_seal_digest"),
+                    (isinstance(seal, dict)
+                     and receipt.get("outcomes") == seal.get("outcomes"), "outcomes"),
+                )
+                problems.extend(
+                    {"kind": "child-receipt-invalid", "field": field,
+                     "branch": record.get("branch")}
+                    for ok, field in checks if not ok
+                )
+        return problems
+
+    with _ledger_lock(state_path):
+        try:
+            state = load_state(state_path)
+            reservations = _validated_state_dict_list(state, "campaign_reservations")
+            records = _validated_state_dict_list(state, "records")
+            parent_reservations = _validated_state_dict_list(state, "parent_reservations")
+            campaign_archives = _validated_state_dict_list(state, "campaign_archives")
+        except (OSError, ValueError) as exc:
+            return {"ok": False, "reason": "malformed registry state",
+                    "detail": str(exc), "campaign_id": campaign_id}
+        reservation = next(
+            (item for item in reservations if item.get("campaign_id") == campaign_id),
+            None,
+        )
+        if reservation is None:
+            return {"ok": False, "reason": "campaign not found", "campaign_id": campaign_id}
+        active_parents = [
+            parent for parent in parent_reservations
+            if parent.get("status") == STATUS_ACTIVE
+            and parent.get("campaign_id") == campaign_id
+        ]
+        if active_parents or reservation.get("parent_owner"):
+            return {"ok": False, "reason": "active campaign parent exists",
+                    "campaign_id": campaign_id}
+        active_children = [
+            record for record in records
+            if record.get("status") == STATUS_ACTIVE
+            and record.get("campaign_id") == campaign_id
+        ]
+        if not active_children:
+            return {"ok": False, "reason": "campaign has no active child to retire",
+                    "campaign_id": campaign_id}
+
+        partitions = reservation.get("partitions")
+        if not isinstance(partitions, dict):
+            return {"ok": False, "reason": "malformed campaign reservation",
+                    "campaign_id": campaign_id}
+
+        manifest_path = wc.campaign_manifest_path(state_path, campaign_id)
+        recorded_manifest_path = reservation.get("manifest_path")
+        if not isinstance(recorded_manifest_path, str) \
+                or _norm(recorded_manifest_path) != _norm(str(manifest_path)):
+            return {"ok": False, "reason": "campaign manifest provenance mismatch",
+                    "campaign_id": campaign_id,
+                    "manifest_path": recorded_manifest_path,
+                    "expected_manifest_path": str(manifest_path)}
+        if not manifest_path.exists():
+            return {"ok": False, "reason": "campaign manifest missing",
+                    "campaign_id": campaign_id, "manifest_path": str(manifest_path)}
+        try:
+            manifest_before = manifest_path.read_bytes()
+            manifest_payload = json.loads(manifest_before)
+            if not isinstance(manifest_payload, dict):
+                raise ValueError("campaign manifest must be an object")
+            if manifest_payload.get("schema") != wc.SCHEMA:
+                return {"ok": False, "reason": "campaign manifest schema invalid",
+                        "campaign_id": campaign_id,
+                        "actual_schema": manifest_payload.get("schema"),
+                        "expected_schema": wc.SCHEMA}
+            canonical_manifest = wc.canonical_manifest(manifest_payload)
+            actual_manifest_digest = hashlib.sha256(
+                wc.json_bytes(canonical_manifest)
+            ).hexdigest()
+        except (OSError, TypeError, AttributeError, KeyError, ValueError) as exc:
+            return {"ok": False, "reason": "campaign manifest invalid",
+                    "campaign_id": campaign_id, "detail": str(exc)}
+        if actual_manifest_digest != reservation.get("manifest_digest"):
+            return {"ok": False, "reason": "campaign manifest digest mismatch",
+                    "campaign_id": campaign_id,
+                    "expected": reservation.get("manifest_digest"),
+                    "actual": actual_manifest_digest}
+        if reservation.get("schema") != wc.RESERVATION_SCHEMA \
+                or canonical_manifest.get("campaign_id") != campaign_id \
+                or canonical_manifest.get("base") != reservation.get("base"):
+            return {"ok": False, "reason": "campaign manifest reservation mismatch",
+                    "campaign_id": campaign_id}
+        try:
+            reservation_ticket_ids = _campaign_reservation_ticket_ids(reservation)
+        except ValueError as exc:
+            return {"ok": False, "reason": "malformed campaign reservation",
+                    "campaign_id": campaign_id, "detail": str(exc)}
+        manifest_partition_tickets = {
+            str(partition.get("id")): []
+            for partition in (canonical_manifest.get("partitions") or [])
+            if isinstance(partition, dict) and isinstance(partition.get("id"), str)
+        }
+        manifest_ticket_ids: list[str] = []
+        for ticket in canonical_manifest.get("tickets") or []:
+            if not isinstance(ticket, dict) or not isinstance(ticket.get("id"), str):
+                return {"ok": False, "reason": "campaign manifest ticket invalid",
+                        "campaign_id": campaign_id}
+            ticket_id = ticket["id"]
+            partition_id = ticket.get("partition")
+            if partition_id not in manifest_partition_tickets:
+                return {"ok": False, "reason": "campaign manifest partition invalid",
+                        "campaign_id": campaign_id, "ticket": ticket_id}
+            manifest_partition_tickets[partition_id].append(ticket_id)
+            manifest_ticket_ids.append(ticket_id)
+        if set(manifest_ticket_ids) != set(reservation_ticket_ids) \
+                or set(manifest_partition_tickets) != set(partitions):
+            return {"ok": False, "reason": "campaign manifest reservation mismatch",
+                    "campaign_id": campaign_id}
+        for partition_id, partition in partitions.items():
+            if sorted(str(ticket) for ticket in (partition.get("ticket_ids") or [])) \
+                    != sorted(manifest_partition_tickets.get(partition_id, [])):
+                return {"ok": False, "reason": "campaign partition ticket provenance mismatch",
+                        "campaign_id": campaign_id, "partition": partition_id}
+
+        expected_claims: dict[tuple[str, str], dict[str, Any]] = {}
+        for partition_id, partition in partitions.items():
+            if not isinstance(partition, dict) or not isinstance(partition.get("claimed"), dict):
+                return {"ok": False, "reason": "malformed campaign reservation",
+                        "campaign_id": campaign_id, "partition": partition_id}
+            partition_tickets = partition.get("ticket_ids")
+            for ticket_id, claim in partition["claimed"].items():
+                if not isinstance(ticket_id, str) or not isinstance(claim, dict):
+                    return {"ok": False, "reason": "malformed campaign reservation",
+                            "campaign_id": campaign_id, "partition": partition_id}
+                if not isinstance(partition_tickets, list) \
+                        or ticket_id not in partition_tickets:
+                    return {"ok": False, "reason": "campaign claim ticket outside partition",
+                            "campaign_id": campaign_id, "partition": partition_id,
+                            "ticket": ticket_id}
+                expected_claims[(str(partition_id), ticket_id)] = claim
+
+        active_claims: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        for record in active_children:
+            backlog = record.get("backlog")
+            if not isinstance(backlog, list) or len(backlog) != 1 \
+                    or not isinstance(backlog[0], str):
+                return {"ok": False, "reason": "active campaign child claim is not singular",
+                        "campaign_id": campaign_id, "branch": record.get("branch")}
+            key = (str(record.get("partition_id") or ""), backlog[0])
+            active_claims.setdefault(key, []).append(record)
+        if set(active_claims) != set(expected_claims):
+            return {"ok": False, "reason": "campaign claim/child mismatch",
+                    "campaign_id": campaign_id,
+                    "missing": sorted(set(expected_claims) - set(active_claims)),
+                    "extra": sorted(set(active_claims) - set(expected_claims))}
+        for key, children in active_claims.items():
+            if len(children) != 1:
+                return {"ok": False, "reason": "campaign claim has duplicate active children",
+                        "campaign_id": campaign_id, "partition": key[0], "ticket": key[1]}
+            record = children[0]
+            claim = expected_claims[key]
+            if claim.get("branch") != record.get("branch") \
+                    or _norm(str(claim.get("path") or "")) != _norm(str(record.get("path") or "")):
+                return {"ok": False, "reason": "campaign claim/child provenance mismatch",
+                        "campaign_id": campaign_id, "partition": key[0], "ticket": key[1]}
+        for record in active_children:
+            problems = child_problems(record, reservation)
+            if problems:
+                first = problems[0]
+                if first.get("kind") == "child-worktree-dirty":
+                    return {"ok": False, "reason": "active campaign child worktree dirty",
+                            "campaign_id": campaign_id, "branch": record.get("branch"),
+                            "problems": problems}
+                return {"ok": False, "reason": "active campaign child provenance invalid",
+                        "campaign_id": campaign_id, "branch": record.get("branch"),
+                        "problems": problems}
+
+        manifest_archive_path = _campaign_manifest_archive_path(
+            state_path, campaign_id, manifest_before,
+        )
+        archived = copy.deepcopy(reservation)
+        archived.update({
+            "status": "retired",
+            "retired_at": timestamp,
+            "retirement_reason": reason,
+            "retirement_schema": CAMPAIGN_RETIRE_SCHEMA,
+            "manifest_archive_path": str(manifest_archive_path),
+            "resolved_without_landing": True,
+            "retired_children": [
+                {
+                    "branch": record.get("branch"),
+                    "path": record.get("path"),
+                    "partition_id": record.get("partition_id"),
+                    "ticket_ids": sorted(record.get("backlog") or []),
+                    "handed_back_sha": record.get("handed_back_sha"),
+                    "child_receipt": copy.deepcopy(record.get("child_receipt")),
+                }
+                for record in active_children
+            ],
+        })
+        result = {
+            "ok": True,
+            "mode": "committed" if commit else "dry-run",
+            "campaign_id": campaign_id,
+            "reason": reason,
+            "resolved_without_landing": True,
+            "retired_children": copy.deepcopy(archived["retired_children"]),
+            "archive": archived,
+        }
+        if not commit:
+            return result
+        state_before = state_path.read_bytes() if state_path.exists() else None
+        archive_dir = manifest_archive_path.parent
+        archive_dir_existed = archive_dir.exists()
+        try:
+            for record in active_children:
+                record["status"] = "abandoned"
+                record["resolved_at"] = timestamp
+                record["campaign_retirement"] = {
+                    "schema": CAMPAIGN_RETIRE_SCHEMA,
+                    "campaign_id": campaign_id,
+                    "reason": reason,
+                    "retired_at": timestamp,
+                    "resolved_without_landing": True,
+                }
             archive_dir.mkdir(parents=True, exist_ok=True)
             os.replace(manifest_path, manifest_archive_path)
             state["campaign_reservations"] = [

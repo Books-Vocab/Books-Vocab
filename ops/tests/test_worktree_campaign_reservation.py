@@ -467,6 +467,250 @@ def test_campaign_abort_refuses_live_child_or_parent(tmp_path, owner_shape):
     assert state.read_bytes() == before
 
 
+def _retirement_child(tmp_path):
+    repo = tmp_path / "retirement-child"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.email", "test@example.test"], check=True)
+    subprocess.run(["git", "-C", str(repo), "config", "user.name", "Test"], check=True)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "README.md"], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-qm", "base"], check=True)
+    base = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    subprocess.run(["git", "-C", str(repo), "checkout", "-qb", "feat/p1"], check=True)
+    return repo, base
+
+
+def _attach_retirement_receipt(record, request, base):
+    record["handed_back_sha"] = base
+    record["handed_back_at"] = "2026-08-10T00:01:00+00:00"
+    outcomes = [{
+        "ticket_id": "IMP-20260810-aa0001",
+        "outcome": "changed-but-not-closable",
+        "acceptance_status": "inconclusive",
+        "evidence": "child stopped before closure",
+    }]
+    body = REGISTRY._seal_body(
+        record, base_sha=base, tip_sha=base,
+        outcomes=outcomes, handed_back_at=record["handed_back_at"],
+    )
+    seal = REGISTRY._seal_with_digest(body)
+    record["handback_seal"] = seal
+    record["handback_outcomes"] = outcomes
+    record["child_receipt"] = {
+        "schema": CAMPAIGN.CHILD_RECEIPT_SCHEMA,
+        "role": "child",
+        "campaign_id": request["campaign_id"],
+        "partition_id": "p1",
+        "branch": record["branch"],
+        "manifest_digest": "completed-manifest-digest",
+        "campaign_manifest_digest": request["manifest_digest"],
+        "manifest_head_sha": base,
+        "source_branches": [record["branch"]],
+        "ticket_ids": ["IMP-20260810-aa0001"],
+        "outcomes": outcomes,
+        "outcome_seal_digest": seal["digest"],
+    }
+
+
+def _ready_retirement_fixture(tmp_path):
+    state = tmp_path / "registry.json"
+    repo, base = _retirement_child(tmp_path)
+    request = manifest(base=base)
+    assert reserve(state, request, current_base=base)["ok"] is True
+    assert REGISTRY.claim_campaign_ticket(
+        state, campaign_id="campaign-1", partition_id="p1",
+        ticket_id="IMP-20260810-aa0001", branch="feat/p1", path=str(repo),
+        intent="campaign child", base="main", base_sha=base,
+    )["ok"] is True
+    payload = json.loads(state.read_text())
+    _attach_retirement_receipt(
+        payload["records"][0], payload["campaign_reservations"][0], base,
+    )
+    REGISTRY.save_state(state, payload)
+    manifest_path = state.parent / "worktree_campaigns" / "campaign-1.json"
+    return state, repo, manifest_path
+
+
+def test_campaign_retire_archives_receipts_and_releases_unlanded_children(tmp_path):
+    state = tmp_path / "registry.json"
+    repo, base = _retirement_child(tmp_path)
+    request = manifest(base=base)
+    assert reserve(state, request, current_base=base)["ok"] is True
+    claimed = REGISTRY.claim_campaign_ticket(
+        state, campaign_id="campaign-1", partition_id="p1",
+        ticket_id="IMP-20260810-aa0001", branch="feat/p1", path=str(repo),
+        intent="campaign child", base="main", base_sha=base,
+    )
+    assert claimed["ok"] is True, claimed
+    payload = json.loads(state.read_text())
+    _attach_retirement_receipt(
+        payload["records"][0], payload["campaign_reservations"][0], base,
+    )
+    REGISTRY.save_state(state, payload)
+
+    result = REGISTRY.retire_campaign(
+        state, campaign_id="campaign-1", reason="rebuild from fresh main",
+        commit=True, now_iso="2026-08-10T01:00:00+00:00",
+    )
+    assert result["ok"] is True, result
+    after = json.loads(state.read_text())
+    assert after["campaign_reservations"] == []
+    retired = next(row for row in after["records"] if row["branch"] == "feat/p1")
+    assert retired["status"] == "abandoned"
+    assert retired["campaign_retirement"]["resolved_without_landing"] is True
+    archive = after["campaign_archives"][0]
+    assert archive["status"] == "retired"
+    assert archive["retirement_reason"] == "rebuild from fresh main"
+    assert Path(archive["manifest_archive_path"]).exists()
+
+
+@pytest.mark.parametrize(
+    "drift", ["foreign-source", "partition-ticket", "manifest-digest", "manifest-schema"],
+)
+def test_campaign_retire_refuses_provenance_drift_without_mutation(tmp_path, drift):
+    state, repo, manifest_path = _ready_retirement_fixture(tmp_path)
+    payload = json.loads(state.read_text())
+    if drift == "foreign-source":
+        payload["records"][0]["child_receipt"]["source_branches"].append("feat/foreign")
+        REGISTRY.save_state(state, payload)
+    elif drift == "partition-ticket":
+        payload["campaign_reservations"][0]["partitions"]["p1"]["ticket_ids"] = []
+        REGISTRY.save_state(state, payload)
+    elif drift == "manifest-digest":
+        manifest_payload = json.loads(manifest_path.read_text())
+        manifest_payload["coordinator"] = "drifted-coordinator"
+        manifest_path.write_text(json.dumps(manifest_payload), encoding="utf-8")
+    else:
+        manifest_payload = json.loads(manifest_path.read_text())
+        manifest_payload["schema"] = "kg.worktree.campaign.invalid"
+        manifest_path.write_text(json.dumps(manifest_payload), encoding="utf-8")
+    state_before = state.read_bytes()
+    manifest_before = manifest_path.read_bytes()
+
+    result = REGISTRY.retire_campaign(
+        state, campaign_id="campaign-1", reason="provenance drift probe", commit=True,
+    )
+    assert result["ok"] is False, result
+    assert state.read_bytes() == state_before
+    assert manifest_path.read_bytes() == manifest_before
+
+
+def test_campaign_retire_refuses_dirty_child_without_mutation(tmp_path):
+    state = tmp_path / "registry.json"
+    repo, base = _retirement_child(tmp_path)
+    request = manifest(base=base)
+    assert reserve(state, request, current_base=base)["ok"] is True
+    assert REGISTRY.claim_campaign_ticket(
+        state, campaign_id="campaign-1", partition_id="p1",
+        ticket_id="IMP-20260810-aa0001", branch="feat/p1", path=str(repo),
+        intent="campaign child", base="main", base_sha=base,
+    )["ok"] is True
+    payload = json.loads(state.read_text())
+    REGISTRY.save_state(state, payload)
+    (repo / "dirty.txt").write_text("do not discard\n", encoding="utf-8")
+    before = state.read_bytes()
+
+    result = REGISTRY.retire_campaign(
+        state, campaign_id="campaign-1", reason="dirty safety probe", commit=True,
+    )
+    assert result["ok"] is False
+    assert result["reason"] == "active campaign child worktree dirty"
+    assert state.read_bytes() == before
+
+
+def test_campaign_retire_refuses_corrupt_child_receipt_without_mutation(tmp_path):
+    state = tmp_path / "registry.json"
+    repo, base = _retirement_child(tmp_path)
+    request = manifest(base=base)
+    assert reserve(state, request, current_base=base)["ok"] is True
+    assert REGISTRY.claim_campaign_ticket(
+        state, campaign_id="campaign-1", partition_id="p1",
+        ticket_id="IMP-20260810-aa0001", branch="feat/p1", path=str(repo),
+        intent="campaign child", base="main", base_sha=base,
+    )["ok"] is True
+    payload = json.loads(state.read_text())
+    _attach_retirement_receipt(
+        payload["records"][0], payload["campaign_reservations"][0], base,
+    )
+    payload["records"][0]["child_receipt"] = {"schema": "corrupt"}
+    REGISTRY.save_state(state, payload)
+    before = state.read_bytes()
+
+    result = REGISTRY.retire_campaign(
+        state, campaign_id="campaign-1", reason="corrupt receipt probe", commit=True,
+    )
+    assert result["ok"] is False
+    assert result["reason"] == "active campaign child provenance invalid"
+    assert state.read_bytes() == before
+
+
+def test_campaign_retire_refuses_duplicate_active_children(tmp_path):
+    state = tmp_path / "registry.json"
+    repo, base = _retirement_child(tmp_path)
+    request = manifest(base=base)
+    assert reserve(state, request, current_base=base)["ok"] is True
+    assert REGISTRY.claim_campaign_ticket(
+        state, campaign_id="campaign-1", partition_id="p1",
+        ticket_id="IMP-20260810-aa0001", branch="feat/p1", path=str(repo),
+        intent="campaign child", base="main", base_sha=base,
+    )["ok"] is True
+    payload = json.loads(state.read_text())
+    record = {
+        "status": "active", "branch": "feat/p1", "path": str(repo),
+        "base": "main", "base_sha": base,
+        "backlog": ["IMP-20260810-aa0001"],
+        "handed_back_sha": base, "campaign_id": "campaign-1",
+        "partition_id": "p1", "role": "child",
+    }
+    payload["records"].append(dict(record, branch="feat/p1-copy"))
+    REGISTRY.save_state(state, payload)
+    before = state.read_bytes()
+
+    result = REGISTRY.retire_campaign(
+        state, campaign_id="campaign-1", reason="duplicate claim probe", commit=True,
+    )
+    assert result["ok"] is False
+    assert result["reason"] == "campaign claim has duplicate active children"
+    assert state.read_bytes() == before
+
+
+def test_campaign_retire_rolls_back_registry_and_manifest_on_save_failure(
+    tmp_path, monkeypatch,
+):
+    state = tmp_path / "registry.json"
+    repo, base = _retirement_child(tmp_path)
+    request = manifest(base=base)
+    assert reserve(state, request, current_base=base)["ok"] is True
+    assert REGISTRY.claim_campaign_ticket(
+        state, campaign_id="campaign-1", partition_id="p1",
+        ticket_id="IMP-20260810-aa0001", branch="feat/p1", path=str(repo),
+        intent="campaign child", base="main", base_sha=base,
+    )["ok"] is True
+    payload = json.loads(state.read_text())
+    _attach_retirement_receipt(
+        payload["records"][0], payload["campaign_reservations"][0], base,
+    )
+    REGISTRY.save_state(state, payload)
+    manifest_path = state.parent / "worktree_campaigns" / "campaign-1.json"
+    state_before = state.read_bytes()
+    manifest_before = manifest_path.read_bytes()
+
+    def fail_save(*args, **kwargs):
+        raise OSError("injected save failure")
+
+    monkeypatch.setattr(REGISTRY, "save_state", fail_save)
+    with pytest.raises(OSError, match="injected save failure"):
+        REGISTRY.retire_campaign(
+            state, campaign_id="campaign-1", reason="rollback probe", commit=True,
+        )
+    assert state.read_bytes() == state_before
+    assert manifest_path.read_bytes() == manifest_before
+
+
 def test_campaign_selector_skips_reservation_local_blocker(tmp_path):
     state = tmp_path / "registry.json"
     actual_base = subprocess.run(
