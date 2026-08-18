@@ -53,7 +53,7 @@ category 名單與欄位定義見 `ops/backlog.py --help`,此處不複述(SoT �
 
 ```text
 Lane:
-- team=<Ticket Factory|Delivery Team> role=<factory|Integrator|child-worker> method=<ticketed-loop|delivery-loop|direct-fix> stop=<hand-back|primary+sync|other named stop>
+- team=<Ticket Factory|Delivery Team> role=<factory|Integrator|Manager|child-worker> work_mode=<direct-assignment|ticket-factory|ticket-delivery|none> method=<ticketed-loop|delivery-loop|direct-fix> stop=<hand-back|staging-handoff|primary+sync|other named stop>
 
 Context:
 - role_profile=<Ticket Factory|Delivery Team Integrator|Delivery Child|Review service>
@@ -94,10 +94,22 @@ contract evidence 或逐票 backlog contract preflight（`./ops/backlog.py prefl
 來自 dispatch 五條件，後者來自 worktree registry claim。receipt 仍以 `backlog.py lifecycle --json`
 作為 lifecycle SoT，並保留 stream、tooling-debt 與 worktree-flow 的既有邊界。
 
-角色邊界：`child-worker` 的 `hand-back` 只代表自己的 slice 已交回；`Integrator` 的 delivery-loop
-receipt 必須另外列 `wave slug`、預期 child／已 hand-back／已 fan-in 數、整合後 Gate verdict、primary
-landed SHA、`origin/main` sync verdict。`Ticket Factory` 的 receipt 改報上述 contract／dispatch 對帳，仍不宣稱任何 code 已修復。若發生不穩定狀態，列出 thread message 的對象、原因、證據與
-要求的 pause/continue 動作；正常協作不需要把聊天內容當 SoT。
+角色邊界：`child-worker` 的 `hand-back` 只代表自己的 slice 已交回，且必須列 `work_mode`、exact
+source thread ID、HEAD、seal 與 S0/S1 證據；`Integrator` 的 receipt 是 staging handoff，必須列
+`wave slug`、來源 branch／child hand-back SHA、預期 child／已 hand-back／已 fan-in 數、staging tree、
+phase、`next_action=manager-gate`，並明確寫「未落地 primary、未 sync、未重簽 child seal」。只有
+`Manager` receipt 才列 Gate verdict、primary landed SHA 與 `origin/main` sync verdict。`Ticket Factory`
+的 receipt 改報上述 contract／dispatch 對帳，仍不宣稱任何 code 已修復。若發生不穩定狀態，列出
+thread message 的對象、原因、證據與要求的 pause/continue 動作；正常協作不需要把聊天內容當 SoT。
+
+### Child work mode
+
+- `direct-assignment`：無 delivery ticket；開工前必須在 registry 留下 structured Scope。
+- `ticket-factory`：負責產票／梳理；不持有 delivery ticket；開工前必須有 structured Scope。
+- `ticket-delivery`：由 dispatch／campaign 取得 ticket；Scope 由 ticket 推導，不另宣告 direct Scope。
+
+三種 mode 是 registry admission 與看板心智模型，不改 `backlog.py` lifecycle、status 或 acceptance 語義。
+Child 只跑 S0＋受影響 S1；Manager 整合後才依範圍升 S2，跨模組才升 S3，S4 只用於真正發布。
 
 ## Worktree scratch
 
@@ -144,7 +156,7 @@ bash -c 'set -e; N=$(uv run … pytest --collect-only -q -k "EXPR" | grep -c "::
 Fan-out 受派 child worker 在回報「已完成」前，還必須在自己的工作樹執行
 `./ops/worktree_registry.py hand-back --json`，把輸出的 branch、path、`handed_back_sha`
 與 exact source thread ID（跨 host 加 source host ID）一併回報。Gate BLOCK 必須回到該 source thread；由原 thread 產生新 commit／新 hand-back，不沿用舊 SHA／verdict／seal。受派者只交回 commit 與戳記，沒有 develop 例外。尚未取得 `worktree-flow` 頂端授權時，
-Integrator 也只能以 `integrate ... --commit --no-gate`／`--append` 純組裝；只有取得 delivery-loop 授權且握有整批
-視野的 Integrator 才執行最終 `close-wave --commit --sync`（fresh／continue Gate、cutover、resolve、anchor、validate、origin/main）。`deploy`
+Integrator 也只能以 `integrate ... --commit --no-gate`／`--append` 純組裝；只有 Manager 才執行最終
+`close-wave --commit`／`cutover`／`resolve`／`sync`（fresh／continue Gate、anchor、validate、origin/main）。`deploy`
 另須 release 意圖。Integrator 若要接 legacy/imported branch，必須在 `integrate` 命令明確寫
 `--allow-unhanded`；它不能放行 hand-back 後已前進的 branch。

@@ -76,6 +76,9 @@ def test_documented_role_aliases_resolve_to_typed_routes():
     assert mod.resolve_route(mod.load_manifest(), "Docs Steward", surface="docs")["role"] == "docs-steward"
     assert mod.resolve_route(mod.load_manifest(), "delivery-coordinator")["role"] == "delivery-integrator"
     assert mod.resolve_route(mod.load_manifest(), "platform-steward")["role"] == "ticket-factory"
+    manager = mod.resolve_route(mod.load_manifest(), "Manager")
+    assert manager["role"] == "delivery-manager"
+    assert "worktree.manager" in [unit["id"] for unit in manager["units"]]
 
 
 def test_docs_steward_does_not_preload_worktree_context():
