@@ -12,11 +12,11 @@
   "date": "2026-08-18",
   "detail": "coverage dispatcher 未收編五個既有 ops 測試，導致維運覆蓋檢查把已存在的測試列為未執行；同一輪另有兩個 dashboard 測試由既有 dashboard ticket 負責。",
   "fix_site": "ops/test_ops.sh;ops/tests/test_ops_ci_coverage.sh",
-  "groomed_against": "133a664e4ed35500803433b15130f636da041628",
+  "groomed_against": "0f466b26c",
   "groomed_at": "2026-08-18",
   "groomed_by": "manager",
   "id": "IMP-20260818-2167f4",
-  "plan": "把五個未被 coverage dispatcher 收編的既有 ops 測試納入明確 route，讓 coverage 能逐項執行並維持未知路徑 fail-closed。",
+  "plan": "把七個未被 coverage dispatcher 收編的既有 ops 測試納入明確 route，讓 coverage 能逐項執行並維持未知路徑 fail-closed。",
   "resolution": "",
   "schema": "kg.backlog.entry.v1",
   "scope": {
@@ -44,6 +44,14 @@
       {
         "operation": "modify",
         "path": "ops/tests/test_gate_cost_measurement.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_kg_board_thread_mirror.py"
+      },
+      {
+        "operation": "modify",
+        "path": "ops/tests/test_kg_board_web_followup.py"
       },
       {
         "operation": "modify",
