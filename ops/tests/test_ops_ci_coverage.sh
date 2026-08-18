@@ -18,7 +18,7 @@ LINUX_GROUPS=(
   ui-quality-plane ui-quality-gate review-card-golden docs-lint gen-ios-baseline
   ios-signal-traps ios-install-provenance ios-run-verdict ios-device-lock
   ios-cache-evict review-flip-probe ios-device-files ios-device-logs ios-test-discovery
-  userland-portability script-help install-hooks lib-sourcing alias-coverage podcast-ops
+  userland-portability script-help install-hooks lib-sourcing podcast-ops
   streaming-command app-review demo-data catalog-agent uitest-contact-sheet
 )
 

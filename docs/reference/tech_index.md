@@ -52,7 +52,7 @@ verified_against: 202119f69a4be584f6bacf80b11a12a7bb8579c5
 - UI quality：`ops/ui_quality_plane.py`、`ops/ui_quality_gate.py`、`ops/ios_ops.sh quality`。
 - Lint／scan：`ops/docs_lint.sh`、`ops/i18n_lint.sh`、`ops/shell_scan.sh`、`ops/python_scan.py`。
 - Worktree：`ops/lib/worktree_scope.py`、`ops/worktree_registry.py`、`ops/worktree_orchestrate.py`。
-- Ops regression：`ops/test_ops.sh`；`alias-coverage`：`ops/tests/test_shell_alias_coverage.sh`。
+- Ops regression：`ops/test_ops.sh`。
 - Safety／release：`ops/devops_kg_safe.sh`、`ops/release.sh`、`ops/kg_reconcile.sh`、`ops/branch_audit.sh`。
 - App Store Connect：`ops/asc.sh`；metadata／submission limitations 以 `docs/sop/ios.md` 為準。
 
