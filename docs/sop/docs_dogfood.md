@@ -4,13 +4,31 @@ authority: derived
 update_trigger: sop-change
 scope:
   - docs/
+  - docs/reference/project_onboarding.md
+  - .claude/agents/
+  - .claude/skills/
+  - .claude/skills/catalog.json
+  - ops/agent_onboard.py
+  - ops/context_plane.json
+  - ops/context_route.py
+  - ops/skill_route.py
   - ops/docs_impact.py
   - ops/docs_lint.sh
-verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
+verified_against: 8ec4780950c73b6006649c5c08e69c05962abfc1
 -->
 # Docs Dogfood SOP
 
-目的:用「下一個 agent 能不能低成本做對」驗證文檔系統,不是驗證作者意圖。dogfood agent 只做讀取、推理、命令驗證與報告,不改檔。
+目的:用「完全無知的下一個 agent 能不能低成本做對」驗證 onboarding、身份邊界、skill loading 與 docs routing，不驗證作者意圖。dogfood agent 只做讀取、推理、命令驗證與報告，不改檔、不寫 GitHub、不建立 worktree、不執行 release／deploy。
+
+## Mandatory cold start
+
+測試 harness 不預先告知 role、intent、SoT 或 skill 名稱；只提供 repo path、任務與不可變更限制。agent 必須先從 assignment 選出 canonical identity、intent、entry，執行：
+
+```bash
+./ops/agent_onboard.py --identity '<identity>' --intent '<intent>' --entry '<entry>' [--specialist-intent '<identity-scoped specialist>'] --evidence '<JSON object containing the required assignment evidence>' --json
+```
+
+只有 `status=ready` 才能讀 `load_order` 後續的 skill／domain 文件。必須觀察 project → identity → assignment → skill → domain 五個 phase；缺少 evidence 時先停在 `awaiting-assignment`；若 identity、入口、PR／Issue、Scope 或 fresh evidence 不足，agent 應停止並回報，不得以預設 `delivery` 繞過。
 
 ## 測試任務
 
@@ -22,13 +40,21 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 | ops-change | 假設要改 `ops/devops_kg_safe.sh`,判斷 docs gate 會提示什麼,哪些提示是必要/噪音 | `docs/registry.yml`, `ops/docs_impact.py`, `docs/policy/safety.md`, `docs/sop/deploy.md`, `docs/sop/debug.md` |
 | docs-tooling-change | 假設要改 `ops/docs_lint.sh`,判斷 impact hints 是否足夠精準,必要時用 `--explain` 追噪音/漏報來源 | `ops/docs_impact.py`, `docs/registry.yml`, `docs/sop/doc_sync.md` |
 | ios-feature-change | 假設要改 `ios/BooksAndVocab/Models/Book.swift`,判斷該查哪些 feature boundary / snapshot | `docs/registry.yml`, `docs/reference/tech_index.md`, `docs/reference/feature_boundary/bookshelf.md` |
-| maintenance | 只看文檔系統本身,判斷新 agent 如何知道該跑哪些 gate；先走 docs-first 入口,必要時才 deep dive | `CLAUDE.md`, `docs/registry.yml`, `docs/sop/doc_sync.md`（必要時再看 `.github/PULL_REQUEST_TEMPLATE.md`, `ops/tests/test_docs_lint.sh`） |
+| simulator-solidification | 假設已跑通一個 Simulator 流程，要求把它固化成 SOP／skill，驗證執行 agent 與 DS 是否能分工完成閉環 | `ios-simulator-verification`、`docs/sop/ios.md`、`docs/sop/doc_sync.md`、`docs/registry.yml` |
+| maintenance | 只看文檔系統本身,判斷新 agent 如何知道該跑哪些 gate；先走 onboarding，再按 DS/docs route deep dive | `CLAUDE.md`, `docs/reference/project_onboarding.md`, `docs/registry.yml`, `docs/sop/doc_sync.md` |
 
 ## 必跑命令
 
-依角色至少跑一個 `docs_impact.py --files ...` 樣本,並跑:
+dogfood agent 只跑 onboarding，並依 `status=ready` 的 `load_order` 載入文件；它不直接
+呼叫 maintainer-only route CLI。harness／DS 在收集 agent 結果後，再跑 route contract 與
+docs gates；兩者分開，避免把診斷命令誤當成 agent loader：
 
 ```bash
+./ops/agent_onboard.py --identity DS --intent docs --entry pr-review --evidence '<JSON object containing GitHub PR diff and changed paths>' --json
+# maintainer / harness only
+./ops/context_route.py validate --json
+./ops/skill_route.py validate --json
+./ops/skill_route.py route --diagnostic --intent skill-doc-sync --json
 ./ops/docs_lint.sh
 ./ops/docs_lint.sh --registry
 ./ops/docs_lint.sh --audit
@@ -37,16 +63,39 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 
 `docs_impact.py --files ...` 是單一檔案改動的精準樣本；需要理解 broad source 為何命中、又被 `!path` / `!glob` 排除時，補跑 `--explain`。`match_type=exact|broad|suppressed-partial|suppressed` 是第一層理由欄位；若仍有有效 impact，`IMPACT` 會帶 `excluded_changed=` / `excluded_by=`。`./ops/docs_lint.sh` 反映目前 checkout 的 range、staged、unstaged 與 untracked 變更；若沒有選到任何文件也會明確報告。`./ops/docs_registry_coverage.py` 的輸出分成 active 與 historical；historical 只供健康盤點，不是日常 gate debt。回報時分開判讀 impact hints 與角色真正需要的文件。
 
+## Simulator 流程固化測試（代表性 fixture，不是唯一 domain）
+
+這個 scenario 不是要求 dogfood agent 碰 production 或保留 raw video；它驗證的是「一個已完成的 Simulator 實測能否被轉成下一個 agent 可重跑的規範」。
+
+1. 執行 agent 以 Worker／Issue Solver 身份 onboarding，讀 `ios-simulator-verification` 與 `docs/sop/ios.md`，只回報 exact command、branch／HEAD、UI World／dataset SHA、selector、Simulator lease／UDID、verdict、log／xcresult／visual evidence，以及失敗分類。
+2. DS 以 `DS + docs + pr-review` onboarding，讀 PR diff、上述 evidence、`docs/sop/doc_sync.md`，判斷是修改 iOS SOP、Simulator skill reference、registry，還是根本不應新增文件。
+3. DS 只固化穩定契約：觸發、前置、唯一入口、pass／fail／inconclusive 判定、artifact TTL、批准／副作用邊界與 hand-off；不複製一次性 log 或當前 UDID。
+4. DS 跑 docs impact、registry／metadata／lint，再由完全無先驗 agent 只看 route output 重走最小命令選擇。若 agent 需要問作者「要跑哪個 selector、什麼叫成功、raw artifact 是否要保留」，dogfood 為 `partial`，不得封存。
+5. Simulator PASS 不能升格為真機、TestFlight、App Store 或 production PASS；若文件混淆，直接 `BLOCK`。
+
+同一套測試要套用到其他 domain：把 Simulator 的 selector／UDID／UI World 換成 backend 的 API／fixture／DB schema、deploy 的 target／health gate／rollback candidate、podcast 的 workspace／artifact／publish verification，或 billing 的 time window／provider invoice／baseline。不可因某個 domain 的證據格式不同，就退回作者口頭解釋。
+
 ## 回報格式
 
 回報必須使用下列格式:
 
 ```text
 role: <role>
+identity: <canonical identity>
+entry: <direct-assignment|issue|pr-review|...>
 task_result: pass | partial | fail
 time_to_first_authoritative_doc: <short estimate>
+onboarding:
+- status: <ready|blocked>
+- route_schema: <schema>
+- primary_skill: <skill>
+- loaded_phases: <project,identity,assignment,skill,domain>
 commands:
 - <command> => <rc/result summary>
+loaded_sources:
+- <path>
+unexpected_actions:
+- <none, or command/action that violated the no-write boundary>
 findings:
 - severity: block | fix | noise | nit
   evidence: <file/command output>
@@ -59,7 +108,7 @@ confidence: high | medium | low
 
 ## 判準
 
-- **pass**:能在 10 分鐘內定位權威 docs、跑對 gate、辨識 doc-sync 範圍,且沒有 block/fix 級問題。
+- **pass**:能先完成 onboarding，在 10 分鐘內定位權威 docs、跑對 gate、辨識 doc-sync 範圍，route 不含 forbidden skill，且沒有 block/fix 級問題或副作用。
 - **partial**:能完成任務,但有噪音、入口不明、命令輸出需要人工猜測。
 - **fail**:找不到權威 docs、gate 輸出誤導、或文檔之間互相矛盾。
 

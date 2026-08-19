@@ -4,6 +4,7 @@ authority: SoT
 update_trigger: agent_context_changed
 scope:
   - CLAUDE.md
+  - docs/reference/project_onboarding.md
   - docs/reference/delivery_model.md
   - .claude/agents/
   - .claude/skills/
@@ -11,51 +12,82 @@ scope:
   - ops/context_plane.json
   - ops/context_route.py
   - ops/skill_route.py
-verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
+  - ops/agent_onboard.py
+verified_against: 8ec4780950c73b6006649c5c08e69c05962abfc1
 -->
+
 # Agent Context Index
 
-這份索引只回答兩個問題：目前工作應由誰負責，以及下一步應讀哪個 SoT。GitHub-native 的角色與兩條工作路徑以 [`delivery_model.md`](delivery_model.md) 為準；產品語義仍由產品文件與程式碼擁有，不在這裡重複。
+這份文件只定義「如何把正確的上下文交給正確身份的代理」。專案概覽與角色邊界不在此重複：先讀 [`project_onboarding.md`](project_onboarding.md)，交付角色與兩條工作路徑以 [`delivery_model.md`](delivery_model.md) 為準，技術細節由 `docs/registry.yml` 導航。
 
-## 角色
+## 強制冷啟動順序
 
-- **CM（Codebase Manager）**：管理 `main`、PR 優先序、merge、release／deploy 與 rollback 邊界。
-- **IM（Issues Manager）**：管理 GitHub Issues 的收件、排序與派工；不合併 code。直接指派可跳過 Issue。
-- **Worker**：接受 User／IM 直接指派，在 branch/worktree 實作並提交 PR。
-- **Issue Solver**：接受已進入 GitHub Issue 流程的工作，在 branch/worktree 實作並提交 PR。
-- **CR（Code Reviewer）**：跨所有 PR 審查正確性、測試、回歸、架構與安全；結果留在 PR。
-- **DS（Docs Steward）**：跨所有 PR 維護文件 impact、registry、metadata、SoT 與 docs lint。
-- **Release operator**：CM 所管理的 release execution adapter，依 `docs/sop/release.md`、`docs/sop/deploy.md` 與安全 wrapper 執行已批准的發版／回滾。
+代理不能直接跳到 specialist skill 或 domain 文件。已知身份、工作意圖與入口後，先執行：
 
-角色是 context routing，不是權限系統。現有 machine IDs 為相容性映射：`manager` 承載 CM／IM bounded context、`contributor` 承載 Worker／Issue Solver、`reviewer` 對應 CR、`docs-steward` 對應 DS、`release-operator` 對應 release execution。真正的權限來自 GitHub repository rules、branch protection、Actions environment approval、production wrapper 與帳號本身。
+```bash
+./ops/agent_onboard.py \
+  --identity '<canonical identity or alias>' \
+  --intent '<delivery|review|docs|release|backend|ios>' \
+  --entry '<coordination|merge|direct-assignment|issue|pr-review|release>' \
+  --specialist-intent '<optional identity-scoped specialist intent>' \
+  --evidence '<JSON object containing the required assignment evidence>' \
+  --json
+```
 
-## 啟動順序
+依 `kg.agent_onboarding.v2` 的 `load_order` 嚴格載入：
 
-1. 先確認 repo、branch、HEAD、工作樹 dirty state 與 active worktree ownership。
-2. 判斷工作入口：直接指派讀 User／IM 的 assignment；Issue work 讀 GitHub Issue／Project 的目標與 acceptance。兩者都確認 branch 與 structured Scope。
-3. 依變更面讀 `docs/registry.yml` 的 SoT；不確定 endpoint、schema、env、deployment 或 UI 狀態時，不用記憶補空白。
-4. 執行最小充分驗證；若是長操作，保留可讀 heartbeat 與完整 log。
-5. 以 commit + PR 交付。PR 是所有 code change 的討論、CR／DS、checks 與 merge 交付紀錄。
+1. **project**：`docs/reference/project_onboarding.md`，了解 KG 產品地圖、GitHub-native 控制面與本地 coordinator 邊界。
+2. **identity**：由 `ops/context_plane.json` 的 canonical identity 確認責任與 `not_owns`；執行層 mapping 只供 loader 維持相容，不是 agent-facing 角色模型。
+3. **assignment**：確認 User／IM direct assignment、GitHub Issue 或 GitHub PR，並取得 acceptance、exact HEAD 與 structured Scope。
+4. **skill**：使用 onboarding kernel route 指定的唯一 primary skill、required dependencies、forbidden skills；若有 `specialist-intent`，它會取代 generic high-level route，不能自行把兩條 route 拼在一起。
+5. **domain**：只讀本次 intent 的 bounded sources，完成測試、review、docs impact 或安全 SOP。
+
+`status != ready`（包括缺少 evidence 時的 `awaiting-assignment`）、source 不存在、identity／intent／entry 不匹配、context 與 skill primary 不一致時，必須停在 onboarding；不可用預設值猜測或繼續載入。
+
+`specialist-intent` 不是自由字串：它必須由 `ops/context_plane.json` 對該 identity／intent／entry 明確列入白名單，並由 `.claude/skills/catalog.json` 解析成唯一 primary 與 dependencies。未指定時使用 generic route；指定後只讀 effective route，不能自行疊加另一個 specialist。
+
+## Canonical identity
+
+canonical identity 的完整責任定義只保留在 [`delivery_model.md`](delivery_model.md) 與 `ops/context_plane.json`：
+
+| identity | 入口／工作重點 |
+|---|---|
+| CM／IM | codebase 收斂，或 GitHub Issue 收件、排序與派工 |
+| Worker／Issue Solver | direct assignment 或 GitHub Issue → branch/worktree → PR |
+| CR | PR diff、fresh checks 與 review 結論 |
+| DS | docs impact、registry／SoT 與 docs lint |
+| Release operator | 已批准的 release/deploy/rollback SOP |
+
+CLI 仍接受既有相容 alias，但 alias 只存在於
+`context_plane.json`／`context_route.py` 的執行層；代理、人類文件與 assignment
+一律使用上表的 canonical identity。這個 mapping 不新增角色，也不授予權限。
+GitHub rules、Actions environment、production wrapper 與帳號權限才是授權來源。
 
 ## SoT 導航
 
 | 問題 | 先讀 |
 |---|---|
-| 產品是否已存在 | `docs/reference/product_surface.md` |
-| endpoint、模組、env、ops 入口 | `docs/reference/tech_index.md` |
+| KG 產品地圖與共同安全規則 | `docs/reference/project_onboarding.md` |
+| 角色、兩條入口、PR 收斂與本地 coordinator 邊界 | `docs/reference/delivery_model.md` |
+| endpoint、模組、env、domain 技術細節 | `docs/reference/product_surface.md`、`docs/reference/tech_index.md` |
 | 文件 owner、trigger、impact | `docs/registry.yml`、`./ops/docs_impact.py` |
-| worktree ownership 與 Scope | `ops/worktree_registry.py`、`ops/lib/worktree_scope.py` |
-| GitHub-native 角色、入口與 PR 收斂 | `docs/reference/delivery_model.md` |
+| worktree ownership、Scope、thread 與 hand-back | `ops/worktree_registry.py`、`ops/lib/worktree_scope.py` |
 | CI／PR checks | `.github/workflows/`、`docs/sop/review_discipline.md` |
-| 部署、批准、rollback | `docs/sop/deploy.md`、`docs/sop/release.md`、`docs/policy/safety.md` |
+| release、deploy、批准與 rollback | `docs/sop/release.md`、`docs/sop/deploy.md`、`docs/policy/safety.md` |
 | iOS UI／Simulator | `docs/sop/ui-design.md`、對應 feature boundary、iOS verification skill |
 
-## Scope 與證據
+## Route output contract
 
-Scope 是檔案 ownership 與 collision 判定，不是產品需求本身。Issue work 的需求、優先序與 acceptance 在 GitHub Issue；direct assignment 的目標與 acceptance 在 assignment／PR 中具名寫出；兩者的實作意圖與驗證摘要都在 PR。若 assignment、Issue、Scope、diff 或測試結果互相矛盾，停止宣稱完成並回報具體衝突。
+`context_route.py` 是必須帶 `--diagnostic` 的 maintainer-only bounded navigation，不是 agent loader、merge queue、GitHub API 或 permission system。成功輸出必須包含：
 
-最小 hand-back 包含：Issue／PR opaque ID（若已有）、direct assignment 摘要（若無 Issue）、branch、worktree path、exact HEAD、Scope、執行過的命令與 exit status、尚未解的 blocker。它是本機交接證據，不取代 GitHub PR。
+- `status`、`role`、`identity_ids`、`intent`、`skill`、`skill_intent`。
+- `onboarding`、`load_order` 與去重後的 `sources`。
+- `next_action` 與 `authority.granted == false`。
 
-## 路由輸出
+`skill_route.py` 再提供唯一 `primary`、selected skills 與 typed `dependencies`，也只供 maintainer diagnostic 使用。context intent 到 skill intent 的 mapping 必須在 manifest 中明確登錄，不能由代理自行猜測。
 
-context route 必須輸出可機讀的 `status`、`role`、`intent`、`skill`、`sources` 與 `next_action`。缺少 source、manifest 或必要 scope 時 fail closed；不要透過預設值假裝已經知道產品邊界。
+## Assignment、Scope 與證據
+
+Scope 是本機檔案 ownership 與 collision 判定，不是需求或權限。Issue work 的目標、優先序與 acceptance 在 GitHub Issue；direct assignment 的目標與 acceptance 在 assignment／PR；PR 的 diff、checks、review 與驗證證據是交付真相。
+
+最小交接證據包含 Issue／PR opaque ID（若已有）、direct assignment 摘要（若無 Issue）、branch、worktree path、exact HEAD、Scope、命令與 exit status、未解 blocker。交接證據不取代 GitHub PR，也不改變 merge／release 授權。

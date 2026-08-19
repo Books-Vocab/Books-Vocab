@@ -1,10 +1,10 @@
 <!-- doc-meta
 tier: sop
-authority: derived
+authority: SoT
 update_trigger: sop-change
 scope:
   - ios/BooksAndVocab/
-verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
+verified_against: 8ec4780950c73b6006649c5c08e69c05962abfc1
 -->
 # Books & Vocab UI Design System
 

@@ -7,6 +7,8 @@ scope:
   - .github/
   - .claude/agents/
   - .claude/skills/
+  - .claude/skills/catalog.json
+  - docs/reference/project_onboarding.md
   - docs/reference/agent_context.md
   - docs/runbook/system.md
   - docs/sop/review_discipline.md
@@ -14,11 +16,12 @@ scope:
   - docs/sop/release.md
   - ops/context_plane.json
   - ops/context_route.py
+  - ops/agent_onboard.py
   - ops/task_registry.py
   - ops/lib/streaming_command.py
   - ops/worktree_registry.py
   - ops/worktree_orchestrate.py
-verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
+verified_against: 8ec4780950c73b6006649c5c08e69c05962abfc1
 -->
 # GitHub-native Delivery Model
 
@@ -50,6 +53,18 @@ branch → commit → PR → Actions + CR + DS → CM merge → main → release
 
 `main` 不接受直接寫入。merge 不是 production approval；release、deploy、health gate、rollback 仍由各自安全邊界控制。
 
+## Agent onboarding contract
+
+所有代理先經 [`project_onboarding.md`](project_onboarding.md) 建立 KG 的共同概覽，再確認 canonical identity、工作入口與 assignment，最後才載入 primary skill 和 bounded domain docs。可執行入口是：
+
+```bash
+./ops/agent_onboard.py --identity '<identity>' --intent '<intent>' --entry '<entry>' [--specialist-intent '<identity-scoped specialist>'] --evidence '<JSON object containing the required assignment evidence>' --json
+```
+
+`--evidence` 缺少任一 assignment requirement 時，onboarding 會在 assignment fail closed；只有 `status=ready` 才會載入 skill 與 domain。`ops/context_plane.json` 是身份、入口、context intent 與 skill intent mapping 的 machine-readable SoT；`.claude/skills/catalog.json` 是 primary skill、dependency、optional、forbidden 與 closure 的 SoT。`ops/context_route.py` 與 `ops/skill_route.py` 只保留給 maintainer 做 `validate`／`--diagnostic` cross-validation；agent-facing loader 唯一是 `ops/agent_onboard.py`。
+
+Onboarding 的成功只代表上下文 contract 完整，不代表 GitHub、merge、release、deploy 或 production 授權。route、identity、worktree hand-back 與 process evidence 都不能取代 branch protection、Actions required checks、environment approval 或 production safety wrapper。文件記技術與操作真相；skill 記載代理的載入、協調與交接方法，不保存 Issue／PR／Project 狀態。
+
 ## 角色
 
 角色是責任邊界，不是本機組織階層，也不是第二套權限系統。GitHub repository rules、branch protection、Actions environment approval、production wrapper 與帳號權限才是真正的授權來源。
@@ -65,7 +80,7 @@ branch → commit → PR → Actions + CR + DS → CM merge → main → release
 
 Release operator 是 CM 所管理的執行能力，不是另一套產品管理層：它只能依 release SOP 與明確批准執行發布、部署或 rollback。
 
-現有 `ops/context_route.py` 的 machine identity 保持穩定，以免破壞既有入口：`manager` 承載 CM／IM 的 bounded context、`contributor` 承載 Worker／Issue Solver 的執行 context、`reviewer` 對應 CR、`docs-steward` 對應 DS、`release-operator` 對應 release execution。這是相容性映射，不是新增一套角色模型。
+`ops/context_plane.json` 與 `ops/context_route.py` 內部保留執行層 mapping 以維持既有入口相容；這些 key 不屬於 canonical identity、權限或工作狀態，不應出現在 agent-facing onboarding、assignment 或交接語義中。
 
 ## 兩條正式工作路徑
 
@@ -114,6 +129,16 @@ Worker 與 Issue Solver 的實作能力、測試要求與 PR 標準相同，差�
 - CR 與 DS 是否完成各自檢查；未完成時不得宣稱 ready。
 
 CM 只在 PR 的 required checks、review、文件影響與安全條件滿足後合併。PR merge 後才進入 release／deploy SOP；任何外部帳號批准、production 寫入或 rollback 仍是獨立的明確動作。
+
+### Required merge gate 與 confidence fan-out
+
+`.github/workflows/pr-gate.yml` 的 workflow `pr-gate` 會產生短、可重現的 `required` check run；它只回答這個 PR 是否滿足 repository 基線，不代表所有受影響 domain 都已完整驗證。同一 workflow 的 `confidence` check run 提供完整的 backend／iOS／UI／ops fan-out；它是 nonblocking confidence evidence，不得被 `required` 的綠燈取代。
+
+因此固定採以下判讀：
+
+- `required=success` 才是 merge 的最低 Actions 條件；仍須滿足 CR、DS、branch rules 與其他安全條件。
+- `confidence` 失敗、缺失或未完成時，PR 不得宣稱「完整綠」；也不得進入受影響的 release／deploy 路徑。
+- confidence 結果是 GitHub check run 的證據，不在 repo 內另建本地 confidence／merge 狀態；若要重跑，針對同一 PR HEAD 重新觸發 Actions。
 
 ## 本機 coordinator 的窄責任
 

@@ -5,7 +5,8 @@ update_trigger: sop-change
 scope:
   - lab/podcast/
   - ops/podcast_upload.sh
-verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
+  - .claude/skills/podcast-*/
+verified_against: 8ec4780950c73b6006649c5c08e69c05962abfc1
 -->
 <!--
   tier 慣例:tier=sop 用 update_trigger=sop-change(對齊其他 sop)。
@@ -15,7 +16,7 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 -->
 # KG Podcast Pipeline SOP
 
-書 → podcast 全流程的工程文檔。`.claude/skills/podcast/SKILL.md` 是 agent 操作手冊（CLI 速查）；這份是**為什麼這樣做、壞了怎麼救**。
+書 → podcast 全流程的工程文檔。`.claude/skills/podcast-pipeline/`、`podcast-monitor/`、`podcast-publish/` 只負責 agent 的選路、邊界與 evidence；這份是**技術契約、為什麼這樣做、壞了怎麼救**。
 
 關聯文檔:
 - `docs/reference/feature_boundary/podcast.md` — iOS player 邊界
@@ -523,14 +524,14 @@ Endpoints:
 
 **成本來源**:
 - **Stage 1-10(agent)**:直接讀 claude CLI stream-json 的 `result.modelUsage[model].costUSD`。Claude profile 時這是 CLI 套 Anthropic 官方單價(含 cache 折扣、1M context premium)算好的值。不自己重算。(若日後接非官方 endpoint 的 profile:該 endpoint 若不回 `modelUsage.costUSD`,dashboard 會有 token 無 USD,須以該家帳單為準。)
-- **Stage 11(Vertex Gemini TTS)**:從每筆 `tts_usage` event 拿 `input_tokens` / `output_tokens`,套 `VERTEX_PRICING` dict 算。當前預設(`.env` TTS_MODEL)`gemini-2.5-flash-tts`,$0.30/$2.50 per 1M(audio = 25 tok/sec,無 long tier)。`gemini-3.1-flash-tts-preview` $1.00/$20、舊 `gemini-2.5-pro-tts` $1.25/$10(≤200K)、$2.50/$15(>200K)。event 缺 `model` 欄時 fallback 取當前預設 `gemini-2.5-flash-tts`(`monitor/cost.py:254`)。`verified_against: 2026-06-02`。
+- **Stage 11(Vertex Gemini TTS)**:從每筆 `tts_usage` event 拿 `input_tokens` / `output_tokens`,套 `VERTEX_PRICING` dict 算。當前預設(`.env` TTS_MODEL)`gemini-2.5-flash-tts`,$0.30/$2.50 per 1M(audio = 25 tok/sec,無 long tier)。`gemini-3.1-flash-tts-preview` $1.00/$20、舊 `gemini-2.5-pro-tts` $1.25/$10(≤200K)、$2.50/$15(>200K)。event 缺 `model` 欄時 fallback 取當前預設 `gemini-2.5-flash-tts`(`monitor/cost.py:254`)。本文件的驗證 anchor 以檔頭 `verified_against` 為準，不另寫日期。
 - **Stage 12-13**:本地 pydub / Whisper,$0。
 
 **Token 來源優先序**(`synthesize.py:_synthesize_one`):
 1. `response.usage_metadata.prompt_token_count` / `candidates_token_count` — Vertex 回傳真值
 2. Fallback 估算:`input ≈ len(prompt)/4`、`output ≈ audio_seconds × 25`(Google 官方 25 tokens/sec)。event 標 `usage_source: "estimated"`,dashboard 顯示 ⚠ warning。
 
-**改 Vertex 單價**:編輯 `VERTEX_PRICING`(SoT 即程式碼),或 env `PODCAST_TTS_PRICING='{"model":{...}}'` 暫覆寫。改完同步本節 `verified_against` 日期。
+**改 Vertex 單價**:編輯 `VERTEX_PRICING`(SoT 即程式碼),或 env `PODCAST_TTS_PRICING='{"model":{...}}'` 暫覆寫。改完依 doc-sync SOP 更新檔頭 `verified_against` 到可達 commit。
 
 ### 8.2 Dashboard UI
 
