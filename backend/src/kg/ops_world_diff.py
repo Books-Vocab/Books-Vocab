@@ -102,12 +102,84 @@ def _notebook_aliases(notebook: dict[str, Any]) -> list[str]:
     return aliases
 
 
+def _graph_aliases(graph: dict[str, Any]) -> list[str]:
+    aliases: list[str] = []
+    for field in ("notebook", "notebook_name", "notebook_id"):
+        value = graph.get(field)
+        if isinstance(value, str) and value and value not in aliases:
+            aliases.append(value)
+    return aliases
+
+
 def _graph_link_key(link: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
     return (
         link.get("from") if isinstance(link.get("from"), str) else link.get("from_content"),
         link.get("to") if isinstance(link.get("to"), str) else link.get("to_content"),
         str(link.get("kind")) if link.get("kind") is not None else None,
     )
+
+
+def _entry_groups(entries: Any, key_fn: Any) -> dict[Any, list[dict[str, Any]]]:
+    groups: dict[Any, list[dict[str, Any]]] = {}
+    if not isinstance(entries, list):
+        return groups
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        keys = key_fn(entry)
+        if not isinstance(keys, (list, tuple, set)):
+            keys = [keys]
+        seen: list[Any] = []
+        for key in keys:
+            if key is None:
+                continue
+            try:
+                hash(key)
+            except TypeError:
+                continue
+            if key in seen:
+                continue
+            seen.append(key)
+            groups.setdefault(key, []).append(entry)
+    return groups
+
+
+def _unique_index(entries: Any, key_fn: Any) -> tuple[dict[Any, dict[str, Any]], set[Any], set[Any]]:
+    groups = _entry_groups(entries, key_fn)
+    unique = {
+        key: values[0]
+        for key, values in groups.items()
+        if len(values) == 1
+    }
+    duplicates = {key for key, values in groups.items() if len(values) > 1}
+    return unique, duplicates, set(groups)
+
+
+def _append_duplicate_mismatches(
+    mismatches: list[dict[str, Any]],
+    entries: Any,
+    key_fn: Any,
+    *,
+    kind: str,
+    path_fn: Any,
+    description: str,
+    source: str,
+) -> set[Any]:
+    groups = _entry_groups(entries, key_fn)
+    duplicates = {key for key, values in groups.items() if len(values) > 1}
+    for key in sorted(duplicates, key=repr):
+        mismatches.append({
+            "kind": kind,
+            "path": path_fn(key),
+            "source": source,
+            "expected": (
+                description if source == "actual" else f"duplicate {description}"
+            ),
+            "actual": (
+                f"duplicate {description}" if source == "actual" else description
+            ),
+        })
+    return duplicates
 
 
 def _compare_graphs(
@@ -117,13 +189,27 @@ def _compare_graphs(
     mismatches: list[dict[str, Any]],
 ) -> None:
     """Append graph/link mismatches (read-only over ``actual``/``expected``)."""
-    actual_graphs: dict[str, dict[str, Any]] = {}
-    for graph in actual.get("graphs", []):
-        if not isinstance(graph, dict):
-            continue
-        for key in (graph.get("notebook_name"), graph.get("notebook_id")):
-            if isinstance(key, str) and key:
-                actual_graphs[key] = graph
+    actual_graphs, actual_duplicate_graphs, _ = _unique_index(
+        actual.get("graphs", []), _graph_aliases
+    )
+    actual_duplicate_graphs = _append_duplicate_mismatches(
+        mismatches,
+        actual.get("graphs", []),
+        _graph_aliases,
+        kind="duplicate-graph",
+        path_fn=lambda key: f"graphs[{key}]",
+        description="graph identity",
+        source="actual",
+    )
+    expected_duplicate_graphs = _append_duplicate_mismatches(
+        mismatches,
+        expected_graphs,
+        _graph_aliases,
+        kind="duplicate-graph",
+        path_fn=lambda key: f"graphs[{key}]",
+        description="graph identity",
+        source="expected",
+    )
     for graph in expected_graphs:
         if not isinstance(graph, dict):
             mismatches.append({
@@ -135,6 +221,8 @@ def _compare_graphs(
             continue
         key = graph.get("notebook") or graph.get("notebook_name") or graph.get("notebook_id")
         label = str(key) if key else "<unknown>"
+        if key in actual_duplicate_graphs or key in expected_duplicate_graphs:
+            continue
         if not isinstance(key, str) or key not in actual_graphs:
             mismatches.append({
                 "kind": "missing-graph",
@@ -144,11 +232,31 @@ def _compare_graphs(
             })
             continue
         actual_graph = actual_graphs[key]
-        actual_links = {
-            _graph_link_key(link): link
-            for link in actual_graph.get("links", [])
-            if isinstance(link, dict)
-        }
+        actual_links, actual_duplicate_links, _ = _unique_index(
+            actual_graph.get("links", []), lambda link: [_graph_link_key(link)]
+        )
+        actual_duplicate_links = _append_duplicate_mismatches(
+            mismatches,
+            actual_graph.get("links", []),
+            lambda link: [_graph_link_key(link)],
+            kind="duplicate-link",
+            path_fn=lambda link_key, graph_label=label: (
+                f"graphs[{graph_label}].links[{link_key[0]}->{link_key[1]}:{link_key[2]}]"
+            ),
+            description="link key",
+            source="actual",
+        )
+        expected_duplicate_links = _append_duplicate_mismatches(
+            mismatches,
+            graph.get("links", []),
+            lambda link: [_graph_link_key(link)],
+            kind="duplicate-link",
+            path_fn=lambda link_key, graph_label=label: (
+                f"graphs[{graph_label}].links[{link_key[0]}->{link_key[1]}:{link_key[2]}]"
+            ),
+            description="link key",
+            source="expected",
+        )
         for idx, link in enumerate(graph.get("links", [])):
             if not isinstance(link, dict):
                 mismatches.append({
@@ -160,6 +268,8 @@ def _compare_graphs(
                 continue
             link_key = _graph_link_key(link)
             link_label = f"{link_key[0]}->{link_key[1]}:{link_key[2]}"
+            if link_key in actual_duplicate_links or link_key in expected_duplicate_links:
+                continue
             if link_key not in actual_links:
                 mismatches.append({
                     "kind": "missing-link",
@@ -188,12 +298,27 @@ def diff_world_state(actual: dict[str, Any], expected: dict[str, Any]) -> dict[s
         _compare_subset(actual.get("config", {}), expected["config"], path="config", mismatches=mismatches)
 
     if "notebooks" in expected:
-        actual_notebooks: dict[str, dict[str, Any]] = {}
-        for notebook in actual.get("notebooks", []):
-            if not isinstance(notebook, dict):
-                continue
-            for key in _notebook_aliases(notebook):
-                actual_notebooks[key] = notebook
+        actual_notebooks, actual_duplicate_notebooks, _ = _unique_index(
+            actual.get("notebooks", []), _notebook_aliases
+        )
+        actual_duplicate_notebooks = _append_duplicate_mismatches(
+            mismatches,
+            actual.get("notebooks", []),
+            _notebook_aliases,
+            kind="duplicate-notebook",
+            path_fn=lambda key: f"notebooks[{key}]",
+            description="notebook identity",
+            source="actual",
+        )
+        expected_duplicate_notebooks = _append_duplicate_mismatches(
+            mismatches,
+            expected["notebooks"],
+            _notebook_aliases,
+            kind="duplicate-notebook",
+            path_fn=lambda key: f"notebooks[{key}]",
+            description="notebook identity",
+            source="expected",
+        )
         for notebook in expected["notebooks"]:
             if not isinstance(notebook, dict):
                 mismatches.append({
@@ -205,6 +330,8 @@ def diff_world_state(actual: dict[str, Any], expected: dict[str, Any]) -> dict[s
                 continue
             key = _notebook_key(notebook)
             label = key or "<unknown>"
+            if key in actual_duplicate_notebooks or key in expected_duplicate_notebooks:
+                continue
             if key is None or key not in actual_notebooks:
                 mismatches.append({
                     "kind": "missing-notebook",
@@ -296,6 +423,13 @@ def _seed_link_key(
     )):
         return None
     return notebook, from_content, to_content, kind
+
+
+def _seed_link_keys(
+    link: dict[str, Any], default_nb: str | None
+) -> list[tuple[str, str, str, str]]:
+    key = _seed_link_key(link, default_nb)
+    return [key] if key is not None else []
 
 
 def _diff_seed_fields(
@@ -433,14 +567,40 @@ def diff_seed_spec(actual: dict[str, Any], expected: dict[str, Any]) -> dict[str
         expected_notebooks = _seed_entries(
             expected["notebooks"], path="notebooks", mismatches=mismatches
         )
+        actual_notebook_entries = actual.get("notebooks", [])
+        actual_duplicate_notebooks = _append_duplicate_mismatches(
+            mismatches,
+            actual_notebook_entries,
+            _notebook_aliases,
+            kind="duplicate-notebook",
+            path_fn=lambda key: f"notebooks[{key}]",
+            description="notebook identity",
+            source="actual",
+        )
+        expected_duplicate_notebooks = _append_duplicate_mismatches(
+            mismatches,
+            expected_notebooks,
+            _notebook_aliases,
+            kind="duplicate-notebook",
+            path_fn=lambda key: f"notebooks[{key}]",
+            description="notebook identity",
+            source="expected",
+        )
+        actual_notebook_index, actual_duplicate_names, actual_notebook_names = _unique_index(
+            actual_notebook_entries,
+            lambda notebook: [
+                notebook["name"]
+                if isinstance(notebook.get("name"), str) and notebook["name"]
+                else None
+            ],
+        )
         actual_notebooks = {
-            notebook["name"]: notebook
-            for notebook in actual.get("notebooks", [])
-            if isinstance(notebook, dict)
-            and isinstance(notebook.get("name"), str)
-            and notebook["name"]
+            name: notebook
+            for name, notebook in actual_notebook_index.items()
+            if isinstance(name, str)
         }
         expected_notebook_index: dict[str, dict[str, Any]] = {}
+        expected_notebook_names: set[str] = set()
         expected_has_default = False
         for index, notebook in enumerate(expected_notebooks):
             if not isinstance(notebook, dict):
@@ -460,11 +620,15 @@ def diff_seed_spec(actual: dict[str, Any], expected: dict[str, Any]) -> dict[str
                     "actual": notebook,
                 })
                 continue
-            expected_notebook_index[name] = notebook
+            expected_notebook_names.add(name)
+            if name not in actual_duplicate_names and name not in expected_duplicate_notebooks:
+                expected_notebook_index[name] = notebook
             expected_has_default = expected_has_default or bool(notebook.get("is_default"))
 
         for name, notebook in expected_notebook_index.items():
             path = f"notebooks[{name}]"
+            if name in actual_duplicate_notebooks:
+                continue
             if name not in actual_notebooks:
                 mismatches.append({
                     "kind": "missing-notebook",
@@ -483,7 +647,9 @@ def diff_seed_spec(actual: dict[str, Any], expected: dict[str, Any]) -> dict[str
                 "path": f"notebooks[{default_nb}]",
                 "reason": "預設本由 NotebookStore.ensure_default 恆存在；spec 未宣告故不視為多餘",
             })
-        for name in sorted(set(actual_notebooks) - set(expected_notebook_index)):
+        for name in sorted(set(actual_notebook_names) - expected_notebook_names):
+            if name in actual_duplicate_names:
+                continue
             if name == default_nb and not expected_has_default:
                 continue
             mismatches.append({
@@ -556,11 +722,32 @@ def diff_seed_spec(actual: dict[str, Any], expected: dict[str, Any]) -> dict[str
         expected_links = _seed_entries(
             expected["links"], path="links", mismatches=mismatches
         )
+        actual_link_entries = actual.get("links", [])
+        def seed_link_keys(link: dict[str, Any]) -> list[tuple[str, str, str, str]]:
+            return _seed_link_keys(link, default_nb)
+        actual_duplicate_links = _append_duplicate_mismatches(
+            mismatches,
+            actual_link_entries,
+            seed_link_keys,
+            kind="duplicate-link",
+            path_fn=lambda key: f"links[{key[0]}/{key[1]}->{key[2]}:{key[3]}]",
+            description="link key",
+            source="actual",
+        )
+        expected_duplicate_links = _append_duplicate_mismatches(
+            mismatches,
+            expected_links,
+            seed_link_keys,
+            kind="duplicate-link",
+            path_fn=lambda key: f"links[{key[0]}/{key[1]}->{key[2]}:{key[3]}]",
+            description="link key",
+            source="expected",
+        )
+        actual_link_index, _, actual_link_keys = _unique_index(
+            actual_link_entries, seed_link_keys
+        )
         actual_links = {
-            key: link
-            for link in actual.get("links", [])
-            if isinstance(link, dict)
-            and (key := _seed_link_key(link, default_nb)) is not None
+            key: link for key, link in actual_link_index.items() if key not in actual_duplicate_links
         }
         expected_link_index: dict[tuple[str, str, str, str], dict[str, Any]] = {}
         for index, link in enumerate(expected_links):
@@ -581,7 +768,8 @@ def diff_seed_spec(actual: dict[str, Any], expected: dict[str, Any]) -> dict[str
                     "actual": link,
                 })
                 continue
-            expected_link_index[key] = link
+            if key not in actual_duplicate_links and key not in expected_duplicate_links:
+                expected_link_index[key] = link
 
         for key, link in expected_link_index.items():
             path = f"links[{key[0]}/{key[1]}->{key[2]}:{key[3]}]"
@@ -599,7 +787,9 @@ def diff_seed_spec(actual: dict[str, Any], expected: dict[str, Any]) -> dict[str
                 path=path, mismatches=mismatches,
             )
 
-        for key in sorted(set(actual_links) - set(expected_link_index)):
+        for key in sorted(set(actual_link_keys) - set(expected_link_index)):
+            if key in actual_duplicate_links or key in expected_duplicate_links:
+                continue
             mismatches.append({
                 "kind": "unexpected-link",
                 "path": f"links[{key[0]}/{key[1]}->{key[2]}:{key[3]}]",
