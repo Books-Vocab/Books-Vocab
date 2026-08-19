@@ -148,13 +148,17 @@ enum NotebookCoverPattern: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     var label: String {
+        localizedLabel(language: AppLanguageStore.shared.selection)
+    }
+
+    func localizedLabel(language: AppLanguage) -> String {
         switch self {
-        case .dots: return L10n.string("圓點")
-        case .lines: return L10n.string("條紋")
-        case .grid: return L10n.string("格線")
-        case .waves: return L10n.string("波浪")
-        case .circles: return L10n.string("同心圓")
-        case .noise: return L10n.string("噪點")
+        case .dots: return L10n.string("圓點", language: language)
+        case .lines: return L10n.string("條紋", language: language)
+        case .grid: return L10n.string("格線", language: language)
+        case .waves: return L10n.string("波浪", language: language)
+        case .circles: return L10n.string("同心圓", language: language)
+        case .noise: return L10n.string("噪點", language: language)
         }
     }
 

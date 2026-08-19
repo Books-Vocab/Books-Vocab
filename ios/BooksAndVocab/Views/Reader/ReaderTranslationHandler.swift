@@ -8,6 +8,17 @@
 
 import SwiftUI
 
+enum ReaderTranslationCopy {
+    static func retryStatus(attempt: Int, total: Int, language: AppLanguage) -> String {
+        L10n.format(
+            "正在重試 (%@/%@)...",
+            language: language,
+            "\(attempt)",
+            "\(total)"
+        )
+    }
+}
+
 /// 封裝閱讀器全部翻譯狀態與詞庫邏輯，由 ReaderView 持有並橋接
 @MainActor
 @Observable
@@ -45,6 +56,8 @@ final class ReaderTranslationHandler {
     let translationService: any Translating
     @ObservationIgnored
     let authManager: any AuthManaging
+    @ObservationIgnored
+    private let retryStatusFormatter: (Int, Int) -> String
 
     // 取消前一次未完成的翻譯 task（快速連點防覆蓋）
     @ObservationIgnored
@@ -77,10 +90,18 @@ final class ReaderTranslationHandler {
 
     init(
         translationService: any Translating = TranslationService(),
-        authManager: any AuthManaging = MainActor.assumeIsolated({ AuthManager.shared })
+        authManager: any AuthManaging = MainActor.assumeIsolated({ AuthManager.shared }),
+        retryStatusFormatter: ((Int, Int) -> String)? = nil
     ) {
         self.translationService = translationService
         self.authManager = authManager
+        self.retryStatusFormatter = retryStatusFormatter ?? { attempt, total in
+            ReaderTranslationCopy.retryStatus(
+                attempt: attempt,
+                total: total,
+                language: AppLanguageStore.shared.selection
+            )
+        }
     }
 
     func cancelCurrentTranslationTask() {
@@ -107,11 +128,7 @@ final class ReaderTranslationHandler {
                     guard let self else { return }
                     await MainActor.run {
                         guard !Task.isCancelled else { return }
-                        let message = L10n.format(
-                            "正在重試 (%@/%@)...",
-                            "\(attempt)",
-                            "\(total)"
-                        )
+                        let message = self.retryStatusFormatter(attempt, total)
                         switch statusChannel {
                         case .translation:
                             self.translationStatus = message

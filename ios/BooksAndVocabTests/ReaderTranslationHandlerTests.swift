@@ -107,10 +107,15 @@ struct ReaderTranslationHandlerTests {
 
     // MARK: - Helpers
 
-    private func makeHandler(loggedIn: Bool = true, service: MockTranslating = MockTranslating()) -> ReaderTranslationHandler {
+    private func makeHandler(
+        loggedIn: Bool = true,
+        service: MockTranslating = MockTranslating(),
+        retryStatusFormatter: ((Int, Int) -> String)? = nil
+    ) -> ReaderTranslationHandler {
         ReaderTranslationHandler(
             translationService: service,
-            authManager: MockAuth(isLoggedIn: loggedIn)
+            authManager: MockAuth(isLoggedIn: loggedIn),
+            retryStatusFormatter: retryStatusFormatter
         )
     }
 
@@ -329,18 +334,31 @@ struct ReaderTranslationHandlerTests {
                 releaseResult = continuation
             }
         }
-        let handler = makeHandler(service: service)
+        let handler = makeHandler(
+            service: service,
+            retryStatusFormatter: { attempt, total in "retry-status-\(attempt)-of-\(total)" }
+        )
         let ctx = MockVocabContext()
 
         handler.handleWordSelected(word: "retry", context: "ctx", vocabularyContext: ctx)
         #expect(await waitUntil { releaseRetry != nil })
         releaseRetry?.resume()
-        #expect(await waitUntil { handler.statusMessage?.contains("正在重試") == true })
+        #expect(await waitUntil { handler.statusMessage == "retry-status-1-of-3" })
 
-        #expect(handler.statusMessage?.contains("正在重試") == true)
+        #expect(handler.statusMessage == "retry-status-1-of-3")
         #expect(await waitUntil { releaseResult != nil })
         releaseResult?.resume()
         await drain(handler)
+    }
+
+    @Test func retryStatusCopy_usesExplicitLanguageWithoutMutatingGlobalSelection() {
+        #expect(
+            ReaderTranslationCopy.retryStatus(
+                attempt: 1,
+                total: 3,
+                language: .traditionalChinese
+            ) == "正在重試 (1/3)..."
+        )
     }
 
     @Test func handleWordSelected_cancelledRetry_doesNotWriteStatus() async {

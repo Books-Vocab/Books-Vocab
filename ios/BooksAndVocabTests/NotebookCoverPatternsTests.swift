@@ -72,23 +72,25 @@ struct NotebookCoverPatternsTests {
 
     @Test func labelIsNonEmptyForEveryCase() async throws {
         for pattern in NotebookCoverPattern.allCases {
-            #expect(!pattern.label.isEmpty)
+            #expect(!pattern.localizedLabel(language: .traditionalChinese).isEmpty)
         }
     }
 
     @Test func labelsAreUniqueAcrossAllCases() async throws {
-        let labels = NotebookCoverPattern.allCases.map(\.label)
+        let labels = NotebookCoverPattern.allCases.map { pattern in
+            pattern.localizedLabel(language: .traditionalChinese)
+        }
         #expect(Set(labels).count == labels.count)
     }
 
     @Test func labelExactValuesArePinned() async throws {
         // Lock the zh-Hant label mapping — these strings ship in NotebookEditSheet
         // picker rows. Any rename here is a UX change requiring a deliberate update.
-        #expect(NotebookCoverPattern.dots.label == "圓點")
-        #expect(NotebookCoverPattern.lines.label == "條紋")
-        #expect(NotebookCoverPattern.grid.label == "格線")
-        #expect(NotebookCoverPattern.waves.label == "波浪")
-        #expect(NotebookCoverPattern.circles.label == "同心圓")
-        #expect(NotebookCoverPattern.noise.label == "噪點")
+        #expect(NotebookCoverPattern.dots.localizedLabel(language: .traditionalChinese) == "圓點")
+        #expect(NotebookCoverPattern.lines.localizedLabel(language: .traditionalChinese) == "條紋")
+        #expect(NotebookCoverPattern.grid.localizedLabel(language: .traditionalChinese) == "格線")
+        #expect(NotebookCoverPattern.waves.localizedLabel(language: .traditionalChinese) == "波浪")
+        #expect(NotebookCoverPattern.circles.localizedLabel(language: .traditionalChinese) == "同心圓")
+        #expect(NotebookCoverPattern.noise.localizedLabel(language: .traditionalChinese) == "噪點")
     }
 }

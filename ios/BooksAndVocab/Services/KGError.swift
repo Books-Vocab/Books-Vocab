@@ -51,21 +51,32 @@ enum KGError: LocalizedError {
 
 enum SyncFailurePresentation {
     static func message(label: String, error: Error) -> String {
-        L10n.format("sync.failure.message", operationTitle(for: label), reasonTitle(for: error))
+        message(label: label, error: error, language: AppLanguageStore.shared.selection)
     }
 
-    private static func operationTitle(for label: String) -> String {
+    /// Explicit language keeps presentation contracts deterministic without
+    /// changing the application's selected language.
+    static func message(label: String, error: Error, language: AppLanguage) -> String {
+        L10n.format(
+            "sync.failure.message",
+            language: language,
+            operationTitle(for: label, language: language),
+            reasonTitle(for: error, language: language)
+        )
+    }
+
+    private static func operationTitle(for label: String, language: AppLanguage) -> String {
         switch label {
         case "pushReview":
-            return L10n.string("sync.failure.operation.pushReview")
+            return L10n.string("sync.failure.operation.pushReview", language: language)
         case "pushReviewEvents":
-            return L10n.string("sync.failure.operation.pushReviewEvents")
+            return L10n.string("sync.failure.operation.pushReviewEvents", language: language)
         case "pull":
-            return L10n.string("sync.failure.operation.pull")
+            return L10n.string("sync.failure.operation.pull", language: language)
         case "pullReviewEvents":
-            return L10n.string("sync.failure.operation.pullReviewEvents")
+            return L10n.string("sync.failure.operation.pullReviewEvents", language: language)
         default:
-            return L10n.string("sync.failure.operation.generic")
+            return L10n.string("sync.failure.operation.generic", language: language)
         }
     }
 
@@ -77,57 +88,65 @@ enum SyncFailurePresentation {
     /// 英文的「The operation couldn't be completed.」，對 `KGError.httpError`
     /// 會把內部 path（"GET api/vocab failed"）漏到使用者眼前。
     static func reason(for error: Error) -> String {
-        reasonTitle(for: error)
+        reason(for: error, language: AppLanguageStore.shared.selection)
     }
 
-    private static func reasonTitle(for error: Error) -> String {
+    static func reason(for error: Error, language: AppLanguage) -> String {
+        reasonTitle(for: error, language: language)
+    }
+
+    private static func reasonTitle(for error: Error, language: AppLanguage) -> String {
         if let kgError = error as? KGError {
-            return reasonTitle(for: kgError)
+            return reasonTitle(for: kgError, language: language)
         }
         if let urlError = error as? URLError {
-            return reasonTitle(for: urlError)
+            return reasonTitle(for: urlError, language: language)
         }
-        return L10n.string("sync.failure.reason.unknown")
+        return L10n.string("sync.failure.reason.unknown", language: language)
     }
 
-    private static func reasonTitle(for error: KGError) -> String {
+    private static func reasonTitle(for error: KGError, language: AppLanguage) -> String {
         switch error {
         case .notAuthenticated, .unauthorized:
-            return L10n.string("sync.failure.reason.authExpired")
+            return L10n.string("sync.failure.reason.authExpired", language: language)
         case .offline:
-            return L10n.string("sync.failure.reason.offline")
+            return L10n.string("sync.failure.reason.offline", language: language)
         case .networkError(let underlying):
             if let urlError = underlying as? URLError {
-                return reasonTitle(for: urlError)
+                return reasonTitle(for: urlError, language: language)
             }
-            return L10n.string("sync.failure.reason.network")
+            return L10n.string("sync.failure.reason.network", language: language)
         case .httpError(let statusCode, _):
             if statusCode == 429 {
-                return L10n.string("sync.failure.reason.rateLimited")
+                return L10n.string("sync.failure.reason.rateLimited", language: language)
             }
             if (500...599).contains(statusCode) {
-                return L10n.string("sync.failure.reason.serverUnavailable")
+                return L10n.string("sync.failure.reason.serverUnavailable", language: language)
             }
             // 4xx（非 429）帶上 status code，提供可觀測性 — 多數是契約/請求問題，
             // code 是定位的關鍵線索（見 review-event pull 死鎖案）。
-            return L10n.format("sync.failure.reason.serverRejectedCode", String(statusCode))
+            return L10n.format(
+                "sync.failure.reason.serverRejectedCode",
+                language: language,
+                String(statusCode)
+            )
         case .decodingError:
-            return L10n.string("sync.failure.reason.decoding")
+            return L10n.string("sync.failure.reason.decoding", language: language)
         case .serverError:
-            return L10n.string("sync.failure.reason.server")
+            return L10n.string("sync.failure.reason.server", language: language)
         }
     }
 
-    private static func reasonTitle(for error: URLError) -> String {
+    private static func reasonTitle(for error: URLError, language: AppLanguage) -> String {
         switch error.code {
         case .notConnectedToInternet:
-            return L10n.string("sync.failure.reason.offline")
+            return L10n.string("sync.failure.reason.offline", language: language)
         case .timedOut:
-            return L10n.string("sync.failure.reason.timeout")
+            return L10n.string("sync.failure.reason.timeout", language: language)
         case .networkConnectionLost, .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed:
-            return L10n.string("sync.failure.reason.network")
+            return L10n.string("sync.failure.reason.network", language: language)
         default:
-            return L10n.string("sync.failure.reason.network")
+            return L10n.string("sync.failure.reason.network", language: language)
         }
     }
 }

@@ -11,8 +11,7 @@ enum L10n {
 
     /// Three-tier lookup: current language bundle → en bundle → key itself.
     /// Why: 缺鍵時回中文 key 原文會在非 CJK locale 漏出中文字面,違反在地化品質。
-    private static func lookup(_ key: String) -> String {
-        let current = AppLanguageStore.shared.stringBundle
+    private static func lookup(_ key: String, in current: Bundle) -> String {
         let primary = current.localizedString(forKey: key, value: missSentinel, table: "Localizable")
         if primary != missSentinel { return primary }
         if let enBundle {
@@ -22,8 +21,22 @@ enum L10n {
         return key
     }
 
+    private static func lookup(_ key: String) -> String {
+        lookup(key, in: AppLanguageStore.shared.stringBundle)
+    }
+
+    private static func lookup(_ key: String, language: AppLanguage) -> String {
+        lookup(key, in: AppLanguageStore.shared.stringBundle(for: language))
+    }
+
     static func string(_ key: String) -> String {
         lookup(key)
+    }
+
+    /// Explicit locale lookup for pure presentation contracts and deterministic
+    /// tests. It deliberately does not mutate `AppLanguageStore.shared`.
+    static func string(_ key: String, language: AppLanguage) -> String {
+        lookup(key, language: language)
     }
 
     /// Format via NSString so that String Catalog / .stringsdict plural variations
@@ -33,6 +46,17 @@ enum L10n {
         let format = lookup(key)
         return withVaList(arguments) { va in
             NSString(format: format, locale: AppLanguageStore.shared.formatLocale, arguments: va) as String
+        }
+    }
+
+    static func format(_ key: String, language: AppLanguage, _ arguments: any CVarArg...) -> String {
+        let format = lookup(key, language: language)
+        return withVaList(arguments) { va in
+            NSString(
+                format: format,
+                locale: AppLanguageStore.shared.formatLocale(for: language),
+                arguments: va
+            ) as String
         }
     }
 }

@@ -13,6 +13,11 @@ final class BooksAndVocabUITests: UITestCase {
 
     @MainActor
     func testLaunchShowsAllTabs() throws {
+        // iOS 26's accessibility attachment and shell stabilization can take
+        // over XCTest's one-minute default on a cold hosted runner. Keep this
+        // smoke test bounded, but give its measured ~107s journey a real
+        // allowance instead of relying on xcodebuild's global maximum.
+        executionTimeAllowance = 180
         let app = launchApp()
 
         let shell = AppPage(app: app)
