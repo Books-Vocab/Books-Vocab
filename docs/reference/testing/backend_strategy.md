@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - backend/tests/
-verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
+verified_against: af224fa2d86d76db01efe47b092706c80988e82e
 -->
 # KG Backend Testing Strategy
 
@@ -76,10 +76,13 @@ uv run python -m pytest -q
 
 ## Backend Quality CI
 
-`.github/workflows/backend-quality.yml` 只在 `backend/**` 或該 workflow 變更時於
-push / pull request 觸發；另有每日 02:17 UTC 的 nightly schedule。文件或 iOS-only
-變更不會啟動 push / pull request backend runner。job `backend-quality` 在乾淨 runner
-執行：
+`.github/workflows/backend-quality.yml` 是 reusable workflow。`main` 的 direct push 只會在
+`backend/**`、`.claude/skills/devops/SKILL.md` 或該 workflow 變更時啟動；另有每日
+02:17 UTC 的 nightly schedule。PR 則由 `pr-gate` 依 `ops/ci_scope_router.sh` 選出的
+backend lane 呼叫；該 router 將 backend-facing DevOps skill roster 視為 backend
+confidence。文件或 iOS-only 變更本身不會選到 backend lane；`required`／`confidence`
+的總體語義以 [`delivery_model.md`](../delivery_model.md#required-merge-gate-confidence-fan-out)
+為準。job `backend-quality` 在乾淨 runner 執行：
 
 1. checkout full history，固定 uv 版本後執行 `uv sync --locked`。
 2. 以 module form 執行測試與 coverage data；push / pull request 執行完整 suite：
