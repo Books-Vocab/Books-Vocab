@@ -40,18 +40,46 @@ def data_dir() -> Path:
     return Path(os.getenv("KG_DATA_DIR", str(default)))
 
 
+def _validate_uid_component(uid: str) -> None:
+    if not uid or Path(uid).is_absolute() or "/" in uid or "\\" in uid:
+        raise ValueError(f"unsafe user id: {uid!r}")
+
+
+def _resolve_uid_path(path: Path, users_root: Path, uid: str) -> Path:
+    try:
+        resolved = path.resolve()
+        resolved.relative_to(users_root)
+        if resolved == users_root:
+            raise ValueError
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError(f"unsafe user id: {uid!r}") from exc
+    return resolved
+
+
 def resolve_uid(partial: str, data_dir: str | Path) -> str:
     """部分 ID 模糊匹配 —— 支援前綴或子字串。
 
     精確匹配優先;唯一模糊匹配則回傳之;多重匹配印出候選後 exit(1);
-    無匹配則原樣回傳(讓後續步驟自行報錯)。
+    無匹配則原樣回傳(讓後續步驟自行報錯)。不安全的 path-like ID
+    會 raise :class:`ValueError`。
     """
     users_dir = Path(data_dir) / "users"
+    users_root = users_dir.resolve()
+    _validate_uid_component(partial)
+    candidate = _resolve_uid_path(users_root / partial, users_root, partial)
+
     if not users_dir.exists():
         return partial
-    if (users_dir / partial).exists():
+    if candidate.exists():
         return partial
-    matches = [d.name for d in users_dir.iterdir() if d.is_dir() and partial in d.name]
+
+    matches = []
+    for user_dir in users_dir.iterdir():
+        if not user_dir.is_dir() or partial not in user_dir.name:
+            continue
+        _validate_uid_component(user_dir.name)
+        _resolve_uid_path(user_dir, users_root, user_dir.name)
+        matches.append(user_dir.name)
     if len(matches) == 1:
         return matches[0]
     if len(matches) > 1:

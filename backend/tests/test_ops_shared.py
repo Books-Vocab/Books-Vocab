@@ -46,6 +46,41 @@ class TestResolveUid:
     def test_no_users_dir_returns_partial(self, tmp_path):
         assert resolve_uid("anything", tmp_path) == "anything"
 
+    @pytest.mark.parametrize(
+        "unsafe_uid", ["", ".", "..", "../outside", "nested/user", "nested\\user"]
+    )
+    def test_rejects_path_traversal_and_separators(self, tmp_path, unsafe_uid):
+        _mk_users(tmp_path, ["abc123"])
+        with pytest.raises(ValueError):
+            resolve_uid(unsafe_uid, tmp_path)
+
+    def test_rejects_absolute_path(self, tmp_path):
+        _mk_users(tmp_path, ["abc123"])
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        with pytest.raises(ValueError):
+            resolve_uid(str(outside), tmp_path)
+
+    def test_rejects_path_traversal_without_users_dir(self, tmp_path):
+        with pytest.raises(ValueError):
+            resolve_uid("../outside", tmp_path)
+
+    def test_rejects_symlink_escape(self, tmp_path):
+        _mk_users(tmp_path, ["abc123"])
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (tmp_path / "users" / "escaped").symlink_to(outside, target_is_directory=True)
+        with pytest.raises(ValueError):
+            resolve_uid("escaped", tmp_path)
+
+    def test_rejects_symlink_escape_during_partial_match(self, tmp_path):
+        _mk_users(tmp_path, ["abc123"])
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (tmp_path / "users" / "escaped").symlink_to(outside, target_is_directory=True)
+        with pytest.raises(ValueError):
+            resolve_uid("esc", tmp_path)
+
 
 class TestConnectRo:
     def test_read_works(self, tmp_path):
