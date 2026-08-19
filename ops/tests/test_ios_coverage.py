@@ -55,6 +55,22 @@ def test_ios_coverage_reports_app_target_line_rate() -> None:
     assert payload["thresholds"]["lineCoverage"]["failUnder"] == 80.0
 
 
+def test_ios_coverage_rejects_unknown_explicit_target() -> None:
+    fixture = {
+        "targets": [
+            {"name": "BooksAndVocab", "lineCoverage": 0.9, "coveredLines": 90, "executableLines": 100}
+        ]
+    }
+
+    proc = run_coverage(fixture, "--target", "MissingTarget", "--fail-under-lines", "80")
+
+    assert proc.returncode == 2
+    payload = json.loads(proc.stdout)
+    assert payload["verdict"] == "error"
+    assert payload["summary"]["target"] == "MissingTarget"
+    assert payload["errors"][0]["key"] == "coverage-unavailable"
+
+
 def test_ios_coverage_fails_under_threshold_with_machine_readable_error() -> None:
     fixture = {
         "targets": [

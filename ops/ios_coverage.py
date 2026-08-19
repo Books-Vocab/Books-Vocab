@@ -156,10 +156,11 @@ def is_app_target(target: CoverageTarget) -> bool:
 
 
 def select_target(targets: list[CoverageTarget], name: str | None) -> CoverageTarget | None:
-    if name:
+    if name is not None:
         for target in targets:
             if target.name == name:
                 return target
+        return None
     for target in targets:
         if target.name == DEFAULT_TARGET:
             return target
@@ -224,6 +225,7 @@ def parse_nonnegative_int(value: str) -> int:
 
 
 def make_error_payload(args: argparse.Namespace, message: str) -> dict[str, Any]:
+    target_name = args.target if args.target is not None else DEFAULT_TARGET
     return {
         "schema": SCHEMA,
         "source": {
@@ -233,7 +235,7 @@ def make_error_payload(args: argparse.Namespace, message: str) -> dict[str, Any]
         },
         "verdict": "error",
         "summary": {
-            "target": args.target,
+            "target": target_name,
             "lineCoverage": None,
             "coveredLines": None,
             "executableLines": None,
@@ -251,7 +253,8 @@ def make_payload(args: argparse.Namespace, payload: dict[str, Any]) -> tuple[dic
     selected = select_target(targets, args.target)
     threshold = parse_threshold(args.fail_under_lines)
     if selected is None or selected.line_percent is None:
-        out = make_error_payload(args, f"target coverage unavailable: {args.target or DEFAULT_TARGET}")
+        target_name = args.target if args.target is not None else DEFAULT_TARGET
+        out = make_error_payload(args, f"target coverage unavailable: {target_name}")
         return out, 2
 
     errors: list[dict[str, Any]] = []
@@ -307,7 +310,7 @@ def format_text(payload: dict[str, Any]) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Emit stable iOS coverage JSON from an Xcode .xcresult")
     parser.add_argument("--xcresult", required=True, help="Path to Test.xcresult")
-    parser.add_argument("--target", default=DEFAULT_TARGET, help="Target to report, default: BooksAndVocab")
+    parser.add_argument("--target", help="Target to report, default: BooksAndVocab")
     parser.add_argument("--fail-under-lines", help="Fail if selected target line coverage is below this percent")
     parser.add_argument(
         "--max-low-files",
