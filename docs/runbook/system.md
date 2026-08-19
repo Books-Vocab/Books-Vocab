@@ -36,8 +36,10 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 
 1. Worker 與 Issue Solver 都把所有 code change 收進同一個 PR 流程：`branch → commit → PR`。
 2. PR 描述變更、測試命令與 exit status、風險、文件影響、rollback 方式，並標明 direct assignment 或關聯 Issue。
-3. 等 GitHub Actions required checks、CR review、DS 文件判斷與必要的 environment approval 都完成後，由 CM 依優先順序 merge。
+3. 等 GitHub Actions workflow `pr-gate` 的 check run `required`、CR review、DS 文件判斷與必要的 environment approval 滿足後，由 CM 依優先順序 merge；backend／ops／iOS 的完整 confidence suite 可在同一時間平行收斂，不形成所有 PR 的全域串行門檻。
 4. merge 後 `main` 是產品真相；依 release 意圖執行版本發布。發布與 production deploy 不因一般 merge 自動發生。
+
+workflow `pr-gate` 的 check run `confidence` 失敗必須保留為真實偏離並追蹤 fix-forward／rollback；它不會被 `required` 覆蓋，也不能被重新描述成 PASS。合併速度與完整驗證是兩個不同的控制面。
 
 ## Local worktree boundary
 

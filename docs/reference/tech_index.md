@@ -25,7 +25,7 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 | Local coordinator | `ops/worktree_registry.py`、`ops/worktree_orchestrate.py` | `./ops/test_ops.sh worktree` |
 | Docs control | `docs/registry.yml`、`ops/docs_impact.py`、`ops/docs_lint.sh` | `./ops/test_ops.sh docs-lint` |
 | GitHub intake/review | `.github/ISSUE_TEMPLATE/`、`.github/PULL_REQUEST_TEMPLATE.md` | GitHub Issue／PR |
-| CI | `.github/workflows/pr-gate.yml`（聚合 gate）、`.github/workflows/backend-quality.yml`、`.github/workflows/ios-quality.yml`、`.github/workflows/` | GitHub Actions checks；PR required context=`pr-gate / required` |
+| CI | `.github/workflows/pr-gate.yml`（fast required + full confidence 聚合）、`.github/workflows/backend-quality.yml`、`.github/workflows/ios-quality.yml`、`.github/workflows/` | GitHub Actions checks；workflow `pr-gate` 的 branch protection check run=`required`，完整結果=`confidence` |
 
 ## Backend routes and data
 

@@ -37,8 +37,20 @@ done
 PR_GATE=".github/workflows/pr-gate.yml"
 grep -q '^  pull_request:' "$PR_GATE" || fail "pr-gate has no pull_request trigger"
 grep -q '^  required:' "$PR_GATE" || fail "pr-gate has no final required job"
+grep -q 'needs: \[repo-gate, llm-eval, design-system, ui-quality-gate\]' "$PR_GATE" \
+  || fail "pr-gate required job is not the short merge gate"
+grep -q '^  confidence:' "$PR_GATE" \
+  || fail "pr-gate has no non-blocking full-confidence aggregator"
 grep -q 'needs: \[repo-gate, backend-quality, llm-eval, design-system, ui-quality-gate, ops-suite, ios-quality\]' "$PR_GATE" \
-  || fail "pr-gate required job does not depend on every component gate"
+  || fail "pr-gate confidence job does not depend on every component gate"
+required_block="$(awk '
+  /^  required:/ { in_required=1; next }
+  in_required && /^  [A-Za-z0-9_-]+:/ { exit }
+  in_required { print }
+' "$PR_GATE")"
+if grep -q 'backend-quality\|ops-suite\|ios-quality' <<<"$required_block"; then
+  fail "slow backend/ops/iOS jobs are still merge-blocking"
+fi
 for workflow in "${component_workflows[@]}"; do
   grep -q "uses: ./.github/workflows/${workflow}.yml" "$PR_GATE" \
     || fail "pr-gate does not call ${workflow}"
@@ -58,6 +70,10 @@ if grep -q 'KG_IOS_TEST_LOG_IDLE_LIMIT' "$IOS"; then
 fi
 grep -q "KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE: '420'" "$IOS" \
   || fail "iOS workflow does not retain the bounded XCTest per-test timeout"
+if grep -Eq 'KG_IOS_TEST_LOG_IDLE_LIMIT|LOG_IDLE_LIMIT|log-idle-timeout|log_idle_seconds' \
+  ops/ios_test.sh ops/lib/ios_build_progress.sh; then
+  fail "iOS test harness still contains a raw log-silence timeout"
+fi
 if grep -q 'self-hosted\|pull_request_target' "$IOS"; then
   fail "iOS workflow crosses the public fork/self-hosted trust boundary"
 fi

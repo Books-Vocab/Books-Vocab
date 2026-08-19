@@ -1,8 +1,9 @@
 name: pr-gate
 
-# This is the only pull_request entrypoint. The jobs below call the component
-# workflows so the branch protection rule has one stable final status while
-# Linux and macOS validation still run in parallel.
+# This is the only pull_request entrypoint. The component workflows run in
+# parallel, but branch protection observes only `required`: a short merge gate.
+# `confidence` reports the complete suite without serializing every PR behind
+# the slowest backend/ops/iOS job.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -73,11 +74,11 @@ jobs:
   required:
     name: required
     if: ${{ always() }}
-    needs: [repo-gate, backend-quality, llm-eval, design-system, ui-quality-gate, ops-suite, ios-quality]
+    needs: [repo-gate, llm-eval, design-system, ui-quality-gate]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Assert every required gate passed
+      - name: Assert the short merge gate passed
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
@@ -85,5 +86,23 @@ jobs:
           printf '%s\n' "$NEEDS_JSON" | jq -r 'to_entries[] | "\(.key)=\(.value.result)"'
           if jq -e 'to_entries | any(.value.result != "success")' <<<"$NEEDS_JSON" >/dev/null; then
             echo 'one or more required gates failed' >&2
+            exit 1
+          fi
+
+  confidence:
+    name: confidence
+    if: ${{ always() }}
+    needs: [repo-gate, backend-quality, llm-eval, design-system, ui-quality-gate, ops-suite, ios-quality]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Report the complete validation fan-out
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$NEEDS_JSON" | jq -r 'to_entries[] | "\(.key)=\(.value.result)"'
+          if jq -e 'to_entries | any(.value.result != "success")' <<<"$NEEDS_JSON" >/dev/null; then
+            echo 'full confidence suite has a failure; this is intentionally non-blocking for PR merge' >&2
             exit 1
           fi
