@@ -33,8 +33,15 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Verify jq
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y jq
+          fi
+          jq --version
       - name: Assert every group is classified
         run: ./ops/tests/test_ops_ci_coverage.sh
       - name: Emit Linux group matrix input
@@ -72,13 +79,34 @@ jobs:
         # 所以這裡不需要（也不該）顯式寫 enable-cache: true——那會讀起來像是這個 edit
         # 帶來了加速，實際上什麼都沒改變。
         uses: astral-sh/setup-uv@6b9c6063abd6010835644d4c2e1bef4cf5cd0fca # v6.0.1
-      - name: Install tools the shard needs
+      - name: Verify tools the shard needs
         # 明列，不靠 ubuntu-latest 碰巧預裝：runner image 的工具清單不是契約，而
         # `ubuntu-latest` 是會動的標籤。實測（runner 等價容器）少了它們的後果——
         # jq→ui-quality-plane/branch-audit、sqlite3→backup-verify、
         # python3→infra-health、ssh→證偽器自我檢驗。清單與
         # ops/tests/test_ops_ci_coverage.sh 開頭那段註解是同一份，改一邊要改兩邊。
-        run: sudo apt-get update && sudo apt-get install -y ripgrep jq sqlite3 python3 openssh-client zsh
+        shell: bash
+        run: |
+          set -euo pipefail
+          declare -A packages=(
+            [rg]=ripgrep
+            [jq]=jq
+            [sqlite3]=sqlite3
+            [python3]=python3
+            [ssh]=openssh-client
+            [zsh]=zsh
+          )
+          missing=()
+          for command_name in "${!packages[@]}"; do
+            command -v "$command_name" >/dev/null 2>&1 || missing+=("${packages[$command_name]}")
+          done
+          if (( ${#missing[@]} > 0 )); then
+            sudo apt-get update
+            sudo apt-get install -y "${missing[@]}"
+          fi
+          for command_name in "${!packages[@]}"; do
+            command -v "$command_name" >/dev/null 2>&1
+          done
       - name: Run assigned Linux ops groups
         env:
           LINUX_GROUPS_JSON: ${{ needs.discover.outputs.linux-groups }}
