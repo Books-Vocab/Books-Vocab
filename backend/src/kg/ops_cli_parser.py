@@ -91,7 +91,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("analyze", help="深度分析（圖譜拓撲/連結品質/嵌入/異常）")
     p.add_argument("uid", help="User ID")
-    p.add_argument("level", nargs="?", default="all", help="1-6 或 all（預設 all）")
+    p.add_argument(
+        "level",
+        choices=["1", "2", "3", "4", "5", "6", "all"],
+        nargs="?",
+        default="all",
+        help="1-6 或 all（預設 all）",
+    )
     p.set_defaults(func=cmd_analyze)
 
     p = sub.add_parser("cost", parents=[jp], help="單用戶 cost-by-call_type 拆解")
