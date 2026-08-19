@@ -4,12 +4,12 @@ name: backend-quality
 # toolchain, and this workflow are the only changes that need this runner.
 
 on:
+  workflow_call:
   push:
-    paths: &backend_quality_paths
+    branches: [main]
+    paths:
       - 'backend/**'
       - '.github/workflows/backend-quality.yml'
-  pull_request:
-    paths: *backend_quality_paths
   schedule:
     - cron: '17 2 * * *'
 

@@ -156,7 +156,8 @@ struct KGServiceErrorTests {
     @Test func sync_failure_classifier_formats_network_timeout_for_review_events_pull() {
         let message = SyncFailurePresentation.message(
             label: "pullReviewEvents",
-            error: KGError.networkError(underlying: URLError(.timedOut))
+            error: KGError.networkError(underlying: URLError(.timedOut)),
+            language: .traditionalChinese
         )
 
         #expect(message == "複習紀錄下載失敗：網路逾時")
@@ -165,7 +166,8 @@ struct KGServiceErrorTests {
     @Test func sync_failure_classifier_formats_auth_expiry() {
         let message = SyncFailurePresentation.message(
             label: "pull",
-            error: KGError.unauthorized
+            error: KGError.unauthorized,
+            language: .traditionalChinese
         )
 
         #expect(message == "單字下載失敗：登入已過期")
@@ -174,7 +176,8 @@ struct KGServiceErrorTests {
     @Test func sync_failure_classifier_formats_server_unavailable() {
         let message = SyncFailurePresentation.message(
             label: "pushReview",
-            error: KGError.httpError(statusCode: 504, detail: "gateway")
+            error: KGError.httpError(statusCode: 504, detail: "gateway"),
+            language: .traditionalChinese
         )
 
         #expect(message == "複習進度上傳失敗：伺服器暫時不可用")
@@ -184,7 +187,8 @@ struct KGServiceErrorTests {
         struct E: Error {}
         let message = SyncFailurePresentation.message(
             label: "pullReviewEvents",
-            error: KGError.decodingError(underlying: E())
+            error: KGError.decodingError(underlying: E()),
+            language: .traditionalChinese
         )
 
         #expect(message == "複習紀錄下載失敗：資料格式不相容")
@@ -192,7 +196,11 @@ struct KGServiceErrorTests {
 
     @Test func sync_failure_classifier_formats_unknown_label_and_error() {
         struct E: Error {}
-        let message = SyncFailurePresentation.message(label: "newPhase", error: E())
+        let message = SyncFailurePresentation.message(
+            label: "newPhase",
+            error: E(),
+            language: .traditionalChinese
+        )
 
         #expect(message == "同步失敗：未知錯誤")
     }
@@ -203,14 +211,16 @@ struct KGServiceErrorTests {
     @Test func sync_failure_4xx_includes_status_code() {
         let m400 = SyncFailurePresentation.message(
             label: "pullReviewEvents",
-            error: KGError.httpError(statusCode: 400, detail: "Invalid since timestamp")
+            error: KGError.httpError(statusCode: 400, detail: "Invalid since timestamp"),
+            language: .traditionalChinese
         )
         #expect(m400.contains("400"))
         #expect(m400.contains("複習紀錄下載失敗"))
 
         let m403 = SyncFailurePresentation.message(
             label: "pull",
-            error: KGError.httpError(statusCode: 403, detail: "forbidden")
+            error: KGError.httpError(statusCode: 403, detail: "forbidden"),
+            language: .traditionalChinese
         )
         #expect(m403.contains("403"))
     }
@@ -218,12 +228,16 @@ struct KGServiceErrorTests {
     // 範圍精準：429（限流）與 5xx（伺服器異常）語意已清楚，維持原文案、不帶 code。
     @Test func sync_failure_429_and_5xx_keep_dedicated_reason_without_code() {
         let m429 = SyncFailurePresentation.message(
-            label: "pull", error: KGError.httpError(statusCode: 429, detail: "")
+            label: "pull",
+            error: KGError.httpError(statusCode: 429, detail: ""),
+            language: .traditionalChinese
         )
         #expect(!m429.contains("429"))
 
         let m500 = SyncFailurePresentation.message(
-            label: "pull", error: KGError.httpError(statusCode: 500, detail: "")
+            label: "pull",
+            error: KGError.httpError(statusCode: 500, detail: ""),
+            language: .traditionalChinese
         )
         #expect(!m500.contains("500"))
     }

@@ -4,7 +4,7 @@ authority: derived
 update_trigger: sop-change
 scope:
   - ios/BooksAndVocab/
-verified_against: 2cf93a387
+verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 -->
 # Books & Vocab UI Design System
 

@@ -7,7 +7,7 @@ scope:
   - .claude/agents/
   - .claude/skills/
   - docs/sop/
-verified_against: 202119f69a4be584f6bacf80b11a12a7bb8579c5
+verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 -->
 # Pull Request Review SOP
 
@@ -33,7 +33,9 @@ PR 不是只有 code diff：CR 的 review 結論、DS 的文件 impact、Actions
 
 ## Required checks
 
-`.github/workflows/pr-gate.yml` 是每個 PR 都會執行的穩定基線（`pr-gate / gate`）；其餘 `.github/workflows/` 依變更面提供 backend、UI、design-system、LLM 與 ops checks。高風險 surface 由 branch rules 要求額外 check。若 check 不適用，要在 PR 說明原因，不要刪除或繞過 check。
+`.github/workflows/pr-gate.yml` 是每個 PR 都會執行的穩定入口；其 check run `required` 是 branch protection 唯一的短 merge-blocking context。check run `confidence` 會平行收斂 backend、Linux ops shards、macOS Xcode build／unit／UI 與其他完整 checks，但不把每個 PR 綁在最慢 job 上。高風險 surface 仍可由 branch rules 要求額外 check。若 check 不適用，要在 PR 說明原因，不要刪除或繞過 check。
+
+`confidence` 尚未完成或失敗不等於 PASS。它代表 merge 後仍需處理的驗證風險：CM 可以在 required、review 與安全條件滿足時推進下一個 PR，但不得在 confidence 未收斂前宣稱完整綠燈或執行受影響的 release／deploy。
 
 ## Blocker policy
 

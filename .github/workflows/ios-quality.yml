@@ -1,0 +1,222 @@
+name: ios-quality
+
+# Real iOS validation belongs on a GitHub-hosted macOS/Xcode runner. This
+# workflow is reusable from pr-gate, while push/manual runs keep the same
+# commands available for post-merge and operator verification.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - 'ops/ios_*.sh'
+      - 'ops/lib/ios_*.sh'
+      - 'ops/lib/signal_traps.sh'
+      - 'ops/fixtures/ui_worlds/**'
+      - 'ops/ui_world_manifest.py'
+      - '.github/workflows/ios-quality.yml'
+      - '.github/workflows/pr-gate.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  IOS_SIMULATOR_NAME: iPhone 17 Pro Max
+
+jobs:
+  ios-build:
+    name: ios-build
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@6b9c6063abd6010835644d4c2e1bef4cf5cd0fca # v6.0.1
+
+      - name: Select Xcode and verify simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          selected=''
+          for candidate in \
+            /Applications/Xcode_26.5.app \
+            /Applications/Xcode_26.4.1.app \
+            /Applications/Xcode_26.4.app \
+            /Applications/Xcode.app; do
+            if [[ -d "$candidate" ]]; then
+              selected="$candidate"
+              break
+            fi
+          done
+          [[ -n "$selected" ]] || { echo 'No supported Xcode installation found' >&2; exit 1; }
+          sudo xcode-select --switch "$selected"
+          printf 'DEVELOPER_DIR=%s/Contents/Developer\n' "$selected" >> "$GITHUB_ENV"
+          xcodebuild -version
+          xcrun simctl list runtimes
+          xcrun simctl list devices available | grep -F "${IOS_SIMULATOR_NAME} (" >/dev/null
+
+      - name: Build app and test targets
+        env:
+          CI: '1'
+          KG_IOS_BUILD_LOCK_TIMEOUT: '1800'
+          KG_IOS_VERDICT_FILE: ${{ runner.temp }}/ios-build-verdict
+        shell: bash
+        run: |
+          set -o pipefail
+          ./ops/ios_ops.sh build \
+            --destination "platform=iOS Simulator,name=${IOS_SIMULATOR_NAME}" \
+            2>&1 | tee "$RUNNER_TEMP/ios-build.log"
+
+      - name: Collect build evidence on failure
+        if: ${{ always() }}
+        env:
+          VERDICT_JSON: ${{ runner.temp }}/ios-build-verdict.json
+          ARTIFACT_DIR: ${{ runner.temp }}/ios-build-artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          if [[ -s "$VERDICT_JSON" ]]; then
+            jq -r '.artifacts | [.log, .xcresult] | .[] | select(type == "string" and length > 0)' "$VERDICT_JSON" \
+              | while IFS= read -r source; do
+                  [[ -e "$source" ]] || continue
+                  cp -R "$source" "$ARTIFACT_DIR/$(basename "$source")"
+                done
+          fi
+
+      - name: Upload build evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ios-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ios-build.log
+            ${{ runner.temp }}/ios-build-verdict*
+            ${{ runner.temp }}/ios-build-artifacts/**
+          if-no-files-found: warn
+          retention-days: 7
+
+  ios-tests:
+    name: ios-tests (${{ matrix.scope }})
+    runs-on: macos-26
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scope: unit
+          - scope: ui-smoke
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@6b9c6063abd6010835644d4c2e1bef4cf5cd0fca # v6.0.1
+
+      - name: Select Xcode and verify simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          selected=''
+          for candidate in \
+            /Applications/Xcode_26.5.app \
+            /Applications/Xcode_26.4.1.app \
+            /Applications/Xcode_26.4.app \
+            /Applications/Xcode.app; do
+            if [[ -d "$candidate" ]]; then
+              selected="$candidate"
+              break
+            fi
+          done
+          [[ -n "$selected" ]] || { echo 'No supported Xcode installation found' >&2; exit 1; }
+          sudo xcode-select --switch "$selected"
+          printf 'DEVELOPER_DIR=%s/Contents/Developer\n' "$selected" >> "$GITHUB_ENV"
+          xcodebuild -version
+          xcrun simctl list runtimes
+          xcrun simctl list devices available | grep -F "${IOS_SIMULATOR_NAME} (" >/dev/null
+
+      - name: Ensure simulator and export UDID
+        shell: bash
+        run: |
+          set -euo pipefail
+          simulator_json="$(./ops/ios_ops.sh simulator ensure-booted \
+            --device "$IOS_SIMULATOR_NAME" --json)"
+          simulator_udid="$(jq -er '.device.udid // empty' <<<"$simulator_json")"
+          printf 'IOS_SIMULATOR_UDID=%s\n' "$simulator_udid" >> "$GITHUB_ENV"
+          printf 'Using simulator UDID: %s\n' "$simulator_udid"
+
+      - name: Validate UI World
+        if: ${{ matrix.scope == 'ui-smoke' }}
+        run: uv run --no-project --python 3.13 python ops/ui_world_manifest.py validate ops/fixtures/ui_worlds/marketing_demo.json
+
+      - name: Run iOS unit tests or UI smoke tests
+        env:
+          CI: '1'
+          KG_IOS_BUILD_LOCK_TIMEOUT: '1800'
+          # Liveness is owned by the job timeout and XCTest's bounded
+          # per-test allowance. A raw log-silence cutoff is invalid here:
+          # hosted xcodebuild can be silent during a healthy test session.
+          KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE: '420'
+          KG_IOS_VERDICT_FILE: ${{ runner.temp }}/ios-${{ matrix.scope }}-verdict
+        shell: bash
+        run: |
+          set -o pipefail
+          if [[ "${{ matrix.scope }}" == 'unit' ]]; then
+            ./ops/ios_ops.sh test \
+              --unit \
+              --device "$IOS_SIMULATOR_UDID" \
+              --coverage \
+              --json \
+              2>&1 | tee "$RUNNER_TEMP/ios-unit.log"
+          else
+            ./ops/ios_ops.sh test \
+              --ui \
+              --dataset marketing_demo \
+              --device "$IOS_SIMULATOR_UDID" \
+              --json \
+              BooksAndVocabUITests/testLaunchShowsAllTabs \
+              FixtureDatasetUITests/testBookshelfRendersDatasetOverriddenTitle \
+              2>&1 | tee "$RUNNER_TEMP/ios-ui-smoke.log"
+          fi
+
+      - name: Collect test evidence on failure
+        if: ${{ always() }}
+        env:
+          VERDICT_JSON: ${{ runner.temp }}/ios-${{ matrix.scope }}-verdict.json
+          ARTIFACT_DIR: ${{ runner.temp }}/ios-${{ matrix.scope }}-artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          if [[ -s "$VERDICT_JSON" ]]; then
+            jq -r '.artifacts | [.log, .xcresult] | .[] | select(type == "string" and length > 0)' "$VERDICT_JSON" \
+              | while IFS= read -r source; do
+                  [[ -e "$source" ]] || continue
+                  cp -R "$source" "$ARTIFACT_DIR/$(basename "$source")"
+                done
+          fi
+
+      - name: Upload test evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ios-${{ matrix.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ios-${{ matrix.scope }}.log
+            ${{ runner.temp }}/ios-${{ matrix.scope }}-verdict*
+            ${{ runner.temp }}/ios-${{ matrix.scope }}-artifacts/**
+          if-no-files-found: warn
+          retention-days: 7

@@ -193,18 +193,36 @@ final class AppLanguageStore: ObservableObject {
     private var bundleCache: [AppLanguage: Bundle] = [:]
 
     var stringBundle: Bundle {
-        let language = effectiveLanguage
+        stringBundle(for: effectiveLanguage)
+    }
+
+    /// Resolve an explicit language without consulting `selection`. Production
+    /// render paths normally use `stringBundle`; this overload keeps focused
+    /// localization contracts deterministic without mutating process-wide state.
+    func stringBundle(for language: AppLanguage) -> Bundle {
+        let resolvedLanguage = language == .system
+            ? AppLanguage.resolvedSystemLanguage()
+            : language
         bundleCacheLock.lock()
         defer { bundleCacheLock.unlock() }
-        if let cached = bundleCache[language] { return cached }
+        if let cached = bundleCache[resolvedLanguage] { return cached }
         bundleResolutionCount += 1
-        let resolved = bundle(for: language)
-        bundleCache[language] = resolved
+        let resolved = bundle(for: resolvedLanguage)
+        bundleCache[resolvedLanguage] = resolved
         return resolved
     }
 
     var formatLocale: Locale {
-        effectiveLanguage.locale
+        formatLocale(for: effectiveLanguage)
+    }
+
+    /// The formatting counterpart to `stringBundle(for:)`; explicit callers
+    /// receive a stable locale even if the app's selected language changes.
+    func formatLocale(for language: AppLanguage) -> Locale {
+        let resolvedLanguage = language == .system
+            ? AppLanguage.resolvedSystemLanguage()
+            : language
+        return resolvedLanguage.locale
     }
 
     func setLanguage(_ language: AppLanguage, preservingRootPresentation: Bool = false) {

@@ -18,7 +18,7 @@ scope:
   - ops/lib/streaming_command.py
   - ops/worktree_registry.py
   - ops/worktree_orchestrate.py
-verified_against: 0244387e5c096d75a0a67804503c030d9ffc9404
+verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 -->
 # GitHub-native Delivery Model
 
