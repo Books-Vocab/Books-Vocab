@@ -344,11 +344,19 @@ def test_interrupt_terminates_child_process_group(tmp_path: Path, monkeypatch) -
     )
     original_get = streaming_command.queue.Queue.get
 
+    def _pids_written() -> dict[str, int] | None:
+        # open(path, 'w') makes the sentinel visible before write() completes;
+        # existence alone can therefore interrupt on an empty JSON document.
+        try:
+            return json.loads(pid_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+
     def interrupt_after_grandchild_started(self, timeout=None):
         deadline = time.monotonic() + 3
-        while not pid_file.exists() and time.monotonic() < deadline:
+        while _pids_written() is None and time.monotonic() < deadline:
             time.sleep(0.01)
-        if not pid_file.exists():
+        if _pids_written() is None:
             return original_get(self, timeout=timeout)
         raise KeyboardInterrupt
 
