@@ -26,6 +26,33 @@ allowed-tools: Bash, Read, Grep
 | EPUB→TTS→字幕→S3 podcast | `.claude/skills/podcast-pipeline/`, `.claude/skills/podcast-publish/` + `docs/sop/podcast_pipeline.md` | 不使用 backend devops wrapper 代替 podcast ops |
 | iOS archive／TestFlight／App Store | `source-command-release` + `docs/sop/ios.md` | 不用 devops 取代 release gate |
 
+### ops-cli 子指令
+
+`ops-cli` 是讀取產品狀態的 typed surface；先選這裡的子指令，不手寫 `db-query` SQL。
+
+```bash
+ops-cli user-quota <uid>                              # 24h 額度與逐時明細
+ops-cli user-stats <uid>                              # 單字庫統計
+ops-cli user-config <uid>                             # 唯讀 user config
+ops-cli world-state <uid>                             # cards/notebooks/graphs/config 投影
+ops-cli world-export <uid> [--out <path>]             # 匯出 ops-edit seed 相容 spec
+ops-cli world-diff <uid> <spec.json>                  # 比對 expectation 或 seed spec
+ops-cli quota-overview                                # 全用戶 24h 額度總覽
+ops-cli active-users [hours]                          # 近 N 小時活躍用戶
+ops-cli card-find <uid> <substring>                   # 搜尋 card.content
+ops-cli card-get <uid> <id|content>                   # 取得單卡完整資料
+ops-cli db-query <uid> SQL...                         # 受限唯讀 SQL；無 typed command 時才使用
+ops-cli analyze <uid> [level]                         # 圖譜、連結品質、embedding、異常分析
+ops-cli cost <uid> [--range R]                        # 單用戶 cost-by-call_type
+ops-cli fleet-overview                                # 跨用戶 cards/links/月 cost 總覽
+ops-cli cost-overview [--range R]                     # 全用戶 cost 排名
+ops-cli sync-trace <uid> [--date YYYY-MM-DD]          # 用戶 sync 時間線
+ops-cli timeseries <metric> [--bucket day|week|month] [--range R] [--uid all|<uid>] [--fill-zero]
+ops-cli trends [--window N]                           # 全域 errors/active/tokens 趨勢
+ops-cli llm-errors [--window N] [--uid all|<uid>]     # LLM 429/5xx/timeout 監控
+ops-cli dictionary-health [--window <hours>]          # 字典 provider/cache 健康
+```
+
 ## Safety contract
 
 1. 先確認 host、repo、branch、exact HEAD、目的與是否 production。
