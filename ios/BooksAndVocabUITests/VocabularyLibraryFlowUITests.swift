@@ -4,6 +4,7 @@ import XCTest
 /// rows. Its review buckets are 14/503/127 and its CTA is 517.
 final class VocabularyLibraryFlowUITests: UITestCase {
     private static let notebookID = "ui-p11-644-review-mix-notebook"
+    private static let addLinkNotebookID = "ui-vocab-linked-cards-notebook"
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -132,5 +133,168 @@ final class VocabularyLibraryFlowUITests: UITestCase {
         }
 
         captureStep("rich-projection-verified", app: app)
+    }
+
+    @MainActor
+    func testAddLinkDetailMaterializationEvidenceMatrix() throws {
+        let app = launchIsolatedApp(
+            fixtures: [.vocabulary("vocabLinkedCards")],
+            extraEnvironment: [
+                // AddLink candidate materialization is local; keep the test
+                // hermetic and never attempt the network mutation path.
+                "KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"
+            ],
+            perfLog: "vocabulary-add-link"
+        )
+        captureStep("add-link-launch", app: app)
+
+        let notebooks = AppPage(app: app).goToNotebooks()
+        guard notebooks.waitForNotebookCard(id: Self.addLinkNotebookID, timeout: 10) else {
+            captureStep("add-link-notebook-missing", app: app)
+            XCTFail("AddLink fixture 必須種出 notebook " + Self.addLinkNotebookID)
+            return
+        }
+        notebooks.notebookCard(id: Self.addLinkNotebookID).tapWhenReady()
+        XCTAssertTrue(app.waitForNavigationToSettle())
+
+        let page = VocabularySearchPage(app: app)
+        guard page.searchField.waitUntilExists(timeout: 10) else {
+            captureStep("add-link-vocabulary-list-missing", app: app)
+            XCTFail("AddLink fixture 必須渲染 vocabulary search field")
+            return
+        }
+        page.search("serendipity")
+        guard page.waitForRowMaterialized(word: "serendipity", timeout: 10) else {
+            captureStep("add-link-source-row-missing", app: app)
+            XCTFail("AddLink fixture 必須 materialize source row serendipity")
+            return
+        }
+        page.row(word: "serendipity").tapWhenReady()
+        guard page.detailHeroWord.waitUntilExists(timeout: 10) else {
+            captureStep("add-link-detail-missing", app: app)
+            XCTFail("AddLink source row 必須開啟 word detail")
+            return
+        }
+        XCTAssertEqual(page.detailHeroWord.label, "serendipity")
+        captureStep("add-link-source-detail", app: app)
+
+        func addLinkTriggerQuery() -> XCUIElementQuery {
+            app.buttons.matching(NSPredicate(format: "label == %@", "新增知識連結"))
+        }
+
+        func candidateQuery(for word: String) -> XCUIElementQuery {
+            app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", word))
+        }
+
+        func waitUntilEmpty(_ query: XCUIElementQuery, timeout: TimeInterval = 5) -> Bool {
+            let deadline = Date().addingTimeInterval(timeout)
+            while Date() < deadline {
+                if query.count == 0 { return true }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            }
+            return query.count == 0
+        }
+
+        func openAddLinkSheet() -> Bool {
+            guard let trigger = addLinkTriggerQuery().exactlyOneElement(
+                timeout: 5,
+                named: "AddLink detail trigger"
+            ) else {
+                return false
+            }
+            trigger.tapWhenReady()
+            return app.textFields["addLink.searchField"].waitUntilExists(timeout: 5)
+        }
+
+        func closeAddLinkSheet() -> Bool {
+            guard let cancel = app.buttons.matching(identifier: "addLink.cancel")
+                .exactlyOneElement(timeout: 5, named: "AddLink cancel") else {
+                return false
+            }
+            cancel.tapWhenReady()
+            return app.textFields["addLink.searchField"].waitUntilGone(timeout: 5)
+        }
+
+        guard openAddLinkSheet() else {
+            captureStep("add-link-sheet-missing", app: app)
+            XCTFail("word detail 必須 materialize AddLink sheet")
+            return
+        }
+        guard let emptyMarker = app.descendants(matching: .any)
+            .matching(identifier: "addLink.local.empty")
+            .exactlyOneElement(timeout: 5, named: "AddLink empty marker") else {
+            captureStep("add-link-empty-missing", app: app)
+            return
+        }
+        XCTAssertEqual(emptyMarker.label, "輸入單字名稱來建立連結")
+        captureStep("add-link-empty", app: app)
+
+        let searchField = app.textFields["addLink.searchField"]
+        searchField.tapWhenReady()
+        searchField.typeText("fort")
+        guard candidateQuery(for: "fortuitous").exactlyOneElement(
+            timeout: 5,
+            named: "AddLink fortuitous candidate"
+        ) != nil,
+        candidateQuery(for: "fortunate").exactlyOneElement(
+            timeout: 5,
+            named: "AddLink fortunate candidate"
+        ) != nil else {
+            captureStep("add-link-word-candidates-missing", app: app)
+            return
+        }
+        XCTAssertTrue(
+            waitUntilEmpty(candidateQuery(for: "happy accident")),
+            "query fort 必須排除不匹配的 happy accident candidate"
+        )
+        captureStep("add-link-word-candidates", app: app)
+        guard closeAddLinkSheet() else {
+            captureStep("add-link-close-after-word-query-failed", app: app)
+            XCTFail("AddLink sheet 必須可取消回到 word detail")
+            return
+        }
+
+        guard openAddLinkSheet() else {
+            captureStep("add-link-reopen-failed", app: app)
+            XCTFail("word detail 必須可重新開啟 AddLink sheet")
+            return
+        }
+        let reloadedSearchField = app.textFields["addLink.searchField"]
+        reloadedSearchField.tapWhenReady()
+        reloadedSearchField.typeText("happy accident")
+        guard candidateQuery(for: "happy accident").exactlyOneElement(
+            timeout: 5,
+            named: "AddLink happy accident candidate"
+        ) != nil else {
+            captureStep("add-link-multiword-candidate-missing", app: app)
+            return
+        }
+        XCTAssertTrue(
+            waitUntilEmpty(candidateQuery(for: "fortuitous")),
+            "query happy accident 必須排除 fortuitous candidate"
+        )
+        captureStep("add-link-multiword-candidate", app: app)
+        guard closeAddLinkSheet() else {
+            captureStep("add-link-close-after-multiword-query-failed", app: app)
+            XCTFail("AddLink sheet 必須可取消回到 word detail")
+            return
+        }
+
+        guard openAddLinkSheet() else {
+            captureStep("add-link-reopen-for-empty-result-failed", app: app)
+            XCTFail("word detail 必須可再次開啟 AddLink sheet")
+            return
+        }
+        let emptyResultSearchField = app.textFields["addLink.searchField"]
+        emptyResultSearchField.tapWhenReady()
+        emptyResultSearchField.typeText("zzqxv")
+        guard app.staticTexts.matching(NSPredicate(format: "label == %@", "沒有結果"))
+            .exactlyOneElement(timeout: 5, named: "AddLink no-results state") != nil else {
+            captureStep("add-link-no-results-missing", app: app)
+            return
+        }
+        XCTAssertTrue(waitUntilEmpty(candidateQuery(for: "fortuitous")))
+        XCTAssertTrue(waitUntilEmpty(candidateQuery(for: "happy accident")))
+        captureStep("add-link-no-results", app: app)
     }
 }
