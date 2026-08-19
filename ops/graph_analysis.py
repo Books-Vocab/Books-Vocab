@@ -1,4 +1,8 @@
 #!/usr/bin/env -S uv run --project backend python
+# /// script
+# requires-python = ">=3.13"
+# dependencies = ["numpy>=1.26,<3.0"]
+# ///
 """Graph pipeline analysis — threshold vs connection count + actual link audit.
 
 Usage:
@@ -19,28 +23,34 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "backend" / "data" / "users"
 
+sys.path.insert(0, str(ROOT / "backend" / "src"))
+
+from kg.ops_shared import notebook_files
+
 
 def load_data(user: str):
     """Load embeddings, card IDs, graph, candidates, and card DB."""
     udir = DATA / user
 
-    # Embeddings
-    emb_path = udir / "embeddings.npy"
-    ids_path = udir / "card_ids.json"
+    # Embeddings and notebook-scoped artifacts use the canonical default notebook
+    # names shared by the backend and the other ops diagnostics.
+    files = notebook_files(udir)
+    emb_path = files["embeddings"]
+    ids_path = files["card_ids"]
     if not emb_path.exists() or not ids_path.exists():
         sys.exit(f"✗ Embedding files not found for user '{user}'")
     embeddings = np.load(emb_path)
     card_ids = json.loads(ids_path.read_text())
 
     # Graph
-    graph_path = udir / "graph.json"
+    graph_path = files["graph"]
     links = []
     if graph_path.exists():
         data = json.loads(graph_path.read_text())
         links = data if isinstance(data, list) else data.get("links", [])
 
     # Candidates
-    cand_path = udir / "candidates.json"
+    cand_path = files["candidates"]
     candidates = []
     if cand_path.exists():
         candidates = json.loads(cand_path.read_text())
