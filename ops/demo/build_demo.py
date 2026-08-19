@@ -16,8 +16,9 @@ Global flags:
     --commit  write the generated artifact(s) to disk (NEVER seeds production).
     --json    machine-readable output.
 
-Phase A: the emitter modules are STUBS raising NotImplementedError; this CLI is
-fully wired so Phase B only fills the emit() bodies.
+The shipped emitters implement this interface. In particular, emit-backend
+validates the real backend seed plan in an ephemeral sandbox and --check
+verifies the committed expectation without seeding production data.
 
 Canonical invocation is the script form, run via uv from the backend venv:
     (cd backend && uv run python ../ops/demo/build_demo.py emit-ios --json)
@@ -150,15 +151,6 @@ def main(argv: list[str] | None = None) -> int:
             extra_kwargs["review_clock_plan"] = plan
     try:
         result = emit_fn(sot, check=args.check, commit=args.commit, **extra_kwargs)
-    except NotImplementedError as exc:
-        # Phase A: stubs are not implemented yet. Surface clearly, exit non-zero
-        # so a check gate never reports a false green against an unimplemented emitter.
-        _emit_output(
-            {"mode": "stub", "target": args.target, "error": str(exc),
-             "phase": "A", "hint": "emitter body filled in Phase B"},
-            json_mode=args.json,
-        )
-        return 2
     except Exception as exc:  # noqa: BLE001 — surface any emit failure as a clean non-zero
         _emit_output({"mode": "error", "target": args.target, "error": str(exc)},
                      json_mode=args.json)
