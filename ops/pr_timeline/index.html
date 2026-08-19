@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>PR Timeline</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <h1>PR Timeline</h1>
+        <p id="updated" class="muted" aria-live="polite">—</p>
+      </div>
+      <div class="controls" aria-label="Timeline controls">
+        <button id="refresh" class="icon-button" type="button" aria-label="Refresh timeline" title="Refresh">↻</button>
+        <label class="zoom-control" for="zoom">
+          <span>Zoom</span>
+          <input id="zoom" type="range" min="30" max="360" value="110" step="10" aria-label="Timeline zoom">
+        </label>
+      </div>
+    </header>
+
+    <p id="notice" class="notice" role="status" hidden></p>
+
+    <section class="timeline-card" aria-labelledby="timeline-heading">
+      <div class="section-heading">
+        <h2 id="timeline-heading">Merged PRs</h2>
+        <span id="summary" class="muted">—</span>
+      </div>
+      <div id="timeline-viewport" class="timeline-viewport" tabindex="0" aria-label="Merged PR timeline">
+        <div id="timeline" class="timeline"></div>
+      </div>
+    </section>
+
+    <section id="details" class="details" aria-live="polite">
+      <p class="muted">Select a PR</p>
+    </section>
+  </main>
+  <script src="/app.js" defer></script>
+</body>
+</html>
