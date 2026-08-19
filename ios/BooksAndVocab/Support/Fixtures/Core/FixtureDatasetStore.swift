@@ -1,17 +1,5 @@
 import Foundation
-import CryptoKit
-import AVFoundation
-import AVFAudio
-import UniformTypeIdentifiers
 
-private let fixtureDatasetEnvKey = "KG_FIXTURE_DATASET_B64"
-private let fixtureAssetRootEnvKey = "KG_FIXTURE_ASSET_ROOT"
-// base64(raw DEFLATE(JSON)) — preferred injection key. Plaintext base64 of a
-// multi-MB UI World overflows the ~1MB posix_spawn env block and the app then
-// silently sees *no* dataset; compressing keeps large worlds under the limit.
-// Apple `.zlib` decompression expects a raw DEFLATE stream (no zlib/gzip
-// container) — producers must use e.g. Python `zlib.compressobj(wbits=-15)`.
-private let fixtureDatasetDeflateEnvKey = "KG_FIXTURE_DATASET_DEFLATE_B64"
 private let installedFixtureProofRelativePathEnvKey = "KG_P9_INSTALLED_FIXTURE_PROOF_RELATIVE_PATH"
 private let uiTestSourceCommitEnvKey = "KG_UI_TEST_SOURCE_COMMIT"
 
@@ -105,7 +93,8 @@ enum FixtureDatasetStore {
         }
         let environment = ProcessInfo.processInfo.environment
         return environment.keys.contains {
-            $0 == fixtureDatasetDeflateEnvKey || $0 == fixtureDatasetEnvKey
+            $0 == FixtureDatasetLoader.deflateEnvironmentKey
+                || $0 == FixtureDatasetLoader.datasetEnvironmentKey
         }
     }
 
@@ -122,9 +111,23 @@ enum FixtureDatasetStore {
         }
     }
 
-    static func settingsSeed(for fixtureID: SettingsFixtureID) -> SettingsFixtureSeed? {
+    private static func loadedResolver() -> FixtureDatasetResolver? {
         guard case let .loaded(document, _) = loadState() else { return nil }
-        return document.settings[fixtureID.rawValue]
+        return FixtureDatasetResolver(document: document)
+    }
+
+    private static func loadedAssetResolver(for ref: String) throws -> FixtureDatasetResolver {
+        guard case let .loaded(document, _) = loadState() else {
+            preconditionFailure(seedResolutionFailureDescription(resolving: "asset \(ref)"))
+        }
+        return FixtureDatasetResolver(
+            document: document,
+            assetRoot: try FixtureDatasetResolver.assetRootURL(testingRoot: testingAssetRoot)
+        )
+    }
+
+    static func settingsSeed(for fixtureID: SettingsFixtureID) -> SettingsFixtureSeed? {
+        loadedResolver()?.settingsSeed(for: fixtureID)
     }
 
     static func requireSettingsSeed(for fixtureID: SettingsFixtureID) -> SettingsFixtureSeed {
@@ -135,8 +138,7 @@ enum FixtureDatasetStore {
     }
 
     static func authSeed(for fixtureID: UIWorldAuthFixtureID) -> UIWorldAuthSeed? {
-        guard case let .loaded(document, _) = loadState() else { return nil }
-        return document.auth[fixtureID.rawValue]
+        loadedResolver()?.authSeed(for: fixtureID)
     }
 
     static func requireAuthSeed(for fixtureID: UIWorldAuthFixtureID) -> UIWorldAuthSeed {
@@ -147,8 +149,7 @@ enum FixtureDatasetStore {
     }
 
     static func entitlementsSeed(for fixtureID: UIWorldEntitlementsFixtureID) -> UIWorldEntitlementsSeed? {
-        guard case let .loaded(document, _) = loadState() else { return nil }
-        return document.entitlements[fixtureID.rawValue]
+        loadedResolver()?.entitlementsSeed(for: fixtureID)
     }
 
     static func requireEntitlementsSeed(for fixtureID: UIWorldEntitlementsFixtureID) -> UIWorldEntitlementsSeed {
@@ -159,8 +160,7 @@ enum FixtureDatasetStore {
     }
 
     static func syncPresenterSeed(for fixtureID: UIWorldSyncPresenterFixtureID) -> UIWorldSyncPresenterSeed? {
-        guard case let .loaded(document, _) = loadState() else { return nil }
-        return document.syncPresenter[fixtureID.rawValue]
+        loadedResolver()?.syncPresenterSeed(for: fixtureID)
     }
 
     static func requireSyncPresenterSeed(for fixtureID: UIWorldSyncPresenterFixtureID) -> UIWorldSyncPresenterSeed {
@@ -171,8 +171,7 @@ enum FixtureDatasetStore {
     }
 
     static func bookshelfSeed(for fixtureID: BookshelfFixtureID) -> BookshelfFixtureSeed? {
-        guard case let .loaded(document, _) = loadState() else { return nil }
-        return document.bookshelf[fixtureID.rawValue]
+        loadedResolver()?.bookshelfSeed(for: fixtureID)
     }
 
     static func requireBookshelfSeed(for fixtureID: BookshelfFixtureID) -> BookshelfFixtureSeed {
@@ -183,8 +182,7 @@ enum FixtureDatasetStore {
     }
 
     static func todayReviewSeed(for fixtureID: TodayReviewFixtureID) -> TodayReviewSessionSeed? {
-        guard case let .loaded(document, _) = loadState() else { return nil }
-        return document.todayReview[fixtureID.rawValue]
+        loadedResolver()?.todayReviewSeed(for: fixtureID)
     }
 
     static func requireTodayReviewSeed(for fixtureID: TodayReviewFixtureID) -> TodayReviewSessionSeed {
@@ -195,8 +193,7 @@ enum FixtureDatasetStore {
     }
 
     static func notebookSeed(for fixtureID: NotebookFixtureID) -> NotebookFixtureSeed? {
-        guard case let .loaded(document, _) = loadState() else { return nil }
-        return document.notebook[fixtureID.rawValue]
+        loadedResolver()?.notebookSeed(for: fixtureID)
     }
 
     static func requireNotebookSeed(for fixtureID: NotebookFixtureID) -> NotebookFixtureSeed {
@@ -207,8 +204,7 @@ enum FixtureDatasetStore {
     }
 
     static func podcastSeed(for fixtureID: PodcastFixtureID) -> PodcastFixtureSeed? {
-        guard case let .loaded(document, _) = loadState() else { return nil }
-        return document.podcast[fixtureID.rawValue]
+        loadedResolver()?.podcastSeed(for: fixtureID)
     }
 
     static func requirePodcastSeed(for fixtureID: PodcastFixtureID) -> PodcastFixtureSeed {
@@ -219,8 +215,7 @@ enum FixtureDatasetStore {
     }
 
     static func runtimePodcastSeed(for fixtureID: UIWorldRuntimePodcastFixtureID) -> UIWorldRuntimePodcastSeed? {
-        guard case let .loaded(document, _) = loadState() else { return nil }
-        return document.runtimePodcast[fixtureID.rawValue]
+        loadedResolver()?.runtimePodcastSeed(for: fixtureID)
     }
 
     static func requireRuntimePodcastSeed(for fixtureID: UIWorldRuntimePodcastFixtureID) -> UIWorldRuntimePodcastSeed {
@@ -231,95 +226,20 @@ enum FixtureDatasetStore {
     }
 
     static func requireInstalledAsset(ref: String) throws -> UIWorldInstalledAsset {
-        _ = try requireInstalledAssetURL(ref: ref)
-        return try installedAssetSnapshot(ref: ref)
+        let resolver = try loadedAssetResolver(for: ref)
+        _ = try resolver.requireInstalledAssetURL(ref: ref)
+        return try resolver.installedAssetSnapshot(ref: ref)
     }
 
     static func requireInstalledAssetURL(ref: String) throws -> URL {
-        let asset = try requireAsset(ref: ref)
-        let sourceURL = try validatedSourceURL(for: asset, ref: ref)
-        let destination = try installURL(for: asset, ref: ref)
-        let documentsRoot = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .standardizedFileURL
-        // Resolve the destination before creating, deleting, or overwriting
-        // anything. A pre-existing symlink in an installAs parent (or at the
-        // destination itself) must never turn a fixture copy into an escape
-        // from the app Documents root.
-        try validateDestinationContainment(
-            destination,
-            in: documentsRoot,
-            ref: ref
-        )
-        let fm = FileManager.default
-        try fm.createDirectory(
-            at: destination.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        // Re-check after directory creation as a bounded TOCTOU defense: the
-        // copy must still be inside the same real Documents root immediately
-        // before any existing destination is removed or replaced.
-        try validateDestinationContainment(
-            destination,
-            in: documentsRoot,
-            ref: ref
-        )
-        if fm.fileExists(atPath: destination.path) {
-            try fm.removeItem(at: destination)
-        }
-        try validateDestinationContainment(
-            destination,
-            in: documentsRoot,
-            ref: ref
-        )
-        try fm.copyItem(at: sourceURL, to: destination)
-        let installedSize = try byteSize(for: destination)
-        guard installedSize == asset.byteSize else {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [
-                NSFilePathErrorKey: destination.path,
-                NSLocalizedDescriptionKey: "UI World installed asset \(ref) byteSize mismatch: expected \(asset.byteSize), got \(installedSize)",
-            ])
-        }
-        let installedHash = try sha256Hex(for: destination)
-        guard installedHash == asset.sha256 else {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [
-                NSFilePathErrorKey: destination.path,
-                NSLocalizedDescriptionKey: "UI World installed asset \(ref) sha256 mismatch: expected \(asset.sha256), got \(installedHash)",
-            ])
-        }
-        try validateInstalledAsset(destination, asset: asset, ref: ref)
-        return try installedAssetSnapshot(ref: ref).url
+        try loadedAssetResolver(for: ref).requireInstalledAssetURL(ref: ref)
     }
 
     static func installedAssetSnapshot(ref: String) throws -> UIWorldInstalledAsset {
-        let asset = try requireAsset(ref: ref)
-        let destination = try installURL(for: asset, ref: ref)
-        let fm = FileManager.default
-        guard fm.fileExists(atPath: destination.path) else {
-            throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: destination.path])
+        guard let resolver = loadedResolver() else {
+            preconditionFailure(seedResolutionFailureDescription(resolving: "asset \(ref)"))
         }
-        let installedSize = try byteSize(for: destination)
-        guard installedSize == asset.byteSize else {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [
-                NSFilePathErrorKey: destination.path,
-                NSLocalizedDescriptionKey: "UI World installed asset \(ref) byteSize mismatch: expected \(asset.byteSize), got \(installedSize)",
-            ])
-        }
-        let installedHash = try sha256Hex(for: destination)
-        guard installedHash == asset.sha256 else {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [
-                NSFilePathErrorKey: destination.path,
-                NSLocalizedDescriptionKey: "UI World installed asset \(ref) sha256 mismatch: expected \(asset.sha256), got \(installedHash)",
-            ])
-        }
-        try validateContentType(asset.contentType, for: destination, ref: ref)
-        return UIWorldInstalledAsset(
-            ref: ref,
-            url: destination,
-            sha256: installedHash,
-            byteSize: installedSize,
-            contentType: asset.contentType,
-            fileSystemInode: try fileSystemInode(for: destination)
-        )
+        return try resolver.installedAssetSnapshot(ref: ref)
     }
 
     /// Returns proof for the one canonical Reader asset matching the installed
@@ -327,73 +247,12 @@ enum FixtureDatasetStore {
     /// asset ID or a digest calculated by the evidence producer.
     static func readerAssetProof(forInstalledFileName fileName: String) throws -> FixtureInstalledAssetProof {
         let trimmedFileName = fileName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedFileName.isEmpty,
-              URL(fileURLWithPath: trimmedFileName).lastPathComponent == trimmedFileName,
-              !trimmedFileName.contains("/") else {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [
-                NSLocalizedDescriptionKey: "Reader evidence file name is not a single safe path component: \(fileName)",
-            ])
-        }
-        guard case let .loaded(document, _) = loadState() else {
+        guard let resolver = loadedResolver() else {
             throw CocoaError(.fileReadCorruptFile, userInfo: [
                 NSLocalizedDescriptionKey: "Reader evidence requires a valid UI World dataset for \(trimmedFileName)",
             ])
         }
-        let matches = document.reader.values.filter { $0.bookFileName == trimmedFileName }
-        guard matches.count == 1, let seed = matches.first else {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [
-                NSLocalizedDescriptionKey: "Reader evidence file name must resolve to exactly one reader fixture asset: \(trimmedFileName)",
-            ])
-        }
-        let ref = seed.bookAssetRef.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard ref.hasPrefix("books."), !ref.isEmpty else {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [
-                NSLocalizedDescriptionKey: "Reader fixture \(trimmedFileName) has an invalid book asset ref: \(seed.bookAssetRef)",
-            ])
-        }
-        guard let asset = document.assets.asset(for: ref) else {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [
-                NSLocalizedDescriptionKey: "Reader evidence asset ref is absent from the UI World manifest: \(ref)",
-            ])
-        }
-        let installedURL = try installURL(for: asset, ref: ref).standardizedFileURL
-        let booksURL = Book.localBooksDirectory.standardizedFileURL
-        guard installedURL.lastPathComponent == trimmedFileName,
-              installedURL.deletingLastPathComponent().path == booksURL.path else {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [
-                NSLocalizedDescriptionKey: "Reader evidence asset \(ref) does not install the expected file \(trimmedFileName) directly under Books/",
-            ])
-        }
-        guard FileManager.default.fileExists(atPath: installedURL.path) else {
-            throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: installedURL.path])
-        }
-        let resolvedBooksURL = booksURL.resolvingSymlinksInPath().standardizedFileURL
-        let resolvedInstalledURL = installedURL.resolvingSymlinksInPath().standardizedFileURL
-        guard resolvedBooksURL.path == booksURL.path,
-              resolvedInstalledURL.deletingLastPathComponent().path == resolvedBooksURL.path,
-              resolvedInstalledURL.lastPathComponent == trimmedFileName else {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [
-                NSFilePathErrorKey: installedURL.path,
-                NSLocalizedDescriptionKey: "Reader evidence asset \(ref) escapes the canonical Books/ directory through a symlink",
-            ])
-        }
-        let actualByteSize = try byteSize(for: installedURL)
-        let actualSHA256 = try sha256Hex(for: installedURL)
-        guard actualByteSize == asset.byteSize,
-              actualSHA256 == asset.sha256 else {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [
-                NSFilePathErrorKey: installedURL.path,
-                NSLocalizedDescriptionKey: "Reader evidence asset \(ref) installed copy does not match manifest metadata",
-            ])
-        }
-        return FixtureInstalledAssetProof(
-            assetID: ref,
-            installedPath: installedURL.path,
-            expectedSHA256: asset.sha256,
-            expectedByteSize: asset.byteSize,
-            actualSHA256: actualSHA256,
-            actualByteSize: actualByteSize
-        )
+        return try resolver.readerAssetProof(forInstalledFileName: fileName)
     }
 
     /// Decode, canonicalize, re-decode, and write the app's materialized UI
@@ -407,36 +266,13 @@ enum FixtureDatasetStore {
             ])
         }
         let document = try decode(data)
-        let sourceHash = SHA256.hash(data: data)
-            .map { String(format: "%02x", $0) }
-            .joined()
+        let sourceHash = FixtureDatasetResolver.sha256Hex(for: data)
         let sourceCommit = ProcessInfo.processInfo.environment[uiTestSourceCommitEnvKey]
             ?? "testing"
-        let jsonObject = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
-        guard JSONSerialization.isValidJSONObject(jsonObject) else {
-            throw CocoaError(.propertyListWriteInvalid)
-        }
-        let canonical = try JSONSerialization.data(withJSONObject: jsonObject, options: [.sortedKeys])
-        // Re-decode the bytes emitted by the app's canonicalization path. This
-        // proves the installed representation still satisfies the app schema.
-        let materializedDocument = try decode(canonical)
-        guard materializedDocument.datasetID == document.datasetID else {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [
-                NSLocalizedDescriptionKey: "materialized UI World dataset identity drifted",
-            ])
-        }
-
         let environment = ProcessInfo.processInfo.environment
         let relativePath = environment[installedFixtureProofRelativePathEnvKey]
             .flatMap { $0.isEmpty ? nil : $0 }
             ?? "Evidence/\(document.datasetID).json"
-        guard !relativePath.hasPrefix("/"),
-              relativePath.split(separator: "/").allSatisfy({ $0 != "." && $0 != ".." })
-        else {
-            throw CocoaError(.fileWriteInvalidFileName, userInfo: [
-                NSLocalizedDescriptionKey: "installed fixture proof path must be portable",
-            ])
-        }
         let destination = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(relativePath)
         let cacheKey = "\(document.datasetID)|\(sourceHash)|\(sourceCommit)|\(destination.standardizedFileURL.path)"
@@ -448,30 +284,13 @@ enum FixtureDatasetStore {
         }
         evidenceCacheLock.unlock()
 
-        try FileManager.default.createDirectory(
-            at: destination.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try canonical.write(to: destination, options: .atomic)
-        let installedBytes = try Data(contentsOf: destination)
-        guard installedBytes == canonical else {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [
-                NSFilePathErrorKey: destination.path,
-                NSLocalizedDescriptionKey: "installed fixture proof bytes differ from app materialization",
-            ])
-        }
-        let proof = UIWorldInstalledFixtureProof(
-            datasetID: document.datasetID,
-            path: relativePath,
-            bytes: installedBytes.count,
-            sha256: SHA256.hash(data: installedBytes)
-                .map { String(format: "%02x", $0) }
-                .joined(),
-            type: "application/json",
+        let materialized = try FixtureDatasetResolver(document: document).materializeEvidenceFixture(
+            sourceData: data,
             sourceCommit: sourceCommit,
-            datasetSHA256: sourceHash
+            relativePath: relativePath
         )
-        let encodedProof = String(decoding: try JSONEncoder().encode(proof), as: UTF8.self)
+        let proof = materialized.proof
+        let encodedProof = materialized.encodedProof
         evidenceCacheLock.lock()
         evidenceProofCache[cacheKey] = (proof: proof, value: encodedProof)
         latestEvidenceCacheKey = cacheKey
@@ -489,342 +308,24 @@ enum FixtureDatasetStore {
         return prepared.value
     }
 
-    private static func requireAsset(ref: String) throws -> UIWorldAsset {
-        guard case let .loaded(document, _) = loadState() else {
-            preconditionFailure(seedResolutionFailureDescription(resolving: "asset \(ref)"))
-        }
-        guard let asset = document.assets.asset(for: ref) else {
-            preconditionFailure(seedResolutionFailureDescription(resolving: "asset \(ref)"))
-        }
-        return asset
-    }
-
-    private static func validatedSourceURL(for asset: UIWorldAsset, ref: String) throws -> URL {
-        let sourcePath = asset.sourcePath.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !(!sourcePath.isEmpty && isReaderBookAsset(ref: ref) && sourcePath.hasPrefix("/")) else {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [
-                NSFilePathErrorKey: sourcePath,
-                NSLocalizedDescriptionKey: "Reader asset \(ref) sourcePath must be repo-relative, not absolute",
-            ])
-        }
-        let url = try resolveSourceURL(for: asset)
-        let size = try byteSize(for: url)
-        guard size == asset.byteSize else {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [
-                NSFilePathErrorKey: url.path,
-                NSLocalizedDescriptionKey: "UI World asset \(ref) byteSize mismatch: expected \(asset.byteSize), got \(size)",
-            ])
-        }
-        let actual = try sha256Hex(for: url)
-        guard actual == asset.sha256 else {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [
-                NSFilePathErrorKey: url.path,
-                NSLocalizedDescriptionKey: "UI World asset \(ref) sha256 mismatch: expected \(asset.sha256), got \(actual)",
-            ])
-        }
-        try validateContentType(asset.contentType, for: url, ref: ref)
-        return url
-    }
-
     /// Resolve a canonical repo-relative manifest source against the checkout
     /// that compiled this app. Installed filesystem identity is observed only
     /// after copying and is never used to resolve a checked-in fixture.
     static func resolveSourceURL(for asset: UIWorldAsset) throws -> URL {
-        let root = try assetRootURL().standardizedFileURL
-        let rawPath = asset.sourcePath.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !rawPath.isEmpty else {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [
-                NSLocalizedDescriptionKey: "UI World asset sourcePath must not be empty",
-            ])
-        }
-        let components = rawPath.split(separator: "/").map(String.init)
-        guard !rawPath.hasPrefix("/"),
-              components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
-            throw CocoaError(.fileReadNoPermission, userInfo: [
-                NSFilePathErrorKey: rawPath,
-                NSLocalizedDescriptionKey: "UI World asset sourcePath must be repo-relative without traversal",
-            ])
-        }
-        let candidate = root.appendingPathComponent(rawPath)
-        let lexical = candidate.standardizedFileURL
-        guard isContained(lexical, in: root) else {
-            throw CocoaError(.fileReadNoPermission, userInfo: [
-                NSFilePathErrorKey: lexical.path,
-                NSLocalizedDescriptionKey: "UI World asset sourcePath must resolve inside the current checkout",
-            ])
-        }
-        guard FileManager.default.fileExists(atPath: lexical.path) else {
-            throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: lexical.path])
-        }
-        let resolvedRoot = root.resolvingSymlinksInPath().standardizedFileURL
-        let resolved = lexical.resolvingSymlinksInPath().standardizedFileURL
-        guard isContained(resolved, in: resolvedRoot) else {
-            throw CocoaError(.fileReadNoPermission, userInfo: [
-                NSFilePathErrorKey: resolved.path,
-                NSLocalizedDescriptionKey: "UI World asset sourcePath escapes the current checkout through a symlink",
-            ])
-        }
-        return resolved
-    }
-
-    private static func isReaderBookAsset(ref: String) -> Bool {
-        guard case let .loaded(document, _) = loadState() else { return false }
-        return document.reader.values.contains { $0.bookAssetRef == ref }
-    }
-
-    private static func isContained(_ candidate: URL, in root: URL) -> Bool {
-        let rootPath = root.standardizedFileURL.path
-        let candidatePath = candidate.standardizedFileURL.path
-        return candidatePath == rootPath || candidatePath.hasPrefix(rootPath + "/")
-    }
-
-    private static var repositoryRootURL: URL {
-        // Xcode can compile this source with an `ios/` source-root prefix in
-        // `#filePath`, producing a misleading `<checkout>/ios/ios/...` path.
-        // Walk upward from the compiled source location and select the first
-        // directory that proves it is the repository root. The marker check
-        // keeps both normal source paths and that duplicated-prefix form
-        // anchored to the same checkout instead of silently resolving assets
-        // under `<checkout>/ios`.
-        var candidate = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .standardizedFileURL
-        let fileManager = FileManager.default
-        for _ in 0..<10 {
-            let hasIOSProject = fileManager.fileExists(
-                atPath: candidate.appendingPathComponent("ios/BooksAndVocab").path,
-                isDirectory: nil
-            )
-            let hasFixtureAssets = fileManager.fileExists(
-                atPath: candidate.appendingPathComponent("ops/fixtures/assets").path,
-                isDirectory: nil
-            )
-            if hasIOSProject && hasFixtureAssets {
-                return candidate
-            }
-            let parent = candidate.deletingLastPathComponent().standardizedFileURL
-            if parent == candidate { break }
-            candidate = parent
-        }
-        // Keep a deterministic failure location if a stripped test bundle or
-        // external build no longer has repository markers, while preserving
-        // the historical source-relative fallback for diagnostics.
-        return URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent() // Core
-            .deletingLastPathComponent() // Fixtures
-            .deletingLastPathComponent() // Support
-            .deletingLastPathComponent() // BooksAndVocab
-            .deletingLastPathComponent() // ios
-    }
-
-    private static func validateDestinationContainment(
-        _ destination: URL,
-        in root: URL,
-        ref: String
-    ) throws {
-        let lexicalRoot = root.standardizedFileURL
-        let lexicalDestination = destination.standardizedFileURL
-        guard isContained(lexicalDestination, in: lexicalRoot) else {
-            throw CocoaError(.fileWriteNoPermission, userInfo: [
-                NSFilePathErrorKey: lexicalDestination.path,
-                NSLocalizedDescriptionKey: "UI World asset (ref) installAs escapes the app Documents root",
-            ])
-        }
-
-        let resolvedRoot = lexicalRoot.resolvingSymlinksInPath().standardizedFileURL
-        let resolvedDestination = lexicalDestination.resolvingSymlinksInPath().standardizedFileURL
-        let resolvedParent = lexicalDestination
-            .deletingLastPathComponent()
-            .resolvingSymlinksInPath()
-            .standardizedFileURL
-        guard isContained(resolvedDestination, in: resolvedRoot),
-              isContained(resolvedParent, in: resolvedRoot) else {
-            throw CocoaError(.fileWriteNoPermission, userInfo: [
-                NSFilePathErrorKey: resolvedDestination.path,
-                NSLocalizedDescriptionKey: "UI World asset (ref) installAs escapes the app Documents root through a symlink",
-            ])
-        }
-    }
-
-    private static func assetRootURL() throws -> URL {
-        let rawRoot = testingAssetRoot?.path
-            ?? ProcessInfo.processInfo.environment[fixtureAssetRootEnvKey]
-        let root: URL
-        if let rawRoot, !rawRoot.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            root = URL(fileURLWithPath: rawRoot, isDirectory: true).standardizedFileURL
-        } else {
-            root = repositoryRootURL.standardizedFileURL
-        }
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: root.path, isDirectory: &isDirectory), isDirectory.boolValue else {
-            throw CocoaError(.fileNoSuchFile, userInfo: [
-                NSFilePathErrorKey: root.path,
-                NSLocalizedDescriptionKey: "UI World asset root does not exist: \(root.path)",
-            ])
-        }
-        return root
-    }
-
-    private static func validateInstalledAsset(_ url: URL, asset: UIWorldAsset, ref: String) throws {
-        let declaredType = asset.contentType.split(separator: ";", maxSplits: 1).first.map(String.init) ?? asset.contentType
-        guard declaredType == "audio/mpeg" || declaredType == "audio/mp4" else { return }
-
-        let extensionName = url.pathExtension.lowercased()
-        let expectedExtension = declaredType == "audio/mpeg" ? "mp3" : "m4a"
-        guard extensionName == expectedExtension,
-              let type = UTType(filenameExtension: extensionName),
-              type.preferredMIMEType == declaredType else {
-            throw assetFormatError(
-                ref: ref,
-                url: url,
-                reason: "extension/UTType mismatch for declared \(declaredType)"
-            )
-        }
-
-        let data = try Data(contentsOf: url)
-        guard audioContainerType(for: data) == declaredType else {
-            throw assetFormatError(ref: ref, url: url, reason: "magic/container mismatch")
-        }
-
-        let avAsset = AVURLAsset(url: url)
-        guard avAsset.isPlayable else {
-            throw assetFormatError(ref: ref, url: url, reason: "AVFoundation reports the installed asset is not playable")
-        }
-        do {
-            _ = try AVAudioFile(forReading: url)
-        } catch {
-            throw assetFormatError(
-                ref: ref,
-                url: url,
-                reason: "AVAudioFile could not read the installed asset: \(error.localizedDescription)"
-            )
-        }
-    }
-
-    private static func assetFormatError(ref: String, url: URL, reason: String) -> CocoaError {
-        CocoaError(.fileReadCorruptFile, userInfo: [
-            NSFilePathErrorKey: url.path,
-            NSLocalizedDescriptionKey: "UI World installed audio asset \(ref) is invalid: \(reason)",
-        ])
-    }
-
-    private static func audioContainerType(for data: Data) -> String? {
-        if data.count >= 8,
-           data[4] == 0x66, data[5] == 0x74, data[6] == 0x79, data[7] == 0x70 {
-            return "audio/mp4"
-        }
-
-        var offset = 0
-        if data.count >= 10,
-           data[0] == 0x49, data[1] == 0x44, data[2] == 0x33 {
-            let tagSize = (Int(data[6] & 0x7F) << 21)
-                | (Int(data[7] & 0x7F) << 14)
-                | (Int(data[8] & 0x7F) << 7)
-                | Int(data[9] & 0x7F)
-            offset = 10 + tagSize + ((data[5] & 0x10) != 0 ? 10 : 0)
-        }
-
-        let upperBound = max(offset, data.count - 2)
-        for index in offset..<upperBound {
-            guard index + 2 < data.count else { break }
-            let first = data[index]
-            let second = data[index + 1]
-            let third = data[index + 2]
-            guard first == 0xFF, second & 0xE0 == 0xE0 else { continue }
-            let version = (second >> 3) & 0x03
-            let layer = (second >> 1) & 0x03
-            let bitrateIndex = (third >> 4) & 0x0F
-            let sampleRateIndex = (third >> 2) & 0x03
-            if version != 0x01, layer == 0x01, bitrateIndex != 0x00, bitrateIndex != 0x0F, sampleRateIndex != 0x03 {
-                return "audio/mpeg"
-            }
-        }
-        return nil
-        }
-    private static func installURL(for asset: UIWorldAsset, ref: String) throws -> URL {
-        let installAs = asset.installAs.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !installAs.hasPrefix("/") else {
-            preconditionFailure("UI World asset \(ref) installAs must be relative: \(installAs)")
-        }
-        let components = installAs.split(separator: "/").map(String.init)
-        guard components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else {
-            preconditionFailure("UI World asset \(ref) installAs contains an unsafe path component: \(installAs)")
-        }
-        let root = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let destination = root.appendingPathComponent(installAs).standardizedFileURL
-        guard isContained(destination, in: root.standardizedFileURL) else {
-            preconditionFailure("UI World asset \(ref) installAs escaped the document directory: \(installAs)")
-        }
-        return destination
-    }
-
-    private static func validateContentType(_ contentType: String, for url: URL, ref: String) throws {
-        let expected = contentType.split(separator: ";", maxSplits: 1).first.map(String.init) ?? contentType
-        // UTType(filenameExtension:) reports `.md` as text/plain on some
-        // simulator/runtime SDK combinations even though the fixture contract
-        // explicitly distinguishes Markdown from plain text. The extension
-        // map is the repo-owned wire contract; UTType remains the fallback for
-        // formats whose MIME mapping is stable but not listed here.
-        let extensionType: String? = switch url.pathExtension.lowercased() {
-        case "epub": "application/epub+zip"
-        case "pdf": "application/pdf"
-        case "md": "text/markdown"
-        case "txt": "text/plain"
-        case "mp3": "audio/mpeg"
-        case "m4a": "audio/mp4"
-        case "srt": "application/x-subrip"
-        case "vtt": "text/vtt"
-        case "png": "image/png"
-        case "jpg", "jpeg": "image/jpeg"
-        default: nil
-        }
-        let actual = extensionType ?? UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
-        guard actual == expected else {
-            throw CocoaError(.fileReadCorruptFile, userInfo: [
-                NSFilePathErrorKey: url.path,
-                NSLocalizedDescriptionKey: "UI World asset \(ref) contentType mismatch: expected \(expected)",
-            ])
-        }
-    }
-
-    private static func fileSystemInode(for url: URL) throws -> UInt64 {
-        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-        guard let number = attributes[.systemFileNumber] as? NSNumber else {
-            throw CocoaError(.fileReadUnknown, userInfo: [
-                NSFilePathErrorKey: url.path,
-                NSLocalizedDescriptionKey: "UI World installed asset has no filesystem inode snapshot",
-            ])
-        }
-        return number.uint64Value
+        let root = try FixtureDatasetResolver.assetRootURL(testingRoot: testingAssetRoot)
+        return try FixtureDatasetResolver.resolveSourceURL(for: asset, assetRoot: root)
     }
 
     static func sha256Hex(for url: URL) throws -> String {
-        let data = try Data(contentsOf: url)
-        return sha256Hex(for: data)
-    }
-
-    private static func sha256Hex(for data: Data) -> String {
-        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-    }
-
-    private static func rawDatasetData() -> Data? {
-        switch loadSource() {
-        case let .data(data, _): return data
-        case .absent, .invalid: return nil
-        }
+        try FixtureDatasetResolver.sha256Hex(for: url)
     }
 
     static func byteSize(for url: URL) throws -> Int {
-        let values = try url.resourceValues(forKeys: [.fileSizeKey])
-        guard let size = values.fileSize else {
-            throw CocoaError(.fileReadUnknown, userInfo: [NSFilePathErrorKey: url.path])
-        }
-        return size
+        try FixtureDatasetResolver.byteSize(for: url)
     }
 
     static func readerSeed(for fixtureID: UIWorldReaderFixtureID) -> UIWorldReaderSeed? {
-        guard case let .loaded(document, _) = loadState() else { return nil }
-        return document.reader[fixtureID.rawValue]
+        loadedResolver()?.readerSeed(for: fixtureID)
     }
 
     static func requireReaderSeed(for fixtureID: UIWorldReaderFixtureID) -> UIWorldReaderSeed {
@@ -835,89 +336,18 @@ enum FixtureDatasetStore {
     }
 
     static func vocabularySeed(for fixtureID: UIWorldVocabularyFixtureID) -> UIWorldVocabularySeed? {
-        guard case let .loaded(document, _) = loadState() else { return nil }
-        return document.vocabulary[fixtureID.rawValue]
+        loadedResolver()?.vocabularySeed(for: fixtureID)
     }
 
     static func requireVocabularySeed(for fixtureID: UIWorldVocabularyFixtureID) -> UIWorldVocabularySeed {
-        guard case let .loaded(document, _) = loadState(), document.vocabulary[fixtureID.rawValue] != nil else {
+        guard let resolver = loadedResolver(), resolver.vocabularySeed(for: fixtureID) != nil else {
             preconditionFailure(seedResolutionFailureDescription(resolving: "vocabulary.\(fixtureID.rawValue)"))
         }
-        return resolveVocabularySeed(
-            fixtureID,
-            in: document,
-            visiting: []
-        )
-    }
-
-    private static func resolveVocabularySeed(
-        _ fixtureID: UIWorldVocabularyFixtureID,
-        in document: FixtureDatasetDocument,
-        visiting: Set<String>
-    ) -> UIWorldVocabularySeed {
-        guard let seed = document.vocabulary[fixtureID.rawValue] else {
-            preconditionFailure("UI World is missing vocabulary.\(fixtureID.rawValue)")
-        }
-        guard !visiting.contains(fixtureID.rawValue) else {
-            preconditionFailure("UI World vocabulary inheritance cycle at \(fixtureID.rawValue)")
-        }
-
-        guard let baseFixture = seed.baseFixture else {
-            validateVocabularyOverrides(seed.entryOverrides, entries: seed.entries, fixtureID: fixtureID)
-            return seed
-        }
-        guard let baseID = UIWorldVocabularyFixtureID(rawValue: baseFixture) else {
-            preconditionFailure(
-                "UI World vocabulary.\(fixtureID.rawValue).baseFixture is unknown: \(baseFixture)"
-            )
-        }
-        let base = resolveVocabularySeed(
-            baseID,
-            in: document,
-            visiting: visiting.union([fixtureID.rawValue])
-        )
-        guard seed.entries.isEmpty else {
-            preconditionFailure(
-                "UI World vocabulary.\(fixtureID.rawValue) inherited seed must leave entries empty"
-            )
-        }
-        let overrides = base.entryOverrides + seed.entryOverrides
-        validateVocabularyOverrides(overrides, entries: base.entries, fixtureID: fixtureID)
-        return UIWorldVocabularySeed(
-            notebookRemoteId: seed.notebookRemoteId,
-            notebookName: seed.notebookName,
-            notebookSyncStatus: seed.notebookSyncStatus,
-            bookTitle: seed.bookTitle,
-            entries: base.entries,
-            reviewHistory: seed.reviewHistory,
-            entryOverrides: overrides
-        )
-    }
-
-    private static func validateVocabularyOverrides(
-        _ overrides: [UIWorldVocabularyEntryOverride],
-        entries: [UIWorldVocabularyEntrySeed],
-        fixtureID: UIWorldVocabularyFixtureID
-    ) {
-        let words = Set(entries.map(\.word))
-        var seen: Set<String> = []
-        for override in overrides {
-            guard words.contains(override.word) else {
-                preconditionFailure(
-                    "UI World vocabulary.\(fixtureID.rawValue).entryOverrides references missing word \(override.word)"
-                )
-            }
-            guard seen.insert(override.word).inserted else {
-                preconditionFailure(
-                    "UI World vocabulary.\(fixtureID.rawValue).entryOverrides duplicates word \(override.word)"
-                )
-            }
-        }
+        return resolver.requireVocabularySeed(for: fixtureID)
     }
 
     static func reviewDeckSeed(for fixtureID: UIWorldReviewDeckFixtureID) -> UIWorldReviewDeckSeed? {
-        guard case let .loaded(document, _) = loadState() else { return nil }
-        return document.reviewDeck[fixtureID.rawValue]
+        loadedResolver()?.reviewDeckSeed(for: fixtureID)
     }
 
     static func requireReviewDeckSeed(for fixtureID: UIWorldReviewDeckFixtureID) -> UIWorldReviewDeckSeed {
@@ -929,135 +359,8 @@ enum FixtureDatasetStore {
 
     /// UI World files.
     static func decode(_ data: Data) throws -> FixtureDatasetDocument {
-        let document = try makeDecoder().decode(FixtureDatasetDocument.self, from: data)
-        return try materializingVocabularyInheritance(in: document)
-    }
-
-    private static func materializingVocabularyInheritance(
-        in document: FixtureDatasetDocument
-    ) throws -> FixtureDatasetDocument {
-        var resolved: [String: UIWorldVocabularySeed] = [:]
-
-        func resolve(_ fixtureID: String, visiting: [String]) throws -> UIWorldVocabularySeed {
-            if let seed = resolved[fixtureID] { return seed }
-            guard !visiting.contains(fixtureID) else {
-                throw DecodingError.dataCorrupted(
-                    .init(
-                        codingPath: [],
-                        debugDescription: "UI World vocabulary inheritance cycle: \((visiting + [fixtureID]).joined(separator: " -> "))"
-                    )
-                )
-            }
-            guard let seed = document.vocabulary[fixtureID] else {
-                throw DecodingError.dataCorrupted(
-                    .init(codingPath: [], debugDescription: "UI World vocabulary inheritance is missing base fixture \(fixtureID)")
-                )
-            }
-
-            let base: UIWorldVocabularySeed?
-            if let baseFixture = seed.baseFixture {
-                guard UIWorldVocabularyFixtureID(rawValue: baseFixture) != nil else {
-                    throw DecodingError.dataCorrupted(
-                        .init(
-                            codingPath: [],
-                            debugDescription: "UI World vocabulary.\(fixtureID).baseFixture is unknown: \(baseFixture)"
-                        )
-                    )
-                }
-                guard seed.entries.isEmpty else {
-                    throw DecodingError.dataCorrupted(
-                        .init(
-                            codingPath: [],
-                            debugDescription: "UI World vocabulary.\(fixtureID) must not declare entries when baseFixture is present"
-                        )
-                    )
-                }
-                base = try resolve(baseFixture, visiting: visiting + [fixtureID])
-            } else {
-                base = nil
-            }
-
-            let entries = base?.entries ?? seed.entries
-            var overridesByWord = Dictionary(
-                uniqueKeysWithValues: (base?.entryOverrides ?? []).map { ($0.word, $0) }
-            )
-            var localOverrideWords: Set<String> = []
-            for override in seed.entryOverrides {
-                guard localOverrideWords.insert(override.word).inserted else {
-                    throw DecodingError.dataCorrupted(
-                        .init(
-                            codingPath: [],
-                            debugDescription: "UI World vocabulary.\(fixtureID).entryOverrides duplicates word \(override.word)"
-                        )
-                    )
-                }
-                guard overridesByWord[override.word] == nil else {
-                    throw DecodingError.dataCorrupted(
-                        .init(
-                            codingPath: [],
-                            debugDescription: "UI World vocabulary.\(fixtureID).entryOverrides duplicates inherited word \(override.word)"
-                        )
-                    )
-                }
-                overridesByWord[override.word] = override
-            }
-
-            let entryWords = Set(entries.map(\.word))
-            let missingWords = Set(overridesByWord.keys).subtracting(entryWords)
-            guard missingWords.isEmpty else {
-                throw DecodingError.dataCorrupted(
-                    .init(
-                        codingPath: [],
-                        debugDescription: "UI World vocabulary.\(fixtureID).entryOverrides references missing words \(missingWords.sorted())"
-                    )
-                )
-            }
-            for record in seed.reviewHistory where !entryWords.contains(record.word) {
-                throw DecodingError.dataCorrupted(
-                    .init(
-                        codingPath: [],
-                        debugDescription: "UI World vocabulary.\(fixtureID).reviewHistory.\(record.word) must reference a resolved entry"
-                    )
-                )
-            }
-
-            let materialized = UIWorldVocabularySeed(
-                notebookRemoteId: seed.notebookRemoteId,
-                notebookName: seed.notebookName,
-                notebookSyncStatus: seed.notebookSyncStatus,
-                bookTitle: seed.bookTitle,
-                entries: entries,
-                reviewHistory: seed.reviewHistory,
-                entryOverrides: entries.compactMap { overridesByWord[$0.word] }
-            )
-            resolved[fixtureID] = materialized
-            return materialized
-        }
-
-        for fixtureID in document.vocabulary.keys {
-            _ = try resolve(fixtureID, visiting: [])
-        }
-
-        return FixtureDatasetDocument(
-            schema: document.schema,
-            datasetID: document.datasetID,
-            assets: document.assets,
-            preferences: document.preferences,
-            auth: document.auth,
-            entitlements: document.entitlements,
-            settings: document.settings,
-            bookshelf: document.bookshelf,
-            todayReview: document.todayReview,
-            notebook: document.notebook,
-            podcast: document.podcast,
-            runtimePodcast: document.runtimePodcast,
-            reader: document.reader,
-            vocabulary: resolved,
-            reviewDeck: document.reviewDeck,
-            syncPresenter: document.syncPresenter,
-            sharedDecks: document.sharedDecks,
-            scenarioContext: document.scenarioContext
-        )
+        let document = try FixtureDatasetLoader.decode(data)
+        return try FixtureDatasetResolver.materializeVocabularyInheritance(in: document)
     }
 
     static func requireDocument() -> FixtureDatasetDocument {
@@ -1068,8 +371,7 @@ enum FixtureDatasetStore {
     }
 
     static func sharedDeckCatalogSeed() -> UIWorldSharedDeckCatalogSeed? {
-        guard case let .loaded(document, _) = loadState() else { return nil }
-        return document.sharedDecks
+        loadedResolver()?.sharedDeckCatalogSeed()
     }
 
     static func requireSharedDeckCatalogSeed() -> UIWorldSharedDeckCatalogSeed {
@@ -1084,8 +386,7 @@ enum FixtureDatasetStore {
     /// independent scenarios can fall back gracefully without a
     /// `preconditionFailure`.
     static func scenarioContext() -> UIWorldScenarioContextSeed? {
-        guard case let .loaded(document, _) = loadState() else { return nil }
-        return document.scenarioContext
+        loadedResolver()?.scenarioContext()
     }
 
     /// Diagnostic for `require*Seed` / asset resolution failures. When the UI
@@ -1098,7 +399,7 @@ enum FixtureDatasetStore {
         case .loaded:
             return "UI World is missing \(reference)"
         case .absent:
-            return "UI World is not loaded — neither \(fixtureDatasetDeflateEnvKey) nor \(fixtureDatasetEnvKey) is set (and no testing override); cannot resolve \(reference)"
+            return "UI World is not loaded — neither \(FixtureDatasetLoader.deflateEnvironmentKey) nor \(FixtureDatasetLoader.datasetEnvironmentKey) is set (and no testing override); cannot resolve \(reference)"
         case let .invalid(source, error):
             return "UI World failed to load from \(source): \(error); cannot resolve \(reference)"
         }
@@ -1159,84 +460,14 @@ enum FixtureDatasetStore {
     }
 
     private static func loadSource() -> LoadSource {
-        if let testingOverrideData {
-            return .data(testingOverrideData, description: "testing-override")
-        }
-
-        let environment = ProcessInfo.processInfo.environment
-        let deflateRawValue = environment[fixtureDatasetDeflateEnvKey]
-        let plainRawValue = environment[fixtureDatasetEnvKey]
-
-        if deflateRawValue != nil, plainRawValue != nil {
-            // Two sources could describe two different worlds; picking one
-            // silently would hide exactly the kind of tooling drift this
-            // fail-loud chain exists to expose.
-            return .invalid(
-                source: "env:\(fixtureDatasetDeflateEnvKey)+\(fixtureDatasetEnvKey)",
-                error: "both \(fixtureDatasetDeflateEnvKey) and \(fixtureDatasetEnvKey) are set; the UI World source is ambiguous — unset one"
-            )
-        }
-
-        if let deflateRawValue {
-            let envDescription = "env:\(fixtureDatasetDeflateEnvKey)"
-            guard !deflateRawValue.isEmpty else {
-                return .invalid(source: envDescription, error: "\(fixtureDatasetDeflateEnvKey) must not be empty")
-            }
-            guard let compressed = Data(base64Encoded: deflateRawValue) else {
-                return .invalid(source: envDescription, error: "\(fixtureDatasetDeflateEnvKey) is not valid base64")
-            }
-            do {
-                let data = try (compressed as NSData).decompressed(using: .zlib) as Data
-                return .data(data, description: envDescription)
-            } catch {
-                return .invalid(
-                    source: envDescription,
-                    error: "\(fixtureDatasetDeflateEnvKey) is not a raw DEFLATE stream (decompress failed: \(error.localizedDescription))"
-                )
-            }
-        }
-
-        let envDescription = "env:\(fixtureDatasetEnvKey)"
-        guard let rawValue = plainRawValue else {
+        switch FixtureDatasetLoader.loadSource(testingOverrideData: testingOverrideData) {
+        case .absent:
             return .absent
+        case let .invalid(source, error):
+            return .invalid(source: source, error: error)
+        case let .data(data, description):
+            return .data(data, description: description)
         }
-
-        guard !rawValue.isEmpty else {
-            return .invalid(source: envDescription, error: "\(fixtureDatasetEnvKey) must not be empty")
-        }
-
-        guard let data = Data(base64Encoded: rawValue) else {
-            return .invalid(source: envDescription, error: "\(fixtureDatasetEnvKey) is not valid base64")
-        }
-
-        return .data(data, description: envDescription)
-    }
-
-    private static func makeDecoder() -> JSONDecoder {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom { decoder in
-            let container = try decoder.singleValueContainer()
-            if let rawValue = try? container.decode(String.self) {
-                if let date = AppDateFormatters.parseISO8601(rawValue) {
-                    return date
-                }
-                throw DecodingError.dataCorruptedError(
-                    in: container,
-                    debugDescription: "Expected ISO8601 date string, got \(rawValue)"
-                )
-            }
-            if let rawValue = try? container.decode(Double.self) {
-                return Date(timeIntervalSince1970: rawValue)
-            }
-            if let rawValue = try? container.decode(Int.self) {
-                return Date(timeIntervalSince1970: TimeInterval(rawValue))
-            }
-            throw DecodingError.dataCorruptedError(
-                in: container,
-                debugDescription: "Expected ISO8601 string or epoch seconds for Date"
-            )
-        }
-        return decoder
     }
 }
 
