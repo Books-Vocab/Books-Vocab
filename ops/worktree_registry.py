@@ -50,8 +50,8 @@ EXIT_USAGE = 64
 CURRENT_RECORD_FIELDS = (
     "branch", "path", "intent", "base", "status", "external_ids", "scope",
     "codex_thread_id", "delegated", "created_at", "claimed_at", "resolved_at",
-    "base_sha", "handed_back_at", "handed_back_sha", "handback_seal",
-    "handback_outcomes",
+    "claim_generation", "base_sha", "handed_back_at", "handed_back_sha",
+    "handback_claim_generation", "handback_seal", "handback_outcomes",
 )
 
 
@@ -254,6 +254,11 @@ def _scope_error(scope: object) -> str | None:
     return json.dumps(problems, ensure_ascii=False) if problems else None
 
 
+def _claim_generation(record: dict[str, Any], field: str) -> int | None:
+    value = record.get(field, 0)
+    return value if type(value) is int and value >= 0 else None
+
+
 def _register_record(
     state: dict[str, Any], *, branch: str, path: str, intent: str,
     base: str, external_ids: list[str], scope: object = None,
@@ -289,6 +294,8 @@ def _register_record(
                      if isinstance(r, dict) and (r.get("branch") == branch
                          or _norm(str(r.get("path") or "")) == path)), None)
     if existing is not None and existing.get("status") == STATUS_ACTIVE:
+        generation = _claim_generation(existing, "claim_generation")
+        existing["claim_generation"] = (generation if generation is not None else 0) + 1
         existing.update({"branch": branch, "path": path, "intent": intent.strip(),
                          "base": base, "external_ids": ids,
                          "claimed_at": existing.get("claimed_at") or now_iso})
@@ -304,7 +311,8 @@ def _register_record(
         "status": STATUS_ACTIVE, "external_ids": ids, "scope": scope,
         "codex_thread_id": codex_thread_id, "delegated": delegated,
         "created_at": now_iso, "claimed_at": now_iso,
-        "resolved_at": None, "handed_back_at": None, "handed_back_sha": None,
+        "resolved_at": None, "claim_generation": 0,
+        "handed_back_at": None, "handed_back_sha": None,
     }
     state["records"].append(record)
     return EXIT_OK, record
@@ -519,6 +527,10 @@ def _has_valid_handback(record: dict[str, Any]) -> bool:
         return False
     if seal.get("tip_sha") != handed_back_sha:
         return False
+    generation = _claim_generation(record, "claim_generation")
+    handed_back_generation = _claim_generation(record, "handback_claim_generation")
+    if generation is None or handed_back_generation is None or generation != handed_back_generation:
+        return False
     worktree = Path(path)
     if not worktree.is_dir():
         return False
@@ -592,6 +604,9 @@ def cmd_hand_back(args: argparse.Namespace) -> int:
         _, now_iso = resolve_now(args.at)
         record["handed_back_at"] = now_iso
         record["handed_back_sha"] = tip_sha
+        generation = _claim_generation(record, "claim_generation")
+        record["claim_generation"] = generation if generation is not None else 0
+        record["handback_claim_generation"] = record["claim_generation"]
         save_state(state_path, state)
     payload = {"schema": SCHEMA, "action": "hand-back", "record": _record_view(record)}
     print(json.dumps(payload, indent=2, ensure_ascii=False) if args.json

@@ -25,6 +25,7 @@ def _scope() -> dict:
 def _sealed_handed_back_record(
     path: Path, *, handed_back_sha: str = "b" * 40,
     branch: str = "feat/handed-back",
+    base_sha: str = "a" * 40,
 ) -> dict:
     handed_back_at = "2026-08-19T00:00:00Z"
     record = {
@@ -33,13 +34,14 @@ def _sealed_handed_back_record(
         "status": registry.STATUS_ACTIVE,
         "external_ids": ["#123"],
         "scope": _scope(),
+        "base_sha": base_sha,
         "handed_back_at": handed_back_at,
         "handed_back_sha": handed_back_sha,
     }
     record["handback_seal"] = registry._seal_with_digest(
         registry._seal_body(
             record,
-            base_sha="a" * 40,
+            base_sha=base_sha,
             tip_sha=handed_back_sha,
             outcomes=[{"id": "#123", "status": "pass"}],
             handed_back_at=handed_back_at,
@@ -76,9 +78,9 @@ def _idle_handed_back_record(tmp_path: Path) -> dict:
         "-m",
         "sealed hand-back",
     )
+    tip_sha = _git(worktree, "rev-parse", "HEAD")
     return _sealed_handed_back_record(
-        worktree,
-        handed_back_sha=_git(worktree, "rev-parse", "HEAD"),
+        worktree, handed_back_sha=tip_sha, base_sha=tip_sha,
     )
 
 
@@ -200,6 +202,94 @@ def test_valid_handed_back_record_releases_admission_and_remains_queryable(
     queried = json.loads(capsys.readouterr().out)["records"][0]
     assert queried["handback_seal"]["digest"] == handed_back["handback_seal"]["digest"]
     assert queried["handed_back_sha"] == handed_back["handed_back_sha"]
+
+
+def test_reregister_revokes_current_handback_admission_and_retains_receipt(
+    tmp_path: Path,
+) -> None:
+    handed_back = _idle_handed_back_record(tmp_path)
+    receipt_at = handed_back["handed_back_at"]
+    receipt_sha = handed_back["handed_back_sha"]
+    receipt_seal = json.loads(json.dumps(handed_back["handback_seal"]))
+    state = {"schema": registry.SCHEMA, "records": [handed_back]}
+
+    rc, reregistered = registry._register_record(
+        state,
+        branch=handed_back["branch"],
+        path=handed_back["path"],
+        intent="resumed feature",
+        base="main",
+        external_ids=["#123"],
+        scope=_scope(),
+    )
+
+    assert rc == registry.EXIT_OK
+    assert reregistered is handed_back
+    assert reregistered["claim_generation"] == 1
+    assert reregistered.get("handback_claim_generation", 0) == 0
+    state_path = tmp_path / "registry.json"
+    registry.save_state(state_path, state)
+    audited = registry.load_state(state_path)["records"][0]
+    assert audited["handed_back_at"] == receipt_at
+    assert audited["handed_back_sha"] == receipt_sha
+    assert audited["handback_seal"] == receipt_seal
+    assert not registry._has_valid_handback(audited)
+
+    rc, refused = registry._register_record(
+        {"schema": registry.SCHEMA, "records": [audited]},
+        branch="feat/competitor",
+        path=str(tmp_path / "competitor"),
+        intent="competing feature",
+        base="main",
+        external_ids=["#123"],
+        scope=_scope(),
+    )
+
+    assert rc == registry.EXIT_CLAIMED
+    assert refused["owners"][0]["branch"] == handed_back["branch"]
+
+
+def test_new_handback_releases_reregistered_claim(tmp_path: Path) -> None:
+    handed_back = _idle_handed_back_record(tmp_path)
+    state = {"schema": registry.SCHEMA, "records": [handed_back]}
+
+    assert registry._register_record(
+        state,
+        branch=handed_back["branch"],
+        path=handed_back["path"],
+        intent="resumed feature",
+        base="main",
+        external_ids=["#123"],
+        scope=_scope(),
+    )[0] == registry.EXIT_OK
+
+    state_path = tmp_path / "registry.json"
+    outcomes_path = tmp_path / "outcomes.json"
+    registry.save_state(state_path, state)
+    outcomes_path.write_text("[]", encoding="utf-8")
+    assert registry.main([
+        "hand-back", "--state", str(state_path), "--branch", handed_back["branch"],
+        "--path", handed_back["path"], "--outcomes", str(outcomes_path),
+        "--at", "2026-08-19T01:00:00Z", "--json",
+    ]) == registry.EXIT_OK
+
+    renewed = registry.load_state(state_path)["records"][0]
+    assert renewed["claim_generation"] == 1
+    assert renewed["handback_claim_generation"] == 1
+    assert registry._has_valid_handback(renewed)
+
+    rc, admitted = registry._register_record(
+        {"schema": registry.SCHEMA, "records": [renewed]},
+        branch="feat/competitor",
+        path=str(tmp_path / "competitor"),
+        intent="competing feature",
+        base="main",
+        external_ids=["#123"],
+        scope=_scope(),
+    )
+
+    assert rc == registry.EXIT_OK
+    assert admitted["branch"] == "feat/competitor"
 
 
 @pytest.mark.parametrize("worktree_state", ("dirty", "head-advanced", "branch-mismatch"))
