@@ -1124,6 +1124,42 @@ should_rebuild_after_test_without_building_failure() {
   grep -qE 'Failed to read xctestrun file|no \.xctestrun artifact|cached test products are incomplete|failed to load test bundle|failed to create test runner|test runner exited before starting|unable to find.*xctestrun|xctestrun file.*(missing|invalid|not found)' "$TMPOUT" 2>/dev/null
 }
 
+ios_test_attempt_policy_cache_status() {
+  case "${1:-}" in
+    1|true) printf 'hit\n' ;;
+    *) printf 'miss\n' ;;
+  esac
+}
+
+ios_test_attempt_policy_should_rebuild_after_test_without_building_failure() {
+  [[ "${1:-0}" -ne 0 && "${2:-0}" -eq 0 && "${3:-0}" -ne 0 ]]
+}
+
+ios_test_attempt_policy_cache_status_after_build() {
+  case "${1:-}" in
+    1|true) printf 'prepared\n' ;;
+    *) printf 'hit\n' ;;
+  esac
+}
+
+ios_test_attempt_policy_build_db_lock_retry() {
+  local lock_failed="${1:-0}" attempt="${2:-1}" max_retries="${3:-0}"
+  [[ "$lock_failed" -ne 0 && "$attempt" -le "$max_retries" ]] \
+    && printf 'retry|%s\n' "$((attempt + 1))" \
+    || printf 'stop|%s\n' "$attempt"
+}
+
+ios_test_attempt_policy_begin_attempt() {
+  INCONCLUSIVE_REASON=""
+  BUILD_FOR_TESTING_MS=0
+  TEST_INVOCATION_MS=0
+}
+
+ios_test_attempt_policy_mark_rebuild_after_failure() {
+  CACHE_STATUS="rebuild-after-failure"
+  INCONCLUSIVE_REASON=""
+}
+
 # test-without-building 不會把 xcodebuild 行內 env 傳進 test runner process——
 # xctestrun 的 TestingEnvironmentVariables 才是 runner env 的注入面（catalog
 # pipeline 同法）。複製 base xctestrun 再 upsert，不污染共享 build cache 原檔；
@@ -1811,7 +1847,7 @@ XCTESTRUN_PATH="$(ios_test_find_xctestrun "$DERIVED_DATA_ROOT" || true)"
 while :; do
   # A retry/rebuild is a new attempt; a timeout reason must not leak into its
   # final verdict if the later attempt fails for another reason.
-  INCONCLUSIVE_REASON=""
+  ios_test_attempt_policy_begin_attempt
   [[ -n "$TMPOUT" ]] && rm -f "$TMPOUT"
   TMPOUT="$(artifact_temp_file kg_ios_test_log)"
   [[ -n "$RESULT_DIR" ]] && rm -rf "$RESULT_DIR"
@@ -1819,15 +1855,26 @@ while :; do
   RESULT_BUNDLE="$RESULT_DIR/Test.xcresult"
   prepare_ui_step_screenshot_dir
   set +e
-  BUILD_FOR_TESTING_MS=0
-  TEST_INVOCATION_MS=0
   if ios_test_cache_is_complete "$XCTESTRUN_PATH"; then
-    CACHE_STATUS="hit"
+    CACHE_STATUS="$(ios_test_attempt_policy_cache_status 1)"
     run_xcodebuild_test_without_building_once "$XCTESTRUN_PATH"
     EXIT_CODE=$?
-    if [[ "$EXIT_CODE" -ne 0 ]] && should_rebuild_after_test_without_building_failure; then
-      CACHE_STATUS="rebuild-after-failure"
-      INCONCLUSIVE_REASON=""
+    if [[ "$EXIT_CODE" -ne 0 ]]; then
+      test_without_building_failed=0
+      if grep -qE '^\*\* TEST( EXECUTE)? FAILED' "$TMPOUT" 2>/dev/null; then
+        test_without_building_failed=1
+      fi
+      cache_failure=0
+      if should_rebuild_after_test_without_building_failure; then
+        cache_failure=1
+      fi
+    else
+      test_without_building_failed=0
+      cache_failure=0
+    fi
+    if ios_test_attempt_policy_should_rebuild_after_test_without_building_failure \
+      "$EXIT_CODE" "$test_without_building_failed" "$cache_failure"; then
+      ios_test_attempt_policy_mark_rebuild_after_failure
       BUILD_LOG="$(artifact_temp_file kg_ios_test_build_log)"
       BUILD_RESULT_DIR="$(artifact_temp_dir kg_ios_test_build_result)"
       BUILD_RESULT_BUNDLE="$BUILD_RESULT_DIR/BuildForTesting.xcresult"
@@ -1849,7 +1896,7 @@ while :; do
       rm -rf "$BUILD_RESULT_DIR"
     fi
   else
-    CACHE_STATUS="miss"
+    CACHE_STATUS="$(ios_test_attempt_policy_cache_status 0)"
     BUILD_LOG="$(artifact_temp_file kg_ios_test_build_log)"
     BUILD_RESULT_DIR="$(artifact_temp_dir kg_ios_test_build_result)"
     BUILD_RESULT_BUNDLE="$BUILD_RESULT_DIR/BuildForTesting.xcresult"
@@ -1864,7 +1911,7 @@ while :; do
         # agent that waited on the lock and skipped the rebuild (double-check hit)
         # is a "hit", not a builder. Discriminated by REBUILD_DID_BUILD, not by
         # buildForTestingMs.
-        if [[ "${REBUILD_DID_BUILD:-1}" -eq 1 ]]; then CACHE_STATUS="prepared"; else CACHE_STATUS="hit"; fi
+        CACHE_STATUS="$(ios_test_attempt_policy_cache_status_after_build "${REBUILD_DID_BUILD:-1}")"
       else
         EXIT_CODE=1
       fi
@@ -1877,10 +1924,17 @@ while :; do
   fi
   set -e
 
-  if is_build_db_lock_failure && [[ "$ATTEMPT" -le "$MAX_BUILD_DB_LOCK_RETRIES" ]]; then
-    echo "[ios_test] build database locked; retrying xcodebuild attempt $((ATTEMPT + 1))/$((MAX_BUILD_DB_LOCK_RETRIES + 1)) after 10s" >&2
+  build_db_lock_failure=0
+  if is_build_db_lock_failure; then
+    build_db_lock_failure=1
+  fi
+  build_db_retry_decision="$(ios_test_attempt_policy_build_db_lock_retry \
+    "$build_db_lock_failure" "$ATTEMPT" "$MAX_BUILD_DB_LOCK_RETRIES")"
+  IFS='|' read -r build_db_retry_action build_db_retry_attempt <<<"$build_db_retry_decision"
+  if [[ "$build_db_retry_action" == "retry" ]]; then
+    echo "[ios_test] build database locked; retrying xcodebuild attempt $build_db_retry_attempt/$((MAX_BUILD_DB_LOCK_RETRIES + 1)) after 10s" >&2
     sleep 10
-    ATTEMPT=$((ATTEMPT + 1))
+    ATTEMPT="$build_db_retry_attempt"
     continue
   fi
   break
