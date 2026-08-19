@@ -99,6 +99,8 @@ struct WordDetailPresenter: View {
             VocabCard(padding: 0) {
                 VStack(alignment: .leading, spacing: 0) {
                     CardDocumentView(document: state.card.document)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("wordDetail.document")
 
                     if !state.card.forms.isEmpty {
                         CardSectionDivider()
@@ -108,6 +110,8 @@ struct WordDetailPresenter: View {
                             colorScheme: colorScheme
                         )
                         .padding(appSkin.metrics.cardBlockPadding)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("wordDetail.forms")
                     }
 
                     if !state.card.activeLinkGroups.isEmpty || !state.card.hiddenLinks.isEmpty || onAddLink != nil {
@@ -125,6 +129,8 @@ struct WordDetailPresenter: View {
                     CardSectionDivider()
                     metadataFooter
                         .padding(appSkin.metrics.cardBlockPadding)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("wordDetail.metadata")
                 }
             }
             .padding(appSkin.metrics.cardBlockPadding)
@@ -137,6 +143,8 @@ struct WordDetailPresenter: View {
             Spacer()
                 .frame(height: appSkin.metrics.cardBlockPadding * 2)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("wordDetail.content")
     }
 
     private var linksSection: some View {
