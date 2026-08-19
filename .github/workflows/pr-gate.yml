@@ -1,17 +1,15 @@
 name: pr-gate
 
 # This is the only pull_request entrypoint. The component workflows run in
-# parallel, but branch protection observes only `required`: a short merge gate.
-# `confidence` reports the complete suite without serializing every PR behind
-# the slowest backend/ops/iOS job.
+# parallel, but branch protection observes only `required`: a short PR gate.
+# Merge queue groups use the separate merge-group-required workflow so queue
+# admission never waits for the full confidence fan-out below.
 on:
   pull_request:
     # `ready_for_review` changes metadata only. The latest opened/synchronize
     # run already validates the same head; rerunning would cancel or duplicate
     # its full-confidence fan-out without producing new code evidence.
     types: [opened, synchronize, reopened]
-  merge_group:
-    types: [checks_requested]
   workflow_dispatch:
 
 permissions:
@@ -37,8 +35,8 @@ jobs:
 
       - name: Check repository diff
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           if [[ -n "$BASE_SHA" ]]; then
             git diff --check "$BASE_SHA" "$HEAD_SHA"
@@ -69,8 +67,8 @@ jobs:
       - name: Classify non-blocking confidence scope
         id: plan
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         shell: bash
         run: |
           set -euo pipefail

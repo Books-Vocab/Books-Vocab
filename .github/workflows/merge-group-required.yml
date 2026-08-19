@@ -1,0 +1,43 @@
+name: merge-group-required
+
+# Merge queue's blocking contract is deliberately independent from the PR
+# confidence fan-out.  A merge group must receive the same short repository
+# gate, but it must not schedule backend, LLM, UI, iOS, or confidence jobs.
+on:
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: merge-group-required-${{ github.event.merge_group.head_sha || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  required:
+    name: required
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout merge group
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - name: Check merge-group diff
+        env:
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          git diff --check "$BASE_SHA" "$HEAD_SHA"
+
+      - name: Check ops test coverage classification
+        run: ./ops/tests/test_ops_ci_coverage.sh
+
+      - name: Run short repository gate
+        run: ./ops/test_ops.sh docs-lint worktree context-routing github-workflows
