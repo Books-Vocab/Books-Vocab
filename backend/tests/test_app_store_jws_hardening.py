@@ -352,3 +352,9 @@ def test_exp_beyond_leeway_rejected(root_ca):
     )
     with pytest.raises(AppStoreVerificationError):
         verify_and_decode_signed_jws(token, bundle_id=BUNDLE_ID)
+
+
+def test_malformed_header_collapses_to_verification_error():
+    """Malformed JWS segments must not leak parser errors to the caller."""
+    with pytest.raises(AppStoreVerificationError):
+        verify_and_decode_signed_jws("bm90LWpzb24.aW52YWxpZA.x")
