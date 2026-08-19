@@ -55,6 +55,7 @@ verified_against: 2a7930c04f661c266ce05b3568f375e1db2a39f1
 - Worktree：`ops/lib/worktree_scope.py`、`ops/worktree_registry.py`、`ops/worktree_orchestrate.py`。
 - Long-task safety：`ops/task_registry.py`、`ops/lib/streaming_command.py`（只記 process ownership／heartbeat，不記產品工作狀態）。
 - Ops regression：`ops/test_ops.sh`。
+- Backend venv health：`uv run --no-project --python 3.13 ops/venv_health.py`；檢查必需的 main `backend/.venv`，並對缺少或失效的 Python、pytest、`uv.lock` 或 dependency probe fail closed。
 - Safety／release：`ops/devops_kg_safe.sh`、`ops/release.sh`、`ops/kg_reconcile.sh`、`ops/branch_audit.sh`。
 - App Store Connect：`ops/asc.sh`；metadata／submission limitations 以 `docs/sop/ios.md` 為準。
 
