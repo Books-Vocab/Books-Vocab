@@ -7,6 +7,15 @@ name: ios-quality
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      runner:
+        description: GitHub-hosted runner for a manual iOS CI benchmark
+        required: false
+        default: macos-26
+        type: choice
+        options:
+          - macos-26
+          - macos-26-intel
   push:
     branches: [main]
     paths:
@@ -32,18 +41,22 @@ env:
 jobs:
   ios-build:
     name: ios-build
-    runs-on: macos-26
-    timeout-minutes: 30
+    # PRs use macos-26. A maintainer may manually benchmark the documented
+    # Intel alternative before changing the default; the dispatch choice
+    # admits only the two documented GitHub-hosted labels.
+    runs-on: ${{ github.event.inputs.runner || 'macos-26' }}
+    timeout-minutes: 25
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@6b9c6063abd6010835644d4c2e1bef4cf5cd0fca # v6.0.1
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
 
       - name: Select Xcode and verify simulator
+        id: xcode
         shell: bash
         run: |
           set -euo pipefail
@@ -62,8 +75,23 @@ jobs:
           sudo xcode-select --switch "$selected"
           printf 'DEVELOPER_DIR=%s/Contents/Developer\n' "$selected" >> "$GITHUB_ENV"
           xcodebuild -version
+          printf 'cache_key=%s\n' "$(xcodebuild -version | shasum -a 256 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
           xcrun simctl list runtimes
           xcrun simctl list devices available | grep -F "${IOS_SIMULATOR_NAME} (" >/dev/null
+
+      - name: Restore SwiftPM source cache
+        id: swiftpm-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/kg-ios-swiftpm
+          key: ios-swiftpm-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.cache_key }}-${{ hashFiles('ios/BooksAndVocab.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+
+      - name: Prepare SwiftPM cache root
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/kg-ios-swiftpm"
+          printf 'KG_IOS_SWIFTPM_CACHE_DIR=%s/kg-ios-swiftpm\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - name: Build app and test targets
         env:
@@ -96,7 +124,7 @@ jobs:
 
       - name: Upload build evidence
         if: ${{ failure() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ios-build-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -106,10 +134,17 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      - name: Save SwiftPM source cache from trusted main
+        if: ${{ success() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.swiftpm-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/kg-ios-swiftpm
+          key: ${{ steps.swiftpm-cache.outputs.cache-primary-key }}
+
   ios-tests:
     name: ios-tests (${{ matrix.scope }})
-    runs-on: macos-26
-    timeout-minutes: 45
+    runs-on: ${{ github.event.inputs.runner || 'macos-26' }}
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -119,14 +154,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@6b9c6063abd6010835644d4c2e1bef4cf5cd0fca # v6.0.1
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
 
       - name: Select Xcode and verify simulator
+        id: xcode
         shell: bash
         run: |
           set -euo pipefail
@@ -145,8 +181,23 @@ jobs:
           sudo xcode-select --switch "$selected"
           printf 'DEVELOPER_DIR=%s/Contents/Developer\n' "$selected" >> "$GITHUB_ENV"
           xcodebuild -version
+          printf 'cache_key=%s\n' "$(xcodebuild -version | shasum -a 256 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
           xcrun simctl list runtimes
           xcrun simctl list devices available | grep -F "${IOS_SIMULATOR_NAME} (" >/dev/null
+
+      - name: Restore SwiftPM source cache
+        id: swiftpm-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/kg-ios-swiftpm
+          key: ios-swiftpm-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.cache_key }}-${{ hashFiles('ios/BooksAndVocab.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+
+      - name: Prepare SwiftPM cache root
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/kg-ios-swiftpm"
+          printf 'KG_IOS_SWIFTPM_CACHE_DIR=%s/kg-ios-swiftpm\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - name: Ensure simulator and export UDID
         shell: bash
@@ -211,7 +262,7 @@ jobs:
 
       - name: Upload test evidence
         if: ${{ failure() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ios-${{ matrix.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |

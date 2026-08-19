@@ -17,16 +17,17 @@ permissions:
 jobs:
   llm-eval:
     runs-on: ubuntu-latest
+    timeout-minutes: 3
     defaults:
       run:
         working-directory: lab/llm_eval
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Install uv
-        uses: astral-sh/setup-uv@6b9c6063abd6010835644d4c2e1bef4cf5cd0fca
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
       - name: Install frozen development environment
         run: uv sync --frozen --extra dev
       - name: Run LLM-eval CI contract

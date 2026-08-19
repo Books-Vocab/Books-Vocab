@@ -5,10 +5,13 @@ update_trigger: manual
 scope:
   - ops/ios_build.sh
   - ops/ios_test.sh
+  - ops/lib/ios_swiftpm_cache.sh
   - ops/lib/ios_ops_catalog.sh
   - ops/lib/ios_xctestrun_cache.sh
   - ops/ios_clean_derived_data.sh
-verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
+  - ios/BooksAndVocab.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+  - .github/workflows/ios-quality.yml
+verified_against: 8210e47aa53f8a2b03aafefadb7494098fa22cb1
 -->
 # iOS DerivedData 政策（多 worktree 環境）
 
@@ -21,6 +24,7 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 - **不要**自己呼叫不帶 `-derivedDataPath` 的 `xcodebuild`，也不要改 `ops/ios_build.sh` 移除該旗標。那會讓快取掉回 Xcode 全域預設位置，每個 worktree 路徑生一份孤兒。
 - build / test 共用 `/tmp/kg-ios-build.lock` 序列化，共享快取**不會**並行寫壞。
 - UITest 的截圖、video、UIreview、xcresult 是 agent 觀察產物，不是 DerivedData：視覺 run 預設進系統暫存的 run bundle 並帶 TTL；只有顯式 `--retain` 才進 `build/ios-report/retained/`。source tree 只保存 fixture、契約與小型 receipt。
+- GitHub-hosted iOS CI 另有**唯讀的 SwiftPM source cache**；它不是 DerivedData，也不與本機 `.cache/` 共用。PR 可還原，只有成功的 `main` push 會寫入。
 
 ## 問題：110G 孤兒洩漏
 
@@ -85,6 +89,20 @@ xcodebuild ... -derivedDataPath "$DERIVED_DATA_ROOT" ...
 | `run_ui_evidence.sh` / `ios_ui_run_many.py` 視覺產物 | 系統暫存的 run-scoped root（TTL）；顯式 `--retain` 才進 `build/ios-report/retained/` | Agent 觀察工具；永久狀態只保留小型 verdict、provenance 與必要 receipt |
 
 三份共享快取(build / test / release)都靠 `/tmp/kg-ios-build.lock` 同一把帶 FIFO ticket queue 的鎖序列化,不會並行寫壞；後到 waiter 不得繞過已排隊 predecessor，timeout/訊號會清理自己的 ticket，abandoned ticket 只在 PID 已死亡時由後續 waiter 清理。
+
+## GitHub-hosted SwiftPM source cache（2026-08-19）
+
+GitHub-hosted macOS runner 每次都是新的 VM；本機長存的 DerivedData 不能安全地搬過去，也不能拿它當 CI cache。為了只消掉可重用的依賴下載，`ios-quality` 將 SwiftPM 的 cloned sources 與 package cache 放在 `$RUNNER_TEMP/kg-ios-swiftpm`，並由 `ops/lib/ios_swiftpm_cache.sh` 透過下列 xcodebuild 旗標接入 build 與 `build-for-testing`：
+
+```text
+-clonedSourcePackagesDirPath <runner-temp>/kg-ios-swiftpm
+-packageCachePath <runner-temp>/kg-ios-swiftpm/package-cache
+-onlyUsePackageVersionsFromResolvedFile
+```
+
+`ios/BooksAndVocab.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved` 是版本真相，必須提交；缺檔或 cache root 落在專案內時 helper 直接 fail-closed。cache key 精確包含 cache schema、runner OS、arch、Xcode 指紋與該 lockfile 的 hash，**沒有** restore key，避免跨 Xcode／架構吃到不相容來源。每個 iOS job 都 restore；只有可信的、成功的 `main` push 中 `ios-build` job 可 save，PR 和測試 matrix 永遠不寫 cache。
+
+這個 cache 只保存公開套件的可重建原始碼與下載內容，不能放 token、簽署資料或 DerivedData。cold miss 仍是正確路徑，首次 PR 不得因尚未命中 cache 宣稱變快；要等 main 建立 cache 後，以後續 GitHub Actions run 的 `cache-hit` 與實際 timing 比較。
 
 ## 並行測試(2026-06-09 細粒度鎖 + 模擬器 pool)
 

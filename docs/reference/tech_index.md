@@ -8,7 +8,7 @@ scope:
   - ops/
   - lab/
   - .github/
-verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
+verified_against: 8210e47aa53f8a2b03aafefadb7494098fa22cb1
 -->
 # Technical Index
 
@@ -25,7 +25,7 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 | Local coordinator | `ops/worktree_registry.py`、`ops/worktree_orchestrate.py` | `./ops/test_ops.sh worktree` |
 | Docs control | `docs/registry.yml`、`ops/docs_impact.py`、`ops/docs_lint.sh` | `./ops/test_ops.sh docs-lint` |
 | GitHub intake/review | `.github/ISSUE_TEMPLATE/`、`.github/PULL_REQUEST_TEMPLATE.md` | GitHub Issue／PR |
-| CI | `.github/workflows/pr-gate.yml`（fast required + full confidence 聚合）、`.github/workflows/backend-quality.yml`、`.github/workflows/ios-quality.yml`、`.github/workflows/` | GitHub Actions checks；workflow `pr-gate` 的 branch protection check run=`required`，完整結果=`confidence` |
+| CI | `.github/workflows/pr-gate.yml`（3 分鐘 upstream + 1 分鐘聚合的 `required`，以及 nonblocking `confidence`）、`.github/workflows/backend-quality.yml`、`.github/workflows/ios-quality.yml`、`.github/workflows/` | GitHub Actions checks；`required` 是 branch protection merge gate，`confidence` 是完整結果；iOS hosted workflow 只快取 lockfile-pinned SwiftPM sources，不快取 DerivedData |
 
 ## Backend routes and data
 
