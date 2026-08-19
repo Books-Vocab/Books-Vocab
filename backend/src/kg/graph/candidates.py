@@ -123,19 +123,28 @@ class _CandidatesMixin:
     # ------------------------------------------------------------------
 
     def add_pending_judge(self, card_ids: list[str] | str) -> None:
-        """Add card ID(s) to the pending judge set. Dedup by set semantics."""
+        """Add card ID(s) to the pending judge set. Dedup by set semantics.
+
+        Persist the prospective state before committing new IDs to memory. If
+        the flush fails, the in-memory queue remains at its last durable state.
+        The pop lock serializes this transaction with pops, which also flush
+        outside ``_lock`` before committing their own state changes.
+        """
         if isinstance(card_ids, str):
             card_ids = [card_ids]
-        with self._lock:
-            before = len(self._pending_judge)
-            self._pending_judge.update(card_ids)
-            # Register every id as managed by this instance so a later merge
-            # honours a pop/removal instead of resurrecting it from disk.
-            self._known_pending_judge.update(card_ids)
-            if len(self._pending_judge) == before:
-                return
-            snapshot = sorted(self._pending_judge)
-        self._flush_pending_judge(snapshot)
+        with self._pending_judge_pop_lock:
+            with self._lock:
+                new_ids = set(card_ids) - self._pending_judge
+                if not new_ids:
+                    return
+                snapshot = sorted(self._pending_judge | new_ids)
+            self._flush_pending_judge(snapshot)
+            with self._lock:
+                self._pending_judge.update(new_ids)
+                # Register every successfully persisted id as managed by this
+                # instance so a later merge honours a pop/removal instead of
+                # resurrecting it from disk.
+                self._known_pending_judge.update(new_ids)
 
     def pop_pending_judge(self) -> list[str]:
         """Get and clear all pending judge card IDs. Returns sorted list.
