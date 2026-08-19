@@ -50,8 +50,38 @@ jobs:
       - name: Run repository gate
         run: ./ops/test_ops.sh docs-lint worktree context-routing github-workflows
 
+  changed-paths:
+    name: classify confidence scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      backend: ${{ steps.plan.outputs.backend }}
+      ops: ${{ steps.plan.outputs.ops }}
+      ios: ${{ steps.plan.outputs.ios }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Classify non-blocking confidence scope
+        id: plan
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == 'pull_request' ]]; then
+            ./ops/ci_scope_router.sh --base "$BASE_SHA" --head "$HEAD_SHA" --format github-output >> "$GITHUB_OUTPUT"
+          else
+            ./ops/ci_scope_router.sh --all --format github-output >> "$GITHUB_OUTPUT"
+          fi
+
   backend-quality:
     name: backend-quality
+    needs: changed-paths
+    if: ${{ needs.changed-paths.outputs.backend == 'true' }}
     uses: ./.github/workflows/backend-quality.yml
 
   llm-eval:
@@ -68,10 +98,14 @@ jobs:
 
   ops-suite:
     name: ops-suite
+    needs: changed-paths
+    if: ${{ needs.changed-paths.outputs.ops == 'true' }}
     uses: ./.github/workflows/ops-suite.yml
 
   ios-quality:
     name: ios-quality
+    needs: changed-paths
+    if: ${{ needs.changed-paths.outputs.ios == 'true' }}
     uses: ./.github/workflows/ios-quality.yml
 
   required:
@@ -95,17 +129,15 @@ jobs:
   confidence:
     name: confidence
     if: ${{ always() }}
-    needs: [repo-gate, backend-quality, llm-eval, design-system, ui-quality-gate, ops-suite, ios-quality]
+    needs: [changed-paths, repo-gate, backend-quality, llm-eval, design-system, ui-quality-gate, ops-suite, ios-quality]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Report the complete validation fan-out
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
+          PLAN_JSON: >-
+            {"backend":"${{ needs.changed-paths.outputs.backend }}","ops":"${{ needs.changed-paths.outputs.ops }}","ios":"${{ needs.changed-paths.outputs.ios }}"}
         run: |
           set -euo pipefail
-          printf '%s\n' "$NEEDS_JSON" | jq -r 'to_entries[] | "\(.key)=\(.value.result)"'
-          if jq -e 'to_entries | any(.value.result != "success")' <<<"$NEEDS_JSON" >/dev/null; then
-            echo 'full confidence suite has a failure; this is intentionally non-blocking for PR merge' >&2
-            exit 1
-          fi
+          ./ops/ci_confidence_verdict.sh --plan "$PLAN_JSON" --needs "$NEEDS_JSON"

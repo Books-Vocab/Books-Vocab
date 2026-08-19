@@ -21,7 +21,7 @@ scope:
   - ops/lib/streaming_command.py
   - ops/worktree_registry.py
   - ops/worktree_orchestrate.py
-verified_against: 8ec4780950c73b6006649c5c08e69c05962abfc1
+verified_against: 2a7930c04f661c266ce05b3568f375e1db2a39f1
 -->
 # GitHub-native Delivery Model
 
@@ -132,13 +132,14 @@ CM 只在 PR 的 required checks、review、文件影響與安全條件滿足後
 
 ### Required merge gate 與 confidence fan-out
 
-`.github/workflows/pr-gate.yml` 的 workflow `pr-gate` 會產生短、可重現的 `required` check run；它只回答這個 PR 是否滿足 repository 基線，不代表所有受影響 domain 都已完整驗證。同一 workflow 的 `confidence` check run 提供完整的 backend／iOS／UI／ops fan-out；它是 nonblocking confidence evidence，不得被 `required` 的綠燈取代。
+`.github/workflows/pr-gate.yml` 的 workflow `pr-gate` 會產生短、可重現的 `required` check run；它只回答這個 PR 是否滿足 repository 基線，不代表所有受影響 domain 都已完整驗證。同一 workflow 的 `confidence` check run 提供完整的**受影響** backend／iOS／UI／ops fan-out；它是 nonblocking confidence evidence，不得被 `required` 的綠燈取代。慢速 backend／ops／iOS lane 由可測的 changed-path policy 選擇：明確無關才會顯示 `skipped`，未知或改動 routing policy 時 fail-closed 為全跑；被選中的 lane 必須 `success`。
 
 因此固定採以下判讀：
 
 - `required=success` 才是 merge 的最低 Actions 條件；仍須滿足 CR、DS、branch rules 與其他安全條件。
-- `confidence` 失敗、缺失或未完成時，PR 不得宣稱「完整綠」；也不得進入受影響的 release／deploy 路徑。
-- confidence 結果是 GitHub check run 的證據，不在 repo 內另建本地 confidence／merge 狀態；若要重跑，針對同一 PR HEAD 重新觸發 Actions。
+- `confidence` 失敗、缺失、非預期 `skipped`、取消或未完成時，PR 不得宣稱「完整綠」；也不得進入受影響的 release／deploy 路徑。
+- CM 只有在 GitHub 已顯示 exact merged `main` 對每個被選中的慢速 surface 啟動等價驗證時，才可取消已被取代的 PR confidence；取消本身不是 PASS，完整結論以該 `main` run 的 terminal 結果為準。
+- confidence 結果是 GitHub check run 的證據，不在 repo 內另建本地 confidence／merge 狀態；若要重跑，針對同一 PR HEAD 或 exact `main` 重新觸發 Actions。
 
 ## 本機 coordinator 的窄責任
 
