@@ -69,6 +69,14 @@ def _seed_book(api, client_book_id: str = "book-1", title: str = "Pride and Prej
     return resp.json()["id"]
 
 
+def _set_fake_object_storage_credentials(monkeypatch) -> None:
+    """Keep presign tests independent of a developer or CI AWS session."""
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "kg-test-access-key")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "kg-test-secret-key")
+    monkeypatch.setenv("AWS_SESSION_TOKEN", "kg-test-session-token")
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+
+
 # ---------------------------------------------------------------------------
 # asset-upload
 # ---------------------------------------------------------------------------
@@ -131,9 +139,10 @@ def test_asset_upload_rejects_oversize_asset(isolated_api):
     assert r.status_code == 400, r.text
 
 
-def test_asset_upload_object_storage_when_bucket_configured(isolated_api):
+def test_asset_upload_object_storage_when_bucket_configured(isolated_api, monkeypatch):
     """With a bucket configured, the endpoint mints a presigned PUT target and
     records the object key on the book row."""
+    _set_fake_object_storage_credentials(monkeypatch)
     _swap_settings(
         KGSettings(
             data_dir=isolated_api.data_dir,
@@ -187,9 +196,10 @@ def test_asset_download_requires_auth(isolated_api):
     assert r.status_code == 401, r.text
 
 
-def test_asset_download_redirects_to_presigned_url_when_object_stored(isolated_api):
+def test_asset_download_redirects_to_presigned_url_when_object_stored(isolated_api, monkeypatch):
     """After an object-storage upload is registered, download issues a 307 to a
     presigned GET URL."""
+    _set_fake_object_storage_credentials(monkeypatch)
     _swap_settings(
         KGSettings(
             data_dir=isolated_api.data_dir,

@@ -56,15 +56,22 @@ def make_sqlite_engine(
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    engine = create_engine(f"sqlite:///{path.absolute()}")
     timeout = int(busy_timeout_ms)
+    engine = create_engine(
+        f"sqlite:///{path.absolute()}",
+        connect_args={"timeout": timeout / 1000},
+    )
 
     @event.listens_for(engine, "connect")
     def _configure_connection(dbapi_conn, _record):  # noqa: ANN001
         cur = dbapi_conn.cursor()
+        # Install the busy handler before WAL negotiation.  Two independent
+        # processes can open the same legacy file at once; journal_mode=WAL
+        # itself needs the writer lock and otherwise bypasses our intended
+        # wait contract.
+        cur.execute(f"PRAGMA busy_timeout={timeout}")
         cur.execute("PRAGMA journal_mode=WAL")
         cur.execute("PRAGMA synchronous=NORMAL")
-        cur.execute(f"PRAGMA busy_timeout={timeout}")
         cur.close()
 
     return engine
