@@ -47,6 +47,36 @@ class TestPendingJudgeDedup:
         assert set(popped) == {"card_a"}
 
 
+class TestAddPendingJudgeFlushFailure:
+    def _make_store(self, tmp_path, pj_path):
+        return GraphStore(
+            links_path=tmp_path / "links.json",
+            candidates_path=tmp_path / "candidates.json",
+            blocked_path=tmp_path / "blocked.json",
+            pending_judge_path=pj_path,
+        )
+
+    def test_flush_failure_keeps_memory_and_disk_consistent(self, tmp_path):
+        pj_path = tmp_path / "pending_judge.json"
+        store = self._make_store(tmp_path, pj_path)
+        store.add_pending_judge(["card_a"])
+
+        def boom(snapshot):
+            raise OSError("disk full")
+
+        store._flush_pending_judge = boom
+
+        with pytest.raises(OSError):
+            store.add_pending_judge(["card_b"])
+
+        mem = set(store._pending_judge)
+        disk = set(json.loads(pj_path.read_text()))
+        assert mem == disk == {"card_a"}
+
+        reloaded = self._make_store(tmp_path, pj_path)
+        assert reloaded._pending_judge == {"card_a"}
+
+
 class TestPendingJudgePersistence:
     def test_survives_reload(self, tmp_path):
         pj_path = tmp_path / "pending_judge.json"
