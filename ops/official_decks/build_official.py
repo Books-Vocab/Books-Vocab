@@ -17,6 +17,11 @@ Canonical invocation is the script form, run via uv from the backend venv:
 
     (cd backend && uv run python ../ops/official_decks/build_official.py check --json)
 
+When ``--json`` receives an unreadable, non-UTF-8, or malformed JSON spec, it
+still exits nonzero but emits one ``mode=error`` object. JSON parse failures add
+``route``, ``file``, ``line``, and ``column`` so callers can diagnose the input
+without parsing a Python traceback.
+
 ``emit`` without ``--commit`` validates the spec and prints the plan with zero
 disk writes. ``--commit`` snapshots the whole data-dir (``backup_world``) BEFORE
 writing (§3.5), then upserts idempotently. ``check`` emits each committed spec
@@ -61,6 +66,25 @@ _CATEGORIES = frozenset({"language", "exam", "phrase", "custom"})
 
 class SpecError(ValueError):
     """A committed spec is malformed. Message is operator-facing."""
+
+
+class SpecInputError(SpecError):
+    """A spec file could not be read, decoded, or parsed by the CLI."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        route: str,
+        path: str,
+        line: int | None = None,
+        column: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.route = route
+        self.path = path
+        self.line = line
+        self.column = column
 
 
 class GitIndexUnavailable(RuntimeError):
@@ -422,8 +446,48 @@ def missing_specs() -> list[str]:
     return spec_index_drift()["missing"]
 
 
+def _line_and_column(raw: bytes, offset: int) -> tuple[int, int]:
+    """Return a human-readable location for a byte offset in an input file."""
+    prefix = raw[:offset]
+    return prefix.count(b"\n") + 1, len(prefix.rsplit(b"\n", 1)[-1]) + 1
+
+
 def _load(path: str) -> dict:
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    path_text = str(path)
+    try:
+        raw = Path(path).read_bytes()
+    except FileNotFoundError:
+        # Preserve the existing missing-file error contract in main().
+        raise
+    except OSError as exc:
+        raise SpecInputError(
+            f"could not read spec: {exc}",
+            route="official-deck.spec.read",
+            path=path_text,
+        ) from exc
+
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        line, column = _line_and_column(raw, exc.start)
+        raise SpecInputError(
+            f"invalid UTF-8: {exc.reason}",
+            route="official-deck.spec.decode",
+            path=path_text,
+            line=line,
+            column=column,
+        ) from exc
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise SpecInputError(
+            f"invalid JSON: {exc.msg}",
+            route="official-deck.spec.parse",
+            path=path_text,
+            line=exc.lineno,
+            column=exc.colno,
+        ) from exc
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -458,6 +522,20 @@ def _print(payload: dict, *, json_mode: bool) -> None:
         if k == "mode":
             continue
         print(f"  {k}: {v}")
+
+
+def _input_error_payload(error: SpecInputError) -> dict:
+    payload = {
+        "mode": "error",
+        "error": str(error),
+        "route": error.route,
+        "file": error.path,
+    }
+    if error.line is not None:
+        payload["line"] = error.line
+    if error.column is not None:
+        payload["column"] = error.column
+    return payload
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -511,6 +589,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  ✗ in the git index but NOT on disk — it ships unvalidated; "
                       f"`git rm` it or restore the file: {path}")
         return 1 if (drift_any or untracked or missing) else 0
+    except SpecInputError as exc:
+        _print(_input_error_payload(exc), json_mode=json_mode)
+        return 1
     except SpecError as exc:
         _print({"mode": "error", "error": str(exc)}, json_mode=json_mode)
         return 1
