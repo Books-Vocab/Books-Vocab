@@ -16,6 +16,26 @@ from kg.rate_limit import RateLimiter
 
 class TestRateLimiterGC:
 
+    def test_active_key_window_survives_full_cap(self):
+        """A full table must not reset an active key's rate-limit window."""
+        async def run():
+            limiter = RateLimiter(
+                max_requests=1,
+                window_seconds=60,
+                max_keys=2,
+                gc_interval=10_000,
+            )
+            results = [
+                await limiter.is_allowed(key)
+                for key in ("victim", "noise-a", "noise-b", "victim")
+            ]
+            return results, list(limiter._requests)
+
+        results, keys = asyncio.run(run())
+
+        assert results == [True, True, False, False]
+        assert keys == ["noise-a", "victim"]
+
     def test_expired_keys_are_swept_under_size_cap(self):
         """Adding many unique expired keys should not blow the dict past
         the configured size cap."""
@@ -70,9 +90,8 @@ class TestRateLimiterGC:
         assert present, "Active key must not be evicted by GC"
         assert count > 0, "Active key deque should still have entries"
 
-    def test_size_cap_evicts_lru_when_no_expired(self):
-        """When the dict reaches the hard size cap and no entries are
-        expired, the least-recently-used key is evicted."""
+    def test_size_cap_rejects_new_key_when_no_expired(self):
+        """When all slots are active, new keys fail closed at the cap."""
         async def run():
             limiter = RateLimiter(
                 max_requests=5,
@@ -80,17 +99,15 @@ class TestRateLimiterGC:
                 max_keys=10,
                 gc_interval=1,
             )
-            for i in range(20):
-                await limiter.is_allowed(f"k-{i}")
-            return len(limiter._requests), set(limiter._requests.keys())
+            results = [
+                await limiter.is_allowed(f"k-{i}") for i in range(20)
+            ]
+            return results, len(limiter._requests), set(limiter._requests.keys())
 
-        size, keys = asyncio.run(run())
+        results, size, keys = asyncio.run(run())
         assert size <= 10, f"Dict must respect max_keys, got {size}"
-        # The most recent keys must still be present
-        assert "k-19" in keys
-        assert "k-18" in keys
-        # The oldest keys must have been evicted
-        assert "k-0" not in keys
+        assert results == [True] * 10 + [False] * 10
+        assert keys == {f"k-{i}" for i in range(10)}
 
     def test_rate_limiter_gc_evicts_expired_entries(self):
         """Loading 100 distinct user entries and advancing time past the
@@ -126,9 +143,8 @@ class TestRateLimiterGC:
             f"GC must evict all 100 expired entries, only trigger should remain, got {remaining}"
         )
 
-    def test_rate_limiter_size_cap_evicts_oldest(self):
-        """With max_keys=10, admitting 15 distinct active keys must evict
-        the 5 oldest (LRU) while preserving the 10 most recent."""
+    def test_rate_limiter_size_cap_preserves_oldest_active_windows(self):
+        """With max_keys=10, later active keys are rejected, not evicted."""
         async def run():
             limiter = RateLimiter(
                 max_requests=5,
@@ -136,18 +152,15 @@ class TestRateLimiterGC:
                 max_keys=10,
                 gc_interval=10_000,  # disable GC for clarity
             )
-            for i in range(15):
-                await limiter.is_allowed(f"user-{i}")
-            return len(limiter._requests), list(limiter._requests.keys())
+            results = [
+                await limiter.is_allowed(f"user-{i}") for i in range(15)
+            ]
+            return results, len(limiter._requests), list(limiter._requests.keys())
 
-        size, keys = asyncio.run(run())
+        results, size, keys = asyncio.run(run())
         assert size == 10, f"Dict must hold exactly max_keys=10, got {size}"
-        # The 5 oldest (user-0..user-4) must have been evicted
-        for i in range(5):
-            assert f"user-{i}" not in keys, f"Oldest key user-{i} should be evicted"
-        # The 10 newest (user-5..user-14) must remain
-        for i in range(5, 15):
-            assert f"user-{i}" in keys, f"Recent key user-{i} must survive"
+        assert results == [True] * 10 + [False] * 5
+        assert keys == [f"user-{i}" for i in range(10)]
 
     def test_rate_limiter_concurrent_increment_no_lost_count(self):
         """Concurrent coroutines incrementing the same key must not lose
