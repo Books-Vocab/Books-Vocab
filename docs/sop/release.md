@@ -15,7 +15,7 @@ verified_against: 202119f69a4be584f6bacf80b11a12a7bb8579c5
 
 ## Mental model
 
-GitHub `main` is the merged product truth. A PR merge records code review and required checks; it is not by itself permission to publish or deploy. A release is an explicit, traceable action with a version, target surface, approval, health verification and rollback path.
+[`docs/reference/delivery_model.md`](../reference/delivery_model.md) 定義 CM 對 codebase、merge 與 release／deploy 邊界的責任。GitHub `main` is the merged product truth. A PR merge records code review and required checks; it is not by itself permission to publish or deploy. A release is an explicit, traceable action with a version, target surface, approval, health verification and rollback path.
 
 | Concern | Source of truth | Entry |
 |---|---|---|
@@ -27,7 +27,7 @@ GitHub `main` is the merged product truth. A PR merge records code review and re
 
 ## Required sequence
 
-1. Confirm the PR is merged to the intended `main` and the merged SHA is known.
+1. CM confirms the PR is merged to the intended `main` and the merged SHA is known.
 2. Run release status and inspect changed surfaces, migrations, configuration and compatibility risks.
 3. Select backend, iOS, or both. Do not publish a surface that was not explicitly selected.
 4. Run the release entrypoint in dry-run mode first. Confirm target, version, approval and rollback candidate.

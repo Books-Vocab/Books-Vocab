@@ -11,17 +11,19 @@ verified_against: 202119f69a4be584f6bacf80b11a12a7bb8579c5
 -->
 # Pull Request Review SOP
 
-GitHub PR 是變更的唯一 review surface。Local review output 可以輔助診斷，但不能取代 PR conversation、required checks 或 branch protection。
+[`docs/reference/delivery_model.md`](../reference/delivery_model.md) 定義 CM、IM、Worker、Issue Solver、CR 與 DS 的責任。GitHub PR 是變更的唯一 review surface；local review output 可以輔助診斷，但不能取代 PR conversation、required checks 或 branch protection。
 
 ## PR 必須回答
 
-- 這個 Issue 的哪個問題被處理，非目標是什麼？
+- 這是 direct assignment 還是 Issue work？若有 Issue，哪個問題被處理，非目標是什麼？
 - 變更涉及哪些產品面、資料／設定／安全邊界？
 - 哪些測試或 checks 實際跑過，命令與 exit status 是什麼？
 - 部署、migration、CloudKit、App Store 或 rollback 是否受影響？
 - 若 review 不接受，最小回退或修正路徑是什麼？
 
-## Reviewer 順序
+PR 不是只有 code diff：CR 的 review 結論、DS 的文件 impact、Actions required checks 與 CM 的 merge 決定都應留在 GitHub PR／repository rules。它們不能被改寫成 local review cycle、merge queue 或 repo 內自製狀態。
+
+## CR 順序
 
 1. 先確認 PR base、HEAD、Issue 關聯與 diff 範圍。
 2. 先看行為與資料安全，再看可維護性、測試 seam、文件影響與 UI／i18n 契約。

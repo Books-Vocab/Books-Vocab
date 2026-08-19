@@ -11,7 +11,7 @@ verified_against: 202119f69a4be584f6bacf80b11a12a7bb8579c5
 -->
 # Documentation Sync SOP
 
-文件只記錄穩定的產品、技術、操作與安全知識；GitHub Issue／PR 記錄一次變更的討論與決策。不要把 Issue、PR、優先序或工作樹狀態複製到 docs。
+文件只記錄穩定的產品、技術、操作與安全知識；GitHub Issue／PR 記錄一次變更的討論與決策。DS（Docs Steward）對每個 PR 判斷文件 impact 並維護真正的 SoT。不要把 Issue、PR、優先序或工作樹狀態複製到 docs。
 
 ## Registry contract
 
@@ -24,7 +24,7 @@ verified_against: 202119f69a4be584f6bacf80b11a12a7bb8579c5
 3. 更新文件的最小必要段落，避免把程式碼逐字抄進 SOP。
 4. 對 contract/reference/policy/runbook 檢查 `verified_against` 是可達的 code commit；不要用未驗證的未來 SHA。
 5. 跑 `./ops/docs_lint.sh`；改 registry 時額外跑 `./ops/docs_lint.sh --registry` 與 coverage。
-6. 文件與 code 同一 PR 交付；reviewer 以 diff 判斷是否閉環。
+6. 文件與 code 同一 PR 交付；DS 與 CR 以 PR diff 判斷是否閉環。文件同步不建立本地工作項目、PR 狀態或另一個 review cycle。
 
 ## Generated and historical material
 

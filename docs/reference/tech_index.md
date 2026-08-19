@@ -21,6 +21,7 @@ verified_against: 202119f69a4be584f6bacf80b11a12a7bb8579c5
 | iOS app | `ios/BooksAndVocab/` | `./ops/ios_ops.sh build/test` |
 | Backend | `backend/src/kg/` | `cd backend && uv run --locked python -m pytest` |
 | Podcast／LLM lab | `lab/podcast/`、`lab/llm_eval/` | 各自 README／`uv run` entrypoint |
+| GitHub-native delivery model | `docs/reference/delivery_model.md` | GitHub Issue／Project／PR／Actions／repository rules |
 | Local coordinator | `ops/worktree_registry.py`、`ops/worktree_orchestrate.py` | `./ops/test_ops.sh worktree` |
 | Docs control | `docs/registry.yml`、`ops/docs_impact.py`、`ops/docs_lint.sh` | `./ops/test_ops.sh docs-lint` |
 | GitHub intake/review | `.github/ISSUE_TEMPLATE/`、`.github/PULL_REQUEST_TEMPLATE.md` | GitHub Issue／PR |

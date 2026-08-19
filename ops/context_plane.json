@@ -4,28 +4,28 @@
   "registry": "docs/registry.yml",
   "roles": {
     "manager": {
-      "sources": ["CLAUDE.md", "docs/reference/agent_context.md", "docs/runbook/system.md"],
+      "sources": ["CLAUDE.md", "docs/reference/delivery_model.md", "docs/reference/agent_context.md", "docs/runbook/system.md"],
       "next_action": "read the GitHub Issue/PR and confirm Scope before mutation"
     },
     "contributor": {
-      "sources": ["CLAUDE.md", "docs/reference/agent_context.md", "docs/reference/tech_index.md"],
+      "sources": ["CLAUDE.md", "docs/reference/delivery_model.md", "docs/reference/agent_context.md", "docs/reference/tech_index.md"],
       "next_action": "work inside the declared branch/worktree Scope and prepare a PR"
     },
     "reviewer": {
-      "sources": ["docs/reference/agent_context.md", "docs/sop/review_discipline.md"],
+      "sources": ["docs/reference/delivery_model.md", "docs/reference/agent_context.md", "docs/sop/review_discipline.md"],
       "next_action": "review the current PR diff and fresh required checks"
     },
     "docs-steward": {
-      "sources": ["docs/reference/agent_context.md", "docs/sop/doc_sync.md", "docs/registry.yml"],
+      "sources": ["docs/reference/delivery_model.md", "docs/reference/agent_context.md", "docs/sop/doc_sync.md", "docs/registry.yml"],
       "next_action": "run docs impact and docs lint for the changed surface"
     },
     "release-operator": {
-      "sources": ["docs/sop/release.md", "docs/sop/deploy.md", "docs/policy/safety.md"],
+      "sources": ["docs/reference/delivery_model.md", "docs/sop/release.md", "docs/sop/deploy.md", "docs/policy/safety.md"],
       "next_action": "confirm explicit approval, target and rollback candidate before writing"
     }
   },
   "intents": {
-    "delivery": {"skill": "worktree-flow", "sources": ["docs/runbook/system.md"]},
+    "delivery": {"skill": "worktree-flow", "sources": ["docs/reference/delivery_model.md", "docs/runbook/system.md"]},
     "review": {"skill": "review", "sources": ["docs/sop/review_discipline.md"]},
     "docs": {"skill": "kg-docs-control-plane", "sources": ["docs/sop/doc_sync.md"]},
     "release": {"skill": "source-command-release", "sources": ["docs/sop/release.md"]},

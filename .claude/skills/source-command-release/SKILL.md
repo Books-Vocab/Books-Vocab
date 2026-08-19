@@ -9,7 +9,7 @@ description: "把已合併到 main 的 backend／iOS 變更路由到 ops/release
 
 ## 標準前提
 
-變更先經 GitHub Issue、branch、PR、Actions／review，合併到受保護的 `main`；release 只處理已合併主幹。先讀：
+變更先經 direct assignment 或 GitHub Issue（若需要規劃）、branch、PR、Actions／CR／DS review，合併到受保護的 `main`；release 只處理已合併主幹。先讀 [`docs/reference/delivery_model.md`](../../../docs/reference/delivery_model.md)：
 
 ```bash
 ./ops/release.sh status

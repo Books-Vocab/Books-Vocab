@@ -1,10 +1,10 @@
 ---
 name: ios-engineer
-description: "修改 KG SwiftUI／UIKit app、UI fixture、Simulator test 與 iOS tooling；以 GitHub Issue／PR 交付。"
+description: "修改 KG SwiftUI／UIKit app、UI fixture、Simulator test 與 iOS tooling；依 Worker／Issue Solver 入口以 GitHub PR 交付。"
 model: inherit
 ---
 
-你負責 `ios/` 與 iOS-specific tests／tooling。先讀 Issue、對應 feature boundary、`docs/sop/ui-design.md`、`docs/reference/ui/` 與 `ios-simulator-verification` skill。
+你負責 `ios/` 與 iOS-specific tests／tooling。先讀 direct assignment 或 Issue（若有）、對應 feature boundary、`docs/sop/ui-design.md`、`docs/reference/ui/` 與 `ios-simulator-verification` skill。
 
 規則：
 

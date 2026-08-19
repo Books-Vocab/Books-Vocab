@@ -4,6 +4,7 @@ authority: SoT
 update_trigger: agent_context_changed
 scope:
   - CLAUDE.md
+  - docs/reference/delivery_model.md
   - .claude/agents/
   - .claude/skills/
   - docs/registry.yml
@@ -14,25 +15,27 @@ verified_against: 202119f69a4be584f6bacf80b11a12a7bb8579c5
 -->
 # Agent Context Index
 
-這份索引只回答兩個問題：目前工作應由誰負責，以及下一步應讀哪個 SoT。產品語義仍由產品文件與程式碼擁有，不在這裡重複。
+這份索引只回答兩個問題：目前工作應由誰負責，以及下一步應讀哪個 SoT。GitHub-native 的角色與兩條工作路徑以 [`delivery_model.md`](delivery_model.md) 為準；產品語義仍由產品文件與程式碼擁有，不在這裡重複。
 
 ## 角色
 
-- **Manager**：決定本輪範圍、批准本機 coordinator 的高風險動作，並在 GitHub 上管理 PR／merge／release 邊界。
-- **Contributor**：在一個明確 Issue、branch 與 worktree Scope 內修改產品或測試，交付 commit、驗證結果與 PR 素材。
-- **Reviewer**：以 PR diff、required checks、測試證據和安全影響做獨立審查；結果留在 GitHub PR。
-- **Docs steward**：只維護 registry、文件 metadata、impact 與 docs lint，不建立工作項目資料庫。
-- **Release operator**：依 `docs/sop/release.md`、`docs/sop/deploy.md` 與安全 wrapper 執行批准後的發版／回滾。
+- **CM（Codebase Manager）**：管理 `main`、PR 優先序、merge、release／deploy 與 rollback 邊界。
+- **IM（Issues Manager）**：管理 GitHub Issues 的收件、排序與派工；不合併 code。直接指派可跳過 Issue。
+- **Worker**：接受 User／IM 直接指派，在 branch/worktree 實作並提交 PR。
+- **Issue Solver**：接受已進入 GitHub Issue 流程的工作，在 branch/worktree 實作並提交 PR。
+- **CR（Code Reviewer）**：跨所有 PR 審查正確性、測試、回歸、架構與安全；結果留在 PR。
+- **DS（Docs Steward）**：跨所有 PR 維護文件 impact、registry、metadata、SoT 與 docs lint。
+- **Release operator**：CM 所管理的 release execution adapter，依 `docs/sop/release.md`、`docs/sop/deploy.md` 與安全 wrapper 執行已批准的發版／回滾。
 
-角色是 context routing，不是權限系統。真正的權限來自 GitHub repository rules、branch protection、Actions environment approval、production wrapper 與帳號本身。
+角色是 context routing，不是權限系統。現有 machine IDs 為相容性映射：`manager` 承載 CM／IM bounded context、`contributor` 承載 Worker／Issue Solver、`reviewer` 對應 CR、`docs-steward` 對應 DS、`release-operator` 對應 release execution。真正的權限來自 GitHub repository rules、branch protection、Actions environment approval、production wrapper 與帳號本身。
 
 ## 啟動順序
 
 1. 先確認 repo、branch、HEAD、工作樹 dirty state 與 active worktree ownership。
-2. 讀 GitHub Issue／PR 的目標與 acceptance，再建立或確認 structured Scope。
+2. 判斷工作入口：直接指派讀 User／IM 的 assignment；Issue work 讀 GitHub Issue／Project 的目標與 acceptance。兩者都確認 branch 與 structured Scope。
 3. 依變更面讀 `docs/registry.yml` 的 SoT；不確定 endpoint、schema、env、deployment 或 UI 狀態時，不用記憶補空白。
 4. 執行最小充分驗證；若是長操作，保留可讀 heartbeat 與完整 log。
-5. 以 commit + PR 交付。PR 是討論、審查、checks 與 merge 的唯一交付紀錄。
+5. 以 commit + PR 交付。PR 是所有 code change 的討論、CR／DS、checks 與 merge 交付紀錄。
 
 ## SoT 導航
 
@@ -42,15 +45,16 @@ verified_against: 202119f69a4be584f6bacf80b11a12a7bb8579c5
 | endpoint、模組、env、ops 入口 | `docs/reference/tech_index.md` |
 | 文件 owner、trigger、impact | `docs/registry.yml`、`./ops/docs_impact.py` |
 | worktree ownership 與 Scope | `ops/worktree_registry.py`、`ops/lib/worktree_scope.py` |
+| GitHub-native 角色、入口與 PR 收斂 | `docs/reference/delivery_model.md` |
 | CI／PR checks | `.github/workflows/`、`docs/sop/review_discipline.md` |
 | 部署、批准、rollback | `docs/sop/deploy.md`、`docs/sop/release.md`、`docs/policy/safety.md` |
 | iOS UI／Simulator | `docs/sop/ui-design.md`、對應 feature boundary、iOS verification skill |
 
 ## Scope 與證據
 
-Scope 是檔案 ownership 與 collision 判定，不是產品需求本身。產品需求、優先序與 acceptance 在 GitHub Issue；實作意圖與驗證摘要在 PR。若 Issue、Scope、diff 或測試結果互相矛盾，停止宣稱完成並回報具體衝突。
+Scope 是檔案 ownership 與 collision 判定，不是產品需求本身。Issue work 的需求、優先序與 acceptance 在 GitHub Issue；direct assignment 的目標與 acceptance 在 assignment／PR 中具名寫出；兩者的實作意圖與驗證摘要都在 PR。若 assignment、Issue、Scope、diff 或測試結果互相矛盾，停止宣稱完成並回報具體衝突。
 
-最小 hand-back 包含：Issue／PR opaque ID（若已有）、branch、worktree path、exact HEAD、Scope、執行過的命令與 exit status、尚未解的 blocker。它是本機交接證據，不取代 GitHub PR。
+最小 hand-back 包含：Issue／PR opaque ID（若已有）、direct assignment 摘要（若無 Issue）、branch、worktree path、exact HEAD、Scope、執行過的命令與 exit status、尚未解的 blocker。它是本機交接證據，不取代 GitHub PR。
 
 ## 路由輸出
 

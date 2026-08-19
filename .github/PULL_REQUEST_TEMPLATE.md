@@ -1,10 +1,16 @@
+## Entry path
+
+- [ ] Worker — direct assignment from User / IM (no Issue required)
+- [ ] Issue Solver — GitHub Issue flow
+
 ## Issue
 
+<!-- Issue Solver flow: use `Closes #<number>` when this PR completes the Issue. Direct assignment may leave this blank. -->
 Closes #
 
 ## Why
 
-<!-- 用 1–3 句說明問題、影響與這個 PR 的結果。Issue 保留需求與 acceptance；PR 保留實作與證據。 -->
+<!-- 用 1–3 句說明 assignment 或 Issue 的問題、影響與這個 PR 的結果。Issue 保留規劃與 acceptance；PR 保留實作與證據。 -->
 
 ## Scope
 
@@ -22,6 +28,7 @@ Closes #
 ## Docs and safety
 
 - [ ] I checked `docs/registry.yml` and ran the relevant docs impact/lint gate.
+- [ ] CR review and DS document impact are represented in this PR; incomplete review is not ready.
 - [ ] I preserved production approval, health checks, and rollback behavior when applicable.
 - [ ] Any follow-up is a separate GitHub Issue, not a new local tracking record.
 

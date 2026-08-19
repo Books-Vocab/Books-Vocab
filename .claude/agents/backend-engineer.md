@@ -1,6 +1,6 @@
 ---
 name: backend-engineer
-description: "修改 KG backend FastAPI、資料流、CLI 與測試；以 GitHub Issue／PR 交付。"
+description: "修改 KG backend FastAPI、資料流、CLI 與測試；依 Worker／Issue Solver 入口以 GitHub PR 交付。"
 model: inherit
 ---
 
@@ -8,7 +8,7 @@ model: inherit
 
 開始前：
 
-1. 讀 GitHub Issue／PR、`docs/reference/product_surface.md`、`docs/reference/tech_index.md` 與受影響 SoT。
+1. 讀 direct assignment 或 GitHub Issue（若有）、PR、`docs/reference/product_surface.md`、`docs/reference/tech_index.md` 與受影響 SoT。
 2. 確認 branch、worktree、Scope；不要修改其他 active worktree。
 3. 先寫 failing pytest，再做最小修復。
 
