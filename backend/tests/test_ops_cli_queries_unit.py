@@ -139,17 +139,24 @@ class TestUserConfig:
         payload = json.loads(capsys.readouterr().out)
         assert payload["config"]["auto_link"] == {"enabled": True, "updated_at": None}
 
-    def test_auto_link_disabled_surfaced(self, tmp_path, monkeypatch, capsys):
+    @pytest.mark.parametrize(
+        ("stored_enabled", "expected_enabled"),
+        [(False, False), ("false", False), (True, True)],
+    )
+    def test_auto_link_persisted_boolean_surfaced(
+        self, tmp_path, monkeypatch, capsys, stored_enabled, expected_enabled,
+    ):
         _seed_user(tmp_path)
         users_file = tmp_path / "users.json"
-        users_file.write_text(
-            '{"u1": {"config": {"auto_link": {"enabled": false, "updated_at": 5.0}},'
-            ' "email": "u1@test.com"}}'
+        users_file.write_text(json.dumps(
+            {"u1": {"config": {"auto_link": {"enabled": stored_enabled, "updated_at": 5.0}},
+                    "email": "u1@test.com"}}
+        )
         )
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
         q.cmd_user_config(_make_args(uid="u1"))
         payload = json.loads(capsys.readouterr().out)
-        assert payload["config"]["auto_link"] == {"enabled": False, "updated_at": 5.0}
+        assert payload["config"]["auto_link"] == {"enabled": expected_enabled, "updated_at": 5.0}
 
 # ── cmd_world_state ──────────────────────────────────────────────────────
 

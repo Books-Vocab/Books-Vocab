@@ -7,6 +7,7 @@ from typing import Any, Protocol
 
 from openai import OpenAIError
 
+from ..ops_cli_shared import _normalize_persisted_bool
 from ..types import UserRecord
 from ..vocab_graph import CANDIDATE_K, MAX_DEGREE, SIMILARITY_THRESHOLD
 
@@ -180,7 +181,9 @@ async def _step_embed_and_judge(
     # 對齊 user_handlers._build_user_config_response。
     user_config = user.get("config")
     auto_link_cfg = user_config.get("auto_link") if isinstance(user_config, dict) else None
-    if isinstance(auto_link_cfg, dict) and not auto_link_cfg.get("enabled", True):
+    if isinstance(auto_link_cfg, dict) and not _normalize_persisted_bool(
+        auto_link_cfg.get("enabled"), default=True,
+    ):
         logger.info("[%s] Auto-link disabled by user config; judge skipped", uid)
         return 0
 
