@@ -165,6 +165,21 @@ import Foundation
 enum Helpers { static func notATest() {} }
 SWIFT
 
+# Top-level extension declarations may carry a declaration modifier or
+# attribute.  They still extend the named test suite; the owner is not the
+# filename and must remain available to --file discovery.
+cat > "$FIX/AttributedExtensionTests+Domain.swift" <<'SWIFT'
+import Testing
+
+@MainActor extension IndiaTests {
+    @Test func attributedExtensionTest() {}
+}
+
+private extension JulietTests {
+    func testPrivateExtensionXCTest() {}
+}
+SWIFT
+
 # helper: does the flag set contain exactly this -only-testing path?
 has_flag() { printf '%s\n' "$1" | grep -qxF -e "-only-testing:BooksAndVocabTests/$2"; }
 
@@ -205,6 +220,16 @@ has_flag "$FLAGS" "FoxtrotTests/testFoxtrotTwo" && ok "testFoxtrotTwo → Foxtro
 section "No-container file"
 printf '%s\n' "$FLAGS" | grep -qF "NoContainer" && fail_t "NoContainer leaked" || ok "NoContainer skipped"
 printf '%s\n' "$FLAGS" | grep -qF "Helpers" && fail_t "Helpers enum leaked" || ok "Helpers enum not a container"
+
+# ── 7b. attributed/modifier extension declarations keep their suite owner ────
+section "Attributed and modifier extension owners"
+EXT_FLAGS="$(discover_file_only_flags "$FIX/AttributedExtensionTests+Domain.swift" "")"
+has_flag "$EXT_FLAGS" "IndiaTests/attributedExtensionTest()" \
+  && ok "@MainActor extension test → IndiaTests" \
+  || fail_t "@MainActor extension owner was not discovered: $EXT_FLAGS"
+has_flag "$EXT_FLAGS" "JulietTests/testPrivateExtensionXCTest" \
+  && ok "private extension XCTest test → JulietTests" \
+  || fail_t "private extension owner was not discovered: $EXT_FLAGS"
 
 # ── 8. grep pattern filters by func name ──────────────────────────────────────
 section "Grep pattern filter"
