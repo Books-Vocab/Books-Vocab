@@ -15,9 +15,9 @@ class RateLimiter:
     Memory hygiene:
     - Every `gc_interval` admissions, sweep `_requests` and drop keys whose
       deques are empty or fully expired.
-    - Hard cap at `max_keys`: if the dict exceeds the cap after GC, evict
-      least-recently-used keys (OrderedDict insertion-order, with
-      move_to_end on each touch).
+    - Hard cap at `max_keys`: reclaim expired keys before admitting a new key;
+      if all slots are active, reject the new key rather than evicting an
+      active window.
     """
 
     def __init__(
@@ -43,6 +43,16 @@ class RateLimiter:
         async with self._lock:
             dq = self._requests.get(key)
             if dq is None:
+                if len(self._requests) >= self.max_keys:
+                    # A full table may contain entries that have expired since
+                    # the last scheduled sweep. Reclaim them before deciding
+                    # whether this new key can be tracked.
+                    self._gc(cutoff)
+                if len(self._requests) >= self.max_keys:
+                    # Never reset an active key's window just to admit a new
+                    # key. Failing closed preserves the bounded-table
+                    # invariant and the existing keys' rate-limit history.
+                    return False
                 dq = collections.deque()
                 self._requests[key] = dq
             else:
@@ -57,8 +67,6 @@ class RateLimiter:
             if self._tick >= self.gc_interval:
                 self._tick = 0
                 self._gc(cutoff)
-            if len(self._requests) > self.max_keys:
-                self._enforce_cap()
 
             return allowed
 
@@ -68,11 +76,6 @@ class RateLimiter:
         dead = [k for k, dq in self._requests.items() if not dq or dq[-1] < cutoff]
         for k in dead:
             self._requests.pop(k, None)
-
-    def _enforce_cap(self) -> None:
-        """Evict least-recently-used keys until under cap."""
-        while len(self._requests) > self.max_keys:
-            self._requests.popitem(last=False)
 
     def reset(self) -> None:
         """Drop all tracked windows and reset the GC tick counter.
