@@ -58,6 +58,9 @@ assert_plan 'confidence verdict policy change reruns all confidence suites' \
 assert_plan 'confidence verdict contract test reruns all confidence suites' \
   'ops/tests/test_ci_confidence_verdict.sh' \
   '{"backend":true,"ops":true,"ios":true}'
+assert_plan 'devops skill roster change selects only backend confidence' \
+  '.claude/skills/devops/SKILL.md' \
+  '{"backend":true,"ops":false,"ios":false}'
 assert_plan 'unknown source fails closed to all confidence suites' \
   'new-top-level-runtime-config.toml' \
   '{"backend":true,"ops":true,"ios":true}'

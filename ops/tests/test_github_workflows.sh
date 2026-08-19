@@ -34,6 +34,9 @@ for workflow in "${component_workflows[@]}"; do
   fi
 done
 
+grep -Fqx "      - '.claude/skills/devops/SKILL.md'" .github/workflows/backend-quality.yml \
+  || fail "backend-quality main push trigger omits the devops skill roster contract"
+
 PR_GATE=".github/workflows/pr-gate.yml"
 grep -q '^  pull_request:' "$PR_GATE" || fail "pr-gate has no pull_request trigger"
 # A draft-to-ready transition changes review metadata, not source. The latest
@@ -54,6 +57,17 @@ grep -q '^  confidence:' "$PR_GATE" \
   || fail "pr-gate has no non-blocking full-confidence aggregator"
 grep -q 'needs: \[changed-paths, repo-gate, backend-quality, llm-eval, design-system, ui-quality-gate, ops-suite, ios-quality\]' "$PR_GATE" \
   || fail "pr-gate confidence job does not depend on every component gate"
+# `confidence` runs on a separate runner, so it must check out its own
+# workspace before invoking the verdict helper.
+if ! awk '
+  /^  confidence:/ { in_confidence=1; next }
+  in_confidence && /^  [A-Za-z0-9_-]+:/ { exit }
+  in_confidence && index($0, "uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1") { checkout=NR }
+  in_confidence && index($0, "name: Report the complete validation fan-out") { report=NR }
+  END { exit !(checkout && report && checkout < report) }
+' "$PR_GATE"; then
+  fail "pr-gate confidence job does not check out the workspace before its verdict"
+fi
 required_block="$(awk '
   /^  required:/ { in_required=1; next }
   in_required && /^  [A-Za-z0-9_-]+:/ { exit }
