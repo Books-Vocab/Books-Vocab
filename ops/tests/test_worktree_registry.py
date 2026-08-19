@@ -43,6 +43,41 @@ def test_load_state_migrates_live_machine_claim_without_recreating_a_store(tmp_p
     assert "backlog" not in state["records"][0]
 
 
+def test_load_state_drops_removed_delivery_envelopes(tmp_path: Path) -> None:
+    path = tmp_path / "registry.json"
+    path.write_text(json.dumps({
+        "schema": "kg.worktree.registry.v1",
+        "campaign_archives": [{"campaign_id": "old"}],
+        "campaign_reservations": [{"campaign_id": "old"}],
+        "records": [],
+    }), encoding="utf-8")
+
+    state = registry.load_state(path)
+
+    assert state == {"schema": registry.SCHEMA, "records": []}
+
+
+def test_compact_record_drops_removed_delivery_metadata() -> None:
+    compacted = registry._compact_record({
+        "branch": "feat/live",
+        "path": "/tmp/live",
+        "status": "active",
+        "external_ids": ["#7"],
+        "campaign_id": "old-campaign",
+        "partition_id": "old-partition",
+        "role": "child",
+        "work_mode": "ticket-delivery",
+        "integration_owner": "old-integrator",
+    })
+
+    assert compacted == {
+        "branch": "feat/live",
+        "path": "/tmp/live",
+        "status": "active",
+        "external_ids": ["#7"],
+    }
+
+
 def test_scope_set_rejects_duplicate_file_declarations() -> None:
     with pytest.raises(ValueError, match="invalid scope"):
         registry.normalise_scope({

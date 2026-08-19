@@ -6,7 +6,8 @@
 
 The delivery model is intentionally GitHub-native:
 
-    Issue -> branch/worktree -> pull request -> Actions/review -> merge
+    direct assignment or Issue -> branch/worktree -> pull request
+    -> Actions/CR/DS -> CM merge
 
 This command owns only local concerns: creating or adopting a worktree, recording
 file ownership, running the same focused checks locally, and handing back exact

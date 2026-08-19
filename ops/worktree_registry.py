@@ -47,6 +47,12 @@ EXIT_OK = 0
 EXIT_PARTIAL = 1
 EXIT_CLAIMED = 75
 EXIT_USAGE = 64
+CURRENT_RECORD_FIELDS = (
+    "branch", "path", "intent", "base", "status", "external_ids", "scope",
+    "codex_thread_id", "delegated", "created_at", "claimed_at", "resolved_at",
+    "base_sha", "handed_back_at", "handed_back_sha", "handback_seal",
+    "handback_outcomes",
+)
 
 
 def _git(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
@@ -178,18 +184,21 @@ def load_state(path: Path | None = None) -> dict[str, Any]:
         # It is intentionally not copied into the new state format.
         record.pop("backlog", None)
         clean_records.append(record)
-    result = dict(payload)
-    result["schema"] = SCHEMA
-    result["records"] = clean_records
-    return result
+    # Rebuild the envelope instead of carrying unknown top-level keys forward.
+    # Older ignored caches may still contain campaign/reservation stores; those
+    # were part of the removed local delivery system and are not registry state.
+    return {"schema": SCHEMA, "records": clean_records}
 
 
 def save_state(path: Path, state: dict[str, Any]) -> None:
     target = Path(path).expanduser().resolve()
     target.parent.mkdir(parents=True, exist_ok=True)
-    payload = dict(state)
-    payload["schema"] = SCHEMA
-    payload["records"] = [dict(item) for item in payload.get("records", []) if isinstance(item, dict)]
+    payload = {
+        "schema": SCHEMA,
+        "records": [
+            dict(item) for item in state.get("records", []) if isinstance(item, dict)
+        ],
+    }
     fd, temporary = tempfile.mkstemp(prefix=f".{target.name}.", dir=str(target.parent))
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
@@ -203,6 +212,16 @@ def save_state(path: Path, state: dict[str, Any]) -> None:
             os.unlink(temporary)
         except FileNotFoundError:
             pass
+
+
+def _compact_record(record: dict[str, Any]) -> dict[str, Any]:
+    """Keep only current local-ownership facts in a retained active record."""
+    compacted = {
+        key: record[key] for key in CURRENT_RECORD_FIELDS if key in record
+    }
+    compacted["external_ids"] = _legacy_external_ids(record)
+    compacted.pop("backlog", None)
+    return compacted
 
 
 def _record_matches(record: dict[str, Any], *, branch: str | None = None,
@@ -604,6 +623,35 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def cmd_compact(args: argparse.Namespace) -> int:
+    """Retain active ownership only and remove historical delivery metadata."""
+    state_path = _state_path(args)
+    state = load_state(state_path)
+    active = [_compact_record(record) for record in _active_records(state)]
+    removed = len(state.get("records", [])) - len(active)
+    payload = {
+        "schema": SCHEMA,
+        "action": "compact",
+        "active_preserved": len(active),
+        "historical_records_removed": removed,
+        "commit": bool(args.commit),
+    }
+    if args.commit:
+        with _ledger_lock(state_path):
+            state = load_state(state_path)
+            active = [_compact_record(record) for record in _active_records(state)]
+            removed = len(state.get("records", [])) - len(active)
+            save_state(state_path, {"schema": SCHEMA, "records": active})
+        payload["active_preserved"] = len(active)
+        payload["historical_records_removed"] = removed
+        payload["action"] = "compact-committed"
+    print(
+        json.dumps(payload, indent=2, ensure_ascii=False)
+        if args.json else json.dumps(payload, ensure_ascii=False)
+    )
+    return EXIT_OK
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Local worktree ownership and hand-back evidence")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -651,6 +699,12 @@ def _parser() -> argparse.ArgumentParser:
     sweep = sub.add_parser("sweep", help="report missing registered worktrees")
     common(sweep); sweep.add_argument("--commit", action="store_true")
     sweep.set_defaults(func=cmd_sweep)
+
+    compact = sub.add_parser(
+        "compact", help="retain active ownership and remove old local delivery history"
+    )
+    common(compact); compact.add_argument("--commit", action="store_true")
+    compact.set_defaults(func=cmd_compact)
     return parser
 
 
