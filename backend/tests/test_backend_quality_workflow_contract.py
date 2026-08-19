@@ -42,14 +42,13 @@ def _step_block(workflow: str, step_name: str) -> str:
 def test_backend_quality_workflow_is_scoped_to_backend_changes() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
+    assert re.search(r"(?m)^  workflow_call:\s*$", workflow)
+    assert not re.search(r"(?m)^  pull_request:", workflow)
+
     push_paths = _event_block(workflow, "push")
     assert "paths:" in push_paths
     assert "backend/**" in push_paths
     assert ".github/workflows/backend-quality.yml" in push_paths
-
-    pull_request_paths = _event_block(workflow, "pull_request")
-    assert "paths:" in pull_request_paths
-    assert "*backend_quality_paths" in pull_request_paths
 
 
 def test_backend_quality_workflow_uses_locked_module_form_toolchain() -> None:
