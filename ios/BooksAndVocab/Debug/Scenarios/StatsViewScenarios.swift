@@ -24,6 +24,9 @@ enum StatsViewScenarios {
             Scenario("Empty", layout: .fill) {
                 StatsViewScene(fixture: .empty)
             }
+            Scenario("Large counts", layout: .fill) {
+                StatsViewScene(fixture: .largeCounts)
+            }
         }
     }
 }
@@ -33,6 +36,7 @@ enum StatsViewScenarios {
 private enum StatsViewFixture {
     case populated
     case empty
+    case largeCounts
 
     var vocabularyID: UIWorldVocabularyFixtureID {
         switch self {
@@ -40,6 +44,8 @@ private enum StatsViewFixture {
             return .statsPopulated
         case .empty:
             return .statsEmpty
+        case .largeCounts:
+            return .p11ReviewMix
         }
     }
 
@@ -49,6 +55,8 @@ private enum StatsViewFixture {
             return .init(visibleEntries: .atLeast(8), reviewRecords: .atLeast(12))
         case .empty:
             return .init(visibleEntries: .exactly(0), reviewRecords: .exactly(0))
+        case .largeCounts:
+            return .init(visibleEntries: .exactly(644), reviewRecords: .exactly(0))
         }
     }
 }
@@ -86,7 +94,8 @@ enum StatsViewTime {
         return calendar
     }()
 
-    /// Deterministic fallback anchor for seeds with no review events（statsEmpty）
+    /// Deterministic fallback anchor for seeds with no review events (statsEmpty
+    /// and p11ReviewMix)
     /// — nothing to derive from, and wall-clock `Date()` would re-introduce
     /// snapshot drift.
     static let emptySeedFallback: Date = fallbackAnchor(calendar: calendar)
@@ -175,12 +184,12 @@ private struct StatsViewScene: View {
                 from: visibleEntries,
                 fixtureID: fixture.vocabularyID
             )
-            self.initialSummary = StatsPresentation.project(
+            self.initialSummary = StatsPresentation.project(.init(
                 entries: visibleEntries,
                 reviewRecords: records,
                 forecastDays: 14,
                 clock: clock
-            )
+            ))
             self.frozenStore = Self.makeFrozenStore(now: clock.now)
             self.projectionClock = clock
         } catch {

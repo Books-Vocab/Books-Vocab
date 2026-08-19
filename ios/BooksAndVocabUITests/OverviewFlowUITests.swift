@@ -11,6 +11,18 @@ import XCTest
 
 private struct OverviewFixtureProjection {
     private struct Dataset: Decodable {
+        struct Preferences: Decodable {
+            struct Defaults: Decodable {
+                let appLanguageSelection: String
+
+                enum CodingKeys: String, CodingKey {
+                    case appLanguageSelection = "app_language_selection"
+                }
+            }
+
+            let userDefaults: Defaults
+        }
+
         struct Vocabulary: Decodable {
             struct Entry: Decodable {
                 let word: String
@@ -35,6 +47,7 @@ private struct OverviewFixtureProjection {
             let entryOverrides: [EntryOverride]?
         }
 
+        let preferences: Preferences
         let vocabulary: [String: Vocabulary]
 
         struct ScenarioContext: Decodable {
@@ -56,6 +69,28 @@ private struct OverviewFixtureProjection {
     let activityIsEmpty: Bool
     let clockNow: Date
     let forecastDayKey: String
+    private let languageCode: String
+    private let systemLocaleIdentifier: String
+    private let formatLocaleIdentifier: String
+
+    /// The app's LocaleAwareFormatter follows AppLanguageStore.formatLocale.
+    /// The UI World pins app_language_selection, while these launch arguments
+    /// make the system fallback deterministic if the app selection is absent.
+    var localeLaunchArguments: [String] {
+        [
+            "-AppleLanguages",
+            "(\(languageCode))",
+            "-AppleLocale",
+            systemLocaleIdentifier,
+        ]
+    }
+
+    func formattedCount(_ value: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.locale = Locale(identifier: formatLocaleIdentifier)
+        return formatter.string(from: NSNumber(value: value)) ?? String(value)
+    }
 
     static func fromRunner(fixtureID: String) throws -> Self {
         let environment = ProcessInfo.processInfo.environment
@@ -83,6 +118,27 @@ private struct OverviewFixtureProjection {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let document = try decoder.decode(Dataset.self, from: data)
+        let localeContract: (languageCode: String, systemLocaleIdentifier: String, formatLocaleIdentifier: String)
+        switch document.preferences.userDefaults.appLanguageSelection {
+        case "english":
+            localeContract = ("en", "en_US_POSIX", "en")
+        case "traditionalChinese":
+            localeContract = ("zh-Hant", "zh_TW", "zh-Hant")
+        case "simplifiedChinese":
+            localeContract = ("zh-Hans", "zh_CN", "zh-Hans")
+        case "japanese":
+            localeContract = ("ja", "ja_JP", "ja")
+        case "korean":
+            localeContract = ("ko", "ko_KR", "ko")
+        case "system":
+            throw NSError(domain: "OverviewFixtureProjection", code: 6, userInfo: [
+                NSLocalizedDescriptionKey: "Overview UI World must pin a concrete app language for AX count assertions",
+            ])
+        default:
+            throw NSError(domain: "OverviewFixtureProjection", code: 7, userInfo: [
+                NSLocalizedDescriptionKey: "Unsupported Overview UI World app language: \(document.preferences.userDefaults.appLanguageSelection)",
+            ])
+        }
         guard let seed = document.vocabulary[fixtureID] else {
             throw NSError(domain: "OverviewFixtureProjection", code: 4, userInfo: [
                 NSLocalizedDescriptionKey: "\(fixtureID) is missing from the injected UI World",
@@ -139,7 +195,10 @@ private struct OverviewFixtureProjection {
             dueToday: dueToday,
             activityIsEmpty: seed.reviewHistory.isEmpty,
             clockNow: clockNow,
-            forecastDayKey: todayKey
+            forecastDayKey: todayKey,
+            languageCode: localeContract.languageCode,
+            systemLocaleIdentifier: localeContract.systemLocaleIdentifier,
+            formatLocaleIdentifier: localeContract.formatLocaleIdentifier
         )
     }
 
@@ -157,7 +216,9 @@ final class OverviewFlowUITests: UITestCase {
 
     @MainActor
     func testOverviewStatsRenderFromSeededReviewHistory() throws {
+        let expected = try OverviewFixtureProjection.fromRunner(fixtureID: "statsPopulated")
         let app = launchIsolatedApp(
+            extraArgs: expected.localeLaunchArguments,
             fixtures: [.vocabulary("statsPopulated")],
             perfLog: "overview"
         )
@@ -170,12 +231,11 @@ final class OverviewFlowUITests: UITestCase {
             return page
         }
         try step("metrics", app: app) {
-            let expected = try OverviewFixtureProjection.fromRunner(fixtureID: "statsPopulated")
             overview.assertIsActive()
             overview.assertOverviewAccessibilityHierarchy()
-            overview.assertMetric("totalCards", value: String(expected.totalCards))
-            overview.assertMetric("reviewedToday", value: String(expected.reviewedToday))
-            overview.assertMetric("dueToday", value: String(expected.dueToday))
+            overview.assertMetric("totalCards", value: expected.formattedCount(expected.totalCards))
+            overview.assertMetric("reviewedToday", value: expected.formattedCount(expected.reviewedToday))
+            overview.assertMetric("dueToday", value: expected.formattedCount(expected.dueToday))
             XCTAssertTrue(shell.overviewTab.isSelected, "總覽 tab did not become selected")
         }
 
@@ -184,12 +244,11 @@ final class OverviewFlowUITests: UITestCase {
         }
 
         try step("forecast-zero", app: app) {
-            let expected = try OverviewFixtureProjection.fromRunner(fixtureID: "statsPopulated")
             overview.scrollToForecastBucket(expected.forecastDayKey)
             overview.assertUniqueForecastContract()
             let bucket = overview.forecastBucket(expected.forecastDayKey)
             bucket.assertExists(timeout: 10)
-            XCTAssertTrue((bucket.value as? String)?.contains(String(expected.dueToday)) == true)
+            XCTAssertTrue((bucket.value as? String)?.contains(expected.formattedCount(expected.dueToday)) == true)
         }
 
         try step("notebook-detour", app: app) {
@@ -199,15 +258,14 @@ final class OverviewFlowUITests: UITestCase {
         }
 
         try step("overview-reentry", app: app) {
-            let expected = try OverviewFixtureProjection.fromRunner(fixtureID: "statsPopulated")
             _ = shell.goToOverview()
-            overview.assertMetric("totalCards", value: String(expected.totalCards))
+            overview.assertMetric("totalCards", value: expected.formattedCount(expected.totalCards))
             XCTAssertTrue(shell.overviewTab.isSelected, "總覽 tab did not become selected on re-entry")
         }
 
         let counterexampleExpected = try Self.p11ReviewMixProjection()
         let counterexampleApp = launchIsolatedApp(
-            extraArgs: [
+            extraArgs: counterexampleExpected.localeLaunchArguments + [
                 "-UIPreferredContentSizeCategoryName",
                 "UICTContentSizeCategoryAccessibilityXXXL",
             ],
@@ -230,19 +288,32 @@ final class OverviewFlowUITests: UITestCase {
         }
         try step("large-counts-projection", app: counterexampleApp) {
             counterexampleOverview.assertOverviewAccessibilityHierarchy()
-            counterexampleOverview.assertMetric("totalCards", value: String(counterexampleExpected.totalCards))
-            counterexampleOverview.assertMetric("reviewedToday", value: String(counterexampleExpected.reviewedToday))
-            counterexampleOverview.assertMetric("dueToday", value: String(counterexampleExpected.dueToday))
+            counterexampleOverview.assertMetric(
+                "totalCards",
+                value: counterexampleExpected.formattedCount(counterexampleExpected.totalCards)
+            )
+            counterexampleOverview.assertMetric(
+                "reviewedToday",
+                value: counterexampleExpected.formattedCount(counterexampleExpected.reviewedToday)
+            )
+            counterexampleOverview.assertMetric(
+                "dueToday",
+                value: counterexampleExpected.formattedCount(counterexampleExpected.dueToday)
+            )
             counterexampleOverview.assertMetricCardsHaveUniformGeometry()
             counterexampleOverview.calendar.assertExists(timeout: 10)
             counterexampleOverview.assertUniqueForecastContract()
-            counterexampleOverview.assertForecastContainsCount(String(counterexampleExpected.dueToday))
+            counterexampleOverview.assertForecastContainsCount(
+                counterexampleExpected.formattedCount(counterexampleExpected.dueToday)
+            )
         }
     }
 
     @MainActor
     func testOverviewForecastRangeSwitchKeepsChartLive() throws {
+        let expected = try OverviewFixtureProjection.fromRunner(fixtureID: "statsPopulated")
         let app = launchIsolatedApp(
+            extraArgs: expected.localeLaunchArguments,
             fixtures: [.vocabulary("statsPopulated")],
             perfLog: "overview-forecast-range"
         )
@@ -274,6 +345,7 @@ final class OverviewFlowUITests: UITestCase {
     func testOverviewEmptyForecastCounterexampleIsVisible() throws {
         let expected = try OverviewFixtureProjection.fromRunner(fixtureID: "statsEmpty")
         let app = launchIsolatedApp(
+            extraArgs: expected.localeLaunchArguments,
             fixtures: [.vocabulary("statsEmpty")],
             perfLog: "overview-empty-forecast"
         )
@@ -285,15 +357,28 @@ final class OverviewFlowUITests: UITestCase {
 
         try step("forecast-zero-counterexample", app: app) {
             overview.assertOverviewAccessibilityHierarchy()
-            overview.assertMetric("totalCards", value: "0")
-            overview.assertMetric("reviewedToday", value: "0")
-            overview.assertMetric("dueToday", value: "0")
+            overview.assertMetric("totalCards", value: expected.formattedCount(0))
+            overview.assertMetric("reviewedToday", value: expected.formattedCount(0))
+            overview.assertMetric("dueToday", value: expected.formattedCount(0))
             overview.calendar.assertExists(timeout: 10)
             overview.scrollToForecastBucket(expected.forecastDayKey)
             overview.assertUniqueForecastContract()
             let bucket = overview.forecastBucket(expected.forecastDayKey)
             bucket.assertExists(timeout: 10)
-            XCTAssertTrue((bucket.value as? String)?.contains("0") == true)
+            XCTAssertTrue((bucket.value as? String)?.contains(expected.formattedCount(0)) == true)
+
+            let zeroCounterexample = app.descendants(matching: .any)
+                .matching(identifier: "forecast-zero-counterexample")
+            XCTAssertEqual(
+                zeroCounterexample.count,
+                1,
+                "forecast-zero-counterexample must be a unique live AX element"
+            )
+            XCTAssertEqual(
+                zeroCounterexample.element.value as? String,
+                expected.formattedCount(0),
+                "forecast-zero-counterexample must expose the formatted zero value"
+            )
         }
     }
 

@@ -145,13 +145,13 @@ struct StatsPresenter: View {
         .task(id: summaryKey) {
             let entries = filteredEntries
             let records = filteredReviewRecords
-            let days = forecastDays
-            summary = StatsPresentation.project(
+            let inputs = StatsPresentation.Inputs(
                 entries: entries,
                 reviewRecords: records,
-                forecastDays: days,
+                forecastDays: forecastDays,
                 clock: activeProjectionClock
             )
+            summary = StatsPresentation.project(inputs)
         }
         .task(id: graphKey) {
             // Fetches account-level links. Re-runs only when graphKey changes
@@ -674,6 +674,7 @@ struct StatsPresenter: View {
                         .frame(width: 1, height: 1)
                         .accessibilityElement()
                         .accessibilityIdentifier("forecast-zero-counterexample")
+                        .accessibilityValue(summary.formattedCount(0))
                 }
             }
         }
