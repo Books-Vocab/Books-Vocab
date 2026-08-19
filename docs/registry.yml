@@ -93,6 +93,8 @@ documents:
       - docs/sop/release.md
       - ops/context_plane.json
       - ops/context_route.py
+      - ops/task_registry.py
+      - ops/lib/streaming_command.py
       - ops/worktree_registry.py
       - ops/worktree_orchestrate.py
 
