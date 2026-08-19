@@ -125,3 +125,34 @@ def test_get_runs_via_handler():
     assert run["steps"][0]["name"] == "Enrich"
     assert run["steps"][0]["items"] == 10
     assert run["steps"][0]["duration_s"] is not None
+
+
+def test_corrupt_steps_read_returns_run_without_parser_exception():
+    pipeline_log.start_run("r1", "u1", "nb1", "manual")
+    conn = pipeline_log._get_conn()
+    conn.execute("UPDATE pipeline_runs SET steps = ? WHERE run_id = ?", ("not-json", "r1"))
+    conn.commit()
+
+    runs = pipeline_log.get_runs("u1")
+
+    assert len(runs) == 1
+    assert runs[0]["run_id"] == "r1"
+    assert runs[0]["steps"] == []
+
+
+@pytest.mark.parametrize("operation", ["start_step", "end_step"])
+def test_corrupt_steps_update_is_a_noop(operation):
+    pipeline_log.start_run("r1", "u1", "nb1", "manual")
+    conn = pipeline_log._get_conn()
+    conn.execute("UPDATE pipeline_runs SET steps = ? WHERE run_id = ?", ("not-json", "r1"))
+    conn.commit()
+
+    if operation == "start_step":
+        pipeline_log.start_step("r1", "Enrich")
+    else:
+        pipeline_log.end_step("r1", "Enrich")
+
+    stored_steps = conn.execute(
+        "SELECT steps FROM pipeline_runs WHERE run_id = ?", ("r1",)
+    ).fetchone()[0]
+    assert stored_steps == "not-json"
