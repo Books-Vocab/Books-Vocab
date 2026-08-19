@@ -275,7 +275,7 @@ def _register_record(
             return EXIT_USAGE, {"reason": str(exc)}
     owners = []
     wanted = set(ids)
-    for record in _active_records(state):
+    for record in _admission_records(state):
         if record.get("branch") == branch or _norm(str(record.get("path") or "")) == path:
             continue
         overlap = wanted.intersection(_legacy_external_ids(record))
@@ -493,6 +493,49 @@ def validate_handback_seal(record: dict[str, Any], *, repo: Path | None = None,
             if not isinstance(item, dict) or _acceptance_status(item.get("status")) not in GREEN_ACCEPTANCE_STATUSES:
                 problems.append({"kind": "handback-outcome-not-green", "outcome": item})
     return problems
+
+
+def _has_valid_handback(record: dict[str, Any]) -> bool:
+    branch = record.get("branch")
+    path = record.get("path")
+    handed_back_at = record.get("handed_back_at")
+    handed_back_sha = record.get("handed_back_sha")
+    seal = record.get("handback_seal")
+    if not isinstance(branch, str) or not branch:
+        return False
+    if not isinstance(path, str) or not path:
+        return False
+    if not isinstance(handed_back_at, str) or not handed_back_at:
+        return False
+    if not isinstance(handed_back_sha, str) or not handed_back_sha:
+        return False
+    if not isinstance(seal, dict):
+        return False
+    try:
+        _parse_at(handed_back_at)
+    except ValueError:
+        return False
+    if seal.get("handed_back_at") != handed_back_at:
+        return False
+    if seal.get("tip_sha") != handed_back_sha:
+        return False
+    worktree = Path(path)
+    if not worktree.is_dir():
+        return False
+    branch_rc, current_branch = _git(["branch", "--show-current"], worktree)
+    if branch_rc != 0 or current_branch != branch:
+        return False
+    dirty_rc, dirty = _git(["status", "--porcelain=v1"], worktree)
+    if dirty_rc != 0 or dirty:
+        return False
+    head_rc, current_head = _git(["rev-parse", "--verify", "HEAD^{commit}"], worktree)
+    if head_rc != 0 or current_head != handed_back_sha:
+        return False
+    return not validate_handback_seal(record)
+
+
+def _admission_records(state: dict[str, Any]) -> list[dict[str, Any]]:
+    return [record for record in _active_records(state) if not _has_valid_handback(record)]
 
 
 def cmd_hand_back(args: argparse.Namespace) -> int:

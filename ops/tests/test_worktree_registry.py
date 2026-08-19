@@ -15,6 +15,73 @@ def _state() -> dict:
     return {"schema": registry.SCHEMA, "records": []}
 
 
+def _scope() -> dict:
+    return {
+        "schema": "kg.worktree.scope.v1",
+        "files": [{"path": "ops/worktree_registry.py", "operation": "modify"}],
+    }
+
+
+def _sealed_handed_back_record(
+    path: Path, *, handed_back_sha: str = "b" * 40,
+    branch: str = "feat/handed-back",
+) -> dict:
+    handed_back_at = "2026-08-19T00:00:00Z"
+    record = {
+        "branch": branch,
+        "path": str(path),
+        "status": registry.STATUS_ACTIVE,
+        "external_ids": ["#123"],
+        "scope": _scope(),
+        "handed_back_at": handed_back_at,
+        "handed_back_sha": handed_back_sha,
+    }
+    record["handback_seal"] = registry._seal_with_digest(
+        registry._seal_body(
+            record,
+            base_sha="a" * 40,
+            tip_sha=handed_back_sha,
+            outcomes=[{"id": "#123", "status": "pass"}],
+            handed_back_at=handed_back_at,
+        )
+    )
+    return record
+
+
+def _valid_handed_back_record(tmp_path: Path) -> dict:
+    return _sealed_handed_back_record(tmp_path / "handed-back")
+
+
+def _git(worktree: Path, *args: str) -> str:
+    rc, output = registry._git(list(args), worktree)
+    assert rc == 0, output
+    return output
+
+
+def _idle_handed_back_record(tmp_path: Path) -> dict:
+    worktree = tmp_path / "handed-back"
+    worktree.mkdir()
+    _git(worktree, "init", "--quiet")
+    _git(worktree, "checkout", "--quiet", "-b", "feat/handed-back")
+    (worktree / "sealed.txt").write_text("sealed\n", encoding="utf-8")
+    _git(worktree, "add", "sealed.txt")
+    _git(
+        worktree,
+        "-c",
+        "user.name=Registry Test",
+        "-c",
+        "user.email=registry-test@example.invalid",
+        "commit",
+        "--quiet",
+        "-m",
+        "sealed hand-back",
+    )
+    return _sealed_handed_back_record(
+        worktree,
+        handed_back_sha=_git(worktree, "rev-parse", "HEAD"),
+    )
+
+
 def test_register_keeps_external_reference_opaque_and_detects_collision(tmp_path: Path) -> None:
     state = _state()
     rc, first = registry._register_record(
@@ -102,3 +169,165 @@ def test_handback_seal_digest_is_verifiable() -> None:
     assert {item["kind"] for item in registry.validate_handback_seal(record)} == {
         "handback-seal-digest-invalid"
     }
+
+
+def test_valid_handed_back_record_releases_admission_and_remains_queryable(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    handed_back = _idle_handed_back_record(tmp_path)
+    state = {"schema": registry.SCHEMA, "records": [handed_back]}
+
+    rc, admitted = registry._register_record(
+        state,
+        branch="feat/new-owner",
+        path=str(tmp_path / "new-owner"),
+        intent="feature",
+        base="main",
+        external_ids=["#123"],
+        scope=_scope(),
+    )
+
+    assert rc == registry.EXIT_OK
+    assert admitted["branch"] == "feat/new-owner"
+    assert state["records"][0] is handed_back
+    assert registry.validate_handback_seal(handed_back) == []
+
+    state_path = tmp_path / "registry.json"
+    registry.save_state(state_path, state)
+    assert registry.main([
+        "list", "--state", str(state_path), "--branch", "feat/handed-back", "--json",
+    ]) == registry.EXIT_OK
+    queried = json.loads(capsys.readouterr().out)["records"][0]
+    assert queried["handback_seal"]["digest"] == handed_back["handback_seal"]["digest"]
+    assert queried["handed_back_sha"] == handed_back["handed_back_sha"]
+
+
+@pytest.mark.parametrize("worktree_state", ("dirty", "head-advanced", "branch-mismatch"))
+def test_changed_registered_worktree_fails_closed_for_admission(
+    tmp_path: Path, worktree_state: str
+) -> None:
+    handed_back = _idle_handed_back_record(tmp_path)
+    worktree = Path(handed_back["path"])
+    if worktree_state == "dirty":
+        (worktree / "sealed.txt").write_text("dirty\n", encoding="utf-8")
+    elif worktree_state == "head-advanced":
+        (worktree / "sealed.txt").write_text("advanced\n", encoding="utf-8")
+        _git(worktree, "add", "sealed.txt")
+        _git(
+            worktree,
+            "-c",
+            "user.name=Registry Test",
+            "-c",
+            "user.email=registry-test@example.invalid",
+            "commit",
+            "--quiet",
+            "-m",
+            "advance worktree",
+        )
+    else:
+        _git(worktree, "checkout", "--quiet", "-b", "feat/advanced")
+
+    state = {"schema": registry.SCHEMA, "records": [handed_back]}
+    rc, refused = registry._register_record(
+        state,
+        branch="feat/new-owner",
+        path=str(tmp_path / "new-owner"),
+        intent="feature",
+        base="main",
+        external_ids=["#123"],
+        scope=_scope(),
+    )
+
+    assert rc == registry.EXIT_CLAIMED
+    assert refused["owners"][0]["branch"] == "feat/handed-back"
+
+
+@pytest.mark.parametrize("worktree_state", ("missing", "not-a-worktree"))
+def test_unavailable_registered_worktree_fails_closed_for_admission(
+    tmp_path: Path, worktree_state: str
+) -> None:
+    worktree = tmp_path / worktree_state
+    if worktree_state == "not-a-worktree":
+        worktree.mkdir()
+    handed_back = _sealed_handed_back_record(worktree)
+    state = {"schema": registry.SCHEMA, "records": [handed_back]}
+
+    rc, refused = registry._register_record(
+        state,
+        branch="feat/new-owner",
+        path=str(tmp_path / "new-owner"),
+        intent="feature",
+        base="main",
+        external_ids=["#123"],
+        scope=_scope(),
+    )
+
+    assert rc == registry.EXIT_CLAIMED
+    assert refused["owners"][0]["branch"] == "feat/handed-back"
+
+
+def test_unhanded_active_record_still_blocks_admission(tmp_path: Path) -> None:
+    unhanded = _valid_handed_back_record(tmp_path)
+    unhanded.pop("handback_seal")
+    unhanded["handed_back_at"] = None
+    unhanded["handed_back_sha"] = None
+    state = {"schema": registry.SCHEMA, "records": [unhanded]}
+
+    rc, refused = registry._register_record(
+        state,
+        branch="feat/new-owner",
+        path=str(tmp_path / "new-owner"),
+        intent="feature",
+        base="main",
+        external_ids=["#123"],
+        scope=_scope(),
+    )
+
+    assert rc == registry.EXIT_CLAIMED
+    assert refused["owners"][0]["branch"] == "feat/handed-back"
+
+
+@pytest.mark.parametrize("corruption", ("digest", "tip-sha", "timestamp"))
+def test_invalid_handed_back_seal_fails_closed_for_admission(
+    tmp_path: Path, corruption: str
+) -> None:
+    invalid = _valid_handed_back_record(tmp_path)
+    if corruption == "digest":
+        invalid["handback_seal"]["digest"] = "invalid"
+    elif corruption == "tip-sha":
+        invalid["handed_back_sha"] = "c" * 40
+    else:
+        invalid["handed_back_at"] = "2026-08-19T01:00:00Z"
+    state = {"schema": registry.SCHEMA, "records": [invalid]}
+
+    rc, refused = registry._register_record(
+        state,
+        branch="feat/new-owner",
+        path=str(tmp_path / "new-owner"),
+        intent="feature",
+        base="main",
+        external_ids=["#123"],
+        scope=_scope(),
+    )
+
+    assert rc == registry.EXIT_CLAIMED
+    assert refused["owners"][0]["branch"] == "feat/handed-back"
+
+
+@pytest.mark.parametrize("terminal_status", registry.RESOLVE_STATUS)
+def test_resolve_terminal_status_preserves_handed_back_receipt(
+    tmp_path: Path, terminal_status: str
+) -> None:
+    handed_back = _valid_handed_back_record(tmp_path)
+    state_path = tmp_path / "registry.json"
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [handed_back]})
+
+    assert registry.main([
+        "resolve", "--state", str(state_path), "--branch", "feat/handed-back",
+        "--status", terminal_status, "--at", "2026-08-19T01:00:00Z", "--json",
+    ]) == registry.EXIT_OK
+
+    resolved = registry.load_state(state_path)["records"][0]
+    assert resolved["status"] == terminal_status
+    assert resolved["handed_back_sha"] == handed_back["handed_back_sha"]
+    assert resolved["handback_seal"] == handed_back["handback_seal"]
