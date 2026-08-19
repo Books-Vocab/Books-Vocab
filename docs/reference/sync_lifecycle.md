@@ -146,6 +146,7 @@ vocab pull 有五個呼叫點：`KGVocabView.task`（進頁自動）、pull-to-r
 - **逐批確認（不變式）**：`pushReviewEvents` 在**每個 batch 回應後**立即 `markReviewEventsPushed`，不是整輪結束才記。batch 才是伺服器實際接受的單位；後續 batch 失敗（離線 / 401 / 此突發自身觸發的 429）不可回退已落地的批次——這正是大量歷史事件能**跨多次同步分批排空**而非每次從頭的原因。
 - **拉回即已確認（不變式）**：`mergeReviewEvents` 對插入的遠端事件直接寫 `pushedAt`。它來自伺服器就已在伺服器上；不標記會讓下一次推送把整份拉回的歷史原樣送回，水位永遠排不空。
 - **遷移策略（刻意不 backfill）**：欄位為 optional，既有列一律以 `nil` 進場、在升級後第一次同步完整排空一次——成本恰等於舊行為，且不可能把「其實從未上傳成功」的事件誤標為已上傳。之後穩態為 ~0。
+- **輸入契約（不變式）**：`event_id` 必須是非空白字串。空字串或全空白值在 API model boundary 以 HTTP `422` 拒絕，store 不會被呼叫，也不會寫入事件；非空 legacy ID 原樣保留，既有 `event_id` duplicate 行為（`inserted=0, skipped=1`）不變。
 
 伺服器端對應：`ReviewEventStore.insert_many` 以分塊 `IN` 查詢一次取回已存在的 `event_id`（chunk 500，低於 SQLite 3.32 前 999 個繫結變數上限），取代逐筆 `session.get`。同一批 payload 內重複的 `event_id` 由迴圈內累加的 id 集合擋下（舊版靠 autoflush，改批次取回後必須顯式維持）。
 

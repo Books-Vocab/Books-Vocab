@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ReviewStateEntry(BaseModel):
@@ -25,7 +25,7 @@ class ReviewStatePushResponse(BaseModel):
 
 
 class ReviewEventEntry(BaseModel):
-    event_id: str
+    event_id: str = Field(min_length=1)
     card_id: str | None = None
     word_snapshot: str
     notebook_id: str = "default"
@@ -45,6 +45,13 @@ class ReviewEventEntry(BaseModel):
     # 區分「合成的過去」(一次性遷移回填)與「真實的未來」(上線後 iOS 上報),研究時可
     # WHERE 篩選互不污染。
     is_synthetic: bool = False
+
+    @field_validator("event_id")
+    @classmethod
+    def validate_event_id(cls, event_id: str) -> str:
+        if not event_id.strip():
+            raise ValueError("event_id must not be blank")
+        return event_id
 
 
 class ReviewEventsPushRequest(BaseModel):
