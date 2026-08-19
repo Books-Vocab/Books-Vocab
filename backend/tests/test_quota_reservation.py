@@ -28,7 +28,17 @@ import kg.quota_service as qs
 
 
 @pytest.fixture
-def mock_db():
+def mock_db(tmp_path, monkeypatch):
+    import kg.llm_error_log as llm_error_log
+    import kg.token_tracker as token_tracker
+
+    monkeypatch.setattr(token_tracker, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(token_tracker, "DB_PATH", tmp_path / "token_usage.db")
+    monkeypatch.setattr(llm_error_log, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(llm_error_log, "DB_PATH", tmp_path / "llm_errors.db")
+    token_tracker.reset()
+    llm_error_log.reset()
+
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.execute(
         """
@@ -49,7 +59,13 @@ def mock_db():
     with patch("kg.quota_service._get_conn", return_value=conn), \
          patch("kg.quota_service._lock", lock):
         yield conn
+
+    token_tracker.reset()
+    llm_error_log.reset()
     conn.close()
+
+    assert token_tracker._conn is None, "token tracker connection leaked past fixture"
+    assert llm_error_log._conn is None, "LLM error connection leaked past fixture"
 
 
 @pytest.fixture(autouse=True)
