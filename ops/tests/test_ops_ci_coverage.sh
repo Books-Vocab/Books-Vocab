@@ -20,10 +20,11 @@ LINUX_GROUPS=(
   ios-cache-evict review-flip-probe ios-device-files ios-device-logs ios-test-discovery
   userland-portability script-help install-hooks lib-sourcing podcast-ops
   streaming-command app-review demo-data catalog-agent uitest-contact-sheet
+  ios-release sim-pool-disposable review-probe
 )
 
 MAC_GROUPS=(
-  release ios-release sim-pool-disposable ios-ops review-probe lldb-forensics
+  release ios-ops lldb-forensics
 )
 
 declared_groups() {
