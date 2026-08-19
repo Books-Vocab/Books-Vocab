@@ -7,8 +7,9 @@ import json
 import os
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 
 class LifecycleError(ValueError):
@@ -24,6 +25,8 @@ _ALLOWED = {
     "failed": set(),
 }
 
+_Result = TypeVar("_Result")
+
 
 class JobLifecycle:
     def __init__(self, path: Path | str, *, ttl_seconds: int):
@@ -36,26 +39,32 @@ class JobLifecycle:
             return {}
         return json.loads(self.path.read_text(encoding="utf-8"))
 
-    def _write(self) -> None:
+    def _mutate(self, mutation: Callable[[dict[str, dict[str, Any]]], _Result]) -> _Result:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         lock_path = self.path.with_name(f".{self.path.name}.lock")
         with lock_path.open("a+", encoding="utf-8") as lock:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
             try:
+                jobs = self._read()
+                result = mutation(jobs)
                 fd, temporary = tempfile.mkstemp(prefix=f".{self.path.name}.", dir=self.path.parent)
                 with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                    json.dump(self._jobs, stream, sort_keys=True)
+                    json.dump(jobs, stream, sort_keys=True)
                     stream.flush()
                     os.fsync(stream.fileno())
                 os.replace(temporary, self.path)
+                self._jobs = jobs
+                return result
             finally:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
     def stage(self, job_id: str) -> None:
-        if job_id in self._jobs:
-            raise LifecycleError("duplicate")
-        self._jobs[job_id] = {"state": "staged", "created_at": int(time.time())}
-        self._write()
+        def add_job(jobs: dict[str, dict[str, Any]]) -> None:
+            if job_id in jobs:
+                raise LifecycleError("duplicate")
+            jobs[job_id] = {"state": "staged", "created_at": int(time.time())}
+
+        self._mutate(add_job)
 
     def get(self, job_id: str) -> dict[str, Any]:
         try:
@@ -64,19 +73,26 @@ class JobLifecycle:
             raise LifecycleError("unknown") from exc
 
     def transition(self, job_id: str, state: str) -> None:
-        record = self.get(job_id)
-        if state not in _ALLOWED.get(record["state"], set()):
-            raise LifecycleError("order")
-        record["state"] = state
-        self._jobs[job_id] = record
-        self._write()
+        def change_state(jobs: dict[str, dict[str, Any]]) -> None:
+            try:
+                record = dict(jobs[job_id])
+            except KeyError as exc:
+                raise LifecycleError("unknown") from exc
+            if state not in _ALLOWED.get(record["state"], set()):
+                raise LifecycleError("order")
+            record["state"] = state
+            jobs[job_id] = record
+
+        self._mutate(change_state)
 
     def reap(self, *, now: int) -> list[str]:
         removed: list[str] = []
-        for job_id, record in list(self._jobs.items()):
-            if record["state"] in {"terminal", "failed", "acked"} and now - record.get("created_at", 0) >= self.ttl_seconds:
-                removed.append(job_id)
-                del self._jobs[job_id]
-        if removed:
-            self._write()
-        return removed
+
+        def remove_expired(jobs: dict[str, dict[str, Any]]) -> list[str]:
+            for job_id, record in list(jobs.items()):
+                if record["state"] in {"terminal", "failed", "acked"} and now - record.get("created_at", 0) >= self.ttl_seconds:
+                    removed.append(job_id)
+                    del jobs[job_id]
+            return removed
+
+        return self._mutate(remove_expired)
