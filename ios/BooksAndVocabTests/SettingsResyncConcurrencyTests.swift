@@ -47,29 +47,49 @@ struct SettingsResyncConcurrencyTests {
         func loginWithApple(modelContainer: ModelContainer?) {}
     }
 
-    /// 重疊探針：記錄「同時在裡面的最大人數」。
+    /// 重疊探針：把兩條腿停在同一個 bounded barrier，記錄最大同時在途數。
     ///
-    /// **不記錄「誰看見了誰」。** 那個版本對排程順序敏感——先進的那支 observe 時
-    /// 看得到後進者，後進者 observe 時先進者可能已經離開，於是 `sawPeer` 只收到
-    /// 一半，測試以「實作是序列的」的形式紅掉，而實作其實是併發的。peak 是
-    /// 順序無關的同一個性質：peak == 2 就是「某個瞬間兩支都在裡面」，而序列執行
-    /// 的 peak 恆為 1。（同一個形狀在 `PodcastCatalogSkipTests.ConcurrencyTracker`
-    /// 已經穩定跑過。）
+    /// `Task.yield()` 只是排程提示，不保證另一條 child task 會在下一個 yield 前執行。
+    /// 以前的兩次 yield 因此會把 hosted runner 的排程差異誤報成產品改回序列。barrier
+    /// 則直接驗證所需性質：兩條真的同時到達時 peak == 2；若實作改成序列，第一條在
+    /// 兩秒後放行，測試以 peak == 1 失敗而不會卡住。
     private actor OverlapProbe {
         private var inFlight = 0
         private(set) var peak = 0
         private(set) var visited: Set<String> = []
+        private var peerWaiters: [String: CheckedContinuation<Void, Never>] = [:]
 
-        func enter(_ name: String) {
+        func enterAndWaitForPeer(_ name: String) async {
             inFlight += 1
             peak = max(peak, inFlight)
             visited.insert(name)
+
+            if inFlight >= 2 {
+                let waiters = peerWaiters.values
+                peerWaiters.removeAll()
+                for waiter in waiters {
+                    waiter.resume()
+                }
+                return
+            }
+
+            await withCheckedContinuation { continuation in
+                peerWaiters[name] = continuation
+                Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(2))
+                    await self?.releaseTimedOutWaiter(named: name)
+                }
+            }
         }
 
         func leave() { inFlight -= 1 }
+
+        private func releaseTimedOutWaiter(named name: String) {
+            peerWaiters.removeValue(forKey: name)?.resume()
+        }
     }
 
-    private final class ProbeKGService: BackgroundSyncing, HealthChecking, QuotaServing {
+    private final class ProbeKGService: BackgroundSyncing, HealthChecking, QuotaServing, @unchecked Sendable {
         var lastBackgroundSyncError: String?
 
         let probe = OverlapProbe()
@@ -98,15 +118,14 @@ struct SettingsResyncConcurrencyTests {
             return outcome
         }
 
-        func healthCheck() async { await run("health") }
-        func fetchQuota() async { await run("quota") }
+        // The production KGService is not MainActor-isolated. Keep this part of
+        // the double aligned with that executor contract; otherwise a nested
+        // test double can serialise both calls even while `async let` is intact.
+        nonisolated func healthCheck() async { await run("health") }
+        nonisolated func fetchQuota() async { await run("quota") }
 
-        private func run(_ name: String) async {
-            await probe.enter(name)
-            // 兩次 yield：留給對方被排進來並跑到自己 enter 的機會。序列實作下，
-            // 第一支會在第二支開始前就 leave，peak 停在 1。
-            await Task.yield()
-            await Task.yield()
+        private nonisolated func run(_ name: String) async {
+            await probe.enterAndWaitForPeer(name)
             await probe.leave()
         }
 
