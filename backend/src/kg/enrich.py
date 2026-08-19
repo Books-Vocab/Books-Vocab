@@ -153,6 +153,8 @@ async def enrich_cards_stream(
             return float(wait_time)
 
         try:
+            # Retry only explicit transient provider failures; non-retryable
+            # 4xx errors fail this batch on the first call.
             response = sync_retry(
                 _call_enrich_llm, llm, batch, model,
                 max_attempts=4,

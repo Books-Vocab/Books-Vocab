@@ -2,9 +2,92 @@ from __future__ import annotations
 
 import asyncio
 
+import httpx
 import pytest
+from openai import (
+    APIConnectionError,
+    AuthenticationError,
+    BadRequestError,
+    InternalServerError,
+    NotFoundError,
+    PermissionDeniedError,
+    RateLimitError,
+    UnprocessableEntityError,
+)
 
-from kg.retry import async_retry, sync_retry
+from kg.retry import async_retry, llm_retryable_exceptions, sync_retry
+
+
+def _openai_status_error(error_type, status_code: int):
+    request = httpx.Request("POST", "https://example.test/v1/chat/completions")
+    response = httpx.Response(status_code, request=request)
+    return error_type("provider error", response=response, body={})
+
+
+@pytest.mark.parametrize(
+    ("error_type", "status_code"),
+    [
+        (BadRequestError, 400),
+        (AuthenticationError, 401),
+        (PermissionDeniedError, 403),
+        (NotFoundError, 404),
+        (UnprocessableEntityError, 422),
+    ],
+)
+def test_llm_non_retryable_4xx_raises_without_retry(monkeypatch, error_type, status_code):
+    calls = 0
+    sleeps: list[float] = []
+    error = _openai_status_error(error_type, status_code)
+
+    monkeypatch.setattr("kg.retry.time.sleep", lambda delay: sleeps.append(delay))
+
+    def fail():
+        nonlocal calls
+        calls += 1
+        raise error
+
+    with pytest.raises(error_type):
+        sync_retry(
+            fail,
+            max_attempts=3,
+            retryable_exceptions=llm_retryable_exceptions(),
+        )
+
+    assert calls == 1
+    assert sleeps == []
+
+
+@pytest.mark.parametrize("error_kind", ["rate_limit", "connection", "internal_server"])
+def test_llm_transient_errors_retain_retry_budget(monkeypatch, error_kind):
+    calls = 0
+    sleeps: list[float] = []
+    request = httpx.Request("POST", "https://example.test/v1/chat/completions")
+    if error_kind == "rate_limit":
+        error = _openai_status_error(RateLimitError, 429)
+    elif error_kind == "connection":
+        error = APIConnectionError(message="connection failed", request=request)
+    else:
+        error = _openai_status_error(InternalServerError, 500)
+
+    monkeypatch.setattr("kg.retry.time.sleep", lambda delay: sleeps.append(delay))
+
+    def eventually_succeeds():
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            raise error
+        return "done"
+
+    result = sync_retry(
+        eventually_succeeds,
+        max_attempts=3,
+        base_delay=0.0,
+        retryable_exceptions=llm_retryable_exceptions(),
+    )
+
+    assert result == "done"
+    assert calls == 3
+    assert sleeps == [0.0, 0.0]
 
 
 def test_async_retry_success_first_attempt():
