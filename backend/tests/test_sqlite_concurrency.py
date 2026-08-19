@@ -49,14 +49,17 @@ def test_pragmas_helper_applied(monkeypatch, tmp_path):
     from kg.sqlite_utils import init_sqlite_pragmas
 
     conn = sqlite3.connect(str(tmp_path / "x.db"))
-    init_sqlite_pragmas(conn)
-    mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
-    timeout = conn.execute("PRAGMA busy_timeout").fetchone()[0]
-    sync = conn.execute("PRAGMA synchronous").fetchone()[0]
-    assert mode.lower() == "wal", f"expected WAL, got {mode!r}"
-    assert timeout >= 1000, f"expected busy_timeout>=1000ms, got {timeout}"
-    # synchronous=NORMAL is value 1 per SQLite docs.
-    assert sync == 1, f"expected synchronous=NORMAL (1), got {sync}"
+    try:
+        init_sqlite_pragmas(conn)
+        mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+        timeout = conn.execute("PRAGMA busy_timeout").fetchone()[0]
+        sync = conn.execute("PRAGMA synchronous").fetchone()[0]
+        assert mode.lower() == "wal", f"expected WAL, got {mode!r}"
+        assert timeout >= 1000, f"expected busy_timeout>=1000ms, got {timeout}"
+        # synchronous=NORMAL is value 1 per SQLite docs.
+        assert sync == 1, f"expected synchronous=NORMAL (1), got {sync}"
+    finally:
+        conn.close()
 
 
 def test_judge_log_concurrent_writes_no_locked(tmp_path, monkeypatch):
