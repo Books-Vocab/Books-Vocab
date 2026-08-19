@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
+verified_against: 8210e47aa53f8a2b03aafefadb7494098fa22cb1
 -->
 # Books & Vocab iOS 開發技能
 
@@ -259,6 +259,12 @@ ASC live state 必須由 `./ops/asc_reviewer_mirror.py audit ... --commit --bund
 - 若某個優化旗標沒有在 xcresult sample count 或 timing 上留下可驗證差異，就不要把它留成表面功能。
 - **先分「排隊」再分「執行」**:build/test/archive verdict 都有 `timings.lockWaitMs`(共享 `/tmp/kg-ios-build.lock` 的排隊等待,三者同義)。一個 run 看起來慢,先看 `lockWaitMs` 是不是卡在別的 worktree 後面,再看 `xcodebuildMs`/`testInvocationMs` 等執行段;沒有 lock-wait 數字時,排隊延遲會偽裝成執行慢。
 - **uniform image 改走 warning 語意**:`uniform-image-detected` 現在只會讓 `validation.status:"warn"` 與頂層 `status:"warn"`，不再把已成功產出的 PNG 誤判成 fatal `error`。真正 fatal 的仍是 `png-count-mismatch`、degenerate dimensions、xcodebuild/test/copy 失敗。
+
+### GitHub-hosted CI 的量測邊界（2026-08-19）
+
+本機表格是 Apple Silicon 的 warm-loop 基準；GitHub-hosted macOS job 是全新 VM，不能把兩者混為同一個 SLA。PR #1025 的 cold hosted baseline 顯示 compile 為主因：build 約 `131s` boot + `642s` xcodebuild；full unit 約 `519s` build-for-testing + `209s` test invocation；UI smoke 約 `280s` build-for-testing + `124s` test invocation。這些是分段實測，不是 `required` merge gate 的耗時。
+
+Hosted workflow 以 committed `Package.resolved` 建立 SwiftPM source cache；每個 job 都還原，只有成功的 `main` push 可回寫。cache hit 前不可宣稱加速，應用 Actions 的 `cache-hit` 與同一組分段 timing 驗證。`ios-quality` 的 `workflow_dispatch` 可選 `macos-26` 或 `macos-26-intel` 做一次性 benchmark；PR 預設不變，且兩種 runner 都保留 Xcode／runtime／simulator preflight。iOS jobs 屬完整 `confidence`，其 `25` 分鐘 timeout 是防掛死的 hard stop，不是 `required` 的全域串行門檻。
 
 ### 日常 warm-loop 建議
 

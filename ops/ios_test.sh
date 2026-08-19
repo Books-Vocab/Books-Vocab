@@ -378,11 +378,14 @@ source "$SCRIPT_DIR/lib/project_python.sh"
 source "$SCRIPT_DIR/lib/fixture_dataset_env.sh"
 # shellcheck source=lib/ios_xctestrun_cache.sh
 source "$SCRIPT_DIR/lib/ios_xctestrun_cache.sh"
+# shellcheck source=lib/ios_swiftpm_cache.sh
+source "$SCRIPT_DIR/lib/ios_swiftpm_cache.sh"
 # Optional run-metrics logging — additive, must never break the test run.
 METRICS_LIB="$SCRIPT_DIR/lib/ios_run_metrics.sh"
 [[ -f "$METRICS_LIB" ]] && source "$METRICS_LIB"
 
 [[ -d "$XCODEPROJ" ]] || { echo "error: $XCODEPROJ not found" >&2; exit 1; }
+kg_ios_swiftpm_configure "$PROJECT_ROOT"
 
 CALLER="${WORKTREE_BRANCH:-$(git -C "$PROJECT_ROOT" branch --show-current 2>/dev/null || echo 'unknown')}"
 
@@ -1428,6 +1431,7 @@ rebuild_test_cache() {
     -default-test-execution-time-allowance 60 \
     -maximum-test-execution-time-allowance "$MAX_TEST_EXECUTION_TIME_ALLOWANCE" \
     -derivedDataPath "$DERIVED_DATA_ROOT" \
+    "${KG_IOS_SWIFTPM_XCODEBUILD_ARGS[@]+"${KG_IOS_SWIFTPM_XCODEBUILD_ARGS[@]}"}" \
     -resultBundlePath "$build_result_bundle" \
     >"$build_log" 2>&1
   build_rc=$?

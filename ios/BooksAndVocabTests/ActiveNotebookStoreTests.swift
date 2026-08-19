@@ -46,6 +46,37 @@ struct ActiveNotebookLWWTests {
 @MainActor
 struct ActiveNotebookStoreTests {
 
+    /// Keeps the test's remote-response handshake off the MainActor. The
+    /// coordinator itself is MainActor-bound, so keeping both continuations on
+    /// that executor can starve the producer under a parallel full-suite run.
+    private actor DeferredUserConfigGate {
+        private var hasStarted = false
+        private var startWaiters: [CheckedContinuation<Void, Never>] = []
+        private var resultContinuation: CheckedContinuation<Void, Never>?
+        private var responseReleased = false
+
+        func waitUntilStarted() async {
+            guard !hasStarted else { return }
+            await withCheckedContinuation { startWaiters.append($0) }
+        }
+
+        func awaitResponseRelease() async {
+            hasStarted = true
+            let waiters = startWaiters
+            startWaiters.removeAll()
+            waiters.forEach { $0.resume() }
+
+            guard !responseReleased else { return }
+            await withCheckedContinuation { resultContinuation = $0 }
+        }
+
+        func releaseResponse() {
+            responseReleased = true
+            resultContinuation?.resume()
+            resultContinuation = nil
+        }
+    }
+
     private final class TestAuth: AuthManaging {
         var isLoggedIn = true
         var userId: String? = "account-a"
@@ -69,33 +100,23 @@ struct ActiveNotebookStoreTests {
 
     private final class DeferredUserConfigService: UserConfigFetching {
         let config: KGUserConfig
-        private var startedContinuation: CheckedContinuation<Void, Never>?
-        private var resultContinuation: CheckedContinuation<KGUserConfig, Never>?
-        private var hasStarted = false
+        private let gate = DeferredUserConfigGate()
 
         init(config: KGUserConfig) {
             self.config = config
         }
 
         func fetchUserConfig() async throws -> KGUserConfig {
-            hasStarted = true
-            startedContinuation?.resume()
-            startedContinuation = nil
-            return await withCheckedContinuation { continuation in
-                resultContinuation = continuation
-            }
+            await gate.awaitResponseRelease()
+            return config
         }
 
         func waitUntilStarted() async {
-            if hasStarted { return }
-            await withCheckedContinuation { continuation in
-                startedContinuation = continuation
-            }
+            await gate.waitUntilStarted()
         }
 
-        func resume() {
-            resultContinuation?.resume(returning: config)
-            resultContinuation = nil
+        func resume() async {
+            await gate.releaseResponse()
         }
     }
 
@@ -275,7 +296,7 @@ struct ActiveNotebookStoreTests {
         await service.waitUntilStarted()
         auth.userId = "account-b"
         auth.token = "token-b"
-        service.resume()
+        await service.resume()
         await task.value
 
         #expect(store.activeNotebookIdIfSet == nil)

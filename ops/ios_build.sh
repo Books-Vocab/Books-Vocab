@@ -93,6 +93,8 @@ source "$SCRIPT_DIR/lib/ios_build_progress.sh"
 # Install provenance is written beside every successful installable iOS app.
 # shellcheck source=lib/ios_install_provenance.sh
 source "$SCRIPT_DIR/lib/ios_install_provenance.sh"
+# shellcheck source=lib/ios_swiftpm_cache.sh
+source "$SCRIPT_DIR/lib/ios_swiftpm_cache.sh"
 XCODEPROJ="$PROJECT_ROOT/ios/BooksAndVocab.xcodeproj"
 IOS_OPS="$SCRIPT_DIR/ios_ops.sh"
 # DerivedData remains one shared, bounded cache anchored at the MAIN repo;
@@ -110,6 +112,7 @@ if [[ ! -d "$XCODEPROJ" ]]; then
   echo "error: $XCODEPROJ not found" >&2
   exit 1
 fi
+kg_ios_swiftpm_configure "$PROJECT_ROOT"
 
 CALLER="${WORKTREE_BRANCH:-$(git -C "$PROJECT_ROOT" branch --show-current 2>/dev/null || echo 'unknown')}"
 
@@ -143,6 +146,7 @@ xcodebuild_argv() {  # $1 = result bundle path; empty omits the flag
     -configuration "$CONFIGURATION"
     -destination "$DESTINATION"
     -derivedDataPath "$DERIVED_DATA_ROOT"
+    "${KG_IOS_SWIFTPM_XCODEBUILD_ARGS[@]+"${KG_IOS_SWIFTPM_XCODEBUILD_ARGS[@]}"}"
   )
   [[ -n "${1:-}" ]] && argv+=(-resultBundlePath "$1")
   argv+=("${SETTINGS[@]+"${SETTINGS[@]}"}" build-for-testing)

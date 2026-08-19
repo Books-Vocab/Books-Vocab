@@ -36,6 +36,12 @@ done
 
 PR_GATE=".github/workflows/pr-gate.yml"
 grep -q '^  pull_request:' "$PR_GATE" || fail "pr-gate has no pull_request trigger"
+# A draft-to-ready transition changes review metadata, not source. The latest
+# `opened`/`synchronize` run already carries the relevant candidate evidence;
+# triggering again would cancel or duplicate its full confidence fan-out.
+if grep -Eq '^[[:space:]]*types:.*ready_for_review' "$PR_GATE"; then
+  fail "pr-gate reruns on ready_for_review without a source change"
+fi
 grep -q '^  required:' "$PR_GATE" || fail "pr-gate has no final required job"
 grep -q 'needs: \[repo-gate, llm-eval, design-system, ui-quality-gate\]' "$PR_GATE" \
   || fail "pr-gate required job is not the short merge gate"
@@ -51,13 +57,48 @@ required_block="$(awk '
 if grep -q 'backend-quality\|ops-suite\|ios-quality' <<<"$required_block"; then
   fail "slow backend/ops/iOS jobs are still merge-blocking"
 fi
+repo_gate_block="$(awk '
+  /^  repo-gate:/ { in_repo_gate=1; next }
+  in_repo_gate && /^  [A-Za-z0-9_-]+:/ { exit }
+  in_repo_gate { print }
+' "$PR_GATE")"
+grep -q 'timeout-minutes: 3' <<<"$repo_gate_block" \
+  || fail "repo-gate is not hard-bounded to the short merge-gate budget"
 for workflow in "${component_workflows[@]}"; do
   grep -q "uses: ./.github/workflows/${workflow}.yml" "$PR_GATE" \
     || fail "pr-gate does not call ${workflow}"
 done
 
+# Every required-path component needs its own three-minute ceiling.  The final
+# `required` aggregator cannot make a dependency fast if that dependency is
+# still allowed to run for fifteen minutes.
+for workflow in llm-eval design-system ui-quality-gate; do
+  grep -q '^    timeout-minutes: 3$' ".github/workflows/${workflow}.yml" \
+    || fail "${workflow} is not hard-bounded to three minutes"
+done
+grep -q 'timeout-minutes: 1' <<<"$required_block" \
+  || fail "required aggregator is not hard-bounded to one minute"
+
+# Keep Actions on the Node 24 generation.  Pinned SHAs preserve supply-chain
+# review while avoiding the hosted-runner Node 20 deprecation path.
+for workflow_path in .github/workflows/*.yml; do
+  grep -q 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1' "$workflow_path" \
+    || fail "${workflow_path} is not pinned to checkout v7"
+  grep -q 'astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1' "$workflow_path" \
+    || fail "${workflow_path} is not pinned to setup-uv v10"
+done
+grep -q 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0' .github/workflows/design-system.yml \
+  || fail "design-system is not pinned to setup-node v7"
+for workflow_path in .github/workflows/backend-quality.yml .github/workflows/ios-quality.yml; do
+  grep -q 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1' "$workflow_path" \
+    || fail "${workflow_path} is not pinned to upload-artifact v7"
+done
+
 IOS=".github/workflows/ios-quality.yml"
-grep -q 'runs-on: macos-26' "$IOS" || fail "iOS workflow does not use the standard macos-26 runner"
+grep -q "github.event.inputs.runner || 'macos-26'" "$IOS" \
+  || fail "iOS workflow has no safe manual hosted-runner benchmark selector"
+grep -q '^    timeout-minutes: 25$' "$IOS" \
+  || fail "iOS workflow does not use the measured confidence timeout ceiling"
 grep -q 'ios_ops.sh build' "$IOS" || fail "iOS workflow has no real Xcode build invocation"
 grep -q -- '--unit' "$IOS" || fail "iOS workflow has no unit-test invocation"
 grep -q -- '--ui' "$IOS" || fail "iOS workflow has no UI-test invocation"
@@ -77,6 +118,18 @@ fi
 if grep -q 'self-hosted\|pull_request_target' "$IOS"; then
   fail "iOS workflow crosses the public fork/self-hosted trust boundary"
 fi
+grep -q 'actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0' "$IOS" \
+  || fail "iOS workflow does not restore the pinned SwiftPM source cache"
+grep -q 'actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0' "$IOS" \
+  || fail "iOS workflow does not save the pinned SwiftPM source cache"
+if grep -q 'KG_IOS_SWIFTPM_CACHE_DIR: \${{ runner.temp }}/kg-ios-swiftpm' "$IOS"; then
+  fail "iOS workflow uses runner.temp in job env, which GitHub rejects before scheduling"
+fi
+grep -q "KG_IOS_SWIFTPM_CACHE_DIR=%s/kg-ios-swiftpm.*\\\$RUNNER_TEMP" "$IOS" \
+  || fail "iOS workflow does not export an external SwiftPM cache root for shell steps"
+grep -q 'Package.resolved' "$IOS" || fail "iOS SwiftPM cache key is not lockfile-derived"
+grep -q "github.event_name == 'push' && github.ref == 'refs/heads/main'" "$IOS" \
+  || fail "iOS SwiftPM cache can be written outside trusted main pushes"
 
 OPS=".github/workflows/ops-suite.yml"
 grep -q 'fromJSON' "$OPS" || fail "ops-suite does not derive its matrix from the classified group list"

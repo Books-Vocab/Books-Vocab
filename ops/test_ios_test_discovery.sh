@@ -317,6 +317,7 @@ else
       printf 'CALLER=%q\n' "$caller"
       printf 'DERIVED_DATA_ROOT=%q\n' "$FIX/derived-$caller"
       printf 'TEST_CACHE_ROOT=%q\n' "$FIX/cache"
+      printf 'XCODE_ARGS_CAPTURE=%q\n' "$FIX/xcodebuild-$caller.args"
       printf '%s\n' \
         'IOS_TEST_CACHE_SENTINEL=.kg-test-cache-complete' \
         'TEST_SCOPE=unit' \
@@ -326,6 +327,7 @@ else
         'XCODEPROJ=/tmp/BooksAndVocab.xcodeproj' \
         'IOS_TEST_SIGNING_ARGS=()' \
         'COVERAGE_XCODEBUILD_ARGS=()' \
+        'KG_IOS_SWIFTPM_XCODEBUILD_ARGS=(-clonedSourcePackagesDirPath /tmp/kg-swiftpm -packageCachePath /tmp/kg-swiftpm/package-cache -onlyUsePackageVersionsFromResolvedFile)' \
         'MAX_TEST_EXECUTION_TIME_ALLOWANCE=60' \
         'BUILD_FOR_TESTING_MS=0' \
         'REBUILD_DID_BUILD=0' \
@@ -340,7 +342,7 @@ else
         'ios_test_now_ms() { printf "100\\n"; }' \
         'start_build_monitor() { (sleep 60) >/dev/null 2>&1 & printf "%s\\n" "$!"; }' \
         'count_compile_events() { printf "2\\n"; }' \
-        'xcodebuild() { return 0; }' \
+        'xcodebuild() { printf "%s\\n" "$@" > "$XCODE_ARGS_CAPTURE"; return 0; }' \
         'release_build_lock() { :; }'
       printf '%s\n' "$BUILD_FN"
       printf '%s\n' 'rebuild_test_cache "$BUILD_LOG" "$BUILD_RESULT_BUNDLE"'
@@ -353,12 +355,21 @@ else
   BUILD_BRAVO="$(synthetic_build_output "caller-bravo")" || BUILD_BRAVO=""
   ALPHA_LINE="$(grep -F '[ios_test][build-for-testing]' <<<"$BUILD_ALPHA" || true)"
   BRAVO_LINE="$(grep -F '[ios_test][build-for-testing]' <<<"$BUILD_BRAVO" || true)"
+  ALPHA_ARGS="$(tr '\n' ' ' < "$FIX/xcodebuild-caller-alpha.args" 2>/dev/null || true)"
+  BRAVO_ARGS="$(tr '\n' ' ' < "$FIX/xcodebuild-caller-bravo.args" 2>/dev/null || true)"
   [[ "$ALPHA_LINE" == *"caller=caller-alpha"* && "$ALPHA_LINE" != *"caller=caller-bravo"* ]] \
     && ok "build progress keeps caller-alpha" \
     || fail_t "build progress lost/swapped caller-alpha: $ALPHA_LINE"
   [[ "$BRAVO_LINE" == *"caller=caller-bravo"* && "$BRAVO_LINE" != *"caller=caller-alpha"* ]] \
     && ok "build progress keeps caller-bravo" \
     || fail_t "build progress lost/swapped caller-bravo: $BRAVO_LINE"
+  for args in "$ALPHA_ARGS" "$BRAVO_ARGS"; do
+    [[ "$args" == *"-clonedSourcePackagesDirPath /tmp/kg-swiftpm"* \
+      && "$args" == *"-packageCachePath /tmp/kg-swiftpm/package-cache"* \
+      && "$args" == *"-onlyUsePackageVersionsFromResolvedFile"* ]] \
+      && ok "build-for-testing receives the isolated lockfile-pinned SwiftPM cache" \
+      || fail_t "build-for-testing dropped SwiftPM cache arguments: $args"
+  done
 fi
 
 # ── 11b. 空 -g pattern 必須被拒（空 ERE alternative 匹配一切 = silent broadening）─

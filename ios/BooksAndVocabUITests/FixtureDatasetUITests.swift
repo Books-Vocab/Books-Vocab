@@ -435,8 +435,10 @@ final class FixtureDatasetUITests: UITestCase {
         }
 
         let app = launchIsolatedApp(fixtures: [.bookshelf("with_books_library")])
-        let shell = AppPage(app: app)
-        let bookshelf = shell.goToBookshelf()
+        // ContentView starts on `.bookshelf`; the fixture assertion must wait
+        // for its projection, not tap an already-selected tab while AX is
+        // still materialising the shell.
+        let bookshelf = BookshelfPage(app: app)
         guard bookshelf.anyBookCard.waitUntilExists(timeout: 10) else {
             XCTFail("bookshelf fixture (with_books_library) should render at least one book card")
             return
