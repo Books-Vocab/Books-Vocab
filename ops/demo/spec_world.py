@@ -112,6 +112,9 @@ class SpecWorldError(ValueError):
     """seed spec 缺欄 / 型別錯 / 引用斷裂 / 無法投影時 fail-loud。"""
 
 
+_MISSING = object()
+
+
 # --------------------------------------------------------------------------- #
 # loading / normalization
 # --------------------------------------------------------------------------- #
@@ -144,6 +147,21 @@ def _str_list(raw: Any, *, owner: str) -> list[str]:
     if not isinstance(raw, list) or any(not isinstance(v, str) for v in raw):
         raise SpecWorldError(f"{owner}: 必須是 string list，got {raw!r}")
     return raw
+
+
+def _normalize_bool(raw: Any, *, owner: str) -> bool:
+    """Normalize native and JSON string booleans without truthy coercion."""
+    if raw is _MISSING:
+        return False
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        normalized = raw.strip().casefold()
+        if normalized == "true":
+            return True
+        if normalized == "false":
+            return False
+    raise SpecWorldError(f"{owner}: 必須是 boolean true/false，got {raw!r}")
 
 
 def _difficulty_tier(raw: Any) -> str | None:
@@ -251,13 +269,15 @@ def _normalize(spec: dict[str, Any]) -> dict[str, Any]:
             "color": nb.get("color"),
             "cover_pattern": nb.get("cover_pattern"),
             "sort_order": int(nb.get("sort_order") or 0),
-            "is_default": bool(nb.get("is_default")),
+            "is_default": _normalize_bool(
+                nb.get("is_default", _MISSING), owner=f"notebooks[{i}].is_default"
+            ),
         })
 
     nb_by_name = {nb["name"]: nb for nb in notebooks}
     cards_by_nb: dict[str, list[dict[str, Any]]] = {nb["name"]: [] for nb in notebooks}
     seen: dict[str, set[str]] = {nb["name"]: set() for nb in notebooks}
-    for card in spec["cards"]:
+    for i, card in enumerate(spec["cards"]):
         nb_name = card["notebook"]
         content = str(card["content"]).strip()
         if content in seen[nb_name]:
@@ -276,7 +296,9 @@ def _normalize(spec: dict[str, Any]) -> dict[str, Any]:
             "root_form": card.get("root_form"),
             "inflections": _str_list(card.get("inflections"), owner=f"{owner}.inflections"),
             "mode": card.get("mode") or "recognition",
-            "is_archived": bool(card.get("is_archived")),
+            "is_archived": _normalize_bool(
+                card.get("is_archived", _MISSING), owner=f"cards[{i}].is_archived"
+            ),
             "difficulty_tier": _difficulty_tier(card.get("difficulty")),
             "kg_card_id": f"spec-nb{nb_by_name[nb_name]['index'] + 1}-card{len(cards_by_nb[nb_name]) + 1}",
             "review_count": int(review.get("review_count") or 0),
