@@ -25,6 +25,52 @@ DEFAULT_THRESHOLDS = {
     "stalls_total": 0,
 }
 
+REQUIRED_RECORD_FIELDS = {
+    "header": frozenset(
+        {
+            "type",
+            "schema",
+            "build_config",
+            "os_version",
+            "low_power_mode",
+            "thermal_start",
+            "plan_flips",
+            "plan_reveal_hold_ms",
+            "plan_inter_flip_ms",
+            "started_at",
+        }
+    ),
+    "flip": frozenset(
+        {
+            "type",
+            "i",
+            "fb",
+            "frames",
+            "dur_ms",
+            "fps",
+            "max_gap_ms",
+            "max_gap_at_ms",
+            "stalls",
+            "hitch_ms",
+            "top_gaps_ms",
+        }
+    ),
+    "summary": frozenset(
+        {
+            "type",
+            "n",
+            "stalls_total",
+            "flips_with_stall",
+            "max_gap_p50_ms",
+            "max_gap_p95_ms",
+            "max_gap_max_ms",
+            "hitch_ms_per_s",
+            "aborted",
+            "thermal_end",
+        }
+    ),
+}
+
 
 @dataclass
 class ParsedRun:
@@ -36,6 +82,7 @@ class ParsedRun:
 
 def parse_jsonl(lines: list[str]) -> ParsedRun:
     parsed = ParsedRun()
+    flip_indices: list[int] = []
     for lineno, raw in enumerate(lines, start=1):
         raw = raw.strip()
         if not raw:
@@ -45,15 +92,52 @@ def parse_jsonl(lines: list[str]) -> ParsedRun:
         except json.JSONDecodeError as exc:
             parsed.errors.append(f"line {lineno}: malformed JSON ({exc.msg})")
             continue
+        if not isinstance(record, dict):
+            parsed.errors.append(f"line {lineno}: record must be a JSON object")
+            continue
         kind = record.get("type")
         if kind == "header":
-            parsed.header = record
+            missing = REQUIRED_RECORD_FIELDS["header"].difference(record)
+            if missing:
+                parsed.errors.append(
+                    f"line {lineno}: header missing required field(s): {', '.join(sorted(missing))}"
+                )
+            if parsed.header is not None:
+                parsed.errors.append(f"line {lineno}: duplicate header record")
+            else:
+                parsed.header = record
         elif kind == "flip":
+            missing = REQUIRED_RECORD_FIELDS["flip"].difference(record)
+            if missing:
+                parsed.errors.append(
+                    f"line {lineno}: flip missing required field(s): {', '.join(sorted(missing))}"
+                )
+            index = record.get("i")
+            if type(index) is not int or index < 0:
+                parsed.errors.append(
+                    f"line {lineno}: flip index must be a non-negative integer"
+                )
+            else:
+                if index in flip_indices:
+                    parsed.errors.append(f"line {lineno}: duplicate flip index {index}")
+                flip_indices.append(index)
             parsed.flips.append(record)
         elif kind == "summary":
-            parsed.summary = record
+            missing = REQUIRED_RECORD_FIELDS["summary"].difference(record)
+            if missing:
+                parsed.errors.append(
+                    f"line {lineno}: summary missing required field(s): {', '.join(sorted(missing))}"
+                )
+            if parsed.summary is not None:
+                parsed.errors.append(f"line {lineno}: duplicate summary record")
+            else:
+                parsed.summary = record
         else:
             parsed.errors.append(f"line {lineno}: unknown record type {kind!r}")
+    if flip_indices != list(range(len(flip_indices))):
+        parsed.errors.append(
+            "flip indices must be a contiguous sequence starting at 0"
+        )
     return parsed
 
 
@@ -70,6 +154,9 @@ def evaluate(parsed: ParsedRun, thresholds: dict, min_flips: int) -> dict:
     reasons: list[str] = verdict["reasons"]
 
     # ---- validity gates（殘缺 run 不下效能結論）----
+    if parsed.errors:
+        reasons.extend(f"invalid: {error}" for error in parsed.errors)
+        return verdict
     if parsed.header is None:
         # 不知 build config / thermal 的 pass 是弱證據 — 證據紀律上視為殘缺。
         reasons.append("invalid: no header record (build/thermal provenance unknown)")
