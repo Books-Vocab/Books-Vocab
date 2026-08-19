@@ -20,7 +20,9 @@ from kg.text_utils import normalize_nfc_lower
 
 @pytest.fixture()
 def store(tmp_path):
-    return CardStore(path=tmp_path / "cards.db")
+    store = CardStore(path=tmp_path / "cards.db")
+    yield store
+    store.close()
 
 
 def _insert_dup(
