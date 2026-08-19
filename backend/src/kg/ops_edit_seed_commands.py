@@ -276,6 +276,15 @@ def load_seed_spec(path: Path) -> SeedSpec:
 
 def prevalidate_seed(spec: SeedSpec, *, replace: bool) -> None:
     # 預驗(寫入前,確保原子性):任何缺漏在動 DB 前就 raise,不留孤兒 notebook。
+    for collection, entries in (
+        ("notebooks", spec.notebooks),
+        ("cards", spec.cards),
+        ("links", spec.links),
+    ):
+        for index, entry in enumerate(entries):
+            if not isinstance(entry, dict):
+                raise EditError(f"{collection}[{index}] 須為 JSON object:{entry!r}")
+
     seen_names: set[str] = set()
     default_entries = 0
     for n in spec.notebooks:
