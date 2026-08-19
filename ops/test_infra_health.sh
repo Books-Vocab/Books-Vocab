@@ -380,7 +380,7 @@ EXECBIN="$(mktemp -d)"
 cat >"$EXECBASE" <<'EOF'
 #!/usr/bin/env bash
 [ "$1" = "run" ] || exit 64
-PATH="${KG_EXEC_FAKEBIN}:$PATH" bash -c "$2"
+PATH="${KG_EXEC_FAKEBIN}:$PATH" zsh -c "$2"
 EOF
 chmod +x "$EXECBASE"
 
