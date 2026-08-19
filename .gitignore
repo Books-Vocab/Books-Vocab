@@ -30,6 +30,13 @@ certs/
 *.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
 
+# Raw iOS UI-test output (regenerable; keep human-readable reports/screenshots)
+*.mp4
+*.xcresult
+*.xcresult/
+**/uitest-videos/
+**/artifacts/ui-review/tmp.*
+
 # Runtime data
 backend/data/users/
 # 用戶註冊表（含 config，可能帶 integrations api_key 等秘密）—— 絕不入庫
