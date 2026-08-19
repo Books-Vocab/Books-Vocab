@@ -7,6 +7,7 @@
 Plan schema:
 {
   "schema": "kg.ops_edit_batch.v1",
+  "stopOnError": true,
   "ops": [
     {"argv": ["notebook-create", "uid", "Demo", "--color", "#8B6F5A", "--commit", "--json"]},
     ["card-move", "uid", "file in", "--to-notebook", "Turns of Phrase", "--commit", "--json"]
@@ -89,7 +90,9 @@ def _load_plan(path: Path) -> tuple[list[list[str]], bool]:
     raw_ops = payload.get("ops")
     if not isinstance(raw_ops, list) or not raw_ops:
         raise ValueError("plan.ops 必須是非空 list")
-    stop_on_error = bool(payload.get("stopOnError", True))
+    stop_on_error = payload.get("stopOnError", True)
+    if not isinstance(stop_on_error, bool):
+        raise TypeError("plan.stopOnError 必須是 boolean")
     ops = [_normalize_op(raw, index=i) for i, raw in enumerate(raw_ops)]
     return ops, stop_on_error
 
@@ -103,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
     plan_path = Path(args[0])
     try:
         ops, stop_on_error = _load_plan(plan_path)
-    except ValueError as exc:
+    except (TypeError, ValueError) as exc:
         print(json.dumps({
             "schema": "kg.ops_edit_batch_result.v1",
             "ok": False,
