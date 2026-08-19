@@ -155,8 +155,60 @@ ios_xctestrun_cache_cleanup_scoped() {
   rm -f "$staged_path"
 }
 
+ios_xctestrun_cache_current_worktree_root() {
+  local library_path="${BASH_SOURCE[0]}"
+  if [[ "$library_path" != /* ]]; then
+    library_path="$(cd "$(dirname "$library_path")" 2>/dev/null && pwd -P)/$(basename "$library_path")" || return 1
+  fi
+  cd "$(dirname "$library_path")/../.." 2>/dev/null && pwd -P
+}
+
+ios_xctestrun_cache_path_matches_worktree() {
+  local candidate="$1" expected_root="$2" resolved_candidate
+  [[ -n "$candidate" && -n "$expected_root" ]] || return 1
+  if [[ "$candidate" == "$expected_root" || "$candidate" == "$expected_root/" ]]; then
+    return 0
+  fi
+  [[ -d "$candidate" ]] || return 1
+  resolved_candidate="$(cd "$candidate" 2>/dev/null && pwd -P)" || return 1
+  [[ "$resolved_candidate" == "$expected_root" ]]
+}
+
+ios_xctestrun_cache_worktree_path_valid() {
+  local xctestrun_path="$1" expected_root="${2:-}" env_roots env_root asset_root
+  [[ -f "$xctestrun_path" ]] || return 1
+  if [[ -z "$expected_root" ]]; then
+    expected_root="$(ios_xctestrun_cache_current_worktree_root)" || return 1
+  fi
+  [[ -n "$expected_root" ]] || return 1
+
+  # KG_FIXTURE_ASSET_ROOT is copied into the xctestrun by Xcode and then
+  # forwarded to the app.  A shared cache can therefore carry an absolute
+  # path from a different linked worktree even when its content key matches.
+  # Missing keys remain valid for non-fixture/unit caches; a present key must
+  # resolve to this checkout in every test target.
+  env_roots="$(ios_xctestrun_cache_env_roots "$xctestrun_path")" || return 1
+  while IFS= read -r env_root; do
+    [[ -n "$env_root" ]] || continue
+    if asset_root="$(/usr/libexec/PlistBuddy -c "Print $env_root:KG_FIXTURE_ASSET_ROOT" "$xctestrun_path" 2>/dev/null)"; then
+      [[ -n "$asset_root" ]] || return 1
+      ios_xctestrun_cache_path_matches_worktree "$asset_root" "$expected_root" || return 1
+    fi
+  done <<<"$env_roots"
+}
+
+ios_xctestrun_cache_invalidate() {
+  local sentinel_path="$1"
+  [[ -n "$sentinel_path" ]] || return 1
+  rm -f "$sentinel_path"
+}
+
 ios_xctestrun_cache_is_complete() {
   local sentinel_path="$1" xctestrun_path="$2" configuration="$3" sdk_suffix="$4" scope="$5"
   [[ -f "$sentinel_path" ]] || return 1
+  if ! ios_xctestrun_cache_worktree_path_valid "$xctestrun_path"; then
+    ios_xctestrun_cache_invalidate "$sentinel_path" || true
+    return 1
+  fi
   ios_xctestrun_cache_products_ready "$xctestrun_path" "$configuration" "$sdk_suffix" "$scope"
 }
