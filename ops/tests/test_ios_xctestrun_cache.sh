@@ -112,6 +112,70 @@ fi
 ios_xctestrun_cache_cleanup_scoped "$staged"
 [[ ! -e "$staged" ]] && ok "scoped cleanup removes only staged artifact" || bad "scoped cleanup left staged artifact"
 
+section "cache completion rejects stale worktree identity"
+cache_lifecycle_root="$TMPROOT/cache-lifecycle"
+mkdir -p "$cache_lifecycle_root/Debug-iphonesimulator/BooksAndVocab.app/PlugIns/BooksAndVocabTests.xctest"
+
+write_cache_xctestrun() {
+  local path="$1" asset_root="$2"
+  cat >"$path" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>TestConfigurations</key><array><dict><key>TestTargets</key><array>
+<dict><key>TestingEnvironmentVariables</key><dict><key>KG_FIXTURE_ASSET_ROOT</key><string>$asset_root</string></dict></dict>
+</array></dict></array></dict></plist>
+PLIST
+}
+
+stale_sentinel="$cache_lifecycle_root/.kg-test-cache-complete-stale"
+stale_xctestrun="$cache_lifecycle_root/stale.xctestrun"
+write_cache_xctestrun "$stale_xctestrun" "$TMPROOT/old-worktree"
+: >"$stale_sentinel"
+if ios_xctestrun_cache_is_complete \
+    "$stale_sentinel" "$stale_xctestrun" Debug iphonesimulator unit; then
+  bad "stale worktree cache was reused"
+else
+  ok "stale worktree cache is rejected"
+fi
+[[ ! -e "$stale_sentinel" ]] \
+  && ok "stale cache completion marker is invalidated" \
+  || bad "stale cache completion marker was retained"
+
+current_root="$(cd "$WORKTREE" && pwd -P)"
+current_sentinel="$cache_lifecycle_root/.kg-test-cache-complete-current"
+current_xctestrun="$cache_lifecycle_root/current.xctestrun"
+write_cache_xctestrun "$current_xctestrun" "$current_root"
+: >"$current_sentinel"
+if ios_xctestrun_cache_is_complete \
+    "$current_sentinel" "$current_xctestrun" Debug iphonesimulator unit; then
+  ok "current worktree cache remains reusable"
+else
+  bad "current worktree cache was rejected"
+fi
+[[ -f "$current_sentinel" ]] \
+  && ok "current cache completion marker remains intact" \
+  || bad "current cache completion marker was removed"
+
+plain_sentinel="$cache_lifecycle_root/.kg-test-cache-complete-plain"
+plain_xctestrun="$cache_lifecycle_root/plain.xctestrun"
+cat >"$plain_xctestrun" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>TestConfigurations</key><array><dict><key>TestTargets</key><array>
+<dict><key>BlueprintName</key><string>BooksAndVocabTests</string></dict>
+</array></dict></array></dict></plist>
+PLIST
+: >"$plain_sentinel"
+if ios_xctestrun_cache_is_complete \
+    "$plain_sentinel" "$plain_xctestrun" Debug iphonesimulator unit; then
+  ok "cache without fixture worktree path remains reusable"
+else
+  bad "cache without fixture worktree path was rejected"
+fi
+[[ -f "$plain_sentinel" ]] \
+  && ok "plain cache completion marker remains intact" \
+  || bad "plain cache completion marker was removed"
+
 echo ""
 echo "passed=$pass failed=$fail"
 [[ "$fail" -eq 0 ]]
