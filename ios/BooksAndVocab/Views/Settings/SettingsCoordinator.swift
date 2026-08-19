@@ -30,21 +30,6 @@ private struct SettingsConfigurationPayloadError: LocalizedError {
     }
 }
 
-/// Monotonic guard for optimistic settings mutations. A late failure from an
-/// older request must not roll back a newer user intent.
-struct SettingsMutationGeneration: Equatable, Sendable {
-    private(set) var current = 0
-
-    mutating func begin() -> Int {
-        current &+= 1
-        return current
-    }
-
-    func accepts(_ token: Int) -> Bool {
-        token == current
-    }
-}
-
 @MainActor protocol SettingsCoordinating: AnyObject, Observable {
     var showSubscriptionPaywall: Bool { get set }
     var connectionPulse: Bool { get }
@@ -221,11 +206,14 @@ final class SettingsCoordinator: SettingsCoordinating {
             let config = try await kgService.fetchUserConfig()
             // A request started for account A may finish after the UI has
             // crossed to account B. Never project that response into B.
-            guard !Task.isCancelled,
-                  authManager.isLoggedIn,
-                  !authManager.isDemoMode,
-                  authManager.userId == requestedUserId
-            else { return }
+            guard SettingsRemoteConfigPolicy.fetchDisposition(
+                outcome: .success,
+                isCancelled: Task.isCancelled,
+                isLoggedIn: authManager.isLoggedIn,
+                isDemoMode: authManager.isDemoMode,
+                requestedUserID: requestedUserId,
+                currentUserID: authManager.userId
+            ) == .apply else { return }
             guard applyServerTranslationConfig(config.translation),
                   applyServerReviewClock(config.review_clock),
                   applyServerReviewMode(config.review_mode),
@@ -236,6 +224,14 @@ final class SettingsCoordinator: SettingsCoordinating {
             applyServerActiveNotebook(config.vocab_ui, authManager: authManager)
             configurationIssue = nil
         } catch {
+            guard SettingsRemoteConfigPolicy.fetchDisposition(
+                outcome: .failure,
+                isCancelled: Task.isCancelled,
+                isLoggedIn: authManager.isLoggedIn,
+                isDemoMode: authManager.isDemoMode,
+                requestedUserID: requestedUserId,
+                currentUserID: authManager.userId
+            ) == .preserveLocalValues else { return }
             // Keep the local/iCloud value visible, but make the unavailable
             // server projection explicit instead of presenting a default as
             // if the live fetch had succeeded.
@@ -423,7 +419,10 @@ final class SettingsCoordinator: SettingsCoordinating {
             )
             return true
         } catch {
-            guard reviewClockMutation.accepts(mutation) else {
+            guard SettingsRemoteConfigPolicy.acceptsMutationFailure(
+                token: mutation,
+                currentGeneration: reviewClockMutation.current
+            ) else {
                 AppLog.kg.debug("Ignoring stale review-clock failure")
                 return true
             }
@@ -474,7 +473,10 @@ final class SettingsCoordinator: SettingsCoordinating {
             )
             return true
         } catch {
-            guard reviewModeMutation.accepts(mutation) else {
+            guard SettingsRemoteConfigPolicy.acceptsMutationFailure(
+                token: mutation,
+                currentGeneration: reviewModeMutation.current
+            ) else {
                 AppLog.kg.debug("Ignoring stale review-mode failure")
                 return true
             }
@@ -883,12 +885,19 @@ final class SettingsCoordinator: SettingsCoordinating {
         userID: String?,
         authManager: any AuthManaging
     ) -> Bool {
-        !Task.isCancelled &&
-            accountGeneration == generation &&
-            resyncRequestID == requestID &&
-            authManager.isLoggedIn &&
-            !authManager.isDemoMode &&
-            authManager.userId == userID
+        SettingsRemoteConfigPolicy.acceptsResyncResult(
+            request: SettingsRemoteConfigPolicy.ResyncRequest(
+                accountGeneration: generation,
+                requestID: requestID,
+                userID: userID
+            ),
+            currentAccountGeneration: accountGeneration,
+            currentRequestID: resyncRequestID,
+            isCancelled: Task.isCancelled,
+            isLoggedIn: authManager.isLoggedIn,
+            isDemoMode: authManager.isDemoMode,
+            currentUserID: authManager.userId
+        )
     }
 
     private func markSync(_ label: StaticString, _ detail: String) {
