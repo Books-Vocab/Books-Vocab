@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 from kg.graph.models import GraphLink, LinkKind
 from kg.graph_event_log import GraphEventStore, GraphEventType
 from kg.graph_history_synth import synthesize_graph_history, synthesize_graph_history_many
@@ -40,6 +42,27 @@ def _link(
         created_at=created_at or datetime(2026, 4, 1, 9, 0, tzinfo=UTC),
         status=status,  # type: ignore[arg-type]
     )
+
+
+@pytest.fixture(autouse=True)
+def _graph_event_stores_are_closed(monkeypatch):
+    stores = []
+    closed = set()
+    real_init = GraphEventStore.__init__
+    real_close = GraphEventStore.close
+
+    def track_init(store, path):
+        real_init(store, path)
+        stores.append(store)
+
+    def track_close(store):
+        real_close(store)
+        closed.add(id(store))
+
+    monkeypatch.setattr(GraphEventStore, "__init__", track_init)
+    monkeypatch.setattr(GraphEventStore, "close", track_close)
+    yield
+    assert all(id(store) in closed for store in stores)
 
 
 def test_active_link_yields_single_add_event():
@@ -138,19 +161,25 @@ def test_many_flattens_all_link_histories():
 
 def test_round_trips_through_graph_event_store(tmp_path):
     store = GraphEventStore(tmp_path / "graph_events.db")
-    links = [_link(link_id="a", status="active"), _link(link_id="b", status="hidden")]
-    res = store.insert_many(synthesize_graph_history_many(links, notebook_id="default"))
-    assert res["inserted"] == 3
-    synthetic = store.query(synthetic=True)
-    assert len(synthetic) == 3
-    assert all(e.is_synthetic for e in synthetic)
+    try:
+        links = [_link(link_id="a", status="active"), _link(link_id="b", status="hidden")]
+        res = store.insert_many(synthesize_graph_history_many(links, notebook_id="default"))
+        assert res["inserted"] == 3
+        synthetic = store.query(synthetic=True)
+        assert len(synthetic) == 3
+        assert all(e.is_synthetic for e in synthetic)
+    finally:
+        store.close()
 
 
 def test_re_synth_and_reinsert_is_idempotent(tmp_path):
     store = GraphEventStore(tmp_path / "graph_events.db")
-    link = _link(link_id="dup", status="deprecated")
-    first = store.insert_many(synthesize_graph_history(link, notebook_id="default"))
-    second = store.insert_many(synthesize_graph_history(link, notebook_id="default"))
-    assert first["inserted"] == 2
-    assert second["inserted"] == 0
-    assert second["skipped"] == 2
+    try:
+        link = _link(link_id="dup", status="deprecated")
+        first = store.insert_many(synthesize_graph_history(link, notebook_id="default"))
+        second = store.insert_many(synthesize_graph_history(link, notebook_id="default"))
+        assert first["inserted"] == 2
+        assert second["inserted"] == 0
+        assert second["skipped"] == 2
+    finally:
+        store.close()
