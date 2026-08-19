@@ -27,6 +27,13 @@ _LOG_COLS = ["id", "user_id", "notebook_id", "from_id", "to_id", "similarity",
 _COLS_SQL = ", ".join(_LOG_COLS)
 
 
+def _accepted_from_storage(value: object) -> bool:
+    """Normalize legacy SQLite text booleans while preserving native values."""
+    if isinstance(value, str):
+        return value.strip().casefold() in {"1", "true"}
+    return bool(value)
+
+
 def _initialize_schema(conn: sqlite3.Connection) -> None:
         from .sqlite_utils import init_sqlite_pragmas
         init_sqlite_pragmas(conn)
@@ -166,7 +173,7 @@ def get_log(user_id: str, *, notebook_id: str | None = None, limit: int = 1000) 
     result = []
     for row in rows:
         d = dict(zip(_LOG_COLS, row, strict=True))
-        d["accepted"] = bool(d["accepted"])
+        d["accepted"] = _accepted_from_storage(d["accepted"])
         result.append(d)
     return result
 

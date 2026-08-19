@@ -87,6 +87,51 @@ def test_record_rejection(tmp_path, monkeypatch):
     judge_log._reset()
 
 
+def test_get_log_normalizes_legacy_text_boolean_values(tmp_path, monkeypatch):
+    """Legacy SQLite text booleans must not turn false rows into accepts."""
+    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+
+    import importlib
+
+    from kg import judge_log
+    importlib.reload(judge_log)
+    judge_log._reset()
+
+    for to_id, accepted, reject_reason, source in [
+        ("native_true", True, None, "auto"),
+        ("native_false", False, "low_confidence", "auto"),
+        ("degree_cap", False, "degree_cap", "auto"),
+        ("legacy_true", True, None, "manual"),
+        ("legacy_false", False, "low_confidence", "manual"),
+    ]:
+        judge_log.record(
+            user_id="u1", notebook_id="nb1", from_id="a", to_id=to_id,
+            similarity=0.8, verdict="shares_usage", confidence=0.9,
+            accepted=accepted, reject_reason=reject_reason, source=source,
+        )
+
+    conn = judge_log._get_conn()
+    conn.execute("UPDATE judge_log SET accepted = ? WHERE to_id = ?", ("true", "legacy_true"))
+    conn.execute("UPDATE judge_log SET accepted = ? WHERE to_id = ?", ("false", "legacy_false"))
+    conn.commit()
+
+    rows = {row["to_id"]: row for row in judge_log.get_log("u1")}
+    assert rows["native_true"]["accepted"] is True
+    assert rows["native_false"]["accepted"] is False
+    assert rows["legacy_true"]["accepted"] is True
+    assert rows["legacy_false"]["accepted"] is False
+
+    # Native auto rows keep the existing aggregate and degree-cap semantics.
+    assert judge_log.get_acceptance_stats() == {
+        "total": 2,
+        "accepted": 1,
+        "rejected": 1,
+        "rate": 0.5,
+    }
+
+    judge_log._reset()
+
+
 def test_acceptance_stats(tmp_path, monkeypatch):
     """get_acceptance_stats returns correct rate from auto judge decisions."""
     monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
