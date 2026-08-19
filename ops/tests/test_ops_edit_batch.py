@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -15,6 +16,15 @@ if str(ROOT) not in sys.path:
 from backend.tests.ops_helpers import run_ops_cli
 
 RUNNER = ROOT / "ops" / "ops_edit_batch.py"
+
+
+def _load_batch_module():
+    spec = importlib.util.spec_from_file_location("ops_edit_batch_under_test", RUNNER)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _ops_cli_ready() -> bool:
@@ -68,6 +78,78 @@ def _run_batch(data_dir: Path, plan: dict) -> subprocess.CompletedProcess[str]:
         text=True,
         env=env,
     )
+
+
+@pytest.mark.parametrize(
+    ("stop_on_error", "expected_count", "expected_stopped_early"),
+    [(False, 2, False), (True, 1, True)],
+)
+def test_ops_edit_batch_honors_explicit_boolean_stop_on_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    stop_on_error: bool,
+    expected_count: int,
+    expected_stopped_early: bool,
+) -> None:
+    module = _load_batch_module()
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(json.dumps({
+        "schema": "kg.ops_edit_batch.v1",
+        "stopOnError": stop_on_error,
+        "ops": [["first"], ["second"]],
+    }), encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        return subprocess.CompletedProcess(
+            argv,
+            returncode=1 if len(calls) == 1 else 0,
+            stdout="",
+            stderr="first failed",
+        )
+
+    monkeypatch.setattr(module, "_default_ops_edit_path", lambda: tmp_path / "ops_edit.py")
+    monkeypatch.setattr(module, "_build_ops_edit_cmd", lambda _path: ["fake-ops-edit"])
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    assert module.main([str(plan_path)]) == 1
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert payload["count"] == expected_count
+    assert payload["stoppedEarly"] is expected_stopped_early
+    assert [call[-1] for call in calls] == ["first", "second"][:expected_count]
+
+
+@pytest.mark.parametrize("invalid_value", ["false", 0, {}, []])
+def test_ops_edit_batch_rejects_non_boolean_stop_on_error_before_operations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    invalid_value: object,
+) -> None:
+    module = _load_batch_module()
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(json.dumps({
+        "schema": "kg.ops_edit_batch.v1",
+        "stopOnError": invalid_value,
+        "ops": [["first"]],
+    }), encoding="utf-8")
+
+    def fail_if_called(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("invalid plan must not execute an operation")
+
+    monkeypatch.setattr(module.subprocess, "run", fail_if_called)
+
+    assert module.main([str(plan_path)]) == 1
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert payload["error"] == "plan.stopOnError 必須是 boolean"
+    assert payload["count"] == 0
+    assert payload["results"] == []
 
 
 @REQUIRES_BACKEND
