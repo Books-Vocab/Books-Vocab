@@ -115,6 +115,19 @@ def test_lifecycle_requires_order_and_reaps_only_terminal(tmp_path: Path):
         lifecycle.transition("job-2", "acked")
 
 
+def test_lifecycle_instances_preserve_each_others_ledger_writes(tmp_path: Path):
+    ledger = tmp_path / "jobs.json"
+    first = JobLifecycle(ledger, ttl_seconds=1)
+    second = JobLifecycle(ledger, ttl_seconds=1)
+
+    first.stage("job-a")
+    second.stage("job-b")
+
+    persisted = JobLifecycle(ledger, ttl_seconds=1)
+    assert persisted.get("job-a")["state"] == "staged"
+    assert persisted.get("job-b")["state"] == "staged"
+
+
 def test_ack_concurrent_verify_consumes_once(tmp_path: Path):
     ledger = tmp_path / "ack-ledger.json"
     first = OscarAckAuthority(ledger, key=b"k" * 32)
