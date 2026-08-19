@@ -15,9 +15,11 @@ def _create_card_and_artifact(isolated_api):
         "/api/notebooks", json={"name": "Recovery"}, headers=headers
     ).json()["id"]
     user_dir = isolated_api.data_dir / "users" / isolated_api.user_id
-    CardStore(user_dir / "cards.db").add(
-        content="retry", meaning="重試", notebook_id=notebook_id
-    )
+    store = CardStore(user_dir / "cards.db")
+    try:
+        store.add(content="retry", meaning="重試", notebook_id=notebook_id)
+    finally:
+        store.close()
     artifact = notebook_files(user_dir, notebook_id)["graph"]
     artifact.write_text("{}")
     return notebook_id, artifact
@@ -37,7 +39,37 @@ def _assert_delete_retry_converges(client, headers, notebook_id):
 
 def _assert_no_active_cards(isolated_api, notebook_id):
     user_dir = isolated_api.data_dir / "users" / isolated_api.user_id
-    assert CardStore(user_dir / "cards.db").count(notebook_id=notebook_id) == 0
+    store = CardStore(user_dir / "cards.db")
+    try:
+        assert store.count(notebook_id=notebook_id) == 0
+    finally:
+        store.close()
+
+
+def test_card_store_helpers_close_owned_stores(isolated_api, monkeypatch):
+    stores = []
+
+    class SpyCardStore:
+        def __init__(self, path):
+            self.closed = False
+            stores.append(self)
+
+        def add(self, **kwargs):
+            return None
+
+        def count(self, **kwargs):
+            return 0
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setitem(globals(), "CardStore", SpyCardStore)
+
+    notebook_id, _ = _create_card_and_artifact(isolated_api)
+    _assert_no_active_cards(isolated_api, notebook_id)
+
+    assert len(stores) == 2
+    assert all(store.closed for store in stores)
 
 
 def test_delete_retry_resumes_after_cards_cleanup_failure(isolated_api, monkeypatch):
