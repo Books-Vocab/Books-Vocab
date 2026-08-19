@@ -35,6 +35,8 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 - state-diff 的投影面 `project_user_world`（`ops_world_projection.py`）仍是**第三條獨立讀盤路徑**：cards 走 `_load_cards` 動態 SELECT，graph 走 `_load_graphs` 直讀 `graph_*.json`，刻意繞過 GraphStore 快取。
 - seed-replay 的導出面 `export_seed_spec`（`ops_world_export.py`，`ops-cli world-export`）是**第四條獨立讀盤路徑**：與 projection 不同，它導出 seed 可**無損重放**的全欄位（含 review 計數器），`connect_ro` + 直讀 `graph_*.json`。它的對齊契約不是 expectation diff，而是 roundtrip 不變量（見 §1.1）。
 
+**state-diff identity safety（#1094）**：`ops_world_diff` 對 notebooks 的 aliases／identities 及 graph／link keys 一律拒絕 duplicate；actual 或 expected 任一側出現重複都產生 mismatch，不以 last-write-wins 解析。沒有重複時仍維持 expectation 的 subset comparison，duplicate mismatch path 以穩定順序回報。
+
 **後果(結構限制,非 bug)**:寫面寫進 DB 的欄位,讀面/投影面**不保證撈得到**。現在雖然已把 CLI/EDIT monolith 拆成模組,但三面仍各自演進；新增欄位若沒同步到 readonly query 與 projection,照樣會 silent drift。
 
 **verbatim-safe 判準**——一個欄位可被「導出 expectation 並斷言」**當且僅當**:
