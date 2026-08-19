@@ -7,6 +7,104 @@ import Testing
 // Schema/domain tests remain parallel; process-level environment tests live in FixtureDatasetEnvironmentTests.
 @Suite
 struct FixtureDatasetStoreTests {
+    @Test func loaderPrefersTestingOverrideOverEnvironment() throws {
+        let overrideData = Data(#"{"datasetID":"override"}"#.utf8)
+        let source = FixtureDatasetLoader.loadSource(
+            testingOverrideData: overrideData,
+            environment: [
+                FixtureDatasetLoader.deflateEnvironmentKey: "not-base64",
+                FixtureDatasetLoader.datasetEnvironmentKey: "also-not-base64",
+            ]
+        )
+
+        guard case let .data(data, description) = source else {
+            Issue.record("testing override should produce a data source")
+            return
+        }
+        #expect(data == overrideData)
+        #expect(description == "testing-override")
+    }
+
+    @Test func loaderRejectsAmbiguousEnvironmentSources() throws {
+        let source = FixtureDatasetLoader.loadSource(
+            testingOverrideData: nil,
+            environment: [
+                FixtureDatasetLoader.deflateEnvironmentKey: "compressed",
+                FixtureDatasetLoader.datasetEnvironmentKey: "plaintext",
+            ]
+        )
+
+        guard case let .invalid(source: description, error) = source else {
+            Issue.record("simultaneous dataset environment sources should be invalid")
+            return
+        }
+        #expect(description == "env:KG_FIXTURE_DATASET_DEFLATE_B64+KG_FIXTURE_DATASET_B64")
+        #expect(error.contains("source is ambiguous"))
+    }
+
+    @Test func resolverMaterializesInheritedVocabularyIdentity() throws {
+        let entry = Self.fullVocabularyEntryJSON(word: "anchored")
+        let dataset = """
+        {
+          "schema": "kg.fixture.dataset.v2",
+          "datasetID": "resolver-vocabulary",
+          "vocabulary": {
+            "vocabListLong": {
+              "notebookRemoteId": "resolver-notebook",
+              "notebookName": "Resolver Notebook",
+              "notebookSyncStatus": 1,
+              "bookTitle": "Resolver Book",
+              "entries": [\(entry)],
+              "reviewHistory": []
+            },
+            "vocabListSingle": {
+              "notebookRemoteId": "resolver-notebook",
+              "notebookName": "Resolver Notebook",
+              "notebookSyncStatus": 1,
+              "bookTitle": "Resolver Book",
+              "entries": [],
+              "reviewHistory": [],
+              "baseFixture": "vocabListLong"
+            }
+          }
+        }
+        """
+
+        let decoded = try FixtureDatasetLoader.decode(Self.completeV2DatasetData(dataset))
+        let resolved = try FixtureDatasetResolver.materializeVocabularyInheritance(in: decoded)
+        let seed = try #require(resolved.vocabulary["vocabListSingle"])
+
+        #expect(seed.baseFixture == nil)
+        #expect(seed.entries.map(\.word) == ["anchored"])
+    }
+
+    @Test func resolverUsesInjectedAssetRootForSourceResolution() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kg-fixture-resolver-\(UUID().uuidString)", isDirectory: true)
+        let source = root.appendingPathComponent("payload.txt")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data("payload".utf8).write(to: source)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let asset = try JSONDecoder().decode(
+            UIWorldAsset.self,
+            from: Data(
+                """
+                {
+                  "sourcePath": "payload.txt",
+                  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "byteSize": 7,
+                  "installAs": "FixtureDatasetStoreTests/payload.txt",
+                  "contentType": "text/plain; charset=utf-8"
+                }
+                """.utf8
+            )
+        )
+
+        let resolved = try FixtureDatasetResolver.resolveSourceURL(for: asset, assetRoot: root)
+        #expect(resolved.standardizedFileURL == source.standardizedFileURL)
+    }
+
     @Test func datasetFailsWhenSchemaIsMissing() throws {
         let dataset = """
         {
