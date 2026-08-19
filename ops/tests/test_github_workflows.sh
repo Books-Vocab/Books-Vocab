@@ -51,8 +51,16 @@ grep -q 'ops/ci_scope_router.sh' "$PR_GATE" \
   || fail "pr-gate does not invoke the confidence path classifier"
 grep -q 'ops/ci_confidence_verdict.sh' "$PR_GATE" \
   || fail "pr-gate does not verify selected versus skipped confidence suites"
-grep -q 'needs: \[repo-gate, llm-eval, design-system, ui-quality-gate\]' "$PR_GATE" \
-  || fail "pr-gate required job is not the short merge gate"
+grep -Fqx '  merge_group:' "$PR_GATE" \
+  || fail "pr-gate has no future-safe merge_group trigger"
+grep -Fqx '    types: [checks_requested]' "$PR_GATE" \
+  || fail "pr-gate merge_group trigger is not limited to checks_requested"
+grep -Fq 'needs: [repo-gate]' "$PR_GATE" \
+  || fail "pr-gate required job is not repo-gate-only"
+grep -Fq 'BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}' "$PR_GATE" \
+  || fail "pr-gate does not fall back from PR base SHA to merge_group base SHA"
+grep -Fq 'HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}' "$PR_GATE" \
+  || fail "pr-gate does not fall back from PR/merge_group head SHA to event SHA"
 grep -q '^  confidence:' "$PR_GATE" \
   || fail "pr-gate has no non-blocking full-confidence aggregator"
 grep -q 'needs: \[changed-paths, repo-gate, backend-quality, llm-eval, design-system, ui-quality-gate, ops-suite, ios-quality\]' "$PR_GATE" \
@@ -73,6 +81,8 @@ required_block="$(awk '
   in_required && /^  [A-Za-z0-9_-]+:/ { exit }
   in_required { print }
 ' "$PR_GATE")"
+grep -Fqx '    needs: [repo-gate]' <<<"$required_block" \
+  || fail "pr-gate required job is not the short repo-gate-only merge gate"
 if grep -q 'backend-quality\|ops-suite\|ios-quality' <<<"$required_block"; then
   fail "slow backend/ops/iOS jobs are still merge-blocking"
 fi
