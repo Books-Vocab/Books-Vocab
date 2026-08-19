@@ -1,13 +1,13 @@
 ---
 name: worktree-flow
-description: "使用 GitHub Issue、branch、PR 與 Actions 交付，並用很薄的本機 coordinator 管理多個 worktree 的 ownership、Scope、驗證與交接。"
+description: "使用 GitHub Issue（需要規劃時）、branch、PR 與 Actions 交付，並用很薄的本機 coordinator 管理多個 worktree 的 ownership、Scope、驗證與交接。"
 ---
 
 # Worktree coordination
 
 ## Mental model
 
-GitHub Issue 定義問題、背景與 acceptance；branch 是變更邊界；PR 是 diff、討論、review 與 checks 的紀錄；merge 後的 `main` 是產品真相；release 依獨立 SOP。local worktree 只是隔離實作環境。
+先讀 `docs/reference/delivery_model.md`。工作有兩條入口：User／IM 直接指派給 Worker，或 IM 將需要排序／追蹤的工作放進 GitHub Issue 後交給 Issue Solver。Issue 是可選的規劃工具；branch 是變更邊界；PR 是所有 code change 的 diff、討論、CR／DS、checks 與 merge request 紀錄；merge 後的 `main` 是產品真相；release 依獨立 SOP。local worktree 只是隔離實作環境。
 
 ## Local boundary
 
@@ -23,12 +23,12 @@ GitHub Issue 定義問題、背景與 acceptance；branch 是變更邊界；PR �
 ## Standard flow
 
 1. 先確認 repo、branch、HEAD、工作樹 clean state 與 active ownership。
-2. 從 GitHub Issue 取得目標；建立最小 structured Scope，檢查 overlap。
+2. 判斷入口：Issue Solver 從 GitHub Issue 取得目標；Worker 從 User／IM assignment 取得目標。建立最小 structured Scope，檢查 overlap。
 3. `open` 或 `adopt` worktree；所有修改只在該 path 內進行。
 4. 先寫 failing test，再做最小修復；長測試保留 heartbeat 與完整輸出。
 5. `gate` 只驗證當前 worktree；pass 不等於 merge permission。
-6. commit，執行 `hand-back`，開／更新 PR，等待 GitHub Actions 與 review。
-7. merge、release、deploy 由 GitHub branch rules 與各自 SOP 控制。
+6. commit，執行 `hand-back`，開／更新 PR；PR 必須標明 direct assignment 或關聯 Issue。
+7. 等 GitHub Actions、CR、DS 與 repository rules；CM merge。release、deploy 由各自 SOP 控制。
 
 ## Gate routing
 
@@ -44,7 +44,7 @@ Gate output 綁定 exact HEAD，保留 command、exit status、duration、log pa
 
 ## Scope and hand-back
 
-Scope 只解決檔案 ownership，不代替 Issue acceptance。多 worktree 同時碰同一檔案時先停下並報告 collision；未知 Scope 不推測。hand-back 至少包含 branch、path、exact HEAD、Scope、Issue／PR external ID（若已有）、驗證命令與 blocker。
+Scope 只解決檔案 ownership，不代替 Issue acceptance 或 direct assignment。多 worktree 同時碰同一檔案時先停下並報告 collision；未知 Scope 不推測。hand-back 至少包含 branch、path、exact HEAD、Scope、Issue／PR external ID（若已有）、direct assignment 摘要（若無 Issue）、驗證命令與 blocker。
 
 ## Safe stopping
 

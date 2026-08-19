@@ -6,6 +6,7 @@ agent_facing_surface:
     - CLAUDE.md
     - .claude/agents/
     - .claude/skills/
+    - docs/reference/delivery_model.md
     - docs/reference/agent_context.md
     - docs/reference/product_surface.md
     - docs/reference/tech_index.md
@@ -67,11 +68,33 @@ documents:
     triggers:
       - agent-routing-changed
     sources:
+      - docs/reference/delivery_model.md
       - CLAUDE.md
       - .claude/agents/
       - .claude/skills/
       - ops/context_route.py
       - ops/context_plane.json
+
+  - id: reference.delivery_model
+    path: docs/reference/delivery_model.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - delivery-model-changed
+    sources:
+      - CLAUDE.md
+      - .github/
+      - .claude/agents/
+      - .claude/skills/
+      - docs/reference/agent_context.md
+      - docs/runbook/system.md
+      - docs/sop/review_discipline.md
+      - docs/sop/doc_sync.md
+      - docs/sop/release.md
+      - ops/context_plane.json
+      - ops/context_route.py
+      - ops/worktree_registry.py
+      - ops/worktree_orchestrate.py
 
   - id: reference.product_surface
     path: docs/reference/product_surface.md
@@ -282,6 +305,7 @@ documents:
     triggers:
       - workflow-changed
     sources:
+      - docs/reference/delivery_model.md
       - .github/
       - ops/worktree_registry.py
       - ops/worktree_orchestrate.py
@@ -366,6 +390,7 @@ documents:
     triggers:
       - docs-control-changed
     sources:
+      - docs/reference/delivery_model.md
       - docs/registry.yml
       - ops/docs_lint.sh
       - ops/docs_impact.py
@@ -447,6 +472,7 @@ documents:
     triggers:
       - release-changed
     sources:
+      - docs/reference/delivery_model.md
       - ops/release.sh
       - .github/workflows/
 
@@ -457,6 +483,7 @@ documents:
     triggers:
       - review-workflow-changed
     sources:
+      - docs/reference/delivery_model.md
       - .github/
       - .claude/agents/
       - .claude/skills/

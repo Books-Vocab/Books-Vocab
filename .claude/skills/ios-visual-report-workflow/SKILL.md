@@ -1,25 +1,25 @@
 ---
 name: ios-visual-report-workflow
-description: Turn the active P3-P15 iOS visual report references into four cluster contracts, complete source/fixture/UITest changes, and exact-head Simulator evidence with a machine-rendered report. Use when rebuilding a covered SwiftUI surface, operating the iOS Simulator, or closing an iOS UI review into one integrated delivery tree.
+description: Turn the active P3-P15 iOS visual report references into four cluster contracts, complete source/fixture/UITest changes, and exact-head Simulator evidence with a machine-rendered report. Use when rebuilding a covered SwiftUI surface, operating the iOS Simulator, or closing an iOS UI review in one PR.
 ---
 
 # iOS Visual Report Workflow
 
-Use this as the integrator workflow for report-driven iOS UI work. The report is an input, not a second source of truth: the executable cluster manifest and evidence matrix are the control plane; the report is rendered/updated from those receipts.
+Use this as the multi-cluster workflow for report-driven iOS UI work. The report is an input, not a second source of truth: the executable cluster manifest and evidence matrix are evidence controls, not a local Issue／Project／PR control plane. Read `docs/reference/delivery_model.md` for the delivery boundary; the implementation ends in the Worker／Issue Solver's PR.
 
 ## Non-negotiable invariants
 
-- Work in the existing integration worktree. Do not create a workaround tree for a late test, fixture, or evidence problem.
+- Work in the declared Worker／Issue Solver worktree. Do not create a workaround tree for a late test, fixture, or evidence problem.
 - Partition active P3-P15 requirements into exactly four clusters: Reader Runtime (P3-P7), Explore/Overview (P8-P10), Vocabulary/Review Card (P11-P13), Settings/Sync (P14-P15).
 - A cluster hand-back contains the root cause, implementation, unit test, UI World fixture, exact XCTest selector, machine acceptance, run-scoped visual receipt, visual attestation, exact source thread ID, and current HEAD. Screenshots/video/xcresult are short-lived agent inspection material; the durable hand-back is the compact receipt and its provenance. Gate BLOCK returns to that source thread; fixes produce a new commit and hand-back.
 - A selector PASS is not a requirement PASS. A requirement is verified only after fixture coverage, machine contract, counterexample coverage, complete visual attestation, and matrix provenance all pass.
 - Every evidence claim binds the same clean source HEAD, UI World ID/SHA, Simulator UDID, selector, run ID, evidence root, manifest SHA, and reviewer identity.
 - Evidence from a Simulator never proves physical-device, TestFlight, App Store, or production behavior.
-- Keep one integration tree alive; after hand-back, integrate or formally account for the child immediately. Do not leave stale child trees as the workflow's normal state.
+- Keep one declared implementation worktree for the PR; after hand-back, keep ownership and evidence explicit. Do not create a second local merge or work-item state machine for cluster work.
 
 ## Phase 0 — freeze the executable plan before implementation
 
-1. Confirm host, primary `main`, canonical integration worktree, and registry. If another tree is dirty, inspect and protect its ownership; do not overwrite it.
+1. Confirm host, source base, declared implementation worktree, and registry. If another tree is dirty, inspect and protect its ownership; do not overwrite it.
 2. Read the PDF text and inspect active references `p3.PNG` through `p15.PNG`. Run the bundled input audit:
 
    ```bash
@@ -32,7 +32,7 @@ Use this as the integrator workflow for report-driven iOS UI work. The report is
    ```
 
 3. Complete the cluster manifest before source edits. Each requirement must name: report image, source module, required states, counterexample, fixture IDs, exact selector, machine acceptance, visual acceptance, and evidence output root. Read `references/cluster-contract.md` for the contract.
-4. Resolve unknowns from the relevant feature boundary and UI design SoT before dispatching work. Do not make each child reinterpret the PDF.
+4. Resolve unknowns from the relevant feature boundary and UI design SoT before implementation. Do not make each workstream reinterpret the PDF.
 
 ## Phase 1 — implement one complete cluster unit
 
@@ -142,26 +142,26 @@ the bundle; a non-Git or partially observable root is never treated as clean.
 
 Update the existing report directory only after the matrix receipt is valid. Keep historical batches explicitly labelled historical; current status must link the current matrix, batch summary, evidence root, Gate receipt, review receipt, and docs lint output. Do not create a parallel manual status ledger.
 
-## Phase 4 — convergence and hand-back
+## Phase 4 — PR convergence and hand-back
 
-The Manager owns convergence, not just code collection; the Integrator only prepares the staging handoff:
+CM owns PR convergence and merge; IM owns Issue intake／triage and does not prepare a local staging merge. Worker／Issue Solver owns the implementation branch and PR:
 
-1. Read registry hand-back seals and source tips. Integrate each returned child into the one canonical tree in bounded batches; late children are appended before the one final Gate. Never cherry-pick a commit already proven by ancestry, patch-id, or identical tree.
-2. A dirty child is first tested and reviewed in its own path, then committed and handed back. Do not reset, clean, or delete it while ownership is unresolved.
-3. Hand the staging tree to Manager. Manager runs one fresh Gate on the final exact HEAD using that tree's own orchestrator. A non-block Gate is required; warnings and environment deviations remain visible.
-4. Manager cuts over to local `main`, syncs `origin/main` only when backup authorization exists, and resolves every source/integration tree through `worktree_orchestrate.py`. Do not use manual directory deletion or force-reset.
-5. Final audit must prove: one clean canonical tree, source/test/docs present, fresh exact-HEAD evidence, review receipt state, registry closure, `main == origin/main == ls-remote`, and zero scoped worktree/branch residue.
+1. Keep all cluster source／test／fixture／evidence changes in the declared branch and commit them in reviewable units. A cluster manifest or visual matrix is evidence control, not a batch merge queue.
+2. Test and review the exact worktree before hand-back. Do not reset, clean, or delete it while ownership is unresolved.
+3. Run one fresh Gate on the PR branch's exact HEAD. Keep warnings and environment deviations visible, then update the PR with the command, exit status and evidence paths.
+4. CR and DS review the PR; CM decides merge only after required Actions checks, review and safety conditions are satisfied. Do not cut over a local `main` or invent a local merge ledger.
+5. Final audit must prove: one clean PR worktree, source/test/docs present, fresh exact-HEAD evidence, PR review/check state and docs lint. Worktree cleanup is an ownership operation after hand-back, not a product delivery state.
 
 ## Output contract
 
 Return a compact receipt containing:
 
 - four-cluster map and active report inputs;
-- integrated source/test/docs commits and duplicate decisions;
+- source/test/docs commits and any duplicate decisions;
 - exact canonical path/branch/HEAD/tree/base;
 - UI World, Simulator, selector, batch, bundle, matrix, visual reviewer identities;
 - unit/UI/build/contract/visual/review/docs/Gate verdicts;
-- remaining children and formal disposition;
+- remaining workstreams and formal disposition;
 - deviations, blockers, and the single next action if not complete;
 - report directory links and hand-back state.
 

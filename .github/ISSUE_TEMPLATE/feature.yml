@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Use this form for a desired outcome, not for a proposed local tracking system. GitHub Issue/Project owns priority and acceptance; the eventual PR owns implementation evidence.
+        Use this form for work that needs GitHub Issue/Project planning, priority, discussion, or follow-up. Direct assignments from User/IM may go straight to a Worker and PR without an Issue. The eventual PR owns implementation evidence.
   - type: textarea
     id: problem
     attributes:

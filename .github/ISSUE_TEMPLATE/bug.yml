@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Use this form for a defect that can be reproduced or narrowed down. The issue is the source of truth for impact and acceptance; implementation belongs in the linked pull request.
+        Use this form for a defect that needs GitHub Issue triage or tracking. A clear direct assignment may skip an Issue and go straight to a Worker and PR. When an Issue is used, it is the source of truth for impact and acceptance; implementation belongs in the linked pull request.
   - type: dropdown
     id: surface
     attributes:
