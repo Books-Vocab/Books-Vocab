@@ -45,10 +45,14 @@ def build_app_lifespan_from_dependencies(
                 "admin_password is empty → admin password login is disabled "
                 "(set ADMIN_PASSWORD to enable)"
             )
-        dependencies.assert_single_worker_fn(
-            dependencies.settings.data_dir / ".worker.lock"
-        )
-        reaped = dependencies.reap_orphaned_runs_fn()
+        worker_lock_path = dependencies.settings.data_dir / ".worker.lock"
+        dependencies.assert_single_worker_fn(worker_lock_path)
+        try:
+            reaped = dependencies.reap_orphaned_runs_fn()
+        except BaseException:
+            dependencies.release_worker_lock_fn()
+            worker_lock_path.unlink(missing_ok=True)
+            raise
         if reaped:
             dependencies.logger.info(
                 "Reaped %d orphaned pipeline run(s) → interrupted",

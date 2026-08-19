@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from kg import worker_guard
 from kg.app_lifespan import AppLifespanDependencies, build_app_lifespan_from_dependencies
 from kg.settings import KGSettings
 
@@ -81,6 +83,37 @@ def test_build_app_lifespan_from_dependencies_runs_expected_flow(tmp_path):
         "reset_clients",
         "reset_async_clients",
     ]
+
+
+def test_lifespan_releases_worker_lock_when_reaping_fails(tmp_path):
+    lock_path = tmp_path / ".worker.lock"
+    worker_guard.release_worker_lock()
+    events: list[object] = []
+
+    def _reap_orphaned_runs() -> int:
+        events.append("reap_orphaned_runs")
+        raise RuntimeError("reap failed")
+
+    deps = replace(
+        _dependencies(tmp_path, events),
+        assert_single_worker_fn=worker_guard.assert_single_worker,
+        reap_orphaned_runs_fn=_reap_orphaned_runs,
+        release_worker_lock_fn=worker_guard.release_worker_lock,
+    )
+    app = FastAPI(
+        lifespan=build_app_lifespan_from_dependencies(dependencies=deps)
+    )
+
+    try:
+        with pytest.raises(RuntimeError, match="reap failed"):
+            with TestClient(app):
+                pass
+
+        assert worker_guard._lock_fd is None
+        assert not lock_path.exists()
+    finally:
+        worker_guard.release_worker_lock()
+        lock_path.unlink(missing_ok=True)
 
 
 def _run_lifespan_with_settings(tmp_path, settings: KGSettings) -> list[object]:
