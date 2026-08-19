@@ -5,8 +5,10 @@ name: design-system
 # 只在相關路徑變動時跑。本地等價入口：ops/verify_design_system.sh（pre-commit 亦用）。
 
 on:
+  workflow_call:
   push:
-    paths: &ds_paths
+    branches: [main]
+    paths:
       - 'design-system/**'
       - 'ops/gen_web_tokens.py'
       - 'ops/gen_figma_sets.py'
@@ -20,9 +22,6 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/design-system.yml'
-  pull_request:
-    paths: *ds_paths
-
 jobs:
   verify:
     runs-on: ubuntu-latest

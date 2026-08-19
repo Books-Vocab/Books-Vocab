@@ -16,6 +16,7 @@ LINUX_GROUPS=(
   ui-deadcode ui-graph log-assert python-entrypoints
   lint-baselines injection-lint ui-fixture-lint ops-ci-coverage
   ui-quality-plane ui-quality-gate review-card-golden docs-lint gen-ios-baseline
+  github-workflows
   ios-signal-traps ios-install-provenance ios-run-verdict ios-device-lock
   ios-cache-evict review-flip-probe ios-device-files ios-device-logs ios-test-discovery
   userland-portability script-help install-hooks lib-sourcing podcast-ops

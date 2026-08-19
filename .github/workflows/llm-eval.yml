@@ -5,13 +5,12 @@ name: llm-eval
 # while unrelated backend and iOS changes should not spend a runner minute.
 
 on:
+  workflow_call:
   push:
-    paths: &llm_eval_paths
+    branches: [main]
+    paths:
       - 'lab/llm_eval/**'
       - '.github/workflows/llm-eval.yml'
-  pull_request:
-    paths: *llm_eval_paths
-
 permissions:
   contents: read
 

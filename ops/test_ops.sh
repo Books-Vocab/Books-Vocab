@@ -45,6 +45,7 @@ DEFAULT_TESTS=(
   injection-lint
   ui-fixture-lint
   ops-ci-coverage
+  github-workflows
   ui-quality-plane
   ui-quality-gate
   review-card-golden
@@ -164,6 +165,7 @@ run_one() {
         ops/tests/test_ci_expected_fail_exclusions.py \
         ops/tests/test_ops_group_chain.py
       ;;
+    github-workflows)    ./ops/tests/test_github_workflows.sh ;;
     ui-quality-plane)   ./ops/tests/test_ui_quality_plane.sh ;;
     ui-quality-gate)    ./ops/tests/test_ui_quality_gate.sh ;;
     review-card-golden) ./ops/tests/test_review_card_layout_golden.sh ;;

@@ -4,8 +4,10 @@ name: ui-quality-gate
 # 本地等價入口：./ops/ui_quality_gate.sh --tier fast --execute
 
 on:
+  workflow_call:
   push:
-    paths: &uq_paths
+    branches: [main]
+    paths:
       - 'ios/BooksAndVocab/**'
       # 這條**不是** 'ios/BooksAndVocab/**' 的子集：那個 glob 要求 BooksAndVocab 後面
       # 緊接 '/'，所以 ios/BooksAndVocabUITests/ 完全不命中。少了它，只動 UI 測試的
@@ -29,9 +31,6 @@ on:
       - 'ops/ui_fixture_lint.sh'
       - '.github/workflows/ui-quality-gate.yml'
       - '.githooks/pre-commit'
-  pull_request:
-    paths: *uq_paths
-
 jobs:
   gate:
     runs-on: ubuntu-latest

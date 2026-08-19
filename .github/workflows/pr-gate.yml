@@ -1,5 +1,8 @@
 name: pr-gate
 
+# This is the only pull_request entrypoint. The jobs below call the component
+# workflows so the branch protection rule has one stable final status while
+# Linux and macOS validation still run in parallel.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -13,8 +16,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  gate:
-    name: gate
+  repo-gate:
+    name: repo-gate
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -41,4 +44,46 @@ jobs:
         run: ./ops/tests/test_ops_ci_coverage.sh
 
       - name: Run repository gate
-        run: ./ops/test_ops.sh docs-lint worktree context-routing
+        run: ./ops/test_ops.sh docs-lint worktree context-routing github-workflows
+
+  backend-quality:
+    name: backend-quality
+    uses: ./.github/workflows/backend-quality.yml
+
+  llm-eval:
+    name: llm-eval
+    uses: ./.github/workflows/llm-eval.yml
+
+  design-system:
+    name: design-system
+    uses: ./.github/workflows/design-system.yml
+
+  ui-quality-gate:
+    name: ui-quality-gate
+    uses: ./.github/workflows/ui-quality-gate.yml
+
+  ops-suite:
+    name: ops-suite
+    uses: ./.github/workflows/ops-suite.yml
+
+  ios-quality:
+    name: ios-quality
+    uses: ./.github/workflows/ios-quality.yml
+
+  required:
+    name: required
+    if: ${{ always() }}
+    needs: [repo-gate, backend-quality, llm-eval, design-system, ui-quality-gate, ops-suite, ios-quality]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Assert every required gate passed
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$NEEDS_JSON" | jq -r 'to_entries[] | "\(.key)=\(.value.result)"'
+          if jq -e 'to_entries | any(.value.result != "success")' <<<"$NEEDS_JSON" >/dev/null; then
+            echo 'one or more required gates failed' >&2
+            exit 1
+          fi
