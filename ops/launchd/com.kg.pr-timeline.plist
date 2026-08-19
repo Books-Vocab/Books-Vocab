@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.kg.pr-timeline</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/chenliangyu/.local/bin/uv</string>
+    <string>run</string>
+    <string>--no-project</string>
+    <string>--python</string>
+    <string>3.13</string>
+    <string>python</string>
+    <string>/Users/chenliangyu/services/kg-pr-timeline/current/ops/pr_timeline/server.py</string>
+    <string>--host</string>
+    <string>100.118.39.104</string>
+    <string>--port</string>
+    <string>8008</string>
+    <string>--repo</string>
+    <string>Books-Vocab/Books-Vocab</string>
+    <string>--cache</string>
+    <string>/Users/chenliangyu/.local/state/kg-pr-timeline/prs.json</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/chenliangyu/services/kg-pr-timeline/current</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/chenliangyu/.local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    <key>GH_BIN</key>
+    <string>/opt/homebrew/bin/gh</string>
+    <key>PR_TIMELINE_HOST</key>
+    <string>100.118.39.104</string>
+    <key>PR_TIMELINE_PORT</key>
+    <string>8008</string>
+    <key>PR_TIMELINE_REFRESH_SECONDS</key>
+    <string>60</string>
+    <key>PR_TIMELINE_INITIAL_PAGES</key>
+    <string>10</string>
+    <key>PR_TIMELINE_REFRESH_PAGES</key>
+    <string>2</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>StandardOutPath</key>
+  <string>/Users/chenliangyu/Library/Logs/kg_pr_timeline.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/chenliangyu/Library/Logs/kg_pr_timeline.err.log</string>
+</dict>
+</plist>
