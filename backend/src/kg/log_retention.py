@@ -47,7 +47,7 @@ def _env_days(var: str, fallback: int) -> int:
     except ValueError:
         _logger.warning("Silently handled exception; using fallback response", exc_info=True)
         return fallback
-    if days < 0:
+    if days <= 0:
         return fallback
     return days
 
