@@ -25,6 +25,7 @@ import os
 # Held for the lifetime of the process. Module-level so the fd (and thus
 # the flock) is never garbage-collected while the worker runs.
 _lock_fd: int | None = None
+_lock_pid: int | None = None
 
 
 class MultipleWorkersError(RuntimeError):
@@ -38,8 +39,14 @@ def assert_single_worker(lock_path: str | os.PathLike) -> None:
     no-op (it does not open a second fd). A second *process* calling this
     against the same lock file raises :class:`MultipleWorkersError`.
     """
-    global _lock_fd
+    global _lock_fd, _lock_pid
+    pid = os.getpid()
     if _lock_fd is not None:
+        if _lock_pid != pid:
+            raise MultipleWorkersError(
+                "forked worker inherited the single-worker lock state; "
+                "start a fresh process instead of reusing the parent state"
+            )
         return
     path = os.fspath(lock_path)
     parent = os.path.dirname(path)
@@ -57,6 +64,7 @@ def assert_single_worker(lock_path: str | os.PathLike) -> None:
             f"以 --workers 1 啟動。"
         ) from e
     _lock_fd = fd
+    _lock_pid = pid
 
 
 def release_worker_lock() -> None:
@@ -66,7 +74,8 @@ def release_worker_lock() -> None:
     (the test suite does this per case) does not keep a stale lock held.
     Idempotent: a no-op when no lock is held.
     """
-    global _lock_fd
+    global _lock_fd, _lock_pid
     if _lock_fd is not None:
         os.close(_lock_fd)
         _lock_fd = None
+        _lock_pid = None
