@@ -498,6 +498,29 @@ def test_prune_judge_log_respects_retention_days_env(isolated_logs, monkeypatch)
     assert remaining == 5
 
 
+@pytest.mark.parametrize("raw", ["0", "-1"])
+def test_prune_judge_log_non_positive_retention_env_uses_default(isolated_logs, monkeypatch, raw):
+    """Non-positive env overrides must not turn retention into immediate pruning."""
+    monkeypatch.setenv("JUDGE_LOG_RETENTION_DAYS", raw)
+    _insert_judge_row(_iso(1))
+
+    deleted, remaining = log_retention.prune_judge_log()
+
+    assert deleted == 0
+    assert remaining == 1
+
+
+@pytest.mark.parametrize("raw", [None, ""])
+def test_env_days_missing_or_empty_uses_fallback(monkeypatch, raw):
+    """Missing and empty retention overrides must use the documented fallback."""
+    if raw is None:
+        monkeypatch.delenv("KG_TEST_RETENTION_DAYS", raising=False)
+    else:
+        monkeypatch.setenv("KG_TEST_RETENTION_DAYS", raw)
+
+    assert log_retention._env_days("KG_TEST_RETENTION_DAYS", 30) == 30
+
+
 def test_prune_translate_log_safe_with_no_data(isolated_logs):
     """Pruning an empty translate_log table must not raise and must report 0/0."""
     # Force schema creation without inserting any rows.
