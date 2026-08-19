@@ -173,6 +173,28 @@ def test_judge_event_shape(activity_env):
     assert "created_at" in ev
 
 
+def test_judge_event_normalizes_legacy_text_false(activity_env):
+    """Legacy SQLite text booleans must keep a rejected event rejected."""
+    import kg.judge_log as jl
+    from kg.admin_user_activity import get_user_activity
+
+    now = datetime.now(UTC)
+    _record_judge("u1", when=now - timedelta(minutes=2), accepted=False)
+
+    with jl._lock:
+        conn = jl._get_conn()
+        conn.execute(
+            "UPDATE judge_log SET accepted = ? WHERE user_id = ? AND to_id = ?",
+            ("false", "u1", "c2"),
+        )
+        conn.commit()
+
+    result = get_user_activity("u1", hours=24)
+    ev = result["events"][0]
+    assert ev["type"] == "judge"
+    assert ev["accepted"] is False
+
+
 def test_hours_clamp_to_max(activity_env):
     """hours must be clamped to <= 168 (7 days)."""
     from kg.admin_user_activity import get_user_activity

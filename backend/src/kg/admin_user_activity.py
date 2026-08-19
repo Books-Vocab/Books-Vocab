@@ -123,7 +123,7 @@ def _judge_events(user_id: str, since_iso: str) -> list[dict[str, Any]]:
             "similarity": row[4],
             "verdict": row[5],
             "confidence": row[6],
-            "accepted": bool(row[7]),
+            "accepted": jl._accepted_from_storage(row[7]),
             "source": row[8],
             "created_at": row[9],
         })
