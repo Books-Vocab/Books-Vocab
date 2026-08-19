@@ -93,10 +93,14 @@ class EmbeddingStore:
 
     def _read_meta(self) -> dict | None:
         try:
-            return json.loads(self._meta_path.read_text())
-        except (FileNotFoundError, json.JSONDecodeError):
+            meta = json.loads(self._meta_path.read_text())
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
             logger.warning("Failed to read embedding meta for %s", self._meta_path, exc_info=True)
             return None
+        if not isinstance(meta, dict):
+            logger.warning("Embedding meta must be a JSON object for %s", self._meta_path)
+            return None
+        return meta
 
     def _write_meta(self) -> None:
         self._meta_path.parent.mkdir(parents=True, exist_ok=True)

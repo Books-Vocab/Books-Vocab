@@ -3,6 +3,7 @@
 Complements test_embedding_batch.py (batch add path) and
 test_embedding_store_cache.py (factory caching). Focuses on:
   * _load: legacy-no-sidecar -> writes sidecar in place.
+  * _load: non-object, malformed, or unreadable sidecars recover as legacy.
   * _load: sidecar mismatch -> quarantines stale files, starts empty.
   * _load: matching sidecar -> loads as-is.
   * _embed: sorts response.data by .index (including index=None coercion).
@@ -88,6 +89,48 @@ class TestLoad:
         store, _, meta = _make_store(tmp_path, preload_ids=["a"], write_meta=False)
         assert store.count() == 1
         assert meta.exists(), "legacy migration should write sidecar in-place"
+        payload = json.loads(meta.read_text())
+        assert payload["model"] == EMBEDDING_MODEL
+        assert payload["dim"] == EMBEDDING_DIM
+
+    def test_non_object_sidecar_recovers_as_legacy(self, tmp_path: Path):
+        store, _, meta = _make_store(tmp_path, preload_ids=["a", "b"])
+        meta.write_text("[]")
+
+        reloaded = EmbeddingStore(store.embeddings_path, store.ids_path, store.llm)
+
+        assert reloaded.count() == 2
+        payload = json.loads(meta.read_text())
+        assert payload["model"] == EMBEDDING_MODEL
+        assert payload["dim"] == EMBEDDING_DIM
+
+    def test_malformed_sidecar_recovers_as_legacy(self, tmp_path: Path):
+        store, _, meta = _make_store(tmp_path, preload_ids=["a", "b"])
+        meta.write_text('{"model":')
+
+        reloaded = EmbeddingStore(store.embeddings_path, store.ids_path, store.llm)
+
+        assert reloaded.count() == 2
+        payload = json.loads(meta.read_text())
+        assert payload["model"] == EMBEDDING_MODEL
+        assert payload["dim"] == EMBEDDING_DIM
+
+    def test_unreadable_sidecar_recovers_as_legacy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        store, _, meta = _make_store(tmp_path, preload_ids=["a", "b"])
+        original_read_text = Path.read_text
+
+        def raise_for_meta(path: Path, *args, **kwargs):
+            if path == meta:
+                raise OSError("sidecar unavailable")
+            return original_read_text(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", raise_for_meta)
+        reloaded = EmbeddingStore(store.embeddings_path, store.ids_path, store.llm)
+        monkeypatch.undo()
+
+        assert reloaded.count() == 2
         payload = json.loads(meta.read_text())
         assert payload["model"] == EMBEDDING_MODEL
         assert payload["dim"] == EMBEDDING_DIM
