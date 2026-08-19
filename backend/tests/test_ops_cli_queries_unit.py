@@ -84,6 +84,40 @@ class TestUserQuota:
         assert "u1" in out
         assert "used_usd" in out
 
+    @pytest.mark.parametrize(
+        ("env_name", "raw_value", "field", "expected"),
+        [
+            ("PRO_DAILY_LIMIT_USD", "not-a-number", "pro_limit_usd", 0.30),
+            ("FREE_DAILY_LIMIT_USD", "nan", "free_limit_usd", 0.03),
+            ("PRO_DAILY_LIMIT_USD", "inf", "pro_limit_usd", 0.30),
+            ("FREE_DAILY_LIMIT_USD", "-inf", "free_limit_usd", 0.03),
+        ],
+    )
+    def test_invalid_limit_json_uses_finite_default_without_db_write(
+        self, tmp_path, monkeypatch, capsys, env_name, raw_value, field, expected
+    ):
+        db_path = _seed_token_db(tmp_path) / "token_usage.db"
+        before = db_path.read_bytes()
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv(env_name, raw_value)
+
+        q.cmd_user_quota(_make_args(uid="u1"))
+
+        payload = json.loads(capsys.readouterr().out)
+        assert payload[field] == expected
+        assert db_path.read_bytes() == before
+
+    def test_valid_limits_keep_json_output_values(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("PRO_DAILY_LIMIT_USD", "1.25")
+        monkeypatch.setenv("FREE_DAILY_LIMIT_USD", "0.125")
+
+        q.cmd_user_quota(_make_args(uid="u1"))
+
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["pro_limit_usd"] == 1.25
+        assert payload["free_limit_usd"] == 0.125
+
     def test_with_data(self, tmp_path, monkeypatch, capsys):
         _seed_token_db(tmp_path)
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
