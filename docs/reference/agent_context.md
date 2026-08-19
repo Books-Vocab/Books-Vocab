@@ -13,7 +13,7 @@ scope:
   - ops/context_route.py
   - ops/skill_route.py
   - ops/agent_onboard.py
-verified_against: 8ec4780950c73b6006649c5c08e69c05962abfc1
+verified_against: 2d9f6fdbebca9fe0f2aa9a790f1498dded80050d
 -->
 
 # Agent Context Index

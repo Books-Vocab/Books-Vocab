@@ -6,7 +6,7 @@ scope:
   - backend/
   - ops/
   - .claude/skills/devops/
-verified_against: 8ec4780950c73b6006649c5c08e69c05962abfc1
+verified_against: 2d9f6fdbebca9fe0f2aa9a790f1498dded80050d
 -->
 # 伺服器排障指南
 

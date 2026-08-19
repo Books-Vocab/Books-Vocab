@@ -7,7 +7,7 @@ scope:
   - ios/BooksAndVocab/Support/
   - ops/
   - .claude/skills/ios-simulator-verification/
-verified_against: 8ec4780950c73b6006649c5c08e69c05962abfc1
+verified_against: 2d9f6fdbebca9fe0f2aa9a790f1498dded80050d
 -->
 # UI Flow Evidence Playbook — 真播放級 UITest 契約
 
