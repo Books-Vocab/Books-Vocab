@@ -171,15 +171,23 @@ def verify_and_decode_signed_jws(signed_jws: str, *, bundle_id: str | None = Non
     if len(parts) != 3:
         raise AppStoreVerificationError("Malformed App Store JWS.")
 
-    header = json.loads(_b64url_decode(parts[0]))
+    try:
+        header = json.loads(_b64url_decode(parts[0]))
+    except (TypeError, ValueError, UnicodeError) as exc:
+        raise AppStoreVerificationError("Malformed App Store JWS header.") from exc
+    if not isinstance(header, dict):
+        raise AppStoreVerificationError("Malformed App Store JWS header.")
     x5c_entries = header.get("x5c")
     if not isinstance(x5c_entries, list) or not x5c_entries:
         raise AppStoreVerificationError("App Store JWS header missing x5c certificate chain.")
 
-    certificates = tuple(
-        x509.load_der_x509_certificate(base64.b64decode(cert_b64))
-        for cert_b64 in x5c_entries
-    )
+    try:
+        certificates = tuple(
+            x509.load_der_x509_certificate(base64.b64decode(cert_b64))
+            for cert_b64 in x5c_entries
+        )
+    except (TypeError, ValueError, UnicodeError) as exc:
+        raise AppStoreVerificationError("Malformed App Store JWS certificate chain.") from exc
     trusted_roots = _load_trusted_root_certificates()
     _verify_certificate_chain(list(certificates), trusted_roots)
     _ensure_leaf_is_app_store_certificate(certificates[0])
@@ -208,7 +216,7 @@ def verify_and_decode_signed_jws(signed_jws: str, *, bundle_id: str | None = Non
                 "verify_iat": False,
             },
         )
-    except jwt.InvalidTokenError as exc:
+    except (jwt.InvalidTokenError, TypeError, ValueError, UnicodeError) as exc:
         # This block covers only failures jwt.decode itself raises here:
         # ExpiredSignatureError, ImmatureSignatureError, the JWS-payload
         # InvalidSignatureError, and InvalidAlgorithmError. It does NOT cover
@@ -216,6 +224,9 @@ def verify_and_decode_signed_jws(signed_jws: str, *, bundle_id: str | None = Non
         # _verify_certificate_chain (before this try) and are collapsed to
         # AppStoreVerificationError at their own source.
         raise AppStoreVerificationError(f"App Store JWS verification failed: {exc}") from exc
+
+    if not isinstance(payload, dict):
+        raise AppStoreVerificationError("Malformed App Store JWS payload.")
 
     # bundleId binds the proof to THIS app. JWSTransaction / notification envelopes
     # carry it and a mismatch is an attack. JWSRenewalInfo legitimately omits it, so
