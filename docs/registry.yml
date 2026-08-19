@@ -167,6 +167,8 @@ documents:
     sources:
       - backend/tests/
       - backend/src/kg/
+      - backend/uv.lock
+      - .github/workflows/backend-quality.yml
 
   - id: reference.testing_smoke_checklist
     path: docs/reference/testing/smoke_checklist.md
