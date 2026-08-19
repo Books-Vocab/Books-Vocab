@@ -148,6 +148,9 @@ def _validate_identity(identity_id: str, definition: dict[str, Any], intents: di
 
 def validate_manifest(payload: dict[str, Any], root: Path | None = None) -> None:
     root = repo_root(root)
+    expected_top_level = {"schema", "version", "registry", "onboarding", "identities", "roles", "intents"}
+    if set(payload) != expected_top_level:
+        raise ContextRouteError(f"manifest 欄位必須剛好是 {sorted(expected_top_level)}")
     if payload.get("schema") != SCHEMA or payload.get("version") != 3:
         raise ContextRouteError(f"manifest 必須是 {SCHEMA} version=3")
     onboarding = _require_mapping(payload.get("onboarding"), "onboarding")
@@ -189,8 +192,15 @@ def validate_manifest(payload: dict[str, Any], root: Path | None = None) -> None
     identities = _require_mapping(payload.get("identities"), "identities")
     if set(identities) != IDENTITIES:
         raise ContextRouteError(f"identities 必須剛好是 {sorted(IDENTITIES)}")
+    identity_names: dict[str, str] = {}
     for identity_id, definition in identities.items():
-        _validate_identity(identity_id, _require_mapping(definition, f"identities.{identity_id}"), intents)
+        definition = _require_mapping(definition, f"identities.{identity_id}")
+        _validate_identity(identity_id, definition, intents)
+        for name in [identity_id, definition["label"], *definition["aliases"]]:
+            normalized = _normalize(name)
+            previous = identity_names.setdefault(normalized, identity_id)
+            if previous != identity_id:
+                raise ContextRouteError(f"identity alias 重複: {name} -> {previous}/{identity_id}")
         for route_intent, routes in definition["skill_routes"].items():
             for entry, skill_intent in routes.items():
                 try:

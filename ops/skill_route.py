@@ -67,6 +67,9 @@ def _require(value: Any, field: str, context: str) -> Any:
 
 
 def validate_catalog(payload: dict[str, Any], root: Path) -> None:
+    expected_top_level = {"schema", "version", "bootstrap", "context", "intent_aliases", "skills", "fixtures"}
+    if set(payload) != expected_top_level:
+        raise SkillCatalogError(f"catalog 欄位必須剛好是 {sorted(expected_top_level)}")
     if payload.get("schema") != SCHEMA or payload.get("version") != 2:
         raise SkillCatalogError(f"schema 必須是 {SCHEMA} version=2")
     skills = _require(payload.get("skills"), "skills", "catalog")
@@ -147,7 +150,7 @@ def validate_catalog(payload: dict[str, Any], root: Path) -> None:
         raise SkillCatalogError(f"primary intent overlap: {overlaps}")
     _validate_dependency_cycles(skills)
 
-    aliases = payload.get("intent_aliases", {})
+    aliases = payload["intent_aliases"]
     if not isinstance(aliases, dict) or any(not isinstance(alias, str) or not alias for alias in aliases) or any(not isinstance(target, str) or not target for target in aliases.values()):
         raise SkillCatalogError("intent_aliases 必須是非空字串到非空字串的 mapping")
     primary_intents = set(by_intent)

@@ -59,7 +59,7 @@
     },
     "issue-solver": {
       "label": "Issue Solver",
-      "aliases": ["issue solver", "issue-solver", "ticket delivery child"],
+      "aliases": ["issue solver", "issue-solver"],
       "machine_role": "contributor",
       "allowed_intents": ["delivery", "backend", "ios"],
       "entry_modes": ["issue"],
