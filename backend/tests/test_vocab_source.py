@@ -5,8 +5,45 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 
 from kg.api_models import CardResponse, VocabEntry, VocabSource
+from kg.vocab_shared import card_response
+
+
+def _build_card_response(source: str | None) -> CardResponse:
+    card = SimpleNamespace(
+        id="c1",
+        content="word",
+        meaning="m",
+        pos=None,
+        difficulty=1.0,
+        note=None,
+        collocations=[],
+        examples=[],
+        mode="recognition",
+        is_deleted=True,
+        is_archived=False,
+        inflections=[],
+        source=source,
+        updated_at=None,
+        review_interval_hours=12,
+        next_review_at=None,
+        last_reviewed_at=None,
+        review_count=0,
+        lapse_count=0,
+        review_streak=0,
+        last_review_feedback=-1,
+        notebook_id="default",
+    )
+    return card_response(
+        card,
+        graph=None,
+        cards_by_id={},
+        tier_getter=lambda _: SimpleNamespace(tag="A1"),
+        link_kinds=[],
+        link_labels={},
+    )
 
 
 def test_vocab_entry_accepts_source():
@@ -83,3 +120,26 @@ def test_card_response_source_none_by_default():
         isDeleted=False,
     )
     assert resp.source is None
+
+
+def test_card_response_omits_malformed_persisted_source():
+    """Malformed legacy source JSON must not escape card response construction."""
+    response = _build_card_response("not-json")
+
+    assert response.source is None
+
+
+def test_card_response_preserves_valid_persisted_source():
+    response = _build_card_response(
+        json.dumps({"type": "web", "title": "Example Page", "url": "https://example.com"})
+    )
+
+    assert response.source == VocabSource(
+        type="web", title="Example Page", url="https://example.com"
+    )
+
+
+def test_card_response_preserves_absent_persisted_source():
+    response = _build_card_response(None)
+
+    assert response.source is None
