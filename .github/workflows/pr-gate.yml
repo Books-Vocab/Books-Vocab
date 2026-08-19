@@ -6,7 +6,10 @@ name: pr-gate
 # the slowest backend/ops/iOS job.
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    # `ready_for_review` changes metadata only. The latest opened/synchronize
+    # run already validates the same head; rerunning would cancel or duplicate
+    # its full-confidence fan-out without producing new code evidence.
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:

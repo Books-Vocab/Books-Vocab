@@ -36,6 +36,12 @@ done
 
 PR_GATE=".github/workflows/pr-gate.yml"
 grep -q '^  pull_request:' "$PR_GATE" || fail "pr-gate has no pull_request trigger"
+# A draft-to-ready transition changes review metadata, not source. The latest
+# `opened`/`synchronize` run already carries the relevant candidate evidence;
+# triggering again would cancel or duplicate its full confidence fan-out.
+if grep -Eq '^[[:space:]]*types:.*ready_for_review' "$PR_GATE"; then
+  fail "pr-gate reruns on ready_for_review without a source change"
+fi
 grep -q '^  required:' "$PR_GATE" || fail "pr-gate has no final required job"
 grep -q 'needs: \[repo-gate, llm-eval, design-system, ui-quality-gate\]' "$PR_GATE" \
   || fail "pr-gate required job is not the short merge gate"
