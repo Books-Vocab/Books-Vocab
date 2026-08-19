@@ -2,6 +2,16 @@
   "schema": "kg.skill_catalog.v1",
   "version": 1,
   "bootstrap": ["kg-router"],
+  "intent_aliases": {
+    "delivery": "delivery-worktree",
+    "worktree": "delivery-worktree",
+    "review": "code-review",
+    "docs": "skill-doc-sync",
+    "docs-registry": "skill-doc-sync",
+    "release": "release-command",
+    "backend": "delivery-worktree",
+    "ios": "ui-test-evidence"
+  },
   "skills": [
     {"name": "app-debug", "path": ".claude/skills/app-debug/SKILL.md", "kind": "specialist", "phase": "primary", "priority": 70, "intents": ["bug", "test-failure", "unexpected-behavior"], "requires": [], "optional": ["kg-receipt"], "forbidden": [], "closure": []},
     {"name": "billing", "path": ".claude/skills/billing/SKILL.md", "kind": "specialist", "phase": "primary", "priority": 70, "intents": ["billing", "cost", "quota-cost", "token-spend"], "requires": [], "optional": ["kg-receipt"], "forbidden": ["data-analysis"], "closure": []},
@@ -10,6 +20,8 @@
     {"name": "ios-simulator-verification", "path": ".claude/skills/ios-simulator-verification/SKILL.md", "kind": "specialist", "phase": "primary", "priority": 75, "intents": ["simulator-verification", "ui-test-evidence"], "requires": [], "optional": ["kg-receipt"], "forbidden": [], "closure": []},
     {"name": "ios-visual-report-workflow", "path": ".claude/skills/ios-visual-report-workflow/SKILL.md", "kind": "specialist", "phase": "primary", "priority": 80, "intents": ["visual-report-rebuild"], "requires": ["ios-simulator-verification"], "optional": ["worktree-flow"], "forbidden": ["devops"], "closure": []},
     {"name": "kg-agent-context", "path": ".claude/skills/kg-agent-context/SKILL.md", "kind": "context", "phase": "context", "priority": 100, "intents": [], "requires": ["kg-router"], "optional": [], "forbidden": [], "closure": []},
+    {"name": "code-review", "path": ".claude/skills/code-review/SKILL.md", "kind": "specialist", "phase": "primary", "priority": 75, "intents": ["code-review"], "requires": ["kg-agent-context"], "optional": [], "forbidden": ["worktree-flow"], "closure": []},
+    {"name": "github-coordination", "path": ".claude/skills/github-coordination/SKILL.md", "kind": "delivery", "phase": "primary", "priority": 80, "intents": ["github-coordination"], "requires": ["kg-agent-context"], "optional": [], "forbidden": ["worktree-flow", "source-command-release"], "closure": []},
     {"name": "kg-docs-control-plane", "path": ".claude/skills/kg-docs-control-plane/SKILL.md", "kind": "specialist", "phase": "primary", "priority": 75, "intents": ["docs-audit", "docs-impact", "docs-lint", "skill-doc-sync", "read-only-audit"], "requires": [], "optional": ["kg-receipt"], "forbidden": ["worktree-flow"], "closure": []},
     {"name": "kg-receipt", "path": ".claude/skills/kg-receipt/SKILL.md", "kind": "closure", "phase": "closure", "priority": 10, "intents": [], "requires": [], "optional": [], "forbidden": [], "closure": []},
     {"name": "kg-router", "path": ".claude/skills/kg-router/SKILL.md", "kind": "bootstrap", "phase": "bootstrap", "priority": 100, "intents": [], "requires": [], "optional": [], "forbidden": [], "closure": []},
@@ -27,6 +39,8 @@
     {"id": "user-quota-graph", "intent": "user-data-analysis", "primary": "data-analysis", "required_secondary": [], "optional_secondary": [], "forbidden": ["billing"]},
     {"id": "epub-podcast", "intent": "podcast-pipeline", "primary": "podcast", "required_secondary": [], "optional_secondary": ["kg-receipt"], "forbidden": ["devops"]},
     {"id": "worktree-development", "intent": "delivery-worktree", "primary": "worktree-flow", "required_secondary": ["kg-agent-context"], "optional_secondary": ["kg-receipt"], "forbidden": ["devops"]},
-    {"id": "read-only-audit-no-worktree", "intent": "read-only-audit", "primary": "kg-docs-control-plane", "required_secondary": [], "optional_secondary": [], "forbidden": ["worktree-flow"]}
+    {"id": "read-only-audit-no-worktree", "intent": "read-only-audit", "primary": "kg-docs-control-plane", "required_secondary": [], "optional_secondary": [], "forbidden": ["worktree-flow"]},
+    {"id": "pr-review", "intent": "code-review", "primary": "code-review", "required_secondary": ["kg-agent-context"], "optional_secondary": [], "forbidden": ["worktree-flow"]},
+    {"id": "github-coordination", "intent": "github-coordination", "primary": "github-coordination", "required_secondary": ["kg-agent-context"], "optional_secondary": [], "forbidden": ["worktree-flow", "source-command-release"]}
   ]
 }

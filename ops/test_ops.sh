@@ -134,9 +134,11 @@ run_one() {
     context-routing)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_context_route.py \
-        ops/tests/test_skill_route.py &&
+        ops/tests/test_skill_route.py \
+        ops/tests/test_agent_onboard.py &&
       ./ops/context_route.py validate --json >/dev/null &&
-      ./ops/skill_route.py validate --json >/dev/null
+      ./ops/skill_route.py validate --json >/dev/null &&
+      ./ops/agent_onboard.py --identity Worker --intent delivery --entry direct-assignment --json >/dev/null
       ;;
     ui-deadcode)
       "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_ui_deadcode.py &&

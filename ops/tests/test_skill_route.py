@@ -24,7 +24,19 @@ def test_catalog_inventory_and_fixtures_are_green(capsys):
     mod = load_module()
     assert mod.main(["validate", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload == {"schema": "kg.skill_catalog.v1", "status": "ok", "skills": 13, "fixtures": 10}
+    assert payload == {"schema": "kg.skill_catalog.v1", "status": "ok", "skills": 15, "fixtures": 12}
+
+
+def test_human_intent_aliases_resolve_to_canonical_primary_intents():
+    mod = load_module()
+    delivery = mod.resolve_route(mod.load_catalog(), "delivery")
+    assert delivery["requested_intent"] == "delivery"
+    assert delivery["intent"] == "delivery-worktree"
+    assert delivery["primary"] == "worktree-flow"
+
+    review = mod.resolve_route(mod.load_catalog(), "review")
+    assert review["intent"] == "code-review"
+    assert review["primary"] == "code-review"
 
 
 def test_visual_report_has_one_primary_and_required_simulator_dependency():
@@ -46,6 +58,14 @@ def test_delivery_intent_has_one_primary_and_typed_context_dependency():
     route = mod.resolve_route(mod.load_catalog(), "delivery-worktree")
     assert route["primary"] == "worktree-flow"
     assert route["skills"] == ["kg-router", "kg-agent-context", "worktree-flow"]
+    assert route["dependencies"] == {"required": ["kg-agent-context"], "optional": [], "closure": []}
+
+
+def test_code_review_route_requires_context_and_does_not_load_delivery():
+    mod = load_module()
+    route = mod.resolve_route(mod.load_catalog(), "review")
+    assert route["skills"] == ["kg-router", "kg-agent-context", "code-review"]
+    assert "worktree-flow" not in route["skills"]
 
 
 def test_missing_skill_is_not_silently_ignored():
@@ -70,6 +90,39 @@ def test_primary_overlap_is_rejected():
         assert "primary intent overlap" in str(exc)
     else:
         raise AssertionError("primary overlap must fail closed")
+
+
+def test_bootstrap_and_required_fixture_dependencies_fail_closed():
+    mod = load_module()
+    broken_bootstrap = copy.deepcopy(mod.load_catalog())
+    broken_bootstrap["bootstrap"] = ["missing-bootstrap"]
+    try:
+        mod.validate_catalog(broken_bootstrap, ROOT)
+    except mod.SkillCatalogError as exc:
+        assert "bootstrap" in str(exc)
+    else:
+        raise AssertionError("unknown bootstrap must fail closed")
+
+    broken_fixture = copy.deepcopy(mod.load_catalog())
+    broken_fixture["fixtures"][-1]["required_secondary"] = []
+    try:
+        mod.validate_catalog(broken_fixture, ROOT)
+    except mod.SkillCatalogError as exc:
+        assert "required_secondary" in str(exc)
+    else:
+        raise AssertionError("omitted required dependency must fail closed")
+
+
+def test_intent_alias_target_must_be_a_real_primary_intent():
+    mod = load_module()
+    broken = copy.deepcopy(mod.load_catalog())
+    broken["intent_aliases"]["phantom"] = "not-a-primary-intent"
+    try:
+        mod.validate_catalog(broken, ROOT)
+    except mod.SkillCatalogError as exc:
+        assert "alias target" in str(exc)
+    else:
+        raise AssertionError("phantom alias target must fail closed")
 
 
 def test_cold_start_contract_validates_before_route_and_names_docs_steward():

@@ -34,11 +34,28 @@ def test_manifest_is_valid_and_has_bounded_roles() -> None:
     assert mod.canonical_role("ds") == "docs-steward"
 
 
+def test_manifest_has_project_onboarding_and_canonical_identity_boundaries() -> None:
+    manifest = mod.load_manifest(ROOT)
+    assert manifest["schema"] == "kg.context_plane.v3"
+    assert manifest["onboarding"] == {
+        "source": "docs/reference/project_onboarding.md",
+        "required": True,
+    }
+    assert set(manifest["identities"]) == {
+        "cm", "im", "worker", "issue-solver", "cr", "ds", "release-operator"
+    }
+    assert manifest["roles"]["manager"]["identity_ids"] == ["cm", "im"]
+    assert manifest["roles"]["contributor"]["identity_ids"] == ["worker", "issue-solver"]
+
+
 def test_route_is_github_native_and_does_not_grant_authority() -> None:
     payload = mod.resolve_route(mod.load_manifest(ROOT), "manager", intent="delivery", root=ROOT)
-    assert payload["schema"] == "kg.context.route.v2"
+    assert payload["schema"] == "kg.context.route.v3"
     assert payload["status"] == "confirmed"
     assert payload["skill"] == "worktree-flow"
+    assert payload["skill_intent"] == "delivery-worktree"
+    assert payload["sources"][0] == "docs/reference/project_onboarding.md"
+    assert payload["onboarding"]["required"] is True
     assert payload["authority"]["granted"] is False
     assert "docs/runbook/system.md" in payload["sources"]
 
@@ -47,6 +64,57 @@ def test_surface_aliases_are_bounded() -> None:
     payload = mod.resolve_route(mod.load_manifest(ROOT), "contributor", surface="backend", root=ROOT)
     assert payload["intent"] == "backend"
     assert "docs/reference/tech_index.md" in payload["sources"]
+
+
+def test_every_context_intent_cross_validates_to_a_real_primary_skill() -> None:
+    manifest = mod.load_manifest(ROOT)
+    expected = {
+        "delivery": "worktree-flow",
+        "review": "code-review",
+        "docs": "kg-docs-control-plane",
+        "release": "source-command-release",
+        "backend": "worktree-flow",
+        "ios": "ios-simulator-verification",
+    }
+    for intent, primary in expected.items():
+        role = {
+            "delivery": "manager",
+            "review": "reviewer",
+            "docs": "docs-steward",
+            "release": "manager",
+            "backend": "contributor",
+            "ios": "contributor",
+        }[intent]
+        payload = mod.resolve_route(manifest, role, intent=intent, root=ROOT)
+        assert payload["schema"] == "kg.context.route.v3"
+        assert payload["skill"] == primary
+        assert payload["skill_intent"]
+        assert payload["sources"][0] == "docs/reference/project_onboarding.md"
+
+
+def test_skill_override_and_work_mode_cannot_bypass_context_contract() -> None:
+    manifest = mod.load_manifest(ROOT)
+    with pytest.raises(mod.ContextRouteError, match="skill 與 intent route"):
+        mod.resolve_route(manifest, "reviewer", intent="review", skill="devops", root=ROOT)
+    with pytest.raises(mod.ContextRouteError, match="role 不允許 intent"):
+        mod.resolve_route(manifest, "reviewer", intent="docs", root=ROOT)
+    with pytest.raises(mod.ContextRouteError, match="work_mode"):
+        mod.resolve_route(manifest, "reviewer", intent="review", work_mode="production-write", root=ROOT)
+
+
+def test_all_canonical_identities_and_aliases_resolve() -> None:
+    manifest = mod.load_manifest(ROOT)
+    aliases = {
+        "CM": "cm",
+        "IM": "im",
+        "Worker": "worker",
+        "Issue Solver": "issue-solver",
+        "CR": "cr",
+        "DS": "ds",
+        "Release operator": "release-operator",
+    }
+    for alias, expected in aliases.items():
+        assert mod.canonical_agent_identity(manifest, alias) == expected
 
 
 def test_unknown_role_and_work_mode_fail_closed() -> None:
