@@ -189,11 +189,13 @@ def test_error_signal_db_parity(tmp_path, monkeypatch):
     monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
     import kg.judge_log as jl
     import kg.pipeline_log as pl
+    import kg.token_tracker as tt
 
     monkeypatch.setattr(pl, "DB_PATH", tmp_path / "pipeline_runs.db", raising=True)
     monkeypatch.setattr(jl, "DB_PATH", tmp_path / "judge_log.db", raising=True)
     pl._conn = None
     jl._conn = None
+    tt.reset()
     try:
         from kg.admin_trends import collect_trends
 
@@ -203,6 +205,7 @@ def test_error_signal_db_parity(tmp_path, monkeypatch):
             if mod._conn is not None:
                 mod._conn.close()
                 mod._conn = None
+        tt.reset()
 
     # --- ops 公開入口:cmd_trends(--json),connect_ro 讀同一批 DB ---
     backend_root = str(Path(__file__).resolve().parent.parent)
@@ -220,3 +223,5 @@ def test_error_signal_db_parity(tmp_path, monkeypatch):
     # 2) 總和 == 手算期望(語意正確:degree_cap 排除、只算 failed/auto-reject)
     assert sum(admin["errors_per_day"]) == _EXPECTED_TOTAL_ERRORS
     assert ops["total_errors"] == _EXPECTED_TOTAL_ERRORS
+
+    assert tt._conn is None
