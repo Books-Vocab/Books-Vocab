@@ -143,6 +143,33 @@ def test_entitlement_future_expiry_subscription_is_active():
     assert rec["is_active"] is True
 
 
+def test_entitlement_native_false_subscription_is_inactive():
+    user = {
+        "subscription": {
+            "is_active": False,
+            "status": "active",
+            "product_id": "sub_pro",
+            "expires_at": _future_iso(),
+        }
+    }
+    rec = current_pro_entitlement_record(user)
+    assert rec["is_active"] is False
+
+
+@pytest.mark.parametrize("raw_is_active", ["false", "true", 1, 0, "", None])
+def test_entitlement_non_boolean_subscription_activity_fails_closed(raw_is_active):
+    user = {
+        "subscription": {
+            "is_active": raw_is_active,
+            "status": "active",
+            "product_id": "sub_pro",
+            "expires_at": _future_iso(),
+        }
+    }
+    rec = current_pro_entitlement_record(user)
+    assert rec["is_active"] is False
+
+
 # ── notification_status ────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("kind,sub,expected", [

@@ -102,7 +102,7 @@ def subscription_is_active(subscription: SubscriptionRecord) -> bool:
     ``admin_grant_is_active``. ``grace_period`` legitimately carries a past
     ``expires_at`` (Apple's billing-retry window) and must remain entitled.
     """
-    if not subscription.get("is_active"):
+    if subscription.get("is_active") is not True:
         return False
     if subscription.get("status") == "grace_period":
         return True
@@ -118,7 +118,12 @@ def current_subscription_record(user_record: StoredUserRecord | None) -> Subscri
     subscription = default_subscription_payload()
     if isinstance(raw_subscription, dict):
         subscription.update(raw_subscription)
-    if subscription.get("is_active") and not subscription_is_active(subscription):
+    raw_is_active = subscription.get("is_active")
+    if not isinstance(raw_is_active, bool):
+        # Persisted data may contain legacy non-bool values; never use their
+        # truthiness as evidence of an entitlement.
+        subscription["is_active"] = False
+    elif raw_is_active and not subscription_is_active(subscription):
         subscription["is_active"] = False
         subscription["status"] = "expired"
     return subscription
