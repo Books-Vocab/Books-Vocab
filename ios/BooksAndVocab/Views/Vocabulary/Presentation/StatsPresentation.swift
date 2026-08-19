@@ -29,6 +29,28 @@ enum StatsPresentation {
         let count: Int
     }
 
+    /// All values that influence the Overview projection travel through one
+    /// explicit input bundle. Keeping the clock beside the records prevents a
+    /// fixture from accidentally mixing seeded data with a wall-clock forecast.
+    struct Inputs {
+        let entries: [VocabularyEntry]
+        let reviewRecords: [ReviewRecord]
+        let forecastDays: Int
+        let clock: StatsProjectionClock
+
+        init(
+            entries: [VocabularyEntry],
+            reviewRecords: [ReviewRecord],
+            forecastDays: Int = 14,
+            clock: StatsProjectionClock
+        ) {
+            self.entries = entries
+            self.reviewRecords = reviewRecords
+            self.forecastDays = forecastDays
+            self.clock = clock
+        }
+    }
+
     struct Summary {
         let totalCards: Int
         let reviewedToday: Int
@@ -65,12 +87,12 @@ enum StatsPresentation {
         forecastDays: Int = 14,
         now: Date = Date()
     ) -> Summary {
-        project(
+        project(Inputs(
             entries: entries,
             reviewRecords: reviewRecords,
             forecastDays: forecastDays,
             clock: StatsProjectionClock(now: now, calendar: Calendar.autoupdatingCurrent)
-        )
+        ))
     }
 
     static func buildSummary(
@@ -79,12 +101,12 @@ enum StatsPresentation {
         forecastDays: Int = 14,
         clock: StatsProjectionClock
     ) -> Summary {
-        project(
+        project(Inputs(
             entries: entries,
             reviewRecords: reviewRecords,
             forecastDays: forecastDays,
             clock: clock
-        )
+        ))
     }
 
     static func project(
@@ -93,15 +115,24 @@ enum StatsPresentation {
         forecastDays: Int = 14,
         clock: StatsProjectionClock
     ) -> Summary {
+        project(Inputs(
+            entries: entries,
+            reviewRecords: reviewRecords,
+            forecastDays: forecastDays,
+            clock: clock
+        ))
+    }
+
+    static func project(_ inputs: Inputs) -> Summary {
         // shouldAppearInKnowledgeList == isSynced && !delete && !isArchived.
         // Archived entries must NOT inflate the review forecast / stats.
-        let synced = entries.filter(\.shouldAppearInKnowledgeList)
+        let synced = inputs.entries.filter(\.shouldAppearInKnowledgeList)
 
         // Forecast
         var forecastMap: [String: Int] = [:]
-        let todayKey = clock.dayKey(clock.now)
+        let todayKey = inputs.clock.dayKey(inputs.clock.now)
         for entry in synced {
-            let key = clock.dayKey(entry.nextReviewAt)
+            let key = inputs.clock.dayKey(entry.nextReviewAt)
             if key <= todayKey {
                 forecastMap[todayKey, default: 0] += 1
             } else {
@@ -110,9 +141,13 @@ enum StatsPresentation {
         }
 
         var forecast: [ForecastBucket] = []
-        for offset in 0..<forecastDays {
-            guard let date = clock.date(byAdding: .day, value: offset, to: clock.now) else { continue }
-            let key = clock.dayKey(date)
+        for offset in 0..<inputs.forecastDays {
+            guard let date = inputs.clock.date(
+                byAdding: .day,
+                value: offset,
+                to: inputs.clock.now
+            ) else { continue }
+            let key = inputs.clock.dayKey(date)
             let label: String
             switch offset {
             case 0: label = "今天".localized
@@ -123,7 +158,11 @@ enum StatsPresentation {
             forecast.append(ForecastBucket(id: key, label: label, count: forecastMap[key] ?? 0))
         }
 
-        let activity = ReviewActivityLog.activity(for: 180, records: reviewRecords, clock: clock)
+        let activity = ReviewActivityLog.activity(
+            for: 180,
+            records: inputs.reviewRecords,
+            clock: inputs.clock
+        )
 
         // Compute adaptive heatmap thresholds from activity data
         let nonZeroCounts = activity.values.filter { $0 > 0 }.sorted()
@@ -137,11 +176,17 @@ enum StatsPresentation {
             heatmapThresholds = [p25, p50, p75]
         }
 
-        let streakResult = ReviewActivityLog.streaks(records: reviewRecords, clock: clock)
+        let streakResult = ReviewActivityLog.streaks(
+            records: inputs.reviewRecords,
+            clock: inputs.clock
+        )
 
         return Summary(
             totalCards: synced.count,
-            reviewedToday: ReviewActivityLog.reviewedToday(records: reviewRecords, clock: clock),
+            reviewedToday: ReviewActivityLog.reviewedToday(
+                records: inputs.reviewRecords,
+                clock: inputs.clock
+            ),
             dueToday: forecastMap[todayKey] ?? 0,
             currentStreak: streakResult.current,
             longestStreak: streakResult.longest,

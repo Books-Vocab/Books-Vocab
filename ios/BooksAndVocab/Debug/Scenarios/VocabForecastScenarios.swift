@@ -20,6 +20,12 @@ enum VocabForecastScenarios {
             Scenario("Sparse — single spike", layout: .fillH) {
                 ForecastScene(buckets: Self.buckets(counts: [18, 0, 0, 0, 0, 0, 0]))
             }
+            Scenario("Empty — zero forecast", layout: .fillH) {
+                ForecastScene(buckets: Self.buckets(counts: Array(repeating: 0, count: 14)))
+            }
+            Scenario("Large counts", layout: .fillH) {
+                ForecastScene(buckets: Self.buckets(counts: [0, 644, 1024, 4096, 9999, 0, 207, 1144, 88, 0, 12, 2048, 512, 1]))
+            }
         }
     }
 
