@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sqlite3
 import subprocess
 import sys
@@ -26,17 +27,23 @@ from kg.ops_world_export import SEED_SPEC_SCHEMA, WorldExportError, export_seed_
 from kg.ops_world_projection import SCHEMA as WORLD_STATE_SCHEMA
 from kg.ops_world_projection import WorldProjectionError, project_user_world
 from kg.quota_service import token_cost_usd
+from kg.settings import _env_float
 from kg.user_store import load_users_from
 
 from .ops_cli_shared import _cutoff_iso, _flatten_user_config, _ops_passthrough_normalize
+
+
+def _quota_limit(name: str, default: float) -> float:
+    value = _env_float(name, default)
+    return value if math.isfinite(value) else default
 
 
 def cmd_user_quota(args: argparse.Namespace) -> None:
     """24h 額度 + 逐時明細。"""
     uid = resolve_uid(args.uid, data_dir())
     cutoff = _cutoff_iso(24)
-    pro_limit = float(__import__("os").getenv("PRO_DAILY_LIMIT_USD", "0.30"))
-    free_limit = float(__import__("os").getenv("FREE_DAILY_LIMIT_USD", "0.03"))
+    pro_limit = _quota_limit("PRO_DAILY_LIMIT_USD", 0.30)
+    free_limit = _quota_limit("FREE_DAILY_LIMIT_USD", 0.03)
 
     db_path = data_dir() / "token_usage.db"
     if not db_path.exists():
