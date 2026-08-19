@@ -103,6 +103,51 @@ class TestEvaluate:
         assert verdict["result"] == "pass"
         assert verdict["reasons"] == []
 
+    def test_duplicate_records_and_flip_indices_are_invalid_before_verdict(self):
+        parsed = parse_jsonl(
+            _lines(
+                _header(),
+                _header(),
+                _flip(0, 17.0),
+                _flip(0, 17.0),
+                _summary(2, 17.0, 0),
+                _summary(2, 17.0, 0),
+            )
+        )
+        verdict = evaluate(parsed, DEFAULT_THRESHOLDS, min_flips=2)
+
+        assert verdict["result"] == "invalid"
+        assert any("duplicate header" in reason for reason in verdict["reasons"])
+        assert any("duplicate summary" in reason for reason in verdict["reasons"])
+        assert any("duplicate flip index" in reason for reason in verdict["reasons"])
+
+    def test_non_contiguous_flip_indices_are_invalid_before_verdict(self):
+        parsed = parse_jsonl(
+            _lines(_header(), _flip(0, 17.0), _flip(2, 20.0), _summary(2, 20.0, 0))
+        )
+        verdict = evaluate(parsed, DEFAULT_THRESHOLDS, min_flips=2)
+
+        assert verdict["result"] == "invalid"
+        assert any("contiguous" in reason for reason in verdict["reasons"])
+
+    def test_missing_required_flip_field_is_invalid_before_verdict(self):
+        flip = _flip(0, 17.0)
+        del flip["max_gap_ms"]
+        parsed = parse_jsonl(_lines(_header(), flip, _summary(1, 17.0, 0)))
+        verdict = evaluate(parsed, DEFAULT_THRESHOLDS, min_flips=1)
+
+        assert verdict["result"] == "invalid"
+        assert any("max_gap_ms" in reason for reason in verdict["reasons"])
+
+    def test_unknown_record_is_invalid_before_verdict(self):
+        parsed = parse_jsonl(
+            _lines(_header(), _flip(0, 17.0), {"type": "unknown"}, _summary(1, 17.0, 0))
+        )
+        verdict = evaluate(parsed, DEFAULT_THRESHOLDS, min_flips=1)
+
+        assert verdict["result"] == "invalid"
+        assert any("unknown record type" in reason for reason in verdict["reasons"])
+
     def test_residual_hitch_magnitude_fails_both_gates(self):
         # 歷史殘餘 hitch 量級（58-72ms / stalls=1）必須 fail —— rig 的存在理由。
         parsed = parse_jsonl(
@@ -155,6 +200,34 @@ class TestEvaluate:
 
 
 class TestCli:
+    def test_cli_rejects_duplicate_evidence_records(self, tmp_path):
+        script = ROOT / "ops" / "review_flip_probe_report.py"
+        malformed = tmp_path / "duplicate.jsonl"
+        malformed.write_text(
+            "\n".join(
+                _lines(
+                    _header(),
+                    _header(),
+                    _flip(0, 17.0),
+                    _flip(0, 17.0),
+                    _summary(2, 17.0, 0),
+                    _summary(2, 17.0, 0),
+                )
+            )
+            + "\n"
+        )
+
+        result = subprocess.run(
+            [sys.executable, str(script), "--jsonl", str(malformed), "--min-flips", "2"],
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 2
+        verdict = json.loads(result.stdout)
+        assert verdict["result"] == "invalid"
+        assert verdict["parse_errors"]
+
     def test_cli_pass_and_fail_exit_codes(self, tmp_path):
         script = ROOT / "ops" / "review_flip_probe_report.py"
 
