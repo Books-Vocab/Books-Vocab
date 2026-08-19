@@ -7,6 +7,7 @@ is_synthetic 區分合成過去 / 真實未來。本帳本補上圖譜「怎麼�
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, datetime
 
 from kg.graph_event_log import (
@@ -15,6 +16,7 @@ from kg.graph_event_log import (
     GraphEventSource,
     GraphEventStore,
     GraphEventType,
+    GraphSnapshotStore,
 )
 
 
@@ -255,3 +257,35 @@ def test_duplicate_event_id_within_one_batch_is_skipped(tmp_path):
 
     assert store.insert_many([first, second]) == {"inserted": 1, "skipped": 1}
     assert [event.reason for event in store.all()] == ["first"]
+
+
+def test_corrupt_snapshot_json_is_skipped_on_read(tmp_path):
+    """A corrupt newest snapshot must not hide an older valid replay base."""
+    path = tmp_path / "graph_events.db"
+    store = GraphSnapshotStore(path)
+    valid_id = store.save(
+        "default",
+        [{"id": "valid", "from": "a", "to": "b"}],
+        is_synthetic=True,
+        taken_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    corrupt_id = store.save(
+        "default",
+        [{"id": "corrupt", "from": "a", "to": "c"}],
+        is_synthetic=False,
+        taken_at=datetime(2026, 2, 1, tzinfo=UTC),
+    )
+
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "UPDATE graphsnapshot SET links_json=? WHERE snapshot_id=?",
+            ("not-json", corrupt_id),
+        )
+
+    latest = store.latest("default")
+    assert latest is not None
+    assert latest.snapshot_id == valid_id
+    assert latest.links == [{"id": "valid", "from": "a", "to": "b"}]
+    assert [snapshot.snapshot_id for snapshot in store.all(notebook_id="default")] == [
+        valid_id
+    ]

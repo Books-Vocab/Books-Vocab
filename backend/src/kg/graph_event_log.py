@@ -17,6 +17,7 @@ GraphStore 寫方法 emit,``False``),研究時可 ``WHERE is_synthetic`` 一刀�
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -44,6 +45,7 @@ from .sqlite_ledger import (
 # Ids per ``IN`` clause when checking which events the store already has. Kept
 # below SQLite's pre-3.32 default limit of 999 bound variables per statement.
 _EXISTS_QUERY_CHUNK = 500
+_logger = logging.getLogger(__name__)
 
 
 class GraphEventType(StrEnum):
@@ -345,19 +347,34 @@ class GraphSnapshotStore:
             session.commit()
         return snapshot_id
 
-    def _view(self, row: GraphSnapshot) -> GraphSnapshotView:
+    def _view(self, row: GraphSnapshot) -> GraphSnapshotView | None:
+        try:
+            links = json.loads(row.links_json)
+        except (TypeError, json.JSONDecodeError) as exc:
+            _logger.warning(
+                "Skipping corrupt graph snapshot %s: invalid links_json (%s)",
+                row.snapshot_id,
+                exc,
+            )
+            return None
+        if not isinstance(links, list) or any(not isinstance(link, dict) for link in links):
+            _logger.warning(
+                "Skipping corrupt graph snapshot %s: links_json is not a list of objects",
+                row.snapshot_id,
+            )
+            return None
         return GraphSnapshotView(
             snapshot_id=row.snapshot_id,
             notebook_id=row.notebook_id,
             taken_at=row.taken_at,
             link_count=row.link_count,
-            links=json.loads(row.links_json),
+            links=links,
             is_synthetic=row.is_synthetic,
         )
 
     def latest(self, notebook_id: str) -> GraphSnapshotView | None:
         with Session(self.engine) as session:
-            row = session.exec(
+            rows = session.exec(
                 select(GraphSnapshot)
                 .where(GraphSnapshot.notebook_id == notebook_id)
                 # 次要排序 snapshot_id 打破同 taken_at 平手,讓 "latest" 確定(批量
@@ -366,8 +383,12 @@ class GraphSnapshotStore:
                     GraphSnapshot.taken_at.desc(),  # type: ignore[attr-defined]
                     GraphSnapshot.snapshot_id.desc(),  # type: ignore[attr-defined]
                 )
-            ).first()
-            return self._view(row) if row is not None else None
+            ).all()
+            for row in rows:
+                view = self._view(row)
+                if view is not None:
+                    return view
+            return None
 
     def all(self, *, notebook_id: str | None = None) -> list[GraphSnapshotView]:
         with Session(self.engine) as session:
@@ -375,7 +396,7 @@ class GraphSnapshotStore:
             if notebook_id is not None:
                 stmt = stmt.where(GraphSnapshot.notebook_id == notebook_id)
             rows = session.exec(stmt.order_by(GraphSnapshot.taken_at)).all()
-            return [self._view(r) for r in rows]
+            return [view for row in rows if (view := self._view(row)) is not None]
 
     def maybe_save_periodic(
         self,
