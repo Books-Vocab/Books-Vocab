@@ -27,6 +27,7 @@ from .api_models import (
     UserProfileResponse,
     VocabUIConfig,
 )
+from .ops_cli_shared import _normalize_persisted_bool
 from .types import StoredUserRecord, UserRecord, UsersPayload
 
 _logger = logging.getLogger(__name__)
@@ -70,7 +71,7 @@ def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
     clock_data = config.get("review_clock")
     if isinstance(clock_data, dict):
         review_clock = ReviewClockConfig(
-            is_paused=bool(clock_data.get("is_paused", False)),
+            is_paused=_normalize_persisted_bool(clock_data.get("is_paused"), default=False),
             paused_at=clock_data.get("paused_at"),
             updated_at=clock_data.get("updated_at"),
         )
@@ -103,7 +104,7 @@ def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
     al_data = config.get("auto_link")
     if isinstance(al_data, dict):
         auto_link = AutoLinkConfig(
-            enabled=bool(al_data.get("enabled", True)),
+            enabled=_normalize_persisted_bool(al_data.get("enabled"), default=True),
             updated_at=al_data.get("updated_at"),
         )
     else:

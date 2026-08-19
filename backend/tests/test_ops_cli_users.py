@@ -27,6 +27,23 @@ class TestFlattenUserConfig:
         assert flat["vocab_ui"]["active_notebook_id"] == "default"
         assert flat["translation"]["source_lang"] == "en"
 
+    def test_persisted_string_false_keeps_disabled_semantics(self):
+        for value in (False, "false"):
+            flat = _flatten_user_config({
+                "review_clock": {"is_paused": value},
+                "auto_link": {"enabled": value},
+            })
+            assert flat["review_clock"]["is_paused"] is False
+            assert flat["auto_link"]["enabled"] is False
+
+    def test_persisted_true_stays_enabled(self):
+        flat = _flatten_user_config({
+            "review_clock": {"is_paused": True},
+            "auto_link": {"enabled": True},
+        })
+        assert flat["review_clock"]["is_paused"] is True
+        assert flat["auto_link"]["enabled"] is True
+
 class TestUserConfig:
     """user-config 子指令 — 唯讀檢視 users.json 的 per-user config（含 vocab_ui active notebook）。"""
 

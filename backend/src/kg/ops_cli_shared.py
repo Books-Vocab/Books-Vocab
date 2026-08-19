@@ -59,6 +59,19 @@ def _ops_passthrough_normalize(users: dict[str, Any]) -> tuple[dict[str, Any], b
     return users, False
 
 
+def _normalize_persisted_bool(value: Any, *, default: bool) -> bool:
+    """Normalize native and legacy string booleans from persisted config."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "true":
+            return True
+        if normalized == "false":
+            return False
+    return default
+
+
 def _flatten_user_config(config: dict[str, Any]) -> dict[str, Any]:
     """攤平 users.json 的 config blob 成機讀 dict。"""
     translation = config.get("translation")
@@ -82,7 +95,7 @@ def _flatten_user_config(config: dict[str, Any]) -> dict[str, Any]:
             "target_lang": translation.get("target_lang", "zh-Hant"),
         },
         "review_clock": {
-            "is_paused": bool(clock.get("is_paused", False)),
+            "is_paused": _normalize_persisted_bool(clock.get("is_paused"), default=False),
             "paused_at": clock.get("paused_at"),
             "updated_at": clock.get("updated_at"),
         },
@@ -100,7 +113,7 @@ def _flatten_user_config(config: dict[str, Any]) -> dict[str, Any]:
             "updated_at": vocab_ui.get("updated_at"),
         },
         "auto_link": {
-            "enabled": bool(auto_link.get("enabled", True)),
+            "enabled": _normalize_persisted_bool(auto_link.get("enabled"), default=True),
             "updated_at": auto_link.get("updated_at"),
         },
     }

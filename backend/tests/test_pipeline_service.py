@@ -4,6 +4,8 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from kg.pipeline_service import run_pipeline_background
 
 
@@ -625,7 +627,8 @@ def test_step_embed_and_judge_runs_judge_concurrently():
 # ── auto_link 開關(user config auto_link group)──────────────────────────
 
 
-def test_step_embed_and_judge_skips_judge_when_auto_link_disabled():
+@pytest.mark.parametrize("enabled", [False, "false"])
+def test_step_embed_and_judge_skips_judge_when_auto_link_disabled(enabled):
     """auto_link.enabled=False → Phase 2 不消費 pending_judge:待判集合保留、
     judge LLM 不建構、不產生連結。重新開啟後下一輪 pipeline 可續判。"""
     from kg.pipeline_service import _step_embed_and_judge
@@ -647,7 +650,7 @@ def test_step_embed_and_judge_skips_judge_when_auto_link_disabled():
         try:
             user = {
                 "id": "u_al_off", "dir": None,
-                "config": {"auto_link": {"enabled": False, "updated_at": 1.0}},
+                "config": {"auto_link": {"enabled": enabled, "updated_at": 1.0}},
             }
             return await _step_embed_and_judge(
                 "u_al_off", user,

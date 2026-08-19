@@ -151,6 +151,15 @@ class TestBuildUserConfigReviewClock:
         assert resp.review_clock.is_paused is False
         assert resp.review_clock.paused_at is None
 
+    def test_build_normalizes_persisted_boolean_strings(self):
+        for value, expected in ((False, False), ("false", False), (True, True)):
+            resp = _build_user_config_response({
+                "review_clock": {"is_paused": value},
+                "auto_link": {"enabled": value},
+            })
+            assert resp.review_clock.is_paused is expected
+            assert resp.auto_link.enabled is expected
+
 
 class TestUpdateUserConfigReviewClockRoundTrip:
 
