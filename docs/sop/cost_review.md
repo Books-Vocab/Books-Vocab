@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - .claude/skills/billing/
   - docs/reference/cost_baseline.md
-verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
+verified_against: 8ec4780950c73b6006649c5c08e69c05962abfc1
 -->
 # Cost Review SOP — 月度盤點 / drift 觸發 / 異常追
 
@@ -15,16 +15,19 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 
 按順序跑,每步對照 `cost_baseline.md`:
 
-### 1.1 Lightsail fixed bundle 沒被默默改
+### 1.1 Fixed bundle 沒被默默改
 
-> **過渡狀態（2026-06-15 起）**：正式站運算已遷到家用 standby（CF Tunnel）。Lightsail instance **STOP 未 terminate**，**STOP 期間仍計 fixed bundle $12/mo**，故下方查詢仍會列到 `booksbrowser-kg-api-2gb`，且仍要盤點（過渡期 baseline 仍含此 row）。standby 運算/CF Tunnel 不在 AWS/CE 帳（家用沉沒成本，見 `cost_baseline.md §1`）。**Lightsail terminate 後** instance row 會消失、fixed 小計降到 $3——屆時對照 `cost_baseline.md` 已更新的下修值，不要把「instance 消失」誤判為異常。
+正式站運算在 felix standby（CF Tunnel），AWS 固定成本目前只包含仍在用的
+Object Storage；standby 運算與 CF Tunnel 不列入 AWS／CE 帳。完整 baseline 以
+[`cost_baseline.md`](../reference/cost_baseline.md) 為準。
 
 ```bash
-aws lightsail get-instances --query 'instances[].[name,bundleId,state.name]' --output table
 aws lightsail get-buckets    --query 'buckets[].[name,bundleId]'   --output table
+aws lightsail get-instances --query 'instances[].[name,bundleId,state.name]' --output table
 ```
 
-期望(過渡期):`booksbrowser-kg-api-2gb=small_3_0`(state `stopped`) / `kg-podcasts-prod=medium_1_0`。bundle **不一致 = baseline §5 沒記錄的變更,立刻追**;instance 已 terminate 且 baseline §5 已記錄遷移 = 正常。
+期望：provider inventory 與 baseline 一致；bucket bundle 不符或新增固定資源，
+都要對照 baseline 變更歷史並追查。
 
 ### 1.2 AWS usage-based(僅 S3 backup / data transfer)
 
@@ -38,7 +41,8 @@ aws ce get-cost-and-usage \
   --output table
 ```
 
-**Lightsail 在 CE 回 $0 是正常的**(fixed bundle 不走 usage-based);只看 `Amazon Simple Storage Service` / `AWS Data Transfer`。
+固定 bundle 不一定會呈現 usage-based 金額；以 provider inventory 與 baseline
+對帳，不用 CE 單一來源判斷固定資源。
 
 ### 1.3 內部 LLM 歸因
 
@@ -82,7 +86,6 @@ gcloud billing accounts list   # 確認 011E6D-6EE0E0-B1F479 仍是 open
 
 | 服務 | Baseline | 實際 | drift |
 |---|---:|---:|---:|
-| Lightsail Instance | $12.00 | $X | … |
 | Object Storage    | $3.00  | $X | … |
 | S3 backup         | ~$0    | $X | … |
 | Gemini (內部)     | —      | $X | — |
@@ -132,34 +135,14 @@ curl -fsS "https://wordnexus.lol/api/admin/user-cost-summary?user_id=<uid>&range
 
 `call_type` 已映射到 service(`_SERVICE_MAP`)— 對應 router 看 `docs/reference/tech_index.md §Backend API Routers`。
 
-## 4. CloudWatch billing alarm(尚未設定 — TODO)
+## 4. Billing alarm
 
-設定步驟(下次盤點時做掉):
-
-```bash
-# 1. 在 us-east-1(billing metric 唯一所在 region)建 SNS topic
-aws sns create-topic --name kg-billing-alert --region us-east-1
-
-# 2. 訂閱 email
-aws sns subscribe --topic-arn <ARN> --protocol email \
-  --notification-endpoint max970228@gmail.com --region us-east-1
-
-# 3. 確認郵件(收件匣按 Confirm subscription)
-
-# 4. 建 alarm @ $25 hard
-aws cloudwatch put-metric-alarm --region us-east-1 \
-  --alarm-name kg-monthly-cost-25 \
-  --metric-name EstimatedCharges --namespace AWS/Billing \
-  --statistic Maximum --period 21600 --evaluation-periods 1 \
-  --threshold 25 --comparison-operator GreaterThanThreshold \
-  --dimensions Name=Currency,Value=USD \
-  --alarm-actions <SNS_ARN>
-```
-
-確認 alarm:`aws cloudwatch describe-alarms --alarm-names kg-monthly-cost-25 --region us-east-1`
+本專案目前沒有在 billing skill 內建立或修改外部 alarm。若要新增 alarm，
+先建立 GitHub Issue／assignment，交由 devops／帳號 owner 依外部 provider
+SOP 執行；本 read-only review 不提供可直接貼上的 SNS／CloudWatch 寫入命令。
 
 ## 5. 與其他 SOP 的關係
 
-- **執行**(bundle 升降、key rotate、刪 snapshot)走 `docs/sop/deploy.md` / `devops` skill。本 SOP 只決定**該不該做**。
-- **backup cost**(年度清舊版 ~$3/年動作門檻 $10/月)走 `docs/sop/backup_restore.md §7`,本檔不重複。
+- **執行**(provider／host／secret／retention 變更)走對應 release／devops／backup SOP。本 SOP 只決定**該不該做**。
+- **backup cost** 走 `docs/sop/backup_restore.md` 的 retention policy，本檔不重複。
 - **用戶配額調整**(額度上限)不在 cost 範疇,走 `data-analysis` skill。

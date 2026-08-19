@@ -4,6 +4,8 @@ KG 是 Knowledge Graph 英語學習產品：`ios/` 是 SwiftUI BooksAndVocab app
 
 交付角色與邊界的唯一 SoT 是 [`docs/reference/delivery_model.md`](docs/reference/delivery_model.md)；本檔只保留啟動時必需的摘要。
 
+每個代理的第一個工作步驟是 onboarding：先用 `ops/agent_onboard.py` 讀取 [`docs/reference/project_onboarding.md`](docs/reference/project_onboarding.md)，確認 canonical identity、intent、entry 與不負責的事情；只有 `status=ready` 後，才依輸出載入 skill 與 domain docs。不要自行猜測角色或權限。
+
 ## GitHub-native 心智模型
 
 GitHub 是交付控制面；本機工具只補足多 worktree 與本機驗證，不另建一套產品管理系統。
@@ -37,11 +39,10 @@ GitHub 外部 ID 只作 opaque reference；Issue、Project、PR 的生命週期�
 ## 常用入口
 
 ```bash
-./ops/context_route.py identify --role manager --json
+./ops/agent_onboard.py --identity '<identity>' --intent '<intent>' --entry '<entry>' [--specialist-intent '<identity-scoped specialist>'] --evidence '<JSON object containing the required assignment evidence>' --json
+# maintainer cross-validation only
 ./ops/context_route.py validate --json
 ./ops/skill_route.py validate --json
-./ops/skill_route.py route --intent delivery --json
-./ops/context_route.py render --role manager --intent delivery --json
 ./ops/worktree_registry.py list --json
 ./ops/worktree_orchestrate.py --help
 ./ops/docs_impact.py --files docs/reference/tech_index.md

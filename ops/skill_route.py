@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 
-SCHEMA = "kg.skill_catalog.v1"
+SCHEMA = "kg.skill_catalog.v2"
 PHASES = {"bootstrap", "context", "primary", "secondary", "closure"}
 KINDS = {"bootstrap", "context", "specialist", "delivery", "closure"}
 
@@ -67,11 +67,20 @@ def _require(value: Any, field: str, context: str) -> Any:
 
 
 def validate_catalog(payload: dict[str, Any], root: Path) -> None:
-    if payload.get("schema") != SCHEMA or payload.get("version") != 1:
-        raise SkillCatalogError(f"schema 必須是 {SCHEMA} version=1")
+    expected_top_level = {"schema", "version", "bootstrap", "context", "intent_aliases", "skills", "fixtures"}
+    if set(payload) != expected_top_level:
+        raise SkillCatalogError(f"catalog 欄位必須剛好是 {sorted(expected_top_level)}")
+    if payload.get("schema") != SCHEMA or payload.get("version") != 2:
+        raise SkillCatalogError(f"schema 必須是 {SCHEMA} version=2")
     skills = _require(payload.get("skills"), "skills", "catalog")
     if not isinstance(skills, list) or not skills:
         raise SkillCatalogError("skills 必須是非空陣列")
+    bootstrap = payload.get("bootstrap")
+    if not isinstance(bootstrap, list) or not bootstrap or len(bootstrap) != len(set(bootstrap)) or not all(isinstance(item, str) and item for item in bootstrap):
+        raise SkillCatalogError("bootstrap 必須是非空且不重複的字串陣列")
+    context_names = payload.get("context")
+    if not isinstance(context_names, list) or len(context_names) != len(set(context_names)) or not all(isinstance(item, str) and item for item in context_names):
+        raise SkillCatalogError("context 必須是不重複的字串陣列")
 
     actual_paths = sorted(root.glob(".claude/skills/*/SKILL.md"))
     actual_names = {path.parent.name for path in actual_paths}
@@ -111,6 +120,20 @@ def validate_catalog(payload: dict[str, Any], root: Path) -> None:
         raise SkillCatalogError(f"skill parity 失敗 missing={missing} phantom={phantom}")
 
     known = names
+    unknown_bootstrap = sorted(set(bootstrap) - known)
+    if unknown_bootstrap:
+        raise SkillCatalogError(f"bootstrap 引用未知 skill: {', '.join(unknown_bootstrap)}")
+    for name in bootstrap:
+        skill = next(item for item in skills if item["name"] == name)
+        if skill["phase"] != "bootstrap" or skill["kind"] != "bootstrap":
+            raise SkillCatalogError(f"bootstrap skill 必須是 bootstrap phase/kind: {name}")
+    unknown_context = sorted(set(context_names) - known)
+    if unknown_context:
+        raise SkillCatalogError(f"context 引用未知 skill: {', '.join(unknown_context)}")
+    for name in context_names:
+        skill = next(item for item in skills if item["name"] == name)
+        if skill["phase"] != "context" or skill["kind"] != "context":
+            raise SkillCatalogError(f"context extension 必須是 context phase/kind: {name}")
     by_intent: dict[str, list[dict[str, Any]]] = {}
     for skill in skills:
         for relation in ("requires", "optional", "forbidden", "closure"):
@@ -126,6 +149,16 @@ def validate_catalog(payload: dict[str, Any], root: Path) -> None:
     if overlaps:
         raise SkillCatalogError(f"primary intent overlap: {overlaps}")
     _validate_dependency_cycles(skills)
+
+    aliases = payload["intent_aliases"]
+    if not isinstance(aliases, dict) or any(not isinstance(alias, str) or not alias for alias in aliases) or any(not isinstance(target, str) or not target for target in aliases.values()):
+        raise SkillCatalogError("intent_aliases 必須是非空字串到非空字串的 mapping")
+    primary_intents = set(by_intent)
+    for alias, target in aliases.items():
+        if alias in primary_intents:
+            raise SkillCatalogError(f"intent alias 不可覆蓋 primary intent: {alias}")
+        if target not in primary_intents:
+            raise SkillCatalogError(f"intent alias target 不存在: {alias} -> {target}")
 
     fixtures = _require(payload.get("fixtures"), "fixtures", "catalog")
     if not isinstance(fixtures, list) or not fixtures:
@@ -150,7 +183,12 @@ def validate_catalog(payload: dict[str, Any], root: Path) -> None:
         result = resolve_route(payload, fixture.get("intent"), include_optional=True)
         if result["primary"] != fixture.get("primary"):
             raise SkillCatalogError(f"{context} primary 不符: expected={fixture.get('primary')} actual={result['primary']}")
+        required_result = resolve_route(payload, fixture.get("intent"), include_optional=False)
         selected = set(result["skills"])
+        required_secondary = set(required_result["dependencies"]["required"])
+        declared_required = set(fixture.get("required_secondary", []))
+        if declared_required != required_secondary:
+            raise SkillCatalogError(f"{context}.required_secondary 不完整或不正確: expected={sorted(required_secondary)} actual={sorted(declared_required)}")
         for field in ("required_secondary", "optional_secondary"):
             if not set(fixture.get(field, [])).issubset(selected):
                 raise SkillCatalogError(f"{context}.{field} 未被 route 選入")
@@ -179,6 +217,8 @@ def _validate_dependency_cycles(skills: list[dict[str, Any]]) -> None:
 
 
 def resolve_route(payload: dict[str, Any], intent: str, include_optional: bool = False, include_closure: bool = False) -> dict[str, Any]:
+    requested_intent = intent
+    intent = payload.get("intent_aliases", {}).get(intent, intent)
     skills = {skill["name"]: skill for skill in payload["skills"]}
     candidates = [skill for skill in payload["skills"] if intent in skill["intents"] and skill["phase"] == "primary"]
     if len(candidates) != 1:
@@ -192,23 +232,41 @@ def resolve_route(payload: dict[str, Any], intent: str, include_optional: bool =
                 add(dependency)
             selected.append(name)
 
-    add("kg-router")
+    for name in payload["bootstrap"]:
+        add(name)
+    for name in payload.get("context", []):
+        add(name)
     add(primary["name"])
+    required_selected = list(selected)
+    optional_added: list[str] = []
     if include_optional:
         for name in primary["optional"]:
+            before = set(selected)
             add(name)
+            optional_added.extend(item for item in selected if item not in before)
+    closure_added: list[str] = []
     if include_closure:
         for skill in payload["skills"]:
             if skill["phase"] == "closure":
+                before = set(selected)
                 add(skill["name"])
+                closure_added.extend(item for item in selected if item not in before)
     forbidden = set().union(*(set(skills[name]["forbidden"]) for name in selected))
     if forbidden.intersection(selected):
         raise SkillCatalogError(f"route 載入 forbidden skill: {sorted(forbidden.intersection(selected))}")
+    bootstrap_set = set(payload["bootstrap"])
+    required_secondary = [name for name in required_selected if name not in bootstrap_set and name != primary["name"]]
     return {
         "schema": "kg.skill_route.v1",
+        "requested_intent": requested_intent,
         "intent": intent,
         "primary": primary["name"],
         "skills": selected,
+        "dependencies": {
+            "required": required_secondary,
+            "optional": optional_added,
+            "closure": closure_added,
+        },
         "authorization": {"granted": False, "note": "skill route 不是 capability 或 production 授權"},
     }
 
@@ -218,9 +276,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     subparsers = parser.add_subparsers(dest="command", required=True)
     for name in ("validate", "list"):
         sub = subparsers.add_parser(name)
+        if name == "list":
+            sub.add_argument("--diagnostic", action="store_true", help="explicitly allow maintainer-only diagnostics")
         sub.add_argument("--root", type=Path)
         sub.add_argument("--json", action="store_true")
     route = subparsers.add_parser("route")
+    route.add_argument("--diagnostic", action="store_true", help="explicitly allow maintainer-only diagnostics")
     route.add_argument("--intent", required=True)
     route.add_argument("--include-optional", action="store_true")
     route.add_argument("--include-closure", action="store_true")
@@ -231,6 +292,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
+    if args.command != "validate" and not getattr(args, "diagnostic", False):
+        print(
+            "skill_catalog: ERROR agent-facing loader is ./ops/agent_onboard.py; "
+            "use --diagnostic only for maintainer inspection",
+            file=sys.stderr,
+        )
+        return 2
     try:
         payload = load_catalog(getattr(args, "root", None))
         if args.command == "validate":

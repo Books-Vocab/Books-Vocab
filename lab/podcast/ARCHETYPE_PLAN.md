@@ -199,7 +199,7 @@ prompt:`prompts/triage.md`(分類進 registry archetype + 沿 4 軸給座標 + �
 **Commit**:`ops: fiction enricher — inward canon pass, conditional web grant`
 
 ### Phase 9 — Doc sync + smoke(閉環,鐵律 6 + CLAUDE.md scope)
-**Files**:`.claude/skills/podcast/SKILL.md`(`--mode`/`--spoiler-mode`/`triage.py` 用法);`docs/sop/podcast_pipeline.md`(註冊 `SPOILER_VIOLATION` 第 5 gate、triage 前置步、archetype registry、截斷機制);`docs/reference/product_surface.md`(archetype-mode bullet);`docs/reference/testing/smoke_checklist.md`(fiction smoke);跑 `ops/docs_lint.sh`。
+**Files**:`.claude/skills/podcast-pipeline/SKILL.md`(`--mode`/`--spoiler-mode`/`triage.py` 路由);`docs/sop/podcast_pipeline.md`(註冊 `SPOILER_VIOLATION` 第 5 gate、triage 前置步、archetype registry、截斷機制);`docs/reference/product_surface.md`(archetype-mode bullet);`docs/reference/testing/smoke_checklist.md`(fiction smoke);跑 `ops/docs_lint.sh`。
 **Smoke**:《The Yellow Wallpaper》(單弧 ~12 章)`--mode fiction --spoiler-mode readalong` → TTS-valid script、零 `SPOILER_VIOLATION`;負向 smoke:手改植入前洩 → gate **必須** fail。
 **Commit**:`ops: archetype-mode docs sync + fiction smoke`
 

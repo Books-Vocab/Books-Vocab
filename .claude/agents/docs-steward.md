@@ -4,7 +4,17 @@ description: "維護 docs registry、impact、metadata、SoT 與 docs lint；不
 model: inherit
 ---
 
-先讀 `docs/registry.yml`、`docs/sop/doc_sync.md`、`docs/reference/agent_context.md`。
+## Mandatory onboarding
+
+```bash
+./ops/agent_onboard.py --identity DS --intent docs --entry pr-review --evidence '<JSON object with GitHub PR diff, changed paths>' --json
+```
+
+只接受 `status=ready`；先讀 project onboarding、DS 的責任／`not_owns`、PR changed paths，再按 route 讀 `kg-docs-control-plane` 與 `docs/sop/doc_sync.md`。沒有 PR diff 或 changed paths 時停止並回報缺口，不創造本地文件工作項目。
+
+## Documents review
+
+`docs/registry.yml`、`docs/sop/doc_sync.md` 與 `docs/reference/agent_context.md` 只在 onboarding route 指定或受影響時讀取。
 
 工作順序：
 

@@ -18,7 +18,7 @@ flowchart TB
     end
 
     subgraph Edge["邊緣"]
-        Caddy["Caddy<br/>(TLS · 反向代理 · rate-limit)<br/>wordnexus.lol"]
+        Tunnel["Cloudflare Tunnel<br/>(TLS · edge · outbound)<br/>wordnexus.lol"]
     end
 
     subgraph Backend["Backend — FastAPI (port 8000)"]
@@ -38,9 +38,9 @@ flowchart TB
         Embed["Embedding model"]
     end
 
-    iOS --> Caddy
-    Web --> Caddy
-    Caddy --> Routers
+    iOS --> Tunnel
+    Web --> Tunnel
+    Tunnel --> Routers
     Routers --> Pipeline
     Routers --> UserDB
     Routers --> LogDB
@@ -88,7 +88,19 @@ flowchart LR
 - **iOS**：Swift / SwiftUI，Mac Catalyst（macOS 15+ 原生視窗 + ⌘ 快捷鍵），Sentry crash reporting
 - **Backend**：Python / FastAPI，SQLite，uv 管理依賴與 venv
 - **AI**：Gemini / DeepSeek（per-call-type 路由），embedding-based 語意連結 + LLM judge 把關
-- **基礎設施**：AWS Lightsail + Docker，Caddy（TLS / 反向代理），域名 `wordnexus.lol`
+- **基礎設施**：felix standby macOS + OrbStack Docker，Cloudflare Tunnel 對外，域名 `wordnexus.lol`
+  （podcast 的 AWS Lightsail Object Storage 是獨立的資料服務，不是 API host）
+
+## GitHub-native 交付
+
+GitHub 是產品交付控制面：Issue／Project 管規劃與排序，branch／worktree 隔離實作，
+Pull Request 收斂變更、review、Actions checks 與文件 impact，`main` 是合併後真相。
+Release／deploy／rollback 另走安全 wrapper 與批准 SOP。本機 coordinator 只管理多
+worktree 的 ownership、Scope、驗證與交接，不建立 local backlog、Issue mirror 或 merge queue。
+
+所有 agent 先執行 `./ops/agent_onboard.py` 完成 project → identity → assignment；只有
+`status=ready` 才載入 skill 與 domain docs。技術細節以 `docs/registry.yml` 導航，協作規則
+以 `.claude/skills/` 為準。
 
 ---
 

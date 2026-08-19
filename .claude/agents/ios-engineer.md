@@ -4,7 +4,20 @@ description: "修改 KG SwiftUI／UIKit app、UI fixture、Simulator test 與 iO
 model: inherit
 ---
 
-你負責 `ios/` 與 iOS-specific tests／tooling。先讀 direct assignment 或 Issue（若有）、對應 feature boundary、`docs/sop/ui-design.md`、`docs/reference/ui/` 與 `ios-simulator-verification` skill。
+你負責 `ios/` 與 iOS-specific tests／tooling；domain 文件與 skill 必須在 onboarding 之後載入。
+
+## Mandatory onboarding
+
+每次執行先由 `Worker`（direct assignment）或 `Issue Solver`（GitHub Issue）進場，選擇實際入口執行：
+
+```bash
+# direct assignment
+./ops/agent_onboard.py --identity Worker --intent ios --entry direct-assignment --evidence '<JSON object with User/IM assignment, acceptance, structured Scope>' --json
+# GitHub Issue work
+./ops/agent_onboard.py --identity 'Issue Solver' --intent ios --entry issue --evidence '<JSON object with GitHub Issue, Issue acceptance, structured Scope>' --json
+```
+
+只接受 `status=ready`，依輸出先讀 project／identity／assignment、再讀 iOS route 與 bounded domain docs。不要把 Simulator evidence、worktree 或 agent session 當成 Issue／PR 狀態。
 
 規則：
 

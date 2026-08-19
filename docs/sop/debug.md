@@ -5,23 +5,52 @@ update_trigger: sop-change
 scope:
   - backend/
   - ops/
-verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
+  - .claude/skills/devops/
+verified_against: 8ec4780950c73b6006649c5c08e69c05962abfc1
 -->
 # 伺服器排障指南
 
-> `./devops.sh *` 子指令的完整參考由 `devops` skill 作 SoT;本文件內的 `./devops.sh run "..."` 用法為診斷情境範例,非指令清單。
->
 > ⚠️ **生產禁用指令邊界**：所有 ops 與診斷動作受 [`docs/policy/safety.md`](../policy/safety.md) 約束。`docker compose down -v`、`docker system prune -a`、`rm -rf` 涉及 data dir 一律禁止；診斷可讀不可破壞性清理。
 >
-> **過渡狀態（2026-06-15 起）**：正式站已遷到家用常駐機 `standby`，經 Cloudflare Tunnel 對外（**無 Caddy / 不開 inbound 埠**）。以下「primary」段為 CF tunnel 語境；Caddy / Lightsail / 防火牆段保留於 §Lightsail rollback 排障（容器 STOP，僅回滾時相關）。Host topology SoT 見 [`docs/reference/host_topology.md`](../reference/host_topology.md)。
+> **現況**：正式站是 felix standby，經 Cloudflare Tunnel 對外。host、tunnel、資料與災難重建只以 [`docs/reference/host_topology.md`](../reference/host_topology.md) 及 butler host SOP 為準；本文件只負責排障判讀。
 
-## 核心資訊（primary：standby + CF Tunnel）
+## 現役排障面
 
-- **primary 機器**: `chenliangyusAir`（M3 Air），user `chenliangyu`，Tailscale `100.118.39.104`，OrbStack docker
-- **Edge**: Cloudflare Tunnel（名 `kg-standby`，CF 邊緣終結 TLS）；**無 Caddy、無 inbound 埠**
-- **Domain**: `wordnexus.lol`（CF DNS apex proxied CNAME → tunnel）；CF anycast IP `104.21.85.113` / `172.67.204.212`
-- **SSH**: `ssh chenliangyu@100.118.39.104`（主力機公鑰免密碼）
-- **Stack**: CF 邊緣（TLS）→ cloudflared 隧道（outbound）→ standby localhost:8000 → Docker FastAPI → SQLite（/app/data/）
+服務拓樸與 host identity 不在本文件重複；先讀 host topology，再用
+`ops/devops_kg_safe.sh` 的 typed read-only surface。任何需要 restart、deploy、
+資料或外部設定的動作都轉交對應 SOP／Release operator。
+
+## Debug evidence contract
+
+先把 failure 分成 static、behavioral/performance、UI/timing 或 infrastructure；能由
+code、test、stack、fixture 或 current health 判定的先靜態定位，只有實際行為無法由
+靜態資料決定時才加量測。根因證據至少要能連起：reproducer → source/call path 或
+measurement → failure signature → 最小修復與 regression test；「看起來應該好了」不是
+證據。
+
+行為量測固定走：
+
+1. 寫一條可證偽假設與一個成功簽名，另寫至少兩個失敗簽名及各自下一步。
+2. 先只加觀測，不在同一輪同時改行為；由 log、build、simulator/device 或 API health
+   取得真實結果。
+3. 逐條比對預測；任一 mismatch 就修正模型，不得把 agent 推理當成實測。
+4. 兩次推理未命中就停止猜測，轉成可量測的 reproducer；修復仍走 RED → minimal fix → GREEN。
+
+iOS 行為／效能觀測的 code SoT 是
+`ios/BooksAndVocab/Services/PerfLog.swift`：高頻事件用 `tick`、狀態邊界用 `mark`、
+耗時用 `measure`／`interval`；category 與開關以該實作為準。這些 log 是可重用的
+DEBUG-gated evidence infrastructure，不因一次 bug 修好就刪除。Simulator、真機、
+backend 與 infra 的具體 capture 命令分別以各 domain SOP／safe wrapper 為準。
+
+非同步測試等待實際條件（event、state、file、health 或 marker），不要用未解釋的
+固定 sleep；若測試的就是 timing，才保留有明確理由、上限與 failure signature 的
+timeout。多個獨立假說可平行驗證，但每個 agent 必須有不重疊 Scope、自己的 evidence
+與結論，不共享未驗證的推測。
+
+資料會跨 entry、domain、environment 或 external boundary 時，在每個安全關卡做必要
+驗證，並以測試證明 bypass 會 fail closed。debug receipt 只交付 reproducer、exact
+HEAD、commands／exit status、evidence identity、root cause、regression result、
+deviation 與下一步；不保存 raw UI video，除非 assignment 明確要求。
 
 ---
 
@@ -35,7 +64,8 @@ curl -s https://wordnexus.lol/api/system/info | uv run --python 3.13 python -m j
 curl -sD - --resolve wordnexus.lol:443:104.21.85.113 https://wordnexus.lol/api/system/info -o /dev/null
 
 # 直連 standby（繞過 CF，分層定位）
-./ops/devops_kg_safe.sh docker-ps; ./ops/devops_kg_safe.sh caddy-status --json
+./ops/devops_kg_safe.sh health --json
+./ops/devops_kg_safe.sh docker-ps
 ```
 
 ```
@@ -54,7 +84,7 @@ public 失敗但 --resolve 直打 CF 邊緣 OK → 純 DNS 傳播問題（見下
 分層定位：CF 邊緣 → cloudflared 隧道 → 容器。
 
 ```bash
-# 1. DNS 解析（期望 CF anycast，不是 13.193.212.134）
+# 1. DNS 解析（期望 CF anycast）
 dig wordnexus.lol @8.8.8.8 +short        # 應回 104.21.85.113 / 172.67.204.212（CF）
 dig wordnexus.lol @1.1.1.1 +short
 
@@ -63,26 +93,20 @@ curl -sD - --resolve wordnexus.lol:443:104.21.85.113 https://wordnexus.lol/api/s
 #   回 200 + cf-ray → CF→tunnel→standby 全鏈 OK，問題純在 DNS 傳播
 #   回 502/530 → 隧道斷或容器掛，往下查
 
-# 3. cloudflared 連接器（standby 上）
-./ops/devops_kg_safe.sh caddy-status --json
-
-# 4. 容器（standby 上）
-ssh chenliangyu@100.118.39.104 'docker ps --filter name=knowledge-graph-api; curl -s -o /dev/null -w "local:8000=%{http_code}\n" http://localhost:8000/api/system/info'
+# 3. host、container、tunnel 的聚合健康
+./ops/devops_kg_safe.sh health --json
 ```
 
 **修復：cloudflared 隧道斷**（local:8000 健康但公網 502/530）
-```bash
-# system LaunchDaemon，KeepAlive 通常自動拉起；卡住時 kickstart
-ssh chenliangyu@100.118.39.104 'sudo launchctl kickstart -k system/com.cloudflare.cloudflared'
-```
+先保存 `health --json` 與 public probe 證據，再依 host／Cloudflare SOP 由
+Release operator 或 ops authority 執行；一般 agent 不自行操作 daemon。
 
 **修復：容器掛**（local:8000 不回）
-```bash
-ssh chenliangyu@100.118.39.104 'docker logs --tail 100 knowledge-graph-api'   # 通常 .env 缺 key / Python import 錯誤
-ssh chenliangyu@100.118.39.104 'cd ~/kg-prod/backend && docker compose up -d'   # restart:always，不應需要手動
-```
+先用 `./ops/devops_kg_safe.sh docker-logs 100` 保存日誌；若需重啟，依
+[`docs/sop/deploy.md`](deploy.md) 的批准與 wrapper 邊界執行
+`./ops/devops_kg_safe.sh restart`。
 
-> TLS 憑證由 CF 邊緣託管，standby 端**無**憑證可查/可清（不再有 Let's Encrypt / Caddy 流程）。
+> TLS 與 tunnel 的外部設定由 host topology／Cloudflare SOP 承載，本文件不複製設定命令。
 
 ---
 
@@ -90,14 +114,10 @@ ssh chenliangyu@100.118.39.104 'cd ~/kg-prod/backend && docker compose up -d'   
 
 ```bash
 # 先分層：是隧道斷還是容器掛？
-./ops/devops_kg_safe.sh health --json; ./ops/devops_kg_safe.sh caddy-status --json
+./ops/devops_kg_safe.sh health --json
 ```
-- `local:8000` 健康但公網 502/530 → cloudflared 隧道問題 → `sudo launchctl kickstart -k system/com.cloudflare.cloudflared`
-- `local:8000` 也掛 → 容器問題：
-```bash
-ssh chenliangyu@100.118.39.104 'docker logs --tail 100 knowledge-graph-api'
-ssh chenliangyu@100.118.39.104 'cd ~/kg-prod/backend && docker compose up -d --build'   # .env 缺 key / import 錯誤需重 build
-```
+- `local:8000` 健康但公網 502/530 → tunnel／edge 路徑問題；保存 health 與 public probe，轉交 host／Cloudflare SOP。
+- `local:8000` 也掛 → 先保存 `./ops/devops_kg_safe.sh docker-logs 100`，再依 deploy SOP 判斷 restart、release 或 rollback。
 
 ---
 
@@ -106,119 +126,53 @@ ssh chenliangyu@100.118.39.104 'cd ~/kg-prod/backend && docker compose up -d --b
 ```bash
 dig wordnexus.lol @8.8.8.8 +short
 # 期望：CF anycast 104.21.85.113 / 172.67.204.212
-# 仍回 13.193.212.134（舊 Lightsail）→ DNS 傳播未收斂或回滾後沒切回
+# 若回傳非 CF anycast → DNS／Cloudflare route drift，依 host topology 與 Cloudflare SOP 追查
 ```
 - NS 已從 Porkbun 移到 CF（`damien/gabriella.ns.cloudflare.com`）。遷移初期「服務健康但部分用戶 502」多為**純 DNS 委派傳播**（舊 Porkbun NS 殘留舊 apex A，最久卡 24h）。成因鏈與緩解手段（強刷 resolver 快取、`/etc/hosts` 釘 CF IP）見 butler `~/butler/docs/kg-backend-deployment.md §8`。
 - **驗服務本身排除 DNS 干擾**：永遠用 `--resolve wordnexus.lol:443:104.21.85.113` 直打 CF 邊緣。
 
 ---
 
-## Lightsail rollback 排障（僅回滾時相關）
+## Disaster recovery pointer
 
-> 以下為舊 Lightsail + Caddy 語境。Lightsail instance **已 terminate**，僅在冷重建回滾後這些 Caddy/防火牆/SSL 診斷才生效。回滾程序見 [`docs/reference/host_topology.md` §Rollback](../reference/host_topology.md)。
-> ⚠️ 本段 `KG_ALLOW_LIGHTSAIL=1 ./devops.sh ...` 為歷史寫法 —— 該 guard env var 2026-06-19 隨 wrapper retarget standby 移除。冷重建 Lightsail 時須將 wrapper transport（`KG_SERVER` 等）指向新站，或直接 ssh 進新站手動執行下列 Caddy/SSL 診斷。standby 現役無 Caddy，CF tunnel 排障見上方 §症狀→診斷→修復（primary）。
-
-### HTTPS 連線失敗（Lightsail）
-
-```bash
-# 1. DNS（回滾後期望 13.193.212.134）
-nslookup wordnexus.lol
-dig wordnexus.lol @8.8.8.8
-
-# 2. 防火牆
-aws lightsail describe-instance-firewall-rules \
-  --instance-name booksbrowser-kg-api-2gb --region ap-northeast-1
-
-# 3. Caddy
-KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "sudo systemctl status caddy"
-KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "sudo journalctl -u caddy -n 100 --no-pager"
-
-# 4. SSL 憑證
-KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "ls -la /var/lib/caddy/.local/share/caddy/certificates/"
-KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "sudo ss -tlnp | grep -E ':80|:443|:8000'"
-```
-
-**修復：Caddy 掛了**
-```bash
-KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "sudo systemctl restart caddy"
-```
-
-**修復：SSL 憑證問題**
-```bash
-KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "sudo systemctl stop caddy"
-KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "sudo rm -rf /var/lib/caddy/.local/share/caddy/certificates/"
-KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "sudo systemctl start caddy"
-# Caddy 啟動時自動向 Let's Encrypt 申請（需 DNS 已正確解析）
-```
-
-**修復：Caddyfile 配置錯誤**
-```bash
-KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "cat /etc/caddy/Caddyfile"
-# 正確格式（含 Claude Gateway；Antigravity Proxy 2026-05-23 撤出公網改本機執行）：
-KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "cat <<'CADDY' | sudo tee /etc/caddy/Caddyfile > /dev/null && sudo systemctl reload caddy
-wordnexus.lol {
-    handle /claude/* {
-        uri strip_prefix /claude
-        reverse_proxy localhost:8090
-    }
-    reverse_proxy localhost:8000
-}
-CADDY"
-```
-
-### API 無回應（HTTP 502，Lightsail）
-
-```bash
-KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "docker ps"
-KG_ALLOW_LIGHTSAIL=1 ./devops.sh logs 100
-KG_ALLOW_LIGHTSAIL=1 ./devops.sh restart
-```
-
-### 防火牆阻擋（Lightsail）
-
-```bash
-aws lightsail put-instance-public-ports \
-  --instance-name booksbrowser-kg-api-2gb \
-  --port-infos \
-    fromPort=80,toPort=80,protocol=tcp \
-    fromPort=443,toPort=443,protocol=tcp \
-    fromPort=22,toPort=22,protocol=tcp \
-  --region ap-northeast-1
-```
+排障只能保存 evidence；host 或資料故障的 recovery 依
+[`docs/reference/host_topology.md`](../reference/host_topology.md)、
+[`docs/sop/backup_restore.md`](backup_restore.md) 與 release SOP 執行。本文件不
+提供 recovery、跨主機傳輸或 destructive command。
 
 ---
 
 ## 症狀 → 診斷 → 修復（平台無關）
 
-> 以下 pipeline / 用戶管理 / DB 直查走容器內，standby 與 Lightsail 通用。standby 上把 `./devops.sh run "..."` 換成 `ssh chenliangyu@100.118.39.104 "..."`；rollback 後在 Lightsail 用 `KG_ALLOW_LIGHTSAIL=1 ./devops.sh run "..."`。
+> 以下 pipeline／用戶管理／DB 直查統一經 `./ops/devops_kg_safe.sh`；不要繞過 wrapper 直接操作 host。
 
 ### Pipeline 卡住
 
 Pipeline 有 per-user `asyncio.Lock`，crash 後可能鎖住。
 
 ```bash
-./devops.sh restart                   # 重啟釋放鎖
-./devops.sh logs 100                  # 找 "pipeline started/completed/locked"
+./ops/devops_kg_safe.sh restart       # 需依 production safety／批准邊界執行
+./ops/devops_kg_safe.sh logs 100       # 找 "pipeline started/completed/locked"
 ```
 
 **各 Step 常見錯誤**：
 ```
 Step 1 Enrich → Gemini API key 無效/額度用完
-  → ./devops.sh run "docker exec knowledge-graph-api env | grep GEMINI"
+  → ./ops/devops_kg_safe.sh env-check
 
 Step 2 Embed+Judge → pending_judge 積累 / judge 全 reject
-  → 查 judge_log：./devops.sh run "docker exec knowledge-graph-api sqlite3 /app/data/users/<id>/cards.db 'SELECT * FROM judge_log ORDER BY created_at DESC LIMIT 20;'"
+  → 查 `./ops/devops_kg_safe.sh ops-cli analyze <id> 2` 與 `ops-cli db-query` 的唯讀輸出
   → 查 acceptance rate：admin dashboard 或 /api/admin/stats
 
 ```
 
 **Pipeline Telemetry 查詢**：
 ```bash
-# 查 pipeline 執行歷史
-./devops.sh run "docker exec knowledge-graph-api sqlite3 /app/data/pipeline_log.db 'SELECT * FROM runs ORDER BY started_at DESC LIMIT 10;'"
+# 讀取使用者的分析結果與 pipeline 狀態摘要
+./ops/devops_kg_safe.sh ops-cli analyze <id> 2
 
-# 查 translate_log（LLM 呼叫追蹤）
-./devops.sh run "docker exec knowledge-graph-api sqlite3 /app/data/users/<id>/cards.db 'SELECT * FROM translate_log ORDER BY created_at DESC LIMIT 20;'"
+# 讀取跨資料庫的同步／翻譯追蹤；不要把這些表當成 cards.db 的 db-query
+./ops/devops_kg_safe.sh ops-cli sync-trace <id> --json
 ```
 
 ---
@@ -226,47 +180,25 @@ Step 2 Embed+Judge → pending_judge 積累 / judge 全 reject
 ## 用戶管理
 
 ```bash
-./devops.sh users                    # 列出所有用戶及可選第三方整合設定
-./devops.sh user-info <user_id>      # 用戶單字統計
-./devops.sh delete-user <user_id> --yes  # 刪除帳號 + 所有資料（不可恢復）
+./ops/devops_kg_safe.sh users
+./ops/devops_kg_safe.sh user-info <user_id>
 ```
 
-### 刪除用戶所有單字（保留帳號）
-
-```bash
-# 確認資料量
-./devops.sh user-info <user_id>
-
-# 在容器內刪除
-./devops.sh run "docker exec knowledge-graph-api sh -c '
-  rm -f /app/data/users/<user_id>/cards.db
-  rm -f /app/data/users/<user_id>/cards.db-shm
-  rm -f /app/data/users/<user_id>/cards.db-wal
-  rm -f /app/data/users/<user_id>/embeddings.npy
-  rm -f /app/data/users/<user_id>/graph.json
-  rm -f /app/data/users/<user_id>/candidates.json
-  rm -f /app/data/users/<user_id>/card_ids.json
-
-'"
-
-# 確認清空
-./devops.sh run "docker exec knowledge-graph-api ls /app/data/users/<user_id>/"
-```
+刪除帳號、刪除用戶資料或保留帳號清空資料都不是一般 debug 命令；safe wrapper 預設阻擋。這類不可逆操作必須走對應批准／backup／rollback SOP，由 production authority 執行，不在本文件提供可複製的 destructive command。
 
 ---
 
 ## 資源診斷
 
 ```bash
-./devops.sh run "df -h"                           # 磁碟
-./ops/devops_kg_safe.sh memory-usage --json       # Felix macOS 記憶體 / swap
-./devops.sh run "docker stats --no-stream"        # 容器資源
-./devops.sh run "docker ps -a"                    # 所有容器
+./ops/devops_kg_safe.sh disk-usage                 # 磁碟
+./ops/devops_kg_safe.sh memory-usage --json        # Felix macOS 記憶體 / swap
+./ops/devops_kg_safe.sh docker-stats               # 容器資源
+./ops/devops_kg_safe.sh docker-ps                  # 所有容器
 
 # 深度日誌
-./devops.sh logs 200
-./devops.sh run "docker logs knowledge-graph-api -n 200 2>&1 | grep -i error"
-./devops.sh run "docker logs knowledge-graph-api -n 200 2>&1 | grep -i pipeline"
+./ops/devops_kg_safe.sh docker-logs 200
+./ops/devops_kg_safe.sh logs 200
 ```
 
 ---
@@ -274,10 +206,9 @@ Step 2 Embed+Judge → pending_judge 積累 / judge 全 reject
 ## 資料庫直接操作
 
 ```bash
-./devops.sh run "docker exec knowledge-graph-api sqlite3 /app/data/users/<uid>/cards.db '.tables'"
-./devops.sh run "docker exec knowledge-graph-api sqlite3 /app/data/users/<uid>/cards.db 'SELECT COUNT(*) FROM cards;'"
-./devops.sh run "docker exec knowledge-graph-api sqlite3 /app/data/users/<uid>/cards.db 'PRAGMA table_info(cards);'"
-./devops.sh run "cat ~/kg-data/users.json"   # host data 2026-06-16 移至 ~/kg-data（原 backend/data）
+./ops/devops_kg_safe.sh ops-cli db-query <uid> "--schema"
+./ops/devops_kg_safe.sh ops-cli db-query <uid> "SELECT COUNT(*) FROM card;"
+./ops/devops_kg_safe.sh ops-cli user-config <uid> --json
 ```
 
 ---
@@ -285,34 +216,17 @@ Step 2 Embed+Judge → pending_judge 積累 / judge 全 reject
 ## Docker 操作
 
 ```bash
-./devops.sh run "docker inspect knowledge-graph-api"
-./devops.sh run "docker exec knowledge-graph-api env"    # 確認 .env 讀到
-./devops.sh run "cd ~/knowledge_graph_api && docker compose config"
-./devops.sh run "cd ~/knowledge_graph_api && docker compose up -d --build --force-recreate"
+./ops/devops_kg_safe.sh docker-ps
+./ops/devops_kg_safe.sh env-check
+./ops/devops_kg_safe.sh status
+./ops/devops_kg_safe.sh deploy       # 只有 release／deploy authority 可執行
 ```
 
 ---
 
 ## 緊急恢復 SOP
 
-```bash
-# 1. 停止容器（防止繼續寫入）
-./devops.sh run "cd ~/knowledge_graph_api && docker compose stop"
-
-# 2. 備份當前損壞資料
-scp -i ~/.ssh/lightsail_kg_prod -r \
-  ubuntu@13.193.212.134:~/knowledge_graph_api/data \
-  ~/Desktop/broken_data_$(date +%Y%m%d_%H%M)
-
-# 3. 推回好的備份
-scp -i ~/.ssh/lightsail_kg_prod -r \
-  ~/kg/backups/data_<日期> \
-  ubuntu@13.193.212.134:~/knowledge_graph_api/data
-
-# 4. 重啟
-./devops.sh restart
-./devops.sh status
-```
+先用 `./ops/devops_kg_safe.sh health --json`、`logs`、`backup` 保存現況；資料恢復依 [`docs/sop/backup_restore.md`](backup_restore.md) 執行，服務／版本回退依 [`docs/sop/deploy.md`](deploy.md) 與 [`docs/reference/host_topology.md`](../reference/host_topology.md) 執行。本文件不提供跨主機 `scp` 或直接刪／覆寫 production data 的命令。
 
 ---
 
@@ -328,37 +242,4 @@ scp -i ~/.ssh/lightsail_kg_prod -r \
 | backup launchd | `~/Library/LaunchAgents/com.kg.backup.plist`（源 `ops/launchd/com.kg.backup.plist`） |
 | TLS 憑證 | 無（CF 邊緣託管） |
 
-> `~/kg-prod` 是生產 checkout；`~/project/kg` 僅供 dev / resume 使用，不要在其 backend 跑 compose。
-
-### rollback（Lightsail，Ubuntu）
-| 檔案 | 路徑 |
-|------|------|
-| Caddy 設定 | `/etc/caddy/Caddyfile` |
-| API 代碼 | `/home/ubuntu/knowledge_graph_api/` |
-| API .env | `/home/ubuntu/knowledge_graph_api/.env` |
-| 資料庫 | `/home/ubuntu/knowledge_graph_api/data/` |
-| SSL 憑證 | `/var/lib/caddy/.local/share/caddy/certificates/` |
-| Docker Compose | `/home/ubuntu/knowledge_graph_api/docker-compose.yml` |
-
----
-
-## AWS Lightsail 指令（rollback 語境）
-
-```bash
-# 查看實例狀態
-aws lightsail get-instance --instance-name booksbrowser-kg-api-2gb --region ap-northeast-1
-
-# 查看防火牆規則
-aws lightsail describe-instance-firewall-rules \
-  --instance-name booksbrowser-kg-api-2gb --region ap-northeast-1
-
-# 臨時開放額外 port（如 8080 debug）
-aws lightsail put-instance-public-ports \
-  --instance-name booksbrowser-kg-api-2gb \
-  --port-infos \
-    fromPort=80,toPort=80,protocol=tcp \
-    fromPort=443,toPort=443,protocol=tcp \
-    fromPort=22,toPort=22,protocol=tcp \
-    fromPort=8080,toPort=8080,protocol=tcp \
-  --region ap-northeast-1
-```
+> production checkout、data root 與 host path 以 host topology 為準；不要在 dev checkout 執行 production compose。

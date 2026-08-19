@@ -7,7 +7,7 @@ scope:
   - ios/BooksAndVocab/Support/
   - ops/
   - .claude/skills/ios-simulator-verification/
-verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
+verified_against: 8ec4780950c73b6006649c5c08e69c05962abfc1
 -->
 # UI Flow Evidence Playbook — 真播放級 UITest 契約
 
@@ -78,8 +78,25 @@ helper 會將 source root 與 tool root 分開：dataset、HEAD/dirty、runner �
 - 固定測試 `LiveDemoAccessUITests.testLiveDemoAccountHasProEntitlement` 會拒絕 Debug、simulator、缺 marker/hash、fixture args/env、backend override、錯誤／缺失 account 與 Free entitlement；通過條件是 Settings 暴露的 account identity SHA 等於 live mirror 且 live backend 顯示 Pro，之後 `ios_test.sh` 才產生綁同一 SHA 的 `demoEvidence`。這份機器證據不宣稱 fresh credential SSO；重新登入與 credential 可用性由 root-bound human attestation 證明。caller 自填 nested JSON 不能成為 live-demo 證據。
 - 同一個 flow 要補多個狀態/資料 variants 時，用 `./ops/uitest_flow_matrix.py --file <Flow>UITests.swift --profile ui-smoke --profile standard --dataset marketing_demo --lease --json`。它會展開 profile × dataset，多次呼叫 `ios_ops.sh test --ui` 且 keep-going；底層 `variantId` 會保留組合軸，例如 `dataset:marketing_demo+profile:standard`，因此新 run 不會覆蓋同 flow 的另一個狀態/資料 entry。
 - 報告型 active P3–P15 任務另用 `ops/fixtures/ios_ui_review_clusters.json` 固定四個架構 cluster 與每列 exact selector；先跑 `ios_ui_review_clusters.py validate/expand-run-plan`，再由 `ios_ui_run_many.py run` 一次準備 cache、逐 selector 產生獨立 ephemeral bundle。共用 selector 可只執行一次但保留所有 requirement mapping；matrix 的 `requiredFixtureIDs` 必須指向 UI World 的 canonical top-level fixture 或 `scenarioContext` surface-contract fixture（測試 runtime argument 不是 fixture ID）；summary 的 `passed_unattested` 只代表 machine contract，不能直接改 matrix。
+
+P3–P15 的四個 cluster 與邊界由 `ops/fixtures/ios_ui_review_clusters.json` 唯一決定：
+
+| Cluster | Requirements | 邊界 |
+|---|---|---|
+| `reader-runtime` | P3–P7 | Reader runtime／loading、進度、設定 round-trip、preview |
+| `explore-overview` | P8–P10 | loading／empty／error、projection clock、calendar／forecast |
+| `vocabulary-review-card` | P11–P13 | review-state projection、資訊層級、card layout |
+| `settings-sync` | P14–P15 | sync lifecycle、IA、optimistic state、reset |
+
+cluster manifest 必須恰好覆蓋 P3–P15 一次；selector 必須是 exact
+`ClassName/testMethodName`，每列要有 required state、counterexample、fixture、machine
+acceptance 與 visual acceptance。共享 selector 只有在 matrix 保留不同 requirement mapping
+時才可重用；evidence root、source HEAD、dataset SHA、device UDID、manifest SHA 與 reviewer
+必須可機器驗證。只有 machine contract、全步驟 visual attestation、matrix strict validation
+與 PR／docs gate 都通過，才能把 requirement 報成完成。
 - `ios_ui_run_many.py run` 會在 build 前建立唯一 `run-manifest.json`，將 prepare/selector 的 log、xcresult、step screenshot、review page、video 與 ephemeral bundle 收在系統暫存的 batch staging root，並以 parent batch ID + execution ID 綁定 PID、HEAD、worktree、branch、Simulator、UI World 與方法快照。預設 TTL 回收成功、失敗、abandoned 的二進位內容；只有 `--retain --output-dir build/ios-report/retained/<batch>` 才能保留並供 `record-many` 消費。不要把 selector PASS 當成 visual 或 requirement PASS；cleanup 先 dry-run，確認 PID、xcodebuild／runner consumer 與 known lock 都清空後才 `--commit`。
 - 多次 app launch、AX attachment serialization 或預估超過 60 秒的 UI evidence test，必須在 `XCTestCase` 設定明確的 `executionTimeAllowance`（以實測選 150／180／240／300 秒）；`KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE` 只設 xcodebuild 上限，不會延長 XCTestCase 自己的 allowance。逾時歸類 execution-inconclusive。fixture decoder／manifest／projection 等零步驟測試走 unit／focused test，不產生或冒充 visual evidence；單一 `run_ui_evidence.sh` 也不接受 `--output-dir`，集中輸出只由 `ios_ui_run_many.py --output-dir` 負責。
+- **Heartbeat／timeout 判讀**：heartbeat 只提供 observability，不是 liveness 或健康證明；raw log silence 也不是卡死證據。不得因沒有新 log／heartbeat 就直接 kill `xcodebuild`、test runner 或 recorder。終止只能由 XCTest 的 `executionTimeAllowance`、command/job 的明確 timeout，或已證明 owner／PID／lock 狀態的 cleanup contract 觸發；逾時要記成 `execution-inconclusive` 並保存 typed evidence。
 - 全批視覺人工 attestation 完成後，才用 `ios_ui_review_matrix.py record-many --summary <run-many.json>` all-or-nothing 回寫；它重新驗證每個 retained bundle 的 source HEAD、UI World hash、manifest／machine contract／最新 `review_state.json`，再把同一 requirement 的多個 exact selector 做 state union。每個 logical required/counterexample state 必須在 union 中恰好對應一個獨立 asset；缺 state、重複 state 或 required/counterexample 共用 asset 都零寫入。若舊 capture 名稱與產品語意不同，只能在 matrix 明列 `stateAliases`，禁止任意 substring matching。`record-many` 後永久留下的是 tracked matrix receipt，不是整批圖片；後續 validate 可接受 source commit 的祖先 HEAD，但唯一例外路徑是 `ops/fixtures/ios_ui_review_matrix.json`。任何 report、source/test/docs drift、dirty tree、無法解析 Git HEAD/cleanliness、非祖先 source 或改寫 provenance 都必須重新執行 evidence。長時間 build/test 期間須繼續做不競爭 lock 的 source／fixture／report 工作，保留 PID heartbeat，不得只等待輸出。
 - AX transition 的驗證順序固定為「counterexample 初態 → locator／實際內容等 prerequisite → terminal state」；數量或 projection 已更新，不代表子節點已 materialize。Tab／toolbar 只能點 action-owning `Button`，若 identifier 落在 SF Symbol `Image` 或 `Other` content anchor，必須由 `tabBars.buttons` 找父 Button；不得以 Image、`firstMatch` 或座標代替。
 - 長 LazyVStack 必須在 production `ScrollView` 提供穩定 accessibility identifier；facet/query 後以該 scroll container 做 bounded semantic swipe，直到目標 row 真正 materialize。presentation／toolbar 做 exactly-one 前，先 bounded wait production identifier 的 `exists && hittable`，再驗 cardinality、type、geometry；等待不取代 exact assertion。

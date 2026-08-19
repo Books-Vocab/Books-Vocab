@@ -8,14 +8,17 @@ agent_facing_surface:
     - .claude/skills/
     - docs/reference/delivery_model.md
     - docs/reference/agent_context.md
+    - docs/reference/project_onboarding.md
     - docs/reference/product_surface.md
     - docs/reference/tech_index.md
+    - .github/PULL_REQUEST_TEMPLATE.md
     - docs/sop/
     - docs/policy/
     - docs/runbook/system.md
     - ops/context_route.py
     - ops/context_plane.json
     - ops/skill_route.py
+    - ops/agent_onboard.py
     - ops/capability_matrix.py
 
 documents:
@@ -69,11 +72,31 @@ documents:
       - agent-routing-changed
     sources:
       - docs/reference/delivery_model.md
+      - docs/reference/project_onboarding.md
       - CLAUDE.md
       - .claude/agents/
       - .claude/skills/
       - ops/context_route.py
       - ops/context_plane.json
+      - ops/agent_onboard.py
+
+  - id: reference.project_onboarding
+    path: docs/reference/project_onboarding.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - agent-routing-changed
+    sources:
+      - CLAUDE.md
+      - docs/reference/delivery_model.md
+      - docs/reference/agent_context.md
+      - docs/registry.yml
+      - ops/agent_onboard.py
+      - ops/context_plane.json
+      - ops/context_route.py
+      - ops/skill_route.py
+      - .claude/agents/
+      - .claude/skills/
 
   - id: reference.delivery_model
     path: docs/reference/delivery_model.md
@@ -87,12 +110,15 @@ documents:
       - .claude/agents/
       - .claude/skills/
       - docs/reference/agent_context.md
+      - docs/reference/project_onboarding.md
       - docs/runbook/system.md
       - docs/sop/review_discipline.md
       - docs/sop/doc_sync.md
       - docs/sop/release.md
       - ops/context_plane.json
       - ops/context_route.py
+      - ops/agent_onboard.py
+      - .claude/skills/catalog.json
       - ops/task_registry.py
       - ops/lib/streaming_command.py
       - ops/worktree_registry.py
@@ -124,7 +150,7 @@ documents:
   - id: reference.catalog_scope
     path: docs/reference/catalog_scope.md
     kind: reference
-    authority: derived
+    authority: SoT
     triggers:
       - catalog-surface-changed
     sources:
@@ -144,7 +170,7 @@ documents:
   - id: reference.ios_deriveddata_policy
     path: docs/reference/ios_deriveddata_policy.md
     kind: reference
-    authority: derived
+    authority: SoT
     triggers:
       - ios-cache-policy-changed
     sources:
@@ -163,7 +189,7 @@ documents:
   - id: reference.ops_state_plane
     path: docs/reference/ops_state_plane.md
     kind: reference
-    authority: derived
+    authority: SoT
     triggers:
       - ops-state-changed
     sources:
@@ -308,7 +334,12 @@ documents:
       - workflow-changed
     sources:
       - docs/reference/delivery_model.md
+      - docs/reference/project_onboarding.md
       - .github/
+      - ops/agent_onboard.py
+      - ops/context_plane.json
+      - ops/context_route.py
+      - ops/skill_route.py
       - ops/worktree_registry.py
       - ops/worktree_orchestrate.py
       - ops/release.sh
@@ -362,6 +393,19 @@ documents:
       - backend/src/kg/llm/providers.py
       - docs/reference/cost_baseline.md
 
+  - id: sop.data_analysis
+    path: docs/sop/data_analysis.md
+    kind: sop
+    authority: derived
+    triggers:
+      - data-analysis-workflow-changed
+    sources:
+      - backend/ops_analyze.py
+      - backend/src/kg/ops_cli_parser.py
+      - backend/src/kg/ops_cli_queries.py
+      - backend/src/kg/vocab_graph.py
+      - .claude/skills/data-analysis/
+
   - id: sop.debug
     path: docs/sop/debug.md
     kind: sop
@@ -373,6 +417,9 @@ documents:
       - ops/devops_kg_safe.sh
       - ops/infra_health.sh
       - ops/kg_reconcile.sh
+      - ios/BooksAndVocab/Services/PerfLog.swift
+      - .claude/skills/app-debug/
+      - .claude/skills/devops/
 
   - id: sop.deploy
     path: docs/sop/deploy.md
@@ -396,6 +443,10 @@ documents:
       - docs/registry.yml
       - ops/docs_lint.sh
       - ops/docs_impact.py
+      - .claude/skills/kg-docs-control-plane/
+      - .claude/skills/catalog.json
+      - docs/sop/docs_dogfood.md
+      - docs/reference/project_onboarding.md
 
   - id: sop.docs_dogfood
     path: docs/sop/docs_dogfood.md
@@ -466,6 +517,7 @@ documents:
     sources:
       - lab/podcast/
       - backend/src/kg/podcast*.py
+      - .claude/skills/podcast-*/
 
   - id: sop.release
     path: docs/sop/release.md
@@ -518,3 +570,11 @@ documents:
     sources:
       - ops/ios_ops.sh
       - ops/ios_test.sh
+      - ops/ios_ui_run_many.py
+      - ops/ios_ui_review_matrix.py
+      - ops/uitest_evidence_contract.py
+      - ops/fixtures/ios_ui_review_clusters.json
+      - ops/fixtures/ios_ui_review_matrix.json
+      - ops/fixtures/ui_worlds/
+      - .claude/skills/ios-simulator-verification/
+      - .claude/skills/ios-visual-report-workflow/

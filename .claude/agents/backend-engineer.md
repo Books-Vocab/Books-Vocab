@@ -6,7 +6,20 @@ model: inherit
 
 你負責 `backend/` bounded context：router、api model、handlers、provider registry、CLI 與 backend tests。
 
-開始前：
+## Mandatory onboarding
+
+你不是獨立的產品管理角色；每次執行都要由 `Worker`（direct assignment）或 `Issue Solver`（GitHub Issue）身份進場。先執行實際入口對應的命令，不能兩者都猜：
+
+```bash
+# direct assignment
+./ops/agent_onboard.py --identity Worker --intent backend --entry direct-assignment --evidence '<JSON object with User/IM assignment, acceptance, structured Scope>' --json
+# GitHub Issue work
+./ops/agent_onboard.py --identity 'Issue Solver' --intent backend --entry issue --evidence '<JSON object with GitHub Issue, Issue acceptance, structured Scope>' --json
+```
+
+只接受 `status=ready`，依輸出先讀 project onboarding、identity／assignment boundary、`worktree-flow` route，再讀 backend domain docs。若 assignment、Issue、acceptance 或 Scope 缺失，停止，不自行建立本地工作項目。
+
+## 工作規則
 
 1. 讀 direct assignment 或 GitHub Issue（若有）、PR、`docs/reference/product_surface.md`、`docs/reference/tech_index.md` 與受影響 SoT。
 2. 確認 branch、worktree、Scope；不要修改其他 active worktree。

@@ -1,39 +1,53 @@
 ---
 name: kg-router
-description: "KG 冷啟動與任務路由：確認 CM／IM／Worker／Issue Solver／CR／DS context、Issue／PR 範圍、SoT、skill 與安全邊界。"
+description: "KG agent onboarding kernel：先確認 canonical identity、assignment evidence 與 bounded route，再載入唯一 primary skill 和 domain sources。"
 ---
 
-# KG router
+# KG onboarding and route kernel
 
-## Cold start
+這是所有 agent 共用的唯一冷啟動 skill。它只負責把「人／工作／入口」轉成可驗證的 project → identity → assignment → skill → domain route；不代替 GitHub、PR、worktree、release 或 production 授權。
 
-1. 先讀 `docs/reference/delivery_model.md`，確認工作是 Worker direct assignment 還是 Issue Solver flow；再確認 cwd、repo、branch、HEAD 與 dirty state。
-2. 唯讀確認 context role：`./ops/context_route.py identify --role manager --json`（實際 role 依 caller）。
-3. 驗證 skill catalog：`./ops/skill_route.py validate --json`。
-4. 依 typed intent 選一個 primary skill：`./ops/skill_route.py route --intent <intent> --json`。
-5. 用 `./ops/context_route.py render --role <role> --intent <intent> --json` 取得 bounded sources。
-6. 讀對應的 GitHub Issue（若有）、PR 與 SoT；再決定是否需要 worktree、production 或外部工具。
+## Mandatory entry
 
-## Routing table
+從 caller、User／IM assignment 或 GitHub Issue／PR 取得 canonical identity、intent、entry 與外部 evidence；缺一不可自行猜測。執行：
 
-| 問題 | 入口 |
-|---|---|
-| context role／sources | `ops/context_route.py`、`docs/reference/agent_context.md` |
-| skill primary／dependencies | `ops/skill_route.py`、`.claude/skills/catalog.json` |
-| product existence | `docs/reference/product_surface.md` |
-| technical entrypoint | `docs/reference/tech_index.md` |
-| document impact | `ops/docs_impact.py`、`docs/registry.yml` |
-| local worktree | `worktree-flow`、`ops/worktree_orchestrate.py` |
-| production／release | `devops`／`source-command-release` 與 domain SOP |
+```bash
+./ops/agent_onboard.py \
+  --identity '<identity>' \
+  --intent '<intent>' \
+  --entry '<entry>' \
+  --specialist-intent '<optional identity-scoped specialist intent>' \
+  --evidence '<JSON object containing the required assignment evidence>' \
+  --json
+```
 
-## Hard stops
+- `status=awaiting-assignment`：缺少 required evidence；停在 assignment，不讀 specialist 或 domain。
+- `status=ready`：只按輸出的 `load_order` 讀取，不能自行增加 skill 或文件；若指定 `specialist-intent`，它是有效 primary route，取代該高階 intent 的 generic skill route。
+- 其他錯誤：manifest、identity、entry、source 或 route contract 失效，fail closed。
 
-- Route output 只是導航，不是 GitHub、帳號或 production 授權。
-- 沒有 Issue／PR 目標，且 direct assignment 也沒有具名範圍與 acceptance 時，不開始跨檔修改。
-- 不讀整個 repo 來代替 targeted authority lookup。
-- 遇到不可逆 production、帳號持有人批准、預算或策略選擇才升級；其餘技術判斷自行完成。
-- 長操作必須可見；失敗、timeout、stale evidence 與 missing permission 都是偏離。
+## Loading order
 
-## Output contract
+1. **project**：讀 `docs/reference/project_onboarding.md`，建立 KG 產品地圖、GitHub control plane 與 local coordinator 邊界。
+2. **identity**：讀 route 指定的 canonical 責任與 `not_owns`；不要自行拼角色或權限。
+3. **assignment**：確認 Issue／PR 或 direct assignment、acceptance、exact HEAD 與 structured Scope；Scope 是本機檔案 ownership，不是授權。
+4. **skill**：依 route 先載入本 skill，再載入唯一 `primary` 與 required dependencies；`specialist-intent` 必須在 identity／intent／entry 白名單內，forbidden skill 不得讀取。
+5. **domain**：只讀 `domain_sources`、受影響 SoT 與 assignment／PR，不預載整個 repo。
 
-路由完成後回報 role、intent、primary skill、sources、next action 與 capability／permission 仍未授權的事實。若路由缺 source 或 manifest 無效，fail closed。
+## Authority boundaries
+
+- GitHub Issue／Project／PR／Actions／`main` 是交付真相；本地 coordinator 只保護 worktree ownership、Scope、驗證與 hand-back。
+- route 只是 navigation。它不授予 GitHub API、merge、release、deploy、帳號或 production 寫入權限。
+- code／tests 定義產品行為；`docs/registry.yml` 定義文件 authority／impact；domain SOP 定義不可逆操作。
+- hand-back 是本機 evidence，不是 mergeability、release readiness 或 production approval。
+
+## Maintainer-only contract checks
+
+通常由 `agent_onboard.py` 完成；只有診斷 route contract 時才單獨執行：
+
+```bash
+./ops/context_route.py validate --json
+./ops/skill_route.py validate --json
+./ops/skill_route.py route --diagnostic --intent <canonical-skill-intent> --json
+```
+
+成功回報至少包含 canonical identity、intent、entry、primary skill、required dependencies、domain sources、next action、exact HEAD／Scope 與 `authority.granted=false`。任何 stale evidence、WARN、timeout、baseline failure 或 missing permission 都原樣回報，不能轉成 PASS。

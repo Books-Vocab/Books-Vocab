@@ -1,237 +1,68 @@
 ---
 name: ios-simulator-verification
-description: "KG iOS Simulator 與 UITest 驗證工作流，涵蓋 UI World 隔離、Simulator lease、行為與視覺證據、xcresult/log 診斷及可重現 handoff。當任務需要操作或檢查 iOS Simulator、執行 BooksAndVocab UI test、驗證 SwiftUI 畫面／互動／非同步狀態，或保存 UIreview 證據時使用。"
+description: "KG iOS Simulator／UITest 的隔離執行、證據判讀與可重現 hand-back 路由；技術契約以 domain docs 為準。"
 ---
 
-# iOS Simulator Verification
+# iOS Simulator verification route
 
-## 目的與邊界
+這個 skill 只負責把 iOS Simulator／UITest 工作協調成一個可驗證的 run；命令、
+verdict schema、UI World、artifact TTL 與 DerivedData 細節以以下 SoT 為準：
 
-用這個 skill 把「畫面看起來對」拆成可追溯的證據鏈：source tree → UI World → 指定 Simulator → test verdict → 視覺產物。它適用於 KG repo 的 `ios/`、`ops/ios_ops.sh`、`ios/BooksAndVocabUITests/` 與 `ops/fixtures/ui_worlds/`。
+- [`docs/sop/ios.md`](../../../docs/sop/ios.md)：iOS build／test／device／release 邊界。
+- [`docs/sop/ui_flow_evidence.md`](../../../docs/sop/ui_flow_evidence.md)：flow evidence、
+  visual run、P3–P15 matrix contract。
+- [`docs/reference/ios_deriveddata_policy.md`](../../../docs/reference/ios_deriveddata_policy.md)：
+  cache、lock、Simulator lease 與 cleanup。
+- [`docs/sop/ui-design.md`](../../../docs/sop/ui-design.md)：UI 修改的設計與 i18n 邊界。
 
-它驗證的是 Simulator 與 UI test，不等同真機、TestFlight、App Store 或 production release 證據；那些流程另走 `docs/sop/ios.md` 與 release skill。真機驗證沿用同一個 selector／UI World／artifact 契約，但必須額外記錄 physical UDID、OS、簽署與 trust 狀態、連線方式、app binary identity，並明確標示「真機」；Simulator bundle 不得升格為真機證據。本 skill 沒有替真機簽署、Provisioning、Trust 或 USB/Wi-Fi 穩定性建立捷徑。
+## 觸發與前置
 
-## 不變量
+只在 onboarding `status=ready` 且 intent 是 `ios`／`simulator-verification`／
+`ui-test-evidence` 時載入。開始前確認：
 
-- 先確認 worktree、branch、HEAD、dirty 狀態；不要在 primary `main` 編輯。
-- UI test 一律帶 `--dataset` 或 `--dataset-file`；沒有 UI World 就停止，不用真 backend 或任意舊 simulator 狀態代替。
-- 平行／agent 執行預設用 `--lease`。helper 的 `--device` 只接受 canonical UDID，不接受名稱；被 Apple ID、系統設定對話框或其他 worktree 佔用的裝置不可作證據。
-- helper 只在 clean source、`status=result=ok`、`exit=0`、`executed>0`、source/dataset/device identity 全相符，且五類視覺 artifact 真實存在時回 `0`；不能以 process exit 或可解析 JSON 代替 verdict。
-- 任何 UI test 若會在 test body 寫入 evidence context，必須由 `ios_ops.sh test --ui --json`／本 skill helper 執行；producer 會把同一個 pinned `KG_IOS_VERDICT_FILE` 注入 scoped `.xctestrun`，讓 runner 與 host 讀到同一份 invocation verdict。缺少這個 binding 必須 fail-closed，不能在 test 內自行猜 latest verdict。
-- 視覺 artifact 還必須通過 `ops/uitest_evidence_contract.py validate`：manifest 至少一個真實 step、每個 PNG 有尺寸／byteSize／SHA-256 且與檔案一致，contact/quick4/video/UIreview 非空，並帶同一個 source commit、UI World ID/hash、Simulator UDID provenance。只有路徑存在不算 evidence。
-- 一個 evidence bundle 對應一個明確 selector；要比較 active P3–P15 狀態時，每個 requirement／state variant 都要有獨立 run record，不能用一個泛用 `--file` 的混合截圖冒充全覆蓋。單一 requirement 可以由多個 exact selector bundle 組成 evidence union，但每個 bundle 都要獨立通過 machine contract、source/dataset/device provenance 與全步驟 visual attestation；`record-many` 只接受 union 中每個 logical required/counterexample state 恰好一次且 asset 不重疊的結果。
-- 視覺輸出是 agent 的短命觀察工具：每個 run 預設進系統暫存目錄並帶 TTL；成功、失敗、abandoned 都可回收。只有明確 `--retain` 的 run 才能進 `build/ios-report/retained/`，矩陣只接受這種 promoted receipt。永久保存的是 fixture、selector/matrix 契約與小型 verdict；PNG、MP4、HTML、xcresult 僅在 run 存活期間使用。
-- tap 成功不是行為證據。非同步設定、store round-trip、導航、載入／錯誤／空狀態要斷言結果；必要時用 UI test attachment 或 app log 證明資料流。
-- 任何會多次 `launch`、序列化大量 AX attachment、或預估超過 60 秒的 evidence test，必須在該 `XCTestCase` 明確設定 `executionTimeAllowance`（依實測選 150／180／240／300／360 秒），並以「test body 實測時間 + 啟動／artifact／teardown headroom」推導，不得只把全域上限調大。`KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE` 只提供 xcodebuild 上限，不會改掉 XCTest 預設 60 秒，也不會覆寫 test case 自己的較短 allowance；v25 已證明 test body 通過後仍可能被 120／180 秒 class allowance 殺掉。逾時要標為 execution-inconclusive，不能當成產品 PASS/FAIL。
-- 零步驟的 fixture decoder、manifest schema、projection unit test 不是視覺證據；它們應直接走 unit／focused test，不能用 evidence helper 產生空 screenshot bundle，也不能把「沒有 UI step」記成 visual pass。真正的 UI evidence 必須有至少一個使用者可見狀態與對應 interaction/assertion。
-- iOS 26 production Reader 的 line-height control 是 UIKit `UISlider` bridge 加語意 tick／step controls；endpoint 是已知的 XCTest edge case：從任一端直接呼叫 `adjust(toNormalizedSliderPosition: 0|1)`，API 可能回傳而值不變；直接 tap track 也可能只產生事件。Page Object 必須先把 slider 調到 bounded interior（下端 `0.05/0.15/0.25`、上端 `0.95/0.85/0.75`），每次等待 AX `value` 確實改變，再調到 endpoint 並等待精確目標值；有限次 staged retry 仍只用語意 Slider API，不可把 tap／coordinate drag 當成未驗證 fallback。Dynamic Type／line-height 若使用語意 `toValue("2.5")`，必須同時斷言實際 AX value／畫面結果。coordinate press/drag 在此情境曾造成 XCTest test body 長時間無輸出，應分類為 inconclusive 並清理 process/lock 後重跑。
-- SwiftUI AX projection 可能在同一個 transition 中先更新數量、後 materialize 子節點。先等 terminal cardinality 會把合法的 counterexample transition 誤判成 failure；Page Object 必須按「初始 counterexample → prerequisite content/locator → terminal state」順序，以 bounded wait 逐段驗證，並保留初始與恢復 screenshot。
-- Tab／toolbar action selector 必須解析到實際擁有 action 的 `Button`，不能把 SF Symbol `Image`、`Other` content anchor 或其第一個 descendant 當作可點擊目標。若 SwiftUI 把 symbol identifier 放在子節點，從 `tabBars.buttons` 掃描包含該 symbol 的父 Button；無父 Button 時 fail-closed，不退回 coordinate 或 Image tap。
-- LazyVStack 的 projection acceptance 不得把 `visibleCount` 當成 row materialization 證據。生產 `ScrollView` 要提供語意 scroll-container identifier；facet/query 更新後以該容器做 bounded semantic swipe，直到目標 row 真正 materialize，再斷言 row。禁止座標捲動、localized label 找容器或無限 swipe。
-- Presentation／toolbar 的 transient AX race 要在 cardinality 前先等待 production identifier 對應元素 `exists && hittable`；再做 exactly-one、geometry、type 與 action assertion。等待不得取代 cardinality，也不得用 `firstMatch` 掩蓋 duplicate。
-- 每個 helper run 都會在系統暫存目錄保存一個帶 TTL 的 run bundle，包含 `verdict.json`、`run-manifest.json`、command 與必要的短期診斷。上游 UIreview HTML、contact sheet、quick4、manifest、video、xcresult 只在該 run 內供 agent 檢查；runner 失敗或 verdict 不合約時仍讀 normalized bundle，但只能標 fail／inconclusive，不能宣稱畫面通過。
+1. 已有 Worker／Issue Solver 的 branch、worktree、structured Scope、exact HEAD。
+2. source tree、UI World／dataset、selector、Simulator lease 與 evidence 目的已明確。
+3. 目前任務是 Simulator 證據；它不能升格為真機、TestFlight、App Store 或 production 證據。
 
-## 標準流程
+缺少 UI World、exact selector、clean source、可識別 device／lease 或必要 tool 時，
+停在 `inconclusive`，不要用任意 booted simulator、舊 run、真 backend 或座標操作補洞。
 
-### 1. Preflight
-
-在 repo root 執行：
-
-```bash
-hostname -s
-git branch --show-current
-git rev-parse HEAD
-git status --short
-./ops/ios_ops.sh xcode --json
-./ops/ios_ops.sh simulator status --json
-```
-
-若要跑 UI test，先確認 UI World：
-
-```bash
-./ops/ui_world_manifest.py validate ops/fixtures/ui_worlds/marketing_demo.json
-```
-
-不要以 `simctl list` 中「剛好 booted」的裝置直接當乾淨環境；它可能正在被另一條 build/test 使用，或有帳號／系統 prompt。
-
-### 1.1 多日收斂與 agent 分工
-
-Active P3–P15 是一個持續數日的收斂計畫，不是 13 個獨立的像素修補。每一波固定經過：
-
-1. 根因／方案審查：重新讀報告圖、現行程式、既有測試與 UI World，先寫出 confirmed、candidate、blocked。
-2. 單一 ownership 實作：每個 agent 只擁有一個 P 區或一個明確的 fixture／evidence 工具檔案集合；不得跨線改測試來掩蓋失敗。
-3. unit／projection／compile gate：先證明狀態機、資料投影與 round-trip，再開 Simulator。
-4. exact-selector runtime：一個 run 只對應一個 flow、dataset、variant、device 與 selector；失敗 run 保留，不借用上一輪綠燈。
-5. 視覺審查與反例：檢查 full steps、contact sheet、quick4、UIreview、video，以及 loading／empty／error／長資料／Dynamic Type／深色／極值。
-6. adversarial review 與 rework：獨立 reviewer 針對 false-green、語意漂移、父容器 AX identifier、fixture hardcode、截圖覆寫提出 BLOCK；修正後重跑同一 selector。
-7. 只有 machine contract 與人工 attestation 都通過，才用控制面記錄該列；下一波才能消費其證據。
-
-平行 agent 數量服從共享資源而不是反過來：read-only／source review／fixture schema 可以大量平行；Xcode build、Simulator lease、UI run 必須由 runner lock 排隊，且每個長命令要保留 heartbeat、PID、log、xcresult。禁止多個 worktree 同時對同一個 `--file` 做寬泛 UI run；若需要重跑，使用 exact `--method`。
-
-#### 長命令期間不得閒置
-
-協調者不能把整個 turn 只用在輪詢長命令。啟動 build／UI run 後，立即推進不競爭同一 Xcode／device lock 的工作：讀 stable failure bundle、定位第一個根因、審查 source diff、驗證 UI World／matrix、整理已完成 run 的視覺證據、準備下一個 exact selector，或跑非衝突的 static／unit gate。輪詢只保留 bounded heartbeat，並回報 elapsed／PID／alive／last log；不要用密集輪詢取代工作。
-
-若同一 runner lock 尚未釋放，不要為了假裝平行再排另一個會排隊的 Xcode 命令；改做 read-only／報告／contract 工作，或使用明確隔離且可取得的另一個 lease。每個外層 command 都要有明確的 lock-wait deadline、idle-log deadline 與總 elapsed 上限；超過 deadline 先保存 PID、lock owner、stderr、xcresult 與 normalized verdict，再把該 run 分類為 inconclusive，不能無限重試或讓使用者只看見「還在跑」。長命令結束後，先讀 normalized verdict 與 machine contract，再把相同 selector 綁定到 visual review；任何失敗先做一個窄根因修正再重跑，不同時堆疊未驗證 patch。
-
-### 1.2 UI World 注入契約
-
-每個 requirement 的 `requiredFixtureIDs` 是可執行資料契約，不是測試註解。新增或修正 flow 時：
-
-- fixture 必須由 UI World／`FixtureDatasetStore` 注入，production code 不可為了截圖塞 hardcoded preview rows；test 開始時要能從 app log／AX 可觀察到 dataset identity。
-- rich dataset 至少覆蓋正常、空、載入、錯誤／重試、長文案、複習狀態組合、邊界數值；每一個反例必須有獨立 state label 與 screenshot asset。
-- seed 的語意欄位要能驅動真實 projection，例如 due／unlearned、history、Reader preference、時計與 timezone；只改文字而不改狀態來源不算 injection。
-- UI test 斷言投影後的 rows、counts、CTA、selection、error recovery 與 round-trip；截圖只證明畫面，不取代行為斷言。
-- 修改 UI World schema、seed 或 validator 時，必須同時跑 recursive inheritance／override／cross-reference tests，防止 host validator 與 runtime 解析器各自接受不同資料。
-
-每一個 dataset run 都要留下「已被 app 消費」的可觀察證據，例如 `fixtureDataUsed=true`、dataset ID／SHA、projection log 或可斷言的 seeded state；只有 host 端載入成功不能算 runtime consumption。若目前 runtime 沒有通用 consumed marker，必須在報告中明示限制，不能用資料檔存在推論 app 已使用該資料。
-
-### 2. 選擇驗證層
-
-- 行為回歸、非同步狀態、導航：用指定 test selector。
-- SwiftUI layout／glass／截斷／狀態卡：用 UI test 的 screenshot、contact sheet、video 與 `UIreview.html`，再以 `view_image` 檢查關鍵畫面。
-- 互動探索或找入口：用 `./ops/ios_ops.sh catalog open --dataset ...`，記下 session，檢查後用 `catalog capture`（預設輸出到 `/tmp`，有 TTL），最後必須 `catalog close`。只有要交付人類報告時才用 `catalog capture --out build/ios-report/retained/... --retain`。
-- 編譯或靜態契約：先跑對應 lint／unit；它們不能取代 runtime UI 證據。
-
-### 3. 執行 UI test
-
-單一 test 的推薦入口：
-
-```bash
-./.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh \
-  --dataset marketing_demo \
-  --file SettingsFlowUITests.swift \
-  --json-out /tmp/settings-flow-verdict.json
-```
-
-同一 helper 也支援：
-
-```bash
-./.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh \
-  --dataset marketing_demo --grep OverviewFlowUITests
-./.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh \
-  --dataset marketing_demo --method ReaderFlowUITests/testReaderFlowRendersRealBook
-```
-
-`--method` 會轉成底層 `ios_test.sh` 真正支援的 positional `Class/method` selector；它不是不存在的 `ios_test.sh --method` flag。若要指定裝置，傳 UUID：
-
-```bash
-./.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh \
-  --dataset marketing_demo --device 43FA3E1B-16F8-4144-B17D-53D5E4728FC6 \
-  --file SettingsFlowUITests.swift
-```
-
-需要直接控制時，保持相同契約：
-
-```bash
-./ops/ios_ops.sh test --ui --dataset marketing_demo --lease \
-  --file SettingsFlowUITests.swift --json
-```
-
-`--lease` 由 runner 負責 pool claim、boot、execution lock 與 release；不要自己 erase／刪除 simulator data 來「修」測試污染。`--build-lock-timeout` 只控制底層 build/device lock 等待，不是 XCTest 的 test timeout；XCTest timeout 由 `ios_test.sh` 的 runner 契約管理。
-
-此 helper 的視覺 bundle 預設在系統暫存目錄且有 TTL；`--json-out` 只是一份小型 verdict。要讓二進位視覺產物進入報告，必須顯式加 `--retain`，並指定 `build/ios-report/retained/` 下的 root。
-
-單一 helper invocation 不接受 `--output-dir`：它會自行建立不可覆寫的 ephemeral TTL bundle。需要一次 build、跑多個 exact selectors 時，由 `ops/ios_ui_run_many.py run` 編排；它預設把整批放在系統暫存目錄，只有 `--retain --output-dir build/ios-report/retained/<batch>` 才會保留。每個 selector 仍必須產生獨立短命 run，不能用混合 `--file` 截圖替代。
-
-### 3.1 視覺證據機器 gate（run-scoped）
-
-`run_ui_evidence.sh` 會把 upstream run 複製到帶 TTL 的 per-run bundle，然後執行：
-
-```bash
-uv run --python 3.13 python ops/uitest_evidence_contract.py validate \
-  --screenshot-dir <run-bundle>/artifacts/ui-review \
-  --manifest <run-bundle>/artifacts/ui-review/review_manifest.json \
-  --contact-sheet <run-bundle>/artifacts/ui-review/contact_sheet.png \
-  --quick4-sheet <run-bundle>/artifacts/ui-review/quick4_contact_sheet.png \
-  --video <run-bundle>/artifacts/ui-review/uitest-videos/<run>.mp4 \
-  --review-html <run-bundle>/artifacts/ui-review/UIreview.html \
-  --source-commit <HEAD> --dataset-id <datasetID> \
-  --dataset-sha256 <datasetSHA256> --device <Simulator-UDID>
-```
-
-validator fail 時 helper 回 `70/inconclusive`，即使 XCTest upstream 回 `0` 也不可宣稱 UI pass。讀 `artifacts/ui-evidence-contract.json`；它是 machine verdict，不取代人工檢查。
-
-### 4. 讀完整證據
-
-成功或失敗都讀當下仍在 TTL 內的 run bundle：
-
-1. run bundle 的 `artifacts/delegate.stderr.log`、`verdict.json` 與 `upstream-verdict.json`（若 upstream 沒輸出 JSON，讀 `upstream-verdict.raw`）。
-2. normalized verdict 的 `status/result/exit/reason`、`executed`、`options.sourceCommit`、`options.sourceTreeDirty`、`options.datasetID/datasetSHA256`、`device`。
-3. normalized `artifacts.log` 與 `artifacts.xcresult`；兩者必須指向 run bundle 內仍存在的檔案／目錄。
-4. UI run 的 `artifacts.uiReviewHtml`、`uiContactSheet`、`uiQuick4Sheet`、`uiVideo`、`uiVisualReviewManifest`，以及 `uiVisualReview.*Exists == true`。
-5. 關鍵 step screenshot；有遮罩、系統 prompt、錯誤 overlay 或畫面未到達時，標記證據缺口。
-
-不要只讀最後一行「tests passed」。若 test 失敗，先讀第一個 assertion 及其附件，再讀 app log／source data flow；不要先改測試斷言。
-
-### 5. 結果分類與回報
-
-- `0 / status=ok`：helper 已證明 clean source、非零 tests、identity 一致與視覺 artifact 存在；仍要親自檢查 contact sheet／HTML。
-- `1 / status=fail`：test 紅；先讀 run bundle 的 upstream status、stderr、xcresult／UI artifacts，再修根因後重跑同一 selector。
-- `65 / status=inconclusive`：runner／preflight、contract evidence 或 compile/build 不足；run bundle 是診斷來源，不是 pass 證據，先看 compiler diagnostics／upstream status。
-- `143` 等 `128+N`：被訊號中止，不是綠也不是產品紅；確認 lock／process cleanup 後重跑。
-- Simulator 被 prompt、其他 app、其他 worktree 或不可識別狀態污染：`inconclusive`，換 `--lease` 裝置重跑。
-
-### 5.1 人工視覺收斂
-
-機器 gate 綠後仍逐 run 檢查 full contact sheet、quick4、UIreview step 順序與 video；至少檢查 loading/empty/error、長資料、深色／字級／Dynamic Type、互動後狀態與反例。人工結果要寫入 run 的 `review_state.json`（reviewer、時間、判定、檢查過的 assetID、notes、manifest root hash）；沒有人工 attestation 只能報「runtime evidence 已產生，visual review pending」，不能報「視覺驗證完成」。
-
-記錄完整 run 的人工通過判定：
-
-```bash
-uv run --python 3.13 python ops/uitest_review_attest.py \
-  /tmp/kg-ios-visual-runs/<run>/artifacts/ui-review \
-  --reviewer codex --status pass --all-steps \
-  --notes '檢查 full/quick4/UIreview/video；確認狀態順序與反例'
-```
-
-只檢查部分 step 時可用 `--asset-id`，但只能記錄 `fail`／partial review，不能當成整個 run 的 visual pass。
-
-回報至少包含：
+## 固定執行路徑
 
 ```text
-source: <branch> <HEAD> dirty=<true|false>
-dataset: <id> [sha256 if present]
-device: <UDID>
-selector: <exact selector>
-verdict: <status> exit=<code> reason=<reason>
-behavior: <asserted result>
-visual: <UIreview.html/contact sheet/video paths and inspection result>
-raw: <log> <xcresult>
+preflight (branch/HEAD/dirty/tool/UI World)
+  → exact selector on leased Simulator
+  → normalized verdict + run-scoped evidence contract
+  → required behavior assertions
+  → optional visual review／attestation
+  → compact receipt + PR hand-back
 ```
 
-### 5.2 最終化與真機邊界
+標準 helper 是：
 
-最終 consumer 只讀每個已明確 retained/promoted run 的 normalized `verdict.json`，不讀上游暫存路徑或「最新一個」未綁定的 artifact。每一個 logical state 必須以唯一 tuple 對齊：`source commit + clean-tree result + UI World/dataset ID+SHA + device UDID/OS + exact selector + variant`。禁止把舊 HEAD、不同 dataset、不同 device 或尚未 attestation 的 bundle 混進同一個 aggregate。
+```bash
+./.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh \
+  --dataset <dataset> --method <ClassName/testMethodName> --lease --json-out <verdict.json>
+```
 
-一批要能寫入矩陣，必須同時滿足：
+只用 repo 既有 helper／`ops/ios_ops.sh`；不要自行 erase simulator、刪 lock、拼
+xcodebuild 或建立第二份 evidence schema。heartbeat 只作 observability；raw log silence
+不是卡死證據，不得直接因此 kill xcodebuild／runner。終止依 XCTest allowance、command/job
+timeout 與已證明的 owner／PID／lock cleanup contract；等待期間做不競爭 Xcode lock 的
+source／fixture／receipt 工作。
 
-- 最終 batch 沒有 missing、duplicate、unknown、timeout、fail 或 source/dataset/device drift；
-- 每個 bundle 的 machine evidence contract 與最新全 steps visual attestation 都是 pass；
-- `fixtureDataUsed=true` 或等價 runtime receipt 能對應到同一 dataset SHA；沒有 consumed marker 的 state 只能標 provenance-limited；
-- `record-many` 在人工複核完成後執行，並再次以 exact required/counterexample state union 驗證，失敗就保留 pending，不以 selector-level pass 代替 requirement pass。
+## 判讀與交接
 
-真機 run 另須記錄 physical device class、UDID、OS、簽署／trust、連線與 app build identity，且不得把 Simulator lease、Simulator fixture data 或系統 prompt 證據誤標成真機。若本輪沒有真機，最終結論必須寫「Simulator-only」，並列出真機尚未執行；這不是阻止 Simulator 收斂的理由，而是證據層級的明確邊界。
+- `status=result=ok`、`exit=0` 且 `executed>0` 才是 machine behavior pass；JSON 能解析或
+  process 曾啟動不算 pass。
+- `fail` 先讀 normalized run bundle 的第一個 assertion、stderr、log、xcresult 與
+  source／fixture identity；`inconclusive` 不可改寫成產品 fail 或 pass。
+- 視覺 run 只在 assignment 明確需要時啟動；依 `ui_flow_evidence.md` 完成全步驟人工
+  attestation，二進位產物預設短命，不能把一次 run 直接寫成永久 status。
+- 修復後用同一 exact selector、同一 fixture contract 重跑；source、dataset、device 或
+  selector drift 就重新建立 evidence，不混用舊 bundle。
 
-## 失敗診斷捷徑
-
-- 找不到 accessibility identifier：先檢查父容器 `.accessibilityIdentifier` 是否覆蓋子節點；不要先改 selector。
-- tab selector 找到 SF Symbol `Image` 或 `Other` 而非 Button：回到 action-owning parent Button query；不要放寬成任意 descendant 或座標。
-- visible count 已更新但 LazyVStack row 不存在：先檢查 projection 的 ScrollView content offset 與 materialization，再用 production scroll-container ID 做有限 semantic swipe；不要把 count assertion 當 row 證據。
-- counterexample screenshot 已出現但 terminal state 尚未到達：先驗證 counterexample state，再等待 locator／實際內容，最後才等 terminal；不要把 terminal wait 放在 recovery prerequisite 前。
-- Settings／toolbar 的 exact identifier 偶發為 0 或不可點：先等待該 production element 的 exists/hittable，再做 exact cardinality；保留一次原始 AX failure，不用 `firstMatch` 或 localized fallback。
-- Page Object 的 query property 必須無副作用：不得在 getter 內用 `count`／`XCTFail` 阻止後續 `waitUntilExists`；startup、Readium WebView、SwiftUI transient sheet 先等待 materialize，再對已存在節點做唯一性與 scope assertion。SwiftUI 父容器要保留子 selector 時，明確使用 `.accessibilityElement(children: .contain)`。
-- tap 後值沒有改：沿 binding setter → async Task → coordinator → store → view projection 驗證；assert store round-trip，而非只依賴原生 Toggle 的瞬時值。
-- SwiftUI Slider 在任一端直接跳 endpoint：先確認不是產品 binding／store 根因；若 interior action 可動而 exact endpoint 不動，將 endpoint action 封裝在 Page Object 內做有限候選 staged adjustment（下端 `0.05/0.15/0.25 → 0.0`、上端 `0.95/0.85/0.75 → 1.0`），每次都對 interior 與最終 AX value 加 bounded wait。不要改成只點軌道、只拖座標，或把預期值改成目前洩漏的值。
-- UI test 突然超時且第一個 assertion 很晚才出現：檢查 AX query 是否在錯誤頁／prompt 上反覆重試、裝置是否被另一 run 佔用、以及 `deviceRunLockWaitMs`。
-- UI screenshot 有 Apple 帳號驗證、登入、權限或鍵盤遮罩：這是環境污染證據，不能當 UI pass。
-- `build.db database is locked`：先視為共用 build lock／另一 worktree 的基礎設施問題，讀 runner heartbeat 和 lock wait；不要刪 DerivedData 或改測試。
-- helper contract regression：執行 `./.claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh`，它會驗證 selector translation、false-green 拒絕、canonical device 與 ephemeral/explicit-retain lifecycle。
-
-詳細 verdict 欄位、artifact retention 與常見 exit code 見 [`references/evidence-contract.md`](references/evidence-contract.md)。
-
-## 收尾
-
-視覺檢查完成後必須執行 bounded cleanup；它會檢查 PID、xcodebuild、runner 與 known lock，成功、失敗、abandoned 都不會無限期留下。不要以「方便下次看」為理由把 PNG、MP4、HTML、xcresult 複製回 repo；若確實要做報告交付，先用 `--retain` 明確提升，完成 `record-many` 後再按報告政策清理二進位產物。
-
-完成 code／test 修改後，停在：最小充分驗證 → commit → `./ops/worktree_registry.py hand-back --json` → GitHub PR。Coordinator 只回報 exact branch、worktree、HEAD、Scope、測試與視覺證據；review、required checks、merge 與 release 由 GitHub 和各自 SOP 控制。每個 UI requirement 都要對應 source、unit、UI behavior、visual artifact；沒有 live／pixel／physical evidence 就明確標出缺口。需要矩陣化的結果必須在最後一次 visual attestation 後產生，並保留 accept／reject output。
+交接必須包含：branch／exact HEAD／dirty、dataset ID／SHA、Simulator UDID／lease、exact
+selector、command／exit status、normalized verdict、behavior assertions、必要 visual
+attestation、log／xcresult identity、docs impact、deviation、blocker 與下一步。最後由
+CR／DS／CM 依 PR、Actions、docs gate 收斂；本 skill 不負責 merge 或 release。
