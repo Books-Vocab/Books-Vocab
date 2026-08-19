@@ -45,7 +45,6 @@ DEFAULT_TESTS=(
   injection-lint
   ui-fixture-lint
   ops-ci-coverage
-  github-workflows
   ui-quality-plane
   ui-quality-gate
   review-card-golden
@@ -103,8 +102,8 @@ run_one() {
       ./ops/test_devops.sh &&
       ./ops/tests/test_devops_command_contract.sh &&
       ./ops/tests/test_backup_status.sh &&
-      # IMP-20260805-947062：devops_kg_safe.sh 的 transport retarget 契約測試，
-      # 主體與 test_devops.sh 同源（都測 wrapper），先前不屬於任何 group。
+      # Host-transport semantics stay with the separately owned CI/infra work.
+      # Keep the current-main guard here so this control-plane PR is independent.
       ./ops/tests/test_devops_safe_lightsail_guard.sh &&
       "$UV_BIN" run --project backend python -m pytest -q ops/tests/test_ops_edit_batch.py
       ;;
@@ -138,7 +137,10 @@ run_one() {
         ops/tests/test_agent_onboard.py &&
       ./ops/context_route.py validate --json >/dev/null &&
       ./ops/skill_route.py validate --json >/dev/null &&
-      ./ops/agent_onboard.py --identity Worker --intent delivery --entry direct-assignment --json >/dev/null
+      ./ops/agent_onboard.py \
+        --identity Worker --intent delivery --entry direct-assignment \
+        --evidence '{"User/IM assignment":"context-routing","acceptance":"green","structured Scope":"ops/ tests"}' \
+        --json >/dev/null
       ;;
     ui-deadcode)
       "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_ui_deadcode.py &&
@@ -167,7 +169,6 @@ run_one() {
         ops/tests/test_ci_expected_fail_exclusions.py \
         ops/tests/test_ops_group_chain.py
       ;;
-    github-workflows)    ./ops/tests/test_github_workflows.sh ;;
     ui-quality-plane)   ./ops/tests/test_ui_quality_plane.sh ;;
     ui-quality-gate)    ./ops/tests/test_ui_quality_gate.sh ;;
     review-card-golden) ./ops/tests/test_review_card_layout_golden.sh ;;

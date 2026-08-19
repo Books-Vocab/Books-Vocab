@@ -1,10 +1,48 @@
 {
-  "schema": "kg.context_plane.v3",
-  "version": 3,
+  "schema": "kg.context_plane.v4",
+  "version": 4,
   "registry": "docs/registry.yml",
   "onboarding": {
     "source": "docs/reference/project_onboarding.md",
     "required": true
+  },
+  "route_policy": {
+    "coordination": "github-coordination",
+    "implementation": "delivery-worktree",
+    "implementation-ios": "ui-test-evidence",
+    "review": "code-review",
+    "docs": "skill-doc-sync",
+    "release": "release-command"
+  },
+  "specialist_sources": {
+    "bug": ["docs/sop/debug.md"],
+    "test-failure": ["docs/sop/debug.md"],
+    "unexpected-behavior": ["docs/sop/debug.md"],
+    "user-data-analysis": ["docs/sop/data_analysis.md"],
+    "graph-analysis": ["docs/sop/data_analysis.md"],
+    "embedding-analysis": ["docs/sop/data_analysis.md"],
+    "quota-analysis": ["docs/sop/data_analysis.md"],
+    "simulator-verification": ["docs/sop/ios.md", "docs/sop/ui_flow_evidence.md"],
+    "ui-test-evidence": ["docs/sop/ios.md", "docs/sop/ui_flow_evidence.md"],
+    "visual-report-rebuild": ["docs/sop/ios.md", "docs/sop/ui-design.md", "docs/sop/ui_flow_evidence.md"],
+    "docs-audit": ["docs/sop/doc_sync.md", "docs/registry.yml"],
+    "docs-impact": ["docs/sop/doc_sync.md", "docs/registry.yml"],
+    "docs-lint": ["docs/sop/doc_sync.md", "docs/registry.yml"],
+    "skill-doc-sync": ["docs/sop/doc_sync.md", "docs/registry.yml"],
+    "read-only-audit": ["docs/sop/doc_sync.md", "docs/registry.yml"],
+    "production-status": ["docs/sop/debug.md", "docs/reference/host_topology.md", "docs/policy/safety.md"],
+    "deploy": ["docs/sop/deploy.md", "docs/sop/debug.md", "docs/policy/safety.md"],
+    "maintenance": ["docs/sop/deploy.md", "docs/sop/debug.md", "docs/policy/safety.md"],
+    "remote-operation": ["docs/sop/deploy.md", "docs/sop/debug.md", "docs/policy/safety.md"],
+    "app-store-release": ["docs/sop/release.md", "docs/sop/ios.md"],
+    "version-release": ["docs/sop/release.md", "docs/sop/ios.md"],
+    "podcast-monitor": ["docs/sop/podcast_pipeline.md"],
+    "podcast-pipeline": ["docs/sop/podcast_pipeline.md"],
+    "podcast-publish": ["docs/sop/podcast_pipeline.md"],
+    "billing": ["docs/sop/cost_review.md", "docs/reference/cost_baseline.md"],
+    "cost": ["docs/sop/cost_review.md", "docs/reference/cost_baseline.md"],
+    "quota-cost": ["docs/sop/cost_review.md", "docs/reference/cost_baseline.md"],
+    "token-spend": ["docs/sop/cost_review.md", "docs/reference/cost_baseline.md"]
   },
   "identities": {
     "cm": {
@@ -13,6 +51,10 @@
       "machine_role": "manager",
       "allowed_intents": ["delivery", "release"],
       "entry_modes": ["coordination", "merge"],
+      "route_classes": {
+        "delivery": {"coordination": "coordination", "merge": "coordination"},
+        "release": {"coordination": "coordination", "merge": "release"}
+      },
       "owns": "main、PR 收斂、版本與 release/deploy 邊界",
       "not_owns": "親自實作所有工作、本地 backlog、未批准的 production 寫入",
       "assignment_requirements": {
@@ -22,6 +64,10 @@
       "skill_routes": {
         "delivery": {"coordination": "github-coordination", "merge": "github-coordination"},
         "release": {"coordination": "github-coordination", "merge": "release-command"}
+      },
+      "specialist_routes": {
+        "delivery": {"coordination": ["billing", "cost", "quota-cost", "token-spend", "user-data-analysis", "graph-analysis", "embedding-analysis", "quota-analysis"], "merge": ["billing", "cost", "quota-cost", "token-spend", "user-data-analysis", "graph-analysis", "embedding-analysis", "quota-analysis"]},
+        "release": {"coordination": ["production-status"], "merge": ["production-status"]}
       }
     },
     "im": {
@@ -30,6 +76,9 @@
       "machine_role": "manager",
       "allowed_intents": ["delivery"],
       "entry_modes": ["issue-planning", "direct-assignment"],
+      "route_classes": {
+        "delivery": {"issue-planning": "coordination", "direct-assignment": "coordination"}
+      },
       "owns": "GitHub Issue 收件、排序、拆解與派工",
       "not_owns": "合併 code、本地 Issue lifecycle、PR review 結論",
       "assignment_requirements": {
@@ -38,6 +87,9 @@
       },
       "skill_routes": {
         "delivery": {"issue-planning": "github-coordination", "direct-assignment": "github-coordination"}
+      },
+      "specialist_routes": {
+        "delivery": {"issue-planning": [], "direct-assignment": []}
       }
     },
     "worker": {
@@ -46,6 +98,11 @@
       "machine_role": "contributor",
       "allowed_intents": ["delivery", "backend", "ios"],
       "entry_modes": ["direct-assignment"],
+      "route_classes": {
+        "delivery": {"direct-assignment": "implementation"},
+        "backend": {"direct-assignment": "implementation"},
+        "ios": {"direct-assignment": "implementation-ios"}
+      },
       "owns": "直接指派工作的 branch/worktree、程式碼、測試與 PR",
       "not_owns": "Issue lifecycle、Project priority、merge、release/deploy",
       "assignment_requirements": {
@@ -54,7 +111,12 @@
       "skill_routes": {
         "delivery": {"direct-assignment": "delivery-worktree"},
         "backend": {"direct-assignment": "delivery-worktree"},
-        "ios": {"direct-assignment": "delivery-worktree"}
+        "ios": {"direct-assignment": "ui-test-evidence"}
+      },
+      "specialist_routes": {
+        "delivery": {"direct-assignment": ["bug", "test-failure", "unexpected-behavior", "podcast-pipeline", "podcast-monitor"]},
+        "backend": {"direct-assignment": ["bug", "test-failure", "unexpected-behavior", "user-data-analysis", "graph-analysis", "embedding-analysis", "quota-analysis"]},
+        "ios": {"direct-assignment": ["simulator-verification", "ui-test-evidence", "visual-report-rebuild", "bug", "test-failure", "unexpected-behavior"]}
       }
     },
     "issue-solver": {
@@ -63,6 +125,11 @@
       "machine_role": "contributor",
       "allowed_intents": ["delivery", "backend", "ios"],
       "entry_modes": ["issue"],
+      "route_classes": {
+        "delivery": {"issue": "implementation"},
+        "backend": {"issue": "implementation"},
+        "ios": {"issue": "implementation-ios"}
+      },
       "owns": "已進入 GitHub Issue 的 branch/worktree、程式碼、測試與 PR",
       "not_owns": "建立第二套 backlog、Issue lifecycle、merge、release/deploy",
       "assignment_requirements": {
@@ -71,7 +138,12 @@
       "skill_routes": {
         "delivery": {"issue": "delivery-worktree"},
         "backend": {"issue": "delivery-worktree"},
-        "ios": {"issue": "delivery-worktree"}
+        "ios": {"issue": "ui-test-evidence"}
+      },
+      "specialist_routes": {
+        "delivery": {"issue": ["bug", "test-failure", "unexpected-behavior", "podcast-pipeline", "podcast-monitor"]},
+        "backend": {"issue": ["bug", "test-failure", "unexpected-behavior", "user-data-analysis", "graph-analysis", "embedding-analysis", "quota-analysis"]},
+        "ios": {"issue": ["simulator-verification", "ui-test-evidence", "visual-report-rebuild", "bug", "test-failure", "unexpected-behavior"]}
       }
     },
     "cr": {
@@ -80,6 +152,7 @@
       "machine_role": "reviewer",
       "allowed_intents": ["review"],
       "entry_modes": ["pr-review"],
+      "route_classes": {"review": {"pr-review": "review"}},
       "owns": "PR diff 的 correctness、tests、regression、architecture 與 security review",
       "not_owns": "修改 caller worktree、建立本地 review cycle、merge permission",
       "assignment_requirements": {
@@ -87,6 +160,9 @@
       },
       "skill_routes": {
         "review": {"pr-review": "code-review"}
+      },
+      "specialist_routes": {
+        "review": {"pr-review": []}
       }
     },
     "ds": {
@@ -95,6 +171,7 @@
       "machine_role": "docs-steward",
       "allowed_intents": ["docs"],
       "entry_modes": ["pr-review"],
+      "route_classes": {"docs": {"pr-review": "docs"}},
       "owns": "docs impact、registry、metadata、SoT 與 docs lint",
       "not_owns": "產品工作項目、PR lifecycle、merge、建立本地文件狀態庫",
       "assignment_requirements": {
@@ -102,6 +179,9 @@
       },
       "skill_routes": {
         "docs": {"pr-review": "skill-doc-sync"}
+      },
+      "specialist_routes": {
+        "docs": {"pr-review": ["docs-audit", "docs-impact", "docs-lint", "skill-doc-sync", "read-only-audit"]}
       }
     },
     "release-operator": {
@@ -110,6 +190,7 @@
       "machine_role": "release-operator",
       "allowed_intents": ["release"],
       "entry_modes": ["release"],
+      "route_classes": {"release": {"release": "release"}},
       "owns": "依 SOP 執行已批准的 release/deploy/rollback command",
       "not_owns": "自行批准 production、改變 PR merge 結論、繞過 safety wrapper",
       "assignment_requirements": {
@@ -117,6 +198,9 @@
       },
       "skill_routes": {
         "release": {"release": "release-command"}
+      },
+      "specialist_routes": {
+        "release": {"release": ["production-status", "deploy", "maintenance", "remote-operation", "app-store-release", "version-release", "podcast-publish"]}
       }
     }
   },

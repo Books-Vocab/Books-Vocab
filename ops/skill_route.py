@@ -79,8 +79,8 @@ def validate_catalog(payload: dict[str, Any], root: Path) -> None:
     if not isinstance(bootstrap, list) or not bootstrap or len(bootstrap) != len(set(bootstrap)) or not all(isinstance(item, str) and item for item in bootstrap):
         raise SkillCatalogError("bootstrap 必須是非空且不重複的字串陣列")
     context_names = payload.get("context")
-    if not isinstance(context_names, list) or not context_names or len(context_names) != len(set(context_names)) or not all(isinstance(item, str) and item for item in context_names):
-        raise SkillCatalogError("context 必須是非空且不重複的字串陣列")
+    if not isinstance(context_names, list) or len(context_names) != len(set(context_names)) or not all(isinstance(item, str) and item for item in context_names):
+        raise SkillCatalogError("context 必須是不重複的字串陣列")
 
     actual_paths = sorted(root.glob(".claude/skills/*/SKILL.md"))
     actual_names = {path.parent.name for path in actual_paths}
@@ -133,7 +133,7 @@ def validate_catalog(payload: dict[str, Any], root: Path) -> None:
     for name in context_names:
         skill = next(item for item in skills if item["name"] == name)
         if skill["phase"] != "context" or skill["kind"] != "context":
-            raise SkillCatalogError(f"context skill 必須是 context phase/kind: {name}")
+            raise SkillCatalogError(f"context extension 必須是 context phase/kind: {name}")
     by_intent: dict[str, list[dict[str, Any]]] = {}
     for skill in skills:
         for relation in ("requires", "optional", "forbidden", "closure"):
@@ -276,9 +276,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     subparsers = parser.add_subparsers(dest="command", required=True)
     for name in ("validate", "list"):
         sub = subparsers.add_parser(name)
+        if name == "list":
+            sub.add_argument("--diagnostic", action="store_true", help="explicitly allow maintainer-only diagnostics")
         sub.add_argument("--root", type=Path)
         sub.add_argument("--json", action="store_true")
     route = subparsers.add_parser("route")
+    route.add_argument("--diagnostic", action="store_true", help="explicitly allow maintainer-only diagnostics")
     route.add_argument("--intent", required=True)
     route.add_argument("--include-optional", action="store_true")
     route.add_argument("--include-closure", action="store_true")
@@ -289,6 +292,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
+    if args.command != "validate" and not getattr(args, "diagnostic", False):
+        print(
+            "skill_catalog: ERROR agent-facing loader is ./ops/agent_onboard.py; "
+            "use --diagnostic only for maintainer inspection",
+            file=sys.stderr,
+        )
+        return 2
     try:
         payload = load_catalog(getattr(args, "root", None))
         if args.command == "validate":

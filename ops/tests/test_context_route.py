@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import copy
 
 import pytest
 
@@ -36,7 +37,7 @@ def test_manifest_is_valid_and_has_bounded_roles() -> None:
 
 def test_manifest_has_project_onboarding_and_canonical_identity_boundaries() -> None:
     manifest = mod.load_manifest(ROOT)
-    assert manifest["schema"] == "kg.context_plane.v3"
+    assert manifest["schema"] == "kg.context_plane.v4"
     assert manifest["onboarding"] == {
         "source": "docs/reference/project_onboarding.md",
         "required": True,
@@ -52,12 +53,33 @@ def test_route_is_github_native_and_does_not_grant_authority() -> None:
     payload = mod.resolve_route(mod.load_manifest(ROOT), "manager", intent="delivery", root=ROOT)
     assert payload["schema"] == "kg.context.route.v3"
     assert payload["status"] == "confirmed"
-    assert payload["skill"] == "worktree-flow"
-    assert payload["skill_intent"] == "delivery-worktree"
+    assert payload["skill"] == "github-coordination"
+    assert payload["skill_intent"] == "github-coordination"
     assert payload["sources"][0] == "docs/reference/project_onboarding.md"
     assert payload["onboarding"]["required"] is True
     assert payload["authority"]["granted"] is False
     assert "docs/runbook/system.md" in payload["sources"]
+    assert [step["phase"] for step in payload["load_order"]] == ["project", "identity", "skill", "domain"]
+    assert payload["skill_route"]["primary"] == "github-coordination"
+    assert payload["route_selection"]["identity"] is None
+
+
+def test_ambiguous_role_route_fails_closed_and_exact_identity_entry_resolves() -> None:
+    manifest = mod.load_manifest(ROOT)
+    with pytest.raises(mod.ContextRouteError, match="請提供 --identity 與 --entry"):
+        mod.resolve_route(manifest, "manager", intent="release", root=ROOT)
+
+    payload = mod.resolve_route(
+        manifest,
+        "manager",
+        intent="release",
+        identity="CM",
+        entry="merge",
+        root=ROOT,
+    )
+    assert payload["skill"] == "source-command-release"
+    assert payload["route_selection"]["identity"] == "cm"
+    assert payload["route_selection"]["entry"] == "merge"
 
 
 def test_surface_aliases_are_bounded() -> None:
@@ -69,7 +91,7 @@ def test_surface_aliases_are_bounded() -> None:
 def test_every_context_intent_cross_validates_to_a_real_primary_skill() -> None:
     manifest = mod.load_manifest(ROOT)
     expected = {
-        "delivery": "worktree-flow",
+        "delivery": "github-coordination",
         "review": "code-review",
         "docs": "kg-docs-control-plane",
         "release": "source-command-release",
@@ -85,11 +107,16 @@ def test_every_context_intent_cross_validates_to_a_real_primary_skill() -> None:
             "backend": "contributor",
             "ios": "contributor",
         }[intent]
-        payload = mod.resolve_route(manifest, role, intent=intent, root=ROOT)
+        kwargs = {"identity": "CM", "entry": "merge"} if intent == "release" else {}
+        payload = mod.resolve_route(manifest, role, intent=intent, root=ROOT, **kwargs)
         assert payload["schema"] == "kg.context.route.v3"
         assert payload["skill"] == primary
         assert payload["skill_intent"]
         assert payload["sources"][0] == "docs/reference/project_onboarding.md"
+    ios_route = mod.resolve_route(manifest, "contributor", intent="ios", root=ROOT)
+    assert ios_route["skill_route"]["selected"] == [
+        "kg-router", "worktree-flow", "ios-simulator-verification"
+    ]
 
 
 def test_skill_override_and_work_mode_cannot_bypass_context_contract() -> None:
@@ -117,8 +144,24 @@ def test_all_canonical_identities_and_aliases_resolve() -> None:
         assert mod.canonical_agent_identity(manifest, alias) == expected
 
 
+def test_identity_skill_route_cannot_drift_from_route_policy() -> None:
+    manifest = copy.deepcopy(mod.load_manifest(ROOT))
+    manifest["identities"]["cr"]["skill_routes"]["review"]["pr-review"] = "release-command"
+    with pytest.raises(mod.ContextRouteError, match="route_policy"):
+        mod.validate_manifest(manifest, ROOT)
+
+
 def test_unknown_role_and_work_mode_fail_closed() -> None:
     with pytest.raises(mod.ContextRouteError):
         mod.canonical_role("unknown")
     with pytest.raises(mod.ContextRouteError):
         mod.normalize_role_identity("manager", "unexpected")
+
+
+def test_cli_routes_are_maintainer_diagnostics_only(capsys) -> None:
+    assert mod.main(["route", "--role", "manager", "--intent", "delivery"]) == 2
+    assert "agent_onboard.py" in capsys.readouterr().err
+    assert mod.main(["route", "--diagnostic", "--role", "manager", "--intent", "delivery", "--json"]) == 0
+    assert '"skill": "github-coordination"' in capsys.readouterr().out
+    assert mod.main(["identify", "--role", "manager"]) == 2
+    assert "agent_onboard.py" in capsys.readouterr().err

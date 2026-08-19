@@ -14,15 +14,54 @@ mod = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(mod)
 
 
-def test_worker_direct_assignment_loads_project_identity_skill_then_domain() -> None:
-    payload = mod.build_onboarding(ROOT, identity="Worker", intent="delivery", entry="direct-assignment")
+EVIDENCE = {
+    "direct-assignment": {
+        "User/IM assignment": "audit the onboarding route",
+        "acceptance": "route and tests are green",
+        "structured Scope": "ops/agent_onboard.py and route tests",
+    },
+    "issue": {
+        "GitHub Issue": "#123",
+        "Issue acceptance": "route and tests are green",
+        "structured Scope": "ops/agent_onboard.py and route tests",
+    },
+    "pr-review": {
+        "GitHub PR": "#123",
+        "exact HEAD": "51ce9228ce64c1897850b8fcab672364b17f8731",
+        "required checks": "context-routing",
+    },
+    "ds-pr-review": {
+        "GitHub PR diff": "#123 diff",
+        "changed paths": "ops/agent_onboard.py",
+    },
+    "release": {
+        "explicit approval": "approved for dry-run only",
+        "target": "test target",
+        "rollback candidate": "previous test version",
+        "health gate": "test health gate",
+    },
+    "merge": {
+        "GitHub PR": "#123",
+        "required checks": "context-routing",
+        "CR/DS result": "review complete",
+    },
+    "issue-planning": {
+        "GitHub Issue": "#123",
+        "Project priority/triage": "P1",
+    },
+}
 
-    assert payload["schema"] == "kg.agent_onboarding.v1"
+
+def test_worker_direct_assignment_loads_project_identity_skill_then_domain() -> None:
+    payload = mod.build_onboarding(ROOT, identity="Worker", intent="delivery", entry="direct-assignment", evidence=EVIDENCE["direct-assignment"])
+
+    assert payload["schema"] == "kg.agent_onboarding.v2"
     assert payload["status"] == "ready"
     assert payload["identity"]["id"] == "worker"
-    assert payload["identity"]["machine_role"] == "contributor"
+    assert "machine_role" not in payload["identity"]
     assert payload["task"]["entry"] == "direct-assignment"
     assert payload["skills"]["primary"] == "worktree-flow"
+    assert "route_command" not in payload["skills"]
     assert payload["load_order"][0] == {
         "phase": "project",
         "required": True,
@@ -31,11 +70,13 @@ def test_worker_direct_assignment_loads_project_identity_skill_then_domain() -> 
     assert [step["phase"] for step in payload["load_order"]] == [
         "project", "identity", "assignment", "skill", "domain"
     ]
+    assert payload["assignment"]["evidence"]["acceptance"] == "route and tests are green"
+    assert len(payload["assignment"]["evidence_digest"]) == 64
     assert payload["authority"]["granted"] is False
 
 
 def test_issue_solver_requires_issue_entry_and_domain_sources():
-    payload = mod.build_onboarding(ROOT, identity="issue-solver", intent="backend", entry="issue")
+    payload = mod.build_onboarding(ROOT, identity="issue-solver", intent="backend", entry="issue", evidence=EVIDENCE["issue"])
 
     assert payload["identity"]["id"] == "issue-solver"
     assert payload["task"]["intent"] == "backend"
@@ -44,6 +85,80 @@ def test_issue_solver_requires_issue_entry_and_domain_sources():
         "GitHub Issue", "Issue acceptance", "structured Scope"
     ]
     assert "docs/sop/backend.md" in payload["domain_sources"]
+
+
+def test_ios_worker_loads_delivery_dependency_and_ios_specialist():
+    payload = mod.build_onboarding(ROOT, identity="Worker", intent="ios", entry="direct-assignment", evidence=EVIDENCE["direct-assignment"])
+
+    assert payload["skills"]["primary"] == "ios-simulator-verification"
+    assert payload["skills"]["selected"] == [
+        "kg-router", "worktree-flow", "ios-simulator-verification"
+    ]
+
+
+def test_backend_worker_can_select_an_explicit_debug_specialist():
+    payload = mod.build_onboarding(
+        ROOT,
+        identity="Worker",
+        intent="backend",
+        entry="direct-assignment",
+        specialist_intent="bug",
+        evidence=EVIDENCE["direct-assignment"],
+    )
+
+    assert payload["task"]["skill_intent"] == "delivery-worktree"
+    assert payload["task"]["specialist_intent"] == "bug"
+    assert payload["task"]["effective_skill_intent"] == "bug"
+    assert payload["skills"]["control_primary"] == "worktree-flow"
+    assert payload["skills"]["primary"] == "app-debug"
+    assert "control_route_command" not in payload["skills"]
+    assert payload["skills"]["selected"] == ["kg-router", "worktree-flow", "app-debug"]
+    assert "docs/sop/debug.md" in payload["domain_sources"]
+
+
+def test_specialist_domain_sources_follow_the_effective_route():
+    payload = mod.build_onboarding(
+        ROOT,
+        identity="Release operator",
+        intent="release",
+        entry="release",
+        specialist_intent="podcast-publish",
+        evidence=EVIDENCE["release"],
+    )
+
+    assert payload["skills"]["primary"] == "podcast-publish"
+    assert "docs/sop/podcast_pipeline.md" in payload["domain_sources"]
+    assert "docs/sop/podcast_pipeline.md" in payload["load_order"][-1]["sources"]
+
+
+def test_cm_can_route_read_only_cost_analysis_without_loading_delivery_tools():
+    payload = mod.build_onboarding(
+        ROOT,
+        identity="CM",
+        intent="delivery",
+        entry="coordination",
+        specialist_intent="billing",
+        evidence={
+            "GitHub Issue/PR or direct assignment": "monthly cost review",
+            "Scope decision": "read-only provider and baseline data",
+        },
+    )
+
+    assert payload["skills"]["primary"] == "billing"
+    assert payload["skills"]["selected"] == ["kg-router", "billing"]
+    assert "docs/sop/cost_review.md" in payload["domain_sources"]
+
+
+def test_specialist_route_is_identity_scoped():
+    with pytest.raises(mod.OnboardingError, match="不允許 specialist"):
+        mod.build_onboarding(
+            ROOT,
+            identity="DS",
+            intent="docs",
+            entry="pr-review",
+            specialist_intent="bug",
+            evidence=EVIDENCE["ds-pr-review"],
+        )
 
 
 def test_identity_intent_entry_mismatch_fails_closed():
@@ -65,7 +180,8 @@ def test_identity_intent_entry_mismatch_fails_closed():
     ],
 )
 def test_every_canonical_identity_has_a_real_onboarding_route(identity, intent, entry, primary):
-    payload = mod.build_onboarding(ROOT, identity=identity, intent=intent, entry=entry)
+    evidence_key = "ds-pr-review" if identity == "DS" else entry
+    payload = mod.build_onboarding(ROOT, identity=identity, intent=intent, entry=entry, evidence=EVIDENCE[evidence_key])
     assert payload["status"] == "ready"
     assert payload["skills"]["primary"] == primary
     assert [step["phase"] for step in payload["load_order"]] == [
@@ -79,3 +195,25 @@ def test_missing_project_onboarding_source_fails_closed(tmp_path: Path):
     (tmp_path / "ops" / "context_plane.json").write_text(manifest, encoding="utf-8")
     with pytest.raises(mod.OnboardingError, match="onboarding source"):
         mod.build_onboarding(tmp_path, identity="Worker", intent="delivery", entry="direct-assignment")
+
+
+def test_missing_assignment_evidence_blocks_before_skill_loading() -> None:
+    payload = mod.build_onboarding(ROOT, identity="Worker", intent="delivery", entry="direct-assignment")
+    assert payload["status"] == "awaiting-assignment"
+    assert payload["blocked_at"] == "assignment"
+    assert payload["assignment"]["missing"] == ["User/IM assignment", "acceptance", "structured Scope"]
+    assert [step["phase"] for step in payload["load_order"]] == ["project", "identity", "assignment"]
+    assert "skills" not in payload
+
+
+def test_missing_assignment_blocks_before_invalid_specialist_resolution() -> None:
+    payload = mod.build_onboarding(
+        ROOT,
+        identity="Worker",
+        intent="backend",
+        entry="direct-assignment",
+        specialist_intent="not-a-real-specialist",
+    )
+    assert payload["status"] == "awaiting-assignment"
+    assert payload["blocked_at"] == "assignment"
+    assert "skills" not in payload
