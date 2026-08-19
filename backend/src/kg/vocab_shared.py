@@ -122,6 +122,17 @@ def _dt_to_iso(dt: datetime | None) -> str | None:
     return s
 
 
+def _parse_vocab_source(raw_source: str | None, *, card_id: str) -> VocabSource | None:
+    if not raw_source:
+        return None
+    try:
+        payload = json.loads(raw_source)
+    except json.JSONDecodeError:
+        logger.warning("Ignoring malformed persisted vocab source JSON for card %s", card_id)
+        return None
+    return VocabSource(**payload)
+
+
 def build_links_by_kind(
     card_id: str,
     *,
@@ -197,7 +208,7 @@ def card_response(
         inflections=card.inflections or [],
         linksByKind=links_by_kind,
         notebookId=getattr(card, "notebook_id", "default"),
-        source=VocabSource(**json.loads(card.source)) if getattr(card, "source", None) else None,
+        source=_parse_vocab_source(getattr(card, "source", None), card_id=card.id),
         updatedAt=_dt_to_iso(card.updated_at),
         reviewIntervalHours=card.review_interval_hours,
         nextReviewAt=_dt_to_iso(card.next_review_at),
