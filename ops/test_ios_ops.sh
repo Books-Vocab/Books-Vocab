@@ -1798,6 +1798,84 @@ grep -qE 'print_cache_payload prepare "?\$\{?prepare_status' "$WORKSPACE/ops/ios
   && ok "prepare payload derives its status from products readiness" \
   || fail_t "prepare payload still hardcodes a literal status"
 
+section "ios_test build/test attempt policy"
+# Policy helpers consume facts discovered by the orchestration layer. They must
+# not read logs, sleep, invoke xcodebuild, or inspect selectors themselves; the
+# focused probes below keep the retry boundary independent from I/O.
+attempt_policy_cache_fn="$(sed -n '/^ios_test_attempt_policy_cache_status()/,/^}/p' "$WORKSPACE/ops/ios_test.sh")"
+if [[ -n "$attempt_policy_cache_fn" ]]; then
+  attempt_policy_cache_probe="$(bash -lc "$attempt_policy_cache_fn"$'\n''ios_test_attempt_policy_cache_status true
+ios_test_attempt_policy_cache_status false')"
+  [[ "$attempt_policy_cache_probe" == $'hit\nmiss' ]] \
+    && ok "attempt policy maps complete/incomplete cache to hit/miss" \
+    || fail_t "attempt policy cache mapping invalid: $attempt_policy_cache_probe"
+else
+  fail_t "ios_test has no pure cache hit/miss attempt-policy helper"
+fi
+
+attempt_policy_rebuild_fn="$(sed -n '/^ios_test_attempt_policy_should_rebuild_after_test_without_building_failure()/,/^}/p' "$WORKSPACE/ops/ios_test.sh")"
+if [[ -n "$attempt_policy_rebuild_fn" ]]; then
+  attempt_policy_rebuild_probe="$(
+    bash -lc "$attempt_policy_rebuild_fn"$'\n''for facts in "1 0 1" "1 1 1" "1 0 0" "0 0 1"; do
+  set -- $facts
+  if ios_test_attempt_policy_should_rebuild_after_test_without_building_failure "$1" "$2" "$3"; then
+    echo rebuild
+  else
+    echo preserve
+  fi
+done'
+  )"
+  [[ "$attempt_policy_rebuild_probe" == $'rebuild\npreserve\npreserve\npreserve' ]] \
+    && ok "attempt policy rebuilds only cache/infrastructure failure" \
+    || fail_t "attempt policy rebuild classification invalid: $attempt_policy_rebuild_probe"
+else
+  fail_t "ios_test has no pure test-without-building failure policy helper"
+fi
+
+attempt_policy_build_fn="$(sed -n '/^ios_test_attempt_policy_cache_status_after_build()/,/^}/p' "$WORKSPACE/ops/ios_test.sh")"
+if [[ -n "$attempt_policy_build_fn" ]]; then
+  attempt_policy_build_probe="$(bash -lc "$attempt_policy_build_fn"$'\n''ios_test_attempt_policy_cache_status_after_build 1
+ios_test_attempt_policy_cache_status_after_build 0')"
+  [[ "$attempt_policy_build_probe" == $'prepared\nhit' ]] \
+    && ok "attempt policy preserves prepared versus concurrent-hit cacheStatus" \
+    || fail_t "attempt policy post-build cacheStatus invalid: $attempt_policy_build_probe"
+else
+  fail_t "ios_test has no pure post-build cacheStatus policy helper"
+fi
+
+attempt_policy_retry_fn="$(sed -n '/^ios_test_attempt_policy_build_db_lock_retry()/,/^}/p' "$WORKSPACE/ops/ios_test.sh")"
+if [[ -n "$attempt_policy_retry_fn" ]]; then
+  attempt_policy_retry_probe="$(bash -lc "$attempt_policy_retry_fn"$'\n''ios_test_attempt_policy_build_db_lock_retry 1 1 3
+ios_test_attempt_policy_build_db_lock_retry 1 3 3
+ios_test_attempt_policy_build_db_lock_retry 1 4 3
+ios_test_attempt_policy_build_db_lock_retry 0 1 3')"
+  [[ "$attempt_policy_retry_probe" == $'retry|2\nretry|4\nstop|4\nstop|1' ]] \
+    && ok "attempt policy keeps three build-db retries and next attempt counter" \
+    || fail_t "attempt policy build-db retry boundary invalid: $attempt_policy_retry_probe"
+else
+  fail_t "ios_test has no pure build-db lock retry policy helper"
+fi
+
+attempt_policy_begin_fn="$(sed -n '/^ios_test_attempt_policy_begin_attempt()/,/^}/p' "$WORKSPACE/ops/ios_test.sh")"
+attempt_policy_mark_fn="$(sed -n '/^ios_test_attempt_policy_mark_rebuild_after_failure()/,/^}/p' "$WORKSPACE/ops/ios_test.sh")"
+if [[ -n "$attempt_policy_begin_fn" && -n "$attempt_policy_mark_fn" ]]; then
+  attempt_policy_state_probe="$(
+    bash -lc "$attempt_policy_begin_fn"$'\n'"$attempt_policy_mark_fn"$'\n''CACHE_STATUS=hit
+INCONCLUSIVE_REASON=timeout
+BUILD_FOR_TESTING_MS=123
+TEST_INVOCATION_MS=456
+ios_test_attempt_policy_begin_attempt
+printf "%s|%s|%s|%s\\n" "$CACHE_STATUS" "$INCONCLUSIVE_REASON" "$BUILD_FOR_TESTING_MS" "$TEST_INVOCATION_MS"
+ios_test_attempt_policy_mark_rebuild_after_failure
+printf "%s|%s\\n" "$CACHE_STATUS" "$INCONCLUSIVE_REASON"'
+  )"
+  [[ "$attempt_policy_state_probe" == $'hit||0|0\nrebuild-after-failure|' ]] \
+    && ok "attempt policy resets inconclusive/timing state without losing cache transition" \
+    || fail_t "attempt policy state transition invalid: $attempt_policy_state_probe"
+else
+  fail_t "ios_test has no attempt-policy reset/state-transition helpers"
+fi
+
 section "Catalyst compile gate does not require a development signing identity"
 # `ios-build-catalyst` is a BLOCK CI gate whose stated job is "sim green !=
 # Catalyst green" — a COMPILE check. Signability is orthogonal to compilability
