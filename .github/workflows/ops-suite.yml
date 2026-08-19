@@ -101,7 +101,7 @@ jobs:
             command -v "$command_name" >/dev/null 2>&1 || missing+=("${packages[$command_name]}")
           done
           if (( ${#missing[@]} > 0 )); then
-            sudo apt-get install -y --no-install-recommends "${missing[@]}"
+            timeout --signal=KILL 180s sudo apt-get install -y --no-install-recommends "${missing[@]}"
           fi
           for command_name in "${!packages[@]}"; do
             command -v "$command_name" >/dev/null 2>&1
