@@ -42,9 +42,11 @@ Coordinator 依 changed paths 選最小充分檢查：
 
 Gate output 綁定 exact HEAD，保留 command、exit status、duration、log path 與 failure summary。沒有當下 output 就不能宣稱通過。
 
-## Scope and hand-back
+## Scope, rebase preflight and hand-back
 
 Scope 只解決檔案 ownership，不代替 Issue acceptance 或 direct assignment。多 worktree 同時碰同一檔案時先停下並報告 collision；未知 Scope 不推測。hand-back 至少包含 branch、path、exact HEAD、Scope、Issue／PR external ID（若已有）、direct assignment 摘要（若無 Issue）、驗證命令與 blocker。
+
+需要 rebase 前判定 incoming main 是否碰到已宣告 Scope 時，使用 `preflight --worktree <path> --base <base-commit> --incoming-main <main-ref> --json`。它只以 active registry record 的 structured Scope 比對 `base..incoming-main`，並把 `base..HEAD` 的 own-branch diff 另列；缺 ref、unknown Scope 或找不到唯一 active record 時 fail closed，且不執行 rebase。
 
 ## Safe stopping
 

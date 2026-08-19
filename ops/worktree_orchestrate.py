@@ -34,7 +34,8 @@ ROOT = OPS_DIR.parent
 if str(OPS_DIR) not in sys.path:
     sys.path.insert(0, str(OPS_DIR))
 
-import worktree_registry as registry  # noqa: E402
+import worktree_registry as registry
+from lib.worktree_scope import scope_files, scope_status
 
 SCHEMA = "kg.worktree.orchestrate.v2"
 GATE_SCHEMA = "kg.worktree.gate.v2"
@@ -223,6 +224,85 @@ def _changed_files(worktree: Path, base: str) -> list[str]:
     return sorted(item for item in files if item)
 
 
+def _resolve_commit(worktree: Path, ref: str) -> str | None:
+    rc, output = _git(["rev-parse", "--verify", f"{ref}^{{commit}}"], worktree)
+    return output if rc == 0 and output else None
+
+
+def _diff_names(worktree: Path, start: str, end: str) -> list[str] | None:
+    rc, output = _git(["diff", "--name-only", f"{start}..{end}"], worktree)
+    if rc != 0:
+        return None
+    return sorted({item for item in output.splitlines() if item})
+
+
+def _rebase_preflight(
+    worktree: Path, *, base: str, incoming_main: str, scope: object,
+) -> dict[str, Any]:
+    """Compare declared ownership only with the incoming-main commit range."""
+    payload: dict[str, Any] = {
+        "schema": SCHEMA,
+        "action": "rebase-preflight",
+        "verdict": "block",
+        "worktree": str(worktree),
+        "base": base,
+        "incoming_main": incoming_main,
+        "scope_files": [],
+        "incoming_main_files": [],
+        "branch_files": [],
+        "collisions": [],
+    }
+    if scope_status(scope) != "known":
+        payload["reason"] = "declared Scope is unstructured or invalid"
+        return payload
+
+    scope_paths = sorted({item["path"] for item in scope_files(scope)})
+    payload["scope_files"] = scope_paths
+    base_sha = _resolve_commit(worktree, base)
+    if base_sha is None:
+        payload["reason"] = "base ref cannot be resolved"
+        return payload
+    incoming_main_sha = _resolve_commit(worktree, incoming_main)
+    if incoming_main_sha is None:
+        payload["reason"] = "incoming-main ref cannot be resolved"
+        return payload
+    head_sha = _resolve_commit(worktree, "HEAD")
+    if head_sha is None:
+        payload["reason"] = "branch HEAD cannot be resolved"
+        return payload
+    payload.update({
+        "base_sha": base_sha,
+        "incoming_main_sha": incoming_main_sha,
+        "head_sha": head_sha,
+    })
+    if _git(["merge-base", "--is-ancestor", base_sha, incoming_main_sha], worktree)[0] != 0:
+        payload["reason"] = "base is not an ancestor of incoming-main"
+        return payload
+    if _git(["merge-base", "--is-ancestor", base_sha, head_sha], worktree)[0] != 0:
+        payload["reason"] = "base is not an ancestor of branch HEAD"
+        return payload
+
+    incoming_main_files = _diff_names(worktree, base_sha, incoming_main_sha)
+    if incoming_main_files is None:
+        payload["reason"] = "incoming-main diff could not be computed"
+        return payload
+    branch_files = _diff_names(worktree, base_sha, head_sha)
+    if branch_files is None:
+        payload["reason"] = "branch diff could not be computed"
+        return payload
+    collisions = sorted(set(scope_paths).intersection(incoming_main_files))
+    payload.update({
+        "incoming_main_files": incoming_main_files,
+        "branch_files": branch_files,
+        "collisions": collisions,
+    })
+    if collisions:
+        payload["reason"] = "incoming-main changes collide with declared Scope"
+        return payload
+    payload["verdict"] = "pass"
+    return payload
+
+
 def _plan_checks(files: list[str], *, worktree: Path | None = None) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = [{
         "name": "git-diff-check", "kind": "shell", "cwd": ".",
@@ -252,7 +332,7 @@ def _plan_checks(files: list[str], *, worktree: Path | None = None) -> list[dict
     if any(item.startswith("ios/") for item in files):
         checks.append({"name": "ios-tests", "kind": "shell", "cwd": ".",
                        "cmd": ["./ops/ios_ops.sh", "test", "--unit"], "level": "block"})
-    if any(item.startswith("ops/") or item.startswith(".github/workflows/") for item in files):
+    if any(item.startswith(("ops/", ".github/workflows/")) for item in files):
         checks.append({"name": "ops-tests", "kind": "shell", "cwd": ".",
                        "cmd": ["./ops/test_ops.sh", "worktree"], "level": "block"})
     return checks
@@ -325,6 +405,44 @@ def cmd_gate(args: argparse.Namespace) -> int:
 def cmd_preflight(args: argparse.Namespace) -> int:
     state_path = Path(args.state).expanduser().resolve() if args.state else registry.default_state_path()
     state = registry.load_state(state_path)
+    rebase_args = (args.worktree, args.base, args.incoming_main)
+    if any(item is not None for item in rebase_args):
+        missing = [name for name, value in (
+            ("--worktree", args.worktree), ("--base", args.base),
+            ("--incoming-main", args.incoming_main),
+        ) if value is None]
+        if missing:
+            reason = f"rebase preflight requires {' '.join(missing)}"
+            _emit({"schema": SCHEMA, "action": "rebase-preflight", "verdict": "block",
+                   "reason": reason}, as_json=args.json,
+                  human=f"✗ rebase preflight blocked: {reason}")
+            return EXIT_USAGE
+        worktree = _path(args.worktree)
+        if not worktree.is_dir():
+            reason = f"worktree not found: {worktree}"
+            _emit({"schema": SCHEMA, "action": "rebase-preflight", "verdict": "block",
+                   "reason": reason}, as_json=args.json,
+                  human=f"✗ rebase preflight blocked: {reason}")
+            return EXIT_USAGE
+        branch_rc, branch = _git(["branch", "--show-current"], worktree)
+        matches = [record for record in registry._active_records(state)
+                   if branch_rc == 0 and branch
+                   and registry._record_matches(record, branch=branch, path=str(worktree))]
+        if len(matches) != 1:
+            reason = "preflight selector must match exactly one active worktree"
+            _emit({"schema": SCHEMA, "action": "rebase-preflight", "verdict": "block",
+                   "reason": reason, "worktree": str(worktree)}, as_json=args.json,
+                  human=f"✗ rebase preflight blocked: {reason}")
+            return EXIT_BLOCK
+        payload = _rebase_preflight(
+            worktree, base=args.base, incoming_main=args.incoming_main,
+            scope=matches[0].get("scope"),
+        )
+        payload.update({"registry": str(state_path), "branch": branch})
+        _emit(payload, as_json=args.json,
+              human=(f"✓ rebase preflight pass: {worktree}" if payload["verdict"] == "pass"
+                     else f"✗ rebase preflight blocked: {payload.get('reason', 'unknown reason')}"))
+        return EXIT_OK if payload["verdict"] == "pass" else EXIT_BLOCK
     active = [record for record in state.get("records", []) if record.get("status") == "active"]
     payload = {"schema": SCHEMA, "action": "preflight", "registry": str(state_path),
                "active_worktrees": len(active), "worktrees": _git(["worktree", "list"], ROOT)[1]}
@@ -388,7 +506,8 @@ def _parser() -> argparse.ArgumentParser:
         p.add_argument("--state", default=None); p.add_argument("--json", action="store_true")
 
     pre = sub.add_parser("preflight", help="show local worktree/registry health")
-    common(pre); pre.set_defaults(func=cmd_preflight)
+    common(pre); pre.add_argument("--worktree"); pre.add_argument("--base")
+    pre.add_argument("--incoming-main"); pre.set_defaults(func=cmd_preflight)
 
     op = sub.add_parser("open", help="create a branch and linked worktree")
     common(op); op.add_argument("--intent", required=True); op.add_argument("--slug", required=True)
