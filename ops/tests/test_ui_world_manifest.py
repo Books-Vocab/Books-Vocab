@@ -21,10 +21,53 @@ SPEC.loader.exec_module(MODULE)
 
 UIWorldManifestError = MODULE.UIWorldManifestError
 validate_fixture_dataset_file = MODULE.validate_fixture_dataset_file
+_validate_manifest_identity = MODULE._validate_manifest_identity
+_validate_asset_integrity = MODULE._validate_asset_integrity
+_validate_domain_graph = MODULE._validate_domain_graph
 
 
 def _marketing_demo() -> dict:
     return json.loads((ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json").read_text(encoding="utf-8"))
+
+
+def test_manifest_identity_validator_returns_dataset_id_without_loading_assets() -> None:
+    data = _marketing_demo()
+
+    assert _validate_manifest_identity(
+        data,
+        path=ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json",
+        label="UI World dataset",
+    ) == "marketing_demo"
+
+
+def test_asset_integrity_validator_returns_asset_type_index() -> None:
+    data = _marketing_demo()
+
+    asset_types = _validate_asset_integrity(
+        data,
+        path=ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json",
+        label="UI World dataset",
+    )
+
+    assert asset_types["reader_real_book_epub"] == "books"
+    assert asset_types["explore_required"] == "images"
+
+
+def test_domain_graph_validator_preserves_shared_deck_asset_error() -> None:
+    data = _marketing_demo()
+    asset_types = _validate_asset_integrity(
+        data,
+        path=ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json",
+        label="UI World dataset",
+    )
+    data["sharedDecks"]["fixtures"]["loaded"]["assetIDs"] = ["books.catalog_reader_epub"]
+
+    with pytest.raises(UIWorldManifestError, match=r"sharedDecks.*images"):
+        _validate_domain_graph(
+            data,
+            asset_types=asset_types,
+            label="UI World dataset",
+        )
 
 
 def test_marketing_demo_declares_canonical_explore_shared_decks_contract():
