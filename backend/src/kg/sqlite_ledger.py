@@ -13,6 +13,8 @@ from typing import Any
 
 from sqlalchemy import event
 
+from .sqlite_utils import configure_sqlite_connection
+
 
 def install_serializable_sqlite(engine: Any) -> None:
     """每條 pooled 連線套 WAL + ``BEGIN IMMEDIATE``,把 read-max-then-insert 的 ingested_at
@@ -21,13 +23,7 @@ def install_serializable_sqlite(engine: Any) -> None:
 
     @event.listens_for(engine, "connect")
     def _configure_connection(dbapi_conn, _record):  # noqa: ANN001
-        cur = dbapi_conn.cursor()
-        # Set the busy handler before journal-mode negotiation: WAL itself is
-        # a writer-lock operation during concurrent legacy-store startup.
-        cur.execute("PRAGMA busy_timeout=30000")
-        cur.execute("PRAGMA journal_mode=WAL")
-        cur.execute("PRAGMA synchronous=NORMAL")
-        cur.close()
+        configure_sqlite_connection(dbapi_conn, busy_timeout_ms=30000)
         # 關閉 pysqlite 隱式 BEGIN,改由 begin-listener 顯式驅動。
         dbapi_conn.isolation_level = None
 

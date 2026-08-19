@@ -20,6 +20,7 @@ issuing DDL, so the journal mode change takes effect on a fresh connection.
 from __future__ import annotations
 
 import sqlite3
+import time
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,34 @@ from sqlmodel import create_engine
 # 30s is the existing per-module value; keeping it consistent so behaviour
 # does not regress when a module switches from inline PRAGMAs to this helper.
 DEFAULT_BUSY_TIMEOUT_MS = 30000
+
+
+def _enable_wal(cur: sqlite3.Cursor, *, timeout_ms: int) -> None:
+    """Switch a file-backed connection to WAL, waiting out legacy DDL locks."""
+    deadline = time.monotonic() + (timeout_ms / 1000)
+    while True:
+        try:
+            cur.execute("PRAGMA journal_mode=WAL")
+            return
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower() or time.monotonic() >= deadline:
+                raise
+            # SQLite's busy handler does not reliably cover journal-mode
+            # negotiation while another connection is committing legacy DDL.
+            # Retry at this boundary, still bounded by the same timeout.
+            time.sleep(0.05)
+
+
+def configure_sqlite_connection(
+    dbapi_conn: sqlite3.Connection, *, busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS
+) -> None:
+    """Apply the shared WAL/busy-timeout contract to a DB-API connection."""
+    timeout = int(busy_timeout_ms)
+    cur = dbapi_conn.cursor()
+    cur.execute(f"PRAGMA busy_timeout={timeout}")
+    _enable_wal(cur, timeout_ms=timeout)
+    cur.execute("PRAGMA synchronous=NORMAL")
+    cur.close()
 
 
 def make_sqlite_engine(
@@ -64,15 +93,7 @@ def make_sqlite_engine(
 
     @event.listens_for(engine, "connect")
     def _configure_connection(dbapi_conn, _record):  # noqa: ANN001
-        cur = dbapi_conn.cursor()
-        # Install the busy handler before WAL negotiation.  Two independent
-        # processes can open the same legacy file at once; journal_mode=WAL
-        # itself needs the writer lock and otherwise bypasses our intended
-        # wait contract.
-        cur.execute(f"PRAGMA busy_timeout={timeout}")
-        cur.execute("PRAGMA journal_mode=WAL")
-        cur.execute("PRAGMA synchronous=NORMAL")
-        cur.close()
+        configure_sqlite_connection(dbapi_conn, busy_timeout_ms=timeout)
 
     return engine
 
@@ -83,9 +104,7 @@ def init_sqlite_pragmas(conn: sqlite3.Connection, *, busy_timeout_ms: int = DEFA
     Idempotent — calling on an already-WAL connection is a no-op. Must be
     invoked before any write or DDL so the journal mode change persists.
     """
-    conn.execute("PRAGMA journal_mode=WAL;")
-    conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)};")
-    conn.execute("PRAGMA synchronous=NORMAL;")
+    configure_sqlite_connection(conn, busy_timeout_ms=busy_timeout_ms)
 
 
 def open_singleton(
