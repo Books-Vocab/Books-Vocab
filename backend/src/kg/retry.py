@@ -30,8 +30,8 @@ def llm_retryable_exceptions() -> tuple[type[Exception], ...]:
     """
     global _LLM_RETRYABLE
     if not _LLM_RETRYABLE:
-        from openai import APIError, InternalServerError, RateLimitError
-        _LLM_RETRYABLE = (RateLimitError, APIError, InternalServerError)
+        from openai import APIConnectionError, APITimeoutError, InternalServerError, RateLimitError
+        _LLM_RETRYABLE = (RateLimitError, APIConnectionError, APITimeoutError, InternalServerError)
     return _LLM_RETRYABLE
 
 
