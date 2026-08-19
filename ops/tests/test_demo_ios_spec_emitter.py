@@ -231,6 +231,52 @@ def test_load_seed_spec_rejects_wrong_schema(tmp_path):
         spec_world.load_seed_spec(spec_path)
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    (
+        (False, False),
+        (True, True),
+        ("false", False),
+        ("true", True),
+        (" FALSE ", False),
+        (" TRUE ", True),
+    ),
+)
+def test_normalize_boolean_fields_preserves_supported_values(tmp_path, raw, expected):
+    payload = _small_spec()
+    payload["notebooks"][0]["is_default"] = raw
+    payload["cards"][0]["is_archived"] = raw
+
+    normalized = spec_world._normalize(
+        spec_world.load_seed_spec(_write_spec(tmp_path, payload))
+    )
+
+    assert normalized["notebooks"][0]["is_default"] is expected
+    assert normalized["cards_by_nb"]["Primary Notebook"][0]["is_archived"] is expected
+
+
+@pytest.mark.parametrize(
+    ("target", "raw", "field"),
+    (
+        ("notebook", 0, "is_default"),
+        ("notebook", "yes", "is_default"),
+        ("card", 1, "is_archived"),
+        ("card", None, "is_archived"),
+    ),
+)
+def test_normalize_boolean_fields_rejects_invalid_values(tmp_path, target, raw, field):
+    payload = _small_spec()
+    if target == "notebook":
+        payload["notebooks"][0][field] = raw
+    else:
+        payload["cards"][0][field] = raw
+
+    with pytest.raises(spec_world.SpecWorldError, match=field):
+        spec_world._normalize(
+            spec_world.load_seed_spec(_write_spec(tmp_path, payload))
+        )
+
+
 def test_load_seed_spec_rejects_link_to_unknown_card(tmp_path):
     payload = _small_spec()
     payload["links"].append({
