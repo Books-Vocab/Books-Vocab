@@ -43,7 +43,7 @@ def test_print_mac_groups_lists_every_non_linux_group() -> None:
     got = [line for line in result.stdout.splitlines() if line]
     want = mac_groups_from_source()
     assert got == want
-    assert len(got) == 6
+    assert len(got) == 3
 
 
 def test_all_exclusions_failing_is_a_green_gate(tmp_path: Path) -> None:
