@@ -97,6 +97,15 @@ classify_path() {
       ;;
   esac
 
+  # This skill declares the backend ops CLI roster exercised by backend tests.
+  # Keep the contract on backend confidence without broadening all agent skills.
+  case "$path" in
+    .claude/skills/devops/SKILL.md)
+      backend=true
+      return
+      ;;
+  esac
+
   # These scripts are covered by the Linux ops suite but live outside ops/.
   case "$path" in
     devops.sh|start.sh|backend/restart_kg.sh|backend/view_logs.sh|lab/podcast/start.sh|scripts/ios_token_lint.sh|.claude/skills/app-debug/find-polluter.sh|.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh|.claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh)

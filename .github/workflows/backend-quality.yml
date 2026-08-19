@@ -1,7 +1,8 @@
 name: backend-quality
 
 # Keep the backend quality surface narrow. Backend source/tests, its locked
-# toolchain, and this workflow are the only changes that need this runner.
+# toolchain, the backend-facing devops skill roster contract, and this workflow
+# are the only changes that need this runner.
 
 on:
   workflow_call:
@@ -9,6 +10,7 @@ on:
     branches: [main]
     paths:
       - 'backend/**'
+      - '.claude/skills/devops/SKILL.md'
       - '.github/workflows/backend-quality.yml'
   schedule:
     - cron: '17 2 * * *'
