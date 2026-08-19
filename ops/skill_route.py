@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 
-SCHEMA = "kg.skill_catalog.v1"
+SCHEMA = "kg.skill_catalog.v2"
 PHASES = {"bootstrap", "context", "primary", "secondary", "closure"}
 KINDS = {"bootstrap", "context", "specialist", "delivery", "closure"}
 
@@ -67,14 +67,17 @@ def _require(value: Any, field: str, context: str) -> Any:
 
 
 def validate_catalog(payload: dict[str, Any], root: Path) -> None:
-    if payload.get("schema") != SCHEMA or payload.get("version") != 1:
-        raise SkillCatalogError(f"schema 必須是 {SCHEMA} version=1")
+    if payload.get("schema") != SCHEMA or payload.get("version") != 2:
+        raise SkillCatalogError(f"schema 必須是 {SCHEMA} version=2")
     skills = _require(payload.get("skills"), "skills", "catalog")
     if not isinstance(skills, list) or not skills:
         raise SkillCatalogError("skills 必須是非空陣列")
     bootstrap = payload.get("bootstrap")
     if not isinstance(bootstrap, list) or not bootstrap or len(bootstrap) != len(set(bootstrap)) or not all(isinstance(item, str) and item for item in bootstrap):
         raise SkillCatalogError("bootstrap 必須是非空且不重複的字串陣列")
+    context_names = payload.get("context")
+    if not isinstance(context_names, list) or not context_names or len(context_names) != len(set(context_names)) or not all(isinstance(item, str) and item for item in context_names):
+        raise SkillCatalogError("context 必須是非空且不重複的字串陣列")
 
     actual_paths = sorted(root.glob(".claude/skills/*/SKILL.md"))
     actual_names = {path.parent.name for path in actual_paths}
@@ -121,6 +124,13 @@ def validate_catalog(payload: dict[str, Any], root: Path) -> None:
         skill = next(item for item in skills if item["name"] == name)
         if skill["phase"] != "bootstrap" or skill["kind"] != "bootstrap":
             raise SkillCatalogError(f"bootstrap skill 必須是 bootstrap phase/kind: {name}")
+    unknown_context = sorted(set(context_names) - known)
+    if unknown_context:
+        raise SkillCatalogError(f"context 引用未知 skill: {', '.join(unknown_context)}")
+    for name in context_names:
+        skill = next(item for item in skills if item["name"] == name)
+        if skill["phase"] != "context" or skill["kind"] != "context":
+            raise SkillCatalogError(f"context skill 必須是 context phase/kind: {name}")
     by_intent: dict[str, list[dict[str, Any]]] = {}
     for skill in skills:
         for relation in ("requires", "optional", "forbidden", "closure"):
@@ -220,6 +230,8 @@ def resolve_route(payload: dict[str, Any], intent: str, include_optional: bool =
             selected.append(name)
 
     for name in payload["bootstrap"]:
+        add(name)
+    for name in payload.get("context", []):
         add(name)
     add(primary["name"])
     required_selected = list(selected)

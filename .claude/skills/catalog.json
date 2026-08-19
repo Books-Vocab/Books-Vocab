@@ -1,7 +1,8 @@
 {
-  "schema": "kg.skill_catalog.v1",
-  "version": 1,
+  "schema": "kg.skill_catalog.v2",
+  "version": 2,
   "bootstrap": ["kg-router"],
+  "context": ["kg-agent-context"],
   "intent_aliases": {
     "delivery": "delivery-worktree",
     "worktree": "delivery-worktree",
@@ -30,16 +31,16 @@
     {"name": "worktree-flow", "path": ".claude/skills/worktree-flow/SKILL.md", "kind": "delivery", "phase": "primary", "priority": 60, "intents": ["delivery-worktree", "worktree-open", "worktree-coordination"], "requires": ["kg-agent-context"], "optional": ["kg-receipt"], "forbidden": [], "closure": []}
   ],
   "fixtures": [
-    {"id": "cold-docs-audit", "intent": "docs-audit", "primary": "kg-docs-control-plane", "required_secondary": [], "optional_secondary": [], "forbidden": ["worktree-flow"]},
-    {"id": "p15-rebuild", "intent": "visual-report-rebuild", "primary": "ios-visual-report-workflow", "required_secondary": ["ios-simulator-verification"], "optional_secondary": ["worktree-flow"], "forbidden": ["devops"]},
-    {"id": "ui-test-evidence", "intent": "ui-test-evidence", "primary": "ios-simulator-verification", "required_secondary": [], "optional_secondary": ["kg-receipt"], "forbidden": ["devops"]},
-    {"id": "release-command", "intent": "release-command", "primary": "source-command-release", "required_secondary": [], "optional_secondary": ["worktree-flow"], "forbidden": ["podcast"]},
-    {"id": "prod-502", "intent": "production-status", "primary": "devops", "required_secondary": [], "optional_secondary": [], "forbidden": ["podcast"]},
-    {"id": "monthly-token-cost", "intent": "billing", "primary": "billing", "required_secondary": [], "optional_secondary": [], "forbidden": ["data-analysis"]},
-    {"id": "user-quota-graph", "intent": "user-data-analysis", "primary": "data-analysis", "required_secondary": [], "optional_secondary": [], "forbidden": ["billing"]},
-    {"id": "epub-podcast", "intent": "podcast-pipeline", "primary": "podcast", "required_secondary": [], "optional_secondary": ["kg-receipt"], "forbidden": ["devops"]},
+    {"id": "cold-docs-audit", "intent": "docs-audit", "primary": "kg-docs-control-plane", "required_secondary": ["kg-agent-context"], "optional_secondary": [], "forbidden": ["worktree-flow"]},
+    {"id": "p15-rebuild", "intent": "visual-report-rebuild", "primary": "ios-visual-report-workflow", "required_secondary": ["kg-agent-context", "ios-simulator-verification"], "optional_secondary": ["worktree-flow"], "forbidden": ["devops"]},
+    {"id": "ui-test-evidence", "intent": "ui-test-evidence", "primary": "ios-simulator-verification", "required_secondary": ["kg-agent-context"], "optional_secondary": ["kg-receipt"], "forbidden": ["devops"]},
+    {"id": "release-command", "intent": "release-command", "primary": "source-command-release", "required_secondary": ["kg-agent-context"], "optional_secondary": ["worktree-flow"], "forbidden": ["podcast"]},
+    {"id": "prod-502", "intent": "production-status", "primary": "devops", "required_secondary": ["kg-agent-context"], "optional_secondary": [], "forbidden": ["podcast"]},
+    {"id": "monthly-token-cost", "intent": "billing", "primary": "billing", "required_secondary": ["kg-agent-context"], "optional_secondary": [], "forbidden": ["data-analysis"]},
+    {"id": "user-quota-graph", "intent": "user-data-analysis", "primary": "data-analysis", "required_secondary": ["kg-agent-context"], "optional_secondary": [], "forbidden": ["billing"]},
+    {"id": "epub-podcast", "intent": "podcast-pipeline", "primary": "podcast", "required_secondary": ["kg-agent-context"], "optional_secondary": ["kg-receipt"], "forbidden": ["devops"]},
     {"id": "worktree-development", "intent": "delivery-worktree", "primary": "worktree-flow", "required_secondary": ["kg-agent-context"], "optional_secondary": ["kg-receipt"], "forbidden": ["devops"]},
-    {"id": "read-only-audit-no-worktree", "intent": "read-only-audit", "primary": "kg-docs-control-plane", "required_secondary": [], "optional_secondary": [], "forbidden": ["worktree-flow"]},
+    {"id": "read-only-audit-no-worktree", "intent": "read-only-audit", "primary": "kg-docs-control-plane", "required_secondary": ["kg-agent-context"], "optional_secondary": [], "forbidden": ["worktree-flow"]},
     {"id": "pr-review", "intent": "code-review", "primary": "code-review", "required_secondary": ["kg-agent-context"], "optional_secondary": [], "forbidden": ["worktree-flow"]},
     {"id": "github-coordination", "intent": "github-coordination", "primary": "github-coordination", "required_secondary": ["kg-agent-context"], "optional_secondary": [], "forbidden": ["worktree-flow", "source-command-release"]}
   ]

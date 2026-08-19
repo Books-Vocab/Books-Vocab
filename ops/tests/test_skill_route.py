@@ -24,7 +24,7 @@ def test_catalog_inventory_and_fixtures_are_green(capsys):
     mod = load_module()
     assert mod.main(["validate", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload == {"schema": "kg.skill_catalog.v1", "status": "ok", "skills": 15, "fixtures": 12}
+    assert payload == {"schema": "kg.skill_catalog.v2", "status": "ok", "skills": 15, "fixtures": 12}
 
 
 def test_human_intent_aliases_resolve_to_canonical_primary_intents():
@@ -43,14 +43,14 @@ def test_visual_report_has_one_primary_and_required_simulator_dependency():
     mod = load_module()
     route = mod.resolve_route(mod.load_catalog(), "visual-report-rebuild")
     assert route["primary"] == "ios-visual-report-workflow"
-    assert route["skills"] == ["kg-router", "ios-simulator-verification", "ios-visual-report-workflow"]
+    assert route["skills"] == ["kg-router", "kg-agent-context", "ios-simulator-verification", "ios-visual-report-workflow"]
     assert route["authorization"]["granted"] is False
 
 
 def test_optional_and_closure_are_explicit():
     mod = load_module()
     route = mod.resolve_route(mod.load_catalog(), "podcast-pipeline", include_optional=True, include_closure=True)
-    assert route["skills"] == ["kg-router", "podcast", "kg-receipt"]
+    assert route["skills"] == ["kg-router", "kg-agent-context", "podcast", "kg-receipt"]
 
 
 def test_delivery_intent_has_one_primary_and_typed_context_dependency():
