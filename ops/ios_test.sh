@@ -404,7 +404,8 @@ ios_test_build_input_paths() {
       "ios/BooksAndVocab.xcodeproj/xcshareddata/xcschemes/BooksAndVocabUnitTests.xcscheme" \
       "ios/BooksAndVocab.xcodeproj/xcshareddata/xcschemes/BooksAndVocabUITests.xcscheme" \
       "ios/BooksAndVocab.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
-    rg --files ios/BooksAndVocab ios/BooksAndVocabTests ios/BooksAndVocabUITests -g '*.swift' -g '*.plist'
+    find ios/BooksAndVocab ios/BooksAndVocabTests ios/BooksAndVocabUITests \
+      -type f \( -name '*.swift' -o -name '*.plist' \) -print
   } | sort -u
 }
 

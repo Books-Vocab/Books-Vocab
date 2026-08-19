@@ -50,6 +50,9 @@ grep -q 'ios_ops.sh build' "$IOS" || fail "iOS workflow has no real Xcode build 
 grep -q -- '--unit' "$IOS" || fail "iOS workflow has no unit-test invocation"
 grep -q -- '--ui' "$IOS" || fail "iOS workflow has no UI-test invocation"
 grep -q -- '--dataset marketing_demo' "$IOS" || fail "UI tests do not pin a UI World dataset"
+grep -q 'simulator ensure-booted' "$IOS" || fail "iOS workflow does not resolve a live simulator"
+grep -q 'IOS_SIMULATOR_UDID' "$IOS" || fail "iOS workflow does not export an explicit simulator UDID"
+grep -q -- '--device "$IOS_SIMULATOR_UDID"' "$IOS" || fail "iOS tests do not target the resolved simulator UDID"
 if grep -q 'self-hosted\|pull_request_target' "$IOS"; then
   fail "iOS workflow crosses the public fork/self-hosted trust boundary"
 fi

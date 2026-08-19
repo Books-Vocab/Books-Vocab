@@ -148,6 +148,16 @@ jobs:
           xcrun simctl list runtimes
           xcrun simctl list devices available | grep -F "${IOS_SIMULATOR_NAME} (" >/dev/null
 
+      - name: Ensure simulator and export UDID
+        shell: bash
+        run: |
+          set -euo pipefail
+          simulator_json="$(./ops/ios_ops.sh simulator ensure-booted \
+            --device "$IOS_SIMULATOR_NAME" --json)"
+          simulator_udid="$(jq -er '.device.udid // empty' <<<"$simulator_json")"
+          printf 'IOS_SIMULATOR_UDID=%s\n' "$simulator_udid" >> "$GITHUB_ENV"
+          printf 'Using simulator UDID: %s\n' "$simulator_udid"
+
       - name: Validate UI World
         if: ${{ matrix.scope == 'ui-smoke' }}
         run: uv run --no-project --python 3.13 python ops/ui_world_manifest.py validate ops/fixtures/ui_worlds/marketing_demo.json
@@ -165,7 +175,7 @@ jobs:
           if [[ "${{ matrix.scope }}" == 'unit' ]]; then
             ./ops/ios_ops.sh test \
               --unit \
-              --device "$IOS_SIMULATOR_NAME" \
+              --device "$IOS_SIMULATOR_UDID" \
               --coverage \
               --json \
               2>&1 | tee "$RUNNER_TEMP/ios-unit.log"
@@ -173,7 +183,7 @@ jobs:
             ./ops/ios_ops.sh test \
               --ui \
               --dataset marketing_demo \
-              --device "$IOS_SIMULATOR_NAME" \
+              --device "$IOS_SIMULATOR_UDID" \
               --json \
               BooksAndVocabUITests/testLaunchShowsAllTabs \
               FixtureDatasetUITests/testBookshelfRendersDatasetOverriddenTitle \
