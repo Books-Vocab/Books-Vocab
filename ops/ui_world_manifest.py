@@ -2422,17 +2422,7 @@ def _validate_cross_references(data: dict[str, Any], *, label: str) -> None:
         _validate_seed_graph_links(entry_objs, set(entry_words), owner_prefix=f"reviewDeck.{fixture_id}", label=label)
 
 
-def validate_fixture_dataset_file(
-    path: Path,
-    *,
-    label: str = "UI World dataset",
-    require_review_clock: bool = False,
-    require_review_history_alignment: bool = False,
-) -> str:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise UIWorldManifestError(f"{label} 不是可讀 JSON: {path}: {exc}") from exc
+def _validate_manifest_identity(data: Any, *, path: Path, label: str) -> str:
     if not isinstance(data, dict):
         raise UIWorldManifestError(f"{label} top-level 必須是 object: {path}")
     if data.get("schema") != FIXTURE_SCHEMA:
@@ -2448,7 +2438,12 @@ def validate_fixture_dataset_file(
     if not isinstance(dataset_id, str) or not dataset_id.strip():
         raise UIWorldManifestError(f"{label} datasetID 必須是非空字串: {path}")
     _validate_fixture_domain_ids(data, label=label)
+    return dataset_id
 
+
+def _validate_asset_integrity(
+    data: dict[str, Any], *, path: Path, label: str
+) -> dict[str, str]:
     assets = data.get("assets")
     if not isinstance(assets, dict):
         raise UIWorldManifestError(f"{label} assets 必須是 object: {path}")
@@ -2547,6 +2542,17 @@ def validate_fixture_dataset_file(
                 content_type=content_type,
                 label=f"{label} {asset_label}",
             )
+    return asset_types
+
+
+def _validate_domain_graph(
+    data: dict[str, Any],
+    *,
+    asset_types: dict[str, str],
+    label: str,
+    require_review_clock: bool = False,
+    require_review_history_alignment: bool = False,
+) -> None:
     _validate_shared_decks(data, label=label, asset_types=asset_types)
     _validate_preferences(data, label=label)
     _validate_auth_state(data, label=label)
@@ -2563,6 +2569,28 @@ def validate_fixture_dataset_file(
         require_review_history_alignment=require_review_history_alignment,
     )
     _validate_cross_references(data, label=label)
+
+
+def validate_fixture_dataset_file(
+    path: Path,
+    *,
+    label: str = "UI World dataset",
+    require_review_clock: bool = False,
+    require_review_history_alignment: bool = False,
+) -> str:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise UIWorldManifestError(f"{label} 不是可讀 JSON: {path}: {exc}") from exc
+    dataset_id = _validate_manifest_identity(data, path=path, label=label)
+    asset_types = _validate_asset_integrity(data, path=path, label=label)
+    _validate_domain_graph(
+        data,
+        asset_types=asset_types,
+        label=label,
+        require_review_clock=require_review_clock,
+        require_review_history_alignment=require_review_history_alignment,
+    )
     return dataset_id
 
 
