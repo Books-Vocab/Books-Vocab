@@ -18,10 +18,13 @@ def _make_cards_db(user_dir: Path, cards: list[dict]) -> None:
     db_path = user_dir / "cards.db"
     engine = create_engine(f"sqlite:///{db_path.absolute()}")
     SQLModel.metadata.create_all(engine)
-    with Session(engine) as session:
-        for c in cards:
-            session.add(Card(**c))
-        session.commit()
+    try:
+        with Session(engine) as session:
+            for c in cards:
+                session.add(Card(**c))
+            session.commit()
+    finally:
+        engine.dispose()
 
 
 def _make_graph_json(user_dir: Path, notebook_id: str, links: list[dict]) -> None:
