@@ -14,12 +14,19 @@ SCHEMA = "kg.context_plane.v2"
 ROLES = {"manager", "contributor", "reviewer", "docs-steward", "release-operator"}
 ROLE_ALIASES = {
     "Manager": "manager",
+    "CM": "manager",
+    "Codebase Manager": "manager",
+    "IM": "manager",
+    "Issues Manager": "manager",
     "delivery-manager": "manager",
-    "Integrator": "contributor",
-    "integrator": "contributor",
+    "Worker": "contributor",
+    "Issue Solver": "contributor",
     "Docs Steward": "docs-steward",
+    "DS": "docs-steward",
     "Review service": "reviewer",
     "review-service": "reviewer",
+    "CR": "reviewer",
+    "Code Reviewer": "reviewer",
     "release": "release-operator",
 }
 INTENT_ALIASES = {
