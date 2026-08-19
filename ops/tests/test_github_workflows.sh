@@ -53,6 +53,8 @@ grep -q -- '--dataset marketing_demo' "$IOS" || fail "UI tests do not pin a UI W
 grep -q 'simulator ensure-booted' "$IOS" || fail "iOS workflow does not resolve a live simulator"
 grep -q 'IOS_SIMULATOR_UDID' "$IOS" || fail "iOS workflow does not export an explicit simulator UDID"
 grep -q -- '--device "$IOS_SIMULATOR_UDID"' "$IOS" || fail "iOS tests do not target the resolved simulator UDID"
+ios_log_idle_limit="$(sed -n "s/^[[:space:]]*KG_IOS_TEST_LOG_IDLE_LIMIT:[[:space:]]*'\([0-9][0-9]*\)'.*/\1/p" "$IOS")"
+[[ "$ios_log_idle_limit" -ge 900 ]] || fail "iOS log-idle watchdog is too short for hosted cold builds (need >= 900s)"
 if grep -q 'self-hosted\|pull_request_target' "$IOS"; then
   fail "iOS workflow crosses the public fork/self-hosted trust boundary"
 fi
