@@ -16,9 +16,6 @@ on:
 permissions:
   contents: read
 
-env:
-  COVERAGE_FILE: ${{ runner.temp }}/backend-quality/.coverage
-
 defaults:
   run:
     working-directory: backend
@@ -83,6 +80,8 @@ jobs:
         if: steps.sync.outcome == 'success' && steps.provenance.outcome == 'success'
         continue-on-error: true
         shell: bash
+        env:
+          COVERAGE_FILE: ${{ runner.temp }}/backend-quality/.coverage
         run: |
           set -euo pipefail
           mkdir -p "$(dirname "$COVERAGE_FILE")"
@@ -97,6 +96,8 @@ jobs:
         if: steps.sync.outcome == 'success' && steps.tests.outcome == 'success'
         continue-on-error: true
         shell: bash
+        env:
+          COVERAGE_FILE: ${{ runner.temp }}/backend-quality/.coverage
         run: |
           set -euo pipefail
           uv run python -m coverage report --fail-under=85
