@@ -38,7 +38,7 @@ class TestAnalyzeSmoke:
 
     def test_analyze_runs_without_crash(self, tmp_path):
         """Smoke test: analyze must not crash on empty data dir."""
-        r = _run_cli(str(tmp_path), "analyze", "u1", "basic")
+        r = _run_cli(str(tmp_path), "analyze", "u1", "1")
         # ops_analyze.py may 1 on empty data, but must not traceback
         assert "Traceback" not in r.stderr
 
@@ -659,6 +659,23 @@ class TestAnalyze:
         assert result.returncode == 0, result.stderr
         assert "Level 1" in result.stdout
         assert uid in result.stdout
+
+    def test_all_happy_path(self, tmp_path):
+        """analyze all 仍須接受並執行完整六層分析。"""
+        uid = self._setup(tmp_path)
+        result = _run_cli(str(tmp_path), "analyze", uid, "all")
+        assert result.returncode == 0, result.stderr
+        assert "Level 1" in result.stdout
+        assert "Level 6" in result.stdout
+
+    def test_unsupported_level_fails_closed(self, tmp_path):
+        """unsupported analyze level must not produce a false-green User line."""
+        uid = self._setup(tmp_path)
+        result = _run_cli(str(tmp_path), "analyze", uid, "7")
+        output = result.stdout + result.stderr
+        assert result.returncode != 0
+        assert "usage:" in result.stderr.lower() or "invalid choice" in result.stderr.lower()
+        assert f"User: {uid}" not in output
 
     def test_missing_user_error(self, tmp_path):
         """用戶不存在時 ops_analyze.py 應回傳非零 exit code。"""
