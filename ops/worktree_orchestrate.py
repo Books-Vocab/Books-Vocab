@@ -223,12 +223,20 @@ def _changed_files(worktree: Path, base: str) -> list[str]:
     return sorted(item for item in files if item)
 
 
-def _plan_checks(files: list[str]) -> list[dict[str, Any]]:
+def _plan_checks(files: list[str], *, worktree: Path | None = None) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = [{
         "name": "git-diff-check", "kind": "shell", "cwd": ".",
         "cmd": ["git", "diff", "--check"], "level": "block",
     }]
-    shell_files = [item for item in files if item.endswith(".sh")]
+    # `git diff --name-only` includes deleted paths.  A deleted shell script
+    # still matters to the diff and docs checks, but it cannot be parsed from
+    # the target worktree.  Do not turn intentional cleanup into a false gate
+    # failure.
+    shell_files = [
+        item
+        for item in files
+        if item.endswith(".sh") and (worktree is None or (worktree / item).is_file())
+    ]
     for item in shell_files:
         checks.append({"name": f"shell-syntax:{item}", "kind": "shell", "cwd": ".",
                        "cmd": ["bash", "-n", item], "level": "block"})
@@ -295,7 +303,7 @@ def cmd_gate(args: argparse.Namespace) -> int:
               as_json=args.json, human="✗ gate refused: worktree not found")
         return EXIT_USAGE
     files = _changed_files(worktree, args.base)
-    checks = _plan_checks(files)
+    checks = _plan_checks(files, worktree=worktree)
     payload: dict[str, Any] = {"schema": GATE_SCHEMA, "worktree": str(worktree),
                                "base": args.base, "files": files, "checks": checks}
     if args.plan_only:

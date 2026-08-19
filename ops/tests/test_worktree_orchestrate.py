@@ -28,6 +28,14 @@ def test_gate_plan_routes_product_surfaces_to_existing_entry_points() -> None:
     assert "shell-syntax:ops/example.sh" in names
 
 
+def test_gate_plan_skips_deleted_shell_file_in_target_worktree(tmp_path: Path) -> None:
+    plan = coordinator._plan_checks(
+        [".claude/skills/app-debug/find-polluter.sh"], worktree=tmp_path
+    )
+    names = {item["name"] for item in plan}
+    assert "shell-syntax:.claude/skills/app-debug/find-polluter.sh" not in names
+
+
 def test_gate_plan_never_mutates_remote_or_integrates_branches() -> None:
     plan = coordinator._plan_checks(["ops/worktree_orchestrate.py"])
     commands = [" ".join(item["cmd"]) for item in plan]
