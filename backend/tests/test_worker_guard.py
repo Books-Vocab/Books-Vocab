@@ -19,7 +19,8 @@ def _release_guard() -> None:
 
     if worker_guard._lock_fd is not None:
         os.close(worker_guard._lock_fd)
-        worker_guard._lock_fd = None
+    worker_guard._lock_fd = None
+    worker_guard._lock_pid = None
 
 
 @pytest.fixture(autouse=True)
@@ -70,6 +71,35 @@ def test_idempotent_within_process(tmp_path):
     fd1 = worker_guard._lock_fd
     worker_guard.assert_single_worker(lock)
     assert worker_guard._lock_fd is fd1
+
+
+def test_forked_worker_raises(tmp_path):
+    """A forked child must not inherit admission from the parent process."""
+    from kg import worker_guard
+
+    lock = tmp_path / ".worker.lock"
+    worker_guard.assert_single_worker(lock)
+    read_fd, write_fd = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        os.close(read_fd)
+        try:
+            try:
+                worker_guard.assert_single_worker(lock)
+            except worker_guard.MultipleWorkersError:
+                os.write(write_fd, b"raised")
+            else:
+                os.write(write_fd, b"admitted")
+        finally:
+            os.close(write_fd)
+            os._exit(0)
+
+    os.close(write_fd)
+    result = os.read(read_fd, 32)
+    os.close(read_fd)
+    _, status = os.waitpid(pid, 0)
+    assert os.WIFEXITED(status)
+    assert result == b"raised"
 
 
 def test_lock_released_allows_reacquire(tmp_path):
