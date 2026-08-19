@@ -41,6 +41,17 @@ if str(_OPS_DIR) not in sys.path:
 
 import build_official  # noqa: E402
 
+
+def _run_official_cli(*args: str) -> subprocess.CompletedProcess[str]:
+    """Run the installed CLI exactly as an automated JSON caller would."""
+    return subprocess.run(
+        [sys.executable, str(_OPS_DIR / "build_official.py"), *args],
+        cwd=str(Path(__file__).resolve().parents[1]),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
 # The 7 SRS columns that must never surface in a shared card payload.
 _SRS_KEYS = {
     "reviewIntervalHours", "review_interval_hours",
@@ -582,6 +593,83 @@ def test_cli_emit_dry_run_json(tmp_path, capsys):
     assert rc == 0
     assert out["mode"] == "dry-run"
     assert out["committed"] is False
+
+
+@pytest.mark.parametrize("command", ["emit", "check"])
+def test_cli_malformed_json_returns_located_structured_error(tmp_path, command):
+    malformed = tmp_path / "malformed.json"
+    malformed.write_text("{", encoding="utf-8")
+
+    result = _run_official_cli(command, str(malformed), "--json")
+
+    assert result.returncode == 1
+    assert result.stdout, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "error"
+    assert payload["route"] == "official-deck.spec.parse"
+    assert payload["file"] == str(malformed)
+    assert payload["line"] == 1
+    assert payload["column"] == 2
+    assert payload["error"].startswith("invalid JSON:")
+    assert "Traceback" not in result.stderr
+
+
+def test_cli_non_utf8_spec_returns_located_structured_error(tmp_path):
+    malformed = tmp_path / "non-utf8.json"
+    malformed.write_bytes(b"\xff")
+
+    result = _run_official_cli("emit", str(malformed), "--json")
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "error"
+    assert payload["route"] == "official-deck.spec.decode"
+    assert payload["file"] == str(malformed)
+    assert payload["line"] == 1
+    assert payload["column"] == 1
+    assert payload["error"].startswith("invalid UTF-8:")
+    assert "Traceback" not in result.stderr
+
+
+def test_cli_valid_json_still_emits_the_existing_dry_run_payload(tmp_path):
+    spec_path = tmp_path / "valid.json"
+    spec_path.write_text(json.dumps(_spec(deck_id="official-cli-subprocess")), encoding="utf-8")
+
+    result = _run_official_cli("emit", str(spec_path), "--json")
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "dry-run"
+    assert payload["committed"] is False
+    assert payload["deckId"] == "official-cli-subprocess"
+    assert "Traceback" not in result.stderr
+
+
+def test_cli_existing_spec_error_keeps_legacy_error_shape(tmp_path):
+    spec_path = tmp_path / "invalid-schema.json"
+    spec_path.write_text("{}", encoding="utf-8")
+
+    result = _run_official_cli("emit", str(spec_path), "--json")
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert set(payload) == {"mode", "error"}
+    assert payload["mode"] == "error"
+    assert payload["error"].startswith("schema must be")
+    assert "Traceback" not in result.stderr
+
+
+def test_cli_missing_spec_keeps_existing_error_shape(tmp_path):
+    missing = tmp_path / "missing.json"
+
+    result = _run_official_cli("emit", str(missing), "--json")
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert set(payload) == {"mode", "error"}
+    assert payload["mode"] == "error"
+    assert payload["error"].startswith("spec not found:")
+    assert "Traceback" not in result.stderr
 
 
 def test_cli_check_all_committed_specs(capsys):
