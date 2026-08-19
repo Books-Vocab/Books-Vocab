@@ -5,6 +5,15 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 RUNNER="${KG_EXPECTED_FAIL_RUNNER:-./ops/test_ops.sh}"
 
+runner_tool_error() {
+  echo "✗ expected-fail runner tool error: $1" >&2
+  exit 2
+}
+
+if [[ ! -f "$RUNNER" || ! -x "$RUNNER" ]]; then
+  runner_tool_error "not an executable file: $RUNNER"
+fi
+
 groups=()
 while IFS= read -r group; do
   [[ -n "$group" ]] && groups+=("$group")
@@ -17,12 +26,22 @@ fi
 
 survived=()
 for group in "${groups[@]}"; do
-  if "$RUNNER" "$group" >/dev/null 2>&1; then
+  "$RUNNER" "$group" >/dev/null 2>&1
+  runner_status=$?
+
+  case "$runner_status" in
+  0)
     survived+=("$group")
     echo "  ✗ macOS-only group $group 在 Linux runner 通過" >&2
-  else
+    ;;
+  126|127)
+    # Shell reserves these for an executable that could not be launched.
+    runner_tool_error "failed to launch for group $group (exit=$runner_status)"
+    ;;
+  *)
     echo "  ✓ macOS-only group $group 在 Linux runner 如預期失敗"
-  fi
+    ;;
+  esac
 done
 
 if (( ${#survived[@]} > 0 )); then
