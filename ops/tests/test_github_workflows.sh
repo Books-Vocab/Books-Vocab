@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # test_github_workflows.sh — keep the GitHub-native CI topology executable.
 #
-# The component workflows are reusable building blocks. Only pr-gate owns the
-# pull_request entrypoint and its final required status, so a new workflow cannot
-# silently become a second PR control plane or bypass the macOS trust boundary.
+# The component workflows are reusable building blocks. pr-gate owns the
+# pull_request entrypoint and merge-group-required owns the merge queue
+# entrypoint; both expose the same short `required` contract without importing
+# the slow confidence fan-out into the merge queue.
 
 set -euo pipefail
 
@@ -39,6 +40,9 @@ grep -Fqx "      - '.claude/skills/devops/SKILL.md'" .github/workflows/backend-q
 
 PR_GATE=".github/workflows/pr-gate.yml"
 grep -q '^  pull_request:' "$PR_GATE" || fail "pr-gate has no pull_request trigger"
+if grep -Eq '^[[:space:]]*merge_group:' "$PR_GATE"; then
+  fail "pr-gate still owns a merge_group trigger; merge queue requires the short dedicated workflow"
+fi
 # A draft-to-ready transition changes review metadata, not source. The latest
 # `opened`/`synchronize` run already carries the relevant candidate evidence;
 # triggering again would cancel or duplicate its full confidence fan-out.
@@ -51,16 +55,8 @@ grep -q 'ops/ci_scope_router.sh' "$PR_GATE" \
   || fail "pr-gate does not invoke the confidence path classifier"
 grep -q 'ops/ci_confidence_verdict.sh' "$PR_GATE" \
   || fail "pr-gate does not verify selected versus skipped confidence suites"
-grep -Fqx '  merge_group:' "$PR_GATE" \
-  || fail "pr-gate has no future-safe merge_group trigger"
-grep -Fqx '    types: [checks_requested]' "$PR_GATE" \
-  || fail "pr-gate merge_group trigger is not limited to checks_requested"
 grep -Fq 'needs: [repo-gate]' "$PR_GATE" \
   || fail "pr-gate required job is not repo-gate-only"
-grep -Fq 'BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}' "$PR_GATE" \
-  || fail "pr-gate does not fall back from PR base SHA to merge_group base SHA"
-grep -Fq 'HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}' "$PR_GATE" \
-  || fail "pr-gate does not fall back from PR/merge_group head SHA to event SHA"
 grep -q '^  confidence:' "$PR_GATE" \
   || fail "pr-gate has no non-blocking full-confidence aggregator"
 grep -q 'needs: \[changed-paths, repo-gate, backend-quality, llm-eval, design-system, ui-quality-gate, ops-suite, ios-quality\]' "$PR_GATE" \
@@ -113,6 +109,32 @@ for workflow in llm-eval design-system ui-quality-gate; do
 done
 grep -q 'timeout-minutes: 1' <<<"$required_block" \
   || fail "required aggregator is not hard-bounded to one minute"
+
+MERGE_GROUP_REQUIRED=".github/workflows/merge-group-required.yml"
+[[ -f "$MERGE_GROUP_REQUIRED" ]] \
+  || fail "missing dedicated merge-group required workflow: $MERGE_GROUP_REQUIRED"
+if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
+  grep -q '^  merge_group:' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group required workflow has no merge_group trigger"
+  grep -Fqx '    types: [checks_requested]' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group required workflow is not limited to checks_requested"
+  grep -q '^  required:' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group required workflow has no required job"
+  merge_group_required_block="$(awk '
+    /^  required:/ { in_required=1; next }
+    in_required && /^  [A-Za-z0-9_-]+:/ { exit }
+    in_required { print }
+  ' "$MERGE_GROUP_REQUIRED")"
+  grep -q 'timeout-minutes: 3' <<<"$merge_group_required_block" \
+    || fail "merge-group required gate is not hard-bounded to three minutes"
+  grep -q 'github.event.merge_group.base_sha' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group required gate does not use the merge-group base SHA"
+  grep -q 'github.event.merge_group.head_sha' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group required gate does not use the merge-group head SHA"
+  if grep -Eq 'backend-quality|ops-suite|ios-quality|llm-eval|ui-quality-gate|confidence' <<<"$merge_group_required_block"; then
+    fail "merge-group required gate imports slow confidence jobs"
+  fi
+fi
 
 # Keep Actions on the Node 24 generation.  Pinned SHAs preserve supply-chain
 # review while avoiding the hosted-runner Node 20 deprecation path.
