@@ -9,6 +9,10 @@ from time import monotonic
 
 class LexicalRateLimiter:
     def __init__(self, *, limit: int = 20, window_seconds: float = 60.0) -> None:
+        if limit <= 0:
+            raise ValueError("limit must be positive")
+        if window_seconds <= 0:
+            raise ValueError("window_seconds must be positive")
         self.limit = limit
         self.window_seconds = window_seconds
         self._events: dict[str, deque[float]] = defaultdict(deque)
