@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from datetime import UTC, datetime
 
@@ -16,6 +17,7 @@ _lifecycle = SQLiteLifecycle()
 _lock = _lifecycle.lock
 _conn: sqlite3.Connection | None = None
 _INITIAL_DB_PATH = DB_PATH
+_logger = logging.getLogger(__name__)
 
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
@@ -82,6 +84,22 @@ def _reset() -> None:
     reset()
 
 
+def _parse_steps(steps_json: str, *, run_id: str) -> list[dict] | None:
+    """Parse a persisted step list, returning ``None`` for corrupt payloads."""
+    try:
+        steps = json.loads(steps_json)
+    except (TypeError, json.JSONDecodeError) as exc:
+        _logger.warning("Ignoring corrupt pipeline steps for run %s: %s", run_id, exc)
+        return None
+    if not isinstance(steps, list) or any(
+        not isinstance(step, dict) or not isinstance(step.get("name"), str)
+        for step in steps
+    ):
+        _logger.warning("Ignoring corrupt pipeline steps for run %s: invalid shape", run_id)
+        return None
+    return steps
+
+
 def start_run(run_id: str, user_id: str, notebook_id: str, trigger: str) -> None:
     """Insert a new pipeline run with status='running', steps='[]'."""
     now = datetime.now(UTC).isoformat()
@@ -103,7 +121,9 @@ def start_step(run_id: str, name: str) -> None:
         row = conn.execute("SELECT steps FROM pipeline_runs WHERE run_id = ?", (run_id,)).fetchone()
         if not row:
             return
-        steps = json.loads(row[0])
+        steps = _parse_steps(row[0], run_id=run_id)
+        if steps is None:
+            return
         steps.append({"name": name, "status": "running", "started_at": now, "ended_at": None, "items": 0, "error": None})
         conn.execute("UPDATE pipeline_runs SET steps = ? WHERE run_id = ?", (json.dumps(steps, ensure_ascii=False), run_id))
         conn.commit()
@@ -117,9 +137,11 @@ def end_step(run_id: str, name: str, *, status: str = "ok", items: int = 0, erro
         row = conn.execute("SELECT steps FROM pipeline_runs WHERE run_id = ?", (run_id,)).fetchone()
         if not row:
             return
-        steps = json.loads(row[0])
+        steps = _parse_steps(row[0], run_id=run_id)
+        if steps is None:
+            return
         for step in reversed(steps):
-            if step["name"] == name:
+            if step.get("name") == name:
                 step["status"] = status
                 step["ended_at"] = now
                 step["items"] = items
@@ -162,7 +184,7 @@ def get_runs(user_id: str, *, limit: int = 20) -> list[dict]:
         ).fetchall()
     result = []
     for run_id, uid, nb, trigger, started, ended, status, steps_json in rows:
-        steps = json.loads(steps_json)
+        steps = _parse_steps(steps_json, run_id=run_id) or []
         for step in steps:
             step["duration_s"] = _duration_s(step.get("started_at"), step.get("ended_at"))
         duration_s = _duration_s(started, ended)
