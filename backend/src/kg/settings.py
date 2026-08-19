@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -168,7 +169,7 @@ def _env_float(name: str, default: float) -> float:
     if raw is None:
         return default
     try:
-        return float(raw)
+        value = float(raw)
     except ValueError:
         _logger.warning(
             "Env var %s=%r is not a valid float; falling back to default %s.",
@@ -178,6 +179,15 @@ def _env_float(name: str, default: float) -> float:
         )
         _logger.warning("Silently handled exception; using fallback response", exc_info=True)
         return default
+    if not math.isfinite(value):
+        _logger.warning(
+            "Env var %s=%r is not a finite float; falling back to default %s.",
+            name,
+            raw,
+            default,
+        )
+        return default
+    return value
 
 
 def _env_int(name: str, default: int) -> int:

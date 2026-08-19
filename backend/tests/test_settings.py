@@ -31,6 +31,48 @@ def test_invalid_float_env_falls_back_to_default(monkeypatch):
     assert s.pro_daily_limit_usd == 0.30
 
 
+@pytest.mark.parametrize(
+    ("env_name", "setting_name", "default", "raw"),
+    [
+        ("PRO_DAILY_LIMIT_USD", "pro_daily_limit_usd", 0.30, "nan"),
+        ("PRO_DAILY_LIMIT_USD", "pro_daily_limit_usd", 0.30, "inf"),
+        ("PRO_DAILY_LIMIT_USD", "pro_daily_limit_usd", 0.30, "-inf"),
+        ("FREE_DAILY_LIMIT_USD", "free_daily_limit_usd", 0.03, "nan"),
+        ("FREE_DAILY_LIMIT_USD", "free_daily_limit_usd", 0.03, "inf"),
+        ("FREE_DAILY_LIMIT_USD", "free_daily_limit_usd", 0.03, "-inf"),
+        ("JUDGE_CONFIDENCE_THRESHOLD", "judge_confidence_threshold", 0.7, "nan"),
+        ("JUDGE_CONFIDENCE_THRESHOLD", "judge_confidence_threshold", 0.7, "inf"),
+        ("JUDGE_CONFIDENCE_THRESHOLD", "judge_confidence_threshold", 0.7, "-inf"),
+    ],
+)
+def test_non_finite_float_envs_fall_back_to_defaults(
+    monkeypatch, env_name, setting_name, default, raw
+):
+    monkeypatch.setenv("JWT_SECRET", "x" * 16)
+    monkeypatch.setenv(env_name, raw)
+
+    s = load_settings()
+
+    assert getattr(s, setting_name) == default
+
+
+@pytest.mark.parametrize(
+    ("env_name", "setting_name", "raw", "expected"),
+    [
+        ("PRO_DAILY_LIMIT_USD", "pro_daily_limit_usd", "0.42", 0.42),
+        ("FREE_DAILY_LIMIT_USD", "free_daily_limit_usd", "0.04", 0.04),
+        ("JUDGE_CONFIDENCE_THRESHOLD", "judge_confidence_threshold", "0.85", 0.85),
+    ],
+)
+def test_finite_float_envs_are_preserved(monkeypatch, env_name, setting_name, raw, expected):
+    monkeypatch.setenv("JWT_SECRET", "x" * 16)
+    monkeypatch.setenv(env_name, raw)
+
+    s = load_settings()
+
+    assert getattr(s, setting_name) == expected
+
+
 def test_invalid_int_env_falls_back_to_default(monkeypatch):
     monkeypatch.setenv("JWT_SECRET", "x" * 16)
     monkeypatch.setenv("EMBEDDING_DIM", "notanint")
