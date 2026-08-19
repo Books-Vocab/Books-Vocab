@@ -166,11 +166,9 @@ jobs:
         env:
           CI: '1'
           KG_IOS_BUILD_LOCK_TIMEOUT: '1800'
-          # Hosted macOS cold builds can finish build-for-testing and then
-          # spend several minutes in silent xcodebuild test execution. Keep
-          # the hang watchdog below the job timeout, but above the 420s
-          # per-test allowance so valid runs are not SIGTERM'ed as idle.
-          KG_IOS_TEST_LOG_IDLE_LIMIT: '900'
+          # Liveness is owned by the job timeout and XCTest's bounded
+          # per-test allowance. A raw log-silence cutoff is invalid here:
+          # hosted xcodebuild can be silent during a healthy test session.
           KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE: '420'
           KG_IOS_VERDICT_FILE: ${{ runner.temp }}/ios-${{ matrix.scope }}-verdict
         shell: bash
