@@ -168,6 +168,9 @@ def _replay(
     log,
     deck_id: str,
 ) -> CopyOutcome:
+    if log.source_shared_deck_id != deck_id:
+        raise ConflictError("idempotency key already belongs to another deck")
+
     # Defensive re-materialize: if a prior copy crashed in the window between
     # record_copy (committed) and materialize, the notebook is still hidden. The
     # retry that lands here reveals it — self-healing, and a no-op once visible.
