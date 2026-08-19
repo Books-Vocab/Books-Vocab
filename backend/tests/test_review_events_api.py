@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 
 def _payload(event_id: str = "evt-api-1", *, reviewed_at: datetime | None = None) -> dict:
     reviewed = reviewed_at or datetime(2026, 6, 1, 10, 0, tzinfo=UTC)
@@ -44,6 +46,21 @@ def test_review_events_push_and_pull(isolated_api):
     body = r_get.json()
     assert {event["event_id"] for event in body["entries"]} == {"evt-api-1", "evt-api-2"}
     assert body["cursor"] is not None
+
+
+@pytest.mark.parametrize("event_id", ["", " ", "\t\n"])
+def test_review_events_patch_rejects_blank_event_id_without_write(isolated_api, event_id):
+    r = isolated_api.client.patch(
+        "/api/vocab/review-events",
+        json={"entries": [_payload(event_id)]},
+        headers=isolated_api.headers,
+    )
+
+    assert r.status_code == 422, r.text
+
+    stored = isolated_api.client.get("/api/vocab/review-events", headers=isolated_api.headers)
+    assert stored.status_code == 200, stored.text
+    assert stored.json() == {"entries": [], "cursor": None}
 
 
 def test_review_events_duplicate_patch_skips(isolated_api):

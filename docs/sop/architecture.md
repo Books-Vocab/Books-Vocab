@@ -31,7 +31,7 @@ Books & Vocab app 採用**後端權威、離線優先**的資料架構。已後�
 | Vocabulary card / graph links / notebook assignment | Backend card / graph / notebook stores | `VocabularyEntry` projection + outbox | 本地新增、刪除、hide/unhide 先 optimistic，再同步收斂 |
 | Review state | Backend card review fields | `VocabularyEntry` review fields projection | LWW 以 `last_reviewed_at` 判定 |
 | Dictionary lookup / cache / provider budget | Backend GET integration + `lexical_cache.db`（跨用戶全域） | 不投影；iOS 無字典 surface | 查詢不建立 Card 或 graph state；provider、授權、TTL、限流與每小時上游預算全歸 backend。跨用戶共用快取避免重複消耗上游額度；觀測入口 `ops_cli.py dictionary-health` |
-| Review event log | Backend `review_events` append-only log | `ReviewRecord` projection | client UUID 冪等；日曆與每日明細讀事件鏡像 |
+| Review event log | Backend `review_events` append-only log | `ReviewRecord` projection | client `event_id` 必須非空白；API 以 422 拒絕空白值後才進入 store，非空 legacy ID 維持冪等；日曆與每日明細讀事件鏡像 |
 | Notebook metadata | Backend `/api/notebooks/*` | `Notebook` projection + pending mutation | cover photo 本機 path 只是 device cache；遠端 cover 需另設 asset 權威 |
 | Podcast catalog | Backend podcast catalog / object storage | `PodcastSeries` / `PodcastEpisode` cache | 空 server list 不視為權威刪除，避免短暫 index 故障 mass tombstone |
 | Podcast progress | Backend `podcast_progress` LWW store | `PodcastProgress` projection | CloudKit 只能視為 legacy/過渡，不應再當跨裝置權威 |
@@ -48,7 +48,7 @@ Books & Vocab app 採用**後端權威、離線優先**的資料架構。已後�
 | Surface | 目前存放 | 後端整合狀態 | 缺口 |
 |---|---|---|---|
 | `VocabularyEntry` 詞卡、review state、graph links | iOS `LocalStore` projection；backend `cards.db` / per-notebook graph stores | **已後端權威化**，仍保留 iOS outbox/cache | `edit` 狀態仍需完整 contract；iOS 本機 projection 不可誤當 SoT |
-| `ReviewRecord` 複習事件 | iOS `LocalStore` projection；backend `review_events` append-only log | **已後端權威化** | 需持續保證 client UUID 冪等與刪卡後事件保留 |
+| `ReviewRecord` 複習事件 | iOS `LocalStore` projection；backend `review_events` append-only log | **已後端權威化** | 需持續保證非空白 client `event_id` 冪等與刪卡後事件保留 |
 | `Notebook` metadata | iOS `LocalStore` projection；backend `/api/notebooks/*` + `notebooks.db` | **大致後端權威化** | 自訂 cover photo 仍是本機 file path；遠端 cover asset 尚未成為權威 |
 | `PodcastSeries` / `PodcastEpisode` catalog | iOS `LocalStore` cache；backend `/api/podcasts*` + object storage metadata | **catalog 已後端權威化** | `PodcastSeries.isFollowed` 仍是本機欄位 |
 | `PodcastProgress` | iOS `CloudStore` CloudKit；backend `podcast_progress.db` LWW | **後端已有權威面，但 iOS 仍未退 CloudKit** | 需要補推/觀測/再 local-only 退場，不能一步刪 CloudKit |
@@ -73,7 +73,7 @@ Books & Vocab app 採用**後端權威、離線優先**的資料架構。已後�
 - 新增跨裝置 user-facing state 時，預設先設計後端權威 contract；只有明確 local-only 的 UI 暫態才可只放 `UserDefaults`。
 - CloudKit / iCloud KVS 不再作為新功能的跨裝置權威。既有使用處可分階段退場，退場前必須有後端 contract、資料 migration 與 rollback gate。
 - 書籍與音訊等大型資產走 object storage 或本機 cache；SQLite / SwiftData 只保存 metadata、進度與檔案索引。
-- 衝突解決必須寫成 contract：append-only event 用 client UUID 冪等，偏好設定與 progress 用 timestamp LWW，刪除/封存用 tombstone 或明確 bucket 收斂。
+- 衝突解決必須寫成 contract：append-only event 用非空白 client `event_id` 冪等，偏好設定與 progress 用 timestamp LWW，刪除/封存用 tombstone 或明確 bucket 收斂。
 
 ### User config contract（目標狀態）
 
@@ -255,7 +255,7 @@ Operational observability：
 App 實作了雙向同步流程，由 `BackgroundSyncActor`（`@ModelActor` 背景執行緒）驅動。同步的目標是讓本機 projection 收斂到後端權威狀態，並把離線期間產生的 pending intent 送上後端：
 
 1. **Push Review State** — 推送本地複習狀態（`review_count`、`next_review_date` 等），LWW 策略以 `last_reviewed_at` 判定
-2. **Push Review Events** — 推送完整複習事件（`event_id`、`card_id`、`word_snapshot`、`notebook_id`、`feedback`、`reviewed_at`、`created_at`），以 client UUID 冪等去重
+2. **Push Review Events** — 推送完整複習事件（`event_id`、`card_id`、`word_snapshot`、`notebook_id`、`feedback`、`reviewed_at`、`created_at`）；`event_id` 必須非空白，空白值在 API boundary 以 422 拒絕且不落盤，非空 legacy ID 維持 client UUID 冪等去重
 3. **Upload Deletes** — 找出 `actionType == "delete"` 項目，呼叫 API 刪除
 4. **Upload Adds** — 找出 `syncStatus == 0` 新詞，POST 到 KG
 5. **Fire-and-Forget Pipeline** — 呼叫 `/api/pipeline` 觸發背景 AI 處理（Enrich → Embed → Judge → Difficulty），每次執行寫入 `pipeline_log.db` 記錄 per-run/step timing + status + items
