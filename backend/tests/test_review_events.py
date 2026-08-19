@@ -36,6 +36,21 @@ def _event(
     )
 
 
+@pytest.fixture(autouse=True)
+def _close_review_event_stores(monkeypatch):
+    stores = []
+    original_init = ReviewEventStore.__init__
+
+    def _track_store(store, *args, **kwargs):
+        original_init(store, *args, **kwargs)
+        stores.append(store)
+
+    monkeypatch.setattr(ReviewEventStore, "__init__", _track_store)
+    yield
+    for store in stores:
+        store.close()
+
+
 def test_review_event_store_empty(tmp_path):
     store = ReviewEventStore(tmp_path / "review_events.db")
 
