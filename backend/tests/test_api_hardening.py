@@ -56,8 +56,8 @@ def client_env(tmp_path):
     _swap_settings(test_settings)
 
     try:
-        client = TestClient(app, raise_server_exceptions=False)
-        yield client, user_id, headers, tmp_path
+        with TestClient(app, raise_server_exceptions=False) as client:
+            yield client, user_id, headers, tmp_path
     finally:
         app.state.kg_settings = original_settings
         app.state.load_users = original_load
