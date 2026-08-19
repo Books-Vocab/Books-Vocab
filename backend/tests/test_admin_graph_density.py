@@ -17,11 +17,31 @@ def _make_cards_db(user_dir: Path, cards: list[dict]) -> None:
     """Create a cards.db with given card rows."""
     db_path = user_dir / "cards.db"
     engine = create_engine(f"sqlite:///{db_path.absolute()}")
-    SQLModel.metadata.create_all(engine)
-    with Session(engine) as session:
-        for c in cards:
-            session.add(Card(**c))
-        session.commit()
+    try:
+        SQLModel.metadata.create_all(engine)
+        with Session(engine) as session:
+            for c in cards:
+                session.add(Card(**c))
+            session.commit()
+    finally:
+        engine.dispose()
+
+
+def test_make_cards_db_disposes_engine(tmp_path: Path, monkeypatch) -> None:
+    """The database-building helper must release its SQLAlchemy engine."""
+    from sqlalchemy.engine import Engine
+
+    disposed: list[Engine] = []
+    original_dispose = Engine.dispose
+
+    def track_dispose(engine: Engine, *args, **kwargs):
+        disposed.append(engine)
+        return original_dispose(engine, *args, **kwargs)
+
+    monkeypatch.setattr(Engine, "dispose", track_dispose)
+    _make_cards_db(tmp_path, [])
+
+    assert disposed, "_make_cards_db must dispose the engine it creates"
 
 
 def _make_graph_json(user_dir: Path, notebook_id: str, links: list[dict]) -> None:
