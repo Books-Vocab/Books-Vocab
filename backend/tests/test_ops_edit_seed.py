@@ -1,6 +1,7 @@
 # ruff: noqa: F401, F403, F405, I001
 """test ops edit seed.py test ownership shard."""
 
+from argparse import Namespace
 
 
 from _ops_edit_support import *  # noqa: F403
@@ -12,6 +13,56 @@ class TestSeedReplace:
         p = tmp_path / "spec.json"
         p.write_text(json.dumps(spec))
         return _edit(str(tmp_path), "seed", uid, str(p), *extra)
+
+    @pytest.mark.parametrize("collection", ("notebooks", "cards", "links"))
+    def test_seed_rejects_non_object_collection_entries_before_planning_or_writes(
+        self, tmp_path, monkeypatch, collection
+    ):
+        from kg import ops_edit_seed_commands as seed_commands
+
+        uid = _mk_user(tmp_path)
+        baseline = {"cards": [{"content": "saved", "meaning": "m"}]}
+        seeded = self._seed(tmp_path, uid, baseline, "--commit", "--json")
+        assert seeded.returncode == 0, seeded.stderr
+
+        def snapshot():
+            return {
+                path.name: path.read_bytes()
+                for path in sorted(_user_dir(tmp_path, uid).iterdir())
+                if path.is_file()
+            }
+
+        before = snapshot()
+        malformed = {"notebooks": [], "cards": [], "links": []}
+        malformed[collection] = [None]
+        path = tmp_path / "malformed.json"
+        path.write_text(json.dumps(malformed))
+
+        planned = []
+
+        def unexpected_plan(*args, **kwargs):
+            planned.append((args, kwargs))
+            pytest.fail("malformed collection entry reached build_seed_plan")
+
+        monkeypatch.setattr(seed_commands, "data_dir", lambda: tmp_path)
+        monkeypatch.setattr(seed_commands, "build_seed_plan", unexpected_plan)
+        with pytest.raises(seed_commands.EditError, match=rf"{collection}\[0\].*JSON object"):
+            seed_commands.cmd_seed(Namespace(
+                uid=uid, commit=True, json=True, replace=True, spec=str(path)
+            ))
+        assert planned == []
+        assert snapshot() == before
+
+        result = self._seed(tmp_path, uid, malformed, "--replace", "--commit", "--json")
+        assert result.returncode == 1
+        payload = json.loads(result.stdout)
+        assert payload["mode"] == "error"
+        assert payload["action"] == "seed"
+        assert payload["committed"] is False
+        assert f"{collection}[0]" in payload["error"]
+        assert "JSON object" in payload["error"]
+        assert "AttributeError" not in result.stderr
+        assert snapshot() == before
 
     def test_replace_moves_card_between_notebooks_without_duplicating(self, tmp_path):
         uid = _mk_user(tmp_path)
