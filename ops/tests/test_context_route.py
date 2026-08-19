@@ -20,6 +20,12 @@ def test_manifest_is_valid_and_has_bounded_roles() -> None:
         "manager", "contributor", "reviewer", "docs-steward", "release-operator"
     }
     assert mod.canonical_role("Manager") == "manager"
+    assert mod.canonical_role("CM") == "manager"
+    assert mod.canonical_role("IM") == "manager"
+    assert mod.canonical_role("Worker") == "contributor"
+    assert mod.canonical_role("Issue Solver") == "contributor"
+    assert mod.canonical_role("CR") == "reviewer"
+    assert mod.canonical_role("DS") == "docs-steward"
 
 
 def test_route_is_github_native_and_does_not_grant_authority() -> None:
