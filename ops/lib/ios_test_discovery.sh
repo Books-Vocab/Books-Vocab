@@ -102,6 +102,27 @@ _discover_file() {
       }
       return 0
     }
+    # Return the owner of a top-level extension after removing declaration
+    # attributes/modifiers. Swift permits forms such as `@MainActor extension`
+    # and `private extension`; both still map member tests to the same suite.
+    function extension_owner(line,   rest, changed) {
+      rest = line
+      sub(/^[ \t]+/, "", rest)
+      do {
+        changed = 0
+        if (rest ~ /^@[A-Za-z_][A-Za-z0-9_]*([ \t]*\([^)]*\))?[ \t]+/) {
+          sub(/^@[A-Za-z_][A-Za-z0-9_]*([ \t]*\([^)]*\))?[ \t]+/, "", rest)
+          changed = 1
+        } else if (rest ~ /^(public|internal|private|fileprivate|package|open|nonisolated)[ \t]+/) {
+          sub(/^(public|internal|private|fileprivate|package|open|nonisolated)[ \t]+/, "", rest)
+          changed = 1
+        }
+      } while (changed)
+      if (rest !~ /^extension[ \t]+[A-Za-z0-9_]+/) return ""
+      sub(/^extension[ \t]+/, "", rest)
+      sub(/[^A-Za-z0-9_].*$/, "", rest)
+      return rest
+    }
     {
       line = $0
       # Top-level container declaration (column 0, optional modifiers / @Suite).
@@ -117,12 +138,12 @@ _discover_file() {
       # A split test type is commonly extended across several files.  The
       # extension member tests belong to the named XCTest/Swift Testing
       # container just like members declared in its original struct/class;
-      # otherwise -g and --file silently discover zero selectors.
-      if (line ~ /^extension[ \t]+[A-Za-z0-9_]+/) {
-        name = line
-        sub(/^extension[ \t]+/, "", name)
-        sub(/[^A-Za-z0-9_].*$/, "", name)
-        container = name
+      # otherwise -g and --file silently discover zero selectors. Declaration
+      # attributes/modifiers are allowed before `extension` and do not change
+      # the suite owner.
+      extension_name = extension_owner(line)
+      if (extension_name != "") {
+        container = extension_name
         pending_test = 0
         next
       }
