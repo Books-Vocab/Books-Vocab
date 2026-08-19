@@ -12,7 +12,7 @@ scope:
   - ios/BooksAndVocab/Services/BookMetadataRepairService.swift
   - ios/BooksAndVocab/Services/BookMetadataExtracting.swift
   - ios/BooksAndVocab/Services/CloudKitMirroringMonitor.swift
-verified_against: 18f37badc
+verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 -->
 # Bookshelf Feature Boundary
 

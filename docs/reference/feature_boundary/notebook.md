@@ -8,7 +8,7 @@ scope:
   - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookReconciler.swift
   - ios/BooksAndVocab/Views/Vocabulary/Scenes/NotebookEditSheet.swift
   - ios/BooksAndVocab/Views/Vocabulary/Components/Notebook*.swift
-verified_against: 18f37badc
+verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 -->
 # Notebook Feature Boundary
 

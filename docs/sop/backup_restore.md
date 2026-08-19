@@ -6,7 +6,7 @@ scope:
   - ops/kg_backup.sh
   - ops/launchd/com.kg.backup.plist
   - ops/cron/kg-backup.cron
-verified_against: b82fc08be
+verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 -->
 # Backup / Restore SOP
 

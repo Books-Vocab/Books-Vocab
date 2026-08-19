@@ -5,7 +5,7 @@ update_trigger: manual
 scope:
   - ios/BooksAndVocab/Views/Reader/
   - ios/BooksAndVocab/Models/ReaderSettings.swift
-verified_against: add266050
+verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 -->
 # Reader 對標 Apple Books — 進度與接續計畫
 

@@ -34,18 +34,21 @@ def _workflow_errors(document: dict) -> list[str]:
     # PyYAML's YAML 1.1 resolver parses the unquoted ``on`` key as True.
     triggers = document.get("on", document.get(True))
     if not isinstance(triggers, dict):
-        return ["on must define push and pull_request triggers"]
+        return ["on must define workflow_call and push triggers"]
+    if "workflow_call" not in triggers:
+        errors.append("workflow_call trigger is required for pr-gate reuse")
+    if "pull_request" in triggers:
+        errors.append("llm-eval must not define a direct pull_request trigger")
 
-    for event in ("push", "pull_request"):
-        config = triggers.get(event)
-        paths = config.get("paths") if isinstance(config, dict) else None
-        if not isinstance(paths, list):
-            errors.append(f"{event} trigger must define paths")
-            continue
+    config = triggers.get("push")
+    paths = config.get("paths") if isinstance(config, dict) else None
+    if not isinstance(paths, list):
+        errors.append("push trigger must define paths")
+    else:
         if _EVAL_PATH not in paths:
-            errors.append(f"{event} trigger misses {_EVAL_PATH}")
+            errors.append(f"push trigger misses {_EVAL_PATH}")
         if _WORKFLOW_PATH not in paths:
-            errors.append(f"{event} trigger misses {_WORKFLOW_PATH}")
+            errors.append(f"push trigger misses {_WORKFLOW_PATH}")
 
     jobs = document.get("jobs")
     job = jobs.get("llm-eval") if isinstance(jobs, dict) else None
@@ -97,7 +100,7 @@ def test_llm_eval_workflow_contract_is_green():
     [
         (
             lambda text: text.replace("      - 'lab/llm_eval/**'\n", "", 1),
-            "trigger misses lab/llm_eval/**",
+            "push trigger misses lab/llm_eval/**",
         ),
         (
             lambda text: text.replace("uv sync --frozen --extra dev", "uv sync --extra dev", 1),
@@ -126,12 +129,11 @@ def test_complete_minimal_workflow_is_accepted():
         f"""
         name: llm-eval
         on:
+          workflow_call:
           push:
-            paths: &eval_paths
+            paths:
               - 'lab/llm_eval/**'
               - '.github/workflows/llm-eval.yml'
-          pull_request:
-            paths: *eval_paths
         jobs:
           llm-eval:
             runs-on: ubuntu-latest

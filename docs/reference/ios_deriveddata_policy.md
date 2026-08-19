@@ -8,7 +8,7 @@ scope:
   - ops/lib/ios_ops_catalog.sh
   - ops/lib/ios_xctestrun_cache.sh
   - ops/ios_clean_derived_data.sh
-verified_against: cc50802b1
+verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 -->
 # iOS DerivedData 政策（多 worktree 環境）
 

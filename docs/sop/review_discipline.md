@@ -7,7 +7,7 @@ scope:
   - .claude/agents/
   - .claude/skills/
   - docs/sop/
-verified_against: 202119f69a4be584f6bacf80b11a12a7bb8579c5
+verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 -->
 # Pull Request Review SOP
 
