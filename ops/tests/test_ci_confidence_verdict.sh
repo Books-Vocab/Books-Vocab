@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# test_ci_confidence_verdict.sh — confidence accepts only the declared fan-out.
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+VERDICT="$ROOT/ops/ci_confidence_verdict.sh"
+
+failures=0
+pass() {
+  printf '✓ %s\n' "$1"
+}
+
+fail() {
+  printf '✗ %s\n' "$1" >&2
+  failures=$((failures + 1))
+}
+
+assert_accepts() {
+  local label="$1"
+  local plan="$2"
+  local needs="$3"
+  if "$VERDICT" --plan "$plan" --needs "$needs" >/dev/null; then
+    pass "$label"
+  else
+    fail "$label: valid confidence plan was rejected"
+  fi
+}
+
+assert_rejects() {
+  local label="$1"
+  local plan="$2"
+  local needs="$3"
+  if "$VERDICT" --plan "$plan" --needs "$needs" >/dev/null 2>&1; then
+    fail "$label: invalid confidence plan was accepted"
+  else
+    pass "$label"
+  fi
+}
+
+plan='{"backend":"false","ops":"true","ios":"false"}'
+needs="$(jq -cn '{
+  "changed-paths": {result: "success"},
+  "repo-gate": {result: "success"},
+  "backend-quality": {result: "skipped"},
+  "llm-eval": {result: "success"},
+  "design-system": {result: "success"},
+  "ui-quality-gate": {result: "success"},
+  "ops-suite": {result: "success"},
+  "ios-quality": {result: "skipped"}
+}')"
+
+assert_accepts 'selected suite succeeds and unselected suites are skipped' "$plan" "$needs"
+assert_rejects 'selected suite cannot be skipped' \
+  "$plan" \
+  "$(jq -c '."ops-suite".result = "skipped"' <<<"$needs")"
+assert_rejects 'unselected suite cannot silently consume CI' \
+  "$plan" \
+  "$(jq -c '."backend-quality".result = "success"' <<<"$needs")"
+assert_rejects 'unselected suite failure remains a confidence failure' \
+  "$plan" \
+  "$(jq -c '."backend-quality".result = "failure"' <<<"$needs")"
+assert_rejects 'failed path classification is never confidence green' \
+  "$plan" \
+  "$(jq -c '."changed-paths".result = "failure"' <<<"$needs")"
+assert_rejects 'incomplete selector output is never confidence green' \
+  '{"backend":"false","ops":"true"}' \
+  "$needs"
+
+if (( failures > 0 )); then
+  printf 'ci confidence verdict: %d failure(s)\n' "$failures" >&2
+  exit 1
+fi
+
+printf 'ci confidence verdict: PASS\n'

@@ -23,8 +23,13 @@ on:
       - 'ops/ios_*.sh'
       - 'ops/lib/ios_*.sh'
       - 'ops/lib/signal_traps.sh'
+      - 'ops/lib/project_python.sh'
+      - 'ops/lib/fixture_dataset_env.sh'
+      - 'ops/lib/userland_compat.sh'
+      - 'ops/lib/provenance.py'
       - 'ops/fixtures/ui_worlds/**'
       - 'ops/ui_world_manifest.py'
+      - 'ops/review_calendar_clock.py'
       - '.github/workflows/ios-quality.yml'
       - '.github/workflows/pr-gate.yml'
 

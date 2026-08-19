@@ -8,7 +8,7 @@ scope:
   - ops/
   - lab/
   - .github/
-verified_against: 8210e47aa53f8a2b03aafefadb7494098fa22cb1
+verified_against: 2a7930c04f661c266ce05b3568f375e1db2a39f1
 -->
 # Technical Index
 
@@ -25,7 +25,7 @@ verified_against: 8210e47aa53f8a2b03aafefadb7494098fa22cb1
 | Local coordinator | `ops/worktree_registry.py`、`ops/worktree_orchestrate.py` | `./ops/test_ops.sh worktree` |
 | Docs control | `docs/registry.yml`、`ops/docs_impact.py`、`ops/docs_lint.sh` | `./ops/test_ops.sh docs-lint` |
 | GitHub intake/review | `.github/ISSUE_TEMPLATE/`、`.github/PULL_REQUEST_TEMPLATE.md` | GitHub Issue／PR |
-| CI | `.github/workflows/pr-gate.yml`（3 分鐘 upstream + 1 分鐘聚合的 `required`，以及 nonblocking `confidence`）、`.github/workflows/backend-quality.yml`、`.github/workflows/ios-quality.yml`、`.github/workflows/` | GitHub Actions checks；`required` 是 branch protection merge gate，`confidence` 是完整結果；iOS hosted workflow 只快取 lockfile-pinned SwiftPM sources，不快取 DerivedData |
+| CI | `.github/workflows/pr-gate.yml`（3 分鐘 upstream + 1 分鐘聚合的 `required`，以及 diff-scoped nonblocking `confidence`）、`.github/workflows/backend-quality.yml`、`.github/workflows/ios-quality.yml`、`ops/ci_scope_router.sh`、`ops/ci_confidence_verdict.sh` | GitHub Actions checks；`required` 是 branch protection merge gate，`confidence` 對選中的受影響 surface 提供完整結果、未知路徑 fail-closed；iOS hosted workflow 只快取 lockfile-pinned SwiftPM sources，不快取 DerivedData |
 
 ## Backend routes and data
 

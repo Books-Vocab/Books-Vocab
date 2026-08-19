@@ -8,7 +8,7 @@ scope:
   - ops/worktree_orchestrate.py
   - ops/devops_kg_safe.sh
   - ops/release.sh
-verified_against: 8210e47aa53f8a2b03aafefadb7494098fa22cb1
+verified_against: 2a7930c04f661c266ce05b3568f375e1db2a39f1
 -->
 # KG Change Runbook
 
@@ -36,10 +36,10 @@ verified_against: 8210e47aa53f8a2b03aafefadb7494098fa22cb1
 
 1. Worker 與 Issue Solver 都把所有 code change 收進同一個 PR 流程：`branch → commit → PR`。
 2. PR 描述變更、測試命令與 exit status、風險、文件影響、rollback 方式，並標明 direct assignment 或關聯 Issue。
-3. 等 GitHub Actions workflow `pr-gate` 的 check run `required`、CR review、DS 文件判斷與必要的 environment approval 滿足後，由 CM 依優先順序 merge。`required` 的上游 job 各有 3 分鐘 hard stop，聚合本身 1 分鐘；backend／ops／iOS 的完整 `confidence` suite 同時平行收斂，不形成所有 PR 的全域串行門檻。
+3. 等 GitHub Actions workflow `pr-gate` 的 check run `required`、CR review、DS 文件判斷與必要的 environment approval 滿足後，由 CM 依優先順序 merge。`required` 的上游 job 各有 3 分鐘 hard stop，聚合本身 1 分鐘；backend／ops／iOS 的完整**受影響** `confidence` suite 依 fail-closed changed-path policy 同時平行收斂，不形成所有 PR 的全域串行門檻。
 4. merge 後 `main` 是產品真相；依 release 意圖執行版本發布。發布與 production deploy 不因一般 merge 自動發生。
 
-workflow `pr-gate` 的 check run `confidence` 失敗必須保留為真實偏離並追蹤 fix-forward／rollback；它不會被 `required` 覆蓋，也不能被重新描述成 PASS。合併速度與完整驗證是兩個不同的控制面。
+workflow `pr-gate` 的 check run `confidence` 失敗、非預期 skip、取消或缺失必須保留為真實偏離並追蹤 fix-forward／rollback；它不會被 `required` 覆蓋，也不能被重新描述成 PASS。只有 CM 已確認 exact `main` 對相同受影響 surface 啟動等價驗證時，才可取消已被取代的 PR run；完整結論仍等主線 terminal result。合併速度與完整驗證是兩個不同的控制面。
 
 ## Local worktree boundary
 

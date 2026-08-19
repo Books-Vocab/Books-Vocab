@@ -43,11 +43,16 @@ if grep -Eq '^[[:space:]]*types:.*ready_for_review' "$PR_GATE"; then
   fail "pr-gate reruns on ready_for_review without a source change"
 fi
 grep -q '^  required:' "$PR_GATE" || fail "pr-gate has no final required job"
+grep -q '^  changed-paths:' "$PR_GATE" || fail "pr-gate has no fail-closed confidence path classifier"
+grep -q 'ops/ci_scope_router.sh' "$PR_GATE" \
+  || fail "pr-gate does not invoke the confidence path classifier"
+grep -q 'ops/ci_confidence_verdict.sh' "$PR_GATE" \
+  || fail "pr-gate does not verify selected versus skipped confidence suites"
 grep -q 'needs: \[repo-gate, llm-eval, design-system, ui-quality-gate\]' "$PR_GATE" \
   || fail "pr-gate required job is not the short merge gate"
 grep -q '^  confidence:' "$PR_GATE" \
   || fail "pr-gate has no non-blocking full-confidence aggregator"
-grep -q 'needs: \[repo-gate, backend-quality, llm-eval, design-system, ui-quality-gate, ops-suite, ios-quality\]' "$PR_GATE" \
+grep -q 'needs: \[changed-paths, repo-gate, backend-quality, llm-eval, design-system, ui-quality-gate, ops-suite, ios-quality\]' "$PR_GATE" \
   || fail "pr-gate confidence job does not depend on every component gate"
 required_block="$(awk '
   /^  required:/ { in_required=1; next }
@@ -68,6 +73,12 @@ for workflow in "${component_workflows[@]}"; do
   grep -q "uses: ./.github/workflows/${workflow}.yml" "$PR_GATE" \
     || fail "pr-gate does not call ${workflow}"
 done
+grep -q "needs.changed-paths.outputs.backend == 'true'" "$PR_GATE" \
+  || fail "backend confidence is not path-selected"
+grep -q "needs.changed-paths.outputs.ops == 'true'" "$PR_GATE" \
+  || fail "ops confidence is not path-selected"
+grep -q "needs.changed-paths.outputs.ios == 'true'" "$PR_GATE" \
+  || fail "iOS confidence is not path-selected"
 
 # Every required-path component needs its own three-minute ceiling.  The final
 # `required` aggregator cannot make a dependency fast if that dependency is
@@ -130,6 +141,15 @@ grep -q "KG_IOS_SWIFTPM_CACHE_DIR=%s/kg-ios-swiftpm.*\\\$RUNNER_TEMP" "$IOS" \
 grep -q 'Package.resolved' "$IOS" || fail "iOS SwiftPM cache key is not lockfile-derived"
 grep -q "github.event_name == 'push' && github.ref == 'refs/heads/main'" "$IOS" \
   || fail "iOS SwiftPM cache can be written outside trusted main pushes"
+for ios_dependency in \
+  ops/lib/project_python.sh \
+  ops/lib/fixture_dataset_env.sh \
+  ops/lib/userland_compat.sh \
+  ops/lib/provenance.py \
+  ops/review_calendar_clock.py; do
+  grep -q "'$ios_dependency'" "$IOS" \
+    || fail "iOS push trigger omits dependency: $ios_dependency"
+done
 
 OPS=".github/workflows/ops-suite.yml"
 grep -q 'fromJSON' "$OPS" || fail "ops-suite does not derive its matrix from the classified group list"

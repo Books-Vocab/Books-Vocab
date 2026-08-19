@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# ci_confidence_verdict.sh — fail closed when confidence diverges from its plan.
+
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: ops/ci_confidence_verdict.sh --plan <json> --needs <json>
+
+The plan contains string booleans for backend, ops, and ios. The needs object
+is GitHub Actions' toJSON(needs) value. Selected suites must succeed; explicitly
+unselected suites must be skipped. Every other confidence dependency succeeds.
+EOF
+}
+
+plan=''
+needs=''
+
+while (($# > 0)); do
+  case "$1" in
+    --plan)
+      [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+      plan="$2"
+      shift 2
+      ;;
+    --needs)
+      [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+      needs="$2"
+      shift 2
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      printf 'unknown argument: %s\n' "$1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+[[ -n "$plan" && -n "$needs" ]] || { usage >&2; exit 2; }
+
+if ! jq -e '
+  . as $plan
+  | type == "object"
+    and all(["backend", "ops", "ios"][]; . as $key | ($plan[$key] == "true" or $plan[$key] == "false"))
+' <<<"$plan" >/dev/null; then
+  printf 'confidence plan must define backend, ops, and ios as string booleans\n' >&2
+  exit 2
+fi
+
+printf 'confidence plan: %s\n' "$plan"
+printf '%s\n' "$needs" | jq -r 'to_entries[] | "\(.key)=\(.value.result // "missing")"' | sort
+
+if ! jq -e --argjson plan "$plan" '
+  def result($name): .[$name].result // "missing";
+  result("changed-paths") == "success"
+  and result("repo-gate") == "success"
+  and result("llm-eval") == "success"
+  and result("design-system") == "success"
+  and result("ui-quality-gate") == "success"
+  and (
+    if $plan.backend == "true"
+    then result("backend-quality") == "success"
+    else result("backend-quality") == "skipped"
+    end
+  )
+  and (
+    if $plan.ops == "true"
+    then result("ops-suite") == "success"
+    else result("ops-suite") == "skipped"
+    end
+  )
+  and (
+    if $plan.ios == "true"
+    then result("ios-quality") == "success"
+    else result("ios-quality") == "skipped"
+    end
+  )
+' <<<"$needs" >/dev/null; then
+  printf 'confidence result does not match its declared fan-out\n' >&2
+  exit 1
+fi
+
+printf 'confidence verdict: PASS\n'

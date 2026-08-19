@@ -170,7 +170,11 @@ run_one() {
         ops/tests/test_ci_expected_fail_exclusions.py \
         ops/tests/test_ops_group_chain.py
       ;;
-    github-workflows)    ./ops/tests/test_github_workflows.sh ;;
+    github-workflows)
+      ./ops/tests/test_github_workflows.sh &&
+      ./ops/tests/test_ci_scope_router.sh &&
+      ./ops/tests/test_ci_confidence_verdict.sh
+      ;;
     ui-quality-plane)   ./ops/tests/test_ui_quality_plane.sh ;;
     ui-quality-gate)    ./ops/tests/test_ui_quality_gate.sh ;;
     review-card-golden) ./ops/tests/test_review_card_layout_golden.sh ;;
