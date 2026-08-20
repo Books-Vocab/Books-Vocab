@@ -13,11 +13,14 @@ from kg.tracked_llm import TrackedLLM
 @pytest.fixture(autouse=True)
 def _reset_client_cache():
     from kg import service_factories as sf
-    sf._clients.clear()
-    sf._async_clients.clear()
+    _close_client_caches(sf)
     yield
-    sf._clients.clear()
-    sf._async_clients.clear()
+    _close_client_caches(sf)
+
+
+def _close_client_caches(sf):
+    sf.reset_clients()
+    asyncio.run(sf.reset_async_clients())
 
 
 @pytest.fixture(autouse=True)
@@ -65,6 +68,20 @@ def test_create_async_client_uses_provider_base_url(monkeypatch):
     c = create_async_client(REGISTRY["deepseek"])
     assert str(c.base_url).rstrip("/") == "https://api.deepseek.com"
     assert create_async_client(REGISTRY["deepseek"]) is c
+
+
+def test_client_cache_cleanup_closes_transports(monkeypatch):
+    from kg import service_factories as sf
+    from kg.service_factories import create_async_client, create_client
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "fake-ds-key")
+    sync_client = create_client(REGISTRY["deepseek"])
+    async_client = create_async_client(REGISTRY["deepseek"])
+
+    _close_client_caches(sf)
+
+    assert sync_client._client.is_closed is True
+    assert async_client._client.is_closed is True
 
 
 # ── TrackedLLM provider-aware injection ──────────────────────────────────
