@@ -220,9 +220,8 @@ struct WordDetailSheet: View {
         } else {
             modelContext.delete(entry)
         }
-        if modelContext.safeSaveWithToast(toastCoordinator) {
-            toastCoordinator.success(WordDetailCopy.deleted)
-        }
+        guard modelContext.safeSaveWithToast(toastCoordinator) else { return }
+        toastCoordinator.success(WordDetailCopy.deleted)
         handleClose()
     }
 

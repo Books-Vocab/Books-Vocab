@@ -272,6 +272,7 @@ struct WordDetailPresenter: View {
                 tone: appSkin.palette.destructive,
                 action: onDelete,
                 isEnabled: onDelete != nil,
+                role: .destructive,
                 accessibilityIdentifier: "wordDetail.action.delete"
             )
 
@@ -299,9 +300,10 @@ struct WordDetailPresenter: View {
         tone: Color,
         action: (() -> Void)?,
         isEnabled: Bool,
+        role: ButtonRole? = nil,
         accessibilityIdentifier: String
     ) -> some View {
-        Button(action: { action?() }) {
+        Button(role: role, action: { action?() }) {
             HStack(spacing: appSkin.metrics.cardBlockInnerGap) {
                 Image(systemName: systemImage)
                     .font(appSkin.typography.body)

@@ -174,11 +174,15 @@ final class WordDetailSceneState {
                 // The response is a full card, but an independent preference
                 // request must not overwrite the other field while that field
                 // has its own in-flight optimistic mutation.
-                if changes[.readerHidden] != nil {
-                    entry.isReaderHidden = card.isReaderHidden ?? entry.isReaderHidden
+                if let change = changes[.readerHidden],
+                   entry.isReaderHidden == change.requested,
+                   let responseValue = card.isReaderHidden {
+                    entry.isReaderHidden = responseValue
                 }
-                if changes[.reviewExcluded] != nil {
-                    entry.isReviewExcluded = card.isReviewExcluded ?? entry.isReviewExcluded
+                if let change = changes[.reviewExcluded],
+                   entry.isReviewExcluded == change.requested,
+                   let responseValue = card.isReviewExcluded {
+                    entry.isReviewExcluded = responseValue
                 }
                 modelContext.safeSave()
             }

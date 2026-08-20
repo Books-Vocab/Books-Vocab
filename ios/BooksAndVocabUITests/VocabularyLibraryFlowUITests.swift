@@ -330,7 +330,10 @@ final class VocabularyLibraryFlowUITests: UITestCase {
         for control in [archive, delete, readerHidden, reviewExcluded] {
             XCTAssertTrue(control.waitUntilExists(timeout: 10), "Word Detail 四項控制必須存在")
             XCTAssertTrue(control.isHittable, "Word Detail 控制必須可見且可操作")
+            XCTAssertTrue(control.isEnabled, "synced card 的 Word Detail 控制必須可操作")
         }
+        XCTAssertFalse((readerHidden.value as? String ?? "").isEmpty)
+        XCTAssertFalse((reviewExcluded.value as? String ?? "").isEmpty)
 
         XCTAssertLessThan(archive.frame.minY, delete.frame.minY)
         XCTAssertLessThan(delete.frame.minY, readerHidden.frame.minY)

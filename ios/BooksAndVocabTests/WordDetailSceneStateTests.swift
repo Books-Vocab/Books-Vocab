@@ -332,6 +332,29 @@ struct WordDetailSceneStateTests {
         #expect(entry.isReviewExcluded, "an independent preference must not be overwritten by a stale full-card response")
     }
 
+    @Test func setCardPreferences_doesNotProjectStaleSameFieldResponseAfterPull() async throws {
+        let context = try makeContext()
+        let entry = makeEntry(cardId: "root-card", word: "abate")
+        entry.markSynced()
+        context.insert(entry)
+
+        let spy = PreferenceSpy()
+        spy.responseReaderHidden = true
+        // Simulate a pull installing a newer value while the request is in flight.
+        spy.beforeResponse = { entry.isReaderHidden = false }
+        let state = WordDetailSceneState()
+
+        await state.setCardPreferences(
+            readerHidden: true,
+            reviewExcluded: nil,
+            for: entry,
+            kgService: spy,
+            modelContext: context
+        )
+
+        #expect(entry.isReaderHidden == false, "a newer pull value must not be overwritten by the stale response")
+    }
+
     // MARK: - Helpers
 
     private enum TestFailure: Error {
@@ -376,6 +399,7 @@ private final class PreferenceSpy: CardPreferenceUpdating {
     private(set) var calls: [Call] = []
     var error: Error?
     var beforeFailure: (() -> Void)?
+    var beforeResponse: (() -> Void)?
     var responseReaderHidden: Bool?
     var responseReviewExcluded: Bool?
 
@@ -393,6 +417,7 @@ private final class PreferenceSpy: CardPreferenceUpdating {
         ))
         if let beforeFailure { beforeFailure() }
         if let error { throw error }
+        beforeResponse?()
 
         let json = """
         {"id":"card-1","content":"\(word)","meaning":"meaning","mode":"recognition",
