@@ -159,6 +159,19 @@ documents:
       - ops/sentry_*.py
       - ops/lib/ios_ops_release.sh
 
+  - id: reference.external_api
+    path: docs/reference/external_api.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - code-change
+    sources:
+      - backend/src/kg/app_middleware.py
+      - backend/src/kg/routers/external_api.py
+      - backend/src/kg/external_api_keys.py
+      - backend/src/kg/external_api_rate_limit.py
+      - backend/src/kg/api_models/external_api.py
+
   - id: reference.catalog_scope
     path: docs/reference/catalog_scope.md
     kind: reference
