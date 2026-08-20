@@ -24,10 +24,36 @@ from .ops_edit_support import (
     _mutate_users,
     _notebook_store,
     _passthrough_normalize,
-    _resolve_notebook_id,
     _restore_user_record_snapshot,
     list_user_backups,
 )
+
+
+def _resolve_notebook_id_for_command(user_dir: Path, ref: str) -> str:
+    """Resolve a notebook reference while owning the store lifecycle.
+
+    ``_resolve_notebook_id`` predates the command entry points and leaves its
+    temporary ``NotebookStore`` open.  These commands are short-lived CLI
+    operations, so the command layer must close the store on both the success
+    and error paths instead of relying on process teardown.
+    """
+    if ref == "default":
+        return "default"
+
+    store = _notebook_store(user_dir)
+    try:
+        # ID matching takes precedence over name matching, matching the shared
+        # resolver's semantics and avoiding a name/ID collision ambiguity.
+        if store.exists(ref):
+            return ref
+        for notebook in store.all():
+            if notebook.name == ref:
+                return notebook.id
+        raise EditError(
+            f"notebook not found: {ref!r}(既非既存 id 也非既存 name;先 notebook-create)"
+        )
+    finally:
+        store.close()
 
 
 def cmd_user_create(args: argparse.Namespace) -> int:
@@ -84,7 +110,11 @@ def cmd_user_create(args: argparse.Namespace) -> int:
         record = _mutate_users(dd, mutate)
         user_dir_for(dd, uid).mkdir(parents=True, exist_ok=True)
         # 建好預設筆記本,讓帳號一登入就有 default notebook。
-        _notebook_store(user_dir_for(dd, uid)).ensure_default()
+        notebook_store = _notebook_store(user_dir_for(dd, uid))
+        try:
+            notebook_store.ensure_default()
+        finally:
+            notebook_store.close()
         return {"record": record}
 
     def verify_fn() -> dict[str, Any]:
@@ -215,7 +245,7 @@ def cmd_user_config_set(args: argparse.Namespace) -> int:
 
     resolved_nb_id = None
     if args.active_notebook is not None:
-        resolved_nb_id = _resolve_notebook_id(ctx.user_dir, args.active_notebook)
+        resolved_nb_id = _resolve_notebook_id_for_command(ctx.user_dir, args.active_notebook)
         updates["vocab_ui"] = {"active_notebook_id": resolved_nb_id}
 
     if args.auto_link is not None:
@@ -386,24 +416,32 @@ def cmd_link_list(args: argparse.Namespace) -> int:
     user_dir = user_dir_for(dd, args.uid)
     if not user_dir.exists():
         raise EditError(f"user not found: {args.uid}")
-    nb_id = _resolve_notebook_id(user_dir, args.notebook)
+    nb_id = _resolve_notebook_id_for_command(user_dir, args.notebook)
     cards = _card_store(user_dir)
-    graph = _graph_store(user_dir, nb_id)
-    links = []
-    for lk in graph.all_links():
-        if lk.status != "active":
-            continue
-        fc = cards.get(lk.from_id)
-        tc = cards.get(lk.to_id)
-        links.append({
-            "id": lk.id,
-            "from": fc.content if fc else lk.from_id,
-            "to": tc.content if tc else lk.to_id,
-            "kind": str(lk.kind), "confidence": lk.confidence, "reason": lk.reason,
-        })
-    emit({"action": "link-list", "uid": args.uid, "notebook_id": nb_id,
-          "count": len(links), "links": links}, json_mode=args.json)
-    return 0
+    graph = None
+    try:
+        graph = _graph_store(user_dir, nb_id)
+        links = []
+        for lk in graph.all_links():
+            if lk.status != "active":
+                continue
+            fc = cards.get(lk.from_id)
+            tc = cards.get(lk.to_id)
+            links.append({
+                "id": lk.id,
+                "from": fc.content if fc else lk.from_id,
+                "to": tc.content if tc else lk.to_id,
+                "kind": str(lk.kind), "confidence": lk.confidence, "reason": lk.reason,
+            })
+        emit({"action": "link-list", "uid": args.uid, "notebook_id": nb_id,
+              "count": len(links), "links": links}, json_mode=args.json)
+        return 0
+    finally:
+        if graph is not None:
+            close_graph = getattr(graph, "close", None)
+            if callable(close_graph):
+                close_graph()
+        cards.close()
 
 
 def cmd_restore(args: argparse.Namespace) -> int:
