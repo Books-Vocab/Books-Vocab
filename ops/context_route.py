@@ -134,8 +134,24 @@ def _validate_identity(
         "label", "aliases", "machine_role", "allowed_intents", "entry_modes", "route_classes",
         "owns", "not_owns", "assignment_requirements", "skill_routes", "specialist_routes",
     }
-    if set(definition) != required:
-        raise ContextRouteError(f"identities.{identity_id} 欄位必須剛好是 {sorted(required)}")
+    contract_fields = {"allowed_surfaces", "forbidden_surfaces", "handoff_contract"}
+    present_contract_fields = set(definition) & contract_fields
+    unknown_fields = set(definition) - required - contract_fields
+    if unknown_fields or present_contract_fields not in (set(), contract_fields):
+        expected = sorted(required | contract_fields)
+        raise ContextRouteError(f"identities.{identity_id} 欄位必須是 {sorted(required)} 或完整責任契約欄位 {expected}")
+    if present_contract_fields == contract_fields:
+        allowed_surfaces = _require_nonempty_strings(
+            definition["allowed_surfaces"], f"identities.{identity_id}.allowed_surfaces"
+        )
+        forbidden_surfaces = _require_nonempty_strings(
+            definition["forbidden_surfaces"], f"identities.{identity_id}.forbidden_surfaces"
+        )
+        overlap = sorted(set(allowed_surfaces) & set(forbidden_surfaces))
+        if overlap:
+            raise ContextRouteError(f"identities.{identity_id}.allowed_surfaces/forbidden_surfaces 重疊: {overlap}")
+    if "handoff_contract" in definition and not isinstance(definition["handoff_contract"], dict):
+        raise ContextRouteError(f"identities.{identity_id}.handoff_contract 必須是 object")
     if not isinstance(definition["label"], str) or not definition["label"].strip():
         raise ContextRouteError(f"identities.{identity_id}.label 必須是非空字串")
     _require_nonempty_strings(definition["aliases"], f"identities.{identity_id}.aliases")

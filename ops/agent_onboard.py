@@ -39,12 +39,16 @@ def _root(root: Path | None) -> Path:
 
 
 def _identity_payload(definition: dict[str, Any], identity_id: str) -> dict[str, Any]:
-    return {
+    payload = {
         "id": identity_id,
         "label": definition["label"],
         "owns": definition["owns"],
         "not_owns": definition["not_owns"],
     }
+    for key in ("allowed_surfaces", "forbidden_surfaces", "handoff_contract"):
+        if key in definition:
+            payload[key] = definition[key]
+    return payload
 
 
 def build_onboarding(

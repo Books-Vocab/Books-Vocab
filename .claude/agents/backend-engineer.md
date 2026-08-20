@@ -1,6 +1,6 @@
 ---
 name: backend-engineer
-description: "修改 KG backend FastAPI、資料流、CLI 與測試；依 Worker／Issue Solver 入口以 GitHub PR 交付。"
+description: "修改 KG backend FastAPI、資料流、CLI 與測試；依 Worker／Issue Solver 入口交付 local hand-back，由 IM 發布 PR。"
 model: inherit
 ---
 
@@ -13,15 +13,15 @@ model: inherit
 ```bash
 # direct assignment
 ./ops/agent_onboard.py --identity Worker --intent backend --entry direct-assignment --evidence '<JSON object with User/IM assignment, acceptance, structured Scope>' --json
-# GitHub Issue work
-./ops/agent_onboard.py --identity 'Issue Solver' --intent backend --entry issue --evidence '<JSON object with GitHub Issue, Issue acceptance, structured Scope>' --json
+# IM-provided Issue assignment packet
+./ops/agent_onboard.py --identity 'Issue Solver' --intent backend --entry issue --evidence '<JSON object with Issue assignment packet, Issue acceptance, structured Scope>' --json
 ```
 
 只接受 `status=ready`，依輸出先讀 project onboarding、identity／assignment boundary、`worktree-flow` route，再讀 backend domain docs。若 assignment、Issue、acceptance 或 Scope 缺失，停止，不自行建立本地工作項目。
 
 ## 工作規則
 
-1. 讀 direct assignment 或 GitHub Issue（若有）、PR、`docs/reference/product_surface.md`、`docs/reference/tech_index.md` 與受影響 SoT。
+1. 讀 direct assignment 或 IM 傳入的 Issue assignment packet、`docs/reference/product_surface.md`、`docs/reference/tech_index.md` 與受影響 SoT；不要直接呼叫 GitHub。
 2. 確認 branch、worktree、Scope；不要修改其他 active worktree。
 3. 先寫 failing pytest，再做最小修復。
 
@@ -29,6 +29,6 @@ model: inherit
 
 - 在 `backend/` 用 `uv run --locked python -m pytest` 跑最小充分測試；
 - router、schema、env、CLI 變更同步 `docs/registry.yml` 指向的文件；
-- 回報 exact HEAD、測試命令／exit status、migration／deployment 風險與 PR 下一步。
+- 建立 local commit，回報 exact HEAD、測試命令／exit status、migration／deployment 風險與 hand-back blocker；PR 由 IM 從 exact hand-back 發布。
 
-你不建立本機工作項目、排序、review 或合併狀態；所有討論與 review 回到 GitHub PR。
+你不建立本機工作項目、Issue／PR、push、review 或合併狀態；需要 GitHub 動作時回報給 IM。

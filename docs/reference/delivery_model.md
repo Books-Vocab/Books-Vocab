@@ -71,14 +71,26 @@ Onboarding 的成功只代表上下文 contract 完整，不代表 GitHub、merg
 
 | 角色 | 責任 | 不負責 |
 |---|---|---|
-| **CM — Codebase Manager** | 管理 `main` 與 codebase 狀態；依優先順序協調、審核並合併合格 PR；確認 Actions、CR、DS、文件與安全檢查；管理版本、release、deploy 與必要 rollback | 親自實作每個工作；維護本地 backlog |
-| **IM — Issues Manager** | 了解 codebase 現況；管理 GitHub Issues；判斷哪些問題值得進 Issue 流程；安排優先順序與派工；可直接指派 Worker 或交給 Issue Solver | 合併 code；維護本地 Issue／Project 狀態 |
-| **Worker** | 接受 User／IM 的直接指派；在 branch/worktree 修改程式碼與測試；提交 PR | 不必建立、認領或關閉 Issue；不直接寫 `main` |
-| **Issue Solver** | 執行已進入 GitHub Issues 的工作；從 Issue 取得目標與 acceptance，在 branch/worktree 修改程式碼與測試，提交 PR | 不在本機複製 Issue lifecycle；不直接合併 code |
+| **CM — Codebase Manager** | 協調整體交付；驗證 exact Ready tuple；控制 merge queue／merge；每次 landing 後讓本地 `main` 與 `origin/main` 精確同步 | 修改產品 code、修改 Worker／Issue Solver worktree、修 PR body／registry、代替 IM 發 PR |
+| **IM — Issues Manager** | 管理 GitHub Issue／Project；排序與派工；控制本地 worktree lifecycle；接收 Worker／Issue Solver 的 local hand-back；push 已提交的 exact branch、建立／更新 PR、維護 PR metadata／readiness；收到 CM terminal receipt 後清理三項 Git 資產 | 修改產品 code、替 Worker commit／解 code conflict、merge／enqueue、代替 CM 決定 merge |
+| **Worker** | 接受 User／IM 的直接指派；只在指定 local branch/worktree 修改 code／test、驗證、建立 local commit，交回乾淨 exact HEAD | 不使用 GitHub／`gh`；不建立或修改 Issue／PR、不 push、不 review、不 merge／enqueue、不碰其他 worktree |
+| **Issue Solver** | 接受 IM 傳入的 Issue assignment packet；只在指定 local branch/worktree 修改 code／test、驗證、建立 local commit，交回乾淨 exact HEAD | 不使用 GitHub／`gh`；不 claim／修改 Issue、不建立或修改 PR、不 push、不 review、不 merge／enqueue |
 | **CR — Code Reviewer** | 對所有 PR 做獨立的正確性、測試、回歸、架構與安全審查；把結論留在 PR | 管理 Issue；擁有 merge 權限；建立本地 review cycle |
 | **DS — Docs Steward** | 對所有 PR 判斷文件 impact；維護 registry、metadata、SoT domain SOP／reference，執行 docs lint | 建立本地工作項目資料庫；複製 PR lifecycle |
 
 Release operator 是 CM 所管理的執行能力，不是另一套產品管理層：它只能依 release SOP 與明確批准執行發布、部署或 rollback。
+
+### 嚴格責任邊界
+
+本模型明確分離「本地實作面」與「GitHub 控制面」：
+
+- Worker／Issue Solver 的輸入是 assignment packet，不是 GitHub session。IM 將 Issue URL／acceptance／structured Scope／base SHA 傳入；實作者不需要也不得直接呼叫 GitHub API。
+- Worker／Issue Solver 可以在本地建立 commit；這是 code hand-back 的一部分，不是 GitHub 交付。hand-back 必須是乾淨 worktree、local branch、exact HEAD、Scope 與驗證證據。
+- IM 只處理 Issue、Project、worktree ledger 與 Git transport／PR metadata。它可以 push Worker 已存在的 commit、開／更新 PR、觸發 checks，但不能改檔案、staging、commit 內容或解 code conflict。
+- CM 只處理交付協調、Ready admission、merge queue／merge 與 main synchronization。任何 code 或 PR metadata 修正都退回 IM／原 Worker，不由 CM 代修。
+- CR／DS 各自把 review／docs impact 結論留在 PR；兩者都不修改 caller worktree。
+
+「Ready」分兩層：IM 只能交付一個已存在、非 draft、證據完整的 Ready candidate；CM 必須用當下 live `origin/main`、exact physical HEAD／Scope、required／readiness、typed seal、CR／DS 再驗證後，才可入 queue／merge。
 
 `ops/context_plane.json` 與 `ops/context_route.py` 內部保留執行層 mapping 以維持既有入口相容；這些 key 不屬於 canonical identity、權限或工作狀態，不應出現在 agent-facing onboarding、assignment 或交接語義中。
 
@@ -93,9 +105,11 @@ User / IM
     ↓ direct assignment
 Worker
     ↓
-branch + worktree → code + tests → PR
+branch + worktree → code + tests → local commit + hand-back
     ↓
-Actions + CR + DS → CM merge → main → release/deploy（若需要）
+IM push exact commit → Draft/non-draft PR
+    ↓
+Actions + CR + DS → CM Ready admission → merge queue/merge → main → release/deploy（若需要）
 ```
 
 PR 仍必須寫清楚指派內容、修改範圍、驗收方式、測試證據、文件影響與 production／rollback 風險。
@@ -111,16 +125,18 @@ GitHub Issue → Project priority / triage
     ↓
 Issue Solver claim
     ↓
-branch + worktree → code + tests → PR
+IM 建立 dedicated worktree → code + tests → local commit + hand-back
     ↓
-Actions + CR + DS → CM merge → main → release/deploy（若需要）
+IM push exact commit → Draft/non-draft PR
+    ↓
+Actions + CR + DS → CM Ready admission → merge queue/merge → main → release/deploy（若需要）
 ```
 
 Issue 的 acceptance 是需求真相；PR 的 diff、conversation、checks、review 與驗證證據是實作真相。Issue 關聯可由 PR 自動 close，但不把 Issue 狀態再寫入 repo。
 
 ## PR 收斂規則
 
-Worker 與 Issue Solver 的實作能力、測試要求與 PR 標準相同，差別只有工作的進入方式。每個 PR 應讓人能回答：
+Worker 與 Issue Solver 的實作能力、測試要求與 local hand-back 標準相同，差別只有工作的進入方式。PR 由 IM 從 exact hand-back 建立；每個 PR 應讓人能回答：
 
 - 這是 direct assignment 還是 Issue work；若有 Issue，關聯哪一張。
 - 改了什麼、為什麼改、範圍與非目標是什麼。
@@ -129,6 +145,13 @@ Worker 與 Issue Solver 的實作能力、測試要求與 PR 標準相同，差�
 - CR 與 DS 是否完成各自檢查；未完成時不得宣稱 ready。
 
 CM 只在 PR 的 required checks、review、文件影響與安全條件滿足後合併。PR merge 後才進入 release／deploy SOP；任何外部帳號批准、production 寫入或 rollback 仍是獨立的明確動作。
+
+### Hand-back、PR 與 cleanup invariant
+
+- local hand-back 不是完成；IM 必須把它轉成真實 PR，否則該工作只能標記為 `hand-back pending PR`，不可算 Ready 或完成。
+- 沒有正在修改 code 的工作，不保留本地 worktree。PR 等待 CI／review 時可保留 remote branch／PR；需要修改時由 IM 重新開 dedicated worktree。
+- CM merge 或明確 terminal abandonment 後，IM 必須同步清理：local worktree、local branch、remote branch。三者任何一項仍存在都算 cleanup incomplete。
+- 每次 merge／queue landing 後，CM 必須 `fetch` 並以安全的 fast-forward 路徑使 local `main` 與 `origin/main` 相同；若 local main dirty、diverged 或 drift，停止後續 admission，不得 force reset 掩蓋問題。
 
 ### Required merge gate 與 confidence fan-out
 
@@ -143,11 +166,11 @@ CM 只在 PR 的 required checks、review、文件影響與安全條件滿足後
 
 ## 本機 coordinator 的窄責任
 
-本機 coordinator 是多 worktree 的執行環境安全工具，不是產品管理系統：
+本機 coordinator 是多 worktree 的執行環境安全工具，不是產品管理系統。IM 使用它控制 worktree lifecycle；Worker／Issue Solver 只在已指定的 path 內實作：
 
 - 保留 worktree owner、branch/path、structured Scope、檔案 overlap、thread identity。
 - 保留本地測試、exact HEAD、log／artifact 與 typed hand-back evidence。
-- 幫助建立、接管、驗證、交回或安全清理工作樹。
+- 幫助 IM 建立、接管、驗證、交回或安全清理工作樹。
 
 它不負責：
 
@@ -157,7 +180,7 @@ CM 只在 PR 的 required checks、review、文件影響與安全條件滿足後
 - 把 worktree 或 agent 當成產品工作項目。
 - 取代 GitHub Actions、CM merge、release、deploy、production approval 或 rollback。
 
-Scope 只回答「本機哪個工作樹可改哪些檔案」；Issue acceptance、PR review 與 production approval 各自留在 GitHub 或 domain SOP。local hand-back 是執行證據，不是第二個交付狀態機。
+Scope 只回答「本機哪個工作樹可改哪些檔案」；Issue acceptance、PR review 與 production approval 各自留在 GitHub 或 domain SOP。local hand-back 是交給 IM 的執行證據，不是第二個交付狀態機，也不等於 PR 已建立。
 
 有效的 typed hand-back 只會釋放它所 seal 的那一個 idle claim 的本機 admission claim：branch/path 必須仍指向乾淨且與 sealed HEAD 相同的 worktree。重新 register、adopt 或 reuse active branch/path 會開始新的 claim，並使先前 receipt 的 admission release 失效；舊 receipt/seal 仍保留作 audit evidence。新的 claim 只有在 fresh hand-back 後才能再次釋放本機 admission，且這不改變 GitHub Issue、PR 或 merge 的狀態。
 

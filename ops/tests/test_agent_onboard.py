@@ -21,7 +21,7 @@ EVIDENCE = {
         "structured Scope": "ops/agent_onboard.py and route tests",
     },
     "issue": {
-        "GitHub Issue": "#123",
+        "Issue assignment packet": "#boundary-contract",
         "Issue acceptance": "route and tests are green",
         "structured Scope": "ops/agent_onboard.py and route tests",
     },
@@ -82,7 +82,7 @@ def test_issue_solver_requires_issue_entry_and_domain_sources():
     assert payload["task"]["intent"] == "backend"
     assert payload["task"]["skill_intent"] == "delivery-worktree"
     assert payload["assignment"]["required_external"] == [
-        "GitHub Issue", "Issue acceptance", "structured Scope"
+        "Issue assignment packet", "Issue acceptance", "structured Scope"
     ]
     assert "docs/sop/backend.md" in payload["domain_sources"]
 

@@ -17,7 +17,7 @@ description: "CM／IM 的 GitHub-native 協調 workflow：管理 Issue、Project
 
 ## Boundary
 
-- IM 負責 Issue 收件、排序、拆解、acceptance 與派工；可把工作直接交給 Worker，也可交給 Issue Solver。
-- CM 負責 codebase、PR 優先順序、required checks、CR／DS 結果與 merge 決定；release／deploy 仍經獨立 SOP。
+- IM 負責 Issue 收件、排序、拆解、acceptance、派工與 local worktree lifecycle；接收 Worker／Issue Solver 的 exact local hand-back，push commit、建立／更新 PR 並交付 Ready candidate。IM 不修改 code。
+- CM 負責 live main、PR 優先順序、Ready admission、required checks、CR／DS 結果、merge queue／merge，以及 landing 後 local `main == origin/main`。CM 不修改 code、caller worktree、PR body 或 registry。
 - GitHub 外部狀態是唯一真相；本地 coordinator 只管理 worktree ownership／Scope，不保存 Issue／Project／PR lifecycle。
 - route 不是 merge 或 production 授權；缺少 PR、fresh checks、review 或批准時 fail closed。

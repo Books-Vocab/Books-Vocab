@@ -47,6 +47,13 @@ def test_manifest_has_project_onboarding_and_canonical_identity_boundaries() -> 
     }
     assert manifest["roles"]["manager"]["identity_ids"] == ["cm", "im"]
     assert manifest["roles"]["contributor"]["identity_ids"] == ["worker", "issue-solver"]
+    for identity in ("cm", "im", "worker", "issue-solver"):
+        definition = manifest["identities"][identity]
+        assert definition["allowed_surfaces"]
+        assert definition["forbidden_surfaces"]
+        assert not set(definition["allowed_surfaces"]) & set(definition["forbidden_surfaces"])
+        assert definition["handoff_contract"]["input"]
+        assert definition["handoff_contract"]["output"]
 
 
 def test_route_is_github_native_and_does_not_grant_authority() -> None:
