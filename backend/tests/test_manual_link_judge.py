@@ -9,6 +9,15 @@ from kg.judge import ManualLinkJudge
 from kg.tracked_llm import TrackedLLM
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _llm_error_log_is_closed_after_module():
+    yield
+    from kg import llm_error_log
+
+    llm_error_log.reset()
+    assert llm_error_log._conn is None, "llm_error_log connection leaked past test module"
+
+
 def _make_client(response_json: str):
     client = MagicMock()
     choice = MagicMock()
