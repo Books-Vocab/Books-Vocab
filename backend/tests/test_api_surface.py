@@ -69,15 +69,19 @@ def isolated_api(tmp_path):
     try:
         api_mod._USER_LOCKS.clear()
         deps_mod._USER_LOCKS_MUTEX = None
-        client = TestClient(app, raise_server_exceptions=False)
-        yield SimpleNamespace(
-            client=client,
-            user_id=user_id,
-            headers=headers,
-            data_dir=data_dir,
-            users_file=users_file,
-        )
+        with TestClient(app, raise_server_exceptions=False) as client:
+            yield SimpleNamespace(
+                client=client,
+                user_id=user_id,
+                headers=headers,
+                data_dir=data_dir,
+                users_file=users_file,
+            )
     finally:
+        from kg import admin_audit, pipeline_log
+
+        admin_audit.reset()
+        pipeline_log.reset()
         app.state.kg_settings = original_settings
         app.state.load_users = original_load
         app.state.save_users = original_save
