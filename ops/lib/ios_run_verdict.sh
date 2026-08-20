@@ -11,7 +11,7 @@
 #   - kg_ios_verdict_init <kind> <cwd>
 #       Sets, in the caller's scope:
 #         VERDICT_FILE              per-invocation UNIQUE path:
-#                                   <latest>.<epochTs>-<pid>
+#                                   <latest>.<epochTs>-<pid>-<initSeq>
 #                                   (or $KG_IOS_VERDICT_FILE when a wrapper
 #                                   pins it to read back its own run race-free)
 #         VERDICT_JSON_FILE         "$VERDICT_FILE.json"
@@ -40,7 +40,13 @@ kg_ios_verdict_init() {
   if [[ -n "${KG_IOS_VERDICT_FILE:-}" ]]; then
     VERDICT_FILE="$KG_IOS_VERDICT_FILE"
   else
-    VERDICT_FILE="$VERDICT_LATEST_FILE.$(date +%s)-$$"
+    # Seconds plus PID is not unique when one shell initializes multiple runs
+    # in the same second. Keep a process-local sequence for that contract.
+    case "${KG_IOS_VERDICT_INIT_SEQUENCE:-}" in
+      ''|*[!0-9]*) KG_IOS_VERDICT_INIT_SEQUENCE=0 ;;
+    esac
+    KG_IOS_VERDICT_INIT_SEQUENCE=$((KG_IOS_VERDICT_INIT_SEQUENCE + 1))
+    VERDICT_FILE="$VERDICT_LATEST_FILE.$(date +%s)-$$-$KG_IOS_VERDICT_INIT_SEQUENCE"
   fi
   VERDICT_JSON_FILE="$VERDICT_FILE.json"
 }
