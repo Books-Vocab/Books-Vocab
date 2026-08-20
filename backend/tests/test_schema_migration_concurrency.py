@@ -7,9 +7,12 @@ must serialize the schema read/ALTER boundary themselves.
 
 from __future__ import annotations
 
+import gc
 import sqlite3
+import warnings
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from pathlib import Path
 from threading import Barrier
 from typing import Any
@@ -33,18 +36,31 @@ def _run_two_writers(factory: Callable[[], Any]) -> list[Any]:
 
 
 def _columns(path: Path, table: str) -> set[str]:
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn:
         return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
 
 
 def _schema_snapshot(path: Path) -> tuple[tuple[str, str, str | None], ...]:
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn:
         return tuple(
             conn.execute(
                 "SELECT type, name, sql FROM sqlite_master "
                 "WHERE type IN ('table', 'index') ORDER BY type, name"
             ).fetchall()
         )
+
+
+def test_sqlite_schema_helpers_close_connections(tmp_path: Path):
+    path = tmp_path / "legacy.db"
+    with closing(sqlite3.connect(path)) as conn:
+        conn.execute("CREATE TABLE legacy_log (id INTEGER PRIMARY KEY)")
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", ResourceWarning)
+        _columns(path, "legacy_log")
+        gc.collect()
+
+    assert not [warning for warning in caught if issubclass(warning.category, ResourceWarning)]
 
 
 def _assert_second_round_is_stable(path: Path, factory: Callable[[], Any]) -> None:
@@ -61,7 +77,7 @@ def _create_legacy_card_db(path: Path) -> None:
     # migrations, not SQLAlchemy's concurrent create_all catalogue walk.
     store = CardStore(path)
     store.close()
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn:
         conn.execute("DROP INDEX IF EXISTS ix_card_content_nfc_lower")
         for column in (
             "source_shared_card_guid",
@@ -87,7 +103,7 @@ def _create_legacy_card_db(path: Path) -> None:
 
 
 def _create_legacy_notebook_db(path: Path) -> None:
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn:
         conn.execute(
             "CREATE TABLE notebook ("
             "id TEXT PRIMARY KEY, name TEXT, color TEXT, sort_order INTEGER, "
@@ -97,7 +113,7 @@ def _create_legacy_notebook_db(path: Path) -> None:
 
 
 def _create_legacy_review_db(path: Path) -> None:
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn:
         conn.execute(
             "CREATE TABLE reviewevent ("
             "event_id TEXT PRIMARY KEY, card_id TEXT, word_snapshot TEXT NOT NULL, "
@@ -131,7 +147,7 @@ def test_card_legacy_migration_is_safe_with_two_independent_stores(tmp_path: Pat
             "promotion_state",
             "promoted_at",
         }.isdisjoint(columns)
-        with sqlite3.connect(path) as conn:
+        with closing(sqlite3.connect(path)) as conn:
             tables = {
                 row[0]
                 for row in conn.execute(
@@ -189,7 +205,7 @@ def test_review_legacy_migration_is_safe_with_two_independent_stores(tmp_path: P
 
 def test_shared_sqlite_column_helper_is_safe_with_two_independent_connections(tmp_path: Path):
     path = tmp_path / "shared_log.db"
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn:
         conn.execute("CREATE TABLE legacy_log (id INTEGER PRIMARY KEY, payload TEXT)")
 
     barrier = Barrier(2)
