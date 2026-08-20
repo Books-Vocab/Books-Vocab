@@ -72,11 +72,14 @@ def api(tmp_path):
     (tmp_path / "users").mkdir()
     _swap_settings(KGSettings(data_dir=tmp_path, jwt_secret=TEST_JWT_SECRET))
     store = SharedDeckStore(tmp_path / "shared_decks.db")
+    client = TestClient(app, raise_server_exceptions=False)
     yield SimpleNamespace(
-        client=TestClient(app, raise_server_exceptions=False),
+        client=client,
         store=store,
         data_dir=tmp_path,
     )
+    client.close()
+    assert client.is_closed
     store.close()
 
 
