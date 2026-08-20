@@ -162,6 +162,37 @@ def test_month_range_excludes_prior_month(cost_env):
     assert r["by_call_type"]["judge"]["input_tokens"] == 100
 
 
+def test_since_filters_utc_instants_not_text_order(cost_env):
+    """Offset-aware timestamps must be compared as UTC instants."""
+    from kg.admin_cost_summary import fold_user_summary, query_cost_rows
+
+    cutoff = "2026-05-14T11:15:00+00:00"
+    _record(
+        "u1",
+        "judge",
+        t_in=100,
+        t_out=10,
+        when=datetime.fromisoformat("2026-05-14T12:00:00+01:00"),
+    )
+    _record(
+        "u1",
+        "judge",
+        t_in=200,
+        t_out=20,
+        when=datetime.fromisoformat("2026-05-14T11:30:00+00:00"),
+    )
+
+    import kg.token_tracker as tt
+
+    with tt._lock:
+        rows = query_cost_rows(tt._get_conn(), user_id="u1", since=cutoff)
+
+    summary = fold_user_summary(rows)
+    assert summary["total_calls"] == 1
+    assert summary["total_input_tokens"] == 200
+    assert summary["total_output_tokens"] == 20
+
+
 def test_by_model_uses_real_model_column(cost_env):
     """When rows carry a real model, by_model keys on it — not on the
     call_type-inferred default. Same call_type, two providers/models →
