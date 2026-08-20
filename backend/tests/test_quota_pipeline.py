@@ -55,6 +55,15 @@ def fresh_token_db(tmp_path, monkeypatch):
     assert tt._INITIAL_DB_PATH == original_db_path
     assert tt._conn is None
 
+    second_data_dir = tmp_path / "second-data-dir"
+    second_data_dir.mkdir()
+    monkeypatch.setenv("KG_DATA_DIR", str(second_data_dir))
+    conn = tt._get_conn()
+    database_path = conn.execute("PRAGMA database_list").fetchone()[2]
+    assert database_path == str(second_data_dir / "token_usage.db")
+    tt.reset()
+    assert tt._conn is None
+
 
 # ── Quota gating ───────────────────────────────────────────────────
 
