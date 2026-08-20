@@ -7,6 +7,7 @@ Distinct from GET /api/user/config (mutable settings bundle).
 from __future__ import annotations
 
 import json
+import sys
 import uuid
 from types import SimpleNamespace
 
@@ -36,15 +37,27 @@ def _build_api(tmp_path, record: dict):
     _swap_settings(KGSettings(data_dir=data_dir, jwt_secret=TEST_JWT_SECRET))
     api_mod._USER_LOCKS.clear()
     deps_mod._USER_LOCKS_MUTEX = None
+    client = TestClient(app, raise_server_exceptions=False)
+    client.__enter__()
+    restored = False
+
+    def restore():
+        nonlocal restored
+        if restored:
+            return
+        try:
+            client.__exit__(None, None, None)
+        finally:
+            app.state.kg_settings = original_settings
+            app.state.load_users = original_load
+            app.state.save_users = original_save
+            restored = True
+
     return SimpleNamespace(
-        client=TestClient(app, raise_server_exceptions=False),
+        client=client,
         user_id=user_id,
         headers=headers,
-        _restore=lambda: (
-            setattr(app.state, "kg_settings", original_settings),
-            setattr(app.state, "load_users", original_load),
-            setattr(app.state, "save_users", original_save),
-        ),
+        _restore=restore,
     )
 
 
@@ -60,6 +73,40 @@ def profile_api_factory(tmp_path):
     yield _make
     for api in built:
         api._restore()
+
+
+@pytest.fixture()
+def profile_client_lifecycle(tmp_path, monkeypatch):
+    base_test_client = TestClient
+
+    class TrackingTestClient(base_test_client):
+        constructed = 0
+        entered = 0
+        exited = 0
+
+        def __init__(self, *args, **kwargs):
+            type(self).constructed += 1
+            super().__init__(*args, **kwargs)
+
+        def __enter__(self):
+            type(self).entered += 1
+            return super().__enter__()
+
+        def __exit__(self, *args):
+            type(self).exited += 1
+            return super().__exit__(*args)
+
+    monkeypatch.setattr(sys.modules[__name__], "TestClient", TrackingTestClient)
+    api = _build_api(tmp_path, {"config": {}, "provider": "google", "email": "a@b.com"})
+    yield TrackingTestClient
+    api._restore()
+    assert TrackingTestClient.constructed == 1
+    assert TrackingTestClient.entered == TrackingTestClient.constructed
+    assert TrackingTestClient.exited == TrackingTestClient.constructed
+
+
+def test_profile_client_lifecycle_is_deterministic(profile_client_lifecycle):
+    """The fixture must own TestClient startup and shutdown."""
 
 
 def test_profile_returns_email_and_provider(profile_api_factory):
