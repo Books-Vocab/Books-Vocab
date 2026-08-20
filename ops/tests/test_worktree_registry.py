@@ -8,7 +8,7 @@ import pytest
 
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
-import worktree_registry as registry  # noqa: E402
+import worktree_registry as registry
 
 
 def _state() -> dict:
@@ -60,6 +60,117 @@ def _git(worktree: Path, *args: str) -> str:
     return output
 
 
+def _handback_worktree(
+    tmp_path: Path, *, with_origin: bool = True, advance_origin: bool = False,
+) -> tuple[Path, dict, Path, str, str]:
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    _git(worktree, "init", "--quiet")
+    _git(worktree, "checkout", "--quiet", "-b", "feat/handback")
+    (worktree / "branch.txt").write_text("branch\n", encoding="utf-8")
+    _git(worktree, "add", "branch.txt")
+    _git(
+        worktree,
+        "-c", "user.name=Registry Test", "-c", "user.email=registry-test@example.invalid",
+        "commit", "--quiet", "-m", "branch base",
+    )
+    base_sha = _git(worktree, "rev-parse", "HEAD")
+
+    remote = tmp_path / "origin.git"
+    if with_origin:
+        _git(tmp_path, "init", "--bare", "--quiet", str(remote))
+        _git(worktree, "remote", "add", "origin", str(remote))
+        _git(worktree, "push", "--quiet", "origin", f"{base_sha}:refs/heads/main")
+
+    (worktree / "branch.txt").write_text("branch\nchild\n", encoding="utf-8")
+    _git(worktree, "add", "branch.txt")
+    _git(
+        worktree,
+        "-c", "user.name=Registry Test", "-c", "user.email=registry-test@example.invalid",
+        "commit", "--quiet", "-m", "branch tip",
+    )
+    tip_sha = _git(worktree, "rev-parse", "HEAD")
+
+    if with_origin and advance_origin:
+        upstream = tmp_path / "upstream"
+        _git(tmp_path, "clone", "--quiet", str(remote), str(upstream))
+        (upstream / "main.txt").write_text("main advanced\n", encoding="utf-8")
+        _git(upstream, "add", "main.txt")
+        _git(
+            upstream,
+            "-c", "user.name=Registry Test", "-c", "user.email=registry-test@example.invalid",
+            "commit", "--quiet", "-m", "advance main",
+        )
+        _git(upstream, "push", "--quiet", "origin", "main")
+
+    record = {
+        "branch": "feat/handback",
+        "path": str(worktree),
+        "status": registry.STATUS_ACTIVE,
+        "external_ids": ["ISSUE-1290"],
+        "scope": _scope(),
+        "base": base_sha,
+        "base_sha": base_sha,
+        "claim_generation": 0,
+        "handed_back_at": None,
+        "handed_back_sha": None,
+    }
+    state_path = tmp_path / "registry.json"
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+    return worktree, record, state_path, base_sha, tip_sha
+
+
+def _run_handback(state_path: Path, worktree: Path, outcomes_path: Path) -> int:
+    return registry.main([
+        "hand-back", "--state", str(state_path), "--branch", "feat/handback",
+        "--path", str(worktree), "--outcomes", str(outcomes_path),
+        "--at", "2026-08-19T01:00:00Z", "--json",
+    ])
+
+
+def test_handback_seal_captures_live_origin_main_sha(tmp_path: Path) -> None:
+    worktree, _, state_path, base_sha, tip_sha = _handback_worktree(tmp_path)
+    outcomes_path = tmp_path / "outcomes.json"
+    outcomes_path.write_text("[]", encoding="utf-8")
+
+    assert _run_handback(state_path, worktree, outcomes_path) == registry.EXIT_OK
+
+    handed_back = registry.load_state(state_path)["records"][0]
+    seal = handed_back["handback_seal"]
+    assert seal["origin_main_sha"] == base_sha
+    assert seal["base_sha"] == base_sha
+    assert seal["tip_sha"] == tip_sha
+    assert registry.validate_handback_seal(handed_back) == []
+
+
+def test_handback_fails_closed_when_origin_main_is_unreadable(tmp_path: Path) -> None:
+    worktree, _, state_path, _, _ = _handback_worktree(tmp_path, with_origin=False)
+    outcomes_path = tmp_path / "outcomes.json"
+    outcomes_path.write_text("[]", encoding="utf-8")
+
+    assert _run_handback(state_path, worktree, outcomes_path) == registry.EXIT_PARTIAL
+
+    stored = registry.load_state(state_path)["records"][0]
+    assert stored.get("handback_seal") is None
+    assert stored["handed_back_at"] is None
+    assert stored["handed_back_sha"] is None
+
+
+def test_handback_fails_closed_when_live_main_is_not_ancestor_of_tip(
+    tmp_path: Path,
+) -> None:
+    worktree, _, state_path, _, _ = _handback_worktree(tmp_path, advance_origin=True)
+    outcomes_path = tmp_path / "outcomes.json"
+    outcomes_path.write_text("[]", encoding="utf-8")
+
+    assert _run_handback(state_path, worktree, outcomes_path) == registry.EXIT_PARTIAL
+
+    stored = registry.load_state(state_path)["records"][0]
+    assert stored.get("handback_seal") is None
+    assert stored["handed_back_at"] is None
+    assert stored["handed_back_sha"] is None
+
+
 def _idle_handed_back_record(tmp_path: Path) -> dict:
     worktree = tmp_path / "handed-back"
     worktree.mkdir()
@@ -79,6 +190,10 @@ def _idle_handed_back_record(tmp_path: Path) -> dict:
         "sealed hand-back",
     )
     tip_sha = _git(worktree, "rev-parse", "HEAD")
+    remote = tmp_path / "origin.git"
+    _git(tmp_path, "init", "--bare", "--quiet", str(remote))
+    _git(worktree, "remote", "add", "origin", str(remote))
+    _git(worktree, "push", "--quiet", "origin", f"{tip_sha}:refs/heads/main")
     return _sealed_handed_back_record(
         worktree, handed_back_sha=tip_sha, base_sha=tip_sha,
     )

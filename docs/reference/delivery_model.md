@@ -156,6 +156,8 @@ CM 只在 PR 的 required checks、review、文件影響與安全條件滿足後
 
 - local hand-back 不是完成；IM 必須把它轉成真實 PR，否則該工作只能標記為 `hand-back pending PR`，不可算 Ready 或完成。
 - hand-back 必須保留 dispatch provenance 與 recipient：IM dispatch 回同一 IM；User dispatch 回指定 IM 或 Worker 在交接前選定的 IM；沒有 recipient 不得宣稱 hand-back 完成。
+- typed `kg.worktree.handback.v1` hand-back 必須在交接當下以 `git ls-remote origin refs/heads/main` 捕獲 `origin_main_sha`；若 remote/main 不可讀，或 declared base、live main 與 physical tip 的 ancestry 不相容，必須 fail closed，不能寫入新的 receipt。
+- local hand-back 的 `origin_main_sha` 是交接時的執行證據，不是 current-main Ready 證據；IM／CM 仍須以當下 live `origin/main`、exact physical HEAD／Scope 與 PR checks 重新驗證。`main` 前進後，舊 receipt 必須重新驗證，不得直接當成 Ready。
 - 沒有正在修改 code 的工作，不保留本地 worktree。PR 等待 CI／review 時可保留 remote branch／PR；需要修改時由 IM 重新開 dedicated worktree。
 - CM merge 或明確 terminal abandonment 後，IM 必須同步清理：local worktree、local branch、remote branch。三者任何一項仍存在都算 cleanup incomplete。
 - 每次 merge／queue landing 後，CM 必須 `fetch` 並以安全的 fast-forward 路徑使 local `main` 與 `origin/main` 相同；若 local main dirty、diverged 或 drift，停止後續 admission，不得 force reset 掩蓋問題。

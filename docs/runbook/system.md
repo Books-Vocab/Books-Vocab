@@ -48,6 +48,8 @@ workflow `pr-gate` 的 check run `confidence` 失敗、非預期 skip、取消�
 
 GitHub Issue、Project、PR、CR／DS review、merge 與 release approval 不在本機 ledger 再存一份，也沒有本地 backlog、merge queue 或批次整合狀態。當本機與 GitHub 顯示不同，以 GitHub ref、PR 與 Actions 為準；local evidence 只能說明本機曾經驗證過什麼。
 
+typed `kg.worktree.handback.v1` 交接會在 clean worktree 上讀取 live `origin/main`，把 SHA 記入 `origin_main_sha`，並要求 declared base、live main 與 physical tip 可證明 ancestry 相容；remote/main 不可讀或 ancestry 不相容時 fail closed。這個 local receipt 只代表交接當下的執行證據，不是 current-main Ready；`main` 前進後，IM／CM 必須重新查 live `origin/main`、physical HEAD／Scope 與 PR checks。
+
 恢復 active branch/path 的工作前，先重新 register 或 adopt；先前 hand-back receipt 僅保留為 audit evidence，不能替 resumed claim 釋放 admission。完整 admission rule 以 [delivery model](../reference/delivery_model.md) 為準；完成新一輪工作後重新 hand-back。
 
 ## 變更前檢查
