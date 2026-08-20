@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import sys
+from contextlib import closing
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -22,15 +23,16 @@ def migrate_user(user_dir: Path) -> None:
 
     # 1. Create notebooks.db with default notebook
     from kg.notebook import NotebookStore
-    nb_store = NotebookStore(user_dir / "notebooks.db")
-    nb_store.ensure_default()
+    with closing(NotebookStore(user_dir / "notebooks.db")) as nb_store:
+        nb_store.ensure_default()
     logger.info("  [notebooks.db] default notebook ensured")
 
     # 2. cards.db: add notebook_id column (CardStore lazy migration handles this)
     cards_db = user_dir / "cards.db"
     if cards_db.exists():
         from kg.cards import CardStore
-        CardStore(cards_db)  # triggers _migrate_review_columns which adds notebook_id
+        # Construction triggers schema migration, then the engine can be released.
+        CardStore(cards_db).close()
         logger.info("  [cards.db] notebook_id column ensured")
 
     # 3. Rename graph files

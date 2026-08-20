@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from contextlib import closing
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -61,76 +62,87 @@ Respond JSON: {"link": "<type>", "confidence": <0.0-1.0>, "reason": "<繁體中�
             logger.warning("  No cards.db in %s, skipping", user_dir.name)
             continue
 
-        cards = CardStore(cards_db_path)
-        graph = GraphStore(graph_path, candidates_path)
+        with closing(CardStore(cards_db_path)) as cards:
+            graph = GraphStore(graph_path, candidates_path)
 
-        active_links = [lk for lk in graph.all_links() if lk.status == "active"]
-        if not active_links:
-            continue
-
-        logger.info("  [%s] %d active links to migrate", notebook_id, len(active_links))
-
-        for link in active_links:
-            if _has_cjk(link.reason):
-                continue  # already migrated
-            card_a = cards.get(link.from_id)
-            card_b = cards.get(link.to_id)
-            if not card_a or not card_b:
-                logger.warning("    Skipping link %s: missing card(s)", link.id)
+            active_links = [lk for lk in graph.all_links() if lk.status == "active"]
+            if not active_links:
                 continue
 
-            user_msg = _MIGRATE_USER_TEMPLATE.format(
-                word_a=card_a.content,
-                meaning_a=card_a.meaning,
-                word_b=card_b.content,
-                meaning_b=card_b.meaning,
-            )
+            logger.info("  [%s] %d active links to migrate", notebook_id, len(active_links))
 
-            try:
-                resp = client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": _MIGRATE_SYSTEM_PROMPT},
-                        {"role": "user", "content": user_msg},
-                    ],
-                    response_format={"type": "json_object"},
-                    temperature=0.1,
+            for link in active_links:
+                if _has_cjk(link.reason):
+                    continue  # already migrated
+                card_a = cards.get(link.from_id)
+                card_b = cards.get(link.to_id)
+                if not card_a or not card_b:
+                    logger.warning("    Skipping link %s: missing card(s)", link.id)
+                    continue
+
+                user_msg = _MIGRATE_USER_TEMPLATE.format(
+                    word_a=card_a.content,
+                    meaning_a=card_a.meaning,
+                    word_b=card_b.content,
+                    meaning_b=card_b.meaning,
                 )
-                content = resp.choices[0].message.content or ""
+
                 try:
-                    data = json.loads(content)
-                except (json.JSONDecodeError, ValueError):
-                    logger.warning("LLM returned malformed JSON for %s; trying regex fallback", link.id)
-                    m = re.search(r'\{[^{}]*\}', content, re.DOTALL)
-                    data = json.loads(m.group()) if m else {}
+                    resp = client.chat.completions.create(
+                        model=model,
+                        messages=[
+                            {"role": "system", "content": _MIGRATE_SYSTEM_PROMPT},
+                            {"role": "user", "content": user_msg},
+                        ],
+                        response_format={"type": "json_object"},
+                        temperature=0.1,
+                    )
+                    content = resp.choices[0].message.content or ""
+                    try:
+                        data = json.loads(content)
+                    except (json.JSONDecodeError, ValueError):
+                        logger.warning(
+                            "LLM returned malformed JSON for %s; trying regex fallback",
+                            link.id,
+                        )
+                        m = re.search(r'\{[^{}]*\}', content, re.DOTALL)
+                        data = json.loads(m.group()) if m else {}
 
-                if data.get("link") == "not_applicable":
-                    logger.warning("    Link %s: LLM says not_applicable, keeping old", link.id)
+                    if data.get("link") == "not_applicable":
+                        logger.warning(
+                            "    Link %s: LLM says not_applicable, keeping old", link.id
+                        )
+                        continue
+                    new_reason = data.get("reason", "")
+                    if not new_reason:
+                        logger.warning(
+                            "    Link %s: empty reason from LLM, keeping old", link.id
+                        )
+                        continue
+
+                    old_reason = link.reason
+                    # source=ops:此為一次性運維遷移,圖譜事件帳本不應記成 pipeline(auto)變動。
+                    graph.update_link(link.id, reason=new_reason, source="ops")
+                    total_updated += 1
+                    logger.info(
+                        "    %s <-> %s: %s -> %s",
+                        card_a.content,
+                        card_b.content,
+                        old_reason[:40],
+                        new_reason[:40],
+                    )
+
+                except Exception as exc:
+                    logger.error("    Link %s failed: %s", link.id, exc, exc_info=True)
                     continue
-                new_reason = data.get("reason", "")
-                if not new_reason:
-                    logger.warning("    Link %s: empty reason from LLM, keeping old", link.id)
-                    continue
 
-                old_reason = link.reason
-                # source=ops:此為一次性運維遷移,圖譜事件帳本不應記成 pipeline(auto)變動。
-                graph.update_link(link.id, reason=new_reason, source="ops")
-                total_updated += 1
-                logger.info("    %s <-> %s: %s -> %s",
-                            card_a.content, card_b.content,
-                            old_reason[:40], new_reason[:40])
-
-            except Exception as exc:
-                logger.error("    Link %s failed: %s", link.id, exc, exc_info=True)
-                continue
-
-        # Touch all cards involved in active links so incremental sync picks them up
-        touched_ids = set()
-        for link in active_links:
-            touched_ids.add(link.from_id)
-            touched_ids.add(link.to_id)
-        touch_count = sum(1 for cid in touched_ids if cards.touch(cid))
-        logger.info("  [%s] saved, touched %d cards for sync", notebook_id, touch_count)
+            # Touch all cards involved in active links so incremental sync picks them up
+            touched_ids = set()
+            for link in active_links:
+                touched_ids.add(link.from_id)
+                touched_ids.add(link.to_id)
+            touch_count = sum(1 for cid in touched_ids if cards.touch(cid))
+            logger.info("  [%s] saved, touched %d cards for sync", notebook_id, touch_count)
 
     return total_updated
 
