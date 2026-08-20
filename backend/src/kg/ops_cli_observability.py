@@ -13,6 +13,18 @@ from kg.quota_service import token_cost_usd
 from .ops_cli_shared import _bucket_key_from_date, _enumerate_buckets, _parse_day
 
 
+def _parse_utc_instant(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
 def _count_by_day_ro(db_path: Path, table: str, ts_col: str, cutoff: str, *, where: str = "", count: str = "COUNT(*)") -> dict[str, int]:
     if not db_path.exists():
         return {}
@@ -39,6 +51,7 @@ def cmd_timeseries(args: argparse.Namespace) -> None:
     result: dict = {"metric": metric, "bucket": bucket, "range": range_, "since": since, "uid": uid_filter, "count": 0, "series": []}
     acc: dict[str, object] = {}
     min_dt = max_dt = None
+    since_dt = _parse_utc_instant(since)
     db_path = data_dir() / "token_usage.db"
     if db_path.exists():
         conn = connect_ro(db_path)
@@ -46,9 +59,12 @@ def cmd_timeseries(args: argparse.Namespace) -> None:
         sql = f"SELECT user_id, call_type, {pcol} AS provider, input_tokens, output_tokens, created_at FROM token_usage"
         clauses: list[str] = []
         params: list = []
-        if since is not None:
+        if since_dt is not None:
+            # ISO-8601 offsets can place a qualifying instant on the prior
+            # local date. Keep this indexed bound conservative; exact UTC
+            # filtering happens below after parsing each returned timestamp.
             clauses.append("created_at >= ?")
-            params.append(since)
+            params.append((since_dt.date() - timedelta(days=1)).isoformat())
         if uid_filter != "all":
             uid = resolve_uid(uid_filter, data_dir())
             result["uid"] = uid
@@ -60,9 +76,10 @@ def cmd_timeseries(args: argparse.Namespace) -> None:
         conn.close()
 
         for user_id, call_type, provider, t_in, t_out, created_at in rows:
-            d = _parse_day(created_at)
-            if d is None:
+            created_dt = _parse_utc_instant(created_at)
+            if created_dt is None or (since_dt is not None and created_dt < since_dt):
                 continue
+            d = created_dt.date()
             key = _bucket_key_from_date(d, bucket)
             min_dt = d if min_dt is None or d < min_dt else min_dt
             max_dt = d if max_dt is None or d > max_dt else max_dt
