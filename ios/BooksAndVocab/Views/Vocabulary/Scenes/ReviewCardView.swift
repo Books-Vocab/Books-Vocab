@@ -39,6 +39,13 @@ struct ReviewCardFrontMeasurement: Equatable {
     let cardKey: String
 }
 
+/// Section geometry must include card identity: a resident slot can replace
+/// its content without changing the measured section height.
+struct ReviewCardSectionMeasurement: Equatable {
+    let height: CGFloat
+    let cardKey: String
+}
+
 // MARK: - Review Card
 
 /// 一張完整的複習卡：正面摺頁 ＋ 右上角 chrome ＋ 背面摺頁 ＋ 摺疊動畫。
@@ -305,9 +312,11 @@ struct ReviewCardView: View {
             // 故在單字列保留其寬度的 trailing 空間，長詞（如 "be eaten alive"）在碰到
             // 圖示前先縮放 / 換行，不被擋字。
             .padding(.trailing, frontChromeReserveWidth)
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+            .onGeometryChange(for: ReviewCardSectionMeasurement.self) {
+                ReviewCardSectionMeasurement(height: $0.size.height, cardKey: currentCardKey)
+            } action: { measurement in
                 recordReviewSectionHeight(
-                    height,
+                    measurement.height,
                     currentCard: currentCard,
                     face: .front,
                     section: .core,
@@ -332,9 +341,11 @@ struct ReviewCardView: View {
                         }
                     }
                     .accessibilityIdentifier("todayReview.card.front.field.\(field.rawValue)")
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                    .onGeometryChange(for: ReviewCardSectionMeasurement.self) {
+                        ReviewCardSectionMeasurement(height: $0.size.height, cardKey: currentCardKey)
+                    } action: { measurement in
                         recordReviewSectionHeight(
-                            height,
+                            measurement.height,
                             currentCard: currentCard,
                             face: .front,
                             section: .field(field),
@@ -521,9 +532,11 @@ struct ReviewCardView: View {
                     CardSectionDivider(horizontalPadding: 0)
                 }
             }
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+            .onGeometryChange(for: ReviewCardSectionMeasurement.self) {
+                ReviewCardSectionMeasurement(height: $0.size.height, cardKey: currentCardKey)
+            } action: { measurement in
                 recordReviewSectionHeight(
-                    height,
+                    measurement.height,
                     currentCard: currentCard,
                     face: .back,
                     section: .core,
@@ -577,9 +590,11 @@ struct ReviewCardView: View {
                         face: .back
                     )
                 }
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                .onGeometryChange(for: ReviewCardSectionMeasurement.self) {
+                    ReviewCardSectionMeasurement(height: $0.size.height, cardKey: currentCardKey)
+                } action: { measurement in
                     recordReviewSectionHeight(
-                        height,
+                        measurement.height,
                         currentCard: currentCard,
                         face: .back,
                         section: .field(field),
@@ -808,9 +823,11 @@ struct ReviewCardView: View {
                 .hidden()
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                .onGeometryChange(for: ReviewCardSectionMeasurement.self) {
+                    ReviewCardSectionMeasurement(height: $0.size.height, cardKey: currentCardKey)
+                } action: { measurement in
                     recordReviewSectionHeight(
-                        height,
+                        measurement.height,
                         currentCard: currentCard,
                         face: face,
                         section: .field(field),
