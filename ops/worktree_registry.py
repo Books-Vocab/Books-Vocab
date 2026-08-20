@@ -25,17 +25,19 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 OPS_DIR = Path(__file__).resolve().parent
 if str(OPS_DIR) not in sys.path:
     sys.path.insert(0, str(OPS_DIR))
 
-from lib.worktree_scope import coerce_scope, normalise_scope, scope_files, scope_problems
+from lib.worktree_scope import coerce_scope, normalise_scope, scope_problems
 
 SCHEMA = "kg.worktree.registry.v2"
 STATUS_ACTIVE = "active"
@@ -43,6 +45,8 @@ RESOLVE_STATUS = ("merged", "abandoned")
 HAND_BACK_SEAL_SCHEMA = "kg.worktree.handback.v1"
 HAND_BACK_OUTCOMES = ("changed", "no-op-existing-fix")
 GREEN_ACCEPTANCE_STATUSES = {"pass", "passed", "green", "ok", "success"}
+ORIGIN_MAIN_REF = "refs/heads/main"
+COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 EXIT_OK = 0
 EXIT_PARTIAL = 1
 EXIT_CLAIMED = 75
@@ -134,7 +138,7 @@ def _external_ids(value: object) -> list[str]:
         return []
     raw = [value] if isinstance(value, str) else value
     if not isinstance(raw, list):
-        raise ValueError("external ids must be a list of strings")
+        raise TypeError("external ids must be a list of strings")
     out: list[str] = []
     for item in raw:
         if not isinstance(item, str) or not item.strip():
@@ -157,7 +161,7 @@ def _legacy_external_ids(record: dict[str, Any]) -> list[str]:
         value = record.get("backlog")
     try:
         return _external_ids(value)
-    except ValueError:
+    except (TypeError, ValueError):
         return []
 
 
@@ -170,10 +174,10 @@ def load_state(path: Path | None = None) -> dict[str, Any]:
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"registry state is unreadable: {target}: {exc}") from exc
     if not isinstance(payload, dict):
-        raise ValueError(f"registry state must be an object: {target}")
+        raise TypeError(f"registry state must be an object: {target}")
     records = payload.get("records")
     if not isinstance(records, list):
-        raise ValueError(f"registry state records must be a list: {target}")
+        raise TypeError(f"registry state records must be a list: {target}")
     clean_records: list[dict[str, Any]] = []
     for item in records:
         if not isinstance(item, dict):
@@ -271,7 +275,7 @@ def _register_record(
         return EXIT_USAGE, {"reason": "branch and intent are required"}
     try:
         ids = _external_ids(external_ids)
-    except ValueError as exc:
+    except (TypeError, ValueError) as exc:
         return EXIT_USAGE, {"reason": str(exc)}
     if scope is not None:
         try:
@@ -323,7 +327,7 @@ def cmd_register(args: argparse.Namespace) -> int:
     try:
         scope = _scope_from_args(args)
         ids = _external_ids(getattr(args, "external_id", None))
-    except (OSError, ValueError) as exc:
+    except (OSError, TypeError, ValueError) as exc:
         print(json.dumps({"schema": SCHEMA, "action": "refused", "reason": str(exc)},
                          ensure_ascii=False))
         return EXIT_USAGE
@@ -461,14 +465,18 @@ def _load_outcomes(path: Path) -> list[dict[str, Any]]:
 
 
 def _seal_body(record: dict[str, Any], *, base_sha: str, tip_sha: str,
-               outcomes: list[dict[str, Any]], handed_back_at: str) -> dict[str, Any]:
-    return {
+               outcomes: list[dict[str, Any]], handed_back_at: str,
+               origin_main_sha: str | None = None) -> dict[str, Any]:
+    body = {
         "schema": HAND_BACK_SEAL_SCHEMA, "branch": record.get("branch"),
         "path": _norm(str(record.get("path") or "")),
         "external_ids": sorted(_legacy_external_ids(record)),
         "base_sha": base_sha, "tip_sha": tip_sha,
         "outcomes": outcomes, "handed_back_at": handed_back_at,
     }
+    if origin_main_sha is not None:
+        body["origin_main_sha"] = origin_main_sha
+    return body
 
 
 def _seal_with_digest(body: dict[str, Any]) -> dict[str, Any]:
@@ -493,6 +501,9 @@ def validate_handback_seal(record: dict[str, Any], *, repo: Path | None = None,
         problems.append({"kind": "handback-seal-branch-mismatch"})
     if sorted(body.get("external_ids") or []) != sorted(_legacy_external_ids(record)):
         problems.append({"kind": "handback-seal-external-ids-mismatch"})
+    origin_main_sha = body.get("origin_main_sha")
+    if origin_main_sha is not None and not _is_commit_sha(origin_main_sha):
+        problems.append({"kind": "handback-origin-main-sha-invalid"})
     outcomes = body.get("outcomes")
     if not isinstance(outcomes, list):
         problems.append({"kind": "handback-outcomes-invalid"})
@@ -550,6 +561,39 @@ def _admission_records(state: dict[str, Any]) -> list[dict[str, Any]]:
     return [record for record in _active_records(state) if not _has_valid_handback(record)]
 
 
+def _is_commit_sha(value: object) -> bool:
+    return isinstance(value, str) and COMMIT_SHA_RE.fullmatch(value) is not None
+
+
+def _live_origin_main_sha(worktree: Path) -> str | None:
+    rc, output = _git(["ls-remote", "origin", ORIGIN_MAIN_REF], worktree)
+    if rc != 0:
+        return None
+    rows = [line.split() for line in output.splitlines() if line.strip()]
+    if len(rows) != 1:
+        return None
+    fields = rows[0]
+    if len(fields) != 2 or fields[1] != ORIGIN_MAIN_REF or not _is_commit_sha(fields[0]):
+        return None
+    return fields[0]
+
+
+def _declared_base_sha(record: dict[str, Any], worktree: Path) -> str | None:
+    base_sha = record.get("base_sha")
+    if base_sha is not None:
+        return base_sha if _is_commit_sha(base_sha) else None
+    base_ref = record.get("base", "main")
+    if not isinstance(base_ref, str) or not base_ref.strip():
+        return None
+    rc, resolved = _git(["rev-parse", f"{base_ref}^{{commit}}"], worktree)
+    return resolved if rc == 0 and _is_commit_sha(resolved) else None
+
+
+def _is_ancestor(worktree: Path, ancestor: str, descendant: str) -> bool:
+    rc, _ = _git(["merge-base", "--is-ancestor", ancestor, descendant], worktree)
+    return rc == 0
+
+
 def cmd_hand_back(args: argparse.Namespace) -> int:
     state_path = _state_path(args)
     with _ledger_lock(state_path):
@@ -581,13 +625,22 @@ def cmd_hand_back(args: argparse.Namespace) -> int:
             if dirty_rc != 0 or dirty:
                 print("✗ hand-back outcomes require a clean worktree", file=sys.stderr)
                 return EXIT_PARTIAL
-            base_sha = record.get("base_sha")
-            if not base_sha:
-                base_rc, base_sha = _git(["rev-parse", f"{record.get('base', 'main')}^{{commit}}"], worktree)
-                if base_rc != 0:
-                    base_sha = ""
+            base_sha = _declared_base_sha(record, worktree)
             if not base_sha:
                 print("✗ cannot determine the recorded base commit", file=sys.stderr)
+                return EXIT_PARTIAL
+            origin_main_sha = _live_origin_main_sha(worktree)
+            if not origin_main_sha:
+                print("✗ cannot read live origin/main", file=sys.stderr)
+                return EXIT_PARTIAL
+            if not _is_ancestor(worktree, base_sha, origin_main_sha):
+                print("✗ declared base is not an ancestor of live origin/main", file=sys.stderr)
+                return EXIT_PARTIAL
+            if not _is_ancestor(worktree, base_sha, tip_sha):
+                print("✗ declared base is not an ancestor of worktree HEAD", file=sys.stderr)
+                return EXIT_PARTIAL
+            if not _is_ancestor(worktree, origin_main_sha, tip_sha):
+                print("✗ live origin/main is not an ancestor of worktree HEAD", file=sys.stderr)
                 return EXIT_PARTIAL
             normalized = []
             for item in outcomes:
@@ -599,7 +652,8 @@ def cmd_hand_back(args: argparse.Namespace) -> int:
             _, now_iso = resolve_now(args.at)
             record["handback_seal"] = _seal_with_digest(
                 _seal_body(record, base_sha=base_sha, tip_sha=tip_sha,
-                           outcomes=normalized, handed_back_at=now_iso))
+                           outcomes=normalized, handed_back_at=now_iso,
+                           origin_main_sha=origin_main_sha))
             record["handback_outcomes"] = normalized
         _, now_iso = resolve_now(args.at)
         record["handed_back_at"] = now_iso
