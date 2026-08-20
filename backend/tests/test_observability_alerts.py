@@ -105,8 +105,10 @@ def _insert_pipeline_run_explicit(
     conn.commit()
 
 
-def _insert_judge_decision(*, accepted: bool, minutes_ago: int) -> None:
-    created = (datetime.now(UTC) - timedelta(minutes=minutes_ago)).isoformat()
+def _insert_judge_decision(
+    *, accepted: bool, minutes_ago: int, created_at: str | None = None,
+) -> None:
+    created = created_at or (datetime.now(UTC) - timedelta(minutes=minutes_ago)).isoformat()
     conn = judge_log._get_conn()
     conn.execute(
         "INSERT INTO judge_log (user_id, notebook_id, from_id, to_id, similarity, "
@@ -298,6 +300,29 @@ class TestCheckJudgeRejectionRate:
         observability_alerts.check_judge_rejection_rate(
             window_min=60, min_total=10, threshold=0.5,
         )
+        assert sentry_stub.calls == []
+
+    def test_fixed_offset_before_utc_cutoff_is_ignored(self, sentry_stub, monkeypatch):
+        monkeypatch.setattr(
+            observability_alerts,
+            "_now",
+            lambda: datetime(2026, 5, 1, 1, 0, tzinfo=UTC),
+        )
+        _insert_judge_decision(
+            accepted=False,
+            minutes_ago=0,
+            created_at="2026-05-01T00:00:00+01:00",
+        )
+        _insert_judge_decision(
+            accepted=True,
+            minutes_ago=0,
+            created_at="2026-05-01T00:30:00+00:00",
+        )
+
+        observability_alerts.check_judge_rejection_rate(
+            window_min=60, min_total=2, threshold=0.4,
+        )
+
         assert sentry_stub.calls == []
 
 

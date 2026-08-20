@@ -240,7 +240,7 @@ def check_judge_rejection_rate(
         "SELECT COUNT(*) AS total, "
         "       SUM(CASE WHEN accepted = 0 THEN 1 ELSE 0 END) AS rejected "
         "FROM judge_log "
-        "WHERE source = 'auto' AND created_at >= ? "
+        "WHERE source = 'auto' AND julianday(created_at) >= julianday(?) "
         f"  AND {judge_log.DEGREE_CAP_EXCLUSION_SQL}",
         (cutoff,),
         error_label="judge rejection",
