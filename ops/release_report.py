@@ -131,19 +131,37 @@ def normalize_asc_builds(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
     for item in data:
         if not isinstance(item, dict) or item.get("type") != "builds":
             continue
+        build_id = item.get("id")
+        if not isinstance(build_id, str) or not build_id:
+            raise ReportError("ASC iOS build has no stable id")
         attrs = item.get("attributes")
         relationship = item.get("relationships")
-        if not isinstance(attrs, dict) or not isinstance(relationship, dict):
-            continue
-        linkage = relationship.get("preReleaseVersion", {}).get("data")
-        if not isinstance(linkage, dict):
-            continue
+        if not isinstance(attrs, dict):
+            raise ReportError(f"ASC build {build_id} has invalid attributes")
+        if not isinstance(relationship, dict):
+            raise ReportError(
+                f"ASC build {build_id} has incomplete preReleaseVersion relationship"
+            )
+        pre_release_relationship = relationship.get("preReleaseVersion")
+        if not isinstance(pre_release_relationship, dict):
+            raise ReportError(
+                f"ASC build {build_id} has incomplete preReleaseVersion relationship"
+            )
+        linkage = pre_release_relationship.get("data")
+        if not isinstance(linkage, dict) or not isinstance(linkage.get("id"), str):
+            raise ReportError(
+                f"ASC build {build_id} has incomplete preReleaseVersion relationship"
+            )
         prerelease = prereleases.get(str(linkage.get("id")))
-        if not isinstance(prerelease, dict) or prerelease.get("platform") != "IOS":
+        if not isinstance(prerelease, dict):
+            raise ReportError(f"ASC build {build_id} has no included preReleaseVersion")
+        platform = prerelease.get("platform")
+        if not isinstance(platform, str) or not platform:
+            raise ReportError(f"ASC build {build_id} has invalid preReleaseVersion platform")
+        if platform != "IOS":
             continue
         build_number = attrs.get("version")
         version = prerelease.get("version")
-        build_id = item.get("id")
         if not isinstance(build_number, str) or not build_number:
             raise ReportError("ASC iOS build has invalid build number")
         if not isinstance(version, str) or not version:
@@ -214,17 +232,42 @@ def normalize_asc_versions(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
         for source, target in (("createdDate", "createdAt"), ("releaseDate", "releasedAt")):
             if isinstance(attrs.get(source), str):
                 normalized[target] = attrs[source]
-        if isinstance(relationship, dict):
-            linkage = relationship.get("build", {}).get("data")
-            if isinstance(linkage, dict):
-                build_id = linkage.get("id")
-                build_attrs = builds.get(str(build_id))
-                build_number = build_attrs.get("version") if build_attrs else None
-                if isinstance(build_id, str) and build_id and isinstance(build_number, str) and build_number:
-                    normalized["build"] = build_number
-                    normalized["ascBuildId"] = build_id
-                    if isinstance(build_attrs.get("processingState"), str):
-                        normalized["processingState"] = build_attrs["processingState"]
+        if state != "READY_FOR_SALE":
+            versions.append(normalized)
+            continue
+        if not isinstance(relationship, dict):
+            raise ReportError(
+                f"ASC App Store version {version_id} has incomplete build relationship"
+            )
+        build_relationship = relationship.get("build")
+        if not isinstance(build_relationship, dict):
+            raise ReportError(
+                f"ASC App Store version {version_id} has incomplete build relationship"
+            )
+        linkage = build_relationship.get("data")
+        if not isinstance(linkage, dict) or not isinstance(linkage.get("id"), str):
+            raise ReportError(
+                f"ASC App Store version {version_id} has incomplete build relationship"
+            )
+        build_id = linkage["id"]
+        build_attrs = builds.get(build_id)
+        if not isinstance(build_attrs, dict):
+            raise ReportError(
+                f"ASC App Store version {version_id} references an incomplete ASC build"
+            )
+        build_number = build_attrs.get("version")
+        processing_state = build_attrs.get("processingState")
+        if not isinstance(build_number, str) or not build_number:
+            raise ReportError(
+                f"ASC App Store version {version_id} references an ASC build without a number"
+            )
+        if not isinstance(processing_state, str) or not processing_state:
+            raise ReportError(
+                f"ASC App Store version {version_id} references an ASC build without processingState"
+            )
+        normalized["build"] = build_number
+        normalized["ascBuildId"] = build_id
+        normalized["processingState"] = processing_state
         versions.append(normalized)
     versions.sort(
         key=lambda item: (_version_key(str(item["version"])), str(item.get("createdAt", ""))),
@@ -351,6 +394,9 @@ class Git:
     def show(self, sha: str, path: str) -> str:
         return self.run(["show", f"{sha}:{path}"])
 
+    def remote_names(self) -> set[str]:
+        return set(self.run(["remote"], allow_failure=True).splitlines())
+
     def remote_sha(self, remote: str, branch: str) -> str:
         remote_ref = f"refs/heads/{branch}"
         try:
@@ -420,7 +466,7 @@ def _identity(git: Git, ref: str) -> dict[str, Any]:
 
 def _remote_freshness(git: Git, ref: str, identity: Mapping[str, Any]) -> dict[str, Any]:
     remote, separator, branch = ref.partition("/")
-    if not separator or not remote or not branch:
+    if not separator or not remote or not branch or remote not in git.remote_names():
         return {"status": "not_checked", "ref": ref, "reason": "ref is not remote-tracking"}
     if identity.get("status") != "observed":
         return {"status": "unavailable", "ref": ref, "reason": "local ref is unavailable"}
@@ -439,7 +485,13 @@ def _remote_freshness(git: Git, ref: str, identity: Mapping[str, Any]) -> dict[s
     }
 
 
-def _bind_tag(git: Git, tag: str) -> dict[str, Any]:
+def _bind_tag(
+    git: Git,
+    tag: str,
+    *,
+    expected_version: str | None = None,
+    expected_build: str | None = None,
+) -> dict[str, Any]:
     try:
         sha = git.resolve(tag)
         remote_sha = git.remote_tag_sha("origin", tag)
@@ -451,11 +503,45 @@ def _bind_tag(git: Git, tag: str) -> dict[str, Any]:
                 "originSha": remote_sha,
                 "reason": "source binding tag differs from origin",
             }
+        target_project: dict[str, str] | None = None
+        if expected_version is not None:
+            try:
+                target_project = parse_ios_settings(git.show(sha, IOS_PROJECT_FILE))
+            except ReportError as exc:
+                return {
+                    "status": "unbound",
+                    "tag": tag,
+                    "sha": sha,
+                    "originSha": remote_sha,
+                    "reason": f"tag target iOS tuple unavailable: {exc}",
+                }
+            expected_project = {"marketingVersion": expected_version}
+            if expected_build is not None:
+                expected_project["build"] = expected_build
+            actual_project = {
+                key: target_project[key]
+                for key in expected_project
+                if key in target_project
+            }
+            if actual_project != expected_project:
+                return {
+                    "status": "unbound",
+                    "tag": tag,
+                    "sha": sha,
+                    "originSha": remote_sha,
+                    "tagTarget": target_project,
+                    "reason": (
+                        f"tag target iOS tuple {actual_project} does not match ASC tuple "
+                        f"{expected_project}"
+                    ),
+                }
         return {
             "status": "bound",
             "tag": tag,
             "sha": sha,
+            "originSha": remote_sha,
             "tree": git.tree(sha),
+            **({"tagTarget": target_project} if target_project is not None else {}),
         }
     except ReportError as exc:
         return {
@@ -491,8 +577,16 @@ def _parse_name_status(text: str) -> list[dict[str, str]]:
     return files
 
 
-def _blocked_diff(surface: str, from_ref: str, to_ref: str, reason: str) -> dict[str, Any]:
-    return {
+def _blocked_diff(
+    surface: str,
+    from_ref: str,
+    to_ref: str,
+    reason: str,
+    *,
+    from_identity: Mapping[str, Any] | None = None,
+    to_identity: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
         "schema": DIFF_SCHEMA,
         "status": "blocked",
         "surface": surface,
@@ -500,6 +594,54 @@ def _blocked_diff(surface: str, from_ref: str, to_ref: str, reason: str) -> dict
         "to": {"ref": to_ref},
         "reason": reason,
     }
+    if from_identity is not None:
+        result["from"] = dict(from_identity)
+    if to_identity is not None:
+        result["to"] = dict(to_identity)
+    return result
+
+
+def _is_full_commit(ref: str) -> bool:
+    return bool(re.fullmatch(r"[0-9a-f]{40}", ref))
+
+
+def _local_tag_exists(git: Git, ref: str) -> bool:
+    tag = ref.removeprefix("refs/tags/")
+    return bool(git.run(["show-ref", "--verify", f"refs/tags/{tag}"], allow_failure=True))
+
+
+def _prepare_diff_identity(
+    git: Git, ref: str, identity: dict[str, Any]
+) -> tuple[dict[str, Any], str | None]:
+    """Attach live authority evidence or return a fail-closed reason."""
+
+    if identity.get("status") != "observed":
+        return identity, f"ref unavailable: {ref}"
+    freshness = _remote_freshness(git, ref, identity)
+    enriched = dict(identity)
+    if freshness.get("status") == "fresh":
+        enriched["remoteFreshness"] = freshness
+        return enriched, None
+    if freshness.get("status") not in ("not_checked",):
+        enriched["remoteFreshness"] = freshness
+        return enriched, (
+            "remote ref is not fresh: "
+            f"{freshness.get('reason', freshness.get('status'))}"
+        )
+    if _is_full_commit(ref):
+        return enriched, None
+    if _local_tag_exists(git, ref):
+        binding = _bind_tag(git, ref.removeprefix("refs/tags/"))
+        if binding.get("status") == "bound":
+            enriched["remoteFreshness"] = {
+                "status": "fresh",
+                "ref": ref,
+                "kind": "tag",
+                "originSha": binding.get("originSha"),
+            }
+            return enriched, None
+        return enriched, str(binding.get("reason", f"tag is not authoritative: {ref}"))
+    return enriched, f"ref is not an authoritative remote ref: {ref}"
 
 
 def diff_refs(repo: str | Path, surface: str, from_ref: str, to_ref: str) -> dict[str, Any]:
@@ -508,12 +650,26 @@ def diff_refs(repo: str | Path, surface: str, from_ref: str, to_ref: str) -> dic
     if surface not in SURFACE_PATHS:
         raise ReportError(f"unsupported diff surface: {surface}")
     git = Git(Path(repo))
-    from_identity = _identity(git, from_ref)
-    to_identity = _identity(git, to_ref)
-    if from_identity.get("status") != "observed":
-        return _blocked_diff(surface, from_ref, to_ref, f"from ref unavailable: {from_ref}")
-    if to_identity.get("status") != "observed":
-        return _blocked_diff(surface, from_ref, to_ref, f"to ref unavailable: {to_ref}")
+    from_identity, from_reason = _prepare_diff_identity(git, from_ref, _identity(git, from_ref))
+    to_identity, to_reason = _prepare_diff_identity(git, to_ref, _identity(git, to_ref))
+    if from_reason:
+        return _blocked_diff(
+            surface,
+            from_ref,
+            to_ref,
+            f"from {from_reason}",
+            from_identity=from_identity,
+            to_identity=to_identity,
+        )
+    if to_reason:
+        return _blocked_diff(
+            surface,
+            from_ref,
+            to_ref,
+            f"to {to_reason}",
+            from_identity=from_identity,
+            to_identity=to_identity,
+        )
     paths = SURFACE_PATHS[surface]
     range_ref = f"{from_identity['sha']}..{to_identity['sha']}"
     numstat = git.run(["diff", "--numstat", "--no-renames", range_ref, "--", *paths])
@@ -605,14 +761,25 @@ def _live_alignment(git: Git, production: Mapping[str, Any], live: Mapping[str, 
     return "drift"
 
 
-def _source_binding(git: Git, version: Any, build: Any | None = None) -> dict[str, Any]:
+def _source_binding(
+    git: Git,
+    version: Any,
+    build: Any | None = None,
+    *,
+    include_build_in_tag: bool = True,
+) -> dict[str, Any]:
     if not isinstance(version, str) or not version:
         return {"status": "blocked", "reason": "missing marketing version"}
-    if build is None:
-        return _bind_tag(git, f"ios/{version}")
     if not isinstance(build, str) or not build:
-        return {"status": "blocked", "reason": "missing TestFlight build number"}
-    return _bind_tag(git, f"ios/{version}+{build}")
+        label = "TestFlight" if include_build_in_tag else "App Store"
+        return {"status": "blocked", "reason": f"missing {label} build number"}
+    tag = f"ios/{version}+{build}" if include_build_in_tag else f"ios/{version}"
+    return _bind_tag(
+        git,
+        tag,
+        expected_version=version,
+        expected_build=build,
+    )
 
 
 def _same_tuple(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
@@ -680,7 +847,12 @@ def build_report(
     testflight["sourceBinding"] = _source_binding(
         git, testflight.get("version"), testflight.get("build")
     )
-    app_store["sourceBinding"] = _source_binding(git, app_store.get("version"))
+    app_store["sourceBinding"] = _source_binding(
+        git,
+        app_store.get("version"),
+        app_store.get("build"),
+        include_build_in_tag=False,
+    )
 
     if testflight["sourceBinding"].get("status") == "bound" and main.get("status") == "observed":
         testflight_to_main = diff_refs(

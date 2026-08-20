@@ -73,6 +73,12 @@ resource identity，而且兩個 channel 的 `ascBuildId` 必須相等才能視�
 binding／identity 時，報告同樣是 `blocked`；identity 不同則明確報告 channel drift，
 不可用「最新 TestFlight build」代替使用者實際取得的 App Store 版本。
 
+ASC response 的 build relationship、resource id、build number 與 processing state 都是
+必要證據。若最新 iOS build 或 `READY_FOR_SALE` version 的 associated build record
+不完整，normalizer 會 fail closed；不可跳過壞 record 再回退到較舊 build。source tag
+也不只驗 tag 名稱與 origin SHA：tag target commit 內的 Xcode marketing version／build
+tuple 必須與 ASC tuple 相符，否則 source binding 是 `unbound`。
+
 `READY_FOR_SALE` 必須恰好只有一筆；多筆時是 ambiguous，不能自行挑最高版號。
 TestFlight 最新 build 只有 `PROCESSING` 或 `VALID` 才是 release-eligible；其他狀態
 會 blocked。source tag 也必須同時存在於本地與 `origin`，且 commit 相同；本地私有或
@@ -109,6 +115,11 @@ exit code `0` 可報告 aligned/drift，exit code `2` 只能報告 partial/block
 - 「生產 backend 和 main」看 `backend.productionToMain`（`origin/prod → origin/main`），再看 `backend.production.liveAlignment`。
 - 「TestFlight 和 App Store」先比 `ios.testflight`／`ios.appStore` 的 ASC tuple，再比 `ios.appStoreToTestFlight` source diff。
 - 「main 和 PR」用 PR 的 exact head 做 `diff --from origin/main --to <pr-head>`；PR open/draft/checks/CR/DS 仍以 GitHub PR 為準，local diff 不代表已 merge。
+
+standalone `diff` 若使用 `origin/<branch>`，會在計算前以 `git ls-remote` 重新驗證
+remote SHA；stale、unavailable 或只存在本地的 branch ref 都是 `blocked`。完整 commit
+SHA 可作 immutable anchor；tag 則必須同時通過 origin tag binding。這避免本地
+remote-tracking ref 或 local branch 被誤報成目前遠端差異。
 
 報告只讀 Git、ASC GET 與 live GET，不建立第二套狀態庫；`--ipa` 只提供本地 IPA
 SHA-256，不能宣稱該檔案就是 ASC binary。

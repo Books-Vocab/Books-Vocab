@@ -90,6 +90,20 @@ def test_normalize_asc_snapshot_binds_ios_build_and_store_version() -> None:
         "data": [
             {
                 "type": "builds",
+                "id": "build-6",
+                "attributes": {
+                    "version": "6",
+                    "processingState": "VALID",
+                    "uploadedDate": "2026-02-27T05:17:50Z",
+                },
+                "relationships": {
+                    "preReleaseVersion": {
+                        "data": {"type": "preReleaseVersions", "id": "pre-200"}
+                    }
+                },
+            },
+            {
+                "type": "builds",
                 "id": "build-10",
                 "attributes": {
                     "version": "10",
@@ -120,6 +134,11 @@ def test_normalize_asc_snapshot_binds_ios_build_and_store_version() -> None:
         "included": [
             {
                 "type": "preReleaseVersions",
+                "id": "pre-200",
+                "attributes": {"version": "2.0.0", "platform": "IOS"},
+            },
+            {
+                "type": "preReleaseVersions",
                 "id": "pre-201",
                 "attributes": {"version": "2.0.1", "platform": "IOS"},
             },
@@ -140,6 +159,9 @@ def test_normalize_asc_snapshot_binds_ios_build_and_store_version() -> None:
                     "appStoreState": "READY_FOR_SALE",
                     "platform": "IOS",
                 },
+                "relationships": {
+                    "build": {"data": {"type": "builds", "id": "build-6"}}
+                },
             },
             {
                 "type": "appStoreVersions",
@@ -150,7 +172,14 @@ def test_normalize_asc_snapshot_binds_ios_build_and_store_version() -> None:
                     "platform": "IOS",
                 },
             },
-        ]
+        ],
+        "included": [
+            {
+                "type": "builds",
+                "id": "build-6",
+                "attributes": {"version": "6", "processingState": "VALID"},
+            }
+        ],
     }
 
     snapshot = release_report.normalize_asc_snapshot(raw_builds, raw_versions)
@@ -168,7 +197,71 @@ def test_normalize_asc_snapshot_binds_ios_build_and_store_version() -> None:
         "version": "2.0.0",
         "state": "READY_FOR_SALE",
         "ascVersionId": "store-200",
+        "build": "6",
+        "ascBuildId": "build-6",
+        "processingState": "VALID",
     }
+
+
+def test_normalize_asc_builds_rejects_incomplete_latest_record() -> None:
+    payload = {
+        "data": [
+            {
+                "type": "builds",
+                "id": "build-11",
+                "attributes": {
+                    "version": "11",
+                    "processingState": "VALID",
+                    "uploadedDate": "2026-08-18T05:17:50Z",
+                },
+                "relationships": {},
+            },
+            {
+                "type": "builds",
+                "id": "build-10",
+                "attributes": {
+                    "version": "10",
+                    "processingState": "VALID",
+                    "uploadedDate": "2026-08-17T05:17:50Z",
+                },
+                "relationships": {
+                    "preReleaseVersion": {
+                        "data": {"type": "preReleaseVersions", "id": "pre-201"}
+                    }
+                },
+            },
+        ],
+        "included": [
+            {
+                "type": "preReleaseVersions",
+                "id": "pre-201",
+                "attributes": {"version": "2.0.1", "platform": "IOS"},
+            }
+        ],
+    }
+
+    with pytest.raises(release_report.ReportError, match="preReleaseVersion"):
+        release_report.normalize_asc_builds(payload)
+
+
+def test_normalize_asc_versions_rejects_incomplete_build_record() -> None:
+    payload = {
+        "data": [
+            {
+                "type": "appStoreVersions",
+                "id": "store-200",
+                "attributes": {
+                    "versionString": "2.0.0",
+                    "appStoreState": "READY_FOR_SALE",
+                    "platform": "IOS",
+                },
+                "relationships": {},
+            }
+        ]
+    }
+
+    with pytest.raises(release_report.ReportError, match="build"):
+        release_report.normalize_asc_versions(payload)
 
 
 def test_normalize_asc_snapshot_blocks_without_ready_for_sale_version() -> None:
@@ -206,6 +299,9 @@ def test_normalize_asc_snapshot_blocks_ambiguous_ready_for_sale_versions() -> No
                         "appStoreState": "READY_FOR_SALE",
                         "platform": "IOS",
                     },
+                    "relationships": {
+                        "build": {"data": {"type": "builds", "id": "build-200"}}
+                    },
                 },
                 {
                     "type": "appStoreVersions",
@@ -215,8 +311,23 @@ def test_normalize_asc_snapshot_blocks_ambiguous_ready_for_sale_versions() -> No
                         "appStoreState": "READY_FOR_SALE",
                         "platform": "IOS",
                     },
+                    "relationships": {
+                        "build": {"data": {"type": "builds", "id": "build-201"}}
+                    },
                 },
-            ]
+            ],
+            "included": [
+                {
+                    "type": "builds",
+                    "id": "build-200",
+                    "attributes": {"version": "200", "processingState": "VALID"},
+                },
+                {
+                    "type": "builds",
+                    "id": "build-201",
+                    "attributes": {"version": "201", "processingState": "VALID"},
+                },
+            ],
         },
     )
 
@@ -277,6 +388,43 @@ def test_diff_refs_reports_source_delta(tmp_path: Path) -> None:
     assert result["deletions"] == 1
     assert result["commitCount"] == 1
     assert result["files"] == [{"status": "M", "path": "ios/BooksAndVocab/Feature.swift"}]
+
+
+def test_diff_refs_verifies_fresh_remote_tracking_refs(tmp_path: Path) -> None:
+    repo, release_sha, main_sha = _repo_with_release_drift(tmp_path)
+    _git(repo, "update-ref", "refs/remotes/origin/main", main_sha)
+    _git(repo, "update-ref", "refs/remotes/origin/prod", release_sha)
+
+    result = release_report.diff_refs(repo, "backend", "origin/prod", "origin/main")
+
+    assert result["status"] == "changed"
+    assert result["from"]["remoteFreshness"]["status"] == "fresh"
+    assert result["to"]["remoteFreshness"]["status"] == "fresh"
+
+
+def test_diff_refs_blocks_stale_remote_tracking_refs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, release_sha, main_sha = _repo_with_release_drift(tmp_path)
+    _git(repo, "update-ref", "refs/remotes/origin/main", main_sha)
+    _git(repo, "update-ref", "refs/remotes/origin/prod", release_sha)
+    monkeypatch.setattr(release_report.Git, "remote_sha", lambda *_args: "0" * 40)
+
+    result = release_report.diff_refs(repo, "backend", "origin/prod", "origin/main")
+
+    assert result["status"] == "blocked"
+    assert result["from"]["remoteFreshness"]["status"] == "stale"
+    assert result["to"]["remoteFreshness"]["status"] == "stale"
+    assert "remote ref is not fresh" in result["reason"]
+
+
+def test_diff_refs_blocks_local_branch_refs(tmp_path: Path) -> None:
+    repo, _, _ = _repo_with_release_drift(tmp_path)
+
+    result = release_report.diff_refs(repo, "backend", "prod", "main")
+
+    assert result["status"] == "blocked"
+    assert "authoritative remote ref" in result["reason"]
 
 
 def test_build_report_explains_ios_and_backend_drift(tmp_path: Path) -> None:
@@ -479,6 +627,61 @@ def test_report_verifies_source_binding_tag_against_origin(tmp_path: Path) -> No
     assert binding["status"] == "unbound"
     assert "differs from origin" in binding["reason"]
     assert report["verdict"]["status"] == "blocked"
+
+
+def test_report_rejects_tag_target_with_wrong_ios_version_or_build(tmp_path: Path) -> None:
+    repo, _, _ = _repo_with_release_drift(tmp_path)
+    project = repo / "ios/BooksAndVocab.xcodeproj/project.pbxproj"
+    project.write_text(
+        "MARKETING_VERSION = 9.9.9;\n"
+        "MARKETING_VERSION = 9.9.9;\n"
+        "CURRENT_PROJECT_VERSION = 99;\n"
+        "CURRENT_PROJECT_VERSION = 99;\n",
+        encoding="utf-8",
+    )
+    wrong_sha = _commit(repo, "test: create mismatched release tag target")
+    _git(repo, "tag", "--force", "ios/1.0.0+1", wrong_sha)
+    _git(repo, "tag", "--force", "ios/1.0.0", wrong_sha)
+    _git(
+        repo,
+        "push",
+        "--force",
+        "origin",
+        "refs/tags/ios/1.0.0+1",
+        "refs/tags/ios/1.0.0",
+    )
+
+    report = release_report.build_report(
+        repo,
+        main_ref="origin/main",
+        production_ref="origin/prod",
+        asc_snapshot={
+            "testflight": {
+                "status": "observed",
+                "version": "1.0.0",
+                "build": "1",
+                "ascBuildId": "build-1",
+                "processingState": "VALID",
+            },
+            "appStore": {
+                "status": "observed",
+                "version": "1.0.0",
+                "state": "READY_FOR_SALE",
+                "build": "1",
+                "ascBuildId": "build-1",
+                "processingState": "VALID",
+                "ascVersionId": "store-100",
+            },
+        },
+        backend_live={"status": "unavailable", "reason": "fixture"},
+    )
+
+    testflight_binding = report["ios"]["testflight"]["sourceBinding"]
+    app_store_binding = report["ios"]["appStore"]["sourceBinding"]
+    assert testflight_binding["status"] == "unbound"
+    assert app_store_binding["status"] == "unbound"
+    assert "tag target" in testflight_binding["reason"]
+    assert "tag target" in app_store_binding["reason"]
 
 
 def test_report_blocks_missing_requested_ipa(tmp_path: Path) -> None:
