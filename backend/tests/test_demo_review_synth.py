@@ -179,29 +179,35 @@ def test_short_window_compresses_without_violating_monotonicity():
 
 def test_round_trips_through_review_event_store(tmp_path):
     store = ReviewEventStore(tmp_path / "review_events.db")
-    cards = [
-        _state(review_count=5, card_id="c1", content="alpha"),
-        _state(review_count=3, lapse_count=1, review_streak=1, card_id="c2", content="beta"),
-    ]
-    total = 0
-    for card in cards:
-        events = synthesize_review_events(card)
-        total += len(events)
-        push_review_events(events, event_store=store)
+    try:
+        cards = [
+            _state(review_count=5, card_id="c1", content="alpha"),
+            _state(review_count=3, lapse_count=1, review_streak=1, card_id="c2", content="beta"),
+        ]
+        total = 0
+        for card in cards:
+            events = synthesize_review_events(card)
+            total += len(events)
+            push_review_events(events, event_store=store)
 
-    pulled, cursor = pull_review_events(since=None, event_store=store)
-    assert len(pulled) == total == 8
-    assert cursor is not None
+        pulled, cursor = pull_review_events(since=None, event_store=store)
+        assert len(pulled) == total == 8
+        assert cursor is not None
+    finally:
+        store.close()
 
 
 def test_re_synth_and_repush_is_idempotent(tmp_path):
     store = ReviewEventStore(tmp_path / "review_events.db")
-    card = _state(review_count=6, card_id="idem")
-    first = push_review_events(synthesize_review_events(card), event_store=store)
-    second = push_review_events(synthesize_review_events(card), event_store=store)
-    assert first["inserted"] == 6
-    assert second["inserted"] == 0      # 重跑全被 event_id 去重
-    assert second["skipped"] == 6
+    try:
+        card = _state(review_count=6, card_id="idem")
+        first = push_review_events(synthesize_review_events(card), event_store=store)
+        second = push_review_events(synthesize_review_events(card), event_store=store)
+        assert first["inserted"] == 6
+        assert second["inserted"] == 0      # 重跑全被 event_id 去重
+        assert second["skipped"] == 6
+    finally:
+        store.close()
 
 
 # ── review 補強:naive 輸入 / 壓縮相異性 / 退化 / streak 語意 / sentinel ──
@@ -220,8 +226,11 @@ def test_naive_timestamps_are_normalized_and_accepted_by_store(tmp_path):
         assert datetime.fromisoformat(e.created_at).tzinfo is not None
     # 真正寫進 store(會跑 _parse_required_timestamp 的 tz-aware 驗證)
     store = ReviewEventStore(tmp_path / "review_events.db")
-    res = push_review_events(events, event_store=store)
-    assert res["inserted"] == 5
+    try:
+        res = push_review_events(events, event_store=store)
+        assert res["inserted"] == 5
+    finally:
+        store.close()
 
 
 def test_mixed_naive_aware_does_not_raise():
@@ -369,13 +378,16 @@ def test_next_review_before_chains_and_first_is_none():
 
 def test_srs_snapshots_survive_store_round_trip(tmp_path):
     store = ReviewEventStore(tmp_path / "review_events.db")
-    card = _state(review_count=5, lapse_count=1, review_streak=2,
-                  review_interval_hours=240.0, card_id="srs")
-    push_review_events(synthesize_review_events(card), event_store=store)
-    pulled, _ = pull_review_events(since=None, event_store=store)
-    pulled.sort(key=lambda e: e.reviewed_at)
-    assert all(e.is_synthetic is True for e in pulled)
-    assert [e.review_count_after for e in pulled] == [1, 2, 3, 4, 5]
-    assert pulled[-1].interval_after == 240.0
-    assert pulled[-1].streak_after == 2
-    assert pulled[-1].lapse_after == 1
+    try:
+        card = _state(review_count=5, lapse_count=1, review_streak=2,
+                      review_interval_hours=240.0, card_id="srs")
+        push_review_events(synthesize_review_events(card), event_store=store)
+        pulled, _ = pull_review_events(since=None, event_store=store)
+        pulled.sort(key=lambda e: e.reviewed_at)
+        assert all(e.is_synthetic is True for e in pulled)
+        assert [e.review_count_after for e in pulled] == [1, 2, 3, 4, 5]
+        assert pulled[-1].interval_after == 240.0
+        assert pulled[-1].streak_after == 2
+        assert pulled[-1].lapse_after == 1
+    finally:
+        store.close()
