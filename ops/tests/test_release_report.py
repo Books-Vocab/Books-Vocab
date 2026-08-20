@@ -295,6 +295,7 @@ def test_build_report_explains_ios_and_backend_drift(tmp_path: Path) -> None:
             "version": "1.0.0",
             "state": "READY_FOR_SALE",
             "build": "1",
+            "ascBuildId": "build-1",
             "processingState": "VALID",
             "ascVersionId": "store-100",
         },
@@ -308,8 +309,8 @@ def test_build_report_explains_ios_and_backend_drift(tmp_path: Path) -> None:
 
     report = release_report.build_report(
         repo,
-        main_ref="main",
-        production_ref="prod",
+        main_ref="origin/main",
+        production_ref="origin/prod",
         asc_snapshot=asc_snapshot,
         backend_live=backend_live,
         generated_at="2026-08-20T00:00:00Z",
@@ -330,12 +331,105 @@ def test_build_report_explains_ios_and_backend_drift(tmp_path: Path) -> None:
     assert "DRIFT" in human
 
 
-def test_report_blocks_non_release_eligible_testflight_build(tmp_path: Path) -> None:
+def test_report_blocks_non_authoritative_snapshot_refs(tmp_path: Path) -> None:
     repo, release_sha, _ = _repo_with_release_drift(tmp_path)
     report = release_report.build_report(
         repo,
         main_ref="main",
         production_ref="prod",
+        asc_snapshot={
+            "testflight": {
+                "status": "observed",
+                "version": "1.0.0",
+                "build": "1",
+                "ascBuildId": "build-1",
+                "processingState": "VALID",
+            },
+            "appStore": {
+                "status": "observed",
+                "version": "1.0.0",
+                "state": "READY_FOR_SALE",
+                "build": "1",
+                "ascBuildId": "build-1",
+                "processingState": "VALID",
+                "ascVersionId": "store-100",
+            },
+        },
+        backend_live={"status": "observed", "version": release_sha[:8]},
+    )
+
+    assert report["repository"]["main"]["remoteFreshness"]["status"] == "not_checked"
+    assert report["repository"]["production"]["remoteFreshness"]["status"] == "not_checked"
+    assert report["verdict"]["status"] == "blocked"
+    assert any("main remote ref is not fresh" in item for item in report["verdict"]["blockers"])
+    assert any(
+        "production remote ref is not fresh" in item for item in report["verdict"]["blockers"]
+    )
+
+
+def test_report_blocks_missing_asc_build_identity(tmp_path: Path) -> None:
+    repo, release_sha, _ = _repo_with_release_drift(tmp_path)
+    report = release_report.build_report(
+        repo,
+        asc_snapshot={
+            "testflight": {
+                "status": "observed",
+                "version": "1.0.0",
+                "build": "1",
+                "ascBuildId": "build-1",
+                "processingState": "VALID",
+            },
+            "appStore": {
+                "status": "observed",
+                "version": "1.0.0",
+                "state": "READY_FOR_SALE",
+                "build": "1",
+                "processingState": "VALID",
+                "ascVersionId": "store-100",
+            },
+        },
+        backend_live={"status": "observed", "version": release_sha[:8]},
+    )
+
+    assert report["verdict"]["status"] == "blocked"
+    assert any("ASC build identity" in item for item in report["verdict"]["blockers"])
+
+
+def test_report_explains_distinct_asc_build_identities(tmp_path: Path) -> None:
+    repo, release_sha, _ = _repo_with_release_drift(tmp_path)
+    report = release_report.build_report(
+        repo,
+        asc_snapshot={
+            "testflight": {
+                "status": "observed",
+                "version": "1.0.0",
+                "build": "1",
+                "ascBuildId": "build-1",
+                "processingState": "VALID",
+            },
+            "appStore": {
+                "status": "observed",
+                "version": "1.0.0",
+                "state": "READY_FOR_SALE",
+                "build": "1",
+                "ascBuildId": "build-other",
+                "processingState": "VALID",
+                "ascVersionId": "store-100",
+            },
+        },
+        backend_live={"status": "observed", "version": release_sha[:8]},
+    )
+
+    assert report["verdict"]["status"] == "drift"
+    assert any("ASC build identities differ" in item for item in report["verdict"]["reasons"])
+
+
+def test_report_blocks_non_release_eligible_testflight_build(tmp_path: Path) -> None:
+    repo, release_sha, _ = _repo_with_release_drift(tmp_path)
+    report = release_report.build_report(
+        repo,
+        main_ref="origin/main",
+        production_ref="origin/prod",
         asc_snapshot={
             "testflight": {
                 "status": "observed",
@@ -349,6 +443,7 @@ def test_report_blocks_non_release_eligible_testflight_build(tmp_path: Path) -> 
                 "version": "1.0.0",
                 "state": "READY_FOR_SALE",
                 "build": "1",
+                "ascBuildId": "build-1",
                 "processingState": "VALID",
                 "ascVersionId": "store-100",
             },
@@ -365,8 +460,8 @@ def test_report_verifies_source_binding_tag_against_origin(tmp_path: Path) -> No
     _git(repo, "tag", "--force", "ios/1.0.0+1", main_sha)
     report = release_report.build_report(
         repo,
-        main_ref="main",
-        production_ref="prod",
+        main_ref="origin/main",
+        production_ref="origin/prod",
         asc_snapshot={
             "testflight": {
                 "status": "observed",
@@ -390,8 +485,8 @@ def test_report_blocks_missing_requested_ipa(tmp_path: Path) -> None:
     repo, release_sha, _ = _repo_with_release_drift(tmp_path)
     report = release_report.build_report(
         repo,
-        main_ref="main",
-        production_ref="prod",
+        main_ref="origin/main",
+        production_ref="origin/prod",
         asc_snapshot={
             "testflight": {
                 "status": "observed",
@@ -405,6 +500,7 @@ def test_report_blocks_missing_requested_ipa(tmp_path: Path) -> None:
                 "version": "1.0.0",
                 "state": "READY_FOR_SALE",
                 "build": "1",
+                "ascBuildId": "build-1",
                 "processingState": "VALID",
                 "ascVersionId": "store-100",
             },
@@ -422,8 +518,8 @@ def test_report_marks_missing_release_tag_as_blocked(tmp_path: Path) -> None:
     repo, _, _ = _repo_with_release_drift(tmp_path)
     report = release_report.build_report(
         repo,
-        main_ref="main",
-        production_ref="prod",
+        main_ref="origin/main",
+        production_ref="origin/prod",
         asc_snapshot={
             "testflight": {
                 "status": "observed",
@@ -447,8 +543,8 @@ def test_report_blocks_unresolvable_backend_live_version(tmp_path: Path) -> None
     repo, _, _ = _repo_with_release_drift(tmp_path)
     report = release_report.build_report(
         repo,
-        main_ref="main",
-        production_ref="prod",
+        main_ref="origin/main",
+        production_ref="origin/prod",
         asc_snapshot={
             "testflight": {
                 "status": "observed",
@@ -462,6 +558,7 @@ def test_report_blocks_unresolvable_backend_live_version(tmp_path: Path) -> None
                 "version": "1.0.0",
                 "state": "READY_FOR_SALE",
                 "build": "1",
+                "ascBuildId": "build-1",
                 "processingState": "VALID",
                 "ascVersionId": "store-100",
             },
@@ -497,6 +594,7 @@ def test_report_blocks_stale_remote_tracking_refs(
                 "version": "1.0.0",
                 "state": "READY_FOR_SALE",
                 "build": "1",
+                "ascBuildId": "build-1",
                 "processingState": "VALID",
                 "ascVersionId": "store-100",
             },

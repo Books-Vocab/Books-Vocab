@@ -619,7 +619,13 @@ def _same_tuple(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
     return left.get("status") == "observed" and right.get("status") == "observed" and (
         left.get("version"),
         left.get("build"),
-    ) == (right.get("version"), right.get("build"))
+        left.get("ascBuildId"),
+    ) == (right.get("version"), right.get("build"), right.get("ascBuildId"))
+
+
+def _has_asc_build_identity(evidence: Mapping[str, Any]) -> bool:
+    build_id = evidence.get("ascBuildId")
+    return isinstance(build_id, str) and bool(build_id)
 
 
 def build_report(
@@ -741,8 +747,11 @@ def build_report(
         blockers.append("App Store channel is not READY_FOR_SALE")
     for label, evidence in (("main", main), ("production", production)):
         freshness = evidence.get("remoteFreshness", {})
-        if freshness.get("status") in {"stale", "unavailable"}:
-            blockers.append(f"{label} remote ref is not fresh: {freshness.get('reason', freshness.get('status'))}")
+        if freshness.get("status") != "fresh":
+            blockers.append(
+                f"{label} remote ref is not fresh: "
+                f"{freshness.get('reason', freshness.get('status', 'unknown'))}"
+            )
     if main.get("status") != "observed":
         blockers.append(f"main ref unavailable: {main_ref}")
     if production.get("status") != "observed":
@@ -769,6 +778,13 @@ def build_report(
             blockers.append("App Store version has no associated ASC build evidence")
         elif not isinstance(testflight.get("build"), str):
             blockers.append("TestFlight version has no build number")
+        elif not _has_asc_build_identity(app_store) or not _has_asc_build_identity(testflight):
+            blockers.append("App Store/TestFlight ASC build identity evidence is incomplete")
+        elif app_store.get("ascBuildId") != testflight.get("ascBuildId"):
+            reasons.append(
+                "App Store and TestFlight ASC build identities differ: "
+                f"{app_store.get('ascBuildId')} vs {testflight.get('ascBuildId')}"
+            )
         elif not _same_tuple(app_store, testflight):
             reasons.append(
                 f"App Store {app_store.get('version')} build {app_store.get('build')} and TestFlight "
