@@ -14,6 +14,18 @@ from kg.pipeline_service import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _close_pipeline_log():
+    from kg import pipeline_log
+
+    pipeline_log._reset()
+    try:
+        yield
+    finally:
+        pipeline_log._reset()
+        assert pipeline_log._conn is None, "pipeline_log SQLite connection leaked from test"
+
+
 async def _async_lock():
     return asyncio.Lock()
 
