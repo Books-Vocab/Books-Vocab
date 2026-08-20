@@ -53,11 +53,34 @@ symbolication_ready
 
 ## Agent boundary
 
-後續 `ops/sentry_tool.py` 是 read-only CLI facade，透過 `sentry_api.py` 呼叫 Sentry Web API，經 `sentry_contract.py` 做 normalization、redaction 與 routing。工具不得 resolve、assign、comment、create issue 或寫 GitHub；routing 只產生建議，交由 IM／協作控制面處理。
+`ops/sentry_tool.py` 是 read-only CLI facade，透過 `sentry_api.py` 呼叫 Sentry Web API，經 `sentry_contract.py` 做 normalization、redaction 與 routing。工具不得 resolve、assign、comment、create issue 或寫 GitHub；routing 只產生建議，交由 IM／協作控制面處理。
+
+日常 agent 只需要 shell/JSON，不需要 Sentry GUI：
+
+```bash
+./ops/sentry_tool.py health --json
+./ops/sentry_tool.py issues --project ios --environment production --status unresolved --json
+./ops/sentry_tool.py issue <issue-id> --full --json
+./ops/sentry_tool.py events --issue <issue-id> --json
+./ops/sentry_tool.py releases --project ios --json
+./ops/sentry_tool.py regressions --release '<bundle-id>@<version>+<build>' --json
+./ops/sentry_tool.py route <issue-id> --json
+```
+
+API adapter 只讀 `SENTRY_API_URL`、`SENTRY_AUTH_TOKEN`、`SENTRY_ORG`、
+`SENTRY_PROJECT_IOS`、`SENTRY_PROJECT_BACKEND`。token 只放 secret/env，CLI
+不提供任何寫入子命令；缺 token、API 不可達或 project 不可讀時，輸出結構化
+`unchecked`／安全錯誤，不把 response body、Authorization 或 cookie 帶回 agent。
 
 其穩定輸出 schema 為：
 
 - `kg.sentry.health.v1`
 - `kg.sentry.issue.v1`
+- `kg.sentry.issues.v1`
+- `kg.sentry.event.v1`
+- `kg.sentry.events.v1`
+- `kg.sentry.releases.v1`
+- `kg.sentry.regressions.v1`
+- `kg.sentry.error.v1`
 
 任何缺少 API secret 的情況回報 `unchecked`，不把 token 或 Authorization header 寫入 stdout、stderr、artifact 或測試 fixture。

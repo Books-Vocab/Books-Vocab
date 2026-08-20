@@ -206,9 +206,13 @@ run_one() {
       ./ops/tests/test_ios_ops_release_heartbeat.sh &&
       ./ops/tests/test_ios_xctestrun_cache.sh &&
       ./ops/tests/test_ios_ui_test_package_dependencies.sh &&
+      ./ops/tests/test_sentry_wiring.sh &&
       "$UV_BIN" run --project backend python -m pytest -q \
         ops/tests/test_ios_diagnostics.py \
         ops/tests/test_ios_coverage.py &&
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_sentry_contract.py \
+        ops/tests/test_sentry_tool.py &&
       ./ops/tests/test_ios_build_covers_test_targets.sh
       ;;
     ios-run-verdict)    ./ops/tests/test_ios_run_verdict.sh ;;
