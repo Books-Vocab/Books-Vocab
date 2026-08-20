@@ -20,6 +20,16 @@ import skill_route  # noqa: E402
 SCHEMA = "kg.context_plane.v4"
 ROUTE_SCHEMA = "kg.context.route.v3"
 IDENTITY_SCHEMA = "kg.context.identity.v3"
+WORKER_DISPATCH_CHANNELS = {
+    "im": {
+        "discussion_with": "dispatching IM",
+        "handback_policy": "same-dispatching-im",
+    },
+    "user": {
+        "discussion_with": "User",
+        "handback_policy": "specified-or-worker-selected-im",
+    },
+}
 ROLES = {"manager", "contributor", "reviewer", "docs-steward", "release-operator"}
 IDENTITIES = {"cm", "im", "worker", "issue-solver", "cr", "ds", "release-operator"}
 ROUTE_CLASSES = {"coordination", "implementation", "implementation-ios", "review", "docs", "release"}
@@ -123,6 +133,29 @@ def _require_sources(sources: Any, name: str, root: Path) -> None:
             raise ContextRouteError(f"{name}.sources 不存在: {source}")
 
 
+def _validate_worker_dispatch_channels(identity_id: str, handoff_contract: dict[str, Any]) -> None:
+    if identity_id != "worker":
+        return
+    channels = _require_mapping(
+        handoff_contract.get("dispatch_channels"),
+        "identities.worker.handoff_contract.dispatch_channels",
+    )
+    if set(channels) != set(WORKER_DISPATCH_CHANNELS):
+        raise ContextRouteError(
+            "identities.worker.handoff_contract.dispatch_channels 必須剛好包含 im、user"
+        )
+    for channel, expected in WORKER_DISPATCH_CHANNELS.items():
+        definition = _require_mapping(
+            channels[channel],
+            f"identities.worker.handoff_contract.dispatch_channels.{channel}",
+        )
+        if definition != expected:
+            raise ContextRouteError(
+                f"identities.worker.handoff_contract.dispatch_channels.{channel} "
+                f"必須是 {expected}"
+            )
+
+
 def _validate_identity(
     identity_id: str,
     definition: dict[str, Any],
@@ -152,6 +185,8 @@ def _validate_identity(
             raise ContextRouteError(f"identities.{identity_id}.allowed_surfaces/forbidden_surfaces 重疊: {overlap}")
     if "handoff_contract" in definition and not isinstance(definition["handoff_contract"], dict):
         raise ContextRouteError(f"identities.{identity_id}.handoff_contract 必須是 object")
+    if "handoff_contract" in definition:
+        _validate_worker_dispatch_channels(identity_id, definition["handoff_contract"])
     if not isinstance(definition["label"], str) or not definition["label"].strip():
         raise ContextRouteError(f"identities.{identity_id}.label 必須是非空字串")
     _require_nonempty_strings(definition["aliases"], f"identities.{identity_id}.aliases")

@@ -51,8 +51,8 @@ GitHub 是交付控制面：Issue／Project 管規劃與排序，branch／worktr
 |---|---|---|
 | CM | 交付協調、Ready admission、merge queue／merge、local main 同步、release/deploy 邊界 | 修改 code／worktree／PR body／registry；代替 IM 發 PR |
 | IM | GitHub Issue／Project、派工、worktree lifecycle、push exact commit、PR metadata／readiness、terminal cleanup | 修改 code、替 Worker commit／解 conflict、merge／enqueue |
-| Worker | 接受 User／IM 直接指派，完成 branch/worktree、程式碼、測試、local commit 與 hand-back | 任何 GitHub／Issue／PR mutation、push、review、merge、release/deploy |
-| Issue Solver | 執行 IM 傳入的 Issue assignment packet，完成 branch/worktree、程式碼、測試、local commit 與 hand-back | 任何 GitHub／Issue／PR mutation、push、review、merge、release/deploy |
+| Worker | 接受 User／IM 直接指派，依 `dispatch_channel` 討論並完成 branch/worktree、程式碼、測試、local commit 與 hand-back | 任何 GitHub／Issue／PR mutation、push、review、merge、release/deploy |
+| Issue Solver | 只消除已進入 GitHub Issue 的工作；接受 IM 傳入的 Issue assignment packet，完成 branch/worktree、程式碼、測試、local commit 與 hand-back | 接受未進 Issue 的直接指派；任何 GitHub／Issue／PR mutation、push、review、merge、release/deploy |
 | CR | 審查 PR diff 的正確性、測試、回歸、架構與安全 | 修改 caller worktree、merge、release |
 | DS | 判斷文件影響、維護 registry／SoT、執行 docs lint | 建立文件狀態庫、PR lifecycle、merge |
 | Release operator | 依批准與 SOP 執行 release、deploy、health gate、rollback | 自行批准 production、繞過 safety wrapper |
@@ -67,7 +67,7 @@ GitHub 是交付控制面：Issue／Project 管規劃與排序，branch／worktr
 
 1. **Project**：讀本文件，建立整個 KG 的共同概覽。
 2. **Identity**：確認 canonical identity、工作入口與不負責的事情。
-3. **Assignment**：CM／IM 確認 GitHub Issue／PR；Worker／Issue Solver 接收 direct assignment 或由 IM 整理的 assignment packet、acceptance、branch/worktree Scope。
+3. **Assignment**：CM／IM 確認 GitHub Issue／PR；Worker 接收帶 `dispatch_channel=im|user` 的 direct assignment，Issue Solver 接收由 IM 整理的 Issue assignment packet；兩者都必須取得 acceptance、branch/worktree Scope。
 4. **Skill**：由 onboarding kernel 選出唯一 primary skill，再讀 primary 與合法 dependencies；domain specialist 不預載，依 task intent 精準選取。
 5. **Domain**：只讀這次工作需要的技術文件，完成驗證並以 local hand-back；PR／必要 SOP 由 IM／CM 收斂。
 

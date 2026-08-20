@@ -73,8 +73,8 @@ Onboarding 的成功只代表上下文 contract 完整，不代表 GitHub、merg
 |---|---|---|
 | **CM — Codebase Manager** | 協調整體交付；驗證 exact Ready tuple；控制 merge queue／merge；每次 landing 後讓本地 `main` 與 `origin/main` 精確同步 | 修改產品 code、修改 Worker／Issue Solver worktree、修 PR body／registry、代替 IM 發 PR |
 | **IM — Issues Manager** | 管理 GitHub Issue／Project；排序與派工；控制本地 worktree lifecycle；接收 Worker／Issue Solver 的 local hand-back；push 已提交的 exact branch、建立／更新 PR、維護 PR metadata／readiness；收到 CM terminal receipt 後清理三項 Git 資產 | 修改產品 code、替 Worker commit／解 code conflict、merge／enqueue、代替 CM 決定 merge |
-| **Worker** | 接受 User／IM 的直接指派；只在指定 local branch/worktree 修改 code／test、驗證、建立 local commit，交回乾淨 exact HEAD | 不使用 GitHub／`gh`；不建立或修改 Issue／PR、不 push、不 review、不 merge／enqueue、不碰其他 worktree |
-| **Issue Solver** | 接受 IM 傳入的 Issue assignment packet；只在指定 local branch/worktree 修改 code／test、驗證、建立 local commit，交回乾淨 exact HEAD | 不使用 GitHub／`gh`；不 claim／修改 Issue、不建立或修改 PR、不 push、不 review、不 merge／enqueue |
+| **Worker** | 接受 User／IM 的直接指派；依 `dispatch_channel` 與派遣者討論，只在指定 local branch/worktree 修改 code／test、驗證、建立 local commit，交回乾淨 exact HEAD | 不使用 GitHub／`gh`；不建立或修改 Issue／PR、不 push、不 review、不 merge／enqueue、不碰其他 worktree |
+| **Issue Solver** | 只消除已進入 GitHub Issue 的工作；接受 IM 傳入的 Issue assignment packet，只在指定 local branch/worktree 修改 code／test、驗證、建立 local commit，交回乾淨 exact HEAD | 不使用 GitHub／`gh`；不接手未進 Issue 的直接指派，不 claim／修改 Issue、不建立或修改 PR、不 push、不 review、不 merge／enqueue |
 | **CR — Code Reviewer** | 對所有 PR 做獨立的正確性、測試、回歸、架構與安全審查；把結論留在 PR | 管理 Issue；擁有 merge 權限；建立本地 review cycle |
 | **DS — Docs Steward** | 對所有 PR 判斷文件 impact；維護 registry、metadata、SoT domain SOP／reference，執行 docs lint | 建立本地工作項目資料庫；複製 PR lifecycle |
 
@@ -86,6 +86,7 @@ Release operator 是 CM 所管理的執行能力，不是另一套產品管理�
 
 - Worker／Issue Solver 的輸入是 assignment packet，不是 GitHub session。IM 將 Issue URL／acceptance／structured Scope／base SHA 傳入；實作者不需要也不得直接呼叫 GitHub API。
 - Worker／Issue Solver 可以在本地建立 commit；這是 code hand-back 的一部分，不是 GitHub 交付。hand-back 必須是乾淨 worktree、local branch、exact HEAD、Scope 與驗證證據。
+- Worker direct assignment 必須明確記錄 `dispatch_channel=im|user`：IM 派遣時 Worker 和同一個 IM 討論並 hand-back 給同一個 IM；User 派遣時 Worker 和 User 討論，hand-back 給 User 指定的 IM，未指定時由 Worker 在 hand-back 前選定一個 IM。
 - IM 只處理 Issue、Project、worktree ledger 與 Git transport／PR metadata。它可以 push Worker 已存在的 commit、開／更新 PR、觸發 checks，但不能改檔案、staging、commit 內容或解 code conflict。
 - CM 只處理交付協調、Ready admission、merge queue／merge 與 main synchronization。任何 code 或 PR metadata 修正都退回 IM／原 Worker，不由 CM 代修。
 - CR／DS 各自把 review／docs impact 結論留在 PR；兩者都不修改 caller worktree。
@@ -114,6 +115,11 @@ Actions + CR + DS → CM Ready admission → merge queue/merge → main → rele
 
 PR 仍必須寫清楚指派內容、修改範圍、驗收方式、測試證據、文件影響與 production／rollback 風險。
 
+直接指派的 hand-back recipient 不由 Worker 自行模糊推定：
+
+- `dispatch_channel=im`：`dispatch_owner` 是討論對象，也是唯一 hand-back recipient；若另給 `handback_target`，必須相同。
+- `dispatch_channel=user`：討論對象固定是 User；`handback_target` 可指定 IM，省略時 Worker 必須先選定 IM，才能交回 hand-back。
+
 ### B. Issue 流程
 
 適用於需要討論、排序、拆解、Project／milestone 視圖或未來追蹤的工作。
@@ -136,7 +142,7 @@ Issue 的 acceptance 是需求真相；PR 的 diff、conversation、checks、rev
 
 ## PR 收斂規則
 
-Worker 與 Issue Solver 的實作能力、測試要求與 local hand-back 標準相同，差別只有工作的進入方式。PR 由 IM 從 exact hand-back 建立；每個 PR 應讓人能回答：
+Worker 與 Issue Solver 的實作能力、測試要求與 local hand-back 標準相同，差別是 Worker 處理 direct assignment、Issue Solver 只消除 Issue work。PR 由 IM 從 exact hand-back 建立；每個 PR 應讓人能回答：
 
 - 這是 direct assignment 還是 Issue work；若有 Issue，關聯哪一張。
 - 改了什麼、為什麼改、範圍與非目標是什麼。
@@ -149,6 +155,7 @@ CM 只在 PR 的 required checks、review、文件影響與安全條件滿足後
 ### Hand-back、PR 與 cleanup invariant
 
 - local hand-back 不是完成；IM 必須把它轉成真實 PR，否則該工作只能標記為 `hand-back pending PR`，不可算 Ready 或完成。
+- hand-back 必須保留 dispatch provenance 與 recipient：IM dispatch 回同一 IM；User dispatch 回指定 IM 或 Worker 在交接前選定的 IM；沒有 recipient 不得宣稱 hand-back 完成。
 - 沒有正在修改 code 的工作，不保留本地 worktree。PR 等待 CI／review 時可保留 remote branch／PR；需要修改時由 IM 重新開 dedicated worktree。
 - CM merge 或明確 terminal abandonment 後，IM 必須同步清理：local worktree、local branch、remote branch。三者任何一項仍存在都算 cleanup incomplete。
 - 每次 merge／queue landing 後，CM 必須 `fetch` 並以安全的 fast-forward 路徑使 local `main` 與 `origin/main` 相同；若 local main dirty、diverged 或 drift，停止後續 admission，不得 force reset 掩蓋問題。

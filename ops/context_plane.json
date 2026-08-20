@@ -124,10 +124,20 @@
       "handoff_contract": {
         "input": ["User/IM assignment", "dedicated branch/worktree and structured Scope"],
         "output": ["clean local commit with exact HEAD and validation evidence", "no GitHub mutation"],
-        "next_owner": "IM publishes the exact commit as a PR"
+        "next_owner": "IM publishes the exact commit as a PR",
+        "dispatch_channels": {
+          "im": {
+            "discussion_with": "dispatching IM",
+            "handback_policy": "same-dispatching-im"
+          },
+          "user": {
+            "discussion_with": "User",
+            "handback_policy": "specified-or-worker-selected-im"
+          }
+        }
       },
       "assignment_requirements": {
-        "direct-assignment": ["User/IM assignment", "acceptance", "structured Scope"]
+        "direct-assignment": ["User/IM assignment", "acceptance", "structured Scope", "dispatch_channel"]
       },
       "skill_routes": {
         "delivery": {"direct-assignment": "delivery-worktree"},

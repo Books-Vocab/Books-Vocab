@@ -20,9 +20,10 @@ verified_against: 2a7930c04f661c266ce05b3568f375e1db2a39f1
 
 適用於 User 或 IM 已經給出明確目標、範圍與驗收的工作；不需要先建立 Issue。
 
-1. Worker 確認 assignment、branch、worktree 與 structured Scope。
+1. Worker 確認 assignment、`dispatch_channel=im|user`、branch、worktree 與 structured Scope；IM channel 另確認 `dispatch_owner`，User channel 可帶 `handback_target`。
 2. 在 branch/worktree 以 TDD 實作與測試，commit 保持小而可 review。
-3. 開 PR，具名寫出 assignment、範圍、驗收、測試、文件影響與安全風險。
+3. 依 channel 和對象討論：IM channel 和派遣 IM 討論並 hand-back 給同一 IM；User channel 和 User 討論，hand-back 給指定 IM，未指定則先選定一個 IM。
+4. 建立 local commit 並 hand-back；Worker 不開 PR、不 push，由 IM 以 exact HEAD 建立 PR。
 
 ### GitHub Issue → Issue Solver
 
@@ -30,11 +31,11 @@ verified_against: 2a7930c04f661c266ce05b3568f375e1db2a39f1
 
 1. IM 在 GitHub Issue 寫清楚背景、影響、acceptance、非目標與必要 domain context。
 2. IM 依 GitHub Project／triage 決定優先順序，Issue Solver claim 後確認 branch、worktree 與 structured Scope。
-3. Issue Solver 依 Issue 實作與測試，commit 保持小而可 review，開 PR 並關聯 Issue。
+3. Issue Solver 依 Issue 實作與測試，commit 保持小而可 review，hand-back 給派遣的 IM；由 IM 開 PR 並關聯 Issue。
 
 ## Common PR convergence
 
-1. Worker 與 Issue Solver 都把所有 code change 收進同一個 PR 流程：`branch → commit → PR`。
+1. Worker 與 Issue Solver 都把所有 code change 收進同一個 PR 流程：`branch → local commit → hand-back → IM PR`；Worker 的 direct assignment packet 必須留下 dispatch provenance 與 hand-back recipient。
 2. PR 描述變更、測試命令與 exit status、風險、文件影響、rollback 方式，並標明 direct assignment 或關聯 Issue。
 3. 等 GitHub Actions workflow `pr-gate` 的 check run `required`、CR review、DS 文件判斷與必要的 environment approval 滿足後，由 CM 依優先順序 merge。`required` 的上游 job 各有 3 分鐘 hard stop，聚合本身 1 分鐘；backend／ops／iOS 的完整**受影響** `confidence` suite 依 fail-closed changed-path policy 同時平行收斂，不形成所有 PR 的全域串行門檻。
 4. merge 後 `main` 是產品真相；依 release 意圖執行版本發布。發布與 production deploy 不因一般 merge 自動發生。

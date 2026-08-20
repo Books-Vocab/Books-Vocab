@@ -56,6 +56,29 @@ def test_manifest_has_project_onboarding_and_canonical_identity_boundaries() -> 
         assert definition["handoff_contract"]["output"]
 
 
+def test_worker_manifest_declares_both_dispatch_channels_and_hand_back_policies() -> None:
+    worker = mod.load_manifest(ROOT)["identities"]["worker"]
+    assert "dispatch_channel" in worker["assignment_requirements"]["direct-assignment"]
+    assert worker["handoff_contract"]["dispatch_channels"] == {
+        "im": {
+            "discussion_with": "dispatching IM",
+            "handback_policy": "same-dispatching-im",
+        },
+        "user": {
+            "discussion_with": "User",
+            "handback_policy": "specified-or-worker-selected-im",
+        },
+    }
+
+
+def test_worker_dispatch_contract_fails_closed_when_a_channel_drifts() -> None:
+    manifest = copy.deepcopy(mod.load_manifest(ROOT))
+    del manifest["identities"]["worker"]["handoff_contract"]["dispatch_channels"]["user"]
+
+    with pytest.raises(mod.ContextRouteError, match="dispatch_channels"):
+        mod.validate_manifest(manifest, ROOT)
+
+
 def test_route_is_github_native_and_does_not_grant_authority() -> None:
     payload = mod.resolve_route(mod.load_manifest(ROOT), "manager", intent="delivery", root=ROOT)
     assert payload["schema"] == "kg.context.route.v3"
