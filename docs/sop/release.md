@@ -61,6 +61,16 @@ binding created only after the ASC state is verified. For backend, compare `orig
 `origin/main`, then separately compare live `/api/system/info` to `origin/prod`. Missing source
 bindings are `blocked`, never a guessed match.
 
+每次 `snapshot` 也會以 `git ls-remote` 重新確認 `origin/main` 與 `origin/prod`；只
+相信本地 remote-tracking ref 會把「本地看起來最新」誤報成目前遠端狀態。若 remote
+ref 過期、無法取得或 live backend version 無法解析到 commit/tree，報告會
+`blocked`，不會繼續計算看似精確的差距。
+
+App Store／TestFlight 的 tuple 比對必須同時有 ASC 的 version、build number 與 build
+resource identity。缺少 App Store `READY_FOR_SALE` version 或其 build、或缺少
+TestFlight build binding 時，報告同樣是 `blocked`；不可用「最新 TestFlight build」
+代替使用者實際取得的 App Store 版本。
+
 ### Provenance contract
 
 「版本」不是一個字串，而是可交叉驗證的 release identity：
