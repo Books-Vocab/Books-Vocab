@@ -68,6 +68,23 @@ def _is_http_error(payload: Mapping[str, Any]) -> bool:
     return "_httpError" in payload
 
 
+def _included_attributes(
+    payload: Mapping[str, Any], resource_type: str
+) -> dict[str, dict[str, Any]]:
+    included = payload.get("included")
+    if not isinstance(included, list):
+        return {}
+    result: dict[str, dict[str, Any]] = {}
+    for item in included:
+        if not isinstance(item, dict) or item.get("type") != resource_type:
+            continue
+        item_id = item.get("id")
+        attrs = item.get("attributes")
+        if isinstance(item_id, str) and isinstance(attrs, dict):
+            result[item_id] = attrs
+    return result
+
+
 def parse_ios_settings(text: str) -> dict[str, str]:
     """Parse one consistent iOS marketing/build tuple from a pbxproj."""
 
@@ -97,18 +114,7 @@ def parse_backend_version(text: str) -> str | None:
 
 
 def _pre_release_attributes(payload: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
-    included = payload.get("included")
-    if not isinstance(included, list):
-        return {}
-    result: dict[str, dict[str, Any]] = {}
-    for item in included:
-        if not isinstance(item, dict) or item.get("type") != "preReleaseVersions":
-            continue
-        item_id = item.get("id")
-        attrs = item.get("attributes")
-        if isinstance(item_id, str) and isinstance(attrs, dict):
-            result[item_id] = attrs
-    return result
+    return _included_attributes(payload, "preReleaseVersions")
 
 
 def normalize_asc_builds(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -177,11 +183,13 @@ def normalize_asc_versions(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
     data = payload.get("data")
     if not isinstance(data, list):
         raise ReportError("ASC App Store versions response has no data list")
+    builds = _included_attributes(payload, "builds")
     versions: list[dict[str, Any]] = []
     for item in data:
         if not isinstance(item, dict) or item.get("type") != "appStoreVersions":
             continue
         attrs = item.get("attributes")
+        relationship = item.get("relationships")
         if not isinstance(attrs, dict):
             continue
         platform = attrs.get("platform")
@@ -205,6 +213,17 @@ def normalize_asc_versions(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
         for source, target in (("createdDate", "createdAt"), ("releaseDate", "releasedAt")):
             if isinstance(attrs.get(source), str):
                 normalized[target] = attrs[source]
+        if isinstance(relationship, dict):
+            linkage = relationship.get("build", {}).get("data")
+            if isinstance(linkage, dict):
+                build_id = linkage.get("id")
+                build_attrs = builds.get(str(build_id))
+                build_number = build_attrs.get("version") if build_attrs else None
+                if isinstance(build_id, str) and build_id and isinstance(build_number, str) and build_number:
+                    normalized["build"] = build_number
+                    normalized["ascBuildId"] = build_id
+                    if isinstance(build_attrs.get("processingState"), str):
+                        normalized["processingState"] = build_attrs["processingState"]
         versions.append(normalized)
     versions.sort(
         key=lambda item: (_version_key(str(item["version"])), str(item.get("createdAt", ""))),
@@ -249,7 +268,7 @@ def fetch_asc_snapshot(app_id: str = DEFAULT_APP_ID) -> dict[str, dict[str, Any]
         }
     )
     versions_query = urllib.parse.urlencode(
-        {"filter[platform]": "IOS", "limit": "200"}
+        {"filter[platform]": "IOS", "include": "build", "limit": "200"}
     )
     return normalize_asc_snapshot(
         get(f"/v1/builds?{builds_query}", token),
@@ -327,6 +346,28 @@ class Git:
     def show(self, sha: str, path: str) -> str:
         return self.run(["show", f"{sha}:{path}"])
 
+    def remote_sha(self, remote: str, branch: str) -> str:
+        remote_ref = f"refs/heads/{branch}"
+        try:
+            result = subprocess.run(
+                ["git", "ls-remote", "--heads", remote, remote_ref],
+                cwd=self.repo,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise ReportError(f"git ls-remote {remote} {remote_ref} timed out") from exc
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip()
+            raise ReportError(f"git ls-remote {remote} {remote_ref} failed: {detail}")
+        for line in result.stdout.splitlines():
+            fields = line.split("\t")
+            if len(fields) == 2 and fields[1] == remote_ref and re.fullmatch(r"[0-9a-f]{40}", fields[0]):
+                return fields[0]
+        raise ReportError(f"remote ref unavailable: {remote}/{branch}")
+
 
 def _identity(git: Git, ref: str) -> dict[str, Any]:
     try:
@@ -334,6 +375,27 @@ def _identity(git: Git, ref: str) -> dict[str, Any]:
         return {"status": "observed", "ref": ref, "sha": sha, "tree": git.tree(sha)}
     except ReportError as exc:
         return {"status": "unavailable", "ref": ref, "reason": str(exc)}
+
+
+def _remote_freshness(git: Git, ref: str, identity: Mapping[str, Any]) -> dict[str, Any]:
+    remote, separator, branch = ref.partition("/")
+    if not separator or not remote or not branch:
+        return {"status": "not_checked", "ref": ref, "reason": "ref is not remote-tracking"}
+    if identity.get("status") != "observed":
+        return {"status": "unavailable", "ref": ref, "reason": "local ref is unavailable"}
+    try:
+        remote_sha = git.remote_sha(remote, branch)
+    except ReportError as exc:
+        return {"status": "unavailable", "ref": ref, "reason": str(exc)}
+    local_sha = str(identity["sha"])
+    return {
+        "status": "fresh" if local_sha == remote_sha else "stale",
+        "ref": ref,
+        "remote": remote,
+        "branch": branch,
+        "localSha": local_sha,
+        "remoteSha": remote_sha,
+    }
 
 
 def _bind_tag(git: Git, tag: str) -> dict[str, Any]:
@@ -528,7 +590,9 @@ def build_report(
     root = Path(repo).resolve()
     git = Git(root)
     main = _enrich_ref(git, _identity(git, main_ref))
+    main["remoteFreshness"] = _remote_freshness(git, main_ref, main)
     production = _enrich_ref(git, _identity(git, production_ref))
+    production["remoteFreshness"] = _remote_freshness(git, production_ref, production)
 
     asc: Mapping[str, Any]
     if asc_snapshot is None and fetch_external:
@@ -623,6 +687,12 @@ def build_report(
             blockers.append(f"{label} channel evidence unavailable")
         elif evidence.get("sourceBinding", {}).get("status") != "bound":
             blockers.append(f"{label} binary has no immutable Git source binding")
+    if app_store.get("status") == "observed" and app_store.get("state") != "READY_FOR_SALE":
+        blockers.append("App Store channel is not READY_FOR_SALE")
+    for label, evidence in (("main", main), ("production", production)):
+        freshness = evidence.get("remoteFreshness", {})
+        if freshness.get("status") in {"stale", "unavailable"}:
+            blockers.append(f"{label} remote ref is not fresh: {freshness.get('reason', freshness.get('status'))}")
     if main.get("status") != "observed":
         blockers.append(f"main ref unavailable: {main_ref}")
     if production.get("status") != "observed":
@@ -637,16 +707,16 @@ def build_report(
             f"main contains {testflight_to_main['changedFiles']} iOS files and "
             f"{testflight_to_main['commitCount']} commits after the latest TestFlight source"
         )
-    if (
-        app_store.get("status") == "observed"
-        and testflight.get("status") == "observed"
-        and (app_store.get("version"), app_store.get("build"))
-        != (testflight.get("version"), testflight.get("build"))
-    ):
-        reasons.append(
-            f"App Store {app_store.get('version')} and TestFlight "
-            f"{testflight.get('version')} build {testflight.get('build')} are different channel tuples"
-        )
+    if app_store.get("status") == "observed" and testflight.get("status") == "observed":
+        if not isinstance(app_store.get("build"), str):
+            blockers.append("App Store version has no associated ASC build evidence")
+        elif not isinstance(testflight.get("build"), str):
+            blockers.append("TestFlight version has no build number")
+        elif not _same_tuple(app_store, testflight):
+            reasons.append(
+                f"App Store {app_store.get('version')} build {app_store.get('build')} and TestFlight "
+                f"{testflight.get('version')} build {testflight.get('build')} are different channel tuples"
+            )
     if app_store_to_testflight.get("status") == "changed":
         reasons.append(
             f"TestFlight source differs from the App Store source by "
@@ -715,14 +785,22 @@ def render_report(report: Mapping[str, Any]) -> str:
         f"結論：{verdict.get('headline', '無法判定')}",
         "",
         "iOS",
-        f"- App Store：{app_store.get('version', 'unknown')} ({app_store.get('state', 'unknown')})",
+        (
+            f"- App Store：{app_store.get('version', 'unknown')} build {app_store.get('build', 'unknown')} "
+            f"({app_store.get('state', 'unknown')})"
+        ),
         f"- TestFlight {testflight.get('version', 'unknown')} (build {testflight.get('build', 'unknown')})",
         f"- TestFlight source：{testflight.get('sourceBinding', {}).get('status', 'unknown')}",
         _format_delta("- TestFlight → main", ios.get("testflightToMain", {})),
         _format_delta("- App Store → TestFlight", ios.get("appStoreToTestFlight", {})),
         "",
         "Backend",
+        (
+            f"- main ref：{report.get('repository', {}).get('main', {}).get('sha', 'unknown')} "
+            f"({report.get('repository', {}).get('main', {}).get('remoteFreshness', {}).get('status', 'unknown')})"
+        ),
         f"- production ref：{production.get('sha', 'unknown')}",
+        f"- production freshness：{production.get('remoteFreshness', {}).get('status', 'unknown')}",
         f"- live：{live.get('version', 'unknown')} ({production.get('liveAlignment', 'unknown')})",
         _format_delta("- production → main", backend.get("productionToMain", {})),
     ]

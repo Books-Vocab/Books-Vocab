@@ -189,6 +189,46 @@ def test_normalize_asc_snapshot_blocks_without_ready_for_sale_version() -> None:
     assert "READY_FOR_SALE" in snapshot["appStore"]["reason"]
 
 
+def test_normalize_asc_versions_includes_app_store_build() -> None:
+    versions = release_report.normalize_asc_versions(
+        {
+            "data": [
+                {
+                    "type": "appStoreVersions",
+                    "id": "store-200",
+                    "attributes": {
+                        "versionString": "2.0.0",
+                        "appStoreState": "READY_FOR_SALE",
+                        "platform": "IOS",
+                    },
+                    "relationships": {
+                        "build": {"data": {"type": "builds", "id": "build-6"}}
+                    },
+                }
+            ],
+            "included": [
+                {
+                    "type": "builds",
+                    "id": "build-6",
+                    "attributes": {"version": "6", "processingState": "VALID"},
+                }
+            ],
+        }
+    )
+
+    assert versions == [
+        {
+            "status": "observed",
+            "version": "2.0.0",
+            "state": "READY_FOR_SALE",
+            "ascVersionId": "store-200",
+            "build": "6",
+            "ascBuildId": "build-6",
+            "processingState": "VALID",
+        }
+    ]
+
+
 def test_diff_refs_reports_source_delta(tmp_path: Path) -> None:
     repo, release_sha, main_sha = _repo_with_release_drift(tmp_path)
 
@@ -219,6 +259,7 @@ def test_build_report_explains_ios_and_backend_drift(tmp_path: Path) -> None:
             "status": "observed",
             "version": "1.0.0",
             "state": "READY_FOR_SALE",
+            "build": "1",
             "ascVersionId": "store-100",
         },
     }
@@ -248,6 +289,7 @@ def test_build_report_explains_ios_and_backend_drift(tmp_path: Path) -> None:
 
     human = release_report.render_report(report)
     assert "TestFlight 1.0.0 (build 1)" in human
+    assert "App Store：1.0.0 build 1" in human
     assert "backend" in human
     assert "DRIFT" in human
 
@@ -295,6 +337,7 @@ def test_report_blocks_unresolvable_backend_live_version(tmp_path: Path) -> None
                 "status": "observed",
                 "version": "1.0.0",
                 "state": "READY_FOR_SALE",
+                "build": "1",
                 "ascVersionId": "store-100",
             },
         },
@@ -304,6 +347,40 @@ def test_report_blocks_unresolvable_backend_live_version(tmp_path: Path) -> None
     assert report["backend"]["production"]["liveAlignment"] == "unknown"
     assert report["verdict"]["status"] == "blocked"
     assert "live version cannot be resolved" in report["verdict"]["blockers"][0]
+
+
+def test_report_blocks_stale_remote_tracking_refs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, release_sha, main_sha = _repo_with_release_drift(tmp_path)
+    _git(repo, "update-ref", "refs/remotes/origin/main", main_sha)
+    _git(repo, "update-ref", "refs/remotes/origin/prod", release_sha)
+    monkeypatch.setattr(release_report.Git, "remote_sha", lambda *_args: "0" * 40)
+
+    report = release_report.build_report(
+        repo,
+        asc_snapshot={
+            "testflight": {
+                "status": "observed",
+                "version": "1.0.0",
+                "build": "1",
+                "ascBuildId": "build-1",
+                "processingState": "VALID",
+            },
+            "appStore": {
+                "status": "observed",
+                "version": "1.0.0",
+                "state": "READY_FOR_SALE",
+                "build": "1",
+                "ascVersionId": "store-100",
+            },
+        },
+        backend_live={"status": "observed", "version": release_sha[:8]},
+    )
+
+    assert report["repository"]["main"]["remoteFreshness"]["status"] == "stale"
+    assert report["verdict"]["status"] == "blocked"
+    assert any("main remote ref is not fresh" in item for item in report["verdict"]["blockers"])
 
 
 def test_backend_probe_sets_a_stable_user_agent(monkeypatch: pytest.MonkeyPatch) -> None:
