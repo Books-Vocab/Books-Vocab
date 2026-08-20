@@ -4,6 +4,7 @@
 # Usage:
 #   ./ops/branch_audit.sh
 #   ./ops/branch_audit.sh --json
+#   ./ops/branch_audit.sh --fetch
 #   ./ops/branch_audit.sh --delete-merged --dry-run
 #   ./ops/branch_audit.sh --delete-merged --yes
 #
@@ -26,7 +27,7 @@ cd "$ROOT"
 BASE="origin/main"
 REMOTE="origin"
 JSON=0
-FETCH=1
+FETCH=0
 DELETE_MERGED=0
 YES=0
 STALE_DAYS="${STALE_DAYS:-30}"
@@ -68,6 +69,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --json)
       JSON=1
+      shift
+      ;;
+    --fetch)
+      FETCH=1
       shift
       ;;
     --no-fetch)
