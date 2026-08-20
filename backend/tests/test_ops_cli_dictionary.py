@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -19,7 +20,7 @@ def _seed_lexical_cache(data_dir: Path) -> None:
 
     path = data_dir / "lexical_cache.db"
     LexicalCache(path)
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn, conn:
         conn.executemany(
             "INSERT INTO lexical_cache("
             "cache_key, provider, entry_key, payload_json, is_negative, fetched_at, expires_at"
