@@ -152,12 +152,13 @@ def vocab_api(tmp_path):
     try:
         api_mod._USER_LOCKS.clear()
         deps_mod._USER_LOCKS_MUTEX = None
-        yield SimpleNamespace(
-            client=TestClient(app, raise_server_exceptions=False),
-            user_id=user_id,
-            headers=headers,
-            data_dir=data_dir,
-        )
+        with TestClient(app, raise_server_exceptions=False) as client:
+            yield SimpleNamespace(
+                client=client,
+                user_id=user_id,
+                headers=headers,
+                data_dir=data_dir,
+            )
     finally:
         app.state.kg_settings = original_settings
         app.state.load_users = original_load
