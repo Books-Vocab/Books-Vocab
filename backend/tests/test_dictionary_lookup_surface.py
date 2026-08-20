@@ -7,6 +7,7 @@ must not create a second persistence, sync, review, graph, or lifecycle model.
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 
 from kg.api_models import dictionary as dictionary_models
 from kg.cards import Card, CardStore
@@ -17,7 +18,7 @@ def test_card_schema_has_no_dictionary_card_semantics(tmp_path):
     db = tmp_path / "cards.db"
     CardStore(db).close()
 
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         columns = {row[1] for row in conn.execute("PRAGMA table_info(card)")}
         tables = {
             row[0]
@@ -56,7 +57,7 @@ def test_existing_card_db_retires_dictionary_schema_without_losing_cards(tmp_pat
     original = store.add("invoke", "援引", notebook_id="default")
     store.close()
 
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         conn.execute("ALTER TABLE card ADD COLUMN card_role TEXT DEFAULT 'learning'")
         conn.execute("ALTER TABLE card ADD COLUMN review_eligible INTEGER DEFAULT 1")
         conn.execute("ALTER TABLE card ADD COLUMN reader_hidden INTEGER DEFAULT 0")
@@ -75,7 +76,7 @@ def test_existing_card_db_retires_dictionary_schema_without_losing_cards(tmp_pat
     preserved = reopened.get(original.id)
     reopened.close()
 
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         columns = {row[1] for row in conn.execute("PRAGMA table_info(card)")}
         tables = {
             row[0]
