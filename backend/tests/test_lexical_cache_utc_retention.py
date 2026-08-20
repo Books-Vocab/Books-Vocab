@@ -64,3 +64,21 @@ def test_record_lookup_prunes_fixed_offset_rows_by_utc_instant(tmp_path, monkeyp
     assert set(events) == {"newer_minus_one", "exact_boundary", "current"}
     assert events["exact_boundary"] == cutoff.isoformat()
     assert events["current"] == frozen_now.isoformat()
+
+
+def test_record_lookup_retention_uses_utc_expression_index(tmp_path) -> None:
+    import kg.lexical_cache as lexical_cache
+
+    cache_path = tmp_path / "lexical_cache.db"
+    lexical_cache.LexicalCache(cache_path)
+    cutoff = (datetime.now(UTC) - timedelta(days=14)).isoformat()
+
+    with closing(sqlite3.connect(cache_path)) as conn:
+        plan = conn.execute(
+            "EXPLAIN QUERY PLAN DELETE FROM lexical_lookup_event "
+            "WHERE datetime(created_at) < datetime(?)",
+            (cutoff,),
+        ).fetchall()
+
+    details = " ".join(row[-1] for row in plan)
+    assert "USING INDEX ix_lexical_lookup_event_created_at_utc" in details

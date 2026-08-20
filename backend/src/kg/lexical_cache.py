@@ -75,6 +75,10 @@ class LexicalCache:
                 "CREATE INDEX IF NOT EXISTS ix_lexical_lookup_event_created_at "
                 "ON lexical_lookup_event(created_at)"
             )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS ix_lexical_lookup_event_created_at_utc "
+                "ON lexical_lookup_event(datetime(created_at))"
+            )
 
     @staticmethod
     def query_key(provider: str, query: str, source_language: str, target_language: str) -> str:
