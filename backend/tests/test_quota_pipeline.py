@@ -39,6 +39,7 @@ def fresh_token_db(tmp_path, monkeypatch):
     import importlib
 
     import kg.token_tracker as tt
+    original_db_path = tt._INITIAL_DB_PATH
     importlib.reload(tt)
     if tt._conn is not None:
         tt._conn.close()
@@ -48,6 +49,9 @@ def fresh_token_db(tmp_path, monkeypatch):
         tt._conn.close()
         tt._conn = None
     importlib.reload(tt)
+    tt.DB_PATH = original_db_path
+    assert tt.DB_PATH == original_db_path
+    assert tt._conn is None
 
 
 # ── Quota gating ───────────────────────────────────────────────────
