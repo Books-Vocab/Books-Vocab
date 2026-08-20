@@ -92,11 +92,14 @@ def test_delete_rolls_back_on_graph_failure(tmp_path):
             self.deprecate_links_for(cid)
             self.remove_candidates_for(cid)
 
-    with pytest.raises(RuntimeError):
-        delete_vocab_word("testword", cards_store=cards_store, graph=_FailingGraph())
+    try:
+        with pytest.raises(RuntimeError):
+            delete_vocab_word("testword", cards_store=cards_store, graph=_FailingGraph())
 
-    restored = cards_store.get(card_id)
-    assert not restored.is_deleted
+        restored = cards_store.get(card_id)
+        assert not restored.is_deleted
+    finally:
+        cards_store.close()
 
 
 class TestBatchDeleteVocabWords:
@@ -221,6 +224,7 @@ class TestBatchDeleteCaseInsensitive:
         assert result["deleted_words"] == ["chateau,"]
         assert result["not_found"] == []
         assert cards.get(card.id).is_deleted is True
+        cards.close()
 
     def test_no_find_by_content_calls(self):
         """After N+1 fix, batch_delete should use all() not find_by_content."""
@@ -274,6 +278,7 @@ class TestBatchArchiveCaseInsensitive:
         assert result["updated_words"] == ["chateau,"]
         assert result["not_found"] == []
         assert cards.get(card.id).is_archived is True
+        cards.close()
 
     def test_no_find_by_content_calls(self):
         """After N+1 fix, batch_archive should use all() not find_by_content."""
@@ -323,13 +328,16 @@ class TestDeleteEvictsEmbedding:
             def cleanup_for_card(self, cid, *, remove_blocked=False, source="auto"):
                 raise RuntimeError("graph write failed")
 
-        with pytest.raises(RuntimeError):
-            delete_vocab_word(
-                "testword", cards_store=cards_store,
-                graph=_FailingGraph(), embeddings=emb,
-            )
-        assert emb.removed == [], "embedding evicted despite rollback"
-        assert not cards_store.get(card.id).is_deleted
+        try:
+            with pytest.raises(RuntimeError):
+                delete_vocab_word(
+                    "testword", cards_store=cards_store,
+                    graph=_FailingGraph(), embeddings=emb,
+                )
+            assert emb.removed == [], "embedding evicted despite rollback"
+            assert not cards_store.get(card.id).is_deleted
+        finally:
+            cards_store.close()
 
     def test_batch_delete_removes_embeddings(self):
         cards = _FakeCardsStore([
@@ -379,6 +387,7 @@ class TestBatchDeleteGraphFailureBranch:
         assert cards.get(c1.id).is_deleted is True
         assert cards.get(c2.id).is_deleted is False
         assert emb.removed == [c1.id]
+        cards.close()
 
     def test_all_cards_fail_graph_yields_empty_delete(self, tmp_path):
         from kg.cards import CardStore
@@ -397,3 +406,4 @@ class TestBatchDeleteGraphFailureBranch:
         assert result["not_found"] == []
         assert cards.get(c1.id).is_deleted is False
         assert emb.removed == []
+        cards.close()
