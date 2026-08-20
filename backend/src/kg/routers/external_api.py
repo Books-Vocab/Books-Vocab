@@ -113,6 +113,16 @@ def _operation_owner(operation_id: str) -> dict[str, str] | None:
         return dict(record) if record is not None else None
 
 
+def _persisted_operation(operation_id: str, user_id: str) -> dict[str, Any] | None:
+    """Find an operation in durable telemetry after process-local state is lost."""
+    from .. import pipeline_log
+
+    for run in pipeline_log.get_runs(user_id, limit=_MAX_REMEMBERED_OPERATIONS):
+        if run.get("run_id") == operation_id:
+            return run
+    return None
+
+
 def get_external_api_user(
     request: Request,
     api_key: str | None = Header(default=None, alias="X-KG-API-Key"),
@@ -296,10 +306,16 @@ async def _run_external_pipeline(
             force_enrich=force,
             notebook_id=notebook_id,
             run_id=operation_id,
+            telemetry_started=True,
         )
     except Exception:
         logger.exception("External enrich operation failed before pipeline telemetry: %s", operation_id)
         _mark_operation_failed(operation_id)
+        try:
+            from .. import pipeline_log
+            pipeline_log.end_run(operation_id, "failed")
+        except Exception:
+            logger.warning("Failed to close external operation telemetry: %s", operation_id, exc_info=True)
 
 
 @router.post("/api/v1/api-keys", response_model=ExternalApiKeyResponse, status_code=201)
@@ -482,7 +498,16 @@ async def delete_external_card(
     except Exception:
         cards.restore(card.id, notebook_id=notebook_id)
         raise
-    _embedding_store(user["dir"], llm=None, notebook_id=notebook_id).remove(card.id)
+    try:
+        _embedding_store(user["dir"], llm=None, notebook_id=notebook_id).remove(card.id)
+    except Exception:
+        # Card/graph deletion is already durable. A stale embedding is
+        # recoverable on the next pipeline pass, so it must not turn a
+        # successful delete into a retry-prone 5xx.
+        logger.warning(
+            "[%s] Failed to evict embedding for deleted card %s",
+            user["id"], card.id, exc_info=True,
+        )
     return ExternalCardDeleteResponse(cardId=card.id, deleted=True)
 
 
@@ -643,6 +668,11 @@ async def enqueue_external_enrich(
     _validate_notebook(user, req.notebookId)
     quota = _check_quota(user, "pipeline", response)
     operation_id = uuid.uuid4().hex[:12]
+    from .. import pipeline_log
+    # Persist before scheduling the background task. If the process exits
+    # between these two operations, startup recovery marks the run interrupted
+    # and the operation remains queryable instead of disappearing from memory.
+    pipeline_log.start_run(operation_id, user["id"], req.notebookId, "background")
     _remember_operation(operation_id, user["id"], req.notebookId)
     background_tasks.add_task(
         _run_external_pipeline,
@@ -660,13 +690,13 @@ async def get_external_operation(operation_id: str, response: Response, user: Ex
     _require_pro(user)
     await _admit_external(response, user, read_limiter)
     owner = _operation_owner(operation_id)
-    if owner is None or owner.get("user_id") != user["id"]:
+    if owner is not None and owner.get("user_id") != user["id"]:
         raise NotFoundError("Operation", operation_id)
-    from .. import pipeline_log
-
-    for run in pipeline_log.get_runs(user["id"], limit=100):
-        if run.get("run_id") == operation_id:
-            return _operation_from_run(run)
+    persisted = _persisted_operation(operation_id, user["id"])
+    if persisted is not None:
+        return _operation_from_run(persisted)
+    if owner is None:
+        raise NotFoundError("Operation", operation_id)
     return _queued_operation(operation_id, owner)
 
 

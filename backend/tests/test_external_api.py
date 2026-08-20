@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import collections
 import json
+import time
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -190,26 +192,69 @@ def test_external_rate_limit_returns_standard_headers(external_api, monkeypatch)
     assert int(second.headers["Retry-After"]) >= 1
 
 
-def test_external_enrich_operation_uses_pipeline_run_id(external_api, monkeypatch):
+def test_external_api_is_not_double_limited_by_generic_ip_limiter(external_api):
     api_key = _create_key(external_api)
-    monkeypatch.setattr(external_router, "_run_external_pipeline", AsyncMock())
-    response = external_api.client.post(
-        "/api/v1/enrich",
-        json={"notebookId": "default"},
-        headers={"X-KG-API-Key": api_key},
-    )
-    assert response.status_code == 202, response.text
-    operation_id = response.json()["operationId"]
-    assert response.json()["status"] == "queued"
+    from kg.rate_limit import api_limiter
 
+    client_ip = "198.51.100.77"
+    now = time.monotonic()
+    api_limiter._requests[client_ip] = collections.deque(
+        [now] * api_limiter.max_requests
+    )
+
+    response = external_api.client.get(
+        "/api/v1/cards",
+        headers={"X-KG-API-Key": api_key, "X-Forwarded-For": client_ip},
+    )
+
+    assert response.status_code == 200, response.text
+
+
+def test_external_card_delete_treats_embedding_eviction_as_best_effort(
+    external_api, monkeypatch
+):
+    api_key = _create_key(external_api)
+    headers = {"X-KG-API-Key": api_key}
+    created = external_api.client.post(
+        "/api/v1/cards",
+        json={"content": "eviction", "meaning": "驅逐"},
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    card_id = created.json()["card"]["id"]
+
+    def fail_embedding_eviction(*_args, **_kwargs):
+        raise OSError("embedding store unavailable")
+
+    monkeypatch.setattr(external_router, "_embedding_store", fail_embedding_eviction)
+
+    deleted = external_api.client.delete(f"/api/v1/cards/{card_id}", headers=headers)
+
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json() == {"cardId": card_id, "deleted": True}
+    assert external_api.client.get(f"/api/v1/cards/{card_id}", headers=headers).status_code == 404
+
+
+def test_external_enrich_operation_survives_process_memory_reset(external_api, monkeypatch):
     from kg import pipeline_log
 
     old_db_path = pipeline_log.DB_PATH
     pipeline_log._reset()
     pipeline_log.DB_PATH = external_api.data_dir / "pipeline_runs.db"
     try:
-        pipeline_log.start_run(operation_id, external_api.user_id, "default", "background")
+        api_key = _create_key(external_api)
+        monkeypatch.setattr(external_router, "_run_external_pipeline", AsyncMock())
+        response = external_api.client.post(
+            "/api/v1/enrich",
+            json={"notebookId": "default"},
+            headers={"X-KG-API-Key": api_key},
+        )
+        assert response.status_code == 202, response.text
+        operation_id = response.json()["operationId"]
+        assert response.json()["status"] == "queued"
+
         pipeline_log.end_run(operation_id, "completed")
+        external_router._OPERATIONS.clear()
         status = external_api.client.get(
             f"/api/v1/operations/{operation_id}",
             headers={"X-KG-API-Key": api_key},

@@ -126,6 +126,15 @@ def install_app_middlewares_from_dependencies(
         "/api/system/info",
         "/auth/web/google/callback",
         "/auth/web/apple/callback",
+        # External API routes have their own per-key limiter. Applying the
+        # generic IP limiter as well would make unrelated API keys behind the
+        # same NAT share a budget and would hide the external rate-limit
+        # headers behind a second 429.
+        "/api/v1/cards",
+        "/api/v1/enrich",
+        "/api/v1/links",
+        "/api/v1/notebooks",
+        "/api/v1/operations",
     )
 
     @app.middleware("http")
