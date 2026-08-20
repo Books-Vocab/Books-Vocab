@@ -71,10 +71,10 @@ def pipeline_api(tmp_path):
     try:
         api_mod._USER_LOCKS.clear()
         deps_mod._USER_LOCKS_MUTEX = None
-        client = TestClient(app, raise_server_exceptions=False)
-        yield SimpleNamespace(
-            client=client, user_id=user_id, headers=headers, data_dir=tmp_path,
-        )
+        with TestClient(app, raise_server_exceptions=False) as client:
+            yield SimpleNamespace(
+                client=client, user_id=user_id, headers=headers, data_dir=tmp_path,
+            )
     finally:
         app.state.kg_settings = original_settings
         app.state.load_users = original_load
