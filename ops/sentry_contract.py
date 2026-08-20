@@ -63,6 +63,7 @@ _SAFE_BREADCRUMB_KEYS = {
 }
 _SAFE_LEVELS = {"debug", "info", "warning", "error", "fatal"}
 _SAFE_STATUS = {"unresolved", "resolved", "ignored", "reprocessing", "unknown"}
+_CONTENT_TOKENS = {"book", "card", "content", "input", "text", "title", "translation", "user"}
 
 
 class _Redaction:
@@ -120,16 +121,8 @@ def safe_message(value: Any, *, max_length: int = 200) -> str | None:
     # Product breadcrumbs use short, source-controlled labels. Reject prose,
     # punctuation and content-shaped words so an exception/book title cannot
     # cross this boundary merely because it is short.
-    if _SAFE_EVENT_MESSAGE.fullmatch(value) and not set(value.split()) & {
-        "book",
-        "card",
-        "content",
-        "input",
-        "text",
-        "title",
-        "translation",
-        "user",
-    }:
+    tokens = set(re.findall(r"[a-z0-9]+", value.lower()))
+    if _SAFE_EVENT_MESSAGE.fullmatch(value) and not tokens & _CONTENT_TOKENS:
         return value
     return None
 
@@ -532,7 +525,7 @@ def _breadcrumb_data(value: Any, redaction: _Redaction) -> dict[str, Any]:
         elif isinstance(raw, bool) or isinstance(raw, (int, float)) and not isinstance(raw, bool):
             safe = raw
         else:
-            safe = safe_label(raw, max_length=160)
+            safe = _safe_diagnostic_label(raw)
         if safe is not None:
             result[normalized] = safe
         else:
@@ -614,6 +607,16 @@ def _looks_like_type(value: str) -> bool:
 def _safe_exception_type(value: Any) -> str | None:
     safe = safe_label(value, max_length=160)
     return safe if safe and _looks_like_type(safe) else None
+
+
+def _safe_diagnostic_label(value: Any) -> str | None:
+    safe = safe_label(value, max_length=160)
+    if not safe:
+        return None
+    lowered = safe.lower()
+    if any(token in lowered for token in _CONTENT_TOKENS):
+        return None
+    return safe
 
 
 def _safe_timestamp(value: Any, redaction: _Redaction, field: str) -> str | None:

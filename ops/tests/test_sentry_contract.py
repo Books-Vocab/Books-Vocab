@@ -171,7 +171,22 @@ def test_endpoint_and_message_redaction_keep_only_safe_diagnostic_shape() -> Non
     assert safe_endpoint("/api/private-user-input") is None
     assert safe_message("GET /api/vocab/user-supplied-book?token=secret") == "GET /api/vocab"
     assert safe_message("NetworkError") is None
+    assert safe_message("user_book_title") is None
     assert safe_message("the user's book title") is None
+
+
+def test_breadcrumb_diagnostic_labels_reject_content_shaped_values() -> None:
+    issue = normalize_issue(
+        {"id": "123", "project": {"slug": "ios"}},
+        event={
+            "breadcrumbs": {
+                "values": [
+                    {"category": "sync", "data": {"operation": "user_book_title"}},
+                ]
+            }
+        },
+    )
+    assert "data" not in issue["evidence"]["breadcrumbs"][0]
 
 
 def test_exception_type_is_not_an_arbitrary_user_string() -> None:

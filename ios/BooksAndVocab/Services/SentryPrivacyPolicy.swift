@@ -160,7 +160,14 @@ enum SentryPrivacyPolicy {
     }
 
     static func redactExceptionType(_ value: String?) -> String? {
-        redactContext(value)
+        guard let safe = redactContext(value) else { return nil }
+        let validSuffixes = ["Error", "Exception", "Failure", "Crash", "Fault"]
+        guard safe == "Crash"
+            || safe == "Exception"
+            || validSuffixes.contains(where: { safe.hasSuffix($0) }) else {
+            return nil
+        }
+        return safe
     }
 
     static func isSensitiveField(_ value: String) -> Bool {

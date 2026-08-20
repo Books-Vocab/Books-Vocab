@@ -47,6 +47,7 @@ struct SentryPrivacyPolicyTests {
         #expect(SentryPrivacyPolicy.isCancellationException(type: "NSError", value: "NSURLErrorDomain error -999"))
         #expect(!SentryPrivacyPolicy.isCancellationExceptionType("KGError"))
         #expect(SentryPrivacyPolicy.redactExceptionType("NetworkError") == "NetworkError")
+        #expect(SentryPrivacyPolicy.redactExceptionType("user_book_title") == nil)
         #expect(SentryPrivacyPolicy.redactExceptionType("Error with user text") == nil)
         #expect(SentryPrivacyPolicy.isSensitiveField("Authorization"))
         #expect(SentryPrivacyPolicy.isSensitiveField("request_body"))
