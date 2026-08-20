@@ -3,18 +3,20 @@ from __future__ import annotations
 import concurrent.futures
 import json
 import os
-import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 OPS_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS_ROOT))
 
-from lib.streaming_command import run_streamed_command  # noqa: E402
+from lib import streaming_command  # noqa: E402
+from lib.streaming_command import CommandCancelled, run_streamed_command  # noqa: E402
 from task_registry import (  # noqa: E402
     TaskRegistry,
     command_identity,
@@ -28,6 +30,52 @@ def _sleep_command(seconds: float = 0.35) -> list[str]:
 
 def _old_timestamp() -> str:
     return "2000-01-01T00:00:00+00:00"
+
+
+class _TrackedPipe:
+    def __init__(self, pipe: object) -> None:
+        self._pipe = pipe
+        self.closed = False
+
+    def read1(self, size: int) -> bytes:
+        return self._pipe.read1(size)  # type: ignore[attr-defined]
+
+    def close(self) -> None:
+        self.closed = True
+        self._pipe.close()  # type: ignore[attr-defined]
+
+
+def _track_owned_pipes(monkeypatch: pytest.MonkeyPatch) -> list[_TrackedPipe]:
+    tracked: list[_TrackedPipe] = []
+    real_popen = subprocess.Popen
+
+    def tracked_popen(*args: object, **kwargs: object) -> subprocess.Popen[bytes]:
+        proc = real_popen(*args, **kwargs)
+        for stream_name in ("stdout", "stderr"):
+            pipe = getattr(proc, stream_name)
+            if pipe is None:
+                continue
+            owned_pipe = _TrackedPipe(pipe)
+            setattr(proc, stream_name, owned_pipe)
+            tracked.append(owned_pipe)
+        return proc
+
+    monkeypatch.setattr(
+        streaming_command,
+        "subprocess",
+        SimpleNamespace(
+            CompletedProcess=subprocess.CompletedProcess,
+            PIPE=subprocess.PIPE,
+            Popen=tracked_popen,
+            STDOUT=subprocess.STDOUT,
+        ),
+    )
+    return tracked
+
+
+def _assert_all_pipes_closed(tracked: list[_TrackedPipe]) -> None:
+    assert len(tracked) == 2
+    assert all(pipe.closed for pipe in tracked)
 
 
 def test_parallel_registry_writes_preserve_two_lifecycles(tmp_path: Path) -> None:
@@ -128,6 +176,99 @@ def test_streaming_command_spawn_failure_has_terminal_outcome(tmp_path: Path) ->
     assert record["status"] == "finished"
     assert record["phase"] == "finished"
     assert record["terminal_outcome"] == "spawn-failed:FileNotFoundError"
+
+
+@pytest.mark.parametrize(
+    ("command", "expected_returncode"),
+    [
+        ([sys.executable, "-c", "print('normal')"], 0),
+        (
+            [
+                sys.executable,
+                "-c",
+                "import sys; print('failure', file=sys.stderr); raise SystemExit(7)",
+            ],
+            7,
+        ),
+    ],
+    ids=("normal", "failure"),
+)
+def test_streaming_command_closes_owned_pipes_after_terminal_exit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    command: list[str],
+    expected_returncode: int,
+) -> None:
+    tracked = _track_owned_pipes(monkeypatch)
+    result = run_streamed_command(
+        command,
+        cwd=tmp_path,
+        label_key="gate",
+        label="terminal-exit",
+        progress_prefix="[test]",
+        heartbeat_interval=0.03,
+        task_registry_path=tmp_path / "task-registry.json",
+    )
+
+    assert result.returncode == expected_returncode
+    _assert_all_pipes_closed(tracked)
+
+
+def test_streaming_command_closes_owned_pipes_after_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tracked = _track_owned_pipes(monkeypatch)
+    result = run_streamed_command(
+        _sleep_command(5),
+        cwd=tmp_path,
+        label_key="gate",
+        label="timeout",
+        progress_prefix="[test]",
+        heartbeat_interval=0.03,
+        timeout_seconds=0.12,
+        task_registry_path=tmp_path / "task-registry.json",
+    )
+
+    assert result.returncode == 124
+    assert result.timed_out is True
+    _assert_all_pipes_closed(tracked)
+
+
+def test_streaming_command_closes_owned_pipes_after_cancel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tracked = _track_owned_pipes(monkeypatch)
+    cancel_event = threading.Event()
+    outcome: list[BaseException] = []
+
+    def invoke() -> None:
+        try:
+            run_streamed_command(
+                _sleep_command(5),
+                cwd=tmp_path,
+                label_key="gate",
+                label="cancel",
+                progress_prefix="[test]",
+                heartbeat_interval=0.03,
+                task_registry_path=tmp_path / "task-registry.json",
+                cancel_event=cancel_event,
+            )
+        except BaseException as error:
+            outcome.append(error)
+
+    runner = threading.Thread(target=invoke)
+    runner.start()
+    deadline = time.monotonic() + 2
+    while len(tracked) < 2 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert len(tracked) == 2
+    cancel_event.set()
+    runner.join(timeout=7)
+
+    assert not runner.is_alive()
+    assert len(outcome) == 1
+    assert isinstance(outcome[0], CommandCancelled)
+    _assert_all_pipes_closed(tracked)
 
 
 def test_cleanup_rejects_every_unsafe_shape_without_signalling(

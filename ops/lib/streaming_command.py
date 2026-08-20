@@ -191,6 +191,15 @@ def run_streamed_command(
             terminal_outcome=f"spawn-failed:{type(error).__name__}",
         )
         raise
+    streams: dict[str, BinaryIO | None] = {"stdout": proc.stdout}
+    if not merge_stderr:
+        streams["stderr"] = proc.stderr
+
+    def close_streams() -> None:
+        for pipe in streams.values():
+            if pipe is not None and not pipe.closed:
+                pipe.close()
+
     start_identity = process_start_identity(proc.pid)
     # ``start_new_session=True`` makes the child's PGID equal its PID.  The
     # leader may exit between Popen and this read (common for `locale` or
@@ -200,6 +209,7 @@ def run_streamed_command(
     process_group = process_group_id(proc.pid) or proc.pid
     if start_identity is None and proc.poll() is None:
         _terminate_process_group(proc)
+        close_streams()
         registry.finish(task_id, terminal_outcome="spawn-failed:missing-process-identity")
         raise RuntimeError(f"task {task_id} spawned without process identity")
     if start_identity is None:
@@ -213,11 +223,12 @@ def run_streamed_command(
         )
     except BaseException:
         _terminate_process_group(proc)
+        close_streams()
         registry.finish(task_id, terminal_outcome="spawn-failed:registry-bind")
         raise
     task_finished = False
-    streams: dict[str, BinaryIO | None] = {}
     readers: list[threading.Thread] = []
+    stop_readers = threading.Event()
     try:
         print(
             f"{progress_prefix} {label_key}={label} phase=spawned "
@@ -227,9 +238,15 @@ def run_streamed_command(
         )
 
         chunks: queue.Queue[tuple[str, bytes | None]] = queue.Queue(maxsize=16)
-        streams = {"stdout": proc.stdout}
-        if not merge_stderr:
-            streams["stderr"] = proc.stderr
+
+        def enqueue(item: tuple[str, bytes | None]) -> bool:
+            while not stop_readers.is_set():
+                try:
+                    chunks.put(item, timeout=0.1)
+                    return True
+                except queue.Full:
+                    continue
+            return False
 
         def drain(stream_name: str) -> None:
             pipe = streams[stream_name]
@@ -248,11 +265,12 @@ def run_streamed_command(
                     chunk = pipe.read1(64 * 1024)
                     if not chunk:
                         break
-                    chunks.put((stream_name, chunk))
+                    if not enqueue((stream_name, chunk)):
+                        return
             except (OSError, ValueError):
                 pass
             finally:
-                chunks.put((stream_name, None))
+                enqueue((stream_name, None))
 
         for stream_name in streams:
             reader = threading.Thread(
@@ -287,7 +305,7 @@ def run_streamed_command(
             except queue.Empty:
                 stream_name, chunk = "", b""
             if cancel_event is not None and cancel_event.is_set():
-                _terminate_process_group(proc)
+                stop_readers.set()
                 raise CommandCancelled(f"command cancelled: {label}")
             if chunk is None:
                 open_streams.discard(stream_name)
@@ -317,6 +335,9 @@ def run_streamed_command(
                 _terminate_process_group(proc)
                 timed_out = True
                 deadline = None
+                stop_readers.set()
+                close_streams()
+                open_streams.clear()
             if now >= next_heartbeat and open_streams:
                 alive = str(proc.poll() is None).lower()
                 idle = now - last_progress_at
@@ -341,16 +362,16 @@ def run_streamed_command(
         if timed_out:
             returncode = 124
     except BaseException:
+        stop_readers.set()
         _terminate_process_group(proc)
-        for pipe in streams.values():
-            if pipe is not None:
-                pipe.close()
+        close_streams()
         registry.finish(task_id, terminal_outcome="interrupted")
         task_finished = True
         raise
     finally:
         for reader in readers:
             reader.join(timeout=1)
+        close_streams()
 
     elapsed = time.monotonic() - started
     if not task_finished:
