@@ -118,36 +118,35 @@ def test_per_user_throttle_refusals_are_recorded_for_ops(isolated_api, monkeypat
     )
 
     cache_path = isolated_api.data_dir / "lexical_cache-throttle.db"
-    service = LexicalService(
-        provider=FreeDictionaryProvider(
-            client=httpx.Client(
-                transport=httpx.MockTransport(
-                    lambda _r: httpx.Response(200, json=_provider_payload())
-                )
-            )
-        ),
-        cache=LexicalCache(cache_path),
-    )
-    monkeypatch.setattr(dictionary_router, "_lexical_service", lambda _settings: service)
-    monkeypatch.setattr(dictionary_rate_limiter, "limit", 1)
-    dictionary_rate_limiter.reset()
-    dictionary_router.dictionary_lookup_leases.reset()
-    isolated_api.client.app.state.kg_settings = replace(
-        isolated_api.client.app.state.kg_settings,
-        dictionary_lookup_enabled=True,
-    )
+    with httpx.Client(
+        transport=httpx.MockTransport(
+            lambda _r: httpx.Response(200, json=_provider_payload())
+        )
+    ) as provider_client:
+        service = LexicalService(
+            provider=FreeDictionaryProvider(client=provider_client),
+            cache=LexicalCache(cache_path),
+        )
+        monkeypatch.setattr(dictionary_router, "_lexical_service", lambda _settings: service)
+        monkeypatch.setattr(dictionary_rate_limiter, "limit", 1)
+        dictionary_rate_limiter.reset()
+        dictionary_router.dictionary_lookup_leases.reset()
+        isolated_api.client.app.state.kg_settings = replace(
+            isolated_api.client.app.state.kg_settings,
+            dictionary_lookup_enabled=True,
+        )
 
-    admitted = isolated_api.client.get(
-        "/api/dictionary/search?q=invoke", headers=isolated_api.headers
-    )
-    dictionary_router.dictionary_lookup_leases.reset()
-    refused = isolated_api.client.get(
-        "/api/dictionary/search?q=invoke", headers=isolated_api.headers
-    )
+        admitted = isolated_api.client.get(
+            "/api/dictionary/search?q=invoke", headers=isolated_api.headers
+        )
+        dictionary_router.dictionary_lookup_leases.reset()
+        refused = isolated_api.client.get(
+            "/api/dictionary/search?q=invoke", headers=isolated_api.headers
+        )
 
-    assert admitted.status_code == 200, admitted.text
-    assert refused.status_code == 429
-    assert [e["outcome"] for e in _lookup_events(cache_path)] == ["miss", "throttled"]
+        assert admitted.status_code == 200, admitted.text
+        assert refused.status_code == 429
+        assert [e["outcome"] for e in _lookup_events(cache_path)] == ["miss", "throttled"]
 
 def test_cached_negative_is_not_reported_as_a_provider_call(tmp_path):
     """A cached "no such word" costs nothing upstream; counting it as a miss

@@ -178,6 +178,7 @@ def admin_app_factory(tmp_path, monkeypatch):
             client = TestClient(app, raise_server_exceptions=False, cookies={"admin_session": cookie})
         else:
             client = TestClient(app, raise_server_exceptions=False)
+        cleanups.append(client.close)
 
         return SimpleNamespace(client=client, data_dir=data_dir)
 
@@ -362,10 +363,13 @@ def make_admin_client(tmp_path, monkeypatch, *, setup_logs, teardown_logs):
     )
     _swap_settings(test_settings)
 
+    client = None
     try:
         client = TestClient(app, raise_server_exceptions=False)
         yield SimpleNamespace(client=client, data_dir=data_dir)
     finally:
+        if client is not None:
+            client.close()
         app.state.kg_settings = original_settings
         teardown_logs()
 
@@ -418,6 +422,7 @@ def isolated_api(tmp_path):
     )
     _swap_settings(test_settings)
 
+    client = None
     try:
         api_mod._USER_LOCKS.clear()
         deps_mod._USER_LOCKS_MUTEX = None
@@ -430,6 +435,8 @@ def isolated_api(tmp_path):
             users_file=users_file,
         )
     finally:
+        if client is not None:
+            client.close()
         app.state.kg_settings = original_settings
         app.state.load_users = original_load
         app.state.save_users = original_save
