@@ -137,6 +137,26 @@ def _registry_register(*, branch: str, path: Path, intent: str, base: str,
         return EXIT_USAGE, {"reason": str(exc)}
     with registry._ledger_lock(state_path):
         state = registry.load_state(state_path)
+        active_matches = [
+            record for record in registry._active_records(state)
+            if registry._record_matches(record, branch=branch, path=str(path))
+        ]
+        if len(active_matches) > 1:
+            return EXIT_BLOCK, {
+                "reason": "multiple active records match the same worktree",
+                "owners": [
+                    {"branch": item.get("branch"), "path": item.get("path")}
+                    for item in active_matches
+                ],
+            }
+        if active_matches:
+            # Keep terminal records in place as history, but put the one live
+            # owner first so registry._register_record cannot select an older
+            # abandoned record with the same branch/path.
+            active = active_matches[0]
+            state["records"] = [active] + [
+                record for record in state["records"] if record is not active
+            ]
         rc, record = registry._register_record(
             state, branch=branch, path=str(path), intent=intent, base=base,
             external_ids=external_ids, scope=scope,

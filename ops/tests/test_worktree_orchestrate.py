@@ -177,6 +177,52 @@ def test_preflight_uses_active_declared_scope_for_rebase_collision_check(
     assert payload["branch_files"] == ["ios/issue_1033.py"]
 
 
+def test_adopt_prefers_active_record_over_terminal_duplicate(tmp_path: Path, capsys: object) -> None:
+    repo = _synthetic_rebase_refs(tmp_path)
+    scope = {
+        "schema": "kg.worktree.scope.v1",
+        "files": [{"path": "ios/issue_1033.py", "operation": "modify"}],
+    }
+    state_path = tmp_path / "worktree_registry.json"
+    terminal = {
+        "branch": "solver",
+        "path": str(repo),
+        "status": "abandoned",
+        "base": "old-base",
+        "scope": scope,
+    }
+    active = {
+        "branch": "solver",
+        "path": str(repo),
+        "status": "active",
+        "base": "base",
+        "scope": scope,
+        "claim_generation": 0,
+    }
+    state_path.write_text(
+        json.dumps({
+            "schema": "kg.worktree.registry.v2",
+            "records": [terminal, active],
+        }),
+        encoding="utf-8",
+    )
+
+    rc = coordinator.main([
+        "adopt", "--state", str(state_path), "--worktree", str(repo),
+        "--intent", "reanchor worker", "--base", "base",
+        "--external-id", "ISSUE-1141", "--scope", json.dumps(scope),
+        "--codex-thread-id", "worker-thread", "--delegated", "--json",
+    ])
+
+    json.loads(capsys.readouterr().out)
+    state = coordinator.registry.load_state(state_path)
+    matches = [record for record in state["records"] if record["branch"] == "solver"]
+    assert rc == coordinator.EXIT_OK
+    assert len(matches) == 2
+    assert sum(record["status"] == "active" for record in matches) == 1
+    assert next(record for record in matches if record["status"] == "active")["claim_generation"] == 1
+
+
 def _handoff_fixture(tmp_path: Path) -> tuple[Path, Path, str, str]:
     repo = tmp_path / "handoff-repo"
     repo.mkdir()
