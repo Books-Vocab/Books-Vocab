@@ -160,6 +160,9 @@ def normalize_asc_builds(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
             raise ReportError(f"ASC build {build_id} has invalid preReleaseVersion platform")
         if platform != "IOS":
             continue
+        uploaded_date = attrs.get("uploadedDate")
+        if not isinstance(uploaded_date, str) or not uploaded_date:
+            raise ReportError(f"ASC iOS build {build_id} has invalid uploadedDate")
         build_number = attrs.get("version")
         version = prerelease.get("version")
         if not isinstance(build_number, str) or not build_number:
@@ -174,9 +177,8 @@ def normalize_asc_builds(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
             "build": build_number,
             "ascBuildId": build_id,
             "processingState": attrs.get("processingState", "UNKNOWN"),
+            "uploadedAt": uploaded_date,
         }
-        if isinstance(attrs.get("uploadedDate"), str):
-            normalized["uploadedAt"] = attrs["uploadedDate"]
         for source, target in (
             ("minOsVersion", "minOsVersion"),
             ("usesNonExemptEncryption", "usesNonExemptEncryption"),
@@ -856,7 +858,7 @@ def build_report(
 
     if testflight["sourceBinding"].get("status") == "bound" and main.get("status") == "observed":
         testflight_to_main = diff_refs(
-            root, "ios", str(testflight["sourceBinding"]["sha"]), str(main["sha"])
+            root, "ios", str(testflight["sourceBinding"]["tag"]), main_ref
         )
     else:
         testflight_to_main = _blocked_diff(
@@ -885,7 +887,7 @@ def build_report(
         )
 
     if main.get("status") == "observed" and production.get("status") == "observed":
-        production_to_main = diff_refs(root, "backend", str(production["sha"]), str(main["sha"]))
+        production_to_main = diff_refs(root, "backend", production_ref, main_ref)
     else:
         production_to_main = _blocked_diff(
             "backend", production_ref, main_ref, "production or main ref is unavailable"

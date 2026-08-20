@@ -244,6 +244,47 @@ def test_normalize_asc_builds_rejects_incomplete_latest_record() -> None:
         release_report.normalize_asc_builds(payload)
 
 
+def test_normalize_asc_builds_rejects_missing_uploaded_date() -> None:
+    payload = {
+        "data": [
+            {
+                "type": "builds",
+                "id": "build-11",
+                "attributes": {"version": "11", "processingState": "VALID"},
+                "relationships": {
+                    "preReleaseVersion": {
+                        "data": {"type": "preReleaseVersions", "id": "pre-201"}
+                    }
+                },
+            },
+            {
+                "type": "builds",
+                "id": "build-10",
+                "attributes": {
+                    "version": "10",
+                    "processingState": "VALID",
+                    "uploadedDate": "2026-08-17T05:17:50Z",
+                },
+                "relationships": {
+                    "preReleaseVersion": {
+                        "data": {"type": "preReleaseVersions", "id": "pre-201"}
+                    }
+                },
+            },
+        ],
+        "included": [
+            {
+                "type": "preReleaseVersions",
+                "id": "pre-201",
+                "attributes": {"version": "2.0.1", "platform": "IOS"},
+            }
+        ],
+    }
+
+    with pytest.raises(release_report.ReportError, match="uploadedDate"):
+        release_report.normalize_asc_builds(payload)
+
+
 def test_normalize_asc_versions_rejects_incomplete_build_record() -> None:
     payload = {
         "data": [
@@ -808,6 +849,10 @@ def test_report_blocks_stale_remote_tracking_refs(
     assert report["repository"]["main"]["remoteFreshness"]["status"] == "stale"
     assert report["verdict"]["status"] == "blocked"
     assert any("main remote ref is not fresh" in item for item in report["verdict"]["blockers"])
+    assert report["ios"]["testflightToMain"]["status"] == "blocked"
+    assert "changedFiles" not in report["ios"]["testflightToMain"]
+    assert report["backend"]["productionToMain"]["status"] == "blocked"
+    assert "changedFiles" not in report["backend"]["productionToMain"]
 
 
 def test_backend_probe_sets_a_stable_user_agent(monkeypatch: pytest.MonkeyPatch) -> None:

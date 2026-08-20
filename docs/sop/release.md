@@ -65,7 +65,8 @@ bindings are `blocked`, never a guessed match.
 `origin/main` 與 `origin/prod`）；只相信本地 remote-tracking ref 會把「本地看起來
 最新」誤報成目前遠端狀態。傳入 local `main`／`prod` 等未綁定 authority 的 ref 會是
 `not_checked` 並使報告 `blocked`。若 remote ref 過期、無法取得或 live backend
-version 無法解析到 commit/tree，報告也會 `blocked`，不會繼續計算看似精確的差距。
+version 無法解析到 commit/tree，報告也會 `blocked`；任何依賴該 authority 的
+TestFlight→main／production→main precise delta 也必須停止，不得改用已解析的 local SHA 繼續計算。
 
 App Store／TestFlight 的 tuple 比對必須同時有 ASC 的 version、build number 與 build
 resource identity，而且兩個 channel 的 `ascBuildId` 必須相等才能視為同一個 binary。
@@ -73,9 +74,9 @@ resource identity，而且兩個 channel 的 `ascBuildId` 必須相等才能視�
 binding／identity 時，報告同樣是 `blocked`；identity 不同則明確報告 channel drift，
 不可用「最新 TestFlight build」代替使用者實際取得的 App Store 版本。
 
-ASC response 的 build relationship、resource id、build number 與 processing state 都是
+ASC response 的 `uploadedDate`、build relationship、resource id、build number 與 processing state 都是
 必要證據。若最新 iOS build 或 `READY_FOR_SALE` version 的 associated build record
-不完整，normalizer 會 fail closed；不可跳過壞 record 再回退到較舊 build。source tag
+不完整，normalizer 會 fail closed；不可跳過缺少 `uploadedDate` 的 build 再回退到較舊 build。source tag
 也不只驗 tag 名稱與 origin SHA：tag target commit 內的 Xcode marketing version／build
 tuple 必須與 ASC tuple 相符，否則 source binding 是 `unbound`。
 
