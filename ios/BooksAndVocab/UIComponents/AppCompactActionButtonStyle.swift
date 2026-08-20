@@ -13,27 +13,72 @@
 
 import SwiftUI
 
+enum AppCompactActionSurface: Equatable {
+    case solid
+    case glass
+}
+
+private enum AppCompactActionMetrics {
+    static let hitTarget: CGFloat = 44
+}
+
 struct AppCompactActionButtonStyle: ButtonStyle {
     @Environment(\.appTheme) private var appTheme
     let tone: AppActionTone
 
     func makeBody(configuration: Configuration) -> some View {
         let palette = stylePalette
+        let shape = AppRoundedRect(roundness: AppRoundness.pill)
 
-        configuration.label
+        let label = configuration.label
             .font(AppFonts.caption(weight: .semibold))
             .foregroundStyle(palette.foreground)
             .padding(.horizontal, AppSpacing.s3)
             .padding(.vertical, AppSpacing.s2)
-            .background(
-                AppRoundedRect(roundness: AppRoundness.pill).fill(palette.background)
-            )
-            .overlay(
-                AppRoundedRect(roundness: AppRoundness.pill).stroke(palette.border, lineWidth: 1)
-            )
+            .frame(minHeight: AppCompactActionMetrics.hitTarget)
+            .contentShape(shape)
+
+        surface(label, shape: shape, palette: palette)
             .opacity(configuration.isPressed ? AppMotion.TapFeedback.opacityDip : 1)
             .scaleEffect(configuration.isPressed ? AppMotion.TapFeedback.scaleDown : 1)
             .animation(AppMotion.TapFeedback.animation, value: configuration.isPressed)
+    }
+
+    @ViewBuilder
+    private func surface<Content: View>(
+        _ content: Content,
+        shape: AppRoundedRect,
+        palette: (foreground: Color, background: Color, border: Color)
+    ) -> some View {
+        switch tone {
+        case .primary:
+            content
+                .background(shape.fill(palette.background))
+                .overlay(shape.stroke(palette.border, lineWidth: 1))
+        case .neutral:
+            content.glassEffect(.regular.interactive(), in: shape)
+        case .outline:
+            content.glassEffect(
+                .regular
+                    .tint(appTheme.palette.accent.opacity(0.08))
+                    .interactive(),
+                in: shape
+            )
+        case .destructive:
+            content.glassEffect(
+                .regular
+                    .tint(appTheme.palette.destructiveBg)
+                    .interactive(),
+                in: shape
+            )
+        }
+    }
+
+    static func surface(for tone: AppActionTone) -> AppCompactActionSurface {
+        switch tone {
+        case .primary: .solid
+        case .neutral, .outline, .destructive: .glass
+        }
     }
 
     private var stylePalette: (foreground: Color, background: Color, border: Color) {
@@ -49,20 +94,20 @@ struct AppCompactActionButtonStyle: ButtonStyle {
         case .neutral:
             return (
                 appTheme.palette.primaryText,
-                appTheme.palette.cardBackground,
-                appTheme.palette.cardBorder
+                .clear,
+                .clear
             )
         case .outline:
             return (
                 appTheme.palette.primaryText,
                 .clear,
-                appTheme.palette.borderStrong
+                .clear
             )
         case .destructive:
             return (
                 appTheme.palette.destructive,
-                appTheme.palette.destructiveBg,
-                appTheme.palette.destructive.opacity(0.32)
+                .clear,
+                .clear
             )
         }
     }

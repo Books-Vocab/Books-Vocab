@@ -160,8 +160,7 @@ extension ReaderSettingsPresenter {
         Button(action: action) {
             Image(systemName: systemName)
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
+        .buttonStyle(.appCompactAction(.neutral))
         .disabled(disabled)
         .accessibilityIdentifier(identifier)
     }

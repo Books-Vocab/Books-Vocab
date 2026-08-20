@@ -6,7 +6,8 @@ import SwiftUI
 /// This is deliberately a preview-only composition: it does not introduce a
 /// new production primitive or change any screen consumer. It keeps the
 /// native-first boundary visible by showing app-drawn surfaces beside the
-/// one justified Liquid Glass exception, `AppFloatingChrome`.
+/// the shared Liquid Glass controls and the one justified floating-chrome
+/// exception, `AppFloatingChrome`.
 #Preview("UI Foundation • Native first") {
     AppThemeContainer {
         AppUIFoundationPreview()
@@ -59,7 +60,7 @@ private struct AppUIFoundationPreview: View {
                     style: .themed(appTheme)
                 )
 
-                Text("Native controls remain screen-owned; glass is limited to floating chrome.")
+                Text("System bars remain platform-owned; app glass is limited to controls and floating chrome.")
                     .font(AppFonts.caption())
                     .foregroundStyle(appTheme.palette.secondaryText)
 

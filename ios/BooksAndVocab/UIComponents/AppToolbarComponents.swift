@@ -166,7 +166,15 @@ struct AppStateMessageCard<Accessory: View>: View {
 
     var body: some View {
         let style = customStyle ?? .themed(appTheme)
-        AppSectionCard(padding: 0) {
+        let surfaceStyle = AppSectionCardStyle(
+            background: style.background,
+            border: style.border,
+            roundness: style.roundness,
+            borderOpacity: 1,
+            elevation: .z0
+        )
+
+        AppSectionCard(padding: 0, style: surfaceStyle) {
             AppStateMessageContent(
                 title: title,
                 systemImage: systemImage,
@@ -178,12 +186,6 @@ struct AppStateMessageCard<Accessory: View>: View {
             .padding(.horizontal, style.horizontalPadding)
             .padding(.vertical, style.verticalPadding)
         }
-        .background(style.background)
-        .clipShape(AppRoundedRect(roundness: style.roundness))
-        .overlay(
-            AppRoundedRect(roundness: style.roundness)
-                .stroke(style.border, lineWidth: 1)
-        )
     }
 }
 

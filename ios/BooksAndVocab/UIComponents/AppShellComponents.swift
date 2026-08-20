@@ -17,6 +17,16 @@ struct AppSectionCardStyle {
     let roundness: CGFloat
     let borderOpacity: Double
     let elevation: AppElevation
+
+    /// Flat grouping has no extra border or shadow; separation comes from
+    /// background and spacing/dividers rather than a second shell.
+    var isFlat: Bool {
+        guard borderOpacity == 0 else { return false }
+        switch elevation {
+        case .z0: return true
+        case .z1, .z2, .z3, .z4: return false
+        }
+    }
 }
 
 struct AppSectionTextStyle {
@@ -56,9 +66,11 @@ struct AppSectionCard<Content: View>: View {
             .padding(padding)
             .background(style.background)
             .clipShape(shape)
-            .overlay(
-                shape.stroke(style.border.opacity(style.borderOpacity), lineWidth: 1)
-            )
+            .overlay {
+                if style.borderOpacity > 0 {
+                    shape.stroke(style.border.opacity(style.borderOpacity), lineWidth: 1)
+                }
+            }
             .appElevation(style.elevation)
     }
 }
@@ -273,4 +285,3 @@ struct AppSettingsDivider: View {
             .padding(.leading, leadingInset)
     }
 }
-

@@ -13,7 +13,7 @@ extension ReaderViewPresenter {
                     )
                     if state.canResolveSlowLoading {
                         Button(L10n.string("繼續載入"), action: onResolveSlowLoading)
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.appCompactAction(.primary))
                             .accessibilityIdentifier("reader.loading.resolve")
                     }
                 }

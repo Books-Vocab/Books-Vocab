@@ -176,14 +176,9 @@ struct AppSkeletonCard: View {
             }
         }
         .padding(AppSpacing.cardOuterPadding)
-        .background(
-            AppRoundedRect(roundness: AppRoundness.card)
-                .fill(appTheme.palette.cardBackground)
-        )
-        .overlay(
-            AppRoundedRect(roundness: AppRoundness.card)
-                .stroke(appTheme.palette.cardBorder, lineWidth: 1)
-        )
+        .background(AppRoundedRect(roundness: AppRoundness.card).fill(appTheme.palette.cardBackground))
+        .clipShape(AppRoundedRect(roundness: AppRoundness.card))
+        .appElevation(.z0)
     }
 }
 

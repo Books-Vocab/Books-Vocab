@@ -21,19 +21,13 @@ struct AppToast: View {
         }
         .padding(.horizontal, AppSpacing.cardPadding)
         .padding(.vertical, AppSkin.baseSpacing.compactRowVerticalPadding)
-        .background(
-            AppRoundedRect(roundness: AppRoundness.pill)
-                .fill(tintColor.opacity(0.12))
-                .overlay(
-                    AppRoundedRect(roundness: AppRoundness.pill)
-                        .strokeBorder(tintColor.opacity(0.18), lineWidth: AppMetrics.dividerStandard)
-                )
+        // Toast is a single transient glass surface. The tint carries the
+        // semantic tone; Liquid Glass owns the backdrop, edge highlight and
+        // depth, so no second background, border or app elevation is layered on.
+        .glassEffect(
+            .regular.tint(tintColor.opacity(0.12)),
+            in: AppRoundedRect(roundness: AppRoundness.pill)
         )
-        .background(
-            AppRoundedRect(roundness: AppRoundness.pill)
-                .fill(appTheme.palette.cardBackground)
-        )
-        .appElevation(.z2)
         .offset(y: min(dragOffset, 0))
         .gesture(
             DragGesture()
