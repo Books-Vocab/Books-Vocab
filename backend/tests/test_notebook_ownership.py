@@ -63,17 +63,31 @@ def isolated_api(tmp_path):
     try:
         api_mod._USER_LOCKS.clear()
         deps_mod._USER_LOCKS_MUTEX = None
-        client = TestClient(app, raise_server_exceptions=False)
-        yield SimpleNamespace(
-            client=client,
-            user_id=user_id,
-            headers=headers,
-            data_dir=data_dir,
-        )
+        with TestClient(app, raise_server_exceptions=False) as client:
+            yield SimpleNamespace(
+                client=client,
+                user_id=user_id,
+                headers=headers,
+                data_dir=data_dir,
+            )
     finally:
         app.state.kg_settings = original_settings
         app.state.load_users = original_load
         app.state.save_users = original_save
+
+
+@pytest.fixture()
+def assert_client_context_manager(monkeypatch):
+    exits = []
+    original_exit = TestClient.__exit__
+
+    def record_exit(client, *args):
+        exits.append(client)
+        return original_exit(client, *args)
+
+    monkeypatch.setattr(TestClient, "__exit__", record_exit)
+    yield
+    assert len(exits) == 1
 
 
 NONEXISTENT_NB = "nb_does_not_exist_xyz"
@@ -81,6 +95,11 @@ NONEXISTENT_NB = "nb_does_not_exist_xyz"
 
 class TestNotebookOwnershipValidation:
     """All vocab endpoints that accept notebook_id must return 403 for unknown ids."""
+
+    def test_isolated_api_closes_test_client(
+        self, assert_client_context_manager, isolated_api
+    ):
+        del assert_client_context_manager, isolated_api
 
     def test_get_vocab_unknown_notebook_id_returns_403(self, isolated_api):
         r = isolated_api.client.get(
