@@ -307,6 +307,31 @@ struct WordDetailSceneStateTests {
         #expect(state.actionError != nil)
     }
 
+    @Test func setCardPreferences_doesNotProjectUnchangedFieldFromFullResponse() async throws {
+        let context = try makeContext()
+        let entry = makeEntry(cardId: "root-card", word: "abate")
+        entry.markSynced()
+        entry.isReviewExcluded = true
+        context.insert(entry)
+
+        let spy = PreferenceSpy()
+        // The server response is a full card, but this reader-only request must
+        // not project a stale review preference over the local value.
+        spy.responseReviewExcluded = false
+        let state = WordDetailSceneState()
+
+        await state.setCardPreferences(
+            readerHidden: true,
+            reviewExcluded: nil,
+            for: entry,
+            kgService: spy,
+            modelContext: context
+        )
+
+        #expect(entry.isReaderHidden)
+        #expect(entry.isReviewExcluded, "an independent preference must not be overwritten by a stale full-card response")
+    }
+
     // MARK: - Helpers
 
     private enum TestFailure: Error {
@@ -351,6 +376,8 @@ private final class PreferenceSpy: CardPreferenceUpdating {
     private(set) var calls: [Call] = []
     var error: Error?
     var beforeFailure: (() -> Void)?
+    var responseReaderHidden: Bool?
+    var responseReviewExcluded: Bool?
 
     func updateCardPreferences(
         word: String,
@@ -370,7 +397,7 @@ private final class PreferenceSpy: CardPreferenceUpdating {
         let json = """
         {"id":"card-1","content":"\(word)","meaning":"meaning","mode":"recognition",
          "isDeleted":false,"isArchived":false,
-         "isReaderHidden":\(readerHidden ?? false),"isReviewExcluded":\(reviewExcluded ?? false)}
+        "isReaderHidden":\(responseReaderHidden ?? readerHidden ?? false),"isReviewExcluded":\(responseReviewExcluded ?? reviewExcluded ?? false)}
         """.data(using: .utf8)!
         return try JSONDecoder().decode(KGCard.self, from: json)
     }

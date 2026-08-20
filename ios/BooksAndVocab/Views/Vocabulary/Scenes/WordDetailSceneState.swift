@@ -171,8 +171,15 @@ final class WordDetailSceneState {
                 notebookId: entry.notebookId
             )
             if !entry.isDeleted {
-                entry.isReaderHidden = card.isReaderHidden ?? entry.isReaderHidden
-                entry.isReviewExcluded = card.isReviewExcluded ?? entry.isReviewExcluded
+                // The response is a full card, but an independent preference
+                // request must not overwrite the other field while that field
+                // has its own in-flight optimistic mutation.
+                if changes[.readerHidden] != nil {
+                    entry.isReaderHidden = card.isReaderHidden ?? entry.isReaderHidden
+                }
+                if changes[.reviewExcluded] != nil {
+                    entry.isReviewExcluded = card.isReviewExcluded ?? entry.isReviewExcluded
+                }
                 modelContext.safeSave()
             }
             clearActionError(for: .preferences)

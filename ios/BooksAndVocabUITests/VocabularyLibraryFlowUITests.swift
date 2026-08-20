@@ -297,4 +297,52 @@ final class VocabularyLibraryFlowUITests: UITestCase {
         XCTAssertTrue(waitUntilEmpty(candidateQuery(for: "happy accident")))
         captureStep("add-link-no-results", app: app)
     }
+
+    @MainActor
+    func testWordDetailShowsFourCardManagementControlsAndDeleteWarning() throws {
+        let app = launchIsolatedApp(
+            fixtures: [.vocabulary("vocabLinkedCards")],
+            extraEnvironment: [
+                "KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"
+            ],
+            perfLog: "word-detail-card-management"
+        )
+
+        let notebooks = AppPage(app: app).goToNotebooks()
+        XCTAssertTrue(
+            notebooks.waitForNotebookCard(id: Self.addLinkNotebookID, timeout: 10),
+            "word detail control fixture 必須種出 notebook"
+        )
+        notebooks.notebookCard(id: Self.addLinkNotebookID).tapWhenReady()
+
+        let page = VocabularySearchPage(app: app)
+        XCTAssertTrue(page.searchField.waitUntilExists(timeout: 10))
+        page.search("serendipity")
+        XCTAssertTrue(page.waitForRowMaterialized(word: "serendipity", timeout: 10))
+        page.row(word: "serendipity").tapWhenReady()
+
+        let archive = app.buttons["wordDetail.action.archive"]
+        let delete = app.buttons["wordDetail.action.delete"]
+        let readerHidden = app.descendants(matching: .any)
+            .matching(identifier: "wordDetail.toggle.readerHidden").firstMatch
+        let reviewExcluded = app.descendants(matching: .any)
+            .matching(identifier: "wordDetail.toggle.reviewExcluded").firstMatch
+        for control in [archive, delete, readerHidden, reviewExcluded] {
+            XCTAssertTrue(control.waitUntilExists(timeout: 10), "Word Detail 四項控制必須存在")
+            XCTAssertTrue(control.isHittable, "Word Detail 控制必須可見且可操作")
+        }
+
+        XCTAssertLessThan(archive.frame.minY, delete.frame.minY)
+        XCTAssertLessThan(delete.frame.minY, readerHidden.frame.minY)
+        XCTAssertLessThan(readerHidden.frame.minY, reviewExcluded.frame.minY)
+        captureStep("word-detail-four-controls", app: app)
+
+        delete.tapWhenReady()
+        XCTAssertTrue(
+            app.alerts.firstMatch.waitUntilExists(timeout: 5),
+            "刪除必須先顯示警訊確認視窗"
+        )
+        app.buttons["取消"].tapWhenReady()
+        captureStep("word-detail-delete-warning", app: app)
+    }
 }
