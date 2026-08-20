@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import closing
+
 import pytest
 
 from kg.vocab_crud import batch_archive_vocab_words, batch_delete_vocab_words
@@ -45,34 +47,34 @@ class TestBatchDeleteVocabWords:
     def test_duplicate_request_word_only_deletes_once(self, tmp_path):
         from kg.cards import CardStore
 
-        cards = CardStore(tmp_path / "cards.db")
-        card = cards.add("hello", meaning="m", notebook_id="default")
-        graph = _FakeArchiveGraph()
+        with closing(CardStore(tmp_path / "cards.db")) as cards:
+            card = cards.add("hello", meaning="m", notebook_id="default")
+            graph = _FakeArchiveGraph()
 
-        result = batch_delete_vocab_words(
-            ["hello", "hello"], cards_store=cards, graph=graph,
-        )
+            result = batch_delete_vocab_words(
+                ["hello", "hello"], cards_store=cards, graph=graph,
+            )
 
-        assert result["deleted"] == 1
-        assert result["deleted_words"] == ["hello"]
-        assert result["not_found"] == []
-        assert graph.deprecated_for == [card.id]
+            assert result["deleted"] == 1
+            assert result["deleted_words"] == ["hello"]
+            assert result["not_found"] == []
+            assert graph.deprecated_for == [card.id]
 
     def test_canonical_duplicate_variants_all_converge_but_delete_once(self, tmp_path):
         from kg.cards import CardStore
 
-        cards = CardStore(tmp_path / "cards.db")
-        card = cards.add("hello", meaning="m", notebook_id="default")
-        graph = _FakeArchiveGraph()
+        with closing(CardStore(tmp_path / "cards.db")) as cards:
+            card = cards.add("hello", meaning="m", notebook_id="default")
+            graph = _FakeArchiveGraph()
 
-        result = batch_delete_vocab_words(
-            ["Hello.", "hello"], cards_store=cards, graph=graph,
-        )
+            result = batch_delete_vocab_words(
+                ["Hello.", "hello"], cards_store=cards, graph=graph,
+            )
 
-        assert result["deleted"] == 2
-        assert result["deleted_words"] == ["Hello.", "hello"]
-        assert result["not_found"] == []
-        assert graph.deprecated_for == [card.id]
+            assert result["deleted"] == 2
+            assert result["deleted_words"] == ["Hello.", "hello"]
+            assert result["not_found"] == []
+            assert graph.deprecated_for == [card.id]
 
 
 class TestBatchArchiveVocabWords:
@@ -98,36 +100,36 @@ class TestBatchArchiveVocabWords:
     def test_duplicate_request_word_only_archives_once(self, tmp_path):
         from kg.cards import CardStore
 
-        cards = CardStore(tmp_path / "cards.db")
-        card = cards.add("hello", meaning="m", notebook_id="default")
-        graph = _FakeArchiveGraph()
+        with closing(CardStore(tmp_path / "cards.db")) as cards:
+            card = cards.add("hello", meaning="m", notebook_id="default")
+            graph = _FakeArchiveGraph()
 
-        result = batch_archive_vocab_words(
-            ["hello", "hello"], archived=True, cards_store=cards, graph=graph,
-        )
+            result = batch_archive_vocab_words(
+                ["hello", "hello"], archived=True, cards_store=cards, graph=graph,
+            )
 
-        assert result["updated"] == 1
-        assert result["updated_words"] == ["hello"]
-        assert result["not_found"] == []
-        assert graph.deprecated_for == [card.id]
-        assert cards.get(card.id).is_archived is True
+            assert result["updated"] == 1
+            assert result["updated_words"] == ["hello"]
+            assert result["not_found"] == []
+            assert graph.deprecated_for == [card.id]
+            assert cards.get(card.id).is_archived is True
 
     def test_canonical_duplicate_variants_all_converge_but_archive_once(self, tmp_path):
         from kg.cards import CardStore
 
-        cards = CardStore(tmp_path / "cards.db")
-        card = cards.add("hello", meaning="m", notebook_id="default")
-        graph = _FakeArchiveGraph()
+        with closing(CardStore(tmp_path / "cards.db")) as cards:
+            card = cards.add("hello", meaning="m", notebook_id="default")
+            graph = _FakeArchiveGraph()
 
-        result = batch_archive_vocab_words(
-            ["Hello.", "hello"], archived=True, cards_store=cards, graph=graph,
-        )
+            result = batch_archive_vocab_words(
+                ["Hello.", "hello"], archived=True, cards_store=cards, graph=graph,
+            )
 
-        assert result["updated"] == 2
-        assert result["updated_words"] == ["Hello.", "hello"]
-        assert result["not_found"] == []
-        assert graph.deprecated_for == [card.id]
-        assert cards.get(card.id).is_archived is True
+            assert result["updated"] == 2
+            assert result["updated_words"] == ["Hello.", "hello"]
+            assert result["not_found"] == []
+            assert graph.deprecated_for == [card.id]
+            assert cards.get(card.id).is_archived is True
 
     def test_partial_not_found(self):
         cards = _FakeCardsStore([_FakeCard(id="c1", content="hello")])
@@ -147,15 +149,15 @@ class TestBatchDeleteNotebookIsolation:
     def test_same_word_in_other_notebook_untouched(self, tmp_path):
         from kg.cards import CardStore
 
-        cards = CardStore(tmp_path / "cards.db")
-        nb_a = cards.add("hello", meaning="m", notebook_id="nb_a")
-        nb_b = cards.add("hello", meaning="m", notebook_id="nb_b")
+        with closing(CardStore(tmp_path / "cards.db")) as cards:
+            nb_a = cards.add("hello", meaning="m", notebook_id="nb_a")
+            nb_b = cards.add("hello", meaning="m", notebook_id="nb_b")
 
-        result = batch_delete_vocab_words(
-            ["hello"], cards_store=cards, notebook_id="nb_a",
-        )
+            result = batch_delete_vocab_words(
+                ["hello"], cards_store=cards, notebook_id="nb_a",
+            )
 
-        assert result["deleted"] == 1
-        assert result["deleted_words"] == ["hello"]
-        assert cards.get(nb_a.id).is_deleted is True
-        assert cards.get(nb_b.id).is_deleted is False
+            assert result["deleted"] == 1
+            assert result["deleted_words"] == ["hello"]
+            assert cards.get(nb_a.id).is_deleted is True
+            assert cards.get(nb_b.id).is_deleted is False
