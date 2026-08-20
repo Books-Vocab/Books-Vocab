@@ -215,6 +215,52 @@ def test_copy_idempotent_retry(tmp_path):
     assert shared.get("deck_a").download_count == 1
 
 
+def test_copy_rejects_cross_deck_idempotency_reuse(tmp_path):
+    user_dir, shared, cards, nbs = _stores(tmp_path)
+    _publish_deck(shared, deck_id="deck_a")
+    _publish_deck(shared, deck_id="deck_b", title="Official Follow-up")
+
+    first = _copy(shared, cards, nbs, user_dir, deck_id="deck_a", key="same-key")
+
+    with pytest.raises(ConflictError, match="idempotency key"):
+        _copy(shared, cards, nbs, user_dir, deck_id="deck_b", key="same-key")
+
+    log = shared.get_copy_log("u1", "same-key")
+    assert log is not None
+    assert log.source_shared_deck_id == "deck_a"
+    assert log.result_notebook_id == first.notebook_id
+    assert [n.id for n in nbs.all() if not n.is_default] == [first.notebook_id]
+    assert cards.count() == first.card_count
+    assert shared.get("deck_a").download_count == 1
+    assert shared.get("deck_b").download_count == 0
+
+
+def test_race_winner_replay_rejects_cross_deck_idempotency_reuse(tmp_path, monkeypatch):
+    user_dir, shared, cards, nbs = _stores(tmp_path)
+    _publish_deck(shared, deck_id="deck_a")
+    _publish_deck(shared, deck_id="deck_b", title="Official Follow-up")
+    first = _copy(shared, cards, nbs, user_dir, deck_id="deck_a", key="same-key")
+
+    real_get_copy_log = shared.get_copy_log
+    calls = {"count": 0}
+
+    def hide_existing_log(copier_id, idempotency_key):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return None
+        return real_get_copy_log(copier_id, idempotency_key)
+
+    monkeypatch.setattr(shared, "get_copy_log", hide_existing_log)
+    with pytest.raises(ConflictError, match="idempotency key"):
+        _copy(shared, cards, nbs, user_dir, deck_id="deck_b", key="same-key")
+
+    assert calls["count"] == 2
+    assert [n.id for n in nbs.all() if not n.is_default] == [first.notebook_id]
+    assert cards.count() == first.card_count
+    assert shared.get("deck_a").download_count == 1
+    assert shared.get("deck_b").download_count == 0
+
+
 def test_replay_self_heals_staged_notebook(tmp_path, monkeypatch):
     """Crash-window recovery: a prior copy committed its idempotency log but
     crashed BEFORE revealing the notebook, leaving it staged (is_staged=True,
