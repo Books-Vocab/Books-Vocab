@@ -9,7 +9,11 @@ from kg.notebook import DEFAULT_NOTEBOOK_ID, DEFAULT_NOTEBOOK_NAME, NotebookStor
 
 @pytest.fixture()
 def store(tmp_path):
-    return NotebookStore(path=tmp_path / "notebooks.db")
+    notebook_store = NotebookStore(path=tmp_path / "notebooks.db")
+    try:
+        yield notebook_store
+    finally:
+        notebook_store.close()
 
 
 def test_ensure_default_creates_notebook(store):
@@ -73,18 +77,22 @@ def test_get_modified_since(store):
 
 def test_cards_notebook_id_filter(tmp_path):
     from kg.cards import CardStore
+
     cs = CardStore(tmp_path / "cards.db")
-    cs.add(content="apple", meaning="fruit", notebook_id="nb1")
-    cs.add(content="banana", meaning="fruit", notebook_id="nb2")
-    cs.add(content="cherry", meaning="fruit", notebook_id="nb1")
+    try:
+        cs.add(content="apple", meaning="fruit", notebook_id="nb1")
+        cs.add(content="banana", meaning="fruit", notebook_id="nb2")
+        cs.add(content="cherry", meaning="fruit", notebook_id="nb1")
 
-    assert cs.count(notebook_id="nb1") == 2
-    assert cs.count(notebook_id="nb2") == 1
-    assert cs.count() == 3
+        assert cs.count(notebook_id="nb1") == 2
+        assert cs.count(notebook_id="nb2") == 1
+        assert cs.count() == 3
 
-    all_nb1 = list(cs.all(notebook_id="nb1"))
-    assert len(all_nb1) == 2
-    assert {c.content for c in all_nb1} == {"apple", "cherry"}
+        all_nb1 = list(cs.all(notebook_id="nb1"))
+        assert len(all_nb1) == 2
+        assert {c.content for c in all_nb1} == {"apple", "cherry"}
 
-    all_nb1_list = list(cs.all(notebook_id="nb1"))
-    assert len(all_nb1_list) == 2
+        all_nb1_list = list(cs.all(notebook_id="nb1"))
+        assert len(all_nb1_list) == 2
+    finally:
+        cs.close()
