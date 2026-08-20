@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 _STORE_CACHE: OrderedDict[str, object] = OrderedDict()
 _STORE_CACHE_LOCK = threading.Lock()
 _STORE_INIT_EVENTS: dict[str, threading.Event] = {}
+_STORE_CACHE_INVALIDATED_KEYS: set[str] = set()
 _STORE_CACHE_GENERATION = 0
 _STORE_CACHE_MAX = 100
 
@@ -68,14 +69,17 @@ def _get_cached(key: str, factory):
         with _STORE_CACHE_LOCK:
             if _STORE_INIT_EVENTS.get(key) is event:
                 _STORE_INIT_EVENTS.pop(key, None)
+                _STORE_CACHE_INVALIDATED_KEYS.discard(key)
                 event.set()
         raise
 
     # Insert + evict under the global lock.
     with _STORE_CACHE_LOCK:
         evicted: list[object] = []
-        if _STORE_CACHE_GENERATION == generation:
+        invalidated_by_eviction = key in _STORE_CACHE_INVALIDATED_KEYS
+        if _STORE_CACHE_GENERATION == generation and not invalidated_by_eviction:
             _STORE_CACHE[key] = instance
+        _STORE_CACHE_INVALIDATED_KEYS.discard(key)
         while len(_STORE_CACHE) > _STORE_CACHE_MAX:
             _, victim = _STORE_CACHE.popitem(last=False)
             evicted.append(victim)
@@ -85,6 +89,8 @@ def _get_cached(key: str, factory):
 
     for victim in evicted:
         _close_store(victim)
+    if invalidated_by_eviction:
+        _close_store(instance)
     return instance
 
 
@@ -93,6 +99,8 @@ def evict_notebook_cache(user_dir: Path, notebook_id: str) -> None:
     with _STORE_CACHE_LOCK:
         for prefix in ("graph", "embedding"):
             key = f"{prefix}:{user_dir}:{notebook_id}"
+            if key in _STORE_INIT_EVENTS:
+                _STORE_CACHE_INVALIDATED_KEYS.add(key)
             store = _STORE_CACHE.pop(key, None)
             if store is not None:
                 _close_store(store)

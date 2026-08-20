@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -10,7 +11,12 @@ import numpy as np
 import pytest
 
 from kg.embeddings import EMBEDDING_DIM, EmbeddingStore
-from kg.service_factories import clear_store_cache, create_embedding_store
+from kg.service_factories import (
+    _get_cached,
+    clear_store_cache,
+    create_embedding_store,
+    evict_notebook_cache,
+)
 from kg.tracked_llm import TrackedLLM
 
 
@@ -39,6 +45,51 @@ def _make_tracked_llm(n: int = 1):
 # ---------------------------------------------------------------------------
 
 class TestEmbeddingStoreCache:
+    def test_eviction_discards_inflight_store(self, tmp_path: Path):
+        """Notebook eviction must not let a blocked builder repopulate cache."""
+        import kg.service_factories as sf
+
+        clear_store_cache()
+        key = f"embedding:{tmp_path}:default"
+        started = threading.Event()
+        release = threading.Event()
+        late_store = MagicMock(name="late_store")
+        result: list[object] = []
+        errors: list[BaseException] = []
+
+        def factory():
+            started.set()
+            assert release.wait(timeout=5), "timed out waiting for builder release"
+            return late_store
+
+        def worker():
+            try:
+                result.append(_get_cached(key, factory))
+            except BaseException as exc:  # pragma: no cover - diagnostic handoff
+                errors.append(exc)
+
+        thread = threading.Thread(target=worker)
+        try:
+            thread.start()
+            assert started.wait(timeout=5), "builder did not start"
+
+            evict_notebook_cache(tmp_path, "default")
+            with sf._STORE_CACHE_LOCK:
+                assert key not in sf._STORE_CACHE
+
+            release.set()
+            thread.join(timeout=5)
+            assert not thread.is_alive()
+            assert errors == []
+            assert result == [late_store]
+            late_store.close.assert_called_once()
+            with sf._STORE_CACHE_LOCK:
+                assert key not in sf._STORE_CACHE
+        finally:
+            release.set()
+            thread.join(timeout=5)
+            clear_store_cache()
+
     def test_same_user_dir_notebook_returns_same_instance(self, tmp_path: Path):
         """同一 user_dir + notebook_id 應回傳相同 instance（快取命中）。"""
         clear_store_cache()
