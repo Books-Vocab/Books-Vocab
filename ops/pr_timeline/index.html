@@ -8,35 +8,37 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <main class="shell">
+  <main class="page">
     <header class="topbar">
-      <div>
+      <div class="brand">
         <h1>PR Timeline</h1>
-        <p id="updated" class="muted" aria-live="polite">—</p>
+        <p id="updated" class="subline" aria-live="polite">—</p>
       </div>
       <div class="controls" aria-label="Timeline controls">
-        <button id="refresh" class="icon-button" type="button" aria-label="Refresh timeline" title="Refresh">↻</button>
+        <span id="summary" class="summary">—</span>
+        <button id="refresh" class="refresh" type="button" aria-label="Refresh timeline" title="Refresh">↻</button>
         <label class="zoom-control" for="zoom">
-          <span>Zoom</span>
-          <input id="zoom" type="range" min="30" max="360" value="110" step="10" aria-label="Timeline zoom">
+          <span class="sr-only">Timeline zoom</span>
+          <output id="zoom-value" for="zoom">2×</output>
+          <input id="zoom" type="range" min="0.25" max="48" value="4" step="0.25" aria-label="Timeline zoom">
         </label>
       </div>
     </header>
 
     <p id="notice" class="notice" role="status" hidden></p>
 
-    <section class="timeline-card" aria-labelledby="timeline-heading">
-      <div class="section-heading">
-        <h2 id="timeline-heading">Merged PRs</h2>
-        <span id="summary" class="muted">—</span>
-      </div>
+    <section class="timeline-section" aria-labelledby="timeline-heading">
+      <h2 id="timeline-heading" class="sr-only">Merged pull requests</h2>
       <div id="timeline-viewport" class="timeline-viewport" tabindex="0" aria-label="Merged PR timeline">
-        <div id="timeline" class="timeline"></div>
+        <div id="timeline" class="timeline">
+          <div id="timeline-rule" class="timeline-rule" aria-hidden="true"></div>
+          <div id="timeline-tooltip" class="timeline-tooltip" role="status" hidden></div>
+        </div>
       </div>
-    </section>
-
-    <section id="details" class="details" aria-live="polite">
-      <p class="muted">Select a PR</p>
+      <div class="timeline-caption">
+        <span id="range">—</span>
+      </div>
+      <div id="details" class="details" aria-live="polite" hidden></div>
     </section>
   </main>
   <script src="/app.js" defer></script>

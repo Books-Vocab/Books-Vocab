@@ -241,10 +241,34 @@ def test_frontend_exposes_zoomable_timeline_and_refresh_controls() -> None:
 
     assert 'id="timeline"' in index
     assert 'id="zoom"' in index
+    assert 'id="zoom-value"' in index
     assert 'id="refresh"' in index
+    assert 'id="range"' in index
+    assert 'id="timeline-rule"' in index
+    assert 'id="timeline-tooltip"' in index
+    assert 'min="0.25"' in index
+    assert 'max="48"' in index
+    assert 'value="4"' in index
     assert 'fetch("/api/prs"' in script
     assert "addEventListener(\"input\"" in script
-    assert "--timeline-height" in styles
+    assert "typeof value === \"number\"" in script
+    assert 'window.addEventListener("resize"' in script
+    assert ".timeline-rule" in styles
+    assert "top: var(--line-y)" in styles
+    assert ".pr-marker" in styles
+    assert "lane" not in script
+
+
+def test_frontend_uses_one_physical_line_without_inline_marker_labels() -> None:
+    asset_root = Path(__file__).parents[1] / "pr_timeline"
+    index = (asset_root / "index.html").read_text(encoding="utf-8")
+    script = (asset_root / "app.js").read_text(encoding="utf-8")
+
+    assert "timeline-card" not in index
+    assert "section-heading" not in index
+    assert "marker.title" in script
+    assert "marker.setAttribute(\"aria-label\"" in script
+    assert "marker.textContent" not in script
 
 
 def test_launchd_manifest_is_tailnet_bound_and_restartable() -> None:
