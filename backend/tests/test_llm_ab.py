@@ -5,6 +5,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from kg.llm import ab as ab_mod
 
 # ---------------------------------------------------------------------------
@@ -135,7 +137,8 @@ class TestRunOne:
 
 class TestMain:
     def test_dry_run_returns_0(self, capsys):
-        rc = ab_mod.main(["--dry-run"])
+        with pytest.warns(DeprecationWarning, match="kg.llm.ab is deprecated"):
+            rc = ab_mod.main(["--dry-run"])
         assert rc == 0
         captured = capsys.readouterr()
         assert "[dry-run]" in captured.out
@@ -143,7 +146,8 @@ class TestMain:
     def test_no_providers_returns_1(self, monkeypatch, capsys):
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
         monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-        rc = ab_mod.main([])
+        with pytest.warns(DeprecationWarning, match="kg.llm.ab is deprecated"):
+            rc = ab_mod.main([])
         assert rc == 1
         captured = capsys.readouterr()
         assert "No providers available" in captured.out
@@ -159,7 +163,8 @@ class TestMain:
         mock_client.chat.completions.create.return_value = mock_resp
 
         with patch("kg.service_factories.create_client", return_value=mock_client):
-            rc = ab_mod.main(["serendipity"])
+            with pytest.warns(DeprecationWarning, match="kg.llm.ab is deprecated"):
+                rc = ab_mod.main(["serendipity"])
 
         assert rc == 0
         captured = capsys.readouterr()
@@ -172,7 +177,8 @@ class TestMain:
         mock_client.chat.completions.create.side_effect = Exception("network")
 
         with patch("kg.service_factories.create_client", return_value=mock_client):
-            rc = ab_mod.main([])
+            with pytest.warns(DeprecationWarning, match="kg.llm.ab is deprecated"):
+                rc = ab_mod.main([])
 
         assert rc == 0
         captured = capsys.readouterr()
