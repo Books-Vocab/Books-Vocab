@@ -44,6 +44,8 @@ def web_auth_env(tmp_path):
         client = TestClient(app, base_url="https://testserver", raise_server_exceptions=False)
         yield SimpleNamespace(client=client, data_dir=data_dir)
     finally:
+        client.close()
+        assert client.is_closed, "web_auth_env must close its TestClient before restoring app state"
         app.state.kg_settings = original_settings
         app.state.load_users = original_load
         app.state.save_users = original_save
