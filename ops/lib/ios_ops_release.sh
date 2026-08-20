@@ -186,7 +186,7 @@ sentry_summary_json() {
         derived_data_root="$ROOT/.cache/ios-build-derived-data"
       fi
     fi
-    if kg_ios_wait_for_shlock "[ios][sentry]" sentry "$build_lock" "$build_lock_owner" "$build_lock_timeout" 3; then
+    if kg_ios_wait_for_shlock "[ios][sentry]" sentry "$build_lock" "$build_lock_owner" "$build_lock_timeout" 3 >&2; then
       current_head="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
       source_mtime=0
       for source_file in "$ROOT/ios/BooksAndVocab/Services/AppCrashReporting.swift" \
