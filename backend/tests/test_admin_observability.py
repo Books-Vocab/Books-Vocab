@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 ADMIN_TOKEN = "test-admin-token-observability"
-EXPECTED_ADMIN_APP_CLIENTS = 17
+EXPECTED_ADMIN_APP_CLIENTS = 18
 admin_app_constructed = 0
 admin_app_explicit_close = 0
 
@@ -217,6 +217,81 @@ def test_pipeline_step_p95_returns_per_step_durations(admin_app):
     assert judge["count"] == 10
     # p95 of 10..1000 step series (nearest-rank): 950 or 1000 — accept anything in [900,1000]
     assert 900 <= judge["p95_ms"] <= 1000
+
+
+def test_observability_filters_fixed_offset_rows_by_utc_instant(admin_app, monkeypatch):
+    """Rows before a UTC cutoff stay out of every observability aggregation."""
+    import kg.admin_observability as ao
+    import kg.judge_log as jl
+    import kg.pipeline_log as pl
+    import kg.token_tracker as tt
+    import kg.translate_log as tl
+
+    fixed_now = datetime(2026, 5, 14, 12, 0, tzinfo=UTC)
+    cutoff = "2026-05-13T12:00:00+00:00"
+    before_cutoff = "2026-05-13T12:30:00+01:00"
+    assert before_cutoff >= cutoff  # the pre-fix SQLite text predicate includes it
+    assert (
+        datetime.fromisoformat(before_cutoff).astimezone(UTC)
+        < fixed_now - timedelta(hours=24)
+    )
+    monkeypatch.setattr(ao, "_utcnow", lambda: fixed_now)
+
+    pl.start_run("before-cutoff", "u1", "nb1", "manual")
+    pl.end_run("before-cutoff", "ok")
+    pl_conn = pl._get_conn()
+    pl_conn.execute(
+        "UPDATE pipeline_runs SET started_at = ?, steps = ? WHERE run_id = ?",
+        (
+            before_cutoff,
+            json.dumps([{
+                "name": "judge",
+                "started_at": before_cutoff,
+                "ended_at": "2026-05-13T12:31:00+01:00",
+            }]),
+            "before-cutoff",
+        ),
+    )
+    pl_conn.commit()
+
+    jl.record(
+        user_id="u1", notebook_id="nb1", from_id="a", to_id="b",
+        similarity=0.4, verdict="reject", confidence=0.2,
+        accepted=False, reject_reason="low_confidence",
+    )
+    jl_conn = jl._get_conn()
+    jl_conn.execute("UPDATE judge_log SET created_at = ?", (before_cutoff,))
+    jl_conn.commit()
+
+    tl.record(
+        user_id="u1", operation="translate_quick", word="apple",
+        context="I ate an apple.", context_hash="hash",
+        source_lang="en", target_lang="zh-Hant", response_raw='{"t":"蘋果"}',
+        latency_ms=10,
+    )
+    tl_conn = tl._get_conn()
+    tl_conn.execute("UPDATE translate_log SET created_at = ?", (before_cutoff,))
+    tl_conn.commit()
+
+    tt.record("u1", "translate_quick", 10, 20)
+    tt_conn = tt._get_conn()
+    tt_conn.execute(
+        "UPDATE token_usage SET created_at = ?",
+        ("2026-05-08T00:30:00+01:00",),
+    )
+    tt_conn.commit()
+
+    body = _get(admin_app.client).json()
+    assert body["pipeline_failure_rate_24h"]["total"] == 0
+    assert body["pipeline_failure_rate_24h"]["failed"] == 0
+    assert body["pipeline_step_p95_24h"]["steps"] == []
+    assert body["judge_rejection_rate_24h"]["total"] == 0
+    assert body["judge_rejection_rate_24h"]["rejected"] == 0
+    assert body["translate_cache_hit_rate_24h"]["hits"] == 0
+    assert body["translate_cache_hit_rate_24h"]["misses"] == 0
+    assert body["translate_cache_hit_rate_24h"]["total"] == 0
+    assert body["translate_cache_hit_rate_24h"]["rate"] is None
+    assert body["daily_token_spend_7d"]["total"] == 0
 
 
 # ── judge_rejection_rate_24h ──────────────────────────────────────────────
