@@ -17,8 +17,8 @@ from fastapi.testclient import TestClient
 import kg.api as api_mod
 import kg.deps as deps_mod
 import kg.routers.vocab as vocab_router_mod
-from conftest import TEST_JWT_SECRET, _DummyEmbeddingStore, _swap_settings, make_jwt
-from kg.api import app
+from conftest import TEST_JWT_SECRET, _DummyEmbeddingStore, make_jwt
+from kg.api import create_app
 from kg.settings import KGSettings
 
 
@@ -48,32 +48,23 @@ def isolated_api(tmp_path):
     token = make_jwt(user_id)
     headers = {"Authorization": f"Bearer {token}"}
 
-    original_settings = app.state.kg_settings
-    original_load = app.state.load_users
-    original_save = app.state.save_users
-
     test_settings = KGSettings(
         data_dir=data_dir,
         jwt_secret=TEST_JWT_SECRET,
         app_store_allow_unsigned_sync=True,
         app_store_allow_unsigned_notifications=True,
     )
-    _swap_settings(test_settings)
+    test_app = create_app(test_settings)
 
-    try:
-        api_mod._USER_LOCKS.clear()
-        deps_mod._USER_LOCKS_MUTEX = None
-        with TestClient(app, raise_server_exceptions=False) as client:
-            yield SimpleNamespace(
-                client=client,
-                user_id=user_id,
-                headers=headers,
-                data_dir=data_dir,
-            )
-    finally:
-        app.state.kg_settings = original_settings
-        app.state.load_users = original_load
-        app.state.save_users = original_save
+    api_mod._USER_LOCKS.clear()
+    deps_mod._USER_LOCKS_MUTEX = None
+    with TestClient(test_app, raise_server_exceptions=False) as client:
+        yield SimpleNamespace(
+            client=client,
+            user_id=user_id,
+            headers=headers,
+            data_dir=data_dir,
+        )
 
 
 @pytest.fixture()
