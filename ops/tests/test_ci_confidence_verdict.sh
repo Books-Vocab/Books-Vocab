@@ -60,6 +60,11 @@ assert_rejects 'unselected suite cannot silently consume CI' \
 assert_rejects 'unselected suite failure remains a confidence failure' \
   "$plan" \
   "$(jq -c '."backend-quality".result = "failure"' <<<"$needs")"
+for status in failure cancelled neutral skipped; do
+  assert_rejects "unknown dependency $status remains a confidence failure" \
+    "$plan" \
+    "$(jq -c --arg status "$status" '. + {"security-gate": {result: $status}}' <<<"$needs")"
+done
 assert_rejects 'failed path classification is never confidence green' \
   "$plan" \
   "$(jq -c '."changed-paths".result = "failure"' <<<"$needs")"
