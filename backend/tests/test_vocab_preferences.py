@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from kg.api_models.cards import CardResponse
 from kg.api_models.vocab import CardPreferencesUpdateRequest
 from kg.cards import CardStore
+from kg.exceptions import NotFoundError
 from kg.vocab_crud import update_vocab_word_preferences
 
 
@@ -89,6 +90,17 @@ def test_update_vocab_word_preferences_changes_only_requested_fields():
     assert response.isReaderHidden is True
     assert response.isReviewExcluded is False
 
+    with pytest.raises(NotFoundError):
+        update_vocab_word_preferences(
+            "focus",
+            reader_hidden=False,
+            review_excluded=None,
+            cards_store=cards,
+            graph=_Graph(),
+            card_response_builder=_response_builder,
+            notebook_id="other-notebook",
+        )
+
 
 def test_preference_columns_default_and_round_trip(tmp_path):
     store = CardStore(tmp_path / "cards.db")
@@ -97,10 +109,27 @@ def test_preference_columns_default_and_round_trip(tmp_path):
         assert card.is_reader_hidden is False
         assert card.is_review_excluded is False
 
+        review_at = card.updated_at
+        store.update(
+            card.id,
+            review_count=4,
+            review_streak=3,
+            lapse_count=1,
+            review_interval_hours=48,
+            next_review_at=review_at,
+        )
+        before_preferences = store.get(card.id)
+        assert before_preferences is not None
+
         store.update(card.id, is_reader_hidden=True, is_review_excluded=True)
         refreshed = store.get(card.id)
         assert refreshed is not None
         assert refreshed.is_reader_hidden is True
         assert refreshed.is_review_excluded is True
+        assert refreshed.review_count == before_preferences.review_count == 4
+        assert refreshed.review_streak == before_preferences.review_streak == 3
+        assert refreshed.lapse_count == before_preferences.lapse_count == 1
+        assert refreshed.review_interval_hours == before_preferences.review_interval_hours == 48
+        assert refreshed.next_review_at == before_preferences.next_review_at == review_at
     finally:
         store.close()
