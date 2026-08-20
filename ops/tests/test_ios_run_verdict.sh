@@ -4,7 +4,7 @@
 #
 # Regression guards (multi-session verdict race, 2026-06-11):
 #   1. Each invocation gets a UNIQUE verdict path
-#      `${TMPDIR}/kg_ios_<kind>_verdict.<epochTs>-<pid>(.json)` — a session can
+#      `${TMPDIR}/kg_ios_<kind>_verdict.<epochTs>-<pid>-<initSeq>(.json)` — a session can
 #      never mistake another session's verdict for its own.
 #   2. The historical fixed path `${TMPDIR}/kg_ios_<kind>_verdict(.json)` is
 #      kept as a LATEST POINTER: publish copies the run files onto it
@@ -51,8 +51,8 @@ latest_json="$(sed -n 4p <<<"$out")"
   && ok "latest pointer keeps historical fixed path" || fail_t "latest pointer wrong: $latest_file"
 [[ "$latest_json" == "$TMP/kg_ios_test_verdict.json" ]] \
   && ok "latest JSON pointer keeps historical fixed path" || fail_t "latest json wrong: $latest_json"
-[[ "$run_file" =~ ^"$TMP"/kg_ios_test_verdict\.[0-9]+-[0-9]+$ ]] \
-  && ok "run path is <latest>.<epochTs>-<pid>" || fail_t "run path shape wrong: $run_file"
+[[ "$run_file" =~ ^"$TMP"/kg_ios_test_verdict\.[0-9]+-[0-9]+-[0-9]+$ ]] \
+  && ok "run path is <latest>.<epochTs>-<pid>-<initSeq>" || fail_t "run path shape wrong: $run_file"
 [[ "$run_json" == "$run_file.json" ]] \
   && ok "run JSON path is <run>.json" || fail_t "run json wrong: $run_json"
 [[ "$run_file" != "$latest_file" ]] \
@@ -65,7 +65,15 @@ p2="$(in_proc 'kg_ios_verdict_init build "/wt/b"; printf "%s" "$VERDICT_FILE"')"
 [[ -n "$p1" && -n "$p2" && "$p1" != "$p2" ]] \
   && ok "two processes get distinct run paths" || fail_t "run paths collide: $p1 vs $p2"
 
-# ── 4. KG_IOS_VERDICT_FILE env pins the run path ──────────────────────────────
+# ── 4. repeated init in one shell stays unique ───────────────────────────────
+out="$(in_proc 'kg_ios_verdict_init build "/wt/repeat"; first="$VERDICT_FILE"; kg_ios_verdict_init build "/wt/repeat"; second="$VERDICT_FILE"; printf "%s\n%s\n" "$first" "$second"')"
+first="$(sed -n 1p <<<"$out")"
+second="$(sed -n 2p <<<"$out")"
+[[ -n "$first" && -n "$second" && "$first" != "$second" ]] \
+  && ok "repeated same-process init gets distinct run paths" \
+  || fail_t "same-process run paths collide: $first vs $second"
+
+# ── 5. KG_IOS_VERDICT_FILE env pins the run path ──────────────────────────────
 section "env pin"
 pinned="$TMP/pinned_verdict_path"
 out="$(KG_IOS_VERDICT_FILE="$pinned" in_proc 'kg_ios_verdict_init test "/wt/pin"; printf "%s\n%s\n%s\n" "$VERDICT_FILE" "$VERDICT_JSON_FILE" "$VERDICT_LATEST_FILE"')"
@@ -76,14 +84,14 @@ out="$(KG_IOS_VERDICT_FILE="$pinned" in_proc 'kg_ios_verdict_init test "/wt/pin"
 [[ "$(sed -n 3p <<<"$out")" == "$TMP/kg_ios_test_verdict" ]] \
   && ok "latest pointer unaffected by env pin" || fail_t "latest pointer drifted under env pin"
 
-# ── 5. identity fields: ts= pid= cwd= recognizable in one glance ──────────────
+# ── 6. identity fields: ts= pid= cwd= recognizable in one glance ──────────────
 section "identity kv"
 kv="$(in_proc 'kg_ios_verdict_init test "/wt/identity"; kg_ios_verdict_identity_kv')"
 grep -qE '(^| )ts=[0-9]+( |$)' <<<"$kv" && ok "kv has epoch ts=" || fail_t "kv missing ts=: $kv"
 grep -qE '(^| )pid=[0-9]+( |$)' <<<"$kv" && ok "kv has pid=" || fail_t "kv missing pid=: $kv"
 grep -qE '(^| )cwd=/wt/identity( |$)' <<<"$kv" && ok "kv has cwd= (init arg)" || fail_t "kv missing cwd=: $kv"
 
-# ── 6. publish copies run files onto the latest pointer ──────────────────────
+# ── 7. publish copies run files onto the latest pointer ──────────────────────
 section "publish → latest pointer"
 in_proc '
   kg_ios_verdict_init test "/wt/pub"
@@ -99,7 +107,7 @@ grep -q '"marker":"A"' "$TMP/kg_ios_test_verdict.json" \
 ls "$TMP"/kg_ios_test_verdict.[0-9]*-[0-9]* >/dev/null 2>&1 \
   && ok "per-run verdict file persists after publish" || fail_t "per-run verdict file vanished"
 
-# ── 7. publish is safe under set -e with partial/missing files ────────────────
+# ── 8. publish is safe under set -e with partial/missing files ────────────────
 section "publish robustness"
 in_proc 'kg_ios_verdict_init build "/wt/none"; kg_ios_verdict_publish; echo SAFE' | grep -q SAFE \
   && ok "publish with no files does not abort (set -e)" || fail_t "publish aborted with no files"
