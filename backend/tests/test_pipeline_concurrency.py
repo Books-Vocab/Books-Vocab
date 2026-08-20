@@ -17,6 +17,8 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+import pytest
+
 import kg.pipeline_service as ps
 from kg.pipeline_service import is_pipeline_running, run_pipeline_background
 
@@ -48,6 +50,16 @@ class _EmbeddingsOk:
     def add(self, *a, **k): pass
     def add_batch(self, *a, **k): pass
     def find_similar(self, *a, **k): return []
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _reset_pipeline_log():
+    """Close pipeline telemetry's SQLite singleton around this module."""
+    from kg import pipeline_log
+
+    pipeline_log.reset()
+    yield
+    pipeline_log.reset()
 
 
 def test_is_pipeline_running_false_initially():
