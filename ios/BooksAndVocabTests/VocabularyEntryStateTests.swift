@@ -7,19 +7,27 @@ import Testing
 /// VocabularyListView 等）的真相。@Query 走的是平行的
 /// `knowledgeListPredicate(notebookId:)` 工廠（SwiftData #Predicate 無法
 /// 直接引用 computed property，故同條件雙軌表述）—— 本測試鎖 computed
-/// 軌不漂移。回歸保護：syncStatus × actionType × isArchived 的組合不可
-/// 漂移 —— 尤其 `!isArchived` 不可在任一路徑漏判。
+/// 軌不漂移。回歸保護：syncStatus × actionType × isArchived 以及兩個
+/// per-card visibility flags 的組合不可漂移。
 @Suite("VocabularyEntry state predicates")
 struct VocabularyEntryStateTests {
 
     /// 建一筆 entry 並覆寫 sync 狀態欄位（init 預設 syncStatus=0/add/未封存）。
-    private func entry(status: Int, action: String, archived: Bool = false) -> VocabularyEntry {
+    private func entry(
+        status: Int,
+        action: String,
+        archived: Bool = false,
+        readerHidden: Bool = false,
+        reviewExcluded: Bool = false
+    ) -> VocabularyEntry {
         let e = VocabularyEntry(
             word: "w", translation: "翻譯", context: "ctx", bookTitle: "book"
         )
         e.syncStatus = status
         e.actionType = action
         e.isArchived = archived
+        e.isReaderHidden = readerHidden
+        e.isReviewExcluded = reviewExcluded
         return e
     }
 
@@ -85,6 +93,30 @@ struct VocabularyEntryStateTests {
     @Test("待刪除 → 不入 Reader")
     func reader_excludesDelete() {
         #expect(!entry(status: 1, action: "delete").shouldAppearInReader)
+    }
+
+    @Test("閱讀時不顯示只影響 Reader，不影響單字本與複習")
+    func readerHidden_excludesReaderOnly() {
+        let e = entry(status: 1, action: "add", readerHidden: true)
+        #expect(!e.shouldAppearInReader)
+        #expect(e.shouldAppearInKnowledgeList)
+        #expect(e.shouldAppearInReview)
+    }
+
+    @Test("不複習只影響複習，不影響單字本與 Reader")
+    func reviewExcluded_excludesReviewOnly() {
+        let e = entry(status: 1, action: "add", reviewExcluded: true)
+        #expect(e.shouldAppearInReader)
+        #expect(e.shouldAppearInKnowledgeList)
+        #expect(!e.shouldAppearInReview)
+    }
+
+    @Test("封存仍優先排除 Reader 與複習")
+    func archived_preferencesRemainDormant() {
+        let e = entry(status: 1, action: "add", archived: true)
+        #expect(!e.shouldAppearInReader)
+        #expect(!e.shouldAppearInReview)
+        #expect(e.shouldAppearInArchiveList)
     }
 
     // MARK: - shouldUploadOnNextSync = pendingAdd || pendingDelete || failedAdd || failedDelete

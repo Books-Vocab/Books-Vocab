@@ -49,9 +49,26 @@ struct KGBatchArchiveResponse: Codable {
     let not_found: [String]
 }
 
+/// Narrow capability for the two per-card reader/review preferences. Kept
+/// separate from `KGServing` until the shared service protocol is updated so
+/// this slice can be tested independently of unrelated service capabilities.
+protocol CardPreferenceUpdating: AnyObject {
+    func updateCardPreferences(
+        word: String,
+        readerHidden: Bool?,
+        reviewExcluded: Bool?,
+        notebookId: String
+    ) async throws -> KGCard
+}
+
+private struct KGCardPreferencesUpdate: Encodable {
+    let reader_hidden: Bool?
+    let review_excluded: Bool?
+}
+
 // MARK: - Vocabulary CRUD
 
-extension KGService {
+extension KGService: CardPreferenceUpdating {
 
     func deleteCard(word: String, notebookId: String) async throws {
         try await authenticatedVoid(
@@ -78,6 +95,27 @@ extension KGService {
             method: "PATCH",
             queryItems: [URLQueryItem(name: "notebook_id", value: notebookId)],
             body: try JSONEncoder().encode(["archived": archived])
+        )
+    }
+
+    func updateCardPreferences(
+        word: String,
+        readerHidden: Bool?,
+        reviewExcluded: Bool?,
+        notebookId: String
+    ) async throws -> KGCard {
+        precondition(readerHidden != nil || reviewExcluded != nil, "At least one card preference is required")
+        return try await authenticatedDecode(
+            KGCard.self,
+            path: "api/vocab/\(word)/preferences",
+            method: "PATCH",
+            queryItems: [URLQueryItem(name: "notebook_id", value: notebookId)],
+            body: try JSONEncoder().encode(
+                KGCardPreferencesUpdate(
+                    reader_hidden: readerHidden,
+                    review_excluded: reviewExcluded
+                )
+            )
         )
     }
 

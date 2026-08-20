@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from kg.api_models.common import VocabSource, _normalize_context
 
@@ -31,6 +31,24 @@ class VocabAddResponse(BaseModel):
 
 class ArchiveWordRequest(BaseModel):
     archived: bool
+
+
+class CardPreferencesUpdateRequest(BaseModel):
+    """Per-card reader/review visibility preferences.
+
+    ``None`` means leave that preference unchanged, which lets the client
+    update one checkbox without accidentally overwriting the other. An empty
+    request is rejected rather than becoming a silent no-op.
+    """
+
+    reader_hidden: bool | None = None
+    review_excluded: bool | None = None
+
+    @model_validator(mode="after")
+    def require_preference(self) -> "CardPreferencesUpdateRequest":
+        if self.reader_hidden is None and self.review_excluded is None:
+            raise ValueError("At least one card preference is required")
+        return self
 
 
 class VocabContentUpdateRequest(BaseModel):

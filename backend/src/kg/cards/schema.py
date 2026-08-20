@@ -92,6 +92,8 @@ def _migrate_review_columns(engine: Engine) -> None:
     review_columns = {
         "notebook_id": "TEXT DEFAULT 'default'",
         "is_archived": "INTEGER DEFAULT 0",
+        "is_reader_hidden": "INTEGER DEFAULT 0",
+        "is_review_excluded": "INTEGER DEFAULT 0",
         "source": "TEXT",
         "review_interval_hours": "REAL DEFAULT 12.0",
         "next_review_at": "TIMESTAMP",

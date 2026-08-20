@@ -8,7 +8,8 @@ enum WordDetailCopy {
     static var delete: String { L10n.string("刪除") }
     static var cancel: String { L10n.string("取消") }
     static var deleted: String { L10n.string("已刪除") }
-    static var excludeFromReader: String { L10n.string("閱讀時不標記此單字") }
+    static var hideFromReader: String { L10n.string("閱讀時不顯示") }
+    static var excludeFromReview: String { L10n.string("不複習") }
 
     static func deleteTitle(word: String) -> String {
         L10n.format("刪除「%@」？", word)

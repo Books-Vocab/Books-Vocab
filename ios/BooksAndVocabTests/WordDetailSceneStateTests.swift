@@ -1,3 +1,4 @@
+import Foundation
 import SwiftData
 import Testing
 @testable import BooksAndVocab
@@ -226,6 +227,86 @@ struct WordDetailSceneStateTests {
         #expect(state.actionError == "刪除連結失敗", "封存成功不得吃掉別類動作的錯誤")
     }
 
+    // MARK: - Per-card preferences
+
+    @Test func setCardPreferences_updatesBothFlagsWithoutChangingReviewState() async throws {
+        let context = try makeContext()
+        let entry = makeEntry(cardId: "root-card", word: "abate")
+        entry.notebookId = "nb-1"
+        entry.markSynced()
+        entry.reviewCount = 4
+        entry.reviewStreak = 3
+        let originalNextReview = entry.nextReviewAt
+        context.insert(entry)
+
+        let spy = PreferenceSpy()
+        let state = WordDetailSceneState()
+
+        await state.setCardPreferences(
+            readerHidden: true,
+            reviewExcluded: true,
+            for: entry,
+            kgService: spy,
+            modelContext: context
+        )
+
+        #expect(spy.calls == [.init(word: "abate", readerHidden: true, reviewExcluded: true, notebookId: "nb-1")])
+        #expect(entry.isReaderHidden)
+        #expect(entry.isReviewExcluded)
+        #expect(entry.reviewCount == 4)
+        #expect(entry.reviewStreak == 3)
+        #expect(entry.nextReviewAt == originalNextReview)
+        #expect(state.actionError == nil)
+        #expect(context.hasChanges == false)
+    }
+
+    @Test func setCardPreferences_rollsBackUntouchedOptimisticValuesOnFailure() async throws {
+        let context = try makeContext()
+        let entry = makeEntry(cardId: "root-card", word: "abate")
+        entry.markSynced()
+        context.insert(entry)
+
+        let spy = PreferenceSpy()
+        spy.error = TestFailure.offline
+        let state = WordDetailSceneState()
+
+        await state.setCardPreferences(
+            readerHidden: true,
+            reviewExcluded: nil,
+            for: entry,
+            kgService: spy,
+            modelContext: context
+        )
+
+        #expect(entry.isReaderHidden == false)
+        #expect(entry.isReviewExcluded == false)
+        #expect(state.actionError != nil)
+        #expect(context.hasChanges == false)
+    }
+
+    @Test func setCardPreferences_doesNotRollbackValueChangedDuringRequest() async throws {
+        let context = try makeContext()
+        let entry = makeEntry(cardId: "root-card", word: "abate")
+        entry.markSynced()
+        context.insert(entry)
+
+        let spy = PreferenceSpy()
+        spy.beforeFailure = { entry.isReaderHidden = false }
+        spy.error = TestFailure.offline
+        let state = WordDetailSceneState()
+
+        await state.setCardPreferences(
+            readerHidden: true,
+            reviewExcluded: nil,
+            for: entry,
+            kgService: spy,
+            modelContext: context
+        )
+
+        #expect(entry.isReaderHidden == false, "背景 pull 改過的值不可被舊 request 回捲")
+        #expect(state.actionError != nil)
+    }
+
     // MARK: - Helpers
 
     private enum TestFailure: Error {
@@ -256,5 +337,41 @@ struct WordDetailSceneStateTests {
         )
         entry.kgCardId = cardId
         return entry
+    }
+}
+
+private final class PreferenceSpy: CardPreferenceUpdating {
+    struct Call: Equatable {
+        let word: String
+        let readerHidden: Bool?
+        let reviewExcluded: Bool?
+        let notebookId: String
+    }
+
+    private(set) var calls: [Call] = []
+    var error: Error?
+    var beforeFailure: (() -> Void)?
+
+    func updateCardPreferences(
+        word: String,
+        readerHidden: Bool?,
+        reviewExcluded: Bool?,
+        notebookId: String
+    ) async throws -> KGCard {
+        calls.append(.init(
+            word: word,
+            readerHidden: readerHidden,
+            reviewExcluded: reviewExcluded,
+            notebookId: notebookId
+        ))
+        if let beforeFailure { beforeFailure() }
+        if let error { throw error }
+
+        let json = """
+        {"id":"card-1","content":"\(word)","meaning":"meaning","mode":"recognition",
+         "isDeleted":false,"isArchived":false,
+         "isReaderHidden":\(readerHidden ?? false),"isReviewExcluded":\(reviewExcluded ?? false)}
+        """.data(using: .utf8)!
+        return try JSONDecoder().decode(KGCard.self, from: json)
     }
 }

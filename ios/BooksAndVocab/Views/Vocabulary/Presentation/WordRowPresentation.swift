@@ -67,7 +67,7 @@ extension VocabularyEntry {
         isDelete: Bool,
         now: Date
     ) -> (text: String, tone: WordRow.ViewData.Tone)? {
-        guard showsReviewState, !isDelete else { return nil }
+        guard showsReviewState, !isDelete, shouldAppearInReview else { return nil }
 
         switch reviewState(at: now) {
         case .unlearned:
@@ -84,7 +84,7 @@ extension VocabularyEntry {
         isDelete: Bool,
         now: Date
     ) -> VocabReviewProgress? {
-        guard showsReviewProgress, !isDelete else { return nil }
+        guard showsReviewProgress, !isDelete, shouldAppearInReview else { return nil }
 
         switch reviewState(at: now) {
         case .unlearned:

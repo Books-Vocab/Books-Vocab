@@ -7,6 +7,7 @@ seed 可**無損重放**的全欄位：
 * notebooks — name / color / cover_pattern / sort_order / is_default（排除 is_deleted 與 is_staged 複製中暫存本）
 * cards — content / pos / meaning / examples / collocations / note / difficulty /
   mode / root_form / inflections / notebook(name 參照) / is_archived /
+  is_reader_hidden / is_review_excluded /
   source(VocabSource，omit-if-null，一律正規化成 seed 的落盤形；見 `_canonical_source`)
   + review 計數器（review_count / review_streak / lapse_count /
   review_interval_hours / next_review_at / last_reviewed_at / last_review_feedback）
@@ -167,6 +168,8 @@ EXPORTED_CARD_COLUMNS: dict[str, tuple[str, ...]] = {
     # notebook_id 以 notebook name 表達（id 跨沙盒不穩定）。
     "notebook_id": ("notebook",),
     "is_archived": ("is_archived",),
+    "is_reader_hidden": ("is_reader_hidden",),
+    "is_review_excluded": ("is_review_excluded",),
     # VocabSource JSON，omit-if-null。
     "source": ("source",),
     # review 計數器收在巢狀 block。
@@ -292,6 +295,8 @@ def _card_entry(
         "inflections": _json_list(row.get("inflections")),
         "notebook": notebook_name,
         "is_archived": bool(row.get("is_archived")),
+        "is_reader_hidden": bool(row.get("is_reader_hidden")),
+        "is_review_excluded": bool(row.get("is_review_excluded")),
         "review": {
             "review_count": int(row.get("review_count") or 0),
             "review_streak": int(row.get("review_streak") or 0),

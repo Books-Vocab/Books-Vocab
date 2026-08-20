@@ -69,6 +69,8 @@ struct KGCard: Decodable, Identifiable, Equatable {
     let mode: String
     let isDeleted: Bool?
     let isArchived: Bool?
+    let isReaderHidden: Bool?
+    let isReviewExcluded: Bool?
     let inflections: [String]?
     let linksByKind: [String: [KGCardLinkSummary]]?
     let notebookId: String?
@@ -86,7 +88,8 @@ struct KGCard: Decodable, Identifiable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case id, content, meaning, pos, difficulty, difficultyTier, note, collocations
-        case examples, mode, isDeleted, isArchived, inflections, linksByKind, notebookId
+        case examples, mode, isDeleted, isArchived, isReaderHidden, isReviewExcluded
+        case inflections, linksByKind, notebookId
         case source, updatedAt, reviewIntervalHours, nextReviewAt, lastReviewedAt
         case reviewCount, lapseCount, reviewStreak, lastReviewFeedback, createdAt
     }
@@ -106,6 +109,8 @@ struct KGCard: Decodable, Identifiable, Equatable {
             ?? VocabularyCardMode.recognition.rawValue
         isDeleted = try values.decodeIfPresent(Bool.self, forKey: .isDeleted)
         isArchived = try values.decodeIfPresent(Bool.self, forKey: .isArchived)
+        isReaderHidden = try values.decodeIfPresent(Bool.self, forKey: .isReaderHidden)
+        isReviewExcluded = try values.decodeIfPresent(Bool.self, forKey: .isReviewExcluded)
         inflections = try values.decodeIfPresent([String].self, forKey: .inflections)
         linksByKind = try values.decodeIfPresent([String: [KGCardLinkSummary]].self, forKey: .linksByKind)
         notebookId = try values.decodeIfPresent(String.self, forKey: .notebookId)

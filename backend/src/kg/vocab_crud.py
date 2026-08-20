@@ -265,6 +265,37 @@ def update_vocab_word_content(
     )
 
 
+def update_vocab_word_preferences(
+    word: str,
+    *,
+    reader_hidden: bool | None,
+    review_excluded: bool | None,
+    cards_store: Any,
+    graph: Any,
+    card_response_builder: CardResponseBuilder,
+    notebook_id: str | None = None,
+) -> CardResponse:
+    """Update per-card reader/review preferences without touching SRS state."""
+    card = _resolve_card_or_raise(cards_store, word, notebook_id)
+
+    updates: dict[str, bool] = {}
+    if reader_hidden is not None:
+        updates["is_reader_hidden"] = reader_hidden
+    if review_excluded is not None:
+        updates["is_review_excluded"] = review_excluded
+    if not updates:
+        raise BadRequestError("No card preferences to update")
+
+    cards_store.update(card.id, **updates)
+    return lookup_vocab_word(
+        word,
+        cards_store=cards_store,
+        graph=graph,
+        card_response_builder=card_response_builder,
+        notebook_id=notebook_id,
+    )
+
+
 def _evict_embedding(embeddings: Any, card_id: str) -> None:
     """Evict a deleted card's vector. Best-effort: the card is already gone,
     so an embedding-store failure must not fail the request — it only leaves

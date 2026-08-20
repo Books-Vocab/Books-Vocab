@@ -90,6 +90,8 @@ actor BackgroundSyncActor {
         if entry.reviewMode != (VocabularyCardMode(rawValue: card.mode) ?? .recognition) { return true }
         if entry.graphLinksByKind != (card.linksByKind ?? [:]) { return true }
         if entry.isArchived != (card.isArchived ?? false) { return true }
+        if entry.isReaderHidden != (card.isReaderHidden ?? false) { return true }
+        if entry.isReviewExcluded != (card.isReviewExcluded ?? false) { return true }
         if let cardNotebookId = card.notebookId, entry.notebookId != cardNotebookId { return true }
         // `source` only ever *backfills* a book title (applySource refuses to
         // clobber a known title with an empty server one), so compare it the same
@@ -179,6 +181,8 @@ actor BackgroundSyncActor {
                     existingEntry.reviewExamples = card.examples
                     existingEntry.graphLinksByKind = card.linksByKind ?? [:]
                     existingEntry.isArchived = card.isArchived ?? false
+                    existingEntry.isReaderHidden = card.isReaderHidden ?? false
+                    existingEntry.isReviewExcluded = card.isReviewExcluded ?? false
                     if let cardNotebookId = card.notebookId {
                         existingEntry.notebookId = cardNotebookId
                     }
@@ -213,6 +217,8 @@ actor BackgroundSyncActor {
                 newEntry.reviewExamples = card.examples
                 newEntry.graphLinksByKind = card.linksByKind ?? [:]
                 newEntry.isArchived = card.isArchived ?? false
+                newEntry.isReaderHidden = card.isReaderHidden ?? false
+                newEntry.isReviewExcluded = card.isReviewExcluded ?? false
                 newEntry.notebookId = card.notebookId ?? notebookId
                 newEntry.markSynced()
 

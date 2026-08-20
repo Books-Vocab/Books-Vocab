@@ -25,6 +25,7 @@ final class WordDetailSceneState {
 
     enum ActionKind: Equatable {
         case archive
+        case preferences
         case link
     }
 
@@ -32,6 +33,12 @@ final class WordDetailSceneState {
     /// 若只靠呼叫端記得加 guard，兩次重疊呼叫會交錯（A 樂觀 true → B 樂觀 false →
     /// A 成功、B 失敗 → B 回捲寫回 true，而伺服器上是 false）。
     private var isSettingArchived = false
+    private var settingPreferences = Set<CardPreferenceKind>()
+
+    private enum CardPreferenceKind: Hashable {
+        case readerHidden
+        case reviewExcluded
+    }
 
 
     func refreshPresentation(
@@ -117,6 +124,75 @@ final class WordDetailSceneState {
             guard entry.isArchived == archived else { return }
             entry.isArchived = previous
             // 回捲這一側才是真正需要顯式存檔的分支：它要把樂觀值從磁碟上撤下來。
+            modelContext.safeSave()
+        }
+    }
+
+    /// Update one or both per-card visibility preferences. The SRS fields are
+    /// deliberately not part of this mutation: the server returns the full
+    /// card, and only the two preference fields are projected back into local
+    /// SwiftData.
+    func setCardPreferences(
+        readerHidden: Bool?,
+        reviewExcluded: Bool?,
+        for entry: VocabularyEntry,
+        kgService: any CardPreferenceUpdating,
+        modelContext: ModelContext
+    ) async {
+        guard readerHidden != nil || reviewExcluded != nil else { return }
+        guard entry.isSynced, !entry.isDeleted else { return }
+
+        var changes: [CardPreferenceKind: (previous: Bool, requested: Bool)] = [:]
+        if let readerHidden, !settingPreferences.contains(.readerHidden), entry.isReaderHidden != readerHidden {
+            changes[.readerHidden] = (entry.isReaderHidden, readerHidden)
+        }
+        if let reviewExcluded, !settingPreferences.contains(.reviewExcluded), entry.isReviewExcluded != reviewExcluded {
+            changes[.reviewExcluded] = (entry.isReviewExcluded, reviewExcluded)
+        }
+        guard !changes.isEmpty else { return }
+
+        settingPreferences.formUnion(changes.keys)
+        defer { settingPreferences.subtract(changes.keys) }
+
+        for (kind, change) in changes {
+            switch kind {
+            case .readerHidden:
+                entry.isReaderHidden = change.requested
+            case .reviewExcluded:
+                entry.isReviewExcluded = change.requested
+            }
+        }
+
+        do {
+            let card = try await kgService.updateCardPreferences(
+                word: entry.word,
+                readerHidden: changes[.readerHidden]?.requested,
+                reviewExcluded: changes[.reviewExcluded]?.requested,
+                notebookId: entry.notebookId
+            )
+            if !entry.isDeleted {
+                entry.isReaderHidden = card.isReaderHidden ?? entry.isReaderHidden
+                entry.isReviewExcluded = card.isReviewExcluded ?? entry.isReviewExcluded
+                modelContext.safeSave()
+            }
+            clearActionError(for: .preferences)
+        } catch {
+            AppLog.kg.error("setCardPreferences failed '\(entry.word)': \(error.localizedDescription)")
+            setActionError(L10n.string("更新單字偏好失敗"), kind: .preferences)
+            guard !entry.isDeleted else { return }
+
+            // Compare-and-swap rollback: a concurrent pull may have already
+            // installed a newer server value while this request was in flight.
+            for (kind, change) in changes {
+                switch kind {
+                case .readerHidden:
+                    guard entry.isReaderHidden == change.requested else { continue }
+                    entry.isReaderHidden = change.previous
+                case .reviewExcluded:
+                    guard entry.isReviewExcluded == change.requested else { continue }
+                    entry.isReviewExcluded = change.previous
+                }
+            }
             modelContext.safeSave()
         }
     }

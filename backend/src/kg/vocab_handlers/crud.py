@@ -7,6 +7,7 @@ from ..api_models import (
     BatchArchiveRequest,
     BatchDeleteRequest,
     CardResponse,
+    CardPreferencesUpdateRequest,
     VocabContentUpdateRequest,
 )
 from ..vocab_crud import (
@@ -19,6 +20,7 @@ from ..vocab_crud import (
     list_vocab_cards,
     lookup_vocab_word,
     update_vocab_word_content,
+    update_vocab_word_preferences,
 )
 from ..vocab_shared import CardResponseBuilder
 from ._shared import (
@@ -137,6 +139,34 @@ def update_word_content_response(
         meaning=req.meaning,
         note=req.note,
         explanation=req.explanation,
+        cards_store=stores.cards,
+        graph=stores.graph,
+        card_response_builder=card_response_builder,
+        notebook_id=notebook_id,
+    )
+
+
+def update_word_preferences_response(
+    word: str,
+    req: CardPreferencesUpdateRequest,
+    user: dict[str, Any],
+    *,
+    card_store_factory: CardStoreFactory,
+    graph_store_factory: GraphStoreFactory,
+    card_response_builder: CardResponseBuilder,
+    notebook_store_factory: NotebookStoreFactory | None = None,
+    notebook_id: str = "default",
+) -> CardResponse:
+    stores = _resolve_stores(
+        user, notebook_id,
+        card_store_factory=card_store_factory,
+        graph_store_factory=graph_store_factory,
+        notebook_store_factory=notebook_store_factory,
+    )
+    return update_vocab_word_preferences(
+        word,
+        reader_hidden=req.reader_hidden,
+        review_excluded=req.review_excluded,
         cards_store=stores.cards,
         graph=stores.graph,
         card_response_builder=card_response_builder,
