@@ -27,6 +27,17 @@ def _fake_async_client(content: str):
     )
 
 
+@pytest.fixture(autouse=True)
+def reset_translate_sqlite_singletons():
+    from kg import llm_error_log, translate_log
+
+    try:
+        yield
+    finally:
+        llm_error_log.reset()
+        translate_log.reset()
+
+
 @pytest.mark.asyncio
 async def test_run_quick_translate_returns_expected_shape():
     req = TranslateRequest(word="evoke", context="The story can evoke deep memories.")
