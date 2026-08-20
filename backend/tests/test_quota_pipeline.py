@@ -50,7 +50,9 @@ def fresh_token_db(tmp_path, monkeypatch):
         tt._conn = None
     importlib.reload(tt)
     tt.DB_PATH = original_db_path
+    tt._INITIAL_DB_PATH = original_db_path
     assert tt.DB_PATH == original_db_path
+    assert tt._INITIAL_DB_PATH == original_db_path
     assert tt._conn is None
 
 
