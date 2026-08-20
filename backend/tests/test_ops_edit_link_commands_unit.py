@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -40,6 +41,24 @@ def _make_args(**kwargs) -> argparse.Namespace:
     }
     defaults.update(kwargs)
     return argparse.Namespace(**defaults)
+
+
+class _ClosableStore:
+    def __init__(self, *, links=(), list_error: Exception | None = None):
+        self.closed = False
+        self._links = list(links)
+        self._list_error = list_error
+
+    def close(self):
+        self.closed = True
+
+    def all_links(self):
+        if self._list_error is not None:
+            raise self._list_error
+        return list(self._links)
+
+    def get(self, ref):
+        return SimpleNamespace(content=ref)
 
 
 # ── cmd_link_add ─────────────────────────────────────────────────────────
@@ -161,6 +180,36 @@ class TestLinkList:
         out = capsys.readouterr().out
         data = json.loads(out)
         assert data["count"] == 1
+
+    def test_closes_command_local_stores_after_listing(self, tmp_path, monkeypatch, capsys):
+        _setup_user(tmp_path)
+        link = SimpleNamespace(
+            id="lk1", from_id="from", to_id="to", status="active",
+            kind="contrasts_with", confidence=0.8, reason="test",
+        )
+        cards = _ClosableStore()
+        graph = _ClosableStore(links=[link])
+        monkeypatch.setattr(link_cmd, "_card_store", lambda _: cards)
+        monkeypatch.setattr(link_cmd, "_graph_store", lambda *_args: graph)
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+
+        assert link_cmd.cmd_link_list(_make_args()) == 0
+        capsys.readouterr()
+        assert cards.closed
+        assert graph.closed
+
+    def test_closes_command_local_stores_when_listing_fails(self, tmp_path, monkeypatch):
+        _setup_user(tmp_path)
+        cards = _ClosableStore()
+        graph = _ClosableStore(list_error=RuntimeError("list failed"))
+        monkeypatch.setattr(link_cmd, "_card_store", lambda _: cards)
+        monkeypatch.setattr(link_cmd, "_graph_store", lambda *_args: graph)
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+
+        with pytest.raises(RuntimeError, match="list failed"):
+            link_cmd.cmd_link_list(_make_args())
+        assert cards.closed
+        assert graph.closed
 
 
 # ── cmd_link_update ──────────────────────────────────────────────────────
