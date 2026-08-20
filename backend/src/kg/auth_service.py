@@ -54,8 +54,21 @@ def resolve_and_link_user(
 
         canonical_id = None
         now = datetime.now(tz=UTC).isoformat()
+        existing_user = users.get(provider_user_id)
+        linked_canonical_id = (
+            existing_user.get("_linked_to")
+            if isinstance(existing_user, dict)
+            else None
+        )
 
-        if email and email in users["_email_index"]:
+        if (
+            email is None
+            and isinstance(linked_canonical_id, str)
+            and linked_canonical_id != provider_user_id
+            and linked_canonical_id in users
+        ):
+            canonical_id = linked_canonical_id
+        elif email and email in users["_email_index"]:
             canonical_id = users["_email_index"][email]
 
             if canonical_id != provider_user_id:
