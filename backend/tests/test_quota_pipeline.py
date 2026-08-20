@@ -9,6 +9,7 @@ P1:   notebook_id Query parameter must be regex-validated (422) instead
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 
 import pytest
@@ -35,10 +36,14 @@ def _force_quota_exceeded(user_id: str) -> None:
 @pytest.fixture()
 def fresh_token_db(tmp_path, monkeypatch):
     """Force token_tracker to use a clean DB for this test (isolated from others)."""
+    original_data_dir = os.environ.get("KG_DATA_DIR")
     monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
     import importlib
 
     import kg.token_tracker as tt
+    original_db_path = tt.DB_PATH
+    original_initial_db_path = tt._INITIAL_DB_PATH
+    assert original_db_path == original_initial_db_path
     importlib.reload(tt)
     if tt._conn is not None:
         tt._conn.close()
@@ -47,7 +52,27 @@ def fresh_token_db(tmp_path, monkeypatch):
     if tt._conn is not None:
         tt._conn.close()
         tt._conn = None
+    if original_data_dir is None:
+        monkeypatch.delenv("KG_DATA_DIR")
+    else:
+        monkeypatch.setenv("KG_DATA_DIR", original_data_dir)
     importlib.reload(tt)
+    tt.DB_PATH = original_db_path
+    tt._INITIAL_DB_PATH = original_initial_db_path
+    assert tt.DB_PATH == original_db_path
+    assert tt._INITIAL_DB_PATH == original_initial_db_path
+    assert tt._conn is None
+
+    second_data_dir = tmp_path / "second-data-dir"
+    second_data_dir.mkdir()
+    monkeypatch.setenv("KG_DATA_DIR", str(second_data_dir))
+    conn = tt._get_conn()
+    database_path = conn.execute("PRAGMA database_list").fetchone()[2]
+    assert database_path == str(second_data_dir / "token_usage.db")
+    tt.reset()
+    assert tt._conn is None
+    assert tt.DB_PATH == original_db_path
+    assert tt._INITIAL_DB_PATH == original_initial_db_path
 
 
 # ── Quota gating ───────────────────────────────────────────────────
