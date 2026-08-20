@@ -57,6 +57,7 @@ def isolated_api(tmp_path):
     )
     _swap_settings(test_settings)
 
+    client = None
     try:
         api_mod._USER_LOCKS.clear()
         deps_mod._USER_LOCKS_MUTEX = None
@@ -68,9 +69,72 @@ def isolated_api(tmp_path):
             data_dir=data_dir,
         )
     finally:
-        app.state.kg_settings = original_settings
-        app.state.load_users = original_load
-        app.state.save_users = original_save
+        try:
+            if client is not None:
+                client.close()
+        finally:
+            app.state.kg_settings = original_settings
+            app.state.load_users = original_load
+            app.state.save_users = original_save
+
+
+def test_isolated_api_closes_owned_client(tmp_path, monkeypatch):
+    """The fixture must close the TestClient it creates before teardown."""
+    close_calls = 0
+    original_close = TestClient.close
+
+    def tracked_close(client):
+        nonlocal close_calls
+        close_calls += 1
+        return original_close(client)
+
+    monkeypatch.setattr(TestClient, "close", tracked_close)
+    fixture_generator = isolated_api.__wrapped__(tmp_path)
+    next(fixture_generator)
+    fixture_generator.close()
+
+    assert close_calls == 1
+
+
+def test_isolated_api_restores_state_when_client_construction_fails(tmp_path, monkeypatch):
+    """A client setup failure must preserve the original exception and state."""
+    original_settings = app.state.kg_settings
+    original_load = app.state.load_users
+    original_save = app.state.save_users
+
+    def fail_client_construction(*args, **kwargs):
+        raise RuntimeError("client construction failed")
+
+    monkeypatch.setitem(globals(), "TestClient", fail_client_construction)
+
+    fixture_generator = isolated_api.__wrapped__(tmp_path)
+    with pytest.raises(RuntimeError, match="client construction failed"):
+        next(fixture_generator)
+
+    assert app.state.kg_settings is original_settings
+    assert app.state.load_users is original_load
+    assert app.state.save_users is original_save
+
+
+def test_isolated_api_restores_state_when_client_close_fails(tmp_path, monkeypatch):
+    """A client close failure must not prevent app state restoration."""
+    original_settings = app.state.kg_settings
+    original_load = app.state.load_users
+    original_save = app.state.save_users
+
+    def fail_client_close(client):
+        raise RuntimeError("client close failed")
+
+    monkeypatch.setattr(TestClient, "close", fail_client_close)
+
+    fixture_generator = isolated_api.__wrapped__(tmp_path)
+    next(fixture_generator)
+    with pytest.raises(RuntimeError, match="client close failed"):
+        fixture_generator.close()
+
+    assert app.state.kg_settings is original_settings
+    assert app.state.load_users is original_load
+    assert app.state.save_users is original_save
 
 
 # ---------------------------------------------------------------------------
