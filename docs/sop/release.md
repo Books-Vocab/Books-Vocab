@@ -71,6 +71,12 @@ resource identity。缺少 App Store `READY_FOR_SALE` version 或其 build、或
 TestFlight build binding 時，報告同樣是 `blocked`；不可用「最新 TestFlight build」
 代替使用者實際取得的 App Store 版本。
 
+`READY_FOR_SALE` 必須恰好只有一筆；多筆時是 ambiguous，不能自行挑最高版號。
+TestFlight 最新 build 只有 `PROCESSING` 或 `VALID` 才是 release-eligible；其他狀態
+會 blocked。source tag 也必須同時存在於本地與 `origin`，且 commit 相同；本地私有或
+過期 tag 不是 provenance。若明確傳入 `--ipa`，檔案不存在或無法讀取也會使報告
+blocked，而不是回傳一個可被自動化誤判為成功的 partial result。
+
 ### Provenance contract
 
 「版本」不是一個字串，而是可交叉驗證的 release identity：

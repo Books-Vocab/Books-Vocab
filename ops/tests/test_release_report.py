@@ -70,6 +70,10 @@ def _repo_with_release_drift(tmp_path: Path) -> tuple[Path, str, str]:
     )
     (repo / "backend/src/service.py").write_text("VALUE = 'new'\n", encoding="utf-8")
     main_sha = _commit(repo, "feat: change iOS and backend behavior")
+    origin = tmp_path / "origin.git"
+    _git(tmp_path, "init", "--bare", str(origin))
+    _git(repo, "remote", "add", "origin", str(origin))
+    _git(repo, "push", "origin", "main", "prod", "--tags")
     return repo, release_sha, main_sha
 
 
@@ -189,6 +193,37 @@ def test_normalize_asc_snapshot_blocks_without_ready_for_sale_version() -> None:
     assert "READY_FOR_SALE" in snapshot["appStore"]["reason"]
 
 
+def test_normalize_asc_snapshot_blocks_ambiguous_ready_for_sale_versions() -> None:
+    snapshot = release_report.normalize_asc_snapshot(
+        {"data": []},
+        {
+            "data": [
+                {
+                    "type": "appStoreVersions",
+                    "id": "store-200",
+                    "attributes": {
+                        "versionString": "2.0.0",
+                        "appStoreState": "READY_FOR_SALE",
+                        "platform": "IOS",
+                    },
+                },
+                {
+                    "type": "appStoreVersions",
+                    "id": "store-201",
+                    "attributes": {
+                        "versionString": "2.0.1",
+                        "appStoreState": "READY_FOR_SALE",
+                        "platform": "IOS",
+                    },
+                },
+            ]
+        },
+    )
+
+    assert snapshot["appStore"]["status"] == "unavailable"
+    assert "ambiguous" in snapshot["appStore"]["reason"]
+
+
 def test_normalize_asc_versions_includes_app_store_build() -> None:
     versions = release_report.normalize_asc_versions(
         {
@@ -260,6 +295,7 @@ def test_build_report_explains_ios_and_backend_drift(tmp_path: Path) -> None:
             "version": "1.0.0",
             "state": "READY_FOR_SALE",
             "build": "1",
+            "processingState": "VALID",
             "ascVersionId": "store-100",
         },
     }
@@ -292,6 +328,94 @@ def test_build_report_explains_ios_and_backend_drift(tmp_path: Path) -> None:
     assert "App Store：1.0.0 build 1" in human
     assert "backend" in human
     assert "DRIFT" in human
+
+
+def test_report_blocks_non_release_eligible_testflight_build(tmp_path: Path) -> None:
+    repo, release_sha, _ = _repo_with_release_drift(tmp_path)
+    report = release_report.build_report(
+        repo,
+        main_ref="main",
+        production_ref="prod",
+        asc_snapshot={
+            "testflight": {
+                "status": "observed",
+                "version": "1.0.0",
+                "build": "1",
+                "ascBuildId": "build-1",
+                "processingState": "INVALID",
+            },
+            "appStore": {
+                "status": "observed",
+                "version": "1.0.0",
+                "state": "READY_FOR_SALE",
+                "build": "1",
+                "processingState": "VALID",
+                "ascVersionId": "store-100",
+            },
+        },
+        backend_live={"status": "observed", "version": release_sha[:8]},
+    )
+
+    assert report["verdict"]["status"] == "blocked"
+    assert any("processingState=INVALID" in item for item in report["verdict"]["blockers"])
+
+
+def test_report_verifies_source_binding_tag_against_origin(tmp_path: Path) -> None:
+    repo, _, main_sha = _repo_with_release_drift(tmp_path)
+    _git(repo, "tag", "--force", "ios/1.0.0+1", main_sha)
+    report = release_report.build_report(
+        repo,
+        main_ref="main",
+        production_ref="prod",
+        asc_snapshot={
+            "testflight": {
+                "status": "observed",
+                "version": "1.0.0",
+                "build": "1",
+                "ascBuildId": "build-1",
+                "processingState": "VALID",
+            },
+            "appStore": {"status": "unavailable", "reason": "fixture"},
+        },
+        backend_live={"status": "unavailable", "reason": "fixture"},
+    )
+
+    binding = report["ios"]["testflight"]["sourceBinding"]
+    assert binding["status"] == "unbound"
+    assert "differs from origin" in binding["reason"]
+    assert report["verdict"]["status"] == "blocked"
+
+
+def test_report_blocks_missing_requested_ipa(tmp_path: Path) -> None:
+    repo, release_sha, _ = _repo_with_release_drift(tmp_path)
+    report = release_report.build_report(
+        repo,
+        main_ref="main",
+        production_ref="prod",
+        asc_snapshot={
+            "testflight": {
+                "status": "observed",
+                "version": "1.0.0",
+                "build": "1",
+                "ascBuildId": "build-1",
+                "processingState": "VALID",
+            },
+            "appStore": {
+                "status": "observed",
+                "version": "1.0.0",
+                "state": "READY_FOR_SALE",
+                "build": "1",
+                "processingState": "VALID",
+                "ascVersionId": "store-100",
+            },
+        },
+        backend_live={"status": "observed", "version": release_sha[:8]},
+        ipa_path=tmp_path / "missing.ipa",
+    )
+
+    assert report["ios"]["artifact"]["status"] == "blocked"
+    assert any("requested IPA artifact unavailable" in item for item in report["verdict"]["blockers"])
+    assert "IPA：blocked" in release_report.render_report(report)
 
 
 def test_report_marks_missing_release_tag_as_blocked(tmp_path: Path) -> None:
@@ -338,6 +462,7 @@ def test_report_blocks_unresolvable_backend_live_version(tmp_path: Path) -> None
                 "version": "1.0.0",
                 "state": "READY_FOR_SALE",
                 "build": "1",
+                "processingState": "VALID",
                 "ascVersionId": "store-100",
             },
         },
@@ -372,6 +497,7 @@ def test_report_blocks_stale_remote_tracking_refs(
                 "version": "1.0.0",
                 "state": "READY_FOR_SALE",
                 "build": "1",
+                "processingState": "VALID",
                 "ascVersionId": "store-100",
             },
         },

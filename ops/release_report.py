@@ -41,6 +41,7 @@ DEFAULT_BACKEND_URL = os.environ.get("KG_BACKEND_URL", "https://wordnexus.lol")
 IOS_PROJECT_FILE = "ios/BooksAndVocab.xcodeproj/project.pbxproj"
 BACKEND_VERSION_FILE = "backend/pyproject.toml"
 SURFACE_PATHS = {"ios": ("ios",), "backend": ("backend",)}
+ALLOWED_BUILD_STATES = frozenset({"PROCESSING", "VALID"})
 
 
 class ReportError(RuntimeError):
@@ -239,11 +240,15 @@ def normalize_asc_snapshot(
     versions = normalize_asc_versions(versions_payload)
     testflight = builds[0] if builds else _unavailable("ASC returned no iOS TestFlight builds")
     ready = [item for item in versions if item.get("state") == "READY_FOR_SALE"]
-    app_store = (
-        ready[0]
-        if ready
-        else _unavailable("ASC returned no iOS App Store version in READY_FOR_SALE")
-    )
+    if not ready:
+        app_store = _unavailable("ASC returned no iOS App Store version in READY_FOR_SALE")
+    elif len(ready) != 1:
+        app_store = _unavailable(
+            "ASC returned ambiguous iOS App Store versions in READY_FOR_SALE: "
+            f"count={len(ready)}"
+        )
+    else:
+        app_store = ready[0]
     return {"testflight": dict(testflight), "appStore": dict(app_store)}
 
 
@@ -368,6 +373,42 @@ class Git:
                 return fields[0]
         raise ReportError(f"remote ref unavailable: {remote}/{branch}")
 
+    def remote_tag_sha(self, remote: str, tag: str) -> str:
+        """Resolve the commit targeted by an authoritative remote tag."""
+
+        remote_ref = f"refs/tags/{tag}"
+        peeled_ref = f"{remote_ref}^{{}}"
+        try:
+            result = subprocess.run(
+                ["git", "ls-remote", "--tags", remote, remote_ref, peeled_ref],
+                cwd=self.repo,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=10,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise ReportError(f"git ls-remote {remote} {remote_ref} timed out") from exc
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip()
+            raise ReportError(f"git ls-remote {remote} {remote_ref} failed: {detail}")
+
+        direct_sha: str | None = None
+        peeled_sha: str | None = None
+        for line in result.stdout.splitlines():
+            fields = line.split("\t")
+            if len(fields) != 2 or not re.fullmatch(r"[0-9a-f]{40}", fields[0]):
+                continue
+            if fields[1] == peeled_ref:
+                peeled_sha = fields[0]
+            elif fields[1] == remote_ref:
+                direct_sha = fields[0]
+        if peeled_sha:
+            return peeled_sha
+        if direct_sha:
+            return direct_sha
+        raise ReportError(f"remote tag unavailable: {remote}/{tag}")
+
 
 def _identity(git: Git, ref: str) -> dict[str, Any]:
     try:
@@ -401,17 +442,26 @@ def _remote_freshness(git: Git, ref: str, identity: Mapping[str, Any]) -> dict[s
 def _bind_tag(git: Git, tag: str) -> dict[str, Any]:
     try:
         sha = git.resolve(tag)
+        remote_sha = git.remote_tag_sha("origin", tag)
+        if sha != remote_sha:
+            return {
+                "status": "unbound",
+                "tag": tag,
+                "sha": sha,
+                "originSha": remote_sha,
+                "reason": "source binding tag differs from origin",
+            }
         return {
             "status": "bound",
             "tag": tag,
             "sha": sha,
             "tree": git.tree(sha),
         }
-    except ReportError:
+    except ReportError as exc:
         return {
             "status": "unbound",
             "tag": tag,
-            "reason": "source binding tag is absent or does not name a commit",
+            "reason": str(exc),
         }
 
 
@@ -701,6 +751,13 @@ def build_report(
         blockers.append("backend live evidence unavailable")
     elif production.get("liveAlignment") == "unknown":
         blockers.append("backend live version cannot be resolved to a Git commit/tree")
+    if testflight.get("status") == "observed":
+        processing_state = testflight.get("processingState")
+        if processing_state not in ALLOWED_BUILD_STATES:
+            blockers.append(
+                "TestFlight build processingState="
+                f"{processing_state or 'missing'} is not release-eligible"
+            )
 
     if testflight_to_main.get("status") == "changed":
         reasons.append(
@@ -731,6 +788,12 @@ def build_report(
         reasons.append("backend live SHA differs from origin/prod, but both resolve to the same tree")
     elif production.get("liveAlignment") == "drift":
         reasons.append("backend live SHA/tree does not match origin/prod")
+    artifact = ios.get("artifact", {})
+    if ipa_path is not None and artifact.get("status") != "observed":
+        blockers.append(
+            "requested IPA artifact unavailable: "
+            f"{artifact.get('reason', 'artifact identity was not observed')}"
+        )
 
     status = "blocked" if blockers else ("drift" if reasons else "aligned")
     headline = {
@@ -778,6 +841,7 @@ def render_report(report: Mapping[str, Any]) -> str:
     backend = report.get("backend", {})
     testflight = ios.get("testflight", {})
     app_store = ios.get("appStore", {})
+    artifact = ios.get("artifact", {})
     production = backend.get("production", {})
     live = production.get("live", {}) if isinstance(production, dict) else {}
     lines = [
@@ -790,6 +854,8 @@ def render_report(report: Mapping[str, Any]) -> str:
             f"({app_store.get('state', 'unknown')})"
         ),
         f"- TestFlight {testflight.get('version', 'unknown')} (build {testflight.get('build', 'unknown')})",
+        f"- IPA：{artifact.get('status', 'unknown')}"
+        + (f" ({artifact.get('sha256')})" if artifact.get("status") == "observed" else ""),
         f"- TestFlight source：{testflight.get('sourceBinding', {}).get('status', 'unknown')}",
         _format_delta("- TestFlight → main", ios.get("testflightToMain", {})),
         _format_delta("- App Store → TestFlight", ios.get("appStoreToTestFlight", {})),
