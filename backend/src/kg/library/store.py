@@ -156,13 +156,14 @@ class LibraryStore:
             book = session.get(LibraryBook, book_id)
             if book is None:
                 return None
-            book.locator = req.locator
-            book.progression = req.progression
-            book.position_updated_at = req.updated_at
-            book.updated_at = datetime.now(UTC)
-            session.add(book)
-            session.commit()
-            session.refresh(book)
+            if book.position_updated_at is None or req.updated_at > book.position_updated_at:
+                book.locator = req.locator
+                book.progression = req.progression
+                book.position_updated_at = req.updated_at
+                book.updated_at = datetime.now(UTC)
+                session.add(book)
+                session.commit()
+                session.refresh(book)
             return book
 
     def soft_delete(self, book_id: str) -> LibraryBook | None:

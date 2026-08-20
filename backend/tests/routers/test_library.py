@@ -212,6 +212,35 @@ class TestPutPosition:
         assert data["progression"] == 0.42
         assert data["position_updated_at"] == "2026-06-13T10:00:00Z"
 
+    def test_put_position_ignores_stale_timestamp(self, isolated_api):
+        b = _create_book(isolated_api.client, isolated_api.headers, "Book")
+        book_id = b["id"]
+
+        newer = isolated_api.client.put(
+            f"/api/library/books/{book_id}/position",
+            json={
+                "locator": "newer-locator",
+                "progression": 0.75,
+                "updated_at": "2026-06-13T12:00:00Z",
+            },
+            headers=isolated_api.headers,
+        )
+        assert newer.status_code == 200
+
+        stale = isolated_api.client.put(
+            f"/api/library/books/{book_id}/position",
+            json={
+                "locator": "stale-locator",
+                "progression": 0.25,
+                "updated_at": "2026-06-13T11:00:00Z",
+            },
+            headers=isolated_api.headers,
+        )
+        assert stale.status_code == 200
+        assert stale.json()["locator"] == "newer-locator"
+        assert stale.json()["progression"] == 0.75
+        assert stale.json()["position_updated_at"] == "2026-06-13T12:00:00Z"
+
     def test_put_position_not_found(self, isolated_api):
         resp = isolated_api.client.put(
             "/api/library/books/nonexistent/position",
