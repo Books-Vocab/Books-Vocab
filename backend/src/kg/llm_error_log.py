@@ -80,6 +80,11 @@ def _initialize_schema(conn: sqlite3.Connection) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_le_user_created ON llm_errors(user_id, created_at)")
         # Bare created_at index for the retention pruner.
         conn.execute("CREATE INDEX IF NOT EXISTS idx_le_created ON llm_errors(created_at)")
+        # Match count_errors_since's UTC-normalizing expression index.
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_le_created_utc "
+            "ON llm_errors(datetime(created_at))"
+        )
 
 
 def _reset() -> None:

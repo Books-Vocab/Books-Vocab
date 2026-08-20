@@ -167,6 +167,15 @@ class TestRecord:
         )
         conn.commit()
 
+        query = (
+            "SELECT COUNT(*) FROM llm_errors "
+            "WHERE datetime(created_at) >= datetime(?)"
+        )
+        plan = conn.execute(
+            f"EXPLAIN QUERY PLAN {query}",
+            ("2026-08-21T11:00:00+00:00",),
+        ).fetchall()
+        assert any("idx_le_created_utc" in row[-1] for row in plan)
         assert llm_error_log.count_errors_since(60) == 1
 
 
