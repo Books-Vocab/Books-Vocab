@@ -20,6 +20,20 @@ def _has_table(conn: sqlite3.Connection, table: str) -> bool:
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
     ).fetchone()
     return row is not None
+
+
+def _parse_utc(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
 def _percentile(sorted_values: list[int], fraction: float) -> int:
     if not sorted_values:
         return 0
@@ -69,7 +83,7 @@ def cmd_dictionary_health(args: argparse.Namespace) -> None:
 
     result["exists"] = True
     now = datetime.now(UTC)
-    cutoff = (now - timedelta(hours=window_hours)).isoformat()
+    cutoff = now - timedelta(hours=window_hours)
     conn = connect_ro(cache_db)
     try:
         if _has_table(conn, "lexical_cache"):
@@ -112,26 +126,22 @@ def cmd_dictionary_health(args: argparse.Namespace) -> None:
 
         if _has_table(conn, "lexical_lookup_event"):
             by_outcome: dict[str, int] = {}
-            for outcome, count in conn.execute(
-                "SELECT outcome, COUNT(*) FROM lexical_lookup_event "
-                "WHERE created_at >= ? GROUP BY outcome",
-                (cutoff,),
+            by_operation: dict[str, int] = {}
+            events = []
+            for row in conn.execute(
+                "SELECT outcome, operation, duration_ms, created_at "
+                "FROM lexical_lookup_event"
             ):
-                by_outcome[str(outcome)] = int(count or 0)
-            by_operation = {
-                str(operation): int(count or 0)
-                for operation, count in conn.execute(
-                    "SELECT operation, COUNT(*) FROM lexical_lookup_event "
-                    "WHERE created_at >= ? GROUP BY operation",
-                    (cutoff,),
-                )
-            }
+                created_at = _parse_utc(row[3])
+                if created_at is not None and created_at >= cutoff:
+                    events.append(row)
+                    operation = str(row[1])
+                    by_operation[operation] = by_operation.get(operation, 0) + 1
+            for outcome, _, _, _ in events:
+                by_outcome[str(outcome)] = by_outcome.get(str(outcome), 0) + 1
             latencies = sorted(
-                int(row[0] or 0)
-                for row in conn.execute(
-                    "SELECT duration_ms FROM lexical_lookup_event WHERE created_at >= ?",
-                    (cutoff,),
-                )
+                int(duration_ms or 0)
+                for _, _, duration_ms, _ in events
             )
             total = sum(by_outcome.values())
             # Throttled requests never reached the lookup, so they belong in
