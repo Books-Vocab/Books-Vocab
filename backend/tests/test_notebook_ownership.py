@@ -16,14 +16,15 @@ from fastapi.testclient import TestClient
 
 import kg.api as api_mod
 import kg.deps as deps_mod
+import kg.pipeline_log as pipeline_log_mod
 import kg.routers.vocab as vocab_router_mod
-from conftest import TEST_JWT_SECRET, _DummyEmbeddingStore, _swap_settings, make_jwt
-from kg.api import app
+from conftest import TEST_JWT_SECRET, _DummyEmbeddingStore, make_jwt
+from kg.api import create_app
 from kg.settings import KGSettings
 
 
 @pytest.fixture()
-def isolated_api(tmp_path):
+def isolated_api(tmp_path, monkeypatch):
     data_dir = tmp_path
     (data_dir / "users").mkdir()
     user_id = "u_" + uuid.uuid4().hex[:8]
@@ -48,32 +49,42 @@ def isolated_api(tmp_path):
     token = make_jwt(user_id)
     headers = {"Authorization": f"Bearer {token}"}
 
-    original_settings = app.state.kg_settings
-    original_load = app.state.load_users
-    original_save = app.state.save_users
-
     test_settings = KGSettings(
         data_dir=data_dir,
         jwt_secret=TEST_JWT_SECRET,
         app_store_allow_unsigned_sync=True,
         app_store_allow_unsigned_notifications=True,
     )
-    _swap_settings(test_settings)
+    test_app = create_app(test_settings)
 
+    monkeypatch.setattr(pipeline_log_mod, "DB_PATH", data_dir / "pipeline_runs.db")
+    pipeline_log_mod._reset()
+    api_mod._USER_LOCKS.clear()
+    deps_mod._USER_LOCKS_MUTEX = None
     try:
-        api_mod._USER_LOCKS.clear()
-        deps_mod._USER_LOCKS_MUTEX = None
-        client = TestClient(app, raise_server_exceptions=False)
-        yield SimpleNamespace(
-            client=client,
-            user_id=user_id,
-            headers=headers,
-            data_dir=data_dir,
-        )
+        with TestClient(test_app, raise_server_exceptions=False) as client:
+            yield SimpleNamespace(
+                client=client,
+                user_id=user_id,
+                headers=headers,
+                data_dir=data_dir,
+            )
     finally:
-        app.state.kg_settings = original_settings
-        app.state.load_users = original_load
-        app.state.save_users = original_save
+        pipeline_log_mod._reset()
+
+
+@pytest.fixture()
+def assert_client_context_manager(monkeypatch):
+    exits = []
+    original_exit = TestClient.__exit__
+
+    def record_exit(client, *args):
+        exits.append(client)
+        return original_exit(client, *args)
+
+    monkeypatch.setattr(TestClient, "__exit__", record_exit)
+    yield
+    assert len(exits) == 1
 
 
 NONEXISTENT_NB = "nb_does_not_exist_xyz"
@@ -81,6 +92,11 @@ NONEXISTENT_NB = "nb_does_not_exist_xyz"
 
 class TestNotebookOwnershipValidation:
     """All vocab endpoints that accept notebook_id must return 403 for unknown ids."""
+
+    def test_isolated_api_closes_test_client(
+        self, assert_client_context_manager, isolated_api
+    ):
+        del assert_client_context_manager, isolated_api
 
     def test_get_vocab_unknown_notebook_id_returns_403(self, isolated_api):
         r = isolated_api.client.get(
