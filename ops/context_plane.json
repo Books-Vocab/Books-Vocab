@@ -55,8 +55,15 @@
         "delivery": {"coordination": "coordination", "merge": "coordination"},
         "release": {"coordination": "coordination", "merge": "release"}
       },
-      "owns": "main、PR 收斂、版本與 release/deploy 邊界",
-      "not_owns": "親自實作所有工作、本地 backlog、未批准的 production 寫入",
+      "owns": "交付協調、exact Ready admission、merge queue/merge、local main 與 origin/main 同步、版本與 release/deploy 邊界",
+      "not_owns": "產品 code、Worker/Issue Solver worktree、PR body/registry 修正、代替 IM push/open PR、未批准的 production 寫入",
+      "allowed_surfaces": ["github:pr-read", "github:merge-queue", "github:merge", "local:main-ff-only-sync", "local:read-only-worktree-audit"],
+      "forbidden_surfaces": ["local:code-edit", "local:worker-worktree-write", "github:issue-write", "github:pr-body-write", "github:branch-push", "github:branch-delete"],
+      "handoff_contract": {
+        "input": ["exact PR base/HEAD/Scope", "required/readiness and CR/DS evidence"],
+        "output": ["merge/return decision", "local main == origin/main after landing"],
+        "terminal_cleanup_owner": "IM removes local worktree, local branch, and remote branch after CM terminal receipt"
+      },
       "assignment_requirements": {
         "coordination": ["GitHub Issue/PR or direct assignment", "Scope decision"],
         "merge": ["GitHub PR", "required checks", "CR/DS result"]
@@ -79,8 +86,15 @@
       "route_classes": {
         "delivery": {"issue-planning": "coordination", "direct-assignment": "coordination"}
       },
-      "owns": "GitHub Issue 收件、排序、拆解與派工",
-      "not_owns": "合併 code、本地 Issue lifecycle、PR review 結論",
+      "owns": "GitHub Issue/Project 收件、排序、拆解、派工；本地 worktree lifecycle；exact Worker commit 的 push；PR 建立、metadata、readiness 與 terminal cleanup",
+      "not_owns": "修改產品 code、替 Worker commit/解 code conflict、CR/DS 結論、merge queue/merge、release/deploy",
+      "allowed_surfaces": ["github:issue-write", "github:project-write", "github:pr-write", "github:branch-push", "github:branch-delete-after-terminal", "local:worktree-lifecycle", "local:read-only-gate"],
+      "forbidden_surfaces": ["local:code-edit", "local:staging", "local:code-commit", "local:conflict-resolution", "github:merge", "github:review-decision"],
+      "handoff_contract": {
+        "input": ["GitHub Issue or direct assignment", "clean local Worker/Issue Solver hand-back"],
+        "output": ["one real PR with exact worker HEAD", "terminal triad cleanup after CM decision"],
+        "pr_invariant": "local hand-back is not complete until a real PR exists for CM"
+      },
       "assignment_requirements": {
         "issue-planning": ["GitHub Issue", "Project priority/triage"],
         "direct-assignment": ["具名 assignment", "acceptance", "Scope"]
@@ -103,10 +117,27 @@
         "backend": {"direct-assignment": "implementation"},
         "ios": {"direct-assignment": "implementation-ios"}
       },
-      "owns": "直接指派工作的 branch/worktree、程式碼、測試與 PR",
-      "not_owns": "Issue lifecycle、Project priority、merge、release/deploy",
+      "owns": "直接指派工作的 local branch/worktree、程式碼、測試、local commit 與 hand-back evidence",
+      "not_owns": "GitHub Issue/PR/branch mutation、push、review、merge、enqueue、Issue lifecycle、Project priority、release/deploy",
+      "allowed_surfaces": ["local:assigned-worktree", "local:code-edit", "local:test", "local:git-commit", "local:hand-back"],
+      "forbidden_surfaces": ["github:any-mutation", "github:issue-read-write", "github:pr-read-write", "github:push", "github:review", "github:merge", "local:other-worktree"],
+      "handoff_contract": {
+        "input": ["User/IM assignment", "dedicated branch/worktree and structured Scope"],
+        "output": ["clean local commit with exact HEAD and validation evidence", "no GitHub mutation"],
+        "next_owner": "IM publishes the exact commit as a PR",
+        "dispatch_channels": {
+          "im": {
+            "discussion_with": "dispatching IM",
+            "handback_policy": "same-dispatching-im"
+          },
+          "user": {
+            "discussion_with": "User",
+            "handback_policy": "specified-or-worker-selected-im"
+          }
+        }
+      },
       "assignment_requirements": {
-        "direct-assignment": ["User/IM assignment", "acceptance", "structured Scope"]
+        "direct-assignment": ["User/IM assignment", "acceptance", "structured Scope", "dispatch_channel"]
       },
       "skill_routes": {
         "delivery": {"direct-assignment": "delivery-worktree"},
@@ -130,10 +161,17 @@
         "backend": {"issue": "implementation"},
         "ios": {"issue": "implementation-ios"}
       },
-      "owns": "已進入 GitHub Issue 的 branch/worktree、程式碼、測試與 PR",
-      "not_owns": "建立第二套 backlog、Issue lifecycle、merge、release/deploy",
+      "owns": "由 IM 傳入 Issue assignment 的 local branch/worktree、程式碼、測試、local commit 與 hand-back evidence",
+      "not_owns": "直接 GitHub access、Issue/PR/branch mutation、push、review、merge、enqueue、建立第二套 backlog、release/deploy",
+      "allowed_surfaces": ["local:assigned-worktree", "local:code-edit", "local:test", "local:git-commit", "local:hand-back"],
+      "forbidden_surfaces": ["github:any-mutation", "github:issue-read-write", "github:pr-read-write", "github:push", "github:review", "github:merge", "local:other-worktree"],
+      "handoff_contract": {
+        "input": ["IM-provided Issue assignment packet", "dedicated branch/worktree and structured Scope"],
+        "output": ["clean local commit with exact HEAD and validation evidence", "no GitHub mutation"],
+        "next_owner": "IM publishes the exact commit as a PR"
+      },
       "assignment_requirements": {
-        "issue": ["GitHub Issue", "Issue acceptance", "structured Scope"]
+        "issue": ["Issue assignment packet", "Issue acceptance", "structured Scope"]
       },
       "skill_routes": {
         "delivery": {"issue": "delivery-worktree"},
@@ -213,7 +251,7 @@
     "contributor": {
       "identity_ids": ["worker", "issue-solver"],
       "sources": ["CLAUDE.md", "docs/reference/delivery_model.md", "docs/reference/agent_context.md", "docs/reference/tech_index.md"],
-      "next_action": "work inside the declared branch/worktree Scope and prepare a PR"
+      "next_action": "work inside the declared branch/worktree Scope, commit locally, and hand back to IM for PR publication"
     },
     "reviewer": {
       "identity_ids": ["cr"],

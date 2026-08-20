@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -39,11 +40,65 @@ def _root(root: Path | None) -> Path:
 
 
 def _identity_payload(definition: dict[str, Any], identity_id: str) -> dict[str, Any]:
-    return {
+    payload = {
         "id": identity_id,
         "label": definition["label"],
         "owns": definition["owns"],
         "not_owns": definition["not_owns"],
+    }
+    for key in ("allowed_surfaces", "forbidden_surfaces", "handoff_contract"):
+        if key in definition:
+            payload[key] = definition[key]
+    return payload
+
+
+def _is_im_target(value: Any) -> bool:
+    return isinstance(value, str) and bool(re.fullmatch(r"im(?:[-_ ].+)?", value.strip(), re.IGNORECASE))
+
+
+def _resolve_worker_dispatch(identity_id: str, entry: str, evidence: dict[str, Any]) -> dict[str, Any] | None:
+    if identity_id != "worker" or entry != "direct-assignment":
+        return None
+
+    channel_value = evidence.get("dispatch_channel")
+    if not isinstance(channel_value, str) or channel_value.strip().casefold() not in {"im", "user"}:
+        raise OnboardingError("worker direct assignment 的 dispatch_channel 必須是 im 或 user")
+    channel = channel_value.strip().casefold()
+    requested_target = evidence.get("handback_target")
+
+    if channel == "im":
+        dispatch_owner = evidence.get("dispatch_owner")
+        if not _is_im_target(dispatch_owner):
+            raise OnboardingError("IM dispatch 必須提供有效的 dispatch_owner")
+        if requested_target is not None:
+            if not _is_im_target(requested_target):
+                raise OnboardingError("handback_target 必須是 IM")
+            if requested_target.strip().casefold() != dispatch_owner.strip().casefold():
+                raise OnboardingError("IM dispatch 的 handback_target 必須等於 same dispatching IM")
+        requested_im_target = requested_target.strip() if isinstance(requested_target, str) else None
+        return {
+            "channel": channel,
+            "discussion_with": dispatch_owner.strip(),
+            "handback": {
+                "policy": context_route.WORKER_DISPATCH_CHANNELS[channel]["handback_policy"],
+                "requested_target": requested_im_target,
+                "resolved_target": dispatch_owner.strip(),
+                "selection_required": False,
+            },
+        }
+
+    if requested_target is not None and not _is_im_target(requested_target):
+        raise OnboardingError("handback_target 必須是 IM")
+    target = requested_target.strip() if isinstance(requested_target, str) else None
+    return {
+        "channel": channel,
+        "discussion_with": context_route.WORKER_DISPATCH_CHANNELS[channel]["discussion_with"],
+        "handback": {
+            "policy": context_route.WORKER_DISPATCH_CHANNELS[channel]["handback_policy"],
+            "requested_target": target,
+            "resolved_target": target,
+            "selection_required": target is None,
+        },
     }
 
 
@@ -90,6 +145,9 @@ def build_onboarding(
         requirement for requirement in required_external
         if not _evidence_value_present(evidence.get(requirement))
     ]
+    dispatch_resolution = None
+    if not missing_external:
+        dispatch_resolution = _resolve_worker_dispatch(identity_id, entry, evidence)
     base_load_order = [
         {"phase": "project", "required": True, "sources": [onboarding_source]},
         {"phase": "identity", "required": True, "sources": role_def["sources"]},
@@ -123,6 +181,8 @@ def build_onboarding(
         "load_order": base_load_order,
         "authority": {"granted": False, "note": "onboarding 只建立上下文，不授予 GitHub、merge 或 production 權限"},
     }
+    if dispatch_resolution is not None:
+        base_payload["assignment"]["dispatch"] = dispatch_resolution
     if missing_external:
         return {
             **base_payload,
@@ -169,6 +229,16 @@ def build_onboarding(
             "primary": specialist_route_payload["primary"],
             "selected": specialist_route_payload["skills"],
         }
+    ready_assignment = {
+        "required_external": required_external,
+        "provided": sorted(required_external),
+        "missing": [],
+        "evidence": evidence,
+        "evidence_digest": base_payload["assignment"]["evidence_digest"],
+        "next_action": role_def["next_action"],
+    }
+    if dispatch_resolution is not None:
+        ready_assignment["dispatch"] = dispatch_resolution
     return {
         **base_payload,
         "task": {
@@ -177,14 +247,7 @@ def build_onboarding(
             "specialist_intent": canonical_specialist_intent,
         },
         "status": "ready",
-        "assignment": {
-            "required_external": required_external,
-            "provided": sorted(required_external),
-            "missing": [],
-            "evidence": evidence,
-            "evidence_digest": base_payload["assignment"]["evidence_digest"],
-            "next_action": role_def["next_action"],
-        },
+        "assignment": ready_assignment,
         "skills": skills_payload,
         "domain_sources": domain_sources,
         "load_order": [

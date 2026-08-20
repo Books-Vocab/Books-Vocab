@@ -20,11 +20,11 @@ GitHub 是交付控制面；本機工具只補足多 worktree 與本機驗證，
 | 合併後的產品主幹 | `main` | GitHub protected branch |
 | 發版、批准、rollback | release／部署 SOP | `ops/release.sh` + `ops/devops_kg_safe.sh` |
 
-有兩條入口：直接指派走 `User／IM → Worker → branch/worktree → PR`；需要規劃、排序或追蹤的工作走 `IM → Issue／Project → Issue Solver → branch/worktree → PR`。兩條路徑都在 `PR → Actions + CR + DS → CM merge → main` 收斂。Issue、Project、PR 的狀態不在 repo 內複製；本地 registry 不存工作項目生命週期，也不決定合併。
+有兩條入口：直接指派走 `User／IM → Worker → branch/worktree → local commit + hand-back → IM PR`；需要規劃、排序或追蹤的工作走 `IM → Issue／Project → Issue Solver → branch/worktree → local commit + hand-back → IM PR`。兩條路徑都在 `PR → Actions + CR + DS → CM merge → main` 收斂。Worker／Issue Solver 不操作 GitHub；IM 發布 PR；CM 控制 admission／queue／merge 與 local `main == origin/main`。Issue、Project、PR 的狀態不在 repo 內複製；本地 registry 不存工作項目生命週期，也不決定合併。
 
 ## 本地 coordinator 的窄責任
 
-`ops/worktree_registry.py` 只記錄本機工作樹是否被誰使用、structured Scope、thread identity、branch/path、hand-back 與驗證摘要。`ops/worktree_orchestrate.py` 只負責建立／接管 worktree、檢查 Scope overlap、執行本地 gate、保存 evidence、交回或安全移除工作樹。
+`ops/worktree_registry.py` 只記錄本機工作樹是否被誰使用、structured Scope、thread identity、branch/path、hand-back 與驗證摘要。IM 使用 `ops/worktree_orchestrate.py` 建立／接管 worktree、檢查 Scope overlap、執行本地 gate、保存 evidence、交回或安全移除工作樹；Worker／Issue Solver 不操作 GitHub。
 
 GitHub 外部 ID 只作 opaque reference；Issue、Project、PR 的生命週期與合併決定都在 GitHub 完成。
 

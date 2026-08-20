@@ -19,9 +19,11 @@ EVIDENCE = {
         "User/IM assignment": "audit the onboarding route",
         "acceptance": "route and tests are green",
         "structured Scope": "ops/agent_onboard.py and route tests",
+        "dispatch_channel": "im",
+        "dispatch_owner": "IM-1",
     },
     "issue": {
-        "GitHub Issue": "#123",
+        "Issue assignment packet": "#boundary-contract",
         "Issue acceptance": "route and tests are green",
         "structured Scope": "ops/agent_onboard.py and route tests",
     },
@@ -73,6 +75,115 @@ def test_worker_direct_assignment_loads_project_identity_skill_then_domain() -> 
     assert payload["assignment"]["evidence"]["acceptance"] == "route and tests are green"
     assert len(payload["assignment"]["evidence_digest"]) == 64
     assert payload["authority"]["granted"] is False
+    assert payload["assignment"]["dispatch"] == {
+        "channel": "im",
+        "discussion_with": "IM-1",
+        "handback": {
+            "policy": "same-dispatching-im",
+            "requested_target": None,
+            "resolved_target": "IM-1",
+            "selection_required": False,
+        },
+    }
+
+
+def test_worker_user_dispatch_discusses_with_user_and_hands_back_to_named_im() -> None:
+    evidence = {
+        **EVIDENCE["direct-assignment"],
+        "dispatch_channel": "user",
+        "handback_target": "IM-2",
+    }
+    payload = mod.build_onboarding(
+        ROOT,
+        identity="Worker",
+        intent="delivery",
+        entry="direct-assignment",
+        evidence=evidence,
+    )
+
+    assert payload["assignment"]["dispatch"] == {
+        "channel": "user",
+        "discussion_with": "User",
+        "handback": {
+            "policy": "specified-or-worker-selected-im",
+            "requested_target": "IM-2",
+            "resolved_target": "IM-2",
+            "selection_required": False,
+        },
+    }
+
+
+def test_worker_user_dispatch_requires_im_selection_before_hand_back_when_unspecified() -> None:
+    evidence = {
+        **EVIDENCE["direct-assignment"],
+        "dispatch_channel": "user",
+    }
+    payload = mod.build_onboarding(
+        ROOT,
+        identity="Worker",
+        intent="delivery",
+        entry="direct-assignment",
+        evidence=evidence,
+    )
+
+    assert payload["assignment"]["dispatch"]["discussion_with"] == "User"
+    assert payload["assignment"]["dispatch"]["handback"] == {
+        "policy": "specified-or-worker-selected-im",
+        "requested_target": None,
+        "resolved_target": None,
+        "selection_required": True,
+    }
+
+
+def test_worker_dispatch_contract_rejects_invalid_channel_or_mismatched_im() -> None:
+    with pytest.raises(mod.OnboardingError, match="dispatch_channel"):
+        mod.build_onboarding(
+            ROOT,
+            identity="Worker",
+            intent="delivery",
+            entry="direct-assignment",
+            evidence={**EVIDENCE["direct-assignment"], "dispatch_channel": "cm"},
+        )
+
+    with pytest.raises(mod.OnboardingError, match="dispatch_owner"):
+        mod.build_onboarding(
+            ROOT,
+            identity="Worker",
+            intent="delivery",
+            entry="direct-assignment",
+            evidence={
+                **EVIDENCE["direct-assignment"],
+                "dispatch_channel": "im",
+                "dispatch_owner": None,
+            },
+        )
+
+    with pytest.raises(mod.OnboardingError, match="same dispatching IM"):
+        mod.build_onboarding(
+            ROOT,
+            identity="Worker",
+            intent="delivery",
+            entry="direct-assignment",
+            evidence={
+                **EVIDENCE["direct-assignment"],
+                "dispatch_channel": "im",
+                "dispatch_owner": "IM-1",
+                "handback_target": "IM-2",
+            },
+        )
+
+    with pytest.raises(mod.OnboardingError, match="handback_target"):
+        mod.build_onboarding(
+            ROOT,
+            identity="Worker",
+            intent="delivery",
+            entry="direct-assignment",
+            evidence={
+                **EVIDENCE["direct-assignment"],
+                "dispatch_channel": "user",
+                "handback_target": "CM",
+            },
+        )
 
 
 def test_issue_solver_requires_issue_entry_and_domain_sources():
@@ -82,7 +193,7 @@ def test_issue_solver_requires_issue_entry_and_domain_sources():
     assert payload["task"]["intent"] == "backend"
     assert payload["task"]["skill_intent"] == "delivery-worktree"
     assert payload["assignment"]["required_external"] == [
-        "GitHub Issue", "Issue acceptance", "structured Scope"
+        "Issue assignment packet", "Issue acceptance", "structured Scope"
     ]
     assert "docs/sop/backend.md" in payload["domain_sources"]
 
@@ -201,7 +312,9 @@ def test_missing_assignment_evidence_blocks_before_skill_loading() -> None:
     payload = mod.build_onboarding(ROOT, identity="Worker", intent="delivery", entry="direct-assignment")
     assert payload["status"] == "awaiting-assignment"
     assert payload["blocked_at"] == "assignment"
-    assert payload["assignment"]["missing"] == ["User/IM assignment", "acceptance", "structured Scope"]
+    assert payload["assignment"]["missing"] == [
+        "User/IM assignment", "acceptance", "structured Scope", "dispatch_channel"
+    ]
     assert [step["phase"] for step in payload["load_order"]] == ["project", "identity", "assignment"]
     assert "skills" not in payload
 

@@ -1,6 +1,6 @@
 ---
 name: ops-engineer
-description: "修改 KG ops、CI、docs lint、worktree coordinator 或 deployment safety；遵守 GitHub 與 production 邊界。"
+description: "修改 KG ops、CI、docs lint、worktree coordinator 或 deployment safety；依 Worker／Issue Solver local hand-back 邊界交付，由 IM 發布 PR。"
 model: inherit
 ---
 
@@ -13,8 +13,8 @@ model: inherit
 ```bash
 # direct assignment
 ./ops/agent_onboard.py --identity Worker --intent delivery --entry direct-assignment --evidence '<JSON object with User/IM assignment, acceptance, structured Scope>' --json
-# GitHub Issue work
-./ops/agent_onboard.py --identity 'Issue Solver' --intent delivery --entry issue --evidence '<JSON object with GitHub Issue, Issue acceptance, structured Scope>' --json
+# IM-provided Issue assignment packet
+./ops/agent_onboard.py --identity 'Issue Solver' --intent delivery --entry issue --evidence '<JSON object with Issue assignment packet, Issue acceptance, structured Scope>' --json
 # 已批准的 release／deploy／rollback execution
 ./ops/agent_onboard.py --identity 'Release operator' --intent release --entry release --evidence '<JSON object with explicit approval, target, rollback candidate, health gate>' --json
 ```
@@ -26,4 +26,4 @@ model: inherit
 - shell／Python／YAML 變更跑對應 syntax、ops tests、docs lint 與 Actions contract。
 - 長操作保留 PID、heartbeat、完整 log、exit status；timeout 或 permission error 原樣回報。
 
-完成時交 exact HEAD、變更 Scope、驗證證據、偏離與 PR 下一步。不要自行 merge 或把 CI 綠燈轉成 production approval。
+完成時建立 local commit，交 exact HEAD、變更 Scope、驗證證據與偏離；不要直接操作 GitHub、push、建立 PR、merge 或把 CI 綠燈轉成 production approval，PR 由 IM 發布。

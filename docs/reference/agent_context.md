@@ -38,7 +38,7 @@ verified_against: 2d9f6fdbebca9fe0f2aa9a790f1498dded80050d
 
 1. **project**：`docs/reference/project_onboarding.md`，了解 KG 產品地圖、GitHub-native 控制面與本地 coordinator 邊界。
 2. **identity**：由 `ops/context_plane.json` 的 canonical identity 確認責任與 `not_owns`；執行層 mapping 只供 loader 維持相容，不是 agent-facing 角色模型。
-3. **assignment**：確認 User／IM direct assignment、GitHub Issue 或 GitHub PR，並取得 acceptance、exact HEAD 與 structured Scope。
+3. **assignment**：CM／IM 取得 GitHub Issue／PR；Worker 取得帶 `dispatch_channel=im|user` 的 direct assignment，Issue Solver 取得由 IM 整理的 Issue assignment packet，並取得 acceptance、base／exact HEAD 與 structured Scope。
 4. **skill**：使用 onboarding kernel route 指定的唯一 primary skill、required dependencies、forbidden skills；若有 `specialist-intent`，它會取代 generic high-level route，不能自行把兩條 route 拼在一起。
 5. **domain**：只讀本次 intent 的 bounded sources，完成測試、review、docs impact 或安全 SOP。
 
@@ -53,7 +53,8 @@ canonical identity 的完整責任定義只保留在 [`delivery_model.md`](deliv
 | identity | 入口／工作重點 |
 |---|---|
 | CM／IM | codebase 收斂，或 GitHub Issue 收件、排序與派工 |
-| Worker／Issue Solver | direct assignment 或 GitHub Issue → branch/worktree → PR |
+| Worker | `dispatch_channel=im|user` direct assignment → branch/worktree → local commit + hand-back；IM channel 回同一 IM，User channel 回指定或 Worker 選定的 IM |
+| Issue Solver | Issue assignment packet → branch/worktree → local commit + hand-back；只消除 Issue work，PR 由 IM 發布 |
 | CR | PR diff、fresh checks 與 review 結論 |
 | DS | docs impact、registry／SoT 與 docs lint |
 | Release operator | 已批准的 release/deploy/rollback SOP |
@@ -88,6 +89,6 @@ GitHub rules、Actions environment、production wrapper 與帳號權限才是授
 
 ## Assignment、Scope 與證據
 
-Scope 是本機檔案 ownership 與 collision 判定，不是需求或權限。Issue work 的目標、優先序與 acceptance 在 GitHub Issue；direct assignment 的目標與 acceptance 在 assignment／PR；PR 的 diff、checks、review 與驗證證據是交付真相。
+Scope 是本機檔案 ownership 與 collision 判定，不是需求或權限。Issue work 的目標、優先序與 acceptance 在 GitHub Issue，由 IM 轉成 assignment packet；direct assignment 的目標、acceptance、`dispatch_channel` 與 hand-back recipient policy 在 assignment；PR 的 diff、checks、review 與驗證證據是交付真相。
 
-最小交接證據包含 Issue／PR opaque ID（若已有）、direct assignment 摘要（若無 Issue）、branch、worktree path、exact HEAD、Scope、命令與 exit status、未解 blocker。交接證據不取代 GitHub PR，也不改變 merge／release 授權。
+最小交接證據包含 Issue／PR opaque ID（若已有）、direct assignment 摘要（若無 Issue）、`dispatch_channel`、discussion owner、resolved hand-back recipient、branch、worktree path、exact HEAD、Scope、命令與 exit status、未解 blocker。Worker／Issue Solver 的 local hand-back 不取代 GitHub PR；IM 必須將它轉成真實 PR，CM 再決定 merge／release 授權。
