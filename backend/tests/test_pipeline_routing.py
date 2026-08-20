@@ -26,7 +26,13 @@ _ENRICH_JSON = json.dumps(
 
 @pytest.fixture(autouse=True)
 def _clean_routing_env(clean_routing_env):
-    yield
+    try:
+        yield
+    finally:
+        from kg import judge_log, token_tracker
+
+        judge_log.reset()
+        token_tracker.reset()
 
 
 class _Logger:
@@ -185,3 +191,10 @@ def test_embed_provider_independent_of_chat_default(monkeypatch):
     factory, seen = _recorder(_JUDGE_JSON)
     _run_embed_and_judge(factory)
     assert seen == ["gemini", "deepseek"]  # embed stays gemini, judge follows default
+
+
+def test_routing_sqlite_singletons_are_closed_after_each_test():
+    from kg import judge_log, token_tracker
+
+    assert judge_log._conn is None
+    assert token_tracker._conn is None
