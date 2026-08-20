@@ -261,33 +261,36 @@ def test_incremental_query_resolves_neighbour_links(tmp_path):
     from kg.vocab_shared import card_response
 
     cards = CardStore(tmp_path / "cards.db")
-    old_card = cards.add("apple", meaning="蘋果")
-    new_card = cards.add("fruit", meaning="水果")
-    since_dt = datetime(2026, 1, 1, 12, 0, 0)
-    with Session(cards.engine) as session:
-        session.get(Card, old_card.id).updated_at = since_dt.replace(hour=11)
-        session.get(Card, new_card.id).updated_at = since_dt.replace(hour=13)
-        session.commit()
+    try:
+        old_card = cards.add("apple", meaning="蘋果")
+        new_card = cards.add("fruit", meaning="水果")
+        since_dt = datetime(2026, 1, 1, 12, 0, 0)
+        with Session(cards.engine) as session:
+            session.get(Card, old_card.id).updated_at = since_dt.replace(hour=11)
+            session.get(Card, new_card.id).updated_at = since_dt.replace(hour=13)
+            session.commit()
 
-    graph = GraphStore(
-        tmp_path / "graph.json",
-        tmp_path / "candidates.json",
-        tmp_path / "blocked.json",
-    )
-    graph.batch_add_links([(new_card.id, old_card.id, LinkKind.SHARES_USAGE, 0.9, "fruit→apple")])
+        graph = GraphStore(
+            tmp_path / "graph.json",
+            tmp_path / "candidates.json",
+            tmp_path / "blocked.json",
+        )
+        graph.batch_add_links([(new_card.id, old_card.id, LinkKind.SHARES_USAGE, 0.9, "fruit→apple")])
 
-    link_kinds = list(LinkKind)
-    link_labels = {k: k.value for k in LinkKind}
+        link_kinds = list(LinkKind)
+        link_labels = {k: k.value for k in LinkKind}
 
-    def builder(card, g, cards_by_id):
-        return card_response(card, graph=g, cards_by_id=cards_by_id,
-                             tier_getter=get_tier, link_kinds=link_kinds, link_labels=link_labels)
+        def builder(card, g, cards_by_id):
+            return card_response(card, graph=g, cards_by_id=cards_by_id,
+                                 tier_getter=get_tier, link_kinds=link_kinds, link_labels=link_labels)
 
-    since_str = since_dt.isoformat() + "Z"
-    results, _cursor = list_vocab_cards(since=since_str, cards_store=cards, graph=graph,
-                                        card_response_builder=builder, notebook_id=None)
+        since_str = since_dt.isoformat() + "Z"
+        results, _cursor = list_vocab_cards(since=since_str, cards_store=cards, graph=graph,
+                                            card_response_builder=builder, notebook_id=None)
 
-    assert len(results) == 1
-    assert results[0].content == "fruit"
-    assert "shares_usage" in results[0].linksByKind
-    assert results[0].linksByKind["shares_usage"][0].word == "apple"
+        assert len(results) == 1
+        assert results[0].content == "fruit"
+        assert "shares_usage" in results[0].linksByKind
+        assert results[0].linksByKind["shares_usage"][0].word == "apple"
+    finally:
+        cards.close()
