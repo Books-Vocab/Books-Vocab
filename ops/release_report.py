@@ -220,11 +220,10 @@ def normalize_asc_snapshot(
     versions = normalize_asc_versions(versions_payload)
     testflight = builds[0] if builds else _unavailable("ASC returned no iOS TestFlight builds")
     ready = [item for item in versions if item.get("state") == "READY_FOR_SALE"]
-    app_store_candidates = ready or versions
     app_store = (
-        app_store_candidates[0]
-        if app_store_candidates
-        else _unavailable("ASC returned no iOS App Store versions")
+        ready[0]
+        if ready
+        else _unavailable("ASC returned no iOS App Store version in READY_FOR_SALE")
     )
     return {"testflight": dict(testflight), "appStore": dict(app_store)}
 
@@ -476,6 +475,8 @@ def _live_alignment(git: Git, production: Mapping[str, Any], live: Mapping[str, 
         return "unknown"
     prod_sha = str(production["sha"])
     live_version = str(live.get("version", ""))
+    if not re.fullmatch(r"[0-9a-f]{7,40}", live_version):
+        return "unknown"
     if prod_sha.startswith(live_version) or live_version == prod_sha:
         return "aligned"
     try:
@@ -628,6 +629,8 @@ def build_report(
         blockers.append(f"production ref unavailable: {production_ref}")
     if live.get("status") != "observed":
         blockers.append("backend live evidence unavailable")
+    elif production.get("liveAlignment") == "unknown":
+        blockers.append("backend live version cannot be resolved to a Git commit/tree")
 
     if testflight_to_main.get("status") == "changed":
         reasons.append(

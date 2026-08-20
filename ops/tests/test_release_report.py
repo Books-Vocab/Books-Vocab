@@ -167,6 +167,28 @@ def test_normalize_asc_snapshot_binds_ios_build_and_store_version() -> None:
     }
 
 
+def test_normalize_asc_snapshot_blocks_without_ready_for_sale_version() -> None:
+    snapshot = release_report.normalize_asc_snapshot(
+        {"data": []},
+        {
+            "data": [
+                {
+                    "type": "appStoreVersions",
+                    "id": "store-draft",
+                    "attributes": {
+                        "versionString": "2.0.1",
+                        "appStoreState": "PREPARE_FOR_SUBMISSION",
+                        "platform": "IOS",
+                    },
+                }
+            ]
+        },
+    )
+
+    assert snapshot["appStore"]["status"] == "unavailable"
+    assert "READY_FOR_SALE" in snapshot["appStore"]["reason"]
+
+
 def test_diff_refs_reports_source_delta(tmp_path: Path) -> None:
     repo, release_sha, main_sha = _repo_with_release_drift(tmp_path)
 
@@ -253,6 +275,35 @@ def test_report_marks_missing_release_tag_as_blocked(tmp_path: Path) -> None:
     assert report["ios"]["testflight"]["sourceBinding"]["status"] == "unbound"
     assert report["ios"]["testflightToMain"]["status"] == "blocked"
     assert report["verdict"]["status"] == "blocked"
+
+
+def test_report_blocks_unresolvable_backend_live_version(tmp_path: Path) -> None:
+    repo, _, _ = _repo_with_release_drift(tmp_path)
+    report = release_report.build_report(
+        repo,
+        main_ref="main",
+        production_ref="prod",
+        asc_snapshot={
+            "testflight": {
+                "status": "observed",
+                "version": "1.0.0",
+                "build": "1",
+                "ascBuildId": "build-1",
+                "processingState": "VALID",
+            },
+            "appStore": {
+                "status": "observed",
+                "version": "1.0.0",
+                "state": "READY_FOR_SALE",
+                "ascVersionId": "store-100",
+            },
+        },
+        backend_live={"status": "observed", "version": "not-a-git-sha"},
+    )
+
+    assert report["backend"]["production"]["liveAlignment"] == "unknown"
+    assert report["verdict"]["status"] == "blocked"
+    assert "live version cannot be resolved" in report["verdict"]["blockers"][0]
 
 
 def test_backend_probe_sets_a_stable_user_agent(monkeypatch: pytest.MonkeyPatch) -> None:
