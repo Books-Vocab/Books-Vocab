@@ -19,8 +19,18 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import jwt as pyjwt
+import pytest
 
 from conftest import TEST_JWT_SECRET
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _token_tracker_is_closed_after_module():
+    yield
+    from kg import token_tracker
+
+    token_tracker.reset()
+    assert token_tracker._conn is None, "token_tracker connection leaked past test module"
 
 
 def _stub_quick_llm(content: str = '{"t":"喚起","p":"v.","r":"evoke"}') -> MagicMock:
