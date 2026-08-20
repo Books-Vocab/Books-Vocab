@@ -68,7 +68,7 @@ def install_app_middlewares_from_dependencies(
         CORSMiddleware,
         allow_origins=list(cors_origins),
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+        allow_headers=["Authorization", "Content-Type", "X-KG-API-Key", "X-Request-ID"],
     )
 
     @app.middleware("http")
@@ -126,6 +126,15 @@ def install_app_middlewares_from_dependencies(
         "/api/system/info",
         "/auth/web/google/callback",
         "/auth/web/apple/callback",
+        # External API routes have their own per-key limiter. Applying the
+        # generic IP limiter as well would make unrelated API keys behind the
+        # same NAT share a budget and would hide the external rate-limit
+        # headers behind a second 429.
+        "/api/v1/cards",
+        "/api/v1/enrich",
+        "/api/v1/links",
+        "/api/v1/notebooks",
+        "/api/v1/operations",
     )
 
     @app.middleware("http")

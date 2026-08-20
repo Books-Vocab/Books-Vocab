@@ -20,6 +20,7 @@ from ..deps import (
     _is_pro,
     logger,
 )
+from ..external_api_keys import purge_external_api_keys
 from ..user_handlers import (
     delete_user_account_response,
     get_user_config_response,
@@ -80,6 +81,7 @@ def delete_user_account(request: Request, user: CurrentUser):
         library_s3_client=(
             _library_s3_client(settings) if settings.library_bucket else None
         ),
+        purge_external_api_keys=purge_external_api_keys,
     )
 
 
