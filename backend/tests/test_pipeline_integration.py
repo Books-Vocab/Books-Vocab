@@ -72,9 +72,12 @@ def pipeline_api(tmp_path):
         api_mod._USER_LOCKS.clear()
         deps_mod._USER_LOCKS_MUTEX = None
         client = TestClient(app, raise_server_exceptions=False)
-        yield SimpleNamespace(
-            client=client, user_id=user_id, headers=headers, data_dir=tmp_path,
-        )
+        try:
+            yield SimpleNamespace(
+                client=client, user_id=user_id, headers=headers, data_dir=tmp_path,
+            )
+        finally:
+            client.close()
     finally:
         app.state.kg_settings = original_settings
         app.state.load_users = original_load
@@ -82,6 +85,30 @@ def pipeline_api(tmp_path):
 
 
 class TestPipelineIntegration:
+
+    def test_pipeline_fixture_closes_client_without_entering_lifespan(
+        self, tmp_path, monkeypatch
+    ):
+        events = []
+
+        class _ProbeClient:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def __enter__(self):
+                events.append("enter")
+                raise AssertionError("fixture must not start the global app lifespan")
+
+            def close(self):
+                events.append("close")
+
+        monkeypatch.setattr(f"{__name__}.TestClient", _ProbeClient)
+        fixture = pipeline_api.__wrapped__(tmp_path)
+
+        next(fixture)
+        fixture.close()
+
+        assert events == ["close"]
 
     def test_pipeline_runs_to_completion(self, pipeline_api, caplog):
         """Pipeline must complete all stages and log 'Pipeline completed' with no ERROR logs."""
