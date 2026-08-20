@@ -198,6 +198,16 @@ def _read_json_file(path: Path, *, context: str, logger_: LoggerProtocol) -> Any
         raise HTTPException(status_code=500, detail=f"Malformed {context}") from exc
 
 
+def _read_s3_body(body: Any) -> bytes:
+    try:
+        return body.read()
+    finally:
+        try:
+            body.close()
+        except Exception:  # noqa: BLE001
+            logger.warning("podcast media body close failed", exc_info=True)
+
+
 def _read_json_from_s3(
     request: Request,
     key: str,
@@ -225,7 +235,7 @@ def _read_json_from_s3(
             exc_info=True,
         )
         raise HTTPException(status_code=502, detail=f"Storage error reading {context}") from exc
-    body = obj["Body"].read()
+    body = _read_s3_body(obj["Body"])
     try:
         return json.loads(body)
     except json.JSONDecodeError as exc:
@@ -271,7 +281,7 @@ def _read_bytes_from_s3(
     obj = get_object_from_s3(request, key, context=context)
     if obj is None:
         return None
-    return obj["Body"].read()
+    return _read_s3_body(obj["Body"])
 
 
 def _s3_static_headers(obj: dict, base_headers: dict[str, str] | None = None) -> dict[str, str]:

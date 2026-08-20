@@ -209,13 +209,17 @@ class TestIterS3Body:
 
 class TestReadBytesFromS3:
     def test_returns_bytes(self):
+        body = MagicMock()
+        body.read.return_value = b"hello"
+
         def _get_obj(req, key, *, context):
-            return {"Body": SimpleNamespace(read=lambda: b"hello")}
+            return {"Body": body}
 
         result = media_mod._read_bytes_from_s3(
             None, "s1/cover.png", context="cover", get_object_from_s3=_get_obj
         )
         assert result == b"hello"
+        body.close.assert_called_once_with()
 
     def test_returns_none_when_object_missing(self):
         def _get_obj(req, key, *, context):
@@ -314,6 +318,10 @@ class TestReadJsonFromS3:
         class _FakeBody:
             def __init__(self, data: bytes):
                 self._data = data
+
+            def close(self):
+                pass
+
             def read(self):
                 return self._data
 
@@ -340,6 +348,39 @@ class TestReadJsonFromS3:
             logger_=MagicMock(),
         )
         assert result == {"a": 1}
+
+    def test_closes_body_after_successful_read(self):
+        class _FakeBody:
+            def __init__(self):
+                self.closed = False
+
+            def read(self):
+                return b'{"a": 1}'
+
+            def close(self):
+                self.closed = True
+
+        body = _FakeBody()
+
+        class _FakeS3:
+            def get_object(self, Bucket, Key):  # noqa: N803
+                return {"Body": body}
+
+        def _settings(req):
+            return SimpleNamespace(podcast_bucket="bucket")
+
+        result = media_mod._read_json_from_s3(
+            None,
+            "s1/metadata.json",
+            context="metadata",
+            settings_fn=_settings,
+            s3_client_fn=lambda req: _FakeS3(),
+            is_s3_not_found_fn=lambda exc, s3: False,
+            logger_=MagicMock(),
+        )
+
+        assert result == {"a": 1}
+        assert body.closed is True
 
     def test_returns_none_when_not_found(self):
         class _NoSuchKey(Exception):
