@@ -9,6 +9,7 @@ P1:   notebook_id Query parameter must be regex-validated (422) instead
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 
 import pytest
@@ -35,6 +36,7 @@ def _force_quota_exceeded(user_id: str) -> None:
 @pytest.fixture()
 def fresh_token_db(tmp_path, monkeypatch):
     """Force token_tracker to use a clean DB for this test (isolated from others)."""
+    original_data_dir = os.environ.get("KG_DATA_DIR")
     monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
     import importlib
 
@@ -50,6 +52,10 @@ def fresh_token_db(tmp_path, monkeypatch):
     if tt._conn is not None:
         tt._conn.close()
         tt._conn = None
+    if original_data_dir is None:
+        monkeypatch.delenv("KG_DATA_DIR")
+    else:
+        monkeypatch.setenv("KG_DATA_DIR", original_data_dir)
     importlib.reload(tt)
     tt.DB_PATH = original_db_path
     tt._INITIAL_DB_PATH = original_initial_db_path
