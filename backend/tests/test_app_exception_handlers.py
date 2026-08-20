@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import replace
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, Field
@@ -30,6 +31,27 @@ def _dependencies(app: FastAPI) -> AppExceptionHandlerDependencies:
     )
 
 
+@pytest.fixture(autouse=True)
+def _assert_test_clients_are_closed(monkeypatch):
+    clients = []
+    closed = set()
+    original_init = TestClient.__init__
+    original_close = TestClient.close
+
+    def tracked_init(client, *args, **kwargs):
+        original_init(client, *args, **kwargs)
+        clients.append(client)
+
+    def tracked_close(client):
+        closed.add(id(client))
+        return original_close(client)
+
+    monkeypatch.setattr(TestClient, "__init__", tracked_init)
+    monkeypatch.setattr(TestClient, "close", tracked_close)
+    yield
+    assert len(closed) == len(clients)
+
+
 def test_install_app_exception_handlers_returns_named_bundle_and_handles_routes():
     app = FastAPI()
     handlers = install_app_exception_handlers_from_dependencies(
@@ -51,19 +73,21 @@ def test_install_app_exception_handlers_returns_named_bundle_and_handles_routes(
     assert isinstance(handlers, AppExceptionHandlers)
 
     client = TestClient(app, raise_server_exceptions=False)
+    try:
+        validation = client.post("/validate", json={"provider": "short", "token": "secret-token"})
+        assert validation.status_code == 422
+        assert validation.json()["detail"][0]["type"] == "string_too_short"
 
-    validation = client.post("/validate", json={"provider": "short", "token": "secret-token"})
-    assert validation.status_code == 422
-    assert validation.json()["detail"][0]["type"] == "string_too_short"
+        bad_request_response = client.get("/bad-request")
+        assert bad_request_response.status_code == 400
+        assert bad_request_response.json()["code"] == "BadRequestError"
 
-    bad_request_response = client.get("/bad-request")
-    assert bad_request_response.status_code == 400
-    assert bad_request_response.json()["code"] == "BadRequestError"
-
-    boom_response = client.get("/boom")
-    assert boom_response.status_code == 500
-    assert boom_response.json()["detail"] == "Internal server error"
-    assert "request_id" in boom_response.json()
+        boom_response = client.get("/boom")
+        assert boom_response.status_code == 500
+        assert boom_response.json()["detail"] == "Internal server error"
+        assert "request_id" in boom_response.json()
+    finally:
+        client.close()
 
 
 def test_install_app_exception_handlers_from_dependencies_matches_compat_wrapper():
