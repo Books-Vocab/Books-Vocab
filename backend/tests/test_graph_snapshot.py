@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 from kg.graph_event_log import GraphEventStore, GraphSnapshotStore
 
 
@@ -19,6 +21,27 @@ def _links(n: int) -> list[dict]:
          "status": "active"}
         for i in range(n)
     ]
+
+
+@pytest.fixture(autouse=True)
+def _graph_stores_are_closed(monkeypatch):
+    stores = []
+    real_event_init = GraphEventStore.__init__
+    real_snapshot_init = GraphSnapshotStore.__init__
+
+    def track_event_init(store, path):
+        real_event_init(store, path)
+        stores.append(store)
+
+    def track_snapshot_init(store, path):
+        real_snapshot_init(store, path)
+        stores.append(store)
+
+    monkeypatch.setattr(GraphEventStore, "__init__", track_event_init)
+    monkeypatch.setattr(GraphSnapshotStore, "__init__", track_snapshot_init)
+    yield
+    for store in reversed(stores):
+        store.close()
 
 
 def test_save_and_latest_roundtrip(tmp_path):
