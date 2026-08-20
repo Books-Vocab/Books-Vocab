@@ -250,6 +250,63 @@ async def test_google_then_apple_same_email_no_duplicate_account(tmp_path):
     )
 
 
+@pytest.mark.asyncio
+async def test_linked_apple_sub_only_follow_up_keeps_canonical_user(tmp_path):
+    """A later Apple token with only ``sub`` must use the linked canonical id."""
+    users_file, lock, load, save = _make_user_store(tmp_path)
+    shared_email = "linked@example.com"
+
+    google_kwargs = _build_handler_kwargs(
+        users_file, lock,
+        provider="google", sub="google-sub",
+        email=shared_email, email_verified=True,
+    )
+    google_resp = await auth_verify_response(
+        AuthVerifyRequest(provider="google", token="google-token", email=None),
+        **google_kwargs,
+    )
+    assert google_resp.user_id == "google-sub"
+
+    canonical_data = tmp_path / "users" / google_resp.user_id / "notebook.json"
+    canonical_data.parent.mkdir(parents=True, exist_ok=True)
+    canonical_data.write_text(json.dumps({"title": "canonical data"}))
+
+    apple_first_kwargs = _build_handler_kwargs(
+        users_file, lock,
+        provider="apple", sub="apple-sub",
+        email=shared_email, email_verified=True,
+    )
+    apple_first_resp = await auth_verify_response(
+        AuthVerifyRequest(provider="apple", token="apple-first-token", email=None),
+        **apple_first_kwargs,
+    )
+    assert apple_first_resp.user_id == "google-sub"
+
+    apple_follow_up_kwargs = _build_handler_kwargs(
+        users_file, lock,
+        provider="apple", sub="apple-sub",
+        email=None, email_verified=False,
+    )
+    apple_follow_up_resp = await auth_verify_response(
+        AuthVerifyRequest(
+            provider="apple", token="apple-follow-up-token", email=None,
+        ),
+        **apple_follow_up_kwargs,
+    )
+
+    assert apple_follow_up_resp.user_id == "google-sub"
+    claims = pyjwt.decode(
+        apple_follow_up_resp.access_token,
+        TEST_JWT_SECRET,
+        algorithms=[TEST_ALGORITHM],
+    )
+    assert claims["sub"] == "google-sub"
+    users = load()
+    assert users["apple-sub"]["_linked_to"] == "google-sub"
+    assert canonical_data.exists()
+    assert json.loads(canonical_data.read_text())["title"] == "canonical data"
+
+
 # --------------------------------------------------------------------------- #
 # 2. Provider switch / account-deletion path invalidates old session
 # --------------------------------------------------------------------------- #
