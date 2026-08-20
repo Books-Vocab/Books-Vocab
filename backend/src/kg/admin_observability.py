@@ -27,6 +27,25 @@ def _cutoff_iso(hours: int) -> str:
     return (_utcnow() - timedelta(hours=hours)).isoformat()
 
 
+def _utc_instant_cutoff_bounds(cutoff_iso: str) -> tuple[str, str]:
+    """Return an indexed candidate bound and an exact UTC-instant cutoff.
+
+    SQLite's plain ISO-text comparison is lexical, so a fixed-offset timestamp
+    can compare newer while representing an older UTC instant. The previous
+    UTC date is conservative for ISO-8601 offsets and keeps the timestamp
+    column's indexed lower-bound predicate; ``julianday`` then does the exact
+    instant comparison.
+    """
+    cutoff = datetime.fromisoformat(cutoff_iso)
+    candidate_bound = (cutoff.date() - timedelta(days=1)).isoformat()
+    return candidate_bound, cutoff_iso
+
+
+def _utc_instant_predicate(column: str) -> str:
+    """Build the internal SQL predicate for an ISO-8601 UTC instant column."""
+    return f"{column} >= ? AND julianday({column}) >= julianday(?)"
+
+
 def _cell(row: Any, idx: int = 0) -> int:
     """Read column ``idx`` of a ``fetchone()`` result as int, NULL/None → 0."""
     return (row[idx] or 0) if row else 0
@@ -68,7 +87,7 @@ def _pipeline_failure_rate_24h() -> dict[str, Any]:
     from . import error_signals as es
     from . import pipeline_log as pl
 
-    cutoff = _cutoff_iso(_WINDOW_24H)
+    candidate_bound, cutoff = _utc_instant_cutoff_bounds(_cutoff_iso(_WINDOW_24H))
     with pl._lock:
         conn = pl._get_conn()
         # Count terminal-state runs in window (exclude running/interrupted).
@@ -78,8 +97,9 @@ def _pipeline_failure_rate_24h() -> dict[str, Any]:
             "  COUNT(*) AS total, "
             f"  SUM(CASE WHEN {es.PIPELINE_FAILURE_WHERE} THEN 1 ELSE 0 END) AS failed "
             "FROM pipeline_runs "
-            f"WHERE started_at >= ? AND status IN ('ok', '{es.PIPELINE_FAILURE_STATUS}')",
-            (cutoff,),
+            f"WHERE {_utc_instant_predicate('started_at')} "
+            f"AND status IN ('ok', '{es.PIPELINE_FAILURE_STATUS}')",
+            (candidate_bound, cutoff),
         ).fetchone()
     total = _cell(row, 0)
     failed = _cell(row, 1)
@@ -102,12 +122,13 @@ def _pipeline_step_p95_24h() -> dict[str, Any]:
     """
     from . import pipeline_log as pl
 
-    cutoff = _cutoff_iso(_WINDOW_24H)
+    candidate_bound, cutoff = _utc_instant_cutoff_bounds(_cutoff_iso(_WINDOW_24H))
     with pl._lock:
         conn = pl._get_conn()
         rows = conn.execute(
-            "SELECT steps FROM pipeline_runs WHERE started_at >= ?",
-            (cutoff,),
+            "SELECT steps FROM pipeline_runs WHERE "
+            f"{_utc_instant_predicate('started_at')}",
+            (candidate_bound, cutoff),
         ).fetchall()
 
     by_step: dict[str, list[float]] = {}
@@ -156,7 +177,7 @@ def _judge_rejection_rate_24h() -> dict[str, Any]:
     from . import error_signals as es
     from . import judge_log as jl
 
-    cutoff = _cutoff_iso(_WINDOW_24H)
+    candidate_bound, cutoff = _utc_instant_cutoff_bounds(_cutoff_iso(_WINDOW_24H))
     with jl._lock:
         conn = jl._get_conn()
         # auto-judge reject 判定走 error_signals SoT 原子謂詞 + judge_log degree_cap。
@@ -164,9 +185,10 @@ def _judge_rejection_rate_24h() -> dict[str, Any]:
             "SELECT COUNT(*) AS total, "
             f"       SUM(CASE WHEN {es.JUDGE_REJECTED_WHERE} THEN 1 ELSE 0 END) AS rejected "
             "FROM judge_log "
-            f"WHERE {es.JUDGE_AUTO_SOURCE_WHERE} AND created_at >= ? "
+            f"WHERE {es.JUDGE_AUTO_SOURCE_WHERE} AND "
+            f"{_utc_instant_predicate('created_at')} "
             f"  AND {jl.DEGREE_CAP_EXCLUSION_SQL}",
-            (cutoff,),
+            (candidate_bound, cutoff),
         ).fetchone()
     total = _cell(row, 0)
     rejected = _cell(row, 1)
@@ -197,16 +219,18 @@ def _translate_cache_hit_rate_24h() -> dict[str, Any]:
     """
     from . import translate_log as tl
 
-    cutoff = _cutoff_iso(_WINDOW_24H)
+    candidate_bound, cutoff = _utc_instant_cutoff_bounds(_cutoff_iso(_WINDOW_24H))
     with tl._lock:
         conn = tl._get_conn()
         misses_row = conn.execute(
-            "SELECT COUNT(*) FROM translate_log WHERE created_at >= ?",
-            (cutoff,),
+            "SELECT COUNT(*) FROM translate_log WHERE "
+            f"{_utc_instant_predicate('created_at')}",
+            (candidate_bound, cutoff),
         ).fetchone()
         hits_row = conn.execute(
-            "SELECT COUNT(*) FROM translate_cache_hits WHERE created_at >= ?",
-            (cutoff,),
+            "SELECT COUNT(*) FROM translate_cache_hits WHERE "
+            f"{_utc_instant_predicate('created_at')}",
+            (candidate_bound, cutoff),
         ).fetchone()
     misses = _cell(misses_row)
     hits = _cell(hits_row)
@@ -237,6 +261,7 @@ def _daily_token_spend_7d() -> dict[str, Any]:
     today_utc = _utcnow().date()
     cutoff_date = today_utc - timedelta(days=_SPEND_DAYS - 1)  # 7 buckets inclusive
     cutoff_iso = datetime.combine(cutoff_date, datetime.min.time(), tzinfo=UTC).isoformat()
+    candidate_bound, cutoff_iso = _utc_instant_cutoff_bounds(cutoff_iso)
 
     with tt._lock:
         conn = tt._get_conn()
@@ -245,10 +270,10 @@ def _daily_token_spend_7d() -> dict[str, Any]:
             "       SUM(input_tokens) AS ti, "
             "       SUM(output_tokens) AS to_ "
             "FROM token_usage "
-            "WHERE created_at >= ? "
+            f"WHERE {_utc_instant_predicate('created_at')} "
             "GROUP BY d "
             "ORDER BY d",
-            (cutoff_iso,),
+            (candidate_bound, cutoff_iso),
         ).fetchall()
 
     by_day: dict[str, dict[str, int]] = {}
