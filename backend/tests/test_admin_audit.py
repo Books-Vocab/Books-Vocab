@@ -22,13 +22,20 @@ def audit_db(tmp_path, monkeypatch):
 
 
 @pytest.fixture()
-def admin_app(admin_app_factory):
-    return admin_app_factory(
+def admin_app(admin_app_factory, request):
+    harness = admin_app_factory(
         users_seed={"_meta": {}, "u-target": {"id": "u-target", "email": "t@example.com"}},
         admin_token=ADMIN_TOKEN,
         admin_password=ADMIN_PASSWORD,
         reset_audit=True,
     )
+
+    def assert_client_closed():
+        assert harness.client.is_closed
+
+    request.addfinalizer(assert_client_closed)
+    request.addfinalizer(harness.client.close)
+    return harness
 
 
 # ── Unit: insert + retrieve ────────────────────────────────────────────────
