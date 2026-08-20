@@ -33,7 +33,7 @@ def _dependencies(app: FastAPI) -> AppMiddlewareDependencies:
     )
 
 
-def test_install_app_middlewares_returns_named_runtime_and_wires_headers():
+def test_install_app_middlewares_returns_named_runtime_and_wires_headers(monkeypatch):
     app = FastAPI()
 
     @app.get("/api/example")
@@ -51,20 +51,34 @@ def test_install_app_middlewares_returns_named_runtime_and_wires_headers():
     assert isinstance(runtime, AppMiddlewareRuntime)
     assert "/auth/web/google/callback" in runtime.rate_limit_exempt_prefixes
 
-    client = TestClient(app)
-    response = client.get(
-        "/api/example",
-        headers={"X-Request-ID": "req-123", "Origin": "https://example.com"},
-    )
+    close_calls = 0
+    original_close = TestClient.close
 
-    assert response.status_code == 200
-    assert response.headers["x-request-id"] == "req-123"
-    assert response.headers["x-content-type-options"] == "nosniff"
-    assert response.headers["x-frame-options"] == "DENY"
-    assert response.headers["referrer-policy"] == "strict-origin-when-cross-origin"
-    assert response.headers["permissions-policy"] == "camera=(), microphone=(), geolocation=()"
-    assert response.headers["access-control-allow-origin"] == "https://example.com"
-    assert captured_request_ids == ["req-123"]
+    def close_and_count(client: TestClient):
+        nonlocal close_calls
+        close_calls += 1
+        original_close(client)
+
+    monkeypatch.setattr(TestClient, "close", close_and_count)
+    client = TestClient(app)
+    try:
+        response = client.get(
+            "/api/example",
+            headers={"X-Request-ID": "req-123", "Origin": "https://example.com"},
+        )
+
+        assert response.status_code == 200
+        assert response.headers["x-request-id"] == "req-123"
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["x-frame-options"] == "DENY"
+        assert response.headers["referrer-policy"] == "strict-origin-when-cross-origin"
+        assert response.headers["permissions-policy"] == "camera=(), microphone=(), geolocation=()"
+        assert response.headers["access-control-allow-origin"] == "https://example.com"
+        assert captured_request_ids == ["req-123"]
+    finally:
+        client.close()
+
+    assert close_calls == 1
 
 
 def test_install_app_middlewares_from_dependencies_matches_compat_wrapper():
