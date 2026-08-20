@@ -9,7 +9,8 @@ Usage: ops/ci_confidence_verdict.sh --plan <json> --needs <json>
 
 The plan contains string booleans for backend, ops, and ios. The needs object
 is GitHub Actions' toJSON(needs) value. Selected suites must succeed; explicitly
-unselected suites must be skipped. Every other confidence dependency succeeds.
+unselected suites must be skipped. Every other confidence dependency, including
+unknown dependencies, must succeed.
 EOF
 }
 
@@ -56,6 +57,16 @@ printf '%s\n' "$needs" | jq -r 'to_entries[] | "\(.key)=\(.value.result // "miss
 
 if ! jq -e --argjson plan "$plan" '
   def result($name): .[$name].result // "missing";
+  def known($name): [
+    "changed-paths",
+    "repo-gate",
+    "llm-eval",
+    "design-system",
+    "ui-quality-gate",
+    "backend-quality",
+    "ops-suite",
+    "ios-quality"
+  ] | index($name) != null;
   result("changed-paths") == "success"
   and result("repo-gate") == "success"
   and result("llm-eval") == "success"
@@ -79,6 +90,7 @@ if ! jq -e --argjson plan "$plan" '
     else result("ios-quality") == "skipped"
     end
   )
+  and all(to_entries[]; known(.key) or .value.result == "success")
 ' <<<"$needs" >/dev/null; then
   printf 'confidence result does not match its declared fan-out\n' >&2
   exit 1
