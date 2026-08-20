@@ -1,0 +1,61 @@
+name: pr-readiness
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions: {}
+
+concurrency:
+  group: pr-readiness-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: validate PR readiness contract
+    if: ${{ github.event.pull_request.draft != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Checkout workflow contract
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - name: Validate PR body contract
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          fail() {
+            echo "::error::$1" >&2
+            exit 1
+          }
+
+          [[ -n "$BODY" ]] || fail "PR body is empty"
+          grep -Fq 'Base SHA:' <<<"$BODY" \
+            || fail "PR body is missing Base SHA"
+          grep -Fq 'Head SHA:' <<<"$BODY" \
+            || fail "PR body is missing Head SHA"
+          grep -Fq "$BASE_SHA" <<<"$BODY" \
+            || fail "PR body is missing the current base SHA"
+          grep -Fq "$HEAD_SHA" <<<"$BODY" \
+            || fail "PR body is missing the current head SHA"
+          grep -Fq 'Scope' <<<"$BODY" \
+            || fail "PR body is missing Scope"
+          grep -Fq 'Validation' <<<"$BODY" \
+            || fail "PR body is missing Validation"
+          grep -Fq 'kg.worktree.handback.v1' <<<"$BODY" \
+            || fail "PR body is missing the typed handback schema"
+          grep -Eq '(^|[^0-9A-Fa-f])[0-9A-Fa-f]{64}([^0-9A-Fa-f]|$)' <<<"$BODY" \
+            || fail "PR body is missing a 64-hex handback digest"
+
+          echo 'PR body contains the current SHA and handback contract fields.'
+          echo 'The workflow validates payload-visible evidence only; it does not recompute the local registry seal.'
