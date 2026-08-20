@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -77,6 +78,32 @@ class TestCmdCostOverview:
 
 
 class TestCmdFleetOverview:
+    def test_offset_aware_month_boundary_uses_utc_instants(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        monkeypatch.setattr(costs, "since_iso", lambda _: "2026-05-01T00:00:00+00:00")
+        (tmp_path / "users" / "u1").mkdir(parents=True)
+
+        conn = sqlite3.connect(str(tmp_path / "token_usage.db"))
+        conn.execute(
+            "CREATE TABLE token_usage (id INTEGER PRIMARY KEY, user_id TEXT, "
+            "call_type TEXT, input_tokens INTEGER, output_tokens INTEGER, created_at TEXT)"
+        )
+        conn.executemany(
+            "INSERT INTO token_usage (user_id, call_type, input_tokens, output_tokens, created_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [
+                ("u1", "translate", 100, 50, "2026-05-01T00:00:00+01:00"),
+                ("u1", "translate", 100, 50, "2026-05-01T00:30:00+00:00"),
+            ],
+        )
+        conn.commit()
+        conn.close()
+
+        costs.cmd_fleet_overview(_make_args())
+        payload = json.loads(capsys.readouterr().out)
+
+        assert payload["totals"]["month_calls"] == 1
+
     def test_empty_data_dir(self, tmp_path, monkeypatch, capsys):
         monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
         costs.cmd_fleet_overview(_make_args())

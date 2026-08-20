@@ -102,7 +102,7 @@ def cmd_fleet_overview(args: argparse.Namespace) -> None:
         sql = f"SELECT user_id, call_type, {pcol} AS provider, COUNT(*), SUM(input_tokens), SUM(output_tokens) FROM token_usage"
         params: list = []
         if since is not None:
-            sql += " WHERE created_at >= ?"
+            sql += " WHERE julianday(created_at) >= julianday(?)"
             params.append(since)
         sql += f" GROUP BY user_id, call_type, {pcol}"
         for uid, call_type, provider, cnt, t_in, t_out in conn.execute(sql, params):
