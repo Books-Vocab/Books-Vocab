@@ -175,3 +175,113 @@ def test_preflight_uses_active_declared_scope_for_rebase_collision_check(
     assert payload["scope_files"] == ["ios/issue_1033.py"]
     assert payload["incoming_main_files"] == ["ops/incoming_main.py"]
     assert payload["branch_files"] == ["ios/issue_1033.py"]
+
+
+def _handoff_fixture(tmp_path: Path) -> tuple[Path, Path, str, str]:
+    repo = tmp_path / "handoff-repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test User")
+    _commit(repo, "README.md", "base\n", "base")
+    base_sha = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-q", "-b", "worker")
+    _commit(repo, "ops/handoff_change.py", "change\n", "worker change")
+    tip_sha = _git(repo, "rev-parse", "HEAD")
+    handed_back_at = "2026-08-21T00:00:00Z"
+    record = {
+        "branch": "worker",
+        "path": str(repo),
+        "status": coordinator.registry.STATUS_ACTIVE,
+        "external_ids": ["USER-20260821-im-handback-package"],
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"path": "ops/handoff_change.py", "operation": "modify"}],
+        },
+        "base": base_sha,
+        "base_sha": base_sha,
+        "claim_generation": 0,
+        "handed_back_at": handed_back_at,
+        "handed_back_sha": tip_sha,
+    }
+    record["handback_claim_generation"] = 0
+    record["handback_seal"] = coordinator.registry._seal_with_digest(
+        coordinator.registry._seal_body(
+            record,
+            base_sha=base_sha,
+            tip_sha=tip_sha,
+            outcomes=[{"id": "USER-20260821-im-handback-package", "status": "passed"}],
+            handed_back_at=handed_back_at,
+        )
+    )
+    state_path = tmp_path / "worktree_registry.json"
+    coordinator.registry.save_state(state_path, {"schema": coordinator.registry.SCHEMA, "records": [record]})
+    gate_path = coordinator._gate_record_path(str(state_path), repo)
+    gate_path.parent.mkdir(parents=True, exist_ok=True)
+    gate_path.write_text(json.dumps({
+        "schema": coordinator.GATE_SCHEMA,
+        "worktree": str(repo),
+        "base": base_sha,
+        "files": ["ops/handoff_change.py"],
+        "verdict": "pass",
+        "head": tip_sha,
+        "results": [{"name": "git-diff-check", "status": "pass", "rc": 0}],
+    }), encoding="utf-8")
+    return repo, state_path, base_sha, tip_sha
+
+
+def test_handoff_package_emits_exact_im_payload(tmp_path: Path, capsys: object) -> None:
+    repo, state_path, base_sha, tip_sha = _handoff_fixture(tmp_path)
+
+    rc = coordinator.main([
+        "handoff", "--state", str(state_path), "--worktree", str(repo),
+        "--incoming-main", base_sha, "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == coordinator.EXIT_OK
+    assert payload["schema"] == "kg.worktree.handoff.v1"
+    assert payload["status"] == "ready-for-im"
+    assert payload["base_sha"] == base_sha
+    assert payload["tip_sha"] == tip_sha
+    assert payload["observed_main_sha"] == base_sha
+    assert payload["scope"] == ["ops/handoff_change.py"]
+    assert payload["handback_seal"]["tip_sha"] == tip_sha
+    assert payload["validation"]["gate"]["verdict"] == "pass"
+
+
+def test_handoff_package_blocks_when_main_advanced(tmp_path: Path, capsys: object) -> None:
+    repo, state_path, base_sha, _ = _handoff_fixture(tmp_path)
+    _git(repo, "checkout", "-q", "-b", "incoming-main", base_sha)
+    _commit(repo, "main_only.py", "advanced\n", "advance main")
+    incoming_sha = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-q", "worker")
+
+    rc = coordinator.main([
+        "handoff", "--state", str(state_path), "--worktree", str(repo),
+        "--incoming-main", incoming_sha, "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == coordinator.EXIT_BLOCK
+    assert payload["status"] == "blocked"
+    assert payload["observed_main_sha"] == incoming_sha
+    assert "does not equal hand-back base" in payload["reason"]
+
+
+def test_handoff_package_blocks_when_gate_base_is_stale(tmp_path: Path, capsys: object) -> None:
+    repo, state_path, base_sha, _ = _handoff_fixture(tmp_path)
+    gate_path = coordinator._gate_record_path(str(state_path), repo)
+    gate = json.loads(gate_path.read_text(encoding="utf-8"))
+    gate["base"] = "stale-base"
+    gate_path.write_text(json.dumps(gate), encoding="utf-8")
+
+    rc = coordinator.main([
+        "handoff", "--state", str(state_path), "--worktree", str(repo),
+        "--incoming-main", base_sha, "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == coordinator.EXIT_BLOCK
+    assert payload["status"] == "blocked"
+    assert payload["reason"] == "local gate base does not equal hand-back base"
