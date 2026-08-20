@@ -68,9 +68,28 @@ def isolated_api(tmp_path):
             data_dir=data_dir,
         )
     finally:
+        client.close()
         app.state.kg_settings = original_settings
         app.state.load_users = original_load
         app.state.save_users = original_save
+
+
+def test_isolated_api_closes_owned_client(tmp_path, monkeypatch):
+    """The fixture must close the TestClient it creates before teardown."""
+    close_calls = 0
+    original_close = TestClient.close
+
+    def tracked_close(client):
+        nonlocal close_calls
+        close_calls += 1
+        return original_close(client)
+
+    monkeypatch.setattr(TestClient, "close", tracked_close)
+    fixture_generator = isolated_api.__wrapped__(tmp_path)
+    next(fixture_generator)
+    fixture_generator.close()
+
+    assert close_calls == 1
 
 
 # ---------------------------------------------------------------------------
