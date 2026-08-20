@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 
 import pytest
@@ -169,3 +170,50 @@ class TestGraphStoreLocking:
         store.add_link("a", "b_new", LinkKind.SHARES_USAGE, 0.8, "rn")
         assert len(snapshot) == before
         assert len(list(store.all_links())) == before + 1
+
+    def test_stale_link_snapshot_cannot_erase_newer_flush(
+        self, store, monkeypatch
+    ):
+        """A delayed older flush must not overwrite a newer durable snapshot."""
+        original_flush = store._flush_links
+        first_flush_started = threading.Event()
+        allow_first_flush = threading.Event()
+        errors: list[Exception] = []
+
+        def controlled_flush(snapshot):
+            if len(snapshot) == 1:
+                first_flush_started.set()
+                if not allow_first_flush.wait(timeout=5):
+                    raise TimeoutError("timed out waiting to release first flush")
+            original_flush(snapshot)
+
+        monkeypatch.setattr(store, "_flush_links", controlled_flush)
+
+        def add_link(from_id: str, to_id: str):
+            try:
+                store.add_link(from_id, to_id, LinkKind.CONTRASTS_WITH, 0.9, "race")
+            except Exception as exc:  # pragma: no cover - assertion below reports it
+                errors.append(exc)
+
+        first = threading.Thread(target=add_link, args=("a", "b"))
+        second = threading.Thread(target=add_link, args=("c", "d"))
+        first.start()
+        assert first_flush_started.wait(timeout=5)
+        second.start()
+        second.join(timeout=10)
+        allow_first_flush.set()
+        first.join(timeout=10)
+
+        assert not errors, f"Worker errors: {errors}"
+        assert not first.is_alive() and not second.is_alive()
+        assert len(store._links) == 2
+
+        durable = json.loads(store.links_path.read_text())
+        reloaded = GraphStore(
+            links_path=store.links_path,
+            candidates_path=store.candidates_path,
+            blocked_path=store.blocked_path,
+        )
+        expected_ids = set(store._links)
+        assert {row["id"] for row in durable} == expected_ids
+        assert {link.id for link in reloaded.all_links()} == expected_ids

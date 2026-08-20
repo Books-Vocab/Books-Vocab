@@ -51,6 +51,14 @@ from .models import CandidatePair, GraphLink
 logger = logging.getLogger(__name__)
 
 
+class _LinkSnapshot(list[dict]):
+    """Serializable link snapshot carrying its in-memory mutation order."""
+
+    def __init__(self, rows: list[dict], sequence: int) -> None:
+        super().__init__(rows)
+        self.sequence = sequence
+
+
 class _PersistenceMixin:
     """Atomic write + snapshot + flush helpers for :class:`GraphStore`."""
 
@@ -67,6 +75,8 @@ class _PersistenceMixin:
     _known_blocked_pairs: set[tuple[str, str]]
     _known_pending_judge: set[str]
     _known_candidate_pairs: set[tuple[str, str]]
+    _links_snapshot_sequence: int
+    _last_flushed_links_snapshot_sequence: int
     _links_write_lock: threading.Lock
     _candidates_write_lock: threading.Lock
     _blocked_write_lock: threading.Lock
@@ -119,7 +129,11 @@ class _PersistenceMixin:
 
     # Snapshot helpers -- call inside lock, return serialisable data
     def _links_to_serializable(self) -> list[dict]:
-        return [lk.model_dump(mode="json") for lk in self._links.values()]
+        sequence = getattr(self, "_links_snapshot_sequence", 0) + 1
+        self._links_snapshot_sequence = sequence
+        return _LinkSnapshot(
+            [lk.model_dump(mode="json") for lk in self._links.values()], sequence
+        )
 
     def _candidates_to_serializable(self) -> list[dict]:
         return [c.model_dump(mode="json") for c in self._candidates]
@@ -145,6 +159,11 @@ class _PersistenceMixin:
         instance manages -- including ones it deleted -- follow the snapshot.
         """
         with self._links_write_lock, path_write_lock(self.links_path):
+            sequence = getattr(snapshot, "sequence", None)
+            if sequence is not None and sequence < getattr(
+                self, "_last_flushed_links_snapshot_sequence", 0
+            ):
+                return
             snapshot_ids = {row["id"] for row in snapshot}
             merged = list(snapshot)
             for row in self._read_json_list(self.links_path):
@@ -159,6 +178,8 @@ class _PersistenceMixin:
                 # (whose snapshot lacks it) would treat it as a deletion.
                 merged.append(row)
             self._atomic_json_write(self.links_path, merged)
+            if sequence is not None:
+                self._last_flushed_links_snapshot_sequence = sequence
 
     def _flush_blocked(self, snapshot: list[list[str]]) -> None:
         """Persist blocked pairs, merging with the current on-disk file.
