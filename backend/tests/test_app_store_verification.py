@@ -116,22 +116,40 @@ def signed_app_store_env(tmp_path, monkeypatch):
     )
     _swap_settings(test_settings)
 
+    lifecycle = {"constructed": 0, "entered": 0, "exited": 0}
+
+    class TrackingTestClient(TestClient):
+        def __init__(self, *args, **kwargs):
+            lifecycle["constructed"] += 1
+            super().__init__(*args, **kwargs)
+
+        def __enter__(self):
+            lifecycle["entered"] += 1
+            return super().__enter__()
+
+        def __exit__(self, *args):
+            lifecycle["exited"] += 1
+            return super().__exit__(*args)
+
     try:
         api_mod._USER_LOCKS.clear()
         deps_mod._USER_LOCKS_MUTEX = None
-        client = TestClient(app, raise_server_exceptions=False)
-        yield SimpleNamespace(
-            client=client,
-            user_id=user_id,
-            headers=headers,
-            data_dir=data_dir,
-            users_file=users_file,
-            chain=chain,
-        )
+        with TrackingTestClient(app, raise_server_exceptions=False) as client:
+            yield SimpleNamespace(
+                client=client,
+                user_id=user_id,
+                headers=headers,
+                data_dir=data_dir,
+                users_file=users_file,
+                chain=chain,
+            )
     finally:
-        app.state.kg_settings = original_settings
-        app.state.load_users = original_load
-        app.state.save_users = original_save
+        try:
+            assert lifecycle == {"constructed": 1, "entered": 1, "exited": 1}
+        finally:
+            app.state.kg_settings = original_settings
+            app.state.load_users = original_load
+            app.state.save_users = original_save
 
 
 def _transaction_payload(
