@@ -40,10 +40,19 @@ jobs:
           }
 
           [[ -n "$BODY" ]] || fail "PR body is empty"
-          grep -Fq 'Base SHA:' <<<"$BODY" \
-            || fail "PR body is missing Base SHA"
-          grep -Fq 'Head SHA:' <<<"$BODY" \
-            || fail "PR body is missing Head SHA"
+
+          has_field() {
+            local field="$1"
+            grep -Eq "(^|[^[:alnum:]_])${field}[[:space:]]*['\"]?[[:space:]]*:" <<<"$BODY"
+          }
+
+          if has_field 'Base SHA' && has_field 'Head SHA'; then
+            echo 'PR body uses display SHA labels.'
+          elif has_field 'base_sha' && has_field 'tip_sha'; then
+            echo 'PR body uses canonical handback SHA keys.'
+          else
+            fail "PR body is missing Base SHA/Head SHA or base_sha/tip_sha"
+          fi
           grep -Fq "$BASE_SHA" <<<"$BODY" \
             || fail "PR body is missing the current base SHA"
           grep -Fq "$HEAD_SHA" <<<"$BODY" \

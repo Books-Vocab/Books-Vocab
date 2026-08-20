@@ -32,9 +32,29 @@ for required in BODY BASE_SHA HEAD_SHA; do
     || fail "workflow must pass ${required} through the environment"
 done
 
-for required in 'Base SHA:' 'Head SHA:' 'Scope' 'Validation' 'kg.worktree.handback.v1'; do
+for required in 'Scope' 'Validation' 'kg.worktree.handback.v1'; do
   grep -Fq "$required" "$WORKFLOW" \
     || fail "workflow does not validate $required"
+done
+
+grep -Fq "if has_field 'Base SHA' && has_field 'Head SHA'; then" "$WORKFLOW" \
+  || fail "workflow does not validate the legacy SHA label pair"
+grep -Fq "elif has_field 'base_sha' && has_field 'tip_sha'; then" "$WORKFLOW" \
+  || fail "workflow does not validate the canonical SHA key pair"
+grep -Fq 'Base SHA/Head SHA or base_sha/tip_sha' "$WORKFLOW" \
+  || fail "workflow does not fail closed when neither SHA pair is present"
+
+canonical_body='{"base_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "tip_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}'
+legacy_body='Base SHA: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+Head SHA: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+
+for field in base_sha tip_sha; do
+  grep -Eq "(^|[^[:alnum:]_])${field}[[:space:]]*['\"]?[[:space:]]*:" <<<"$canonical_body" \
+    || fail "canonical regression does not recognize $field"
+done
+for field in 'Base SHA' 'Head SHA'; do
+  grep -Eq "(^|[^[:alnum:]_])${field}[[:space:]]*['\"]?[[:space:]]*:" <<<"$legacy_body" \
+    || fail "legacy regression does not recognize $field"
 done
 
 grep -Eq '\[0-9A-Fa-f\]\{64\}' "$WORKFLOW" \
