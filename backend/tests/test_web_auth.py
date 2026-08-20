@@ -40,8 +40,8 @@ def web_auth_env(tmp_path):
     try:
         api_mod._USER_LOCKS.clear()
         deps_mod._USER_LOCKS_MUTEX = None
-        client = TestClient(app, base_url="https://testserver", raise_server_exceptions=False)
-        yield SimpleNamespace(client=client, data_dir=data_dir)
+        with TestClient(app, base_url="https://testserver", raise_server_exceptions=False) as client:
+            yield SimpleNamespace(client=client, data_dir=data_dir)
     finally:
         app.state.kg_settings = original_settings
         app.state.load_users = original_load
