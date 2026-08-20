@@ -117,6 +117,14 @@ struct ReviewCardFrontMeasurementTests {
         #expect(first != next)
     }
 
+    @Test func same_height_section_identity_invalidates_geometry_measurement() {
+        let first = ReviewCardSectionMeasurement(height: 40, cardKey: "first-card")
+        let next = ReviewCardSectionMeasurement(height: 40, cardKey: "next-card")
+
+        #expect(first.height == next.height)
+        #expect(first != next)
+    }
+
     @Test func a_previous_card_height_cannot_shrink_the_next_card_back_budget() {
         let viewport = ReviewCardViewport(containerHeight: 600)
         let occupied = ReviewCardViewport.frontOccupiedHeight(
