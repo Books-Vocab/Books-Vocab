@@ -87,13 +87,27 @@ def user_env(tmp_path):
     )
     _swap_settings(test_settings)
 
+    client = None
     try:
         client = TestClient(app, raise_server_exceptions=False)
         yield client, user_id, headers, tmp_path
     finally:
+        if client is not None:
+            client.close()
         app.state.kg_settings = original_settings
         app.state.load_users = original_load
         app.state.save_users = original_save
+
+
+@pytest.fixture()
+def card_store(tmp_path):
+    from kg.cards import CardStore
+
+    store = CardStore(tmp_path / "cards.db")
+    try:
+        yield store
+    finally:
+        store.close()
 
 
 # ============================================================================
@@ -365,35 +379,27 @@ class TestBatchA_NoPrintInModules:
 
 class TestBatchC_CardStoreCount:
 
-    def test_count_empty(self, tmp_path):
-        from kg.cards import CardStore
-        assert CardStore(tmp_path / "cards.db").count() == 0
+    def test_count_empty(self, card_store):
+        assert card_store.count() == 0
 
-    def test_count_correct(self, tmp_path):
-        from kg.cards import CardStore
-        s = CardStore(tmp_path / "cards.db")
-        s.add("apple", "蘋果")
-        s.add("banana", "香蕉")
-        assert s.count() == 2
+    def test_count_correct(self, card_store):
+        card_store.add("apple", "蘋果")
+        card_store.add("banana", "香蕉")
+        assert card_store.count() == 2
 
-    def test_count_excludes_soft_deleted(self, tmp_path):
-        from kg.cards import CardStore
-        s = CardStore(tmp_path / "cards.db")
-        c = s.add("apple", "蘋果")
-        s.add("banana", "香蕉")
-        s.delete(c.id)
-        assert s.count() == 1
+    def test_count_excludes_soft_deleted(self, card_store):
+        c = card_store.add("apple", "蘋果")
+        card_store.add("banana", "香蕉")
+        card_store.delete(c.id)
+        assert card_store.count() == 1
 
-    def test_count_does_not_load_rows_into_memory(self, tmp_path):
+    def test_count_does_not_load_rows_into_memory(self, card_store):
         """count() must use COUNT(*), not len(all()). Verify by patching session.exec
         to detect whether full rows are fetched."""
         from sqlmodel import Session
 
-        from kg.cards import CardStore
-
-        s = CardStore(tmp_path / "cards.db")
-        s.add("w1", "m1")
-        s.add("w2", "m2")
+        card_store.add("w1", "m1")
+        card_store.add("w2", "m2")
 
         original_exec = Session.exec
 
@@ -414,7 +420,7 @@ class TestBatchC_CardStoreCount:
             return original_scalar(self, statement, *args, **kwargs)
 
         with patch.object(SM, "scalar", patched_scalar):
-            count = s.count()
+            count = card_store.count()
 
         assert count == 2
         assert scalar_called, "count() must call session.scalar() (COUNT(*)), not exec().all()"
@@ -426,13 +432,11 @@ class TestBatchC_CardStoreCount:
 
 class TestBatchC_EmbeddingBackfill:
 
-    def test_backfill_detects_cards_without_embedding(self, tmp_path):
+    def test_backfill_detects_cards_without_embedding(self, tmp_path, card_store):
         """Cards added to DB but with no embedding must be found by backfill logic."""
-        from kg.cards import CardStore
         from kg.embeddings import EmbeddingStore
 
-        store = CardStore(tmp_path / "cards.db")
-        card = store.add("orphan", "孤立")
+        card = card_store.add("orphan", "孤立")
 
         # _embed() calls self.llm.embed(...), not .embeddings.create. dim must
         # match the store's configured dim or the guard will raise.
@@ -447,17 +451,15 @@ class TestBatchC_EmbeddingBackfill:
             dim=768,
         )
 
-        missing = [c for c in store.all() if not emb.has(c.id)]
+        missing = [c for c in card_store.all() if not emb.has(c.id)]
         assert len(missing) == 1 and missing[0].id == card.id
         assert not mock_client.embed.called, "Detect-only path must not invoke the embedding API"
 
-    def test_backfill_adds_embedding(self, tmp_path):
+    def test_backfill_adds_embedding(self, tmp_path, card_store):
         """After running backfill logic, card should have embedding."""
-        from kg.cards import CardStore
         from kg.embeddings import EmbeddingStore
 
-        store = CardStore(tmp_path / "cards.db")
-        card = store.add("orphan", "孤立")
+        card = card_store.add("orphan", "孤立")
 
         mock_client = MagicMock()
         mock_client.embed.return_value = MagicMock(
@@ -470,20 +472,18 @@ class TestBatchC_EmbeddingBackfill:
             dim=768,
         )
 
-        for c in store.all():
+        for c in card_store.all():
             if not emb.has(c.id):
                 emb.add(c.id, c.embed_text())
 
         assert emb.has(card.id), "Embedding must exist after backfill"
         assert mock_client.embed.called, "Backfill must actually invoke the embedding API"
 
-    def test_backfill_skips_cards_with_existing_embedding(self, tmp_path):
+    def test_backfill_skips_cards_with_existing_embedding(self, tmp_path, card_store):
         """Cards that already have embeddings must not be re-embedded."""
-        from kg.cards import CardStore
         from kg.embeddings import EmbeddingStore
 
-        store = CardStore(tmp_path / "cards.db")
-        card = store.add("known", "已知")
+        card = card_store.add("known", "已知")
 
         call_count = {"n": 0}
         mock_client = MagicMock()
@@ -510,7 +510,7 @@ class TestBatchC_EmbeddingBackfill:
         assert first_count == 1, "First add must call embedding API exactly once"
 
         # Backfill — should skip this card
-        for c in store.all():
+        for c in card_store.all():
             if not emb.has(c.id):
                 emb.add(c.id, c.embed_text())
 
@@ -587,21 +587,18 @@ class TestBatchD_UserLockAtomic:
 
 class TestBatchE_VocabConcurrentWrite:
 
-    def test_concurrent_cardstore_no_data_loss(self, tmp_path):
+    def test_concurrent_cardstore_no_data_loss(self, card_store):
         """10 concurrent CardStore.add() threads must not lose any write (SQLite WAL safety).
 
         Uses a shared engine (single CardStore instance) so threads share the SQLAlchemy
         connection pool — each add() creates its own Session, which is the thread-safe pattern.
         """
-        from kg.cards import CardStore
-
-        store = CardStore(tmp_path / "cards.db")
         words = [f"word{i:02d}" for i in range(10)]
         errors = []
 
         def add_word(word):
             try:
-                store.add(word, f"詞{word}")
+                card_store.add(word, f"詞{word}")
             except Exception as e:
                 errors.append(f"{word}: {e}")
 
@@ -612,5 +609,5 @@ class TestBatchE_VocabConcurrentWrite:
             t.join()
 
         assert not errors, f"Write errors: {errors}"
-        found = {c.content for c in store.all()}
+        found = {c.content for c in card_store.all()}
         assert found == set(words), f"Missing words: {set(words) - found}"
