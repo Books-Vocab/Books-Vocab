@@ -110,7 +110,7 @@ def query_cost_rows(
         where.append("user_id = ?")
         params.append(user_id)
     if since is not None:
-        where.append("created_at >= ?")
+        where.append("julianday(created_at) >= julianday(?)")
         params.append(since)
     if where:
         sql += " WHERE " + " AND ".join(where)
