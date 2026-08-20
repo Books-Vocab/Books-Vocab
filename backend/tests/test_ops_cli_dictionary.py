@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import closing
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 from ops_helpers import run_ops_cli as _run_cli
@@ -77,3 +77,34 @@ def test_dictionary_health_handles_missing_cache_and_removed_card_command(tmp_pa
     removed = _run_cli(str(tmp_path), "dictionary-cards", "--json")
     assert removed.returncode != 0
     assert "invalid choice" in removed.stderr
+
+
+def test_dictionary_health_filters_lookup_events_by_utc_instant(tmp_path):
+    from kg.lexical import LexicalCache
+
+    path = tmp_path / "lexical_cache.db"
+    LexicalCache(path)
+    now = datetime.now(UTC).replace(microsecond=0)
+    cutoff = now - timedelta(hours=24)
+    before_cutoff = (cutoff - timedelta(minutes=30)).astimezone(
+        timezone(timedelta(hours=1))
+    )
+    after_cutoff = cutoff + timedelta(minutes=30)
+
+    with closing(sqlite3.connect(path)) as conn, conn:
+        conn.executemany(
+            "INSERT INTO lexical_lookup_event("
+            "provider, operation, outcome, duration_ms, created_at"
+            ") VALUES (?, ?, ?, ?, ?)",
+            [
+                ("free_dictionary", "search", "fresh", 5, before_cutoff.isoformat()),
+                ("free_dictionary", "search", "miss", 7, after_cutoff.isoformat()),
+            ],
+        )
+
+    result = _run_cli(str(tmp_path), "dictionary-health", "--window", "24", "--json")
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+
+    assert payload["lookups"]["total"] == 1
+    assert payload["lookups"]["by_outcome"] == {"miss": 1}
