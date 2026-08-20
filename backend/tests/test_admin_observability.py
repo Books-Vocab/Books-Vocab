@@ -3,15 +3,37 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock
 
 import pytest
 
 ADMIN_TOKEN = "test-admin-token-observability"
+EXPECTED_ADMIN_APP_CLIENTS = 17
+admin_app_constructed = 0
+admin_app_explicit_close = 0
+
+
+@pytest.fixture(scope="module", autouse=True)
+def assert_admin_app_client_lifecycle():
+    yield
+    assert admin_app_constructed == EXPECTED_ADMIN_APP_CLIENTS
+    assert admin_app_explicit_close == EXPECTED_ADMIN_APP_CLIENTS
 
 
 @pytest.fixture()
 def admin_app(admin_app_factory):
-    return admin_app_factory(admin_token=ADMIN_TOKEN, setup_log_dbs=True)
+    global admin_app_constructed, admin_app_explicit_close
+
+    harness = admin_app_factory(admin_token=ADMIN_TOKEN, setup_log_dbs=True)
+    admin_app_constructed += 1
+    client_close = MagicMock(wraps=harness.client.close)
+    harness.client.close = client_close
+    try:
+        yield harness
+    finally:
+        harness.client.close()
+        client_close.assert_called_once_with()
+        admin_app_explicit_close += 1
 
 
 # ── auth boundary ─────────────────────────────────────────────────────────
