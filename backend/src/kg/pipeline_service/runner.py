@@ -118,6 +118,7 @@ async def run_pipeline_background(
     link_kind_enum: Any,
     force_enrich: bool = False,
     notebook_id: str = "default",
+    run_id: str | None = None,
 ) -> None:
     uid = user["id"]
     lock = await get_user_lock_fn(uid)
@@ -137,7 +138,7 @@ async def run_pipeline_background(
         _PIPELINE_RUNNING[uid] = _PIPELINE_RUNNING.get(uid, 0) + 1
     try:
         async with lock:
-            run_id = uuid.uuid4().hex[:12]
+            run_id = run_id or uuid.uuid4().hex[:12]
             trigger = "manual" if force_enrich else "background"
             _telemetry(logger, "start_run", run_id, uid, notebook_id, trigger)
             try:

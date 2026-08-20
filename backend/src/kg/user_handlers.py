@@ -241,6 +241,7 @@ def delete_user_account_response(
     logger: Logger,
     library_bucket: str | None = None,
     library_s3_client: ObjectStorageClient | None = None,
+    purge_external_api_keys: Callable[[UsersPayload, list[str]], None] | None = None,
 ) -> DeleteAccountResponse:
     now_iso = datetime.now(tz=UTC).isoformat()
     user_id = user["id"]
@@ -281,6 +282,9 @@ def delete_user_account_response(
 
         for uid in ids_to_delete:
             users.pop(uid, None)
+
+        if purge_external_api_keys is not None:
+            purge_external_api_keys(users, ids_to_delete)
 
         save_users(users)
 

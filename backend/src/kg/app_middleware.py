@@ -68,7 +68,7 @@ def install_app_middlewares_from_dependencies(
         CORSMiddleware,
         allow_origins=list(cors_origins),
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+        allow_headers=["Authorization", "Content-Type", "X-KG-API-Key", "X-Request-ID"],
     )
 
     @app.middleware("http")

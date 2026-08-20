@@ -18,6 +18,7 @@ from .routers import (
     auth_router,
     billing_router,
     dictionary_router,
+    external_api_router,
     library_router,
     notebook_router,
     pipeline_router,
@@ -63,6 +64,7 @@ def build_domain_routers() -> tuple[APIRouter, ...]:
     return (
         system_router,
         static_pages_router,
+        external_api_router,
         user_router,
         billing_router,
         dictionary_router,

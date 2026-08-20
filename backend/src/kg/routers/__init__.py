@@ -2,6 +2,7 @@ from .admin import build_admin_router, build_admin_routers
 from .auth import router as auth_router
 from .billing import router as billing_router
 from .dictionary import router as dictionary_router
+from .external_api import router as external_api_router
 from .library import router as library_router
 from .notebook import router as notebook_router
 from .pipeline import router as pipeline_router
@@ -20,6 +21,7 @@ __all__ = [
     "auth_router",
     "billing_router",
     "dictionary_router",
+    "external_api_router",
     "library_router",
     "notebook_router",
     "pipeline_router",
