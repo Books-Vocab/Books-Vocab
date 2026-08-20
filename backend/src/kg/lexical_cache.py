@@ -165,7 +165,9 @@ class LexicalCache:
                     (provider, operation, outcome, int(duration_ms), now.isoformat()),
                 )
                 conn.execute(
-                    "DELETE FROM lexical_lookup_event WHERE created_at < ?", (cutoff,)
+                    "DELETE FROM lexical_lookup_event "
+                    "WHERE datetime(created_at) < datetime(?)",
+                    (cutoff,),
                 )
         except sqlite3.Error:
             logger.warning("Dictionary lookup telemetry write failed", exc_info=True)
