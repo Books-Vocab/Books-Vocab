@@ -131,7 +131,7 @@ def lookup(
     with _lock:
         conn = _get_conn()
         row = conn.execute(
-            "SELECT response_raw FROM translate_log WHERE word=? AND context_hash=? AND source_lang=? AND target_lang=? AND operation=? AND model=? AND created_at>? ORDER BY id DESC LIMIT 1",
+            "SELECT response_raw FROM translate_log WHERE word=? AND context_hash=? AND source_lang=? AND target_lang=? AND operation=? AND model=? AND julianday(created_at)>julianday(?) ORDER BY id DESC LIMIT 1",
             (word, context_hash, source_lang, target_lang, operation, model, cutoff),
         ).fetchone()
     return row[0] if row else None

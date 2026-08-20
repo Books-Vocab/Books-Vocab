@@ -161,6 +161,40 @@ def test_ttl_env_override_extends_cache(tmp_path, monkeypatch):
     _reset()
 
 
+def test_ttl_fixed_offset_before_utc_cutoff_is_miss(tmp_path, monkeypatch):
+    """A fixed-offset timestamp before the UTC cutoff must not be cached."""
+    from datetime import UTC, datetime, timedelta, timezone
+
+    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TRANSLATE_CACHE_TTL_DAYS", "1")
+    _reset()
+
+    record(
+        user_id="u1", operation="translate_quick", word="offset-old",
+        context="ctx", context_hash="h",
+        source_lang="en", target_lang="zh-Hant",
+        response_raw='{"t":"舊"}', latency_ms=100,
+    )
+
+    cutoff = datetime.now(UTC) - timedelta(days=1)
+    created_at = (cutoff - timedelta(minutes=30)).astimezone(
+        timezone(timedelta(hours=1))
+    ).isoformat()
+    assert created_at > cutoff.isoformat()
+
+    from kg.translate_log import _get_conn, _lock
+    with _lock:
+        conn = _get_conn()
+        conn.execute(
+            "UPDATE translate_log SET created_at=? WHERE word=?",
+            (created_at, "offset-old"),
+        )
+        conn.commit()
+
+    assert lookup("offset-old", "h", "en", "zh-Hant", "translate_quick") is None
+    _reset()
+
+
 def test_ttl_boundary_inside_window(tmp_path, monkeypatch):
     """Entry aged TTL-1 days → hit. (boundary inside)"""
     monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
