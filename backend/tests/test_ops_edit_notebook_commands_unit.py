@@ -74,6 +74,46 @@ class TestNotebookCreate:
         err = capsys.readouterr().err
         assert "已存在" in err or "exists" in err.lower()
 
+    def test_duplicate_warning_closes_notebook_stores(self, tmp_path, monkeypatch, capsys):
+        _setup_user(tmp_path)
+        store = NotebookStore(tmp_path / "users" / "u1" / "notebooks.db")
+        try:
+            store.create(name="TestNB")
+        finally:
+            store.close()
+        closed = []
+        original_close = NotebookStore.close
+
+        def close_and_record(self):
+            closed.append(self)
+            original_close(self)
+
+        monkeypatch.setattr(NotebookStore, "close", close_and_record)
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+        rc = nb_cmd.cmd_notebook_create(_make_args(name="TestNB", commit=True))
+        assert rc == 0
+        capsys.readouterr()
+        assert len(closed) == 2  # apply and verify
+
+    def test_apply_error_closes_notebook_store(self, tmp_path, monkeypatch):
+        _setup_user(tmp_path)
+        monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+
+        class FailingStore:
+            closed = False
+
+            def all(self):
+                raise RuntimeError("injected notebook read failure")
+
+            def close(self):
+                self.closed = True
+
+        store = FailingStore()
+        monkeypatch.setattr(nb_cmd, "_notebook_store", lambda _user_dir: store)
+        rc = nb_cmd.cmd_notebook_create(_make_args(name="TestNB", commit=True))
+        assert rc == 1
+        assert store.closed
+
 
 # ── cmd_notebook_update ──────────────────────────────────────────────────
 
