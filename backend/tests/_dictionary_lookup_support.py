@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from contextlib import closing
 import sqlite3
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -50,18 +51,20 @@ def _provider_payload(word: str = "invoke") -> dict:
 def _lexical_entry(word: str = "invoke"):
     from kg.lexical import FreeDictionaryProvider
 
-    provider = FreeDictionaryProvider(
-        client=httpx.Client(
-            transport=httpx.MockTransport(
-                lambda _request: httpx.Response(200, json=_provider_payload(word))
-            )
+    client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, json=_provider_payload(word))
         )
     )
-    return provider.search(word, source_language="en", target_language="zh-Hant")
+    try:
+        provider = FreeDictionaryProvider(client=client)
+        return provider.search(word, source_language="en", target_language="zh-Hant")
+    finally:
+        client.close()
 
 
 def _lookup_events(cache_path):
-    with sqlite3.connect(cache_path) as conn:
+    with closing(sqlite3.connect(cache_path)) as conn:
         return [
             {
                 "provider": row[0],
