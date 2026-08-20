@@ -1483,6 +1483,15 @@ rc=0; out="$(bash -c "source '$fx_norecon/ops/release.sh'; set +e; echo backend/
 [[ $rc -ne 0 ]] && ok "kg_reconcile.sh 不存在 → err，不靜默降級成「不用等」" \
                 || fail_t "reconciler 缺席卻靜默回答（rc=${rc}）：$out"
 
+# ── release simulator artifact retention ───────────────────────────────────
+section "iOS release artifact catalog"
+if uv run --no-project --python 3.13 --with pytest pytest -q \
+  ops/tests/test_ios_release_artifacts.py; then
+  ok "release simulator artifact catalog tests"
+else
+  fail_t "release simulator artifact catalog tests"
+fi
+
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"

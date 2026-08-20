@@ -18,6 +18,8 @@ CATALOG_ACTIVE_KEEPER_PID=""
 CATALOG_ACTIVE_LEASE_DIR=""
 CATALOG_ACTIVE_SESSION_MAX_SECONDS=""
 CATALOG_RELEASE_JSON=""
+CATALOG_ACTIVE_APP_SOURCE=""
+CATALOG_ACTIVE_APP_BUNDLE=""
 
 catalog_start_keeper() {
   local session="$1" lifetime_seconds="$2"
@@ -134,8 +136,9 @@ Usage:
 Catalog is an agent-only, on-demand UI workbench. It launches a disposable
 iOS Simulator with an explicit UI World and captures the real Simulator window.
 Capture output is temporary by default and expires; --retain is an explicit
-promotion into build/ios-report/retained/. Release artifact generation remains
-outside Catalog.
+promotion into build/ios-report/retained/. When the current HEAD matches one of
+the retained release simulator .app records, Catalog reuses that .app and skips
+the build; Catalog never creates or promotes release artifacts itself.
 EOF
 }
 
@@ -161,12 +164,31 @@ catalog_resolve_dataset() {
 
 catalog_shared_derived_data_root() {
   local common_dir
+  if [[ -n "${KG_IOS_BUILD_DERIVED_DATA_ROOT:-}" ]]; then
+    printf '%s\n' "$KG_IOS_BUILD_DERIVED_DATA_ROOT"
+    return 0
+  fi
   common_dir="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
   if [[ -n "$common_dir" && -d "$common_dir" ]]; then
     printf '%s/.cache/ios-build-derived-data\n' "$(dirname "$common_dir")"
   else
     printf '%s/.cache/ios-build-derived-data\n' "$ROOT"
   fi
+}
+
+catalog_release_artifact_tool() {
+  printf '%s/ops/ios_release_artifacts.py\n' "$ROOT"
+}
+
+catalog_resolve_retained_app() {
+  local head="$1" tool payload app
+  tool="$(catalog_release_artifact_tool)"
+  [[ -f "$tool" ]] || return 1
+  payload="$(uv run --python 3.13 python "$tool" --json resolve --commit "$head" 2>/dev/null)" || return 1
+  [[ "$(jq -r '.status // "miss"' <<<"$payload")" == "hit" ]] || return 1
+  app="$(jq -r '.appPath // empty' <<<"$payload")"
+  [[ -n "$app" && -d "$app" ]] || return 1
+  printf '%s\n' "$app"
 }
 
 catalog_emit() {
@@ -179,6 +201,7 @@ catalog_emit() {
     "[ios][catalog] status=\(.status) action=\(.action) session=\(.session // \"\")",
     (if .device then "[ios][catalog] device=\(.device.udid) name=\(.device.name)" else empty end),
     (if .scenario then "[ios][catalog] scenario=\(.scenario)" else empty end),
+    (if .app then "[ios][catalog] app=\(.app.source) \(.app.path)" else empty end),
     (if .artifact then "[ios][catalog] png=\(.artifact.path) \(.artifact.width)x\(.artifact.height)" else empty end),
     (if .sessionLifetimeSeconds then "[ios][catalog] keeper-lifetime=\(.sessionLifetimeSeconds)s" else empty end),
     (if .scenarios then (.scenarios[] | "[ios][catalog] \(.id)") else empty end),
@@ -320,12 +343,14 @@ catalog_wait_for_ready() {
 
 catalog_start_session() {
   local index_only="$1" dataset_file="$2" appearance="$3" scenario="$4"
-  local lease_json lease_status lease_dir derived_data app_bundle build_log dataset_b64
+  local lease_json lease_status lease_dir derived_data app_bundle app_source head build_log dataset_b64
   local launch_args data_container ready_path index_path
 
   CATALOG_ACTIVE_SESSION="catalog-$(date -u '+%Y%m%dT%H%M%SZ')-$$-$RANDOM"
   CATALOG_ACTIVE_UDID=""
   CATALOG_ACTIVE_LEASE_DIR=""
+  CATALOG_ACTIVE_APP_SOURCE=""
+  CATALOG_ACTIVE_APP_BUNDLE=""
   CATALOG_ACTIVE_SESSION_MAX_SECONDS="${KG_IOS_CATALOG_SESSION_MAX_SECONDS:-${SIM_LEASE_TTL:-1800}}"
   [[ "$CATALOG_ACTIVE_SESSION_MAX_SECONDS" =~ ^[0-9]+$ \
      && "$CATALOG_ACTIVE_SESSION_MAX_SECONDS" -gt 0 ]] || {
@@ -357,23 +382,35 @@ catalog_start_session() {
   CATALOG_ACTIVE_LEASE_DIR="$lease_dir"
   catalog_prepare_clean_simulator "$CATALOG_ACTIVE_UDID" || return 1
 
-  if ! uv run --python 3.13 python "$ROOT/ops/lib/streaming_command.py" \
-    --cwd "$ROOT" \
-    --label "catalog-build:$CATALOG_ACTIVE_SESSION" \
-    --heartbeat-interval "${KG_IOS_OPS_HEARTBEAT_INTERVAL:-20}" \
-    --timeout-seconds "${KG_IOS_CATALOG_BUILD_TIMEOUT:-900}" \
-    -- "$ROOT/ops/ios_build.sh" --destination "platform=iOS Simulator,id=$CATALOG_ACTIVE_UDID" \
-    >"$build_log"; then
-    echo "✗ Catalog build failed; log: $build_log" >&2
+  head="$(git -C "$ROOT" rev-parse HEAD)" || {
+    echo "✗ Catalog could not resolve the current HEAD" >&2
     return 1
-  fi
+  }
+  app_source="build"
+  if app_bundle="$(catalog_resolve_retained_app "$head")"; then
+    app_source="retained-release"
+    echo "[ios][catalog] reusing retained release .app for HEAD=${head:0:12}: $app_bundle" >&2
+  else
+    if ! uv run --python 3.13 python "$ROOT/ops/lib/streaming_command.py" \
+      --cwd "$ROOT" \
+      --label "catalog-build:$CATALOG_ACTIVE_SESSION" \
+      --heartbeat-interval "${KG_IOS_OPS_HEARTBEAT_INTERVAL:-20}" \
+      --timeout-seconds "${KG_IOS_CATALOG_BUILD_TIMEOUT:-900}" \
+      -- "$ROOT/ops/ios_build.sh" --destination "platform=iOS Simulator,id=$CATALOG_ACTIVE_UDID" \
+      >"$build_log"; then
+      echo "✗ Catalog build failed; log: $build_log" >&2
+      return 1
+    fi
 
-  derived_data="$(catalog_shared_derived_data_root)"
-  app_bundle="$derived_data/Build/Products/Debug-iphonesimulator/BooksAndVocab.app"
+    derived_data="$(catalog_shared_derived_data_root)"
+    app_bundle="$derived_data/Build/Products/Debug-iphonesimulator/BooksAndVocab.app"
+  fi
   if [[ ! -d "$app_bundle" ]]; then
     echo "✗ built app not found: $app_bundle" >&2
     return 1
   fi
+  CATALOG_ACTIVE_APP_SOURCE="$app_source"
+  CATALOG_ACTIVE_APP_BUNDLE="$app_bundle"
 
   xcrun simctl install "$CATALOG_ACTIVE_UDID" "$app_bundle" >/dev/null || {
     echo "✗ Catalog app install failed" >&2
@@ -416,6 +453,8 @@ catalog_start_session() {
     --arg readyPath "$ready_path" \
     --arg indexPath "$index_path" \
     --arg leaseDir "$lease_dir" \
+    --arg appSource "$app_source" \
+    --arg appBundle "$app_bundle" \
     --argjson keeperPid "$CATALOG_ACTIVE_KEEPER_PID" \
     --argjson sessionMaxSeconds "$CATALOG_ACTIVE_SESSION_MAX_SECONDS" \
     '{
@@ -430,6 +469,8 @@ catalog_start_session() {
       dataset:$dataset,
       appearance:$appearance,
       scenario:(if $scenario == "" then null else $scenario end),
+      appSource:$appSource,
+      appBundle:$appBundle,
       readyPath:$readyPath,
       indexPath:$indexPath
     }' >"$CATALOG_SESSION_ROOT/$CATALOG_ACTIVE_SESSION.json"; then
@@ -463,7 +504,9 @@ catalog_list() {
   payload="$(jq -n \
     --argjson scenarios "$scenarios" \
     --argjson release "$release" \
-    '{schema:"kg.ios.catalog-agent.v1",status:"ok",action:"list",renderer:"simulator-window",scenarios:$scenarios,release:$release}')"
+    --arg appSource "$CATALOG_ACTIVE_APP_SOURCE" \
+    --arg appBundle "$CATALOG_ACTIVE_APP_BUNDLE" \
+    '{schema:"kg.ios.catalog-agent.v1",status:"ok",action:"list",renderer:"simulator-window",scenarios:$scenarios,app:{source:$appSource,path:$appBundle},release:$release}')"
   catalog_emit "$CATALOG_JSON" "$payload"
 }
 
@@ -482,6 +525,8 @@ catalog_open() {
     --arg name "$CATALOG_ACTIVE_DEVICE_NAME" \
     --arg dataset "$CATALOG_DATASET_FILE" \
     --arg appearance "$CATALOG_APPEARANCE" \
+    --arg appSource "$CATALOG_ACTIVE_APP_SOURCE" \
+    --arg appBundle "$CATALOG_ACTIVE_APP_BUNDLE" \
     --argjson scenario "$scenario_json" \
     --argjson sessionLifetimeSeconds "$CATALOG_ACTIVE_SESSION_MAX_SECONDS" \
     --arg closeCommand "./ops/ios_ops.sh catalog close --session $CATALOG_ACTIVE_SESSION" \
@@ -489,6 +534,7 @@ catalog_open() {
       schema:"kg.ios.catalog-agent.v1",status:"ok",action:"open",session:$session,
       renderer:"simulator-window",device:{udid:$udid,name:$name,appearance:$appearance},
       dataset:{path:$dataset},scenario:($scenario.id // null),
+      app:{source:$appSource,path:$appBundle},
       sessionLifetimeSeconds:$sessionLifetimeSeconds,closeCommand:$closeCommand
     }')"
   catalog_emit "$CATALOG_JSON" "$payload"

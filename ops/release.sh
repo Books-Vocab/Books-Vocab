@@ -67,6 +67,110 @@ KG_RELEASE_ASC_POLL_SECS="${KG_RELEASE_ASC_POLL_SECS:-5}"
 . "$ROOT/ops/lib/release_tags.sh"
 
 err()  { echo "✗ $*" >&2; exit 1; }
+
+IOS_RELEASE_ARTIFACT_TOOL="$ROOT/ops/ios_release_artifacts.py"
+
+ios_release_artifact_tool_available() {
+  [[ -f "$IOS_RELEASE_ARTIFACT_TOOL" ]]
+}
+
+ios_release_artifact_tool() {
+  uv run --python 3.13 python "$IOS_RELEASE_ARTIFACT_TOOL" "$@"
+}
+
+ios_release_derived_data_root() {
+  local common_dir
+  if [[ -n "${KG_IOS_BUILD_DERIVED_DATA_ROOT:-}" ]]; then
+    printf '%s\n' "$KG_IOS_BUILD_DERIVED_DATA_ROOT"
+    return 0
+  fi
+  common_dir="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  if [[ -n "$common_dir" && -d "$common_dir" ]]; then
+    printf '%s/.cache/ios-build-derived-data\n' "$(dirname "$common_dir")"
+  else
+    printf '%s/.cache/ios-build-derived-data\n' "$ROOT"
+  fi
+}
+
+ios_release_simulator_app_path() {
+  printf '%s/Build/Products/Debug-iphonesimulator/BooksAndVocab.app\n' "$(ios_release_derived_data_root)"
+}
+
+ios_release_provenance_matches() {
+  local app="$1" expected_head="$2" sidecar="${1}.kg-provenance.json"
+  [[ -d "$app" && -f "$sidecar" ]] || return 1
+  jq -e \
+    --arg project_root "$ROOT" \
+    --arg head "$expected_head" \
+    '.schema == "kg.ios.install-provenance.v1" and
+     .projectRoot == $project_root and
+     .head == $head and
+     .configuration == "Debug" and
+     (.destination | type) == "string" and
+     (.destination | contains("platform=iOS Simulator"))' \
+    "$sidecar" >/dev/null 2>&1
+}
+
+ios_release_exact_simulator_app() {
+  local expected_head="$1" app
+  app="$(ios_release_simulator_app_path)"
+  if ios_release_provenance_matches "$app" "$expected_head"; then
+    printf '%s\n' "$app"
+    return 0
+  fi
+
+  echo "  simulator release .app 不在 exact HEAD cache，建置 ${expected_head:0:12} …" >&2
+  "$ROOT/ops/ios_build.sh" \
+    --destination "platform=iOS Simulator,name=${KG_IOS_DEFAULT_SIMULATOR_NAME:-iPhone 17 Pro Max}" >&2
+  app="$(ios_release_simulator_app_path)"
+  ios_release_provenance_matches "$app" "$expected_head" \
+    || err "Simulator .app provenance 不吻合：需要 HEAD=${expected_head}，路徑=${app}"
+  printf '%s\n' "$app"
+}
+
+ios_release_record_testflight_artifact() {
+  local version="$1" build="$2" commit="$3" tag="$4" existing app result
+  if ! ios_release_artifact_tool_available; then
+    echo "  ⚠ release fixture 沒有 ios_release_artifacts.py，略過本地 TestFlight .app 保存" >&2
+    return 0
+  fi
+  if existing="$(ios_release_artifact_tool --json resolve \
+      --source testflight --version "$version" --build "$build" --commit "$commit" 2>/dev/null)" \
+      && jq -e '.status == "hit"' <<<"$existing" >/dev/null; then
+    echo "  TestFlight simulator .app 已保存，重用 exact artifact" >&2
+    return 0
+  fi
+  app="$(ios_release_exact_simulator_app "$commit")"
+  result="$(ios_release_artifact_tool --json record \
+    --source testflight --version "$version" --build "$build" --commit "$commit" \
+    --app "$app" --source-ref "$tag")" \
+    || err "TestFlight simulator .app 保存失敗；不建立 ${tag}"
+  jq -e '.status == "ok"' <<<"$result" >/dev/null \
+    || err "TestFlight simulator .app 保存回傳 invalid payload；不建立 ${tag}: ${result}"
+  echo "  TestFlight simulator .app 已保存：$(jq -r '.record.artifactPath' <<<"$result")" >&2
+}
+
+ios_release_record_appstore_artifact() {
+  local version="$1" build="$2" commit="$3" tag="$4" existing result
+  if ! ios_release_artifact_tool_available; then
+    echo "  ⚠ release fixture 沒有 ios_release_artifacts.py，略過本地 App Store .app 保存" >&2
+    return 0
+  fi
+  if existing="$(ios_release_artifact_tool --json resolve \
+      --source appstore --version "$version" --build "$build" --commit "$commit" 2>/dev/null)" \
+      && jq -e '.status == "hit"' <<<"$existing" >/dev/null; then
+    echo "  App Store simulator .app 已登記，重用 exact artifact" >&2
+    return 0
+  fi
+  result="$(ios_release_artifact_tool --json record \
+    --source appstore --version "$version" --build "$build" --commit "$commit" \
+    --source-ref "$tag")" \
+    || err "App Store simulator .app 登記失敗；不建立 ${tag}（先確認 matching TestFlight artifact 存在）"
+  jq -e '.status == "ok"' <<<"$result" >/dev/null \
+    || err "App Store simulator .app 登記回傳 invalid payload；不建立 ${tag}: ${result}"
+  echo "  App Store simulator .app 已登記：$(jq -r '.record.artifactPath' <<<"$result")" >&2
+}
+
 # 只印開頭連續註解區（停在第一個非 # 行），避免把 set -euo pipefail / ROOT= / YES= 洩進 help。
 usage() { awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next} {exit}' "$0"; }
 
@@ -346,6 +450,8 @@ cmd_finalize_ios() {
     echo "  ./ops/release.sh finalize ios ${version} ${build} --yes"
     return 0
   fi
+
+  ios_release_record_testflight_artifact "$version" "$build" "$head" "$tag"
 
   if [[ -z "$existing" ]]; then
     git -C "$ROOT" tag "$tag"
@@ -873,6 +979,7 @@ cmd_shipped() {
   echo "  將建立上架 tag：${vtag} → ${short_commit}"
 
   if [[ $YES -eq 1 ]]; then
+    ios_release_record_appstore_artifact "$ver" "$build" "$commit" "$vtag"
     git -C "$ROOT" tag "$vtag" "$commit"
     if git -C "$ROOT" remote get-url origin >/dev/null 2>&1; then
       git -C "$ROOT" push origin "$vtag"

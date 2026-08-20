@@ -4,6 +4,8 @@ authority: source-of-truth
 update_trigger: manual
 scope:
   - ops/ios_build.sh
+  - ops/release.sh
+  - ops/ios_release_artifacts.py
   - ops/ios_test.sh
   - ops/lib/ios_swiftpm_cache.sh
   - ops/lib/ios_ops_catalog.sh
@@ -24,6 +26,7 @@ verified_against: 8210e47aa53f8a2b03aafefadb7494098fa22cb1
 - **不要**自己呼叫不帶 `-derivedDataPath` 的 `xcodebuild`，也不要改 `ops/ios_build.sh` 移除該旗標。那會讓快取掉回 Xcode 全域預設位置，每個 worktree 路徑生一份孤兒。
 - build / test 共用 `/tmp/kg-ios-build.lock` 序列化，共享快取**不會**並行寫壞。
 - UITest 的截圖、video、UIreview、xcresult 是 agent 觀察產物，不是 DerivedData：視覺 run 預設進系統暫存的 run bundle 並帶 TTL；只有顯式 `--retain` 才進 `build/ios-report/retained/`。source tree 只保存 fixture、契約與小型 receipt。
+- 發布用 Simulator `.app` 是另一種明確保留物：從現在起，TestFlight 與 App Store 合計只保留最近 **3 筆 release record**；同一顆 binary 的兩個來源會共用一份 `.app`。
 - GitHub-hosted iOS CI 另有**唯讀的 SwiftPM source cache**；它不是 DerivedData，也不與本機 `.cache/` 共用。PR 可還原，只有成功的 `main` push 會寫入。
 
 ## 問題：110G 孤兒洩漏
@@ -89,6 +92,36 @@ xcodebuild ... -derivedDataPath "$DERIVED_DATA_ROOT" ...
 | `run_ui_evidence.sh` / `ios_ui_run_many.py` 視覺產物 | 系統暫存的 run-scoped root（TTL）；顯式 `--retain` 才進 `build/ios-report/retained/` | Agent 觀察工具；永久狀態只保留小型 verdict、provenance 與必要 receipt |
 
 三份共享快取(build / test / release)都靠 `/tmp/kg-ios-build.lock` 同一把帶 FIFO ticket queue 的鎖序列化,不會並行寫壞；後到 waiter 不得繞過已排隊 predecessor，timeout/訊號會清理自己的 ticket，abandoned ticket 只在 PID 已死亡時由後續 waiter 清理。
+
+## 發布版本 Simulator `.app` 保留（2026-08-20）
+
+App Store／TestFlight 的 archive 內建 `.app` 是 `iphoneos` 版本，不能直接安裝到 iOS Simulator。因此這項保留策略保存的是「同一個發布 commit 編譯出的 `Debug-iphonesimulator/BooksAndVocab.app`」，不是把 device archive 複製一份改名。
+
+預設目錄是 `<主repo>/.cache/ios-release-artifacts/`；要放到 SSD 時設定 `KG_IOS_RELEASE_ARTIFACT_ROOT`，例如：
+
+```bash
+KG_IOS_RELEASE_ARTIFACT_ROOT=/Volumes/SSD/kg-ios-release-artifacts \
+  uv run --python 3.13 python ops/ios_release_artifacts.py list
+```
+
+每筆 record 都保留 version、build、完整 commit SHA、來源（`testflight` 或 `appstore`）、release tag、`.app` digest 與原始 `kg.ios.install-provenance.v1`。保留數是兩個來源合計 3 筆，不是各 3 筆；App Store 與 TestFlight 指向同一 version/build/commit 時只存一份實體 `.app`。Git tag 仍是發布對應的長期真相，artifact 是可驗證的本機重建／觀察快取。
+
+接點如下：
+
+- `./ops/release.sh finalize ios <version> <build> --yes` 在建立／推送 TestFlight build tag 前，確認 ASC exact build，重用同一 HEAD 的已建置 app，否則用 `ops/ios_build.sh` 編譯並驗證 provenance 後保存。
+- `./ops/release.sh shipped ios --yes` 不重新編譯，只把 matching TestFlight artifact 登記為 App Store record；找不到 matching artifact 會在建立上架 tag 前停止。
+- Catalog `open`／`list` 先用完整 HEAD 查詢保留 artifact；命中就跳過 `ios_build.sh`，未命中才走原本的 build fallback。Catalog 不會自行建立 release record。
+
+人工檢查與清理：
+
+```bash
+uv run --python 3.13 python ops/ios_release_artifacts.py list
+uv run --python 3.13 python ops/ios_release_artifacts.py validate --deep
+uv run --python 3.13 python ops/ios_release_artifacts.py prune       # 只預覽
+uv run --python 3.13 python ops/ios_release_artifacts.py prune --apply
+```
+
+這個策略不會把既有 `ios/build/BooksAndVocab.xcarchive/Products/Applications/BooksAndVocab.app` 當成 Simulator artifact，也不會自動替歷史發布版本補建；首次生效點是之後的 finalize／shipped 流程。Artifact root 只能由工具管理的 `artifacts/<key>/` 子目錄清理，避免誤刪其他 cache。
 
 ## GitHub-hosted SwiftPM source cache（2026-08-19）
 
