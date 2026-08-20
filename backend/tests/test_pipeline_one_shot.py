@@ -136,6 +136,16 @@ class _FailingJudge:
         return {cid: None for cid, _, _ in candidates}
 
 
+@pytest.fixture(autouse=True)
+def _judge_log_is_closed():
+    from kg import judge_log
+
+    judge_log._reset()
+    yield
+    judge_log._reset()
+    assert judge_log._conn is None
+
+
 # ── Tests ──────────────────────────────────────────────────────
 
 
