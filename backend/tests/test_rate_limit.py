@@ -8,6 +8,7 @@ import asyncio
 import os
 import subprocess
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -96,9 +97,14 @@ class TestRateLimitMiddlewareWhitelist:
     def client(self):
         from fastapi.testclient import TestClient
 
+        from kg import pipeline_log
         from kg.api import app
 
-        return TestClient(app, raise_server_exceptions=False)
+        try:
+            with TestClient(app, raise_server_exceptions=False) as test_client:
+                yield test_client
+        finally:
+            pipeline_log.reset()
 
     def test_privacy_not_rate_limited(self, client):
         # Hit /privacy many times — should never get 429
@@ -157,6 +163,7 @@ class TestRateLimitMiddlewareEnforcement:
 
         from fastapi.testclient import TestClient
 
+        from kg import pipeline_log
         from kg.api import app
         from kg.rate_limit import api_limiter, translate_limiter
 
@@ -164,7 +171,11 @@ class TestRateLimitMiddlewareEnforcement:
         api_limiter._requests.clear()
         translate_limiter._requests.clear()
 
-        return TestClient(app, raise_server_exceptions=False)
+        try:
+            with TestClient(app, raise_server_exceptions=False) as test_client:
+                yield test_client
+        finally:
+            pipeline_log.reset()
 
     def test_normal_request_passes(self, isolated_client):
         r = isolated_client.get("/privacy")
@@ -285,3 +296,34 @@ def test_rate_limit_import_does_not_require_unrelated_startup_secret(monkeypatch
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "61 21 6"
+
+
+@pytest.mark.parametrize(
+    "fixture",
+    [
+        TestRateLimitMiddlewareWhitelist.client,
+        TestRateLimitMiddlewareEnforcement.isolated_client,
+    ],
+)
+def test_testclient_fixtures_close_owned_clients(monkeypatch, fixture):
+    closed = False
+
+    class FakeTestClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            nonlocal closed
+            closed = True
+
+    monkeypatch.setattr("fastapi.testclient.TestClient", FakeTestClient)
+    monkeypatch.setitem(sys.modules, "kg.api", types.SimpleNamespace(app=object()))
+
+    fixture_generator = fixture.__wrapped__(object())
+    next(fixture_generator)
+    fixture_generator.close()
+
+    assert closed
