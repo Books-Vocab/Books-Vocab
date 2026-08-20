@@ -69,7 +69,7 @@ enum SentryReporter {
                 event.error = nil
                 event.message = nil
                 if let request = event.request {
-                    request.url = request.url.map(SentryPrivacyPolicy.stripQuery(from:))
+                    request.url = request.url.flatMap(SentryPrivacyPolicy.redactBreadcrumbURL)
                     request.queryString = nil
                     request.cookies = nil
                     if let headers = request.headers {

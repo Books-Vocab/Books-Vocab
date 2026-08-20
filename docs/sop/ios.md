@@ -531,9 +531,10 @@ Apple/Google SSO
 - `AppCrashReporting.swift` 是產品 call site 唯一依賴的 facade；`SentryReporter.swift` 是唯一接觸 `SentrySDK` 的 adapter；`SentryConfiguration.swift`、`SentryPrivacyPolicy.swift`、`AppDiagnosticContext.swift` 分別承擔組態、隱私與 bounded local diagnostics
 - Bootstrap 順序：`AppCrashReporting.bootstrap()` 在 `BooksAndVocabApp.init()` 第一步執行（早於 `ModelContainer` init，捕捉儲存初始化失敗）
 - User 追蹤：`AppCrashReporting.setUser(id:)` 連動 `authManager.isLoggedIn` onChange — 登出時清除，避免多帳戶污染
-- `beforeSend` 過濾：丟棄 `CancellationError` / `NSURLErrorCancelled` 噪音；HTTP breadcrumb 自動 strip query string
+- `beforeSend` 過濾：丟棄 `CancellationError` / `NSURLErrorCancelled` 噪音；HTTP breadcrumb 只保留 allowlisted API resource root，不保留 dynamic ID/path、query、host 或 userinfo
 - agent 不需要 Sentry GUI：`./ops/sentry_tool.py health|issues|issue|events|releases|regressions|route --json` 透過 read-only Web API 取得 normalized contract；API secret 只用 `SENTRY_API_URL`、`SENTRY_AUTH_TOKEN`、`SENTRY_ORG`、`SENTRY_PROJECT_IOS`、`SENTRY_PROJECT_BACKEND`
 - `sentry_tool.py` 僅能 GET，沒有 resolve、assign、comment、create 或 GitHub write path；`route` 只給 IM routing 建議，且 stacktrace/release 不足時回報 `evidence_incomplete`，不猜根因
+- `sentry_tool.py` 的 invalid usage、HTTP/network、pagination truncation、malformed collection 與 redirect/origin failure 都輸出 `kg.sentry.error.v1`；Bearer token 只送往同一個 HTTPS origin，collection 不完整時 fail closed
 - `./ops/ios_ops.sh sentry --json` 會回 `kg.ios.sentry.v1`，除了 source/guard/DSN contract，也獨立檢查 `packagePresent`、`targetLinked`，並回報 `readiness.source_present|package_present|target_linked|build_can_import|api_configured|api_authenticated|project_reachable|runtime_event_seen|symbolication_ready`
 - `sentry.verdict` 只允許 `ready|partial|blocked|unchecked`：缺 source、package 或 target link 是 `blocked`；靜態 wiring 完整但尚未有 build/API/runtime/symbolication 證據是 `partial`。`build_can_import` 不會被 source grep 假裝成 true，必須由實際 build/test evidence 補足
 - `./ops/ios_ops.sh snapshot --json` 現在也內嵌 `sentry` surface，並把 wiring 漂移收斂成 `summary.counts.sentryWarnings`；若只想知道 release dashboard 是否因 Sentry wiring 漂掉而變黃，不必再手動額外跑 `sentry`

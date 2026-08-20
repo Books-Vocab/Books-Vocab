@@ -54,7 +54,9 @@ DEFAULT_TESTS=(
   ios-signal-traps
   sim-pool-disposable
   ios-install-provenance
+  sentry-tool
   ios-ops
+  ios-sentry-wiring
   ios-run-verdict
   ios-device-lock
   ios-cache-evict
@@ -201,19 +203,24 @@ run_one() {
     ios-install-provenance)
       ./ops/tests/test_ios_install_provenance.sh
       ;;
+    sentry-tool)
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_sentry_contract.py \
+        ops/tests/test_sentry_tool.py
+      ;;
     ios-ops)
       ./ops/test_ios_ops.sh &&
       ./ops/tests/test_ios_ops_release_heartbeat.sh &&
       ./ops/tests/test_ios_xctestrun_cache.sh &&
       ./ops/tests/test_ios_ui_test_package_dependencies.sh &&
-      ./ops/tests/test_sentry_wiring.sh &&
       "$UV_BIN" run --project backend python -m pytest -q \
         ops/tests/test_ios_diagnostics.py \
         ops/tests/test_ios_coverage.py &&
-      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
-        ops/tests/test_sentry_contract.py \
-        ops/tests/test_sentry_tool.py &&
       ./ops/tests/test_ios_build_covers_test_targets.sh
+      ;;
+    ios-sentry-wiring)
+      ./ops/tests/test_sentry_wiring.sh &&
+      KG_IOS_SENTRY_BUILD_LOCK_TIMEOUT=0 ./ops/test_ios_ops.sh --section 'Sentry wiring surface'
       ;;
     ios-run-verdict)    ./ops/tests/test_ios_run_verdict.sh ;;
     ios-device-lock)    ./ops/tests/test_ios_device_lock_verdict.sh ;;

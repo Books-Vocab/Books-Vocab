@@ -45,6 +45,15 @@ EXIT_USAGE = 64
 PROJECT_CHOICES = ("ios", "backend")
 
 
+class _UsageError(ValueError):
+    pass
+
+
+class _JSONArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise _UsageError(message)
+
+
 def repo_root() -> Path:
     override = os.environ.get("KG_SENTRY_REPO_ROOT")
     return Path(override).expanduser().resolve() if override else Path(__file__).resolve().parents[1]
@@ -170,7 +179,7 @@ def command_issues(client: SentryAPIClient, args: argparse.Namespace, config: Se
 def command_issue(client: SentryAPIClient, args: argparse.Namespace, config: SentryConfig) -> dict[str, Any]:
     issue_id = _issue_id(args.issue_id)
     environment = _environment(args.environment)
-    raw = client.issue(issue_id)
+    raw = client.issue(issue_id, environment=environment)
     event = None
     if args.full:
         try:
@@ -245,8 +254,12 @@ def command_route(client: SentryAPIClient, args: argparse.Namespace, config: Sen
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Read-only headless Sentry agent tool")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    parser = _JSONArgumentParser(description="Read-only headless Sentry agent tool")
+    subparsers = parser.add_subparsers(
+        dest="command",
+        required=True,
+        parser_class=_JSONArgumentParser,
+    )
 
     health_parser = subparsers.add_parser("health", help="local wiring plus optional API/runtime readiness")
     _json_flag(health_parser)
@@ -286,7 +299,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    try:
+        args = parser.parse_args(argv)
+    except _UsageError:
+        _emit(error_payload(SentryAPIError("arguments", kind="invalid_usage")))
+        return EXIT_USAGE
     config = SentryConfig.from_env()
     try:
         if args.command == "health":

@@ -12,6 +12,11 @@ import Foundation
 enum SentryPrivacyPolicy {
     private static let opaqueIDPattern = try! NSRegularExpression(pattern: "^[A-Za-z0-9._:-]{1,128}$")
     private static let labelPattern = try! NSRegularExpression(pattern: "^[A-Za-z0-9._:+_/-]{1,128}$")
+    private static let messagePattern = try! NSRegularExpression(pattern: "^[a-z0-9][a-z0-9._/-]*(?: [a-z0-9][a-z0-9._/-]*){0,7}$")
+    private static let safeAPIRoots: Set<String> = [
+        "auth", "books", "billing", "decks", "dictionary", "graph", "health", "library",
+        "notebooks", "pipeline", "podcasts", "system", "translate", "user", "vocab"
+    ]
     private static let safeBreadcrumbKeys: Set<String> = [
         "attempt", "duration_ms", "error_type", "feature", "format", "method", "operation",
         "phase", "provider", "request_id", "result", "retry_count", "status_code", "url",
@@ -53,13 +58,45 @@ enum SentryPrivacyPolicy {
 
     static func redactBreadcrumbMessage(_ value: String?) -> String? {
         guard let value else { return nil }
-        let stripped = stripQuery(from: value.trimmingCharacters(in: .whitespacesAndNewlines))
+        let stripped = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !stripped.isEmpty, stripped.count <= 160 else { return nil }
+        let parts = stripped.split(separator: " ", maxSplits: 1).map(String.init)
+        if parts.count == 2, ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].contains(parts[0]) {
+            guard let endpoint = redactBreadcrumbURL(parts[1]) else { return nil }
+            return "\(parts[0]) \(endpoint)"
+        }
         let lowercased = stripped.lowercased()
-        if sensitiveKeyFragments.contains(where: { lowercased.contains("\($0)=") }) {
+        if sensitiveKeyFragments.contains(where: { lowercased.contains($0) }) {
             return nil
         }
+        guard matches(messagePattern, value: stripped) else { return nil }
         return stripped
+    }
+
+    /// Keep only an allowlisted API resource root. Dynamic IDs, book titles,
+    /// hosts, userinfo, query strings and fragments never cross this boundary.
+    static func redactBreadcrumbURL(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.contains(where: { $0.isWhitespace }) else { return nil }
+        guard let components = URLComponents(string: trimmed),
+              components.user == nil,
+              components.password == nil
+        else { return nil }
+
+        let path: String
+        if components.scheme != nil || components.host != nil {
+            path = components.path
+        } else {
+            path = stripQuery(from: trimmed).split(separator: "#", maxSplits: 1).first.map(String.init) ?? ""
+        }
+        let decodedPath = path.removingPercentEncoding ?? path
+        let segments = decodedPath.split(separator: "/").map(String.init)
+        guard segments.count >= 2,
+              segments[0].lowercased() == "api",
+              safeAPIRoots.contains(segments[1].lowercased())
+        else { return nil }
+        return "/api/\(segments[1].lowercased())"
     }
 
     static func redactBreadcrumbData(_ data: [String: Any]?) -> [String: Any]? {
@@ -80,7 +117,9 @@ enum SentryPrivacyPolicy {
 
             if normalizedKey == "url" {
                 if let string = value as? String {
-                    redacted[normalizedKey] = stripQuery(from: string)
+                    if let endpoint = redactBreadcrumbURL(string) {
+                        redacted[normalizedKey] = endpoint
+                    }
                 }
                 continue
             }

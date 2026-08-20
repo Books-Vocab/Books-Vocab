@@ -7,6 +7,7 @@ import ipaddress
 import re
 from pathlib import PurePosixPath
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 HEALTH_SCHEMA = "kg.sentry.health.v1"
 ISSUE_SCHEMA = "kg.sentry.issue.v1"
@@ -20,6 +21,25 @@ _ID = re.compile(r"^[A-Za-z0-9._:/+@-]{1,256}$")
 _SPACED_ID = re.compile(r"^[A-Za-z0-9._:/+@ -]{1,256}$")
 _OPAQUE_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _EMAIL = re.compile(r"\b[^\s@]+@[^\s@]+\.[A-Za-z]{2,63}\b")
+_SAFE_EVENT_MESSAGE = re.compile(r"^[a-z0-9][a-z0-9._/-]*(?: [a-z0-9][a-z0-9._/-]*){0,7}$")
+_HTTP_MESSAGE = re.compile(r"^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(.+)$")
+_SAFE_API_ROOTS = {
+    "auth",
+    "books",
+    "billing",
+    "decks",
+    "dictionary",
+    "graph",
+    "health",
+    "library",
+    "notebooks",
+    "pipeline",
+    "podcasts",
+    "system",
+    "translate",
+    "user",
+    "vocab",
+}
 _SENSITIVE_TEXT = re.compile(
     r"(?:authorization|cookie|password|secret|token|email|input|user|book|card|translation|query|body|content)\s*[:=]",
     re.IGNORECASE,
@@ -85,18 +105,56 @@ def safe_label(value: Any, *, max_length: int = 256, allow_spaces: bool = False)
 
 
 def safe_message(value: Any, *, max_length: int = 200) -> str | None:
-    """Keep only short diagnostic-shaped text; never pass arbitrary user text through."""
+    """Keep only fixed diagnostic labels or canonical API resource roots."""
     if not isinstance(value, str):
         return None
     value = strip_query(value).replace("\n", " ").strip()
     if not value or len(value) > max_length or _EMAIL.search(value) or _SENSITIVE_TEXT.search(value):
         return None
-    # Keep exception/type prefixes and request paths, but do not emit prose that
-    # could be a user's free-form report or book/card content.
-    prefix = value.split(":", 1)[0].strip()
-    if "/api/" in value or _looks_like_type(prefix) or value.startswith(("GET ", "POST ", "PUT ", "DELETE ")):
+    http_match = _HTTP_MESSAGE.fullmatch(value)
+    if http_match:
+        endpoint = safe_endpoint(http_match.group(2))
+        if endpoint:
+            return f"{http_match.group(1)} {endpoint}"
+        return None
+    # Product breadcrumbs use short, source-controlled labels. Reject prose,
+    # punctuation and content-shaped words so an exception/book title cannot
+    # cross this boundary merely because it is short.
+    if _SAFE_EVENT_MESSAGE.fullmatch(value) and not set(value.split()) & {
+        "book",
+        "card",
+        "content",
+        "input",
+        "text",
+        "title",
+        "translation",
+        "user",
+    }:
         return value
     return None
+
+
+def safe_endpoint(value: Any) -> str | None:
+    """Reduce a URL/path to an allowlisted API resource root, never an ID."""
+    if not isinstance(value, str):
+        return None
+    raw = value.strip()
+    if not raw or any(character.isspace() for character in raw):
+        return None
+    try:
+        parsed = urlsplit(raw)
+    except ValueError:
+        return None
+    if parsed.username is not None or parsed.password is not None:
+        return None
+    path = unquote(parsed.path if parsed.scheme or parsed.netloc else raw.split("?", 1)[0].split("#", 1)[0])
+    components = [component for component in path.split("/") if component]
+    if len(components) < 2 or components[0].lower() != "api":
+        return None
+    root = components[1].lower()
+    if root not in _SAFE_API_ROOTS:
+        return None
+    return f"/api/{root}"
 
 
 def normalize_issue(
@@ -365,7 +423,7 @@ def _release(raw: dict[str, Any], event: dict[str, Any], redaction: _Redaction) 
 def _exception_type(event: dict[str, Any], redaction: _Redaction) -> str | None:
     values = _exception_values(event)
     value = values[-1].get("type") if values else None
-    result = safe_label(value, max_length=160)
+    result = _safe_exception_type(value)
     if value is not None and result is None:
         redaction.drop("exception.type")
     return result
@@ -378,7 +436,7 @@ def _safe_issue_title(raw: dict[str, Any], exception_type: str | None, redaction
     value = strip_query(value).strip()
     prefix = value.split(":", 1)[0].strip()
     if _looks_like_type(prefix) or prefix.startswith(("HTTP ", "GET ", "POST ", "PUT ", "DELETE ")):
-        safe = safe_message(prefix) or safe_label(prefix, max_length=160)
+        safe = safe_message(prefix) or _safe_exception_type(prefix)
         if safe:
             return safe
     redaction.drop("issue.title")
@@ -470,7 +528,7 @@ def _breadcrumb_data(value: Any, redaction: _Redaction) -> dict[str, Any]:
         if normalized == "request_id":
             safe = safe_opaque_id(raw)
         elif normalized == "url":
-            safe = safe_label(strip_query(raw), max_length=256)
+            safe = safe_endpoint(raw)
         elif isinstance(raw, bool) or isinstance(raw, (int, float)) and not isinstance(raw, bool):
             safe = raw
         else:
@@ -553,6 +611,11 @@ def _looks_like_type(value: str) -> bool:
     )
 
 
+def _safe_exception_type(value: Any) -> str | None:
+    safe = safe_label(value, max_length=160)
+    return safe if safe and _looks_like_type(safe) else None
+
+
 def _safe_timestamp(value: Any, redaction: _Redaction, field: str) -> str | None:
     if value is None:
         return None
@@ -593,6 +656,7 @@ __all__ = [
     "normalize_issue",
     "normalize_release",
     "route_for_issue",
+    "safe_endpoint",
     "safe_label",
     "safe_message",
     "safe_opaque_id",

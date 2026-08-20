@@ -10,6 +10,7 @@ depending on a Sentry account or the public service.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import time
@@ -26,6 +27,19 @@ DEFAULT_RETRIES = 2
 MAX_RETRIES = 3
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 _SAFE_PATH_SEGMENT = re.compile(r"^[A-Za-z0-9._:@+-]{1,256}$")
+
+
+class _SameHostRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Reject redirects that could move the bearer token to another origin."""
+
+    def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> Any:
+        old = urllib.parse.urlparse(req.full_url)
+        new = urllib.parse.urlparse(urllib.parse.urljoin(req.full_url, newurl))
+        if (old.scheme, old.netloc) != (new.scheme, new.netloc):
+            raise SentryAPIError("redirect", kind="redirect_origin_mismatch")
+        if new.scheme != "https" and not _is_loopback_host(new.hostname):
+            raise SentryAPIError("redirect", kind="insecure_api_url")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 class SentryAPIError(RuntimeError):
@@ -58,6 +72,7 @@ class SentryAPIError(RuntimeError):
 @dataclass(frozen=True)
 class SentryConfig:
     api_url: str = DEFAULT_API_URL
+    api_url_valid: bool = True
     auth_token: str | None = field(default=None, repr=False)
     organization: str | None = None
     project_ios: str | None = None
@@ -73,6 +88,8 @@ class SentryConfig:
             timeout = float(raw_timeout) if raw_timeout else DEFAULT_TIMEOUT_SECONDS
         except ValueError:
             timeout = DEFAULT_TIMEOUT_SECONDS
+        if not math.isfinite(timeout):
+            timeout = DEFAULT_TIMEOUT_SECONDS
         timeout = min(max(timeout, 0.1), 60.0)
 
         raw_retries = env.get("SENTRY_API_RETRIES", "")
@@ -82,9 +99,15 @@ class SentryConfig:
             retries = DEFAULT_RETRIES
         retries = min(max(retries, 0), MAX_RETRIES)
 
-        api_url = _normalise_api_url(env.get("SENTRY_API_URL", DEFAULT_API_URL))
+        try:
+            api_url = _normalise_api_url(env.get("SENTRY_API_URL", DEFAULT_API_URL))
+            api_url_valid = True
+        except ValueError:
+            api_url = DEFAULT_API_URL
+            api_url_valid = False
         return cls(
             api_url=api_url,
+            api_url_valid=api_url_valid,
             auth_token=_non_empty(env.get("SENTRY_AUTH_TOKEN")),
             organization=_non_empty(env.get("SENTRY_ORG")),
             project_ios=_non_empty(env.get("SENTRY_PROJECT_IOS")),
@@ -102,7 +125,7 @@ class SentryConfig:
 
     @property
     def api_configured(self) -> bool:
-        return bool(self.auth_token and self.organization and self.project_ios)
+        return bool(self.api_url_valid and self.auth_token and self.organization and self.project_ios)
 
 
 @dataclass(frozen=True)
@@ -122,12 +145,14 @@ class SentryAPIClient:
         opener: Callable[..., Any] | None = None,
         sleeper: Callable[[float], None] = time.sleep,
     ) -> None:
+        if not config.api_url_valid:
+            raise SentryAPIError("configure", kind="invalid_api_url", retryable=False)
         if not config.auth_token:
             raise SentryAPIError("configure", kind="missing_auth", retryable=False)
         if not config.organization:
             raise SentryAPIError("configure", kind="missing_org", retryable=False)
         self.config = config
-        self._opener = opener or urllib.request.urlopen
+        self._opener = opener or urllib.request.build_opener(_SameHostRedirectHandler()).open
         self._sleeper = sleeper
 
     def project(self, project: str) -> dict[str, Any]:
@@ -152,17 +177,22 @@ class SentryAPIClient:
             # The project issues endpoint defaults to unresolved.  An explicit
             # empty query is required to make status=all really mean all.
             search = "" if status == "all" else f"is:{status}"
-        params: list[tuple[str, str]] = [("limit", "100"), ("statsPeriod", "")]
+        params: list[tuple[str, str]] = [
+            ("project", project),
+            ("limit", "100"),
+            ("statsPeriod", ""),
+        ]
         if search is not None:
             params.append(("query", search))
         if environment:
             params.append(("environment", environment))
-        path = f"/projects/{_segment(self.config.organization)}/{_segment(project)}/issues/"
+        path = f"/organizations/{_segment(self.config.organization)}/issues/"
         return self._paginate(path, params=params, operation="issues", max_pages=max_pages)
 
-    def issue(self, issue_id: str) -> dict[str, Any]:
+    def issue(self, issue_id: str, *, environment: str | None = None) -> dict[str, Any]:
         path = f"/organizations/{_segment(self.config.organization)}/issues/{_segment(issue_id)}/"
-        return self._get_json(path, operation="issue")
+        params = [("environment", environment)] if environment else []
+        return self._get_json(path, params=params, operation="issue")
 
     def list_issue_events(
         self,
@@ -230,14 +260,27 @@ class SentryAPIClient:
             raise SentryAPIError(operation, kind="invalid_pagination")
         next_url = self._build_url(path, params)
         rows: list[dict[str, Any]] = []
-        for _ in range(max_pages):
+        seen: set[str] = set()
+        for page_number in range(max_pages):
             response = self._request_url(next_url, operation=operation)
             payload = response.payload
             page = _page_items(payload)
-            rows.extend(item for item in page if isinstance(item, dict))
-            next_url = _next_url(payload, response.headers, base_url=self.config.api_url)
-            if not next_url:
+            if page is None:
+                raise SentryAPIError(operation, kind="invalid_collection")
+            for item in page:
+                if not isinstance(item, dict):
+                    raise SentryAPIError(operation, kind="invalid_collection_item")
+                identity = _item_identity(item)
+                if identity in seen:
+                    raise SentryAPIError(operation, kind="duplicate_page_item")
+                seen.add(identity)
+                rows.append(item)
+            following_url = _next_url(payload, response.headers, base_url=self.config.api_url)
+            if not following_url:
                 break
+            if page_number == max_pages - 1:
+                raise SentryAPIError(operation, kind="pagination_incomplete", retryable=True)
+            next_url = following_url
         return rows
 
     def _get_json(
@@ -263,6 +306,7 @@ class SentryAPIClient:
         configured = urllib.parse.urlparse(self.config.api_url)
         if parsed.scheme != configured.scheme or parsed.netloc != configured.netloc:
             raise SentryAPIError(operation, kind="pagination_host_mismatch")
+        _validate_transport_url(parsed, operation)
 
         request = urllib.request.Request(
             url,
@@ -334,7 +378,9 @@ def _normalise_api_url(value: str) -> str:
         or parsed.username is not None
         or parsed.password is not None
     ):
-        return DEFAULT_API_URL
+        raise ValueError("invalid Sentry API URL")
+    if parsed.scheme != "https" and not _is_loopback_host(parsed.hostname):
+        raise ValueError("Sentry API URL must use HTTPS")
     path = parsed.path.rstrip("/")
     if not path.endswith("/api/0"):
         path = f"{path}/0" if path.endswith("/api") else f"{path}/api/0"
@@ -349,12 +395,20 @@ def _segment(value: str | None) -> str:
     return urllib.parse.quote(value, safe="")
 
 
-def _page_items(payload: Any) -> list[Any]:
+def _page_items(payload: Any) -> list[Any] | None:
     if isinstance(payload, list):
         return payload
     if isinstance(payload, dict) and isinstance(payload.get("results"), list):
         return payload["results"]
-    return []
+    return None
+
+
+def _item_identity(item: dict[str, Any]) -> str:
+    for key in ("id", "eventID", "event_id", "groupID", "version"):
+        value = item.get(key)
+        if isinstance(value, (str, int)) and str(value):
+            return f"{key}:{value}"
+    return "json:" + json.dumps(item, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
 
 def _next_url(payload: Any, headers: Any, *, base_url: str) -> str | None:
@@ -370,8 +424,12 @@ def _next_url(payload: Any, headers: Any, *, base_url: str) -> str | None:
             if candidate.get("results") is False:
                 return None
             candidate = candidate.get("url") or candidate.get("href")
+            if not candidate:
+                raise SentryAPIError("pagination", kind="invalid_pagination_cursor")
         if isinstance(candidate, str) and candidate:
             return _same_host_url(candidate, base_url)
+        if candidate is not None:
+            raise SentryAPIError("pagination", kind="invalid_pagination_cursor")
 
     raw_link = headers.get("Link", "") if headers is not None else ""
     for part in raw_link.split(","):
@@ -390,6 +448,18 @@ def _same_host_url(value: str, base_url: str) -> str | None:
     if parsed.scheme != base.scheme or parsed.netloc != base.netloc:
         raise SentryAPIError("pagination", kind="pagination_host_mismatch")
     return parsed.geturl()
+
+
+def _is_loopback_host(host: str | None) -> bool:
+    return host in {"localhost", "127.0.0.1", "::1"}
+
+
+def _validate_transport_url(parsed: urllib.parse.ParseResult, operation: str) -> None:
+    if parsed.scheme == "https":
+        return
+    if parsed.scheme == "http" and _is_loopback_host(parsed.hostname):
+        return
+    raise SentryAPIError(operation, kind="insecure_api_url")
 
 
 __all__ = ["SentryAPIClient", "SentryAPIError", "SentryConfig"]

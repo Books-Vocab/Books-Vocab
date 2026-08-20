@@ -22,10 +22,11 @@ LINUX_GROUPS=(
   userland-portability script-help install-hooks lib-sourcing podcast-ops
   streaming-command app-review demo-data catalog-agent uitest-contact-sheet
   ios-release sim-pool-disposable review-probe
+  sentry-tool
 )
 
 MAC_GROUPS=(
-  release ios-ops lldb-forensics
+  release ios-ops ios-sentry-wiring lldb-forensics
 )
 
 declared_groups() {

@@ -6,6 +6,10 @@ struct SentryPrivacyPolicyTests {
         #expect(SentryPrivacyPolicy.stripQuery(from: "/api/books?token=secret") == "/api/books")
         #expect(SentryPrivacyPolicy.stripQuery(from: "/api/books") == "/api/books")
         #expect(SentryPrivacyPolicy.redactBreadcrumbMessage("GET /api/books?code=secret") == "GET /api/books")
+        #expect(SentryPrivacyPolicy.redactBreadcrumbURL("/api/vocab/user-supplied-book?token=secret") == "/api/vocab")
+        #expect(SentryPrivacyPolicy.redactBreadcrumbURL("https://user:password@example.test/api/vocab/book") == nil)
+        #expect(SentryPrivacyPolicy.redactBreadcrumbURL("/api/private-user-input") == nil)
+        #expect(SentryPrivacyPolicy.redactBreadcrumbMessage("the user's book title") == nil)
     }
 
     @Test func userAndRequestIDsOnlyAcceptOpaqueValues() {

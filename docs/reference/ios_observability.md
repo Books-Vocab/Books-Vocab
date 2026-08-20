@@ -70,7 +70,9 @@ symbolication_ready
 API adapter 只讀 `SENTRY_API_URL`、`SENTRY_AUTH_TOKEN`、`SENTRY_ORG`、
 `SENTRY_PROJECT_IOS`、`SENTRY_PROJECT_BACKEND`。token 只放 secret/env，CLI
 不提供任何寫入子命令；缺 token、API 不可達或 project 不可讀時，輸出結構化
-`unchecked`／安全錯誤，不把 response body、Authorization 或 cookie 帶回 agent。
+`partial`／`unchecked`／安全錯誤，不把 response body、Authorization 或 cookie 帶回 agent：本機 wiring 已有證據但未配置 API 時是 `partial`，完全沒有可判讀證據時才是 `unchecked`。
+
+API transport 僅接受 HTTPS；HTTP 只允許明確的 loopback fake server。redirect 必須留在同一個 origin，跨頁 pagination 若到達上限、遇到 malformed collection 或重複 item 會 fail closed，不會把截斷結果當成完整成功。
 
 其穩定輸出 schema 為：
 
@@ -83,4 +85,4 @@ API adapter 只讀 `SENTRY_API_URL`、`SENTRY_AUTH_TOKEN`、`SENTRY_ORG`、
 - `kg.sentry.regressions.v1`
 - `kg.sentry.error.v1`
 
-任何缺少 API secret 的情況回報 `unchecked`，不把 token 或 Authorization header 寫入 stdout、stderr、artifact 或測試 fixture。
+任何缺少 API secret 的情況都不執行外部請求；若本機 wiring 已有證據則回報 `partial`，否則回報 `unchecked`。不把 token 或 Authorization header 寫入 stdout、stderr、artifact 或測試 fixture。

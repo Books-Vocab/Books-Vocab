@@ -4,12 +4,14 @@ import io
 import json
 import sys
 import urllib.error
+import urllib.request
 from typing import Any, Self
 
 import pytest
 
 sys.path.insert(0, "ops")
 
+import sentry_api
 import sentry_tool
 from sentry_api import SentryAPIClient, SentryAPIError, SentryConfig
 
@@ -56,7 +58,44 @@ def test_config_strips_query_from_api_url_and_hides_token() -> None:
         }
     )
     assert config.api_url == "https://sentry.example.test/api/0"
+    assert config.api_url_valid is True
     assert "secret-token" not in repr(config)
+
+
+def test_config_rejects_non_loopback_http_and_non_finite_timeout() -> None:
+    config = SentryConfig.from_env(
+        {
+            "SENTRY_API_URL": "http://sentry.example.test/api/0",
+            "SENTRY_API_TIMEOUT_SECONDS": "nan",
+            "SENTRY_AUTH_TOKEN": "secret-token",
+            "SENTRY_ORG": "kg-org",
+            "SENTRY_PROJECT_IOS": "ios",
+        }
+    )
+    assert config.api_url_valid is False
+    assert config.api_configured is False
+    assert config.timeout_seconds == 10.0
+
+
+def test_loopback_http_is_allowed_for_fake_server() -> None:
+    config = SentryConfig.from_env({"SENTRY_API_URL": "http://127.0.0.1:8123/api/0"})
+    assert config.api_url == "http://127.0.0.1:8123/api/0"
+    assert config.api_url_valid is True
+
+
+def test_cross_origin_redirect_is_rejected_before_bearer_forwarding() -> None:
+    handler = sentry_api._SameHostRedirectHandler()
+    request = urllib.request.Request("https://sentry.example.test/api/0/issues/")
+    with pytest.raises(SentryAPIError) as caught:
+        handler.redirect_request(
+            request,
+            None,
+            302,
+            "redirect",
+            FakeHeaders(),
+            "https://evil.example.test/collect",
+        )
+    assert caught.value.kind == "redirect_origin_mismatch"
 
 
 def test_list_issues_all_sends_explicit_empty_query_and_follows_pagination() -> None:
@@ -77,7 +116,43 @@ def test_list_issues_all_sends_explicit_empty_query_and_follows_pagination() -> 
     rows = SentryAPIClient(_config(), opener=opener).list_issues("ios", status="all")
     assert [row["id"] for row in rows] == ["one", "two"]
     assert "query=" in calls[0]
+    assert "project=ios" in calls[0]
     assert len(calls) == 2
+
+
+def test_collection_pagination_fails_closed_on_truncation_duplicate_or_malformed_payload() -> None:
+    base = "https://sentry.example.test/api/0"
+
+    def truncated(request: Any, timeout: float) -> FakeResponse:
+        return FakeResponse({"results": [{"id": "one"}], "links": {"next": {"url": f"{base}/next", "results": True}}})
+
+    with pytest.raises(SentryAPIError) as caught:
+        SentryAPIClient(_config(), opener=truncated).list_issues("ios", max_pages=1)
+    assert caught.value.kind == "pagination_incomplete"
+
+    def duplicate(request: Any, timeout: float) -> FakeResponse:
+        if request.full_url.endswith("/next"):
+            return FakeResponse({"results": [{"id": "one"}], "links": {"next": {"results": False}}})
+        return FakeResponse({"results": [{"id": "one"}], "links": {"next": {"url": f"{base}/next", "results": True}}})
+
+    with pytest.raises(SentryAPIError) as caught:
+        SentryAPIClient(_config(), opener=duplicate).list_issues("ios")
+    assert caught.value.kind == "duplicate_page_item"
+
+    with pytest.raises(SentryAPIError) as caught:
+        SentryAPIClient(_config(), opener=lambda _request, timeout: FakeResponse({"unexpected": []})).list_issues("ios")
+    assert caught.value.kind == "invalid_collection"
+
+
+def test_issue_environment_is_sent_as_a_server_side_filter() -> None:
+    calls: list[str] = []
+
+    def opener(request: Any, timeout: float) -> FakeResponse:
+        calls.append(request.full_url)
+        return FakeResponse({"id": "123", "project": {"slug": "ios"}})
+
+    SentryAPIClient(_config(), opener=opener).issue("123", environment="production")
+    assert "environment=production" in calls[0]
 
 
 def test_retry_after_is_bounded_and_retries_429() -> None:
@@ -197,3 +272,13 @@ def test_cli_missing_auth_returns_safe_error(monkeypatch: pytest.MonkeyPatch, ca
     assert code == sentry_tool.EXIT_WARN
     assert payload["schema"] == "kg.sentry.error.v1"
     assert payload["error"]["kind"] == "missing_auth"
+
+
+def test_cli_invalid_usage_is_json_and_uses_usage_exit_code(capsys: pytest.CaptureFixture[str]) -> None:
+    code = sentry_tool.main(["issue"])
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert code == sentry_tool.EXIT_USAGE
+    assert payload["schema"] == "kg.sentry.error.v1"
+    assert payload["error"]["kind"] == "invalid_usage"
+    assert captured.err == ""

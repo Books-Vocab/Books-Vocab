@@ -12,6 +12,8 @@ from sentry_contract import (
     normalize_health,
     normalize_issue,
     route_for_issue,
+    safe_endpoint,
+    safe_message,
 )
 
 
@@ -162,3 +164,19 @@ def test_route_marks_incomplete_evidence_without_guessing_root_cause() -> None:
         "reason": "evidence_incomplete; do not guess root cause",
     }
 
+
+def test_endpoint_and_message_redaction_keep_only_safe_diagnostic_shape() -> None:
+    assert safe_endpoint("https://user:password@example.test/api/vocab/secret-book?token=secret") is None
+    assert safe_endpoint("/api/vocab/user-supplied-book") == "/api/vocab"
+    assert safe_endpoint("/api/private-user-input") is None
+    assert safe_message("GET /api/vocab/user-supplied-book?token=secret") == "GET /api/vocab"
+    assert safe_message("NetworkError") is None
+    assert safe_message("the user's book title") is None
+
+
+def test_exception_type_is_not_an_arbitrary_user_string() -> None:
+    issue = normalize_issue(
+        {"id": "123", "project": {"slug": "ios"}},
+        event={"exception": {"values": [{"type": "the user's book title"}]}},
+    )
+    assert issue["evidence"]["exception_type"] is None
