@@ -76,6 +76,15 @@ cmd_commands_json() {
         jsonSchemas:["kg.ios.sentry.v1"]
       },
       {
+        key:"sentry-tool",
+        aliases:["sentry-agent"],
+        sideEffect:"read-only; external Sentry API GET only",
+        command:"./ops/sentry_tool.py health --json | issues --project <ios|backend> [--environment <name>] [--status <unresolved|resolved|all>] --json | issue <issue-id> [--full] --json | events --issue <issue-id> --json | releases [--project <ios|backend>] --json | regressions --release <release> [--project <ios|backend>] --json | route <issue-id> --json",
+        delegate:"./ops/sentry_tool.py",
+        purpose:"headless Sentry health, issue/event/release readback, privacy normalization, and IM routing recommendations",
+        jsonSchemas:["kg.sentry.health.v1","kg.sentry.issues.v1","kg.sentry.issue.v1","kg.sentry.events.v1","kg.sentry.releases.v1","kg.sentry.regressions.v1","kg.sentry.error.v1"]
+      },
+      {
         key:"doctor",
         aliases:[],
         sideEffect:"read-only",

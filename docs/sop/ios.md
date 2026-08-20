@@ -526,14 +526,19 @@ Apple/Google SSO
 
 **iOS env / Info.plist key / 取樣率（SoT）**：`docs/sop/deploy.md §Sentry 錯誤追蹤 → iOS env / Info.plist`。本段僅寫 iOS-side 程式碼層 wiring。
 
-實作要點（`Services/AppCrashReporting.swift`）：
-- SPM dep `sentry-cocoa` 透過 `canImport(Sentry)` 守門 — 缺套件即 pure no-op，dev / PR build 不卡編譯
+實作要點（`Services/AppCrashReporting.swift` 與同目錄 seams）：
+- SPM dep `sentry-cocoa` 固定為 `9.24.0`，並且同時存在於 `Package.resolved`、app target 的 package product dependencies 與 Frameworks build phase；`canImport(Sentry)` 仍保留為 SDK 缺失時的 no-op fallback，但 source guard 本身不再被視為「SDK 已啟用」的證明
+- `AppCrashReporting.swift` 是產品 call site 唯一依賴的 facade；`SentryReporter.swift` 是唯一接觸 `SentrySDK` 的 adapter；`SentryConfiguration.swift`、`SentryPrivacyPolicy.swift`、`AppDiagnosticContext.swift` 分別承擔組態、隱私與 bounded local diagnostics
 - Bootstrap 順序：`AppCrashReporting.bootstrap()` 在 `BooksAndVocabApp.init()` 第一步執行（早於 `ModelContainer` init，捕捉儲存初始化失敗）
 - User 追蹤：`AppCrashReporting.setUser(id:)` 連動 `authManager.isLoggedIn` onChange — 登出時清除，避免多帳戶污染
-- `beforeSend` 過濾：丟棄 `CancellationError` / `NSURLErrorCancelled` 噪音；HTTP breadcrumb 自動 strip query string
-- `./ops/ios_ops.sh sentry --json` 會回 `kg.ios.sentry.v1`，把 source path/existence、`canImport(Sentry)` guard、`SENTRY_ENABLED_IN_DEBUG=1` / `-sentryTest` contract、release name/dist 格式提升成 machine-readable control plane，避免每次靠 grep 手動判讀 wiring
+- `beforeSend` 過濾：丟棄 `CancellationError` / `NSURLErrorCancelled` 噪音；HTTP breadcrumb 只保留 allowlisted API resource root，不保留 dynamic ID/path、query、host 或 userinfo
+- agent 不需要 Sentry GUI：`./ops/sentry_tool.py health|issues|issue|events|releases|regressions|route --json` 透過 read-only Web API 取得 normalized contract；API secret 只用 `SENTRY_API_URL`、`SENTRY_AUTH_TOKEN`、`SENTRY_ORG`、`SENTRY_PROJECT_IOS`、`SENTRY_PROJECT_BACKEND`
+- `sentry_tool.py` 僅能 GET，沒有 resolve、assign、comment、create 或 GitHub write path；`route` 只給 IM routing 建議，且 stacktrace/release 不足時回報 `evidence_incomplete`，不猜根因
+- `sentry_tool.py` 的 invalid usage、HTTP/network、pagination truncation、malformed collection 與 redirect/origin failure 都輸出 `kg.sentry.error.v1`；Bearer token 只送往同一個 HTTPS origin，collection 不完整時 fail closed
+- `./ops/ios_ops.sh sentry --json` 會回 `kg.ios.sentry.v1`，除了 source/guard/DSN contract，也獨立檢查 `packagePresent`、`targetLinked`，並回報 `readiness.source_present|package_present|target_linked|build_can_import|api_configured|api_authenticated|project_reachable|runtime_event_seen|symbolication_ready`
+- `sentry.verdict` 只允許 `ready|partial|blocked|unchecked`：缺 source、package 或 target link 是 `blocked`；靜態 wiring 完整但尚未有 build/API/runtime/symbolication 證據是 `partial`。`build_can_import` 不會被 source grep 假裝成 true，必須由實際 build/test evidence 補足
 - `./ops/ios_ops.sh snapshot --json` 現在也內嵌 `sentry` surface，並把 wiring 漂移收斂成 `summary.counts.sentryWarnings`；若只想知道 release dashboard 是否因 Sentry wiring 漂掉而變黃，不必再手動額外跑 `sentry`
-- 對這類 wiring surface，不要只測 happy path。`ops/test_ios_ops.sh` 現在用 fixture env 直接模擬 `source missing / canImport=false / dsnReference=false`，驗證 `snapshot --json` 會把 drift 轉成 `summary.counts.sentryWarnings` 與 `summary.nextActions[].source=="sentry"`；這是控制面經驗固化的正確模式
+- 對這類 wiring surface，不要只測 happy path。`ops/test_ios_ops.sh` 用 fixture env 直接模擬 `source missing / canImport=false / dsnReference=false`；新的 package/target fixture 另可模擬 SDK pin 或 target link 漂移，驗證 `snapshot --json` 會把 drift 轉成 `summary.counts.sentryWarnings` 與 `summary.nextActions[].source=="sentry"`
 - 同一個 surface 不能各自重算。`doctor` 的 sentry readiness 與頂層 `doctor.sentry` 現在都直接重用 `sentry_summary_json()`；`snapshot` 也直接吃 `doctor.sentry`，避免 `doctor` / `sentry --json` / `snapshot` 三條路各自 grep、最後判讀不一致
 - 連 wiring failure 清單也收斂成單一真相:`sentry_summary_json()` 直接輸出 `issues[]`（逐 wiring failure,含 key/message/command）;`doctor` verdict = `issues|length==0`、`snapshot` nextActions = `map(issues)`、`sentryWarnings` = `issues|length` 全衍生自此。新增一個 wiring check 只改 `issues[]` 一處,不必同步三處列舉——這是「判讀規則(不只資料來源)單一真相」的範例
 - **聚合面用動態 passthrough,不用硬編碼 allowlist**:`snapshot` 的 `timing_summary` 從逐欄位 allowlist 改成 `($run.timings // {}) + {cacheStatus}`,wrapper 新增任何 timing 欄位(如 `lockWaitMs`)自動上第一屏,不必改 snapshot。契約測試注入 `probeMs:777` 驗 passthrough(allowlist 會吞掉)。判準:當聚合面只是「轉發子 surface 的欄位」時,passthrough > allowlist;allowlist 每加一個欄位都是一次漏接機會。
