@@ -104,6 +104,23 @@ def test_list_since_filter(audit_db):
     assert admin_audit.list_audit(since="9999-01-01T00:00:00+00:00") == []
 
 
+def test_list_since_compares_fixed_offsets_by_utc_instant(audit_db):
+    conn = admin_audit._get_conn()
+    conn.executemany(
+        "INSERT INTO admin_audit_log (admin_uid, action, target_uid, payload_json, created_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        [
+            ("ops", "grant_pro", "old", "{}", "2026-05-14T12:00:00+01:00"),
+            ("ops", "grant_pro", "new", "{}", "2026-05-14T12:30:00+00:00"),
+        ],
+    )
+    conn.commit()
+
+    rows = admin_audit.list_audit(since="2026-05-14T12:00:00+00:00")
+
+    assert [row["target_uid"] for row in rows] == ["new"]
+
+
 def test_list_limit_clamped(audit_db):
     for i in range(5):
         admin_audit.record_audit(admin_uid="a", action="grant_pro", target_uid=f"u{i}", payload={})

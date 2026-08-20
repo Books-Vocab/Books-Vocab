@@ -128,7 +128,7 @@ def list_audit(
     clauses: list[str] = []
     params: list[Any] = []
     if since:
-        clauses.append("created_at >= ?")
+        clauses.append("julianday(created_at) >= julianday(?)")
         params.append(since)
     if act is not None:
         clauses.append("action = ?")
