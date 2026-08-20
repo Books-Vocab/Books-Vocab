@@ -61,6 +61,12 @@ def _parse_range_header(range_header: str, file_size: int) -> tuple[int, int] | 
             return None
         if suffix <= 0:
             return None
+        if file_size == 0:
+            raise HTTPException(
+                status_code=416,
+                detail="Range not satisfiable",
+                headers={"Content-Range": "bytes */0"},
+            )
         start = max(0, file_size - suffix)
         end = file_size - 1
         return (start, end)
