@@ -6,6 +6,22 @@ struct SettingsAccountDetailView: View {
     let authState: SettingsPresenterState.AuthSection
     let dangerState: SettingsPresenterState.DangerSection?
     let actions: SettingsPresenterActions
+    let isProActive: Bool
+    var onShowAPIKeyManagement: (() -> Void)?
+
+    init(
+        authState: SettingsPresenterState.AuthSection,
+        dangerState: SettingsPresenterState.DangerSection?,
+        actions: SettingsPresenterActions,
+        isProActive: Bool = false,
+        onShowAPIKeyManagement: (() -> Void)? = nil
+    ) {
+        self.authState = authState
+        self.dangerState = dangerState
+        self.actions = actions
+        self.isProActive = isProActive
+        self.onShowAPIKeyManagement = onShowAPIKeyManagement
+    }
 
     private struct AccountInfoItem: Identifiable {
         let icon: String
@@ -62,6 +78,24 @@ struct SettingsAccountDetailView: View {
                     label: L10n.string("匯出全部單字 CSV"),
                     action: actions.exportVocabularyCSV
                 )
+
+                if SettingsAPIKeyPresentation.shouldShowManagement(
+                    isLoggedIn: authState.isLoggedIn,
+                    isProActive: isProActive
+                ), let onShowAPIKeyManagement {
+                    SettingsDivider()
+                    SettingsNavigationRow(
+                        icon: "key.horizontal",
+                        label: SettingsAPIKeyCopy.rowTitle,
+                        action: onShowAPIKeyManagement,
+                        accessibilityIdentifier: "settings.account.apiKeyManagement"
+                    ) {
+                        Text(SettingsAPIKeyCopy.rowSubtitle)
+                            .font(appSkin.typography.caption)
+                            .foregroundStyle(appSkin.palette.secondaryText)
+                            .lineLimit(1)
+                    }
+                }
             }
             .settingsCard()
 
