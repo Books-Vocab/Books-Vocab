@@ -36,8 +36,9 @@ def test_profiles_share_one_immutable_runner_image_provenance() -> None:
     registry = load_profile_registry(REGISTRY)
     provenance = registry["runner_image_provenance"]
     assert provenance == {
-        "source": "docker.io/library/python:3.13-slim@sha256:ffb752e139c0a19692a43af8d8523b274222dd68eebad5d583b45c2201c6e30a",
-        "digest": "sha256:ffb752e139c0a19692a43af8d8523b274222dd68eebad5d583b45c2201c6e30a",
+        "source": "ghcr.io/astral-sh/uv:python3.13-bookworm@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a",
+        "digest": "sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a",
+        "provided_capabilities": ["bash", "git", "python-3.13", "uv"],
     }
     assert {
         profile["runner_image_digest"]
@@ -47,15 +48,38 @@ def test_profiles_share_one_immutable_runner_image_provenance() -> None:
 
 def test_profiles_declare_runtime_tool_capabilities() -> None:
     registry = load_profile_registry(REGISTRY)
-    assert set(registry["profiles"]["backend.targeted-pytest"]["required_capabilities"]) == {
+    backend = registry["profiles"]["backend.targeted-pytest"]
+    docs = registry["profiles"]["ops.docs-lint-registry"]
+    assert set(backend["required_capabilities"]) == {
         "python-3.13",
         "pytest",
         "uv",
     }
-    assert set(registry["profiles"]["ops.docs-lint-registry"]["required_capabilities"]) == {
+    assert set(docs["required_capabilities"]) == {
         "bash",
         "git",
     }
+    assert set(backend["runner_capabilities"]) == {"python-3.13", "uv"}
+    assert set(docs["runner_capabilities"]) == {"bash", "git"}
+    assert backend["bootstrap"] == docs["bootstrap"] == []
+
+
+def test_pinned_runner_image_supplies_runner_tools_without_bootstrap() -> None:
+    registry = load_profile_registry(REGISTRY)
+    image_capabilities = set(registry["runner_image_provenance"]["provided_capabilities"])
+    assert {"bash", "git", "python-3.13", "uv"} <= image_capabilities
+    for profile in registry["profiles"].values():
+        assert set(profile["runner_capabilities"]) <= image_capabilities
+        assert profile["bootstrap"] == []
+
+
+def test_registry_rejects_profile_runner_capability_missing_from_image(tmp_path: Path) -> None:
+    registry = copy.deepcopy(load_profile_registry(REGISTRY))
+    registry["runner_image_provenance"]["provided_capabilities"].remove("uv")
+    candidate = tmp_path / "compute_profiles.yml"
+    candidate.write_text(json.dumps(registry), encoding="utf-8")
+    with pytest.raises(ContractError, match="runner-image-capability"):
+        load_profile_registry(candidate)
 
 
 def test_profile_resolves_literal_argv_and_stable_digest() -> None:
@@ -245,6 +269,11 @@ def test_profile_registry_rejects_production_and_unsafe_contracts() -> None:
         profile[field] = value
         with pytest.raises(ContractError, match=code):
             validate_profile(profile, name="backend.targeted-pytest")
+
+    profile = copy.deepcopy(registry["profiles"]["backend.targeted-pytest"])
+    profile["bootstrap"] = ["apt-get", "install", "git"]
+    with pytest.raises(ContractError, match="bootstrap-policy"):
+        validate_profile(profile, name="backend.targeted-pytest")
 
     profile = copy.deepcopy(registry["profiles"]["backend.targeted-pytest"])
     profile["remote_eligible"] = True

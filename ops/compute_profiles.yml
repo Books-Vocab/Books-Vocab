@@ -2,8 +2,9 @@
   "schema": "kg.compute_profiles.v1",
   "version": 1,
   "runner_image_provenance": {
-    "source": "docker.io/library/python:3.13-slim@sha256:ffb752e139c0a19692a43af8d8523b274222dd68eebad5d583b45c2201c6e30a",
-    "digest": "sha256:ffb752e139c0a19692a43af8d8523b274222dd68eebad5d583b45c2201c6e30a"
+    "source": "ghcr.io/astral-sh/uv:python3.13-bookworm@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a",
+    "digest": "sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a",
+    "provided_capabilities": ["bash", "git", "python-3.13", "uv"]
   },
   "profiles": {
     "backend.targeted-pytest": {
@@ -24,6 +25,8 @@
       },
       "source_kind": "clean-committed-tree",
       "required_capabilities": ["python-3.13", "pytest", "uv"],
+      "runner_capabilities": ["python-3.13", "uv"],
+      "bootstrap": [],
       "resource_class": "backend-targeted",
       "minimum_tier": "operator",
       "timeout_seconds": 300,
@@ -32,7 +35,7 @@
       "side_effects": ["repo-read"],
       "network_policy": "none",
       "sandbox_policy": "uv-no-project",
-      "runner_image_digest": "sha256:ffb752e139c0a19692a43af8d8523b274222dd68eebad5d583b45c2201c6e30a",
+      "runner_image_digest": "sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a",
       "artifact_contract": "stdout-stderr-only"
     },
     "ops.docs-lint-registry": {
@@ -43,6 +46,8 @@
       "parameters": {},
       "source_kind": "clean-committed-tree",
       "required_capabilities": ["bash", "git"],
+      "runner_capabilities": ["bash", "git"],
+      "bootstrap": [],
       "resource_class": "ops-readonly",
       "minimum_tier": "observer",
       "timeout_seconds": 120,
@@ -51,7 +56,7 @@
       "side_effects": ["repo-read"],
       "network_policy": "none",
       "sandbox_policy": "repo-readonly",
-      "runner_image_digest": "sha256:ffb752e139c0a19692a43af8d8523b274222dd68eebad5d583b45c2201c6e30a",
+      "runner_image_digest": "sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a",
       "artifact_contract": "stdout-stderr-only"
     }
   }

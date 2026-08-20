@@ -46,6 +46,17 @@ def spec_digest(spec: dict[str, Any]) -> str:
     return hashlib.sha256(canonical_spec(spec).encode("utf-8")).hexdigest()
 
 
+def _validate_capabilities(value: Any, *, code: str, detail: str) -> set[str]:
+    if (
+        not isinstance(value, list)
+        or not value
+        or not all(isinstance(item, str) and item for item in value)
+        or len(set(value)) != len(value)
+    ):
+        _fail(code, detail)
+    return set(value)
+
+
 def _validate_runner_image_digest(value: Any, *, code: str, detail: str) -> str:
     if (
         not isinstance(value, str)
@@ -56,9 +67,11 @@ def _validate_runner_image_digest(value: Any, *, code: str, detail: str) -> str:
     return value
 
 
-def _validate_runner_image_provenance(registry: dict[str, Any]) -> str:
+def _validate_runner_image_provenance(registry: dict[str, Any]) -> tuple[str, set[str]]:
     provenance = registry.get("runner_image_provenance")
-    if not isinstance(provenance, dict) or set(provenance) != {"source", "digest"}:
+    if not isinstance(provenance, dict) or set(provenance) != {
+        "source", "digest", "provided_capabilities",
+    }:
         _fail("runner-image-provenance", "registry")
     source = provenance.get("source")
     if not isinstance(source, str) or not source:
@@ -71,7 +84,12 @@ def _validate_runner_image_provenance(registry: dict[str, Any]) -> str:
     source_name, separator, source_digest = source.rpartition("@")
     if not separator or not source_name or source_digest != digest or "@" in source_name:
         _fail("runner-image-provenance", "source")
-    return digest
+    provided_capabilities = _validate_capabilities(
+        provenance.get("provided_capabilities"),
+        code="runner-image-provenance",
+        detail="provided_capabilities",
+    )
+    return digest, provided_capabilities
 
 
 def load_profile_registry(path: Path | str = _DEFAULT_REGISTRY) -> dict[str, Any]:
@@ -91,9 +109,9 @@ def load_profile_registry(path: Path | str = _DEFAULT_REGISTRY) -> dict[str, Any
     profiles = registry.get("profiles")
     if not isinstance(profiles, dict) or not profiles:
         _fail("registry-profiles", "profiles must be a non-empty object")
-    provenance_digest = _validate_runner_image_provenance(registry)
+    provenance_digest, provided_capabilities = _validate_runner_image_provenance(registry)
     for name, profile in profiles.items():
-        validate_profile(profile, name=name)
+        validate_profile(profile, name=name, image_capabilities=provided_capabilities)
         if profile["runner_image_digest"] != provenance_digest:
             _fail("runner-image-provenance", name)
     return registry
@@ -106,11 +124,17 @@ def _require_string(obj: dict[str, Any], key: str, *, nonempty: bool = True) -> 
     return value
 
 
-def validate_profile(profile: Any, *, name: str = "<profile>") -> dict[str, Any]:
+def validate_profile(
+    profile: Any,
+    *,
+    name: str = "<profile>",
+    image_capabilities: set[str] | None = None,
+) -> dict[str, Any]:
     if not isinstance(profile, dict):
         _fail("profile-schema", name)
     allowed = {
         "command", "parameters", "source_kind", "required_capabilities",
+        "runner_capabilities", "bootstrap",
         "resource_class", "timeout_seconds", "remote_eligible",
         "minimum_tier",
         "git_metadata_required", "side_effects", "network_policy",
@@ -166,6 +190,21 @@ def validate_profile(profile: Any, *, name: str = "<profile>") -> dict[str, Any]
     caps = profile.get("required_capabilities")
     if not isinstance(caps, list) or not caps or not all(isinstance(x, str) and x for x in caps):
         _fail("capability-contract", name)
+    required_capabilities = set(caps)
+    runner_capabilities = _validate_capabilities(
+        profile.get("runner_capabilities"),
+        code="capability-contract",
+        detail=name,
+    )
+    if not runner_capabilities <= required_capabilities:
+        _fail("capability-contract", name)
+    if image_capabilities is not None:
+        missing = sorted(runner_capabilities - image_capabilities)
+        if missing:
+            _fail("runner-image-capability", f"{name}:{','.join(missing)}")
+    bootstrap = profile.get("bootstrap")
+    if not isinstance(bootstrap, list) or bootstrap:
+        _fail("bootstrap-policy", name)
     if not isinstance(profile.get("resource_class"), str) or not profile["resource_class"]:
         _fail("invalid-field", "resource_class")
     if profile.get("minimum_tier") not in {"observer", "operator"}:
@@ -257,6 +296,8 @@ def resolve_profile(
         "shell": False,
         "source_kind": profile["source_kind"],
         "required_capabilities": sorted(required),
+        "runner_capabilities": sorted(profile["runner_capabilities"]),
+        "bootstrap": list(profile["bootstrap"]),
         "resource_class": profile["resource_class"],
         "minimum_tier": profile["minimum_tier"],
         "timeout_seconds": profile["timeout_seconds"],
