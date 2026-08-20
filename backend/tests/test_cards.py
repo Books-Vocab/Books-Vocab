@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import closing
 from datetime import UTC, datetime
 
 import pytest
@@ -9,7 +10,8 @@ from kg.cards import Card, CardStore
 
 @pytest.fixture()
 def store(tmp_path):
-    return CardStore(path=tmp_path / "cards.db")
+    with closing(CardStore(path=tmp_path / "cards.db")) as store:
+        yield store
 
 
 class TestAddAndGet:
@@ -227,24 +229,24 @@ class TestEmbedText:
 
 
 def test_get_batch_returns_matching_cards(tmp_path):
-    store = CardStore(tmp_path / "cards.db")
-    c1 = store.add("hello", meaning="你好")
-    store.add("world", meaning="世界")
-    c3 = store.add("foo", meaning="富")
+    with closing(CardStore(tmp_path / "cards.db")) as store:
+        c1 = store.add("hello", meaning="你好")
+        store.add("world", meaning="世界")
+        c3 = store.add("foo", meaning="富")
 
-    result = store.get_batch({c1.id, c3.id})
-    assert set(result.keys()) == {c1.id, c3.id}
-    assert result[c1.id].content == "hello"
+        result = store.get_batch({c1.id, c3.id})
+        assert set(result.keys()) == {c1.id, c3.id}
+        assert result[c1.id].content == "hello"
 
 def test_get_batch_empty_set(tmp_path):
-    store = CardStore(tmp_path / "cards.db")
-    assert store.get_batch(set()) == {}
+    with closing(CardStore(tmp_path / "cards.db")) as store:
+        assert store.get_batch(set()) == {}
 
 def test_get_batch_missing_ids(tmp_path):
-    store = CardStore(tmp_path / "cards.db")
-    c1 = store.add("hello", meaning="你好")
-    result = store.get_batch({c1.id, "nonexistent"})
-    assert set(result.keys()) == {c1.id}
+    with closing(CardStore(tmp_path / "cards.db")) as store:
+        c1 = store.add("hello", meaning="你好")
+        result = store.get_batch({c1.id, "nonexistent"})
+        assert set(result.keys()) == {c1.id}
 
 
 class TestBatchTouch:
@@ -485,26 +487,26 @@ class TestBuildContentLookupNoFullScan:
 
 class TestSoftDeleteByNotebook:
     def test_soft_deletes_all_cards_in_notebook(self, tmp_path):
-        store = CardStore(tmp_path / "cards.db")
-        store.add(content="apple", meaning="蘋果", notebook_id="nb1")
-        store.add(content="banana", meaning="香蕉", notebook_id="nb1")
-        store.add(content="cherry", meaning="櫻桃", notebook_id="nb2")
-        count = store.soft_delete_by_notebook("nb1")
-        assert count == 2
-        assert list(store.all(notebook_id="nb1")) == []
-        assert len(list(store.all(notebook_id="nb2"))) == 1
+        with closing(CardStore(tmp_path / "cards.db")) as store:
+            store.add(content="apple", meaning="蘋果", notebook_id="nb1")
+            store.add(content="banana", meaning="香蕉", notebook_id="nb1")
+            store.add(content="cherry", meaning="櫻桃", notebook_id="nb2")
+            count = store.soft_delete_by_notebook("nb1")
+            assert count == 2
+            assert list(store.all(notebook_id="nb1")) == []
+            assert len(list(store.all(notebook_id="nb2"))) == 1
 
     def test_skips_already_deleted(self, tmp_path):
-        store = CardStore(tmp_path / "cards.db")
-        c = store.add(content="apple", meaning="蘋果", notebook_id="nb1")
-        store.delete(c.id)
-        count = store.soft_delete_by_notebook("nb1")
-        assert count == 0
+        with closing(CardStore(tmp_path / "cards.db")) as store:
+            c = store.add(content="apple", meaning="蘋果", notebook_id="nb1")
+            store.delete(c.id)
+            count = store.soft_delete_by_notebook("nb1")
+            assert count == 0
 
     def test_empty_notebook_returns_zero(self, tmp_path):
-        store = CardStore(tmp_path / "cards.db")
-        count = store.soft_delete_by_notebook("nonexistent")
-        assert count == 0
+        with closing(CardStore(tmp_path / "cards.db")) as store:
+            count = store.soft_delete_by_notebook("nonexistent")
+            assert count == 0
 
 
 class TestFindByContent:
@@ -528,10 +530,10 @@ class TestFindByContent:
 
     def test_composed_query_finds_decomposed_storage(self, tmp_path):
         # Reverse: stored decomposed, queried composed
-        store = CardStore(tmp_path / "cards.db")
-        c = store.add(content="café", meaning="咖啡館")
-        found = store.find_by_content("café")
-        assert found is not None and found.id == c.id
+        with closing(CardStore(tmp_path / "cards.db")) as store:
+            c = store.add(content="café", meaning="咖啡館")
+            found = store.find_by_content("café")
+            assert found is not None and found.id == c.id
 
     def test_excludes_deleted(self, store):
         c = store.add(content="ephemeral", meaning="brief")
@@ -554,53 +556,51 @@ class TestFindByContent:
         from sqlmodel import Session
 
         from kg.text_utils import normalize_nfc_lower
-        store = CardStore(tmp_path / "cards_perf.db")
-        # Bulk insert 5000 cards via ORM in a single transaction
-        with Session(store.engine) as session:
-            for i in range(5000):
-                content = f"word{i:05d}"
-                session.add(Card(
-                    content=content,
-                    content_nfc_lower=normalize_nfc_lower(content),
-                    meaning="m",
-                ))
-            session.commit()
-        # Add a decomposed-unicode card to force a path that previously fell
-        # through to the full-scan fallback
-        store.add(content="café", meaning="咖啡館")
+        with closing(CardStore(tmp_path / "cards_perf.db")) as store:
+            # Bulk insert 5000 cards via ORM in a single transaction
+            with Session(store.engine) as session:
+                for i in range(5000):
+                    content = f"word{i:05d}"
+                    session.add(Card(
+                        content=content,
+                        content_nfc_lower=normalize_nfc_lower(content),
+                        meaning="m",
+                    ))
+                session.commit()
+            # Add a decomposed-unicode card to force a path that previously fell
+            # through to the full-scan fallback
+            store.add(content="café", meaning="咖啡館")
 
-        # Lookup with decomposed form — old code path scanned all 5001 rows
-        start = time.perf_counter()
-        for _ in range(50):
-            found = store.find_by_content("café")
-            assert found is not None
-        elapsed = time.perf_counter() - start
-        # 50 lookups should be well under 50ms total with an index
-        assert elapsed < 0.05, f"find_by_content too slow: {elapsed:.3f}s for 50 lookups"
+            # Lookup with decomposed form — old code path scanned all 5001 rows
+            start = time.perf_counter()
+            for _ in range(50):
+                found = store.find_by_content("café")
+                assert found is not None
+            elapsed = time.perf_counter() - start
+            # 50 lookups should be well under 50ms total with an index
+            assert elapsed < 0.05, f"find_by_content too slow: {elapsed:.3f}s for 50 lookups"
 
 
 class TestNfcLowerMigration:
     def test_backfill_populates_existing_rows(self, tmp_path):
         """Pre-migration rows (NULL/empty content_nfc_lower) get backfilled on open."""
         db_path = tmp_path / "legacy.db"
-        store = CardStore(db_path)
-        store.add(content="Café", meaning="咖啡館")
-        store.add(content="HELLO", meaning="哈囉")
-        # Simulate legacy rows: clear the column
-        with store.engine.connect() as conn:
-            conn.exec_driver_sql("UPDATE card SET content_nfc_lower = ''")
-            conn.commit()
-        store.close()
+        with closing(CardStore(db_path)) as store:
+            store.add(content="Café", meaning="咖啡館")
+            store.add(content="HELLO", meaning="哈囉")
+            # Simulate legacy rows: clear the column
+            with store.engine.connect() as conn:
+                conn.exec_driver_sql("UPDATE card SET content_nfc_lower = ''")
+                conn.commit()
 
         # Re-open: migration should backfill
-        store2 = CardStore(db_path)
-        with store2.engine.connect() as conn:
-            rows = dict(conn.exec_driver_sql(
-                "SELECT content, content_nfc_lower FROM card"
-            ).fetchall())
-        assert rows["Café"] == "café"
-        assert rows["HELLO"] == "hello"
-        # And lookups work
-        assert store2.find_by_content("CAFÉ") is not None
-        assert store2.find_by_content("hello") is not None
-
+        with closing(CardStore(db_path)) as store2:
+            with store2.engine.connect() as conn:
+                rows = dict(conn.exec_driver_sql(
+                    "SELECT content, content_nfc_lower FROM card"
+                ).fetchall())
+            assert rows["Café"] == "café"
+            assert rows["HELLO"] == "hello"
+            # And lookups work
+            assert store2.find_by_content("CAFÉ") is not None
+            assert store2.find_by_content("hello") is not None
