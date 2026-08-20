@@ -19,6 +19,7 @@ verified_against: 2a7930c04f661c266ce05b3568f375e1db2a39f1
 | Area | Entry | Tests／verification |
 |---|---|---|
 | iOS app | `ios/BooksAndVocab/` | `./ops/ios_ops.sh build/test` |
+| iOS observability | `ios/BooksAndVocab/Services/AppCrashReporting.swift`、`docs/reference/ios_observability.md` | `./ops/ios_ops.sh sentry --json`、`./ops/sentry_tool.py ... --json` |
 | Backend | `backend/src/kg/` | `cd backend && uv run --locked python -m pytest` |
 | Podcast／LLM lab | `lab/podcast/`、`lab/llm_eval/` | 各自 README／`uv run` entrypoint |
 | GitHub-native delivery model | `docs/reference/delivery_model.md` | GitHub Issue／Project／PR／Actions／repository rules |
@@ -50,6 +51,7 @@ verified_against: 2a7930c04f661c266ce05b3568f375e1db2a39f1
 ## Operational entrypoints
 
 - Build／test：`ops/ios_ops.sh`、`ops/ios_build.sh`、`ops/ios_test.sh`。
+- iOS Sentry／agent diagnostics：`ops/ios_ops.sh sentry`、`ops/sentry_tool.py`、`ops/sentry_api.py`、`ops/sentry_contract.py`。
 - UI quality：`ops/ui_quality_plane.py`、`ops/ui_quality_gate.py`、`ops/ios_ops.sh quality`。
 - Lint／scan：`ops/docs_lint.sh`、`ops/i18n_lint.sh`、`ops/shell_scan.sh`、`ops/python_scan.py`。
 - Worktree：`ops/lib/worktree_scope.py`、`ops/worktree_registry.py`、`ops/worktree_orchestrate.py`。

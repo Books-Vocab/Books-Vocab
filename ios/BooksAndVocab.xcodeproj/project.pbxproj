@@ -15,6 +15,7 @@
 		E97244F02FC09DCA0038B2FA /* Playbook in Frameworks */ = {isa = PBXBuildFile; productRef = E97244EF2FC09DCA0038B2FA /* Playbook */; };
 		E97244F42FC09DCA0038B2FA /* PlaybookUI in Frameworks */ = {isa = PBXBuildFile; productRef = E97244F32FC09DCA0038B2FA /* PlaybookUI */; };
 		E97245042FC0A23E0038B2FA /* Playbook in Frameworks */ = {isa = PBXBuildFile; productRef = E97245032FC0A23E0038B2FA /* Playbook */; };
+		KG000001SENTRY01 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = KG000004SENTRY04 /* Sentry */; };
 		E9D331AF2F521D2D00D4355C /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = E9D331AE2F521D2D00D4355C /* GoogleSignIn */; };
 		E9D331B12F521D2D00D4355C /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = E9D331B02F521D2D00D4355C /* GoogleSignInSwift */; };
 /* End PBXBuildFile section */
@@ -67,6 +68,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA000001READIUM01 /* ReadiumShared in Frameworks */,
+				KG000001SENTRY01 /* Sentry in Frameworks */,
 				E9677BDA2F6056C80095D2E1 /* StoreKit.framework in Frameworks */,
 				E97244F42FC09DCA0038B2FA /* PlaybookUI in Frameworks */,
 				E97244F02FC09DCA0038B2FA /* Playbook in Frameworks */,
@@ -153,6 +155,7 @@
 				E9D331B02F521D2D00D4355C /* GoogleSignInSwift */,
 				E97244EF2FC09DCA0038B2FA /* Playbook */,
 				E97244F32FC09DCA0038B2FA /* PlaybookUI */,
+				KG000004SENTRY04 /* Sentry */,
 			);
 			productName = BooksAndVocab;
 			productReference = E9EC4E142F4DD27100C3FFB6 /* BooksAndVocab.app */;
@@ -253,6 +256,7 @@
 				AA000007READIUM07 /* XCRemoteSwiftPackageReference "swift-toolkit" */,
 				E92078102F5219710059F231 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 				E97244EE2FC09DCA0038B2FA /* XCRemoteSwiftPackageReference "playbook-ios" */,
+				KG000003SENTRY03 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E9EC4E152F4DD27100C3FFB6 /* Products */;
@@ -663,6 +667,14 @@
 				minimumVersion = 0.4.2;
 			};
 		};
+		KG000003SENTRY03 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/getsentry/sentry-cocoa.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.24.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -710,6 +722,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E92078102F5219710059F231 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
 			productName = GoogleSignInSwift;
+		};
+		KG000004SENTRY04 /* Sentry */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = KG000003SENTRY03 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			productName = Sentry;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -147,6 +147,18 @@ documents:
       - ops/
       - .github/
 
+  - id: reference.ios_observability
+    path: docs/reference/ios_observability.md
+    kind: reference
+    authority: SoT
+    triggers:
+      - ios-observability-changed
+    sources:
+      - ios/BooksAndVocab/Services/
+      - ios/BooksAndVocab.xcodeproj/
+      - ops/sentry_*.py
+      - ops/lib/ios_ops_release.sh
+
   - id: reference.catalog_scope
     path: docs/reference/catalog_scope.md
     kind: reference
