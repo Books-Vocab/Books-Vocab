@@ -23,20 +23,20 @@ private struct GlassControlsScene: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppSpacing.s4) {
-                Text(L10n.string("iOS 26 Glass controls"))
+                Text(L10n.string("iOS 26 Glass controls")) // i18n-allow: debug-only visual review fixture
                     .font(AppFonts.h2(weight: .semibold))
                     .foregroundStyle(appTheme.palette.primaryText)
 
-                Text(L10n.string("主要 CTA 保持實心；次要、外框與危險操作使用語意化 glass。"))
+                Text(L10n.string("主要 CTA 保持實心；次要、外框與危險操作使用語意化 glass。")) // i18n-allow: debug-only visual review fixture
                     .font(AppFonts.caption())
                     .foregroundStyle(appTheme.palette.secondaryText)
 
                 VStack(spacing: AppSpacing.s3) {
-                    Button(L10n.string("開始複習")) {}
+                    Button(L10n.string("開始複習")) {} // i18n-allow: debug-only visual review fixture
                         .buttonStyle(.appCompactAction(.primary))
-                    Button(L10n.string("次要操作")) {}
+                    Button(L10n.string("次要操作")) {} // i18n-allow: debug-only visual review fixture
                         .buttonStyle(.appCompactAction(.neutral))
-                    Button(L10n.string("外框操作")) {}
+                    Button(L10n.string("外框操作")) {} // i18n-allow: debug-only visual review fixture
                         .buttonStyle(.appCompactAction(.outline))
                     Button(L10n.string("刪除")) {}
                         .buttonStyle(.appCompactAction(.destructive))
@@ -44,11 +44,11 @@ private struct GlassControlsScene: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 AppToast(
-                    item: .init(message: L10n.string("背景同步完成"), style: .success),
+                    item: .init(message: L10n.string("背景同步完成"), style: .success), // i18n-allow: debug-only visual review fixture
                     onDismiss: {}
                 )
                 AppToast(
-                    item: .init(message: L10n.string("部分同步失敗，請稍後重試"), style: .warning),
+                    item: .init(message: L10n.string("部分同步失敗，請稍後重試"), style: .warning), // i18n-allow: debug-only visual review fixture
                     onDismiss: {}
                 )
                 AppToast(
@@ -68,15 +68,15 @@ private struct GlassSurfacesScene: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppSpacing.s4) {
-                Text(L10n.string("Surface and state hierarchy"))
+                Text(L10n.string("Surface and state hierarchy")) // i18n-allow: debug-only visual review fixture
                     .font(AppFonts.h2(weight: .semibold))
                     .foregroundStyle(appTheme.palette.primaryText)
 
                 AppSectionCard(padding: 0, style: .settings(.previewNeutral)) {
                     VStack(alignment: .leading, spacing: AppSpacing.s2) {
-                        Text(L10n.string("Settings flat grouping"))
+                        Text(L10n.string("Settings flat grouping")) // i18n-allow: debug-only visual review fixture
                             .font(AppFonts.body(weight: .semibold))
-                        Text(L10n.string("分區依靠留白與 divider，不再依靠外框。"))
+                        Text(L10n.string("分區依靠留白與 divider，不再依靠外框。")) // i18n-allow: debug-only visual review fixture
                             .font(AppFonts.caption())
                             .foregroundStyle(appTheme.palette.secondaryText)
                     }
@@ -84,9 +84,9 @@ private struct GlassSurfacesScene: View {
                 }
 
                 AppStateMessageCard(
-                    title: L10n.string("內容載入失敗"),
+                    title: L10n.string("內容載入失敗"), // i18n-allow: debug-only visual review fixture
                     systemImage: "exclamationmark.triangle",
-                    description: L10n.string("可重試的錯誤使用單一狀態 surface。")
+                    description: L10n.string("可重試的錯誤使用單一狀態 surface。") // i18n-allow: debug-only visual review fixture
                 ) {
                     Button(L10n.string("重試")) {}
                         .buttonStyle(.appCompactAction(.outline))
@@ -95,7 +95,7 @@ private struct GlassSurfacesScene: View {
                 AppLoadingStateCard(
                     title: L10n.string("載入中"),
                     systemImage: "arrow.triangle.2.circlepath",
-                    description: L10n.string("使用 shared loading card。"),
+                    description: L10n.string("使用 shared loading card。"), // i18n-allow: debug-only visual review fixture
                     visualStyle: .app
                 )
 
