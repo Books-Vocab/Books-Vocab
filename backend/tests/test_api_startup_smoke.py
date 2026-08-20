@@ -65,6 +65,7 @@ def startup_env(tmp_path):
             lifecycle["closed"] += 1
             return super().close()
 
+    client = None
     try:
         api_mod._USER_LOCKS.clear()
         deps_mod._USER_LOCKS_MUTEX = None
@@ -78,12 +79,25 @@ def startup_env(tmp_path):
         admin_test_matrix_mod.LAST_TEST_RUN = None
     finally:
         try:
-            client.close()
-            assert lifecycle == {"constructed": 1, "closed": 1}
+            if client is not None:
+                client.close()
+                assert lifecycle == {"constructed": 1, "closed": 1}
         finally:
             app.state.kg_settings = original_settings
             app.state.load_users = original_load
             app.state.save_users = original_save
+
+
+def test_startup_env_preserves_testclient_constructor_failure(tmp_path, monkeypatch):
+    class FailingTestClient:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("TestClient constructor failed")
+
+    monkeypatch.setitem(globals(), "TestClient", FailingTestClient)
+    startup_generator = startup_env.__wrapped__(tmp_path)
+
+    with pytest.raises(RuntimeError, match="TestClient constructor failed"):
+        next(startup_generator)
 
 
 def test_startup_smoke_serves_admin_and_core_routes(startup_env):
