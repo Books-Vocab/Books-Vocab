@@ -51,6 +51,7 @@ def cmd_timeseries(args: argparse.Namespace) -> None:
     result: dict = {"metric": metric, "bucket": bucket, "range": range_, "since": since, "uid": uid_filter, "count": 0, "series": []}
     acc: dict[str, object] = {}
     min_dt = max_dt = None
+    since_dt = _parse_utc_instant(since)
     db_path = data_dir() / "token_usage.db"
     if db_path.exists():
         conn = connect_ro(db_path)
@@ -58,6 +59,12 @@ def cmd_timeseries(args: argparse.Namespace) -> None:
         sql = f"SELECT user_id, call_type, {pcol} AS provider, input_tokens, output_tokens, created_at FROM token_usage"
         clauses: list[str] = []
         params: list = []
+        if since_dt is not None:
+            # ISO-8601 offsets can place a qualifying instant on the prior
+            # local date. Keep this indexed bound conservative; exact UTC
+            # filtering happens below after parsing each returned timestamp.
+            clauses.append("created_at >= ?")
+            params.append((since_dt.date() - timedelta(days=1)).isoformat())
         if uid_filter != "all":
             uid = resolve_uid(uid_filter, data_dir())
             result["uid"] = uid
@@ -68,7 +75,6 @@ def cmd_timeseries(args: argparse.Namespace) -> None:
         rows = conn.execute(sql, params).fetchall()
         conn.close()
 
-        since_dt = _parse_utc_instant(since)
         for user_id, call_type, provider, t_in, t_out, created_at in rows:
             created_dt = _parse_utc_instant(created_at)
             if created_dt is None or (since_dt is not None and created_dt < since_dt):
