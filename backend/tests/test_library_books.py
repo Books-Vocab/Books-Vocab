@@ -9,15 +9,50 @@ from __future__ import annotations
 import json
 import uuid
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 import kg.api as api_mod
 import kg.deps as deps_mod
+import kg.service_factories as service_factories
 from conftest import TEST_JWT_SECRET, _swap_settings, make_jwt
 from kg.api import app
+from kg.library.store import LibraryStore
 from kg.settings import KGSettings
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _cleanup_evidence():
+    evidence = {
+        "client_close_calls": 0,
+        "librarystore_close_calls": 0,
+    }
+    original_client_close = TestClient.close
+    original_store_close = LibraryStore.close
+
+    def count_client_close(client):
+        evidence["client_close_calls"] += 1
+        return original_client_close(client)
+
+    def count_store_close(store):
+        evidence["librarystore_close_calls"] += 1
+        return original_store_close(store)
+
+    service_factories.clear_store_cache()
+    with patch.object(TestClient, "close", count_client_close), patch.object(
+        LibraryStore, "close", count_store_close
+    ):
+        yield evidence
+
+    with service_factories._STORE_CACHE_LOCK:
+        evidence["cache_size"] = len(service_factories._STORE_CACHE)
+    assert evidence == {
+        "client_close_calls": 5,
+        "librarystore_close_calls": 5,
+        "cache_size": 0,
+    }
 
 
 @pytest.fixture()
@@ -35,16 +70,19 @@ def isolated_api(tmp_path):
     original_save = app.state.save_users
 
     _swap_settings(KGSettings(data_dir=data_dir, jwt_secret=TEST_JWT_SECRET))
+    client = TestClient(app, raise_server_exceptions=False)
     try:
         api_mod._USER_LOCKS.clear()
         deps_mod._USER_LOCKS_MUTEX = None
         yield SimpleNamespace(
-            client=TestClient(app, raise_server_exceptions=False),
+            client=client,
             user_id=user_id,
             headers=headers,
             data_dir=data_dir,
         )
     finally:
+        client.close()
+        service_factories.clear_store_cache()
         app.state.kg_settings = original_settings
         app.state.load_users = original_load
         app.state.save_users = original_save
