@@ -192,6 +192,14 @@ def test_external_rate_limit_returns_standard_headers(external_api, monkeypatch)
     assert int(second.headers["Retry-After"]) >= 1
 
 
+def test_external_rate_limiter_rejects_non_positive_max_keys():
+    with pytest.raises(ValueError, match="max_keys must be positive"):
+        ExternalRateLimiter(limit=1, window_seconds=60, max_keys=0)
+
+    with pytest.raises(ValueError, match="max_keys must be positive"):
+        ExternalRateLimiter(limit=1, window_seconds=60, max_keys=-1)
+
+
 def test_external_api_is_not_double_limited_by_generic_ip_limiter(external_api):
     api_key = _create_key(external_api)
     from kg.rate_limit import api_limiter
