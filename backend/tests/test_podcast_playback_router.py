@@ -61,9 +61,10 @@ def test_parse_range_header_preserves_valid_ranges_for_non_empty_files(range_hea
     assert playback_mod._parse_range_header(range_header, 4) == expected
 
 
-def test_parse_range_header_rejects_suffix_range_for_empty_file():
+@pytest.mark.parametrize("range_header", ["bytes=-1", "bytes=-0"])
+def test_parse_range_header_rejects_suffix_range_for_empty_file(range_header):
     with pytest.raises(HTTPException) as exc_info:
-        playback_mod._parse_range_header("bytes=-1", 0)
+        playback_mod._parse_range_header(range_header, 0)
 
     assert exc_info.value.status_code == 416
     assert exc_info.value.headers == {"Content-Range": "bytes */0"}
