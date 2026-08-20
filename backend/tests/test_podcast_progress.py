@@ -157,6 +157,44 @@ def test_list_for_user_orders_offset_timestamps_by_utc_instant(isolated_api):
     ]
 
 
+def test_list_for_user_orders_and_limits_in_sql(isolated_api):
+    from kg import podcast_progress
+
+    podcast_progress.upsert(
+        user_id=isolated_api.user_id,
+        series_id="series_earlier",
+        ep_num=1,
+        position_sec=10.0,
+        duration_sec=100.0,
+        updated_at=_ISO_OFFSET_EARLIER,
+    )
+    podcast_progress.upsert(
+        user_id=isolated_api.user_id,
+        series_id="series_later",
+        ep_num=1,
+        position_sec=20.0,
+        duration_sec=200.0,
+        updated_at=_ISO_OFFSET_LATER,
+    )
+
+    statements = []
+    conn = podcast_progress._get_conn()
+    conn.set_trace_callback(statements.append)
+    try:
+        items = podcast_progress.list_for_user(
+            user_id=isolated_api.user_id,
+            limit=1,
+        )
+    finally:
+        conn.set_trace_callback(None)
+
+    assert [(item["series_id"], item["updated_at"]) for item in items] == [
+        ("series_later", _ISO_OFFSET_LATER),
+    ]
+    select = next(statement for statement in statements if statement.startswith("SELECT"))
+    assert "LIMIT 1" in select
+
+
 def test_get_list_empty_returns_empty_items(isolated_api):
     resp = isolated_api.client.get("/api/podcasts/progress", headers=isolated_api.headers)
     assert resp.status_code == 200

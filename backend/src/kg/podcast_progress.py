@@ -238,18 +238,10 @@ def list_for_user(*, user_id: str, limit: int = 500) -> list[dict]:
         conn = _get_conn()
         rows = conn.execute(
             "SELECT series_id, ep_num, position_sec, duration_sec, updated_at "
-            "FROM podcast_progress WHERE user_id = ?",
-            (user_id,),
+            "FROM podcast_progress WHERE user_id = ? "
+            "ORDER BY unixepoch(updated_at, 'subsec') IS NOT NULL DESC, "
+            "unixepoch(updated_at, 'subsec') DESC, updated_at DESC "
+            "LIMIT ?",
+            (user_id, limit),
         ).fetchall()
-    def _sort_key(row):
-        parsed = parse_instant(row[4])
-        return (
-            parsed is not None,
-            parsed or datetime.min.replace(tzinfo=UTC),
-            row[4],
-        )
-
-    rows.sort(key=_sort_key, reverse=True)
-    if limit >= 0:
-        rows = rows[:limit]
     return [_row_dict(s, e, p, d, u) for s, e, p, d, u in rows]
