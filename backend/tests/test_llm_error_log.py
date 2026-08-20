@@ -146,6 +146,29 @@ class TestRecord:
         ).fetchone()[0]
         assert before <= ts <= after
 
+    def test_count_errors_since_normalizes_offset_timestamps(self, monkeypatch):
+        """Compare stored offset timestamps by their UTC instant, not text."""
+        fixed_now = datetime(2026, 8, 21, 12, 0, tzinfo=UTC)
+
+        class FixedDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return fixed_now
+
+        monkeypatch.setattr(llm_error_log, "datetime", FixedDatetime)
+        conn = llm_error_log._get_conn()
+        conn.executemany(
+            "INSERT INTO llm_errors (user_id, call_type, error_class, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            [
+                ("u1", "judge", "Error", "2026-08-21T12:30:00+01:00"),
+                ("u1", "judge", "Error", "2026-08-21T12:30:00+02:00"),
+            ],
+        )
+        conn.commit()
+
+        assert llm_error_log.count_errors_since(60) == 1
+
 
 class TestReset:
     def test_reset_switches_db_path(self, tmp_path, monkeypatch):

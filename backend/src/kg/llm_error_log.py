@@ -145,14 +145,17 @@ def count_errors_since(window_min: int) -> int:
     """Count terminal LLM failures recorded in the last ``window_min`` minutes.
 
     Windowed by ``created_at`` (event-occurrence time), mirroring the
-    judge/translate observability checks. Uses the bare ``idx_le_created``
-    index. Parameterised query under the singleton lock; read-only.
+    judge/translate observability checks. SQLite normalizes ISO 8601 offsets
+    before comparing timestamps so rows written with non-UTC offsets are
+    filtered by their actual UTC instant. Parameterised query under the
+    singleton lock; read-only.
     """
     cutoff = (datetime.now(UTC) - timedelta(minutes=window_min)).isoformat()
     with _lock:
         conn = _get_conn()
         row = conn.execute(
-            "SELECT COUNT(*) FROM llm_errors WHERE created_at >= ?",
+            "SELECT COUNT(*) FROM llm_errors "
+            "WHERE datetime(created_at) >= datetime(?)",
             (cutoff,),
         ).fetchone()
     return int(row[0] or 0)
