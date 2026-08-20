@@ -39,6 +39,7 @@ from lib.worktree_scope import scope_files, scope_status
 
 SCHEMA = "kg.worktree.orchestrate.v2"
 GATE_SCHEMA = "kg.worktree.gate.v2"
+HANDOFF_SCHEMA = "kg.worktree.handoff.v1"
 BASE_DEFAULT = "main"
 BRANCH_TYPES = ("debug", "feat", "research")
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -136,6 +137,26 @@ def _registry_register(*, branch: str, path: Path, intent: str, base: str,
         return EXIT_USAGE, {"reason": str(exc)}
     with registry._ledger_lock(state_path):
         state = registry.load_state(state_path)
+        active_matches = [
+            record for record in registry._active_records(state)
+            if registry._record_matches(record, branch=branch, path=str(path))
+        ]
+        if len(active_matches) > 1:
+            return EXIT_BLOCK, {
+                "reason": "multiple active records match the same worktree",
+                "owners": [
+                    {"branch": item.get("branch"), "path": item.get("path")}
+                    for item in active_matches
+                ],
+            }
+        if active_matches:
+            # Keep terminal records in place as history, but put the one live
+            # owner first so registry._register_record cannot select an older
+            # abandoned record with the same branch/path.
+            active = active_matches[0]
+            state["records"] = [active] + [
+                record for record in state["records"] if record is not active
+            ]
         rc, record = registry._register_record(
             state, branch=branch, path=str(path), intent=intent, base=base,
             external_ids=external_ids, scope=scope,
@@ -402,6 +423,168 @@ def cmd_gate(args: argparse.Namespace) -> int:
     return EXIT_OK if verdict == "pass" else EXIT_BLOCK
 
 
+def _handoff_payload(*, status: str, worktree: Path, reason: str | None = None,
+                     observed_main_sha: str | None = None) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "schema": HANDOFF_SCHEMA,
+        "action": "handoff",
+        "status": status,
+        "worktree": str(worktree),
+    }
+    if reason:
+        payload["reason"] = reason
+    if observed_main_sha:
+        payload["observed_main_sha"] = observed_main_sha
+    return payload
+
+
+def cmd_handoff(args: argparse.Namespace) -> int:
+    """Emit one exact, IM-consumable package from a valid local hand-back.
+
+    The incoming main SHA is supplied by IM after its live-main requery.  This
+    command deliberately does not fetch, push, open a PR, or mutate GitHub;
+    it only turns already-sealed local evidence into one machine-readable
+    admission result.
+    """
+    worktree = _path(args.worktree)
+    state_path = Path(args.state).expanduser().resolve() if args.state else registry.default_state_path()
+    if not worktree.is_dir():
+        payload = _handoff_payload(status="blocked", worktree=worktree,
+                                   reason="worktree not found")
+        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        return EXIT_BLOCK
+
+    branch_rc, branch = _git(["branch", "--show-current"], worktree)
+    state = registry.load_state(state_path)
+    matches = [
+        record for record in registry._active_records(state)
+        if branch_rc == 0 and branch
+        and registry._record_matches(record, branch=branch, path=str(worktree))
+    ]
+    if len(matches) != 1:
+        payload = _handoff_payload(
+            status="blocked", worktree=worktree,
+            reason="handoff selector must match exactly one active worktree",
+        )
+        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        return EXIT_BLOCK
+
+    record = matches[0]
+    seal = record.get("handback_seal")
+    if not isinstance(seal, dict):
+        payload = _handoff_payload(
+            status="blocked", worktree=worktree,
+            reason="typed kg.worktree.handback.v1 seal is missing",
+        )
+        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        return EXIT_BLOCK
+
+    observed_main_sha = _resolve_commit(worktree, args.incoming_main) or args.incoming_main
+    base_sha = str(seal.get("base_sha") or record.get("base_sha") or record.get("base") or "")
+    if not base_sha:
+        payload = _handoff_payload(
+            status="blocked", worktree=worktree, observed_main_sha=observed_main_sha,
+            reason="hand-back base is missing",
+        )
+        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        return EXIT_BLOCK
+    if observed_main_sha != base_sha:
+        payload = _handoff_payload(
+            status="blocked", worktree=worktree, observed_main_sha=observed_main_sha,
+            reason=f"incoming main {observed_main_sha} does not equal hand-back base {base_sha}",
+        )
+        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        return EXIT_BLOCK
+
+    if not registry._has_valid_handback(record):
+        problems = registry.validate_handback_seal(record, repo=worktree)
+        reason = "local hand-back is not valid"
+        if problems:
+            reason = f"local hand-back is not valid: {', '.join(item['kind'] for item in problems)}"
+        payload = _handoff_payload(
+            status="blocked", worktree=worktree, observed_main_sha=observed_main_sha,
+            reason=reason,
+        )
+        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        return EXIT_BLOCK
+
+    tip_sha = str(seal.get("tip_sha") or record.get("handed_back_sha") or "")
+    scope = record.get("scope")
+    if scope_status(scope) != "known":
+        payload = _handoff_payload(
+            status="blocked", worktree=worktree, observed_main_sha=observed_main_sha,
+            reason="declared Scope is unstructured or invalid",
+        )
+        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        return EXIT_BLOCK
+    scope_paths = sorted({item["path"] for item in scope_files(scope)})
+    gate_path = _gate_record_path(str(state_path), worktree)
+    try:
+        gate = json.loads(gate_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        gate = None
+    if not isinstance(gate, dict) or gate.get("verdict") != "pass":
+        payload = _handoff_payload(
+            status="blocked", worktree=worktree, observed_main_sha=observed_main_sha,
+            reason="no passing local gate is recorded for this worktree",
+        )
+        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        return EXIT_BLOCK
+    if gate.get("schema") != GATE_SCHEMA or _path(str(gate.get("worktree") or "")) != worktree:
+        payload = _handoff_payload(
+            status="blocked", worktree=worktree, observed_main_sha=observed_main_sha,
+            reason="local gate provenance does not match this worktree",
+        )
+        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        return EXIT_BLOCK
+    gate_base = _resolve_commit(worktree, str(gate.get("base") or "")) or str(gate.get("base") or "")
+    if gate_base != base_sha:
+        payload = _handoff_payload(
+            status="blocked", worktree=worktree, observed_main_sha=observed_main_sha,
+            reason="local gate base does not equal hand-back base",
+        )
+        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        return EXIT_BLOCK
+    if gate.get("head") != tip_sha:
+        payload = _handoff_payload(
+            status="blocked", worktree=worktree, observed_main_sha=observed_main_sha,
+            reason="local gate HEAD does not equal hand-back tip",
+        )
+        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        return EXIT_BLOCK
+    if sorted(gate.get("files") or []) != scope_paths:
+        payload = _handoff_payload(
+            status="blocked", worktree=worktree, observed_main_sha=observed_main_sha,
+            reason="local gate changed files do not equal declared Scope",
+        )
+        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        return EXIT_BLOCK
+
+    payload = _handoff_payload(
+        status="ready-for-im", worktree=worktree, observed_main_sha=observed_main_sha,
+    )
+    payload.update({
+        "branch": branch,
+        "external_ids": sorted(registry._legacy_external_ids(record)),
+        "base_sha": base_sha,
+        "tip_sha": tip_sha,
+        "scope": scope_paths,
+        "handback_seal": seal,
+        "validation": {
+            "registry": {
+                "status": "pass",
+                "scope_status": "known",
+                "handback": "valid",
+                "clean": True,
+            },
+            "gate": gate,
+        },
+    })
+    _emit(payload, as_json=args.json,
+          human=f"✓ handoff ready-for-im: {branch} @ {tip_sha[:12]}")
+    return EXIT_OK
+
+
 def cmd_preflight(args: argparse.Namespace) -> int:
     state_path = Path(args.state).expanduser().resolve() if args.state else registry.default_state_path()
     state = registry.load_state(state_path)
@@ -527,6 +710,11 @@ def _parser() -> argparse.ArgumentParser:
     gate = sub.add_parser("gate", help="run focused local checks for changed files")
     common(gate); gate.add_argument("--worktree", required=True); gate.add_argument("--base", default=BASE_DEFAULT)
     gate.add_argument("--plan-only", action="store_true"); gate.set_defaults(func=cmd_gate)
+
+    handoff = sub.add_parser("handoff", help="package a valid local hand-back for IM")
+    common(handoff); handoff.add_argument("--worktree", required=True)
+    handoff.add_argument("--incoming-main", required=True)
+    handoff.set_defaults(func=cmd_handoff)
 
     hand = sub.add_parser("hand-back", help="record exact HEAD evidence")
     common(hand); hand.add_argument("--branch"); hand.add_argument("--path"); hand.add_argument("--outcomes")
