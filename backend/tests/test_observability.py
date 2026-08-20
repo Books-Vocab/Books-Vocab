@@ -43,6 +43,8 @@ def isolated_api(tmp_path):
         api_mod._USER_LOCKS.clear()
         deps_mod._USER_LOCKS_MUTEX = None
         client = TestClient(app, raise_server_exceptions=False)
+        client_close = MagicMock(wraps=client.close)
+        client.close = client_close
         yield SimpleNamespace(
             client=client,
             user_id=user_id,
@@ -51,6 +53,8 @@ def isolated_api(tmp_path):
             users_file=users_file,
         )
     finally:
+        client.close()
+        client_close.assert_called_once_with()
         app.state.kg_settings = original_settings
         app.state.load_users = original_load
         app.state.save_users = original_save
