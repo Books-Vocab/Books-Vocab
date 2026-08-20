@@ -54,11 +54,22 @@ def startup_env(tmp_path):
     )
     _swap_settings(test_settings)
 
+    lifecycle = {"constructed": 0, "closed": 0}
+
+    class TrackingTestClient(TestClient):
+        def __init__(self, *args, **kwargs):
+            lifecycle["constructed"] += 1
+            super().__init__(*args, **kwargs)
+
+        def close(self):
+            lifecycle["closed"] += 1
+            return super().close()
+
     try:
         api_mod._USER_LOCKS.clear()
         deps_mod._USER_LOCKS_MUTEX = None
         admin_test_matrix_mod.LAST_TEST_RUN = None
-        client = TestClient(app, raise_server_exceptions=False)
+        client = TrackingTestClient(app, raise_server_exceptions=False)
         yield SimpleNamespace(
             client=client,
             user_id=user_id,
@@ -66,9 +77,13 @@ def startup_env(tmp_path):
         )
         admin_test_matrix_mod.LAST_TEST_RUN = None
     finally:
-        app.state.kg_settings = original_settings
-        app.state.load_users = original_load
-        app.state.save_users = original_save
+        try:
+            client.close()
+            assert lifecycle == {"constructed": 1, "closed": 1}
+        finally:
+            app.state.kg_settings = original_settings
+            app.state.load_users = original_load
+            app.state.save_users = original_save
 
 
 def test_startup_smoke_serves_admin_and_core_routes(startup_env):
