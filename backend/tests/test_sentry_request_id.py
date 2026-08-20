@@ -11,7 +11,18 @@ with the same `request_id` we already log + echo back in the
 """
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
+
+
+@pytest.fixture(autouse=True)
+def _close_observability_log_connections():
+    """Release SQLite connections opened by the system-info probe."""
+    yield
+    from kg import judge_log, llm_error_log, pipeline_log, translate_log
+
+    for module in (judge_log, llm_error_log, pipeline_log, translate_log):
+        module.reset()
 
 # ---------------------------------------------------------------------------
 # Unit-level: tag_request_id
@@ -113,9 +124,10 @@ def test_middleware_calls_tag_request_id_with_header_value(monkeypatch):
 
     from kg.api import create_app
     app = create_app()
-    client = TestClient(app)
-
-    resp = client.get("/api/system/info", headers={"X-Request-ID": "test-correlation-id"})
+    with TestClient(app) as client:
+        resp = client.get(
+            "/api/system/info", headers={"X-Request-ID": "test-correlation-id"}
+        )
     assert resp.status_code == 200
     assert "test-correlation-id" in captured
 
@@ -133,9 +145,8 @@ def test_middleware_calls_tag_request_id_with_generated_id(monkeypatch):
 
     from kg.api import create_app
     app = create_app()
-    client = TestClient(app)
-
-    resp = client.get("/api/system/info")
+    with TestClient(app) as client:
+        resp = client.get("/api/system/info")
     assert resp.status_code == 200
     # One id was generated and tagged (matches what the client sees back).
     assert len(captured) == 1
