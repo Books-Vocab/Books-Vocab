@@ -13,7 +13,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-
 SCHEMA = "kg.compute_profiles.v1"
 VERSION = 1
 _DEFAULT_REGISTRY = Path(__file__).resolve().parents[1] / "compute_profiles.yml"
@@ -47,6 +46,34 @@ def spec_digest(spec: dict[str, Any]) -> str:
     return hashlib.sha256(canonical_spec(spec).encode("utf-8")).hexdigest()
 
 
+def _validate_runner_image_digest(value: Any, *, code: str, detail: str) -> str:
+    if (
+        not isinstance(value, str)
+        or not _DIGEST.fullmatch(value)
+        or len(set(value.removeprefix("sha256:"))) == 1
+    ):
+        _fail(code, detail)
+    return value
+
+
+def _validate_runner_image_provenance(registry: dict[str, Any]) -> str:
+    provenance = registry.get("runner_image_provenance")
+    if not isinstance(provenance, dict) or set(provenance) != {"source", "digest"}:
+        _fail("runner-image-provenance", "registry")
+    source = provenance.get("source")
+    if not isinstance(source, str) or not source:
+        _fail("runner-image-provenance", "source")
+    digest = _validate_runner_image_digest(
+        provenance.get("digest"),
+        code="runner-image-provenance",
+        detail="digest",
+    )
+    source_name, separator, source_digest = source.rpartition("@")
+    if not separator or not source_name or source_digest != digest or "@" in source_name:
+        _fail("runner-image-provenance", "source")
+    return digest
+
+
 def load_profile_registry(path: Path | str = _DEFAULT_REGISTRY) -> dict[str, Any]:
     path = Path(path)
     try:
@@ -64,8 +91,11 @@ def load_profile_registry(path: Path | str = _DEFAULT_REGISTRY) -> dict[str, Any
     profiles = registry.get("profiles")
     if not isinstance(profiles, dict) or not profiles:
         _fail("registry-profiles", "profiles must be a non-empty object")
+    provenance_digest = _validate_runner_image_provenance(registry)
     for name, profile in profiles.items():
         validate_profile(profile, name=name)
+        if profile["runner_image_digest"] != provenance_digest:
+            _fail("runner-image-provenance", name)
     return registry
 
 
@@ -157,11 +187,11 @@ def validate_profile(profile: Any, *, name: str = "<profile>") -> dict[str, Any]
     sandbox = _require_string(profile, "sandbox_policy")
     if sandbox not in _SAFE_SANDBOX_POLICIES:
         _fail("invalid-field", "sandbox_policy")
-    image = profile.get("runner_image_digest")
-    if not isinstance(image, str) or not image:
-        _fail("runner-image-digest", name)
-    if not _DIGEST.fullmatch(image):
-        _fail("runner-image-digest", name)
+    _validate_runner_image_digest(
+        profile.get("runner_image_digest"),
+        code="runner-image-digest",
+        detail=name,
+    )
     _require_string(profile, "artifact_contract")
     return profile
 

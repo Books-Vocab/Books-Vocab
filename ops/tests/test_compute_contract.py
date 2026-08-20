@@ -32,6 +32,19 @@ def test_registry_is_versioned_and_shipped() -> None:
     }
 
 
+def test_profiles_share_one_immutable_runner_image_provenance() -> None:
+    registry = load_profile_registry(REGISTRY)
+    provenance = registry["runner_image_provenance"]
+    assert provenance == {
+        "source": "docker.io/library/python:3.13-slim@sha256:ffb752e139c0a19692a43af8d8523b274222dd68eebad5d583b45c2201c6e30a",
+        "digest": "sha256:ffb752e139c0a19692a43af8d8523b274222dd68eebad5d583b45c2201c6e30a",
+    }
+    assert {
+        profile["runner_image_digest"]
+        for profile in registry["profiles"].values()
+    } == {provenance["digest"]}
+
+
 def test_profile_resolves_literal_argv_and_stable_digest() -> None:
     first = resolve_profile(
         "backend.targeted-pytest",
@@ -206,6 +219,25 @@ def test_profile_registry_rejects_production_and_unsafe_contracts() -> None:
     profile["git_metadata_required"] = True
     with pytest.raises(ContractError, match="git-metadata"):
         validate_profile(profile, name="backend.targeted-pytest")
+
+
+@pytest.mark.parametrize("placeholder", ["a", "b"])
+def test_repeated_character_runner_image_placeholders_are_rejected(placeholder: str) -> None:
+    registry = load_profile_registry(REGISTRY)
+    profile = copy.deepcopy(registry["profiles"]["backend.targeted-pytest"])
+    profile["runner_image_digest"] = "sha256:" + placeholder * 64
+    with pytest.raises(ContractError, match="runner-image-digest"):
+        validate_profile(profile, name="backend.targeted-pytest")
+
+
+def test_mixed_runner_image_digest_preserves_sha256_shape() -> None:
+    registry = load_profile_registry(REGISTRY)
+    profile = copy.deepcopy(registry["profiles"]["backend.targeted-pytest"])
+    digest = "sha256:" + "0123456789abcdef" * 4
+    profile["runner_image_digest"] = digest
+    assert digest.startswith("sha256:")
+    assert len(digest.removeprefix("sha256:")) == 64
+    validate_profile(profile, name="backend.targeted-pytest")
 
 
 def test_canonical_spec_is_json_not_shell() -> None:

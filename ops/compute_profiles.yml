@@ -1,6 +1,10 @@
 {
   "schema": "kg.compute_profiles.v1",
   "version": 1,
+  "runner_image_provenance": {
+    "source": "docker.io/library/python:3.13-slim@sha256:ffb752e139c0a19692a43af8d8523b274222dd68eebad5d583b45c2201c6e30a",
+    "digest": "sha256:ffb752e139c0a19692a43af8d8523b274222dd68eebad5d583b45c2201c6e30a"
+  },
   "profiles": {
     "backend.targeted-pytest": {
       "command": {
@@ -28,7 +32,7 @@
       "side_effects": ["repo-read"],
       "network_policy": "none",
       "sandbox_policy": "uv-no-project",
-      "runner_image_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "runner_image_digest": "sha256:ffb752e139c0a19692a43af8d8523b274222dd68eebad5d583b45c2201c6e30a",
       "artifact_contract": "stdout-stderr-only"
     },
     "ops.docs-lint-registry": {
@@ -47,7 +51,7 @@
       "side_effects": ["repo-read"],
       "network_policy": "none",
       "sandbox_policy": "repo-readonly",
-      "runner_image_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "runner_image_digest": "sha256:ffb752e139c0a19692a43af8d8523b274222dd68eebad5d583b45c2201c6e30a",
       "artifact_contract": "stdout-stderr-only"
     }
   }
