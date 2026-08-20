@@ -28,9 +28,25 @@ class TestRateLimitUsesForwardedFor:
         from kg.api import app
         from kg.rate_limit import api_limiter, translate_limiter
 
+        lifecycle = {"constructed": 0, "closed": 0}
+
+        class TrackingTestClient(TestClient):
+            def __init__(self, *args, **kwargs):
+                lifecycle["constructed"] += 1
+                super().__init__(*args, **kwargs)
+
+            def close(self):
+                lifecycle["closed"] += 1
+                return super().close()
+
         api_limiter._requests.clear()
         translate_limiter._requests.clear()
-        return TestClient(app, raise_server_exceptions=False)
+        client = TrackingTestClient(app, raise_server_exceptions=False)
+        try:
+            yield client
+        finally:
+            client.close()
+            assert lifecycle == {"constructed": 1, "closed": 1}
 
     def test_different_xff_get_independent_buckets(self, isolated_client):
         """Two clients behind the same proxy with different X-Forwarded-For
