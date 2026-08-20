@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 import time
+from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -33,7 +34,7 @@ class LexicalCache:
         self.positive_ttl = positive_ttl
         self.negative_ttl = negative_ttl
         path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(path) as conn:
+        with closing(sqlite3.connect(path)) as conn, conn:
             conn.execute(
                 """CREATE TABLE IF NOT EXISTS lexical_cache (
                     cache_key TEXT PRIMARY KEY,
@@ -85,7 +86,7 @@ class LexicalCache:
         return self._get(self.query_key(provider, query, source_language, target_language))
 
     def get_entry(self, provider: str, entry_key: str) -> CachedLexicalValue | None:
-        with sqlite3.connect(self.path) as conn:
+        with closing(sqlite3.connect(self.path)) as conn, conn:
             row = conn.execute(
                 "SELECT payload_json, is_negative, expires_at FROM lexical_cache "
                 "WHERE provider = ? AND entry_key = ? ORDER BY fetched_at DESC LIMIT 1",
@@ -94,7 +95,7 @@ class LexicalCache:
         return self._row_value(row)
 
     def _get(self, cache_key: str) -> CachedLexicalValue | None:
-        with sqlite3.connect(self.path) as conn:
+        with closing(sqlite3.connect(self.path)) as conn, conn:
             row = conn.execute(
                 "SELECT payload_json, is_negative, expires_at FROM lexical_cache WHERE cache_key = ?",
                 (cache_key,),
@@ -123,7 +124,7 @@ class LexicalCache:
     ) -> None:
         now = datetime.now(UTC)
         expires = now + (self.positive_ttl if entry is not None else self.negative_ttl)
-        with sqlite3.connect(self.path) as conn:
+        with closing(sqlite3.connect(self.path)) as conn, conn:
             conn.execute(
                 """INSERT INTO lexical_cache(
                        cache_key, provider, entry_key, payload_json, is_negative, fetched_at, expires_at
@@ -156,7 +157,7 @@ class LexicalCache:
         now = datetime.now(UTC)
         cutoff = (now - timedelta(days=LOOKUP_EVENT_RETENTION_DAYS)).isoformat()
         try:
-            with sqlite3.connect(self.path, timeout=5.0) as conn:
+            with closing(sqlite3.connect(self.path, timeout=5.0)) as conn, conn:
                 conn.execute(
                     "INSERT INTO lexical_lookup_event("
                     "provider, operation, outcome, duration_ms, created_at"
@@ -173,7 +174,9 @@ class LexicalCache:
         """Atomically reserve one upstream call across workers sharing this cache."""
         now = time.time()
         window_start = now - 3600.0
-        with sqlite3.connect(self.path, timeout=5.0, isolation_level=None) as conn:
+        with closing(
+            sqlite3.connect(self.path, timeout=5.0, isolation_level=None)
+        ) as conn, conn:
             conn.execute("BEGIN IMMEDIATE")
             conn.execute(
                 "DELETE FROM lexical_provider_request WHERE requested_at <= ?",

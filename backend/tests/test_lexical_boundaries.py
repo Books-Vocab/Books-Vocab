@@ -6,9 +6,39 @@ provider/cache/service seam must be independently replaceable in tests.
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import timedelta
 
 import pytest
+
+
+class _TrackingConnection(sqlite3.Connection):
+    closed = False
+    fail_on_sql: str | None = None
+
+    def execute(self, sql, parameters=(), /):
+        if self.fail_on_sql is not None and self.fail_on_sql in sql:
+            raise sqlite3.OperationalError("injected SQLite failure")
+        return super().execute(sql, parameters)
+
+    def close(self) -> None:
+        self.closed = True
+        super().close()
+
+
+def _track_connections(monkeypatch):
+    from kg import lexical_cache
+
+    real_connect = sqlite3.connect
+    connections: list[_TrackingConnection] = []
+
+    def connect(*args, **kwargs):
+        connection = real_connect(*args, factory=_TrackingConnection, **kwargs)
+        connections.append(connection)
+        return connection
+
+    monkeypatch.setattr(lexical_cache.sqlite3, "connect", connect)
+    return connections
 
 
 def test_lexical_layers_have_stable_import_boundaries() -> None:
@@ -84,3 +114,47 @@ def test_rate_limiter_reaps_expired_user_state(monkeypatch) -> None:
     now[0] = 111.0
     assert limiter.admit("u1") is True
     assert limiter.tracked_keys == 1
+
+
+def test_lexical_cache_closes_every_connection_after_success(tmp_path, monkeypatch) -> None:
+    from kg.lexical_cache import LexicalCache
+
+    connections = _track_connections(monkeypatch)
+    cache = LexicalCache(tmp_path / "cache.db")
+
+    cache.put("fake", "word", "en", "zh-Hant", None)
+    assert cache.get_query("fake", "word", "en", "zh-Hant") is not None
+    assert cache.get_entry("fake", "missing") is None
+    cache.record_lookup("fake", "search", "negative", 1)
+    assert cache.reserve_provider_request("fake", hourly_limit=1) is True
+    assert cache.reserve_provider_request("fake", hourly_limit=1) is False
+
+    assert connections
+    assert all(connection.closed for connection in connections)
+
+
+def test_lexical_cache_closes_and_rolls_back_after_sqlite_errors(
+    tmp_path, monkeypatch
+) -> None:
+    from kg.lexical_cache import LexicalCache
+
+    cache_path = tmp_path / "cache.db"
+    cache = LexicalCache(cache_path)
+    connections = _track_connections(monkeypatch)
+
+    _TrackingConnection.fail_on_sql = "INSERT INTO lexical_cache"
+    with pytest.raises(sqlite3.OperationalError, match="injected SQLite failure"):
+        cache.put("fake", "word", "en", "zh-Hant", None)
+    assert connections[-1].closed is True
+
+    _TrackingConnection.fail_on_sql = "DELETE FROM lexical_lookup_event"
+    cache.record_lookup("fake", "search", "error", 1)
+    assert connections[-1].closed is True
+
+    connection = sqlite3.connect(cache_path)
+    try:
+        count = connection.execute("SELECT COUNT(*) FROM lexical_lookup_event").fetchone()[0]
+    finally:
+        connection.close()
+        _TrackingConnection.fail_on_sql = None
+    assert count == 0
