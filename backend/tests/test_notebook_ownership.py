@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 
 import kg.api as api_mod
 import kg.deps as deps_mod
+import kg.pipeline_log as pipeline_log_mod
 import kg.routers.vocab as vocab_router_mod
 from conftest import TEST_JWT_SECRET, _DummyEmbeddingStore, make_jwt
 from kg.api import create_app
@@ -23,7 +24,7 @@ from kg.settings import KGSettings
 
 
 @pytest.fixture()
-def isolated_api(tmp_path):
+def isolated_api(tmp_path, monkeypatch):
     data_dir = tmp_path
     (data_dir / "users").mkdir()
     user_id = "u_" + uuid.uuid4().hex[:8]
@@ -56,15 +57,20 @@ def isolated_api(tmp_path):
     )
     test_app = create_app(test_settings)
 
+    monkeypatch.setattr(pipeline_log_mod, "DB_PATH", data_dir / "pipeline_runs.db")
+    pipeline_log_mod._reset()
     api_mod._USER_LOCKS.clear()
     deps_mod._USER_LOCKS_MUTEX = None
-    with TestClient(test_app, raise_server_exceptions=False) as client:
-        yield SimpleNamespace(
-            client=client,
-            user_id=user_id,
-            headers=headers,
-            data_dir=data_dir,
-        )
+    try:
+        with TestClient(test_app, raise_server_exceptions=False) as client:
+            yield SimpleNamespace(
+                client=client,
+                user_id=user_id,
+                headers=headers,
+                data_dir=data_dir,
+            )
+    finally:
+        pipeline_log_mod._reset()
 
 
 @pytest.fixture()
