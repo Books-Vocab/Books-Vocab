@@ -142,7 +142,7 @@ run_one() {
       ./ops/skill_route.py validate --json >/dev/null &&
       ./ops/agent_onboard.py \
         --identity Worker --intent delivery --entry direct-assignment \
-        --evidence '{"User/IM assignment":"context-routing","acceptance":"green","structured Scope":"ops/ tests"}' \
+        --evidence '{"User/IM assignment":"context-routing","acceptance":"green","structured Scope":"ops/ tests","dispatch_channel":"im","dispatch_owner":"IM-1"}' \
         --json >/dev/null
       ;;
     ui-deadcode)
