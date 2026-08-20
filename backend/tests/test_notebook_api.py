@@ -57,6 +57,7 @@ def isolated_api(tmp_path):
     )
     _swap_settings(test_settings)
 
+    client = None
     try:
         api_mod._USER_LOCKS.clear()
         deps_mod._USER_LOCKS_MUTEX = None
@@ -68,7 +69,8 @@ def isolated_api(tmp_path):
             data_dir=data_dir,
         )
     finally:
-        client.close()
+        if client is not None:
+            client.close()
         app.state.kg_settings = original_settings
         app.state.load_users = original_load
         app.state.save_users = original_save
@@ -90,6 +92,26 @@ def test_isolated_api_closes_owned_client(tmp_path, monkeypatch):
     fixture_generator.close()
 
     assert close_calls == 1
+
+
+def test_isolated_api_restores_state_when_client_construction_fails(tmp_path, monkeypatch):
+    """A client setup failure must preserve the original exception and state."""
+    original_settings = app.state.kg_settings
+    original_load = app.state.load_users
+    original_save = app.state.save_users
+
+    def fail_client_construction(*args, **kwargs):
+        raise RuntimeError("client construction failed")
+
+    monkeypatch.setitem(globals(), "TestClient", fail_client_construction)
+
+    fixture_generator = isolated_api.__wrapped__(tmp_path)
+    with pytest.raises(RuntimeError, match="client construction failed"):
+        next(fixture_generator)
+
+    assert app.state.kg_settings is original_settings
+    assert app.state.load_users is original_load
+    assert app.state.save_users is original_save
 
 
 # ---------------------------------------------------------------------------
