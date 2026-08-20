@@ -39,7 +39,9 @@ def fresh_token_db(tmp_path, monkeypatch):
     import importlib
 
     import kg.token_tracker as tt
-    original_db_path = tt._INITIAL_DB_PATH
+    original_db_path = tt.DB_PATH
+    original_initial_db_path = tt._INITIAL_DB_PATH
+    assert original_db_path == original_initial_db_path
     importlib.reload(tt)
     if tt._conn is not None:
         tt._conn.close()
@@ -50,9 +52,9 @@ def fresh_token_db(tmp_path, monkeypatch):
         tt._conn = None
     importlib.reload(tt)
     tt.DB_PATH = original_db_path
-    tt._INITIAL_DB_PATH = original_db_path
+    tt._INITIAL_DB_PATH = original_initial_db_path
     assert tt.DB_PATH == original_db_path
-    assert tt._INITIAL_DB_PATH == original_db_path
+    assert tt._INITIAL_DB_PATH == original_initial_db_path
     assert tt._conn is None
 
     second_data_dir = tmp_path / "second-data-dir"
@@ -63,6 +65,8 @@ def fresh_token_db(tmp_path, monkeypatch):
     assert database_path == str(second_data_dir / "token_usage.db")
     tt.reset()
     assert tt._conn is None
+    assert tt.DB_PATH == original_db_path
+    assert tt._INITIAL_DB_PATH == original_initial_db_path
 
 
 # ── Quota gating ───────────────────────────────────────────────────
