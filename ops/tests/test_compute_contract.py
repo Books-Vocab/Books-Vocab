@@ -45,6 +45,19 @@ def test_profiles_share_one_immutable_runner_image_provenance() -> None:
     } == {provenance["digest"]}
 
 
+def test_profiles_declare_runtime_tool_capabilities() -> None:
+    registry = load_profile_registry(REGISTRY)
+    assert set(registry["profiles"]["backend.targeted-pytest"]["required_capabilities"]) == {
+        "python-3.13",
+        "pytest",
+        "uv",
+    }
+    assert set(registry["profiles"]["ops.docs-lint-registry"]["required_capabilities"]) == {
+        "bash",
+        "git",
+    }
+
+
 def test_profile_resolves_literal_argv_and_stable_digest() -> None:
     first = resolve_profile(
         "backend.targeted-pytest",
@@ -172,6 +185,28 @@ def test_dirty_source_and_missing_capability_are_refused() -> None:
             {"test_path": "backend/tests/test_ops_edit.py"},
             available_capabilities={"bash"},
         )
+
+
+@pytest.mark.parametrize(
+    ("profile", "params", "available", "missing"),
+    [
+        (
+            "backend.targeted-pytest",
+            {"test_path": "backend/tests/test_ops_edit.py"},
+            {"python-3.13", "pytest"},
+            "uv",
+        ),
+        ("ops.docs-lint-registry", {}, {"bash"}, "git"),
+    ],
+)
+def test_runtime_tools_are_fail_closed_capabilities(
+    profile: str,
+    params: dict[str, str],
+    available: set[str],
+    missing: str,
+) -> None:
+    with pytest.raises(ContractError, match=f"missing-capability:.*{missing}"):
+        resolve_profile(profile, params, available_capabilities=available)
 
 
 def test_profile_registry_rejects_production_and_unsafe_contracts() -> None:

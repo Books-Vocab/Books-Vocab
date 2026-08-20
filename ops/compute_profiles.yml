@@ -23,7 +23,7 @@
         }
       },
       "source_kind": "clean-committed-tree",
-      "required_capabilities": ["python-3.13", "pytest"],
+      "required_capabilities": ["python-3.13", "pytest", "uv"],
       "resource_class": "backend-targeted",
       "minimum_tier": "operator",
       "timeout_seconds": 300,
@@ -42,7 +42,7 @@
       },
       "parameters": {},
       "source_kind": "clean-committed-tree",
-      "required_capabilities": ["bash"],
+      "required_capabilities": ["bash", "git"],
       "resource_class": "ops-readonly",
       "minimum_tier": "observer",
       "timeout_seconds": 120,
