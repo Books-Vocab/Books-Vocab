@@ -53,18 +53,28 @@ jobs:
           else
             fail "PR body is missing Base SHA/Head SHA or base_sha/tip_sha"
           fi
-          grep -Fq "$BASE_SHA" <<<"$BODY" \
-            || fail "PR body is missing the current base SHA"
-          grep -Fq "$HEAD_SHA" <<<"$BODY" \
-            || fail "PR body is missing the current head SHA"
+
+          contains_exact_sha() {
+            local sha="$1"
+            grep -Eq "(^|[^[:alnum:]_])${sha}([^[:alnum:]_]|$)" <<<"$BODY"
+          }
+
+          contains_exact_sha "$BASE_SHA" \
+            || fail "PR body is missing the exact current base SHA"
+          contains_exact_sha "$HEAD_SHA" \
+            || fail "PR body is missing the exact current head SHA"
           grep -Fq 'Scope' <<<"$BODY" \
             || fail "PR body is missing Scope"
           grep -Fq 'Validation' <<<"$BODY" \
             || fail "PR body is missing Validation"
           grep -Fq 'kg.worktree.handback.v1' <<<"$BODY" \
             || fail "PR body is missing the typed handback schema"
-          grep -Eq '(^|[^0-9A-Fa-f])[0-9A-Fa-f]{64}([^0-9A-Fa-f]|$)' <<<"$BODY" \
-            || fail "PR body is missing a 64-hex handback digest"
+          digest_count="$(
+            (perl -ne 'while (/(?:^|[^[:alnum:]_])[\x60\x22\x27]?[Dd]igest[\x60\x22\x27]?\s*:\s*[\x60\x22\x27]?([0-9A-Fa-f]{64})(?![[:alnum:]_])/g) { print "$1\n" }' <<<"$BODY" || true) \
+              | wc -l | tr -d ' '
+          )"
+          [[ "$digest_count" -eq 1 ]] \
+            || fail "PR body must contain exactly one 64-hex handback digest"
 
           echo 'PR body contains the current SHA and handback contract fields.'
           echo 'The workflow validates payload-visible evidence only; it does not recompute the local registry seal.'
