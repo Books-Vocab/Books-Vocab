@@ -8,7 +8,7 @@ scope:
   - backend/src/kg/external_api_keys.py
   - backend/src/kg/external_api_rate_limit.py
   - backend/src/kg/api_models/external_api.py
-verified_against: 152e03e7f568a9d118b082463b3cc9606bb5bb9b
+verified_against: 5f0d2999196c652930c1a664811cd5023265abf5
 -->
 # External API v1
 
