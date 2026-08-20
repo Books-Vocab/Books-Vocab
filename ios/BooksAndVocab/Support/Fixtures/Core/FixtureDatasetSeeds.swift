@@ -2133,6 +2133,8 @@ struct UIWorldVocabularyEntrySeed: Codable, Equatable {
     let syncStatus: Int
     let actionType: String
     let isArchived: Bool
+    let isReaderHidden: Bool
+    let isReviewExcluded: Bool
     let reviewIntervalHours: Double?
     let nextReviewAt: Date?
     let lastReviewedAt: Date?
@@ -2159,6 +2161,8 @@ struct UIWorldVocabularyEntrySeed: Codable, Equatable {
         case syncStatus
         case actionType
         case isArchived
+        case isReaderHidden
+        case isReviewExcluded
         case reviewIntervalHours
         case nextReviewAt
         case lastReviewedAt
@@ -2182,7 +2186,12 @@ struct UIWorldVocabularyEntrySeed: Codable, Equatable {
         }
 
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        for key in CodingKeys.allCases where !container.contains(key) {
+        let optionalKeys: Set<String> = [
+            CodingKeys.isReaderHidden.rawValue,
+            CodingKeys.isReviewExcluded.rawValue,
+        ]
+        for key in CodingKeys.allCases
+        where !optionalKeys.contains(key.rawValue) && !container.contains(key) {
             throw DecodingError.keyNotFound(
                 key,
                 .init(
@@ -2209,6 +2218,8 @@ struct UIWorldVocabularyEntrySeed: Codable, Equatable {
         syncStatus = try container.decode(Int.self, forKey: .syncStatus)
         actionType = try container.decode(String.self, forKey: .actionType)
         isArchived = try container.decode(Bool.self, forKey: .isArchived)
+        isReaderHidden = try container.decodeIfPresent(Bool.self, forKey: .isReaderHidden) ?? false
+        isReviewExcluded = try container.decodeIfPresent(Bool.self, forKey: .isReviewExcluded) ?? false
         reviewIntervalHours = try container.decodeIfPresent(Double.self, forKey: .reviewIntervalHours)
         nextReviewAt = try container.decodeIfPresent(Date.self, forKey: .nextReviewAt)
         lastReviewedAt = try container.decodeIfPresent(Date.self, forKey: .lastReviewedAt)

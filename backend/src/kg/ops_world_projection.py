@@ -96,6 +96,8 @@ def _load_cards(user_dir: Path) -> list[dict[str, Any]]:
             "review_interval_hours",
             "next_review_at",
             "last_reviewed_at",
+            "is_reader_hidden",
+            "is_review_excluded",
             "source",
         ]
         selected = [col for col in wanted if col in cols]

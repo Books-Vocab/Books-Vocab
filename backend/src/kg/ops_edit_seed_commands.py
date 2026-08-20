@@ -216,7 +216,7 @@ def cmd_seed(args: argparse.Namespace) -> int:
                        "is_default"?}],
         "cards": [{"content","meaning","pos"?,"examples"?,"collocations"?,
                    "note"?,"difficulty"?,"mode"?,"root_form"?,"inflections"?,
-                   "is_archived"?,"notebook"?,
+                   "is_archived"?,"is_reader_hidden"?,"is_review_excluded"?,"notebook"?,
                    "review"?: {"state":"new|due|reviewed","interval"?}
                             | {review_count/review_streak/lapse_count/
                                review_interval_hours/next_review_at/
@@ -363,6 +363,9 @@ def prevalidate_seed(spec: SeedSpec, *, replace: bool) -> None:
                 isinstance(difficulty, bool) or not isinstance(difficulty, (int, float))
             ):
                 raise EditError(f"cards[{i}].difficulty 須為數值或 null:{difficulty!r}")
+        for key in ("is_archived", "is_reader_hidden", "is_review_excluded"):
+            if key in c and not isinstance(c[key], bool):
+                raise EditError(f"cards[{i}].{key} 須為布林值:{c[key]!r}")
         # review.state 非法值 fail-loud,而非靜默當 reviewed(dogfood B5 / A LOW-1)。
         rv = c.get("review")
         if isinstance(rv, dict):
@@ -544,6 +547,10 @@ def apply_seed(
             updates["inflections"] = c["inflections"] or []
         if "is_archived" in c:
             updates["is_archived"] = bool(c["is_archived"])
+        if "is_reader_hidden" in c:
+            updates["is_reader_hidden"] = bool(c["is_reader_hidden"])
+        if "is_review_excluded" in c:
+            updates["is_review_excluded"] = bool(c["is_review_excluded"])
         # Provenance (omit-if-null): export only emits this when set, so
         # `key in c` keeps seed↔export field-symmetric (§1.1 roundtrip). The
         # Phase 2 copy path stamps it; specs without the key leave it NULL.

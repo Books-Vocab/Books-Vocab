@@ -15,7 +15,10 @@ private func makeEntry(
     nextReviewAt: Date = Date().addingTimeInterval(3600),
     lastReviewedAt: Date? = nil,
     dateAdded: Date = Date(),
-    synced: Bool = true
+    synced: Bool = true,
+    archived: Bool = false,
+    readerHidden: Bool = false,
+    reviewExcluded: Bool = false
 ) -> VocabularyEntry {
     let entry = VocabularyEntry(
         word: "w",
@@ -28,6 +31,9 @@ private func makeEntry(
     entry.nextReviewAt = nextReviewAt
     entry.lastReviewedAt = lastReviewedAt
     entry.dateAdded = dateAdded
+    entry.isArchived = archived
+    entry.isReaderHidden = readerHidden
+    entry.isReviewExcluded = reviewExcluded
     if synced {
         entry.markSynced()
     }
@@ -62,6 +68,27 @@ struct NotebookStatsCalculatorTests {
         #expect(stats["X"]?.dueCount == 1)
         #expect(stats["X"]?.reviewedCount == 1)
         #expect(stats["X"]?.cardCount == 3)
+    }
+
+    @Test func computeKeepsReviewExcludedInCardCountButNotReviewStats() {
+        let now = Date()
+        let entries = [
+            makeEntry(notebookId: "X", nextReviewAt: now.addingTimeInterval(3600), reviewExcluded: true),
+            makeEntry(notebookId: "X", nextReviewAt: now.addingTimeInterval(3600)),
+        ]
+
+        let stats = NotebookStatsCalculator.compute(entries, pendingEntries: [], now: now)
+        #expect(stats["X"]?.cardCount == 2)
+        #expect(stats["X"]?.unlearnedCount == 1)
+
+        let (due, unlearned) = NotebookStatsCalculator.filtered(
+            entries,
+            filter: NotebookFilter(selectedIds: ["X"]),
+            now: now
+        )
+        #expect(due.isEmpty)
+        #expect(unlearned.count == 1)
+        #expect(unlearned.allSatisfy { !$0.isReviewExcluded })
     }
 
     @Test func computeLastActivityPicksLatestOfLastReviewedOrDateAdded() {
