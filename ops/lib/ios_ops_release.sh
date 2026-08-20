@@ -3,6 +3,11 @@ IOS_EXPORT_CERTIFICATE_NAME="${IOS_EXPORT_CERTIFICATE_NAME:-Apple Distribution}"
 
 # shellcheck source=project_python.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/project_python.sh"
+# Sentry build-evidence inspection shares the same DerivedData writer lock as
+# ios_build.sh.  Without this, a matching provenance sidecar and an embedded
+# framework could come from different concurrent builds.
+# shellcheck source=ios_lock_wait.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ios_lock_wait.sh"
 
 # Keep sourceable iOS command libraries on the same public contract as the
 # Python and standalone shell entrypoints.
@@ -39,12 +44,20 @@ sentry_summary_json() {
   local reporter_source="$ROOT/ios/BooksAndVocab/Services/SentryReporter.swift"
   local project="$ROOT/ios/BooksAndVocab.xcodeproj/project.pbxproj"
   local resolved="$ROOT/ios/BooksAndVocab.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+  local info_plist="$ROOT/ios/Info.plist"
   local source_exists has_sdk has_dsn_key package_present target_linked
   local package_version package_revision build_can_import build_evidence_source build_evidence_artifact api_configured
   local api_authenticated project_reachable runtime_event_seen symbolication_ready
+  local required_package_revision="d82bb1c5eb353a593573a5624bb370f5a1f500ce"
   local fixture_mode=0
   if [[ -n "${KG_IOS_OPS_SENTRY_SOURCE_FIXTURE:-}" ]]; then
     source="$KG_IOS_OPS_SENTRY_SOURCE_FIXTURE"
+  fi
+  if [[ -n "${KG_IOS_OPS_SENTRY_INFO_PLIST_FIXTURE:-}" ]]; then
+    info_plist="$KG_IOS_OPS_SENTRY_INFO_PLIST_FIXTURE"
+  fi
+  if [[ -n "${KG_IOS_OPS_SENTRY_RESOLVED_FIXTURE:-}" ]]; then
+    resolved="$KG_IOS_OPS_SENTRY_RESOLVED_FIXTURE"
   fi
   if [[ -n "${KG_IOS_OPS_SENTRY_SOURCE_EXISTS_FIXTURE:-}${KG_IOS_OPS_SENTRY_CAN_IMPORT_FIXTURE:-}${KG_IOS_OPS_SENTRY_DSN_FIXTURE:-}${KG_IOS_OPS_SENTRY_PACKAGE_FIXTURE:-}${KG_IOS_OPS_SENTRY_TARGET_FIXTURE:-}" ]]; then
     fixture_mode=1
@@ -65,7 +78,8 @@ sentry_summary_json() {
   fi
   if [[ -n "${KG_IOS_OPS_SENTRY_DSN_FIXTURE:-}" ]]; then
     has_dsn_key="$KG_IOS_OPS_SENTRY_DSN_FIXTURE"
-  elif rg -q 'SentryDSN|SENTRY_ENABLED_IN_DEBUG|-sentryTest' "$ROOT/ios"; then
+  elif [[ -f "$info_plist" ]] \
+    && plutil -extract SentryDSN raw -o - "$info_plist" >/dev/null 2>&1; then
     has_dsn_key=1
   else
     has_dsn_key=0
@@ -79,15 +93,24 @@ sentry_summary_json() {
   if [[ -n "${KG_IOS_OPS_SENTRY_PACKAGE_FIXTURE:-}" ]]; then
     package_present="$KG_IOS_OPS_SENTRY_PACKAGE_FIXTURE"
     package_version="9.24.0"
-    package_revision="d82bb1c5eb353a593573a5624bb370f5a1f500ce"
+    package_revision="$required_package_revision"
   elif (( fixture_mode )); then
     package_present=1
     package_version="9.24.0"
-    package_revision="d82bb1c5eb353a593573a5624bb370f5a1f500ce"
-  elif [[ -f "$resolved" ]] && jq -e '
-    .pins[]
-    | select(.identity == "sentry-cocoa")
-    | (.location == "https://github.com/getsentry/sentry-cocoa.git" and .state.version == "9.24.0")
+    package_revision="$required_package_revision"
+  elif [[ -f "$resolved" ]] && jq -e --arg requiredRevision "$required_package_revision" '
+    .version == 3
+    and (.pins | type) == "array"
+    and ([.pins[] | select(.identity == "sentry-cocoa")] | length) == 1
+    and any(.pins[];
+      .identity == "sentry-cocoa"
+      and .kind == "remoteSourceControl"
+      and .location == "https://github.com/getsentry/sentry-cocoa.git"
+      and (.state | type) == "object"
+      and ((.state | keys | sort) == ["revision", "version"])
+      and .state.version == "9.24.0"
+      and .state.revision == $requiredRevision
+    )
   ' "$resolved" >/dev/null 2>&1; then
     package_present=1
     package_version="$(jq -r '.pins[] | select(.identity == "sentry-cocoa") | .state.version' "$resolved" | head -n 1)"
@@ -102,12 +125,37 @@ sentry_summary_json() {
     target_linked="$KG_IOS_OPS_SENTRY_TARGET_FIXTURE"
   elif (( fixture_mode )); then
     target_linked=1
-  elif [[ -f "$project" ]] \
-    && rg -q 'XCRemoteSwiftPackageReference "sentry-cocoa"' "$project" \
-    && rg -q 'productName = Sentry;' "$project" \
-    && rg -q 'Sentry in Frameworks' "$project" \
-    && rg -q 'KG[[:alnum:]]+SENTRY[[:alnum:]]+ /\* Sentry \*/' "$project"; then
-    target_linked=1
+  elif [[ -f "$project" ]]; then
+    local pbx_json
+    pbx_json="$(plutil -convert json -o - -- "$project" 2>/dev/null || true)"
+    if [[ -n "$pbx_json" ]] && jq -e '
+      .objects as $objects
+      | [ $objects[] | select(.isa == "PBXNativeTarget" and .name == "BooksAndVocab") ]
+      | . as $targets
+      | if ($targets | length) == 1 then
+          $targets[0] as $target
+          | any(($target.packageProductDependencies // [])[];
+              . as $dependencyID
+              | ($objects[$dependencyID].isa == "XCSwiftPackageProductDependency")
+              and ($objects[$dependencyID].productName == "Sentry")
+              and ($objects[$objects[$dependencyID].package].isa == "XCRemoteSwiftPackageReference")
+              and ($objects[$objects[$dependencyID].package].repositoryURL == "https://github.com/getsentry/sentry-cocoa.git")
+              and any(($target.buildPhases // [])[];
+                  . as $phaseID
+                  | $objects[$phaseID].isa == "PBXFrameworksBuildPhase"
+                  and any(($objects[$phaseID].files // [])[];
+                      . as $buildFileID
+                      | $objects[$buildFileID].isa == "PBXBuildFile"
+                      and $objects[$buildFileID].productRef == $dependencyID
+                  )
+              )
+            )
+        else false end
+    ' <<<"$pbx_json" >/dev/null 2>&1; then
+      target_linked=1
+    else
+      target_linked=0
+    fi
   else
     target_linked=0
   fi
@@ -125,6 +173,9 @@ sentry_summary_json() {
     build_evidence_source="not-run"
     build_evidence_artifact=""
     local derived_data_root git_common_dir current_head provenance artifact source_mtime build_mtime candidate_mtime source_file
+    local build_lock="${KG_IOS_BUILD_LOCK_FILE:-/tmp/kg-ios-build.lock}"
+    local build_lock_timeout="${KG_IOS_SENTRY_BUILD_LOCK_TIMEOUT:-60}"
+    local build_lock_owner="$$"
     if [[ -n "${KG_IOS_BUILD_DERIVED_DATA_ROOT:-}" ]]; then
       derived_data_root="$KG_IOS_BUILD_DERIVED_DATA_ROOT"
     else
@@ -135,34 +186,39 @@ sentry_summary_json() {
         derived_data_root="$ROOT/.cache/ios-build-derived-data"
       fi
     fi
-    current_head="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
-    source_mtime=0
-    for source_file in "$ROOT/ios/BooksAndVocab/Services/AppCrashReporting.swift" \
-                  "$ROOT/ios/BooksAndVocab/Services/SentryReporter.swift" \
-                  "$ROOT/ios/BooksAndVocab/Services/SentryConfiguration.swift" \
-                  "$ROOT/ios/BooksAndVocab/Services/SentryPrivacyPolicy.swift"; do
-      if [[ -f "$source_file" ]]; then
-        candidate_mtime="$(stat -f %m "$source_file" 2>/dev/null || echo 0)"
-        (( candidate_mtime > source_mtime )) && source_mtime="$candidate_mtime"
-      fi
-    done
-    while IFS= read -r provenance; do
-      [[ -n "$provenance" ]] || continue
-      if ! jq -e --arg root "$ROOT" --arg head "$current_head" \
-        '.schema == "kg.ios.install-provenance.v1" and .projectRoot == $root and .head == $head' \
-        "$provenance" >/dev/null 2>&1; then
-        continue
-      fi
-      build_mtime="$(stat -f %m "$provenance" 2>/dev/null || echo 0)"
-      (( build_mtime >= source_mtime )) || continue
-      artifact="$(jq -r '.artifact // empty' "$provenance" 2>/dev/null || true)"
-      if [[ -n "$artifact" && -f "$artifact/Frameworks/Sentry.framework/Sentry" ]]; then
-        build_can_import="true"
-        build_evidence_source="install-provenance+embedded-framework"
-        build_evidence_artifact="$artifact"
-        break
-      fi
-    done < <(find "$derived_data_root/Build/Products" -type f -name 'BooksAndVocab.app.kg-provenance.json' -print 2>/dev/null)
+    if kg_ios_wait_for_shlock "[ios][sentry]" sentry "$build_lock" "$build_lock_owner" "$build_lock_timeout" 3; then
+      current_head="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
+      source_mtime=0
+      for source_file in "$ROOT/ios/BooksAndVocab/Services/AppCrashReporting.swift" \
+                    "$ROOT/ios/BooksAndVocab/Services/SentryReporter.swift" \
+                    "$ROOT/ios/BooksAndVocab/Services/SentryConfiguration.swift" \
+                    "$ROOT/ios/BooksAndVocab/Services/SentryPrivacyPolicy.swift"; do
+        if [[ -f "$source_file" ]]; then
+          candidate_mtime="$(stat -f %m "$source_file" 2>/dev/null || echo 0)"
+          (( candidate_mtime > source_mtime )) && source_mtime="$candidate_mtime"
+        fi
+      done
+      while IFS= read -r provenance; do
+        [[ -n "$provenance" ]] || continue
+        if ! jq -e --arg root "$ROOT" --arg head "$current_head" \
+          '.schema == "kg.ios.install-provenance.v1" and .projectRoot == $root and .head == $head' \
+          "$provenance" >/dev/null 2>&1; then
+          continue
+        fi
+        build_mtime="$(stat -f %m "$provenance" 2>/dev/null || echo 0)"
+        (( build_mtime >= source_mtime )) || continue
+        artifact="$(jq -r '.artifact // empty' "$provenance" 2>/dev/null || true)"
+        if [[ -n "$artifact" && -f "$artifact/Frameworks/Sentry.framework/Sentry" ]]; then
+          build_can_import="true"
+          build_evidence_source="install-provenance+embedded-framework+locked"
+          build_evidence_artifact="$artifact"
+          break
+        fi
+      done < <(find "$derived_data_root/Build/Products" -type f -name 'BooksAndVocab.app.kg-provenance.json' -print 2>/dev/null)
+      kg_ios_release_shlock_if_owner "$build_lock" "$build_lock_owner"
+    else
+      build_evidence_source="build-lock-unavailable"
+    fi
   fi
 
   if [[ -n "${SENTRY_API_URL:-}" && -n "${SENTRY_AUTH_TOKEN:-}" && -n "${SENTRY_ORG:-}" && -n "${SENTRY_PROJECT_IOS:-}" ]]; then
@@ -262,7 +318,7 @@ sentry_summary_json() {
 
 doctor_readiness() {
   local emitter="$1" out="${2:-}"
-  local version build archive_line archive_version archive_build archive_path tf_latest sentry_json sentry_source_exists sentry_can_import sentry_dsn_reference sentry_verdict
+  local version build archive_line archive_version archive_build archive_path tf_latest sentry_json sentry_source_exists sentry_can_import sentry_dsn_reference sentry_verdict sentry_issue_count
   read_project_settings version build
   if [[ -n "$version" && -n "$build" ]]; then
     "$emitter" "$out" "project" "ok" "version=$version build=$build"
@@ -325,12 +381,15 @@ doctor_readiness() {
   sentry_can_import="$(jq -r '.wiring.canImportGuard' <<<"$sentry_json")"
   sentry_dsn_reference="$(jq -r '.wiring.dsnKeyReference' <<<"$sentry_json")"
   sentry_verdict="$(jq -r '.verdict // "unchecked"' <<<"$sentry_json")"
-  # Verdict derives from issues[] (single source of truth); detail keeps the
-  # per-field booleans for human readability.
-  if [[ "$(jq -r '.issues | length' <<<"$sentry_json")" -eq 0 ]]; then
+  sentry_issue_count="$(jq -r '.issues | length' <<<"$sentry_json")"
+  # A partial readiness result is not an OK signal even when there is no
+  # static wiring issue yet (for example build/runtime/symbolication are
+  # still unchecked). Keep the historical warning status for the doctor
+  # surface; the machine-readable sentry verdict remains authoritative.
+  if [[ "$sentry_verdict" == "ready" && "$sentry_issue_count" -eq 0 ]]; then
     "$emitter" "$out" "sentry" "ok" "verdict=$sentry_verdict release_name=bundleId@MARKETING_VERSION+CURRENT_PROJECT_VERSION dist=CURRENT_PROJECT_VERSION"
   else
-    "$emitter" "$out" "sentry" "warn" "verdict=$sentry_verdict source_exists=$sentry_source_exists can_import_guard=$sentry_can_import dsn_key_reference=$sentry_dsn_reference"
+    "$emitter" "$out" "sentry" "warn" "verdict=$sentry_verdict source_exists=$sentry_source_exists can_import_guard=$sentry_can_import dsn_key_reference=$sentry_dsn_reference package_present=$(jq -r '.wiring.packagePresent' <<<"$sentry_json") target_linked=$(jq -r '.wiring.targetLinked' <<<"$sentry_json") build_can_import=$(jq -r '.readiness.build_can_import' <<<"$sentry_json")"
   fi
 }
 

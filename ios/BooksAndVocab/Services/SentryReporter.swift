@@ -48,10 +48,26 @@ enum SentryReporter {
                 return crumb
             }
             options.beforeSend = { event in
-                if let exceptionType = event.exceptions?.first?.type,
-                   SentryPrivacyPolicy.isCancellationExceptionType(exceptionType) {
+                if let exception = event.exceptions?.first,
+                   SentryPrivacyPolicy.isCancellationException(
+                       type: exception.type,
+                       value: exception.value
+                   ) {
                     return nil
                 }
+                // capture(error:) asks the SDK to bridge Swift Error/NSError.
+                // That bridge may place descriptions, associated values and
+                // NSError userInfo into exception.value/mechanism. Keep the
+                // exception type for grouping, retain the SDK-generated stack,
+                // and remove every human/error payload before processors run.
+                for exception in event.exceptions ?? [] {
+                    exception.type = SentryPrivacyPolicy.redactExceptionType(exception.type) ?? "ReportedError"
+                    exception.value = nil
+                    exception.module = nil
+                    exception.mechanism = nil
+                }
+                event.error = nil
+                event.message = nil
                 if let request = event.request {
                     request.url = request.url.map(SentryPrivacyPolicy.stripQuery(from:))
                     request.queryString = nil

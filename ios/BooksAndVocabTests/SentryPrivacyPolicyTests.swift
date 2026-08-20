@@ -20,6 +20,7 @@ struct SentryPrivacyPolicyTests {
         let redacted = SentryPrivacyPolicy.redactBreadcrumbData([
             "request_id": "req-123",
             "url": "/api/decks?cursor=secret",
+            "source": "series_abc/ep_03",
             "status_code": 500,
             "method": "GET",
             "search_text": "the user's book title",
@@ -28,6 +29,7 @@ struct SentryPrivacyPolicyTests {
 
         #expect(redacted?["request_id"] as? String == "req-123")
         #expect(redacted?["url"] as? String == "/api/decks")
+        #expect(redacted?["source"] as? String == "series_abc/ep_03")
         #expect(redacted?["status_code"] as? Int == 500)
         #expect(redacted?["method"] as? String == "GET")
         #expect(redacted?["search_text"] == nil)
@@ -37,7 +39,11 @@ struct SentryPrivacyPolicyTests {
     @Test func cancellationAndSensitiveFieldRulesAreExplicit() {
         #expect(SentryPrivacyPolicy.isCancellationExceptionType("CancellationError"))
         #expect(SentryPrivacyPolicy.isCancellationExceptionType("NSURLErrorCancelled"))
+        #expect(SentryPrivacyPolicy.isCancellationException(type: "Swift.CancellationError", value: nil))
+        #expect(SentryPrivacyPolicy.isCancellationException(type: "NSError", value: "NSURLErrorDomain error -999"))
         #expect(!SentryPrivacyPolicy.isCancellationExceptionType("KGError"))
+        #expect(SentryPrivacyPolicy.redactExceptionType("NetworkError") == "NetworkError")
+        #expect(SentryPrivacyPolicy.redactExceptionType("Error with user text") == nil)
         #expect(SentryPrivacyPolicy.isSensitiveField("Authorization"))
         #expect(SentryPrivacyPolicy.isSensitiveField("request_body"))
         #expect(!SentryPrivacyPolicy.isSensitiveField("status_code"))

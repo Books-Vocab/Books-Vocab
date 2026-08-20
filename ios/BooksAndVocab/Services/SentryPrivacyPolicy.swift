@@ -11,11 +11,11 @@ import Foundation
 
 enum SentryPrivacyPolicy {
     private static let opaqueIDPattern = try! NSRegularExpression(pattern: "^[A-Za-z0-9._:-]{1,128}$")
-    private static let labelPattern = try! NSRegularExpression(pattern: "^[A-Za-z0-9._:/-]{1,128}$")
+    private static let labelPattern = try! NSRegularExpression(pattern: "^[A-Za-z0-9._:+_/-]{1,128}$")
     private static let safeBreadcrumbKeys: Set<String> = [
         "attempt", "duration_ms", "error_type", "feature", "format", "method", "operation",
         "phase", "provider", "request_id", "result", "retry_count", "status_code", "url",
-        "url_error_code"
+        "url_error_code", "source"
     ]
     private static let sensitiveKeyFragments = [
         "authorization", "cookie", "email", "input", "password", "query", "secret", "text",
@@ -100,8 +100,28 @@ enum SentryPrivacyPolicy {
     }
 
     static func isCancellationExceptionType(_ value: String?) -> Bool {
-        guard let value else { return false }
-        return value == "CancellationError" || value == "NSURLErrorCancelled"
+        isCancellationException(type: value, value: nil)
+    }
+
+    static func isCancellationException(type: String?, value: String?) -> Bool {
+        let typeText = type?.lowercased() ?? ""
+        let valueText = value?.lowercased() ?? ""
+        let combined = "\(typeText) \(valueText)"
+        if typeText == "cancellationerror"
+            || typeText.hasSuffix(".cancellationerror")
+            || typeText == "nsurlerrorcancelled"
+            || typeText == "urlerror.cancelled" {
+            return true
+        }
+        // NSError bridging commonly produces an `NSError` exception whose
+        // value contains the domain and code, rather than the symbolic
+        // NSURLErrorCancelled name.
+        return combined.contains("nsurlerrordomain")
+            && (combined.contains("-999") || combined.contains("cancel"))
+    }
+
+    static func redactExceptionType(_ value: String?) -> String? {
+        redactContext(value)
     }
 
     static func isSensitiveField(_ value: String) -> Bool {
