@@ -4,6 +4,7 @@ import argparse
 import csv
 import json
 import logging
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -20,7 +21,6 @@ from .ops_edit_support import (
     _graph_store,
     _notebook_store,
     _resolve_card_id,
-    _resolve_notebook_id,
     _review_fields,
     _split_multi,
 )
@@ -28,10 +28,25 @@ from .ops_edit_support import (
 logger = logging.getLogger(__name__)
 
 
+def _resolve_notebook_id_for_command(user_dir: Path, ref: str) -> str:
+    """Resolve a notebook reference while owning the temporary store."""
+    if ref == "default":
+        return "default"
+    with closing(_notebook_store(user_dir)) as store:
+        if store.exists(ref):
+            return ref
+        for notebook in store.all():
+            if notebook.name == ref:
+                return notebook.id
+    raise EditError(
+        f"notebook not found: {ref!r}(既非既存 id 也非既存 name;先 notebook-create)"
+    )
+
+
 def cmd_card_add(args: argparse.Namespace) -> int:
     dd = data_dir()
     ctx = EditContext(data_dir=dd, uid=args.uid, commit=args.commit, json_mode=args.json)
-    nb = _resolve_notebook_id(ctx.user_dir, args.notebook)
+    nb = _resolve_notebook_id_for_command(ctx.user_dir, args.notebook)
     plan = {
         "content": args.content, "meaning": args.meaning, "pos": args.pos,
         "notebook_id": nb, "mode": args.mode,
@@ -40,27 +55,27 @@ def cmd_card_add(args: argparse.Namespace) -> int:
     }
 
     def apply_fn() -> dict[str, Any]:
-        store = _card_store(ctx.user_dir)
-        card = store.add(
-            content=args.content, meaning=args.meaning, pos=args.pos,
-            examples=args.example or [], collocations=args.collocation or [],
-            mode=args.mode, notebook_id=nb,
-        )
-        updates: dict[str, Any] = {}
-        if args.note is not None:
-            updates["note"] = args.note
-        if args.difficulty is not None:
-            updates["difficulty"] = args.difficulty
-        if args.review:
-            updates.update(_review_fields(args.review, args.interval, datetime.now(tz=UTC)))
-        if updates:
-            card = store.update(card.id, **updates) or card
-        return {"card": _card_brief(card)}
+        with closing(_card_store(ctx.user_dir)) as store:
+            card = store.add(
+                content=args.content, meaning=args.meaning, pos=args.pos,
+                examples=args.example or [], collocations=args.collocation or [],
+                mode=args.mode, notebook_id=nb,
+            )
+            updates: dict[str, Any] = {}
+            if args.note is not None:
+                updates["note"] = args.note
+            if args.difficulty is not None:
+                updates["difficulty"] = args.difficulty
+            if args.review:
+                updates.update(_review_fields(args.review, args.interval, datetime.now(tz=UTC)))
+            if updates:
+                card = store.update(card.id, **updates) or card
+            return {"card": _card_brief(card)}
 
     def verify_fn() -> dict[str, Any]:
-        store = _card_store(ctx.user_dir)
-        found = store.find_by_content(args.content, notebook_id=nb)
-        return {"ok": found is not None and not found.is_deleted}
+        with closing(_card_store(ctx.user_dir)) as store:
+            found = store.find_by_content(args.content, notebook_id=nb)
+            return {"ok": found is not None and not found.is_deleted}
 
     return ctx.run(action="card-add", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
 
@@ -93,33 +108,33 @@ def cmd_card_update(args: argparse.Namespace) -> int:
     state: dict[str, Any] = {}
 
     def apply_fn() -> dict[str, Any]:
-        store = _card_store(ctx.user_dir)
-        card = _resolve_card_id(store, args.card)
-        # content 改值前驗同 notebook 衝突:unique index 是 (content, notebook_id),
-        # 跨 notebook 重複不觸發 IntegrityError,但會讓 content-based 解析
-        # (_resolve_card_id / find_by_content)變非確定性(dogfood A HIGH-3)。同本內
-        # 已有同名卡即擋,避免悄悄造出無法被 content 唯一定位的卡。
-        new_content = updates.get("content")
-        if isinstance(new_content, str):
-            clash = store.find_by_content(new_content, notebook_id=card.notebook_id)
-            if clash is not None and clash.id != card.id:
-                raise EditError(
-                    f"content 衝突:notebook {card.notebook_id} 內已有 "
-                    f"content={new_content!r} 的卡 {clash.id};content 須在本內唯一"
-                )
-        updated = store.update(card.id, **updates)
-        if updated is None:
-            raise EditError(f"update 失敗(卡可能已刪除):{card.id}")
-        state["card_id"] = updated.id
-        return {"card": _card_brief(updated)}
+        with closing(_card_store(ctx.user_dir)) as store:
+            card = _resolve_card_id(store, args.card)
+            # content 改值前驗同 notebook 衝突:unique index 是 (content, notebook_id),
+            # 跨 notebook 重複不觸發 IntegrityError,但會讓 content-based 解析
+            # (_resolve_card_id / find_by_content)變非確定性(dogfood A HIGH-3)。同本內
+            # 已有同名卡即擋,避免悄悄造出無法被 content 唯一定位的卡。
+            new_content = updates.get("content")
+            if isinstance(new_content, str):
+                clash = store.find_by_content(new_content, notebook_id=card.notebook_id)
+                if clash is not None and clash.id != card.id:
+                    raise EditError(
+                        f"content 衝突:notebook {card.notebook_id} 內已有 "
+                        f"content={new_content!r} 的卡 {clash.id};content 須在本內唯一"
+                    )
+            updated = store.update(card.id, **updates)
+            if updated is None:
+                raise EditError(f"update 失敗(卡可能已刪除):{card.id}")
+            state["card_id"] = updated.id
+            return {"card": _card_brief(updated)}
 
     def verify_fn() -> dict[str, Any]:
-        store = _card_store(ctx.user_dir)
-        c = store.get(state["card_id"])
-        if c is None or c.is_deleted:
-            return {"ok": False, "reason": "card missing/deleted"}
-        mismatched = [k for k, v in updates.items() if getattr(c, k, None) != v]
-        return {"ok": not mismatched, "mismatched_fields": mismatched}
+        with closing(_card_store(ctx.user_dir)) as store:
+            c = store.get(state["card_id"])
+            if c is None or c.is_deleted:
+                return {"ok": False, "reason": "card missing/deleted"}
+            mismatched = [k for k, v in updates.items() if getattr(c, k, None) != v]
+            return {"ok": not mismatched, "mismatched_fields": mismatched}
 
     return ctx.run(action="card-update", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
 
@@ -133,37 +148,37 @@ def cmd_card_set_review(args: argparse.Namespace) -> int:
     state: dict[str, Any] = {}
 
     def apply_fn() -> dict[str, Any]:
-        store = _card_store(ctx.user_dir)
-        card = _resolve_card_id(store, args.card)
-        fields = _review_fields(args.state, args.interval, datetime.now(tz=UTC))
-        updated = store.update(card.id, **fields) or card
-        state["card_id"] = updated.id
-        state["expect_rc"] = fields["review_count"]
-        state["expect_fb"] = fields["last_review_feedback"]
-        return {"card": _card_brief(updated)}
+        with closing(_card_store(ctx.user_dir)) as store:
+            card = _resolve_card_id(store, args.card)
+            fields = _review_fields(args.state, args.interval, datetime.now(tz=UTC))
+            updated = store.update(card.id, **fields) or card
+            state["card_id"] = updated.id
+            state["expect_rc"] = fields["review_count"]
+            state["expect_fb"] = fields["last_review_feedback"]
+            return {"card": _card_brief(updated)}
 
     def verify_fn() -> dict[str, Any]:
         # 不只驗 review_count(`new` 的 rc=0 與初始卡無區分度,update 沒跑也 pass)——
         # 改驗 review_count + feedback + next_review_at 的**時間不變量**(TodayReview
         # 撈取依據):new→next 為空、due→next 在過去、reviewed→next 在未來。方向性
         # 檢查避開 aware/naive datetime 等值比對陷阱(dogfood C5 / A MED-5)。
-        store = _card_store(ctx.user_dir)
-        c = store.get(state["card_id"])
-        if c is None or c.is_deleted:
-            return {"ok": False, "reason": "card missing/deleted"}
-        now = datetime.now(tz=UTC)
-        nxt = c.next_review_at
-        if args.state == "new":
-            time_ok = nxt is None
-        elif args.state == "due":
-            time_ok = nxt is not None and _as_utc(nxt) < now
-        else:  # reviewed
-            time_ok = nxt is not None and _as_utc(nxt) > now
-        ok = (c.review_count == state["expect_rc"]
-              and c.last_review_feedback == state["expect_fb"]
-              and time_ok)
-        return {"ok": ok, "review_count": c.review_count,
-                "next_review_at": str(nxt), "time_invariant_ok": time_ok}
+        with closing(_card_store(ctx.user_dir)) as store:
+            c = store.get(state["card_id"])
+            if c is None or c.is_deleted:
+                return {"ok": False, "reason": "card missing/deleted"}
+            now = datetime.now(tz=UTC)
+            nxt = c.next_review_at
+            if args.state == "new":
+                time_ok = nxt is None
+            elif args.state == "due":
+                time_ok = nxt is not None and _as_utc(nxt) < now
+            else:  # reviewed
+                time_ok = nxt is not None and _as_utc(nxt) > now
+            ok = (c.review_count == state["expect_rc"]
+                  and c.last_review_feedback == state["expect_fb"]
+                  and time_ok)
+            return {"ok": ok, "review_count": c.review_count,
+                    "next_review_at": str(nxt), "time_invariant_ok": time_ok}
 
     return ctx.run(action="card-set-review", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
 
@@ -175,16 +190,16 @@ def cmd_card_delete(args: argparse.Namespace) -> int:
     state: dict[str, Any] = {}
 
     def apply_fn() -> dict[str, Any]:
-        store = _card_store(ctx.user_dir)
-        card = _resolve_card_id(store, args.card)
-        ok = store.delete(card.id)
-        state["card_id"] = card.id
-        return {"deleted": ok, "card_id": card.id}
+        with closing(_card_store(ctx.user_dir)) as store:
+            card = _resolve_card_id(store, args.card)
+            ok = store.delete(card.id)
+            state["card_id"] = card.id
+            return {"deleted": ok, "card_id": card.id}
 
     def verify_fn() -> dict[str, Any]:
-        store = _card_store(ctx.user_dir)
-        c = store.get(state["card_id"])
-        return {"ok": c is None or c.is_deleted}
+        with closing(_card_store(ctx.user_dir)) as store:
+            c = store.get(state["card_id"])
+            return {"ok": c is None or c.is_deleted}
 
     return ctx.run(action="card-delete", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
 
@@ -195,7 +210,7 @@ def cmd_card_import(args: argparse.Namespace) -> int:
     csv_path = Path(args.csv)
     if not csv_path.exists():
         raise EditError(f"CSV not found: {csv_path}")
-    nb_id = _resolve_notebook_id(ctx.user_dir, args.notebook)
+    nb_id = _resolve_notebook_id_for_command(ctx.user_dir, args.notebook)
     with open(csv_path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         # header 正規化成小寫:CSV 用 `Content`/`CONTENT` 不該靜默跳過全批。
@@ -246,36 +261,36 @@ def cmd_card_import(args: argparse.Namespace) -> int:
 
     def apply_fn() -> dict[str, Any]:
         _prevalidate_rows()
-        store = _card_store(ctx.user_dir)
-        now = datetime.now(tz=UTC)
-        # 用 pre/post id diff 算**真實**新增數 —— CardStore.add 對既有 content
-        # 冪等回傳舊卡,無腦 +1 會把「跳過的重複」誤計為新增。
-        pre_ids = {c.id for c in store.all(notebook_id=nb_id)}
-        for r in rows:
-            card = store.add(
-                content=r["content"].strip(),
-                meaning=(r.get("meaning") or "").strip(),
-                pos=(r.get("pos") or "").strip() or None,
-                examples=_split_multi(r.get("examples")),
-                collocations=_split_multi(r.get("collocations")),
-                notebook_id=nb_id,
-            )
-            rv = (r.get("review_state") or "").strip()
-            if rv in _VALID_REVIEW_STATES:
-                raw_iv = (r.get("review_interval") or "").strip()
-                iv = float(raw_iv) if raw_iv else None
-                store.update(card.id, **_review_fields(rv, iv, now))
-        post_ids = {c.id for c in store.all(notebook_id=nb_id)}
-        actually_new = len(post_ids - pre_ids)
-        return {"rows": len(rows), "actually_new": actually_new,
-                "skipped_dup": len(rows) - actually_new}
+        with closing(_card_store(ctx.user_dir)) as store:
+            now = datetime.now(tz=UTC)
+            # 用 pre/post id diff 算**真實**新增數 —— CardStore.add 對既有 content
+            # 冪等回傳舊卡,無腦 +1 會把「跳過的重複」誤計為新增。
+            pre_ids = {c.id for c in store.all(notebook_id=nb_id)}
+            for r in rows:
+                card = store.add(
+                    content=r["content"].strip(),
+                    meaning=(r.get("meaning") or "").strip(),
+                    pos=(r.get("pos") or "").strip() or None,
+                    examples=_split_multi(r.get("examples")),
+                    collocations=_split_multi(r.get("collocations")),
+                    notebook_id=nb_id,
+                )
+                rv = (r.get("review_state") or "").strip()
+                if rv in _VALID_REVIEW_STATES:
+                    raw_iv = (r.get("review_interval") or "").strip()
+                    iv = float(raw_iv) if raw_iv else None
+                    store.update(card.id, **_review_fields(rv, iv, now))
+            post_ids = {c.id for c in store.all(notebook_id=nb_id)}
+            actually_new = len(post_ids - pre_ids)
+            return {"rows": len(rows), "actually_new": actually_new,
+                    "skipped_dup": len(rows) - actually_new}
 
     def verify_fn() -> dict[str, Any]:
-        store = _card_store(ctx.user_dir)
-        missing = [r["content"] for r in rows
-                   if store.find_by_content(r["content"].strip(), notebook_id=nb_id) is None]
-        return {"ok": not missing, "missing_count": len(missing),
-                "missing_sample": missing[:5]}
+        with closing(_card_store(ctx.user_dir)) as store:
+            missing = [r["content"] for r in rows
+                       if store.find_by_content(r["content"].strip(), notebook_id=nb_id) is None]
+            return {"ok": not missing, "missing_count": len(missing),
+                    "missing_sample": missing[:5]}
 
     return ctx.run(action="card-import", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
 
@@ -292,42 +307,42 @@ def cmd_card_move(args: argparse.Namespace) -> int:
     """
     dd = data_dir()
     ctx = EditContext(data_dir=dd, uid=args.uid, commit=args.commit, json_mode=args.json)
-    target_nb = _resolve_notebook_id(ctx.user_dir, args.to_notebook)
+    target_nb = _resolve_notebook_id_for_command(ctx.user_dir, args.to_notebook)
     plan = {"card_ref": args.card, "to_notebook": target_nb}
     state: dict[str, Any] = {}
 
     def apply_fn() -> dict[str, Any]:
-        store = _card_store(ctx.user_dir)
-        card = _resolve_card_id(store, args.card)
-        if card.notebook_id == target_nb:
-            raise EditError(f"卡已在 notebook {target_nb},無需移動")
-        clash = store.find_by_content(card.content, notebook_id=target_nb)
-        if clash is not None and clash.id != card.id:
-            raise EditError(
-                f"目標 notebook {target_nb} 內已有 content={card.content!r} 的卡 {clash.id}"
-            )
-        moved_id = card.id
-        # 搬本前先硬刪所有 notebook graph 中涉及此卡的 link(搬後必跨本)。掃全部本
-        # (default + 所有既存)的 graph,找 from/to == moved_id 的 link 刪除。
-        nb_store = _notebook_store(ctx.user_dir)
-        all_nb_ids = {"default"} | {nb.id for nb in nb_store.all()}
-        purged_links: list[str] = []
-        for gnb in all_nb_ids:
-            graph = _graph_store(ctx.user_dir, gnb)
-            for lk in graph.get_links_for(moved_id):
-                graph.hard_delete_link(lk.id, source="ops")
-                purged_links.append(lk.id)
-        updated = store.update(card.id, notebook_id=target_nb)
-        if updated is None:
-            raise EditError(f"move 失敗(卡可能已刪除):{card.id}")
-        state["card_id"] = updated.id
-        return {"card": _card_brief(updated),
-                "purged_links": purged_links,
-                "purged_count": len(purged_links)}
+        with closing(_card_store(ctx.user_dir)) as store:
+            card = _resolve_card_id(store, args.card)
+            if card.notebook_id == target_nb:
+                raise EditError(f"卡已在 notebook {target_nb},無需移動")
+            clash = store.find_by_content(card.content, notebook_id=target_nb)
+            if clash is not None and clash.id != card.id:
+                raise EditError(
+                    f"目標 notebook {target_nb} 內已有 content={card.content!r} 的卡 {clash.id}"
+                )
+            moved_id = card.id
+            # 搬本前先硬刪所有 notebook graph 中涉及此卡的 link(搬後必跨本)。掃全部本
+            # (default + 所有既存)的 graph,找 from/to == moved_id 的 link 刪除。
+            with closing(_notebook_store(ctx.user_dir)) as nb_store:
+                all_nb_ids = {"default"} | {nb.id for nb in nb_store.all()}
+                purged_links: list[str] = []
+                for gnb in all_nb_ids:
+                    graph = _graph_store(ctx.user_dir, gnb)
+                    for lk in graph.get_links_for(moved_id):
+                        graph.hard_delete_link(lk.id, source="ops")
+                        purged_links.append(lk.id)
+            updated = store.update(card.id, notebook_id=target_nb)
+            if updated is None:
+                raise EditError(f"move 失敗(卡可能已刪除):{card.id}")
+            state["card_id"] = updated.id
+            return {"card": _card_brief(updated),
+                    "purged_links": purged_links,
+                    "purged_count": len(purged_links)}
 
     def verify_fn() -> dict[str, Any]:
-        store = _card_store(ctx.user_dir)
-        c = store.get(state["card_id"])
-        return {"ok": c is not None and not c.is_deleted and c.notebook_id == target_nb}
+        with closing(_card_store(ctx.user_dir)) as store:
+            c = store.get(state["card_id"])
+            return {"ok": c is not None and not c.is_deleted and c.notebook_id == target_nb}
 
     return ctx.run(action="card-move", plan=plan, apply_fn=apply_fn, verify_fn=verify_fn)
