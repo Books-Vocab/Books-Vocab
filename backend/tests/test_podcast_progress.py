@@ -16,6 +16,10 @@ import pytest
 _ISO_NOW = "2026-05-14T12:00:00+00:00"
 _ISO_LATER = "2026-05-14T12:05:00+00:00"
 _ISO_EARLIER = "2026-05-14T11:55:00+00:00"
+# These strings are deliberately ordered opposite to their UTC instants:
+# 12:00+01:00 is 11:00 UTC, while 11:30+00:00 is 11:30 UTC.
+_ISO_OFFSET_EARLIER = "2026-05-14T12:00:00+01:00"
+_ISO_OFFSET_LATER = "2026-05-14T11:30:00+00:00"
 
 # Same wall-clock instant in two ISO8601 widths. iOS now emits fractional
 # seconds (`.withFractionalSeconds`); older clients / older rows are
@@ -124,6 +128,33 @@ def test_get_list_returns_all_rows(isolated_api):
     assert len(items) == 3
     keys = {(it["series_id"], it["ep_num"]) for it in items}
     assert keys == {("series_a", 1), ("series_a", 2), ("series_b", 1)}
+
+
+def test_list_for_user_orders_offset_timestamps_by_utc_instant(isolated_api):
+    from kg import podcast_progress
+
+    podcast_progress.upsert(
+        user_id=isolated_api.user_id,
+        series_id="series_earlier",
+        ep_num=1,
+        position_sec=10.0,
+        duration_sec=100.0,
+        updated_at=_ISO_OFFSET_EARLIER,
+    )
+    podcast_progress.upsert(
+        user_id=isolated_api.user_id,
+        series_id="series_later",
+        ep_num=1,
+        position_sec=20.0,
+        duration_sec=200.0,
+        updated_at=_ISO_OFFSET_LATER,
+    )
+
+    items = podcast_progress.list_for_user(user_id=isolated_api.user_id)
+    assert [(item["series_id"], item["updated_at"]) for item in items] == [
+        ("series_later", _ISO_OFFSET_LATER),
+        ("series_earlier", _ISO_OFFSET_EARLIER),
+    ]
 
 
 def test_get_list_empty_returns_empty_items(isolated_api):
