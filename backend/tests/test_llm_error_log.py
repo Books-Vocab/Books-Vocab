@@ -151,13 +151,20 @@ class TestReset:
     def test_reset_switches_db_path(self, tmp_path, monkeypatch):
         """After _reset(), changing DB_PATH makes the next _get_conn open a fresh DB."""
         llm_error_log.record(user_id="u1", call_type="judge", error_class="E")
+        old_path = llm_error_log.DB_PATH
         llm_error_log._reset()
         new_path = tmp_path / "other" / "llm_errors.db"
         new_path.parent.mkdir(parents=True)
         monkeypatch.setattr(llm_error_log, "DB_PATH", new_path)
         llm_error_log._get_conn()
-        # Actually check: old DB still has 1 row, new DB has 0
+        new_count = llm_error_log._get_conn().execute(
+            "SELECT COUNT(*) FROM llm_errors"
+        ).fetchone()[0]
+        assert new_count == 0
+        llm_error_log._reset()
+        monkeypatch.setattr(llm_error_log, "DB_PATH", old_path)
         old_count = llm_error_log._get_conn().execute(
             "SELECT COUNT(*) FROM llm_errors"
         ).fetchone()[0]
-        assert old_count == 0  # because _get_conn now opens new_path
+        llm_error_log._reset()
+        assert old_count == 1
