@@ -103,6 +103,7 @@ def test_apply_plants_synthetic_review_history(tmp_path):
     for e in pulled:
         by_card[e.card_id] = by_card.get(e.card_id, 0) + 1
     assert by_card == {"cardA": 5, "cardB": 3}
+    store.engine.dispose()
 
 
 def test_apply_plants_synthetic_graph_history(tmp_path):
@@ -116,17 +117,20 @@ def test_apply_plants_synthetic_graph_history(tmp_path):
     assert link_ids == {"lk1", "lk2"}                       # == 終態 link 集合
     added = [e for e in events if e.event_type == GraphEventType.LINK_ADDED]
     assert {e.link_id for e in added} == {"lk1", "lk2"}     # 每條 ≥1 add
+    store.engine.dispose()
 
 
 def test_apply_takes_initial_synthetic_snapshot(tmp_path):
     user_dir = _seed_user(tmp_path)
     report = migrate_user(user_dir, apply=True)
     assert report.graph_snapshots_taken == 1
-    snap = GraphSnapshotStore(user_dir / "graph_events.db").latest("default")
+    store = GraphSnapshotStore(user_dir / "graph_events.db")
+    snap = store.latest("default")
     assert snap is not None
     assert snap.is_synthetic is True
     assert snap.link_count == 2                       # 終態 2 links (lk1, lk2)
     assert {lk["id"] for lk in snap.links} == {"lk1", "lk2"}
+    store.engine.dispose()
 
 
 def test_re_migration_does_not_stack_snapshots(tmp_path):
@@ -135,8 +139,10 @@ def test_re_migration_does_not_stack_snapshots(tmp_path):
     second = migrate_user(user_dir, apply=True)
     assert first.graph_snapshots_taken == 1
     assert second.graph_snapshots_taken == 0          # 已有 → 不重複堆疊
-    snaps = GraphSnapshotStore(user_dir / "graph_events.db").all(notebook_id="default")
+    snaps_store = GraphSnapshotStore(user_dir / "graph_events.db")
+    snaps = snaps_store.all(notebook_id="default")
     assert len(snaps) == 1
+    snaps_store.engine.dispose()
 
 
 def test_apply_purges_old_review_event_junk(tmp_path):
@@ -159,6 +165,7 @@ def test_apply_purges_old_review_event_junk(tmp_path):
     pulled, _ = pull_review_events(since=None, event_store=store)
     assert all(e.is_synthetic for e in pulled)        # 垃圾沒了,只剩合成
     assert not any(e.card_id is None for e in pulled)
+    store.engine.dispose()
 
 
 def test_apply_backs_up_existing_review_events_once(tmp_path):
@@ -182,6 +189,7 @@ def test_apply_is_idempotent(tmp_path):
     # 事件總數不因重跑膨脹
     store = GraphEventStore(user_dir / "graph_events.db")
     assert len(store.all()) == 3
+    store.engine.dispose()
 
 
 def test_review_events_strictly_increasing_per_card(tmp_path):
@@ -195,6 +203,7 @@ def test_review_events_strictly_increasing_per_card(tmp_path):
     for times in per_card.values():
         parsed = sorted(datetime.fromisoformat(t) for t in times)
         assert len(set(parsed)) == len(parsed)  # 嚴格遞增 → 全相異
+    store.engine.dispose()
 
 
 def _legacy_review_db(path: Path) -> None:
@@ -266,6 +275,7 @@ def test_rerun_apply_preserves_real_events(tmp_path):
     for e in pulled:
         if e.is_synthetic:
             _uuid.UUID(e.event_id)
+    store2.engine.dispose()
 
 
 def test_rerun_does_not_purge_card_id_null_events_after_first_migration(tmp_path):
@@ -293,6 +303,7 @@ def test_rerun_does_not_purge_card_id_null_events_after_first_migration(tmp_path
     store2 = ReviewEventStore(user_dir / "review_events.db")
     pulled, _ = pull_review_events(since=None, event_store=store2)
     assert "legacy-real-nullcard" in {e.event_id for e in pulled}
+    store2.engine.dispose()
 
 
 def test_multiple_notebooks_are_all_migrated(tmp_path):
@@ -320,3 +331,4 @@ def test_multiple_notebooks_are_all_migrated(tmp_path):
     store = GraphEventStore(user_dir / "graph_events.db")
     nbs = {e.notebook_id for e in store.all()}
     assert nbs == {"default", "work"}
+    store.engine.dispose()
