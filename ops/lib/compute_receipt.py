@@ -179,10 +179,9 @@ class OscarAckAuthority:
             job_id, digest, mac = expected.split(":", 2)
             if ack.get("job_id") != job_id or ack.get("receipt_digest") != digest:
                 raise AckReplayError("digest")
-            ledger.pop(token, None)
-            message = _canonical({"job_id": job_id, "receipt_digest": digest})
-            valid = hmac.compare_digest(mac, hmac.new(self._key, message + token.encode(), hashlib.sha256).hexdigest())
-            self._write(ledger)
-            if not valid:
+            submitted_mac = ack.get("mac")
+            if not isinstance(submitted_mac, str) or not hmac.compare_digest(submitted_mac, mac):
                 raise AckReplayError("invalid")
+            ledger.pop(token, None)
+            self._write(ledger)
             return True
