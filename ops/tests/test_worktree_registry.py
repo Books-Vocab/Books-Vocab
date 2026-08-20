@@ -93,7 +93,7 @@ def _handback_worktree(
 
     if with_origin and advance_origin:
         upstream = tmp_path / "upstream"
-        _git(tmp_path, "clone", "--quiet", str(remote), str(upstream))
+        _git(tmp_path, "clone", "--quiet", "--branch", "main", str(remote), str(upstream))
         (upstream / "main.txt").write_text("main advanced\n", encoding="utf-8")
         _git(upstream, "add", "main.txt")
         _git(
@@ -101,7 +101,7 @@ def _handback_worktree(
             "-c", "user.name=Registry Test", "-c", "user.email=registry-test@example.invalid",
             "commit", "--quiet", "-m", "advance main",
         )
-        _git(upstream, "push", "--quiet", "origin", "main")
+        _git(upstream, "push", "--quiet", "origin", "HEAD:refs/heads/main")
 
     record = {
         "branch": "feat/handback",
