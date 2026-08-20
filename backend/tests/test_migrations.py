@@ -10,6 +10,7 @@ Covers:
 from __future__ import annotations
 
 import json
+from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -35,8 +36,8 @@ def _make_legacy_user_dir(root: Path, with_legacy_graph: bool = True) -> Path:
     # CardStore which gives us the full schema then drop notebook_id to mimic
     # legacy state.
     cards_path = user_dir / "cards.db"
-    store = CardStore(cards_path)
-    store.add(content="ephemeral", meaning="brief")
+    with closing(CardStore(cards_path)) as store:
+        store.add(content="ephemeral", meaning="brief")
     # Drop notebook_id column to simulate legacy schema
     import sqlite3
 
@@ -70,7 +71,8 @@ def test_migrate_notebook_happy_path(tmp_path):
 
     # notebooks.db exists with default notebook
     assert (user_dir / "notebooks.db").exists()
-    nb = NotebookStore(user_dir / "notebooks.db").get("default")
+    with closing(NotebookStore(user_dir / "notebooks.db")) as store:
+        nb = store.get("default")
     assert nb is not None
     assert nb.is_default is True
 
@@ -105,8 +107,8 @@ def test_migrate_notebook_is_idempotent(tmp_path):
     # Second run must not raise and must not duplicate the default notebook
     migrate_user(user_dir)
 
-    nb_store = NotebookStore(user_dir / "notebooks.db")
-    all_nbs = nb_store.all()
+    with closing(NotebookStore(user_dir / "notebooks.db")) as nb_store:
+        all_nbs = nb_store.all()
     defaults = [n for n in all_nbs if n.id == "default"]
     assert len(defaults) == 1
 
@@ -150,8 +152,8 @@ def test_migrate_notebook_rollback_safety_partial_failure(tmp_path):
     user_b_root = tmp_path / "rootA"
     user_b = user_b_root / "u_b"
     user_b.mkdir(parents=True)
-    cb = CardStore(user_b / "cards.db")
-    cb.add(content="lucid", meaning="clear")
+    with closing(CardStore(user_b / "cards.db")) as cb:
+        cb.add(content="lucid", meaning="clear")
     (user_b / "graph.json").write_text(json.dumps({"links": []}))
 
     call_count = {"n": 0}
@@ -172,14 +174,13 @@ def test_migrate_notebook_rollback_safety_partial_failure(tmp_path):
 
     # After failure, no default notebook row was inserted (rollback safe at
     # NotebookStore.ensure_default level — we raised before commit).
-    nb_store = NotebookStore(user_a / "notebooks.db")
-    assert nb_store.get("default") is None
+    with closing(NotebookStore(user_a / "notebooks.db")) as nb_store:
+        assert nb_store.get("default") is None
 
     # Rerun must succeed and produce expected state
     mod.migrate_user(user_a)
-    assert nb_store.get("default") is None or NotebookStore(user_a / "notebooks.db").get("default") is not None
-    # Re-open a fresh store to read the latest committed state
-    assert NotebookStore(user_a / "notebooks.db").get("default") is not None
+    with closing(NotebookStore(user_a / "notebooks.db")) as nb_store:
+        assert nb_store.get("default") is not None
 
 
 def test_migrate_notebook_no_cards_db_only_creates_notebook(tmp_path):
@@ -193,9 +194,44 @@ def test_migrate_notebook_no_cards_db_only_creates_notebook(tmp_path):
     migrate_user(user_dir)
 
     assert (user_dir / "notebooks.db").exists()
-    assert NotebookStore(user_dir / "notebooks.db").get("default") is not None
+    with closing(NotebookStore(user_dir / "notebooks.db")) as nb_store:
+        assert nb_store.get("default") is not None
     # No graph files were created out of thin air
     assert not (user_dir / "graph_default.json").exists()
+
+
+def test_migrate_notebook_closes_created_stores(tmp_path):
+    from kg.migrations.migrate_notebook import migrate_user
+
+    user_dir = tmp_path / "user"
+    user_dir.mkdir()
+    (user_dir / "cards.db").touch()
+    notebook_store = MagicMock()
+    card_store = MagicMock()
+
+    with (
+        patch("kg.notebook.NotebookStore", return_value=notebook_store),
+        patch("kg.cards.CardStore", return_value=card_store),
+    ):
+        migrate_user(user_dir)
+
+    notebook_store.close.assert_called_once_with()
+    card_store.close.assert_called_once_with()
+
+
+def test_migrate_notebook_closes_store_when_migration_fails(tmp_path):
+    from kg.migrations.migrate_notebook import migrate_user
+
+    user_dir = tmp_path / "user"
+    user_dir.mkdir()
+    notebook_store = MagicMock()
+    notebook_store.ensure_default.side_effect = OSError("simulated failure")
+
+    with patch("kg.notebook.NotebookStore", return_value=notebook_store):
+        with pytest.raises(OSError, match="simulated failure"):
+            migrate_user(user_dir)
+
+    notebook_store.close.assert_called_once_with()
 
 
 # ---------------------------------------------------------------------------
@@ -210,9 +246,9 @@ def _make_user_with_graph(root: Path, link_reason: str = "English-only reason") 
     """
     user_dir = root / "u1"
     user_dir.mkdir(parents=True)
-    cards = CardStore(user_dir / "cards.db")
-    a = cards.add(content="happy", meaning="feeling pleasure")
-    b = cards.add(content="joyful", meaning="full of joy")
+    with closing(CardStore(user_dir / "cards.db")) as cards:
+        a = cards.add(content="happy", meaning="feeling pleasure")
+        b = cards.add(content="joyful", meaning="full of joy")
 
     notebook_id = "default"
     graph_path = user_dir / f"graph_{notebook_id}.json"
@@ -256,9 +292,9 @@ def test_migrate_graph_reasons_happy_path(tmp_path):
     assert len(links) == 1
     assert "快樂" in links[0].reason
     # Cards involved were touched (we just verify call did not crash and updated_at exists)
-    cards = CardStore(user_dir / "cards.db")
-    assert cards.get(a_id) is not None
-    assert cards.get(b_id) is not None
+    with closing(CardStore(user_dir / "cards.db")) as cards:
+        assert cards.get(a_id) is not None
+        assert cards.get(b_id) is not None
 
 
 def test_migrate_graph_reasons_idempotent_skips_cjk(tmp_path):
@@ -303,11 +339,11 @@ def test_migrate_graph_reasons_rollback_on_llm_exception(tmp_path):
 
     user_dir = tmp_path / "u1"
     user_dir.mkdir()
-    cards = CardStore(user_dir / "cards.db")
-    a = cards.add(content="happy", meaning="feeling pleasure")
-    b = cards.add(content="joyful", meaning="full of joy")
-    c = cards.add(content="sad", meaning="feeling sorrow")
-    d = cards.add(content="gloomy", meaning="dark and depressing")
+    with closing(CardStore(user_dir / "cards.db")) as cards:
+        a = cards.add(content="happy", meaning="feeling pleasure")
+        b = cards.add(content="joyful", meaning="full of joy")
+        c = cards.add(content="sad", meaning="feeling sorrow")
+        d = cards.add(content="gloomy", meaning="dark and depressing")
 
     graph_path = user_dir / "graph_default.json"
     candidates_path = user_dir / "candidates_default.json"
@@ -413,13 +449,54 @@ def test_migrate_graph_reasons_no_cards_db_skips(tmp_path):
     client.chat.completions.create.assert_not_called()
 
 
+def test_migrate_graph_reasons_closes_cards_on_empty_graph(tmp_path):
+    from kg.migrations.migrate_graph_reasons import migrate_user_graph
+
+    user_dir = tmp_path / "u"
+    user_dir.mkdir()
+    (user_dir / "cards.db").touch()
+    (user_dir / "graph_default.json").write_text(json.dumps({"links": []}))
+    cards = MagicMock()
+    graph = MagicMock()
+    graph.all_links.return_value = []
+
+    with (
+        patch("kg.cards.CardStore", return_value=cards),
+        patch("kg.graph.GraphStore", return_value=graph),
+    ):
+        assert migrate_user_graph(user_dir, MagicMock(), model="fake-model") == 0
+
+    cards.close.assert_called_once_with()
+
+
+def test_migrate_graph_reasons_closes_cards_when_graph_read_fails(tmp_path):
+    from kg.migrations.migrate_graph_reasons import migrate_user_graph
+
+    user_dir = tmp_path / "u"
+    user_dir.mkdir()
+    (user_dir / "cards.db").touch()
+    (user_dir / "graph_default.json").write_text(json.dumps({"links": []}))
+    cards = MagicMock()
+    graph = MagicMock()
+    graph.all_links.side_effect = ValueError("invalid graph")
+
+    with (
+        patch("kg.cards.CardStore", return_value=cards),
+        patch("kg.graph.GraphStore", return_value=graph),
+    ):
+        with pytest.raises(ValueError, match="invalid graph"):
+            migrate_user_graph(user_dir, MagicMock(), model="fake-model")
+
+    cards.close.assert_called_once_with()
+
+
 def test_migrate_graph_reasons_no_graph_files_returns_zero(tmp_path):
     from kg.migrations.migrate_graph_reasons import migrate_user_graph
 
     user_dir = tmp_path / "u"
     user_dir.mkdir()
     # Only cards.db, no graph files
-    CardStore(user_dir / "cards.db")
+    CardStore(user_dir / "cards.db").close()
 
     client = MagicMock()
     updated = migrate_user_graph(user_dir, client, model="fake-model")
