@@ -4,12 +4,14 @@ Private, read-only merged-PR timeline for `Books-Vocab/Books-Vocab`.
 
 ## Surface
 
-- `GET /` — one horizontal timeline with PR markers and a zoom slider.
+- `GET /` — one physical horizontal line. Each merged PR is a dot on the line; hover/focus shows its local merge time and click reveals the compact detail row.
 - `GET /api/prs` — normalized GitHub PR data plus sync/cache status.
 - `GET /healthz` — `200` after a successful sync or when usable cached data exists; otherwise `503`.
 - Felix bind: `100.118.39.104:8008` only. Do not bind `0.0.0.0` or put this service behind Cloudflare.
 
 The service uses Felix's existing host-side `gh` authentication. It never writes a GitHub token to the plist, repository, or cache. The cache is `/Users/chenliangyu/.local/state/kg-pr-timeline/prs.json`.
+
+The page opens at a wide, scrollable scale so recent merges can be inspected without label collisions. The zoom slider ranges from a fit-to-history view to a deliberately large scale; labels are kept out of the line and are shown only on interaction.
 
 ## Local check
 
