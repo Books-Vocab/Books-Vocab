@@ -171,6 +171,15 @@ protocol AccountErasing: AnyObject {
     func deleteAccount() async throws
 }
 
+/// Pro-only external API key management. The app uses the normal JWT-authenticated
+/// KG service for these management calls; the returned plaintext secret is never
+/// persisted by the client and is absent from list/revoke responses.
+protocol ExternalAPIKeyManaging: AnyObject {
+    func fetchExternalAPIKeys() async throws -> [KGExternalAPIKey]
+    func createExternalAPIKey(label: String) async throws -> KGExternalAPIKey
+    func revokeExternalAPIKey(id: String) async throws -> KGExternalAPIKey
+}
+
 /// Local reset capability exposed to Settings. The throwing contract is
 /// intentional: a terminal success must mean the backing cleanup completed.
 protocol LocalDataResetting: AnyObject {
@@ -196,6 +205,7 @@ protocol KGServing:
     ReviewSyncServing,
     QuotaServing,
     AccountErasing,
+    ExternalAPIKeyManaging,
     SubscriptionServing,
     LocalDataResetting
 {

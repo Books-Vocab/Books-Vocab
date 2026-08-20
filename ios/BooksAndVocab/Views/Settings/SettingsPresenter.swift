@@ -31,6 +31,7 @@ struct SettingsPresenter: View {
     @State private var showReviewSection = false
     @State private var showReviewCardLayout = false
     @State private var showReaderSettings = false
+    @State private var showAPIKeyManagement = false
 
     var body: some View {
         NavigationStack {
@@ -95,8 +96,13 @@ struct SettingsPresenter: View {
                 SettingsAccountDetailView(
                     authState: state.auth,
                     dangerState: state.danger,
-                    actions: actions
+                    actions: actions,
+                    isProActive: state.subscription?.isActive ?? false,
+                    onShowAPIKeyManagement: { showAPIKeyManagement = true }
                 )
+            }
+            .navigationDestination(isPresented: $showAPIKeyManagement) {
+                SettingsAPIKeyManagementView()
             }
             .navigationDestination(isPresented: $showTranslationLanguage) {
                 TranslationLanguageSettingsView(
