@@ -239,6 +239,23 @@ class TestResolveNotebookId:
         with pytest.raises(support.EditError):
             support._resolve_notebook_id(tmp_path, "nonexistent")
 
+    def test_closes_store_after_success(self, tmp_path, monkeypatch):
+        store = MagicMock()
+        store.exists.return_value = True
+        monkeypatch.setattr(support, "_notebook_store", lambda _: store)
+
+        assert support._resolve_notebook_id(tmp_path, "nb1") == "nb1"
+        store.close.assert_called_once_with()
+
+    def test_closes_store_after_exception(self, tmp_path, monkeypatch):
+        store = MagicMock()
+        store.exists.side_effect = RuntimeError("database unavailable")
+        monkeypatch.setattr(support, "_notebook_store", lambda _: store)
+
+        with pytest.raises(RuntimeError, match="database unavailable"):
+            support._resolve_notebook_id(tmp_path, "nb1")
+        store.close.assert_called_once_with()
+
 
 # ── _resolve_card_id ─────────────────────────────────────────────────────
 

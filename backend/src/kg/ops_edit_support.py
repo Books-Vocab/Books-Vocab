@@ -288,17 +288,20 @@ def _resolve_notebook_id(user_dir: Path, ref: str) -> str:
     if ref == "default":
         return "default"
     store = _notebook_store(user_dir)
-    # id 精確匹配**優先**於 name 掃描:若某本 name 恰好等於另一本的 hex id,傳該 id
-    # 字串應解析成 id 那本,而非 name 那本(dogfood D HIGH-3)。id 是 primary key,
-    # get(name) 必為 None,故 exists() 只對真正的 id 為真,不會誤吞 name。
-    if store.exists(ref):
-        return ref
-    for nb in store.all():
-        if nb.name == ref:
-            return nb.id
-    raise EditError(
-        f"notebook not found: {ref!r}(既非既存 id 也非既存 name;先 notebook-create)"
-    )
+    try:
+        # id 精確匹配**優先**於 name 掃描:若某本 name 恰好等於另一本的 hex id,傳該 id
+        # 字串應解析成 id 那本,而非 name 那本(dogfood D HIGH-3)。id 是 primary key,
+        # get(name) 必為 None,故 exists() 只對真正的 id 為真,不會誤吞 name。
+        if store.exists(ref):
+            return ref
+        for nb in store.all():
+            if nb.name == ref:
+                return nb.id
+        raise EditError(
+            f"notebook not found: {ref!r}(既非既存 id 也非既存 name;先 notebook-create)"
+        )
+    finally:
+        store.close()
 
 
 def _link_on_disk(graph: Any, link_id: str) -> bool:
