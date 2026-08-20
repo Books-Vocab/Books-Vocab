@@ -28,6 +28,17 @@ else
   fail "healthy fixture did not reach ready: $healthy"
 fi
 
+rg_blocker="$(mktemp -d)"
+printf '#!/bin/sh\nexit 127\n' >"$rg_blocker/rg"
+chmod +x "$rg_blocker/rg"
+healthy_without_rg="$(PATH="$rg_blocker:$PATH" summary)"
+rm -rf "$rg_blocker"
+if jq -e '.verdict == "ready" and .wiring.canImportGuard == true' <<<"$healthy_without_rg" >/dev/null; then
+  ok "Sentry guard probe does not depend on ripgrep"
+else
+  fail "Sentry guard probe depended on ripgrep: $healthy_without_rg"
+fi
+
 package_blocked="$(KG_IOS_SENTRY_BUILD_LOCK_TIMEOUT=0 KG_IOS_OPS_SENTRY_PACKAGE_FIXTURE=0 bash "$OPS" sentry --json)"
 if jq -e '.verdict == "blocked" and any(.issues[]; .key == "package")' <<<"$package_blocked" >/dev/null; then
   ok "missing package is blocked"

@@ -71,7 +71,7 @@ sentry_summary_json() {
   fi
   if [[ -n "${KG_IOS_OPS_SENTRY_CAN_IMPORT_FIXTURE:-}" ]]; then
     has_sdk="$KG_IOS_OPS_SENTRY_CAN_IMPORT_FIXTURE"
-  elif [[ "$source_exists" == "1" ]] && rg -q 'canImport\(Sentry\)' "$reporter_source" "$ROOT/ios/BooksAndVocab/Services" 2>/dev/null; then
+  elif [[ "$source_exists" == "1" ]] && grep -Eq 'canImport\(Sentry\)' "$reporter_source" 2>/dev/null; then
     has_sdk=1
   else
     has_sdk=0
