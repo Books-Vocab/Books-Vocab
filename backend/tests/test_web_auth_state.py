@@ -36,10 +36,10 @@ def web_auth_env(tmp_path):
         google_redirect_uri=TEST_GOOGLE_REDIRECT_URI,
         apple_bundle_id="test.apple.bundle",
     )
-    _swap_settings(test_settings)
     client = None
 
     try:
+        _swap_settings(test_settings)
         api_mod._USER_LOCKS.clear()
         deps_mod._USER_LOCKS_MUTEX = None
         client = TestClient(app, base_url="https://testserver", raise_server_exceptions=False)
