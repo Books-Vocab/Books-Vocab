@@ -18,10 +18,12 @@ private enum AppGhostButtonMetrics {
 
 /// AppCard surface variant.
 ///
-/// 預設 `.elevated`（既有行為：cardBorder + z2 shadow）。
+/// 預設 `.flat`（純 background 區隔；不描邊、不加 shadow）。
 /// Mochi 化北極星二（border 退場）後新元件預設應用 `.flat` — 無 border、無 shadow，
 /// 純 background 區隔。`elevated` 保留給 modal / popover / sticky group 等必須有邊界的場景。
-enum AppCardVariant {
+enum AppCardVariant: Equatable {
+    static let defaultVariant: Self = .flat
+
     /// 既有：border + z2 shadow（modal / popover / sticky group）。
     case elevated
     /// Mochi 化預設：純 background、無 border、無 shadow。
@@ -38,7 +40,7 @@ struct AppCard<Content: View>: View {
 
     init(
         padding: CGFloat = AppSpacing.s6,
-        variant: AppCardVariant = .elevated,
+        variant: AppCardVariant = .defaultVariant,
         @ViewBuilder content: () -> Content
     ) {
         self.padding = padding

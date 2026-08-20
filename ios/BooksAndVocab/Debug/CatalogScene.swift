@@ -58,6 +58,7 @@ struct CatalogScene: View {
         let playbook = Playbook()
         let registrations: [(Playbook) -> Void] = [
             ReaderScenarios.register,
+            AppGlassScenarios.register,
             NotebooksScenarios.register,
             NotebookListScenarios.register,
             VocabScenarios.register,

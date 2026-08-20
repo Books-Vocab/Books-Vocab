@@ -103,12 +103,12 @@ struct SettingsSyncLifecycleFeedback: View {
 
             HStack(spacing: appSkin.spacing.inlineGap) {
                 Button(primaryTitle, action: primaryAction)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.appCompactAction(.primary))
                     .accessibilityIdentifier(primaryIdentifier)
 
                 if let secondaryTitle, let secondaryIdentifier, let secondaryAction {
                     Button(secondaryTitle, action: secondaryAction)
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.appCompactAction(.outline))
                         .accessibilityIdentifier(secondaryIdentifier)
                 }
             }

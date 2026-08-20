@@ -13,30 +13,92 @@
 
 import SwiftUI
 
+enum AppCompactActionSurface: Equatable {
+    case solid
+    case glass
+}
+
+private enum AppCompactActionMetrics {
+    static let hitTarget: CGFloat = 44
+}
+
 struct AppCompactActionButtonStyle: ButtonStyle {
     @Environment(\.appTheme) private var appTheme
+    @Environment(\.isEnabled) private var isEnabled
     let tone: AppActionTone
 
     func makeBody(configuration: Configuration) -> some View {
         let palette = stylePalette
+        let shape = AppRoundedRect(roundness: AppRoundness.pill)
 
-        configuration.label
+        let label = configuration.label
             .font(AppFonts.caption(weight: .semibold))
             .foregroundStyle(palette.foreground)
             .padding(.horizontal, AppSpacing.s3)
             .padding(.vertical, AppSpacing.s2)
-            .background(
-                AppRoundedRect(roundness: AppRoundness.pill).fill(palette.background)
-            )
-            .overlay(
-                AppRoundedRect(roundness: AppRoundness.pill).stroke(palette.border, lineWidth: 1)
-            )
+            .frame(minHeight: AppCompactActionMetrics.hitTarget)
+            .contentShape(shape)
+
+        surface(label, shape: shape, palette: palette)
             .opacity(configuration.isPressed ? AppMotion.TapFeedback.opacityDip : 1)
             .scaleEffect(configuration.isPressed ? AppMotion.TapFeedback.scaleDown : 1)
             .animation(AppMotion.TapFeedback.animation, value: configuration.isPressed)
     }
 
-    private var stylePalette: (foreground: Color, background: Color, border: Color) {
+    @ViewBuilder
+    private func surface<Content: View>(
+        _ content: Content,
+        shape: AppRoundedRect,
+        palette: (foreground: Color, background: Color, border: Color)
+    ) -> some View {
+        switch tone {
+        case .primary:
+            content
+                .background(shape.fill(palette.background))
+                .overlay(shape.stroke(palette.border, lineWidth: 1))
+        case .neutral:
+            content.glassEffect(.regular.interactive(), in: shape)
+        case .outline:
+            content.glassEffect(
+                .regular
+                    .tint(appTheme.palette.accent.opacity(0.08))
+                    .interactive(),
+                in: shape
+            )
+        case .destructive:
+            content.glassEffect(
+                .regular
+                    .tint(appTheme.palette.destructiveBg)
+                    .interactive(),
+                in: shape
+            )
+        }
+    }
+
+    static func surface(for tone: AppActionTone) -> AppCompactActionSurface {
+        switch tone {
+        case .primary: .solid
+        case .neutral, .outline, .destructive: .glass
+        }
+    }
+
+    /// Resolved (foreground, background, border) for a tone and enabled state.
+    /// Keep disabled controls on the muted text tier instead of retaining the
+    /// enabled palette when SwiftUI applies `.disabled(...)`.
+    static func palette(
+        tone: AppActionTone,
+        theme: AppTheme,
+        isEnabled: Bool
+    ) -> (foreground: Color, background: Color, border: Color) {
+        guard isEnabled else {
+            switch tone {
+            case .primary:
+                return (theme.palette.quaternaryText, theme.palette.mutedFill, theme.palette.mutedFill)
+            case .neutral, .outline, .destructive:
+                return (theme.palette.quaternaryText, .clear, .clear)
+            }
+        }
+
         switch tone {
         case .primary:
             // 奶黃 CTA：light/dark 各自走 palette.brandHero，前景為 deep charcoal
@@ -44,27 +106,31 @@ struct AppCompactActionButtonStyle: ButtonStyle {
             //   brandHeroLight #B5894B + onBrandHero = ~5.11:1 ✓ AA pass
             //   brandHeroDark  #C9A968 + onBrandHero = ~7.05:1 ✓ AAA pass
             // 白字反而 fail（~3.4:1）— 此 ButtonStyle 走 AppColors.onBrandHero 故合規。
-            let bg = appTheme.palette.brandHero
+            let bg = theme.palette.brandHero
             return (AppColors.onBrandHero, bg, bg)
         case .neutral:
             return (
-                appTheme.palette.primaryText,
-                appTheme.palette.cardBackground,
-                appTheme.palette.cardBorder
+                theme.palette.primaryText,
+                .clear,
+                .clear
             )
         case .outline:
             return (
-                appTheme.palette.primaryText,
+                theme.palette.primaryText,
                 .clear,
-                appTheme.palette.borderStrong
+                .clear
             )
         case .destructive:
             return (
-                appTheme.palette.destructive,
-                appTheme.palette.destructiveBg,
-                appTheme.palette.destructive.opacity(0.32)
+                theme.palette.destructive,
+                .clear,
+                .clear
             )
         }
+    }
+
+    private var stylePalette: (foreground: Color, background: Color, border: Color) {
+        Self.palette(tone: tone, theme: appTheme, isEnabled: isEnabled)
     }
 }
 

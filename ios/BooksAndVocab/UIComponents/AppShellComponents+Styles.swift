@@ -26,9 +26,9 @@ extension AppSectionCardStyle {
     static func settings(_ skin: AppSkin) -> AppSectionCardStyle {
         .init(
             background: skin.palette.cardBackground,
-            border: skin.palette.cardBorder,
+            border: .clear,
             roundness: skin.roundness.card,
-            borderOpacity: 1,
+            borderOpacity: 0,
             elevation: .z0
         )
     }
