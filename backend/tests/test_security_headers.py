@@ -13,7 +13,34 @@ def client():
 
     from kg.api import app
 
-    return TestClient(app, raise_server_exceptions=False)
+    test_client = TestClient(app, raise_server_exceptions=False)
+    try:
+        yield test_client
+    finally:
+        test_client.close()
+
+
+def test_client_fixture_closes_owned_client(monkeypatch):
+    events = []
+
+    class FakeTestClient:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __enter__(self):
+            events.append("enter")
+            raise AssertionError("fixture must not start the app lifespan")
+
+        def close(self):
+            events.append("close")
+
+    monkeypatch.setattr("fastapi.testclient.TestClient", FakeTestClient)
+    fixture_generator = client.__wrapped__()
+
+    next(fixture_generator)
+    fixture_generator.close()
+
+    assert events == ["close"]
 
 
 class TestSecurityHeaders:
