@@ -58,12 +58,37 @@ class TestTokenCostUsd:
 
 class TestConfigureLimits:
     def test_configure_changes_limits(self):
-        configure_limits(pro=1.0, free=0.1)
-        from kg.quota_service import FREE_DAILY_LIMIT_USD, PRO_DAILY_LIMIT_USD
-        assert PRO_DAILY_LIMIT_USD == 1.0
-        assert FREE_DAILY_LIMIT_USD == 0.1
-        # Restore defaults
-        configure_limits(pro=0.30, free=0.03)
+        import kg.quota_service as quota_service
+
+        original_limits = (
+            quota_service.PRO_DAILY_LIMIT_USD,
+            quota_service.FREE_DAILY_LIMIT_USD,
+        )
+        try:
+            configure_limits(pro=1.0, free=0.1)
+            assert quota_service.PRO_DAILY_LIMIT_USD == 1.0
+            assert quota_service.FREE_DAILY_LIMIT_USD == 0.1
+        finally:
+            configure_limits(pro=original_limits[0], free=original_limits[1])
+
+    def test_configure_limits_restores_after_failed_assertion(self):
+        import kg.quota_service as quota_service
+
+        original_limits = (
+            quota_service.PRO_DAILY_LIMIT_USD,
+            quota_service.FREE_DAILY_LIMIT_USD,
+        )
+        with pytest.raises(AssertionError, match="injected failure"):
+            try:
+                configure_limits(pro=-1.0, free=0.1)
+                raise AssertionError("injected failure")
+            finally:
+                configure_limits(pro=original_limits[0], free=original_limits[1])
+
+        assert (
+            quota_service.PRO_DAILY_LIMIT_USD,
+            quota_service.FREE_DAILY_LIMIT_USD,
+        ) == original_limits
 
 
 # ── get_quota_state / check_quota (with mocked DB) ────────────────
