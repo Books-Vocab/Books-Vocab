@@ -7,6 +7,7 @@ scope:
   - ios/BooksAndVocab.xcodeproj/
   - ops/sentry_*.py
   - ops/lib/ios_ops_release.sh
+verified_against: 5f7c8bc037dc9907f970d6a2fbb480a29c79167d
 -->
 # iOS 可觀測性契約
 
