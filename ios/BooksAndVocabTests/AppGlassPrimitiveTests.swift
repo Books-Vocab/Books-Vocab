@@ -12,6 +12,23 @@ struct AppGlassPrimitiveTests {
         #expect(AppCompactActionButtonStyle.surface(for: .destructive) == .glass)
     }
 
+    @Test("disabled compact actions use the muted palette")
+    func compactActionDisabledPalette() {
+        let enabled = AppCompactActionButtonStyle.palette(
+            tone: .neutral,
+            theme: .light,
+            isEnabled: true
+        )
+        let disabled = AppCompactActionButtonStyle.palette(
+            tone: .neutral,
+            theme: .light,
+            isEnabled: false
+        )
+
+        #expect(enabled.foreground == AppTheme.light.palette.primaryText)
+        #expect(disabled.foreground == AppTheme.light.palette.quaternaryText)
+    }
+
     @Test("AppCard defaults to the flat surface")
     func appCardDefaultSurface() {
         #expect(AppCardVariant.defaultVariant == .flat)

@@ -24,6 +24,7 @@ private enum AppCompactActionMetrics {
 
 struct AppCompactActionButtonStyle: ButtonStyle {
     @Environment(\.appTheme) private var appTheme
+    @Environment(\.isEnabled) private var isEnabled
     let tone: AppActionTone
 
     func makeBody(configuration: Configuration) -> some View {
@@ -81,7 +82,23 @@ struct AppCompactActionButtonStyle: ButtonStyle {
         }
     }
 
-    private var stylePalette: (foreground: Color, background: Color, border: Color) {
+    /// Resolved (foreground, background, border) for a tone and enabled state.
+    /// Keep disabled controls on the muted text tier instead of retaining the
+    /// enabled palette when SwiftUI applies `.disabled(...)`.
+    static func palette(
+        tone: AppActionTone,
+        theme: AppTheme,
+        isEnabled: Bool
+    ) -> (foreground: Color, background: Color, border: Color) {
+        guard isEnabled else {
+            switch tone {
+            case .primary:
+                return (theme.palette.quaternaryText, theme.palette.mutedFill, theme.palette.mutedFill)
+            case .neutral, .outline, .destructive:
+                return (theme.palette.quaternaryText, .clear, .clear)
+            }
+        }
+
         switch tone {
         case .primary:
             // 奶黃 CTA：light/dark 各自走 palette.brandHero，前景為 deep charcoal
@@ -89,27 +106,31 @@ struct AppCompactActionButtonStyle: ButtonStyle {
             //   brandHeroLight #B5894B + onBrandHero = ~5.11:1 ✓ AA pass
             //   brandHeroDark  #C9A968 + onBrandHero = ~7.05:1 ✓ AAA pass
             // 白字反而 fail（~3.4:1）— 此 ButtonStyle 走 AppColors.onBrandHero 故合規。
-            let bg = appTheme.palette.brandHero
+            let bg = theme.palette.brandHero
             return (AppColors.onBrandHero, bg, bg)
         case .neutral:
             return (
-                appTheme.palette.primaryText,
+                theme.palette.primaryText,
                 .clear,
                 .clear
             )
         case .outline:
             return (
-                appTheme.palette.primaryText,
+                theme.palette.primaryText,
                 .clear,
                 .clear
             )
         case .destructive:
             return (
-                appTheme.palette.destructive,
+                theme.palette.destructive,
                 .clear,
                 .clear
             )
         }
+    }
+
+    private var stylePalette: (foreground: Color, background: Color, border: Color) {
+        Self.palette(tone: tone, theme: appTheme, isEnabled: isEnabled)
     }
 }
 
