@@ -38,12 +38,13 @@ def isolated_api(tmp_path):
     try:
         api_mod._USER_LOCKS.clear()
         deps_mod._USER_LOCKS_MUTEX = None
-        yield SimpleNamespace(
-            client=TestClient(app, raise_server_exceptions=False),
-            user_id=user_id,
-            headers=headers,
-            data_dir=data_dir,
-        )
+        with TestClient(app, raise_server_exceptions=False) as client:
+            yield SimpleNamespace(
+                client=client,
+                user_id=user_id,
+                headers=headers,
+                data_dir=data_dir,
+            )
     finally:
         app.state.kg_settings = original_settings
         app.state.load_users = original_load
@@ -56,7 +57,10 @@ def _seed_word(api, word="apple", translation="蘋果"):
     from kg.cards import CardStore
 
     store = CardStore(api.data_dir / "users" / api.user_id / "cards.db")
-    store.add(content=word, meaning=translation, notebook_id="default")
+    try:
+        store.add(content=word, meaning=translation, notebook_id="default")
+    finally:
+        store.close()
     return word
 
 
