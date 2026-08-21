@@ -36,6 +36,9 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
         def list_worktrees(self) -> tuple[PhysicalWorktree, ...]:
             return ()
 
+        def canonical_checkout(self) -> object:
+            raise NotImplementedError
+
         def inspect_worktree(self, path: Path, base_sha: str) -> WorktreeSnapshot:
             raise NotImplementedError
 
@@ -123,7 +126,12 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
             raise NotImplementedError
 
         def enqueue(
-            self, *, number: int, expected_base_sha: str, expected_head_sha: str
+            self,
+            *,
+            number: int,
+            expected_base_sha: str,
+            expected_head_sha: str,
+            expected_body: str,
         ) -> None:
             return None
 

@@ -54,6 +54,26 @@ def test_git_adapter_computes_operation_aware_exact_base_diff(tmp_path: Path) ->
     )
 
 
+def test_git_adapter_reads_canonical_checkout_without_mutation(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test")
+    (repo / "tracked.txt").write_text("clean\n", encoding="utf-8")
+    _git(repo, "add", "tracked.txt")
+    _git(repo, "commit", "-qm", "base")
+
+    clean = GitCliAdapter(repo=repo).canonical_checkout()
+    assert clean.branch == "main"
+    assert clean.clean
+
+    (repo / "tracked.txt").write_text("dirty\n", encoding="utf-8")
+    dirty = GitCliAdapter(repo=repo).canonical_checkout()
+    assert not dirty.clean
+    assert dirty.head_sha == clean.head_sha
+
+
 def test_git_new_remote_branch_push_uses_absent_ref_lease(tmp_path: Path) -> None:
     head = "b" * 40
     runner = StaticRunner(

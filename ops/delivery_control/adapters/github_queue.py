@@ -20,6 +20,7 @@ query DeliveryQueueState($pullRequestId: ID!) {
       baseRefName
       baseRefOid
       headRefOid
+      body
       state
       mergeQueueEntry { id }
     }
@@ -51,6 +52,7 @@ class NativeQueueSnapshot:
     base_branch: str
     base_sha: str
     head_sha: str
+    body: str
     state: str
     entry_id: str | None
 
@@ -89,6 +91,7 @@ class GitHubQueueGraphQLAdapter:
             "baseRefName": str,
             "baseRefOid": str,
             "headRefOid": str,
+            "body": str,
             "state": str,
         }
         if not isinstance(node, Mapping) or any(
@@ -105,6 +108,7 @@ class GitHubQueueGraphQLAdapter:
             base_branch=node["baseRefName"],
             base_sha=node["baseRefOid"],
             head_sha=node["headRefOid"],
+            body=node["body"],
             state=node["state"],
             entry_id=entry["id"] if isinstance(entry, Mapping) else None,
         )
@@ -138,11 +142,13 @@ class GitHubQueueGraphQLAdapter:
         *,
         expected_base_sha: str,
         expected_head_sha: str,
+        expected_body: str,
     ) -> bool:
         return (
             snapshot.base_branch == "main"
             and snapshot.base_sha == expected_base_sha
             and snapshot.head_sha == expected_head_sha
+            and snapshot.body == expected_body
             and snapshot.state == "OPEN"
         )
 
@@ -152,12 +158,14 @@ class GitHubQueueGraphQLAdapter:
         pull_request_id: str,
         expected_base_sha: str,
         expected_head_sha: str,
+        expected_body: str,
     ) -> None:
         before = self.snapshot(pull_request_id)
         if not self._matches_preflight(
             before,
             expected_base_sha=expected_base_sha,
             expected_head_sha=expected_head_sha,
+            expected_body=expected_body,
         ):
             raise CompareAndSwapConflict("PR tuple changed before native enqueue")
         if before.entry_id is not None:
@@ -166,13 +174,15 @@ class GitHubQueueGraphQLAdapter:
         entry_id = self._enqueue_mutation(pull_request_id, expected_head_sha)
         after = self.snapshot(pull_request_id)
         tuple_matches = (
-            after.base_branch == "main" and after.head_sha == expected_head_sha
+            after.base_branch == "main"
+            and after.head_sha == expected_head_sha
+            and after.body == expected_body
         )
         queue_matches = after.state == "MERGED" or after.entry_id == entry_id
         if tuple_matches and queue_matches:
             return
 
-        if after.entry_id is not None:
+        if after.entry_id == entry_id:
             self._dequeue(pull_request_id)
             rolled_back = self.snapshot(pull_request_id)
             if rolled_back.entry_id is not None:

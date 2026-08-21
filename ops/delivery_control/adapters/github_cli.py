@@ -330,13 +330,19 @@ class GitHubCliAdapter:
         return after
 
     def enqueue(
-        self, *, number: int, expected_base_sha: str, expected_head_sha: str
+        self,
+        *,
+        number: int,
+        expected_base_sha: str,
+        expected_head_sha: str,
+        expected_body: str,
     ) -> None:
         before = self.get_pull_request(number)
         if (
             before.base_branch != "main"
             or before.base_sha != expected_base_sha
             or before.head_sha != expected_head_sha
+            or before.body != expected_body
         ):
             raise CompareAndSwapConflict("PR tuple changed before enqueue")
         if not self.merge_queue_enabled("main"):
@@ -345,4 +351,5 @@ class GitHubCliAdapter:
             pull_request_id=before.node_id,
             expected_base_sha=expected_base_sha,
             expected_head_sha=expected_head_sha,
+            expected_body=expected_body,
         )

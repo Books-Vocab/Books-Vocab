@@ -142,6 +142,7 @@ def test_github_enqueue_delegates_to_native_queue_without_direct_merge() -> None
                 "baseRefName": "main",
                 "baseRefOid": "a" * 40,
                 "headRefOid": "b" * 40,
+                "body": _pr_payload()["body"],
                 "state": "OPEN",
                 "mergeQueueEntry": None,
             }
@@ -172,6 +173,7 @@ def test_github_enqueue_delegates_to_native_queue_without_direct_merge() -> None
         number=12,
         expected_base_sha="a" * 40,
         expected_head_sha="b" * 40,
+        expected_body=str(_pr_payload()["body"]),
     )
 
     assert all(call[:3] != ("gh", "pr", "merge") for call in runner.calls)
@@ -197,7 +199,24 @@ def test_github_enqueue_refuses_branch_without_merge_queue_rule() -> None:
             number=12,
             expected_base_sha="a" * 40,
             expected_head_sha="b" * 40,
+            expected_body=str(_pr_payload()["body"]),
         )
+
+
+def test_github_enqueue_rejects_body_drift_before_graphql_mutation() -> None:
+    drifted = _pr_payload()
+    drifted["body"] = "tampered"
+    runner = StaticRunner([CommandResult(("gh",), 0, json.dumps(drifted), "")])
+
+    with pytest.raises(CompareAndSwapConflict, match="before enqueue"):
+        GitHubCliAdapter(runner=runner).enqueue(
+            number=12,
+            expected_base_sha="a" * 40,
+            expected_head_sha="b" * 40,
+            expected_body=str(_pr_payload()["body"]),
+        )
+
+    assert all("enqueuePullRequest" not in " ".join(call) for call in runner.calls)
 
 
 def test_github_metadata_update_requires_expected_handback_head() -> None:

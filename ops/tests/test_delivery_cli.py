@@ -15,6 +15,7 @@ from delivery_control.cli import DeliveryApplication, RuntimeStatusMap, main
 from delivery_control.domain.errors import CompareAndSwapConflict
 from delivery_control.domain.models import CheckStatus, Scope
 from delivery_control.domain.observations import (
+    CanonicalCheckoutSnapshot,
     CheckSnapshot,
     FileChange,
     FileOperation,
@@ -110,6 +111,9 @@ class FakeGit:
     def inspect_worktree(self, path: Path, base_sha: str) -> WorktreeSnapshot:
         assert path == WORKTREE and base_sha == BASE
         return self.snapshot
+
+    def canonical_checkout(self) -> CanonicalCheckoutSnapshot:
+        return CanonicalCheckoutSnapshot(Path("/repo"), "main", BASE, True)
 
     def list_worktrees(self) -> tuple[PhysicalWorktree, ...]:
         return self.worktrees
@@ -223,7 +227,12 @@ class FakeGitHub:
         return self.get_pull_request(number)
 
     def enqueue(
-        self, *, number: int, expected_base_sha: str, expected_head_sha: str
+        self,
+        *,
+        number: int,
+        expected_base_sha: str,
+        expected_head_sha: str,
+        expected_body: str,
     ) -> None:
         return None
 
@@ -324,6 +333,21 @@ def test_cli_queue_preserves_explicit_hold_as_typed_input(capsys: object) -> Non
     assert payload["ok"] is True
     assert application.calls[0][0] == 41
     assert {item.value for item in application.calls[0][1]} == {"security"}
+
+
+def test_cli_exposes_dogfood_preflight_as_read_only_json(capsys: object) -> None:
+    class FakeApplication:
+        def dogfood_preflight(self) -> object:
+            return {"ready": False, "blockers": ["source inventory"]}
+
+    assert main(
+        ["dogfood-preflight"],
+        application_factory=lambda **_: FakeApplication(),
+    ) == 2
+
+    payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert payload["command"] == "dogfood-preflight"
+    assert payload["result"]["ready"] is False
 
 
 def test_runtime_status_file_fails_closed_for_unlisted_owner(tmp_path: Path) -> None:

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from ..domain.errors import CompareAndSwapConflict
 from ..domain.observations import (
+    CanonicalCheckoutSnapshot,
     FileChange,
     FileOperation,
     PhysicalWorktree,
@@ -31,6 +32,16 @@ class GitCliAdapter:
         if result.exit_code != 0:
             raise AdapterCommandError(result)
         return result.stdout.strip()
+
+    def canonical_checkout(self) -> CanonicalCheckoutSnapshot:
+        return CanonicalCheckoutSnapshot(
+            path=self.repo,
+            branch=self._git("branch", "--show-current") or None,
+            head_sha=self._git("rev-parse", "--verify", "HEAD^{commit}"),
+            clean=not bool(
+                self._git("status", "--porcelain=v1", "--untracked-files=all")
+            ),
+        )
 
     def list_worktrees(self) -> tuple[PhysicalWorktree, ...]:
         output = self._git("worktree", "list", "--porcelain")

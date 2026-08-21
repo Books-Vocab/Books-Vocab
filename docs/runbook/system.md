@@ -46,7 +46,7 @@ workflow `pr-gate` 的 check run `confidence` 失敗、非預期 skip、取消�
 
 ## Deterministic delivery control cycle
 
-唯一 command 入口是 `ops/delivery.py`。它輸出 `kg.delivery.command.v1` JSON；成功為 `ok: true`／exit 0，contract、source、CAS 或 I/O failure 為 `ok: false`／exit 1。global option 必須放在 subcommand 前；`--repo` 預設 current working directory，`--runtime-status-file` 是 caller 提供的 thread-id → state JSON，未提供或缺少 owner 時保留 `unknown`，不猜 reachable。
+唯一 command 入口是 `ops/delivery.py`。它輸出 `kg.delivery.command.v1` JSON；成功為 `ok: true`／exit 0，contract、source、CAS 或 I/O failure 為 `ok: false`／exit 1。`dogfood-preflight` 完成觀測但 launch baseline 尚未 ready 時保留 `ok: true` 與完整 blockers、回 exit 2，方便啟動器 fail closed。global option 必須放在 subcommand 前；`--repo` 預設 current working directory，`--runtime-status-file` 是 caller 提供的 thread-id → state JSON，未提供或缺少 owner 時保留 `unknown`，不猜 reachable。
 
 ### 先觀測，再執行 exact action
 
@@ -59,6 +59,36 @@ workflow `pr-gate` 的 check run `confidence` 失敗、非預期 skip、取消�
 - `inspect` 分類每條 known／unmapped lane，並分開回傳 lane problems 與 source problems。
 - `metrics` 量測 active、publishable、durable PR、required-green／failed、cleanup、blocked 與 physical worktree reservoirs。
 - `plan` 加上最近一小時 merge cadence，依 [delivery model](../reference/delivery_model.md#deterministic-feedback-controller) 的 policy 回傳可同時處理的 actions 與 `desired_new_solvers`；輸出只供 Scout／PI／CM 決策，不會 dispatch、enqueue 或 cleanup。
+
+### 四角色 dogfood 啟動
+
+首輪 dogfood 只開四個 top-level threads：`Backlog Scout`、`PI`、`CM`、`Supervisor`。Issue Solver 是 Scout 依 capacity decision fan-out 的子代理，不另開第五個常駐控制角色。四者共用 GitHub／registry／Git 的 facts，但不共用聊天記憶作狀態：
+
+| thread | 唯一職責 | 允許 mutation | 禁止 |
+|---|---|---|---|
+| Backlog Scout | audit codebase、建立唯一 Issue、依 `desired_new_solvers` fan-out Issue Solver | Issue 與 owner-bound solver/worktree admission | PR、merge、cleanup、產品實作 |
+| PI | 消費 typed hand-back，立即 publish/update 唯一 PR，驗證 durable readback 後釋放 local assets | remote branch、PR metadata、exact local release | 修改產品 code、enqueue、merge |
+| CM | required-green exact admission、native queue、merged cleanup、canonical main sync | queue、terminal cleanup、`sync-main` | 修改 code／PR metadata、繞過 hold |
+| Supervisor | 每分鐘讀 `dogfood-preflight`／`plan`／角色活動，處理事故與 freeze/ramp 決策 | thread routing 與 kill switch | 接管 owner worktree、代寫產品 code、把未知狀態算成功 |
+
+四個 threads 建立前，從 canonical checkout 執行：
+
+```bash
+./ops/delivery.py --repo <canonical-checkout> dogfood-preflight
+./ops/delivery.py --repo <canonical-checkout> plan
+```
+
+只有 `dogfood-preflight.result.ready=true` 才能開始。它要求 canonical checkout clean 且在 `main`、local main exact 等於 live `origin/main`、native merge queue 存在、只有 canonical physical worktree，且沒有 source problems、legacy blockers、unmapped/open PR、local hand-back、cleanup residue 或 failed required。這是一次性 clean-slate launch gate；穩態是否要 fan-out 由 `plan` 決定。
+
+啟動分三段：
+
+1. **Canary**：Scout 同時最多一個 Issue Solver；Supervisor 每 60 秒取一次 read-only snapshot。成功定義為 `typed hand-back → durable PR/local release → required SUCCESS → native queue → merge → terminal cleanup → local main exact sync` 全鏈閉合。
+2. **Promotion**：900 秒內完成 3 個連續 canary merges，三次都沒有 orphan worktree、duplicate PR、CAS rollback failure、main drift 或人工改 registry，才把 solver concurrency 逐次升到 2、再依 controller 最多 4。
+3. **Steady state**：在有健康 supply 時，以 300 秒最大 inter-merge interval、10–15 durable PR reservoir 與 required-green target 3 作容量 SLO；SLO 不授權跳過 required、review 或 security hold。
+
+任一條件觸發 kill switch 時，Supervisor 立即 freeze Scout birth，但 PI／CM 仍可排空已存在且 exact 的安全工作：source problem、unmapped/duplicate PR、canonical main drift／dirty、cleanup CAS conflict、queue entry replacement、P0/P1/security hold、required contract infrastructure failure。禁止以 bulk cleanup、force reset、重建 owner branch 或接管 dirty worktree復原；保留 exact JSON/error evidence，修復一條後重跑 preflight。
+
+上線前至少演練五個 fault：PR body 在 enqueue 前漂移（不得 enqueue）、queue entry 被另一 transaction 取代（不得 dequeue 新 entry）、publish 後 local cleanup 中斷（同 receipt 可重試）、舊 cleanup receipt 遇到較新 branch/path claim（exit 75）、local main 在 sync preflight 後漂移（不得 merge/reset）。
 
 ### PI publication 與 local release
 
@@ -87,7 +117,7 @@ PR readiness workflow 的 parser 入口是：
 ./ops/delivery.py --repo <canonical-checkout> sync-main
 ```
 
-`queue` 只接受 registry `published`、PR body／paths／head／live base、target branch=`main`、all required checks、mergeability 都 exact 且無 hold 的 candidate，並以 GraphQL `enqueuePullRequest(expectedHeadOid)` 送進 GitHub native merge queue；它不呼叫會在無 queue 情境退化成直接合併的 `gh pr merge --auto`。enqueue 後 `main` tip 自然前進由 merge group 重驗，不被誤判為 side-effect 失敗；retarget／head drift 則以 `dequeuePullRequest` 撤銷仍存在的 queue entry 並 fail closed。`--hold` 是 typed hard stop，不是 override。inventory 會對每個無 open mapping 的 `published` record 精確補讀同 branch 的 terminal PR，讓 merged cleanup 不會因 open-only 列表消失。`cleanup-merged` 只依 exact merged PR receipt 移除匹配的 local residue／remote branch，再 terminalize registry record。`sync-main` 只在 `<canonical-checkout>` clean、位於 `main`、local ref 與 live `origin/main` 未在 preflight 後漂移時執行 `--ff-only`；不得在 feature worktree 執行，也沒有 force-reset fallback。
+`queue` 只接受 registry `published`、PR body／paths／head／live base、target branch=`main`、all required checks、mergeability 都 exact 且無 hold 的 candidate，並以 GraphQL `enqueuePullRequest(expectedHeadOid)` 送進 GitHub native merge queue；它不呼叫會在無 queue 情境退化成直接合併的 `gh pr merge --auto`。canonical body 也在 mutation 前後納入 CAS。enqueue 後 `main` tip 自然前進由 merge group 重驗，不被誤判為 side-effect 失敗；retarget／head／body drift 時，只有 queue entry ID 仍等於本次 mutation 回傳值才可呼叫 `dequeuePullRequest`，若 entry 已被另一 transaction 取代只報衝突、不得移除。`--hold` 是 typed hard stop，不是 override。inventory 會對每個無 open mapping 的 `published` record 精確補讀同 branch 的 terminal PR，讓 merged cleanup 不會因 open-only 列表消失。`cleanup-merged` 只依 exact merged PR receipt 移除匹配的 local residue／remote branch，再 terminalize registry record。`sync-main` 只在 `<canonical-checkout>` clean、位於 `main`、local ref 與 live `origin/main` 未在 preflight 後漂移時執行 `--ff-only`；不得在 feature worktree 執行，也沒有 force-reset fallback。
 
 ### 錯誤隔離
 

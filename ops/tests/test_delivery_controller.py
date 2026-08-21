@@ -9,6 +9,7 @@ OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
 from delivery_control.controller.capacity import ControlAction, decide_capacity
+from delivery_control.controller.dogfood import assess_dogfood_readiness
 from delivery_control.controller.metrics import (
     PipelineMetrics,
     measure_merge_cadence,
@@ -95,6 +96,54 @@ def test_controller_reports_source_uncertainty_instead_of_fabricating_supply() -
     assert ControlAction.RECOVER_BLOCKERS in decision.actions
     assert ControlAction.DISPATCH_SOLVERS not in decision.actions
     assert decision.desired_new_solvers == 0
+
+
+def test_dogfood_preflight_accepts_only_an_empty_canonical_baseline() -> None:
+    now = datetime(2026, 8, 21, tzinfo=UTC)
+    cadence = measure_merge_cadence((), now=now)
+
+    readiness = assess_dogfood_readiness(
+        local_main_sha="a" * 40,
+        origin_main_sha="a" * 40,
+        canonical_branch="main",
+        canonical_clean=True,
+        merge_queue_enabled=True,
+        physical_worktree_count=1,
+        canonical_worktree_present=True,
+        metrics=_metrics(),
+        cadence=cadence,
+    )
+
+    assert readiness.ready
+    assert readiness.blockers == ()
+    assert readiness.profile.roles == ("backlog_scout", "pi", "cm", "supervisor")
+    assert readiness.profile.canary_solver_limit == 1
+    assert readiness.profile.target_inter_merge_seconds == 300
+
+
+def test_dogfood_preflight_blocks_debt_drift_and_missing_queue() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+
+    readiness = assess_dogfood_readiness(
+        local_main_sha="a" * 40,
+        origin_main_sha="b" * 40,
+        canonical_branch="feat/not-main",
+        canonical_clean=False,
+        merge_queue_enabled=False,
+        physical_worktree_count=2,
+        canonical_worktree_present=True,
+        metrics=_metrics(
+            source_problems=2,
+            blocked_lanes=1,
+            unmapped_open_prs=1,
+        ),
+        cadence=cadence,
+    )
+
+    assert not readiness.ready
+    assert "local main differs from origin/main" in readiness.blockers
+    assert "delivery source inventory is incomplete" in readiness.blockers
+    assert "main has no native merge queue rule" in readiness.blockers
 
 
 def test_pipeline_supply_counts_only_owner_mapped_open_prs() -> None:

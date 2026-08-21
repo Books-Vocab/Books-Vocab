@@ -12,6 +12,7 @@ from .adapters.github_cli import GitHubCliAdapter
 from .adapters.registry import RegistryCliAdapter
 from .adapters.runtime import RuntimeStatusMap
 from .controller.capacity import decide_capacity
+from .controller.dogfood import assess_dogfood_readiness
 from .controller.metrics import measure_merge_cadence, measure_pipeline
 from .domain.errors import PolicyViolation
 from .domain.models import HandbackReceipt
@@ -74,6 +75,30 @@ class DeliveryApplication:
             "cadence": cadence,
             "decision": decide_capacity(metrics, cadence),
         }
+
+    def dogfood_preflight(self, *, now: datetime | None = None) -> object:
+        observed_at = now or datetime.now(tz=UTC)
+        checkout = self.git.canonical_checkout()
+        origin_main_sha = self.git.origin_main_sha()
+        physical_worktrees = self.git.list_worktrees()
+        metrics = self.metrics()
+        cadence = measure_merge_cadence(
+            self.github.recent_merge_times(), now=observed_at
+        )
+        return assess_dogfood_readiness(
+            local_main_sha=self.git.local_main_sha(),
+            origin_main_sha=origin_main_sha,
+            canonical_branch=checkout.branch,
+            canonical_clean=checkout.clean,
+            merge_queue_enabled=self.github.merge_queue_enabled("main"),
+            physical_worktree_count=len(physical_worktrees),
+            canonical_worktree_present=(
+                sum(item.path.resolve() == self.repo.resolve() for item in physical_worktrees)
+                == 1
+            ),
+            metrics=metrics,
+            cadence=cadence,
+        )
 
     def receipt(self, lane_id: str) -> HandbackReceipt:
         record = self.registry.get(lane_id)

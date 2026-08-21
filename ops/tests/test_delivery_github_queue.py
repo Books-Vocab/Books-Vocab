@@ -16,6 +16,7 @@ from delivery_control.ports.process import CommandResult
 BASE = "a" * 40
 HEAD = "b" * 40
 PR_ID = "PR_kwDOexample"
+BODY = "## Scope\n- ops/a.py\n\n## Validation\n- required"
 
 
 class StaticRunner:
@@ -35,6 +36,7 @@ def _state(
     head_sha: str = HEAD,
     state: str = "OPEN",
     entry_id: str | None = None,
+    body: str = BODY,
 ) -> dict[str, object]:
     return {
         "data": {
@@ -43,6 +45,7 @@ def _state(
                 "baseRefName": base_branch,
                 "baseRefOid": base_sha,
                 "headRefOid": head_sha,
+                "body": body,
                 "state": state,
                 "mergeQueueEntry": {"id": entry_id} if entry_id else None,
             }
@@ -67,6 +70,7 @@ def test_native_enqueue_uses_expected_head_and_accepts_main_advancing() -> None:
         pull_request_id=PR_ID,
         expected_base_sha=BASE,
         expected_head_sha=HEAD,
+        expected_body=BODY,
     )
 
     mutation = next(
@@ -83,6 +87,7 @@ def test_native_enqueue_is_idempotent_for_exact_existing_queue_entry() -> None:
         pull_request_id=PR_ID,
         expected_base_sha=BASE,
         expected_head_sha=HEAD,
+        expected_body=BODY,
     )
 
     assert len(runner.calls) == 1
@@ -104,6 +109,7 @@ def test_native_enqueue_dequeues_if_target_changes_during_mutation() -> None:
             pull_request_id=PR_ID,
             expected_base_sha=BASE,
             expected_head_sha=HEAD,
+            expected_body=BODY,
         )
 
     assert any("dequeuePullRequest" in " ".join(call) for call in runner.calls)
@@ -120,6 +126,23 @@ def test_native_enqueue_fails_closed_if_target_is_already_terminal() -> None:
             pull_request_id=PR_ID,
             expected_base_sha=BASE,
             expected_head_sha=HEAD,
+            expected_body=BODY,
         )
 
     assert all(call[:3] != ("gh", "pr", "merge") for call in runner.calls)
+
+
+def test_native_enqueue_never_dequeues_a_replacement_entry() -> None:
+    runner = StaticRunner(
+        [_state(), _enqueued("MQE_old"), _state(body="tampered", entry_id="MQE_new")]
+    )
+
+    with pytest.raises(CompareAndSwapConflict, match="during native enqueue"):
+        GitHubQueueGraphQLAdapter(repo=Path("/repo"), runner=runner).enqueue(
+            pull_request_id=PR_ID,
+            expected_base_sha=BASE,
+            expected_head_sha=HEAD,
+            expected_body=BODY,
+        )
+
+    assert not any("dequeuePullRequest" in " ".join(call) for call in runner.calls)

@@ -113,7 +113,7 @@ class FakeGitHub:
         self.required = required
         self.paths = paths or receipt.scope.paths
         self.merge_queue = merge_queue
-        self.enqueue_calls: list[tuple[int, str, str]] = []
+        self.enqueue_calls: list[tuple[int, str, str, str]] = []
 
     def get_pull_request(self, number: int) -> PullRequestSnapshot:
         assert number == self.pull_request.number
@@ -135,9 +135,16 @@ class FakeGitHub:
         return self.merge_queue
 
     def enqueue(
-        self, *, number: int, expected_base_sha: str, expected_head_sha: str
+        self,
+        *,
+        number: int,
+        expected_base_sha: str,
+        expected_head_sha: str,
+        expected_body: str,
     ) -> None:
-        self.enqueue_calls.append((number, expected_base_sha, expected_head_sha))
+        self.enqueue_calls.append(
+            (number, expected_base_sha, expected_head_sha, expected_body)
+        )
 
 
 def _service(
@@ -166,7 +173,7 @@ def test_exact_required_green_candidate_is_enqueued_once() -> None:
     result = service.enqueue(receipt=receipt, pull_request_number=11)
 
     assert result.live_main_sha == BASE
-    assert github.enqueue_calls == [(11, BASE, HEAD)]
+    assert github.enqueue_calls == [(11, BASE, HEAD, render_pull_request_body(receipt))]
 
 
 @pytest.mark.parametrize(

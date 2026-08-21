@@ -52,5 +52,10 @@ class GitHubCommandPort(Protocol):
     def mark_ready(self, number: int) -> PullRequestSnapshot: ...
 
     def enqueue(
-        self, *, number: int, expected_base_sha: str, expected_head_sha: str
+        self,
+        *,
+        number: int,
+        expected_base_sha: str,
+        expected_head_sha: str,
+        expected_body: str,
     ) -> None: ...

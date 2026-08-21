@@ -48,6 +48,9 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser("inspect", help="classify every known delivery lane")
     commands.add_parser("metrics", help="measure current queue reservoirs")
     commands.add_parser("plan", help="derive the next capacity actions")
+    commands.add_parser(
+        "dogfood-preflight", help="verify the four-role canary launch baseline"
+    )
 
     validate = commands.add_parser(
         "validate-pr-body", help="validate one durable PR receipt"
@@ -88,6 +91,8 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
         return application.metrics()
     if args.command == "plan":
         return application.plan()
+    if args.command == "dogfood-preflight":
+        return application.dogfood_preflight()
     if args.command == "validate-pr-body":
         body = (
             sys.stdin.read()
@@ -111,6 +116,15 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
     if args.command == "sync-main":
         return application.sync_main()
     raise AssertionError(f"unhandled command: {args.command}")
+
+
+def _result_exit_code(command: str, result: object) -> int:
+    if command != "dogfood-preflight":
+        return 0
+    ready = result.get("ready") if isinstance(result, Mapping) else getattr(
+        result, "ready", None
+    )
+    return 0 if ready is True else 2
 
 
 def main(
@@ -153,7 +167,7 @@ def main(
             sort_keys=True,
         )
     )
-    return 0
+    return _result_exit_code(args.command, result)
 
 
 __all__ = [

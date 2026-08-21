@@ -63,6 +63,14 @@ class PhysicalWorktree:
 
 
 @dataclass(frozen=True)
+class CanonicalCheckoutSnapshot:
+    path: Path
+    branch: str | None
+    head_sha: str
+    clean: bool
+
+
+@dataclass(frozen=True)
 class InventoryProblem:
     source: str
     identity: str

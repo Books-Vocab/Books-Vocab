@@ -90,6 +90,7 @@ Backlog Scout 與 PI 是交付控制迴圈中的職能，不是新的 canonical 
 
 - **Backlog Scout** 接收 User 發現或主動觀測缺口；需要排序、追蹤、拆解或未來 fan-out 時，先把需求與 acceptance 固化到 GitHub Issue。Scout 可依 deterministic controller 的 capacity 建議 fan-out：Issue-backed 工作交 Issue Solver；只有已具備 User／IM direct-assignment packet、`dispatch_channel` 與 recipient 的 bounded 工作才交 Worker。聊天只運送 assignment，不是需求或狀態 SoT。
 - **PI** 是 IM 承擔的 publication/integration execution 職能。它收到 exact typed hand-back 後立即把 branch／PR 發布到 GitHub，再釋放 local worktree／branch；不等待 CI 才建立 PR，也不把 publication 誤報成 Ready。GitHub remote branch + PR 才是等待 required／advisory outcomes 的 durable queue。
+- **Supervisor** 在 dogfood 階段只讀取 delivery facts、容量決策與四個 top-level thread 活動，負責 freeze/ramp 與事故升級；它不成為產品 owner、不接管 worktree，也不替 PI／CM 執行 mutation。穩態成立後可降低監控頻率，但不能移除 deterministic gates。
 - Scout fan-out 與 PI publication 都只消費 GitHub、Git、registry 與 typed receipt 的 current facts；controller CLI 不發訊息、不建立 agent chat 狀態，也不另存 Issue／PR／queue lifecycle。
 
 ### 嚴格責任邊界
@@ -191,7 +192,7 @@ CM 只在 PR 的 required checks、review、文件影響與安全條件滿足後
 
 PI publication 後，remote branch + typed PR 是 durable PR reservoir；local worktree 不是等待區。CM 只把符合以下 exact tuple 的 candidate 送進 GitHub native merge queue：registry `published` receipt、PR body／changed paths／head、live `origin/main` 與 PR／receipt／registry base、GitHub required outcomes、mergeability，以及沒有 P0／P1／security hold。repository 沒有 native merge queue rule 時必須拒絕，不得改成本地 queue 或手動 merge。
 
-native merge queue 以 exact current base、exact head 與 target branch=`main` admission；adapter 只呼叫 GraphQL `enqueuePullRequest(expectedHeadOid)`，不使用可能直接合併的 auto-merge CLI。admission 後 `main` tip 前進不是失敗，merge queue 會建立新 merge group 並重跑獨立、短且 blocking 的 `required`；若 PR 被 retarget 或 head 改變，adapter 必須以 `dequeuePullRequest` 撤銷仍存在的 native queue entry 並 fail closed。landing 後 CM 只在 canonical checkout clean、位於 `main` 且 local／origin refs 仍符合 preflight 時做 `--ff-only` sync；任何 race、dirty 或 divergence 都 fail closed。
+native merge queue 以 exact current base、exact head、canonical typed body 與 target branch=`main` admission；adapter 只呼叫 GraphQL `enqueuePullRequest(expectedHeadOid)`，不使用可能直接合併的 auto-merge CLI。admission 後 `main` tip 前進不是失敗，merge queue 會建立新 merge group 並重跑獨立、短且 blocking 的 `required`；若 PR 被 retarget 或 head／body 改變，只有 queue entry ID 仍是本次 transaction 建立的 entry 才能 `dequeuePullRequest`，replacement entry 必須保留並 fail closed。landing 後 CM 只在 canonical checkout clean、位於 `main` 且 local／origin refs 仍符合 preflight 時做 `--ff-only` sync；任何 race、dirty 或 divergence 都 fail closed。
 
 ## Deterministic feedback controller
 

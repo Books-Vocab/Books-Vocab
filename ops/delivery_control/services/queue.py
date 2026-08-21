@@ -95,6 +95,7 @@ class QueueService:
             number=pull_request_number,
             expected_base_sha=live_main_sha,
             expected_head_sha=receipt.head_sha,
+            expected_body=render_pull_request_body(receipt),
         )
         return QueueResult(
             pull_request=pull_request,

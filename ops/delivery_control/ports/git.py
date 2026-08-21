@@ -3,11 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from ..domain.observations import PhysicalWorktree, WorktreeSnapshot
+from ..domain.observations import (
+    CanonicalCheckoutSnapshot,
+    PhysicalWorktree,
+    WorktreeSnapshot,
+)
 
 
 @runtime_checkable
 class GitQueryPort(Protocol):
+    def canonical_checkout(self) -> CanonicalCheckoutSnapshot: ...
+
     def list_worktrees(self) -> tuple[PhysicalWorktree, ...]: ...
 
     def inspect_worktree(self, path: Path, base_sha: str) -> WorktreeSnapshot: ...
