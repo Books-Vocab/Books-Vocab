@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 OPS = Path(__file__).resolve().parents[1]
@@ -11,15 +12,20 @@ sys.path.insert(0, str(OPS))
 from delivery_control.adapters.git_cli import GitCliAdapter
 from delivery_control.adapters.github_cli import GitHubCliAdapter
 from delivery_control.adapters.registry import RegistryCliAdapter
-from delivery_control.domain.models import (
+from delivery_control.domain.models import CheckStatus, Scope
+from delivery_control.domain.observations import (
+    CheckSnapshot,
+    FileChange,
+    FileOperation,
+    InventoryProblem,
     PhysicalWorktree,
+    PullRequestInventory,
     PullRequestSnapshot,
     RegistryInventory,
     RegistrySnapshot,
-    Scope,
     WorktreeSnapshot,
 )
-from delivery_control.domain.states import CheckStatus, LaneState
+from delivery_control.domain.states import LaneState
 from delivery_control.ports.process import CommandResult
 from delivery_control.services.inspect import InspectService
 
@@ -34,9 +40,7 @@ def _git(repo: Path, *args: str) -> str:
     return result.stdout.strip()
 
 
-def test_git_adapter_uses_porcelain_and_computes_exact_base_diff(
-    tmp_path: Path,
-) -> None:
+def test_git_adapter_computes_operation_aware_exact_base_diff(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "-q", "-b", "main")
@@ -47,26 +51,19 @@ def test_git_adapter_uses_porcelain_and_computes_exact_base_diff(
     _git(repo, "commit", "-qm", "base")
     base_sha = _git(repo, "rev-parse", "HEAD")
     _git(repo, "switch", "-qc", "feat/example")
+    (repo / "base.txt").write_text("changed\n", encoding="utf-8")
     (repo / "ops").mkdir()
     (repo / "ops" / "change.py").write_text("value = 1\n", encoding="utf-8")
-    _git(repo, "add", "ops/change.py")
+    _git(repo, "add", ".")
     _git(repo, "commit", "-qm", "change")
 
-    adapter = GitCliAdapter(repo=repo)
-    physical = adapter.list_worktrees()
-    snapshot = adapter.inspect_worktree(repo, base_sha)
+    snapshot = GitCliAdapter(repo=repo).inspect_worktree(repo, base_sha)
 
-    assert physical == (
-        PhysicalWorktree(
-            path=repo.resolve(),
-            head_sha=_git(repo, "rev-parse", "HEAD"),
-            branch="feat/example",
-            prunable=False,
-        ),
-    )
     assert snapshot.clean
-    assert snapshot.base_sha == base_sha
-    assert snapshot.changed_paths == ("ops/change.py",)
+    assert snapshot.changes == (
+        FileChange(FileOperation.MODIFY, "base.txt"),
+        FileChange(FileOperation.ADD, "ops/change.py"),
+    )
 
 
 class StaticRunner:
@@ -93,6 +90,7 @@ def test_registry_adapter_surfaces_malformed_records_without_hiding_valid_ones(
             "files": [{"operation": "modify", "path": "ops/a.py"}],
         },
         "codex_thread_id": "thread-1",
+        "claim_generation": 4,
     }
     malformed = {"branch": "feat/bad", "path": "relative", "status": "active"}
     runner = StaticRunner(
@@ -105,60 +103,65 @@ def test_registry_adapter_surfaces_malformed_records_without_hiding_valid_ones(
             )
         ]
     )
-    adapter = RegistryCliAdapter(
+    inventory = RegistryCliAdapter(
         script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
-    )
-
-    inventory = adapter.list_records()
+    ).list_records()
 
     assert [record.lane_id for record in inventory.records] == ["#1"]
-    assert inventory.records[0].owner_thread_id == "thread-1"
+    assert inventory.records[0].claim_generation == 4
     assert inventory.problems[0].identity == "feat/bad"
-    assert (
-        "Scope" in inventory.problems[0].reason
-        or "path" in inventory.problems[0].reason
-    )
 
 
-def test_github_adapter_keeps_required_checks_separate_from_advisory_rollup() -> None:
+def _pr_payload() -> dict[str, object]:
+    return {
+        "number": 12,
+        "url": "https://example.test/pull/12",
+        "headRefName": "feat/one",
+        "baseRefOid": "a" * 40,
+        "headRefOid": "b" * 40,
+        "state": "OPEN",
+        "isDraft": False,
+        "mergeable": "MERGEABLE",
+        "title": "fix: one",
+        "body": "## Scope\n- ops/a.py\n\n## Validation\n- required",
+    }
+
+
+def test_github_adapter_surfaces_malformed_entries() -> None:
     runner = StaticRunner(
         [
             CommandResult(
                 argv=("gh", "pr", "list"),
                 exit_code=0,
-                stdout=json.dumps(
-                    [
-                        {
-                            "number": 12,
-                            "url": "https://example.test/pull/12",
-                            "headRefName": "feat/one",
-                            "baseRefOid": "a" * 40,
-                            "headRefOid": "b" * 40,
-                            "state": "OPEN",
-                            "isDraft": False,
-                            "mergeable": "MERGEABLE",
-                        }
-                    ]
-                ),
+                stdout=json.dumps([_pr_payload(), 7]),
                 stderr="",
-            ),
-            CommandResult(
-                argv=("gh", "pr", "checks"),
-                exit_code=1,
-                stdout=json.dumps([{"state": "FAILURE", "name": "required"}]),
-                stderr="",
-            ),
+            )
         ]
     )
-    adapter = GitHubCliAdapter(runner=runner)
+    inventory = GitHubCliAdapter(runner=runner).list_open_pull_requests()
+    assert [item.number for item in inventory.records] == [12]
+    assert inventory.problems == (
+        InventoryProblem("github", "entry[1]", "PR entry is not an object"),
+    )
 
-    pull_requests = adapter.list_open_pull_requests()
-    required = adapter.required_check_status(12)
 
-    assert pull_requests[0].number == 12
-    assert required is CheckStatus.FAILURE
-    assert runner.calls[0][:4] == ("gh", "pr", "list", "--state")
-    assert "--required" in runner.calls[1]
+def test_github_required_check_snapshot_is_bound_to_exact_head() -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(("gh",), 0, json.dumps(_pr_payload()), ""),
+            CommandResult(
+                ("gh",),
+                0,
+                json.dumps([{"state": "SUCCESS", "name": "required"}]),
+                "",
+            ),
+            CommandResult(("gh",), 0, json.dumps(_pr_payload()), ""),
+        ]
+    )
+    snapshot = GitHubCliAdapter(runner=runner).required_check_snapshot(12)
+    assert snapshot.status is CheckStatus.SUCCESS
+    assert snapshot.head_sha == "b" * 40
+    assert snapshot.names == ("required",)
 
 
 class FakeRegistry:
@@ -200,11 +203,17 @@ class FakeGit:
 
 
 class FakeGitHub:
-    def __init__(self, pull_requests: tuple[PullRequestSnapshot, ...]) -> None:
+    def __init__(
+        self,
+        pull_requests: tuple[PullRequestSnapshot, ...],
+        *,
+        problems: tuple[InventoryProblem, ...] = (),
+    ) -> None:
         self.pull_requests = pull_requests
+        self.problems = problems
 
-    def list_open_pull_requests(self) -> tuple[PullRequestSnapshot, ...]:
-        return self.pull_requests
+    def list_open_pull_requests(self) -> PullRequestInventory:
+        return PullRequestInventory(self.pull_requests, self.problems)
 
     def find_open_pull_request(self, branch: str) -> PullRequestSnapshot | None:
         return next(
@@ -214,95 +223,129 @@ class FakeGitHub:
     def get_pull_request(self, number: int) -> PullRequestSnapshot:
         return next(item for item in self.pull_requests if item.number == number)
 
-    def required_check_status(self, number: int) -> CheckStatus:
-        return CheckStatus.SUCCESS
+    def required_check_snapshot(self, number: int) -> CheckSnapshot:
+        pull_request = self.get_pull_request(number)
+        return CheckSnapshot(
+            CheckStatus.SUCCESS,
+            pull_request.head_sha,
+            datetime(2026, 8, 21, tzinfo=UTC),
+            ("required",),
+        )
+
+    def changed_paths(self, number: int) -> tuple[str, ...]:
+        return ("ops/a.py",)
+
+    def branch_is_protected(self, branch: str) -> bool:
+        return False
 
 
-def test_inspect_service_correlates_registry_physical_and_github_facts(
-    tmp_path: Path,
-) -> None:
-    path = tmp_path / "lane"
-    scope = Scope.from_paths(modify=("ops/a.py",))
-    record = RegistrySnapshot(
+class FakeRuntime:
+    def owner_status(self, thread_id: str) -> str:
+        return "running"
+
+    def dispatch(self, thread_id: str, instruction: str) -> None:
+        return None
+
+
+def _record(path: Path, *, status: str = "active") -> RegistrySnapshot:
+    return RegistrySnapshot(
         lane_id="#1",
         branch="feat/one",
         path=path,
-        status="active",
-        scope=scope,
+        status=status,
+        scope=Scope.from_paths(modify=("ops/a.py",)),
         base_sha="a" * 40,
+        claim_generation=3,
         owner_thread_id="thread-1",
         handed_back_sha="b" * 40,
+        handback_claim_generation=3,
         handback_valid=True,
     )
-    physical = PhysicalWorktree(path=path, head_sha="b" * 40, branch="feat/one")
-    snapshot = WorktreeSnapshot(
+
+
+def _snapshot(
+    path: Path, *, clean: bool = True, head: str = "b" * 40
+) -> WorktreeSnapshot:
+    return WorktreeSnapshot(
         path=path,
         branch="feat/one",
         base_sha="a" * 40,
-        head_sha="b" * 40,
+        head_sha=head,
         parent_sha="a" * 40,
-        clean=True,
-        changed_paths=("ops/a.py",),
+        clean=clean,
+        changes=(FileChange(FileOperation.MODIFY, "ops/a.py"),),
     )
-    pull_request = PullRequestSnapshot(
+
+
+def _pull_request(*, head: str = "b" * 40) -> PullRequestSnapshot:
+    return PullRequestSnapshot(
         number=1,
         url="https://example.test/pull/1",
         branch="feat/one",
         base_sha="a" * 40,
-        head_sha="b" * 40,
+        head_sha=head,
         state="OPEN",
         draft=False,
         mergeable=True,
-    )
-    service = InspectService(
-        registry=FakeRegistry((record,)),
-        git=FakeGit((physical,), {path: snapshot}),
-        github=FakeGitHub((pull_request,)),
+        title="fix: one",
+        body="## Scope\n- ops/a.py\n\n## Validation\n- required",
     )
 
-    inventory = service.inspect()
 
-    assert len(inventory.lanes) == 1
-    assert inventory.lanes[0].decision.state is LaneState.READY_TO_QUEUE
-    assert inventory.lanes[0].pull_requests == (pull_request,)
-
-
-def test_inspect_service_marks_scope_overlap_and_unregistered_physical_worktrees(
+def test_inspect_service_requires_exact_registry_physical_pr_and_check_tuple(
     tmp_path: Path,
 ) -> None:
-    scope = Scope.from_paths(modify=("ops/shared.py",))
-    records = tuple(
-        RegistrySnapshot(
-            lane_id=f"#{index}",
-            branch=f"feat/{index}",
-            path=tmp_path / str(index),
-            status="active",
-            scope=scope,
-            base_sha="a" * 40,
-            owner_thread_id=f"thread-{index}",
-        )
-        for index in (1, 2)
-    )
-    orphan_path = tmp_path / "orphan"
-    orphan = PhysicalWorktree(path=orphan_path, head_sha="c" * 40, branch="feat/orphan")
-    orphan_snapshot = WorktreeSnapshot(
-        path=orphan_path,
-        branch="feat/orphan",
-        base_sha="a" * 40,
-        head_sha="c" * 40,
-        parent_sha="a" * 40,
-        clean=True,
-        changed_paths=("ops/orphan.py",),
-    )
+    path = tmp_path / "lane"
+    physical = PhysicalWorktree(path=path, head_sha="b" * 40, branch="feat/one")
     service = InspectService(
-        registry=FakeRegistry(records),
-        git=FakeGit((orphan,), {orphan_path: orphan_snapshot}),
-        github=FakeGitHub(()),
+        registry=FakeRegistry((_record(path),)),
+        git=FakeGit((physical,), {path: _snapshot(path)}),
+        github=FakeGitHub((_pull_request(),)),
+        runtime=FakeRuntime(),
     )
-
     inventory = service.inspect()
-    states = {lane.key: lane.decision.state for lane in inventory.lanes}
+    active = next(item for item in inventory.lanes if item.key == "#1")
+    assert active.decision.state is LaneState.READY_TO_QUEUE
+    assert not active.problems
 
-    assert states["#1"] is LaneState.BLOCKED_COLLISION
-    assert states["#2"] is LaneState.BLOCKED_COLLISION
-    assert states[str(orphan_path)] is LaneState.BLOCKED_OWNER
+
+def test_inspect_service_never_marks_dirty_or_head_drift_ready(tmp_path: Path) -> None:
+    path = tmp_path / "lane"
+    physical = PhysicalWorktree(path=path, head_sha="c" * 40, branch="feat/one")
+    service = InspectService(
+        registry=FakeRegistry((_record(path),)),
+        git=FakeGit((physical,), {path: _snapshot(path, clean=False, head="c" * 40)}),
+        github=FakeGitHub((_pull_request(),)),
+        runtime=FakeRuntime(),
+    )
+    active = next(item for item in service.inspect().lanes if item.key == "#1")
+    assert active.decision.state is LaneState.BLOCKED_DIRTY
+    assert any("HEAD differs" in problem.reason for problem in active.problems)
+
+
+def test_terminal_registry_history_does_not_claim_physical_worktree(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "lane"
+    physical = PhysicalWorktree(path=path, head_sha="b" * 40, branch="feat/one")
+    service = InspectService(
+        registry=FakeRegistry((_record(path, status="abandoned"),)),
+        git=FakeGit((physical,), {path: _snapshot(path)}),
+        github=FakeGitHub(()),
+        runtime=FakeRuntime(),
+    )
+    inventory = service.inspect()
+    assert any(item.key == str(path.resolve()) for item in inventory.lanes)
+    orphan = next(item for item in inventory.lanes if item.key == str(path.resolve()))
+    assert orphan.decision.state is LaneState.BLOCKED_OWNER
+
+
+def test_inspect_surfaces_github_inventory_problems(tmp_path: Path) -> None:
+    problem = InventoryProblem("github", "entry[0]", "malformed")
+    service = InspectService(
+        registry=FakeRegistry(()),
+        git=FakeGit((), {}),
+        github=FakeGitHub((), problems=(problem,)),
+        runtime=FakeRuntime(),
+    )
+    assert problem in service.inspect().source_problems

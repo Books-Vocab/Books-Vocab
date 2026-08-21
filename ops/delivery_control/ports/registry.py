@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from delivery_control.domain.models import RegistryInventory, RegistrySnapshot
+from ..domain.models import HandbackReceipt
+from ..domain.observations import RegistryInventory, RegistrySnapshot
 
 
 @runtime_checkable
@@ -14,6 +15,17 @@ class RegistryQueryPort(Protocol):
 
 @runtime_checkable
 class RegistryCommandPort(Protocol):
-    def persist_handback(self, lane_id: str, payload: dict[str, object]) -> None: ...
+    def persist_handback(
+        self, receipt: HandbackReceipt, *, expected_claim_generation: int
+    ) -> None: ...
 
-    def resolve(self, lane_id: str, disposition: str) -> None: ...
+    def resolve(
+        self,
+        lane_id: str,
+        disposition: str,
+        *,
+        expected_claim_generation: int,
+        expected_branch: str,
+        expected_path: str,
+        expected_head_sha: str,
+    ) -> None: ...

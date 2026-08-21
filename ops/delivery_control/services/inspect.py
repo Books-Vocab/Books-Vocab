@@ -3,23 +3,30 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from delivery_control.adapters.errors import AdapterError
-from delivery_control.domain.models import (
+from ..domain.errors import DeliverySourceError
+from ..domain.models import CheckStatus
+from ..domain.observations import (
     InventoryProblem,
     PhysicalWorktree,
     PullRequestSnapshot,
     RegistrySnapshot,
     WorktreeSnapshot,
 )
-from delivery_control.domain.states import (
-    CheckStatus,
-    LaneDecision,
-    LaneFacts,
-    derive_lane_decision,
+from ..domain.states import LaneDecision, LaneFacts, derive_lane_decision
+from ..ports.git import GitQueryPort
+from ..ports.github import GitHubQueryPort
+from ..ports.registry import RegistryQueryPort
+from ..ports.runtime import AgentRuntimePort
+from .correlation import (
+    collision_keys,
+    has_explicit_hold,
+    inspect_registered,
+    owner_reachable,
+    scope_matches_snapshot,
 )
-from delivery_control.ports.git import GitQueryPort
-from delivery_control.ports.github import GitHubQueryPort
-from delivery_control.ports.registry import RegistryQueryPort
+
+_ACTIVE = "active"
+_TERMINAL = {"merged", "abandoned"}
 
 
 @dataclass(frozen=True)
@@ -46,83 +53,187 @@ class InspectService:
         registry: RegistryQueryPort,
         git: GitQueryPort,
         github: GitHubQueryPort,
+        runtime: AgentRuntimePort,
     ) -> None:
         self.registry = registry
         self.git = git
         self.github = github
-
-    @staticmethod
-    def _colliding_lane_ids(records: tuple[RegistrySnapshot, ...]) -> set[str]:
-        active = [item for item in records if item.status == "active"]
-        collisions: set[str] = set()
-        for index, left in enumerate(active):
-            left_paths = set(left.scope.paths)
-            for right in active[index + 1 :]:
-                if left_paths.intersection(right.scope.paths):
-                    collisions.update((left.lane_id, right.lane_id))
-        return collisions
+        self.runtime = runtime
 
     def inspect(self) -> DeliveryInventory:
         registry_inventory = self.registry.list_records()
-        records = registry_inventory.records
         physical = self.git.list_worktrees()
-        pull_requests = self.github.list_open_pull_requests()
+        github_inventory = self.github.list_open_pull_requests()
+        live_main_sha = self.git.origin_main_sha()
+        records = registry_inventory.records
+        active_records = tuple(item for item in records if item.status == _ACTIVE)
         physical_by_path = {item.path.resolve(): item for item in physical}
         prs_by_branch: dict[str, list[PullRequestSnapshot]] = {}
-        for pull_request in pull_requests:
+        for pull_request in github_inventory.records:
             prs_by_branch.setdefault(pull_request.branch, []).append(pull_request)
-        collisions = self._colliding_lane_ids(records)
+
+        snapshots: dict[str, WorktreeSnapshot | None] = {}
+        lane_problems: dict[str, list[InventoryProblem]] = {
+            item.lane_id: [] for item in active_records
+        }
+        pr_paths: dict[int, tuple[str, ...]] = {}
+        github_problems = list(github_inventory.problems)
+        for record in active_records:
+            snapshots[record.lane_id] = inspect_registered(
+                self.git,
+                record,
+                physical_by_path.get(record.path.resolve()),
+                lane_problems[record.lane_id],
+            )
+        for pull_request in github_inventory.records:
+            try:
+                pr_paths[pull_request.number] = self.github.changed_paths(
+                    pull_request.number
+                )
+            except DeliverySourceError as error:
+                pr_paths[pull_request.number] = ()
+                github_problems.append(
+                    InventoryProblem("github", f"PR#{pull_request.number}", str(error))
+                )
+
+        path_sets: dict[str, set[str]] = {}
+        for record in active_records:
+            observed = set(record.scope.paths)
+            snapshot = snapshots[record.lane_id]
+            if snapshot is not None:
+                observed.update(snapshot.changed_paths)
+            for pull_request in prs_by_branch.get(record.branch, ()):
+                observed.update(pr_paths.get(pull_request.number, ()))
+            path_sets[f"lane:{record.lane_id}"] = observed
+        active_branches = {item.branch for item in active_records}
+        active_paths = {item.path.resolve() for item in active_records}
+        for pull_request in github_inventory.records:
+            if pull_request.branch not in active_branches:
+                path_sets[f"pr:{pull_request.number}"] = set(
+                    pr_paths.get(pull_request.number, ())
+                )
+        for physical_ref in physical:
+            path = physical_ref.path.resolve()
+            if path not in active_paths:
+                try:
+                    snapshot = self.git.inspect_worktree(path, live_main_sha)
+                except DeliverySourceError:
+                    continue
+                path_sets[f"worktree:{path}"] = set(snapshot.changed_paths)
+        collisions = collision_keys(path_sets)
+
         lanes: list[LaneInspection] = []
         claimed_paths: set[Path] = set()
         claimed_prs: set[int] = set()
-
-        for record in records:
+        for record in active_records:
             path = record.path.resolve()
             claimed_paths.add(path)
             physical_ref = physical_by_path.get(path)
-            snapshot: WorktreeSnapshot | None = None
-            problems: list[InventoryProblem] = []
-            if physical_ref is not None:
-                try:
-                    snapshot = self.git.inspect_worktree(path, record.base_sha)
-                except (AdapterError, RuntimeError) as error:
-                    problems.append(InventoryProblem("git", str(path), str(error)))
-            elif record.status == "active":
-                problems.append(
-                    InventoryProblem("git", str(path), "registered worktree is missing")
-                )
-
+            snapshot = snapshots[record.lane_id]
+            problems = lane_problems[record.lane_id]
             branch_prs = tuple(prs_by_branch.get(record.branch, ()))
             claimed_prs.update(item.number for item in branch_prs)
-            required_status = CheckStatus.ABSENT
-            if len(branch_prs) == 1:
+            pull_request = branch_prs[0] if len(branch_prs) == 1 else None
+            is_owner_reachable = owner_reachable(self.runtime, record, problems)
+            check = None
+            if pull_request is not None:
                 try:
-                    required_status = self.github.required_check_status(
-                        branch_prs[0].number
-                    )
-                except (AdapterError, RuntimeError) as error:
+                    check = self.github.required_check_snapshot(pull_request.number)
+                except DeliverySourceError as error:
                     problems.append(
                         InventoryProblem(
-                            "github", f"PR#{branch_prs[0].number}", str(error)
+                            "github", f"PR#{pull_request.number}", str(error)
                         )
                     )
-            pull_request = branch_prs[0] if len(branch_prs) == 1 else None
-            merged = record.status == "merged"
+            lane_collision = f"lane:{record.lane_id}" in collisions
+            scope_exact = snapshot is not None and scope_matches_snapshot(
+                record, snapshot
+            )
+            if snapshot is not None and not scope_exact:
+                problems.append(
+                    InventoryProblem(
+                        "git",
+                        str(path),
+                        "physical operations or paths differ from Scope",
+                    )
+                )
+            if pull_request is not None:
+                if pull_request.base_sha != record.base_sha:
+                    problems.append(
+                        InventoryProblem(
+                            "github",
+                            f"PR#{pull_request.number}",
+                            "PR base differs from registry base",
+                        )
+                    )
+                if snapshot is None or pull_request.head_sha != snapshot.head_sha:
+                    problems.append(
+                        InventoryProblem(
+                            "github",
+                            f"PR#{pull_request.number}",
+                            "PR HEAD differs from physical HEAD",
+                        )
+                    )
+                if record.handed_back_sha != pull_request.head_sha:
+                    problems.append(
+                        InventoryProblem(
+                            "github",
+                            f"PR#{pull_request.number}",
+                            "PR HEAD differs from registry handback",
+                        )
+                    )
+            transport_exact = (
+                not problems
+                and not lane_collision
+                and len(branch_prs) <= 1
+                and is_owner_reachable
+                and snapshot is not None
+                and snapshot.clean
+                and snapshot.path.resolve() == path
+                and snapshot.branch == record.branch
+                and snapshot.base_sha == record.base_sha
+                and scope_exact
+                and record.handback_valid
+                and record.handed_back_sha == snapshot.head_sha
+                and record.handback_claim_generation == record.claim_generation
+            )
+            merge_exact = (
+                transport_exact
+                and pull_request is not None
+                and pull_request.state == "OPEN"
+                and not pull_request.draft
+                and pull_request.mergeable
+                and pull_request.base_sha == live_main_sha == record.base_sha
+                and pull_request.head_sha == snapshot.head_sha
+                and check is not None
+                and check.head_sha == pull_request.head_sha
+                and check.status is CheckStatus.SUCCESS
+                and not has_explicit_hold(pull_request)
+            )
             facts = LaneFacts(
                 has_worktree=physical_ref is not None,
                 owner_known=record.owner_thread_id is not None,
-                owner_reachable=record.owner_thread_id is not None,
-                dirty=(snapshot is not None and not snapshot.clean),
-                has_committed_diff=(bool(snapshot.changed_paths) if snapshot else None),
-                handback_valid=(record.handback_valid and snapshot is not None),
+                owner_reachable=is_owner_reachable,
+                dirty=snapshot is not None and not snapshot.clean,
+                has_committed_diff=bool(snapshot.changes) if snapshot else None,
+                handback_valid=record.handback_valid,
+                transport_policy_passed=transport_exact and pull_request is None,
+                merge_policy_passed=merge_exact,
+                abandonment_policy_passed=(
+                    not problems
+                    and snapshot is not None
+                    and snapshot.clean
+                    and not snapshot.changes
+                    and is_owner_reachable
+                    and not branch_prs
+                ),
                 duplicate_pr=len(branch_prs) > 1,
-                scope_collision=record.lane_id in collisions,
+                scope_collision=lane_collision,
                 pr_open=pull_request is not None,
-                pr_draft=(pull_request.draft if pull_request else False),
-                required_status=required_status,
-                mergeable=(pull_request.mergeable if pull_request else False),
-                merged=merged,
-                cleanup_complete=merged and physical_ref is None,
+                pr_draft=pull_request.draft if pull_request else False,
+                required_status=check.status if check else CheckStatus.ABSENT,
+                mergeable=pull_request.mergeable if pull_request else False,
+                holds=frozenset(),
             )
             lanes.append(
                 LaneInspection(
@@ -136,45 +247,86 @@ class InspectService:
                 )
             )
 
+        for record in records:
+            if record.status not in _TERMINAL:
+                continue
+            physical_ref = physical_by_path.get(record.path.resolve())
+            terminal_problems: tuple[InventoryProblem, ...] = ()
+            if physical_ref is not None and record.path.resolve() not in claimed_paths:
+                terminal_problems = (
+                    InventoryProblem(
+                        "registry",
+                        str(record.path),
+                        "terminal history cannot claim a physical worktree",
+                    ),
+                )
+            lanes.append(
+                LaneInspection(
+                    key=f"history:{record.lane_id}:{record.claim_generation}",
+                    registry=record,
+                    physical=None,
+                    snapshot=None,
+                    pull_requests=(),
+                    decision=derive_lane_decision(
+                        LaneFacts(
+                            merged=record.status == "merged",
+                            cleanup_complete=physical_ref is None,
+                        )
+                    ),
+                    problems=terminal_problems,
+                )
+            )
+
         for physical_ref in physical:
             path = physical_ref.path.resolve()
             if path in claimed_paths:
                 continue
             branch_prs = tuple(prs_by_branch.get(physical_ref.branch or "", ()))
             claimed_prs.update(item.number for item in branch_prs)
+            problems = [
+                InventoryProblem(
+                    "registry", str(path), "physical worktree is unregistered"
+                )
+            ]
+            snapshot = None
+            try:
+                snapshot = self.git.inspect_worktree(path, live_main_sha)
+            except DeliverySourceError as error:
+                problems.append(InventoryProblem("git", str(path), str(error)))
             lanes.append(
                 LaneInspection(
                     key=str(path),
                     registry=None,
                     physical=physical_ref,
-                    snapshot=None,
+                    snapshot=snapshot,
                     pull_requests=branch_prs,
                     decision=derive_lane_decision(
                         LaneFacts(
                             has_worktree=True,
                             owner_known=False,
+                            dirty=snapshot is not None and not snapshot.clean,
                             duplicate_pr=len(branch_prs) > 1,
+                            scope_collision=f"worktree:{path}" in collisions,
                             pr_open=len(branch_prs) == 1,
                             pr_draft=branch_prs[0].draft
                             if len(branch_prs) == 1
                             else False,
                         )
                     ),
-                    problems=(
-                        InventoryProblem(
-                            "registry", str(path), "physical worktree is unregistered"
-                        ),
-                    ),
+                    problems=tuple(problems),
                 )
             )
 
-        for pull_request in pull_requests:
+        for pull_request in github_inventory.records:
             if pull_request.number in claimed_prs:
                 continue
-            try:
-                required_status = self.github.required_check_status(pull_request.number)
-            except (AdapterError, RuntimeError):
-                required_status = CheckStatus.ABSENT
+            problems = (
+                InventoryProblem(
+                    "registry",
+                    f"PR#{pull_request.number}",
+                    "open PR has no active local registry mapping",
+                ),
+            )
             lanes.append(
                 LaneInspection(
                     key=f"PR#{pull_request.number}",
@@ -186,21 +338,14 @@ class InspectService:
                         LaneFacts(
                             pr_open=True,
                             pr_draft=pull_request.draft,
-                            required_status=required_status,
-                            mergeable=pull_request.mergeable,
+                            scope_collision=f"pr:{pull_request.number}" in collisions,
                         )
                     ),
-                    problems=(
-                        InventoryProblem(
-                            "registry",
-                            f"PR#{pull_request.number}",
-                            "open PR has no local registry mapping",
-                        ),
-                    ),
+                    problems=problems,
                 )
             )
 
         return DeliveryInventory(
             lanes=tuple(sorted(lanes, key=lambda item: item.key)),
-            source_problems=registry_inventory.problems,
+            source_problems=registry_inventory.problems + tuple(github_problems),
         )

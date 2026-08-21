@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -10,8 +11,14 @@ sys.path.insert(0, str(OPS))
 
 from delivery_control.domain.models import (
     HandbackReceipt,
-    PullRequestSnapshot,
     Scope,
+)
+from delivery_control.domain.observations import (
+    CheckSnapshot,
+    FileChange,
+    FileOperation,
+    PullRequestSnapshot,
+    RegistrySnapshot,
     WorktreeSnapshot,
 )
 from delivery_control.domain.policies import evaluate_merge_gate, evaluate_publication
@@ -43,7 +50,11 @@ from delivery_control.domain.states import (
             LaneState.DONE,
             NextAction.NONE,
         ),
-        (LaneFacts(merged=True), LaneState.TERMINAL_CLEANUP, NextAction.CLEANUP),
+        (
+            LaneFacts(merged=True, cleanup_policy_passed=True),
+            LaneState.TERMINAL_CLEANUP,
+            NextAction.CLEANUP,
+        ),
         (
             LaneFacts(pr_open=True, holds=frozenset({HoldKind.SECURITY})),
             LaneState.SECURITY_HOLD,
@@ -61,7 +72,10 @@ from delivery_control.domain.states import (
         ),
         (
             LaneFacts(
-                pr_open=True, required_status=CheckStatus.SUCCESS, mergeable=True
+                pr_open=True,
+                required_status=CheckStatus.SUCCESS,
+                mergeable=True,
+                merge_policy_passed=True,
             ),
             LaneState.READY_TO_QUEUE,
             NextAction.ENQUEUE,
@@ -72,7 +86,7 @@ from delivery_control.domain.states import (
             NextAction.WAIT_REQUIRED,
         ),
         (
-            LaneFacts(handback_valid=True),
+            LaneFacts(handback_valid=True, transport_policy_passed=True),
             LaneState.HANDBACK_PUBLISHABLE,
             NextAction.PUBLISH,
         ),
@@ -88,7 +102,13 @@ from delivery_control.domain.states import (
             NextAction.RECOVER_OWNER,
         ),
         (
-            LaneFacts(has_worktree=True, owner_known=True, has_committed_diff=False),
+            LaneFacts(
+                has_worktree=True,
+                owner_known=True,
+                owner_reachable=True,
+                has_committed_diff=False,
+                abandonment_policy_passed=True,
+            ),
             LaneState.ABANDONABLE_NOOP,
             NextAction.ABANDON,
         ),
@@ -121,6 +141,7 @@ def _receipt(*, base_sha: str = "a" * 40) -> HandbackReceipt:
     return HandbackReceipt(
         lane_id="DIRECT-1",
         owner_thread_id="thread-1",
+        claim_generation=2,
         branch="feat/example",
         worktree_path="/tmp/example",
         base_sha=base_sha,
@@ -141,14 +162,32 @@ def test_publication_policy_does_not_require_current_base_or_local_quality() -> 
         head_sha=receipt.head_sha,
         parent_sha=receipt.parent_sha,
         clean=True,
-        changed_paths=receipt.scope.paths,
+        changes=(FileChange(FileOperation.MODIFY, "ops/a.py"),),
     )
+    registry = _registry(receipt)
     assert evaluate_publication(
         receipt=receipt,
+        registry=registry,
         worktree=worktree,
         duplicate_pr=False,
         scope_collision=False,
     ).allowed
+
+
+def _registry(receipt: HandbackReceipt) -> RegistrySnapshot:
+    return RegistrySnapshot(
+        lane_id=receipt.lane_id,
+        branch=receipt.branch,
+        path=Path(receipt.worktree_path),
+        status="active",
+        scope=receipt.scope,
+        base_sha=receipt.base_sha,
+        claim_generation=receipt.claim_generation,
+        owner_thread_id=receipt.owner_thread_id,
+        handed_back_sha=receipt.head_sha,
+        handback_claim_generation=receipt.claim_generation,
+        handback_valid=True,
+    )
 
 
 def test_merge_policy_requires_exact_live_base_required_success_and_no_hold() -> None:
@@ -166,23 +205,132 @@ def test_merge_policy_requires_exact_live_base_required_success_and_no_hold() ->
     allowed = evaluate_merge_gate(
         pull_request=pull_request,
         receipt=receipt,
+        registry=_registry(receipt),
         live_main_sha="a" * 40,
-        required_status=CheckStatus.SUCCESS,
+        required=CheckSnapshot(
+            status=CheckStatus.SUCCESS,
+            head_sha=receipt.head_sha,
+            observed_at=datetime(2026, 8, 21, tzinfo=UTC),
+            names=("required",),
+        ),
     )
     stale = evaluate_merge_gate(
         pull_request=pull_request,
         receipt=receipt,
+        registry=_registry(receipt),
         live_main_sha="c" * 40,
-        required_status=CheckStatus.SUCCESS,
+        required=CheckSnapshot(
+            status=CheckStatus.SUCCESS,
+            head_sha=receipt.head_sha,
+            observed_at=datetime(2026, 8, 21, tzinfo=UTC),
+            names=("required",),
+        ),
     )
     held = evaluate_merge_gate(
         pull_request=pull_request,
         receipt=receipt,
+        registry=_registry(receipt),
         live_main_sha="a" * 40,
-        required_status=CheckStatus.SUCCESS,
+        required=CheckSnapshot(
+            status=CheckStatus.SUCCESS,
+            head_sha=receipt.head_sha,
+            observed_at=datetime(2026, 8, 21, tzinfo=UTC),
+            names=("required",),
+        ),
         holds=frozenset({HoldKind.SECURITY}),
     )
     assert allowed.allowed
     assert not stale.allowed
     assert "stale" in " ".join(stale.reasons)
     assert not held.allowed
+
+
+def test_merge_policy_rejects_success_from_another_head() -> None:
+    receipt = _receipt()
+    pull_request = PullRequestSnapshot(
+        number=1,
+        url="https://example.test/pull/1",
+        branch=receipt.branch,
+        base_sha=receipt.base_sha,
+        head_sha=receipt.head_sha,
+        state="OPEN",
+        draft=False,
+        mergeable=True,
+    )
+    decision = evaluate_merge_gate(
+        pull_request=pull_request,
+        receipt=receipt,
+        registry=_registry(receipt),
+        live_main_sha=receipt.base_sha,
+        required=CheckSnapshot(
+            status=CheckStatus.SUCCESS,
+            head_sha="e" * 40,
+            observed_at=datetime(2026, 8, 21, tzinfo=UTC),
+            names=("required",),
+        ),
+    )
+    assert not decision.allowed
+    assert "another HEAD" in " ".join(decision.reasons)
+
+
+@pytest.mark.parametrize(
+    "facts",
+    [
+        LaneFacts(
+            has_worktree=True,
+            owner_known=True,
+            owner_reachable=True,
+            dirty=True,
+            handback_valid=True,
+        ),
+        LaneFacts(
+            has_worktree=True,
+            owner_known=True,
+            owner_reachable=False,
+            has_committed_diff=False,
+        ),
+        LaneFacts(
+            pr_open=True,
+            required_status=CheckStatus.SUCCESS,
+            mergeable=True,
+        ),
+    ],
+)
+def test_observations_without_policy_decisions_never_trigger_side_effects(
+    facts: LaneFacts,
+) -> None:
+    assert derive_lane_decision(facts).next_action not in {
+        NextAction.PUBLISH,
+        NextAction.ABANDON,
+        NextAction.ENQUEUE,
+    }
+
+
+def test_publication_rejects_operation_or_generation_mismatch() -> None:
+    receipt = _receipt()
+    registry = _registry(receipt)
+    wrong_generation = RegistrySnapshot(
+        **{
+            **registry.__dict__,
+            "claim_generation": registry.claim_generation + 1,
+        }
+    )
+    worktree = WorktreeSnapshot(
+        path=Path(receipt.worktree_path),
+        branch=receipt.branch,
+        base_sha=receipt.base_sha,
+        head_sha=receipt.head_sha,
+        parent_sha=receipt.parent_sha,
+        clean=True,
+        changes=(FileChange(FileOperation.ADD, "ops/a.py"),),
+    )
+    decision = evaluate_publication(
+        receipt=receipt,
+        registry=wrong_generation,
+        worktree=worktree,
+        duplicate_pr=False,
+        scope_collision=False,
+    )
+    assert not decision.allowed
+    assert "generation" in " ".join(decision.reasons)
+    assert "operations" in " ".join(decision.reasons)

@@ -2,9 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from delivery_control.domain.models import PhysicalWorktree, WorktreeSnapshot
-from delivery_control.ports.process import CommandRunnerPort
-
+from ..domain.errors import CompareAndSwapConflict
+from ..domain.observations import (
+    FileChange,
+    FileOperation,
+    PhysicalWorktree,
+    WorktreeSnapshot,
+)
+from ..ports.process import CommandRunnerPort
 from .errors import AdapterCommandError, AdapterPayloadError
 from .subprocess_runner import SubprocessCommandRunner
 
@@ -75,7 +80,29 @@ class GitCliAdapter:
         status = self._git(
             "status", "--porcelain=v1", "--untracked-files=all", cwd=path
         )
-        changed = self._git("diff", "--name-only", f"{base_sha}..{head_sha}", cwd=path)
+        changed = self._git(
+            "diff",
+            "--name-status",
+            "--find-renames=100%",
+            f"{base_sha}..{head_sha}",
+            cwd=path,
+        )
+        changes: list[FileChange] = []
+        operation_map = {
+            "A": FileOperation.ADD,
+            "M": FileOperation.MODIFY,
+            "T": FileOperation.MODIFY,
+            "D": FileOperation.DELETE,
+            "R": FileOperation.RENAME,
+            "C": FileOperation.COPY,
+        }
+        for line in changed.splitlines():
+            fields = line.split("\t")
+            status_code = fields[0][:1] if fields else ""
+            if status_code not in operation_map or len(fields) < 2:
+                raise AdapterPayloadError(f"unsupported git diff status row: {line!r}")
+            path_field = fields[-1]
+            changes.append(FileChange(operation_map[status_code], path_field))
         return WorktreeSnapshot(
             path=path,
             branch=branch,
@@ -83,7 +110,9 @@ class GitCliAdapter:
             head_sha=head_sha,
             parent_sha=parent_sha,
             clean=not bool(status),
-            changed_paths=tuple(sorted(line for line in changed.splitlines() if line)),
+            changes=tuple(
+                sorted(changes, key=lambda item: (item.path, item.operation.value))
+            ),
         )
 
     def remote_branch_sha(self, branch: str) -> str | None:
@@ -105,3 +134,81 @@ class GitCliAdapter:
         if len(rows) != 1 or len(rows[0]) != 2 or rows[0][1] != "refs/heads/main":
             raise AdapterPayloadError("origin/main did not resolve uniquely")
         return rows[0][0]
+
+    def push_branch(
+        self,
+        *,
+        worktree: Path,
+        branch: str,
+        expected_local_sha: str,
+        expected_remote_sha: str | None = None,
+    ) -> str:
+        worktree = worktree.resolve()
+        current_branch = self._git("branch", "--show-current", cwd=worktree)
+        current_head = self._git("rev-parse", "--verify", "HEAD^{commit}", cwd=worktree)
+        dirty = self._git(
+            "status", "--porcelain=v1", "--untracked-files=all", cwd=worktree
+        )
+        if current_branch != branch or current_head != expected_local_sha or dirty:
+            raise CompareAndSwapConflict("local branch, HEAD, or cleanliness changed")
+        remote_sha = self.remote_branch_sha(branch)
+        if remote_sha != expected_remote_sha:
+            raise CompareAndSwapConflict("remote branch changed after preflight")
+        destination = f"refs/heads/{branch}"
+        argv = ["push", "origin"]
+        if expected_remote_sha is not None:
+            argv.append(f"--force-with-lease={destination}:{expected_remote_sha}")
+        argv.append(f"{expected_local_sha}:{destination}")
+        self._git(*argv, cwd=worktree)
+        readback = self.remote_branch_sha(branch)
+        if readback != expected_local_sha:
+            raise CompareAndSwapConflict(
+                "remote branch readback differs from pushed HEAD"
+            )
+        return readback
+
+    def remove_worktree(self, path: Path, *, expected_head_sha: str) -> None:
+        path = path.resolve()
+        head = self._git("rev-parse", "--verify", "HEAD^{commit}", cwd=path)
+        dirty = self._git("status", "--porcelain=v1", "--untracked-files=all", cwd=path)
+        if head != expected_head_sha or dirty:
+            raise CompareAndSwapConflict("worktree changed before cleanup")
+        self._git("worktree", "remove", "--", str(path))
+
+    def delete_local_branch(self, branch: str, *, expected_head_sha: str) -> None:
+        try:
+            current = self._git(
+                "rev-parse", "--verify", f"refs/heads/{branch}^{{commit}}"
+            )
+        except AdapterCommandError:
+            return
+        if current != expected_head_sha:
+            raise CompareAndSwapConflict("local branch changed before cleanup")
+        self._git("branch", "--delete", "--force", "--", branch)
+
+    def fast_forward_main(
+        self, *, expected_local_sha: str, expected_origin_sha: str
+    ) -> str:
+        if self._git("branch", "--show-current") != "main":
+            raise CompareAndSwapConflict("canonical checkout is not on main")
+        if self.local_main_sha() != expected_local_sha:
+            raise CompareAndSwapConflict("local main changed after preflight")
+        if self.origin_main_sha() != expected_origin_sha:
+            raise CompareAndSwapConflict("origin/main changed after preflight")
+        if self._git("status", "--porcelain=v1", "--untracked-files=all"):
+            raise CompareAndSwapConflict("canonical main is dirty")
+        self._git("fetch", "origin", "main")
+        fetched = self._git(
+            "rev-parse", "--verify", "refs/remotes/origin/main^{commit}"
+        )
+        if fetched != expected_origin_sha:
+            raise CompareAndSwapConflict(
+                "fetched origin/main differs from expected SHA"
+            )
+        self._git("merge", "--ff-only", expected_origin_sha)
+        readback = self.local_main_sha()
+        if readback != expected_origin_sha:
+            raise CompareAndSwapConflict(
+                "local main readback differs after fast-forward"
+            )
+        return readback

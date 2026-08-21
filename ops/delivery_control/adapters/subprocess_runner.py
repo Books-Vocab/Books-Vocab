@@ -3,7 +3,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from delivery_control.ports.process import CommandResult
+from ..ports.process import CommandResult
 
 
 class SubprocessCommandRunner:

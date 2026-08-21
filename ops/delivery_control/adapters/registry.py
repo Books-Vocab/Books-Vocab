@@ -7,15 +7,14 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from delivery_control.domain.errors import InvalidScope
-from delivery_control.domain.models import (
+from ..domain.errors import InvalidScope
+from ..domain.models import Scope
+from ..domain.observations import (
     InventoryProblem,
     RegistryInventory,
     RegistrySnapshot,
-    Scope,
 )
-from delivery_control.ports.process import CommandRunnerPort
-
+from ..ports.process import CommandRunnerPort
 from .errors import AdapterCommandError, AdapterPayloadError
 from .subprocess_runner import SubprocessCommandRunner
 
@@ -108,6 +107,16 @@ class RegistryCliAdapter:
             external_ids = []
         lane_id = str(external_ids[0]) if external_ids else branch
         handed_back_sha = payload.get("handed_back_sha")
+        claim_generation = payload.get("claim_generation")
+        handback_claim_generation = payload.get("handback_claim_generation")
+        if type(claim_generation) is not int or claim_generation < 0:
+            raise ValueError("registry claim_generation must be a non-negative integer")
+        if handback_claim_generation is not None and (
+            type(handback_claim_generation) is not int or handback_claim_generation < 0
+        ):
+            raise ValueError(
+                "registry handback_claim_generation must be a non-negative integer"
+            )
         return RegistrySnapshot(
             lane_id=lane_id,
             branch=branch,
@@ -115,12 +124,14 @@ class RegistryCliAdapter:
             status=str(payload["status"]),
             scope=scope,
             base_sha=base_sha,
+            claim_generation=claim_generation,
             owner_thread_id=(
                 str(payload["codex_thread_id"])
                 if payload.get("codex_thread_id")
                 else None
             ),
             handed_back_sha=(str(handed_back_sha) if handed_back_sha else None),
+            handback_claim_generation=handback_claim_generation,
             handback_valid=_legacy_seal_valid(payload),
         )
 

@@ -5,17 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from .models import CheckStatus
+
 
 class LaneMode(StrEnum):
     INDEPENDENT = "independent"
     STACKED = "stacked"
-
-
-class CheckStatus(StrEnum):
-    ABSENT = "absent"
-    PENDING = "pending"
-    SUCCESS = "success"
-    FAILURE = "failure"
 
 
 class HoldKind(StrEnum):
@@ -69,6 +64,10 @@ class LaneFacts:
     dirty: bool = False
     has_committed_diff: bool | None = None
     handback_valid: bool = False
+    transport_policy_passed: bool = False
+    merge_policy_passed: bool = False
+    cleanup_policy_passed: bool = False
+    abandonment_policy_passed: bool = False
     duplicate_pr: bool = False
     scope_collision: bool = False
     pr_open: bool = False
@@ -100,13 +99,29 @@ def derive_lane_decision(facts: LaneFacts) -> LaneDecision:
             NextAction.RESOLVE_COLLISION,
             "Scope overlaps another active lane",
         )
+    if facts.dirty:
+        return LaneDecision(
+            LaneState.BLOCKED_DIRTY, NextAction.RECOVER_DIRTY, "worktree is dirty"
+        )
+    if facts.has_worktree and (not facts.owner_known or not facts.owner_reachable):
+        return LaneDecision(
+            LaneState.BLOCKED_OWNER,
+            NextAction.RECOVER_OWNER,
+            "worktree owner is unavailable",
+        )
     if facts.merged and facts.cleanup_complete:
         return LaneDecision(
             LaneState.DONE, NextAction.NONE, "merged assets are reconciled"
         )
-    if facts.merged:
+    if facts.merged and facts.cleanup_policy_passed:
         return LaneDecision(
             LaneState.TERMINAL_CLEANUP, NextAction.CLEANUP, "merged assets remain"
+        )
+    if facts.merged:
+        return LaneDecision(
+            LaneState.UNKNOWN,
+            NextAction.INSPECT,
+            "merged lane lacks an approved cleanup policy",
         )
     if facts.holds:
         return LaneDecision(
@@ -122,13 +137,11 @@ def derive_lane_decision(facts: LaneFacts) -> LaneDecision:
             NextAction.REPAIR_REQUIRED,
             "required check failed",
         )
-    if (
-        facts.pr_open
-        and facts.required_status is CheckStatus.SUCCESS
-        and facts.mergeable
-    ):
+    if facts.pr_open and facts.merge_policy_passed:
         return LaneDecision(
-            LaneState.READY_TO_QUEUE, NextAction.ENQUEUE, "hard gate facts are green"
+            LaneState.READY_TO_QUEUE,
+            NextAction.ENQUEUE,
+            "exact merge policy passed",
         )
     if facts.pr_open:
         return LaneDecision(
@@ -136,25 +149,15 @@ def derive_lane_decision(facts: LaneFacts) -> LaneDecision:
             NextAction.WAIT_REQUIRED,
             "PR awaits required checks or mergeability",
         )
-    if facts.handback_valid:
+    if facts.transport_policy_passed:
         return LaneDecision(
             LaneState.HANDBACK_PUBLISHABLE,
             NextAction.PUBLISH,
-            "typed handback is transportable",
+            "exact transport policy passed",
         )
-    if facts.dirty:
-        return LaneDecision(
-            LaneState.BLOCKED_DIRTY, NextAction.RECOVER_DIRTY, "worktree is dirty"
-        )
-    if facts.has_worktree and facts.has_committed_diff is False:
+    if facts.has_worktree and facts.abandonment_policy_passed:
         return LaneDecision(
             LaneState.ABANDONABLE_NOOP, NextAction.ABANDON, "clean worktree has no diff"
-        )
-    if facts.has_worktree and (not facts.owner_known or not facts.owner_reachable):
-        return LaneDecision(
-            LaneState.BLOCKED_OWNER,
-            NextAction.RECOVER_OWNER,
-            "worktree owner is unavailable",
         )
     if facts.has_worktree and facts.owner_known and facts.owner_reachable:
         return LaneDecision(

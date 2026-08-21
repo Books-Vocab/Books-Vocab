@@ -2,19 +2,26 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from delivery_control.domain.models import PullRequestSnapshot
-from delivery_control.domain.states import CheckStatus
+from ..domain.observations import (
+    CheckSnapshot,
+    PullRequestInventory,
+    PullRequestSnapshot,
+)
 
 
 @runtime_checkable
 class GitHubQueryPort(Protocol):
-    def list_open_pull_requests(self) -> tuple[PullRequestSnapshot, ...]: ...
+    def list_open_pull_requests(self) -> PullRequestInventory: ...
 
     def find_open_pull_request(self, branch: str) -> PullRequestSnapshot | None: ...
 
     def get_pull_request(self, number: int) -> PullRequestSnapshot: ...
 
-    def required_check_status(self, number: int) -> CheckStatus: ...
+    def required_check_snapshot(self, number: int) -> CheckSnapshot: ...
+
+    def changed_paths(self, number: int) -> tuple[str, ...]: ...
+
+    def branch_is_protected(self, branch: str) -> bool: ...
 
 
 @runtime_checkable
@@ -37,4 +44,6 @@ class GitHubCommandPort(Protocol):
 
     def mark_ready(self, number: int) -> PullRequestSnapshot: ...
 
-    def enqueue(self, number: int) -> None: ...
+    def enqueue(
+        self, *, number: int, expected_base_sha: str, expected_head_sha: str
+    ) -> None: ...

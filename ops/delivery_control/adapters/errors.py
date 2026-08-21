@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from delivery_control.ports.process import CommandResult
+from ..domain.errors import DeliverySourceError
+from ..ports.process import CommandResult
 
 
-class AdapterError(RuntimeError):
+class AdapterError(DeliverySourceError):
     """Base class for infrastructure failures kept outside the domain model."""
 
 

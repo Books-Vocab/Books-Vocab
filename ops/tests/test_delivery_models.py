@@ -73,6 +73,7 @@ def test_handback_receipt_round_trips_as_typed_canonical_payload() -> None:
     receipt = HandbackReceipt(
         lane_id="DIRECT-1",
         owner_thread_id="thread-1",
+        claim_generation=3,
         branch="feat/example",
         worktree_path="/tmp/example",
         base_sha=BASE_SHA,
@@ -88,6 +89,7 @@ def test_handback_receipt_round_trips_as_typed_canonical_payload() -> None:
 
     assert payload["schema"] == "kg.delivery.handback.v1"
     assert payload["base_sha"] == BASE_SHA
+    assert payload["claim_generation"] == 3
     assert payload["origin_main_sha"] == ORIGIN_SHA
     assert payload["scope_digest"] == scope.digest
     assert payload["validation"][0]["command"] == [
@@ -115,6 +117,7 @@ def test_handback_receipt_rejects_invalid_identity_fields(
     values: dict[str, object] = {
         "lane_id": "DIRECT-1",
         "owner_thread_id": "thread-1",
+        "claim_generation": 0,
         "branch": "feat/example",
         "worktree_path": "/tmp/example",
         "base_sha": BASE_SHA,
@@ -128,3 +131,44 @@ def test_handback_receipt_rejects_invalid_identity_fields(
 
     with pytest.raises(InvalidReceipt):
         HandbackReceipt(**values)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("path", ["ops/\x00bad.py", "ops/\nbad.py", "ops/\tbad.py"])
+def test_scope_rejects_control_characters(path: str) -> None:
+    with pytest.raises(InvalidScope):
+        Scope.from_paths(modify=(path,))
+
+
+@pytest.mark.parametrize(
+    "payload_patch",
+    [
+        {"exit_code": 1.5},
+        {"duration_seconds": float("nan")},
+        {"duration_seconds": 1},
+        {"observed_at": "2026-08-21T12:00:00"},
+    ],
+)
+def test_validation_evidence_rejects_loose_or_non_finite_values(
+    payload_patch: dict[str, object],
+) -> None:
+    payload: dict[str, object] = {
+        "command": ["uv", "run", "pytest"],
+        "exit_code": 0,
+        "duration_seconds": 1.0,
+        "observed_at": "2026-08-21T12:00:00+00:00",
+    }
+    payload.update(payload_patch)
+    with pytest.raises(InvalidReceipt):
+        ValidationEvidence.from_payload(payload)
+
+
+def test_internal_handback_schema_does_not_accept_legacy_registry_seal() -> None:
+    legacy = {
+        "schema": "kg.worktree.handback.v1",
+        "branch": "feat/example",
+        "path": "/tmp/example",
+        "tip_sha": HEAD_SHA,
+        "digest": DIGEST,
+    }
+    with pytest.raises(InvalidReceipt, match="kg.delivery.handback.v1"):
+        HandbackReceipt.from_payload(legacy)

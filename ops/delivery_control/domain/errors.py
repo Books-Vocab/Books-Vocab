@@ -11,3 +11,11 @@ class InvalidScope(DeliveryContractError):
 
 class InvalidReceipt(DeliveryContractError):
     """Raised when a typed handback receipt cannot be trusted."""
+
+
+class DeliverySourceError(RuntimeError):
+    """Raised when an external source cannot provide trustworthy facts."""
+
+
+class CompareAndSwapConflict(DeliverySourceError):
+    """Raised when a mutation target changed after its exact preflight."""
