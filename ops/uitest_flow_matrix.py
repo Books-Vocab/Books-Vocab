@@ -30,7 +30,7 @@ class DataVariant:
     def label(self) -> str:
         if self.kind == "dataset":
             return f"dataset:{self.value}"
-        return f"dataset-file:{Path(self.value or '').name}"
+        return f"dataset-file:{self.value or ''}"
 
     def args(self) -> list[str]:
         if self.kind == "dataset":
@@ -75,12 +75,13 @@ def build_variants(
 
     profile_values: list[str | None] = profiles or [None]
     variants = [FlowVariant(profile=profile, data=data) for data in data_variants for profile in profile_values]
-    seen: set[str] = set()
+    seen: set[tuple[str | None, str, str | None]] = set()
     unique: list[FlowVariant] = []
     for variant in variants:
-        if variant.label in seen:
+        identity = (variant.profile, variant.data.kind, variant.data.value)
+        if identity in seen:
             continue
-        seen.add(variant.label)
+        seen.add(identity)
         unique.append(variant)
     return unique
 

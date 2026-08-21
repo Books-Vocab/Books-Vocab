@@ -39,6 +39,35 @@ def test_build_variants_crosses_profiles_and_data():
     ]
 
 
+def test_build_variants_keeps_distinct_dataset_files_with_same_basename():
+    mod = _load()
+
+    variants = mod.build_variants(
+        profiles=[],
+        datasets=[],
+        dataset_files=["fixtures/one/dataset.json", "fixtures/two/dataset.json"],
+    )
+
+    assert [variant.label for variant in variants] == [
+        "dataset-file:fixtures/one/dataset.json",
+        "dataset-file:fixtures/two/dataset.json",
+    ]
+
+
+def test_build_variants_deduplicates_exact_duplicate_dataset_files():
+    mod = _load()
+
+    variants = mod.build_variants(
+        profiles=["standard"],
+        datasets=[],
+        dataset_files=["fixtures/dataset.json", "fixtures/dataset.json"],
+    )
+
+    assert [variant.label for variant in variants] == [
+        "dataset-file:fixtures/dataset.json+profile:standard",
+    ]
+
+
 def test_dry_run_json_emits_ios_ops_commands(capsys):
     mod = _load()
 
