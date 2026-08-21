@@ -120,6 +120,7 @@ class PublishService:
                 number=pull_request.number,
                 title=title,
                 body=body,
+                expected_head_sha=receipt.head_sha,
             )
             outcome = PublicationOutcome.UPDATED
         else:
@@ -131,7 +132,9 @@ class PublishService:
 
         readback = self.github_query.get_pull_request(pull_request.number)
         if (
-            readback.branch != receipt.branch
+            readback.state != "OPEN"
+            or readback.draft
+            or readback.branch != receipt.branch
             or readback.head_sha != receipt.head_sha
             or readback.title != title
             or readback.body != body

@@ -14,6 +14,7 @@ from delivery_control.domain.models import HandbackReceipt, Scope
 from delivery_control.domain.observations import (
     FileChange,
     FileOperation,
+    InventoryProblem,
     PullRequestInventory,
     PullRequestSnapshot,
     RegistryInventory,
@@ -110,9 +111,11 @@ class FakeRegistry:
         self,
         current: RegistrySnapshot | None,
         others: tuple[RegistrySnapshot, ...] = (),
+        problems: tuple[InventoryProblem, ...] = (),
     ) -> None:
         self.current = current
         self.others = others
+        self.problems = problems
 
     def get(self, lane_id: str) -> RegistrySnapshot | None:
         if self.current is not None and self.current.lane_id == lane_id:
@@ -121,7 +124,7 @@ class FakeRegistry:
 
     def list_records(self) -> RegistryInventory:
         records = (() if self.current is None else (self.current,)) + self.others
-        return RegistryInventory(records=records)
+        return RegistryInventory(records=records, problems=self.problems)
 
 
 class FakeGit:
@@ -207,9 +210,15 @@ class FakeGitHub:
         return self.pull_request
 
     def update_pull_request(
-        self, *, number: int, title: str, body: str
+        self,
+        *,
+        number: int,
+        title: str,
+        body: str,
+        expected_head_sha: str,
     ) -> PullRequestSnapshot:
         assert self.pull_request is not None and self.pull_request.number == number
+        assert self.pull_request.head_sha == expected_head_sha
         self.update_calls += 1
         self.pull_request = replace(self.pull_request, title=title, body=body)
         return self.pull_request
@@ -383,3 +392,34 @@ def test_title_rejects_delete_control_character_before_any_mutation() -> None:
     with pytest.raises(PolicyViolation, match="canonical"):
         service.publish(receipt=receipt, title="fix:\x7fdelivery")
     assert not git.push_calls
+
+
+def test_preflight_blocks_incomplete_registry_collision_inventory() -> None:
+    receipt = _receipt()
+    registry = FakeRegistry(
+        _registry(receipt),
+        problems=(InventoryProblem("registry", "unknown", "malformed Scope"),),
+    )
+    service, git, _ = _service(receipt, registry=registry)
+
+    with pytest.raises(PolicyViolation, match="collision inventory failed"):
+        service.publish(receipt=receipt, title="fix: delivery")
+    assert not git.push_calls
+
+
+def test_final_readback_rejects_concurrently_closed_pr() -> None:
+    receipt = _receipt()
+    body = render_pull_request_body(receipt)
+    closed = replace(
+        _pull_request(receipt, title="fix: delivery", body=body),
+        state="CLOSED",
+    )
+    github = FakeGitHub(receipt, pull_request=closed)
+    service, _, _ = _service(
+        receipt,
+        git=FakeGit(receipt, remote_sha=receipt.head_sha),
+        github=github,
+    )
+
+    with pytest.raises(PolicyViolation, match="readback"):
+        service.publish(receipt=receipt, title="fix: delivery")

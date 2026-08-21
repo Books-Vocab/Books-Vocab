@@ -519,7 +519,7 @@ def test_invalid_handed_back_seal_fails_closed_for_admission(
     assert refused["owners"][0]["branch"] == "feat/handed-back"
 
 
-@pytest.mark.parametrize("terminal_status", registry.RESOLVE_STATUS)
+@pytest.mark.parametrize("terminal_status", ("merged", "abandoned"))
 def test_resolve_terminal_status_preserves_handed_back_receipt(
     tmp_path: Path, terminal_status: str
 ) -> None:
@@ -536,3 +536,53 @@ def test_resolve_terminal_status_preserves_handed_back_receipt(
     assert resolved["status"] == terminal_status
     assert resolved["handed_back_sha"] == handed_back["handed_back_sha"]
     assert resolved["handback_seal"] == handed_back["handback_seal"]
+
+
+def test_published_transition_requires_exact_physical_handback_and_is_cas_safe(
+    tmp_path: Path,
+) -> None:
+    record = _idle_handed_back_record(tmp_path)
+    record["claim_generation"] = 4
+    record["handback_claim_generation"] = 4
+    state_path = tmp_path / "registry.json"
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+
+    stale = registry.main([
+        "resolve", "--state", str(state_path), "--branch", record["branch"],
+        "--path", record["path"], "--status", "published",
+        "--expected-generation", "3", "--expected-head-sha", record["handed_back_sha"],
+        "--json",
+    ])
+    exact = registry.main([
+        "resolve", "--state", str(state_path), "--branch", record["branch"],
+        "--path", record["path"], "--status", "published",
+        "--expected-generation", "4", "--expected-head-sha", record["handed_back_sha"],
+        "--json",
+    ])
+
+    assert stale == registry.EXIT_CLAIMED
+    assert exact == registry.EXIT_OK
+    assert registry.load_state(state_path)["records"][0]["status"] == "published"
+
+
+def test_published_record_can_transition_to_merged_with_exact_tuple(
+    tmp_path: Path,
+) -> None:
+    record = _valid_handed_back_record(tmp_path)
+    record.update({
+        "status": "published",
+        "claim_generation": 2,
+        "handback_claim_generation": 2,
+    })
+    state_path = tmp_path / "registry.json"
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+
+    rc = registry.main([
+        "resolve", "--state", str(state_path), "--branch", record["branch"],
+        "--path", record["path"], "--status", "merged",
+        "--expected-generation", "2", "--expected-head-sha", record["handed_back_sha"],
+        "--json",
+    ])
+
+    assert rc == registry.EXIT_OK
+    assert registry.load_state(state_path)["records"][0]["status"] == "merged"

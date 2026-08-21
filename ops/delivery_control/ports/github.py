@@ -40,6 +40,7 @@ class GitHubCommandPort(Protocol):
         number: int,
         title: str,
         body: str,
+        expected_head_sha: str,
     ) -> PullRequestSnapshot: ...
 
     def mark_ready(self, number: int) -> PullRequestSnapshot: ...

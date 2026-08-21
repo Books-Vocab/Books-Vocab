@@ -132,7 +132,10 @@ run_one() {
         ops/tests/test_delivery_models.py \
         ops/tests/test_delivery_states.py \
         ops/tests/test_delivery_ports.py \
-        ops/tests/test_delivery_inspect.py
+        ops/tests/test_delivery_inspect.py \
+        ops/tests/test_delivery_publish.py \
+        ops/tests/test_delivery_cleanup.py \
+        ops/tests/test_delivery_queue.py
       ;;
     capability-matrix)
       "$UV_BIN" run --python 3.13 --with pytest --with 'cryptography>=48,<49' pytest -q \

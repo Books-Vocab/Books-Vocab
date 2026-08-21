@@ -41,7 +41,7 @@ from lib.worktree_scope import coerce_scope, normalise_scope, scope_problems
 
 SCHEMA = "kg.worktree.registry.v2"
 STATUS_ACTIVE = "active"
-RESOLVE_STATUS = ("merged", "abandoned")
+RESOLVE_STATUS = ("published", "merged", "abandoned")
 HAND_BACK_SEAL_SCHEMA = "kg.worktree.handback.v1"
 HAND_BACK_OUTCOMES = ("changed", "no-op-existing-fix")
 GREEN_ACCEPTANCE_STATUSES = {"pass", "passed", "green", "ok", "success"}
@@ -670,16 +670,48 @@ def cmd_hand_back(args: argparse.Namespace) -> int:
 
 def cmd_resolve(args: argparse.Namespace) -> int:
     if args.status not in RESOLVE_STATUS or (not args.branch and not args.path):
-        print("✗ resolve needs --branch/--path and a valid terminal status", file=sys.stderr)
+        print("✗ resolve needs --branch/--path and a valid local disposition", file=sys.stderr)
         return EXIT_USAGE
     state_path = _state_path(args)
     with _ledger_lock(state_path):
         state = load_state(state_path)
-        matches = [r for r in _active_records(state)
-                   if _record_matches(r, branch=args.branch, path=args.path)]
+        source_statuses = (
+            {STATUS_ACTIVE}
+            if args.status == "published"
+            else {STATUS_ACTIVE, "published"}
+        )
+        matches = [
+            record
+            for record in state.get("records", [])
+            if record.get("status") in source_statuses
+            and _record_matches(record, branch=args.branch, path=args.path)
+        ]
+        if args.expected_generation is not None:
+            matches = [
+                record
+                for record in matches
+                if _claim_generation(record, "claim_generation")
+                == args.expected_generation
+            ]
+        if args.expected_head_sha is not None:
+            matches = [
+                record
+                for record in matches
+                if record.get("handed_back_sha") == args.expected_head_sha
+            ]
         if not matches:
-            print("✗ no active registry record matches selector", file=sys.stderr)
-            return EXIT_USAGE
+            print("✗ no exact registry record matches transition", file=sys.stderr)
+            return EXIT_CLAIMED
+        if len(matches) != 1:
+            print("✗ registry transition selector is ambiguous", file=sys.stderr)
+            return EXIT_CLAIMED
+        if args.status == "published":
+            if args.expected_generation is None or args.expected_head_sha is None:
+                print("✗ published transition requires exact generation and HEAD", file=sys.stderr)
+                return EXIT_USAGE
+            if not _has_valid_handback(matches[0]):
+                print("✗ published transition requires a valid physical hand-back", file=sys.stderr)
+                return EXIT_CLAIMED
         _, now_iso = resolve_now(args.at)
         for record in matches:
             record["status"] = args.status
@@ -806,6 +838,8 @@ def _parser() -> argparse.ArgumentParser:
     resolved = sub.add_parser("resolve", help="close local ownership after a GitHub merge or abandonment")
     common(resolved); resolved.add_argument("--branch"); resolved.add_argument("--path")
     resolved.add_argument("--status", choices=RESOLVE_STATUS, required=True)
+    resolved.add_argument("--expected-generation", type=int)
+    resolved.add_argument("--expected-head-sha")
     resolved.set_defaults(func=cmd_resolve)
 
     sweep = sub.add_parser("sweep", help="report missing registered worktrees")

@@ -220,12 +220,19 @@ class GitHubCliAdapter:
         return created
 
     def update_pull_request(
-        self, *, number: int, title: str, body: str
+        self,
+        *,
+        number: int,
+        title: str,
+        body: str,
+        expected_head_sha: str,
     ) -> PullRequestSnapshot:
         before = self.get_pull_request(number)
+        if before.head_sha != expected_head_sha:
+            raise CompareAndSwapConflict("PR HEAD changed before metadata update")
         self._run(("gh", "pr", "edit", str(number), "--title", title, "--body", body))
         after = self.get_pull_request(number)
-        if after.head_sha != before.head_sha:
+        if after.head_sha != expected_head_sha:
             raise CompareAndSwapConflict("PR HEAD changed during metadata update")
         return after
 

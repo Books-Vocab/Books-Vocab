@@ -15,6 +15,7 @@ from delivery_control.adapters.git_cli import GitCliAdapter
 from delivery_control.adapters.github_cli import GitHubCliAdapter
 from delivery_control.adapters.registry import RegistryCliAdapter
 from delivery_control.adapters.errors import AdapterCommandError
+from delivery_control.domain.errors import CompareAndSwapConflict
 from delivery_control.domain.models import CheckStatus, Scope
 from delivery_control.domain.observations import (
     CheckSnapshot,
@@ -111,6 +112,59 @@ def test_git_local_branch_delete_uses_atomic_expected_old_sha(tmp_path: Path) ->
         call[-4:] == ("update-ref", "-d", "refs/heads/feat/one", head)
         for call in runner.calls
     )
+
+
+def test_git_remote_branch_delete_uses_exact_lease(tmp_path: Path) -> None:
+    head = "b" * 40
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("git",), 0, f"{head}\trefs/heads/feat/one\n", ""
+            ),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), 0, "", ""),
+        ]
+    )
+    adapter = GitCliAdapter(repo=tmp_path, runner=runner)
+
+    adapter.delete_remote_branch("feat/one", expected_head_sha=head)
+
+    push = next(call for call in runner.calls if "push" in call)
+    assert f"--force-with-lease=refs/heads/feat/one:{head}" in push
+    assert ":refs/heads/feat/one" in push
+
+
+def test_git_push_lease_failure_is_a_compare_and_swap_conflict(tmp_path: Path) -> None:
+    head = "b" * 40
+    runner = StaticRunner(
+        [
+            CommandResult(("git",), 0, "feat/one\n", ""),
+            CommandResult(("git",), 0, f"{head}\n", ""),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), 1, "", "stale info"),
+        ]
+    )
+    adapter = GitCliAdapter(repo=tmp_path, runner=runner)
+
+    with pytest.raises(CompareAndSwapConflict, match="lease"):
+        adapter.push_branch(
+            worktree=tmp_path,
+            branch="feat/one",
+            expected_local_sha=head,
+            expected_remote_sha=None,
+        )
+
+
+def test_git_cleanup_refuses_canonical_checkout_and_main(tmp_path: Path) -> None:
+    adapter = GitCliAdapter(repo=tmp_path, runner=StaticRunner([]))
+
+    with pytest.raises(CompareAndSwapConflict, match="canonical"):
+        adapter.remove_worktree(tmp_path, expected_head_sha="b" * 40)
+    with pytest.raises(CompareAndSwapConflict, match="local main"):
+        adapter.delete_local_branch("main", expected_head_sha="b" * 40)
+    with pytest.raises(CompareAndSwapConflict, match="remote main"):
+        adapter.delete_remote_branch("main", expected_head_sha="b" * 40)
 
 
 class StaticRunner:
@@ -273,6 +327,24 @@ def test_github_enqueue_atomically_matches_expected_head() -> None:
     )
 
     assert runner.calls[-1][-2:] == ("--match-head-commit", "b" * 40)
+
+
+def test_github_metadata_update_requires_expected_handback_head() -> None:
+    payload = _pr_payload()
+    payload["headRefOid"] = "c" * 40
+    runner = StaticRunner(
+        [CommandResult(("gh",), 0, json.dumps(payload), "")]
+    )
+
+    with pytest.raises(CompareAndSwapConflict, match="before metadata"):
+        GitHubCliAdapter(runner=runner).update_pull_request(
+            number=12,
+            title="fix: exact",
+            body="## Scope\nexact",
+            expected_head_sha="b" * 40,
+        )
+
+    assert len(runner.calls) == 1
 
 
 class FakeRegistry:

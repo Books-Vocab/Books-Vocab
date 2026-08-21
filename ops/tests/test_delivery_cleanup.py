@@ -1,0 +1,297 @@
+from __future__ import annotations
+
+import sys
+from dataclasses import replace
+from pathlib import Path
+
+import pytest
+
+OPS = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(OPS))
+
+from delivery_control.domain.errors import PolicyViolation
+from delivery_control.domain.models import HandbackReceipt, Scope
+from delivery_control.domain.observations import (
+    FileChange,
+    FileOperation,
+    PhysicalWorktree,
+    PullRequestSnapshot,
+    RegistryInventory,
+    RegistrySnapshot,
+    WorktreeSnapshot,
+)
+from delivery_control.services.cleanup import CleanupService
+from delivery_control.services.publish import render_pull_request_body
+from delivery_control.services.sync_main import MainSyncService
+
+BASE = "a" * 40
+HEAD = "b" * 40
+BRANCH = "feat/cleanup"
+PATH = Path("/tmp/cleanup")
+
+
+def _receipt() -> HandbackReceipt:
+    return HandbackReceipt(
+        lane_id="DIRECT-1",
+        owner_thread_id="thread-1",
+        claim_generation=2,
+        branch=BRANCH,
+        worktree_path=str(PATH),
+        base_sha=BASE,
+        parent_sha=BASE,
+        head_sha=HEAD,
+        origin_main_sha=BASE,
+        content_digest="c" * 64,
+        scope=Scope.from_paths(modify=("ops/a.py",)),
+    )
+
+
+def _record(receipt: HandbackReceipt, *, status: str = "active") -> RegistrySnapshot:
+    return RegistrySnapshot(
+        lane_id=receipt.lane_id,
+        branch=receipt.branch,
+        path=Path(receipt.worktree_path),
+        status=status,
+        scope=receipt.scope,
+        base_sha=receipt.base_sha,
+        claim_generation=receipt.claim_generation,
+        owner_thread_id=receipt.owner_thread_id,
+        handed_back_sha=receipt.head_sha,
+        handback_claim_generation=receipt.claim_generation,
+        handback_valid=True,
+    )
+
+
+def _snapshot(receipt: HandbackReceipt, *, clean: bool = True) -> WorktreeSnapshot:
+    return WorktreeSnapshot(
+        path=Path(receipt.worktree_path),
+        branch=receipt.branch,
+        base_sha=receipt.base_sha,
+        head_sha=receipt.head_sha,
+        parent_sha=receipt.parent_sha,
+        clean=clean,
+        changes=(FileChange(FileOperation.MODIFY, "ops/a.py"),),
+    )
+
+
+def _pull_request(receipt: HandbackReceipt, *, state: str) -> PullRequestSnapshot:
+    return PullRequestSnapshot(
+        number=9,
+        url="https://example.test/pull/9",
+        branch=receipt.branch,
+        base_sha=receipt.base_sha,
+        head_sha=receipt.head_sha,
+        state=state,
+        draft=False,
+        mergeable=True,
+        title="fix: cleanup",
+        body=render_pull_request_body(receipt),
+    )
+
+
+class FakeRegistry:
+    def __init__(self, record: RegistrySnapshot) -> None:
+        self.record = record
+        self.transitions: list[str] = []
+
+    def list_records(self) -> RegistryInventory:
+        return RegistryInventory((self.record,))
+
+    def get(self, lane_id: str) -> RegistrySnapshot | None:
+        return self.record if self.record.lane_id == lane_id else None
+
+    def resolve(
+        self,
+        lane_id: str,
+        disposition: str,
+        *,
+        expected_claim_generation: int,
+        expected_branch: str,
+        expected_path: str,
+        expected_head_sha: str,
+    ) -> None:
+        assert lane_id == self.record.lane_id
+        assert expected_claim_generation == self.record.claim_generation
+        assert expected_branch == self.record.branch
+        assert Path(expected_path) == self.record.path
+        assert expected_head_sha == self.record.handed_back_sha
+        self.transitions.append(disposition)
+        self.record = replace(self.record, status=disposition)
+
+
+class FakeGit:
+    def __init__(
+        self,
+        receipt: HandbackReceipt,
+        *,
+        snapshot: WorktreeSnapshot | None = None,
+        has_worktree: bool = True,
+        local_sha: str | None = HEAD,
+        remote_sha: str | None = HEAD,
+        local_main: str = BASE,
+        origin_main: str = BASE,
+    ) -> None:
+        self.snapshot = snapshot or _snapshot(receipt)
+        self.worktrees = (
+            PhysicalWorktree(Path(receipt.worktree_path), receipt.head_sha, receipt.branch),
+        ) if has_worktree else ()
+        self.local_sha = local_sha
+        self.remote_sha = remote_sha
+        self.local_main = local_main
+        self.origin_main = origin_main
+        self.actions: list[str] = []
+
+    def list_worktrees(self) -> tuple[PhysicalWorktree, ...]:
+        return self.worktrees
+
+    def inspect_worktree(self, path: Path, base_sha: str) -> WorktreeSnapshot:
+        return self.snapshot
+
+    def local_branch_sha(self, branch: str) -> str | None:
+        return self.local_sha
+
+    def remote_branch_sha(self, branch: str) -> str | None:
+        return self.remote_sha
+
+    def remove_worktree(self, path: Path, *, expected_head_sha: str) -> None:
+        assert expected_head_sha == HEAD
+        self.actions.append("remove-worktree")
+        self.worktrees = ()
+
+    def delete_local_branch(self, branch: str, *, expected_head_sha: str) -> None:
+        assert expected_head_sha == self.local_sha
+        self.actions.append("delete-local")
+        self.local_sha = None
+
+    def delete_remote_branch(self, branch: str, *, expected_head_sha: str) -> None:
+        assert expected_head_sha == self.remote_sha
+        self.actions.append("delete-remote")
+        self.remote_sha = None
+
+    def local_main_sha(self) -> str:
+        return self.local_main
+
+    def origin_main_sha(self) -> str:
+        return self.origin_main
+
+    def fast_forward_main(
+        self, *, expected_local_sha: str, expected_origin_sha: str
+    ) -> str:
+        assert expected_local_sha == self.local_main
+        assert expected_origin_sha == self.origin_main
+        self.actions.append("sync-main")
+        self.local_main = self.origin_main
+        return self.local_main
+
+
+class FakeGitHub:
+    def __init__(self, pull_request: PullRequestSnapshot, receipt: HandbackReceipt) -> None:
+        self.pull_request = pull_request
+        self.receipt = receipt
+
+    def get_pull_request(self, number: int) -> PullRequestSnapshot:
+        assert number == self.pull_request.number
+        return self.pull_request
+
+    def changed_paths(self, number: int) -> tuple[str, ...]:
+        return self.receipt.scope.paths
+
+
+def _service(
+    receipt: HandbackReceipt,
+    *,
+    registry: FakeRegistry,
+    git: FakeGit,
+    state: str,
+) -> CleanupService:
+    return CleanupService(
+        registry_query=registry,
+        registry_command=registry,
+        git_query=git,
+        git_command=git,
+        github=FakeGitHub(_pull_request(receipt, state=state), receipt),
+    )
+
+
+def test_publish_release_moves_durable_queue_to_github_and_removes_local_assets() -> None:
+    receipt = _receipt()
+    registry = FakeRegistry(_record(receipt))
+    git = FakeGit(receipt)
+
+    result = _service(
+        receipt, registry=registry, git=git, state="OPEN"
+    ).release_after_publish(receipt=receipt, pull_request_number=9)
+
+    assert registry.transitions == ["published"]
+    assert git.actions == ["remove-worktree", "delete-local"]
+    assert result.worktree_absent and result.local_branch_absent
+    assert not result.remote_branch_absent
+
+
+def test_publish_release_blocks_dirty_worktree_before_releasing_claim() -> None:
+    receipt = _receipt()
+    registry = FakeRegistry(_record(receipt))
+    git = FakeGit(receipt, snapshot=_snapshot(receipt, clean=False))
+
+    with pytest.raises(PolicyViolation, match="worktree changed"):
+        _service(receipt, registry=registry, git=git, state="OPEN").release_after_publish(
+            receipt=receipt, pull_request_number=9
+        )
+
+    assert registry.transitions == []
+    assert git.actions == []
+
+
+def test_publish_release_retry_is_idempotent_after_local_assets_are_absent() -> None:
+    receipt = _receipt()
+    registry = FakeRegistry(_record(receipt, status="published"))
+    git = FakeGit(receipt, has_worktree=False, local_sha=None)
+
+    result = _service(
+        receipt, registry=registry, git=git, state="OPEN"
+    ).release_after_publish(receipt=receipt, pull_request_number=9)
+
+    assert registry.transitions == []
+    assert git.actions == []
+    assert result.worktree_absent and result.local_branch_absent
+
+
+def test_merged_cleanup_removes_exact_remote_and_terminalizes_registry() -> None:
+    receipt = _receipt()
+    registry = FakeRegistry(_record(receipt, status="published"))
+    git = FakeGit(receipt, has_worktree=False, local_sha=None)
+
+    result = _service(
+        receipt, registry=registry, git=git, state="MERGED"
+    ).finalize_merged(receipt=receipt, pull_request_number=9)
+
+    assert registry.transitions == ["merged"]
+    assert git.actions == ["delete-remote"]
+    assert result.remote_branch_absent
+
+
+def test_cleanup_refuses_remote_drift() -> None:
+    receipt = _receipt()
+    registry = FakeRegistry(_record(receipt))
+    git = FakeGit(receipt, remote_sha="d" * 40)
+
+    with pytest.raises(PolicyViolation, match="remote branch"):
+        _service(receipt, registry=registry, git=git, state="OPEN").release_after_publish(
+            receipt=receipt, pull_request_number=9
+        )
+    assert not git.actions
+
+
+def test_main_sync_is_noop_when_exact_and_ff_only_when_behind() -> None:
+    receipt = _receipt()
+    exact = FakeGit(receipt)
+    behind = FakeGit(receipt, local_main="c" * 40, origin_main="d" * 40)
+
+    exact_result = MainSyncService(query=exact, command=exact).sync()
+    behind_result = MainSyncService(query=behind, command=behind).sync()
+
+    assert not exact_result.changed
+    assert exact.actions == []
+    assert behind_result.changed
+    assert behind_result.after_sha == "d" * 40
+    assert behind.actions == ["sync-main"]

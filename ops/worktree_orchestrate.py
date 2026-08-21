@@ -669,6 +669,10 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         argv += ["--state", args.state]
     if args.json:
         argv.append("--json")
+    if args.expected_generation is not None:
+        argv += ["--expected-generation", str(args.expected_generation)]
+    if args.expected_head_sha:
+        argv += ["--expected-head-sha", args.expected_head_sha]
     rc = registry.main(argv)
     if rc != EXIT_OK or not args.remove:
         return rc
@@ -726,9 +730,11 @@ def _parser() -> argparse.ArgumentParser:
         *(["--json"] if args.json else []),
     ]))
 
-    resolved = sub.add_parser("resolve", help="close local ownership after the GitHub PR is merged")
+    resolved = sub.add_parser("resolve", help="transition an exact local ownership claim")
     common(resolved); resolved.add_argument("--branch"); resolved.add_argument("--path")
     resolved.add_argument("--status", choices=registry.RESOLVE_STATUS, required=True)
+    resolved.add_argument("--expected-generation", type=int)
+    resolved.add_argument("--expected-head-sha")
     resolved.add_argument("--remove", action="store_true")
     resolved.set_defaults(func=cmd_resolve)
 

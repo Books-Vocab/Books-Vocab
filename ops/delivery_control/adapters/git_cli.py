@@ -125,6 +125,13 @@ class GitCliAdapter:
             raise AdapterPayloadError(f"unexpected remote ref response for {ref}")
         return rows[0][0]
 
+    def local_branch_sha(self, branch: str) -> str | None:
+        ref = f"refs/heads/{branch}"
+        try:
+            return self._git("rev-parse", "--verify", f"{ref}^{{commit}}")
+        except AdapterCommandError:
+            return None
+
     def local_main_sha(self) -> str:
         return self._git("rev-parse", "--verify", "main^{commit}")
 
@@ -162,7 +169,12 @@ class GitCliAdapter:
             f"--force-with-lease={destination}:{expected_remote}",
         ]
         argv.append(f"{expected_local_sha}:{destination}")
-        self._git(*argv, cwd=worktree)
+        try:
+            self._git(*argv, cwd=worktree)
+        except AdapterCommandError as error:
+            raise CompareAndSwapConflict(
+                "remote branch changed or push lease failed"
+            ) from error
         readback = self.remote_branch_sha(branch)
         if readback != expected_local_sha:
             raise CompareAndSwapConflict(
@@ -172,6 +184,8 @@ class GitCliAdapter:
 
     def remove_worktree(self, path: Path, *, expected_head_sha: str) -> None:
         path = path.resolve()
+        if path == self.repo:
+            raise CompareAndSwapConflict("refusing to remove canonical checkout")
         head = self._git("rev-parse", "--verify", "HEAD^{commit}", cwd=path)
         dirty = self._git("status", "--porcelain=v1", "--untracked-files=all", cwd=path)
         if head != expected_head_sha or dirty:
@@ -179,6 +193,8 @@ class GitCliAdapter:
         self._git("worktree", "remove", "--", str(path))
 
     def delete_local_branch(self, branch: str, *, expected_head_sha: str) -> None:
+        if branch == "main":
+            raise CompareAndSwapConflict("refusing to delete local main")
         ref = f"refs/heads/{branch}"
         try:
             current = self._git("rev-parse", "--verify", f"{ref}^{{commit}}")
@@ -192,6 +208,24 @@ class GitCliAdapter:
         except AdapterCommandError:
             return
         raise CompareAndSwapConflict("local branch still exists after cleanup")
+
+    def delete_remote_branch(self, branch: str, *, expected_head_sha: str) -> None:
+        if branch == "main":
+            raise CompareAndSwapConflict("refusing to delete remote main")
+        destination = f"refs/heads/{branch}"
+        current = self.remote_branch_sha(branch)
+        if current is None:
+            return
+        if current != expected_head_sha:
+            raise CompareAndSwapConflict("remote branch changed before cleanup")
+        self._git(
+            "push",
+            "origin",
+            f"--force-with-lease={destination}:{expected_head_sha}",
+            f":{destination}",
+        )
+        if self.remote_branch_sha(branch) is not None:
+            raise CompareAndSwapConflict("remote branch still exists after cleanup")
 
     def fast_forward_main(
         self, *, expected_local_sha: str, expected_origin_sha: str

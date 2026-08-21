@@ -42,6 +42,9 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
         def remote_branch_sha(self, branch: str) -> str | None:
             return None
 
+        def local_branch_sha(self, branch: str) -> str | None:
+            return None
+
         def local_main_sha(self) -> str:
             return "a" * 40
 
@@ -63,6 +66,9 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
             return None
 
         def delete_local_branch(self, branch: str, *, expected_head_sha: str) -> None:
+            return None
+
+        def delete_remote_branch(self, branch: str, *, expected_head_sha: str) -> None:
             return None
 
         def fast_forward_main(
@@ -96,7 +102,12 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
             raise NotImplementedError
 
         def update_pull_request(
-            self, *, number: int, title: str, body: str
+            self,
+            *,
+            number: int,
+            title: str,
+            body: str,
+            expected_head_sha: str,
         ) -> PullRequestSnapshot:
             raise NotImplementedError
 

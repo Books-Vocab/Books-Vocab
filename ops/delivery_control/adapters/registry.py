@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from ..domain.errors import InvalidScope
+from ..domain.errors import CompareAndSwapConflict, InvalidScope
 from ..domain.models import Scope
 from ..domain.observations import (
     InventoryProblem,
@@ -165,3 +165,47 @@ class RegistryCliAdapter:
                 f"multiple active registry records found for {lane_id}"
             )
         return matches[0] if matches else None
+
+    def resolve(
+        self,
+        lane_id: str,
+        disposition: str,
+        *,
+        expected_claim_generation: int,
+        expected_branch: str,
+        expected_path: str,
+        expected_head_sha: str,
+    ) -> None:
+        argv = (
+            str(self.script_path),
+            "resolve",
+            "--json",
+            "--branch",
+            expected_branch,
+            "--path",
+            expected_path,
+            "--status",
+            disposition,
+            "--expected-generation",
+            str(expected_claim_generation),
+            "--expected-head-sha",
+            expected_head_sha,
+        )
+        result = self.runner.run(argv)
+        if result.exit_code != 0:
+            raise CompareAndSwapConflict(
+                f"registry transition failed for {lane_id}: {result.stderr or result.stdout}"
+            )
+        try:
+            payload = json.loads(result.stdout)
+        except json.JSONDecodeError as error:
+            raise AdapterPayloadError(
+                "registry resolve returned invalid JSON"
+            ) from error
+        if (
+            not isinstance(payload, Mapping)
+            or payload.get("status") != disposition
+            or not isinstance(payload.get("records"), list)
+            or len(payload["records"]) != 1
+        ):
+            raise AdapterPayloadError("registry resolve readback is not exact")

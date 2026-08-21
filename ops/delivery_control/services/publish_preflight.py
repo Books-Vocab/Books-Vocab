@@ -46,6 +46,9 @@ class PublishPreflightService:
     ) -> bool:
         paths = set(receipt.scope.paths)
         inventory = self.registry.list_records()
+        if inventory.problems:
+            reasons = "; ".join(problem.reason for problem in inventory.problems)
+            raise DeliverySourceError(f"registry inventory is incomplete: {reasons}")
         for other in inventory.records:
             if other.status != "active" or other.lane_id == registry.lane_id:
                 continue
