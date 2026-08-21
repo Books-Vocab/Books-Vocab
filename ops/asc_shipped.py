@@ -46,14 +46,21 @@ def main():
     if "_httpError" in versions:
         die(f"查 appStoreVersions 失敗：{versions['_httpError']} {versions.get('_detail')}")
 
+    version_data = versions.get("data")
+    if not isinstance(version_data, list):
+        die("查 appStoreVersions 失敗：data 必須是 JSON 陣列")
+    for index, version_record in enumerate(version_data):
+        if not isinstance(version_record, dict):
+            die(f"查 appStoreVersions 失敗：data[{index}] 必須是 JSON 物件")
+
     ready = [
-        v for v in versions.get("data", [])
+        v for v in version_data
         if (v.get("attributes") or {}).get("appStoreState") == "READY_FOR_SALE"
     ]
     if not ready:
         states = sorted({
             (v.get("attributes") or {}).get("appStoreState", "?")
-            for v in versions.get("data", [])
+            for v in version_data
         })
         die(f"沒有 READY_FOR_SALE 的版本（目前 state：{', '.join(states) or '無記錄'}）")
     if len(ready) > 1:
