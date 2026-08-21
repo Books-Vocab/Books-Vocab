@@ -14,6 +14,9 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from .api_models import ReviewEventEntry
 from .exceptions import BadRequestError
 from .sqlite_ledger import (
+    as_utc as _as_utc,
+)
+from .sqlite_ledger import (
     install_serializable_sqlite as _install_serializable_sqlite,
 )
 from .sqlite_ledger import (
@@ -187,16 +190,17 @@ class ReviewEventStore:
             return list(session.exec(select(ReviewEvent).order_by(ReviewEvent.ingested_at)).all())
 
     def get_since(self, since: datetime) -> list[ReviewEvent]:
-        # Strict ``>``: ingested_at is monotonic and unique (see insert_many), so the
-        # cursor boundary event was already delivered and need not be re-pulled.
+        # SQLite compares DATETIME values lexically, so rows written by older
+        # versions with different offsets can cross the cursor boundary even when
+        # their instants do not. Normalize both sides in Python before applying the
+        # strict ``>`` boundary; ingested_at is monotonic and unique by contract.
+        since = _as_utc(since)
         with Session(self.engine) as session:
-            return list(
-                session.exec(
-                    select(ReviewEvent)
-                    .where(ReviewEvent.ingested_at > since)
-                    .order_by(ReviewEvent.ingested_at)
-                ).all()
-            )
+            events = list(session.exec(select(ReviewEvent)).all())
+        return sorted(
+            (event for event in events if _as_utc(event.ingested_at) > since),
+            key=lambda event: _as_utc(event.ingested_at),
+        )
 
     def close(self) -> None:
         if self.engine is not None:
