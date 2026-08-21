@@ -77,6 +77,38 @@ def test_parse_xcresult_build_results_uses_official_counts():
     assert summary["counts"]["swift6"] == 1
 
 
+def test_parse_xcresult_build_results_fails_on_error_diagnostic_after_success():
+    mod = _load_module()
+    summary = mod.parse_xcresult_build_results(
+        {
+            "status": "succeeded",
+            "errorCount": 0,
+            "warningCount": 0,
+            "errors": [{"message": "compiler error preserved in xcresult"}],
+            "warnings": [],
+        }
+    )
+
+    assert summary["result"] == "fail"
+    assert summary["counts"]["errors"] == 1
+
+
+def test_parse_xcresult_build_results_fails_on_nonzero_error_count_after_success():
+    mod = _load_module()
+    summary = mod.parse_xcresult_build_results(
+        {
+            "status": "succeeded",
+            "errorCount": 1,
+            "warningCount": 0,
+            "errors": [],
+            "warnings": [],
+        }
+    )
+
+    assert summary["result"] == "fail"
+    assert summary["counts"]["errors"] == 1
+
+
 def test_result_override_handles_quiet_xcodebuild_logs(tmp_path, capsys):
     mod = _load_module()
     log = tmp_path / "build.log"
