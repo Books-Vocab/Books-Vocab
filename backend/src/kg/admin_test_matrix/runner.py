@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from .catalog import selected_nodeids
+from .catalog import UnknownTestMatrixItemError, selected_nodeids
 from .results import bucket_status, item_results
 
 CASE_LINE_RE = re.compile(
@@ -25,16 +25,17 @@ def _error_run(
     selected_items: list[str],
     *,
     stderr_tail: list[str],
+    return_code: int = 127,
 ) -> dict[str, Any]:
     """Build a uniform failed-run payload for pre-pytest errors (missing tests
-    dir, spawn failure) — returnCode 127, one synthetic error, empty matrix."""
+    dir, spawn failure, invalid selection), one synthetic error, empty matrix."""
     finished = datetime.now(tz=UTC)
     return {
         "runId": run_id,
         "startedAt": started.isoformat(),
         "finishedAt": finished.isoformat(),
         "durationSeconds": round((finished - started).total_seconds(), 3),
-        "returnCode": 127,
+        "returnCode": return_code,
         "outcome": "failed",
         "totals": {"passed": 0, "failed": 0, "errors": 1, "skipped": 0, "total": 1},
         "matrix": [],
@@ -104,7 +105,16 @@ def run_pytest_matrix(selected_items: list[str] | None = None) -> dict[str, Any]
     run_id = started.strftime("%Y%m%d%H%M%S")
     tests_dir = project_root / "tests"
     selected_items = selected_items or []
-    nodeids = selected_nodeids(selected_items)
+    try:
+        nodeids = selected_nodeids(selected_items)
+    except UnknownTestMatrixItemError as exc:
+        return _error_run(
+            run_id,
+            started,
+            selected_items,
+            stderr_tail=[str(exc)],
+            return_code=2,
+        )
 
     if not tests_dir.exists():
         return _error_run(
