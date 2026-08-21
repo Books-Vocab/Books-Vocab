@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
@@ -25,11 +26,17 @@ _PR_FIELDS = (
 
 
 class GitHubCliAdapter:
-    def __init__(self, *, runner: CommandRunnerPort | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        repo: Path | None = None,
+        runner: CommandRunnerPort | None = None,
+    ) -> None:
+        self.repo = (repo or Path.cwd()).resolve()
         self.runner = runner or SubprocessCommandRunner()
 
     def _run(self, argv: tuple[str, ...], *, allow_nonzero: bool = False) -> str:
-        result = self.runner.run(argv)
+        result = self.runner.run(argv, cwd=self.repo)
         if result.exit_code != 0:
             if not allow_nonzero or not result.stdout.strip():
                 raise AdapterCommandError(result)
@@ -110,6 +117,45 @@ class GitHubCliAdapter:
                 reason = "PR entry is not an object"
             problems.append(InventoryProblem("github", identity, reason))
         return PullRequestInventory(records=tuple(records), problems=tuple(problems))
+
+    def recent_merge_times(self, *, limit: int = 100) -> tuple[datetime, ...]:
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise ValueError("merge history limit must be between 1 and 100")
+        payload = self._json(
+            (
+                "gh",
+                "pr",
+                "list",
+                "--state",
+                "merged",
+                "--limit",
+                str(limit),
+                "--json",
+                "mergedAt",
+            )
+        )
+        if not isinstance(payload, list):
+            raise AdapterPayloadError("GitHub merge history must be a JSON list")
+        observed: list[datetime] = []
+        for index, item in enumerate(payload):
+            if not isinstance(item, Mapping) or type(item.get("mergedAt")) is not str:
+                raise AdapterPayloadError(
+                    f"GitHub merge history[{index}] is malformed"
+                )
+            try:
+                timestamp = datetime.fromisoformat(
+                    item["mergedAt"].replace("Z", "+00:00")
+                )
+            except ValueError as error:
+                raise AdapterPayloadError(
+                    f"GitHub merge history[{index}] has an invalid timestamp"
+                ) from error
+            if timestamp.utcoffset() is None:
+                raise AdapterPayloadError(
+                    f"GitHub merge history[{index}] timestamp is not aware"
+                )
+            observed.append(timestamp)
+        return tuple(sorted(observed))
 
     def find_open_pull_request(self, branch: str) -> PullRequestSnapshot | None:
         inventory = self.list_open_pull_requests()

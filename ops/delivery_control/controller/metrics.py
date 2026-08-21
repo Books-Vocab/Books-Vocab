@@ -16,6 +16,7 @@ class PipelineMetrics:
     handbacks_publishable: int
     published_local_cleanup: int
     open_prs: int
+    unmapped_open_prs: int
     required_green: int
     required_failed: int
     terminal_cleanup: int
@@ -44,9 +45,17 @@ _BLOCKED = {
 
 def measure_pipeline(inventory: DeliveryInventory) -> PipelineMetrics:
     states = [lane.decision.state for lane in inventory.lanes]
-    pull_request_numbers = {
+    all_pull_request_numbers = {
         pull_request.number
         for lane in inventory.lanes
+        for pull_request in lane.pull_requests
+        if pull_request.state == "OPEN"
+    }
+    mapped_pull_request_numbers = {
+        pull_request.number
+        for lane in inventory.lanes
+        if lane.registry is not None
+        and lane.registry.status in {"active", "published"}
         for pull_request in lane.pull_requests
         if pull_request.state == "OPEN"
     }
@@ -59,7 +68,10 @@ def measure_pipeline(inventory: DeliveryInventory) -> PipelineMetrics:
         active_development=states.count(LaneState.ACTIVE_DEVELOPMENT),
         handbacks_publishable=states.count(LaneState.HANDBACK_PUBLISHABLE),
         published_local_cleanup=states.count(LaneState.PUBLISHED_LOCAL_CLEANUP),
-        open_prs=len(pull_request_numbers),
+        open_prs=len(mapped_pull_request_numbers),
+        unmapped_open_prs=len(
+            all_pull_request_numbers - mapped_pull_request_numbers
+        ),
         required_green=states.count(LaneState.READY_TO_QUEUE),
         required_failed=states.count(LaneState.REQUIRED_FAILED),
         terminal_cleanup=states.count(LaneState.TERMINAL_CLEANUP),

@@ -21,6 +21,7 @@ UNREACHABLE_OWNER_STATES = {
     "not_found",
     "notloaded",
     "shutdown",
+    "unknown",
     "usage-limited",
 }
 

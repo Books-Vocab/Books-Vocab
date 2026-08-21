@@ -104,6 +104,18 @@ def derive_lane_decision(facts: LaneFacts) -> LaneDecision:
             "Scope overlaps another active lane",
         )
     if facts.dirty:
+        if (
+            not facts.published
+            and not facts.pr_open
+            and facts.has_worktree
+            and facts.owner_known
+            and facts.owner_reachable
+        ):
+            return LaneDecision(
+                LaneState.ACTIVE_DEVELOPMENT,
+                NextAction.CONTINUE_WORK,
+                "reachable owner has uncommitted work in progress",
+            )
         return LaneDecision(
             LaneState.BLOCKED_DIRTY, NextAction.RECOVER_DIRTY, "worktree is dirty"
         )

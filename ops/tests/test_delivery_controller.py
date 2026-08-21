@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -11,7 +12,12 @@ from delivery_control.controller.capacity import ControlAction, decide_capacity
 from delivery_control.controller.metrics import (
     PipelineMetrics,
     measure_merge_cadence,
+    measure_pipeline,
 )
+from delivery_control.domain.models import Scope
+from delivery_control.domain.observations import PullRequestSnapshot, RegistrySnapshot
+from delivery_control.domain.states import LaneDecision, LaneState, NextAction
+from delivery_control.services.inspect import DeliveryInventory, LaneInspection
 
 
 def _metrics(**changes: int) -> PipelineMetrics:
@@ -20,6 +26,7 @@ def _metrics(**changes: int) -> PipelineMetrics:
         "handbacks_publishable": 0,
         "published_local_cleanup": 0,
         "open_prs": 0,
+        "unmapped_open_prs": 0,
         "required_green": 0,
         "required_failed": 0,
         "terminal_cleanup": 0,
@@ -85,3 +92,57 @@ def test_controller_reports_source_uncertainty_instead_of_fabricating_supply() -
     cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
     decision = decide_capacity(_metrics(source_problems=2), cadence)
     assert ControlAction.INSPECT_SOURCES in decision.actions
+
+
+def test_pipeline_supply_counts_only_owner_mapped_open_prs() -> None:
+    pull_request = PullRequestSnapshot(
+        number=7,
+        url="https://example.test/pull/7",
+        branch="feat/one",
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+        state="OPEN",
+        draft=False,
+        mergeable=True,
+    )
+    record = RegistrySnapshot(
+        lane_id="#1",
+        branch="feat/one",
+        path=Path("/tmp/one"),
+        status="published",
+        scope=Scope.from_paths(modify=("ops/a.py",)),
+        base_sha="a" * 40,
+        claim_generation=1,
+    )
+    waiting = LaneDecision(
+        LaneState.PR_WAITING_REQUIRED,
+        NextAction.WAIT_REQUIRED,
+        "waiting",
+    )
+    inventory = DeliveryInventory(
+        lanes=(
+            LaneInspection(
+                key="#1",
+                registry=record,
+                physical=None,
+                snapshot=None,
+                pull_requests=(pull_request,),
+                decision=waiting,
+            ),
+            LaneInspection(
+                key="PR#8",
+                registry=None,
+                physical=None,
+                snapshot=None,
+                pull_requests=(replace(pull_request, number=8),),
+                decision=LaneDecision(
+                    LaneState.UNKNOWN, NextAction.INSPECT, "unmapped"
+                ),
+            ),
+        )
+    )
+
+    metrics = measure_pipeline(inventory)
+
+    assert metrics.open_prs == 1
+    assert metrics.unmapped_open_prs == 1

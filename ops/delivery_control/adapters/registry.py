@@ -168,6 +168,8 @@ class RegistryCliAdapter:
             try:
                 records.append(self._record(raw))
             except (KeyError, TypeError, ValueError, InvalidScope) as error:
+                if raw.get("status") in {"merged", "abandoned"}:
+                    continue
                 problems.append(InventoryProblem("registry", identity, str(error)))
         return RegistryInventory(records=tuple(records), problems=tuple(problems))
 

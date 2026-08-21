@@ -92,6 +92,16 @@ from delivery_control.domain.states import (
         ),
         (LaneFacts(dirty=True), LaneState.BLOCKED_DIRTY, NextAction.RECOVER_DIRTY),
         (
+            LaneFacts(
+                has_worktree=True,
+                owner_known=True,
+                owner_reachable=True,
+                dirty=True,
+            ),
+            LaneState.ACTIVE_DEVELOPMENT,
+            NextAction.CONTINUE_WORK,
+        ),
+        (
             LaneFacts(has_worktree=True, owner_known=True, owner_reachable=True),
             LaneState.ACTIVE_DEVELOPMENT,
             NextAction.CONTINUE_WORK,

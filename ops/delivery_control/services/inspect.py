@@ -66,6 +66,7 @@ class InspectService:
         physical = self.git.list_worktrees()
         github_inventory = self.github.list_open_pull_requests()
         live_main_sha = self.git.origin_main_sha()
+        local_main_sha = self.git.local_main_sha()
         records = registry_inventory.records
         active_records = tuple(item for item in records if item.status == _ACTIVE)
         published_records = tuple(
@@ -130,6 +131,8 @@ class InspectService:
                 observed.update(pr_paths.get(pull_request.number, ()))
             path_sets[key] = observed
         for physical_ref in physical:
+            if physical_ref.branch == "main" and physical_ref.head_sha == local_main_sha:
+                continue
             path = physical_ref.path.resolve()
             if path not in working_paths:
                 try:
@@ -395,6 +398,8 @@ class InspectService:
             )
 
         for physical_ref in physical:
+            if physical_ref.branch == "main" and physical_ref.head_sha == local_main_sha:
+                continue
             path = physical_ref.path.resolve()
             if path in claimed_paths:
                 continue
@@ -453,8 +458,6 @@ class InspectService:
                     pull_requests=(pull_request,),
                     decision=derive_lane_decision(
                         LaneFacts(
-                            pr_open=True,
-                            pr_draft=pull_request.draft,
                             scope_collision=f"pr:{pull_request.number}" in collisions,
                         )
                     ),

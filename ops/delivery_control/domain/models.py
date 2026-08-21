@@ -256,8 +256,10 @@ class HandbackReceipt:
             _require_text(name, getattr(self, name))
         _require_generation("claim_generation", self.claim_generation)
         _require_text("worktree_path", self.worktree_path)
-        if not Path(self.worktree_path).is_absolute():
+        worktree_path = Path(self.worktree_path)
+        if not worktree_path.is_absolute():
             raise InvalidReceipt("worktree_path must be absolute")
+        object.__setattr__(self, "worktree_path", str(worktree_path.resolve()))
         for name in ("base_sha", "parent_sha", "head_sha", "origin_main_sha"):
             _require_sha(name, getattr(self, name))
         if type(self.content_digest) is not str or not _DIGEST_RE.fullmatch(

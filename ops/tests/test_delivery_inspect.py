@@ -214,6 +214,24 @@ def test_registry_adapter_surfaces_malformed_records_without_hiding_valid_ones(
     assert inventory.problems[0].identity == "feat/bad"
 
 
+def test_registry_adapter_ignores_unusable_terminal_history(tmp_path: Path) -> None:
+    terminal = {
+        "branch": "feat/old",
+        "path": str(tmp_path / "old"),
+        "status": "merged",
+    }
+    runner = StaticRunner(
+        [CommandResult(("registry",), 0, json.dumps({"records": [terminal]}), "")]
+    )
+
+    inventory = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    ).list_records()
+
+    assert inventory.records == ()
+    assert inventory.problems == ()
+
+
 def test_registry_adapter_exposes_exact_legacy_handback_transport_fields(
     tmp_path: Path,
 ) -> None:
@@ -342,6 +360,28 @@ def test_github_required_check_snapshot_is_bound_to_exact_head() -> None:
     assert snapshot.status is CheckStatus.SUCCESS
     assert snapshot.head_sha == "b" * 40
     assert snapshot.names == ("required",)
+
+
+def test_github_merge_history_is_typed_and_sorted() -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("gh",),
+                0,
+                json.dumps(
+                    [
+                        {"mergedAt": "2026-08-21T00:05:00Z"},
+                        {"mergedAt": "2026-08-21T00:00:00Z"},
+                    ]
+                ),
+                "",
+            )
+        ]
+    )
+
+    observed = GitHubCliAdapter(runner=runner).recent_merge_times(limit=20)
+
+    assert [item.minute for item in observed] == [0, 5]
 
 
 def test_github_required_checks_preserve_empty_nonzero_command_failure() -> None:
@@ -568,6 +608,22 @@ def test_inspect_service_requires_exact_registry_physical_pr_and_check_tuple(
     active = next(item for item in inventory.lanes if item.key == "#1")
     assert active.decision.state is LaneState.READY_TO_QUEUE
     assert not active.problems
+
+
+def test_inspect_service_excludes_clean_canonical_main_from_lane_inventory(
+    tmp_path: Path,
+) -> None:
+    main = PhysicalWorktree(
+        path=tmp_path / "repo", head_sha="a" * 40, branch="main"
+    )
+    service = InspectService(
+        registry=FakeRegistry(()),
+        git=FakeGit((main,), {}),
+        github=FakeGitHub(()),
+        runtime=FakeRuntime(),
+    )
+
+    assert service.inspect().lanes == ()
 
 
 def test_inspect_service_never_marks_dirty_or_head_drift_ready(tmp_path: Path) -> None:

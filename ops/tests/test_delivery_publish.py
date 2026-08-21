@@ -25,6 +25,7 @@ from delivery_control.services.publish import (
     PublicationOutcome,
     PublishService,
     parse_pull_request_body,
+    receipt_from_active_claim,
     render_pull_request_body,
 )
 from delivery_control.services.publish_preflight import PublishPreflightService
@@ -224,6 +225,11 @@ class FakeGitHub:
         self.pull_request = replace(self.pull_request, title=title, body=body)
         return self.pull_request
 
+    def mark_ready(self, number: int) -> PullRequestSnapshot:
+        assert self.pull_request is not None and self.pull_request.number == number
+        self.pull_request = replace(self.pull_request, draft=False)
+        return self.pull_request
+
     def observe_push(self, head_sha: str) -> None:
         if self.pull_request is not None:
             self.pull_request = replace(self.pull_request, head_sha=head_sha)
@@ -288,6 +294,33 @@ def test_machine_receipt_parser_normalizes_domain_validation_errors() -> None:
         parse_pull_request_body(body)
 
 
+def test_active_legacy_handback_normalizes_to_durable_receipt() -> None:
+    receipt = _receipt()
+    record = _registry(
+        receipt,
+        handback_digest=receipt.content_digest,
+        handback_origin_main_sha=receipt.origin_main_sha,
+    )
+
+    assert receipt_from_active_claim(record, _worktree(receipt)) == receipt
+
+
+def test_receipt_normalization_rejects_operation_drift() -> None:
+    receipt = _receipt()
+    record = _registry(
+        receipt,
+        handback_digest=receipt.content_digest,
+        handback_origin_main_sha=receipt.origin_main_sha,
+    )
+    snapshot = _worktree(
+        receipt,
+        changes=(FileChange(FileOperation.ADD, "ops/a.py"),),
+    )
+
+    with pytest.raises(PolicyViolation, match="physical worktree differs"):
+        receipt_from_active_claim(record, snapshot)
+
+
 def test_publish_create_then_retry_is_idempotent() -> None:
     receipt = _receipt()
     service, git, github = _service(receipt)
@@ -328,6 +361,29 @@ def test_existing_unique_pr_allows_exact_force_with_lease_update() -> None:
     assert result.outcome is PublicationOutcome.UPDATED
     assert git.push_calls == [(OLD_HEAD, receipt.head_sha)]
     assert result.pull_request.head_sha == receipt.head_sha
+
+
+def test_existing_exact_draft_is_marked_ready_without_local_quality_gate() -> None:
+    receipt = _receipt()
+    pull_request = replace(
+        _pull_request(
+            receipt,
+            title="fix: delivery",
+            body=render_pull_request_body(receipt),
+        ),
+        draft=True,
+    )
+    github = FakeGitHub(receipt, pull_request=pull_request)
+    service, _, _ = _service(
+        receipt,
+        git=FakeGit(receipt, remote_sha=receipt.head_sha),
+        github=github,
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert not result.pull_request.draft
 
 
 @pytest.mark.parametrize(

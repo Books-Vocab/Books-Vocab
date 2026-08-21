@@ -9,9 +9,10 @@ from typing import Protocol
 
 from ..domain.errors import InvalidReceipt, PolicyViolation
 from ..domain.models import HandbackReceipt
-from ..domain.observations import PullRequestSnapshot
+from ..domain.observations import PullRequestSnapshot, RegistrySnapshot, WorktreeSnapshot
 from ..ports.git import GitCommandPort
 from ..ports.github import GitHubCommandPort, GitHubQueryPort
+from .correlation import scope_matches_snapshot
 from .publish_preflight import PublicationContext
 
 _RECEIPT_BEGIN = "<!-- kg.delivery.receipt.v1\n"
@@ -32,6 +33,46 @@ class PublicationResult:
 
 class PublishPreflightPort(Protocol):
     def check(self, receipt: HandbackReceipt) -> PublicationContext: ...
+
+
+def receipt_from_active_claim(
+    record: RegistrySnapshot, snapshot: WorktreeSnapshot
+) -> HandbackReceipt:
+    """Normalize the legacy registry seal into the durable PR receipt."""
+
+    if record.status != "active":
+        raise PolicyViolation("receipt normalization requires one active claim")
+    if (
+        record.owner_thread_id is None
+        or record.handed_back_sha is None
+        or record.handback_claim_generation != record.claim_generation
+        or not record.handback_valid
+        or record.handback_digest is None
+        or record.handback_origin_main_sha is None
+    ):
+        raise PolicyViolation("active claim lacks an exact registry-backed handback")
+    if (
+        not snapshot.clean
+        or snapshot.path.resolve() != record.path.resolve()
+        or snapshot.branch != record.branch
+        or snapshot.base_sha != record.base_sha
+        or snapshot.head_sha != record.handed_back_sha
+        or not scope_matches_snapshot(record, snapshot)
+    ):
+        raise PolicyViolation("physical worktree differs from the sealed active claim")
+    return HandbackReceipt(
+        lane_id=record.lane_id,
+        owner_thread_id=record.owner_thread_id,
+        claim_generation=record.claim_generation,
+        branch=record.branch,
+        worktree_path=str(record.path.resolve()),
+        base_sha=record.base_sha,
+        parent_sha=snapshot.parent_sha,
+        head_sha=snapshot.head_sha,
+        origin_main_sha=record.handback_origin_main_sha,
+        content_digest=record.handback_digest,
+        scope=record.scope,
+    )
 
 
 def render_pull_request_body(receipt: HandbackReceipt) -> str:
@@ -159,6 +200,10 @@ class PublishService:
                 if pushed
                 else PublicationOutcome.ALREADY_PUBLISHED
             )
+
+        if pull_request.draft:
+            pull_request = self.github_command.mark_ready(pull_request.number)
+            outcome = PublicationOutcome.UPDATED
 
         readback = self.github_query.get_pull_request(pull_request.number)
         if (
