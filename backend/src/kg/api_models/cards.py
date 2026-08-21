@@ -18,6 +18,8 @@ class CardResponse(BaseModel):
     mode: str
     isDeleted: bool
     isArchived: bool = False
+    isReaderHidden: bool = False
+    isReviewExcluded: bool = False
     inflections: list[str] = []
     linksByKind: dict[str, list[CardLinkSummaryResponse]] = Field(default_factory=dict)
     notebookId: str = "default"

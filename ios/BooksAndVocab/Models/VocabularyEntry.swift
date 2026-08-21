@@ -50,6 +50,8 @@ final class VocabularyEntry {
     var collocationExplanationsJSON: String = "{}"
     var graphLinksJSON: String = "{}"
     var isArchived: Bool = false
+    var isReaderHidden: Bool = false
+    var isReviewExcluded: Bool = false
 
     // Local spaced-review state
     var reviewIntervalHours: Double = VocabularyReviewPolicy.initialIntervalHours
@@ -114,8 +116,8 @@ final class VocabularyEntry {
     var isFailedAdd: Bool { syncState == .failed && syncAction == .add }
     var isFailedDelete: Bool { syncState == .failed && syncAction == .delete }
     var shouldUploadOnNextSync: Bool { isPendingAdd || isPendingDelete || isFailedAdd || isFailedDelete }
-    var shouldAppearInReader: Bool { syncAction != .delete && !isArchived }
-    var shouldAppearInReview: Bool { shouldAppearInKnowledgeList }
+    var shouldAppearInReader: Bool { syncAction != .delete && !isArchived && !isReaderHidden }
+    var shouldAppearInReview: Bool { shouldAppearInKnowledgeList && !isReviewExcluded }
     var shouldAppearInKnowledgeList: Bool { isSynced && syncAction != .delete && !isArchived }
     var shouldAppearInArchiveList: Bool { isSynced && syncAction != .delete && isArchived }
     var effectiveDateAdded: Date { dateAdded }

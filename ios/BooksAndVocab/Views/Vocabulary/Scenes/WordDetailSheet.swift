@@ -59,12 +59,18 @@ struct WordDetailSheet: View {
                     state: presenterState,
                     isArchived: entry.isArchived,
                     canArchive: entry.isSynced,
+                    isReaderHidden: entry.isReaderHidden,
+                    isReviewExcluded: entry.isReviewExcluded,
+                    canEditCardPreferences: entry.isSynced && cardPreferenceService != nil,
+                    showsCardManagement: offersLifecycleActions,
                     showsChrome: showsInlineChrome,
                     onClose: showsInlineChrome ? { handleClose() } : nil,
                     onEdit: { isEditing = true },
                     onLinkTapped: handleLinkTap,
                     onToggleArchive: offersLifecycleActions ? { handleToggleArchive() } : nil,
                     onDelete: offersLifecycleActions ? { isConfirmingDelete = true } : nil,
+                    onToggleReaderHidden: offersLifecycleActions ? { handleToggleReaderHidden() } : nil,
+                    onToggleReviewExcluded: offersLifecycleActions ? { handleToggleReviewExcluded() } : nil,
                     onAddLink: { showAddLink = true },
                     onDeleteLink: { link in
                         state.deleteLink(link, from: entry, allEntries: allEntries, kgService: kgService)
@@ -135,16 +141,20 @@ struct WordDetailSheet: View {
         externalLinkedCardStack ?? $localLinkedCardStack
     }
 
-    /// 封存與刪除只在「本 sheet 自己擁有 chrome」的宿主出現，兩者同進同退。
+    /// 四項卡片控制只在「本 sheet 自己擁有 chrome」的宿主出現，避免 linked overlay
+    /// 重複提供會改變卡片生命週期的入口。
     ///
     /// 唯一 `showsInlineChrome == false` 的宿主是 `LinkedCardOverlayStack`——它自繪
-    /// header，所以標題列的封存鈕在那裡根本不會被渲染。若不一併把刪除關掉，那個「點連結
-    /// 進來看一眼」的疊層就會變成**只能刪、不能封存**：風險軸完全相反。從同一個旗標推導，
-    /// 兩者就不會靠紀律各自漂移。要在那裡管理這張卡，正常開啟它即可。
+    /// header，不應在「點連結進來看一眼」的疊層中混入四個管理控制。要管理卡片，正常
+    /// 開啟它即可。
     ///
     /// `showsLifecycleActions` 是唯一的例外閥門，給截圖／行銷這種「要 chrome、不要
-    /// destructive 列入鏡」的呈現路徑用；不傳就是上面那條推導，app 內行為不變。
+    /// 管理控制列入鏡」的呈現路徑用；不傳就是上面那條推導，app 內行為不變。
     private var offersLifecycleActions: Bool { explicitLifecycleActions ?? showsInlineChrome }
+
+    private var cardPreferenceService: (any CardPreferenceUpdating)? {
+        kgService as? any CardPreferenceUpdating
+    }
 
     private var shouldUseLinkedOverlayStack: Bool {
         // 有外部 stack binding 時，overlay 由外部 LinkedCardOverlayStack 管理，不重複渲染
@@ -168,6 +178,32 @@ struct WordDetailSheet: View {
         }
     }
 
+    private func handleToggleReaderHidden() {
+        guard let cardPreferenceService else { return }
+        Task { @MainActor in
+            await state.setCardPreferences(
+                readerHidden: !entry.isReaderHidden,
+                reviewExcluded: nil,
+                for: entry,
+                kgService: cardPreferenceService,
+                modelContext: modelContext
+            )
+        }
+    }
+
+    private func handleToggleReviewExcluded() {
+        guard let cardPreferenceService else { return }
+        Task { @MainActor in
+            await state.setCardPreferences(
+                readerHidden: nil,
+                reviewExcluded: !entry.isReviewExcluded,
+                for: entry,
+                kgService: cardPreferenceService,
+                modelContext: modelContext
+            )
+        }
+    }
+
     /// 刪除是 local-first 軟刪（`queueDelete` 排進 outbox，離線可用），與封存的
     /// server-authoritative 語意相反 —— 所以這裡不需要回捲，但需要關掉 sheet：
     /// 讓使用者盯著一張已經不存在的卡是最糟的收尾。
@@ -184,9 +220,8 @@ struct WordDetailSheet: View {
         } else {
             modelContext.delete(entry)
         }
-        if modelContext.safeSaveWithToast(toastCoordinator) {
-            toastCoordinator.success(WordDetailCopy.deleted)
-        }
+        guard modelContext.safeSaveWithToast(toastCoordinator) else { return }
+        toastCoordinator.success(WordDetailCopy.deleted)
         handleClose()
     }
 

@@ -32,6 +32,8 @@ extension UITestFixtureSeed {
         entry.syncStatus = seed.syncStatus
         entry.actionType = seed.actionType
         entry.isArchived = seed.isArchived
+        entry.isReaderHidden = seed.isReaderHidden
+        entry.isReviewExcluded = seed.isReviewExcluded
         if let reviewIntervalHours = seed.reviewIntervalHours {
             entry.reviewIntervalHours = reviewIntervalHours
         }

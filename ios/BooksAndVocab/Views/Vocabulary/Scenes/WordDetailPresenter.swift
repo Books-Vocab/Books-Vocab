@@ -34,18 +34,24 @@ struct WordDetailPresenter: View {
     @Environment(\.appSkin) private var appSkin
 
     let state: State
-    /// 同為 live value。封存後 sheet 刻意不關,靠這顆圖示翻轉當回饋 **兼** undo 入口
-    /// ——再按一次就是解除封存,所以不需要帶動作的 undo toast（AppToastCoordinator 也沒有）。
+    /// 同為 live value。封存後 sheet 刻意不關，底部控制列翻轉成「解除封存」作為 undo。
     let isArchived: Bool
-    /// 尚未同步的卡不給封存:`archiveCard` 以 word + notebookId 打伺服器,server 上還
-    /// 沒有這張卡就會 404。與其讓它失敗再回捲,不如不顯示。
+    /// 尚未同步的卡仍顯示封存列，但因 server 尚未有對應卡片而 disabled。
     let canArchive: Bool
+    let isReaderHidden: Bool
+    let isReviewExcluded: Bool
+    /// Local-only cards keep the same four-row layout while the two remote
+    /// preference mutations wait for the first successful sync.
+    let canEditCardPreferences: Bool
+    let showsCardManagement: Bool
     let showsChrome: Bool
     let onClose: (() -> Void)?
     let onEdit: (() -> Void)?
     let onLinkTapped: (KGCardLinkSummary) -> Void
     let onToggleArchive: (() -> Void)?
     let onDelete: (() -> Void)?
+    let onToggleReaderHidden: (() -> Void)?
+    let onToggleReviewExcluded: (() -> Void)?
     let onAddLink: (() -> Void)?
     let onDeleteLink: ((KGCardLinkSummary) -> Void)?
     let onHideLink: ((KGCardLinkSummary) -> Void)?
@@ -60,7 +66,6 @@ struct WordDetailPresenter: View {
                         systemImage: state.systemImage,
                         onClose: { onClose?() },
                         trailing: {
-                            archiveButton
                             shareButton
                             if let onEdit {
                                 VocabChromeIconButton(systemImage: "pencil", label: "編輯".localized, action: onEdit)
@@ -242,33 +247,50 @@ struct WordDetailPresenter: View {
     }
 
     private var hasCardManagement: Bool {
-        onDelete != nil
+        showsCardManagement
     }
 
-    /// 卡片生命週期控制區。刻意壓在內容最底、與卡片之間隔一條 `AppAirDivider`
-    /// （hairline + 32pt margin，北極星二：border 退場、divider 進場）。
-    ///
-    /// 為什麼不跟封存並排在標題列：三個動作的可逆性差了兩個量級。封存完全可逆、頻率最高，
-    /// 值得標題列的單擊成本；刪除不可逆且會連帶帶走複習紀錄與知識連結，把它放進閱讀時
-    /// 反覆掃過的區域，等於訓練手指伸進一個會咬人的鄰居旁邊。
+    /// 卡片控制區統一壓在內容最底，四列使用同一個 44pt 觸控高度與左對齊。
+    /// 封存、刪除是 action；兩個顯示／複習偏好則是獨立 checkbox。
     @ViewBuilder
     private var cardManagementSection: some View {
-        // divider 只在真的有破壞性動作要被分隔出來時才畫。連結卡疊層（唯一沒有生命週期
-        // 動作的宿主）只剩那顆勾選框，不該因為這次改動被塞進一個沒有內容的分區——
-        // 它原本就只是貼在卡片下方的一列。
-        if onDelete != nil {
-            AppAirDivider()
-        }
+        AppAirDivider()
 
         VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
-            if let onDelete {
-                managementRow(
-                    title: WordDetailCopy.delete,
-                    systemImage: "trash",
-                    tone: appSkin.palette.destructive,
-                    action: onDelete
-                )
-            }
+            managementRow(
+                title: isArchived ? WordDetailCopy.unarchive : WordDetailCopy.archive,
+                systemImage: isArchived ? "archivebox.fill" : "archivebox",
+                tone: appSkin.palette.secondaryText,
+                action: onToggleArchive,
+                isEnabled: canArchive,
+                accessibilityIdentifier: "wordDetail.action.archive"
+            )
+
+            managementRow(
+                title: WordDetailCopy.delete,
+                systemImage: "trash",
+                tone: appSkin.palette.destructive,
+                action: onDelete,
+                isEnabled: onDelete != nil,
+                role: .destructive,
+                accessibilityIdentifier: "wordDetail.action.delete"
+            )
+
+            checkboxRow(
+                title: WordDetailCopy.hideFromReader,
+                isOn: isReaderHidden,
+                action: onToggleReaderHidden,
+                isEnabled: canEditCardPreferences,
+                accessibilityIdentifier: "wordDetail.toggle.readerHidden"
+            )
+
+            checkboxRow(
+                title: WordDetailCopy.excludeFromReview,
+                isOn: isReviewExcluded,
+                action: onToggleReviewExcluded,
+                isEnabled: canEditCardPreferences,
+                accessibilityIdentifier: "wordDetail.toggle.reviewExcluded"
+            )
         }
     }
 
@@ -276,34 +298,53 @@ struct WordDetailPresenter: View {
         title: String,
         systemImage: String,
         tone: Color,
-        action: @escaping () -> Void
+        action: (() -> Void)?,
+        isEnabled: Bool,
+        role: ButtonRole? = nil,
+        accessibilityIdentifier: String
     ) -> some View {
-        Button(action: action) {
+        Button(role: role, action: { action?() }) {
             HStack(spacing: appSkin.metrics.cardBlockInnerGap) {
                 Image(systemName: systemImage)
                     .font(appSkin.typography.body)
                 Text(title)
                     .font(appSkin.typography.caption)
             }
-            .foregroundStyle(tone)
-            // 只擴垂直觸控目標到 HIG 44pt 下限,不往右吃滿整列 —— 破壞性動作不該有
-            // 一條橫跨整個寬度的熱區。
-            .frame(minHeight: 44, alignment: .leading)
+            .foregroundStyle(isEnabled ? tone : appSkin.palette.quaternaryText)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .accessibilityIdentifier(accessibilityIdentifier)
     }
 
-    @ViewBuilder
-    private var archiveButton: some View {
-        if canArchive, let onToggleArchive {
-            VocabChromeIconButton(
-                systemImage: isArchived ? "archivebox.fill" : "archivebox",
-                label: isArchived ? WordDetailCopy.unarchive : WordDetailCopy.archive,
-                action: onToggleArchive
-            )
-            .animateContentFade(isArchived)
+    private func checkboxRow(
+        title: String,
+        isOn: Bool,
+        action: (() -> Void)?,
+        isEnabled: Bool,
+        accessibilityIdentifier: String
+    ) -> some View {
+        Button(action: { action?() }) {
+            HStack(spacing: appSkin.metrics.cardBlockInnerGap) {
+                Image(systemName: isOn ? "checkmark.square.fill" : "square")
+                    .font(appSkin.typography.body)
+                Text(title)
+                    .font(appSkin.typography.caption)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(isEnabled ? appSkin.palette.secondaryText : appSkin.palette.quaternaryText)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .accessibilityIdentifier(accessibilityIdentifier)
+        .accessibilityLabel(title)
+        .accessibilityValue(isOn ? L10n.string("a11y.toggle.on") : L10n.string("a11y.toggle.off"))
+        .accessibilityAddTraits(.isToggle)
+        .accessibilityRemoveTraits(.isButton)
     }
 
     @ViewBuilder

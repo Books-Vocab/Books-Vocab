@@ -13,6 +13,7 @@ from .crud import (
     delete_word_response,
     list_vocab_response,
     lookup_word_response,
+    update_word_preferences_response,
     update_word_content_response,
 )
 from .graph import (
@@ -47,4 +48,5 @@ __all__ = [
     "push_review_response",
     "unhide_graph_link_response",
     "update_word_content_response",
+    "update_word_preferences_response",
 ]

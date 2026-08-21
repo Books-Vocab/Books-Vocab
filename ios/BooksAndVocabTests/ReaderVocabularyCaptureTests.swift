@@ -137,6 +137,34 @@ struct ReaderVocabularyCaptureTests {
         #expect(!lookedUp.contains("foreigns"))
     }
 
+    @Test func lookedUpWords_excludesReaderHiddenEntries() throws {
+        let visible = makeEntry(
+            word: "visible",
+            rootForm: "see",
+            inflections: ["visibly"]
+        )
+        let hidden = makeEntry(
+            word: "hidden",
+            rootForm: "hide",
+            inflections: ["hiding"]
+        )
+        hidden.isReaderHidden = true
+
+        let lookedUp = Set(
+            ReaderVocabularyContext.lookedUpWords(
+                from: [visible, hidden],
+                notebookId: "default"
+            )
+        )
+
+        #expect(lookedUp.contains("visible"))
+        #expect(lookedUp.contains("see"))
+        #expect(lookedUp.contains("visibly"))
+        #expect(!lookedUp.contains("hidden"), "reader hidden cards must not feed reader lookup/highlight state")
+        #expect(!lookedUp.contains("hide"))
+        #expect(!lookedUp.contains("hiding"))
+    }
+
     // MARK: - saveEntry insert path
 
     @Test func saveEntry_insertsNewEntryWithBookIdAndResolvedNotebookId() throws {

@@ -32,6 +32,8 @@ class Card(SQLModel, table=True):
     notebook_id: str = SQLField(default="default")
     is_deleted: bool = SQLField(default=False)
     is_archived: bool = SQLField(default=False)
+    is_reader_hidden: bool = SQLField(default=False)
+    is_review_excluded: bool = SQLField(default=False)
     source: str | None = SQLField(default=None)  # JSON string
     # NFC-normalized lowercased content for fast indexed case/Unicode-insensitive lookup.
     # Populated on add/update; backfilled on schema migration.

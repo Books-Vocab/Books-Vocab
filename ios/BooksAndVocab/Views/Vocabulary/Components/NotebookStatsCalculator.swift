@@ -25,7 +25,9 @@ enum NotebookStatsCalculator {
     ) -> [String: NotebookStats] {
         var result: [String: NotebookStats] = [:]
         for entry in entries {
-            result[entry.notebookId, default: NotebookStats()].cardCount += 1
+            if entry.shouldAppearInKnowledgeList {
+                result[entry.notebookId, default: NotebookStats()].cardCount += 1
+            }
             if entry.shouldAppearInReview {
                 if entry.reviewCount > 0 && entry.nextReviewAt <= now {
                     result[entry.notebookId, default: NotebookStats()].dueCount += 1

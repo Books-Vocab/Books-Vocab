@@ -39,15 +39,19 @@ struct BackgroundSyncActorTests {
         id: String = "c1",
         content: String,
         sourceJSON: String?,
-        lastReviewedAt: String? = nil
+        lastReviewedAt: String? = nil,
+        readerHidden: Bool? = nil,
+        reviewExcluded: Bool? = nil
     ) throws -> KGCard {
         let sourceFragment = sourceJSON.map { ",\"source\":\($0)" } ?? ""
         let reviewFragment = lastReviewedAt.map { ",\"lastReviewedAt\":\"\($0)\"" } ?? ""
+        let readerHiddenFragment = readerHidden.map { ",\"isReaderHidden\":\($0)" } ?? ""
+        let reviewExcludedFragment = reviewExcluded.map { ",\"isReviewExcluded\":\($0)" } ?? ""
         let json = """
         {"id":"\(id)","content":"\(content)","meaning":"meaning-\(content)",
          "pos":null,"difficulty":null,"difficultyTier":null,"note":null,
          "collocations":[],"examples":["an example"],"mode":"recognition",
-         "isDeleted":false,"notebookId":"default"\(sourceFragment)\(reviewFragment)}
+         "isDeleted":false,"notebookId":"default"\(sourceFragment)\(reviewFragment)\(readerHiddenFragment)\(reviewExcludedFragment)}
         """.data(using: .utf8)!
         return try JSONDecoder().decode(KGCard.self, from: json)
     }
@@ -208,6 +212,47 @@ struct BackgroundSyncActorTests {
         let entry = try fetchEntry(container, word: "ephemeral")
         #expect(entry?.bookTitle == "Locally Known Book")
         #expect(entry?.chapterTitle == "Local Chapter")
+    }
+
+    @Test func syncDown_newEntry_mergesCardVisibilityPreferences() async throws {
+        let container = try makeContainer()
+        let actor = BackgroundSyncActor(modelContainer: container)
+        let card = try makeCard(
+            content: "quiet",
+            sourceJSON: nil,
+            readerHidden: true,
+            reviewExcluded: true
+        )
+
+        try await actor.pullCardsToLocal(
+            fetchedCards: [card],
+            isIncremental: true,
+            progress: { _, _, _ in }
+        )
+
+        let entry = try fetchEntry(container, word: "quiet")
+        #expect(entry?.isReaderHidden == true)
+        #expect(entry?.isReviewExcluded == true)
+        #expect(entry?.shouldAppearInReader == false)
+        #expect(entry?.shouldAppearInReview == false)
+    }
+
+    @Test func contentDiffers_detectsCardVisibilityPreferenceChanges() throws {
+        let entry = VocabularyEntry(
+            word: "quiet",
+            translation: "meaning-quiet",
+            context: "an example",
+            bookTitle: "Book"
+        )
+        entry.markSynced()
+        let card = try makeCard(
+            content: "quiet",
+            sourceJSON: nil,
+            readerHidden: true,
+            reviewExcluded: false
+        )
+
+        #expect(BackgroundSyncActor.contentDiffers(card: card, from: entry))
     }
 
     // MARK: - Orphan cleanup safety-valve signalling

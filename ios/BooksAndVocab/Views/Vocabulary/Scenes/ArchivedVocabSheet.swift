@@ -31,7 +31,7 @@ struct ArchivedVocabSheet: View {
                             systemImage: "archivebox",
                             // 舊文案是「左滑卡片即可封存。」——那個手勢不存在：單字列在
                             // KGVocabPresenter 是 LazyVStack 而非 List，掛不了 swipeActions。
-                            description: L10n.string("開啟單字詳情，點右上角的封存鈕即可收進這裡。")
+                            description: L10n.string("開啟單字詳情，點底部的封存按鈕即可收進這裡。")
                         )
                         Spacer()
                     }
