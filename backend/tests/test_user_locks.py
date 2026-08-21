@@ -3,6 +3,7 @@ import asyncio
 
 import pytest
 
+import kg.deps as deps
 from kg.deps import _USER_LOCKS, get_user_lock
 
 
@@ -29,3 +30,32 @@ async def test_concurrent_lock_creation():
         get_user_lock("user_b"),
     )
     assert results[0] is results[1] is results[2]
+
+
+@pytest.mark.asyncio
+async def test_lru_keeps_held_and_queued_user_lock(monkeypatch):
+    monkeypatch.setattr(deps, "_MAX_USER_LOCKS", 1)
+
+    lock = await get_user_lock("user_a")
+    await lock.acquire()
+    queued = asyncio.create_task(lock.acquire())
+    await asyncio.sleep(0)
+
+    try:
+        assert not queued.done()
+        await get_user_lock("user_b")
+        assert await get_user_lock("user_a") is lock
+
+        # Release the holder without yielding: the waiter is still queued
+        # while the lock is momentarily unlocked, so LRU must retain it.
+        lock.release()
+        assert not queued.done()
+        await get_user_lock("user_c")
+        assert await get_user_lock("user_a") is lock
+    finally:
+        if not queued.done():
+            if lock.locked():
+                lock.release()
+            await queued
+        if lock.locked():
+            lock.release()
