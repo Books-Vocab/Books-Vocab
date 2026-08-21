@@ -87,6 +87,22 @@ def test_ios_coverage_keeps_tests_out_of_default_app_target_selection() -> None:
     assert payload["summary"]["lineCoverage"] == 50.0
 
 
+def test_ios_coverage_fails_closed_for_unknown_explicit_target() -> None:
+    fixture = {
+        "targets": [
+            {"name": "BooksAndVocab", "lineCoverage": 0.5, "coveredLines": 50, "executableLines": 100}
+        ]
+    }
+
+    proc = run_coverage(fixture, "--target", "MissingTarget")
+
+    assert proc.returncode == 2
+    payload = json.loads(proc.stdout)
+    assert payload["verdict"] == "error"
+    assert payload["summary"]["target"] == "MissingTarget"
+    assert payload["errors"][0]["key"] == "coverage-unavailable"
+
+
 def test_ios_coverage_reports_lowest_covered_files_for_selected_target() -> None:
     fixture = {
         "targets": [

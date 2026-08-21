@@ -156,10 +156,11 @@ def is_app_target(target: CoverageTarget) -> bool:
 
 
 def select_target(targets: list[CoverageTarget], name: str | None) -> CoverageTarget | None:
-    if name:
+    if name is not None:
         for target in targets:
             if target.name == name:
                 return target
+        return None
     for target in targets:
         if target.name == DEFAULT_TARGET:
             return target
@@ -307,7 +308,7 @@ def format_text(payload: dict[str, Any]) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Emit stable iOS coverage JSON from an Xcode .xcresult")
     parser.add_argument("--xcresult", required=True, help="Path to Test.xcresult")
-    parser.add_argument("--target", default=DEFAULT_TARGET, help="Target to report, default: BooksAndVocab")
+    parser.add_argument("--target", help="Target to report, default: BooksAndVocab")
     parser.add_argument("--fail-under-lines", help="Fail if selected target line coverage is below this percent")
     parser.add_argument(
         "--max-low-files",
