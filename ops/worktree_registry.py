@@ -41,7 +41,8 @@ from lib.worktree_scope import coerce_scope, normalise_scope, scope_problems
 
 SCHEMA = "kg.worktree.registry.v2"
 STATUS_ACTIVE = "active"
-RESOLVE_STATUS = ("published", "merged", "abandoned")
+STATUS_CLEANUP_PENDING = "cleanup_pending"
+RESOLVE_STATUS = (STATUS_CLEANUP_PENDING, "published", "merged", "abandoned")
 HAND_BACK_SEAL_SCHEMA = "kg.worktree.handback.v1"
 HAND_BACK_OUTCOMES = ("changed", "no-op-existing-fix")
 GREEN_ACCEPTANCE_STATUSES = {"pass", "passed", "green", "ok", "success"}
@@ -297,6 +298,13 @@ def _register_record(
     existing = next((r for r in state["records"]
                      if isinstance(r, dict) and (r.get("branch") == branch
                          or _norm(str(r.get("path") or "")) == path)), None)
+    if existing is not None and existing.get("status") == STATUS_CLEANUP_PENDING:
+        return EXIT_CLAIMED, {
+            "reason": "local assets are protected by an exact cleanup lease",
+            "branch": existing.get("branch"),
+            "path": existing.get("path"),
+            "claim_generation": existing.get("claim_generation"),
+        }
     if existing is not None and existing.get("status") == STATUS_ACTIVE:
         generation = _claim_generation(existing, "claim_generation")
         existing["claim_generation"] = (generation if generation is not None else 0) + 1
@@ -681,11 +689,12 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     state_path = _state_path(args)
     with _ledger_lock(state_path):
         state = load_state(state_path)
-        source_statuses = (
-            {STATUS_ACTIVE}
-            if args.status == "published"
-            else {STATUS_ACTIVE, "published"}
-        )
+        source_statuses = {
+            STATUS_CLEANUP_PENDING: {STATUS_ACTIVE, "published"},
+            "published": {STATUS_ACTIVE, STATUS_CLEANUP_PENDING},
+            "merged": {STATUS_ACTIVE, "published", STATUS_CLEANUP_PENDING},
+            "abandoned": {STATUS_ACTIVE, "published"},
+        }[args.status]
         matches = [
             record
             for record in state.get("records", [])
@@ -721,7 +730,10 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         if len(matches) != 1:
             print("✗ registry transition selector is ambiguous", file=sys.stderr)
             return EXIT_CLAIMED
-        if args.status == "published" and not _has_valid_handback(matches[0]):
+        if (
+            args.status in {STATUS_CLEANUP_PENDING, "published"}
+            and not _has_valid_handback(matches[0])
+        ):
             print("✗ published transition requires a valid physical hand-back", file=sys.stderr)
             return EXIT_CLAIMED
         _, now_iso = resolve_now(args.at)

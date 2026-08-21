@@ -54,7 +54,7 @@ class CleanupService:
             and record.path.resolve() == Path(receipt.worktree_path).resolve()
             and record.claim_generation == receipt.claim_generation
             and record.handed_back_sha == receipt.head_sha
-            and record.status in {"active", "published", "merged"}
+            and record.status in {"active", "cleanup_pending", "published", "merged"}
         ]
         if len(matches) != 1:
             raise PolicyViolation("local claim does not resolve to one exact handback")
@@ -69,6 +69,37 @@ class CleanupService:
         ):
             raise PolicyViolation("local claim differs from typed handback")
         return record
+
+    def _acquire_cleanup_lease(
+        self, receipt: HandbackReceipt, record: RegistrySnapshot
+    ) -> RegistrySnapshot:
+        if record.status == "merged":
+            raise PolicyViolation("merged lane cannot acquire a local cleanup lease")
+        if record.status != "cleanup_pending":
+            self.registry_command.resolve(
+                receipt.lane_id,
+                "cleanup_pending",
+                expected_claim_generation=receipt.claim_generation,
+                expected_branch=receipt.branch,
+                expected_path=receipt.worktree_path,
+                expected_head_sha=receipt.head_sha,
+            )
+        leased = self._record(receipt)
+        if leased.status != "cleanup_pending":
+            raise PolicyViolation("registry cleanup lease did not read back exactly")
+        return leased
+
+    def _complete_cleanup_lease(
+        self, receipt: HandbackReceipt, disposition: str
+    ) -> None:
+        self.registry_command.resolve(
+            receipt.lane_id,
+            disposition,
+            expected_claim_generation=receipt.claim_generation,
+            expected_branch=receipt.branch,
+            expected_path=receipt.worktree_path,
+            expected_head_sha=receipt.head_sha,
+        )
 
     def _pull_request(
         self,
@@ -123,16 +154,9 @@ class CleanupService:
         if self.git_query.remote_branch_sha(receipt.branch) != receipt.head_sha:
             raise PolicyViolation("remote branch does not preserve published HEAD")
         self._validate_local_assets(receipt)
-        if record.status == "active":
-            self.registry_command.resolve(
-                receipt.lane_id,
-                "published",
-                expected_claim_generation=receipt.claim_generation,
-                expected_branch=receipt.branch,
-                expected_path=receipt.worktree_path,
-                expected_head_sha=receipt.head_sha,
-            )
+        self._acquire_cleanup_lease(receipt, record)
         self._remove_local_assets(receipt)
+        self._complete_cleanup_lease(receipt, "published")
         return self._result(receipt, "published")
 
     def _validate_local_assets(self, receipt: HandbackReceipt) -> None:
@@ -180,6 +204,16 @@ class CleanupService:
     ) -> CleanupResult:
         record = self._record(receipt)
         self._pull_request(receipt, pull_request_number, expected_state="MERGED")
+        if record.status == "merged":
+            result = self._result(receipt, "merged")
+            if not (
+                result.worktree_absent
+                and result.local_branch_absent
+                and result.remote_branch_absent
+            ):
+                raise PolicyViolation("merged registry record has unreconciled assets")
+            return result
+        self._acquire_cleanup_lease(receipt, record)
         self._remove_local_assets(receipt)
         remote_sha = self.git_query.remote_branch_sha(receipt.branch)
         if remote_sha is not None:
@@ -188,15 +222,7 @@ class CleanupService:
             self.git_command.delete_remote_branch(
                 receipt.branch, expected_head_sha=receipt.head_sha
             )
-        if record.status != "merged":
-            self.registry_command.resolve(
-                receipt.lane_id,
-                "merged",
-                expected_claim_generation=receipt.claim_generation,
-                expected_branch=receipt.branch,
-                expected_path=receipt.worktree_path,
-                expected_head_sha=receipt.head_sha,
-            )
+        self._complete_cleanup_lease(receipt, "merged")
         return self._result(receipt, "merged")
 
     def _result(self, receipt: HandbackReceipt, disposition: str) -> CleanupResult:

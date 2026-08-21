@@ -361,6 +361,7 @@ def test_reregister_revokes_current_handback_admission_and_retains_receipt(
     )
 
     assert rc == registry.EXIT_CLAIMED
+    assert refused["owners"][0]["branch"] == "feat/handed-back"
     assert refused["owners"][0]["branch"] == handed_back["branch"]
 
 
@@ -444,7 +445,26 @@ def test_changed_registered_worktree_fails_closed_for_admission(
     )
 
     assert rc == registry.EXIT_CLAIMED
-    assert refused["owners"][0]["branch"] == "feat/handed-back"
+
+
+def test_cleanup_lease_blocks_reclaim_until_exact_completion(tmp_path: Path) -> None:
+    handed_back = _idle_handed_back_record(tmp_path)
+    handed_back["status"] = registry.STATUS_CLEANUP_PENDING
+    state = {"schema": registry.SCHEMA, "records": [handed_back]}
+
+    rc, refusal = registry._register_record(
+        state,
+        branch=handed_back["branch"],
+        path=handed_back["path"],
+        intent="racing reclaim",
+        base=handed_back["base_sha"],
+        external_ids=handed_back["external_ids"],
+        scope=handed_back["scope"],
+    )
+
+    assert rc == registry.EXIT_CLAIMED
+    assert refusal["reason"] == "local assets are protected by an exact cleanup lease"
+    assert state["records"] == [handed_back]
 
 
 @pytest.mark.parametrize("worktree_state", ("missing", "not-a-worktree"))

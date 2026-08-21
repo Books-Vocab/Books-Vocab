@@ -102,6 +102,7 @@ class PullRequestSnapshot:
     state: str
     draft: bool
     mergeable: bool
+    base_branch: str = "main"
     title: str = ""
     body: str = ""
     auto_merge_enabled: bool = False

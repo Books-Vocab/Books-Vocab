@@ -121,18 +121,6 @@ def derive_lane_decision(facts: LaneFacts) -> LaneDecision:
         return LaneDecision(
             LaneState.BLOCKED_DIRTY, NextAction.RECOVER_DIRTY, "worktree is dirty"
         )
-    if facts.published and facts.local_assets_present:
-        return LaneDecision(
-            LaneState.PUBLISHED_LOCAL_CLEANUP,
-            NextAction.CLEANUP_LOCAL,
-            "published PR is durable; local assets remain",
-        )
-    if facts.has_worktree and (not facts.owner_known or not facts.owner_reachable):
-        return LaneDecision(
-            LaneState.BLOCKED_OWNER,
-            NextAction.RECOVER_OWNER,
-            "worktree owner is unavailable",
-        )
     if (facts.merged or facts.abandoned) and facts.cleanup_complete:
         return LaneDecision(
             LaneState.DONE,
@@ -150,6 +138,18 @@ def derive_lane_decision(facts: LaneFacts) -> LaneDecision:
             LaneState.UNKNOWN,
             NextAction.INSPECT,
             "terminal lane lacks an approved cleanup policy",
+        )
+    if facts.published and facts.local_assets_present:
+        return LaneDecision(
+            LaneState.PUBLISHED_LOCAL_CLEANUP,
+            NextAction.CLEANUP_LOCAL,
+            "published PR is durable; local assets remain",
+        )
+    if facts.has_worktree and (not facts.owner_known or not facts.owner_reachable):
+        return LaneDecision(
+            LaneState.BLOCKED_OWNER,
+            NextAction.RECOVER_OWNER,
+            "worktree owner is unavailable",
         )
     if facts.holds:
         return LaneDecision(

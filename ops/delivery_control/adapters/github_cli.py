@@ -20,7 +20,7 @@ from .errors import AdapterCommandError, AdapterPayloadError
 from .subprocess_runner import SubprocessCommandRunner
 
 _PR_FIELDS = (
-    "number,url,headRefName,baseRefOid,headRefOid,state,isDraft,mergeable,title,body,"
+    "number,url,headRefName,baseRefName,baseRefOid,headRefOid,state,isDraft,mergeable,title,body,"
     "autoMergeRequest"
 )
 
@@ -56,6 +56,7 @@ class GitHubCliAdapter:
             "number": int,
             "url": str,
             "headRefName": str,
+            "baseRefName": str,
             "baseRefOid": str,
             "headRefOid": str,
             "state": str,
@@ -77,6 +78,7 @@ class GitHubCliAdapter:
             number=payload["number"],
             url=payload["url"],
             branch=payload["headRefName"],
+            base_branch=payload["baseRefName"],
             base_sha=payload["baseRefOid"],
             head_sha=payload["headRefOid"],
             state=payload["state"],
@@ -87,20 +89,8 @@ class GitHubCliAdapter:
             auto_merge_enabled=auto_merge_request is not None,
         )
 
-    def list_open_pull_requests(self) -> PullRequestInventory:
-        payload = self._json(
-            (
-                "gh",
-                "pr",
-                "list",
-                "--state",
-                "open",
-                "--limit",
-                "200",
-                "--json",
-                _PR_FIELDS,
-            )
-        )
+    @classmethod
+    def _pull_request_inventory(cls, payload: object) -> PullRequestInventory:
         if not isinstance(payload, list):
             raise AdapterPayloadError("GitHub PR list must be a JSON list")
         records: list[PullRequestSnapshot] = []
@@ -110,7 +100,7 @@ class GitHubCliAdapter:
             if isinstance(item, Mapping):
                 identity = f"PR#{item.get('number', index)}"
                 try:
-                    records.append(self._pull_request(item))
+                    records.append(cls._pull_request(item))
                     continue
                 except AdapterPayloadError as error:
                     reason = str(error)
@@ -118,6 +108,24 @@ class GitHubCliAdapter:
                 reason = "PR entry is not an object"
             problems.append(InventoryProblem("github", identity, reason))
         return PullRequestInventory(records=tuple(records), problems=tuple(problems))
+
+    def list_open_pull_requests(self) -> PullRequestInventory:
+        payload = self._json(
+            (
+                "gh", "pr", "list", "--state", "open", "--limit", "200",
+                "--json", _PR_FIELDS,
+            )
+        )
+        return self._pull_request_inventory(payload)
+
+    def list_pull_requests_for_branch(self, branch: str) -> PullRequestInventory:
+        payload = self._json(
+            (
+                "gh", "pr", "list", "--state", "all", "--head", branch,
+                "--limit", "100", "--json", _PR_FIELDS,
+            )
+        )
+        return self._pull_request_inventory(payload)
 
     def recent_merge_times(self, *, limit: int = 100) -> tuple[datetime, ...]:
         if type(limit) is not int or not 1 <= limit <= 100:
@@ -321,7 +329,11 @@ class GitHubCliAdapter:
         self, *, number: int, expected_base_sha: str, expected_head_sha: str
     ) -> None:
         before = self.get_pull_request(number)
-        if before.base_sha != expected_base_sha or before.head_sha != expected_head_sha:
+        if (
+            before.base_branch != "main"
+            or before.base_sha != expected_base_sha
+            or before.head_sha != expected_head_sha
+        ):
             raise CompareAndSwapConflict("PR tuple changed before enqueue")
         if not self.merge_queue_enabled("main"):
             raise CompareAndSwapConflict("main has no native merge queue rule")
@@ -337,7 +349,14 @@ class GitHubCliAdapter:
             )
         )
         after = self.get_pull_request(number)
-        if after.base_sha != expected_base_sha or after.head_sha != expected_head_sha:
+        if after.base_branch != "main" or after.head_sha != expected_head_sha:
+            if after.state == "OPEN" and after.auto_merge_enabled:
+                self._run(("gh", "pr", "merge", str(number), "--disable-auto"))
+                rolled_back = self.get_pull_request(number)
+                if rolled_back.state == "OPEN" and rolled_back.auto_merge_enabled:
+                    raise CompareAndSwapConflict(
+                        "PR tuple changed and queue rollback did not read back"
+                    )
             raise CompareAndSwapConflict("PR tuple changed during enqueue")
         if after.state == "OPEN" and not after.auto_merge_enabled:
             raise CompareAndSwapConflict("PR did not read back as queue-admitted")

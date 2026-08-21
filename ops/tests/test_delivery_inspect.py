@@ -80,7 +80,15 @@ class FakeGitHub:
         self.problems = problems
 
     def list_open_pull_requests(self) -> PullRequestInventory:
-        return PullRequestInventory(self.pull_requests, self.problems)
+        return PullRequestInventory(
+            tuple(item for item in self.pull_requests if item.state == "OPEN"),
+            self.problems,
+        )
+
+    def list_pull_requests_for_branch(self, branch: str) -> PullRequestInventory:
+        return PullRequestInventory(
+            tuple(item for item in self.pull_requests if item.branch == branch)
+        )
 
     def find_open_pull_request(self, branch: str) -> PullRequestSnapshot | None:
         return next(
@@ -163,7 +171,9 @@ def _snapshot(
     )
 
 
-def _pull_request(path: Path, *, head: str = "b" * 40) -> PullRequestSnapshot:
+def _pull_request(
+    path: Path, *, head: str = "b" * 40, state: str = "OPEN"
+) -> PullRequestSnapshot:
     receipt = _receipt(path)
     return PullRequestSnapshot(
         number=1,
@@ -171,7 +181,7 @@ def _pull_request(path: Path, *, head: str = "b" * 40) -> PullRequestSnapshot:
         branch="feat/one",
         base_sha="a" * 40,
         head_sha=head,
-        state="OPEN",
+        state=state,
         draft=False,
         mergeable=True,
         title="fix: one",
@@ -261,6 +271,41 @@ def test_published_lane_with_local_branch_is_classified_for_cleanup(
     )
 
     assert lane.decision.state is LaneState.PUBLISHED_LOCAL_CLEANUP
+
+
+def test_interrupted_cleanup_lease_remains_visible_for_retry(tmp_path: Path) -> None:
+    path = tmp_path / "lane"
+    leased = _record(path, status="cleanup_pending")
+    service = InspectService(
+        registry=FakeRegistry((leased,)),
+        git=FakeGit((), {}, {"feat/one": "b" * 40}),
+        github=FakeGitHub((_pull_request(path),)),
+        runtime=FakeRuntime(),
+    )
+
+    lane = next(
+        item for item in service.inspect().lanes if item.key.startswith("published:")
+    )
+
+    assert lane.decision.state is LaneState.PUBLISHED_LOCAL_CLEANUP
+
+
+def test_merged_pr_remains_visible_for_terminal_cleanup(tmp_path: Path) -> None:
+    path = tmp_path / "lane"
+    published = _record(path, status="published")
+    service = InspectService(
+        registry=FakeRegistry((published,)),
+        git=FakeGit((), {}),
+        github=FakeGitHub((_pull_request(path, state="MERGED"),)),
+        runtime=FakeRuntime(),
+    )
+
+    lane = next(
+        item for item in service.inspect().lanes if item.key.startswith("published:")
+    )
+
+    assert lane.decision.state is LaneState.TERMINAL_CLEANUP
+    assert lane.pull_requests[0].state == "MERGED"
 
 
 def test_published_lane_requires_exact_machine_receipt_before_queue(

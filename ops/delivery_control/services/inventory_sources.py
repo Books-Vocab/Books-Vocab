@@ -20,6 +20,7 @@ from .correlation import collision_keys, inspect_registered
 
 ACTIVE = "active"
 PUBLISHED = "published"
+CLEANUP_PENDING = "cleanup_pending"
 
 
 @dataclass(frozen=True)
@@ -54,11 +55,31 @@ def collect_inventory_sources(
     records = registry_inventory.records
     active_records = tuple(item for item in records if item.status == ACTIVE)
     published_records = tuple(
-        item for item in records if item.status == PUBLISHED
+        item for item in records if item.status in {PUBLISHED, CLEANUP_PENDING}
     )
     physical_by_path = {item.path.resolve(): item for item in physical}
+    pull_requests = list(github_inventory.records)
+    github_problems = list(github_inventory.problems)
+    known_pr_numbers = {item.number for item in pull_requests}
+    open_branches = {item.branch for item in pull_requests}
+    for record in published_records:
+        if record.branch in open_branches:
+            continue
+        try:
+            branch_inventory = github.list_pull_requests_for_branch(record.branch)
+        except DeliverySourceError as error:
+            github_problems.append(
+                InventoryProblem("github", record.branch, str(error))
+            )
+            continue
+        github_problems.extend(branch_inventory.problems)
+        for pull_request in branch_inventory.records:
+            if pull_request.number not in known_pr_numbers:
+                pull_requests.append(pull_request)
+                known_pr_numbers.add(pull_request.number)
+
     mutable_prs_by_branch: dict[str, list[PullRequestSnapshot]] = {}
-    for pull_request in github_inventory.records:
+    for pull_request in pull_requests:
         mutable_prs_by_branch.setdefault(pull_request.branch, []).append(
             pull_request
         )
@@ -80,8 +101,7 @@ def collect_inventory_sources(
         lane_problems[record.lane_id] = tuple(problems)
 
     pr_paths: dict[int, tuple[str, ...]] = {}
-    github_problems = list(github_inventory.problems)
-    for pull_request in github_inventory.records:
+    for pull_request in pull_requests:
         try:
             pr_paths[pull_request.number] = github.changed_paths(
                 pull_request.number
@@ -110,7 +130,7 @@ def collect_inventory_sources(
     working_paths = {
         item.path.resolve() for item in (*active_records, *published_records)
     }
-    for pull_request in github_inventory.records:
+    for pull_request in pull_requests:
         if pull_request.branch not in working_branches:
             path_sets[f"pr:{pull_request.number}"] = set(
                 pr_paths.get(pull_request.number, ())
@@ -141,7 +161,7 @@ def collect_inventory_sources(
         active_records=active_records,
         published_records=published_records,
         physical=physical,
-        pull_requests=github_inventory.records,
+        pull_requests=tuple(pull_requests),
         live_main_sha=live_main_sha,
         local_main_sha=local_main_sha,
         physical_by_path=physical_by_path,

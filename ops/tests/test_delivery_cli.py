@@ -293,11 +293,12 @@ def test_release_retry_recovers_after_registry_publish_then_cleanup_failure() ->
 
     with pytest.raises(CompareAndSwapConflict, match="removal"):
         app.publish(lane_id="DIRECT-CLI", title="fix: exact delivery")
-    assert registry.record.status == "published"
+    assert registry.record.status == "cleanup_pending"
     assert git.worktrees
 
     app.release_published(41)
 
+    assert registry.record.status == "published"
     assert git.worktrees == ()
     assert git.local is None
 

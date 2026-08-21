@@ -80,14 +80,15 @@ def project_active_lane(
         body_exact = _pr_receipt_matches_registry(
             record, pull_request, problems
         )
-        try:
-            check = github.required_check_snapshot(pull_request.number)
-        except DeliverySourceError as error:
-            problems.append(
-                InventoryProblem(
-                    "github", f"PR#{pull_request.number}", str(error)
+        if pull_request.state == "OPEN":
+            try:
+                check = github.required_check_snapshot(pull_request.number)
+            except DeliverySourceError as error:
+                problems.append(
+                    InventoryProblem(
+                        "github", f"PR#{pull_request.number}", str(error)
+                    )
                 )
-            )
     lane_collision = f"lane:{record.lane_id}" in sources.collisions
     scope_exact = snapshot is not None and scope_matches_snapshot(
         record, snapshot
@@ -207,14 +208,15 @@ def project_published_lane(
         body_exact = _pr_receipt_matches_registry(
             record, pull_request, problems
         )
-        try:
-            check = github.required_check_snapshot(pull_request.number)
-        except DeliverySourceError as error:
-            problems.append(
-                InventoryProblem(
-                    "github", f"PR#{pull_request.number}", str(error)
+        if pull_request.state == "OPEN":
+            try:
+                check = github.required_check_snapshot(pull_request.number)
+            except DeliverySourceError as error:
+                problems.append(
+                    InventoryProblem(
+                        "github", f"PR#{pull_request.number}", str(error)
+                    )
                 )
-            )
         if tuple(sorted(sources.pr_paths.get(pull_request.number, ()))) != tuple(
             sorted(record.scope.paths)
         ):
@@ -228,6 +230,7 @@ def project_published_lane(
     local_assets_present = (
         physical_ref is not None or git.local_branch_sha(record.branch) is not None
     )
+    remote_assets_present = git.remote_branch_sha(record.branch) is not None
     collision_key = f"published:{record.lane_id}:{record.claim_generation}"
     lane_collision = collision_key in sources.collisions
     merge_exact = (
@@ -247,6 +250,17 @@ def project_published_lane(
         and check.head_sha == pull_request.head_sha
         and check.status is CheckStatus.SUCCESS
         and not has_explicit_hold(pull_request)
+    )
+    cleanup_exact = (
+        not problems
+        and not lane_collision
+        and len(branch_prs) == 1
+        and pull_request is not None
+        and pull_request.state == "MERGED"
+        and pull_request.head_sha == record.handed_back_sha
+        and body_exact
+        and record.handback_valid
+        and record.handback_claim_generation == record.claim_generation
     )
     holds = (
         frozenset({HoldKind.SECURITY})
@@ -276,6 +290,13 @@ def project_published_lane(
                 ),
                 mergeable=pull_request.mergeable if pull_request else False,
                 merge_policy_passed=merge_exact,
+                cleanup_policy_passed=cleanup_exact,
+                merged=pull_request is not None and pull_request.state == "MERGED",
+                cleanup_complete=(
+                    record.status == "merged"
+                    and not local_assets_present
+                    and not remote_assets_present
+                ),
                 holds=holds,
             )
         ),

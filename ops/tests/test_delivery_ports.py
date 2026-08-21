@@ -80,6 +80,11 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
         def list_open_pull_requests(self) -> PullRequestInventory:
             return PullRequestInventory(records=())
 
+        def list_pull_requests_for_branch(
+            self, branch: str
+        ) -> PullRequestInventory:
+            return PullRequestInventory(records=())
+
         def find_open_pull_request(self, branch: str) -> PullRequestSnapshot | None:
             return None
 

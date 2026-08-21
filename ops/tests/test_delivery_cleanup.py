@@ -248,7 +248,7 @@ def test_publish_release_moves_durable_queue_to_github_and_removes_local_assets(
         receipt, registry=registry, git=git, state="OPEN"
     ).release_after_publish(receipt=receipt, pull_request_number=9)
 
-    assert registry.transitions == ["published"]
+    assert registry.transitions == ["cleanup_pending", "published"]
     assert git.actions == ["remove-worktree", "delete-local"]
     assert result.worktree_absent and result.local_branch_absent
     assert not result.remote_branch_absent
@@ -277,7 +277,7 @@ def test_publish_release_retry_is_idempotent_after_local_assets_are_absent() -> 
         receipt, registry=registry, git=git, state="OPEN"
     ).release_after_publish(receipt=receipt, pull_request_number=9)
 
-    assert registry.transitions == []
+    assert registry.transitions == ["cleanup_pending", "published"]
     assert git.actions == []
     assert result.worktree_absent and result.local_branch_absent
 
@@ -291,7 +291,7 @@ def test_merged_cleanup_removes_exact_remote_and_terminalizes_registry() -> None
         receipt, registry=registry, git=git, state="MERGED"
     ).finalize_merged(receipt=receipt, pull_request_number=9)
 
-    assert registry.transitions == ["merged"]
+    assert registry.transitions == ["cleanup_pending", "merged"]
     assert git.actions == ["delete-remote"]
     assert result.remote_branch_absent
 
@@ -348,7 +348,7 @@ def test_cleanup_result_readback_refuses_rebound_sealed_path() -> None:
             receipt=receipt, pull_request_number=9
         )
 
-    assert registry.transitions == ["published"]
+    assert registry.transitions == ["cleanup_pending", "published"]
     assert git.actions == ["remove-worktree", "delete-local"]
 
 

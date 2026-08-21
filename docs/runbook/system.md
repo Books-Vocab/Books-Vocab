@@ -68,7 +68,7 @@ workflow `pr-gate` 的 check run `confidence` 失敗、非預期 skip、取消�
 ./ops/delivery.py release-published --pr <number>
 ```
 
-`receipt` 只把唯一 active、clean、owner-bound、Scope-exact 的 `kg.worktree.handback.v1` 正規化為 `kg.delivery.handback.v1`。`publish` 先以 compare-and-swap push exact branch，建立／修復非 draft PR，驗證 PR readback 與 machine receipt，再把 local claim 轉成 `published` 並移除 local worktree／branch。若 durable PR 已完成、後續 registry transition 或 local removal 中斷，保留原錯誤，不回退 PR；修復 source 後重跑同一 `publish`，或用 `release-published` 從 PR receipt 完成 idempotent local release。
+`receipt` 只把唯一 active、clean、owner-bound、Scope-exact 的 `kg.worktree.handback.v1` 正規化為 `kg.delivery.handback.v1`。`publish` 先以 compare-and-swap push exact branch，建立／修復非 draft PR，驗證 PR readback 與 machine receipt，再取得 registry `cleanup_pending` lease；lease 會阻擋同 branch／path 的新 claim，local worktree／branch 精確移除後才完成為 `published`。若 durable PR 已完成、後續 lease 或 local removal 中斷，保留原錯誤、不回退 PR；重跑同一 `publish`，或用 `release-published` 從 PR receipt 完成 idempotent local release。
 
 PR readiness workflow 的 parser 入口是：
 
@@ -87,7 +87,7 @@ PR readiness workflow 的 parser 入口是：
 ./ops/delivery.py --repo <canonical-checkout> sync-main
 ```
 
-`queue` 只接受 registry `published`、PR body／paths／head／live base、all required checks、mergeability 都 exact 且無 hold 的 candidate，並用 exact head 送進 GitHub native merge queue；`--hold` 是 typed hard stop，不是 override。`cleanup-merged` 只依 exact merged PR receipt 移除匹配的 local residue／remote branch，再 terminalize registry record。`sync-main` 只在 `<canonical-checkout>` clean、位於 `main`、local ref 與 live `origin/main` 未在 preflight 後漂移時執行 `--ff-only`；不得在 feature worktree 執行，也沒有 force-reset fallback。
+`queue` 只接受 registry `published`、PR body／paths／head／live base、target branch=`main`、all required checks、mergeability 都 exact 且無 hold 的 candidate，並以 expected head 送進 GitHub native merge queue；enqueue 後 `main` tip 自然前進由 merge group 重驗，不被誤判為 side-effect 失敗，retarget／head drift 則撤銷可撤銷的 auto-merge 並 fail closed。`--hold` 是 typed hard stop，不是 override。inventory 會對每個無 open mapping 的 `published` record 精確補讀同 branch 的 terminal PR，讓 merged cleanup 不會因 open-only 列表消失。`cleanup-merged` 只依 exact merged PR receipt 移除匹配的 local residue／remote branch，再 terminalize registry record。`sync-main` 只在 `<canonical-checkout>` clean、位於 `main`、local ref 與 live `origin/main` 未在 preflight 後漂移時執行 `--ff-only`；不得在 feature worktree 執行，也沒有 force-reset fallback。
 
 ### 錯誤隔離
 

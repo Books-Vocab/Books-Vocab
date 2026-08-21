@@ -170,7 +170,7 @@ CM 只在 PR 的 required checks、review、文件影響與安全條件滿足後
 - hand-back 必須保留 dispatch provenance 與 recipient：IM dispatch 回同一 IM；User dispatch 回指定 IM 或 Worker 在交接前選定的 IM；沒有 recipient 不得宣稱 hand-back 完成。
 - typed `kg.worktree.handback.v1` hand-back 必須在交接當下以 `git ls-remote origin refs/heads/main` 捕獲 `origin_main_sha`；delivery control 只把這個 registry seal 正規化成 `kg.delivery.handback.v1`，並以 machine receipt 嵌入 PR body。lane／owner thread／claim generation／branch／absolute worktree path／base／parent／HEAD／observed origin main／content digest／structured Scope 任一不一致都 fail closed。
 - local hand-back 的 `origin_main_sha` 是交接時的執行證據，不是 current-main Ready 證據；IM／CM 仍須以當下 live `origin/main`、exact physical HEAD／Scope 與 PR checks 重新驗證。`main` 前進後，舊 receipt 必須重新驗證，不得直接當成 Ready。
-- PI 的 `publish` transaction 先以 exact readback 讓 remote branch + 非 draft PR durable，才把 registry claim 轉成 local disposition `published` 並刪除 local worktree／branch；`published` 只證明 local assets 已可釋放，不複製 GitHub PR 狀態。PR 等待 CI／review 時只保留 remote branch／PR；需要修改時由 IM 重新開 dedicated worktree。
+- PI 的 `publish` transaction 先以 exact readback 讓 remote branch + 非 draft PR durable，再取得 registry `cleanup_pending` lease；lease 期間同 branch／path 不可重新 claim，local worktree／branch 移除並精確讀回後才完成為 `published`。`published` 只證明 local assets 已可釋放，不複製 GitHub PR 狀態。中斷的 lease 必須由同 receipt 重試，PR 等待 CI／review 時只保留 remote branch／PR；需要修改時由 IM 重新開 dedicated worktree。
 - publication 後若 registry CAS 或 local removal 中斷，已建立的 PR 不回退；同一 typed receipt 以 idempotent retry 收斂。CM merge 後，IM／PI 再以 exact merged PR receipt 清除 remote branch，並把 local disposition terminalize 為 `merged`；任何 SHA／Scope／path drift 都只阻擋該 lane，不得 bulk sweep 或跨 lane 清理。
 - 每次 merge／queue landing 後，CM 必須 `fetch` 並以安全的 fast-forward 路徑使 local `main` 與 `origin/main` 相同；若 local main dirty、diverged 或 drift，停止後續 admission，不得 force reset 掩蓋問題。
 
@@ -191,7 +191,7 @@ CM 只在 PR 的 required checks、review、文件影響與安全條件滿足後
 
 PI publication 後，remote branch + typed PR 是 durable PR reservoir；local worktree 不是等待區。CM 只把符合以下 exact tuple 的 candidate 送進 GitHub native merge queue：registry `published` receipt、PR body／changed paths／head、live `origin/main` 與 PR／receipt／registry base、GitHub required outcomes、mergeability，以及沒有 P0／P1／security hold。repository 沒有 native merge queue rule 時必須拒絕，不得改成本地 queue 或手動 merge。
 
-native merge queue 以 exact head admission；merge group 再由 `.github/workflows/merge-group-required.yml` 產生獨立、短且 blocking 的 `required` outcome，不重跑 advisory confidence fan-out。landing 後 CM 只在 canonical checkout clean、位於 `main` 且 local／origin refs 仍符合 preflight 時做 `--ff-only` sync；任何 race、dirty 或 divergence 都 fail closed。
+native merge queue 以 exact current base、exact head 與 target branch=`main` admission；enqueue 的 GitHub mutation 以 expected head 線性化。admission 後 `main` tip 前進不是失敗，merge queue 會建立新 merge group 並重跑獨立、短且 blocking 的 `required`；若 PR 被 retarget 或 head 改變，adapter 必須撤銷仍可撤銷的 auto-merge side effect 並 fail closed。landing 後 CM 只在 canonical checkout clean、位於 `main` 且 local／origin refs 仍符合 preflight 時做 `--ff-only` sync；任何 race、dirty 或 divergence 都 fail closed。
 
 ## Deterministic feedback controller
 
