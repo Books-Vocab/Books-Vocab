@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -213,6 +214,49 @@ def test_registry_adapter_surfaces_malformed_records_without_hiding_valid_ones(
     assert inventory.problems[0].identity == "feat/bad"
 
 
+def test_registry_adapter_exposes_exact_legacy_handback_transport_fields(
+    tmp_path: Path,
+) -> None:
+    seal = {
+        "schema": "kg.worktree.handback.v1",
+        "branch": "feat/one",
+        "path": str(tmp_path / "one"),
+        "external_ids": ["#1"],
+        "tip_sha": "b" * 40,
+        "handed_back_at": "2026-08-21T00:00:00Z",
+        "origin_main_sha": "a" * 40,
+        "outcomes": [{"status": "passed"}],
+    }
+    seal["digest"] = hashlib.sha256(
+        json.dumps(
+            seal, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    payload = {
+        "branch": "feat/one",
+        "path": str(tmp_path / "one"),
+        "status": "active",
+        "external_ids": ["#1"],
+        "base_sha": "a" * 40,
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"operation": "modify", "path": "ops/a.py"}],
+        },
+        "codex_thread_id": "thread-1",
+        "claim_generation": 4,
+        "handback_claim_generation": 4,
+        "handed_back_sha": "b" * 40,
+        "handed_back_at": "2026-08-21T00:00:00Z",
+        "handback_seal": seal,
+    }
+
+    record = RegistryCliAdapter._record(payload)
+
+    assert record.handback_valid
+    assert record.handback_digest == seal["digest"]
+    assert record.handback_origin_main_sha == "a" * 40
+
+
 def test_registry_get_ignores_terminal_history_for_same_lane(tmp_path: Path) -> None:
     active = {
         "branch": "feat/current",
@@ -259,6 +303,7 @@ def _pr_payload() -> dict[str, object]:
         "mergeable": "MERGEABLE",
         "title": "fix: one",
         "body": "## Scope\n- ops/a.py\n\n## Validation\n- required",
+        "autoMergeRequest": None,
     }
 
 
@@ -312,10 +357,17 @@ def test_github_required_checks_preserve_empty_nonzero_command_failure() -> None
 
 
 def test_github_enqueue_atomically_matches_expected_head() -> None:
+    queued = _pr_payload()
+    queued["autoMergeRequest"] = {"enabledAt": "2026-08-21T00:00:00Z"}
     runner = StaticRunner(
         [
             CommandResult(("gh",), 0, json.dumps(_pr_payload()), ""),
+            CommandResult(
+                ("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""
+            ),
+            CommandResult(("gh",), 0, json.dumps([{"type": "merge_queue"}]), ""),
             CommandResult(("gh",), 0, "", ""),
+            CommandResult(("gh",), 0, json.dumps(queued), ""),
         ]
     )
     adapter = GitHubCliAdapter(runner=runner)
@@ -326,7 +378,28 @@ def test_github_enqueue_atomically_matches_expected_head() -> None:
         expected_head_sha="b" * 40,
     )
 
-    assert runner.calls[-1][-2:] == ("--match-head-commit", "b" * 40)
+    merge_call = next(call for call in runner.calls if call[:3] == ("gh", "pr", "merge"))
+    assert merge_call[-2:] == ("--match-head-commit", "b" * 40)
+    assert "--merge" not in merge_call
+
+
+def test_github_enqueue_refuses_branch_without_merge_queue_rule() -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(("gh",), 0, json.dumps(_pr_payload()), ""),
+            CommandResult(
+                ("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""
+            ),
+            CommandResult(("gh",), 0, json.dumps([{"type": "required_status_checks"}]), ""),
+        ]
+    )
+
+    with pytest.raises(CompareAndSwapConflict, match="no native merge queue"):
+        GitHubCliAdapter(runner=runner).enqueue(
+            number=12,
+            expected_base_sha="a" * 40,
+            expected_head_sha="b" * 40,
+        )
 
 
 def test_github_metadata_update_requires_expected_handback_head() -> None:
@@ -365,9 +438,11 @@ class FakeGit:
         self,
         physical: tuple[PhysicalWorktree, ...],
         snapshots: dict[Path, WorktreeSnapshot],
+        local_branches: dict[str, str] | None = None,
     ) -> None:
         self.physical = physical
         self.snapshots = snapshots
+        self.local_branches = local_branches or {}
 
     def list_worktrees(self) -> tuple[PhysicalWorktree, ...]:
         return self.physical
@@ -377,6 +452,9 @@ class FakeGit:
 
     def remote_branch_sha(self, branch: str) -> str | None:
         return None
+
+    def local_branch_sha(self, branch: str) -> str | None:
+        return self.local_branches.get(branch)
 
     def local_main_sha(self) -> str:
         return "a" * 40
@@ -504,6 +582,43 @@ def test_inspect_service_never_marks_dirty_or_head_drift_ready(tmp_path: Path) -
     active = next(item for item in service.inspect().lanes if item.key == "#1")
     assert active.decision.state is LaneState.BLOCKED_DIRTY
     assert any("HEAD differs" in problem.reason for problem in active.problems)
+
+
+def test_published_lane_is_remote_queue_not_orphaned_local_work(tmp_path: Path) -> None:
+    path = tmp_path / "lane"
+    published = _record(path, status="published")
+    service = InspectService(
+        registry=FakeRegistry((published,)),
+        git=FakeGit((), {}),
+        github=FakeGitHub((_pull_request(),)),
+        runtime=FakeRuntime(),
+    )
+
+    lane = next(
+        item for item in service.inspect().lanes if item.key.startswith("published:")
+    )
+
+    assert lane.decision.state is LaneState.READY_TO_QUEUE
+    assert lane.physical is None
+
+
+def test_published_lane_with_local_branch_is_classified_for_cleanup(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "lane"
+    published = _record(path, status="published")
+    service = InspectService(
+        registry=FakeRegistry((published,)),
+        git=FakeGit((), {}, {"feat/one": "b" * 40}),
+        github=FakeGitHub((_pull_request(),)),
+        runtime=FakeRuntime(),
+    )
+
+    lane = next(
+        item for item in service.inspect().lanes if item.key.startswith("published:")
+    )
+
+    assert lane.decision.state is LaneState.PUBLISHED_LOCAL_CLEANUP
 
 
 def test_terminal_registry_history_does_not_claim_physical_worktree(

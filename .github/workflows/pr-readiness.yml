@@ -2,7 +2,7 @@ name: pr-readiness
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, edited, synchronize, reopened, ready_for_review]
 
 permissions: {}
 
@@ -59,8 +59,11 @@ jobs:
             grep -Eq "(^|[^[:alnum:]_])${sha}([^[:alnum:]_]|$)" <<<"$BODY"
           }
 
-          contains_exact_sha "$BASE_SHA" \
-            || fail "PR body is missing the exact current base SHA"
+          # Publication intentionally accepts a historical owner base. The CM
+          # queue admission revalidates current origin/main immediately before
+          # enqueue; PR readiness only proves the body carries a typed base.
+          grep -Eq 'Base SHA[[:space:]]*:[[:space:]]*`?[0-9a-f]{40}`?' <<<"$BODY" \
+            || fail "PR body is missing a typed base SHA"
           contains_exact_sha "$HEAD_SHA" \
             || fail "PR body is missing the exact current head SHA"
           grep -Fq 'Scope' <<<"$BODY" \

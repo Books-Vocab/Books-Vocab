@@ -56,9 +56,12 @@ class CleanupService:
             raise PolicyViolation("local claim does not resolve to one exact handback")
         record = matches[0]
         if (
-            record.scope != receipt.scope
+            record.base_sha != receipt.base_sha
+            or record.scope != receipt.scope
             or record.owner_thread_id != receipt.owner_thread_id
             or not record.handback_valid
+            or record.handback_digest != receipt.content_digest
+            or record.handback_origin_main_sha != receipt.origin_main_sha
         ):
             raise PolicyViolation("local claim differs from typed handback")
         return record

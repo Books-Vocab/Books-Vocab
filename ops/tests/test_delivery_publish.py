@@ -24,6 +24,7 @@ from delivery_control.domain.observations import (
 from delivery_control.services.publish import (
     PublicationOutcome,
     PublishService,
+    parse_pull_request_body,
     render_pull_request_body,
 )
 from delivery_control.services.publish_preflight import PublishPreflightService
@@ -261,7 +262,30 @@ def test_body_is_deterministic_and_satisfies_readiness_labels() -> None:
     assert body.startswith("## Scope\n")
     assert "## Handback\n" in body
     assert "## Validation\n" in body
+    assert "kg.worktree.handback.v1" in body
+    assert "Base SHA:" in body and "Head SHA:" in body
+    assert body.count("Digest:") == 1
     assert "GitHub required checks are authoritative" in body
+    assert parse_pull_request_body(body) == _receipt()
+
+
+def test_machine_receipt_parser_rejects_missing_or_duplicate_envelopes() -> None:
+    receipt = _receipt()
+    body = render_pull_request_body(receipt)
+    with pytest.raises(PolicyViolation, match="one typed"):
+        parse_pull_request_body("## Scope\nnone")
+    with pytest.raises(PolicyViolation, match="one typed"):
+        parse_pull_request_body(body + body)
+
+
+def test_machine_receipt_parser_normalizes_domain_validation_errors() -> None:
+    body = render_pull_request_body(_receipt()).replace(
+        '"content_digest":"' + "e" * 64 + '"',
+        '"content_digest":"not-a-digest"',
+    )
+
+    with pytest.raises(PolicyViolation, match="receipt is invalid"):
+        parse_pull_request_body(body)
 
 
 def test_publish_create_then_retry_is_idempotent() -> None:

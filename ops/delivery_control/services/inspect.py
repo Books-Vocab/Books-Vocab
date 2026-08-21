@@ -12,7 +12,7 @@ from ..domain.observations import (
     RegistrySnapshot,
     WorktreeSnapshot,
 )
-from ..domain.states import LaneDecision, LaneFacts, derive_lane_decision
+from ..domain.states import HoldKind, LaneDecision, LaneFacts, derive_lane_decision
 from ..ports.git import GitQueryPort
 from ..ports.github import GitHubQueryPort
 from ..ports.registry import RegistryQueryPort
@@ -26,6 +26,7 @@ from .correlation import (
 )
 
 _ACTIVE = "active"
+_PUBLISHED = "published"
 _TERMINAL = {"merged", "abandoned"}
 
 
@@ -67,6 +68,9 @@ class InspectService:
         live_main_sha = self.git.origin_main_sha()
         records = registry_inventory.records
         active_records = tuple(item for item in records if item.status == _ACTIVE)
+        published_records = tuple(
+            item for item in records if item.status == _PUBLISHED
+        )
         physical_by_path = {item.path.resolve(): item for item in physical}
         prs_by_branch: dict[str, list[PullRequestSnapshot]] = {}
         for pull_request in github_inventory.records:
@@ -105,16 +109,29 @@ class InspectService:
             for pull_request in prs_by_branch.get(record.branch, ()):
                 observed.update(pr_paths.get(pull_request.number, ()))
             path_sets[f"lane:{record.lane_id}"] = observed
-        active_branches = {item.branch for item in active_records}
-        active_paths = {item.path.resolve() for item in active_records}
+        working_branches = {
+            item.branch for item in (*active_records, *published_records)
+        }
+        working_paths = {
+            item.path.resolve() for item in (*active_records, *published_records)
+        }
         for pull_request in github_inventory.records:
-            if pull_request.branch not in active_branches:
+            if pull_request.branch not in working_branches:
                 path_sets[f"pr:{pull_request.number}"] = set(
                     pr_paths.get(pull_request.number, ())
                 )
+        active_branch_names = {item.branch for item in active_records}
+        for record in published_records:
+            if record.branch in active_branch_names:
+                continue
+            key = f"published:{record.lane_id}:{record.claim_generation}"
+            observed = set(record.scope.paths)
+            for pull_request in prs_by_branch.get(record.branch, ()):
+                observed.update(pr_paths.get(pull_request.number, ()))
+            path_sets[key] = observed
         for physical_ref in physical:
             path = physical_ref.path.resolve()
-            if path not in active_paths:
+            if path not in working_paths:
                 try:
                     snapshot = self.git.inspect_worktree(path, live_main_sha)
                 except DeliverySourceError:
@@ -210,6 +227,11 @@ class InspectService:
                 and check.status is CheckStatus.SUCCESS
                 and not has_explicit_hold(pull_request)
             )
+            holds = (
+                frozenset({HoldKind.SECURITY})
+                if has_explicit_hold(pull_request)
+                else frozenset()
+            )
             facts = LaneFacts(
                 has_worktree=physical_ref is not None,
                 owner_known=record.owner_thread_id is not None,
@@ -233,7 +255,7 @@ class InspectService:
                 pr_draft=pull_request.draft if pull_request else False,
                 required_status=check.status if check else CheckStatus.ABSENT,
                 mergeable=pull_request.mergeable if pull_request else False,
-                holds=frozenset(),
+                holds=holds,
             )
             lanes.append(
                 LaneInspection(
@@ -243,6 +265,101 @@ class InspectService:
                     snapshot=snapshot,
                     pull_requests=branch_prs,
                     decision=derive_lane_decision(facts),
+                    problems=tuple(problems),
+                )
+            )
+
+        for record in published_records:
+            path = record.path.resolve()
+            physical_ref = physical_by_path.get(path)
+            if physical_ref is not None:
+                claimed_paths.add(path)
+            branch_prs = tuple(prs_by_branch.get(record.branch, ()))
+            claimed_prs.update(item.number for item in branch_prs)
+            pull_request = branch_prs[0] if len(branch_prs) == 1 else None
+            problems: list[InventoryProblem] = []
+            snapshot = None
+            if physical_ref is not None:
+                try:
+                    snapshot = self.git.inspect_worktree(path, record.base_sha)
+                except DeliverySourceError as error:
+                    problems.append(InventoryProblem("git", str(path), str(error)))
+            check = None
+            if pull_request is not None:
+                try:
+                    check = self.github.required_check_snapshot(pull_request.number)
+                except DeliverySourceError as error:
+                    problems.append(
+                        InventoryProblem(
+                            "github", f"PR#{pull_request.number}", str(error)
+                        )
+                    )
+                if tuple(sorted(pr_paths.get(pull_request.number, ()))) != tuple(
+                    sorted(record.scope.paths)
+                ):
+                    problems.append(
+                        InventoryProblem(
+                            "github",
+                            f"PR#{pull_request.number}",
+                            "PR paths differ from published Scope",
+                        )
+                    )
+            local_assets_present = (
+                physical_ref is not None
+                or self.git.local_branch_sha(record.branch) is not None
+            )
+            collision_key = f"published:{record.lane_id}:{record.claim_generation}"
+            lane_collision = collision_key in collisions
+            merge_exact = (
+                not problems
+                and not lane_collision
+                and len(branch_prs) == 1
+                and pull_request is not None
+                and pull_request.state == "OPEN"
+                and not pull_request.draft
+                and pull_request.mergeable
+                and pull_request.base_sha == live_main_sha == record.base_sha
+                and pull_request.head_sha == record.handed_back_sha
+                and record.handback_valid
+                and record.handback_claim_generation == record.claim_generation
+                and check is not None
+                and check.head_sha == pull_request.head_sha
+                and check.status is CheckStatus.SUCCESS
+                and not has_explicit_hold(pull_request)
+            )
+            holds = (
+                frozenset({HoldKind.SECURITY})
+                if has_explicit_hold(pull_request)
+                else frozenset()
+            )
+            lanes.append(
+                LaneInspection(
+                    key=f"published:{record.lane_id}:{record.claim_generation}",
+                    registry=record,
+                    physical=physical_ref,
+                    snapshot=snapshot,
+                    pull_requests=branch_prs,
+                    decision=derive_lane_decision(
+                        LaneFacts(
+                            has_worktree=physical_ref is not None,
+                            dirty=snapshot is not None and not snapshot.clean,
+                            handback_valid=record.handback_valid,
+                            published=True,
+                            local_assets_present=local_assets_present,
+                            duplicate_pr=len(branch_prs) > 1,
+                            scope_collision=lane_collision,
+                            pr_open=pull_request is not None,
+                            pr_draft=pull_request.draft if pull_request else False,
+                            required_status=(
+                                check.status if check else CheckStatus.ABSENT
+                            ),
+                            mergeable=(
+                                pull_request.mergeable if pull_request else False
+                            ),
+                            merge_policy_passed=merge_exact,
+                            holds=holds,
+                        )
+                    ),
                     problems=tuple(problems),
                 )
             )

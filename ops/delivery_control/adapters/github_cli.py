@@ -19,7 +19,8 @@ from .errors import AdapterCommandError, AdapterPayloadError
 from .subprocess_runner import SubprocessCommandRunner
 
 _PR_FIELDS = (
-    "number,url,headRefName,baseRefOid,headRefOid,state,isDraft,mergeable,title,body"
+    "number,url,headRefName,baseRefOid,headRefOid,state,isDraft,mergeable,title,body,"
+    "autoMergeRequest"
 )
 
 
@@ -59,6 +60,11 @@ class GitHubCliAdapter:
             type(payload.get(key)) is not expected for key, expected in required.items()
         ):
             raise AdapterPayloadError("GitHub PR payload is malformed")
+        auto_merge_request = payload.get("autoMergeRequest")
+        if auto_merge_request is not None and not isinstance(
+            auto_merge_request, Mapping
+        ):
+            raise AdapterPayloadError("GitHub auto-merge payload is malformed")
         return PullRequestSnapshot(
             number=payload["number"],
             url=payload["url"],
@@ -70,6 +76,7 @@ class GitHubCliAdapter:
             mergeable=payload["mergeable"].upper() == "MERGEABLE",
             title=payload["title"],
             body=payload["body"],
+            auto_merge_enabled=auto_merge_request is not None,
         )
 
     def list_open_pull_requests(self) -> PullRequestInventory:
@@ -208,6 +215,25 @@ class GitHubCliAdapter:
             raise AdapterPayloadError("GitHub branch protection payload is malformed")
         return output == "true"
 
+    def merge_queue_enabled(self, branch: str) -> bool:
+        payload = self._json(
+            (
+                "gh",
+                "api",
+                f"repos/{self._repo_name()}/rules/branches/{quote(branch, safe='')}",
+            )
+        )
+        if not isinstance(payload, list):
+            raise AdapterPayloadError("GitHub branch rules payload is malformed")
+        for index, rule in enumerate(payload):
+            if not isinstance(rule, Mapping) or type(rule.get("type")) is not str:
+                raise AdapterPayloadError(
+                    f"GitHub branch rule[{index}] is malformed"
+                )
+            if rule["type"] == "merge_queue":
+                return True
+        return False
+
     def create_pull_request(
         self, *, branch: str, title: str, body: str
     ) -> PullRequestSnapshot:
@@ -250,15 +276,23 @@ class GitHubCliAdapter:
         before = self.get_pull_request(number)
         if before.base_sha != expected_base_sha or before.head_sha != expected_head_sha:
             raise CompareAndSwapConflict("PR tuple changed before enqueue")
+        if not self.merge_queue_enabled("main"):
+            raise CompareAndSwapConflict("main has no native merge queue rule")
         self._run(
             (
                 "gh",
                 "pr",
                 "merge",
                 str(number),
-                "--merge",
                 "--auto",
                 "--match-head-commit",
                 expected_head_sha,
             )
         )
+        after = self.get_pull_request(number)
+        if after.base_sha != expected_base_sha or after.head_sha != expected_head_sha:
+            raise CompareAndSwapConflict("PR tuple changed during enqueue")
+        if after.state == "OPEN" and not after.auto_merge_enabled:
+            raise CompareAndSwapConflict("PR did not read back as queue-admitted")
+        if after.state not in {"OPEN", "MERGED"}:
+            raise CompareAndSwapConflict("PR entered an unexpected state during enqueue")

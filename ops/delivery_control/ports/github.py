@@ -23,6 +23,8 @@ class GitHubQueryPort(Protocol):
 
     def branch_is_protected(self, branch: str) -> bool: ...
 
+    def merge_queue_enabled(self, branch: str) -> bool: ...
+
 
 @runtime_checkable
 class GitHubCommandPort(Protocol):

@@ -82,6 +82,8 @@ class RegistrySnapshot:
     handed_back_sha: str | None = None
     handback_claim_generation: int | None = None
     handback_valid: bool = False
+    handback_digest: str | None = None
+    handback_origin_main_sha: str | None = None
 
 
 @dataclass(frozen=True)
@@ -102,6 +104,7 @@ class PullRequestSnapshot:
     mergeable: bool
     title: str = ""
     body: str = ""
+    auto_merge_enabled: bool = False
 
 
 @dataclass(frozen=True)

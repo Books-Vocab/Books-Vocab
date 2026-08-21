@@ -22,6 +22,7 @@ class HoldKind(StrEnum):
 class LaneState(StrEnum):
     ACTIVE_DEVELOPMENT = "active_development"
     HANDBACK_PUBLISHABLE = "handback_publishable"
+    PUBLISHED_LOCAL_CLEANUP = "published_local_cleanup"
     PR_DRAFT = "pr_draft"
     PR_WAITING_REQUIRED = "pr_waiting_required"
     REQUIRED_FAILED = "required_failed"
@@ -40,6 +41,7 @@ class LaneState(StrEnum):
 class NextAction(StrEnum):
     CONTINUE_WORK = "continue_work"
     PUBLISH = "publish"
+    CLEANUP_LOCAL = "cleanup_local"
     FINALIZE_PR = "finalize_pr"
     WAIT_REQUIRED = "wait_required"
     REPAIR_REQUIRED = "repair_required"
@@ -64,6 +66,8 @@ class LaneFacts:
     dirty: bool = False
     has_committed_diff: bool | None = None
     handback_valid: bool = False
+    published: bool = False
+    local_assets_present: bool = False
     transport_policy_passed: bool = False
     merge_policy_passed: bool = False
     cleanup_policy_passed: bool = False
@@ -102,6 +106,12 @@ def derive_lane_decision(facts: LaneFacts) -> LaneDecision:
     if facts.dirty:
         return LaneDecision(
             LaneState.BLOCKED_DIRTY, NextAction.RECOVER_DIRTY, "worktree is dirty"
+        )
+    if facts.published and facts.local_assets_present:
+        return LaneDecision(
+            LaneState.PUBLISHED_LOCAL_CLEANUP,
+            NextAction.CLEANUP_LOCAL,
+            "published PR is durable; local assets remain",
         )
     if facts.has_worktree and (not facts.owner_known or not facts.owner_reachable):
         return LaneDecision(

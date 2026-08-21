@@ -530,6 +530,8 @@ def test_resolve_terminal_status_preserves_handed_back_receipt(
     assert registry.main([
         "resolve", "--state", str(state_path), "--branch", "feat/handed-back",
         "--status", terminal_status, "--at", "2026-08-19T01:00:00Z", "--json",
+        "--expected-generation", str(handed_back.get("claim_generation", 0)),
+        "--expected-head-sha", handed_back["handed_back_sha"],
     ]) == registry.EXIT_OK
 
     resolved = registry.load_state(state_path)["records"][0]
@@ -586,3 +588,34 @@ def test_published_record_can_transition_to_merged_with_exact_tuple(
 
     assert rc == registry.EXIT_OK
     assert registry.load_state(state_path)["records"][0]["status"] == "merged"
+
+
+@pytest.mark.parametrize("terminal_status", ("merged", "abandoned"))
+def test_terminal_transition_requires_exact_generation_and_head(
+    tmp_path: Path, terminal_status: str
+) -> None:
+    record = _valid_handed_back_record(tmp_path)
+    record["claim_generation"] = 5
+    record["handback_claim_generation"] = 5
+    state_path = tmp_path / "registry.json"
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+
+    missing = registry.main([
+        "resolve", "--state", str(state_path), "--branch", record["branch"],
+        "--status", terminal_status,
+    ])
+    stale_generation = registry.main([
+        "resolve", "--state", str(state_path), "--branch", record["branch"],
+        "--status", terminal_status, "--expected-generation", "4",
+        "--expected-head-sha", record["handed_back_sha"],
+    ])
+    stale_head = registry.main([
+        "resolve", "--state", str(state_path), "--branch", record["branch"],
+        "--status", terminal_status, "--expected-generation", "5",
+        "--expected-head-sha", "f" * 40,
+    ])
+
+    assert missing == registry.EXIT_USAGE
+    assert stale_generation == registry.EXIT_CLAIMED
+    assert stale_head == registry.EXIT_CLAIMED
+    assert registry.load_state(state_path)["records"][0]["status"] == "active"

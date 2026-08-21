@@ -107,6 +107,11 @@ class RegistryCliAdapter:
             external_ids = []
         lane_id = str(external_ids[0]) if external_ids else branch
         handed_back_sha = payload.get("handed_back_sha")
+        seal = payload.get("handback_seal")
+        handback_digest = seal.get("digest") if isinstance(seal, Mapping) else None
+        handback_origin = (
+            seal.get("origin_main_sha") if isinstance(seal, Mapping) else None
+        )
         claim_generation = payload.get("claim_generation")
         handback_claim_generation = payload.get("handback_claim_generation")
         if type(claim_generation) is not int or claim_generation < 0:
@@ -133,6 +138,18 @@ class RegistryCliAdapter:
             handed_back_sha=(str(handed_back_sha) if handed_back_sha else None),
             handback_claim_generation=handback_claim_generation,
             handback_valid=_legacy_seal_valid(payload),
+            handback_digest=(
+                str(handback_digest)
+                if isinstance(handback_digest, str)
+                and re.fullmatch(r"[0-9a-f]{64}", handback_digest)
+                else None
+            ),
+            handback_origin_main_sha=(
+                str(handback_origin)
+                if isinstance(handback_origin, str)
+                and _SHA_RE.fullmatch(handback_origin)
+                else None
+            ),
         )
 
     def list_records(self) -> RegistryInventory:

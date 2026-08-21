@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from ..domain.errors import PolicyViolation
 from ..domain.models import HandbackReceipt
@@ -45,9 +46,17 @@ class QueueService:
             for item in inventory.records
             if item.lane_id == receipt.lane_id
             and item.branch == receipt.branch
+            and item.path.resolve() == Path(receipt.worktree_path).resolve()
+            and item.status == "published"
+            and item.base_sha == receipt.base_sha
+            and item.scope == receipt.scope
             and item.claim_generation == receipt.claim_generation
+            and item.owner_thread_id == receipt.owner_thread_id
             and item.handed_back_sha == receipt.head_sha
-            and item.status in {"active", "published"}
+            and item.handback_claim_generation == receipt.claim_generation
+            and item.handback_valid
+            and item.handback_digest == receipt.content_digest
+            and item.handback_origin_main_sha == receipt.origin_main_sha
         ]
         if len(matches) != 1:
             raise PolicyViolation("merge admission lacks one exact local receipt")
@@ -62,6 +71,8 @@ class QueueService:
     ) -> QueueResult:
         live_main_sha = self.git.origin_main_sha()
         record = self._record(receipt)
+        if not self.github_query.merge_queue_enabled("main"):
+            raise PolicyViolation("main does not require GitHub merge queue admission")
         pull_request = self.github_query.get_pull_request(pull_request_number)
         if pull_request.body != render_pull_request_body(receipt):
             raise PolicyViolation("PR body differs from typed handback")

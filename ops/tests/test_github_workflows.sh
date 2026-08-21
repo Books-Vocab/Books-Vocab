@@ -43,6 +43,15 @@ grep -q '^  pull_request:' "$PR_GATE" || fail "pr-gate has no pull_request trigg
 if grep -Eq '^[[:space:]]*merge_group:' "$PR_GATE"; then
   fail "pr-gate still owns a merge_group trigger; merge queue requires the short dedicated workflow"
 fi
+
+PR_READINESS=".github/workflows/pr-readiness.yml"
+grep -Eq 'types: \[[^]]*edited' "$PR_READINESS" \
+  || fail "pr-readiness does not rerun after PR body metadata repair"
+if grep -Fq 'missing the exact current base SHA' "$PR_READINESS"; then
+  fail "pr-readiness still blocks publication on a historical owner base"
+fi
+grep -Fq 'missing the exact current head SHA' "$PR_READINESS" \
+  || fail "pr-readiness does not bind metadata to the exact PR HEAD"
 # A draft-to-ready transition changes review metadata, not source. The latest
 # `opened`/`synchronize` run already carries the relevant candidate evidence;
 # triggering again would cancel or duplicate its full confidence fan-out.

@@ -59,6 +59,8 @@ def _record(receipt: HandbackReceipt, *, status: str = "active") -> RegistrySnap
         handed_back_sha=receipt.head_sha,
         handback_claim_generation=receipt.claim_generation,
         handback_valid=True,
+        handback_digest=receipt.content_digest,
+        handback_origin_main_sha=receipt.origin_main_sha,
     )
 
 
@@ -130,6 +132,8 @@ class FakeGit:
         remote_sha: str | None = HEAD,
         local_main: str = BASE,
         origin_main: str = BASE,
+        canonical_branch: str = "main",
+        canonical_clean: bool = True,
     ) -> None:
         self.snapshot = snapshot or _snapshot(receipt)
         self.worktrees = (
@@ -139,12 +143,24 @@ class FakeGit:
         self.remote_sha = remote_sha
         self.local_main = local_main
         self.origin_main = origin_main
+        self.canonical_branch = canonical_branch
+        self.canonical_clean = canonical_clean
         self.actions: list[str] = []
 
     def list_worktrees(self) -> tuple[PhysicalWorktree, ...]:
         return self.worktrees
 
     def inspect_worktree(self, path: Path, base_sha: str) -> WorktreeSnapshot:
+        if path == Path("/repo"):
+            return WorktreeSnapshot(
+                path=path,
+                branch=self.canonical_branch,
+                base_sha=base_sha,
+                head_sha=self.local_main,
+                parent_sha=self.local_main,
+                clean=self.canonical_clean,
+                changes=(),
+            )
         return self.snapshot
 
     def local_branch_sha(self, branch: str) -> str | None:
@@ -287,11 +303,34 @@ def test_main_sync_is_noop_when_exact_and_ff_only_when_behind() -> None:
     exact = FakeGit(receipt)
     behind = FakeGit(receipt, local_main="c" * 40, origin_main="d" * 40)
 
-    exact_result = MainSyncService(query=exact, command=exact).sync()
-    behind_result = MainSyncService(query=behind, command=behind).sync()
+    exact_result = MainSyncService(
+        canonical_path=Path("/repo"), query=exact, command=exact
+    ).sync()
+    behind_result = MainSyncService(
+        canonical_path=Path("/repo"), query=behind, command=behind
+    ).sync()
 
     assert not exact_result.changed
     assert exact.actions == []
     assert behind_result.changed
     assert behind_result.after_sha == "d" * 40
     assert behind.actions == ["sync-main"]
+
+
+@pytest.mark.parametrize(
+    ("canonical_branch", "canonical_clean"),
+    (("feat/not-main", True), ("main", False)),
+)
+def test_main_sync_refuses_wrong_or_dirty_canonical_checkout(
+    canonical_branch: str, canonical_clean: bool
+) -> None:
+    git = FakeGit(
+        _receipt(),
+        canonical_branch=canonical_branch,
+        canonical_clean=canonical_clean,
+    )
+
+    with pytest.raises(PolicyViolation, match="canonical checkout"):
+        MainSyncService(
+            canonical_path=Path("/repo"), query=git, command=git
+        ).sync()

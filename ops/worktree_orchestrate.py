@@ -197,8 +197,14 @@ def cmd_open(args: argparse.Namespace) -> int:
         # Keep the ledger truthful if provisioning fails; no branch is deleted here
         # because GitHub may already know the name and branch removal is a separate
         # explicit action.
-        registry.main(["resolve", "--branch", branch, "--status", "abandoned",
-                       "--state", str(registry.default_state_path()), "--json"])
+        expected_generation = str(record.get("claim_generation", 0))
+        expected_head = str(record.get("base_sha") or record.get("base") or args.base)
+        registry.main([
+            "resolve", "--branch", branch, "--path", str(worktree),
+            "--status", "abandoned", "--expected-generation", expected_generation,
+            "--expected-head-sha", expected_head,
+            "--state", str(registry.default_state_path()), "--json",
+        ])
         _emit({"schema": SCHEMA, "action": "refused", "reason": "git worktree add failed",
                "git": output, "record": record}, as_json=args.json,
               human=f"✗ open refused: git worktree add failed: {output}")

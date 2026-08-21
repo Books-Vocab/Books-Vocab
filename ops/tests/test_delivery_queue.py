@@ -42,20 +42,26 @@ def _receipt(*, base_sha: str = BASE) -> HandbackReceipt:
     )
 
 
-def _registry(receipt: HandbackReceipt) -> RegistrySnapshot:
-    return RegistrySnapshot(
-        lane_id=receipt.lane_id,
-        branch=receipt.branch,
-        path=Path(receipt.worktree_path),
-        status="published",
-        scope=receipt.scope,
-        base_sha=receipt.base_sha,
-        claim_generation=receipt.claim_generation,
-        owner_thread_id=receipt.owner_thread_id,
-        handed_back_sha=receipt.head_sha,
-        handback_claim_generation=receipt.claim_generation,
-        handback_valid=True,
-    )
+def _registry(
+    receipt: HandbackReceipt, **changes: object
+) -> RegistrySnapshot:
+    values: dict[str, object] = {
+        "lane_id": receipt.lane_id,
+        "branch": receipt.branch,
+        "path": Path(receipt.worktree_path),
+        "status": "published",
+        "scope": receipt.scope,
+        "base_sha": receipt.base_sha,
+        "claim_generation": receipt.claim_generation,
+        "owner_thread_id": receipt.owner_thread_id,
+        "handed_back_sha": receipt.head_sha,
+        "handback_claim_generation": receipt.claim_generation,
+        "handback_valid": True,
+        "handback_digest": receipt.content_digest,
+        "handback_origin_main_sha": receipt.origin_main_sha,
+    }
+    values.update(changes)
+    return RegistrySnapshot(**values)  # type: ignore[arg-type]
 
 
 def _pull_request(receipt: HandbackReceipt) -> PullRequestSnapshot:
@@ -100,11 +106,13 @@ class FakeGitHub:
         pull_request: PullRequestSnapshot | None = None,
         required: CheckStatus = CheckStatus.SUCCESS,
         paths: tuple[str, ...] | None = None,
+        merge_queue: bool = True,
     ) -> None:
         self.receipt = receipt
         self.pull_request = pull_request or _pull_request(receipt)
         self.required = required
         self.paths = paths or receipt.scope.paths
+        self.merge_queue = merge_queue
         self.enqueue_calls: list[tuple[int, str, str]] = []
 
     def get_pull_request(self, number: int) -> PullRequestSnapshot:
@@ -121,6 +129,10 @@ class FakeGitHub:
             observed_at=datetime(2026, 8, 21, tzinfo=UTC),
             names=("required",),
         )
+
+    def merge_queue_enabled(self, branch: str) -> bool:
+        assert branch == "main"
+        return self.merge_queue
 
     def enqueue(
         self, *, number: int, expected_base_sha: str, expected_head_sha: str
@@ -199,3 +211,32 @@ def test_queue_blocks_metadata_or_scope_drift() -> None:
     path_service, _ = _service(receipt, github=path_drift)
     with pytest.raises(PolicyViolation, match="paths"):
         path_service.enqueue(receipt=receipt, pull_request_number=11)
+
+
+@pytest.mark.parametrize(
+    "record",
+    (
+        _registry(_receipt(), status="active"),
+        _registry(_receipt(), path=Path("/tmp/not-the-handed-back-worktree")),
+        _registry(_receipt(), handback_digest="d" * 64),
+    ),
+)
+def test_queue_requires_exact_published_registry_receipt(
+    record: RegistrySnapshot,
+) -> None:
+    receipt = _receipt()
+    service, github = _service(receipt, record=record)
+
+    with pytest.raises(PolicyViolation, match="exact local receipt"):
+        service.enqueue(receipt=receipt, pull_request_number=11)
+    assert not github.enqueue_calls
+
+
+def test_queue_refuses_repository_without_native_merge_queue() -> None:
+    receipt = _receipt()
+    github = FakeGitHub(receipt, merge_queue=False)
+    service, github = _service(receipt, github=github)
+
+    with pytest.raises(PolicyViolation, match="merge queue"):
+        service.enqueue(receipt=receipt, pull_request_number=11)
+    assert not github.enqueue_calls

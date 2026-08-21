@@ -137,6 +137,19 @@ def test_duplicate_beats_a_superficially_ready_pr() -> None:
     assert decision.state is LaneState.BLOCKED_DUPLICATE
 
 
+def test_published_local_assets_are_drained_before_waiting_on_ci() -> None:
+    decision = derive_lane_decision(
+        LaneFacts(
+            published=True,
+            local_assets_present=True,
+            pr_open=True,
+            required_status=CheckStatus.PENDING,
+        )
+    )
+    assert decision.state is LaneState.PUBLISHED_LOCAL_CLEANUP
+    assert decision.next_action is NextAction.CLEANUP_LOCAL
+
+
 def _receipt(*, base_sha: str = "a" * 40) -> HandbackReceipt:
     return HandbackReceipt(
         lane_id="DIRECT-1",

@@ -672,6 +672,12 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     if args.status not in RESOLVE_STATUS or (not args.branch and not args.path):
         print("✗ resolve needs --branch/--path and a valid local disposition", file=sys.stderr)
         return EXIT_USAGE
+    if args.expected_generation is None or args.expected_head_sha is None:
+        print(
+            "✗ resolve requires exact generation and HEAD compare-and-swap guards",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
     state_path = _state_path(args)
     with _ledger_lock(state_path):
         state = load_state(state_path)
@@ -686,19 +692,29 @@ def cmd_resolve(args: argparse.Namespace) -> int:
             if record.get("status") in source_statuses
             and _record_matches(record, branch=args.branch, path=args.path)
         ]
-        if args.expected_generation is not None:
-            matches = [
-                record
-                for record in matches
-                if _claim_generation(record, "claim_generation")
-                == args.expected_generation
-            ]
-        if args.expected_head_sha is not None:
-            matches = [
-                record
-                for record in matches
-                if record.get("handed_back_sha") == args.expected_head_sha
-            ]
+        matches = [
+            record
+            for record in matches
+            if _claim_generation(record, "claim_generation")
+            == args.expected_generation
+        ]
+        exact_matches = []
+        for record in matches:
+            expected_head = record.get("handed_back_sha")
+            if not _is_commit_sha(expected_head):
+                branch = record.get("branch")
+                if isinstance(branch, str) and branch:
+                    rc, branch_head = _git(
+                        ["rev-parse", "--verify", f"refs/heads/{branch}^{{commit}}"],
+                        repo_root(),
+                    )
+                    if rc == 0 and _is_commit_sha(branch_head.strip()):
+                        expected_head = branch_head.strip()
+            if not _is_commit_sha(expected_head):
+                expected_head = record.get("base_sha")
+            if expected_head == args.expected_head_sha:
+                exact_matches.append(record)
+        matches = exact_matches
         if not matches:
             print("✗ no exact registry record matches transition", file=sys.stderr)
             return EXIT_CLAIMED
@@ -706,9 +722,6 @@ def cmd_resolve(args: argparse.Namespace) -> int:
             print("✗ registry transition selector is ambiguous", file=sys.stderr)
             return EXIT_CLAIMED
         if args.status == "published":
-            if args.expected_generation is None or args.expected_head_sha is None:
-                print("✗ published transition requires exact generation and HEAD", file=sys.stderr)
-                return EXIT_USAGE
             if not _has_valid_handback(matches[0]):
                 print("✗ published transition requires a valid physical hand-back", file=sys.stderr)
                 return EXIT_CLAIMED
