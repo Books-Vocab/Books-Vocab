@@ -22,7 +22,11 @@ from .domain.models import HandbackReceipt
 from .domain.states import HoldKind
 from .ports.git import GitCommandPort, GitQueryPort
 from .ports.github import GitHubCommandPort, GitHubQueryPort
-from .ports.registry import RegistryCommandPort, RegistryQueryPort
+from .ports.registry import (
+    RegistryCommandPort,
+    RegistryPublicationQueryPort,
+    RegistryQueryPort,
+)
 from .ports.runtime import AgentRuntimePort
 from .services.cleanup import CleanupService
 from .services.inspect import InspectService
@@ -46,7 +50,12 @@ class DeliveryGitHubPort(GitHubQueryPort, GitHubCommandPort, Protocol):
     def recent_merge_times(self, *, limit: int = 100) -> tuple[datetime, ...]: ...
 
 
-class DeliveryRegistryPort(RegistryQueryPort, RegistryCommandPort, Protocol):
+class DeliveryRegistryPort(
+    RegistryQueryPort,
+    RegistryPublicationQueryPort,
+    RegistryCommandPort,
+    Protocol,
+):
     pass
 
 

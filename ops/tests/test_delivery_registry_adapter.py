@@ -104,6 +104,77 @@ def test_registry_adapter_fails_closed_on_unusable_terminal_history(
     assert inventory.problems == (InventoryProblem("registry", "feat/old", "'scope'"),)
 
 
+def test_collision_inventory_uses_scope_from_active_legacy_record(
+    tmp_path: Path,
+) -> None:
+    legacy_active = {
+        "branch": "feat/legacy-active",
+        "path": str(tmp_path / "legacy-active"),
+        "status": "active",
+        "external_ids": ["#legacy"],
+        "base": "origin/main",
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"operation": "modify", "path": "ops/legacy.py"}],
+        },
+        "claim_generation": None,
+    }
+    runner = StaticRunner(
+        [CommandResult(("registry",), 0, json.dumps({"records": [legacy_active]}), "")]
+    )
+
+    inventory = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    ).list_collision_claims()
+
+    assert inventory.problems == ()
+    assert inventory.records[0].lane_id == "#legacy"
+    assert inventory.records[0].scope.paths == ("ops/legacy.py",)
+
+
+def test_collision_inventory_blocks_active_record_with_unusable_scope(
+    tmp_path: Path,
+) -> None:
+    active = {
+        "branch": "feat/unknown-scope",
+        "path": str(tmp_path / "unknown-scope"),
+        "status": "active",
+        "scope": "not-structured",
+    }
+    runner = StaticRunner(
+        [CommandResult(("registry",), 0, json.dumps({"records": [active]}), "")]
+    )
+
+    inventory = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    ).list_collision_claims()
+
+    assert inventory.records == ()
+    assert inventory.problems == (
+        InventoryProblem("registry", "feat/unknown-scope", "Scope must be an object"),
+    )
+
+
+def test_collision_inventory_ignores_malformed_terminal_history(
+    tmp_path: Path,
+) -> None:
+    terminal = {
+        "branch": "feat/old",
+        "path": str(tmp_path / "old"),
+        "status": "merged",
+    }
+    runner = StaticRunner(
+        [CommandResult(("registry",), 0, json.dumps({"records": [terminal]}), "")]
+    )
+
+    inventory = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    ).list_collision_claims()
+
+    assert inventory.records == ()
+    assert inventory.problems == ()
+
+
 def test_registry_adapter_exposes_exact_legacy_handback_transport_fields(
     tmp_path: Path,
 ) -> None:

@@ -22,6 +22,8 @@ from delivery_control.domain.observations import (
     PhysicalWorktree,
     PullRequestInventory,
     PullRequestSnapshot,
+    RegistryCollisionClaim,
+    RegistryCollisionInventory,
     RegistryInventory,
     RegistrySnapshot,
     WorktreeSnapshot,
@@ -75,6 +77,17 @@ class FakeRegistry:
 
     def list_records(self) -> RegistryInventory:
         return RegistryInventory((self.record,))
+
+    def list_collision_claims(self) -> RegistryCollisionInventory:
+        return RegistryCollisionInventory(
+            (
+                RegistryCollisionClaim(
+                    self.record.lane_id,
+                    self.record.branch,
+                    self.record.scope,
+                ),
+            )
+        )
 
     def resolve(
         self,

@@ -16,6 +16,7 @@ from delivery_control.domain.observations import (
     PhysicalWorktree,
     PullRequestInventory,
     PullRequestSnapshot,
+    RegistryCollisionInventory,
     RegistryInventory,
     RegistrySnapshot,
     WorktreeSnapshot,
@@ -23,7 +24,11 @@ from delivery_control.domain.observations import (
 from delivery_control.ports.clock import ClockPort
 from delivery_control.ports.git import GitCommandPort, GitQueryPort
 from delivery_control.ports.github import GitHubCommandPort, GitHubQueryPort
-from delivery_control.ports.registry import RegistryCommandPort, RegistryQueryPort
+from delivery_control.ports.registry import (
+    RegistryCommandPort,
+    RegistryPublicationQueryPort,
+    RegistryQueryPort,
+)
 from delivery_control.ports.runtime import AgentRuntimePort
 
 
@@ -160,6 +165,13 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
         ) -> None:
             return None
 
+    class FakeRegistryPublicationQuery:
+        def get(self, lane_id: str) -> RegistrySnapshot | None:
+            return None
+
+        def list_collision_claims(self) -> RegistryCollisionInventory:
+            return RegistryCollisionInventory(records=())
+
     class FakeRuntime:
         def owner_status(self, thread_id: str) -> str:
             return "running"
@@ -173,6 +185,7 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
     assert isinstance(FakeGitHubQuery(), GitHubQueryPort)
     assert isinstance(FakeGitHubCommand(), GitHubCommandPort)
     assert isinstance(FakeRegistryQuery(), RegistryQueryPort)
+    assert isinstance(FakeRegistryPublicationQuery(), RegistryPublicationQueryPort)
     assert isinstance(FakeRegistryCommand(), RegistryCommandPort)
     assert isinstance(FakeRuntime(), AgentRuntimePort)
 

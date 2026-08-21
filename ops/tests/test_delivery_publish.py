@@ -17,6 +17,8 @@ from delivery_control.domain.observations import (
     InventoryProblem,
     PullRequestInventory,
     PullRequestSnapshot,
+    RegistryCollisionClaim,
+    RegistryCollisionInventory,
     RegistryInventory,
     RegistrySnapshot,
     WorktreeSnapshot,
@@ -128,6 +130,17 @@ class FakeRegistry:
     def list_records(self) -> RegistryInventory:
         records = (() if self.current is None else (self.current,)) + self.others
         return RegistryInventory(records=records, problems=self.problems)
+
+    def list_collision_claims(self) -> RegistryCollisionInventory:
+        records = (() if self.current is None else (self.current,)) + self.others
+        return RegistryCollisionInventory(
+            records=tuple(
+                RegistryCollisionClaim(item.lane_id, item.branch, item.scope)
+                for item in records
+                if item.status in {"active", "cleanup_pending"}
+            ),
+            problems=self.problems,
+        )
 
 
 class FakeGit:
@@ -497,6 +510,28 @@ def test_preflight_blocks_incomplete_registry_collision_inventory() -> None:
     with pytest.raises(PolicyViolation, match="collision inventory failed"):
         service.publish(receipt=receipt, title="fix: delivery")
     assert not git.push_calls
+
+
+def test_preflight_allows_disjoint_collision_claim_with_incomplete_lifecycle_data() -> None:
+    receipt = _receipt()
+    disjoint = _registry(
+        receipt,
+        lane_id="DIRECT-LEGACY",
+        branch="feat/legacy",
+        path=Path("/tmp/legacy"),
+        scope=Scope.from_paths(modify=("ops/legacy.py",)),
+        base_sha="not-used-by-collision-projection",
+        claim_generation=-1,
+    )
+    service, git, _ = _service(
+        receipt,
+        registry=FakeRegistry(_registry(receipt), others=(disjoint,)),
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.CREATED
+    assert git.push_calls == [(None, receipt.head_sha)]
 
 
 def test_final_readback_rejects_concurrently_closed_pr() -> None:

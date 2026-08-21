@@ -11,6 +11,8 @@ from ..domain.errors import CompareAndSwapConflict, InvalidScope
 from ..domain.models import Scope
 from ..domain.observations import (
     InventoryProblem,
+    RegistryCollisionClaim,
+    RegistryCollisionInventory,
     RegistryInventory,
     RegistrySnapshot,
 )
@@ -178,6 +180,54 @@ class RegistryCliAdapter:
             except (KeyError, TypeError, ValueError, InvalidScope) as error:
                 problems.append(InventoryProblem("registry", identity, str(error)))
         return RegistryInventory(records=tuple(records), problems=tuple(problems))
+
+    @staticmethod
+    def _collision_claim(payload: Mapping[str, Any]) -> RegistryCollisionClaim:
+        branch = str(payload["branch"])
+        if not branch:
+            raise ValueError("registry branch must be non-empty")
+        scope_payload = payload["scope"]
+        if not isinstance(scope_payload, Mapping):
+            raise InvalidScope("Scope must be an object")
+        external_ids = payload.get("external_ids")
+        if not isinstance(external_ids, list):
+            external_ids = []
+        return RegistryCollisionClaim(
+            lane_id=str(external_ids[0]) if external_ids else branch,
+            branch=branch,
+            scope=Scope.from_payload(scope_payload),
+        )
+
+    def list_collision_claims(self) -> RegistryCollisionInventory:
+        payload = self._list_payload()
+        records: list[RegistryCollisionClaim] = []
+        problems: list[InventoryProblem] = []
+        for index, raw in enumerate(payload["records"]):
+            if not isinstance(raw, Mapping):
+                problems.append(
+                    InventoryProblem(
+                        "registry", f"record[{index}]", "record is not an object"
+                    )
+                )
+                continue
+            identity = str(raw.get("branch") or raw.get("path") or f"record[{index}]")
+            status = raw.get("status")
+            if status in {"merged", "abandoned", "published"}:
+                continue
+            if status not in {"active", "cleanup_pending"}:
+                problems.append(
+                    InventoryProblem(
+                        "registry", identity, "registry status is not collision-safe"
+                    )
+                )
+                continue
+            try:
+                records.append(self._collision_claim(raw))
+            except (KeyError, TypeError, ValueError, InvalidScope) as error:
+                problems.append(InventoryProblem("registry", identity, str(error)))
+        return RegistryCollisionInventory(
+            records=tuple(records), problems=tuple(problems)
+        )
 
     def get(self, lane_id: str) -> RegistrySnapshot | None:
         matches = [

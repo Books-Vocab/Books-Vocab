@@ -14,7 +14,7 @@ from ..domain.observations import (
 from ..domain.policies import evaluate_publication
 from ..ports.git import GitQueryPort
 from ..ports.github import GitHubQueryPort
-from ..ports.registry import RegistryQueryPort
+from ..ports.registry import RegistryPublicationQueryPort
 
 
 @dataclass(frozen=True)
@@ -29,7 +29,7 @@ class PublishPreflightService:
     def __init__(
         self,
         *,
-        registry: RegistryQueryPort,
+        registry: RegistryPublicationQueryPort,
         git: GitQueryPort,
         github: GitHubQueryPort,
     ) -> None:
@@ -45,12 +45,12 @@ class PublishPreflightService:
         pull_requests: tuple[PullRequestSnapshot, ...],
     ) -> bool:
         paths = set(receipt.scope.paths)
-        inventory = self.registry.list_records()
+        inventory = self.registry.list_collision_claims()
         if inventory.problems:
             reasons = "; ".join(problem.reason for problem in inventory.problems)
             raise DeliverySourceError(f"registry inventory is incomplete: {reasons}")
         for other in inventory.records:
-            if other.status != "active" or other.lane_id == registry.lane_id:
+            if other.lane_id == registry.lane_id or other.branch == receipt.branch:
                 continue
             if paths.intersection(other.scope.paths):
                 return True

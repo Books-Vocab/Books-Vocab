@@ -101,6 +101,19 @@ class RegistryInventory:
 
 
 @dataclass(frozen=True)
+class RegistryCollisionClaim:
+    lane_id: str
+    branch: str
+    scope: Scope
+
+
+@dataclass(frozen=True)
+class RegistryCollisionInventory:
+    records: tuple[RegistryCollisionClaim, ...]
+    problems: tuple[InventoryProblem, ...] = ()
+
+
+@dataclass(frozen=True)
 class PullRequestSnapshot:
     number: int
     url: str
