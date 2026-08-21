@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from typing import Any, Protocol
@@ -196,6 +197,10 @@ async def run_pipeline_background(
                     logger.info("[%s] Pipeline completed.", uid)
                 _telemetry(logger, "end_run", run_id, pipeline_status)
 
+            except asyncio.CancelledError:
+                logger.warning("[%s] Pipeline cancelled; marking telemetry interrupted.", uid)
+                _telemetry(logger, "end_run", run_id, "interrupted")
+                raise
             except _STEP_ERRORS as exc:
                 # Mirrors `_STEP_ERRORS` so any unexpected leak from a step
                 # (including QuotaExceededError, which `_run_step` already
