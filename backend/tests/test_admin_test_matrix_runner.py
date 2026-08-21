@@ -8,8 +8,10 @@ without spawning a real pytest subprocess.
 
 from __future__ import annotations
 
+import subprocess
 from datetime import UTC, datetime
 
+from kg.admin_test_matrix import runner
 from kg.admin_test_matrix.runner import _error_run, _parse_matrix
 
 _PAYLOAD_KEYS = {
@@ -72,3 +74,60 @@ def test_error_run_shape_and_synthetic_error():
     assert payload["selectedItems"] == ["tests/test_a.py"]
     assert payload["stderrTail"] == ["boom"]
     assert payload["durationSeconds"] >= 0.0
+
+
+def test_unknown_item_id_fails_closed_without_running_full_suite(monkeypatch):
+    calls = []
+
+    def unexpected_run(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("pytest must not run for an unknown item ID")
+
+    monkeypatch.setattr(runner.subprocess, "run", unexpected_run)
+
+    payload = runner.run_pytest_matrix(["bogus"])
+
+    assert calls == []
+    assert payload["returnCode"] == 2
+    assert payload["outcome"] == "failed"
+    assert payload["selectedItems"] == ["bogus"]
+    assert payload["matrix"] == []
+    assert payload["stderrTail"] == ["unknown test matrix item id(s): bogus"]
+
+
+def test_valid_item_id_runs_only_its_mapped_nodeids(monkeypatch):
+    calls = []
+    nodeid = "tests/test_robustness.py::TestBatchD_UserLockAtomic"
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(
+            command, 0, stdout=f"{nodeid} PASSED\n", stderr=""
+        )
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+
+    payload = runner.run_pytest_matrix(["pipeline_locking"])
+
+    assert calls[0][0][-1] == nodeid
+    assert payload["returnCode"] == 0
+    assert payload["outcome"] == "passed"
+    assert payload["selectedItems"] == ["pipeline_locking"]
+    assert payload["cases"][0]["id"] == nodeid
+
+
+def test_no_selection_still_runs_the_full_tests_suite(monkeypatch):
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+
+    payload = runner.run_pytest_matrix([])
+
+    assert calls[0][0][-1] == "tests"
+    assert payload["returnCode"] == 0
+    assert payload["outcome"] == "passed"
+    assert payload["selectedItems"] == []
