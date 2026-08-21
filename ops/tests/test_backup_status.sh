@@ -65,6 +65,26 @@ assert_contains() {
   fi
 }
 
+section "Decimal epoch validation"
+epoch_log="$TMPDIR/epoch.log"
+write_log "$epoch_log" '1970-01-01T00:00:00Z' 0 12345 "$SHA" '1970-01-01'
+
+leading_zero_output="$TMPDIR/leading-zero-output"
+leading_zero_rc=0
+KG_BACKUP_STATUS_MAX_AGE_SECONDS=9 \
+  "$HELPER" --log "$epoch_log" --now "010" --job-state loaded \
+  >"$leading_zero_output" 2>&1 || leading_zero_rc=$?
+assert_rc "leading-zero --now is rejected" 1 "$leading_zero_rc|$leading_zero_output"
+assert_contains "leading-zero --now is rejected" "invalid now epoch: 010" "$leading_zero_rc|$leading_zero_output"
+
+decimal_output="$TMPDIR/decimal-output"
+decimal_rc=0
+KG_BACKUP_STATUS_MAX_AGE_SECONDS=9 \
+  "$HELPER" --log "$epoch_log" --now "10" --job-state loaded \
+  >"$decimal_output" 2>&1 || decimal_rc=$?
+assert_rc "decimal --now remains stale" 1 "$decimal_rc|$decimal_output"
+assert_contains "decimal --now remains stale" "age=10s max=9s" "$decimal_rc|$decimal_output"
+
 section "Syntax and help"
 bash -n "$HELPER" 2>/dev/null && ok "backup_status.sh syntax" || fail_t "backup_status.sh syntax"
 help_out="$TMPDIR/help"
