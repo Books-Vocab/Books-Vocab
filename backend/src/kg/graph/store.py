@@ -262,6 +262,13 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
             data = self._read_json_list(self.links_path)
             dirty = False
             for lk in data:
+                if not isinstance(lk, dict):
+                    logger.warning(
+                        "graph: skipping malformed link row in %s: %s",
+                        self.links_path,
+                        type(lk).__name__,
+                    )
+                    continue
                 if lk.get("kind") in self._RETIRED_KINDS:
                     dirty = True
                     continue
