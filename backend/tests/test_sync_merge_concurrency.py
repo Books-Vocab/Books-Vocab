@@ -5,9 +5,28 @@ from __future__ import annotations
 import logging
 from datetime import UTC, timedelta
 
+import pytest
+
+from kg.cards import CardStore
 from kg.vocab_crud import list_vocab_cards
 from kg.vocab_review import push_review_states
 from test_sync_merge import _entry, _iso, _make_store, _now
+
+
+@pytest.fixture(autouse=True)
+def _close_card_stores(monkeypatch):
+    stores = []
+    original_init = CardStore.__init__
+
+    def _track_store(store, *args, **kwargs):
+        original_init(store, *args, **kwargs)
+        stores.append(store)
+
+    monkeypatch.setattr(CardStore, "__init__", _track_store)
+    yield
+    for store in reversed(stores):
+        store.close()
+
 
 # CardStore.update — updated_at auto-bump
 # ============================================================================
