@@ -127,9 +127,9 @@ def scan(paths: list[Path]) -> list[Finding]:
         try:
             source = path.read_text(encoding="utf-8")
             findings.extend(_duplicate_findings(path, source))
-        except SyntaxError as exc:
-            line = exc.lineno or 1
-            print(f"{path}:{line}: unparsable ({exc.msg})", file=sys.stderr)
+        except (SyntaxError, UnicodeDecodeError) as exc:
+            line = getattr(exc, "lineno", None) or 1
+            print(f"{path}:{line}: unparsable ({getattr(exc, 'msg', str(exc))})", file=sys.stderr)
             findings.append(Finding(path, line, "<syntax>", 1, line, kind="syntax"))
         except OSError as exc:
             print(f"{path}:1: unable to read: {exc}", file=sys.stderr)
