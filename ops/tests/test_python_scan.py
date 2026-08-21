@@ -58,6 +58,18 @@ def test_clean_file_is_accepted(tmp_path: Path) -> None:
     assert result.returncode == 0
 
 
+def test_invalid_utf8_is_reported_without_traceback(tmp_path: Path) -> None:
+    source = tmp_path / "invalid_utf8.py"
+    source.write_bytes(b"def helper():\n    return '\xff'\n")
+
+    result = _run(source)
+    output = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "invalid_utf8.py:1: unparsable" in output
+    assert "Traceback" not in output
+    assert "UnicodeDecodeError" not in output
+
+
 def test_allow_comment_and_overload_are_exempt(tmp_path: Path) -> None:
     source = tmp_path / "allowed.py"
     source.write_text(
