@@ -87,7 +87,7 @@ PR readiness workflow 的 parser 入口是：
 ./ops/delivery.py --repo <canonical-checkout> sync-main
 ```
 
-`queue` 只接受 registry `published`、PR body／paths／head／live base、target branch=`main`、all required checks、mergeability 都 exact 且無 hold 的 candidate，並以 expected head 送進 GitHub native merge queue；enqueue 後 `main` tip 自然前進由 merge group 重驗，不被誤判為 side-effect 失敗，retarget／head drift 則撤銷可撤銷的 auto-merge 並 fail closed。`--hold` 是 typed hard stop，不是 override。inventory 會對每個無 open mapping 的 `published` record 精確補讀同 branch 的 terminal PR，讓 merged cleanup 不會因 open-only 列表消失。`cleanup-merged` 只依 exact merged PR receipt 移除匹配的 local residue／remote branch，再 terminalize registry record。`sync-main` 只在 `<canonical-checkout>` clean、位於 `main`、local ref 與 live `origin/main` 未在 preflight 後漂移時執行 `--ff-only`；不得在 feature worktree 執行，也沒有 force-reset fallback。
+`queue` 只接受 registry `published`、PR body／paths／head／live base、target branch=`main`、all required checks、mergeability 都 exact 且無 hold 的 candidate，並以 GraphQL `enqueuePullRequest(expectedHeadOid)` 送進 GitHub native merge queue；它不呼叫會在無 queue 情境退化成直接合併的 `gh pr merge --auto`。enqueue 後 `main` tip 自然前進由 merge group 重驗，不被誤判為 side-effect 失敗；retarget／head drift 則以 `dequeuePullRequest` 撤銷仍存在的 queue entry 並 fail closed。`--hold` 是 typed hard stop，不是 override。inventory 會對每個無 open mapping 的 `published` record 精確補讀同 branch 的 terminal PR，讓 merged cleanup 不會因 open-only 列表消失。`cleanup-merged` 只依 exact merged PR receipt 移除匹配的 local residue／remote branch，再 terminalize registry record。`sync-main` 只在 `<canonical-checkout>` clean、位於 `main`、local ref 與 live `origin/main` 未在 preflight 後漂移時執行 `--ff-only`；不得在 feature worktree 執行，也沒有 force-reset fallback。
 
 ### 錯誤隔離
 

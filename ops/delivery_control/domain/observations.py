@@ -106,6 +106,7 @@ class PullRequestSnapshot:
     title: str = ""
     body: str = ""
     auto_merge_enabled: bool = False
+    node_id: str = ""
 
 
 @dataclass(frozen=True)

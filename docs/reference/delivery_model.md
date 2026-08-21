@@ -191,7 +191,7 @@ CM 只在 PR 的 required checks、review、文件影響與安全條件滿足後
 
 PI publication 後，remote branch + typed PR 是 durable PR reservoir；local worktree 不是等待區。CM 只把符合以下 exact tuple 的 candidate 送進 GitHub native merge queue：registry `published` receipt、PR body／changed paths／head、live `origin/main` 與 PR／receipt／registry base、GitHub required outcomes、mergeability，以及沒有 P0／P1／security hold。repository 沒有 native merge queue rule 時必須拒絕，不得改成本地 queue 或手動 merge。
 
-native merge queue 以 exact current base、exact head 與 target branch=`main` admission；enqueue 的 GitHub mutation 以 expected head 線性化。admission 後 `main` tip 前進不是失敗，merge queue 會建立新 merge group 並重跑獨立、短且 blocking 的 `required`；若 PR 被 retarget 或 head 改變，adapter 必須撤銷仍可撤銷的 auto-merge side effect 並 fail closed。landing 後 CM 只在 canonical checkout clean、位於 `main` 且 local／origin refs 仍符合 preflight 時做 `--ff-only` sync；任何 race、dirty 或 divergence 都 fail closed。
+native merge queue 以 exact current base、exact head 與 target branch=`main` admission；adapter 只呼叫 GraphQL `enqueuePullRequest(expectedHeadOid)`，不使用可能直接合併的 auto-merge CLI。admission 後 `main` tip 前進不是失敗，merge queue 會建立新 merge group 並重跑獨立、短且 blocking 的 `required`；若 PR 被 retarget 或 head 改變，adapter 必須以 `dequeuePullRequest` 撤銷仍存在的 native queue entry 並 fail closed。landing 後 CM 只在 canonical checkout clean、位於 `main` 且 local／origin refs 仍符合 preflight 時做 `--ff-only` sync；任何 race、dirty 或 divergence 都 fail closed。
 
 ## Deterministic feedback controller
 

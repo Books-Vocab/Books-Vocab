@@ -17,10 +17,11 @@ from ..domain.observations import (
 )
 from ..ports.process import CommandRunnerPort
 from .errors import AdapterCommandError, AdapterPayloadError
+from .github_queue import GitHubQueueGraphQLAdapter
 from .subprocess_runner import SubprocessCommandRunner
 
 _PR_FIELDS = (
-    "number,url,headRefName,baseRefName,baseRefOid,headRefOid,state,isDraft,mergeable,title,body,"
+    "id,number,url,headRefName,baseRefName,baseRefOid,headRefOid,state,isDraft,mergeable,title,body,"
     "autoMergeRequest"
 )
 
@@ -34,6 +35,7 @@ class GitHubCliAdapter:
     ) -> None:
         self.repo = (repo or Path.cwd()).resolve()
         self.runner = runner or SubprocessCommandRunner()
+        self.queue = GitHubQueueGraphQLAdapter(repo=self.repo, runner=self.runner)
 
     def _run(self, argv: tuple[str, ...], *, allow_nonzero: bool = False) -> str:
         result = self.runner.run(argv, cwd=self.repo)
@@ -53,6 +55,7 @@ class GitHubCliAdapter:
     @staticmethod
     def _pull_request(payload: Mapping[str, Any]) -> PullRequestSnapshot:
         required = {
+            "id": str,
             "number": int,
             "url": str,
             "headRefName": str,
@@ -87,6 +90,7 @@ class GitHubCliAdapter:
             title=payload["title"],
             body=payload["body"],
             auto_merge_enabled=auto_merge_request is not None,
+            node_id=payload["id"],
         )
 
     @classmethod
@@ -337,28 +341,8 @@ class GitHubCliAdapter:
             raise CompareAndSwapConflict("PR tuple changed before enqueue")
         if not self.merge_queue_enabled("main"):
             raise CompareAndSwapConflict("main has no native merge queue rule")
-        self._run(
-            (
-                "gh",
-                "pr",
-                "merge",
-                str(number),
-                "--auto",
-                "--match-head-commit",
-                expected_head_sha,
-            )
+        self.queue.enqueue(
+            pull_request_id=before.node_id,
+            expected_base_sha=expected_base_sha,
+            expected_head_sha=expected_head_sha,
         )
-        after = self.get_pull_request(number)
-        if after.base_branch != "main" or after.head_sha != expected_head_sha:
-            if after.state == "OPEN" and after.auto_merge_enabled:
-                self._run(("gh", "pr", "merge", str(number), "--disable-auto"))
-                rolled_back = self.get_pull_request(number)
-                if rolled_back.state == "OPEN" and rolled_back.auto_merge_enabled:
-                    raise CompareAndSwapConflict(
-                        "PR tuple changed and queue rollback did not read back"
-                    )
-            raise CompareAndSwapConflict("PR tuple changed during enqueue")
-        if after.state == "OPEN" and not after.auto_merge_enabled:
-            raise CompareAndSwapConflict("PR did not read back as queue-admitted")
-        if after.state not in {"OPEN", "MERGED"}:
-            raise CompareAndSwapConflict("PR entered an unexpected state during enqueue")

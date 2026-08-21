@@ -30,6 +30,7 @@ class StaticRunner:
 
 def _pr_payload() -> dict[str, object]:
     return {
+        "id": "PR_kwDOexample",
         "number": 12,
         "url": "https://example.test/pull/12",
         "headRefName": "feat/one",
@@ -133,9 +134,26 @@ def test_github_required_checks_preserve_empty_nonzero_command_failure() -> None
         GitHubCliAdapter(runner=runner).required_check_snapshot(12)
 
 
-def test_github_enqueue_atomically_matches_expected_head() -> None:
-    queued = _pr_payload()
-    queued["autoMergeRequest"] = {"enabledAt": "2026-08-21T00:00:00Z"}
+def test_github_enqueue_delegates_to_native_queue_without_direct_merge() -> None:
+    queue_state = {
+        "data": {
+            "node": {
+                "id": "PR_kwDOexample",
+                "baseRefName": "main",
+                "baseRefOid": "a" * 40,
+                "headRefOid": "b" * 40,
+                "state": "OPEN",
+                "mergeQueueEntry": None,
+            }
+        }
+    }
+    enqueued = {
+        "data": {
+            "enqueuePullRequest": {"mergeQueueEntry": {"id": "MQE_1"}}
+        }
+    }
+    queued = json.loads(json.dumps(queue_state))
+    queued["data"]["node"]["mergeQueueEntry"] = {"id": "MQE_1"}
     runner = StaticRunner(
         [
             CommandResult(("gh",), 0, json.dumps(_pr_payload()), ""),
@@ -143,7 +161,8 @@ def test_github_enqueue_atomically_matches_expected_head() -> None:
                 ("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""
             ),
             CommandResult(("gh",), 0, json.dumps([{"type": "merge_queue"}]), ""),
-            CommandResult(("gh",), 0, "", ""),
+            CommandResult(("gh",), 0, json.dumps(queue_state), ""),
+            CommandResult(("gh",), 0, json.dumps(enqueued), ""),
             CommandResult(("gh",), 0, json.dumps(queued), ""),
         ]
     )
@@ -155,62 +174,11 @@ def test_github_enqueue_atomically_matches_expected_head() -> None:
         expected_head_sha="b" * 40,
     )
 
-    merge_call = next(call for call in runner.calls if call[:3] == ("gh", "pr", "merge"))
-    assert merge_call[-2:] == ("--match-head-commit", "b" * 40)
-    assert "--merge" not in merge_call
-
-
-def test_github_enqueue_accepts_main_advancing_after_exact_admission() -> None:
-    queued = _pr_payload()
-    queued["baseRefOid"] = "c" * 40
-    queued["autoMergeRequest"] = {"enabledAt": "2026-08-21T00:00:00Z"}
-    runner = StaticRunner(
-        [
-            CommandResult(("gh",), 0, json.dumps(_pr_payload()), ""),
-            CommandResult(
-                ("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""
-            ),
-            CommandResult(("gh",), 0, json.dumps([{"type": "merge_queue"}]), ""),
-            CommandResult(("gh",), 0, "", ""),
-            CommandResult(("gh",), 0, json.dumps(queued), ""),
-        ]
+    assert all(call[:3] != ("gh", "pr", "merge") for call in runner.calls)
+    enqueue_call = next(
+        call for call in runner.calls if "enqueuePullRequest" in " ".join(call)
     )
-
-    GitHubCliAdapter(runner=runner).enqueue(
-        number=12,
-        expected_base_sha="a" * 40,
-        expected_head_sha="b" * 40,
-    )
-
-
-def test_github_enqueue_rolls_back_if_target_branch_changes() -> None:
-    retargeted = _pr_payload()
-    retargeted["baseRefName"] = "release"
-    retargeted["autoMergeRequest"] = {"enabledAt": "2026-08-21T00:00:00Z"}
-    rolled_back = dict(retargeted)
-    rolled_back["autoMergeRequest"] = None
-    runner = StaticRunner(
-        [
-            CommandResult(("gh",), 0, json.dumps(_pr_payload()), ""),
-            CommandResult(
-                ("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""
-            ),
-            CommandResult(("gh",), 0, json.dumps([{"type": "merge_queue"}]), ""),
-            CommandResult(("gh",), 0, "", ""),
-            CommandResult(("gh",), 0, json.dumps(retargeted), ""),
-            CommandResult(("gh",), 0, "", ""),
-            CommandResult(("gh",), 0, json.dumps(rolled_back), ""),
-        ]
-    )
-
-    with pytest.raises(CompareAndSwapConflict, match="during enqueue"):
-        GitHubCliAdapter(runner=runner).enqueue(
-            number=12,
-            expected_base_sha="a" * 40,
-            expected_head_sha="b" * 40,
-        )
-
-    assert any("--disable-auto" in call for call in runner.calls)
+    assert f"expectedHeadOid={'b' * 40}" in enqueue_call
 
 
 def test_github_enqueue_refuses_branch_without_merge_queue_rule() -> None:

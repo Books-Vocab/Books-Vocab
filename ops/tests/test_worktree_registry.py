@@ -434,7 +434,7 @@ def test_changed_registered_worktree_fails_closed_for_admission(
         _git(worktree, "checkout", "--quiet", "-b", "feat/advanced")
 
     state = {"schema": registry.SCHEMA, "records": [handed_back]}
-    rc, refused = registry._register_record(
+    rc, _ = registry._register_record(
         state,
         branch="feat/new-owner",
         path=str(tmp_path / "new-owner"),
@@ -465,6 +465,54 @@ def test_cleanup_lease_blocks_reclaim_until_exact_completion(tmp_path: Path) -> 
     assert rc == registry.EXIT_CLAIMED
     assert refusal["reason"] == "local assets are protected by an exact cleanup lease"
     assert state["records"] == [handed_back]
+
+
+def test_old_published_receipt_cannot_lease_assets_after_new_claim(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    published = _idle_handed_back_record(tmp_path)
+    published["status"] = "published"
+    published["claim_generation"] = 2
+    published["handback_claim_generation"] = 2
+    state = {"schema": registry.SCHEMA, "records": [published]}
+
+    rc, reclaimed = registry._register_record(
+        state,
+        branch=published["branch"],
+        path=published["path"],
+        intent="new claim",
+        base=published["base_sha"],
+        external_ids=published["external_ids"],
+        scope=published["scope"],
+    )
+
+    assert rc == registry.EXIT_OK
+    assert reclaimed["claim_generation"] == 3
+    state_path = tmp_path / "registry.json"
+    registry.save_state(state_path, state)
+
+    assert registry.main(
+        [
+            "resolve",
+            "--state",
+            str(state_path),
+            "--branch",
+            published["branch"],
+            "--path",
+            published["path"],
+            "--status",
+            registry.STATUS_CLEANUP_PENDING,
+            "--expected-generation",
+            "2",
+            "--expected-head-sha",
+            published["handed_back_sha"],
+            "--json",
+        ]
+    ) == registry.EXIT_CLAIMED
+    assert "newer registry claim" in capsys.readouterr().err
+    stored = registry.load_state(state_path)["records"]
+    assert [item["status"] for item in stored] == ["published", "active"]
 
 
 @pytest.mark.parametrize("worktree_state", ("missing", "not-a-worktree"))

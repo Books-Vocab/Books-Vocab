@@ -295,19 +295,42 @@ def _register_record(
     if owners:
         return EXIT_CLAIMED, {"reason": "external reference already owned", "owners": owners}
     _, now_iso = resolve_now(at)
-    existing = next((r for r in state["records"]
-                     if isinstance(r, dict) and (r.get("branch") == branch
-                         or _norm(str(r.get("path") or "")) == path)), None)
-    if existing is not None and existing.get("status") == STATUS_CLEANUP_PENDING:
+    matching_records = [
+        record
+        for record in state["records"]
+        if isinstance(record, dict)
+        and (
+            record.get("branch") == branch
+            or _norm(str(record.get("path") or "")) == path
+        )
+    ]
+    cleanup_leases = [
+        record
+        for record in matching_records
+        if record.get("status") == STATUS_CLEANUP_PENDING
+    ]
+    if cleanup_leases:
+        existing = cleanup_leases[0]
         return EXIT_CLAIMED, {
             "reason": "local assets are protected by an exact cleanup lease",
             "branch": existing.get("branch"),
             "path": existing.get("path"),
             "claim_generation": existing.get("claim_generation"),
         }
+    active_records = [
+        record
+        for record in matching_records
+        if record.get("status") == STATUS_ACTIVE
+    ]
+    existing = active_records[0] if active_records else None
+    generations = [
+        generation
+        for record in matching_records
+        if (generation := _claim_generation(record, "claim_generation")) is not None
+    ]
+    next_generation = max(generations, default=-1) + 1
     if existing is not None and existing.get("status") == STATUS_ACTIVE:
-        generation = _claim_generation(existing, "claim_generation")
-        existing["claim_generation"] = (generation if generation is not None else 0) + 1
+        existing["claim_generation"] = next_generation
         existing.update({"branch": branch, "path": path, "intent": intent.strip(),
                          "base": base, "external_ids": ids,
                          "claimed_at": existing.get("claimed_at") or now_iso})
@@ -323,7 +346,7 @@ def _register_record(
         "status": STATUS_ACTIVE, "external_ids": ids, "scope": scope,
         "codex_thread_id": codex_thread_id, "delegated": delegated,
         "created_at": now_iso, "claimed_at": now_iso,
-        "resolved_at": None, "claim_generation": 0,
+        "resolved_at": None, "claim_generation": next_generation,
         "handed_back_at": None, "handed_back_sha": None,
     }
     state["records"].append(record)
@@ -689,6 +712,29 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     state_path = _state_path(args)
     with _ledger_lock(state_path):
         state = load_state(state_path)
+        newer_live_claims = [
+            record
+            for record in state.get("records", [])
+            if isinstance(record, dict)
+            and record.get("status") in {STATUS_ACTIVE, STATUS_CLEANUP_PENDING}
+            and (
+                (args.branch is not None and record.get("branch") == args.branch)
+                or (
+                    args.path is not None
+                    and _norm(str(record.get("path") or "")) == _norm(args.path)
+                )
+            )
+            and (
+                generation := _claim_generation(record, "claim_generation")
+            ) is not None
+            and generation > args.expected_generation
+        ]
+        if newer_live_claims:
+            print(
+                "✗ newer registry claim blocks historical transition",
+                file=sys.stderr,
+            )
+            return EXIT_CLAIMED
         source_statuses = {
             STATUS_CLEANUP_PENDING: {STATUS_ACTIVE, "published"},
             "published": {STATUS_ACTIVE, STATUS_CLEANUP_PENDING},
