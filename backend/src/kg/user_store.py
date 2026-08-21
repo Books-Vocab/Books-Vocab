@@ -79,6 +79,8 @@ def load_users_from(
     if not users_file.exists():
         return {}
     data = json.loads(users_file.read_text())
+    if not isinstance(data, dict):
+        raise json.JSONDecodeError("users.json payload must be a JSON object", "", 0)
     normalized, _ = normalize_users_payload(data)
     return normalized
 

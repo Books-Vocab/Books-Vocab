@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
+
+import pytest
 
 from kg.user_store import (
     collect_account_ids_for_deletion,
+    load_users_from,
     normalize_users_payload,
     parse_datetime,
 )
@@ -69,6 +73,19 @@ class TestParseDatetime:
 # ===========================================================================
 # normalize_users_payload
 # ===========================================================================
+
+class TestLoadUsersFrom:
+
+    def test_non_object_json_payload_raises_bounded_decode_error(self, tmp_path):
+        users_file = tmp_path / "users.json"
+        users_file.write_text("[]")
+
+        with pytest.raises(json.JSONDecodeError, match="users.json payload must be a JSON object"):
+            load_users_from(
+                users_file,
+                lambda users: normalize_users_payload(users, _default_subscription),
+            )
+
 
 class TestNormalizeUsersPayload:
 
