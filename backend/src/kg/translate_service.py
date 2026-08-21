@@ -200,7 +200,9 @@ async def _run_llm_translate(
         # network) doesn't cascade-hang every concurrent caller. TimeoutError
         # surfaces to the client as a normal failure; the leader entry is
         # cleaned up by its own finally block.
-        return await asyncio.wait_for(existing, timeout=_INFLIGHT_WAIT_TIMEOUT_S)
+        return await asyncio.wait_for(
+            asyncio.shield(existing), timeout=_INFLIGHT_WAIT_TIMEOUT_S
+        )
 
     loop = asyncio.get_running_loop()
     fut: asyncio.Future = loop.create_future()

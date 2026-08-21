@@ -194,12 +194,13 @@ async def test_translate_concurrent_dedup_n_callers_only_one_llm():
 
 
 @pytest.mark.asyncio
-async def test_translate_singleflight_timeout_releases_follower(monkeypatch):
-    """Follower must not wait forever on a hung leader.
+async def test_translate_singleflight_timeout_preserves_shared_future(monkeypatch):
+    """Follower timeout must not cancel the shared Future owned by the leader.
 
     If the leader stalls (LLM hang, network freeze), followers awaiting its
     future would otherwise block indefinitely. The wait_for bound surfaces
-    TimeoutError so the request fails fast instead of cascading the hang.
+    TimeoutError so the request fails fast, while the leader can still finish
+    and publish its result to the shared Future.
     """
     from kg.api_models import TranslateRequest
     from kg.translate_service import run_quick_translate
@@ -211,17 +212,17 @@ async def test_translate_singleflight_timeout_releases_follower(monkeypatch):
     user = {"id": "u_test", "config": {"translation": {"source_lang": "en", "target_lang": "zh-Hant"}}}
 
     leader_started = asyncio.Event()
-    never = asyncio.Event()  # never set → leader hangs
+    release = asyncio.Event()
 
-    async def hang_chat(*args, **kwargs):
+    async def slow_chat(*args, **kwargs):
         leader_started.set()
-        await never.wait()  # simulate indefinite LLM stall
+        await release.wait()  # hold the leader until after follower timeout
         return SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"x"}'))],
             usage=None,
         )
 
-    llm = SimpleNamespace(chat_async=AsyncMock(side_effect=hang_chat), user_id="u_test")
+    llm = SimpleNamespace(chat_async=AsyncMock(side_effect=slow_chat), user_id="u_test")
     import logging
     logger = logging.getLogger("test")
 
@@ -233,9 +234,9 @@ async def test_translate_singleflight_timeout_releases_follower(monkeypatch):
     with pytest.raises(asyncio.TimeoutError):
         await asyncio.wait_for(follower, timeout=2.0)
 
-    # Clean up the still-hung leader so the test doesn't leak a pending task.
-    leader.cancel()
-    try:
-        await leader
-    except (asyncio.CancelledError, BaseException):
-        pass
+    # The follower's timeout must not cancel the shared Future. Release the
+    # leader and require it to finish successfully after the follower leaves.
+    release.set()
+    result = await asyncio.wait_for(leader, timeout=2.0)
+    assert result.t == "x"
+    assert llm.chat_async.await_count == 1
