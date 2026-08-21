@@ -397,7 +397,16 @@ def cmd_scope_set(args: argparse.Namespace) -> int:
             print(json.dumps({"schema": SCHEMA, "action": "refused", "reason": reason},
                              ensure_ascii=False))
             return EXIT_USAGE
-        matches[0]["scope"] = scope
+        record = matches[0]
+        if record.get("scope") != scope:
+            generation = _claim_generation(record, "claim_generation")
+            record["claim_generation"] = (generation if generation is not None else -1) + 1
+            record["scope"] = scope
+            record["handed_back_at"] = None
+            record["handed_back_sha"] = None
+            record.pop("handback_claim_generation", None)
+            record.pop("handback_seal", None)
+            record.pop("handback_outcomes", None)
         save_state(state_path, state)
     print(json.dumps({"schema": SCHEMA, "action": "scope-set", "record": matches[0]},
                      indent=2, ensure_ascii=False) if args.json

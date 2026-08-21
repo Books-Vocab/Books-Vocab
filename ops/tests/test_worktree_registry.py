@@ -274,6 +274,34 @@ def test_scope_set_rejects_duplicate_file_declarations() -> None:
         })
 
 
+def test_scope_set_invalidates_old_handback_and_is_idempotent(tmp_path: Path) -> None:
+    record = _sealed_handed_back_record(tmp_path / "scope-owner")
+    record["claim_generation"] = 3
+    record["handback_claim_generation"] = 3
+    state_path = tmp_path / "registry.json"
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+    scope = {
+        "schema": "kg.worktree.scope.v1",
+        "files": [{"path": "ops/new_scope.py", "operation": "modify"}],
+    }
+    argv = [
+        "scope-set", "--state", str(state_path), "--branch", record["branch"],
+        "--scope", json.dumps(scope), "--json",
+    ]
+
+    assert registry.main(argv) == registry.EXIT_OK
+    assert registry.main(argv) == registry.EXIT_OK
+
+    updated = registry.load_state(state_path)["records"][0]
+    assert updated["claim_generation"] == 4
+    assert updated["scope"] == registry.normalise_scope(scope)
+    assert updated["handed_back_at"] is None
+    assert updated["handed_back_sha"] is None
+    assert "handback_claim_generation" not in updated
+    assert "handback_seal" not in updated
+    assert "handback_outcomes" not in updated
+
+
 def test_handback_seal_digest_is_verifiable() -> None:
     record = {"branch": "feat/seal", "path": "/tmp/seal", "external_ids": ["#9"]}
     body = registry._seal_body(
