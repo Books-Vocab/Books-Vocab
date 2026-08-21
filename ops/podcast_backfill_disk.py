@@ -173,7 +173,9 @@ def backfill(s3, *, bucket: str, data_dir: Path, dry_run: bool = True,
     # are recovering from. Last-writer-wins, same model as podcast_upload.sh.
     index_key = "index.json"
     if rebuild_index:
-        body = _rebuild_index_body(series)
+        preserved = _published_index_entries(s3, bucket=bucket, data_dir=data_dir) \
+            if series_filter else []
+        body = _rebuild_index_body(series, preserved_entries=preserved)
     else:
         idx = data_dir / "index.json"
         body = idx.read_bytes() if idx.is_file() else _rebuild_index_body(series)
@@ -186,14 +188,42 @@ def backfill(s3, *, bucket: str, data_dir: Path, dry_run: bool = True,
             "uploaded": uploaded, "skipped": skipped, "dry_run": dry_run}
 
 
-def _rebuild_index_body(series: list[Path]) -> bytes:
-    """Build index.json from per-series metadata (summary, no episodes)."""
-    entries = []
+def _published_index_entries(s3, *, bucket: str, data_dir: Path) -> list[dict]:
+    """Read the current published catalog for a filtered index rebuild."""
+    try:
+        body = s3.get_object(Bucket=bucket, Key="index.json")["Body"].read()
+    except Exception as exc:  # noqa: BLE001
+        if not _is_not_found(exc, s3):
+            raise
+        local_index = data_dir / "index.json"
+        if not local_index.is_file():
+            return []
+        body = local_index.read_bytes()
+    entries = json.loads(body)
+    if not isinstance(entries, list) or not all(isinstance(entry, dict) for entry in entries):
+        raise ValueError("index.json must contain a list of catalog entries")
+    return entries
+
+
+def _rebuild_index_body(series: list[Path],
+                        preserved_entries: list[dict] | None = None) -> bytes:
+    """Build index.json, optionally replacing only selected catalog entries."""
+    rebuilt = []
     for sdir in series:
         meta = json.loads((sdir / "metadata.json").read_text(encoding="utf-8"))
         entry = {k: v for k, v in meta.items() if k != "episodes"}
         entry["episodeCount"] = len(meta.get("episodes", []))
-        entries.append(entry)
+        rebuilt.append(entry)
+
+    if preserved_entries is None:
+        entries = rebuilt
+    else:
+        replacements = {entry["id"]: entry for entry in rebuilt}
+        entries = []
+        for entry in preserved_entries:
+            series_id = entry.get("id")
+            entries.append(replacements.pop(series_id, entry))
+        entries.extend(replacements.values())
     return json.dumps(entries, ensure_ascii=False, indent=2).encode("utf-8")
 
 
