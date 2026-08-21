@@ -132,6 +132,7 @@ run_one() {
         ops/tests/test_delivery_models.py \
         ops/tests/test_delivery_states.py \
         ops/tests/test_delivery_ports.py \
+        ops/tests/test_delivery_adapters.py \
         ops/tests/test_delivery_inspect.py \
         ops/tests/test_delivery_publish.py \
         ops/tests/test_delivery_cleanup.py \

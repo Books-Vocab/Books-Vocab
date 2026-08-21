@@ -1,0 +1,450 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+OPS = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(OPS))
+
+from delivery_control.adapters.errors import AdapterCommandError
+from delivery_control.adapters.git_cli import GitCliAdapter
+from delivery_control.adapters.github_cli import GitHubCliAdapter
+from delivery_control.adapters.registry import RegistryCliAdapter
+from delivery_control.domain.errors import CompareAndSwapConflict
+from delivery_control.domain.models import CheckStatus
+from delivery_control.domain.observations import (
+    FileChange,
+    FileOperation,
+    InventoryProblem,
+)
+from delivery_control.ports.process import CommandResult
+
+
+def _git(repo: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(repo), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+def test_git_adapter_computes_operation_aware_exact_base_diff(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-qm", "base")
+    base_sha = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-qc", "feat/example")
+    (repo / "base.txt").write_text("changed\n", encoding="utf-8")
+    (repo / "ops").mkdir()
+    (repo / "ops" / "change.py").write_text("value = 1\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "change")
+
+    snapshot = GitCliAdapter(repo=repo).inspect_worktree(repo, base_sha)
+
+    assert snapshot.clean
+    assert snapshot.changes == (
+        FileChange(FileOperation.MODIFY, "base.txt"),
+        FileChange(FileOperation.ADD, "ops/change.py"),
+    )
+
+
+def test_git_new_remote_branch_push_uses_absent_ref_lease(tmp_path: Path) -> None:
+    head = "b" * 40
+    runner = StaticRunner(
+        [
+            CommandResult(("git",), 0, "feat/one\n", ""),
+            CommandResult(("git",), 0, f"{head}\n", ""),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), 0, f"{head}\trefs/heads/feat/one\n", ""),
+        ]
+    )
+    adapter = GitCliAdapter(repo=tmp_path, runner=runner)
+
+    adapter.push_branch(
+        worktree=tmp_path,
+        branch="feat/one",
+        expected_local_sha=head,
+        expected_remote_sha=None,
+    )
+
+    push = next(call for call in runner.calls if "push" in call)
+    assert "--force-with-lease=refs/heads/feat/one:" in push
+
+
+def test_git_local_branch_delete_uses_atomic_expected_old_sha(tmp_path: Path) -> None:
+    head = "b" * 40
+    runner = StaticRunner(
+        [
+            CommandResult(("git",), 0, f"{head}\n", ""),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), 128, "", "unknown revision"),
+        ]
+    )
+    adapter = GitCliAdapter(repo=tmp_path, runner=runner)
+
+    adapter.delete_local_branch("feat/one", expected_head_sha=head)
+
+    assert any(
+        call[-4:] == ("update-ref", "-d", "refs/heads/feat/one", head)
+        for call in runner.calls
+    )
+
+
+def test_git_remote_branch_delete_uses_exact_lease(tmp_path: Path) -> None:
+    head = "b" * 40
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("git",), 0, f"{head}\trefs/heads/feat/one\n", ""
+            ),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), 0, "", ""),
+        ]
+    )
+    adapter = GitCliAdapter(repo=tmp_path, runner=runner)
+
+    adapter.delete_remote_branch("feat/one", expected_head_sha=head)
+
+    push = next(call for call in runner.calls if "push" in call)
+    assert f"--force-with-lease=refs/heads/feat/one:{head}" in push
+    assert ":refs/heads/feat/one" in push
+
+
+def test_git_push_lease_failure_is_a_compare_and_swap_conflict(tmp_path: Path) -> None:
+    head = "b" * 40
+    runner = StaticRunner(
+        [
+            CommandResult(("git",), 0, "feat/one\n", ""),
+            CommandResult(("git",), 0, f"{head}\n", ""),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), 1, "", "stale info"),
+        ]
+    )
+    adapter = GitCliAdapter(repo=tmp_path, runner=runner)
+
+    with pytest.raises(CompareAndSwapConflict, match="lease"):
+        adapter.push_branch(
+            worktree=tmp_path,
+            branch="feat/one",
+            expected_local_sha=head,
+            expected_remote_sha=None,
+        )
+
+
+def test_git_cleanup_refuses_canonical_checkout_and_main(tmp_path: Path) -> None:
+    adapter = GitCliAdapter(repo=tmp_path, runner=StaticRunner([]))
+
+    with pytest.raises(CompareAndSwapConflict, match="canonical"):
+        adapter.remove_worktree(tmp_path, expected_head_sha="b" * 40)
+    with pytest.raises(CompareAndSwapConflict, match="local main"):
+        adapter.delete_local_branch("main", expected_head_sha="b" * 40)
+    with pytest.raises(CompareAndSwapConflict, match="remote main"):
+        adapter.delete_remote_branch("main", expected_head_sha="b" * 40)
+
+
+class StaticRunner:
+    def __init__(self, responses: list[CommandResult]) -> None:
+        self.responses = list(responses)
+        self.calls: list[tuple[str, ...]] = []
+
+    def run(self, argv: tuple[str, ...], *, cwd: Path | None = None) -> CommandResult:
+        self.calls.append(argv)
+        return self.responses.pop(0)
+
+
+def test_registry_adapter_surfaces_malformed_records_without_hiding_valid_ones(
+    tmp_path: Path,
+) -> None:
+    valid = {
+        "branch": "feat/one",
+        "path": str(tmp_path / "one"),
+        "status": "active",
+        "external_ids": ["#1"],
+        "base": "a" * 40,
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"operation": "modify", "path": "ops/a.py"}],
+        },
+        "codex_thread_id": "thread-1",
+        "claim_generation": 4,
+    }
+    malformed = {"branch": "feat/bad", "path": "relative", "status": "active"}
+    runner = StaticRunner(
+        [
+            CommandResult(
+                argv=("registry", "list"),
+                exit_code=0,
+                stdout=json.dumps({"records": [valid, malformed]}),
+                stderr="",
+            )
+        ]
+    )
+    inventory = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    ).list_records()
+
+    assert [record.lane_id for record in inventory.records] == ["#1"]
+    assert inventory.records[0].claim_generation == 4
+    assert inventory.problems[0].identity == "feat/bad"
+
+
+def test_registry_adapter_ignores_unusable_terminal_history(tmp_path: Path) -> None:
+    terminal = {
+        "branch": "feat/old",
+        "path": str(tmp_path / "old"),
+        "status": "merged",
+    }
+    runner = StaticRunner(
+        [CommandResult(("registry",), 0, json.dumps({"records": [terminal]}), "")]
+    )
+
+    inventory = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    ).list_records()
+
+    assert inventory.records == ()
+    assert inventory.problems == ()
+
+
+def test_registry_adapter_exposes_exact_legacy_handback_transport_fields(
+    tmp_path: Path,
+) -> None:
+    seal = {
+        "schema": "kg.worktree.handback.v1",
+        "branch": "feat/one",
+        "path": str(tmp_path / "one"),
+        "external_ids": ["#1"],
+        "tip_sha": "b" * 40,
+        "handed_back_at": "2026-08-21T00:00:00Z",
+        "origin_main_sha": "a" * 40,
+        "outcomes": [{"status": "passed"}],
+    }
+    seal["digest"] = hashlib.sha256(
+        json.dumps(
+            seal, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    payload = {
+        "branch": "feat/one",
+        "path": str(tmp_path / "one"),
+        "status": "active",
+        "external_ids": ["#1"],
+        "base_sha": "a" * 40,
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"operation": "modify", "path": "ops/a.py"}],
+        },
+        "codex_thread_id": "thread-1",
+        "claim_generation": 4,
+        "handback_claim_generation": 4,
+        "handed_back_sha": "b" * 40,
+        "handed_back_at": "2026-08-21T00:00:00Z",
+        "handback_seal": seal,
+    }
+
+    record = RegistryCliAdapter._record(payload)
+
+    assert record.handback_valid
+    assert record.handback_digest == seal["digest"]
+    assert record.handback_origin_main_sha == "a" * 40
+
+
+def test_registry_get_ignores_terminal_history_for_same_lane(tmp_path: Path) -> None:
+    active = {
+        "branch": "feat/current",
+        "path": str(tmp_path / "current"),
+        "status": "active",
+        "external_ids": ["#1"],
+        "base": "a" * 40,
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"operation": "modify", "path": "ops/a.py"}],
+        },
+        "codex_thread_id": "thread-current",
+        "claim_generation": 2,
+    }
+    terminal = {
+        **active,
+        "branch": "feat/historical",
+        "path": str(tmp_path / "historical"),
+        "status": "merged",
+        "codex_thread_id": "thread-historical",
+        "claim_generation": 1,
+    }
+    runner = StaticRunner(
+        [CommandResult(("registry",), 0, json.dumps({"records": [terminal, active]}), "")]
+    )
+
+    record = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    ).get("#1")
+
+    assert record is not None
+    assert record.branch == "feat/current"
+
+
+def _pr_payload() -> dict[str, object]:
+    return {
+        "number": 12,
+        "url": "https://example.test/pull/12",
+        "headRefName": "feat/one",
+        "baseRefOid": "a" * 40,
+        "headRefOid": "b" * 40,
+        "state": "OPEN",
+        "isDraft": False,
+        "mergeable": "MERGEABLE",
+        "title": "fix: one",
+        "body": "## Scope\n- ops/a.py\n\n## Validation\n- required",
+        "autoMergeRequest": None,
+    }
+
+
+def test_github_adapter_surfaces_malformed_entries() -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(
+                argv=("gh", "pr", "list"),
+                exit_code=0,
+                stdout=json.dumps([_pr_payload(), 7]),
+                stderr="",
+            )
+        ]
+    )
+    inventory = GitHubCliAdapter(runner=runner).list_open_pull_requests()
+    assert [item.number for item in inventory.records] == [12]
+    assert inventory.problems == (
+        InventoryProblem("github", "entry[1]", "PR entry is not an object"),
+    )
+
+
+def test_github_required_check_snapshot_is_bound_to_exact_head() -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(("gh",), 0, json.dumps(_pr_payload()), ""),
+            CommandResult(
+                ("gh",),
+                0,
+                json.dumps([{"state": "SUCCESS", "name": "required"}]),
+                "",
+            ),
+            CommandResult(("gh",), 0, json.dumps(_pr_payload()), ""),
+        ]
+    )
+    snapshot = GitHubCliAdapter(runner=runner).required_check_snapshot(12)
+    assert snapshot.status is CheckStatus.SUCCESS
+    assert snapshot.head_sha == "b" * 40
+    assert snapshot.names == ("required",)
+
+
+def test_github_merge_history_is_typed_and_sorted() -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("gh",),
+                0,
+                json.dumps(
+                    [
+                        {"mergedAt": "2026-08-21T00:05:00Z"},
+                        {"mergedAt": "2026-08-21T00:00:00Z"},
+                    ]
+                ),
+                "",
+            )
+        ]
+    )
+
+    observed = GitHubCliAdapter(runner=runner).recent_merge_times(limit=20)
+
+    assert [item.minute for item in observed] == [0, 5]
+
+
+def test_github_required_checks_preserve_empty_nonzero_command_failure() -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(("gh",), 0, json.dumps(_pr_payload()), ""),
+            CommandResult(("gh",), 1, "", "network failure"),
+        ]
+    )
+
+    with pytest.raises(AdapterCommandError):
+        GitHubCliAdapter(runner=runner).required_check_snapshot(12)
+
+
+def test_github_enqueue_atomically_matches_expected_head() -> None:
+    queued = _pr_payload()
+    queued["autoMergeRequest"] = {"enabledAt": "2026-08-21T00:00:00Z"}
+    runner = StaticRunner(
+        [
+            CommandResult(("gh",), 0, json.dumps(_pr_payload()), ""),
+            CommandResult(
+                ("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""
+            ),
+            CommandResult(("gh",), 0, json.dumps([{"type": "merge_queue"}]), ""),
+            CommandResult(("gh",), 0, "", ""),
+            CommandResult(("gh",), 0, json.dumps(queued), ""),
+        ]
+    )
+    adapter = GitHubCliAdapter(runner=runner)
+
+    adapter.enqueue(
+        number=12,
+        expected_base_sha="a" * 40,
+        expected_head_sha="b" * 40,
+    )
+
+    merge_call = next(call for call in runner.calls if call[:3] == ("gh", "pr", "merge"))
+    assert merge_call[-2:] == ("--match-head-commit", "b" * 40)
+    assert "--merge" not in merge_call
+
+
+def test_github_enqueue_refuses_branch_without_merge_queue_rule() -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(("gh",), 0, json.dumps(_pr_payload()), ""),
+            CommandResult(
+                ("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""
+            ),
+            CommandResult(("gh",), 0, json.dumps([{"type": "required_status_checks"}]), ""),
+        ]
+    )
+
+    with pytest.raises(CompareAndSwapConflict, match="no native merge queue"):
+        GitHubCliAdapter(runner=runner).enqueue(
+            number=12,
+            expected_base_sha="a" * 40,
+            expected_head_sha="b" * 40,
+        )
+
+
+def test_github_metadata_update_requires_expected_handback_head() -> None:
+    payload = _pr_payload()
+    payload["headRefOid"] = "c" * 40
+    runner = StaticRunner(
+        [CommandResult(("gh",), 0, json.dumps(payload), "")]
+    )
+
+    with pytest.raises(CompareAndSwapConflict, match="before metadata"):
+        GitHubCliAdapter(runner=runner).update_pull_request(
+            number=12,
+            title="fix: exact",
+            body="## Scope\nexact",
+            expected_head_sha="b" * 40,
+        )
+
+    assert len(runner.calls) == 1
