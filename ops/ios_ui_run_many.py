@@ -387,7 +387,11 @@ def _run_streaming(
 
 
 def _canonical_device(value: str) -> str:
-    if not re.fullmatch(r"[0-9A-Fa-f-]{36}", value):
+    if not re.fullmatch(
+        r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-"
+        r"[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}",
+        value,
+    ):
         raise RunManyError(f"device must be a canonical UUID: {value!r}")
     return value.upper()
 

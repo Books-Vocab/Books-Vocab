@@ -14,6 +14,14 @@ from ops import ios_ui_run_many
 from ops.ios_ui_run_many import RunManyError, classify_bundle, deduplicate_methods, load_methods
 
 
+def test_canonical_device_requires_uuid_groups_and_normalizes_uppercase() -> None:
+    assert ios_ui_run_many._canonical_device("01234567-89ab-cdef-0123-456789abcdef") == (
+        "01234567-89AB-CDEF-0123-456789ABCDEF"
+    )
+    with pytest.raises(RunManyError, match="canonical UUID"):
+        ios_ui_run_many._canonical_device("-" * 36)
+
+
 def test_load_and_deduplicate_shared_selector(tmp_path: Path) -> None:
     methods = tmp_path / "methods.json"
     methods.write_text(
