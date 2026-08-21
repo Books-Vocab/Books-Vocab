@@ -44,14 +44,20 @@ class _MemoryLogHandler(logging.Handler):
         return rows[-n:]
 
 
+_shared_handler: _MemoryLogHandler | None = None
+
+
 def install_memory_log_handler(maxlen: int = 1000) -> _MemoryLogHandler:
     """Create the shared memory log handler and attach it to the loggers
     surfaced by the admin dashboard (root + uvicorn family).
 
     Returns the handler so callers can read the ring buffer via ``.get()``.
     """
-    handler = _MemoryLogHandler(maxlen=maxlen)
-    handler.setLevel(logging.DEBUG)
+    global _shared_handler
+    if _shared_handler is None:
+        _shared_handler = _MemoryLogHandler(maxlen=maxlen)
+        _shared_handler.setLevel(logging.DEBUG)
+    handler = _shared_handler
     for logger_name in ("", "uvicorn", "uvicorn.error", "uvicorn.access"):
         target = logging.getLogger(logger_name)
         if not any(h is handler for h in target.handlers):

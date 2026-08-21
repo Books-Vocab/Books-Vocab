@@ -113,29 +113,18 @@ def test_install_attaches_handler_once_per_logger():
 
     h1 = install_memory_log_handler(maxlen=50)
     after_first = [len(t.handlers) for t in targets]
-    assert all(after_first[i] == before[i] + 1 for i in range(len(targets)))
+    assert all(sum(handler is h1 for handler in target.handlers) == 1 for target in targets)
+    assert all(after_first[i] in (before[i], before[i] + 1) for i in range(len(targets)))
 
-    # Re-running with the SAME handler instance must not double-attach.
-    # (install_memory_log_handler returns a *new* handler each call, so
-    #  we exercise the dedupe code-path by attaching h1 a second time
-    #  via the same helper logic — mirror what's inside the impl.)
-    for t in targets:
-        if not any(h is h1 for h in t.handlers):
-            t.addHandler(h1)
+    # A second installation must reuse the shared handler and attach nothing.
+    h2 = install_memory_log_handler(maxlen=50)
     after_second = [len(t.handlers) for t in targets]
+    assert h2 is h1, "install must return the shared handler"
     assert after_second == after_first, "handler must not double-attach when present"
-
-    # Cleanup so we don't leak handlers across tests.
-    for t in targets:
-        t.removeHandler(h1)
 
 
 def test_install_returns_working_handler():
     h = install_memory_log_handler(maxlen=4)
-    try:
-        h.emit(_record(msg="installed"))
-        rows = h.get()
-        assert any(r["msg"] == "installed" for r in rows)
-    finally:
-        for name in ("", "uvicorn", "uvicorn.error", "uvicorn.access"):
-            logging.getLogger(name).removeHandler(h)
+    h.emit(_record(msg="installed"))
+    rows = h.get()
+    assert any(r["msg"] == "installed" for r in rows)
