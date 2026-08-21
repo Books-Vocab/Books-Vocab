@@ -20,6 +20,8 @@ agent_facing_surface:
     - ops/skill_route.py
     - ops/agent_onboard.py
     - ops/capability_matrix.py
+    - ops/delivery.py
+    - ops/delivery_control/
 
 documents:
   - id: contract.sync_lifecycle
@@ -121,6 +123,8 @@ documents:
       - .claude/skills/catalog.json
       - ops/task_registry.py
       - ops/lib/streaming_command.py
+      - ops/delivery.py
+      - ops/delivery_control/
       - ops/worktree_registry.py
       - ops/worktree_orchestrate.py
 
@@ -365,6 +369,8 @@ documents:
       - ops/context_plane.json
       - ops/context_route.py
       - ops/skill_route.py
+      - ops/delivery.py
+      - ops/delivery_control/
       - ops/worktree_registry.py
       - ops/worktree_orchestrate.py
       - ops/release.sh

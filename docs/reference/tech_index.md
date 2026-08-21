@@ -23,10 +23,11 @@ verified_against: 2a7930c04f661c266ce05b3568f375e1db2a39f1
 | Backend | `backend/src/kg/` | `cd backend && uv run --locked python -m pytest` |
 | Podcast／LLM lab | `lab/podcast/`、`lab/llm_eval/` | 各自 README／`uv run` entrypoint |
 | GitHub-native delivery model | `docs/reference/delivery_model.md` | GitHub Issue／Project／PR／Actions／repository rules |
+| Deterministic delivery control | `ops/delivery.py`、`ops/delivery_control/` | `./ops/delivery.py --help`、`./ops/test_ops.sh delivery-control` |
 | Local coordinator | `ops/worktree_registry.py`、`ops/worktree_orchestrate.py` | `./ops/test_ops.sh worktree` |
 | Docs control | `docs/registry.yml`、`ops/docs_impact.py`、`ops/docs_lint.sh` | `./ops/test_ops.sh docs-lint` |
 | GitHub intake/review | `.github/ISSUE_TEMPLATE/`、`.github/PULL_REQUEST_TEMPLATE.md` | GitHub Issue／PR |
-| CI | `.github/workflows/pr-gate.yml`（3 分鐘 upstream + 1 分鐘聚合的 `required`，以及 diff-scoped nonblocking `confidence`）、`.github/workflows/backend-quality.yml`、`.github/workflows/ios-quality.yml`、`ops/ci_scope_router.sh`、`ops/ci_confidence_verdict.sh` | GitHub Actions checks；`required` 是 branch protection merge gate，`confidence` 對選中的受影響 surface 提供完整結果、未知路徑 fail-closed；iOS hosted workflow 只快取 lockfile-pinned SwiftPM sources，不快取 DerivedData |
+| CI | `.github/workflows/pr-readiness.yml`、`.github/workflows/pr-gate.yml`、`.github/workflows/merge-group-required.yml`、`ops/ci_scope_router.sh`、`ops/ci_confidence_verdict.sh` | typed receipt／exact HEAD readiness；PR 與 merge-group blocking `required`；diff-scoped nonblocking advisory `confidence` |
 
 ## Backend routes and data
 
@@ -55,6 +56,7 @@ verified_against: 2a7930c04f661c266ce05b3568f375e1db2a39f1
 - UI quality：`ops/ui_quality_plane.py`、`ops/ui_quality_gate.py`、`ops/ios_ops.sh quality`。
 - Lint／scan：`ops/docs_lint.sh`、`ops/i18n_lint.sh`、`ops/shell_scan.sh`、`ops/python_scan.py`。
 - Worktree：`ops/lib/worktree_scope.py`、`ops/worktree_registry.py`、`ops/worktree_orchestrate.py`。
+- Delivery control：`ops/delivery.py` 是 JSON command 入口；`inspect`／`metrics`／`plan` 觀測與規劃，`receipt`／`publish`／`release-published`／`queue`／`cleanup-merged`／`sync-main` 執行 exact typed transaction，`validate-pr-body` 供 PR readiness 綁定 machine receipt 與 HEAD。
 - Long-task safety：`ops/task_registry.py`、`ops/lib/streaming_command.py`（只記 process ownership／heartbeat，不記產品工作狀態）。
 - Ops regression：`ops/test_ops.sh`。
 - Backend venv health：`uv run --no-project --python 3.13 ops/venv_health.py`；檢查必需的 main `backend/.venv`，並對缺少或失效的 Python、pytest、`uv.lock` 或 dependency probe fail closed。
