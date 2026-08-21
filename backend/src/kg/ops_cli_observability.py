@@ -40,6 +40,36 @@ def _count_by_day_ro(db_path: Path, table: str, ts_col: str, cutoff: str, *, whe
     return {d: int(c or 0) for d, c in rows if d}
 
 
+def _token_usage_by_utc_day_ro(db_path: Path, cutoff: str) -> tuple[dict[str, int], dict[str, int]]:
+    if not db_path.exists():
+        return {}, {}
+    cutoff_dt = _parse_utc_instant(cutoff)
+    if cutoff_dt is None:
+        return {}, {}
+
+    conn = connect_ro(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT user_id, input_tokens, output_tokens, created_at FROM token_usage "
+            "WHERE created_at >= ?",
+            ((cutoff_dt.date() - timedelta(days=1)).isoformat(),),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    users_by_day: dict[str, set[object]] = {}
+    tokens_by_day: dict[str, int] = {}
+    for user_id, t_in, t_out, created_at in rows:
+        created_dt = _parse_utc_instant(created_at)
+        if created_dt is None or created_dt < cutoff_dt:
+            continue
+        day = created_dt.date().isoformat()
+        if user_id is not None:
+            users_by_day.setdefault(day, set()).add(user_id)
+        tokens_by_day[day] = tokens_by_day.get(day, 0) + int(t_in or 0) + int(t_out or 0)
+    return {day: len(users) for day, users in users_by_day.items()}, tokens_by_day
+
+
 def cmd_timeseries(args: argparse.Namespace) -> None:
     metric = args.metric
     bucket = args.bucket
@@ -146,22 +176,7 @@ def cmd_trends(args: argparse.Namespace) -> None:
 
     pipe_fail = _count_by_day_ro(dd / "pipeline_runs.db", "pipeline_runs", "started_at", cutoff, where=f" AND {PIPELINE_FAILURE_WHERE}")
     judge_rej = _count_by_day_ro(dd / "judge_log.db", "judge_log", "created_at", cutoff, where=f" AND {JUDGE_AUTO_REJECT_WHERE}")
-    actives = _count_by_day_ro(dd / "token_usage.db", "token_usage", "created_at", cutoff, count="COUNT(DISTINCT user_id)")
-
-    tokens_map: dict[str, int] = {}
-    tdb = dd / "token_usage.db"
-    if tdb.exists():
-        conn = connect_ro(tdb)
-        try:
-            for d, ti, to in conn.execute(
-                "SELECT substr(created_at,1,10) AS d, SUM(input_tokens), SUM(output_tokens) "
-                "FROM token_usage WHERE created_at >= ? GROUP BY d",
-                (cutoff,),
-            ):
-                if d:
-                    tokens_map[d] = int(ti or 0) + int(to or 0)
-        finally:
-            conn.close()
+    actives, tokens_map = _token_usage_by_utc_day_ro(dd / "token_usage.db", cutoff)
 
     errors_per_day = [pipe_fail.get(d, 0) + judge_rej.get(d, 0) for d in days]
     active_users_per_day = [actives.get(d, 0) for d in days]
