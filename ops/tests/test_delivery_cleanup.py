@@ -277,7 +277,7 @@ def test_publish_release_retry_is_idempotent_after_local_assets_are_absent() -> 
         receipt, registry=registry, git=git, state="OPEN"
     ).release_after_publish(receipt=receipt, pull_request_number=9)
 
-    assert registry.transitions == ["cleanup_pending", "published"]
+    assert registry.transitions == []
     assert git.actions == []
     assert result.worktree_absent and result.local_branch_absent
 

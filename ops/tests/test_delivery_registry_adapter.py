@@ -25,6 +25,29 @@ class StaticRunner:
         return self.responses.pop(0)
 
 
+def test_registry_adapter_targets_explicit_state_file(tmp_path: Path) -> None:
+    runner = StaticRunner(
+        [CommandResult(("registry",), 0, json.dumps({"records": []}), "")]
+    )
+    state_path = tmp_path / "registry.json"
+
+    RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"),
+        state_path=state_path,
+        runner=runner,
+    ).list_records()
+
+    assert runner.calls == [
+        (
+            "/repo/ops/worktree_registry.py",
+            "list",
+            "--json",
+            "--state",
+            str(state_path),
+        )
+    ]
+
+
 def test_registry_adapter_surfaces_malformed_records_without_hiding_valid_ones(
     tmp_path: Path,
 ) -> None:
@@ -78,9 +101,7 @@ def test_registry_adapter_fails_closed_on_unusable_terminal_history(
     ).list_records()
 
     assert inventory.records == ()
-    assert inventory.problems == (
-        InventoryProblem("registry", "feat/old", "'scope'"),
-    )
+    assert inventory.problems == (InventoryProblem("registry", "feat/old", "'scope'"),)
 
 
 def test_registry_adapter_exposes_exact_legacy_handback_transport_fields(
@@ -149,7 +170,11 @@ def test_registry_get_ignores_terminal_history_for_same_lane(tmp_path: Path) -> 
         "claim_generation": 1,
     }
     runner = StaticRunner(
-        [CommandResult(("registry",), 0, json.dumps({"records": [terminal, active]}), "")]
+        [
+            CommandResult(
+                ("registry",), 0, json.dumps({"records": [terminal, active]}), ""
+            )
+        ]
     )
 
     record = RegistryCliAdapter(

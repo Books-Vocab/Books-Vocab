@@ -136,6 +136,8 @@ run_one() {
         ops/tests/test_delivery_registry_adapter.py \
         ops/tests/test_delivery_github_adapter.py \
         ops/tests/test_delivery_github_queue.py \
+        ops/tests/test_delivery_module_runner.py \
+        ops/tests/test_delivery_registry_runtime.py \
         ops/tests/test_delivery_application.py \
         ops/tests/test_delivery_inspect.py \
         ops/tests/test_delivery_publish.py \

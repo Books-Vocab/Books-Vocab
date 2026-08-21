@@ -545,7 +545,7 @@ def validate_handback_seal(record: dict[str, Any], *, repo: Path | None = None,
     return problems
 
 
-def _has_valid_handback(record: dict[str, Any]) -> bool:
+def _has_valid_stored_handback(record: dict[str, Any]) -> bool:
     branch = record.get("branch")
     path = record.get("path")
     handed_back_at = record.get("handed_back_at")
@@ -573,7 +573,15 @@ def _has_valid_handback(record: dict[str, Any]) -> bool:
     handed_back_generation = _claim_generation(record, "handback_claim_generation")
     if generation is None or handed_back_generation is None or generation != handed_back_generation:
         return False
-    worktree = Path(path)
+    return not validate_handback_seal(record)
+
+
+def _has_valid_handback(record: dict[str, Any]) -> bool:
+    if not _has_valid_stored_handback(record):
+        return False
+    branch = str(record["branch"])
+    handed_back_sha = str(record["handed_back_sha"])
+    worktree = Path(str(record["path"]))
     if not worktree.is_dir():
         return False
     branch_rc, current_branch = _git(["branch", "--show-current"], worktree)
@@ -583,9 +591,7 @@ def _has_valid_handback(record: dict[str, Any]) -> bool:
     if dirty_rc != 0 or dirty:
         return False
     head_rc, current_head = _git(["rev-parse", "--verify", "HEAD^{commit}"], worktree)
-    if head_rc != 0 or current_head != handed_back_sha:
-        return False
-    return not validate_handback_seal(record)
+    return head_rc == 0 and current_head == handed_back_sha
 
 
 def _admission_records(state: dict[str, Any]) -> list[dict[str, Any]]:
@@ -737,7 +743,7 @@ def cmd_resolve(args: argparse.Namespace) -> int:
             return EXIT_CLAIMED
         source_statuses = {
             STATUS_CLEANUP_PENDING: {STATUS_ACTIVE, "published"},
-            "published": {STATUS_ACTIVE, STATUS_CLEANUP_PENDING},
+            "published": {STATUS_CLEANUP_PENDING},
             "merged": {STATUS_ACTIVE, "published", STATUS_CLEANUP_PENDING},
             "abandoned": {STATUS_ACTIVE, "published"},
         }[args.status]
@@ -776,11 +782,23 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         if len(matches) != 1:
             print("✗ registry transition selector is ambiguous", file=sys.stderr)
             return EXIT_CLAIMED
-        if (
-            args.status in {STATUS_CLEANUP_PENDING, "published"}
-            and not _has_valid_handback(matches[0])
-        ):
-            print("✗ published transition requires a valid physical hand-back", file=sys.stderr)
+        source_status = matches[0].get("status")
+        requires_stored_handback = (
+            args.status == "published"
+            or args.status == STATUS_CLEANUP_PENDING
+            and source_status == "published"
+        )
+        valid_handback = (
+            _has_valid_stored_handback(matches[0])
+            if requires_stored_handback
+            else _has_valid_handback(matches[0])
+        )
+        if args.status in {STATUS_CLEANUP_PENDING, "published"} and not valid_handback:
+            required_kind = "stored" if requires_stored_handback else "physical"
+            print(
+                f"✗ {args.status} transition requires a valid {required_kind} hand-back",
+                file=sys.stderr,
+            )
             return EXIT_CLAIMED
         _, now_iso = resolve_now(args.at)
         for record in matches:

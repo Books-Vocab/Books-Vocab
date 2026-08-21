@@ -16,3 +16,7 @@ def test_application_uses_co_versioned_registry_executable(tmp_path: Path) -> No
     assert isinstance(application.registry, RegistryCliAdapter)
     assert application.registry.script_path == OPS / "worktree_registry.py"
     assert application.registry.script_path != tmp_path / "ops" / "worktree_registry.py"
+    assert (
+        application.registry.state_path
+        == tmp_path / ".cache" / "worktree_registry.json"
+    )

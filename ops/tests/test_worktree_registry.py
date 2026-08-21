@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -608,7 +609,7 @@ def test_resolve_terminal_status_preserves_handed_back_receipt(
     assert resolved["handback_seal"] == handed_back["handback_seal"]
 
 
-def test_published_transition_requires_exact_physical_handback_and_is_cas_safe(
+def test_cleanup_lease_requires_physical_handback_then_publishes_stored_receipt(
     tmp_path: Path,
 ) -> None:
     record = _idle_handed_back_record(tmp_path)
@@ -619,19 +620,29 @@ def test_published_transition_requires_exact_physical_handback_and_is_cas_safe(
 
     stale = registry.main([
         "resolve", "--state", str(state_path), "--branch", record["branch"],
-        "--path", record["path"], "--status", "published",
+        "--path", record["path"], "--status", "cleanup_pending",
         "--expected-generation", "3", "--expected-head-sha", record["handed_back_sha"],
         "--json",
     ])
     exact = registry.main([
         "resolve", "--state", str(state_path), "--branch", record["branch"],
-        "--path", record["path"], "--status", "published",
+        "--path", record["path"], "--status", "cleanup_pending",
         "--expected-generation", "4", "--expected-head-sha", record["handed_back_sha"],
         "--json",
     ])
 
     assert stale == registry.EXIT_CLAIMED
     assert exact == registry.EXIT_OK
+    shutil.rmtree(record["path"])
+
+    published = registry.main([
+        "resolve", "--state", str(state_path), "--branch", record["branch"],
+        "--path", record["path"], "--status", "published",
+        "--expected-generation", "4", "--expected-head-sha", record["handed_back_sha"],
+        "--json",
+    ])
+
+    assert published == registry.EXIT_OK
     assert registry.load_state(state_path)["records"][0]["status"] == "published"
 
 

@@ -7,8 +7,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
+import worktree_registry
+
 from .adapters.git_cli import GitCliAdapter
 from .adapters.github_cli import GitHubCliAdapter
+from .adapters.module_runner import ModuleCommandRunner
 from .adapters.registry import RegistryCliAdapter
 from .adapters.runtime import RuntimeStatusMap
 from .controller.capacity import decide_capacity
@@ -188,12 +191,18 @@ def build_application(
     *, repo: Path, runtime_status_file: Path | None = None
 ) -> DeliveryApplication:
     resolved = repo.expanduser().resolve()
+    registry_script = CONTROL_PLANE_OPS / "worktree_registry.py"
     return DeliveryApplication(
         repo=resolved,
         git=GitCliAdapter(repo=resolved),
         github=GitHubCliAdapter(repo=resolved),
         registry=RegistryCliAdapter(
-            script_path=CONTROL_PLANE_OPS / "worktree_registry.py"
+            script_path=registry_script,
+            state_path=resolved / ".cache" / "worktree_registry.json",
+            runner=ModuleCommandRunner(
+                executable=registry_script,
+                main=worktree_registry.main,
+            ),
         ),
         runtime=RuntimeStatusMap.from_file(runtime_status_file),
     )

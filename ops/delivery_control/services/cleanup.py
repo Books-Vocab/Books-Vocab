@@ -154,6 +154,10 @@ class CleanupService:
         if self.git_query.remote_branch_sha(receipt.branch) != receipt.head_sha:
             raise PolicyViolation("remote branch does not preserve published HEAD")
         self._validate_local_assets(receipt)
+        if record.status == "published":
+            existing = self._result(receipt, "published")
+            if existing.worktree_absent and existing.local_branch_absent:
+                return existing
         self._acquire_cleanup_lease(receipt, record)
         self._remove_local_assets(receipt)
         self._complete_cleanup_lease(receipt, "published")

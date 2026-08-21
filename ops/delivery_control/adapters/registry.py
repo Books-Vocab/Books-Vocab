@@ -70,13 +70,21 @@ class RegistryCliAdapter:
         self,
         *,
         script_path: Path,
+        state_path: Path | None = None,
         runner: CommandRunnerPort | None = None,
     ) -> None:
         self.script_path = script_path
+        self.state_path = state_path
         self.runner = runner or SubprocessCommandRunner()
 
+    def _argv(self, *arguments: str) -> tuple[str, ...]:
+        argv = [str(self.script_path), *arguments]
+        if self.state_path is not None:
+            argv.extend(("--state", str(self.state_path)))
+        return tuple(argv)
+
     def _list_payload(self) -> Mapping[str, Any]:
-        result = self.runner.run((str(self.script_path), "list", "--json"))
+        result = self.runner.run(self._argv("list", "--json"))
         if result.exit_code != 0:
             raise AdapterCommandError(result)
         try:
@@ -193,8 +201,7 @@ class RegistryCliAdapter:
         expected_path: str,
         expected_head_sha: str,
     ) -> None:
-        argv = (
-            str(self.script_path),
+        argv = self._argv(
             "resolve",
             "--json",
             "--branch",

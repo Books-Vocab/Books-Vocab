@@ -46,7 +46,7 @@ workflow `pr-gate` 的 check run `confidence` 失敗、非預期 skip、取消�
 
 ## Deterministic delivery control cycle
 
-唯一 command 入口是 `ops/delivery.py`。它輸出 `kg.delivery.command.v1` JSON；成功為 `ok: true`／exit 0，contract、source、CAS 或 I/O failure 為 `ok: false`／exit 1。`dogfood-preflight` 完成觀測但 launch baseline 尚未 ready 時保留 `ok: true` 與完整 blockers、回 exit 2，方便啟動器 fail closed。global option 必須放在 subcommand 前；`--repo` 預設 current working directory，`--runtime-status-file` 是 caller 提供的 thread-id → state JSON，未提供或缺少 owner 時保留 `unknown`，不猜 reachable。`--repo` 只選 Git／GitHub 的 canonical target；registry executable 必須與正在執行的 `delivery.py` 同版本，避免 bootstrap 或 upgrade 時混用 target checkout 的舊 control-plane 語義。
+唯一 command 入口是 `ops/delivery.py`。它輸出 `kg.delivery.command.v1` JSON；成功為 `ok: true`／exit 0，contract、source、CAS 或 I/O failure 為 `ok: false`／exit 1。`dogfood-preflight` 完成觀測但 launch baseline 尚未 ready 時保留 `ok: true` 與完整 blockers、回 exit 2，方便啟動器 fail closed。global option 必須放在 subcommand 前；`--repo` 預設 current working directory，`--runtime-status-file` 是 caller 提供的 thread-id → state JSON，未提供或缺少 owner 時保留 `unknown`，不猜 reachable。`--repo` 只選 Git／GitHub 的 canonical target 與其明確 registry state；registry command module 在程序啟動時從正在執行的 `delivery.py` 同版本載入，使 publish 移除來源 worktree 後仍能完成最後 CAS，且不混用 target checkout 的舊 control-plane 語義。
 
 ### 先觀測，再執行 exact action
 
