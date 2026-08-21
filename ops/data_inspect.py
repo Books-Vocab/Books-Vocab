@@ -79,7 +79,12 @@ def _load_links(user: str) -> list:
     if not gp.exists():
         return []
     data = json.loads(gp.read_text())
-    return data if isinstance(data, list) else data.get("links", [])
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        links = data.get("links", [])
+        return links if isinstance(links, list) else []
+    return []
 
 
 def _candidates_path(user: str) -> Path:
