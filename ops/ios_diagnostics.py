@@ -116,7 +116,9 @@ def _message_from_xcresult_issue(item: dict[str, Any]) -> str:
 
 def parse_xcresult_build_results(payload: dict[str, Any], *, limit: int = 80) -> dict[str, Any]:
     diagnostics: list[dict[str, Any]] = []
-    for severity, items in (("error", payload.get("errors") or []), ("warning", payload.get("warnings") or [])):
+    error_items = payload.get("errors") or []
+    warning_items = payload.get("warnings") or []
+    for severity, items in (("error", error_items), ("warning", warning_items)):
         for item in items:
             message = _message_from_xcresult_issue(item)
             diagnostics.append(
@@ -131,11 +133,19 @@ def parse_xcresult_build_results(payload: dict[str, Any], *, limit: int = 80) ->
                 }
             )
     status = str(payload.get("status") or "").lower()
-    result = "fail" if status in {"failed", "canceled"} or payload.get("errorCount", 0) else "pass" if status == "succeeded" else "unknown"
+    effective_error_count = int(payload.get("errorCount") or len(error_items))
+    effective_warning_count = int(payload.get("warningCount") or len(warning_items))
+    result = (
+        "fail"
+        if status in {"failed", "canceled"} or effective_error_count > 0
+        else "pass"
+        if status == "succeeded"
+        else "unknown"
+    )
     diagnostics = diagnostics[:limit]
     counts = {
-        "errors": int(payload.get("errorCount") or sum(1 for item in diagnostics if item["severity"] == "error")),
-        "warnings": int(payload.get("warningCount") or sum(1 for item in diagnostics if item["severity"] == "warning")),
+        "errors": effective_error_count,
+        "warnings": effective_warning_count,
         "swift6": sum(1 for item in diagnostics if item["category"] == "swift6"),
         "storekit": sum(1 for item in diagnostics if item["category"] == "storekit"),
         "spm": sum(1 for item in diagnostics if item["category"] == "spm"),
