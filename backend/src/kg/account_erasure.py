@@ -28,7 +28,11 @@ def _asset_object_keys(data_dir: Path, user_ids: Iterable[str]) -> tuple[str, ..
         try:
             with Session(engine) as session:
                 books = session.exec(select(LibraryBook)).all()
-                keys.extend(book.asset_object_key for book in books if book.asset_object_key)
+                keys.extend(
+                    book.asset_object_key
+                    for book in books
+                    if book.asset_storage == "object" and book.asset_object_key
+                )
         finally:
             engine.dispose()
     return tuple(dict.fromkeys(keys))

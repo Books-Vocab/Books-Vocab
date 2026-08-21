@@ -46,7 +46,13 @@ class _FakeObjectClient:
         return {}
 
 
-def _seed_library_asset(data_dir: Path, uid: str, key: str) -> None:
+def _seed_library_asset(
+    data_dir: Path,
+    uid: str,
+    key: str,
+    *,
+    asset_storage: str | None = "object",
+) -> None:
     user_dir = data_dir / "users" / uid
     user_dir.mkdir(parents=True, exist_ok=True)
     store = LibraryStore(user_dir / "library.db")
@@ -56,7 +62,7 @@ def _seed_library_asset(data_dir: Path, uid: str, key: str) -> None:
                 LibraryBook(
                     id=f"book-{uid}",
                     title=f"Book for {uid}",
-                    asset_storage="object",
+                    asset_storage=asset_storage,
                     asset_object_key=key,
                 )
             )
@@ -172,3 +178,29 @@ def test_unconfigured_bucket_does_not_call_remote_client(tmp_path):
 
     assert client.calls == []
     assert not (tmp_path / "users" / "canonical").exists()
+
+
+def test_local_or_unknown_asset_keys_are_not_deleted_remotely(tmp_path):
+    _seed_library_asset(
+        tmp_path,
+        "local-user",
+        "stale/local/key",
+        asset_storage="local",
+    )
+    _seed_library_asset(
+        tmp_path,
+        "unknown-user",
+        "stale/unknown/key",
+        asset_storage=None,
+    )
+    client = _FakeObjectClient(data_dir=tmp_path)
+
+    keys = delete_account_assets(
+        tmp_path,
+        ["local-user", "unknown-user"],
+        library_bucket="library-test",
+        library_s3_client=client,
+    )
+
+    assert keys == ()
+    assert client.calls == []
