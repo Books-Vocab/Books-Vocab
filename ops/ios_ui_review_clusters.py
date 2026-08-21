@@ -54,10 +54,15 @@ def matrix_requirements(matrix: dict[str, Any]) -> dict[str, dict[str, Any]]:
     if not isinstance(raw, list):
         raise ClusterManifestError("matrix.requirements must be a list")
     result: dict[str, dict[str, Any]] = {}
+    seen_ids: set[str] = set()
     for item in raw:
         if not isinstance(item, dict) or not isinstance(item.get("id"), str):
             raise ClusterManifestError("matrix requirements must have string ids")
-        result[item["id"]] = item
+        requirement_id = item["id"]
+        if requirement_id in seen_ids:
+            raise ClusterManifestError(f"duplicate requirement id: {requirement_id}")
+        seen_ids.add(requirement_id)
+        result[requirement_id] = item
     if set(result) != REQUIREMENTS:
         raise ClusterManifestError("matrix must contain exactly P3 through P15")
     return result

@@ -4,9 +4,18 @@ import json
 from pathlib import Path
 import sys
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from ops.ios_ui_review_clusters import CLUSTERS, REQUIREMENTS, expand_run_plan, validate
+from ops.ios_ui_review_clusters import (
+    CLUSTERS,
+    REQUIREMENTS,
+    ClusterManifestError,
+    expand_run_plan,
+    matrix_requirements,
+    validate,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -21,6 +30,19 @@ def test_cluster_manifest_partitions_active_p3_through_p15_requirements() -> Non
     assert result["requirementCount"] == len(REQUIREMENTS)
     assert REQUIREMENTS == {f"P{index}" for index in range(3, 16)}
     assert {cluster["id"] for cluster in result["clusters"]} == CLUSTERS
+
+
+def test_matrix_rejects_duplicate_requirement_ids_before_dict_materialization() -> None:
+    requirements = [{"id": requirement_id} for requirement_id in sorted(REQUIREMENTS)]
+    requirements.append(requirements[0].copy())
+
+    with pytest.raises(ClusterManifestError, match="duplicate requirement id: P10"):
+        matrix_requirements(
+            {
+                "schema": "kg.ios.ui-review-matrix.v1",
+                "requirements": requirements,
+            }
+        )
 
 
 def test_expand_run_plan_emits_only_executable_exact_selectors() -> None:
