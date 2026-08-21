@@ -94,26 +94,77 @@ def _proc_stat_start_identity(pid: int) -> str | None:
     return f"proc:{boot_id}:{start_ticks}"
 
 
+def _darwin_proc_start_identity(pid: int) -> str | None:
+    """Read Darwin's microsecond process start time through libproc."""
+    try:
+        import ctypes
+        import ctypes.util
+
+        class ProcBsdInfo(ctypes.Structure):
+            _fields_ = [
+                ("pbi_flags", ctypes.c_uint32),
+                ("pbi_status", ctypes.c_uint32),
+                ("pbi_xstatus", ctypes.c_uint32),
+                ("pbi_pid", ctypes.c_uint32),
+                ("pbi_ppid", ctypes.c_uint32),
+                ("pbi_uid", ctypes.c_uint32),
+                ("pbi_gid", ctypes.c_uint32),
+                ("pbi_ruid", ctypes.c_uint32),
+                ("pbi_rgid", ctypes.c_uint32),
+                ("pbi_svuid", ctypes.c_uint32),
+                ("pbi_svgid", ctypes.c_uint32),
+                ("rfu_1", ctypes.c_uint32),
+                ("pbi_comm", ctypes.c_char * 16),
+                ("pbi_name", ctypes.c_char * 32),
+                ("pbi_nfiles", ctypes.c_uint32),
+                ("pbi_pgid", ctypes.c_uint32),
+                ("pbi_pjobc", ctypes.c_uint32),
+                ("e_tdev", ctypes.c_uint32),
+                ("e_tpgid", ctypes.c_uint32),
+                ("pbi_nice", ctypes.c_int32),
+                ("pbi_start_tvsec", ctypes.c_uint64),
+                ("pbi_start_tvusec", ctypes.c_uint64),
+            ]
+
+        library_name = ctypes.util.find_library("proc") or "libproc.dylib"
+        library = ctypes.CDLL(library_name)
+        proc_pidinfo = library.proc_pidinfo
+        proc_pidinfo.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_uint64,
+            ctypes.c_void_p,
+            ctypes.c_int,
+        ]
+        proc_pidinfo.restype = ctypes.c_int
+
+        info = ProcBsdInfo()
+        returned = proc_pidinfo(
+            pid,
+            3,  # PROC_PIDTBSDINFO
+            0,
+            ctypes.byref(info),
+            ctypes.sizeof(info),
+        )
+        if returned != ctypes.sizeof(info) or info.pbi_pid != pid:
+            return None
+        if info.pbi_start_tvsec <= 0 or info.pbi_start_tvusec >= 1_000_000:
+            return None
+        return f"darwin:{info.pbi_start_tvsec}:{info.pbi_start_tvusec:06d}"
+    except (OSError, AttributeError, TypeError, ValueError, ctypes.ArgumentError):
+        return None
+
+
 def process_start_identity(pid: int) -> str | None:
-    """Read an exact-PID start identity; never search process names/substrings."""
+    """Read an exact-PID start identity; never use ambiguous process listings."""
     if pid <= 0:
         return None
     proc_identity = _proc_stat_start_identity(pid)
     if proc_identity is not None:
         return proc_identity
-    try:
-        completed = subprocess.run(
-            ["ps", "-p", str(pid), "-o", "lstart="],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-    except OSError:
-        return None
-    value = completed.stdout.strip()
-    if completed.returncode != 0 or not value:
-        return None
-    return f"ps:{value}"
+    if sys.platform == "darwin":
+        return _darwin_proc_start_identity(pid)
+    return None
 
 
 def process_group_id(pid: int) -> int | None:
