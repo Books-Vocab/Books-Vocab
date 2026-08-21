@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
@@ -22,13 +24,24 @@ _ASSET_URL_TTL = 3600
 router = APIRouter(tags=["library"])
 
 
+def _utc_instant(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
 @router.get("/api/library/books", response_model=list[BookMetadataResponse])
 def list_books(user: CurrentUser, since: str | None = None):
     store = _library_store(user["dir"])
     books = store.all(include_deleted=True)
     if since:
-        # Simple since filter: compare updated_at ISO strings
-        books = [b for b in books if b.updated_at and b.updated_at > since]
+        since_instant = _utc_instant(since)
+        books = [
+            b
+            for b in books
+            if b.updated_at and _utc_instant(b.updated_at) > since_instant
+        ]
     return books
 
 
