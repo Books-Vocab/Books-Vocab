@@ -83,14 +83,14 @@ def status_from_transaction_payload(
 ) -> str:
     if payload.get("revocationDate"):
         return "expired"
-    expires_at = parse_datetime_fn(normalize_ms_timestamp(payload.get("expiresDate"), parse_datetime_fn))
-    if expires_at and expires_at <= datetime.now(tz=UTC):
-        return "expired"
     grace = renewal_payload.get("gracePeriodExpiresDate") if isinstance(renewal_payload, dict) else None
     if grace:
         grace_dt = parse_datetime_fn(normalize_ms_timestamp(grace, parse_datetime_fn))
         if grace_dt and grace_dt > datetime.now(tz=UTC):
             return "grace_period"
+    expires_at = parse_datetime_fn(normalize_ms_timestamp(payload.get("expiresDate"), parse_datetime_fn))
+    if expires_at and expires_at <= datetime.now(tz=UTC):
+        return "expired"
     offer_type = payload.get("offerType")
     offer_discount_type = str(payload.get("offerDiscountType") or "").upper()
     if offer_type == 1 or offer_discount_type == "FREE_TRIAL":

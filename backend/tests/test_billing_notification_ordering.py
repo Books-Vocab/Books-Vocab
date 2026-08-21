@@ -1,15 +1,30 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
 from kg.api_models import AppStoreNotificationRequest, EntitlementsResponse, SubscriptionStatusResponse
-from kg.billing.notifications import decode_notification_payload
+from kg.billing.notifications import decode_notification_payload, status_from_transaction_payload
 from kg.billing.snapshots import write_subscription_snapshot
 from kg.billing_handlers import app_store_notifications_response
 from kg.user_store import parse_datetime
+
+
+def test_future_grace_period_takes_precedence_over_expired_transaction():
+    now = datetime.now(tz=UTC)
+
+    def to_ms(value):
+        return int(value.timestamp() * 1000)
+
+    status = status_from_transaction_payload(
+        {"expiresDate": to_ms(now - timedelta(days=1))},
+        parse_datetime,
+        {"gracePeriodExpiresDate": to_ms(now + timedelta(days=1))},
+    )
+
+    assert status == "grace_period"
 
 
 def _entitlements(record):
