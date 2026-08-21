@@ -202,6 +202,22 @@ def test_compute_changes_limits_apply_to_editable_text_fields():
     ]
 
 
+def test_included_ignores_non_object_entries_and_keeps_matching_resources():
+    mod = _load_module()
+    payload = {
+        "included": [
+            None,
+            {"type": "otherResource", "id": "other-1"},
+            {"type": "appStoreVersionLocalizations", "id": "loc-1"},
+            "not-an-object",
+        ]
+    }
+
+    assert mod.included(payload, "appStoreVersionLocalizations") == [
+        {"type": "appStoreVersionLocalizations", "id": "loc-1"}
+    ]
+
+
 def test_validate_changes_rejects_subscription_description_over_55_chars():
     mod = _load_module()
     change = mod.Change(
