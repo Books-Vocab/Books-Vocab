@@ -26,6 +26,7 @@ _DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 class ScopeOperation(StrEnum):
     ADD = "add"
     MODIFY = "modify"
+    DELETE = "delete"
 
 
 class CheckStatus(StrEnum):
@@ -122,10 +123,12 @@ class Scope:
         *,
         add: Sequence[str] = (),
         modify: Sequence[str] = (),
+        delete: Sequence[str] = (),
     ) -> Scope:
         return cls(
             tuple(ScopeFile(ScopeOperation.ADD, path) for path in add)
             + tuple(ScopeFile(ScopeOperation.MODIFY, path) for path in modify)
+            + tuple(ScopeFile(ScopeOperation.DELETE, path) for path in delete)
         )
 
     @classmethod

@@ -34,6 +34,7 @@ def _metrics(**changes: int) -> PipelineMetrics:
         "required_green": 0,
         "required_running": 0,
         "required_failed": 0,
+        "pr_contract_failed": 0,
         "merge_queue_depth": 0,
         "terminal_cleanup": 0,
         "blocked_lanes": 0,
@@ -65,6 +66,7 @@ def test_controller_drains_every_existing_reservoir_without_serializing() -> Non
             published_local_cleanup=1,
             required_green=1,
             required_failed=1,
+            pr_contract_failed=1,
             terminal_cleanup=1,
             blocked_lanes=1,
         ),
@@ -75,6 +77,7 @@ def test_controller_drains_every_existing_reservoir_without_serializing() -> Non
     assert ControlAction.CLEANUP_LOCAL in decision.actions
     assert ControlAction.ENQUEUE_GREEN in decision.actions
     assert ControlAction.REPAIR_REQUIRED in decision.actions
+    assert ControlAction.REPAIR_PR_CONTRACT in decision.actions
     assert ControlAction.CLEANUP_TERMINAL in decision.actions
     assert ControlAction.RECOVER_BLOCKERS in decision.actions
     assert decision.desired_new_solvers == 4
@@ -155,6 +158,8 @@ def test_dogfood_preflight_accepts_only_an_empty_canonical_baseline() -> None:
         origin_main_sha="a" * 40,
         canonical_branch="main",
         canonical_clean=True,
+        main_protected=True,
+        required_status_contexts=("required",),
         merge_queue_enabled=True,
         physical_worktree_count=1,
         canonical_worktree_present=True,
@@ -177,6 +182,8 @@ def test_dogfood_preflight_blocks_debt_drift_and_missing_queue() -> None:
         origin_main_sha="b" * 40,
         canonical_branch="feat/not-main",
         canonical_clean=False,
+        main_protected=False,
+        required_status_contexts=(),
         merge_queue_enabled=False,
         physical_worktree_count=2,
         canonical_worktree_present=True,
@@ -184,14 +191,18 @@ def test_dogfood_preflight_blocks_debt_drift_and_missing_queue() -> None:
             source_problems=2,
             blocked_lanes=1,
             unmapped_open_prs=1,
+            pr_contract_failed=1,
         ),
         cadence=cadence,
     )
 
     assert not readiness.ready
     assert "local main differs from origin/main" in readiness.blockers
+    assert "main is not protected" in readiness.blockers
+    assert "main does not require the short required context" in readiness.blockers
     assert "delivery source inventory is incomplete" in readiness.blockers
     assert "main has no native merge queue rule" in readiness.blockers
+    assert "existing PR delivery contracts are invalid" in readiness.blockers
 
 
 def test_pipeline_supply_counts_only_owner_mapped_open_prs() -> None:

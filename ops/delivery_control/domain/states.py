@@ -25,6 +25,7 @@ class LaneState(StrEnum):
     PUBLISHED_LOCAL_CLEANUP = "published_local_cleanup"
     PR_DRAFT = "pr_draft"
     PR_WAITING_REQUIRED = "pr_waiting_required"
+    PR_CONTRACT_FAILED = "pr_contract_failed"
     REQUIRED_FAILED = "required_failed"
     READY_TO_QUEUE = "ready_to_queue"
     PR_QUEUED = "pr_queued"
@@ -45,6 +46,7 @@ class NextAction(StrEnum):
     CLEANUP_LOCAL = "cleanup_local"
     FINALIZE_PR = "finalize_pr"
     WAIT_REQUIRED = "wait_required"
+    REPAIR_PR_CONTRACT = "repair_pr_contract"
     REPAIR_REQUIRED = "repair_required"
     ENQUEUE = "enqueue"
     WAIT_MERGE = "wait_merge"
@@ -142,17 +144,27 @@ def derive_lane_decision(facts: LaneFacts) -> LaneDecision:
             NextAction.INSPECT,
             "terminal lane lacks an approved cleanup policy",
         )
+    if facts.pr_open and not facts.pr_contract_valid:
+        return LaneDecision(
+            LaneState.PR_CONTRACT_FAILED,
+            NextAction.REPAIR_PR_CONTRACT,
+            "PR durable receipt is missing or differs from the owner handback",
+        )
+    if (
+        facts.has_worktree
+        and not facts.handback_valid
+        and (not facts.owner_known or not facts.owner_reachable)
+    ):
+        return LaneDecision(
+            LaneState.BLOCKED_OWNER,
+            NextAction.RECOVER_OWNER,
+            "worktree owner is unavailable",
+        )
     if facts.published and facts.local_assets_present:
         return LaneDecision(
             LaneState.PUBLISHED_LOCAL_CLEANUP,
             NextAction.CLEANUP_LOCAL,
             "published PR is durable; local assets remain",
-        )
-    if facts.has_worktree and (not facts.owner_known or not facts.owner_reachable):
-        return LaneDecision(
-            LaneState.BLOCKED_OWNER,
-            NextAction.RECOVER_OWNER,
-            "worktree owner is unavailable",
         )
     if facts.holds:
         return LaneDecision(
@@ -162,12 +174,6 @@ def derive_lane_decision(facts: LaneFacts) -> LaneDecision:
         )
     if facts.pr_open and facts.pr_draft:
         return LaneDecision(LaneState.PR_DRAFT, NextAction.FINALIZE_PR, "PR is draft")
-    if facts.pr_open and not facts.pr_contract_valid:
-        return LaneDecision(
-            LaneState.REQUIRED_FAILED,
-            NextAction.REPAIR_REQUIRED,
-            "PR durable receipt is missing or differs from the owner handback",
-        )
     if facts.pr_open and facts.queued:
         return LaneDecision(
             LaneState.PR_QUEUED,

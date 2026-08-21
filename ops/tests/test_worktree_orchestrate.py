@@ -370,7 +370,9 @@ def test_handoff_package_emits_exact_im_payload(tmp_path: Path, capsys: object) 
     assert payload["validation"]["gate"]["verdict"] == "pass"
 
 
-def test_handoff_package_blocks_when_main_advanced(tmp_path: Path, capsys: object) -> None:
+def test_handoff_package_preserves_historical_base_when_main_advanced(
+    tmp_path: Path, capsys: object
+) -> None:
     repo, state_path, base_sha, _ = _handoff_fixture(tmp_path)
     _git(repo, "checkout", "-q", "-b", "incoming-main", base_sha)
     _commit(repo, "main_only.py", "advanced\n", "advance main")
@@ -383,10 +385,31 @@ def test_handoff_package_blocks_when_main_advanced(tmp_path: Path, capsys: objec
     ])
 
     payload = json.loads(capsys.readouterr().out)
+    assert rc == coordinator.EXIT_OK
+    assert payload["status"] == "ready-for-im"
+    assert payload["observed_main_sha"] == incoming_sha
+    assert payload["base_sha"] == base_sha
+
+
+def test_handoff_package_blocks_when_base_is_not_in_incoming_main_history(
+    tmp_path: Path, capsys: object
+) -> None:
+    repo, state_path, _, _ = _handoff_fixture(tmp_path)
+    _git(repo, "checkout", "-q", "--orphan", "unrelated-main")
+    _git(repo, "rm", "-q", "-rf", ".")
+    _commit(repo, "unrelated.txt", "unrelated\n", "unrelated main")
+    incoming_sha = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-q", "worker")
+
+    rc = coordinator.main([
+        "handoff", "--state", str(state_path), "--worktree", str(repo),
+        "--incoming-main", incoming_sha, "--json",
+    ])
+
+    payload = json.loads(capsys.readouterr().out)
     assert rc == coordinator.EXIT_BLOCK
     assert payload["status"] == "blocked"
-    assert payload["observed_main_sha"] == incoming_sha
-    assert "does not equal hand-back base" in payload["reason"]
+    assert "not an ancestor" in payload["reason"]
 
 
 def test_handoff_package_blocks_when_gate_base_is_stale(tmp_path: Path, capsys: object) -> None:

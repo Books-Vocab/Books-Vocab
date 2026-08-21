@@ -289,16 +289,49 @@ class GitHubCliAdapter:
         )
 
     def changed_paths(self, number: int) -> tuple[str, ...]:
-        payload = self._json(("gh", "pr", "view", str(number), "--json", "files"))
-        if not isinstance(payload, Mapping) or not isinstance(
-            payload.get("files"), list
-        ):
+        payload = self._json(
+            (
+                "gh",
+                "api",
+                "--paginate",
+                "--slurp",
+                f"repos/{self._repo_name()}/pulls/{number}/files",
+            )
+        )
+        if not isinstance(payload, list):
             raise AdapterPayloadError("GitHub PR files payload is malformed")
-        paths: list[str] = []
-        for index, item in enumerate(payload["files"]):
-            if not isinstance(item, Mapping) or type(item.get("path")) is not str:
-                raise AdapterPayloadError(f"GitHub PR file[{index}] is malformed")
-            paths.append(item["path"])
+        pages = (
+            payload if all(isinstance(item, list) for item in payload) else [payload]
+        )
+        paths: set[str] = set()
+        item_index = 0
+        for page in pages:
+            if not isinstance(page, list):
+                raise AdapterPayloadError("GitHub PR files page is malformed")
+            for item in page:
+                if not isinstance(item, Mapping):
+                    raise AdapterPayloadError(
+                        f"GitHub PR file[{item_index}] is malformed"
+                    )
+                filename = item.get("filename")
+                status = item.get("status")
+                if type(filename) is not str or type(status) is not str:
+                    raise AdapterPayloadError(
+                        f"GitHub PR file[{item_index}] is malformed"
+                    )
+                paths.add(filename)
+                previous = item.get("previous_filename")
+                if status == "renamed":
+                    if type(previous) is not str:
+                        raise AdapterPayloadError(
+                            f"GitHub renamed file[{item_index}] lacks previous_filename"
+                        )
+                    paths.add(previous)
+                elif previous is not None and type(previous) is not str:
+                    raise AdapterPayloadError(
+                        f"GitHub PR file[{item_index}] previous_filename is malformed"
+                    )
+                item_index += 1
         return tuple(sorted(paths))
 
     def _repo_name(self) -> str:
@@ -323,6 +356,38 @@ class GitHubCliAdapter:
         if output not in {"true", "false"}:
             raise AdapterPayloadError("GitHub branch protection payload is malformed")
         return output == "true"
+
+    def required_status_contexts(self, branch: str) -> tuple[str, ...]:
+        payload = self._json(
+            (
+                "gh",
+                "api",
+                f"repos/{self._repo_name()}/branches/{quote(branch, safe='')}/protection",
+            )
+        )
+        if not isinstance(payload, Mapping):
+            raise AdapterPayloadError("GitHub branch protection payload is malformed")
+        required = payload.get("required_status_checks")
+        if required is None:
+            return ()
+        if not isinstance(required, Mapping):
+            raise AdapterPayloadError(
+                "GitHub required status checks payload is malformed"
+            )
+        contexts = required.get("contexts", [])
+        checks = required.get("checks", [])
+        if not isinstance(contexts, list) or any(
+            type(item) is not str for item in contexts
+        ):
+            raise AdapterPayloadError("GitHub required contexts payload is malformed")
+        if not isinstance(checks, list) or any(
+            not isinstance(item, Mapping) or type(item.get("context")) is not str
+            for item in checks
+        ):
+            raise AdapterPayloadError("GitHub required checks payload is malformed")
+        return tuple(
+            sorted({*contexts, *(item["context"] for item in checks)})
+        )
 
     def merge_queue_enabled(self, branch: str) -> bool:
         payload = self._json(

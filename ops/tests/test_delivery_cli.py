@@ -29,6 +29,7 @@ from delivery_control.domain.observations import (
     RegistrySnapshot,
     WorktreeSnapshot,
 )
+from delivery_control.domain.telemetry import DurationSample, TelemetryReadResult
 from delivery_control.services.pr_contract import render_pull_request_body
 
 BASE = "a" * 40
@@ -36,6 +37,7 @@ HEAD = "b" * 40
 DIGEST = "c" * 64
 BRANCH = "feat/cli"
 WORKTREE = Path("/tmp/cli-worktree").resolve()
+EVENT_START = datetime(2026, 8, 21, tzinfo=UTC)
 
 
 def _record() -> RegistrySnapshot:
@@ -53,6 +55,7 @@ def _record() -> RegistrySnapshot:
         handback_valid=True,
         handback_digest=DIGEST,
         handback_origin_main_sha=BASE,
+        handed_back_at=EVENT_START,
     )
 
 
@@ -141,13 +144,26 @@ class FakeGit:
         self.local: str | None = HEAD
         self.worktrees = (PhysicalWorktree(WORKTREE, HEAD, BRANCH),)
         self.fail_remove_once = False
+        self.main_local = BASE
+        self.main_origin = BASE
 
     def inspect_worktree(self, path: Path, base_sha: str) -> WorktreeSnapshot:
+        if path == Path("/repo"):
+            assert base_sha == self.main_local
+            return WorktreeSnapshot(
+                path=path,
+                branch="main",
+                base_sha=base_sha,
+                parent_sha=base_sha,
+                head_sha=self.main_local,
+                clean=True,
+                changes=(),
+            )
         assert path == WORKTREE and base_sha == BASE
         return self.snapshot
 
     def canonical_checkout(self) -> CanonicalCheckoutSnapshot:
-        return CanonicalCheckoutSnapshot(Path("/repo"), "main", BASE, True)
+        return CanonicalCheckoutSnapshot(Path("/repo"), "main", self.main_local, True)
 
     def list_worktrees(self) -> tuple[PhysicalWorktree, ...]:
         return self.worktrees
@@ -186,20 +202,25 @@ class FakeGit:
         self.remote = None
 
     def local_main_sha(self) -> str:
-        return BASE
+        return self.main_local
 
     def origin_main_sha(self) -> str:
-        return BASE
+        return self.main_origin
 
     def fast_forward_main(
         self, *, expected_local_sha: str, expected_origin_sha: str
     ) -> str:
+        assert expected_local_sha == self.main_local
+        assert expected_origin_sha == self.main_origin
+        self.main_local = expected_origin_sha
         return expected_origin_sha
 
 
 class FakeGitHub:
     def __init__(self) -> None:
         self.pull_request: PullRequestSnapshot | None = None
+        self.queue_entry: MergeQueueEntrySnapshot | None = None
+        self.recent_merges: tuple[datetime, ...] = ()
 
     def list_open_pull_requests(self) -> PullRequestInventory:
         return PullRequestInventory(
@@ -223,6 +244,8 @@ class FakeGitHub:
             mergeable=True,
             title=title,
             body=body,
+            node_id="PR_41",
+            created_at=EVENT_START.replace(second=30),
         )
         return self.pull_request
 
@@ -246,13 +269,17 @@ class FakeGitHub:
     def branch_is_protected(self, branch: str) -> bool:
         return False
 
+    def required_status_contexts(self, branch: str) -> tuple[str, ...]:
+        return ("required",)
+
     def merge_queue_entry_id(self, pull_request_id: str) -> str | None:
         return None
 
     def merge_queue_entry_snapshot(
         self, pull_request_id: str
     ) -> MergeQueueEntrySnapshot | None:
-        return None
+        assert pull_request_id == "PR_41"
+        return self.queue_entry
 
     def merge_queue_enabled(self, branch: str) -> bool:
         return True
@@ -263,6 +290,8 @@ class FakeGitHub:
             head_sha=HEAD,
             observed_at=datetime(2026, 8, 21, tzinfo=UTC),
             names=("required",),
+            started_at=EVENT_START.replace(second=40),
+            completed_at=EVENT_START.replace(second=50),
         )
 
     def mark_ready(self, number: int) -> PullRequestSnapshot:
@@ -276,10 +305,40 @@ class FakeGitHub:
         expected_head_sha: str,
         expected_body: str,
     ) -> None:
-        return None
+        self.queue_entry = MergeQueueEntrySnapshot(
+            "MQE_41", EVENT_START.replace(second=55)
+        )
 
     def recent_merge_times(self, *, limit: int = 100) -> tuple[datetime, ...]:
-        return ()
+        return self.recent_merges[:limit]
+
+
+class MemoryTelemetry:
+    def __init__(self) -> None:
+        self.samples: dict[str, DurationSample] = {}
+
+    def append(self, sample: DurationSample) -> bool:
+        existing = self.samples.get(sample.sample_key)
+        if existing == sample:
+            return False
+        if existing is not None:
+            raise CompareAndSwapConflict("telemetry sample conflict")
+        self.samples[sample.sample_key] = sample
+        return True
+
+    def read_since(self, since: datetime) -> TelemetryReadResult:
+        return TelemetryReadResult(
+            tuple(
+                sample
+                for sample in self.samples.values()
+                if sample.completed_at >= since
+            )
+        )
+
+
+class FailingTelemetry(MemoryTelemetry):
+    def append(self, sample: DurationSample) -> bool:
+        raise OSError("telemetry disk unavailable")
 
 
 def test_publish_command_makes_github_durable_then_releases_local_assets() -> None:
@@ -292,6 +351,7 @@ def test_publish_command_makes_github_durable_then_releases_local_assets() -> No
         github=github,
         registry=registry,
         runtime=RuntimeStatusMap({"thread-cli": "running"}),
+        telemetry=MemoryTelemetry(),
     )
 
     result = app.publish(lane_id="DIRECT-CLI", title="fix: exact delivery")
@@ -301,6 +361,132 @@ def test_publish_command_makes_github_durable_then_releases_local_assets() -> No
     assert git.worktrees == ()
     assert git.local is None
     assert git.remote == HEAD
+
+
+def test_publish_and_enqueue_record_exact_duration_samples() -> None:
+    registry = FakeRegistry()
+    git = FakeGit()
+    github = FakeGitHub()
+    telemetry = MemoryTelemetry()
+    app = DeliveryApplication(
+        repo=Path("/repo"),
+        git=git,
+        github=github,
+        registry=registry,
+        runtime=RuntimeStatusMap({"thread-cli": "running"}),
+        telemetry=telemetry,
+        clock=lambda: EVENT_START.replace(minute=1),
+    )
+
+    published = app.publish(lane_id="DIRECT-CLI", title="fix: exact delivery")
+    queued = app.enqueue(pull_request_number=41)
+
+    assert published["telemetry_warnings"] == ()
+    assert queued["telemetry_warnings"] == ()
+    assert sorted(sample.metric.value for sample in telemetry.samples.values()) == [
+        "handback_to_pr",
+        "pr_to_required_start",
+        "required_duration",
+        "required_success_to_enqueue",
+    ]
+
+
+def test_telemetry_failure_does_not_block_durable_publication_or_cleanup() -> None:
+    registry = FakeRegistry()
+    git = FakeGit()
+    app = DeliveryApplication(
+        repo=Path("/repo"),
+        git=git,
+        github=FakeGitHub(),
+        registry=registry,
+        runtime=RuntimeStatusMap({"thread-cli": "running"}),
+        telemetry=FailingTelemetry(),
+    )
+
+    result = app.publish(lane_id="DIRECT-CLI", title="fix: exact delivery")
+
+    assert registry.record.status == "published"
+    assert git.worktrees == ()
+    assert result["telemetry_warnings"][0].code == "telemetry_append_failed"
+
+
+def test_telemetry_failure_does_not_block_cleanup_or_main_sync() -> None:
+    registry = FakeRegistry()
+    git = FakeGit()
+    github = FakeGitHub()
+    publisher = DeliveryApplication(
+        repo=Path("/repo"),
+        git=git,
+        github=github,
+        registry=registry,
+        runtime=RuntimeStatusMap({"thread-cli": "running"}),
+        telemetry=MemoryTelemetry(),
+    )
+    publisher.publish(lane_id="DIRECT-CLI", title="fix: exact delivery")
+    assert github.pull_request is not None
+    github.pull_request = replace(
+        github.pull_request,
+        state="MERGED",
+        merged_at=EVENT_START.replace(minute=2),
+    )
+    github.recent_merges = (EVENT_START.replace(minute=2),)
+    app = DeliveryApplication(
+        repo=Path("/repo"),
+        git=git,
+        github=github,
+        registry=registry,
+        runtime=RuntimeStatusMap({"thread-cli": "running"}),
+        telemetry=FailingTelemetry(),
+        clock=lambda: EVENT_START.replace(minute=3),
+    )
+
+    cleaned = app.cleanup_merged(41)
+    git.main_origin = HEAD
+    synced = app.sync_main()
+
+    assert registry.record.status == "merged"
+    assert git.remote is None
+    assert git.main_local == HEAD
+    assert cleaned["telemetry_warnings"][0].code == "telemetry_append_failed"
+    assert synced["telemetry_warnings"][0].code == "telemetry_append_failed"
+
+
+def test_cleanup_and_main_sync_record_post_merge_durations() -> None:
+    registry = FakeRegistry()
+    git = FakeGit()
+    github = FakeGitHub()
+    telemetry = MemoryTelemetry()
+    app = DeliveryApplication(
+        repo=Path("/repo"),
+        git=git,
+        github=github,
+        registry=registry,
+        runtime=RuntimeStatusMap({"thread-cli": "running"}),
+        telemetry=telemetry,
+        clock=lambda: EVENT_START.replace(minute=3),
+    )
+    app.publish(lane_id="DIRECT-CLI", title="fix: exact delivery")
+    assert github.pull_request is not None
+    github.pull_request = replace(
+        github.pull_request,
+        state="MERGED",
+        merged_at=EVENT_START.replace(minute=2),
+    )
+    github.recent_merges = (EVENT_START.replace(minute=2),)
+
+    cleaned = app.cleanup_merged(41)
+    git.main_origin = HEAD
+    synced = app.sync_main()
+
+    assert cleaned["cleanup"].disposition == "merged"
+    assert cleaned["telemetry_warnings"] == ()
+    assert synced["sync"].after_sha == HEAD
+    assert synced["telemetry_warnings"] == ()
+    assert {
+        sample.metric.value: sample.duration_seconds
+        for sample in telemetry.samples.values()
+        if sample.metric.value.startswith("merge_to_")
+    } == {"merge_to_cleanup": 60.0, "merge_to_sync": 60.0}
 
 
 def test_publish_retry_recovers_after_pr_creation_then_registry_cas_failure() -> None:
@@ -314,6 +500,7 @@ def test_publish_retry_recovers_after_pr_creation_then_registry_cas_failure() ->
         github=github,
         registry=registry,
         runtime=RuntimeStatusMap({"thread-cli": "running"}),
+        telemetry=MemoryTelemetry(),
     )
 
     with pytest.raises(CompareAndSwapConflict, match="injected registry"):
@@ -340,6 +527,7 @@ def test_release_retry_recovers_after_registry_publish_then_cleanup_failure() ->
         github=github,
         registry=registry,
         runtime=RuntimeStatusMap({"thread-cli": "running"}),
+        telemetry=MemoryTelemetry(),
     )
 
     with pytest.raises(CompareAndSwapConflict, match="removal"):
@@ -450,6 +638,7 @@ def test_cli_validate_pr_body_uses_machine_receipt_not_workflow_regex(
         github=FakeGitHub(),
         registry=FakeRegistry(),
         runtime=RuntimeStatusMap(),
+        telemetry=MemoryTelemetry(),
     ).receipt(record.lane_id)
     body_path = tmp_path / "body.md"
     body_path.write_text(render_pull_request_body(receipt), encoding="utf-8")

@@ -71,9 +71,10 @@ def project_active_lane(
     physical_ref = sources.physical_by_path.get(path)
     snapshot = sources.snapshots[record.lane_id]
     problems = list(sources.lane_problems[record.lane_id])
+    owner_problems: list[InventoryProblem] = []
     branch_prs = sources.prs_by_branch.get(record.branch, ())
     pull_request = branch_prs[0] if len(branch_prs) == 1 else None
-    is_owner_reachable = owner_reachable(runtime, record, problems)
+    is_owner_reachable = owner_reachable(runtime, record, owner_problems)
     check = None
     body_exact = False
     queued = False
@@ -126,7 +127,7 @@ def project_active_lane(
         not problems
         and not lane_collision
         and len(branch_prs) <= 1
-        and is_owner_reachable
+        and record.owner_thread_id is not None
         and snapshot is not None
         and snapshot.clean
         and snapshot.path.resolve() == path
@@ -166,6 +167,7 @@ def project_active_lane(
         queued=queued,
         holds=holds,
     )
+    problems.extend(owner_problems)
     return LaneInspection(
         key=record.lane_id,
         registry=record,

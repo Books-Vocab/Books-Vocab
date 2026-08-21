@@ -40,6 +40,8 @@ def assess_dogfood_readiness(
     origin_main_sha: str,
     canonical_branch: str | None,
     canonical_clean: bool,
+    main_protected: bool,
+    required_status_contexts: tuple[str, ...],
     merge_queue_enabled: bool,
     physical_worktree_count: int,
     canonical_worktree_present: bool,
@@ -56,6 +58,11 @@ def assess_dogfood_readiness(
     block(canonical_branch != "main", "canonical checkout is not on main")
     block(not canonical_clean, "canonical checkout is dirty")
     block(local_main_sha != origin_main_sha, "local main differs from origin/main")
+    block(not main_protected, "main is not protected")
+    block(
+        "required" not in required_status_contexts,
+        "main does not require the short required context",
+    )
     block(not merge_queue_enabled, "main has no native merge queue rule")
     block(metrics.source_problems > 0, "delivery source inventory is incomplete")
     block(metrics.unmapped_open_prs > 0, "open PRs lack exact owner mapping")
@@ -64,6 +71,7 @@ def assess_dogfood_readiness(
     block(metrics.handbacks_publishable > 0, "pre-dogfood handbacks remain local")
     block(metrics.published_local_cleanup > 0, "published PRs retain local assets")
     block(metrics.terminal_cleanup > 0, "merged assets retain terminal residue")
+    block(metrics.pr_contract_failed > 0, "existing PR delivery contracts are invalid")
     block(metrics.required_failed > 0, "existing required checks are failed")
     block(metrics.open_prs > 0, "owner-mapped PR reservoir is not empty")
     block(

@@ -55,6 +55,42 @@ def test_git_adapter_computes_operation_aware_exact_base_diff(tmp_path: Path) ->
     )
 
 
+def test_git_adapter_normalizes_rename_and_copy_without_losing_changed_paths(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test")
+    (repo / "rename-source.txt").write_text("rename only\n", encoding="utf-8")
+    (repo / "copy-source.txt").write_text("copy only\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "base")
+    base_sha = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-qc", "feat/example")
+    (repo / "rename-source.txt").rename(repo / "rename-destination.txt")
+    (repo / "copy-destination.txt").write_text(
+        (repo / "copy-source.txt").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "rename and copy")
+
+    snapshot = GitCliAdapter(repo=repo).inspect_worktree(repo, base_sha)
+
+    assert snapshot.changes == (
+        FileChange(FileOperation.ADD, "copy-destination.txt"),
+        FileChange(FileOperation.ADD, "rename-destination.txt"),
+        FileChange(FileOperation.DELETE, "rename-source.txt"),
+    )
+    assert snapshot.changed_paths == (
+        "copy-destination.txt",
+        "rename-destination.txt",
+        "rename-source.txt",
+    )
+
+
 def test_git_adapter_reads_canonical_checkout_without_mutation(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()

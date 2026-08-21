@@ -116,6 +116,17 @@ def is_ancestor(worktree: Path, ancestor: str, descendant: str) -> bool:
     return rc == 0
 
 
+def ensure_commit_available(worktree: Path, sha: str) -> bool:
+    rc, _ = git(["cat-file", "-e", f"{sha}^{{commit}}"], worktree)
+    if rc == 0:
+        return True
+    fetch_rc, _ = git(["fetch", "--quiet", "--no-tags", "origin", sha], worktree)
+    if fetch_rc != 0:
+        return False
+    verify_rc, _ = git(["cat-file", "-e", f"{sha}^{{commit}}"], worktree)
+    return verify_rc == 0
+
+
 def cmd_hand_back(args: argparse.Namespace) -> int:
     target = state_path(args)
     with ledger_lock(target):
@@ -175,6 +186,9 @@ def cmd_hand_back(args: argparse.Namespace) -> int:
             if not origin_main_sha:
                 print("✗ cannot read live origin/main", file=sys.stderr)
                 return EXIT_PARTIAL
+            if not ensure_commit_available(worktree, origin_main_sha):
+                print("✗ cannot fetch live origin/main commit", file=sys.stderr)
+                return EXIT_PARTIAL
             if not is_ancestor(worktree, base_sha, origin_main_sha):
                 print(
                     "✗ declared base is not an ancestor of live origin/main",
@@ -184,12 +198,6 @@ def cmd_hand_back(args: argparse.Namespace) -> int:
             if not is_ancestor(worktree, base_sha, tip_sha):
                 print(
                     "✗ declared base is not an ancestor of worktree HEAD",
-                    file=sys.stderr,
-                )
-                return EXIT_PARTIAL
-            if not is_ancestor(worktree, origin_main_sha, tip_sha):
-                print(
-                    "✗ live origin/main is not an ancestor of worktree HEAD",
                     file=sys.stderr,
                 )
                 return EXIT_PARTIAL

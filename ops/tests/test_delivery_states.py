@@ -30,6 +30,7 @@ from delivery_control.domain.states import (
     NextAction,
     derive_lane_decision,
 )
+from delivery_control.services.correlation import collision_keys
 
 
 @pytest.mark.parametrize(
@@ -77,8 +78,8 @@ from delivery_control.domain.states import (
         ),
         (
             LaneFacts(pr_open=True, pr_contract_valid=False),
-            LaneState.REQUIRED_FAILED,
-            NextAction.REPAIR_REQUIRED,
+            LaneState.PR_CONTRACT_FAILED,
+            NextAction.REPAIR_PR_CONTRACT,
         ),
         (
             LaneFacts(
@@ -129,6 +130,26 @@ from delivery_control.domain.states import (
             LaneFacts(has_worktree=True, owner_known=False),
             LaneState.BLOCKED_OWNER,
             NextAction.RECOVER_OWNER,
+        ),
+        (
+            LaneFacts(
+                has_worktree=True,
+                owner_known=True,
+                owner_reachable=False,
+            ),
+            LaneState.BLOCKED_OWNER,
+            NextAction.RECOVER_OWNER,
+        ),
+        (
+            LaneFacts(
+                has_worktree=True,
+                owner_known=True,
+                owner_reachable=False,
+                handback_valid=True,
+                transport_policy_passed=True,
+            ),
+            LaneState.HANDBACK_PUBLISHABLE,
+            NextAction.PUBLISH,
         ),
         (
             LaneFacts(
@@ -376,3 +397,82 @@ def test_publication_rejects_operation_or_generation_mismatch() -> None:
     assert not decision.allowed
     assert "generation" in " ".join(decision.reasons)
     assert "operations" in " ".join(decision.reasons)
+
+
+def test_publication_accepts_normalized_rename_and_copy_scope() -> None:
+    receipt = HandbackReceipt(
+        **{
+            **_receipt().__dict__,
+            "scope": Scope.from_paths(
+                delete=("ops/old.py",),
+                add=("ops/copied.py", "ops/new.py"),
+            ),
+        }
+    )
+    worktree = WorktreeSnapshot(
+        path=Path(receipt.worktree_path),
+        branch=receipt.branch,
+        base_sha=receipt.base_sha,
+        head_sha=receipt.head_sha,
+        parent_sha=receipt.parent_sha,
+        clean=True,
+        changes=(
+            FileChange(FileOperation.ADD, "ops/copied.py"),
+            FileChange(FileOperation.ADD, "ops/new.py"),
+            FileChange(FileOperation.DELETE, "ops/old.py"),
+        ),
+    )
+
+    assert evaluate_publication(
+        receipt=receipt,
+        registry=_registry(receipt),
+        worktree=worktree,
+        duplicate_pr=False,
+        scope_collision=False,
+    ).allowed
+
+
+def test_publication_rejects_rename_scope_that_omits_the_source_path() -> None:
+    receipt = HandbackReceipt(
+        **{
+            **_receipt().__dict__,
+            "scope": Scope.from_paths(add=("ops/new.py",)),
+        }
+    )
+    worktree = WorktreeSnapshot(
+        path=Path(receipt.worktree_path),
+        branch=receipt.branch,
+        base_sha=receipt.base_sha,
+        head_sha=receipt.head_sha,
+        parent_sha=receipt.parent_sha,
+        clean=True,
+        changes=(
+            FileChange(FileOperation.ADD, "ops/new.py"),
+            FileChange(FileOperation.DELETE, "ops/old.py"),
+        ),
+    )
+
+    decision = evaluate_publication(
+        receipt=receipt,
+        registry=_registry(receipt),
+        worktree=worktree,
+        duplicate_pr=False,
+        scope_collision=False,
+    )
+
+    assert not decision.allowed
+    assert "physical operations or paths differ from Scope" in decision.reasons
+
+
+def test_normalized_rename_source_participates_in_scope_collision() -> None:
+    rename_scope = Scope.from_paths(
+        delete=("ops/old.py",),
+        add=("ops/new.py",),
+    )
+
+    assert collision_keys(
+        {
+            "rename": set(rename_scope.paths),
+            "other": {"ops/old.py"},
+        }
+    ) == {"other", "rename"}

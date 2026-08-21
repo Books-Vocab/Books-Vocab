@@ -12,11 +12,11 @@ from .models import CheckStatus, Scope, _has_control, _require_sha, _safe_relati
 
 
 class FileOperation(StrEnum):
+    """Canonical changed-file operations after Git boundary normalization."""
+
     ADD = "add"
     MODIFY = "modify"
     DELETE = "delete"
-    RENAME = "rename"
-    COPY = "copy"
 
 
 @dataclass(frozen=True, order=True)

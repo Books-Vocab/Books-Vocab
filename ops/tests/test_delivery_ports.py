@@ -108,6 +108,9 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
         def branch_is_protected(self, branch: str) -> bool:
             return False
 
+        def required_status_contexts(self, branch: str) -> tuple[str, ...]:
+            return ("required",)
+
         def merge_queue_enabled(self, branch: str) -> bool:
             return True
 

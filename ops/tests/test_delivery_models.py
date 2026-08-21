@@ -64,6 +64,23 @@ def test_scope_is_canonical_and_has_a_stable_digest() -> None:
     assert scope.digest == Scope(scope.files).digest
 
 
+def test_scope_delete_round_trips_without_changing_the_v1_wire_shape() -> None:
+    scope = Scope.from_paths(
+        delete=("ops/old.py",),
+        add=("ops/new.py",),
+    )
+
+    assert scope.to_payload() == {
+        "schema": "kg.worktree.scope.v1",
+        "files": [
+            {"operation": "add", "path": "ops/new.py"},
+            {"operation": "delete", "path": "ops/old.py"},
+        ],
+    }
+    assert Scope.from_payload(scope.to_payload()) == scope
+    assert scope.paths == ("ops/new.py", "ops/old.py")
+
+
 @pytest.mark.parametrize(
     "path",
     ["", "/absolute.py", "../escape.py", "ops/../escape.py", "./ops/file.py"],

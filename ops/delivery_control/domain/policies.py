@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from .models import CheckStatus, HandbackReceipt, ScopeOperation
+from .models import CheckStatus, HandbackReceipt
 from .observations import (
     CheckSnapshot,
     FileOperation,
@@ -68,12 +68,7 @@ def evaluate_publication(
         reasons.append("parent differs from handback")
     expected_changes = tuple(
         sorted(
-            (
-                FileOperation.ADD
-                if item.operation is ScopeOperation.ADD
-                else FileOperation.MODIFY,
-                item.path,
-            )
+            (FileOperation(item.operation.value), item.path)
             for item in receipt.scope.files
         )
     )

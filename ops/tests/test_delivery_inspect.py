@@ -138,8 +138,11 @@ class FakeGitHub:
 
 
 class FakeRuntime:
+    def __init__(self, status: str = "running") -> None:
+        self.status = status
+
     def owner_status(self, thread_id: str) -> str:
-        return "running"
+        return self.status
 
     def dispatch(self, thread_id: str, instruction: str) -> None:
         return None
@@ -228,6 +231,23 @@ def test_inspect_service_requires_exact_registry_physical_pr_and_check_tuple(
     active = next(item for item in inventory.lanes if item.key == "#1")
     assert active.decision.state is LaneState.PUBLISHED_LOCAL_CLEANUP
     assert not active.problems
+
+
+def test_sealed_handback_is_publishable_when_owner_session_is_unreachable(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "lane"
+    physical = PhysicalWorktree(path=path, head_sha="b" * 40, branch="feat/one")
+    service = InspectService(
+        registry=FakeRegistry((_record(path),)),
+        git=FakeGit((physical,), {path: _snapshot(path)}),
+        github=FakeGitHub(()),
+        runtime=FakeRuntime("archived"),
+    )
+
+    active = next(item for item in service.inspect().lanes if item.key == "#1")
+
+    assert active.decision.state is LaneState.HANDBACK_PUBLISHABLE
 
 
 def test_inspect_service_excludes_clean_canonical_main_from_lane_inventory(
@@ -370,7 +390,7 @@ def test_published_lane_requires_exact_machine_receipt_before_queue(
         item for item in service.inspect().lanes if item.key.startswith("published:")
     )
 
-    assert lane.decision.state is LaneState.REQUIRED_FAILED
+    assert lane.decision.state is LaneState.PR_CONTRACT_FAILED
     assert any("typed delivery receipt" in problem.reason for problem in lane.problems)
 
 

@@ -20,6 +20,7 @@ from delivery_control.domain.observations import (
     RegistrySnapshot,
     WorktreeSnapshot,
 )
+from delivery_control.domain.states import HoldKind
 from delivery_control.services.cleanup import CleanupService
 from delivery_control.services.pr_contract import render_pull_request_body
 from delivery_control.services.sync_main import MainSyncService
@@ -76,7 +77,13 @@ def _snapshot(receipt: HandbackReceipt, *, clean: bool = True) -> WorktreeSnapsh
     )
 
 
-def _pull_request(receipt: HandbackReceipt, *, state: str) -> PullRequestSnapshot:
+def _pull_request(
+    receipt: HandbackReceipt,
+    *,
+    state: str,
+    body: str | None = None,
+    labels: tuple[str, ...] = (),
+) -> PullRequestSnapshot:
     return PullRequestSnapshot(
         number=9,
         url="https://example.test/pull/9",
@@ -87,7 +94,8 @@ def _pull_request(receipt: HandbackReceipt, *, state: str) -> PullRequestSnapsho
         draft=False,
         mergeable=True,
         title="fix: cleanup",
-        body=render_pull_request_body(receipt),
+        body=body if body is not None else render_pull_request_body(receipt),
+        labels=labels,
     )
 
 
@@ -292,6 +300,44 @@ def test_publish_release_moves_durable_queue_to_github_and_removes_local_assets(
     assert git.actions == ["remove-worktree", "delete-local"]
     assert result.worktree_absent and result.local_branch_absent
     assert not result.remote_branch_absent
+
+
+@pytest.mark.parametrize(
+    ("body", "labels"),
+    (
+        (
+            render_pull_request_body(_receipt(), holds=frozenset({HoldKind.SECURITY})),
+            (),
+        ),
+        (render_pull_request_body(_receipt()), ("delivery-hold:security",)),
+        (render_pull_request_body(_receipt()) + "\nPUBLISH ONLY\n", ()),
+    ),
+    ids=("typed-hold", "label-hold", "legacy-hold"),
+)
+def test_publish_release_preserves_holds_while_releasing_local_assets(
+    body: str, labels: tuple[str, ...]
+) -> None:
+    receipt = _receipt()
+    registry = FakeRegistry(_record(receipt))
+    git = FakeGit(receipt)
+    pull_request = _pull_request(
+        receipt,
+        state="OPEN",
+        body=body,
+        labels=labels,
+    )
+    service = CleanupService(
+        registry_query=registry,
+        registry_command=registry,
+        git_query=git,
+        git_command=git,
+        github=FakeGitHub(pull_request, receipt),
+    )
+
+    result = service.release_after_publish(receipt=receipt, pull_request_number=9)
+
+    assert registry.transitions == ["cleanup_pending", "published"]
+    assert result.worktree_absent and result.local_branch_absent
 
 
 def test_publish_release_blocks_dirty_worktree_before_releasing_claim() -> None:

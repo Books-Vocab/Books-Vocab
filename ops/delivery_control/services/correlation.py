@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from ..domain.errors import DeliverySourceError
-from ..domain.models import ScopeOperation
 from ..domain.observations import (
     FileOperation,
     InventoryProblem,
@@ -65,13 +64,7 @@ def scope_matches_snapshot(
     record: RegistrySnapshot, snapshot: WorktreeSnapshot
 ) -> bool:
     expected = {
-        (
-            FileOperation.ADD
-            if item.operation is ScopeOperation.ADD
-            else FileOperation.MODIFY,
-            item.path,
-        )
-        for item in record.scope.files
+        (FileOperation(item.operation.value), item.path) for item in record.scope.files
     }
     actual = {(item.operation, item.path) for item in snapshot.changes}
     return actual == expected

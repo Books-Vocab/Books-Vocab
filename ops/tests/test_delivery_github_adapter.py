@@ -9,7 +9,7 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.adapters.errors import AdapterCommandError
+from delivery_control.adapters.errors import AdapterCommandError, AdapterPayloadError
 from delivery_control.adapters.github_cli import GitHubCliAdapter
 from delivery_control.domain.errors import CompareAndSwapConflict
 from delivery_control.domain.models import CheckStatus
@@ -78,6 +78,63 @@ def test_github_adapter_reads_terminal_prs_for_one_published_branch() -> None:
     assert "--state" in runner.calls[0]
     assert "all" in runner.calls[0]
     assert "--head" in runner.calls[0]
+
+
+def test_github_changed_paths_preserve_rename_source_and_destination() -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("gh",),
+                0,
+                json.dumps({"nameWithOwner": "owner/repo"}),
+                "",
+            ),
+            CommandResult(
+                ("gh",),
+                0,
+                json.dumps(
+                    [
+                        [
+                            {
+                                "filename": "ops/new.py",
+                                "previous_filename": "ops/old.py",
+                                "status": "renamed",
+                            },
+                            {"filename": "ops/added.py", "status": "added"},
+                        ]
+                    ]
+                ),
+                "",
+            ),
+        ]
+    )
+
+    paths = GitHubCliAdapter(runner=runner).changed_paths(12)
+
+    assert paths == ("ops/added.py", "ops/new.py", "ops/old.py")
+    assert runner.calls[1][:4] == ("gh", "api", "--paginate", "--slurp")
+
+
+def test_github_changed_paths_reject_rename_without_previous_filename() -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("gh",),
+                0,
+                json.dumps({"nameWithOwner": "owner/repo"}),
+                "",
+            ),
+            CommandResult(
+                ("gh",),
+                0,
+                json.dumps([[{"filename": "ops/new.py", "status": "renamed"}]]),
+                "",
+            ),
+        ]
+    )
+
+    with pytest.raises(AdapterPayloadError, match="previous_filename"):
+        GitHubCliAdapter(runner=runner).changed_paths(12)
 
 
 def test_github_create_pr_explicitly_targets_main() -> None:
@@ -198,6 +255,58 @@ def test_github_required_checks_preserve_empty_nonzero_command_failure() -> None
 
     with pytest.raises(AdapterCommandError):
         GitHubCliAdapter(runner=runner).required_check_snapshot(12)
+
+
+def test_github_adapter_reads_unique_required_status_contexts() -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""
+            ),
+            CommandResult(
+                ("gh",),
+                0,
+                json.dumps(
+                    {
+                        "required_status_checks": {
+                            "contexts": ["required"],
+                            "checks": [
+                                {"context": "required", "app_id": 15368},
+                                {
+                                    "context": "validate PR readiness contract",
+                                    "app_id": 15368,
+                                },
+                            ],
+                        }
+                    }
+                ),
+                "",
+            ),
+        ]
+    )
+
+    contexts = GitHubCliAdapter(runner=runner).required_status_contexts("main")
+
+    assert contexts == ("required", "validate PR readiness contract")
+
+
+def test_github_adapter_rejects_malformed_required_status_contexts() -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""
+            ),
+            CommandResult(
+                ("gh",),
+                0,
+                json.dumps({"required_status_checks": {"contexts": [7]}}),
+                "",
+            ),
+        ]
+    )
+
+    with pytest.raises(AdapterPayloadError, match="required contexts"):
+        GitHubCliAdapter(runner=runner).required_status_contexts("main")
 
 
 def test_github_enqueue_delegates_to_native_queue_without_direct_merge() -> None:

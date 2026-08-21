@@ -514,7 +514,14 @@ def cmd_handoff(args: argparse.Namespace) -> int:
         _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
         return EXIT_BLOCK
 
-    observed_main_sha = _resolve_commit(worktree, args.incoming_main) or args.incoming_main
+    observed_main_sha = _resolve_commit(worktree, args.incoming_main)
+    if observed_main_sha is None:
+        payload = _handoff_payload(
+            status="blocked", worktree=worktree,
+            reason=f"incoming main cannot be resolved: {args.incoming_main}",
+        )
+        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        return EXIT_BLOCK
     base_sha = str(seal.get("base_sha") or record.get("base_sha") or record.get("base") or "")
     if not base_sha:
         payload = _handoff_payload(
@@ -523,10 +530,10 @@ def cmd_handoff(args: argparse.Namespace) -> int:
         )
         _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
         return EXIT_BLOCK
-    if observed_main_sha != base_sha:
+    if _git(["merge-base", "--is-ancestor", base_sha, observed_main_sha], worktree)[0] != 0:
         payload = _handoff_payload(
             status="blocked", worktree=worktree, observed_main_sha=observed_main_sha,
-            reason=f"incoming main {observed_main_sha} does not equal hand-back base {base_sha}",
+            reason=f"hand-back base {base_sha} is not an ancestor of incoming main {observed_main_sha}",
         )
         _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
         return EXIT_BLOCK

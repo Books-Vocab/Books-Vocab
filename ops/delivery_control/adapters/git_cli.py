@@ -95,26 +95,14 @@ class GitCliAdapter:
         changed = self._git(
             "diff",
             "--name-status",
+            "-z",
             "--find-renames=100%",
+            "--find-copies=100%",
+            "--find-copies-harder",
             f"{base_sha}..{head_sha}",
             cwd=path,
         )
-        changes: list[FileChange] = []
-        operation_map = {
-            "A": FileOperation.ADD,
-            "M": FileOperation.MODIFY,
-            "T": FileOperation.MODIFY,
-            "D": FileOperation.DELETE,
-            "R": FileOperation.RENAME,
-            "C": FileOperation.COPY,
-        }
-        for line in changed.splitlines():
-            fields = line.split("\t")
-            status_code = fields[0][:1] if fields else ""
-            if status_code not in operation_map or len(fields) < 2:
-                raise AdapterPayloadError(f"unsupported git diff status row: {line!r}")
-            path_field = fields[-1]
-            changes.append(FileChange(operation_map[status_code], path_field))
+        changes = self._parse_changed_files(changed)
         return WorktreeSnapshot(
             path=path,
             branch=branch,
@@ -122,10 +110,72 @@ class GitCliAdapter:
             head_sha=head_sha,
             parent_sha=parent_sha,
             clean=not bool(status),
-            changes=tuple(
-                sorted(changes, key=lambda item: (item.path, item.operation.value))
-            ),
+            changes=changes,
         )
+
+    @staticmethod
+    def _parse_changed_files(payload: str) -> tuple[FileChange, ...]:
+        """Parse ``git diff --name-status -z`` into canonical file changes.
+
+        Scope v1 intentionally remains a flat operation/path schema.  A Git
+        rename therefore claims both changed paths as delete(source) and
+        add(destination), while a copy claims its newly added destination.
+        This keeps collision and exact-diff checks complete without adding a
+        source_path field to every Scope consumer.
+        """
+
+        if not payload:
+            return ()
+        fields = payload.split("\0")
+        if fields[-1] != "":
+            raise AdapterPayloadError(
+                "git diff name-status payload is not NUL terminated"
+            )
+        fields.pop()
+        changes: list[FileChange] = []
+        index = 0
+        while index < len(fields):
+            status = fields[index]
+            index += 1
+            status_code = status[:1]
+            if status_code in {"A", "M", "T", "D"}:
+                if index >= len(fields):
+                    raise AdapterPayloadError(
+                        f"git diff status {status!r} is missing its path"
+                    )
+                path = fields[index]
+                index += 1
+                operation = {
+                    "A": FileOperation.ADD,
+                    "M": FileOperation.MODIFY,
+                    "T": FileOperation.MODIFY,
+                    "D": FileOperation.DELETE,
+                }[status_code]
+                changes.append(FileChange(operation, path))
+                continue
+            if status_code in {"R", "C"}:
+                if index + 1 >= len(fields):
+                    raise AdapterPayloadError(
+                        f"git diff status {status!r} is missing source or destination"
+                    )
+                source = fields[index]
+                destination = fields[index + 1]
+                index += 2
+                if status_code == "R":
+                    changes.append(FileChange(FileOperation.DELETE, source))
+                changes.append(FileChange(FileOperation.ADD, destination))
+                continue
+            raise AdapterPayloadError(f"unsupported git diff status: {status!r}")
+
+        canonical = tuple(
+            sorted(changes, key=lambda item: (item.path, item.operation.value))
+        )
+        paths = tuple(item.path for item in canonical)
+        if len(paths) != len(set(paths)):
+            raise AdapterPayloadError(
+                "git diff normalization produced duplicate changed paths"
+            )
+        return canonical
 
     def remote_branch_sha(self, branch: str) -> str | None:
         ref = f"refs/heads/{branch}"

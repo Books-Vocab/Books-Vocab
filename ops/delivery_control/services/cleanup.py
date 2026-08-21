@@ -15,7 +15,7 @@ from ..domain.observations import (
 from ..ports.git import GitCommandPort, GitQueryPort
 from ..ports.github import GitHubQueryPort
 from ..ports.registry import RegistryCleanupQueryPort, RegistryCommandPort
-from .pr_contract import render_pull_request_body
+from .pr_contract import parse_pull_request_body, pull_request_holds
 
 
 @dataclass(frozen=True)
@@ -125,12 +125,18 @@ class CleanupService:
         expected_state: str,
     ) -> PullRequestSnapshot:
         pull_request = self.github.get_pull_request(number)
+        parsed_receipt = parse_pull_request_body(pull_request.body)
+        # Holds are part of the durable machine contract, but may originate
+        # from typed body metadata, labels, or a legacy PUBLISH ONLY marker.
+        # Reading them here prevents cleanup from erasing or bypassing a hold;
+        # a hold gates queue admission, not release of already-durable assets.
+        pull_request_holds(pull_request)
         if (
             pull_request.state != expected_state
             or pull_request.base_branch != "main"
             or pull_request.branch != receipt.branch
             or pull_request.head_sha != receipt.head_sha
-            or pull_request.body != render_pull_request_body(receipt)
+            or parsed_receipt != receipt
             or tuple(sorted(self.github.changed_paths(number)))
             != tuple(sorted(receipt.scope.paths))
         ):

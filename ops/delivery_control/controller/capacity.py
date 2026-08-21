@@ -14,6 +14,7 @@ class ControlAction(StrEnum):
     CLEANUP_TERMINAL = "cleanup_terminal"
     ENQUEUE_GREEN = "enqueue_green"
     PUBLISH_HANDBACKS = "publish_handbacks"
+    REPAIR_PR_CONTRACT = "repair_pr_contract"
     REPAIR_REQUIRED = "repair_required"
     RECOVER_BLOCKERS = "recover_blockers"
     DISPATCH_SOLVERS = "dispatch_solvers"
@@ -72,6 +73,8 @@ def decide_capacity(
         add(ControlAction.ENQUEUE_GREEN, "required-green reservoir is non-empty")
     if metrics.handbacks_publishable:
         add(ControlAction.PUBLISH_HANDBACKS, "typed handbacks await publication")
+    if metrics.pr_contract_failed:
+        add(ControlAction.REPAIR_PR_CONTRACT, "PR delivery contracts are invalid")
     if metrics.required_failed:
         add(ControlAction.REPAIR_REQUIRED, "required checks failed")
     if metrics.blocked_lanes:

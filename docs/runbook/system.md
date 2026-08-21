@@ -57,7 +57,7 @@ workflow `pr-gate` 的 check run `confidence` 失敗、非預期 skip、取消�
 ```
 
 - `inspect` 分類每條 known／unmapped lane，並分開回傳 lane problems 與 source problems。
-- `metrics` 量測 active、publishable、durable PR、required-running／green／failed、native queue depth、cleanup、blocked 與 physical worktree reservoirs；另讀 live timestamp 計算 hand-back→PR、PR→required-start、required duration、required-success→native enqueue 的 p95，並輸出 collision／required failure rate 與 idle worktree。跨來源時間倒流會變成 source problem，不被當成快速交付。
+- `metrics` 量測 active、publishable、durable PR、required-running／green／failed、native queue depth、cleanup、blocked 與 physical worktree reservoirs；另把 live facts 與 canonical checkout `.cache/delivery_telemetry.ndjson` 的 append-only duration evidence 合併，計算最近一小時 hand-back→PR、PR→required-start、required duration、required-success→native enqueue、merge→main sync、merge→terminal cleanup 的 sample count／p95，並輸出 collision／required failure rate 與 idle worktree。telemetry 不是 lifecycle ledger；寫入失敗只回傳 machine warning，不回滾已完成的 publish／queue／cleanup／sync。malformed journal、CAS conflict 或跨來源時間倒流仍是 source problem，不被當成快速交付。
 - `plan` 加上最近一小時 merge cadence，依 [delivery model](../reference/delivery_model.md#deterministic-feedback-controller) 的 policy 回傳可同時處理的 actions 與 `desired_new_solvers`；輸出只供 Scout／PI／CM 決策，不會 dispatch、enqueue 或 cleanup。
 
 ### 四角色 dogfood 啟動
@@ -69,7 +69,7 @@ workflow `pr-gate` 的 check run `confidence` 失敗、非預期 skip、取消�
 | Backlog Scout | audit codebase、建立唯一 Issue、依 `desired_new_solvers` fan-out Issue Solver | Issue 與 owner-bound solver/worktree admission | PR、merge、cleanup、產品實作 |
 | PI | 消費 typed hand-back，立即 publish/update 唯一 PR，驗證 durable readback 後釋放 local assets | remote branch、PR metadata、exact local release | 修改產品 code、enqueue、merge |
 | CM | required-green exact admission、native queue、merged cleanup、canonical main sync | queue、terminal cleanup、`sync-main` | 修改 code／PR metadata、繞過 hold |
-| Supervisor | 每分鐘讀 `dogfood-preflight`／`plan`／角色活動，處理事故與 freeze/ramp 決策 | thread routing 與 kill switch | 接管 owner worktree、代寫產品 code、把未知狀態算成功 |
+| Supervisor | 啟動前讀一次 `dogfood-preflight`；啟動後每分鐘讀 `inspect`／`plan`／角色活動，處理事故與 freeze/ramp 決策 | thread routing 與 kill switch | 接管 owner worktree、代寫產品 code、把未知狀態算成功 |
 
 四個 threads 建立前，從 canonical checkout 執行：
 
@@ -78,7 +78,9 @@ workflow `pr-gate` 的 check run `confidence` 失敗、非預期 skip、取消�
 ./ops/delivery.py --repo <canonical-checkout> plan
 ```
 
-只有 `dogfood-preflight.result.ready=true` 才能開始。它要求 canonical checkout clean 且在 `main`、local main exact 等於 live `origin/main`、native merge queue 存在、只有 canonical physical worktree，且沒有 source problems、legacy blockers、unmapped/open PR、local hand-back、cleanup residue 或 failed required。這是一次性 clean-slate launch gate；穩態是否要 fan-out 由 `plan` 決定。
+只有 `dogfood-preflight.result.ready=true` 才能開始。它要求 canonical checkout clean 且在 `main`、local main exact 等於 live `origin/main`、`main` 受保護且 required status contexts 明確包含 short `required`、native merge queue 存在、只有 canonical physical worktree，且沒有 source problems、legacy blockers、unmapped/open PR、local hand-back、cleanup residue 或 failed required。這是一次性 clean-slate launch gate；穩態是否要 fan-out 由 `plan` 決定。
+
+控制面 PR 合併前不得先改 production repository rule。部署順序固定為：合併本 PR → canonical `main` ff-only 同步 → 以 repository settings 建立 `main` 的 native merge-queue rule 並把 short `required` 設為 required context → read-only API 讀回 `/rules/branches/main` 確實含 `merge_queue`，並讀回 `/branches/main/protection` 確認 `main` 受保護且 required contexts 含 `required` → 清到只剩 canonical worktree → 執行上述 preflight → 最後才建立四個 threads。任何一步不符都停在 preflight，不以手動 merge 或 agent prompt 補洞。
 
 啟動分三段：
 
@@ -86,7 +88,7 @@ workflow `pr-gate` 的 check run `confidence` 失敗、非預期 skip、取消�
 2. **Promotion**：900 秒內完成 3 個連續 canary merges，三次都沒有 orphan worktree、duplicate PR、CAS rollback failure、main drift 或人工改 registry，才把 solver concurrency 逐次升到 2、再依 controller 最多 4。
 3. **Steady state**：在有健康 supply 時，以 300 秒最大 inter-merge interval、10–15 durable PR reservoir 與 required-green target 3 作容量 SLO；SLO 不授權跳過 required、review 或 security hold。
 
-任一條件觸發 kill switch 時，Supervisor 立即 freeze Scout birth，但 PI／CM 仍可排空已存在且 exact 的安全工作：source problem、unmapped/duplicate PR、canonical main drift／dirty、cleanup CAS conflict、queue entry replacement、P0/P1/security hold、required contract infrastructure failure。禁止以 bulk cleanup、force reset、重建 owner branch 或接管 dirty worktree復原；保留 exact JSON/error evidence，修復一條後重跑 preflight。
+任一系統性條件觸發 kill switch 時，Supervisor 立即 freeze Scout birth，但 PI／CM 仍可排空已存在且 exact 的安全工作：source problem、unmapped/duplicate PR、canonical main drift／dirty、cleanup CAS conflict、queue entry replacement或 required-contract infrastructure failure。單一 PR 的 P0／P1／security hold 只隔離該 lane，不得凍結其他安全 lane；只有 hold 揭露控制面或整個產品主線的系統性風險時才升級成全域 freeze。禁止以 bulk cleanup、force reset、重建 owner branch 或接管 dirty worktree復原；保留 exact JSON/error evidence，修復後啟動前重跑 `dogfood-preflight`，啟動後則重跑 `inspect`／`plan`，不得用 clean-slate preflight 的「open PR 必須為零」條件誤判穩態 reservoir。
 
 上線前至少演練五個 fault：PR body 在 enqueue 前漂移（不得 enqueue）、queue entry 被另一 transaction 取代（不得 dequeue 新 entry）、publish 後 local cleanup 中斷（同 receipt 可重試）、舊 cleanup receipt 遇到較新 branch/path claim（exit 75）、local main 在 sync preflight 後漂移（不得 merge/reset）。
 
@@ -134,7 +136,7 @@ PR readiness workflow 的 parser 入口是：
 
 GitHub Issue、Project、PR、CR／DS review、merge 與 release approval 不在本機 ledger 再存一份，也沒有本地 backlog、merge queue 或批次整合狀態。`published` 只表示 durable PR 已可取代 local assets，不是 PR lifecycle mirror。當本機與 GitHub 顯示不同，以 GitHub ref、PR 與 Actions 為準；local evidence 只能說明本機曾經驗證過什麼。
 
-typed `kg.worktree.handback.v1` 交接會在 clean worktree 上讀取 live `origin/main`，把 SHA 記入 `origin_main_sha`，並要求 declared base、live main 與 physical tip 可證明 ancestry 相容；remote/main 不可讀或 ancestry 不相容時 fail closed。PI 只把它正規化成 PR 內的 `kg.delivery.handback.v1`，不變更 provenance。這個 local receipt 只代表交接當下的執行證據，不是 current-main Ready；`main` 前進後，PI／CM 必須重新查 live `origin/main`、exact PR／registry tuple 與 required checks。
+typed `kg.worktree.handback.v1` 交接會在 clean worktree 上讀取 live `origin/main`，把 SHA 記入 `origin_main_sha`，並分別要求 declared base 是 live main 與 physical tip 的 ancestor；它刻意不要求 live main 已是 tip 的 ancestor，因此 main 前進不會阻止歷史-base handback durable publish。remote/main 不可讀、base 不在 main history 或 base 不在 tip history時才 fail closed。PI 只把它正規化成 PR 內的 `kg.delivery.handback.v1`，不變更 provenance。這個 local receipt 只代表交接當下的執行證據，不是 current-main Ready；只有 merge-front 由 CM 重新查 live `origin/main`、exact PR／registry tuple 與 required checks，必要時要求同 owner JIT reanchor。
 
 恢復 active branch/path 的工作前，先重新 register 或 adopt；先前 hand-back receipt 僅保留為 audit evidence，不能替 resumed claim 釋放 admission。完整 admission rule 以 [delivery model](../reference/delivery_model.md) 為準；完成新一輪工作後重新 hand-back。
 

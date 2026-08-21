@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -91,20 +92,30 @@ def test_pipeline_timings_measure_live_handback_pr_and_required_latency() -> Non
 def test_pipeline_metrics_expose_required_failure_and_collision_rates() -> None:
     inventory = _inventory()
     ready = inventory.lanes[0]
-    failed = LaneInspection(
+    failed = replace(
+        ready,
         key="ISSUE-2",
-        registry=None,
-        physical=None,
-        snapshot=None,
-        pull_requests=(),
         decision=LaneDecision(
             LaneState.REQUIRED_FAILED,
             NextAction.REPAIR_REQUIRED,
             "failed",
         ),
+        required_check=replace(
+            ready.required_check,
+            status=CheckStatus.FAILURE,
+        ),
+    )
+    contract_failed = replace(
+        ready,
+        key="ISSUE-3",
+        decision=LaneDecision(
+            LaneState.PR_CONTRACT_FAILED,
+            NextAction.REPAIR_PR_CONTRACT,
+            "contract failed",
+        ),
     )
     collision = LaneInspection(
-        key="ISSUE-3",
+        key="ISSUE-4",
         registry=None,
         physical=None,
         snapshot=None,
@@ -116,20 +127,26 @@ def test_pipeline_metrics_expose_required_failure_and_collision_rates() -> None:
         ),
     )
 
-    metrics = measure_pipeline(DeliveryInventory(lanes=(ready, failed, collision)))
+    metrics = measure_pipeline(
+        DeliveryInventory(lanes=(ready, failed, contract_failed, collision))
+    )
 
-    assert metrics.required_failure_rate == 0.5
+    assert metrics.required_failure_rate == pytest.approx(1 / 3)
+    assert metrics.required_failed == 1
+    assert metrics.pr_contract_failed == 1
     assert metrics.collision_lanes == 1
-    assert metrics.collision_rate == pytest.approx(1 / 3)
+    assert metrics.collision_rate == pytest.approx(1 / 4)
     assert metrics.timings.required_duration_p95_seconds == 120.0
 
 
-def test_negative_cross_system_latency_is_counted_as_a_source_problem() -> None:
+def test_jit_reanchor_excludes_initial_publication_latency_without_source_problem() -> (
+    None
+):
     inventory = _inventory(created_offset_seconds=-1)
 
     timings = measure_pipeline_timings(inventory)
     metrics = measure_pipeline(inventory)
 
-    assert timings.invalid_samples == 1
+    assert timings.invalid_samples == 0
     assert timings.handback_to_pr_samples == 0
-    assert metrics.source_problems == 1
+    assert metrics.source_problems == 0

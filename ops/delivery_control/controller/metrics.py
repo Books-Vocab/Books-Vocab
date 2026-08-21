@@ -8,6 +8,7 @@ from itertools import pairwise
 
 from ..domain.models import CheckStatus
 from ..domain.states import LaneState
+from ..domain.telemetry import TelemetryReadResult
 from ..services.inspect import DeliveryInventory
 from .timings import (
     PipelineTimings,
@@ -29,6 +30,7 @@ class PipelineMetrics:
     required_green: int
     required_running: int
     required_failed: int
+    pr_contract_failed: int
     merge_queue_depth: int
     terminal_cleanup: int
     blocked_lanes: int
@@ -60,7 +62,12 @@ _BLOCKED = {
 }
 
 
-def measure_pipeline(inventory: DeliveryInventory) -> PipelineMetrics:
+def measure_pipeline(
+    inventory: DeliveryInventory,
+    *,
+    telemetry: TelemetryReadResult | None = None,
+    now: datetime | None = None,
+) -> PipelineMetrics:
     states = [lane.decision.state for lane in inventory.lanes]
     all_pull_request_numbers = {
         pull_request.number
@@ -93,11 +100,21 @@ def measure_pipeline(inventory: DeliveryInventory) -> PipelineMetrics:
         and lane.required_check.status is CheckStatus.PENDING
         for lane in inventory.lanes
     )
-    required_failed = states.count(LaneState.REQUIRED_FAILED)
-    required_terminal = required_green + required_failed
+    required_failed = sum(
+        lane.required_check is not None
+        and lane.required_check.status is CheckStatus.FAILURE
+        for lane in inventory.lanes
+    )
+    required_succeeded = sum(
+        lane.required_check is not None
+        and lane.required_check.status is CheckStatus.SUCCESS
+        for lane in inventory.lanes
+    )
+    required_terminal = required_succeeded + required_failed
+    pr_contract_failed = states.count(LaneState.PR_CONTRACT_FAILED)
     handbacks_publishable = states.count(LaneState.HANDBACK_PUBLISHABLE)
     published_local_cleanup = states.count(LaneState.PUBLISHED_LOCAL_CLEANUP)
-    timings = measure_pipeline_timings(inventory)
+    timings = measure_pipeline_timings(inventory, telemetry=telemetry, now=now)
     return PipelineMetrics(
         active_development=states.count(LaneState.ACTIVE_DEVELOPMENT),
         handbacks_publishable=handbacks_publishable,
@@ -112,11 +129,16 @@ def measure_pipeline(inventory: DeliveryInventory) -> PipelineMetrics:
         required_green=required_green,
         required_running=required_running,
         required_failed=required_failed,
+        pr_contract_failed=pr_contract_failed,
         merge_queue_depth=states.count(LaneState.PR_QUEUED),
         terminal_cleanup=states.count(LaneState.TERMINAL_CLEANUP),
         blocked_lanes=sum(state in _BLOCKED for state in states),
         physical_worktrees=len(physical_paths),
-        source_problems=len(inventory.source_problems) + timings.invalid_samples,
+        source_problems=(
+            len(inventory.source_problems)
+            + timings.invalid_samples
+            + (len(telemetry.problems) if telemetry is not None else 0)
+        ),
         idle_worktrees=handbacks_publishable + published_local_cleanup,
         collision_lanes=collision_lanes,
         collision_rate=(collision_lanes / len(live_states) if live_states else 0.0),

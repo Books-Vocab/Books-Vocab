@@ -171,19 +171,23 @@ def test_handback_fails_closed_when_origin_main_is_unreadable(tmp_path: Path) ->
     assert stored["handed_back_sha"] is None
 
 
-def test_handback_fails_closed_when_live_main_is_not_ancestor_of_tip(
+def test_handback_records_advanced_live_main_without_requiring_rebase(
     tmp_path: Path,
 ) -> None:
-    worktree, _, state_path, _, _ = _handback_worktree(tmp_path, advance_origin=True)
+    worktree, _, state_path, base_sha, tip_sha = _handback_worktree(
+        tmp_path, advance_origin=True
+    )
     outcomes_path = tmp_path / "outcomes.json"
     outcomes_path.write_text("[]", encoding="utf-8")
 
-    assert _run_handback(state_path, worktree, outcomes_path) == registry.EXIT_PARTIAL
+    assert _run_handback(state_path, worktree, outcomes_path) == registry.EXIT_OK
 
     stored = registry.load_state(state_path)["records"][0]
-    assert stored.get("handback_seal") is None
-    assert stored["handed_back_at"] is None
-    assert stored["handed_back_sha"] is None
+    seal = stored["handback_seal"]
+    assert seal["base_sha"] == base_sha
+    assert seal["tip_sha"] == tip_sha
+    assert seal["origin_main_sha"] != base_sha
+    assert stored["handed_back_sha"] == tip_sha
 
 
 def _idle_handed_back_record(tmp_path: Path) -> dict:

@@ -1,16 +1,27 @@
-"""Latency measurements derived from live registry, PR, and check timestamps."""
+"""Rolling latency measurements from live facts plus duration telemetry."""
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from ..domain.inventory import DeliveryInventory
 from ..domain.models import CheckStatus
+from ..domain.telemetry import (
+    DurationSample,
+    TelemetryMetric,
+    TelemetryReadResult,
+    publication_subject,
+    pull_request_subject,
+    queue_subject,
+    sample_key_for,
+)
 
 
 @dataclass(frozen=True)
 class PipelineTimings:
+    window_seconds: int = 3600
     handback_to_pr_samples: int = 0
     handback_to_pr_p95_seconds: float | None = None
     pr_to_required_start_samples: int = 0
@@ -19,6 +30,10 @@ class PipelineTimings:
     required_duration_p95_seconds: float | None = None
     required_success_to_enqueue_samples: int = 0
     required_success_to_enqueue_p95_seconds: float | None = None
+    merge_to_sync_samples: int = 0
+    merge_to_sync_p95_seconds: float | None = None
+    merge_to_cleanup_samples: int = 0
+    merge_to_cleanup_p95_seconds: float | None = None
     invalid_samples: int = 0
 
 
@@ -38,74 +53,187 @@ def nearest_rank_p95(values: tuple[float, ...]) -> float | None:
     return nearest_rank_percentile(values, 0.95)
 
 
-def _seconds_between(start, end) -> float | None:
-    seconds = (end - start).total_seconds()
-    return seconds if seconds >= 0 else None
+def _default_now(inventory: DeliveryInventory) -> datetime:
+    observed: list[datetime] = []
+    for lane in inventory.lanes:
+        if lane.registry is not None and lane.registry.handed_back_at is not None:
+            observed.append(lane.registry.handed_back_at)
+        for pull_request in lane.pull_requests:
+            observed.extend(
+                item
+                for item in (pull_request.created_at, pull_request.merged_at)
+                if item is not None
+            )
+        if lane.required_check is not None:
+            observed.extend(
+                item
+                for item in (
+                    lane.required_check.observed_at,
+                    lane.required_check.started_at,
+                    lane.required_check.completed_at,
+                )
+                if item is not None
+            )
+        if lane.queue_entry is not None:
+            observed.append(lane.queue_entry.enqueued_at)
+    return max(observed, default=datetime.now(tz=UTC))
 
 
-def measure_pipeline_timings(inventory: DeliveryInventory) -> PipelineTimings:
-    handback_to_pr: list[float] = []
-    pr_to_required: list[float] = []
-    required_duration: list[float] = []
-    required_success_to_enqueue: list[float] = []
+def measure_pipeline_timings(
+    inventory: DeliveryInventory,
+    *,
+    telemetry: TelemetryReadResult | None = None,
+    now: datetime | None = None,
+    window: timedelta = timedelta(hours=1),
+) -> PipelineTimings:
+    observed_at = now or _default_now(inventory)
+    if observed_at.utcoffset() is None or window.total_seconds() <= 0:
+        raise ValueError("timing window requires aware now and positive duration")
+    cutoff = observed_at - window
+    samples: dict[str, DurationSample] = {
+        sample.sample_key: sample
+        for sample in (telemetry.samples if telemetry is not None else ())
+        if cutoff <= sample.completed_at <= observed_at
+    }
     invalid_samples = 0
+
+    def add_live(sample: DurationSample) -> None:
+        if cutoff <= sample.completed_at <= observed_at:
+            # Journal evidence is the exact command readback and takes
+            # precedence over a reconstructable live observation.
+            samples.setdefault(sample.sample_key, sample)
+
+    def observe(
+        metric: TelemetryMetric,
+        subject: str,
+        started_at: datetime | None,
+        completed_at: datetime | None,
+    ) -> None:
+        nonlocal invalid_samples
+        if started_at is None or completed_at is None:
+            return
+        try:
+            add_live(DurationSample(metric, subject, started_at, completed_at))
+        except ValueError:
+            invalid_samples += 1
+
     for lane in inventory.lanes:
         pull_request = lane.pull_requests[0] if len(lane.pull_requests) == 1 else None
+        handed_back_at = (
+            lane.registry.handed_back_at if lane.registry is not None else None
+        )
+        pr_created_at = pull_request.created_at if pull_request is not None else None
+        # PR.created_at measures initial publication only. A later handback is a
+        # normal same-PR JIT reanchor, not a negative transport latency.
         if (
-            lane.registry is not None
-            and lane.registry.handed_back_at is not None
+            handed_back_at is not None
+            and pr_created_at is not None
+            and handed_back_at <= pr_created_at
+            and lane.registry is not None
             and pull_request is not None
-            and pull_request.created_at is not None
         ):
-            observed = _seconds_between(
-                lane.registry.handed_back_at,
-                pull_request.created_at,
+            observe(
+                TelemetryMetric.HANDBACK_TO_PR,
+                publication_subject(
+                    lane_id=lane.registry.lane_id,
+                    claim_generation=lane.registry.claim_generation,
+                    head_sha=pull_request.head_sha,
+                    pr_number=pull_request.number,
+                ),
+                handed_back_at,
+                pr_created_at,
             )
-            if observed is None:
-                invalid_samples += 1
-            else:
-                handback_to_pr.append(observed)
         check = lane.required_check
-        if (
-            pull_request is not None
-            and pull_request.created_at is not None
-            and check is not None
-            and check.started_at is not None
-        ):
-            observed = _seconds_between(
-                pull_request.created_at,
+        if pull_request is not None and check is not None:
+            pr_subject = pull_request_subject(
+                pr_number=pull_request.number,
+                head_sha=pull_request.head_sha,
+            )
+            publication_key = None
+            publication_time = None
+            if lane.registry is not None:
+                publication_key = sample_key_for(
+                    TelemetryMetric.HANDBACK_TO_PR,
+                    publication_subject(
+                        lane_id=lane.registry.lane_id,
+                        claim_generation=lane.registry.claim_generation,
+                        head_sha=pull_request.head_sha,
+                        pr_number=pull_request.number,
+                    ),
+                )
+            publication_sample = (
+                samples.get(publication_key) if publication_key is not None else None
+            )
+            if publication_sample is not None:
+                publication_time = publication_sample.completed_at
+            elif (
+                handed_back_at is not None
+                and pull_request.created_at is not None
+                and handed_back_at <= pull_request.created_at
+            ):
+                publication_time = pull_request.created_at
+            observe(
+                TelemetryMetric.PR_TO_REQUIRED_START,
+                pr_subject,
+                publication_time,
                 check.started_at,
             )
-            if observed is None:
-                invalid_samples += 1
-            else:
-                pr_to_required.append(observed)
-        if check is not None and check.duration_seconds is not None:
-            required_duration.append(check.duration_seconds)
+            observe(
+                TelemetryMetric.REQUIRED_DURATION,
+                pr_subject,
+                check.started_at,
+                check.completed_at,
+            )
         if (
-            check is not None
+            pull_request is not None
+            and check is not None
             and check.status is CheckStatus.SUCCESS
             and check.completed_at is not None
             and lane.queue_entry is not None
         ):
-            observed = _seconds_between(
+            observe(
+                TelemetryMetric.REQUIRED_SUCCESS_TO_ENQUEUE,
+                queue_subject(
+                    pr_number=pull_request.number,
+                    head_sha=pull_request.head_sha,
+                    queue_entry_id=lane.queue_entry.entry_id,
+                ),
                 check.completed_at,
                 lane.queue_entry.enqueued_at,
             )
-            if observed is None:
-                invalid_samples += 1
-            else:
-                required_success_to_enqueue.append(observed)
+
+    grouped = {
+        metric: tuple(
+            sample.duration_seconds
+            for sample in samples.values()
+            if sample.metric is metric
+        )
+        for metric in TelemetryMetric
+    }
+
+    def count(metric: TelemetryMetric) -> int:
+        return len(grouped[metric])
+
+    def p95(metric: TelemetryMetric) -> float | None:
+        return nearest_rank_p95(grouped[metric])
+
     return PipelineTimings(
-        handback_to_pr_samples=len(handback_to_pr),
-        handback_to_pr_p95_seconds=nearest_rank_p95(tuple(handback_to_pr)),
-        pr_to_required_start_samples=len(pr_to_required),
-        pr_to_required_start_p95_seconds=nearest_rank_p95(tuple(pr_to_required)),
-        required_duration_samples=len(required_duration),
-        required_duration_p95_seconds=nearest_rank_p95(tuple(required_duration)),
-        required_success_to_enqueue_samples=len(required_success_to_enqueue),
-        required_success_to_enqueue_p95_seconds=nearest_rank_p95(
-            tuple(required_success_to_enqueue)
+        window_seconds=int(window.total_seconds()),
+        handback_to_pr_samples=count(TelemetryMetric.HANDBACK_TO_PR),
+        handback_to_pr_p95_seconds=p95(TelemetryMetric.HANDBACK_TO_PR),
+        pr_to_required_start_samples=count(TelemetryMetric.PR_TO_REQUIRED_START),
+        pr_to_required_start_p95_seconds=p95(TelemetryMetric.PR_TO_REQUIRED_START),
+        required_duration_samples=count(TelemetryMetric.REQUIRED_DURATION),
+        required_duration_p95_seconds=p95(TelemetryMetric.REQUIRED_DURATION),
+        required_success_to_enqueue_samples=count(
+            TelemetryMetric.REQUIRED_SUCCESS_TO_ENQUEUE
         ),
+        required_success_to_enqueue_p95_seconds=p95(
+            TelemetryMetric.REQUIRED_SUCCESS_TO_ENQUEUE
+        ),
+        merge_to_sync_samples=count(TelemetryMetric.MERGE_TO_SYNC),
+        merge_to_sync_p95_seconds=p95(TelemetryMetric.MERGE_TO_SYNC),
+        merge_to_cleanup_samples=count(TelemetryMetric.MERGE_TO_CLEANUP),
+        merge_to_cleanup_p95_seconds=p95(TelemetryMetric.MERGE_TO_CLEANUP),
         invalid_samples=invalid_samples,
     )
