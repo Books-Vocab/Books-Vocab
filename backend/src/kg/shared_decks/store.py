@@ -30,7 +30,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import JSON, Column, UniqueConstraint, tuple_
+from sqlalchemy import JSON, Column, String, UniqueConstraint, cast, func, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, select
@@ -326,10 +326,18 @@ class SharedDeckStore:
                     stmt = stmt.where(key > tuple_(after[0], after[1]))
                 stmt = stmt.order_by(SharedDeck.title_nfc_lower, SharedDeck.id)
             else:  # recency (default): newest first, id as a total-order tiebreak
-                key = tuple_(SharedDeck.updated_at, SharedDeck.id)
+                # SQLite stores SQLModel datetimes as text.  Comparing the raw
+                # values makes ``+09:00`` sort after the equivalent UTC value
+                # instead of comparing their actual instants.  julianday()
+                # parses both forms and yields one UTC-normalized numeric key.
+                updated_at_utc = func.julianday(cast(SharedDeck.updated_at, String))
+                key = tuple_(updated_at_utc, SharedDeck.id)
                 if after is not None:
-                    stmt = stmt.where(key < tuple_(after[0], after[1]))
-                stmt = stmt.order_by(SharedDeck.updated_at.desc(), SharedDeck.id.desc())
+                    after_at = after[0]
+                    if isinstance(after_at, datetime):
+                        after_at = after_at.isoformat(sep=" ")
+                    stmt = stmt.where(key < tuple_(func.julianday(after_at), after[1]))
+                stmt = stmt.order_by(updated_at_utc.desc(), SharedDeck.id.desc())
             return list(session.exec(stmt.limit(limit)).all())
 
     def page_cards(
