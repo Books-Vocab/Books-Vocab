@@ -9,7 +9,11 @@ from typing import Protocol
 
 from ..domain.errors import InvalidReceipt, PolicyViolation
 from ..domain.models import HandbackReceipt
-from ..domain.observations import PullRequestSnapshot, RegistrySnapshot, WorktreeSnapshot
+from ..domain.observations import (
+    PullRequestSnapshot,
+    RegistrySnapshot,
+    WorktreeSnapshot,
+)
 from ..ports.git import GitCommandPort
 from ..ports.github import GitHubCommandPort, GitHubQueryPort
 from .correlation import scope_matches_snapshot
@@ -133,6 +137,15 @@ def parse_pull_request_body(body: str) -> HandbackReceipt:
         return HandbackReceipt.from_payload(payload)
     except InvalidReceipt as error:
         raise PolicyViolation("PR body typed delivery receipt is invalid") from error
+
+
+def validate_pull_request_body(
+    body: str, *, expected_head_sha: str
+) -> HandbackReceipt:
+    receipt = parse_pull_request_body(body)
+    if receipt.head_sha != expected_head_sha:
+        raise PolicyViolation("PR body receipt differs from the exact PR HEAD")
+    return receipt
 
 
 class PublishService:

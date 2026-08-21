@@ -92,6 +92,9 @@ def test_controller_reports_source_uncertainty_instead_of_fabricating_supply() -
     cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
     decision = decide_capacity(_metrics(source_problems=2), cadence)
     assert ControlAction.INSPECT_SOURCES in decision.actions
+    assert ControlAction.RECOVER_BLOCKERS in decision.actions
+    assert ControlAction.DISPATCH_SOLVERS not in decision.actions
+    assert decision.desired_new_solvers == 0
 
 
 def test_pipeline_supply_counts_only_owner_mapped_open_prs() -> None:

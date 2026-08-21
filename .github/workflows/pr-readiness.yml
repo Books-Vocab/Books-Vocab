@@ -28,56 +28,9 @@ jobs:
       - name: Validate PR body contract
         env:
           BODY: ${{ github.event.pull_request.body }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         shell: bash
         run: |
           set -euo pipefail
-
-          fail() {
-            echo "::error::$1" >&2
-            exit 1
-          }
-
-          [[ -n "$BODY" ]] || fail "PR body is empty"
-
-          has_field() {
-            local field="$1"
-            grep -Eq "(^|[^[:alnum:]_])${field}[[:space:]]*['\"]?[[:space:]]*:" <<<"$BODY"
-          }
-
-          if has_field 'Base SHA' && has_field 'Head SHA'; then
-            echo 'PR body uses display SHA labels.'
-          elif has_field 'base_sha' && has_field 'tip_sha'; then
-            echo 'PR body uses canonical handback SHA keys.'
-          else
-            fail "PR body is missing Base SHA/Head SHA or base_sha/tip_sha"
-          fi
-
-          contains_exact_sha() {
-            local sha="$1"
-            grep -Eq "(^|[^[:alnum:]_])${sha}([^[:alnum:]_]|$)" <<<"$BODY"
-          }
-
-          # Publication intentionally accepts a historical owner base. The CM
-          # queue admission revalidates current origin/main immediately before
-          # enqueue; PR readiness only proves the body carries a typed base.
-          grep -Eq 'Base SHA[[:space:]]*:[[:space:]]*`?[0-9a-f]{40}`?' <<<"$BODY" \
-            || fail "PR body is missing a typed base SHA"
-          contains_exact_sha "$HEAD_SHA" \
-            || fail "PR body is missing the exact current head SHA"
-          grep -Fq 'Scope' <<<"$BODY" \
-            || fail "PR body is missing Scope"
-          grep -Fq 'Validation' <<<"$BODY" \
-            || fail "PR body is missing Validation"
-          grep -Fq 'kg.worktree.handback.v1' <<<"$BODY" \
-            || fail "PR body is missing the typed handback schema"
-          digest_count="$(
-            (perl -ne 'while (/(?:^|[^[:alnum:]_])[\x60\x22\x27]?[Dd]igest[\x60\x22\x27]?\s*:\s*[\x60\x22\x27]?([0-9A-Fa-f]{64})(?![[:alnum:]_])/g) { print "$1\n" }' <<<"$BODY" || true) \
-              | wc -l | tr -d ' '
-          )"
-          [[ "$digest_count" -eq 1 ]] \
-            || fail "PR body must contain exactly one 64-hex handback digest"
-
-          echo 'PR body contains the current SHA and handback contract fields.'
-          echo 'The workflow validates payload-visible evidence only; it does not recompute the local registry seal.'
+          printf '%s' "$BODY" \
+            | ./ops/delivery.py validate-pr-body --head-sha "$HEAD_SHA"

@@ -37,9 +37,10 @@ class GitHubCliAdapter:
 
     def _run(self, argv: tuple[str, ...], *, allow_nonzero: bool = False) -> str:
         result = self.runner.run(argv, cwd=self.repo)
-        if result.exit_code != 0:
-            if not allow_nonzero or not result.stdout.strip():
-                raise AdapterCommandError(result)
+        if result.exit_code != 0 and (
+            not allow_nonzero or not result.stdout.strip()
+        ):
+            raise AdapterCommandError(result)
         return result.stdout.strip()
 
     def _json(self, argv: tuple[str, ...], *, allow_nonzero: bool = False) -> Any:

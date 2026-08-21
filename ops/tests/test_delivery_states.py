@@ -71,6 +71,11 @@ from delivery_control.domain.states import (
             NextAction.REPAIR_REQUIRED,
         ),
         (
+            LaneFacts(pr_open=True, pr_contract_valid=False),
+            LaneState.REQUIRED_FAILED,
+            NextAction.REPAIR_REQUIRED,
+        ),
+        (
             LaneFacts(
                 pr_open=True,
                 required_status=CheckStatus.SUCCESS,

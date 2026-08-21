@@ -6,10 +6,13 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
 from delivery_control.cli import DeliveryApplication, RuntimeStatusMap, main
+from delivery_control.domain.errors import CompareAndSwapConflict
 from delivery_control.domain.models import CheckStatus, Scope
 from delivery_control.domain.observations import (
     CheckSnapshot,
@@ -22,6 +25,7 @@ from delivery_control.domain.observations import (
     RegistrySnapshot,
     WorktreeSnapshot,
 )
+from delivery_control.services.publish import render_pull_request_body
 
 BASE = "a" * 40
 HEAD = "b" * 40
@@ -63,6 +67,7 @@ def _snapshot() -> WorktreeSnapshot:
 class FakeRegistry:
     def __init__(self) -> None:
         self.record = _record()
+        self.fail_resolve_once = False
 
     def get(self, lane_id: str) -> RegistrySnapshot | None:
         return self.record if lane_id == self.record.lane_id else None
@@ -80,6 +85,9 @@ class FakeRegistry:
         expected_path: str,
         expected_head_sha: str,
     ) -> None:
+        if self.fail_resolve_once:
+            self.fail_resolve_once = False
+            raise CompareAndSwapConflict("injected registry CAS failure")
         assert lane_id == self.record.lane_id
         assert expected_claim_generation == self.record.claim_generation
         assert expected_branch == self.record.branch
@@ -97,6 +105,7 @@ class FakeGit:
         self.remote: str | None = None
         self.local: str | None = HEAD
         self.worktrees = (PhysicalWorktree(WORKTREE, HEAD, BRANCH),)
+        self.fail_remove_once = False
 
     def inspect_worktree(self, path: Path, base_sha: str) -> WorktreeSnapshot:
         assert path == WORKTREE and base_sha == BASE
@@ -126,6 +135,9 @@ class FakeGit:
 
     def remove_worktree(self, path: Path, *, expected_head_sha: str) -> None:
         assert path == WORKTREE and expected_head_sha == HEAD
+        if self.fail_remove_once:
+            self.fail_remove_once = False
+            raise CompareAndSwapConflict("injected worktree removal failure")
         self.worktrees = ()
 
     def delete_local_branch(self, branch: str, *, expected_head_sha: str) -> None:
@@ -240,6 +252,56 @@ def test_publish_command_makes_github_durable_then_releases_local_assets() -> No
     assert git.remote == HEAD
 
 
+def test_publish_retry_recovers_after_pr_creation_then_registry_cas_failure() -> None:
+    registry = FakeRegistry()
+    registry.fail_resolve_once = True
+    git = FakeGit()
+    github = FakeGitHub()
+    app = DeliveryApplication(
+        repo=Path("/repo"),
+        git=git,
+        github=github,
+        registry=registry,
+        runtime=RuntimeStatusMap({"thread-cli": "running"}),
+    )
+
+    with pytest.raises(CompareAndSwapConflict, match="injected registry"):
+        app.publish(lane_id="DIRECT-CLI", title="fix: exact delivery")
+    assert github.pull_request is not None
+    assert git.remote == HEAD
+    assert registry.record.status == "active"
+
+    app.publish(lane_id="DIRECT-CLI", title="fix: exact delivery")
+
+    assert registry.record.status == "published"
+    assert git.worktrees == ()
+    assert git.local is None
+
+
+def test_release_retry_recovers_after_registry_publish_then_cleanup_failure() -> None:
+    registry = FakeRegistry()
+    git = FakeGit()
+    git.fail_remove_once = True
+    github = FakeGitHub()
+    app = DeliveryApplication(
+        repo=Path("/repo"),
+        git=git,
+        github=github,
+        registry=registry,
+        runtime=RuntimeStatusMap({"thread-cli": "running"}),
+    )
+
+    with pytest.raises(CompareAndSwapConflict, match="removal"):
+        app.publish(lane_id="DIRECT-CLI", title="fix: exact delivery")
+    assert registry.record.status == "published"
+    assert git.worktrees
+
+    app.release_published(41)
+
+    assert git.worktrees == ()
+    assert git.local is None
+
+
 def test_cli_queue_preserves_explicit_hold_as_typed_input(capsys: object) -> None:
     class FakeApplication:
         def __init__(self) -> None:
@@ -271,3 +333,32 @@ def test_runtime_status_file_fails_closed_for_unlisted_owner(tmp_path: Path) -> 
 
     assert runtime.owner_status("thread-1") == "running"
     assert runtime.owner_status("thread-unknown") == "unknown"
+
+
+def test_cli_validate_pr_body_uses_machine_receipt_not_workflow_regex(
+    tmp_path: Path, capsys: object
+) -> None:
+    record = _record()
+    receipt = DeliveryApplication(
+        repo=Path("/repo"),
+        git=FakeGit(),
+        github=FakeGitHub(),
+        registry=FakeRegistry(),
+        runtime=RuntimeStatusMap(),
+    ).receipt(record.lane_id)
+    body_path = tmp_path / "body.md"
+    body_path.write_text(render_pull_request_body(receipt), encoding="utf-8")
+
+    assert main(
+        [
+            "validate-pr-body",
+            "--head-sha",
+            receipt.head_sha,
+            "--body-file",
+            str(body_path),
+        ],
+        application_factory=lambda **_: object(),
+    ) == 0
+
+    payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert payload["result"]["head_sha"] == receipt.head_sha

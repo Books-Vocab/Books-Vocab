@@ -721,10 +721,9 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         if len(matches) != 1:
             print("✗ registry transition selector is ambiguous", file=sys.stderr)
             return EXIT_CLAIMED
-        if args.status == "published":
-            if not _has_valid_handback(matches[0]):
-                print("✗ published transition requires a valid physical hand-back", file=sys.stderr)
-                return EXIT_CLAIMED
+        if args.status == "published" and not _has_valid_handback(matches[0]):
+            print("✗ published transition requires a valid physical hand-back", file=sys.stderr)
+            return EXIT_CLAIMED
         _, now_iso = resolve_now(args.at)
         for record in matches:
             record["status"] = args.status
@@ -757,6 +756,12 @@ def _worktree_rows() -> list[dict[str, str | None]]:
 
 
 def cmd_sweep(args: argparse.Namespace) -> int:
+    if args.commit:
+        print(
+            "✗ bulk sweep mutation is disabled; use exact resolve CAS per record",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
     state_path = _state_path(args)
     state = load_state(state_path)
     known = {_norm(str(row.get("path"))) for row in _worktree_rows() if row.get("path")}
@@ -764,16 +769,6 @@ def cmd_sweep(args: argparse.Namespace) -> int:
                 if r.get("path") and _norm(str(r["path"])) not in known]
     payload = {"schema": SCHEMA, "action": "sweep", "orphaned": [_record_view(r) for r in orphaned],
                "commit": bool(args.commit)}
-    if args.commit and orphaned:
-        with _ledger_lock(state_path):
-            state = load_state(state_path)
-            _, now_iso = resolve_now(args.at)
-            for record in _active_records(state):
-                if record.get("path") and _norm(str(record["path"])) not in known:
-                    record["status"] = "abandoned"
-                    record["resolved_at"] = now_iso
-            save_state(state_path, state)
-        payload["action"] = "sweep-committed"
     print(json.dumps(payload, indent=2, ensure_ascii=False) if args.json
           else ("✓ no orphaned registry records" if not orphaned
                 else "\n".join(f"! orphaned: {r.get('branch')} {r.get('path')}" for r in orphaned)))

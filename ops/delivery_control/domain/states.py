@@ -75,6 +75,7 @@ class LaneFacts:
     duplicate_pr: bool = False
     scope_collision: bool = False
     pr_open: bool = False
+    pr_contract_valid: bool = True
     pr_draft: bool = False
     required_status: CheckStatus = CheckStatus.ABSENT
     mergeable: bool = False
@@ -153,6 +154,12 @@ def derive_lane_decision(facts: LaneFacts) -> LaneDecision:
         )
     if facts.pr_open and facts.pr_draft:
         return LaneDecision(LaneState.PR_DRAFT, NextAction.FINALIZE_PR, "PR is draft")
+    if facts.pr_open and not facts.pr_contract_valid:
+        return LaneDecision(
+            LaneState.REQUIRED_FAILED,
+            NextAction.REPAIR_REQUIRED,
+            "PR durable receipt is missing or differs from the owner handback",
+        )
     if facts.pr_open and facts.required_status is CheckStatus.FAILURE:
         return LaneDecision(
             LaneState.REQUIRED_FAILED,

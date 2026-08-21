@@ -9,7 +9,7 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.domain.errors import PolicyViolation
+from delivery_control.domain.errors import CompareAndSwapConflict, PolicyViolation
 from delivery_control.domain.models import HandbackReceipt, Scope
 from delivery_control.domain.observations import (
     FileChange,
@@ -132,8 +132,10 @@ class FakeGit:
         remote_sha: str | None = HEAD,
         local_main: str = BASE,
         origin_main: str = BASE,
+        origin_main_readbacks: tuple[str, ...] = (),
         canonical_branch: str = "main",
         canonical_clean: bool = True,
+        replacement_worktree_after_remove: PhysicalWorktree | None = None,
     ) -> None:
         self.snapshot = snapshot or _snapshot(receipt)
         self.worktrees = (
@@ -143,8 +145,10 @@ class FakeGit:
         self.remote_sha = remote_sha
         self.local_main = local_main
         self.origin_main = origin_main
+        self.origin_main_readbacks = list(origin_main_readbacks)
         self.canonical_branch = canonical_branch
         self.canonical_clean = canonical_clean
+        self.replacement_worktree_after_remove = replacement_worktree_after_remove
         self.actions: list[str] = []
 
     def list_worktrees(self) -> tuple[PhysicalWorktree, ...]:
@@ -172,7 +176,11 @@ class FakeGit:
     def remove_worktree(self, path: Path, *, expected_head_sha: str) -> None:
         assert expected_head_sha == HEAD
         self.actions.append("remove-worktree")
-        self.worktrees = ()
+        self.worktrees = (
+            (self.replacement_worktree_after_remove,)
+            if self.replacement_worktree_after_remove is not None
+            else ()
+        )
 
     def delete_local_branch(self, branch: str, *, expected_head_sha: str) -> None:
         assert expected_head_sha == self.local_sha
@@ -188,6 +196,8 @@ class FakeGit:
         return self.local_main
 
     def origin_main_sha(self) -> str:
+        if self.origin_main_readbacks:
+            self.origin_main = self.origin_main_readbacks.pop(0)
         return self.origin_main
 
     def fast_forward_main(
@@ -298,6 +308,50 @@ def test_cleanup_refuses_remote_drift() -> None:
     assert not git.actions
 
 
+@pytest.mark.parametrize(
+    "worktrees",
+    (
+        (PhysicalWorktree(PATH, HEAD, "feat/rebound"),),
+        (PhysicalWorktree(Path("/tmp/other"), HEAD, BRANCH),),
+        (
+            PhysicalWorktree(PATH, HEAD, BRANCH),
+            PhysicalWorktree(PATH, HEAD, BRANCH),
+        ),
+    ),
+    ids=("sealed-path-branch-drift", "sealed-branch-path-drift", "duplicate-match"),
+)
+def test_cleanup_refuses_non_unique_sealed_path_branch_binding(
+    worktrees: tuple[PhysicalWorktree, ...],
+) -> None:
+    receipt = _receipt()
+    registry = FakeRegistry(_record(receipt))
+    git = FakeGit(receipt)
+    git.worktrees = worktrees
+
+    with pytest.raises(PolicyViolation, match="sealed worktree path and branch"):
+        _service(receipt, registry=registry, git=git, state="OPEN").release_after_publish(
+            receipt=receipt, pull_request_number=9
+        )
+
+    assert registry.transitions == []
+    assert git.actions == []
+
+
+def test_cleanup_result_readback_refuses_rebound_sealed_path() -> None:
+    receipt = _receipt()
+    registry = FakeRegistry(_record(receipt))
+    rebound = PhysicalWorktree(PATH, HEAD, "feat/rebound")
+    git = FakeGit(receipt, replacement_worktree_after_remove=rebound)
+
+    with pytest.raises(PolicyViolation, match="sealed worktree path and branch"):
+        _service(receipt, registry=registry, git=git, state="OPEN").release_after_publish(
+            receipt=receipt, pull_request_number=9
+        )
+
+    assert registry.transitions == ["published"]
+    assert git.actions == ["remove-worktree", "delete-local"]
+
+
 def test_main_sync_is_noop_when_exact_and_ff_only_when_behind() -> None:
     receipt = _receipt()
     exact = FakeGit(receipt)
@@ -315,6 +369,40 @@ def test_main_sync_is_noop_when_exact_and_ff_only_when_behind() -> None:
     assert behind_result.changed
     assert behind_result.after_sha == "d" * 40
     assert behind.actions == ["sync-main"]
+
+
+def test_main_sync_noop_refuses_fresh_origin_main_drift() -> None:
+    drifted_origin = "d" * 40
+    git = FakeGit(
+        _receipt(),
+        origin_main_readbacks=(BASE, drifted_origin),
+    )
+
+    with pytest.raises(CompareAndSwapConflict, match="origin/main changed"):
+        MainSyncService(
+            canonical_path=Path("/repo"), query=git, command=git
+        ).sync()
+
+    assert git.actions == []
+
+
+def test_main_sync_fast_forward_refuses_fresh_origin_main_drift() -> None:
+    expected_origin = "d" * 40
+    drifted_origin = "e" * 40
+    git = FakeGit(
+        _receipt(),
+        local_main="c" * 40,
+        origin_main=expected_origin,
+        origin_main_readbacks=(expected_origin, drifted_origin),
+    )
+
+    with pytest.raises(CompareAndSwapConflict, match="origin/main changed"):
+        MainSyncService(
+            canonical_path=Path("/repo"), query=git, command=git
+        ).sync()
+
+    assert git.actions == ["sync-main"]
+    assert git.local_main == expected_origin
 
 
 @pytest.mark.parametrize(

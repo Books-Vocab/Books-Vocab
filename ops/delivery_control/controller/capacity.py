@@ -39,12 +39,15 @@ class CapacityDecision:
     reasons: tuple[str, ...]
 
 
+DEFAULT_CAPACITY_POLICY = CapacityPolicy()
+
+
 def decide_capacity(
     metrics: PipelineMetrics,
     cadence: MergeCadence,
     *,
     required_p95_seconds: float | None = None,
-    policy: CapacityPolicy = CapacityPolicy(),
+    policy: CapacityPolicy = DEFAULT_CAPACITY_POLICY,
 ) -> CapacityDecision:
     actions: list[ControlAction] = []
     reasons: list[str] = []
@@ -75,7 +78,12 @@ def decide_capacity(
     )
     pr_saturated = metrics.open_prs >= policy.max_open_prs
     desired_new_solvers = 0
-    if ci_saturated or pr_saturated:
+    if metrics.source_problems:
+        add(
+            ControlAction.RECOVER_BLOCKERS,
+            "solver dispatch is disabled until source inventory is complete",
+        )
+    elif ci_saturated or pr_saturated:
         add(
             ControlAction.THROTTLE_SOLVERS,
             "CI latency or PR reservoir reached its safe ceiling",

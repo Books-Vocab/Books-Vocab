@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from itertools import pairwise
 
 from ..domain.states import LaneState
 from ..services.inspect import DeliveryInventory
@@ -107,7 +108,7 @@ def measure_merge_cadence(
     )
     intervals = tuple(
         (right - left).total_seconds()
-        for left, right in zip(selected, selected[1:], strict=False)
+        for left, right in pairwise(selected)
     )
     seconds = int(window.total_seconds())
     rate = len(selected) * 3600 / seconds

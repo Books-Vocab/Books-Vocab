@@ -27,6 +27,7 @@ from delivery_control.services.publish import (
     parse_pull_request_body,
     receipt_from_active_claim,
     render_pull_request_body,
+    validate_pull_request_body,
 )
 from delivery_control.services.publish_preflight import PublishPreflightService
 
@@ -292,6 +293,17 @@ def test_machine_receipt_parser_normalizes_domain_validation_errors() -> None:
 
     with pytest.raises(PolicyViolation, match="receipt is invalid"):
         parse_pull_request_body(body)
+
+
+def test_readiness_validator_binds_receipt_to_exact_pr_head() -> None:
+    receipt = _receipt()
+    body = render_pull_request_body(receipt)
+
+    assert validate_pull_request_body(
+        body, expected_head_sha=receipt.head_sha
+    ) == receipt
+    with pytest.raises(PolicyViolation, match="exact PR HEAD"):
+        validate_pull_request_body(body, expected_head_sha="f" * 40)
 
 
 def test_active_legacy_handback_normalizes_to_durable_receipt() -> None:

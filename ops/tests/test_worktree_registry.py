@@ -619,3 +619,17 @@ def test_terminal_transition_requires_exact_generation_and_head(
     assert stale_generation == registry.EXIT_CLAIMED
     assert stale_head == registry.EXIT_CLAIMED
     assert registry.load_state(state_path)["records"][0]["status"] == "active"
+
+
+def test_sweep_commit_is_read_only_and_requires_exact_per_record_transition(
+    tmp_path: Path,
+) -> None:
+    record = _valid_handed_back_record(tmp_path)
+    record["path"] = str(tmp_path / "missing")
+    state_path = tmp_path / "registry.json"
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+
+    rc = registry.main(["sweep", "--state", str(state_path), "--commit"])
+
+    assert rc == registry.EXIT_USAGE
+    assert registry.load_state(state_path)["records"][0]["status"] == "active"

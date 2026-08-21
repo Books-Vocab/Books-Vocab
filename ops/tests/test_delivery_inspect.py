@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import subprocess
 import sys
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -12,12 +13,12 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
+from delivery_control.adapters.errors import AdapterCommandError
 from delivery_control.adapters.git_cli import GitCliAdapter
 from delivery_control.adapters.github_cli import GitHubCliAdapter
 from delivery_control.adapters.registry import RegistryCliAdapter
-from delivery_control.adapters.errors import AdapterCommandError
 from delivery_control.domain.errors import CompareAndSwapConflict
-from delivery_control.domain.models import CheckStatus, Scope
+from delivery_control.domain.models import CheckStatus, HandbackReceipt, Scope
 from delivery_control.domain.observations import (
     CheckSnapshot,
     FileChange,
@@ -33,6 +34,7 @@ from delivery_control.domain.observations import (
 from delivery_control.domain.states import LaneState
 from delivery_control.ports.process import CommandResult
 from delivery_control.services.inspect import InspectService
+from delivery_control.services.publish import render_pull_request_body
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -549,18 +551,37 @@ class FakeRuntime:
 
 
 def _record(path: Path, *, status: str = "active") -> RegistrySnapshot:
+    receipt = _receipt(path)
     return RegistrySnapshot(
-        lane_id="#1",
-        branch="feat/one",
+        lane_id=receipt.lane_id,
+        branch=receipt.branch,
         path=path,
         status=status,
-        scope=Scope.from_paths(modify=("ops/a.py",)),
-        base_sha="a" * 40,
-        claim_generation=3,
-        owner_thread_id="thread-1",
-        handed_back_sha="b" * 40,
-        handback_claim_generation=3,
+        scope=receipt.scope,
+        base_sha=receipt.base_sha,
+        claim_generation=receipt.claim_generation,
+        owner_thread_id=receipt.owner_thread_id,
+        handed_back_sha=receipt.head_sha,
+        handback_claim_generation=receipt.claim_generation,
         handback_valid=True,
+        handback_digest=receipt.content_digest,
+        handback_origin_main_sha=receipt.origin_main_sha,
+    )
+
+
+def _receipt(path: Path) -> HandbackReceipt:
+    return HandbackReceipt(
+        lane_id="#1",
+        owner_thread_id="thread-1",
+        claim_generation=3,
+        branch="feat/one",
+        worktree_path=str(path),
+        base_sha="a" * 40,
+        parent_sha="a" * 40,
+        head_sha="b" * 40,
+        origin_main_sha="a" * 40,
+        content_digest="c" * 64,
+        scope=Scope.from_paths(modify=("ops/a.py",)),
     )
 
 
@@ -578,7 +599,8 @@ def _snapshot(
     )
 
 
-def _pull_request(*, head: str = "b" * 40) -> PullRequestSnapshot:
+def _pull_request(path: Path, *, head: str = "b" * 40) -> PullRequestSnapshot:
+    receipt = _receipt(path)
     return PullRequestSnapshot(
         number=1,
         url="https://example.test/pull/1",
@@ -589,7 +611,7 @@ def _pull_request(*, head: str = "b" * 40) -> PullRequestSnapshot:
         draft=False,
         mergeable=True,
         title="fix: one",
-        body="## Scope\n- ops/a.py\n\n## Validation\n- required",
+        body=render_pull_request_body(receipt),
     )
 
 
@@ -601,12 +623,12 @@ def test_inspect_service_requires_exact_registry_physical_pr_and_check_tuple(
     service = InspectService(
         registry=FakeRegistry((_record(path),)),
         git=FakeGit((physical,), {path: _snapshot(path)}),
-        github=FakeGitHub((_pull_request(),)),
+        github=FakeGitHub((_pull_request(path),)),
         runtime=FakeRuntime(),
     )
     inventory = service.inspect()
     active = next(item for item in inventory.lanes if item.key == "#1")
-    assert active.decision.state is LaneState.READY_TO_QUEUE
+    assert active.decision.state is LaneState.PUBLISHED_LOCAL_CLEANUP
     assert not active.problems
 
 
@@ -632,7 +654,7 @@ def test_inspect_service_never_marks_dirty_or_head_drift_ready(tmp_path: Path) -
     service = InspectService(
         registry=FakeRegistry((_record(path),)),
         git=FakeGit((physical,), {path: _snapshot(path, clean=False, head="c" * 40)}),
-        github=FakeGitHub((_pull_request(),)),
+        github=FakeGitHub((_pull_request(path),)),
         runtime=FakeRuntime(),
     )
     active = next(item for item in service.inspect().lanes if item.key == "#1")
@@ -646,7 +668,7 @@ def test_published_lane_is_remote_queue_not_orphaned_local_work(tmp_path: Path) 
     service = InspectService(
         registry=FakeRegistry((published,)),
         git=FakeGit((), {}),
-        github=FakeGitHub((_pull_request(),)),
+        github=FakeGitHub((_pull_request(path),)),
         runtime=FakeRuntime(),
     )
 
@@ -666,7 +688,7 @@ def test_published_lane_with_local_branch_is_classified_for_cleanup(
     service = InspectService(
         registry=FakeRegistry((published,)),
         git=FakeGit((), {}, {"feat/one": "b" * 40}),
-        github=FakeGitHub((_pull_request(),)),
+        github=FakeGitHub((_pull_request(path),)),
         runtime=FakeRuntime(),
     )
 
@@ -675,6 +697,31 @@ def test_published_lane_with_local_branch_is_classified_for_cleanup(
     )
 
     assert lane.decision.state is LaneState.PUBLISHED_LOCAL_CLEANUP
+
+
+def test_published_lane_requires_exact_machine_receipt_before_queue(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "lane"
+    published = _record(path, status="published")
+    malformed = _pull_request(path)
+    malformed = replace(
+        malformed,
+        body="## Scope\n- ops/a.py\n\n## Validation\n- required",
+    )
+    service = InspectService(
+        registry=FakeRegistry((published,)),
+        git=FakeGit((), {}),
+        github=FakeGitHub((malformed,)),
+        runtime=FakeRuntime(),
+    )
+
+    lane = next(
+        item for item in service.inspect().lanes if item.key.startswith("published:")
+    )
+
+    assert lane.decision.state is LaneState.REQUIRED_FAILED
+    assert any("typed delivery receipt" in problem.reason for problem in lane.problems)
 
 
 def test_terminal_registry_history_does_not_claim_physical_worktree(

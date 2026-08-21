@@ -7,7 +7,11 @@ from pathlib import Path
 
 from ..domain.errors import PolicyViolation
 from ..domain.models import HandbackReceipt
-from ..domain.observations import PullRequestSnapshot, RegistrySnapshot
+from ..domain.observations import (
+    PhysicalWorktree,
+    PullRequestSnapshot,
+    RegistrySnapshot,
+)
 from ..ports.git import GitCommandPort, GitQueryPort
 from ..ports.github import GitHubQueryPort
 from ..ports.registry import RegistryCommandPort, RegistryQueryPort
@@ -86,19 +90,10 @@ class CleanupService:
         return pull_request
 
     def _remove_local_assets(self, receipt: HandbackReceipt) -> None:
-        physical = tuple(
-            item
-            for item in self.git_query.list_worktrees()
-            if item.branch == receipt.branch
-        )
-        if len(physical) > 1 or (
-            physical
-            and physical[0].path.resolve() != Path(receipt.worktree_path).resolve()
-        ):
-            raise PolicyViolation("branch is attached to an unexpected worktree")
-        if physical:
+        physical = self._sealed_worktree(receipt)
+        if physical is not None:
             snapshot = self.git_query.inspect_worktree(
-                physical[0].path, receipt.base_sha
+                physical.path, receipt.base_sha
             )
             if (
                 not snapshot.clean
@@ -108,7 +103,7 @@ class CleanupService:
             ):
                 raise PolicyViolation("worktree changed after typed handback")
             self.git_command.remove_worktree(
-                physical[0].path, expected_head_sha=receipt.head_sha
+                physical.path, expected_head_sha=receipt.head_sha
             )
         local_sha = self.git_query.local_branch_sha(receipt.branch)
         if local_sha is not None:
@@ -141,19 +136,10 @@ class CleanupService:
         return self._result(receipt, "published")
 
     def _validate_local_assets(self, receipt: HandbackReceipt) -> None:
-        physical = tuple(
-            item
-            for item in self.git_query.list_worktrees()
-            if item.branch == receipt.branch
-        )
-        if len(physical) > 1 or (
-            physical
-            and physical[0].path.resolve() != Path(receipt.worktree_path).resolve()
-        ):
-            raise PolicyViolation("branch is attached to an unexpected worktree")
-        if physical:
+        physical = self._sealed_worktree(receipt)
+        if physical is not None:
             snapshot = self.git_query.inspect_worktree(
-                physical[0].path, receipt.base_sha
+                physical.path, receipt.base_sha
             )
             if (
                 not snapshot.clean
@@ -165,6 +151,29 @@ class CleanupService:
         local_sha = self.git_query.local_branch_sha(receipt.branch)
         if local_sha is not None and local_sha != receipt.head_sha:
             raise PolicyViolation("local branch changed after typed handback")
+
+    def _sealed_worktree(
+        self, receipt: HandbackReceipt
+    ) -> PhysicalWorktree | None:
+        inventory = self.git_query.list_worktrees()
+        sealed_path = Path(receipt.worktree_path).resolve()
+        path_matches = tuple(
+            item for item in inventory if item.path.resolve() == sealed_path
+        )
+        branch_matches = tuple(
+            item for item in inventory if item.branch == receipt.branch
+        )
+        if not path_matches and not branch_matches:
+            return None
+        if (
+            len(path_matches) != 1
+            or len(branch_matches) != 1
+            or path_matches[0] is not branch_matches[0]
+        ):
+            raise PolicyViolation(
+                "sealed worktree path and branch do not match uniquely"
+            )
+        return path_matches[0]
 
     def finalize_merged(
         self, *, receipt: HandbackReceipt, pull_request_number: int
@@ -191,14 +200,10 @@ class CleanupService:
         return self._result(receipt, "merged")
 
     def _result(self, receipt: HandbackReceipt, disposition: str) -> CleanupResult:
-        branch_worktrees = tuple(
-            item
-            for item in self.git_query.list_worktrees()
-            if item.branch == receipt.branch
-        )
+        sealed_worktree = self._sealed_worktree(receipt)
         return CleanupResult(
             disposition=disposition,
-            worktree_absent=not branch_worktrees,
+            worktree_absent=sealed_worktree is None,
             local_branch_absent=self.git_query.local_branch_sha(receipt.branch) is None,
             remote_branch_absent=self.git_query.remote_branch_sha(receipt.branch) is None,
         )
