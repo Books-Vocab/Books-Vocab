@@ -89,6 +89,23 @@ class FakeRegistry:
             )
         )
 
+    def find_exact_claim(
+        self,
+        *,
+        lane_id: str,
+        branch: str,
+        path: Path,
+        claim_generation: int,
+    ) -> RegistrySnapshot | None:
+        if (
+            self.record.lane_id == lane_id
+            and self.record.branch == branch
+            and self.record.path == path
+            and self.record.claim_generation == claim_generation
+        ):
+            return self.record
+        return None
+
     def resolve(
         self,
         lane_id: str,
@@ -224,6 +241,9 @@ class FakeGitHub:
 
     def branch_is_protected(self, branch: str) -> bool:
         return False
+
+    def merge_queue_entry_id(self, pull_request_id: str) -> str | None:
+        return None
 
     def merge_queue_enabled(self, branch: str) -> bool:
         return True

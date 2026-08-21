@@ -399,14 +399,8 @@ def cmd_scope_set(args: argparse.Namespace) -> int:
             return EXIT_USAGE
         record = matches[0]
         if record.get("scope") != scope:
-            generation = _claim_generation(record, "claim_generation")
-            record["claim_generation"] = (generation if generation is not None else -1) + 1
+            _advance_claim(record)
             record["scope"] = scope
-            record["handed_back_at"] = None
-            record["handed_back_sha"] = None
-            record.pop("handback_claim_generation", None)
-            record.pop("handback_seal", None)
-            record.pop("handback_outcomes", None)
         save_state(state_path, state)
     print(json.dumps({"schema": SCHEMA, "action": "scope-set", "record": matches[0]},
                      indent=2, ensure_ascii=False) if args.json
@@ -423,9 +417,17 @@ def cmd_owner_bind(args: argparse.Namespace) -> int:
         if len(matches) != 1:
             print("✗ owner selector must match exactly one active worktree", file=sys.stderr)
             return EXIT_USAGE
-        matches[0]["codex_thread_id"] = args.codex_thread_id
+        record = matches[0]
+        assignment_changed = record.get("codex_thread_id") != args.codex_thread_id
         if args.delegated is not None:
-            matches[0]["delegated"] = args.delegated
+            assignment_changed = (
+                assignment_changed or record.get("delegated") != args.delegated
+            )
+        if assignment_changed:
+            _advance_claim(record)
+        record["codex_thread_id"] = args.codex_thread_id
+        if args.delegated is not None:
+            record["delegated"] = args.delegated
         save_state(state_path, state)
     print(json.dumps({"schema": SCHEMA, "action": "owner-bind", "record": matches[0]},
                      indent=2, ensure_ascii=False) if args.json
@@ -504,6 +506,20 @@ def _load_outcomes(path: Path) -> list[dict[str, Any]]:
     return [dict(item) for item in payload]
 
 
+def _clear_handback(record: dict[str, Any]) -> None:
+    record["handed_back_at"] = None
+    record["handed_back_sha"] = None
+    record.pop("handback_claim_generation", None)
+    record.pop("handback_seal", None)
+    record.pop("handback_outcomes", None)
+
+
+def _advance_claim(record: dict[str, Any]) -> None:
+    generation = _claim_generation(record, "claim_generation")
+    record["claim_generation"] = (generation if generation is not None else -1) + 1
+    _clear_handback(record)
+
+
 def _seal_body(record: dict[str, Any], *, base_sha: str, tip_sha: str,
                outcomes: list[dict[str, Any]], handed_back_at: str,
                origin_main_sha: str | None = None) -> dict[str, Any]:
@@ -511,6 +527,7 @@ def _seal_body(record: dict[str, Any], *, base_sha: str, tip_sha: str,
         "schema": HAND_BACK_SEAL_SCHEMA, "branch": record.get("branch"),
         "path": _norm(str(record.get("path") or "")),
         "external_ids": sorted(_legacy_external_ids(record)),
+        "owner_thread_id": record.get("codex_thread_id"),
         "base_sha": base_sha, "tip_sha": tip_sha,
         "outcomes": outcomes, "handed_back_at": handed_back_at,
     }
@@ -539,6 +556,8 @@ def validate_handback_seal(record: dict[str, Any], *, repo: Path | None = None,
         problems.append({"kind": "handback-seal-digest-invalid"})
     if body.get("branch") != record.get("branch"):
         problems.append({"kind": "handback-seal-branch-mismatch"})
+    if body.get("owner_thread_id") != record.get("codex_thread_id"):
+        problems.append({"kind": "handback-seal-owner-mismatch"})
     if sorted(body.get("external_ids") or []) != sorted(_legacy_external_ids(record)):
         problems.append({"kind": "handback-seal-external-ids-mismatch"})
     origin_main_sha = body.get("origin_main_sha")

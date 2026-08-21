@@ -28,6 +28,7 @@ def _metrics(**changes: int) -> PipelineMetrics:
         "published_local_cleanup": 0,
         "open_prs": 0,
         "unmapped_open_prs": 0,
+        "duplicate_pr_mappings": 0,
         "required_green": 0,
         "required_failed": 0,
         "terminal_cleanup": 0,
@@ -96,6 +97,19 @@ def test_controller_reports_source_uncertainty_instead_of_fabricating_supply() -
     assert ControlAction.RECOVER_BLOCKERS in decision.actions
     assert ControlAction.DISPATCH_SOLVERS not in decision.actions
     assert decision.desired_new_solvers == 0
+
+
+def test_controller_disables_solver_birth_for_unmapped_or_duplicate_prs() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+
+    for metrics in (
+        _metrics(unmapped_open_prs=1),
+        _metrics(duplicate_pr_mappings=1),
+    ):
+        decision = decide_capacity(metrics, cadence)
+        assert ControlAction.DISPATCH_SOLVERS not in decision.actions
+        assert ControlAction.RECOVER_BLOCKERS in decision.actions
+        assert decision.desired_new_solvers == 0
 
 
 def test_dogfood_preflight_accepts_only_an_empty_canonical_baseline() -> None:
@@ -198,3 +212,46 @@ def test_pipeline_supply_counts_only_owner_mapped_open_prs() -> None:
 
     assert metrics.open_prs == 1
     assert metrics.unmapped_open_prs == 1
+
+
+def test_cleanup_pending_pr_counts_as_durable_mapped_supply() -> None:
+    pull_request = PullRequestSnapshot(
+        number=9,
+        url="https://example.test/pull/9",
+        branch="feat/leased",
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+        state="OPEN",
+        draft=False,
+        mergeable=True,
+    )
+    record = RegistrySnapshot(
+        lane_id="#leased",
+        branch="feat/leased",
+        path=Path("/tmp/leased"),
+        status="cleanup_pending",
+        scope=Scope.from_paths(modify=("ops/a.py",)),
+        base_sha="a" * 40,
+        claim_generation=1,
+    )
+    inventory = DeliveryInventory(
+        lanes=(
+            LaneInspection(
+                key="#leased",
+                registry=record,
+                physical=None,
+                snapshot=None,
+                pull_requests=(pull_request,),
+                decision=LaneDecision(
+                    LaneState.PUBLISHED_LOCAL_CLEANUP,
+                    NextAction.CLEANUP_LOCAL,
+                    "cleanup",
+                ),
+            ),
+        )
+    )
+
+    metrics = measure_pipeline(inventory)
+
+    assert metrics.open_prs == 1
+    assert metrics.unmapped_open_prs == 0

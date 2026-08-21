@@ -43,11 +43,12 @@ def _pr_receipt_matches_registry(
         and receipt.claim_generation == record.claim_generation
         and receipt.branch == record.branch
         and Path(receipt.worktree_path).resolve() == record.path.resolve()
-        and receipt.base_sha == record.base_sha == pull_request.base_sha
+        and receipt.base_sha == record.base_sha
         and receipt.head_sha == record.handed_back_sha == pull_request.head_sha
         and receipt.origin_main_sha == record.handback_origin_main_sha
         and receipt.content_digest == record.handback_digest
         and receipt.scope == record.scope
+        and pull_request.base_branch == "main"
     )
     if not exact:
         problems.append(
@@ -76,7 +77,19 @@ def project_active_lane(
     is_owner_reachable = owner_reachable(runtime, record, problems)
     check = None
     body_exact = False
+    queued = False
     if pull_request is not None:
+        if pull_request.state == "OPEN":
+            try:
+                queued = (
+                    github.merge_queue_entry_id(pull_request.node_id) is not None
+                )
+            except DeliverySourceError as error:
+                problems.append(
+                    InventoryProblem(
+                        "github", f"PR#{pull_request.number}", str(error)
+                    )
+                )
         body_exact = _pr_receipt_matches_registry(
             record, pull_request, problems
         )
@@ -102,14 +115,6 @@ def project_active_lane(
             )
         )
     if pull_request is not None:
-        if pull_request.base_sha != record.base_sha:
-            problems.append(
-                InventoryProblem(
-                    "github",
-                    f"PR#{pull_request.number}",
-                    "PR base differs from registry base",
-                )
-            )
         if snapshot is None or pull_request.head_sha != snapshot.head_sha:
             problems.append(
                 InventoryProblem(
@@ -171,6 +176,7 @@ def project_active_lane(
         pr_draft=pull_request.draft if pull_request else False,
         required_status=check.status if check else CheckStatus.ABSENT,
         mergeable=pull_request.mergeable if pull_request else False,
+        queued=queued,
         holds=holds,
     )
     return LaneInspection(
@@ -204,7 +210,19 @@ def project_published_lane(
             problems.append(InventoryProblem("git", str(path), str(error)))
     check = None
     body_exact = False
+    queued = False
     if pull_request is not None:
+        if pull_request.state == "OPEN":
+            try:
+                queued = (
+                    github.merge_queue_entry_id(pull_request.node_id) is not None
+                )
+            except DeliverySourceError as error:
+                problems.append(
+                    InventoryProblem(
+                        "github", f"PR#{pull_request.number}", str(error)
+                    )
+                )
         body_exact = _pr_receipt_matches_registry(
             record, pull_request, problems
         )
@@ -239,6 +257,7 @@ def project_published_lane(
         and len(branch_prs) == 1
         and pull_request is not None
         and pull_request.state == "OPEN"
+        and not queued
         and not pull_request.draft
         and pull_request.mergeable
         and pull_request.base_sha == sources.live_main_sha == record.base_sha
@@ -289,6 +308,7 @@ def project_published_lane(
                     check.status if check else CheckStatus.ABSENT
                 ),
                 mergeable=pull_request.mergeable if pull_request else False,
+                queued=queued,
                 merge_policy_passed=merge_exact,
                 cleanup_policy_passed=cleanup_exact,
                 merged=pull_request is not None and pull_request.state == "MERGED",

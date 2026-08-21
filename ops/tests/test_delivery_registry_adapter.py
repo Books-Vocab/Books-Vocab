@@ -175,6 +175,48 @@ def test_collision_inventory_ignores_malformed_terminal_history(
     assert inventory.problems == ()
 
 
+def test_exact_claim_query_ignores_unrelated_malformed_history(
+    tmp_path: Path,
+) -> None:
+    exact = {
+        "branch": "feat/exact",
+        "path": str(tmp_path / "exact"),
+        "status": "cleanup_pending",
+        "external_ids": ["#exact"],
+        "base_sha": "a" * 40,
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"operation": "modify", "path": "ops/a.py"}],
+        },
+        "codex_thread_id": "thread-exact",
+        "claim_generation": 7,
+    }
+    unrelated = {"branch": "feat/old", "status": "merged"}
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("registry",),
+                0,
+                json.dumps({"records": [unrelated, exact]}),
+                "",
+            )
+        ]
+    )
+
+    record = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    ).find_exact_claim(
+        lane_id="#exact",
+        branch="feat/exact",
+        path=tmp_path / "exact",
+        claim_generation=7,
+    )
+
+    assert record is not None
+    assert record.status == "cleanup_pending"
+    assert record.claim_generation == 7
+
+
 def test_registry_adapter_exposes_exact_legacy_handback_transport_fields(
     tmp_path: Path,
 ) -> None:
@@ -183,6 +225,7 @@ def test_registry_adapter_exposes_exact_legacy_handback_transport_fields(
         "branch": "feat/one",
         "path": str(tmp_path / "one"),
         "external_ids": ["#1"],
+        "owner_thread_id": "thread-1",
         "tip_sha": "b" * 40,
         "handed_back_at": "2026-08-21T00:00:00Z",
         "origin_main_sha": "a" * 40,

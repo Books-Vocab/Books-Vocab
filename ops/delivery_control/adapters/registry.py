@@ -44,6 +44,8 @@ def _legacy_seal_valid(record: Mapping[str, Any]) -> bool:
         return False
     if seal.get("branch") != record.get("branch"):
         return False
+    if seal.get("owner_thread_id") != record.get("codex_thread_id"):
+        return False
     if (
         Path(str(seal.get("path", ""))).expanduser().resolve()
         != Path(str(record.get("path", ""))).expanduser().resolve()
@@ -239,6 +241,43 @@ class RegistryCliAdapter:
             raise AdapterPayloadError(
                 f"multiple active registry records found for {lane_id}"
             )
+        return matches[0] if matches else None
+
+    def find_exact_claim(
+        self,
+        *,
+        lane_id: str,
+        branch: str,
+        path: Path,
+        claim_generation: int,
+    ) -> RegistrySnapshot | None:
+        expected_path = path.expanduser().resolve()
+        matches: list[RegistrySnapshot] = []
+        for raw in self._list_payload()["records"]:
+            if not isinstance(raw, Mapping) or raw.get("branch") != branch:
+                continue
+            external_ids = raw.get("external_ids")
+            raw_lane = (
+                str(external_ids[0])
+                if isinstance(external_ids, list) and external_ids
+                else branch
+            )
+            if raw_lane != lane_id:
+                continue
+            try:
+                raw_path = Path(str(raw["path"])).expanduser()
+            except (KeyError, TypeError, ValueError) as error:
+                raise AdapterPayloadError("exact registry claim path is malformed") from error
+            if not raw_path.is_absolute() or raw_path.resolve() != expected_path:
+                continue
+            try:
+                record = self._record(raw)
+            except (KeyError, TypeError, ValueError, InvalidScope) as error:
+                raise AdapterPayloadError("exact registry claim is malformed") from error
+            if record.claim_generation == claim_generation:
+                matches.append(record)
+        if len(matches) > 1:
+            raise AdapterPayloadError("multiple exact registry claims found")
         return matches[0] if matches else None
 
     def resolve(

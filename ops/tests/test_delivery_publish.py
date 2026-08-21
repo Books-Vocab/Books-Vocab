@@ -188,12 +188,14 @@ class FakeGitHub:
         protected: bool = False,
         fail_create_once: bool = False,
         changed_paths: tuple[str, ...] | None = None,
+        retarget_on_readback: bool = False,
     ) -> None:
         self.receipt = receipt
         self.pull_request = pull_request
         self.protected = protected
         self.fail_create_once = fail_create_once
         self.paths = changed_paths or receipt.scope.paths
+        self.retarget_on_readback = retarget_on_readback
         self.create_calls = 0
         self.update_calls = 0
 
@@ -208,7 +210,11 @@ class FakeGitHub:
 
     def get_pull_request(self, number: int) -> PullRequestSnapshot:
         assert self.pull_request is not None and self.pull_request.number == number
-        return self.pull_request
+        return (
+            replace(self.pull_request, base_branch="release")
+            if self.retarget_on_readback
+            else self.pull_request
+        )
 
     def changed_paths(self, number: int) -> tuple[str, ...]:
         return self.paths
@@ -489,6 +495,25 @@ def test_preflight_rejects_scope_collision_and_existing_pr_scope_drift() -> None
     drift_service, _, _ = _service(receipt, github=github)
     with pytest.raises(PolicyViolation, match="paths differ"):
         drift_service.publish(receipt=receipt, title="fix: delivery")
+
+
+def test_publish_refuses_non_main_target_before_or_after_mutation() -> None:
+    receipt = _receipt()
+    wrong_target = replace(_pull_request(receipt), base_branch="release")
+    preflight_service, preflight_git, _ = _service(
+        receipt,
+        github=FakeGitHub(receipt, pull_request=wrong_target),
+    )
+    with pytest.raises(PolicyViolation, match="target main"):
+        preflight_service.publish(receipt=receipt, title="fix: delivery")
+    assert not preflight_git.push_calls
+
+    raced_service, _, _ = _service(
+        receipt,
+        github=FakeGitHub(receipt, retarget_on_readback=True),
+    )
+    with pytest.raises(PolicyViolation, match="readback"):
+        raced_service.publish(receipt=receipt, title="fix: delivery")
 
 
 def test_title_rejects_delete_control_character_before_any_mutation() -> None:

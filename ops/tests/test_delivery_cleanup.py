@@ -102,6 +102,23 @@ class FakeRegistry:
     def get(self, lane_id: str) -> RegistrySnapshot | None:
         return self.record if self.record.lane_id == lane_id else None
 
+    def find_exact_claim(
+        self,
+        *,
+        lane_id: str,
+        branch: str,
+        path: Path,
+        claim_generation: int,
+    ) -> RegistrySnapshot | None:
+        if (
+            self.record.lane_id == lane_id
+            and self.record.branch == branch
+            and self.record.path == path
+            and self.record.claim_generation == claim_generation
+        ):
+            return self.record
+        return None
+
     def resolve(
         self,
         lane_id: str,
@@ -306,6 +323,33 @@ def test_cleanup_refuses_remote_drift() -> None:
             receipt=receipt, pull_request_number=9
         )
     assert not git.actions
+
+
+@pytest.mark.parametrize("state", ("OPEN", "MERGED"))
+def test_cleanup_refuses_pr_retargeted_away_from_main(state: str) -> None:
+    receipt = _receipt()
+    registry = FakeRegistry(_record(receipt))
+    git = FakeGit(receipt)
+    pull_request = replace(
+        _pull_request(receipt, state=state),
+        base_branch="release",
+    )
+    service = CleanupService(
+        registry_query=registry,
+        registry_command=registry,
+        git_query=git,
+        git_command=git,
+        github=FakeGitHub(pull_request, receipt),
+    )
+
+    with pytest.raises(PolicyViolation, match="exact handback"):
+        if state == "OPEN":
+            service.release_after_publish(receipt=receipt, pull_request_number=9)
+        else:
+            service.finalize_merged(receipt=receipt, pull_request_number=9)
+
+    assert registry.transitions == []
+    assert git.actions == []
 
 
 @pytest.mark.parametrize(

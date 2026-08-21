@@ -79,6 +79,8 @@ class PublishPreflightService:
             raise PolicyViolation("duplicate open PRs exist for handback branch")
         pull_request = branch_matches[0] if branch_matches else None
         if pull_request is not None:
+            if pull_request.base_branch != "main":
+                raise PolicyViolation("existing PR does not target main")
             observed_paths = self.github.changed_paths(pull_request.number)
             if tuple(sorted(observed_paths)) != tuple(sorted(receipt.scope.paths)):
                 raise PolicyViolation("existing PR paths differ from handback Scope")

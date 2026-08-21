@@ -25,6 +25,7 @@ from delivery_control.ports.clock import ClockPort
 from delivery_control.ports.git import GitCommandPort, GitQueryPort
 from delivery_control.ports.github import GitHubCommandPort, GitHubQueryPort
 from delivery_control.ports.registry import (
+    RegistryCleanupQueryPort,
     RegistryCommandPort,
     RegistryPublicationQueryPort,
     RegistryQueryPort,
@@ -111,6 +112,9 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
         def merge_queue_enabled(self, branch: str) -> bool:
             return True
 
+        def merge_queue_entry_id(self, pull_request_id: str) -> str | None:
+            return None
+
     class FakeGitHubCommand:
         def create_pull_request(
             self, *, branch: str, title: str, body: str
@@ -172,6 +176,17 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
         def list_collision_claims(self) -> RegistryCollisionInventory:
             return RegistryCollisionInventory(records=())
 
+    class FakeRegistryCleanupQuery:
+        def find_exact_claim(
+            self,
+            *,
+            lane_id: str,
+            branch: str,
+            path: Path,
+            claim_generation: int,
+        ) -> RegistrySnapshot | None:
+            return None
+
     class FakeRuntime:
         def owner_status(self, thread_id: str) -> str:
             return "running"
@@ -186,6 +201,7 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
     assert isinstance(FakeGitHubCommand(), GitHubCommandPort)
     assert isinstance(FakeRegistryQuery(), RegistryQueryPort)
     assert isinstance(FakeRegistryPublicationQuery(), RegistryPublicationQueryPort)
+    assert isinstance(FakeRegistryCleanupQuery(), RegistryCleanupQueryPort)
     assert isinstance(FakeRegistryCommand(), RegistryCommandPort)
     assert isinstance(FakeRuntime(), AgentRuntimePort)
 

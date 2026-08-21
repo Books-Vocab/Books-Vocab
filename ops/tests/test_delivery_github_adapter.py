@@ -81,6 +81,26 @@ def test_github_adapter_reads_terminal_prs_for_one_published_branch() -> None:
     assert "--head" in runner.calls[0]
 
 
+def test_github_create_pr_explicitly_targets_main() -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(("gh",), 0, "https://example.test/pull/12", ""),
+            CommandResult(("gh",), 0, json.dumps([_pr_payload()]), ""),
+        ]
+    )
+
+    created = GitHubCliAdapter(runner=runner).create_pull_request(
+        branch="feat/one",
+        title="fix: one",
+        body="body",
+    )
+
+    assert created.number == 12
+    create_call = runner.calls[0]
+    assert create_call[0:3] == ("gh", "pr", "create")
+    assert create_call[create_call.index("--base") + 1] == "main"
+
+
 def test_github_required_check_snapshot_is_bound_to_exact_head() -> None:
     runner = StaticRunner(
         [
@@ -201,6 +221,31 @@ def test_github_enqueue_refuses_branch_without_merge_queue_rule() -> None:
             expected_head_sha="b" * 40,
             expected_body=str(_pr_payload()["body"]),
         )
+
+
+def test_github_adapter_observes_native_queue_entry() -> None:
+    queue_state = {
+        "data": {
+            "node": {
+                "id": "PR_kwDOexample",
+                "baseRefName": "main",
+                "baseRefOid": "a" * 40,
+                "headRefOid": "b" * 40,
+                "body": "body",
+                "state": "OPEN",
+                "mergeQueueEntry": {"id": "MQE_1"},
+            }
+        }
+    }
+    runner = StaticRunner(
+        [CommandResult(("gh",), 0, json.dumps(queue_state), "")]
+    )
+
+    entry_id = GitHubCliAdapter(runner=runner).merge_queue_entry_id(
+        "PR_kwDOexample"
+    )
+
+    assert entry_id == "MQE_1"
 
 
 def test_github_enqueue_rejects_body_drift_before_graphql_mutation() -> None:

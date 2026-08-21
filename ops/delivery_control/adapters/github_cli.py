@@ -293,11 +293,26 @@ class GitHubCliAdapter:
                 return True
         return False
 
+    def merge_queue_entry_id(self, pull_request_id: str) -> str | None:
+        return self.queue.snapshot(pull_request_id).entry_id
+
     def create_pull_request(
         self, *, branch: str, title: str, body: str
     ) -> PullRequestSnapshot:
         self._run(
-            ("gh", "pr", "create", "--head", branch, "--title", title, "--body", body)
+            (
+                "gh",
+                "pr",
+                "create",
+                "--base",
+                "main",
+                "--head",
+                branch,
+                "--title",
+                title,
+                "--body",
+                body,
+            )
         )
         created = self.find_open_pull_request(branch)
         if created is None:

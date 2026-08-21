@@ -78,10 +78,18 @@ def decide_capacity(
     )
     pr_saturated = metrics.open_prs >= policy.max_open_prs
     desired_new_solvers = 0
+    unsafe_pr_inventory = bool(
+        metrics.unmapped_open_prs or metrics.duplicate_pr_mappings
+    )
     if metrics.source_problems:
         add(
             ControlAction.RECOVER_BLOCKERS,
             "solver dispatch is disabled until source inventory is complete",
+        )
+    elif unsafe_pr_inventory:
+        add(
+            ControlAction.RECOVER_BLOCKERS,
+            "solver dispatch is disabled until PR ownership is exact",
         )
     elif ci_saturated or pr_saturated:
         add(

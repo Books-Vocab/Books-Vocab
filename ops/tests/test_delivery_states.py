@@ -83,6 +83,15 @@ from delivery_control.domain.states import (
         (
             LaneFacts(
                 pr_open=True,
+                queued=True,
+                required_status=CheckStatus.FAILURE,
+            ),
+            LaneState.PR_QUEUED,
+            NextAction.WAIT_MERGE,
+        ),
+        (
+            LaneFacts(
+                pr_open=True,
                 required_status=CheckStatus.SUCCESS,
                 mergeable=True,
                 merge_policy_passed=True,

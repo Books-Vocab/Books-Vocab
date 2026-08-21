@@ -14,7 +14,7 @@ from ..domain.observations import (
 )
 from ..ports.git import GitCommandPort, GitQueryPort
 from ..ports.github import GitHubQueryPort
-from ..ports.registry import RegistryCommandPort, RegistryQueryPort
+from ..ports.registry import RegistryCleanupQueryPort, RegistryCommandPort
 from .publish import render_pull_request_body
 
 
@@ -30,7 +30,7 @@ class CleanupService:
     def __init__(
         self,
         *,
-        registry_query: RegistryQueryPort,
+        registry_query: RegistryCleanupQueryPort,
         registry_command: RegistryCommandPort,
         git_query: GitQueryPort,
         git_command: GitCommandPort,
@@ -43,22 +43,17 @@ class CleanupService:
         self.github = github
 
     def _record(self, receipt: HandbackReceipt) -> RegistrySnapshot:
-        inventory = self.registry_query.list_records()
-        if inventory.problems:
-            raise PolicyViolation("registry inventory is incomplete")
-        matches = [
-            record
-            for record in inventory.records
-            if record.lane_id == receipt.lane_id
-            and record.branch == receipt.branch
-            and record.path.resolve() == Path(receipt.worktree_path).resolve()
-            and record.claim_generation == receipt.claim_generation
-            and record.handed_back_sha == receipt.head_sha
-            and record.status in {"active", "cleanup_pending", "published", "merged"}
-        ]
-        if len(matches) != 1:
+        record = self.registry_query.find_exact_claim(
+            lane_id=receipt.lane_id,
+            branch=receipt.branch,
+            path=Path(receipt.worktree_path),
+            claim_generation=receipt.claim_generation,
+        )
+        if record is None or (
+            record.handed_back_sha != receipt.head_sha
+            or record.status not in {"active", "cleanup_pending", "published", "merged"}
+        ):
             raise PolicyViolation("local claim does not resolve to one exact handback")
-        record = matches[0]
         if (
             record.base_sha != receipt.base_sha
             or record.scope != receipt.scope
@@ -111,6 +106,7 @@ class CleanupService:
         pull_request = self.github.get_pull_request(number)
         if (
             pull_request.state != expected_state
+            or pull_request.base_branch != "main"
             or pull_request.branch != receipt.branch
             or pull_request.head_sha != receipt.head_sha
             or pull_request.body != render_pull_request_body(receipt)

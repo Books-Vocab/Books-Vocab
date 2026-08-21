@@ -75,9 +75,11 @@ class FakeGitHub:
         pull_requests: tuple[PullRequestSnapshot, ...],
         *,
         problems: tuple[InventoryProblem, ...] = (),
+        queued_numbers: frozenset[int] = frozenset(),
     ) -> None:
         self.pull_requests = pull_requests
         self.problems = problems
+        self.queued_numbers = queued_numbers
 
     def list_open_pull_requests(self) -> PullRequestInventory:
         return PullRequestInventory(
@@ -112,6 +114,10 @@ class FakeGitHub:
 
     def branch_is_protected(self, branch: str) -> bool:
         return False
+
+    def merge_queue_entry_id(self, pull_request_id: str) -> str | None:
+        number = int(pull_request_id.removeprefix("PR_"))
+        return f"MQE_{number}" if number in self.queued_numbers else None
 
 
 class FakeRuntime:
@@ -186,6 +192,7 @@ def _pull_request(
         mergeable=True,
         title="fix: one",
         body=render_pull_request_body(receipt),
+        node_id="PR_1",
     )
 
 
@@ -252,6 +259,25 @@ def test_published_lane_is_remote_queue_not_orphaned_local_work(tmp_path: Path) 
 
     assert lane.decision.state is LaneState.READY_TO_QUEUE
     assert lane.physical is None
+
+
+def test_queued_pr_keeps_exact_receipt_when_main_base_advances(tmp_path: Path) -> None:
+    path = tmp_path / "lane"
+    published = _record(path, status="published")
+    advanced = replace(_pull_request(path), base_sha="d" * 40)
+    service = InspectService(
+        registry=FakeRegistry((published,)),
+        git=FakeGit((), {}),
+        github=FakeGitHub((advanced,), queued_numbers=frozenset({1})),
+        runtime=FakeRuntime(),
+    )
+
+    lane = next(
+        item for item in service.inspect().lanes if item.key.startswith("published:")
+    )
+
+    assert lane.decision.state is LaneState.PR_QUEUED
+    assert not lane.problems
 
 
 def test_published_lane_with_local_branch_is_classified_for_cleanup(

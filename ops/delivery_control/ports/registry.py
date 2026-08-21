@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from ..domain.models import HandbackReceipt
@@ -22,6 +23,18 @@ class RegistryPublicationQueryPort(Protocol):
     def get(self, lane_id: str) -> RegistrySnapshot | None: ...
 
     def list_collision_claims(self) -> RegistryCollisionInventory: ...
+
+
+@runtime_checkable
+class RegistryCleanupQueryPort(Protocol):
+    def find_exact_claim(
+        self,
+        *,
+        lane_id: str,
+        branch: str,
+        path: Path,
+        claim_generation: int,
+    ) -> RegistrySnapshot | None: ...
 
 
 @runtime_checkable

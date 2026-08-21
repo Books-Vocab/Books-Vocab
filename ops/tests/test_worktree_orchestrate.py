@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from argparse import Namespace
 from pathlib import Path
+
+import pytest
 
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
@@ -48,6 +51,74 @@ def test_intent_type_is_only_branch_naming() -> None:
     assert coordinator._intent_type("investigate sync drift", None) == "research"
     assert coordinator._intent_type("add reader filter", None) == "feat"
     assert coordinator._intent_type("anything", "debug") == "debug"
+
+
+def test_open_uses_exact_base_for_failed_provisioning_compensation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    base_sha = "a" * 40
+    compensation: list[str] = []
+    git_calls: list[list[str]] = []
+    monkeypatch.setattr(coordinator, "_require_unfrozen", lambda command: None)
+    monkeypatch.setattr(coordinator, "_resolve_commit", lambda path, ref: base_sha)
+    monkeypatch.setattr(
+        coordinator,
+        "_registry_register",
+        lambda **kwargs: (
+            coordinator.registry.EXIT_OK,
+            {
+                "branch": "feat/provision-failure",
+                "path": str(tmp_path / "worktree"),
+                "claim_generation": 2,
+                "base_sha": base_sha,
+            },
+        ),
+    )
+    def fail_worktree_add(
+        argv: list[str], cwd: Path = coordinator.ROOT
+    ) -> tuple[int, str]:
+        git_calls.append(argv)
+        return 1, "injected add failure"
+
+    monkeypatch.setattr(coordinator, "_git", fail_worktree_add)
+
+    def fail_compensation(argv: list[str]) -> int:
+        compensation.extend(argv)
+        return coordinator.registry.EXIT_CLAIMED
+
+    monkeypatch.setattr(coordinator.registry, "main", fail_compensation)
+    args = Namespace(
+        slug="provision-failure",
+        intent="test provisioning",
+        type="feat",
+        path=str(tmp_path / "worktree"),
+        external_id=["DIRECT-TEST"],
+        base="origin/main",
+        codex_thread_id="thread-test",
+        delegated=True,
+        state=None,
+        scope=json.dumps(_scope_for("ops/a.py")),
+        scope_file=None,
+        json=True,
+    )
+
+    assert coordinator.cmd_open(args) == coordinator.EXIT_BLOCK
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["reason"] == (
+        "git worktree add failed and registry compensation failed"
+    )
+    assert git_calls[0][-1] == base_sha
+    assert compensation[compensation.index("--expected-head-sha") + 1] == base_sha
+
+
+def _scope_for(path: str) -> dict[str, object]:
+    return {
+        "schema": "kg.worktree.scope.v1",
+        "files": [{"path": path, "operation": "modify"}],
+    }
 
 
 def test_gate_plan_routes_product_surfaces_to_existing_entry_points() -> None:

@@ -129,7 +129,8 @@ def _scope_args(args: argparse.Namespace) -> list[str]:
 
 
 def _registry_register(*, branch: str, path: Path, intent: str, base: str,
-                       external_ids: list[str], args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
+                       base_sha: str, external_ids: list[str],
+                       args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     state_path = Path(args.state).expanduser().resolve() if args.state else registry.default_state_path()
     try:
         scope = registry._scope_from_args(args)
@@ -163,6 +164,7 @@ def _registry_register(*, branch: str, path: Path, intent: str, base: str,
             codex_thread_id=args.codex_thread_id, delegated=args.delegated,
         )
         if rc == registry.EXIT_OK:
+            record["base_sha"] = base_sha
             registry.save_state(state_path, state)
     return rc, record
 
@@ -184,30 +186,44 @@ def cmd_open(args: argparse.Namespace) -> int:
               as_json=args.json, human=f"✗ open refused: path exists: {worktree}")
         return EXIT_USAGE
     external_ids = list(args.external_id or [])
+    base_sha = _resolve_commit(ROOT, args.base)
+    if base_sha is None:
+        _emit(
+            {"schema": SCHEMA, "action": "refused", "reason": "base ref cannot be resolved"},
+            as_json=args.json,
+            human="✗ open refused: base ref cannot be resolved",
+        )
+        return EXIT_BLOCK
     rc, record = _registry_register(
         branch=branch, path=worktree, intent=args.intent, base=args.base,
-        external_ids=external_ids, args=args,
+        base_sha=base_sha, external_ids=external_ids, args=args,
     )
     if rc != registry.EXIT_OK:
         _emit({"schema": SCHEMA, "action": "refused", "record": record},
               as_json=args.json, human=f"✗ open refused: {record.get('reason', record)}")
         return rc
-    git_rc, output = _git(["worktree", "add", "-b", branch, str(worktree), args.base])
+    git_rc, output = _git(
+        ["worktree", "add", "-b", branch, str(worktree), base_sha]
+    )
     if git_rc != 0:
         # Keep the ledger truthful if provisioning fails; no branch is deleted here
         # because GitHub may already know the name and branch removal is a separate
         # explicit action.
         expected_generation = str(record.get("claim_generation", 0))
-        expected_head = str(record.get("base_sha") or record.get("base") or args.base)
-        registry.main([
+        compensation_rc = registry.main([
             "resolve", "--branch", branch, "--path", str(worktree),
             "--status", "abandoned", "--expected-generation", expected_generation,
-            "--expected-head-sha", expected_head,
+            "--expected-head-sha", base_sha,
             "--state", str(registry.default_state_path()), "--json",
         ])
-        _emit({"schema": SCHEMA, "action": "refused", "reason": "git worktree add failed",
-               "git": output, "record": record}, as_json=args.json,
-              human=f"✗ open refused: git worktree add failed: {output}")
+        reason = (
+            "git worktree add failed"
+            if compensation_rc == registry.EXIT_OK
+            else "git worktree add failed and registry compensation failed"
+        )
+        _emit({"schema": SCHEMA, "action": "refused", "reason": reason,
+               "git": output, "record": record, "compensation_rc": compensation_rc},
+              as_json=args.json, human=f"✗ open refused: {reason}: {output}")
         return EXIT_BLOCK
     record["path"] = str(worktree)
     _emit({"schema": SCHEMA, "action": "open", "record": record}, as_json=args.json,
@@ -231,9 +247,17 @@ def cmd_adopt(args: argparse.Namespace) -> int:
         _emit({"schema": SCHEMA, "action": "refused", "reason": "worktree is detached"},
               as_json=args.json, human="✗ adopt refused: worktree is detached")
         return EXIT_USAGE
+    base_sha = _resolve_commit(worktree, args.base)
+    if base_sha is None:
+        _emit(
+            {"schema": SCHEMA, "action": "refused", "reason": "base ref cannot be resolved"},
+            as_json=args.json,
+            human="✗ adopt refused: base ref cannot be resolved",
+        )
+        return EXIT_BLOCK
     rc, record = _registry_register(
         branch=branch, path=worktree, intent=args.intent, base=args.base,
-        external_ids=list(args.external_id or []), args=args,
+        base_sha=base_sha, external_ids=list(args.external_id or []), args=args,
     )
     _emit({"schema": SCHEMA, "action": "adopt" if rc == EXIT_OK else "refused",
            "record": record}, as_json=args.json,

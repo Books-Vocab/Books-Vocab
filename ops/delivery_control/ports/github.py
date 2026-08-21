@@ -29,6 +29,8 @@ class GitHubQueryPort(Protocol):
 
     def merge_queue_enabled(self, branch: str) -> bool: ...
 
+    def merge_queue_entry_id(self, pull_request_id: str) -> str | None: ...
+
 
 @runtime_checkable
 class GitHubCommandPort(Protocol):

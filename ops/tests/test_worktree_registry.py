@@ -317,6 +317,47 @@ def test_handback_seal_digest_is_verifiable() -> None:
     }
 
 
+def test_owner_change_advances_generation_and_invalidates_handback(
+    tmp_path: Path,
+) -> None:
+    record = _sealed_handed_back_record(tmp_path / "owner-change")
+    record["codex_thread_id"] = "owner-old"
+    record["claim_generation"] = 3
+    record["handback_claim_generation"] = 3
+    record["handback_seal"] = registry._seal_with_digest(
+        registry._seal_body(
+            record,
+            base_sha=record["base_sha"],
+            tip_sha=record["handed_back_sha"],
+            outcomes=[{"status": "pass"}],
+            handed_back_at=record["handed_back_at"],
+        )
+    )
+    state_path = tmp_path / "registry.json"
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+
+    assert registry.main(
+        [
+            "owner-bind",
+            "--state",
+            str(state_path),
+            "--branch",
+            record["branch"],
+            "--codex-thread-id",
+            "owner-new",
+            "--json",
+        ]
+    ) == registry.EXIT_OK
+
+    updated = registry.load_state(state_path)["records"][0]
+    assert updated["codex_thread_id"] == "owner-new"
+    assert updated["claim_generation"] == 4
+    assert updated["handed_back_at"] is None
+    assert updated["handed_back_sha"] is None
+    assert "handback_claim_generation" not in updated
+    assert "handback_seal" not in updated
+
+
 def test_valid_handed_back_record_releases_admission_and_remains_queryable(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

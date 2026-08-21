@@ -222,6 +222,7 @@ class PublishService:
         if (
             readback.state != "OPEN"
             or readback.draft
+            or readback.base_branch != "main"
             or readback.branch != receipt.branch
             or readback.head_sha != receipt.head_sha
             or readback.title != title

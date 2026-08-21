@@ -27,6 +27,7 @@ class LaneState(StrEnum):
     PR_WAITING_REQUIRED = "pr_waiting_required"
     REQUIRED_FAILED = "required_failed"
     READY_TO_QUEUE = "ready_to_queue"
+    PR_QUEUED = "pr_queued"
     SECURITY_HOLD = "security_hold"
     TERMINAL_CLEANUP = "terminal_cleanup"
     DONE = "done"
@@ -46,6 +47,7 @@ class NextAction(StrEnum):
     WAIT_REQUIRED = "wait_required"
     REPAIR_REQUIRED = "repair_required"
     ENQUEUE = "enqueue"
+    WAIT_MERGE = "wait_merge"
     WAIT_CLEARANCE = "wait_clearance"
     CLEANUP = "cleanup"
     RECOVER_DIRTY = "recover_dirty"
@@ -79,6 +81,7 @@ class LaneFacts:
     pr_draft: bool = False
     required_status: CheckStatus = CheckStatus.ABSENT
     mergeable: bool = False
+    queued: bool = False
     merged: bool = False
     abandoned: bool = False
     cleanup_complete: bool = False
@@ -164,6 +167,12 @@ def derive_lane_decision(facts: LaneFacts) -> LaneDecision:
             LaneState.REQUIRED_FAILED,
             NextAction.REPAIR_REQUIRED,
             "PR durable receipt is missing or differs from the owner handback",
+        )
+    if facts.pr_open and facts.queued:
+        return LaneDecision(
+            LaneState.PR_QUEUED,
+            NextAction.WAIT_MERGE,
+            "native merge queue owns the exact PR",
         )
     if facts.pr_open and facts.required_status is CheckStatus.FAILURE:
         return LaneDecision(

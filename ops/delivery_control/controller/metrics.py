@@ -18,6 +18,7 @@ class PipelineMetrics:
     published_local_cleanup: int
     open_prs: int
     unmapped_open_prs: int
+    duplicate_pr_mappings: int
     required_green: int
     required_failed: int
     terminal_cleanup: int
@@ -56,7 +57,7 @@ def measure_pipeline(inventory: DeliveryInventory) -> PipelineMetrics:
         pull_request.number
         for lane in inventory.lanes
         if lane.registry is not None
-        and lane.registry.status in {"active", "published"}
+        and lane.registry.status in {"active", "cleanup_pending", "published"}
         for pull_request in lane.pull_requests
         if pull_request.state == "OPEN"
     }
@@ -73,6 +74,7 @@ def measure_pipeline(inventory: DeliveryInventory) -> PipelineMetrics:
         unmapped_open_prs=len(
             all_pull_request_numbers - mapped_pull_request_numbers
         ),
+        duplicate_pr_mappings=states.count(LaneState.BLOCKED_DUPLICATE),
         required_green=states.count(LaneState.READY_TO_QUEUE),
         required_failed=states.count(LaneState.REQUIRED_FAILED),
         terminal_cleanup=states.count(LaneState.TERMINAL_CLEANUP),

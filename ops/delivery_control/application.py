@@ -23,6 +23,7 @@ from .domain.states import HoldKind
 from .ports.git import GitCommandPort, GitQueryPort
 from .ports.github import GitHubCommandPort, GitHubQueryPort
 from .ports.registry import (
+    RegistryCleanupQueryPort,
     RegistryCommandPort,
     RegistryPublicationQueryPort,
     RegistryQueryPort,
@@ -53,6 +54,7 @@ class DeliveryGitHubPort(GitHubQueryPort, GitHubCommandPort, Protocol):
 class DeliveryRegistryPort(
     RegistryQueryPort,
     RegistryPublicationQueryPort,
+    RegistryCleanupQueryPort,
     RegistryCommandPort,
     Protocol,
 ):
