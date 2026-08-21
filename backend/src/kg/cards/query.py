@@ -7,13 +7,25 @@ without changing the public API or method semantics.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import UTC, datetime
 
-from sqlalchemy import func, tuple_
+from sqlalchemy import func, text, tuple_
 from sqlmodel import Session, select
 
 from ..text_utils import normalize_nfc_lower
 from .model import Card
+
+
+def _utc_instant(value: datetime) -> datetime:
+    """Interpret naive database timestamps as UTC and normalize aware ones."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _parse_stored_timestamp(value: str) -> datetime:
+    """Parse SQLite's ISO timestamp text without discarding its offset."""
+    return _utc_instant(datetime.fromisoformat(value.replace(" ", "T")))
 
 
 class CardQueryMixin:
@@ -120,12 +132,38 @@ class CardQueryMixin:
         since: datetime,
         notebook_id: str | None = None,
     ) -> list[Card]:
-        """Fetch all cards (including soft-deleted) modified after the given timestamp."""
+        """Fetch all cards modified after ``since`` as a UTC-instant comparison.
+
+        SQLite stores these timestamps as text, so comparing the raw column to
+        a datetime would order mixed-offset values lexicographically instead of
+        by their actual instant. Read the raw text to preserve offsets and use
+        Python's microsecond-precise datetime comparison. This retains the
+        exclusive boundary and includes soft-deleted cards.
+        """
         with Session(self.engine) as session:
-            statement = select(Card).where(Card.updated_at > since)
+            conditions: list[str] = []
+            params: dict[str, str] = {}
             if notebook_id is not None:
-                statement = statement.where(Card.notebook_id == notebook_id)
-            return list(session.exec(statement).all())
+                conditions.append("notebook_id = :notebook_id")
+                params["notebook_id"] = notebook_id
+            raw_query = "SELECT id, updated_at FROM card"
+            if conditions:
+                raw_query += " WHERE " + " AND ".join(conditions)
+            rows = session.execute(
+                text(raw_query),
+                params,
+            ).all()
+            since_utc = _utc_instant(since)
+            modified_ids = [
+                card_id
+                for card_id, updated_at in rows
+                if _parse_stored_timestamp(updated_at) > since_utc
+            ]
+            if not modified_ids:
+                return []
+            cards = session.exec(select(Card).where(Card.id.in_(modified_ids))).all()
+            cards_by_id = {card.id: card for card in cards}
+            return [cards_by_id[card_id] for card_id in modified_ids]
 
     def count(self, notebook_id: str | None = None) -> int:
         with Session(self.engine) as session:

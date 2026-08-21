@@ -7,9 +7,10 @@ composite index ``ix_card_updated_at_id``.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import text
 from sqlmodel import Session
 
 from kg.cards.store import Card, CardStore
@@ -112,6 +113,26 @@ def test_page_include_deleted_flag(store):
 
     included = store.page_cards(limit=10, after=None, include_deleted=True, notebook_id=None)
     assert {c.id for c in included} == {"live", "dead"}
+
+
+def test_get_modified_since_compares_mixed_offsets_by_utc_instant(store):
+    since = datetime(2024, 1, 1, 12, 0, tzinfo=UTC)
+    timestamps = {
+        "before": "2024-01-01 13:00:00+02:00",
+        "at-boundary": "2024-01-01 13:00:00+01:00",
+        "after": "2024-01-01 11:30:00-02:00",
+    }
+    for card_id, timestamp in timestamps.items():
+        _add(store, card_id, updated_at=datetime(2024, 1, 1))
+        with store.engine.begin() as connection:
+            connection.execute(
+                text("UPDATE card SET updated_at = :timestamp WHERE id = :card_id"),
+                {"timestamp": timestamp, "card_id": card_id},
+            )
+
+    modified = store.get_modified_since(since)
+
+    assert [card.id for card in modified] == ["after"]
 
 
 def test_index_exists(store):
