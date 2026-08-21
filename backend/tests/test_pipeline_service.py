@@ -9,6 +9,16 @@ import pytest
 from kg.pipeline_service import run_pipeline_background
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _reset_pipeline_log():
+    """Close pipeline telemetry's SQLite singleton around this module."""
+    from kg import pipeline_log
+
+    pipeline_log.reset()
+    yield
+    pipeline_log.reset()
+
+
 class _FakeLogger:
     def __init__(self) -> None:
         self.info_messages: list[str] = []
