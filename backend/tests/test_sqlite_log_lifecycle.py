@@ -19,10 +19,11 @@ def test_lifecycle_reuses_switches_resets_and_reopens(tmp_path: Path):
 
     lifecycle = SQLiteLifecycle()
     first_path = tmp_path / "first.db"
+    equivalent_first_path = tmp_path / "nested" / ".." / "first.db"
     second_path = tmp_path / "second.db"
 
     first = lifecycle.get_connection(first_path, _init_schema)
-    assert lifecycle.get_connection(first_path, _init_schema) is first
+    assert lifecycle.get_connection(equivalent_first_path, _init_schema) is first
 
     second = lifecycle.get_connection(second_path, _init_schema)
     assert second is not first
