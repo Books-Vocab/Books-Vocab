@@ -33,6 +33,7 @@ DEFAULT_TESTS=(
   branch-audit
   exit-code-contract
   worktree
+  delivery-control
   capability-matrix
   context-routing
   ui-deadcode
@@ -125,6 +126,12 @@ run_one() {
         ops/tests/test_worktree_orchestrate.py \
         ops/tests/test_task_registry.py \
         ops/tests/test_lock_wait.py
+      ;;
+    delivery-control)
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_delivery_models.py \
+        ops/tests/test_delivery_states.py \
+        ops/tests/test_delivery_ports.py
       ;;
     capability-matrix)
       "$UV_BIN" run --python 3.13 --with pytest --with 'cryptography>=48,<49' pytest -q \

@@ -1,0 +1,13 @@
+"""Domain-level validation errors."""
+
+
+class DeliveryContractError(ValueError):
+    """Base class for malformed deterministic delivery facts."""
+
+
+class InvalidScope(DeliveryContractError):
+    """Raised when a structured Scope is unsafe or ambiguous."""
+
+
+class InvalidReceipt(DeliveryContractError):
+    """Raised when a typed handback receipt cannot be trusted."""
