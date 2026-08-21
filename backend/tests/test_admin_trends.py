@@ -7,13 +7,17 @@ the renderer relies on.
 """
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, datetime, timedelta
+from threading import Lock
+from types import SimpleNamespace
 
 import pytest
 
 from kg.admin_trends import (
     DEFAULT_WINDOW_DAYS,
     MAX_WINDOW_DAYS,
+    _count_by_day,
     _date_range,
     collect_trends,
 )
@@ -37,6 +41,29 @@ def test_date_range_ends_today_utc():
     today_utc = datetime.now(UTC).date()
     assert days[-1] == today_utc
     assert days[0] == today_utc - timedelta(days=4)
+
+
+def test_count_by_day_filters_fixed_offset_rows_by_utc_instant():
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE events (created_at TEXT)")
+    conn.executemany(
+        "INSERT INTO events (created_at) VALUES (?)",
+        [
+            ("2026-05-14T12:00:00+01:00",),
+            ("2026-05-14T12:30:00+00:00",),
+        ],
+    )
+    module = SimpleNamespace(_lock=Lock(), _get_conn=lambda: conn)
+
+    try:
+        assert _count_by_day(
+            module,
+            "2026-05-14T12:00:00+00:00",
+            table="events",
+            ts_col="created_at",
+        ) == {"2026-05-14": 1}
+    finally:
+        conn.close()
 
 
 # ---- collect_trends shape on empty DB --------------------------------------

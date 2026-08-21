@@ -56,7 +56,8 @@ def _count_by_day(
         conn = module._get_conn()
         rows = conn.execute(
             f"SELECT substr({ts_col}, 1, 10) AS d, {count_expr} "
-            f"FROM {table} WHERE {ts_col} >= ?{extra_where} GROUP BY d",
+            f"FROM {table} WHERE julianday({ts_col}) >= julianday(?)"
+            f"{extra_where} GROUP BY d",
             (cutoff_iso,),
         ).fetchall()
     return {d: int(c or 0) for d, c in rows if d}
