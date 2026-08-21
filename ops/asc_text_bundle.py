@@ -212,7 +212,11 @@ def require_ok(label: str, payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def included(payload: dict[str, Any], type_name: str) -> list[dict[str, Any]]:
-    return [item for item in payload.get("included", []) if item.get("type") == type_name]
+    return [
+        item
+        for item in payload.get("included", [])
+        if isinstance(item, dict) and item.get("type") == type_name
+    ]
 
 
 def attrs(item: dict[str, Any] | None) -> dict[str, Any]:
