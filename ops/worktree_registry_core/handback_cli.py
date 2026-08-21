@@ -28,7 +28,7 @@ from .handback import (
     validate_handback_seal as validate_core_seal,
 )
 from .inspection import record_view
-from .records import SCHEMA, active_records, record_matches
+from .records import SCHEMA, active_records, mutation_blockers, record_matches
 from .storage import ledger_lock, save_state
 
 
@@ -120,6 +120,13 @@ def cmd_hand_back(args: argparse.Namespace) -> int:
     target = state_path(args)
     with ledger_lock(target):
         state = load_state(target)
+        blockers = mutation_blockers(state)
+        if blockers:
+            print(
+                "✗ malformed ownership facts block registry mutation",
+                file=sys.stderr,
+            )
+            return EXIT_PARTIAL
         matches = [
             record
             for record in active_records(state)

@@ -82,15 +82,27 @@ def normalize_record(
     try:
         record["external_ids"] = legacy_external_ids(record)
     except (TypeError, ValueError) as exc:
-        record["external_ids"] = []
         problems.append(
             {
                 "kind": "registry-external-ids-invalid",
                 "index": index,
+                "branch": record.get("branch"),
+                "status": record.get("status"),
                 "reason": str(exc),
             }
         )
-    record.pop("backlog", None)
+    else:
+        record.pop("backlog", None)
+    status = record.get("status")
+    if status not in KNOWN_STATUSES:
+        problems.append(
+            {
+                "kind": "registry-status-unknown",
+                "index": index,
+                "branch": record.get("branch"),
+                "status": status,
+            }
+        )
     return record, problems
 
 
@@ -99,8 +111,12 @@ def compact_record(record: dict[str, Any]) -> dict[str, Any]:
     try:
         compacted["external_ids"] = legacy_external_ids(record)
     except (TypeError, ValueError):
-        compacted["external_ids"] = []
-    compacted.pop("backlog", None)
+        if "external_ids" in record:
+            compacted["external_ids"] = record["external_ids"]
+        elif "backlog" in record:
+            compacted["backlog"] = record["backlog"]
+    else:
+        compacted.pop("backlog", None)
     return compacted
 
 
@@ -128,4 +144,17 @@ def active_records(state: dict[str, Any]) -> list[dict[str, Any]]:
 
 def retained_records(state: dict[str, Any]) -> list[dict[str, Any]]:
     """Return every record that still participates in an in-flight transaction."""
-    return records_with_status(state, NON_TERMINAL_STATUSES)
+    return [
+        record
+        for record in state.get("records", [])
+        if isinstance(record, dict) and record.get("status") not in TERMINAL_STATUSES
+    ]
+
+
+def mutation_blockers(state: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return malformed ownership facts that make a ledger mutation unsafe."""
+    return [
+        problem
+        for problem in state.get("problems", [])
+        if isinstance(problem, dict) and problem.get("status") not in TERMINAL_STATUSES
+    ]

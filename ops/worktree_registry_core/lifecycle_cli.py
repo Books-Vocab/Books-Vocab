@@ -16,7 +16,7 @@ from .lifecycle import (
     transition_record,
     validate_terminal_proof,
 )
-from .records import SCHEMA, record_matches
+from .records import SCHEMA, mutation_blockers, record_matches
 from .storage import ledger_lock, save_state
 
 
@@ -58,6 +58,13 @@ def cmd_resolve(args: argparse.Namespace, *, resolve_statuses: tuple[str, ...]) 
     )
     with ledger_lock(target):
         state = load_state(target)
+        blockers = mutation_blockers(state)
+        if blockers:
+            print(
+                "✗ malformed ownership facts block registry mutation",
+                file=sys.stderr,
+            )
+            return EXIT_CLAIMED
         result = transition_record(
             state,
             request,

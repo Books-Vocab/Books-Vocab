@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 import worktree_registry as registry
@@ -76,6 +78,72 @@ def test_register_rejects_scope_owned_by_cleanup_lease(tmp_path: Path) -> None:
 
     assert rc == registry.EXIT_CLAIMED
     assert refusal["owners"][0]["status"] == "cleanup_pending"
+
+
+@pytest.mark.parametrize("owner_status", ("active", "cleanup_pending"))
+@pytest.mark.parametrize("collision_kind", ("external_id", "scope"))
+def test_register_rejects_every_inflight_ownership_collision(
+    tmp_path: Path, owner_status: str, collision_kind: str
+) -> None:
+    existing_id = "ISSUE-OWNED"
+    existing_scope = "ops/owned.py"
+    state = {
+        "schema": registry.SCHEMA,
+        "records": [
+            {
+                "branch": "feat/owner",
+                "path": str(tmp_path / "owner"),
+                "status": owner_status,
+                "external_ids": [existing_id],
+                "scope": _scope(existing_scope),
+            }
+        ],
+    }
+
+    rc, refusal = registry._register_record(
+        state,
+        branch="feat/new",
+        path=str(tmp_path / "new"),
+        intent="new",
+        base="main",
+        external_ids=[existing_id if collision_kind == "external_id" else "ISSUE-NEW"],
+        scope=_scope(existing_scope if collision_kind == "scope" else "ops/new.py"),
+    )
+
+    assert rc == registry.EXIT_CLAIMED
+    assert refusal["owners"][0]["status"] == owner_status
+
+
+def test_register_rejects_branch_path_cross_splice(tmp_path: Path) -> None:
+    first = {
+        "branch": "feat/one",
+        "path": str(tmp_path / "one"),
+        "status": "active",
+        "external_ids": ["ISSUE-1"],
+        "scope": _scope("ops/one.py"),
+    }
+    second = {
+        "branch": "feat/two",
+        "path": str(tmp_path / "two"),
+        "status": "active",
+        "external_ids": ["ISSUE-2"],
+        "scope": _scope("ops/two.py"),
+    }
+    state = {"schema": registry.SCHEMA, "records": [first, second]}
+
+    rc, refusal = registry._register_record(
+        state,
+        branch=first["branch"],
+        path=second["path"],
+        intent="cross splice",
+        base="main",
+        external_ids=["ISSUE-2"],
+        scope=_scope("ops/two.py"),
+    )
+
+    assert rc == registry.EXIT_CLAIMED
+    assert refusal["reason"] == "branch and path identify different ownership claims"
+    assert state["records"] == [first, second]
 
 
 def test_scope_set_rejects_collision_without_invalidating_existing_seal(

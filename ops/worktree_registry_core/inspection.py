@@ -25,7 +25,12 @@ def record_view(record: dict[str, Any]) -> dict[str, Any]:
     view["scope_status"] = (
         "known" if not scope_problems(view.get("scope")) else "unknown"
     )
-    view["external_ids"] = legacy_external_ids(view)
+    try:
+        view["external_ids"] = legacy_external_ids(view)
+    except (TypeError, ValueError):
+        # Problems carry the authoritative diagnostic.  The projection stays
+        # readable without mutating or pretending to repair the ledger fact.
+        view["external_ids"] = []
     return view
 
 
@@ -34,7 +39,11 @@ def conflicts(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for record in records:
         if record.get("status") != STATUS_ACTIVE:
             continue
-        for external_id in legacy_external_ids(record):
+        try:
+            record_external_ids = legacy_external_ids(record)
+        except (TypeError, ValueError):
+            continue
+        for external_id in record_external_ids:
             holders.setdefault(external_id, []).append(
                 {"branch": record.get("branch"), "path": record.get("path")}
             )
@@ -65,7 +74,7 @@ def cmd_list(args: argparse.Namespace) -> int:
         selected = [
             record
             for record in selected
-            if args.external_id in legacy_external_ids(record)
+            if args.external_id in _readable_external_ids(record)
         ]
     if args.conflicts:
         print(
@@ -104,7 +113,7 @@ def cmd_list(args: argparse.Namespace) -> int:
             "\t".join(
                 [
                     str(record.get("branch") or "-"),
-                    ",".join(legacy_external_ids(record)) or "-",
+                    ",".join(_readable_external_ids(record)) or "-",
                     str(record.get("status") or "-"),
                     str(record.get("path") or "-"),
                     ("known" if not scope_problems(record.get("scope")) else "unknown"),
@@ -113,3 +122,10 @@ def cmd_list(args: argparse.Namespace) -> int:
             )
         )
     return EXIT_OK
+
+
+def _readable_external_ids(record: dict[str, Any]) -> list[str]:
+    try:
+        return legacy_external_ids(record)
+    except (TypeError, ValueError):
+        return []

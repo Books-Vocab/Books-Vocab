@@ -31,15 +31,13 @@ def ownership_conflicts(
     path: str,
     external_ids: list[str],
     scope: object,
+    excluded_record: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     wanted_ids = set(external_ids)
     wanted_paths = {item["path"] for item in scope_files(scope)}
     conflicts: list[dict[str, Any]] = []
     for record in admission_records(state):
-        same_owner = record.get("branch") == branch or norm_path(
-            str(record.get("path") or "")
-        ) == norm_path(path)
-        if same_owner:
+        if record is excluded_record:
             continue
         try:
             id_overlap = sorted(wanted_ids.intersection(legacy_external_ids(record)))
@@ -61,3 +59,28 @@ def ownership_conflicts(
                 }
             )
     return conflicts
+
+
+def select_owner_record(
+    state: dict[str, Any], *, branch: str, path: str
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """Select one existing claim without permitting branch/path cross-splicing."""
+    records = admission_records(state)
+    branch_matches = [record for record in records if record.get("branch") == branch]
+    path_matches = [
+        record
+        for record in records
+        if norm_path(str(record.get("path") or "")) == norm_path(path)
+    ]
+    unique = {id(record): record for record in (*branch_matches, *path_matches)}
+    if len(branch_matches) > 1 or len(path_matches) > 1 or len(unique) > 1:
+        return None, [
+            {
+                "branch": record.get("branch"),
+                "path": record.get("path"),
+                "status": record.get("status"),
+                "reason": "branch and path select different ownership claims",
+            }
+            for record in unique.values()
+        ]
+    return next(iter(unique.values()), None), []

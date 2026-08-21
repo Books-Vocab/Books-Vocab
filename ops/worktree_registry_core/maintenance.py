@@ -13,6 +13,7 @@ from .records import (
     SCHEMA,
     active_records,
     compact_record,
+    mutation_blockers,
     norm_path,
     retained_records,
 )
@@ -92,6 +93,13 @@ def cmd_compact(args: argparse.Namespace) -> int:
     if args.commit:
         with ledger_lock(target):
             state = load_state(target)
+            blockers = mutation_blockers(state)
+            if blockers:
+                print(
+                    "✗ malformed ownership facts block registry compaction",
+                    file=sys.stderr,
+                )
+                return EXIT_USAGE
             retained = [compact_record(record) for record in retained_records(state)]
             removed = len(state.get("records", [])) - len(retained)
             save_state(target, {"schema": SCHEMA, "records": retained})

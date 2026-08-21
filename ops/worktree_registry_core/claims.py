@@ -10,7 +10,7 @@ from typing import Any
 
 from lib.worktree_scope import coerce_scope, normalise_scope
 
-from .admission import ownership_conflicts
+from .admission import ownership_conflicts, select_owner_record
 from .constants import EXIT_CLAIMED, EXIT_OK, EXIT_USAGE
 from .environment import load_state, repo_root, resolve_now, state_path
 from .handback import advance_claim
@@ -21,6 +21,7 @@ from .records import (
     active_records,
     external_ids,
     legacy_external_ids,
+    mutation_blockers,
     norm_path,
     record_matches,
 )
@@ -63,6 +64,12 @@ def register_record(
     path = norm_path(path)
     if not branch or not intent.strip():
         return EXIT_USAGE, {"reason": "branch and intent are required"}
+    blockers = mutation_blockers(state)
+    if blockers:
+        return EXIT_CLAIMED, {
+            "reason": "malformed ownership facts block registry mutation",
+            "problems": blockers,
+        }
     try:
         ids = external_ids(external_ids_value)
     except (TypeError, ValueError) as exc:
@@ -72,12 +79,21 @@ def register_record(
             scope = normalise_scope(scope)
         except ValueError as exc:
             return EXIT_USAGE, {"reason": str(exc)}
+    selected_record, selector_conflicts = select_owner_record(
+        state, branch=branch, path=path
+    )
+    if selector_conflicts:
+        return EXIT_CLAIMED, {
+            "reason": "branch and path identify different ownership claims",
+            "owners": selector_conflicts,
+        }
     owners = ownership_conflicts(
         state,
         branch=branch,
         path=path,
         external_ids=ids,
         scope=scope,
+        excluded_record=selected_record,
     )
     if owners:
         return EXIT_CLAIMED, {
@@ -107,10 +123,12 @@ def register_record(
             "path": existing.get("path"),
             "claim_generation": existing.get("claim_generation"),
         }
-    live_records = [
-        record for record in matching_records if record.get("status") == STATUS_ACTIVE
-    ]
-    existing = live_records[0] if live_records else None
+    existing = (
+        selected_record
+        if selected_record is not None
+        and selected_record.get("status") == STATUS_ACTIVE
+        else None
+    )
     generations = [
         generation
         for record in matching_records
@@ -217,6 +235,20 @@ def cmd_scope_set(args: argparse.Namespace) -> int:
         return EXIT_USAGE
     with ledger_lock(target):
         state = load_state(target)
+        blockers = mutation_blockers(state)
+        if blockers:
+            print(
+                json.dumps(
+                    {
+                        "schema": SCHEMA,
+                        "action": "refused",
+                        "reason": "malformed ownership facts block registry mutation",
+                        "problems": blockers,
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            return EXIT_CLAIMED
         matches = [
             record
             for record in active_records(state)
@@ -239,6 +271,7 @@ def cmd_scope_set(args: argparse.Namespace) -> int:
                 path=str(record.get("path") or ""),
                 external_ids=legacy_external_ids(record),
                 scope=scope,
+                excluded_record=record,
             )
             if owners:
                 print(
@@ -272,6 +305,13 @@ def cmd_owner_bind(args: argparse.Namespace) -> int:
     target = state_path(args)
     with ledger_lock(target):
         state = load_state(target)
+        blockers = mutation_blockers(state)
+        if blockers:
+            print(
+                "✗ malformed ownership facts block registry mutation",
+                file=sys.stderr,
+            )
+            return EXIT_CLAIMED
         matches = [
             record
             for record in active_records(state)

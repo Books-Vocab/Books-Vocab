@@ -39,13 +39,12 @@ def load_state(target: Path) -> dict[str, Any]:
     records = payload.get("records")
     if not isinstance(records, list):
         raise TypeError(f"registry state records must be a list: {target}")
-    clean_records: list[dict[str, Any]] = []
+    clean_records: list[object] = []
     problems: list[dict[str, Any]] = []
     for index, item in enumerate(records):
         record, record_problems = normalize_record(item, index=index)
         problems.extend(record_problems)
-        if record is not None:
-            clean_records.append(record)
+        clean_records.append(record if record is not None else item)
     normalized: dict[str, Any] = {"schema": SCHEMA, "records": clean_records}
     if problems:
         normalized["problems"] = problems
@@ -57,9 +56,7 @@ def save_state(target: Path, state: dict[str, Any]) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema": SCHEMA,
-        "records": [
-            dict(item) for item in state.get("records", []) if isinstance(item, dict)
-        ],
+        "records": list(state.get("records", [])),
     }
     file_descriptor, temporary = tempfile.mkstemp(
         prefix=f".{target.name}.", dir=str(target.parent)
