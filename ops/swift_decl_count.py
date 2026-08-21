@@ -138,6 +138,8 @@ def count_main_actor_lines(tokens: Iterable[Token]) -> int:
 def swift_files(paths: Iterable[Path]) -> list[Path]:
     result: set[Path] = set()
     for path in paths:
+        if not path.exists():
+            raise FileNotFoundError(f"input path not found: {path}")
         if path.is_dir():
             result.update(candidate for candidate in path.rglob("*.swift") if candidate.is_file())
         elif path.is_file() and path.suffix == ".swift":
@@ -161,7 +163,11 @@ def main() -> int:
     parser.add_argument("--kind", choices=("async-func", "main-actor"), required=True)
     parser.add_argument("paths", nargs="+", type=Path)
     args = parser.parse_args()
-    print(count_kind(args.kind, args.paths))
+    try:
+        total = count_kind(args.kind, args.paths)
+    except FileNotFoundError as error:
+        parser.error(str(error))
+    print(total)
     return 0
 
 

@@ -4,6 +4,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("swift_decl_count", ROOT / "ops/swift_decl_count.py")
@@ -41,3 +43,18 @@ def test_main_actor_counts_attribute_lines_not_mentions() -> None:
     // @MainActor is prose
     '''
     assert MODULE.count_main_actor_lines(MODULE.tokenize(source)) == 2
+
+
+def test_missing_input_path_fails_closed(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    missing = tmp_path / "Missing.swift"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["swift_decl_count.py", "--kind", "async-func", str(missing)],
+    )
+
+    with pytest.raises(SystemExit) as error:
+        MODULE.main()
+
+    assert error.value.code == 2
+    assert f"input path not found: {missing}" in capsys.readouterr().err
