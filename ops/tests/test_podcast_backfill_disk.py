@@ -53,7 +53,8 @@ class _S3Fault(Exception):
 
 
 def _stub_s3(existing_keys: set[str] | None = None,
-             fault_keys: set[str] | None = None) -> MagicMock:
+             fault_keys: set[str] | None = None,
+             index_body: bytes | None = None) -> MagicMock:
     """MagicMock S3 client. head_object: returns for keys in existing_keys,
     raises _S3Fault for keys in fault_keys, else raises _NoSuchKey (true 404)."""
     existing = existing_keys or set()
@@ -69,6 +70,8 @@ def _stub_s3(existing_keys: set[str] | None = None,
         raise _NoSuchKey()
 
     s3.head_object.side_effect = _head
+    if index_body is not None:
+        s3.get_object.return_value = {"Body": MagicMock(read=lambda: index_body)}
     return s3
 
 
@@ -205,6 +208,28 @@ def test_rebuild_index_strips_episodes_adds_count(tmp_path):
     assert idx[0]["id"] == "flow_x"
     assert "episodes" not in idx[0]
     assert idx[0]["episodeCount"] == 3
+
+
+def test_filtered_rebuild_index_preserves_unselected_published_entries(tmp_path):
+    podcasts = _make_served_disk(tmp_path, eps=3)
+    existing_index = [
+        {"id": "other_x", "title": "Other X", "episodeCount": 4},
+        {"id": "flow_x", "title": "Old Flow X", "episodeCount": 1},
+    ]
+    s3 = _stub_s3(index_body=json.dumps(existing_index).encode("utf-8"))
+
+    backfill.backfill(
+        s3, bucket="b", data_dir=podcasts, dry_run=False,
+        skip_existing=False, rebuild_index=True, series_filter=["flow_x"],
+    )
+
+    puts = {c.kwargs["Key"]: c.kwargs for c in s3.put_object.call_args_list}
+    idx = json.loads(puts["index.json"]["Body"])
+    assert {entry["id"] for entry in idx} == {"flow_x", "other_x"}
+    assert next(entry for entry in idx if entry["id"] == "other_x") == existing_index[0]
+    flow = next(entry for entry in idx if entry["id"] == "flow_x")
+    assert flow["title"] == "Flow X"
+    assert flow["episodeCount"] == 3
 
 
 def test_series_filter_limits_scope(tmp_path):
