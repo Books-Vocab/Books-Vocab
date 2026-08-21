@@ -29,8 +29,9 @@ class GitHubCliAdapter:
 
     def _run(self, argv: tuple[str, ...], *, allow_nonzero: bool = False) -> str:
         result = self.runner.run(argv)
-        if result.exit_code != 0 and not allow_nonzero:
-            raise AdapterCommandError(result)
+        if result.exit_code != 0:
+            if not allow_nonzero or not result.stdout.strip():
+                raise AdapterCommandError(result)
         return result.stdout.strip()
 
     def _json(self, argv: tuple[str, ...], *, allow_nonzero: bool = False) -> Any:
@@ -242,4 +243,15 @@ class GitHubCliAdapter:
         before = self.get_pull_request(number)
         if before.base_sha != expected_base_sha or before.head_sha != expected_head_sha:
             raise CompareAndSwapConflict("PR tuple changed before enqueue")
-        self._run(("gh", "pr", "merge", str(number), "--merge", "--auto"))
+        self._run(
+            (
+                "gh",
+                "pr",
+                "merge",
+                str(number),
+                "--merge",
+                "--auto",
+                "--match-head-commit",
+                expected_head_sha,
+            )
+        )

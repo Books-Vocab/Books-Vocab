@@ -156,8 +156,12 @@ class RegistryCliAdapter:
 
     def get(self, lane_id: str) -> RegistrySnapshot | None:
         matches = [
-            item for item in self.list_records().records if item.lane_id == lane_id
+            item
+            for item in self.list_records().records
+            if item.lane_id == lane_id and item.status == "active"
         ]
         if len(matches) > 1:
-            raise AdapterPayloadError(f"multiple registry records found for {lane_id}")
+            raise AdapterPayloadError(
+                f"multiple active registry records found for {lane_id}"
+            )
         return matches[0] if matches else None

@@ -155,9 +155,12 @@ class GitCliAdapter:
         if remote_sha != expected_remote_sha:
             raise CompareAndSwapConflict("remote branch changed after preflight")
         destination = f"refs/heads/{branch}"
-        argv = ["push", "origin"]
-        if expected_remote_sha is not None:
-            argv.append(f"--force-with-lease={destination}:{expected_remote_sha}")
+        expected_remote = expected_remote_sha or ""
+        argv = [
+            "push",
+            "origin",
+            f"--force-with-lease={destination}:{expected_remote}",
+        ]
         argv.append(f"{expected_local_sha}:{destination}")
         self._git(*argv, cwd=worktree)
         readback = self.remote_branch_sha(branch)
@@ -176,15 +179,19 @@ class GitCliAdapter:
         self._git("worktree", "remove", "--", str(path))
 
     def delete_local_branch(self, branch: str, *, expected_head_sha: str) -> None:
+        ref = f"refs/heads/{branch}"
         try:
-            current = self._git(
-                "rev-parse", "--verify", f"refs/heads/{branch}^{{commit}}"
-            )
+            current = self._git("rev-parse", "--verify", f"{ref}^{{commit}}")
         except AdapterCommandError:
             return
         if current != expected_head_sha:
             raise CompareAndSwapConflict("local branch changed before cleanup")
-        self._git("branch", "--delete", "--force", "--", branch)
+        self._git("update-ref", "-d", ref, expected_head_sha)
+        try:
+            self._git("rev-parse", "--verify", f"{ref}^{{commit}}")
+        except AdapterCommandError:
+            return
+        raise CompareAndSwapConflict("local branch still exists after cleanup")
 
     def fast_forward_main(
         self, *, expected_local_sha: str, expected_origin_sha: str

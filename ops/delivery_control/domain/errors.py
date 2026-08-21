@@ -19,3 +19,7 @@ class DeliverySourceError(RuntimeError):
 
 class CompareAndSwapConflict(DeliverySourceError):
     """Raised when a mutation target changed after its exact preflight."""
+
+
+class PolicyViolation(DeliverySourceError):
+    """Raised when exact delivery facts do not authorize a requested action."""

@@ -6,12 +6,15 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
 from delivery_control.adapters.git_cli import GitCliAdapter
 from delivery_control.adapters.github_cli import GitHubCliAdapter
 from delivery_control.adapters.registry import RegistryCliAdapter
+from delivery_control.adapters.errors import AdapterCommandError
 from delivery_control.domain.models import CheckStatus, Scope
 from delivery_control.domain.observations import (
     CheckSnapshot,
@@ -66,6 +69,50 @@ def test_git_adapter_computes_operation_aware_exact_base_diff(tmp_path: Path) ->
     )
 
 
+def test_git_new_remote_branch_push_uses_absent_ref_lease(tmp_path: Path) -> None:
+    head = "b" * 40
+    runner = StaticRunner(
+        [
+            CommandResult(("git",), 0, "feat/one\n", ""),
+            CommandResult(("git",), 0, f"{head}\n", ""),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), 0, f"{head}\trefs/heads/feat/one\n", ""),
+        ]
+    )
+    adapter = GitCliAdapter(repo=tmp_path, runner=runner)
+
+    adapter.push_branch(
+        worktree=tmp_path,
+        branch="feat/one",
+        expected_local_sha=head,
+        expected_remote_sha=None,
+    )
+
+    push = next(call for call in runner.calls if "push" in call)
+    assert "--force-with-lease=refs/heads/feat/one:" in push
+
+
+def test_git_local_branch_delete_uses_atomic_expected_old_sha(tmp_path: Path) -> None:
+    head = "b" * 40
+    runner = StaticRunner(
+        [
+            CommandResult(("git",), 0, f"{head}\n", ""),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), 128, "", "unknown revision"),
+        ]
+    )
+    adapter = GitCliAdapter(repo=tmp_path, runner=runner)
+
+    adapter.delete_local_branch("feat/one", expected_head_sha=head)
+
+    assert any(
+        call[-4:] == ("update-ref", "-d", "refs/heads/feat/one", head)
+        for call in runner.calls
+    )
+
+
 class StaticRunner:
     def __init__(self, responses: list[CommandResult]) -> None:
         self.responses = list(responses)
@@ -110,6 +157,40 @@ def test_registry_adapter_surfaces_malformed_records_without_hiding_valid_ones(
     assert [record.lane_id for record in inventory.records] == ["#1"]
     assert inventory.records[0].claim_generation == 4
     assert inventory.problems[0].identity == "feat/bad"
+
+
+def test_registry_get_ignores_terminal_history_for_same_lane(tmp_path: Path) -> None:
+    active = {
+        "branch": "feat/current",
+        "path": str(tmp_path / "current"),
+        "status": "active",
+        "external_ids": ["#1"],
+        "base": "a" * 40,
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"operation": "modify", "path": "ops/a.py"}],
+        },
+        "codex_thread_id": "thread-current",
+        "claim_generation": 2,
+    }
+    terminal = {
+        **active,
+        "branch": "feat/historical",
+        "path": str(tmp_path / "historical"),
+        "status": "merged",
+        "codex_thread_id": "thread-historical",
+        "claim_generation": 1,
+    }
+    runner = StaticRunner(
+        [CommandResult(("registry",), 0, json.dumps({"records": [terminal, active]}), "")]
+    )
+
+    record = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    ).get("#1")
+
+    assert record is not None
+    assert record.branch == "feat/current"
 
 
 def _pr_payload() -> dict[str, object]:
@@ -162,6 +243,36 @@ def test_github_required_check_snapshot_is_bound_to_exact_head() -> None:
     assert snapshot.status is CheckStatus.SUCCESS
     assert snapshot.head_sha == "b" * 40
     assert snapshot.names == ("required",)
+
+
+def test_github_required_checks_preserve_empty_nonzero_command_failure() -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(("gh",), 0, json.dumps(_pr_payload()), ""),
+            CommandResult(("gh",), 1, "", "network failure"),
+        ]
+    )
+
+    with pytest.raises(AdapterCommandError):
+        GitHubCliAdapter(runner=runner).required_check_snapshot(12)
+
+
+def test_github_enqueue_atomically_matches_expected_head() -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(("gh",), 0, json.dumps(_pr_payload()), ""),
+            CommandResult(("gh",), 0, "", ""),
+        ]
+    )
+    adapter = GitHubCliAdapter(runner=runner)
+
+    adapter.enqueue(
+        number=12,
+        expected_base_sha="a" * 40,
+        expected_head_sha="b" * 40,
+    )
+
+    assert runner.calls[-1][-2:] == ("--match-head-commit", "b" * 40)
 
 
 class FakeRegistry:
