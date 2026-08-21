@@ -32,6 +32,8 @@ from .services.publish_preflight import PublishPreflightService
 from .services.queue import QueueService
 from .services.sync_main import MainSyncService
 
+CONTROL_PLANE_OPS = Path(__file__).resolve().parents[1]
+
 
 class DeliveryGitPort(GitQueryPort, GitCommandPort, Protocol):
     pass
@@ -93,7 +95,10 @@ class DeliveryApplication:
             merge_queue_enabled=self.github.merge_queue_enabled("main"),
             physical_worktree_count=len(physical_worktrees),
             canonical_worktree_present=(
-                sum(item.path.resolve() == self.repo.resolve() for item in physical_worktrees)
+                sum(
+                    item.path.resolve() == self.repo.resolve()
+                    for item in physical_worktrees
+                )
                 == 1
             ),
             metrics=metrics,
@@ -103,9 +108,7 @@ class DeliveryApplication:
     def receipt(self, lane_id: str) -> HandbackReceipt:
         record = self.registry.get(lane_id)
         if record is None:
-            raise PolicyViolation(
-                f"no unique active registry record for {lane_id}"
-            )
+            raise PolicyViolation(f"no unique active registry record for {lane_id}")
         snapshot = self.git.inspect_worktree(record.path, record.base_sha)
         return receipt_from_active_claim(record, snapshot)
 
@@ -190,7 +193,7 @@ def build_application(
         git=GitCliAdapter(repo=resolved),
         github=GitHubCliAdapter(repo=resolved),
         registry=RegistryCliAdapter(
-            script_path=resolved / "ops" / "worktree_registry.py"
+            script_path=CONTROL_PLANE_OPS / "worktree_registry.py"
         ),
         runtime=RuntimeStatusMap.from_file(runtime_status_file),
     )
