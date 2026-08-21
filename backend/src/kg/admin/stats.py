@@ -141,7 +141,7 @@ def _collect_disks(psutil: Any) -> list[dict[str, Any]]:
             if not os.path.exists(path):
                 continue
             du = psutil.disk_usage(path)
-            key = f"{du.total}"
+            key = path
             if key in seen_mounts:
                 continue
             seen_mounts.add(key)
