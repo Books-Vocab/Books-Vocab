@@ -250,7 +250,7 @@ def _recorded_usd(user_id: str) -> float:
             SELECT call_type, provider,
                    SUM(input_tokens) AS total_in, SUM(output_tokens) AS total_out
             FROM token_usage
-            WHERE user_id = ? AND created_at >= ?
+            WHERE user_id = ? AND julianday(created_at) >= julianday(?)
             GROUP BY call_type, provider
             """,
             (user_id, cutoff_iso),
@@ -322,7 +322,7 @@ def get_all_quota_usage(
                    SUM(input_tokens) AS total_in,
                    SUM(output_tokens) AS total_out
             FROM token_usage
-            WHERE created_at >= ?
+            WHERE julianday(created_at) >= julianday(?)
             GROUP BY user_id, call_type, provider
             """,
             (cutoff_iso,),
@@ -360,7 +360,7 @@ def get_user_usage_range(user_id: str, *, since_iso: str | None = None) -> dict:
     where = "WHERE user_id = ?"
     params: list = [user_id]
     if since_iso is not None:
-        where += " AND created_at >= ?"
+        where += " AND julianday(created_at) >= julianday(?)"
         params.append(since_iso)
 
     with _lock:
