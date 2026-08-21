@@ -80,6 +80,7 @@ class LaneFacts:
     required_status: CheckStatus = CheckStatus.ABSENT
     mergeable: bool = False
     merged: bool = False
+    abandoned: bool = False
     cleanup_complete: bool = False
     holds: frozenset[HoldKind] = frozenset()
 
@@ -132,19 +133,23 @@ def derive_lane_decision(facts: LaneFacts) -> LaneDecision:
             NextAction.RECOVER_OWNER,
             "worktree owner is unavailable",
         )
-    if facts.merged and facts.cleanup_complete:
+    if (facts.merged or facts.abandoned) and facts.cleanup_complete:
         return LaneDecision(
-            LaneState.DONE, NextAction.NONE, "merged assets are reconciled"
+            LaneState.DONE,
+            NextAction.NONE,
+            "terminal assets are reconciled",
         )
-    if facts.merged and facts.cleanup_policy_passed:
+    if (facts.merged or facts.abandoned) and facts.cleanup_policy_passed:
         return LaneDecision(
-            LaneState.TERMINAL_CLEANUP, NextAction.CLEANUP, "merged assets remain"
+            LaneState.TERMINAL_CLEANUP,
+            NextAction.CLEANUP,
+            "terminal assets remain",
         )
-    if facts.merged:
+    if facts.merged or facts.abandoned:
         return LaneDecision(
             LaneState.UNKNOWN,
             NextAction.INSPECT,
-            "merged lane lacks an approved cleanup policy",
+            "terminal lane lacks an approved cleanup policy",
         )
     if facts.holds:
         return LaneDecision(

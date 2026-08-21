@@ -97,6 +97,7 @@ class InspectService:
                     decision=derive_lane_decision(
                         LaneFacts(
                             merged=record.status == "merged",
+                            abandoned=record.status == "abandoned",
                             cleanup_complete=physical_ref is None,
                         )
                     ),

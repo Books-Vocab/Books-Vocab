@@ -741,6 +741,22 @@ def test_terminal_registry_history_does_not_claim_physical_worktree(
     assert orphan.decision.state is LaneState.BLOCKED_OWNER
 
 
+def test_absent_abandoned_history_is_terminal_not_blocked(tmp_path: Path) -> None:
+    path = tmp_path / "retired"
+    service = InspectService(
+        registry=FakeRegistry((_record(path, status="abandoned"),)),
+        git=FakeGit((), {}),
+        github=FakeGitHub(()),
+        runtime=FakeRuntime(),
+    )
+
+    history = next(
+        item for item in service.inspect().lanes if item.key.startswith("history:")
+    )
+
+    assert history.decision.state is LaneState.DONE
+
+
 def test_inspect_surfaces_github_inventory_problems(tmp_path: Path) -> None:
     problem = InventoryProblem("github", "entry[0]", "malformed")
     service = InspectService(

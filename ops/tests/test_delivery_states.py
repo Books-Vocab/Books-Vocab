@@ -51,6 +51,11 @@ from delivery_control.domain.states import (
             NextAction.NONE,
         ),
         (
+            LaneFacts(abandoned=True, cleanup_complete=True),
+            LaneState.DONE,
+            NextAction.NONE,
+        ),
+        (
             LaneFacts(merged=True, cleanup_policy_passed=True),
             LaneState.TERMINAL_CLEANUP,
             NextAction.CLEANUP,
