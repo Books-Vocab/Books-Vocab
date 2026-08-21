@@ -72,15 +72,27 @@ def _get_locks_mutex() -> asyncio.Lock:
     return _USER_LOCKS_MUTEX
 
 
+def _user_lock_is_active(lock: asyncio.Lock) -> bool:
+    """Keep held or queued locks alive until their callers finish."""
+    return lock.locked() or bool(getattr(lock, "_waiters", None))
+
+
 async def get_user_lock(user_id: str) -> asyncio.Lock:
     async with _get_locks_mutex():
         if user_id in _USER_LOCKS:
             _USER_LOCKS.move_to_end(user_id)
             return _USER_LOCKS[user_id]
         lock = asyncio.Lock()
+        while len(_USER_LOCKS) >= _MAX_USER_LOCKS:
+            for candidate_id, candidate_lock in _USER_LOCKS.items():
+                if not _user_lock_is_active(candidate_lock):
+                    del _USER_LOCKS[candidate_id]
+                    break
+            else:
+                # Contended locks may temporarily take the cache over its cap;
+                # evicting one would create a second lock for that user.
+                break
         _USER_LOCKS[user_id] = lock
-        while len(_USER_LOCKS) > _MAX_USER_LOCKS:
-            _USER_LOCKS.popitem(last=False)
         return lock
 
 
