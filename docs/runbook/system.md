@@ -98,7 +98,7 @@ workflow `pr-gate` 的 check run `confidence` 失敗、非預期 skip、取消�
 ./ops/delivery.py release-published --pr <number>
 ```
 
-`receipt` 只把唯一 active、clean、owner-bound、Scope-exact 的 `kg.worktree.handback.v1` 正規化為 `kg.delivery.handback.v1`；owner／delegation／Scope 變更會遞增 claim generation 並清除舊 seal。`publish` 先以 compare-and-swap push exact branch，明確建立 target=`main` 的非 draft PR，驗證 final PR target／head／body／paths，再取得 registry `cleanup_pending` lease；lease 會阻擋同 branch／path 的新 claim，local worktree／branch 精確移除後才完成為 `published`。collision 只讀 active Scope，cleanup 只讀 receipt 指定的 exact claim，所以無關的 malformed terminal history 不會阻塞；目標 claim 不完整仍 fail closed。若 durable PR 已完成、後續 lease 或 local removal 中斷，保留原錯誤、不回退 PR；重跑同一 `publish`，或用 `release-published` 從 PR receipt 完成 idempotent local release。
+`receipt` 只把唯一 active、clean、owner-bound、Scope-exact 的 `kg.worktree.handback.v1` 正規化為 `kg.delivery.handback.v1`；owner／delegation／Scope 變更會遞增 claim generation 並清除舊 seal。Scope overlap 在 `register`／`scope-set` 的 ledger lock 內就對所有 `active`／`cleanup_pending` claim fail closed，不延後到 publish。`publish` 先以 compare-and-swap push exact branch，明確建立 target=`main` 的非 draft PR，驗證 final PR target／head／body／paths，再取得 registry `cleanup_pending` lease；lease 會阻擋同 branch／path 的新 claim，也會讓 controller 停止增生 solver，local worktree／branch 精確移除後才完成為 `published`。collision 只讀 active／cleanup Scope，cleanup 只讀 receipt 指定的 exact claim，所以無關的 malformed terminal history 不會阻塞；目標 claim 不完整仍 fail closed。若 durable PR 已完成、後續 lease 或 local removal 中斷，保留原錯誤、不回退 PR；重跑同一 `publish`，或用 `release-published` 從 PR receipt 完成 idempotent local release。
 
 PR readiness workflow 的 parser 入口是：
 
@@ -117,17 +117,17 @@ PR readiness workflow 的 parser 入口是：
 ./ops/delivery.py --repo <canonical-checkout> sync-main
 ```
 
-`queue` 只接受 registry `published`、PR body／paths／head／live base、target branch=`main`、all required checks、mergeability 都 exact 且無 hold 的 candidate，並以 GraphQL `enqueuePullRequest(expectedHeadOid)` 送進 GitHub native merge queue；它不呼叫會在無 queue 情境退化成直接合併的 `gh pr merge --auto`。canonical body 也在 mutation 前後納入 CAS。inventory 直接讀 `mergeQueueEntry`，已入列 PR 顯示 `pr_queued`；enqueue 後 `main` tip 自然前進由 merge group 重驗，不會讓 immutable receipt 失效或誤觸 required repair。retarget／head／body drift 時，只有 queue entry ID 仍等於本次 mutation 回傳值才可呼叫 `dequeuePullRequest`，若 entry 已被另一 transaction 取代只報衝突、不得移除。`--hold` 是 typed hard stop，不是 override。inventory 會對每個無 open mapping 的 `published` record 精確補讀同 branch 的 terminal PR，讓 merged cleanup 不會因 open-only 列表消失。`cleanup-merged` 只依 exact merged PR receipt 與 target=`main` 證據移除匹配的 local residue／remote branch，再 terminalize registry record。`sync-main` 只在 `<canonical-checkout>` clean、位於 `main`、local ref 與 live `origin/main` 未在 preflight 後漂移時執行 `--ff-only`；不得在 feature worktree 執行，也沒有 force-reset fallback。
+`queue` 只接受 registry `published`、PR body／paths／head／live base、target branch=`main`、all required checks、mergeability 都 exact 且無 hold 的 candidate，並以 GraphQL `enqueuePullRequest(expectedHeadOid)` 送進 GitHub native merge queue；它不呼叫會在無 queue 情境退化成直接合併的 `gh pr merge --auto`。canonical body 也在 mutation 前後納入 CAS。inventory 直接讀 `mergeQueueEntry`，已入列 PR 顯示 `pr_queued`；enqueue 後 `main` tip 自然前進由 merge group 重驗，不會讓 immutable receipt 失效或誤觸 required repair。retarget／head／body drift 時，只有 queue entry ID 仍等於本次 mutation 回傳值才可呼叫 `dequeuePullRequest`，若 entry 已被另一 transaction 取代只報衝突、不得移除。`--hold` 是 typed hard stop，不是 override。inventory 會對每個無 open mapping 的 `published` record 精確補讀同 branch 的 terminal PR，讓 merged cleanup 不會因 open-only 列表消失。`cleanup-merged` 在取得 lease 後、每項刪除前及 terminal disposition 前都重新讀取 exact merged PR target／branch／head／body；只依 exact receipt 移除匹配的 local residue／remote branch，最後由 delivery adapter 提交帶 digest 的 `kg.worktree.terminal-proof.v1`。若 PR tuple 漂移則保留 lease 與未刪資產，一般 `worktree_orchestrate resolve` 不能直接標記 merged。`sync-main` 只在 `<canonical-checkout>` clean、位於 `main`、local ref 與 live `origin/main` 未在 preflight 後漂移時執行 `--ff-only`；不得在 feature worktree 執行，也沒有 force-reset fallback。
 
 ### 錯誤隔離
 
-- source inventory 可局部解析時，malformed registry／PR／runtime／Git observation 留在對應 lane 或 `source_problems`；metrics 不把 unmapped／unknown 供給算成 owner-mapped durable supply。
+- source inventory 可局部解析時，malformed registry／PR／runtime／Git observation 留在對應 lane 或 `source_problems`；raw registry 非 object、無效 external ID、unknown status 都必須可見，metrics 不把 unmapped／unknown 供給算成 owner-mapped durable supply。
 - duplicate PR、Scope collision、dirty／missing worktree、owner unavailable、stale base／HEAD、required failure、hold 或 CAS race 只封鎖該 exact lane；不要因另一條 lane 綠就 bulk transition、delete 或重寫。
 - publish、local release、queue、merged cleanup 與 main sync 都可重跑，但只在 readback 仍符合原 receipt 時 idempotent。`worktree_registry.py sweep --commit` 不可作 cleanup shortcut；逐 record 使用 exact generation／branch／path／HEAD transition。
 
 ## Local worktree boundary
 
-`ops/worktree_registry.py` 是本機 ownership ledger：記錄 branch、path、thread、external IDs、Scope、hand-back、evidence 與 local disposition。`ops/worktree_orchestrate.py` 是本機 coordinator：建立／接管工作樹、檢查 overlap、執行必要 gate、保存 log、交回或移除工作樹。
+`ops/worktree_registry.py` 是本機 ownership ledger 的相容 CLI facade：記錄 branch、path、thread、external IDs、Scope、hand-back、evidence 與 local disposition；admission、record normalization、handback、lifecycle、storage 與 parser 在 `ops/worktree_registry_core/` 分責。`ops/worktree_orchestrate.py` 是本機 coordinator：建立／接管工作樹、檢查 overlap、執行必要 gate、保存 log、交回或移除工作樹。
 
 GitHub Issue、Project、PR、CR／DS review、merge 與 release approval 不在本機 ledger 再存一份，也沒有本地 backlog、merge queue 或批次整合狀態。`published` 只表示 durable PR 已可取代 local assets，不是 PR lifecycle mirror。當本機與 GitHub 顯示不同，以 GitHub ref、PR 與 Actions 為準；local evidence 只能說明本機曾經驗證過什麼。
 

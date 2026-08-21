@@ -81,9 +81,7 @@ class GitHubQueueGraphQLAdapter:
         return payload
 
     def snapshot(self, pull_request_id: str) -> NativeQueueSnapshot:
-        payload = self._graphql(
-            _QUEUE_STATE_QUERY, ("pullRequestId", pull_request_id)
-        )
+        payload = self._graphql(_QUEUE_STATE_QUERY, ("pullRequestId", pull_request_id))
         data = payload.get("data")
         node = data.get("node") if isinstance(data, Mapping) else None
         required = {
@@ -127,9 +125,7 @@ class GitHubQueueGraphQLAdapter:
         return entry["id"]
 
     def _dequeue(self, pull_request_id: str) -> None:
-        payload = self._graphql(
-            _DEQUEUE_MUTATION, ("pullRequestId", pull_request_id)
-        )
+        payload = self._graphql(_DEQUEUE_MUTATION, ("pullRequestId", pull_request_id))
         data = payload.get("data")
         if not isinstance(data, Mapping) or not isinstance(
             data.get("dequeuePullRequest"), Mapping

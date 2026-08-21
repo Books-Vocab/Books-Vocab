@@ -170,9 +170,10 @@ CM 只在 PR 的 required checks、review、文件影響與安全條件滿足後
 - local hand-back 不是完成；PI 必須把它轉成真實 PR，否則該工作只能標記為 `hand-back pending PR`，不可算 Ready 或完成。
 - hand-back 必須保留 dispatch provenance 與 recipient：IM dispatch 回同一 IM；User dispatch 回指定 IM 或 Worker 在交接前選定的 IM；沒有 recipient 不得宣稱 hand-back 完成。
 - typed `kg.worktree.handback.v1` hand-back 必須在交接當下以 `git ls-remote origin refs/heads/main` 捕獲 `origin_main_sha`；delivery control 只把這個 registry seal 正規化成 `kg.delivery.handback.v1`，並以 machine receipt 嵌入 PR body。seal 同時綁定 lane／owner thread／claim generation／branch／absolute worktree path／base／parent／HEAD／observed origin main／content digest／structured Scope；owner、delegation 或 Scope 變更會開始新 generation 並使舊 hand-back 失效，任一不一致都 fail closed。
+- registry 在 `register`／`scope-set` 的同一個 ledger lock 內，同時檢查 external ID 與 structured Scope；`active` 與 `cleanup_pending` claim 都持續占有 Scope。衝突不得延後到 publish 才發現，也不得以 `compact` 消除：compact 只移除已 `merged`／`abandoned` 的 terminal history，必須保留 `active`／`cleanup_pending`／`published`。
 - local hand-back 的 `origin_main_sha` 是交接時的執行證據，不是 current-main Ready 證據；IM／CM 仍須以當下 live `origin/main`、exact physical HEAD／Scope 與 PR checks 重新驗證。`main` 前進後，舊 receipt 必須重新驗證，不得直接當成 Ready。
 - PI 的 `publish` transaction 先以 exact readback 讓 remote branch + 非 draft PR durable，再取得 registry `cleanup_pending` lease；lease 期間同 branch／path 不可重新 claim，local worktree／branch 移除並精確讀回後才完成為 `published`。`published` 只證明 local assets 已可釋放，不複製 GitHub PR 狀態。中斷的 lease 必須由同 receipt 重試，PR 等待 CI／review 時只保留 remote branch／PR；需要修改時由 IM 重新開 dedicated worktree。
-- publication 後若 registry CAS 或 local removal 中斷，已建立的 PR 不回退；同一 typed receipt 以 idempotent retry 收斂。CM merge 後，IM／PI 再以 exact merged PR receipt 清除 remote branch，並把 local disposition terminalize 為 `merged`；任何 SHA／Scope／path drift 都只阻擋該 lane，不得 bulk sweep 或跨 lane 清理。
+- publication 後若 registry CAS 或 local removal 中斷，已建立的 PR 不回退；同一 typed receipt 以 idempotent retry 收斂。local removal 前、每一項 local／remote asset mutation 前與 terminal disposition 前，都重新讀取 exact PR target／branch／head／body tuple；任何 drift 都保留 `cleanup_pending` 與尚未處理的資產。CM merge 後，IM／PI 再以 exact merged PR receipt 清除 remote branch，並以帶 digest 的 `kg.worktree.terminal-proof.v1`（lane、PR number、MERGED state、target=`main`、branch、head）把 local disposition terminalize 為 `merged`；一般 orchestrator 不能直接宣告 merged。任何 SHA／Scope／path drift 都只阻擋該 lane，不得 bulk sweep 或跨 lane 清理。
 - 每次 merge／queue landing 後，CM 必須 `fetch` 並以安全的 fast-forward 路徑使 local `main` 與 `origin/main` 相同；若 local main dirty、diverged 或 drift，停止後續 admission，不得 force reset 掩蓋問題。
 
 ### Required 與 advisory outcomes
@@ -196,13 +197,13 @@ native merge queue 以 exact current base、exact head、canonical typed body �
 
 ## Deterministic feedback controller
 
-`ops/delivery.py` 是一次一個 command 的 deterministic control surface，不是 daemon、agent dispatcher 或狀態庫。`inspect` 從 registry、physical worktrees、GitHub PR／required checks 與 caller 提供的 owner runtime facts 分類每條 lane；`metrics` 只量測 reservoirs；`plan` 只回傳同一組 facts 推導的 capacity actions。完整 inventory 仍呈現所有 malformed source；publication 的 collision projection 只解析 active／cleanup Scope，cleanup 則只解析 receipt 指定的 exact claim，因此無關 terminal legacy 問題不會封鎖獨立 transaction，目標 claim／Scope 不可解析仍 fail closed。任何 `source_problems`、unmapped PR 或 duplicate PR mapping 都把 `desired_new_solvers` 固定為 0，先建議 inspect／bounded recovery。一條 lane 的 collision、dirty、owner loss、stale tuple 或 required failure 不授權修改其他 lane。
+`ops/delivery.py` 是一次一個 command 的 deterministic control surface，不是 daemon、agent dispatcher 或狀態庫。`inspect` 從 registry、physical worktrees、GitHub PR／required checks 與 caller 提供的 owner runtime facts 分類每條 lane；`metrics` 只量測 reservoirs；`plan` 只回傳同一組 facts 推導的 capacity actions。完整 inventory 仍呈現所有 malformed source；raw registry 非 object、無效 external ID 與未知 status 都進入 `source_problems`，不會被 normalization 靜默丟棄。publication 的 collision projection 只解析 active／cleanup Scope，cleanup 則只解析 receipt 指定的 exact claim，因此無關 terminal legacy 問題不會封鎖獨立 transaction，目標 claim／Scope 不可解析仍 fail closed。任何 `source_problems`、unmapped PR、duplicate PR mapping 或未完成的 `cleanup_pending` lease 都把 `desired_new_solvers` 固定為 0，先建議 inspect／bounded recovery；cleanup lease 已有 durable PR，仍計入供給，但不能再生新 solver。一條 lane 的 collision、dirty、owner loss、stale tuple 或 required failure 不授權修改其他 lane。
 
 預設 feedback policy 的健康吞吐目標是每小時 12 merges，且有健康供給時最長 300 秒至少 landing 一個；這是 capacity SLO，不是繞過 required／review 的時限。projected supply floor 是 10（owner-mapped open PR + publishable hand-back + active development）、open PR ceiling 是 15、required-green target 是 3、required p95 上限是 240 秒、每 cycle 最多建議 4 個新 solver。controller 會平行建議 drain publishable hand-backs、local release、required-green enqueue、required repair、terminal cleanup 與 bounded blocker recovery；只有在未飽和、projected supply 不足且 cadence 慢時，才建議 Scout fan-out 新 solver。`min_required_green` 是可觀測 policy target；目前 solver birth 的數量由 projected supply gap 計算，不會單獨因 required-green 低於 3 增生。CLI `plan` 目前也未注入 required p95 observation，因此 p95 threshold 本身不會觸發 throttle；實際自動 saturation guard 是 owner-mapped open PR 達 15。
 
 ## 本機 coordinator 的窄責任
 
-本機 coordinator 是多 worktree 的執行環境安全工具，不是產品管理系統。IM 使用它控制 worktree lifecycle；Worker／Issue Solver 只在已指定的 path 內實作：
+本機 coordinator 是多 worktree 的執行環境安全工具，不是產品管理系統。`ops/worktree_registry.py` 是相容 command facade；admission、records、handback、lifecycle、storage 與 parser 各自由 `ops/worktree_registry_core/` 的小模組維護，避免把 Git、ledger policy、schema validation 與 CLI parsing 混成單檔。IM 使用它控制 worktree lifecycle；Worker／Issue Solver 只在已指定的 path 內實作：
 
 - 保留 worktree owner、branch/path、structured Scope、檔案 overlap、thread identity。
 - 保留本地測試、exact HEAD、log／artifact 與 typed hand-back evidence。

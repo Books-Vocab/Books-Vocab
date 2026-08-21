@@ -81,31 +81,21 @@ def project_active_lane(
     if pull_request is not None:
         if pull_request.state == "OPEN":
             try:
-                queued = (
-                    github.merge_queue_entry_id(pull_request.node_id) is not None
-                )
+                queued = github.merge_queue_entry_id(pull_request.node_id) is not None
             except DeliverySourceError as error:
                 problems.append(
-                    InventoryProblem(
-                        "github", f"PR#{pull_request.number}", str(error)
-                    )
+                    InventoryProblem("github", f"PR#{pull_request.number}", str(error))
                 )
-        body_exact = _pr_receipt_matches_registry(
-            record, pull_request, problems
-        )
+        body_exact = _pr_receipt_matches_registry(record, pull_request, problems)
         if pull_request.state == "OPEN":
             try:
                 check = github.required_check_snapshot(pull_request.number)
             except DeliverySourceError as error:
                 problems.append(
-                    InventoryProblem(
-                        "github", f"PR#{pull_request.number}", str(error)
-                    )
+                    InventoryProblem("github", f"PR#{pull_request.number}", str(error))
                 )
     lane_collision = f"lane:{record.lane_id}" in sources.collisions
-    scope_exact = snapshot is not None and scope_matches_snapshot(
-        record, snapshot
-    )
+    scope_exact = snapshot is not None and scope_matches_snapshot(record, snapshot)
     if snapshot is not None and not scope_exact:
         problems.append(
             InventoryProblem(
@@ -214,26 +204,18 @@ def project_published_lane(
     if pull_request is not None:
         if pull_request.state == "OPEN":
             try:
-                queued = (
-                    github.merge_queue_entry_id(pull_request.node_id) is not None
-                )
+                queued = github.merge_queue_entry_id(pull_request.node_id) is not None
             except DeliverySourceError as error:
                 problems.append(
-                    InventoryProblem(
-                        "github", f"PR#{pull_request.number}", str(error)
-                    )
+                    InventoryProblem("github", f"PR#{pull_request.number}", str(error))
                 )
-        body_exact = _pr_receipt_matches_registry(
-            record, pull_request, problems
-        )
+        body_exact = _pr_receipt_matches_registry(record, pull_request, problems)
         if pull_request.state == "OPEN":
             try:
                 check = github.required_check_snapshot(pull_request.number)
             except DeliverySourceError as error:
                 problems.append(
-                    InventoryProblem(
-                        "github", f"PR#{pull_request.number}", str(error)
-                    )
+                    InventoryProblem("github", f"PR#{pull_request.number}", str(error))
                 )
         if tuple(sorted(sources.pr_paths.get(pull_request.number, ()))) != tuple(
             sorted(record.scope.paths)
@@ -304,9 +286,7 @@ def project_published_lane(
                 pr_open=pull_request is not None,
                 pr_contract_valid=pull_request is None or body_exact,
                 pr_draft=pull_request.draft if pull_request else False,
-                required_status=(
-                    check.status if check else CheckStatus.ABSENT
-                ),
+                required_status=(check.status if check else CheckStatus.ABSENT),
                 mergeable=pull_request.mergeable if pull_request else False,
                 queued=queued,
                 merge_policy_passed=merge_exact,

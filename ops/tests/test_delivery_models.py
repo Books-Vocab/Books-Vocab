@@ -12,6 +12,7 @@ sys.path.insert(0, str(OPS))
 from delivery_control.domain.errors import InvalidReceipt, InvalidScope
 from delivery_control.domain.models import (
     HandbackReceipt,
+    MergedPullRequestProof,
     Scope,
     ScopeFile,
     ScopeOperation,
@@ -22,6 +23,26 @@ BASE_SHA = "a" * 40
 HEAD_SHA = "b" * 40
 ORIGIN_SHA = "c" * 40
 DIGEST = "d" * 64
+
+
+def test_merged_pr_proof_is_exact_and_main_only() -> None:
+    proof = MergedPullRequestProof(
+        lane_id="ISSUE-1",
+        pr_number=42,
+        branch="feat/one",
+        head_sha=HEAD_SHA,
+    )
+
+    assert proof.base_branch == "main"
+    assert proof.pr_state == "MERGED"
+    with pytest.raises(InvalidReceipt, match="target main"):
+        MergedPullRequestProof(
+            lane_id="ISSUE-1",
+            pr_number=42,
+            branch="feat/one",
+            head_sha=HEAD_SHA,
+            base_branch="release",
+        )
 
 
 def test_scope_is_canonical_and_has_a_stable_digest() -> None:

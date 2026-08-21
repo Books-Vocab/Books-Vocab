@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from ..domain.models import HandbackReceipt
+from ..domain.models import HandbackReceipt, MergedPullRequestProof
 from ..domain.observations import (
     RegistryCollisionInventory,
     RegistryInventory,
@@ -52,4 +52,5 @@ class RegistryCommandPort(Protocol):
         expected_branch: str,
         expected_path: str,
         expected_head_sha: str,
+        terminal_proof: MergedPullRequestProof | None = None,
     ) -> None: ...

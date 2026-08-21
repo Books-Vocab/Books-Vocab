@@ -30,9 +30,7 @@ class MainSyncService:
         self.command = command
 
     def _validate_checkout(self, *, expected_head_sha: str) -> None:
-        snapshot = self.query.inspect_worktree(
-            self.canonical_path, expected_head_sha
-        )
+        snapshot = self.query.inspect_worktree(self.canonical_path, expected_head_sha)
         if (
             snapshot.path.resolve() != self.canonical_path
             or snapshot.branch != "main"
@@ -62,6 +60,8 @@ class MainSyncService:
         )
         self._validate_origin_readback(expected_origin_sha=origin)
         if after != origin or self.query.local_main_sha() != origin:
-            raise PolicyViolation("canonical main fast-forward did not reach origin/main")
+            raise PolicyViolation(
+                "canonical main fast-forward did not reach origin/main"
+            )
         self._validate_checkout(expected_head_sha=origin)
         return MainSyncResult(before, origin, after, True)

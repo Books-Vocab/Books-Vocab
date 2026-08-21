@@ -39,9 +39,7 @@ class GitHubCliAdapter:
 
     def _run(self, argv: tuple[str, ...], *, allow_nonzero: bool = False) -> str:
         result = self.runner.run(argv, cwd=self.repo)
-        if result.exit_code != 0 and (
-            not allow_nonzero or not result.stdout.strip()
-        ):
+        if result.exit_code != 0 and (not allow_nonzero or not result.stdout.strip()):
             raise AdapterCommandError(result)
         return result.stdout.strip()
 
@@ -116,8 +114,15 @@ class GitHubCliAdapter:
     def list_open_pull_requests(self) -> PullRequestInventory:
         payload = self._json(
             (
-                "gh", "pr", "list", "--state", "open", "--limit", "200",
-                "--json", _PR_FIELDS,
+                "gh",
+                "pr",
+                "list",
+                "--state",
+                "open",
+                "--limit",
+                "200",
+                "--json",
+                _PR_FIELDS,
             )
         )
         return self._pull_request_inventory(payload)
@@ -125,8 +130,17 @@ class GitHubCliAdapter:
     def list_pull_requests_for_branch(self, branch: str) -> PullRequestInventory:
         payload = self._json(
             (
-                "gh", "pr", "list", "--state", "all", "--head", branch,
-                "--limit", "100", "--json", _PR_FIELDS,
+                "gh",
+                "pr",
+                "list",
+                "--state",
+                "all",
+                "--head",
+                branch,
+                "--limit",
+                "100",
+                "--json",
+                _PR_FIELDS,
             )
         )
         return self._pull_request_inventory(payload)
@@ -152,9 +166,7 @@ class GitHubCliAdapter:
         observed: list[datetime] = []
         for index, item in enumerate(payload):
             if not isinstance(item, Mapping) or type(item.get("mergedAt")) is not str:
-                raise AdapterPayloadError(
-                    f"GitHub merge history[{index}] is malformed"
-                )
+                raise AdapterPayloadError(f"GitHub merge history[{index}] is malformed")
             try:
                 timestamp = datetime.fromisoformat(
                     item["mergedAt"].replace("Z", "+00:00")
@@ -286,9 +298,7 @@ class GitHubCliAdapter:
             raise AdapterPayloadError("GitHub branch rules payload is malformed")
         for index, rule in enumerate(payload):
             if not isinstance(rule, Mapping) or type(rule.get("type")) is not str:
-                raise AdapterPayloadError(
-                    f"GitHub branch rule[{index}] is malformed"
-                )
+                raise AdapterPayloadError(f"GitHub branch rule[{index}] is malformed")
             if rule["type"] == "merge_queue":
                 return True
         return False

@@ -98,7 +98,7 @@ def test_open_uses_exact_base_for_failed_provisioning_compensation(
         base="origin/main",
         codex_thread_id="thread-test",
         delegated=True,
-        state=None,
+        state=str(tmp_path / "custom-registry.json"),
         scope=json.dumps(_scope_for("ops/a.py")),
         scope_file=None,
         json=True,
@@ -112,6 +112,9 @@ def test_open_uses_exact_base_for_failed_provisioning_compensation(
     )
     assert git_calls[0][-1] == base_sha
     assert compensation[compensation.index("--expected-head-sha") + 1] == base_sha
+    assert compensation[compensation.index("--state") + 1] == str(
+        (tmp_path / "custom-registry.json").resolve()
+    )
 
 
 def _scope_for(path: str) -> dict[str, object]:

@@ -28,6 +28,7 @@ class StaticRunner:
         self.calls.append(argv)
         return self.responses.pop(0)
 
+
 def _pr_payload() -> dict[str, object]:
     return {
         "id": "PR_kwDOexample",
@@ -67,9 +68,7 @@ def test_github_adapter_surfaces_malformed_entries() -> None:
 def test_github_adapter_reads_terminal_prs_for_one_published_branch() -> None:
     merged = _pr_payload()
     merged["state"] = "MERGED"
-    runner = StaticRunner(
-        [CommandResult(("gh",), 0, json.dumps([merged]), "")]
-    )
+    runner = StaticRunner([CommandResult(("gh",), 0, json.dumps([merged]), "")])
 
     inventory = GitHubCliAdapter(runner=runner).list_pull_requests_for_branch(
         "feat/one"
@@ -168,19 +167,13 @@ def test_github_enqueue_delegates_to_native_queue_without_direct_merge() -> None
             }
         }
     }
-    enqueued = {
-        "data": {
-            "enqueuePullRequest": {"mergeQueueEntry": {"id": "MQE_1"}}
-        }
-    }
+    enqueued = {"data": {"enqueuePullRequest": {"mergeQueueEntry": {"id": "MQE_1"}}}}
     queued = json.loads(json.dumps(queue_state))
     queued["data"]["node"]["mergeQueueEntry"] = {"id": "MQE_1"}
     runner = StaticRunner(
         [
             CommandResult(("gh",), 0, json.dumps(_pr_payload()), ""),
-            CommandResult(
-                ("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""
-            ),
+            CommandResult(("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""),
             CommandResult(("gh",), 0, json.dumps([{"type": "merge_queue"}]), ""),
             CommandResult(("gh",), 0, json.dumps(queue_state), ""),
             CommandResult(("gh",), 0, json.dumps(enqueued), ""),
@@ -207,10 +200,10 @@ def test_github_enqueue_refuses_branch_without_merge_queue_rule() -> None:
     runner = StaticRunner(
         [
             CommandResult(("gh",), 0, json.dumps(_pr_payload()), ""),
+            CommandResult(("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""),
             CommandResult(
-                ("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""
+                ("gh",), 0, json.dumps([{"type": "required_status_checks"}]), ""
             ),
-            CommandResult(("gh",), 0, json.dumps([{"type": "required_status_checks"}]), ""),
         ]
     )
 
@@ -237,13 +230,9 @@ def test_github_adapter_observes_native_queue_entry() -> None:
             }
         }
     }
-    runner = StaticRunner(
-        [CommandResult(("gh",), 0, json.dumps(queue_state), "")]
-    )
+    runner = StaticRunner([CommandResult(("gh",), 0, json.dumps(queue_state), "")])
 
-    entry_id = GitHubCliAdapter(runner=runner).merge_queue_entry_id(
-        "PR_kwDOexample"
-    )
+    entry_id = GitHubCliAdapter(runner=runner).merge_queue_entry_id("PR_kwDOexample")
 
     assert entry_id == "MQE_1"
 
@@ -267,9 +256,7 @@ def test_github_enqueue_rejects_body_drift_before_graphql_mutation() -> None:
 def test_github_metadata_update_requires_expected_handback_head() -> None:
     payload = _pr_payload()
     payload["headRefOid"] = "c" * 40
-    runner = StaticRunner(
-        [CommandResult(("gh",), 0, json.dumps(payload), "")]
-    )
+    runner = StaticRunner([CommandResult(("gh",), 0, json.dumps(payload), "")])
 
     with pytest.raises(CompareAndSwapConflict, match="before metadata"):
         GitHubCliAdapter(runner=runner).update_pull_request(

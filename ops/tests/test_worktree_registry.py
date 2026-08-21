@@ -23,6 +23,20 @@ def _scope() -> dict:
     }
 
 
+def _terminal_proof(record: dict, *, pr_number: int = 9) -> dict:
+    return registry.terminal_proof_with_digest(
+        {
+            "schema": registry.TERMINAL_PROOF_SCHEMA,
+            "lane_id": record["external_ids"][0],
+            "pr_number": pr_number,
+            "pr_state": "MERGED",
+            "base_branch": "main",
+            "branch": record["branch"],
+            "head_sha": record["handed_back_sha"],
+        }
+    )
+
+
 def _sealed_handed_back_record(
     path: Path, *, handed_back_sha: str = "b" * 40,
     branch: str = "feat/handed-back",
@@ -358,7 +372,7 @@ def test_owner_change_advances_generation_and_invalidates_handback(
     assert "handback_seal" not in updated
 
 
-def test_valid_handed_back_record_releases_admission_and_remains_queryable(
+def test_valid_handed_back_record_retains_admission_until_pr_is_durable(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     handed_back = _idle_handed_back_record(tmp_path)
@@ -374,8 +388,8 @@ def test_valid_handed_back_record_releases_admission_and_remains_queryable(
         scope=_scope(),
     )
 
-    assert rc == registry.EXIT_OK
-    assert admitted["branch"] == "feat/new-owner"
+    assert rc == registry.EXIT_CLAIMED
+    assert admitted["owners"][0]["branch"] == "feat/handed-back"
     assert state["records"][0] is handed_back
     assert registry.validate_handback_seal(handed_back) == []
 
@@ -435,7 +449,9 @@ def test_reregister_revokes_current_handback_admission_and_retains_receipt(
     assert refused["owners"][0]["branch"] == handed_back["branch"]
 
 
-def test_new_handback_releases_reregistered_claim(tmp_path: Path) -> None:
+def test_new_handback_retains_reregistered_claim_until_pr_is_durable(
+    tmp_path: Path,
+) -> None:
     handed_back = _idle_handed_back_record(tmp_path)
     state = {"schema": registry.SCHEMA, "records": [handed_back]}
 
@@ -474,8 +490,8 @@ def test_new_handback_releases_reregistered_claim(tmp_path: Path) -> None:
         scope=_scope(),
     )
 
-    assert rc == registry.EXIT_OK
-    assert admitted["branch"] == "feat/competitor"
+    assert rc == registry.EXIT_CLAIMED
+    assert admitted["owners"][0]["branch"] == "feat/handed-back"
 
 
 @pytest.mark.parametrize("worktree_state", ("dirty", "head-advanced", "branch-mismatch"))
@@ -665,12 +681,15 @@ def test_resolve_terminal_status_preserves_handed_back_receipt(
     state_path = tmp_path / "registry.json"
     registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [handed_back]})
 
-    assert registry.main([
+    argv = [
         "resolve", "--state", str(state_path), "--branch", "feat/handed-back",
         "--status", terminal_status, "--at", "2026-08-19T01:00:00Z", "--json",
         "--expected-generation", str(handed_back.get("claim_generation", 0)),
         "--expected-head-sha", handed_back["handed_back_sha"],
-    ]) == registry.EXIT_OK
+    ]
+    if terminal_status == "merged":
+        argv += ["--terminal-proof", json.dumps(_terminal_proof(handed_back))]
+    assert registry.main(argv) == registry.EXIT_OK
 
     resolved = registry.load_state(state_path)["records"][0]
     assert resolved["status"] == terminal_status
@@ -731,6 +750,7 @@ def test_published_record_can_transition_to_merged_with_exact_tuple(
         "resolve", "--state", str(state_path), "--branch", record["branch"],
         "--path", record["path"], "--status", "merged",
         "--expected-generation", "2", "--expected-head-sha", record["handed_back_sha"],
+        "--terminal-proof", json.dumps(_terminal_proof(record)),
         "--json",
     ])
 

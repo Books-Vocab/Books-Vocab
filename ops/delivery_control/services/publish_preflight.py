@@ -68,7 +68,9 @@ class PublishPreflightService:
         worktree = self.git.inspect_worktree(registry.path, receipt.base_sha)
         pull_request_inventory = self.github.list_open_pull_requests()
         if pull_request_inventory.problems:
-            reasons = "; ".join(problem.reason for problem in pull_request_inventory.problems)
+            reasons = "; ".join(
+                problem.reason for problem in pull_request_inventory.problems
+            )
             raise PolicyViolation(f"GitHub PR inventory is incomplete: {reasons}")
         branch_matches = tuple(
             item

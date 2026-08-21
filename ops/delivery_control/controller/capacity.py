@@ -59,7 +59,9 @@ def decide_capacity(
 
     if metrics.source_problems:
         add(ControlAction.INSPECT_SOURCES, "source inventory is incomplete")
-    if metrics.published_local_cleanup:
+    if metrics.cleanup_pending:
+        add(ControlAction.CLEANUP_LOCAL, "registry cleanup leases remain pending")
+    elif metrics.published_local_cleanup:
         add(ControlAction.CLEANUP_LOCAL, "published PRs retain local assets")
     if metrics.terminal_cleanup:
         add(ControlAction.CLEANUP_TERMINAL, "merged assets remain")
@@ -91,6 +93,11 @@ def decide_capacity(
             ControlAction.RECOVER_BLOCKERS,
             "solver dispatch is disabled until PR ownership is exact",
         )
+    elif metrics.cleanup_pending:
+        add(
+            ControlAction.THROTTLE_SOLVERS,
+            "solver dispatch is disabled while registry cleanup leases are pending",
+        )
     elif ci_saturated or pr_saturated:
         add(
             ControlAction.THROTTLE_SOLVERS,
@@ -106,9 +113,7 @@ def decide_capacity(
             or cadence.seconds_since_last_merge > policy.max_inter_merge_seconds
         )
         if supply_gap and cadence_slow:
-            desired_new_solvers = min(
-                supply_gap, policy.max_new_solvers_per_cycle
-            )
+            desired_new_solvers = min(supply_gap, policy.max_new_solvers_per_cycle)
             add(
                 ControlAction.DISPATCH_SOLVERS,
                 "durable and active supply cannot sustain the merge SLO",

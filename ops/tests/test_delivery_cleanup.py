@@ -128,12 +128,18 @@ class FakeRegistry:
         expected_branch: str,
         expected_path: str,
         expected_head_sha: str,
+        terminal_proof=None,
     ) -> None:
         assert lane_id == self.record.lane_id
         assert expected_claim_generation == self.record.claim_generation
         assert expected_branch == self.record.branch
         assert Path(expected_path) == self.record.path
         assert expected_head_sha == self.record.handed_back_sha
+        if disposition == "merged":
+            assert terminal_proof is not None
+            assert terminal_proof.pr_number == 9
+        else:
+            assert terminal_proof is None
         self.transitions.append(disposition)
         self.record = replace(self.record, status=disposition)
 
@@ -156,8 +162,14 @@ class FakeGit:
     ) -> None:
         self.snapshot = snapshot or _snapshot(receipt)
         self.worktrees = (
-            PhysicalWorktree(Path(receipt.worktree_path), receipt.head_sha, receipt.branch),
-        ) if has_worktree else ()
+            (
+                PhysicalWorktree(
+                    Path(receipt.worktree_path), receipt.head_sha, receipt.branch
+                ),
+            )
+            if has_worktree
+            else ()
+        )
         self.local_sha = local_sha
         self.remote_sha = remote_sha
         self.local_main = local_main
@@ -228,12 +240,21 @@ class FakeGit:
 
 
 class FakeGitHub:
-    def __init__(self, pull_request: PullRequestSnapshot, receipt: HandbackReceipt) -> None:
+    def __init__(
+        self,
+        pull_request: PullRequestSnapshot,
+        receipt: HandbackReceipt,
+        *,
+        pull_request_readbacks: tuple[PullRequestSnapshot, ...] = (),
+    ) -> None:
         self.pull_request = pull_request
         self.receipt = receipt
+        self.pull_request_readbacks = list(pull_request_readbacks)
 
     def get_pull_request(self, number: int) -> PullRequestSnapshot:
         assert number == self.pull_request.number
+        if self.pull_request_readbacks:
+            self.pull_request = self.pull_request_readbacks.pop(0)
         return self.pull_request
 
     def changed_paths(self, number: int) -> tuple[str, ...]:
@@ -256,7 +277,9 @@ def _service(
     )
 
 
-def test_publish_release_moves_durable_queue_to_github_and_removes_local_assets() -> None:
+def test_publish_release_moves_durable_queue_to_github_and_removes_local_assets() -> (
+    None
+):
     receipt = _receipt()
     registry = FakeRegistry(_record(receipt))
     git = FakeGit(receipt)
@@ -277,9 +300,9 @@ def test_publish_release_blocks_dirty_worktree_before_releasing_claim() -> None:
     git = FakeGit(receipt, snapshot=_snapshot(receipt, clean=False))
 
     with pytest.raises(PolicyViolation, match="worktree changed"):
-        _service(receipt, registry=registry, git=git, state="OPEN").release_after_publish(
-            receipt=receipt, pull_request_number=9
-        )
+        _service(
+            receipt, registry=registry, git=git, state="OPEN"
+        ).release_after_publish(receipt=receipt, pull_request_number=9)
 
     assert registry.transitions == []
     assert git.actions == []
@@ -319,9 +342,9 @@ def test_cleanup_refuses_remote_drift() -> None:
     git = FakeGit(receipt, remote_sha="d" * 40)
 
     with pytest.raises(PolicyViolation, match="remote branch"):
-        _service(receipt, registry=registry, git=git, state="OPEN").release_after_publish(
-            receipt=receipt, pull_request_number=9
-        )
+        _service(
+            receipt, registry=registry, git=git, state="OPEN"
+        ).release_after_publish(receipt=receipt, pull_request_number=9)
     assert not git.actions
 
 
@@ -352,6 +375,119 @@ def test_cleanup_refuses_pr_retargeted_away_from_main(state: str) -> None:
     assert git.actions == []
 
 
+@pytest.mark.parametrize("state", ("OPEN", "MERGED"))
+def test_cleanup_rechecks_pr_after_lease_before_deleting_local_assets(
+    state: str,
+) -> None:
+    receipt = _receipt()
+    registry = FakeRegistry(_record(receipt))
+    git = FakeGit(receipt)
+    exact = _pull_request(receipt, state=state)
+    retargeted = replace(exact, base_branch="release")
+    service = CleanupService(
+        registry_query=registry,
+        registry_command=registry,
+        git_query=git,
+        git_command=git,
+        github=FakeGitHub(
+            exact,
+            receipt,
+            pull_request_readbacks=(exact, retargeted),
+        ),
+    )
+
+    with pytest.raises(PolicyViolation, match="exact handback"):
+        if state == "OPEN":
+            service.release_after_publish(receipt=receipt, pull_request_number=9)
+        else:
+            service.finalize_merged(receipt=receipt, pull_request_number=9)
+
+    assert registry.transitions == ["cleanup_pending"]
+    assert registry.record.status == "cleanup_pending"
+    assert git.actions == []
+    assert git.worktrees and git.local_sha == HEAD and git.remote_sha == HEAD
+
+
+def test_publish_release_rechecks_pr_before_terminal_disposition() -> None:
+    receipt = _receipt()
+    registry = FakeRegistry(_record(receipt))
+    git = FakeGit(receipt)
+    exact = _pull_request(receipt, state="OPEN")
+    retargeted = replace(exact, base_branch="release")
+    service = CleanupService(
+        registry_query=registry,
+        registry_command=registry,
+        git_query=git,
+        git_command=git,
+        github=FakeGitHub(
+            exact,
+            receipt,
+            pull_request_readbacks=(exact, exact, exact, retargeted),
+        ),
+    )
+
+    with pytest.raises(PolicyViolation, match="exact handback"):
+        service.release_after_publish(receipt=receipt, pull_request_number=9)
+
+    assert registry.transitions == ["cleanup_pending"]
+    assert registry.record.status == "cleanup_pending"
+    assert git.actions == ["remove-worktree", "delete-local"]
+    assert git.remote_sha == HEAD
+
+
+def test_merged_cleanup_rechecks_pr_before_remote_delete() -> None:
+    receipt = _receipt()
+    registry = FakeRegistry(_record(receipt, status="published"))
+    git = FakeGit(receipt, has_worktree=False, local_sha=None)
+    exact = _pull_request(receipt, state="MERGED")
+    retargeted = replace(exact, base_branch="release")
+    service = CleanupService(
+        registry_query=registry,
+        registry_command=registry,
+        git_query=git,
+        git_command=git,
+        github=FakeGitHub(
+            exact,
+            receipt,
+            pull_request_readbacks=(exact, exact, retargeted),
+        ),
+    )
+
+    with pytest.raises(PolicyViolation, match="exact handback"):
+        service.finalize_merged(receipt=receipt, pull_request_number=9)
+
+    assert registry.transitions == ["cleanup_pending"]
+    assert registry.record.status == "cleanup_pending"
+    assert git.actions == []
+    assert git.remote_sha == HEAD
+
+
+def test_merged_cleanup_rechecks_pr_before_terminal_disposition() -> None:
+    receipt = _receipt()
+    registry = FakeRegistry(_record(receipt, status="published"))
+    git = FakeGit(receipt, has_worktree=False, local_sha=None)
+    exact = _pull_request(receipt, state="MERGED")
+    retargeted = replace(exact, base_branch="release")
+    service = CleanupService(
+        registry_query=registry,
+        registry_command=registry,
+        git_query=git,
+        git_command=git,
+        github=FakeGitHub(
+            exact,
+            receipt,
+            pull_request_readbacks=(exact, exact, exact, retargeted),
+        ),
+    )
+
+    with pytest.raises(PolicyViolation, match="exact handback"):
+        service.finalize_merged(receipt=receipt, pull_request_number=9)
+
+    assert registry.transitions == ["cleanup_pending"]
+    assert registry.record.status == "cleanup_pending"
+    assert git.actions == ["delete-remote"]
+
+
 @pytest.mark.parametrize(
     "worktrees",
     (
@@ -373,9 +509,9 @@ def test_cleanup_refuses_non_unique_sealed_path_branch_binding(
     git.worktrees = worktrees
 
     with pytest.raises(PolicyViolation, match="sealed worktree path and branch"):
-        _service(receipt, registry=registry, git=git, state="OPEN").release_after_publish(
-            receipt=receipt, pull_request_number=9
-        )
+        _service(
+            receipt, registry=registry, git=git, state="OPEN"
+        ).release_after_publish(receipt=receipt, pull_request_number=9)
 
     assert registry.transitions == []
     assert git.actions == []
@@ -388,9 +524,9 @@ def test_cleanup_result_readback_refuses_rebound_sealed_path() -> None:
     git = FakeGit(receipt, replacement_worktree_after_remove=rebound)
 
     with pytest.raises(PolicyViolation, match="sealed worktree path and branch"):
-        _service(receipt, registry=registry, git=git, state="OPEN").release_after_publish(
-            receipt=receipt, pull_request_number=9
-        )
+        _service(
+            receipt, registry=registry, git=git, state="OPEN"
+        ).release_after_publish(receipt=receipt, pull_request_number=9)
 
     assert registry.transitions == ["cleanup_pending", "published"]
     assert git.actions == ["remove-worktree", "delete-local"]
@@ -423,9 +559,7 @@ def test_main_sync_noop_refuses_fresh_origin_main_drift() -> None:
     )
 
     with pytest.raises(CompareAndSwapConflict, match="origin/main changed"):
-        MainSyncService(
-            canonical_path=Path("/repo"), query=git, command=git
-        ).sync()
+        MainSyncService(canonical_path=Path("/repo"), query=git, command=git).sync()
 
     assert git.actions == []
 
@@ -441,9 +575,7 @@ def test_main_sync_fast_forward_refuses_fresh_origin_main_drift() -> None:
     )
 
     with pytest.raises(CompareAndSwapConflict, match="origin/main changed"):
-        MainSyncService(
-            canonical_path=Path("/repo"), query=git, command=git
-        ).sync()
+        MainSyncService(canonical_path=Path("/repo"), query=git, command=git).sync()
 
     assert git.actions == ["sync-main"]
     assert git.local_main == expected_origin
@@ -463,6 +595,4 @@ def test_main_sync_refuses_wrong_or_dirty_canonical_checkout(
     )
 
     with pytest.raises(PolicyViolation, match="canonical checkout"):
-        MainSyncService(
-            canonical_path=Path("/repo"), query=git, command=git
-        ).sync()
+        MainSyncService(canonical_path=Path("/repo"), query=git, command=git).sync()

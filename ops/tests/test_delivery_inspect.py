@@ -27,8 +27,13 @@ from delivery_control.services.publish import render_pull_request_body
 
 
 class FakeRegistry:
-    def __init__(self, records: tuple[RegistrySnapshot, ...]) -> None:
-        self.inventory = RegistryInventory(records=records)
+    def __init__(
+        self,
+        records: tuple[RegistrySnapshot, ...],
+        *,
+        problems: tuple[InventoryProblem, ...] = (),
+    ) -> None:
+        self.inventory = RegistryInventory(records=records, problems=problems)
 
     def list_records(self) -> RegistryInventory:
         return self.inventory
@@ -216,9 +221,7 @@ def test_inspect_service_requires_exact_registry_physical_pr_and_check_tuple(
 def test_inspect_service_excludes_clean_canonical_main_from_lane_inventory(
     tmp_path: Path,
 ) -> None:
-    main = PhysicalWorktree(
-        path=tmp_path / "repo", head_sha="a" * 40, branch="main"
-    )
+    main = PhysicalWorktree(path=tmp_path / "repo", head_sha="a" * 40, branch="main")
     service = InspectService(
         registry=FakeRegistry(()),
         git=FakeGit((main,), {}),
@@ -401,3 +404,38 @@ def test_inspect_surfaces_github_inventory_problems(tmp_path: Path) -> None:
         runtime=FakeRuntime(),
     )
     assert problem in service.inspect().source_problems
+
+
+def test_inspect_surfaces_registry_inventory_problems(tmp_path: Path) -> None:
+    problem = InventoryProblem("registry", "record[0]", "malformed")
+    service = InspectService(
+        registry=FakeRegistry((), problems=(problem,)),
+        git=FakeGit((), {}),
+        github=FakeGitHub(()),
+        runtime=FakeRuntime(),
+    )
+
+    assert problem in service.inspect().source_problems
+
+
+def test_inspect_turns_unknown_registry_status_into_source_problem(
+    tmp_path: Path,
+) -> None:
+    unknown = _record(tmp_path / "lane", status="legacy-migrating")
+    service = InspectService(
+        registry=FakeRegistry((unknown,)),
+        git=FakeGit((), {}),
+        github=FakeGitHub(()),
+        runtime=FakeRuntime(),
+    )
+
+    inventory = service.inspect()
+
+    assert inventory.lanes == ()
+    assert inventory.source_problems == (
+        InventoryProblem(
+            "registry",
+            "#1",
+            "unsupported registry status: 'legacy-migrating'",
+        ),
+    )

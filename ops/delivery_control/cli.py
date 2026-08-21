@@ -121,8 +121,10 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
 def _result_exit_code(command: str, result: object) -> int:
     if command != "dogfood-preflight":
         return 0
-    ready = result.get("ready") if isinstance(result, Mapping) else getattr(
-        result, "ready", None
+    ready = (
+        result.get("ready")
+        if isinstance(result, Mapping)
+        else getattr(result, "ready", None)
     )
     return 0 if ready is True else 2
 

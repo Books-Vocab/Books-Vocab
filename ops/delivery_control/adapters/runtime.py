@@ -29,9 +29,7 @@ class RuntimeStatusMap:
             type(key) is not str or type(value) is not str
             for key, value in payload.items()
         ):
-            raise PolicyViolation(
-                "runtime status file must map thread IDs to states"
-            )
+            raise PolicyViolation("runtime status file must map thread IDs to states")
         return cls(payload)
 
     def owner_status(self, thread_id: str) -> str:

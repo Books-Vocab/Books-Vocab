@@ -89,9 +89,7 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
         def list_open_pull_requests(self) -> PullRequestInventory:
             return PullRequestInventory(records=())
 
-        def list_pull_requests_for_branch(
-            self, branch: str
-        ) -> PullRequestInventory:
+        def list_pull_requests_for_branch(self, branch: str) -> PullRequestInventory:
             return PullRequestInventory(records=())
 
         def find_open_pull_request(self, branch: str) -> PullRequestSnapshot | None:
@@ -166,6 +164,7 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
             expected_branch: str,
             expected_path: str,
             expected_head_sha: str,
+            terminal_proof=None,
         ) -> None:
             return None
 

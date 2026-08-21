@@ -42,9 +42,7 @@ def _receipt(*, base_sha: str = BASE) -> HandbackReceipt:
     )
 
 
-def _registry(
-    receipt: HandbackReceipt, **changes: object
-) -> RegistrySnapshot:
+def _registry(receipt: HandbackReceipt, **changes: object) -> RegistrySnapshot:
     values: dict[str, object] = {
         "lane_id": receipt.lane_id,
         "branch": receipt.branch,

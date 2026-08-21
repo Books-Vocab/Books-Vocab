@@ -7,8 +7,13 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from worktree_registry_core.lifecycle import (
+    TERMINAL_PROOF_SCHEMA,
+    terminal_proof_with_digest,
+)
+
 from ..domain.errors import CompareAndSwapConflict, InvalidScope
-from ..domain.models import Scope
+from ..domain.models import MergedPullRequestProof, Scope
 from ..domain.observations import (
     InventoryProblem,
     RegistryCollisionClaim,
@@ -22,6 +27,13 @@ from .subprocess_runner import SubprocessCommandRunner
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _GREEN = {"pass", "passed", "green", "ok", "success"}
+_REGISTRY_STATUSES = {
+    "active",
+    "cleanup_pending",
+    "published",
+    "merged",
+    "abandoned",
+}
 
 
 def _canonical_json(value: object) -> bytes:
@@ -102,8 +114,66 @@ class RegistryCliAdapter:
         return payload
 
     @staticmethod
+    def _reported_problems(
+        payload: Mapping[str, Any],
+    ) -> tuple[InventoryProblem, ...]:
+        if "problems" not in payload:
+            return ()
+        raw_problems = payload["problems"]
+        if not isinstance(raw_problems, list):
+            return (
+                InventoryProblem(
+                    "registry",
+                    "problems",
+                    "registry problems field must be a list",
+                ),
+            )
+        problems: list[InventoryProblem] = []
+        for index, raw in enumerate(raw_problems):
+            identity = raw.get("identity") if isinstance(raw, Mapping) else None
+            reason = raw.get("reason") if isinstance(raw, Mapping) else None
+            if (
+                isinstance(identity, str)
+                and identity.strip()
+                and isinstance(reason, str)
+                and reason.strip()
+            ):
+                problems.append(
+                    InventoryProblem(
+                        "registry",
+                        identity.strip(),
+                        reason.strip(),
+                    )
+                )
+                continue
+            kind = raw.get("kind") if isinstance(raw, Mapping) else None
+            record_index = raw.get("index") if isinstance(raw, Mapping) else None
+            if isinstance(kind, str) and kind.strip():
+                problem_identity = (
+                    f"record[{record_index}]"
+                    if type(record_index) is int and record_index >= 0
+                    else f"problem[{index}]"
+                )
+                detail = kind.strip()
+                if isinstance(reason, str) and reason.strip():
+                    detail = f"{detail}: {reason.strip()}"
+                problems.append(InventoryProblem("registry", problem_identity, detail))
+                continue
+            problems.append(
+                InventoryProblem(
+                    "registry",
+                    f"problem[{index}]",
+                    "registry problem entry is malformed",
+                )
+            )
+        return tuple(problems)
+
+    @staticmethod
     def _record(payload: Mapping[str, Any]) -> RegistrySnapshot:
         branch = str(payload["branch"])
+        status = payload.get("status")
+        if not isinstance(status, str) or status not in _REGISTRY_STATUSES:
+            raise ValueError(f"unsupported registry status: {status!r}")
         path = Path(str(payload["path"])).expanduser()
         if not path.is_absolute():
             raise ValueError("registry path must be absolute")
@@ -138,7 +208,7 @@ class RegistryCliAdapter:
             lane_id=lane_id,
             branch=branch,
             path=path.resolve(),
-            status=str(payload["status"]),
+            status=status,
             scope=scope,
             base_sha=base_sha,
             claim_generation=claim_generation,
@@ -167,7 +237,7 @@ class RegistryCliAdapter:
     def list_records(self) -> RegistryInventory:
         payload = self._list_payload()
         records: list[RegistrySnapshot] = []
-        problems: list[InventoryProblem] = []
+        problems = list(self._reported_problems(payload))
         for index, raw in enumerate(payload["records"]):
             if not isinstance(raw, Mapping):
                 problems.append(
@@ -203,7 +273,7 @@ class RegistryCliAdapter:
     def list_collision_claims(self) -> RegistryCollisionInventory:
         payload = self._list_payload()
         records: list[RegistryCollisionClaim] = []
-        problems: list[InventoryProblem] = []
+        problems = list(self._reported_problems(payload))
         for index, raw in enumerate(payload["records"]):
             if not isinstance(raw, Mapping):
                 problems.append(
@@ -257,6 +327,8 @@ class RegistryCliAdapter:
             if not isinstance(raw, Mapping) or raw.get("branch") != branch:
                 continue
             external_ids = raw.get("external_ids")
+            if external_ids is not None and not isinstance(external_ids, list):
+                raise AdapterPayloadError("exact registry claim is malformed")
             raw_lane = (
                 str(external_ids[0])
                 if isinstance(external_ids, list) and external_ids
@@ -265,15 +337,24 @@ class RegistryCliAdapter:
             if raw_lane != lane_id:
                 continue
             try:
-                raw_path = Path(str(raw["path"])).expanduser()
+                raw_path_value = raw["path"]
+                if not isinstance(raw_path_value, str) or not raw_path_value:
+                    raise ValueError("registry path must be non-empty text")
+                raw_path = Path(raw_path_value).expanduser()
             except (KeyError, TypeError, ValueError) as error:
-                raise AdapterPayloadError("exact registry claim path is malformed") from error
-            if not raw_path.is_absolute() or raw_path.resolve() != expected_path:
+                raise AdapterPayloadError(
+                    "exact registry claim path is malformed"
+                ) from error
+            if not raw_path.is_absolute():
+                raise AdapterPayloadError("exact registry claim path is malformed")
+            if raw_path.resolve() != expected_path:
                 continue
             try:
                 record = self._record(raw)
             except (KeyError, TypeError, ValueError, InvalidScope) as error:
-                raise AdapterPayloadError("exact registry claim is malformed") from error
+                raise AdapterPayloadError(
+                    "exact registry claim is malformed"
+                ) from error
             if record.claim_generation == claim_generation:
                 matches.append(record)
         if len(matches) > 1:
@@ -289,6 +370,7 @@ class RegistryCliAdapter:
         expected_branch: str,
         expected_path: str,
         expected_head_sha: str,
+        terminal_proof: MergedPullRequestProof | None = None,
     ) -> None:
         argv = self._argv(
             "resolve",
@@ -304,6 +386,23 @@ class RegistryCliAdapter:
             "--expected-head-sha",
             expected_head_sha,
         )
+        if terminal_proof is not None:
+            proof_payload = terminal_proof_with_digest(
+                {
+                    "schema": TERMINAL_PROOF_SCHEMA,
+                    "lane_id": terminal_proof.lane_id,
+                    "pr_number": terminal_proof.pr_number,
+                    "pr_state": terminal_proof.pr_state,
+                    "base_branch": terminal_proof.base_branch,
+                    "branch": terminal_proof.branch,
+                    "head_sha": terminal_proof.head_sha,
+                }
+            )
+            argv = (
+                *argv,
+                "--terminal-proof",
+                json.dumps(proof_payload, sort_keys=True),
+            )
         result = self.runner.run(argv)
         if result.exit_code != 0:
             raise CompareAndSwapConflict(

@@ -123,6 +123,10 @@ run_one() {
     worktree)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_worktree_registry.py \
+        ops/tests/test_worktree_registry_admission.py \
+        ops/tests/test_worktree_registry_handback.py \
+        ops/tests/test_worktree_registry_lifecycle.py \
+        ops/tests/test_worktree_registry_maintenance.py \
         ops/tests/test_worktree_orchestrate.py \
         ops/tests/test_task_registry.py \
         ops/tests/test_lock_wait.py

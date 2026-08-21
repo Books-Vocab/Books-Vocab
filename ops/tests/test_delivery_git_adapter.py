@@ -9,6 +9,7 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
+from delivery_control.adapters.errors import AdapterCommandError
 from delivery_control.adapters.git_cli import GitCliAdapter
 from delivery_control.domain.errors import CompareAndSwapConflict
 from delivery_control.domain.observations import (
@@ -74,6 +75,24 @@ def test_git_adapter_reads_canonical_checkout_without_mutation(tmp_path: Path) -
     assert dirty.head_sha == clean.head_sha
 
 
+def test_git_adapter_distinguishes_existing_and_missing_local_branches(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test")
+    (repo / "tracked.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "tracked.txt")
+    _git(repo, "commit", "-qm", "base")
+    head = _git(repo, "rev-parse", "HEAD")
+    adapter = GitCliAdapter(repo=repo)
+
+    assert adapter.local_branch_sha("main") == head
+    assert adapter.local_branch_sha("feat/missing") is None
+
+
 def test_git_new_remote_branch_push_uses_absent_ref_lease(tmp_path: Path) -> None:
     head = "b" * 40
     runner = StaticRunner(
@@ -104,8 +123,9 @@ def test_git_local_branch_delete_uses_atomic_expected_old_sha(tmp_path: Path) ->
     runner = StaticRunner(
         [
             CommandResult(("git",), 0, f"{head}\n", ""),
+            CommandResult(("git",), 0, f"{head}\n", ""),
             CommandResult(("git",), 0, "", ""),
-            CommandResult(("git",), 128, "", "unknown revision"),
+            CommandResult(("git",), 1, "", ""),
         ]
     )
     adapter = GitCliAdapter(repo=tmp_path, runner=runner)
@@ -118,13 +138,174 @@ def test_git_local_branch_delete_uses_atomic_expected_old_sha(tmp_path: Path) ->
     )
 
 
+def test_git_root_commit_is_the_only_absent_parent_state(tmp_path: Path) -> None:
+    head = "b" * 40
+    base = "a" * 40
+    runner = StaticRunner(
+        [
+            CommandResult(("git",), 0, f"{head}\n", ""),
+            CommandResult(("git",), 0, "feat/one\n", ""),
+            CommandResult(("git",), 0, f"{head}\n", ""),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), 0, "", ""),
+        ]
+    )
+
+    snapshot = GitCliAdapter(repo=tmp_path, runner=runner).inspect_worktree(
+        tmp_path, base
+    )
+
+    assert snapshot.parent_sha == base
+
+
+@pytest.mark.parametrize(
+    ("exit_code", "stderr"),
+    (
+        (128, "fatal: permission denied"),
+        (128, "fatal: loose object is corrupt"),
+        (1, "runner unavailable"),
+    ),
+)
+def test_git_parent_readback_propagates_source_failures(
+    tmp_path: Path, exit_code: int, stderr: str
+) -> None:
+    head = "b" * 40
+    runner = StaticRunner(
+        [
+            CommandResult(("git",), 0, f"{head}\n", ""),
+            CommandResult(("git",), 0, "feat/one\n", ""),
+            CommandResult(("git",), exit_code, "", stderr),
+        ]
+    )
+
+    with pytest.raises(AdapterCommandError, match=stderr.removeprefix("fatal: ")):
+        GitCliAdapter(repo=tmp_path, runner=runner).inspect_worktree(tmp_path, "a" * 40)
+
+
+def test_git_local_branch_reports_only_missing_exact_ref_as_absent(
+    tmp_path: Path,
+) -> None:
+    runner = StaticRunner([CommandResult(("git",), 1, "", "")])
+
+    assert (
+        GitCliAdapter(repo=tmp_path, runner=runner).local_branch_sha("feat/missing")
+        is None
+    )
+    assert runner.calls[0][-4:] == (
+        "show-ref",
+        "--verify",
+        "--quiet",
+        "refs/heads/feat/missing",
+    )
+
+
+@pytest.mark.parametrize(
+    ("exit_code", "stderr"),
+    (
+        (128, "fatal: permission denied"),
+        (128, "fatal: loose object is corrupt"),
+        (1, "runner unavailable"),
+    ),
+)
+def test_git_local_branch_readback_propagates_source_failures(
+    tmp_path: Path, exit_code: int, stderr: str
+) -> None:
+    runner = StaticRunner([CommandResult(("git",), exit_code, "", stderr)])
+
+    with pytest.raises(AdapterCommandError, match=stderr.removeprefix("fatal: ")):
+        GitCliAdapter(repo=tmp_path, runner=runner).local_branch_sha("feat/one")
+
+
+def test_git_local_branch_readback_propagates_corrupt_referenced_object(
+    tmp_path: Path,
+) -> None:
+    head = "b" * 40
+    runner = StaticRunner(
+        [
+            CommandResult(("git",), 0, f"{head}\n", ""),
+            CommandResult(("git",), 128, "", "fatal: loose object is corrupt"),
+        ]
+    )
+
+    with pytest.raises(AdapterCommandError, match="loose object is corrupt"):
+        GitCliAdapter(repo=tmp_path, runner=runner).local_branch_sha("feat/one")
+
+
+@pytest.mark.parametrize(
+    ("exit_code", "stderr"),
+    (
+        (128, "fatal: permission denied"),
+        (128, "fatal: loose object is corrupt"),
+        (1, "runner unavailable"),
+    ),
+)
+def test_git_local_branch_delete_propagates_failed_absence_readback(
+    tmp_path: Path, exit_code: int, stderr: str
+) -> None:
+    head = "b" * 40
+    runner = StaticRunner(
+        [
+            CommandResult(("git",), 0, f"{head}\n", ""),
+            CommandResult(("git",), 0, f"{head}\n", ""),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), exit_code, "", stderr),
+        ]
+    )
+
+    with pytest.raises(AdapterCommandError, match=stderr.removeprefix("fatal: ")):
+        GitCliAdapter(repo=tmp_path, runner=runner).delete_local_branch(
+            "feat/one", expected_head_sha=head
+        )
+
+
+def test_git_worktree_remove_is_idempotent_only_when_inventory_is_absent(
+    tmp_path: Path,
+) -> None:
+    runner = StaticRunner([CommandResult(("git",), 0, "", "")])
+
+    GitCliAdapter(repo=tmp_path, runner=runner).remove_worktree(
+        tmp_path / "missing", expected_head_sha="b" * 40
+    )
+
+    assert len(runner.calls) == 1
+    assert runner.calls[0][-3:] == ("worktree", "list", "--porcelain")
+
+
+@pytest.mark.parametrize(
+    ("exit_code", "stderr"),
+    (
+        (128, "fatal: permission denied"),
+        (128, "fatal: loose object is corrupt"),
+        (1, "runner unavailable"),
+    ),
+)
+def test_git_worktree_remove_propagates_failed_absence_readback(
+    tmp_path: Path, exit_code: int, stderr: str
+) -> None:
+    head = "b" * 40
+    worktree = tmp_path / "worktree"
+    porcelain = f"worktree {worktree}\nHEAD {head}\nbranch refs/heads/feat/one\n"
+    runner = StaticRunner(
+        [
+            CommandResult(("git",), 0, porcelain, ""),
+            CommandResult(("git",), 0, f"{head}\n", ""),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), exit_code, "", stderr),
+        ]
+    )
+
+    with pytest.raises(AdapterCommandError, match=stderr.removeprefix("fatal: ")):
+        GitCliAdapter(repo=tmp_path, runner=runner).remove_worktree(
+            worktree, expected_head_sha=head
+        )
+
+
 def test_git_remote_branch_delete_uses_exact_lease(tmp_path: Path) -> None:
     head = "b" * 40
     runner = StaticRunner(
         [
-            CommandResult(
-                ("git",), 0, f"{head}\trefs/heads/feat/one\n", ""
-            ),
+            CommandResult(("git",), 0, f"{head}\trefs/heads/feat/one\n", ""),
             CommandResult(("git",), 0, "", ""),
             CommandResult(("git",), 0, "", ""),
         ]
@@ -136,6 +317,32 @@ def test_git_remote_branch_delete_uses_exact_lease(tmp_path: Path) -> None:
     push = next(call for call in runner.calls if "push" in call)
     assert f"--force-with-lease=refs/heads/feat/one:{head}" in push
     assert ":refs/heads/feat/one" in push
+
+
+@pytest.mark.parametrize(
+    ("exit_code", "stderr"),
+    (
+        (128, "fatal: permission denied"),
+        (128, "fatal: loose object is corrupt"),
+        (1, "runner unavailable"),
+    ),
+)
+def test_git_remote_branch_delete_propagates_failed_absence_readback(
+    tmp_path: Path, exit_code: int, stderr: str
+) -> None:
+    head = "b" * 40
+    runner = StaticRunner(
+        [
+            CommandResult(("git",), 0, f"{head}\trefs/heads/feat/one\n", ""),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), exit_code, "", stderr),
+        ]
+    )
+
+    with pytest.raises(AdapterCommandError, match=stderr.removeprefix("fatal: ")):
+        GitCliAdapter(repo=tmp_path, runner=runner).delete_remote_branch(
+            "feat/one", expected_head_sha=head
+        )
 
 
 def test_git_push_lease_failure_is_a_compare_and_swap_conflict(tmp_path: Path) -> None:

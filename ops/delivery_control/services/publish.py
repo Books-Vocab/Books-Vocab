@@ -130,7 +130,9 @@ def parse_pull_request_body(body: str) -> HandbackReceipt:
     try:
         payload = json.loads(body[start:end])
     except json.JSONDecodeError as error:
-        raise PolicyViolation("PR body typed delivery receipt is invalid JSON") from error
+        raise PolicyViolation(
+            "PR body typed delivery receipt is invalid JSON"
+        ) from error
     if not isinstance(payload, dict):
         raise PolicyViolation("PR body typed delivery receipt must be an object")
     try:
@@ -139,9 +141,7 @@ def parse_pull_request_body(body: str) -> HandbackReceipt:
         raise PolicyViolation("PR body typed delivery receipt is invalid") from error
 
 
-def validate_pull_request_body(
-    body: str, *, expected_head_sha: str
-) -> HandbackReceipt:
+def validate_pull_request_body(body: str, *, expected_head_sha: str) -> HandbackReceipt:
     receipt = parse_pull_request_body(body)
     if receipt.head_sha != expected_head_sha:
         raise PolicyViolation("PR body receipt differs from the exact PR HEAD")

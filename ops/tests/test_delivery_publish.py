@@ -318,9 +318,9 @@ def test_readiness_validator_binds_receipt_to_exact_pr_head() -> None:
     receipt = _receipt()
     body = render_pull_request_body(receipt)
 
-    assert validate_pull_request_body(
-        body, expected_head_sha=receipt.head_sha
-    ) == receipt
+    assert (
+        validate_pull_request_body(body, expected_head_sha=receipt.head_sha) == receipt
+    )
     with pytest.raises(PolicyViolation, match="exact PR HEAD"):
         validate_pull_request_body(body, expected_head_sha="f" * 40)
 
@@ -537,7 +537,9 @@ def test_preflight_blocks_incomplete_registry_collision_inventory() -> None:
     assert not git.push_calls
 
 
-def test_preflight_allows_disjoint_collision_claim_with_incomplete_lifecycle_data() -> None:
+def test_preflight_allows_disjoint_collision_claim_with_incomplete_lifecycle_data() -> (
+    None
+):
     receipt = _receipt()
     disjoint = _registry(
         receipt,

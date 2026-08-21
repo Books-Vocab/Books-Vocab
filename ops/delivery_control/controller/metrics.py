@@ -16,6 +16,7 @@ class PipelineMetrics:
     active_development: int
     handbacks_publishable: int
     published_local_cleanup: int
+    cleanup_pending: int
     open_prs: int
     unmapped_open_prs: int
     duplicate_pr_mappings: int
@@ -70,10 +71,12 @@ def measure_pipeline(inventory: DeliveryInventory) -> PipelineMetrics:
         active_development=states.count(LaneState.ACTIVE_DEVELOPMENT),
         handbacks_publishable=states.count(LaneState.HANDBACK_PUBLISHABLE),
         published_local_cleanup=states.count(LaneState.PUBLISHED_LOCAL_CLEANUP),
-        open_prs=len(mapped_pull_request_numbers),
-        unmapped_open_prs=len(
-            all_pull_request_numbers - mapped_pull_request_numbers
+        cleanup_pending=sum(
+            lane.registry is not None and lane.registry.status == "cleanup_pending"
+            for lane in inventory.lanes
         ),
+        open_prs=len(mapped_pull_request_numbers),
+        unmapped_open_prs=len(all_pull_request_numbers - mapped_pull_request_numbers),
         duplicate_pr_mappings=states.count(LaneState.BLOCKED_DUPLICATE),
         required_green=states.count(LaneState.READY_TO_QUEUE),
         required_failed=states.count(LaneState.REQUIRED_FAILED),
@@ -109,8 +112,7 @@ def measure_merge_cadence(
         )
     )
     intervals = tuple(
-        (right - left).total_seconds()
-        for left, right in pairwise(selected)
+        (right - left).total_seconds() for left, right in pairwise(selected)
     )
     seconds = int(window.total_seconds())
     rate = len(selected) * 3600 / seconds

@@ -84,10 +84,11 @@ class GitCliAdapter:
         path = path.resolve()
         head_sha = self._git("rev-parse", "--verify", "HEAD^{commit}", cwd=path)
         branch = self._git("branch", "--show-current", cwd=path) or None
-        try:
-            parent_sha = self._git("rev-parse", "--verify", "HEAD^1^{commit}", cwd=path)
-        except AdapterCommandError:
-            parent_sha = base_sha
+        parent_row = self._git("rev-list", "--parents", "-n", "1", head_sha, cwd=path)
+        parent_fields = parent_row.split()
+        if not parent_fields or parent_fields[0] != head_sha:
+            raise AdapterPayloadError("git parent readback differs from worktree HEAD")
+        parent_sha = parent_fields[1] if len(parent_fields) > 1 else base_sha
         status = self._git(
             "status", "--porcelain=v1", "--untracked-files=all", cwd=path
         )
@@ -138,10 +139,28 @@ class GitCliAdapter:
 
     def local_branch_sha(self, branch: str) -> str | None:
         ref = f"refs/heads/{branch}"
-        try:
-            return self._git("rev-parse", "--verify", f"{ref}^{{commit}}")
-        except AdapterCommandError:
+        argv = (
+            "git",
+            "-C",
+            str(self.repo),
+            "show-ref",
+            "--verify",
+            "--quiet",
+            ref,
+        )
+        result = self.runner.run(argv)
+        if (
+            result.exit_code == 1
+            and not result.stdout.strip()
+            and not result.stderr.strip()
+        ):
             return None
+        if result.exit_code != 0:
+            raise AdapterCommandError(result)
+        commit_sha = self._git("rev-parse", "--verify", f"{ref}^{{commit}}")
+        if not commit_sha or len(commit_sha.splitlines()) != 1:
+            raise AdapterPayloadError(f"local branch {ref} did not resolve uniquely")
+        return commit_sha
 
     def local_main_sha(self) -> str:
         return self._git("rev-parse", "--verify", "main^{commit}")
@@ -197,26 +216,34 @@ class GitCliAdapter:
         path = path.resolve()
         if path == self.repo:
             raise CompareAndSwapConflict("refusing to remove canonical checkout")
+        matches = tuple(
+            item for item in self.list_worktrees() if item.path.resolve() == path
+        )
+        if not matches:
+            return
+        if len(matches) != 1:
+            raise AdapterPayloadError("worktree path did not resolve uniquely")
+        if matches[0].head_sha != expected_head_sha:
+            raise CompareAndSwapConflict("worktree changed before cleanup")
         head = self._git("rev-parse", "--verify", "HEAD^{commit}", cwd=path)
         dirty = self._git("status", "--porcelain=v1", "--untracked-files=all", cwd=path)
         if head != expected_head_sha or dirty:
             raise CompareAndSwapConflict("worktree changed before cleanup")
         self._git("worktree", "remove", "--", str(path))
+        if any(item.path.resolve() == path for item in self.list_worktrees()):
+            raise CompareAndSwapConflict("worktree still exists after cleanup")
 
     def delete_local_branch(self, branch: str, *, expected_head_sha: str) -> None:
         if branch == "main":
             raise CompareAndSwapConflict("refusing to delete local main")
         ref = f"refs/heads/{branch}"
-        try:
-            current = self._git("rev-parse", "--verify", f"{ref}^{{commit}}")
-        except AdapterCommandError:
+        current = self.local_branch_sha(branch)
+        if current is None:
             return
         if current != expected_head_sha:
             raise CompareAndSwapConflict("local branch changed before cleanup")
         self._git("update-ref", "-d", ref, expected_head_sha)
-        try:
-            self._git("rev-parse", "--verify", f"{ref}^{{commit}}")
-        except AdapterCommandError:
+        if self.local_branch_sha(branch) is None:
             return
         raise CompareAndSwapConflict("local branch still exists after cleanup")
 

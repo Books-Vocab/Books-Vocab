@@ -5,10 +5,14 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
+from delivery_control.adapters.errors import AdapterPayloadError
 from delivery_control.adapters.registry import RegistryCliAdapter
+from delivery_control.domain.models import MergedPullRequestProof
 from delivery_control.domain.observations import (
     InventoryProblem,
 )
@@ -23,6 +27,44 @@ class StaticRunner:
     def run(self, argv: tuple[str, ...], *, cwd: Path | None = None) -> CommandResult:
         self.calls.append(argv)
         return self.responses.pop(0)
+
+
+def test_registry_adapter_attaches_typed_terminal_proof_for_merged() -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("registry",),
+                0,
+                json.dumps({"status": "merged", "records": [{}]}),
+                "",
+            )
+        ]
+    )
+    adapter = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    )
+
+    adapter.resolve(
+        "ISSUE-1",
+        "merged",
+        expected_claim_generation=3,
+        expected_branch="feat/one",
+        expected_path="/repo/one",
+        expected_head_sha="b" * 40,
+        terminal_proof=MergedPullRequestProof(
+            lane_id="ISSUE-1",
+            pr_number=42,
+            branch="feat/one",
+            head_sha="b" * 40,
+        ),
+    )
+
+    argv = runner.calls[0]
+    proof = json.loads(argv[argv.index("--terminal-proof") + 1])
+    assert proof["schema"] == "kg.worktree.terminal-proof.v1"
+    assert proof["pr_number"] == 42
+    assert proof["base_branch"] == "main"
+    assert len(proof["digest"]) == 64
 
 
 def test_registry_adapter_targets_explicit_state_file(tmp_path: Path) -> None:
@@ -82,6 +124,57 @@ def test_registry_adapter_surfaces_malformed_records_without_hiding_valid_ones(
     assert [record.lane_id for record in inventory.records] == ["#1"]
     assert inventory.records[0].claim_generation == 4
     assert inventory.problems[0].identity == "feat/bad"
+
+
+def test_registry_adapter_surfaces_reported_problems_and_unknown_statuses(
+    tmp_path: Path,
+) -> None:
+    unknown = {
+        "branch": "feat/unknown",
+        "path": str(tmp_path / "unknown"),
+        "status": "legacy-migrating",
+        "external_ids": ["#unknown"],
+        "base": "a" * 40,
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"operation": "modify", "path": "ops/a.py"}],
+        },
+        "claim_generation": 1,
+    }
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("registry",),
+                0,
+                json.dumps(
+                    {
+                        "records": [unknown],
+                        "problems": [
+                            {
+                                "kind": "registry-record-not-object",
+                                "index": 0,
+                            }
+                        ],
+                    }
+                ),
+                "",
+            )
+        ]
+    )
+
+    inventory = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    ).list_records()
+
+    assert inventory.records == ()
+    assert inventory.problems == (
+        InventoryProblem("registry", "record[0]", "registry-record-not-object"),
+        InventoryProblem(
+            "registry",
+            "feat/unknown",
+            "unsupported registry status: 'legacy-migrating'",
+        ),
+    )
 
 
 def test_registry_adapter_fails_closed_on_unusable_terminal_history(
@@ -215,6 +308,41 @@ def test_exact_claim_query_ignores_unrelated_malformed_history(
     assert record is not None
     assert record.status == "cleanup_pending"
     assert record.claim_generation == 7
+
+
+def test_exact_claim_query_rejects_malformed_target_but_ignores_unrelated_history(
+    tmp_path: Path,
+) -> None:
+    unrelated = {"branch": "feat/old", "status": "merged"}
+    malformed_target = {
+        "branch": "feat/exact",
+        "path": "relative/exact",
+        "status": "cleanup_pending",
+        "external_ids": ["#exact"],
+        "claim_generation": 7,
+    }
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("registry",),
+                0,
+                json.dumps({"records": [unrelated, malformed_target]}),
+                "",
+            )
+        ]
+    )
+
+    with pytest.raises(
+        AdapterPayloadError, match="exact registry claim path is malformed"
+    ):
+        RegistryCliAdapter(
+            script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+        ).find_exact_claim(
+            lane_id="#exact",
+            branch="feat/exact",
+            path=tmp_path / "exact",
+            claim_generation=7,
+        )
 
 
 def test_registry_adapter_exposes_exact_legacy_handback_transport_fields(

@@ -180,6 +180,11 @@ def cmd_open(args: argparse.Namespace) -> int:
               as_json=args.json, human="✗ open refused: slug must be kebab-case")
         return EXIT_USAGE
     branch = f"{_intent_type(args.intent, args.type)}/{args.slug}"
+    state_path = (
+        Path(args.state).expanduser().resolve()
+        if args.state
+        else registry.default_state_path()
+    )
     worktree = _path(args.path) if args.path else ROOT / ".claude" / "worktrees" / args.slug
     if worktree.exists():
         _emit({"schema": SCHEMA, "action": "refused", "reason": f"path exists: {worktree}"},
@@ -214,7 +219,7 @@ def cmd_open(args: argparse.Namespace) -> int:
             "resolve", "--branch", branch, "--path", str(worktree),
             "--status", "abandoned", "--expected-generation", expected_generation,
             "--expected-head-sha", base_sha,
-            "--state", str(registry.default_state_path()), "--json",
+            "--state", str(state_path), "--json",
         ])
         reason = (
             "git worktree add failed"
@@ -762,7 +767,9 @@ def _parser() -> argparse.ArgumentParser:
 
     resolved = sub.add_parser("resolve", help="transition an exact local ownership claim")
     common(resolved); resolved.add_argument("--branch"); resolved.add_argument("--path")
-    resolved.add_argument("--status", choices=registry.RESOLVE_STATUS, required=True)
+    resolved.add_argument(
+        "--status", choices=registry.PUBLIC_RESOLVE_STATUSES, required=True
+    )
     resolved.add_argument("--expected-generation", type=int)
     resolved.add_argument("--expected-head-sha")
     resolved.add_argument("--remove", action="store_true")

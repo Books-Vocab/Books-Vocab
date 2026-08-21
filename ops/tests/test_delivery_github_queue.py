@@ -54,11 +54,7 @@ def _state(
 
 
 def _enqueued(entry_id: str = "MQE_1") -> dict[str, object]:
-    return {
-        "data": {
-            "enqueuePullRequest": {"mergeQueueEntry": {"id": entry_id}}
-        }
-    }
+    return {"data": {"enqueuePullRequest": {"mergeQueueEntry": {"id": entry_id}}}}
 
 
 def test_native_enqueue_uses_expected_head_and_accepts_main_advancing() -> None:

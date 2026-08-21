@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..domain.errors import PolicyViolation
-from ..domain.models import HandbackReceipt
+from ..domain.models import HandbackReceipt, MergedPullRequestProof
 from ..domain.observations import (
     PhysicalWorktree,
     PullRequestSnapshot,
@@ -85,8 +85,28 @@ class CleanupService:
         return leased
 
     def _complete_cleanup_lease(
-        self, receipt: HandbackReceipt, disposition: str
+        self,
+        receipt: HandbackReceipt,
+        disposition: str,
+        *,
+        pull_request_number: int,
+        expected_pr_state: str,
     ) -> None:
+        pull_request = self._pull_request(
+            receipt,
+            pull_request_number,
+            expected_state=expected_pr_state,
+        )
+        terminal_proof = None
+        if disposition == "merged":
+            terminal_proof = MergedPullRequestProof(
+                lane_id=receipt.lane_id,
+                pr_number=pull_request.number,
+                branch=pull_request.branch,
+                head_sha=pull_request.head_sha,
+                base_branch=pull_request.base_branch,
+                pr_state=pull_request.state,
+            )
         self.registry_command.resolve(
             receipt.lane_id,
             disposition,
@@ -94,6 +114,7 @@ class CleanupService:
             expected_branch=receipt.branch,
             expected_path=receipt.worktree_path,
             expected_head_sha=receipt.head_sha,
+            terminal_proof=terminal_proof,
         )
 
     def _pull_request(
@@ -116,12 +137,16 @@ class CleanupService:
             raise PolicyViolation("PR does not prove the exact handback disposition")
         return pull_request
 
-    def _remove_local_assets(self, receipt: HandbackReceipt) -> None:
+    def _remove_local_assets(
+        self,
+        receipt: HandbackReceipt,
+        *,
+        pull_request_number: int,
+        expected_pr_state: str,
+    ) -> None:
         physical = self._sealed_worktree(receipt)
         if physical is not None:
-            snapshot = self.git_query.inspect_worktree(
-                physical.path, receipt.base_sha
-            )
+            snapshot = self.git_query.inspect_worktree(physical.path, receipt.base_sha)
             if (
                 not snapshot.clean
                 or snapshot.head_sha != receipt.head_sha
@@ -129,15 +154,36 @@ class CleanupService:
                 or tuple(snapshot.changed_paths) != receipt.scope.paths
             ):
                 raise PolicyViolation("worktree changed after typed handback")
+        local_sha = self.git_query.local_branch_sha(receipt.branch)
+        if local_sha is not None and local_sha != receipt.head_sha:
+            raise PolicyViolation("local branch changed after typed handback")
+
+        checked_pull_request = False
+        if physical is not None:
+            self._pull_request(
+                receipt,
+                pull_request_number,
+                expected_state=expected_pr_state,
+            )
+            checked_pull_request = True
             self.git_command.remove_worktree(
                 physical.path, expected_head_sha=receipt.head_sha
             )
-        local_sha = self.git_query.local_branch_sha(receipt.branch)
         if local_sha is not None:
-            if local_sha != receipt.head_sha:
-                raise PolicyViolation("local branch changed after typed handback")
+            self._pull_request(
+                receipt,
+                pull_request_number,
+                expected_state=expected_pr_state,
+            )
+            checked_pull_request = True
             self.git_command.delete_local_branch(
                 receipt.branch, expected_head_sha=receipt.head_sha
+            )
+        if not checked_pull_request:
+            self._pull_request(
+                receipt,
+                pull_request_number,
+                expected_state=expected_pr_state,
             )
 
     def release_after_publish(
@@ -155,16 +201,23 @@ class CleanupService:
             if existing.worktree_absent and existing.local_branch_absent:
                 return existing
         self._acquire_cleanup_lease(receipt, record)
-        self._remove_local_assets(receipt)
-        self._complete_cleanup_lease(receipt, "published")
+        self._remove_local_assets(
+            receipt,
+            pull_request_number=pull_request_number,
+            expected_pr_state="OPEN",
+        )
+        self._complete_cleanup_lease(
+            receipt,
+            "published",
+            pull_request_number=pull_request_number,
+            expected_pr_state="OPEN",
+        )
         return self._result(receipt, "published")
 
     def _validate_local_assets(self, receipt: HandbackReceipt) -> None:
         physical = self._sealed_worktree(receipt)
         if physical is not None:
-            snapshot = self.git_query.inspect_worktree(
-                physical.path, receipt.base_sha
-            )
+            snapshot = self.git_query.inspect_worktree(physical.path, receipt.base_sha)
             if (
                 not snapshot.clean
                 or snapshot.head_sha != receipt.head_sha
@@ -176,9 +229,7 @@ class CleanupService:
         if local_sha is not None and local_sha != receipt.head_sha:
             raise PolicyViolation("local branch changed after typed handback")
 
-    def _sealed_worktree(
-        self, receipt: HandbackReceipt
-    ) -> PhysicalWorktree | None:
+    def _sealed_worktree(self, receipt: HandbackReceipt) -> PhysicalWorktree | None:
         inventory = self.git_query.list_worktrees()
         sealed_path = Path(receipt.worktree_path).resolve()
         path_matches = tuple(
@@ -214,15 +265,29 @@ class CleanupService:
                 raise PolicyViolation("merged registry record has unreconciled assets")
             return result
         self._acquire_cleanup_lease(receipt, record)
-        self._remove_local_assets(receipt)
+        self._remove_local_assets(
+            receipt,
+            pull_request_number=pull_request_number,
+            expected_pr_state="MERGED",
+        )
         remote_sha = self.git_query.remote_branch_sha(receipt.branch)
         if remote_sha is not None:
             if remote_sha != receipt.head_sha:
                 raise PolicyViolation("remote branch changed after merged HEAD")
+            self._pull_request(
+                receipt,
+                pull_request_number,
+                expected_state="MERGED",
+            )
             self.git_command.delete_remote_branch(
                 receipt.branch, expected_head_sha=receipt.head_sha
             )
-        self._complete_cleanup_lease(receipt, "merged")
+        self._complete_cleanup_lease(
+            receipt,
+            "merged",
+            pull_request_number=pull_request_number,
+            expected_pr_state="MERGED",
+        )
         return self._result(receipt, "merged")
 
     def _result(self, receipt: HandbackReceipt, disposition: str) -> CleanupResult:
@@ -231,5 +296,6 @@ class CleanupService:
             disposition=disposition,
             worktree_absent=sealed_worktree is None,
             local_branch_absent=self.git_query.local_branch_sha(receipt.branch) is None,
-            remote_branch_absent=self.git_query.remote_branch_sha(receipt.branch) is None,
+            remote_branch_absent=self.git_query.remote_branch_sha(receipt.branch)
+            is None,
         )

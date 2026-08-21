@@ -21,6 +21,15 @@ from .correlation import collision_keys, inspect_registered
 ACTIVE = "active"
 PUBLISHED = "published"
 CLEANUP_PENDING = "cleanup_pending"
+MERGED = "merged"
+ABANDONED = "abandoned"
+_REGISTRY_STATUSES = {
+    ACTIVE,
+    PUBLISHED,
+    CLEANUP_PENDING,
+    MERGED,
+    ABANDONED,
+}
 
 
 @dataclass(frozen=True)
@@ -52,7 +61,18 @@ def collect_inventory_sources(
     github_inventory = github.list_open_pull_requests()
     live_main_sha = git.origin_main_sha()
     local_main_sha = git.local_main_sha()
-    records = registry_inventory.records
+    invalid_registry_statuses = tuple(
+        InventoryProblem(
+            "registry",
+            item.lane_id,
+            f"unsupported registry status: {item.status!r}",
+        )
+        for item in registry_inventory.records
+        if item.status not in _REGISTRY_STATUSES
+    )
+    records = tuple(
+        item for item in registry_inventory.records if item.status in _REGISTRY_STATUSES
+    )
     active_records = tuple(item for item in records if item.status == ACTIVE)
     published_records = tuple(
         item for item in records if item.status in {PUBLISHED, CLEANUP_PENDING}
@@ -80,9 +100,7 @@ def collect_inventory_sources(
 
     mutable_prs_by_branch: dict[str, list[PullRequestSnapshot]] = {}
     for pull_request in pull_requests:
-        mutable_prs_by_branch.setdefault(pull_request.branch, []).append(
-            pull_request
-        )
+        mutable_prs_by_branch.setdefault(pull_request.branch, []).append(pull_request)
     prs_by_branch = {
         branch: tuple(pull_requests)
         for branch, pull_requests in mutable_prs_by_branch.items()
@@ -103,15 +121,11 @@ def collect_inventory_sources(
     pr_paths: dict[int, tuple[str, ...]] = {}
     for pull_request in pull_requests:
         try:
-            pr_paths[pull_request.number] = github.changed_paths(
-                pull_request.number
-            )
+            pr_paths[pull_request.number] = github.changed_paths(pull_request.number)
         except DeliverySourceError as error:
             pr_paths[pull_request.number] = ()
             github_problems.append(
-                InventoryProblem(
-                    "github", f"PR#{pull_request.number}", str(error)
-                )
+                InventoryProblem("github", f"PR#{pull_request.number}", str(error))
             )
 
     path_sets: dict[str, set[str]] = {}
@@ -124,9 +138,7 @@ def collect_inventory_sources(
             observed.update(pr_paths.get(pull_request.number, ()))
         path_sets[f"lane:{record.lane_id}"] = observed
 
-    working_branches = {
-        item.branch for item in (*active_records, *published_records)
-    }
+    working_branches = {item.branch for item in (*active_records, *published_records)}
     working_paths = {
         item.path.resolve() for item in (*active_records, *published_records)
     }
@@ -171,6 +183,8 @@ def collect_inventory_sources(
         pr_paths=pr_paths,
         collisions=frozenset(collision_keys(path_sets)),
         source_problems=(
-            registry_inventory.problems + tuple(github_problems)
+            registry_inventory.problems
+            + invalid_registry_statuses
+            + tuple(github_problems)
         ),
     )

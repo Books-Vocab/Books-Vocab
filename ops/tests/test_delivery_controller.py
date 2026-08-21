@@ -26,6 +26,7 @@ def _metrics(**changes: int) -> PipelineMetrics:
         "active_development": 0,
         "handbacks_publishable": 0,
         "published_local_cleanup": 0,
+        "cleanup_pending": 0,
         "open_prs": 0,
         "unmapped_open_prs": 0,
         "duplicate_pr_mappings": 0,
@@ -42,9 +43,7 @@ def _metrics(**changes: int) -> PipelineMetrics:
 
 def test_merge_cadence_measures_hourly_rate_and_nearest_rank_p95() -> None:
     now = datetime(2026, 8, 21, 12, tzinfo=UTC)
-    merged = tuple(
-        now - timedelta(minutes=offset) for offset in (25, 20, 15, 10, 5)
-    )
+    merged = tuple(now - timedelta(minutes=offset) for offset in (25, 20, 15, 10, 5))
 
     cadence = measure_merge_cadence(merged, now=now)
 
@@ -255,3 +254,12 @@ def test_cleanup_pending_pr_counts_as_durable_mapped_supply() -> None:
 
     assert metrics.open_prs == 1
     assert metrics.unmapped_open_prs == 0
+    assert metrics.cleanup_pending == 1
+
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    decision = decide_capacity(metrics, cadence)
+
+    assert ControlAction.CLEANUP_LOCAL in decision.actions
+    assert ControlAction.THROTTLE_SOLVERS in decision.actions
+    assert ControlAction.DISPATCH_SOLVERS not in decision.actions
+    assert decision.desired_new_solvers == 0

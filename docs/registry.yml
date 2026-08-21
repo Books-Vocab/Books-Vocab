@@ -22,6 +22,7 @@ agent_facing_surface:
     - ops/capability_matrix.py
     - ops/delivery.py
     - ops/delivery_control/
+    - ops/worktree_registry_core/
 
 documents:
   - id: contract.sync_lifecycle

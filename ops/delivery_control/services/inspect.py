@@ -106,7 +106,10 @@ class InspectService:
             )
 
         for physical_ref in physical:
-            if physical_ref.branch == "main" and physical_ref.head_sha == local_main_sha:
+            if (
+                physical_ref.branch == "main"
+                and physical_ref.head_sha == local_main_sha
+            ):
                 continue
             path = physical_ref.path.resolve()
             if path in claimed_paths:

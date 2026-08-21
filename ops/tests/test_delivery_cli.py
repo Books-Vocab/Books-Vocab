@@ -115,6 +115,7 @@ class FakeRegistry:
         expected_branch: str,
         expected_path: str,
         expected_head_sha: str,
+        terminal_proof=None,
     ) -> None:
         if self.fail_resolve_once:
             self.fail_resolve_once = False
@@ -126,7 +127,9 @@ class FakeRegistry:
         assert expected_head_sha == self.record.handed_back_sha
         self.record = replace(self.record, status=disposition)
 
-    def persist_handback(self, receipt: object, *, expected_claim_generation: int) -> None:
+    def persist_handback(
+        self, receipt: object, *, expected_claim_generation: int
+    ) -> None:
         raise AssertionError("CLI must consume, not create, handbacks")
 
 
@@ -350,16 +353,21 @@ def test_cli_queue_preserves_explicit_hold_as_typed_input(capsys: object) -> Non
         def __init__(self) -> None:
             self.calls: list[object] = []
 
-        def enqueue(self, *, pull_request_number: int, holds: frozenset[object]) -> object:
+        def enqueue(
+            self, *, pull_request_number: int, holds: frozenset[object]
+        ) -> object:
             self.calls.append((pull_request_number, holds))
             return {"queued": False}
 
     application = FakeApplication()
 
-    assert main(
-        ["queue", "--pr", "41", "--hold", "security"],
-        application_factory=lambda **_: application,
-    ) == 0
+    assert (
+        main(
+            ["queue", "--pr", "41", "--hold", "security"],
+            application_factory=lambda **_: application,
+        )
+        == 0
+    )
 
     captured = capsys.readouterr()  # type: ignore[attr-defined]
     payload = json.loads(captured.out)
@@ -373,10 +381,13 @@ def test_cli_exposes_dogfood_preflight_as_read_only_json(capsys: object) -> None
         def dogfood_preflight(self) -> object:
             return {"ready": False, "blockers": ["source inventory"]}
 
-    assert main(
-        ["dogfood-preflight"],
-        application_factory=lambda **_: FakeApplication(),
-    ) == 2
+    assert (
+        main(
+            ["dogfood-preflight"],
+            application_factory=lambda **_: FakeApplication(),
+        )
+        == 2
+    )
 
     payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
     assert payload["command"] == "dogfood-preflight"
@@ -407,16 +418,19 @@ def test_cli_validate_pr_body_uses_machine_receipt_not_workflow_regex(
     body_path = tmp_path / "body.md"
     body_path.write_text(render_pull_request_body(receipt), encoding="utf-8")
 
-    assert main(
-        [
-            "validate-pr-body",
-            "--head-sha",
-            receipt.head_sha,
-            "--body-file",
-            str(body_path),
-        ],
-        application_factory=lambda **_: object(),
-    ) == 0
+    assert (
+        main(
+            [
+                "validate-pr-body",
+                "--head-sha",
+                receipt.head_sha,
+                "--body-file",
+                str(body_path),
+            ],
+            application_factory=lambda **_: object(),
+        )
+        == 0
+    )
 
     payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
     assert payload["result"]["head_sha"] == receipt.head_sha
