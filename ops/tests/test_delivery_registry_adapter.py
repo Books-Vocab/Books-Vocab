@@ -158,5 +158,3 @@ def test_registry_get_ignores_terminal_history_for_same_lane(tmp_path: Path) -> 
 
     assert record is not None
     assert record.branch == "feat/current"
-
-
