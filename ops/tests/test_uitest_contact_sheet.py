@@ -206,6 +206,30 @@ def test_explicit_images_can_read_raw_pngs(tmp_path):
     assert [item["relPath"] for item in bundle.manifest["items"]] == ["01-launch.png"]
 
 
+def test_images_source_disambiguates_duplicate_nested_stems(tmp_path):
+    mod = _load()
+    left = tmp_path / "left" / "shared.png"
+    right = tmp_path / "right" / "shared.png"
+    left.parent.mkdir()
+    right.parent.mkdir()
+    _write_minimal_png(left)
+    _write_minimal_png(right)
+
+    bundle = mod._resolve_source(tmp_path, "images")
+
+    assert [item["assetID"] for item in bundle.manifest["items"]] == [
+        "left/shared", "right/shared"
+    ]
+    selected = mod.select_items(
+        bundle.manifest,
+        ids=["right/shared", "left/shared"],
+        appearance="light",
+    )
+    assert [item["relPath"] for item in selected] == [
+        "right/shared.png", "left/shared.png"
+    ]
+
+
 def test_apply_take_evenly_single_item_no_crash():
     mod = _load()
     items = [{"assetID": "only"}]

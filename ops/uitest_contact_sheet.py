@@ -368,13 +368,22 @@ def build_images_manifest(paths: list[Path], root: Path | None = None) -> Source
     if root is None:
         root = Path(os.path.commonpath([str(p) for p in paths]))
     root = Path(root)
+    ordered_paths = sorted(paths)
+    stem_counts = {}
+    for path in ordered_paths:
+        stem_counts[path.stem] = stem_counts.get(path.stem, 0) + 1
     items = []
-    for rank, path in enumerate(sorted(paths), start=1):
+    for rank, path in enumerate(ordered_paths, start=1):
         rel = path.relative_to(root) if path.is_relative_to(root) else Path(path.name)
         label = path.stem
         metadata = read_png_metadata(path)
+        asset_id = (
+            rel.with_suffix("").as_posix()
+            if stem_counts[path.stem] > 1
+            else path.stem
+        )
         items.append({
-            "assetID": path.stem,
+            "assetID": asset_id,
             "relPath": rel.as_posix(),
             "surface": path.parent.name or "Images",
             "lane": "images",
