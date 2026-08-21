@@ -26,6 +26,7 @@ def png_metadata(path: Path) -> dict[str, Any]:
     seen_idat_end = False
     color_type = bit_depth = None
     saw_ihdr = False
+    saw_plte = False
     saw_idat = False
     saw_iend = False
     width = height = 0
@@ -70,6 +71,10 @@ def png_metadata(path: Path) -> dict[str, Any]:
                 raise ValueError(f"PNG IDAT chunks are not consecutive: {path}")
             idat_data.extend(chunk_data)
             saw_idat = True
+        elif chunk_type == b"PLTE":
+            saw_plte = True
+            if saw_idat:
+                seen_idat_end = True
         elif chunk_type == b"IEND":
             if length != 0 or not saw_ihdr or not saw_idat or saw_iend:
                 raise ValueError(f"PNG has invalid IEND: {path}")
@@ -86,6 +91,8 @@ def png_metadata(path: Path) -> dict[str, Any]:
 
     if not saw_ihdr or not saw_idat or not saw_iend or offset != len(data):
         raise ValueError(f"PNG is structurally incomplete: {path}")
+    if color_type == 3 and not saw_plte:
+        raise ValueError(f"indexed-color PNG is missing required PLTE: {path}")
     try:
         decoded = zlib.decompress(bytes(idat_data))
     except zlib.error as error:
