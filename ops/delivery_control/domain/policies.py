@@ -32,6 +32,8 @@ def evaluate_publication(
         reasons.append("worktree is dirty")
     if worktree.branch != receipt.branch:
         reasons.append("branch differs from handback")
+    if worktree.base_sha != receipt.base_sha:
+        reasons.append("base differs from handback")
     if worktree.head_sha != receipt.head_sha:
         reasons.append("HEAD differs from handback")
     if worktree.parent_sha != receipt.parent_sha:

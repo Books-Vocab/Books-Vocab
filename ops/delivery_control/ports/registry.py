@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from delivery_control.domain.models import RegistrySnapshot
+from delivery_control.domain.models import RegistryInventory, RegistrySnapshot
 
 
 @runtime_checkable
 class RegistryQueryPort(Protocol):
-    def list_active(self) -> tuple[RegistrySnapshot, ...]: ...
+    def list_records(self) -> RegistryInventory: ...
 
     def get(self, lane_id: str) -> RegistrySnapshot | None: ...
 

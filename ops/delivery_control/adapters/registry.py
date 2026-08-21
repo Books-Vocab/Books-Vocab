@@ -1,0 +1,152 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
+
+from delivery_control.domain.errors import InvalidScope
+from delivery_control.domain.models import (
+    InventoryProblem,
+    RegistryInventory,
+    RegistrySnapshot,
+    Scope,
+)
+from delivery_control.ports.process import CommandRunnerPort
+
+from .errors import AdapterCommandError, AdapterPayloadError
+from .subprocess_runner import SubprocessCommandRunner
+
+_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+_GREEN = {"pass", "passed", "green", "ok", "success"}
+
+
+def _canonical_json(value: object) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _legacy_seal_valid(record: Mapping[str, Any]) -> bool:
+    seal = record.get("handback_seal")
+    if not isinstance(seal, Mapping):
+        return False
+    body = {key: value for key, value in seal.items() if key != "digest"}
+    if seal.get("schema") != "kg.worktree.handback.v1":
+        return False
+    if seal.get("digest") != hashlib.sha256(_canonical_json(body)).hexdigest():
+        return False
+    if seal.get("branch") != record.get("branch"):
+        return False
+    if (
+        Path(str(seal.get("path", ""))).expanduser().resolve()
+        != Path(str(record.get("path", ""))).expanduser().resolve()
+    ):
+        return False
+    if sorted(seal.get("external_ids") or []) != sorted(
+        record.get("external_ids") or []
+    ):
+        return False
+    if seal.get("tip_sha") != record.get("handed_back_sha"):
+        return False
+    if seal.get("handed_back_at") != record.get("handed_back_at"):
+        return False
+    if record.get("claim_generation") != record.get("handback_claim_generation"):
+        return False
+    outcomes = seal.get("outcomes")
+    return isinstance(outcomes, list) and not any(
+        not isinstance(item, Mapping)
+        or str(item.get("status", "")).strip().lower() not in _GREEN
+        for item in outcomes
+    )
+
+
+class RegistryCliAdapter:
+    def __init__(
+        self,
+        *,
+        script_path: Path,
+        runner: CommandRunnerPort | None = None,
+    ) -> None:
+        self.script_path = script_path
+        self.runner = runner or SubprocessCommandRunner()
+
+    def _list_payload(self) -> Mapping[str, Any]:
+        result = self.runner.run((str(self.script_path), "list", "--json"))
+        if result.exit_code != 0:
+            raise AdapterCommandError(result)
+        try:
+            payload = json.loads(result.stdout)
+        except json.JSONDecodeError as error:
+            raise AdapterPayloadError("registry list returned invalid JSON") from error
+        if not isinstance(payload, Mapping) or not isinstance(
+            payload.get("records"), list
+        ):
+            raise AdapterPayloadError("registry list payload is malformed")
+        return payload
+
+    @staticmethod
+    def _record(payload: Mapping[str, Any]) -> RegistrySnapshot:
+        branch = str(payload["branch"])
+        path = Path(str(payload["path"])).expanduser()
+        if not path.is_absolute():
+            raise ValueError("registry path must be absolute")
+        scope_payload = payload["scope"]
+        if not isinstance(scope_payload, Mapping):
+            raise InvalidScope("Scope must be an object")
+        scope = Scope.from_payload(scope_payload)
+        base_sha = str(payload.get("base_sha") or payload.get("base") or "")
+        if not _SHA_RE.fullmatch(base_sha):
+            raise ValueError("registry base must be an exact commit SHA")
+        external_ids = payload.get("external_ids")
+        if not isinstance(external_ids, list):
+            external_ids = []
+        lane_id = str(external_ids[0]) if external_ids else branch
+        handed_back_sha = payload.get("handed_back_sha")
+        return RegistrySnapshot(
+            lane_id=lane_id,
+            branch=branch,
+            path=path.resolve(),
+            status=str(payload["status"]),
+            scope=scope,
+            base_sha=base_sha,
+            owner_thread_id=(
+                str(payload["codex_thread_id"])
+                if payload.get("codex_thread_id")
+                else None
+            ),
+            handed_back_sha=(str(handed_back_sha) if handed_back_sha else None),
+            handback_valid=_legacy_seal_valid(payload),
+        )
+
+    def list_records(self) -> RegistryInventory:
+        payload = self._list_payload()
+        records: list[RegistrySnapshot] = []
+        problems: list[InventoryProblem] = []
+        for index, raw in enumerate(payload["records"]):
+            if not isinstance(raw, Mapping):
+                problems.append(
+                    InventoryProblem(
+                        "registry", f"record[{index}]", "record is not an object"
+                    )
+                )
+                continue
+            identity = str(raw.get("branch") or raw.get("path") or f"record[{index}]")
+            try:
+                records.append(self._record(raw))
+            except (KeyError, TypeError, ValueError, InvalidScope) as error:
+                problems.append(InventoryProblem("registry", identity, str(error)))
+        return RegistryInventory(records=tuple(records), problems=tuple(problems))
+
+    def get(self, lane_id: str) -> RegistrySnapshot | None:
+        matches = [
+            item for item in self.list_records().records if item.lane_id == lane_id
+        ]
+        if len(matches) > 1:
+            raise AdapterPayloadError(f"multiple registry records found for {lane_id}")
+        return matches[0] if matches else None

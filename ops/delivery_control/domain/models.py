@@ -15,7 +15,10 @@ from typing import Any
 from .errors import InvalidReceipt, InvalidScope
 
 SCOPE_SCHEMA = "kg.worktree.scope.v1"
-HANDBACK_SCHEMA = "kg.worktree.handback.v1"
+# This normalized envelope intentionally does not reuse the existing
+# kg.worktree.handback.v1 wire schema.  The registry adapter validates and
+# translates that legacy seal without changing its public contract.
+HANDBACK_SCHEMA = "kg.delivery.handback.v1"
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -271,11 +274,27 @@ class HandbackReceipt:
 @dataclass(frozen=True)
 class WorktreeSnapshot:
     path: Path
-    branch: str
+    branch: str | None
+    base_sha: str
     head_sha: str
     parent_sha: str
     clean: bool
     changed_paths: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PhysicalWorktree:
+    path: Path
+    head_sha: str
+    branch: str | None
+    prunable: bool = False
+
+
+@dataclass(frozen=True)
+class InventoryProblem:
+    source: str
+    identity: str
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -287,7 +306,14 @@ class RegistrySnapshot:
     scope: Scope
     base_sha: str
     owner_thread_id: str | None = None
-    handback: HandbackReceipt | None = None
+    handed_back_sha: str | None = None
+    handback_valid: bool = False
+
+
+@dataclass(frozen=True)
+class RegistryInventory:
+    records: tuple[RegistrySnapshot, ...]
+    problems: tuple[InventoryProblem, ...] = ()
 
 
 @dataclass(frozen=True)

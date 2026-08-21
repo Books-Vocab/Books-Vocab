@@ -8,7 +8,9 @@ OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
 from delivery_control.domain.models import (
+    PhysicalWorktree,
     PullRequestSnapshot,
+    RegistryInventory,
     RegistrySnapshot,
     WorktreeSnapshot,
 )
@@ -25,7 +27,10 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
             return datetime(2026, 8, 21, tzinfo=UTC)
 
     class FakeGitQuery:
-        def inspect_worktree(self, path: Path) -> WorktreeSnapshot:
+        def list_worktrees(self) -> tuple[PhysicalWorktree, ...]:
+            return ()
+
+        def inspect_worktree(self, path: Path, base_sha: str) -> WorktreeSnapshot:
             raise NotImplementedError
 
         def remote_branch_sha(self, branch: str) -> str | None:
@@ -57,10 +62,16 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
             return expected_origin_sha
 
     class FakeGitHubQuery:
+        def list_open_pull_requests(self) -> tuple[PullRequestSnapshot, ...]:
+            return ()
+
         def find_open_pull_request(self, branch: str) -> PullRequestSnapshot | None:
             return None
 
         def get_pull_request(self, number: int) -> PullRequestSnapshot:
+            raise NotImplementedError
+
+        def required_check_status(self, number: int):
             raise NotImplementedError
 
     class FakeGitHubCommand:
@@ -81,8 +92,8 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
             return None
 
     class FakeRegistryQuery:
-        def list_active(self) -> tuple[RegistrySnapshot, ...]:
-            return ()
+        def list_records(self) -> RegistryInventory:
+            return RegistryInventory(records=())
 
         def get(self, lane_id: str) -> RegistrySnapshot | None:
             return None

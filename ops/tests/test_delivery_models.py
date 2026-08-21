@@ -86,7 +86,7 @@ def test_handback_receipt_round_trips_as_typed_canonical_payload() -> None:
 
     payload = receipt.to_payload()
 
-    assert payload["schema"] == "kg.worktree.handback.v1"
+    assert payload["schema"] == "kg.delivery.handback.v1"
     assert payload["base_sha"] == BASE_SHA
     assert payload["origin_main_sha"] == ORIGIN_SHA
     assert payload["scope_digest"] == scope.digest

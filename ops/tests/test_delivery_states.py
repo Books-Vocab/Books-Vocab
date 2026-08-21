@@ -137,6 +137,7 @@ def test_publication_policy_does_not_require_current_base_or_local_quality() -> 
     worktree = WorktreeSnapshot(
         path=Path("/tmp/example"),
         branch=receipt.branch,
+        base_sha=receipt.base_sha,
         head_sha=receipt.head_sha,
         parent_sha=receipt.parent_sha,
         clean=True,
