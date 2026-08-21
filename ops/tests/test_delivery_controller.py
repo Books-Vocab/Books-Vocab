@@ -15,6 +15,7 @@ from delivery_control.controller.metrics import (
     measure_merge_cadence,
     measure_pipeline,
 )
+from delivery_control.controller.timings import PipelineTimings
 from delivery_control.domain.models import Scope
 from delivery_control.domain.observations import PullRequestSnapshot, RegistrySnapshot
 from delivery_control.domain.states import LaneDecision, LaneState, NextAction
@@ -31,7 +32,9 @@ def _metrics(**changes: int) -> PipelineMetrics:
         "unmapped_open_prs": 0,
         "duplicate_pr_mappings": 0,
         "required_green": 0,
+        "required_running": 0,
         "required_failed": 0,
+        "merge_queue_depth": 0,
         "terminal_cleanup": 0,
         "blocked_lanes": 0,
         "physical_worktrees": 0,
@@ -49,6 +52,7 @@ def test_merge_cadence_measures_hourly_rate_and_nearest_rank_p95() -> None:
 
     assert cadence.merged_count == 5
     assert cadence.merges_per_hour == 5.0
+    assert cadence.p50_interval_seconds == 300.0
     assert cadence.p95_interval_seconds == 300.0
     assert cadence.seconds_since_last_merge == 300.0
 
@@ -87,6 +91,37 @@ def test_controller_throttles_solver_birth_when_ci_is_saturated() -> None:
     assert ControlAction.THROTTLE_SOLVERS in decision.actions
     assert ControlAction.DISPATCH_SOLVERS not in decision.actions
     assert decision.desired_new_solvers == 0
+
+
+def test_controller_consumes_observed_required_p95_without_manual_injection() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    metrics = replace(
+        _metrics(active_development=1, open_prs=3),
+        timings=PipelineTimings(required_duration_p95_seconds=500),
+    )
+
+    decision = decide_capacity(metrics, cadence)
+
+    assert ControlAction.THROTTLE_SOLVERS in decision.actions
+    assert ControlAction.DISPATCH_SOLVERS not in decision.actions
+
+
+def test_controller_turns_transport_and_admission_latency_into_actions() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    metrics = replace(
+        _metrics(open_prs=10),
+        timings=PipelineTimings(
+            handback_to_pr_p95_seconds=61,
+            pr_to_required_start_p95_seconds=61,
+            required_success_to_enqueue_p95_seconds=31,
+        ),
+    )
+
+    decision = decide_capacity(metrics, cadence)
+
+    assert ControlAction.PUBLISH_HANDBACKS in decision.actions
+    assert ControlAction.REPAIR_REQUIRED in decision.actions
+    assert ControlAction.ENQUEUE_GREEN in decision.actions
 
 
 def test_controller_reports_source_uncertainty_instead_of_fabricating_supply() -> None:

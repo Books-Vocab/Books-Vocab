@@ -16,7 +16,7 @@ from .adapters.runtime import RuntimeStatusMap
 from .application import DeliveryApplication, build_application
 from .domain.errors import DeliveryContractError, DeliverySourceError
 from .domain.states import HoldKind
-from .services.publish import validate_pull_request_body
+from .services.pr_contract import validate_pull_request_body
 
 COMMAND_SCHEMA = "kg.delivery.command.v1"
 
@@ -76,6 +76,22 @@ def _parser() -> argparse.ArgumentParser:
         "--hold", action="append", choices=tuple(item.value for item in HoldKind)
     )
 
+    reconcile_holds = commands.add_parser(
+        "reconcile-holds", help="rewrite typed PR holds after explicit clearance"
+    )
+    reconcile_holds.add_argument("--pr", type=int, required=True)
+    hold_choice = reconcile_holds.add_mutually_exclusive_group(required=True)
+    hold_choice.add_argument(
+        "--hold", action="append", choices=tuple(item.value for item in HoldKind)
+    )
+    hold_choice.add_argument("--clear-all", action="store_true")
+
+    repair_metadata = commands.add_parser(
+        "repair-pr-metadata",
+        help="restore canonical body metadata on one durable PR",
+    )
+    repair_metadata.add_argument("--pr", type=int, required=True)
+
     cleanup = commands.add_parser(
         "cleanup-merged", help="remove exact merged branch residue"
     )
@@ -111,6 +127,14 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
             pull_request_number=args.pr,
             holds=frozenset(HoldKind(item) for item in args.hold or ()),
         )
+    if args.command == "reconcile-holds":
+        return application.reconcile_holds(
+            pull_request_number=args.pr,
+            holds=frozenset(HoldKind(item) for item in args.hold or ()),
+            clear_all=args.clear_all,
+        )
+    if args.command == "repair-pr-metadata":
+        return application.repair_metadata(args.pr)
     if args.command == "cleanup-merged":
         return application.cleanup_merged(args.pr)
     if args.command == "sync-main":

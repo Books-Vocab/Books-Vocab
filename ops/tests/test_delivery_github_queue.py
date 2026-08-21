@@ -17,6 +17,7 @@ BASE = "a" * 40
 HEAD = "b" * 40
 PR_ID = "PR_kwDOexample"
 BODY = "## Scope\n- ops/a.py\n\n## Validation\n- required"
+ENQUEUED_AT = "2026-08-21T12:00:00Z"
 
 
 class StaticRunner:
@@ -47,7 +48,9 @@ def _state(
                 "headRefOid": head_sha,
                 "body": body,
                 "state": state,
-                "mergeQueueEntry": {"id": entry_id} if entry_id else None,
+                "mergeQueueEntry": (
+                    {"id": entry_id, "enqueuedAt": ENQUEUED_AT} if entry_id else None
+                ),
             }
         }
     }
@@ -87,6 +90,20 @@ def test_native_enqueue_is_idempotent_for_exact_existing_queue_entry() -> None:
     )
 
     assert len(runner.calls) == 1
+
+
+def test_native_queue_snapshot_exposes_exact_enqueue_time() -> None:
+    runner = StaticRunner([_state(entry_id="MQE_existing")])
+
+    entry = (
+        GitHubQueueGraphQLAdapter(repo=Path("/repo"), runner=runner)
+        .snapshot(PR_ID)
+        .entry
+    )
+
+    assert entry is not None
+    assert entry.entry_id == "MQE_existing"
+    assert entry.enqueued_at.isoformat() == "2026-08-21T12:00:00+00:00"
 
 
 def test_native_enqueue_dequeues_if_target_changes_during_mutation() -> None:

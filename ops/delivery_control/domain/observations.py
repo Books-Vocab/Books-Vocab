@@ -92,6 +92,7 @@ class RegistrySnapshot:
     handback_valid: bool = False
     handback_digest: str | None = None
     handback_origin_main_sha: str | None = None
+    handed_back_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -128,6 +129,22 @@ class PullRequestSnapshot:
     body: str = ""
     auto_merge_enabled: bool = False
     node_id: str = ""
+    labels: tuple[str, ...] = ()
+    created_at: datetime | None = None
+    merged_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if type(self.labels) is not tuple or any(
+            type(label) is not str or not label or _has_control(label)
+            for label in self.labels
+        ):
+            raise InvalidReceipt("PR labels must be canonical text")
+        for name in ("created_at", "merged_at"):
+            value = getattr(self, name)
+            if value is not None and (
+                not isinstance(value, datetime) or value.utcoffset() is None
+            ):
+                raise InvalidReceipt(f"PR {name} must be offset-aware")
 
 
 @dataclass(frozen=True)
@@ -137,11 +154,28 @@ class PullRequestInventory:
 
 
 @dataclass(frozen=True)
+class MergeQueueEntrySnapshot:
+    entry_id: str
+    enqueued_at: datetime
+
+    def __post_init__(self) -> None:
+        if not self.entry_id or _has_control(self.entry_id):
+            raise InvalidReceipt("merge queue entry id must be canonical text")
+        if (
+            not isinstance(self.enqueued_at, datetime)
+            or self.enqueued_at.utcoffset() is None
+        ):
+            raise InvalidReceipt("merge queue enqueue timestamp must be offset-aware")
+
+
+@dataclass(frozen=True)
 class CheckSnapshot:
     status: CheckStatus
     head_sha: str
     observed_at: datetime
     names: tuple[str, ...]
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "status", CheckStatus(self.status))
@@ -156,3 +190,21 @@ class CheckSnapshot:
             for name in self.names
         ):
             raise InvalidReceipt("check names must be canonical text")
+        for name in ("started_at", "completed_at"):
+            value = getattr(self, name)
+            if value is not None and (
+                not isinstance(value, datetime) or value.utcoffset() is None
+            ):
+                raise InvalidReceipt(f"check {name} must be offset-aware")
+        if (
+            self.started_at is not None
+            and self.completed_at is not None
+            and self.completed_at < self.started_at
+        ):
+            raise InvalidReceipt("check completion precedes check start")
+
+    @property
+    def duration_seconds(self) -> float | None:
+        if self.started_at is None or self.completed_at is None:
+            return None
+        return (self.completed_at - self.started_at).total_seconds()

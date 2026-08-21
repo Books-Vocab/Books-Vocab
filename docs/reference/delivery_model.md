@@ -52,7 +52,7 @@ GitHub 是整套交付控制面：
 所有 code change 都要走：
 
 ```text
-branch → commit → PR → Actions + CR + DS → CM merge → main → release/deploy（若有明確意圖）
+branch → commit → PR → required + advisory confidence／CR／DS → CM merge → main → release/deploy（若有明確意圖）
 ```
 
 `main` 不接受直接寫入。merge 不是 production approval；release、deploy、health gate、rollback 仍由各自安全邊界控制。
@@ -104,7 +104,7 @@ Backlog Scout 與 PI 是交付控制迴圈中的職能，不是新的 canonical 
 - CM 只處理交付協調、Ready admission、merge queue／merge 與 main synchronization。任何 code 或 PR metadata 修正都退回 IM／原 Worker，不由 CM 代修。
 - CR／DS 各自把 review／docs impact 結論留在 PR；兩者都不修改 caller worktree。
 
-「Ready」分兩層：IM 只能交付一個已存在、非 draft、證據完整的 Ready candidate；CM 必須用當下 live `origin/main`、exact physical HEAD／Scope、required／readiness、typed seal、CR／DS 再驗證後，才可入 queue／merge。
+「Ready」分兩層：IM 只能交付一個已存在、非 draft、證據完整的 Ready candidate；CM 必須用當下 live `origin/main`、exact physical HEAD／Scope、required／readiness、typed seal、branch rules 與 durable hold 再驗證後，才可入 queue／merge。CR／DS 仍把結論留在 PR，但 routine／advisory 結論不形成隱性 hard gate；只有被 repository rule 要求或升級成 P0／P1／security hold 才阻擋。
 
 `ops/context_plane.json` 與 `ops/context_route.py` 內部保留執行層 mapping 以維持既有入口相容；這些 key 不屬於 canonical identity、權限或工作狀態，不應出現在 agent-facing onboarding、assignment 或交接語義中。
 
@@ -123,7 +123,7 @@ branch + worktree → code + tests → local commit + typed hand-back
     ↓
 PI publish exact commit + PR → release local worktree/branch
     ↓
-GitHub durable PR → required + advisory outcomes → CR + DS → CM native merge queue → main → release/deploy（若需要）
+GitHub durable PR → required + advisory confidence／CR／DS → CM native merge queue → main → release/deploy（若需要）
 ```
 
 PR 仍必須寫清楚指派內容、修改範圍、驗收方式、測試證據、文件影響與 production／rollback 風險。
@@ -148,7 +148,7 @@ IM 建立 dedicated worktree → code + tests → local commit + typed hand-back
     ↓
 PI publish exact commit + PR → release local worktree/branch
     ↓
-GitHub durable PR → required + advisory outcomes → CR + DS → CM native merge queue → main → release/deploy（若需要）
+GitHub durable PR → required + advisory confidence／CR／DS → CM native merge queue → main → release/deploy（若需要）
 ```
 
 Issue 的 acceptance 是需求真相；PR 的 diff、conversation、checks、review 與驗證證據是實作真相。Issue 關聯可由 PR 自動 close，但不把 Issue 狀態再寫入 repo。
@@ -161,9 +161,9 @@ Worker 與 Issue Solver 的實作能力、測試要求與 local hand-back 標準
 - 改了什麼、為什麼改、範圍與非目標是什麼。
 - 哪些測試／Actions 實際通過，命令、exit status 與 exact HEAD 是什麼。
 - 是否影響文件、資料、CloudKit、migration、release、deploy 或 rollback。
-- CR 與 DS 是否完成各自檢查；未完成時不得宣稱 ready。
+- CR 與 DS 是否完成各自檢查；未完成時不得宣稱「完整 review／docs 結論已綠」，但不因此偽造未配置的 hard gate。
 
-CM 只在 PR 的 required checks、review、文件影響與安全條件滿足後合併。PR merge 後才進入 release／deploy SOP；任何外部帳號批准、production 寫入或 rollback 仍是獨立的明確動作。
+CM 只在 PR 的 typed contract、required checks、branch rules、mergeability 與安全條件滿足後合併；CR／DS 若揭露 P0／P1／security 必須先成為 durable hold，routine advisory 不等待。PR merge 後才進入 release／deploy SOP；任何外部帳號批准、production 寫入或 rollback 仍是獨立的明確動作。
 
 ### Hand-back、PR 與 cleanup invariant
 
@@ -184,14 +184,14 @@ CM 只在 PR 的 required checks、review、文件影響與安全條件滿足後
 
 因此固定採以下判讀：
 
-- GitHub 對 exact PR HEAD 列出的所有 required checks 都成功，才是 merge 的最低 Actions 條件；仍須滿足 typed receipt、live base、CR、DS、branch rules 與其他安全條件。
+- GitHub 對 exact PR HEAD 列出的所有 required checks 都成功，才是 merge 的最低 Actions 條件；仍須滿足 typed receipt、live base、branch rules 與其他安全條件。CR／DS 的 routine advisory 不等待；其 P0／P1／security 發現必須以 durable hold 呈現。
 - `confidence` 失敗、缺失、非預期 `skipped`、取消或未完成時，PR 不得宣稱「完整綠」；也不得進入受影響的 release／deploy 路徑。
 - CM 只有在 GitHub 已顯示 exact merged `main` 對每個被選中的慢速 surface 啟動等價驗證時，才可取消已被取代的 PR confidence；取消本身不是 PASS，完整結論以該 `main` run 的 terminal 結果為準。
 - confidence 結果是 GitHub check run 的證據，不在 repo 內另建本地 confidence／merge 狀態；若要重跑，針對同一 PR HEAD 或 exact `main` 重新觸發 Actions。
 
 ### GitHub durable queue 與 CM landing
 
-PI publication 後，remote branch + typed PR 是 durable PR reservoir；local worktree 不是等待區。publication 明確建立 target branch=`main`，並在 preflight 與 final readback 拒絕 retarget race；歷史 base 可以先 durable publish，但不能直接 Ready。CM 只把符合以下 exact tuple 的 candidate 送進 GitHub native merge queue：registry `published` receipt、PR body／changed paths／head、live `origin/main` 與 PR／receipt／registry base、GitHub required outcomes、mergeability，以及沒有 P0／P1／security hold。repository 沒有 native merge queue rule 時必須拒絕，不得改成本地 queue 或手動 merge。
+PI publication 後，remote branch + typed PR 是 durable PR reservoir；local worktree 不是等待區。publication 明確建立 target branch=`main`，並在 preflight 與 final readback 拒絕 retarget race；歷史 base 可以先 durable publish，但不能直接 Ready。canonical body 除 Scope／Validation／receipt 外，也固定產生 Impact 與 `kg.delivery.holds.v1`；`delivery-hold:p0`／`delivery-hold:p1`／`delivery-hold:security` labels、typed holds 與 legacy `PUBLISH ONLY` 取聯集，PI 更新 tuple 不得把 hold 洗掉。若 human-readable metadata 漂移但 typed receipt 仍可解析，PI 可在 exact published registry／HEAD／Scope readback 後 body-only 修復同一 PR，不重建 worktree。CM 只把符合以下 exact tuple 的 candidate 送進 GitHub native merge queue：registry `published` receipt、PR body／changed paths／head、live `origin/main` 與 PR／receipt／registry base、GitHub required outcomes、mergeability，以及沒有 P0／P1／security hold。repository 沒有 native merge queue rule 時必須拒絕，不得改成本地 queue 或手動 merge。
 
 native merge queue 以 exact current base、exact head、canonical typed body 與 target branch=`main` admission；adapter 只呼叫 GraphQL `enqueuePullRequest(expectedHeadOid)`，不使用可能直接合併的 auto-merge CLI。inventory 直接觀測 GraphQL `mergeQueueEntry` 並把已入列 PR 分成 `pr_queued`；admission 後 `main` tip 前進不是 receipt failure，merge queue 會建立新 merge group 並重跑獨立、短且 blocking 的 `required`。若 PR 被 retarget 或 head／body 改變，只有 queue entry ID 仍是本次 transaction 建立的 entry 才能 `dequeuePullRequest`，replacement entry 必須保留並 fail closed。landing 後 CM 只在 canonical checkout clean、位於 `main` 且 local／origin refs 仍符合 preflight 時做 `--ff-only` sync；任何 race、dirty 或 divergence 都 fail closed。
 
@@ -199,7 +199,7 @@ native merge queue 以 exact current base、exact head、canonical typed body �
 
 `ops/delivery.py` 是一次一個 command 的 deterministic control surface，不是 daemon、agent dispatcher 或狀態庫。`inspect` 從 registry、physical worktrees、GitHub PR／required checks 與 caller 提供的 owner runtime facts 分類每條 lane；`metrics` 只量測 reservoirs；`plan` 只回傳同一組 facts 推導的 capacity actions。完整 inventory 仍呈現所有 malformed source；raw registry 非 object、無效 external ID 與未知 status 都進入 `source_problems`，不會被 normalization 靜默丟棄。publication 的 collision projection 只解析 active／cleanup Scope，cleanup 則只解析 receipt 指定的 exact claim，因此無關 terminal legacy 問題不會封鎖獨立 transaction，目標 claim／Scope 不可解析仍 fail closed。任何 `source_problems`、unmapped PR、duplicate PR mapping 或未完成的 `cleanup_pending` lease 都把 `desired_new_solvers` 固定為 0，先建議 inspect／bounded recovery；cleanup lease 已有 durable PR，仍計入供給，但不能再生新 solver。一條 lane 的 collision、dirty、owner loss、stale tuple 或 required failure 不授權修改其他 lane。
 
-預設 feedback policy 的健康吞吐目標是每小時 12 merges，且有健康供給時最長 300 秒至少 landing 一個；這是 capacity SLO，不是繞過 required／review 的時限。projected supply floor 是 10（owner-mapped open PR + publishable hand-back + active development）、open PR ceiling 是 15、required-green target 是 3、required p95 上限是 240 秒、每 cycle 最多建議 4 個新 solver。controller 會平行建議 drain publishable hand-backs、local release、required-green enqueue、required repair、terminal cleanup 與 bounded blocker recovery；只有在未飽和、projected supply 不足且 cadence 慢時，才建議 Scout fan-out 新 solver。`min_required_green` 是可觀測 policy target；目前 solver birth 的數量由 projected supply gap 計算，不會單獨因 required-green 低於 3 增生。CLI `plan` 目前也未注入 required p95 observation，因此 p95 threshold 本身不會觸發 throttle；實際自動 saturation guard 是 owner-mapped open PR 達 15。
+預設 feedback policy 的健康吞吐目標是每小時 12 merges，且有健康供給時最長 300 秒至少 landing 一個；這是 capacity SLO，不是繞過 required 或 P0／P1／security hold 的時限。merge cadence 同時輸出最近一小時 count／rate、相鄰 landing 間隔 p50／p95 與距最後一次 landing 秒數。projected supply floor 是 10（owner-mapped open PR + publishable hand-back + active development）、open PR ceiling 是 15、required-green target 是 3、required p95 上限是 240 秒、每 cycle 最多建議 4 個新 solver。controller 會平行建議 drain publishable hand-backs、local release、required-green enqueue、required repair、terminal cleanup 與 bounded blocker recovery；只有在未飽和、projected supply 不足且 cadence 慢時，才建議 Scout fan-out 新 solver。`metrics` 從 registry、PR、exact required checks 與 native merge queue entry 量測 hand-back→PR、PR→required-start、required duration、required-success→enqueue 的 sample count／p95，並回傳 required-running、native queue depth、collision rate、required failure rate 與 idle worktree；跨來源負 duration 會計入 source problem。feedback policy 對前三段 transport／CI-start／admission latency 分別採 60／60／30 秒 p95 SLA 並回傳對應 PI／CI／CM action；`plan` 直接用 observed required-duration p95，超過 240 秒即 throttle solver birth，不再依賴 caller 手動注入。`min_required_green` 是 reservoir target；solver birth 仍由 projected supply gap 計算，不會在 open PR 已充足但 CI 尚未完成時盲目加工作量。
 
 ## 本機 coordinator 的窄責任
 

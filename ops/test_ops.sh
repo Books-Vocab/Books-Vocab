@@ -144,10 +144,14 @@ run_one() {
         ops/tests/test_delivery_registry_runtime.py \
         ops/tests/test_delivery_application.py \
         ops/tests/test_delivery_inspect.py \
+      ops/tests/test_delivery_holds.py \
+      ops/tests/test_delivery_metadata.py \
+        ops/tests/test_delivery_pr_contract.py \
         ops/tests/test_delivery_publish.py \
         ops/tests/test_delivery_cleanup.py \
         ops/tests/test_delivery_queue.py \
         ops/tests/test_delivery_controller.py \
+        ops/tests/test_delivery_timings.py \
         ops/tests/test_delivery_cli.py &&
       ./ops/tests/test_pr_readiness_workflow.sh
       ;;

@@ -5,12 +5,15 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from ..domain.errors import CompareAndSwapConflict
+from ..domain.observations import MergeQueueEntrySnapshot
 from ..ports.process import CommandRunnerPort
 from .errors import AdapterCommandError, AdapterPayloadError
+from .timestamps import parse_optional_timestamp
 
 _QUEUE_STATE_QUERY = """
 query DeliveryQueueState($pullRequestId: ID!) {
@@ -22,7 +25,7 @@ query DeliveryQueueState($pullRequestId: ID!) {
       headRefOid
       body
       state
-      mergeQueueEntry { id }
+      mergeQueueEntry { id enqueuedAt }
     }
   }
 }
@@ -55,6 +58,15 @@ class NativeQueueSnapshot:
     body: str
     state: str
     entry_id: str | None
+    enqueued_at: datetime | None
+
+    @property
+    def entry(self) -> MergeQueueEntrySnapshot | None:
+        if self.entry_id is None:
+            return None
+        if self.enqueued_at is None:
+            raise AdapterPayloadError("GitHub merge-queue entry has no enqueue time")
+        return MergeQueueEntrySnapshot(self.entry_id, self.enqueued_at)
 
 
 class GitHubQueueGraphQLAdapter:
@@ -97,10 +109,17 @@ class GitHubQueueGraphQLAdapter:
         ):
             raise AdapterPayloadError("GitHub merge-queue state is malformed")
         entry = node.get("mergeQueueEntry")
-        if entry is not None and (
-            not isinstance(entry, Mapping) or type(entry.get("id")) is not str
-        ):
-            raise AdapterPayloadError("GitHub merge-queue entry is malformed")
+        enqueued_at = None
+        if entry is not None:
+            if not isinstance(entry, Mapping) or type(entry.get("id")) is not str:
+                raise AdapterPayloadError("GitHub merge-queue entry is malformed")
+            enqueued_at = parse_optional_timestamp(
+                entry.get("enqueuedAt"), field="merge queue enqueuedAt"
+            )
+            if enqueued_at is None:
+                raise AdapterPayloadError(
+                    "GitHub merge-queue entry has no enqueue time"
+                )
         return NativeQueueSnapshot(
             pull_request_id=node["id"],
             base_branch=node["baseRefName"],
@@ -109,6 +128,7 @@ class GitHubQueueGraphQLAdapter:
             body=node["body"],
             state=node["state"],
             entry_id=entry["id"] if isinstance(entry, Mapping) else None,
+            enqueued_at=enqueued_at,
         )
 
     def _enqueue_mutation(self, pull_request_id: str, expected_head_sha: str) -> str:

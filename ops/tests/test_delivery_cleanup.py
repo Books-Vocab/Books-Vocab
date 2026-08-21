@@ -21,7 +21,7 @@ from delivery_control.domain.observations import (
     WorktreeSnapshot,
 )
 from delivery_control.services.cleanup import CleanupService
-from delivery_control.services.publish import render_pull_request_body
+from delivery_control.services.pr_contract import render_pull_request_body
 from delivery_control.services.sync_main import MainSyncService
 
 BASE = "a" * 40

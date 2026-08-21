@@ -13,6 +13,7 @@ from delivery_control.domain.models import (
 )
 from delivery_control.domain.observations import (
     CheckSnapshot,
+    MergeQueueEntrySnapshot,
     PhysicalWorktree,
     PullRequestInventory,
     PullRequestSnapshot,
@@ -111,6 +112,11 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
             return True
 
         def merge_queue_entry_id(self, pull_request_id: str) -> str | None:
+            return None
+
+        def merge_queue_entry_snapshot(
+            self, pull_request_id: str
+        ) -> MergeQueueEntrySnapshot | None:
             return None
 
     class FakeGitHubCommand:

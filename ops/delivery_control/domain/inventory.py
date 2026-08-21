@@ -5,7 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .observations import (
+    CheckSnapshot,
     InventoryProblem,
+    MergeQueueEntrySnapshot,
     PhysicalWorktree,
     PullRequestSnapshot,
     RegistrySnapshot,
@@ -23,6 +25,8 @@ class LaneInspection:
     pull_requests: tuple[PullRequestSnapshot, ...]
     decision: LaneDecision
     problems: tuple[InventoryProblem, ...] = ()
+    required_check: CheckSnapshot | None = None
+    queue_entry: MergeQueueEntrySnapshot | None = None
 
 
 @dataclass(frozen=True)

@@ -387,6 +387,8 @@ def test_registry_adapter_exposes_exact_legacy_handback_transport_fields(
     assert record.handback_valid
     assert record.handback_digest == seal["digest"]
     assert record.handback_origin_main_sha == "a" * 40
+    assert record.handed_back_at is not None
+    assert record.handed_back_at.isoformat() == "2026-08-21T00:00:00+00:00"
 
 
 def test_registry_get_ignores_terminal_history_for_same_lane(tmp_path: Path) -> None:

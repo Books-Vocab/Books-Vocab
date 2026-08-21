@@ -29,6 +29,9 @@ class CapacityPolicy:
     target_merges_per_hour: float = 12.0
     max_inter_merge_seconds: float = 300.0
     max_required_p95_seconds: float = 240.0
+    max_handback_to_pr_p95_seconds: float = 60.0
+    max_pr_to_required_start_p95_seconds: float = 60.0
+    max_required_success_to_enqueue_p95_seconds: float = 30.0
     max_new_solvers_per_cycle: int = 4
 
 
@@ -73,10 +76,42 @@ def decide_capacity(
         add(ControlAction.REPAIR_REQUIRED, "required checks failed")
     if metrics.blocked_lanes:
         add(ControlAction.RECOVER_BLOCKERS, "existing lanes need bounded recovery")
+    if (
+        metrics.timings.handback_to_pr_p95_seconds is not None
+        and metrics.timings.handback_to_pr_p95_seconds
+        > policy.max_handback_to_pr_p95_seconds
+    ):
+        add(
+            ControlAction.PUBLISH_HANDBACKS,
+            "handback-to-PR p95 exceeds the transport SLA",
+        )
+    if (
+        metrics.timings.pr_to_required_start_p95_seconds is not None
+        and metrics.timings.pr_to_required_start_p95_seconds
+        > policy.max_pr_to_required_start_p95_seconds
+    ):
+        add(
+            ControlAction.REPAIR_REQUIRED,
+            "PR-to-required-start p95 exceeds the CI-start SLA",
+        )
+    if (
+        metrics.timings.required_success_to_enqueue_p95_seconds is not None
+        and metrics.timings.required_success_to_enqueue_p95_seconds
+        > policy.max_required_success_to_enqueue_p95_seconds
+    ):
+        add(
+            ControlAction.ENQUEUE_GREEN,
+            "required-success-to-enqueue p95 exceeds the admission SLA",
+        )
 
+    observed_required_p95 = (
+        required_p95_seconds
+        if required_p95_seconds is not None
+        else metrics.timings.required_duration_p95_seconds
+    )
     ci_saturated = (
-        required_p95_seconds is not None
-        and required_p95_seconds > policy.max_required_p95_seconds
+        observed_required_p95 is not None
+        and observed_required_p95 > policy.max_required_p95_seconds
     )
     pr_saturated = metrics.open_prs >= policy.max_open_prs
     desired_new_solvers = 0

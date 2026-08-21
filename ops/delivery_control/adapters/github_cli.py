@@ -12,6 +12,7 @@ from ..domain.models import CheckStatus
 from ..domain.observations import (
     CheckSnapshot,
     InventoryProblem,
+    MergeQueueEntrySnapshot,
     PullRequestInventory,
     PullRequestSnapshot,
 )
@@ -19,10 +20,11 @@ from ..ports.process import CommandRunnerPort
 from .errors import AdapterCommandError, AdapterPayloadError
 from .github_queue import GitHubQueueGraphQLAdapter
 from .subprocess_runner import SubprocessCommandRunner
+from .timestamps import parse_optional_timestamp
 
 _PR_FIELDS = (
     "id,number,url,headRefName,baseRefName,baseRefOid,headRefOid,state,isDraft,mergeable,title,body,"
-    "autoMergeRequest"
+    "autoMergeRequest,labels,createdAt,mergedAt"
 )
 
 
@@ -75,6 +77,12 @@ class GitHubCliAdapter:
             auto_merge_request, Mapping
         ):
             raise AdapterPayloadError("GitHub auto-merge payload is malformed")
+        raw_labels = payload.get("labels", [])
+        if not isinstance(raw_labels, list) or any(
+            not isinstance(item, Mapping) or type(item.get("name")) is not str
+            for item in raw_labels
+        ):
+            raise AdapterPayloadError("GitHub PR labels payload is malformed")
         return PullRequestSnapshot(
             number=payload["number"],
             url=payload["url"],
@@ -89,6 +97,13 @@ class GitHubCliAdapter:
             body=payload["body"],
             auto_merge_enabled=auto_merge_request is not None,
             node_id=payload["id"],
+            labels=tuple(sorted({item["name"] for item in raw_labels})),
+            created_at=parse_optional_timestamp(
+                payload.get("createdAt"), field="GitHub PR createdAt"
+            ),
+            merged_at=parse_optional_timestamp(
+                payload.get("mergedAt"), field="GitHub PR mergedAt"
+            ),
         )
 
     @classmethod
@@ -207,7 +222,7 @@ class GitHubCliAdapter:
                 str(number),
                 "--required",
                 "--json",
-                "name,state",
+                "name,state,startedAt,completedAt",
             ),
             allow_nonzero=True,
         )
@@ -215,6 +230,8 @@ class GitHubCliAdapter:
             raise AdapterPayloadError("GitHub required checks must be a JSON list")
         names: list[str] = []
         states: set[str] = set()
+        starts: list[datetime | None] = []
+        completions: list[datetime | None] = []
         for index, item in enumerate(payload):
             if not isinstance(item, Mapping):
                 raise AdapterPayloadError(f"required check[{index}] is not an object")
@@ -224,6 +241,17 @@ class GitHubCliAdapter:
                 raise AdapterPayloadError(f"required check[{index}] is malformed")
             names.append(name)
             states.add(state.upper())
+            starts.append(
+                parse_optional_timestamp(
+                    item.get("startedAt"), field=f"required check[{index}] startedAt"
+                )
+            )
+            completions.append(
+                parse_optional_timestamp(
+                    item.get("completedAt"),
+                    field=f"required check[{index}] completedAt",
+                )
+            )
         after = self.get_pull_request(number)
         if before.head_sha != after.head_sha:
             raise CompareAndSwapConflict(
@@ -248,6 +276,16 @@ class GitHubCliAdapter:
             head_sha=after.head_sha,
             observed_at=datetime.now(tz=UTC),
             names=tuple(sorted(names)),
+            started_at=(
+                min(item for item in starts if item is not None)
+                if starts and all(item is not None for item in starts)
+                else None
+            ),
+            completed_at=(
+                max(item for item in completions if item is not None)
+                if completions and all(item is not None for item in completions)
+                else None
+            ),
         )
 
     def changed_paths(self, number: int) -> tuple[str, ...]:
@@ -305,6 +343,11 @@ class GitHubCliAdapter:
 
     def merge_queue_entry_id(self, pull_request_id: str) -> str | None:
         return self.queue.snapshot(pull_request_id).entry_id
+
+    def merge_queue_entry_snapshot(
+        self, pull_request_id: str
+    ) -> MergeQueueEntrySnapshot | None:
+        return self.queue.snapshot(pull_request_id).entry
 
     def create_pull_request(
         self, *, branch: str, title: str, body: str

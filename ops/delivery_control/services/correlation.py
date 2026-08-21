@@ -8,7 +8,6 @@ from ..domain.observations import (
     FileOperation,
     InventoryProblem,
     PhysicalWorktree,
-    PullRequestSnapshot,
     RegistrySnapshot,
     WorktreeSnapshot,
 )
@@ -76,13 +75,6 @@ def scope_matches_snapshot(
     }
     actual = {(item.operation, item.path) for item in snapshot.changes}
     return actual == expected
-
-
-def has_explicit_hold(pull_request: PullRequestSnapshot | None) -> bool:
-    if pull_request is None:
-        return False
-    body = pull_request.body.lower()
-    return "publish only" in body or "security_hold" in body or "security hold" in body
 
 
 def collision_keys(path_sets: dict[str, set[str]]) -> set[str]:

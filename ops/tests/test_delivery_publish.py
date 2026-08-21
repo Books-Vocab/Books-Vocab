@@ -23,13 +23,11 @@ from delivery_control.domain.observations import (
     RegistrySnapshot,
     WorktreeSnapshot,
 )
+from delivery_control.services.pr_contract import render_pull_request_body
 from delivery_control.services.publish import (
     PublicationOutcome,
     PublishService,
-    parse_pull_request_body,
     receipt_from_active_claim,
-    render_pull_request_body,
-    validate_pull_request_body,
 )
 from delivery_control.services.publish_preflight import PublishPreflightService
 
@@ -283,48 +281,6 @@ def _service(
     )
 
 
-def test_body_is_deterministic_and_satisfies_readiness_labels() -> None:
-    body = render_pull_request_body(_receipt())
-    assert body.startswith("## Scope\n")
-    assert "## Handback\n" in body
-    assert "## Validation\n" in body
-    assert "kg.worktree.handback.v1" in body
-    assert "Base SHA:" in body and "Head SHA:" in body
-    assert body.count("Digest:") == 1
-    assert "GitHub required checks are authoritative" in body
-    assert parse_pull_request_body(body) == _receipt()
-
-
-def test_machine_receipt_parser_rejects_missing_or_duplicate_envelopes() -> None:
-    receipt = _receipt()
-    body = render_pull_request_body(receipt)
-    with pytest.raises(PolicyViolation, match="one typed"):
-        parse_pull_request_body("## Scope\nnone")
-    with pytest.raises(PolicyViolation, match="one typed"):
-        parse_pull_request_body(body + body)
-
-
-def test_machine_receipt_parser_normalizes_domain_validation_errors() -> None:
-    body = render_pull_request_body(_receipt()).replace(
-        '"content_digest":"' + "e" * 64 + '"',
-        '"content_digest":"not-a-digest"',
-    )
-
-    with pytest.raises(PolicyViolation, match="receipt is invalid"):
-        parse_pull_request_body(body)
-
-
-def test_readiness_validator_binds_receipt_to_exact_pr_head() -> None:
-    receipt = _receipt()
-    body = render_pull_request_body(receipt)
-
-    assert (
-        validate_pull_request_body(body, expected_head_sha=receipt.head_sha) == receipt
-    )
-    with pytest.raises(PolicyViolation, match="exact PR HEAD"):
-        validate_pull_request_body(body, expected_head_sha="f" * 40)
-
-
 def test_active_legacy_handback_normalizes_to_durable_receipt() -> None:
     receipt = _receipt()
     record = _registry(
@@ -392,6 +348,27 @@ def test_existing_unique_pr_allows_exact_force_with_lease_update() -> None:
     assert result.outcome is PublicationOutcome.UPDATED
     assert git.push_calls == [(OLD_HEAD, receipt.head_sha)]
     assert result.pull_request.head_sha == receipt.head_sha
+
+
+def test_publish_preserves_and_types_a_legacy_security_hold() -> None:
+    receipt = _receipt()
+    held = _pull_request(
+        receipt,
+        title="old title",
+        body=render_pull_request_body(receipt) + "\nPUBLISH ONLY\n",
+    )
+    github = FakeGitHub(receipt, pull_request=held)
+    service, _, _ = _service(
+        receipt,
+        git=FakeGit(receipt, remote_sha=receipt.head_sha),
+        github=github,
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert '"holds":["security"]' in result.pull_request.body
+    assert "Explicit hard holds: `security`" in result.pull_request.body
 
 
 def test_existing_exact_draft_is_marked_ready_without_local_quality_gate() -> None:

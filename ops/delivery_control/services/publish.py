@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
 
-from ..domain.errors import InvalidReceipt, PolicyViolation
+from ..domain.errors import PolicyViolation
 from ..domain.models import HandbackReceipt
 from ..domain.observations import (
     PullRequestSnapshot,
@@ -17,10 +16,11 @@ from ..domain.observations import (
 from ..ports.git import GitCommandPort
 from ..ports.github import GitHubCommandPort, GitHubQueryPort
 from .correlation import scope_matches_snapshot
+from .pr_contract import (
+    pull_request_holds,
+    render_pull_request_body,
+)
 from .publish_preflight import PublicationContext
-
-_RECEIPT_BEGIN = "<!-- kg.delivery.receipt.v1\n"
-_RECEIPT_END = "\n-->"
 
 
 class PublicationOutcome(StrEnum):
@@ -79,75 +79,6 @@ def receipt_from_active_claim(
     )
 
 
-def render_pull_request_body(receipt: HandbackReceipt) -> str:
-    scope_lines = "\n".join(
-        f"- `{item.operation.value}` `{item.path}`" for item in receipt.scope.files
-    )
-    if receipt.validation:
-        validation_lines = "\n".join(
-            f"- exit `{item.exit_code}`: `{json.dumps(list(item.command), ensure_ascii=False)}`"
-            for item in receipt.validation
-        )
-    else:
-        validation_lines = (
-            "- Local quality gates are not required before publication; "
-            "GitHub required checks are authoritative."
-        )
-    machine_receipt = json.dumps(
-        receipt.to_payload(),
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return (
-        "## Scope\n"
-        f"{scope_lines}\n\n"
-        "## Handback\n"
-        "- Registry handback schema: `kg.worktree.handback.v1`\n"
-        f"- Normalized schema: `{receipt.schema}`\n"
-        f"- Lane: `{receipt.lane_id}`\n"
-        f"- Owner: `{receipt.owner_thread_id}`\n"
-        f"- Claim generation: `{receipt.claim_generation}`\n"
-        f"- Base SHA: `{receipt.base_sha}`\n"
-        f"- Parent SHA: `{receipt.parent_sha}`\n"
-        f"- Head SHA: `{receipt.head_sha}`\n"
-        f"- Origin main observed by owner: `{receipt.origin_main_sha}`\n"
-        f"- Scope fingerprint: `{receipt.scope.digest}`\n"
-        f"- Digest: `{receipt.content_digest}`\n\n"
-        "## Validation\n"
-        f"{validation_lines}\n\n"
-        f"{_RECEIPT_BEGIN}{machine_receipt}{_RECEIPT_END}\n"
-    )
-
-
-def parse_pull_request_body(body: str) -> HandbackReceipt:
-    if body.count(_RECEIPT_BEGIN) != 1:
-        raise PolicyViolation("PR body must contain one typed delivery receipt")
-    start = body.index(_RECEIPT_BEGIN) + len(_RECEIPT_BEGIN)
-    end = body.find(_RECEIPT_END, start)
-    if end < 0 or _RECEIPT_BEGIN in body[end:]:
-        raise PolicyViolation("PR body typed delivery receipt is malformed")
-    try:
-        payload = json.loads(body[start:end])
-    except json.JSONDecodeError as error:
-        raise PolicyViolation(
-            "PR body typed delivery receipt is invalid JSON"
-        ) from error
-    if not isinstance(payload, dict):
-        raise PolicyViolation("PR body typed delivery receipt must be an object")
-    try:
-        return HandbackReceipt.from_payload(payload)
-    except InvalidReceipt as error:
-        raise PolicyViolation("PR body typed delivery receipt is invalid") from error
-
-
-def validate_pull_request_body(body: str, *, expected_head_sha: str) -> HandbackReceipt:
-    receipt = parse_pull_request_body(body)
-    if receipt.head_sha != expected_head_sha:
-        raise PolicyViolation("PR body receipt differs from the exact PR HEAD")
-    return receipt
-
-
 class PublishService:
     def __init__(
         self,
@@ -191,7 +122,10 @@ class PublishService:
             )
             pushed = True
 
-        body = render_pull_request_body(receipt)
+        body = render_pull_request_body(
+            receipt,
+            holds=pull_request_holds(pull_request),
+        )
         if pull_request is None:
             pull_request = self.github_command.create_pull_request(
                 branch=receipt.branch,

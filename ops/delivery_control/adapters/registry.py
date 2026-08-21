@@ -24,6 +24,7 @@ from ..domain.observations import (
 from ..ports.process import CommandRunnerPort
 from .errors import AdapterCommandError, AdapterPayloadError
 from .subprocess_runner import SubprocessCommandRunner
+from .timestamps import parse_optional_timestamp
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _GREEN = {"pass", "passed", "green", "ok", "success"}
@@ -231,6 +232,9 @@ class RegistryCliAdapter:
                 if isinstance(handback_origin, str)
                 and _SHA_RE.fullmatch(handback_origin)
                 else None
+            ),
+            handed_back_at=parse_optional_timestamp(
+                payload.get("handed_back_at"), field="registry handed_back_at"
             ),
         )
 

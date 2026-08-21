@@ -14,6 +14,7 @@ from delivery_control.domain.observations import (
     FileChange,
     FileOperation,
     InventoryProblem,
+    MergeQueueEntrySnapshot,
     PhysicalWorktree,
     PullRequestInventory,
     PullRequestSnapshot,
@@ -23,7 +24,7 @@ from delivery_control.domain.observations import (
 )
 from delivery_control.domain.states import LaneState
 from delivery_control.services.inspect import InspectService
-from delivery_control.services.publish import render_pull_request_body
+from delivery_control.services.pr_contract import render_pull_request_body
 
 
 class FakeRegistry:
@@ -123,6 +124,17 @@ class FakeGitHub:
     def merge_queue_entry_id(self, pull_request_id: str) -> str | None:
         number = int(pull_request_id.removeprefix("PR_"))
         return f"MQE_{number}" if number in self.queued_numbers else None
+
+    def merge_queue_entry_snapshot(
+        self, pull_request_id: str
+    ) -> MergeQueueEntrySnapshot | None:
+        entry_id = self.merge_queue_entry_id(pull_request_id)
+        if entry_id is None:
+            return None
+        return MergeQueueEntrySnapshot(
+            entry_id,
+            datetime(2026, 8, 21, tzinfo=UTC),
+        )
 
 
 class FakeRuntime:

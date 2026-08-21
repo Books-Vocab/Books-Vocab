@@ -15,7 +15,7 @@ from ..domain.observations import (
 from ..ports.git import GitCommandPort, GitQueryPort
 from ..ports.github import GitHubQueryPort
 from ..ports.registry import RegistryCleanupQueryPort, RegistryCommandPort
-from .publish import render_pull_request_body
+from .pr_contract import render_pull_request_body
 
 
 @dataclass(frozen=True)

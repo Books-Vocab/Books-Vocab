@@ -4,6 +4,7 @@ from typing import Protocol, runtime_checkable
 
 from ..domain.observations import (
     CheckSnapshot,
+    MergeQueueEntrySnapshot,
     PullRequestInventory,
     PullRequestSnapshot,
 )
@@ -28,6 +29,10 @@ class GitHubQueryPort(Protocol):
     def merge_queue_enabled(self, branch: str) -> bool: ...
 
     def merge_queue_entry_id(self, pull_request_id: str) -> str | None: ...
+
+    def merge_queue_entry_snapshot(
+        self, pull_request_id: str
+    ) -> MergeQueueEntrySnapshot | None: ...
 
 
 @runtime_checkable

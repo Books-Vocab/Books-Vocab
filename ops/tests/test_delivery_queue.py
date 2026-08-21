@@ -19,7 +19,7 @@ from delivery_control.domain.observations import (
     RegistrySnapshot,
 )
 from delivery_control.domain.states import HoldKind
-from delivery_control.services.publish import render_pull_request_body
+from delivery_control.services.pr_contract import render_pull_request_body
 from delivery_control.services.queue import QueueService
 
 BASE = "a" * 40
@@ -199,6 +199,20 @@ def test_queue_blocks_stale_failed_or_held_candidate(
 
     with pytest.raises(PolicyViolation, match=message):
         service.enqueue(receipt=receipt, pull_request_number=11, holds=holds)
+    assert not github.enqueue_calls
+
+
+def test_queue_blocks_durable_body_hold_without_caller_supplied_hold() -> None:
+    receipt = _receipt()
+    pull_request = replace(
+        _pull_request(receipt),
+        body=render_pull_request_body(receipt, holds=frozenset({HoldKind.SECURITY})),
+    )
+    github = FakeGitHub(receipt, pull_request=pull_request)
+    service, github = _service(receipt, github=github)
+
+    with pytest.raises(PolicyViolation, match="hold"):
+        service.enqueue(receipt=receipt, pull_request_number=11)
     assert not github.enqueue_calls
 
 

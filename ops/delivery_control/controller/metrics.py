@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
-import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from itertools import pairwise
 
+from ..domain.models import CheckStatus
 from ..domain.states import LaneState
 from ..services.inspect import DeliveryInventory
+from .timings import (
+    PipelineTimings,
+    measure_pipeline_timings,
+    nearest_rank_p95,
+    nearest_rank_percentile,
+)
 
 
 @dataclass(frozen=True)
@@ -21,11 +27,18 @@ class PipelineMetrics:
     unmapped_open_prs: int
     duplicate_pr_mappings: int
     required_green: int
+    required_running: int
     required_failed: int
+    merge_queue_depth: int
     terminal_cleanup: int
     blocked_lanes: int
     physical_worktrees: int
     source_problems: int
+    idle_worktrees: int = 0
+    collision_lanes: int = 0
+    collision_rate: float = 0.0
+    required_failure_rate: float = 0.0
+    timings: PipelineTimings = field(default_factory=PipelineTimings)
 
 
 @dataclass(frozen=True)
@@ -33,6 +46,7 @@ class MergeCadence:
     window_seconds: int
     merged_count: int
     merges_per_hour: float
+    p50_interval_seconds: float | None
     p95_interval_seconds: float | None
     seconds_since_last_merge: float | None
 
@@ -67,10 +81,27 @@ def measure_pipeline(inventory: DeliveryInventory) -> PipelineMetrics:
         for lane in inventory.lanes
         if lane.physical is not None
     }
+    collision_lanes = states.count(LaneState.BLOCKED_COLLISION)
+    live_states = [
+        state
+        for state in states
+        if state not in {LaneState.DONE, LaneState.TERMINAL_CLEANUP}
+    ]
+    required_green = states.count(LaneState.READY_TO_QUEUE)
+    required_running = sum(
+        lane.required_check is not None
+        and lane.required_check.status is CheckStatus.PENDING
+        for lane in inventory.lanes
+    )
+    required_failed = states.count(LaneState.REQUIRED_FAILED)
+    required_terminal = required_green + required_failed
+    handbacks_publishable = states.count(LaneState.HANDBACK_PUBLISHABLE)
+    published_local_cleanup = states.count(LaneState.PUBLISHED_LOCAL_CLEANUP)
+    timings = measure_pipeline_timings(inventory)
     return PipelineMetrics(
         active_development=states.count(LaneState.ACTIVE_DEVELOPMENT),
-        handbacks_publishable=states.count(LaneState.HANDBACK_PUBLISHABLE),
-        published_local_cleanup=states.count(LaneState.PUBLISHED_LOCAL_CLEANUP),
+        handbacks_publishable=handbacks_publishable,
+        published_local_cleanup=published_local_cleanup,
         cleanup_pending=sum(
             lane.registry is not None and lane.registry.status == "cleanup_pending"
             for lane in inventory.lanes
@@ -78,21 +109,22 @@ def measure_pipeline(inventory: DeliveryInventory) -> PipelineMetrics:
         open_prs=len(mapped_pull_request_numbers),
         unmapped_open_prs=len(all_pull_request_numbers - mapped_pull_request_numbers),
         duplicate_pr_mappings=states.count(LaneState.BLOCKED_DUPLICATE),
-        required_green=states.count(LaneState.READY_TO_QUEUE),
-        required_failed=states.count(LaneState.REQUIRED_FAILED),
+        required_green=required_green,
+        required_running=required_running,
+        required_failed=required_failed,
+        merge_queue_depth=states.count(LaneState.PR_QUEUED),
         terminal_cleanup=states.count(LaneState.TERMINAL_CLEANUP),
         blocked_lanes=sum(state in _BLOCKED for state in states),
         physical_worktrees=len(physical_paths),
-        source_problems=len(inventory.source_problems),
+        source_problems=len(inventory.source_problems) + timings.invalid_samples,
+        idle_worktrees=handbacks_publishable + published_local_cleanup,
+        collision_lanes=collision_lanes,
+        collision_rate=(collision_lanes / len(live_states) if live_states else 0.0),
+        required_failure_rate=(
+            required_failed / required_terminal if required_terminal else 0.0
+        ),
+        timings=timings,
     )
-
-
-def _nearest_rank_p95(values: tuple[float, ...]) -> float | None:
-    if not values:
-        return None
-    ordered = sorted(values)
-    rank = max(1, math.ceil(0.95 * len(ordered)))
-    return ordered[rank - 1]
 
 
 def measure_merge_cadence(
@@ -120,7 +152,8 @@ def measure_merge_cadence(
         window_seconds=seconds,
         merged_count=len(selected),
         merges_per_hour=rate,
-        p95_interval_seconds=_nearest_rank_p95(intervals),
+        p50_interval_seconds=nearest_rank_percentile(intervals, 0.5),
+        p95_interval_seconds=nearest_rank_p95(intervals),
         seconds_since_last_merge=(
             (now - selected[-1]).total_seconds() if selected else None
         ),

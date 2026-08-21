@@ -19,6 +19,7 @@ from delivery_control.domain.observations import (
     CheckSnapshot,
     FileChange,
     FileOperation,
+    MergeQueueEntrySnapshot,
     PhysicalWorktree,
     PullRequestInventory,
     PullRequestSnapshot,
@@ -28,7 +29,7 @@ from delivery_control.domain.observations import (
     RegistrySnapshot,
     WorktreeSnapshot,
 )
-from delivery_control.services.publish import render_pull_request_body
+from delivery_control.services.pr_contract import render_pull_request_body
 
 BASE = "a" * 40
 HEAD = "b" * 40
@@ -248,6 +249,11 @@ class FakeGitHub:
     def merge_queue_entry_id(self, pull_request_id: str) -> str | None:
         return None
 
+    def merge_queue_entry_snapshot(
+        self, pull_request_id: str
+    ) -> MergeQueueEntrySnapshot | None:
+        return None
+
     def merge_queue_enabled(self, branch: str) -> bool:
         return True
 
@@ -374,6 +380,36 @@ def test_cli_queue_preserves_explicit_hold_as_typed_input(capsys: object) -> Non
     assert payload["ok"] is True
     assert application.calls[0][0] == 41
     assert {item.value for item in application.calls[0][1]} == {"security"}
+
+
+def test_cli_requires_an_explicit_hold_or_clearance_action(capsys: object) -> None:
+    class FakeApplication:
+        def __init__(self) -> None:
+            self.calls: list[object] = []
+
+        def reconcile_holds(
+            self,
+            *,
+            pull_request_number: int,
+            holds: frozenset[object],
+            clear_all: bool,
+        ) -> object:
+            self.calls.append((pull_request_number, holds, clear_all))
+            return {"updated": True}
+
+    application = FakeApplication()
+
+    assert (
+        main(
+            ["reconcile-holds", "--pr", "41", "--clear-all"],
+            application_factory=lambda **_: application,
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert payload["ok"] is True
+    assert application.calls == [(41, frozenset(), True)]
 
 
 def test_cli_exposes_dogfood_preflight_as_read_only_json(capsys: object) -> None:

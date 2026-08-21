@@ -30,12 +30,11 @@ from .ports.registry import (
 )
 from .ports.runtime import AgentRuntimePort
 from .services.cleanup import CleanupService
+from .services.holds import HoldService
 from .services.inspect import InspectService
-from .services.publish import (
-    PublishService,
-    parse_pull_request_body,
-    receipt_from_active_claim,
-)
+from .services.metadata import MetadataRepairService
+from .services.pr_contract import parse_pull_request_body
+from .services.publish import PublishService, receipt_from_active_claim
 from .services.publish_preflight import PublishPreflightService
 from .services.queue import QueueService
 from .services.sync_main import MainSyncService
@@ -171,6 +170,26 @@ class DeliveryApplication:
             pull_request_number=pull_request_number,
             holds=holds,
         )
+
+    def reconcile_holds(
+        self,
+        *,
+        pull_request_number: int,
+        holds: frozenset[HoldKind],
+        clear_all: bool,
+    ) -> object:
+        return HoldService(query=self.github, command=self.github).reconcile(
+            number=pull_request_number,
+            holds=holds,
+            clear_all=clear_all,
+        )
+
+    def repair_metadata(self, pull_request_number: int) -> object:
+        return MetadataRepairService(
+            registry=self.registry,
+            query=self.github,
+            command=self.github,
+        ).repair(pull_request_number)
 
     def cleanup_merged(self, pull_request_number: int) -> object:
         receipt = self._receipt_from_pr(pull_request_number)

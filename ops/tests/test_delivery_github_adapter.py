@@ -119,6 +119,53 @@ def test_github_required_check_snapshot_is_bound_to_exact_head() -> None:
     assert snapshot.names == ("required",)
 
 
+def test_github_adapter_parses_pr_labels_and_required_timing_window() -> None:
+    pull_request = _pr_payload()
+    pull_request.update(
+        {
+            "labels": [{"name": "delivery-hold:security"}],
+            "createdAt": "2026-08-21T00:00:00Z",
+            "mergedAt": None,
+        }
+    )
+    runner = StaticRunner(
+        [
+            CommandResult(("gh",), 0, json.dumps(pull_request), ""),
+            CommandResult(
+                ("gh",),
+                0,
+                json.dumps(
+                    [
+                        {
+                            "state": "SUCCESS",
+                            "name": "readiness",
+                            "startedAt": "2026-08-21T00:00:10Z",
+                            "completedAt": "2026-08-21T00:00:20Z",
+                        },
+                        {
+                            "state": "SUCCESS",
+                            "name": "required",
+                            "startedAt": "2026-08-21T00:00:15Z",
+                            "completedAt": "2026-08-21T00:00:45Z",
+                        },
+                    ]
+                ),
+                "",
+            ),
+            CommandResult(("gh",), 0, json.dumps(pull_request), ""),
+        ]
+    )
+
+    snapshot = GitHubCliAdapter(runner=runner).required_check_snapshot(12)
+
+    assert snapshot.started_at is not None and snapshot.started_at.second == 10
+    assert snapshot.completed_at is not None and snapshot.completed_at.second == 45
+    assert snapshot.duration_seconds == 35.0
+    assert GitHubCliAdapter._pull_request(pull_request).labels == (
+        "delivery-hold:security",
+    )
+
+
 def test_github_merge_history_is_typed_and_sorted() -> None:
     runner = StaticRunner(
         [
@@ -169,7 +216,10 @@ def test_github_enqueue_delegates_to_native_queue_without_direct_merge() -> None
     }
     enqueued = {"data": {"enqueuePullRequest": {"mergeQueueEntry": {"id": "MQE_1"}}}}
     queued = json.loads(json.dumps(queue_state))
-    queued["data"]["node"]["mergeQueueEntry"] = {"id": "MQE_1"}
+    queued["data"]["node"]["mergeQueueEntry"] = {
+        "id": "MQE_1",
+        "enqueuedAt": "2026-08-21T12:00:00Z",
+    }
     runner = StaticRunner(
         [
             CommandResult(("gh",), 0, json.dumps(_pr_payload()), ""),
@@ -226,7 +276,10 @@ def test_github_adapter_observes_native_queue_entry() -> None:
                 "headRefOid": "b" * 40,
                 "body": "body",
                 "state": "OPEN",
-                "mergeQueueEntry": {"id": "MQE_1"},
+                "mergeQueueEntry": {
+                    "id": "MQE_1",
+                    "enqueuedAt": "2026-08-21T12:00:00Z",
+                },
             }
         }
     }

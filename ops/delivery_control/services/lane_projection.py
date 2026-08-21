@@ -12,17 +12,16 @@ from ..domain.observations import (
     PullRequestSnapshot,
     RegistrySnapshot,
 )
-from ..domain.states import HoldKind, LaneFacts, derive_lane_decision
+from ..domain.states import LaneFacts, derive_lane_decision
 from ..ports.git import GitQueryPort
 from ..ports.github import GitHubQueryPort
 from ..ports.runtime import AgentRuntimePort
 from .correlation import (
-    has_explicit_hold,
     owner_reachable,
     scope_matches_snapshot,
 )
 from .inventory_sources import InspectionSources
-from .publish import parse_pull_request_body
+from .pr_contract import parse_pull_request_body, pull_request_holds
 
 
 def _pr_receipt_matches_registry(
@@ -78,10 +77,12 @@ def project_active_lane(
     check = None
     body_exact = False
     queued = False
+    queue_entry = None
     if pull_request is not None:
         if pull_request.state == "OPEN":
             try:
-                queued = github.merge_queue_entry_id(pull_request.node_id) is not None
+                queue_entry = github.merge_queue_entry_snapshot(pull_request.node_id)
+                queued = queue_entry is not None
             except DeliverySourceError as error:
                 problems.append(
                     InventoryProblem("github", f"PR#{pull_request.number}", str(error))
@@ -136,11 +137,7 @@ def project_active_lane(
         and record.handed_back_sha == snapshot.head_sha
         and record.handback_claim_generation == record.claim_generation
     )
-    holds = (
-        frozenset({HoldKind.SECURITY})
-        if has_explicit_hold(pull_request)
-        else frozenset()
-    )
+    holds = pull_request_holds(pull_request)
     facts = LaneFacts(
         has_worktree=physical_ref is not None,
         owner_known=record.owner_thread_id is not None,
@@ -177,6 +174,8 @@ def project_active_lane(
         pull_requests=branch_prs,
         decision=derive_lane_decision(facts),
         problems=tuple(problems),
+        required_check=check,
+        queue_entry=queue_entry,
     )
 
 
@@ -201,10 +200,12 @@ def project_published_lane(
     check = None
     body_exact = False
     queued = False
+    queue_entry = None
     if pull_request is not None:
         if pull_request.state == "OPEN":
             try:
-                queued = github.merge_queue_entry_id(pull_request.node_id) is not None
+                queue_entry = github.merge_queue_entry_snapshot(pull_request.node_id)
+                queued = queue_entry is not None
             except DeliverySourceError as error:
                 problems.append(
                     InventoryProblem("github", f"PR#{pull_request.number}", str(error))
@@ -250,7 +251,7 @@ def project_published_lane(
         and check is not None
         and check.head_sha == pull_request.head_sha
         and check.status is CheckStatus.SUCCESS
-        and not has_explicit_hold(pull_request)
+        and not pull_request_holds(pull_request)
     )
     cleanup_exact = (
         not problems
@@ -263,11 +264,7 @@ def project_published_lane(
         and record.handback_valid
         and record.handback_claim_generation == record.claim_generation
     )
-    holds = (
-        frozenset({HoldKind.SECURITY})
-        if has_explicit_hold(pull_request)
-        else frozenset()
-    )
+    holds = pull_request_holds(pull_request)
     return LaneInspection(
         key=f"published:{record.lane_id}:{record.claim_generation}",
         registry=record,
@@ -301,4 +298,6 @@ def project_published_lane(
             )
         ),
         problems=tuple(problems),
+        required_check=check,
+        queue_entry=queue_entry,
     )
