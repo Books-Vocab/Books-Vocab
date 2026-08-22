@@ -5,6 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..domain.branch_refs import BranchInventory
+from ..domain.candidate_issues import (
+    CANDIDATE_ISSUE_LABEL,
+    CandidateIssue,
+    unclaimed_candidate_issues,
+)
 from ..domain.errors import DeliverySourceError
 from ..domain.observations import (
     InventoryProblem,
@@ -39,8 +45,10 @@ class InspectionSources:
     published_records: tuple[RegistrySnapshot, ...]
     physical: tuple[PhysicalWorktree, ...]
     pull_requests: tuple[PullRequestSnapshot, ...]
+    candidate_issues: tuple[CandidateIssue, ...]
     live_main_sha: str
     local_main_sha: str
+    branch_inventory: BranchInventory
     physical_by_path: dict[Path, PhysicalWorktree]
     prs_by_branch: dict[str, tuple[PullRequestSnapshot, ...]]
     snapshots: dict[str, WorktreeSnapshot | None]
@@ -59,6 +67,18 @@ def collect_inventory_sources(
     registry_inventory = registry.list_records()
     physical = git.list_worktrees()
     github_inventory = github.list_open_pull_requests()
+    github_problems = list(github_inventory.problems)
+    try:
+        candidate_inventory = github.list_open_candidate_issues()
+    except DeliverySourceError as error:
+        candidate_records: tuple[CandidateIssue, ...] = ()
+        github_problems.append(
+            InventoryProblem("github", CANDIDATE_ISSUE_LABEL, str(error))
+        )
+    else:
+        candidate_records = candidate_inventory.records
+        github_problems.extend(candidate_inventory.problems)
+    branch_inventory = git.branch_inventory()
     live_main_sha = git.origin_main_sha()
     local_main_sha = git.local_main_sha()
     invalid_registry_statuses = tuple(
@@ -77,23 +97,33 @@ def collect_inventory_sources(
     published_records = tuple(
         item for item in records if item.status in {PUBLISHED, CLEANUP_PENDING}
     )
+    candidate_issues = unclaimed_candidate_issues(
+        candidate_records,
+        external_ids=tuple(
+            external_id
+            for item in records
+            if item.status in {ACTIVE, PUBLISHED, CLEANUP_PENDING}
+            for external_id in (item.external_ids or (item.lane_id,))
+        ),
+    )
     physical_by_path = {item.path.resolve(): item for item in physical}
     pull_requests = list(github_inventory.records)
-    github_problems = list(github_inventory.problems)
     known_pr_numbers = {item.number for item in pull_requests}
     open_branches = {item.branch for item in pull_requests}
     for record in published_records:
         if record.branch in open_branches:
             continue
         try:
-            branch_inventory = github.list_pull_requests_for_branch(record.branch)
+            github_branch_inventory = github.list_pull_requests_for_branch(
+                record.branch
+            )
         except DeliverySourceError as error:
             github_problems.append(
                 InventoryProblem("github", record.branch, str(error))
             )
             continue
-        github_problems.extend(branch_inventory.problems)
-        for pull_request in branch_inventory.records:
+        github_problems.extend(github_branch_inventory.problems)
+        for pull_request in github_branch_inventory.records:
             if pull_request.number not in known_pr_numbers:
                 pull_requests.append(pull_request)
                 known_pr_numbers.add(pull_request.number)
@@ -174,8 +204,10 @@ def collect_inventory_sources(
         published_records=published_records,
         physical=physical,
         pull_requests=tuple(pull_requests),
+        candidate_issues=candidate_issues,
         live_main_sha=live_main_sha,
         local_main_sha=local_main_sha,
+        branch_inventory=branch_inventory,
         physical_by_path=physical_by_path,
         prs_by_branch=prs_by_branch,
         snapshots=snapshots,

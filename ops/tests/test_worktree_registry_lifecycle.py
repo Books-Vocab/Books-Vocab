@@ -65,12 +65,15 @@ def test_merged_transition_requires_typed_exact_pr_proof(tmp_path: Path) -> None
         _resolve_args(state_path, record)
         + ["--terminal-proof", json.dumps(tampered_proof)]
     )
+    exact_proof = _proof(record)
     exact = registry.main(
         _resolve_args(state_path, record)
-        + ["--terminal-proof", json.dumps(_proof(record))]
+        + ["--terminal-proof", json.dumps(exact_proof)]
     )
 
     assert missing == registry.EXIT_CLAIMED
     assert tampered == registry.EXIT_CLAIMED
     assert exact == registry.EXIT_OK
-    assert registry.load_state(state_path)["records"][0]["status"] == "merged"
+    resolved = registry.load_state(state_path)["records"][0]
+    assert resolved["status"] == "merged"
+    assert resolved["terminal_proof"] == exact_proof

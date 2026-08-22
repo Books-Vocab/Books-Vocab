@@ -1,0 +1,272 @@
+"""User-command facade over deterministic delivery services."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+
+from .application_ports import (
+    DeliveryGitHubPort,
+    DeliveryGitPort,
+    DeliveryRegistryPort,
+    _utc_now,
+)
+from .controller.capacity import decide_capacity
+from .controller.dogfood import assess_dogfood_readiness
+from .controller.metrics import measure_merge_cadence, measure_pipeline
+from .domain import errors, models, observations, states
+from .ports.runtime import AgentRuntimePort
+from .ports.telemetry import TelemetryStorePort
+from .services import (
+    abandon,
+    cleanup,
+    inspect,
+    metadata,
+    queue,
+    required_repair,
+    sync_main,
+    telemetry_operations,
+)
+from .services import holds as hold_services
+from .services.pr_contract import parse_pull_request_body
+from .services.publish import PublishService, receipt_from_active_claim
+from .services.publish_preflight import PublishPreflightService
+
+
+@dataclass(frozen=True)
+class DeliveryApplication:
+    repo: Path
+    git: DeliveryGitPort
+    github: DeliveryGitHubPort
+    registry: DeliveryRegistryPort
+    runtime: AgentRuntimePort
+    telemetry: TelemetryStorePort
+    clock: Callable[[], datetime] = _utc_now
+
+    def inspect(self) -> object:
+        return inspect.InspectService(
+            registry=self.registry,
+            git=self.git,
+            github=self.github,
+            runtime=self.runtime,
+        ).inspect()
+
+    def metrics(self, *, now: datetime | None = None) -> object:
+        observed_at = now or self.clock()
+        telemetry = self._operation_telemetry().rolling(now=observed_at)
+        return measure_pipeline(self.inspect(), telemetry=telemetry, now=observed_at)
+
+    def plan(self, *, now: datetime | None = None) -> object:
+        observed_at = now or self.clock()
+        metrics = self.metrics(now=observed_at)
+        cadence = measure_merge_cadence(
+            self.github.recent_merge_times(), now=observed_at
+        )
+        return {
+            "metrics": metrics,
+            "cadence": cadence,
+            "decision": decide_capacity(metrics, cadence),
+        }
+
+    def dogfood_preflight(self, *, now: datetime | None = None) -> object:
+        observed_at = now or self.clock()
+        checkout = self.git.canonical_checkout()
+        origin_main_sha = self.git.origin_main_sha()
+        physical_worktrees = self.git.list_worktrees()
+        main_protected = self.github.branch_is_protected("main")
+        required_status_contexts = (
+            self.github.required_status_contexts("main") if main_protected else ()
+        )
+        metrics = self.metrics(now=observed_at)
+        cadence = measure_merge_cadence(
+            self.github.recent_merge_times(), now=observed_at
+        )
+        return assess_dogfood_readiness(
+            local_main_sha=self.git.local_main_sha(),
+            origin_main_sha=origin_main_sha,
+            canonical_branch=checkout.branch,
+            canonical_clean=checkout.clean,
+            main_protected=main_protected,
+            required_status_contexts=required_status_contexts,
+            merge_queue_enabled=self.github.merge_queue_enabled("main"),
+            physical_worktree_count=len(physical_worktrees),
+            canonical_worktree_present=(
+                sum(
+                    item.path.resolve() == self.repo.resolve()
+                    for item in physical_worktrees
+                )
+                == 1
+            ),
+            metrics=metrics,
+            cadence=cadence,
+        )
+
+    def receipt(self, lane_id: str) -> models.HandbackReceipt:
+        receipt, _ = self._receipt_and_record(lane_id)
+        return receipt
+
+    def _receipt_and_record(
+        self, lane_id: str
+    ) -> tuple[models.HandbackReceipt, observations.RegistrySnapshot]:
+        record = self.registry.get(lane_id)
+        if record is None:
+            raise errors.PolicyViolation(
+                f"no unique active registry record for {lane_id}"
+            )
+        snapshot = self.git.inspect_worktree(record.path, record.base_sha)
+        return receipt_from_active_claim(record, snapshot), record
+
+    def publish(self, *, lane_id: str, title: str) -> object:
+        receipt, record = self._receipt_and_record(lane_id)
+        publication = PublishService(
+            preflight=PublishPreflightService(
+                registry=self.registry,
+                git=self.git,
+                github=self.github,
+            ),
+            git=self.git,
+            github_query=self.github,
+            github_command=self.github,
+        ).publish(receipt=receipt, title=title)
+        warnings = self._operation_telemetry().after_publish(
+            receipt=receipt,
+            record=record,
+            publication=publication,
+        )
+        release = self._cleanup().release_after_publish(
+            receipt=receipt,
+            pull_request_number=publication.pull_request.number,
+        )
+        return {
+            "receipt": receipt,
+            "publication": publication,
+            "release": release,
+            "telemetry_warnings": warnings,
+        }
+
+    def release_published(self, pull_request_number: int) -> object:
+        receipt = self._receipt_from_pr(pull_request_number)
+        return self._cleanup().release_after_publish(
+            receipt=receipt, pull_request_number=pull_request_number
+        )
+
+    def enqueue(
+        self,
+        *,
+        pull_request_number: int,
+        holds: frozenset[states.HoldKind] = frozenset(),
+    ) -> object:
+        receipt = self._receipt_from_pr(pull_request_number)
+        record = self._record_for_receipt(receipt)
+        result = queue.QueueService(
+            registry=self.registry,
+            git=self.git,
+            github_query=self.github,
+            github_command=self.github,
+        ).enqueue(
+            receipt=receipt,
+            pull_request_number=pull_request_number,
+            holds=holds,
+        )
+        warnings = self._operation_telemetry().after_enqueue(
+            receipt=receipt,
+            record=record,
+            result=result,
+        )
+        return {"queue": result, "telemetry_warnings": warnings}
+
+    def reconcile_holds(
+        self,
+        *,
+        pull_request_number: int,
+        holds: frozenset[states.HoldKind],
+        clear_all: bool,
+    ) -> object:
+        return hold_services.HoldService(
+            query=self.github, command=self.github
+        ).reconcile(
+            number=pull_request_number,
+            holds=holds,
+            clear_all=clear_all,
+        )
+
+    def repair_metadata(self, pull_request_number: int) -> object:
+        return metadata.MetadataRepairService(
+            registry=self.registry,
+            query=self.github,
+            command=self.github,
+        ).repair(pull_request_number)
+
+    def trigger_required(self, pull_request_number: int) -> object:
+        return required_repair.RequiredRepairService(
+            registry=self.registry,
+            query=self.github,
+            command=self.github,
+        ).trigger(pull_request_number)
+
+    def cleanup_merged(self, pull_request_number: int) -> object:
+        pull_request = self.github.get_pull_request(pull_request_number)
+        receipt = parse_pull_request_body(pull_request.body)
+        record = self._record_for_receipt(receipt)
+        result = self._cleanup().finalize_merged(
+            receipt=receipt, pull_request_number=pull_request_number
+        )
+        warnings = self._operation_telemetry().after_cleanup(
+            pull_request=pull_request,
+            was_already_terminal=record.status == "merged",
+        )
+        return {"cleanup": result, "telemetry_warnings": warnings}
+
+    def abandon_pr(self, pull_request_number: int) -> object:
+        return abandon.AbandonService(
+            registry_query=self.registry,
+            registry_command=self.registry,
+            git_query=self.git,
+            git_command=self.git,
+            github_query=self.github,
+            github_command=self.github,
+        ).abandon(pull_request_number=pull_request_number)
+
+    def sync_main(self) -> object:
+        result = sync_main.MainSyncService(
+            canonical_path=self.repo,
+            query=self.git,
+            command=self.git,
+        ).sync()
+        warnings = self._operation_telemetry().after_sync(result)
+        return {"sync": result, "telemetry_warnings": warnings}
+
+    def _receipt_from_pr(self, number: int) -> models.HandbackReceipt:
+        return parse_pull_request_body(self.github.get_pull_request(number).body)
+
+    def _record_for_receipt(
+        self, receipt: models.HandbackReceipt
+    ) -> observations.RegistrySnapshot:
+        record = self.registry.find_exact_claim(
+            lane_id=receipt.lane_id,
+            branch=receipt.branch,
+            path=Path(receipt.worktree_path),
+            claim_generation=receipt.claim_generation,
+        )
+        if record is None:
+            raise errors.PolicyViolation("typed receipt has no exact registry claim")
+        return record
+
+    def _operation_telemetry(self) -> telemetry_operations.OperationTelemetry:
+        return telemetry_operations.OperationTelemetry(
+            store=self.telemetry,
+            github=self.github,
+            git=self.git,
+            clock=self.clock,
+        )
+
+    def _cleanup(self) -> cleanup.CleanupService:
+        return cleanup.CleanupService(
+            registry_query=self.registry,
+            registry_command=self.registry,
+            git_query=self.git,
+            git_command=self.git,
+            github=self.github,
+        )

@@ -8,6 +8,15 @@ from pathlib import Path
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
+from delivery_control.adapters.errors import AdapterPayloadError
+from delivery_control.domain.branch_refs import BranchInventory
+from delivery_control.domain.candidate_issues import (
+    CANDIDATE_ISSUE_LABEL,
+    CandidateIssue,
+    CandidateIssueInventory,
+    CandidateSeverity,
+    CandidateSpec,
+)
 from delivery_control.domain.models import CheckStatus, HandbackReceipt, Scope
 from delivery_control.domain.observations import (
     CheckSnapshot,
@@ -23,7 +32,17 @@ from delivery_control.domain.observations import (
     WorktreeSnapshot,
 )
 from delivery_control.domain.states import LaneState
+from delivery_control.services.active_lane_projection import (
+    project_active_lane as project_active_lane_implementation,
+)
 from delivery_control.services.inspect import InspectService
+from delivery_control.services.lane_projection import (
+    project_active_lane,
+    project_published_lane,
+)
+from delivery_control.services.published_lane_projection import (
+    project_published_lane as project_published_lane_implementation,
+)
 from delivery_control.services.pr_contract import render_pull_request_body
 
 
@@ -51,10 +70,14 @@ class FakeGit:
         physical: tuple[PhysicalWorktree, ...],
         snapshots: dict[Path, WorktreeSnapshot],
         local_branches: dict[str, str] | None = None,
+        remote_branches: dict[str, str] | None = None,
+        main_sha: str = "a" * 40,
     ) -> None:
         self.physical = physical
         self.snapshots = snapshots
         self.local_branches = local_branches or {}
+        self.remote_branches = remote_branches or {}
+        self.main_sha = main_sha
 
     def list_worktrees(self) -> tuple[PhysicalWorktree, ...]:
         return self.physical
@@ -62,17 +85,23 @@ class FakeGit:
     def inspect_worktree(self, path: Path, base_sha: str) -> WorktreeSnapshot:
         return self.snapshots[path]
 
+    def branch_inventory(self) -> BranchInventory:
+        return BranchInventory(
+            local=tuple(sorted(self.local_branches.items())),
+            remote=tuple(sorted(self.remote_branches.items())),
+        )
+
     def remote_branch_sha(self, branch: str) -> str | None:
-        return None
+        return self.remote_branches.get(branch)
 
     def local_branch_sha(self, branch: str) -> str | None:
         return self.local_branches.get(branch)
 
     def local_main_sha(self) -> str:
-        return "a" * 40
+        return self.main_sha
 
     def origin_main_sha(self) -> str:
-        return "a" * 40
+        return self.main_sha
 
 
 class FakeGitHub:
@@ -82,10 +111,17 @@ class FakeGitHub:
         *,
         problems: tuple[InventoryProblem, ...] = (),
         queued_numbers: frozenset[int] = frozenset(),
+        candidates: tuple[CandidateIssue, ...] = (),
+        candidate_problems: tuple[InventoryProblem, ...] = (),
     ) -> None:
         self.pull_requests = pull_requests
         self.problems = problems
         self.queued_numbers = queued_numbers
+        self.candidates = candidates
+        self.candidate_problems = candidate_problems
+
+    def list_open_candidate_issues(self) -> CandidateIssueInventory:
+        return CandidateIssueInventory(self.candidates, self.candidate_problems)
 
     def list_open_pull_requests(self) -> PullRequestInventory:
         return PullRequestInventory(
@@ -183,6 +219,19 @@ def _receipt(path: Path) -> HandbackReceipt:
     )
 
 
+def _candidate(number: int) -> CandidateIssue:
+    return CandidateIssue(
+        number,
+        f"https://github.com/owner/repo/issues/{number}",
+        CandidateSpec(
+            CandidateSeverity.P2,
+            number,
+            Scope.from_paths(modify=(f"ops/issue_{number}.py",)),
+            (f"Issue {number} is fixed.",),
+        ),
+    )
+
+
 def _snapshot(
     path: Path, *, clean: bool = True, head: str = "b" * 40
 ) -> WorktreeSnapshot:
@@ -214,6 +263,11 @@ def _pull_request(
         body=render_pull_request_body(receipt),
         node_id="PR_1",
     )
+
+
+def test_lane_projection_facade_preserves_public_imports() -> None:
+    assert project_active_lane is project_active_lane_implementation
+    assert project_published_lane is project_published_lane_implementation
 
 
 def test_inspect_service_requires_exact_registry_physical_pr_and_check_tuple(
@@ -264,6 +318,81 @@ def test_inspect_service_excludes_clean_canonical_main_from_lane_inventory(
     assert service.inspect().lanes == ()
 
 
+def test_candidate_reservoir_excludes_only_nonterminal_registry_issue_refs(
+    tmp_path: Path,
+) -> None:
+    active = replace(
+        _record(tmp_path / "seven"), lane_id="#7", branch="feat/seven"
+    )
+    published = replace(
+        _record(tmp_path / "eight", status="published"),
+        lane_id="https://github.com/owner/repo/issues/8",
+        branch="feat/eight",
+    )
+    terminal = replace(
+        _record(tmp_path / "nine", status="merged"),
+        lane_id="Issue-9",
+        branch="feat/nine",
+    )
+    candidates = tuple(
+        _candidate(number)
+        for number in range(7, 11)
+    )
+
+    inventory = InspectService(
+        registry=FakeRegistry((active, published, terminal)),
+        git=FakeGit((), {}),
+        github=FakeGitHub((), candidates=candidates),
+        runtime=FakeRuntime(),
+    ).inspect()
+
+    assert [item.number for item in inventory.candidate_issues] == [9, 10]
+
+
+def test_candidate_reservoir_checks_every_registry_external_id(
+    tmp_path: Path,
+) -> None:
+    active = replace(
+        _record(tmp_path / "seven"),
+        lane_id="DIRECT-UNRELATED",
+        external_ids=(
+            "DIRECT-UNRELATED",
+            "https://github.com/owner/repo/issues/7",
+        ),
+    )
+    candidates = (
+        _candidate(7),
+        _candidate(8),
+    )
+
+    inventory = InspectService(
+        registry=FakeRegistry((active,)),
+        git=FakeGit((), {}),
+        github=FakeGitHub((), candidates=candidates),
+        runtime=FakeRuntime(),
+    ).inspect()
+
+    assert [item.number for item in inventory.candidate_issues] == [8]
+
+
+def test_candidate_query_failure_is_a_source_problem(tmp_path: Path) -> None:
+    class BrokenCandidateGitHub(FakeGitHub):
+        def list_open_candidate_issues(self) -> CandidateIssueInventory:
+            raise AdapterPayloadError("candidate payload is malformed")
+
+    inventory = InspectService(
+        registry=FakeRegistry(()),
+        git=FakeGit((), {}),
+        github=BrokenCandidateGitHub(()),
+        runtime=FakeRuntime(),
+    ).inspect()
+
+    assert InventoryProblem(
+        "github", CANDIDATE_ISSUE_LABEL, "candidate payload is malformed"
+    ) in inventory.source_problems
+    assert inventory.candidate_issues == ()
+
+
 def test_inspect_service_never_marks_dirty_or_head_drift_ready(tmp_path: Path) -> None:
     path = tmp_path / "lane"
     physical = PhysicalWorktree(path=path, head_sha="c" * 40, branch="feat/one")
@@ -294,6 +423,48 @@ def test_published_lane_is_remote_queue_not_orphaned_local_work(tmp_path: Path) 
 
     assert lane.decision.state is LaneState.READY_TO_QUEUE
     assert lane.physical is None
+
+
+def test_exact_stale_required_green_pr_is_the_only_reanchor_classification(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "lane"
+    published = _record(path, status="published")
+    service = InspectService(
+        registry=FakeRegistry((published,)),
+        git=FakeGit((), {}, main_sha="d" * 40),
+        github=FakeGitHub((_pull_request(path),)),
+        runtime=FakeRuntime(),
+    )
+
+    lane = next(
+        item for item in service.inspect().lanes if item.key.startswith("published:")
+    )
+
+    assert lane.decision.state is LaneState.REANCHOR
+    assert not lane.problems
+
+
+def test_scope_drift_is_not_misclassified_as_safe_reanchor(tmp_path: Path) -> None:
+    class PathDriftGitHub(FakeGitHub):
+        def changed_paths(self, number: int) -> tuple[str, ...]:
+            return ("ops/other.py",)
+
+    path = tmp_path / "lane"
+    published = _record(path, status="published")
+    service = InspectService(
+        registry=FakeRegistry((published,)),
+        git=FakeGit((), {}, main_sha="d" * 40),
+        github=PathDriftGitHub((_pull_request(path),)),
+        runtime=FakeRuntime(),
+    )
+
+    lane = next(
+        item for item in service.inspect().lanes if item.key.startswith("published:")
+    )
+
+    assert lane.decision.state is LaneState.UNKNOWN
+    assert any("paths differ" in problem.reason for problem in lane.problems)
 
 
 def test_queued_pr_keeps_exact_receipt_when_main_base_advances(tmp_path: Path) -> None:
@@ -425,6 +596,80 @@ def test_absent_abandoned_history_is_terminal_not_blocked(tmp_path: Path) -> Non
     )
 
     assert history.decision.state is LaneState.DONE
+
+
+def test_merged_history_with_local_branch_residue_requires_terminal_cleanup(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "merged"
+    service = InspectService(
+        registry=FakeRegistry((_record(path, status="merged"),)),
+        git=FakeGit((), {}, {"feat/one": "b" * 40}),
+        github=FakeGitHub(()),
+        runtime=FakeRuntime(),
+    )
+
+    history = next(
+        item for item in service.inspect().lanes if item.key.startswith("history:")
+    )
+
+    assert history.decision.state is LaneState.TERMINAL_CLEANUP
+
+
+def test_superseded_terminal_generation_does_not_claim_newer_lane_assets(
+    tmp_path: Path,
+) -> None:
+    old_path = tmp_path / "published-old"
+    new_path = tmp_path / "reanchored"
+    old = replace(_record(old_path, status="abandoned"), claim_generation=3)
+    current = replace(
+        _record(new_path),
+        claim_generation=4,
+        handback_claim_generation=4,
+    )
+    physical = PhysicalWorktree(
+        path=new_path,
+        head_sha="b" * 40,
+        branch="feat/one",
+    )
+    service = InspectService(
+        registry=FakeRegistry((old, current)),
+        git=FakeGit(
+            (physical,),
+            {new_path: _snapshot(new_path)},
+            {"feat/one": "b" * 40},
+            {"feat/one": "b" * 40},
+        ),
+        github=FakeGitHub(()),
+        runtime=FakeRuntime(),
+    )
+
+    history = next(
+        item
+        for item in service.inspect().lanes
+        if item.key == "history:#1:3"
+    )
+
+    assert history.decision.state is LaneState.DONE
+    assert not history.problems
+
+
+def test_merged_history_with_remote_branch_residue_requires_terminal_cleanup(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "merged"
+    service = InspectService(
+        registry=FakeRegistry((_record(path, status="merged"),)),
+        git=FakeGit((), {}, remote_branches={"feat/one": "b" * 40}),
+        github=FakeGitHub(()),
+        runtime=FakeRuntime(),
+    )
+
+    history = next(
+        item for item in service.inspect().lanes if item.key.startswith("history:")
+    )
+
+    assert history.decision.state is LaneState.TERMINAL_CLEANUP
 
 
 def test_inspect_surfaces_github_inventory_problems(tmp_path: Path) -> None:

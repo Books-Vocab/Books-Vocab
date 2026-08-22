@@ -8,11 +8,14 @@ from pathlib import Path
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
+from delivery_control.domain.branch_refs import BranchInventory
+from delivery_control.domain.candidate_issues import CandidateIssueInventory
 from delivery_control.domain.models import (
     HandbackReceipt,
 )
 from delivery_control.domain.observations import (
     CheckSnapshot,
+    MainLandingSnapshot,
     MergeQueueEntrySnapshot,
     PhysicalWorktree,
     PullRequestInventory,
@@ -43,6 +46,9 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
         def list_worktrees(self) -> tuple[PhysicalWorktree, ...]:
             return ()
 
+        def branch_inventory(self) -> BranchInventory:
+            return BranchInventory()
+
         def canonical_checkout(self) -> object:
             raise NotImplementedError
 
@@ -60,6 +66,11 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
 
         def origin_main_sha(self) -> str:
             return "a" * 40
+
+        def first_parent_landings(
+            self, *, before_sha: str, after_sha: str
+        ) -> tuple[MainLandingSnapshot, ...]:
+            return ()
 
     class FakeGitCommand:
         def push_branch(
@@ -87,6 +98,9 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
             return expected_origin_sha
 
     class FakeGitHubQuery:
+        def list_open_candidate_issues(self) -> CandidateIssueInventory:
+            return CandidateIssueInventory(records=())
+
         def list_open_pull_requests(self) -> PullRequestInventory:
             return PullRequestInventory(records=())
 
@@ -139,6 +153,26 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
             raise NotImplementedError
 
         def mark_ready(self, number: int) -> PullRequestSnapshot:
+            raise NotImplementedError
+
+        def close_pull_request(
+            self,
+            *,
+            number: int,
+            expected_base_sha: str,
+            expected_head_sha: str,
+            expected_body: str,
+        ) -> PullRequestSnapshot:
+            raise NotImplementedError
+
+        def reopen_pull_request(
+            self,
+            *,
+            number: int,
+            expected_base_sha: str,
+            expected_head_sha: str,
+            expected_body: str,
+        ) -> PullRequestSnapshot:
             raise NotImplementedError
 
         def enqueue(

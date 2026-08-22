@@ -217,6 +217,7 @@ def cmd_hand_back(args: argparse.Namespace) -> int:
                     outcomes=normalized,
                     handed_back_at=now_iso,
                     origin_main_sha=origin_main_sha,
+                    initial_holds=list(args.hold or ()),
                 )
             )
             record["handback_outcomes"] = normalized

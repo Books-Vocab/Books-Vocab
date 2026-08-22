@@ -135,12 +135,21 @@ def _handback_worktree(
     return worktree, record, state_path, base_sha, tip_sha
 
 
-def _run_handback(state_path: Path, worktree: Path, outcomes_path: Path) -> int:
-    return registry.main([
+def _run_handback(
+    state_path: Path,
+    worktree: Path,
+    outcomes_path: Path,
+    *,
+    holds: tuple[str, ...] = (),
+) -> int:
+    argv = [
         "hand-back", "--state", str(state_path), "--branch", "feat/handback",
         "--path", str(worktree), "--outcomes", str(outcomes_path),
         "--at", "2026-08-19T01:00:00Z", "--json",
-    ])
+    ]
+    for hold in holds:
+        argv.extend(("--hold", hold))
+    return registry.main(argv)
 
 
 def test_handback_seal_captures_live_origin_main_sha(tmp_path: Path) -> None:
@@ -155,6 +164,23 @@ def test_handback_seal_captures_live_origin_main_sha(tmp_path: Path) -> None:
     assert seal["origin_main_sha"] == base_sha
     assert seal["base_sha"] == base_sha
     assert seal["tip_sha"] == tip_sha
+    assert registry.validate_handback_seal(handed_back) == []
+
+
+def test_handback_seal_captures_initial_holds(tmp_path: Path) -> None:
+    worktree, _, state_path, _, _ = _handback_worktree(tmp_path)
+    outcomes_path = tmp_path / "outcomes.json"
+    outcomes_path.write_text("[]", encoding="utf-8")
+
+    assert _run_handback(
+        state_path,
+        worktree,
+        outcomes_path,
+        holds=("security", "p1"),
+    ) == registry.EXIT_OK
+
+    handed_back = registry.load_state(state_path)["records"][0]
+    assert handed_back["handback_seal"]["initial_holds"] == ["p1", "security"]
     assert registry.validate_handback_seal(handed_back) == []
 
 
@@ -557,9 +583,8 @@ def test_cleanup_lease_blocks_reclaim_until_exact_completion(tmp_path: Path) -> 
     assert state["records"] == [handed_back]
 
 
-def test_old_published_receipt_cannot_lease_assets_after_new_claim(
+def test_published_claim_blocks_ordinary_reclaim_until_supported_transition(
     tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     published = _idle_handed_back_record(tmp_path)
     published["status"] = "published"
@@ -567,7 +592,7 @@ def test_old_published_receipt_cannot_lease_assets_after_new_claim(
     published["handback_claim_generation"] = 2
     state = {"schema": registry.SCHEMA, "records": [published]}
 
-    rc, reclaimed = registry._register_record(
+    rc, refusal = registry._register_record(
         state,
         branch=published["branch"],
         path=published["path"],
@@ -577,32 +602,9 @@ def test_old_published_receipt_cannot_lease_assets_after_new_claim(
         scope=published["scope"],
     )
 
-    assert rc == registry.EXIT_OK
-    assert reclaimed["claim_generation"] == 3
-    state_path = tmp_path / "registry.json"
-    registry.save_state(state_path, state)
-
-    assert registry.main(
-        [
-            "resolve",
-            "--state",
-            str(state_path),
-            "--branch",
-            published["branch"],
-            "--path",
-            published["path"],
-            "--status",
-            registry.STATUS_CLEANUP_PENDING,
-            "--expected-generation",
-            "2",
-            "--expected-head-sha",
-            published["handed_back_sha"],
-            "--json",
-        ]
-    ) == registry.EXIT_CLAIMED
-    assert "newer registry claim" in capsys.readouterr().err
-    stored = registry.load_state(state_path)["records"]
-    assert [item["status"] for item in stored] == ["published", "active"]
+    assert rc == registry.EXIT_CLAIMED
+    assert refusal["reason"] == "external reference or Scope is already owned"
+    assert state["records"] == [published]
 
 
 @pytest.mark.parametrize("worktree_state", ("missing", "not-a-worktree"))

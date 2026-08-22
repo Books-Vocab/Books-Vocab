@@ -98,6 +98,20 @@ repo_gate_block="$(awk '
 ' "$PR_GATE")"
 grep -q 'timeout-minutes: 3' <<<"$repo_gate_block" \
   || fail "repo-gate is not hard-bounded to the short merge-gate budget"
+grep -Fq './ops/test_ops.sh docs-lint worktree context-routing github-workflows delivery-control' <<<"$repo_gate_block" \
+  || fail "repo-gate does not execute the delivery-control regression group"
+delivery_control_group="$(awk '
+  /delivery-control\)/ { in_group=1 }
+  in_group { print }
+  in_group && /^[[:space:]]*;;$/ { exit }
+' ops/test_ops.sh)"
+for test_path in \
+  ops/tests/test_delivery_candidate_contract.py \
+  ops/tests/test_delivery_required_repair.py \
+  ops/tests/test_delivery_telemetry.py; do
+  grep -Fq "$test_path" <<<"$delivery_control_group" \
+    || fail "delivery-control group omits ${test_path}"
+done
 for workflow in "${component_workflows[@]}"; do
   grep -q "uses: ./.github/workflows/${workflow}.yml" "$PR_GATE" \
     || fail "pr-gate does not call ${workflow}"
@@ -140,6 +154,8 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
     || fail "merge-group required gate does not use the merge-group base SHA"
   grep -q 'github.event.merge_group.head_sha' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group required gate does not use the merge-group head SHA"
+  grep -Fq './ops/test_ops.sh docs-lint worktree context-routing github-workflows delivery-control' <<<"$merge_group_required_block" \
+    || fail "merge-group required gate does not execute the delivery-control regression group"
   if grep -Eq 'backend-quality|ops-suite|ios-quality|llm-eval|ui-quality-gate|confidence' <<<"$merge_group_required_block"; then
     fail "merge-group required gate imports slow confidence jobs"
   fi

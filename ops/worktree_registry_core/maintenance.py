@@ -1,4 +1,4 @@
-"""Read-only orphan audit and exact terminal-history compaction."""
+"""Read-only orphan audit and lossless registry compaction."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from .environment import git, load_state, repo_root, state_path
 from .inspection import record_view
 from .records import (
     SCHEMA,
+    TERMINAL_STATUSES,
     active_records,
     compact_record,
     mutation_blockers,
@@ -78,16 +79,22 @@ def cmd_sweep(args: argparse.Namespace) -> int:
 
 
 def cmd_compact(args: argparse.Namespace) -> int:
-    """Retain every non-terminal claim and remove terminal history only."""
+    """Compact record shape without discarding immutable terminal audit evidence."""
     target = state_path(args)
     state = load_state(target)
     retained = [compact_record(record) for record in retained_records(state)]
     removed = len(state.get("records", [])) - len(retained)
+    non_terminal_preserved = sum(
+        record.get("status") not in TERMINAL_STATUSES for record in retained
+    )
+    terminal_preserved = len(retained) - non_terminal_preserved
     payload = {
         "schema": SCHEMA,
         "action": "compact",
-        "non_terminal_preserved": len(retained),
-        "terminal_records_removed": removed,
+        "non_terminal_preserved": non_terminal_preserved,
+        "terminal_records_preserved": terminal_preserved,
+        "terminal_records_removed": 0,
+        "records_removed": removed,
         "commit": bool(args.commit),
     }
     if args.commit:
@@ -103,8 +110,13 @@ def cmd_compact(args: argparse.Namespace) -> int:
             retained = [compact_record(record) for record in retained_records(state)]
             removed = len(state.get("records", [])) - len(retained)
             save_state(target, {"schema": SCHEMA, "records": retained})
-        payload["non_terminal_preserved"] = len(retained)
-        payload["terminal_records_removed"] = removed
+        non_terminal_preserved = sum(
+            record.get("status") not in TERMINAL_STATUSES for record in retained
+        )
+        payload["non_terminal_preserved"] = non_terminal_preserved
+        payload["terminal_records_preserved"] = len(retained) - non_terminal_preserved
+        payload["terminal_records_removed"] = 0
+        payload["records_removed"] = removed
         payload["action"] = "compact-committed"
     print(
         json.dumps(payload, indent=2, ensure_ascii=False)

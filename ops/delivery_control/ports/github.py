@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
+from ..domain.candidate_issues import CandidateIssueInventory
 from ..domain.observations import (
     CheckSnapshot,
     MergeQueueEntrySnapshot,
@@ -12,6 +13,8 @@ from ..domain.observations import (
 
 @runtime_checkable
 class GitHubQueryPort(Protocol):
+    def list_open_candidate_issues(self) -> CandidateIssueInventory: ...
+
     def list_open_pull_requests(self) -> PullRequestInventory: ...
 
     def list_pull_requests_for_branch(self, branch: str) -> PullRequestInventory: ...
@@ -38,6 +41,18 @@ class GitHubQueryPort(Protocol):
 
 
 @runtime_checkable
+class GitHubWorkflowCommandPort(Protocol):
+    def trigger_required(
+        self,
+        *,
+        number: int,
+        branch: str,
+        base_sha: str,
+        head_sha: str,
+    ) -> tuple[str, ...]: ...
+
+
+@runtime_checkable
 class GitHubCommandPort(Protocol):
     def create_pull_request(
         self,
@@ -57,6 +72,24 @@ class GitHubCommandPort(Protocol):
     ) -> PullRequestSnapshot: ...
 
     def mark_ready(self, number: int) -> PullRequestSnapshot: ...
+
+    def close_pull_request(
+        self,
+        *,
+        number: int,
+        expected_base_sha: str,
+        expected_head_sha: str,
+        expected_body: str,
+    ) -> PullRequestSnapshot: ...
+
+    def reopen_pull_request(
+        self,
+        *,
+        number: int,
+        expected_base_sha: str,
+        expected_head_sha: str,
+        expected_body: str,
+    ) -> PullRequestSnapshot: ...
 
     def enqueue(
         self,

@@ -9,10 +9,21 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
+from delivery_control.domain import (
+    handback_models,
+    models as models_facade,
+    scope_models,
+    terminal_proof_models,
+    validation_models,
+)
 from delivery_control.domain.errors import InvalidReceipt, InvalidScope
 from delivery_control.domain.models import (
+    CheckStatus,
+    HANDBACK_SCHEMA,
+    HandbackOutcome,
     HandbackReceipt,
     MergedPullRequestProof,
+    SCOPE_SCHEMA,
     Scope,
     ScopeFile,
     ScopeOperation,
@@ -23,6 +34,24 @@ BASE_SHA = "a" * 40
 HEAD_SHA = "b" * 40
 ORIGIN_SHA = "c" * 40
 DIGEST = "d" * 64
+
+
+def test_models_facade_preserves_public_imports_as_exact_aliases() -> None:
+    assert HANDBACK_SCHEMA == handback_models.HANDBACK_SCHEMA
+    assert SCOPE_SCHEMA == scope_models.SCOPE_SCHEMA
+    assert HandbackReceipt is handback_models.HandbackReceipt
+    assert MergedPullRequestProof is terminal_proof_models.MergedPullRequestProof
+    assert Scope is scope_models.Scope
+    assert ScopeFile is scope_models.ScopeFile
+    assert ScopeOperation is scope_models.ScopeOperation
+    assert CheckStatus is validation_models.CheckStatus
+    assert HandbackOutcome is validation_models.HandbackOutcome
+    assert ValidationEvidence is validation_models.ValidationEvidence
+    assert models_facade.HandbackReceipt is HandbackReceipt
+    assert models_facade.Scope is Scope
+    assert models_facade._has_control is validation_models._has_control
+    assert models_facade._require_sha is validation_models._require_sha
+    assert models_facade._safe_relative_path is scope_models._safe_relative_path
 
 
 def test_merged_pr_proof_is_exact_and_main_only() -> None:

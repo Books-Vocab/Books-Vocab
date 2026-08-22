@@ -13,10 +13,12 @@ from ..domain.observations import (
     RegistrySnapshot,
     WorktreeSnapshot,
 )
+from ..domain.states import HoldKind
 from ..ports.git import GitCommandPort
 from ..ports.github import GitHubCommandPort, GitHubQueryPort
 from .correlation import scope_matches_snapshot
 from .pr_contract import (
+    parse_pull_request_body,
     pull_request_holds,
     render_pull_request_body,
 )
@@ -76,6 +78,8 @@ def receipt_from_active_claim(
         origin_main_sha=record.handback_origin_main_sha,
         content_digest=record.handback_digest,
         scope=record.scope,
+        validation=record.handback_outcomes,
+        initial_holds=record.handback_initial_holds,
     )
 
 
@@ -122,9 +126,25 @@ class PublishService:
             )
             pushed = True
 
+        existing_holds = pull_request_holds(pull_request)
+        initial_holds = frozenset(HoldKind(item) for item in receipt.initial_holds)
+        effective_holds = initial_holds
+        if pull_request is not None:
+            try:
+                existing_receipt = parse_pull_request_body(pull_request.body)
+            except PolicyViolation:
+                previously_declared = frozenset()
+            else:
+                previously_declared = frozenset(
+                    HoldKind(item) for item in existing_receipt.initial_holds
+                )
+            # A newly introduced handback hold must become durable on the same
+            # PR.  Holds already declared by an older receipt are not restored
+            # here: an explicit reconcile-holds clearance is authoritative.
+            effective_holds = existing_holds | (initial_holds - previously_declared)
         body = render_pull_request_body(
             receipt,
-            holds=pull_request_holds(pull_request),
+            holds=effective_holds,
         )
         if pull_request is None:
             pull_request = self.github_command.create_pull_request(

@@ -106,6 +106,17 @@ from delivery_control.services.correlation import collision_keys
             NextAction.WAIT_REQUIRED,
         ),
         (
+            LaneFacts(
+                published=True,
+                pr_open=True,
+                required_status=CheckStatus.SUCCESS,
+                mergeable=True,
+                reanchor_policy_passed=True,
+            ),
+            LaneState.REANCHOR,
+            NextAction.REANCHOR,
+        ),
+        (
             LaneFacts(handback_valid=True, transport_policy_passed=True),
             LaneState.HANDBACK_PUBLISHABLE,
             NextAction.PUBLISH,
@@ -198,6 +209,40 @@ def test_published_local_assets_are_drained_before_waiting_on_ci() -> None:
     )
     assert decision.state is LaneState.PUBLISHED_LOCAL_CLEANUP
     assert decision.next_action is NextAction.CLEANUP_LOCAL
+
+
+def test_stale_required_green_exact_pr_reanchors_instead_of_waiting() -> None:
+    decision = derive_lane_decision(
+        LaneFacts(
+            published=True,
+            pr_open=True,
+            pr_contract_valid=True,
+            required_status=CheckStatus.SUCCESS,
+            mergeable=True,
+            merge_policy_passed=False,
+            reanchor_policy_passed=True,
+        )
+    )
+
+    assert decision.state is LaneState.REANCHOR
+    assert decision.next_action is NextAction.REANCHOR
+
+
+def test_generic_merge_policy_failure_does_not_claim_reanchor_is_safe() -> None:
+    decision = derive_lane_decision(
+        LaneFacts(
+            published=True,
+            pr_open=True,
+            pr_contract_valid=True,
+            required_status=CheckStatus.SUCCESS,
+            mergeable=True,
+            merge_policy_passed=False,
+            reanchor_policy_passed=False,
+        )
+    )
+
+    assert decision.state is LaneState.PR_WAITING_REQUIRED
+    assert decision.next_action is NextAction.WAIT_REQUIRED
 
 
 def _receipt(*, base_sha: str = "a" * 40) -> HandbackReceipt:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .candidate_issues import CandidateIssue
 from .observations import (
     CheckSnapshot,
     InventoryProblem,
@@ -33,3 +34,4 @@ class LaneInspection:
 class DeliveryInventory:
     lanes: tuple[LaneInspection, ...]
     source_problems: tuple[InventoryProblem, ...] = ()
+    candidate_issues: tuple[CandidateIssue, ...] = ()

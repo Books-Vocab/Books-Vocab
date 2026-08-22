@@ -9,6 +9,20 @@ sys.path.insert(0, str(OPS))
 import worktree_registry as registry
 
 
+def _terminal_proof(record: dict) -> dict:
+    return registry.terminal_proof_with_digest(
+        {
+            "schema": registry.TERMINAL_PROOF_SCHEMA,
+            "lane_id": record["external_ids"][0],
+            "pr_number": 42,
+            "pr_state": "MERGED",
+            "base_branch": "main",
+            "branch": record["branch"],
+            "head_sha": record["handed_back_sha"],
+        }
+    )
+
+
 def test_load_state_surfaces_lossy_legacy_migration(tmp_path: Path) -> None:
     state_path = tmp_path / "registry.json"
     state_path.write_text(
@@ -167,9 +181,11 @@ def test_compact_refuses_unknown_status_without_data_loss(tmp_path: Path) -> Non
     assert registry.load_state(state_path)["records"][0]["status"] == "legacy-migrating"
 
 
-def test_compact_preserves_every_non_terminal_transaction(tmp_path: Path) -> None:
+def test_compact_preserves_in_flight_and_terminal_audit_records(
+    tmp_path: Path, capsys
+) -> None:
     state_path = tmp_path / "registry.json"
-    records = [
+    in_flight = [
         {
             "branch": f"feat/{status}",
             "path": str(tmp_path / status),
@@ -180,19 +196,84 @@ def test_compact_preserves_every_non_terminal_transaction(tmp_path: Path) -> Non
             "active",
             "cleanup_pending",
             "published",
-            "merged",
-            "abandoned",
         )
     ]
+    merged = {
+        "branch": "feat/merged",
+        "path": str(tmp_path / "merged"),
+        "status": "merged",
+        "external_ids": ["ISSUE-MERGED"],
+        "handed_back_sha": "b" * 40,
+    }
+    exact_proof = _terminal_proof(merged)
+    merged["terminal_proof"] = exact_proof
+    legacy_abandoned = {
+        "branch": "feat/abandoned",
+        "path": str(tmp_path / "abandoned"),
+        "status": "abandoned",
+        "external_ids": ["ISSUE-LEGACY"],
+    }
+    records = [*in_flight, merged, legacy_abandoned]
     registry.save_state(state_path, {"schema": registry.SCHEMA, "records": records})
 
     rc = registry.main(["compact", "--state", str(state_path), "--commit", "--json"])
 
     assert rc == registry.EXIT_OK
-    assert [
-        record["status"] for record in registry.load_state(state_path)["records"]
-    ] == [
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["terminal_records_preserved"] == 2
+    reloaded = registry.load_state(state_path)
+    assert [record["status"] for record in reloaded["records"]] == [
         "active",
         "cleanup_pending",
         "published",
+        "merged",
+        "abandoned",
     ]
+    assert reloaded["records"][3]["terminal_proof"] == exact_proof
+    assert "terminal_proof" not in reloaded["records"][4]
+
+    assert registry.main(["list", "--state", str(state_path), "--json"]) == registry.EXIT_OK
+    visible = json.loads(capsys.readouterr().out)
+    assert visible["records"][3]["terminal_proof"] == exact_proof
+    assert visible["records"][4]["status"] == "abandoned"
+    assert "terminal_proof" not in visible["records"][4]
+
+
+def test_load_state_surfaces_tampered_terminal_proof_without_rewriting(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "registry.json"
+    merged = {
+        "branch": "feat/merged",
+        "path": str(tmp_path / "merged"),
+        "status": "merged",
+        "external_ids": ["ISSUE-MERGED"],
+        "handed_back_sha": "b" * 40,
+    }
+    tampered = _terminal_proof(merged)
+    tampered["pr_number"] = 99
+    merged["terminal_proof"] = tampered
+    legacy = {
+        "branch": "feat/legacy-merged",
+        "path": str(tmp_path / "legacy-merged"),
+        "status": "merged",
+        "external_ids": ["ISSUE-LEGACY"],
+        "handed_back_sha": "c" * 40,
+    }
+    original = json.dumps({"records": [merged, legacy]}, indent=2) + "\n"
+    state_path.write_text(original, encoding="utf-8")
+
+    state = registry.load_state(state_path)
+
+    assert state["records"][0]["terminal_proof"] == tampered
+    assert "terminal_proof" not in state["records"][1]
+    assert state["problems"] == [
+        {
+            "kind": "registry-terminal-proof-invalid",
+            "index": 0,
+            "branch": "feat/merged",
+            "status": "merged",
+            "reason": "terminal proof digest is invalid",
+        }
+    ]
+    assert state_path.read_text(encoding="utf-8") == original

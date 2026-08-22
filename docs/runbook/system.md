@@ -57,40 +57,21 @@ workflow `pr-gate` 的 check run `confidence` 失敗、非預期 skip、取消�
 ```
 
 - `inspect` 分類每條 known／unmapped lane，並分開回傳 lane problems 與 source problems。
-- `metrics` 量測 active、publishable、durable PR、required-running／green／failed、native queue depth、cleanup、blocked 與 physical worktree reservoirs；另把 live facts 與 canonical checkout `.cache/delivery_telemetry.ndjson` 的 append-only duration evidence 合併，計算最近一小時 hand-back→PR、PR→required-start、required duration、required-success→native enqueue、merge→main sync、merge→terminal cleanup 的 sample count／p95，並輸出 collision／required failure rate 與 idle worktree。telemetry 不是 lifecycle ledger；寫入失敗只回傳 machine warning，不回滾已完成的 publish／queue／cleanup／sync。malformed journal、CAS conflict 或跨來源時間倒流仍是 source problem，不被當成快速交付。
-- `plan` 加上最近一小時 merge cadence，依 [delivery model](../reference/delivery_model.md#deterministic-feedback-controller) 的 policy 回傳可同時處理的 actions 與 `desired_new_solvers`；輸出只供 Scout／PI／CM 決策，不會 dispatch、enqueue 或 cleanup。
+- `metrics` 量測 GitHub open exact-label candidate Issues（排除 nonterminal registry occupancy）、REANCHOR、active、publishable、durable PR、required-running／green／failed、native queue depth、cleanup、blocked 與 physical worktree reservoirs；candidate query／parsing failure 進 source problem。另把 live facts 與 canonical checkout `.cache/delivery_telemetry.ndjson` 的 append-only duration evidence 合併，計算最近一小時 hand-back→PR、PR→required-start、required duration、required-success→native enqueue、merge→main sync、merge→terminal cleanup 的 sample count／p95，並輸出 collision／required failure rate 與 idle worktree。telemetry 不是 lifecycle ledger；寫入失敗只回傳 machine warning，不回滾已完成的 publish／queue／cleanup／sync。malformed journal、CAS conflict 或跨來源時間倒流仍是 source problem，不被當成快速交付。
+- `plan` 加上最近一小時 merge cadence，依 [delivery model](../reference/delivery_model.md#deterministic-feedback-controller) 的 policy 回傳可同時處理的 actions 與 `desired_new_solvers`；candidate 低於 20 時建議 `replenish_candidates`，REANCHOR 大於 0 時建議 `reanchor_front`。在 CI／PR／cleanup／source facts 健康且 durable PR 未達 ceiling 時，active Solver 即使在 cadence 尚健康時也補向 8、最多 12，每 cycle 最多 4 且不超過既有未占用 candidates；PR reservoir 與 active Solver reservoir 不合併計數。live-lane collision pressure 高於 20% 時輸出 `improve_scope_partition` 並停止新 solver birth。輸出只供 Scout／PI／CM 決策，不會 dispatch、enqueue、建立 Issue 或 cleanup。
+
+Candidate Issue body 先由 deterministic contract 產生並重驗：
+
+```bash
+./ops/delivery.py render-candidate-body --payload-file <candidate.json> > <issue-body.md>
+./ops/delivery.py validate-candidate-body --body-file <issue-body.md>
+```
+
+只有 exact `delivery:candidate` label 加一份合法 `kg.delivery.candidate.v1` contract 才算供給；contract 固定包含 Severity、Priority、structured Scope、Acceptance 與 initial hard holds。Issue 派工後的全部 canonical external IDs 都會占用 candidate，避免同 Issue 以不同 reference 重複 dispatch。
 
 ### 四角色 dogfood 啟動
 
-首輪 dogfood 只開四個 top-level threads：`Backlog Scout`、`PI`、`CM`、`Supervisor`。Issue Solver 是 Scout 依 capacity decision fan-out 的子代理，不另開第五個常駐控制角色。四者共用 GitHub／registry／Git 的 facts，但不共用聊天記憶作狀態：
-
-| thread | 唯一職責 | 允許 mutation | 禁止 |
-|---|---|---|---|
-| Backlog Scout | audit codebase、建立唯一 Issue、依 `desired_new_solvers` fan-out Issue Solver | Issue 與 owner-bound solver/worktree admission | PR、merge、cleanup、產品實作 |
-| PI | 消費 typed hand-back，立即 publish/update 唯一 PR，驗證 durable readback 後釋放 local assets | remote branch、PR metadata、exact local release | 修改產品 code、enqueue、merge |
-| CM | required-green exact admission、native queue、merged cleanup、canonical main sync | queue、terminal cleanup、`sync-main` | 修改 code／PR metadata、繞過 hold |
-| Supervisor | 啟動前讀一次 `dogfood-preflight`；啟動後每分鐘讀 `inspect`／`plan`／角色活動，處理事故與 freeze/ramp 決策 | thread routing 與 kill switch | 接管 owner worktree、代寫產品 code、把未知狀態算成功 |
-
-四個 threads 建立前，從 canonical checkout 執行：
-
-```bash
-./ops/delivery.py --repo <canonical-checkout> dogfood-preflight
-./ops/delivery.py --repo <canonical-checkout> plan
-```
-
-只有 `dogfood-preflight.result.ready=true` 才能開始。它要求 canonical checkout clean 且在 `main`、local main exact 等於 live `origin/main`、`main` 受保護且 required status contexts 明確包含 short `required`、native merge queue 存在、只有 canonical physical worktree，且沒有 source problems、legacy blockers、unmapped/open PR、local hand-back、cleanup residue 或 failed required。這是一次性 clean-slate launch gate；穩態是否要 fan-out 由 `plan` 決定。
-
-控制面 PR 合併前不得先改 production repository rule。部署順序固定為：合併本 PR → canonical `main` ff-only 同步 → 以 repository settings 建立 `main` 的 native merge-queue rule 並把 short `required` 設為 required context → read-only API 讀回 `/rules/branches/main` 確實含 `merge_queue`，並讀回 `/branches/main/protection` 確認 `main` 受保護且 required contexts 含 `required` → 清到只剩 canonical worktree → 執行上述 preflight → 最後才建立四個 threads。任何一步不符都停在 preflight，不以手動 merge 或 agent prompt 補洞。
-
-啟動分三段：
-
-1. **Canary**：Scout 同時最多一個 Issue Solver；Supervisor 每 60 秒取一次 read-only snapshot。成功定義為 `typed hand-back → durable PR/local release → required SUCCESS → native queue → merge → terminal cleanup → local main exact sync` 全鏈閉合。
-2. **Promotion**：900 秒內完成 3 個連續 canary merges，三次都沒有 orphan worktree、duplicate PR、CAS rollback failure、main drift 或人工改 registry，才把 solver concurrency 逐次升到 2、再依 controller 最多 4。
-3. **Steady state**：在有健康 supply 時，以 300 秒最大 inter-merge interval、10–15 durable PR reservoir 與 required-green target 3 作容量 SLO；SLO 不授權跳過 required、review 或 security hold。
-
-任一系統性條件觸發 kill switch 時，Supervisor 立即 freeze Scout birth，但 PI／CM 仍可排空已存在且 exact 的安全工作：source problem、unmapped/duplicate PR、canonical main drift／dirty、cleanup CAS conflict、queue entry replacement或 required-contract infrastructure failure。單一 PR 的 P0／P1／security hold 只隔離該 lane，不得凍結其他安全 lane；只有 hold 揭露控制面或整個產品主線的系統性風險時才升級成全域 freeze。禁止以 bulk cleanup、force reset、重建 owner branch 或接管 dirty worktree復原；保留 exact JSON/error evidence，修復後啟動前重跑 `dogfood-preflight`，啟動後則重跑 `inspect`／`plan`，不得用 clean-slate preflight 的「open PR 必須為零」條件誤判穩態 reservoir。
-
-上線前至少演練五個 fault：PR body 在 enqueue 前漂移（不得 enqueue）、queue entry 被另一 transaction 取代（不得 dequeue 新 entry）、publish 後 local cleanup 中斷（同 receipt 可重試）、舊 cleanup receipt 遇到較新 branch/path claim（exit 75）、local main 在 sync preflight 後漂移（不得 merge/reset）。
+首輪只建立 `Backlog Scout`、`PI`、`CM`、`Supervisor` 四個 top-level tasks；完整角色邊界、clean-slate preflight、repository-rule 部署順序、canary promotion、fault drill 與 freeze／rollback 步驟統一由 [`docs/sop/delivery_control_dogfood.md`](../sop/delivery_control_dogfood.md) 定義。Issue Solver 是 Scout 依 capacity decision fan-out 的子代理，不是第五個常駐控制角色。
 
 ### PI publication 與 local release
 
@@ -99,11 +80,23 @@ workflow `pr-gate` 的 check run `confidence` 失敗、非預期 skip、取消�
 ./ops/delivery.py publish --lane <lane-id> --title '<canonical PR title>'
 ./ops/delivery.py release-published --pr <number>
 ./ops/delivery.py repair-pr-metadata --pr <number>
+./ops/delivery.py trigger-required --pr <number>
 ./ops/delivery.py reconcile-holds --pr <number> --hold <p0|p1|security>
 ./ops/delivery.py reconcile-holds --pr <number> --clear-all
 ```
 
-`receipt` 只把唯一 active、clean、owner-bound、Scope-exact 的 `kg.worktree.handback.v1` 正規化為 `kg.delivery.handback.v1`；owner／delegation／Scope 變更會遞增 claim generation 並清除舊 seal。Scope overlap 在 `register`／`scope-set` 的 ledger lock 內就對所有 `active`／`cleanup_pending` claim fail closed，不延後到 publish。`publish` 先以 compare-and-swap push exact branch，明確建立 target=`main` 的非 draft PR，自動產生 Scope／Validation／Impact／typed receipt／typed holds，驗證 final PR target／head／body／paths，再取得 registry `cleanup_pending` lease；lease 會阻擋同 branch／path 的新 claim，也會讓 controller 停止增生 solver，local worktree／branch 精確移除後才完成為 `published`。existing PR 的 typed／label／legacy hold 會被保留，不能因 reanchor 被清除。`repair-pr-metadata` 在 typed receipt 仍可解析時，以 exact published registry／HEAD／Scope 證據只重建同一 PR body，並把 draft 移到 ready；它不重建 worktree、不修改 title 或 code。`reconcile-holds` 是 PI 在 explicit clearance 後的 body-only metadata transaction；清除必須明確 `--clear-all`，且 durable hold label 尚在時拒絕。collision 只讀 active／cleanup Scope，cleanup 只讀 receipt 指定的 exact claim，所以無關的 malformed terminal history 不會阻塞；目標 claim 不完整仍 fail closed。若 durable PR 已完成、後續 lease 或 local removal 中斷，保留原錯誤、不回退 PR；重跑同一 `publish`，或用 `release-published` 從 PR receipt 完成 idempotent local release。
+`receipt` 只把唯一 active、clean、owner-bound、Scope-exact 的 `kg.worktree.handback.v1` 正規化為 `kg.delivery.handback.v1`；focused Validation 與 hand-back 時的 initial P0／P1／security holds 都屬於 immutable receipt。owner／delegation／Scope 變更會遞增 claim generation 並清除舊 seal。Scope overlap 在 `register`／`scope-set` 的 ledger lock 內就對所有 `active`／`cleanup_pending`／`published` claim fail closed，不延後到 publish；一般 register 也不能把 published branch／path 當成可接管 owner。`publish` 先以 compare-and-swap push exact branch，明確建立 target=`main` 的非 draft PR，自動產生 Scope／Validation／Impact／typed receipt／typed holds，驗證 final PR target／head／body／paths，再取得 registry `cleanup_pending` lease；initial hold 在首次 PR publication 就必須 durable，existing PR 的 typed／label／legacy hold 則會被保留，不能因 reanchor 被清除。lease 會阻擋同 branch／path 的新 claim，也會讓 controller 停止增生 solver，local worktree／branch 精確移除後才完成為 `published`。`repair-pr-metadata` 在 typed receipt 仍可解析時，以 exact published registry／HEAD／Scope 證據只重建同一 PR body，並把 draft 移到 ready；它不重建 worktree、不修改 title 或 code。`reconcile-holds` 是 PI 在 explicit clearance 後的 body-only metadata transaction；清除必須明確 `--clear-all`，且 durable hold label 尚在時拒絕。collision 與 cleanup 只讀可解析的 exact Scope／receipt，所以無關的 malformed terminal history 不會阻塞；目標 claim 不完整仍 fail closed。若 durable PR 已完成、後續 lease 或 local removal 中斷，保留原錯誤、不回退 PR；重跑同一 `publish`，或用 `release-published` 從 PR receipt 完成 idempotent local release。
+
+`trigger-required` 只在同一 exact published PR 的 required 為 `ABSENT`／`FAILURE` 時 dispatch 帶 PR number／base／HEAD 的 workflow；`PENDING`／`SUCCESS` 拒絕重複觸發，hold 原樣保留且 dispatch 不代表 Ready。
+
+若 required 是 code failure，published PR 已取代 local assets，使用 original owner 的 exact tuple 恢復修復環境；若只是 merge-front base stale，才使用 JIT reanchor：
+
+```bash
+./ops/worktree_orchestrate.py resume-published --lane <lane> --branch <branch> --owner-thread-id <thread> --claim-generation <generation> --expected-remote-head <sha> --path <new-path>
+./ops/worktree_orchestrate.py reanchor --merge-front-pr <number> --lane <lane> --branch <branch> --owner-thread-id <thread> --claim-generation <generation> --expected-remote-head <sha> --live-main <sha> --path <new-path>
+```
+
+兩者都只做 exact same-owner local lifecycle transition，不操作 GitHub、不測試、不 hand-back、不 push；`resume-published` 保留 original recorded base，`reanchor` 改用仍通過 remote CAS 的 live main。owner 修復／rebase後必須重新 commit（若有變更）與 typed hand-back，PI 再更新同一 PR。
 
 PR readiness workflow 的 parser 入口是：
 

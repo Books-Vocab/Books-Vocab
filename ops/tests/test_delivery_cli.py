@@ -12,6 +12,7 @@ OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
 from delivery_control.cli import DeliveryApplication, RuntimeStatusMap, main
+from delivery_control.domain.candidate_issues import CandidateSeverity, CandidateSpec
 from delivery_control.domain.errors import CompareAndSwapConflict
 from delivery_control.domain.models import CheckStatus, Scope
 from delivery_control.domain.observations import (
@@ -19,6 +20,7 @@ from delivery_control.domain.observations import (
     CheckSnapshot,
     FileChange,
     FileOperation,
+    MainLandingSnapshot,
     MergeQueueEntrySnapshot,
     PhysicalWorktree,
     PullRequestInventory,
@@ -29,6 +31,7 @@ from delivery_control.domain.observations import (
     RegistrySnapshot,
     WorktreeSnapshot,
 )
+from delivery_control.domain.states import HoldKind
 from delivery_control.domain.telemetry import DurationSample, TelemetryReadResult
 from delivery_control.services.pr_contract import render_pull_request_body
 
@@ -206,6 +209,18 @@ class FakeGit:
 
     def origin_main_sha(self) -> str:
         return self.main_origin
+
+    def first_parent_landings(
+        self, *, before_sha: str, after_sha: str
+    ) -> tuple[MainLandingSnapshot, ...]:
+        assert before_sha == BASE
+        assert after_sha == HEAD
+        return (
+            MainLandingSnapshot(
+                sha=HEAD,
+                landed_at=EVENT_START.replace(minute=2),
+            ),
+        )
 
     def fast_forward_main(
         self, *, expected_local_sha: str, expected_origin_sha: str
@@ -600,6 +615,79 @@ def test_cli_requires_an_explicit_hold_or_clearance_action(capsys: object) -> No
     assert application.calls == [(41, frozenset(), True)]
 
 
+def test_application_reconcile_holds_preserves_keyword_compatibility(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from delivery_control import application_services
+
+    calls: list[object] = []
+
+    class StubHoldService:
+        def __init__(self, *, query: object, command: object) -> None:
+            calls.append((query, command))
+
+        def reconcile(
+            self,
+            *,
+            number: int,
+            holds: frozenset[object],
+            clear_all: bool,
+        ) -> object:
+            calls.append((number, holds, clear_all))
+            return {"updated": True}
+
+    monkeypatch.setattr(
+        application_services.hold_services,
+        "HoldService",
+        StubHoldService,
+    )
+    github = FakeGitHub()
+    application = DeliveryApplication(
+        repo=Path("/repo"),
+        git=FakeGit(),
+        github=github,
+        registry=FakeRegistry(),
+        runtime=RuntimeStatusMap({}),
+        telemetry=MemoryTelemetry(),
+    )
+
+    result = application.reconcile_holds(
+        pull_request_number=41,
+        holds=frozenset({HoldKind.SECURITY}),
+        clear_all=False,
+    )
+
+    assert result == {"updated": True}
+    assert calls == [
+        (github, github),
+        (41, frozenset({HoldKind.SECURITY}), False),
+    ]
+
+
+def test_cli_routes_exact_post_publication_abandonment(capsys: object) -> None:
+    class FakeApplication:
+        def __init__(self) -> None:
+            self.calls: list[int] = []
+
+        def abandon_pr(self, pull_request_number: int) -> object:
+            self.calls.append(pull_request_number)
+            return {"registry_status": "abandoned"}
+
+    application = FakeApplication()
+
+    assert (
+        main(
+            ["abandon-pr", "--pr", "41"],
+            application_factory=lambda **_: application,
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert payload["ok"] is True
+    assert application.calls == [41]
+
+
 def test_cli_exposes_dogfood_preflight_as_read_only_json(capsys: object) -> None:
     class FakeApplication:
         def dogfood_preflight(self) -> object:
@@ -659,3 +747,53 @@ def test_cli_validate_pr_body_uses_machine_receipt_not_workflow_regex(
 
     payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
     assert payload["result"]["head_sha"] == receipt.head_sha
+
+
+def test_cli_renders_and_validates_candidate_contract(
+    tmp_path: Path, capsys: object
+) -> None:
+    spec = CandidateSpec(
+        CandidateSeverity.P2,
+        20,
+        Scope.from_paths(modify=("ops/example.py",)),
+        ("Focused proof is green.",),
+    )
+    payload_path = tmp_path / "candidate.json"
+    payload_path.write_text(json.dumps(spec.to_payload()), encoding="utf-8")
+
+    assert main(
+        ["render-candidate-body", "--payload-file", str(payload_path)],
+        application_factory=lambda **_: object(),
+    ) == 0
+    rendered = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    body_path = tmp_path / "candidate.md"
+    body_path.write_text(rendered["result"]["body"], encoding="utf-8")
+
+    assert main(
+        ["validate-candidate-body", "--body-file", str(body_path)],
+        application_factory=lambda **_: object(),
+    ) == 0
+    validated = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert validated["result"]["scope"]["files"][0]["path"] == "ops/example.py"
+
+
+def test_cli_exposes_exact_required_trigger(capsys: object) -> None:
+    class FakeApplication:
+        def __init__(self) -> None:
+            self.calls: list[int] = []
+
+        def trigger_required(self, pull_request_number: int) -> object:
+            self.calls.append(pull_request_number)
+            return {"dispatched": True, "merge_eligibility_assessed": False}
+
+    application = FakeApplication()
+
+    assert main(
+        ["trigger-required", "--pr", "41"],
+        application_factory=lambda **_: application,
+    ) == 0
+
+    payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert payload["command"] == "trigger-required"
+    assert payload["result"]["merge_eligibility_assessed"] is False
+    assert application.calls == [41]

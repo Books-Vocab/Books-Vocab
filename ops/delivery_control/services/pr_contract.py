@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from ..domain.errors import InvalidReceipt, PolicyViolation
-from ..domain.models import HandbackReceipt
+from ..domain.models import HandbackOutcome, HandbackReceipt
 from ..domain.observations import PullRequestSnapshot
 from ..domain.states import HoldKind
 
@@ -122,11 +122,19 @@ def render_pull_request_body(
     scope_lines = "\n".join(
         f"- `{item.operation.value}` `{item.path}`" for item in receipt.scope.files
     )
-    if receipt.validation:
-        validation_lines = "\n".join(
-            f"- exit `{item.exit_code}`: `{json.dumps(list(item.command), ensure_ascii=False)}`"
-            for item in receipt.validation
-        )
+    validation_items: list[str] = []
+    for index, item in enumerate(receipt.validation, start=1):
+        if isinstance(item, HandbackOutcome):
+            validation_items.append(
+                f"- Handback outcome {index}: `{item.canonical_json}`"
+            )
+        else:
+            validation_items.append(
+                f"- exit `{item.exit_code}`: "
+                f"`{json.dumps(list(item.command), ensure_ascii=False)}`"
+            )
+    if validation_items:
+        validation_lines = "\n".join(validation_items)
     else:
         validation_lines = (
             "- Local quality gates are not required before publication; "
@@ -138,6 +146,10 @@ def render_pull_request_body(
         "Scope includes documentation paths"
         if any(path.startswith("docs/") for path in receipt.scope.paths)
         else "no documentation path declared in Scope"
+    )
+    declared_initial_holds = (
+        ", ".join(f"`{item}`" for item in receipt.initial_holds)
+        or "none declared"
     )
     machine_receipt = json.dumps(
         receipt.to_payload(), ensure_ascii=False, sort_keys=True, separators=(",", ":")
@@ -166,6 +178,7 @@ def render_pull_request_body(
         "## Validation\n"
         f"{validation_lines}\n\n"
         "## Impact\n"
+        f"- Handback initial holds: {declared_initial_holds}\n"
         f"- Explicit hard holds: {hold_summary}\n"
         f"- Documentation: {documentation_impact}.\n"
         "- Release/deploy: not declared by the local handback; release remains a separate SOP.\n\n"

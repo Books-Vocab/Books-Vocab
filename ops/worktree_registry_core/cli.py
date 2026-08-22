@@ -72,6 +72,9 @@ def build_parser(
     handback.add_argument("--branch")
     handback.add_argument("--path")
     handback.add_argument("--outcomes", default=None)
+    handback.add_argument(
+        "--hold", action="append", choices=("p0", "p1", "security")
+    )
     handback.set_defaults(func=handlers["hand-back"])
 
     resolve = sub.add_parser(

@@ -8,7 +8,14 @@ from enum import StrEnum
 from pathlib import Path
 
 from .errors import InvalidReceipt, InvalidScope
-from .models import CheckStatus, Scope, _has_control, _require_sha, _safe_relative_path
+from .models import (
+    CheckStatus,
+    HandbackOutcome,
+    Scope,
+    _has_control,
+    _require_sha,
+    _safe_relative_path,
+)
 
 
 class FileOperation(StrEnum):
@@ -86,6 +93,7 @@ class RegistrySnapshot:
     scope: Scope
     base_sha: str
     claim_generation: int
+    external_ids: tuple[str, ...] = ()
     owner_thread_id: str | None = None
     handed_back_sha: str | None = None
     handback_claim_generation: int | None = None
@@ -93,6 +101,8 @@ class RegistrySnapshot:
     handback_digest: str | None = None
     handback_origin_main_sha: str | None = None
     handed_back_at: datetime | None = None
+    handback_outcomes: tuple[HandbackOutcome, ...] = ()
+    handback_initial_holds: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -166,6 +176,22 @@ class MergeQueueEntrySnapshot:
             or self.enqueued_at.utcoffset() is None
         ):
             raise InvalidReceipt("merge queue enqueue timestamp must be offset-aware")
+
+
+@dataclass(frozen=True)
+class MainLandingSnapshot:
+    """One first-parent landing observed while synchronizing local main."""
+
+    sha: str
+    landed_at: datetime
+
+    def __post_init__(self) -> None:
+        if type(self.sha) is not str or len(self.sha) != 40 or any(
+            char not in "0123456789abcdef" for char in self.sha
+        ):
+            raise InvalidReceipt("main landing SHA must be a lowercase commit SHA")
+        if not isinstance(self.landed_at, datetime) or self.landed_at.utcoffset() is None:
+            raise InvalidReceipt("main landing timestamp must be offset-aware")
 
 
 @dataclass(frozen=True)

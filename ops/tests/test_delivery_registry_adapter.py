@@ -123,6 +123,7 @@ def test_registry_adapter_surfaces_malformed_records_without_hiding_valid_ones(
 
     assert [record.lane_id for record in inventory.records] == ["#1"]
     assert inventory.records[0].claim_generation == 4
+    assert inventory.records[0].external_ids == ("#1",)
     assert inventory.problems[0].identity == "feat/bad"
 
 
@@ -389,6 +390,88 @@ def test_registry_adapter_exposes_exact_legacy_handback_transport_fields(
     assert record.handback_origin_main_sha == "a" * 40
     assert record.handed_back_at is not None
     assert record.handed_back_at.isoformat() == "2026-08-21T00:00:00+00:00"
+    assert record.handback_initial_holds == ()
+
+
+def _payload_with_initial_holds(
+    tmp_path: Path, initial_holds: object, *, valid_digest: bool = True
+) -> dict[str, object]:
+    seal: dict[str, object] = {
+        "schema": "kg.worktree.handback.v1",
+        "branch": "feat/holds",
+        "path": str(tmp_path / "holds"),
+        "external_ids": ["#holds"],
+        "owner_thread_id": "thread-holds",
+        "tip_sha": "b" * 40,
+        "handed_back_at": "2026-08-21T00:00:00Z",
+        "origin_main_sha": "a" * 40,
+        "outcomes": [{"status": "success"}],
+        "initial_holds": initial_holds,
+    }
+    seal["digest"] = hashlib.sha256(
+        json.dumps(
+            seal, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    if not valid_digest:
+        seal["digest"] = "0" * 64
+    return {
+        "branch": "feat/holds",
+        "path": str(tmp_path / "holds"),
+        "status": "active",
+        "external_ids": ["#holds"],
+        "base_sha": "a" * 40,
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"operation": "modify", "path": "ops/a.py"}],
+        },
+        "codex_thread_id": "thread-holds",
+        "claim_generation": 4,
+        "handback_claim_generation": 4,
+        "handed_back_sha": "b" * 40,
+        "handed_back_at": "2026-08-21T00:00:00Z",
+        "handback_seal": seal,
+    }
+
+
+def test_registry_adapter_parses_supported_initial_holds_from_valid_seal(
+    tmp_path: Path,
+) -> None:
+    record = RegistryCliAdapter._record(
+        _payload_with_initial_holds(tmp_path, ["security", "p0"])
+    )
+
+    assert record.handback_valid
+    assert record.handback_initial_holds == ("p0", "security")
+
+
+@pytest.mark.parametrize(
+    "initial_holds",
+    (
+        "security",
+        ["p0", "p0"],
+        ["urgent"],
+        [1],
+    ),
+)
+def test_registry_adapter_rejects_malformed_initial_holds_on_valid_seal(
+    tmp_path: Path, initial_holds: object
+) -> None:
+    with pytest.raises(ValueError, match="initial_holds"):
+        RegistryCliAdapter._record(
+            _payload_with_initial_holds(tmp_path, initial_holds)
+        )
+
+
+def test_registry_adapter_ignores_initial_holds_from_invalid_seal(
+    tmp_path: Path,
+) -> None:
+    record = RegistryCliAdapter._record(
+        _payload_with_initial_holds(tmp_path, "security", valid_digest=False)
+    )
+
+    assert not record.handback_valid
+    assert record.handback_initial_holds == ()
 
 
 def test_registry_get_ignores_terminal_history_for_same_lane(tmp_path: Path) -> None:

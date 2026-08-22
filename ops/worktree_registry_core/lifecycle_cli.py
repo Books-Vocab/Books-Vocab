@@ -89,6 +89,8 @@ def cmd_resolve(args: argparse.Namespace, *, resolve_statuses: tuple[str, ...]) 
         _, now_iso = resolve_now(args.at)
         result.record["status"] = args.status
         result.record["resolved_at"] = now_iso
+        if terminal_proof is not None:
+            result.record["terminal_proof"] = terminal_proof
         save_state(target, state)
     records = [result.record]
     print(

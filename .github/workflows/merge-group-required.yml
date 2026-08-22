@@ -40,4 +40,4 @@ jobs:
         run: ./ops/tests/test_ops_ci_coverage.sh
 
       - name: Run short repository gate
-        run: ./ops/test_ops.sh docs-lint worktree context-routing github-workflows
+        run: ./ops/test_ops.sh docs-lint worktree context-routing github-workflows delivery-control

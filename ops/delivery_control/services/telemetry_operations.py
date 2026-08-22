@@ -9,6 +9,7 @@ from typing import Protocol
 
 from ..domain.models import HandbackReceipt
 from ..domain.observations import (
+    MainLandingSnapshot,
     MergeQueueEntrySnapshot,
     PullRequestSnapshot,
     RegistrySnapshot,
@@ -33,7 +34,11 @@ from .telemetry import TelemetryService
 
 
 class TelemetryGitHubPort(GitHubQueryPort, Protocol):
-    def recent_merge_times(self, *, limit: int = 100) -> tuple[datetime, ...]: ...
+    pass
+
+
+class TelemetryGitPort(GitQueryPort, Protocol):
+    """Typed read-only Git surface required by operation telemetry."""
 
 
 @dataclass(frozen=True)
@@ -42,7 +47,7 @@ class OperationTelemetry:
 
     store: TelemetryStorePort
     github: TelemetryGitHubPort
-    git: GitQueryPort
+    git: TelemetryGitPort
     clock: Callable[[], datetime]
 
     @property
@@ -161,12 +166,8 @@ class OperationTelemetry:
         if not result.changed:
             return ()
         warnings: list[TelemetryWarning] = []
-        merged_at = None
         try:
-            merged = self.github.recent_merge_times(limit=1)
-            merged_at = max(merged) if merged else None
             if self.git.origin_main_sha() != result.origin_sha:
-                merged_at = None
                 warnings.append(
                     TelemetryWarning(
                         code="telemetry_source_changed",
@@ -174,6 +175,17 @@ class OperationTelemetry:
                         metric=TelemetryMetric.MERGE_TO_SYNC,
                     )
                 )
+                return tuple(warnings)
+            landings = self._main_landings(result)
+            if self.git.origin_main_sha() != result.origin_sha:
+                warnings.append(
+                    TelemetryWarning(
+                        code="telemetry_source_changed",
+                        message="origin/main changed while reading landing history",
+                        metric=TelemetryMetric.MERGE_TO_SYNC,
+                    )
+                )
+                return tuple(warnings)
         except (OSError, RuntimeError, ValueError) as error:
             warnings.append(
                 TelemetryWarning(
@@ -182,15 +194,35 @@ class OperationTelemetry:
                     metric=TelemetryMetric.MERGE_TO_SYNC,
                 )
             )
-        warning = self.service.record(
-            metric=TelemetryMetric.MERGE_TO_SYNC,
-            subject=main_subject(origin_main_sha=result.origin_sha),
-            started_at=merged_at,
-            completed_at=self.clock(),
-        )
-        if warning is not None:
-            warnings.append(warning)
+            return tuple(warnings)
+        if not landings or landings[-1].sha != result.origin_sha:
+            warnings.append(
+                TelemetryWarning(
+                    code="telemetry_merge_history_incomplete",
+                    message="first-parent landing history does not reach synchronized origin/main",
+                    metric=TelemetryMetric.MERGE_TO_SYNC,
+                )
+            )
+            return tuple(warnings)
+        completed_at = self.clock()
+        for landing in landings:
+            warning = self.service.record(
+                metric=TelemetryMetric.MERGE_TO_SYNC,
+                subject=main_subject(origin_main_sha=landing.sha),
+                started_at=landing.landed_at,
+                completed_at=completed_at,
+            )
+            if warning is not None:
+                warnings.append(warning)
         return tuple(warnings)
+
+    def _main_landings(
+        self, result: MainSyncResult
+    ) -> tuple[MainLandingSnapshot, ...]:
+        return self.git.first_parent_landings(
+            before_sha=result.before_sha,
+            after_sha=result.origin_sha,
+        )
 
     def _publication_time(
         self,

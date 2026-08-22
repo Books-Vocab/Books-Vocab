@@ -11,6 +11,7 @@ from .records import legacy_external_ids, norm_path
 
 HAND_BACK_SEAL_SCHEMA = "kg.worktree.handback.v1"
 GREEN_ACCEPTANCE_STATUSES = {"pass", "passed", "green", "ok", "success"}
+INITIAL_HOLDS = frozenset({"p0", "p1", "security"})
 
 
 def canonical_json(value: Any) -> bytes:
@@ -45,6 +46,7 @@ def seal_body(
     outcomes: list[dict[str, Any]],
     handed_back_at: str,
     origin_main_sha: str | None = None,
+    initial_holds: list[str] | None = None,
 ) -> dict[str, Any]:
     body = {
         "schema": HAND_BACK_SEAL_SCHEMA,
@@ -56,6 +58,7 @@ def seal_body(
         "tip_sha": tip_sha,
         "outcomes": outcomes,
         "handed_back_at": handed_back_at,
+        "initial_holds": sorted(initial_holds or []),
     }
     if origin_main_sha is not None:
         body["origin_main_sha"] = origin_main_sha
@@ -110,6 +113,13 @@ def validate_handback_seal(
                 not in GREEN_ACCEPTANCE_STATUSES
             ):
                 problems.append({"kind": "handback-outcome-not-green", "outcome": item})
+    initial_holds = body.get("initial_holds", [])
+    if (
+        not isinstance(initial_holds, list)
+        or any(type(item) is not str or item not in INITIAL_HOLDS for item in initial_holds)
+        or len(initial_holds) != len(set(initial_holds))
+    ):
+        problems.append({"kind": "handback-initial-holds-invalid"})
     return problems
 
 

@@ -7,6 +7,8 @@ silently planning from an incomplete inventory.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +23,7 @@ NON_TERMINAL_STATUSES = frozenset(
 )
 TERMINAL_STATUSES = frozenset({STATUS_MERGED, STATUS_ABANDONED})
 KNOWN_STATUSES = NON_TERMINAL_STATUSES | TERMINAL_STATUSES
+TERMINAL_PROOF_SCHEMA = "kg.worktree.terminal-proof.v1"
 
 CURRENT_RECORD_FIELDS = (
     "branch",
@@ -42,6 +45,7 @@ CURRENT_RECORD_FIELDS = (
     "handback_claim_generation",
     "handback_seal",
     "handback_outcomes",
+    "terminal_proof",
 )
 
 
@@ -70,6 +74,70 @@ def legacy_external_ids(record: dict[str, Any]) -> list[str]:
     if value is None:
         value = record.get("backlog")
     return external_ids(value)
+
+
+def terminal_proof_with_digest(body: dict[str, Any]) -> dict[str, Any]:
+    proof = dict(body)
+    encoded = json.dumps(
+        body, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    proof["digest"] = hashlib.sha256(encoded).hexdigest()
+    return proof
+
+
+def terminal_proof_problem(
+    proof: object,
+    *,
+    branch: object,
+    head_sha: object,
+    record_external_ids: object,
+) -> str | None:
+    if not isinstance(proof, dict):
+        return "terminal proof must be an object"
+    digest = proof.get("digest")
+    body = {key: value for key, value in proof.items() if key != "digest"}
+    encoded = json.dumps(
+        body, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    if digest != hashlib.sha256(encoded).hexdigest():
+        return "terminal proof digest is invalid"
+    if not isinstance(record_external_ids, list):
+        return "terminal proof record has invalid external ids"
+    expected = {
+        "schema": TERMINAL_PROOF_SCHEMA,
+        "pr_state": "MERGED",
+        "base_branch": "main",
+        "branch": branch,
+        "head_sha": head_sha,
+    }
+    for key, value in expected.items():
+        if body.get(key) != value:
+            return f"terminal proof {key} does not match exact merged PR"
+    if type(body.get("pr_number")) is not int or body["pr_number"] <= 0:
+        return "terminal proof PR number is invalid"
+    lane_id = body.get("lane_id")
+    if type(lane_id) is not str or lane_id not in record_external_ids:
+        return "terminal proof lane does not match the registry claim"
+    return None
+
+
+def stored_terminal_proof_problem(record: dict[str, Any]) -> str | None:
+    if "terminal_proof" not in record:
+        return None
+    if record.get("status") != STATUS_MERGED:
+        return "terminal proof is only valid for merged disposition"
+    proof = record["terminal_proof"]
+    stored_head = record.get("handed_back_sha")
+    if stored_head is None and isinstance(proof, dict):
+        # Older exact terminal transitions may not have a hand-back receipt.
+        # Their validated head remains durable inside the immutable proof.
+        stored_head = proof.get("head_sha")
+    return terminal_proof_problem(
+        proof,
+        branch=record.get("branch"),
+        head_sha=stored_head,
+        record_external_ids=record.get("external_ids"),
+    )
 
 
 def normalize_record(
@@ -101,6 +169,17 @@ def normalize_record(
                 "index": index,
                 "branch": record.get("branch"),
                 "status": status,
+            }
+        )
+    proof_problem = stored_terminal_proof_problem(record)
+    if proof_problem:
+        problems.append(
+            {
+                "kind": "registry-terminal-proof-invalid",
+                "index": index,
+                "branch": record.get("branch"),
+                "status": status,
+                "reason": proof_problem,
             }
         )
     return record, problems
@@ -143,11 +222,11 @@ def active_records(state: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def retained_records(state: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return every record that still participates in an in-flight transaction."""
+    """Return every record retained by lossless registry compaction."""
     return [
         record
         for record in state.get("records", [])
-        if isinstance(record, dict) and record.get("status") not in TERMINAL_STATUSES
+        if isinstance(record, dict)
     ]
 
 

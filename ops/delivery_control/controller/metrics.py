@@ -30,12 +30,16 @@ class PipelineMetrics:
     required_green: int
     required_running: int
     required_failed: int
+    required_absent: int
     pr_contract_failed: int
     merge_queue_depth: int
     terminal_cleanup: int
     blocked_lanes: int
     physical_worktrees: int
     source_problems: int
+    candidate_issues: int
+    reanchor_required: int
+    clean_unregistered_worktrees: int = 0
     idle_worktrees: int = 0
     collision_lanes: int = 0
     collision_rate: float = 0.0
@@ -105,6 +109,15 @@ def measure_pipeline(
         and lane.required_check.status is CheckStatus.FAILURE
         for lane in inventory.lanes
     )
+    required_absent = sum(
+        lane.registry is not None
+        and lane.registry.status in {"published", "cleanup_pending"}
+        and lane.pull_requests
+        and lane.pull_requests[0].state == "OPEN"
+        and lane.required_check is not None
+        and lane.required_check.status is CheckStatus.ABSENT
+        for lane in inventory.lanes
+    )
     required_succeeded = sum(
         lane.required_check is not None
         and lane.required_check.status is CheckStatus.SUCCESS
@@ -114,6 +127,19 @@ def measure_pipeline(
     pr_contract_failed = states.count(LaneState.PR_CONTRACT_FAILED)
     handbacks_publishable = states.count(LaneState.HANDBACK_PUBLISHABLE)
     published_local_cleanup = states.count(LaneState.PUBLISHED_LOCAL_CLEANUP)
+    clean_unregistered_worktrees = sum(
+        lane.registry is None
+        and lane.physical is not None
+        and lane.snapshot is not None
+        and lane.snapshot.clean
+        for lane in inventory.lanes
+    )
+    unknown_unregistered_worktrees = sum(
+        lane.registry is None
+        and lane.physical is not None
+        and lane.snapshot is None
+        for lane in inventory.lanes
+    )
     timings = measure_pipeline_timings(inventory, telemetry=telemetry, now=now)
     return PipelineMetrics(
         active_development=states.count(LaneState.ACTIVE_DEVELOPMENT),
@@ -129,6 +155,7 @@ def measure_pipeline(
         required_green=required_green,
         required_running=required_running,
         required_failed=required_failed,
+        required_absent=required_absent,
         pr_contract_failed=pr_contract_failed,
         merge_queue_depth=states.count(LaneState.PR_QUEUED),
         terminal_cleanup=states.count(LaneState.TERMINAL_CLEANUP),
@@ -138,8 +165,16 @@ def measure_pipeline(
             len(inventory.source_problems)
             + timings.invalid_samples
             + (len(telemetry.problems) if telemetry is not None else 0)
+            + unknown_unregistered_worktrees
         ),
-        idle_worktrees=handbacks_publishable + published_local_cleanup,
+        candidate_issues=len(inventory.candidate_issues),
+        reanchor_required=states.count(LaneState.REANCHOR),
+        clean_unregistered_worktrees=clean_unregistered_worktrees,
+        idle_worktrees=(
+            handbacks_publishable
+            + published_local_cleanup
+            + clean_unregistered_worktrees
+        ),
         collision_lanes=collision_lanes,
         collision_rate=(collision_lanes / len(live_states) if live_states else 0.0),
         required_failure_rate=(

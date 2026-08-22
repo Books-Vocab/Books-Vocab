@@ -11,6 +11,7 @@ sys.path.insert(0, str(OPS))
 
 from delivery_control.adapters.errors import AdapterCommandError, AdapterPayloadError
 from delivery_control.adapters.github_cli import GitHubCliAdapter
+from delivery_control.domain.candidate_issues import CANDIDATE_ISSUE_LABEL
 from delivery_control.domain.errors import CompareAndSwapConflict
 from delivery_control.domain.models import CheckStatus
 from delivery_control.domain.observations import (
@@ -45,6 +46,84 @@ def _pr_payload() -> dict[str, object]:
         "body": "## Scope\n- ops/a.py\n\n## Validation\n- required",
         "autoMergeRequest": None,
     }
+
+
+def _candidate_payload(number: int) -> dict[str, object]:
+    return {
+        "number": number,
+        "url": f"https://github.com/owner/repo/issues/{number}",
+        "state": "OPEN",
+        "labels": [{"name": CANDIDATE_ISSUE_LABEL}],
+        "body": (
+            "<!-- kg.delivery.candidate.v1\n"
+            + json.dumps(
+                {
+                    "schema": "kg.delivery.candidate.v1",
+                    "severity": "P2",
+                    "priority": number,
+                    "scope": {
+                        "schema": "kg.worktree.scope.v1",
+                        "files": [
+                            {
+                                "operation": "modify",
+                                "path": f"ops/issue_{number}.py",
+                            }
+                        ],
+                    },
+                    "acceptance": [f"Issue {number} is fixed."],
+                    "initial_holds": [],
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            + "\n-->"
+        ),
+    }
+
+
+def test_github_adapter_reads_open_exact_label_candidate_issues() -> None:
+    wrong_label = _candidate_payload(22)
+    wrong_label["labels"] = [{"name": "delivery:candidates"}]
+    missing_contract = _candidate_payload(23)
+    missing_contract["body"] = "No typed contract"
+    runner = StaticRunner(
+        [
+            CommandResult(
+                argv=("gh", "issue", "list"),
+                exit_code=0,
+                stdout=json.dumps(
+                    [_candidate_payload(21), wrong_label, missing_contract, 7]
+                ),
+                stderr="",
+            )
+        ]
+    )
+
+    inventory = GitHubCliAdapter(runner=runner).list_open_candidate_issues()
+
+    assert [item.number for item in inventory.records] == [21]
+    assert inventory.records[0].spec.priority == 21
+    assert [item.identity for item in inventory.problems] == [
+        "Issue#22",
+        "Issue#23",
+        "entry[3]",
+    ]
+    assert "typed candidate contract" in inventory.problems[1].reason
+    assert runner.calls == [
+        (
+            "gh",
+            "issue",
+            "list",
+            "--state",
+            "open",
+            "--label",
+            CANDIDATE_ISSUE_LABEL,
+            "--limit",
+            "1000",
+            "--json",
+            "number,url,state,labels,body",
+        )
+    ]
 
 
 def test_github_adapter_surfaces_malformed_entries() -> None:
@@ -429,3 +508,112 @@ def test_github_metadata_update_requires_expected_handback_head() -> None:
         )
 
     assert len(runner.calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("command", "before_state", "after_state"),
+    (("close", "OPEN", "CLOSED"), ("reopen", "CLOSED", "OPEN")),
+)
+def test_github_pr_state_mutation_has_exact_tuple_cas_and_readback(
+    command: str, before_state: str, after_state: str
+) -> None:
+    before = _pr_payload()
+    before["state"] = before_state
+    after = _pr_payload()
+    after["state"] = after_state
+    runner = StaticRunner(
+        [
+            CommandResult(("gh",), 0, json.dumps(before), ""),
+            CommandResult(("gh",), 0, "", ""),
+            CommandResult(("gh",), 0, json.dumps(after), ""),
+        ]
+    )
+    adapter = GitHubCliAdapter(runner=runner)
+    method = getattr(adapter, f"{command}_pull_request")
+
+    result = method(
+        number=12,
+        expected_base_sha="a" * 40,
+        expected_head_sha="b" * 40,
+        expected_body=str(before["body"]),
+    )
+
+    assert result.state == after_state
+    assert runner.calls[1] == ("gh", "pr", command, "12")
+
+
+def test_github_close_rejects_tuple_drift_before_mutation() -> None:
+    drifted = _pr_payload()
+    drifted["headRefOid"] = "d" * 40
+    runner = StaticRunner(
+        [CommandResult(("gh",), 0, json.dumps(drifted), "")]
+    )
+
+    with pytest.raises(CompareAndSwapConflict, match="before close"):
+        GitHubCliAdapter(runner=runner).close_pull_request(
+            number=12,
+            expected_base_sha="a" * 40,
+            expected_head_sha="b" * 40,
+            expected_body=str(drifted["body"]),
+        )
+
+    assert len(runner.calls) == 1
+
+
+def test_github_adapter_dispatches_required_workflow_with_exact_pr_tuple() -> None:
+    runner = StaticRunner([CommandResult(("gh",), 0, "", "")])
+    adapter = GitHubCliAdapter(runner=runner)
+
+    command = adapter.trigger_required(
+        number=12,
+        branch="feat/one",
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+    )
+
+    assert command == (
+        "gh",
+        "workflow",
+        "run",
+        "pr-gate.yml",
+        "--ref",
+        "feat/one",
+        "-f",
+        "pr_number=12",
+        "-f",
+        f"base_sha={'a' * 40}",
+        "-f",
+        f"head_sha={'b' * 40}",
+    )
+    assert runner.calls == [command]
+
+
+def test_github_adapter_reports_required_workflow_dispatch_failure() -> None:
+    argv = (
+        "gh",
+        "workflow",
+        "run",
+        "pr-gate.yml",
+        "--ref",
+        "feat/one",
+        "-f",
+        "pr_number=12",
+        "-f",
+        f"base_sha={'a' * 40}",
+        "-f",
+        f"head_sha={'b' * 40}",
+    )
+    runner = StaticRunner(
+        [CommandResult(argv, 1, "", "workflow dispatch rejected")]
+    )
+
+    with pytest.raises(
+        AdapterCommandError,
+        match=r"gh workflow run pr-gate\.yml.*workflow dispatch rejected",
+    ):
+        GitHubCliAdapter(runner=runner).trigger_required(
+            number=12,
+            branch="feat/one",
+            base_sha="a" * 40,
+            head_sha="b" * 40,
+        )

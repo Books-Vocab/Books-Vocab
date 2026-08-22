@@ -3,8 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+from ..domain.branch_refs import BranchInventory
 from ..domain.observations import (
     CanonicalCheckoutSnapshot,
+    MainLandingSnapshot,
     PhysicalWorktree,
     WorktreeSnapshot,
 )
@@ -18,6 +20,8 @@ class GitQueryPort(Protocol):
 
     def inspect_worktree(self, path: Path, base_sha: str) -> WorktreeSnapshot: ...
 
+    def branch_inventory(self) -> BranchInventory: ...
+
     def remote_branch_sha(self, branch: str) -> str | None: ...
 
     def local_branch_sha(self, branch: str) -> str | None: ...
@@ -25,6 +29,10 @@ class GitQueryPort(Protocol):
     def local_main_sha(self) -> str: ...
 
     def origin_main_sha(self) -> str: ...
+
+    def first_parent_landings(
+        self, *, before_sha: str, after_sha: str
+    ) -> tuple[MainLandingSnapshot, ...]: ...
 
 
 @runtime_checkable

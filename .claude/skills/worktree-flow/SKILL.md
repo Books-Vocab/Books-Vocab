@@ -18,17 +18,17 @@ description: "使用 GitHub Issue（需要規劃時）、branch、PR 與 Actions
 - Codex thread identity 與 GitHub external IDs
 - hand-back seal、驗證命令、log／artifact 路徑
 
-`ops/worktree_orchestrate.py` 只做本機可驗證動作：`preflight`、`open`、`adopt`、`gate`、`hand-back`、`resolve`、`freeze`。IM 使用它控制 local worktree lifecycle；它不建立、更新、排序或關閉 GitHub Issue／Project／PR，也不執行 push 或 merge。
+`ops/worktree_orchestrate.py` 只做本機可驗證動作：`preflight`、`open`、`adopt`、`gate`、`hand-back`、`reanchor`、`resume-published`、`resolve`、`freeze`。IM／PI 使用它控制 local worktree lifecycle；它不建立、更新、排序或關閉 GitHub Issue／Project／PR，也不執行 push 或 merge。`reanchor` 只重建同 owner 的 merge-front 並對齊 live main；`resume-published` 只從 exact remote PR HEAD 重建同 owner code-fix lane。兩者都不代替 owner 測試、hand-back、push 或 force-push。
 
 ## Standard flow
 
 1. 先確認 repo、branch、HEAD、工作樹 clean state 與 active ownership。
 2. 判斷入口：Issue Solver 從 IM 的 Issue assignment packet 取得目標；Worker 從帶 `dispatch_channel` 的 User／IM assignment 取得目標。建立最小 structured Scope，檢查 overlap。
 3. `open` 或 `adopt` worktree；所有修改只在該 path 內進行。
-4. 先寫 failing test，再做最小修復；長測試保留 heartbeat 與完整輸出。
-5. `gate` 只驗證當前 worktree；pass 不等於 merge permission。
-6. Worker／Issue Solver 在 local branch commit，執行 hand-back；IM 驗證 exact HEAD 後 push 並開／更新 PR。PR 必須標明 direct assignment 或關聯 Issue。
-7. IM 只交付 Ready candidate；CM 重新驗證 GitHub Actions、CR、DS 與 repository rules，然後 merge。release、deploy 由各自 SOP 控制。
+4. 先寫 focused failing proof，再做最小修復；只跑能證明這個 Scope 的 focused validation。大型 backend／iOS／UI／ops confidence 留給 GitHub，不可成為 publication 前置條件。
+5. `gate` 是可選的 focused evidence capture；pass 不等於 publication、Ready 或 merge permission，未執行大型 local gate 也不阻止 clean committed hand-back。
+6. Worker／Issue Solver 在 local branch commit，執行 typed hand-back；PI 驗證 exact HEAD 後立即 push 並開／更新 PR，readback 成功即釋放 local worktree／local branch。PR 必須標明 direct assignment 或關聯 Issue。只有 exact PR／registry／remote proof 完整且 local assets 已不存在時，PI 才能用 `delivery.py abandon-pr` 做可重試的終止；dirty、unknown 或 remote-drift worktree 不得刪除。
+7. PI 交付 durable 非 draft PR，不把它誤報為 Ready；CM 重新驗證 GitHub required、live tuple、hold 與 repository rules，再送 native merge queue。routine CR／DS／confidence 平行收斂，只有 P0／P1／security durable hold 阻擋。release、deploy 由各自 SOP 控制。
 
 ## Dispatch and hand-back
 

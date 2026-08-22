@@ -80,7 +80,7 @@ def test_register_rejects_scope_owned_by_cleanup_lease(tmp_path: Path) -> None:
     assert refusal["owners"][0]["status"] == "cleanup_pending"
 
 
-@pytest.mark.parametrize("owner_status", ("active", "cleanup_pending"))
+@pytest.mark.parametrize("owner_status", ("active", "cleanup_pending", "published"))
 @pytest.mark.parametrize("collision_kind", ("external_id", "scope"))
 def test_register_rejects_every_inflight_ownership_collision(
     tmp_path: Path, owner_status: str, collision_kind: str
@@ -112,6 +112,71 @@ def test_register_rejects_every_inflight_ownership_collision(
 
     assert rc == registry.EXIT_CLAIMED
     assert refusal["owners"][0]["status"] == owner_status
+
+
+def test_register_cannot_reuse_published_branch_path_as_a_new_owner(
+    tmp_path: Path,
+) -> None:
+    published = {
+        "branch": "feat/published",
+        "path": str(tmp_path / "released"),
+        "status": "published",
+        "external_ids": ["ISSUE-1"],
+        "scope": _scope("ops/published.py"),
+        "codex_thread_id": "owner-one",
+        "claim_generation": 3,
+    }
+    state = {"schema": registry.SCHEMA, "records": [published]}
+
+    rc, refusal = registry._register_record(
+        state,
+        branch="feat/published",
+        path=str(tmp_path / "released"),
+        intent="take over",
+        base="main",
+        external_ids=["ISSUE-1"],
+        scope=_scope("ops/published.py"),
+        codex_thread_id="owner-two",
+    )
+
+    assert rc == registry.EXIT_CLAIMED
+    assert refusal["owners"][0]["status"] == "published"
+    assert state["records"] == [published]
+
+
+@pytest.mark.parametrize("reuse", ("branch", "path"))
+def test_register_cannot_reuse_published_local_asset_with_disjoint_work(
+    tmp_path: Path, reuse: str
+) -> None:
+    published = {
+        "branch": "feat/published",
+        "path": str(tmp_path / "released"),
+        "status": "published",
+        "external_ids": ["ISSUE-1"],
+        "scope": _scope("ops/published.py"),
+        "codex_thread_id": "owner-one",
+        "claim_generation": 3,
+    }
+    state = {"schema": registry.SCHEMA, "records": [published]}
+
+    rc, refusal = registry._register_record(
+        state,
+        branch="feat/published" if reuse == "branch" else "feat/new",
+        path=(
+            str(tmp_path / "released")
+            if reuse == "path"
+            else str(tmp_path / "new")
+        ),
+        intent="disjoint takeover",
+        base="main",
+        external_ids=["ISSUE-2"],
+        scope=_scope("ops/disjoint.py"),
+        codex_thread_id="owner-two",
+    )
+
+    assert rc == registry.EXIT_CLAIMED
+    assert refusal["owners"][0][f"{reuse if reuse == 'branch' else 'worktree_path'}_overlap"]
+    assert state["records"] == [published]
 
 
 def test_register_rejects_branch_path_cross_splice(tmp_path: Path) -> None:

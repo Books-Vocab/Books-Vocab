@@ -34,7 +34,9 @@ ROOT = OPS_DIR.parent
 if str(OPS_DIR) not in sys.path:
     sys.path.insert(0, str(OPS_DIR))
 
+import worktree_reanchor
 import worktree_registry as registry
+import worktree_resume
 from lib.worktree_scope import scope_files, scope_status
 
 SCHEMA = "kg.worktree.orchestrate.v2"
@@ -269,6 +271,18 @@ def cmd_adopt(args: argparse.Namespace) -> int:
           human=(f"✓ adopted {branch} at {worktree}" if rc == EXIT_OK
                  else f"✗ adopt refused: {record.get('reason', record)}"))
     return rc
+
+
+def cmd_reanchor(args: argparse.Namespace) -> int:
+    return worktree_reanchor.cmd_reanchor(
+        args, freeze_reason=_require_unfrozen("reanchor")
+    )
+
+
+def cmd_resume_published(args: argparse.Namespace) -> int:
+    return worktree_resume.cmd_resume(
+        args, freeze_reason=_require_unfrozen("resume-published")
+    )
 
 
 def _changed_files(worktree: Path, base: str) -> list[str]:
@@ -752,6 +766,13 @@ def _parser() -> argparse.ArgumentParser:
     ad.add_argument("--scope"); ad.add_argument("--scope-file"); ad.add_argument("--codex-thread-id")
     ad.add_argument("--delegated", action=argparse.BooleanOptionalAction, default=None)
     ad.set_defaults(func=cmd_adopt)
+
+    worktree_reanchor.add_parser(
+        sub, common=common, handler=cmd_reanchor, default_repo=ROOT
+    )
+    worktree_resume.add_parser(
+        sub, common=common, handler=cmd_resume_published, default_repo=ROOT
+    )
 
     gate = sub.add_parser("gate", help="run focused local checks for changed files")
     common(gate); gate.add_argument("--worktree", required=True); gate.add_argument("--base", default=BASE_DEFAULT)

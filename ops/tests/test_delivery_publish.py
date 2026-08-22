@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -9,6 +11,7 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
+from delivery_control.adapters.registry import RegistryCliAdapter
 from delivery_control.domain.errors import DeliverySourceError, PolicyViolation
 from delivery_control.domain.models import HandbackReceipt, Scope
 from delivery_control.domain.observations import (
@@ -23,7 +26,10 @@ from delivery_control.domain.observations import (
     RegistrySnapshot,
     WorktreeSnapshot,
 )
-from delivery_control.services.pr_contract import render_pull_request_body
+from delivery_control.services.pr_contract import (
+    parse_pull_request_body,
+    render_pull_request_body,
+)
 from delivery_control.services.publish import (
     PublicationOutcome,
     PublishService,
@@ -69,6 +75,7 @@ def _registry(receipt: HandbackReceipt, **changes: object) -> RegistrySnapshot:
         "handed_back_sha": receipt.head_sha,
         "handback_claim_generation": receipt.claim_generation,
         "handback_valid": True,
+        "handback_initial_holds": receipt.initial_holds,
     }
     values.update(changes)
     return RegistrySnapshot(**values)  # type: ignore[arg-type]
@@ -292,6 +299,75 @@ def test_active_legacy_handback_normalizes_to_durable_receipt() -> None:
     assert receipt_from_active_claim(record, _worktree(receipt)) == receipt
 
 
+def test_registry_handback_outcome_reaches_rendered_validation(
+    tmp_path: Path,
+) -> None:
+    worktree = tmp_path / "delivery"
+    outcome = {
+        "summary": "focused delivery-control tests passed",
+        "command": "./ops/test_ops.sh delivery-control",
+        "status": "success",
+        "name": "focused-tests",
+    }
+    seal = {
+        "schema": "kg.worktree.handback.v1",
+        "branch": BRANCH,
+        "path": str(worktree),
+        "owner_thread_id": "thread-1",
+        "external_ids": ["DIRECT-1"],
+        "base_sha": BASE,
+        "tip_sha": HEAD,
+        "origin_main_sha": "d" * 40,
+        "outcomes": [outcome],
+        "handed_back_at": "2026-08-22T00:00:00Z",
+    }
+    seal["digest"] = hashlib.sha256(
+        json.dumps(
+            seal, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    record = RegistryCliAdapter._record(
+        {
+            "branch": BRANCH,
+            "path": str(worktree),
+            "status": "active",
+            "external_ids": ["DIRECT-1"],
+            "base_sha": BASE,
+            "scope": {
+                "schema": "kg.worktree.scope.v1",
+                "files": [{"operation": "modify", "path": "ops/a.py"}],
+            },
+            "codex_thread_id": "thread-1",
+            "claim_generation": 3,
+            "handback_claim_generation": 3,
+            "handed_back_sha": HEAD,
+            "handed_back_at": "2026-08-22T00:00:00Z",
+            "handback_seal": seal,
+        }
+    )
+    receipt = receipt_from_active_claim(
+        record,
+        WorktreeSnapshot(
+            path=worktree,
+            branch=BRANCH,
+            base_sha=BASE,
+            parent_sha=BASE,
+            head_sha=HEAD,
+            clean=True,
+            changes=(FileChange(FileOperation.MODIFY, "ops/a.py"),),
+        ),
+    )
+
+    body = render_pull_request_body(receipt)
+    canonical_outcome = json.dumps(
+        outcome, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+
+    assert receipt.validation[0].to_payload() == outcome
+    assert f"- Handback outcome 1: `{canonical_outcome}`" in body
+    assert parse_pull_request_body(body) == receipt
+
+
 def test_receipt_normalization_rejects_operation_drift() -> None:
     receipt = _receipt()
     record = _registry(
@@ -369,6 +445,61 @@ def test_publish_preserves_and_types_a_legacy_security_hold() -> None:
     assert result.outcome is PublicationOutcome.UPDATED
     assert '"holds":["security"]' in result.pull_request.body
     assert "Explicit hard holds: `security`" in result.pull_request.body
+
+
+def test_new_pr_publishes_initial_handback_hold_atomically() -> None:
+    receipt = _receipt(initial_holds=("security",))
+    service, _, _ = _service(receipt)
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.CREATED
+    assert '"initial_holds":["security"]' in result.pull_request.body
+    assert '"holds":["security"]' in result.pull_request.body
+    assert "Explicit hard holds: `security`" in result.pull_request.body
+
+
+def test_existing_pr_publishes_new_initial_handback_hold_atomically() -> None:
+    previous = _receipt()
+    receipt = _receipt(initial_holds=("security",))
+    pull_request = _pull_request(
+        previous,
+        title="fix: delivery",
+        body=render_pull_request_body(previous),
+    )
+    github = FakeGitHub(receipt, pull_request=pull_request)
+    service, _, _ = _service(
+        receipt,
+        git=FakeGit(receipt, remote_sha=receipt.head_sha),
+        github=github,
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert '"initial_holds":["security"]' in result.pull_request.body
+    assert '"holds":["security"]' in result.pull_request.body
+
+
+def test_existing_pr_does_not_restore_an_explicitly_cleared_initial_hold() -> None:
+    receipt = _receipt(initial_holds=("security",))
+    pull_request = _pull_request(
+        receipt,
+        title="fix: delivery",
+        body=render_pull_request_body(receipt, holds=frozenset()),
+    )
+    github = FakeGitHub(receipt, pull_request=pull_request)
+    service, _, _ = _service(
+        receipt,
+        git=FakeGit(receipt, remote_sha=receipt.head_sha),
+        github=github,
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.ALREADY_PUBLISHED
+    assert '"initial_holds":["security"]' in result.pull_request.body
+    assert '"holds":[]' in result.pull_request.body
 
 
 def test_existing_exact_draft_is_marked_ready_without_local_quality_gate() -> None:

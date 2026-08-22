@@ -11,10 +11,17 @@ sys.path.insert(0, str(OPS))
 
 from delivery_control.adapters.errors import AdapterCommandError
 from delivery_control.adapters.git_cli import GitCliAdapter
+from delivery_control.adapters.git_parsing import (
+    parse_branch_inventory,
+    parse_changed_files,
+    parse_worktrees,
+)
+from delivery_control.domain.branch_refs import BranchInventory
 from delivery_control.domain.errors import CompareAndSwapConflict
 from delivery_control.domain.observations import (
     FileChange,
     FileOperation,
+    PhysicalWorktree,
 )
 from delivery_control.ports.process import CommandResult
 
@@ -412,6 +419,84 @@ def test_git_cleanup_refuses_canonical_checkout_and_main(tmp_path: Path) -> None
         adapter.delete_local_branch("main", expected_head_sha="b" * 40)
     with pytest.raises(CompareAndSwapConflict, match="remote main"):
         adapter.delete_remote_branch("main", expected_head_sha="b" * 40)
+
+
+def test_git_adapter_collects_branch_refs_with_two_bulk_queries(
+    tmp_path: Path,
+) -> None:
+    local_sha = "a" * 40
+    remote_sha = "b" * 40
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("git",),
+                0,
+                f"main\t{local_sha}\nfeat/one\t{remote_sha}\n",
+                "",
+            ),
+            CommandResult(
+                ("git",),
+                0,
+                (
+                    f"{remote_sha}\trefs/heads/feat/one\n"
+                    f"{local_sha}\trefs/heads/main\n"
+                ),
+                "",
+            ),
+        ]
+    )
+    adapter = GitCliAdapter(repo=tmp_path, runner=runner)
+
+    inventory = adapter.branch_inventory()
+
+    assert inventory == BranchInventory(
+        local=(("feat/one", remote_sha), ("main", local_sha)),
+        remote=(("feat/one", remote_sha), ("main", local_sha)),
+    )
+    assert len(runner.calls) == 2
+    assert runner.calls[0][-2:] == (
+        "--format=%(refname:strip=2)%09%(objectname)",
+        "refs/heads",
+    )
+    assert runner.calls[1][-3:] == ("ls-remote", "--heads", "origin")
+
+
+def test_git_parsers_normalize_payloads_without_a_runner(tmp_path: Path) -> None:
+    head = "a" * 40
+    other = "b" * 40
+    worktree = tmp_path / "linked"
+
+    assert parse_changed_files(
+        "R100\0old.txt\0new.txt\0C100\0source.txt\0copy.txt\0"
+    ) == (
+        FileChange(FileOperation.ADD, "copy.txt"),
+        FileChange(FileOperation.ADD, "new.txt"),
+        FileChange(FileOperation.DELETE, "old.txt"),
+    )
+    assert parse_worktrees(
+        f"worktree {worktree}\nHEAD {head}\nbranch refs/heads/feat/one\n\n"
+        f"worktree {tmp_path / 'detached'}\nHEAD {other}\ndetached\nprunable\n"
+    ) == (
+        PhysicalWorktree(
+            path=worktree.resolve(),
+            head_sha=head,
+            branch="feat/one",
+            prunable=False,
+        ),
+        PhysicalWorktree(
+            path=(tmp_path / "detached").resolve(),
+            head_sha=other,
+            branch=None,
+            prunable=True,
+        ),
+    )
+    assert parse_branch_inventory(
+        f"main\t{head}\nfeat/one\t{other}\n",
+        f"{other}\trefs/heads/feat/one\n{head}\trefs/heads/main\n",
+    ) == BranchInventory(
+        local=(("feat/one", other), ("main", head)),
+        remote=(("feat/one", other), ("main", head)),
+    )
 
 
 class StaticRunner:

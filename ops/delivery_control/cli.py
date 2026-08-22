@@ -14,8 +14,10 @@ from typing import Any
 
 from .adapters.runtime import RuntimeStatusMap
 from .application import DeliveryApplication, build_application
+from .domain.candidate_issues import CandidateSpec
 from .domain.errors import DeliveryContractError, DeliverySourceError
 from .domain.states import HoldKind
+from .services.candidate_contract import parse_candidate_body, render_candidate_body
 from .services.pr_contract import validate_pull_request_body
 
 COMMAND_SCHEMA = "kg.delivery.command.v1"
@@ -58,6 +60,18 @@ def _parser() -> argparse.ArgumentParser:
     validate.add_argument("--head-sha", required=True)
     validate.add_argument("--body-file", type=Path, default=Path("-"))
 
+    render_candidate = commands.add_parser(
+        "render-candidate-body",
+        help="render one canonical dispatchable candidate Issue body",
+    )
+    render_candidate.add_argument("--payload-file", type=Path, default=Path("-"))
+
+    validate_candidate = commands.add_parser(
+        "validate-candidate-body",
+        help="validate one dispatchable candidate Issue body",
+    )
+    validate_candidate.add_argument("--body-file", type=Path, default=Path("-"))
+
     receipt = commands.add_parser("receipt", help="normalize one active handback")
     receipt.add_argument("--lane", required=True)
 
@@ -92,10 +106,19 @@ def _parser() -> argparse.ArgumentParser:
     )
     repair_metadata.add_argument("--pr", type=int, required=True)
 
+    commands.add_parser(
+        "trigger-required", help="dispatch required checks for one exact published PR"
+    ).add_argument("--pr", type=int, required=True)
+
     cleanup = commands.add_parser(
         "cleanup-merged", help="remove exact merged branch residue"
     )
     cleanup.add_argument("--pr", type=int, required=True)
+    abandon = commands.add_parser(
+        "abandon-pr",
+        help="close and terminalize one exact post-publication PR",
+    )
+    abandon.add_argument("--pr", type=int, required=True)
     commands.add_parser("sync-main", help="ff-only synchronize canonical main")
     return parser
 
@@ -116,6 +139,30 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
             else args.body_file.read_text(encoding="utf-8")
         )
         return validate_pull_request_body(body, expected_head_sha=args.head_sha)
+    if args.command == "render-candidate-body":
+        raw = (
+            sys.stdin.read()
+            if args.payload_file == Path("-")
+            else args.payload_file.read_text(encoding="utf-8")
+        )
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as error:
+            raise DeliveryContractError("candidate payload is invalid JSON") from error
+        if not isinstance(payload, Mapping):
+            raise DeliveryContractError("candidate payload must be an object")
+        try:
+            spec = CandidateSpec.from_payload(payload)
+        except ValueError as error:
+            raise DeliveryContractError(str(error)) from error
+        return {"body": render_candidate_body(spec), "contract": spec}
+    if args.command == "validate-candidate-body":
+        body = (
+            sys.stdin.read()
+            if args.body_file == Path("-")
+            else args.body_file.read_text(encoding="utf-8")
+        )
+        return parse_candidate_body(body)
     if args.command == "receipt":
         return application.receipt(args.lane)
     if args.command == "publish":
@@ -135,8 +182,12 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
         )
     if args.command == "repair-pr-metadata":
         return application.repair_metadata(args.pr)
+    if args.command == "trigger-required":
+        return application.trigger_required(args.pr)
     if args.command == "cleanup-merged":
         return application.cleanup_merged(args.pr)
+    if args.command == "abandon-pr":
+        return application.abandon_pr(args.pr)
     if args.command == "sync-main":
         return application.sync_main()
     raise AssertionError(f"unhandled command: {args.command}")

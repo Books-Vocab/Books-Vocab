@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -9,7 +10,7 @@ OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
 from delivery_control.domain.errors import PolicyViolation
-from delivery_control.domain.models import HandbackReceipt, Scope
+from delivery_control.domain.models import HandbackOutcome, HandbackReceipt, Scope
 from delivery_control.domain.observations import PullRequestSnapshot
 from delivery_control.domain.states import HoldKind
 from delivery_control.services.pr_contract import (
@@ -49,6 +50,39 @@ def test_body_is_deterministic_and_satisfies_readiness_contract() -> None:
     assert body.count("Digest:") == 1
     assert "GitHub required checks are authoritative" in body
     assert parse_pull_request_body(body) == _receipt()
+
+
+def test_body_canonically_round_trips_typed_handback_outcomes() -> None:
+    receipt = replace(
+        _receipt(),
+        validation=(
+            HandbackOutcome.from_payload(
+                {"summary": "green", "status": "success", "name": "tests"}
+            ),
+        ),
+    )
+
+    body = render_pull_request_body(receipt)
+
+    assert (
+        '- Handback outcome 1: `{"name":"tests","status":"success",'
+        '"summary":"green"}`'
+    ) in body
+    assert parse_pull_request_body(body) == receipt
+    with pytest.raises(PolicyViolation, match="receipt is invalid"):
+        parse_pull_request_body(
+            body.replace('"status":"success"', '"status":"failure"')
+        )
+
+
+def test_body_preserves_initial_hold_impact_separately_from_active_holds() -> None:
+    receipt = replace(_receipt(), initial_holds=("security",))
+
+    body = render_pull_request_body(receipt, holds=frozenset())
+
+    assert "Handback initial holds: `security`" in body
+    assert "Explicit hard holds: none declared" in body
+    assert parse_pull_request_body(body) == receipt
 
 
 def test_machine_receipt_parser_rejects_missing_or_duplicate_envelopes() -> None:

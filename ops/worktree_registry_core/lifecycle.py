@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -14,6 +12,9 @@ from .records import (
     STATUS_CLEANUP_PENDING,
     STATUS_MERGED,
     STATUS_PUBLISHED,
+    TERMINAL_PROOF_SCHEMA,  # noqa: F401 - compatibility export for registry facade
+    terminal_proof_problem,
+    terminal_proof_with_digest,  # noqa: F401 - compatibility export for registry facade
 )
 
 PUBLIC_RESOLVE_STATUSES = (
@@ -22,7 +23,6 @@ PUBLIC_RESOLVE_STATUSES = (
     STATUS_ABANDONED,
 )
 INTERNAL_TERMINAL_STATUSES = frozenset({STATUS_MERGED})
-TERMINAL_PROOF_SCHEMA = "kg.worktree.terminal-proof.v1"
 
 
 def source_statuses(target: str) -> set[str]:
@@ -59,15 +59,6 @@ class TransitionResult:
     reason: str | None = None
 
 
-def terminal_proof_with_digest(body: dict[str, Any]) -> dict[str, Any]:
-    proof = dict(body)
-    encoded = json.dumps(
-        body, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
-    proof["digest"] = hashlib.sha256(encoded).hexdigest()
-    return proof
-
-
 def validate_terminal_proof(
     proof: object,
     *,
@@ -75,35 +66,19 @@ def validate_terminal_proof(
     request: TransitionRequest,
 ) -> str | None:
     if request.target != STATUS_MERGED:
-        return "terminal proof is only valid for merged disposition" if proof else None
-    if not isinstance(proof, dict):
+        return (
+            "terminal proof is only valid for merged disposition"
+            if proof is not None
+            else None
+        )
+    if proof is None:
         return "merged disposition requires a typed terminal proof"
-    digest = proof.get("digest")
-    body = {key: value for key, value in proof.items() if key != "digest"}
-    encoded = json.dumps(
-        body, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
-    if digest != hashlib.sha256(encoded).hexdigest():
-        return "terminal proof digest is invalid"
-    external_ids = record.get("external_ids")
-    if not isinstance(external_ids, list):
-        return "terminal proof record has invalid external ids"
-    expected = {
-        "schema": TERMINAL_PROOF_SCHEMA,
-        "pr_state": "MERGED",
-        "base_branch": "main",
-        "branch": record.get("branch"),
-        "head_sha": request.expected_head_sha,
-    }
-    for key, value in expected.items():
-        if body.get(key) != value:
-            return f"terminal proof {key} does not match exact merged PR"
-    if type(body.get("pr_number")) is not int or body["pr_number"] <= 0:
-        return "terminal proof PR number is invalid"
-    lane_id = body.get("lane_id")
-    if type(lane_id) is not str or lane_id not in external_ids:
-        return "terminal proof lane does not match the registry claim"
-    return None
+    return terminal_proof_problem(
+        proof,
+        branch=record.get("branch"),
+        head_sha=request.expected_head_sha,
+        record_external_ids=record.get("external_ids"),
+    )
 
 
 def transition_record(

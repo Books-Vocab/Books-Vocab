@@ -17,6 +17,7 @@ from delivery_control.domain.inventory import DeliveryInventory, LaneInspection
 from delivery_control.domain.models import CheckStatus, HandbackReceipt, Scope
 from delivery_control.domain.observations import (
     CheckSnapshot,
+    MainLandingSnapshot,
     PullRequestSnapshot,
     RegistrySnapshot,
 )
@@ -29,6 +30,7 @@ from delivery_control.domain.telemetry import (
     publication_subject,
 )
 from delivery_control.services.publish import PublicationOutcome, PublicationResult
+from delivery_control.services.sync_main import MainSyncResult
 from delivery_control.services.telemetry import TelemetryService
 from delivery_control.services.telemetry_operations import OperationTelemetry
 
@@ -251,3 +253,138 @@ def test_updated_pr_records_current_reanchor_readback_not_old_creation(
     assert result.samples[0].started_at == handed_back_at
     assert result.samples[0].completed_at == now
     assert result.samples[0].duration_seconds == 25.0
+
+
+class _LandingGit:
+    def __init__(self, *, origin_sha: str, history: str) -> None:
+        self.origin_sha = origin_sha
+        self.history = history
+        self.calls: list[tuple[str, ...]] = []
+
+    def origin_main_sha(self) -> str:
+        return self.origin_sha
+
+    def first_parent_landings(
+        self, *, before_sha: str, after_sha: str
+    ) -> tuple[MainLandingSnapshot, ...]:
+        self.calls.append(
+            (
+                "log",
+                "--first-parent",
+                "--reverse",
+                "--format=%H%x09%cI",
+                f"{before_sha}..{after_sha}",
+            )
+        )
+        return tuple(
+            MainLandingSnapshot(
+                sha=sha,
+                landed_at=datetime.fromisoformat(timestamp),
+            )
+            for sha, timestamp in (
+                line.split("\t", 1) for line in self.history.splitlines()
+            )
+        )
+
+
+def test_sync_records_every_first_parent_landing_by_exact_merge_sha(
+    tmp_path: Path,
+) -> None:
+    now = datetime(2026, 8, 21, 12, tzinfo=UTC)
+    first = "b" * 40
+    second = "c" * 40
+    git = _LandingGit(
+        origin_sha=second,
+        history=(
+            f"{first}\t2026-08-21T11:59:20+00:00\n"
+            f"{second}\t2026-08-21T11:59:50+00:00"
+        ),
+    )
+    store = TelemetryNdjsonAdapter(tmp_path / "telemetry.ndjson")
+    operations = OperationTelemetry(
+        store=store,
+        github=object(),  # type: ignore[arg-type]
+        git=git,  # type: ignore[arg-type]
+        clock=lambda: now,
+    )
+
+    warnings = operations.after_sync(
+        MainSyncResult("a" * 40, second, second, True)
+    )
+    result = store.read_since(now - timedelta(hours=1))
+
+    assert warnings == ()
+    assert {
+        sample.subject: sample.duration_seconds for sample in result.samples
+    } == {
+        main_subject(origin_main_sha=first): 40.0,
+        main_subject(origin_main_sha=second): 10.0,
+    }
+    assert git.calls == [
+        (
+            "log",
+            "--first-parent",
+            "--reverse",
+            "--format=%H%x09%cI",
+            f"{'a' * 40}..{second}",
+        )
+    ]
+
+
+def test_sync_surfaces_incomplete_landing_history_instead_of_dropping_samples(
+    tmp_path: Path,
+) -> None:
+    now = datetime(2026, 8, 21, 12, tzinfo=UTC)
+    origin = "c" * 40
+    store = TelemetryNdjsonAdapter(tmp_path / "telemetry.ndjson")
+    operations = OperationTelemetry(
+        store=store,
+        github=object(),  # type: ignore[arg-type]
+        git=_LandingGit(origin_sha=origin, history=""),  # type: ignore[arg-type]
+        clock=lambda: now,
+    )
+
+    warnings = operations.after_sync(
+        MainSyncResult("a" * 40, origin, origin, True)
+    )
+
+    assert [warning.code for warning in warnings] == [
+        "telemetry_merge_history_incomplete"
+    ]
+    assert store.read_since(now - timedelta(hours=1)).samples == ()
+
+
+class _NoHistoryGit:
+    def __init__(self, origin_sha: str) -> None:
+        self.origin_sha = origin_sha
+
+    def origin_main_sha(self) -> str:
+        return self.origin_sha
+
+    def first_parent_landings(
+        self, *, before_sha: str, after_sha: str
+    ) -> tuple[MainLandingSnapshot, ...]:
+        raise ValueError("landing history adapter unavailable")
+
+
+def test_sync_without_git_history_never_silently_collapses_multiple_landings(
+    tmp_path: Path,
+) -> None:
+    now = datetime(2026, 8, 21, 12, tzinfo=UTC)
+    origin = "c" * 40
+    store = TelemetryNdjsonAdapter(tmp_path / "telemetry.ndjson")
+    operations = OperationTelemetry(
+        store=store,
+        github=object(),  # type: ignore[arg-type]
+        git=_NoHistoryGit(origin),  # type: ignore[arg-type]
+        clock=lambda: now,
+    )
+
+    warnings = operations.after_sync(
+        MainSyncResult("a" * 40, origin, origin, True)
+    )
+
+    assert [warning.code for warning in warnings] == [
+        "telemetry_source_read_failed"
+    ]
+    assert store.read_since(now - timedelta(hours=1)).samples == ()

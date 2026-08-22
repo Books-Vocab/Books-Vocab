@@ -27,6 +27,7 @@ class LaneState(StrEnum):
     PR_WAITING_REQUIRED = "pr_waiting_required"
     PR_CONTRACT_FAILED = "pr_contract_failed"
     REQUIRED_FAILED = "required_failed"
+    REANCHOR = "reanchor"
     READY_TO_QUEUE = "ready_to_queue"
     PR_QUEUED = "pr_queued"
     SECURITY_HOLD = "security_hold"
@@ -48,6 +49,7 @@ class NextAction(StrEnum):
     WAIT_REQUIRED = "wait_required"
     REPAIR_PR_CONTRACT = "repair_pr_contract"
     REPAIR_REQUIRED = "repair_required"
+    REANCHOR = "reanchor"
     ENQUEUE = "enqueue"
     WAIT_MERGE = "wait_merge"
     WAIT_CLEARANCE = "wait_clearance"
@@ -68,12 +70,14 @@ class LaneFacts:
     owner_known: bool = False
     owner_reachable: bool = False
     dirty: bool = False
+    source_problem: bool = False
     has_committed_diff: bool | None = None
     handback_valid: bool = False
     published: bool = False
     local_assets_present: bool = False
     transport_policy_passed: bool = False
     merge_policy_passed: bool = False
+    reanchor_policy_passed: bool = False
     cleanup_policy_passed: bool = False
     abandonment_policy_passed: bool = False
     duplicate_pr: bool = False
@@ -150,6 +154,12 @@ def derive_lane_decision(facts: LaneFacts) -> LaneDecision:
             NextAction.REPAIR_PR_CONTRACT,
             "PR durable receipt is missing or differs from the owner handback",
         )
+    if facts.source_problem:
+        return LaneDecision(
+            LaneState.UNKNOWN,
+            NextAction.INSPECT,
+            "lane source evidence is incomplete or inconsistent",
+        )
     if (
         facts.has_worktree
         and not facts.handback_valid
@@ -185,6 +195,12 @@ def derive_lane_decision(facts: LaneFacts) -> LaneDecision:
             LaneState.REQUIRED_FAILED,
             NextAction.REPAIR_REQUIRED,
             "required check failed",
+        )
+    if facts.pr_open and facts.published and facts.reanchor_policy_passed:
+        return LaneDecision(
+            LaneState.REANCHOR,
+            NextAction.REANCHOR,
+            "exact required-green PR is stale against live main",
         )
     if facts.pr_open and facts.merge_policy_passed:
         return LaneDecision(

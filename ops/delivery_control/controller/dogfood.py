@@ -20,6 +20,7 @@ class DogfoodProfile:
 @dataclass(frozen=True)
 class DogfoodReadiness:
     ready: bool
+    canary_promotable: bool
     blockers: tuple[str, ...]
     warnings: tuple[str, ...]
     local_main_sha: str
@@ -79,11 +80,39 @@ def assess_dogfood_readiness(
         "physical worktree baseline is not canonical-main only",
     )
 
+    exact_promotion_window = (
+        cadence.window_seconds == profile.promotion_observation_seconds
+    )
+    cadence_within_target = (
+        cadence.p95_interval_seconds is not None
+        and cadence.p95_interval_seconds <= profile.target_inter_merge_seconds
+        and cadence.seconds_since_last_merge is not None
+        and cadence.seconds_since_last_merge <= profile.target_inter_merge_seconds
+    )
+    canary_promotable = (
+        exact_promotion_window
+        and cadence.merged_count >= profile.promotion_merge_count
+        and cadence_within_target
+    )
     warnings: list[str] = []
-    if cadence.merged_count < profile.promotion_merge_count:
-        warnings.append("five-minute merge SLO is unproven until canary promotion")
+    if not exact_promotion_window:
+        warnings.append(
+            "canary promotion requires an exact "
+            f"{profile.promotion_observation_seconds}-second cadence observation"
+        )
+    elif cadence.merged_count < profile.promotion_merge_count:
+        warnings.append(
+            "canary has fewer than "
+            f"{profile.promotion_merge_count} merges in the promotion window"
+        )
+    elif not cadence_within_target:
+        warnings.append(
+            "canary inter-merge p95 or latest landing exceeds "
+            f"{profile.target_inter_merge_seconds} seconds"
+        )
     return DogfoodReadiness(
         ready=not blockers,
+        canary_promotable=canary_promotable,
         blockers=tuple(blockers),
         warnings=tuple(warnings),
         local_main_sha=local_main_sha,

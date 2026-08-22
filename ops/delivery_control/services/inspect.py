@@ -78,8 +78,37 @@ class InspectService:
             if record.status not in _TERMINAL:
                 continue
             physical_ref = physical_by_path.get(record.path.resolve())
+            newer_records = tuple(
+                candidate
+                for candidate in records
+                if candidate.claim_generation > record.claim_generation
+            )
+            branch_reclaimed = any(
+                candidate.branch == record.branch for candidate in newer_records
+            )
+            path_reclaimed = any(
+                candidate.path.resolve() == record.path.resolve()
+                for candidate in newer_records
+            )
+            has_local_branch = (
+                not branch_reclaimed
+                and record.branch in sources.branch_inventory.local_by_name
+            )
+            has_remote_branch = (
+                not branch_reclaimed
+                and record.branch in sources.branch_inventory.remote_by_name
+            )
+            terminal_assets_present = (
+                (physical_ref is not None and not path_reclaimed)
+                or has_local_branch
+                or has_remote_branch
+            )
             terminal_problems: tuple[InventoryProblem, ...] = ()
-            if physical_ref is not None and record.path.resolve() not in claimed_paths:
+            if (
+                physical_ref is not None
+                and not path_reclaimed
+                and record.path.resolve() not in claimed_paths
+            ):
                 terminal_problems = (
                     InventoryProblem(
                         "registry",
@@ -98,7 +127,8 @@ class InspectService:
                         LaneFacts(
                             merged=record.status == "merged",
                             abandoned=record.status == "abandoned",
-                            cleanup_complete=physical_ref is None,
+                            cleanup_policy_passed=terminal_assets_present,
+                            cleanup_complete=not terminal_assets_present,
                         )
                     ),
                     problems=terminal_problems,
@@ -179,4 +209,5 @@ class InspectService:
         return DeliveryInventory(
             lanes=tuple(sorted(lanes, key=lambda item: item.key)),
             source_problems=sources.source_problems,
+            candidate_issues=sources.candidate_issues,
         )
