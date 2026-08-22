@@ -43,14 +43,17 @@ def parse_pull_request(payload: Mapping[str, Any]) -> PullRequestSnapshot:
         "title": str,
         "body": str,
     }
-    if any(type(payload.get(key)) is not expected for key, expected in required.items()):
+    if any(
+        type(payload.get(key)) is not expected for key, expected in required.items()
+    ):
         raise AdapterPayloadError("GitHub PR payload is malformed")
     auto_merge_request = payload.get("autoMergeRequest")
     if auto_merge_request is not None and not isinstance(auto_merge_request, Mapping):
         raise AdapterPayloadError("GitHub auto-merge payload is malformed")
     raw_labels = payload.get("labels", [])
     if not isinstance(raw_labels, list) or any(
-        not isinstance(item, Mapping) or type(item.get("name")) is not str for item in raw_labels
+        not isinstance(item, Mapping) or type(item.get("name")) is not str
+        for item in raw_labels
     ):
         raise AdapterPayloadError("GitHub PR labels payload is malformed")
     return PullRequestSnapshot(
@@ -68,15 +71,21 @@ def parse_pull_request(payload: Mapping[str, Any]) -> PullRequestSnapshot:
         auto_merge_enabled=auto_merge_request is not None,
         node_id=payload["id"],
         labels=tuple(sorted({item["name"] for item in raw_labels})),
-        created_at=parse_optional_timestamp(payload.get("createdAt"), field="GitHub PR createdAt"),
-        merged_at=parse_optional_timestamp(payload.get("mergedAt"), field="GitHub PR mergedAt"),
+        created_at=parse_optional_timestamp(
+            payload.get("createdAt"), field="GitHub PR createdAt"
+        ),
+        merged_at=parse_optional_timestamp(
+            payload.get("mergedAt"), field="GitHub PR mergedAt"
+        ),
     )
 
 
 def parse_pull_request_inventory(
     payload: object,
     *,
-    parse_record: Callable[[Mapping[str, Any]], PullRequestSnapshot] = parse_pull_request,
+    parse_record: Callable[
+        [Mapping[str, Any]], PullRequestSnapshot
+    ] = parse_pull_request,
 ) -> PullRequestInventory:
     if not isinstance(payload, list):
         raise AdapterPayloadError("GitHub PR list must be a JSON list")
@@ -116,11 +125,16 @@ def parse_candidate_issue(payload: Mapping[str, Any]) -> CandidateIssue:
         or state != "OPEN"
         or type(body) is not str
         or not isinstance(labels, list)
-        or any(not isinstance(item, Mapping) or type(item.get("name")) is not str for item in labels)
+        or any(
+            not isinstance(item, Mapping) or type(item.get("name")) is not str
+            for item in labels
+        )
     ):
         raise AdapterPayloadError("GitHub candidate Issue payload is malformed")
     if CANDIDATE_ISSUE_LABEL not in {item["name"] for item in labels}:
-        raise AdapterPayloadError("GitHub candidate Issue lacks the exact delivery:candidate label")
+        raise AdapterPayloadError(
+            "GitHub candidate Issue lacks the exact delivery:candidate label"
+        )
     try:
         spec = parse_candidate_body(body)
         return CandidateIssue(number=number, url=url, spec=spec)
@@ -146,7 +160,9 @@ def parse_candidate_issue_inventory(
             try:
                 issue = parse_record(item)
                 if issue.number in seen_numbers or issue.url in seen_urls:
-                    raise AdapterPayloadError("GitHub candidate Issue inventory contains a duplicate")
+                    raise AdapterPayloadError(
+                        "GitHub candidate Issue inventory contains a duplicate"
+                    )
                 seen_numbers.add(issue.number)
                 seen_urls.add(issue.url)
                 records.append(issue)
@@ -226,10 +242,15 @@ def parse_demand_issue_inventory(payload: object) -> DemandIssueInventory:
                 issue = parse_demand_issue(item)
                 if issue.number in seen_numbers:
                     identity = f"{identity}@entry[{index}]"
-                    raise AdapterPayloadError("raw Issue inventory contains a duplicate number")
+                    raise AdapterPayloadError(
+                        "raw Issue inventory contains a duplicate number"
+                    )
                 seen_numbers.add(issue.number)
                 records.append(issue)
-                if CANDIDATE_ISSUE_LABEL in issue.labels and issue.candidate_spec is None:
+                if (
+                    CANDIDATE_ISSUE_LABEL in issue.labels
+                    and issue.candidate_spec is None
+                ):
                     problems.append(
                         InventoryProblem(
                             "github",
@@ -269,9 +290,13 @@ def parse_merge_times(payload: object) -> tuple[datetime, ...]:
         try:
             timestamp = datetime.fromisoformat(item["mergedAt"].replace("Z", "+00:00"))
         except ValueError as error:
-            raise AdapterPayloadError(f"GitHub merge history[{index}] has an invalid timestamp") from error
+            raise AdapterPayloadError(
+                f"GitHub merge history[{index}] has an invalid timestamp"
+            ) from error
         if timestamp.utcoffset() is None:
-            raise AdapterPayloadError(f"GitHub merge history[{index}] timestamp is not aware")
+            raise AdapterPayloadError(
+                f"GitHub merge history[{index}] timestamp is not aware"
+            )
         observed.append(timestamp)
     return tuple(sorted(observed))
 
@@ -296,9 +321,13 @@ def parse_changed_paths(payload: object) -> tuple[str, ...]:
             previous = item.get("previous_filename")
             if status == "renamed":
                 if type(previous) is not str:
-                    raise AdapterPayloadError(f"GitHub renamed file[{item_index}] lacks previous_filename")
+                    raise AdapterPayloadError(
+                        f"GitHub renamed file[{item_index}] lacks previous_filename"
+                    )
                 paths.add(previous)
             elif previous is not None and type(previous) is not str:
-                raise AdapterPayloadError(f"GitHub PR file[{item_index}] previous_filename is malformed")
+                raise AdapterPayloadError(
+                    f"GitHub PR file[{item_index}] previous_filename is malformed"
+                )
             item_index += 1
     return tuple(sorted(paths))

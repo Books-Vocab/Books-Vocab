@@ -34,7 +34,10 @@ def test_duplicate_pull_request_number_is_source_problem() -> None:
 
     assert [item.number for item in inventory.records] == [42]
     assert inventory.problems[0].identity == "PR#42"
-    assert inventory.problems[0].reason == "GitHub PR inventory contains a duplicate number"
+    assert (
+        inventory.problems[0].reason
+        == "GitHub PR inventory contains a duplicate number"
+    )
 
 
 def test_distinct_pull_request_numbers_remain_dispatchable() -> None:
