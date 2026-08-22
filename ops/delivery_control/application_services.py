@@ -62,13 +62,15 @@ class DeliveryApplication:
     telemetry: TelemetryStorePort
     clock: Callable[[], datetime] = _utc_now
 
-    def inspect(self) -> object:
+    def inspect(
+        self, *, supervision_worktree_paths: tuple[Path, ...] = ()
+    ) -> object:
         return inspect.InspectService(
             registry=self.registry,
             git=self.git,
             github=self.github,
             runtime=self.runtime,
-        ).inspect()
+        ).inspect(supervision_worktree_paths=supervision_worktree_paths)
 
     def issue_inventory(self) -> object:
         """Return the complete raw Issue projection without mutation."""
@@ -132,8 +134,11 @@ class DeliveryApplication:
     ) -> object:
         observed_at = now or self.clock()
         telemetry = self._operation_telemetry().rolling(now=observed_at)
+        inventory = self.inspect(
+            supervision_worktree_paths=supervision_worktree_paths
+        )
         return measure_pipeline(
-            self.inspect(),
+            inventory,
             telemetry=telemetry,
             now=observed_at,
             excluded_worktree_paths=supervision_worktree_paths,
