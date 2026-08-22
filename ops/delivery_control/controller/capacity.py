@@ -179,9 +179,7 @@ def decide_capacity(
         )
     merge_buffer = metrics.required_green + metrics.merge_queue_depth
     downstream_supply = (
-        metrics.open_prs
-        + metrics.handbacks_publishable
-        + metrics.active_development
+        metrics.open_prs + metrics.handbacks_publishable + metrics.active_development
     )
     if (
         merge_buffer < policy.min_merge_ready_or_queued

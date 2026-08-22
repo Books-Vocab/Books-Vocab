@@ -48,9 +48,7 @@ class GitHubIssueCommands:
             problem.identity == target_identity
             or problem.identity.startswith(f"{target_identity}@")
             for problem in inventory.problems
-        ) or any(
-            entry.issue_number == number for entry in inventory.source_entries
-        ):
+        ) or any(entry.issue_number == number for entry in inventory.source_entries):
             raise DeliverySourceError(
                 f"cannot admit Issue #{number} while its raw source entry is malformed"
             )
@@ -58,9 +56,13 @@ class GitHubIssueCommands:
 
     @staticmethod
     def _validate_operator_text(value: str, name: str) -> None:
-        if type(value) is not str or not value.strip() or any(
-            character in "\r\n" or ord(character) < 32 or ord(character) == 127
-            for character in value
+        if (
+            type(value) is not str
+            or not value.strip()
+            or any(
+                character in "\r\n" or ord(character) < 32 or ord(character) == 127
+                for character in value
+            )
         ):
             raise PolicyViolation(f"Issue admission {name} must be one safe line")
 

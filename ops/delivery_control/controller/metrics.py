@@ -172,9 +172,7 @@ def measure_pipeline(
         if pull_request.state == "OPEN"
     }
     physical_paths = {
-        lane.physical.path.resolve()
-        for lane in lanes
-        if lane.physical is not None
+        lane.physical.path.resolve() for lane in lanes if lane.physical is not None
     }
     collision_lanes = states.count(LaneState.BLOCKED_COLLISION)
     security_hold_lanes = states.count(LaneState.SECURITY_HOLD)
@@ -220,18 +218,14 @@ def measure_pipeline(
         for lane in lanes
     )
     unknown_unregistered_worktrees = sum(
-        lane.registry is None
-        and lane.physical is not None
-        and lane.snapshot is None
+        lane.registry is None and lane.physical is not None and lane.snapshot is None
         for lane in lanes
     )
-    timings = measure_pipeline_timings(
-        measured_inventory, telemetry=telemetry, now=now
-    )
+    timings = measure_pipeline_timings(measured_inventory, telemetry=telemetry, now=now)
     isolation = inventory.isolation
     unknown_source_problems = unknown_unregistered_worktrees
-    invalid_source_problems = (
-        timings.invalid_samples + (len(telemetry.problems) if telemetry is not None else 0)
+    invalid_source_problems = timings.invalid_samples + (
+        len(telemetry.problems) if telemetry is not None else 0
     )
     # A malformed raw entry is represented by both an evidence problem and a
     # typed SOURCE_PROBLEM partition. Count the partition once so source
@@ -284,10 +278,7 @@ def measure_pipeline(
         issues_with_published_pr=inventory.demand_issues.count(
             IssueDisposition.PUBLISHED_PR
         ),
-        issue_source_problems=(
-            issue_source_problems
-            + issue_inventory_problem
-        ),
+        issue_source_problems=(issue_source_problems + issue_inventory_problem),
         issue_inventory_complete=inventory.demand_issues.complete,
         reanchor_required=states.count(LaneState.REANCHOR),
         clean_unregistered_worktrees=clean_unregistered_worktrees,

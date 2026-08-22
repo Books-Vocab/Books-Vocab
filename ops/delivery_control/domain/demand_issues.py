@@ -49,7 +49,9 @@ class DemandIssue:
             value = getattr(self, name)
             if type(value) is not str or (
                 name in {"url", "node_id"}
-                and (not value.strip() or any(ord(character) < 32 for character in value))
+                and (
+                    not value.strip() or any(ord(character) < 32 for character in value)
+                )
             ):
                 raise TypeError(f"Issue {name} must be text")
         if len(self.body_sha256) != 64 or any(
@@ -82,10 +84,7 @@ class DemandIssue:
 
     @property
     def candidate(self) -> CandidateIssue | None:
-        if (
-            self.candidate_spec is None
-            or CANDIDATE_ISSUE_LABEL not in self.labels
-        ):
+        if self.candidate_spec is None or CANDIDATE_ISSUE_LABEL not in self.labels:
             return None
         return CandidateIssue(
             number=self.number,
@@ -154,10 +153,11 @@ class DemandIssueInventory:
         ):
             raise TypeError("Issue problems must be InventoryProblem values")
         if type(self.source_entries) is not tuple or any(
-            not isinstance(item, DemandIssueSourceEntry)
-            for item in self.source_entries
+            not isinstance(item, DemandIssueSourceEntry) for item in self.source_entries
         ):
-            raise TypeError("Issue source entries must be DemandIssueSourceEntry values")
+            raise TypeError(
+                "Issue source entries must be DemandIssueSourceEntry values"
+            )
         if type(self.complete) is not bool:
             raise TypeError("Issue inventory completeness must be boolean")
         if self.raw_count is None and self.complete:
@@ -216,15 +216,19 @@ class DemandIssueInventory:
         if self.raw_count is None:
             return None
         represented_entries = len(self.records) + len(self.source_entries)
-        return len(self.source_entries) + sum(
-            item.disposition
-            in {
-                IssueDisposition.TRIAGE_REQUIRED,
-                IssueDisposition.LEGACY_UNMAPPED,
-                IssueDisposition.SOURCE_PROBLEM,
-            }
-            for item in self.records
-        ) + max(0, self.raw_count - represented_entries)
+        return (
+            len(self.source_entries)
+            + sum(
+                item.disposition
+                in {
+                    IssueDisposition.TRIAGE_REQUIRED,
+                    IssueDisposition.LEGACY_UNMAPPED,
+                    IssueDisposition.SOURCE_PROBLEM,
+                }
+                for item in self.records
+            )
+            + max(0, self.raw_count - represented_entries)
+        )
 
     @property
     def backlog_drained(self) -> bool:

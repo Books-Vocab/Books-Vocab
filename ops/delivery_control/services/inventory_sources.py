@@ -87,9 +87,7 @@ def collect_inventory_sources(
                 records=(),
                 raw_count=None,
                 complete=False,
-                problems=(
-                    InventoryProblem("github", "open-issues", str(error)),
-                ),
+                problems=(InventoryProblem("github", "open-issues", str(error)),),
             )
         github_problems.extend(raw_issue_inventory.problems)
     else:

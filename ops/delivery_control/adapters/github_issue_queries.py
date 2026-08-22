@@ -89,7 +89,9 @@ class GitHubIssueQueries:
             payload = self._graphql(cursor=cursor)
             data = payload.get("data")
             repository = data.get("repository") if isinstance(data, Mapping) else None
-            connection = repository.get("issues") if isinstance(repository, Mapping) else None
+            connection = (
+                repository.get("issues") if isinstance(repository, Mapping) else None
+            )
             if not isinstance(connection, Mapping):
                 raise AdapterPayloadError("GitHub open Issue connection is malformed")
             nodes = connection.get("nodes")
@@ -103,7 +105,9 @@ class GitHubIssueQueries:
                     payloads.append(node)
                     continue
                 labels = node.get("labels")
-                label_nodes = labels.get("nodes") if isinstance(labels, Mapping) else None
+                label_nodes = (
+                    labels.get("nodes") if isinstance(labels, Mapping) else None
+                )
                 payloads.append(
                     {
                         "id": node.get("id"),
