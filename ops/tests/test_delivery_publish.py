@@ -443,9 +443,7 @@ def test_publish_create_then_retry_is_idempotent() -> None:
     assert git.push_calls == [(None, receipt.head_sha)]
     assert github.create_calls == 1
     assert github.update_calls == 0
-    assert github.readiness_dispatches == [
-        (7, receipt.branch, receipt.head_sha)
-    ]
+    assert github.readiness_dispatches == [(7, receipt.branch, receipt.head_sha)]
 
 
 def test_retry_after_push_succeeds_when_first_pr_create_failed() -> None:
@@ -474,9 +472,7 @@ def test_existing_unique_pr_allows_exact_force_with_lease_update() -> None:
     assert result.outcome is PublicationOutcome.UPDATED
     assert git.push_calls == [(OLD_HEAD, receipt.head_sha)]
     assert result.pull_request.head_sha == receipt.head_sha
-    assert github.readiness_dispatches == [
-        (7, receipt.branch, receipt.head_sha)
-    ]
+    assert github.readiness_dispatches == [(7, receipt.branch, receipt.head_sha)]
 
 
 def test_publish_preserves_and_types_a_legacy_security_hold() -> None:
@@ -694,6 +690,82 @@ def test_existing_pr_scope_may_grow_after_same_owner_reanchor() -> None:
         "ops/a.py",
         "ops/b.py",
     )
+
+
+def test_partial_push_can_be_retried_to_repair_the_exact_pr_body() -> None:
+    new_base = "f" * 40
+    new_head = "9" * 40
+    previous = _receipt()
+    receipt = _receipt(
+        base_sha=new_base,
+        parent_sha=new_base,
+        head_sha=new_head,
+        origin_main_sha=new_base,
+        claim_generation=previous.claim_generation + 1,
+    )
+    previous_body_pr = _pull_request(
+        previous,
+        title="fix: delivery",
+        body=render_pull_request_body(previous),
+    )
+    partial = replace(
+        previous_body_pr,
+        base_sha=new_base,
+        head_sha=new_head,
+    )
+    service, _, github = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=_worktree(receipt),
+            remote_sha=new_head,
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=partial,
+        ),
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert github.update_calls == 1
+    assert parse_pull_request_body(result.pull_request.body) == receipt
+
+
+def test_partial_push_recovery_requires_remote_head_to_match() -> None:
+    new_base = "f" * 40
+    new_head = "9" * 40
+    previous = _receipt()
+    receipt = _receipt(
+        base_sha=new_base,
+        parent_sha=new_base,
+        head_sha=new_head,
+        origin_main_sha=new_base,
+        claim_generation=previous.claim_generation + 1,
+    )
+    partial = replace(
+        _pull_request(
+            previous,
+            title="fix: delivery",
+            body=render_pull_request_body(previous),
+        ),
+        base_sha=new_base,
+        head_sha=new_head,
+    )
+    service, git, _ = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=_worktree(receipt),
+            remote_sha=previous.head_sha,
+        ),
+        github=FakeGitHub(receipt, pull_request=partial),
+    )
+
+    with pytest.raises(PolicyViolation, match="exact PR tuple"):
+        service.publish(receipt=receipt, title="fix: delivery")
+    assert git.push_calls == []
 
 
 def test_existing_pr_scope_cannot_shrink_after_same_owner_reanchor() -> None:

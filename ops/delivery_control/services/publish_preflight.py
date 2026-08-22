@@ -80,6 +80,7 @@ class PublishPreflightService:
         registry: RegistrySnapshot,
         pull_request: PullRequestSnapshot,
         observed_paths: tuple[str, ...],
+        remote_sha: str | None,
     ) -> None:
         """Allow only monotonic Scope growth across an owner reanchor.
 
@@ -101,20 +102,31 @@ class PublishPreflightService:
             or previous.branch != receipt.branch
         ):
             raise PolicyViolation("existing PR handback owner or lane differs")
-        if (
-            previous.base_sha != pull_request.base_sha
-            or previous.head_sha != pull_request.head_sha
-        ):
+        previous_tuple_matches_pr = (
+            previous.base_sha == pull_request.base_sha
+            and previous.head_sha == pull_request.head_sha
+        )
+        partial_publication_matches = (
+            previous.claim_generation < receipt.claim_generation
+            and pull_request.base_sha == receipt.base_sha
+            and pull_request.head_sha == receipt.head_sha
+            and remote_sha == receipt.head_sha
+        )
+        if not previous_tuple_matches_pr and not partial_publication_matches:
             raise PolicyViolation("existing PR body differs from its exact PR tuple")
 
         previous_paths = set(previous.scope.paths)
         observed = set(observed_paths)
         if observed != previous_paths:
-            raise PolicyViolation("existing PR paths differ from its typed handback Scope")
+            raise PolicyViolation(
+                "existing PR paths differ from its typed handback Scope"
+            )
 
         current_paths = set(receipt.scope.paths)
         if receipt.claim_generation < previous.claim_generation:
-            raise PolicyViolation("handback claim generation regressed from existing PR")
+            raise PolicyViolation(
+                "handback claim generation regressed from existing PR"
+            )
         if receipt.claim_generation == previous.claim_generation:
             if current_paths != previous_paths:
                 raise PolicyViolation(
@@ -146,6 +158,7 @@ class PublishPreflightService:
         if len(branch_matches) > 1:
             raise PolicyViolation("duplicate open PRs exist for handback branch")
         pull_request = branch_matches[0] if branch_matches else None
+        remote_sha = self.git.remote_branch_sha(receipt.branch)
         if pull_request is not None:
             if pull_request.base_branch != "main":
                 raise PolicyViolation("existing PR does not target main")
@@ -155,6 +168,7 @@ class PublishPreflightService:
                 registry=registry,
                 pull_request=pull_request,
                 observed_paths=observed_paths,
+                remote_sha=remote_sha,
             )
         try:
             collision = self._scope_collision(
@@ -177,5 +191,5 @@ class PublishPreflightService:
             registry=registry,
             worktree=worktree,
             pull_request=pull_request,
-            remote_sha=self.git.remote_branch_sha(receipt.branch),
+            remote_sha=remote_sha,
         )
