@@ -7,7 +7,7 @@ OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
 import worktree_registry as registry
-
+from worktree_reanchor_core import registry_ops
 
 BASE = "a" * 40
 HEAD = "b" * 40
@@ -96,3 +96,26 @@ def test_record_published_base_refuses_conflicting_observation(tmp_path: Path) -
 
     assert registry.main(_argv(state, record)) == registry.EXIT_CLAIMED
     assert registry.load_state(state)["records"][0]["published_base_sha"] == "d" * 40
+
+
+def test_reanchor_uses_exact_base_sha_when_legacy_base_is_a_ref(tmp_path: Path) -> None:
+    state = tmp_path / "registry.json"
+    record = _record(tmp_path)
+    record["status"] = "published"
+    record["base"] = "origin/main"
+    registry.save_state(state, {"schema": registry.SCHEMA, "records": [record]})
+
+    result = registry_ops._preflight_published(
+        state_path=state,
+        lane_id="DIRECT-PUBLISHED-BASE",
+        branch=str(record["branch"]),
+        owner_thread_id="owner-thread",
+        claim_generation=2,
+        expected_remote_head=HEAD,
+        target=tmp_path / "reanchored",
+        replacement_base="e" * 40,
+        replacement_base_sha="e" * 40,
+    )
+
+    assert result.base_sha == BASE
+    assert result.published_base_sha == BASE

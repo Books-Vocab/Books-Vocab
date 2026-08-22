@@ -162,8 +162,13 @@ def _preflight_published(
         original.get("base_sha") or recorded_base,
         label="original base",
     )
+    # Older registry records may preserve the human-readable ``base`` ref
+    # (for example ``origin/main``) while the exact handback commit lives in
+    # ``base_sha``.  Published PR provenance must use that exact commit until
+    # ``published_base_sha`` is recorded; otherwise a valid published claim is
+    # rejected before GitHub lifecycle verification can even run.
     published_base_sha = commit_sha(
-        original.get("published_base_sha") or recorded_base,
+        original.get("published_base_sha") or base_sha,
         label="published PR base",
     )
     declared = declared_operations(original.get("scope"))
