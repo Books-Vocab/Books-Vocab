@@ -140,6 +140,12 @@ def test_pr_mutation_bypasses_read_only_snapshot_cache() -> None:
                 json.dumps(_node_payload(head="c" * 40)),
                 "",
             ),
+            CommandResult(
+                ("gh", "pr", "view"),
+                0,
+                json.dumps(_node_payload(head="c" * 40)),
+                "",
+            ),
         ]
     )
     adapter = GitHubCliAdapter(repo=Path("/repo"), runner=runner)
@@ -153,7 +159,8 @@ def test_pr_mutation_bypasses_read_only_snapshot_cache() -> None:
     )
 
     assert updated.head_sha == "c" * 40
-    assert sum(1 for call in runner.calls if call[:3] == ("gh", "pr", "view")) == 2
+    assert adapter.get_pull_request(12).head_sha == "c" * 40
+    assert sum(1 for call in runner.calls if call[:3] == ("gh", "pr", "view")) == 3
 
 
 def test_required_observations_are_primed_once_after_open_inventory() -> None:
