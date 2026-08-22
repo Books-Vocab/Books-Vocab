@@ -15,6 +15,7 @@ from delivery_control.adapters.registry import RegistryCliAdapter
 from delivery_control.domain.errors import DeliverySourceError, PolicyViolation
 from delivery_control.domain.models import HandbackReceipt, Scope
 from delivery_control.domain.observations import (
+    CanonicalCheckoutSnapshot,
     FileChange,
     FileOperation,
     InventoryProblem,
@@ -155,11 +156,23 @@ class FakeGit:
         *,
         snapshot: WorktreeSnapshot | None = None,
         remote_sha: str | None = None,
+        canonical_branch: str = "main",
+        canonical_clean: bool = True,
     ) -> None:
         self.snapshot = snapshot or _worktree(receipt)
         self.remote_sha = remote_sha
+        self.canonical_branch = canonical_branch
+        self.canonical_clean = canonical_clean
         self.push_calls: list[tuple[str | None, str]] = []
         self.on_push: object | None = None
+
+    def canonical_checkout(self) -> CanonicalCheckoutSnapshot:
+        return CanonicalCheckoutSnapshot(
+            path=Path("/repo"),
+            branch=self.canonical_branch,
+            head_sha=BASE,
+            clean=self.canonical_clean,
+        )
 
     def inspect_worktree(self, path: Path, base_sha: str) -> WorktreeSnapshot:
         return self.snapshot
@@ -305,6 +318,31 @@ def test_active_legacy_handback_normalizes_to_durable_receipt() -> None:
     )
 
     assert receipt_from_active_claim(record, _worktree(receipt)) == receipt
+
+
+@pytest.mark.parametrize(
+    ("canonical_branch", "canonical_clean", "message"),
+    (
+        ("debug/feature", True, "canonical checkout must be on main"),
+        ("main", False, "canonical checkout is dirty"),
+    ),
+)
+def test_publish_refuses_before_push_when_canonical_main_is_unavailable(
+    canonical_branch: str, canonical_clean: bool, message: str
+) -> None:
+    receipt = _receipt()
+    git = FakeGit(
+        receipt,
+        canonical_branch=canonical_branch,
+        canonical_clean=canonical_clean,
+    )
+    service, _, github = _service(receipt, git=git)
+
+    with pytest.raises(PolicyViolation, match=message):
+        service.publish(receipt=receipt, title="fix: delivery")
+
+    assert git.push_calls == []
+    assert github.create_calls == 0
 
 
 def test_registry_handback_outcome_reaches_rendered_validation(

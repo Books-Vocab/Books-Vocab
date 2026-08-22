@@ -37,6 +37,17 @@ class PublishPreflightService:
         self.git = git
         self.github = github
 
+    def _require_canonical_main(self) -> None:
+        """Protect publication from running cleanup from the owner checkout."""
+
+        checkout = self.git.canonical_checkout()
+        if checkout.branch != "main":
+            raise PolicyViolation(
+                "canonical checkout must be on main before publication"
+            )
+        if not checkout.clean:
+            raise PolicyViolation("canonical checkout is dirty before publication")
+
     def _scope_collision(
         self,
         *,
@@ -62,6 +73,7 @@ class PublishPreflightService:
         return False
 
     def check(self, receipt: HandbackReceipt) -> PublicationContext:
+        self._require_canonical_main()
         registry = self.registry.get(receipt.lane_id)
         if registry is None:
             raise PolicyViolation("no active registry claim exists for handback lane")
