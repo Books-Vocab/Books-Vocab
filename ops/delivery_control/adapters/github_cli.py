@@ -16,7 +16,7 @@ from ..domain.observations import (
     PullRequestSnapshot,
 )
 from ..ports.process import CommandRunnerPort
-from .errors import AdapterPayloadError
+from .errors import AdapterCommandError, AdapterPayloadError
 from .github_checks import GitHubChecks
 from .github_client import GitHubCliClient
 from .github_commands import GitHubCommands
@@ -47,8 +47,8 @@ class GitHubCliAdapter:
     ) -> None:
         self.repo = (repo or Path.cwd()).resolve()
         self.runner = runner or SubprocessCommandRunner()
-        self._repository_name_cache: str | None = None
         self._pull_request_snapshot_cache: dict[int, PullRequestSnapshot] = {}
+        self._open_observations_pending = False
         self.queue = GitHubQueueGraphQLAdapter(repo=self.repo, runner=self.runner)
         self._client = GitHubCliClient(repo=self.repo, runner=self.runner)
         self._rules = GitHubRules(
@@ -127,12 +127,23 @@ class GitHubCliAdapter:
         self._pull_request_snapshot_cache = {
             item.number: item for item in inventory.records
         }
+        self._open_observations_pending = True
         return inventory
 
     def prime_open_observations(self) -> None:
         """Batch queue observations for one read-only inventory pass."""
 
-        self.queue.prime_open_snapshots(repository_name=self._repo_name())
+        try:
+            self.queue.prime_open_snapshots(repository_name=self._repo_name())
+        except (AdapterCommandError, AdapterPayloadError):
+            # A failed optimization must fall back to exact per-PR reads.
+            self.queue.clear_observed_snapshots()
+        finally:
+            self._open_observations_pending = False
+
+    def _ensure_open_observations(self) -> None:
+        if self._open_observations_pending:
+            self.prime_open_observations()
 
     def list_pull_requests_for_branch(self, branch: str) -> PullRequestInventory:
         return self._queries.list_pull_requests_for_branch(branch)
@@ -162,9 +173,7 @@ class GitHubCliAdapter:
         return self._queries.changed_paths(number)
 
     def _repo_name(self) -> str:
-        if self._repository_name_cache is None:
-            self._repository_name_cache = read_repository_name(self._client)
-        return self._repository_name_cache
+        return read_repository_name(self._client)
 
     def branch_is_protected(self, branch: str) -> bool:
         return self._rules.branch_is_protected(branch)
@@ -179,11 +188,13 @@ class GitHubCliAdapter:
         )
 
     def merge_queue_entry_id(self, pull_request_id: str) -> str | None:
+        self._ensure_open_observations()
         return self.queue.observed_snapshot(pull_request_id).entry_id
 
     def merge_queue_entry_snapshot(
         self, pull_request_id: str
     ) -> MergeQueueEntrySnapshot | None:
+        self._ensure_open_observations()
         return self.queue.observed_snapshot(pull_request_id).entry
 
     def trigger_required(
