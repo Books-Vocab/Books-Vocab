@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .candidate_issues import CandidateIssue
+from .isolation import EMPTY_ISOLATION, IsolationSummary
 from .observations import (
     CheckSnapshot,
     InventoryProblem,
@@ -35,3 +36,4 @@ class DeliveryInventory:
     lanes: tuple[LaneInspection, ...]
     source_problems: tuple[InventoryProblem, ...] = ()
     candidate_issues: tuple[CandidateIssue, ...] = ()
+    isolation: IsolationSummary = EMPTY_ISOLATION

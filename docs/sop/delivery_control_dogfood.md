@@ -38,12 +38,16 @@ verified_against: f74b739123384e16936c6c984a22b8befe9f2865
 - delivery inventory 中只剩 canonical main；若啟動器使用 detached supervision checkout，必須以
   `--supervision-worktree` 逐一列出 exact path。未列出的 worktree 一律仍算 delivery／unknown
   blocker；不得用 `.codex` 路徑前綴或名稱猜測來排除；
-- 沒有 active development、local handback、cleanup lease、terminal residue、blocked lane、unmapped／duplicate PR 或 source problem；
+- 沒有可行動的 active development、local handback、cleanup lease、blocked lane、unmapped／duplicate PR 或 source problem；
+- 歷史 source problem、owner-recovery residue、無 physical worktree 的 terminal branch residue，以及明確 security/P0/P1 hold
+  必須被 control plane 以 quarantine counters 明確標示。它們仍保留原始 evidence、不可 merge／刪除／接管，
+  但不能阻塞與其無關的 delivery lane；任何新鮮且可行動的同類問題仍會讓 preflight fail。
 - 現存 PR reservoir 為空；security／P0／P1 hold 必須先得到 terminal disposition，不能藏在 canary baseline。
 
 candidate Issue reservoir 可以是空的；clean-slate baseline 只要求 read-only candidate query 可被可信解析，不要求啟動前先囤候選或建立本地 backlog。
 
 這些條件任一失敗都只修該 blocker；不得以人工改 registry、刪 dirty worktree、跳過 branch rule 或降低 hard gate 讓 preflight 變綠。
+quarantine 是可驗證的隔離投影，不是 cleanup 成功、owner 恢復、PR mapping 或 security clearance 的替代品。
 
 控制面 PR 合併前不得預先修改 production repository rules。部署順序固定為：合併本控制面 PR → canonical `main` ff-only 同步 → 在 repository settings 啟用 native merge queue 並把 short `required` 設為 required context → 用 read-only API 讀回 merge queue 與 branch protection → 清到只剩 canonical worktree → 跑 preflight → 最後才建立四個 tasks。
 
@@ -217,7 +221,8 @@ SUPERVISION_ARGS=(
 
 `metrics` 與 `plan` 必須沿用 preflight 的 explicit supervision paths；不傳這些參數時，命令會把 supervision infrastructure checkout 當成 delivery worktree，不能拿來判斷 dogfood readiness。
 
-固定看：最近一小時 merges、inter-merge p50／p95、candidate／active solver／handback／open PR／required-green／merge queue depth、六段 latency p95、collision rate、required failure rate、idle worktree、source problems。agent 說「正在做」不計入容量。
+固定看：最近一小時 merges、inter-merge p50／p95、candidate／active solver／handback／open PR／required-green／merge queue depth、六段 latency p95、collision rate、required failure rate、idle worktree、source problems，以及
+quarantined source／lane／PR／terminal residue counters。agent 說「正在做」不計入容量；quarantine counters 也不算 active supply。
 
 Supervisor 的 watchdog tick 只用來避免 supervisor 睡死，不代表每 300 秒執行一次完整 pipeline，也不代表自動喚醒被 freeze／archived 的角色。每次 tick 讀取 `watchdog` 的 structured runtime receipt；只有 lease 過期或 progress stale 才產生 deterministic `wake_id`，再由外部 Codex thread scheduler 執行一次性喚醒。`frozen`／`archived` 永遠 `noop`，缺 receipt 只能 `escalate`。Supervisor 的 deterministic plan 會把低水位轉成具體 action：`replenish_candidates`、`fill_required_capacity`、`restore_merge_buffer`、`reanchor_front`、`trigger_required`、`reconcile_idle_worktrees` 或 `recover_merge_cadence`。它只發出可驗證的 bounded action，不替角色寫 code、推 branch 或手動修 registry；任何 unknown／dirty／remote drift 轉成 exact blocker 並 freeze 相關 birth。
 
@@ -237,7 +242,7 @@ Supervisor 的 watchdog tick 只用來避免 supervisor 睡死，不代表每 30
 
 以下任一發生，Supervisor 立即禁止新 solver birth，保留既有 GitHub PR 作 durable queue，並只做 bounded recovery：
 
-- source inventory 不完整、unmapped／duplicate PR、unknown／dirty collision；
+- actionable source inventory 不完整、actionable unmapped／duplicate PR、unknown／dirty collision；
 - live-lane collision pressure >20%；BS 必須重新分割 Scope，不能靠增加 Solver 掩蓋；
 - required p95 >240 秒或 runner 容量耗盡；
 - native merge queue／required branch rule缺失；
@@ -245,6 +250,10 @@ Supervisor 的 watchdog tick 只用來避免 supervisor 睡死，不代表每 30
 - publication 後仍有 idle local worktree；
 - terminal proof、remote branch或 registry readback 不一致；
 - P0／P1／security hold 未被 durable 表示或疑似被洗掉。
+
+已 quarantine 的歷史 residue 不會自動解除 freeze；它只從「是否能啟動無關 canary」判斷中隔離，仍需在後續
+bounded cleanup／owner recovery cycle 中取得 exact proof 才能 terminalize。任何 quarantine 計數增加、同一 branch
+重新出現 physical worktree、或新 PR 沒有 exact owner mapping，都立即回到 actionable blocker。
 
 Freeze 不關閉或重建已發布 PR，也不刪 dirty／unknown worktree。修復後重新跑 `dogfood-preflight`；只有 baseline 或 canary phase 所需條件重新成立才 resume。
 

@@ -11,6 +11,7 @@ from ..ports.github import GitHubQueryPort
 from ..ports.registry import RegistryQueryPort
 from ..ports.runtime import AgentRuntimePort
 from .inventory_sources import collect_inventory_sources
+from .isolation import project_isolation
 from .lane_projection import project_active_lane, project_published_lane
 
 _TERMINAL = {"merged", "abandoned"}
@@ -206,8 +207,14 @@ class InspectService:
                 )
             )
 
-        return DeliveryInventory(
+        inventory = DeliveryInventory(
             lanes=tuple(sorted(lanes, key=lambda item: item.key)),
             source_problems=sources.source_problems,
             candidate_issues=sources.candidate_issues,
+        )
+        return DeliveryInventory(
+            lanes=inventory.lanes,
+            source_problems=inventory.source_problems,
+            candidate_issues=inventory.candidate_issues,
+            isolation=project_isolation(sources=sources, lanes=inventory.lanes),
         )
