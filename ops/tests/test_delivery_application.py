@@ -45,6 +45,8 @@ def test_application_uses_co_versioned_registry_executable(tmp_path: Path) -> No
     assert (
         application.telemetry.path == tmp_path / ".cache" / "delivery_telemetry.ndjson"
     )
+    assert application.registry.runner.target_repo == tmp_path.resolve()
+    assert application.registry.runner.source_root == OPS.parent.resolve()
 
 
 def test_dogfood_preflight_measures_the_configured_promotion_window(

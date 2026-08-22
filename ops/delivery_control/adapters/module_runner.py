@@ -9,19 +9,28 @@ from pathlib import Path
 from threading import Lock
 
 from ..ports.process import CommandResult
+from .source_provenance import source_compatibility_problem
+
+PROVENANCE_EXIT_CODE = 78
 
 
 class ModuleCommandRunner:
-    """Run a loaded command module after its source checkout is released."""
+    """Run a loaded command module after optional source/target validation."""
 
     def __init__(
         self,
         *,
         executable: Path,
         main: Callable[[list[str] | None], int],
+        source_root: Path | None = None,
+        target_repo: Path | None = None,
     ) -> None:
         self.executable = executable.resolve()
         self.main = main
+        if (source_root is None) != (target_repo is None):
+            raise ValueError("source_root and target_repo must be provided together")
+        self.source_root = source_root.resolve() if source_root is not None else None
+        self.target_repo = target_repo.resolve() if target_repo is not None else None
         self._lock = Lock()
 
     def run(
@@ -33,6 +42,13 @@ class ModuleCommandRunner:
         del cwd
         if not argv or Path(argv[0]).resolve() != self.executable:
             return CommandResult(argv, 64, "", "module executable does not match")
+        if self.source_root is not None and self.target_repo is not None:
+            problem = source_compatibility_problem(
+                source_root=self.source_root,
+                target_repo=self.target_repo,
+            )
+            if problem is not None:
+                return CommandResult(argv, PROVENANCE_EXIT_CODE, "", problem)
         stdout = io.StringIO()
         stderr = io.StringIO()
         with (
@@ -48,3 +64,6 @@ class ModuleCommandRunner:
                 exit_code = 1
                 print(f"{type(error).__name__}: {error}", file=stderr)
         return CommandResult(argv, exit_code, stdout.getvalue(), stderr.getvalue())
+
+
+__all__ = ["ModuleCommandRunner", "PROVENANCE_EXIT_CODE"]
