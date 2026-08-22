@@ -103,6 +103,7 @@ def _pull_request(
     title: str = "old title",
     body: str = "old body",
 ) -> PullRequestSnapshot:
+    body_receipt = receipt if head_sha is None else replace(receipt, head_sha=head_sha)
     return PullRequestSnapshot(
         number=7,
         url="https://example.test/pull/7",
@@ -113,7 +114,7 @@ def _pull_request(
         draft=False,
         mergeable=True,
         title=title,
-        body=body,
+        body=render_pull_request_body(body_receipt) if body == "old body" else body,
     )
 
 
@@ -655,6 +656,77 @@ def test_preflight_rejects_scope_collision_and_existing_pr_scope_drift() -> None
     drift_service, _, _ = _service(receipt, github=github)
     with pytest.raises(PolicyViolation, match="paths differ"):
         drift_service.publish(receipt=receipt, title="fix: delivery")
+
+
+def test_existing_pr_scope_may_grow_after_same_owner_reanchor() -> None:
+    previous = _receipt()
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    pull_request = _pull_request(
+        previous,
+        title="fix: delivery",
+        body=render_pull_request_body(previous),
+    )
+    github = FakeGitHub(
+        receipt,
+        pull_request=pull_request,
+        changed_paths=previous.scope.paths,
+    )
+    worktree = _worktree(
+        receipt,
+        changes=(
+            FileChange(FileOperation.MODIFY, "ops/a.py"),
+            FileChange(FileOperation.MODIFY, "ops/b.py"),
+        ),
+    )
+    service, _, _ = _service(
+        receipt,
+        git=FakeGit(receipt, snapshot=worktree, remote_sha=previous.head_sha),
+        github=github,
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert parse_pull_request_body(result.pull_request.body).scope.paths == (
+        "ops/a.py",
+        "ops/b.py",
+    )
+
+
+def test_existing_pr_scope_cannot_shrink_after_same_owner_reanchor() -> None:
+    previous = _receipt()
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        scope=Scope.from_paths(modify=("ops/b.py",)),
+    )
+    pull_request = _pull_request(
+        previous,
+        title="fix: delivery",
+        body=render_pull_request_body(previous),
+    )
+    service, git, _ = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=_worktree(
+                receipt,
+                changes=(FileChange(FileOperation.MODIFY, "ops/b.py"),),
+            ),
+            remote_sha=previous.head_sha,
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=pull_request,
+            changed_paths=previous.scope.paths,
+        ),
+    )
+
+    with pytest.raises(PolicyViolation, match="cannot remove paths"):
+        service.publish(receipt=receipt, title="fix: delivery")
+    assert not git.push_calls
 
 
 def test_publish_refuses_non_main_target_before_or_after_mutation() -> None:
