@@ -86,6 +86,13 @@ def test_case_arms_covers_every_group_in_test_ops() -> None:
     assert "*" not in arms
 
 
+def test_delivery_control_group_discovers_all_delivery_test_modules() -> None:
+    arm = MODULE.case_arms()["delivery-control"]
+
+    assert "delivery_tests=(ops/tests/test_delivery_*.py)" in arm
+    assert '"${delivery_tests[@]}"' in arm
+
+
 def test_ios_ops_chain_reaches_ios_ops_logs_and_flags_absolute_calls() -> None:
     chain = MODULE.chain("ios-ops")
 
