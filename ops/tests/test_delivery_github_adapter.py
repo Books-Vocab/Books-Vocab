@@ -6,6 +6,9 @@ from pathlib import Path
 
 import pytest
 
+# The adapter tests import the in-repository package after extending sys.path
+# for the standalone ops test harness.
+# ruff: noqa: E402
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
@@ -314,6 +317,34 @@ def test_github_adapter_parses_pr_labels_and_required_timing_window() -> None:
     assert GitHubCliAdapter._pull_request(pull_request).labels == (
         "delivery-hold:security",
     )
+
+
+def test_github_adapter_preserves_inconsistent_check_timing_as_source_error() -> None:
+    pull_request = _pr_payload()
+    runner = StaticRunner(
+        [
+            CommandResult(("gh",), 0, json.dumps(pull_request), ""),
+            CommandResult(
+                ("gh",),
+                0,
+                json.dumps(
+                    [
+                        {
+                            "state": "SUCCESS",
+                            "name": "required",
+                            "startedAt": "2026-08-22T00:00:20Z",
+                            "completedAt": "2026-08-22T00:00:10Z",
+                        }
+                    ]
+                ),
+                "",
+            ),
+            CommandResult(("gh",), 0, json.dumps(pull_request), ""),
+        ]
+    )
+
+    with pytest.raises(AdapterPayloadError, match="timestamps are inconsistent"):
+        GitHubCliAdapter(runner=runner).required_check_snapshot(12)
 
 
 def test_github_merge_history_is_typed_and_sorted() -> None:

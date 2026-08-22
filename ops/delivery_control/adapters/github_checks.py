@@ -76,19 +76,30 @@ class GitHubChecks:
             status = CheckStatus.SUCCESS
         else:
             status = CheckStatus.PENDING
-        return CheckSnapshot(
-            status=status,
-            head_sha=after.head_sha,
-            observed_at=datetime.now(tz=UTC),
-            names=tuple(sorted(names)),
-            started_at=(
-                min(item for item in starts if item is not None)
-                if starts and all(item is not None for item in starts)
-                else None
-            ),
-            completed_at=(
-                max(item for item in completions if item is not None)
-                if completions and all(item is not None for item in completions)
-                else None
-            ),
+        started_at = (
+            min(item for item in starts if item is not None)
+            if starts and all(item is not None for item in starts)
+            else None
         )
+        completed_at = (
+            max(item for item in completions if item is not None)
+            if completions and all(item is not None for item in completions)
+            else None
+        )
+        try:
+            return CheckSnapshot(
+                status=status,
+                head_sha=after.head_sha,
+                observed_at=datetime.now(tz=UTC),
+                names=tuple(sorted(names)),
+                started_at=started_at,
+                completed_at=completed_at,
+            )
+        except ValueError as error:
+            # GitHub timestamps are external evidence. Preserve the PR/HEAD
+            # inventory and isolate only this malformed check observation so a
+            # transient provider inconsistency cannot make the whole control
+            # plane unreadable.
+            raise AdapterPayloadError(
+                "required check timestamps are inconsistent"
+            ) from error
