@@ -11,6 +11,11 @@ from ..domain.candidate_issues import (
     CandidateIssue,
     CandidateIssueInventory,
 )
+from ..domain.demand_issues import (
+    DemandIssue,
+    DemandIssueInventory,
+    issue_body_sha256,
+)
 from ..domain.errors import PolicyViolation
 from ..domain.observations import (
     InventoryProblem,
@@ -144,6 +149,93 @@ def parse_candidate_issue_inventory(
             reason = "candidate Issue entry is not an object"
         problems.append(InventoryProblem("github", identity, reason))
     return CandidateIssueInventory(tuple(records), tuple(problems))
+
+
+def parse_demand_issue(payload: Mapping[str, Any]) -> DemandIssue:
+    """Parse one raw open Issue without requiring candidate admission metadata."""
+
+    number = payload.get("number")
+    url = payload.get("url")
+    node_id = payload.get("id")
+    title = payload.get("title")
+    labels = payload.get("labels")
+    body = payload.get("body")
+    updated_at = payload.get("updatedAt")
+    if (
+        type(number) is not int
+        or type(url) is not str
+        or type(node_id) is not str
+        or type(title) is not str
+        or not isinstance(labels, list)
+        or any(
+            not isinstance(item, Mapping) or type(item.get("name")) is not str
+            for item in labels
+        )
+        or (body is not None and type(body) is not str)
+        or (updated_at is not None and type(updated_at) is not str)
+    ):
+        raise AdapterPayloadError("GitHub raw Issue payload is malformed")
+    normalized_body = body or ""
+    candidate_spec = None
+    label_names = tuple(sorted({item["name"] for item in labels}))
+    try:
+        candidate_spec = parse_candidate_body(normalized_body)
+    except (PolicyViolation, ValueError):
+        # A body-only contract remains visible for admission readback, but it
+        # is not dispatchable until the exact candidate label is also present.
+        candidate_spec = None
+    return DemandIssue(
+        number=number,
+        url=url,
+        node_id=node_id,
+        title=title,
+        labels=label_names,
+        body=normalized_body,
+        updated_at=parse_optional_timestamp(updated_at, field="Issue updatedAt"),
+        body_sha256=issue_body_sha256(normalized_body),
+        candidate_spec=candidate_spec,
+    )
+
+
+def parse_demand_issue_inventory(payload: object) -> DemandIssueInventory:
+    """Parse every returned Issue and preserve malformed entries as problems."""
+
+    if not isinstance(payload, list):
+        raise AdapterPayloadError("GitHub raw Issue list must be a JSON list")
+    records: list[DemandIssue] = []
+    problems: list[InventoryProblem] = []
+    seen_numbers: set[int] = set()
+    for index, item in enumerate(payload):
+        identity = f"entry[{index}]"
+        if isinstance(item, Mapping):
+            identity = f"Issue#{item.get('number', index)}"
+            try:
+                issue = parse_demand_issue(item)
+                if issue.number in seen_numbers:
+                    raise AdapterPayloadError(
+                        "raw Issue inventory contains a duplicate number"
+                    )
+                seen_numbers.add(issue.number)
+                records.append(issue)
+                if CANDIDATE_ISSUE_LABEL in issue.labels and issue.candidate_spec is None:
+                    problems.append(
+                        InventoryProblem(
+                            "github",
+                            identity,
+                            "Issue has delivery:candidate label but no valid typed candidate contract",
+                        )
+                    )
+                continue
+            except (AdapterPayloadError, ValueError) as error:
+                reason = str(error)
+        else:
+            reason = "raw Issue entry is not an object"
+        problems.append(InventoryProblem("github", identity, reason))
+    return DemandIssueInventory(
+        records=tuple(records),
+        raw_count=len(payload),
+        problems=tuple(problems),
+    )
 
 
 def parse_merge_times(payload: object) -> tuple[datetime, ...]:

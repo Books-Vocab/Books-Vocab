@@ -31,7 +31,34 @@ def parse_candidate_body(body: str) -> CandidateSpec:
         raise PolicyViolation(f"Issue body typed candidate contract is invalid: {error}") from error
 
 
-def render_candidate_body(spec: CandidateSpec) -> str:
+def render_candidate_body(
+    spec: CandidateSpec,
+    *,
+    original_body: str = "",
+    triage_reason: str | None = None,
+    operator: str | None = None,
+) -> str:
+    for name, value in (
+        ("original_body", original_body),
+        ("triage_reason", triage_reason),
+        ("operator", operator),
+    ):
+        if value is not None and any(
+            ord(character) < 32 and character not in "\n\t"
+            or ord(character) == 127
+            for character in value
+        ):
+            raise PolicyViolation(f"candidate {name} contains control characters")
+    prefix = original_body.rstrip()
+    if prefix:
+        prefix += "\n\n"
+    triage = ""
+    if triage_reason is not None or operator is not None:
+        triage = (
+            "## Delivery Triage\n"
+            f"- Operator: `{operator or 'unspecified'}`\n"
+            f"- Reason: {triage_reason or 'unspecified'}\n\n"
+        )
     scope = "\n".join(
         f"- `{item.operation.value}` `{item.path}`" for item in spec.scope.files
     )
@@ -43,7 +70,9 @@ def render_candidate_body(spec: CandidateSpec) -> str:
         spec.to_payload(), ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )
     return (
-        "## Severity\n"
+        prefix
+        + triage
+        + "## Severity\n"
         f"`{spec.severity.value}`\n\n"
         "## Priority\n"
         f"`{spec.priority}`\n\n"

@@ -144,6 +144,8 @@ run_one() {
         ops/tests/test_delivery_module_runner.py \
         ops/tests/test_delivery_registry_runtime.py \
         ops/tests/test_delivery_application.py \
+        ops/tests/test_delivery_issue_inventory.py \
+        ops/tests/test_delivery_issue_adapter.py \
         ops/tests/test_delivery_inspect.py \
         ops/tests/test_delivery_holds.py \
         ops/tests/test_delivery_metadata.py \

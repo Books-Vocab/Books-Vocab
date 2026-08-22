@@ -49,6 +49,12 @@ def _parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
 
     commands.add_parser("inspect", help="classify every known delivery lane")
+    commands.add_parser(
+        "issue-inventory", help="inventory every open GitHub Issue without mutation"
+    )
+    commands.add_parser(
+        "triage-plan", help="derive a deterministic raw Issue triage plan"
+    )
     metrics = commands.add_parser("metrics", help="measure current queue reservoirs")
     metrics.add_argument(
         "--supervision-worktree",
@@ -79,7 +85,7 @@ def _parser() -> argparse.ArgumentParser:
         "watchdog", help="read liveness and return a non-dispatching wake decision"
     )
     watchdog.add_argument("--supervisor-thread", required=True)
-    watchdog.add_argument("--stale-after-seconds", type=int, default=600)
+    watchdog.add_argument("--stale-after-seconds", type=int, default=300)
 
     runtime_receipt = commands.add_parser(
         "runtime-receipt",
@@ -116,6 +122,17 @@ def _parser() -> argparse.ArgumentParser:
         help="validate one dispatchable candidate Issue body",
     )
     validate_candidate.add_argument("--body-file", type=Path, default=Path("-"))
+
+    admit_candidate = commands.add_parser(
+        "admit-candidate",
+        help="admit exactly one triaged Issue as a typed candidate",
+    )
+    admit_candidate.add_argument("--issue", type=int, required=True)
+    admit_candidate.add_argument("--expected-updated-at", required=True)
+    admit_candidate.add_argument("--expected-body-sha256", required=True)
+    admit_candidate.add_argument("--payload-file", type=Path, default=Path("-"))
+    admit_candidate.add_argument("--triage-reason", required=True)
+    admit_candidate.add_argument("--operator", required=True)
 
     receipt = commands.add_parser("receipt", help="normalize one active handback")
     receipt.add_argument("--lane", required=True)
@@ -176,6 +193,23 @@ def _parser() -> argparse.ArgumentParser:
 def run_command(args: argparse.Namespace, application: DeliveryApplication) -> object:
     if args.command == "inspect":
         return application.inspect()
+    if args.command == "issue-inventory":
+        inventory = application.issue_inventory()
+        return {
+            "schema": "kg.delivery.issue-inventory.v1",
+            "raw_total": inventory.raw_open_issues,
+            "partition_totals": inventory.disposition_counts,
+            "unadmitted_open_issues": inventory.unadmitted_open_issues,
+            "backlog_drained": inventory.backlog_drained,
+            "complete": inventory.complete,
+            "source_problems": inventory.problems,
+            "issues": inventory.records,
+        }
+    if args.command == "triage-plan":
+        return {
+            "schema": "kg.delivery.triage-plan.v1",
+            "items": application.triage_plan(),
+        }
     if args.command == "metrics":
         return application.metrics(
             supervision_worktree_paths=tuple(args.supervision_worktree)
@@ -265,6 +299,35 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
             else args.body_file.read_text(encoding="utf-8")
         )
         return parse_candidate_body(body)
+    if args.command == "admit-candidate":
+        raw = (
+            sys.stdin.read()
+            if args.payload_file == Path("-")
+            else args.payload_file.read_text(encoding="utf-8")
+        )
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as error:
+            raise DeliveryContractError("candidate payload is invalid JSON") from error
+        if not isinstance(payload, Mapping):
+            raise DeliveryContractError("candidate payload must be an object")
+        try:
+            spec = CandidateSpec.from_payload(payload)
+        except (TypeError, ValueError) as error:
+            raise DeliveryContractError(str(error)) from error
+        expected_updated_at = _runtime_timestamp(
+            args.expected_updated_at, "expected_updated_at"
+        )
+        if expected_updated_at is None:
+            raise DeliveryContractError("expected_updated_at is required")
+        return application.admit_candidate(
+            issue_number=args.issue,
+            expected_updated_at=expected_updated_at,
+            expected_body_sha256=args.expected_body_sha256,
+            spec=spec,
+            triage_reason=args.triage_reason,
+            operator=args.operator,
+        )
     if args.command == "receipt":
         return application.receipt(args.lane)
     if args.command == "publish":

@@ -19,6 +19,9 @@ class ControlAction(StrEnum):
     TRIGGER_REQUIRED = "trigger_required"
     REANCHOR_FRONT = "reanchor_front"
     REPLENISH_CANDIDATES = "replenish_candidates"
+    TRIAGE_EXISTING_ISSUES = "triage_existing_issues"
+    RECOVER_LEGACY_ISSUES = "recover_legacy_issues"
+    RECOVER_OWNER_BOUND_LANE = "recover_owner_bound_lane"
     IMPROVE_SCOPE_PARTITION = "improve_scope_partition"
     FILL_REQUIRED_CAPACITY = "fill_required_capacity"
     RESTORE_MERGE_BUFFER = "restore_merge_buffer"
@@ -96,9 +99,28 @@ def decide_capacity(
         )
     if metrics.reanchor_required:
         add(ControlAction.REANCHOR_FRONT, "exact stale-base PRs await reanchor")
+    if metrics.unadmitted_open_issues:
+        add(
+            ControlAction.TRIAGE_EXISTING_ISSUES,
+            (
+                f"{metrics.unadmitted_open_issues} open Issues lack an explicit "
+                "candidate, owner, blocked, or terminal disposition"
+            ),
+        )
+    if metrics.legacy_open_issues:
+        add(
+            ControlAction.RECOVER_LEGACY_ISSUES,
+            f"{metrics.legacy_open_issues} legacy Issues need migration evidence",
+        )
+    if metrics.actionable_blocked_lanes:
+        add(
+            ControlAction.RECOVER_OWNER_BOUND_LANE,
+            "existing owner-bound lanes require bounded recovery",
+        )
     if (
         not metrics.actionable_source_problems
-        and metrics.candidate_issues < policy.min_candidate_issues
+        and metrics.backlog_drained
+        and metrics.dispatchable_candidate_issues < policy.min_candidate_issues
     ):
         add(
             ControlAction.REPLENISH_CANDIDATES,
@@ -250,7 +272,7 @@ def decide_capacity(
         if durable_supply < policy.max_open_prs and solver_gap:
             desired_new_solvers = min(
                 solver_gap,
-                metrics.candidate_issues,
+                metrics.dispatchable_candidate_issues,
                 policy.max_new_solvers_per_cycle,
                 max(0, policy.max_active_solvers - metrics.active_development),
             )

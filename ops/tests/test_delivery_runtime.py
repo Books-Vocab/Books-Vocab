@@ -76,6 +76,19 @@ def test_stale_progress_returns_idempotent_wake_decision() -> None:
     assert first.wake_id == second.wake_id
 
 
+def test_default_watchdog_tick_is_five_minutes() -> None:
+    decision = evaluate_runtime_watchdog(
+        _receipt(
+            state=RuntimeState.IDLE,
+            lease_until=None,
+            last_progress_at=NOW - timedelta(minutes=5),
+        ),
+        now=NOW,
+    )
+
+    assert decision.action is WatchdogAction.WAKE
+
+
 def test_expired_lease_wakes_even_when_last_progress_is_recent() -> None:
     decision = evaluate_runtime_watchdog(
         _receipt(

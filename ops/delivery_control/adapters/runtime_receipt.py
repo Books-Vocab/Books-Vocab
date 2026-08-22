@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import tempfile
-import fcntl
 from pathlib import Path
 
 from ..domain.errors import CompareAndSwapConflict, PolicyViolation

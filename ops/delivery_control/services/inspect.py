@@ -211,10 +211,14 @@ class InspectService:
             lanes=tuple(sorted(lanes, key=lambda item: item.key)),
             source_problems=sources.source_problems,
             candidate_issues=sources.candidate_issues,
+            dispatchable_candidate_issues=sources.dispatchable_candidate_issues,
+            demand_issues=sources.demand_issues,
         )
         return DeliveryInventory(
             lanes=inventory.lanes,
             source_problems=inventory.source_problems,
             candidate_issues=inventory.candidate_issues,
+            dispatchable_candidate_issues=inventory.dispatchable_candidate_issues,
+            demand_issues=inventory.demand_issues,
             isolation=project_isolation(sources=sources, lanes=inventory.lanes),
         )
