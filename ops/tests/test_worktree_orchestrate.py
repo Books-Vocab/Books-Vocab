@@ -186,6 +186,68 @@ def test_open_uses_exact_base_for_failed_provisioning_compensation(
     )
 
 
+
+def test_open_compensates_against_existing_branch_head_after_add_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    base_sha = "a" * 40
+    branch_sha = "b" * 40
+    compensation: list[str] = []
+    monkeypatch.setattr(coordinator, "_require_unfrozen", lambda command: None)
+    resolved = iter((base_sha, branch_sha))
+    monkeypatch.setattr(
+        coordinator, "_resolve_commit", lambda path, ref: next(resolved)
+    )
+    monkeypatch.setattr(
+        coordinator,
+        "_registry_register",
+        lambda **kwargs: (
+            coordinator.registry.EXIT_OK,
+            {
+                "branch": "feat/existing-branch",
+                "path": str(tmp_path / "worktree"),
+                "claim_generation": 4,
+                "base_sha": base_sha,
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        coordinator,
+        "_git",
+        lambda argv, cwd=coordinator.ROOT: (1, "branch already exists"),
+    )
+    monkeypatch.setattr(
+        coordinator.registry,
+        "main",
+        lambda argv: compensation.extend(argv) or coordinator.registry.EXIT_CLAIMED,
+    )
+    args = Namespace(
+        slug="existing-branch",
+        intent="test existing branch compensation",
+        type="feat",
+        path=str(tmp_path / "worktree"),
+        external_id=["DIRECT-TEST-EXISTING"],
+        base="origin/main",
+        codex_thread_id="thread-test",
+        delegated=False,
+        state=str(tmp_path / "custom-registry.json"),
+        scope=json.dumps(_scope_for("ops/a.py")),
+        scope_file=None,
+        json=True,
+    )
+
+    assert coordinator.cmd_open(args) == coordinator.EXIT_BLOCK
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["reason"] == (
+        "git worktree add failed and registry compensation failed"
+    )
+    assert (
+        compensation[compensation.index("--expected-head-sha") + 1] == branch_sha
+    )
+
 def _scope_for(path: str) -> dict[str, object]:
     return {
         "schema": "kg.worktree.scope.v1",

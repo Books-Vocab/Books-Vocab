@@ -37,6 +37,7 @@ class RegistryPreflight:
     original: dict[str, Any]
     fingerprint: str
     base_sha: str
+    published_base_sha: str
     declared: DeclaredOperations
 
 

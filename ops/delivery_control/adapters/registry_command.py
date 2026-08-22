@@ -43,7 +43,9 @@ def resolve_registry(
         )
     result = runner.run(argv)
     if result.exit_code != 0:
-        raise CompareAndSwapConflict(f"registry transition failed for {lane_id}: {result.stderr or result.stdout}")
+        raise CompareAndSwapConflict(
+            f"registry transition failed for {lane_id}: {result.stderr or result.stdout}"
+        )
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError as error:
@@ -55,3 +57,32 @@ def resolve_registry(
         or len(payload["records"]) != 1
     ):
         raise AdapterPayloadError("registry resolve readback is not exact")
+
+
+def record_published_base(
+    *,
+    runner: CommandRunnerPort,
+    argv: tuple[str, ...],
+    lane_id: str,
+) -> None:
+    """Persist one exact PR-base observation with registry CAS guards."""
+
+    result = runner.run(argv)
+    if result.exit_code != 0:
+        raise CompareAndSwapConflict(
+            f"published-base recording failed for {lane_id}: "
+            f"{result.stderr or result.stdout}"
+        )
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise AdapterPayloadError(
+            "registry published-base recording returned invalid JSON"
+        ) from error
+    if (
+        not isinstance(payload, Mapping)
+        or payload.get("status") != "published-base-recorded"
+        or not isinstance(payload.get("records"), list)
+        or len(payload["records"]) != 1
+    ):
+        raise AdapterPayloadError("registry published-base readback is not exact")

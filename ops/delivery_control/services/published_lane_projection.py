@@ -70,6 +70,7 @@ def project_published_lane(
     remote_assets_present = record.branch in sources.branch_inventory.remote_by_name
     collision_key = f"published:{record.lane_id}:{record.claim_generation}"
     lane_collision = collision_key in sources.collisions
+    published_base_sha = record.published_base_sha or record.base_sha
     merge_exact = (
         not problems
         and not lane_collision
@@ -98,8 +99,8 @@ def project_published_lane(
         and not queued
         and not pull_request.draft
         and pull_request.mergeable
-        and pull_request.base_sha == record.base_sha
-        and pull_request.base_sha != sources.live_main_sha
+        and pull_request.base_sha == published_base_sha
+        and record.base_sha != sources.live_main_sha
         and pull_request.head_sha == record.handed_back_sha
         and body_exact
         and record.handback_valid

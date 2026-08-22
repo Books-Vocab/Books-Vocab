@@ -90,6 +90,65 @@ def test_registry_adapter_targets_explicit_state_file(tmp_path: Path) -> None:
     ]
 
 
+def test_registry_adapter_records_published_base_with_exact_cas_arguments(
+    tmp_path: Path,
+) -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(
+                argv=("registry", "record-published-base"),
+                exit_code=0,
+                stdout=json.dumps(
+                    {
+                        "status": "published-base-recorded",
+                        "records": [{"published_base_sha": "d" * 40}],
+                    }
+                ),
+                stderr="",
+            )
+        ]
+    )
+    adapter = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"),
+        state_path=tmp_path / "registry.json",
+        runner=runner,
+    )
+
+    adapter.record_published_base(
+        lane_id="DIRECT-1",
+        expected_claim_generation=3,
+        expected_branch="feat/one",
+        expected_path="/repo/one",
+        expected_head_sha="b" * 40,
+        expected_handback_base_sha="a" * 40,
+        published_base_sha="d" * 40,
+    )
+
+    assert runner.calls == [
+        (
+            "/repo/ops/worktree_registry.py",
+            "record-published-base",
+            "--json",
+            "--lane",
+            "DIRECT-1",
+            "--branch",
+            "feat/one",
+            "--path",
+            "/repo/one",
+            "--expected-generation",
+            "3",
+            "--expected-head-sha",
+            "b" * 40,
+            "--expected-handback-base-sha",
+            "a" * 40,
+            "--published-base-sha",
+            "d" * 40,
+            "--state",
+            str(tmp_path / "registry.json"),
+        )
+    ]
+
+
 def test_registry_adapter_surfaces_malformed_records_without_hiding_valid_ones(
     tmp_path: Path,
 ) -> None:
@@ -458,9 +517,7 @@ def test_registry_adapter_rejects_malformed_initial_holds_on_valid_seal(
     tmp_path: Path, initial_holds: object
 ) -> None:
     with pytest.raises(ValueError, match="initial_holds"):
-        RegistryCliAdapter._record(
-            _payload_with_initial_holds(tmp_path, initial_holds)
-        )
+        RegistryCliAdapter._record(_payload_with_initial_holds(tmp_path, initial_holds))
 
 
 def test_registry_adapter_ignores_initial_holds_from_invalid_seal(

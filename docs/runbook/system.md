@@ -85,6 +85,7 @@ Candidate Issue body 先由 deterministic contract 產生並重驗：
 ```bash
 ./ops/delivery.py receipt --lane <lane-id>
 ./ops/delivery.py publish --lane <lane-id> --title '<canonical PR title>'
+./ops/delivery.py record-published-base --pr <number>
 ./ops/delivery.py release-published --pr <number>
 ./ops/delivery.py repair-pr-metadata --pr <number>
 ./ops/delivery.py trigger-required --pr <number>
@@ -92,7 +93,7 @@ Candidate Issue body 先由 deterministic contract 產生並重驗：
 ./ops/delivery.py reconcile-holds --pr <number> --clear-all
 ```
 
-`receipt` 只把唯一 active、clean、owner-bound、Scope-exact 的 `kg.worktree.handback.v1` 正規化為 `kg.delivery.handback.v1`；focused Validation 與 hand-back 時的 initial P0／P1／security holds 都屬於 immutable receipt。owner／delegation／Scope 變更會遞增 claim generation 並清除舊 seal。Scope overlap 在 `register`／`scope-set` 的 ledger lock 內就對所有 `active`／`cleanup_pending`／`published` claim fail closed，不延後到 publish；一般 register 也不能把 published branch／path 當成可接管 owner。`publish` 先以 compare-and-swap push exact branch，明確建立 target=`main` 的非 draft PR，自動產生 Scope／Validation／Impact／typed receipt／typed holds，驗證 final PR target／head／body／paths，再取得 registry `cleanup_pending` lease；initial hold 在首次 PR publication 就必須 durable，existing PR 的 typed／label／legacy hold 則會被保留，不能因 reanchor 被清除。lease 會阻擋同 branch／path 的新 claim，也會讓 controller 停止增生 solver，local worktree／branch 精確移除後才完成為 `published`。`repair-pr-metadata` 在 typed receipt 仍可解析時，以 exact published registry／HEAD／Scope 證據只重建同一 PR body，並把 draft 移到 ready；它不重建 worktree、不修改 title 或 code。`reconcile-holds` 是 PI 在 explicit clearance 後的 body-only metadata transaction；清除必須明確 `--clear-all`，且 durable hold label 尚在時拒絕。collision 與 cleanup 只讀可解析的 exact Scope／receipt，所以無關的 malformed terminal history 不會阻塞；目標 claim 不完整仍 fail closed。若 durable PR 已完成、後續 lease 或 local removal 中斷，保留原錯誤、不回退 PR；重跑同一 `publish`，或用 `release-published` 從 PR receipt 完成 idempotent local release。
+`receipt` 只把唯一 active、clean、owner-bound、Scope-exact 的 `kg.worktree.handback.v1` 正規化為 `kg.delivery.handback.v1`；focused Validation 與 hand-back 時的 initial P0／P1／security holds 都屬於 immutable receipt。owner／delegation／Scope 變更會遞增 claim generation 並清除舊 seal。Scope overlap 在 `register`／`scope-set` 的 ledger lock 內就對所有 `active`／`cleanup_pending`／`published` claim fail closed，不延後到 publish；一般 register 也不能把 published branch／path 當成可接管 owner。`publish` 先以 compare-and-swap push exact branch，明確建立 target=`main` 的非 draft PR，自動產生 Scope／Validation／Impact／typed receipt／typed holds，驗證 final PR target／head／body／paths，再取得 registry `cleanup_pending` lease；initial hold 在首次 PR publication 就必須 durable，existing PR 的 typed／label／legacy hold 則會被保留，不能因 reanchor 被清除。lease 會阻擋同 branch／path 的新 claim，也會讓 controller 停止增生 solver，local worktree／branch 精確移除後才完成為 `published`。`publish` 在 durable PR readback 後，以 registry CAS 另存 GitHub target 的 `published_base_sha`；原始 typed hand-back 的 `base_sha` 永遠不覆寫。若 publication 途中只完成 PR、尚未完成這個 CAS，可用 `record-published-base --pr` 對同一 exact PR／registry tuple 做一次性、可重試的觀測收斂；任一 drift 都拒絕 mutation。`repair-pr-metadata` 在 typed receipt 仍可解析時，以 exact published registry／HEAD／Scope 證據只重建同一 PR body，並把 draft 移到 ready；它不重建 worktree、不修改 title 或 code。`reconcile-holds` 是 PI 在 explicit clearance 後的 body-only metadata transaction；清除必須明確 `--clear-all`，且 durable hold label 尚在時拒絕。collision 與 cleanup 只讀可解析的 exact Scope／receipt，所以無關的 malformed terminal history 不會阻塞；目標 claim 不完整仍 fail closed。若 durable PR 已完成、後續 lease 或 local removal 中斷，保留原錯誤、不回退 PR；重跑同一 `publish`，或用 `release-published` 從 PR receipt 完成 idempotent local release。
 
 `trigger-required` 只在同一 exact published PR 的 required 為 `ABSENT`／`FAILURE` 時 dispatch 帶 PR number／base／HEAD 的 workflow；`PENDING`／`SUCCESS` 拒絕重複觸發，hold 原樣保留且 dispatch 不代表 Ready。
 
@@ -103,7 +104,7 @@ Candidate Issue body 先由 deterministic contract 產生並重驗：
 ./ops/worktree_orchestrate.py reanchor --merge-front-pr <number> --lane <lane> --branch <branch> --owner-thread-id <thread> --claim-generation <generation> --expected-remote-head <sha> --live-main <sha> --path <new-path>
 ```
 
-兩者都只做 exact same-owner local lifecycle transition，不操作 GitHub、不測試、不 hand-back、不 push；`resume-published` 保留 original recorded base，`reanchor` 改用仍通過 remote CAS 的 live main。owner 修復／rebase後必須重新 commit（若有變更）與 typed hand-back，PI 再更新同一 PR。
+兩者都只做 exact same-owner local lifecycle transition，不操作 GitHub、不測試、不 hand-back、不 push；`resume-published` 保留 original recorded base，`reanchor` 以 `published_base_sha` 證明目前 PR 的既有 target 觀測，再把新的 owner generation 改用仍通過 remote CAS 的 live main。這兩個 base 不得混寫：原始 `base_sha` 保留 hand-back provenance，`published_base_sha` 只描述 GitHub PR target。owner 修復／rebase後必須重新 commit（若有變更）與 typed hand-back，PI 再更新同一 PR。
 
 PR readiness workflow 的 parser 入口是：
 

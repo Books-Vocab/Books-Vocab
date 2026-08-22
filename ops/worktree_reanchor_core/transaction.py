@@ -10,9 +10,17 @@ from .errors import ReanchorRefused
 
 
 def _request(
-    *, repo: Path, state_path: Path, merge_front_pr: int, lane_id: str,
-    branch: str, owner_thread_id: str, claim_generation: int,
-    expected_remote_head: str, live_main: str, target: Path,
+    *,
+    repo: Path,
+    state_path: Path,
+    merge_front_pr: int,
+    lane_id: str,
+    branch: str,
+    owner_thread_id: str,
+    claim_generation: int,
+    expected_remote_head: str,
+    live_main: str,
+    target: Path,
 ) -> ReanchorRequest:
     if merge_front_pr <= 0:
         raise ReanchorRefused("one positive merge-front PR candidate is required")
@@ -33,15 +41,29 @@ def _request(
 
 
 def perform_reanchor(
-    *, repo: Path, state_path: Path, merge_front_pr: int, lane_id: str,
-    branch: str, owner_thread_id: str, claim_generation: int,
-    expected_remote_head: str, live_main: str, target: Path,
+    *,
+    repo: Path,
+    state_path: Path,
+    merge_front_pr: int,
+    lane_id: str,
+    branch: str,
+    owner_thread_id: str,
+    claim_generation: int,
+    expected_remote_head: str,
+    live_main: str,
+    target: Path,
 ) -> dict[str, object]:
     request = _request(
-        repo=repo, state_path=state_path, merge_front_pr=merge_front_pr,
-        lane_id=lane_id, branch=branch, owner_thread_id=owner_thread_id,
-        claim_generation=claim_generation, expected_remote_head=expected_remote_head,
-        live_main=live_main, target=target,
+        repo=repo,
+        state_path=state_path,
+        merge_front_pr=merge_front_pr,
+        lane_id=lane_id,
+        branch=branch,
+        owner_thread_id=owner_thread_id,
+        claim_generation=claim_generation,
+        expected_remote_head=expected_remote_head,
+        live_main=live_main,
+        target=target,
     )
     git_ops.validate_repository(request.repo)
     preflight = registry_ops.preflight(
@@ -59,7 +81,7 @@ def perform_reanchor(
         github,
         pull_request_number=request.merge_front_pr,
         branch=request.branch,
-        expected_base_sha=preflight.base_sha,
+        expected_pr_base_sha=preflight.published_base_sha,
         expected_remote_head=request.expected_remote_head,
         live_main_sha=request.live_main,
     )
@@ -94,7 +116,7 @@ def perform_reanchor(
             github,
             pull_request_number=request.merge_front_pr,
             branch=request.branch,
-            expected_base_sha=preflight.base_sha,
+            expected_pr_base_sha=preflight.published_base_sha,
             expected_remote_head=request.expected_remote_head,
             live_main_sha=request.live_main,
         )

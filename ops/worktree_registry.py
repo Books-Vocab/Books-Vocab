@@ -63,6 +63,7 @@ from worktree_registry_core.lifecycle import (
 )
 from worktree_registry_core.lifecycle_cli import cmd_resolve as _cmd_resolve
 from worktree_registry_core.maintenance import cmd_compact, cmd_sweep
+from worktree_registry_core.published_base import cmd_record_published_base
 from worktree_registry_core.records import (
     SCHEMA,
     STATUS_ACTIVE,
@@ -157,6 +158,7 @@ def _parser() -> argparse.ArgumentParser:
             "list": cmd_list,
             "hand-back": cmd_hand_back,
             "resolve": cmd_resolve,
+            "record-published-base": cmd_record_published_base,
             "sweep": cmd_sweep,
             "compact": cmd_compact,
         },

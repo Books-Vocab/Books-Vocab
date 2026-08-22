@@ -138,9 +138,7 @@ def test_resume_lifecycle_accepts_only_exact_open_required_code_failure() -> Non
         ),
         (
             FakeGitHub(
-                all_for_branch=(
-                    _pr(42, branch="feat/exact-pr", state="MERGED"),
-                )
+                all_for_branch=(_pr(42, branch="feat/exact-pr", state="MERGED"),)
             ),
             "OPEN",
         ),
@@ -153,9 +151,7 @@ def test_resume_lifecycle_accepts_only_exact_open_required_code_failure() -> Non
         ),
         (
             FakeGitHub(
-                all_for_branch=(
-                    _pr(42, branch="feat/exact-pr", head=OTHER_HEAD),
-                )
+                all_for_branch=(_pr(42, branch="feat/exact-pr", head=OTHER_HEAD),)
             ),
             "HEAD",
         ),
@@ -218,6 +214,30 @@ def test_reanchor_lifecycle_accepts_oldest_required_green_unheld_pr() -> None:
     assert proof.merge_front_policy == "lowest-required-green-unheld-pr-number"
 
 
+def test_reanchor_lifecycle_accepts_current_pr_base_after_publication_observation() -> (
+    None
+):
+    candidate = _pr(42, branch="feat/exact-pr", base=LIVE)
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        open_prs=(candidate,),
+        checks={42: _check(CheckStatus.SUCCESS)},
+    )
+
+    proof = verify_reanchor_lifecycle(
+        github,
+        pull_request_number=42,
+        branch="feat/exact-pr",
+        expected_pr_base_sha=LIVE,
+        expected_remote_head=HEAD,
+        live_main_sha=LIVE,
+    )
+
+    assert proof.pull_request_number == 42
+    assert proof.base_sha == LIVE
+    assert proof.required_status is CheckStatus.SUCCESS
+
+
 def test_reanchor_lifecycle_rejects_caller_selected_non_front_pr() -> None:
     earlier = _pr(41, head=OTHER_HEAD)
     candidate = _pr(42, branch="feat/exact-pr")
@@ -265,10 +285,26 @@ def test_reanchor_lifecycle_defers_to_existing_native_queue_entry() -> None:
 @pytest.mark.parametrize(
     ("candidate", "check", "reason"),
     [
-        (_pr(42, branch="feat/exact-pr", base=LIVE), _check(CheckStatus.SUCCESS), "stale"),
-        (_pr(42, branch="feat/exact-pr", draft=True), _check(CheckStatus.SUCCESS), "draft"),
-        (_pr(42, branch="feat/exact-pr", mergeable=False), _check(CheckStatus.SUCCESS), "mergeable"),
-        (_pr(42, branch="feat/exact-pr"), _check(CheckStatus.FAILURE), "required-green"),
+        (
+            _pr(42, branch="feat/exact-pr", base=LIVE),
+            _check(CheckStatus.SUCCESS),
+            "stale",
+        ),
+        (
+            _pr(42, branch="feat/exact-pr", draft=True),
+            _check(CheckStatus.SUCCESS),
+            "draft",
+        ),
+        (
+            _pr(42, branch="feat/exact-pr", mergeable=False),
+            _check(CheckStatus.SUCCESS),
+            "mergeable",
+        ),
+        (
+            _pr(42, branch="feat/exact-pr"),
+            _check(CheckStatus.FAILURE),
+            "required-green",
+        ),
         (
             _pr(42, branch="feat/exact-pr", body="P0 hold"),
             _check(CheckStatus.SUCCESS),

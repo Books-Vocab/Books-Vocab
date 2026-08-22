@@ -193,6 +193,19 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
             return None
 
     class FakeRegistryCommand:
+        def record_published_base(
+            self,
+            *,
+            lane_id: str,
+            expected_claim_generation: int,
+            expected_branch: str,
+            expected_path: str,
+            expected_head_sha: str,
+            expected_handback_base_sha: str,
+            published_base_sha: str,
+        ) -> None:
+            return None
+
         def persist_handback(
             self, receipt: HandbackReceipt, *, expected_claim_generation: int
         ) -> None:

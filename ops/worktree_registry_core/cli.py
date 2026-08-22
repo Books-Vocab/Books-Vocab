@@ -72,9 +72,7 @@ def build_parser(
     handback.add_argument("--branch")
     handback.add_argument("--path")
     handback.add_argument("--outcomes", default=None)
-    handback.add_argument(
-        "--hold", action="append", choices=("p0", "p1", "security")
-    )
+    handback.add_argument("--hold", action="append", choices=("p0", "p1", "security"))
     handback.set_defaults(func=handlers["hand-back"])
 
     resolve = sub.add_parser(
@@ -88,6 +86,20 @@ def build_parser(
     resolve.add_argument("--expected-head-sha")
     resolve.add_argument("--terminal-proof")
     resolve.set_defaults(func=handlers["resolve"])
+
+    published_base = sub.add_parser(
+        "record-published-base",
+        help="record the exact GitHub PR base after publication",
+    )
+    common(published_base)
+    published_base.add_argument("--lane")
+    published_base.add_argument("--branch")
+    published_base.add_argument("--path")
+    published_base.add_argument("--expected-generation", type=int, required=True)
+    published_base.add_argument("--expected-head-sha", required=True)
+    published_base.add_argument("--expected-handback-base-sha", required=True)
+    published_base.add_argument("--published-base-sha", required=True)
+    published_base.set_defaults(func=handlers["record-published-base"])
 
     sweep = sub.add_parser("sweep", help="report missing registered worktrees")
     common(sweep)

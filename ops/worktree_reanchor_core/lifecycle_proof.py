@@ -219,16 +219,24 @@ def verify_reanchor_lifecycle(
     *,
     pull_request_number: int,
     branch: str,
-    expected_base_sha: str,
     expected_remote_head: str,
     live_main_sha: str,
+    expected_pr_base_sha: str | None = None,
+    # Compatibility for callers written before publication began recording
+    # the GitHub target OID separately from the typed handback base.
+    expected_base_sha: str | None = None,
 ) -> RecoveryLifecycleProof:
-    """Prove that a stale PR is the deterministic merge-front candidate."""
+    """Prove that one published PR is the deterministic merge-front candidate."""
+
+    legacy_base_contract = expected_pr_base_sha is None
+    published_base_sha = expected_pr_base_sha or expected_base_sha
+    if published_base_sha is None:
+        raise ReanchorRefused("published PR base is required for reanchor proof")
 
     candidate = _exact_open_pr(
         github,
         branch=branch,
-        expected_base_sha=expected_base_sha,
+        expected_base_sha=published_base_sha,
         expected_remote_head=expected_remote_head,
     )
     if candidate.number != pull_request_number:
@@ -237,7 +245,7 @@ def verify_reanchor_lifecycle(
             caller_pull_request=pull_request_number,
             actual_pull_request=candidate.number,
         )
-    if candidate.base_sha == live_main_sha:
+    if legacy_base_contract and candidate.base_sha == live_main_sha:
         raise ReanchorRefused("reanchor requires a stale PR base")
     if candidate.draft:
         raise ReanchorRefused("reanchor refuses a draft PR")

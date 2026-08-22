@@ -40,6 +40,8 @@ CURRENT_RECORD_FIELDS = (
     "resolved_at",
     "claim_generation",
     "base_sha",
+    "published_base_sha",
+    "published_base_recorded_at",
     "handed_back_at",
     "handed_back_sha",
     "handback_claim_generation",
@@ -228,11 +230,7 @@ def active_records(state: dict[str, Any]) -> list[dict[str, Any]]:
 
 def retained_records(state: dict[str, Any]) -> list[dict[str, Any]]:
     """Return every record retained by lossless registry compaction."""
-    return [
-        record
-        for record in state.get("records", [])
-        if isinstance(record, dict)
-    ]
+    return [record for record in state.get("records", []) if isinstance(record, dict)]
 
 
 def mutation_blockers(state: dict[str, Any]) -> list[dict[str, Any]]:
