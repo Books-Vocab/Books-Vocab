@@ -788,6 +788,38 @@ def test_cli_exposes_watchdog_without_dispatching(capsys: object) -> None:
     assert payload["result"]["action"] == "noop"
 
 
+def test_cli_publishes_atomic_runtime_receipt(tmp_path: Path, capsys: object) -> None:
+    status_path = tmp_path / "runtime" / "supervisor.json"
+
+    assert (
+        main(
+            [
+                "--repo",
+                str(tmp_path),
+                "--runtime-status-file",
+                str(status_path),
+                "runtime-receipt",
+                "--thread-id",
+                "supervisor-thread",
+                "--state",
+                "running",
+                "--cycle-id",
+                "cycle-1",
+                "--lease-seconds",
+                "600",
+                "--clear-last-action",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert payload["command"] == "runtime-receipt"
+    assert payload["result"]["thread_id"] == "supervisor-thread"
+    assert payload["result"]["state"] == "running"
+    assert status_path.exists()
+
+
 def test_runtime_status_file_fails_closed_for_unlisted_owner(tmp_path: Path) -> None:
     path = tmp_path / "runtime.json"
     path.write_text(json.dumps({"thread-1": "running"}), encoding="utf-8")

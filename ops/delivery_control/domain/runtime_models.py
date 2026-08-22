@@ -193,13 +193,44 @@ def decide_watchdog(
 
     lease_expired = receipt.lease_until is not None and receipt.lease_until <= now
     stale = now - receipt.last_progress_at >= stale_after
-    if lease_expired or stale:
-        reason = "lease expired" if lease_expired else "progress is stale"
+
+    # A stale running task is not safe to wake: it may still be executing a
+    # long operation, and a second Codex turn would create concurrent control
+    # planes.  The external scheduler must inspect the real thread status and
+    # escalate the stale runtime instead of guessing.
+    if receipt.state is RuntimeState.RUNNING and (lease_expired or stale):
+        reason = (
+            "running runtime lease expired; external status check required"
+            if lease_expired
+            else "running runtime progress is stale; external status check required"
+        )
+        return WatchdogDecision(WatchdogAction.ESCALATE, reason, now)
+
+    expected_event_due = (
+        receipt.state is RuntimeState.WAITING
+        and receipt.expected_next_event_at is not None
+        and receipt.expected_next_event_at <= now
+    )
+    if lease_expired or stale or expected_event_due:
+        reason = (
+            "expected event is due"
+            if expected_event_due
+            else "lease expired"
+            if lease_expired
+            else "progress is stale"
+        )
+        wake_id = _wake_id(receipt, reason=reason)
+        if receipt.last_action_id == wake_id:
+            return WatchdogDecision(
+                WatchdogAction.ESCALATE,
+                "wake already issued for current stale receipt",
+                now,
+            )
         return WatchdogDecision(
             WatchdogAction.WAKE,
             reason,
             now,
-            _wake_id(receipt, reason=reason),
+            wake_id,
         )
     return WatchdogDecision(WatchdogAction.NOOP, "runtime is healthy", now)
 

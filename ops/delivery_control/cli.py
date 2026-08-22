@@ -7,7 +7,7 @@ import json
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, is_dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -16,6 +16,7 @@ from .adapters.runtime import RuntimeStatusMap
 from .application import DeliveryApplication, build_application
 from .domain.candidate_issues import CandidateSpec
 from .domain.errors import DeliveryContractError, DeliverySourceError
+from .domain.runtime_models import RuntimeReceipt, RuntimeState
 from .domain.states import HoldKind
 from .services.candidate_contract import parse_candidate_body, render_candidate_body
 from .services.pr_contract import validate_pull_request_body
@@ -79,6 +80,24 @@ def _parser() -> argparse.ArgumentParser:
     )
     watchdog.add_argument("--supervisor-thread", required=True)
     watchdog.add_argument("--stale-after-seconds", type=int, default=600)
+
+    runtime_receipt = commands.add_parser(
+        "runtime-receipt",
+        help="atomically publish one caller-owned runtime liveness receipt",
+    )
+    runtime_receipt.add_argument("--thread-id", required=True)
+    runtime_receipt.add_argument(
+        "--state", required=True, choices=tuple(item.value for item in RuntimeState)
+    )
+    runtime_receipt.add_argument("--cycle-id", required=True)
+    runtime_receipt.add_argument("--last-action-id")
+    runtime_receipt.add_argument("--clear-last-action", action="store_true")
+    runtime_receipt.add_argument("--expected-cycle-id")
+    runtime_receipt.add_argument("--lease-seconds", type=int)
+    runtime_receipt.add_argument("--lease-until")
+    runtime_receipt.add_argument("--expected-next-event-at")
+    runtime_receipt.add_argument("--last-progress-at")
+    runtime_receipt.add_argument("--observed-at")
 
     validate = commands.add_parser(
         "validate-pr-body", help="validate one durable PR receipt"
@@ -174,6 +193,47 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
             supervisor_thread_id=args.supervisor_thread,
             stale_after_seconds=args.stale_after_seconds,
         )
+    if args.command == "runtime-receipt":
+        if args.clear_last_action and args.last_action_id is not None:
+            raise DeliveryContractError(
+                "runtime receipt cannot both clear and set last_action_id"
+            )
+        observed_at = _runtime_timestamp(args.observed_at, "observed_at")
+        if observed_at is None:
+            observed_at = datetime.now(UTC)
+        last_progress_at = _runtime_timestamp(
+            args.last_progress_at, "last_progress_at"
+        ) or observed_at
+        lease_until = _runtime_timestamp(args.lease_until, "lease_until")
+        if args.lease_seconds is not None:
+            if args.lease_seconds <= 0:
+                raise DeliveryContractError("lease_seconds must be positive")
+            if lease_until is not None:
+                raise DeliveryContractError(
+                    "runtime receipt cannot set lease_until and lease_seconds"
+                )
+            lease_until = observed_at + timedelta(seconds=args.lease_seconds)
+        expected_next_event_at = _runtime_timestamp(
+            args.expected_next_event_at, "expected_next_event_at"
+        )
+        last_action_id = args.last_action_id
+        if last_action_id is None and not args.clear_last_action:
+            current = application.runtime.runtime_receipt(args.thread_id)
+            last_action_id = current.last_action_id if current is not None else None
+        receipt = RuntimeReceipt(
+            thread_id=args.thread_id,
+            state=RuntimeState(args.state),
+            last_progress_at=last_progress_at,
+            observed_at=observed_at,
+            lease_until=lease_until,
+            expected_next_event_at=expected_next_event_at,
+            cycle_id=args.cycle_id,
+            last_action_id=last_action_id,
+        )
+        return application.write_runtime_receipt(
+            receipt=receipt,
+            expected_cycle_id=args.expected_cycle_id,
+        )
     if args.command == "validate-pr-body":
         body = (
             sys.stdin.read()
@@ -235,6 +295,19 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
     if args.command == "sync-main":
         return application.sync_main()
     raise AssertionError(f"unhandled command: {args.command}")
+
+
+def _runtime_timestamp(value: str | None, name: str) -> datetime | None:
+    if value is None:
+        return None
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as error:
+        raise DeliveryContractError(f"{name} must be ISO-8601") from error
+    if parsed.utcoffset() is None:
+        raise DeliveryContractError(f"{name} must include a timezone")
+    return parsed
 
 
 def _result_exit_code(command: str, result: object) -> int:

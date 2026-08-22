@@ -23,7 +23,12 @@ from .controller.metrics import measure_merge_cadence, measure_pipeline
 from .controller.runtime_watchdog import evaluate_runtime_watchdog
 from .controller.worktree_boundary import partition_worktrees
 from .domain import errors, models, observations, states
-from .ports.runtime import AgentRuntimePort, RuntimeReceiptPort
+from .domain.runtime_models import RuntimeReceipt
+from .ports.runtime import (
+    AgentRuntimePort,
+    RuntimeReceiptPort,
+    RuntimeReceiptStorePort,
+)
 from .ports.telemetry import TelemetryStorePort
 from .services import (
     abandon,
@@ -113,6 +118,23 @@ class DeliveryApplication:
             self.runtime.runtime_receipt(supervisor_thread_id),
             now=observed_at,
             stale_after_seconds=stale_after_seconds,
+        )
+
+    def write_runtime_receipt(
+        self,
+        *,
+        receipt: RuntimeReceipt,
+        expected_cycle_id: str | None = None,
+    ) -> RuntimeReceipt:
+        """Write caller-owned liveness evidence, never dispatch an agent."""
+
+        if not isinstance(self.runtime, RuntimeReceiptStorePort):
+            raise errors.PolicyViolation(
+                "runtime receipt writes require --runtime-status-file"
+            )
+        return self.runtime.write(
+            receipt,
+            expected_cycle_id=expected_cycle_id,
         )
 
     def dogfood_preflight(
