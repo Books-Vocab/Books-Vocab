@@ -120,6 +120,17 @@ class FakeGit:
         return self.live_main
 
 
+class DriftingGit(FakeGit):
+    def __init__(self, *sha_sequence: str) -> None:
+        super().__init__(sha_sequence[0])
+        self.sha_sequence = list(sha_sequence)
+
+    def origin_main_sha(self) -> str:
+        if len(self.sha_sequence) > 1:
+            return self.sha_sequence.pop(0)
+        return self.sha_sequence[0]
+
+
 class FakeGitHub:
     def __init__(
         self,
@@ -215,6 +226,21 @@ def test_exact_claim_isolated_from_unrelated_inventory_problems() -> None:
     service.enqueue(receipt=receipt, pull_request_number=11)
 
     assert github.enqueue_calls
+
+
+def test_queue_rechecks_live_main_before_mutation() -> None:
+    receipt = _receipt()
+    github = FakeGitHub(receipt)
+    service = QueueService(
+        registry=FakeRegistry(_registry(receipt)),
+        git=DriftingGit(BASE, "d" * 40),
+        github_query=github,
+        github_command=github,
+    )
+
+    with pytest.raises(PolicyViolation, match="changed during queue admission"):
+        service.enqueue(receipt=receipt, pull_request_number=11)
+    assert not github.enqueue_calls
 
 
 @pytest.mark.parametrize(

@@ -84,11 +84,14 @@ class GitHubIssueQueries:
     def list_open_issues(self) -> DemandIssueInventory:
         payloads: list[object] = []
         cursor: str | None = None
+        seen_cursors: set[str | None] = {None}
         for _ in range(100):
             payload = self._graphql(cursor=cursor)
             data = payload.get("data")
             repository = data.get("repository") if isinstance(data, Mapping) else None
-            connection = repository.get("issues") if isinstance(repository, Mapping) else None
+            connection = (
+                repository.get("issues") if isinstance(repository, Mapping) else None
+            )
             if not isinstance(connection, Mapping):
                 raise AdapterPayloadError("GitHub open Issue connection is malformed")
             nodes = connection.get("nodes")
@@ -102,7 +105,9 @@ class GitHubIssueQueries:
                     payloads.append(node)
                     continue
                 labels = node.get("labels")
-                label_nodes = labels.get("nodes") if isinstance(labels, Mapping) else None
+                label_nodes = (
+                    labels.get("nodes") if isinstance(labels, Mapping) else None
+                )
                 payloads.append(
                     {
                         "id": node.get("id"),
@@ -122,5 +127,10 @@ class GitHubIssueQueries:
                 return parse_demand_issue_inventory(payloads)
             if type(end_cursor) is not str or not end_cursor:
                 raise AdapterPayloadError("GitHub Issue pagination cursor is missing")
+            if end_cursor in seen_cursors:
+                raise DeliverySourceError(
+                    "GitHub open Issue pagination cursor repeated before completion"
+                )
+            seen_cursors.add(end_cursor)
             cursor = end_cursor
         raise DeliverySourceError("GitHub open Issue pagination exceeded 100 pages")

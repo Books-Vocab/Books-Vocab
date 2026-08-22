@@ -85,11 +85,9 @@ def collect_inventory_sources(
         except DeliverySourceError as error:
             raw_issue_inventory = DemandIssueInventory(
                 records=(),
-                raw_count=0,
+                raw_count=None,
                 complete=False,
-                problems=(
-                    InventoryProblem("github", "open-issues", str(error)),
-                ),
+                problems=(InventoryProblem("github", "open-issues", str(error)),),
             )
         github_problems.extend(raw_issue_inventory.problems)
     else:

@@ -119,7 +119,11 @@ def assess_dogfood_readiness(
         and cadence_within_target
     )
     warnings: list[str] = []
-    if metrics.unadmitted_open_issues:
+    if metrics.unadmitted_open_issues is None:
+        warnings.append(
+            "raw open Issue inventory is incomplete; backlog cardinality is unknown"
+        )
+    elif metrics.unadmitted_open_issues:
         warnings.append(
             "raw open Issues remain unadmitted; dogfood launch is not backlog-drained"
         )
