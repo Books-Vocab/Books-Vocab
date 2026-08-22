@@ -48,6 +48,7 @@ class GitHubCliAdapter:
         self.repo = (repo or Path.cwd()).resolve()
         self.runner = runner or SubprocessCommandRunner()
         self._pull_request_snapshot_cache: dict[int, PullRequestSnapshot] = {}
+        self._required_observation_numbers: tuple[int, ...] = ()
         self._open_observations_pending = False
         self.queue = GitHubQueueGraphQLAdapter(repo=self.repo, runner=self.runner)
         self._client = GitHubCliClient(repo=self.repo, runner=self.runner)
@@ -127,6 +128,9 @@ class GitHubCliAdapter:
         self._pull_request_snapshot_cache = {
             item.number: item for item in inventory.records
         }
+        self._required_observation_numbers = tuple(
+            item.number for item in inventory.records
+        )
         self._open_observations_pending = True
         return inventory
 
@@ -167,6 +171,17 @@ class GitHubCliAdapter:
         return self._queries.get_pull_request(number)
 
     def required_check_snapshot(self, number: int) -> CheckSnapshot:
+        if self._required_observation_numbers:
+            numbers = self._required_observation_numbers
+            self._required_observation_numbers = ()
+            prime = getattr(self._checks, "prime_required_snapshots", None)
+            if callable(prime):
+                try:
+                    prime(numbers)
+                except (AdapterCommandError, AdapterPayloadError):
+                    # The singular exact-head read remains the compatibility
+                    # fallback when batch observation is unavailable or fails.
+                    pass
         return self._checks.required_snapshot(number)
 
     def changed_paths(self, number: int) -> tuple[str, ...]:
