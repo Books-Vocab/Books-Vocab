@@ -10,7 +10,7 @@ scope:
   - ops/worktree_orchestrate.py
   - ops/devops_kg_safe.sh
   - ops/release.sh
-verified_against: 2a7930c04f661c266ce05b3568f375e1db2a39f1
+verified_against: afe016c4ea2fcbd7306f9c4f40b4556e77865100
 -->
 # KG Change Runbook
 
@@ -46,7 +46,7 @@ workflow `pr-gate` 的 check run `confidence` 失敗、非預期 skip、取消�
 
 ## Deterministic delivery control cycle
 
-唯一 command 入口是 `ops/delivery.py`。它輸出 `kg.delivery.command.v1` JSON；成功為 `ok: true`／exit 0，contract、source、CAS 或 I/O failure 為 `ok: false`／exit 1。`dogfood-preflight` 完成觀測但 launch baseline 尚未 ready 時保留 `ok: true` 與完整 blockers、回 exit 2，方便啟動器 fail closed。global option 必須放在 subcommand 前；`--repo` 預設 current working directory，`--runtime-status-file` 是 caller 提供的單一 `kg.delivery.runtime.v1` receipt 檔，缺檔代表 `unknown`，不猜 reachable。`runtime-receipt` 以 atomic replace、時間單調性與可選 cycle CAS 寫入同一檔案；它只記錄 caller-owned liveness，不保存 Issue／PR／queue lifecycle。`dogfood-preflight` 的 supervision checkout 必須以重複的 `--supervision-worktree` exact path 明確傳入，未列出的 physical worktree 不得被排除。`watchdog` 是約 300 秒的 liveness tick，不是完整 pipeline 的固定執行週期；它只產生 `noop`、`wake` 或 `escalate` 決策，實際喚醒由外部 Codex scheduler 負責。`RUNNING` runtime 過期只會 `escalate`，禁止猜測並行喚醒；只有非 active 的外部 thread 狀態加上 stale `IDLE`／到期 `WAITING` receipt 才可發一次 `wake_id`，scheduler 必須記錄該 `wake_id` 後才可結束本次 tick。`--repo` 只選 Git／GitHub 的 canonical target 與其明確 registry state；registry command module 在程序啟動時從正在執行的 `delivery.py` 同版本載入，且每次 registry mutation 先證明來源 checkout clean、source HEAD 與 target HEAD 完全相同，避免 stale detached checkout 套用舊 control-plane 語義。當 `delivery.py` 在 linked owner worktree 內執行時，Git mutation 仍錨定受保護的 `main` checkout，來源 worktree 只作 source-provenance target，確保 publication cleanup 不會嘗試移除自身執行中的 checkout；移除來源 worktree 後仍能完成最後 CAS。
+唯一 command 入口是 `ops/delivery.py`。它輸出 `kg.delivery.command.v1` JSON；成功為 `ok: true`／exit 0，contract、source、CAS 或 I/O failure 為 `ok: false`／exit 1。`dogfood-preflight` 完成觀測但 launch baseline 尚未 ready 時保留 `ok: true` 與完整 blockers、回 exit 2，方便啟動器 fail closed。global option 必須放在 subcommand 前；`--repo` 預設 current working directory，`--runtime-status-file` 是 caller 提供的單一 `kg.delivery.runtime.v1` receipt 檔，缺檔代表 `unknown`，不猜 reachable。`runtime-receipt` 以 atomic replace、時間單調性與可選 cycle CAS 寫入同一檔案；它只記錄 caller-owned liveness，不保存 Issue／PR／queue lifecycle。`dogfood-preflight` 的 supervision checkout 必須以重複的 `--supervision-worktree` exact path 明確傳入，未列出的 physical worktree 不得被排除。`watchdog` 是約 300 秒的唯讀 liveness tick，只產生 `noop`、`wake` 或 `escalate` 決策；它不能被 scheduler 當成喚醒授權。需要實際喚醒時，scheduler 必須改用同一 receipt 檔的 `watchdog-claim`，只有收到 `action=wake` 且 `wake_claimed=true` 才能建立一次 turn；`escalate`、`noop` 或 `wake_claimed=false` 都不得建立 session。`watchdog-claim` 在外部 dispatch 前以 receipt 的 cycle／last-action CAS 原子保留 wake；同一 stale receipt 的第二次呼叫會回 `escalate`，不會重送 wake。`RUNNING` runtime 過期只會 `escalate`，禁止猜測並行喚醒；只有非 active 的外部 thread 狀態加上 stale `IDLE`／到期 `WAITING` receipt 才可發一次 `wake_id`。`--repo` 只選 Git／GitHub 的 canonical target 與其明確 registry state；registry command module 在程序啟動時從正在執行的 `delivery.py` 同版本載入，且每次 registry mutation 先證明來源 checkout clean、source HEAD 與 target HEAD 完全相同，避免 stale detached checkout 套用舊 control-plane 語義。當 `delivery.py` 在 linked owner worktree 內執行時，Git mutation 仍錨定受保護的 `main` checkout，來源 worktree 只作 source-provenance target，確保 publication cleanup 不會嘗試移除自身執行中的 checkout；移除來源 worktree 後仍能完成最後 CAS。
 
 ### 先觀測，再執行 exact action
 
@@ -57,7 +57,11 @@ workflow `pr-gate` 的 check run `confidence` 失敗、非預期 skip、取消�
 ./ops/delivery.py --runtime-status-file <supervisor-runtime.json> runtime-receipt \
   --thread-id <supervisor-thread> --state running --cycle-id <cycle-id> \
   --lease-seconds 600 --clear-last-action
+./ops/delivery.py --runtime-status-file <supervisor-runtime.json> watchdog-claim \
+  --supervisor-thread <supervisor-thread> --stale-after-seconds 300
 ```
+
+外部 scheduler 只能用 `watchdog-claim` 的 `wake_claimed=true` 結果喚醒 Supervisor；`watchdog` 保留給唯讀觀測。收到 `wake` 但未取得 claim、`noop` 或 `escalate` 時，scheduler 必須結束本 tick，不建立 Codex session。
 
 - `inspect` 分類每條 known／unmapped lane，並分開回傳 lane problems 與 source problems。
 - `metrics` 量測 GitHub open exact-label candidate Issues（排除 nonterminal registry occupancy）、REANCHOR、active、publishable、durable PR、required-running／green／failed、native queue depth、cleanup、blocked 與 physical worktree reservoirs；candidate query／parsing failure 進 source problem。另把 live facts 與 canonical checkout `.cache/delivery_telemetry.ndjson` 的 append-only duration evidence 合併，計算最近一小時 hand-back→PR、PR→required-start、required duration、required-success→native enqueue、merge→main sync、merge→terminal cleanup 的 sample count／p95，並輸出 collision／required failure rate 與 idle worktree。telemetry 不是 lifecycle ledger；寫入失敗只回傳 machine warning，不回滾已完成的 publish／queue／cleanup／sync。malformed journal、CAS conflict 或跨來源時間倒流仍是 source problem，不被當成快速交付。
