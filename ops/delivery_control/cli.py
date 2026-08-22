@@ -86,6 +86,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     watchdog.add_argument("--supervisor-thread", required=True)
     watchdog.add_argument("--stale-after-seconds", type=int, default=300)
+    watchdog_claim = commands.add_parser(
+        "watchdog-claim",
+        help="atomically claim one stale wake before external scheduler dispatch",
+    )
+    watchdog_claim.add_argument("--supervisor-thread", required=True)
+    watchdog_claim.add_argument("--stale-after-seconds", type=int, default=300)
 
     runtime_receipt = commands.add_parser(
         "runtime-receipt",
@@ -226,6 +232,11 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
         )
     if args.command == "watchdog":
         return application.watchdog(
+            supervisor_thread_id=args.supervisor_thread,
+            stale_after_seconds=args.stale_after_seconds,
+        )
+    if args.command == "watchdog-claim":
+        return application.watchdog_claim(
             supervisor_thread_id=args.supervisor_thread,
             stale_after_seconds=args.stale_after_seconds,
         )

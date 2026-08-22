@@ -11,11 +11,11 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.cli import DeliveryApplication, RuntimeStatusMap, main
-from delivery_control.domain.candidate_issues import CandidateSeverity, CandidateSpec
-from delivery_control.domain.errors import CompareAndSwapConflict
-from delivery_control.domain.models import CheckStatus, Scope
-from delivery_control.domain.observations import (
+from delivery_control.cli import DeliveryApplication, RuntimeStatusMap, main  # noqa: E402
+from delivery_control.domain.candidate_issues import CandidateSeverity, CandidateSpec  # noqa: E402
+from delivery_control.domain.errors import CompareAndSwapConflict  # noqa: E402
+from delivery_control.domain.models import CheckStatus, Scope  # noqa: E402
+from delivery_control.domain.observations import (  # noqa: E402
     CanonicalCheckoutSnapshot,
     CheckSnapshot,
     FileChange,
@@ -31,9 +31,9 @@ from delivery_control.domain.observations import (
     RegistrySnapshot,
     WorktreeSnapshot,
 )
-from delivery_control.domain.states import HoldKind
-from delivery_control.domain.telemetry import DurationSample, TelemetryReadResult
-from delivery_control.services.pr_contract import render_pull_request_body
+from delivery_control.domain.states import HoldKind  # noqa: E402
+from delivery_control.domain.telemetry import DurationSample, TelemetryReadResult  # noqa: E402
+from delivery_control.services.pr_contract import render_pull_request_body  # noqa: E402
 
 BASE = "a" * 40
 HEAD = "b" * 40
@@ -793,6 +793,35 @@ def test_cli_exposes_watchdog_without_dispatching(capsys: object) -> None:
     payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
     assert payload["command"] == "watchdog"
     assert payload["result"]["action"] == "noop"
+
+
+def test_cli_exposes_watchdog_claim_before_external_dispatch(capsys: object) -> None:
+    class FakeApplication:
+        def watchdog_claim(
+            self,
+            *,
+            supervisor_thread_id: str,
+            stale_after_seconds: int,
+        ) -> object:
+            assert supervisor_thread_id == "supervisor-thread"
+            assert stale_after_seconds == 300
+            return {
+                "action": "wake",
+                "wake_id": "wake-1",
+                "wake_claimed": True,
+            }
+
+    assert (
+        main(
+            ["watchdog-claim", "--supervisor-thread", "supervisor-thread"],
+            application_factory=lambda **_: FakeApplication(),
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert payload["command"] == "watchdog-claim"
+    assert payload["result"]["wake_claimed"] is True
 
 
 def test_cli_publishes_atomic_runtime_receipt(tmp_path: Path, capsys: object) -> None:
