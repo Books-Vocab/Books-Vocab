@@ -26,6 +26,10 @@ setup_repo() {
   git -C "$TMP/work" branch -M main
   git -C "$TMP/work" remote add origin "$TMP/origin.git"
   git -C "$TMP/work" push -u origin main >/dev/null
+  # A bare repository inherits the runner's init.defaultBranch.  Make its
+  # advertised default explicit so the clone fixture does not depend on
+  # whether the host defaults to main, master, or another branch name.
+  git -C "$TMP/origin.git" symbolic-ref HEAD refs/heads/main
 
   cat >"$TMP/bin/gh" <<'GH'
 #!/usr/bin/env bash
