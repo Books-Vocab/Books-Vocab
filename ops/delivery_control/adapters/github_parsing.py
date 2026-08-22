@@ -82,12 +82,19 @@ def parse_pull_request_inventory(
         raise AdapterPayloadError("GitHub PR list must be a JSON list")
     records: list[PullRequestSnapshot] = []
     problems: list[InventoryProblem] = []
+    seen_numbers: set[int] = set()
     for index, item in enumerate(payload):
         identity = f"entry[{index}]"
         if isinstance(item, Mapping):
             identity = f"PR#{item.get('number', index)}"
             try:
-                records.append(parse_record(item))
+                pull_request = parse_record(item)
+                if pull_request.number in seen_numbers:
+                    raise AdapterPayloadError(
+                        "GitHub PR inventory contains a duplicate number"
+                    )
+                seen_numbers.add(pull_request.number)
+                records.append(pull_request)
                 continue
             except AdapterPayloadError as error:
                 reason = str(error)
