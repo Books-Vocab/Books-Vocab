@@ -33,6 +33,7 @@ DEFAULT_TESTS=(
   branch-audit
   exit-code-contract
   worktree
+  delivery-control
   capability-matrix
   context-routing
   ui-deadcode
@@ -122,9 +123,42 @@ run_one() {
     worktree)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_worktree_registry.py \
+        ops/tests/test_worktree_registry_admission.py \
+        ops/tests/test_worktree_registry_handback.py \
+        ops/tests/test_worktree_registry_lifecycle.py \
+        ops/tests/test_worktree_registry_maintenance.py \
         ops/tests/test_worktree_orchestrate.py \
+        ops/tests/test_worktree_recovery_lifecycle.py \
         ops/tests/test_task_registry.py \
         ops/tests/test_lock_wait.py
+      ;;
+    delivery-control)
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_delivery_models.py \
+        ops/tests/test_delivery_states.py \
+        ops/tests/test_delivery_ports.py \
+        ops/tests/test_delivery_git_adapter.py \
+        ops/tests/test_delivery_registry_adapter.py \
+        ops/tests/test_delivery_github_adapter.py \
+        ops/tests/test_delivery_github_queue.py \
+        ops/tests/test_delivery_module_runner.py \
+        ops/tests/test_delivery_registry_runtime.py \
+        ops/tests/test_delivery_application.py \
+        ops/tests/test_delivery_inspect.py \
+        ops/tests/test_delivery_holds.py \
+        ops/tests/test_delivery_metadata.py \
+        ops/tests/test_delivery_pr_contract.py \
+        ops/tests/test_delivery_candidate_contract.py \
+        ops/tests/test_delivery_publish.py \
+        ops/tests/test_delivery_cleanup.py \
+        ops/tests/test_delivery_queue.py \
+        ops/tests/test_delivery_required_repair.py \
+        ops/tests/test_delivery_abandon.py \
+        ops/tests/test_delivery_controller.py \
+        ops/tests/test_delivery_timings.py \
+        ops/tests/test_delivery_telemetry.py \
+        ops/tests/test_delivery_cli.py &&
+      ./ops/tests/test_pr_readiness_workflow.sh
       ;;
     capability-matrix)
       "$UV_BIN" run --python 3.13 --with pytest --with 'cryptography>=48,<49' pytest -q \

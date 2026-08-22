@@ -11,12 +11,29 @@ on:
     # its full-confidence fan-out without producing new code evidence.
     types: [opened, synchronize, reopened]
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Exact pull request number
+        required: true
+        type: string
+      base_sha:
+        description: Exact pull request base SHA
+        required: true
+        type: string
+      head_sha:
+        description: Exact pull request head SHA
+        required: true
+        type: string
 
 permissions:
   contents: read
 
+env:
+  BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.base_sha || github.event.pull_request.base.sha }}
+  HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.head_sha || github.event.pull_request.head.sha }}
+
 concurrency:
-  group: pr-gate-${{ github.event.pull_request.number || github.ref }}
+  group: pr-gate-${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
@@ -25,30 +42,46 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      - name: Reject manual dispatch ref drift
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        shell: bash
+        env:
+          EVENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_SHA" != "$HEAD_SHA" ]]; then
+            echo "manual dispatch ref drift: event SHA $EVENT_SHA does not match requested HEAD_SHA $HEAD_SHA" >&2
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          ref: ${{ env.HEAD_SHA }}
+
+      - name: Verify exact head checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          if [[ "$actual_sha" != "$HEAD_SHA" ]]; then
+            echo "checkout drift: expected $HEAD_SHA, got $actual_sha" >&2
+            exit 1
+          fi
 
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
 
       - name: Check repository diff
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          if [[ -n "$BASE_SHA" ]]; then
-            git diff --check "$BASE_SHA" "$HEAD_SHA"
-          else
-            git diff --check HEAD^ "$HEAD_SHA"
-          fi
+          git diff --check "$BASE_SHA" "$HEAD_SHA"
 
       - name: Check ops test coverage classification
         run: ./ops/tests/test_ops_ci_coverage.sh
 
       - name: Run repository gate
-        run: ./ops/test_ops.sh docs-lint worktree context-routing github-workflows
+        run: ./ops/test_ops.sh docs-lint worktree context-routing github-workflows delivery-control
 
   changed-paths:
     name: classify confidence scope
@@ -63,20 +96,24 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          ref: ${{ env.HEAD_SHA }}
 
-      - name: Classify non-blocking confidence scope
-        id: plan
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact head checkout
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -n "$BASE_SHA" ]]; then
-            ./ops/ci_scope_router.sh --base "$BASE_SHA" --head "$HEAD_SHA" --format github-output >> "$GITHUB_OUTPUT"
-          else
-            ./ops/ci_scope_router.sh --all --format github-output >> "$GITHUB_OUTPUT"
+          actual_sha="$(git rev-parse HEAD)"
+          if [[ "$actual_sha" != "$HEAD_SHA" ]]; then
+            echo "checkout drift: expected $HEAD_SHA, got $actual_sha" >&2
+            exit 1
           fi
+
+      - name: Classify non-blocking confidence scope
+        id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./ops/ci_scope_router.sh --base "$BASE_SHA" --head "$HEAD_SHA" --format github-output >> "$GITHUB_OUTPUT"
 
   backend-quality:
     name: backend-quality
@@ -135,6 +172,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ env.HEAD_SHA }}
+
+      - name: Verify exact head checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          if [[ "$actual_sha" != "$HEAD_SHA" ]]; then
+            echo "checkout drift: expected $HEAD_SHA, got $actual_sha" >&2
+            exit 1
+          fi
 
       - name: Report the complete validation fan-out
         env:

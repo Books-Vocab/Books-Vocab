@@ -20,6 +20,9 @@ agent_facing_surface:
     - ops/skill_route.py
     - ops/agent_onboard.py
     - ops/capability_matrix.py
+    - ops/delivery.py
+    - ops/delivery_control/
+    - ops/worktree_registry_core/
 
 documents:
   - id: contract.sync_lifecycle
@@ -114,6 +117,7 @@ documents:
       - docs/runbook/system.md
       - docs/sop/review_discipline.md
       - docs/sop/doc_sync.md
+      - docs/sop/delivery_control_dogfood.md
       - docs/sop/release.md
       - ops/context_plane.json
       - ops/context_route.py
@@ -121,6 +125,8 @@ documents:
       - .claude/skills/catalog.json
       - ops/task_registry.py
       - ops/lib/streaming_command.py
+      - ops/delivery.py
+      - ops/delivery_control/
       - ops/worktree_registry.py
       - ops/worktree_orchestrate.py
 
@@ -365,6 +371,8 @@ documents:
       - ops/context_plane.json
       - ops/context_route.py
       - ops/skill_route.py
+      - ops/delivery.py
+      - ops/delivery_control/
       - ops/worktree_registry.py
       - ops/worktree_orchestrate.py
       - ops/release.sh
@@ -482,6 +490,22 @@ documents:
     sources:
       - docs/
       - ops/docs_lint.sh
+
+  - id: sop.delivery_control_dogfood
+    path: docs/sop/delivery_control_dogfood.md
+    kind: sop
+    authority: derived
+    triggers:
+      - delivery-control-dogfood-changed
+    sources:
+      - docs/reference/delivery_model.md
+      - ops/delivery.py
+      - ops/delivery_control/
+      - ops/worktree_registry.py
+      - ops/worktree_orchestrate.py
+      - .github/workflows/pr-readiness.yml
+      - .github/workflows/pr-gate.yml
+      - .github/workflows/merge-group-required.yml
 
   - id: sop.figma_token_workflow
     path: docs/sop/figma-token-workflow.md

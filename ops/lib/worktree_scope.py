@@ -12,7 +12,7 @@ import posixpath
 from pathlib import PurePosixPath
 
 SCOPE_SCHEMA = "kg.worktree.scope.v1"
-SCOPE_OPERATIONS = ("add", "modify")
+SCOPE_OPERATIONS = ("add", "modify", "delete")
 
 
 def _normalise_path(value: object) -> tuple[str | None, str | None]:

@@ -13,12 +13,15 @@ scope:
   - docs/runbook/system.md
   - docs/sop/review_discipline.md
   - docs/sop/doc_sync.md
+  - docs/sop/delivery_control_dogfood.md
   - docs/sop/release.md
   - ops/context_plane.json
   - ops/context_route.py
   - ops/agent_onboard.py
   - ops/task_registry.py
   - ops/lib/streaming_command.py
+  - ops/delivery.py
+  - ops/delivery_control/
   - ops/worktree_registry.py
   - ops/worktree_orchestrate.py
 verified_against: 2a7930c04f661c266ce05b3568f375e1db2a39f1
@@ -33,6 +36,8 @@ GitHub 是整套交付控制面：
 
 | 交付問題 | 唯一 owner |
 |---|---|
+| 新工作、風險與缺口的發現 | User／Backlog Scout（observation） |
+| 需要排序、追蹤或 fan-out 的 durable demand | GitHub Issue |
 | 要不要做、為什麼做、完成判準 | GitHub Issue（可選） |
 | 優先順序、視圖、里程碑 | GitHub Project |
 | 一次實作的隔離空間 | branch + local worktree |
@@ -48,7 +53,7 @@ GitHub 是整套交付控制面：
 所有 code change 都要走：
 
 ```text
-branch → commit → PR → Actions + CR + DS → CM merge → main → release/deploy（若有明確意圖）
+branch → commit → PR → required + advisory confidence／CR／DS → CM merge → main → release/deploy（若有明確意圖）
 ```
 
 `main` 不接受直接寫入。merge 不是 production approval；release、deploy、health gate、rollback 仍由各自安全邊界控制。
@@ -80,6 +85,15 @@ Onboarding 的成功只代表上下文 contract 完整，不代表 GitHub、merg
 
 Release operator 是 CM 所管理的執行能力，不是另一套產品管理層：它只能依 release SOP 與明確批准執行發布、部署或 rollback。
 
+### Backlog Scout 與 PI 控制職能
+
+Backlog Scout 與 PI 是交付控制迴圈中的職能，不是新的 canonical onboarding identity，也不擁有本地 backlog／PR lifecycle：
+
+- **Backlog Scout** 接收 User 發現或主動觀測缺口；需要排序、追蹤、拆解或未來 fan-out 時，先把需求與 acceptance 固化到 GitHub Issue。Scout 可依 deterministic controller 的 capacity 建議 fan-out：Issue-backed 工作交 Issue Solver；只有已具備 User／IM direct-assignment packet、`dispatch_channel` 與 recipient 的 bounded 工作才交 Worker。聊天只運送 assignment，不是需求或狀態 SoT。
+- **PI** 是 IM 承擔的 publication/integration execution 職能。它收到 exact typed hand-back 後立即把 branch／PR 發布到 GitHub，再釋放 local worktree／branch；不等待 CI 才建立 PR，也不把 publication 誤報成 Ready。GitHub remote branch + PR 才是等待 required／advisory outcomes 的 durable queue。
+- **Supervisor** 在 dogfood 階段只讀取 delivery facts、容量決策與四個 top-level thread 活動，負責 freeze/ramp 與事故升級；它不成為產品 owner、不接管 worktree，也不替 PI／CM 執行 mutation。穩態成立後可降低監控頻率，但不能移除 deterministic gates。
+- Scout fan-out 與 PI publication 都只消費 GitHub、Git、registry 與 typed receipt 的 current facts；controller CLI 不發訊息、不建立 agent chat 狀態，也不另存 Issue／PR／queue lifecycle。
+
 ### 嚴格責任邊界
 
 本模型明確分離「本地實作面」與「GitHub 控制面」：
@@ -91,7 +105,7 @@ Release operator 是 CM 所管理的執行能力，不是另一套產品管理�
 - CM 只處理交付協調、Ready admission、merge queue／merge 與 main synchronization。任何 code 或 PR metadata 修正都退回 IM／原 Worker，不由 CM 代修。
 - CR／DS 各自把 review／docs impact 結論留在 PR；兩者都不修改 caller worktree。
 
-「Ready」分兩層：IM 只能交付一個已存在、非 draft、證據完整的 Ready candidate；CM 必須用當下 live `origin/main`、exact physical HEAD／Scope、required／readiness、typed seal、CR／DS 再驗證後，才可入 queue／merge。
+「Ready」分兩層：IM 只能交付一個已存在、非 draft、證據完整的 Ready candidate；CM 必須用當下 live `origin/main`、exact physical HEAD／Scope、required／readiness、typed seal、branch rules 與 durable hold 再驗證後，才可入 queue／merge。CR／DS 仍把結論留在 PR，但 routine／advisory 結論不形成隱性 hard gate；只有被 repository rule 要求或升級成 P0／P1／security hold 才阻擋。
 
 `ops/context_plane.json` 與 `ops/context_route.py` 內部保留執行層 mapping 以維持既有入口相容；這些 key 不屬於 canonical identity、權限或工作狀態，不應出現在 agent-facing onboarding、assignment 或交接語義中。
 
@@ -102,15 +116,15 @@ Release operator 是 CM 所管理的執行能力，不是另一套產品管理�
 適用於 User 或 IM 已經清楚知道要改什麼的明確工作，例如小型修復、界定清楚的重構或直接交辦。它不需要 Issue，也不進入 Issue 排序。
 
 ```text
-User / IM
+User / IM / Backlog Scout（完整 direct-assignment packet）
     ↓ direct assignment
 Worker
     ↓
-branch + worktree → code + tests → local commit + hand-back
+branch + worktree → code + tests → local commit + typed hand-back
     ↓
-IM push exact commit → Draft/non-draft PR
+PI publish exact commit + PR → release local worktree/branch
     ↓
-Actions + CR + DS → CM Ready admission → merge queue/merge → main → release/deploy（若需要）
+GitHub durable PR → required + advisory confidence／CR／DS → CM native merge queue → main → release/deploy（若需要）
 ```
 
 PR 仍必須寫清楚指派內容、修改範圍、驗收方式、測試證據、文件影響與 production／rollback 風險。
@@ -125,66 +139,86 @@ PR 仍必須寫清楚指派內容、修改範圍、驗收方式、測試證據�
 適用於需要討論、排序、拆解、Project／milestone 視圖或未來追蹤的工作。
 
 ```text
-IM
+User / Backlog Scout
     ↓
-GitHub Issue → Project priority / triage
+GitHub Issue → Project priority / triage → Scout fan-out
     ↓
 Issue Solver claim
     ↓
-IM 建立 dedicated worktree → code + tests → local commit + hand-back
+IM 建立 dedicated worktree → code + tests → local commit + typed hand-back
     ↓
-IM push exact commit → Draft/non-draft PR
+PI publish exact commit + PR → release local worktree/branch
     ↓
-Actions + CR + DS → CM Ready admission → merge queue/merge → main → release/deploy（若需要）
+GitHub durable PR → required + advisory confidence／CR／DS → CM native merge queue → main → release/deploy（若需要）
 ```
 
 Issue 的 acceptance 是需求真相；PR 的 diff、conversation、checks、review 與驗證證據是實作真相。Issue 關聯可由 PR 自動 close，但不把 Issue 狀態再寫入 repo。
 
 ## PR 收斂規則
 
-Worker 與 Issue Solver 的實作能力、測試要求與 local hand-back 標準相同，差別是 Worker 處理 direct assignment、Issue Solver 只消除 Issue work。PR 由 IM 從 exact hand-back 建立；每個 PR 應讓人能回答：
+Worker 與 Issue Solver 的實作能力、測試要求與 local hand-back 標準相同，差別是 Worker 處理 direct assignment、Issue Solver 只消除 Issue work。PI 由 IM 負責，從 exact hand-back 立即建立或修復同一個 PR，再釋放 local assets；每個 PR 應讓人能回答：
 
 - 這是 direct assignment 還是 Issue work；若有 Issue，關聯哪一張。
 - 改了什麼、為什麼改、範圍與非目標是什麼。
 - 哪些測試／Actions 實際通過，命令、exit status 與 exact HEAD 是什麼。
 - 是否影響文件、資料、CloudKit、migration、release、deploy 或 rollback。
-- CR 與 DS 是否完成各自檢查；未完成時不得宣稱 ready。
+- CR 與 DS 是否完成各自檢查；未完成時不得宣稱「完整 review／docs 結論已綠」，但不因此偽造未配置的 hard gate。
 
-CM 只在 PR 的 required checks、review、文件影響與安全條件滿足後合併。PR merge 後才進入 release／deploy SOP；任何外部帳號批准、production 寫入或 rollback 仍是獨立的明確動作。
+CM 只在 PR 的 typed contract、required checks、branch rules、mergeability 與安全條件滿足後合併；CR／DS 若揭露 P0／P1／security 必須先成為 durable hold，routine advisory 不等待。PR merge 後才進入 release／deploy SOP；任何外部帳號批准、production 寫入或 rollback 仍是獨立的明確動作。
 
 ### Hand-back、PR 與 cleanup invariant
 
-- local hand-back 不是完成；IM 必須把它轉成真實 PR，否則該工作只能標記為 `hand-back pending PR`，不可算 Ready 或完成。
+- local hand-back 不是完成；PI 必須把它轉成真實 PR，否則該工作只能標記為 `hand-back pending PR`，不可算 Ready 或完成。
 - hand-back 必須保留 dispatch provenance 與 recipient：IM dispatch 回同一 IM；User dispatch 回指定 IM 或 Worker 在交接前選定的 IM；沒有 recipient 不得宣稱 hand-back 完成。
-- typed `kg.worktree.handback.v1` hand-back 必須在交接當下以 `git ls-remote origin refs/heads/main` 捕獲 `origin_main_sha`；若 remote/main 不可讀，或 declared base、live main 與 physical tip 的 ancestry 不相容，必須 fail closed，不能寫入新的 receipt。
-- local hand-back 的 `origin_main_sha` 是交接時的執行證據，不是 current-main Ready 證據；IM／CM 仍須以當下 live `origin/main`、exact physical HEAD／Scope 與 PR checks 重新驗證。`main` 前進後，舊 receipt 必須重新驗證，不得直接當成 Ready。
-- 沒有正在修改 code 的工作，不保留本地 worktree。PR 等待 CI／review 時可保留 remote branch／PR；需要修改時由 IM 重新開 dedicated worktree。
-- CM merge 或明確 terminal abandonment 後，IM 必須同步清理：local worktree、local branch、remote branch。三者任何一項仍存在都算 cleanup incomplete。
+- typed `kg.worktree.handback.v1` hand-back 必須在交接當下以 `git ls-remote origin refs/heads/main` 捕獲 `origin_main_sha`；delivery control 只把這個 registry seal 正規化成 `kg.delivery.handback.v1`，並以 machine receipt 嵌入 PR body。seal 同時綁定 lane／owner thread／claim generation／branch／absolute worktree path／base／parent／HEAD／observed origin main／content digest／structured Scope／focused Validation／初始 P0、P1、security holds；owner、delegation 或 Scope 變更會開始新 generation 並使舊 hand-back 失效，任一不一致都 fail closed。Issue 上宣告的 `initial_holds` 必須由同一 owner 在 hand-back 時逐項帶入；PI 不可把未清除的初始 hold 洗掉。
+- registry 在 `register`／`scope-set` 的同一個 ledger lock 內，同時檢查 external ID 與 structured Scope；`active`、`cleanup_pending` 與尚未 terminal 的 `published` claim 都持續占有 Scope。一般 register 不可把 published branch／path 當成可覆寫 owner；只有 supported same-owner transaction 能先原子終止舊 generation 再建立新 claim。衝突不得延後到 publish 才發現，也不得以 `compact` 消除：compact 只正規化 record shape，不刪除 `active`／`cleanup_pending`／`published`，也不丟棄已驗證的 terminal proof；`merged`／`abandoned` audit history 保持可追溯。
+- local hand-back 的 `origin_main_sha` 是交接時的觀測證據，不是 publication gate 或 current-main Ready 證據。只要 recorded base 同時是 live `origin/main` 與 worktree HEAD 的 ancestor，歷史 base 的 clean committed hand-back 可立即 durable publish；不要求 live `origin/main` 已是 worktree HEAD 的 ancestor。只有 merge-front 才由 CM 以當下 live `origin/main`、exact PR／registry／receipt base、HEAD／Scope 與 required checks 驗證 freshness；`main` 前進後，已發布 PR 留在 GitHub reservoir，輪到 merge-front 時再由同 owner JIT reanchor，舊 receipt 不得直接當成 Ready。
+- PI 的 `publish` transaction 先以 exact readback 讓 remote branch + 非 draft PR durable，再取得 registry `cleanup_pending` lease；lease 期間同 branch／path 不可重新 claim，local worktree／branch 移除並精確讀回後才完成為 `published`。`published` 只證明 local assets 已可釋放，不複製 GitHub PR 狀態。中斷的 lease 必須由同 receipt 重試，PR 等待 CI／review 時只保留 remote branch／PR；需要修改時由 IM 重新開 dedicated worktree。
+- publication 後 required 若揭露 code failure，正確的 local resume 不是保留 idle worktree，也不是用一般 register 覆寫 published owner。PI 先以 `resume-published` 對 exact original generation／owner／branch／remote HEAD／Scope 做 CAS；舊 published generation 以 audit evidence terminalize，新 active generation+1 保留原 recorded base，並從 remote PR HEAD 重建 clean worktree。command 不跑測試、不 hand-back、不 push、不 force-push；原 owner 修復後建立 fresh hand-back，PI 只更新既有唯一 PR。stale merge-front 則使用另一個 `reanchor` transaction，把 fresh generation base 對齊 caller 指定且仍為 live 的 `origin/main`；兩者不可混用。
+- publication 後若 registry CAS 或 local removal 中斷，已建立的 PR 不回退；同一 typed receipt 以 idempotent retry 收斂。local removal 前、每一項 local／remote asset mutation 前與 terminal disposition 前，都重新讀取 exact PR target／branch／head／body tuple；任何 drift 都保留 `cleanup_pending` 與尚未處理的資產。CM merge 後，IM／PI 再以 exact merged PR receipt 清除 remote branch，並以帶 digest 的 `kg.worktree.terminal-proof.v1`（lane、PR number、MERGED state、target=`main`、branch、head）把 local disposition terminalize 為 `merged`；一般 orchestrator 不能直接宣告 merged。任何 SHA／Scope／path drift 都只阻擋該 lane，不得 bulk sweep 或跨 lane 清理。
 - 每次 merge／queue landing 後，CM 必須 `fetch` 並以安全的 fast-forward 路徑使 local `main` 與 `origin/main` 相同；若 local main dirty、diverged 或 drift，停止後續 admission，不得 force reset 掩蓋問題。
 
-### Required merge gate 與 confidence fan-out
+### Required 與 advisory outcomes
 
-`.github/workflows/pr-gate.yml` 的 workflow `pr-gate` 會產生短、可重現的 `required` check run；它只回答這個 PR 是否滿足 repository 基線，不代表所有受影響 domain 都已完整驗證。同一 workflow 的 `confidence` check run 提供完整的**受影響** backend／iOS／UI／ops fan-out；它是 nonblocking confidence evidence，不得被 `required` 的綠燈取代。慢速 backend／ops／iOS lane 由可測的 changed-path policy 選擇：明確無關才會顯示 `skipped`，未知或改動 routing policy 時 fail-closed 為全跑；被選中的 lane 必須 `success`。
+`.github/workflows/pr-readiness.yml` 先用 `ops/delivery.py validate-pr-body` 驗證 PR body 只含一份合法 `kg.delivery.handback.v1` machine receipt，並把 receipt 綁到 exact PR HEAD；workflow 不自行重寫另一套 regex schema。`.github/workflows/pr-gate.yml` 的 workflow `pr-gate` 會產生短、可重現的 `required` check run；它只回答這個 PR 是否滿足 repository 基線，不代表所有受影響 domain 都已完整驗證。若 exact published PR 的 required 為 `ABSENT` 或 `FAILURE`，PI 可用 `trigger-required` 重新 dispatch 同一 workflow；command 在 dispatch 前重讀 unique PR mapping、registry receipt、body、paths、base／HEAD 與目前 check status，manual workflow 也必須收到 exact PR number／base／HEAD，checkout 後再次證明 HEAD。`PENDING`／`SUCCESS` 拒絕重複 dispatch；這個修復不清除 hold，也不產生 merge eligibility。
+
+同一 workflow 的 `confidence` check run 是 advisory outcome：它提供完整的**受影響** backend／iOS／UI／ops fan-out，nonblocking 只代表不佔用 native merge queue 的串行 gate，不代表可忽略。慢速 backend／ops／iOS lane 由可測的 changed-path policy 選擇：明確無關才會顯示 `skipped`，未知或改動 routing policy 時 fail-closed 為全跑；被選中的 lane 必須 `success`。
 
 因此固定採以下判讀：
 
-- `required=success` 才是 merge 的最低 Actions 條件；仍須滿足 CR、DS、branch rules 與其他安全條件。
+- GitHub 對 exact PR HEAD 列出的所有 required checks 都成功，才是 merge 的最低 Actions 條件；仍須滿足 typed receipt、live base、branch rules 與其他安全條件。CR／DS 的 routine advisory 不等待；其 P0／P1／security 發現必須以 durable hold 呈現。
 - `confidence` 失敗、缺失、非預期 `skipped`、取消或未完成時，PR 不得宣稱「完整綠」；也不得進入受影響的 release／deploy 路徑。
 - CM 只有在 GitHub 已顯示 exact merged `main` 對每個被選中的慢速 surface 啟動等價驗證時，才可取消已被取代的 PR confidence；取消本身不是 PASS，完整結論以該 `main` run 的 terminal 結果為準。
 - confidence 結果是 GitHub check run 的證據，不在 repo 內另建本地 confidence／merge 狀態；若要重跑，針對同一 PR HEAD 或 exact `main` 重新觸發 Actions。
 
+### GitHub durable queue 與 CM landing
+
+PI publication 後，remote branch + typed PR 是 durable PR reservoir；local worktree 不是等待區。publication 明確建立 target branch=`main`，並在 preflight 與 final readback 拒絕 retarget race；歷史 base 可以先 durable publish，但不能直接 Ready。canonical body 除 Scope／Validation／receipt 外，也固定產生 Impact 與 `kg.delivery.holds.v1`；`delivery-hold:p0`／`delivery-hold:p1`／`delivery-hold:security` labels、typed holds 與 legacy `PUBLISH ONLY` 取聯集，PI 更新 tuple 不得把 hold 洗掉。若 human-readable metadata 漂移但 typed receipt 仍可解析，PI 可在 exact published registry／HEAD／Scope readback 後 body-only 修復同一 PR，不重建 worktree。CM 只把符合以下 exact tuple 的 candidate 送進 GitHub native merge queue：registry `published` receipt、PR body／changed paths／head、live `origin/main` 與 PR／receipt／registry base、GitHub required outcomes、mergeability，以及沒有 P0／P1／security hold。repository 沒有 native merge queue rule 時必須拒絕，不得改成本地 queue 或手動 merge。
+
+native merge queue 以 exact current base、exact head、canonical typed body 與 target branch=`main` admission；adapter 只呼叫 GraphQL `enqueuePullRequest(expectedHeadOid)`，不使用可能直接合併的 auto-merge CLI。inventory 直接觀測 GraphQL `mergeQueueEntry` 並把已入列 PR 分成 `pr_queued`；admission 後 `main` tip 前進不是 receipt failure，merge queue 會建立新 merge group 並重跑獨立、短且 blocking 的 `required`。若 PR 被 retarget 或 head／body 改變，只有 queue entry ID 仍是本次 transaction 建立的 entry 才能 `dequeuePullRequest`，replacement entry 必須保留並 fail closed。landing 後 CM 只在 canonical checkout clean、位於 `main` 且 local／origin refs 仍符合 preflight 時做 `--ff-only` sync；任何 race、dirty 或 divergence 都 fail closed。
+
+## Deterministic feedback controller
+
+四個 top-level tasks 的首次上線、canary promotion、freeze／rollback 與完成條件依 [`docs/sop/delivery_control_dogfood.md`](../sop/delivery_control_dogfood.md)；正式 tasks 只能在 deterministic `dogfood-preflight` 通過後建立。
+
+`ops/delivery.py` 是一次一個 command 的 deterministic control surface，不是 daemon、agent dispatcher 或狀態庫。`inspect` 從 registry、physical worktrees、GitHub PR／required checks 與 caller 提供的 owner runtime facts 分類每條 lane；`metrics` 只量測 reservoirs；`plan` 只回傳同一組 facts 推導的 capacity actions。完整 inventory 仍呈現所有 malformed source；raw registry 非 object、無效 external ID 與未知 status 都進入 `source_problems`，不會被 normalization 靜默丟棄。publication 的 collision projection 只解析 active／cleanup Scope，cleanup 則只解析 receipt 指定的 exact claim，因此無關 terminal legacy 問題不會封鎖獨立 transaction，目標 claim／Scope 不可解析仍 fail closed。任何 `source_problems`、unmapped PR、duplicate PR mapping 或未完成的 `cleanup_pending` lease 都把 `desired_new_solvers` 固定為 0，先建議 inspect／bounded recovery；cleanup lease 已有 durable PR，仍計入供給，但不能再生新 solver。一條 lane 的 collision、dirty、owner loss、stale tuple 或 required failure 不授權修改其他 lane。
+
+candidate Issue reservoir 的唯一 SoT 是 GitHub 中 open 且帶 exact `delivery:candidate` label 的 Issue；每張可派工 Issue body 必須恰好包含一份 `kg.delivery.candidate.v1` contract，機器可讀欄位固定為 Severity、Priority、structured Scope、Acceptance 與初始 P0／P1／security holds。缺 contract、欄位漂移或 malformed body 都是 `source_problems`，不可只靠 label 充數。controller 只做 read-only observation，不保存本地 backlog 或 Issue lifecycle。`candidate_issues` 排除已被 nonterminal registry 全部 canonical external IDs（Issue number 或 exact Issue URL）占用者，並依 Severity、Priority、Issue number 穩定排序。政策水位為 20–30，低於 20 時 `plan` 平行輸出 `replenish_candidates`；`desired_new_solvers` 不得超過現有未占用 candidates，並繼續受 CI、PR、cleanup 與 source safety 控制，所以補貨與安全 dispatch 可以同一 cycle 並行。`metrics.reanchor_required` 只計現有 `LaneState.REANCHOR`，大於 0 時另輸出 `reanchor_front`；controller 不在此重新解釋 REANCHOR 分類語義。
+
+預設 feedback policy 的健康吞吐目標是每小時 12 merges，且有健康供給時最長 300 秒至少 landing 一個；這是 capacity SLO，不是繞過 required 或 P0／P1／security hold 的時限。merge cadence 同時輸出最近一小時 count／rate、相鄰 landing 間隔 p50／p95 與距最後一次 landing 秒數。durable open PR floor／ceiling 是 10／15、active Solver target／ceiling 是 8／12、merge-ready／native-queue target 至少 3、required p95 上限是 240 秒、每 cycle 最多建議 4 個新 solver。只要 CI／PR／cleanup／source facts 健康且 durable PR 未達 ceiling，controller 即使在 cadence 尚健康時也把 active Solver 補到 8；到 12 或 PR ceiling 才 throttle。active Solver 是領先供給 reservoir，若等 cadence 變慢才補貨，實作 lead time 會造成可預測的斷料鋸齒。這個獨立 Solver band 是 Little's Law 所需的生產能力，不能用「PR + active 合計已到 10」取代，否則 reservoir 消耗後會斷料。controller 會平行建議 drain publishable hand-backs、local release、required-green enqueue、PR contract repair、required trigger／repair、terminal cleanup 與 bounded blocker recovery。`metrics` 從 registry、PR、exact required checks、native merge queue entry 與 append-only duration telemetry 量測最近一小時 hand-back→PR、PR→required-start、required duration、required-success→enqueue、merge→main sync、merge→terminal cleanup 的 sample count／p95，並回傳 required-running／absent、native queue depth、collision pressure、required failure rate、PR-contract failure 與 idle worktree。canary 的 collision pressure 定義為目前 live lanes 中 collision-blocked 的比例；高於 20% 時輸出 `improve_scope_partition` 並停止新 solver birth，等 dogfood 累積 admission event 後再升級為時間窗 collision rate。telemetry 只保存 operation duration evidence，不複製 Issue／PR／registry lifecycle；寫入失敗只能成為 machine-readable warning，不得回滾或阻擋已完成的 delivery mutation。JIT reanchor 的 hand-back timestamp 晚於既有 PR `created_at` 時改讀該 generation 的 publication journal，不把舊 PR 建立時間當負延遲；其他無法由同一 generation／HEAD 解釋的跨來源時間倒流才算 source problem。feedback policy 對前三段 transport／CI-start／admission latency分別採 60／60／30 秒 p95 SLA 並回傳對應 PI／CI／CM action；`plan` 直接用 observed required-duration p95，超過 240 秒即 throttle solver birth，不再依賴 caller 手動注入。
+
 ## 本機 coordinator 的窄責任
 
-本機 coordinator 是多 worktree 的執行環境安全工具，不是產品管理系統。IM 使用它控制 worktree lifecycle；Worker／Issue Solver 只在已指定的 path 內實作：
+本機 coordinator 是多 worktree 的執行環境安全工具，不是產品管理系統。`ops/worktree_registry.py` 是相容 command facade；admission、records、handback、lifecycle、storage 與 parser 各自由 `ops/worktree_registry_core/` 的小模組維護，避免把 Git、ledger policy、schema validation 與 CLI parsing 混成單檔。IM 使用它控制 worktree lifecycle；Worker／Issue Solver 只在已指定的 path 內實作：
 
 - 保留 worktree owner、branch/path、structured Scope、檔案 overlap、thread identity。
 - 保留本地測試、exact HEAD、log／artifact 與 typed hand-back evidence。
-- 幫助 IM 建立、接管、驗證、交回或安全清理工作樹。
+- 幫助 IM／PI 建立、接管、驗證、交回、在 durable PR publication 後釋放 local assets，或在 exact terminal receipt 後安全清理。
 
 它不負責：
 
 - 建立、排序、認領或關閉 GitHub Issue／Project。
-- 管理 PR lifecycle、review cycle、merge queue 或 merge permission。
+- 管理 PR lifecycle、review cycle、merge queue 或 merge permission；registry 的 `published`／`merged` 只是不允許模糊重用的 local disposition。
 - 建立本地 backlog、Ticket Factory、Issue lifecycle、Project／board 或批次整合狀態。
 - 把 worktree 或 agent 當成產品工作項目。
 - 取代 GitHub Actions、CM merge、release、deploy、production approval 或 rollback。

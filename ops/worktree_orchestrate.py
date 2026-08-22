@@ -34,7 +34,9 @@ ROOT = OPS_DIR.parent
 if str(OPS_DIR) not in sys.path:
     sys.path.insert(0, str(OPS_DIR))
 
+import worktree_reanchor
 import worktree_registry as registry
+import worktree_resume
 from lib.worktree_scope import scope_files, scope_status
 
 SCHEMA = "kg.worktree.orchestrate.v2"
@@ -129,7 +131,8 @@ def _scope_args(args: argparse.Namespace) -> list[str]:
 
 
 def _registry_register(*, branch: str, path: Path, intent: str, base: str,
-                       external_ids: list[str], args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
+                       base_sha: str, external_ids: list[str],
+                       args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     state_path = Path(args.state).expanduser().resolve() if args.state else registry.default_state_path()
     try:
         scope = registry._scope_from_args(args)
@@ -163,6 +166,7 @@ def _registry_register(*, branch: str, path: Path, intent: str, base: str,
             codex_thread_id=args.codex_thread_id, delegated=args.delegated,
         )
         if rc == registry.EXIT_OK:
+            record["base_sha"] = base_sha
             registry.save_state(state_path, state)
     return rc, record
 
@@ -178,30 +182,55 @@ def cmd_open(args: argparse.Namespace) -> int:
               as_json=args.json, human="✗ open refused: slug must be kebab-case")
         return EXIT_USAGE
     branch = f"{_intent_type(args.intent, args.type)}/{args.slug}"
+    state_path = (
+        Path(args.state).expanduser().resolve()
+        if args.state
+        else registry.default_state_path()
+    )
     worktree = _path(args.path) if args.path else ROOT / ".claude" / "worktrees" / args.slug
     if worktree.exists():
         _emit({"schema": SCHEMA, "action": "refused", "reason": f"path exists: {worktree}"},
               as_json=args.json, human=f"✗ open refused: path exists: {worktree}")
         return EXIT_USAGE
     external_ids = list(args.external_id or [])
+    base_sha = _resolve_commit(ROOT, args.base)
+    if base_sha is None:
+        _emit(
+            {"schema": SCHEMA, "action": "refused", "reason": "base ref cannot be resolved"},
+            as_json=args.json,
+            human="✗ open refused: base ref cannot be resolved",
+        )
+        return EXIT_BLOCK
     rc, record = _registry_register(
         branch=branch, path=worktree, intent=args.intent, base=args.base,
-        external_ids=external_ids, args=args,
+        base_sha=base_sha, external_ids=external_ids, args=args,
     )
     if rc != registry.EXIT_OK:
         _emit({"schema": SCHEMA, "action": "refused", "record": record},
               as_json=args.json, human=f"✗ open refused: {record.get('reason', record)}")
         return rc
-    git_rc, output = _git(["worktree", "add", "-b", branch, str(worktree), args.base])
+    git_rc, output = _git(
+        ["worktree", "add", "-b", branch, str(worktree), base_sha]
+    )
     if git_rc != 0:
         # Keep the ledger truthful if provisioning fails; no branch is deleted here
         # because GitHub may already know the name and branch removal is a separate
         # explicit action.
-        registry.main(["resolve", "--branch", branch, "--status", "abandoned",
-                       "--state", str(registry.default_state_path()), "--json"])
-        _emit({"schema": SCHEMA, "action": "refused", "reason": "git worktree add failed",
-               "git": output, "record": record}, as_json=args.json,
-              human=f"✗ open refused: git worktree add failed: {output}")
+        expected_generation = str(record.get("claim_generation", 0))
+        compensation_rc = registry.main([
+            "resolve", "--branch", branch, "--path", str(worktree),
+            "--status", "abandoned", "--expected-generation", expected_generation,
+            "--expected-head-sha", base_sha,
+            "--state", str(state_path), "--json",
+        ])
+        reason = (
+            "git worktree add failed"
+            if compensation_rc == registry.EXIT_OK
+            else "git worktree add failed and registry compensation failed"
+        )
+        _emit({"schema": SCHEMA, "action": "refused", "reason": reason,
+               "git": output, "record": record, "compensation_rc": compensation_rc},
+              as_json=args.json, human=f"✗ open refused: {reason}: {output}")
         return EXIT_BLOCK
     record["path"] = str(worktree)
     _emit({"schema": SCHEMA, "action": "open", "record": record}, as_json=args.json,
@@ -225,15 +254,35 @@ def cmd_adopt(args: argparse.Namespace) -> int:
         _emit({"schema": SCHEMA, "action": "refused", "reason": "worktree is detached"},
               as_json=args.json, human="✗ adopt refused: worktree is detached")
         return EXIT_USAGE
+    base_sha = _resolve_commit(worktree, args.base)
+    if base_sha is None:
+        _emit(
+            {"schema": SCHEMA, "action": "refused", "reason": "base ref cannot be resolved"},
+            as_json=args.json,
+            human="✗ adopt refused: base ref cannot be resolved",
+        )
+        return EXIT_BLOCK
     rc, record = _registry_register(
         branch=branch, path=worktree, intent=args.intent, base=args.base,
-        external_ids=list(args.external_id or []), args=args,
+        base_sha=base_sha, external_ids=list(args.external_id or []), args=args,
     )
     _emit({"schema": SCHEMA, "action": "adopt" if rc == EXIT_OK else "refused",
            "record": record}, as_json=args.json,
           human=(f"✓ adopted {branch} at {worktree}" if rc == EXIT_OK
                  else f"✗ adopt refused: {record.get('reason', record)}"))
     return rc
+
+
+def cmd_reanchor(args: argparse.Namespace) -> int:
+    return worktree_reanchor.cmd_reanchor(
+        args, freeze_reason=_require_unfrozen("reanchor")
+    )
+
+
+def cmd_resume_published(args: argparse.Namespace) -> int:
+    return worktree_resume.cmd_resume(
+        args, freeze_reason=_require_unfrozen("resume-published")
+    )
 
 
 def _changed_files(worktree: Path, base: str) -> list[str]:
@@ -479,7 +528,14 @@ def cmd_handoff(args: argparse.Namespace) -> int:
         _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
         return EXIT_BLOCK
 
-    observed_main_sha = _resolve_commit(worktree, args.incoming_main) or args.incoming_main
+    observed_main_sha = _resolve_commit(worktree, args.incoming_main)
+    if observed_main_sha is None:
+        payload = _handoff_payload(
+            status="blocked", worktree=worktree,
+            reason=f"incoming main cannot be resolved: {args.incoming_main}",
+        )
+        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        return EXIT_BLOCK
     base_sha = str(seal.get("base_sha") or record.get("base_sha") or record.get("base") or "")
     if not base_sha:
         payload = _handoff_payload(
@@ -488,10 +544,10 @@ def cmd_handoff(args: argparse.Namespace) -> int:
         )
         _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
         return EXIT_BLOCK
-    if observed_main_sha != base_sha:
+    if _git(["merge-base", "--is-ancestor", base_sha, observed_main_sha], worktree)[0] != 0:
         payload = _handoff_payload(
             status="blocked", worktree=worktree, observed_main_sha=observed_main_sha,
-            reason=f"incoming main {observed_main_sha} does not equal hand-back base {base_sha}",
+            reason=f"hand-back base {base_sha} is not an ancestor of incoming main {observed_main_sha}",
         )
         _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
         return EXIT_BLOCK
@@ -669,6 +725,10 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         argv += ["--state", args.state]
     if args.json:
         argv.append("--json")
+    if args.expected_generation is not None:
+        argv += ["--expected-generation", str(args.expected_generation)]
+    if args.expected_head_sha:
+        argv += ["--expected-head-sha", args.expected_head_sha]
     rc = registry.main(argv)
     if rc != EXIT_OK or not args.remove:
         return rc
@@ -707,6 +767,13 @@ def _parser() -> argparse.ArgumentParser:
     ad.add_argument("--delegated", action=argparse.BooleanOptionalAction, default=None)
     ad.set_defaults(func=cmd_adopt)
 
+    worktree_reanchor.add_parser(
+        sub, common=common, handler=cmd_reanchor, default_repo=ROOT
+    )
+    worktree_resume.add_parser(
+        sub, common=common, handler=cmd_resume_published, default_repo=ROOT
+    )
+
     gate = sub.add_parser("gate", help="run focused local checks for changed files")
     common(gate); gate.add_argument("--worktree", required=True); gate.add_argument("--base", default=BASE_DEFAULT)
     gate.add_argument("--plan-only", action="store_true"); gate.set_defaults(func=cmd_gate)
@@ -726,9 +793,13 @@ def _parser() -> argparse.ArgumentParser:
         *(["--json"] if args.json else []),
     ]))
 
-    resolved = sub.add_parser("resolve", help="close local ownership after the GitHub PR is merged")
+    resolved = sub.add_parser("resolve", help="transition an exact local ownership claim")
     common(resolved); resolved.add_argument("--branch"); resolved.add_argument("--path")
-    resolved.add_argument("--status", choices=registry.RESOLVE_STATUS, required=True)
+    resolved.add_argument(
+        "--status", choices=registry.PUBLIC_RESOLVE_STATUSES, required=True
+    )
+    resolved.add_argument("--expected-generation", type=int)
+    resolved.add_argument("--expected-head-sha")
     resolved.add_argument("--remove", action="store_true")
     resolved.set_defaults(func=cmd_resolve)
 
