@@ -144,21 +144,30 @@ def test_reader_invalid_destination_asset_is_declared_and_really_broken() -> Non
         assert destinations.count("chapter-missing.xhtml") == 1
 
 
-def test_fixture_store_preflights_destination_realpath_before_mutation() -> None:
-    source = _swift_source(
-        "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift"
+def test_fixture_resolver_preflights_destination_realpath_before_mutation() -> None:
+    resolver_source = _swift_source(
+        "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetResolver.swift"
     )
-    install_source = source.split(
-        "static func requireInstalledAssetURL(ref: String)", 1
-    )[1].split("/// Returns proof", 1)[0]
+    install_source = resolver_source.split(
+        "func requireInstalledAssetURL(ref: String)", 1
+    )[1].split("private static func validateDestinationContainment", 1)[0]
 
-    assert "validateDestinationContainment" in install_source
-    preflight = install_source.index("validateDestinationContainment")
+    assert "try Self.validateDestinationContainment" in install_source
+    preflight = install_source.index("try Self.validateDestinationContainment")
     create = install_source.index("createDirectory")
     remove = install_source.index("removeItem")
     copy = install_source.index("copyItem")
     assert preflight < create < remove < copy
-    assert "resolvingSymlinksInPath" in source
+    assert "resolvingSymlinksInPath" in resolver_source
+
+    store_source = _swift_source(
+        "ios/BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift"
+    )
+    store_wrapper = store_source.split(
+        "static func requireInstalledAssetURL(ref: String)", 1
+    )[1].split("static func installedAssetSnapshot", 1)[0]
+    assert "loadedAssetResolver" in store_wrapper
+    assert "requireInstalledAssetURL(ref: ref)" in store_wrapper
 
 
 def test_fixture_store_has_destination_symlink_escape_regression() -> None:
