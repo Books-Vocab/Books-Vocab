@@ -15,6 +15,7 @@ from delivery_control.adapters.registry import RegistryCliAdapter
 from delivery_control.domain.errors import DeliverySourceError, PolicyViolation
 from delivery_control.domain.models import HandbackReceipt, Scope
 from delivery_control.domain.observations import (
+    CanonicalCheckoutSnapshot,
     FileChange,
     FileOperation,
     InventoryProblem,
@@ -102,6 +103,7 @@ def _pull_request(
     title: str = "old title",
     body: str = "old body",
 ) -> PullRequestSnapshot:
+    body_receipt = receipt if head_sha is None else replace(receipt, head_sha=head_sha)
     return PullRequestSnapshot(
         number=7,
         url="https://example.test/pull/7",
@@ -112,7 +114,7 @@ def _pull_request(
         draft=False,
         mergeable=True,
         title=title,
-        body=body,
+        body=render_pull_request_body(body_receipt) if body == "old body" else body,
     )
 
 
@@ -155,11 +157,23 @@ class FakeGit:
         *,
         snapshot: WorktreeSnapshot | None = None,
         remote_sha: str | None = None,
+        canonical_branch: str = "main",
+        canonical_clean: bool = True,
     ) -> None:
         self.snapshot = snapshot or _worktree(receipt)
         self.remote_sha = remote_sha
+        self.canonical_branch = canonical_branch
+        self.canonical_clean = canonical_clean
         self.push_calls: list[tuple[str | None, str]] = []
         self.on_push: object | None = None
+
+    def canonical_checkout(self) -> CanonicalCheckoutSnapshot:
+        return CanonicalCheckoutSnapshot(
+            path=Path("/repo"),
+            branch=self.canonical_branch,
+            head_sha=BASE,
+            clean=self.canonical_clean,
+        )
 
     def inspect_worktree(self, path: Path, base_sha: str) -> WorktreeSnapshot:
         return self.snapshot
@@ -305,6 +319,31 @@ def test_active_legacy_handback_normalizes_to_durable_receipt() -> None:
     )
 
     assert receipt_from_active_claim(record, _worktree(receipt)) == receipt
+
+
+@pytest.mark.parametrize(
+    ("canonical_branch", "canonical_clean", "message"),
+    (
+        ("debug/feature", True, "canonical checkout must be on main"),
+        ("main", False, "canonical checkout is dirty"),
+    ),
+)
+def test_publish_refuses_before_push_when_canonical_main_is_unavailable(
+    canonical_branch: str, canonical_clean: bool, message: str
+) -> None:
+    receipt = _receipt()
+    git = FakeGit(
+        receipt,
+        canonical_branch=canonical_branch,
+        canonical_clean=canonical_clean,
+    )
+    service, _, github = _service(receipt, git=git)
+
+    with pytest.raises(PolicyViolation, match=message):
+        service.publish(receipt=receipt, title="fix: delivery")
+
+    assert git.push_calls == []
+    assert github.create_calls == 0
 
 
 def test_registry_handback_outcome_reaches_rendered_validation(
@@ -617,6 +656,77 @@ def test_preflight_rejects_scope_collision_and_existing_pr_scope_drift() -> None
     drift_service, _, _ = _service(receipt, github=github)
     with pytest.raises(PolicyViolation, match="paths differ"):
         drift_service.publish(receipt=receipt, title="fix: delivery")
+
+
+def test_existing_pr_scope_may_grow_after_same_owner_reanchor() -> None:
+    previous = _receipt()
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    pull_request = _pull_request(
+        previous,
+        title="fix: delivery",
+        body=render_pull_request_body(previous),
+    )
+    github = FakeGitHub(
+        receipt,
+        pull_request=pull_request,
+        changed_paths=previous.scope.paths,
+    )
+    worktree = _worktree(
+        receipt,
+        changes=(
+            FileChange(FileOperation.MODIFY, "ops/a.py"),
+            FileChange(FileOperation.MODIFY, "ops/b.py"),
+        ),
+    )
+    service, _, _ = _service(
+        receipt,
+        git=FakeGit(receipt, snapshot=worktree, remote_sha=previous.head_sha),
+        github=github,
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert parse_pull_request_body(result.pull_request.body).scope.paths == (
+        "ops/a.py",
+        "ops/b.py",
+    )
+
+
+def test_existing_pr_scope_cannot_shrink_after_same_owner_reanchor() -> None:
+    previous = _receipt()
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        scope=Scope.from_paths(modify=("ops/b.py",)),
+    )
+    pull_request = _pull_request(
+        previous,
+        title="fix: delivery",
+        body=render_pull_request_body(previous),
+    )
+    service, git, _ = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=_worktree(
+                receipt,
+                changes=(FileChange(FileOperation.MODIFY, "ops/b.py"),),
+            ),
+            remote_sha=previous.head_sha,
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=pull_request,
+            changed_paths=previous.scope.paths,
+        ),
+    )
+
+    with pytest.raises(PolicyViolation, match="cannot remove paths"):
+        service.publish(receipt=receipt, title="fix: delivery")
+    assert not git.push_calls
 
 
 def test_publish_refuses_non_main_target_before_or_after_mutation() -> None:

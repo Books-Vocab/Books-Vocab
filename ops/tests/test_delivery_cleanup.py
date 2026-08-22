@@ -12,6 +12,7 @@ sys.path.insert(0, str(OPS))
 from delivery_control.domain.errors import CompareAndSwapConflict, PolicyViolation
 from delivery_control.domain.models import HandbackReceipt, Scope
 from delivery_control.domain.observations import (
+    CanonicalCheckoutSnapshot,
     FileChange,
     FileOperation,
     PhysicalWorktree,
@@ -191,6 +192,14 @@ class FakeGit:
     def list_worktrees(self) -> tuple[PhysicalWorktree, ...]:
         return self.worktrees
 
+    def canonical_checkout(self) -> CanonicalCheckoutSnapshot:
+        return CanonicalCheckoutSnapshot(
+            path=Path("/repo"),
+            branch=self.canonical_branch,
+            head_sha=self.local_main,
+            clean=self.canonical_clean,
+        )
+
     def inspect_worktree(self, path: Path, base_sha: str) -> WorktreeSnapshot:
         if path == Path("/repo"):
             return WorktreeSnapshot(
@@ -300,6 +309,33 @@ def test_publish_release_moves_durable_queue_to_github_and_removes_local_assets(
     assert git.actions == ["remove-worktree", "delete-local"]
     assert result.worktree_absent and result.local_branch_absent
     assert not result.remote_branch_absent
+
+
+@pytest.mark.parametrize(
+    ("canonical_branch", "canonical_clean", "message"),
+    (
+        ("debug/feature", True, "canonical checkout must be on main"),
+        ("main", False, "canonical checkout is dirty"),
+    ),
+)
+def test_publish_release_refuses_before_claim_lease_without_canonical_main(
+    canonical_branch: str, canonical_clean: bool, message: str
+) -> None:
+    receipt = _receipt()
+    registry = FakeRegistry(_record(receipt))
+    git = FakeGit(
+        receipt,
+        canonical_branch=canonical_branch,
+        canonical_clean=canonical_clean,
+    )
+
+    with pytest.raises(PolicyViolation, match=message):
+        _service(
+            receipt, registry=registry, git=git, state="OPEN"
+        ).release_after_publish(receipt=receipt, pull_request_number=9)
+
+    assert registry.transitions == []
+    assert git.actions == []
 
 
 @pytest.mark.parametrize(
