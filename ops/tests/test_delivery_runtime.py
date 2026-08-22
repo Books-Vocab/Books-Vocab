@@ -1,0 +1,144 @@
+from __future__ import annotations
+
+import json
+import sys
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+import pytest
+
+OPS = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(OPS))
+
+from delivery_control.adapters.runtime import RuntimeStatusMap
+from delivery_control.application import build_application
+from delivery_control.controller.runtime_watchdog import evaluate_runtime_watchdog
+from delivery_control.domain.errors import PolicyViolation
+from delivery_control.domain.runtime_models import (
+    RUNTIME_SCHEMA,
+    RuntimeReceipt,
+    RuntimeState,
+    WatchdogAction,
+)
+
+NOW = datetime(2026, 8, 22, 12, 0, tzinfo=UTC)
+THREAD = "supervisor-thread"
+
+
+def _receipt(**changes: object) -> RuntimeReceipt:
+    values: dict[str, object] = {
+        "thread_id": THREAD,
+        "state": RuntimeState.RUNNING,
+        "last_progress_at": NOW - timedelta(seconds=30),
+        "observed_at": NOW,
+        "lease_until": NOW + timedelta(minutes=2),
+        "cycle_id": "cycle-1",
+    }
+    values.update(changes)
+    return RuntimeReceipt(**values)
+
+
+def test_valid_running_lease_is_a_noop() -> None:
+    decision = evaluate_runtime_watchdog(_receipt(), now=NOW)
+
+    assert decision.action is WatchdogAction.NOOP
+    assert decision.reason == "lease is valid"
+    assert decision.wake_id is None
+
+
+def test_waiting_for_future_event_is_a_noop_even_without_lease() -> None:
+    decision = evaluate_runtime_watchdog(
+        _receipt(
+            state=RuntimeState.WAITING,
+            lease_until=None,
+            expected_next_event_at=NOW + timedelta(minutes=2),
+        ),
+        now=NOW,
+    )
+
+    assert decision.action is WatchdogAction.NOOP
+    assert decision.reason == "waiting for expected event"
+
+
+def test_stale_progress_returns_idempotent_wake_decision() -> None:
+    receipt = _receipt(lease_until=None, last_progress_at=NOW - timedelta(minutes=11))
+
+    first = evaluate_runtime_watchdog(receipt, now=NOW)
+    second = evaluate_runtime_watchdog(receipt, now=NOW + timedelta(seconds=1))
+
+    assert first.action is WatchdogAction.WAKE
+    assert first.reason == "progress is stale"
+    assert first.wake_id == second.wake_id
+
+
+def test_expired_lease_wakes_even_when_last_progress_is_recent() -> None:
+    decision = evaluate_runtime_watchdog(
+        _receipt(lease_until=NOW - timedelta(seconds=1)),
+        now=NOW,
+    )
+
+    assert decision.action is WatchdogAction.WAKE
+    assert decision.reason == "lease expired"
+
+
+def test_frozen_and_archived_runtimes_are_not_woken() -> None:
+    for state in (RuntimeState.FROZEN, RuntimeState.ARCHIVED):
+        decision = evaluate_runtime_watchdog(_receipt(state=state), now=NOW)
+        assert decision.action is WatchdogAction.NOOP
+        assert decision.reason == f"runtime is {state.value}"
+
+
+def test_missing_receipt_escalates_instead_of_guessing() -> None:
+    decision = evaluate_runtime_watchdog(None, now=NOW)
+
+    assert decision.action is WatchdogAction.ESCALATE
+    assert decision.reason == "runtime receipt is missing"
+
+
+def test_runtime_receipt_round_trips_through_status_file(tmp_path: Path) -> None:
+    receipt = _receipt(expected_next_event_at=NOW + timedelta(minutes=1))
+    path = tmp_path / "runtime.json"
+    path.write_text(json.dumps(receipt.to_payload()), encoding="utf-8")
+
+    runtime = RuntimeStatusMap.from_file(path)
+
+    assert runtime.owner_status(THREAD) == "running"
+    assert runtime.runtime_receipt(THREAD) == receipt
+
+
+def test_runtime_status_map_keeps_legacy_owner_status_support(tmp_path: Path) -> None:
+    path = tmp_path / "runtime.json"
+    path.write_text(json.dumps({THREAD: "running"}), encoding="utf-8")
+
+    runtime = RuntimeStatusMap.from_file(path)
+
+    assert runtime.owner_status(THREAD) == "running"
+    assert runtime.runtime_receipt(THREAD) is None
+
+
+def test_malformed_runtime_receipt_fails_closed(tmp_path: Path) -> None:
+    path = tmp_path / "runtime.json"
+    path.write_text(
+        json.dumps({"schema": RUNTIME_SCHEMA, "thread_id": THREAD}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PolicyViolation, match="runtime receipt is malformed"):
+        RuntimeStatusMap.from_file(path)
+
+
+def test_invalid_stale_threshold_is_rejected() -> None:
+    with pytest.raises(ValueError, match="positive integer"):
+        evaluate_runtime_watchdog(_receipt(), now=NOW, stale_after_seconds=0)
+
+
+def test_application_watchdog_is_read_only_and_returns_decision(tmp_path: Path) -> None:
+    receipt = _receipt(lease_until=None, last_progress_at=NOW - timedelta(minutes=11))
+    path = tmp_path / "runtime.json"
+    path.write_text(json.dumps(receipt.to_payload()), encoding="utf-8")
+
+    application = build_application(repo=tmp_path, runtime_status_file=path)
+    decision = application.watchdog(supervisor_thread_id=THREAD, now=NOW)
+
+    assert decision.action is WatchdogAction.WAKE
+    assert decision.wake_id is not None

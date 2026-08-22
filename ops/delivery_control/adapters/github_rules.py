@@ -64,20 +64,3 @@ class GitHubRules:
         ):
             raise AdapterPayloadError("GitHub required checks payload is malformed")
         return tuple(sorted({*contexts, *(item["context"] for item in checks)}))
-
-    def merge_queue_enabled(self, branch: str) -> bool:
-        payload = self.client.load_json(
-            (
-                "gh",
-                "api",
-                f"repos/{self.repository_name()}/rules/branches/{quote(branch, safe='')}",
-            )
-        )
-        if not isinstance(payload, list):
-            raise AdapterPayloadError("GitHub branch rules payload is malformed")
-        for index, rule in enumerate(payload):
-            if not isinstance(rule, Mapping) or type(rule.get("type")) is not str:
-                raise AdapterPayloadError(f"GitHub branch rule[{index}] is malformed")
-            if rule["type"] == "merge_queue":
-                return True
-        return False

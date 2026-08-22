@@ -14,6 +14,7 @@ from delivery_control.controller.capacity import (
     decide_capacity,
 )
 from delivery_control.controller.dogfood import DogfoodProfile, assess_dogfood_readiness
+from delivery_control.controller.worktree_boundary import partition_worktrees
 from delivery_control.controller.metrics import (
     PipelineMetrics,
     measure_merge_cadence,
@@ -465,7 +466,33 @@ def test_dogfood_preflight_accepts_only_an_empty_canonical_baseline() -> None:
     assert readiness.profile.roles == ("backlog_scout", "pi", "cm", "supervisor")
     assert readiness.profile.canary_solver_limit == 1
     assert readiness.profile.target_inter_merge_seconds == 300
+    assert readiness.profile.watchdog_tick_seconds == 300
     assert readiness.canary_promotable is False
+
+
+def test_worktree_boundary_requires_explicit_supervision_manifest() -> None:
+    canonical = Path("/repo")
+    supervision = tuple(
+        PhysicalWorktree(Path(f"/supervision/{index}"), "b" * 40, None)
+        for index in range(4)
+    )
+    partition = partition_worktrees(
+        (PhysicalWorktree(canonical, "a" * 40, "main"), *supervision),
+        canonical_path=canonical,
+        supervision_paths=tuple(item.path for item in supervision),
+    )
+
+    assert len(partition.delivery) == 1
+    assert len(partition.supervision) == 4
+    assert partition.canonical_count == 1
+
+    unknown = partition_worktrees(
+        (PhysicalWorktree(canonical, "a" * 40, "main"), *supervision,
+         PhysicalWorktree(Path("/unknown/product"), "c" * 40, "feat/unknown")),
+        canonical_path=canonical,
+        supervision_paths=tuple(item.path for item in supervision),
+    )
+    assert len(unknown.delivery) == 2
 
 
 def test_dogfood_canary_promotion_uses_exact_fifteen_minute_cadence() -> None:

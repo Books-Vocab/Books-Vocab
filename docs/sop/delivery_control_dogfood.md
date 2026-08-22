@@ -24,14 +24,20 @@ verified_against: f74b739123384e16936c6c984a22b8befe9f2865
 正式 tasks 尚未建立前，在 canonical checkout 執行：
 
 ```bash
-./ops/delivery.py --repo /Users/chenliangyu/project/kg dogfood-preflight
+./ops/delivery.py --repo /Users/chenliangyu/project/kg dogfood-preflight \
+  --supervision-worktree /Users/chenliangyu/.codex/worktrees/2366/kg \
+  --supervision-worktree /Users/chenliangyu/.codex/worktrees/7e07/kg \
+  --supervision-worktree /Users/chenliangyu/.codex/worktrees/be28/kg \
+  --supervision-worktree /Users/chenliangyu/.codex/worktrees/e695/kg
 ```
 
 只有 `result.ready=true` 才能建立四個 tasks。preflight 必須同時證明：
 
 - canonical checkout 是 clean `main`，且 local `main == origin/main`；
 - `main` 已 protected、required contexts 包含短 gate `required`、native merge queue 已啟用；
-- physical worktree 只剩 canonical main；
+- delivery inventory 中只剩 canonical main；若啟動器使用 detached supervision checkout，必須以
+  `--supervision-worktree` 逐一列出 exact path。未列出的 worktree 一律仍算 delivery／unknown
+  blocker；不得用 `.codex` 路徑前綴或名稱猜測來排除；
 - 沒有 active development、local handback、cleanup lease、terminal residue、blocked lane、unmapped／duplicate PR 或 source problem；
 - 現存 PR reservoir 為空；security／P0／P1 hold 必須先得到 terminal disposition，不能藏在 canary baseline。
 
@@ -48,7 +54,7 @@ candidate Issue reservoir 可以是空的；clean-slate baseline 只要求 read-
 | Backlog Scout（BS） | 維持 GitHub 20–30 個 open exact-label candidate；去重、建立唯一 Issue；選擇無 collision Scope；依 `desired_new_solvers` fan-out | Issue、owner-bound worktree 的正常 admission | push／PR／merge；自己實作 product code；保存第二套 backlog |
 | PR Integrator（PI） | 事件式消費 typed handback；建立／更新唯一 PR；readback；publication 後立即釋放 local assets；metadata／required repair | `publish`、`release-published`、`repair-pr-metadata`、exact terminal cleanup | 修改 product code；接管 owner branch；merge／enqueue |
 | Codebase Manager（CM） | 只處理 merge-front；exact admission；native enqueue；landing 後 ff-only sync；把 merged receipt 交給 PI cleanup | `queue`、`sync-main`、明確 hold reconcile | 修 PR body／product code；等待 routine advisory；手動 merge |
-| Supervisor | 每 60 秒讀取 deterministic facts 與四個 task 活動；控制 freeze／ramp；升級事故 | task-level freeze／resume 與明確事故升級 | 成為產品 owner；替 BS／PI／CM 執行 mutation；把 agent 自述當 facts |
+| Supervisor | 以約 300 秒 watchdog tick 讀取 deterministic facts 與四個 task 活動；控制 freeze／ramp；升級事故 | task-level freeze／resume 與明確事故升級 | 成為產品 owner；替 BS／PI／CM 執行 mutation；把 agent 自述當 facts |
 
 四個 top-level tasks 彼此直接交接事件；Supervisor 不當 routine progress recipient。所有可硬性判定的 gate 由 `ops/delivery.py`、registry CAS、GitHub rules 與 Actions 執行，agent 只選擇 bounded next action。
 
@@ -205,7 +211,7 @@ PI 收到 exact merged PR receipt 後完成：
 
 固定看：最近一小時 merges、inter-merge p50／p95、candidate／active solver／handback／open PR／required-green／merge queue depth、六段 latency p95、collision rate、required failure rate、idle worktree、source problems。agent 說「正在做」不計入容量。
 
-Supervisor 的 deterministic plan 會把低水位轉成具體 action：`replenish_candidates`、`fill_required_capacity`、`restore_merge_buffer`、`reanchor_front`、`trigger_required`、`reconcile_idle_worktrees` 或 `recover_merge_cadence`。它只發出可驗證的 bounded action，不替角色寫 code、推 branch 或手動修 registry；任何 unknown／dirty／remote drift 轉成 exact blocker 並 freeze 相關 birth。
+Supervisor 的 watchdog tick 只用來避免 supervisor 睡死，不代表每 300 秒執行一次完整 pipeline，也不代表自動喚醒被 freeze／archived 的角色。每次 tick 讀取 `watchdog` 的 structured runtime receipt；只有 lease 過期或 progress stale 才產生 deterministic `wake_id`，再由外部 Codex thread scheduler 執行一次性喚醒。`frozen`／`archived` 永遠 `noop`，缺 receipt 只能 `escalate`。Supervisor 的 deterministic plan 會把低水位轉成具體 action：`replenish_candidates`、`fill_required_capacity`、`restore_merge_buffer`、`reanchor_front`、`trigger_required`、`reconcile_idle_worktrees` 或 `recover_merge_cadence`。它只發出可驗證的 bounded action，不替角色寫 code、推 branch 或手動修 registry；任何 unknown／dirty／remote drift 轉成 exact blocker 並 freeze 相關 birth。
 
 ## Canary 與容量升級
 

@@ -81,6 +81,20 @@ def _candidate_payload(number: int) -> dict[str, object]:
     }
 
 
+def _queue_configuration_payload(*, configured: bool) -> dict[str, object]:
+    return {
+        "data": {
+            "repository": {
+                "mergeQueue": (
+                    {"configuration": {"mergingStrategy": "ALLGREEN"}}
+                    if configured
+                    else None
+                )
+            }
+        }
+    }
+
+
 def test_github_adapter_reads_open_exact_label_candidate_issues() -> None:
     wrong_label = _candidate_payload(22)
     wrong_label["labels"] = [{"name": "delivery:candidates"}]
@@ -412,7 +426,12 @@ def test_github_enqueue_delegates_to_native_queue_without_direct_merge() -> None
         [
             CommandResult(("gh",), 0, json.dumps(_pr_payload()), ""),
             CommandResult(("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""),
-            CommandResult(("gh",), 0, json.dumps([{"type": "merge_queue"}]), ""),
+            CommandResult(
+                ("gh",),
+                0,
+                json.dumps(_queue_configuration_payload(configured=True)),
+                "",
+            ),
             CommandResult(("gh",), 0, json.dumps(queue_state), ""),
             CommandResult(("gh",), 0, json.dumps(enqueued), ""),
             CommandResult(("gh",), 0, json.dumps(queued), ""),
@@ -440,7 +459,10 @@ def test_github_enqueue_refuses_branch_without_merge_queue_rule() -> None:
             CommandResult(("gh",), 0, json.dumps(_pr_payload()), ""),
             CommandResult(("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""),
             CommandResult(
-                ("gh",), 0, json.dumps([{"type": "required_status_checks"}]), ""
+                ("gh",),
+                0,
+                json.dumps(_queue_configuration_payload(configured=False)),
+                "",
             ),
         ]
     )

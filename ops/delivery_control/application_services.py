@@ -20,8 +20,10 @@ from .controller.dogfood import (
     assess_dogfood_readiness,
 )
 from .controller.metrics import measure_merge_cadence, measure_pipeline
+from .controller.runtime_watchdog import evaluate_runtime_watchdog
+from .controller.worktree_boundary import partition_worktrees
 from .domain import errors, models, observations, states
-from .ports.runtime import AgentRuntimePort
+from .ports.runtime import AgentRuntimePort, RuntimeReceiptPort
 from .ports.telemetry import TelemetryStorePort
 from .services import (
     abandon,
@@ -74,16 +76,42 @@ class DeliveryApplication:
             "decision": decide_capacity(metrics, cadence),
         }
 
+    def watchdog(
+        self,
+        *,
+        supervisor_thread_id: str,
+        now: datetime | None = None,
+        stale_after_seconds: int = 600,
+    ) -> object:
+        """Return a liveness decision; the caller owns Codex thread dispatch."""
+
+        if not isinstance(self.runtime, RuntimeReceiptPort):
+            raise errors.PolicyViolation(
+                "runtime status source has no structured liveness receipt"
+            )
+        observed_at = now or self.clock()
+        return evaluate_runtime_watchdog(
+            self.runtime.runtime_receipt(supervisor_thread_id),
+            now=observed_at,
+            stale_after_seconds=stale_after_seconds,
+        )
+
     def dogfood_preflight(
         self,
         *,
         now: datetime | None = None,
         profile: DogfoodProfile = DEFAULT_DOGFOOD_PROFILE,
+        supervision_worktree_paths: tuple[Path, ...] = (),
     ) -> object:
         observed_at = now or self.clock()
         checkout = self.git.canonical_checkout()
         origin_main_sha = self.git.origin_main_sha()
         physical_worktrees = self.git.list_worktrees()
+        worktree_partition = partition_worktrees(
+            physical_worktrees,
+            canonical_path=self.repo,
+            supervision_paths=supervision_worktree_paths,
+        )
         main_protected = self.github.branch_is_protected("main")
         required_status_contexts = (
             self.github.required_status_contexts("main") if main_protected else ()
@@ -102,17 +130,15 @@ class DeliveryApplication:
             main_protected=main_protected,
             required_status_contexts=required_status_contexts,
             merge_queue_enabled=self.github.merge_queue_enabled("main"),
-            physical_worktree_count=len(physical_worktrees),
+            physical_worktree_count=len(worktree_partition.delivery),
             canonical_worktree_present=(
-                sum(
-                    item.path.resolve() == self.repo.resolve()
-                    for item in physical_worktrees
-                )
-                == 1
+                worktree_partition.canonical_count == 1
             ),
             metrics=metrics,
             cadence=cadence,
             profile=profile,
+            supervision_worktree_count=len(worktree_partition.supervision),
+            total_physical_worktree_count=len(physical_worktrees),
         )
 
     def receipt(self, lane_id: str) -> models.HandbackReceipt:

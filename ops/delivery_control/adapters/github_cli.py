@@ -134,7 +134,10 @@ class GitHubCliAdapter:
         return self._rules.required_status_contexts(branch)
 
     def merge_queue_enabled(self, branch: str) -> bool:
-        return self._rules.merge_queue_enabled(branch)
+        return self.queue.is_configured(
+            repository_name=self._repo_name(),
+            branch=branch,
+        )
 
     def merge_queue_entry_id(self, pull_request_id: str) -> str | None:
         return self.queue.snapshot(pull_request_id).entry_id
