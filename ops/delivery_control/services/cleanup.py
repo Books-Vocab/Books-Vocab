@@ -42,6 +42,15 @@ class CleanupService:
         self.git_command = git_command
         self.github = github
 
+    def _require_canonical_main(self) -> None:
+        """Protect local cleanup from removing the checkout running the command."""
+
+        checkout = self.git_query.canonical_checkout()
+        if checkout.branch != "main":
+            raise PolicyViolation("canonical checkout must be on main before cleanup")
+        if not checkout.clean:
+            raise PolicyViolation("canonical checkout is dirty before cleanup")
+
     def _record(self, receipt: HandbackReceipt) -> RegistrySnapshot:
         record = self.registry_query.find_exact_claim(
             lane_id=receipt.lane_id,
@@ -195,6 +204,7 @@ class CleanupService:
     def release_after_publish(
         self, *, receipt: HandbackReceipt, pull_request_number: int
     ) -> CleanupResult:
+        self._require_canonical_main()
         record = self._record(receipt)
         if record.status == "merged":
             raise PolicyViolation("merged lane requires terminal cleanup")
@@ -259,6 +269,7 @@ class CleanupService:
     def finalize_merged(
         self, *, receipt: HandbackReceipt, pull_request_number: int
     ) -> CleanupResult:
+        self._require_canonical_main()
         record = self._record(receipt)
         self._pull_request(receipt, pull_request_number, expected_state="MERGED")
         if record.status == "merged":
