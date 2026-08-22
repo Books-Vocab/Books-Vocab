@@ -116,7 +116,12 @@ def terminal_proof_problem(
     if type(body.get("pr_number")) is not int or body["pr_number"] <= 0:
         return "terminal proof PR number is invalid"
     lane_id = body.get("lane_id")
-    if type(lane_id) is not str or lane_id not in record_external_ids:
+    # Direct assignments intentionally have no Issue/PR external ID.  The
+    # registry parser uses the branch as their canonical lane identity, so
+    # terminal proof validation must use the same fallback instead of making
+    # an empty external-id list an impossible cleanup claim.
+    allowed_lane_ids = record_external_ids or [branch]
+    if type(lane_id) is not str or lane_id not in allowed_lane_ids:
         return "terminal proof lane does not match the registry claim"
     return None
 

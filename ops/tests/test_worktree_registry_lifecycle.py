@@ -20,11 +20,11 @@ def _published_record(tmp_path: Path) -> dict:
     }
 
 
-def _proof(record: dict) -> dict:
+def _proof(record: dict, *, lane_id: str = "ISSUE-1") -> dict:
     return registry.terminal_proof_with_digest(
         {
             "schema": registry.TERMINAL_PROOF_SCHEMA,
-            "lane_id": "ISSUE-1",
+            "lane_id": lane_id,
             "pr_number": 42,
             "pr_state": "MERGED",
             "base_branch": "main",
@@ -77,3 +77,23 @@ def test_merged_transition_requires_typed_exact_pr_proof(tmp_path: Path) -> None
     resolved = registry.load_state(state_path)["records"][0]
     assert resolved["status"] == "merged"
     assert resolved["terminal_proof"] == exact_proof
+
+
+def test_direct_assignment_merged_transition_uses_branch_as_lane_identity(
+    tmp_path: Path,
+) -> None:
+    record = _published_record(tmp_path)
+    record["external_ids"] = []
+    state_path = tmp_path / "registry.json"
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+
+    proof = _proof(record, lane_id=record["branch"])
+    result = registry.main(
+        _resolve_args(state_path, record)
+        + ["--terminal-proof", json.dumps(proof)]
+    )
+
+    assert result == registry.EXIT_OK
+    resolved = registry.load_state(state_path)["records"][0]
+    assert resolved["status"] == "merged"
+    assert resolved["terminal_proof"] == proof
