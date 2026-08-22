@@ -7,10 +7,13 @@ from typing import Protocol, runtime_checkable
 
 @dataclass(frozen=True)
 class CommandResult:
+    """Structured result from one bounded control-plane subprocess."""
+
     argv: tuple[str, ...]
     exit_code: int
     stdout: str
     stderr: str
+    timed_out: bool = False
 
 
 @runtime_checkable

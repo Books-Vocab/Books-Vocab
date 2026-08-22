@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import math
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.adapters.module_runner import ModuleCommandRunner
+from delivery_control.adapters.module_runner import ModuleCommandRunner  # noqa: E402
+from delivery_control.adapters.subprocess_runner import SubprocessCommandRunner  # noqa: E402
 
 
 def _git_repo(path: Path, *, marker: str) -> None:
@@ -222,3 +226,30 @@ def test_runner_allows_final_cas_after_validated_source_is_removed(
     second = runner.run((str(executable), "resolve", "--json"))
 
     assert second.exit_code == 0
+
+
+def test_subprocess_runner_returns_normal_result() -> None:
+    result = SubprocessCommandRunner(timeout_seconds=1).run(
+        ("sh", "-c", "printf ready")
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout == "ready"
+    assert result.stderr == ""
+    assert result.timed_out is False
+
+
+def test_subprocess_runner_converts_timeout_to_structured_failure() -> None:
+    result = SubprocessCommandRunner(timeout_seconds=0.05).run(
+        ("sleep", "1")
+    )
+
+    assert result.exit_code == 124
+    assert result.timed_out is True
+    assert "command timed out after 0.05s" in result.stderr
+
+
+@pytest.mark.parametrize("timeout", (0, -1, math.inf, math.nan))
+def test_subprocess_runner_rejects_invalid_timeout(timeout: float) -> None:
+    with pytest.raises(ValueError, match="finite and positive"):
+        SubprocessCommandRunner(timeout_seconds=timeout)
