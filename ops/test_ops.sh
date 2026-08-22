@@ -157,6 +157,7 @@ run_one() {
         ops/tests/test_delivery_queue.py \
         ops/tests/test_delivery_required_repair.py \
         ops/tests/test_delivery_abandon.py \
+        ops/tests/test_delivery_operation_lock.py \
         ops/tests/test_delivery_controller.py \
         ops/tests/test_delivery_timings.py \
         ops/tests/test_delivery_telemetry.py \
