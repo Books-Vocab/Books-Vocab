@@ -60,10 +60,20 @@ class DeliveryApplication:
             runtime=self.runtime,
         ).inspect()
 
-    def metrics(self, *, now: datetime | None = None) -> object:
+    def metrics(
+        self,
+        *,
+        now: datetime | None = None,
+        supervision_worktree_paths: tuple[Path, ...] = (),
+    ) -> object:
         observed_at = now or self.clock()
         telemetry = self._operation_telemetry().rolling(now=observed_at)
-        return measure_pipeline(self.inspect(), telemetry=telemetry, now=observed_at)
+        return measure_pipeline(
+            self.inspect(),
+            telemetry=telemetry,
+            now=observed_at,
+            excluded_worktree_paths=supervision_worktree_paths,
+        )
 
     def plan(self, *, now: datetime | None = None) -> object:
         observed_at = now or self.clock()
@@ -117,7 +127,10 @@ class DeliveryApplication:
         required_status_contexts = (
             self.github.required_status_contexts("main") if main_protected else ()
         )
-        metrics = self.metrics(now=observed_at)
+        metrics = self.metrics(
+            now=observed_at,
+            supervision_worktree_paths=supervision_worktree_paths,
+        )
         cadence = measure_merge_cadence(
             self.github.recent_merge_times(),
             now=observed_at,

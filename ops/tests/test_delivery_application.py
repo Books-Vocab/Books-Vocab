@@ -81,7 +81,7 @@ def test_dogfood_preflight_measures_the_configured_promotion_window(
     )
 
     with (
-        patch.object(DeliveryApplication, "metrics", return_value=Mock()),
+        patch.object(DeliveryApplication, "metrics", return_value=Mock()) as metrics,
         patch(
             "delivery_control.application_services.measure_merge_cadence",
             return_value=cadence,
@@ -94,8 +94,12 @@ def test_dogfood_preflight_measures_the_configured_promotion_window(
         result = application.dogfood_preflight(
             now=datetime(2026, 8, 22, tzinfo=UTC),
             profile=profile,
+            supervision_worktree_paths=(Path("/supervision"),),
         )
 
     assert result is not None
+    assert metrics.call_args.kwargs["supervision_worktree_paths"] == (
+        Path("/supervision"),
+    )
     assert measure.call_args.kwargs["window"] == timedelta(seconds=600)
     assert assess.call_args.kwargs["profile"] == profile
