@@ -26,13 +26,14 @@ def git(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
     return proc.returncode, proc.stdout.strip()
 
 
-def repo_root() -> Path:
-    rc, out = git(["rev-parse", "--show-toplevel"], Path.cwd())
-    return Path(out).resolve() if rc == 0 and out else Path.cwd().resolve()
+def repo_root(root: Path | None = None) -> Path:
+    working = (root or Path.cwd()).resolve()
+    rc, out = git(["rev-parse", "--show-toplevel"], working)
+    return Path(out).resolve() if rc == 0 and out else working
 
 
-def common_anchor() -> Path:
-    root = repo_root()
+def common_anchor(root: Path | None = None) -> Path:
+    root = repo_root(root)
     rc, out = git(["rev-parse", "--git-common-dir"], root)
     if rc != 0 or not out:
         return root
@@ -42,8 +43,8 @@ def common_anchor() -> Path:
     return common.resolve().parent
 
 
-def default_state_path() -> Path:
-    return common_anchor() / ".cache" / "worktree_registry.json"
+def default_state_path(root: Path | None = None) -> Path:
+    return common_anchor(root) / ".cache" / "worktree_registry.json"
 
 
 def parse_at(value: str | None) -> dt.datetime:

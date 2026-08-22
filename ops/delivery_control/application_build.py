@@ -28,7 +28,7 @@ def build_application(
         github=GitHubCliAdapter(repo=resolved),
         registry=RegistryCliAdapter(
             script_path=registry_script,
-            state_path=resolved / ".cache" / "worktree_registry.json",
+            state_path=worktree_registry.default_state_path(resolved),
             runner=ModuleCommandRunner(
                 executable=registry_script,
                 main=worktree_registry.main,
