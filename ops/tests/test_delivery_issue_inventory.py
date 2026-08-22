@@ -32,6 +32,7 @@ from delivery_control.domain.demand_issues import (
 from delivery_control.domain.errors import PolicyViolation
 from delivery_control.domain.models import Scope
 from delivery_control.domain.observations import (
+    InventoryProblem,
     PullRequestInventory,
     PullRequestSnapshot,
     RegistryCollisionClaim,
@@ -146,6 +147,38 @@ def test_metrics_count_each_malformed_source_entry_once() -> None:
 
     assert metrics.issue_source_problems == 1
     assert metrics.source_problems == 1
+
+
+def test_incomplete_issue_inventory_keeps_unknown_backlog_distinct_from_zero() -> None:
+    from delivery_control.domain.inventory import DeliveryInventory
+
+    inventory = DemandIssueInventory(
+        records=(),
+        raw_count=None,
+        complete=False,
+        problems=(
+            InventoryProblem("github", "open-issues", "rate limited"),
+        ),
+    )
+    metrics = measure_pipeline(
+        DeliveryInventory(lanes=(), demand_issues=inventory),
+        now=datetime(2026, 8, 22, tzinfo=UTC),
+    )
+    decision = decide_capacity(
+        metrics,
+        MergeCadence(3600, 0, 0.0, None, None, None),
+    )
+
+    assert metrics.raw_open_issues is None
+    assert metrics.unadmitted_open_issues is None
+    assert metrics.issue_inventory_complete is False
+    assert metrics.backlog_drained is False
+    assert ControlAction.TRIAGE_EXISTING_ISSUES in decision.actions
+
+
+def test_unknown_raw_count_cannot_claim_complete_inventory() -> None:
+    with pytest.raises(ValueError, match="unknown raw_count"):
+        DemandIssueInventory(records=(), raw_count=None, complete=True)
 
 
 def test_projection_assigns_one_disposition_with_fixed_precedence() -> None:
