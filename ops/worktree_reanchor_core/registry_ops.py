@@ -24,10 +24,10 @@ def _select_original(
             external_ids = registry._legacy_external_ids(record)
         except (TypeError, ValueError):
             continue
-        if (
-            lane_id in external_ids
-            and record.get("claim_generation") == claim_generation
-        ):
+        lane_matches = lane_id in external_ids or (
+            not external_ids and record.get("branch") == lane_id
+        )
+        if lane_matches and record.get("claim_generation") == claim_generation:
             matches.append(record)
     if len(matches) != 1:
         raise ReanchorRefused(

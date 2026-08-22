@@ -11,20 +11,21 @@ import pytest
 
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
-import worktree_orchestrate as coordinator
-from delivery_control.domain.models import CheckStatus
-from delivery_control.domain.observations import (
+import worktree_orchestrate as coordinator  # noqa: E402
+from delivery_control.domain.models import CheckStatus, HandbackReceipt, Scope  # noqa: E402
+from delivery_control.domain.observations import (  # noqa: E402
     CheckSnapshot,
     PullRequestInventory,
     PullRequestSnapshot,
 )
-from worktree_reanchor_core import (
+from worktree_reanchor_core import (  # noqa: E402
     git_ops,
     lifecycle_proof,
     registry_ops,
     resume_git_ops,
 )
-from worktree_reanchor_core.errors import ReanchorRefused
+from worktree_reanchor_core.errors import ReanchorRefused  # noqa: E402
+from delivery_control.services.pr_contract import render_pull_request_body  # noqa: E402
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -45,6 +46,25 @@ def _commit(repo: Path, relative_path: str, contents: str, message: str) -> None
     _git(repo, "commit", "-qm", message)
 
 
+def _fixture_receipt_body(
+    *, number: int, branch: str, base: str, head: str
+) -> str:
+    receipt = HandbackReceipt(
+        lane_id=f"DIRECT-PR-{number}",
+        owner_thread_id="owner-thread-1",
+        claim_generation=0,
+        branch=branch,
+        worktree_path=f"/tmp/pr-{number}",
+        base_sha=base,
+        parent_sha=base,
+        head_sha=head,
+        origin_main_sha=base,
+        content_digest="e" * 64,
+        scope=Scope.from_paths(modify=(f"ops/pr_{number}.py",)),
+    )
+    return render_pull_request_body(receipt)
+
+
 class _FixtureRecoveryGitHub:
     def __init__(self, repo: Path, *, operation: str) -> None:
         self.repo = repo
@@ -63,6 +83,12 @@ class _FixtureRecoveryGitHub:
             draft=False,
             mergeable=True,
             node_id="PR_42",
+            body=_fixture_receipt_body(
+                number=42,
+                branch=branch,
+                base=base,
+                head=head,
+            ),
         )
 
     def list_pull_requests_for_branch(self, branch: str) -> PullRequestInventory:
@@ -565,6 +591,7 @@ def _reanchor_fixture(
     tmp_path: Path,
     *,
     conflict: bool = False,
+    external_ids: list[str] | None = None,
 ) -> tuple[Path, Path, Path, dict[str, object]]:
     remote = tmp_path / "remote.git"
     _git(tmp_path, "init", "-q", "--bare", str(remote))
@@ -608,7 +635,9 @@ def _reanchor_fixture(
         "base": base_sha,
         "base_sha": base_sha,
         "status": "published",
-        "external_ids": ["DIRECT-REANCHOR-1"],
+        "external_ids": (
+            ["DIRECT-REANCHOR-1"] if external_ids is None else external_ids
+        ),
         "scope": scope,
         "codex_thread_id": "owner-thread-1",
         "delegated": True,
@@ -649,13 +678,14 @@ def _reanchor_argv(
     expected: dict[str, object],
     *,
     owner: str = "owner-thread-1",
+    lane: str = "DIRECT-REANCHOR-1",
 ) -> list[str]:
     return [
         "reanchor",
         "--repo", str(repo),
         "--state", str(state_path),
         "--merge-front-pr", "42",
-        "--lane", "DIRECT-REANCHOR-1",
+        "--lane", lane,
         "--branch", "feat/exact-pr",
         "--owner-thread-id", owner,
         "--claim-generation", "4",
@@ -701,6 +731,36 @@ def test_reanchor_recreates_exact_remote_branch_for_same_owner(
     assert active[0]["handed_back_sha"] is None
 
 
+def test_reanchor_accepts_direct_assignment_with_branch_lane_fallback(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, state_path, target, expected = _reanchor_fixture(
+        tmp_path,
+        external_ids=[],
+    )
+
+    rc = coordinator.main(
+        _reanchor_argv(
+            repo,
+            state_path,
+            target,
+            expected,
+            lane="feat/exact-pr",
+        )
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    state = coordinator.registry.load_state(state_path)
+    assert rc == coordinator.EXIT_OK
+    assert payload["status"] == "ready-for-owner-tests"
+    assert [item["status"] for item in state["records"]] == [
+        "abandoned",
+        "active",
+    ]
+    assert state["records"][1]["external_ids"] == []
+
+
 def test_reanchor_machine_proof_rejects_non_front_before_local_mutation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -721,6 +781,12 @@ def test_reanchor_machine_proof_rejects_non_front_before_local_mutation(
                 draft=False,
                 mergeable=True,
                 node_id="PR_41",
+                body=_fixture_receipt_body(
+                    number=41,
+                    branch="feat/earlier",
+                    base=candidate.base_sha,
+                    head=candidate.head_sha,
+                ),
             )
             return PullRequestInventory((candidate, earlier))
 

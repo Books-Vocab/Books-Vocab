@@ -15,7 +15,10 @@ from delivery_control.domain.observations import (
     PullRequestInventory,
     PullRequestSnapshot,
 )
-from delivery_control.services.pr_contract import pull_request_holds
+from delivery_control.services.pr_contract import (
+    parse_pull_request_body,
+    pull_request_holds,
+)
 
 from .errors import ReanchorRefused
 
@@ -210,6 +213,16 @@ def _eligible_merge_front(
         raise ReanchorRefused(
             f"PR#{pull_request.number} hold evidence is malformed: {exc}"
         ) from exc
+    try:
+        receipt = parse_pull_request_body(pull_request.body)
+    except DeliverySourceError:
+        return False
+    if (
+        receipt.branch != pull_request.branch
+        or receipt.base_sha != pull_request.base_sha
+        or receipt.head_sha != pull_request.head_sha
+    ):
+        return False
     check = _required(github, pull_request)
     return check.status is CheckStatus.SUCCESS
 
