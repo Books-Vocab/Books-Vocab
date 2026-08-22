@@ -42,8 +42,8 @@ class PipelineMetrics:
     candidate_issues: int
     reanchor_required: int
     dispatchable_candidate_issues: int | None = None
-    raw_open_issues: int = 0
-    unadmitted_open_issues: int = 0
+    raw_open_issues: int | None = 0
+    unadmitted_open_issues: int | None = 0
     triage_required_issues: int = 0
     legacy_open_issues: int = 0
     issues_with_active_claim: int = 0

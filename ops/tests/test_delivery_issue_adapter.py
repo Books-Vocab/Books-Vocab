@@ -136,6 +136,22 @@ def test_raw_issue_query_fails_closed_on_graphql_errors() -> None:
         GitHubCliAdapter(runner=runner).list_open_issues()
 
 
+def test_raw_issue_query_rejects_repeated_pagination_cursor() -> None:
+    runner = StaticRunner(
+        [
+            _repo_name(),
+            _result(_graphql([_issue(1)], has_next=True)),
+            _repo_name(),
+            _result(_graphql([_issue(2)], has_next=True)),
+        ]
+    )
+
+    with pytest.raises(
+        DeliverySourceError, match="pagination cursor repeated"
+    ):
+        GitHubCliAdapter(runner=runner).list_open_issues()
+
+
 def test_raw_issue_query_preserves_malformed_graphql_node_without_inventing_number() -> None:
     response = json.dumps(
         {
@@ -242,7 +258,7 @@ def test_admission_stops_before_mutation_when_label_is_not_configured() -> None:
     assert not any(call[:3] == ("gh", "issue", "edit") for call in runner.calls)
 
 
-def test_admission_stops_before_mutation_when_raw_inventory_has_source_problem() -> None:
+def test_admission_stops_before_mutation_when_target_source_entry_is_malformed() -> None:
     original = "Malformed candidate payload"
     malformed = _issue(7, body=original, labels=(CANDIDATE_ISSUE_LABEL,))
     runner = StaticRunner(
@@ -252,7 +268,7 @@ def test_admission_stops_before_mutation_when_raw_inventory_has_source_problem()
         ]
     )
 
-    with pytest.raises(DeliverySourceError, match="source problems"):
+    with pytest.raises(DeliverySourceError, match="raw source entry"):
         GitHubCliAdapter(runner=runner).admit_candidate(
             issue_number=7,
             expected_updated_at=datetime.fromisoformat("2026-08-22T01:00:00+00:00"),
@@ -263,6 +279,52 @@ def test_admission_stops_before_mutation_when_raw_inventory_has_source_problem()
         )
 
     assert not any(call[:3] == ("gh", "issue", "edit") for call in runner.calls)
+
+
+def test_admission_ignores_unrelated_malformed_raw_issue_entry() -> None:
+    spec = _spec()
+    original = "Original report"
+    admitted_body = render_candidate_body(
+        spec,
+        original_body=original,
+        triage_reason="bounded deterministic defect",
+        operator="supervisor",
+    )
+    malformed = {"number": 99, "labels": []}
+    page_with_unrelated_malformed = _graphql(
+        [_issue(body=original), malformed]
+    )
+    admitted_page_with_unrelated_malformed = _graphql(
+        [
+            _issue(body=admitted_body, labels=(CANDIDATE_ISSUE_LABEL,)),
+            malformed,
+        ]
+    )
+    runner = StaticRunner(
+        [
+            _repo_name(),
+            _result(page_with_unrelated_malformed),
+            _result(json.dumps([{"name": CANDIDATE_ISSUE_LABEL}])),
+            _result(),
+            _repo_name(),
+            _result(admitted_page_with_unrelated_malformed),
+            _result(),
+            _repo_name(),
+            _result(admitted_page_with_unrelated_malformed),
+        ]
+    )
+
+    result = GitHubCliAdapter(runner=runner).admit_candidate(
+        issue_number=7,
+        expected_updated_at=datetime.fromisoformat("2026-08-22T01:00:00+00:00"),
+        expected_body_sha256=hashlib.sha256(original.encode("utf-8")).hexdigest(),
+        spec=spec,
+        triage_reason="bounded deterministic defect",
+        operator="supervisor",
+    )
+
+    assert result.number == 7
+    assert result.candidate_spec == spec
 
 
 def test_admission_stops_without_retry_when_body_mutation_fails() -> None:

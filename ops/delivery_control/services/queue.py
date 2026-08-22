@@ -71,6 +71,11 @@ class QueueService:
         )
         if not decision.allowed:
             raise PolicyViolation("; ".join(decision.reasons))
+        latest_live_main_sha = self.git.origin_main_sha()
+        if latest_live_main_sha != live_main_sha:
+            raise PolicyViolation(
+                "origin/main changed during queue admission; re-read the exact merge front"
+            )
         self.github_command.enqueue(
             number=pull_request_number,
             expected_base_sha=live_main_sha,
