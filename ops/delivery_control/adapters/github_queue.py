@@ -48,6 +48,28 @@ mutation DeliveryDequeue($pullRequestId: ID!) {
 }
 """.strip()
 
+_QUEUE_CONFIGURATION_QUERY = """
+query DeliveryMergeQueueConfiguration(
+  $owner: String!,
+  $name: String!,
+  $branch: String!
+) {
+  repository(owner: $owner, name: $name) {
+    mergeQueue(branch: $branch) {
+      configuration {
+        mergingStrategy
+        mergeMethod
+        checkResponseTimeout
+        maximumEntriesToBuild
+        maximumEntriesToMerge
+        minimumEntriesToMerge
+        minimumEntriesToMergeWaitTime
+      }
+    }
+  }
+}
+""".strip()
+
 
 @dataclass(frozen=True)
 class NativeQueueSnapshot:
@@ -130,6 +152,36 @@ class GitHubQueueGraphQLAdapter:
             entry_id=entry["id"] if isinstance(entry, Mapping) else None,
             enqueued_at=enqueued_at,
         )
+
+    def is_configured(self, *, repository_name: str, branch: str) -> bool:
+        """Read the native queue configuration from GraphQL, not REST rules."""
+
+        owner, separator, name = repository_name.partition("/")
+        if not separator or not owner or not name or "/" in name:
+            raise AdapterPayloadError("GitHub repository name must be owner/name")
+        payload = self._graphql(
+            _QUEUE_CONFIGURATION_QUERY,
+            ("owner", owner),
+            ("name", name),
+            ("branch", branch),
+        )
+        data = payload.get("data")
+        repository = data.get("repository") if isinstance(data, Mapping) else None
+        merge_queue = (
+            repository.get("mergeQueue")
+            if isinstance(repository, Mapping)
+            else None
+        )
+        if merge_queue is None:
+            return False
+        if not isinstance(merge_queue, Mapping):
+            raise AdapterPayloadError("GitHub merge queue payload is malformed")
+        configuration = merge_queue.get("configuration")
+        if configuration is None:
+            return False
+        if not isinstance(configuration, Mapping) or not configuration:
+            raise AdapterPayloadError("GitHub merge queue configuration is malformed")
+        return True
 
     def _enqueue_mutation(self, pull_request_id: str, expected_head_sha: str) -> str:
         payload = self._graphql(

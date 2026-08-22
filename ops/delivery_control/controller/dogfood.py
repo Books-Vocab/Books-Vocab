@@ -10,7 +10,8 @@ from .metrics import MergeCadence, PipelineMetrics
 @dataclass(frozen=True)
 class DogfoodProfile:
     roles: tuple[str, ...] = ("backlog_scout", "pi", "cm", "supervisor")
-    supervisor_poll_seconds: int = 60
+    # This is a coarse liveness tick, not the delivery execution cadence.
+    watchdog_tick_seconds: int = 300
     canary_solver_limit: int = 1
     promotion_merge_count: int = 3
     promotion_observation_seconds: int = 900
@@ -30,6 +31,8 @@ class DogfoodReadiness:
     metrics: PipelineMetrics
     cadence: MergeCadence
     profile: DogfoodProfile
+    supervision_worktree_count: int = 0
+    total_physical_worktree_count: int | None = None
 
 
 DEFAULT_DOGFOOD_PROFILE = DogfoodProfile()
@@ -49,6 +52,8 @@ def assess_dogfood_readiness(
     metrics: PipelineMetrics,
     cadence: MergeCadence,
     profile: DogfoodProfile = DEFAULT_DOGFOOD_PROFILE,
+    supervision_worktree_count: int = 0,
+    total_physical_worktree_count: int | None = None,
 ) -> DogfoodReadiness:
     blockers: list[str] = []
 
@@ -122,4 +127,10 @@ def assess_dogfood_readiness(
         metrics=metrics,
         cadence=cadence,
         profile=profile,
+        supervision_worktree_count=supervision_worktree_count,
+        total_physical_worktree_count=(
+            physical_worktree_count + supervision_worktree_count
+            if total_physical_worktree_count is None
+            else total_physical_worktree_count
+        ),
     )

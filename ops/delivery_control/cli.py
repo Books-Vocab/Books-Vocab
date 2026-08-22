@@ -50,9 +50,21 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser("inspect", help="classify every known delivery lane")
     commands.add_parser("metrics", help="measure current queue reservoirs")
     commands.add_parser("plan", help="derive the next capacity actions")
-    commands.add_parser(
+    dogfood = commands.add_parser(
         "dogfood-preflight", help="verify the four-role canary launch baseline"
     )
+    dogfood.add_argument(
+        "--supervision-worktree",
+        action="append",
+        type=Path,
+        default=[],
+        help="exact supervision checkout path; repeat once per checkout",
+    )
+    watchdog = commands.add_parser(
+        "watchdog", help="read liveness and return a non-dispatching wake decision"
+    )
+    watchdog.add_argument("--supervisor-thread", required=True)
+    watchdog.add_argument("--stale-after-seconds", type=int, default=600)
 
     validate = commands.add_parser(
         "validate-pr-body", help="validate one durable PR receipt"
@@ -131,7 +143,14 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
     if args.command == "plan":
         return application.plan()
     if args.command == "dogfood-preflight":
-        return application.dogfood_preflight()
+        return application.dogfood_preflight(
+            supervision_worktree_paths=tuple(args.supervision_worktree)
+        )
+    if args.command == "watchdog":
+        return application.watchdog(
+            supervisor_thread_id=args.supervisor_thread,
+            stale_after_seconds=args.stale_after_seconds,
+        )
     if args.command == "validate-pr-body":
         body = (
             sys.stdin.read()

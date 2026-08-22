@@ -690,12 +690,15 @@ def test_cli_routes_exact_post_publication_abandonment(capsys: object) -> None:
 
 def test_cli_exposes_dogfood_preflight_as_read_only_json(capsys: object) -> None:
     class FakeApplication:
-        def dogfood_preflight(self) -> object:
+        def dogfood_preflight(
+            self, *, supervision_worktree_paths: tuple[Path, ...]
+        ) -> object:
+            assert supervision_worktree_paths == (Path("/supervision"),)
             return {"ready": False, "blockers": ["source inventory"]}
 
     assert (
         main(
-            ["dogfood-preflight"],
+            ["dogfood-preflight", "--supervision-worktree", "/supervision"],
             application_factory=lambda **_: FakeApplication(),
         )
         == 2
@@ -704,6 +707,31 @@ def test_cli_exposes_dogfood_preflight_as_read_only_json(capsys: object) -> None
     payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
     assert payload["command"] == "dogfood-preflight"
     assert payload["result"]["ready"] is False
+
+
+def test_cli_exposes_watchdog_without_dispatching(capsys: object) -> None:
+    class FakeApplication:
+        def watchdog(
+            self,
+            *,
+            supervisor_thread_id: str,
+            stale_after_seconds: int,
+        ) -> object:
+            assert supervisor_thread_id == "supervisor-thread"
+            assert stale_after_seconds == 600
+            return {"action": "noop", "reason": "lease is valid"}
+
+    assert (
+        main(
+            ["watchdog", "--supervisor-thread", "supervisor-thread"],
+            application_factory=lambda **_: FakeApplication(),
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert payload["command"] == "watchdog"
+    assert payload["result"]["action"] == "noop"
 
 
 def test_runtime_status_file_fails_closed_for_unlisted_owner(tmp_path: Path) -> None:

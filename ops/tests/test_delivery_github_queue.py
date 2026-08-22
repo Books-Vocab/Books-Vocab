@@ -10,6 +10,7 @@ OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
 from delivery_control.adapters.github_queue import GitHubQueueGraphQLAdapter
+from delivery_control.adapters.errors import AdapterPayloadError
 from delivery_control.domain.errors import CompareAndSwapConflict
 from delivery_control.ports.process import CommandResult
 
@@ -60,6 +61,29 @@ def _enqueued(entry_id: str = "MQE_1") -> dict[str, object]:
     return {"data": {"enqueuePullRequest": {"mergeQueueEntry": {"id": entry_id}}}}
 
 
+def _configuration(*, configured: bool = True) -> dict[str, object]:
+    return {
+        "data": {
+            "repository": {
+                "mergeQueue": (
+                    {
+                        "configuration": (
+                            {
+                                "mergingStrategy": "ALLGREEN",
+                                "mergeMethod": "MERGE",
+                            }
+                            if configured
+                            else None
+                        )
+                    }
+                    if configured
+                    else None
+                )
+            }
+        }
+    }
+
+
 def test_native_enqueue_uses_expected_head_and_accepts_main_advancing() -> None:
     runner = StaticRunner(
         [_state(), _enqueued(), _state(base_sha="c" * 40, entry_id="MQE_1")]
@@ -104,6 +128,37 @@ def test_native_queue_snapshot_exposes_exact_enqueue_time() -> None:
     assert entry is not None
     assert entry.entry_id == "MQE_existing"
     assert entry.enqueued_at.isoformat() == "2026-08-21T12:00:00+00:00"
+
+
+def test_native_queue_configuration_is_read_from_graphql() -> None:
+    runner = StaticRunner([_configuration()])
+
+    configured = GitHubQueueGraphQLAdapter(
+        repo=Path("/repo"), runner=runner
+    ).is_configured(repository_name="owner/repo", branch="main")
+
+    assert configured is True
+    assert "repository(owner: $owner, name: $name)" in runner.calls[0][4]
+    assert "owner=owner" in runner.calls[0]
+    assert "name=repo" in runner.calls[0]
+    assert "branch=main" in runner.calls[0]
+
+
+def test_native_queue_configuration_absence_is_false() -> None:
+    runner = StaticRunner([_configuration(configured=False)])
+
+    configured = GitHubQueueGraphQLAdapter(
+        repo=Path("/repo"), runner=runner
+    ).is_configured(repository_name="owner/repo", branch="main")
+
+    assert configured is False
+
+
+def test_native_queue_configuration_rejects_malformed_repository_name() -> None:
+    with pytest.raises(AdapterPayloadError, match="owner/name"):
+        GitHubQueueGraphQLAdapter(repo=Path("/repo"), runner=StaticRunner([])).is_configured(
+            repository_name="owner/repo/extra", branch="main"
+        )
 
 
 def test_native_enqueue_dequeues_if_target_changes_during_mutation() -> None:
