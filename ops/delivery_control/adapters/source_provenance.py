@@ -122,6 +122,8 @@ def source_compatibility_problem(
     if source.control_plane_fingerprint != target.control_plane_fingerprint:
         return (
             "control-plane source fingerprint differs from target repo: "
+            "for a control-plane change, run the canonical target command "
+            f"{target_repo / 'ops' / 'delivery.py'} or merge the change first; "
             f"source={source.control_plane_fingerprint} "
             f"target={target.control_plane_fingerprint}"
         )
