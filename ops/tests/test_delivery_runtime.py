@@ -11,9 +11,10 @@ OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
 from delivery_control.adapters.runtime import RuntimeStatusMap
+from delivery_control.adapters.runtime_receipt import RuntimeReceiptFile
 from delivery_control.application import build_application
 from delivery_control.controller.runtime_watchdog import evaluate_runtime_watchdog
-from delivery_control.domain.errors import PolicyViolation
+from delivery_control.domain.errors import CompareAndSwapConflict, PolicyViolation
 from delivery_control.domain.runtime_models import (
     RUNTIME_SCHEMA,
     RuntimeReceipt,
@@ -61,7 +62,11 @@ def test_waiting_for_future_event_is_a_noop_even_without_lease() -> None:
 
 
 def test_stale_progress_returns_idempotent_wake_decision() -> None:
-    receipt = _receipt(lease_until=None, last_progress_at=NOW - timedelta(minutes=11))
+    receipt = _receipt(
+        state=RuntimeState.IDLE,
+        lease_until=None,
+        last_progress_at=NOW - timedelta(minutes=11),
+    )
 
     first = evaluate_runtime_watchdog(receipt, now=NOW)
     second = evaluate_runtime_watchdog(receipt, now=NOW + timedelta(seconds=1))
@@ -73,12 +78,63 @@ def test_stale_progress_returns_idempotent_wake_decision() -> None:
 
 def test_expired_lease_wakes_even_when_last_progress_is_recent() -> None:
     decision = evaluate_runtime_watchdog(
-        _receipt(lease_until=NOW - timedelta(seconds=1)),
+        _receipt(
+            state=RuntimeState.IDLE,
+            lease_until=NOW - timedelta(seconds=1),
+        ),
         now=NOW,
     )
 
     assert decision.action is WatchdogAction.WAKE
     assert decision.reason == "lease expired"
+
+
+def test_stale_running_runtime_escalates_instead_of_starting_a_second_turn() -> None:
+    decision = evaluate_runtime_watchdog(
+        _receipt(lease_until=None, last_progress_at=NOW - timedelta(minutes=11)),
+        now=NOW,
+    )
+
+    assert decision.action is WatchdogAction.ESCALATE
+    assert decision.reason == (
+        "running runtime progress is stale; external status check required"
+    )
+    assert decision.wake_id is None
+
+
+def test_already_recorded_wake_is_not_reissued() -> None:
+    stale = _receipt(
+        state=RuntimeState.IDLE,
+        lease_until=None,
+        last_progress_at=NOW - timedelta(minutes=11),
+    )
+    first = evaluate_runtime_watchdog(stale, now=NOW)
+    recorded = _receipt(
+        state=RuntimeState.IDLE,
+        lease_until=None,
+        last_progress_at=stale.last_progress_at,
+        last_action_id=first.wake_id,
+    )
+
+    second = evaluate_runtime_watchdog(recorded, now=NOW + timedelta(seconds=1))
+
+    assert first.action is WatchdogAction.WAKE
+    assert second.action is WatchdogAction.ESCALATE
+    assert second.reason == "wake already issued for current stale receipt"
+
+
+def test_due_waiting_event_can_wake_once() -> None:
+    decision = evaluate_runtime_watchdog(
+        _receipt(
+            state=RuntimeState.WAITING,
+            lease_until=None,
+            expected_next_event_at=NOW - timedelta(seconds=1),
+        ),
+        now=NOW,
+    )
+
+    assert decision.action is WatchdogAction.WAKE
+    assert decision.reason == "expected event is due"
 
 
 def test_frozen_and_archived_runtimes_are_not_woken() -> None:
@@ -104,6 +160,62 @@ def test_runtime_receipt_round_trips_through_status_file(tmp_path: Path) -> None
 
     assert runtime.owner_status(THREAD) == "running"
     assert runtime.runtime_receipt(THREAD) == receipt
+
+
+def test_missing_runtime_status_file_is_unknown_for_watchdog(tmp_path: Path) -> None:
+    runtime = RuntimeStatusMap.from_file(tmp_path / "missing.json")
+
+    assert runtime.owner_status(THREAD) == "unknown"
+    assert runtime.runtime_receipt(THREAD) is None
+
+
+def test_runtime_receipt_file_is_atomic_monotonic_and_cas_protected(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "runtime" / "supervisor.json"
+    store = RuntimeReceiptFile(path)
+    first = _receipt(state=RuntimeState.IDLE, lease_until=None)
+
+    assert store.write(first) == first
+    newer = _receipt(
+        state=RuntimeState.RUNNING,
+        observed_at=NOW + timedelta(seconds=1),
+        last_progress_at=NOW + timedelta(seconds=1),
+        cycle_id="cycle-2",
+    )
+    assert store.write(newer, expected_cycle_id="cycle-1") == newer
+    assert store.read() == newer
+
+    with pytest.raises(CompareAndSwapConflict, match="cycle changed"):
+        store.write(
+            _receipt(
+                state=RuntimeState.IDLE,
+                observed_at=NOW + timedelta(seconds=2),
+                last_progress_at=NOW + timedelta(seconds=2),
+                cycle_id="cycle-3",
+            ),
+            expected_cycle_id="cycle-1",
+        )
+
+    with pytest.raises(CompareAndSwapConflict, match="moved backwards"):
+        store.write(
+            _receipt(
+                state=RuntimeState.IDLE,
+                observed_at=NOW,
+                last_progress_at=NOW,
+                cycle_id="cycle-4",
+            )
+        )
+
+    with pytest.raises(CompareAndSwapConflict, match="thread changed"):
+        store.write(
+            _receipt(
+                thread_id="another-supervisor",
+                observed_at=NOW + timedelta(seconds=2),
+                last_progress_at=NOW + timedelta(seconds=2),
+                cycle_id="cycle-5",
+            )
+        )
 
 
 def test_runtime_status_map_keeps_legacy_owner_status_support(tmp_path: Path) -> None:
@@ -133,7 +245,11 @@ def test_invalid_stale_threshold_is_rejected() -> None:
 
 
 def test_application_watchdog_is_read_only_and_returns_decision(tmp_path: Path) -> None:
-    receipt = _receipt(lease_until=None, last_progress_at=NOW - timedelta(minutes=11))
+    receipt = _receipt(
+        state=RuntimeState.IDLE,
+        lease_until=None,
+        last_progress_at=NOW - timedelta(minutes=11),
+    )
     path = tmp_path / "runtime.json"
     path.write_text(json.dumps(receipt.to_payload()), encoding="utf-8")
 

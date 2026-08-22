@@ -46,7 +46,7 @@ workflow `pr-gate` 的 check run `confidence` 失敗、非預期 skip、取消�
 
 ## Deterministic delivery control cycle
 
-唯一 command 入口是 `ops/delivery.py`。它輸出 `kg.delivery.command.v1` JSON；成功為 `ok: true`／exit 0，contract、source、CAS 或 I/O failure 為 `ok: false`／exit 1。`dogfood-preflight` 完成觀測但 launch baseline 尚未 ready 時保留 `ok: true` 與完整 blockers、回 exit 2，方便啟動器 fail closed。global option 必須放在 subcommand 前；`--repo` 預設 current working directory，`--runtime-status-file` 是 caller 提供的 thread-id → state JSON，未提供或缺少 owner 時保留 `unknown`，不猜 reachable。`dogfood-preflight` 的 supervision checkout 必須以重複的 `--supervision-worktree` exact path 明確傳入，未列出的 physical worktree 不得被排除。`watchdog` 是約 300 秒的 liveness tick，不是完整 pipeline 的固定執行週期；它只產生 `noop`、`wake` 或 `escalate` 決策，實際喚醒由外部 Codex scheduler 負責。`--repo` 只選 Git／GitHub 的 canonical target 與其明確 registry state；registry command module 在程序啟動時從正在執行的 `delivery.py` 同版本載入，使 publish 移除來源 worktree 後仍能完成最後 CAS，且不混用 target checkout 的舊 control-plane 語義。
+唯一 command 入口是 `ops/delivery.py`。它輸出 `kg.delivery.command.v1` JSON；成功為 `ok: true`／exit 0，contract、source、CAS 或 I/O failure 為 `ok: false`／exit 1。`dogfood-preflight` 完成觀測但 launch baseline 尚未 ready 時保留 `ok: true` 與完整 blockers、回 exit 2，方便啟動器 fail closed。global option 必須放在 subcommand 前；`--repo` 預設 current working directory，`--runtime-status-file` 是 caller 提供的單一 `kg.delivery.runtime.v1` receipt 檔，缺檔代表 `unknown`，不猜 reachable。`runtime-receipt` 以 atomic replace、時間單調性與可選 cycle CAS 寫入同一檔案；它只記錄 caller-owned liveness，不保存 Issue／PR／queue lifecycle。`dogfood-preflight` 的 supervision checkout 必須以重複的 `--supervision-worktree` exact path 明確傳入，未列出的 physical worktree 不得被排除。`watchdog` 是約 300 秒的 liveness tick，不是完整 pipeline 的固定執行週期；它只產生 `noop`、`wake` 或 `escalate` 決策，實際喚醒由外部 Codex scheduler 負責。`RUNNING` runtime 過期只會 `escalate`，禁止猜測並行喚醒；只有非 active 的外部 thread 狀態加上 stale `IDLE`／到期 `WAITING` receipt 才可發一次 `wake_id`，scheduler 必須記錄該 `wake_id` 後才可結束本次 tick。`--repo` 只選 Git／GitHub 的 canonical target 與其明確 registry state；registry command module 在程序啟動時從正在執行的 `delivery.py` 同版本載入，使 publish 移除來源 worktree 後仍能完成最後 CAS，且不混用 target checkout 的舊 control-plane 語義。
 
 ### 先觀測，再執行 exact action
 
@@ -54,6 +54,9 @@ workflow `pr-gate` 的 check run `confidence` 失敗、非預期 skip、取消�
 ./ops/delivery.py --runtime-status-file <owner-status.json> inspect
 ./ops/delivery.py metrics
 ./ops/delivery.py plan
+./ops/delivery.py --runtime-status-file <supervisor-runtime.json> runtime-receipt \
+  --thread-id <supervisor-thread> --state running --cycle-id <cycle-id> \
+  --lease-seconds 600 --clear-last-action
 ```
 
 - `inspect` 分類每條 known／unmapped lane，並分開回傳 lane problems 與 source problems。
