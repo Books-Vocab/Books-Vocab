@@ -321,9 +321,7 @@ def test_inspect_service_excludes_clean_canonical_main_from_lane_inventory(
 def test_candidate_reservoir_excludes_only_nonterminal_registry_issue_refs(
     tmp_path: Path,
 ) -> None:
-    active = replace(
-        _record(tmp_path / "seven"), lane_id="#7", branch="feat/seven"
-    )
+    active = replace(_record(tmp_path / "seven"), lane_id="#7", branch="feat/seven")
     published = replace(
         _record(tmp_path / "eight", status="published"),
         lane_id="https://github.com/owner/repo/issues/8",
@@ -334,10 +332,7 @@ def test_candidate_reservoir_excludes_only_nonterminal_registry_issue_refs(
         lane_id="Issue-9",
         branch="feat/nine",
     )
-    candidates = tuple(
-        _candidate(number)
-        for number in range(7, 11)
-    )
+    candidates = tuple(_candidate(number) for number in range(7, 11))
 
     inventory = InspectService(
         registry=FakeRegistry((active, published, terminal)),
@@ -387,9 +382,12 @@ def test_candidate_query_failure_is_a_source_problem(tmp_path: Path) -> None:
         runtime=FakeRuntime(),
     ).inspect()
 
-    assert InventoryProblem(
-        "github", CANDIDATE_ISSUE_LABEL, "candidate payload is malformed"
-    ) in inventory.source_problems
+    assert (
+        InventoryProblem(
+            "github", CANDIDATE_ISSUE_LABEL, "candidate payload is malformed"
+        )
+        in inventory.source_problems
+    )
     assert inventory.candidate_issues == ()
 
 
@@ -441,6 +439,33 @@ def test_exact_stale_required_green_pr_is_the_only_reanchor_classification(
         item for item in service.inspect().lanes if item.key.startswith("published:")
     )
 
+    assert lane.decision.state is LaneState.REANCHOR
+    assert not lane.problems
+
+
+def test_published_lane_uses_observed_pr_base_without_rewriting_handback_base(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "lane"
+    published = replace(
+        _record(path, status="published"),
+        published_base_sha="d" * 40,
+    )
+    advanced = replace(_pull_request(path), base_sha="d" * 40)
+    service = InspectService(
+        registry=FakeRegistry((published,)),
+        git=FakeGit((), {}, main_sha="e" * 40),
+        github=FakeGitHub((advanced,)),
+        runtime=FakeRuntime(),
+    )
+
+    lane = next(
+        item for item in service.inspect().lanes if item.key.startswith("published:")
+    )
+
+    assert lane.registry is not None
+    assert lane.registry.base_sha == "a" * 40
+    assert lane.registry.published_base_sha == "d" * 40
     assert lane.decision.state is LaneState.REANCHOR
     assert not lane.problems
 
@@ -645,9 +670,7 @@ def test_superseded_terminal_generation_does_not_claim_newer_lane_assets(
     )
 
     history = next(
-        item
-        for item in service.inspect().lanes
-        if item.key == "history:#1:3"
+        item for item in service.inspect().lanes if item.key == "history:#1:3"
     )
 
     assert history.decision.state is LaneState.DONE

@@ -139,6 +139,25 @@ class FakeRegistry:
     ) -> None:
         raise AssertionError("CLI must consume, not create, handbacks")
 
+    def record_published_base(
+        self,
+        *,
+        lane_id: str,
+        expected_claim_generation: int,
+        expected_branch: str,
+        expected_path: str,
+        expected_head_sha: str,
+        expected_handback_base_sha: str,
+        published_base_sha: str,
+    ) -> None:
+        assert lane_id == self.record.lane_id
+        assert expected_claim_generation == self.record.claim_generation
+        assert expected_branch == self.record.branch
+        assert Path(expected_path) == self.record.path
+        assert expected_head_sha == self.record.handed_back_sha
+        assert expected_handback_base_sha == self.record.base_sha
+        self.record = replace(self.record, published_base_sha=published_base_sha)
+
 
 class FakeGit:
     def __init__(self) -> None:
@@ -234,6 +253,7 @@ class FakeGit:
 class FakeGitHub:
     def __init__(self) -> None:
         self.pull_request: PullRequestSnapshot | None = None
+        self.publish_base = BASE
         self.queue_entry: MergeQueueEntrySnapshot | None = None
         self.recent_merges: tuple[datetime, ...] = ()
         self.readiness_dispatches: list[tuple[int, str, str]] = []
@@ -245,6 +265,11 @@ class FakeGitHub:
 
     def find_open_pull_request(self, branch: str) -> PullRequestSnapshot | None:
         return self.pull_request
+
+    def list_pull_requests_for_branch(self, branch: str) -> PullRequestInventory:
+        if self.pull_request is None or self.pull_request.branch != branch:
+            return PullRequestInventory(())
+        return PullRequestInventory((self.pull_request,))
 
     def trigger_readiness(
         self, *, number: int, branch: str, head_sha: str
@@ -259,7 +284,7 @@ class FakeGitHub:
             number=41,
             url="https://example.test/pull/41",
             branch=branch,
-            base_sha=BASE,
+            base_sha=self.publish_base,
             head_sha=HEAD,
             state="OPEN",
             draft=False,
@@ -379,10 +404,31 @@ def test_publish_command_makes_github_durable_then_releases_local_assets() -> No
     result = app.publish(lane_id="DIRECT-CLI", title="fix: exact delivery")
 
     assert result["publication"].pull_request.number == 41
+    assert registry.record.published_base_sha == BASE
     assert registry.record.status == "published"
     assert git.worktrees == ()
     assert git.local is None
     assert git.remote == HEAD
+
+
+def test_publish_records_github_advanced_base_without_rewriting_handback() -> None:
+    registry = FakeRegistry()
+    git = FakeGit()
+    github = FakeGitHub()
+    github.publish_base = "d" * 40
+    app = DeliveryApplication(
+        repo=Path("/repo"),
+        git=git,
+        github=github,
+        registry=registry,
+        runtime=RuntimeStatusMap({"thread-cli": "running"}),
+        telemetry=MemoryTelemetry(),
+    )
+
+    app.publish(lane_id="DIRECT-CLI", title="fix: exact delivery")
+
+    assert registry.record.base_sha == BASE
+    assert registry.record.published_base_sha == "d" * 40
 
 
 def test_publish_and_enqueue_record_exact_duration_samples() -> None:
@@ -746,15 +792,11 @@ def test_cli_forwards_supervision_worktrees_for_observation_commands(
     capsys: object,
 ) -> None:
     class FakeApplication:
-        def metrics(
-            self, *, supervision_worktree_paths: tuple[Path, ...]
-        ) -> object:
+        def metrics(self, *, supervision_worktree_paths: tuple[Path, ...]) -> object:
             assert supervision_worktree_paths == (Path("/supervision"),)
             return {"physical_worktrees": 0}
 
-        def plan(
-            self, *, supervision_worktree_paths: tuple[Path, ...]
-        ) -> object:
+        def plan(self, *, supervision_worktree_paths: tuple[Path, ...]) -> object:
             assert supervision_worktree_paths == (Path("/supervision"),)
             return {"decision": {"actions": []}}
 
@@ -911,18 +953,24 @@ def test_cli_renders_and_validates_candidate_contract(
     payload_path = tmp_path / "candidate.json"
     payload_path.write_text(json.dumps(spec.to_payload()), encoding="utf-8")
 
-    assert main(
-        ["render-candidate-body", "--payload-file", str(payload_path)],
-        application_factory=lambda **_: object(),
-    ) == 0
+    assert (
+        main(
+            ["render-candidate-body", "--payload-file", str(payload_path)],
+            application_factory=lambda **_: object(),
+        )
+        == 0
+    )
     rendered = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
     body_path = tmp_path / "candidate.md"
     body_path.write_text(rendered["result"]["body"], encoding="utf-8")
 
-    assert main(
-        ["validate-candidate-body", "--body-file", str(body_path)],
-        application_factory=lambda **_: object(),
-    ) == 0
+    assert (
+        main(
+            ["validate-candidate-body", "--body-file", str(body_path)],
+            application_factory=lambda **_: object(),
+        )
+        == 0
+    )
     validated = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
     assert validated["result"]["scope"]["files"][0]["path"] == "ops/example.py"
 
@@ -938,10 +986,13 @@ def test_cli_exposes_exact_required_trigger(capsys: object) -> None:
 
     application = FakeApplication()
 
-    assert main(
-        ["trigger-required", "--pr", "41"],
-        application_factory=lambda **_: application,
-    ) == 0
+    assert (
+        main(
+            ["trigger-required", "--pr", "41"],
+            application_factory=lambda **_: application,
+        )
+        == 0
+    )
 
     payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
     assert payload["command"] == "trigger-required"

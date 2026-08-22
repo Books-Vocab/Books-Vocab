@@ -147,6 +147,12 @@ def _parser() -> argparse.ArgumentParser:
     publish.add_argument("--lane", required=True)
     publish.add_argument("--title", required=True)
 
+    published_base = commands.add_parser(
+        "record-published-base",
+        help="persist the exact GitHub PR base for one durable published lane",
+    )
+    published_base.add_argument("--pr", type=int, required=True)
+
     release = commands.add_parser(
         "release-published", help="retry local release after durable PR publication"
     )
@@ -248,9 +254,9 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
         observed_at = _runtime_timestamp(args.observed_at, "observed_at")
         if observed_at is None:
             observed_at = datetime.now(UTC)
-        last_progress_at = _runtime_timestamp(
-            args.last_progress_at, "last_progress_at"
-        ) or observed_at
+        last_progress_at = (
+            _runtime_timestamp(args.last_progress_at, "last_progress_at") or observed_at
+        )
         lease_until = _runtime_timestamp(args.lease_until, "lease_until")
         if args.lease_seconds is not None:
             if args.lease_seconds <= 0:
@@ -345,6 +351,8 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
         return application.receipt(args.lane)
     if args.command == "publish":
         return application.publish(lane_id=args.lane, title=args.title)
+    if args.command == "record-published-base":
+        return application.record_published_base(args.pr)
     if args.command == "release-published":
         return application.release_published(args.pr)
     if args.command == "queue":

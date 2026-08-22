@@ -48,6 +48,18 @@ class RegistryCommandPort(Protocol):
         self, receipt: HandbackReceipt, *, expected_claim_generation: int
     ) -> None: ...
 
+    def record_published_base(
+        self,
+        *,
+        lane_id: str,
+        expected_claim_generation: int,
+        expected_branch: str,
+        expected_path: str,
+        expected_head_sha: str,
+        expected_handback_base_sha: str,
+        published_base_sha: str,
+    ) -> None: ...
+
     def resolve(
         self,
         lane_id: str,

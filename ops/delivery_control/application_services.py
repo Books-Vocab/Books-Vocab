@@ -272,9 +272,7 @@ class DeliveryApplication:
             required_status_contexts=required_status_contexts,
             merge_queue_enabled=self.github.merge_queue_enabled("main"),
             physical_worktree_count=len(worktree_partition.delivery),
-            canonical_worktree_present=(
-                worktree_partition.canonical_count == 1
-            ),
+            canonical_worktree_present=(worktree_partition.canonical_count == 1),
             metrics=metrics,
             cadence=cadence,
             profile=profile,
@@ -310,6 +308,7 @@ class DeliveryApplication:
             github_command=self.github,
             github_workflow=self.github,
         ).publish(receipt=receipt, title=title)
+        published_base = self.record_published_base(publication.pull_request.number)
         warnings = self._operation_telemetry().after_publish(
             receipt=receipt,
             record=record,
@@ -322,8 +321,89 @@ class DeliveryApplication:
         return {
             "receipt": receipt,
             "publication": publication,
+            "published_base": published_base,
             "release": release,
             "telemetry_warnings": warnings,
+        }
+
+    def record_published_base(self, pull_request_number: int) -> object:
+        """Persist the exact PR target OID without rewriting handback provenance."""
+
+        before = self.github.get_pull_request(pull_request_number)
+        receipt = parse_pull_request_body(before.body)
+        record = self.registry.find_exact_claim(
+            lane_id=receipt.lane_id,
+            branch=receipt.branch,
+            path=Path(receipt.worktree_path),
+            claim_generation=receipt.claim_generation,
+        )
+        if record is None:
+            raise errors.PolicyViolation(
+                "published PR has no exact registry claim for base recording"
+            )
+        if (
+            record.status not in {"active", "cleanup_pending", "published"}
+            or record.base_sha != receipt.base_sha
+            or record.scope != receipt.scope
+            or record.owner_thread_id != receipt.owner_thread_id
+            or record.handed_back_sha != receipt.head_sha
+            or record.handback_claim_generation != receipt.claim_generation
+            or not record.handback_valid
+            or record.handback_digest != receipt.content_digest
+            or record.handback_origin_main_sha != receipt.origin_main_sha
+        ):
+            raise errors.PolicyViolation(
+                "published PR does not map to one exact typed registry handback"
+            )
+        branch_inventory = self.github.list_pull_requests_for_branch(receipt.branch)
+        if branch_inventory.problems or len(branch_inventory.records) != 1:
+            raise errors.PolicyViolation(
+                "published branch does not map to one unique PR"
+            )
+        mapped = branch_inventory.records[0]
+        if (
+            mapped.number != before.number
+            or mapped.state != "OPEN"
+            or mapped.draft
+            or mapped.base_branch != "main"
+            or mapped.branch != receipt.branch
+            or mapped.base_sha != before.base_sha
+            or mapped.head_sha != receipt.head_sha
+            or mapped.body != before.body
+            or tuple(sorted(self.github.changed_paths(before.number)))
+            != tuple(sorted(receipt.scope.paths))
+        ):
+            raise errors.PolicyViolation(
+                "published PR tuple changed before base recording"
+            )
+        self.registry.record_published_base(
+            lane_id=receipt.lane_id,
+            expected_claim_generation=receipt.claim_generation,
+            expected_branch=receipt.branch,
+            expected_path=receipt.worktree_path,
+            expected_head_sha=receipt.head_sha,
+            expected_handback_base_sha=receipt.base_sha,
+            published_base_sha=before.base_sha,
+        )
+        after = self.github.get_pull_request(pull_request_number)
+        final_record = self.registry.find_exact_claim(
+            lane_id=receipt.lane_id,
+            branch=receipt.branch,
+            path=Path(receipt.worktree_path),
+            claim_generation=receipt.claim_generation,
+        )
+        if (
+            after.base_sha != before.base_sha
+            or final_record is None
+            or final_record.published_base_sha != before.base_sha
+        ):
+            raise errors.PolicyViolation(
+                "published PR base readback changed during registry recording"
+            )
+        return {
+            "pull_request": after,
+            "published_base_sha": final_record.published_base_sha,
+            "claim_generation": final_record.claim_generation,
         }
 
     def release_published(self, pull_request_number: int) -> object:

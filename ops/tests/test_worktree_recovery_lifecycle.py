@@ -9,23 +9,47 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.domain.models import CheckStatus
-from delivery_control.domain.observations import (
+from delivery_control.domain.models import CheckStatus, HandbackReceipt, Scope  # noqa: E402
+from delivery_control.domain.observations import (  # noqa: E402
     CheckSnapshot,
     MergeQueueEntrySnapshot,
     PullRequestInventory,
     PullRequestSnapshot,
 )
-from worktree_reanchor_core.errors import ReanchorRefused
-from worktree_reanchor_core.lifecycle_proof import (
+from worktree_reanchor_core.errors import ReanchorRefused  # noqa: E402
+from worktree_reanchor_core.lifecycle_proof import (  # noqa: E402
     verify_reanchor_lifecycle,
     verify_resume_lifecycle,
 )
+from delivery_control.services.pr_contract import render_pull_request_body  # noqa: E402
 
 BASE = "1" * 40
 LIVE = "2" * 40
 HEAD = "3" * 40
 OTHER_HEAD = "4" * 40
+
+
+def _receipt_body(
+    *,
+    number: int,
+    branch: str,
+    base: str,
+    head: str,
+) -> str:
+    receipt = HandbackReceipt(
+        lane_id=f"DIRECT-PR-{number}",
+        owner_thread_id="owner-thread-1",
+        claim_generation=0,
+        branch=branch,
+        worktree_path=f"/tmp/pr-{number}",
+        base_sha=base,
+        parent_sha=base,
+        head_sha=head,
+        origin_main_sha=base,
+        content_digest="e" * 64,
+        scope=Scope.from_paths(modify=(f"ops/pr_{number}.py",)),
+    )
+    return render_pull_request_body(receipt)
 
 
 def _pr(
@@ -37,19 +61,31 @@ def _pr(
     state: str = "OPEN",
     draft: bool = False,
     mergeable: bool = True,
-    body: str = "",
+    body: str | None = None,
 ) -> PullRequestSnapshot:
+    actual_branch = branch or f"feat/pr-{number}"
+    actual_head = head
+    actual_base = base
     return PullRequestSnapshot(
         number=number,
         url=f"https://example.test/pull/{number}",
-        branch=branch or f"feat/pr-{number}",
-        base_sha=base,
-        head_sha=head,
+        branch=actual_branch,
+        base_sha=actual_base,
+        head_sha=actual_head,
         state=state,
         draft=draft,
         mergeable=mergeable,
         node_id=f"PR_{number}",
-        body=body,
+        body=(
+            _receipt_body(
+                number=number,
+                branch=actual_branch,
+                base=actual_base,
+                head=actual_head,
+            )
+            if body is None
+            else body
+        ),
     )
 
 
@@ -138,9 +174,7 @@ def test_resume_lifecycle_accepts_only_exact_open_required_code_failure() -> Non
         ),
         (
             FakeGitHub(
-                all_for_branch=(
-                    _pr(42, branch="feat/exact-pr", state="MERGED"),
-                )
+                all_for_branch=(_pr(42, branch="feat/exact-pr", state="MERGED"),)
             ),
             "OPEN",
         ),
@@ -153,9 +187,7 @@ def test_resume_lifecycle_accepts_only_exact_open_required_code_failure() -> Non
         ),
         (
             FakeGitHub(
-                all_for_branch=(
-                    _pr(42, branch="feat/exact-pr", head=OTHER_HEAD),
-                )
+                all_for_branch=(_pr(42, branch="feat/exact-pr", head=OTHER_HEAD),)
             ),
             "HEAD",
         ),
@@ -218,6 +250,64 @@ def test_reanchor_lifecycle_accepts_oldest_required_green_unheld_pr() -> None:
     assert proof.merge_front_policy == "lowest-required-green-unheld-pr-number"
 
 
+def test_reanchor_lifecycle_skips_earlier_pr_with_mismatched_typed_receipt() -> None:
+    malformed = _pr(
+        41,
+        branch="feat/earlier",
+        head=OTHER_HEAD,
+        body=_receipt_body(
+            number=41,
+            branch="feat/earlier",
+            base="9" * 40,
+            head=OTHER_HEAD,
+        ),
+    )
+    candidate = _pr(42, branch="feat/exact-pr")
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        open_prs=(malformed, candidate),
+        checks={
+            41: _check(CheckStatus.SUCCESS, head=OTHER_HEAD),
+            42: _check(CheckStatus.SUCCESS),
+        },
+    )
+
+    proof = verify_reanchor_lifecycle(
+        github,
+        pull_request_number=42,
+        branch="feat/exact-pr",
+        expected_base_sha=BASE,
+        expected_remote_head=HEAD,
+        live_main_sha=LIVE,
+    )
+
+    assert proof.pull_request_number == 42
+
+
+def test_reanchor_lifecycle_accepts_current_pr_base_after_publication_observation() -> (
+    None
+):
+    candidate = _pr(42, branch="feat/exact-pr", base=LIVE)
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        open_prs=(candidate,),
+        checks={42: _check(CheckStatus.SUCCESS)},
+    )
+
+    proof = verify_reanchor_lifecycle(
+        github,
+        pull_request_number=42,
+        branch="feat/exact-pr",
+        expected_pr_base_sha=LIVE,
+        expected_remote_head=HEAD,
+        live_main_sha=LIVE,
+    )
+
+    assert proof.pull_request_number == 42
+    assert proof.base_sha == LIVE
+    assert proof.required_status is CheckStatus.SUCCESS
+
+
 def test_reanchor_lifecycle_rejects_caller_selected_non_front_pr() -> None:
     earlier = _pr(41, head=OTHER_HEAD)
     candidate = _pr(42, branch="feat/exact-pr")
@@ -265,10 +355,26 @@ def test_reanchor_lifecycle_defers_to_existing_native_queue_entry() -> None:
 @pytest.mark.parametrize(
     ("candidate", "check", "reason"),
     [
-        (_pr(42, branch="feat/exact-pr", base=LIVE), _check(CheckStatus.SUCCESS), "stale"),
-        (_pr(42, branch="feat/exact-pr", draft=True), _check(CheckStatus.SUCCESS), "draft"),
-        (_pr(42, branch="feat/exact-pr", mergeable=False), _check(CheckStatus.SUCCESS), "mergeable"),
-        (_pr(42, branch="feat/exact-pr"), _check(CheckStatus.FAILURE), "required-green"),
+        (
+            _pr(42, branch="feat/exact-pr", base=LIVE),
+            _check(CheckStatus.SUCCESS),
+            "stale",
+        ),
+        (
+            _pr(42, branch="feat/exact-pr", draft=True),
+            _check(CheckStatus.SUCCESS),
+            "draft",
+        ),
+        (
+            _pr(42, branch="feat/exact-pr", mergeable=False),
+            _check(CheckStatus.SUCCESS),
+            "mergeable",
+        ),
+        (
+            _pr(42, branch="feat/exact-pr"),
+            _check(CheckStatus.FAILURE),
+            "required-green",
+        ),
         (
             _pr(42, branch="feat/exact-pr", body="P0 hold"),
             _check(CheckStatus.SUCCESS),

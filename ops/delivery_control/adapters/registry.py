@@ -11,7 +11,7 @@ from ..domain.observations import (
     RegistrySnapshot,
 )
 from ..ports.process import CommandRunnerPort
-from .registry_command import resolve_registry
+from .registry_command import record_published_base, resolve_registry
 from .registry_parsing import (
     parse_collision_claim,
     parse_registry_record,
@@ -111,4 +111,38 @@ class RegistryCliAdapter:
             lane_id=lane_id,
             disposition=disposition,
             terminal_proof=terminal_proof,
+        )
+
+    def record_published_base(
+        self,
+        *,
+        lane_id: str,
+        expected_claim_generation: int,
+        expected_branch: str,
+        expected_path: str,
+        expected_head_sha: str,
+        expected_handback_base_sha: str,
+        published_base_sha: str,
+    ) -> None:
+        record_published_base(
+            runner=self.runner,
+            argv=self._argv(
+                "record-published-base",
+                "--json",
+                "--lane",
+                lane_id,
+                "--branch",
+                expected_branch,
+                "--path",
+                expected_path,
+                "--expected-generation",
+                str(expected_claim_generation),
+                "--expected-head-sha",
+                expected_head_sha,
+                "--expected-handback-base-sha",
+                expected_handback_base_sha,
+                "--published-base-sha",
+                published_base_sha,
+            ),
+            lane_id=lane_id,
         )

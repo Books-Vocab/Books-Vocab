@@ -216,11 +216,12 @@ def cmd_open(args: argparse.Namespace) -> int:
         # Keep the ledger truthful if provisioning fails; no branch is deleted here
         # because GitHub may already know the name and branch removal is a separate
         # explicit action.
+        observed_branch_head = _resolve_commit(ROOT, branch) or base_sha
         expected_generation = str(record.get("claim_generation", 0))
         compensation_rc = registry.main([
             "resolve", "--branch", branch, "--path", str(worktree),
             "--status", "abandoned", "--expected-generation", expected_generation,
-            "--expected-head-sha", base_sha,
+            "--expected-head-sha", observed_branch_head,
             "--state", str(state_path), "--json",
         ])
         reason = (

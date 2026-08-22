@@ -135,7 +135,7 @@ canary promotion 前 `canary_solver_limit=1`；不能直接為追求數量啟動
 ./ops/delivery.py --repo /Users/chenliangyu/project/kg publish --lane '<lane-id>' --title '<title>'
 ```
 
-`publish` 驗證 owner／generation／branch／path／base／parent／HEAD／Scope／digest，push 並建立或更新唯一 PR，做 exact remote-head readback，再用 cleanup lease 移除 local worktree／local branch。歷史 base 可以 durable publish；不要求 current-base，也不等待大型 local gate 或 GitHub CI。
+`publish` 驗證 owner／generation／branch／path／base／parent／HEAD／Scope／digest，push 並建立或更新唯一 PR，做 exact remote-head readback，再以 registry CAS 記錄 GitHub target 的 `published_base_sha`，最後用 cleanup lease 移除 local worktree／local branch。原始 typed hand-back 的 `base_sha` 保持 immutable，不會被 PR target 漂移覆寫；若 PR 已 durable 但 CAS 中斷，可對同一 PR 重跑 `record-published-base`，由 exact tuple／head／body／Scope guards 收斂。歷史 base 可以 durable publish；不要求 current-base，也不等待大型 local gate 或 GitHub CI。
 
 若 publication 已成功、local release 中斷，只重試：
 

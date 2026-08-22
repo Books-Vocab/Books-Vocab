@@ -24,7 +24,10 @@ def _select_original(
             external_ids = registry._legacy_external_ids(record)
         except (TypeError, ValueError):
             continue
-        if lane_id in external_ids and record.get("claim_generation") == claim_generation:
+        lane_matches = lane_id in external_ids or (
+            not external_ids and record.get("branch") == lane_id
+        )
+        if lane_matches and record.get("claim_generation") == claim_generation:
             matches.append(record)
     if len(matches) != 1:
         raise ReanchorRefused(
@@ -37,14 +40,16 @@ def _select_original(
 
 
 def _fingerprint(record: dict[str, Any]) -> str:
-    return json.dumps(
-        record, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    )
+    return json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
 def _plan_registration(
-    state: dict[str, Any], *, original: dict[str, Any], target: Path,
-    replacement_base: str, replacement_base_sha: str,
+    state: dict[str, Any],
+    *,
+    original: dict[str, Any],
+    target: Path,
+    replacement_base: str,
+    replacement_base_sha: str,
 ) -> dict[str, Any]:
     trial = copy.deepcopy(state)
     try:
@@ -66,8 +71,12 @@ def _plan_registration(
 
 
 def _replace_published(
-    state: dict[str, Any], *, original: dict[str, Any], target: Path,
-    replacement_base: str, replacement_base_sha: str,
+    state: dict[str, Any],
+    *,
+    original: dict[str, Any],
+    target: Path,
+    replacement_base: str,
+    replacement_base_sha: str,
 ) -> dict[str, Any]:
     if original.get("status") != "published":
         raise ReanchorRefused("original claim is no longer published")
@@ -114,8 +123,14 @@ def _replace_published(
 
 
 def _preflight_published(
-    *, state_path: Path, lane_id: str, branch: str, owner_thread_id: str,
-    claim_generation: int, expected_remote_head: str, target: Path,
+    *,
+    state_path: Path,
+    lane_id: str,
+    branch: str,
+    owner_thread_id: str,
+    claim_generation: int,
+    expected_remote_head: str,
+    target: Path,
     previous_handback: str | None = None,
     replacement_base: str | None = None,
     replacement_base_sha: str | None = None,
@@ -134,7 +149,9 @@ def _preflight_published(
     if not registry._has_valid_stored_handback(original):
         raise ReanchorRefused("original published claim lacks a valid typed hand-back")
     if not lane_id.strip() or claim_generation < 0:
-        raise ReanchorRefused("lane and claim generation must identify one original claim")
+        raise ReanchorRefused(
+            "lane and claim generation must identify one original claim"
+        )
     recorded_base = original.get("base")
     if not isinstance(recorded_base, str) or not recorded_base.strip():
         raise ReanchorRefused("original recorded base is missing or invalid")
@@ -144,6 +161,10 @@ def _preflight_published(
     base_sha = commit_sha(
         original.get("base_sha") or recorded_base,
         label="original base",
+    )
+    published_base_sha = commit_sha(
+        original.get("published_base_sha") or recorded_base,
+        label="published PR base",
     )
     declared = declared_operations(original.get("scope"))
     planned_base = replacement_base if replacement_base is not None else recorded_base
@@ -159,13 +180,21 @@ def _preflight_published(
         original=original,
         fingerprint=_fingerprint(original),
         base_sha=base_sha,
+        published_base_sha=published_base_sha,
         declared=declared,
     )
 
 
 def preflight(
-    *, state_path: Path, lane_id: str, branch: str, owner_thread_id: str,
-    claim_generation: int, expected_remote_head: str, live_main: str, target: Path,
+    *,
+    state_path: Path,
+    lane_id: str,
+    branch: str,
+    owner_thread_id: str,
+    claim_generation: int,
+    expected_remote_head: str,
+    live_main: str,
+    target: Path,
 ) -> RegistryPreflight:
     result = _preflight_published(
         state_path=state_path,
@@ -185,8 +214,14 @@ def preflight(
 
 
 def preflight_resume(
-    *, state_path: Path, lane_id: str, branch: str, owner_thread_id: str,
-    claim_generation: int, expected_remote_head: str, target: Path,
+    *,
+    state_path: Path,
+    lane_id: str,
+    branch: str,
+    owner_thread_id: str,
+    claim_generation: int,
+    expected_remote_head: str,
+    target: Path,
     previous_handback: str | None = None,
 ) -> RegistryPreflight:
     return _preflight_published(
@@ -202,9 +237,15 @@ def preflight_resume(
 
 
 def _register_from_published(
-    *, state_path: Path, preflight_result: RegistryPreflight, target: Path,
-    replacement_base: str, replacement_base_sha: str,
-    lane_id: str, claim_generation: int, action: str,
+    *,
+    state_path: Path,
+    preflight_result: RegistryPreflight,
+    target: Path,
+    replacement_base: str,
+    replacement_base_sha: str,
+    lane_id: str,
+    claim_generation: int,
+    action: str,
 ) -> dict[str, Any]:
     with registry._ledger_lock(state_path):
         state = registry.load_state(state_path)
@@ -212,9 +253,7 @@ def _register_from_published(
             state, lane_id=lane_id, claim_generation=claim_generation
         )
         if _fingerprint(current) != preflight_result.fingerprint:
-            raise ReanchorRefused(
-                f"original registry claim changed during {action}"
-            )
+            raise ReanchorRefused(f"original registry claim changed during {action}")
         active = _replace_published(
             state,
             original=current,
@@ -227,8 +266,13 @@ def _register_from_published(
 
 
 def register_active(
-    *, state_path: Path, preflight_result: RegistryPreflight, target: Path,
-    live_main: str, lane_id: str, claim_generation: int,
+    *,
+    state_path: Path,
+    preflight_result: RegistryPreflight,
+    target: Path,
+    live_main: str,
+    lane_id: str,
+    claim_generation: int,
 ) -> dict[str, Any]:
     return _register_from_published(
         state_path=state_path,
@@ -243,8 +287,12 @@ def register_active(
 
 
 def register_resumed(
-    *, state_path: Path, preflight_result: RegistryPreflight, target: Path,
-    lane_id: str, claim_generation: int,
+    *,
+    state_path: Path,
+    preflight_result: RegistryPreflight,
+    target: Path,
+    lane_id: str,
+    claim_generation: int,
 ) -> dict[str, Any]:
     original = preflight_result.original
     return _register_from_published(

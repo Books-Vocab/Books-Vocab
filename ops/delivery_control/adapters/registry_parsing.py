@@ -43,14 +43,23 @@ def reported_problems(payload: Mapping[str, Any]) -> tuple[InventoryProblem, ...
     for index, raw in enumerate(raw_problems):
         identity = raw.get("identity") if isinstance(raw, Mapping) else None
         reason = raw.get("reason") if isinstance(raw, Mapping) else None
-        if isinstance(identity, str) and identity.strip() and isinstance(reason, str) and reason.strip():
-            problems.append(InventoryProblem("registry", identity.strip(), reason.strip()))
+        if (
+            isinstance(identity, str)
+            and identity.strip()
+            and isinstance(reason, str)
+            and reason.strip()
+        ):
+            problems.append(
+                InventoryProblem("registry", identity.strip(), reason.strip())
+            )
             continue
         kind = raw.get("kind") if isinstance(raw, Mapping) else None
         record_index = raw.get("index") if isinstance(raw, Mapping) else None
         if isinstance(kind, str) and kind.strip():
             problem_identity = (
-                f"record[{record_index}]" if type(record_index) is int and record_index >= 0 else f"problem[{index}]"
+                f"record[{record_index}]"
+                if type(record_index) is int and record_index >= 0
+                else f"problem[{index}]"
             )
             detail = kind.strip()
             if isinstance(reason, str) and reason.strip():
@@ -82,14 +91,21 @@ def parse_registry_record(payload: Mapping[str, Any]) -> RegistrySnapshot:
     base_sha = str(payload.get("base_sha") or payload.get("base") or "")
     if not _SHA_RE.fullmatch(base_sha):
         raise ValueError("registry base must be an exact commit SHA")
+    published_base = payload.get("published_base_sha")
+    if published_base is not None and not _SHA_RE.fullmatch(str(published_base)):
+        raise ValueError("published PR base must be an exact commit SHA")
     external_ids_payload = payload.get("external_ids")
     if external_ids_payload is not None and (
         not isinstance(external_ids_payload, list)
-        or any(type(item) is not str or not item.strip() for item in external_ids_payload)
+        or any(
+            type(item) is not str or not item.strip() for item in external_ids_payload
+        )
     ):
         raise ValueError("registry external_ids must be non-empty strings")
     external_ids = (
-        tuple(item.strip() for item in external_ids_payload) if isinstance(external_ids_payload, list) else ()
+        tuple(item.strip() for item in external_ids_payload)
+        if isinstance(external_ids_payload, list)
+        else ()
     )
     lane_id = external_ids[0] if external_ids else branch
     handed_back_sha = payload.get("handed_back_sha")
@@ -103,7 +119,9 @@ def parse_registry_record(payload: Mapping[str, Any]) -> RegistrySnapshot:
     if handback_claim_generation is not None and (
         type(handback_claim_generation) is not int or handback_claim_generation < 0
     ):
-        raise ValueError("registry handback_claim_generation must be a non-negative integer")
+        raise ValueError(
+            "registry handback_claim_generation must be a non-negative integer"
+        )
     handback_valid = legacy_seal_valid(payload)
     raw_outcomes = seal.get("outcomes") if isinstance(seal, Mapping) else None
     handback_outcomes = (
@@ -111,7 +129,11 @@ def parse_registry_record(payload: Mapping[str, Any]) -> RegistrySnapshot:
         if handback_valid and isinstance(raw_outcomes, list)
         else ()
     )
-    handback_initial_holds = parse_initial_holds(seal) if handback_valid and isinstance(seal, Mapping) else ()
+    handback_initial_holds = (
+        parse_initial_holds(seal)
+        if handback_valid and isinstance(seal, Mapping)
+        else ()
+    )
     return RegistrySnapshot(
         lane_id=lane_id,
         branch=branch,
@@ -119,21 +141,31 @@ def parse_registry_record(payload: Mapping[str, Any]) -> RegistrySnapshot:
         status=status,
         scope=scope,
         base_sha=base_sha,
+        published_base_sha=(
+            str(published_base) if published_base is not None else None
+        ),
         claim_generation=claim_generation,
         external_ids=external_ids,
-        owner_thread_id=(str(payload["codex_thread_id"]) if payload.get("codex_thread_id") else None),
+        owner_thread_id=(
+            str(payload["codex_thread_id"]) if payload.get("codex_thread_id") else None
+        ),
         handed_back_sha=(str(handed_back_sha) if handed_back_sha else None),
         handback_claim_generation=handback_claim_generation,
         handback_valid=handback_valid,
         handback_digest=(
             str(handback_digest)
-            if isinstance(handback_digest, str) and re.fullmatch(r"[0-9a-f]{64}", handback_digest)
+            if isinstance(handback_digest, str)
+            and re.fullmatch(r"[0-9a-f]{64}", handback_digest)
             else None
         ),
         handback_origin_main_sha=(
-            str(handback_origin) if isinstance(handback_origin, str) and _SHA_RE.fullmatch(handback_origin) else None
+            str(handback_origin)
+            if isinstance(handback_origin, str) and _SHA_RE.fullmatch(handback_origin)
+            else None
         ),
-        handed_back_at=parse_optional_timestamp(payload.get("handed_back_at"), field="registry handed_back_at"),
+        handed_back_at=parse_optional_timestamp(
+            payload.get("handed_back_at"), field="registry handed_back_at"
+        ),
         handback_outcomes=handback_outcomes,
         handback_initial_holds=handback_initial_holds,
     )
