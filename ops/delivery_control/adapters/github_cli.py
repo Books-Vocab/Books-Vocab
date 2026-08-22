@@ -16,7 +16,7 @@ from ..domain.observations import (
     PullRequestSnapshot,
 )
 from ..ports.process import CommandRunnerPort
-from .errors import AdapterPayloadError
+from .errors import AdapterCommandError, AdapterPayloadError
 from .github_checks import GitHubChecks
 from .github_client import GitHubCliClient
 from .github_commands import GitHubCommands
@@ -47,6 +47,9 @@ class GitHubCliAdapter:
     ) -> None:
         self.repo = (repo or Path.cwd()).resolve()
         self.runner = runner or SubprocessCommandRunner()
+        self._pull_request_snapshot_cache: dict[int, PullRequestSnapshot] = {}
+        self._required_observation_numbers: tuple[int, ...] = ()
+        self._open_observations_pending = False
         self.queue = GitHubQueueGraphQLAdapter(repo=self.repo, runner=self.runner)
         self._client = GitHubCliClient(repo=self.repo, runner=self.runner)
         self._rules = GitHubRules(
@@ -79,7 +82,9 @@ class GitHubCliAdapter:
             client=self._client,
             queue=self.queue,
             find_open_pull_request=self.find_open_pull_request,
-            get_pull_request=self.get_pull_request,
+            # Mutations must never authorize from the read-only inventory
+            # cache.  Their pre/post checks use an exact live query instead.
+            get_pull_request=self._queries.get_pull_request,
             merge_queue_enabled=self.merge_queue_enabled,
         )
 
@@ -118,7 +123,31 @@ class GitHubCliAdapter:
         return self._issue_commands.admit_candidate(**kwargs)
 
     def list_open_pull_requests(self) -> PullRequestInventory:
-        return self._queries.list_open_pull_requests()
+        self.queue.clear_observed_snapshots()
+        inventory = self._queries.list_open_pull_requests()
+        self._pull_request_snapshot_cache = {
+            item.number: item for item in inventory.records
+        }
+        self._required_observation_numbers = tuple(
+            item.number for item in inventory.records
+        )
+        self._open_observations_pending = True
+        return inventory
+
+    def prime_open_observations(self) -> None:
+        """Batch queue observations for one read-only inventory pass."""
+
+        try:
+            self.queue.prime_open_snapshots(repository_name=self._repo_name())
+        except (AdapterCommandError, AdapterPayloadError):
+            # A failed optimization must fall back to exact per-PR reads.
+            self.queue.clear_observed_snapshots()
+        finally:
+            self._open_observations_pending = False
+
+    def _ensure_open_observations(self) -> None:
+        if self._open_observations_pending:
+            self.prime_open_observations()
 
     def list_pull_requests_for_branch(self, branch: str) -> PullRequestInventory:
         return self._queries.list_pull_requests_for_branch(branch)
@@ -136,9 +165,23 @@ class GitHubCliAdapter:
         return matches[0] if matches else None
 
     def get_pull_request(self, number: int) -> PullRequestSnapshot:
+        cached = self._pull_request_snapshot_cache.pop(number, None)
+        if cached is not None:
+            return cached
         return self._queries.get_pull_request(number)
 
     def required_check_snapshot(self, number: int) -> CheckSnapshot:
+        if self._required_observation_numbers:
+            numbers = self._required_observation_numbers
+            self._required_observation_numbers = ()
+            prime = getattr(self._checks, "prime_required_snapshots", None)
+            if callable(prime):
+                try:
+                    prime(numbers)
+                except (AdapterCommandError, AdapterPayloadError):
+                    # The singular exact-head read remains the compatibility
+                    # fallback when batch observation is unavailable or fails.
+                    pass
         return self._checks.required_snapshot(number)
 
     def changed_paths(self, number: int) -> tuple[str, ...]:
@@ -160,10 +203,14 @@ class GitHubCliAdapter:
         )
 
     def merge_queue_entry_id(self, pull_request_id: str) -> str | None:
-        return self.queue.snapshot(pull_request_id).entry_id
+        self._ensure_open_observations()
+        return self.queue.observed_snapshot(pull_request_id).entry_id
 
-    def merge_queue_entry_snapshot(self, pull_request_id: str) -> MergeQueueEntrySnapshot | None:
-        return self.queue.snapshot(pull_request_id).entry
+    def merge_queue_entry_snapshot(
+        self, pull_request_id: str
+    ) -> MergeQueueEntrySnapshot | None:
+        self._ensure_open_observations()
+        return self.queue.observed_snapshot(pull_request_id).entry
 
     def trigger_required(
         self,
@@ -193,7 +240,9 @@ class GitHubCliAdapter:
             head_sha=head_sha,
         )
 
-    def create_pull_request(self, *, branch: str, title: str, body: str) -> PullRequestSnapshot:
+    def create_pull_request(
+        self, *, branch: str, title: str, body: str
+    ) -> PullRequestSnapshot:
         return self._commands.create_pull_request(branch=branch, title=title, body=body)
 
     def update_pull_request(
@@ -204,6 +253,7 @@ class GitHubCliAdapter:
         body: str,
         expected_head_sha: str,
     ) -> PullRequestSnapshot:
+        self._pull_request_snapshot_cache.pop(number, None)
         return self._commands.update_pull_request(
             number=number,
             title=title,
@@ -212,6 +262,7 @@ class GitHubCliAdapter:
         )
 
     def mark_ready(self, number: int) -> PullRequestSnapshot:
+        self._pull_request_snapshot_cache.pop(number, None)
         return self._commands.mark_ready(number)
 
     def close_pull_request(
@@ -222,6 +273,7 @@ class GitHubCliAdapter:
         expected_head_sha: str,
         expected_body: str,
     ) -> PullRequestSnapshot:
+        self._pull_request_snapshot_cache.pop(number, None)
         return self._commands.close_pull_request(
             number=number,
             expected_base_sha=expected_base_sha,
@@ -237,6 +289,7 @@ class GitHubCliAdapter:
         expected_head_sha: str,
         expected_body: str,
     ) -> PullRequestSnapshot:
+        self._pull_request_snapshot_cache.pop(number, None)
         return self._commands.reopen_pull_request(
             number=number,
             expected_base_sha=expected_base_sha,
