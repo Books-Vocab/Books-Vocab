@@ -6,26 +6,27 @@ import sys
 from argparse import Namespace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Self
 
 import pytest
 
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
-import worktree_orchestrate as coordinator  # noqa: E402
-from delivery_control.domain.models import CheckStatus, HandbackReceipt, Scope  # noqa: E402
-from delivery_control.domain.observations import (  # noqa: E402
+import worktree_orchestrate as coordinator
+from delivery_control.domain.models import CheckStatus, HandbackReceipt, Scope
+from delivery_control.domain.observations import (
     CheckSnapshot,
     PullRequestInventory,
     PullRequestSnapshot,
 )
-from worktree_reanchor_core import (  # noqa: E402
+from delivery_control.services.pr_contract import render_pull_request_body
+from worktree_reanchor_core import (
     git_ops,
     lifecycle_proof,
     registry_ops,
     resume_git_ops,
 )
-from worktree_reanchor_core.errors import ReanchorRefused  # noqa: E402
-from delivery_control.services.pr_contract import render_pull_request_body  # noqa: E402
+from worktree_reanchor_core.errors import ReanchorRefused
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -44,6 +45,36 @@ def _commit(repo: Path, relative_path: str, contents: str, message: str) -> None
     path.write_text(contents, encoding="utf-8")
     _git(repo, "add", relative_path)
     _git(repo, "commit", "-qm", message)
+
+
+def test_mutating_worktree_command_uses_shared_operation_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, object]] = []
+
+    class FakeLock:
+        def __init__(self, repo: Path, *, command: str) -> None:
+            events.append(("init", (repo, command)))
+
+        def __enter__(self) -> Self:
+            events.append(("enter", None))
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, traceback: object) -> bool:
+            events.append(("exit", None))
+            return False
+
+    monkeypatch.setattr(coordinator, "OperationLock", FakeLock)
+    monkeypatch.setattr(coordinator, "cmd_open", lambda args: 0)
+    assert coordinator.main(["open", "--intent", "test", "--slug", "lock"]) == 0
+    assert events[0][0] == "init"
+    assert events[0][1][1] == "worktree:open"  # type: ignore[index]
+    assert [item[0] for item in events] == ["init", "enter", "exit"]
+
+    events.clear()
+    monkeypatch.setattr(coordinator, "cmd_preflight", lambda args: 0)
+    assert coordinator.main(["preflight"]) == 0
+    assert events == []
 
 
 def _fixture_receipt_body(

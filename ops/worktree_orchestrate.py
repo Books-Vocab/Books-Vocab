@@ -37,6 +37,7 @@ if str(OPS_DIR) not in sys.path:
 import worktree_reanchor
 import worktree_registry as registry
 import worktree_resume
+from delivery_control.adapters.operation_lock import OperationLock
 from lib.worktree_scope import scope_files, scope_status
 
 SCHEMA = "kg.worktree.orchestrate.v2"
@@ -48,6 +49,9 @@ SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 EXIT_OK = 0
 EXIT_BLOCK = 1
 EXIT_USAGE = 64
+MUTATING_COMMANDS = frozenset(
+    {"open", "adopt", "reanchor", "resume-published", "hand-back", "resolve", "freeze"}
+)
 
 
 def _git(args: list[str], cwd: Path = ROOT) -> tuple[int, str]:
@@ -823,7 +827,14 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    return int(args.func(args))
+    needs_lock = args.command in MUTATING_COMMANDS and not (
+        args.command == "freeze" and args.action == "status"
+    )
+    if not needs_lock:
+        return int(args.func(args))
+    anchor = registry.common_anchor(ROOT)
+    with OperationLock(anchor, command=f"worktree:{args.command}"):
+        return int(args.func(args))
 
 
 if __name__ == "__main__":
