@@ -26,6 +26,7 @@ from .pr_contract import (
     pull_request_holds,
     render_pull_request_body,
 )
+from .publish_head_readback import wait_for_pull_request_head
 from .publish_preflight import PublicationContext
 
 
@@ -132,6 +133,17 @@ class PublishService:
                 expected_remote_sha=remote_sha,
             )
             pushed = True
+
+        if pushed and pull_request is not None:
+            # GitHub may briefly expose the old PR HEAD after the remote ref
+            # readback has already succeeded.  Converge only this exact,
+            # same-owner target before metadata CAS; other API failures remain
+            # fail-closed.
+            pull_request = wait_for_pull_request_head(
+                self.github_query.get_pull_request,
+                number=pull_request.number,
+                expected_head_sha=receipt.head_sha,
+            )
 
         existing_holds = pull_request_holds(pull_request)
         initial_holds = frozenset(HoldKind(item) for item in receipt.initial_holds)
