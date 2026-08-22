@@ -47,6 +47,8 @@ class GitHubCliAdapter:
     ) -> None:
         self.repo = (repo or Path.cwd()).resolve()
         self.runner = runner or SubprocessCommandRunner()
+        self._repository_name_cache: str | None = None
+        self._pull_request_snapshot_cache: dict[int, PullRequestSnapshot] = {}
         self.queue = GitHubQueueGraphQLAdapter(repo=self.repo, runner=self.runner)
         self._client = GitHubCliClient(repo=self.repo, runner=self.runner)
         self._rules = GitHubRules(
@@ -79,7 +81,9 @@ class GitHubCliAdapter:
             client=self._client,
             queue=self.queue,
             find_open_pull_request=self.find_open_pull_request,
-            get_pull_request=self.get_pull_request,
+            # Mutations must never authorize from the read-only inventory
+            # cache.  Their pre/post checks use an exact live query instead.
+            get_pull_request=self._queries.get_pull_request,
             merge_queue_enabled=self.merge_queue_enabled,
         )
 
@@ -118,7 +122,17 @@ class GitHubCliAdapter:
         return self._issue_commands.admit_candidate(**kwargs)
 
     def list_open_pull_requests(self) -> PullRequestInventory:
-        return self._queries.list_open_pull_requests()
+        self.queue.clear_observed_snapshots()
+        inventory = self._queries.list_open_pull_requests()
+        self._pull_request_snapshot_cache = {
+            item.number: item for item in inventory.records
+        }
+        return inventory
+
+    def prime_open_observations(self) -> None:
+        """Batch queue observations for one read-only inventory pass."""
+
+        self.queue.prime_open_snapshots(repository_name=self._repo_name())
 
     def list_pull_requests_for_branch(self, branch: str) -> PullRequestInventory:
         return self._queries.list_pull_requests_for_branch(branch)
@@ -136,6 +150,9 @@ class GitHubCliAdapter:
         return matches[0] if matches else None
 
     def get_pull_request(self, number: int) -> PullRequestSnapshot:
+        cached = self._pull_request_snapshot_cache.pop(number, None)
+        if cached is not None:
+            return cached
         return self._queries.get_pull_request(number)
 
     def required_check_snapshot(self, number: int) -> CheckSnapshot:
@@ -145,7 +162,9 @@ class GitHubCliAdapter:
         return self._queries.changed_paths(number)
 
     def _repo_name(self) -> str:
-        return read_repository_name(self._client)
+        if self._repository_name_cache is None:
+            self._repository_name_cache = read_repository_name(self._client)
+        return self._repository_name_cache
 
     def branch_is_protected(self, branch: str) -> bool:
         return self._rules.branch_is_protected(branch)
@@ -160,10 +179,12 @@ class GitHubCliAdapter:
         )
 
     def merge_queue_entry_id(self, pull_request_id: str) -> str | None:
-        return self.queue.snapshot(pull_request_id).entry_id
+        return self.queue.observed_snapshot(pull_request_id).entry_id
 
-    def merge_queue_entry_snapshot(self, pull_request_id: str) -> MergeQueueEntrySnapshot | None:
-        return self.queue.snapshot(pull_request_id).entry
+    def merge_queue_entry_snapshot(
+        self, pull_request_id: str
+    ) -> MergeQueueEntrySnapshot | None:
+        return self.queue.observed_snapshot(pull_request_id).entry
 
     def trigger_required(
         self,
@@ -193,7 +214,9 @@ class GitHubCliAdapter:
             head_sha=head_sha,
         )
 
-    def create_pull_request(self, *, branch: str, title: str, body: str) -> PullRequestSnapshot:
+    def create_pull_request(
+        self, *, branch: str, title: str, body: str
+    ) -> PullRequestSnapshot:
         return self._commands.create_pull_request(branch=branch, title=title, body=body)
 
     def update_pull_request(
