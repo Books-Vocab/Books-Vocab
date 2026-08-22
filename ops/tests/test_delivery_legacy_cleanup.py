@@ -10,6 +10,7 @@ from delivery_control.adapters.registry_query import terminal_claim
 from delivery_control.domain.errors import PolicyViolation
 from delivery_control.domain.models import Scope
 from delivery_control.domain.observations import (
+    CanonicalCheckoutSnapshot,
     FileChange,
     PhysicalWorktree,
     PullRequestInventory,
@@ -71,14 +72,26 @@ class FakeGit:
         local: str | None = HEAD,
         remote: str | None = HEAD,
         physical: tuple[PhysicalWorktree, ...] = (),
+        canonical_branch: str = "main",
+        canonical_clean: bool = True,
     ) -> None:
         self.local = local
         self.remote = remote
         self.physical = physical
+        self.canonical_branch = canonical_branch
+        self.canonical_clean = canonical_clean
         self.actions: list[str] = []
 
     def list_worktrees(self) -> tuple[PhysicalWorktree, ...]:
         return self.physical
+
+    def canonical_checkout(self) -> CanonicalCheckoutSnapshot:
+        return CanonicalCheckoutSnapshot(
+            path=Path("/repo"),
+            branch=self.canonical_branch,
+            head_sha=BASE,
+            clean=self.canonical_clean,
+        )
 
     def inspect_worktree(self, path: Path, base_sha: str) -> WorktreeSnapshot:
         return WorktreeSnapshot(
@@ -176,6 +189,31 @@ def test_legacy_merged_cleanup_refuses_remote_drift() -> None:
     assert git.actions == []
 
 
+@pytest.mark.parametrize(
+    ("canonical_branch", "canonical_clean", "message"),
+    (
+        ("debug/feature", True, "canonical checkout must be on main"),
+        ("main", False, "canonical checkout is dirty"),
+    ),
+)
+def test_legacy_merged_cleanup_refuses_before_asset_delete_without_main(
+    canonical_branch: str, canonical_clean: bool, message: str
+) -> None:
+    git = FakeGit(
+        canonical_branch=canonical_branch,
+        canonical_clean=canonical_clean,
+    )
+
+    with pytest.raises(PolicyViolation, match=message):
+        _service(
+            _record(status="merged"),
+            git,
+            FakeGitHub(_pr(state="MERGED", merged=True)),
+        ).cleanup_merged_pr(1)
+
+    assert git.actions == []
+
+
 def test_legacy_abandoned_pr_closes_and_removes_remote_only() -> None:
     git = FakeGit(local=None)
     github = FakeGitHub(_pr(state="OPEN"))
@@ -196,6 +234,18 @@ def test_legacy_abandoned_branch_at_base_can_be_released_without_pr() -> None:
     assert result.disposition == "abandoned"
     assert result.local_branch_absent and result.remote_branch_absent
     assert git.actions == ["delete-local"]
+
+
+def test_legacy_abandoned_cleanup_refuses_before_ref_delete_without_main() -> None:
+    branch = "debug/no-pr"
+    record = replace(_record(status="abandoned", handed_back_sha=None), branch=branch)
+    git = FakeGit(local=BASE, remote=None, canonical_branch="debug/feature")
+    github = FakeGitHub(replace(_pr(state="CLOSED"), number=-1, branch=branch))
+
+    with pytest.raises(PolicyViolation, match="canonical checkout must be on main"):
+        _service(record, git, github).cleanup_abandoned_branch(branch)
+
+    assert git.actions == []
 
 
 def test_terminal_claim_ignores_unrelated_malformed_history(tmp_path: Path) -> None:
