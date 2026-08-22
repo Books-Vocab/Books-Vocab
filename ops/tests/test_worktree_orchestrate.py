@@ -210,7 +210,7 @@ def test_open_uses_exact_base_for_failed_provisioning_compensation(
 
     monkeypatch.setattr(coordinator, "_git", fail_worktree_add)
 
-    def fail_compensation(argv: list[str]) -> int:
+    def fail_compensation(argv: list[str], **_kwargs: object) -> int:
         compensation.extend(argv)
         return coordinator.registry.EXIT_CLAIMED
 
@@ -278,7 +278,7 @@ def test_open_compensates_against_existing_branch_head_after_add_failure(
     monkeypatch.setattr(
         coordinator.registry,
         "main",
-        lambda argv: compensation.extend(argv) or coordinator.registry.EXIT_CLAIMED,
+        lambda argv, **_kwargs: compensation.extend(argv) or coordinator.registry.EXIT_CLAIMED,
     )
     args = Namespace(
         slug="existing-branch",

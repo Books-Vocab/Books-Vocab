@@ -227,7 +227,7 @@ def cmd_open(args: argparse.Namespace) -> int:
             "--status", "abandoned", "--expected-generation", expected_generation,
             "--expected-head-sha", observed_branch_head,
             "--state", str(state_path), "--json",
-        ])
+        ], acquire_lock=False)
         reason = (
             "git worktree add failed"
             if compensation_rc == registry.EXIT_OK
@@ -734,7 +734,7 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         argv += ["--expected-generation", str(args.expected_generation)]
     if args.expected_head_sha:
         argv += ["--expected-head-sha", args.expected_head_sha]
-    rc = registry.main(argv)
+    rc = registry.main(argv, acquire_lock=False)
     if rc != EXIT_OK or not args.remove:
         return rc
     worktree = _path(args.path) if args.path else None
@@ -796,7 +796,7 @@ def _parser() -> argparse.ArgumentParser:
         *(["--state", args.state] if args.state else []),
         *(["--outcomes", args.outcomes] if args.outcomes else []),
         *(["--json"] if args.json else []),
-    ]))
+    ], acquire_lock=False))
 
     resolved = sub.add_parser("resolve", help="transition an exact local ownership claim")
     common(resolved); resolved.add_argument("--branch"); resolved.add_argument("--path")

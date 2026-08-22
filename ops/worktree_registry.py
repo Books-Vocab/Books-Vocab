@@ -19,6 +19,7 @@ OPS_DIR = Path(__file__).resolve().parent
 if str(OPS_DIR) not in sys.path:
     sys.path.insert(0, str(OPS_DIR))
 
+from delivery_control.adapters.operation_lock import OperationLock
 from lib.worktree_scope import normalise_scope
 from worktree_registry_core.claims import (
     claim_generation as _claim_generation,
@@ -79,6 +80,24 @@ from worktree_registry_core.storage import ledger_lock as _ledger_lock
 from worktree_registry_core.storage import save_state
 
 RESOLVE_STATUS = (*PUBLIC_RESOLVE_STATUSES, "merged")
+REGISTRY_MUTATING_COMMANDS = frozenset(
+    {
+        "register",
+        "scope-set",
+        "owner-bind",
+        "hand-back",
+        "resolve",
+        "record-published-base",
+        "sweep",
+        "compact",
+    }
+)
+
+
+def _requires_operation_lock(args: argparse.Namespace) -> bool:
+    if args.command in {"sweep", "compact"}:
+        return bool(args.commit)
+    return args.command in REGISTRY_MUTATING_COMMANDS
 
 # Existing coordinators import these names directly. They remain a narrow
 # compatibility surface while policy and command behavior live in core modules.
@@ -166,8 +185,11 @@ def _parser() -> argparse.ArgumentParser:
     )
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, acquire_lock: bool = True) -> int:
     args = _parser().parse_args(argv)
+    if acquire_lock and _requires_operation_lock(args):
+        with OperationLock(common_anchor(), command=f"registry:{args.command}"):
+            return int(args.func(args))
     return int(args.func(args))
 
 
