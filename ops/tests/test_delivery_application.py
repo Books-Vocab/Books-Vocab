@@ -4,6 +4,7 @@ import sys
 from dataclasses import fields
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+import subprocess
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -47,6 +48,47 @@ def test_application_uses_co_versioned_registry_executable(tmp_path: Path) -> No
     )
     assert application.registry.runner.target_repo == tmp_path.resolve()
     assert application.registry.runner.source_root == OPS.parent.resolve()
+
+
+def test_application_uses_main_checkout_for_cleanup_from_linked_worktree(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "repo"
+    source_worktree = tmp_path / "source"
+    repository.mkdir()
+    subprocess.run(("git", "init", "-b", "main", str(repository)), check=True)
+    subprocess.run(
+        ("git", "-C", str(repository), "config", "user.email", "test@example.com"),
+        check=True,
+    )
+    subprocess.run(
+        ("git", "-C", str(repository), "config", "user.name", "Test"),
+        check=True,
+    )
+    (repository / "README").write_text("test\n", encoding="utf-8")
+    subprocess.run(("git", "-C", str(repository), "add", "README"), check=True)
+    subprocess.run(
+        ("git", "-C", str(repository), "commit", "-m", "init"), check=True
+    )
+    subprocess.run(
+        (
+            "git",
+            "-C",
+            str(repository),
+            "worktree",
+            "add",
+            "-b",
+            "feature",
+            str(source_worktree),
+        ),
+        check=True,
+    )
+
+    application = build_application(repo=source_worktree)
+
+    assert application.repo == repository.resolve()
+    assert application.git.repo == repository.resolve()
+    assert application.registry.runner.target_repo == source_worktree.resolve()
 
 
 def test_dogfood_preflight_measures_the_configured_promotion_window(
