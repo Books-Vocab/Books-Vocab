@@ -8,6 +8,16 @@ from pathlib import Path
 from .domain import COMMIT_SHA_RE, DeclaredOperations, commit_sha
 from .errors import ReanchorRefused
 
+REANCHOR_GIT_TIMEOUT_SECONDS = 120.0
+
+
+def _text(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
+
 
 def _git(args: list[str], cwd: Path) -> tuple[int, str]:
     try:
@@ -18,7 +28,12 @@ def _git(args: list[str], cwd: Path) -> tuple[int, str]:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             check=False,
+            timeout=REANCHOR_GIT_TIMEOUT_SECONDS,
         )
+    except subprocess.TimeoutExpired as exc:
+        output = _text(exc.stdout or exc.output)
+        detail = f"git command timed out after {REANCHOR_GIT_TIMEOUT_SECONDS:g}s"
+        return 124, f"{output.rstrip()}\n{detail}" if output else detail
     except OSError as exc:
         return 127, f"{type(exc).__name__}: {exc}"
     return process.returncode, process.stdout.strip()
