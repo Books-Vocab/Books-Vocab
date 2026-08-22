@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .branch_lifecycle import EMPTY_BRANCH_LIFECYCLE, BranchLifecycleInventory
 from .candidate_issues import CandidateIssue
 from .demand_issues import EMPTY_DEMAND_INVENTORY, DemandIssueInventory
 from .isolation import EMPTY_ISOLATION, IsolationSummary
@@ -40,3 +41,4 @@ class DeliveryInventory:
     dispatchable_candidate_issues: tuple[CandidateIssue, ...] = ()
     demand_issues: DemandIssueInventory = EMPTY_DEMAND_INVENTORY
     isolation: IsolationSummary = EMPTY_ISOLATION
+    branch_lifecycle: BranchLifecycleInventory = EMPTY_BRANCH_LIFECYCLE
