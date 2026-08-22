@@ -234,7 +234,10 @@ def measure_pipeline(
             total_source_problems - isolation.quarantined_source_problems,
         ),
         actionable_blocked_lanes=max(
-            0, sum(state in _BLOCKED for state in states) - isolation.quarantined_blocked_lanes
+            0,
+            sum(state in _BLOCKED for state in states)
+            - isolation.quarantined_blocked_lanes
+            - isolation.quarantined_open_prs,
         ),
         actionable_unmapped_open_prs=max(
             0,

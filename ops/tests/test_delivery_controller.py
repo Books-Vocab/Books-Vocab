@@ -28,6 +28,7 @@ from delivery_control.domain.candidate_issues import (
     CandidateSpec,
     unclaimed_candidate_issues,
 )
+from delivery_control.domain.isolation import IsolationSummary
 from delivery_control.domain.models import Scope
 from delivery_control.domain.observations import (
     PhysicalWorktree,
@@ -221,6 +222,45 @@ def test_pipeline_metrics_excludes_explicit_supervision_worktrees() -> None:
     assert measured.clean_unregistered_worktrees == 0
     assert measured.idle_worktrees == 0
     assert measured.blocked_lanes == 0
+
+
+def test_quarantined_open_prs_do_not_count_as_actionable_blockers() -> None:
+    lanes = tuple(
+        LaneInspection(
+            key=f"PR#{number}",
+            registry=None,
+            physical=None,
+            snapshot=None,
+            pull_requests=(
+                PullRequestSnapshot(
+                    number=number,
+                    url=f"https://example.test/pull/{number}",
+                    branch=f"legacy/{number}",
+                    base_sha="a" * 40,
+                    head_sha="b" * 40,
+                    state="OPEN",
+                    draft=False,
+                    mergeable=True,
+                ),
+            ),
+            decision=LaneDecision(
+                LaneState.UNKNOWN,
+                NextAction.INSPECT,
+                "preserved legacy PR",
+            ),
+        )
+        for number in (1376, 1422)
+    )
+    measured = measure_pipeline(
+        DeliveryInventory(
+            lanes=lanes,
+            isolation=IsolationSummary(quarantined_open_prs=2),
+        )
+    )
+
+    assert measured.blocked_lanes == 2
+    assert measured.quarantined_open_prs == 2
+    assert measured.actionable_blocked_lanes == 0
 
 
 def test_controller_triggers_missing_required_without_overproducing_solvers() -> None:
