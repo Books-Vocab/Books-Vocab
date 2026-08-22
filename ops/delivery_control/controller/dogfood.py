@@ -94,6 +94,10 @@ def assess_dogfood_readiness(
     )
     block(metrics.pr_contract_failed > 0, "existing PR delivery contracts are invalid")
     block(metrics.required_failed > 0, "existing required checks are failed")
+    block(
+        metrics.security_hold_issues > 0 or metrics.security_hold_lanes > 0,
+        "explicit P0/P1/security holds require terminal disposition",
+    )
     block(metrics.open_prs > 0, "owner-mapped PR reservoir is not empty")
     block(
         physical_worktree_count != 1 or not canonical_worktree_present,

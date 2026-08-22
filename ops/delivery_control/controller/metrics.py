@@ -53,6 +53,8 @@ class PipelineMetrics:
     clean_unregistered_worktrees: int = 0
     idle_worktrees: int = 0
     collision_lanes: int = 0
+    security_hold_lanes: int = 0
+    security_hold_issues: int = 0
     collision_rate: float = 0.0
     required_failure_rate: float = 0.0
     timings: PipelineTimings = field(default_factory=PipelineTimings)
@@ -99,6 +101,8 @@ class PipelineMetrics:
             and self.actionable_unmapped_open_prs == 0
             and self.pr_contract_failed == 0
             and self.required_failed == 0
+            and self.security_hold_lanes == 0
+            and self.security_hold_issues == 0
         )
         backlog_drained = (
             self.issue_inventory_complete and self.unadmitted_open_issues == 0
@@ -173,6 +177,7 @@ def measure_pipeline(
         if lane.physical is not None
     }
     collision_lanes = states.count(LaneState.BLOCKED_COLLISION)
+    security_hold_lanes = states.count(LaneState.SECURITY_HOLD)
     live_states = [
         state
         for state in states
@@ -293,6 +298,10 @@ def measure_pipeline(
         ),
         collision_lanes=collision_lanes,
         collision_rate=(collision_lanes / len(live_states) if live_states else 0.0),
+        security_hold_lanes=security_hold_lanes,
+        security_hold_issues=inventory.demand_issues.count(
+            IssueDisposition.SECURITY_HOLD
+        ),
         required_failure_rate=(
             required_failed / required_terminal if required_terminal else 0.0
         ),
