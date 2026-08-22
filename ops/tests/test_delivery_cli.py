@@ -688,6 +688,30 @@ def test_cli_routes_exact_post_publication_abandonment(capsys: object) -> None:
     assert application.calls == [41]
 
 
+def test_cli_routes_legacy_abandoned_branch_cleanup(capsys: object) -> None:
+    class FakeApplication:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def cleanup_abandoned(self, branch: str) -> object:
+            self.calls.append(branch)
+            return {"disposition": "abandoned"}
+
+    application = FakeApplication()
+
+    assert (
+        main(
+            ["cleanup-abandoned", "--branch", "debug/no-pr"],
+            application_factory=lambda **_: application,
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert payload["ok"] is True
+    assert application.calls == ["debug/no-pr"]
+
+
 def test_cli_exposes_dogfood_preflight_as_read_only_json(capsys: object) -> None:
     class FakeApplication:
         def dogfood_preflight(

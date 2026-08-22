@@ -151,6 +151,7 @@ run_one() {
         ops/tests/test_delivery_candidate_contract.py \
         ops/tests/test_delivery_publish.py \
         ops/tests/test_delivery_cleanup.py \
+        ops/tests/test_delivery_legacy_cleanup.py \
         ops/tests/test_delivery_queue.py \
         ops/tests/test_delivery_required_repair.py \
         ops/tests/test_delivery_abandon.py \

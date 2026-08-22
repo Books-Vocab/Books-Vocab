@@ -131,6 +131,11 @@ def _parser() -> argparse.ArgumentParser:
         help="close and terminalize one exact post-publication PR",
     )
     abandon.add_argument("--pr", type=int, required=True)
+    cleanup_abandoned = commands.add_parser(
+        "cleanup-abandoned",
+        help="remove exact abandoned branch residue with no PR history",
+    )
+    cleanup_abandoned.add_argument("--branch", required=True)
     commands.add_parser("sync-main", help="ff-only synchronize canonical main")
     return parser
 
@@ -207,6 +212,8 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
         return application.cleanup_merged(args.pr)
     if args.command == "abandon-pr":
         return application.abandon_pr(args.pr)
+    if args.command == "cleanup-abandoned":
+        return application.cleanup_abandoned(args.branch)
     if args.command == "sync-main":
         return application.sync_main()
     raise AssertionError(f"unhandled command: {args.command}")
