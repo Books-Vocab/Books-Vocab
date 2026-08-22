@@ -129,7 +129,10 @@ class DemandIssueInventory:
     """Complete raw Issue inventory; never a local lifecycle database."""
 
     records: tuple[DemandIssue, ...]
-    raw_count: int
+    # ``None`` means the source failed before GitHub returned a trustworthy
+    # page count. It must not be rendered as zero: zero is a real empty
+    # inventory and would hide an unknown backlog from the supervisor.
+    raw_count: int | None
     problems: tuple[InventoryProblem, ...] = ()
     source_entries: tuple[DemandIssueSourceEntry, ...] = ()
     complete: bool = True
@@ -142,7 +145,9 @@ class DemandIssueInventory:
         numbers = tuple(item.number for item in self.records)
         if len(numbers) != len(set(numbers)):
             raise ValueError("Issue inventory contains duplicate numbers")
-        if type(self.raw_count) is not int or self.raw_count < len(self.records):
+        if self.raw_count is not None and (
+            type(self.raw_count) is not int or self.raw_count < len(self.records)
+        ):
             raise ValueError("raw_count must include every parsed and malformed entry")
         if type(self.problems) is not tuple or any(
             not isinstance(item, InventoryProblem) for item in self.problems
@@ -155,11 +160,13 @@ class DemandIssueInventory:
             raise TypeError("Issue source entries must be DemandIssueSourceEntry values")
         if type(self.complete) is not bool:
             raise TypeError("Issue inventory completeness must be boolean")
+        if self.raw_count is None and self.complete:
+            raise ValueError("unknown raw_count requires an incomplete inventory")
         identities = tuple(item.identity for item in self.source_entries)
         if len(identities) != len(set(identities)):
             raise ValueError("Issue source entries contain duplicate identities")
         represented_entries = len(self.records) + len(self.source_entries)
-        if self.raw_count < represented_entries:
+        if self.raw_count is not None and self.raw_count < represented_entries:
             raise ValueError("raw_count must include every parsed and malformed entry")
         object.__setattr__(
             self,
@@ -168,7 +175,7 @@ class DemandIssueInventory:
         )
 
     @property
-    def raw_open_issues(self) -> int:
+    def raw_open_issues(self) -> int | None:
         return self.raw_count
 
     @property
@@ -205,7 +212,9 @@ class DemandIssueInventory:
         }
 
     @property
-    def unadmitted_open_issues(self) -> int:
+    def unadmitted_open_issues(self) -> int | None:
+        if self.raw_count is None:
+            return None
         represented_entries = len(self.records) + len(self.source_entries)
         return len(self.source_entries) + sum(
             item.disposition

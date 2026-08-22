@@ -100,7 +100,12 @@ def decide_capacity(
         )
     if metrics.reanchor_required:
         add(ControlAction.REANCHOR_FRONT, "exact stale-base PRs await reanchor")
-    if metrics.unadmitted_open_issues:
+    if not metrics.issue_inventory_complete or metrics.unadmitted_open_issues is None:
+        add(
+            ControlAction.TRIAGE_EXISTING_ISSUES,
+            "raw open Issue inventory is incomplete; backlog cardinality is unknown",
+        )
+    elif metrics.unadmitted_open_issues:
         add(
             ControlAction.TRIAGE_EXISTING_ISSUES,
             (

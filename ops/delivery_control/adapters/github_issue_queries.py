@@ -84,6 +84,7 @@ class GitHubIssueQueries:
     def list_open_issues(self) -> DemandIssueInventory:
         payloads: list[object] = []
         cursor: str | None = None
+        seen_cursors: set[str | None] = {None}
         for _ in range(100):
             payload = self._graphql(cursor=cursor)
             data = payload.get("data")
@@ -122,5 +123,10 @@ class GitHubIssueQueries:
                 return parse_demand_issue_inventory(payloads)
             if type(end_cursor) is not str or not end_cursor:
                 raise AdapterPayloadError("GitHub Issue pagination cursor is missing")
+            if end_cursor in seen_cursors:
+                raise DeliverySourceError(
+                    "GitHub open Issue pagination cursor repeated before completion"
+                )
+            seen_cursors.add(end_cursor)
             cursor = end_cursor
         raise DeliverySourceError("GitHub open Issue pagination exceeded 100 pages")
