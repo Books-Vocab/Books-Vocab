@@ -247,7 +247,8 @@ def test_pr_gate_manual_dispatch_is_exact_sha_only() -> None:
     for field in ("pr_number", "base_sha", "head_sha"):
         assert f"      {field}:" in workflow
     assert "HEAD^" not in workflow
-    assert "github.sha" not in workflow
+    assert "EVENT_SHA: ${{ github.sha }}" in workflow
+    assert 'if [[ "$EVENT_SHA" != "$HEAD_SHA" ]]' in workflow
     assert "git diff --check \"$BASE_SHA\" \"$HEAD_SHA\"" in workflow
     assert workflow.count("ref: ${{ env.HEAD_SHA }}") == 3
     assert workflow.count("Verify exact head checkout") == 3

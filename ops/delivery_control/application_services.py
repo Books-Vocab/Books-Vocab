@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from .application_ports import (
@@ -14,7 +14,11 @@ from .application_ports import (
     _utc_now,
 )
 from .controller.capacity import decide_capacity
-from .controller.dogfood import assess_dogfood_readiness
+from .controller.dogfood import (
+    DEFAULT_DOGFOOD_PROFILE,
+    DogfoodProfile,
+    assess_dogfood_readiness,
+)
 from .controller.metrics import measure_merge_cadence, measure_pipeline
 from .domain import errors, models, observations, states
 from .ports.runtime import AgentRuntimePort
@@ -70,7 +74,12 @@ class DeliveryApplication:
             "decision": decide_capacity(metrics, cadence),
         }
 
-    def dogfood_preflight(self, *, now: datetime | None = None) -> object:
+    def dogfood_preflight(
+        self,
+        *,
+        now: datetime | None = None,
+        profile: DogfoodProfile = DEFAULT_DOGFOOD_PROFILE,
+    ) -> object:
         observed_at = now or self.clock()
         checkout = self.git.canonical_checkout()
         origin_main_sha = self.git.origin_main_sha()
@@ -81,7 +90,9 @@ class DeliveryApplication:
         )
         metrics = self.metrics(now=observed_at)
         cadence = measure_merge_cadence(
-            self.github.recent_merge_times(), now=observed_at
+            self.github.recent_merge_times(),
+            now=observed_at,
+            window=timedelta(seconds=profile.promotion_observation_seconds),
         )
         return assess_dogfood_readiness(
             local_main_sha=self.git.local_main_sha(),
@@ -101,6 +112,7 @@ class DeliveryApplication:
             ),
             metrics=metrics,
             cadence=cadence,
+            profile=profile,
         )
 
     def receipt(self, lane_id: str) -> models.HandbackReceipt:

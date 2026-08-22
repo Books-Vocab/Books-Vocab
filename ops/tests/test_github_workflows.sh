@@ -40,6 +40,10 @@ grep -Fqx "      - '.claude/skills/devops/SKILL.md'" .github/workflows/backend-q
 
 PR_GATE=".github/workflows/pr-gate.yml"
 grep -q '^  pull_request:' "$PR_GATE" || fail "pr-gate has no pull_request trigger"
+grep -Fq 'if: ${{ github.event_name == '\''workflow_dispatch'\'' }}' "$PR_GATE" \
+  || fail "pr-gate does not guard manual dispatches"
+grep -Fq 'if [[ "$EVENT_SHA" != "$HEAD_SHA" ]]' "$PR_GATE" \
+  || fail "pr-gate does not bind manual dispatches to the event SHA"
 if grep -Eq '^[[:space:]]*merge_group:' "$PR_GATE"; then
   fail "pr-gate still owns a merge_group trigger; merge queue requires the short dedicated workflow"
 fi

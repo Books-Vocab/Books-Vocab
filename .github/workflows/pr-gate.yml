@@ -42,6 +42,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      - name: Reject manual dispatch ref drift
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        shell: bash
+        env:
+          EVENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_SHA" != "$HEAD_SHA" ]]; then
+            echo "manual dispatch ref drift: event SHA $EVENT_SHA does not match requested HEAD_SHA $HEAD_SHA" >&2
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
