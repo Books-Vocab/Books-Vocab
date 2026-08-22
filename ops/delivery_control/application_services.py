@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -25,7 +25,7 @@ from .controller.worktree_boundary import partition_worktrees
 from .domain import errors, models, observations, states
 from .domain.candidate_issues import CandidateSpec
 from .domain.demand_issues import IssueDisposition
-from .domain.runtime_models import RuntimeReceipt
+from .domain.runtime_models import RuntimeReceipt, WatchdogAction
 from .ports.github import GitHubIssueCommandPort
 from .ports.runtime import (
     AgentRuntimePort,
@@ -178,6 +178,44 @@ class DeliveryApplication:
             now=observed_at,
             stale_after_seconds=stale_after_seconds,
         )
+
+    def watchdog_claim(
+        self,
+        *,
+        supervisor_thread_id: str,
+        now: datetime | None = None,
+        stale_after_seconds: int = 300,
+    ) -> object:
+        """Reserve one stale wake; an external scheduler still performs dispatch."""
+
+        if not isinstance(self.runtime, RuntimeReceiptStorePort):
+            raise errors.PolicyViolation(
+                "watchdog wake claims require --runtime-status-file"
+            )
+        observed_at = now or self.clock()
+        receipt = self.runtime.runtime_receipt(supervisor_thread_id)
+        decision = evaluate_runtime_watchdog(
+            receipt,
+            now=observed_at,
+            stale_after_seconds=stale_after_seconds,
+        )
+        if decision.action is not WatchdogAction.WAKE or decision.wake_id is None:
+            return decision
+        try:
+            self.runtime.claim_wake(
+                thread_id=supervisor_thread_id,
+                wake_id=decision.wake_id,
+                now=observed_at,
+                expected_cycle_id=receipt.cycle_id if receipt is not None else None,
+            )
+        except errors.CompareAndSwapConflict:
+            current = self.runtime.runtime_receipt(supervisor_thread_id)
+            return evaluate_runtime_watchdog(
+                current,
+                now=observed_at,
+                stale_after_seconds=stale_after_seconds,
+            )
+        return replace(decision, wake_claimed=True)
 
     def write_runtime_receipt(
         self,

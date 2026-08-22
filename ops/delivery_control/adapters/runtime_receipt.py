@@ -11,6 +11,8 @@ from pathlib import Path
 from ..domain.errors import CompareAndSwapConflict, PolicyViolation
 from ..domain.runtime_models import RuntimeReceipt
 
+_UNSET = object()
+
 
 class RuntimeReceiptFile:
     """Persist a single receipt without becoming a delivery-state database.
@@ -41,6 +43,7 @@ class RuntimeReceiptFile:
         receipt: RuntimeReceipt,
         *,
         expected_cycle_id: str | None = None,
+        expected_last_action_id: str | None | object = _UNSET,
     ) -> RuntimeReceipt:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         lock_path = self.path.with_name(f".{self.path.name}.lock")
@@ -57,6 +60,12 @@ class RuntimeReceiptFile:
                     if actual != expected_cycle_id:
                         raise CompareAndSwapConflict(
                             "runtime receipt cycle changed before write"
+                        )
+                if expected_last_action_id is not _UNSET:
+                    actual = current.last_action_id if current is not None else None
+                    if actual != expected_last_action_id:
+                        raise CompareAndSwapConflict(
+                            "runtime receipt wake action changed before write"
                         )
                 if current is not None:
                     if receipt.observed_at < current.observed_at:
