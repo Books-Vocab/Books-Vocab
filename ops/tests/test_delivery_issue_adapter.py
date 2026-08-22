@@ -102,13 +102,14 @@ def _repo_name() -> CommandResult:
     return _result(json.dumps({"nameWithOwner": "owner/repo"}))
 
 
-def test_raw_issue_query_reads_all_pages_and_preserves_candidate_contract_errors() -> None:
+def test_raw_issue_query_reads_all_pages_and_preserves_candidate_contract_errors() -> (
+    None
+):
     malformed = _issue(2, labels=(CANDIDATE_ISSUE_LABEL,), body="missing contract")
     runner = StaticRunner(
         [
             _repo_name(),
             _result(_graphql([_issue(1)], has_next=True)),
-            _repo_name(),
             _result(_graphql([malformed])),
         ]
     )
@@ -118,10 +119,13 @@ def test_raw_issue_query_reads_all_pages_and_preserves_candidate_contract_errors
     assert inventory.raw_open_issues == 2
     assert [item.number for item in inventory.records] == [1, 2]
     assert inventory.problems[0].identity == "Issue#2"
-    assert len([call for call in runner.calls if call[:3] == ("gh", "api", "graphql")]) == 2
+    assert (
+        len([call for call in runner.calls if call[:3] == ("gh", "api", "graphql")])
+        == 2
+    )
     assert "-F" in runner.calls[1]
     assert "cursor=null" in runner.calls[1]
-    assert "cursor=cursor-1" in runner.calls[3]
+    assert "cursor=cursor-1" in runner.calls[2]
 
 
 def test_raw_issue_query_fails_closed_on_graphql_errors() -> None:
@@ -152,7 +156,9 @@ def test_raw_issue_query_rejects_repeated_pagination_cursor() -> None:
         GitHubCliAdapter(runner=runner).list_open_issues()
 
 
-def test_raw_issue_query_preserves_malformed_graphql_node_without_inventing_number() -> None:
+def test_raw_issue_query_preserves_malformed_graphql_node_without_inventing_number() -> (
+    None
+):
     response = json.dumps(
         {
             "data": {
@@ -205,10 +211,8 @@ def test_admission_preserves_original_body_and_requires_exact_readback() -> None
             _result(_graphql([_issue(body=original)])),
             _result(json.dumps([{"name": CANDIDATE_ISSUE_LABEL}])),
             _result(),
-            _repo_name(),
             _result(_graphql([_issue(body=admitted_body)])),
             _result(),
-            _repo_name(),
             _result(_graphql([final_issue])),
         ]
     )
@@ -258,7 +262,9 @@ def test_admission_stops_before_mutation_when_label_is_not_configured() -> None:
     assert not any(call[:3] == ("gh", "issue", "edit") for call in runner.calls)
 
 
-def test_admission_stops_before_mutation_when_target_source_entry_is_malformed() -> None:
+def test_admission_stops_before_mutation_when_raw_inventory_has_source_problem() -> (
+    None
+):
     original = "Malformed candidate payload"
     malformed = _issue(7, body=original, labels=(CANDIDATE_ISSUE_LABEL,))
     runner = StaticRunner(
@@ -366,7 +372,6 @@ def test_admission_stops_without_retry_when_label_mutation_fails() -> None:
             _result(_graphql([_issue(body=original)])),
             _result(json.dumps([{"name": CANDIDATE_ISSUE_LABEL}])),
             _result(),
-            _repo_name(),
             _result(_graphql([_issue(body=admitted_body)])),
             _failure("label update failed"),
         ]
@@ -400,7 +405,6 @@ def test_admission_body_readback_mismatch_fails_closed() -> None:
             _result(_graphql([_issue(body=original)])),
             _result(json.dumps([{"name": CANDIDATE_ISSUE_LABEL}])),
             _result(),
-            _repo_name(),
             _result(_graphql([_issue(body=admitted_body + " drift")])),
         ]
     )

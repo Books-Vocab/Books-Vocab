@@ -70,6 +70,26 @@ query DeliveryMergeQueueConfiguration(
 }
 """.strip()
 
+_OPEN_QUEUE_STATES_QUERY = """
+query DeliveryOpenQueueStates($owner: String!, $name: String!, $endCursor: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(first: 100, states: OPEN, after: $endCursor) {
+      nodes {
+        id
+        number
+        baseRefName
+        baseRefOid
+        headRefOid
+        body
+        state
+        mergeQueueEntry { id enqueuedAt }
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}
+""".strip()
+
 
 @dataclass(frozen=True)
 class NativeQueueSnapshot:
@@ -97,6 +117,7 @@ class GitHubQueueGraphQLAdapter:
     def __init__(self, *, repo: Path, runner: CommandRunnerPort) -> None:
         self.repo = repo
         self.runner = runner
+        self._observed_open_snapshots: dict[str, NativeQueueSnapshot] = {}
 
     def _graphql(self, query: str, *variables: tuple[str, str]) -> Mapping[str, Any]:
         argv = ["gh", "api", "graphql", "-f", f"query={query}"]
@@ -118,6 +139,58 @@ class GitHubQueueGraphQLAdapter:
         payload = self._graphql(_QUEUE_STATE_QUERY, ("pullRequestId", pull_request_id))
         data = payload.get("data")
         node = data.get("node") if isinstance(data, Mapping) else None
+        return self._snapshot_from_node(node)
+
+    def observed_snapshot(self, pull_request_id: str) -> NativeQueueSnapshot:
+        """Consume one batch observation, otherwise perform an exact live read."""
+
+        cached = self._observed_open_snapshots.pop(pull_request_id, None)
+        return cached if cached is not None else self.snapshot(pull_request_id)
+
+    def clear_observed_snapshots(self) -> None:
+        """Discard observations from an earlier read-only inventory pass."""
+
+        self._observed_open_snapshots.clear()
+
+    def prime_open_snapshots(self, *, repository_name: str) -> None:
+        """Best-effort batch observation for the current open-PR snapshot.
+
+        This cache is intentionally consumed only by read-only observation.
+        Queue mutations continue to call :meth:`snapshot` so a stale batch
+        cannot authorize enqueue or dequeue behavior.
+        """
+
+        self._observed_open_snapshots.clear()
+        owner, separator, name = repository_name.partition("/")
+        if not separator or not owner or not name or "/" in name:
+            return
+        try:
+            payload = self._graphql_pages(
+                _OPEN_QUEUE_STATES_QUERY,
+                ("owner", owner),
+                ("name", name),
+            )
+            self._observed_open_snapshots = _parse_open_queue_snapshots(payload)
+        except (AdapterCommandError, AdapterPayloadError):
+            # The per-PR read is the exact fallback for observation.  A batch
+            # optimization must never turn a transient GitHub shape/error into
+            # a missing queue fact.
+            return
+
+    def _graphql_pages(self, query: str, *variables: tuple[str, str]) -> object:
+        argv = ["gh", "api", "graphql", "--paginate", "--slurp", "-f", f"query={query}"]
+        for name, value in variables:
+            argv.extend(("-F", f"{name}={value}"))
+        result = self.runner.run(tuple(argv), cwd=self.repo)
+        if result.exit_code != 0:
+            raise AdapterCommandError(result)
+        try:
+            return json.loads(result.stdout)
+        except json.JSONDecodeError as error:
+            raise AdapterPayloadError("GitHub GraphQL returned invalid JSON") from error
+
+    @staticmethod
+    def _snapshot_from_node(node: object) -> NativeQueueSnapshot:
         required = {
             "id": str,
             "baseRefName": str,
@@ -168,9 +241,7 @@ class GitHubQueueGraphQLAdapter:
         data = payload.get("data")
         repository = data.get("repository") if isinstance(data, Mapping) else None
         merge_queue = (
-            repository.get("mergeQueue")
-            if isinstance(repository, Mapping)
-            else None
+            repository.get("mergeQueue") if isinstance(repository, Mapping) else None
         )
         if merge_queue is None:
             return False
@@ -258,3 +329,78 @@ class GitHubQueueGraphQLAdapter:
                     "PR tuple changed and native queue rollback did not read back"
                 )
         raise CompareAndSwapConflict("PR tuple changed during native enqueue")
+
+
+def _parse_open_queue_snapshots(payload: object) -> dict[str, NativeQueueSnapshot]:
+    if isinstance(payload, Mapping):
+        pages = (payload,)
+    elif isinstance(payload, list) and all(
+        isinstance(page, Mapping) for page in payload
+    ):
+        pages = tuple(payload)
+    else:
+        raise AdapterPayloadError("GitHub open queue payload is malformed")
+
+    snapshots: dict[str, NativeQueueSnapshot] = {}
+    numbers: set[int] = set()
+    for page_index, page in enumerate(pages):
+        if page.get("errors"):
+            raise AdapterPayloadError("GitHub GraphQL response contains errors")
+        data = page.get("data")
+        repository = data.get("repository") if isinstance(data, Mapping) else None
+        connection = (
+            repository.get("pullRequests") if isinstance(repository, Mapping) else None
+        )
+        if not isinstance(connection, Mapping):
+            raise AdapterPayloadError(
+                f"GitHub open queue page[{page_index}] is malformed"
+            )
+        nodes = connection.get("nodes")
+        page_info = connection.get("pageInfo")
+        if not isinstance(nodes, list) or not isinstance(page_info, Mapping):
+            raise AdapterPayloadError(
+                f"GitHub open queue page[{page_index}] is malformed"
+            )
+        has_next = page_info.get("hasNextPage")
+        if type(has_next) is not bool:
+            raise AdapterPayloadError(
+                f"GitHub open queue page[{page_index}] pageInfo is malformed"
+            )
+        if has_next:
+            cursor = page_info.get("endCursor")
+            if type(cursor) is not str or not cursor:
+                raise AdapterPayloadError(
+                    f"GitHub open queue page[{page_index}] cursor is missing"
+                )
+        elif page_index != len(pages) - 1:
+            raise AdapterPayloadError(
+                f"GitHub open queue page[{page_index}] ended before supplied pages"
+            )
+        for node_index, node in enumerate(nodes):
+            if not isinstance(node, Mapping):
+                raise AdapterPayloadError(
+                    f"GitHub open queue node[{page_index}:{node_index}] is malformed"
+                )
+            number = node.get("number")
+            if type(number) is not int or number <= 0:
+                raise AdapterPayloadError("GitHub open queue PR number is malformed")
+            snapshot = GitHubQueueGraphQLAdapter._snapshot_from_node(node)
+            if snapshot.pull_request_id in snapshots or number in numbers:
+                raise AdapterPayloadError(
+                    f"GitHub open queue contains duplicate PR {number}"
+                )
+            snapshots[snapshot.pull_request_id] = snapshot
+            numbers.add(number)
+    if pages:
+        last = pages[-1]
+        data = last.get("data")
+        repository = data.get("repository") if isinstance(data, Mapping) else None
+        connection = (
+            repository.get("pullRequests") if isinstance(repository, Mapping) else None
+        )
+        page_info = (
+            connection.get("pageInfo") if isinstance(connection, Mapping) else None
+        )
+        if isinstance(page_info, Mapping) and page_info.get("hasNextPage") is True:
+            raise AdapterPayloadError("GitHub open queue pagination is incomplete")
+    return snapshots
