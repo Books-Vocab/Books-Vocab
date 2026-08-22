@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from itertools import pairwise
+from pathlib import Path
 
 from ..domain.models import CheckStatus
 from ..domain.states import LaneState
@@ -71,17 +72,29 @@ def measure_pipeline(
     *,
     telemetry: TelemetryReadResult | None = None,
     now: datetime | None = None,
+    excluded_worktree_paths: tuple[Path, ...] = (),
 ) -> PipelineMetrics:
-    states = [lane.decision.state for lane in inventory.lanes]
+    excluded_paths = {path.resolve() for path in excluded_worktree_paths}
+    lanes = tuple(
+        lane
+        for lane in inventory.lanes
+        if lane.physical is None or lane.physical.path.resolve() not in excluded_paths
+    )
+    measured_inventory = DeliveryInventory(
+        lanes=lanes,
+        source_problems=inventory.source_problems,
+        candidate_issues=inventory.candidate_issues,
+    )
+    states = [lane.decision.state for lane in lanes]
     all_pull_request_numbers = {
         pull_request.number
-        for lane in inventory.lanes
+        for lane in lanes
         for pull_request in lane.pull_requests
         if pull_request.state == "OPEN"
     }
     mapped_pull_request_numbers = {
         pull_request.number
-        for lane in inventory.lanes
+        for lane in lanes
         if lane.registry is not None
         and lane.registry.status in {"active", "cleanup_pending", "published"}
         for pull_request in lane.pull_requests
@@ -89,7 +102,7 @@ def measure_pipeline(
     }
     physical_paths = {
         lane.physical.path.resolve()
-        for lane in inventory.lanes
+        for lane in lanes
         if lane.physical is not None
     }
     collision_lanes = states.count(LaneState.BLOCKED_COLLISION)
@@ -102,12 +115,12 @@ def measure_pipeline(
     required_running = sum(
         lane.required_check is not None
         and lane.required_check.status is CheckStatus.PENDING
-        for lane in inventory.lanes
+        for lane in lanes
     )
     required_failed = sum(
         lane.required_check is not None
         and lane.required_check.status is CheckStatus.FAILURE
-        for lane in inventory.lanes
+        for lane in lanes
     )
     required_absent = sum(
         lane.registry is not None
@@ -116,12 +129,12 @@ def measure_pipeline(
         and lane.pull_requests[0].state == "OPEN"
         and lane.required_check is not None
         and lane.required_check.status is CheckStatus.ABSENT
-        for lane in inventory.lanes
+        for lane in lanes
     )
     required_succeeded = sum(
         lane.required_check is not None
         and lane.required_check.status is CheckStatus.SUCCESS
-        for lane in inventory.lanes
+        for lane in lanes
     )
     required_terminal = required_succeeded + required_failed
     pr_contract_failed = states.count(LaneState.PR_CONTRACT_FAILED)
@@ -132,22 +145,24 @@ def measure_pipeline(
         and lane.physical is not None
         and lane.snapshot is not None
         and lane.snapshot.clean
-        for lane in inventory.lanes
+        for lane in lanes
     )
     unknown_unregistered_worktrees = sum(
         lane.registry is None
         and lane.physical is not None
         and lane.snapshot is None
-        for lane in inventory.lanes
+        for lane in lanes
     )
-    timings = measure_pipeline_timings(inventory, telemetry=telemetry, now=now)
+    timings = measure_pipeline_timings(
+        measured_inventory, telemetry=telemetry, now=now
+    )
     return PipelineMetrics(
         active_development=states.count(LaneState.ACTIVE_DEVELOPMENT),
         handbacks_publishable=handbacks_publishable,
         published_local_cleanup=published_local_cleanup,
         cleanup_pending=sum(
             lane.registry is not None and lane.registry.status == "cleanup_pending"
-            for lane in inventory.lanes
+            for lane in lanes
         ),
         open_prs=len(mapped_pull_request_numbers),
         unmapped_open_prs=len(all_pull_request_numbers - mapped_pull_request_numbers),

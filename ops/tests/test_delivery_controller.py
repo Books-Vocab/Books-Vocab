@@ -14,13 +14,13 @@ from delivery_control.controller.capacity import (
     decide_capacity,
 )
 from delivery_control.controller.dogfood import DogfoodProfile, assess_dogfood_readiness
-from delivery_control.controller.worktree_boundary import partition_worktrees
 from delivery_control.controller.metrics import (
     PipelineMetrics,
     measure_merge_cadence,
     measure_pipeline,
 )
 from delivery_control.controller.timings import PipelineTimings
+from delivery_control.controller.worktree_boundary import partition_worktrees
 from delivery_control.domain.candidate_issues import (
     CandidateIssue,
     CandidateIssueInventory,
@@ -35,7 +35,13 @@ from delivery_control.domain.observations import (
     RegistrySnapshot,
     WorktreeSnapshot,
 )
-from delivery_control.domain.states import LaneDecision, LaneState, NextAction
+from delivery_control.domain.states import (
+    LaneDecision,
+    LaneFacts,
+    LaneState,
+    NextAction,
+    derive_lane_decision,
+)
 from delivery_control.services.inspect import DeliveryInventory, LaneInspection
 
 
@@ -184,6 +190,37 @@ def test_candidate_policy_never_dispatches_more_solvers_than_unclaimed_candidate
     assert ControlAction.REPLENISH_CANDIDATES in decision.actions
     assert ControlAction.DISPATCH_SOLVERS not in decision.actions
     assert decision.desired_new_solvers == 0
+
+
+def test_pipeline_metrics_excludes_explicit_supervision_worktrees() -> None:
+    path = Path("/supervision/one")
+    lane = LaneInspection(
+        key=str(path),
+        registry=None,
+        physical=PhysicalWorktree(path, "b" * 40, None),
+        snapshot=WorktreeSnapshot(
+            path=path,
+            branch=None,
+            base_sha="a" * 40,
+            head_sha="b" * 40,
+            parent_sha="a" * 40,
+            clean=True,
+            changes=(),
+        ),
+        pull_requests=(),
+        decision=derive_lane_decision(LaneFacts(has_worktree=True)),
+    )
+    inventory = DeliveryInventory(lanes=(lane,))
+
+    measured = measure_pipeline(
+        inventory,
+        excluded_worktree_paths=(path,),
+    )
+
+    assert measured.physical_worktrees == 0
+    assert measured.clean_unregistered_worktrees == 0
+    assert measured.idle_worktrees == 0
+    assert measured.blocked_lanes == 0
 
 
 def test_controller_triggers_missing_required_without_overproducing_solvers() -> None:
