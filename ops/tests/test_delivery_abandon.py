@@ -12,6 +12,7 @@ sys.path.insert(0, str(OPS))
 from delivery_control.domain.errors import CompareAndSwapConflict, PolicyViolation
 from delivery_control.domain.models import HandbackReceipt, Scope
 from delivery_control.domain.observations import (
+    CanonicalCheckoutSnapshot,
     MergeQueueEntrySnapshot,
     PullRequestInventory,
     PullRequestSnapshot,
@@ -132,12 +133,22 @@ class FakeRegistry:
 
 
 class FakeGit:
-    def __init__(self) -> None:
+    def __init__(self, *, canonical_branch: str = "main", canonical_clean: bool = True) -> None:
         self.remote_sha: str | None = HEAD
         self.local_sha: str | None = None
         self.worktrees: tuple[object, ...] = ()
         self.fail_delete = False
         self.actions: list[str] = []
+        self.canonical_branch = canonical_branch
+        self.canonical_clean = canonical_clean
+
+    def canonical_checkout(self) -> CanonicalCheckoutSnapshot:
+        return CanonicalCheckoutSnapshot(
+            path=Path("/repo"),
+            branch=self.canonical_branch,
+            head_sha=BASE,
+            clean=self.canonical_clean,
+        )
 
     def list_worktrees(self) -> tuple[object, ...]:
         return self.worktrees
@@ -156,6 +167,31 @@ class FakeGit:
         if self.fail_delete:
             raise CompareAndSwapConflict("remote delete failed")
         self.remote_sha = None
+
+
+@pytest.mark.parametrize(
+    ("canonical_branch", "canonical_clean", "message"),
+    (
+        ("debug/owner", True, "canonical checkout must be on main"),
+        ("main", False, "canonical checkout is dirty"),
+    ),
+)
+def test_abandon_refuses_before_pr_or_remote_mutation_without_canonical_main(
+    canonical_branch: str, canonical_clean: bool, message: str
+) -> None:
+    service, registry, git, github = _service(
+        git=FakeGit(
+            canonical_branch=canonical_branch,
+            canonical_clean=canonical_clean,
+        )
+    )
+
+    with pytest.raises(PolicyViolation, match=message):
+        service.abandon(pull_request_number=17)
+
+    assert github.actions == []
+    assert registry.actions == []
+    assert git.actions == []
 
 
 class FakeGitHub:
