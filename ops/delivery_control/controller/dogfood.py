@@ -33,6 +33,9 @@ class DogfoodReadiness:
     profile: DogfoodProfile
     supervision_worktree_count: int = 0
     total_physical_worktree_count: int | None = None
+    backlog_drained: bool = False
+    pipeline_ready: bool = False
+    ramp_ready: bool = False
 
 
 DEFAULT_DOGFOOD_PROFILE = DogfoodProfile()
@@ -112,6 +115,12 @@ def assess_dogfood_readiness(
         and cadence_within_target
     )
     warnings: list[str] = []
+    if metrics.unadmitted_open_issues:
+        warnings.append(
+            "raw open Issues remain unadmitted; dogfood launch is not backlog-drained"
+        )
+    if not metrics.issue_inventory_complete:
+        warnings.append("raw open Issue inventory is incomplete")
     if not exact_promotion_window:
         warnings.append(
             "canary promotion requires an exact "
@@ -145,4 +154,7 @@ def assess_dogfood_readiness(
             if total_physical_worktree_count is None
             else total_physical_worktree_count
         ),
+        backlog_drained=metrics.backlog_drained,
+        pipeline_ready=metrics.pipeline_ready,
+        ramp_ready=metrics.ramp_ready and not blockers,
     )

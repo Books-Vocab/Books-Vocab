@@ -11,6 +11,10 @@ from ..domain.candidate_issues import (
     CandidateIssue,
     unclaimed_candidate_issues,
 )
+from ..domain.demand_issues import (
+    EMPTY_DEMAND_INVENTORY,
+    DemandIssueInventory,
+)
 from ..domain.errors import DeliverySourceError
 from ..domain.observations import (
     InventoryProblem,
@@ -23,6 +27,7 @@ from ..ports.git import GitQueryPort
 from ..ports.github import GitHubQueryPort
 from ..ports.registry import RegistryQueryPort
 from .correlation import collision_keys, inspect_registered
+from .demand_projection import project_demand_inventory
 
 ACTIVE = "active"
 PUBLISHED = "published"
@@ -45,7 +50,10 @@ class InspectionSources:
     published_records: tuple[RegistrySnapshot, ...]
     physical: tuple[PhysicalWorktree, ...]
     pull_requests: tuple[PullRequestSnapshot, ...]
+    demand_issues: DemandIssueInventory
     candidate_issues: tuple[CandidateIssue, ...]
+    dispatchable_candidate_issues: tuple[CandidateIssue, ...]
+    issue_source_problems: tuple[InventoryProblem, ...]
     live_main_sha: str
     local_main_sha: str
     branch_inventory: BranchInventory
@@ -68,16 +76,38 @@ def collect_inventory_sources(
     physical = git.list_worktrees()
     github_inventory = github.list_open_pull_requests()
     github_problems = list(github_inventory.problems)
-    try:
-        candidate_inventory = github.list_open_candidate_issues()
-    except DeliverySourceError as error:
-        candidate_records: tuple[CandidateIssue, ...] = ()
-        github_problems.append(
-            InventoryProblem("github", CANDIDATE_ISSUE_LABEL, str(error))
-        )
+    raw_issue_inventory = EMPTY_DEMAND_INVENTORY
+    list_open_issues = getattr(github, "list_open_issues", None)
+    raw_issue_inventory_available = callable(list_open_issues)
+    if raw_issue_inventory_available:
+        try:
+            raw_issue_inventory = list_open_issues()
+        except DeliverySourceError as error:
+            raw_issue_inventory = DemandIssueInventory(
+                records=(),
+                raw_count=0,
+                complete=False,
+                problems=(
+                    InventoryProblem("github", "open-issues", str(error)),
+                ),
+            )
+        github_problems.extend(raw_issue_inventory.problems)
     else:
-        candidate_records = candidate_inventory.records
-        github_problems.extend(candidate_inventory.problems)
+        # Compatibility for narrow test doubles and legacy service callers.
+        # The production GitHubCliAdapter implements this port; a missing
+        # method here must not make unrelated PR/worktree unit tests fail.
+        raw_issue_inventory = EMPTY_DEMAND_INVENTORY
+    candidate_records: tuple[CandidateIssue, ...] = ()
+    if not raw_issue_inventory_available or not raw_issue_inventory.complete:
+        try:
+            candidate_inventory = github.list_open_candidate_issues()
+        except DeliverySourceError as error:
+            github_problems.append(
+                InventoryProblem("github", CANDIDATE_ISSUE_LABEL, str(error))
+            )
+        else:
+            candidate_records = candidate_inventory.records
+            github_problems.extend(candidate_inventory.problems)
     branch_inventory = git.branch_inventory()
     live_main_sha = git.origin_main_sha()
     local_main_sha = git.local_main_sha()
@@ -96,15 +126,6 @@ def collect_inventory_sources(
     active_records = tuple(item for item in records if item.status == ACTIVE)
     published_records = tuple(
         item for item in records if item.status in {PUBLISHED, CLEANUP_PENDING}
-    )
-    candidate_issues = unclaimed_candidate_issues(
-        candidate_records,
-        external_ids=tuple(
-            external_id
-            for item in records
-            if item.status in {ACTIVE, PUBLISHED, CLEANUP_PENDING}
-            for external_id in (item.external_ids or (item.lane_id,))
-        ),
     )
     physical_by_path = {item.path.resolve(): item for item in physical}
     pull_requests = list(github_inventory.records)
@@ -158,6 +179,32 @@ def collect_inventory_sources(
                 InventoryProblem("github", f"PR#{pull_request.number}", str(error))
             )
 
+    projected_demand = project_demand_inventory(
+        raw_issue_inventory,
+        registry_records=records,
+        pull_requests=tuple(pull_requests),
+    )
+    if raw_issue_inventory_available and raw_issue_inventory.complete:
+        candidate_records = projected_demand.candidate_issues
+    candidate_issues = unclaimed_candidate_issues(
+        candidate_records,
+        external_ids=tuple(
+            external_id
+            for item in records
+            if item.status in {ACTIVE, PUBLISHED, CLEANUP_PENDING}
+            for external_id in (item.external_ids or (item.lane_id,))
+        ),
+    )
+    dispatchable_candidate_issues = unclaimed_candidate_issues(
+        projected_demand.dispatchable_candidate_issues,
+        external_ids=tuple(
+            external_id
+            for item in records
+            if item.status in {ACTIVE, PUBLISHED, CLEANUP_PENDING}
+            for external_id in (item.external_ids or (item.lane_id,))
+        ),
+    )
+
     path_sets: dict[str, set[str]] = {}
     for record in active_records:
         observed = set(record.scope.paths)
@@ -204,7 +251,10 @@ def collect_inventory_sources(
         published_records=published_records,
         physical=physical,
         pull_requests=tuple(pull_requests),
+        demand_issues=projected_demand,
         candidate_issues=candidate_issues,
+        dispatchable_candidate_issues=dispatchable_candidate_issues,
+        issue_source_problems=projected_demand.problems,
         live_main_sha=live_main_sha,
         local_main_sha=local_main_sha,
         branch_inventory=branch_inventory,
@@ -217,6 +267,10 @@ def collect_inventory_sources(
         source_problems=(
             registry_inventory.problems
             + invalid_registry_statuses
-            + tuple(github_problems)
+            + tuple(
+                problem
+                for problem in github_problems
+                if problem not in projected_demand.problems
+            )
         ),
     )

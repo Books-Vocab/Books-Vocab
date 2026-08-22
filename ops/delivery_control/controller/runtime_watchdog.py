@@ -11,7 +11,7 @@ def evaluate_runtime_watchdog(
     receipt: RuntimeReceipt | None,
     *,
     now: datetime,
-    stale_after_seconds: int = 600,
+    stale_after_seconds: int = 300,
 ) -> WatchdogDecision:
     """Evaluate liveness without sending a message or mutating any queue."""
 

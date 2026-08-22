@@ -23,7 +23,10 @@ from .controller.metrics import measure_merge_cadence, measure_pipeline
 from .controller.runtime_watchdog import evaluate_runtime_watchdog
 from .controller.worktree_boundary import partition_worktrees
 from .domain import errors, models, observations, states
+from .domain.candidate_issues import CandidateSpec
+from .domain.demand_issues import IssueDisposition
 from .domain.runtime_models import RuntimeReceipt
+from .ports.github import GitHubIssueCommandPort
 from .ports.runtime import (
     AgentRuntimePort,
     RuntimeReceiptPort,
@@ -42,6 +45,8 @@ from .services import (
     telemetry_operations,
 )
 from .services import holds as hold_services
+from .services.issue_admission import assert_candidate_scope_available
+from .services.issue_triage import build_triage_plan
 from .services.pr_contract import parse_pull_request_body
 from .services.publish import PublishService, receipt_from_active_claim
 from .services.publish_preflight import PublishPreflightService
@@ -64,6 +69,60 @@ class DeliveryApplication:
             github=self.github,
             runtime=self.runtime,
         ).inspect()
+
+    def issue_inventory(self) -> object:
+        """Return the complete raw Issue projection without mutation."""
+
+        return self.inspect().demand_issues
+
+    def triage_plan(self) -> object:
+        """Return deterministic Issue IDs and next actions without mutation."""
+
+        return build_triage_plan(self.inspect().demand_issues)
+
+    def admit_candidate(
+        self,
+        *,
+        issue_number: int,
+        expected_updated_at: datetime,
+        expected_body_sha256: str,
+        spec: CandidateSpec,
+        triage_reason: str,
+        operator: str,
+    ) -> object:
+        """Admit exactly one triaged Issue through the GitHub command port."""
+
+        inventory = self.inspect().demand_issues
+        matches = [item for item in inventory.records if item.number == issue_number]
+        if len(matches) != 1:
+            raise errors.PolicyViolation(
+                f"Issue #{issue_number} is not present in the complete raw inventory"
+            )
+        issue = matches[0]
+        if issue.disposition is not IssueDisposition.TRIAGE_REQUIRED:
+            raise errors.PolicyViolation(
+                f"Issue #{issue_number} disposition is {issue.disposition.value}, "
+                "not triage_required"
+            )
+        assert_candidate_scope_available(
+            scope=spec.scope,
+            demand_issues=inventory.records,
+            registry=self.registry.list_collision_claims(),
+            pull_requests=self.github.list_open_pull_requests(),
+            changed_paths=self.github.changed_paths,
+        )
+        if not isinstance(self.github, GitHubIssueCommandPort):
+            raise errors.PolicyViolation(
+                "GitHub adapter does not expose one-Issue admission capability"
+            )
+        return self.github.admit_candidate(
+            issue_number=issue_number,
+            expected_updated_at=expected_updated_at,
+            expected_body_sha256=expected_body_sha256,
+            spec=spec,
+            triage_reason=triage_reason,
+            operator=operator,
+        )
 
     def metrics(
         self,
@@ -105,7 +164,7 @@ class DeliveryApplication:
         *,
         supervisor_thread_id: str,
         now: datetime | None = None,
-        stale_after_seconds: int = 600,
+        stale_after_seconds: int = 300,
     ) -> object:
         """Return a liveness decision; the caller owns Codex thread dispatch."""
 

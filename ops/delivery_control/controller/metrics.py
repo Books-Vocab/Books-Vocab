@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from itertools import pairwise
 from pathlib import Path
 
+from ..domain.demand_issues import IssueDisposition
 from ..domain.models import CheckStatus
 from ..domain.states import LaneState
 from ..domain.telemetry import TelemetryReadResult
@@ -40,6 +41,15 @@ class PipelineMetrics:
     source_problems: int
     candidate_issues: int
     reanchor_required: int
+    dispatchable_candidate_issues: int | None = None
+    raw_open_issues: int = 0
+    unadmitted_open_issues: int = 0
+    triage_required_issues: int = 0
+    legacy_open_issues: int = 0
+    issues_with_active_claim: int = 0
+    issues_with_published_pr: int = 0
+    issue_source_problems: int = 0
+    issue_inventory_complete: bool = True
     clean_unregistered_worktrees: int = 0
     idle_worktrees: int = 0
     collision_lanes: int = 0
@@ -54,6 +64,10 @@ class PipelineMetrics:
     actionable_blocked_lanes: int | None = None
     actionable_unmapped_open_prs: int | None = None
     actionable_terminal_cleanup: int | None = None
+    recoverable_quarantine: int = field(init=False)
+    backlog_drained: bool = field(init=False)
+    pipeline_ready: bool = field(init=False)
+    ramp_ready: bool = field(init=False)
 
     def __post_init__(self) -> None:
         # Direct construction predates isolation fields. Omitted actionability
@@ -67,6 +81,31 @@ class PipelineMetrics:
         for field_name, value in defaults.items():
             if getattr(self, field_name) is None:
                 object.__setattr__(self, field_name, value)
+        if self.dispatchable_candidate_issues is None:
+            object.__setattr__(
+                self, "dispatchable_candidate_issues", self.candidate_issues
+            )
+        object.__setattr__(
+            self,
+            "recoverable_quarantine",
+            self.quarantined_source_problems
+            + self.quarantined_blocked_lanes
+            + self.quarantined_open_prs
+            + self.quarantined_terminal_cleanup,
+        )
+        pipeline_ready = (
+            self.actionable_source_problems == 0
+            and self.actionable_blocked_lanes == 0
+            and self.actionable_unmapped_open_prs == 0
+            and self.pr_contract_failed == 0
+            and self.required_failed == 0
+        )
+        backlog_drained = (
+            self.issue_inventory_complete and self.unadmitted_open_issues == 0
+        )
+        object.__setattr__(self, "pipeline_ready", pipeline_ready)
+        object.__setattr__(self, "backlog_drained", backlog_drained)
+        object.__setattr__(self, "ramp_ready", pipeline_ready and backlog_drained)
 
     @property
     def quarantined_lanes(self) -> int:
@@ -109,6 +148,8 @@ def measure_pipeline(
         lanes=lanes,
         source_problems=inventory.source_problems,
         candidate_issues=inventory.candidate_issues,
+        dispatchable_candidate_issues=inventory.dispatchable_candidate_issues,
+        demand_issues=inventory.demand_issues,
         isolation=inventory.isolation,
     )
     states = [lane.decision.state for lane in lanes]
@@ -187,8 +228,14 @@ def measure_pipeline(
     invalid_source_problems = (
         timings.invalid_samples + (len(telemetry.problems) if telemetry is not None else 0)
     )
+    issue_source_problems = len(inventory.demand_issues.problems)
+    issue_inventory_problem = int(not inventory.demand_issues.complete)
     total_source_problems = (
-        len(inventory.source_problems) + invalid_source_problems + unknown_source_problems
+        len(inventory.source_problems)
+        + invalid_source_problems
+        + unknown_source_problems
+        + issue_source_problems
+        + issue_inventory_problem
     )
     return PipelineMetrics(
         active_development=states.count(LaneState.ACTIVE_DEVELOPMENT),
@@ -212,6 +259,27 @@ def measure_pipeline(
         physical_worktrees=len(physical_paths),
         source_problems=total_source_problems,
         candidate_issues=len(inventory.candidate_issues),
+        dispatchable_candidate_issues=len(inventory.dispatchable_candidate_issues),
+        raw_open_issues=inventory.demand_issues.raw_open_issues,
+        unadmitted_open_issues=inventory.demand_issues.unadmitted_open_issues,
+        triage_required_issues=inventory.demand_issues.count(
+            IssueDisposition.TRIAGE_REQUIRED
+        ),
+        legacy_open_issues=inventory.demand_issues.count(
+            IssueDisposition.LEGACY_UNMAPPED
+        ),
+        issues_with_active_claim=inventory.demand_issues.count(
+            IssueDisposition.OWNER_BOUND
+        ),
+        issues_with_published_pr=inventory.demand_issues.count(
+            IssueDisposition.PUBLISHED_PR
+        ),
+        issue_source_problems=(
+            inventory.demand_issues.count(IssueDisposition.SOURCE_PROBLEM)
+            + issue_source_problems
+            + issue_inventory_problem
+        ),
+        issue_inventory_complete=inventory.demand_issues.complete,
         reanchor_required=states.count(LaneState.REANCHOR),
         clean_unregistered_worktrees=clean_unregistered_worktrees,
         idle_worktrees=(

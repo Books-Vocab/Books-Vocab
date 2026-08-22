@@ -772,7 +772,7 @@ def test_cli_exposes_watchdog_without_dispatching(capsys: object) -> None:
             stale_after_seconds: int,
         ) -> object:
             assert supervisor_thread_id == "supervisor-thread"
-            assert stale_after_seconds == 600
+            assert stale_after_seconds == 300
             return {"action": "noop", "reason": "lease is valid"}
 
     assert (

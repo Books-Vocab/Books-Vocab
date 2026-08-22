@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ..domain.candidate_issues import CandidateIssue, CandidateIssueInventory
+from ..domain.demand_issues import DemandIssue, DemandIssueInventory
 from ..domain.observations import (
     CheckSnapshot,
     MergeQueueEntrySnapshot,
@@ -19,6 +20,8 @@ from .errors import AdapterPayloadError
 from .github_checks import GitHubChecks
 from .github_client import GitHubCliClient
 from .github_commands import GitHubCommands
+from .github_issue_commands import GitHubIssueCommands
+from .github_issue_queries import GitHubIssueQueries
 from .github_parsing import (
     parse_candidate_issue,
     parse_candidate_issue_inventory,
@@ -56,6 +59,17 @@ class GitHubCliAdapter:
             pull_request_parser=self._pull_request,
             pull_request_inventory_parser=self._pull_request_inventory,
             candidate_inventory_parser=self._candidate_issue_inventory,
+        )
+        self._issue_queries = GitHubIssueQueries(
+            repo=self.repo,
+            runner=self.runner,
+            repository_name=self._repo_name,
+        )
+        self._issue_commands = GitHubIssueCommands(
+            repo=self.repo,
+            runner=self.runner,
+            client=self._client,
+            query=self._issue_queries,
         )
         self._checks = GitHubChecks(
             client=self._client,
@@ -96,6 +110,12 @@ class GitHubCliAdapter:
 
     def list_open_candidate_issues(self) -> CandidateIssueInventory:
         return self._queries.list_open_candidate_issues()
+
+    def list_open_issues(self) -> DemandIssueInventory:
+        return self._issue_queries.list_open_issues()
+
+    def admit_candidate(self, **kwargs: Any) -> DemandIssue:
+        return self._issue_commands.admit_candidate(**kwargs)
 
     def list_open_pull_requests(self) -> PullRequestInventory:
         return self._queries.list_open_pull_requests()

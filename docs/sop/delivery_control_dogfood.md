@@ -55,7 +55,7 @@ quarantine 是可驗證的隔離投影，不是 cleanup 成功、owner 恢復、
 
 | Task | 唯一責任 | 可用 mutation | 禁止事項 |
 |---|---|---|---|
-| Backlog Scout（BS） | 維持 GitHub 20–30 個 open exact-label candidate；去重、建立唯一 Issue；選擇無 collision Scope；依 `desired_new_solvers` fan-out | Issue、owner-bound worktree 的正常 admission | push／PR／merge；自己實作 product code；保存第二套 backlog |
+| Backlog Scout（BS） | 先完整 inventory 所有 open Issues、逐條產生 disposition／triage plan；再把已核准且無 hold／collision 的 Issue admission 成 typed candidate，維持 20–30 個 dispatchable candidates，依 `desired_new_solvers` fan-out | 單一 Issue 的明確 admission、Issue Solver 的正常 admission | 批量重寫 Issue；push／PR／merge；自己實作 product code；保存第二套 backlog |
 | PR Integrator（PI） | 事件式消費 typed handback；建立／更新唯一 PR；readback；publication 後立即釋放 local assets；metadata／required repair | `publish`、`release-published`、`repair-pr-metadata`、exact terminal cleanup | 修改 product code；接管 owner branch；merge／enqueue |
 | Codebase Manager（CM） | 只處理 merge-front；exact admission；native enqueue；landing 後 ff-only sync；把 merged receipt 交給 PI cleanup | `queue`、`sync-main`、明確 hold reconcile | 修 PR body／product code；等待 routine advisory；手動 merge |
 | Supervisor | 以約 300 秒 watchdog tick 讀取 deterministic facts 與四個 task 活動；控制 freeze／ramp；升級事故 | task-level freeze／resume 與明確事故升級 | 成為產品 owner；替 BS／PI／CM 執行 mutation；把 agent 自述當 facts |
@@ -66,6 +66,7 @@ quarantine 是可驗證的隔離投影，不是 cleanup 成功、owner 恢復、
 
 | Event | 直接接收者 | 接收後唯一動作 |
 |---|---|---|
+| raw Issue inventory／triage disposition changed | BS | 先重讀 raw／registry／PR facts，逐條 triage；不把 raw count 當 candidate count |
 | candidate admitted／capacity slot opened | BS | 派一條 exact owner／Scope 的 IS lane |
 | `kg.worktree.handback.v1` | PI | 立即 publish／readback／local release |
 | PR contract／required outcome | PI | body-only repair、required trigger，或同 owner `resume-published` |
@@ -103,15 +104,23 @@ quarantine 是可驗證的隔離投影，不是 cleanup 成功、owner 恢復、
 
 ### BS：維持供應
 
-1. 只把 GitHub 中 open、帶 exact `delivery:candidate` label，且 body 通過 `kg.delivery.candidate.v1` 驗證的 Issue 視為 candidate；不得另建本地 backlog。BS 先用 `render-candidate-body` 產生 Severity／Priority／exact Scope／Acceptance／initial holds，再用 `validate-candidate-body` 驗證最後要寫入 GitHub 的 body；label-only Issue 不算供給。
-2. `replenish_candidates` 出現時 fan-out 互不重疊的 read-only auditors，把 reservoir 補向 20–30；每個發現先做 Issue／PR history、active Scope、physical worktree 去重。
-3. `desired_new_solvers` 只消費 controller 已排除 nonterminal registry occupancy 的既有 candidates；即使同 cycle 正在補貨，仍可安全 dispatch 現有候選。
-4. 需要追蹤者建立唯一 Issue；明確 user assignment 可直接走 Worker。只把一個 intent／owner／exact Scope 的 lane 派給 Solver，不把數個可獨立問題綁成一個 PR。
-5. Solver 只跑 focused proof，commit clean 後以 supported registry command 產生 `kg.worktree.handback.v1`；Issue contract 的每個初始 hard hold 都必須以 `hand-back --hold` 原樣寫入 immutable seal，PI 不可自行推測或清除。
+1. 先執行 `issue-inventory`，raw count 必須與分頁讀取結果一致；source problem、security、legacy、blocked、owner-bound、published 與 terminal history 都留在結果中，不能因 quarantine 從 backlog 隱藏。
+2. 執行 `triage-plan`，只為一個 Issue 產生完整 triage evidence。`needs-triage`、未分類或 legacy 不會自動進候選；已有 owner／PR mapping 的 Issue 走 recovery，不重開第二條線。
+3. 對明確可安全派工的單一 Issue，先以 `render-candidate-body`／`validate-candidate-body` 產生 exact contract，再執行 `admit-candidate`。admission 是串行 read-before/write/readback；任何 fingerprint drift、Scope collision、hold、label 缺失或 readback mismatch 都停止，不自動重試或覆寫人工內容。
+4. 只有 raw backlog 已分類完成且 dispatchable reservoir 低於 20 時，才執行 `replenish_candidates`；BS fan-out 的 auditors 仍先做 Issue／PR history、active Scope、physical worktree 去重。raw backlog 存在不會阻止既有 verified candidate dispatch。
+5. `desired_new_solvers` 只消費 controller 已排除 nonterminal registry occupancy 的既有 candidates；Issue Solver 仍只跑 focused proof，commit clean 後以 supported registry command 產生 `kg.worktree.handback.v1`；Issue contract 的每個初始 hard hold 都必須以 `hand-back --hold` 原樣寫入 immutable seal，PI 不可自行推測或清除。
 
 ```bash
 ./ops/delivery.py render-candidate-body --payload-file '<candidate.json>' > '<issue-body.md>'
 ./ops/delivery.py validate-candidate-body --body-file '<issue-body.md>'
+./ops/delivery.py issue-inventory
+./ops/delivery.py triage-plan
+./ops/delivery.py admit-candidate --issue '<number>' \
+  --expected-updated-at '<updatedAt>' \
+  --expected-body-sha256 '<sha256>' \
+  --payload-file '<candidate.json>' \
+  --triage-reason '<bounded reason>' \
+  --operator '<identity>'
 ./ops/worktree_registry.py hand-back --branch '<branch>' --outcomes '<validation.json>' [--hold security]
 ```
 
@@ -221,8 +230,8 @@ SUPERVISION_ARGS=(
 
 `metrics` 與 `plan` 必須沿用 preflight 的 explicit supervision paths；不傳這些參數時，命令會把 supervision infrastructure checkout 當成 delivery worktree，不能拿來判斷 dogfood readiness。
 
-固定看：最近一小時 merges、inter-merge p50／p95、candidate／active solver／handback／open PR／required-green／merge queue depth、六段 latency p95、collision rate、required failure rate、idle worktree、source problems，以及
-quarantined source／lane／PR／terminal residue counters。agent 說「正在做」不計入容量；quarantine counters 也不算 active supply。
+固定看：最近一小時 merges、inter-merge p50／p95、raw Issues／triage-required／dispatchable candidates／active solver／handback／open PR／required-green／merge queue depth、六段 latency p95、collision rate、required failure rate、idle worktree、source problems，以及
+quarantined source／lane／PR／terminal residue 與 `recoverable_quarantine` counters。agent 說「正在做」不計入容量；quarantine counters 也不算 active supply。Supervisor 固定用「raw backlog 有 N 個；目前可安全派工 M 個；目前可發布 handback K 個」描述狀態，`candidate_issues=0` 不能翻譯成「沒有工作」。
 
 Supervisor 的 watchdog tick 只用來避免 supervisor 睡死，不代表每 300 秒執行一次完整 pipeline，也不代表自動喚醒被 freeze／archived 的角色。Supervisor 在 turn 開始、每個 bounded progress checkpoint 與正常結束時，以 `runtime-receipt` atomic replace 更新同一份 `kg.delivery.runtime.v1` receipt；新 cycle 必須清除上一個 wake action，scheduler 發出的 wake 則把 deterministic `wake_id` 寫回 receipt。每次 tick 讀取這份 receipt：缺 receipt 只能 `escalate`；`frozen`／`archived` 永遠 `noop`；`RUNNING` 但 lease／progress 過期只能 `escalate` 並要求查詢真實 Codex thread 狀態，絕不建立第二個 turn；只有 thread 已非 active 且 receipt 是 stale `IDLE` 或到期 `WAITING` 時，才可發出一次 `wake_id`。同一 stale receipt 若已記錄該 action，下一 tick 必須停止重送。Supervisor 的 deterministic plan 會把低水位轉成具體 action：`replenish_candidates`、`fill_required_capacity`、`restore_merge_buffer`、`reanchor_front`、`trigger_required`、`reconcile_idle_worktrees` 或 `recover_merge_cadence`。它只發出可驗證的 bounded action，不替角色寫 code、推 branch 或手動修 registry；任何 unknown／dirty／remote drift 轉成 exact blocker 並 freeze 相關 birth。
 

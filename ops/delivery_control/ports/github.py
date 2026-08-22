@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
-from ..domain.candidate_issues import CandidateIssueInventory
+from ..domain.candidate_issues import CandidateIssueInventory, CandidateSpec
+from ..domain.demand_issues import DemandIssue, DemandIssueInventory
 from ..domain.observations import (
     CheckSnapshot,
     MergeQueueEntrySnapshot,
@@ -38,6 +40,29 @@ class GitHubQueryPort(Protocol):
     def merge_queue_entry_snapshot(
         self, pull_request_id: str
     ) -> MergeQueueEntrySnapshot | None: ...
+
+
+@runtime_checkable
+class RawIssueQueryPort(Protocol):
+    """Optional additive capability for complete raw Issue inventory."""
+
+    def list_open_issues(self) -> DemandIssueInventory: ...
+
+
+@runtime_checkable
+class GitHubIssueCommandPort(Protocol):
+    """Optional mutation capability for one explicitly triaged Issue."""
+
+    def admit_candidate(
+        self,
+        *,
+        issue_number: int,
+        expected_updated_at: datetime,
+        expected_body_sha256: str,
+        spec: CandidateSpec,
+        triage_reason: str,
+        operator: str,
+    ) -> DemandIssue: ...
 
 
 @runtime_checkable
