@@ -77,9 +77,7 @@ def test_mutating_worktree_command_uses_shared_operation_lock(
     assert events == []
 
 
-def _fixture_receipt_body(
-    *, number: int, branch: str, base: str, head: str
-) -> str:
+def _fixture_receipt_body(*, number: int, branch: str, base: str, head: str) -> str:
     receipt = HandbackReceipt(
         lane_id=f"DIRECT-PR-{number}",
         owner_thread_id="owner-thread-1",
@@ -151,9 +149,7 @@ def _recovery_github_fixture(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         lifecycle_proof,
         "build_github",
-        lambda repo, *, operation: _FixtureRecoveryGitHub(
-            repo, operation=operation
-        ),
+        lambda repo, *, operation: _FixtureRecoveryGitHub(repo, operation=operation),
     )
 
 
@@ -202,6 +198,7 @@ def test_open_uses_exact_base_for_failed_provisioning_compensation(
             },
         ),
     )
+
     def fail_worktree_add(
         argv: list[str], cwd: Path = coordinator.ROOT
     ) -> tuple[int, str]:
@@ -243,7 +240,6 @@ def test_open_uses_exact_base_for_failed_provisioning_compensation(
     )
 
 
-
 def test_open_compensates_against_existing_branch_head_after_add_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -278,7 +274,9 @@ def test_open_compensates_against_existing_branch_head_after_add_failure(
     monkeypatch.setattr(
         coordinator.registry,
         "main",
-        lambda argv, **_kwargs: compensation.extend(argv) or coordinator.registry.EXIT_CLAIMED,
+        lambda argv, **_kwargs: (
+            compensation.extend(argv) or coordinator.registry.EXIT_CLAIMED
+        ),
     )
     args = Namespace(
         slug="existing-branch",
@@ -301,9 +299,8 @@ def test_open_compensates_against_existing_branch_head_after_add_failure(
     assert payload["reason"] == (
         "git worktree add failed and registry compensation failed"
     )
-    assert (
-        compensation[compensation.index("--expected-head-sha") + 1] == branch_sha
-    )
+    assert compensation[compensation.index("--expected-head-sha") + 1] == branch_sha
+
 
 def _scope_for(path: str) -> dict[str, object]:
     return {
@@ -313,10 +310,14 @@ def _scope_for(path: str) -> dict[str, object]:
 
 
 def test_gate_plan_routes_product_surfaces_to_existing_entry_points() -> None:
-    plan = coordinator._plan_checks([
-        "backend/src/kg/app.py", "ios/BooksAndVocab/App.swift",
-        "ops/example.sh", "docs/reference/tech_index.md",
-    ])
+    plan = coordinator._plan_checks(
+        [
+            "backend/src/kg/app.py",
+            "ios/BooksAndVocab/App.swift",
+            "ops/example.sh",
+            "docs/reference/tech_index.md",
+        ]
+    )
     names = {item["name"] for item in plan}
     assert "backend-tests" in names
     assert "ios-tests" in names
@@ -341,7 +342,9 @@ def test_gate_plan_never_mutates_remote_or_integrates_branches() -> None:
     assert "git push" not in rendered
 
 
-def test_rebase_preflight_compares_declared_scope_only_to_incoming_main(tmp_path: Path) -> None:
+def test_rebase_preflight_compares_declared_scope_only_to_incoming_main(
+    tmp_path: Path,
+) -> None:
     repo = _synthetic_rebase_refs(tmp_path)
     scope = {
         "schema": "kg.worktree.scope.v1",
@@ -414,22 +417,36 @@ def test_preflight_uses_active_declared_scope_for_rebase_collision_check(
     }
     state_path = tmp_path / "worktree_registry.json"
     state_path.write_text(
-        json.dumps({
-            "schema": "kg.worktree.registry.v2",
-            "records": [{
-                "branch": "solver",
-                "path": str(repo),
-                "status": "active",
-                "scope": scope,
-            }],
-        }),
+        json.dumps(
+            {
+                "schema": "kg.worktree.registry.v2",
+                "records": [
+                    {
+                        "branch": "solver",
+                        "path": str(repo),
+                        "status": "active",
+                        "scope": scope,
+                    }
+                ],
+            }
+        ),
         encoding="utf-8",
     )
 
-    rc = coordinator.main([
-        "preflight", "--state", str(state_path), "--worktree", str(repo),
-        "--base", "base", "--incoming-main", "incoming-main", "--json",
-    ])
+    rc = coordinator.main(
+        [
+            "preflight",
+            "--state",
+            str(state_path),
+            "--worktree",
+            str(repo),
+            "--base",
+            "base",
+            "--incoming-main",
+            "incoming-main",
+            "--json",
+        ]
+    )
 
     payload = json.loads(capsys.readouterr().out)
     assert rc == 0
@@ -439,7 +456,9 @@ def test_preflight_uses_active_declared_scope_for_rebase_collision_check(
     assert payload["branch_files"] == ["ios/issue_1033.py"]
 
 
-def test_adopt_prefers_active_record_over_terminal_duplicate(tmp_path: Path, capsys: object) -> None:
+def test_adopt_prefers_active_record_over_terminal_duplicate(
+    tmp_path: Path, capsys: object
+) -> None:
     repo = _synthetic_rebase_refs(tmp_path)
     scope = {
         "schema": "kg.worktree.scope.v1",
@@ -462,19 +481,36 @@ def test_adopt_prefers_active_record_over_terminal_duplicate(tmp_path: Path, cap
         "claim_generation": 0,
     }
     state_path.write_text(
-        json.dumps({
-            "schema": "kg.worktree.registry.v2",
-            "records": [terminal, active],
-        }),
+        json.dumps(
+            {
+                "schema": "kg.worktree.registry.v2",
+                "records": [terminal, active],
+            }
+        ),
         encoding="utf-8",
     )
 
-    rc = coordinator.main([
-        "adopt", "--state", str(state_path), "--worktree", str(repo),
-        "--intent", "reanchor worker", "--base", "base",
-        "--external-id", "ISSUE-1141", "--scope", json.dumps(scope),
-        "--codex-thread-id", "worker-thread", "--delegated", "--json",
-    ])
+    rc = coordinator.main(
+        [
+            "adopt",
+            "--state",
+            str(state_path),
+            "--worktree",
+            str(repo),
+            "--intent",
+            "reanchor worker",
+            "--base",
+            "base",
+            "--external-id",
+            "ISSUE-1141",
+            "--scope",
+            json.dumps(scope),
+            "--codex-thread-id",
+            "worker-thread",
+            "--delegated",
+            "--json",
+        ]
+    )
 
     json.loads(capsys.readouterr().out)
     state = coordinator.registry.load_state(state_path)
@@ -482,7 +518,12 @@ def test_adopt_prefers_active_record_over_terminal_duplicate(tmp_path: Path, cap
     assert rc == coordinator.EXIT_OK
     assert len(matches) == 2
     assert sum(record["status"] == "active" for record in matches) == 1
-    assert next(record for record in matches if record["status"] == "active")["claim_generation"] == 1
+    assert (
+        next(record for record in matches if record["status"] == "active")[
+            "claim_generation"
+        ]
+        == 1
+    )
 
 
 def _handoff_fixture(tmp_path: Path) -> tuple[Path, Path, str, str]:
@@ -523,28 +564,43 @@ def _handoff_fixture(tmp_path: Path) -> tuple[Path, Path, str, str]:
         )
     )
     state_path = tmp_path / "worktree_registry.json"
-    coordinator.registry.save_state(state_path, {"schema": coordinator.registry.SCHEMA, "records": [record]})
+    coordinator.registry.save_state(
+        state_path, {"schema": coordinator.registry.SCHEMA, "records": [record]}
+    )
     gate_path = coordinator._gate_record_path(str(state_path), repo)
     gate_path.parent.mkdir(parents=True, exist_ok=True)
-    gate_path.write_text(json.dumps({
-        "schema": coordinator.GATE_SCHEMA,
-        "worktree": str(repo),
-        "base": base_sha,
-        "files": ["ops/handoff_change.py"],
-        "verdict": "pass",
-        "head": tip_sha,
-        "results": [{"name": "git-diff-check", "status": "pass", "rc": 0}],
-    }), encoding="utf-8")
+    gate_path.write_text(
+        json.dumps(
+            {
+                "schema": coordinator.GATE_SCHEMA,
+                "worktree": str(repo),
+                "base": base_sha,
+                "files": ["ops/handoff_change.py"],
+                "verdict": "pass",
+                "head": tip_sha,
+                "results": [{"name": "git-diff-check", "status": "pass", "rc": 0}],
+            }
+        ),
+        encoding="utf-8",
+    )
     return repo, state_path, base_sha, tip_sha
 
 
 def test_handoff_package_emits_exact_im_payload(tmp_path: Path, capsys: object) -> None:
     repo, state_path, base_sha, tip_sha = _handoff_fixture(tmp_path)
 
-    rc = coordinator.main([
-        "handoff", "--state", str(state_path), "--worktree", str(repo),
-        "--incoming-main", base_sha, "--json",
-    ])
+    rc = coordinator.main(
+        [
+            "handoff",
+            "--state",
+            str(state_path),
+            "--worktree",
+            str(repo),
+            "--incoming-main",
+            base_sha,
+            "--json",
+        ]
+    )
 
     payload = json.loads(capsys.readouterr().out)
     assert rc == coordinator.EXIT_OK
@@ -567,10 +623,18 @@ def test_handoff_package_preserves_historical_base_when_main_advanced(
     incoming_sha = _git(repo, "rev-parse", "HEAD")
     _git(repo, "checkout", "-q", "worker")
 
-    rc = coordinator.main([
-        "handoff", "--state", str(state_path), "--worktree", str(repo),
-        "--incoming-main", incoming_sha, "--json",
-    ])
+    rc = coordinator.main(
+        [
+            "handoff",
+            "--state",
+            str(state_path),
+            "--worktree",
+            str(repo),
+            "--incoming-main",
+            incoming_sha,
+            "--json",
+        ]
+    )
 
     payload = json.loads(capsys.readouterr().out)
     assert rc == coordinator.EXIT_OK
@@ -589,10 +653,18 @@ def test_handoff_package_blocks_when_base_is_not_in_incoming_main_history(
     incoming_sha = _git(repo, "rev-parse", "HEAD")
     _git(repo, "checkout", "-q", "worker")
 
-    rc = coordinator.main([
-        "handoff", "--state", str(state_path), "--worktree", str(repo),
-        "--incoming-main", incoming_sha, "--json",
-    ])
+    rc = coordinator.main(
+        [
+            "handoff",
+            "--state",
+            str(state_path),
+            "--worktree",
+            str(repo),
+            "--incoming-main",
+            incoming_sha,
+            "--json",
+        ]
+    )
 
     payload = json.loads(capsys.readouterr().out)
     assert rc == coordinator.EXIT_BLOCK
@@ -600,17 +672,27 @@ def test_handoff_package_blocks_when_base_is_not_in_incoming_main_history(
     assert "not an ancestor" in payload["reason"]
 
 
-def test_handoff_package_blocks_when_gate_base_is_stale(tmp_path: Path, capsys: object) -> None:
+def test_handoff_package_blocks_when_gate_base_is_stale(
+    tmp_path: Path, capsys: object
+) -> None:
     repo, state_path, base_sha, _ = _handoff_fixture(tmp_path)
     gate_path = coordinator._gate_record_path(str(state_path), repo)
     gate = json.loads(gate_path.read_text(encoding="utf-8"))
     gate["base"] = "stale-base"
     gate_path.write_text(json.dumps(gate), encoding="utf-8")
 
-    rc = coordinator.main([
-        "handoff", "--state", str(state_path), "--worktree", str(repo),
-        "--incoming-main", base_sha, "--json",
-    ])
+    rc = coordinator.main(
+        [
+            "handoff",
+            "--state",
+            str(state_path),
+            "--worktree",
+            str(repo),
+            "--incoming-main",
+            base_sha,
+            "--json",
+        ]
+    )
 
     payload = json.loads(capsys.readouterr().out)
     assert rc == coordinator.EXIT_BLOCK
@@ -713,16 +795,26 @@ def _reanchor_argv(
 ) -> list[str]:
     return [
         "reanchor",
-        "--repo", str(repo),
-        "--state", str(state_path),
-        "--merge-front-pr", "42",
-        "--lane", lane,
-        "--branch", "feat/exact-pr",
-        "--owner-thread-id", owner,
-        "--claim-generation", "4",
-        "--expected-remote-head", str(expected["remote_head"]),
-        "--live-main", str(expected["live_main"]),
-        "--path", str(target),
+        "--repo",
+        str(repo),
+        "--state",
+        str(state_path),
+        "--merge-front-pr",
+        "42",
+        "--lane",
+        lane,
+        "--branch",
+        "feat/exact-pr",
+        "--owner-thread-id",
+        owner,
+        "--claim-generation",
+        "4",
+        "--expected-remote-head",
+        str(expected["remote_head"]),
+        "--live-main",
+        str(expected["live_main"]),
+        "--path",
+        str(target),
         "--json",
     ]
 
@@ -745,8 +837,14 @@ def test_reanchor_recreates_exact_remote_branch_for_same_owner(
     assert payload["status"] == "ready-for-owner-tests"
     assert payload["merge_front_pr"] == 42
     assert _git(target, "branch", "--show-current") == "feat/exact-pr"
-    assert _git(target, "merge-base", "--is-ancestor", str(expected["live_main"]), "HEAD") == ""
-    assert _git(repo, "ls-remote", "origin", "refs/heads/feat/exact-pr").split()[0] == expected["remote_head"]
+    assert (
+        _git(target, "merge-base", "--is-ancestor", str(expected["live_main"]), "HEAD")
+        == ""
+    )
+    assert (
+        _git(repo, "ls-remote", "origin", "refs/heads/feat/exact-pr").split()[0]
+        == expected["remote_head"]
+    )
     assert [item["status"] for item in records] == ["abandoned", "active"]
     assert [item["claim_generation"] for item in records] == [4, 5]
     assert old["resolved_at"] is not None
@@ -925,18 +1023,20 @@ def test_reanchor_rejects_scope_collision_without_creating_worktree(
 ) -> None:
     repo, state_path, target, expected = _reanchor_fixture(tmp_path)
     state = coordinator.registry.load_state(state_path)
-    state["records"].append({
-        "branch": "feat/other",
-        "path": str(tmp_path / "other"),
-        "intent": "other owner",
-        "base": str(expected["live_main"]),
-        "base_sha": str(expected["live_main"]),
-        "status": "active",
-        "external_ids": ["DIRECT-OTHER"],
-        "scope": expected["scope"],
-        "codex_thread_id": "other-owner",
-        "claim_generation": 0,
-    })
+    state["records"].append(
+        {
+            "branch": "feat/other",
+            "path": str(tmp_path / "other"),
+            "intent": "other owner",
+            "base": str(expected["live_main"]),
+            "base_sha": str(expected["live_main"]),
+            "status": "active",
+            "external_ids": ["DIRECT-OTHER"],
+            "scope": expected["scope"],
+            "codex_thread_id": "other-owner",
+            "claim_generation": 0,
+        }
+    )
     coordinator.registry.save_state(state_path, state)
 
     rc = coordinator.main(_reanchor_argv(repo, state_path, target, expected))
@@ -962,7 +1062,10 @@ def test_reanchor_conflict_aborts_and_removes_only_created_local_assets(
     assert payload["compensation"]["complete"] is True
     assert not target.exists()
     assert _git(repo, "branch", "--list", "feat/exact-pr") == ""
-    assert _git(repo, "ls-remote", "origin", "refs/heads/feat/exact-pr").split()[0] == expected["remote_head"]
+    assert (
+        _git(repo, "ls-remote", "origin", "refs/heads/feat/exact-pr").split()[0]
+        == expected["remote_head"]
+    )
     assert all(item["status"] != "active" for item in state["records"])
 
 
@@ -979,14 +1082,22 @@ def _resume_argv(
 ) -> list[str]:
     argv = [
         "resume-published",
-        "--repo", str(repo),
-        "--state", str(state_path),
-        "--lane", "DIRECT-REANCHOR-1",
-        "--branch", "feat/exact-pr",
-        "--owner-thread-id", owner,
-        "--claim-generation", str(generation),
-        "--expected-remote-head", remote_head or str(expected["remote_head"]),
-        "--path", str(target),
+        "--repo",
+        str(repo),
+        "--state",
+        str(state_path),
+        "--lane",
+        "DIRECT-REANCHOR-1",
+        "--branch",
+        "feat/exact-pr",
+        "--owner-thread-id",
+        owner,
+        "--claim-generation",
+        str(generation),
+        "--expected-remote-head",
+        remote_head or str(expected["remote_head"]),
+        "--path",
+        str(target),
         "--json",
     ]
     if previous_handback is not None:
@@ -1103,9 +1214,7 @@ def test_resume_published_compensates_when_required_failure_clears_midflight(
     monkeypatch.setattr(
         lifecycle_proof,
         "build_github",
-        lambda repo, *, operation: ClearingFailureGitHub(
-            repo, operation=operation
-        ),
+        lambda repo, *, operation: ClearingFailureGitHub(repo, operation=operation),
     )
 
     rc = coordinator.main(_resume_argv(repo, state_path, target, expected))
@@ -1136,9 +1245,7 @@ def test_resume_published_rejects_owner_generation_and_head_mismatch(
 ) -> None:
     repo, state_path, target, expected = _reanchor_fixture(tmp_path)
 
-    rc = coordinator.main(
-        _resume_argv(repo, state_path, target, expected, **overrides)
-    )
+    rc = coordinator.main(_resume_argv(repo, state_path, target, expected, **overrides))
 
     payload = json.loads(capsys.readouterr().out)
     state = coordinator.registry.load_state(state_path)
@@ -1166,9 +1273,7 @@ def test_resume_published_rejects_existing_target_or_local_branch(
     payload = json.loads(capsys.readouterr().out)
     state = coordinator.registry.load_state(state_path)
     assert rc == coordinator.EXIT_BLOCK
-    assert any(
-        word in payload["reason"] for word in ("new", "exist", "duplicate")
-    )
+    assert any(word in payload["reason"] for word in ("new", "exist", "duplicate"))
     assert [item["status"] for item in state["records"]] == ["published"]
 
 
@@ -1178,7 +1283,14 @@ def test_resume_published_rejects_remote_branch_drift(
 ) -> None:
     repo, state_path, target, expected = _reanchor_fixture(tmp_path)
     remote = Path(_git(repo, "remote", "get-url", "origin"))
-    _git(tmp_path, "--git-dir", str(remote), "update-ref", "refs/heads/feat/exact-pr", str(expected["live_main"]))
+    _git(
+        tmp_path,
+        "--git-dir",
+        str(remote),
+        "update-ref",
+        "refs/heads/feat/exact-pr",
+        str(expected["live_main"]),
+    )
 
     rc = coordinator.main(_resume_argv(repo, state_path, target, expected))
 
@@ -1239,7 +1351,10 @@ def test_resume_published_git_failure_compensates_only_new_local_assets(
     assert [item["status"] for item in state["records"]] == ["published"]
     assert not target.exists()
     assert _git(repo, "branch", "--list", "feat/exact-pr") == ""
-    assert _git(repo, "ls-remote", "origin", "refs/heads/feat/exact-pr").split()[0] == expected["remote_head"]
+    assert (
+        _git(repo, "ls-remote", "origin", "refs/heads/feat/exact-pr").split()[0]
+        == expected["remote_head"]
+    )
 
 
 def test_resume_published_registry_fingerprint_cas_compensates_assets(
@@ -1310,7 +1425,16 @@ def test_resume_published_rejects_dirty_unreleased_recorded_worktree(
 ) -> None:
     repo, state_path, target, expected = _reanchor_fixture(tmp_path)
     released = tmp_path / "released-worktree"
-    _git(repo, "worktree", "add", "-q", "-b", "stale-local", str(released), str(expected["base_sha"]))
+    _git(
+        repo,
+        "worktree",
+        "add",
+        "-q",
+        "-b",
+        "stale-local",
+        str(released),
+        str(expected["base_sha"]),
+    )
     (released / "dirty.txt").write_text("dirty\n", encoding="utf-8")
 
     rc = coordinator.main(_resume_argv(repo, state_path, target, expected))
@@ -1344,5 +1468,8 @@ def test_resume_published_rejects_duplicate_and_unknown_registry_truth(
     assert duplicate_rc == coordinator.EXIT_BLOCK
     assert "exactly one" in duplicate_payload["reason"]
     assert unknown_rc == coordinator.EXIT_BLOCK
-    assert "malformed" in unknown_payload["reason"] or "unknown" in unknown_payload["reason"]
+    assert (
+        "malformed" in unknown_payload["reason"]
+        or "unknown" in unknown_payload["reason"]
+    )
     assert not target.exists()

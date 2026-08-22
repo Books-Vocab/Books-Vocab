@@ -50,7 +50,10 @@ def test_registry_read_only_command_does_not_acquire_operation_lock(
 
     monkeypatch.setattr(registry, "OperationLock", _UnexpectedLock)
 
-    assert registry.main(["list", "--state", str(state_path), "--json"]) == registry.EXIT_OK
+    assert (
+        registry.main(["list", "--state", str(state_path), "--json"])
+        == registry.EXIT_OK
+    )
 
     assert json.loads(capsys.readouterr().out)["records"] == []
 
@@ -67,7 +70,10 @@ def test_read_only_compaction_does_not_acquire_operation_lock(
 
     monkeypatch.setattr(registry, "OperationLock", _UnexpectedLock)
 
-    assert registry.main(["compact", "--state", str(state_path), "--json"]) == registry.EXIT_OK
+    assert (
+        registry.main(["compact", "--state", str(state_path), "--json"])
+        == registry.EXIT_OK
+    )
 
 
 def test_nested_orchestrator_registry_call_can_skip_outer_lock(

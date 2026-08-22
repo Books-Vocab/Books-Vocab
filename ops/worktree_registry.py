@@ -99,6 +99,7 @@ def _requires_operation_lock(args: argparse.Namespace) -> bool:
         return bool(args.commit)
     return args.command in REGISTRY_MUTATING_COMMANDS
 
+
 # Existing coordinators import these names directly. They remain a narrow
 # compatibility surface while policy and command behavior live in core modules.
 __all__ = (
