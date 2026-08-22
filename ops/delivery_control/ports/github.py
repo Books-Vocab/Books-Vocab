@@ -67,6 +67,14 @@ class GitHubIssueCommandPort(Protocol):
 
 @runtime_checkable
 class GitHubWorkflowCommandPort(Protocol):
+    def trigger_readiness(
+        self,
+        *,
+        number: int,
+        branch: str,
+        head_sha: str,
+    ) -> tuple[str, ...]: ...
+
     def trigger_required(
         self,
         *,

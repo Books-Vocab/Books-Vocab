@@ -51,6 +51,14 @@ fi
 PR_READINESS=".github/workflows/pr-readiness.yml"
 grep -Eq 'types: \[[^]]*edited' "$PR_READINESS" \
   || fail "pr-readiness does not rerun after PR body metadata repair"
+grep -q '^  workflow_dispatch:' "$PR_READINESS" \
+  || fail "pr-readiness has no explicit metadata-race dispatch path"
+grep -q 'pr_number:' "$PR_READINESS" \
+  || fail "pr-readiness dispatch has no exact PR number input"
+grep -q 'head_sha:' "$PR_READINESS" \
+  || fail "pr-readiness dispatch has no exact HEAD input"
+grep -Fq 'gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER"' "$PR_READINESS" \
+  || fail "pr-readiness does not read the live PR body"
 grep -Fq './ops/delivery.py validate-pr-body --head-sha "$HEAD_SHA"' "$PR_READINESS" \
   || fail "pr-readiness does not use the typed delivery receipt validator"
 if grep -Eq 'grep .*Base SHA|perl -ne.*Digest' "$PR_READINESS"; then

@@ -51,6 +51,28 @@ class GitHubCommands:
         self.client.run(argv)
         return argv
 
+    def trigger_readiness(
+        self,
+        *,
+        number: int,
+        branch: str,
+        head_sha: str,
+    ) -> tuple[str, ...]:
+        argv = (
+            "gh",
+            "workflow",
+            "run",
+            "pr-readiness.yml",
+            "--ref",
+            branch,
+            "-f",
+            f"pr_number={number}",
+            "-f",
+            f"head_sha={head_sha}",
+        )
+        self.client.run(argv)
+        return argv
+
     def create_pull_request(self, *, branch: str, title: str, body: str) -> PullRequestSnapshot:
         self.client.run(
             (

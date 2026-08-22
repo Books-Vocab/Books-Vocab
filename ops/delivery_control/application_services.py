@@ -270,6 +270,7 @@ class DeliveryApplication:
             git=self.git,
             github_query=self.github,
             github_command=self.github,
+            github_workflow=self.github,
         ).publish(receipt=receipt, title=title)
         warnings = self._operation_telemetry().after_publish(
             receipt=receipt,

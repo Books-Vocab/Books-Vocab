@@ -236,6 +236,7 @@ class FakeGitHub:
         self.pull_request: PullRequestSnapshot | None = None
         self.queue_entry: MergeQueueEntrySnapshot | None = None
         self.recent_merges: tuple[datetime, ...] = ()
+        self.readiness_dispatches: list[tuple[int, str, str]] = []
 
     def list_open_pull_requests(self) -> PullRequestInventory:
         return PullRequestInventory(
@@ -244,6 +245,12 @@ class FakeGitHub:
 
     def find_open_pull_request(self, branch: str) -> PullRequestSnapshot | None:
         return self.pull_request
+
+    def trigger_readiness(
+        self, *, number: int, branch: str, head_sha: str
+    ) -> tuple[str, ...]:
+        self.readiness_dispatches.append((number, branch, head_sha))
+        return ("gh", "workflow", "run", "pr-readiness.yml")
 
     def create_pull_request(
         self, *, branch: str, title: str, body: str

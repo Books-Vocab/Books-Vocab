@@ -3,8 +3,20 @@ name: pr-readiness
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Exact pull request number
+        required: true
+        type: string
+      head_sha:
+        description: Exact pull request head SHA
+        required: true
+        type: string
 
-permissions: {}
+permissions:
+  contents: read
+  pull-requests: read
 
 concurrency:
   group: pr-readiness-${{ github.event.pull_request.number || github.run_id }}
@@ -21,16 +33,27 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.head_sha || github.event.pull_request.head.sha }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
 
       - name: Validate PR body contract
         env:
-          BODY: ${{ github.event.pull_request.body }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event_name == 'workflow_dispatch' && inputs.pr_number || github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          DISPATCH_HEAD_SHA: ${{ inputs.head_sha }}
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s' "$BODY" \
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            HEAD_SHA="$DISPATCH_HEAD_SHA"
+          fi
+          actual_head="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')"
+          if [[ "$actual_head" != "$HEAD_SHA" ]]; then
+            echo "PR HEAD drift: expected $HEAD_SHA, got $actual_head" >&2
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.body' \
             | ./ops/delivery.py validate-pr-body --head-sha "$HEAD_SHA"

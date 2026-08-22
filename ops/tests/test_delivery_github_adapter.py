@@ -661,6 +661,31 @@ def test_github_adapter_dispatches_required_workflow_with_exact_pr_tuple() -> No
     assert runner.calls == [command]
 
 
+def test_github_adapter_dispatches_readiness_after_exact_metadata_publish() -> None:
+    runner = StaticRunner([CommandResult(("gh",), 0, "", "")])
+    adapter = GitHubCliAdapter(runner=runner)
+
+    command = adapter.trigger_readiness(
+        number=12,
+        branch="feat/one",
+        head_sha="b" * 40,
+    )
+
+    assert command == (
+        "gh",
+        "workflow",
+        "run",
+        "pr-readiness.yml",
+        "--ref",
+        "feat/one",
+        "-f",
+        "pr_number=12",
+        "-f",
+        f"head_sha={'b' * 40}",
+    )
+    assert runner.calls == [command]
+
+
 def test_github_adapter_reports_required_workflow_dispatch_failure() -> None:
     argv = (
         "gh",

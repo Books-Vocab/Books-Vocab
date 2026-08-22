@@ -94,6 +94,14 @@ def test_runner_rejects_control_plane_drift(tmp_path: Path) -> None:
     target = tmp_path / "target"
     _git_repo(source, marker="same")
     subprocess.run(["git", "clone", "-q", str(source), str(target)], check=True)
+    subprocess.run(
+        ["git", "-C", str(target), "config", "user.email", "tests@example.test"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(target), "config", "user.name", "Delivery Tests"],
+        check=True,
+    )
     target_registry = target / "ops" / "worktree_registry.py"
     target_registry.write_text("# drifted registry fixture\n", encoding="utf-8")
     subprocess.run(
