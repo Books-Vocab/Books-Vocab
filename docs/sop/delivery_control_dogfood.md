@@ -11,7 +11,7 @@ scope:
   - .github/workflows/pr-readiness.yml
   - .github/workflows/pr-gate.yml
   - .github/workflows/merge-group-required.yml
-verified_against: f74b739123384e16936c6c984a22b8befe9f2865
+verified_against: afe016c4ea2fcbd7306f9c4f40b4556e77865100
 -->
 # Delivery Control Dogfood SOP
 
@@ -233,7 +233,7 @@ SUPERVISION_ARGS=(
 固定看：最近一小時 merges、inter-merge p50／p95、raw Issues／triage-required／dispatchable candidates／active solver／handback／open PR／required-green／merge queue depth、六段 latency p95、collision rate、required failure rate、idle worktree、source problems，以及
 quarantined source／lane／PR／terminal residue 與 `recoverable_quarantine` counters。agent 說「正在做」不計入容量；quarantine counters 也不算 active supply。Supervisor 固定用「raw backlog 有 N 個；目前可安全派工 M 個；目前可發布 handback K 個」描述狀態，`candidate_issues=0` 不能翻譯成「沒有工作」。
 
-Supervisor 的 watchdog tick 只用來避免 supervisor 睡死，不代表每 300 秒執行一次完整 pipeline，也不代表自動喚醒被 freeze／archived 的角色。Supervisor 在 turn 開始、每個 bounded progress checkpoint 與正常結束時，以 `runtime-receipt` atomic replace 更新同一份 `kg.delivery.runtime.v1` receipt；新 cycle 必須清除上一個 wake action，scheduler 發出的 wake 則把 deterministic `wake_id` 寫回 receipt。每次 tick 讀取這份 receipt：缺 receipt 只能 `escalate`；`frozen`／`archived` 永遠 `noop`；`RUNNING` 但 lease／progress 過期只能 `escalate` 並要求查詢真實 Codex thread 狀態，絕不建立第二個 turn；只有 thread 已非 active 且 receipt 是 stale `IDLE` 或到期 `WAITING` 時，才可發出一次 `wake_id`。同一 stale receipt 若已記錄該 action，下一 tick 必須停止重送。Supervisor 的 deterministic plan 會把低水位轉成具體 action：`replenish_candidates`、`fill_required_capacity`、`restore_merge_buffer`、`reanchor_front`、`trigger_required`、`reconcile_idle_worktrees` 或 `recover_merge_cadence`。它只發出可驗證的 bounded action，不替角色寫 code、推 branch 或手動修 registry；任何 unknown／dirty／remote drift 轉成 exact blocker 並 freeze 相關 birth。
+Supervisor 的 watchdog tick 只用來避免 supervisor 睡死，不代表每 300 秒執行一次完整 pipeline，也不代表自動喚醒被 freeze／archived 的角色。Supervisor 在 turn 開始、每個 bounded progress checkpoint 與正常結束時，以 `runtime-receipt` atomic replace 更新同一份 `kg.delivery.runtime.v1` receipt；新 cycle 必須清除上一個 wake action。唯讀觀測使用 `watchdog`；外部 scheduler 要喚醒時必須改用 `watchdog-claim`，並且只有 exact JSON 結果 `action=wake` 且 `wake_claimed=true` 才能建立一次 turn。`watchdog-claim` 在 dispatch 前以 cycle／last-action CAS 原子保留 wake；同一 stale receipt 的競爭呼叫會得到 `escalate`，不得建立第二個 session，也不得自行 retry。缺 receipt 只能 `escalate`；`frozen`／`archived` 永遠 `noop`；`RUNNING` 但 lease／progress 過期只能 `escalate` 並要求查詢真實 Codex thread 狀態，絕不建立第二個 turn；只有 thread 已非 active 且 receipt 是 stale `IDLE` 或到期 `WAITING` 時，才可發出一次 `wake_id`。Supervisor 的 deterministic plan 會把低水位轉成具體 action：`replenish_candidates`、`fill_required_capacity`、`restore_merge_buffer`、`reanchor_front`、`trigger_required`、`reconcile_idle_worktrees` 或 `recover_merge_cadence`。它只發出可驗證的 bounded action，不替角色寫 code、推 branch 或手動修 registry；任何 unknown／dirty／remote drift 轉成 exact blocker 並 freeze 相關 birth。
 
 ## Canary 與容量升級
 
