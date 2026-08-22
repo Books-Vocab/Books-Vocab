@@ -29,6 +29,7 @@ from .services import (
     abandon,
     cleanup,
     inspect,
+    legacy_cleanup,
     metadata,
     queue,
     required_repair,
@@ -246,6 +247,8 @@ class DeliveryApplication:
 
     def cleanup_merged(self, pull_request_number: int) -> object:
         pull_request = self.github.get_pull_request(pull_request_number)
+        if "<!-- kg.delivery.receipt.v1" not in pull_request.body:
+            return self._legacy_cleanup().cleanup_merged_pr(pull_request_number)
         receipt = parse_pull_request_body(pull_request.body)
         record = self._record_for_receipt(receipt)
         result = self._cleanup().finalize_merged(
@@ -258,6 +261,9 @@ class DeliveryApplication:
         return {"cleanup": result, "telemetry_warnings": warnings}
 
     def abandon_pr(self, pull_request_number: int) -> object:
+        pull_request = self.github.get_pull_request(pull_request_number)
+        if "<!-- kg.delivery.receipt.v1" not in pull_request.body:
+            return self._legacy_cleanup().abandon_open_pr(pull_request_number)
         return abandon.AbandonService(
             registry_query=self.registry,
             registry_command=self.registry,
@@ -266,6 +272,9 @@ class DeliveryApplication:
             github_query=self.github,
             github_command=self.github,
         ).abandon(pull_request_number=pull_request_number)
+
+    def cleanup_abandoned(self, branch: str) -> object:
+        return self._legacy_cleanup().cleanup_abandoned_branch(branch)
 
     def sync_main(self) -> object:
         result = sync_main.MainSyncService(
@@ -307,4 +316,13 @@ class DeliveryApplication:
             git_query=self.git,
             git_command=self.git,
             github=self.github,
+        )
+
+    def _legacy_cleanup(self) -> legacy_cleanup.LegacyTerminalCleanupService:
+        return legacy_cleanup.LegacyTerminalCleanupService(
+            registry=self.registry,
+            git_query=self.git,
+            git_command=self.git,
+            github_query=self.github,
+            github_command=self.github,
         )

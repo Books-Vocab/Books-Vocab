@@ -119,3 +119,28 @@ def exact_claim(
     if len(matches) > 1:
         raise AdapterPayloadError("multiple exact registry claims found")
     return matches[0] if matches else None
+
+
+def terminal_claim(
+    payload: Mapping[str, Any], *, branch: str
+) -> RegistrySnapshot | None:
+    """Resolve one terminal claim without parsing unrelated broken records.
+
+    Legacy cleanup is deliberately narrower than full inventory: unrelated
+    malformed records must not prevent a proven terminal branch from being
+    released, while duplicate or malformed records for the target branch still
+    fail closed.
+    """
+
+    matches: list[RegistrySnapshot] = []
+    for raw in payload["records"]:
+        if not isinstance(raw, Mapping) or raw.get("branch") != branch:
+            continue
+        try:
+            record = parse_registry_record(raw)
+        except (KeyError, TypeError, ValueError, InvalidScope) as error:
+            raise AdapterPayloadError("terminal registry claim is malformed") from error
+        matches.append(record)
+    if len(matches) > 1:
+        raise AdapterPayloadError("multiple registry claims found for terminal branch")
+    return matches[0] if matches else None

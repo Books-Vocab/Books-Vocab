@@ -38,6 +38,11 @@ class RegistryCleanupQueryPort(Protocol):
 
 
 @runtime_checkable
+class RegistryTerminalQueryPort(Protocol):
+    def find_terminal_claim(self, *, branch: str) -> RegistrySnapshot | None: ...
+
+
+@runtime_checkable
 class RegistryCommandPort(Protocol):
     def persist_handback(
         self, receipt: HandbackReceipt, *, expected_claim_generation: int

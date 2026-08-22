@@ -23,6 +23,7 @@ from .registry_query import (
     exact_claim,
     load_registry_list,
     registry_inventory,
+    terminal_claim,
 )
 from .subprocess_runner import SubprocessCommandRunner
 
@@ -76,6 +77,9 @@ class RegistryCliAdapter:
             path=path,
             claim_generation=claim_generation,
         )
+
+    def find_terminal_claim(self, *, branch: str) -> RegistrySnapshot | None:
+        return terminal_claim(self._list_payload(), branch=branch)
 
     def resolve(
         self,
