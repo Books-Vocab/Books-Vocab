@@ -5,7 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from delivery_control.domain.errors import PolicyViolation
+from delivery_control.domain.errors import CompareAndSwapConflict, PolicyViolation
 from delivery_control.domain.models import HandbackReceipt, Scope
 from delivery_control.domain.observations import (
     PullRequestInventory,
@@ -48,12 +48,12 @@ def _receipt() -> HandbackReceipt:
 
 
 class FakeRegistry:
-    def __init__(self, receipt: HandbackReceipt) -> None:
+    def __init__(self, receipt: HandbackReceipt, *, status: str = "published") -> None:
         self.record = RegistrySnapshot(
             lane_id=receipt.lane_id,
             branch=receipt.branch,
             path=Path(receipt.worktree_path),
-            status="published",
+            status=status,
             scope=receipt.scope,
             base_sha=receipt.base_sha,
             claim_generation=receipt.claim_generation,
@@ -65,6 +65,7 @@ class FakeRegistry:
             handback_digest=receipt.content_digest,
             handback_origin_main_sha=receipt.origin_main_sha,
         )
+        self.transitions: list[str] = []
 
     def find_exact_claim(self, **kwargs: object) -> RegistrySnapshot | None:
         if (
@@ -77,15 +78,17 @@ class FakeRegistry:
 
     def resolve(self, lane_id: str, disposition: str, **kwargs: object) -> None:
         assert lane_id == self.record.lane_id
-        assert disposition == "abandoned"
-        self.record = replace(self.record, status="abandoned")
+        assert disposition in {"cleanup_pending", "abandoned"}
+        self.transitions.append(disposition)
+        self.record = replace(self.record, status=disposition)
 
 
 class FakeGit:
-    def __init__(self) -> None:
+    def __init__(self, *, fail_delete_once: bool = False) -> None:
         self.remote = HEAD
         self.local = None
         self.actions: list[str] = []
+        self.fail_delete_once = fail_delete_once
 
     def list_worktrees(self):
         return ()
@@ -98,6 +101,9 @@ class FakeGit:
 
     def delete_remote_branch(self, branch: str, *, expected_head_sha: str) -> None:
         assert expected_head_sha == HEAD
+        if self.fail_delete_once:
+            self.fail_delete_once = False
+            raise CompareAndSwapConflict("injected remote delete failure")
         self.actions.append("delete-remote")
         self.remote = None
 
@@ -144,11 +150,18 @@ class FakeGitHub:
         return self.pull_request
 
 
-def _service(*, holds: tuple[str, ...] = ()):
+def _service(
+    *,
+    holds: tuple[str, ...] = (),
+    registry_status: str = "published",
+    pull_request_state: str = "OPEN",
+    fail_delete_once: bool = False,
+):
     receipt = _receipt()
-    registry = FakeRegistry(receipt)
-    git = FakeGit()
+    registry = FakeRegistry(receipt, status=registry_status)
+    git = FakeGit(fail_delete_once=fail_delete_once)
     github = FakeGitHub(receipt, holds=holds)
+    github.pull_request = replace(github.pull_request, state=pull_request_state)
     return (
         QuarantineService(
             registry_query=registry,
@@ -176,6 +189,41 @@ def test_quarantine_closes_exact_malformed_pr_and_releases_remote_branch() -> No
     assert github.closed
     assert git.actions == ["delete-remote"]
     assert registry.record.status == "abandoned"
+    assert registry.transitions == ["cleanup_pending", "abandoned"]
+
+
+def test_quarantine_retry_keeps_closed_pr_and_cleanup_pending_after_delete_failure() -> None:
+    service, registry, git, github = _service(fail_delete_once=True)
+
+    with pytest.raises(CompareAndSwapConflict, match="remote delete"):
+        service.quarantine(pull_request_number=7)
+
+    assert github.closed
+    assert registry.record.status == "cleanup_pending"
+    assert registry.transitions == ["cleanup_pending"]
+    assert git.remote == HEAD
+
+    result = service.quarantine(pull_request_number=7)
+
+    assert result.registry_status == "abandoned"
+    assert result.remote_branch_absent
+    assert registry.transitions == ["cleanup_pending", "abandoned"]
+    assert git.actions == ["delete-remote"]
+
+
+def test_quarantine_retry_after_remote_delete_is_idempotent() -> None:
+    service, registry, git, github = _service(
+        registry_status="cleanup_pending",
+        pull_request_state="CLOSED",
+    )
+    git.remote = None
+
+    result = service.quarantine(pull_request_number=7)
+
+    assert result.registry_status == "abandoned"
+    assert result.remote_branch_absent
+    assert not github.closed
+    assert registry.transitions == ["abandoned"]
 
 
 def test_quarantine_refuses_hard_hold_before_close() -> None:
