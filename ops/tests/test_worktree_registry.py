@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -9,11 +10,35 @@ import pytest
 
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
-import worktree_registry as registry
+import worktree_registry as registry  # noqa: E402
+from worktree_registry_core import environment  # noqa: E402
 
 
 def _state() -> dict:
     return {"schema": registry.SCHEMA, "records": []}
+
+
+def test_registry_git_timeout_is_structured_and_bounded(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def timeout(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert args[0] == ["git", "status"]
+        assert kwargs["timeout"] == environment.REGISTRY_GIT_TIMEOUT_SECONDS
+        raise subprocess.TimeoutExpired(
+            args[0],
+            kwargs["timeout"],
+            output="partial output",
+        )
+
+    monkeypatch.setattr(environment.subprocess, "run", timeout)
+
+    return_code, output = environment.git(["status"], tmp_path)
+
+    assert return_code == 124
+    assert output == (
+        "partial output\n"
+        "git command timed out after 120s"
+    )
 
 
 def _scope() -> dict:
