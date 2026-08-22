@@ -203,12 +203,14 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
             "backlog_drained": inventory.backlog_drained,
             "complete": inventory.complete,
             "source_problems": inventory.problems,
+            "source_entries": inventory.source_entries,
             "issues": inventory.records,
         }
     if args.command == "triage-plan":
         return {
             "schema": "kg.delivery.triage-plan.v1",
             "items": application.triage_plan(),
+            "source_entries": application.issue_inventory().source_entries,
         }
     if args.command == "metrics":
         return application.metrics(

@@ -82,7 +82,7 @@ class GitHubIssueQueries:
         return payload
 
     def list_open_issues(self) -> DemandIssueInventory:
-        payloads: list[Mapping[str, Any]] = []
+        payloads: list[object] = []
         cursor: str | None = None
         for _ in range(100):
             payload = self._graphql(cursor=cursor)
@@ -97,12 +97,12 @@ class GitHubIssueQueries:
                 raise AdapterPayloadError("GitHub open Issue page is malformed")
             for node in nodes:
                 if not isinstance(node, Mapping):
-                    payloads.append({"number": len(payloads) + 1})
+                    # Keep malformed nodes addressable without inventing a
+                    # GitHub Issue number that could collide with real data.
+                    payloads.append(node)
                     continue
                 labels = node.get("labels")
                 label_nodes = labels.get("nodes") if isinstance(labels, Mapping) else None
-                if not isinstance(label_nodes, list):
-                    raise AdapterPayloadError("GitHub Issue labels page is malformed")
                 payloads.append(
                     {
                         "id": node.get("id"),
