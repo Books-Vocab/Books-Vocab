@@ -36,7 +36,19 @@ class LegacyTerminalCleanupService:
         self.github_query = github_query
         self.github_command = github_command
 
+    def _require_canonical_main(self) -> None:
+        """Protect legacy asset deletion from the checkout running the command."""
+
+        checkout = self.git_query.canonical_checkout()
+        if checkout.branch != "main":
+            raise PolicyViolation(
+                "canonical checkout must be on main before legacy cleanup"
+            )
+        if not checkout.clean:
+            raise PolicyViolation("canonical checkout is dirty before legacy cleanup")
+
     def cleanup_merged_pr(self, pull_request_number: int) -> CleanupResult:
+        self._require_canonical_main()
         pull_request = self._single_branch_pr(pull_request_number)
         record = self._record(pull_request.branch, expected_status="merged")
         self._validate_pr(pull_request, record, expected_state="MERGED")
@@ -96,6 +108,7 @@ class LegacyTerminalCleanupService:
         )
 
     def cleanup_abandoned_branch(self, branch: str) -> CleanupResult:
+        self._require_canonical_main()
         record = self._record(branch, expected_status="abandoned")
         if record.handed_back_sha is not None:
             raise PolicyViolation("abandoned branch has a hand-back but no PR proof")
