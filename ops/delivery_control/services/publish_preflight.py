@@ -15,6 +15,7 @@ from ..domain.policies import evaluate_publication
 from ..ports.git import GitQueryPort
 from ..ports.github import GitHubQueryPort
 from ..ports.registry import RegistryPublicationQueryPort
+from .pr_contract import parse_pull_request_body
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,59 @@ class PublishPreflightService:
                 return True
         return False
 
+    def _validate_existing_pull_request_scope(
+        self,
+        *,
+        receipt: HandbackReceipt,
+        registry: RegistrySnapshot,
+        pull_request: PullRequestSnapshot,
+        observed_paths: tuple[str, ...],
+    ) -> None:
+        """Allow only monotonic Scope growth across an owner reanchor.
+
+        A reanchored claim can legitimately add a file before publishing the
+        same durable PR.  The old PR must still be self-describing and its
+        changed paths must exactly match its previous typed receipt; otherwise
+        a same-branch PR could be used to smuggle arbitrary Scope drift.
+        """
+
+        try:
+            previous = parse_pull_request_body(pull_request.body)
+        except PolicyViolation as error:
+            raise PolicyViolation(
+                "existing PR body must contain a typed handback before Scope update"
+            ) from error
+        if (
+            previous.lane_id != registry.lane_id
+            or previous.owner_thread_id != receipt.owner_thread_id
+            or previous.branch != receipt.branch
+        ):
+            raise PolicyViolation("existing PR handback owner or lane differs")
+        if (
+            previous.base_sha != pull_request.base_sha
+            or previous.head_sha != pull_request.head_sha
+        ):
+            raise PolicyViolation("existing PR body differs from its exact PR tuple")
+
+        previous_paths = set(previous.scope.paths)
+        observed = set(observed_paths)
+        if observed != previous_paths:
+            raise PolicyViolation("existing PR paths differ from its typed handback Scope")
+
+        current_paths = set(receipt.scope.paths)
+        if receipt.claim_generation < previous.claim_generation:
+            raise PolicyViolation("handback claim generation regressed from existing PR")
+        if receipt.claim_generation == previous.claim_generation:
+            if current_paths != previous_paths:
+                raise PolicyViolation(
+                    "existing PR Scope may only grow after an owner reanchor"
+                )
+            return
+        if not previous_paths.issubset(current_paths):
+            raise PolicyViolation(
+                "owner reanchor cannot remove paths from an existing PR Scope"
+            )
+
     def check(self, receipt: HandbackReceipt) -> PublicationContext:
         self._require_canonical_main()
         registry = self.registry.get(receipt.lane_id)
@@ -96,8 +150,12 @@ class PublishPreflightService:
             if pull_request.base_branch != "main":
                 raise PolicyViolation("existing PR does not target main")
             observed_paths = self.github.changed_paths(pull_request.number)
-            if tuple(sorted(observed_paths)) != tuple(sorted(receipt.scope.paths)):
-                raise PolicyViolation("existing PR paths differ from handback Scope")
+            self._validate_existing_pull_request_scope(
+                receipt=receipt,
+                registry=registry,
+                pull_request=pull_request,
+                observed_paths=observed_paths,
+            )
         try:
             collision = self._scope_collision(
                 receipt=receipt,
