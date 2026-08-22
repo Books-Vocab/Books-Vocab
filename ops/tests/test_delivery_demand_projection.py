@@ -6,19 +6,27 @@ from pathlib import Path
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.adapters.github_parsing import parse_demand_issue_inventory
-from delivery_control.domain.candidate_issues import (
+from delivery_control.adapters.github_parsing import (  # noqa: E402
+    parse_demand_issue_inventory,
+)
+from delivery_control.domain.candidate_issues import (  # noqa: E402
     CANDIDATE_ISSUE_LABEL,
     CandidateSeverity,
     CandidateSpec,
 )
-from delivery_control.domain.demand_issues import IssueDisposition
-from delivery_control.domain.models import Scope
-from delivery_control.services.candidate_contract import render_candidate_body
-from delivery_control.services.demand_projection import project_demand_inventory
+from delivery_control.domain.demand_issues import IssueDisposition  # noqa: E402
+from delivery_control.domain.models import Scope  # noqa: E402
+from delivery_control.services.candidate_contract import (  # noqa: E402
+    render_candidate_body,
+)
+from delivery_control.services.demand_projection import (  # noqa: E402
+    project_demand_inventory,
+)
 
 
-def _payload(number: int, *, body: str, labels: tuple[str, ...] = ()) -> dict[str, object]:
+def _payload(
+    number: int, *, body: str, labels: tuple[str, ...] = ()
+) -> dict[str, object]:
     return {
         "id": f"I_{number}",
         "number": number,

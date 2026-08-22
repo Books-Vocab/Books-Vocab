@@ -26,7 +26,9 @@ _HOLD_LABELS = {
 
 
 def _references_issue(value: str, number: int) -> bool:
-    return any(int(match.group("number")) == number for match in _ISSUE_REF.finditer(value))
+    return any(
+        int(match.group("number")) == number for match in _ISSUE_REF.finditer(value)
+    )
 
 
 def _issue_is_held(issue: DemandIssue) -> bool:
@@ -130,25 +132,30 @@ def project_demand_inventory(
         elif _issue_is_held(issue):
             disposition = IssueDisposition.SECURITY_HOLD
             reason = "Issue carries an explicit security/P0/P1 or PUBLISH ONLY hold"
-        elif any(record.status in {"published", "cleanup_pending"} for record in mapped_records):
+        elif any(
+            record.status in {"published", "cleanup_pending"}
+            for record in mapped_records
+        ):
             disposition = IssueDisposition.PUBLISHED_PR
             reason = "Issue is already mapped to a published delivery lane"
-        elif any(record.status not in {"merged", "abandoned"} for record in mapped_records) or any(
-            pull_request.state == "OPEN" for pull_request in mapped_prs
-        ):
+        elif any(
+            record.status not in {"merged", "abandoned"} for record in mapped_records
+        ) or any(pull_request.state == "OPEN" for pull_request in mapped_prs):
             disposition = IssueDisposition.OWNER_BOUND
             reason = "Issue is already mapped to an owner-bound registry or PR lane"
-        elif _issue_has_terminal_history(issue) or any(
-            record.status in {"merged", "abandoned"} for record in mapped_records
-        ) or any(
-            pull_request.state in {"MERGED", "CLOSED"} for pull_request in mapped_prs
+        elif (
+            _issue_has_terminal_history(issue)
+            or any(
+                record.status in {"merged", "abandoned"} for record in mapped_records
+            )
+            or any(
+                pull_request.state in {"MERGED", "CLOSED"}
+                for pull_request in mapped_prs
+            )
         ):
             disposition = IssueDisposition.TERMINAL_HISTORY
             reason = "Issue has verifiable duplicate, merged, or terminal history"
-        elif (
-            issue.candidate_spec is not None
-            and CANDIDATE_ISSUE_LABEL in issue.labels
-        ):
+        elif issue.candidate_spec is not None and CANDIDATE_ISSUE_LABEL in issue.labels:
             disposition = IssueDisposition.DISPATCHABLE_CANDIDATE
             reason = "Issue has an exact typed candidate contract and no active mapping"
         else:
