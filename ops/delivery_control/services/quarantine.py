@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from ..domain.errors import CompareAndSwapConflict, DeliverySourceError, PolicyViolation
@@ -59,45 +59,36 @@ class QuarantineService:
 
     def quarantine(self, *, pull_request_number: int) -> QuarantineResult:
         context = self._read_exact(pull_request_number)
-        closed = self.github_command.close_pull_request(
-            number=context.pull_request.number,
-            expected_base_sha=context.pull_request.base_sha,
-            expected_head_sha=context.pull_request.head_sha,
-            expected_body=context.pull_request.body,
-        )
-        self._validate_closed(closed, context)
-
-        try:
-            self.registry_command.resolve(
-                context.receipt.lane_id,
-                "abandoned",
-                expected_claim_generation=context.receipt.claim_generation,
-                expected_branch=context.receipt.branch,
-                expected_path=context.receipt.worktree_path,
-                expected_head_sha=context.receipt.head_sha,
+        if context.pull_request.state == "OPEN":
+            closed = self.github_command.close_pull_request(
+                number=context.pull_request.number,
+                expected_base_sha=context.pull_request.base_sha,
+                expected_head_sha=context.pull_request.head_sha,
+                expected_body=context.pull_request.body,
             )
-        except (DeliverySourceError, OSError) as error:
-            self._reopen(context, error)
-            raise
-
-        terminal = self.registry_query.find_exact_claim(
-            lane_id=context.receipt.lane_id,
-            branch=context.receipt.branch,
-            path=Path(context.receipt.worktree_path),
-            claim_generation=context.receipt.claim_generation,
-        )
-        if terminal is None or terminal.status != "abandoned":
-            raise CompareAndSwapConflict(
-                "quarantine registry transition did not read back as abandoned"
-            )
+            self._validate_closed(closed, context)
+        context = self._ensure_cleanup_pending(context)
         remote_sha = self.git_query.remote_branch_sha(context.receipt.branch)
-        if remote_sha != context.remote_sha:
+        if remote_sha is not None and remote_sha != context.remote_sha:
             raise CompareAndSwapConflict(
                 "remote branch changed after malformed PR quarantine"
             )
-        self.git_command.delete_remote_branch(
-            context.receipt.branch,
-            expected_head_sha=context.remote_sha,
+        if remote_sha is not None:
+            # A failed delete deliberately leaves cleanup_pending in place so
+            # the same command can retry without reopening the already-closed PR.
+            self.git_command.delete_remote_branch(
+                context.receipt.branch,
+                expected_head_sha=context.remote_sha,
+            )
+        # PR is closed and remote assets are already absent; any registry
+        # failure leaves the cleanup_pending lease for an exact retry.
+        self.registry_command.resolve(
+            context.receipt.lane_id,
+            "abandoned",
+            expected_claim_generation=context.receipt.claim_generation,
+            expected_branch=context.receipt.branch,
+            expected_path=context.receipt.worktree_path,
+            expected_head_sha=context.receipt.head_sha,
         )
         final = self._read_final(context)
         return QuarantineResult(
@@ -117,11 +108,11 @@ class QuarantineService:
         if listed != pull_request:
             raise CompareAndSwapConflict("PR changed between exact branch readbacks")
         if (
-            pull_request.state != "OPEN"
+            pull_request.state not in {"OPEN", "CLOSED"}
             or pull_request.base_branch != "main"
             or pull_request.merged_at is not None
         ):
-            raise PolicyViolation("quarantine requires one open, unmerged PR on main")
+            raise PolicyViolation("quarantine requires one open or retryable closed PR on main")
         if pull_request.auto_merge_enabled or not pull_request.node_id:
             raise PolicyViolation("quarantine refuses an auto-merge or unidentified PR")
         if self.github_query.merge_queue_entry_snapshot(pull_request.node_id) is not None:
@@ -140,10 +131,16 @@ class QuarantineService:
         )
         if registry is None or registry.status not in {"published", "cleanup_pending"}:
             raise PolicyViolation("quarantine requires one published registry claim")
+        if pull_request.state == "CLOSED" and registry.status != "cleanup_pending":
+            raise PolicyViolation("closed quarantine PR requires a cleanup-pending registry lease")
         self._validate_registry(registry, receipt)
         self._validate_local_assets_absent(receipt)
         remote_sha = self.git_query.remote_branch_sha(receipt.branch)
-        if remote_sha != receipt.head_sha:
+        if remote_sha is None and not (
+            pull_request.state == "CLOSED" and registry.status == "cleanup_pending"
+        ):
+            raise PolicyViolation("quarantine requires an exact remote PR HEAD")
+        if remote_sha is not None and remote_sha != receipt.head_sha:
             raise PolicyViolation("quarantine requires an exact remote PR HEAD")
 
         mismatches: list[str] = []
@@ -159,9 +156,44 @@ class QuarantineService:
             pull_request=pull_request,
             receipt=receipt,
             registry=registry,
-            remote_sha=remote_sha,
+            remote_sha=remote_sha or receipt.head_sha,
             mismatches=tuple(mismatches),
         )
+
+    def _ensure_cleanup_pending(
+        self, context: _QuarantineContext
+    ) -> _QuarantineContext:
+        if context.registry.status == "cleanup_pending":
+            return context
+        try:
+            self.registry_command.resolve(
+                context.receipt.lane_id,
+                "cleanup_pending",
+                expected_claim_generation=context.receipt.claim_generation,
+                expected_branch=context.receipt.branch,
+                expected_path=context.receipt.worktree_path,
+                expected_head_sha=context.receipt.head_sha,
+            )
+        except (DeliverySourceError, OSError) as error:
+            self._reopen(context, error)
+            raise
+        pending = self.registry_query.find_exact_claim(
+            lane_id=context.receipt.lane_id,
+            branch=context.receipt.branch,
+            path=Path(context.receipt.worktree_path),
+            claim_generation=context.receipt.claim_generation,
+        )
+        if pending is None or pending.status != "cleanup_pending":
+            self._reopen(
+                context,
+                CompareAndSwapConflict(
+                    "quarantine registry transition did not read back as cleanup_pending"
+                ),
+            )
+            raise CompareAndSwapConflict(
+                "quarantine registry transition did not read back as cleanup_pending"
+            )
+        return replace(context, registry=pending)
 
     @staticmethod
     def _validate_registry(
