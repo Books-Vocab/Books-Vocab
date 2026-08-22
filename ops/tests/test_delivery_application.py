@@ -88,7 +88,7 @@ def test_application_uses_main_checkout_for_cleanup_from_linked_worktree(
 
     assert application.repo == repository.resolve()
     assert application.git.repo == repository.resolve()
-    assert application.registry.runner.target_repo == source_worktree.resolve()
+    assert application.registry.runner.target_repo == repository.resolve()
 
 
 def test_dogfood_preflight_measures_the_configured_promotion_window(

@@ -56,7 +56,7 @@ def build_application(
                 executable=registry_script,
                 main=worktree_registry.main,
                 source_root=CONTROL_PLANE_OPS.parent,
-                target_repo=resolved,
+                target_repo=canonical_repo,
             ),
         ),
         runtime=RuntimeStatusMap.from_file(runtime_status_file),

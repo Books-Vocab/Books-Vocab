@@ -78,7 +78,10 @@ def inspect_checkout(root: Path) -> CheckoutProvenance:
 
 
 def source_compatibility_problem(
-    *, source_root: Path, target_repo: Path
+    *,
+    source_root: Path,
+    target_repo: Path,
+    expected_source_fingerprint: str | None = None,
 ) -> str | None:
     """Return one stable blocker before an in-process mutation is allowed.
 
@@ -91,6 +94,24 @@ def source_compatibility_problem(
     semantics.
     """
 
+    if not source_root.expanduser().resolve().exists():
+        if expected_source_fingerprint is None:
+            return (
+                "control-plane source checkout disappeared before compatibility "
+                "was established"
+            )
+        try:
+            target = inspect_checkout(target_repo)
+        except SourceProvenanceError as error:
+            return str(error)
+        if target.control_plane_fingerprint != expected_source_fingerprint:
+            return (
+                "canonical target fingerprint changed after source checkout "
+                "release: "
+                f"expected={expected_source_fingerprint} "
+                f"target={target.control_plane_fingerprint}"
+            )
+        return None
     try:
         source = inspect_checkout(source_root)
         target = inspect_checkout(target_repo)

@@ -175,3 +175,42 @@ def test_runner_allows_exact_clean_source_and_target_checkouts(tmp_path: Path) -
     result = runner.run((str(executable), "list", "--json"))
 
     assert result.exit_code == 0
+
+
+def test_runner_allows_final_cas_after_validated_source_is_removed(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    _git_repo(source, marker="same")
+    subprocess.run(["git", "clone", "-q", str(source), str(target)], check=True)
+    executable = source / "command.py"
+    executable.write_text("# command fixture\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(source), "add", "command.py"], check=True)
+    subprocess.run(
+        ["git", "-C", str(source), "commit", "-qm", "add command executable"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(target), "fetch", "-q", str(source), "HEAD"], check=True
+    )
+    subprocess.run(
+        ["git", "-C", str(target), "reset", "-q", "--hard", "FETCH_HEAD"],
+        check=True,
+    )
+    runner = ModuleCommandRunner(
+        executable=executable,
+        main=lambda _argv: 0,
+        source_root=source,
+        target_repo=target,
+    )
+
+    first = runner.run((str(executable), "list", "--json"))
+    assert first.exit_code == 0
+    import shutil
+
+    shutil.rmtree(source)
+
+    second = runner.run((str(executable), "resolve", "--json"))
+
+    assert second.exit_code == 0

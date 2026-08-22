@@ -9,7 +9,7 @@ from pathlib import Path
 from threading import Lock
 
 from ..ports.process import CommandResult
-from .source_provenance import source_compatibility_problem
+from .source_provenance import inspect_checkout, source_compatibility_problem
 
 PROVENANCE_EXIT_CODE = 78
 
@@ -31,6 +31,7 @@ class ModuleCommandRunner:
             raise ValueError("source_root and target_repo must be provided together")
         self.source_root = source_root.resolve() if source_root is not None else None
         self.target_repo = target_repo.resolve() if target_repo is not None else None
+        self._validated_source_fingerprint: str | None = None
         self._lock = Lock()
 
     def run(
@@ -46,9 +47,14 @@ class ModuleCommandRunner:
             problem = source_compatibility_problem(
                 source_root=self.source_root,
                 target_repo=self.target_repo,
+                expected_source_fingerprint=self._validated_source_fingerprint,
             )
             if problem is not None:
                 return CommandResult(argv, PROVENANCE_EXIT_CODE, "", problem)
+            if self.source_root.exists():
+                self._validated_source_fingerprint = inspect_checkout(
+                    self.source_root
+                ).control_plane_fingerprint
         stdout = io.StringIO()
         stderr = io.StringIO()
         with (
