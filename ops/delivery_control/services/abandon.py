@@ -50,7 +50,19 @@ class AbandonService:
         self.github_query = github_query
         self.github_command = github_command
 
+    def _require_canonical_main(self) -> None:
+        """Protect PR and remote-branch mutation from an owner checkout."""
+
+        checkout = self.git_query.canonical_checkout()
+        if checkout.branch != "main":
+            raise PolicyViolation(
+                "canonical checkout must be on main before abandonment"
+            )
+        if not checkout.clean:
+            raise PolicyViolation("canonical checkout is dirty before abandonment")
+
     def abandon(self, *, pull_request_number: int) -> AbandonResult:
+        self._require_canonical_main()
         context = self._read_exact(pull_request_number)
         if context.registry.status == "abandoned":
             if context.pull_request.state != "CLOSED":
