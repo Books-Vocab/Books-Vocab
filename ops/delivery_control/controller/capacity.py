@@ -22,6 +22,7 @@ class ControlAction(StrEnum):
     TRIAGE_EXISTING_ISSUES = "triage_existing_issues"
     RECOVER_LEGACY_ISSUES = "recover_legacy_issues"
     RECOVER_OWNER_BOUND_LANE = "recover_owner_bound_lane"
+    RECONCILE_HOLDS = "reconcile_holds"
     IMPROVE_SCOPE_PARTITION = "improve_scope_partition"
     FILL_REQUIRED_CAPACITY = "fill_required_capacity"
     RESTORE_MERGE_BUFFER = "restore_merge_buffer"
@@ -116,6 +117,11 @@ def decide_capacity(
         add(
             ControlAction.RECOVER_OWNER_BOUND_LANE,
             "existing owner-bound lanes require bounded recovery",
+        )
+    if metrics.security_hold_issues or metrics.security_hold_lanes:
+        add(
+            ControlAction.RECONCILE_HOLDS,
+            "explicit P0/P1/security holds require terminal disposition",
         )
     if (
         not metrics.actionable_source_problems
@@ -247,6 +253,11 @@ def decide_capacity(
         add(
             ControlAction.THROTTLE_SOLVERS,
             "solver dispatch is disabled while registry cleanup leases are pending",
+        )
+    elif metrics.security_hold_issues or metrics.security_hold_lanes:
+        add(
+            ControlAction.THROTTLE_SOLVERS,
+            "solver dispatch is disabled while explicit hard holds remain",
         )
     elif (
         collision_saturated

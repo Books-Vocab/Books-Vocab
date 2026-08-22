@@ -5,6 +5,9 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+# The test imports the in-repository package after extending sys.path so it can
+# run from the repository's ops test harness.
+# ruff: noqa: E402
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
@@ -68,6 +71,8 @@ def _metrics(**changes: int) -> PipelineMetrics:
         "candidate_issues": 30,
         "reanchor_required": 0,
         "clean_unregistered_worktrees": 0,
+        "security_hold_lanes": 0,
+        "security_hold_issues": 0,
     }
     values.update(changes)
     return PipelineMetrics(**values)
@@ -505,6 +510,35 @@ def test_controller_reports_source_uncertainty_instead_of_fabricating_supply() -
     assert ControlAction.REPLENISH_CANDIDATES not in decision.actions
     assert ControlAction.DISPATCH_SOLVERS not in decision.actions
     assert decision.desired_new_solvers == 0
+
+
+def test_hard_holds_block_ramp_and_solver_birth_until_reconciled() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    metrics = _metrics(security_hold_lanes=1, security_hold_issues=1)
+
+    decision = decide_capacity(metrics, cadence)
+
+    assert ControlAction.RECONCILE_HOLDS in decision.actions
+    assert ControlAction.THROTTLE_SOLVERS in decision.actions
+    assert ControlAction.DISPATCH_SOLVERS not in decision.actions
+    assert decision.desired_new_solvers == 0
+
+    readiness = assess_dogfood_readiness(
+        local_main_sha="a" * 40,
+        origin_main_sha="a" * 40,
+        canonical_branch="main",
+        canonical_clean=True,
+        main_protected=True,
+        required_status_contexts=("required",),
+        merge_queue_enabled=True,
+        physical_worktree_count=1,
+        canonical_worktree_present=True,
+        metrics=metrics,
+        cadence=cadence,
+    )
+
+    assert readiness.ready is False
+    assert "explicit P0/P1/security holds require terminal disposition" in readiness.blockers
 
 
 def test_controller_disables_solver_birth_for_unmapped_or_duplicate_prs() -> None:
