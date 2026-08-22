@@ -56,9 +56,14 @@ MUTATING_COMMANDS = frozenset(
 
 def _git(args: list[str], cwd: Path = ROOT) -> tuple[int, str]:
     try:
-        proc = subprocess.run(["git", *args], cwd=cwd, text=True,
-                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                              check=False)
+        proc = subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
     except OSError as exc:
         return 127, f"{type(exc).__name__}: {exc}"
     return proc.returncode, proc.stdout.strip()
@@ -122,7 +127,9 @@ def _write_freeze(payload: dict[str, Any] | None) -> None:
 def _require_unfrozen(command: str) -> str | None:
     freeze = _is_frozen()
     if freeze:
-        return f"local worktree operations are frozen: {freeze.get('reason', 'no reason')}"
+        return (
+            f"local worktree operations are frozen: {freeze.get('reason', 'no reason')}"
+        )
     return None
 
 
@@ -134,10 +141,21 @@ def _scope_args(args: argparse.Namespace) -> list[str]:
     return []
 
 
-def _registry_register(*, branch: str, path: Path, intent: str, base: str,
-                       base_sha: str, external_ids: list[str],
-                       args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
-    state_path = Path(args.state).expanduser().resolve() if args.state else registry.default_state_path()
+def _registry_register(
+    *,
+    branch: str,
+    path: Path,
+    intent: str,
+    base: str,
+    base_sha: str,
+    external_ids: list[str],
+    args: argparse.Namespace,
+) -> tuple[int, dict[str, Any]]:
+    state_path = (
+        Path(args.state).expanduser().resolve()
+        if args.state
+        else registry.default_state_path()
+    )
     try:
         scope = registry._scope_from_args(args)
     except (OSError, ValueError) as exc:
@@ -145,7 +163,8 @@ def _registry_register(*, branch: str, path: Path, intent: str, base: str,
     with registry._ledger_lock(state_path):
         state = registry.load_state(state_path)
         active_matches = [
-            record for record in registry._active_records(state)
+            record
+            for record in registry._active_records(state)
             if registry._record_matches(record, branch=branch, path=str(path))
         ]
         if len(active_matches) > 1:
@@ -165,9 +184,15 @@ def _registry_register(*, branch: str, path: Path, intent: str, base: str,
                 record for record in state["records"] if record is not active
             ]
         rc, record = registry._register_record(
-            state, branch=branch, path=str(path), intent=intent, base=base,
-            external_ids=external_ids, scope=scope,
-            codex_thread_id=args.codex_thread_id, delegated=args.delegated,
+            state,
+            branch=branch,
+            path=str(path),
+            intent=intent,
+            base=base,
+            external_ids=external_ids,
+            scope=scope,
+            codex_thread_id=args.codex_thread_id,
+            delegated=args.delegated,
         )
         if rc == registry.EXIT_OK:
             record["base_sha"] = base_sha
@@ -178,12 +203,22 @@ def _registry_register(*, branch: str, path: Path, intent: str, base: str,
 def cmd_open(args: argparse.Namespace) -> int:
     refusal = _require_unfrozen("open")
     if refusal:
-        _emit({"schema": SCHEMA, "action": "refused", "reason": refusal},
-              as_json=args.json, human=f"✗ open refused: {refusal}")
+        _emit(
+            {"schema": SCHEMA, "action": "refused", "reason": refusal},
+            as_json=args.json,
+            human=f"✗ open refused: {refusal}",
+        )
         return EXIT_BLOCK
     if not SLUG_RE.fullmatch(args.slug):
-        _emit({"schema": SCHEMA, "action": "refused", "reason": "slug must be kebab-case"},
-              as_json=args.json, human="✗ open refused: slug must be kebab-case")
+        _emit(
+            {
+                "schema": SCHEMA,
+                "action": "refused",
+                "reason": "slug must be kebab-case",
+            },
+            as_json=args.json,
+            human="✗ open refused: slug must be kebab-case",
+        )
         return EXIT_USAGE
     branch = f"{_intent_type(args.intent, args.type)}/{args.slug}"
     state_path = (
@@ -191,90 +226,165 @@ def cmd_open(args: argparse.Namespace) -> int:
         if args.state
         else registry.default_state_path()
     )
-    worktree = _path(args.path) if args.path else ROOT / ".claude" / "worktrees" / args.slug
+    worktree = (
+        _path(args.path) if args.path else ROOT / ".claude" / "worktrees" / args.slug
+    )
     if worktree.exists():
-        _emit({"schema": SCHEMA, "action": "refused", "reason": f"path exists: {worktree}"},
-              as_json=args.json, human=f"✗ open refused: path exists: {worktree}")
+        _emit(
+            {
+                "schema": SCHEMA,
+                "action": "refused",
+                "reason": f"path exists: {worktree}",
+            },
+            as_json=args.json,
+            human=f"✗ open refused: path exists: {worktree}",
+        )
         return EXIT_USAGE
     external_ids = list(args.external_id or [])
     base_sha = _resolve_commit(ROOT, args.base)
     if base_sha is None:
         _emit(
-            {"schema": SCHEMA, "action": "refused", "reason": "base ref cannot be resolved"},
+            {
+                "schema": SCHEMA,
+                "action": "refused",
+                "reason": "base ref cannot be resolved",
+            },
             as_json=args.json,
             human="✗ open refused: base ref cannot be resolved",
         )
         return EXIT_BLOCK
     rc, record = _registry_register(
-        branch=branch, path=worktree, intent=args.intent, base=args.base,
-        base_sha=base_sha, external_ids=external_ids, args=args,
+        branch=branch,
+        path=worktree,
+        intent=args.intent,
+        base=args.base,
+        base_sha=base_sha,
+        external_ids=external_ids,
+        args=args,
     )
     if rc != registry.EXIT_OK:
-        _emit({"schema": SCHEMA, "action": "refused", "record": record},
-              as_json=args.json, human=f"✗ open refused: {record.get('reason', record)}")
+        _emit(
+            {"schema": SCHEMA, "action": "refused", "record": record},
+            as_json=args.json,
+            human=f"✗ open refused: {record.get('reason', record)}",
+        )
         return rc
-    git_rc, output = _git(
-        ["worktree", "add", "-b", branch, str(worktree), base_sha]
-    )
+    git_rc, output = _git(["worktree", "add", "-b", branch, str(worktree), base_sha])
     if git_rc != 0:
         # Keep the ledger truthful if provisioning fails; no branch is deleted here
         # because GitHub may already know the name and branch removal is a separate
         # explicit action.
         observed_branch_head = _resolve_commit(ROOT, branch) or base_sha
         expected_generation = str(record.get("claim_generation", 0))
-        compensation_rc = registry.main([
-            "resolve", "--branch", branch, "--path", str(worktree),
-            "--status", "abandoned", "--expected-generation", expected_generation,
-            "--expected-head-sha", observed_branch_head,
-            "--state", str(state_path), "--json",
-        ])
+        compensation_rc = registry.main(
+            [
+                "resolve",
+                "--branch",
+                branch,
+                "--path",
+                str(worktree),
+                "--status",
+                "abandoned",
+                "--expected-generation",
+                expected_generation,
+                "--expected-head-sha",
+                observed_branch_head,
+                "--state",
+                str(state_path),
+                "--json",
+            ],
+            acquire_lock=False,
+        )
         reason = (
             "git worktree add failed"
             if compensation_rc == registry.EXIT_OK
             else "git worktree add failed and registry compensation failed"
         )
-        _emit({"schema": SCHEMA, "action": "refused", "reason": reason,
-               "git": output, "record": record, "compensation_rc": compensation_rc},
-              as_json=args.json, human=f"✗ open refused: {reason}: {output}")
+        _emit(
+            {
+                "schema": SCHEMA,
+                "action": "refused",
+                "reason": reason,
+                "git": output,
+                "record": record,
+                "compensation_rc": compensation_rc,
+            },
+            as_json=args.json,
+            human=f"✗ open refused: {reason}: {output}",
+        )
         return EXIT_BLOCK
     record["path"] = str(worktree)
-    _emit({"schema": SCHEMA, "action": "open", "record": record}, as_json=args.json,
-          human=f"✓ opened {branch} at {worktree}")
+    _emit(
+        {"schema": SCHEMA, "action": "open", "record": record},
+        as_json=args.json,
+        human=f"✓ opened {branch} at {worktree}",
+    )
     return EXIT_OK
 
 
 def cmd_adopt(args: argparse.Namespace) -> int:
     refusal = _require_unfrozen("adopt")
     if refusal:
-        _emit({"schema": SCHEMA, "action": "refused", "reason": refusal},
-              as_json=args.json, human=f"✗ adopt refused: {refusal}")
+        _emit(
+            {"schema": SCHEMA, "action": "refused", "reason": refusal},
+            as_json=args.json,
+            human=f"✗ adopt refused: {refusal}",
+        )
         return EXIT_BLOCK
     worktree = _path(args.worktree or os.getcwd())
     if not worktree.is_dir():
-        _emit({"schema": SCHEMA, "action": "refused", "reason": f"not a directory: {worktree}"},
-              as_json=args.json, human=f"✗ adopt refused: not a directory: {worktree}")
+        _emit(
+            {
+                "schema": SCHEMA,
+                "action": "refused",
+                "reason": f"not a directory: {worktree}",
+            },
+            as_json=args.json,
+            human=f"✗ adopt refused: not a directory: {worktree}",
+        )
         return EXIT_USAGE
     rc, branch = _git(["branch", "--show-current"], worktree)
     if rc != 0 or not branch:
-        _emit({"schema": SCHEMA, "action": "refused", "reason": "worktree is detached"},
-              as_json=args.json, human="✗ adopt refused: worktree is detached")
+        _emit(
+            {"schema": SCHEMA, "action": "refused", "reason": "worktree is detached"},
+            as_json=args.json,
+            human="✗ adopt refused: worktree is detached",
+        )
         return EXIT_USAGE
     base_sha = _resolve_commit(worktree, args.base)
     if base_sha is None:
         _emit(
-            {"schema": SCHEMA, "action": "refused", "reason": "base ref cannot be resolved"},
+            {
+                "schema": SCHEMA,
+                "action": "refused",
+                "reason": "base ref cannot be resolved",
+            },
             as_json=args.json,
             human="✗ adopt refused: base ref cannot be resolved",
         )
         return EXIT_BLOCK
     rc, record = _registry_register(
-        branch=branch, path=worktree, intent=args.intent, base=args.base,
-        base_sha=base_sha, external_ids=list(args.external_id or []), args=args,
+        branch=branch,
+        path=worktree,
+        intent=args.intent,
+        base=args.base,
+        base_sha=base_sha,
+        external_ids=list(args.external_id or []),
+        args=args,
     )
-    _emit({"schema": SCHEMA, "action": "adopt" if rc == EXIT_OK else "refused",
-           "record": record}, as_json=args.json,
-          human=(f"✓ adopted {branch} at {worktree}" if rc == EXIT_OK
-                 else f"✗ adopt refused: {record.get('reason', record)}"))
+    _emit(
+        {
+            "schema": SCHEMA,
+            "action": "adopt" if rc == EXIT_OK else "refused",
+            "record": record,
+        },
+        as_json=args.json,
+        human=(
+            f"✓ adopted {branch} at {worktree}"
+            if rc == EXIT_OK
+            else f"✗ adopt refused: {record.get('reason', record)}"
+        ),
+    )
     return rc
 
 
@@ -312,7 +422,11 @@ def _diff_names(worktree: Path, start: str, end: str) -> list[str] | None:
 
 
 def _rebase_preflight(
-    worktree: Path, *, base: str, incoming_main: str, scope: object,
+    worktree: Path,
+    *,
+    base: str,
+    incoming_main: str,
+    scope: object,
 ) -> dict[str, Any]:
     """Compare declared ownership only with the incoming-main commit range."""
     payload: dict[str, Any] = {
@@ -345,12 +459,17 @@ def _rebase_preflight(
     if head_sha is None:
         payload["reason"] = "branch HEAD cannot be resolved"
         return payload
-    payload.update({
-        "base_sha": base_sha,
-        "incoming_main_sha": incoming_main_sha,
-        "head_sha": head_sha,
-    })
-    if _git(["merge-base", "--is-ancestor", base_sha, incoming_main_sha], worktree)[0] != 0:
+    payload.update(
+        {
+            "base_sha": base_sha,
+            "incoming_main_sha": incoming_main_sha,
+            "head_sha": head_sha,
+        }
+    )
+    if (
+        _git(["merge-base", "--is-ancestor", base_sha, incoming_main_sha], worktree)[0]
+        != 0
+    ):
         payload["reason"] = "base is not an ancestor of incoming-main"
         return payload
     if _git(["merge-base", "--is-ancestor", base_sha, head_sha], worktree)[0] != 0:
@@ -366,11 +485,13 @@ def _rebase_preflight(
         payload["reason"] = "branch diff could not be computed"
         return payload
     collisions = sorted(set(scope_paths).intersection(incoming_main_files))
-    payload.update({
-        "incoming_main_files": incoming_main_files,
-        "branch_files": branch_files,
-        "collisions": collisions,
-    })
+    payload.update(
+        {
+            "incoming_main_files": incoming_main_files,
+            "branch_files": branch_files,
+            "collisions": collisions,
+        }
+    )
     if collisions:
         payload["reason"] = "incoming-main changes collide with declared Scope"
         return payload
@@ -378,11 +499,18 @@ def _rebase_preflight(
     return payload
 
 
-def _plan_checks(files: list[str], *, worktree: Path | None = None) -> list[dict[str, Any]]:
-    checks: list[dict[str, Any]] = [{
-        "name": "git-diff-check", "kind": "shell", "cwd": ".",
-        "cmd": ["git", "diff", "--check"], "level": "block",
-    }]
+def _plan_checks(
+    files: list[str], *, worktree: Path | None = None
+) -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = [
+        {
+            "name": "git-diff-check",
+            "kind": "shell",
+            "cwd": ".",
+            "cmd": ["git", "diff", "--check"],
+            "level": "block",
+        }
+    ]
     # `git diff --name-only` includes deleted paths.  A deleted shell script
     # still matters to the diff and docs checks, but it cannot be parsed from
     # the target worktree.  Do not turn intentional cleanup into a false gate
@@ -393,40 +521,88 @@ def _plan_checks(files: list[str], *, worktree: Path | None = None) -> list[dict
         if item.endswith(".sh") and (worktree is None or (worktree / item).is_file())
     ]
     for item in shell_files:
-        checks.append({"name": f"shell-syntax:{item}", "kind": "shell", "cwd": ".",
-                       "cmd": ["bash", "-n", item], "level": "block"})
+        checks.append(
+            {
+                "name": f"shell-syntax:{item}",
+                "kind": "shell",
+                "cwd": ".",
+                "cmd": ["bash", "-n", item],
+                "level": "block",
+            }
+        )
     docs = [item for item in files if item.startswith("docs/") and item.endswith(".md")]
     if "docs/registry.yml" in files or docs:
-        checks.append({"name": "docs-lint", "kind": "shell", "cwd": ".",
-                       "cmd": (["./ops/docs_lint.sh", "--registry"] if not docs else
-                               ["./ops/docs_lint.sh", "--files", *docs]), "level": "block"})
+        checks.append(
+            {
+                "name": "docs-lint",
+                "kind": "shell",
+                "cwd": ".",
+                "cmd": (
+                    ["./ops/docs_lint.sh", "--registry"]
+                    if not docs
+                    else ["./ops/docs_lint.sh", "--files", *docs]
+                ),
+                "level": "block",
+            }
+        )
     if any(item.startswith("backend/") for item in files):
-        checks.append({"name": "backend-tests", "kind": "shell", "cwd": "backend",
-                       "cmd": ["uv", "run", "--locked", "python", "-m", "pytest", "-q"],
-                       "level": "block"})
+        checks.append(
+            {
+                "name": "backend-tests",
+                "kind": "shell",
+                "cwd": "backend",
+                "cmd": ["uv", "run", "--locked", "python", "-m", "pytest", "-q"],
+                "level": "block",
+            }
+        )
     if any(item.startswith("ios/") for item in files):
-        checks.append({"name": "ios-tests", "kind": "shell", "cwd": ".",
-                       "cmd": ["./ops/ios_ops.sh", "test", "--unit"], "level": "block"})
+        checks.append(
+            {
+                "name": "ios-tests",
+                "kind": "shell",
+                "cwd": ".",
+                "cmd": ["./ops/ios_ops.sh", "test", "--unit"],
+                "level": "block",
+            }
+        )
     if any(item.startswith(("ops/", ".github/workflows/")) for item in files):
-        checks.append({"name": "ops-tests", "kind": "shell", "cwd": ".",
-                       "cmd": ["./ops/test_ops.sh", "worktree"], "level": "block"})
+        checks.append(
+            {
+                "name": "ops-tests",
+                "kind": "shell",
+                "cwd": ".",
+                "cmd": ["./ops/test_ops.sh", "worktree"],
+                "level": "block",
+            }
+        )
     return checks
 
 
 def _run_check(check: dict[str, Any], worktree: Path) -> dict[str, Any]:
     cwd = worktree / str(check.get("cwd") or ".")
     started = time.monotonic()
-    with tempfile.NamedTemporaryFile(prefix="kg-gate-", suffix=".log", delete=False) as log:
+    with tempfile.NamedTemporaryFile(
+        prefix="kg-gate-", suffix=".log", delete=False
+    ) as log:
         log_path = Path(log.name)
-        process = subprocess.Popen(check["cmd"], cwd=cwd, stdout=log, stderr=subprocess.STDOUT,
-                                   text=True)
-        print(f"gate={check['name']} phase=start pid={process.pid}", file=sys.stderr, flush=True)
+        process = subprocess.Popen(
+            check["cmd"], cwd=cwd, stdout=log, stderr=subprocess.STDOUT, text=True
+        )
+        print(
+            f"gate={check['name']} phase=start pid={process.pid}",
+            file=sys.stderr,
+            flush=True,
+        )
         last_heartbeat = started
         while process.poll() is None:
             now = time.monotonic()
             if now - last_heartbeat >= 20:
-                print(f"gate={check['name']} phase=heartbeat elapsed={int(now-started)}s "
-                      f"pid={process.pid} alive=true", file=sys.stderr, flush=True)
+                print(
+                    f"gate={check['name']} phase=heartbeat elapsed={int(now - started)}s "
+                    f"pid={process.pid} alive=true",
+                    file=sys.stderr,
+                    flush=True,
+                )
                 last_heartbeat = now
             time.sleep(0.25)
         returncode = process.returncode
@@ -438,15 +614,29 @@ def _run_check(check: dict[str, Any], worktree: Path) -> dict[str, Any]:
             log_path.unlink()
         except FileNotFoundError:
             pass
-    print(f"gate={check['name']} phase=done elapsed={duration:.1f}s pid={process.pid} "
-          f"alive=false rc={returncode}", file=sys.stderr, flush=True)
-    return {"name": check["name"], "cmd": check["cmd"], "cwd": check["cwd"],
-            "status": "pass" if returncode == 0 else "block", "rc": returncode,
-            "duration_s": round(duration, 3), "output_tail": output[-12000:]}
+    print(
+        f"gate={check['name']} phase=done elapsed={duration:.1f}s pid={process.pid} "
+        f"alive=false rc={returncode}",
+        file=sys.stderr,
+        flush=True,
+    )
+    return {
+        "name": check["name"],
+        "cmd": check["cmd"],
+        "cwd": check["cwd"],
+        "status": "pass" if returncode == 0 else "block",
+        "rc": returncode,
+        "duration_s": round(duration, 3),
+        "output_tail": output[-12000:],
+    }
 
 
 def _gate_record_path(state: str | None, worktree: Path) -> Path:
-    base = Path(state).expanduser().resolve().parent if state else registry.default_state_path().parent
+    base = (
+        Path(state).expanduser().resolve().parent
+        if state
+        else registry.default_state_path().parent
+    )
     key = hashlib.sha256(str(worktree.resolve()).encode()).hexdigest()[:16]
     return base / "worktree_gates" / f"{key}.json"
 
@@ -454,31 +644,63 @@ def _gate_record_path(state: str | None, worktree: Path) -> Path:
 def cmd_gate(args: argparse.Namespace) -> int:
     worktree = _path(args.worktree)
     if not worktree.is_dir():
-        _emit({"schema": GATE_SCHEMA, "action": "refused", "reason": "worktree not found"},
-              as_json=args.json, human="✗ gate refused: worktree not found")
+        _emit(
+            {
+                "schema": GATE_SCHEMA,
+                "action": "refused",
+                "reason": "worktree not found",
+            },
+            as_json=args.json,
+            human="✗ gate refused: worktree not found",
+        )
         return EXIT_USAGE
     files = _changed_files(worktree, args.base)
     checks = _plan_checks(files, worktree=worktree)
-    payload: dict[str, Any] = {"schema": GATE_SCHEMA, "worktree": str(worktree),
-                               "base": args.base, "files": files, "checks": checks}
+    payload: dict[str, Any] = {
+        "schema": GATE_SCHEMA,
+        "worktree": str(worktree),
+        "base": args.base,
+        "files": files,
+        "checks": checks,
+    }
     if args.plan_only:
-        _emit(payload, as_json=args.json, human=json.dumps(payload, indent=2, ensure_ascii=False))
+        _emit(
+            payload,
+            as_json=args.json,
+            human=json.dumps(payload, indent=2, ensure_ascii=False),
+        )
         return EXIT_OK
     results = [_run_check(check, worktree) for check in checks]
-    verdict = "block" if any(result["status"] == "block" for result in results) else "pass"
-    payload.update({"verdict": verdict, "results": results,
-                    "head": _git(["rev-parse", "HEAD"], worktree)[1]})
+    verdict = (
+        "block" if any(result["status"] == "block" for result in results) else "pass"
+    )
+    payload.update(
+        {
+            "verdict": verdict,
+            "results": results,
+            "head": _git(["rev-parse", "HEAD"], worktree)[1],
+        }
+    )
     record_path = _gate_record_path(args.state, worktree)
     record_path.parent.mkdir(parents=True, exist_ok=True)
-    record_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-                           encoding="utf-8")
-    _emit(payload, as_json=args.json,
-          human=f"{'✓' if verdict == 'pass' else '✗'} gate {verdict}: {worktree}")
+    record_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    _emit(
+        payload,
+        as_json=args.json,
+        human=f"{'✓' if verdict == 'pass' else '✗'} gate {verdict}: {worktree}",
+    )
     return EXIT_OK if verdict == "pass" else EXIT_BLOCK
 
 
-def _handoff_payload(*, status: str, worktree: Path, reason: str | None = None,
-                     observed_main_sha: str | None = None) -> dict[str, Any]:
+def _handoff_payload(
+    *,
+    status: str,
+    worktree: Path,
+    reason: str | None = None,
+    observed_main_sha: str | None = None,
+) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "schema": HANDOFF_SCHEMA,
         "action": "handoff",
@@ -501,60 +723,91 @@ def cmd_handoff(args: argparse.Namespace) -> int:
     admission result.
     """
     worktree = _path(args.worktree)
-    state_path = Path(args.state).expanduser().resolve() if args.state else registry.default_state_path()
+    state_path = (
+        Path(args.state).expanduser().resolve()
+        if args.state
+        else registry.default_state_path()
+    )
     if not worktree.is_dir():
-        payload = _handoff_payload(status="blocked", worktree=worktree,
-                                   reason="worktree not found")
-        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        payload = _handoff_payload(
+            status="blocked", worktree=worktree, reason="worktree not found"
+        )
+        _emit(
+            payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}"
+        )
         return EXIT_BLOCK
 
     branch_rc, branch = _git(["branch", "--show-current"], worktree)
     state = registry.load_state(state_path)
     matches = [
-        record for record in registry._active_records(state)
-        if branch_rc == 0 and branch
+        record
+        for record in registry._active_records(state)
+        if branch_rc == 0
+        and branch
         and registry._record_matches(record, branch=branch, path=str(worktree))
     ]
     if len(matches) != 1:
         payload = _handoff_payload(
-            status="blocked", worktree=worktree,
+            status="blocked",
+            worktree=worktree,
             reason="handoff selector must match exactly one active worktree",
         )
-        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        _emit(
+            payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}"
+        )
         return EXIT_BLOCK
 
     record = matches[0]
     seal = record.get("handback_seal")
     if not isinstance(seal, dict):
         payload = _handoff_payload(
-            status="blocked", worktree=worktree,
+            status="blocked",
+            worktree=worktree,
             reason="typed kg.worktree.handback.v1 seal is missing",
         )
-        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        _emit(
+            payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}"
+        )
         return EXIT_BLOCK
 
     observed_main_sha = _resolve_commit(worktree, args.incoming_main)
     if observed_main_sha is None:
         payload = _handoff_payload(
-            status="blocked", worktree=worktree,
+            status="blocked",
+            worktree=worktree,
             reason=f"incoming main cannot be resolved: {args.incoming_main}",
         )
-        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        _emit(
+            payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}"
+        )
         return EXIT_BLOCK
-    base_sha = str(seal.get("base_sha") or record.get("base_sha") or record.get("base") or "")
+    base_sha = str(
+        seal.get("base_sha") or record.get("base_sha") or record.get("base") or ""
+    )
     if not base_sha:
         payload = _handoff_payload(
-            status="blocked", worktree=worktree, observed_main_sha=observed_main_sha,
+            status="blocked",
+            worktree=worktree,
+            observed_main_sha=observed_main_sha,
             reason="hand-back base is missing",
         )
-        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        _emit(
+            payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}"
+        )
         return EXIT_BLOCK
-    if _git(["merge-base", "--is-ancestor", base_sha, observed_main_sha], worktree)[0] != 0:
+    if (
+        _git(["merge-base", "--is-ancestor", base_sha, observed_main_sha], worktree)[0]
+        != 0
+    ):
         payload = _handoff_payload(
-            status="blocked", worktree=worktree, observed_main_sha=observed_main_sha,
+            status="blocked",
+            worktree=worktree,
+            observed_main_sha=observed_main_sha,
             reason=f"hand-back base {base_sha} is not an ancestor of incoming main {observed_main_sha}",
         )
-        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        _emit(
+            payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}"
+        )
         return EXIT_BLOCK
 
     if not registry._has_valid_handback(record):
@@ -563,20 +816,28 @@ def cmd_handoff(args: argparse.Namespace) -> int:
         if problems:
             reason = f"local hand-back is not valid: {', '.join(item['kind'] for item in problems)}"
         payload = _handoff_payload(
-            status="blocked", worktree=worktree, observed_main_sha=observed_main_sha,
+            status="blocked",
+            worktree=worktree,
+            observed_main_sha=observed_main_sha,
             reason=reason,
         )
-        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        _emit(
+            payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}"
+        )
         return EXIT_BLOCK
 
     tip_sha = str(seal.get("tip_sha") or record.get("handed_back_sha") or "")
     scope = record.get("scope")
     if scope_status(scope) != "known":
         payload = _handoff_payload(
-            status="blocked", worktree=worktree, observed_main_sha=observed_main_sha,
+            status="blocked",
+            worktree=worktree,
+            observed_main_sha=observed_main_sha,
             reason="declared Scope is unstructured or invalid",
         )
-        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        _emit(
+            payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}"
+        )
         return EXIT_BLOCK
     scope_paths = sorted({item["path"] for item in scope_files(scope)})
     gate_path = _gate_record_path(str(state_path), worktree)
@@ -586,121 +847,214 @@ def cmd_handoff(args: argparse.Namespace) -> int:
         gate = None
     if not isinstance(gate, dict) or gate.get("verdict") != "pass":
         payload = _handoff_payload(
-            status="blocked", worktree=worktree, observed_main_sha=observed_main_sha,
+            status="blocked",
+            worktree=worktree,
+            observed_main_sha=observed_main_sha,
             reason="no passing local gate is recorded for this worktree",
         )
-        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        _emit(
+            payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}"
+        )
         return EXIT_BLOCK
-    if gate.get("schema") != GATE_SCHEMA or _path(str(gate.get("worktree") or "")) != worktree:
+    if (
+        gate.get("schema") != GATE_SCHEMA
+        or _path(str(gate.get("worktree") or "")) != worktree
+    ):
         payload = _handoff_payload(
-            status="blocked", worktree=worktree, observed_main_sha=observed_main_sha,
+            status="blocked",
+            worktree=worktree,
+            observed_main_sha=observed_main_sha,
             reason="local gate provenance does not match this worktree",
         )
-        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        _emit(
+            payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}"
+        )
         return EXIT_BLOCK
-    gate_base = _resolve_commit(worktree, str(gate.get("base") or "")) or str(gate.get("base") or "")
+    gate_base = _resolve_commit(worktree, str(gate.get("base") or "")) or str(
+        gate.get("base") or ""
+    )
     if gate_base != base_sha:
         payload = _handoff_payload(
-            status="blocked", worktree=worktree, observed_main_sha=observed_main_sha,
+            status="blocked",
+            worktree=worktree,
+            observed_main_sha=observed_main_sha,
             reason="local gate base does not equal hand-back base",
         )
-        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        _emit(
+            payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}"
+        )
         return EXIT_BLOCK
     if gate.get("head") != tip_sha:
         payload = _handoff_payload(
-            status="blocked", worktree=worktree, observed_main_sha=observed_main_sha,
+            status="blocked",
+            worktree=worktree,
+            observed_main_sha=observed_main_sha,
             reason="local gate HEAD does not equal hand-back tip",
         )
-        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        _emit(
+            payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}"
+        )
         return EXIT_BLOCK
     if sorted(gate.get("files") or []) != scope_paths:
         payload = _handoff_payload(
-            status="blocked", worktree=worktree, observed_main_sha=observed_main_sha,
+            status="blocked",
+            worktree=worktree,
+            observed_main_sha=observed_main_sha,
             reason="local gate changed files do not equal declared Scope",
         )
-        _emit(payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}")
+        _emit(
+            payload, as_json=args.json, human=f"✗ handoff blocked: {payload['reason']}"
+        )
         return EXIT_BLOCK
 
     payload = _handoff_payload(
-        status="ready-for-im", worktree=worktree, observed_main_sha=observed_main_sha,
+        status="ready-for-im",
+        worktree=worktree,
+        observed_main_sha=observed_main_sha,
     )
-    payload.update({
-        "branch": branch,
-        "external_ids": sorted(registry._legacy_external_ids(record)),
-        "base_sha": base_sha,
-        "tip_sha": tip_sha,
-        "scope": scope_paths,
-        "handback_seal": seal,
-        "validation": {
-            "registry": {
-                "status": "pass",
-                "scope_status": "known",
-                "handback": "valid",
-                "clean": True,
+    payload.update(
+        {
+            "branch": branch,
+            "external_ids": sorted(registry._legacy_external_ids(record)),
+            "base_sha": base_sha,
+            "tip_sha": tip_sha,
+            "scope": scope_paths,
+            "handback_seal": seal,
+            "validation": {
+                "registry": {
+                    "status": "pass",
+                    "scope_status": "known",
+                    "handback": "valid",
+                    "clean": True,
+                },
+                "gate": gate,
             },
-            "gate": gate,
-        },
-    })
-    _emit(payload, as_json=args.json,
-          human=f"✓ handoff ready-for-im: {branch} @ {tip_sha[:12]}")
+        }
+    )
+    _emit(
+        payload,
+        as_json=args.json,
+        human=f"✓ handoff ready-for-im: {branch} @ {tip_sha[:12]}",
+    )
     return EXIT_OK
 
 
 def cmd_preflight(args: argparse.Namespace) -> int:
-    state_path = Path(args.state).expanduser().resolve() if args.state else registry.default_state_path()
+    state_path = (
+        Path(args.state).expanduser().resolve()
+        if args.state
+        else registry.default_state_path()
+    )
     state = registry.load_state(state_path)
     rebase_args = (args.worktree, args.base, args.incoming_main)
     if any(item is not None for item in rebase_args):
-        missing = [name for name, value in (
-            ("--worktree", args.worktree), ("--base", args.base),
-            ("--incoming-main", args.incoming_main),
-        ) if value is None]
+        missing = [
+            name
+            for name, value in (
+                ("--worktree", args.worktree),
+                ("--base", args.base),
+                ("--incoming-main", args.incoming_main),
+            )
+            if value is None
+        ]
         if missing:
             reason = f"rebase preflight requires {' '.join(missing)}"
-            _emit({"schema": SCHEMA, "action": "rebase-preflight", "verdict": "block",
-                   "reason": reason}, as_json=args.json,
-                  human=f"✗ rebase preflight blocked: {reason}")
+            _emit(
+                {
+                    "schema": SCHEMA,
+                    "action": "rebase-preflight",
+                    "verdict": "block",
+                    "reason": reason,
+                },
+                as_json=args.json,
+                human=f"✗ rebase preflight blocked: {reason}",
+            )
             return EXIT_USAGE
         worktree = _path(args.worktree)
         if not worktree.is_dir():
             reason = f"worktree not found: {worktree}"
-            _emit({"schema": SCHEMA, "action": "rebase-preflight", "verdict": "block",
-                   "reason": reason}, as_json=args.json,
-                  human=f"✗ rebase preflight blocked: {reason}")
+            _emit(
+                {
+                    "schema": SCHEMA,
+                    "action": "rebase-preflight",
+                    "verdict": "block",
+                    "reason": reason,
+                },
+                as_json=args.json,
+                human=f"✗ rebase preflight blocked: {reason}",
+            )
             return EXIT_USAGE
         branch_rc, branch = _git(["branch", "--show-current"], worktree)
-        matches = [record for record in registry._active_records(state)
-                   if branch_rc == 0 and branch
-                   and registry._record_matches(record, branch=branch, path=str(worktree))]
+        matches = [
+            record
+            for record in registry._active_records(state)
+            if branch_rc == 0
+            and branch
+            and registry._record_matches(record, branch=branch, path=str(worktree))
+        ]
         if len(matches) != 1:
             reason = "preflight selector must match exactly one active worktree"
-            _emit({"schema": SCHEMA, "action": "rebase-preflight", "verdict": "block",
-                   "reason": reason, "worktree": str(worktree)}, as_json=args.json,
-                  human=f"✗ rebase preflight blocked: {reason}")
+            _emit(
+                {
+                    "schema": SCHEMA,
+                    "action": "rebase-preflight",
+                    "verdict": "block",
+                    "reason": reason,
+                    "worktree": str(worktree),
+                },
+                as_json=args.json,
+                human=f"✗ rebase preflight blocked: {reason}",
+            )
             return EXIT_BLOCK
         payload = _rebase_preflight(
-            worktree, base=args.base, incoming_main=args.incoming_main,
+            worktree,
+            base=args.base,
+            incoming_main=args.incoming_main,
             scope=matches[0].get("scope"),
         )
         payload.update({"registry": str(state_path), "branch": branch})
-        _emit(payload, as_json=args.json,
-              human=(f"✓ rebase preflight pass: {worktree}" if payload["verdict"] == "pass"
-                     else f"✗ rebase preflight blocked: {payload.get('reason', 'unknown reason')}"))
+        _emit(
+            payload,
+            as_json=args.json,
+            human=(
+                f"✓ rebase preflight pass: {worktree}"
+                if payload["verdict"] == "pass"
+                else f"✗ rebase preflight blocked: {payload.get('reason', 'unknown reason')}"
+            ),
+        )
         return EXIT_OK if payload["verdict"] == "pass" else EXIT_BLOCK
-    active = [record for record in state.get("records", []) if record.get("status") == "active"]
-    payload = {"schema": SCHEMA, "action": "preflight", "registry": str(state_path),
-               "active_worktrees": len(active), "worktrees": _git(["worktree", "list"], ROOT)[1]}
-    _emit(payload, as_json=args.json,
-          human=f"✓ preflight: {len(active)} active local worktree(s)")
+    active = [
+        record
+        for record in state.get("records", [])
+        if record.get("status") == "active"
+    ]
+    payload = {
+        "schema": SCHEMA,
+        "action": "preflight",
+        "registry": str(state_path),
+        "active_worktrees": len(active),
+        "worktrees": _git(["worktree", "list"], ROOT)[1],
+    }
+    _emit(
+        payload,
+        as_json=args.json,
+        human=f"✓ preflight: {len(active)} active local worktree(s)",
+    )
     return EXIT_OK
 
 
 def cmd_freeze(args: argparse.Namespace) -> int:
     current = _is_frozen()
     if args.action == "status":
-        _emit({"schema": "kg.worktree.freeze.v1", "frozen": current is not None,
-               "state": current}, as_json=args.json,
-              human=(f"frozen: {current.get('reason')}" if current else "not frozen"))
+        _emit(
+            {
+                "schema": "kg.worktree.freeze.v1",
+                "frozen": current is not None,
+                "state": current,
+            },
+            as_json=args.json,
+            human=(f"frozen: {current.get('reason')}" if current else "not frozen"),
+        )
         return EXIT_OK
     if args.action == "on":
         if current and not args.force:
@@ -708,15 +1062,24 @@ def cmd_freeze(args: argparse.Namespace) -> int:
         if not args.reason:
             return EXIT_USAGE
         _, now = registry.resolve_now()
-        payload = {"schema": "kg.worktree.freeze.v1", "reason": args.reason,
-                   "created_at": now}
+        payload = {
+            "schema": "kg.worktree.freeze.v1",
+            "reason": args.reason,
+            "created_at": now,
+        }
         _write_freeze(payload)
-        _emit({"schema": "kg.worktree.freeze.v1", "action": "on", "state": payload},
-              as_json=args.json, human=f"✓ frozen: {args.reason}")
+        _emit(
+            {"schema": "kg.worktree.freeze.v1", "action": "on", "state": payload},
+            as_json=args.json,
+            human=f"✓ frozen: {args.reason}",
+        )
         return EXIT_OK
     _write_freeze(None)
-    _emit({"schema": "kg.worktree.freeze.v1", "action": "off"}, as_json=args.json,
-          human="✓ unfrozen")
+    _emit(
+        {"schema": "kg.worktree.freeze.v1", "action": "off"},
+        as_json=args.json,
+        human="✓ unfrozen",
+    )
     return EXIT_OK
 
 
@@ -734,7 +1097,7 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         argv += ["--expected-generation", str(args.expected_generation)]
     if args.expected_head_sha:
         argv += ["--expected-head-sha", args.expected_head_sha]
-    rc = registry.main(argv)
+    rc = registry.main(argv, acquire_lock=False)
     if rc != EXIT_OK or not args.remove:
         return rc
     worktree = _path(args.path) if args.path else None
@@ -747,28 +1110,45 @@ def cmd_resolve(args: argparse.Namespace) -> int:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="GitHub-native local worktree coordinator")
+    parser = argparse.ArgumentParser(
+        description="GitHub-native local worktree coordinator"
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     def common(p: argparse.ArgumentParser) -> None:
-        p.add_argument("--state", default=None); p.add_argument("--json", action="store_true")
+        p.add_argument("--state", default=None)
+        p.add_argument("--json", action="store_true")
 
     pre = sub.add_parser("preflight", help="show local worktree/registry health")
-    common(pre); pre.add_argument("--worktree"); pre.add_argument("--base")
-    pre.add_argument("--incoming-main"); pre.set_defaults(func=cmd_preflight)
+    common(pre)
+    pre.add_argument("--worktree")
+    pre.add_argument("--base")
+    pre.add_argument("--incoming-main")
+    pre.set_defaults(func=cmd_preflight)
 
     op = sub.add_parser("open", help="create a branch and linked worktree")
-    common(op); op.add_argument("--intent", required=True); op.add_argument("--slug", required=True)
-    op.add_argument("--type", choices=BRANCH_TYPES); op.add_argument("--base", default=BASE_DEFAULT)
-    op.add_argument("--path", default=None); op.add_argument("--external-id", action="append", default=[])
-    op.add_argument("--scope"); op.add_argument("--scope-file"); op.add_argument("--codex-thread-id")
+    common(op)
+    op.add_argument("--intent", required=True)
+    op.add_argument("--slug", required=True)
+    op.add_argument("--type", choices=BRANCH_TYPES)
+    op.add_argument("--base", default=BASE_DEFAULT)
+    op.add_argument("--path", default=None)
+    op.add_argument("--external-id", action="append", default=[])
+    op.add_argument("--scope")
+    op.add_argument("--scope-file")
+    op.add_argument("--codex-thread-id")
     op.add_argument("--delegated", action=argparse.BooleanOptionalAction, default=None)
     op.set_defaults(func=cmd_open)
 
     ad = sub.add_parser("adopt", help="register an existing linked worktree")
-    common(ad); ad.add_argument("--worktree", default=None); ad.add_argument("--intent", required=True)
-    ad.add_argument("--base", default=BASE_DEFAULT); ad.add_argument("--external-id", action="append", default=[])
-    ad.add_argument("--scope"); ad.add_argument("--scope-file"); ad.add_argument("--codex-thread-id")
+    common(ad)
+    ad.add_argument("--worktree", default=None)
+    ad.add_argument("--intent", required=True)
+    ad.add_argument("--base", default=BASE_DEFAULT)
+    ad.add_argument("--external-id", action="append", default=[])
+    ad.add_argument("--scope")
+    ad.add_argument("--scope-file")
+    ad.add_argument("--codex-thread-id")
     ad.add_argument("--delegated", action=argparse.BooleanOptionalAction, default=None)
     ad.set_defaults(func=cmd_adopt)
 
@@ -780,26 +1160,43 @@ def _parser() -> argparse.ArgumentParser:
     )
 
     gate = sub.add_parser("gate", help="run focused local checks for changed files")
-    common(gate); gate.add_argument("--worktree", required=True); gate.add_argument("--base", default=BASE_DEFAULT)
-    gate.add_argument("--plan-only", action="store_true"); gate.set_defaults(func=cmd_gate)
+    common(gate)
+    gate.add_argument("--worktree", required=True)
+    gate.add_argument("--base", default=BASE_DEFAULT)
+    gate.add_argument("--plan-only", action="store_true")
+    gate.set_defaults(func=cmd_gate)
 
     handoff = sub.add_parser("handoff", help="package a valid local hand-back for IM")
-    common(handoff); handoff.add_argument("--worktree", required=True)
+    common(handoff)
+    handoff.add_argument("--worktree", required=True)
     handoff.add_argument("--incoming-main", required=True)
     handoff.set_defaults(func=cmd_handoff)
 
     hand = sub.add_parser("hand-back", help="record exact HEAD evidence")
-    common(hand); hand.add_argument("--branch"); hand.add_argument("--path"); hand.add_argument("--outcomes")
-    hand.set_defaults(func=lambda args: registry.main([
-        "hand-back", *(["--branch", args.branch] if args.branch else []),
-        *(["--path", args.path] if args.path else []),
-        *(["--state", args.state] if args.state else []),
-        *(["--outcomes", args.outcomes] if args.outcomes else []),
-        *(["--json"] if args.json else []),
-    ]))
+    common(hand)
+    hand.add_argument("--branch")
+    hand.add_argument("--path")
+    hand.add_argument("--outcomes")
+    hand.set_defaults(
+        func=lambda args: registry.main(
+            [
+                "hand-back",
+                *(["--branch", args.branch] if args.branch else []),
+                *(["--path", args.path] if args.path else []),
+                *(["--state", args.state] if args.state else []),
+                *(["--outcomes", args.outcomes] if args.outcomes else []),
+                *(["--json"] if args.json else []),
+            ],
+            acquire_lock=False,
+        )
+    )
 
-    resolved = sub.add_parser("resolve", help="transition an exact local ownership claim")
-    common(resolved); resolved.add_argument("--branch"); resolved.add_argument("--path")
+    resolved = sub.add_parser(
+        "resolve", help="transition an exact local ownership claim"
+    )
+    common(resolved)
+    resolved.add_argument("--branch")
+    resolved.add_argument("--path")
     resolved.add_argument(
         "--status", choices=registry.PUBLIC_RESOLVE_STATUSES, required=True
     )
@@ -809,19 +1206,33 @@ def _parser() -> argparse.ArgumentParser:
     resolved.set_defaults(func=cmd_resolve)
 
     freeze = sub.add_parser("freeze", help="pause local worktree birth/adoption")
-    common(freeze); freeze.add_argument("action", choices=("on", "off", "status"))
-    freeze.add_argument("--reason"); freeze.add_argument("--force", action="store_true")
+    common(freeze)
+    freeze.add_argument("action", choices=("on", "off", "status"))
+    freeze.add_argument("--reason")
+    freeze.add_argument("--force", action="store_true")
     freeze.set_defaults(func=cmd_freeze)
 
     listed = sub.add_parser("list", help="show local ownership records")
-    common(listed); listed.add_argument("--active-only", action="store_true"); listed.add_argument("--branch")
-    listed.add_argument("--path"); listed.add_argument("--external-id"); listed.add_argument("--conflicts", action="store_true")
-    listed.set_defaults(func=lambda args: registry.main([
-        "list", *(["--state", args.state] if args.state else []),
-        *(["--active-only"] if args.active_only else []), *(["--branch", args.branch] if args.branch else []),
-        *(["--path", args.path] if args.path else []), *(["--external-id", args.external_id] if args.external_id else []),
-        *(["--conflicts"] if args.conflicts else []), *(["--json"] if args.json else []),
-    ]))
+    common(listed)
+    listed.add_argument("--active-only", action="store_true")
+    listed.add_argument("--branch")
+    listed.add_argument("--path")
+    listed.add_argument("--external-id")
+    listed.add_argument("--conflicts", action="store_true")
+    listed.set_defaults(
+        func=lambda args: registry.main(
+            [
+                "list",
+                *(["--state", args.state] if args.state else []),
+                *(["--active-only"] if args.active_only else []),
+                *(["--branch", args.branch] if args.branch else []),
+                *(["--path", args.path] if args.path else []),
+                *(["--external-id", args.external_id] if args.external_id else []),
+                *(["--conflicts"] if args.conflicts else []),
+                *(["--json"] if args.json else []),
+            ]
+        )
+    )
     return parser
 
 
