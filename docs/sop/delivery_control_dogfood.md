@@ -205,9 +205,17 @@ PI 收到 exact merged PR receipt 後完成：
 
 ```bash
 ./ops/delivery.py --repo /Users/chenliangyu/project/kg inspect
-./ops/delivery.py --repo /Users/chenliangyu/project/kg metrics
-./ops/delivery.py --repo /Users/chenliangyu/project/kg plan
+SUPERVISION_ARGS=(
+  --supervision-worktree /Users/chenliangyu/.codex/worktrees/2366/kg
+  --supervision-worktree /Users/chenliangyu/.codex/worktrees/7e07/kg
+  --supervision-worktree /Users/chenliangyu/.codex/worktrees/be28/kg
+  --supervision-worktree /Users/chenliangyu/.codex/worktrees/e695/kg
+)
+./ops/delivery.py --repo /Users/chenliangyu/project/kg metrics "${SUPERVISION_ARGS[@]}"
+./ops/delivery.py --repo /Users/chenliangyu/project/kg plan "${SUPERVISION_ARGS[@]}"
 ```
+
+`metrics` 與 `plan` 必須沿用 preflight 的 explicit supervision paths；不傳這些參數時，命令會把 supervision infrastructure checkout 當成 delivery worktree，不能拿來判斷 dogfood readiness。
 
 固定看：最近一小時 merges、inter-merge p50／p95、candidate／active solver／handback／open PR／required-green／merge queue depth、六段 latency p95、collision rate、required failure rate、idle worktree、source problems。agent 說「正在做」不計入容量。
 

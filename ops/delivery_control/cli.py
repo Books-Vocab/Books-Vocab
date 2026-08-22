@@ -48,8 +48,22 @@ def _parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
 
     commands.add_parser("inspect", help="classify every known delivery lane")
-    commands.add_parser("metrics", help="measure current queue reservoirs")
-    commands.add_parser("plan", help="derive the next capacity actions")
+    metrics = commands.add_parser("metrics", help="measure current queue reservoirs")
+    metrics.add_argument(
+        "--supervision-worktree",
+        action="append",
+        type=Path,
+        default=[],
+        help="exact supervision checkout path; repeat once per checkout",
+    )
+    plan = commands.add_parser("plan", help="derive the next capacity actions")
+    plan.add_argument(
+        "--supervision-worktree",
+        action="append",
+        type=Path,
+        default=[],
+        help="exact supervision checkout path; repeat once per checkout",
+    )
     dogfood = commands.add_parser(
         "dogfood-preflight", help="verify the four-role canary launch baseline"
     )
@@ -144,9 +158,13 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
     if args.command == "inspect":
         return application.inspect()
     if args.command == "metrics":
-        return application.metrics()
+        return application.metrics(
+            supervision_worktree_paths=tuple(args.supervision_worktree)
+        )
     if args.command == "plan":
-        return application.plan()
+        return application.plan(
+            supervision_worktree_paths=tuple(args.supervision_worktree)
+        )
     if args.command == "dogfood-preflight":
         return application.dogfood_preflight(
             supervision_worktree_paths=tuple(args.supervision_worktree)

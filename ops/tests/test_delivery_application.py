@@ -103,3 +103,42 @@ def test_dogfood_preflight_measures_the_configured_promotion_window(
     )
     assert measure.call_args.kwargs["window"] == timedelta(seconds=600)
     assert assess.call_args.kwargs["profile"] == profile
+
+
+def test_plan_forwards_supervision_worktree_paths_to_metrics(tmp_path: Path) -> None:
+    github = Mock()
+    github.recent_merge_times.return_value = ()
+    application = DeliveryApplication(
+        repo=tmp_path,
+        git=Mock(),
+        github=github,
+        registry=Mock(),
+        runtime=Mock(),
+        telemetry=Mock(),
+    )
+    with (
+        patch.object(DeliveryApplication, "metrics", return_value=Mock()) as metrics,
+        patch(
+            "delivery_control.application_services.measure_merge_cadence",
+            return_value=MergeCadence(
+                window_seconds=3600,
+                merged_count=0,
+                merges_per_hour=0.0,
+                p50_interval_seconds=None,
+                p95_interval_seconds=None,
+                seconds_since_last_merge=None,
+            ),
+        ),
+        patch(
+            "delivery_control.application_services.decide_capacity",
+            return_value=object(),
+        ),
+    ):
+        application.plan(
+            now=datetime(2026, 8, 22, tzinfo=UTC),
+            supervision_worktree_paths=(Path("/supervision"),),
+        )
+
+    assert metrics.call_args.kwargs["supervision_worktree_paths"] == (
+        Path("/supervision"),
+    )
