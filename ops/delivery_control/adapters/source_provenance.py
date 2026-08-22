@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,6 +17,14 @@ class CheckoutProvenance:
     root: Path
     head_sha: str
     clean: bool
+    control_plane_fingerprint: str
+
+
+CONTROL_PLANE_PATHS = (
+    "ops/lib/worktree_scope.py",
+    "ops/worktree_registry.py",
+    "ops/worktree_registry_core",
+)
 
 
 def _git(root: Path, *arguments: str) -> str:
@@ -37,7 +46,7 @@ def _git(root: Path, *arguments: str) -> str:
 
 
 def inspect_checkout(root: Path) -> CheckoutProvenance:
-    """Read exact HEAD and cleanliness without following the caller's cwd."""
+    """Read checkout state without following the caller's cwd."""
 
     resolved = root.expanduser().resolve()
     top_level = Path(_git(resolved, "rev-parse", "--show-toplevel")).resolve()
@@ -47,7 +56,25 @@ def inspect_checkout(root: Path) -> CheckoutProvenance:
         )
     head_sha = _git(resolved, "rev-parse", "HEAD")
     dirty = bool(_git(resolved, "status", "--porcelain", "--untracked-files=all"))
-    return CheckoutProvenance(root=resolved, head_sha=head_sha, clean=not dirty)
+    tracked_paths = _git(resolved, "ls-files", "-z", "--", *CONTROL_PLANE_PATHS)
+    entries: list[tuple[str, str]] = []
+    for relative in tracked_paths.split("\0"):
+        if not relative:
+            continue
+        file_path = resolved / relative
+        if not file_path.is_file():
+            entries.append((relative, "missing"))
+            continue
+        entries.append((relative, hashlib.sha256(file_path.read_bytes()).hexdigest()))
+    fingerprint = hashlib.sha256(
+        "\0".join(f"{path}\0{digest}" for path, digest in entries).encode()
+    ).hexdigest()
+    return CheckoutProvenance(
+        root=resolved,
+        head_sha=head_sha,
+        clean=not dirty,
+        control_plane_fingerprint=fingerprint,
+    )
 
 
 def source_compatibility_problem(
@@ -56,9 +83,12 @@ def source_compatibility_problem(
     """Return one stable blocker before an in-process mutation is allowed.
 
     The loaded Python module is allowed to operate on another checkout only
-    when it is the exact same committed, clean control-plane revision as the
-    target.  This preserves the useful co-versioned module runner while
-    preventing a stale detached checkout from applying old registry semantics.
+    when both checkouts are clean and the registry mutation runtime has the
+    exact same control-plane fingerprint.  Product commits may legitimately
+    differ between canonical main and an owner worktree; comparing the whole
+    repository HEAD would reject normal PI publication.  Fingerprinting the
+    registry runtime preserves co-versioning without accepting stale registry
+    semantics.
     """
 
     try:
@@ -68,10 +98,11 @@ def source_compatibility_problem(
         return str(error)
     if not source.clean:
         return f"control-plane source checkout is dirty: {source.root}"
-    if source.head_sha != target.head_sha:
+    if source.control_plane_fingerprint != target.control_plane_fingerprint:
         return (
-            "control-plane source checkout HEAD differs from target repo HEAD: "
-            f"source={source.head_sha} target={target.head_sha}"
+            "control-plane source fingerprint differs from target repo: "
+            f"source={source.control_plane_fingerprint} "
+            f"target={target.control_plane_fingerprint}"
         )
     return None
 

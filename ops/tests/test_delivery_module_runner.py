@@ -22,7 +22,14 @@ def _git_repo(path: Path, *, marker: str) -> None:
         check=True,
     )
     (path / "marker.txt").write_text(marker, encoding="utf-8")
-    subprocess.run(["git", "-C", str(path), "add", "marker.txt"], check=True)
+    control_plane = path / "ops"
+    control_plane.mkdir()
+    (control_plane / "worktree_registry.py").write_text(
+        "# registry fixture\n", encoding="utf-8"
+    )
+    subprocess.run(
+        ["git", "-C", str(path), "add", "marker.txt", "ops"], check=True
+    )
     subprocess.run(
         ["git", "-C", str(path), "commit", "-qm", f"fixture {marker}"],
         check=True,
@@ -48,7 +55,9 @@ def test_loaded_module_survives_source_executable_removal(tmp_path: Path) -> Non
     assert result.stderr == ""
 
 
-def test_runner_rejects_source_checkout_at_different_head(tmp_path: Path) -> None:
+def test_runner_allows_different_product_head_when_control_plane_matches(
+    tmp_path: Path,
+) -> None:
     source = tmp_path / "source"
     target = tmp_path / "target"
     _git_repo(source, marker="source")
@@ -76,8 +85,48 @@ def test_runner_rejects_source_checkout_at_different_head(tmp_path: Path) -> Non
 
     result = runner.run((str(executable), "list", "--json"))
 
+    assert result.exit_code == 0
+    assert called is True
+
+
+def test_runner_rejects_control_plane_drift(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    _git_repo(source, marker="same")
+    subprocess.run(["git", "clone", "-q", str(source), str(target)], check=True)
+    target_registry = target / "ops" / "worktree_registry.py"
+    target_registry.write_text("# drifted registry fixture\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "-C", str(target), "add", "ops/worktree_registry.py"], check=True
+    )
+    subprocess.run(
+        ["git", "-C", str(target), "commit", "-qm", "drift registry"], check=True
+    )
+    executable = source / "command.py"
+    executable.write_text("# command fixture\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(source), "add", "command.py"], check=True)
+    subprocess.run(
+        ["git", "-C", str(source), "commit", "-qm", "add command executable"],
+        check=True,
+    )
+    called = False
+
+    def main(_argv: list[str] | None) -> int:
+        nonlocal called
+        called = True
+        return 0
+
+    runner = ModuleCommandRunner(
+        executable=executable,
+        main=main,
+        source_root=source,
+        target_repo=target,
+    )
+
+    result = runner.run((str(executable), "list", "--json"))
+
     assert result.exit_code == 78
-    assert "source checkout HEAD differs from target repo HEAD" in result.stderr
+    assert "source fingerprint differs from target repo" in result.stderr
     assert called is False
 
 
