@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 from .domain import commit_sha
 from .errors import ReanchorRefused
@@ -12,6 +12,7 @@ from .errors import ReanchorRefused
 SCHEMA = "kg.worktree.resume-published.v1"
 EXIT_OK = 0
 EXIT_BLOCK = 1
+ResumeMode = Literal["required-failure", "maintenance"]
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,7 @@ class ResumeRequest:
     previous_handback: str | None
     expected_remote_head: str
     target: Path
+    mode: ResumeMode
 
 
 def build_request(
@@ -32,11 +34,16 @@ def build_request(
     owner_thread_id: str, claim_generation: int,
     expected_remote_head: str, target: Path,
     previous_handback: str | None = None,
+    mode: str = "required-failure",
 ) -> ResumeRequest:
     if not lane_id.strip() or not branch.strip() or not owner_thread_id.strip():
         raise ReanchorRefused("lane, branch, and owner must identify one published claim")
     if claim_generation < 0:
         raise ReanchorRefused("claim generation must be non-negative")
+    if mode not in {"required-failure", "maintenance"}:
+        raise ReanchorRefused(
+            "resume mode must be 'required-failure' or 'maintenance'"
+        )
     current_head = commit_sha(expected_remote_head, label="expected remote HEAD")
     previous_head = (
         commit_sha(previous_handback, label="previous hand-back")
@@ -57,6 +64,7 @@ def build_request(
         previous_handback=previous_head,
         expected_remote_head=current_head,
         target=target,
+        mode=cast(ResumeMode, mode),
     )
 
 
@@ -77,6 +85,7 @@ def success_payload(
         "branch": request.branch,
         "owner_thread_id": request.owner_thread_id,
         "original_claim_generation": request.claim_generation,
+        "mode": request.mode,
         "claim_generation": active["claim_generation"],
         "head": request.expected_remote_head,
         "base": recorded_base,
@@ -84,7 +93,10 @@ def success_payload(
         "worktree": str(request.target),
         "record": active,
         "next_action": (
-            "same owner fixes the required code failure, runs tests, and emits "
+            "same owner may perform bounded maintenance, runs tests, and emits "
+            "a fresh typed hand-back; PI updates the same published PR"
+            if request.mode == "maintenance"
+            else "same owner fixes the required code failure, runs tests, and emits "
             "a fresh typed hand-back; PI updates the same published PR"
         ),
         "not_performed": ["tests", "hand-back", "push", "force-push"],

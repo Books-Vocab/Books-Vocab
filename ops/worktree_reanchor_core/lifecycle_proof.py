@@ -180,18 +180,23 @@ def verify_resume_lifecycle(
         expected_base_sha=expected_base_sha,
         expected_remote_head=expected_remote_head,
     )
-    check = _required(github, pull_request) if require_failed else None
-    if check is not None and check.status is not CheckStatus.FAILURE:
+    check = _required(github, pull_request)
+    if require_failed and check.status is not CheckStatus.FAILURE:
         raise ReanchorRefused(
             "resume-published is allowed only for an exact required code failure",
             pull_request=pull_request.number,
             required_status=check.status.value,
         )
+    if not require_failed and check.status is CheckStatus.ABSENT:
+        raise ReanchorRefused(
+            "maintenance resume requires an observed required check",
+            pull_request=pull_request.number,
+        )
     return RecoveryLifecycleProof(
         pull_request_number=pull_request.number,
         base_sha=pull_request.base_sha,
         head_sha=pull_request.head_sha,
-        required_status=check.status if check is not None else CheckStatus.ABSENT,
+        required_status=check.status,
     )
 
 

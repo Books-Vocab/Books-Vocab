@@ -50,6 +50,7 @@ def cmd_resume(args: argparse.Namespace, *, freeze_reason: str | None = None) ->
             expected_remote_head=args.expected_remote_head,
             target=Path(args.path).expanduser().resolve(),
             previous_handback=args.previous_handback,
+            mode=args.mode,
         )
     except ReanchorRefused as exc:
         payload = {
@@ -95,6 +96,15 @@ def add_parser(
         "--previous-handback",
         default=None,
         help="allow an owner-preserving refresh when the published PR advanced",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("required-failure", "maintenance"),
+        default="required-failure",
+        help=(
+            "resume contract: required-failure needs an exact required failure; "
+            "maintenance permits same-owner work on an exact published PR"
+        ),
     )
     parser.add_argument("--path", required=True)
     parser.set_defaults(func=handler)
