@@ -253,6 +253,7 @@ class GitHubCliAdapter:
         body: str,
         expected_head_sha: str,
     ) -> PullRequestSnapshot:
+        self._pull_request_snapshot_cache.pop(number, None)
         return self._commands.update_pull_request(
             number=number,
             title=title,
@@ -261,6 +262,7 @@ class GitHubCliAdapter:
         )
 
     def mark_ready(self, number: int) -> PullRequestSnapshot:
+        self._pull_request_snapshot_cache.pop(number, None)
         return self._commands.mark_ready(number)
 
     def close_pull_request(
@@ -271,6 +273,7 @@ class GitHubCliAdapter:
         expected_head_sha: str,
         expected_body: str,
     ) -> PullRequestSnapshot:
+        self._pull_request_snapshot_cache.pop(number, None)
         return self._commands.close_pull_request(
             number=number,
             expected_base_sha=expected_base_sha,
@@ -286,6 +289,7 @@ class GitHubCliAdapter:
         expected_head_sha: str,
         expected_body: str,
     ) -> PullRequestSnapshot:
+        self._pull_request_snapshot_cache.pop(number, None)
         return self._commands.reopen_pull_request(
             number=number,
             expected_base_sha=expected_base_sha,
