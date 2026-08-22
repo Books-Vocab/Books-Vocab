@@ -167,6 +167,7 @@ def verify_resume_lifecycle(
     branch: str,
     expected_base_sha: str,
     expected_remote_head: str,
+    require_failed: bool = True,
 ) -> RecoveryLifecycleProof:
     """Prove that one published PR may be resumed for a code repair."""
 
@@ -177,7 +178,7 @@ def verify_resume_lifecycle(
         expected_remote_head=expected_remote_head,
     )
     check = _required(github, pull_request)
-    if check.status is not CheckStatus.FAILURE:
+    if require_failed and check.status is not CheckStatus.FAILURE:
         raise ReanchorRefused(
             "resume-published is allowed only for an exact required code failure",
             pull_request=pull_request.number,

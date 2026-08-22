@@ -52,7 +52,7 @@ class _FixtureRecoveryGitHub:
 
     def _pull_request(self, branch: str = "feat/exact-pr") -> PullRequestSnapshot:
         head = _git(self.repo, "rev-parse", f"refs/remotes/origin/{branch}")
-        base = _git(self.repo, "rev-parse", f"{head}^")
+        base = _git(self.repo, "merge-base", head, "refs/remotes/origin/main")
         return PullRequestSnapshot(
             number=42,
             url="https://example.test/pull/42",
@@ -816,8 +816,9 @@ def _resume_argv(
     owner: str = "owner-thread-1",
     generation: int = 4,
     remote_head: str | None = None,
+    previous_handback: str | None = None,
 ) -> list[str]:
-    return [
+    argv = [
         "resume-published",
         "--repo", str(repo),
         "--state", str(state_path),
@@ -829,6 +830,9 @@ def _resume_argv(
         "--path", str(target),
         "--json",
     ]
+    if previous_handback is not None:
+        argv.extend(["--previous-handback", previous_handback])
+    return argv
 
 
 def test_resume_published_recreates_exact_head_and_preserves_recorded_base(
@@ -862,6 +866,56 @@ def test_resume_published_recreates_exact_head_and_preserves_recorded_base(
     assert active["codex_thread_id"] == original["codex_thread_id"]
     assert active["branch"] == original["branch"]
     assert active["handed_back_sha"] is None
+
+
+def test_resume_published_accepts_legacy_record_base_without_base_sha(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, state_path, target, expected = _reanchor_fixture(tmp_path)
+    state = coordinator.registry.load_state(state_path)
+    state["records"][0].pop("base_sha")
+    coordinator.registry.save_state(state_path, state)
+
+    rc = coordinator.main(_resume_argv(repo, state_path, target, expected))
+
+    payload = json.loads(capsys.readouterr().out)
+    state = coordinator.registry.load_state(state_path)
+    assert rc == coordinator.EXIT_OK
+    assert payload["status"] == "ready-for-owner-fix"
+    assert state["records"][1]["base_sha"] == expected["base_sha"]
+
+
+def test_resume_published_refreshes_an_owner_advanced_published_head(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, state_path, target, expected = _reanchor_fixture(tmp_path)
+    _git(repo, "checkout", "-q", "-b", "owner-fix", str(expected["remote_head"]))
+    _commit(repo, "ops/reanchor_change.py", "owner fix\n", "owner fix")
+    advanced_head = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "push", "-q", "origin", "HEAD:refs/heads/feat/exact-pr")
+
+    rc = coordinator.main(
+        _resume_argv(
+            repo,
+            state_path,
+            target,
+            expected,
+            remote_head=advanced_head,
+            previous_handback=str(expected["remote_head"]),
+        )
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    state = coordinator.registry.load_state(state_path)
+    assert rc == coordinator.EXIT_OK
+    assert payload["status"] == "ready-for-owner-fix"
+    assert _git(target, "rev-parse", "HEAD") == advanced_head
+    assert state["records"][0]["status"] == "abandoned"
+    assert state["records"][1]["status"] == "active"
+    assert state["records"][1]["claim_generation"] == 5
+    assert state["records"][1]["handed_back_sha"] is None
 
 
 def test_resume_published_compensates_when_required_failure_clears_midflight(

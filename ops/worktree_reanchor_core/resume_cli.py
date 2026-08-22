@@ -49,6 +49,7 @@ def cmd_resume(args: argparse.Namespace, *, freeze_reason: str | None = None) ->
             claim_generation=args.claim_generation,
             expected_remote_head=args.expected_remote_head,
             target=Path(args.path).expanduser().resolve(),
+            previous_handback=args.previous_handback,
         )
     except ReanchorRefused as exc:
         payload = {
@@ -90,6 +91,11 @@ def add_parser(
     parser.add_argument("--owner-thread-id", required=True)
     parser.add_argument("--claim-generation", type=int, required=True)
     parser.add_argument("--expected-remote-head", required=True)
+    parser.add_argument(
+        "--previous-handback",
+        default=None,
+        help="allow an owner-preserving refresh when the published PR advanced",
+    )
     parser.add_argument("--path", required=True)
     parser.set_defaults(func=handler)
     return parser

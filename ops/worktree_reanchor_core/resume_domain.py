@@ -22,6 +22,7 @@ class ResumeRequest:
     branch: str
     owner_thread_id: str
     claim_generation: int
+    previous_handback: str | None
     expected_remote_head: str
     target: Path
 
@@ -30,11 +31,22 @@ def build_request(
     *, repo: Path, state_path: Path, lane_id: str, branch: str,
     owner_thread_id: str, claim_generation: int,
     expected_remote_head: str, target: Path,
+    previous_handback: str | None = None,
 ) -> ResumeRequest:
     if not lane_id.strip() or not branch.strip() or not owner_thread_id.strip():
         raise ReanchorRefused("lane, branch, and owner must identify one published claim")
     if claim_generation < 0:
         raise ReanchorRefused("claim generation must be non-negative")
+    current_head = commit_sha(expected_remote_head, label="expected remote HEAD")
+    previous_head = (
+        commit_sha(previous_handback, label="previous hand-back")
+        if previous_handback is not None
+        else None
+    )
+    if previous_head == current_head:
+        raise ReanchorRefused(
+            "advanced published resume requires a different current remote HEAD"
+        )
     return ResumeRequest(
         repo=repo,
         state_path=state_path,
@@ -42,9 +54,8 @@ def build_request(
         branch=branch,
         owner_thread_id=owner_thread_id,
         claim_generation=claim_generation,
-        expected_remote_head=commit_sha(
-            expected_remote_head, label="expected remote HEAD"
-        ),
+        previous_handback=previous_head,
+        expected_remote_head=current_head,
         target=target,
     )
 

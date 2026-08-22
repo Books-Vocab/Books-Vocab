@@ -13,6 +13,7 @@ def perform_resume(
     *, repo: Path, state_path: Path, lane_id: str, branch: str,
     owner_thread_id: str, claim_generation: int,
     expected_remote_head: str, target: Path,
+    previous_handback: str | None = None,
 ) -> dict[str, object]:
     request = build_request(
         repo=repo,
@@ -23,6 +24,7 @@ def perform_resume(
         claim_generation=claim_generation,
         expected_remote_head=expected_remote_head,
         target=target,
+        previous_handback=previous_handback,
     )
     git_ops.validate_repository(request.repo)
     preflight = registry_ops.preflight_resume(
@@ -33,6 +35,7 @@ def perform_resume(
         claim_generation=request.claim_generation,
         expected_remote_head=request.expected_remote_head,
         target=request.target,
+        previous_handback=request.previous_handback,
     )
     github = lifecycle_proof.build_github(
         request.repo, operation="resume-published"
@@ -42,6 +45,7 @@ def perform_resume(
         branch=request.branch,
         expected_base_sha=preflight.base_sha,
         expected_remote_head=request.expected_remote_head,
+        require_failed=request.previous_handback is None,
     )
     recorded_path = Path(str(preflight.original["path"])).expanduser().resolve()
     resume_git_ops.validate_released_assets(
@@ -57,6 +61,21 @@ def perform_resume(
         remote_head=request.expected_remote_head,
         declared=preflight.declared,
     )
+    if request.previous_handback is not None:
+        ancestor_rc, _ = git_ops._git(
+            [
+                "merge-base",
+                "--is-ancestor",
+                request.previous_handback,
+                request.expected_remote_head,
+            ],
+            request.repo,
+        )
+        if ancestor_rc != 0:
+            raise ReanchorRefused(
+                "advanced published resume requires the previous hand-back to "
+                "be an ancestor of the current remote HEAD"
+            )
     attempt = resume_git_ops.ProvisioningAttempt()
     try:
         resume_git_ops.provision_exact(
@@ -78,6 +97,7 @@ def perform_resume(
             branch=request.branch,
             expected_base_sha=preflight.base_sha,
             expected_remote_head=request.expected_remote_head,
+            require_failed=request.previous_handback is None,
         )
         if final_lifecycle != initial_lifecycle:
             raise ReanchorRefused(

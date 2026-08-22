@@ -116,6 +116,7 @@ def _replace_published(
 def _preflight_published(
     *, state_path: Path, lane_id: str, branch: str, owner_thread_id: str,
     claim_generation: int, expected_remote_head: str, target: Path,
+    previous_handback: str | None = None,
     replacement_base: str | None = None,
     replacement_base_sha: str | None = None,
 ) -> RegistryPreflight:
@@ -127,16 +128,23 @@ def _preflight_published(
         raise ReanchorRefused("caller branch differs from the exact original claim")
     if original.get("codex_thread_id") != owner_thread_id:
         raise ReanchorRefused("caller owner differs from the exact original owner")
-    if original.get("handed_back_sha") != expected_remote_head:
+    expected_original_head = previous_handback or expected_remote_head
+    if original.get("handed_back_sha") != expected_original_head:
         raise ReanchorRefused("expected remote HEAD differs from original hand-back")
     if not registry._has_valid_stored_handback(original):
         raise ReanchorRefused("original published claim lacks a valid typed hand-back")
     if not lane_id.strip() or claim_generation < 0:
         raise ReanchorRefused("lane and claim generation must identify one original claim")
-    base_sha = commit_sha(original.get("base_sha"), label="original base")
     recorded_base = original.get("base")
     if not isinstance(recorded_base, str) or not recorded_base.strip():
         raise ReanchorRefused("original recorded base is missing or invalid")
+    # Registry v2 records written before the typed base_sha field was added
+    # still carry the exact commit in `base`. Preserve their resumability while
+    # keeping the same full-SHA validation and exact owner/Scope checks.
+    base_sha = commit_sha(
+        original.get("base_sha") or recorded_base,
+        label="original base",
+    )
     declared = declared_operations(original.get("scope"))
     planned_base = replacement_base if replacement_base is not None else recorded_base
     planned_base_sha = replacement_base_sha or base_sha
@@ -179,6 +187,7 @@ def preflight(
 def preflight_resume(
     *, state_path: Path, lane_id: str, branch: str, owner_thread_id: str,
     claim_generation: int, expected_remote_head: str, target: Path,
+    previous_handback: str | None = None,
 ) -> RegistryPreflight:
     return _preflight_published(
         state_path=state_path,
@@ -188,6 +197,7 @@ def preflight_resume(
         claim_generation=claim_generation,
         expected_remote_head=expected_remote_head,
         target=target,
+        previous_handback=previous_handback,
     )
 
 
