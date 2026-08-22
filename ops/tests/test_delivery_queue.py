@@ -14,6 +14,7 @@ from delivery_control.domain.errors import PolicyViolation
 from delivery_control.domain.models import CheckStatus, HandbackReceipt, Scope
 from delivery_control.domain.observations import (
     CheckSnapshot,
+    InventoryProblem,
     PullRequestSnapshot,
     RegistryInventory,
     RegistrySnapshot,
@@ -78,14 +79,37 @@ def _pull_request(receipt: HandbackReceipt) -> PullRequestSnapshot:
 
 
 class FakeRegistry:
-    def __init__(self, record: RegistrySnapshot) -> None:
+    def __init__(
+        self,
+        record: RegistrySnapshot,
+        *,
+        problems: tuple[InventoryProblem, ...] = (),
+    ) -> None:
         self.record = record
+        self.problems = problems
 
     def list_records(self) -> RegistryInventory:
-        return RegistryInventory((self.record,))
+        return RegistryInventory((self.record,), problems=self.problems)
 
     def get(self, lane_id: str) -> RegistrySnapshot | None:
         return self.record if self.record.lane_id == lane_id else None
+
+    def find_exact_claim(
+        self,
+        *,
+        lane_id: str,
+        branch: str,
+        path: Path,
+        claim_generation: int,
+    ) -> RegistrySnapshot | None:
+        if (
+            self.record.lane_id == lane_id
+            and self.record.branch == branch
+            and self.record.path == path.resolve()
+            and self.record.claim_generation == claim_generation
+        ):
+            return self.record
+        return None
 
 
 class FakeGit:
@@ -172,6 +196,25 @@ def test_exact_required_green_candidate_is_enqueued_once() -> None:
 
     assert result.live_main_sha == BASE
     assert github.enqueue_calls == [(11, BASE, HEAD, render_pull_request_body(receipt))]
+
+
+def test_exact_claim_isolated_from_unrelated_inventory_problems() -> None:
+    receipt = _receipt()
+    registry = FakeRegistry(
+        _registry(receipt),
+        problems=(InventoryProblem("registry", "legacy-record", "malformed"),),
+    )
+    github = FakeGitHub(receipt)
+    service = QueueService(
+        registry=registry,
+        git=FakeGit(BASE),
+        github_query=github,
+        github_command=github,
+    )
+
+    service.enqueue(receipt=receipt, pull_request_number=11)
+
+    assert github.enqueue_calls
 
 
 @pytest.mark.parametrize(

@@ -7,19 +7,12 @@ from pathlib import Path
 from ..domain.errors import PolicyViolation
 from ..domain.models import HandbackReceipt
 from ..domain.observations import RegistrySnapshot
-from ..ports.registry import RegistryQueryPort
+from ..ports.registry import RegistryCleanupQueryPort, RegistryQueryPort
 
 
-def exact_published_record(
-    registry: RegistryQueryPort, receipt: HandbackReceipt
-) -> RegistrySnapshot:
-    inventory = registry.list_records()
-    if inventory.problems:
-        raise PolicyViolation("registry inventory is incomplete")
-    matches = [
-        item
-        for item in inventory.records
-        if item.lane_id == receipt.lane_id
+def _matches_receipt(item: RegistrySnapshot, receipt: HandbackReceipt) -> bool:
+    return (
+        item.lane_id == receipt.lane_id
         and item.branch == receipt.branch
         and item.path.resolve() == Path(receipt.worktree_path).resolve()
         and item.status == "published"
@@ -32,7 +25,25 @@ def exact_published_record(
         and item.handback_valid
         and item.handback_digest == receipt.content_digest
         and item.handback_origin_main_sha == receipt.origin_main_sha
-    ]
+    )
+
+
+def exact_published_record(
+    registry: RegistryQueryPort, receipt: HandbackReceipt
+) -> RegistrySnapshot:
+    if isinstance(registry, RegistryCleanupQueryPort):
+        candidate = registry.find_exact_claim(
+            lane_id=receipt.lane_id,
+            branch=receipt.branch,
+            path=Path(receipt.worktree_path),
+            claim_generation=receipt.claim_generation,
+        )
+        matches = [candidate] if candidate is not None and _matches_receipt(candidate, receipt) else []
+    else:
+        inventory = registry.list_records()
+        if inventory.problems:
+            raise PolicyViolation("registry inventory is incomplete")
+        matches = [item for item in inventory.records if _matches_receipt(item, receipt)]
     if len(matches) != 1:
         raise PolicyViolation(
             "operation lacks one exact local receipt in published state"
