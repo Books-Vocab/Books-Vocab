@@ -24,7 +24,7 @@ from ..domain.observations import (
     WorktreeSnapshot,
 )
 from ..ports.git import GitQueryPort
-from ..ports.github import GitHubObservationPort, GitHubQueryPort
+from ..ports.github import GitHubQueryPort
 from ..ports.registry import RegistryQueryPort
 from .correlation import collision_keys, inspect_registered
 from .demand_projection import project_demand_inventory
@@ -75,8 +75,6 @@ def collect_inventory_sources(
     registry_inventory = registry.list_records()
     physical = git.list_worktrees()
     github_inventory = github.list_open_pull_requests()
-    if isinstance(github, GitHubObservationPort):
-        github.prime_open_observations()
     github_problems = list(github_inventory.problems)
     raw_issue_inventory = EMPTY_DEMAND_INVENTORY
     list_open_issues = getattr(github, "list_open_issues", None)
@@ -89,7 +87,9 @@ def collect_inventory_sources(
                 records=(),
                 raw_count=None,
                 complete=False,
-                problems=(InventoryProblem("github", "open-issues", str(error)),),
+                problems=(
+                    InventoryProblem("github", "open-issues", str(error)),
+                ),
             )
         github_problems.extend(raw_issue_inventory.problems)
     else:

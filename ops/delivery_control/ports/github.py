@@ -43,13 +43,6 @@ class GitHubQueryPort(Protocol):
 
 
 @runtime_checkable
-class GitHubObservationPort(Protocol):
-    """Optional batch observation capability for read-only inventories."""
-
-    def prime_open_observations(self) -> None: ...
-
-
-@runtime_checkable
 class RawIssueQueryPort(Protocol):
     """Optional additive capability for complete raw Issue inventory."""
 

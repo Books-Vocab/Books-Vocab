@@ -353,7 +353,9 @@ def test_github_required_checks_preserve_empty_nonzero_command_failure() -> None
 def test_github_adapter_reads_unique_required_status_contexts() -> None:
     runner = StaticRunner(
         [
-            CommandResult(("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""),
+            CommandResult(
+                ("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""
+            ),
             CommandResult(
                 ("gh",),
                 0,
@@ -406,8 +408,12 @@ def test_github_adapter_reads_unique_required_status_contexts() -> None:
 def test_github_adapter_rejects_malformed_effective_required_status_contexts() -> None:
     runner = StaticRunner(
         [
-            CommandResult(("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""),
-            CommandResult(("gh",), 0, json.dumps({"required_status_checks": None}), ""),
+            CommandResult(
+                ("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""
+            ),
+            CommandResult(
+                ("gh",), 0, json.dumps({"required_status_checks": None}), ""
+            ),
             CommandResult(
                 ("gh",),
                 0,
@@ -431,7 +437,9 @@ def test_github_adapter_rejects_malformed_effective_required_status_contexts() -
 def test_github_adapter_rejects_malformed_required_status_contexts() -> None:
     runner = StaticRunner(
         [
-            CommandResult(("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""),
+            CommandResult(
+                ("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""
+            ),
             CommandResult(
                 ("gh",),
                 0,
@@ -610,7 +618,9 @@ def test_github_pr_state_mutation_has_exact_tuple_cas_and_readback(
 def test_github_close_rejects_tuple_drift_before_mutation() -> None:
     drifted = _pr_payload()
     drifted["headRefOid"] = "d" * 40
-    runner = StaticRunner([CommandResult(("gh",), 0, json.dumps(drifted), "")])
+    runner = StaticRunner(
+        [CommandResult(("gh",), 0, json.dumps(drifted), "")]
+    )
 
     with pytest.raises(CompareAndSwapConflict, match="before close"):
         GitHubCliAdapter(runner=runner).close_pull_request(
@@ -691,7 +701,9 @@ def test_github_adapter_reports_required_workflow_dispatch_failure() -> None:
         "-f",
         f"head_sha={'b' * 40}",
     )
-    runner = StaticRunner([CommandResult(argv, 1, "", "workflow dispatch rejected")])
+    runner = StaticRunner(
+        [CommandResult(argv, 1, "", "workflow dispatch rejected")]
+    )
 
     with pytest.raises(
         AdapterCommandError,
