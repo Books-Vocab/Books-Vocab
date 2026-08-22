@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from ..domain.runtime_models import RuntimeReceipt
@@ -28,4 +29,14 @@ class RuntimeReceiptStorePort(Protocol):
         receipt: RuntimeReceipt,
         *,
         expected_cycle_id: str | None = None,
+        expected_last_action_id: str | None | object = None,
+    ) -> RuntimeReceipt: ...
+
+    def claim_wake(
+        self,
+        *,
+        thread_id: str,
+        wake_id: str,
+        now: datetime,
+        expected_cycle_id: str | None,
     ) -> RuntimeReceipt: ...

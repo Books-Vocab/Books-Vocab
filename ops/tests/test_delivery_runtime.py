@@ -10,12 +10,12 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.adapters.runtime import RuntimeStatusMap
-from delivery_control.adapters.runtime_receipt import RuntimeReceiptFile
-from delivery_control.application import build_application
-from delivery_control.controller.runtime_watchdog import evaluate_runtime_watchdog
-from delivery_control.domain.errors import CompareAndSwapConflict, PolicyViolation
-from delivery_control.domain.runtime_models import (
+from delivery_control.adapters.runtime import RuntimeStatusMap  # noqa: E402
+from delivery_control.adapters.runtime_receipt import RuntimeReceiptFile  # noqa: E402
+from delivery_control.application import build_application  # noqa: E402
+from delivery_control.controller.runtime_watchdog import evaluate_runtime_watchdog  # noqa: E402
+from delivery_control.domain.errors import CompareAndSwapConflict, PolicyViolation  # noqa: E402
+from delivery_control.domain.runtime_models import (  # noqa: E402
     RUNTIME_SCHEMA,
     RuntimeReceipt,
     RuntimeState,
@@ -231,6 +231,73 @@ def test_runtime_receipt_file_is_atomic_monotonic_and_cas_protected(
         )
 
 
+def test_runtime_receipt_wake_claim_is_single_consumer(tmp_path: Path) -> None:
+    path = tmp_path / "runtime" / "supervisor.json"
+    store = RuntimeReceiptFile(path)
+    stale = _receipt(
+        state=RuntimeState.IDLE,
+        lease_until=None,
+        last_progress_at=NOW - timedelta(minutes=11),
+    )
+    assert store.write(stale) == stale
+
+    first = evaluate_runtime_watchdog(stale, now=NOW)
+    assert first.action is WatchdogAction.WAKE
+    assert first.wake_id is not None
+    claimed = store.write(
+        _receipt(
+            state=stale.state,
+            lease_until=None,
+            last_progress_at=stale.last_progress_at,
+            last_action_id=first.wake_id,
+        ),
+        expected_cycle_id=stale.cycle_id,
+        expected_last_action_id=None,
+    )
+    assert claimed.last_action_id == first.wake_id
+
+    with pytest.raises(CompareAndSwapConflict, match="wake action changed"):
+        store.write(
+            _receipt(
+                state=stale.state,
+                lease_until=None,
+                last_progress_at=stale.last_progress_at,
+                last_action_id=first.wake_id,
+            ),
+            expected_cycle_id=stale.cycle_id,
+            expected_last_action_id=None,
+        )
+
+
+def test_runtime_receipt_new_cycle_can_clear_consumed_wake(tmp_path: Path) -> None:
+    path = tmp_path / "runtime" / "supervisor.json"
+    store = RuntimeReceiptFile(path)
+    stale = _receipt(
+        state=RuntimeState.IDLE,
+        lease_until=None,
+        last_progress_at=NOW - timedelta(minutes=11),
+    )
+    wake_id = evaluate_runtime_watchdog(stale, now=NOW).wake_id
+    assert wake_id is not None
+    claimed = _receipt(
+        state=stale.state,
+        lease_until=None,
+        last_progress_at=stale.last_progress_at,
+        last_action_id=wake_id,
+    )
+    assert store.write(claimed, expected_last_action_id=None) == claimed
+
+    next_cycle = _receipt(
+        state=RuntimeState.RUNNING,
+        observed_at=NOW + timedelta(seconds=1),
+        last_progress_at=NOW + timedelta(seconds=1),
+        cycle_id="cycle-2",
+        last_action_id=None,
+        lease_until=NOW + timedelta(minutes=2),
+    )
+    assert store.write(next_cycle, expected_cycle_id="cycle-1") == next_cycle
+
+
 def test_runtime_status_map_keeps_legacy_owner_status_support(tmp_path: Path) -> None:
     path = tmp_path / "runtime.json"
     path.write_text(json.dumps({THREAD: "running"}), encoding="utf-8")
@@ -271,3 +338,30 @@ def test_application_watchdog_is_read_only_and_returns_decision(tmp_path: Path) 
 
     assert decision.action is WatchdogAction.WAKE
     assert decision.wake_id is not None
+    assert decision.wake_claimed is False
+
+
+def test_application_watchdog_claim_persists_before_external_dispatch(tmp_path: Path) -> None:
+    receipt = _receipt(
+        state=RuntimeState.IDLE,
+        lease_until=None,
+        last_progress_at=NOW - timedelta(minutes=11),
+    )
+    path = tmp_path / "runtime.json"
+    path.write_text(json.dumps(receipt.to_payload()), encoding="utf-8")
+
+    first_application = build_application(repo=tmp_path, runtime_status_file=path)
+    first = first_application.watchdog_claim(supervisor_thread_id=THREAD, now=NOW)
+
+    assert first.action is WatchdogAction.WAKE
+    assert first.wake_claimed is True
+    assert first.wake_id is not None
+
+    second_application = build_application(repo=tmp_path, runtime_status_file=path)
+    second = second_application.watchdog_claim(
+        supervisor_thread_id=THREAD,
+        now=NOW + timedelta(seconds=1),
+    )
+
+    assert second.action is WatchdogAction.ESCALATE
+    assert second.reason == "wake already issued for current stale receipt"

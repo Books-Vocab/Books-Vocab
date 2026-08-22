@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from collections.abc import Mapping
+from datetime import datetime
 from pathlib import Path
 
-from ..domain.errors import PolicyViolation
+from ..domain.errors import CompareAndSwapConflict, PolicyViolation
 from ..domain.runtime_models import RuntimeReceipt
-from .runtime_receipt import RuntimeReceiptFile
+from .runtime_receipt import RuntimeReceiptFile, _UNSET
 
 
 class RuntimeStatusMap:
@@ -73,12 +75,51 @@ class RuntimeStatusMap:
         receipt: RuntimeReceipt,
         *,
         expected_cycle_id: str | None = None,
+        expected_last_action_id: str | None | object = _UNSET,
     ) -> RuntimeReceipt:
         if self._writer is None:
             raise PolicyViolation("runtime receipt writes require a status file")
         written = self._writer.write(
             receipt,
             expected_cycle_id=expected_cycle_id,
+            expected_last_action_id=expected_last_action_id,
+        )
+        self.statuses = {written.thread_id: written.state.value}
+        self.receipts = {written.thread_id: written}
+        return written
+
+    def claim_wake(
+        self,
+        *,
+        thread_id: str,
+        wake_id: str,
+        now: datetime,
+        expected_cycle_id: str | None,
+    ) -> RuntimeReceipt:
+        """Atomically reserve one wake before an external scheduler dispatches."""
+
+        if self._writer is None:
+            raise PolicyViolation("runtime receipt writes require a status file")
+        current = self.receipts.get(thread_id) or self._writer.read()
+        if current is None:
+            raise PolicyViolation("cannot claim a wake without a runtime receipt")
+        if current.thread_id != thread_id:
+            raise CompareAndSwapConflict(
+                "runtime receipt thread changed before wake claim"
+            )
+        if current.last_action_id == wake_id:
+            return current
+        if current.last_action_id is not None:
+            raise CompareAndSwapConflict("runtime receipt already has a wake claim")
+        claimed = replace(
+            current,
+            observed_at=max(current.observed_at, now),
+            last_action_id=wake_id,
+        )
+        written = self._writer.write(
+            claimed,
+            expected_cycle_id=expected_cycle_id,
+            expected_last_action_id=None,
         )
         self.statuses = {written.thread_id: written.state.value}
         self.receipts = {written.thread_id: written}

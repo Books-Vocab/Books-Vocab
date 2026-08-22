@@ -138,11 +138,14 @@ class WatchdogDecision:
     reason: str
     checked_at: datetime
     wake_id: str | None = None
+    wake_claimed: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "action", WatchdogAction(self.action))
         _require_text("watchdog reason", self.reason)
         _require_timestamp("watchdog checked_at", self.checked_at)
+        if type(self.wake_claimed) is not bool:
+            raise InvalidReceipt("watchdog wake_claimed must be boolean")
         if self.wake_id is not None:
             _require_text("watchdog wake_id", self.wake_id)
 
