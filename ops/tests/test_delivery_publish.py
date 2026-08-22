@@ -203,6 +203,7 @@ class FakeGitHub:
         self.retarget_on_readback = retarget_on_readback
         self.create_calls = 0
         self.update_calls = 0
+        self.readiness_dispatches: list[tuple[int, str, str]] = []
 
     def list_open_pull_requests(self) -> PullRequestInventory:
         records = () if self.pull_request is None else (self.pull_request,)
@@ -259,6 +260,12 @@ class FakeGitHub:
         if self.pull_request is not None:
             self.pull_request = replace(self.pull_request, head_sha=head_sha)
 
+    def trigger_readiness(
+        self, *, number: int, branch: str, head_sha: str
+    ) -> tuple[str, ...]:
+        self.readiness_dispatches.append((number, branch, head_sha))
+        return ("gh", "workflow", "run", "pr-readiness.yml")
+
 
 def _service(
     receipt: HandbackReceipt,
@@ -282,6 +289,7 @@ def _service(
             git=fake_git,
             github_query=fake_github,
             github_command=fake_github,
+            github_workflow=fake_github,
         ),
         fake_git,
         fake_github,
@@ -396,6 +404,9 @@ def test_publish_create_then_retry_is_idempotent() -> None:
     assert git.push_calls == [(None, receipt.head_sha)]
     assert github.create_calls == 1
     assert github.update_calls == 0
+    assert github.readiness_dispatches == [
+        (7, receipt.branch, receipt.head_sha)
+    ]
 
 
 def test_retry_after_push_succeeds_when_first_pr_create_failed() -> None:
@@ -424,6 +435,9 @@ def test_existing_unique_pr_allows_exact_force_with_lease_update() -> None:
     assert result.outcome is PublicationOutcome.UPDATED
     assert git.push_calls == [(OLD_HEAD, receipt.head_sha)]
     assert result.pull_request.head_sha == receipt.head_sha
+    assert github.readiness_dispatches == [
+        (7, receipt.branch, receipt.head_sha)
+    ]
 
 
 def test_publish_preserves_and_types_a_legacy_security_hold() -> None:

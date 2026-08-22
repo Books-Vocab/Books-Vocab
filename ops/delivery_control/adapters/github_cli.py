@@ -180,6 +180,19 @@ class GitHubCliAdapter:
             head_sha=head_sha,
         )
 
+    def trigger_readiness(
+        self,
+        *,
+        number: int,
+        branch: str,
+        head_sha: str,
+    ) -> tuple[str, ...]:
+        return self._commands.trigger_readiness(
+            number=number,
+            branch=branch,
+            head_sha=head_sha,
+        )
+
     def create_pull_request(self, *, branch: str, title: str, body: str) -> PullRequestSnapshot:
         return self._commands.create_pull_request(branch=branch, title=title, body=body)
 

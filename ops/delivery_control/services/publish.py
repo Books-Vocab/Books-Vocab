@@ -15,7 +15,11 @@ from ..domain.observations import (
 )
 from ..domain.states import HoldKind
 from ..ports.git import GitCommandPort
-from ..ports.github import GitHubCommandPort, GitHubQueryPort
+from ..ports.github import (
+    GitHubCommandPort,
+    GitHubQueryPort,
+    GitHubWorkflowCommandPort,
+)
 from .correlation import scope_matches_snapshot
 from .pr_contract import (
     parse_pull_request_body,
@@ -35,6 +39,7 @@ class PublicationOutcome(StrEnum):
 class PublicationResult:
     outcome: PublicationOutcome
     pull_request: PullRequestSnapshot
+    readiness_dispatch: tuple[str, ...] | None = None
 
 
 class PublishPreflightPort(Protocol):
@@ -91,11 +96,13 @@ class PublishService:
         git: GitCommandPort,
         github_query: GitHubQueryPort,
         github_command: GitHubCommandPort,
+        github_workflow: GitHubWorkflowCommandPort,
     ) -> None:
         self.preflight = preflight
         self.git = git
         self.github_query = github_query
         self.github_command = github_command
+        self.github_workflow = github_workflow
 
     def publish(self, *, receipt: HandbackReceipt, title: str) -> PublicationResult:
         if (
@@ -183,4 +190,18 @@ class PublishService:
             or readback.body != body
         ):
             raise PolicyViolation("published PR readback differs from exact handback")
-        return PublicationResult(outcome=outcome, pull_request=readback)
+        readiness_dispatch = None
+        if pushed or outcome is not PublicationOutcome.ALREADY_PUBLISHED:
+            # A synchronize event can arrive before the metadata update is
+            # visible. Dispatch after exact readback so readiness validates the
+            # durable, current receipt rather than an older body.
+            readiness_dispatch = self.github_workflow.trigger_readiness(
+                number=readback.number,
+                branch=readback.branch,
+                head_sha=readback.head_sha,
+            )
+        return PublicationResult(
+            outcome=outcome,
+            pull_request=readback,
+            readiness_dispatch=readiness_dispatch,
+        )
