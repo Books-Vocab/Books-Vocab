@@ -133,35 +133,9 @@ run_one() {
         ops/tests/test_lock_wait.py
       ;;
     delivery-control)
+      delivery_tests=(ops/tests/test_delivery_*.py)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
-        ops/tests/test_delivery_models.py \
-        ops/tests/test_delivery_states.py \
-        ops/tests/test_delivery_ports.py \
-        ops/tests/test_delivery_git_adapter.py \
-        ops/tests/test_delivery_registry_adapter.py \
-        ops/tests/test_delivery_github_adapter.py \
-        ops/tests/test_delivery_github_queue.py \
-        ops/tests/test_delivery_module_runner.py \
-        ops/tests/test_delivery_registry_runtime.py \
-        ops/tests/test_delivery_application.py \
-        ops/tests/test_delivery_issue_inventory.py \
-        ops/tests/test_delivery_issue_adapter.py \
-        ops/tests/test_delivery_inspect.py \
-        ops/tests/test_delivery_holds.py \
-        ops/tests/test_delivery_metadata.py \
-        ops/tests/test_delivery_pr_contract.py \
-        ops/tests/test_delivery_candidate_contract.py \
-        ops/tests/test_delivery_publish.py \
-        ops/tests/test_delivery_cleanup.py \
-        ops/tests/test_delivery_legacy_cleanup.py \
-        ops/tests/test_delivery_queue.py \
-        ops/tests/test_delivery_required_repair.py \
-        ops/tests/test_delivery_abandon.py \
-        ops/tests/test_delivery_operation_lock.py \
-        ops/tests/test_delivery_controller.py \
-        ops/tests/test_delivery_timings.py \
-        ops/tests/test_delivery_telemetry.py \
-        ops/tests/test_delivery_cli.py &&
+        "${delivery_tests[@]}" &&
       ./ops/tests/test_pr_readiness_workflow.sh
       ;;
     capability-matrix)

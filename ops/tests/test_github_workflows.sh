@@ -117,13 +117,10 @@ delivery_control_group="$(awk '
   in_group { print }
   in_group && /^[[:space:]]*;;$/ { exit }
 ' ops/test_ops.sh)"
-for test_path in \
-  ops/tests/test_delivery_candidate_contract.py \
-  ops/tests/test_delivery_required_repair.py \
-  ops/tests/test_delivery_telemetry.py; do
-  grep -Fq "$test_path" <<<"$delivery_control_group" \
-    || fail "delivery-control group omits ${test_path}"
-done
+grep -Fq 'delivery_tests=(ops/tests/test_delivery_*.py)' <<<"$delivery_control_group" \
+  || fail "delivery-control group does not declare the complete delivery-test glob"
+grep -Fq '"${delivery_tests[@]}"' <<<"$delivery_control_group" \
+  || fail "delivery-control group does not execute the discovered delivery-test array"
 for workflow in "${component_workflows[@]}"; do
   grep -q "uses: ./.github/workflows/${workflow}.yml" "$PR_GATE" \
     || fail "pr-gate does not call ${workflow}"
