@@ -228,7 +228,12 @@ def measure_pipeline(
     invalid_source_problems = (
         timings.invalid_samples + (len(telemetry.problems) if telemetry is not None else 0)
     )
-    issue_source_problems = len(inventory.demand_issues.problems)
+    # A malformed raw entry is represented by both an evidence problem and a
+    # typed SOURCE_PROBLEM partition. Count the partition once so source
+    # metrics cannot exceed the raw Issue inventory.
+    issue_source_problems = inventory.demand_issues.count(
+        IssueDisposition.SOURCE_PROBLEM
+    )
     issue_inventory_problem = int(not inventory.demand_issues.complete)
     total_source_problems = (
         len(inventory.source_problems)
@@ -275,8 +280,7 @@ def measure_pipeline(
             IssueDisposition.PUBLISHED_PR
         ),
         issue_source_problems=(
-            inventory.demand_issues.count(IssueDisposition.SOURCE_PROBLEM)
-            + issue_source_problems
+            issue_source_problems
             + issue_inventory_problem
         ),
         issue_inventory_complete=inventory.demand_issues.complete,

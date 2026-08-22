@@ -14,6 +14,7 @@ from ..domain.candidate_issues import (
 from ..domain.demand_issues import (
     DemandIssue,
     DemandIssueInventory,
+    DemandIssueSourceEntry,
     issue_body_sha256,
 )
 from ..domain.errors import PolicyViolation
@@ -198,23 +199,27 @@ def parse_demand_issue(payload: Mapping[str, Any]) -> DemandIssue:
 
 
 def parse_demand_issue_inventory(payload: object) -> DemandIssueInventory:
-    """Parse every returned Issue and preserve malformed entries as problems."""
+    """Parse every returned Issue and preserve malformed entries as raw evidence."""
 
     if not isinstance(payload, list):
         raise AdapterPayloadError("GitHub raw Issue list must be a JSON list")
     records: list[DemandIssue] = []
     problems: list[InventoryProblem] = []
+    source_entries: list[DemandIssueSourceEntry] = []
     seen_numbers: set[int] = set()
     for index, item in enumerate(payload):
         identity = f"entry[{index}]"
+        issue_number: int | None = None
         if isinstance(item, Mapping):
             identity = f"Issue#{item.get('number', index)}"
+            candidate_number = item.get("number")
+            if type(candidate_number) is int and candidate_number > 0:
+                issue_number = candidate_number
             try:
                 issue = parse_demand_issue(item)
                 if issue.number in seen_numbers:
-                    raise AdapterPayloadError(
-                        "raw Issue inventory contains a duplicate number"
-                    )
+                    identity = f"{identity}@entry[{index}]"
+                    raise AdapterPayloadError("raw Issue inventory contains a duplicate number")
                 seen_numbers.add(issue.number)
                 records.append(issue)
                 if CANDIDATE_ISSUE_LABEL in issue.labels and issue.candidate_spec is None:
@@ -230,11 +235,20 @@ def parse_demand_issue_inventory(payload: object) -> DemandIssueInventory:
                 reason = str(error)
         else:
             reason = "raw Issue entry is not an object"
+        source_entries.append(
+            DemandIssueSourceEntry(
+                identity=identity,
+                entry_index=index,
+                issue_number=issue_number,
+                reason=reason,
+            )
+        )
         problems.append(InventoryProblem("github", identity, reason))
     return DemandIssueInventory(
         records=tuple(records),
         raw_count=len(payload),
         problems=tuple(problems),
+        source_entries=tuple(source_entries),
     )
 
 

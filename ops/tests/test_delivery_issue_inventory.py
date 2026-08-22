@@ -110,8 +110,42 @@ def test_raw_issue_inventory_keeps_malformed_entries_and_raw_total() -> None:
     assert inventory.raw_open_issues == 3
     assert [item.number for item in inventory.records] == [1, 3]
     assert inventory.problems[0].identity == "Issue#2"
+    assert inventory.source_entries[0].identity == "Issue#2"
+    assert inventory.source_entries[0].issue_number == 2
+    assert inventory.source_entries[0].disposition is IssueDisposition.SOURCE_PROBLEM
     assert inventory.unadmitted_open_issues == 3
     assert inventory.backlog_drained is False
+
+
+def test_raw_issue_inventory_keeps_anonymous_malformed_entry_addressable() -> None:
+    inventory = parse_demand_issue_inventory([_payload(1), None])
+
+    assert inventory.raw_open_issues == 2
+    assert inventory.source_entries[0].identity == "entry[1]"
+    assert inventory.source_entries[0].issue_number is None
+    assert inventory.disposition_counts[IssueDisposition.SOURCE_PROBLEM.value] == 1
+    assert inventory.unadmitted_open_issues == 2
+
+
+def test_metrics_count_each_malformed_source_entry_once() -> None:
+    from delivery_control.domain.inventory import DeliveryInventory
+
+    projected = project_demand_inventory(
+        parse_demand_issue_inventory([_payload(1), None])
+    )
+
+    metrics = measure_pipeline(
+        DeliveryInventory(
+            lanes=(),
+            demand_issues=projected,
+            candidate_issues=projected.candidate_issues,
+            dispatchable_candidate_issues=projected.dispatchable_candidate_issues,
+        ),
+        now=datetime(2026, 8, 22, tzinfo=UTC),
+    )
+
+    assert metrics.issue_source_problems == 1
+    assert metrics.source_problems == 1
 
 
 def test_projection_assigns_one_disposition_with_fixed_precedence() -> None:

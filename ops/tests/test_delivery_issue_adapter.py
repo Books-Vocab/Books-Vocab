@@ -136,6 +136,40 @@ def test_raw_issue_query_fails_closed_on_graphql_errors() -> None:
         GitHubCliAdapter(runner=runner).list_open_issues()
 
 
+def test_raw_issue_query_preserves_malformed_graphql_node_without_inventing_number() -> None:
+    response = json.dumps(
+        {
+            "data": {
+                "repository": {
+                    "issues": {
+                        "nodes": [
+                            {
+                                **_issue(1),
+                                "labels": {"nodes": []},
+                            },
+                            None,
+                        ],
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                    }
+                }
+            }
+        }
+    )
+    runner = StaticRunner(
+        [
+            _repo_name(),
+            _result(response),
+        ]
+    )
+
+    inventory = GitHubCliAdapter(runner=runner).list_open_issues()
+
+    assert inventory.raw_open_issues == 2
+    assert [item.number for item in inventory.records] == [1]
+    assert inventory.source_entries[0].identity == "entry[1]"
+    assert inventory.source_entries[0].issue_number is None
+
+
 def test_admission_preserves_original_body_and_requires_exact_readback() -> None:
     spec = _spec()
     original = "Original report with operator context"

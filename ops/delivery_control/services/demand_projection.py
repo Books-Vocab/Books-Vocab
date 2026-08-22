@@ -160,4 +160,6 @@ def project_demand_inventory(
         records=tuple(projected),
         raw_count=inventory.raw_count,
         problems=inventory.problems,
+        source_entries=inventory.source_entries,
+        complete=inventory.complete,
     )

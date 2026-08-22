@@ -99,12 +99,39 @@ class DemandIssue:
 
 
 @dataclass(frozen=True)
+class DemandIssueSourceEntry:
+    """One raw Issue page entry that could not become a full Issue record."""
+
+    identity: str
+    entry_index: int
+    reason: str
+    issue_number: int | None = None
+    disposition: IssueDisposition = IssueDisposition.SOURCE_PROBLEM
+
+    def __post_init__(self) -> None:
+        for name in ("identity", "reason"):
+            value = getattr(self, name)
+            if type(value) is not str or not value.strip():
+                raise TypeError(f"source entry {name} must be non-empty text")
+        if type(self.entry_index) is not int or self.entry_index < 0:
+            raise ValueError("source entry index must be non-negative")
+        if self.issue_number is not None and (
+            type(self.issue_number) is not int or self.issue_number <= 0
+        ):
+            raise ValueError("source entry Issue number must be positive")
+        object.__setattr__(self, "disposition", IssueDisposition(self.disposition))
+        if self.disposition is not IssueDisposition.SOURCE_PROBLEM:
+            raise ValueError("raw source entries must remain source_problem")
+
+
+@dataclass(frozen=True)
 class DemandIssueInventory:
     """Complete raw Issue inventory; never a local lifecycle database."""
 
     records: tuple[DemandIssue, ...]
     raw_count: int
     problems: tuple[InventoryProblem, ...] = ()
+    source_entries: tuple[DemandIssueSourceEntry, ...] = ()
     complete: bool = True
 
     def __post_init__(self) -> None:
@@ -121,8 +148,19 @@ class DemandIssueInventory:
             not isinstance(item, InventoryProblem) for item in self.problems
         ):
             raise TypeError("Issue problems must be InventoryProblem values")
+        if type(self.source_entries) is not tuple or any(
+            not isinstance(item, DemandIssueSourceEntry)
+            for item in self.source_entries
+        ):
+            raise TypeError("Issue source entries must be DemandIssueSourceEntry values")
         if type(self.complete) is not bool:
             raise TypeError("Issue inventory completeness must be boolean")
+        identities = tuple(item.identity for item in self.source_entries)
+        if len(identities) != len(set(identities)):
+            raise ValueError("Issue source entries contain duplicate identities")
+        represented_entries = len(self.records) + len(self.source_entries)
+        if self.raw_count < represented_entries:
+            raise ValueError("raw_count must include every parsed and malformed entry")
         object.__setattr__(
             self,
             "records",
@@ -150,7 +188,12 @@ class DemandIssueInventory:
         )
 
     def count(self, disposition: IssueDisposition) -> int:
-        return sum(item.disposition is disposition for item in self.records)
+        parsed = sum(item.disposition is disposition for item in self.records)
+        return parsed + (
+            len(self.source_entries)
+            if disposition is IssueDisposition.SOURCE_PROBLEM
+            else 0
+        )
 
     @property
     def disposition_counts(self) -> dict[str, int]:
@@ -163,7 +206,8 @@ class DemandIssueInventory:
 
     @property
     def unadmitted_open_issues(self) -> int:
-        return sum(
+        represented_entries = len(self.records) + len(self.source_entries)
+        return len(self.source_entries) + sum(
             item.disposition
             in {
                 IssueDisposition.TRIAGE_REQUIRED,
@@ -171,7 +215,7 @@ class DemandIssueInventory:
                 IssueDisposition.SOURCE_PROBLEM,
             }
             for item in self.records
-        ) + max(0, self.raw_count - len(self.records))
+        ) + max(0, self.raw_count - represented_entries)
 
     @property
     def backlog_drained(self) -> bool:
