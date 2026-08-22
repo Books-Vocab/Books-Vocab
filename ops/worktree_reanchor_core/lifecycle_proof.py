@@ -177,8 +177,8 @@ def verify_resume_lifecycle(
         expected_base_sha=expected_base_sha,
         expected_remote_head=expected_remote_head,
     )
-    check = _required(github, pull_request)
-    if require_failed and check.status is not CheckStatus.FAILURE:
+    check = _required(github, pull_request) if require_failed else None
+    if check is not None and check.status is not CheckStatus.FAILURE:
         raise ReanchorRefused(
             "resume-published is allowed only for an exact required code failure",
             pull_request=pull_request.number,
@@ -188,7 +188,7 @@ def verify_resume_lifecycle(
         pull_request_number=pull_request.number,
         base_sha=pull_request.base_sha,
         head_sha=pull_request.head_sha,
-        required_status=check.status,
+        required_status=check.status if check is not None else CheckStatus.ABSENT,
     )
 
 
