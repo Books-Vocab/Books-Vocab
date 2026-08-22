@@ -7,11 +7,11 @@ from pathlib import Path
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.adapters.github_cli import GitHubCliAdapter  # noqa: E402
-from delivery_control.adapters.github_queue import (  # noqa: E402
+from delivery_control.adapters.github_cli import GitHubCliAdapter
+from delivery_control.adapters.github_queue import (
     GitHubQueueGraphQLAdapter,
 )
-from delivery_control.ports.process import CommandResult  # noqa: E402
+from delivery_control.ports.process import CommandResult
 
 
 class StaticRunner:
@@ -154,6 +154,23 @@ def test_pr_mutation_bypasses_read_only_snapshot_cache() -> None:
 
     assert updated.head_sha == "c" * 40
     assert sum(1 for call in runner.calls if call[:3] == ("gh", "pr", "view")) == 2
+
+
+def test_required_observations_are_primed_once_after_open_inventory() -> None:
+    runner = StaticRunner(
+        [CommandResult(("gh", "pr", "list"), 0, json.dumps([_node_payload()]), "")]
+    )
+    adapter = GitHubCliAdapter(repo=Path("/repo"), runner=runner)
+    calls: list[tuple[int, ...]] = []
+    sentinel = object()
+    adapter._checks.prime_required_snapshots = lambda numbers: calls.append(numbers)
+    adapter._checks.required_snapshot = lambda number: sentinel
+
+    adapter.list_open_pull_requests()
+
+    assert adapter.required_check_snapshot(12) is sentinel
+    assert adapter.required_check_snapshot(12) is sentinel
+    assert calls == [(12,)]
 
 
 def test_malformed_queue_batch_falls_back_to_exact_live_snapshot() -> None:
