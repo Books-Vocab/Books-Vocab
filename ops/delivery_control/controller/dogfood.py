@@ -70,13 +70,25 @@ def assess_dogfood_readiness(
         "main does not require the short required context",
     )
     block(not merge_queue_enabled, "main has no native merge queue rule")
-    block(metrics.source_problems > 0, "delivery source inventory is incomplete")
-    block(metrics.unmapped_open_prs > 0, "open PRs lack exact owner mapping")
-    block(metrics.blocked_lanes > 0, "existing lanes still require disposition")
+    block(
+        metrics.actionable_source_problems > 0,
+        "delivery source inventory is incomplete",
+    )
+    block(
+        metrics.actionable_unmapped_open_prs > 0,
+        "open PRs lack exact owner mapping",
+    )
+    block(
+        metrics.actionable_blocked_lanes > 0,
+        "existing lanes still require disposition",
+    )
     block(metrics.active_development > 0, "pre-dogfood development lanes remain")
     block(metrics.handbacks_publishable > 0, "pre-dogfood handbacks remain local")
     block(metrics.published_local_cleanup > 0, "published PRs retain local assets")
-    block(metrics.terminal_cleanup > 0, "merged assets retain terminal residue")
+    block(
+        metrics.actionable_terminal_cleanup > 0,
+        "merged assets retain terminal residue",
+    )
     block(metrics.pr_contract_failed > 0, "existing PR delivery contracts are invalid")
     block(metrics.required_failed > 0, "existing required checks are failed")
     block(metrics.open_prs > 0, "owner-mapped PR reservoir is not empty")

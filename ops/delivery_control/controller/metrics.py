@@ -46,6 +46,31 @@ class PipelineMetrics:
     collision_rate: float = 0.0
     required_failure_rate: float = 0.0
     timings: PipelineTimings = field(default_factory=PipelineTimings)
+    quarantined_source_problems: int = 0
+    quarantined_blocked_lanes: int = 0
+    quarantined_open_prs: int = 0
+    quarantined_terminal_cleanup: int = 0
+    actionable_source_problems: int | None = None
+    actionable_blocked_lanes: int | None = None
+    actionable_unmapped_open_prs: int | None = None
+    actionable_terminal_cleanup: int | None = None
+
+    def __post_init__(self) -> None:
+        # Direct construction predates isolation fields. Omitted actionability
+        # is fully actionable; measured inventories provide explicit values.
+        defaults = {
+            "actionable_source_problems": self.source_problems,
+            "actionable_blocked_lanes": self.blocked_lanes,
+            "actionable_unmapped_open_prs": self.unmapped_open_prs,
+            "actionable_terminal_cleanup": self.terminal_cleanup,
+        }
+        for field_name, value in defaults.items():
+            if getattr(self, field_name) is None:
+                object.__setattr__(self, field_name, value)
+
+    @property
+    def quarantined_lanes(self) -> int:
+        return self.quarantined_blocked_lanes + self.quarantined_terminal_cleanup
 
 
 @dataclass(frozen=True)
@@ -84,6 +109,7 @@ def measure_pipeline(
         lanes=lanes,
         source_problems=inventory.source_problems,
         candidate_issues=inventory.candidate_issues,
+        isolation=inventory.isolation,
     )
     states = [lane.decision.state for lane in lanes]
     all_pull_request_numbers = {
@@ -156,6 +182,14 @@ def measure_pipeline(
     timings = measure_pipeline_timings(
         measured_inventory, telemetry=telemetry, now=now
     )
+    isolation = inventory.isolation
+    unknown_source_problems = unknown_unregistered_worktrees
+    invalid_source_problems = (
+        timings.invalid_samples + (len(telemetry.problems) if telemetry is not None else 0)
+    )
+    total_source_problems = (
+        len(inventory.source_problems) + invalid_source_problems + unknown_source_problems
+    )
     return PipelineMetrics(
         active_development=states.count(LaneState.ACTIVE_DEVELOPMENT),
         handbacks_publishable=handbacks_publishable,
@@ -176,12 +210,7 @@ def measure_pipeline(
         terminal_cleanup=states.count(LaneState.TERMINAL_CLEANUP),
         blocked_lanes=sum(state in _BLOCKED for state in states),
         physical_worktrees=len(physical_paths),
-        source_problems=(
-            len(inventory.source_problems)
-            + timings.invalid_samples
-            + (len(telemetry.problems) if telemetry is not None else 0)
-            + unknown_unregistered_worktrees
-        ),
+        source_problems=total_source_problems,
         candidate_issues=len(inventory.candidate_issues),
         reanchor_required=states.count(LaneState.REANCHOR),
         clean_unregistered_worktrees=clean_unregistered_worktrees,
@@ -196,6 +225,27 @@ def measure_pipeline(
             required_failed / required_terminal if required_terminal else 0.0
         ),
         timings=timings,
+        quarantined_source_problems=isolation.quarantined_source_problems,
+        quarantined_blocked_lanes=isolation.quarantined_blocked_lanes,
+        quarantined_open_prs=isolation.quarantined_open_prs,
+        quarantined_terminal_cleanup=isolation.quarantined_terminal_cleanup,
+        actionable_source_problems=max(
+            0,
+            total_source_problems - isolation.quarantined_source_problems,
+        ),
+        actionable_blocked_lanes=max(
+            0, sum(state in _BLOCKED for state in states) - isolation.quarantined_blocked_lanes
+        ),
+        actionable_unmapped_open_prs=max(
+            0,
+            len(all_pull_request_numbers - mapped_pull_request_numbers)
+            - isolation.quarantined_open_prs,
+        ),
+        actionable_terminal_cleanup=max(
+            0,
+            states.count(LaneState.TERMINAL_CLEANUP)
+            - isolation.quarantined_terminal_cleanup,
+        ),
     )
 
 

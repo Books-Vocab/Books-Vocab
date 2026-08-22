@@ -76,8 +76,8 @@ def decide_capacity(
             actions.append(action)
             reasons.append(reason)
 
-    if metrics.source_problems:
-        add(ControlAction.INSPECT_SOURCES, "source inventory is incomplete")
+    if metrics.actionable_source_problems:
+        add(ControlAction.INSPECT_SOURCES, "actionable source inventory is incomplete")
     cadence_missed = (
         cadence.merges_per_hour < policy.target_merges_per_hour
         or cadence.p95_interval_seconds is None
@@ -97,7 +97,7 @@ def decide_capacity(
     if metrics.reanchor_required:
         add(ControlAction.REANCHOR_FRONT, "exact stale-base PRs await reanchor")
     if (
-        not metrics.source_problems
+        not metrics.actionable_source_problems
         and metrics.candidate_issues < policy.min_candidate_issues
     ):
         add(
@@ -108,7 +108,7 @@ def decide_capacity(
         add(ControlAction.CLEANUP_LOCAL, "registry cleanup leases remain pending")
     elif metrics.published_local_cleanup:
         add(ControlAction.CLEANUP_LOCAL, "published PRs retain local assets")
-    if metrics.terminal_cleanup:
+    if metrics.actionable_terminal_cleanup:
         add(ControlAction.CLEANUP_TERMINAL, "merged assets remain")
     if metrics.clean_unregistered_worktrees:
         add(
@@ -161,7 +161,7 @@ def decide_capacity(
                 f"{policy.min_merge_ready_or_queued}-PR floor"
             ),
         )
-    if metrics.blocked_lanes:
+    if metrics.actionable_blocked_lanes:
         add(ControlAction.RECOVER_BLOCKERS, "existing lanes need bounded recovery")
     if metrics.collision_rate > policy.max_collision_pressure:
         add(
@@ -209,12 +209,12 @@ def decide_capacity(
     pr_saturated = metrics.open_prs >= policy.max_open_prs
     desired_new_solvers = 0
     unsafe_pr_inventory = bool(
-        metrics.unmapped_open_prs or metrics.duplicate_pr_mappings
+        metrics.actionable_unmapped_open_prs or metrics.duplicate_pr_mappings
     )
-    if metrics.source_problems:
+    if metrics.actionable_source_problems:
         add(
             ControlAction.RECOVER_BLOCKERS,
-            "solver dispatch is disabled until source inventory is complete",
+            "solver dispatch is disabled until actionable source inventory is complete",
         )
     elif unsafe_pr_inventory:
         add(
