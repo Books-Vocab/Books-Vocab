@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import stat
 from dataclasses import replace
 from pathlib import Path
 
@@ -184,3 +185,9 @@ def test_quarantine_refuses_hard_hold_before_close() -> None:
         service.quarantine(pull_request_number=7)
 
     assert not github.closed
+
+
+def test_quarantine_cli_has_a_directly_executable_entrypoint() -> None:
+    entrypoint = Path(__file__).parents[1] / "delivery_quarantine.py"
+
+    assert stat.S_IMODE(entrypoint.stat().st_mode) & stat.S_IXUSR
