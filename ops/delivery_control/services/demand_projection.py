@@ -26,7 +26,9 @@ _HOLD_LABELS = {
 
 
 def _references_issue(value: str, number: int) -> bool:
-    return any(int(match.group("number")) == number for match in _ISSUE_REF.finditer(value))
+    return any(
+        int(match.group("number")) == number for match in _ISSUE_REF.finditer(value)
+    )
 
 
 def _issue_is_held(issue: DemandIssue) -> bool:
@@ -83,6 +85,29 @@ def _mapped_prs(
     )
 
 
+def _source_problem_issue_numbers(inventory: DemandIssueInventory) -> frozenset[int]:
+    """Return every Issue number implicated by a malformed raw entry.
+
+    A duplicate raw entry is retained as ``source_entries`` while the first
+    parsed record remains in ``records``.  Projection must quarantine both
+    representations; otherwise the first copy could still be dispatched.
+    """
+
+    numbers = {
+        entry.issue_number
+        for entry in inventory.source_entries
+        if entry.issue_number is not None
+    }
+    for problem in inventory.problems:
+        identity = problem.identity
+        if not identity.startswith("Issue#"):
+            continue
+        token = identity.removeprefix("Issue#").split("@", 1)[0]
+        if token.isdigit() and int(token) > 0:
+            numbers.add(int(token))
+    return frozenset(numbers)
+
+
 def project_demand_inventory(
     inventory: DemandIssueInventory,
     *,
@@ -91,7 +116,7 @@ def project_demand_inventory(
 ) -> DemandIssueInventory:
     """Apply a stable precedence so every parsed Issue has one disposition."""
 
-    source_problem_ids = {problem.identity for problem in inventory.problems}
+    source_problem_numbers = _source_problem_issue_numbers(inventory)
     projected: list[DemandIssue] = []
     for issue in inventory.records:
         mapped_records = _mapped_records(issue, registry_records)
@@ -101,32 +126,36 @@ def project_demand_inventory(
             for record in mapped_records
             for external_id in (record.external_ids or (record.lane_id,))
         )
-        identity = f"Issue#{issue.number}"
-        if identity in source_problem_ids:
+        if issue.number in source_problem_numbers:
             disposition = IssueDisposition.SOURCE_PROBLEM
             reason = "raw Issue or typed candidate payload is malformed"
         elif _issue_is_held(issue):
             disposition = IssueDisposition.SECURITY_HOLD
             reason = "Issue carries an explicit security/P0/P1 or PUBLISH ONLY hold"
-        elif any(record.status in {"published", "cleanup_pending"} for record in mapped_records):
+        elif any(
+            record.status in {"published", "cleanup_pending"}
+            for record in mapped_records
+        ):
             disposition = IssueDisposition.PUBLISHED_PR
             reason = "Issue is already mapped to a published delivery lane"
-        elif any(record.status not in {"merged", "abandoned"} for record in mapped_records) or any(
-            pull_request.state == "OPEN" for pull_request in mapped_prs
-        ):
+        elif any(
+            record.status not in {"merged", "abandoned"} for record in mapped_records
+        ) or any(pull_request.state == "OPEN" for pull_request in mapped_prs):
             disposition = IssueDisposition.OWNER_BOUND
             reason = "Issue is already mapped to an owner-bound registry or PR lane"
-        elif _issue_has_terminal_history(issue) or any(
-            record.status in {"merged", "abandoned"} for record in mapped_records
-        ) or any(
-            pull_request.state in {"MERGED", "CLOSED"} for pull_request in mapped_prs
+        elif (
+            _issue_has_terminal_history(issue)
+            or any(
+                record.status in {"merged", "abandoned"} for record in mapped_records
+            )
+            or any(
+                pull_request.state in {"MERGED", "CLOSED"}
+                for pull_request in mapped_prs
+            )
         ):
             disposition = IssueDisposition.TERMINAL_HISTORY
             reason = "Issue has verifiable duplicate, merged, or terminal history"
-        elif (
-            issue.candidate_spec is not None
-            and CANDIDATE_ISSUE_LABEL in issue.labels
-        ):
+        elif issue.candidate_spec is not None and CANDIDATE_ISSUE_LABEL in issue.labels:
             disposition = IssueDisposition.DISPATCHABLE_CANDIDATE
             reason = "Issue has an exact typed candidate contract and no active mapping"
         else:
