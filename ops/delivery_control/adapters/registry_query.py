@@ -141,6 +141,16 @@ def terminal_claim(
         except (KeyError, TypeError, ValueError, InvalidScope) as error:
             raise AdapterPayloadError("terminal registry claim is malformed") from error
         matches.append(record)
-    if len(matches) > 1:
-        raise AdapterPayloadError("multiple registry claims found for terminal branch")
-    return matches[0] if matches else None
+    if len(matches) <= 1:
+        return matches[0] if matches else None
+
+    # A branch can legitimately have terminal history from more than one
+    # abandoned claim generation.  A published legacy PR still carries one
+    # durable hand-back tip, so use that proof to select the record that the
+    # caller can validate against the live PR.  If history contains more than
+    # one hand-back-bearing claim, or none at all, the evidence remains
+    # ambiguous and must stay fail-closed.
+    handed_back = [record for record in matches if record.handed_back_sha]
+    if len(handed_back) == 1:
+        return handed_back[0]
+    raise AdapterPayloadError("multiple registry claims found for terminal branch")
