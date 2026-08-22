@@ -68,7 +68,14 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--runtime-status-file", type=Path)
     commands = parser.add_subparsers(dest="command", required=True)
 
-    commands.add_parser("inspect", help="classify every known delivery lane")
+    inspect = commands.add_parser("inspect", help="classify every known delivery lane")
+    inspect.add_argument(
+        "--supervision-worktree",
+        action="append",
+        type=Path,
+        default=[],
+        help="exact supervision checkout path; repeat once per checkout",
+    )
     commands.add_parser(
         "issue-inventory", help="inventory every open GitHub Issue without mutation"
     )
@@ -224,7 +231,9 @@ def _parser() -> argparse.ArgumentParser:
 
 def run_command(args: argparse.Namespace, application: DeliveryApplication) -> object:
     if args.command == "inspect":
-        return application.inspect()
+        return application.inspect(
+            supervision_worktree_paths=tuple(args.supervision_worktree)
+        )
     if args.command == "issue-inventory":
         inventory = application.issue_inventory()
         return {

@@ -217,13 +217,13 @@ PI 收到 exact merged PR receipt 後完成：
 ### Supervisor：只看 facts
 
 ```bash
-./ops/delivery.py --repo /Users/chenliangyu/project/kg inspect
 SUPERVISION_ARGS=(
   --supervision-worktree /Users/chenliangyu/.codex/worktrees/2366/kg
   --supervision-worktree /Users/chenliangyu/.codex/worktrees/7e07/kg
   --supervision-worktree /Users/chenliangyu/.codex/worktrees/be28/kg
   --supervision-worktree /Users/chenliangyu/.codex/worktrees/e695/kg
 )
+./ops/delivery.py --repo /Users/chenliangyu/project/kg inspect "${SUPERVISION_ARGS[@]}"
 ./ops/delivery.py --repo /Users/chenliangyu/project/kg metrics "${SUPERVISION_ARGS[@]}"
 ./ops/delivery.py --repo /Users/chenliangyu/project/kg plan "${SUPERVISION_ARGS[@]}"
 ```
