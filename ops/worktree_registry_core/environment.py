@@ -10,6 +10,16 @@ from typing import Any
 
 from .storage import load_state as _load_state
 
+REGISTRY_GIT_TIMEOUT_SECONDS = 120.0
+
+
+def _text(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
+
 
 def git(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
     try:
@@ -20,7 +30,12 @@ def git(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             check=False,
+            timeout=REGISTRY_GIT_TIMEOUT_SECONDS,
         )
+    except subprocess.TimeoutExpired as exc:
+        output = _text(exc.stdout or exc.output)
+        detail = f"git command timed out after {REGISTRY_GIT_TIMEOUT_SECONDS:g}s"
+        return 124, f"{output.rstrip()}\n{detail}" if output else detail
     except OSError as exc:
         return 127, f"{type(exc).__name__}: {exc}"
     return proc.returncode, proc.stdout.strip()
