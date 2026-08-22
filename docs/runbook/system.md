@@ -51,7 +51,8 @@ workflow `pr-gate` 的 check run `confidence` 失敗、非預期 skip、取消�
 ### 先觀測，再執行 exact action
 
 ```bash
-./ops/delivery.py --runtime-status-file <owner-status.json> inspect
+./ops/delivery.py --runtime-status-file <owner-status.json> inspect \
+  --supervision-worktree <exact-supervision-path>
 ./ops/delivery.py metrics
 ./ops/delivery.py plan
 ./ops/delivery.py --runtime-status-file <supervisor-runtime.json> runtime-receipt \
