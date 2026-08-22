@@ -12,6 +12,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from .adapters.operation_lock import OperationLock
 from .adapters.runtime import RuntimeStatusMap
 from .application import DeliveryApplication, build_application
 from .domain.candidate_issues import CandidateSpec
@@ -22,6 +23,25 @@ from .services.candidate_contract import parse_candidate_body, render_candidate_
 from .services.pr_contract import validate_pull_request_body
 
 COMMAND_SCHEMA = "kg.delivery.command.v1"
+MUTATING_COMMANDS = frozenset(
+    {
+        "admit-candidate",
+        "watchdog-claim",
+        "runtime-receipt",
+        "receipt",
+        "publish",
+        "record-published-base",
+        "release-published",
+        "queue",
+        "reconcile-holds",
+        "repair-pr-metadata",
+        "trigger-required",
+        "cleanup-merged",
+        "abandon-pr",
+        "cleanup-abandoned",
+        "sync-main",
+    }
+)
 
 
 def _jsonable(value: object) -> object:
@@ -405,6 +425,20 @@ def _result_exit_code(command: str, result: object) -> int:
     return 0 if ready is True else 2
 
 
+def _run_command_serialized(
+    args: argparse.Namespace, application: DeliveryApplication
+) -> object:
+    if args.command not in MUTATING_COMMANDS:
+        return run_command(args, application)
+    repo = getattr(application, "repo", None)
+    if repo is None:
+        # Lightweight application fakes used by unit tests do not own a
+        # repository.  Real applications always expose the canonical path.
+        return run_command(args, application)
+    with OperationLock(Path(repo), command=args.command):
+        return run_command(args, application)
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -416,7 +450,7 @@ def main(
             repo=args.repo,
             runtime_status_file=args.runtime_status_file,
         )
-        result = run_command(args, application)
+        result = _run_command_serialized(args, application)
     except (DeliveryContractError, DeliverySourceError, OSError) as error:
         print(
             json.dumps(
