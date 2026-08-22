@@ -375,12 +375,63 @@ def test_github_adapter_reads_unique_required_status_contexts() -> None:
                 ),
                 "",
             ),
+            CommandResult(
+                ("gh",),
+                0,
+                json.dumps(
+                    [
+                        {
+                            "type": "required_status_checks",
+                            "parameters": {
+                                "required_status_checks": [
+                                    {"context": "ruleset-required"}
+                                ]
+                            },
+                        },
+                        {"type": "merge_queue", "parameters": {}},
+                    ]
+                ),
+                "",
+            ),
         ]
     )
 
     contexts = GitHubCliAdapter(runner=runner).required_status_contexts("main")
 
-    assert contexts == ("required", "validate PR readiness contract")
+    assert contexts == (
+        "required",
+        "ruleset-required",
+        "validate PR readiness contract",
+    )
+
+
+def test_github_adapter_rejects_malformed_effective_required_status_contexts() -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""
+            ),
+            CommandResult(
+                ("gh",), 0, json.dumps({"required_status_checks": None}), ""
+            ),
+            CommandResult(
+                ("gh",),
+                0,
+                json.dumps(
+                    [
+                        {
+                            "type": "required_status_checks",
+                            "parameters": {"required_status_checks": [7]},
+                        }
+                    ]
+                ),
+                "",
+            ),
+        ]
+    )
+
+    with pytest.raises(AdapterPayloadError, match="required contexts"):
+        GitHubCliAdapter(runner=runner).required_status_contexts("main")
 
 
 def test_github_adapter_rejects_malformed_required_status_contexts() -> None:
