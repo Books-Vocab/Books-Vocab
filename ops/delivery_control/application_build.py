@@ -19,14 +19,18 @@ CONTROL_PLANE_OPS = Path(__file__).resolve().parents[1]
 
 
 def _canonical_repo(source_repo: Path, *, probe: GitCliAdapter) -> Path:
-    """Resolve the protected main checkout without changing source provenance.
+    """Resolve the unique protected ``main`` checkout for mutations.
 
     ``delivery.py`` is intentionally runnable from an owner worktree so it
     loads the same control-plane code that will publish the handback.  Git
-    mutation commands, however, must still treat the linked ``main`` checkout
-    as canonical; otherwise publishing a feature worktree tries to remove the
-    checkout that the command is currently using.  Non-repository paths remain
-    supported for composition tests and fail back to their original path.
+    mutation commands must nevertheless run from the checked-out ``main``
+    worktree.  Falling back to the owner worktree is unsafe: cleanup would
+    later identify its own checkout as canonical and leave a published lane in
+    ``cleanup_pending`` after the PR was already created.
+
+    Non-repository paths remain supported for composition tests.  A real
+    repository without exactly one checked-out ``main`` fails before any
+    GitHub or registry mutation.
     """
 
     try:
@@ -35,7 +39,17 @@ def _canonical_repo(source_repo: Path, *, probe: GitCliAdapter) -> Path:
         )
     except AdapterError:
         return source_repo
-    return main_worktrees[0].path if len(main_worktrees) == 1 else source_repo
+    if len(main_worktrees) != 1:
+        if not main_worktrees:
+            raise AdapterError(
+                "canonical main checkout is unavailable; check out main before "
+                "running delivery mutations"
+            )
+        raise AdapterError(
+            "canonical main checkout is ambiguous; exactly one main worktree "
+            "is required before running delivery mutations"
+        )
+    return main_worktrees[0].path
 
 
 def build_application(
