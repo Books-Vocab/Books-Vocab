@@ -41,6 +41,7 @@ class DemandIssue:
     reason: str = "open Issue has not been triaged"
     candidate_spec: CandidateSpec | None = None
     mapped_external_ids: tuple[str, ...] = ()
+    mapped_pull_request_numbers: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
         if type(self.number) is not int or self.number <= 0:
@@ -69,6 +70,11 @@ class DemandIssue:
             for item in self.mapped_external_ids
         ):
             raise TypeError("Issue external IDs must be canonical text")
+        if type(self.mapped_pull_request_numbers) is not tuple or any(
+            type(item) is not int or item <= 0
+            for item in self.mapped_pull_request_numbers
+        ):
+            raise TypeError("Issue pull request mappings must be positive integers")
         if self.updated_at is not None and (
             not isinstance(self.updated_at, datetime)
             or self.updated_at.utcoffset() is None
@@ -80,6 +86,11 @@ class DemandIssue:
             self,
             "mapped_external_ids",
             tuple(sorted(set(self.mapped_external_ids))),
+        )
+        object.__setattr__(
+            self,
+            "mapped_pull_request_numbers",
+            tuple(sorted(set(self.mapped_pull_request_numbers))),
         )
 
     @property

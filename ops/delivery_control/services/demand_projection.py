@@ -126,6 +126,9 @@ def project_demand_inventory(
             for record in mapped_records
             for external_id in (record.external_ids or (record.lane_id,))
         )
+        mapped_pull_request_numbers = tuple(
+            pull_request.number for pull_request in mapped_prs
+        )
         if issue.number in source_problem_numbers:
             disposition = IssueDisposition.SOURCE_PROBLEM
             reason = "raw Issue or typed candidate payload is malformed"
@@ -183,6 +186,7 @@ def project_demand_inventory(
                 reason=reason,
                 candidate_spec=issue.candidate_spec,
                 mapped_external_ids=mapped_external_ids,
+                mapped_pull_request_numbers=mapped_pull_request_numbers,
             )
         )
     return DemandIssueInventory(
