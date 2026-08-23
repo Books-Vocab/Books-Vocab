@@ -15,6 +15,7 @@ class ControlAction(StrEnum):
     ENQUEUE_GREEN = "enqueue_green"
     PUBLISH_HANDBACKS = "publish_handbacks"
     AUDIT_TRANSPORT_SLO = "audit_transport_slo"
+    AUDIT_QUARANTINE = "audit_quarantine"
     AUDIT_CI_START_SLO = "audit_ci_start_slo"
     AUDIT_QUEUE_ADMISSION_SLO = "audit_queue_admission_slo"
     AUDIT_MERGE_CADENCE = "audit_merge_cadence"
@@ -141,6 +142,14 @@ def decide_capacity(
         add(
             ControlAction.RECONCILE_HOLDS,
             "explicit P0/P1/security holds require terminal disposition",
+        )
+    if metrics.recoverable_quarantine:
+        add(
+            ControlAction.AUDIT_QUARANTINE,
+            (
+                f"{metrics.recoverable_quarantine} quarantined delivery observations "
+                "need owner or terminal-evidence reconciliation"
+            ),
         )
     if (
         not metrics.actionable_source_problems
