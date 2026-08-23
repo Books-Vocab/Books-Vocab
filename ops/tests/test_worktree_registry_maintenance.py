@@ -9,7 +9,10 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 import worktree_registry as registry  # noqa: E402
-from worktree_registry_core.records import mutation_blockers  # noqa: E402
+from worktree_registry_core.records import (  # noqa: E402
+    mutation_blockers,
+    mutation_blockers_for_target,
+)
 
 
 def _terminal_proof(record: dict) -> dict:
@@ -139,13 +142,13 @@ def test_malformed_ownership_facts_block_mutation_without_data_loss(
             "--state",
             str(state_path),
             "--branch",
-            "feat/new",
+            "feat/bad-ids",
             "--path",
-            str(tmp_path / "new"),
+            str(tmp_path / "bad-ids"),
             "--intent",
-            "new",
+            "repair",
             "--external-id",
-            "ISSUE-NEW",
+            "ISSUE-BAD-IDS",
             "--json",
         ]
     )
@@ -157,8 +160,166 @@ def test_malformed_ownership_facts_block_mutation_without_data_loss(
     assert reloaded["problems"][0]["kind"] == "registry-external-ids-invalid"
 
 
+def test_disjoint_register_is_not_blocked_by_malformed_active_claim(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "registry.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "records": [
+                    {
+                        "branch": "feat/bad-claim",
+                        "path": str(tmp_path / "bad-claim"),
+                        "status": "active",
+                        "external_ids": ["ISSUE-BAD"],
+                        "claim_generation": None,
+                        "scope": {
+                            "schema": "kg.worktree.scope.v1",
+                            "files": [
+                                {"path": "ops/bad_claim.py", "operation": "modify"}
+                            ],
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    rc = registry.main(
+        [
+            "register",
+            "--state",
+            str(state_path),
+            "--branch",
+            "feat/disjoint",
+            "--path",
+            str(tmp_path / "disjoint"),
+            "--intent",
+            "new",
+            "--external-id",
+            "ISSUE-DISJOINT",
+            "--scope",
+            json.dumps(
+                {
+                    "schema": "kg.worktree.scope.v1",
+                    "files": [{"path": "ops/disjoint.py", "operation": "modify"}],
+                }
+            ),
+            "--json",
+        ]
+    )
+
+    assert rc == registry.EXIT_OK
+    state = registry.load_state(state_path)
+    assert len(state["records"]) == 2
+    assert state["records"][1]["branch"] == "feat/disjoint"
+    assert len(state["problems"]) == 1
+
+
+def test_target_scoped_blocker_preserves_exact_malformed_claim_boundary(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "registry.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "records": [
+                    {
+                        "branch": "feat/bad-claim",
+                        "path": str(tmp_path / "bad-claim"),
+                        "status": "active",
+                        "external_ids": ["ISSUE-BAD"],
+                        "claim_generation": None,
+                        "scope": {
+                            "schema": "kg.worktree.scope.v1",
+                            "files": [
+                                {"path": "ops/bad_claim.py", "operation": "modify"}
+                            ],
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    state = registry.load_state(state_path)
+    problem = state["problems"][0]
+
+    assert mutation_blockers(state) == [problem]
+    assert (
+        mutation_blockers_for_target(
+            state,
+            branch="feat/disjoint",
+            path=str(tmp_path / "disjoint"),
+            external_ids_value=["ISSUE-DISJOINT"],
+            scope={
+                "schema": "kg.worktree.scope.v1",
+                "files": [{"path": "ops/disjoint.py", "operation": "modify"}],
+            },
+        )
+        == []
+    )
+    assert mutation_blockers_for_target(
+        state,
+        branch="feat/bad-claim",
+        path=str(tmp_path / "other-path"),
+        external_ids_value=["ISSUE-DISJOINT"],
+        scope={
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"path": "ops/disjoint.py", "operation": "modify"}],
+        },
+    ) == [problem]
+
+
+def test_scope_set_on_malformed_claim_remains_fail_closed_without_repair(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "registry.json"
+    original = {
+        "records": [
+            {
+                "branch": "feat/bad-claim",
+                "path": str(tmp_path / "bad-claim"),
+                "status": "active",
+                "external_ids": ["ISSUE-BAD"],
+                "claim_generation": None,
+                "scope": {
+                    "schema": "kg.worktree.scope.v1",
+                    "files": [{"path": "ops/bad_claim.py", "operation": "modify"}],
+                },
+            }
+        ]
+    }
+    state_path.write_text(json.dumps(original, indent=2) + "\n", encoding="utf-8")
+
+    rc = registry.main(
+        [
+            "scope-set",
+            "--state",
+            str(state_path),
+            "--branch",
+            "feat/bad-claim",
+            "--scope",
+            json.dumps(
+                {
+                    "schema": "kg.worktree.scope.v1",
+                    "files": [{"path": "ops/other.py", "operation": "modify"}],
+                }
+            ),
+            "--json",
+        ]
+    )
+
+    assert rc == registry.EXIT_CLAIMED
+    assert (
+        state_path.read_text(encoding="utf-8") == json.dumps(original, indent=2) + "\n"
+    )
+
+
 @pytest.mark.parametrize("claim_generation", [None, -1, True, 1.5, "1"])
-def test_invalid_claim_generation_is_visible_and_blocks_active_mutation(
+def test_invalid_claim_generation_is_visible_and_blocks_only_matching_mutation(
     tmp_path: Path, capsys, claim_generation: object
 ) -> None:
     state_path = tmp_path / "registry.json"
@@ -226,8 +387,11 @@ def test_invalid_claim_generation_is_visible_and_blocks_active_mutation(
         ]
     )
 
-    assert register_rc == registry.EXIT_CLAIMED
-    assert state_path.read_text(encoding="utf-8") == original
+    assert register_rc == registry.EXIT_OK
+    updated = registry.load_state(state_path)
+    assert updated["records"][0]["claim_generation"] == claim_generation
+    assert updated["records"][1]["branch"] == "feat/new-while-claim-invalid"
+    assert updated["problems"] == [problem]
 
 
 def test_invalid_terminal_claim_generation_is_audit_only(tmp_path: Path) -> None:

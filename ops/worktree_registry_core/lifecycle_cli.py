@@ -17,7 +17,7 @@ from .lifecycle import (
     transition_record,
     validate_terminal_proof,
 )
-from .records import SCHEMA, mutation_blockers, record_matches
+from .records import SCHEMA, mutation_blockers_for_target, record_matches
 from .storage import ledger_lock, save_state
 
 
@@ -59,7 +59,11 @@ def cmd_resolve(args: argparse.Namespace, *, resolve_statuses: tuple[str, ...]) 
     )
     with ledger_lock(target):
         state = load_state(target)
-        blockers = mutation_blockers(state)
+        blockers = mutation_blockers_for_target(
+            state,
+            branch=args.branch,
+            path=args.path,
+        )
         if blockers:
             print(
                 "✗ malformed ownership facts block registry mutation",
@@ -129,7 +133,11 @@ def cmd_discard(args: argparse.Namespace) -> int:
     target = state_path(args)
     with ledger_lock(target):
         state = load_state(target)
-        blockers = mutation_blockers(state)
+        blockers = mutation_blockers_for_target(
+            state,
+            branch=args.branch,
+            path=args.path,
+        )
         if blockers:
             print(
                 "✗ malformed ownership facts block registry mutation",

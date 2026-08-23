@@ -23,7 +23,7 @@ from .records import (
     STATUS_CLEANUP_PENDING,
     STATUS_PUBLISHED,
     legacy_external_ids,
-    mutation_blockers,
+    mutation_blockers_for_target,
     norm_path,
     record_matches,
 )
@@ -66,7 +66,12 @@ def cmd_record_published_base(args: argparse.Namespace) -> int:
     target = state_path(args)
     with ledger_lock(target):
         state = load_state(target)
-        blockers = mutation_blockers(state)
+        blockers = mutation_blockers_for_target(
+            state,
+            branch=args.branch,
+            path=args.path,
+            external_ids_value=args.lane,
+        )
         if blockers:
             print(
                 "✗ malformed ownership facts block registry mutation", file=sys.stderr
