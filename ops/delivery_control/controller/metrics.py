@@ -54,6 +54,11 @@ class PipelineMetrics:
     # aggregate metric.
     active_registry_without_worktree_owner_bound: int | None = None
     active_registry_without_worktree_ownerless: int | None = None
+    # Measured owner-bound claims are split by runtime reachability. None
+    # preserves the legacy direct-construction contract; measured inventories
+    # must not turn an unreachable owner into a recover/wake action.
+    active_registry_without_worktree_owner_reachable: int | None = None
+    active_registry_without_worktree_owner_unreachable: int | None = None
     malformed_active_registry_records: int = 0
     # Branch refs are a separate delivery-asset reservoir. These counters
     # expose lifecycle residue without authorizing cleanup.
@@ -218,6 +223,20 @@ def measure_pipeline(
         and not bool(lane.registry is not None and lane.registry.owner_thread_id)
         for lane in active_registry_lanes
     )
+    active_registry_without_worktree_owner_reachable = sum(
+        lane.physical is None
+        and lane.registry is not None
+        and lane.registry.owner_thread_id is not None
+        and lane.owner_reachable is True
+        for lane in active_registry_lanes
+    )
+    active_registry_without_worktree_owner_unreachable = sum(
+        lane.physical is None
+        and lane.registry is not None
+        and lane.registry.owner_thread_id is not None
+        and lane.owner_reachable is not True
+        for lane in active_registry_lanes
+    )
     branch_assets = inventory.branch_lifecycle.assets
     normal_branch_dispositions = {
         BranchDisposition.PROTECTED,
@@ -344,6 +363,12 @@ def measure_pipeline(
         ),
         active_registry_without_worktree_ownerless=(
             active_registry_without_worktree_ownerless
+        ),
+        active_registry_without_worktree_owner_reachable=(
+            active_registry_without_worktree_owner_reachable
+        ),
+        active_registry_without_worktree_owner_unreachable=(
+            active_registry_without_worktree_owner_unreachable
         ),
         malformed_active_registry_records=malformed_active_registry_records,
         branch_audit_items=branch_audit_items,

@@ -130,6 +130,7 @@ def project_active_lane(
         snapshot=snapshot,
         pull_requests=branch_prs,
         decision=derive_lane_decision(facts),
+        owner_reachable=is_owner_reachable,
         problems=tuple(problems),
         required_check=check,
         queue_entry=queue_entry,

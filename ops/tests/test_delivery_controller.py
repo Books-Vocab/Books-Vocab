@@ -833,6 +833,49 @@ def test_controller_splits_owner_bound_and_ownerless_residue_actions() -> None:
     assert ControlAction.AUDIT_OWNERLESS_LANES in decision.actions
 
 
+def test_controller_audits_unreachable_owner_residue_without_recovery_wake() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    decision = decide_capacity(
+        _metrics(
+            active_registry_records=2,
+            raw_active_registry_records=2,
+            active_registry_without_worktree=2,
+            active_registry_without_worktree_owner_bound=2,
+            active_registry_without_worktree_owner_reachable=0,
+            active_registry_without_worktree_owner_unreachable=2,
+        ),
+        cadence,
+    )
+
+    assert ControlAction.AUDIT_UNREACHABLE_OWNER_LANES in decision.actions
+    assert ControlAction.RECOVER_OWNER_BOUND_LANE not in decision.actions
+    assert any(
+        "do not wake" in reason
+        for reason in decision.reasons
+        if "owner-bound active registry" in reason
+    )
+
+
+def test_controller_splits_reachable_and_unreachable_owner_residue() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    decision = decide_capacity(
+        _metrics(
+            active_registry_records=3,
+            raw_active_registry_records=3,
+            active_registry_without_worktree=3,
+            active_registry_without_worktree_owner_bound=2,
+            active_registry_without_worktree_ownerless=1,
+            active_registry_without_worktree_owner_reachable=1,
+            active_registry_without_worktree_owner_unreachable=1,
+        ),
+        cadence,
+    )
+
+    assert ControlAction.RECOVER_OWNER_BOUND_LANE in decision.actions
+    assert ControlAction.AUDIT_UNREACHABLE_OWNER_LANES in decision.actions
+    assert ControlAction.AUDIT_OWNERLESS_LANES in decision.actions
+
+
 def test_hard_holds_block_ramp_and_solver_birth_until_reconciled() -> None:
     cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
     metrics = _metrics(security_hold_lanes=1, security_hold_issues=1)
@@ -1267,6 +1310,8 @@ def test_metrics_exposes_active_registry_residue_separately_from_development() -
     assert metrics.active_registry_without_worktree == 2
     assert metrics.active_registry_without_worktree_owner_bound == 1
     assert metrics.active_registry_without_worktree_ownerless == 1
+    assert metrics.active_registry_without_worktree_owner_reachable == 0
+    assert metrics.active_registry_without_worktree_owner_unreachable == 1
     assert (
         metrics.active_registry_without_worktree_owner_bound
         + metrics.active_registry_without_worktree_ownerless

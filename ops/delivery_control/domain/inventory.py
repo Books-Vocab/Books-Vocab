@@ -28,6 +28,11 @@ class LaneInspection:
     snapshot: WorktreeSnapshot | None
     pull_requests: tuple[PullRequestSnapshot, ...]
     decision: LaneDecision
+    # None is retained for legacy/direct-constructed inspections that did not
+    # carry a runtime liveness observation. Measured active lanes always set a
+    # boolean so capacity policy can distinguish recoverable owners from
+    # unreachable owners without inferring liveness from owner identity.
+    owner_reachable: bool | None = None
     problems: tuple[InventoryProblem, ...] = ()
     required_check: CheckSnapshot | None = None
     queue_entry: MergeQueueEntrySnapshot | None = None
