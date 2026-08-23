@@ -152,9 +152,7 @@ def test_raw_issue_query_rejects_repeated_pagination_cursor() -> None:
         GitHubCliAdapter(runner=runner).list_open_issues()
 
 
-def test_raw_issue_query_preserves_malformed_graphql_node_without_inventing_number() -> (
-    None
-):
+def test_raw_issue_query_preserves_malformed_graphql_node_without_inventing_number() -> None:
     response = json.dumps(
         {
             "data": {
@@ -260,7 +258,7 @@ def test_admission_stops_before_mutation_when_label_is_not_configured() -> None:
     assert not any(call[:3] == ("gh", "issue", "edit") for call in runner.calls)
 
 
-def test_admission_stops_before_mutation_when_raw_inventory_has_source_problem() -> None:
+def test_admission_stops_before_mutation_when_target_source_entry_is_malformed() -> None:
     original = "Malformed candidate payload"
     malformed = _issue(7, body=original, labels=(CANDIDATE_ISSUE_LABEL,))
     runner = StaticRunner(
