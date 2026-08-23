@@ -981,6 +981,39 @@ def test_cli_routes_branch_content_inspection(capsys: object) -> None:
     assert payload["result"]["base_is_ancestor"] is False
 
 
+def test_cli_routes_unreachable_commit_inspection(capsys: object) -> None:
+    class FakeApplication:
+        def unreachable_commit_inspect(
+            self, *, commit_sha: str, max_paths: int
+        ) -> object:
+            assert commit_sha == "a" * 40
+            assert max_paths == 17
+            return {
+                "schema": "kg.delivery.unreachable-commit.v1",
+                "complete": True,
+                "unreachable": True,
+                "disposition": "preserve_for_owner_correlation",
+            }
+
+    assert (
+        main(
+            [
+                "unreachable-commit-inspect",
+                "--commit",
+                "a" * 40,
+                "--max-paths",
+                "17",
+            ],
+            application_factory=lambda **_: FakeApplication(),
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["command"] == "unreachable-commit-inspect"
+    assert payload["result"]["disposition"] == "preserve_for_owner_correlation"
+
+
 def test_cli_routes_paged_branch_review_plan(capsys: object) -> None:
     class FakeApplication:
         def branch_review_plan(self, *, offset: int, limit: int) -> object:

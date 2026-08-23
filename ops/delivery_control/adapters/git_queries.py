@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 
 from ..domain.branch_content import (
@@ -17,7 +18,11 @@ from ..domain.observations import (
     WorktreeSnapshot,
 )
 from ..domain.unreachable_commits import UnreachableCommitInventory
-from .errors import AdapterCommandError
+from ..domain.unreachable_commits import (
+    UNREACHABLE_COMMIT_PATH_LIMIT,
+    UnreachableCommitEvidence,
+)
+from .errors import AdapterCommandError, AdapterPayloadError
 from .git_client import GitCliClient
 from .git_parsing import (
     parse_branch_inventory,
@@ -34,6 +39,7 @@ from .git_parsing import (
 
 UNREACHABLE_COMMIT_SCAN_TIMEOUT_SECONDS = 30.0
 BRANCH_CONTENT_COMMIT_SUMMARY_LIMIT = 20
+_COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 class GitQueries:
@@ -122,6 +128,100 @@ class GitQueries:
             shas=shas,
             problems=problems,
             complete=not problems,
+        )
+
+    def inspect_unreachable_commit(
+        self,
+        *,
+        commit_sha: str,
+        max_paths: int = UNREACHABLE_COMMIT_PATH_LIMIT,
+    ) -> UnreachableCommitEvidence:
+        """Read bounded evidence for one object without creating a ref."""
+
+        if _COMMIT_SHA_RE.fullmatch(commit_sha) is None:
+            raise AdapterPayloadError("unreachable commit SHA is malformed")
+        if type(max_paths) is not int or max_paths <= 0:
+            raise AdapterPayloadError("unreachable commit path limit is invalid")
+
+        inventory = self.unreachable_commit_inventory()
+        source_problem = "; ".join(inventory.problems)
+        if not inventory.complete and commit_sha not in inventory.shas:
+            return UnreachableCommitEvidence(
+                schema="kg.delivery.unreachable-commit.v1",
+                commit_sha=commit_sha,
+                parent_shas=(),
+                subject=None,
+                unreachable=None,
+                changed_paths=(),
+                changed_path_count=0,
+                changed_paths_truncated=False,
+                change_fingerprint=None,
+                disposition="source_problem",
+                source_problem_scope="git_objects",
+                next_step="repair fsck source evidence before any owner or cleanup decision",
+                complete=False,
+                error=source_problem,
+            )
+        if inventory.complete is True and commit_sha not in inventory.shas:
+            return UnreachableCommitEvidence(
+                schema="kg.delivery.unreachable-commit.v1",
+                commit_sha=commit_sha,
+                parent_shas=(),
+                subject=None,
+                unreachable=False,
+                changed_paths=(),
+                changed_path_count=0,
+                changed_paths_truncated=False,
+                change_fingerprint=None,
+                disposition="refuse_not_unreachable",
+                source_problem_scope=None,
+                next_step="preserve current refs and require a fresh unreachable-object readback",
+                complete=False,
+                error="commit is not present in the current unreachable inventory",
+            )
+
+        metadata = self.client.run("show", "-s", "--format=%H%x00%P%x00%s", commit_sha)
+        fields = metadata.split("\0", 2)
+        if len(fields) != 3 or fields[0] != commit_sha or not fields[2]:
+            raise AdapterPayloadError("unreachable commit metadata is malformed")
+        parent_shas = tuple(fields[1].split())
+        if any(_COMMIT_SHA_RE.fullmatch(parent) is None for parent in parent_shas):
+            raise AdapterPayloadError("unreachable commit parents are malformed")
+
+        diff_payload = self.client.run(
+            "show",
+            "--format=",
+            "--name-status",
+            "-z",
+            "--find-renames=100%",
+            "--find-copies=100%",
+            commit_sha,
+        )
+        changes = parse_changed_files(diff_payload)
+        changed_paths = tuple(sorted(change.path for change in changes))
+        return UnreachableCommitEvidence(
+            schema="kg.delivery.unreachable-commit.v1",
+            commit_sha=commit_sha,
+            parent_shas=parent_shas,
+            subject=fields[2],
+            unreachable=True,
+            changed_paths=changed_paths[:max_paths],
+            changed_path_count=len(changed_paths),
+            changed_paths_truncated=len(changed_paths) > max_paths,
+            change_fingerprint=hashlib.sha256(diff_payload.encode("utf-8")).hexdigest(),
+            disposition=(
+                "preserve_with_source_problem"
+                if source_problem
+                else "preserve_for_owner_correlation"
+            ),
+            source_problem_scope="git_objects" if source_problem else None,
+            next_step=(
+                "repair fsck source evidence before any owner or cleanup decision"
+                if source_problem
+                else "correlate with an owner, Issue, or PR before any lifecycle action"
+            ),
+            complete=not source_problem,
+            error=source_problem or None,
         )
 
     def remote_branch_sha(self, branch: str) -> str | None:

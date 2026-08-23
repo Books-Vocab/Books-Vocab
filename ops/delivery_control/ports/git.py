@@ -53,6 +53,14 @@ class BranchContentQueryPort(Protocol):
     ) -> tuple[MainLandingSnapshot, ...]: ...
 
 
+class UnreachableCommitQueryPort(Protocol):
+    """Optional read-only capability for one unreachable commit object."""
+
+    def inspect_unreachable_commit(
+        self, *, commit_sha: str, max_paths: int
+    ) -> object: ...
+
+
 @runtime_checkable
 class GitCommandPort(Protocol):
     def push_branch(

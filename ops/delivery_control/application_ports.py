@@ -5,7 +5,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Protocol
 
-from .ports.git import BranchContentQueryPort, GitCommandPort, GitQueryPort
+from .ports.git import (
+    BranchContentQueryPort,
+    GitCommandPort,
+    GitQueryPort,
+    UnreachableCommitQueryPort,
+)
 from .ports.github import (
     GitHubCommandPort,
     GitHubQueryPort,
@@ -24,7 +29,13 @@ def _utc_now() -> datetime:
     return datetime.now(tz=UTC)
 
 
-class DeliveryGitPort(GitQueryPort, BranchContentQueryPort, GitCommandPort, Protocol):
+class DeliveryGitPort(
+    GitQueryPort,
+    BranchContentQueryPort,
+    UnreachableCommitQueryPort,
+    GitCommandPort,
+    Protocol,
+):
     pass
 
 
