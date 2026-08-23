@@ -24,6 +24,18 @@ from .registry_parsing import (
 )
 
 
+def _registry_identity(raw: Mapping[str, Any], index: int) -> tuple[str, str]:
+    """Return an identity and its source field without guessing later."""
+
+    branch = raw.get("branch")
+    if branch:
+        return str(branch), "branch"
+    path = raw.get("path")
+    if path:
+        return str(path), "path"
+    return f"record[{index}]", "record"
+
+
 def load_registry_list(
     runner: CommandRunnerPort, argv: tuple[str, ...]
 ) -> Mapping[str, Any]:
@@ -46,15 +58,22 @@ def registry_inventory(payload: Mapping[str, Any]) -> RegistryInventory:
         if not isinstance(raw, Mapping):
             problems.append(
                 InventoryProblem(
-                    "registry", f"record[{index}]", "record is not an object"
+                    "registry",
+                    f"record[{index}]",
+                    "record is not an object",
+                    identity_kind="record",
                 )
             )
             continue
-        identity = str(raw.get("branch") or raw.get("path") or f"record[{index}]")
+        identity, identity_kind = _registry_identity(raw, index)
         try:
             records.append(parse_registry_record(raw))
         except (KeyError, TypeError, ValueError, InvalidScope) as error:
-            problems.append(InventoryProblem("registry", identity, str(error)))
+            problems.append(
+                InventoryProblem(
+                    "registry", identity, str(error), identity_kind=identity_kind
+                )
+            )
     return RegistryInventory(records=tuple(records), problems=tuple(problems))
 
 
@@ -65,25 +84,35 @@ def collision_inventory(payload: Mapping[str, Any]) -> RegistryCollisionInventor
         if not isinstance(raw, Mapping):
             problems.append(
                 InventoryProblem(
-                    "registry", f"record[{index}]", "record is not an object"
+                    "registry",
+                    f"record[{index}]",
+                    "record is not an object",
+                    identity_kind="record",
                 )
             )
             continue
-        identity = str(raw.get("branch") or raw.get("path") or f"record[{index}]")
+        identity, identity_kind = _registry_identity(raw, index)
         status = raw.get("status")
         if status in {"merged", "abandoned", "published"}:
             continue
         if status not in {"active", "cleanup_pending"}:
             problems.append(
                 InventoryProblem(
-                    "registry", identity, "registry status is not collision-safe"
+                    "registry",
+                    identity,
+                    "registry status is not collision-safe",
+                    identity_kind=identity_kind,
                 )
             )
             continue
         try:
             records.append(parse_collision_claim(raw))
         except (KeyError, TypeError, ValueError, InvalidScope) as error:
-            problems.append(InventoryProblem("registry", identity, str(error)))
+            problems.append(
+                InventoryProblem(
+                    "registry", identity, str(error), identity_kind=identity_kind
+                )
+            )
     return RegistryCollisionInventory(records=tuple(records), problems=tuple(problems))
 
 

@@ -26,6 +26,12 @@ _REGISTRY_STATUSES = {
     "abandoned",
 }
 _TERMINAL_STATUSES = frozenset({"published", "merged", "abandoned"})
+_IDENTITY_KINDS = frozenset({"branch", "path", "record", "unknown"})
+
+
+def _reported_identity_kind(raw: Mapping[str, Any]) -> str | None:
+    value = raw.get("identity_kind")
+    return value if isinstance(value, str) and value in _IDENTITY_KINDS else None
 
 
 def reported_problems(payload: Mapping[str, Any]) -> tuple[InventoryProblem, ...]:
@@ -51,7 +57,12 @@ def reported_problems(payload: Mapping[str, Any]) -> tuple[InventoryProblem, ...
             and reason.strip()
         ):
             problems.append(
-                InventoryProblem("registry", identity.strip(), reason.strip())
+                InventoryProblem(
+                    "registry",
+                    identity.strip(),
+                    reason.strip(),
+                    identity_kind=_reported_identity_kind(raw),
+                )
             )
             continue
         kind = raw.get("kind") if isinstance(raw, Mapping) else None
@@ -65,7 +76,18 @@ def reported_problems(payload: Mapping[str, Any]) -> tuple[InventoryProblem, ...
             detail = kind.strip()
             if isinstance(reason, str) and reason.strip():
                 detail = f"{detail}: {reason.strip()}"
-            problems.append(InventoryProblem("registry", problem_identity, detail))
+            problems.append(
+                InventoryProblem(
+                    "registry",
+                    problem_identity,
+                    detail,
+                    identity_kind=(
+                        "record"
+                        if type(record_index) is int and record_index >= 0
+                        else _reported_identity_kind(raw)
+                    ),
+                )
+            )
             continue
         problems.append(
             InventoryProblem(

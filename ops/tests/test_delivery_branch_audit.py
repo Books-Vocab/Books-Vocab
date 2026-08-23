@@ -143,8 +143,9 @@ def test_branch_audit_keeps_source_problems_visible_and_fail_closed() -> None:
             reason="bad record",
             category="registry_source_problem",
             next_step=(
-                "preserve all affected branch/worktree assets; reconcile the malformed "
-                "registry record through its supported owner lifecycle before cleanup"
+                "preserve all branch/worktree assets; the malformed registry identity "
+                "cannot be scoped safely, so reconcile it through its supported "
+                "owner lifecycle before cleanup"
             ),
         ),
     )
@@ -171,6 +172,113 @@ def test_branch_audit_withholds_otherwise_safe_cleanup_when_source_is_incomplete
     assert report.actions[0].category == "source_incomplete"
     assert report.actions[0].safe_terminal is False
     assert report.actions[0].suggested_command is None
+    assert report.safe_terminal_actions == ()
+
+
+def test_branch_audit_scopes_registry_problem_to_exact_branch() -> None:
+    lifecycle = project_branch_lifecycle(
+        branch_inventory=BranchInventory(
+            local=(("feat/merged", SHA_B), ("feat/other", SHA_A)),
+        ),
+        records=(_record("feat/merged", "merged", SHA_B),),
+        pull_requests=(_pr(1483, "feat/merged", "MERGED", SHA_B),),
+    )
+    inventory = DeliveryInventory(
+        lanes=(),
+        branch_lifecycle=lifecycle,
+        source_problems=(
+            InventoryProblem(
+                "registry",
+                "feat/other-history",
+                "malformed legacy record",
+                identity_kind="branch",
+            ),
+        ),
+    )
+
+    report = build_branch_audit(
+        inventory,
+        orphan_preflights={
+            "feat/other": OrphanBranchPreflight(
+                schema="kg.delivery.orphan-branch-preflight.v1",
+                branch="feat/other",
+                expected_head_sha=SHA_A,
+                main_sha=SHA_A,
+                eligible=True,
+                passed_checks=("all exact checks passed",),
+                blockers=(),
+            )
+        },
+    )
+
+    assert report.complete is False
+    assert report.source_problem_scope_counts == {"branch": 1}
+    assert len(report.safe_terminal_actions) == 2
+    assert report.source_problem_actions[0].affected_branch == "feat/other-history"
+    assert report.source_problem_actions[0].scope == "branch"
+
+
+def test_branch_audit_withholds_exact_affected_branch_but_not_unrelated_branch() -> (
+    None
+):
+    lifecycle = project_branch_lifecycle(
+        branch_inventory=BranchInventory(
+            local=(("feat/merged", SHA_B), ("feat/other", SHA_A)),
+        ),
+        records=(_record("feat/merged", "merged", SHA_B),),
+        pull_requests=(_pr(1483, "feat/merged", "MERGED", SHA_B),),
+    )
+    inventory = DeliveryInventory(
+        lanes=(),
+        branch_lifecycle=lifecycle,
+        source_problems=(
+            InventoryProblem(
+                "registry",
+                "feat/merged",
+                "malformed target record",
+                identity_kind="branch",
+            ),
+        ),
+    )
+
+    report = build_branch_audit(
+        inventory,
+        orphan_preflights={
+            "feat/other": OrphanBranchPreflight(
+                schema="kg.delivery.orphan-branch-preflight.v1",
+                branch="feat/other",
+                expected_head_sha=SHA_A,
+                main_sha=SHA_A,
+                eligible=True,
+                passed_checks=("all exact checks passed",),
+                blockers=(),
+            )
+        },
+    )
+
+    affected = next(item for item in report.actions if item.branch == "feat/merged")
+    unrelated = next(item for item in report.actions if item.branch == "feat/other")
+    assert affected.safe_terminal is False
+    assert affected.category == "source_incomplete"
+    assert unrelated.safe_terminal is True
+    assert len(report.safe_terminal_actions) == 1
+
+
+def test_branch_audit_keeps_unscoped_source_problem_global() -> None:
+    lifecycle = project_branch_lifecycle(
+        branch_inventory=BranchInventory(local=(("feat/orphan", SHA_A),))
+    )
+    inventory = DeliveryInventory(
+        lanes=(),
+        branch_lifecycle=lifecycle,
+        source_problems=(
+            InventoryProblem("registry", "/tmp/legacy-record", "malformed", "path"),
+        ),
+    )
+
+    report = build_branch_audit(inventory)
+
+    assert report.source_problem_scope_counts == {"global": 1}
     assert report.safe_terminal_actions == ()
 
 
