@@ -17,6 +17,7 @@ class ControlAction(StrEnum):
     AUDIT_TRANSPORT_SLO = "audit_transport_slo"
     AUDIT_QUARANTINE = "audit_quarantine"
     AUDIT_SYNC_TELEMETRY = "audit_sync_telemetry"
+    AUDIT_BRANCH_LIFECYCLE = "audit_branch_lifecycle"
     AUDIT_CI_START_SLO = "audit_ci_start_slo"
     AUDIT_QUEUE_ADMISSION_SLO = "audit_queue_admission_slo"
     AUDIT_MERGE_CADENCE = "audit_merge_cadence"
@@ -160,6 +161,18 @@ def decide_capacity(
             (
                 f"{metrics.active_registry_without_worktree_ownerless} ownerless active "
                 "registry claim(s) have no physical worktree; audit ownership only"
+            ),
+        )
+    if metrics.branch_audit_items:
+        add(
+            ControlAction.AUDIT_BRANCH_LIFECYCLE,
+            (
+                f"{metrics.branch_audit_items} branch asset(s) need lifecycle audit "
+                f"(local orphan={metrics.local_orphan_branches}, "
+                f"remote orphan={metrics.remote_orphan_branches}, "
+                f"merged cleanup={metrics.merged_branch_cleanup_ready}, "
+                f"remote drift={metrics.remote_drift_branches}); "
+                "run branch-audit/branch-review-plan; observation only"
             ),
         )
     if metrics.security_hold_issues or metrics.security_hold_lanes:
