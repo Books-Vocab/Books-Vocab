@@ -44,6 +44,10 @@ class PipelineMetrics:
     dispatchable_candidate_issues: int | None = None
     raw_open_issues: int | None = 0
     unadmitted_open_issues: int | None = 0
+    active_registry_records: int = 0
+    raw_active_registry_records: int = 0
+    active_registry_without_worktree: int = 0
+    malformed_active_registry_records: int = 0
     triage_required_issues: int = 0
     legacy_open_issues: int = 0
     issues_with_active_claim: int = 0
@@ -174,6 +178,22 @@ def measure_pipeline(
     physical_paths = {
         lane.physical.path.resolve() for lane in lanes if lane.physical is not None
     }
+    active_registry_lanes = tuple(
+        lane
+        for lane in lanes
+        if lane.registry is not None and lane.registry.status == "active"
+    )
+    malformed_active_registry_records = sum(
+        problem.source == "registry" and problem.record_status == "active"
+        for problem in inventory.source_problems
+    )
+    active_registry_records = len(active_registry_lanes)
+    raw_active_registry_records = (
+        active_registry_records + malformed_active_registry_records
+    )
+    active_registry_without_worktree = sum(
+        lane.physical is None for lane in active_registry_lanes
+    )
     collision_lanes = states.count(LaneState.BLOCKED_COLLISION)
     security_hold_lanes = states.count(LaneState.SECURITY_HOLD)
     live_states = [
@@ -266,6 +286,10 @@ def measure_pipeline(
         dispatchable_candidate_issues=len(inventory.dispatchable_candidate_issues),
         raw_open_issues=inventory.demand_issues.raw_open_issues,
         unadmitted_open_issues=inventory.demand_issues.unadmitted_open_issues,
+        active_registry_records=active_registry_records,
+        raw_active_registry_records=raw_active_registry_records,
+        active_registry_without_worktree=active_registry_without_worktree,
+        malformed_active_registry_records=malformed_active_registry_records,
         triage_required_issues=inventory.demand_issues.count(
             IssueDisposition.TRIAGE_REQUIRED
         ),

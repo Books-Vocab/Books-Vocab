@@ -34,6 +34,7 @@ from delivery_control.domain.candidate_issues import (
 from delivery_control.domain.isolation import IsolationSummary
 from delivery_control.domain.models import Scope
 from delivery_control.domain.observations import (
+    InventoryProblem,
     PhysicalWorktree,
     PullRequestSnapshot,
     RegistrySnapshot,
@@ -105,10 +106,7 @@ def test_merge_cadence_measures_hourly_rate_and_nearest_rank_p95() -> None:
 
 
 def test_candidate_occupancy_accepts_issue_number_and_exact_url_forms() -> None:
-    candidates = tuple(
-        _candidate(number)
-        for number in range(7, 11)
-    )
+    candidates = tuple(_candidate(number) for number in range(7, 11))
 
     unclaimed = unclaimed_candidate_issues(
         candidates,
@@ -176,7 +174,9 @@ def test_controller_drains_every_existing_reservoir_without_serializing() -> Non
     assert decision.desired_new_solvers == 4
 
 
-def test_candidate_policy_replenishes_low_reservoir_while_dispatching_existing_supply() -> None:
+def test_candidate_policy_replenishes_low_reservoir_while_dispatching_existing_supply() -> (
+    None
+):
     cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
 
     decision = decide_capacity(_metrics(candidate_issues=2), cadence)
@@ -188,7 +188,9 @@ def test_candidate_policy_replenishes_low_reservoir_while_dispatching_existing_s
     assert decision.desired_new_solvers == 2
 
 
-def test_candidate_policy_never_dispatches_more_solvers_than_unclaimed_candidates() -> None:
+def test_candidate_policy_never_dispatches_more_solvers_than_unclaimed_candidates() -> (
+    None
+):
     cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
 
     decision = decide_capacity(_metrics(candidate_issues=0), cadence)
@@ -442,9 +444,7 @@ def test_reanchor_lane_is_measured_and_moved_to_merge_front() -> None:
                 ),
             ),
         ),
-        candidate_issues=(
-            _candidate(1),
-        ),
+        candidate_issues=(_candidate(1),),
     )
 
     metrics = measure_pipeline(inventory)
@@ -538,7 +538,10 @@ def test_hard_holds_block_ramp_and_solver_birth_until_reconciled() -> None:
     )
 
     assert readiness.ready is False
-    assert "explicit P0/P1/security holds require terminal disposition" in readiness.blockers
+    assert (
+        "explicit P0/P1/security holds require terminal disposition"
+        in readiness.blockers
+    )
 
 
 def test_controller_disables_solver_birth_for_unmapped_or_duplicate_prs() -> None:
@@ -598,8 +601,11 @@ def test_worktree_boundary_requires_explicit_supervision_manifest() -> None:
     assert partition.canonical_count == 1
 
     unknown = partition_worktrees(
-        (PhysicalWorktree(canonical, "a" * 40, "main"), *supervision,
-         PhysicalWorktree(Path("/unknown/product"), "c" * 40, "feat/unknown")),
+        (
+            PhysicalWorktree(canonical, "a" * 40, "main"),
+            *supervision,
+            PhysicalWorktree(Path("/unknown/product"), "c" * 40, "feat/unknown"),
+        ),
         canonical_path=canonical,
         supervision_paths=tuple(item.path for item in supervision),
     )
@@ -819,6 +825,51 @@ def test_idle_worktrees_include_clean_unregistered_physical_checkout() -> None:
 
     assert metrics.idle_worktrees == 1
     assert metrics.source_problems == 0
+
+
+def test_metrics_exposes_active_registry_residue_separately_from_development() -> None:
+    active_record = RegistrySnapshot(
+        lane_id="#active",
+        branch="debug/active",
+        path=Path("/tmp/active"),
+        status="active",
+        scope=Scope.from_paths(modify=("ops/active.py",)),
+        base_sha="a" * 40,
+        claim_generation=1,
+    )
+    inventory = DeliveryInventory(
+        lanes=(
+            LaneInspection(
+                key="#active",
+                registry=active_record,
+                physical=None,
+                snapshot=None,
+                pull_requests=(),
+                decision=LaneDecision(
+                    LaneState.BLOCKED_OWNER,
+                    NextAction.RECOVER_OWNER,
+                    "owner unavailable",
+                ),
+            ),
+        ),
+        source_problems=(
+            InventoryProblem(
+                "registry",
+                "debug/malformed-active",
+                "claim_generation must be a non-negative integer",
+                identity_kind="branch",
+                record_status="active",
+            ),
+        ),
+    )
+
+    metrics = measure_pipeline(inventory)
+
+    assert metrics.active_development == 0
+    assert metrics.active_registry_records == 1
+    assert metrics.raw_active_registry_records == 2
+    assert metrics.active_registry_without_worktree == 1
+    assert metrics.malformed_active_registry_records == 1
 
 
 def test_unknown_unregistered_worktree_cleanliness_is_a_source_problem() -> None:
