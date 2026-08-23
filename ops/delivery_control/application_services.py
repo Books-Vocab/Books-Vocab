@@ -69,6 +69,26 @@ from .services.publish import PublishService, receipt_from_active_claim
 from .services.publish_preflight import PublishPreflightService
 
 
+_REVIEWABLE_LOCAL_ORPHAN_BLOCKERS = frozenset(
+    {"orphan branch tip is not an ancestor of live origin/main"}
+)
+
+
+def _is_reviewable_local_orphan(action: object) -> bool:
+    """Keep owner/remote/source blockers out of the content-review queue."""
+
+    preflight = getattr(action, "orphan_preflight", None)
+    blockers = getattr(preflight, "blockers", ()) if preflight is not None else ()
+    return (
+        getattr(action, "side", None) is BranchSide.LOCAL
+        and getattr(action, "category", None) == "local_orphan_blocked"
+        and getattr(action, "review_command", None) is not None
+        and preflight is not None
+        and not preflight.eligible
+        and set(blockers) == _REVIEWABLE_LOCAL_ORPHAN_BLOCKERS
+    )
+
+
 @dataclass(frozen=True)
 class DeliveryApplication:
     repo: Path
@@ -200,9 +220,7 @@ class DeliveryApplication:
                 (
                     action
                     for action in audit.actions
-                    if action.side is BranchSide.LOCAL
-                    and action.review_command is not None
-                    and action.orphan_preflight is not None
+                    if _is_reviewable_local_orphan(action)
                 ),
                 key=lambda action: (action.branch, action.sha),
             )
