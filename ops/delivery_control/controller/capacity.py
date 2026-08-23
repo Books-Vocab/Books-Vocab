@@ -16,6 +16,7 @@ class ControlAction(StrEnum):
     PUBLISH_HANDBACKS = "publish_handbacks"
     AUDIT_TRANSPORT_SLO = "audit_transport_slo"
     AUDIT_QUARANTINE = "audit_quarantine"
+    AUDIT_SYNC_TELEMETRY = "audit_sync_telemetry"
     AUDIT_CI_START_SLO = "audit_ci_start_slo"
     AUDIT_QUEUE_ADMISSION_SLO = "audit_queue_admission_slo"
     AUDIT_MERGE_CADENCE = "audit_merge_cadence"
@@ -149,6 +150,20 @@ def decide_capacity(
             (
                 f"{metrics.recoverable_quarantine} quarantined delivery observations "
                 "need owner or terminal-evidence reconciliation"
+            ),
+        )
+    if (
+        cadence.merged_count
+        and metrics.timings.merge_to_sync_samples < cadence.merged_count
+    ):
+        missing_sync_samples = (
+            cadence.merged_count - metrics.timings.merge_to_sync_samples
+        )
+        add(
+            ControlAction.AUDIT_SYNC_TELEMETRY,
+            (
+                f"{missing_sync_samples} recent merge landing(s) lack "
+                "merge-to-main sync telemetry"
             ),
         )
     if (

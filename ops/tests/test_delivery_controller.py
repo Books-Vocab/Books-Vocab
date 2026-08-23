@@ -252,6 +252,40 @@ def test_quarantine_observation_is_absent_without_quarantined_residue() -> None:
     assert ControlAction.AUDIT_QUARANTINE not in decision.actions
 
 
+def test_recent_merges_without_sync_telemetry_have_observation_action() -> None:
+    now = datetime(2026, 8, 21, 12, tzinfo=UTC)
+    cadence = measure_merge_cadence(
+        (now - timedelta(seconds=90), now - timedelta(seconds=30)), now=now
+    )
+    decision = decide_capacity(
+        _metrics(timings=PipelineTimings(merge_to_sync_samples=0)), cadence
+    )
+
+    assert ControlAction.AUDIT_SYNC_TELEMETRY in decision.actions
+    assert ControlAction.THROTTLE_SOLVERS not in decision.actions
+
+
+def test_sync_telemetry_observation_clears_when_each_recent_merge_is_sampled() -> None:
+    now = datetime(2026, 8, 21, 12, tzinfo=UTC)
+    cadence = measure_merge_cadence(
+        (now - timedelta(seconds=90), now - timedelta(seconds=30)), now=now
+    )
+    decision = decide_capacity(
+        _metrics(timings=PipelineTimings(merge_to_sync_samples=2)), cadence
+    )
+
+    assert ControlAction.AUDIT_SYNC_TELEMETRY not in decision.actions
+
+
+def test_sync_telemetry_observation_is_absent_without_recent_merges() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, 12, tzinfo=UTC))
+    decision = decide_capacity(
+        _metrics(timings=PipelineTimings(merge_to_sync_samples=0)), cadence
+    )
+
+    assert ControlAction.AUDIT_SYNC_TELEMETRY not in decision.actions
+
+
 def test_ci_start_slo_breach_is_not_a_required_repair_without_failed_checks() -> None:
     cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
     decision = decide_capacity(
@@ -563,6 +597,7 @@ def test_controller_reports_healthy_only_with_cadence_and_capacity_watermarks() 
             open_prs=10,
             required_running=3,
             merge_queue_depth=3,
+            timings=PipelineTimings(merge_to_sync_samples=12),
         ),
         healthy_cadence,
     )
