@@ -74,7 +74,9 @@ def _spec(number: int, *, holds: tuple[str, ...] = ()) -> CandidateSpec:
     )
 
 
-def _record(number: int, status: str, *, external_id: str | None = None) -> RegistrySnapshot:
+def _record(
+    number: int, status: str, *, external_id: str | None = None
+) -> RegistrySnapshot:
     return RegistrySnapshot(
         lane_id=f"lane-{number}",
         branch=f"debug/issue-{number}",
@@ -156,9 +158,7 @@ def test_incomplete_issue_inventory_keeps_unknown_backlog_distinct_from_zero() -
         records=(),
         raw_count=None,
         complete=False,
-        problems=(
-            InventoryProblem("github", "open-issues", "rate limited"),
-        ),
+        problems=(InventoryProblem("github", "open-issues", "rate limited"),),
     )
     metrics = measure_pipeline(
         DeliveryInventory(lanes=(), demand_issues=inventory),
@@ -179,6 +179,11 @@ def test_incomplete_issue_inventory_keeps_unknown_backlog_distinct_from_zero() -
 def test_unknown_raw_count_cannot_claim_complete_inventory() -> None:
     with pytest.raises(ValueError, match="unknown raw_count"):
         DemandIssueInventory(records=(), raw_count=None, complete=True)
+
+
+def test_complete_issue_inventory_cannot_hide_unrepresented_raw_entries() -> None:
+    with pytest.raises(ValueError, match="must represent every raw entry"):
+        DemandIssueInventory(records=(), raw_count=1, complete=True)
 
 
 def test_projection_assigns_one_disposition_with_fixed_precedence() -> None:
@@ -224,7 +229,9 @@ def test_projection_assigns_one_disposition_with_fixed_precedence() -> None:
         11: IssueDisposition.OWNER_BOUND,
     }
     assert projected.disposition_counts[IssueDisposition.TRIAGE_REQUIRED.value] == 1
-    assert projected.disposition_counts[IssueDisposition.DISPATCHABLE_CANDIDATE.value] == 1
+    assert (
+        projected.disposition_counts[IssueDisposition.DISPATCHABLE_CANDIDATE.value] == 1
+    )
     assert projected.raw_open_issues == 11
     assert projected.unadmitted_open_issues == 3
 
@@ -237,9 +244,7 @@ def test_security_candidate_is_observable_but_not_dispatchable() -> None:
             body=render_candidate_body(_spec(20, holds=("security",))),
         )
     )
-    projected = project_demand_inventory(
-        DemandIssueInventory((issue,), raw_count=1)
-    )
+    projected = project_demand_inventory(DemandIssueInventory((issue,), raw_count=1))
 
     assert projected.records[0].disposition is IssueDisposition.SECURITY_HOLD
     assert projected.dispatchable_candidate_issues == ()
@@ -247,9 +252,7 @@ def test_security_candidate_is_observable_but_not_dispatchable() -> None:
 
 
 def test_explicit_security_hold_wins_over_existing_owner_mapping() -> None:
-    issue = parse_demand_issue(
-        _payload(21, body="## Security hold / priority\nP1")
-    )
+    issue = parse_demand_issue(_payload(21, body="## Security hold / priority\nP1"))
 
     projected = project_demand_inventory(
         DemandIssueInventory((issue,), raw_count=1),
@@ -317,9 +320,7 @@ def test_replenishment_waits_until_raw_backlog_is_drained() -> None:
     issue = parse_demand_issue(
         _payload(30, labels=(CANDIDATE_ISSUE_LABEL,), body=render_candidate_body(spec))
     )
-    inventory = project_demand_inventory(
-        DemandIssueInventory((issue,), raw_count=1)
-    )
+    inventory = project_demand_inventory(DemandIssueInventory((issue,), raw_count=1))
     from delivery_control.domain.inventory import DeliveryInventory
 
     metrics = measure_pipeline(
@@ -390,5 +391,8 @@ def test_cli_issue_inventory_and_triage_plan_wrap_versioned_schemas() -> None:
 
     assert inventory_result["schema"] == "kg.delivery.issue-inventory.v1"
     assert inventory_result["raw_total"] == 1
-    assert inventory_result["partition_totals"][IssueDisposition.TRIAGE_REQUIRED.value] == 1
+    assert (
+        inventory_result["partition_totals"][IssueDisposition.TRIAGE_REQUIRED.value]
+        == 1
+    )
     assert triage_result["schema"] == "kg.delivery.triage-plan.v1"

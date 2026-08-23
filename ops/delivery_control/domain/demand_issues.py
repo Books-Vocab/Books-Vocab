@@ -168,6 +168,12 @@ class DemandIssueInventory:
         represented_entries = len(self.records) + len(self.source_entries)
         if self.raw_count is not None and self.raw_count < represented_entries:
             raise ValueError("raw_count must include every parsed and malformed entry")
+        if (
+            self.complete
+            and self.raw_count is not None
+            and (self.raw_count != represented_entries)
+        ):
+            raise ValueError("complete Issue inventory must represent every raw entry")
         object.__setattr__(
             self,
             "records",
