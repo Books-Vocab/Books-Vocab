@@ -9,13 +9,15 @@ from ..domain.models import HandbackReceipt
 from ..domain.observations import RegistrySnapshot
 from ..ports.registry import RegistryCleanupQueryPort, RegistryQueryPort
 
+_DURABLE_CLAIM_STATUSES = frozenset({"published", "cleanup_pending"})
+
 
 def _matches_receipt(item: RegistrySnapshot, receipt: HandbackReceipt) -> bool:
     return (
         item.lane_id == receipt.lane_id
         and item.branch == receipt.branch
         and item.path.resolve() == Path(receipt.worktree_path).resolve()
-        and item.status == "published"
+        and item.status in _DURABLE_CLAIM_STATUSES
         and item.base_sha == receipt.base_sha
         and item.scope == receipt.scope
         and item.claim_generation == receipt.claim_generation
@@ -38,14 +40,21 @@ def exact_published_record(
             path=Path(receipt.worktree_path),
             claim_generation=receipt.claim_generation,
         )
-        matches = [candidate] if candidate is not None and _matches_receipt(candidate, receipt) else []
+        matches = (
+            [candidate]
+            if candidate is not None and _matches_receipt(candidate, receipt)
+            else []
+        )
     else:
         inventory = registry.list_records()
         if inventory.problems:
             raise PolicyViolation("registry inventory is incomplete")
-        matches = [item for item in inventory.records if _matches_receipt(item, receipt)]
+        matches = [
+            item for item in inventory.records if _matches_receipt(item, receipt)
+        ]
     if len(matches) != 1:
         raise PolicyViolation(
-            "operation lacks one exact local receipt in published state"
+            "operation lacks one exact local receipt in published state "
+            "(published or cleanup-pending)"
         )
     return matches[0]

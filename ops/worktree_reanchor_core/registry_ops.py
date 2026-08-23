@@ -12,13 +12,18 @@ import worktree_registry as registry
 from .domain import RegistryPreflight, commit_sha, declared_operations
 from .errors import ReanchorRefused
 
+_PUBLISHED_CLAIM_STATUSES = frozenset({"published", "cleanup_pending"})
+
 
 def _select_original(
     state: dict[str, Any], *, lane_id: str, claim_generation: int
 ) -> dict[str, Any]:
     matches: list[dict[str, Any]] = []
     for record in state.get("records", []):
-        if not isinstance(record, dict) or record.get("status") != "published":
+        if (
+            not isinstance(record, dict)
+            or record.get("status") not in _PUBLISHED_CLAIM_STATUSES
+        ):
             continue
         try:
             external_ids = registry._legacy_external_ids(record)
@@ -78,8 +83,8 @@ def _replace_published(
     replacement_base: str,
     replacement_base_sha: str,
 ) -> dict[str, Any]:
-    if original.get("status") != "published":
-        raise ReanchorRefused("original claim is no longer published")
+    if original.get("status") not in _PUBLISHED_CLAIM_STATUSES:
+        raise ReanchorRefused("original claim is no longer resumable")
     if not registry._has_valid_stored_handback(original):
         raise ReanchorRefused("original published claim lacks a valid typed hand-back")
     _, resolved_at = registry.resolve_now()
