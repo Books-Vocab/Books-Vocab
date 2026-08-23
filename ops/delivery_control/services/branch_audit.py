@@ -35,6 +35,7 @@ class BranchAuditAction:
     suggested_command: str | None = None
     orphan_preflight: OrphanBranchPreflight | None = None
     review_command: str | None = None
+    owner_thread_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -266,6 +267,7 @@ def _action_for_asset(
             sha=asset.sha,
             disposition=asset.disposition,
             cleanup_action=asset.cleanup_action,
+            owner_thread_ids=asset.owner_thread_ids,
             category="preserve",
             safe_terminal=False,
             next_step="preserve protected branch; no cleanup",
@@ -277,6 +279,7 @@ def _action_for_asset(
             sha=asset.sha,
             disposition=asset.disposition,
             cleanup_action=asset.cleanup_action,
+            owner_thread_ids=asset.owner_thread_ids,
             category="durable_pr",
             safe_terminal=False,
             next_step="preserve durable PR; PI/CM owns the next lifecycle step",
@@ -288,6 +291,7 @@ def _action_for_asset(
             sha=asset.sha,
             disposition=asset.disposition,
             cleanup_action=asset.cleanup_action,
+            owner_thread_ids=asset.owner_thread_ids,
             category="owner_lane",
             safe_terminal=False,
             next_step="follow the original owner lane; do not delete or take over",
@@ -305,6 +309,7 @@ def _action_for_asset(
             sha=asset.sha,
             disposition=asset.disposition,
             cleanup_action=asset.cleanup_action,
+            owner_thread_ids=asset.owner_thread_ids,
             category="safe_terminal_candidate" if safe_terminal else "inspect",
             safe_terminal=safe_terminal,
             next_step=(
@@ -327,6 +332,7 @@ def _action_for_asset(
             sha=asset.sha,
             disposition=asset.disposition,
             cleanup_action=asset.cleanup_action,
+            owner_thread_ids=asset.owner_thread_ids,
             category=(
                 "safe_terminal_candidate" if eligible else "local_orphan_blocked"
             ),
@@ -357,6 +363,7 @@ def _action_for_asset(
             sha=asset.sha,
             disposition=asset.disposition,
             cleanup_action=asset.cleanup_action,
+            owner_thread_ids=asset.owner_thread_ids,
             category="remote_orphan_reconcile",
             safe_terminal=False,
             next_step="reconcile the original owner/lifecycle; never delete from audit",
@@ -368,6 +375,7 @@ def _action_for_asset(
             sha=asset.sha,
             disposition=asset.disposition,
             cleanup_action=asset.cleanup_action,
+            owner_thread_ids=asset.owner_thread_ids,
             category="abandoned_handback",
             safe_terminal=False,
             next_step="recover the owner or obtain explicit discard proof",
@@ -379,6 +387,7 @@ def _action_for_asset(
             sha=asset.sha,
             disposition=asset.disposition,
             cleanup_action=asset.cleanup_action,
+            owner_thread_ids=asset.owner_thread_ids,
             category="closed_pr_reconcile",
             safe_terminal=False,
             next_step="reconcile the closed PR through its supported lifecycle",
@@ -389,6 +398,7 @@ def _action_for_asset(
         sha=asset.sha,
         disposition=asset.disposition,
         cleanup_action=asset.cleanup_action,
+        owner_thread_ids=asset.owner_thread_ids,
         category="inspect",
         safe_terminal=False,
         next_step="inspect exact registry, PR, worktree, and remote-drift evidence",

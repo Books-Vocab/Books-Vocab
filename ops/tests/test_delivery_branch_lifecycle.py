@@ -8,22 +8,22 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.domain.branch_lifecycle import (
+from delivery_control.domain.branch_lifecycle import (  # noqa: E402
     BranchAsset,
     BranchCleanupAction,
     BranchDisposition,
     BranchSide,
 )
-from delivery_control.domain.branch_refs import BranchInventory
-from delivery_control.domain.errors import InvalidReceipt
-from delivery_control.domain.models import Scope
-from delivery_control.domain.observations import (
+from delivery_control.domain.branch_refs import BranchInventory  # noqa: E402
+from delivery_control.domain.errors import InvalidReceipt  # noqa: E402
+from delivery_control.domain.models import Scope  # noqa: E402
+from delivery_control.domain.observations import (  # noqa: E402
     PhysicalWorktree,
     PullRequestSnapshot,
     RegistrySnapshot,
     WorktreeSnapshot,
 )
-from delivery_control.services.branch_lifecycle_projection import (
+from delivery_control.services.branch_lifecycle_projection import (  # noqa: E402
     project_branch_lifecycle,
 )
 
@@ -38,6 +38,7 @@ def _record(
     status: str,
     handed_back_sha: str | None = None,
     base_sha: str = SHA_A,
+    owner_thread_id: str | None = None,
 ) -> RegistrySnapshot:
     return RegistrySnapshot(
         lane_id=f"LANE-{branch}",
@@ -49,6 +50,7 @@ def _record(
         claim_generation=1,
         handed_back_sha=handed_back_sha,
         handback_valid=handed_back_sha is not None,
+        owner_thread_id=owner_thread_id,
     )
 
 
@@ -119,6 +121,23 @@ def test_abandoned_handback_cannot_be_silently_deleted() -> None:
         asset.cleanup_action
         is BranchCleanupAction.RECOVER_OWNER_OR_REQUIRE_DISCARD_PROOF
     )
+
+
+def test_branch_asset_retains_owner_thread_evidence() -> None:
+    owner_thread_id = "01a016d3-1eb3-7722-8b30-3c54fe4c37ba"
+    asset = project_branch_lifecycle(
+        branch_inventory=BranchInventory(local=(("feat/owned", SHA_B),)),
+        records=(
+            _record(
+                "feat/owned",
+                status="active",
+                handed_back_sha=SHA_B,
+                owner_thread_id=owner_thread_id,
+            ),
+        ),
+    ).local[0]
+
+    assert asset.owner_thread_ids == (owner_thread_id,)
 
 
 def test_merged_branch_requires_exact_terminal_proof_before_cleanup() -> None:

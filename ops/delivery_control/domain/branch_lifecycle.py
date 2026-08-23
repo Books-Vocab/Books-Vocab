@@ -73,6 +73,7 @@ class BranchAsset:
     registry_statuses: tuple[str, ...] = ()
     physical_worktree_paths: tuple[str, ...] = ()
     dirty_worktree_paths: tuple[str, ...] = ()
+    owner_thread_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         _require_text(self.branch, "branch")
@@ -103,6 +104,7 @@ class BranchAsset:
             ("registry_statuses", self.registry_statuses),
             ("physical_worktree_paths", self.physical_worktree_paths),
             ("dirty_worktree_paths", self.dirty_worktree_paths),
+            ("owner_thread_ids", self.owner_thread_ids),
         ):
             if type(values) is not tuple or any(
                 type(value) is not str or not value for value in values

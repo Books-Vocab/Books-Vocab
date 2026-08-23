@@ -45,7 +45,12 @@ SHA_A = "a" * 40
 SHA_B = "b" * 40
 
 
-def _record(branch: str, status: str, head: str | None = None) -> RegistrySnapshot:
+def _record(
+    branch: str,
+    status: str,
+    head: str | None = None,
+    owner_thread_id: str | None = None,
+) -> RegistrySnapshot:
     return RegistrySnapshot(
         lane_id=f"LANE-{branch}",
         branch=branch,
@@ -56,6 +61,7 @@ def _record(branch: str, status: str, head: str | None = None) -> RegistrySnapsh
         claim_generation=1,
         handed_back_sha=head,
         handback_valid=head is not None,
+        owner_thread_id=owner_thread_id,
     )
 
 
@@ -126,6 +132,34 @@ def test_branch_audit_emits_one_action_per_ref_and_safe_cleanup_candidate() -> N
         and item.safe_terminal
         for item in report.actions
     )
+
+
+def test_branch_audit_exposes_owner_evidence_for_owner_lane() -> None:
+    owner_thread_id = "01a016d3-1eb3-7722-8b30-3c54fe4c37ba"
+    lifecycle = project_branch_lifecycle(
+        branch_inventory=BranchInventory(local=(("feat/owned", SHA_A),)),
+        records=(
+            _record(
+                "feat/owned",
+                "active",
+                SHA_A,
+                owner_thread_id=owner_thread_id,
+            ),
+        ),
+    )
+    inventory = DeliveryInventory(
+        lanes=(),
+        branch_lifecycle=lifecycle,
+        live_main_sha=SHA_A,
+        local_main_sha=SHA_A,
+    )
+
+    report = build_branch_audit(inventory)
+
+    action = report.actions[0]
+    assert action.category == "owner_lane"
+    assert action.owner_thread_ids == (owner_thread_id,)
+    assert report.assets[0].owner_thread_ids == (owner_thread_id,)
 
 
 def test_branch_audit_keeps_unknown_asset_incomplete() -> None:
