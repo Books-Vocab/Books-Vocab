@@ -918,7 +918,35 @@ def test_cli_exposes_branch_audit_and_forwards_supervision_paths(
 
     payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
     assert payload["command"] == "branch-audit"
+    assert payload["verdict"] == "complete"
     assert payload["result"]["schema"] == "kg.delivery.branch-audit.v1"
+
+
+def test_cli_marks_incomplete_branch_audit_as_blocked_without_transport_error(
+    capsys: object,
+) -> None:
+    class FakeApplication:
+        def branch_audit(
+            self, *, supervision_worktree_paths: tuple[Path, ...]
+        ) -> object:
+            return {
+                "schema": "kg.delivery.branch-audit.v1",
+                "complete": False,
+                "source_problem_actions": [{"category": "registry_source_problem"}],
+            }
+
+    assert (
+        main(
+            ["branch-audit"],
+            application_factory=lambda **_: FakeApplication(),
+        )
+        == 2
+    )
+
+    payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert payload["ok"] is True
+    assert payload["verdict"] == "incomplete"
+    assert payload["result"]["source_problem_actions"]
 
 
 @pytest.mark.parametrize("command", ["inspect", "metrics", "plan"])
