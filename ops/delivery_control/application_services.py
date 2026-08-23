@@ -59,6 +59,7 @@ from .services import (
     sync_main,
     telemetry_operations,
     unregistered_branch,
+    unreachable_commit,
 )
 from .services import holds as hold_services
 from .services.issue_admission import assert_candidate_scope_available
@@ -167,6 +168,19 @@ class DeliveryApplication:
                     "branch content HEAD differs from expected inspection SHA"
                 )
         return evidence
+
+    def unreachable_commit_inspect(
+        self,
+        *,
+        commit_sha: str,
+        max_paths: int = 200,
+    ) -> object:
+        """Return bounded evidence without creating a ref or delivery claim."""
+
+        return unreachable_commit.UnreachableCommitService(git=self.git).inspect(
+            commit_sha,
+            max_paths=max_paths,
+        )
 
     def branch_review_plan(
         self,

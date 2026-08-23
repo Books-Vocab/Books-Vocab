@@ -13,7 +13,11 @@ from ..domain.observations import (
     PhysicalWorktree,
     WorktreeSnapshot,
 )
-from ..domain.unreachable_commits import UnreachableCommitInventory
+from ..domain.unreachable_commits import (
+    UNREACHABLE_COMMIT_PATH_LIMIT,
+    UnreachableCommitEvidence,
+    UnreachableCommitInventory,
+)
 from ..ports.process import CommandRunnerPort
 from .git_client import GitCliClient
 from .git_commands import GitCommands
@@ -62,6 +66,17 @@ class GitCliAdapter:
 
     def unreachable_commit_inventory(self) -> UnreachableCommitInventory:
         return self._queries.unreachable_commit_inventory()
+
+    def inspect_unreachable_commit(
+        self,
+        *,
+        commit_sha: str,
+        max_paths: int = UNREACHABLE_COMMIT_PATH_LIMIT,
+    ) -> UnreachableCommitEvidence:
+        return self._queries.inspect_unreachable_commit(
+            commit_sha=commit_sha,
+            max_paths=max_paths,
+        )
 
     def remote_branch_sha(self, branch: str) -> str | None:
         return self._queries.remote_branch_sha(branch)

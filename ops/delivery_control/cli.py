@@ -102,6 +102,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     branch_inspect.add_argument("--branch", required=True)
     branch_inspect.add_argument("--expected-head-sha")
+    unreachable_inspect = commands.add_parser(
+        "unreachable-commit-inspect",
+        help="inspect one unreachable commit object without mutation",
+    )
+    unreachable_inspect.add_argument("--commit", required=True)
+    unreachable_inspect.add_argument("--max-paths", type=int, default=200)
     branch_review_plan = commands.add_parser(
         "branch-review-plan",
         help="page blocked local-orphan content for read-only review",
@@ -318,6 +324,11 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
             branch=args.branch,
             expected_head_sha=args.expected_head_sha,
         )
+    if args.command == "unreachable-commit-inspect":
+        return application.unreachable_commit_inspect(
+            commit_sha=args.commit,
+            max_paths=args.max_paths,
+        )
     if args.command == "branch-review-plan":
         return application.branch_review_plan(offset=args.offset, limit=args.limit)
     if args.command == "metrics":
@@ -514,7 +525,11 @@ def _runtime_timestamp(value: str | None, name: str) -> datetime | None:
 
 
 def _result_exit_code(command: str, result: object) -> int:
-    if command in {"branch-audit", "branch-review-plan"}:
+    if command in {
+        "branch-audit",
+        "branch-review-plan",
+        "unreachable-commit-inspect",
+    }:
         complete = (
             result.get("complete")
             if isinstance(result, Mapping)
@@ -592,7 +607,11 @@ def main(
 def _command_verdict(command: str, result: object) -> str:
     """Expose domain incompleteness separately from command transport success."""
 
-    if command in {"branch-audit", "branch-review-plan"}:
+    if command in {
+        "branch-audit",
+        "branch-review-plan",
+        "unreachable-commit-inspect",
+    }:
         complete = (
             result.get("complete")
             if isinstance(result, Mapping)

@@ -26,6 +26,7 @@ from delivery_control.domain.observations import (
     PhysicalWorktree,
 )
 from delivery_control.domain.unreachable_commits import UnreachableCommitInventory
+from delivery_control.domain.unreachable_commits import UnreachableCommitEvidence
 from delivery_control.ports.process import CommandResult
 
 
@@ -137,6 +138,39 @@ def test_git_adapter_distinguishes_existing_and_missing_local_branches(
 
     assert adapter.local_branch_sha("main") == head
     assert adapter.local_branch_sha("feat/missing") is None
+
+
+def test_git_adapter_inspects_unreachable_commit_without_creating_a_ref(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-qm", "base")
+    _git(repo, "switch", "-qc", "feat/unreachable")
+    (repo / "unreachable.txt").write_text("preserve\n", encoding="utf-8")
+    _git(repo, "add", "unreachable.txt")
+    _git(repo, "commit", "-qm", "preserve unreachable change")
+    commit_sha = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-q", "main")
+    _git(repo, "branch", "-D", "feat/unreachable")
+
+    evidence = GitCliAdapter(repo=repo).inspect_unreachable_commit(
+        commit_sha=commit_sha
+    )
+
+    assert isinstance(evidence, UnreachableCommitEvidence)
+    assert evidence.complete
+    assert evidence.unreachable is True
+    assert evidence.parent_shas
+    assert evidence.subject == "preserve unreachable change"
+    assert evidence.changed_paths == ("unreachable.txt",)
+    assert evidence.disposition == "preserve_for_owner_correlation"
+    assert not _git(repo, "branch", "--all", "--contains", commit_sha)
 
 
 def test_git_adapter_reads_ancestor_relation_without_mutation(tmp_path: Path) -> None:
