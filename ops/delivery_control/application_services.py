@@ -22,6 +22,7 @@ from .controller.dogfood import (
 from .controller.metrics import measure_merge_cadence, measure_pipeline
 from .controller.runtime_watchdog import evaluate_runtime_watchdog
 from .controller.worktree_boundary import partition_worktrees
+from .domain.branch_lifecycle import BranchDisposition
 from .domain import errors, models, observations, states
 from .domain.candidate_issues import CandidateSpec
 from .domain.demand_issues import IssueDisposition
@@ -83,8 +84,24 @@ class DeliveryApplication:
     ) -> object:
         """Return one deterministic action for every observed branch ref."""
 
+        inventory = self.inspect(supervision_worktree_paths=supervision_worktree_paths)
+        orphan_service = orphan_branch.OrphanBranchDiscardService(
+            registry=self.registry,
+            git_query=self.git,
+            git_command=self.git,
+            github=self.github,
+        )
+        orphan_preflights = {
+            asset.branch: orphan_service.preflight(
+                branch=asset.branch,
+                expected_head_sha=asset.sha,
+            )
+            for asset in inventory.branch_lifecycle.local
+            if asset.disposition is BranchDisposition.ORPHAN_LOCAL_RECONCILE
+        }
         return branch_audit.build_branch_audit(
-            self.inspect(supervision_worktree_paths=supervision_worktree_paths)
+            inventory,
+            orphan_preflights=orphan_preflights,
         )
 
     def triage_plan(self) -> object:

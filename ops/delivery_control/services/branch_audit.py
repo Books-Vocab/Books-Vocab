@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from ..domain.branch_lifecycle import (
@@ -12,6 +13,7 @@ from ..domain.branch_lifecycle import (
 )
 from ..domain.inventory import DeliveryInventory
 from ..domain.observations import InventoryProblem
+from .orphan_branch import OrphanBranchPreflight
 
 
 @dataclass(frozen=True)
@@ -27,6 +29,7 @@ class BranchAuditAction:
     safe_terminal: bool
     next_step: str
     suggested_command: str | None = None
+    orphan_preflight: OrphanBranchPreflight | None = None
 
 
 @dataclass(frozen=True)
@@ -51,7 +54,11 @@ class BranchAuditReport:
     source_problems: tuple[InventoryProblem, ...]
 
 
-def _action_for_asset(asset: BranchAsset) -> BranchAuditAction:
+def _action_for_asset(
+    asset: BranchAsset,
+    *,
+    orphan_preflight: OrphanBranchPreflight | None = None,
+) -> BranchAuditAction:
     if asset.disposition is BranchDisposition.PROTECTED:
         return BranchAuditAction(
             branch=asset.branch,
@@ -108,21 +115,34 @@ def _action_for_asset(asset: BranchAsset) -> BranchAuditAction:
             suggested_command=command,
         )
     if asset.disposition is BranchDisposition.ORPHAN_LOCAL_RECONCILE:
+        eligible = orphan_preflight is not None and orphan_preflight.eligible
+        blockers = (
+            "; ".join(orphan_preflight.blockers)
+            if orphan_preflight is not None
+            else "exact orphan preflight has not run"
+        )
         return BranchAuditAction(
             branch=asset.branch,
             side=asset.side,
             sha=asset.sha,
             disposition=asset.disposition,
             cleanup_action=asset.cleanup_action,
-            category="local_orphan_reconcile",
-            safe_terminal=False,
+            category=(
+                "safe_terminal_candidate" if eligible else "local_orphan_blocked"
+            ),
+            safe_terminal=eligible,
             next_step=(
-                "run exact discard-orphan preflight; delete only after its CAS passes"
+                "run the exact discard-orphan CAS command"
+                if eligible
+                else f"resolve exact preflight blockers: {blockers}"
             ),
             suggested_command=(
                 "./ops/delivery.py discard-orphan-branch "
                 f"--branch {asset.branch} --expected-head-sha {asset.sha}"
+                if eligible
+                else None
             ),
+            orphan_preflight=orphan_preflight,
         )
     if asset.disposition is BranchDisposition.ORPHAN_REMOTE_RECONCILE:
         return BranchAuditAction(
@@ -169,11 +189,19 @@ def _action_for_asset(asset: BranchAsset) -> BranchAuditAction:
     )
 
 
-def build_branch_audit(inventory: DeliveryInventory) -> BranchAuditReport:
+def build_branch_audit(
+    inventory: DeliveryInventory,
+    *,
+    orphan_preflights: Mapping[str, OrphanBranchPreflight] | None = None,
+) -> BranchAuditReport:
     """Build a one-to-one action list without performing any mutation."""
 
     assets = inventory.branch_lifecycle.assets
-    actions = tuple(_action_for_asset(asset) for asset in assets)
+    preflights = orphan_preflights or {}
+    actions = tuple(
+        _action_for_asset(asset, orphan_preflight=preflights.get(asset.branch))
+        for asset in assets
+    )
     open_prs = {
         pull_request.number
         for lane in inventory.lanes

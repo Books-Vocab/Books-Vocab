@@ -7,7 +7,7 @@ import json
 import re
 from dataclasses import dataclass
 
-from ..domain.errors import PolicyViolation
+from ..domain.errors import DeliverySourceError, PolicyViolation
 from ..ports.git import GitCommandPort, GitQueryPort
 from ..ports.github import GitHubQueryPort
 from ..ports.registry import RegistryQueryPort
@@ -30,6 +30,19 @@ class OrphanBranchDiscardResult:
     local_branch_absent: bool
     remote_branch_absent: bool
     worktree_absent: bool
+
+
+@dataclass(frozen=True)
+class OrphanBranchPreflight:
+    """Read-only evidence for one possible local-orphan discard."""
+
+    schema: str
+    branch: str
+    expected_head_sha: str
+    main_sha: str | None
+    eligible: bool
+    passed_checks: tuple[str, ...]
+    blockers: tuple[str, ...]
 
 
 class OrphanBranchDiscardService:
@@ -89,6 +102,89 @@ class OrphanBranchDiscardService:
     def _assert_no_physical_worktree(self, branch: str) -> None:
         if any(item.branch == branch for item in self.git_query.list_worktrees()):
             raise PolicyViolation("orphan branch still has a physical worktree")
+
+    def preflight(
+        self, *, branch: str, expected_head_sha: str
+    ) -> OrphanBranchPreflight:
+        """Evaluate discard eligibility without changing Git or the registry."""
+
+        blockers: list[str] = []
+        passed: list[str] = []
+        main_sha: str | None = None
+        if not branch or branch == "main" or branch.startswith("-"):
+            blockers.append("orphan discard requires a non-main branch")
+        if _SHA_RE.fullmatch(expected_head_sha) is None:
+            blockers.append("orphan discard requires an exact lowercase HEAD SHA")
+
+        if not blockers:
+            try:
+                main_sha = self._canonical_main()
+            except DeliverySourceError as error:
+                blockers.append(str(error))
+            else:
+                passed.append("canonical main equals live origin/main and is clean")
+
+        if not blockers:
+            try:
+                self._assert_unregistered(branch)
+            except DeliverySourceError as error:
+                blockers.append(str(error))
+            else:
+                passed.append("registry has no claim or source problem for branch")
+            try:
+                self._assert_no_pr_history(branch)
+            except DeliverySourceError as error:
+                blockers.append(str(error))
+            else:
+                passed.append("branch has no GitHub PR history")
+            try:
+                self._assert_no_physical_worktree(branch)
+            except DeliverySourceError as error:
+                blockers.append(str(error))
+            else:
+                passed.append("branch has no physical worktree")
+            try:
+                local_sha = self.git_query.local_branch_sha(branch)
+            except DeliverySourceError as error:
+                blockers.append(f"local branch HEAD query failed: {error}")
+            else:
+                if local_sha != expected_head_sha:
+                    blockers.append("local branch HEAD changed or is absent")
+                else:
+                    passed.append("local branch HEAD equals expected SHA")
+            try:
+                remote_sha = self.git_query.remote_branch_sha(branch)
+            except DeliverySourceError as error:
+                blockers.append(f"remote branch query failed: {error}")
+            else:
+                if remote_sha is not None:
+                    blockers.append("orphan branch still has a remote ref")
+                else:
+                    passed.append("remote branch ref is absent")
+            if main_sha is not None:
+                try:
+                    ancestor = self.git_query.is_ancestor(expected_head_sha, main_sha)
+                except DeliverySourceError as error:
+                    blockers.append(f"ancestor query failed: {error}")
+                else:
+                    if not ancestor:
+                        blockers.append(
+                            "orphan branch tip is not an ancestor of live origin/main"
+                        )
+                    else:
+                        passed.append(
+                            "local branch tip is an ancestor of live origin/main"
+                        )
+
+        return OrphanBranchPreflight(
+            schema="kg.delivery.orphan-branch-preflight.v1",
+            branch=branch,
+            expected_head_sha=expected_head_sha,
+            main_sha=main_sha,
+            eligible=not blockers,
+            passed_checks=tuple(passed),
+            blockers=tuple(blockers),
+        )
 
     def discard(
         self,
@@ -170,4 +266,8 @@ class OrphanBranchDiscardService:
         )
 
 
-__all__ = ["OrphanBranchDiscardResult", "OrphanBranchDiscardService"]
+__all__ = [
+    "OrphanBranchDiscardResult",
+    "OrphanBranchDiscardService",
+    "OrphanBranchPreflight",
+]
