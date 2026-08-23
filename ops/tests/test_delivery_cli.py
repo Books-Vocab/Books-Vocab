@@ -1144,6 +1144,30 @@ def test_cli_exposes_watchdog_without_dispatching(capsys: object) -> None:
     assert payload["result"]["action"] == "noop"
 
 
+def test_cli_preserves_command_exit_when_stdout_pipe_closes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import delivery_control.cli as cli
+
+    class FakeApplication:
+        def inspect(self, *, supervision_worktree_paths: tuple[Path, ...]) -> object:
+            assert supervision_worktree_paths == ()
+            return {"lanes": []}
+
+    def broken_print(*args: object, **kwargs: object) -> None:
+        raise BrokenPipeError("pipe closed")
+
+    monkeypatch.setattr(cli, "print", broken_print, raising=False)
+
+    assert (
+        main(
+            ["inspect"],
+            application_factory=lambda **_: FakeApplication(),
+        )
+        == 0
+    )
+
+
 @pytest.mark.parametrize("command", ["watchdog", "watchdog-claim"])
 def test_cli_rejects_watchdog_commands_without_runtime_status_file(
     command: str, capsys: object
