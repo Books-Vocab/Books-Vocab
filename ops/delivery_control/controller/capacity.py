@@ -17,6 +17,7 @@ class ControlAction(StrEnum):
     AUDIT_TRANSPORT_SLO = "audit_transport_slo"
     AUDIT_CI_START_SLO = "audit_ci_start_slo"
     AUDIT_QUEUE_ADMISSION_SLO = "audit_queue_admission_slo"
+    AUDIT_MERGE_CADENCE = "audit_merge_cadence"
     REPAIR_PR_CONTRACT = "repair_pr_contract"
     REPAIR_REQUIRED = "repair_required"
     TRIGGER_REQUIRED = "trigger_required"
@@ -93,14 +94,24 @@ def decide_capacity(
         or cadence.seconds_since_last_merge > policy.max_inter_merge_seconds
     )
     if cadence_missed:
-        add(
-            ControlAction.RECOVER_MERGE_CADENCE,
-            (
-                f"merge cadence is below {policy.target_merges_per_hour:g}/hour "
-                "or its p95/last landing exceeds "
-                f"{policy.max_inter_merge_seconds:g} seconds"
-            ),
+        cadence_reason = (
+            f"merge cadence is below {policy.target_merges_per_hour:g}/hour "
+            "or its p95/last landing exceeds "
+            f"{policy.max_inter_merge_seconds:g} seconds"
         )
+        add(ControlAction.AUDIT_MERGE_CADENCE, cadence_reason)
+        cadence_recovery_supply = (
+            metrics.open_prs
+            + metrics.handbacks_publishable
+            + metrics.active_development
+            + metrics.required_green
+            + metrics.merge_queue_depth
+        )
+        if cadence_recovery_supply:
+            add(
+                ControlAction.RECOVER_MERGE_CADENCE,
+                f"{cadence_reason}; delivery supply is available",
+            )
     if metrics.reanchor_required:
         add(ControlAction.REANCHOR_FRONT, "exact stale-base PRs await reanchor")
     if not metrics.issue_inventory_complete or metrics.unadmitted_open_issues is None:
