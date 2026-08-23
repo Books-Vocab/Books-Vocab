@@ -70,6 +70,9 @@ class GitCliAdapter:
     def origin_main_sha(self) -> str:
         return self._queries.origin_main_sha()
 
+    def is_ancestor(self, ancestor_sha: str, descendant_sha: str) -> bool:
+        return self._queries.is_ancestor(ancestor_sha, descendant_sha)
+
     def first_parent_landings(
         self, *, before_sha: str, after_sha: str
     ) -> tuple[MainLandingSnapshot, ...]:

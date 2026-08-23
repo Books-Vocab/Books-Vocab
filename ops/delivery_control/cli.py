@@ -40,6 +40,7 @@ MUTATING_COMMANDS = frozenset(
         "abandon-pr",
         "cleanup-abandoned",
         "discard-abandoned-handback",
+        "discard-orphan-branch",
         "sync-main",
     }
 )
@@ -234,6 +235,14 @@ def _parser() -> argparse.ArgumentParser:
     discard_handback.add_argument("--expected-head-sha", required=True)
     discard_handback.add_argument("--operator", required=True)
     discard_handback.add_argument("--reason", required=True)
+    discard_orphan = commands.add_parser(
+        "discard-orphan-branch",
+        help="discard one unregistered local branch already contained in main",
+    )
+    discard_orphan.add_argument("--branch", required=True)
+    discard_orphan.add_argument("--expected-head-sha", required=True)
+    discard_orphan.add_argument("--operator", required=True)
+    discard_orphan.add_argument("--reason", required=True)
     commands.add_parser("sync-main", help="ff-only synchronize canonical main")
     return parser
 
@@ -416,6 +425,13 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
         return application.cleanup_abandoned(args.branch)
     if args.command == "discard-abandoned-handback":
         return application.discard_abandoned_handback(
+            branch=args.branch,
+            expected_head_sha=args.expected_head_sha,
+            operator=args.operator,
+            reason=args.reason,
+        )
+    if args.command == "discard-orphan-branch":
+        return application.discard_orphan_branch(
             branch=args.branch,
             expected_head_sha=args.expected_head_sha,
             operator=args.operator,
