@@ -8,6 +8,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from lib.executables import resolve_argv
+
 from .storage import load_state as _load_state
 
 REGISTRY_GIT_TIMEOUT_SECONDS = 120.0
@@ -22,9 +24,10 @@ def _text(value: str | bytes | None) -> str:
 
 
 def git(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
+    command = resolve_argv(["git", *args])
     try:
         proc = subprocess.run(
-            ["git", *args],
+            command,
             cwd=cwd,
             text=True,
             stdout=subprocess.PIPE,
