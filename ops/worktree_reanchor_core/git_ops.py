@@ -8,6 +8,16 @@ from pathlib import Path
 from .domain import COMMIT_SHA_RE, DeclaredOperations, commit_sha
 from .errors import ReanchorRefused
 
+REANCHOR_GIT_TIMEOUT_SECONDS = 120.0
+
+
+def _text(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
+
 
 def _git(args: list[str], cwd: Path) -> tuple[int, str]:
     try:
@@ -18,7 +28,12 @@ def _git(args: list[str], cwd: Path) -> tuple[int, str]:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             check=False,
+            timeout=REANCHOR_GIT_TIMEOUT_SECONDS,
         )
+    except subprocess.TimeoutExpired as exc:
+        output = _text(exc.stdout or exc.output)
+        detail = f"git command timed out after {REANCHOR_GIT_TIMEOUT_SECONDS:g}s"
+        return 124, f"{output.rstrip()}\n{detail}" if output else detail
     except OSError as exc:
         return 127, f"{type(exc).__name__}: {exc}"
     return process.returncode, process.stdout.strip()
@@ -28,9 +43,7 @@ def _remote_head(repo: Path, branch: str) -> str:
     ref = f"refs/heads/{branch}"
     rc, output = _git(["ls-remote", "--heads", "origin", ref], repo)
     if rc != 0:
-        raise ReanchorRefused(
-            f"remote ref cannot be read: {ref}", git=output, ref=ref
-        )
+        raise ReanchorRefused(f"remote ref cannot be read: {ref}", git=output, ref=ref)
     rows = [line.split() for line in output.splitlines() if line.strip()]
     if len(rows) != 1 or len(rows[0]) != 2 or rows[0][1] != ref:
         raise ReanchorRefused(
@@ -86,9 +99,7 @@ def _local_branch_sha(repo: Path, branch: str) -> str | None:
     return output if rc == 0 and COMMIT_SHA_RE.fullmatch(output) else None
 
 
-def scope_operations(
-    repo: Path, *, start: str, end: str
-) -> DeclaredOperations:
+def scope_operations(repo: Path, *, start: str, end: str) -> DeclaredOperations:
     rc, output = _git(
         ["diff", "--name-status", "--no-renames", f"{start}..{end}"], repo
     )
@@ -126,14 +137,18 @@ def validate_repository(repo: Path) -> None:
 
 def validate_new_target(repo: Path, *, target: Path, branch: str) -> None:
     if target == repo or target.exists() or target.is_symlink():
-        raise ReanchorRefused("target path must be new and must not be the repository root")
+        raise ReanchorRefused(
+            "target path must be new and must not be the repository root"
+        )
     if not target.parent.is_dir():
         raise ReanchorRefused("target path parent does not exist")
     rc, output = _git(["check-ref-format", f"refs/heads/{branch}"], repo)
     if rc != 0:
         raise ReanchorRefused("original branch is not a valid local ref", git=output)
     if _local_branch_sha(repo, branch) is not None:
-        raise ReanchorRefused("local branch already exists; duplicate adoption is forbidden")
+        raise ReanchorRefused(
+            "local branch already exists; duplicate adoption is forbidden"
+        )
     for row in _worktree_rows(repo):
         path = Path(row.get("worktree", "")).expanduser().resolve()
         if path == target or row.get("branch") == f"refs/heads/{branch}":
@@ -196,9 +211,7 @@ def recreate_and_rebase(
     live_main: str,
     declared: DeclaredOperations,
 ) -> str:
-    rc, output = _git(
-        ["worktree", "add", "-b", branch, str(target), remote_head], repo
-    )
+    rc, output = _git(["worktree", "add", "-b", branch, str(target), remote_head], repo)
     if rc != 0:
         raise ReanchorRefused("local worktree recreation failed", git=output)
     rc, output = _git(["rebase", "--onto", live_main, base_sha, branch], target)
@@ -221,7 +234,9 @@ def recreate_and_rebase(
         or head_rc != 0
         or COMMIT_SHA_RE.fullmatch(head) is None
     ):
-        raise ReanchorRefused("reanchored worktree failed exact branch/clean/HEAD readback")
+        raise ReanchorRefused(
+            "reanchored worktree failed exact branch/clean/HEAD readback"
+        )
     if _git(["merge-base", "--is-ancestor", live_main, head], target)[0] != 0:
         raise ReanchorRefused("reanchored HEAD is not based on exact live main")
     if scope_operations(target, start=live_main, end=head) != declared:

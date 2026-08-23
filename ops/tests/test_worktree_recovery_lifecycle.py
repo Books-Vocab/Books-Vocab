@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -17,6 +18,7 @@ from delivery_control.domain.observations import (  # noqa: E402
     PullRequestSnapshot,
 )
 from worktree_reanchor_core.errors import ReanchorRefused  # noqa: E402
+from worktree_reanchor_core import git_ops  # noqa: E402
 from worktree_reanchor_core.lifecycle_proof import (  # noqa: E402
     verify_reanchor_lifecycle,
     verify_resume_lifecycle,
@@ -27,6 +29,22 @@ BASE = "1" * 40
 LIVE = "2" * 40
 HEAD = "3" * 40
 OTHER_HEAD = "4" * 40
+
+
+def test_reanchor_git_timeout_is_structured_and_bounded(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def timeout(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert args[0] == ["git", "status"]
+        assert kwargs["timeout"] == git_ops.REANCHOR_GIT_TIMEOUT_SECONDS
+        raise subprocess.TimeoutExpired(args[0], kwargs["timeout"], output=b"partial")
+
+    monkeypatch.setattr(git_ops.subprocess, "run", timeout)
+
+    return_code, output = git_ops._git(["status"], tmp_path)
+
+    assert return_code == 124
+    assert output == "partial\ngit command timed out after 120s"
 
 
 def _receipt_body(
