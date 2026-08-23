@@ -4,9 +4,12 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
-import worktree_registry as registry
+import worktree_registry as registry  # noqa: E402
+from worktree_registry_core.records import mutation_blockers  # noqa: E402
 
 
 def _terminal_proof(record: dict) -> dict:
@@ -152,6 +155,171 @@ def test_malformed_ownership_facts_block_mutation_without_data_loss(
     reloaded = registry.load_state(state_path)
     assert reloaded["records"][0]["external_ids"] == {"bad": True}
     assert reloaded["problems"][0]["kind"] == "registry-external-ids-invalid"
+
+
+@pytest.mark.parametrize("claim_generation", [None, -1, True, 1.5, "1"])
+def test_invalid_claim_generation_is_visible_and_blocks_active_mutation(
+    tmp_path: Path, capsys, claim_generation: object
+) -> None:
+    state_path = tmp_path / "registry.json"
+    original = (
+        json.dumps(
+            {
+                "records": [
+                    {
+                        "branch": "feat/bad-claim-generation",
+                        "path": str(tmp_path / "bad-claim-generation"),
+                        "status": "active",
+                        "external_ids": ["ISSUE-BAD-CLAIM"],
+                        "claim_generation": claim_generation,
+                    }
+                ]
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    state_path.write_text(original, encoding="utf-8")
+
+    state = registry.load_state(state_path)
+
+    problem = {
+        "kind": "registry-claim-generation-invalid",
+        "index": 0,
+        "branch": "feat/bad-claim-generation",
+        "status": "active",
+        "reason": "claim_generation must be a non-negative integer",
+    }
+    assert state["records"][0]["claim_generation"] == claim_generation
+    assert state["problems"] == [problem]
+    assert mutation_blockers(state) == [problem]
+
+    rc = registry.main(
+        [
+            "list",
+            "--state",
+            str(state_path),
+            "--active-only",
+            "--json",
+        ]
+    )
+
+    assert rc == registry.EXIT_OK
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["records"][0]["claim_generation"] == claim_generation
+    assert payload["problems"] == [problem]
+
+    register_rc = registry.main(
+        [
+            "register",
+            "--state",
+            str(state_path),
+            "--branch",
+            "feat/new-while-claim-invalid",
+            "--path",
+            str(tmp_path / "new-while-claim-invalid"),
+            "--intent",
+            "new",
+            "--external-id",
+            "ISSUE-NEW-WHILE-CLAIM-INVALID",
+            "--json",
+        ]
+    )
+
+    assert register_rc == registry.EXIT_CLAIMED
+    assert state_path.read_text(encoding="utf-8") == original
+
+
+def test_invalid_terminal_claim_generation_is_audit_only(tmp_path: Path) -> None:
+    state_path = tmp_path / "registry.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "records": [
+                    {
+                        "branch": "feat/merged-bad-claim",
+                        "path": str(tmp_path / "merged-bad-claim"),
+                        "status": "merged",
+                        "external_ids": ["ISSUE-MERGED-BAD-CLAIM"],
+                        "claim_generation": None,
+                    },
+                    {
+                        "branch": "feat/abandoned-bad-claim",
+                        "path": str(tmp_path / "abandoned-bad-claim"),
+                        "status": "abandoned",
+                        "external_ids": ["ISSUE-ABANDONED-BAD-CLAIM"],
+                        "claim_generation": "old",
+                    },
+                ]
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    state = registry.load_state(state_path)
+
+    assert len(state["problems"]) == 2
+    assert mutation_blockers(state) == []
+
+
+def test_missing_claim_generation_on_persisted_claim_is_invalid(tmp_path: Path) -> None:
+    state_path = tmp_path / "registry.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "records": [
+                    {
+                        "branch": "feat/missing-claim-generation",
+                        "path": str(tmp_path / "missing-claim-generation"),
+                        "status": "active",
+                        "external_ids": ["ISSUE-MISSING-CLAIM"],
+                        "created_at": "2026-08-20T03:57:00Z",
+                        "claimed_at": "2026-08-20T03:57:00Z",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    state = registry.load_state(state_path)
+
+    assert state["problems"] == [
+        {
+            "kind": "registry-claim-generation-invalid",
+            "index": 0,
+            "branch": "feat/missing-claim-generation",
+            "status": "active",
+            "reason": "claim_generation must be a non-negative integer",
+        }
+    ]
+    assert mutation_blockers(state) == state["problems"]
+
+
+def test_valid_claim_generation_does_not_create_problem(tmp_path: Path) -> None:
+    state_path = tmp_path / "registry.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "records": [
+                    {
+                        "branch": "feat/good-claim",
+                        "path": str(tmp_path / "good-claim"),
+                        "status": "active",
+                        "external_ids": ["ISSUE-GOOD-CLAIM"],
+                        "claim_generation": 0,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    state = registry.load_state(state_path)
+
+    assert state.get("problems", []) == []
 
 
 def test_compact_refuses_unknown_status_without_data_loss(tmp_path: Path) -> None:

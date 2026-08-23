@@ -226,6 +226,23 @@ def normalize_record(
     else:
         record.pop("backlog", None)
     status = record.get("status")
+    claim_generation = record.get("claim_generation")
+    has_claim_lifecycle = any(
+        record.get(field) is not None
+        for field in ("created_at", "claimed_at", "resolved_at")
+    )
+    if ("claim_generation" in record or has_claim_lifecycle) and (
+        type(claim_generation) is not int or claim_generation < 0
+    ):
+        problems.append(
+            {
+                "kind": "registry-claim-generation-invalid",
+                "index": index,
+                "branch": record.get("branch"),
+                "status": status,
+                "reason": "claim_generation must be a non-negative integer",
+            }
+        )
     if status not in KNOWN_STATUSES:
         problems.append(
             {

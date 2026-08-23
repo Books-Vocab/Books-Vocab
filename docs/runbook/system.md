@@ -155,6 +155,8 @@ PR readiness workflow 的 parser 入口是：
 
 `ops/worktree_registry.py` 是本機 ownership ledger 的相容 CLI facade：記錄 branch、path、thread、external IDs、Scope、hand-back、evidence 與 local disposition；admission、record normalization、handback、lifecycle、storage 與 parser 在 `ops/worktree_registry_core/` 分責。`ops/worktree_orchestrate.py` 是本機 coordinator：建立／接管工作樹、檢查 overlap、執行必要 gate、保存 log、交回或移除工作樹。
 
+`worktree_registry.py list --json`（包括 `--active-only`）是 raw read，不是 repair 或 cleanup。每筆 record 的 ownership facts 會先由同一個 normalization layer 驗證；例如 `claim_generation` 必須是非負整數。malformed fact 必須原樣保留在 record，並在頂層 `problems` 以 deterministic `registry-claim-generation-invalid` 等診斷呈現，不得自動補值、重寫或隱藏。非 terminal 的 malformed claim（`active`／`cleanup_pending`／`published`）會使 registry mutation fail closed；`merged`／`abandoned` 的 malformed claim 只保留為 terminal audit evidence，不阻塞其他安全 mutation。操作者不能把 `problems=[]` 解讀成 ownership 已驗證，必須先讀取 `problems` 與其 status scope。
+
 GitHub Issue、Project、PR、CR／DS review、merge 與 release approval 不在本機 ledger 再存一份，也沒有本地 backlog、merge queue 或批次整合狀態。`published` 只表示 durable PR 已可取代 local assets，不是 PR lifecycle mirror。當本機與 GitHub 顯示不同，以 GitHub ref、PR 與 Actions 為準；local evidence 只能說明本機曾經驗證過什麼。
 
 typed `kg.worktree.handback.v1` 交接會在 clean worktree 上讀取 live `origin/main`，把 SHA 記入 `origin_main_sha`，並分別要求 declared base 是 live main 與 physical tip 的 ancestor；它刻意不要求 live main 已是 tip 的 ancestor，因此 main 前進不會阻止歷史-base handback durable publish。remote/main 不可讀、base 不在 main history 或 base 不在 tip history時才 fail closed。PI 只把它正規化成 PR 內的 `kg.delivery.handback.v1`，不變更 provenance。這個 local receipt 只代表交接當下的執行證據，不是 current-main Ready；只有 merge-front 由 CM 重新查 live `origin/main`、exact PR／registry tuple 與 required checks，必要時要求同 owner JIT reanchor。
