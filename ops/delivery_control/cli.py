@@ -84,6 +84,17 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser(
         "triage-plan", help="derive a deterministic raw Issue triage plan"
     )
+    branch_audit = commands.add_parser(
+        "branch-audit",
+        help="audit every local/remote branch against registry, PR, and worktree facts",
+    )
+    branch_audit.add_argument(
+        "--supervision-worktree",
+        action="append",
+        type=Path,
+        default=[],
+        help="exact supervision checkout path; repeat once per checkout",
+    )
     metrics = commands.add_parser("metrics", help="measure current queue reservoirs")
     metrics.add_argument(
         "--supervision-worktree",
@@ -271,6 +282,10 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
             "items": application.triage_plan(),
             "source_entries": application.issue_inventory().source_entries,
         }
+    if args.command == "branch-audit":
+        return application.branch_audit(
+            supervision_worktree_paths=tuple(args.supervision_worktree)
+        )
     if args.command == "metrics":
         return application.metrics(
             supervision_worktree_paths=tuple(args.supervision_worktree)

@@ -894,6 +894,33 @@ def test_cli_exposes_dogfood_preflight_as_read_only_json(capsys: object) -> None
     assert payload["result"]["ready"] is False
 
 
+def test_cli_exposes_branch_audit_and_forwards_supervision_paths(
+    capsys: object,
+) -> None:
+    class FakeApplication:
+        def branch_audit(
+            self, *, supervision_worktree_paths: tuple[Path, ...]
+        ) -> object:
+            assert supervision_worktree_paths == (Path("/supervision"),)
+            return {"schema": "kg.delivery.branch-audit.v1", "complete": True}
+
+    assert (
+        main(
+            [
+                "branch-audit",
+                "--supervision-worktree",
+                "/supervision",
+            ],
+            application_factory=lambda **_: FakeApplication(),
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert payload["command"] == "branch-audit"
+    assert payload["result"]["schema"] == "kg.delivery.branch-audit.v1"
+
+
 @pytest.mark.parametrize("command", ["inspect", "metrics", "plan"])
 def test_cli_forwards_supervision_worktrees_for_observation_commands(
     command: str,

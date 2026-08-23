@@ -42,3 +42,8 @@ class DeliveryInventory:
     demand_issues: DemandIssueInventory = EMPTY_DEMAND_INVENTORY
     isolation: IsolationSummary = EMPTY_ISOLATION
     branch_lifecycle: BranchLifecycleInventory = EMPTY_BRANCH_LIFECYCLE
+    # These raw Git facts keep audit/report commands from reconstructing a
+    # second, potentially inconsistent inventory beside the main projection.
+    physical_worktrees: tuple[PhysicalWorktree, ...] = ()
+    live_main_sha: str | None = None
+    local_main_sha: str | None = None
