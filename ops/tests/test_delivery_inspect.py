@@ -347,9 +347,7 @@ def test_inspect_service_excludes_explicit_supervision_checkout_from_delivery_co
         item.key for item in default_inventory.lanes
     }
 
-    bounded_inventory = service.inspect(
-        supervision_worktree_paths=(supervision_path,)
-    )
+    bounded_inventory = service.inspect(supervision_worktree_paths=(supervision_path,))
     bounded_lane = next(item for item in bounded_inventory.lanes if item.key == "#1")
     assert bounded_lane.decision.state is LaneState.PUBLISHED_LOCAL_CLEANUP
     assert str(supervision_path.resolve()) not in {

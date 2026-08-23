@@ -253,7 +253,10 @@ class InspectService:
             path = physical_ref.path.resolve()
             if path in working_paths:
                 continue
-            if physical_ref.branch == "main" and physical_ref.head_sha == sources.local_main_sha:
+            if (
+                physical_ref.branch == "main"
+                and physical_ref.head_sha == sources.local_main_sha
+            ):
                 continue
             try:
                 unregistered_snapshots[path] = self.git.inspect_worktree(

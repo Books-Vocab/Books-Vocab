@@ -62,9 +62,7 @@ class DeliveryApplication:
     telemetry: TelemetryStorePort
     clock: Callable[[], datetime] = _utc_now
 
-    def inspect(
-        self, *, supervision_worktree_paths: tuple[Path, ...] = ()
-    ) -> object:
+    def inspect(self, *, supervision_worktree_paths: tuple[Path, ...] = ()) -> object:
         return inspect.InspectService(
             registry=self.registry,
             git=self.git,
@@ -134,9 +132,7 @@ class DeliveryApplication:
     ) -> object:
         observed_at = now or self.clock()
         telemetry = self._operation_telemetry().rolling(now=observed_at)
-        inventory = self.inspect(
-            supervision_worktree_paths=supervision_worktree_paths
-        )
+        inventory = self.inspect(supervision_worktree_paths=supervision_worktree_paths)
         return measure_pipeline(
             inventory,
             telemetry=telemetry,
