@@ -152,6 +152,11 @@ class GitHubCliAdapter:
     def list_pull_requests_for_branch(self, branch: str) -> PullRequestInventory:
         return self._queries.list_pull_requests_for_branch(branch)
 
+    def list_pull_requests_for_branches(
+        self, branches: tuple[str, ...]
+    ) -> PullRequestInventory:
+        return self._queries.list_pull_requests_for_branches(branches)
+
     def recent_merge_times(self, *, limit: int = 100) -> tuple[datetime, ...]:
         return self._queries.recent_merge_times(limit=limit)
 

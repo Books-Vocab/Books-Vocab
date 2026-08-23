@@ -49,6 +49,16 @@ def _pr_payload() -> dict[str, object]:
     }
 
 
+def _graphql_pr_node(payload: dict[str, object]) -> dict[str, object]:
+    return {
+        **payload,
+        "labels": {
+            "nodes": [],
+            "pageInfo": {"hasNextPage": False, "endCursor": None},
+        },
+    }
+
+
 def _candidate_payload(number: int) -> dict[str, object]:
     return {
         "number": number,
@@ -172,6 +182,71 @@ def test_github_adapter_reads_terminal_prs_for_one_published_branch() -> None:
     assert "--state" in runner.calls[0]
     assert "all" in runner.calls[0]
     assert "--head" in runner.calls[0]
+
+
+def test_github_adapter_reads_branch_history_with_one_snapshot() -> None:
+    second = _pr_payload()
+    second["number"] = 13
+    second["headRefName"] = "feat/two"
+    page = {
+        "data": {
+            "repository": {
+                "pullRequests": {
+                    "nodes": [
+                        _graphql_pr_node(_pr_payload()),
+                        _graphql_pr_node(second),
+                    ],
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                }
+            }
+        }
+    }
+    runner = StaticRunner(
+        [
+            CommandResult(("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""),
+            CommandResult(("gh",), 0, json.dumps([page]), ""),
+        ]
+    )
+
+    inventory = GitHubCliAdapter(runner=runner).list_pull_requests_for_branches(
+        ("feat/one", "feat/missing")
+    )
+
+    assert [item.number for item in inventory.records] == [12]
+    assert len(runner.calls) == 2
+    assert runner.calls[1][:5] == ("gh", "api", "graphql", "--paginate", "--slurp")
+    assert any("DeliveryAllPullRequestHistory" in item for item in runner.calls[1])
+
+
+@pytest.mark.parametrize(
+    ("page_info", "message"),
+    (
+        ({"hasNextPage": True, "endCursor": "cursor"}, "pagination is incomplete"),
+        ({"hasNextPage": "yes", "endCursor": None}, "pageInfo is malformed"),
+    ),
+)
+def test_github_adapter_fails_closed_on_history_page_contract(
+    page_info: dict[str, object], message: str
+) -> None:
+    page = {
+        "data": {
+            "repository": {
+                "pullRequests": {
+                    "nodes": [],
+                    "pageInfo": page_info,
+                }
+            }
+        }
+    }
+    runner = StaticRunner(
+        [
+            CommandResult(("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""),
+            CommandResult(("gh",), 0, json.dumps([page]), ""),
+        ]
+    )
+
+    with pytest.raises(AdapterPayloadError, match=message):
+        GitHubCliAdapter(runner=runner).list_pull_requests_for_branches(("feat/one",))
 
 
 def test_github_changed_paths_preserve_rename_source_and_destination() -> None:

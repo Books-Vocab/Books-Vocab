@@ -42,6 +42,132 @@ query DeliveryOpenPullRequestFiles($owner: String!, $name: String!, $endCursor: 
 }
 """.strip()
 
+ALL_PR_HISTORY_QUERY = """
+query DeliveryAllPullRequestHistory($owner: String!, $name: String!, $endCursor: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(first: 100, states: [OPEN, CLOSED, MERGED], after: $endCursor) {
+      nodes {
+        id
+        number
+        url
+        headRefName
+        baseRefName
+        baseRefOid
+        headRefOid
+        state
+        isDraft
+        mergeable
+        title
+        body
+        autoMergeRequest { __typename }
+        labels(first: 100) {
+          nodes { name }
+          pageInfo { hasNextPage endCursor }
+        }
+        createdAt
+        mergedAt
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}
+""".strip()
+
+
+def _parse_pull_request_history_pages(payload: object) -> PullRequestInventory:
+    if isinstance(payload, Mapping):
+        pages = (payload,)
+    elif isinstance(payload, list) and all(
+        isinstance(item, Mapping) for item in payload
+    ):
+        pages = tuple(payload)
+    else:
+        raise AdapterPayloadError("GitHub PR history GraphQL payload is malformed")
+
+    records: list[dict[str, Any]] = []
+    for page_index, page in enumerate(pages):
+        if page.get("errors"):
+            raise AdapterPayloadError(
+                "GitHub PR history GraphQL response contains errors"
+            )
+        data = page.get("data")
+        repository = data.get("repository") if isinstance(data, Mapping) else None
+        connection = (
+            repository.get("pullRequests") if isinstance(repository, Mapping) else None
+        )
+        if not isinstance(connection, Mapping):
+            raise AdapterPayloadError(
+                f"GitHub PR history page[{page_index}] connection is malformed"
+            )
+        nodes = connection.get("nodes")
+        page_info = connection.get("pageInfo")
+        if not isinstance(nodes, list) or any(
+            not isinstance(node, Mapping) for node in nodes
+        ):
+            raise AdapterPayloadError(
+                f"GitHub PR history page[{page_index}] nodes are malformed"
+            )
+        if (
+            not isinstance(page_info, Mapping)
+            or type(page_info.get("hasNextPage")) is not bool
+        ):
+            raise AdapterPayloadError(
+                f"GitHub PR history page[{page_index}] pageInfo is malformed"
+            )
+        has_next = page_info["hasNextPage"]
+        if has_next:
+            cursor = page_info.get("endCursor")
+            if type(cursor) is not str or not cursor:
+                raise AdapterPayloadError(
+                    f"GitHub PR history page[{page_index}] cursor is missing"
+                )
+        elif page_index != len(pages) - 1:
+            raise AdapterPayloadError(
+                f"GitHub PR history page[{page_index}] ended before supplied pages"
+            )
+        for node in nodes:
+            labels = node.get("labels")
+            if not isinstance(labels, Mapping):
+                raise AdapterPayloadError(
+                    "GitHub PR history labels connection is malformed"
+                )
+            label_page_info = labels.get("pageInfo")
+            if (
+                not isinstance(label_page_info, Mapping)
+                or type(label_page_info.get("hasNextPage")) is not bool
+            ):
+                raise AdapterPayloadError(
+                    "GitHub PR history labels pageInfo is malformed"
+                )
+            if label_page_info["hasNextPage"]:
+                raise AdapterPayloadError(
+                    "GitHub PR history label inventory is incomplete"
+                )
+            label_nodes = labels.get("nodes")
+            if not isinstance(label_nodes, list):
+                raise AdapterPayloadError(
+                    "GitHub PR history labels nodes are malformed"
+                )
+            mapped = dict(node)
+            mapped["labels"] = label_nodes
+            if mapped.get("body") is None:
+                mapped["body"] = ""
+            records.append(mapped)
+
+    if pages:
+        last_page = pages[-1]
+        data = last_page.get("data")
+        repository = data.get("repository") if isinstance(data, Mapping) else None
+        connection = (
+            repository.get("pullRequests") if isinstance(repository, Mapping) else None
+        )
+        page_info = (
+            connection.get("pageInfo") if isinstance(connection, Mapping) else None
+        )
+        if not isinstance(page_info, Mapping) or page_info.get("hasNextPage") is True:
+            raise AdapterPayloadError("GitHub PR history pagination is incomplete")
+    return parse_pull_request_inventory(records)
+
 
 class GitHubQueries:
     def __init__(
@@ -125,6 +251,41 @@ class GitHubQueries:
             )
         )
         return self.pull_request_inventory_parser(payload)
+
+    def list_pull_requests_for_branches(
+        self, branches: tuple[str, ...]
+    ) -> PullRequestInventory:
+        """Read terminal and open PR history once for a branch-audit pass."""
+
+        branch_set = frozenset(branches)
+        if not branch_set:
+            return PullRequestInventory(())
+        repository = self.repository_name()
+        owner, separator, name = repository.partition("/")
+        if not separator or not owner or not name or "/" in name:
+            raise AdapterPayloadError("GitHub repository name must be owner/name")
+        payload = self.client.load_json(
+            (
+                "gh",
+                "api",
+                "graphql",
+                "--paginate",
+                "--slurp",
+                "-f",
+                f"query={ALL_PR_HISTORY_QUERY}",
+                "-F",
+                f"owner={owner}",
+                "-F",
+                f"name={name}",
+            )
+        )
+        inventory = _parse_pull_request_history_pages(payload)
+        return PullRequestInventory(
+            records=tuple(
+                item for item in inventory.records if item.branch in branch_set
+            ),
+            problems=inventory.problems,
+        )
 
     def recent_merge_times(self, *, limit: int = 100) -> tuple[datetime, ...]:
         if type(limit) is not int or not 1 <= limit <= 100:

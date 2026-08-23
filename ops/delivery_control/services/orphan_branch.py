@@ -8,6 +8,7 @@ import re
 from dataclasses import dataclass
 
 from ..domain.errors import DeliverySourceError, PolicyViolation
+from ..domain.observations import PullRequestInventory
 from ..ports.git import GitCommandPort, GitQueryPort
 from ..ports.github import GitHubQueryPort
 from ..ports.registry import RegistryQueryPort
@@ -92,11 +93,15 @@ class OrphanBranchDiscardService:
         if any(problem.identity == branch for problem in inventory.problems):
             raise PolicyViolation("registry has a source problem for the target branch")
 
-    def _assert_no_pr_history(self, branch: str) -> None:
-        inventory = self.github.list_pull_requests_for_branch(branch)
+    def _assert_no_pr_history(
+        self, branch: str, *, inventory: PullRequestInventory | None = None
+    ) -> None:
+        inventory = inventory or self.github.list_pull_requests_for_branch(branch)
         if inventory.problems:
             raise PolicyViolation("GitHub branch PR inventory is incomplete")
-        if inventory.records:
+        if any(not hasattr(item, "branch") for item in inventory.records):
+            raise PolicyViolation("GitHub branch PR history inventory is malformed")
+        if any(item.branch == branch for item in inventory.records):
             raise PolicyViolation("orphan branch has PR history")
 
     def _assert_no_physical_worktree(self, branch: str) -> None:
@@ -104,7 +109,11 @@ class OrphanBranchDiscardService:
             raise PolicyViolation("orphan branch still has a physical worktree")
 
     def preflight(
-        self, *, branch: str, expected_head_sha: str
+        self,
+        *,
+        branch: str,
+        expected_head_sha: str,
+        pr_history: PullRequestInventory | None = None,
     ) -> OrphanBranchPreflight:
         """Evaluate discard eligibility without changing Git or the registry."""
 
@@ -132,7 +141,7 @@ class OrphanBranchDiscardService:
             else:
                 passed.append("registry has no claim or source problem for branch")
             try:
-                self._assert_no_pr_history(branch)
+                self._assert_no_pr_history(branch, inventory=pr_history)
             except DeliverySourceError as error:
                 blockers.append(str(error))
             else:
