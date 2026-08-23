@@ -22,6 +22,7 @@ from delivery_control.domain.branch_content import (  # noqa: E402
 )
 from delivery_control.domain.branch_lifecycle import BranchSide  # noqa: E402
 from delivery_control.services.branch_content import BranchContentService  # noqa: E402
+from delivery_control.services.inspect import DeliveryInventory  # noqa: E402
 
 
 def test_application_public_facade_preserves_constructor_contract() -> None:
@@ -537,6 +538,35 @@ def test_metrics_forwards_supervision_worktree_paths_to_inspect(
     assert measure.call_args.kwargs["excluded_worktree_paths"] == (
         Path("/supervision"),
     )
+
+
+def test_metrics_result_preserves_inspected_main_baselines(tmp_path: Path) -> None:
+    application = DeliveryApplication(
+        repo=tmp_path,
+        git=Mock(),
+        github=Mock(),
+        registry=Mock(),
+        runtime=Mock(),
+        telemetry=Mock(),
+    )
+    telemetry = Mock()
+    telemetry.rolling.return_value = None
+    inventory = DeliveryInventory(
+        lanes=(),
+        live_main_sha="a" * 40,
+        local_main_sha="b" * 40,
+    )
+
+    with (
+        patch.object(DeliveryApplication, "inspect", return_value=inventory),
+        patch.object(
+            DeliveryApplication, "_operation_telemetry", return_value=telemetry
+        ),
+    ):
+        measured = application.metrics()
+
+    assert measured.live_main_sha == "a" * 40
+    assert measured.local_main_sha == "b" * 40
 
 
 def test_inspect_forwards_supervision_worktree_paths(tmp_path: Path) -> None:
