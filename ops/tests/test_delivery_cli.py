@@ -1127,7 +1127,13 @@ def test_cli_exposes_watchdog_without_dispatching(capsys: object) -> None:
 
     assert (
         main(
-            ["watchdog", "--supervisor-thread", "supervisor-thread"],
+            [
+                "--runtime-status-file",
+                "/runtime/supervisor.json",
+                "watchdog",
+                "--supervisor-thread",
+                "supervisor-thread",
+            ],
             application_factory=lambda **_: FakeApplication(),
         )
         == 0
@@ -1136,6 +1142,40 @@ def test_cli_exposes_watchdog_without_dispatching(capsys: object) -> None:
     payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
     assert payload["command"] == "watchdog"
     assert payload["result"]["action"] == "noop"
+
+
+@pytest.mark.parametrize("command", ["watchdog", "watchdog-claim"])
+def test_cli_rejects_watchdog_commands_without_runtime_status_file(
+    command: str, capsys: object
+) -> None:
+    class FakeApplication:
+        def watchdog(
+            self,
+            *,
+            supervisor_thread_id: str,
+            stale_after_seconds: int,
+        ) -> object:
+            raise AssertionError("watchdog must not run without a receipt path")
+
+        def watchdog_claim(
+            self,
+            *,
+            supervisor_thread_id: str,
+            stale_after_seconds: int,
+        ) -> object:
+            raise AssertionError("watchdog-claim must not run without a receipt path")
+
+    assert (
+        main(
+            [command, "--supervisor-thread", "supervisor-thread"],
+            application_factory=lambda **_: FakeApplication(),
+        )
+        == 1
+    )
+
+    payload = json.loads(capsys.readouterr().err)  # type: ignore[attr-defined]
+    assert payload["ok"] is False
+    assert payload["error"] == f"{command} requires --runtime-status-file"
 
 
 def test_cli_exposes_watchdog_claim_before_external_dispatch(capsys: object) -> None:
@@ -1156,7 +1196,13 @@ def test_cli_exposes_watchdog_claim_before_external_dispatch(capsys: object) -> 
 
     assert (
         main(
-            ["watchdog-claim", "--supervisor-thread", "supervisor-thread"],
+            [
+                "--runtime-status-file",
+                "/runtime/supervisor.json",
+                "watchdog-claim",
+                "--supervisor-thread",
+                "supervisor-thread",
+            ],
             application_factory=lambda **_: FakeApplication(),
         )
         == 0
