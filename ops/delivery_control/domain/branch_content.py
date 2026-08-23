@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from .errors import InvalidReceipt
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+BRANCH_CONTENT_PATH_LIMIT = 200
 
 
 def _sha(value: str, field: str) -> str:
@@ -43,6 +44,8 @@ class BranchContentEvidence:
     ahead_commit_count: int
     behind_commit_count: int
     changed_paths: tuple[str, ...]
+    changed_path_count: int
+    changed_paths_truncated: bool
     change_fingerprint: str
     commit_subjects: tuple[str, ...]
     commit_subjects_truncated: bool
@@ -66,6 +69,14 @@ class BranchContentEvidence:
             raise InvalidReceipt("content evidence changed paths are invalid")
         if tuple(sorted(set(self.changed_paths))) != self.changed_paths:
             raise InvalidReceipt("content evidence changed paths are not canonical")
+        if type(self.changed_path_count) is not int or self.changed_path_count < len(
+            self.changed_paths
+        ):
+            raise InvalidReceipt("content evidence changed path count is invalid")
+        if self.changed_paths_truncated != (
+            self.changed_path_count > len(self.changed_paths)
+        ):
+            raise InvalidReceipt("content evidence path truncation is inconsistent")
         _text(self.change_fingerprint, "content evidence change fingerprint")
         if type(self.commit_subjects) is not tuple or any(
             type(subject) is not str or not subject for subject in self.commit_subjects
@@ -83,4 +94,4 @@ class BranchContentEvidence:
         return self.base_is_ancestor is False and self.ahead_commit_count > 0
 
 
-__all__ = ["BranchContentEvidence"]
+__all__ = ["BRANCH_CONTENT_PATH_LIMIT", "BranchContentEvidence"]
