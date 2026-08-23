@@ -139,6 +139,14 @@ def decide_capacity(
             ControlAction.RECOVER_OWNER_BOUND_LANE,
             "existing owner-bound lanes require bounded recovery",
         )
+    if metrics.active_registry_without_worktree:
+        add(
+            ControlAction.RECOVER_OWNER_BOUND_LANE,
+            (
+                f"{metrics.active_registry_without_worktree} active registry claim(s) "
+                "have no physical worktree and require original-owner recovery"
+            ),
+        )
     if metrics.security_hold_issues or metrics.security_hold_lanes:
         add(
             ControlAction.RECONCILE_HOLDS,

@@ -709,6 +709,23 @@ def test_controller_reports_source_uncertainty_instead_of_fabricating_supply() -
     assert decision.desired_new_solvers == 0
 
 
+def test_controller_surfaces_owner_residue_without_blocking_verified_dispatch() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    decision = decide_capacity(
+        _metrics(
+            active_registry_records=8,
+            raw_active_registry_records=8,
+            active_registry_without_worktree=8,
+        ),
+        cadence,
+    )
+
+    assert ControlAction.RECOVER_OWNER_BOUND_LANE in decision.actions
+    assert ControlAction.DISPATCH_SOLVERS in decision.actions
+    assert ControlAction.THROTTLE_SOLVERS not in decision.actions
+    assert decision.desired_new_solvers == 4
+
+
 def test_hard_holds_block_ramp_and_solver_birth_until_reconciled() -> None:
     cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
     metrics = _metrics(security_hold_lanes=1, security_hold_issues=1)
