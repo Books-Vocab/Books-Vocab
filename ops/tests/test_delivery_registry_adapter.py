@@ -343,6 +343,79 @@ def test_collision_inventory_uses_scope_from_active_legacy_record(
     assert inventory.records[0].scope.paths == ("ops/legacy.py",)
 
 
+def _legacy_terminal_with_exact_seal_base(tmp_path: Path) -> dict[str, object]:
+    branch = "feat/legacy-terminal"
+    path = tmp_path / "legacy-terminal"
+    base_sha = "a" * 40
+    seal: dict[str, object] = {
+        "schema": "kg.worktree.handback.v1",
+        "branch": branch,
+        "path": str(path),
+        "external_ids": [],
+        "base_sha": base_sha,
+        "tip_sha": "b" * 40,
+        "handed_back_at": "2026-08-21T00:00:00Z",
+        "origin_main_sha": base_sha,
+        "outcomes": [{"status": "passed"}],
+    }
+    seal["digest"] = hashlib.sha256(
+        json.dumps(
+            seal, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    return {
+        "branch": branch,
+        "path": str(path),
+        "status": "abandoned",
+        "external_ids": [],
+        "base": "origin/main",
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"operation": "modify", "path": "ops/legacy.py"}],
+        },
+        "codex_thread_id": None,
+        "claim_generation": 0,
+        "handback_claim_generation": 0,
+        "handed_back_sha": "b" * 40,
+        "handed_back_at": "2026-08-21T00:00:00Z",
+        "handback_seal": seal,
+    }
+
+
+def test_terminal_claim_uses_exact_base_from_valid_legacy_handback(
+    tmp_path: Path,
+) -> None:
+    terminal = _legacy_terminal_with_exact_seal_base(tmp_path)
+    runner = StaticRunner(
+        [CommandResult(("registry",), 0, json.dumps({"records": [terminal]}), "")]
+    )
+
+    record = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    ).find_terminal_claim(branch="feat/legacy-terminal")
+
+    assert record is not None
+    assert record.base_sha == "a" * 40
+    assert record.handback_valid
+
+
+def test_active_claim_does_not_fallback_from_legacy_base_alias(
+    tmp_path: Path,
+) -> None:
+    terminal = _legacy_terminal_with_exact_seal_base(tmp_path)
+    terminal["status"] = "active"
+    runner = StaticRunner(
+        [CommandResult(("registry",), 0, json.dumps({"records": [terminal]}), "")]
+    )
+
+    with pytest.raises(
+        AdapterPayloadError, match="terminal registry claim is malformed"
+    ):
+        RegistryCliAdapter(
+            script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+        ).find_terminal_claim(branch="feat/legacy-terminal")
+
+
 def test_collision_inventory_blocks_active_record_with_unusable_scope(
     tmp_path: Path,
 ) -> None:
