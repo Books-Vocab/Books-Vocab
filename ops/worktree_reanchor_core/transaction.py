@@ -5,7 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import compensation, git_ops, lifecycle_proof, registry_ops
-from .domain import ReanchorRequest, commit_sha, success_payload
+from .domain import (
+    ReanchorRequest,
+    commit_sha,
+    conflict_payload,
+    success_payload,
+)
 from .errors import ReanchorRefused
 
 
@@ -21,6 +26,7 @@ def _request(
     expected_remote_head: str,
     live_main: str,
     target: Path,
+    preserve_conflict: bool,
 ) -> ReanchorRequest:
     if merge_front_pr <= 0:
         raise ReanchorRefused("one positive merge-front PR candidate is required")
@@ -37,6 +43,7 @@ def _request(
         ),
         live_main=commit_sha(live_main, label="live main"),
         target=target,
+        preserve_conflict=preserve_conflict,
     )
 
 
@@ -52,6 +59,7 @@ def perform_reanchor(
     expected_remote_head: str,
     live_main: str,
     target: Path,
+    preserve_conflict: bool = False,
 ) -> dict[str, object]:
     request = _request(
         repo=repo,
@@ -64,6 +72,7 @@ def perform_reanchor(
         expected_remote_head=expected_remote_head,
         live_main=live_main,
         target=target,
+        preserve_conflict=preserve_conflict,
     )
     git_ops.validate_repository(request.repo)
     preflight = registry_ops.preflight(
@@ -111,6 +120,7 @@ def perform_reanchor(
             remote_head=request.expected_remote_head,
             live_main=request.live_main,
             declared=preflight.declared,
+            preserve_conflict=request.preserve_conflict,
         )
         final_lifecycle = lifecycle_proof.verify_reanchor_lifecycle(
             github,
@@ -131,6 +141,43 @@ def perform_reanchor(
             claim_generation=request.claim_generation,
         )
     except (OSError, ReanchorRefused, TypeError, ValueError) as exc:
+        if (
+            request.preserve_conflict
+            and isinstance(exc, ReanchorRefused)
+            and exc.details.get("rebase_conflict") is True
+        ):
+            try:
+                active = registry_ops.register_active(
+                    state_path=request.state_path,
+                    preflight_result=preflight,
+                    target=request.target,
+                    live_main=request.live_main,
+                    lane_id=request.lane_id,
+                    claim_generation=request.claim_generation,
+                )
+            except (OSError, ReanchorRefused, TypeError, ValueError) as register_exc:
+                cleanup = compensation.safe_compensate(
+                    request.repo, target=request.target, branch=request.branch
+                )
+                details = dict(
+                    register_exc.details
+                    if isinstance(register_exc, ReanchorRefused)
+                    else {}
+                )
+                details["compensation"] = cleanup
+                reason = (
+                    register_exc.reason
+                    if isinstance(register_exc, ReanchorRefused)
+                    else f"reanchor source error: {type(register_exc).__name__}: {register_exc}"
+                )
+                raise ReanchorRefused(reason, **details) from register_exc
+            return conflict_payload(
+                request,
+                active=active,
+                declared=preflight.declared,
+                merge_front_policy=initial_lifecycle.merge_front_policy,
+                git_output=str(exc.details.get("git", "")),
+            )
         cleanup = compensation.safe_compensate(
             request.repo, target=request.target, branch=request.branch
         )

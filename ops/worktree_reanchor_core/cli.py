@@ -54,6 +54,7 @@ def cmd_reanchor(args: argparse.Namespace, *, freeze_reason: str | None = None) 
             expected_remote_head=args.expected_remote_head,
             live_main=args.live_main,
             target=Path(args.path).expanduser().resolve(),
+            preserve_conflict=args.preserve_conflict,
         )
     except ReanchorRefused as exc:
         payload = {
@@ -75,7 +76,7 @@ def cmd_reanchor(args: argparse.Namespace, *, freeze_reason: str | None = None) 
         _emit(payload, as_json=args.json)
         return EXIT_BLOCK
     _emit(payload, as_json=args.json)
-    return EXIT_OK
+    return EXIT_BLOCK if payload.get("status") == "owner-action-required" else EXIT_OK
 
 
 def add_parser(
@@ -98,5 +99,10 @@ def add_parser(
     parser.add_argument("--expected-remote-head", required=True)
     parser.add_argument("--live-main", required=True)
     parser.add_argument("--path", required=True)
+    parser.add_argument(
+        "--preserve-conflict",
+        action="store_true",
+        help="keep an exact rebase conflict registered for the original owner",
+    )
     parser.set_defaults(func=handler)
     return parser

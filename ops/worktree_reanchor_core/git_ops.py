@@ -210,12 +210,21 @@ def recreate_and_rebase(
     remote_head: str,
     live_main: str,
     declared: DeclaredOperations,
+    preserve_conflict: bool = False,
 ) -> str:
     rc, output = _git(["worktree", "add", "-b", branch, str(target), remote_head], repo)
     if rc != 0:
         raise ReanchorRefused("local worktree recreation failed", git=output)
     rc, output = _git(["rebase", "--onto", live_main, base_sha, branch], target)
     if rc != 0:
+        if preserve_conflict:
+            raise ReanchorRefused(
+                "rebase conflict requires original-owner resolution",
+                rebase_conflict=True,
+                worktree=str(target),
+                branch=branch,
+                git=output,
+            )
         raise ReanchorRefused("rebase conflict blocked same-owner reanchor", git=output)
     verify_remote_cas(
         repo,
