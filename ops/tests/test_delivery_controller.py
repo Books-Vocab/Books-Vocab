@@ -407,6 +407,26 @@ def test_pipeline_metrics_excludes_explicit_supervision_worktrees() -> None:
     assert measured.blocked_lanes == 0
 
 
+def test_pipeline_metrics_preserves_inventory_main_baselines() -> None:
+    inventory = DeliveryInventory(
+        lanes=(),
+        live_main_sha="a" * 40,
+        local_main_sha="b" * 40,
+    )
+
+    measured = measure_pipeline(inventory)
+
+    assert measured.live_main_sha == "a" * 40
+    assert measured.local_main_sha == "b" * 40
+
+
+def test_pipeline_metrics_direct_construction_keeps_legacy_optional_baselines() -> None:
+    measured = _metrics()
+
+    assert measured.live_main_sha is None
+    assert measured.local_main_sha is None
+
+
 def test_pipeline_metrics_projects_branch_lifecycle_residue() -> None:
     inventory = DeliveryInventory(
         lanes=(),

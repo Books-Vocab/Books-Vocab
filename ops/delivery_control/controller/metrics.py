@@ -42,6 +42,11 @@ class PipelineMetrics:
     source_problems: int
     candidate_issues: int
     reanchor_required: int
+    # Metrics are a point-in-time observation. Preserve the Git baselines that
+    # produced them so supervisors can bind decisions to one live main read.
+    # Optional defaults keep direct construction by legacy callers compatible.
+    live_main_sha: str | None = None
+    local_main_sha: str | None = None
     dispatchable_candidate_issues: int | None = None
     raw_open_issues: int | None = 0
     unadmitted_open_issues: int | None = 0
@@ -178,6 +183,9 @@ def measure_pipeline(
         dispatchable_candidate_issues=inventory.dispatchable_candidate_issues,
         demand_issues=inventory.demand_issues,
         isolation=inventory.isolation,
+        physical_worktrees=inventory.physical_worktrees,
+        live_main_sha=inventory.live_main_sha,
+        local_main_sha=inventory.local_main_sha,
     )
     states = [lane.decision.state for lane in lanes]
     all_pull_request_numbers = {
@@ -353,6 +361,8 @@ def measure_pipeline(
         source_problems=total_source_problems,
         candidate_issues=len(inventory.candidate_issues),
         dispatchable_candidate_issues=len(inventory.dispatchable_candidate_issues),
+        live_main_sha=inventory.live_main_sha,
+        local_main_sha=inventory.local_main_sha,
         raw_open_issues=inventory.demand_issues.raw_open_issues,
         unadmitted_open_issues=inventory.demand_issues.unadmitted_open_issues,
         active_registry_records=active_registry_records,
