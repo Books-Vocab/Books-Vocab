@@ -10,9 +10,15 @@ from .resume_domain import build_request, success_payload
 
 
 def perform_resume(
-    *, repo: Path, state_path: Path, lane_id: str, branch: str,
-    owner_thread_id: str, claim_generation: int,
-    expected_remote_head: str, target: Path,
+    *,
+    repo: Path,
+    state_path: Path,
+    lane_id: str,
+    branch: str,
+    owner_thread_id: str,
+    claim_generation: int,
+    expected_remote_head: str,
+    target: Path,
     previous_handback: str | None = None,
     mode: str = "required-failure",
 ) -> dict[str, object]:
@@ -39,17 +45,14 @@ def perform_resume(
         target=request.target,
         previous_handback=request.previous_handback,
     )
-    github = lifecycle_proof.build_github(
-        request.repo, operation="resume-published"
-    )
+    github = lifecycle_proof.build_github(request.repo, operation="resume-published")
     initial_lifecycle = lifecycle_proof.verify_resume_lifecycle(
         github,
         branch=request.branch,
         expected_base_sha=preflight.base_sha,
         expected_remote_head=request.expected_remote_head,
         require_failed=(
-            request.mode == "required-failure"
-            and request.previous_handback is None
+            request.mode == "required-failure" and request.previous_handback is None
         ),
     )
     recorded_path = Path(str(preflight.original["path"])).expanduser().resolve()
@@ -103,14 +106,11 @@ def perform_resume(
             expected_base_sha=preflight.base_sha,
             expected_remote_head=request.expected_remote_head,
             require_failed=(
-                request.mode == "required-failure"
-                and request.previous_handback is None
+                request.mode == "required-failure" and request.previous_handback is None
             ),
         )
         if final_lifecycle != initial_lifecycle:
-            raise ReanchorRefused(
-                "GitHub lifecycle changed during resume-published"
-            )
+            raise ReanchorRefused("GitHub lifecycle changed during resume-published")
         active = registry_ops.register_resumed(
             state_path=request.state_path,
             preflight_result=preflight,

@@ -30,20 +30,26 @@ class ResumeRequest:
 
 
 def build_request(
-    *, repo: Path, state_path: Path, lane_id: str, branch: str,
-    owner_thread_id: str, claim_generation: int,
-    expected_remote_head: str, target: Path,
+    *,
+    repo: Path,
+    state_path: Path,
+    lane_id: str,
+    branch: str,
+    owner_thread_id: str,
+    claim_generation: int,
+    expected_remote_head: str,
+    target: Path,
     previous_handback: str | None = None,
     mode: str = "required-failure",
 ) -> ResumeRequest:
     if not lane_id.strip() or not branch.strip() or not owner_thread_id.strip():
-        raise ReanchorRefused("lane, branch, and owner must identify one published claim")
+        raise ReanchorRefused(
+            "lane, branch, and owner must identify one published claim"
+        )
     if claim_generation < 0:
         raise ReanchorRefused("claim generation must be non-negative")
     if mode not in {"required-failure", "maintenance"}:
-        raise ReanchorRefused(
-            "resume mode must be 'required-failure' or 'maintenance'"
-        )
+        raise ReanchorRefused("resume mode must be 'required-failure' or 'maintenance'")
     current_head = commit_sha(expected_remote_head, label="expected remote HEAD")
     previous_head = (
         commit_sha(previous_handback, label="previous hand-back")

@@ -19,7 +19,9 @@ def _emit(payload: dict[str, Any], *, as_json: bool) -> None:
     if as_json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     elif payload.get("status") == "ready-for-owner-fix":
-        print(f"✓ resumed {payload['branch']} for its original owner at {payload['worktree']}")
+        print(
+            f"✓ resumed {payload['branch']} for its original owner at {payload['worktree']}"
+        )
     else:
         print(f"✗ resume-published refused: {payload.get('reason', 'unknown reason')}")
 
@@ -77,7 +79,8 @@ def cmd_resume(args: argparse.Namespace, *, freeze_reason: str | None = None) ->
 
 def add_parser(
     subparsers: Any,
-    *, common: Callable[[argparse.ArgumentParser], None],
+    *,
+    common: Callable[[argparse.ArgumentParser], None],
     handler: Callable[[argparse.Namespace], int],
     default_repo: Path,
 ) -> argparse.ArgumentParser:
