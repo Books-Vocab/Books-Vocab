@@ -183,6 +183,16 @@ def decide_watchdog(
             f"runtime is {receipt.state.value}",
             now,
         )
+    if (
+        receipt.last_progress_at > now
+        or receipt.observed_at > now
+        or receipt.last_progress_at > receipt.observed_at
+    ):
+        return WatchdogDecision(
+            WatchdogAction.ESCALATE,
+            "runtime receipt timestamps are incoherent; external clock audit required",
+            now,
+        )
     if receipt.lease_until is not None and receipt.lease_until > now:
         return WatchdogDecision(WatchdogAction.NOOP, "lease is valid", now)
     if (

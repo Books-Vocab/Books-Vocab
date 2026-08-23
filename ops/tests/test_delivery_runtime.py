@@ -89,6 +89,50 @@ def test_default_watchdog_tick_is_five_minutes() -> None:
     assert decision.action is WatchdogAction.WAKE
 
 
+@pytest.mark.parametrize(
+    "changes",
+    (
+        {"last_progress_at": NOW + timedelta(minutes=1)},
+        {"observed_at": NOW + timedelta(minutes=1)},
+        {
+            "last_progress_at": NOW - timedelta(seconds=1),
+            "observed_at": NOW - timedelta(seconds=2),
+        },
+    ),
+)
+def test_incoherent_runtime_timestamps_escalate_fail_closed(
+    changes: dict[str, datetime],
+) -> None:
+    decision = evaluate_runtime_watchdog(
+        _receipt(lease_until=None, **changes),
+        now=NOW,
+    )
+
+    assert decision.action is WatchdogAction.ESCALATE
+    assert decision.reason == (
+        "runtime receipt timestamps are incoherent; external clock audit required"
+    )
+    assert decision.wake_id is None
+
+
+@pytest.mark.parametrize("state", (RuntimeState.FROZEN, RuntimeState.ARCHIVED))
+def test_incoherent_frozen_or_archived_runtime_stays_noop(
+    state: RuntimeState,
+) -> None:
+    decision = evaluate_runtime_watchdog(
+        _receipt(
+            state=state,
+            last_progress_at=NOW + timedelta(minutes=1),
+            observed_at=NOW + timedelta(minutes=1),
+        ),
+        now=NOW,
+    )
+
+    assert decision.action is WatchdogAction.NOOP
+    assert decision.reason == f"runtime is {state.value}"
+    assert decision.wake_id is None
+
+
 def test_expired_lease_wakes_even_when_last_progress_is_recent() -> None:
     decision = evaluate_runtime_watchdog(
         _receipt(
@@ -341,7 +385,9 @@ def test_application_watchdog_is_read_only_and_returns_decision(tmp_path: Path) 
     assert decision.wake_claimed is False
 
 
-def test_application_watchdog_claim_persists_before_external_dispatch(tmp_path: Path) -> None:
+def test_application_watchdog_claim_persists_before_external_dispatch(
+    tmp_path: Path,
+) -> None:
     receipt = _receipt(
         state=RuntimeState.IDLE,
         lease_until=None,
