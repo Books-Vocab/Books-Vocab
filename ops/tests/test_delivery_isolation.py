@@ -7,27 +7,31 @@ from types import SimpleNamespace
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.domain.models import Scope
-from delivery_control.domain.observations import (
+from delivery_control.domain.branch_refs import BranchInventory  # noqa: E402
+from delivery_control.domain.models import Scope  # noqa: E402
+from delivery_control.domain.observations import (  # noqa: E402
     InventoryProblem,
     PullRequestSnapshot,
     RegistrySnapshot,
 )
-from delivery_control.domain.states import (
+from delivery_control.domain.states import (  # noqa: E402
     LaneDecision,
     LaneState,
     NextAction,
 )
-from delivery_control.services.inspect import LaneInspection
-from delivery_control.services.isolation import project_isolation
+from delivery_control.services.inspect import LaneInspection  # noqa: E402
+from delivery_control.services.isolation import project_isolation  # noqa: E402
 
 
-def _sources(*, problems=(), pull_requests=(), records=(), physical=()):
+def _sources(
+    *, problems=(), pull_requests=(), records=(), physical=(), branch_inventory=None
+):
     return SimpleNamespace(
         source_problems=tuple(problems),
         pull_requests=tuple(pull_requests),
         records=tuple(records),
         physical=tuple(physical),
+        branch_inventory=branch_inventory or BranchInventory(),
     )
 
 
@@ -65,6 +69,46 @@ def test_registry_source_history_without_runtime_assets_is_quarantined() -> None
     assert summary.quarantined_source_problems == 1
 
 
+def test_registry_source_problem_with_branch_ref_stays_actionable() -> None:
+    summary = project_isolation(
+        sources=_sources(
+            problems=(
+                InventoryProblem(
+                    "registry",
+                    "feat/live-ref",
+                    "malformed",
+                    identity_kind="branch",
+                ),
+                InventoryProblem(
+                    "registry",
+                    "feat/remote-ref",
+                    "malformed",
+                    identity_kind="branch",
+                ),
+            ),
+            branch_inventory=BranchInventory(
+                local=(("feat/live-ref", "a" * 40),),
+                remote=(("feat/remote-ref", "b" * 40),),
+            ),
+        ),
+        lanes=(),
+    )
+
+    assert summary.quarantined_source_problems == 0
+
+
+def test_unscoped_registry_problem_stays_quarantined_with_matching_branch_ref() -> None:
+    summary = project_isolation(
+        sources=_sources(
+            problems=(InventoryProblem("registry", "feat/global", "malformed"),),
+            branch_inventory=BranchInventory(local=(("feat/global", "a" * 40),)),
+        ),
+        lanes=(),
+    )
+
+    assert summary.quarantined_source_problems == 1
+
+
 def test_active_missing_worktree_is_quarantined_but_not_deleted() -> None:
     summary = project_isolation(
         sources=_sources(),
@@ -78,7 +122,11 @@ def test_active_missing_worktree_is_quarantined_but_not_deleted() -> None:
 def test_terminal_residue_without_physical_worktree_is_quarantined() -> None:
     summary = project_isolation(
         sources=_sources(),
-        lanes=(_lane(registry=_registry(status="merged"), state=LaneState.TERMINAL_CLEANUP),),
+        lanes=(
+            _lane(
+                registry=_registry(status="merged"), state=LaneState.TERMINAL_CLEANUP
+            ),
+        ),
     )
 
     assert summary.quarantined_terminal_cleanup == 1
