@@ -277,6 +277,46 @@ def test_triage_plan_is_stable_and_actionable() -> None:
     assert plan[0].body_sha256 == issue_body_sha256("plain request")
 
 
+def test_triage_plan_prioritizes_recovery_before_terminal_history() -> None:
+    raw = parse_demand_issue_inventory(
+        [
+            _payload(1, body="Security hold / priority: P1"),
+            _payload(2),
+            _payload(
+                3,
+                labels=(CANDIDATE_ISSUE_LABEL,),
+                body=render_candidate_body(_spec(3)),
+            ),
+            _payload(4),
+            _payload(5),
+            _payload(6, labels=("merged",)),
+            _payload(7, labels=("legacy-ticket",)),
+            _payload(8, labels=("blocked",)),
+        ]
+    )
+    projected = project_demand_inventory(
+        raw,
+        registry_records=(
+            _record(4, "active", external_id="#4"),
+            _record(5, "published", external_id="#5"),
+        ),
+    )
+
+    plan = build_triage_plan(projected)
+
+    assert [item.number for item in plan] == [1, 2, 3, 4, 5, 7, 8, 6]
+    assert [item.disposition for item in plan] == [
+        IssueDisposition.SECURITY_HOLD,
+        IssueDisposition.TRIAGE_REQUIRED,
+        IssueDisposition.DISPATCHABLE_CANDIDATE,
+        IssueDisposition.OWNER_BOUND,
+        IssueDisposition.PUBLISHED_PR,
+        IssueDisposition.LEGACY_UNMAPPED,
+        IssueDisposition.BLOCKED,
+        IssueDisposition.TERMINAL_HISTORY,
+    ]
+
+
 def test_metrics_expose_raw_backlog_without_starving_verified_candidates() -> None:
     raw = parse_demand_issue_inventory(
         [
