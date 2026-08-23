@@ -253,6 +253,16 @@ def test_branch_review_plan_pages_orphans_and_preserves_incomplete_audit(
     assert plan.remaining_count == 0
     assert plan.complete is False
     assert plan.items[0].content.head_sha == "b" * 40
+    assert plan.items[0].next_step == (
+        "review unlanded content; if explicit discard is chosen, invoke "
+        "discard-unregistered-branch with branch=backup/orphan, "
+        "expected-head-sha="
+        + "b" * 40
+        + ", expected-content-fingerprint="
+        + "c" * 64
+        + "; operator, reason, and --confirm-unmerged are required; "
+        "no automatic deletion"
+    )
 
 
 def test_branch_review_plan_bounds_path_sample_without_losing_fingerprint(

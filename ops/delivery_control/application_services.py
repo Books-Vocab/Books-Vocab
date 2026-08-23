@@ -25,6 +25,7 @@ from .controller.worktree_boundary import partition_worktrees
 from .domain.branch_lifecycle import BranchDisposition
 from .domain.branch_content import (
     BRANCH_REVIEW_PAGE_LIMIT,
+    BranchContentEvidence,
     BranchContentReviewItem,
     BranchContentReviewPlan,
 )
@@ -87,6 +88,28 @@ def _is_reviewable_local_orphan(action: object) -> bool:
         and not preflight.eligible
         and set(blockers) == _REVIEWABLE_LOCAL_ORPHAN_BLOCKERS
     )
+
+
+def _branch_review_next_step(action: object, content: BranchContentEvidence) -> str:
+    """Connect reviewed unlanded content to its explicit discard lifecycle.
+
+    The review plan remains read-only: this guidance exposes the exact
+    fingerprint and required confirmation inputs, but never authorizes or
+    performs deletion.  Keeping the decision here prevents a complete content
+    packet from ending in an unbounded "review" state.
+    """
+
+    if content.complete and content.unlanded:
+        branch = getattr(action, "branch")
+        return (
+            "review unlanded content; if explicit discard is chosen, invoke "
+            "discard-unregistered-branch with "
+            f"branch={branch}, expected-head-sha={content.head_sha}, "
+            f"expected-content-fingerprint={content.change_fingerprint}; "
+            "operator, reason, and --confirm-unmerged are required; "
+            "no automatic deletion"
+        )
+    return str(getattr(action, "next_step"))
 
 
 @dataclass(frozen=True)
@@ -240,25 +263,27 @@ class DeliveryApplication:
                 branch: branch_content.BranchContentService.compact_for_review(evidence)
                 for branch, evidence in contents.items()
             }
-        items = tuple(
-            BranchContentReviewItem(
+
+        def build_review_item(action: object) -> BranchContentReviewItem:
+            content = contents.get(
+                action.branch,
+                branch_content.BranchContentService._error(
+                    branch=action.branch,
+                    base_sha=audit.live_main_sha or "0" * 40,
+                    error="branch content was not inspected",
+                ),
+            )
+            return BranchContentReviewItem(
                 schema="kg.delivery.branch-content-review-item.v1",
                 branch=action.branch,
                 expected_head_sha=action.sha,
                 preflight_eligible=action.orphan_preflight.eligible,
                 preflight_blockers=tuple(sorted(action.orphan_preflight.blockers)),
-                content=contents.get(
-                    action.branch,
-                    branch_content.BranchContentService._error(
-                        branch=action.branch,
-                        base_sha=audit.live_main_sha or "0" * 40,
-                        error="branch content was not inspected",
-                    ),
-                ),
-                next_step=action.next_step,
+                content=content,
+                next_step=_branch_review_next_step(action, content),
             )
-            for action in selected
-        )
+
+        items = tuple(build_review_item(action) for action in selected)
         reviewed_count = offset + len(items)
         remaining_count = max(len(candidates) - reviewed_count, 0)
         return BranchContentReviewPlan(
