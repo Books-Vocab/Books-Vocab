@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from itertools import pairwise
@@ -10,6 +11,7 @@ from pathlib import Path
 from ..domain.branch_lifecycle import BranchDisposition, BranchSide
 from ..domain.demand_issues import IssueDisposition
 from ..domain.models import CheckStatus
+from ..domain.observations import InventoryProblem
 from ..domain.states import LaneState
 from ..domain.telemetry import TelemetryReadResult
 from ..services.inspect import DeliveryInventory
@@ -91,6 +93,10 @@ class PipelineMetrics:
     quarantined_open_prs: int = 0
     quarantined_terminal_cleanup: int = 0
     actionable_source_problems: int | None = None
+    # Keep the aggregate for readiness and audit, but expose source scope so
+    # capacity can isolate branch/git-object residue from global uncertainty.
+    source_problem_scope_counts: tuple[tuple[str, int], ...] = ()
+    actionable_global_source_problems: int | None = None
     actionable_blocked_lanes: int | None = None
     actionable_unmapped_open_prs: int | None = None
     actionable_terminal_cleanup: int | None = None
@@ -111,6 +117,21 @@ class PipelineMetrics:
         for field_name, value in defaults.items():
             if getattr(self, field_name) is None:
                 object.__setattr__(self, field_name, value)
+        if self.actionable_global_source_problems is None:
+            # Legacy/direct construction has no scope evidence. Preserve the
+            # old fail-closed dispatch contract by treating the aggregate as
+            # global uncertainty.
+            object.__setattr__(
+                self,
+                "actionable_global_source_problems",
+                self.actionable_source_problems,
+            )
+        if not self.source_problem_scope_counts and self.actionable_source_problems:
+            object.__setattr__(
+                self,
+                "source_problem_scope_counts",
+                (("global", self.actionable_source_problems),),
+            )
         if self.dispatchable_candidate_issues is None:
             object.__setattr__(
                 self, "dispatchable_candidate_issues", self.candidate_issues
@@ -338,6 +359,20 @@ def measure_pipeline(
         + issue_source_problems
         + issue_inventory_problem
     )
+    source_problem_scope_counts = Counter(
+        _source_problem_scope(problem) for problem in inventory.source_problems
+    )
+    # These observations have no exact branch identity and remain global
+    # blockers: an unknown worktree, invalid telemetry, or incomplete Issue
+    # inventory can affect safe admission for every unrelated lane.
+    global_source_problem_count = (
+        invalid_source_problems
+        + unknown_source_problems
+        + issue_source_problems
+        + issue_inventory_problem
+    )
+    if global_source_problem_count:
+        source_problem_scope_counts["global"] += global_source_problem_count
     return PipelineMetrics(
         active_development=states.count(LaneState.ACTIVE_DEVELOPMENT),
         handbacks_publishable=handbacks_publishable,
@@ -425,6 +460,8 @@ def measure_pipeline(
             0,
             total_source_problems - isolation.quarantined_source_problems,
         ),
+        source_problem_scope_counts=tuple(sorted(source_problem_scope_counts.items())),
+        actionable_global_source_problems=source_problem_scope_counts.get("global", 0),
         actionable_blocked_lanes=max(
             0,
             sum(state in _BLOCKED for state in states)
@@ -442,6 +479,18 @@ def measure_pipeline(
             - isolation.quarantined_terminal_cleanup,
         ),
     )
+
+
+def _source_problem_scope(problem: InventoryProblem) -> str:
+    """Classify source evidence without mistaking branch spelling for scope."""
+
+    source = getattr(problem, "source", None)
+    identity_kind = getattr(problem, "identity_kind", None)
+    if source == "registry" and identity_kind == "branch":
+        return "branch"
+    if source == "git" and identity_kind == "git_objects":
+        return "git_objects"
+    return "global"
 
 
 def measure_merge_cadence(

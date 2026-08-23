@@ -420,6 +420,27 @@ def test_pipeline_metrics_preserves_inventory_main_baselines() -> None:
     assert measured.local_main_sha == "b" * 40
 
 
+def test_pipeline_metrics_exposes_branch_scoped_source_residue() -> None:
+    measured = measure_pipeline(
+        DeliveryInventory(
+            lanes=(),
+            source_problems=(
+                InventoryProblem(
+                    "registry",
+                    "feat/legacy-residue",
+                    "malformed record",
+                    identity_kind="branch",
+                ),
+            ),
+        )
+    )
+
+    assert measured.source_problem_scope_counts == (("branch", 1),)
+    assert measured.actionable_source_problems == 1
+    assert measured.actionable_global_source_problems == 0
+    assert measured.pipeline_ready is False
+
+
 def test_pipeline_metrics_direct_construction_keeps_legacy_optional_baselines() -> None:
     measured = _metrics()
 
@@ -777,6 +798,25 @@ def test_controller_reports_source_uncertainty_instead_of_fabricating_supply() -
     assert ControlAction.REPLENISH_CANDIDATES not in decision.actions
     assert ControlAction.DISPATCH_SOLVERS not in decision.actions
     assert decision.desired_new_solvers == 0
+
+
+def test_branch_scoped_source_residue_does_not_block_unrelated_solver_dispatch() -> (
+    None
+):
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    decision = decide_capacity(
+        replace(
+            _metrics(source_problems=1),
+            source_problem_scope_counts=(("branch", 1),),
+            actionable_global_source_problems=0,
+        ),
+        cadence,
+    )
+
+    assert ControlAction.INSPECT_SOURCES in decision.actions
+    assert ControlAction.RECOVER_BLOCKERS not in decision.actions
+    assert ControlAction.DISPATCH_SOLVERS in decision.actions
+    assert decision.desired_new_solvers == 4
 
 
 def test_controller_surfaces_owner_residue_without_blocking_verified_dispatch() -> None:
