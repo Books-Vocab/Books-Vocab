@@ -14,7 +14,11 @@ from delivery_control.adapters.git_parsing import parse_commit_summaries  # noqa
 from delivery_control.adapters.errors import AdapterPayloadError  # noqa: E402
 from delivery_control.domain.branch_content import (  # noqa: E402
     BRANCH_CONTENT_PATH_LIMIT,
+    BranchContentEvidence,
+    BranchContentReviewItem,
+    BranchContentReviewPlan,
 )
+from delivery_control.domain.errors import InvalidReceipt  # noqa: E402
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -111,3 +115,62 @@ def test_git_adapter_bounds_changed_paths_but_keeps_exact_fingerprint(
         f"file-{BRANCH_CONTENT_PATH_LIMIT - 1:03d}.txt"
     )
     assert len(evidence.change_fingerprint) == 64
+
+
+def test_branch_review_plan_requires_audit_and_page_consistency() -> None:
+    evidence = BranchContentEvidence(
+        schema="kg.delivery.branch-content.v1",
+        branch="feat/unlanded",
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+        base_is_ancestor=False,
+        ahead_commit_count=1,
+        behind_commit_count=0,
+        changed_paths=("feature.py",),
+        changed_path_count=1,
+        changed_paths_truncated=False,
+        change_fingerprint="c" * 64,
+        commit_subjects=("feature",),
+        commit_subjects_truncated=False,
+        complete=True,
+    )
+    item = BranchContentReviewItem(
+        schema="kg.delivery.branch-content-review-item.v1",
+        branch="feat/unlanded",
+        expected_head_sha="b" * 40,
+        preflight_eligible=False,
+        preflight_blockers=("not ancestor",),
+        content=evidence,
+        next_step="review content",
+    )
+    plan = BranchContentReviewPlan(
+        schema="kg.delivery.branch-content-review-plan.v1",
+        live_main_sha="a" * 40,
+        audit_complete=False,
+        complete=False,
+        offset=0,
+        limit=1,
+        total_candidates=1,
+        reviewed_count=1,
+        remaining_count=0,
+        source_problem_count=1,
+        items=(item,),
+    )
+
+    assert plan.complete is False
+    assert plan.items[0].content.change_fingerprint == "c" * 64
+
+    with pytest.raises(InvalidReceipt, match="completeness"):
+        BranchContentReviewPlan(
+            schema=plan.schema,
+            live_main_sha=plan.live_main_sha,
+            audit_complete=False,
+            complete=True,
+            offset=plan.offset,
+            limit=plan.limit,
+            total_candidates=plan.total_candidates,
+            reviewed_count=plan.reviewed_count,
+            remaining_count=plan.remaining_count,
+            source_problem_count=plan.source_problem_count,
+            items=plan.items,
+        )

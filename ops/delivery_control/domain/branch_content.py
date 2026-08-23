@@ -9,6 +9,7 @@ from .errors import InvalidReceipt
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 BRANCH_CONTENT_PATH_LIMIT = 200
+BRANCH_REVIEW_PAGE_LIMIT = 5
 
 
 def _sha(value: str, field: str) -> str:
@@ -94,4 +95,97 @@ class BranchContentEvidence:
         return self.base_is_ancestor is False and self.ahead_commit_count > 0
 
 
-__all__ = ["BRANCH_CONTENT_PATH_LIMIT", "BranchContentEvidence"]
+@dataclass(frozen=True)
+class BranchContentReviewItem:
+    """One paged, read-only review item for a blocked local orphan."""
+
+    schema: str
+    branch: str
+    expected_head_sha: str
+    preflight_eligible: bool
+    preflight_blockers: tuple[str, ...]
+    content: BranchContentEvidence
+    next_step: str
+
+    def __post_init__(self) -> None:
+        _text(self.schema, "branch review item schema")
+        _text(self.branch, "branch review item branch")
+        _sha(self.expected_head_sha, "branch review item expected head")
+        if type(self.preflight_eligible) is not bool:
+            raise InvalidReceipt("branch review item eligibility is invalid")
+        if type(self.preflight_blockers) is not tuple or any(
+            type(item) is not str or not item for item in self.preflight_blockers
+        ):
+            raise InvalidReceipt("branch review item blockers are invalid")
+        if tuple(sorted(set(self.preflight_blockers))) != self.preflight_blockers:
+            raise InvalidReceipt("branch review item blockers are not canonical")
+        if self.preflight_eligible and self.preflight_blockers:
+            raise InvalidReceipt(
+                "eligible branch review item cannot contain preflight blockers"
+            )
+        if not isinstance(self.content, BranchContentEvidence):
+            raise InvalidReceipt("branch review item content is invalid")
+        if self.content.branch != self.branch:
+            raise InvalidReceipt("branch review item content branch differs")
+        if self.content.head_sha != self.expected_head_sha:
+            raise InvalidReceipt("branch review item content HEAD differs")
+        _text(self.next_step, "branch review item next step")
+
+
+@dataclass(frozen=True)
+class BranchContentReviewPlan:
+    """A bounded page over local orphan content; it never authorizes deletion."""
+
+    schema: str
+    live_main_sha: str | None
+    audit_complete: bool
+    complete: bool
+    offset: int
+    limit: int
+    total_candidates: int
+    reviewed_count: int
+    remaining_count: int
+    source_problem_count: int
+    items: tuple[BranchContentReviewItem, ...]
+
+    def __post_init__(self) -> None:
+        _text(self.schema, "branch review plan schema")
+        if self.live_main_sha is not None:
+            _sha(self.live_main_sha, "branch review plan live main")
+        if type(self.audit_complete) is not bool or type(self.complete) is not bool:
+            raise InvalidReceipt("branch review plan completeness is invalid")
+        for field in (
+            "offset",
+            "limit",
+            "total_candidates",
+            "reviewed_count",
+            "remaining_count",
+            "source_problem_count",
+        ):
+            value = getattr(self, field)
+            if type(value) is not int or value < 0:
+                raise InvalidReceipt(f"branch review plan {field} is invalid")
+        if self.limit == 0:
+            raise InvalidReceipt("branch review plan limit must be positive")
+        if self.reviewed_count != self.offset + len(self.items):
+            raise InvalidReceipt("branch review plan reviewed count is inconsistent")
+        if self.remaining_count != max(self.total_candidates - self.reviewed_count, 0):
+            raise InvalidReceipt("branch review plan remaining count is inconsistent")
+        if len(self.items) > self.limit:
+            raise InvalidReceipt("branch review plan exceeds its page limit")
+        if self.complete != (
+            self.audit_complete
+            and self.live_main_sha is not None
+            and self.remaining_count == 0
+            and all(item.content.complete for item in self.items)
+        ):
+            raise InvalidReceipt("branch review plan completeness is inconsistent")
+
+
+__all__ = [
+    "BRANCH_CONTENT_PATH_LIMIT",
+    "BRANCH_REVIEW_PAGE_LIMIT",
+    "BranchContentEvidence",
+    "BranchContentReviewItem",
+    "BranchContentReviewPlan",
+]

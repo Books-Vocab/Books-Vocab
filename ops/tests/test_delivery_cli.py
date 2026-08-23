@@ -981,6 +981,30 @@ def test_cli_routes_branch_content_inspection(capsys: object) -> None:
     assert payload["result"]["base_is_ancestor"] is False
 
 
+def test_cli_routes_paged_branch_review_plan(capsys: object) -> None:
+    class FakeApplication:
+        def branch_review_plan(self, *, offset: int, limit: int) -> object:
+            assert offset == 5
+            assert limit == 3
+            return {
+                "schema": "kg.delivery.branch-content-review-plan.v1",
+                "complete": False,
+                "remaining_count": 7,
+            }
+
+    assert (
+        main(
+            ["branch-review-plan", "--offset", "5", "--limit", "3"],
+            application_factory=lambda **_: FakeApplication(),
+        )
+        == 2
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["command"] == "branch-review-plan"
+    assert payload["result"]["remaining_count"] == 7
+
+
 def test_cli_routes_explicit_unregistered_branch_discard(capsys: object) -> None:
     class FakeApplication:
         def discard_unregistered_branch(

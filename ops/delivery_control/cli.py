@@ -102,6 +102,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     branch_inspect.add_argument("--branch", required=True)
     branch_inspect.add_argument("--expected-head-sha")
+    branch_review_plan = commands.add_parser(
+        "branch-review-plan",
+        help="page blocked local-orphan content for read-only review",
+    )
+    branch_review_plan.add_argument("--offset", type=int, default=0)
+    branch_review_plan.add_argument("--limit", type=int, default=5)
     metrics = commands.add_parser("metrics", help="measure current queue reservoirs")
     metrics.add_argument(
         "--supervision-worktree",
@@ -312,6 +318,8 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
             branch=args.branch,
             expected_head_sha=args.expected_head_sha,
         )
+    if args.command == "branch-review-plan":
+        return application.branch_review_plan(offset=args.offset, limit=args.limit)
     if args.command == "metrics":
         return application.metrics(
             supervision_worktree_paths=tuple(args.supervision_worktree)
@@ -506,7 +514,7 @@ def _runtime_timestamp(value: str | None, name: str) -> datetime | None:
 
 
 def _result_exit_code(command: str, result: object) -> int:
-    if command == "branch-audit":
+    if command in {"branch-audit", "branch-review-plan"}:
         complete = (
             result.get("complete")
             if isinstance(result, Mapping)
@@ -584,7 +592,7 @@ def main(
 def _command_verdict(command: str, result: object) -> str:
     """Expose domain incompleteness separately from command transport success."""
 
-    if command == "branch-audit":
+    if command in {"branch-audit", "branch-review-plan"}:
         complete = (
             result.get("complete")
             if isinstance(result, Mapping)
