@@ -8,20 +8,22 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.domain.errors import DeliverySourceError, PolicyViolation
-from delivery_control.domain.models import Scope
-from delivery_control.domain.observations import (
+from delivery_control.domain.branch_refs import BranchInventory  # noqa: E402
+from delivery_control.domain.errors import DeliverySourceError, PolicyViolation  # noqa: E402
+from delivery_control.domain.models import Scope  # noqa: E402
+from delivery_control.domain.observations import (  # noqa: E402
     CanonicalCheckoutSnapshot,
     PhysicalWorktree,
     PullRequestInventory,
     RegistryInventory,
     RegistrySnapshot,
 )
-from delivery_control.services.orphan_branch import OrphanBranchDiscardService
+from delivery_control.services.orphan_branch import OrphanBranchDiscardService  # noqa: E402
 
 BASE = "a" * 40
 HEAD = "b" * 40
 BRANCH = "feat/orphan"
+OTHER_BRANCH = "feat/other-orphan"
 PATH = Path("/tmp/orphan")
 
 
@@ -46,6 +48,7 @@ class FakeGit:
         origin: str = BASE,
         ancestor: bool = True,
         failure: str | None = None,
+        branch_inventory: BranchInventory | None = None,
     ) -> None:
         self.local = local
         self.remote = remote
@@ -57,8 +60,19 @@ class FakeGit:
         self.ancestor = ancestor
         self.failure = failure
         self.actions: list[str] = []
+        self.branch_inventory_snapshot = branch_inventory or BranchInventory(
+            local=((BRANCH, local),) if local is not None else (),
+            remote=((BRANCH, remote),) if remote is not None else (),
+        )
+        self.canonical_calls = 0
+        self.origin_calls = 0
+        self.worktree_calls = 0
+        self.branch_inventory_calls = 0
+        self.local_calls = 0
+        self.remote_calls = 0
 
     def canonical_checkout(self) -> CanonicalCheckoutSnapshot:
+        self.canonical_calls += 1
         return CanonicalCheckoutSnapshot(
             Path("/repo"),
             self.canonical_branch,
@@ -67,17 +81,25 @@ class FakeGit:
         )
 
     def origin_main_sha(self) -> str:
+        self.origin_calls += 1
         return self.origin
 
     def list_worktrees(self) -> tuple[PhysicalWorktree, ...]:
+        self.worktree_calls += 1
         return self.physical
 
+    def branch_inventory(self) -> BranchInventory:
+        self.branch_inventory_calls += 1
+        return self.branch_inventory_snapshot
+
     def local_branch_sha(self, branch: str) -> str | None:
+        self.local_calls += 1
         if self.failure == "local":
             raise DeliverySourceError("local ref unavailable")
         return self.local
 
     def remote_branch_sha(self, branch: str) -> str | None:
+        self.remote_calls += 1
         if self.failure == "remote":
             raise DeliverySourceError("remote ref unavailable")
         return self.remote
@@ -161,6 +183,28 @@ def test_preflight_uses_branch_history_snapshot_without_querying_per_branch() ->
 
     assert result.eligible
     assert github.calls == 0
+
+
+def test_preflight_many_reuses_one_stable_git_snapshot() -> None:
+    git = FakeGit(
+        branch_inventory=BranchInventory(
+            local=((BRANCH, HEAD), (OTHER_BRANCH, HEAD)),
+        )
+    )
+
+    results = _build_service(git=git).preflight_many(
+        branches=((BRANCH, HEAD), (OTHER_BRANCH, HEAD)),
+        pr_history=PullRequestInventory(()),
+    )
+
+    assert tuple(results) == (BRANCH, OTHER_BRANCH)
+    assert all(item.eligible for item in results.values())
+    assert git.canonical_calls == 1
+    assert git.origin_calls == 1
+    assert git.worktree_calls == 1
+    assert git.branch_inventory_calls == 1
+    assert git.local_calls == 0
+    assert git.remote_calls == 0
 
 
 def test_preflight_reports_blocker_without_deleting() -> None:
