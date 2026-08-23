@@ -48,6 +48,8 @@ class FakeGit:
             ahead_commit_count=2,
             behind_commit_count=1,
             changed_paths=("ops/example.py",),
+            changed_path_count=1,
+            changed_paths_truncated=False,
             change_fingerprint=FINGERPRINT,
             commit_subjects=("unlanded change",),
             commit_subjects_truncated=False,

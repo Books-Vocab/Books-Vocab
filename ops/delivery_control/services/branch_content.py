@@ -62,6 +62,8 @@ class BranchContentService:
             ahead_commit_count=0,
             behind_commit_count=0,
             changed_paths=(),
+            changed_path_count=0,
+            changed_paths_truncated=False,
             change_fingerprint="error",
             commit_subjects=(),
             commit_subjects_truncated=False,

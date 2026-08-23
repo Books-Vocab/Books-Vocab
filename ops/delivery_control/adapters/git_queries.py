@@ -5,7 +5,10 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from ..domain.branch_content import BranchContentEvidence
+from ..domain.branch_content import (
+    BRANCH_CONTENT_PATH_LIMIT,
+    BranchContentEvidence,
+)
 from ..domain.branch_refs import BranchInventory
 from ..domain.observations import (
     CanonicalCheckoutSnapshot,
@@ -211,6 +214,7 @@ class GitQueries:
         summaries, truncated = parse_commit_summaries(
             summaries_payload, limit=max_commit_summaries
         )
+        all_changed_paths = tuple(sorted(change.path for change in changes))
         return BranchContentEvidence(
             schema="kg.delivery.branch-content.v1",
             branch=branch,
@@ -219,7 +223,9 @@ class GitQueries:
             base_is_ancestor=base_is_ancestor,
             ahead_commit_count=ahead_count,
             behind_commit_count=behind_count,
-            changed_paths=tuple(sorted(change.path for change in changes)),
+            changed_paths=all_changed_paths[:BRANCH_CONTENT_PATH_LIMIT],
+            changed_path_count=len(all_changed_paths),
+            changed_paths_truncated=len(all_changed_paths) > BRANCH_CONTENT_PATH_LIMIT,
             change_fingerprint=hashlib.sha256(diff_payload.encode()).hexdigest(),
             commit_subjects=tuple(subject for _, subject in summaries),
             commit_subjects_truncated=truncated,
