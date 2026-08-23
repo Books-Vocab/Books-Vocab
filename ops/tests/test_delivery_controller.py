@@ -18,6 +18,7 @@ from delivery_control.controller.capacity import (
 )
 from delivery_control.controller.dogfood import DogfoodProfile, assess_dogfood_readiness
 from delivery_control.controller.metrics import (
+    MergeCadence,
     PipelineMetrics,
     measure_merge_cadence,
     measure_pipeline,
@@ -78,12 +79,52 @@ def _metrics(**changes: int) -> PipelineMetrics:
         "source_problems": 0,
         "candidate_issues": 30,
         "reanchor_required": 0,
+        "raw_open_issues": 0,
+        "unadmitted_open_issues": 0,
+        "issue_inventory_complete": True,
         "clean_unregistered_worktrees": 0,
         "security_hold_lanes": 0,
         "security_hold_issues": 0,
     }
     values.update(changes)
     return PipelineMetrics(**values)
+
+
+def test_direct_metrics_without_issue_inventory_fail_closed() -> None:
+    metrics = PipelineMetrics(
+        active_development=0,
+        handbacks_publishable=0,
+        published_local_cleanup=0,
+        cleanup_pending=0,
+        open_prs=0,
+        unmapped_open_prs=0,
+        duplicate_pr_mappings=0,
+        required_green=0,
+        required_running=0,
+        required_failed=0,
+        required_absent=0,
+        pr_contract_failed=0,
+        merge_queue_depth=0,
+        terminal_cleanup=0,
+        blocked_lanes=0,
+        physical_worktrees=0,
+        source_problems=0,
+        candidate_issues=30,
+        reanchor_required=0,
+    )
+    decision = decide_capacity(
+        metrics,
+        MergeCadence(3600, 0, 0.0, None, None, None),
+    )
+
+    assert metrics.raw_open_issues is None
+    assert metrics.unadmitted_open_issues is None
+    assert metrics.issue_inventory_complete is False
+    assert metrics.backlog_drained is False
+    assert metrics.ramp_ready is False
+    assert ControlAction.TRIAGE_EXISTING_ISSUES in decision.actions
+    assert ControlAction.REPLENISH_CANDIDATES not in decision.actions
+    assert ControlAction.DISPATCH_SOLVERS in decision.actions
 
 
 def _candidate(number: int) -> CandidateIssue:

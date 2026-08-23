@@ -50,8 +50,10 @@ class PipelineMetrics:
     live_main_sha: str | None = None
     local_main_sha: str | None = None
     dispatchable_candidate_issues: int | None = None
-    raw_open_issues: int | None = 0
-    unadmitted_open_issues: int | None = 0
+    # Direct construction without a raw Issue inventory must remain unknown;
+    # callers must opt into an empty, complete inventory explicitly.
+    raw_open_issues: int | None = None
+    unadmitted_open_issues: int | None = None
     active_registry_records: int = 0
     raw_active_registry_records: int = 0
     active_registry_without_worktree: int = 0
@@ -79,7 +81,7 @@ class PipelineMetrics:
     issues_with_active_claim: int = 0
     issues_with_published_pr: int = 0
     issue_source_problems: int = 0
-    issue_inventory_complete: bool = True
+    issue_inventory_complete: bool = False
     clean_unregistered_worktrees: int = 0
     idle_worktrees: int = 0
     collision_lanes: int = 0
