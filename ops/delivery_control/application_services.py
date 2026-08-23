@@ -118,14 +118,10 @@ class DeliveryApplication:
                         ),
                     ),
                 )
-        orphan_preflights = {
-            asset.branch: orphan_service.preflight(
-                branch=asset.branch,
-                expected_head_sha=asset.sha,
-                pr_history=branch_history_snapshot,
-            )
-            for asset in orphan_assets
-        }
+        orphan_preflights = orphan_service.preflight_many(
+            branches=tuple((asset.branch, asset.sha) for asset in orphan_assets),
+            pr_history=branch_history_snapshot,
+        )
         unreachable_commits = EMPTY_UNREACHABLE_COMMIT_INVENTORY
         unreachable_inventory = getattr(self.git, "unreachable_commit_inventory", None)
         if callable(unreachable_inventory):

@@ -7,8 +7,13 @@ import json
 import re
 from dataclasses import dataclass
 
+from ..domain.branch_refs import BranchInventory
 from ..domain.errors import DeliverySourceError, PolicyViolation
-from ..domain.observations import PullRequestInventory
+from ..domain.observations import (
+    PhysicalWorktree,
+    PullRequestInventory,
+    RegistryInventory,
+)
 from ..ports.git import GitCommandPort, GitQueryPort
 from ..ports.github import GitHubQueryPort
 from ..ports.registry import RegistryQueryPort
@@ -44,6 +49,19 @@ class OrphanBranchPreflight:
     eligible: bool
     passed_checks: tuple[str, ...]
     blockers: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _OrphanPreflightSnapshot:
+    """One consistent read snapshot shared by a branch-audit batch."""
+
+    main_sha: str
+    registry: RegistryInventory | None
+    registry_error: str | None
+    physical_worktrees: tuple[PhysicalWorktree, ...] | None
+    physical_error: str | None
+    branches: BranchInventory | None
+    branch_error: str | None
 
 
 class OrphanBranchDiscardService:
@@ -108,15 +126,73 @@ class OrphanBranchDiscardService:
         if any(item.branch == branch for item in self.git_query.list_worktrees()):
             raise PolicyViolation("orphan branch still has a physical worktree")
 
-    def preflight(
+    def _snapshot(self) -> _OrphanPreflightSnapshot:
+        """Read stable evidence once before evaluating multiple orphan refs."""
+
+        main_sha = self._canonical_main()
+        try:
+            registry = self.registry.list_records()
+        except DeliverySourceError as error:
+            registry = None
+            registry_error = str(error)
+        else:
+            registry_error = None
+        try:
+            physical_worktrees = self.git_query.list_worktrees()
+        except DeliverySourceError as error:
+            physical_worktrees = None
+            physical_error = str(error)
+        else:
+            physical_error = None
+        try:
+            branches = self.git_query.branch_inventory()
+        except DeliverySourceError as error:
+            branches = None
+            branch_error = str(error)
+        else:
+            branch_error = None
+        return _OrphanPreflightSnapshot(
+            main_sha=main_sha,
+            registry=registry,
+            registry_error=registry_error,
+            physical_worktrees=physical_worktrees,
+            physical_error=physical_error,
+            branches=branches,
+            branch_error=branch_error,
+        )
+
+    @staticmethod
+    def _assert_unregistered_snapshot(
+        branch: str, snapshot: _OrphanPreflightSnapshot
+    ) -> None:
+        if snapshot.registry_error is not None:
+            raise DeliverySourceError(snapshot.registry_error)
+        assert snapshot.registry is not None
+        if any(record.branch == branch for record in snapshot.registry.records):
+            raise PolicyViolation(
+                "branch has a registry claim; use the owner-preserving lifecycle"
+            )
+        if any(problem.identity == branch for problem in snapshot.registry.problems):
+            raise PolicyViolation("registry has a source problem for the target branch")
+
+    @staticmethod
+    def _assert_no_physical_worktree_snapshot(
+        branch: str, snapshot: _OrphanPreflightSnapshot
+    ) -> None:
+        if snapshot.physical_error is not None:
+            raise DeliverySourceError(snapshot.physical_error)
+        assert snapshot.physical_worktrees is not None
+        if any(item.branch == branch for item in snapshot.physical_worktrees):
+            raise PolicyViolation("orphan branch still has a physical worktree")
+
+    def _preflight(
         self,
         *,
         branch: str,
         expected_head_sha: str,
-        pr_history: PullRequestInventory | None = None,
+        pr_history: PullRequestInventory | None,
+        snapshot: _OrphanPreflightSnapshot | None,
     ) -> OrphanBranchPreflight:
-        """Evaluate discard eligibility without changing Git or the registry."""
-
         blockers: list[str] = []
         passed: list[str] = []
         main_sha: str | None = None
@@ -127,7 +203,11 @@ class OrphanBranchDiscardService:
 
         if not blockers:
             try:
-                main_sha = self._canonical_main()
+                main_sha = (
+                    snapshot.main_sha
+                    if snapshot is not None
+                    else self._canonical_main()
+                )
             except DeliverySourceError as error:
                 blockers.append(str(error))
             else:
@@ -135,7 +215,10 @@ class OrphanBranchDiscardService:
 
         if not blockers:
             try:
-                self._assert_unregistered(branch)
+                if snapshot is None:
+                    self._assert_unregistered(branch)
+                else:
+                    self._assert_unregistered_snapshot(branch, snapshot)
             except DeliverySourceError as error:
                 blockers.append(str(error))
             else:
@@ -147,13 +230,22 @@ class OrphanBranchDiscardService:
             else:
                 passed.append("branch has no GitHub PR history")
             try:
-                self._assert_no_physical_worktree(branch)
+                if snapshot is None:
+                    self._assert_no_physical_worktree(branch)
+                else:
+                    self._assert_no_physical_worktree_snapshot(branch, snapshot)
             except DeliverySourceError as error:
                 blockers.append(str(error))
             else:
                 passed.append("branch has no physical worktree")
             try:
-                local_sha = self.git_query.local_branch_sha(branch)
+                if snapshot is None:
+                    local_sha = self.git_query.local_branch_sha(branch)
+                elif snapshot.branch_error is not None:
+                    raise DeliverySourceError(snapshot.branch_error)
+                else:
+                    assert snapshot.branches is not None
+                    local_sha = snapshot.branches.local_by_name.get(branch)
             except DeliverySourceError as error:
                 blockers.append(f"local branch HEAD query failed: {error}")
             else:
@@ -162,7 +254,13 @@ class OrphanBranchDiscardService:
                 else:
                     passed.append("local branch HEAD equals expected SHA")
             try:
-                remote_sha = self.git_query.remote_branch_sha(branch)
+                if snapshot is None:
+                    remote_sha = self.git_query.remote_branch_sha(branch)
+                elif snapshot.branch_error is not None:
+                    raise DeliverySourceError(snapshot.branch_error)
+                else:
+                    assert snapshot.branches is not None
+                    remote_sha = snapshot.branches.remote_by_name.get(branch)
             except DeliverySourceError as error:
                 blockers.append(f"remote branch query failed: {error}")
             else:
@@ -194,6 +292,43 @@ class OrphanBranchDiscardService:
             passed_checks=tuple(passed),
             blockers=tuple(blockers),
         )
+
+    def preflight(
+        self,
+        *,
+        branch: str,
+        expected_head_sha: str,
+        pr_history: PullRequestInventory | None = None,
+    ) -> OrphanBranchPreflight:
+        """Evaluate discard eligibility without changing Git or the registry."""
+        return self._preflight(
+            branch=branch,
+            expected_head_sha=expected_head_sha,
+            pr_history=pr_history,
+            snapshot=None,
+        )
+
+    def preflight_many(
+        self,
+        *,
+        branches: tuple[tuple[str, str], ...],
+        pr_history: PullRequestInventory | None = None,
+    ) -> dict[str, OrphanBranchPreflight]:
+        """Preflight many orphan refs from one stable local/remote snapshot."""
+
+        ordered = tuple(dict.fromkeys(branches))
+        if not ordered:
+            return {}
+        snapshot = self._snapshot()
+        return {
+            branch: self._preflight(
+                branch=branch,
+                expected_head_sha=expected_head_sha,
+                pr_history=pr_history,
+                snapshot=snapshot,
+            )
+            for branch, expected_head_sha in ordered
+        }
 
     def discard(
         self,
