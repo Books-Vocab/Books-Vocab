@@ -16,6 +16,7 @@ from .correlation import collision_keys, delivery_collision_path_sets
 from .inventory_sources import InspectionSources, collect_inventory_sources
 from .isolation import project_isolation
 from .lane_projection import project_active_lane, project_published_lane
+from .pr_contract import pull_request_holds
 
 _TERMINAL = {"merged", "abandoned"}
 
@@ -209,6 +210,7 @@ class InspectService:
                     pull_requests=(pull_request,),
                     decision=derive_lane_decision(
                         LaneFacts(
+                            holds=pull_request_holds(pull_request),
                             scope_collision=f"pr:{pull_request.number}" in collisions,
                         )
                     ),
