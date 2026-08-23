@@ -1056,6 +1056,37 @@ def test_dogfood_preflight_does_not_block_on_branch_scoped_source_observation() 
     assert readiness.ramp_ready is False
 
 
+def test_dogfood_source_warning_separates_actionable_and_raw_scope_counts() -> None:
+    now = datetime(2026, 8, 21, tzinfo=UTC)
+    cadence = measure_merge_cadence((), now=now)
+    metrics = replace(
+        _metrics(candidate_issues=0, source_problems=35),
+        source_problem_scope_counts=(("branch", 35),),
+        actionable_source_problems=10,
+        actionable_global_source_problems=0,
+    )
+
+    readiness = assess_dogfood_readiness(
+        local_main_sha="a" * 40,
+        origin_main_sha="a" * 40,
+        canonical_branch="main",
+        canonical_clean=True,
+        main_protected=True,
+        required_status_contexts=("required",),
+        merge_queue_enabled=True,
+        physical_worktree_count=1,
+        canonical_worktree_present=True,
+        metrics=metrics,
+        cadence=cadence,
+    )
+
+    assert any(
+        "10 actionable scoped" in warning
+        and "raw source observations: branch=35" in warning
+        for warning in readiness.warnings
+    )
+
+
 def test_dogfood_preflight_keeps_global_source_uncertainty_blocking() -> None:
     now = datetime(2026, 8, 21, tzinfo=UTC)
     cadence = measure_merge_cadence((), now=now)
