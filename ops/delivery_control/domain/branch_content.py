@@ -10,6 +10,7 @@ from .errors import InvalidReceipt
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 BRANCH_CONTENT_PATH_LIMIT = 200
 BRANCH_REVIEW_PAGE_LIMIT = 5
+BRANCH_REVIEW_PATH_LIMIT = 20
 
 
 def _sha(value: str, field: str) -> str:
@@ -185,6 +186,7 @@ class BranchContentReviewPlan:
 __all__ = [
     "BRANCH_CONTENT_PATH_LIMIT",
     "BRANCH_REVIEW_PAGE_LIMIT",
+    "BRANCH_REVIEW_PATH_LIMIT",
     "BranchContentEvidence",
     "BranchContentReviewItem",
     "BranchContentReviewPlan",

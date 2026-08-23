@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import replace
 
-from ..domain.branch_content import BranchContentEvidence
+from ..domain.branch_content import BRANCH_REVIEW_PATH_LIMIT, BranchContentEvidence
 from ..domain.errors import DeliverySourceError
 from ..ports.git import BranchContentQueryPort
 
@@ -50,6 +51,29 @@ class BranchContentService:
             )
             for branch in dict.fromkeys(branches)
         }
+
+    @staticmethod
+    def compact_for_review(
+        evidence: BranchContentEvidence,
+        *,
+        max_paths: int = BRANCH_REVIEW_PATH_LIMIT,
+    ) -> BranchContentEvidence:
+        """Keep review-plan transport bounded without weakening evidence.
+
+        The full path count and content fingerprint remain authoritative.  A
+        caller that needs more path detail can use the single-branch inspect
+        command; review plans only need a small deterministic sample per item.
+        """
+
+        if type(max_paths) is not int or max_paths <= 0:
+            raise ValueError("review path limit must be a positive integer")
+        if len(evidence.changed_paths) <= max_paths:
+            return evidence
+        return replace(
+            evidence,
+            changed_paths=evidence.changed_paths[:max_paths],
+            changed_paths_truncated=True,
+        )
 
     @staticmethod
     def _error(*, branch: str, base_sha: str, error: str) -> BranchContentEvidence:
