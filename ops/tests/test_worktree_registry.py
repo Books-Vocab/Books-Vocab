@@ -12,6 +12,7 @@ OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 import worktree_registry as registry  # noqa: E402
 from worktree_registry_core import environment  # noqa: E402
+from lib import executables  # noqa: E402
 
 
 def _state() -> dict:
@@ -22,7 +23,7 @@ def test_registry_git_timeout_is_structured_and_bounded(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     def timeout(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
-        assert args[0] == ["git", "status"]
+        assert args[0] == ("git", "status")
         assert kwargs["timeout"] == environment.REGISTRY_GIT_TIMEOUT_SECONDS
         raise subprocess.TimeoutExpired(
             args[0],
@@ -36,6 +37,21 @@ def test_registry_git_timeout_is_structured_and_bounded(
 
     assert return_code == 124
     assert output == ("partial output\ngit command timed out after 120s")
+
+
+def test_registry_git_uses_fallback_without_ambient_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fallback = tmp_path / "git-fallback"
+    fallback.write_text("#!/bin/sh\nprintf '%s' \"$1\"\n", encoding="utf-8")
+    fallback.chmod(0o755)
+    monkeypatch.setenv("PATH", "")
+    monkeypatch.setitem(executables._FALLBACK_EXECUTABLES, "git", (str(fallback),))
+
+    return_code, output = environment.git(["status"], tmp_path)
+
+    assert return_code == 0
+    assert output == "status"
 
 
 def _scope() -> dict:

@@ -12,6 +12,7 @@ sys.path.insert(0, str(OPS))
 
 from delivery_control.adapters.module_runner import ModuleCommandRunner  # noqa: E402
 from delivery_control.adapters.subprocess_runner import SubprocessCommandRunner  # noqa: E402
+from lib import executables  # noqa: E402
 
 
 def _git_repo(path: Path, *, marker: str) -> None:
@@ -235,6 +236,51 @@ def test_subprocess_runner_returns_normal_result() -> None:
     assert result.stdout == "ready"
     assert result.stderr == ""
     assert result.timed_out is False
+
+
+@pytest.mark.parametrize("command", ("git", "gh"))
+def test_subprocess_runner_uses_fallback_without_ambient_path(
+    command: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fallback = tmp_path / f"{command}-fallback"
+    fallback.write_text("#!/bin/sh\nprintf '%s' \"$1\"\n", encoding="utf-8")
+    fallback.chmod(0o755)
+    monkeypatch.setenv("PATH", "")
+    monkeypatch.setitem(executables._FALLBACK_EXECUTABLES, command, (str(fallback),))
+
+    result = SubprocessCommandRunner(timeout_seconds=1).run((command, "ready"))
+
+    assert result.exit_code == 0
+    assert result.stdout == "ready"
+    assert result.argv == (str(fallback), "ready")
+
+
+def test_module_runner_uses_git_fallback_without_ambient_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    _git_repo(source, marker="same")
+    subprocess.run(["git", "clone", "-q", str(source), str(target)], check=True)
+    executable = source / "command.py"
+    executable.write_text("# command fixture\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(source), "add", "command.py"], check=True)
+    subprocess.run(
+        ["git", "-C", str(source), "commit", "-qm", "add command executable"],
+        check=True,
+    )
+    monkeypatch.setenv("PATH", "")
+
+    runner = ModuleCommandRunner(
+        executable=executable,
+        main=lambda _argv: 0,
+        source_root=source,
+        target_repo=target,
+    )
+
+    result = runner.run((str(executable), "list", "--json"))
+
+    assert result.exit_code == 0
 
 
 def test_subprocess_runner_converts_timeout_to_structured_failure() -> None:

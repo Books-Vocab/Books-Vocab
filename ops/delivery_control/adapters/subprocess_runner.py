@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 from ..ports.process import CommandResult
+from lib.executables import resolve_argv
 
 
 class SubprocessCommandRunner:
@@ -65,9 +66,10 @@ class SubprocessCommandRunner:
         cwd: Path | None,
         timeout_seconds: float,
     ) -> CommandResult:
+        resolved_argv = resolve_argv(argv)
         try:
             completed = subprocess.run(
-                argv,
+                resolved_argv,
                 cwd=cwd,
                 check=False,
                 capture_output=True,
@@ -82,14 +84,14 @@ class SubprocessCommandRunner:
             else:
                 stderr = detail
             return CommandResult(
-                argv=argv,
+                argv=resolved_argv,
                 exit_code=124,
                 stdout=self._text(error.stdout),
                 stderr=stderr,
                 timed_out=True,
             )
         return CommandResult(
-            argv=argv,
+            argv=resolved_argv,
             exit_code=completed.returncode,
             stdout=completed.stdout,
             stderr=completed.stderr,

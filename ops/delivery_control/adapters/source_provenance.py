@@ -7,6 +7,8 @@ import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
+from lib.executables import resolve_argv
+
 
 class SourceProvenanceError(RuntimeError):
     """The control-plane source cannot be proven compatible with its target."""
@@ -30,7 +32,7 @@ CONTROL_PLANE_PATHS = (
 def _git(root: Path, *arguments: str) -> str:
     try:
         result = subprocess.run(
-            ["git", "-C", str(root), *arguments],
+            resolve_argv(["git", "-C", str(root), *arguments]),
             check=False,
             capture_output=True,
             text=True,
