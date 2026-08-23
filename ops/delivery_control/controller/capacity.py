@@ -14,6 +14,7 @@ class ControlAction(StrEnum):
     CLEANUP_TERMINAL = "cleanup_terminal"
     ENQUEUE_GREEN = "enqueue_green"
     PUBLISH_HANDBACKS = "publish_handbacks"
+    AUDIT_TRANSPORT_SLO = "audit_transport_slo"
     REPAIR_PR_CONTRACT = "repair_pr_contract"
     REPAIR_REQUIRED = "repair_required"
     TRIGGER_REQUIRED = "trigger_required"
@@ -205,7 +206,7 @@ def decide_capacity(
         > policy.max_handback_to_pr_p95_seconds
     ):
         add(
-            ControlAction.PUBLISH_HANDBACKS,
+            ControlAction.AUDIT_TRANSPORT_SLO,
             "handback-to-PR p95 exceeds the transport SLA",
         )
     if (
