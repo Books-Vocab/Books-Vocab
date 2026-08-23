@@ -37,20 +37,37 @@ def _open_pr_matches(problem: InventoryProblem, sources: InspectionSources) -> b
     )
 
 
+def _branch_ref_matches(problem: InventoryProblem, sources: InspectionSources) -> bool:
+    """Keep malformed registry records actionable while their branch ref exists."""
+
+    if problem.identity_kind != "branch":
+        return False
+    branch_inventory = getattr(sources, "branch_inventory", None)
+    if branch_inventory is None:
+        return False
+    return problem.identity in {
+        *branch_inventory.local_by_name,
+        *branch_inventory.remote_by_name,
+    }
+
+
 def _source_problem_is_quarantinable(
     problem: InventoryProblem, sources: InspectionSources
 ) -> bool:
-    """Only isolate registry history with no physical or open-PR activity.
+    """Only isolate registry history with no observed delivery asset.
 
     A GitHub or runtime read failure stays actionable.  A registry record that
-    cannot be parsed but has neither a physical worktree nor an open PR is a
-    preserved source-history problem; it cannot be advanced by a Solver in
-    the current cycle and must not be mistaken for active WIP.
+    cannot be parsed but has neither a physical worktree, branch ref, nor open
+    PR is a preserved source-history problem; it cannot be advanced by a Solver
+    in the current cycle and must not be mistaken for active WIP. A local or
+    remote branch ref remains delivery evidence even when the registry record is
+    malformed, so it must stay actionable and fail closed.
     """
 
     return (
         problem.source == "registry"
         and not _physical_matches(problem, sources)
+        and not _branch_ref_matches(problem, sources)
         and not _open_pr_matches(problem, sources)
     )
 
