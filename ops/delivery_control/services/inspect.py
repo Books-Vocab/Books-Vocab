@@ -231,6 +231,9 @@ class InspectService:
             dispatchable_candidate_issues=sources.dispatchable_candidate_issues,
             demand_issues=sources.demand_issues,
             branch_lifecycle=branch_lifecycle,
+            physical_worktrees=sources.physical,
+            live_main_sha=sources.live_main_sha,
+            local_main_sha=sources.local_main_sha,
         )
         return DeliveryInventory(
             lanes=inventory.lanes,
@@ -240,6 +243,9 @@ class InspectService:
             demand_issues=inventory.demand_issues,
             branch_lifecycle=inventory.branch_lifecycle,
             isolation=project_isolation(sources=sources, lanes=inventory.lanes),
+            physical_worktrees=inventory.physical_worktrees,
+            live_main_sha=inventory.live_main_sha,
+            local_main_sha=inventory.local_main_sha,
         )
 
     def _branch_snapshots(

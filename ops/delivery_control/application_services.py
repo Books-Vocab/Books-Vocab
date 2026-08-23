@@ -36,6 +36,7 @@ from .ports.telemetry import TelemetryStorePort
 from .services import (
     abandon,
     abandoned_handback,
+    branch_audit,
     cleanup,
     inspect,
     legacy_cleanup,
@@ -76,6 +77,15 @@ class DeliveryApplication:
         """Return the complete raw Issue projection without mutation."""
 
         return self.inspect().demand_issues
+
+    def branch_audit(
+        self, *, supervision_worktree_paths: tuple[Path, ...] = ()
+    ) -> object:
+        """Return one deterministic action for every observed branch ref."""
+
+        return branch_audit.build_branch_audit(
+            self.inspect(supervision_worktree_paths=supervision_worktree_paths)
+        )
 
     def triage_plan(self) -> object:
         """Return deterministic Issue IDs and next actions without mutation."""
