@@ -11,6 +11,7 @@ from ..ports.git import GitQueryPort
 from ..ports.github import GitHubQueryPort
 from ..ports.registry import RegistryQueryPort
 from ..ports.runtime import AgentRuntimePort
+from .branch_lifecycle_projection import project_branch_lifecycle
 from .correlation import collision_keys, delivery_collision_path_sets
 from .inventory_sources import InspectionSources, collect_inventory_sources
 from .isolation import project_isolation
@@ -215,12 +216,21 @@ class InspectService:
                 )
             )
 
+        branch_lifecycle = project_branch_lifecycle(
+            branch_inventory=sources.branch_inventory,
+            records=sources.records,
+            pull_requests=sources.pull_requests,
+            physical=sources.physical,
+            snapshots=self._branch_snapshots(sources),
+        )
+        source_problems = sources.source_problems + branch_lifecycle.source_problems
         inventory = DeliveryInventory(
             lanes=tuple(sorted(lanes, key=lambda item: item.key)),
-            source_problems=sources.source_problems,
+            source_problems=source_problems,
             candidate_issues=sources.candidate_issues,
             dispatchable_candidate_issues=sources.dispatchable_candidate_issues,
             demand_issues=sources.demand_issues,
+            branch_lifecycle=branch_lifecycle,
         )
         return DeliveryInventory(
             lanes=inventory.lanes,
@@ -228,8 +238,41 @@ class InspectService:
             candidate_issues=inventory.candidate_issues,
             dispatchable_candidate_issues=inventory.dispatchable_candidate_issues,
             demand_issues=inventory.demand_issues,
+            branch_lifecycle=inventory.branch_lifecycle,
             isolation=project_isolation(sources=sources, lanes=inventory.lanes),
         )
+
+    def _branch_snapshots(
+        self, sources: InspectionSources
+    ) -> dict[Path, WorktreeSnapshot | None]:
+        """Attach physical worktree evidence to branch lifecycle assets by path.
+
+        ``InspectionSources.snapshots`` is keyed by registry lane ID because
+        lane projection consumes it that way.  Branch projection is keyed by
+        physical path, and must also inspect unregistered physical worktrees;
+        otherwise a dirty orphan branch could be reported as cleanable.
+        """
+
+        snapshots: dict[Path, WorktreeSnapshot | None] = {}
+        for record in sources.active_records:
+            path = record.path.resolve()
+            snapshot = sources.snapshots.get(record.lane_id)
+            if snapshot is not None:
+                snapshots[path] = snapshot
+        for physical_ref in sources.physical:
+            path = physical_ref.path.resolve()
+            if (
+                physical_ref.branch == "main"
+                and physical_ref.head_sha == sources.local_main_sha
+            ):
+                continue
+            if path in snapshots:
+                continue
+            try:
+                snapshots[path] = self.git.inspect_worktree(path, sources.live_main_sha)
+            except DeliverySourceError:
+                snapshots[path] = None
+        return snapshots
 
     def _apply_supervision_boundary(
         self,
