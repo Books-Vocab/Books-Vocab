@@ -93,8 +93,10 @@ class PipelineMetrics:
     quarantined_open_prs: int = 0
     quarantined_terminal_cleanup: int = 0
     actionable_source_problems: int | None = None
-    # Keep the aggregate for readiness and audit, but expose source scope so
-    # capacity can isolate branch/git-object residue from global uncertainty.
+    # Keep the aggregate for readiness and audit, but expose raw source scope
+    # counts so capacity can isolate branch/git-object residue from global
+    # uncertainty. These counts include quarantined history; dogfood warnings
+    # must label them as raw rather than presenting them as actionable work.
     source_problem_scope_counts: tuple[tuple[str, int], ...] = ()
     actionable_global_source_problems: int | None = None
     actionable_blocked_lanes: int | None = None

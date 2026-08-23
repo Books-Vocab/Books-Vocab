@@ -134,9 +134,12 @@ def assess_dogfood_readiness(
             for scope, count in metrics.source_problem_scope_counts
             if scope != "global" and count
         )
-        detail = f" ({scoped_details})" if scoped_details else ""
+        detail = (
+            f" (raw source observations: {scoped_details})" if scoped_details else ""
+        )
         warnings.append(
-            f"{scoped_source_problems} scoped delivery source observation(s) remain"
+            f"{scoped_source_problems} actionable scoped delivery source observation(s)"
+            " remain"
             f"{detail}; affected branch/object cleanup stays frozen and this is not "
             "dispatch, cleanup, takeover, or wake authorization"
         )
