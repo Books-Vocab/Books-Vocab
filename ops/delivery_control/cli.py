@@ -344,11 +344,15 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
             supervision_worktree_paths=tuple(args.supervision_worktree)
         )
     if args.command == "watchdog":
+        if args.runtime_status_file is None:
+            raise DeliveryContractError("watchdog requires --runtime-status-file")
         return application.watchdog(
             supervisor_thread_id=args.supervisor_thread,
             stale_after_seconds=args.stale_after_seconds,
         )
     if args.command == "watchdog-claim":
+        if args.runtime_status_file is None:
+            raise DeliveryContractError("watchdog-claim requires --runtime-status-file")
         return application.watchdog_claim(
             supervisor_thread_id=args.supervisor_thread,
             stale_after_seconds=args.stale_after_seconds,
