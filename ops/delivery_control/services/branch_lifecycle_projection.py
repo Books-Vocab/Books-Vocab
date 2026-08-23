@@ -130,6 +130,15 @@ def _asset(
         registry_statuses=tuple(sorted({item.status for item in records})),
         physical_worktree_paths=_text_paths(physical),
         dirty_worktree_paths=_dirty_paths(physical, snapshots),
+        owner_thread_ids=tuple(
+            sorted(
+                {
+                    item.owner_thread_id
+                    for item in records
+                    if item.owner_thread_id is not None
+                }
+            )
+        ),
     )
 
 
