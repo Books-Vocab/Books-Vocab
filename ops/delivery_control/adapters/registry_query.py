@@ -36,6 +36,16 @@ def _registry_identity(raw: Mapping[str, Any], index: int) -> tuple[str, str]:
     return f"record[{index}]", "record"
 
 
+def _registry_parse_error(error: Exception) -> str:
+    """Turn parser exceptions into stable operator-facing diagnostics."""
+
+    if isinstance(error, KeyError) and error.args:
+        missing = error.args[0]
+        if isinstance(missing, str) and missing:
+            return f"registry record is missing required field: {missing}"
+    return str(error)
+
+
 def load_registry_list(
     runner: CommandRunnerPort, argv: tuple[str, ...]
 ) -> Mapping[str, Any]:
@@ -73,7 +83,7 @@ def registry_inventory(payload: Mapping[str, Any]) -> RegistryInventory:
                 InventoryProblem(
                     "registry",
                     identity,
-                    str(error),
+                    _registry_parse_error(error),
                     identity_kind=identity_kind,
                     record_status=(
                         raw.get("status")
@@ -118,7 +128,10 @@ def collision_inventory(payload: Mapping[str, Any]) -> RegistryCollisionInventor
         except (KeyError, TypeError, ValueError, InvalidScope) as error:
             problems.append(
                 InventoryProblem(
-                    "registry", identity, str(error), identity_kind=identity_kind
+                    "registry",
+                    identity,
+                    _registry_parse_error(error),
+                    identity_kind=identity_kind,
                 )
             )
     return RegistryCollisionInventory(records=tuple(records), problems=tuple(problems))

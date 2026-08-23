@@ -324,7 +324,7 @@ def test_registry_adapter_fails_closed_on_unusable_terminal_history(
         InventoryProblem(
             "registry",
             "feat/old",
-            "'scope'",
+            "registry record is missing required field: scope",
             identity_kind="branch",
             record_status="merged",
         ),
@@ -357,6 +357,40 @@ def test_collision_inventory_uses_scope_from_active_legacy_record(
     assert inventory.problems == ()
     assert inventory.records[0].lane_id == "#legacy"
     assert inventory.records[0].scope.paths == ("ops/legacy.py",)
+
+
+def test_collision_inventory_normalizes_missing_scope_diagnostic(
+    tmp_path: Path,
+) -> None:
+    malformed = {
+        "branch": "feat/malformed",
+        "path": str(tmp_path / "malformed"),
+        "status": "active",
+    }
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("registry",),
+                0,
+                json.dumps({"records": [malformed]}),
+                "",
+            )
+        ]
+    )
+
+    inventory = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    ).list_collision_claims()
+
+    assert inventory.records == ()
+    assert inventory.problems == (
+        InventoryProblem(
+            "registry",
+            "feat/malformed",
+            "registry record is missing required field: scope",
+            identity_kind="branch",
+        ),
+    )
 
 
 def _legacy_terminal_with_exact_seal_base(tmp_path: Path) -> dict[str, object]:
