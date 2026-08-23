@@ -71,7 +71,15 @@ def registry_inventory(payload: Mapping[str, Any]) -> RegistryInventory:
         except (KeyError, TypeError, ValueError, InvalidScope) as error:
             problems.append(
                 InventoryProblem(
-                    "registry", identity, str(error), identity_kind=identity_kind
+                    "registry",
+                    identity,
+                    str(error),
+                    identity_kind=identity_kind,
+                    record_status=(
+                        raw.get("status")
+                        if isinstance(raw.get("status"), str)
+                        else None
+                    ),
                 )
             )
     return RegistryInventory(records=tuple(records), problems=tuple(problems))

@@ -69,6 +69,7 @@ class BranchAuditSourceProblem:
     identity_kind: str | None = None
     scope: str = "global"
     affected_branch: str | None = None
+    record_status: str | None = None
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,8 @@ class BranchAuditReport:
     raw_remote_branches: int
     physical_worktrees: int
     active_registry_records: int
+    raw_active_registry_records: int
+    malformed_registry_records: int
     published_registry_records: int
     open_pull_requests: int
     disposition_counts: dict[str, int]
@@ -95,6 +98,8 @@ class BranchAuditReport:
     registry_only_status_counts: dict[str, int]
     source_problems: tuple[InventoryProblem, ...]
     source_problem_actions: tuple[BranchAuditSourceProblem, ...]
+    registry_record_problem_actions: tuple[BranchAuditSourceProblem, ...]
+    registry_record_problem_status_counts: dict[str, int]
     source_problem_counts: dict[str, int]
     source_problem_scope_counts: dict[str, int]
 
@@ -149,6 +154,7 @@ def _source_problem_action(problem: InventoryProblem) -> BranchAuditSourceProble
         identity_kind=problem.identity_kind,
         scope=scope,
         affected_branch=affected_branch,
+        record_status=problem.record_status,
     )
 
 
@@ -379,6 +385,11 @@ def build_branch_audit(
     source_problem_actions = tuple(
         _source_problem_action(problem) for problem in inventory.source_problems
     )
+    registry_record_problem_actions = tuple(
+        problem
+        for problem in source_problem_actions
+        if problem.source == "registry" and problem.record_status is not None
+    )
     actions = tuple(
         _action_for_asset(asset, orphan_preflight=preflights.get(asset.branch))
         for asset in assets
@@ -401,6 +412,10 @@ def build_branch_audit(
         lane.registry is not None and lane.registry.status == "active"
         for lane in inventory.lanes
     )
+    malformed_registry_records = len(registry_record_problem_actions)
+    raw_active_registry_records = active_records + sum(
+        problem.record_status == "active" for problem in registry_record_problem_actions
+    )
     published_records = sum(
         lane.registry is not None
         and lane.registry.status in {"published", "cleanup_pending"}
@@ -416,6 +431,8 @@ def build_branch_audit(
         raw_remote_branches=len(inventory.branch_lifecycle.remote),
         physical_worktrees=len(inventory.physical_worktrees),
         active_registry_records=active_records,
+        raw_active_registry_records=raw_active_registry_records,
+        malformed_registry_records=malformed_registry_records,
         published_registry_records=published_records,
         open_pull_requests=len(open_prs),
         disposition_counts=inventory.branch_lifecycle.counts,
@@ -433,6 +450,19 @@ def build_branch_audit(
         },
         source_problems=inventory.source_problems,
         source_problem_actions=source_problem_actions,
+        registry_record_problem_actions=registry_record_problem_actions,
+        registry_record_problem_status_counts={
+            status: sum(
+                item.record_status == status for item in registry_record_problem_actions
+            )
+            for status in sorted(
+                {
+                    item.record_status
+                    for item in registry_record_problem_actions
+                    if item.record_status is not None
+                }
+            )
+        },
         source_problem_counts={
             source: sum(item.source == source for item in source_problem_actions)
             for source in sorted({item.source for item in source_problem_actions})

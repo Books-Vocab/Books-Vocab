@@ -86,6 +86,11 @@ class InventoryProblem:
     # path, or an unaddressable record slot.  Consumers must not infer this
     # from the identity's spelling: a path or a branch can both contain '/'.
     identity_kind: str | None = None
+    # When parsing a concrete registry record fails, preserve its raw status so
+    # downstream audits can count the malformed claim without treating it as a
+    # valid RegistrySnapshot.  Adapter-reported/global problems leave this
+    # unset because they are not tied to one raw record.
+    record_status: str | None = None
 
 
 @dataclass(frozen=True)

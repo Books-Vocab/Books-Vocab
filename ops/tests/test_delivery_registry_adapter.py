@@ -10,13 +10,13 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.adapters.errors import AdapterPayloadError
-from delivery_control.adapters.registry import RegistryCliAdapter
-from delivery_control.domain.models import MergedPullRequestProof
-from delivery_control.domain.observations import (
+from delivery_control.adapters.errors import AdapterPayloadError  # noqa: E402
+from delivery_control.adapters.registry import RegistryCliAdapter  # noqa: E402
+from delivery_control.domain.models import MergedPullRequestProof  # noqa: E402
+from delivery_control.domain.observations import (  # noqa: E402
     InventoryProblem,
 )
-from delivery_control.ports.process import CommandResult
+from delivery_control.ports.process import CommandResult  # noqa: E402
 
 
 class StaticRunner:
@@ -242,6 +242,7 @@ def test_registry_adapter_surfaces_malformed_records_without_hiding_valid_ones(
     assert inventory.records[0].claim_generation == 4
     assert inventory.records[0].external_ids == ("#1",)
     assert inventory.problems[0].identity == "feat/bad"
+    assert inventory.problems[0].record_status == "active"
 
 
 def test_registry_adapter_surfaces_reported_problems_and_unknown_statuses(
@@ -297,6 +298,7 @@ def test_registry_adapter_surfaces_reported_problems_and_unknown_statuses(
             "feat/unknown",
             "unsupported registry status: 'legacy-migrating'",
             identity_kind="branch",
+            record_status="legacy-migrating",
         ),
     )
 
@@ -319,7 +321,13 @@ def test_registry_adapter_fails_closed_on_unusable_terminal_history(
 
     assert inventory.records == ()
     assert inventory.problems == (
-        InventoryProblem("registry", "feat/old", "'scope'", identity_kind="branch"),
+        InventoryProblem(
+            "registry",
+            "feat/old",
+            "'scope'",
+            identity_kind="branch",
+            record_status="merged",
+        ),
     )
 
 
