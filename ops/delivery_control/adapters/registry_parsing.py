@@ -25,6 +25,7 @@ _REGISTRY_STATUSES = {
     "merged",
     "abandoned",
 }
+_TERMINAL_STATUSES = frozenset({"published", "merged", "abandoned"})
 
 
 def reported_problems(payload: Mapping[str, Any]) -> tuple[InventoryProblem, ...]:
@@ -88,7 +89,13 @@ def parse_registry_record(payload: Mapping[str, Any]) -> RegistrySnapshot:
     if not isinstance(scope_payload, Mapping):
         raise InvalidScope("Scope must be an object")
     scope = Scope.from_payload(scope_payload)
-    base_sha = str(payload.get("base_sha") or payload.get("base") or "")
+    base_value = payload.get("base_sha") or payload.get("base")
+    base_sha = str(base_value or "")
+    if not _SHA_RE.fullmatch(base_sha) and status in _TERMINAL_STATUSES:
+        seal = payload.get("handback_seal")
+        sealed_base = seal.get("base_sha") if isinstance(seal, Mapping) else None
+        if isinstance(sealed_base, str) and _SHA_RE.fullmatch(sealed_base):
+            base_sha = sealed_base
     if not _SHA_RE.fullmatch(base_sha):
         raise ValueError("registry base must be an exact commit SHA")
     published_base = payload.get("published_base_sha")
