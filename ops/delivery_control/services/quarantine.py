@@ -112,17 +112,27 @@ class QuarantineService:
             or pull_request.base_branch != "main"
             or pull_request.merged_at is not None
         ):
-            raise PolicyViolation("quarantine requires one open or retryable closed PR on main")
+            raise PolicyViolation(
+                "quarantine requires one open or retryable closed PR on main"
+            )
         if pull_request.auto_merge_enabled or not pull_request.node_id:
             raise PolicyViolation("quarantine refuses an auto-merge or unidentified PR")
-        if self.github_query.merge_queue_entry_snapshot(pull_request.node_id) is not None:
+        if (
+            self.github_query.merge_queue_entry_snapshot(pull_request.node_id)
+            is not None
+        ):
             raise PolicyViolation("quarantine refuses a PR already in the merge queue")
         if pull_request_holds(pull_request):
             raise PolicyViolation("quarantine refuses a PR with an explicit hard hold")
 
         receipt = parse_pull_request_body(pull_request.body)
-        if receipt.branch != pull_request.branch or receipt.head_sha != pull_request.head_sha:
-            raise PolicyViolation("quarantine requires a receipt matching branch and HEAD")
+        if (
+            receipt.branch != pull_request.branch
+            or receipt.head_sha != pull_request.head_sha
+        ):
+            raise PolicyViolation(
+                "quarantine requires a receipt matching branch and HEAD"
+            )
         registry = self.registry_query.find_exact_claim(
             lane_id=receipt.lane_id,
             branch=receipt.branch,
@@ -132,7 +142,9 @@ class QuarantineService:
         if registry is None or registry.status not in {"published", "cleanup_pending"}:
             raise PolicyViolation("quarantine requires one published registry claim")
         if pull_request.state == "CLOSED" and registry.status != "cleanup_pending":
-            raise PolicyViolation("closed quarantine PR requires a cleanup-pending registry lease")
+            raise PolicyViolation(
+                "closed quarantine PR requires a cleanup-pending registry lease"
+            )
         self._validate_registry(registry, receipt)
         self._validate_local_assets_absent(receipt)
         remote_sha = self.git_query.remote_branch_sha(receipt.branch)
@@ -146,12 +158,16 @@ class QuarantineService:
         mismatches: list[str] = []
         if pull_request.base_sha != receipt.base_sha:
             mismatches.append("pr-base-differs-from-receipt")
-        actual_paths = tuple(sorted(self.github_query.changed_paths(pull_request_number)))
+        actual_paths = tuple(
+            sorted(self.github_query.changed_paths(pull_request_number))
+        )
         expected_paths = tuple(sorted(receipt.scope.paths))
         if actual_paths != expected_paths:
             mismatches.append("pr-scope-differs-from-receipt")
         if not mismatches:
-            raise PolicyViolation("exact typed PR must use the normal abandonment route")
+            raise PolicyViolation(
+                "exact typed PR must use the normal abandonment route"
+            )
         return _QuarantineContext(
             pull_request=pull_request,
             receipt=receipt,
@@ -231,7 +247,9 @@ class QuarantineService:
             or pull_request.head_sha != context.pull_request.head_sha
             or pull_request.body != context.pull_request.body
         ):
-            raise CompareAndSwapConflict("PR did not read back as the exact closed tuple")
+            raise CompareAndSwapConflict(
+                "PR did not read back as the exact closed tuple"
+            )
 
     def _reopen(self, context: _QuarantineContext, cause: BaseException) -> None:
         try:
@@ -242,7 +260,9 @@ class QuarantineService:
                 or current.head_sha != context.pull_request.head_sha
                 or current.body != context.pull_request.body
             ):
-                raise CompareAndSwapConflict("closed PR tuple changed during compensation")
+                raise CompareAndSwapConflict(
+                    "closed PR tuple changed during compensation"
+                )
             reopened = self.github_command.reopen_pull_request(
                 number=context.pull_request.number,
                 expected_base_sha=context.pull_request.base_sha,
@@ -250,7 +270,9 @@ class QuarantineService:
                 expected_body=context.pull_request.body,
             )
             if reopened.state != "OPEN":
-                raise CompareAndSwapConflict("quarantine compensation did not reopen PR")
+                raise CompareAndSwapConflict(
+                    "quarantine compensation did not reopen PR"
+                )
         except (DeliverySourceError, OSError) as error:
             raise CompareAndSwapConflict(
                 f"quarantine failed ({cause}); exact PR reopen compensation failed: {error}"
@@ -267,7 +289,9 @@ class QuarantineService:
             claim_generation=context.receipt.claim_generation,
         )
         if final_registry is None or final_registry.status != "abandoned":
-            raise CompareAndSwapConflict("quarantine final registry state is not abandoned")
+            raise CompareAndSwapConflict(
+                "quarantine final registry state is not abandoned"
+            )
         if self.git_query.remote_branch_sha(context.receipt.branch) is not None:
             raise CompareAndSwapConflict("quarantine remote branch was not deleted")
         return _QuarantineContext(

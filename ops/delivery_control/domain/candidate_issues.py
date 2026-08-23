@@ -45,12 +45,18 @@ class CandidateSpec:
     def __post_init__(self) -> None:
         if type(self.priority) is not int or self.priority < 0:
             raise ValueError("candidate priority must be a non-negative integer")
-        if type(self.acceptance) is not tuple or not self.acceptance or any(
-            type(item) is not str
-            or not item.strip()
-            or item != item.strip()
-            or any(ord(character) < 32 or ord(character) == 127 for character in item)
-            for item in self.acceptance
+        if (
+            type(self.acceptance) is not tuple
+            or not self.acceptance
+            or any(
+                type(item) is not str
+                or not item.strip()
+                or item != item.strip()
+                or any(
+                    ord(character) < 32 or ord(character) == 127 for character in item
+                )
+                for item in self.acceptance
+            )
         ):
             raise ValueError("candidate acceptance must contain canonical text")
         if len(set(self.acceptance)) != len(self.acceptance):
@@ -129,8 +135,12 @@ class CandidateIssue:
     def __post_init__(self) -> None:
         if type(self.number) is not int or self.number <= 0:
             raise ValueError("candidate Issue number must be a positive integer")
-        if type(self.url) is not str or not self.url.strip() or any(
-            ord(character) < 32 or ord(character) == 127 for character in self.url
+        if (
+            type(self.url) is not str
+            or not self.url.strip()
+            or any(
+                ord(character) < 32 or ord(character) == 127 for character in self.url
+            )
         ):
             raise ValueError("candidate Issue URL must be canonical text")
         key = _issue_url_key(self.url)

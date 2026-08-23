@@ -39,7 +39,9 @@ def legacy_seal_valid(record: Mapping[str, Any]) -> bool:
         != Path(str(record.get("path", ""))).expanduser().resolve()
     ):
         return False
-    if sorted(seal.get("external_ids") or []) != sorted(record.get("external_ids") or []):
+    if sorted(seal.get("external_ids") or []) != sorted(
+        record.get("external_ids") or []
+    ):
         return False
     if seal.get("tip_sha") != record.get("handed_back_sha"):
         return False
@@ -49,7 +51,9 @@ def legacy_seal_valid(record: Mapping[str, Any]) -> bool:
         return False
     outcomes = seal.get("outcomes")
     return isinstance(outcomes, list) and not any(
-        not isinstance(item, Mapping) or str(item.get("status", "")).strip().lower() not in _GREEN for item in outcomes
+        not isinstance(item, Mapping)
+        or str(item.get("status", "")).strip().lower() not in _GREEN
+        for item in outcomes
     )
 
 
@@ -57,8 +61,12 @@ def parse_initial_holds(seal: Mapping[str, Any]) -> tuple[str, ...]:
     raw_holds = seal.get("initial_holds", [])
     if (
         not isinstance(raw_holds, list)
-        or any(type(item) is not str or item not in _INITIAL_HOLDS for item in raw_holds)
+        or any(
+            type(item) is not str or item not in _INITIAL_HOLDS for item in raw_holds
+        )
         or len(set(raw_holds)) != len(raw_holds)
     ):
-        raise ValueError("registry handback initial_holds must be a unique list of supported holds")
+        raise ValueError(
+            "registry handback initial_holds must be a unique list of supported holds"
+        )
     return tuple(sorted(raw_holds))

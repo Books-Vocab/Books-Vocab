@@ -43,5 +43,7 @@ def partition_worktrees(
     return WorktreePartition(
         delivery=delivery_records,
         supervision=supervision_records,
-        canonical_count=sum(item.path.resolve() == canonical for item in delivery_records),
+        canonical_count=sum(
+            item.path.resolve() == canonical for item in delivery_records
+        ),
     )

@@ -77,9 +77,10 @@ class RuntimeReceiptFile:
                             "runtime receipt last_progress_at moved backwards"
                         )
 
-                encoded = json.dumps(
-                    receipt.to_payload(), ensure_ascii=False, sort_keys=True
-                ) + "\n"
+                encoded = (
+                    json.dumps(receipt.to_payload(), ensure_ascii=False, sort_keys=True)
+                    + "\n"
+                )
                 temporary: str | None = None
                 try:
                     with tempfile.NamedTemporaryFile(

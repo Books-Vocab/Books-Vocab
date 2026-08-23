@@ -90,15 +90,15 @@ class RuntimeReceipt:
                 "expected_next_event_at": expected_next_event_at,
             }
             parsed_timestamps = {
-                name: (
-                    None
-                    if value is None
-                    else datetime.fromisoformat(value)
-                )
+                name: (None if value is None else datetime.fromisoformat(value))
                 for name, value in timestamp_values.items()
                 if value is not None
             }
-            if any(type(value) is not str for value in timestamp_values.values() if value is not None):
+            if any(
+                type(value) is not str
+                for value in timestamp_values.values()
+                if value is not None
+            ):
                 raise TypeError("runtime timestamps must be strings")
             return cls(
                 thread_id=thread_id,
@@ -106,9 +106,7 @@ class RuntimeReceipt:
                 last_progress_at=parsed_timestamps["last_progress_at"],
                 observed_at=parsed_timestamps["observed_at"],
                 lease_until=parsed_timestamps.get("lease_until"),
-                expected_next_event_at=parsed_timestamps.get(
-                    "expected_next_event_at"
-                ),
+                expected_next_event_at=parsed_timestamps.get("expected_next_event_at"),
                 cycle_id=cycle_id,
                 last_action_id=last_action_id,
             )

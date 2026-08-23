@@ -24,7 +24,9 @@ from .registry_parsing import (
 )
 
 
-def load_registry_list(runner: CommandRunnerPort, argv: tuple[str, ...]) -> Mapping[str, Any]:
+def load_registry_list(
+    runner: CommandRunnerPort, argv: tuple[str, ...]
+) -> Mapping[str, Any]:
     result = runner.run(argv)
     if result.exit_code != 0:
         raise AdapterCommandError(result)
@@ -42,7 +44,11 @@ def registry_inventory(payload: Mapping[str, Any]) -> RegistryInventory:
     problems = list(reported_problems(payload))
     for index, raw in enumerate(payload["records"]):
         if not isinstance(raw, Mapping):
-            problems.append(InventoryProblem("registry", f"record[{index}]", "record is not an object"))
+            problems.append(
+                InventoryProblem(
+                    "registry", f"record[{index}]", "record is not an object"
+                )
+            )
             continue
         identity = str(raw.get("branch") or raw.get("path") or f"record[{index}]")
         try:
@@ -57,14 +63,22 @@ def collision_inventory(payload: Mapping[str, Any]) -> RegistryCollisionInventor
     problems = list(reported_problems(payload))
     for index, raw in enumerate(payload["records"]):
         if not isinstance(raw, Mapping):
-            problems.append(InventoryProblem("registry", f"record[{index}]", "record is not an object"))
+            problems.append(
+                InventoryProblem(
+                    "registry", f"record[{index}]", "record is not an object"
+                )
+            )
             continue
         identity = str(raw.get("branch") or raw.get("path") or f"record[{index}]")
         status = raw.get("status")
         if status in {"merged", "abandoned", "published"}:
             continue
         if status not in {"active", "cleanup_pending"}:
-            problems.append(InventoryProblem("registry", identity, "registry status is not collision-safe"))
+            problems.append(
+                InventoryProblem(
+                    "registry", identity, "registry status is not collision-safe"
+                )
+            )
             continue
         try:
             records.append(parse_collision_claim(raw))
@@ -73,10 +87,18 @@ def collision_inventory(payload: Mapping[str, Any]) -> RegistryCollisionInventor
     return RegistryCollisionInventory(records=tuple(records), problems=tuple(problems))
 
 
-def active_record(inventory: RegistryInventory, lane_id: str) -> RegistrySnapshot | None:
-    matches = [item for item in inventory.records if item.lane_id == lane_id and item.status == "active"]
+def active_record(
+    inventory: RegistryInventory, lane_id: str
+) -> RegistrySnapshot | None:
+    matches = [
+        item
+        for item in inventory.records
+        if item.lane_id == lane_id and item.status == "active"
+    ]
     if len(matches) > 1:
-        raise AdapterPayloadError(f"multiple active registry records found for {lane_id}")
+        raise AdapterPayloadError(
+            f"multiple active registry records found for {lane_id}"
+        )
     return matches[0] if matches else None
 
 
@@ -96,7 +118,11 @@ def exact_claim(
         external_ids = raw.get("external_ids")
         if external_ids is not None and not isinstance(external_ids, list):
             raise AdapterPayloadError("exact registry claim is malformed")
-        raw_lane = str(external_ids[0]) if isinstance(external_ids, list) and external_ids else branch
+        raw_lane = (
+            str(external_ids[0])
+            if isinstance(external_ids, list) and external_ids
+            else branch
+        )
         if raw_lane != lane_id:
             continue
         try:
@@ -105,7 +131,9 @@ def exact_claim(
                 raise ValueError("registry path must be non-empty text")
             raw_path = Path(raw_path_value).expanduser()
         except (KeyError, TypeError, ValueError) as error:
-            raise AdapterPayloadError("exact registry claim path is malformed") from error
+            raise AdapterPayloadError(
+                "exact registry claim path is malformed"
+            ) from error
         if not raw_path.is_absolute():
             raise AdapterPayloadError("exact registry claim path is malformed")
         if raw_path.resolve() != expected_path:

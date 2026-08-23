@@ -22,13 +22,17 @@ def parse_candidate_body(body: str) -> CandidateSpec:
     try:
         payload = json.loads(body[start:finish])
     except json.JSONDecodeError as error:
-        raise PolicyViolation("Issue body typed candidate contract is invalid JSON") from error
+        raise PolicyViolation(
+            "Issue body typed candidate contract is invalid JSON"
+        ) from error
     if not isinstance(payload, Mapping):
         raise PolicyViolation("Issue body typed candidate contract must be an object")
     try:
         return CandidateSpec.from_payload(payload)
     except ValueError as error:
-        raise PolicyViolation(f"Issue body typed candidate contract is invalid: {error}") from error
+        raise PolicyViolation(
+            f"Issue body typed candidate contract is invalid: {error}"
+        ) from error
 
 
 def render_candidate_body(
@@ -44,8 +48,7 @@ def render_candidate_body(
         ("operator", operator),
     ):
         if value is not None and any(
-            ord(character) < 32 and character not in "\n\t"
-            or ord(character) == 127
+            ord(character) < 32 and character not in "\n\t" or ord(character) == 127
             for character in value
         ):
             raise PolicyViolation(f"candidate {name} contains control characters")
@@ -70,9 +73,7 @@ def render_candidate_body(
         spec.to_payload(), ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )
     return (
-        prefix
-        + triage
-        + "## Severity\n"
+        prefix + triage + "## Severity\n"
         f"`{spec.severity.value}`\n\n"
         "## Priority\n"
         f"`{spec.priority}`\n\n"

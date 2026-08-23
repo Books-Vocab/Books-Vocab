@@ -66,10 +66,7 @@ class RequiredRepairService:
         inventory = self.query.list_pull_requests_for_branch(receipt.branch)
         if inventory.problems:
             raise PolicyViolation("GitHub PR mapping inventory is incomplete")
-        if (
-            len(inventory.records) != 1
-            or inventory.records[0].number != number
-        ):
+        if len(inventory.records) != 1 or inventory.records[0].number != number:
             raise PolicyViolation("operation lacks one unique GitHub PR mapping")
         mapped = inventory.records[0]
         if (

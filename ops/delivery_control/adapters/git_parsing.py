@@ -66,9 +66,7 @@ def parse_changed_files(payload: str) -> tuple[FileChange, ...]:
         return ()
     fields = payload.split("\0")
     if fields[-1] != "":
-        raise AdapterPayloadError(
-            "git diff name-status payload is not NUL terminated"
-        )
+        raise AdapterPayloadError("git diff name-status payload is not NUL terminated")
     fields.pop()
     changes: list[FileChange] = []
     index = 0
@@ -162,11 +160,7 @@ def parse_local_branch_sha(payload: str, *, ref: str) -> str:
 
 def parse_origin_main_sha(payload: str) -> str:
     rows = [line.split() for line in payload.splitlines() if line.strip()]
-    if (
-        len(rows) != 1
-        or len(rows[0]) != 2
-        or rows[0][1] != "refs/heads/main"
-    ):
+    if len(rows) != 1 or len(rows[0]) != 2 or rows[0][1] != "refs/heads/main":
         raise AdapterPayloadError("origin/main did not resolve uniquely")
     return rows[0][0]
 

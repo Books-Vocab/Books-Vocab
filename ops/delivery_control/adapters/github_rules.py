@@ -11,7 +11,10 @@ from .github_client import GitHubCliClient
 
 def read_repository_name(client: GitHubCliClient) -> str:
     payload = client.load_json(("gh", "repo", "view", "--json", "nameWithOwner"))
-    if not isinstance(payload, Mapping) or type(payload.get("nameWithOwner")) is not str:
+    if (
+        not isinstance(payload, Mapping)
+        or type(payload.get("nameWithOwner")) is not str
+    ):
         raise AdapterPayloadError("GitHub repository payload is malformed")
     return payload["nameWithOwner"]
 
@@ -54,17 +57,20 @@ class GitHubRules:
         protection_contexts: set[str] = set()
         required = protection_payload.get("required_status_checks")
         if required is not None and not isinstance(required, Mapping):
-            raise AdapterPayloadError("GitHub required status checks payload is malformed")
+            raise AdapterPayloadError(
+                "GitHub required status checks payload is malformed"
+            )
         if isinstance(required, Mapping):
             contexts = required.get("contexts", [])
             checks = required.get("checks", [])
             if not isinstance(contexts, list) or any(
                 type(item) is not str for item in contexts
             ):
-                raise AdapterPayloadError("GitHub required contexts payload is malformed")
+                raise AdapterPayloadError(
+                    "GitHub required contexts payload is malformed"
+                )
             if not isinstance(checks, list) or any(
-                not isinstance(item, Mapping)
-                or type(item.get("context")) is not str
+                not isinstance(item, Mapping) or type(item.get("context")) is not str
                 for item in checks
             ):
                 raise AdapterPayloadError("GitHub required checks payload is malformed")
@@ -95,8 +101,7 @@ class GitHubRules:
                 )
             checks = parameters.get("required_status_checks", [])
             if not isinstance(checks, list) or any(
-                not isinstance(item, Mapping)
-                or type(item.get("context")) is not str
+                not isinstance(item, Mapping) or type(item.get("context")) is not str
                 for item in checks
             ):
                 raise AdapterPayloadError(
