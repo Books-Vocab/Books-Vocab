@@ -211,7 +211,7 @@ def test_projection_assigns_one_disposition_with_fixed_precedence() -> None:
             _record(9, "published", external_id="#9"),
             _record(10, "merged", external_id="#10"),
         ),
-        pull_requests=(_pr(11),),
+        pull_requests=(_pr(11), _pr(11)),
     )
 
     by_number = {item.number: item.disposition for item in projected.records}
@@ -234,6 +234,7 @@ def test_projection_assigns_one_disposition_with_fixed_precedence() -> None:
     )
     assert projected.raw_open_issues == 11
     assert projected.unadmitted_open_issues == 3
+    assert projected.records[-1].mapped_pull_request_numbers == (11,)
 
 
 def test_security_candidate_is_observable_but_not_dispatchable() -> None:
@@ -395,4 +396,5 @@ def test_cli_issue_inventory_and_triage_plan_wrap_versioned_schemas() -> None:
         inventory_result["partition_totals"][IssueDisposition.TRIAGE_REQUIRED.value]
         == 1
     )
+    assert inventory_result["issues"][0].mapped_pull_request_numbers == ()
     assert triage_result["schema"] == "kg.delivery.triage-plan.v1"
