@@ -45,6 +45,7 @@ class PipelineMetrics:
     raw_open_issues: int | None = 0
     unadmitted_open_issues: int | None = 0
     active_registry_records: int = 0
+    raw_active_registry_records: int = 0
     active_registry_without_worktree: int = 0
     malformed_active_registry_records: int = 0
     triage_required_issues: int = 0
@@ -186,12 +187,12 @@ def measure_pipeline(
         problem.source == "registry" and problem.record_status == "active"
         for problem in inventory.source_problems
     )
-    active_registry_records = len(active_registry_lanes) + (
-        malformed_active_registry_records
+    active_registry_records = len(active_registry_lanes)
+    raw_active_registry_records = (
+        active_registry_records + malformed_active_registry_records
     )
-    active_registry_without_worktree = (
-        sum(lane.physical is None for lane in active_registry_lanes)
-        + malformed_active_registry_records
+    active_registry_without_worktree = sum(
+        lane.physical is None for lane in active_registry_lanes
     )
     collision_lanes = states.count(LaneState.BLOCKED_COLLISION)
     security_hold_lanes = states.count(LaneState.SECURITY_HOLD)
@@ -286,6 +287,7 @@ def measure_pipeline(
         raw_open_issues=inventory.demand_issues.raw_open_issues,
         unadmitted_open_issues=inventory.demand_issues.unadmitted_open_issues,
         active_registry_records=active_registry_records,
+        raw_active_registry_records=raw_active_registry_records,
         active_registry_without_worktree=active_registry_without_worktree,
         malformed_active_registry_records=malformed_active_registry_records,
         triage_required_issues=inventory.demand_issues.count(

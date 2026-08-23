@@ -866,8 +866,9 @@ def test_metrics_exposes_active_registry_residue_separately_from_development() -
     metrics = measure_pipeline(inventory)
 
     assert metrics.active_development == 0
-    assert metrics.active_registry_records == 2
-    assert metrics.active_registry_without_worktree == 2
+    assert metrics.active_registry_records == 1
+    assert metrics.raw_active_registry_records == 2
+    assert metrics.active_registry_without_worktree == 1
     assert metrics.malformed_active_registry_records == 1
 
 
