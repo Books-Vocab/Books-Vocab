@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 
 from ..domain.errors import CompareAndSwapConflict
 from ..domain.observations import PullRequestSnapshot
 from .github_client import GitHubCliClient
 from .github_queue import GitHubQueueGraphQLAdapter
+
+_READ_AFTER_WRITE_ATTEMPTS = 5
+_READ_AFTER_WRITE_DELAY_SECONDS = 1.0
 
 
 class GitHubCommands:
@@ -25,6 +29,21 @@ class GitHubCommands:
         self.find_open_pull_request = find_open_pull_request
         self.get_pull_request = get_pull_request
         self.merge_queue_enabled = merge_queue_enabled
+
+    def _read_until_head(
+        self,
+        *,
+        number: int,
+        expected_head_sha: str,
+        conflict_message: str,
+    ) -> PullRequestSnapshot:
+        for attempt in range(_READ_AFTER_WRITE_ATTEMPTS):
+            snapshot = self.get_pull_request(number)
+            if snapshot.head_sha == expected_head_sha:
+                return snapshot
+            if attempt + 1 < _READ_AFTER_WRITE_ATTEMPTS:
+                time.sleep(_READ_AFTER_WRITE_DELAY_SECONDS)
+        raise CompareAndSwapConflict(conflict_message)
 
     def trigger_required(
         self,
@@ -73,7 +92,9 @@ class GitHubCommands:
         self.client.run(argv)
         return argv
 
-    def create_pull_request(self, *, branch: str, title: str, body: str) -> PullRequestSnapshot:
+    def create_pull_request(
+        self, *, branch: str, title: str, body: str
+    ) -> PullRequestSnapshot:
         self.client.run(
             (
                 "gh",
@@ -102,14 +123,19 @@ class GitHubCommands:
         body: str,
         expected_head_sha: str,
     ) -> PullRequestSnapshot:
-        before = self.get_pull_request(number)
-        if before.head_sha != expected_head_sha:
-            raise CompareAndSwapConflict("PR HEAD changed before metadata update")
-        self.client.run(("gh", "pr", "edit", str(number), "--title", title, "--body", body))
-        after = self.get_pull_request(number)
-        if after.head_sha != expected_head_sha:
-            raise CompareAndSwapConflict("PR HEAD changed during metadata update")
-        return after
+        self._read_until_head(
+            number=number,
+            expected_head_sha=expected_head_sha,
+            conflict_message="PR HEAD changed before metadata update",
+        )
+        self.client.run(
+            ("gh", "pr", "edit", str(number), "--title", title, "--body", body)
+        )
+        return self._read_until_head(
+            number=number,
+            expected_head_sha=expected_head_sha,
+            conflict_message="PR HEAD changed during metadata update",
+        )
 
     def mark_ready(self, number: int) -> PullRequestSnapshot:
         before = self.get_pull_request(number)
@@ -175,9 +201,7 @@ class GitHubCommands:
             or before.head_sha != expected_head_sha
             or before.body != expected_body
         ):
-            raise CompareAndSwapConflict(
-                f"PR tuple changed before {command}"
-            )
+            raise CompareAndSwapConflict(f"PR tuple changed before {command}")
         self.client.run(("gh", "pr", command, str(number)))
         after = self.get_pull_request(number)
         if (
@@ -188,9 +212,7 @@ class GitHubCommands:
             or after.head_sha != expected_head_sha
             or after.body != expected_body
         ):
-            raise CompareAndSwapConflict(
-                f"PR tuple changed during {command}"
-            )
+            raise CompareAndSwapConflict(f"PR tuple changed during {command}")
         return after
 
     def enqueue(
