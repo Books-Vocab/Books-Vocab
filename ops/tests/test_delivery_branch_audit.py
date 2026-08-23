@@ -300,6 +300,57 @@ def test_branch_audit_counts_malformed_active_registry_record_without_admitting_
     assert report.registry_record_problem_status_counts == {"active": 1}
 
 
+def test_branch_audit_marks_unobserved_registry_history_as_quarantined() -> None:
+    inventory = DeliveryInventory(
+        lanes=(),
+        branch_lifecycle=project_branch_lifecycle(
+            branch_inventory=BranchInventory(),
+        ),
+        source_problems=(
+            InventoryProblem(
+                "registry",
+                "feat/old-history",
+                "registry base must be an exact commit SHA",
+                identity_kind="branch",
+                record_status="abandoned",
+            ),
+        ),
+    )
+
+    report = build_branch_audit(inventory)
+
+    action = report.source_problem_actions[0]
+    assert action.actionability == "quarantined_history"
+    assert report.actionable_source_problems == 0
+    assert report.quarantined_source_problems == 1
+    assert "no matching local/remote branch" in action.next_step
+
+
+def test_branch_audit_keeps_observed_registry_problem_blocking() -> None:
+    inventory = DeliveryInventory(
+        lanes=(),
+        branch_lifecycle=project_branch_lifecycle(
+            branch_inventory=BranchInventory(local=(("feat/live-history", SHA_A),)),
+        ),
+        source_problems=(
+            InventoryProblem(
+                "registry",
+                "feat/live-history",
+                "registry base must be an exact commit SHA",
+                identity_kind="branch",
+                record_status="abandoned",
+            ),
+        ),
+    )
+
+    report = build_branch_audit(inventory)
+
+    action = report.source_problem_actions[0]
+    assert action.actionability == "blocking"
+    assert report.actionable_source_problems == 1
+    assert report.quarantined_source_problems == 0
+
+
 def test_branch_audit_withholds_otherwise_safe_cleanup_when_source_is_incomplete() -> (
     None
 ):
