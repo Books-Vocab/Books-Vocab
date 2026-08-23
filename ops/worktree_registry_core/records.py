@@ -12,6 +12,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from lib.worktree_scope import scope_files, scope_problems
+
 SCHEMA = "kg.worktree.registry.v2"
 STATUS_ACTIVE = "active"
 STATUS_CLEANUP_PENDING = "cleanup_pending"
@@ -23,6 +25,12 @@ NON_TERMINAL_STATUSES = frozenset(
 )
 TERMINAL_STATUSES = frozenset({STATUS_MERGED, STATUS_ABANDONED})
 KNOWN_STATUSES = NON_TERMINAL_STATUSES | TERMINAL_STATUSES
+GLOBAL_MUTATION_PROBLEM_KINDS = frozenset(
+    {
+        "registry-record-not-object",
+        "registry-status-unknown",
+    }
+)
 TERMINAL_PROOF_SCHEMA = "kg.worktree.terminal-proof.v1"
 DISCARD_PROOF_SCHEMA = "kg.worktree.discard-proof.v1"
 DISCARD_PROOF_DISPOSITION = "abandoned_handback_discarded"
@@ -226,6 +234,23 @@ def normalize_record(
     else:
         record.pop("backlog", None)
     status = record.get("status")
+    claim_generation = record.get("claim_generation")
+    has_claim_lifecycle = any(
+        record.get(field) is not None
+        for field in ("created_at", "claimed_at", "resolved_at")
+    )
+    if ("claim_generation" in record or has_claim_lifecycle) and (
+        type(claim_generation) is not int or claim_generation < 0
+    ):
+        problems.append(
+            {
+                "kind": "registry-claim-generation-invalid",
+                "index": index,
+                "branch": record.get("branch"),
+                "status": status,
+                "reason": "claim_generation must be a non-negative integer",
+            }
+        )
     if status not in KNOWN_STATUSES:
         problems.append(
             {
@@ -307,4 +332,105 @@ def mutation_blockers(state: dict[str, Any]) -> list[dict[str, Any]]:
         problem
         for problem in state.get("problems", [])
         if isinstance(problem, dict) and problem.get("status") not in TERMINAL_STATUSES
+    ]
+
+
+def _problem_record(
+    state: dict[str, Any], problem: dict[str, Any]
+) -> dict[str, Any] | None:
+    index = problem.get("index")
+    if type(index) is not int:
+        return None
+    records = state.get("records", [])
+    if index < 0 or index >= len(records):
+        return None
+    record = records[index]
+    return record if isinstance(record, dict) else None
+
+
+def _scope_paths(value: object) -> set[str] | None:
+    if value is None:
+        return set()
+    if scope_problems(value):
+        return None
+    try:
+        return {item["path"] for item in scope_files(value)}
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _problem_overlaps_target(
+    state: dict[str, Any],
+    problem: dict[str, Any],
+    *,
+    branch: str | None,
+    path: str | None,
+    external_ids_value: object,
+    scope: object,
+) -> bool:
+    """Return whether a malformed fact can affect one requested mutation.
+
+    A malformed record remains fail-closed when its identity overlaps the
+    requested branch/path/external ID/Scope, or when a supplied ownership fact
+    cannot be compared safely.  A fully disjoint, structurally known record is
+    intentionally not a global blocker.
+    """
+
+    record = _problem_record(state, problem)
+    if record is None:
+        return True
+    if problem.get("kind") in GLOBAL_MUTATION_PROBLEM_KINDS:
+        return True
+    if branch is not None and record.get("branch") == branch:
+        return True
+    if path is not None and norm_path(str(record.get("path") or "")) == norm_path(path):
+        return True
+
+    if external_ids_value is not None:
+        try:
+            wanted_ids = set(external_ids(external_ids_value))
+            record_ids = set(legacy_external_ids(record))
+        except (TypeError, ValueError):
+            return bool(wanted_ids if "wanted_ids" in locals() else external_ids_value)
+        if wanted_ids.intersection(record_ids):
+            return True
+
+    if scope is not None:
+        wanted_scope = _scope_paths(scope)
+        record_scope = _scope_paths(record.get("scope"))
+        if wanted_scope is None or record_scope is None:
+            return True
+        if wanted_scope.intersection(record_scope):
+            return True
+    return False
+
+
+def mutation_blockers_for_target(
+    state: dict[str, Any],
+    *,
+    branch: str | None = None,
+    path: str | None = None,
+    external_ids_value: object = None,
+    scope: object = None,
+) -> list[dict[str, Any]]:
+    """Return malformed facts that can affect one scoped mutation.
+
+    With no target selectors this deliberately retains the original global
+    fail-closed semantics.  Callers that operate on a known claim or proposed
+    exact Scope must provide the selectors explicitly.
+    """
+
+    if branch is None and path is None and external_ids_value is None and scope is None:
+        return mutation_blockers(state)
+    return [
+        problem
+        for problem in mutation_blockers(state)
+        if _problem_overlaps_target(
+            state,
+            problem,
+            branch=branch,
+            path=path,
+            external_ids_value=external_ids_value,
+            scope=scope,
+        )
     ]

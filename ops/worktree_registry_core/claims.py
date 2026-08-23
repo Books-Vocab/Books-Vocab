@@ -21,7 +21,7 @@ from .records import (
     active_records,
     external_ids,
     legacy_external_ids,
-    mutation_blockers,
+    mutation_blockers_for_target,
     norm_path,
     record_matches,
 )
@@ -64,7 +64,13 @@ def register_record(
     path = norm_path(path)
     if not branch or not intent.strip():
         return EXIT_USAGE, {"reason": "branch and intent are required"}
-    blockers = mutation_blockers(state)
+    blockers = mutation_blockers_for_target(
+        state,
+        branch=branch,
+        path=path,
+        external_ids_value=external_ids_value,
+        scope=scope,
+    )
     if blockers:
         return EXIT_CLAIMED, {
             "reason": "malformed ownership facts block registry mutation",
@@ -235,20 +241,6 @@ def cmd_scope_set(args: argparse.Namespace) -> int:
         return EXIT_USAGE
     with ledger_lock(target):
         state = load_state(target)
-        blockers = mutation_blockers(state)
-        if blockers:
-            print(
-                json.dumps(
-                    {
-                        "schema": SCHEMA,
-                        "action": "refused",
-                        "reason": "malformed ownership facts block registry mutation",
-                        "problems": blockers,
-                    },
-                    ensure_ascii=False,
-                )
-            )
-            return EXIT_CLAIMED
         matches = [
             record
             for record in active_records(state)
@@ -264,6 +256,26 @@ def cmd_scope_set(args: argparse.Namespace) -> int:
             )
             return EXIT_USAGE
         record = matches[0]
+        blockers = mutation_blockers_for_target(
+            state,
+            branch=record.get("branch"),
+            path=record.get("path"),
+            external_ids_value=record.get("external_ids"),
+            scope=record.get("scope"),
+        )
+        if blockers:
+            print(
+                json.dumps(
+                    {
+                        "schema": SCHEMA,
+                        "action": "refused",
+                        "reason": "malformed ownership facts block registry mutation",
+                        "problems": blockers,
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            return EXIT_CLAIMED
         if record.get("scope") != scope:
             owners = ownership_conflicts(
                 state,
@@ -305,13 +317,6 @@ def cmd_owner_bind(args: argparse.Namespace) -> int:
     target = state_path(args)
     with ledger_lock(target):
         state = load_state(target)
-        blockers = mutation_blockers(state)
-        if blockers:
-            print(
-                "✗ malformed ownership facts block registry mutation",
-                file=sys.stderr,
-            )
-            return EXIT_CLAIMED
         matches = [
             record
             for record in active_records(state)
@@ -324,6 +329,19 @@ def cmd_owner_bind(args: argparse.Namespace) -> int:
             )
             return EXIT_USAGE
         record = matches[0]
+        blockers = mutation_blockers_for_target(
+            state,
+            branch=record.get("branch"),
+            path=record.get("path"),
+            external_ids_value=record.get("external_ids"),
+            scope=record.get("scope"),
+        )
+        if blockers:
+            print(
+                "✗ malformed ownership facts block registry mutation",
+                file=sys.stderr,
+            )
+            return EXIT_CLAIMED
         assignment_changed = record.get("codex_thread_id") != args.codex_thread_id
         if args.delegated is not None:
             assignment_changed = (

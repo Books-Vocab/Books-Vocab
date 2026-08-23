@@ -28,7 +28,12 @@ from .handback import (
     validate_handback_seal as validate_core_seal,
 )
 from .inspection import record_view
-from .records import SCHEMA, active_records, mutation_blockers, record_matches
+from .records import (
+    SCHEMA,
+    active_records,
+    mutation_blockers_for_target,
+    record_matches,
+)
 from .storage import ledger_lock, save_state
 
 
@@ -131,13 +136,6 @@ def cmd_hand_back(args: argparse.Namespace) -> int:
     target = state_path(args)
     with ledger_lock(target):
         state = load_state(target)
-        blockers = mutation_blockers(state)
-        if blockers:
-            print(
-                "✗ malformed ownership facts block registry mutation",
-                file=sys.stderr,
-            )
-            return EXIT_PARTIAL
         matches = [
             record
             for record in active_records(state)
@@ -156,6 +154,19 @@ def cmd_hand_back(args: argparse.Namespace) -> int:
             )
             return EXIT_USAGE
         record = matches[0]
+        blockers = mutation_blockers_for_target(
+            state,
+            branch=record.get("branch"),
+            path=record.get("path"),
+            external_ids_value=record.get("external_ids"),
+            scope=record.get("scope"),
+        )
+        if blockers:
+            print(
+                "✗ malformed ownership facts block registry mutation",
+                file=sys.stderr,
+            )
+            return EXIT_PARTIAL
         worktree = Path(record["path"])
         if not worktree.is_dir():
             print(f"✗ registered worktree is missing: {worktree}", file=sys.stderr)
