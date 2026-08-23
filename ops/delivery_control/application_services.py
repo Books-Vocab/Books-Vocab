@@ -27,6 +27,10 @@ from .domain import errors, models, observations, states
 from .domain.candidate_issues import CandidateSpec
 from .domain.demand_issues import IssueDisposition
 from .domain.runtime_models import RuntimeReceipt, WatchdogAction
+from .domain.unreachable_commits import (
+    EMPTY_UNREACHABLE_COMMIT_INVENTORY,
+    UnreachableCommitInventory,
+)
 from .ports.github import GitHubIssueCommandPort
 from .ports.runtime import (
     AgentRuntimePort,
@@ -122,9 +126,33 @@ class DeliveryApplication:
             )
             for asset in orphan_assets
         }
+        unreachable_commits = EMPTY_UNREACHABLE_COMMIT_INVENTORY
+        unreachable_inventory = getattr(self.git, "unreachable_commit_inventory", None)
+        if callable(unreachable_inventory):
+            try:
+                unreachable_commits = unreachable_inventory()
+            except errors.DeliverySourceError as error:
+                unreachable_commits = UnreachableCommitInventory(
+                    problems=(str(error),),
+                    complete=False,
+                )
+        if unreachable_commits.problems:
+            inventory = replace(
+                inventory,
+                source_problems=inventory.source_problems
+                + tuple(
+                    observations.InventoryProblem(
+                        "git",
+                        "unreachable-commits",
+                        problem,
+                    )
+                    for problem in unreachable_commits.problems
+                ),
+            )
         return branch_audit.build_branch_audit(
             inventory,
             orphan_preflights=orphan_preflights,
+            unreachable_commits=unreachable_commits,
         )
 
     def triage_plan(self) -> object:

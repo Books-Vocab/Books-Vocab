@@ -10,6 +10,7 @@ from ..domain.observations import (
     PhysicalWorktree,
     WorktreeSnapshot,
 )
+from ..domain.unreachable_commits import UnreachableCommitInventory
 
 
 @runtime_checkable
@@ -21,6 +22,8 @@ class GitQueryPort(Protocol):
     def inspect_worktree(self, path: Path, base_sha: str) -> WorktreeSnapshot: ...
 
     def branch_inventory(self) -> BranchInventory: ...
+
+    def unreachable_commit_inventory(self) -> UnreachableCommitInventory: ...
 
     def remote_branch_sha(self, branch: str) -> str | None: ...
 

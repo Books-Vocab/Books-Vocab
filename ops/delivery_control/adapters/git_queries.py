@@ -11,6 +11,7 @@ from ..domain.observations import (
     PhysicalWorktree,
     WorktreeSnapshot,
 )
+from ..domain.unreachable_commits import UnreachableCommitInventory
 from .errors import AdapterCommandError
 from .git_client import GitCliClient
 from .git_parsing import (
@@ -22,6 +23,7 @@ from .git_parsing import (
     parse_parent_sha,
     parse_remote_branch_sha,
     parse_worktrees,
+    parse_unreachable_commit_shas,
 )
 
 
@@ -92,6 +94,25 @@ class GitQueries:
         )
         remote_output = self.client.run("ls-remote", "--heads", "origin")
         return parse_branch_inventory(local_output, remote_output)
+
+    def unreachable_commit_inventory(self) -> UnreachableCommitInventory:
+        result = self.client.execute(
+            "fsck",
+            "--unreachable",
+            "--no-reflogs",
+            "--no-progress",
+        )
+        shas = parse_unreachable_commit_shas(result.stdout)
+        problems = tuple(
+            line.strip() for line in result.stderr.splitlines() if line.strip()
+        )
+        if result.exit_code != 0:
+            problems = (f"git fsck exited with {result.exit_code}", *problems)
+        return UnreachableCommitInventory(
+            shas=shas,
+            problems=problems,
+            complete=not problems,
+        )
 
     def remote_branch_sha(self, branch: str) -> str | None:
         ref = f"refs/heads/{branch}"

@@ -28,6 +28,7 @@ from delivery_control.domain.states import (  # noqa: E402
     LaneState,
     NextAction,
 )
+from delivery_control.domain.unreachable_commits import UnreachableCommitInventory  # noqa: E402
 from delivery_control.services.branch_audit import (  # noqa: E402
     BranchAuditSourceProblem,
     build_branch_audit,
@@ -435,3 +436,26 @@ def test_branch_audit_surfaces_registry_only_published_claim() -> None:
     assert action.status == "published"
     assert "reconcile the published claim" in action.next_step
     assert report.registry_only_status_counts == {"published": 1}
+
+
+def test_branch_audit_quarantines_unreachable_commit_objects_without_lane_actions() -> (
+    None
+):
+    inventory = DeliveryInventory(
+        lanes=(),
+        branch_lifecycle=project_branch_lifecycle(
+            branch_inventory=BranchInventory(),
+        ),
+    )
+
+    report = build_branch_audit(
+        inventory,
+        unreachable_commits=UnreachableCommitInventory(
+            shas=(SHA_A, SHA_B),
+        ),
+    )
+
+    assert report.complete is True
+    assert report.unreachable_commit_count == 2
+    assert report.unreachable_commit_sample == (SHA_A, SHA_B)
+    assert "correlate unreachable commit objects" in report.unreachable_commit_next_step

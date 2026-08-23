@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -13,6 +14,8 @@ from ..domain.observations import (
     PhysicalWorktree,
 )
 from .errors import AdapterPayloadError
+
+_COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 def parse_worktrees(payload: str) -> tuple[PhysicalWorktree, ...]:
@@ -140,6 +143,27 @@ def parse_branch_inventory(
         local=tuple(sorted(local)),
         remote=tuple(sorted(remote)),
     )
+
+
+def parse_unreachable_commit_shas(payload: str) -> tuple[str, ...]:
+    """Parse only commit objects from ``git fsck --unreachable`` output."""
+
+    commits: set[str] = set()
+    for index, line in enumerate(payload.splitlines()):
+        fields = line.split()
+        if not fields:
+            continue
+        if len(fields) != 3 or fields[0] != "unreachable":
+            raise AdapterPayloadError(f"git fsck unreachable row {index} is malformed")
+        object_type, sha = fields[1:]
+        if object_type != "commit":
+            continue
+        if _COMMIT_SHA_RE.fullmatch(sha) is None:
+            raise AdapterPayloadError(
+                f"git fsck unreachable commit row {index} has an invalid SHA"
+            )
+        commits.add(sha)
+    return tuple(sorted(commits))
 
 
 def parse_remote_branch_sha(payload: str, *, branch: str) -> str | None:

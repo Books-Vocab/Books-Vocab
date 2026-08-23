@@ -12,6 +12,7 @@ from ..domain.observations import (
     PhysicalWorktree,
     WorktreeSnapshot,
 )
+from ..domain.unreachable_commits import UnreachableCommitInventory
 from ..ports.process import CommandRunnerPort
 from .git_client import GitCliClient
 from .git_commands import GitCommands
@@ -57,6 +58,9 @@ class GitCliAdapter:
 
     def branch_inventory(self) -> BranchInventory:
         return self._queries.branch_inventory()
+
+    def unreachable_commit_inventory(self) -> UnreachableCommitInventory:
+        return self._queries.unreachable_commit_inventory()
 
     def remote_branch_sha(self, branch: str) -> str | None:
         return self._queries.remote_branch_sha(branch)

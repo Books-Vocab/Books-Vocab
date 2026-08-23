@@ -7,6 +7,7 @@ from pathlib import Path
 
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
+# ruff: noqa: E402
 
 from delivery_control.domain.branch_refs import BranchInventory
 from delivery_control.domain.candidate_issues import CandidateIssueInventory
@@ -25,6 +26,7 @@ from delivery_control.domain.observations import (
     RegistrySnapshot,
     WorktreeSnapshot,
 )
+from delivery_control.domain.unreachable_commits import UnreachableCommitInventory
 from delivery_control.ports.clock import ClockPort
 from delivery_control.ports.git import GitCommandPort, GitQueryPort
 from delivery_control.ports.github import GitHubCommandPort, GitHubQueryPort
@@ -49,6 +51,9 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
 
         def branch_inventory(self) -> BranchInventory:
             return BranchInventory()
+
+        def unreachable_commit_inventory(self) -> UnreachableCommitInventory:
+            return UnreachableCommitInventory()
 
         def canonical_checkout(self) -> object:
             raise NotImplementedError

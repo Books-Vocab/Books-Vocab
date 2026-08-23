@@ -8,12 +8,14 @@ import pytest
 
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
+# ruff: noqa: E402
 
 from delivery_control.adapters.errors import AdapterCommandError
 from delivery_control.adapters.git_cli import GitCliAdapter
 from delivery_control.adapters.git_parsing import (
     parse_branch_inventory,
     parse_changed_files,
+    parse_unreachable_commit_shas,
     parse_worktrees,
 )
 from delivery_control.domain.branch_refs import BranchInventory
@@ -23,6 +25,7 @@ from delivery_control.domain.observations import (
     FileOperation,
     PhysicalWorktree,
 )
+from delivery_control.domain.unreachable_commits import UnreachableCommitInventory
 from delivery_control.ports.process import CommandResult
 
 
@@ -486,6 +489,58 @@ def test_git_adapter_collects_branch_refs_with_two_bulk_queries(
         "refs/heads",
     )
     assert runner.calls[1][-3:] == ("ls-remote", "--heads", "origin")
+
+
+def test_git_adapter_preserves_fsck_diagnostics_and_commit_quarantine(
+    tmp_path: Path,
+) -> None:
+    commit_a = "a" * 40
+    commit_b = "b" * 40
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("git",),
+                8,
+                (
+                    f"unreachable blob {'c' * 40}\n"
+                    f"unreachable commit {commit_b}\n"
+                    f"unreachable commit {commit_a}\n"
+                ),
+                "error: refs/.DS_Store: badRefName: invalid refname format\n",
+            )
+        ]
+    )
+    adapter = GitCliAdapter(repo=tmp_path, runner=runner)
+
+    inventory = adapter.unreachable_commit_inventory()
+
+    assert inventory == UnreachableCommitInventory(
+        shas=(commit_a, commit_b),
+        problems=(
+            "git fsck exited with 8",
+            "error: refs/.DS_Store: badRefName: invalid refname format",
+        ),
+        complete=False,
+    )
+    assert runner.calls == [
+        (
+            "git",
+            "-C",
+            str(tmp_path.resolve()),
+            "fsck",
+            "--unreachable",
+            "--no-reflogs",
+            "--no-progress",
+        )
+    ]
+
+
+def test_unreachable_commit_parser_ignores_non_commit_objects() -> None:
+    assert parse_unreachable_commit_shas(
+        f"unreachable tree {'a' * 40}\n"
+        f"unreachable commit {'b' * 40}\n"
+        f"unreachable commit {'b' * 40}\n"
+    ) == ("b" * 40,)
 
 
 def test_git_parsers_normalize_payloads_without_a_runner(tmp_path: Path) -> None:
