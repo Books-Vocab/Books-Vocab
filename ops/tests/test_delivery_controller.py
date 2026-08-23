@@ -225,6 +225,33 @@ def test_transport_slo_without_breach_does_not_create_transport_actions() -> Non
     assert ControlAction.AUDIT_TRANSPORT_SLO not in decision.actions
 
 
+def test_quarantined_residue_has_observation_action_without_blocking_solver_supply() -> (
+    None
+):
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    decision = decide_capacity(
+        _metrics(
+            quarantined_source_problems=2,
+            quarantined_blocked_lanes=3,
+            quarantined_open_prs=1,
+            quarantined_terminal_cleanup=4,
+        ),
+        cadence,
+    )
+
+    assert ControlAction.AUDIT_QUARANTINE in decision.actions
+    assert ControlAction.INSPECT_SOURCES not in decision.actions
+    assert ControlAction.THROTTLE_SOLVERS not in decision.actions
+    assert ControlAction.DISPATCH_SOLVERS in decision.actions
+
+
+def test_quarantine_observation_is_absent_without_quarantined_residue() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    decision = decide_capacity(_metrics(), cadence)
+
+    assert ControlAction.AUDIT_QUARANTINE not in decision.actions
+
+
 def test_ci_start_slo_breach_is_not_a_required_repair_without_failed_checks() -> None:
     cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
     decision = decide_capacity(
