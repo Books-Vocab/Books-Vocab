@@ -775,6 +775,55 @@ def test_cli_routes_legacy_abandoned_branch_cleanup(capsys: object) -> None:
     assert application.calls == ["debug/no-pr"]
 
 
+def test_cli_routes_explicit_abandoned_handback_discard(capsys: object) -> None:
+    class FakeApplication:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str, str, str]] = []
+
+        def discard_abandoned_handback(
+            self,
+            *,
+            branch: str,
+            expected_head_sha: str,
+            operator: str,
+            reason: str,
+        ) -> object:
+            self.calls.append((branch, expected_head_sha, operator, reason))
+            return {"disposition": "abandoned_handback_discarded"}
+
+    application = FakeApplication()
+    head = "b" * 40
+
+    assert (
+        main(
+            [
+                "discard-abandoned-handback",
+                "--branch",
+                "debug/orphan",
+                "--expected-head-sha",
+                head,
+                "--operator",
+                "supervisor",
+                "--reason",
+                "ownerless clean handback explicitly discarded",
+            ],
+            application_factory=lambda **_: application,
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert payload["result"]["disposition"] == "abandoned_handback_discarded"
+    assert application.calls == [
+        (
+            "debug/orphan",
+            head,
+            "supervisor",
+            "ownerless clean handback explicitly discarded",
+        )
+    ]
+
+
 def test_cli_exposes_dogfood_preflight_as_read_only_json(capsys: object) -> None:
     class FakeApplication:
         def dogfood_preflight(

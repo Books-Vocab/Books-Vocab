@@ -24,6 +24,8 @@ NON_TERMINAL_STATUSES = frozenset(
 TERMINAL_STATUSES = frozenset({STATUS_MERGED, STATUS_ABANDONED})
 KNOWN_STATUSES = NON_TERMINAL_STATUSES | TERMINAL_STATUSES
 TERMINAL_PROOF_SCHEMA = "kg.worktree.terminal-proof.v1"
+DISCARD_PROOF_SCHEMA = "kg.worktree.discard-proof.v1"
+DISCARD_PROOF_DISPOSITION = "abandoned_handback_discarded"
 
 CURRENT_RECORD_FIELDS = (
     "branch",
@@ -48,6 +50,7 @@ CURRENT_RECORD_FIELDS = (
     "handback_seal",
     "handback_outcomes",
     "terminal_proof",
+    "discard_proof",
 )
 
 
@@ -79,6 +82,17 @@ def legacy_external_ids(record: dict[str, Any]) -> list[str]:
 
 
 def terminal_proof_with_digest(body: dict[str, Any]) -> dict[str, Any]:
+    proof = dict(body)
+    encoded = json.dumps(
+        body, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    proof["digest"] = hashlib.sha256(encoded).hexdigest()
+    return proof
+
+
+def discard_proof_with_digest(body: dict[str, Any]) -> dict[str, Any]:
+    """Attach an immutable digest to an explicit abandoned-handback discard."""
+
     proof = dict(body)
     encoded = json.dumps(
         body, ensure_ascii=False, sort_keys=True, separators=(",", ":")
@@ -147,6 +161,49 @@ def stored_terminal_proof_problem(record: dict[str, Any]) -> str | None:
     )
 
 
+def discard_proof_problem(record: dict[str, Any]) -> str | None:
+    """Validate the optional proof that an abandoned handback was discarded."""
+
+    proof = record.get("discard_proof")
+    if proof is None:
+        return None
+    if record.get("status") != STATUS_ABANDONED:
+        return "discard proof is only valid for abandoned disposition"
+    if not isinstance(proof, dict):
+        return "discard proof must be an object"
+    digest = proof.get("digest")
+    body = {key: value for key, value in proof.items() if key != "digest"}
+    encoded = json.dumps(
+        body, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    if digest != hashlib.sha256(encoded).hexdigest():
+        return "discard proof digest is invalid"
+    expected = {
+        "schema": DISCARD_PROOF_SCHEMA,
+        "disposition": DISCARD_PROOF_DISPOSITION,
+        "branch": record.get("branch"),
+        "head_sha": record.get("handed_back_sha"),
+        "claim_generation": record.get("claim_generation"),
+        "base_sha": record.get("base_sha"),
+    }
+    for key, value in expected.items():
+        if body.get(key) != value:
+            return f"discard proof {key} does not match abandoned handback"
+    lane_id = body.get("lane_id")
+    allowed_lane_ids = record.get("external_ids") or [record.get("branch")]
+    if type(lane_id) is not str or lane_id not in allowed_lane_ids:
+        return "discard proof lane does not match the registry claim"
+    for key in ("operator", "reason"):
+        value = body.get(key)
+        if type(value) is not str or not value.strip():
+            return f"discard proof {key} must be non-empty text"
+    seal = record.get("handback_seal")
+    if isinstance(seal, dict) and isinstance(seal.get("digest"), str):
+        if body.get("handback_digest") != seal["digest"]:
+            return "discard proof handback digest does not match the stored seal"
+    return None
+
+
 def normalize_record(
     value: object, *, index: int
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
@@ -187,6 +244,17 @@ def normalize_record(
                 "branch": record.get("branch"),
                 "status": status,
                 "reason": proof_problem,
+            }
+        )
+    discard_problem = discard_proof_problem(record)
+    if discard_problem:
+        problems.append(
+            {
+                "kind": "registry-discard-proof-invalid",
+                "index": index,
+                "branch": record.get("branch"),
+                "status": status,
+                "reason": discard_problem,
             }
         )
     return record, problems

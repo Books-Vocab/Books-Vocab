@@ -121,10 +121,15 @@ PR readiness workflow 的 parser 入口是：
 ./ops/delivery.py queue --pr <number>
 ./ops/delivery.py queue --pr <number> --hold <p0|p1|security>
 ./ops/delivery.py cleanup-merged --pr <number>
+./ops/delivery.py discard-abandoned-handback --branch <branch> \
+  --expected-head-sha <handback-head> --operator <identity> \
+  --reason '<explicit discard rationale>'
 ./ops/delivery.py --repo <canonical-checkout> sync-main
 ```
 
 `queue` 只接受 registry `published`、PR body／paths／head／live base、target branch=`main`、all required checks、mergeability 都 exact 且無 hold 的 candidate，並以 GraphQL `enqueuePullRequest(expectedHeadOid)` 送進 GitHub native merge queue；它不呼叫會在無 queue 情境退化成直接合併的 `gh pr merge --auto`。即使 caller 忘記 `--hold`，typed body、legacy `PUBLISH ONLY` 與 `delivery-hold:*` labels 任一存在都會阻擋 queue。canonical body 也在 mutation 前後納入 CAS。inventory 直接讀 `mergeQueueEntry`，已入列 PR 顯示 `pr_queued`；enqueue 後 `main` tip 自然前進由 merge group 重驗，不會讓 immutable receipt 失效或誤觸 required repair。retarget／head／body drift 時，只有 queue entry ID 仍等於本次 mutation 回傳值才可呼叫 `dequeuePullRequest`，若 entry 已被另一 transaction 取代只報衝突、不得移除。`--hold` 是額外 typed hard stop，不是 override。inventory 會對每個無 open mapping 的 `published` record 精確補讀同 branch 的 terminal PR，讓 merged cleanup 不會因 open-only 列表消失。`cleanup-merged` 在取得 lease 後、每項刪除前及 terminal disposition 前都重新讀取 exact merged PR target／branch／head／body；只依 exact receipt 移除匹配的 local residue／remote branch，最後由 delivery adapter 提交帶 digest 的 `kg.worktree.terminal-proof.v1`。若 PR tuple 漂移則保留 lease 與未刪資產，一般 `worktree_orchestrate resolve` 不能直接標記 merged。`sync-main` 只在 `<canonical-checkout>` clean、位於 `main`、local ref 與 live `origin/main` 未在 preflight 後漂移時執行 `--ff-only`；不得在 feature worktree 執行，也沒有 force-reset fallback。
+
+`discard-abandoned-handback` 是 owner recovery 之後的最後一條窄路徑：只接受 ownerless、已 abandoned、具有效 typed handback、沒有任何 PR history、沒有 physical worktree、local／remote ref 仍等於 expected HEAD 的單一 branch。它先以 registry CAS 寫入帶 digest 的 `kg.worktree.discard-proof.v1`，再以 expected HEAD 刪除 exact local／remote ref；任何 owner、dirty worktree、PR history、remote drift 或 canonical main 問題都 fail closed。這不是批次 prune，也不會替有 owner 的 lane 做決策；同一 operator／reason 可安全重試。
 
 ### 錯誤隔離
 

@@ -58,11 +58,16 @@ from worktree_registry_core.handback_cli import (
 from worktree_registry_core.inspection import cmd_list
 from worktree_registry_core.inspection import record_view as _record_view
 from worktree_registry_core.lifecycle import (
+    DISCARD_PROOF_SCHEMA,
     PUBLIC_RESOLVE_STATUSES,
     TERMINAL_PROOF_SCHEMA,
+    discard_proof_with_digest,
     terminal_proof_with_digest,
 )
-from worktree_registry_core.lifecycle_cli import cmd_resolve as _cmd_resolve
+from worktree_registry_core.lifecycle_cli import (
+    cmd_discard as _cmd_discard,
+    cmd_resolve as _cmd_resolve,
+)
 from worktree_registry_core.maintenance import cmd_compact, cmd_sweep
 from worktree_registry_core.published_base import cmd_record_published_base
 from worktree_registry_core.records import (
@@ -87,6 +92,7 @@ REGISTRY_MUTATING_COMMANDS = frozenset(
         "owner-bind",
         "hand-back",
         "resolve",
+        "discard",
         "record-published-base",
         "sweep",
         "compact",
@@ -108,6 +114,7 @@ __all__ = (
     "EXIT_PARTIAL",
     "EXIT_USAGE",
     "PUBLIC_RESOLVE_STATUSES",
+    "DISCARD_PROOF_SCHEMA",
     "SCHEMA",
     "STATUS_ACTIVE",
     "STATUS_CLEANUP_PENDING",
@@ -133,6 +140,7 @@ __all__ = (
     "resolve_now",
     "save_state",
     "terminal_proof_with_digest",
+    "discard_proof_with_digest",
     "validate_handback_seal",
 )
 
@@ -178,6 +186,7 @@ def _parser() -> argparse.ArgumentParser:
             "list": cmd_list,
             "hand-back": cmd_hand_back,
             "resolve": cmd_resolve,
+            "discard": _cmd_discard,
             "record-published-base": cmd_record_published_base,
             "sweep": cmd_sweep,
             "compact": cmd_compact,

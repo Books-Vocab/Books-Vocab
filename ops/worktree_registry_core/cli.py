@@ -87,6 +87,18 @@ def build_parser(
     resolve.add_argument("--terminal-proof")
     resolve.set_defaults(func=handlers["resolve"])
 
+    discard = sub.add_parser(
+        "discard", help="record one explicit discard proof for an abandoned handback"
+    )
+    common(discard)
+    discard.add_argument("--branch")
+    discard.add_argument("--path")
+    discard.add_argument("--expected-generation", type=int)
+    discard.add_argument("--expected-head-sha")
+    discard.add_argument("--operator", required=True)
+    discard.add_argument("--reason", required=True)
+    discard.set_defaults(func=handlers["discard"])
+
     published_base = sub.add_parser(
         "record-published-base",
         help="record the exact GitHub PR base after publication",

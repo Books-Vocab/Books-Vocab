@@ -12,6 +12,7 @@ from .environment import git, load_state, repo_root, resolve_now, state_path
 from .handback_cli import has_valid_physical, has_valid_stored, is_commit_sha
 from .inspection import record_view
 from .lifecycle import (
+    discard_record,
     TransitionRequest,
     transition_record,
     validate_terminal_proof,
@@ -109,5 +110,59 @@ def cmd_resolve(args: argparse.Namespace, *, resolve_statuses: tuple[str, ...]) 
             f"✓ resolved [{record.get('branch')}] -> {args.status}"
             for record in records
         )
+    )
+    return EXIT_OK
+
+
+def cmd_discard(args: argparse.Namespace) -> int:
+    """Persist one explicit discard proof for an abandoned handback claim."""
+
+    if not args.branch and not args.path:
+        print("✗ discard needs --branch/--path", file=sys.stderr)
+        return EXIT_USAGE
+    if args.expected_generation is None or args.expected_head_sha is None:
+        print(
+            "✗ discard requires exact generation and HEAD compare-and-swap guards",
+            file=sys.stderr,
+        )
+        return EXIT_USAGE
+    target = state_path(args)
+    with ledger_lock(target):
+        state = load_state(target)
+        blockers = mutation_blockers(state)
+        if blockers:
+            print(
+                "✗ malformed ownership facts block registry mutation",
+                file=sys.stderr,
+            )
+            return EXIT_CLAIMED
+        result = discard_record(
+            state,
+            branch=args.branch,
+            path=args.path,
+            expected_generation=args.expected_generation,
+            expected_head_sha=args.expected_head_sha,
+            operator=args.operator,
+            reason=args.reason,
+            claim_generation=claim_generation,
+            record_matches=record_matches,
+            is_commit_sha=is_commit_sha,
+        )
+        if result.record is None:
+            print(f"✗ {result.reason}", file=sys.stderr)
+            return EXIT_CLAIMED
+        _, now_iso = resolve_now(args.at)
+        result.record["resolved_at"] = result.record.get("resolved_at") or now_iso
+        save_state(target, state)
+    payload = {
+        "schema": SCHEMA,
+        "action": "discard",
+        "status": "abandoned",
+        "records": [record_view(result.record)],
+    }
+    print(
+        json.dumps(payload, indent=2, ensure_ascii=False)
+        if args.json
+        else f"✓ discard proof recorded [{result.record.get('branch')}]"
     )
     return EXIT_OK

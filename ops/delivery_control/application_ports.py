@@ -14,6 +14,7 @@ from .ports.github import (
 from .ports.registry import (
     RegistryCleanupQueryPort,
     RegistryCommandPort,
+    RegistryDiscardCommandPort,
     RegistryPublicationQueryPort,
     RegistryQueryPort,
 )
@@ -41,6 +42,7 @@ class DeliveryRegistryPort(
     RegistryPublicationQueryPort,
     RegistryCleanupQueryPort,
     RegistryCommandPort,
+    RegistryDiscardCommandPort,
     Protocol,
 ):
     pass

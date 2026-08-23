@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from .records import (
+    DISCARD_PROOF_DISPOSITION,
+    DISCARD_PROOF_SCHEMA,
     STATUS_ABANDONED,
     STATUS_ACTIVE,
     STATUS_CLEANUP_PENDING,
@@ -16,6 +18,7 @@ from .records import (
     terminal_proof_problem,
     terminal_proof_with_digest,  # noqa: F401 - compatibility export for registry facade
 )
+from .records import discard_proof_problem, discard_proof_with_digest
 
 PUBLIC_RESOLVE_STATUSES = (
     STATUS_CLEANUP_PENDING,
@@ -23,6 +26,21 @@ PUBLIC_RESOLVE_STATUSES = (
     STATUS_ABANDONED,
 )
 INTERNAL_TERMINAL_STATUSES = frozenset({STATUS_MERGED})
+
+__all__ = [
+    "DISCARD_PROOF_DISPOSITION",
+    "DISCARD_PROOF_SCHEMA",
+    "PUBLIC_RESOLVE_STATUSES",
+    "TransitionRequest",
+    "TransitionResult",
+    "discard_record",
+    "discard_proof_problem",
+    "discard_proof_with_digest",
+    "source_statuses",
+    "requires_stored_handback",
+    "validate_terminal_proof",
+    "transition_record",
+]
 
 
 def source_statuses(target: str) -> set[str]:
@@ -57,6 +75,83 @@ class TransitionRequest:
 class TransitionResult:
     record: dict[str, Any] | None
     reason: str | None = None
+
+
+def discard_record(
+    state: dict[str, Any],
+    *,
+    branch: str | None,
+    path: str | None,
+    expected_generation: int,
+    expected_head_sha: str,
+    operator: str,
+    reason: str,
+    claim_generation: Callable[[dict[str, Any], str], int | None],
+    record_matches: Callable[..., bool],
+    is_commit_sha: Callable[[object], bool],
+) -> TransitionResult:
+    """Attach one explicit discard proof to an abandoned handback claim.
+
+    This is deliberately separate from ``resolve``: an abandoned claim is
+    already terminal, and resolving it again would blur the distinction
+    between owner recovery and an intentional discard decision.
+    """
+
+    if not operator.strip() or not reason.strip():
+        return TransitionResult(None, "discard proof requires operator and reason")
+    matches = [
+        record
+        for record in state.get("records", [])
+        if isinstance(record, dict)
+        and record.get("status") == STATUS_ABANDONED
+        and record_matches(record, branch=branch, path=path)
+        and claim_generation(record, "claim_generation") == expected_generation
+    ]
+    if len(matches) != 1:
+        return TransitionResult(
+            None, "no unique abandoned registry record matches discard"
+        )
+    record = matches[0]
+    handed_back_sha = record.get("handed_back_sha")
+    if not is_commit_sha(handed_back_sha) or handed_back_sha != expected_head_sha:
+        return TransitionResult(None, "discard HEAD does not match the stored handback")
+    existing = record.get("discard_proof")
+    if existing is not None:
+        if discard_proof_problem(record) is not None:
+            return TransitionResult(None, "existing discard proof is invalid")
+        if existing.get("operator") != operator or existing.get("reason") != reason:
+            return TransitionResult(
+                None, "existing discard proof differs from requested proof"
+            )
+        return TransitionResult(record)
+    external_ids = record.get("external_ids")
+    lane_id = (
+        external_ids[0]
+        if isinstance(external_ids, list) and external_ids
+        else record.get("branch")
+    )
+    seal = record.get("handback_seal")
+    handback_digest = seal.get("digest") if isinstance(seal, dict) else None
+    proof = discard_proof_with_digest(
+        {
+            "schema": DISCARD_PROOF_SCHEMA,
+            "disposition": DISCARD_PROOF_DISPOSITION,
+            "lane_id": lane_id,
+            "branch": record.get("branch"),
+            "head_sha": expected_head_sha,
+            "claim_generation": expected_generation,
+            "base_sha": record.get("base_sha"),
+            "handback_digest": handback_digest,
+            "operator": operator,
+            "reason": reason,
+        }
+    )
+    candidate = dict(record)
+    candidate["discard_proof"] = proof
+    if (problem := discard_proof_problem(candidate)) is not None:
+        return TransitionResult(None, problem)
+    record["discard_proof"] = proof
+    return TransitionResult(record)
 
 
 def validate_terminal_proof(
