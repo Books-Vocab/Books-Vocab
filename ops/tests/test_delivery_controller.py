@@ -24,6 +24,13 @@ from delivery_control.controller.metrics import (
 )
 from delivery_control.controller.timings import PipelineTimings
 from delivery_control.controller.worktree_boundary import partition_worktrees
+from delivery_control.domain.branch_lifecycle import (
+    BranchAsset,
+    BranchCleanupAction,
+    BranchDisposition,
+    BranchLifecycleInventory,
+    BranchSide,
+)
 from delivery_control.domain.candidate_issues import (
     CandidateIssue,
     CandidateIssueInventory,
@@ -400,6 +407,49 @@ def test_pipeline_metrics_excludes_explicit_supervision_worktrees() -> None:
     assert measured.blocked_lanes == 0
 
 
+def test_pipeline_metrics_projects_branch_lifecycle_residue() -> None:
+    inventory = DeliveryInventory(
+        lanes=(),
+        branch_lifecycle=BranchLifecycleInventory(
+            assets=(
+                BranchAsset(
+                    branch="feat/local-orphan",
+                    side=BranchSide.LOCAL,
+                    sha="a" * 40,
+                    disposition=BranchDisposition.ORPHAN_LOCAL_RECONCILE,
+                    cleanup_action=BranchCleanupAction.RECONCILE_LOCAL_ORPHAN,
+                    reason="local branch has no delivery evidence",
+                ),
+                BranchAsset(
+                    branch="feat/remote-drift",
+                    side=BranchSide.REMOTE,
+                    sha="b" * 40,
+                    disposition=BranchDisposition.REMOTE_DRIFT,
+                    cleanup_action=BranchCleanupAction.PRESERVE_REMOTE_DRIFT,
+                    reason="remote branch drifted from local evidence",
+                ),
+                BranchAsset(
+                    branch="feat/protected",
+                    side=BranchSide.LOCAL,
+                    sha="c" * 40,
+                    disposition=BranchDisposition.PROTECTED,
+                    cleanup_action=BranchCleanupAction.PRESERVE_PROTECTED,
+                    reason="protected branch",
+                    protected=True,
+                ),
+            )
+        ),
+    )
+
+    measured = measure_pipeline(inventory)
+
+    assert measured.branch_audit_items == 2
+    assert measured.local_orphan_branches == 1
+    assert measured.remote_orphan_branches == 0
+    assert measured.merged_branch_cleanup_ready == 0
+    assert measured.remote_drift_branches == 1
+
+
 def test_quarantined_open_prs_do_not_count_as_actionable_blockers() -> None:
     lanes = tuple(
         LaneInspection(
@@ -741,6 +791,29 @@ def test_controller_audits_ownerless_residue_without_recovery_wake() -> None:
 
     assert ControlAction.AUDIT_OWNERLESS_LANES in decision.actions
     assert ControlAction.RECOVER_OWNER_BOUND_LANE not in decision.actions
+
+
+def test_controller_surfaces_branch_residue_as_audit_only_action() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    decision = decide_capacity(
+        _metrics(
+            branch_audit_items=3,
+            local_orphan_branches=2,
+            remote_orphan_branches=1,
+        ),
+        cadence,
+    )
+
+    assert ControlAction.AUDIT_BRANCH_LIFECYCLE in decision.actions
+    assert ControlAction.CLEANUP_LOCAL not in decision.actions
+    assert ControlAction.DISPATCH_SOLVERS in decision.actions
+
+
+def test_controller_does_not_emit_branch_audit_without_branch_residue() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    decision = decide_capacity(_metrics(), cadence)
+
+    assert ControlAction.AUDIT_BRANCH_LIFECYCLE not in decision.actions
 
 
 def test_controller_splits_owner_bound_and_ownerless_residue_actions() -> None:

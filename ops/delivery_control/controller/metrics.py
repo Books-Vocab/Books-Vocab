@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from itertools import pairwise
 from pathlib import Path
 
+from ..domain.branch_lifecycle import BranchDisposition, BranchSide
 from ..domain.demand_issues import IssueDisposition
 from ..domain.models import CheckStatus
 from ..domain.states import LaneState
@@ -54,6 +55,13 @@ class PipelineMetrics:
     active_registry_without_worktree_owner_bound: int | None = None
     active_registry_without_worktree_ownerless: int | None = None
     malformed_active_registry_records: int = 0
+    # Branch refs are a separate delivery-asset reservoir. These counters
+    # expose lifecycle residue without authorizing cleanup.
+    branch_audit_items: int = 0
+    local_orphan_branches: int = 0
+    remote_orphan_branches: int = 0
+    merged_branch_cleanup_ready: int = 0
+    remote_drift_branches: int = 0
     triage_required_issues: int = 0
     legacy_open_issues: int = 0
     issues_with_active_claim: int = 0
@@ -210,6 +218,32 @@ def measure_pipeline(
         and not bool(lane.registry is not None and lane.registry.owner_thread_id)
         for lane in active_registry_lanes
     )
+    branch_assets = inventory.branch_lifecycle.assets
+    normal_branch_dispositions = {
+        BranchDisposition.PROTECTED,
+        BranchDisposition.OPEN_PR_DURABLE,
+        BranchDisposition.ACTIVE_OR_PUBLISHED_LANE,
+    }
+    branch_audit_items = sum(
+        asset.disposition not in normal_branch_dispositions for asset in branch_assets
+    )
+    local_orphan_branches = sum(
+        asset.side is BranchSide.LOCAL
+        and asset.disposition is BranchDisposition.ORPHAN_LOCAL_RECONCILE
+        for asset in branch_assets
+    )
+    remote_orphan_branches = sum(
+        asset.side is BranchSide.REMOTE
+        and asset.disposition is BranchDisposition.ORPHAN_REMOTE_RECONCILE
+        for asset in branch_assets
+    )
+    merged_branch_cleanup_ready = sum(
+        asset.disposition is BranchDisposition.MERGED_CLEANUP_READY
+        for asset in branch_assets
+    )
+    remote_drift_branches = sum(
+        asset.disposition is BranchDisposition.REMOTE_DRIFT for asset in branch_assets
+    )
     collision_lanes = states.count(LaneState.BLOCKED_COLLISION)
     security_hold_lanes = states.count(LaneState.SECURITY_HOLD)
     live_states = [
@@ -312,6 +346,11 @@ def measure_pipeline(
             active_registry_without_worktree_ownerless
         ),
         malformed_active_registry_records=malformed_active_registry_records,
+        branch_audit_items=branch_audit_items,
+        local_orphan_branches=local_orphan_branches,
+        remote_orphan_branches=remote_orphan_branches,
+        merged_branch_cleanup_ready=merged_branch_cleanup_ready,
+        remote_drift_branches=remote_drift_branches,
         triage_required_issues=inventory.demand_issues.count(
             IssueDisposition.TRIAGE_REQUIRED
         ),
