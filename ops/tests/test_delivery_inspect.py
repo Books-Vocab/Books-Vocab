@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# ruff: noqa: E402
+
 import sys
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -324,6 +326,25 @@ def test_sealed_handback_is_publishable_when_owner_session_is_unreachable(
     active = next(item for item in service.inspect().lanes if item.key == "#1")
 
     assert active.decision.state is LaneState.HANDBACK_PUBLISHABLE
+
+
+def test_missing_worktree_records_owner_reachability_for_capacity_policy(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "missing-owner-lane"
+    service = InspectService(
+        registry=FakeRegistry((_record(path),)),
+        git=FakeGit((), {}),
+        github=FakeGitHub(()),
+        runtime=FakeRuntime("archived"),
+    )
+
+    active = next(item for item in service.inspect().lanes if item.key == "#1")
+
+    assert active.owner_reachable is False
+    assert active.physical is None
+    assert active.registry is not None
+    assert active.registry.owner_thread_id == "thread-1"
 
 
 def test_inspect_service_excludes_clean_canonical_main_from_lane_inventory(

@@ -22,6 +22,7 @@ class ControlAction(StrEnum):
     AUDIT_QUEUE_ADMISSION_SLO = "audit_queue_admission_slo"
     AUDIT_MERGE_CADENCE = "audit_merge_cadence"
     AUDIT_OWNERLESS_LANES = "audit_ownerless_lanes"
+    AUDIT_UNREACHABLE_OWNER_LANES = "audit_unreachable_owner_lanes"
     REPAIR_PR_CONTRACT = "repair_pr_contract"
     REPAIR_REQUIRED = "repair_required"
     TRIGGER_REQUIRED = "trigger_required"
@@ -141,18 +142,34 @@ def decide_capacity(
             ControlAction.RECOVER_OWNER_BOUND_LANE,
             "existing owner-bound lanes require bounded recovery",
         )
-    owner_bound_registry_residue = metrics.active_registry_without_worktree_owner_bound
+    owner_bound_registry_residue = (
+        metrics.active_registry_without_worktree_owner_reachable
+    )
     if owner_bound_registry_residue is None:
         # Preserve the pre-split direct-construction contract. Measured
-        # inventories always provide the explicit split, so ownerless claims
-        # cannot reach the recovery action through this fallback.
-        owner_bound_registry_residue = metrics.active_registry_without_worktree
+        # inventories always provide the explicit reachability split, so an
+        # unreachable owner cannot reach the recovery action through this
+        # fallback.
+        owner_bound_registry_residue = (
+            metrics.active_registry_without_worktree_owner_bound
+        )
+        if owner_bound_registry_residue is None:
+            owner_bound_registry_residue = metrics.active_registry_without_worktree
     if owner_bound_registry_residue:
         add(
             ControlAction.RECOVER_OWNER_BOUND_LANE,
             (
                 f"{owner_bound_registry_residue} owner-bound active registry claim(s) "
                 "have no physical worktree and require original-owner recovery"
+            ),
+        )
+    if metrics.active_registry_without_worktree_owner_unreachable:
+        add(
+            ControlAction.AUDIT_UNREACHABLE_OWNER_LANES,
+            (
+                f"{metrics.active_registry_without_worktree_owner_unreachable} "
+                "owner-bound active registry claim(s) have no reachable owner; "
+                "audit owner liveness only, do not wake, create a session, or take over"
             ),
         )
     if metrics.active_registry_without_worktree_ownerless:
