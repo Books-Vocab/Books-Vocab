@@ -90,7 +90,9 @@ class GitHubChecks:
             )
         after = self.get_pull_request(number)
         if before.head_sha != after.head_sha:
-            raise CompareAndSwapConflict("PR HEAD changed while reading required checks")
+            raise CompareAndSwapConflict(
+                "PR HEAD changed while reading required checks"
+            )
         return CheckSnapshot(
             status=_status_from_states(states),
             head_sha=after.head_sha,

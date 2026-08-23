@@ -73,15 +73,16 @@ def _required_checks_query(numbers: tuple[int, ...]) -> str:
         )
     return (
         "query DeliveryRequiredChecks($owner: String!, $name: String!) {"
-        " repository(owner: $owner, name: $name) {"
-        + "".join(fragments)
-        + " } }"
+        " repository(owner: $owner, name: $name) {" + "".join(fragments) + " } }"
     )
 
 
 def _repository_name(client: GitHubCliClient) -> tuple[str, str]:
     payload = client.load_json(("gh", "repo", "view", "--json", "nameWithOwner"))
-    if not isinstance(payload, Mapping) or type(payload.get("nameWithOwner")) is not str:
+    if (
+        not isinstance(payload, Mapping)
+        or type(payload.get("nameWithOwner")) is not str
+    ):
         raise AdapterPayloadError("GitHub repository identity is malformed")
     owner, separator, name = payload["nameWithOwner"].partition("/")
     if not separator or not owner or not name or "/" in name:
@@ -100,14 +101,19 @@ def _snapshot_from_node(node: object, *, number: int) -> CheckSnapshot:
     commits = node.get("commits")
     commit_nodes = commits.get("nodes") if isinstance(commits, Mapping) else None
     if not isinstance(commit_nodes, list) or len(commit_nodes) > 1:
-        raise AdapterPayloadError(f"required PR {number} commit connection is malformed")
+        raise AdapterPayloadError(
+            f"required PR {number} commit connection is malformed"
+        )
     commit = commit_nodes[0].get("commit") if commit_nodes else None
     rollup = commit.get("statusCheckRollup") if isinstance(commit, Mapping) else None
     contexts = rollup.get("contexts") if isinstance(rollup, Mapping) else None
     if not isinstance(contexts, Mapping):
         raise AdapterPayloadError(f"required PR {number} check connection is malformed")
     page_info = contexts.get("pageInfo")
-    if not isinstance(page_info, Mapping) or type(page_info.get("hasNextPage")) is not bool:
+    if (
+        not isinstance(page_info, Mapping)
+        or type(page_info.get("hasNextPage")) is not bool
+    ):
         raise AdapterPayloadError(
             f"required PR {number} check connection pageInfo is malformed"
         )
@@ -125,7 +131,9 @@ def _snapshot_from_node(node: object, *, number: int) -> CheckSnapshot:
     completions: list[datetime | None] = []
     for index, item in enumerate(context_nodes):
         if not isinstance(item, Mapping):
-            raise AdapterPayloadError(f"required PR {number} check[{index}] is malformed")
+            raise AdapterPayloadError(
+                f"required PR {number} check[{index}] is malformed"
+            )
         typename = item.get("__typename")
         if typename == "CheckRun":
             name = item.get("name")
@@ -163,7 +171,11 @@ def _snapshot_from_node(node: object, *, number: int) -> CheckSnapshot:
             name = item.get("context")
             required = item.get("isRequired")
             state = item.get("state")
-            if type(name) is not str or type(required) is not bool or type(state) is not str:
+            if (
+                type(name) is not str
+                or type(required) is not bool
+                or type(state) is not str
+            ):
                 raise AdapterPayloadError(
                     f"required PR {number} status context[{index}] is malformed"
                 )

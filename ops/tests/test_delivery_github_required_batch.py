@@ -90,7 +90,7 @@ def _context_payload(
                                                     "completedAt": "2026-08-23T00:00:01Z",
                                                     "isRequired": False,
                                                 },
-                                            ]
+                                            ],
                                         }
                                     }
                                 }
