@@ -12,13 +12,21 @@ from delivery_control.domain.branch_lifecycle import (  # noqa: E402
     BranchSide,
 )
 from delivery_control.domain.branch_refs import BranchInventory  # noqa: E402
-from delivery_control.domain.inventory import DeliveryInventory  # noqa: E402
+from delivery_control.domain.inventory import (  # noqa: E402
+    DeliveryInventory,
+    LaneInspection,
+)
 from delivery_control.domain.models import Scope  # noqa: E402
 from delivery_control.domain.observations import (  # noqa: E402
     InventoryProblem,
     PhysicalWorktree,
     PullRequestSnapshot,
     RegistrySnapshot,
+)
+from delivery_control.domain.states import (  # noqa: E402
+    LaneDecision,
+    LaneState,
+    NextAction,
 )
 from delivery_control.services.branch_audit import (  # noqa: E402
     BranchAuditSourceProblem,
@@ -307,3 +315,74 @@ def test_branch_audit_exposes_local_orphan_preflight_blockers() -> None:
     assert action.category == "local_orphan_blocked"
     assert "remote branch still exists" in action.next_step
     assert action.orphan_preflight == preflight
+
+
+def test_branch_audit_surfaces_registry_only_active_claim() -> None:
+    record = _record("debug/missing-registry-ref", "active", SHA_B)
+    inventory = DeliveryInventory(
+        lanes=(
+            LaneInspection(
+                key=record.lane_id,
+                registry=record,
+                physical=None,
+                snapshot=None,
+                pull_requests=(),
+                decision=LaneDecision(
+                    LaneState.BLOCKED_OWNER,
+                    NextAction.RECOVER_OWNER,
+                    "registry claim has no observed worktree",
+                ),
+            ),
+        ),
+        branch_lifecycle=project_branch_lifecycle(
+            branch_inventory=BranchInventory(),
+        ),
+    )
+
+    report = build_branch_audit(inventory)
+
+    assert report.complete is False
+    assert report.verdict == "incomplete"
+    assert report.actions == ()
+    assert len(report.registry_only_actions) == 1
+    action = report.registry_only_actions[0]
+    assert action.branch == "debug/missing-registry-ref"
+    assert action.status == "active"
+    assert action.claim_generation == 1
+    assert action.handed_back_sha == SHA_B
+    assert action.safe_terminal is False
+    assert action.category == "registry_only_residue"
+    assert "recover the original owner" in action.next_step
+    assert report.registry_only_status_counts == {"active": 1}
+
+
+def test_branch_audit_surfaces_registry_only_published_claim() -> None:
+    record = _record("feat/missing-published-ref", "published", SHA_B)
+    inventory = DeliveryInventory(
+        lanes=(
+            LaneInspection(
+                key=record.lane_id,
+                registry=record,
+                physical=None,
+                snapshot=None,
+                pull_requests=(),
+                decision=LaneDecision(
+                    LaneState.PUBLISHED_LOCAL_CLEANUP,
+                    NextAction.CLEANUP_LOCAL,
+                    "published claim has no observed ref",
+                ),
+            ),
+        ),
+        branch_lifecycle=project_branch_lifecycle(
+            branch_inventory=BranchInventory(),
+        ),
+    )
+
+    report = build_branch_audit(inventory)
+
+    assert report.complete is False
+    assert len(report.registry_only_actions) == 1
+    action = report.registry_only_actions[0]
+    assert action.status == "published"
+    assert "reconcile the published claim" in action.next_step
+    assert report.registry_only_status_counts == {"published": 1}
