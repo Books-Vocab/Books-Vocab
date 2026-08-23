@@ -174,6 +174,57 @@ def test_controller_drains_every_existing_reservoir_without_serializing() -> Non
     assert decision.desired_new_solvers == 4
 
 
+def test_transport_slo_breach_is_not_a_publish_command_without_handbacks() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    decision = decide_capacity(
+        _metrics(
+            handbacks_publishable=0,
+            timings=PipelineTimings(
+                handback_to_pr_samples=3,
+                handback_to_pr_p95_seconds=186.0,
+            ),
+        ),
+        cadence,
+    )
+
+    assert ControlAction.PUBLISH_HANDBACKS not in decision.actions
+    assert ControlAction.AUDIT_TRANSPORT_SLO in decision.actions
+
+
+def test_transport_slo_breach_keeps_publish_command_for_real_handbacks() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    decision = decide_capacity(
+        _metrics(
+            handbacks_publishable=1,
+            timings=PipelineTimings(
+                handback_to_pr_samples=3,
+                handback_to_pr_p95_seconds=186.0,
+            ),
+        ),
+        cadence,
+    )
+
+    assert ControlAction.PUBLISH_HANDBACKS in decision.actions
+    assert ControlAction.AUDIT_TRANSPORT_SLO in decision.actions
+
+
+def test_transport_slo_without_breach_does_not_create_transport_actions() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    decision = decide_capacity(
+        _metrics(
+            handbacks_publishable=0,
+            timings=PipelineTimings(
+                handback_to_pr_samples=3,
+                handback_to_pr_p95_seconds=45.0,
+            ),
+        ),
+        cadence,
+    )
+
+    assert ControlAction.PUBLISH_HANDBACKS not in decision.actions
+    assert ControlAction.AUDIT_TRANSPORT_SLO not in decision.actions
+
+
 def test_candidate_policy_replenishes_low_reservoir_while_dispatching_existing_supply() -> (
     None
 ):
@@ -497,7 +548,8 @@ def test_controller_turns_transport_and_admission_latency_into_actions() -> None
 
     decision = decide_capacity(metrics, cadence)
 
-    assert ControlAction.PUBLISH_HANDBACKS in decision.actions
+    assert ControlAction.AUDIT_TRANSPORT_SLO in decision.actions
+    assert ControlAction.PUBLISH_HANDBACKS not in decision.actions
     assert ControlAction.REPAIR_REQUIRED in decision.actions
     assert ControlAction.ENQUEUE_GREEN in decision.actions
 
