@@ -82,6 +82,10 @@ class InventoryProblem:
     source: str
     identity: str
     reason: str
+    # Registry parsing can preserve whether an identity came from a branch,
+    # path, or an unaddressable record slot.  Consumers must not infer this
+    # from the identity's spelling: a path or a branch can both contain '/'.
+    identity_kind: str | None = None
 
 
 @dataclass(frozen=True)

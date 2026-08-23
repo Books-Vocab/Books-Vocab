@@ -41,6 +41,9 @@ class BranchAuditSourceProblem:
     reason: str
     category: str
     next_step: str
+    identity_kind: str | None = None
+    scope: str = "global"
+    affected_branch: str | None = None
 
 
 @dataclass(frozen=True)
@@ -66,18 +69,32 @@ class BranchAuditReport:
     source_problems: tuple[InventoryProblem, ...]
     source_problem_actions: tuple[BranchAuditSourceProblem, ...]
     source_problem_counts: dict[str, int]
+    source_problem_scope_counts: dict[str, int]
 
 
 def _source_problem_action(problem: InventoryProblem) -> BranchAuditSourceProblem:
     """Project one incomplete source into an observable, non-mutating action."""
 
     source = problem.source
+    affected_branch = (
+        problem.identity
+        if problem.source == "registry" and problem.identity_kind == "branch"
+        else None
+    )
+    scope = "branch" if affected_branch is not None else "global"
     if source == "registry":
         category = "registry_source_problem"
-        next_step = (
-            "preserve all affected branch/worktree assets; reconcile the malformed "
-            "registry record through its supported owner lifecycle before cleanup"
-        )
+        if affected_branch is None:
+            next_step = (
+                "preserve all branch/worktree assets; the malformed registry identity "
+                "cannot be scoped safely, so reconcile it through its supported "
+                "owner lifecycle before cleanup"
+            )
+        else:
+            next_step = (
+                f"preserve {affected_branch} assets; reconcile its malformed registry "
+                "record through the supported owner lifecycle before cleanup"
+            )
     elif source == "github":
         category = "github_source_problem"
         next_step = (
@@ -102,23 +119,36 @@ def _source_problem_action(problem: InventoryProblem) -> BranchAuditSourceProble
         reason=problem.reason,
         category=category,
         next_step=next_step,
+        identity_kind=problem.identity_kind,
+        scope=scope,
+        affected_branch=affected_branch,
     )
 
 
 def _withheld_by_source_problem(
     action: BranchAuditAction,
+    *,
+    source_problem_actions: tuple[BranchAuditSourceProblem, ...],
 ) -> BranchAuditAction:
-    """Remove mutation affordances when the complete inventory is unavailable."""
+    """Remove mutation affordances only for affected or globally unknown sources."""
 
     if not action.safe_terminal:
         return action
+    relevant = tuple(
+        problem
+        for problem in source_problem_actions
+        if problem.scope == "global" or problem.affected_branch == action.branch
+    )
+    if not relevant:
+        return action
+    details = "; ".join(f"{problem.source}:{problem.identity}" for problem in relevant)
     return replace(
         action,
         category="source_incomplete",
         safe_terminal=False,
         next_step=(
-            "resolve source inventory problems before using the otherwise eligible "
-            "cleanup action"
+            "resolve source inventory problems affecting this branch before using "
+            f"the otherwise eligible cleanup action ({details})"
         ),
         suggested_command=None,
     )
@@ -268,16 +298,21 @@ def build_branch_audit(
 
     assets = inventory.branch_lifecycle.assets
     preflights = orphan_preflights or {}
+    source_problem_actions = tuple(
+        _source_problem_action(problem) for problem in inventory.source_problems
+    )
     actions = tuple(
         _action_for_asset(asset, orphan_preflight=preflights.get(asset.branch))
         for asset in assets
     )
     complete = not inventory.source_problems
     if not complete:
-        actions = tuple(_withheld_by_source_problem(action) for action in actions)
-    source_problem_actions = tuple(
-        _source_problem_action(problem) for problem in inventory.source_problems
-    )
+        actions = tuple(
+            _withheld_by_source_problem(
+                action, source_problem_actions=source_problem_actions
+            )
+            for action in actions
+        )
     open_prs = {
         pull_request.number
         for lane in inventory.lanes
@@ -318,6 +353,10 @@ def build_branch_audit(
         source_problem_counts={
             source: sum(item.source == source for item in source_problem_actions)
             for source in sorted({item.source for item in source_problem_actions})
+        },
+        source_problem_scope_counts={
+            scope: sum(item.scope == scope for item in source_problem_actions)
+            for scope in sorted({item.scope for item in source_problem_actions})
         },
     )
 

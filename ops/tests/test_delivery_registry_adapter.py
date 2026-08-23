@@ -286,11 +286,17 @@ def test_registry_adapter_surfaces_reported_problems_and_unknown_statuses(
 
     assert inventory.records == ()
     assert inventory.problems == (
-        InventoryProblem("registry", "record[0]", "registry-record-not-object"),
+        InventoryProblem(
+            "registry",
+            "record[0]",
+            "registry-record-not-object",
+            identity_kind="record",
+        ),
         InventoryProblem(
             "registry",
             "feat/unknown",
             "unsupported registry status: 'legacy-migrating'",
+            identity_kind="branch",
         ),
     )
 
@@ -312,7 +318,9 @@ def test_registry_adapter_fails_closed_on_unusable_terminal_history(
     ).list_records()
 
     assert inventory.records == ()
-    assert inventory.problems == (InventoryProblem("registry", "feat/old", "'scope'"),)
+    assert inventory.problems == (
+        InventoryProblem("registry", "feat/old", "'scope'", identity_kind="branch"),
+    )
 
 
 def test_collision_inventory_uses_scope_from_active_legacy_record(
@@ -435,7 +443,12 @@ def test_collision_inventory_blocks_active_record_with_unusable_scope(
 
     assert inventory.records == ()
     assert inventory.problems == (
-        InventoryProblem("registry", "feat/unknown-scope", "Scope must be an object"),
+        InventoryProblem(
+            "registry",
+            "feat/unknown-scope",
+            "Scope must be an object",
+            identity_kind="branch",
+        ),
     )
 
 
