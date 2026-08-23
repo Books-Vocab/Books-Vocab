@@ -11,11 +11,14 @@ from unittest.mock import Mock, patch
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.adapters.registry import RegistryCliAdapter
-from delivery_control.adapters.telemetry_ndjson import TelemetryNdjsonAdapter
-from delivery_control.application import DeliveryApplication, build_application
-from delivery_control.controller.dogfood import DogfoodProfile
-from delivery_control.controller.metrics import MergeCadence
+from delivery_control.adapters.registry import RegistryCliAdapter  # noqa: E402
+from delivery_control.adapters.telemetry_ndjson import TelemetryNdjsonAdapter  # noqa: E402
+from delivery_control.application import DeliveryApplication, build_application  # noqa: E402
+from delivery_control.controller.dogfood import DogfoodProfile  # noqa: E402
+from delivery_control.controller.metrics import MergeCadence  # noqa: E402
+from delivery_control.domain.branch_content import BranchContentEvidence  # noqa: E402
+from delivery_control.domain.branch_lifecycle import BranchSide  # noqa: E402
+from delivery_control.services.branch_content import BranchContentService  # noqa: E402
 
 
 def test_application_public_facade_preserves_constructor_contract() -> None:
@@ -184,6 +187,68 @@ def test_plan_forwards_supervision_worktree_paths_to_metrics(tmp_path: Path) -> 
     assert metrics.call_args.kwargs["supervision_worktree_paths"] == (
         Path("/supervision"),
     )
+
+
+def test_branch_review_plan_pages_orphans_and_preserves_incomplete_audit(
+    tmp_path: Path,
+) -> None:
+    application = DeliveryApplication(
+        repo=tmp_path,
+        git=Mock(),
+        github=Mock(),
+        registry=Mock(),
+        runtime=Mock(),
+        telemetry=Mock(),
+    )
+    evidence = BranchContentEvidence(
+        schema="kg.delivery.branch-content.v1",
+        branch="backup/orphan",
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+        base_is_ancestor=False,
+        ahead_commit_count=2,
+        behind_commit_count=1,
+        changed_paths=("feature.py",),
+        changed_path_count=1,
+        changed_paths_truncated=False,
+        change_fingerprint="c" * 64,
+        commit_subjects=("feature",),
+        commit_subjects_truncated=False,
+        complete=True,
+    )
+    action = SimpleNamespace(
+        side=BranchSide.LOCAL,
+        branch="backup/orphan",
+        sha="b" * 40,
+        review_command="./ops/delivery.py branch-inspect ...",
+        orphan_preflight=SimpleNamespace(
+            eligible=False,
+            blockers=("not ancestor",),
+        ),
+        next_step="review content",
+    )
+    audit = SimpleNamespace(
+        actions=(action,),
+        live_main_sha="a" * 40,
+        complete=False,
+        source_problem_actions=(object(),),
+    )
+
+    with (
+        patch.object(DeliveryApplication, "branch_audit", return_value=audit),
+        patch.object(
+            BranchContentService,
+            "inspect_many",
+            return_value={"backup/orphan": evidence},
+        ),
+    ):
+        plan = application.branch_review_plan(offset=0, limit=1)
+
+    assert plan.schema == "kg.delivery.branch-content-review-plan.v1"
+    assert plan.total_candidates == 1
+    assert plan.remaining_count == 0
+    assert plan.complete is False
+    assert plan.items[0].content.head_sha == "b" * 40
 
 
 def test_metrics_forwards_supervision_worktree_paths_to_inspect(

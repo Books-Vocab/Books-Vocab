@@ -23,6 +23,12 @@ from .controller.metrics import measure_merge_cadence, measure_pipeline
 from .controller.runtime_watchdog import evaluate_runtime_watchdog
 from .controller.worktree_boundary import partition_worktrees
 from .domain.branch_lifecycle import BranchDisposition
+from .domain.branch_content import (
+    BRANCH_REVIEW_PAGE_LIMIT,
+    BranchContentReviewItem,
+    BranchContentReviewPlan,
+)
+from .domain.branch_lifecycle import BranchSide
 from .domain import errors, models, observations, states
 from .domain.candidate_issues import CandidateSpec
 from .domain.demand_issues import IssueDisposition
@@ -161,6 +167,82 @@ class DeliveryApplication:
                     "branch content HEAD differs from expected inspection SHA"
                 )
         return evidence
+
+    def branch_review_plan(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = BRANCH_REVIEW_PAGE_LIMIT,
+    ) -> object:
+        """Page blocked local-orphan content for review without mutation."""
+
+        if offset < 0:
+            raise errors.PolicyViolation("branch review offset must be non-negative")
+        if limit <= 0 or limit > 20:
+            raise errors.PolicyViolation("branch review limit must be between 1 and 20")
+        audit = self.branch_audit()
+        candidates = tuple(
+            sorted(
+                (
+                    action
+                    for action in audit.actions
+                    if action.side is BranchSide.LOCAL
+                    and action.review_command is not None
+                    and action.orphan_preflight is not None
+                ),
+                key=lambda action: (action.branch, action.sha),
+            )
+        )
+        selected = (
+            candidates[offset : offset + limit]
+            if audit.live_main_sha is not None
+            else ()
+        )
+        contents = {}
+        if audit.live_main_sha is not None and selected:
+            contents = branch_content.BranchContentService(git=self.git).inspect_many(
+                branches=tuple(action.branch for action in selected),
+                base_sha=audit.live_main_sha,
+            )
+        items = tuple(
+            BranchContentReviewItem(
+                schema="kg.delivery.branch-content-review-item.v1",
+                branch=action.branch,
+                expected_head_sha=action.sha,
+                preflight_eligible=action.orphan_preflight.eligible,
+                preflight_blockers=tuple(sorted(action.orphan_preflight.blockers)),
+                content=contents.get(
+                    action.branch,
+                    branch_content.BranchContentService._error(
+                        branch=action.branch,
+                        base_sha=audit.live_main_sha or "0" * 40,
+                        error="branch content was not inspected",
+                    ),
+                ),
+                next_step=action.next_step,
+            )
+            for action in selected
+        )
+        reviewed_count = offset + len(items)
+        remaining_count = max(len(candidates) - reviewed_count, 0)
+        return BranchContentReviewPlan(
+            schema="kg.delivery.branch-content-review-plan.v1",
+            live_main_sha=audit.live_main_sha,
+            audit_complete=audit.complete,
+            complete=(
+                audit.complete
+                and audit.live_main_sha is not None
+                and remaining_count == 0
+                and all(item.content.complete for item in items)
+            ),
+            offset=offset,
+            limit=limit,
+            total_candidates=len(candidates),
+            reviewed_count=reviewed_count,
+            remaining_count=remaining_count,
+            source_problem_count=len(audit.source_problem_actions),
+            items=items,
+        )
 
     def discard_unregistered_branch(
         self,
