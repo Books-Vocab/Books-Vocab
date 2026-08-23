@@ -46,6 +46,12 @@ verified_against: afe016c4ea2fcbd7306f9c4f40b4556e77865100
 
 candidate Issue reservoir 可以是空的；clean-slate baseline 只要求 read-only candidate query 可被可信解析，不要求啟動前先囤候選或建立本地 backlog。
 
+本地 `worktree` 測試群組會先取得 repository common Git directory 下的 blocking
+test-execution lock。這只序列化會共用 registry fixture／mutation lock 的測試程序；production
+`OperationLock` 仍維持 non-blocking、fail-closed 語義，不會因測試互斥而改變實際交付命令。
+不要平行直接啟動 registry mutation 測試；使用 `./ops/test_ops.sh worktree`，讓 wrapper
+在不同 linked worktree 之間共用同一把鎖。程序中止時由作業系統釋放鎖，不建立第二套 registry 狀態。
+
 這些條件任一失敗都只修該 blocker；不得以人工改 registry、刪 dirty worktree、跳過 branch rule 或降低 hard gate 讓 preflight 變綠。
 quarantine 是可驗證的隔離投影，不是 cleanup 成功、owner 恢復、PR mapping 或 security clearance 的替代品。
 
