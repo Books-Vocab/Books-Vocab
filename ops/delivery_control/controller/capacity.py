@@ -15,6 +15,8 @@ class ControlAction(StrEnum):
     ENQUEUE_GREEN = "enqueue_green"
     PUBLISH_HANDBACKS = "publish_handbacks"
     AUDIT_TRANSPORT_SLO = "audit_transport_slo"
+    AUDIT_CI_START_SLO = "audit_ci_start_slo"
+    AUDIT_QUEUE_ADMISSION_SLO = "audit_queue_admission_slo"
     REPAIR_PR_CONTRACT = "repair_pr_contract"
     REPAIR_REQUIRED = "repair_required"
     TRIGGER_REQUIRED = "trigger_required"
@@ -215,7 +217,7 @@ def decide_capacity(
         > policy.max_pr_to_required_start_p95_seconds
     ):
         add(
-            ControlAction.REPAIR_REQUIRED,
+            ControlAction.AUDIT_CI_START_SLO,
             "PR-to-required-start p95 exceeds the CI-start SLA",
         )
     if (
@@ -224,7 +226,7 @@ def decide_capacity(
         > policy.max_required_success_to_enqueue_p95_seconds
     ):
         add(
-            ControlAction.ENQUEUE_GREEN,
+            ControlAction.AUDIT_QUEUE_ADMISSION_SLO,
             "required-success-to-enqueue p95 exceeds the admission SLA",
         )
 
