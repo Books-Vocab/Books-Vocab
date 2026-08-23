@@ -34,6 +34,7 @@ class BranchAuditAction:
     next_step: str
     suggested_command: str | None = None
     orphan_preflight: OrphanBranchPreflight | None = None
+    review_command: str | None = None
 
 
 @dataclass(frozen=True)
@@ -344,6 +345,12 @@ def _action_for_asset(
                 else None
             ),
             orphan_preflight=orphan_preflight,
+            review_command=(
+                "./ops/delivery.py branch-inspect "
+                f"--branch {asset.branch} --expected-head-sha {asset.sha}"
+                if not eligible
+                else None
+            ),
         )
     if asset.disposition is BranchDisposition.ORPHAN_REMOTE_RECONCILE:
         return BranchAuditAction(

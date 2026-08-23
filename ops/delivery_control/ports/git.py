@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from ..domain.branch_refs import BranchInventory
+from ..domain.branch_content import BranchContentEvidence
 from ..domain.observations import (
     CanonicalCheckoutSnapshot,
     MainLandingSnapshot,
@@ -34,6 +35,18 @@ class GitQueryPort(Protocol):
     def origin_main_sha(self) -> str: ...
 
     def is_ancestor(self, ancestor_sha: str, descendant_sha: str) -> bool: ...
+
+
+class BranchContentQueryPort(Protocol):
+    """Read-only content evidence for a local branch review packet."""
+
+    def inspect_branch_content(
+        self,
+        *,
+        branch: str,
+        base_sha: str,
+        max_commit_summaries: int = 20,
+    ) -> BranchContentEvidence: ...
 
     def first_parent_landings(
         self, *, before_sha: str, after_sha: str

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..domain.branch_refs import BranchInventory
+from ..domain.branch_content import BranchContentEvidence
 from ..domain.observations import (
     CanonicalCheckoutSnapshot,
     FileChange,
@@ -76,6 +77,19 @@ class GitCliAdapter:
 
     def is_ancestor(self, ancestor_sha: str, descendant_sha: str) -> bool:
         return self._queries.is_ancestor(ancestor_sha, descendant_sha)
+
+    def inspect_branch_content(
+        self,
+        *,
+        branch: str,
+        base_sha: str,
+        max_commit_summaries: int = 20,
+    ) -> BranchContentEvidence:
+        return self._queries.inspect_branch_content(
+            branch=branch,
+            base_sha=base_sha,
+            max_commit_summaries=max_commit_summaries,
+        )
 
     def first_parent_landings(
         self, *, before_sha: str, after_sha: str

@@ -151,6 +151,40 @@ def test_branch_audit_keeps_unknown_asset_incomplete() -> None:
     assert report.safe_terminal_actions == ()
 
 
+def test_blocked_local_orphan_emits_read_only_content_review_command() -> None:
+    lifecycle = project_branch_lifecycle(
+        branch_inventory=BranchInventory(local=(("feat/unlanded", SHA_B),))
+    )
+    inventory = DeliveryInventory(
+        lanes=(),
+        branch_lifecycle=lifecycle,
+        live_main_sha=SHA_A,
+        local_main_sha=SHA_A,
+    )
+
+    report = build_branch_audit(
+        inventory,
+        orphan_preflights={
+            "feat/unlanded": OrphanBranchPreflight(
+                schema="kg.delivery.orphan-branch-preflight.v1",
+                branch="feat/unlanded",
+                expected_head_sha=SHA_B,
+                main_sha=SHA_A,
+                eligible=False,
+                passed_checks=(),
+                blockers=("orphan branch tip is not an ancestor of live origin/main",),
+            )
+        },
+    )
+
+    action = report.actions[0]
+    assert action.safe_terminal is False
+    assert action.review_command == (
+        "./ops/delivery.py branch-inspect --branch feat/unlanded "
+        "--expected-head-sha " + SHA_B
+    )
+
+
 def test_branch_audit_keeps_source_problems_visible_and_fail_closed() -> None:
     lifecycle = project_branch_lifecycle(
         branch_inventory=BranchInventory(local=(("feat/orphan", SHA_B),))

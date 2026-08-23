@@ -41,6 +41,7 @@ MUTATING_COMMANDS = frozenset(
         "cleanup-abandoned",
         "discard-abandoned-handback",
         "discard-orphan-branch",
+        "discard-unregistered-branch",
         "sync-main",
     }
 )
@@ -95,6 +96,12 @@ def _parser() -> argparse.ArgumentParser:
         default=[],
         help="exact supervision checkout path; repeat once per checkout",
     )
+    branch_inspect = commands.add_parser(
+        "branch-inspect",
+        help="inspect one local branch's unlanded content without mutation",
+    )
+    branch_inspect.add_argument("--branch", required=True)
+    branch_inspect.add_argument("--expected-head-sha")
     metrics = commands.add_parser("metrics", help="measure current queue reservoirs")
     metrics.add_argument(
         "--supervision-worktree",
@@ -254,6 +261,20 @@ def _parser() -> argparse.ArgumentParser:
     discard_orphan.add_argument("--expected-head-sha", required=True)
     discard_orphan.add_argument("--operator", required=True)
     discard_orphan.add_argument("--reason", required=True)
+    discard_unregistered = commands.add_parser(
+        "discard-unregistered-branch",
+        help="discard one explicitly reviewed unlanded local-only branch",
+    )
+    discard_unregistered.add_argument("--branch", required=True)
+    discard_unregistered.add_argument("--expected-head-sha", required=True)
+    discard_unregistered.add_argument("--expected-content-fingerprint", required=True)
+    discard_unregistered.add_argument("--operator", required=True)
+    discard_unregistered.add_argument("--reason", required=True)
+    discard_unregistered.add_argument(
+        "--confirm-unmerged",
+        action="store_true",
+        help="confirm that unlanded local commits may be discarded",
+    )
     commands.add_parser("sync-main", help="ff-only synchronize canonical main")
     return parser
 
@@ -285,6 +306,11 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
     if args.command == "branch-audit":
         return application.branch_audit(
             supervision_worktree_paths=tuple(args.supervision_worktree)
+        )
+    if args.command == "branch-inspect":
+        return application.branch_inspect(
+            branch=args.branch,
+            expected_head_sha=args.expected_head_sha,
         )
     if args.command == "metrics":
         return application.metrics(
@@ -451,6 +477,15 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
             expected_head_sha=args.expected_head_sha,
             operator=args.operator,
             reason=args.reason,
+        )
+    if args.command == "discard-unregistered-branch":
+        return application.discard_unregistered_branch(
+            branch=args.branch,
+            expected_head_sha=args.expected_head_sha,
+            expected_content_fingerprint=args.expected_content_fingerprint,
+            operator=args.operator,
+            reason=args.reason,
+            confirm_unmerged=args.confirm_unmerged,
         )
     if args.command == "sync-main":
         return application.sync_main()
