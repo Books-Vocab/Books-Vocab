@@ -136,19 +136,6 @@ class DeliveryApplication:
                     problems=(str(error),),
                     complete=False,
                 )
-        if unreachable_commits.problems:
-            inventory = replace(
-                inventory,
-                source_problems=inventory.source_problems
-                + tuple(
-                    observations.InventoryProblem(
-                        "git",
-                        "unreachable-commits",
-                        problem,
-                    )
-                    for problem in unreachable_commits.problems
-                ),
-            )
         return branch_audit.build_branch_audit(
             inventory,
             orphan_preflights=orphan_preflights,
