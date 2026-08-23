@@ -31,7 +31,7 @@ from delivery_control.domain.observations import (
     RegistrySnapshot,
     WorktreeSnapshot,
 )
-from delivery_control.domain.states import LaneState
+from delivery_control.domain.states import LaneState, NextAction
 from delivery_control.services.active_lane_projection import (
     project_active_lane as project_active_lane_implementation,
 )
@@ -285,6 +285,28 @@ def test_inspect_service_requires_exact_registry_physical_pr_and_check_tuple(
     active = next(item for item in inventory.lanes if item.key == "#1")
     assert active.decision.state is LaneState.PUBLISHED_LOCAL_CLEANUP
     assert not active.problems
+
+
+def test_unmapped_security_hold_pr_is_not_projected_as_generic_inspect(
+    tmp_path: Path,
+) -> None:
+    pull_request = replace(
+        _pull_request(tmp_path / "security-lane"),
+        number=1376,
+        body="Security hold\nPUBLISH ONLY\n",
+    )
+    service = InspectService(
+        registry=FakeRegistry(()),
+        git=FakeGit((), {}),
+        github=FakeGitHub((pull_request,)),
+        runtime=FakeRuntime(),
+    )
+
+    lane = next(item for item in service.inspect().lanes if item.key == "PR#1376")
+
+    assert lane.decision.state is LaneState.SECURITY_HOLD
+    assert lane.decision.next_action is NextAction.WAIT_CLEARANCE
+    assert any(problem.source == "registry" for problem in lane.problems)
 
 
 def test_sealed_handback_is_publishable_when_owner_session_is_unreachable(
