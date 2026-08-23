@@ -286,16 +286,17 @@ class DeliveryApplication:
         items = tuple(build_review_item(action) for action in selected)
         reviewed_count = offset + len(items)
         remaining_count = max(len(candidates) - reviewed_count, 0)
+        reviewable_complete = (
+            audit.live_main_sha is not None
+            and offset == 0
+            and remaining_count == 0
+            and all(item.content.complete for item in items)
+        )
         return BranchContentReviewPlan(
             schema="kg.delivery.branch-content-review-plan.v1",
             live_main_sha=audit.live_main_sha,
             audit_complete=audit.complete,
-            complete=(
-                audit.complete
-                and audit.live_main_sha is not None
-                and remaining_count == 0
-                and all(item.content.complete for item in items)
-            ),
+            complete=audit.complete and reviewable_complete,
             offset=offset,
             limit=limit,
             total_candidates=len(candidates),
@@ -303,6 +304,7 @@ class DeliveryApplication:
             remaining_count=remaining_count,
             source_problem_count=len(audit.source_problem_actions),
             items=items,
+            reviewable_complete=reviewable_complete,
         )
 
     def discard_unregistered_branch(

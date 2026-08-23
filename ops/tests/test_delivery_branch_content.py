@@ -155,6 +155,7 @@ def test_branch_review_plan_requires_audit_and_page_consistency() -> None:
         remaining_count=0,
         source_problem_count=1,
         items=(item,),
+        reviewable_complete=True,
     )
 
     assert plan.complete is False
@@ -173,4 +174,5 @@ def test_branch_review_plan_requires_audit_and_page_consistency() -> None:
             remaining_count=plan.remaining_count,
             source_problem_count=plan.source_problem_count,
             items=plan.items,
+            reviewable_complete=True,
         )

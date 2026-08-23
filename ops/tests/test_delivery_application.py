@@ -251,6 +251,7 @@ def test_branch_review_plan_pages_orphans_and_preserves_incomplete_audit(
     assert plan.schema == "kg.delivery.branch-content-review-plan.v1"
     assert plan.total_candidates == 1
     assert plan.remaining_count == 0
+    assert plan.reviewable_complete is True
     assert plan.complete is False
     assert plan.items[0].content.head_sha == "b" * 40
     assert plan.items[0].next_step == (
@@ -263,6 +264,70 @@ def test_branch_review_plan_pages_orphans_and_preserves_incomplete_audit(
         + "; operator, reason, and --confirm-unmerged are required; "
         "no automatic deletion"
     )
+
+
+def test_branch_review_plan_later_page_cannot_claim_reviewable_completion(
+    tmp_path: Path,
+) -> None:
+    application = DeliveryApplication(
+        repo=tmp_path,
+        git=Mock(),
+        github=Mock(),
+        registry=Mock(),
+        runtime=Mock(),
+        telemetry=Mock(),
+    )
+    evidence = BranchContentEvidence(
+        schema="kg.delivery.branch-content.v1",
+        branch="backup/second",
+        base_sha="a" * 40,
+        head_sha="c" * 40,
+        base_is_ancestor=False,
+        ahead_commit_count=1,
+        behind_commit_count=0,
+        changed_paths=("second.py",),
+        changed_path_count=1,
+        changed_paths_truncated=False,
+        change_fingerprint="d" * 64,
+        commit_subjects=("second feature",),
+        commit_subjects_truncated=False,
+        complete=True,
+    )
+    actions = tuple(
+        SimpleNamespace(
+            side=BranchSide.LOCAL,
+            branch=branch,
+            sha=head,
+            category="local_orphan_blocked",
+            review_command="./ops/delivery.py branch-inspect ...",
+            orphan_preflight=SimpleNamespace(
+                eligible=False,
+                blockers=("orphan branch tip is not an ancestor of live origin/main",),
+            ),
+            next_step="review content",
+        )
+        for branch, head in (("backup/first", "b" * 40), ("backup/second", "c" * 40))
+    )
+    audit = SimpleNamespace(
+        actions=actions,
+        live_main_sha="a" * 40,
+        complete=True,
+        source_problem_actions=(),
+    )
+
+    with (
+        patch.object(DeliveryApplication, "branch_audit", return_value=audit),
+        patch.object(
+            BranchContentService,
+            "inspect_many",
+            return_value={"backup/second": evidence},
+        ),
+    ):
+        plan = application.branch_review_plan(offset=1, limit=1)
+
+    assert plan.remaining_count == 0
+    assert plan.reviewable_complete is False
+    assert plan.complete is False
 
 
 def test_branch_review_plan_bounds_path_sample_without_losing_fingerprint(
