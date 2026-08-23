@@ -14,7 +14,10 @@ _ORDER = {
     IssueDisposition.DISPATCHABLE_CANDIDATE: 2,
     IssueDisposition.OWNER_BOUND: 3,
     IssueDisposition.PUBLISHED_PR: 3,
-    IssueDisposition.TERMINAL_HISTORY: 3,
+    # Terminal history is evidence to verify and clean, not a dispatch lane.
+    # Keep it after recoverable legacy/blocked work so triage follows the
+    # delivery pipeline rather than jumping to historical cleanup first.
+    IssueDisposition.TERMINAL_HISTORY: 7,
     IssueDisposition.LEGACY_UNMAPPED: 5,
     IssueDisposition.BLOCKED: 6,
 }
