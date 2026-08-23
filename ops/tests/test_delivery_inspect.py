@@ -11,6 +11,7 @@ OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
 from delivery_control.adapters.errors import AdapterPayloadError
+from delivery_control.adapters.github_parsing import parse_demand_issue
 from delivery_control.domain.branch_refs import BranchInventory
 from delivery_control.domain.candidate_issues import (
     CANDIDATE_ISSUE_LABEL,
@@ -19,6 +20,7 @@ from delivery_control.domain.candidate_issues import (
     CandidateSeverity,
     CandidateSpec,
 )
+from delivery_control.domain.demand_issues import DemandIssueInventory
 from delivery_control.domain.models import CheckStatus, HandbackReceipt, Scope
 from delivery_control.domain.observations import (
     CheckSnapshot,
@@ -43,6 +45,7 @@ from delivery_control.services.lane_projection import (
     project_published_lane,
 )
 from delivery_control.services.pr_contract import render_pull_request_body
+from delivery_control.services.candidate_contract import render_candidate_body
 from delivery_control.services.published_lane_projection import (
     project_published_lane as project_published_lane_implementation,
 )
@@ -469,6 +472,52 @@ def test_candidate_query_failure_is_a_source_problem(tmp_path: Path) -> None:
         in inventory.source_problems
     )
     assert inventory.candidate_issues == ()
+
+
+def test_raw_issues_remain_visible_when_open_pr_inventory_fails(
+    tmp_path: Path,
+) -> None:
+    issue = parse_demand_issue(
+        {
+            "id": "I_7",
+            "number": 7,
+            "url": "https://github.com/owner/repo/issues/7",
+            "title": "Issue 7",
+            "body": render_candidate_body(
+                CandidateSpec(
+                    CandidateSeverity.P2,
+                    7,
+                    Scope.from_paths(modify=("ops/issue_7.py",)),
+                    ("Issue 7 is fixed.",),
+                )
+            ),
+            "updatedAt": "2026-08-22T01:00:00Z",
+            "labels": [{"name": CANDIDATE_ISSUE_LABEL}],
+        }
+    )
+
+    class BrokenPullRequestGitHub(FakeGitHub):
+        def list_open_pull_requests(self) -> PullRequestInventory:
+            raise AdapterPayloadError("open PR inventory unavailable")
+
+        def list_open_issues(self) -> DemandIssueInventory:
+            return DemandIssueInventory(records=(issue,), raw_count=1)
+
+    inventory = InspectService(
+        registry=FakeRegistry(()),
+        git=FakeGit((), {}),
+        github=BrokenPullRequestGitHub(()),
+        runtime=FakeRuntime(),
+    ).inspect()
+
+    assert inventory.demand_issues.raw_open_issues == 1
+    assert [item.number for item in inventory.demand_issues.records] == [7]
+    assert inventory.demand_issues.complete is False
+    assert [item.number for item in inventory.demand_issues.candidate_issues] == [7]
+    problem = InventoryProblem("github", "open-prs", "open PR inventory unavailable")
+    assert problem in inventory.source_problems
+    assert problem in inventory.demand_issues.problems
+    assert inventory.dispatchable_candidate_issues == ()
 
 
 def test_inspect_service_never_marks_dirty_or_head_drift_ready(tmp_path: Path) -> None:

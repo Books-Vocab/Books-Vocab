@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from ..domain.branch_refs import BranchInventory
@@ -19,6 +19,7 @@ from ..domain.errors import DeliverySourceError
 from ..domain.observations import (
     InventoryProblem,
     PhysicalWorktree,
+    PullRequestInventory,
     PullRequestSnapshot,
     RegistrySnapshot,
     WorktreeSnapshot,
@@ -74,8 +75,14 @@ def collect_inventory_sources(
 ) -> InspectionSources:
     registry_inventory = registry.list_records()
     physical = git.list_worktrees()
-    github_inventory = github.list_open_pull_requests()
+    pr_mapping_problems: list[InventoryProblem] = []
+    try:
+        github_inventory = github.list_open_pull_requests()
+    except DeliverySourceError as error:
+        problem = InventoryProblem("github", "open-prs", str(error))
+        github_inventory = PullRequestInventory(records=(), problems=(problem,))
     github_problems = list(github_inventory.problems)
+    pr_mapping_problems.extend(github_inventory.problems)
     raw_issue_inventory = EMPTY_DEMAND_INVENTORY
     list_open_issues = getattr(github, "list_open_issues", None)
     raw_issue_inventory_available = callable(list_open_issues)
@@ -182,6 +189,16 @@ def collect_inventory_sources(
         registry_records=records,
         pull_requests=tuple(pull_requests),
     )
+    if pr_mapping_problems:
+        projected_demand = replace(
+            projected_demand,
+            problems=tuple(
+                dict.fromkeys(
+                    (*projected_demand.problems, *pr_mapping_problems),
+                )
+            ),
+            complete=False,
+        )
     if raw_issue_inventory_available and raw_issue_inventory.complete:
         candidate_records = projected_demand.candidate_issues
     candidate_issues = unclaimed_candidate_issues(
@@ -202,6 +219,8 @@ def collect_inventory_sources(
             for external_id in (item.external_ids or (item.lane_id,))
         ),
     )
+    if pr_mapping_problems:
+        dispatchable_candidate_issues = ()
 
     path_sets: dict[str, set[str]] = {}
     for record in active_records:
@@ -268,7 +287,10 @@ def collect_inventory_sources(
             + tuple(
                 problem
                 for problem in github_problems
-                if problem not in projected_demand.problems
+                if (
+                    problem not in projected_demand.problems
+                    or problem in pr_mapping_problems
+                )
             )
         ),
     )
