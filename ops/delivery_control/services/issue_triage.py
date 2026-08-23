@@ -31,6 +31,7 @@ class TriagePlanItem:
     labels: tuple[str, ...]
     reason: str
     next_action: str
+    required_evidence: tuple[str, ...]
     body_sha256: str
     updated_at: datetime | None
 
@@ -49,6 +50,74 @@ def _next_action(issue: DemandIssue) -> str:
     }[issue.disposition]
 
 
+_REQUIRED_EVIDENCE: dict[IssueDisposition, tuple[str, ...]] = {
+    IssueDisposition.SOURCE_PROBLEM: (
+        "raw_issue_payload",
+        "source_problem",
+        "issue_fingerprint",
+    ),
+    IssueDisposition.SECURITY_HOLD: (
+        "hold_evidence",
+        "security_clearance",
+        "issue_fingerprint",
+    ),
+    IssueDisposition.TRIAGE_REQUIRED: (
+        "scope_acceptance",
+        "severity_priority",
+        "collision_check",
+        "hold_clearance",
+        "issue_fingerprint",
+    ),
+    IssueDisposition.DISPATCHABLE_CANDIDATE: (
+        "candidate_contract",
+        "exact_scope",
+        "acceptance",
+        "collision_check",
+        "hold_clearance",
+        "issue_fingerprint",
+    ),
+    IssueDisposition.OWNER_BOUND: (
+        "owner_identity",
+        "registry_claim",
+        "exact_scope",
+        "handback_or_reanchor",
+        "issue_fingerprint",
+    ),
+    IssueDisposition.PUBLISHED_PR: (
+        "owner_identity",
+        "registry_receipt",
+        "published_pr",
+        "remote_head_readback",
+        "local_asset_release",
+        "issue_fingerprint",
+    ),
+    IssueDisposition.LEGACY_UNMAPPED: (
+        "legacy_history",
+        "migration_disposition",
+        "owner_or_terminal_evidence",
+        "issue_fingerprint",
+    ),
+    IssueDisposition.BLOCKED: (
+        "exact_blocker",
+        "owner_or_host_reachability",
+        "scope_or_remote_readback",
+        "issue_fingerprint",
+    ),
+    IssueDisposition.TERMINAL_HISTORY: (
+        "terminal_history_mapping",
+        "terminal_proof",
+        "cleanup_readback",
+        "issue_fingerprint",
+    ),
+}
+
+
+def _required_evidence(issue: DemandIssue) -> tuple[str, ...]:
+    """Return stable evidence requirements, never mutation authorization."""
+
+    return _REQUIRED_EVIDENCE[issue.disposition]
+
+
 def build_triage_plan(inventory: DemandIssueInventory) -> tuple[TriagePlanItem, ...]:
     """Return all parsed Issues in stable severity/disposition/number order."""
 
@@ -60,6 +129,7 @@ def build_triage_plan(inventory: DemandIssueInventory) -> tuple[TriagePlanItem, 
             labels=issue.labels,
             reason=issue.reason,
             next_action=_next_action(issue),
+            required_evidence=_required_evidence(issue),
             body_sha256=issue.body_sha256,
             updated_at=issue.updated_at,
         )

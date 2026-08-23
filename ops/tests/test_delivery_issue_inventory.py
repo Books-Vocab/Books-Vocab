@@ -13,7 +13,7 @@ from delivery_control.adapters.github_parsing import (
     parse_demand_issue,
     parse_demand_issue_inventory,
 )
-from delivery_control.cli import _parser, run_command
+from delivery_control.cli import _jsonable, _parser, run_command
 from delivery_control.controller.capacity import (
     ControlAction,
     decide_capacity,
@@ -275,6 +275,100 @@ def test_triage_plan_is_stable_and_actionable() -> None:
     assert plan[0].next_action == "preserve_hold_and_route_security_clearance"
     assert plan[1].next_action == "reconcile_legacy_history_without_takeover"
     assert plan[0].body_sha256 == issue_body_sha256("plain request")
+    assert plan[0].required_evidence
+
+
+def test_triage_plan_emits_required_evidence_for_every_disposition() -> None:
+    raw = parse_demand_issue_inventory(
+        [
+            _payload(1, labels=("security",)),
+            _payload(2),
+            _payload(
+                3,
+                labels=(CANDIDATE_ISSUE_LABEL,),
+                body=render_candidate_body(_spec(3)),
+            ),
+            _payload(4),
+            _payload(5),
+            _payload(6, labels=("merged",)),
+            _payload(7, labels=("blocked",)),
+            _payload(8, labels=("legacy-ticket",)),
+            _payload(9, labels=(CANDIDATE_ISSUE_LABEL,), body="broken"),
+        ]
+    )
+    projected = project_demand_inventory(
+        raw,
+        registry_records=(
+            _record(4, "active", external_id="#4"),
+            _record(5, "published", external_id="#5"),
+        ),
+    )
+
+    by_disposition = {
+        item.disposition: item.required_evidence
+        for item in build_triage_plan(projected)
+    }
+
+    assert by_disposition == {
+        IssueDisposition.SOURCE_PROBLEM: (
+            "raw_issue_payload",
+            "source_problem",
+            "issue_fingerprint",
+        ),
+        IssueDisposition.SECURITY_HOLD: (
+            "hold_evidence",
+            "security_clearance",
+            "issue_fingerprint",
+        ),
+        IssueDisposition.TRIAGE_REQUIRED: (
+            "scope_acceptance",
+            "severity_priority",
+            "collision_check",
+            "hold_clearance",
+            "issue_fingerprint",
+        ),
+        IssueDisposition.DISPATCHABLE_CANDIDATE: (
+            "candidate_contract",
+            "exact_scope",
+            "acceptance",
+            "collision_check",
+            "hold_clearance",
+            "issue_fingerprint",
+        ),
+        IssueDisposition.OWNER_BOUND: (
+            "owner_identity",
+            "registry_claim",
+            "exact_scope",
+            "handback_or_reanchor",
+            "issue_fingerprint",
+        ),
+        IssueDisposition.PUBLISHED_PR: (
+            "owner_identity",
+            "registry_receipt",
+            "published_pr",
+            "remote_head_readback",
+            "local_asset_release",
+            "issue_fingerprint",
+        ),
+        IssueDisposition.LEGACY_UNMAPPED: (
+            "legacy_history",
+            "migration_disposition",
+            "owner_or_terminal_evidence",
+            "issue_fingerprint",
+        ),
+        IssueDisposition.BLOCKED: (
+            "exact_blocker",
+            "owner_or_host_reachability",
+            "scope_or_remote_readback",
+            "issue_fingerprint",
+        ),
+        IssueDisposition.TERMINAL_HISTORY: (
+            "terminal_history_mapping",
+            "terminal_proof",
+            "cleanup_readback",
+            "issue_fingerprint",
+        ),
+    }
 
 
 def test_triage_plan_prioritizes_recovery_before_terminal_history() -> None:
@@ -438,3 +532,7 @@ def test_cli_issue_inventory_and_triage_plan_wrap_versioned_schemas() -> None:
     )
     assert inventory_result["issues"][0].mapped_pull_request_numbers == ()
     assert triage_result["schema"] == "kg.delivery.triage-plan.v1"
+    assert triage_result["items"][0].required_evidence
+    serialized = _jsonable(triage_result["items"][0])
+    assert isinstance(serialized, dict)
+    assert serialized["required_evidence"]
