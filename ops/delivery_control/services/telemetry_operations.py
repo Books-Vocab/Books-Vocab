@@ -216,9 +216,7 @@ class OperationTelemetry:
                 warnings.append(warning)
         return tuple(warnings)
 
-    def _main_landings(
-        self, result: MainSyncResult
-    ) -> tuple[MainLandingSnapshot, ...]:
+    def _main_landings(self, result: MainSyncResult) -> tuple[MainLandingSnapshot, ...]:
         return self.git.first_parent_landings(
             before_sha=result.before_sha,
             after_sha=result.origin_sha,

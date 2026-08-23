@@ -148,8 +148,7 @@ def render_pull_request_body(
         else "no documentation path declared in Scope"
     )
     declared_initial_holds = (
-        ", ".join(f"`{item}`" for item in receipt.initial_holds)
-        or "none declared"
+        ", ".join(f"`{item}`" for item in receipt.initial_holds) or "none declared"
     )
     machine_receipt = json.dumps(
         receipt.to_payload(), ensure_ascii=False, sort_keys=True, separators=(",", ":")

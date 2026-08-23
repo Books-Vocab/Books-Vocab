@@ -24,6 +24,7 @@ class IsolationSummary:
     def quarantined_lanes(self) -> int:
         return self.quarantined_blocked_lanes + self.quarantined_terminal_cleanup
 
+
 EMPTY_ISOLATION = IsolationSummary()
 
 

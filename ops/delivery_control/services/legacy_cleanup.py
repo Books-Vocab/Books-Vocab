@@ -77,7 +77,10 @@ class LegacyTerminalCleanupService:
             raise PolicyViolation("legacy PR carries an explicit hard hold")
         if pull_request.auto_merge_enabled or not pull_request.node_id:
             raise PolicyViolation("legacy PR is not safe to abandon")
-        if self.github_query.merge_queue_entry_snapshot(pull_request.node_id) is not None:
+        if (
+            self.github_query.merge_queue_entry_snapshot(pull_request.node_id)
+            is not None
+        ):
             raise PolicyViolation("legacy PR is already scheduled in the merge queue")
         self._validate_assets_absent(pull_request, record)
 
@@ -94,7 +97,9 @@ class LegacyTerminalCleanupService:
             )
         final = self.github_query.get_pull_request(pull_request_number)
         inventory = self.github_query.list_pull_requests_for_branch(final.branch)
-        if inventory.problems or any(item.state == "OPEN" for item in inventory.records):
+        if inventory.problems or any(
+            item.state == "OPEN" for item in inventory.records
+        ):
             raise PolicyViolation("legacy abandoned branch still has an open PR")
         final_record = self._record(final.branch, expected_status="abandoned")
         self._validate_pr(final, final_record, expected_state="CLOSED")
@@ -123,9 +128,13 @@ class LegacyTerminalCleanupService:
         self._validate_ref(branch, record.base_sha, "local")
         self._validate_ref(branch, record.base_sha, "remote")
         if self.git_query.local_branch_sha(branch) is not None:
-            self.git_command.delete_local_branch(branch, expected_head_sha=record.base_sha)
+            self.git_command.delete_local_branch(
+                branch, expected_head_sha=record.base_sha
+            )
         if self.git_query.remote_branch_sha(branch) is not None:
-            self.git_command.delete_remote_branch(branch, expected_head_sha=record.base_sha)
+            self.git_command.delete_remote_branch(
+                branch, expected_head_sha=record.base_sha
+            )
         return self._result("abandoned", branch)
 
     def _single_branch_pr(self, pull_request_number: int) -> PullRequestSnapshot:
@@ -133,7 +142,10 @@ class LegacyTerminalCleanupService:
         inventory = self.github_query.list_pull_requests_for_branch(pull_request.branch)
         if inventory.problems:
             raise PolicyViolation("GitHub branch PR inventory is incomplete")
-        if len(inventory.records) != 1 or inventory.records[0].number != pull_request_number:
+        if (
+            len(inventory.records) != 1
+            or inventory.records[0].number != pull_request_number
+        ):
             raise PolicyViolation("branch does not map to one unique PR")
         return pull_request
 
@@ -166,11 +178,14 @@ class LegacyTerminalCleanupService:
             or pull_request.branch != record.branch
             or pull_request.base_sha != record.base_sha
             or pull_request.head_sha != record.handed_back_sha
-            or expected_state == "MERGED" and pull_request.merged_at is None
+            or expected_state == "MERGED"
+            and pull_request.merged_at is None
             or tuple(sorted(self.github_query.changed_paths(pull_request.number)))
             != tuple(sorted(record.scope.paths))
         ):
-            raise PolicyViolation("legacy PR differs from the exact terminal registry claim")
+            raise PolicyViolation(
+                "legacy PR differs from the exact terminal registry claim"
+            )
 
     def _validate_assets(
         self, pull_request: PullRequestSnapshot, record: RegistrySnapshot
@@ -184,7 +199,10 @@ class LegacyTerminalCleanupService:
         self, pull_request: PullRequestSnapshot, record: RegistrySnapshot
     ) -> None:
         physical = self._physical_for_branch(pull_request.branch, record)
-        if physical is not None or self.git_query.local_branch_sha(pull_request.branch) is not None:
+        if (
+            physical is not None
+            or self.git_query.local_branch_sha(pull_request.branch) is not None
+        ):
             raise PolicyViolation("legacy PR requires local assets to be absent")
         self._validate_ref(pull_request.branch, pull_request.head_sha, "remote")
 
@@ -201,16 +219,22 @@ class LegacyTerminalCleanupService:
         if not matches:
             return None
         physical = matches[0]
-        if physical.branch != branch or physical.path.resolve() != record.path.resolve():
+        if (
+            physical.branch != branch
+            or physical.path.resolve() != record.path.resolve()
+        ):
             raise PolicyViolation("terminal worktree path or branch drifted")
         snapshot = self.git_query.inspect_worktree(physical.path, record.base_sha)
         if (
             not snapshot.clean
             or snapshot.branch != branch
             or snapshot.head_sha != record.handed_back_sha
-            or tuple(sorted(snapshot.changed_paths)) != tuple(sorted(record.scope.paths))
+            or tuple(sorted(snapshot.changed_paths))
+            != tuple(sorted(record.scope.paths))
         ):
-            raise PolicyViolation("terminal worktree is dirty or differs from the exact claim")
+            raise PolicyViolation(
+                "terminal worktree is dirty or differs from the exact claim"
+            )
         return physical
 
     def _validate_ref(self, branch: str, expected: str, kind: str) -> None:
@@ -220,9 +244,13 @@ class LegacyTerminalCleanupService:
             else self.git_query.remote_branch_sha(branch)
         )
         if actual is not None and actual != expected:
-            raise PolicyViolation(f"legacy {kind} branch differs from the exact terminal HEAD")
+            raise PolicyViolation(
+                f"legacy {kind} branch differs from the exact terminal HEAD"
+            )
 
-    def _recheck_merged(self, pull_request_number: int, record: RegistrySnapshot) -> None:
+    def _recheck_merged(
+        self, pull_request_number: int, record: RegistrySnapshot
+    ) -> None:
         current = self._single_branch_pr(pull_request_number)
         self._validate_pr(current, record, expected_state="MERGED")
 
