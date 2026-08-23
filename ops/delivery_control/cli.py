@@ -471,6 +471,13 @@ def _runtime_timestamp(value: str | None, name: str) -> datetime | None:
 
 
 def _result_exit_code(command: str, result: object) -> int:
+    if command == "branch-audit":
+        complete = (
+            result.get("complete")
+            if isinstance(result, Mapping)
+            else getattr(result, "complete", None)
+        )
+        return 0 if complete is True else 2
     if command != "dogfood-preflight":
         return 0
     ready = (
@@ -528,6 +535,7 @@ def main(
                 "schema": COMMAND_SCHEMA,
                 "command": args.command,
                 "ok": True,
+                "verdict": _command_verdict(args.command, result),
                 "result": _jsonable(result),
             },
             ensure_ascii=False,
@@ -536,6 +544,26 @@ def main(
         )
     )
     return _result_exit_code(args.command, result)
+
+
+def _command_verdict(command: str, result: object) -> str:
+    """Expose domain incompleteness separately from command transport success."""
+
+    if command == "branch-audit":
+        complete = (
+            result.get("complete")
+            if isinstance(result, Mapping)
+            else getattr(result, "complete", None)
+        )
+        return "complete" if complete is True else "incomplete"
+    if command == "dogfood-preflight":
+        ready = (
+            result.get("ready")
+            if isinstance(result, Mapping)
+            else getattr(result, "ready", None)
+        )
+        return "ready" if ready is True else "blocked"
+    return "success"
 
 
 __all__ = [

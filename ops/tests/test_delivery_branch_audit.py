@@ -21,6 +21,7 @@ from delivery_control.domain.observations import (  # noqa: E402
     RegistrySnapshot,
 )
 from delivery_control.services.branch_audit import (  # noqa: E402
+    BranchAuditSourceProblem,
     build_branch_audit,
 )
 from delivery_control.services.branch_lifecycle_projection import (  # noqa: E402
@@ -96,6 +97,8 @@ def test_branch_audit_emits_one_action_per_ref_and_safe_cleanup_candidate() -> N
 
     assert report.schema == "kg.delivery.branch-audit.v1"
     assert report.complete
+    assert report.verdict == "complete"
+    assert report.source_problem_actions == ()
     assert report.raw_local_branches == 2
     assert report.raw_remote_branches == 2
     assert report.physical_worktrees == 1
@@ -129,7 +132,45 @@ def test_branch_audit_keeps_source_problems_visible_and_fail_closed() -> None:
     report = build_branch_audit(inventory)
 
     assert report.complete is False
+    assert report.verdict == "incomplete"
     assert len(report.source_problems) == 1
+    assert report.safe_terminal_actions == ()
+    assert report.source_problem_counts == {"registry": 1}
+    assert report.source_problem_actions == (
+        BranchAuditSourceProblem(
+            source="registry",
+            identity="broken",
+            reason="bad record",
+            category="registry_source_problem",
+            next_step=(
+                "preserve all affected branch/worktree assets; reconcile the malformed "
+                "registry record through its supported owner lifecycle before cleanup"
+            ),
+        ),
+    )
+
+
+def test_branch_audit_withholds_otherwise_safe_cleanup_when_source_is_incomplete() -> (
+    None
+):
+    lifecycle = project_branch_lifecycle(
+        branch_inventory=BranchInventory(
+            local=(("feat/merged", SHA_B),),
+        ),
+        records=(_record("feat/merged", "merged", SHA_B),),
+        pull_requests=(_pr(1483, "feat/merged", "MERGED", SHA_B),),
+    )
+    inventory = DeliveryInventory(
+        lanes=(),
+        branch_lifecycle=lifecycle,
+        source_problems=(InventoryProblem("registry", "broken", "bad record"),),
+    )
+
+    report = build_branch_audit(inventory)
+
+    assert report.actions[0].category == "source_incomplete"
+    assert report.actions[0].safe_terminal is False
+    assert report.actions[0].suggested_command is None
     assert report.safe_terminal_actions == ()
 
 

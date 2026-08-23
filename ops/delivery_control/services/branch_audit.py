@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from ..domain.branch_lifecycle import (
     BranchAsset,
@@ -33,11 +33,23 @@ class BranchAuditAction:
 
 
 @dataclass(frozen=True)
+class BranchAuditSourceProblem:
+    """One source failure with a deterministic recovery instruction."""
+
+    source: str
+    identity: str
+    reason: str
+    category: str
+    next_step: str
+
+
+@dataclass(frozen=True)
 class BranchAuditReport:
     """Machine-readable branch inventory; it never authorizes mutation."""
 
     schema: str
     complete: bool
+    verdict: str
     live_main_sha: str | None
     local_main_sha: str | None
     raw_local_branches: int
@@ -52,6 +64,64 @@ class BranchAuditReport:
     actions: tuple[BranchAuditAction, ...]
     safe_terminal_actions: tuple[BranchAuditAction, ...]
     source_problems: tuple[InventoryProblem, ...]
+    source_problem_actions: tuple[BranchAuditSourceProblem, ...]
+    source_problem_counts: dict[str, int]
+
+
+def _source_problem_action(problem: InventoryProblem) -> BranchAuditSourceProblem:
+    """Project one incomplete source into an observable, non-mutating action."""
+
+    source = problem.source
+    if source == "registry":
+        category = "registry_source_problem"
+        next_step = (
+            "preserve all affected branch/worktree assets; reconcile the malformed "
+            "registry record through its supported owner lifecycle before cleanup"
+        )
+    elif source == "github":
+        category = "github_source_problem"
+        next_step = (
+            "refresh the exact GitHub inventory; do not publish, discard, or delete "
+            "branch assets while PR evidence is incomplete"
+        )
+    elif source == "git":
+        category = "git_source_problem"
+        next_step = (
+            "refresh the canonical Git observation; do not classify branch reachability "
+            "as cleanup proof"
+        )
+    else:
+        category = "delivery_source_problem"
+        next_step = (
+            "resolve the source inventory problem through the owning adapter before "
+            "any lifecycle mutation"
+        )
+    return BranchAuditSourceProblem(
+        source=source,
+        identity=problem.identity,
+        reason=problem.reason,
+        category=category,
+        next_step=next_step,
+    )
+
+
+def _withheld_by_source_problem(
+    action: BranchAuditAction,
+) -> BranchAuditAction:
+    """Remove mutation affordances when the complete inventory is unavailable."""
+
+    if not action.safe_terminal:
+        return action
+    return replace(
+        action,
+        category="source_incomplete",
+        safe_terminal=False,
+        next_step=(
+            "resolve source inventory problems before using the otherwise eligible "
+            "cleanup action"
+        ),
+        suggested_command=None,
+    )
 
 
 def _action_for_asset(
@@ -202,6 +272,12 @@ def build_branch_audit(
         _action_for_asset(asset, orphan_preflight=preflights.get(asset.branch))
         for asset in assets
     )
+    complete = not inventory.source_problems
+    if not complete:
+        actions = tuple(_withheld_by_source_problem(action) for action in actions)
+    source_problem_actions = tuple(
+        _source_problem_action(problem) for problem in inventory.source_problems
+    )
     open_prs = {
         pull_request.number
         for lane in inventory.lanes
@@ -219,7 +295,8 @@ def build_branch_audit(
     )
     return BranchAuditReport(
         schema="kg.delivery.branch-audit.v1",
-        complete=not inventory.source_problems,
+        complete=complete,
+        verdict="complete" if complete else "incomplete",
         live_main_sha=inventory.live_main_sha,
         local_main_sha=inventory.local_main_sha,
         raw_local_branches=len(inventory.branch_lifecycle.local),
@@ -237,7 +314,17 @@ def build_branch_audit(
         actions=actions,
         safe_terminal_actions=tuple(item for item in actions if item.safe_terminal),
         source_problems=inventory.source_problems,
+        source_problem_actions=source_problem_actions,
+        source_problem_counts={
+            source: sum(item.source == source for item in source_problem_actions)
+            for source in sorted({item.source for item in source_problem_actions})
+        },
     )
 
 
-__all__ = ["BranchAuditAction", "BranchAuditReport", "build_branch_audit"]
+__all__ = [
+    "BranchAuditAction",
+    "BranchAuditReport",
+    "BranchAuditSourceProblem",
+    "build_branch_audit",
+]
