@@ -136,6 +136,36 @@ def test_git_adapter_distinguishes_existing_and_missing_local_branches(
     assert adapter.local_branch_sha("feat/missing") is None
 
 
+def test_git_adapter_reads_ancestor_relation_without_mutation(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test")
+    (repo / "tracked.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "tracked.txt")
+    _git(repo, "commit", "-qm", "base")
+    base = _git(repo, "rev-parse", "HEAD")
+    (repo / "tracked.txt").write_text("tip\n", encoding="utf-8")
+    _git(repo, "commit", "-qam", "tip")
+    tip = _git(repo, "rev-parse", "HEAD")
+
+    adapter = GitCliAdapter(repo=repo)
+
+    assert adapter.is_ancestor(base, tip)
+    assert not adapter.is_ancestor(tip, base)
+
+
+@pytest.mark.parametrize("stderr", ("fatal: permission denied", "runner unavailable"))
+def test_git_adapter_ancestor_query_propagates_source_failures(
+    tmp_path: Path, stderr: str
+) -> None:
+    runner = StaticRunner([CommandResult(("git",), 128, "", stderr)])
+
+    with pytest.raises(AdapterCommandError, match=stderr.removeprefix("fatal: ")):
+        GitCliAdapter(repo=tmp_path, runner=runner).is_ancestor("a" * 40, "b" * 40)
+
+
 def test_git_new_remote_branch_push_uses_absent_ref_lease(tmp_path: Path) -> None:
     head = "b" * 40
     runner = StaticRunner(
@@ -437,10 +467,7 @@ def test_git_adapter_collects_branch_refs_with_two_bulk_queries(
             CommandResult(
                 ("git",),
                 0,
-                (
-                    f"{remote_sha}\trefs/heads/feat/one\n"
-                    f"{local_sha}\trefs/heads/main\n"
-                ),
+                (f"{remote_sha}\trefs/heads/feat/one\n{local_sha}\trefs/heads/main\n"),
                 "",
             ),
         ]

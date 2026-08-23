@@ -824,6 +824,55 @@ def test_cli_routes_explicit_abandoned_handback_discard(capsys: object) -> None:
     ]
 
 
+def test_cli_routes_unregistered_orphan_branch_discard(capsys: object) -> None:
+    class FakeApplication:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str, str, str]] = []
+
+        def discard_orphan_branch(
+            self,
+            *,
+            branch: str,
+            expected_head_sha: str,
+            operator: str,
+            reason: str,
+        ) -> object:
+            self.calls.append((branch, expected_head_sha, operator, reason))
+            return {"disposition": "orphan_local_discarded"}
+
+    application = FakeApplication()
+    head = "b" * 40
+
+    assert (
+        main(
+            [
+                "discard-orphan-branch",
+                "--branch",
+                "feat/orphan",
+                "--expected-head-sha",
+                head,
+                "--operator",
+                "supervisor",
+                "--reason",
+                "ancestor branch has no unmerged changes",
+            ],
+            application_factory=lambda **_: application,
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert payload["result"]["disposition"] == "orphan_local_discarded"
+    assert application.calls == [
+        (
+            "feat/orphan",
+            head,
+            "supervisor",
+            "ancestor branch has no unmerged changes",
+        )
+    ]
+
+
 def test_cli_exposes_dogfood_preflight_as_read_only_json(capsys: object) -> None:
     class FakeApplication:
         def dogfood_preflight(

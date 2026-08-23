@@ -131,6 +131,16 @@ PR readiness workflow 的 parser 入口是：
 
 `discard-abandoned-handback` 是 owner recovery 之後的最後一條窄路徑：只接受 ownerless、已 abandoned、具有效 typed handback、沒有任何 PR history、沒有 physical worktree、local／remote ref 仍等於 expected HEAD 的單一 branch。它先以 registry CAS 寫入帶 digest 的 `kg.worktree.discard-proof.v1`，再以 expected HEAD 刪除 exact local／remote ref；任何 owner、dirty worktree、PR history、remote drift 或 canonical main 問題都 fail closed。這不是批次 prune，也不會替有 owner 的 lane 做決策；同一 operator／reason 可安全重試。
 
+對沒有 registry claim、沒有 PR history、沒有 physical worktree、沒有 remote ref，且 branch tip 已經是 live `origin/main` ancestor 的 local orphan，使用更窄的 `discard-orphan-branch`：
+
+```bash
+./ops/delivery.py discard-orphan-branch --branch <branch> \\
+  --expected-head-sha <local-head> --operator <identity> \\
+  --reason '<explicit ancestor-discard rationale>'
+```
+
+這條命令只刪除 exact local ref，回傳 `kg.delivery.orphan-branch-proof.v1`；它不修改 registry、不刪 remote ref，也不接受 diverged、active、owner-bound、remote-drift、dirty 或有 PR history 的 branch。這些 branch 必須回到各自 owner／PR／terminal lifecycle，不能用 ancestor 清理規則掩蓋尚未落地的變更。
+
 ### 錯誤隔離
 
 - source inventory 可局部解析時，malformed registry／PR／runtime／Git observation 留在對應 lane 或 `source_problems`；raw registry 非 object、無效 external ID、unknown status 都必須可見，metrics 不把 unmapped／unknown 供給算成 owner-mapped durable supply。

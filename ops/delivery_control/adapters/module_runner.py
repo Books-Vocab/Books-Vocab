@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 from collections.abc import Callable
 from pathlib import Path
 from threading import Lock
@@ -34,6 +35,50 @@ class ModuleCommandRunner:
         self._validated_source_fingerprint: str | None = None
         self._lock = Lock()
 
+    @contextlib.contextmanager
+    def _stable_working_directory(self):
+        """Run the co-versioned command from a checkout that cannot be removed.
+
+        Publication releases the owner worktree before its final registry CAS
+        transition.  The caller may therefore still have a deleted cwd when
+        this in-process command is invoked.  Keep the command anchored to the
+        canonical target repository, and only restore the caller cwd when it
+        still resolves; otherwise leave the process in the stable checkout.
+        """
+
+        if self.target_repo is None:
+            yield
+            return
+
+        stable_fd = os.open(self.target_repo, os.O_RDONLY)
+        previous_fd: int | None = None
+        try:
+            try:
+                previous_fd = os.open(".", os.O_RDONLY)
+            except OSError:
+                # The caller can already be in an unresolvable cwd.  The
+                # stable target remains sufficient for the command.
+                previous_fd = None
+            os.fchdir(stable_fd)
+            yield
+        finally:
+            restored = False
+            if previous_fd is not None:
+                try:
+                    os.fchdir(previous_fd)
+                    os.getcwd()
+                    restored = True
+                except OSError:
+                    # The source worktree was removed while the command ran.
+                    # Do not return to a cwd that makes the next operation
+                    # fail; keep the process anchored to the canonical repo.
+                    pass
+            if not restored:
+                os.fchdir(stable_fd)
+            if previous_fd is not None:
+                os.close(previous_fd)
+            os.close(stable_fd)
+
     def run(
         self,
         argv: tuple[str, ...],
@@ -63,7 +108,8 @@ class ModuleCommandRunner:
             contextlib.redirect_stderr(stderr),
         ):
             try:
-                exit_code = int(self.main(list(argv[1:])))
+                with self._stable_working_directory():
+                    exit_code = int(self.main(list(argv[1:])))
             except SystemExit as error:
                 exit_code = int(error.code or 0)
             except Exception as error:  # noqa: BLE001 - command process boundary

@@ -42,6 +42,7 @@ from .services import (
     metadata,
     queue,
     required_repair,
+    orphan_branch,
     sync_main,
     telemetry_operations,
 )
@@ -510,6 +511,26 @@ class DeliveryApplication:
         return abandoned_handback.AbandonedHandbackDiscardService(
             registry_query=self.registry,
             registry_command=self.registry,
+            git_query=self.git,
+            git_command=self.git,
+            github=self.github,
+        ).discard(
+            branch=branch,
+            expected_head_sha=expected_head_sha,
+            operator=operator,
+            reason=reason,
+        )
+
+    def discard_orphan_branch(
+        self,
+        *,
+        branch: str,
+        expected_head_sha: str,
+        operator: str,
+        reason: str,
+    ) -> object:
+        return orphan_branch.OrphanBranchDiscardService(
+            registry=self.registry,
             git_query=self.git,
             git_command=self.git,
             github=self.github,

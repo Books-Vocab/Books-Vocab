@@ -68,6 +68,9 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
         def origin_main_sha(self) -> str:
             return "a" * 40
 
+        def is_ancestor(self, ancestor_sha: str, descendant_sha: str) -> bool:
+            return True
+
         def first_parent_landings(
             self, *, before_sha: str, after_sha: str
         ) -> tuple[MainLandingSnapshot, ...]:

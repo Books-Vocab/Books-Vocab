@@ -36,16 +36,12 @@ class GitQueries:
             branch=self.client.run("branch", "--show-current") or None,
             head_sha=self.client.run("rev-parse", "--verify", "HEAD^{commit}"),
             clean=not bool(
-                self.client.run(
-                    "status", "--porcelain=v1", "--untracked-files=all"
-                )
+                self.client.run("status", "--porcelain=v1", "--untracked-files=all")
             ),
         )
 
     def list_worktrees(self) -> tuple[PhysicalWorktree, ...]:
-        records = parse_worktrees(
-            self.client.run("worktree", "list", "--porcelain")
-        )
+        records = parse_worktrees(self.client.run("worktree", "list", "--porcelain"))
         return tuple(
             PhysicalWorktree(
                 path=record.path.resolve(),
@@ -58,14 +54,10 @@ class GitQueries:
 
     def inspect_worktree(self, path: Path, base_sha: str) -> WorktreeSnapshot:
         path = path.resolve()
-        head_sha = self.client.run(
-            "rev-parse", "--verify", "HEAD^{commit}", cwd=path
-        )
+        head_sha = self.client.run("rev-parse", "--verify", "HEAD^{commit}", cwd=path)
         branch = self.client.run("branch", "--show-current", cwd=path) or None
         parent_sha = parse_parent_sha(
-            self.client.run(
-                "rev-list", "--parents", "-n", "1", head_sha, cwd=path
-            ),
+            self.client.run("rev-list", "--parents", "-n", "1", head_sha, cwd=path),
             head_sha=head_sha,
             base_sha=base_sha,
         )
@@ -131,6 +123,19 @@ class GitQueries:
         return parse_origin_main_sha(
             self.client.run("ls-remote", "origin", "refs/heads/main")
         )
+
+    def is_ancestor(self, ancestor_sha: str, descendant_sha: str) -> bool:
+        result = self.client.execute(
+            "merge-base",
+            "--is-ancestor",
+            ancestor_sha,
+            descendant_sha,
+        )
+        if result.exit_code == 0:
+            return True
+        if result.exit_code == 1 and not result.stderr.strip():
+            return False
+        raise AdapterCommandError(result)
 
     def first_parent_landings(
         self, *, before_sha: str, after_sha: str
