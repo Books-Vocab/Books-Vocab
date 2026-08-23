@@ -532,17 +532,11 @@ def _runtime_timestamp(value: str | None, name: str) -> datetime | None:
 def _result_exit_code(command: str, result: object) -> int:
     if command == "watchdog-claim":
         return 0 if _watchdog_dispatch_authorized(result) else 2
-    if command in {
-        "branch-audit",
-        "branch-review-plan",
-        "unreachable-commit-inspect",
-    }:
-        complete = (
-            result.get("complete")
-            if isinstance(result, Mapping)
-            else getattr(result, "complete", None)
-        )
-        return 0 if complete is True else 2
+    # These commands are read-only evidence surfaces.  An incomplete audit
+    # is a valid observation of unresolved source/owner content, not a
+    # command transport failure or dispatch authorization.  Callers must use
+    # the JSON verdict/result fields to distinguish complete from incomplete;
+    # shell exit 0 only says the observation itself was produced.
     if command != "dogfood-preflight":
         return 0
     ready = (

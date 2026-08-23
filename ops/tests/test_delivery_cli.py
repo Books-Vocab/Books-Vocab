@@ -923,7 +923,7 @@ def test_cli_exposes_branch_audit_and_forwards_supervision_paths(
     assert payload["result"]["schema"] == "kg.delivery.branch-audit.v1"
 
 
-def test_cli_marks_incomplete_branch_audit_as_blocked_without_transport_error(
+def test_cli_marks_incomplete_branch_audit_as_observation_without_transport_error(
     capsys: object,
 ) -> None:
     class FakeApplication:
@@ -941,7 +941,7 @@ def test_cli_marks_incomplete_branch_audit_as_blocked_without_transport_error(
             ["branch-audit"],
             application_factory=lambda **_: FakeApplication(),
         )
-        == 2
+        == 0
     )
 
     payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
@@ -1014,7 +1014,43 @@ def test_cli_routes_unreachable_commit_inspection(capsys: object) -> None:
     assert payload["result"]["disposition"] == "preserve_for_owner_correlation"
 
 
-def test_cli_routes_paged_branch_review_plan(capsys: object) -> None:
+def test_cli_keeps_incomplete_unreachable_observation_transport_success(
+    capsys: object,
+) -> None:
+    class FakeApplication:
+        def unreachable_commit_inspect(
+            self, *, commit_sha: str, max_paths: int
+        ) -> object:
+            assert commit_sha == "a" * 40
+            assert max_paths == 17
+            return {
+                "schema": "kg.delivery.unreachable-commit.v1",
+                "complete": False,
+                "source_problem_scope": "git_objects",
+                "disposition": "preserve_with_source_problem",
+            }
+
+    assert (
+        main(
+            [
+                "unreachable-commit-inspect",
+                "--commit",
+                "a" * 40,
+                "--max-paths",
+                "17",
+            ],
+            application_factory=lambda **_: FakeApplication(),
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["verdict"] == "incomplete"
+    assert payload["result"]["source_problem_scope"] == "git_objects"
+
+
+def test_cli_routes_paged_branch_review_plan_as_observation(capsys: object) -> None:
     class FakeApplication:
         def branch_review_plan(self, *, offset: int, limit: int) -> object:
             assert offset == 5
@@ -1030,7 +1066,7 @@ def test_cli_routes_paged_branch_review_plan(capsys: object) -> None:
             ["branch-review-plan", "--offset", "5", "--limit", "3"],
             application_factory=lambda **_: FakeApplication(),
         )
-        == 2
+        == 0
     )
 
     payload = json.loads(capsys.readouterr().out)
