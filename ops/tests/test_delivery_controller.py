@@ -726,6 +726,40 @@ def test_controller_surfaces_owner_residue_without_blocking_verified_dispatch() 
     assert decision.desired_new_solvers == 4
 
 
+def test_controller_audits_ownerless_residue_without_recovery_wake() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    decision = decide_capacity(
+        _metrics(
+            active_registry_records=3,
+            raw_active_registry_records=3,
+            active_registry_without_worktree=3,
+            active_registry_without_worktree_owner_bound=0,
+            active_registry_without_worktree_ownerless=3,
+        ),
+        cadence,
+    )
+
+    assert ControlAction.AUDIT_OWNERLESS_LANES in decision.actions
+    assert ControlAction.RECOVER_OWNER_BOUND_LANE not in decision.actions
+
+
+def test_controller_splits_owner_bound_and_ownerless_residue_actions() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    decision = decide_capacity(
+        _metrics(
+            active_registry_records=3,
+            raw_active_registry_records=3,
+            active_registry_without_worktree=3,
+            active_registry_without_worktree_owner_bound=1,
+            active_registry_without_worktree_ownerless=2,
+        ),
+        cadence,
+    )
+
+    assert ControlAction.RECOVER_OWNER_BOUND_LANE in decision.actions
+    assert ControlAction.AUDIT_OWNERLESS_LANES in decision.actions
+
+
 def test_hard_holds_block_ramp_and_solver_birth_until_reconciled() -> None:
     cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
     metrics = _metrics(security_hold_lanes=1, security_hold_issues=1)
@@ -1123,6 +1157,23 @@ def test_metrics_exposes_active_registry_residue_separately_from_development() -
                     "owner unavailable",
                 ),
             ),
+            LaneInspection(
+                key="#owner-bound",
+                registry=replace(
+                    active_record,
+                    lane_id="#owner-bound",
+                    branch="debug/owner-bound",
+                    owner_thread_id="owner-thread",
+                ),
+                physical=None,
+                snapshot=None,
+                pull_requests=(),
+                decision=LaneDecision(
+                    LaneState.BLOCKED_OWNER,
+                    NextAction.RECOVER_OWNER,
+                    "owner unavailable",
+                ),
+            ),
         ),
         source_problems=(
             InventoryProblem(
@@ -1138,9 +1189,16 @@ def test_metrics_exposes_active_registry_residue_separately_from_development() -
     metrics = measure_pipeline(inventory)
 
     assert metrics.active_development == 0
-    assert metrics.active_registry_records == 1
-    assert metrics.raw_active_registry_records == 2
-    assert metrics.active_registry_without_worktree == 1
+    assert metrics.active_registry_records == 2
+    assert metrics.raw_active_registry_records == 3
+    assert metrics.active_registry_without_worktree == 2
+    assert metrics.active_registry_without_worktree_owner_bound == 1
+    assert metrics.active_registry_without_worktree_ownerless == 1
+    assert (
+        metrics.active_registry_without_worktree_owner_bound
+        + metrics.active_registry_without_worktree_ownerless
+        == metrics.active_registry_records
+    )
     assert metrics.malformed_active_registry_records == 1
 
 
