@@ -38,10 +38,14 @@ verified_against: afe016c4ea2fcbd7306f9c4f40b4556e77865100
 - delivery inventory 中只剩 canonical main；若啟動器使用 detached supervision checkout，必須以
   `--supervision-worktree` 逐一列出 exact path。未列出的 worktree 一律仍算 delivery／unknown
   blocker；不得用 `.codex` 路徑前綴或名稱猜測來排除；
-- 沒有可行動的 active development、local handback、cleanup lease、blocked lane、unmapped／duplicate PR 或 source problem；
+- 沒有可行動的 active development、local handback、cleanup lease、blocked lane、unmapped／duplicate PR 或 **global** source problem；
 - 歷史 source problem、owner-recovery residue、無 physical worktree 的 terminal branch residue，以及明確 security/P0/P1 hold
   必須被 control plane 以 quarantine counters 明確標示。它們仍保留原始 evidence、不可 merge／刪除／接管，
   但不能阻塞與其無關的 delivery lane；任何新鮮且可行動的同類問題仍會讓 preflight fail。
+- branch-scoped／`git_objects` source observation 若沒有 global uncertainty，不會阻塞無關的 canary；它會出現在
+  preflight warning，並讓受影響 branch/object 的 cleanup 與 ramp 保持受限。這種 warning 絕不是 dispatch、cleanup、
+  takeover 或 wake 授權；要清除它仍須走原 owner／source lifecycle。舊版 direct-constructed metrics 沒有 scope split
+  時，仍以 aggregate source problem fail closed。
 - 現存 PR reservoir 為空；security／P0／P1 hold 必須先得到 terminal disposition，不能藏在 canary baseline。
 
 candidate Issue reservoir 可以是空的；clean-slate baseline 只要求 read-only candidate query 可被可信解析，不要求啟動前先囤候選或建立本地 backlog。

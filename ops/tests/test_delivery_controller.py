@@ -1027,6 +1027,62 @@ def test_dogfood_preflight_accepts_only_an_empty_canonical_baseline() -> None:
     assert readiness.canary_promotable is False
 
 
+def test_dogfood_preflight_does_not_block_on_branch_scoped_source_observation() -> None:
+    now = datetime(2026, 8, 21, tzinfo=UTC)
+    cadence = measure_merge_cadence((), now=now)
+    metrics = replace(
+        _metrics(candidate_issues=0, source_problems=1),
+        source_problem_scope_counts=(("branch", 1),),
+        actionable_global_source_problems=0,
+    )
+
+    readiness = assess_dogfood_readiness(
+        local_main_sha="a" * 40,
+        origin_main_sha="a" * 40,
+        canonical_branch="main",
+        canonical_clean=True,
+        main_protected=True,
+        required_status_contexts=("required",),
+        merge_queue_enabled=True,
+        physical_worktree_count=1,
+        canonical_worktree_present=True,
+        metrics=metrics,
+        cadence=cadence,
+    )
+
+    assert readiness.ready
+    assert "delivery source inventory is incomplete" not in readiness.blockers
+    assert any("branch" in warning for warning in readiness.warnings)
+    assert readiness.ramp_ready is False
+
+
+def test_dogfood_preflight_keeps_global_source_uncertainty_blocking() -> None:
+    now = datetime(2026, 8, 21, tzinfo=UTC)
+    cadence = measure_merge_cadence((), now=now)
+    metrics = replace(
+        _metrics(candidate_issues=0, source_problems=1),
+        source_problem_scope_counts=(("global", 1),),
+        actionable_global_source_problems=1,
+    )
+
+    readiness = assess_dogfood_readiness(
+        local_main_sha="a" * 40,
+        origin_main_sha="a" * 40,
+        canonical_branch="main",
+        canonical_clean=True,
+        main_protected=True,
+        required_status_contexts=("required",),
+        merge_queue_enabled=True,
+        physical_worktree_count=1,
+        canonical_worktree_present=True,
+        metrics=metrics,
+        cadence=cadence,
+    )
+
+    assert readiness.ready is False
+    assert "delivery source inventory is incomplete" in readiness.blockers
+
+
 def test_worktree_boundary_requires_explicit_supervision_manifest() -> None:
     canonical = Path("/repo")
     supervision = tuple(

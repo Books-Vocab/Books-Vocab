@@ -73,8 +73,14 @@ def assess_dogfood_readiness(
         "main does not require the short required context",
     )
     block(not merge_queue_enabled, "main has no native merge queue rule")
+    actionable_source_problems = metrics.actionable_source_problems or 0
+    actionable_global_source_problems = (
+        metrics.actionable_global_source_problems
+        if metrics.actionable_global_source_problems is not None
+        else actionable_source_problems
+    )
     block(
-        metrics.actionable_source_problems > 0,
+        actionable_global_source_problems > 0,
         "delivery source inventory is incomplete",
     )
     block(
@@ -119,6 +125,21 @@ def assess_dogfood_readiness(
         and cadence_within_target
     )
     warnings: list[str] = []
+    scoped_source_problems = max(
+        0, actionable_source_problems - actionable_global_source_problems
+    )
+    if scoped_source_problems:
+        scoped_details = ", ".join(
+            f"{scope}={count}"
+            for scope, count in metrics.source_problem_scope_counts
+            if scope != "global" and count
+        )
+        detail = f" ({scoped_details})" if scoped_details else ""
+        warnings.append(
+            f"{scoped_source_problems} scoped delivery source observation(s) remain"
+            f"{detail}; affected branch/object cleanup stays frozen and this is not "
+            "dispatch, cleanup, takeover, or wake authorization"
+        )
     if metrics.unadmitted_open_issues is None:
         warnings.append(
             "raw open Issue inventory is incomplete; backlog cardinality is unknown"
