@@ -333,10 +333,10 @@ def decide_capacity(
     unsafe_pr_inventory = bool(
         metrics.actionable_unmapped_open_prs or metrics.duplicate_pr_mappings
     )
-    if metrics.actionable_source_problems:
+    if metrics.actionable_global_source_problems:
         add(
             ControlAction.RECOVER_BLOCKERS,
-            "solver dispatch is disabled until actionable source inventory is complete",
+            "solver dispatch is disabled until global source inventory is complete",
         )
     elif unsafe_pr_inventory:
         add(
