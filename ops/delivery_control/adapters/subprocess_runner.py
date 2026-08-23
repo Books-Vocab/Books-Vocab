@@ -20,9 +20,13 @@ class SubprocessCommandRunner:
     DEFAULT_TIMEOUT_SECONDS = 120.0
 
     def __init__(self, *, timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS) -> None:
+        self._validate_timeout(timeout_seconds)
+        self.timeout_seconds = timeout_seconds
+
+    @staticmethod
+    def _validate_timeout(timeout_seconds: float) -> None:
         if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
             raise ValueError("command timeout must be finite and positive")
-        self.timeout_seconds = timeout_seconds
 
     @staticmethod
     def _text(value: str | bytes | None) -> str:
@@ -38,6 +42,29 @@ class SubprocessCommandRunner:
         *,
         cwd: Path | None = None,
     ) -> CommandResult:
+        return self._run(argv, cwd=cwd, timeout_seconds=self.timeout_seconds)
+
+    def run_with_timeout(
+        self,
+        argv: tuple[str, ...],
+        *,
+        cwd: Path | None = None,
+        timeout_seconds: float,
+    ) -> CommandResult:
+        self._validate_timeout(timeout_seconds)
+        return self._run(
+            argv,
+            cwd=cwd,
+            timeout_seconds=min(self.timeout_seconds, timeout_seconds),
+        )
+
+    def _run(
+        self,
+        argv: tuple[str, ...],
+        *,
+        cwd: Path | None,
+        timeout_seconds: float,
+    ) -> CommandResult:
         try:
             completed = subprocess.run(
                 argv,
@@ -45,11 +72,11 @@ class SubprocessCommandRunner:
                 check=False,
                 capture_output=True,
                 text=True,
-                timeout=self.timeout_seconds,
+                timeout=timeout_seconds,
             )
         except subprocess.TimeoutExpired as error:
             stderr = self._text(error.stderr)
-            detail = f"command timed out after {self.timeout_seconds:g}s"
+            detail = f"command timed out after {timeout_seconds:g}s"
             if stderr:
                 stderr = f"{stderr.rstrip()}\n{detail}"
             else:

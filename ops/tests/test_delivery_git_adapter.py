@@ -535,6 +535,25 @@ def test_git_adapter_preserves_fsck_diagnostics_and_commit_quarantine(
     ]
 
 
+def test_git_adapter_bounds_fsck_and_preserves_timeout_as_incomplete(
+    tmp_path: Path,
+) -> None:
+    runner = TimeoutAwareRunner()
+
+    inventory = GitCliAdapter(
+        repo=tmp_path, runner=runner
+    ).unreachable_commit_inventory()
+
+    assert inventory == UnreachableCommitInventory(
+        problems=(
+            "git fsck exited with 124",
+            "command timed out after 30s",
+        ),
+        complete=False,
+    )
+    assert runner.timeout_seconds == 30.0
+
+
 def test_unreachable_commit_parser_ignores_non_commit_objects() -> None:
     assert parse_unreachable_commit_shas(
         f"unreachable tree {'a' * 40}\n"
@@ -589,3 +608,27 @@ class StaticRunner:
     def run(self, argv: tuple[str, ...], *, cwd: Path | None = None) -> CommandResult:
         self.calls.append(argv)
         return self.responses.pop(0)
+
+
+class TimeoutAwareRunner:
+    def __init__(self) -> None:
+        self.timeout_seconds: float | None = None
+
+    def run(self, argv: tuple[str, ...], *, cwd: Path | None = None) -> CommandResult:
+        raise AssertionError(f"unexpected unbounded runner call: {argv}")
+
+    def run_with_timeout(
+        self,
+        argv: tuple[str, ...],
+        *,
+        cwd: Path | None = None,
+        timeout_seconds: float,
+    ) -> CommandResult:
+        self.timeout_seconds = timeout_seconds
+        return CommandResult(
+            argv=argv,
+            exit_code=124,
+            stdout="",
+            stderr=f"command timed out after {timeout_seconds:g}s",
+            timed_out=True,
+        )
