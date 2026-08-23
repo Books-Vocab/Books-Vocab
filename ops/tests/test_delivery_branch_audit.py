@@ -482,7 +482,53 @@ def test_branch_audit_projects_unreachable_source_diagnostics_into_completeness(
     assert report.complete is False
     assert report.verdict == "incomplete"
     assert report.source_problems == (
-        InventoryProblem("git", "unreachable-commits", "git fsck exited with 8"),
+        InventoryProblem(
+            "git",
+            "unreachable-commits",
+            "git fsck exited with 8",
+            identity_kind="git_objects",
+        ),
     )
-    assert report.source_problem_scope_counts == {"global": 1}
+    assert report.source_problem_scope_counts == {"git_objects": 1}
     assert report.source_problem_actions[0].category == "git_source_problem"
+
+
+def test_branch_audit_keeps_exact_orphan_cleanup_independent_of_git_object_problems() -> (
+    None
+):
+    lifecycle = project_branch_lifecycle(
+        branch_inventory=BranchInventory(local=(("feat/orphan", SHA_A),))
+    )
+    inventory = DeliveryInventory(
+        lanes=(),
+        branch_lifecycle=lifecycle,
+    )
+
+    report = build_branch_audit(
+        inventory,
+        orphan_preflights={
+            "feat/orphan": OrphanBranchPreflight(
+                schema="kg.delivery.orphan-branch-preflight.v1",
+                branch="feat/orphan",
+                expected_head_sha=SHA_A,
+                main_sha=SHA_A,
+                eligible=True,
+                passed_checks=("all exact checks passed",),
+                blockers=(),
+            )
+        },
+        unreachable_commits=UnreachableCommitInventory(
+            problems=("git fsck exited with 8",),
+            complete=False,
+        ),
+    )
+
+    assert report.complete is False
+    assert report.source_problem_scope_counts == {"git_objects": 1}
+    assert report.source_problem_actions[0].scope == "git_objects"
+    action = report.actions[0]
+    assert action.safe_terminal is True
+    assert action.suggested_command == (
+        "./ops/delivery.py discard-orphan-branch "
+        "--branch feat/orphan --expected-head-sha " + SHA_A
+    )

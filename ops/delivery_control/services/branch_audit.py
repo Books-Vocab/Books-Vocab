@@ -120,8 +120,16 @@ def _source_problem_action(problem: InventoryProblem) -> BranchAuditSourceProble
         if problem.source == "registry" and problem.identity_kind == "branch"
         else None
     )
-    scope = "branch" if affected_branch is not None else "global"
-    if source == "registry":
+    if source == "git" and problem.identity_kind == "git_objects":
+        category = "git_source_problem"
+        scope = "git_objects"
+        next_step = (
+            "preserve unreachable Git object diagnostics; correlate them with an "
+            "owner, Issue, or PR independently and do not treat them as proof to "
+            "delete or recover branch assets"
+        )
+    elif source == "registry":
+        scope = "branch" if affected_branch is not None else "global"
         category = "registry_source_problem"
         if affected_branch is None:
             next_step = (
@@ -135,18 +143,21 @@ def _source_problem_action(problem: InventoryProblem) -> BranchAuditSourceProble
                 "record through the supported owner lifecycle before cleanup"
             )
     elif source == "github":
+        scope = "global"
         category = "github_source_problem"
         next_step = (
             "refresh the exact GitHub inventory; do not publish, discard, or delete "
             "branch assets while PR evidence is incomplete"
         )
     elif source == "git":
+        scope = "global"
         category = "git_source_problem"
         next_step = (
             "refresh the canonical Git observation; do not classify branch reachability "
             "as cleanup proof"
         )
     else:
+        scope = "global"
         category = "delivery_source_problem"
         next_step = (
             "resolve the source inventory problem through the owning adapter before "
@@ -389,7 +400,12 @@ def build_branch_audit(
 
     assets = inventory.branch_lifecycle.assets
     source_problems = inventory.source_problems + tuple(
-        InventoryProblem("git", "unreachable-commits", problem)
+        InventoryProblem(
+            "git",
+            "unreachable-commits",
+            problem,
+            identity_kind="git_objects",
+        )
         for problem in unreachable_commits.problems
     )
     preflights = orphan_preflights or {}
