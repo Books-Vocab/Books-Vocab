@@ -223,10 +223,11 @@ def test_branch_review_plan_pages_orphans_and_preserves_incomplete_audit(
         side=BranchSide.LOCAL,
         branch="backup/orphan",
         sha="b" * 40,
+        category="local_orphan_blocked",
         review_command="./ops/delivery.py branch-inspect ...",
         orphan_preflight=SimpleNamespace(
             eligible=False,
-            blockers=("not ancestor",),
+            blockers=("orphan branch tip is not an ancestor of live origin/main",),
         ),
         next_step="review content",
     )
@@ -288,10 +289,11 @@ def test_branch_review_plan_bounds_path_sample_without_losing_fingerprint(
         side=BranchSide.LOCAL,
         branch="backup/orphan",
         sha="b" * 40,
+        category="local_orphan_blocked",
         review_command="./ops/delivery.py branch-inspect ...",
         orphan_preflight=SimpleNamespace(
             eligible=False,
-            blockers=("not ancestor",),
+            blockers=("orphan branch tip is not an ancestor of live origin/main",),
         ),
         next_step="review content",
     )
@@ -318,6 +320,112 @@ def test_branch_review_plan_bounds_path_sample_without_losing_fingerprint(
     assert content.changed_path_count == len(changed_paths)
     assert content.changed_paths_truncated is True
     assert content.change_fingerprint == "c" * 64
+
+
+def test_branch_review_plan_excludes_lifecycle_owned_orphans(
+    tmp_path: Path,
+) -> None:
+    application = DeliveryApplication(
+        repo=tmp_path,
+        git=Mock(),
+        github=Mock(),
+        registry=Mock(),
+        runtime=Mock(),
+        telemetry=Mock(),
+    )
+
+    def content(branch: str) -> BranchContentEvidence:
+        return BranchContentEvidence(
+            schema="kg.delivery.branch-content.v1",
+            branch=branch,
+            base_sha="a" * 40,
+            head_sha="b" * 40,
+            base_is_ancestor=False,
+            ahead_commit_count=1,
+            behind_commit_count=0,
+            changed_paths=("feature.py",),
+            changed_path_count=1,
+            changed_paths_truncated=False,
+            change_fingerprint="c" * 64,
+            commit_subjects=("feature",),
+            commit_subjects_truncated=False,
+            complete=True,
+        )
+
+    def action(
+        branch: str,
+        blockers: tuple[str, ...],
+        *,
+        category: str = "local_orphan_blocked",
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            side=BranchSide.LOCAL,
+            branch=branch,
+            sha="b" * 40,
+            category=category,
+            review_command="./ops/delivery.py branch-inspect ...",
+            orphan_preflight=SimpleNamespace(
+                eligible=False,
+                blockers=blockers,
+            ),
+            next_step="review content",
+        )
+
+    reviewable = "backup/reviewable"
+    with (
+        patch.object(
+            DeliveryApplication,
+            "branch_audit",
+            return_value=SimpleNamespace(
+                actions=(
+                    action(
+                        reviewable,
+                        ("orphan branch tip is not an ancestor of live origin/main",),
+                    ),
+                    action(
+                        "backup/remote",
+                        ("orphan branch still has a remote ref",),
+                    ),
+                    action(
+                        "backup/pr-history",
+                        ("orphan branch has PR history",),
+                    ),
+                    action(
+                        "debug/owner",
+                        (
+                            "branch has a registry claim; use the owner-preserving lifecycle",
+                        ),
+                    ),
+                    action(
+                        "debug/source-problem",
+                        ("orphan branch tip is not an ancestor of live origin/main",),
+                        category="source_incomplete",
+                    ),
+                ),
+                live_main_sha="a" * 40,
+                complete=False,
+                source_problem_actions=(object(),),
+            ),
+        ),
+        patch.object(
+            BranchContentService,
+            "inspect_many",
+            return_value={
+                branch: content(branch)
+                for branch in (
+                    reviewable,
+                    "backup/remote",
+                    "backup/pr-history",
+                    "debug/owner",
+                    "debug/source-problem",
+                )
+            },
+        ),
+    ):
+        plan = application.branch_review_plan(offset=0, limit=20)
+
+    assert plan.total_candidates == 1
+    assert plan.items[0].branch == reviewable
 
 
 def test_metrics_forwards_supervision_worktree_paths_to_inspect(
