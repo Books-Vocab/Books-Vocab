@@ -257,6 +257,8 @@ Scope 只回答「本機哪個工作樹可改哪些檔案」；Issue acceptance�
 
 branch-audit 的 branch-scoped source problem 會同步投影到該 branch action 的 `source_incomplete` 分類與 blocker；這只改善觀測與下一步提示，不放寬任何 cleanup gate。
 
+`branch-audit` 的每個 `source_problem_action` 另外標示 `actionability`：`blocking` 代表目前仍觀測到相符的 local／remote ref、physical worktree 或 PR，必須先走原 owner／source lifecycle；`quarantined_history` 代表只剩無現存交付資產的 malformed registry history。後者仍保留在完整 audit、並使整體 audit 保持 incomplete，但不應被計成 live WIP、wake、cleanup 或其他 mutation 授權；報告頂層的 `actionable_source_problems` 與 `quarantined_source_problems` 必須能加總回 source-problem action 數量。
+
 ## 遷移後的判斷準則
 
 保留真正產品程式碼與測試、backend／iOS 測試入口、GitHub Actions、PR template／required checks、deployment safety wrapper、生產批准／health gate／rollback、CloudKit／資料庫／域名／App Store／TestFlight SOP、docs registry／impact／lint、薄型本地 coordinator，以及長任務 process-safety ledger。凡是只為模擬 GitHub Issue、Project、PR、review、merge 或狀態追蹤而存在的本地描述、資料庫、看板與流程，都不屬於這個模型。

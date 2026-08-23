@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from enum import StrEnum
 
 from ..domain.branch_lifecycle import (
     BranchAsset,
@@ -63,6 +64,13 @@ class BranchAuditRegistryAction:
     suggested_command: str | None = None
 
 
+class SourceProblemActionability(StrEnum):
+    """Whether a source problem blocks a currently observed delivery asset."""
+
+    BLOCKING = "blocking"
+    QUARANTINED_HISTORY = "quarantined_history"
+
+
 @dataclass(frozen=True)
 class BranchAuditSourceProblem:
     """One source failure with a deterministic recovery instruction."""
@@ -76,6 +84,7 @@ class BranchAuditSourceProblem:
     scope: str = "global"
     affected_branch: str | None = None
     record_status: str | None = None
+    actionability: SourceProblemActionability = SourceProblemActionability.BLOCKING
 
 
 @dataclass(frozen=True)
@@ -108,12 +117,18 @@ class BranchAuditReport:
     source_problems: tuple[InventoryProblem, ...]
     source_problem_actions: tuple[BranchAuditSourceProblem, ...]
     registry_record_problem_actions: tuple[BranchAuditSourceProblem, ...]
+    actionable_source_problems: int
+    quarantined_source_problems: int
     registry_record_problem_status_counts: dict[str, int]
     source_problem_counts: dict[str, int]
     source_problem_scope_counts: dict[str, int]
 
 
-def _source_problem_action(problem: InventoryProblem) -> BranchAuditSourceProblem:
+def _source_problem_action(
+    problem: InventoryProblem,
+    *,
+    actionability: SourceProblemActionability = SourceProblemActionability.BLOCKING,
+) -> BranchAuditSourceProblem:
     """Project one incomplete source into an observable, non-mutating action."""
 
     source = problem.source
@@ -133,7 +148,13 @@ def _source_problem_action(problem: InventoryProblem) -> BranchAuditSourceProble
     elif source == "registry":
         scope = "branch" if affected_branch is not None else "global"
         category = "registry_source_problem"
-        if affected_branch is None:
+        if actionability is SourceProblemActionability.QUARANTINED_HISTORY:
+            next_step = (
+                "preserve this quarantined registry history; no matching "
+                "local/remote branch, physical worktree, or PR is observed; "
+                "do not treat it as active WIP"
+            )
+        elif affected_branch is None:
             next_step = (
                 "preserve all branch/worktree assets; the malformed registry identity "
                 "cannot be scoped safely, so reconcile it through its supported "
@@ -175,7 +196,37 @@ def _source_problem_action(problem: InventoryProblem) -> BranchAuditSourceProble
         scope=scope,
         affected_branch=affected_branch,
         record_status=problem.record_status,
+        actionability=actionability,
     )
+
+
+def _observed_branch_names(inventory: DeliveryInventory) -> frozenset[str]:
+    names = {asset.branch for asset in inventory.branch_lifecycle.assets}
+    names.update(
+        worktree.branch
+        for worktree in inventory.physical_worktrees
+        if worktree.branch is not None
+    )
+    names.update(
+        pull_request.branch
+        for lane in inventory.lanes
+        for pull_request in lane.pull_requests
+    )
+    return frozenset(names)
+
+
+def _source_problem_actionability(
+    problem: InventoryProblem,
+    *,
+    observed_branches: frozenset[str],
+) -> SourceProblemActionability:
+    if (
+        problem.source == "registry"
+        and problem.identity_kind == "branch"
+        and problem.identity not in observed_branches
+    ):
+        return SourceProblemActionability.QUARANTINED_HISTORY
+    return SourceProblemActionability.BLOCKING
 
 
 def _withheld_by_source_problem(
@@ -425,8 +476,16 @@ def build_branch_audit(
     )
     preflights = orphan_preflights or {}
     registry_only_actions = _registry_only_actions(inventory, assets=assets)
+    observed_branches = _observed_branch_names(inventory)
     source_problem_actions = tuple(
-        _source_problem_action(problem) for problem in source_problems
+        _source_problem_action(
+            problem,
+            actionability=_source_problem_actionability(
+                problem,
+                observed_branches=observed_branches,
+            ),
+        )
+        for problem in source_problems
     )
     registry_record_problem_actions = tuple(
         problem
@@ -507,6 +566,14 @@ def build_branch_audit(
         source_problems=source_problems,
         source_problem_actions=source_problem_actions,
         registry_record_problem_actions=registry_record_problem_actions,
+        actionable_source_problems=sum(
+            item.actionability is SourceProblemActionability.BLOCKING
+            for item in source_problem_actions
+        ),
+        quarantined_source_problems=sum(
+            item.actionability is SourceProblemActionability.QUARANTINED_HISTORY
+            for item in source_problem_actions
+        ),
         registry_record_problem_status_counts={
             status: sum(
                 item.record_status == status for item in registry_record_problem_actions
