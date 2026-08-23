@@ -459,3 +459,30 @@ def test_branch_audit_quarantines_unreachable_commit_objects_without_lane_action
     assert report.unreachable_commit_count == 2
     assert report.unreachable_commit_sample == (SHA_A, SHA_B)
     assert "correlate unreachable commit objects" in report.unreachable_commit_next_step
+
+
+def test_branch_audit_projects_unreachable_source_diagnostics_into_completeness() -> (
+    None
+):
+    inventory = DeliveryInventory(
+        lanes=(),
+        branch_lifecycle=project_branch_lifecycle(
+            branch_inventory=BranchInventory(),
+        ),
+    )
+
+    report = build_branch_audit(
+        inventory,
+        unreachable_commits=UnreachableCommitInventory(
+            problems=("git fsck exited with 8",),
+            complete=False,
+        ),
+    )
+
+    assert report.complete is False
+    assert report.verdict == "incomplete"
+    assert report.source_problems == (
+        InventoryProblem("git", "unreachable-commits", "git fsck exited with 8"),
+    )
+    assert report.source_problem_scope_counts == {"global": 1}
+    assert report.source_problem_actions[0].category == "git_source_problem"

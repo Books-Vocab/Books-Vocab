@@ -388,10 +388,14 @@ def build_branch_audit(
     """Build a one-to-one action list without performing any mutation."""
 
     assets = inventory.branch_lifecycle.assets
+    source_problems = inventory.source_problems + tuple(
+        InventoryProblem("git", "unreachable-commits", problem)
+        for problem in unreachable_commits.problems
+    )
     preflights = orphan_preflights or {}
     registry_only_actions = _registry_only_actions(inventory, assets=assets)
     source_problem_actions = tuple(
-        _source_problem_action(problem) for problem in inventory.source_problems
+        _source_problem_action(problem) for problem in source_problems
     )
     registry_record_problem_actions = tuple(
         problem
@@ -402,7 +406,7 @@ def build_branch_audit(
         _action_for_asset(asset, orphan_preflight=preflights.get(asset.branch))
         for asset in assets
     )
-    complete = not inventory.source_problems and not registry_only_actions
+    complete = not source_problems and not registry_only_actions
     if not complete:
         actions = tuple(
             _withheld_by_source_problem(
@@ -465,7 +469,7 @@ def build_branch_audit(
             status: sum(item.status == status for item in registry_only_actions)
             for status in sorted({item.status for item in registry_only_actions})
         },
-        source_problems=inventory.source_problems,
+        source_problems=source_problems,
         source_problem_actions=source_problem_actions,
         registry_record_problem_actions=registry_record_problem_actions,
         registry_record_problem_status_counts={
