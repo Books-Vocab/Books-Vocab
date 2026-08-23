@@ -13,6 +13,11 @@ sys.path.insert(0, str(OPS))
 
 from delivery_control.adapters.registry import RegistryCliAdapter  # noqa: E402
 from delivery_control.adapters.telemetry_ndjson import TelemetryNdjsonAdapter  # noqa: E402
+from delivery_control.domain.candidate_issues import (  # noqa: E402
+    CANDIDATE_ISSUE_LABEL,
+    CandidateSeverity,
+    CandidateSpec,
+)
 from delivery_control.application import DeliveryApplication, build_application  # noqa: E402
 from delivery_control.controller.dogfood import DogfoodProfile  # noqa: E402
 from delivery_control.controller.metrics import MergeCadence  # noqa: E402
@@ -21,8 +26,89 @@ from delivery_control.domain.branch_content import (  # noqa: E402
     BranchContentEvidence,
 )
 from delivery_control.domain.branch_lifecycle import BranchSide  # noqa: E402
+from delivery_control.domain.demand_issues import (  # noqa: E402
+    DemandIssue,
+    DemandIssueInventory,
+    IssueDisposition,
+    issue_body_sha256,
+)
+from delivery_control.domain.models import Scope  # noqa: E402
+from delivery_control.domain.observations import (  # noqa: E402
+    PullRequestInventory,
+    RegistryCollisionInventory,
+)
 from delivery_control.services.branch_content import BranchContentService  # noqa: E402
 from delivery_control.services.inspect import DeliveryInventory  # noqa: E402
+from delivery_control.services.candidate_contract import render_candidate_body  # noqa: E402
+
+
+def test_admit_candidate_retries_an_already_converged_candidate_without_mutation(
+    tmp_path: Path,
+) -> None:
+    spec = CandidateSpec(
+        severity=CandidateSeverity.P2,
+        priority=1,
+        scope=Scope.from_paths(modify=("ops/admission.py",)),
+        acceptance=("Admission remains idempotent.",),
+    )
+    body = render_candidate_body(spec, original_body="Existing report")
+    issue = DemandIssue(
+        number=7,
+        url="https://github.com/owner/repo/issues/7",
+        node_id="I_7",
+        title="Issue 7",
+        labels=(CANDIDATE_ISSUE_LABEL,),
+        body=body,
+        updated_at=datetime.fromisoformat("2026-08-22T01:00:00+00:00"),
+        body_sha256=issue_body_sha256(body),
+        disposition=IssueDisposition.DISPATCHABLE_CANDIDATE,
+        reason="Issue has an exact typed candidate contract and no active mapping",
+        candidate_spec=spec,
+    )
+
+    class GitHub:
+        def __init__(self) -> None:
+            self.admission_calls = 0
+
+        def list_open_pull_requests(self) -> PullRequestInventory:
+            return PullRequestInventory(records=())
+
+        def changed_paths(self, _number: int) -> tuple[str, ...]:
+            return ()
+
+        def admit_candidate(self, **_kwargs: object) -> DemandIssue:
+            self.admission_calls += 1
+            return issue
+
+    github = GitHub()
+    registry = Mock()
+    registry.list_collision_claims.return_value = RegistryCollisionInventory(records=())
+    application = DeliveryApplication(
+        repo=tmp_path,
+        git=Mock(),
+        github=github,
+        registry=registry,
+        runtime=Mock(),
+        telemetry=Mock(),
+    )
+    inventory = DemandIssueInventory(records=(issue,), raw_count=1)
+
+    with patch.object(
+        DeliveryApplication,
+        "inspect",
+        return_value=SimpleNamespace(demand_issues=inventory),
+    ):
+        result = application.admit_candidate(
+            issue_number=7,
+            expected_updated_at=datetime.fromisoformat("2020-01-01T00:00:00+00:00"),
+            expected_body_sha256="0" * 64,
+            spec=spec,
+            triage_reason="ignored on idempotent replay",
+            operator="supervisor",
+        )
+
+    assert result is issue
+    assert github.admission_calls == 1
 
 
 def test_application_public_facade_preserves_constructor_contract() -> None:

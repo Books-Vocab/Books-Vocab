@@ -358,14 +358,26 @@ class DeliveryApplication:
                 f"Issue #{issue_number} is not present in the complete raw inventory"
             )
         issue = matches[0]
-        if issue.disposition is not IssueDisposition.TRIAGE_REQUIRED:
+        exact_existing_candidate = (
+            issue.disposition is IssueDisposition.DISPATCHABLE_CANDIDATE
+            and issue.candidate_spec == spec
+        )
+        if (
+            issue.disposition is not IssueDisposition.TRIAGE_REQUIRED
+            and not exact_existing_candidate
+        ):
             raise errors.PolicyViolation(
                 f"Issue #{issue_number} disposition is {issue.disposition.value}, "
-                "not triage_required"
+                "not triage_required or an exact existing candidate"
             )
         assert_candidate_scope_available(
             scope=spec.scope,
-            demand_issues=inventory.records,
+            # The target's already-present contract is the admission being
+            # retried, not a competing candidate.  Exclude only that Issue;
+            # every other typed candidate remains a collision gate.
+            demand_issues=tuple(
+                item for item in inventory.records if item.number != issue_number
+            ),
             registry=self.registry.list_collision_claims(),
             pull_requests=self.github.list_open_pull_requests(),
             changed_paths=self.github.changed_paths,
