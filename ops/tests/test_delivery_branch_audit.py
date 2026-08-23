@@ -26,6 +26,9 @@ from delivery_control.services.branch_audit import (  # noqa: E402
 from delivery_control.services.branch_lifecycle_projection import (  # noqa: E402
     project_branch_lifecycle,
 )
+from delivery_control.services.orphan_branch import (  # noqa: E402
+    OrphanBranchPreflight,
+)
 
 
 SHA_A = "a" * 40
@@ -76,7 +79,20 @@ def test_branch_audit_emits_one_action_per_ref_and_safe_cleanup_candidate() -> N
         local_main_sha=SHA_A,
     )
 
-    report = build_branch_audit(inventory)
+    report = build_branch_audit(
+        inventory,
+        orphan_preflights={
+            "feat/orphan": OrphanBranchPreflight(
+                schema="kg.delivery.orphan-branch-preflight.v1",
+                branch="feat/orphan",
+                expected_head_sha=SHA_A,
+                main_sha=SHA_A,
+                eligible=True,
+                passed_checks=("all exact checks passed",),
+                blockers=(),
+            )
+        },
+    )
 
     assert report.schema == "kg.delivery.branch-audit.v1"
     assert report.complete
@@ -84,13 +100,18 @@ def test_branch_audit_emits_one_action_per_ref_and_safe_cleanup_candidate() -> N
     assert report.raw_remote_branches == 2
     assert report.physical_worktrees == 1
     assert len(report.actions) == len(report.assets) == 4
-    assert len(report.safe_terminal_actions) == 1
-    cleanup = report.safe_terminal_actions[0]
+    assert len(report.safe_terminal_actions) == 2
+    cleanup = next(
+        item
+        for item in report.safe_terminal_actions
+        if item.cleanup_action is BranchCleanupAction.CLEANUP_MERGED
+    )
     assert cleanup.cleanup_action is BranchCleanupAction.CLEANUP_MERGED
     assert cleanup.suggested_command == "./ops/delivery.py cleanup-merged --pr 1483"
     assert any(
         item.disposition is BranchDisposition.ORPHAN_LOCAL_RECONCILE
         and item.side is BranchSide.LOCAL
+        and item.safe_terminal
         for item in report.actions
     )
 
@@ -110,3 +131,30 @@ def test_branch_audit_keeps_source_problems_visible_and_fail_closed() -> None:
     assert report.complete is False
     assert len(report.source_problems) == 1
     assert report.safe_terminal_actions == ()
+
+
+def test_branch_audit_exposes_local_orphan_preflight_blockers() -> None:
+    lifecycle = project_branch_lifecycle(
+        branch_inventory=BranchInventory(local=(("feat/orphan", SHA_B),))
+    )
+    inventory = DeliveryInventory(lanes=(), branch_lifecycle=lifecycle)
+    preflight = OrphanBranchPreflight(
+        schema="kg.delivery.orphan-branch-preflight.v1",
+        branch="feat/orphan",
+        expected_head_sha=SHA_B,
+        main_sha=SHA_A,
+        eligible=False,
+        passed_checks=("canonical main is clean",),
+        blockers=("remote branch still exists", "tip is not an ancestor"),
+    )
+
+    report = build_branch_audit(
+        inventory,
+        orphan_preflights={"feat/orphan": preflight},
+    )
+    action = report.actions[0]
+
+    assert action.safe_terminal is False
+    assert action.category == "local_orphan_blocked"
+    assert "remote branch still exists" in action.next_step
+    assert action.orphan_preflight == preflight

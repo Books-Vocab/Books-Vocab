@@ -8,7 +8,7 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.domain.errors import PolicyViolation
+from delivery_control.domain.errors import DeliverySourceError, PolicyViolation
 from delivery_control.domain.models import Scope
 from delivery_control.domain.observations import (
     CanonicalCheckoutSnapshot,
@@ -45,6 +45,7 @@ class FakeGit:
         canonical_clean: bool = True,
         origin: str = BASE,
         ancestor: bool = True,
+        failure: str | None = None,
     ) -> None:
         self.local = local
         self.remote = remote
@@ -54,6 +55,7 @@ class FakeGit:
         self.canonical_clean = canonical_clean
         self.origin = origin
         self.ancestor = ancestor
+        self.failure = failure
         self.actions: list[str] = []
 
     def canonical_checkout(self) -> CanonicalCheckoutSnapshot:
@@ -71,12 +73,18 @@ class FakeGit:
         return self.physical
 
     def local_branch_sha(self, branch: str) -> str | None:
+        if self.failure == "local":
+            raise DeliverySourceError("local ref unavailable")
         return self.local
 
     def remote_branch_sha(self, branch: str) -> str | None:
+        if self.failure == "remote":
+            raise DeliverySourceError("remote ref unavailable")
         return self.remote
 
     def is_ancestor(self, ancestor_sha: str, descendant_sha: str) -> bool:
+        if self.failure == "ancestor":
+            raise DeliverySourceError("ancestor query unavailable")
         return self.ancestor
 
     def delete_local_branch(self, branch: str, *, expected_head_sha: str) -> None:
@@ -123,6 +131,56 @@ def test_discards_unregistered_local_branch_already_in_main() -> None:
     assert result.worktree_absent
     assert len(result.proof_digest) == 64
     assert git.actions == ["delete-local"]
+
+
+def test_preflight_is_read_only_and_reports_all_passed_checks() -> None:
+    git = FakeGit()
+
+    result = _build_service(git=git).preflight(
+        branch=BRANCH,
+        expected_head_sha=HEAD,
+    )
+
+    assert result.schema == "kg.delivery.orphan-branch-preflight.v1"
+    assert result.eligible
+    assert result.main_sha == BASE
+    assert result.blockers == ()
+    assert len(result.passed_checks) == 7
+    assert git.actions == []
+
+
+def test_preflight_reports_blocker_without_deleting() -> None:
+    git = FakeGit(remote=HEAD, ancestor=False)
+
+    result = _build_service(git=git).preflight(
+        branch=BRANCH,
+        expected_head_sha=HEAD,
+    )
+
+    assert result.eligible is False
+    assert "remote ref" in "; ".join(result.blockers)
+    assert "ancestor" in "; ".join(result.blockers)
+    assert git.actions == []
+
+
+@pytest.mark.parametrize(
+    ("failure", "message"),
+    (
+        ("local", "local branch HEAD query failed"),
+        ("remote", "remote branch query failed"),
+        ("ancestor", "ancestor query failed"),
+    ),
+)
+def test_preflight_fails_closed_when_git_evidence_is_unavailable(
+    failure: str, message: str
+) -> None:
+    result = _build_service(git=FakeGit(failure=failure)).preflight(
+        branch=BRANCH,
+        expected_head_sha=HEAD,
+    )
+
+    assert result.eligible is False
+    assert message in "; ".join(result.blockers)
 
 
 @pytest.mark.parametrize(
