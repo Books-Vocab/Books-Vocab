@@ -26,6 +26,8 @@ from .git_parsing import (
     parse_unreachable_commit_shas,
 )
 
+UNREACHABLE_COMMIT_SCAN_TIMEOUT_SECONDS = 30.0
+
 
 class GitQueries:
     def __init__(self, *, client: GitCliClient) -> None:
@@ -96,11 +98,12 @@ class GitQueries:
         return parse_branch_inventory(local_output, remote_output)
 
     def unreachable_commit_inventory(self) -> UnreachableCommitInventory:
-        result = self.client.execute(
+        result = self.client.execute_with_timeout(
             "fsck",
             "--unreachable",
             "--no-reflogs",
             "--no-progress",
+            timeout_seconds=UNREACHABLE_COMMIT_SCAN_TIMEOUT_SECONDS,
         )
         shas = parse_unreachable_commit_shas(result.stdout)
         problems = tuple(

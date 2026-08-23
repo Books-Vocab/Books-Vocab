@@ -31,9 +31,7 @@ def _git_repo(path: Path, *, marker: str) -> None:
     (control_plane / "worktree_registry.py").write_text(
         "# registry fixture\n", encoding="utf-8"
     )
-    subprocess.run(
-        ["git", "-C", str(path), "add", "marker.txt", "ops"], check=True
-    )
+    subprocess.run(["git", "-C", str(path), "add", "marker.txt", "ops"], check=True)
     subprocess.run(
         ["git", "-C", str(path), "commit", "-qm", f"fixture {marker}"],
         check=True,
@@ -240,8 +238,16 @@ def test_subprocess_runner_returns_normal_result() -> None:
 
 
 def test_subprocess_runner_converts_timeout_to_structured_failure() -> None:
-    result = SubprocessCommandRunner(timeout_seconds=0.05).run(
-        ("sleep", "1")
+    result = SubprocessCommandRunner(timeout_seconds=0.05).run(("sleep", "1"))
+
+    assert result.exit_code == 124
+    assert result.timed_out is True
+    assert "command timed out after 0.05s" in result.stderr
+
+
+def test_subprocess_runner_supports_a_tighter_per_command_timeout() -> None:
+    result = SubprocessCommandRunner(timeout_seconds=1).run_with_timeout(
+        ("sleep", "1"), timeout_seconds=0.05
     )
 
     assert result.exit_code == 124
