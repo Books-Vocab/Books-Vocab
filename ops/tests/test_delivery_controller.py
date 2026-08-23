@@ -831,7 +831,10 @@ def test_dogfood_canary_promotion_uses_exact_fifteen_minute_cadence() -> None:
         merge_queue_enabled=True,
         physical_worktree_count=1,
         canonical_worktree_present=True,
-        metrics=_metrics(candidate_issues=0),
+        metrics=_metrics(
+            candidate_issues=0,
+            timings=PipelineTimings(merge_to_sync_samples=3),
+        ),
         cadence=cadence,
     )
 
@@ -895,12 +898,67 @@ def test_dogfood_canary_uses_custom_promotion_window_and_interval_policy() -> No
         merge_queue_enabled=True,
         physical_worktree_count=1,
         canonical_worktree_present=True,
-        metrics=_metrics(candidate_issues=0),
+        metrics=_metrics(
+            candidate_issues=0,
+            timings=PipelineTimings(merge_to_sync_samples=2),
+        ),
         cadence=cadence,
         profile=profile,
     )
 
     assert readiness.canary_promotable is True
+    assert readiness.warnings == ()
+
+
+def test_dogfood_readiness_warns_when_recent_merges_lack_sync_telemetry() -> None:
+    now = datetime(2026, 8, 21, 1, tzinfo=UTC)
+    cadence = measure_merge_cadence(
+        (now - timedelta(minutes=10), now - timedelta(minutes=5), now),
+        now=now,
+        window=timedelta(minutes=15),
+    )
+
+    readiness = assess_dogfood_readiness(
+        local_main_sha="a" * 40,
+        origin_main_sha="a" * 40,
+        canonical_branch="main",
+        canonical_clean=True,
+        main_protected=True,
+        required_status_contexts=("required",),
+        merge_queue_enabled=True,
+        physical_worktree_count=1,
+        canonical_worktree_present=True,
+        metrics=_metrics(timings=PipelineTimings(merge_to_sync_samples=0)),
+        cadence=cadence,
+    )
+
+    assert readiness.ready is True
+    assert readiness.canary_promotable is True
+    assert any("sync telemetry" in warning for warning in readiness.warnings)
+
+
+def test_dogfood_readiness_clears_sync_telemetry_warning_when_sampled() -> None:
+    now = datetime(2026, 8, 21, 1, tzinfo=UTC)
+    cadence = measure_merge_cadence(
+        (now - timedelta(minutes=10), now - timedelta(minutes=5), now),
+        now=now,
+        window=timedelta(minutes=15),
+    )
+
+    readiness = assess_dogfood_readiness(
+        local_main_sha="a" * 40,
+        origin_main_sha="a" * 40,
+        canonical_branch="main",
+        canonical_clean=True,
+        main_protected=True,
+        required_status_contexts=("required",),
+        merge_queue_enabled=True,
+        physical_worktree_count=1,
+        canonical_worktree_present=True,
+        metrics=_metrics(timings=PipelineTimings(merge_to_sync_samples=3)),
+        cadence=cadence,
+    )
+
     assert readiness.warnings == ()
 
 

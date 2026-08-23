@@ -129,6 +129,17 @@ def assess_dogfood_readiness(
         )
     if not metrics.issue_inventory_complete:
         warnings.append("raw open Issue inventory is incomplete")
+    if (
+        cadence.merged_count
+        and metrics.timings.merge_to_sync_samples < cadence.merged_count
+    ):
+        missing_sync_samples = (
+            cadence.merged_count - metrics.timings.merge_to_sync_samples
+        )
+        warnings.append(
+            f"{missing_sync_samples} recent merge landing(s) lack "
+            "merge-to-main sync telemetry"
+        )
     if not exact_promotion_window:
         warnings.append(
             "canary promotion requires an exact "
