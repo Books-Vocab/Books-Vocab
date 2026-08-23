@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, is_dataclass
@@ -591,20 +592,30 @@ def main(
             file=sys.stderr,
         )
         return 1
-    print(
-        json.dumps(
-            {
-                "schema": COMMAND_SCHEMA,
-                "command": args.command,
-                "ok": True,
-                "verdict": _command_verdict(args.command, result),
-                "result": _jsonable(result),
-            },
-            ensure_ascii=False,
-            indent=2,
-            sort_keys=True,
+    payload = {
+        "schema": COMMAND_SCHEMA,
+        "command": args.command,
+        "ok": True,
+        "verdict": _command_verdict(args.command, result),
+        "result": _jsonable(result),
+    }
+    try:
+        print(
+            json.dumps(
+                payload,
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            )
         )
-    )
+    except BrokenPipeError:
+        # A bounded consumer such as ``head`` closing stdout is a normal
+        # transport event; retain the command's domain exit code and avoid a
+        # second traceback during interpreter shutdown.
+        try:
+            sys.stdout = open(os.devnull, "w", encoding="utf-8")
+        except OSError:
+            pass
     return _result_exit_code(args.command, result)
 
 
