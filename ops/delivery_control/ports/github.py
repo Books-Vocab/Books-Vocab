@@ -43,6 +43,15 @@ class GitHubQueryPort(Protocol):
 
 
 @runtime_checkable
+class GitHubBranchHistoryBatchPort(Protocol):
+    """Optional one-snapshot capability for branch lifecycle audits."""
+
+    def list_pull_requests_for_branches(
+        self, branches: tuple[str, ...]
+    ) -> PullRequestInventory: ...
+
+
+@runtime_checkable
 class RawIssueQueryPort(Protocol):
     """Optional additive capability for complete raw Issue inventory."""
 

@@ -91,13 +91,36 @@ class DeliveryApplication:
             git_command=self.git,
             github=self.github,
         )
+        orphan_assets = tuple(
+            asset
+            for asset in inventory.branch_lifecycle.local
+            if asset.disposition is BranchDisposition.ORPHAN_LOCAL_RECONCILE
+        )
+        branch_history_snapshot = None
+        list_pull_requests_for_branches = getattr(
+            self.github, "list_pull_requests_for_branches", None
+        )
+        if orphan_assets and callable(list_pull_requests_for_branches):
+            try:
+                branch_history_snapshot = list_pull_requests_for_branches(
+                    tuple(asset.branch for asset in orphan_assets)
+                )
+            except errors.DeliverySourceError as error:
+                branch_history_snapshot = observations.PullRequestInventory(
+                    records=(),
+                    problems=(
+                        observations.InventoryProblem(
+                            "github", "branch-history-snapshot", str(error)
+                        ),
+                    ),
+                )
         orphan_preflights = {
             asset.branch: orphan_service.preflight(
                 branch=asset.branch,
                 expected_head_sha=asset.sha,
+                pr_history=branch_history_snapshot,
             )
-            for asset in inventory.branch_lifecycle.local
-            if asset.disposition is BranchDisposition.ORPHAN_LOCAL_RECONCILE
+            for asset in orphan_assets
         }
         return branch_audit.build_branch_audit(
             inventory,

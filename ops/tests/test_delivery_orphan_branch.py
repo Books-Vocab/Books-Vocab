@@ -96,8 +96,10 @@ class FakeGit:
 class FakeGitHub:
     def __init__(self, inventory: PullRequestInventory | None = None) -> None:
         self.inventory = inventory or PullRequestInventory(())
+        self.calls = 0
 
     def list_pull_requests_for_branch(self, branch: str) -> PullRequestInventory:
+        self.calls += 1
         return self.inventory
 
 
@@ -147,6 +149,18 @@ def test_preflight_is_read_only_and_reports_all_passed_checks() -> None:
     assert result.blockers == ()
     assert len(result.passed_checks) == 7
     assert git.actions == []
+
+
+def test_preflight_uses_branch_history_snapshot_without_querying_per_branch() -> None:
+    github = FakeGitHub()
+    result = _build_service(git=FakeGit(), github=github).preflight(
+        branch=BRANCH,
+        expected_head_sha=HEAD,
+        pr_history=PullRequestInventory(()),
+    )
+
+    assert result.eligible
+    assert github.calls == 0
 
 
 def test_preflight_reports_blocker_without_deleting() -> None:
