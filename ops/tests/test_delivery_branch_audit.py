@@ -333,6 +333,37 @@ def test_branch_audit_scopes_registry_problem_to_exact_branch() -> None:
     assert report.source_problem_actions[0].scope == "branch"
 
 
+def test_branch_audit_surfaces_scoped_problem_on_blocked_orphan_action() -> None:
+    lifecycle = project_branch_lifecycle(
+        branch_inventory=BranchInventory(local=(("feat/other", SHA_B),))
+    )
+    inventory = DeliveryInventory(
+        lanes=(),
+        branch_lifecycle=lifecycle,
+        source_problems=(
+            InventoryProblem(
+                "registry",
+                "feat/other",
+                "malformed legacy record",
+                identity_kind="branch",
+                record_status="abandoned",
+            ),
+        ),
+    )
+
+    report = build_branch_audit(inventory)
+
+    action = report.actions[0]
+    assert action.category == "source_incomplete"
+    assert action.safe_terminal is False
+    assert "source inventory problems affecting this branch" in action.next_step
+    assert "registry:feat/other" in action.next_step
+    assert action.review_command == (
+        "./ops/delivery.py branch-inspect --branch feat/other "
+        "--expected-head-sha " + SHA_B
+    )
+
+
 def test_branch_audit_withholds_exact_affected_branch_but_not_unrelated_branch() -> (
     None
 ):

@@ -184,8 +184,6 @@ def _withheld_by_source_problem(
 ) -> BranchAuditAction:
     """Remove mutation affordances only for affected or globally unknown sources."""
 
-    if not action.safe_terminal:
-        return action
     relevant = tuple(
         problem
         for problem in source_problem_actions

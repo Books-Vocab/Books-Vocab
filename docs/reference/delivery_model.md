@@ -250,6 +250,8 @@ Scope 只回答「本機哪個工作樹可改哪些檔案」；Issue acceptance�
 
 長任務的本機安全帳本另由 `ops/task_registry.py` 與 `ops/lib/streaming_command.py` 負責。它只記錄 process identity、process group、heartbeat、log path 與 terminal outcome，用來避免誤殺或靜默等待本機程序；它不是 Issue、Project、PR、backlog 或任何產品工作項目的狀態。
 
+branch-audit 的 branch-scoped source problem 會同步投影到該 branch action 的 `source_incomplete` 分類與 blocker；這只改善觀測與下一步提示，不放寬任何 cleanup gate。
+
 ## 遷移後的判斷準則
 
 保留真正產品程式碼與測試、backend／iOS 測試入口、GitHub Actions、PR template／required checks、deployment safety wrapper、生產批准／health gate／rollback、CloudKit／資料庫／域名／App Store／TestFlight SOP、docs registry／impact／lint、薄型本地 coordinator，以及長任務 process-safety ledger。凡是只為模擬 GitHub Issue、Project、PR、review、merge 或狀態追蹤而存在的本地描述、資料庫、看板與流程，都不屬於這個模型。
