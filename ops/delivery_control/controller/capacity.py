@@ -127,10 +127,7 @@ def decide_capacity(
     elif metrics.unadmitted_open_issues:
         add(
             ControlAction.TRIAGE_EXISTING_ISSUES,
-            (
-                f"{metrics.unadmitted_open_issues} open Issues lack an explicit "
-                "candidate, owner, blocked, or terminal disposition"
-            ),
+            _unadmitted_issue_reason(metrics),
         )
     if metrics.legacy_open_issues:
         add(
@@ -398,4 +395,25 @@ def decide_capacity(
         actions=tuple(actions),
         desired_new_solvers=desired_new_solvers,
         reasons=tuple(reasons),
+    )
+
+
+def _unadmitted_issue_reason(metrics: PipelineMetrics) -> str:
+    """Describe the raw Issue partitions still outside the dispatch flow."""
+
+    partitions = []
+    if metrics.triage_required_issues:
+        partitions.append(f"triage_required={metrics.triage_required_issues}")
+    if metrics.legacy_open_issues:
+        partitions.append(f"legacy_unmapped={metrics.legacy_open_issues}")
+    if metrics.issue_source_problems:
+        partitions.append(f"source_problem={metrics.issue_source_problems}")
+    detail = ", ".join(partitions)
+    if detail:
+        return (
+            f"{metrics.unadmitted_open_issues} open Issues remain unadmitted: {detail}"
+        )
+    return (
+        f"{metrics.unadmitted_open_issues} open Issues remain unadmitted; "
+        "partition evidence is incomplete"
     )
