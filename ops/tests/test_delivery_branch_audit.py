@@ -128,6 +128,29 @@ def test_branch_audit_emits_one_action_per_ref_and_safe_cleanup_candidate() -> N
     )
 
 
+def test_branch_audit_keeps_unknown_asset_incomplete() -> None:
+    lifecycle = project_branch_lifecycle(
+        branch_inventory=BranchInventory(local=(("feat/mismatch", SHA_B),)),
+        records=(_record("feat/mismatch", "merged", SHA_A),),
+        pull_requests=(_pr(1499, "feat/mismatch", "MERGED", SHA_B),),
+    )
+    inventory = DeliveryInventory(
+        lanes=(),
+        branch_lifecycle=lifecycle,
+        live_main_sha=SHA_A,
+        local_main_sha=SHA_A,
+    )
+
+    report = build_branch_audit(inventory)
+
+    assert report.assets[0].disposition is BranchDisposition.UNKNOWN
+    assert report.actions[0].category == "inspect"
+    assert report.actions[0].safe_terminal is False
+    assert report.complete is False
+    assert report.verdict == "incomplete"
+    assert report.safe_terminal_actions == ()
+
+
 def test_branch_audit_keeps_source_problems_visible_and_fail_closed() -> None:
     lifecycle = project_branch_lifecycle(
         branch_inventory=BranchInventory(local=(("feat/orphan", SHA_B),))
