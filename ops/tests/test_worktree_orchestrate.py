@@ -77,6 +77,141 @@ def test_mutating_worktree_command_uses_shared_operation_lock(
     assert events == []
 
 
+def test_resolve_remove_deletes_exact_local_branch_after_remote_absence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    branch = "debug/orphan"
+    expected = "a" * 40
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    calls: list[list[str]] = []
+
+    def fake_git(args: list[str], cwd: Path = coordinator.ROOT) -> tuple[int, str]:
+        calls.append(args)
+        if args[:2] == ["show-ref", "--verify"]:
+            return 0, f"{expected} refs/heads/{branch}"
+        if args[:2] == ["ls-remote", "origin"]:
+            return 0, ""
+        if args == ["status", "--porcelain"]:
+            return 0, ""
+        if args == ["branch", "--show-current"]:
+            return 0, branch
+        return 0, ""
+
+    registry_calls: list[list[str]] = []
+    monkeypatch.setattr(coordinator, "_git", fake_git)
+    monkeypatch.setattr(
+        coordinator.registry,
+        "main",
+        lambda argv, acquire_lock=False: registry_calls.append(argv) or 0,
+    )
+
+    args = Namespace(
+        status="abandoned",
+        branch=branch,
+        path=str(worktree),
+        state=None,
+        json=True,
+        expected_generation=0,
+        expected_head_sha=expected,
+        remove=True,
+    )
+
+    assert coordinator.cmd_resolve(args) == coordinator.EXIT_OK
+    assert registry_calls
+    assert ["branch", "-D", "--", branch] in calls
+    assert calls.index(["branch", "-D", "--", branch]) > calls.index(
+        ["worktree", "remove", str(worktree)]
+    )
+
+
+def test_resolve_remove_preserves_assets_when_remote_branch_exists(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    branch = "debug/remote-drift"
+    expected = "b" * 40
+    calls: list[list[str]] = []
+
+    def fake_git(args: list[str], cwd: Path = coordinator.ROOT) -> tuple[int, str]:
+        calls.append(args)
+        if args[:2] == ["show-ref", "--verify"]:
+            return 0, f"{expected} refs/heads/{branch}"
+        if args[:2] == ["ls-remote", "origin"]:
+            return 0, f"{expected}\trefs/heads/{branch}"
+        return 0, ""
+
+    registry_calls: list[list[str]] = []
+    monkeypatch.setattr(coordinator, "_git", fake_git)
+    monkeypatch.setattr(
+        coordinator.registry,
+        "main",
+        lambda argv, acquire_lock=False: registry_calls.append(argv) or 0,
+    )
+
+    args = Namespace(
+        status="abandoned",
+        branch=branch,
+        path=None,
+        state=None,
+        json=True,
+        expected_generation=0,
+        expected_head_sha=expected,
+        remove=True,
+    )
+
+    assert coordinator.cmd_resolve(args) == coordinator.EXIT_BLOCK
+    assert not registry_calls
+    assert "remote branch exists" in capsys.readouterr().err
+    assert ["branch", "-D", "--", branch] not in calls
+
+
+def test_resolve_remove_preserves_branch_when_head_drifts_after_transition(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    branch = "debug/drift"
+    expected = "c" * 40
+    drifted = "d" * 40
+    show_ref_calls = 0
+    calls: list[list[str]] = []
+
+    def fake_git(args: list[str], cwd: Path = coordinator.ROOT) -> tuple[int, str]:
+        nonlocal show_ref_calls
+        calls.append(args)
+        if args[:2] == ["show-ref", "--verify"]:
+            show_ref_calls += 1
+            head = expected if show_ref_calls == 1 else drifted
+            return 0, f"{head} refs/heads/{branch}"
+        if args[:2] == ["ls-remote", "origin"]:
+            return 0, ""
+        return 0, ""
+
+    registry_calls: list[list[str]] = []
+    monkeypatch.setattr(coordinator, "_git", fake_git)
+    monkeypatch.setattr(
+        coordinator.registry,
+        "main",
+        lambda argv, acquire_lock=False: registry_calls.append(argv) or 0,
+    )
+
+    args = Namespace(
+        status="abandoned",
+        branch=branch,
+        path=None,
+        state=None,
+        json=True,
+        expected_generation=0,
+        expected_head_sha=expected,
+        remove=True,
+    )
+
+    assert coordinator.cmd_resolve(args) == coordinator.EXIT_BLOCK
+    assert registry_calls
+    assert ["branch", "-D", "--", branch] not in calls
+
+
 def _fixture_receipt_body(*, number: int, branch: str, base: str, head: str) -> str:
     receipt = HandbackReceipt(
         lane_id=f"DIRECT-PR-{number}",

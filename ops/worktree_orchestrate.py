@@ -35,6 +35,7 @@ if str(OPS_DIR) not in sys.path:
     sys.path.insert(0, str(OPS_DIR))
 
 import worktree_reanchor
+import worktree_cleanup
 import worktree_registry as registry
 import worktree_resume
 from delivery_control.adapters.operation_lock import OperationLock
@@ -1084,6 +1085,28 @@ def cmd_freeze(args: argparse.Namespace) -> int:
 
 
 def cmd_resolve(args: argparse.Namespace) -> int:
+    branch = None
+    worktree = None
+    if args.remove:
+        branch, worktree, refusal = worktree_cleanup.resolve_remove_target(
+            args,
+            root=ROOT,
+            path_resolver=_path,
+            git=_git,
+        )
+        if refusal:
+            print(f"✗ resolve --remove blocked: {refusal}", file=sys.stderr)
+            return EXIT_BLOCK
+        refusal = worktree_cleanup.preflight_resolve_remove(
+            branch=branch,
+            worktree=worktree,
+            expected_head_sha=args.expected_head_sha,
+            root=ROOT,
+            git=_git,
+        )
+        if refusal:
+            print(f"✗ resolve --remove blocked: {refusal}", file=sys.stderr)
+            return EXIT_BLOCK
     argv = ["resolve", "--status", args.status]
     if args.branch:
         argv += ["--branch", args.branch]
@@ -1100,13 +1123,15 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     rc = registry.main(argv, acquire_lock=False)
     if rc != EXIT_OK or not args.remove:
         return rc
-    worktree = _path(args.path) if args.path else None
-    if worktree and worktree != ROOT:
-        git_rc, output = _git(["worktree", "remove", str(worktree)], ROOT)
-        if git_rc != 0:
-            print(f"✗ worktree remove failed: {output}", file=sys.stderr)
-            return EXIT_BLOCK
-    return EXIT_OK
+    return worktree_cleanup.cleanup_resolved_local_assets(
+        branch=branch,
+        worktree=worktree,
+        expected_head_sha=args.expected_head_sha,
+        root=ROOT,
+        git=_git,
+        exit_block=EXIT_BLOCK,
+        exit_ok=EXIT_OK,
+    )
 
 
 def _parser() -> argparse.ArgumentParser:
