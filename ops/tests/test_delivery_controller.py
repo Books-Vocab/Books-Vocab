@@ -225,6 +225,63 @@ def test_transport_slo_without_breach_does_not_create_transport_actions() -> Non
     assert ControlAction.AUDIT_TRANSPORT_SLO not in decision.actions
 
 
+def test_ci_start_slo_breach_is_not_a_required_repair_without_failed_checks() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    decision = decide_capacity(
+        _metrics(
+            required_failed=0,
+            required_absent=0,
+            timings=PipelineTimings(pr_to_required_start_p95_seconds=61.0),
+        ),
+        cadence,
+    )
+
+    assert ControlAction.REPAIR_REQUIRED not in decision.actions
+    assert ControlAction.AUDIT_CI_START_SLO in decision.actions
+
+
+def test_ci_start_slo_breach_preserves_required_repair_for_failed_checks() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    decision = decide_capacity(
+        _metrics(
+            required_failed=1,
+            timings=PipelineTimings(pr_to_required_start_p95_seconds=61.0),
+        ),
+        cadence,
+    )
+
+    assert ControlAction.REPAIR_REQUIRED in decision.actions
+    assert ControlAction.AUDIT_CI_START_SLO in decision.actions
+
+
+def test_queue_admission_slo_breach_is_not_enqueue_without_green_work() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    decision = decide_capacity(
+        _metrics(
+            required_green=0,
+            timings=PipelineTimings(required_success_to_enqueue_p95_seconds=31.0),
+        ),
+        cadence,
+    )
+
+    assert ControlAction.ENQUEUE_GREEN not in decision.actions
+    assert ControlAction.AUDIT_QUEUE_ADMISSION_SLO in decision.actions
+
+
+def test_queue_admission_slo_breach_preserves_enqueue_for_green_work() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    decision = decide_capacity(
+        _metrics(
+            required_green=1,
+            timings=PipelineTimings(required_success_to_enqueue_p95_seconds=31.0),
+        ),
+        cadence,
+    )
+
+    assert ControlAction.ENQUEUE_GREEN in decision.actions
+    assert ControlAction.AUDIT_QUEUE_ADMISSION_SLO in decision.actions
+
+
 def test_candidate_policy_replenishes_low_reservoir_while_dispatching_existing_supply() -> (
     None
 ):
@@ -550,8 +607,10 @@ def test_controller_turns_transport_and_admission_latency_into_actions() -> None
 
     assert ControlAction.AUDIT_TRANSPORT_SLO in decision.actions
     assert ControlAction.PUBLISH_HANDBACKS not in decision.actions
-    assert ControlAction.REPAIR_REQUIRED in decision.actions
-    assert ControlAction.ENQUEUE_GREEN in decision.actions
+    assert ControlAction.AUDIT_CI_START_SLO in decision.actions
+    assert ControlAction.AUDIT_QUEUE_ADMISSION_SLO in decision.actions
+    assert ControlAction.REPAIR_REQUIRED not in decision.actions
+    assert ControlAction.ENQUEUE_GREEN not in decision.actions
 
 
 def test_controller_reports_source_uncertainty_instead_of_fabricating_supply() -> None:
