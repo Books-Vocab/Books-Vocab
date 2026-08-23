@@ -19,7 +19,9 @@ def _emit(payload: dict[str, Any], *, as_json: bool) -> None:
     if as_json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     elif payload.get("status") == "ready-for-owner-fix":
-        print(f"✓ resumed {payload['branch']} for its original owner at {payload['worktree']}")
+        print(
+            f"✓ resumed {payload['branch']} for its original owner at {payload['worktree']}"
+        )
     else:
         print(f"✗ resume-published refused: {payload.get('reason', 'unknown reason')}")
 
@@ -50,6 +52,7 @@ def cmd_resume(args: argparse.Namespace, *, freeze_reason: str | None = None) ->
             expected_remote_head=args.expected_remote_head,
             target=Path(args.path).expanduser().resolve(),
             previous_handback=args.previous_handback,
+            mode=args.mode,
         )
     except ReanchorRefused as exc:
         payload = {
@@ -76,7 +79,8 @@ def cmd_resume(args: argparse.Namespace, *, freeze_reason: str | None = None) ->
 
 def add_parser(
     subparsers: Any,
-    *, common: Callable[[argparse.ArgumentParser], None],
+    *,
+    common: Callable[[argparse.ArgumentParser], None],
     handler: Callable[[argparse.Namespace], int],
     default_repo: Path,
 ) -> argparse.ArgumentParser:
@@ -95,6 +99,15 @@ def add_parser(
         "--previous-handback",
         default=None,
         help="allow an owner-preserving refresh when the published PR advanced",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("required-failure", "maintenance"),
+        default="required-failure",
+        help=(
+            "resume contract: required-failure needs an exact required failure; "
+            "maintenance permits same-owner work on an exact published PR"
+        ),
     )
     parser.add_argument("--path", required=True)
     parser.set_defaults(func=handler)
