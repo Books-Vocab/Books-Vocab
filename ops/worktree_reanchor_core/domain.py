@@ -30,6 +30,7 @@ class ReanchorRequest:
     expected_remote_head: str
     live_main: str
     target: Path
+    preserve_conflict: bool = False
 
 
 @dataclass(frozen=True)
@@ -83,6 +84,42 @@ def success_payload(
         "next_action": (
             "original owner runs tests and emits a fresh typed hand-back; "
             f"PI updates the same PR #{request.merge_front_pr}"
+        ),
+        "not_performed": ["tests", "hand-back", "push", "force-push"],
+    }
+
+
+def conflict_payload(
+    request: ReanchorRequest,
+    *,
+    active: dict[str, Any],
+    declared: DeclaredOperations,
+    merge_front_policy: str | None,
+    git_output: str,
+) -> dict[str, Any]:
+    """Keep one owner-visible rebase conflict as a registered active blocker."""
+
+    return {
+        "schema": SCHEMA,
+        "action": "reanchor",
+        "status": "owner-action-required",
+        "merge_front_pr": request.merge_front_pr,
+        "merge_front_policy": merge_front_policy,
+        "lane": request.lane_id,
+        "branch": request.branch,
+        "owner_thread_id": request.owner_thread_id,
+        "original_claim_generation": request.claim_generation,
+        "claim_generation": active["claim_generation"],
+        "previous_head": request.expected_remote_head,
+        "base_sha": request.live_main,
+        "worktree": str(request.target),
+        "scope": [item[0] for item in declared],
+        "record": active,
+        "reason": "rebase conflict preserved for the original owner",
+        "git": git_output,
+        "next_action": (
+            "original owner resolves the rebase conflict, completes the rebase, "
+            "runs bounded tests, and emits a fresh typed hand-back"
         ),
         "not_performed": ["tests", "hand-back", "push", "force-push"],
     }

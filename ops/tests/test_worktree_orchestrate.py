@@ -792,8 +792,9 @@ def _reanchor_argv(
     *,
     owner: str = "owner-thread-1",
     lane: str = "DIRECT-REANCHOR-1",
+    preserve_conflict: bool = False,
 ) -> list[str]:
-    return [
+    argv = [
         "reanchor",
         "--repo",
         str(repo),
@@ -817,6 +818,9 @@ def _reanchor_argv(
         str(target),
         "--json",
     ]
+    if preserve_conflict:
+        argv.append("--preserve-conflict")
+    return argv
 
 
 def test_reanchor_recreates_exact_remote_branch_for_same_owner(
@@ -1067,6 +1071,34 @@ def test_reanchor_conflict_aborts_and_removes_only_created_local_assets(
         == expected["remote_head"]
     )
     assert all(item["status"] != "active" for item in state["records"])
+
+
+def test_reanchor_conflict_can_remain_registered_for_original_owner(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, state_path, target, expected = _reanchor_fixture(tmp_path, conflict=True)
+
+    rc = coordinator.main(
+        _reanchor_argv(repo, state_path, target, expected, preserve_conflict=True)
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    state = coordinator.registry.load_state(state_path)
+    active = [item for item in state["records"] if item["status"] == "active"]
+    assert rc == coordinator.EXIT_BLOCK
+    assert payload["status"] == "owner-action-required"
+    assert payload["reason"] == "rebase conflict preserved for the original owner"
+    assert target.exists()
+    assert "UU shared.txt" in _git(target, "status", "--porcelain")
+    assert len(active) == 1
+    assert active[0]["claim_generation"] == 5
+    assert active[0]["base_sha"] == expected["live_main"]
+    assert "handback_seal" not in active[0]
+    assert (
+        _git(repo, "ls-remote", "origin", "refs/heads/feat/exact-pr").split()[0]
+        == expected["remote_head"]
+    )
 
 
 def _resume_argv(
