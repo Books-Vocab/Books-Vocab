@@ -157,6 +157,55 @@ def test_branch_audit_keeps_source_problems_visible_and_fail_closed() -> None:
             ),
         ),
     )
+    assert report.raw_active_registry_records == 0
+    assert report.malformed_registry_records == 0
+    assert report.registry_record_problem_actions == ()
+    assert report.registry_record_problem_status_counts == {}
+
+
+def test_branch_audit_counts_malformed_active_registry_record_without_admitting_it() -> (
+    None
+):
+    lifecycle = project_branch_lifecycle(
+        branch_inventory=BranchInventory(local=(("feat/malformed", SHA_A),))
+    )
+    inventory = DeliveryInventory(
+        lanes=(),
+        branch_lifecycle=lifecycle,
+        source_problems=(
+            InventoryProblem(
+                "registry",
+                "feat/malformed",
+                "registry base must be an exact commit SHA",
+                identity_kind="branch",
+                record_status="active",
+            ),
+        ),
+    )
+
+    report = build_branch_audit(inventory)
+
+    assert report.complete is False
+    assert report.active_registry_records == 0
+    assert report.raw_active_registry_records == 1
+    assert report.malformed_registry_records == 1
+    assert report.registry_record_problem_actions == (
+        BranchAuditSourceProblem(
+            source="registry",
+            identity="feat/malformed",
+            reason="registry base must be an exact commit SHA",
+            category="registry_source_problem",
+            next_step=(
+                "preserve feat/malformed assets; reconcile its malformed registry "
+                "record through the supported owner lifecycle before cleanup"
+            ),
+            identity_kind="branch",
+            scope="branch",
+            affected_branch="feat/malformed",
+            record_status="active",
+        ),
+    )
+    assert report.registry_record_problem_status_counts == {"active": 1}
 
 
 def test_branch_audit_withholds_otherwise_safe_cleanup_when_source_is_incomplete() -> (
