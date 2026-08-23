@@ -135,7 +135,14 @@ class BranchContentReviewItem:
 
 @dataclass(frozen=True)
 class BranchContentReviewPlan:
-    """A bounded page over local orphan content; it never authorizes deletion."""
+    """A bounded page over local orphan content; it never authorizes deletion.
+
+    ``reviewable_complete`` is deliberately separate from ``complete``.  The
+    former says that this invocation started at the first page and exhausted
+    the reviewable orphan queue with complete content evidence.  The latter
+    additionally requires the complete branch audit, including assets that are
+    intentionally excluded from this review queue.
+    """
 
     schema: str
     live_main_sha: str | None
@@ -148,6 +155,7 @@ class BranchContentReviewPlan:
     remaining_count: int
     source_problem_count: int
     items: tuple[BranchContentReviewItem, ...]
+    reviewable_complete: bool | None = None
 
     def __post_init__(self) -> None:
         _text(self.schema, "branch review plan schema")
@@ -174,12 +182,22 @@ class BranchContentReviewPlan:
             raise InvalidReceipt("branch review plan remaining count is inconsistent")
         if len(self.items) > self.limit:
             raise InvalidReceipt("branch review plan exceeds its page limit")
-        if self.complete != (
-            self.audit_complete
-            and self.live_main_sha is not None
+        expected_reviewable_complete = (
+            self.live_main_sha is not None
+            and self.offset == 0
             and self.remaining_count == 0
             and all(item.content.complete for item in self.items)
-        ):
+        )
+        if self.reviewable_complete is not None:
+            if type(self.reviewable_complete) is not bool:
+                raise InvalidReceipt(
+                    "branch review plan reviewable completeness is invalid"
+                )
+            if self.reviewable_complete != expected_reviewable_complete:
+                raise InvalidReceipt(
+                    "branch review plan reviewable completeness is inconsistent"
+                )
+        if self.complete != (self.audit_complete and expected_reviewable_complete):
             raise InvalidReceipt("branch review plan completeness is inconsistent")
 
 
