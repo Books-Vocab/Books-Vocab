@@ -472,8 +472,32 @@ def test_controller_never_reports_healthy_when_merge_cadence_misses_slo() -> Non
 
     decision = decide_capacity(metrics, stalled)
 
+    assert ControlAction.AUDIT_MERGE_CADENCE in decision.actions
     assert ControlAction.RECOVER_MERGE_CADENCE in decision.actions
     assert ControlAction.HEALTHY not in decision.actions
+
+
+def test_controller_audits_cadence_without_claiming_recovery_supply() -> None:
+    now = datetime(2026, 8, 21, 1, tzinfo=UTC)
+    stalled = measure_merge_cadence((), now=now)
+
+    decision = decide_capacity(_metrics(), stalled)
+
+    assert ControlAction.AUDIT_MERGE_CADENCE in decision.actions
+    assert ControlAction.RECOVER_MERGE_CADENCE not in decision.actions
+
+
+def test_controller_does_not_audit_cadence_when_slo_is_healthy() -> None:
+    now = datetime(2026, 8, 21, 1, tzinfo=UTC)
+    healthy = measure_merge_cadence(
+        tuple(now - timedelta(minutes=5 * offset) for offset in range(12)),
+        now=now,
+    )
+
+    decision = decide_capacity(_metrics(candidate_issues=0), healthy)
+
+    assert ControlAction.AUDIT_MERGE_CADENCE not in decision.actions
+    assert ControlAction.RECOVER_MERGE_CADENCE not in decision.actions
 
 
 def test_controller_requires_required_and_merge_buffer_watermarks() -> None:
