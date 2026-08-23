@@ -218,6 +218,10 @@ class DeliveryApplication:
                 branches=tuple(action.branch for action in selected),
                 base_sha=audit.live_main_sha,
             )
+            contents = {
+                branch: branch_content.BranchContentService.compact_for_review(evidence)
+                for branch, evidence in contents.items()
+            }
         items = tuple(
             BranchContentReviewItem(
                 schema="kg.delivery.branch-content-review-item.v1",

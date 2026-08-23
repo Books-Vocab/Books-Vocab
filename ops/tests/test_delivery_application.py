@@ -16,7 +16,10 @@ from delivery_control.adapters.telemetry_ndjson import TelemetryNdjsonAdapter  #
 from delivery_control.application import DeliveryApplication, build_application  # noqa: E402
 from delivery_control.controller.dogfood import DogfoodProfile  # noqa: E402
 from delivery_control.controller.metrics import MergeCadence  # noqa: E402
-from delivery_control.domain.branch_content import BranchContentEvidence  # noqa: E402
+from delivery_control.domain.branch_content import (  # noqa: E402
+    BRANCH_REVIEW_PATH_LIMIT,
+    BranchContentEvidence,
+)
 from delivery_control.domain.branch_lifecycle import BranchSide  # noqa: E402
 from delivery_control.services.branch_content import BranchContentService  # noqa: E402
 
@@ -249,6 +252,72 @@ def test_branch_review_plan_pages_orphans_and_preserves_incomplete_audit(
     assert plan.remaining_count == 0
     assert plan.complete is False
     assert plan.items[0].content.head_sha == "b" * 40
+
+
+def test_branch_review_plan_bounds_path_sample_without_losing_fingerprint(
+    tmp_path: Path,
+) -> None:
+    application = DeliveryApplication(
+        repo=tmp_path,
+        git=Mock(),
+        github=Mock(),
+        registry=Mock(),
+        runtime=Mock(),
+        telemetry=Mock(),
+    )
+    changed_paths = tuple(
+        f"file-{index:03d}.txt" for index in range(BRANCH_REVIEW_PATH_LIMIT + 5)
+    )
+    evidence = BranchContentEvidence(
+        schema="kg.delivery.branch-content.v1",
+        branch="backup/orphan",
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+        base_is_ancestor=False,
+        ahead_commit_count=2,
+        behind_commit_count=1,
+        changed_paths=changed_paths,
+        changed_path_count=len(changed_paths),
+        changed_paths_truncated=False,
+        change_fingerprint="c" * 64,
+        commit_subjects=("feature",),
+        commit_subjects_truncated=False,
+        complete=True,
+    )
+    action = SimpleNamespace(
+        side=BranchSide.LOCAL,
+        branch="backup/orphan",
+        sha="b" * 40,
+        review_command="./ops/delivery.py branch-inspect ...",
+        orphan_preflight=SimpleNamespace(
+            eligible=False,
+            blockers=("not ancestor",),
+        ),
+        next_step="review content",
+    )
+    audit = SimpleNamespace(
+        actions=(action,),
+        live_main_sha="a" * 40,
+        complete=False,
+        source_problem_actions=(object(),),
+    )
+
+    with (
+        patch.object(DeliveryApplication, "branch_audit", return_value=audit),
+        patch.object(
+            BranchContentService,
+            "inspect_many",
+            return_value={"backup/orphan": evidence},
+        ),
+    ):
+        plan = application.branch_review_plan(offset=0, limit=1)
+
+    content = plan.items[0].content
+    assert len(content.changed_paths) == BRANCH_REVIEW_PATH_LIMIT
+    assert content.changed_paths == changed_paths[:BRANCH_REVIEW_PATH_LIMIT]
+    assert content.changed_path_count == len(changed_paths)
+    assert content.changed_paths_truncated is True
+    assert content.change_fingerprint == "c" * 64
 
 
 def test_metrics_forwards_supervision_worktree_paths_to_inspect(
