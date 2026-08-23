@@ -422,7 +422,11 @@ def build_branch_audit(
         _action_for_asset(asset, orphan_preflight=preflights.get(asset.branch))
         for asset in assets
     )
-    complete = not source_problems and not registry_only_actions
+    complete = (
+        not source_problems
+        and not registry_only_actions
+        and not any(asset.disposition is BranchDisposition.UNKNOWN for asset in assets)
+    )
     if not complete:
         actions = tuple(
             _withheld_by_source_problem(
