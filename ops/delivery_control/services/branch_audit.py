@@ -13,6 +13,10 @@ from ..domain.branch_lifecycle import (
 )
 from ..domain.inventory import DeliveryInventory
 from ..domain.observations import InventoryProblem, RegistrySnapshot
+from ..domain.unreachable_commits import (
+    EMPTY_UNREACHABLE_COMMIT_INVENTORY,
+    UnreachableCommitInventory,
+)
 from .orphan_branch import OrphanBranchPreflight
 
 
@@ -89,6 +93,9 @@ class BranchAuditReport:
     malformed_registry_records: int
     published_registry_records: int
     open_pull_requests: int
+    unreachable_commit_count: int
+    unreachable_commit_sample: tuple[str, ...]
+    unreachable_commit_next_step: str
     disposition_counts: dict[str, int]
     action_counts: dict[str, int]
     assets: tuple[BranchAsset, ...]
@@ -376,6 +383,7 @@ def build_branch_audit(
     inventory: DeliveryInventory,
     *,
     orphan_preflights: Mapping[str, OrphanBranchPreflight] | None = None,
+    unreachable_commits: UnreachableCommitInventory = EMPTY_UNREACHABLE_COMMIT_INVENTORY,
 ) -> BranchAuditReport:
     """Build a one-to-one action list without performing any mutation."""
 
@@ -421,6 +429,12 @@ def build_branch_audit(
         and lane.registry.status in {"published", "cleanup_pending"}
         for lane in inventory.lanes
     )
+    unreachable_commit_next_step = (
+        "correlate unreachable commit objects with an owner, Issue, or PR; "
+        "preserve them and never create a branch or delete them automatically"
+        if unreachable_commits.count
+        else "no unreachable commit objects observed"
+    )
     return BranchAuditReport(
         schema="kg.delivery.branch-audit.v1",
         complete=complete,
@@ -435,6 +449,9 @@ def build_branch_audit(
         malformed_registry_records=malformed_registry_records,
         published_registry_records=published_records,
         open_pull_requests=len(open_prs),
+        unreachable_commit_count=unreachable_commits.count,
+        unreachable_commit_sample=unreachable_commits.sample,
+        unreachable_commit_next_step=unreachable_commit_next_step,
         disposition_counts=inventory.branch_lifecycle.counts,
         action_counts={
             action: sum(item.cleanup_action.value == action for item in actions)
