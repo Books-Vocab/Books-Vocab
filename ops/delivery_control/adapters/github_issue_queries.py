@@ -30,6 +30,7 @@ query DeliveryOpenIssues(
         updatedAt
         labels(first: 100) {
           nodes { name }
+          pageInfo { hasNextPage }
         }
       }
       pageInfo { hasNextPage endCursor }
@@ -105,9 +106,24 @@ class GitHubIssueQueries:
                     payloads.append(node)
                     continue
                 labels = node.get("labels")
-                label_nodes = (
-                    labels.get("nodes") if isinstance(labels, Mapping) else None
-                )
+                if not isinstance(labels, Mapping):
+                    raise AdapterPayloadError(
+                        "GitHub Issue labels connection is malformed"
+                    )
+                label_nodes = labels.get("nodes")
+                label_page_info = labels.get("pageInfo")
+                if (
+                    not isinstance(label_nodes, list)
+                    or not isinstance(label_page_info, Mapping)
+                    or type(label_page_info.get("hasNextPage")) is not bool
+                ):
+                    raise AdapterPayloadError(
+                        "GitHub Issue labels pageInfo is malformed"
+                    )
+                if label_page_info["hasNextPage"]:
+                    raise DeliverySourceError(
+                        "GitHub Issue label inventory is incomplete"
+                    )
                 payloads.append(
                     {
                         "id": node.get("id"),

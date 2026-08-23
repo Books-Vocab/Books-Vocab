@@ -40,6 +40,9 @@ class StaticRunner:
         return self.responses.pop(0)
 
 
+_DEFAULT_LABEL_PAGE_INFO = object()
+
+
 def _result(stdout: str = "", *, argv: tuple[str, ...] = ("gh",)) -> CommandResult:
     return CommandResult(argv=argv, exit_code=0, stdout=stdout, stderr="")
 
@@ -74,7 +77,14 @@ def _issue(
     }
 
 
-def _graphql(issues: list[dict[str, object]], *, has_next: bool = False) -> str:
+def _graphql(
+    issues: list[dict[str, object]],
+    *,
+    has_next: bool = False,
+    label_page_info: object = _DEFAULT_LABEL_PAGE_INFO,
+) -> str:
+    if label_page_info is _DEFAULT_LABEL_PAGE_INFO:
+        label_page_info = {"hasNextPage": False, "endCursor": None}
     return json.dumps(
         {
             "data": {
@@ -83,7 +93,10 @@ def _graphql(issues: list[dict[str, object]], *, has_next: bool = False) -> str:
                         "nodes": [
                             {
                                 **issue,
-                                "labels": {"nodes": issue["labels"]},
+                                "labels": {
+                                    "nodes": issue["labels"],
+                                    "pageInfo": label_page_info,
+                                },
                             }
                             for issue in issues
                         ],
@@ -102,7 +115,9 @@ def _repo_name() -> CommandResult:
     return _result(json.dumps({"nameWithOwner": "owner/repo"}))
 
 
-def test_raw_issue_query_reads_all_pages_and_preserves_candidate_contract_errors() -> None:
+def test_raw_issue_query_reads_all_pages_and_preserves_candidate_contract_errors() -> (
+    None
+):
     malformed = _issue(2, labels=(CANDIDATE_ISSUE_LABEL,), body="missing contract")
     runner = StaticRunner(
         [
@@ -118,10 +133,55 @@ def test_raw_issue_query_reads_all_pages_and_preserves_candidate_contract_errors
     assert inventory.raw_open_issues == 2
     assert [item.number for item in inventory.records] == [1, 2]
     assert inventory.problems[0].identity == "Issue#2"
-    assert len([call for call in runner.calls if call[:3] == ("gh", "api", "graphql")]) == 2
+    graphql_calls = [
+        call for call in runner.calls if call[:3] == ("gh", "api", "graphql")
+    ]
+    assert len(graphql_calls) == 2
+    query = graphql_calls[0][graphql_calls[0].index("-f") + 1]
+    assert "labels(first: 100)" in query
+    assert "pageInfo { hasNextPage }" in query
     assert "-F" in runner.calls[1]
     assert "cursor=null" in runner.calls[1]
     assert "cursor=cursor-1" in runner.calls[3]
+
+
+def test_raw_issue_query_rejects_incomplete_label_inventory() -> None:
+    runner = StaticRunner(
+        [
+            _repo_name(),
+            _result(
+                _graphql(
+                    [_issue(1, labels=(CANDIDATE_ISSUE_LABEL,))],
+                    label_page_info={"hasNextPage": True, "endCursor": "labels-1"},
+                )
+            ),
+        ]
+    )
+
+    with pytest.raises(DeliverySourceError, match="label inventory is incomplete"):
+        GitHubCliAdapter(runner=runner).list_open_issues()
+
+
+@pytest.mark.parametrize(
+    "label_page_info",
+    (
+        None,
+        {},
+        {"hasNextPage": "yes"},
+    ),
+)
+def test_raw_issue_query_rejects_malformed_label_page_info(
+    label_page_info: object,
+) -> None:
+    runner = StaticRunner(
+        [
+            _repo_name(),
+            _result(_graphql([_issue(1)], label_page_info=label_page_info)),
+        ]
+    )
+
+    with pytest.raises(AdapterPayloadError, match="labels pageInfo is malformed"):
+        GitHubCliAdapter(runner=runner).list_open_issues()
 
 
 def test_raw_issue_query_fails_closed_on_graphql_errors() -> None:
@@ -146,13 +206,13 @@ def test_raw_issue_query_rejects_repeated_pagination_cursor() -> None:
         ]
     )
 
-    with pytest.raises(
-        DeliverySourceError, match="pagination cursor repeated"
-    ):
+    with pytest.raises(DeliverySourceError, match="pagination cursor repeated"):
         GitHubCliAdapter(runner=runner).list_open_issues()
 
 
-def test_raw_issue_query_preserves_malformed_graphql_node_without_inventing_number() -> None:
+def test_raw_issue_query_preserves_malformed_graphql_node_without_inventing_number() -> (
+    None
+):
     response = json.dumps(
         {
             "data": {
@@ -161,7 +221,13 @@ def test_raw_issue_query_preserves_malformed_graphql_node_without_inventing_numb
                         "nodes": [
                             {
                                 **_issue(1),
-                                "labels": {"nodes": []},
+                                "labels": {
+                                    "nodes": [],
+                                    "pageInfo": {
+                                        "hasNextPage": False,
+                                        "endCursor": None,
+                                    },
+                                },
                             },
                             None,
                         ],
@@ -258,7 +324,9 @@ def test_admission_stops_before_mutation_when_label_is_not_configured() -> None:
     assert not any(call[:3] == ("gh", "issue", "edit") for call in runner.calls)
 
 
-def test_admission_stops_before_mutation_when_target_source_entry_is_malformed() -> None:
+def test_admission_stops_before_mutation_when_target_source_entry_is_malformed() -> (
+    None
+):
     original = "Malformed candidate payload"
     malformed = _issue(7, body=original, labels=(CANDIDATE_ISSUE_LABEL,))
     runner = StaticRunner(
@@ -291,9 +359,7 @@ def test_admission_ignores_unrelated_malformed_raw_issue_entry() -> None:
         operator="supervisor",
     )
     malformed = {"number": 99, "labels": []}
-    page_with_unrelated_malformed = _graphql(
-        [_issue(body=original), malformed]
-    )
+    page_with_unrelated_malformed = _graphql([_issue(body=original), malformed])
     admitted_page_with_unrelated_malformed = _graphql(
         [
             _issue(body=admitted_body, labels=(CANDIDATE_ISSUE_LABEL,)),
