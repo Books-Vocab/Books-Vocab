@@ -530,6 +530,8 @@ def _runtime_timestamp(value: str | None, name: str) -> datetime | None:
 
 
 def _result_exit_code(command: str, result: object) -> int:
+    if command == "watchdog-claim":
+        return 0 if _watchdog_dispatch_authorized(result) else 2
     if command in {
         "branch-audit",
         "branch-review-plan",
@@ -549,6 +551,20 @@ def _result_exit_code(command: str, result: object) -> int:
         else getattr(result, "ready", None)
     )
     return 0 if ready is True else 2
+
+
+def _watchdog_dispatch_authorized(result: object) -> bool:
+    """Return true only for a claimed wake that may create one turn."""
+
+    if isinstance(result, Mapping):
+        action = result.get("action")
+        wake_claimed = result.get("wake_claimed")
+    else:
+        action = getattr(result, "action", None)
+        wake_claimed = getattr(result, "wake_claimed", None)
+    if isinstance(action, Enum):
+        action = action.value
+    return action == "wake" and wake_claimed is True
 
 
 def _run_command_serialized(
@@ -622,6 +638,8 @@ def main(
 def _command_verdict(command: str, result: object) -> str:
     """Expose domain incompleteness separately from command transport success."""
 
+    if command == "watchdog-claim":
+        return "wake-authorized" if _watchdog_dispatch_authorized(result) else "no-wake"
     if command in {
         "branch-audit",
         "branch-review-plan",

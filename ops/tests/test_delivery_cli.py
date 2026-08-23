@@ -1235,6 +1235,102 @@ def test_cli_exposes_watchdog_claim_before_external_dispatch(capsys: object) -> 
     payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
     assert payload["command"] == "watchdog-claim"
     assert payload["result"]["wake_claimed"] is True
+    assert payload["verdict"] == "wake-authorized"
+
+
+@pytest.mark.parametrize(
+    ("result", "expected_exit", "expected_verdict"),
+    [
+        (
+            {"action": "noop", "reason": "lease is valid", "wake_claimed": False},
+            2,
+            "no-wake",
+        ),
+        (
+            {
+                "action": "escalate",
+                "reason": "wake already issued for current stale receipt",
+                "wake_claimed": False,
+            },
+            2,
+            "no-wake",
+        ),
+        (
+            {"action": "wake", "wake_id": "wake-1", "wake_claimed": False},
+            2,
+            "no-wake",
+        ),
+    ],
+)
+def test_watchdog_claim_no_wake_is_not_a_dispatch_success(
+    result: dict[str, object],
+    expected_exit: int,
+    expected_verdict: str,
+    capsys: object,
+) -> None:
+    class FakeApplication:
+        def watchdog_claim(
+            self,
+            *,
+            supervisor_thread_id: str,
+            stale_after_seconds: int,
+        ) -> object:
+            assert supervisor_thread_id == "supervisor-thread"
+            assert stale_after_seconds == 300
+            return result
+
+    assert (
+        main(
+            [
+                "--runtime-status-file",
+                "/runtime/supervisor.json",
+                "watchdog-claim",
+                "--supervisor-thread",
+                "supervisor-thread",
+            ],
+            application_factory=lambda **_: FakeApplication(),
+        )
+        == expected_exit
+    )
+
+    payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert payload["ok"] is True
+    assert payload["command"] == "watchdog-claim"
+    assert payload["verdict"] == expected_verdict
+    assert payload["result"] == result
+
+
+def test_watchdog_read_only_observation_does_not_use_dispatch_exit_semantics(
+    capsys: object,
+) -> None:
+    class FakeApplication:
+        def watchdog(
+            self,
+            *,
+            supervisor_thread_id: str,
+            stale_after_seconds: int,
+        ) -> object:
+            assert supervisor_thread_id == "supervisor-thread"
+            assert stale_after_seconds == 300
+            return {"action": "wake", "wake_id": "wake-1", "wake_claimed": False}
+
+    assert (
+        main(
+            [
+                "--runtime-status-file",
+                "/runtime/supervisor.json",
+                "watchdog",
+                "--supervisor-thread",
+                "supervisor-thread",
+            ],
+            application_factory=lambda **_: FakeApplication(),
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert payload["command"] == "watchdog"
+    assert payload["verdict"] == "success"
 
 
 def test_cli_publishes_atomic_runtime_receipt(tmp_path: Path, capsys: object) -> None:
