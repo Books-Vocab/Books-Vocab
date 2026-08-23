@@ -232,7 +232,10 @@ def test_compact_preserves_in_flight_and_terminal_audit_records(
     assert reloaded["records"][3]["terminal_proof"] == exact_proof
     assert "terminal_proof" not in reloaded["records"][4]
 
-    assert registry.main(["list", "--state", str(state_path), "--json"]) == registry.EXIT_OK
+    assert (
+        registry.main(["list", "--state", str(state_path), "--json"])
+        == registry.EXIT_OK
+    )
     visible = json.loads(capsys.readouterr().out)
     assert visible["records"][3]["terminal_proof"] == exact_proof
     assert visible["records"][4]["status"] == "abandoned"
@@ -277,3 +280,45 @@ def test_load_state_surfaces_tampered_terminal_proof_without_rewriting(
         }
     ]
     assert state_path.read_text(encoding="utf-8") == original
+
+
+def test_discard_proof_is_losslessly_retained_and_validated(tmp_path: Path) -> None:
+    record = {
+        "branch": "feat/discarded-handback",
+        "path": str(tmp_path / "discarded-handback"),
+        "status": "abandoned",
+        "external_ids": ["DIRECT-1"],
+        "claim_generation": 2,
+        "base_sha": "a" * 40,
+        "handed_back_sha": "b" * 40,
+    }
+    record["discard_proof"] = registry.discard_proof_with_digest(
+        {
+            "schema": "kg.worktree.discard-proof.v1",
+            "disposition": "abandoned_handback_discarded",
+            "lane_id": "DIRECT-1",
+            "branch": record["branch"],
+            "head_sha": record["handed_back_sha"],
+            "claim_generation": 2,
+            "base_sha": record["base_sha"],
+            "handback_digest": None,
+            "operator": "supervisor",
+            "reason": "ownerless clean handback explicitly discarded",
+        }
+    )
+    state_path = tmp_path / "registry.json"
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+
+    assert (
+        registry.main(["compact", "--state", str(state_path), "--commit", "--json"])
+        == registry.EXIT_OK
+    )
+    persisted = registry.load_state(state_path)
+    assert persisted.get("problems", []) == []
+    assert persisted["records"][0]["discard_proof"] == record["discard_proof"]
+
+    tampered = json.loads(state_path.read_text(encoding="utf-8"))
+    tampered["records"][0]["discard_proof"]["operator"] = "other"
+    state_path.write_text(json.dumps(tampered, indent=2) + "\n", encoding="utf-8")
+    reloaded = registry.load_state(state_path)
+    assert reloaded["problems"][0]["kind"] == "registry-discard-proof-invalid"

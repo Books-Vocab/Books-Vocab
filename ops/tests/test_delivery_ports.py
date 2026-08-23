@@ -31,6 +31,7 @@ from delivery_control.ports.github import GitHubCommandPort, GitHubQueryPort
 from delivery_control.ports.registry import (
     RegistryCleanupQueryPort,
     RegistryCommandPort,
+    RegistryDiscardCommandPort,
     RegistryPublicationQueryPort,
     RegistryQueryPort,
 )
@@ -224,6 +225,20 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
         ) -> None:
             return None
 
+    class FakeRegistryDiscardCommand:
+        def discard(
+            self,
+            *,
+            lane_id: str,
+            expected_claim_generation: int,
+            expected_branch: str,
+            expected_path: str,
+            expected_head_sha: str,
+            operator: str,
+            reason: str,
+        ) -> None:
+            return None
+
     class FakeRegistryPublicationQuery:
         def get(self, lane_id: str) -> RegistrySnapshot | None:
             return None
@@ -258,6 +273,8 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
     assert isinstance(FakeRegistryPublicationQuery(), RegistryPublicationQueryPort)
     assert isinstance(FakeRegistryCleanupQuery(), RegistryCleanupQueryPort)
     assert isinstance(FakeRegistryCommand(), RegistryCommandPort)
+    assert not isinstance(FakeRegistryCommand(), RegistryDiscardCommandPort)
+    assert isinstance(FakeRegistryDiscardCommand(), RegistryDiscardCommandPort)
     assert isinstance(FakeRuntime(), AgentRuntimePort)
 
 

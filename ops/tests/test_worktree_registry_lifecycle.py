@@ -89,11 +89,70 @@ def test_direct_assignment_merged_transition_uses_branch_as_lane_identity(
 
     proof = _proof(record, lane_id=record["branch"])
     result = registry.main(
-        _resolve_args(state_path, record)
-        + ["--terminal-proof", json.dumps(proof)]
+        _resolve_args(state_path, record) + ["--terminal-proof", json.dumps(proof)]
     )
 
     assert result == registry.EXIT_OK
     resolved = registry.load_state(state_path)["records"][0]
     assert resolved["status"] == "merged"
     assert resolved["terminal_proof"] == proof
+
+
+def test_abandoned_handback_discard_requires_exact_head_and_is_idempotent(
+    tmp_path: Path,
+) -> None:
+    record = {
+        "branch": "feat/abandoned-handback",
+        "path": str(tmp_path / "abandoned-handback"),
+        "status": "abandoned",
+        "external_ids": ["DIRECT-1"],
+        "claim_generation": 4,
+        "base_sha": "a" * 40,
+        "handed_back_sha": "b" * 40,
+    }
+    state_path = tmp_path / "registry.json"
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+    args = [
+        "discard",
+        "--state",
+        str(state_path),
+        "--branch",
+        record["branch"],
+        "--path",
+        record["path"],
+        "--expected-generation",
+        "4",
+        "--expected-head-sha",
+        record["handed_back_sha"],
+        "--operator",
+        "supervisor",
+        "--reason",
+        "ownerless clean handback explicitly discarded",
+        "--json",
+    ]
+
+    wrong_head = registry.main(
+        [
+            *args[: args.index("--expected-head-sha") + 1],
+            "c" * 40,
+            *args[args.index("--operator") :],
+        ]
+    )
+    first = registry.main(args)
+    second = registry.main(args)
+    different_reason = registry.main(
+        [
+            *args[: args.index("--reason") + 1],
+            "different reason",
+            "--json",
+        ]
+    )
+
+    assert wrong_head == registry.EXIT_CLAIMED
+    assert first == registry.EXIT_OK
+    assert second == registry.EXIT_OK
+    assert different_reason == registry.EXIT_CLAIMED
+    persisted = registry.load_state(state_path)["records"][0]
+    assert persisted["status"] == "abandoned"
+    assert persisted["discard_proof"]["schema"] == "kg.worktree.discard-proof.v1"
+    assert persisted["discard_proof"]["head_sha"] == record["handed_back_sha"]

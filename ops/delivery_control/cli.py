@@ -39,6 +39,7 @@ MUTATING_COMMANDS = frozenset(
         "cleanup-merged",
         "abandon-pr",
         "cleanup-abandoned",
+        "discard-abandoned-handback",
         "sync-main",
     }
 )
@@ -225,6 +226,14 @@ def _parser() -> argparse.ArgumentParser:
         help="remove exact abandoned branch residue with no PR history",
     )
     cleanup_abandoned.add_argument("--branch", required=True)
+    discard_handback = commands.add_parser(
+        "discard-abandoned-handback",
+        help="discard one exact ownerless abandoned handback after CAS preflight",
+    )
+    discard_handback.add_argument("--branch", required=True)
+    discard_handback.add_argument("--expected-head-sha", required=True)
+    discard_handback.add_argument("--operator", required=True)
+    discard_handback.add_argument("--reason", required=True)
     commands.add_parser("sync-main", help="ff-only synchronize canonical main")
     return parser
 
@@ -405,6 +414,13 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
         return application.abandon_pr(args.pr)
     if args.command == "cleanup-abandoned":
         return application.cleanup_abandoned(args.branch)
+    if args.command == "discard-abandoned-handback":
+        return application.discard_abandoned_handback(
+            branch=args.branch,
+            expected_head_sha=args.expected_head_sha,
+            operator=args.operator,
+            reason=args.reason,
+        )
     if args.command == "sync-main":
         return application.sync_main()
     raise AssertionError(f"unhandled command: {args.command}")

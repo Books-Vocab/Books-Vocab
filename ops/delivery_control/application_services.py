@@ -35,6 +35,7 @@ from .ports.runtime import (
 from .ports.telemetry import TelemetryStorePort
 from .services import (
     abandon,
+    abandoned_handback,
     cleanup,
     inspect,
     legacy_cleanup,
@@ -497,6 +498,27 @@ class DeliveryApplication:
 
     def cleanup_abandoned(self, branch: str) -> object:
         return self._legacy_cleanup().cleanup_abandoned_branch(branch)
+
+    def discard_abandoned_handback(
+        self,
+        *,
+        branch: str,
+        expected_head_sha: str,
+        operator: str,
+        reason: str,
+    ) -> object:
+        return abandoned_handback.AbandonedHandbackDiscardService(
+            registry_query=self.registry,
+            registry_command=self.registry,
+            git_query=self.git,
+            git_command=self.git,
+            github=self.github,
+        ).discard(
+            branch=branch,
+            expected_head_sha=expected_head_sha,
+            operator=operator,
+            reason=reason,
+        )
 
     def sync_main(self) -> object:
         result = sync_main.MainSyncService(

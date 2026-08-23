@@ -149,6 +149,64 @@ def test_registry_adapter_records_published_base_with_exact_cas_arguments(
     ]
 
 
+def test_registry_adapter_records_discard_proof_with_exact_cas_arguments(
+    tmp_path: Path,
+) -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(
+                argv=("registry", "discard"),
+                exit_code=0,
+                stdout=json.dumps(
+                    {
+                        "action": "discard",
+                        "status": "abandoned",
+                        "records": [{"discard_proof": {"schema": "discard"}}],
+                    }
+                ),
+                stderr="",
+            )
+        ]
+    )
+    adapter = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"),
+        state_path=tmp_path / "registry.json",
+        runner=runner,
+    )
+
+    adapter.discard(
+        lane_id="DIRECT-1",
+        expected_claim_generation=3,
+        expected_branch="feat/orphan",
+        expected_path="/repo/orphan",
+        expected_head_sha="b" * 40,
+        operator="supervisor",
+        reason="ownerless clean handback explicitly discarded",
+    )
+
+    assert runner.calls == [
+        (
+            "/repo/ops/worktree_registry.py",
+            "discard",
+            "--json",
+            "--branch",
+            "feat/orphan",
+            "--path",
+            "/repo/orphan",
+            "--expected-generation",
+            "3",
+            "--expected-head-sha",
+            "b" * 40,
+            "--operator",
+            "supervisor",
+            "--reason",
+            "ownerless clean handback explicitly discarded",
+            "--state",
+            str(tmp_path / "registry.json"),
+        )
+    ]
+
+
 def test_registry_adapter_surfaces_malformed_records_without_hiding_valid_ones(
     tmp_path: Path,
 ) -> None:

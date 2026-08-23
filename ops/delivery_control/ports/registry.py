@@ -71,3 +71,20 @@ class RegistryCommandPort(Protocol):
         expected_head_sha: str,
         terminal_proof: MergedPullRequestProof | None = None,
     ) -> None: ...
+
+
+@runtime_checkable
+class RegistryDiscardCommandPort(Protocol):
+    """Optional capability for the narrow abandoned-handback discard flow."""
+
+    def discard(
+        self,
+        *,
+        lane_id: str,
+        expected_claim_generation: int,
+        expected_branch: str,
+        expected_path: str,
+        expected_head_sha: str,
+        operator: str,
+        reason: str,
+    ) -> None: ...
