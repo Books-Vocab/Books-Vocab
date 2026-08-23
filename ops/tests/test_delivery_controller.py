@@ -800,6 +800,25 @@ def test_controller_reports_source_uncertainty_instead_of_fabricating_supply() -
     assert decision.desired_new_solvers == 0
 
 
+def test_controller_explains_unadmitted_issue_dispositions() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    decision = decide_capacity(
+        _metrics(
+            candidate_issues=0,
+            unadmitted_open_issues=37,
+            triage_required_issues=6,
+            legacy_open_issues=31,
+        ),
+        cadence,
+    )
+
+    assert any(
+        reason
+        == ("37 open Issues remain unadmitted: triage_required=6, legacy_unmapped=31")
+        for reason in decision.reasons
+    )
+
+
 def test_branch_scoped_source_residue_does_not_block_unrelated_solver_dispatch() -> (
     None
 ):
