@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 from dataclasses import fields
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-import subprocess
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -67,9 +67,7 @@ def test_application_uses_main_checkout_for_cleanup_from_linked_worktree(
     )
     (repository / "README").write_text("test\n", encoding="utf-8")
     subprocess.run(("git", "-C", str(repository), "add", "README"), check=True)
-    subprocess.run(
-        ("git", "-C", str(repository), "commit", "-m", "init"), check=True
-    )
+    subprocess.run(("git", "-C", str(repository), "commit", "-m", "init"), check=True)
     subprocess.run(
         (
             "git",
@@ -186,3 +184,62 @@ def test_plan_forwards_supervision_worktree_paths_to_metrics(tmp_path: Path) -> 
     assert metrics.call_args.kwargs["supervision_worktree_paths"] == (
         Path("/supervision"),
     )
+
+
+def test_metrics_forwards_supervision_worktree_paths_to_inspect(
+    tmp_path: Path,
+) -> None:
+    application = DeliveryApplication(
+        repo=tmp_path,
+        git=Mock(),
+        github=Mock(),
+        registry=Mock(),
+        runtime=Mock(),
+        telemetry=Mock(),
+    )
+    telemetry = Mock()
+    telemetry.rolling.return_value = Mock()
+    with (
+        patch.object(DeliveryApplication, "inspect", return_value=Mock()) as inspect,
+        patch.object(
+            DeliveryApplication, "_operation_telemetry", return_value=telemetry
+        ),
+        patch(
+            "delivery_control.application_services.measure_pipeline",
+            return_value=object(),
+        ) as measure,
+    ):
+        assert (
+            application.metrics(supervision_worktree_paths=(Path("/supervision"),))
+            is not None
+        )
+
+    assert inspect.call_args.kwargs["supervision_worktree_paths"] == (
+        Path("/supervision"),
+    )
+    assert measure.call_args.kwargs["excluded_worktree_paths"] == (
+        Path("/supervision"),
+    )
+
+
+def test_inspect_forwards_supervision_worktree_paths(tmp_path: Path) -> None:
+    application = DeliveryApplication(
+        repo=tmp_path,
+        git=Mock(),
+        github=Mock(),
+        registry=Mock(),
+        runtime=Mock(),
+        telemetry=Mock(),
+    )
+    with patch(
+        "delivery_control.application_services.inspect.InspectService"
+    ) as service:
+        service.return_value.inspect.return_value = object()
+        assert (
+            application.inspect(supervision_worktree_paths=(Path("/supervision"),))
+            is not None
+        )
+
+    assert service.return_value.inspect.call_args.kwargs[
+        "supervision_worktree_paths"
+    ] == (Path("/supervision"),)

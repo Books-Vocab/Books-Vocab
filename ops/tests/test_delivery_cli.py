@@ -11,11 +11,18 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.cli import DeliveryApplication, RuntimeStatusMap, main  # noqa: E402
-from delivery_control.domain.candidate_issues import CandidateSeverity, CandidateSpec  # noqa: E402
-from delivery_control.domain.errors import CompareAndSwapConflict  # noqa: E402
-from delivery_control.domain.models import CheckStatus, Scope  # noqa: E402
-from delivery_control.domain.observations import (  # noqa: E402
+from delivery_control.cli import (
+    DeliveryApplication,
+    RuntimeStatusMap,
+    main,
+)
+from delivery_control.domain.candidate_issues import (
+    CandidateSeverity,
+    CandidateSpec,
+)
+from delivery_control.domain.errors import CompareAndSwapConflict
+from delivery_control.domain.models import CheckStatus, Scope
+from delivery_control.domain.observations import (
     CanonicalCheckoutSnapshot,
     CheckSnapshot,
     FileChange,
@@ -31,9 +38,12 @@ from delivery_control.domain.observations import (  # noqa: E402
     RegistrySnapshot,
     WorktreeSnapshot,
 )
-from delivery_control.domain.states import HoldKind  # noqa: E402
-from delivery_control.domain.telemetry import DurationSample, TelemetryReadResult  # noqa: E402
-from delivery_control.services.pr_contract import render_pull_request_body  # noqa: E402
+from delivery_control.domain.states import HoldKind
+from delivery_control.domain.telemetry import (
+    DurationSample,
+    TelemetryReadResult,
+)
+from delivery_control.services.pr_contract import render_pull_request_body
 
 BASE = "a" * 40
 HEAD = "b" * 40
@@ -786,12 +796,16 @@ def test_cli_exposes_dogfood_preflight_as_read_only_json(capsys: object) -> None
     assert payload["result"]["ready"] is False
 
 
-@pytest.mark.parametrize("command", ["metrics", "plan"])
+@pytest.mark.parametrize("command", ["inspect", "metrics", "plan"])
 def test_cli_forwards_supervision_worktrees_for_observation_commands(
     command: str,
     capsys: object,
 ) -> None:
     class FakeApplication:
+        def inspect(self, *, supervision_worktree_paths: tuple[Path, ...]) -> object:
+            assert supervision_worktree_paths == (Path("/supervision"),)
+            return {"lanes": []}
+
         def metrics(self, *, supervision_worktree_paths: tuple[Path, ...]) -> object:
             assert supervision_worktree_paths == (Path("/supervision"),)
             return {"physical_worktrees": 0}

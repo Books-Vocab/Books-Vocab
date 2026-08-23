@@ -40,10 +40,10 @@ from delivery_control.services.lane_projection import (
     project_active_lane,
     project_published_lane,
 )
+from delivery_control.services.pr_contract import render_pull_request_body
 from delivery_control.services.published_lane_projection import (
     project_published_lane as project_published_lane_implementation,
 )
-from delivery_control.services.pr_contract import render_pull_request_body
 
 
 class FakeRegistry:
@@ -316,6 +316,43 @@ def test_inspect_service_excludes_clean_canonical_main_from_lane_inventory(
     )
 
     assert service.inspect().lanes == ()
+
+
+def test_inspect_service_excludes_explicit_supervision_checkout_from_delivery_collisions(
+    tmp_path: Path,
+) -> None:
+    lane_path = tmp_path / "lane"
+    supervision_path = tmp_path / "supervision"
+    lane_physical = PhysicalWorktree(
+        path=lane_path, head_sha="b" * 40, branch="feat/one"
+    )
+    supervision_physical = PhysicalWorktree(
+        path=supervision_path, head_sha="b" * 40, branch=None
+    )
+    snapshots = {
+        lane_path: _snapshot(lane_path),
+        supervision_path: _snapshot(supervision_path),
+    }
+    service = InspectService(
+        registry=FakeRegistry((_record(lane_path),)),
+        git=FakeGit((lane_physical, supervision_physical), snapshots),
+        github=FakeGitHub((_pull_request(lane_path),)),
+        runtime=FakeRuntime(),
+    )
+
+    default_inventory = service.inspect()
+    default_lane = next(item for item in default_inventory.lanes if item.key == "#1")
+    assert default_lane.decision.state is LaneState.BLOCKED_COLLISION
+    assert str(supervision_path.resolve()) in {
+        item.key for item in default_inventory.lanes
+    }
+
+    bounded_inventory = service.inspect(supervision_worktree_paths=(supervision_path,))
+    bounded_lane = next(item for item in bounded_inventory.lanes if item.key == "#1")
+    assert bounded_lane.decision.state is LaneState.PUBLISHED_LOCAL_CLEANUP
+    assert str(supervision_path.resolve()) not in {
+        item.key for item in bounded_inventory.lanes
+    }
 
 
 def test_candidate_reservoir_excludes_only_nonterminal_registry_issue_refs(

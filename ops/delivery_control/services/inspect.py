@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from ..domain.errors import DeliverySourceError
 from ..domain.inventory import DeliveryInventory, LaneInspection
-from ..domain.observations import InventoryProblem
+from ..domain.observations import InventoryProblem, WorktreeSnapshot
 from ..domain.states import LaneFacts, derive_lane_decision
 from ..ports.git import GitQueryPort
 from ..ports.github import GitHubQueryPort
 from ..ports.registry import RegistryQueryPort
 from ..ports.runtime import AgentRuntimePort
-from .inventory_sources import collect_inventory_sources
+from .correlation import collision_keys, delivery_collision_path_sets
+from .inventory_sources import InspectionSources, collect_inventory_sources
 from .isolation import project_isolation
 from .lane_projection import project_active_lane, project_published_lane
 
@@ -31,12 +33,18 @@ class InspectService:
         self.github = github
         self.runtime = runtime
 
-    def inspect(self) -> DeliveryInventory:
+    def inspect(
+        self, *, supervision_worktree_paths: tuple[Path, ...] = ()
+    ) -> DeliveryInventory:
         sources = collect_inventory_sources(
             registry=self.registry,
             git=self.git,
             github=self.github,
         )
+        if supervision_worktree_paths:
+            sources = self._apply_supervision_boundary(
+                sources, supervision_worktree_paths
+            )
         records = sources.records
         active_records = sources.active_records
         published_records = sources.published_records
@@ -221,4 +229,54 @@ class InspectService:
             dispatchable_candidate_issues=inventory.dispatchable_candidate_issues,
             demand_issues=inventory.demand_issues,
             isolation=project_isolation(sources=sources, lanes=inventory.lanes),
+        )
+
+    def _apply_supervision_boundary(
+        self,
+        sources: InspectionSources,
+        supervision_worktree_paths: tuple[Path, ...],
+    ) -> InspectionSources:
+        excluded_paths = frozenset(
+            path.expanduser().resolve() for path in supervision_worktree_paths
+        )
+        physical = tuple(
+            item
+            for item in sources.physical
+            if item.path.resolve() not in excluded_paths
+        )
+        working_paths = {
+            item.path.resolve()
+            for item in (*sources.active_records, *sources.published_records)
+        }
+        unregistered_snapshots: dict[Path, WorktreeSnapshot | None] = {}
+        for physical_ref in physical:
+            path = physical_ref.path.resolve()
+            if path in working_paths:
+                continue
+            if (
+                physical_ref.branch == "main"
+                and physical_ref.head_sha == sources.local_main_sha
+            ):
+                continue
+            try:
+                unregistered_snapshots[path] = self.git.inspect_worktree(
+                    path, sources.live_main_sha
+                )
+            except DeliverySourceError:
+                unregistered_snapshots[path] = None
+        path_sets = delivery_collision_path_sets(
+            active_records=sources.active_records,
+            published_records=sources.published_records,
+            physical=physical,
+            snapshots=sources.snapshots,
+            prs_by_branch=sources.prs_by_branch,
+            pr_paths=sources.pr_paths,
+            local_main_sha=sources.local_main_sha,
+            excluded_physical_paths=excluded_paths,
+            unregistered_snapshots=unregistered_snapshots,
+        )
+        return replace(
+            sources,
+            physical=physical,
+            collisions=frozenset(collision_keys(path_sets)),
         )
