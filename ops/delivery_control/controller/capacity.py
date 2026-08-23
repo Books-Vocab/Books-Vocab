@@ -20,6 +20,7 @@ class ControlAction(StrEnum):
     AUDIT_CI_START_SLO = "audit_ci_start_slo"
     AUDIT_QUEUE_ADMISSION_SLO = "audit_queue_admission_slo"
     AUDIT_MERGE_CADENCE = "audit_merge_cadence"
+    AUDIT_OWNERLESS_LANES = "audit_ownerless_lanes"
     REPAIR_PR_CONTRACT = "repair_pr_contract"
     REPAIR_REQUIRED = "repair_required"
     TRIGGER_REQUIRED = "trigger_required"
@@ -139,12 +140,26 @@ def decide_capacity(
             ControlAction.RECOVER_OWNER_BOUND_LANE,
             "existing owner-bound lanes require bounded recovery",
         )
-    if metrics.active_registry_without_worktree:
+    owner_bound_registry_residue = metrics.active_registry_without_worktree_owner_bound
+    if owner_bound_registry_residue is None:
+        # Preserve the pre-split direct-construction contract. Measured
+        # inventories always provide the explicit split, so ownerless claims
+        # cannot reach the recovery action through this fallback.
+        owner_bound_registry_residue = metrics.active_registry_without_worktree
+    if owner_bound_registry_residue:
         add(
             ControlAction.RECOVER_OWNER_BOUND_LANE,
             (
-                f"{metrics.active_registry_without_worktree} active registry claim(s) "
+                f"{owner_bound_registry_residue} owner-bound active registry claim(s) "
                 "have no physical worktree and require original-owner recovery"
+            ),
+        )
+    if metrics.active_registry_without_worktree_ownerless:
+        add(
+            ControlAction.AUDIT_OWNERLESS_LANES,
+            (
+                f"{metrics.active_registry_without_worktree_ownerless} ownerless active "
+                "registry claim(s) have no physical worktree; audit ownership only"
             ),
         )
     if metrics.security_hold_issues or metrics.security_hold_lanes:

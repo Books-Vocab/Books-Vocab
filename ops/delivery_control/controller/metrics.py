@@ -47,6 +47,12 @@ class PipelineMetrics:
     active_registry_records: int = 0
     raw_active_registry_records: int = 0
     active_registry_without_worktree: int = 0
+    # Measured inventories split missing physical assets by whether the
+    # original owner can actually be addressed. "None" preserves the
+    # legacy direct-construction contract for callers that only provide the
+    # aggregate metric.
+    active_registry_without_worktree_owner_bound: int | None = None
+    active_registry_without_worktree_ownerless: int | None = None
     malformed_active_registry_records: int = 0
     triage_required_issues: int = 0
     legacy_open_issues: int = 0
@@ -194,6 +200,16 @@ def measure_pipeline(
     active_registry_without_worktree = sum(
         lane.physical is None for lane in active_registry_lanes
     )
+    active_registry_without_worktree_owner_bound = sum(
+        lane.physical is None
+        and bool(lane.registry is not None and lane.registry.owner_thread_id)
+        for lane in active_registry_lanes
+    )
+    active_registry_without_worktree_ownerless = sum(
+        lane.physical is None
+        and not bool(lane.registry is not None and lane.registry.owner_thread_id)
+        for lane in active_registry_lanes
+    )
     collision_lanes = states.count(LaneState.BLOCKED_COLLISION)
     security_hold_lanes = states.count(LaneState.SECURITY_HOLD)
     live_states = [
@@ -289,6 +305,12 @@ def measure_pipeline(
         active_registry_records=active_registry_records,
         raw_active_registry_records=raw_active_registry_records,
         active_registry_without_worktree=active_registry_without_worktree,
+        active_registry_without_worktree_owner_bound=(
+            active_registry_without_worktree_owner_bound
+        ),
+        active_registry_without_worktree_ownerless=(
+            active_registry_without_worktree_ownerless
+        ),
         malformed_active_registry_records=malformed_active_registry_records,
         triage_required_issues=inventory.demand_issues.count(
             IssueDisposition.TRIAGE_REQUIRED
