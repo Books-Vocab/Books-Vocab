@@ -10,6 +10,7 @@ import pytest
 
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
+# ruff: noqa: E402
 
 from delivery_control.cli import (
     DeliveryApplication,
@@ -947,6 +948,82 @@ def test_cli_marks_incomplete_branch_audit_as_blocked_without_transport_error(
     assert payload["ok"] is True
     assert payload["verdict"] == "incomplete"
     assert payload["result"]["source_problem_actions"]
+
+
+def test_cli_routes_branch_content_inspection(capsys: object) -> None:
+    class FakeApplication:
+        def branch_inspect(
+            self, *, branch: str, expected_head_sha: str | None
+        ) -> object:
+            assert branch == "feat/unlanded"
+            assert expected_head_sha == "b" * 40
+            return {
+                "schema": "kg.delivery.branch-content.v1",
+                "complete": True,
+                "base_is_ancestor": False,
+            }
+
+    assert (
+        main(
+            [
+                "branch-inspect",
+                "--branch",
+                "feat/unlanded",
+                "--expected-head-sha",
+                "b" * 40,
+            ],
+            application_factory=lambda **_: FakeApplication(),
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["result"]["base_is_ancestor"] is False
+
+
+def test_cli_routes_explicit_unregistered_branch_discard(capsys: object) -> None:
+    class FakeApplication:
+        def discard_unregistered_branch(
+            self,
+            *,
+            branch: str,
+            expected_head_sha: str,
+            expected_content_fingerprint: str,
+            operator: str,
+            reason: str,
+            confirm_unmerged: bool,
+        ) -> object:
+            assert branch == "feat/unlanded"
+            assert expected_head_sha == "b" * 40
+            assert expected_content_fingerprint == "c" * 64
+            assert operator == "supervisor"
+            assert reason == "explicitly reviewed"
+            assert confirm_unmerged
+            return {"disposition": "unregistered_local_branch_discarded"}
+
+    assert (
+        main(
+            [
+                "discard-unregistered-branch",
+                "--branch",
+                "feat/unlanded",
+                "--expected-head-sha",
+                "b" * 40,
+                "--expected-content-fingerprint",
+                "c" * 64,
+                "--operator",
+                "supervisor",
+                "--reason",
+                "explicitly reviewed",
+                "--confirm-unmerged",
+            ],
+            application_factory=lambda **_: FakeApplication(),
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["result"]["disposition"] == "unregistered_local_branch_discarded"
 
 
 @pytest.mark.parametrize("command", ["inspect", "metrics", "plan"])

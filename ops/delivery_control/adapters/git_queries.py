@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
+from ..domain.branch_content import BranchContentEvidence
 from ..domain.branch_refs import BranchInventory
 from ..domain.observations import (
     CanonicalCheckoutSnapshot,
@@ -17,6 +19,7 @@ from .git_client import GitCliClient
 from .git_parsing import (
     parse_branch_inventory,
     parse_changed_files,
+    parse_commit_summaries,
     parse_first_parent_landings,
     parse_local_branch_sha,
     parse_origin_main_sha,
@@ -27,6 +30,7 @@ from .git_parsing import (
 )
 
 UNREACHABLE_COMMIT_SCAN_TIMEOUT_SECONDS = 30.0
+BRANCH_CONTENT_COMMIT_SUMMARY_LIMIT = 20
 
 
 class GitQueries:
@@ -160,6 +164,67 @@ class GitQueries:
         if result.exit_code == 1 and not result.stderr.strip():
             return False
         raise AdapterCommandError(result)
+
+    def inspect_branch_content(
+        self,
+        *,
+        branch: str,
+        base_sha: str,
+        max_commit_summaries: int = BRANCH_CONTENT_COMMIT_SUMMARY_LIMIT,
+    ) -> BranchContentEvidence:
+        """Read bounded diff evidence for one local branch against live main."""
+
+        head_sha = self.local_branch_sha(branch)
+        if head_sha is None:
+            raise AdapterCommandError(
+                self.client.execute(
+                    "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"
+                )
+            )
+        base_is_ancestor = self.is_ancestor(base_sha, head_sha)
+        ahead_output = self.client.run("rev-list", "--count", f"{base_sha}..{head_sha}")
+        behind_output = self.client.run(
+            "rev-list", "--count", f"{head_sha}..{base_sha}"
+        )
+        try:
+            ahead_count = int(ahead_output)
+            behind_count = int(behind_output)
+        except ValueError as error:
+            raise AdapterCommandError(
+                self.client.execute("rev-list", "--count", f"{base_sha}..{head_sha}")
+            ) from error
+        diff_payload = self.client.run(
+            "diff",
+            "--name-status",
+            "-z",
+            "--find-renames=100%",
+            "--find-copies=100%",
+            f"{base_sha}..{head_sha}",
+        )
+        changes = parse_changed_files(diff_payload)
+        summaries_payload = self.client.run(
+            "log",
+            "--format=%H%x09%s",
+            f"--max-count={max_commit_summaries + 1}",
+            f"{base_sha}..{head_sha}",
+        )
+        summaries, truncated = parse_commit_summaries(
+            summaries_payload, limit=max_commit_summaries
+        )
+        return BranchContentEvidence(
+            schema="kg.delivery.branch-content.v1",
+            branch=branch,
+            base_sha=base_sha,
+            head_sha=head_sha,
+            base_is_ancestor=base_is_ancestor,
+            ahead_commit_count=ahead_count,
+            behind_commit_count=behind_count,
+            changed_paths=tuple(sorted(change.path for change in changes)),
+            change_fingerprint=hashlib.sha256(diff_payload.encode()).hexdigest(),
+            commit_subjects=tuple(subject for _, subject in summaries),
+            commit_subjects_truncated=truncated,
+            complete=True,
+        )
 
     def first_parent_landings(
         self, *, before_sha: str, after_sha: str

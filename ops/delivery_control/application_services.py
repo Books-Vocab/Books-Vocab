@@ -41,6 +41,7 @@ from .ports.telemetry import TelemetryStorePort
 from .services import (
     abandon,
     abandoned_handback,
+    branch_content,
     branch_audit,
     cleanup,
     inspect,
@@ -51,6 +52,7 @@ from .services import (
     orphan_branch,
     sync_main,
     telemetry_operations,
+    unregistered_branch,
 )
 from .services import holds as hold_services
 from .services.issue_admission import assert_candidate_scope_available
@@ -84,7 +86,9 @@ class DeliveryApplication:
         return self.inspect().demand_issues
 
     def branch_audit(
-        self, *, supervision_worktree_paths: tuple[Path, ...] = ()
+        self,
+        *,
+        supervision_worktree_paths: tuple[Path, ...] = (),
     ) -> object:
         """Return one deterministic action for every observed branch ref."""
 
@@ -136,6 +140,53 @@ class DeliveryApplication:
             inventory,
             orphan_preflights=orphan_preflights,
             unreachable_commits=unreachable_commits,
+        )
+
+    def branch_inspect(
+        self,
+        *,
+        branch: str,
+        expected_head_sha: str | None = None,
+    ) -> object:
+        """Return one bounded content packet for an unlanded local branch."""
+
+        main_sha = self.git.origin_main_sha()
+        evidence = branch_content.BranchContentService(git=self.git).inspect(
+            branch=branch,
+            base_sha=main_sha,
+        )
+        if expected_head_sha is not None and evidence.complete:
+            if evidence.head_sha != expected_head_sha:
+                raise errors.PolicyViolation(
+                    "branch content HEAD differs from expected inspection SHA"
+                )
+        return evidence
+
+    def discard_unregistered_branch(
+        self,
+        *,
+        branch: str,
+        expected_head_sha: str,
+        expected_content_fingerprint: str,
+        operator: str,
+        reason: str,
+        confirm_unmerged: bool,
+    ) -> object:
+        """Discard only one explicitly reviewed unlanded local-only branch."""
+
+        return unregistered_branch.UnregisteredBranchDiscardService(
+            registry=self.registry,
+            git_query=self.git,
+            git_content=self.git,
+            git_command=self.git,
+            github=self.github,
+        ).discard(
+            branch=branch,
+            expected_head_sha=expected_head_sha,
+            expected_content_fingerprint=expected_content_fingerprint,
+            operator=operator,
+            reason=reason,
+            confirm_unmerged=confirm_unmerged,
         )
 
     def triage_plan(self) -> object:

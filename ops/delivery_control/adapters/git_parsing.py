@@ -117,6 +117,23 @@ def parse_changed_files(payload: str) -> tuple[FileChange, ...]:
     return canonical
 
 
+def parse_commit_summaries(
+    payload: str, *, limit: int
+) -> tuple[tuple[tuple[str, str], ...], bool]:
+    """Parse a bounded ``git log`` summary without losing truncation evidence."""
+
+    if type(limit) is not int or limit <= 0:
+        raise AdapterPayloadError("commit summary limit must be positive")
+    rows = [line for line in payload.splitlines() if line]
+    summaries: list[tuple[str, str]] = []
+    for index, row in enumerate(rows):
+        sha, separator, subject = row.partition("\t")
+        if not separator or _COMMIT_SHA_RE.fullmatch(sha) is None or not subject:
+            raise AdapterPayloadError(f"git commit summary row {index} is malformed")
+        summaries.append((sha, subject))
+    return tuple(summaries[:limit]), len(summaries) > limit
+
+
 def parse_branch_inventory(
     local_payload: str,
     remote_payload: str,
