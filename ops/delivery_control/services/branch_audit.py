@@ -12,7 +12,7 @@ from ..domain.branch_lifecycle import (
     BranchSide,
 )
 from ..domain.inventory import DeliveryInventory
-from ..domain.observations import InventoryProblem
+from ..domain.observations import InventoryProblem, RegistrySnapshot
 from .orphan_branch import OrphanBranchPreflight
 
 
@@ -30,6 +30,31 @@ class BranchAuditAction:
     next_step: str
     suggested_command: str | None = None
     orphan_preflight: OrphanBranchPreflight | None = None
+
+
+@dataclass(frozen=True)
+class BranchAuditRegistryAction:
+    """One active registry claim with no corresponding observed Git asset.
+
+    Branch lifecycle projection is intentionally ref-oriented.  A registry
+    claim can nevertheless survive after its local/remote refs and physical
+    worktree have disappeared.  Keep that claim visible as its own action
+    rather than fabricating a branch SHA or silently dropping it from the
+    audit.
+    """
+
+    lane_id: str
+    branch: str
+    path: str
+    status: str
+    claim_generation: int
+    base_sha: str
+    handed_back_sha: str | None
+    owner_thread_id: str | None
+    category: str
+    safe_terminal: bool
+    next_step: str
+    suggested_command: str | None = None
 
 
 @dataclass(frozen=True)
@@ -66,6 +91,8 @@ class BranchAuditReport:
     assets: tuple[BranchAsset, ...]
     actions: tuple[BranchAuditAction, ...]
     safe_terminal_actions: tuple[BranchAuditAction, ...]
+    registry_only_actions: tuple[BranchAuditRegistryAction, ...]
+    registry_only_status_counts: dict[str, int]
     source_problems: tuple[InventoryProblem, ...]
     source_problem_actions: tuple[BranchAuditSourceProblem, ...]
     source_problem_counts: dict[str, int]
@@ -152,6 +179,56 @@ def _withheld_by_source_problem(
         ),
         suggested_command=None,
     )
+
+
+def _registry_only_action(
+    record: RegistrySnapshot,
+) -> BranchAuditRegistryAction:
+    """Expose a non-terminal registry claim absent from all observed refs."""
+
+    if record.status == "active":
+        next_step = (
+            f"recover the original owner for {record.branch} through the supported "
+            "lifecycle; no local/remote ref, physical worktree, or PR is observed, "
+            "so do not resolve or delete this claim from the audit"
+        )
+    else:
+        next_step = (
+            f"reconcile the {record.status} claim for {record.branch} through its "
+            "published/terminal receipt; no local/remote ref, physical worktree, "
+            "or PR is observed, so do not mutate it from the audit"
+        )
+    return BranchAuditRegistryAction(
+        lane_id=record.lane_id,
+        branch=record.branch,
+        path=str(record.path.resolve()),
+        status=record.status,
+        claim_generation=record.claim_generation,
+        base_sha=record.base_sha,
+        handed_back_sha=record.handed_back_sha,
+        owner_thread_id=record.owner_thread_id,
+        category="registry_only_residue",
+        safe_terminal=False,
+        next_step=next_step,
+    )
+
+
+def _registry_only_actions(
+    inventory: DeliveryInventory,
+    *,
+    assets: tuple[BranchAsset, ...],
+) -> tuple[BranchAuditRegistryAction, ...]:
+    """Return one action for every non-terminal claim absent from Git facts."""
+
+    observed_branches = {asset.branch for asset in assets}
+    actions = tuple(
+        _registry_only_action(record)
+        for lane in inventory.lanes
+        if (record := lane.registry) is not None
+        and record.status in {"active", "published", "cleanup_pending"}
+        and record.branch not in observed_branches
+    )
+    return tuple(sorted(actions, key=lambda item: (item.branch, item.lane_id)))
 
 
 def _action_for_asset(
@@ -298,6 +375,7 @@ def build_branch_audit(
 
     assets = inventory.branch_lifecycle.assets
     preflights = orphan_preflights or {}
+    registry_only_actions = _registry_only_actions(inventory, assets=assets)
     source_problem_actions = tuple(
         _source_problem_action(problem) for problem in inventory.source_problems
     )
@@ -305,7 +383,7 @@ def build_branch_audit(
         _action_for_asset(asset, orphan_preflight=preflights.get(asset.branch))
         for asset in assets
     )
-    complete = not inventory.source_problems
+    complete = not inventory.source_problems and not registry_only_actions
     if not complete:
         actions = tuple(
             _withheld_by_source_problem(
@@ -348,6 +426,11 @@ def build_branch_audit(
         assets=assets,
         actions=actions,
         safe_terminal_actions=tuple(item for item in actions if item.safe_terminal),
+        registry_only_actions=registry_only_actions,
+        registry_only_status_counts={
+            status: sum(item.status == status for item in registry_only_actions)
+            for status in sorted({item.status for item in registry_only_actions})
+        },
         source_problems=inventory.source_problems,
         source_problem_actions=source_problem_actions,
         source_problem_counts={
@@ -363,6 +446,7 @@ def build_branch_audit(
 
 __all__ = [
     "BranchAuditAction",
+    "BranchAuditRegistryAction",
     "BranchAuditReport",
     "BranchAuditSourceProblem",
     "build_branch_audit",
