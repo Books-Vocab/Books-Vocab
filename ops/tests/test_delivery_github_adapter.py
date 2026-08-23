@@ -191,31 +191,35 @@ def test_github_adapter_reads_branch_history_with_one_snapshot() -> None:
     page = {
         "data": {
             "repository": {
-                "pullRequests": {
-                    "nodes": [
-                        _graphql_pr_node(_pr_payload()),
-                        _graphql_pr_node(second),
-                    ],
+                "branch0": {
+                    "nodes": [_graphql_pr_node(_pr_payload())],
                     "pageInfo": {"hasNextPage": False, "endCursor": None},
-                }
+                },
+                "branch1": {
+                    "nodes": [_graphql_pr_node(second)],
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                },
             }
         }
     }
     runner = StaticRunner(
         [
             CommandResult(("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""),
-            CommandResult(("gh",), 0, json.dumps([page]), ""),
+            CommandResult(("gh",), 0, json.dumps(page), ""),
         ]
     )
 
     inventory = GitHubCliAdapter(runner=runner).list_pull_requests_for_branches(
-        ("feat/one", "feat/missing")
+        ("feat/one", "feat/two")
     )
 
-    assert [item.number for item in inventory.records] == [12]
+    assert [item.number for item in inventory.records] == [12, 13]
     assert len(runner.calls) == 2
-    assert runner.calls[1][:5] == ("gh", "api", "graphql", "--paginate", "--slurp")
-    assert any("DeliveryAllPullRequestHistory" in item for item in runner.calls[1])
+    assert runner.calls[1][:3] == ("gh", "api", "graphql")
+    query_argument = next(item for item in runner.calls[1] if item.startswith("query="))
+    assert "DeliveryPullRequestHistoryByBranch" in query_argument
+    assert "headRefName: $branch0" in query_argument
+    assert "--paginate" not in runner.calls[1]
 
 
 @pytest.mark.parametrize(
@@ -231,7 +235,7 @@ def test_github_adapter_fails_closed_on_history_page_contract(
     page = {
         "data": {
             "repository": {
-                "pullRequests": {
+                "branch0": {
                     "nodes": [],
                     "pageInfo": page_info,
                 }
@@ -241,7 +245,7 @@ def test_github_adapter_fails_closed_on_history_page_contract(
     runner = StaticRunner(
         [
             CommandResult(("gh",), 0, json.dumps({"nameWithOwner": "owner/repo"}), ""),
-            CommandResult(("gh",), 0, json.dumps([page]), ""),
+            CommandResult(("gh",), 0, json.dumps(page), ""),
         ]
     )
 

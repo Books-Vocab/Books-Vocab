@@ -42,62 +42,71 @@ query DeliveryOpenPullRequestFiles($owner: String!, $name: String!, $endCursor: 
 }
 """.strip()
 
-ALL_PR_HISTORY_QUERY = """
-query DeliveryAllPullRequestHistory($owner: String!, $name: String!, $endCursor: String) {
-  repository(owner: $owner, name: $name) {
-    pullRequests(first: 100, states: [OPEN, CLOSED, MERGED], after: $endCursor) {
-      nodes {
-        id
-        number
-        url
-        headRefName
-        baseRefName
-        baseRefOid
-        headRefOid
-        state
-        isDraft
-        mergeable
-        title
-        body
-        autoMergeRequest { __typename }
-        labels(first: 100) {
-          nodes { name }
-          pageInfo { hasNextPage endCursor }
-        }
-        createdAt
-        mergedAt
-      }
-      pageInfo { hasNextPage endCursor }
-    }
+_PR_HISTORY_NODE_FIELDS = """
+nodes {
+  id
+  number
+  url
+  headRefName
+  baseRefName
+  baseRefOid
+  headRefOid
+  state
+  isDraft
+  mergeable
+  title
+  body
+  autoMergeRequest { __typename }
+  labels(first: 100) {
+    nodes { name }
+    pageInfo { hasNextPage endCursor }
   }
+  createdAt
+  mergedAt
 }
+pageInfo { hasNextPage endCursor }
 """.strip()
 
 
-def _parse_pull_request_history_pages(payload: object) -> PullRequestInventory:
-    if isinstance(payload, Mapping):
-        pages = (payload,)
-    elif isinstance(payload, list) and all(
-        isinstance(item, Mapping) for item in payload
-    ):
-        pages = tuple(payload)
-    else:
+def _pull_request_history_query(branches: tuple[str, ...]) -> str:
+    variables = ["$owner: String!", "$name: String!"]
+    selections: list[str] = []
+    for index in range(len(branches)):
+        variable = f"$branch{index}"
+        variables.append(f"{variable}: String!")
+        selections.append(
+            f"branch{index}: pullRequests("
+            f"first: 100, states: [OPEN, CLOSED, MERGED], "
+            f"headRefName: {variable}) {{\n{_PR_HISTORY_NODE_FIELDS}\n}}"
+        )
+    return (
+        "query DeliveryPullRequestHistoryByBranch("
+        + ", ".join(variables)
+        + ") {\n"
+        + "  repository(owner: $owner, name: $name) {\n"
+        + "\n".join(f"    {selection}" for selection in selections)
+        + "\n  }\n}"
+    )
+
+
+def _parse_pull_request_history_by_branch(
+    payload: object, branches: tuple[str, ...]
+) -> PullRequestInventory:
+    if not isinstance(payload, Mapping):
         raise AdapterPayloadError("GitHub PR history GraphQL payload is malformed")
+    if payload.get("errors"):
+        raise AdapterPayloadError("GitHub PR history GraphQL response contains errors")
+    data = payload.get("data")
+    repository = data.get("repository") if isinstance(data, Mapping) else None
+    if not isinstance(repository, Mapping):
+        raise AdapterPayloadError("GitHub PR history repository payload is malformed")
 
     records: list[dict[str, Any]] = []
-    for page_index, page in enumerate(pages):
-        if page.get("errors"):
-            raise AdapterPayloadError(
-                "GitHub PR history GraphQL response contains errors"
-            )
-        data = page.get("data")
-        repository = data.get("repository") if isinstance(data, Mapping) else None
-        connection = (
-            repository.get("pullRequests") if isinstance(repository, Mapping) else None
-        )
+    for index, branch in enumerate(branches):
+        connection = repository.get(f"branch{index}")
         if not isinstance(connection, Mapping):
             raise AdapterPayloadError(
-                f"GitHub PR history page[{page_index}] connection is malformed"
+                f"GitHub PR history branch[{index}] connection is malformed"
             )
         nodes = connection.get("nodes")
         page_info = connection.get("pageInfo")
@@ -105,27 +114,24 @@ def _parse_pull_request_history_pages(payload: object) -> PullRequestInventory:
             not isinstance(node, Mapping) for node in nodes
         ):
             raise AdapterPayloadError(
-                f"GitHub PR history page[{page_index}] nodes are malformed"
+                f"GitHub PR history branch[{index}] nodes are malformed"
             )
         if (
             not isinstance(page_info, Mapping)
             or type(page_info.get("hasNextPage")) is not bool
         ):
             raise AdapterPayloadError(
-                f"GitHub PR history page[{page_index}] pageInfo is malformed"
+                f"GitHub PR history branch[{index}] pageInfo is malformed"
             )
-        has_next = page_info["hasNextPage"]
-        if has_next:
-            cursor = page_info.get("endCursor")
-            if type(cursor) is not str or not cursor:
-                raise AdapterPayloadError(
-                    f"GitHub PR history page[{page_index}] cursor is missing"
-                )
-        elif page_index != len(pages) - 1:
+        if page_info["hasNextPage"]:
             raise AdapterPayloadError(
-                f"GitHub PR history page[{page_index}] ended before supplied pages"
+                f"GitHub PR history branch[{index}] pagination is incomplete"
             )
         for node in nodes:
+            if node.get("headRefName") != branch:
+                raise AdapterPayloadError(
+                    f"GitHub PR history branch[{index}] returned a mismatched head"
+                )
             labels = node.get("labels")
             if not isinstance(labels, Mapping):
                 raise AdapterPayloadError(
@@ -153,19 +159,6 @@ def _parse_pull_request_history_pages(payload: object) -> PullRequestInventory:
             if mapped.get("body") is None:
                 mapped["body"] = ""
             records.append(mapped)
-
-    if pages:
-        last_page = pages[-1]
-        data = last_page.get("data")
-        repository = data.get("repository") if isinstance(data, Mapping) else None
-        connection = (
-            repository.get("pullRequests") if isinstance(repository, Mapping) else None
-        )
-        page_info = (
-            connection.get("pageInfo") if isinstance(connection, Mapping) else None
-        )
-        if not isinstance(page_info, Mapping) or page_info.get("hasNextPage") is True:
-            raise AdapterPayloadError("GitHub PR history pagination is incomplete")
     return parse_pull_request_inventory(records)
 
 
@@ -255,10 +248,10 @@ class GitHubQueries:
     def list_pull_requests_for_branches(
         self, branches: tuple[str, ...]
     ) -> PullRequestInventory:
-        """Read terminal and open PR history once for a branch-audit pass."""
+        """Read exact branch PR history in one bounded GraphQL request."""
 
-        branch_set = frozenset(branches)
-        if not branch_set:
+        ordered_branches = tuple(dict.fromkeys(branches))
+        if not ordered_branches:
             return PullRequestInventory(())
         repository = self.repository_name()
         owner, separator, name = repository.partition("/")
@@ -269,23 +262,22 @@ class GitHubQueries:
                 "gh",
                 "api",
                 "graphql",
-                "--paginate",
-                "--slurp",
                 "-f",
-                f"query={ALL_PR_HISTORY_QUERY}",
+                f"query={_pull_request_history_query(ordered_branches)}",
                 "-F",
                 f"owner={owner}",
                 "-F",
                 f"name={name}",
+                *sum(
+                    (
+                        ["-F", f"branch{index}={branch}"]
+                        for index, branch in enumerate(ordered_branches)
+                    ),
+                    [],
+                ),
             )
         )
-        inventory = _parse_pull_request_history_pages(payload)
-        return PullRequestInventory(
-            records=tuple(
-                item for item in inventory.records if item.branch in branch_set
-            ),
-            problems=inventory.problems,
-        )
+        return _parse_pull_request_history_by_branch(payload, ordered_branches)
 
     def recent_merge_times(self, *, limit: int = 100) -> tuple[datetime, ...]:
         if type(limit) is not int or not 1 <= limit <= 100:
