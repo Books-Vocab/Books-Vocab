@@ -20,6 +20,7 @@ from .domain.candidate_issues import CandidateSpec
 from .domain.errors import DeliveryContractError, DeliverySourceError
 from .domain.runtime_models import RuntimeReceipt, RuntimeState
 from .domain.states import HoldKind
+from .domain.unreachable_commits import UNREACHABLE_COMMIT_PATH_LIMIT
 from .services.candidate_contract import parse_candidate_body, render_candidate_body
 from .services.pr_contract import validate_pull_request_body
 
@@ -130,7 +131,15 @@ def _parser() -> argparse.ArgumentParser:
         help="inspect one unreachable commit object without mutation",
     )
     unreachable_inspect.add_argument("--commit", required=True)
-    unreachable_inspect.add_argument("--max-paths", type=int, default=200)
+    unreachable_inspect.add_argument(
+        "--max-paths",
+        type=int,
+        default=UNREACHABLE_COMMIT_PATH_LIMIT,
+        metavar="N",
+        help=(
+            f"bounded changed-path output (1 <= N <= {UNREACHABLE_COMMIT_PATH_LIMIT})"
+        ),
+    )
     branch_review_plan = commands.add_parser(
         "branch-review-plan",
         help="page blocked local-orphan content for read-only review",

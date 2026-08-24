@@ -9,7 +9,7 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.adapters.errors import AdapterCommandError
+from delivery_control.adapters.errors import AdapterCommandError, AdapterPayloadError
 from delivery_control.adapters.git_cli import GitCliAdapter
 from delivery_control.adapters.git_parsing import (
     parse_branch_inventory,
@@ -160,8 +160,10 @@ def test_git_adapter_inspects_unreachable_commit_without_creating_a_ref(
     _git(repo, "switch", "-q", "main")
     _git(repo, "branch", "-D", "feat/unreachable")
 
-    evidence = GitCliAdapter(repo=repo).inspect_unreachable_commit(
-        commit_sha=commit_sha
+    adapter = GitCliAdapter(repo=repo)
+    evidence = adapter.inspect_unreachable_commit(
+        commit_sha=commit_sha,
+        max_paths=200,
     )
 
     assert isinstance(evidence, UnreachableCommitEvidence)
@@ -172,6 +174,23 @@ def test_git_adapter_inspects_unreachable_commit_without_creating_a_ref(
     assert evidence.changed_paths == ("unreachable.txt",)
     assert evidence.disposition == "preserve_for_owner_correlation"
     assert not _git(repo, "branch", "--all", "--contains", commit_sha)
+
+    bounded = adapter.inspect_unreachable_commit(
+        commit_sha=commit_sha,
+        max_paths=1,
+    )
+    assert bounded.changed_paths == ("unreachable.txt",)
+
+
+@pytest.mark.parametrize("max_paths", [0, 201, "200", True, 1.5, None])
+def test_git_adapter_rejects_unbounded_path_limit(
+    tmp_path: Path, max_paths: object
+) -> None:
+    with pytest.raises(AdapterPayloadError, match="between 1 and 200"):
+        GitCliAdapter(repo=tmp_path).inspect_unreachable_commit(
+            commit_sha="a" * 40,
+            max_paths=max_paths,  # type: ignore[arg-type]
+        )
 
 
 def test_git_adapter_reads_ancestor_relation_without_mutation(tmp_path: Path) -> None:

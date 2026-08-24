@@ -7,12 +7,18 @@ import pytest
 
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
-# ruff: noqa: E402
 
-from delivery_control.domain.unreachable_commits import (
-    UnreachableCommitEvidence,
+from delivery_control.application_services import DeliveryApplication
+from delivery_control.domain.errors import (
+    DeliverySourceError,
+    InvalidReceipt,
+    PolicyViolation,
 )
-from delivery_control.domain.errors import DeliverySourceError
+from delivery_control.domain.unreachable_commits import (
+    UNREACHABLE_COMMIT_PATH_LIMIT,
+    UnreachableCommitEvidence,
+    validate_unreachable_commit_path_limit,
+)
 from delivery_control.services.unreachable_commit import UnreachableCommitService
 
 SHA = "a" * 40
@@ -81,3 +87,44 @@ def test_unreachable_commit_service_preserves_source_failures() -> None:
     assert evidence.unreachable is None
     assert evidence.disposition == "source_problem"
     assert evidence.error == "fsck unavailable for " + SHA + " (200)"
+
+
+@pytest.mark.parametrize("value", [1, UNREACHABLE_COMMIT_PATH_LIMIT])
+def test_unreachable_commit_path_limit_accepts_bounded_values(value: int) -> None:
+    assert validate_unreachable_commit_path_limit(value) == value
+
+
+@pytest.mark.parametrize("value", [0, 201, "200", True, 1.5, None])
+def test_unreachable_commit_path_limit_rejects_unbounded_values(
+    value: object,
+) -> None:
+    with pytest.raises(InvalidReceipt, match="between 1 and 200"):
+        validate_unreachable_commit_path_limit(value)
+
+
+def test_application_rejects_unbounded_path_limit_before_git_query() -> None:
+    class CountingGit:
+        calls = 0
+
+        def inspect_unreachable_commit(
+            self, *, commit_sha: str, max_paths: int
+        ) -> UnreachableCommitEvidence:
+            self.calls += 1
+            return _evidence(
+                commit_sha=commit_sha, changed_paths=(), changed_path_count=0
+            )
+
+    git = CountingGit()
+    application = DeliveryApplication(
+        repo=Path("/tmp/unreachable-max-paths-test"),
+        git=git,
+        github=object(),
+        registry=object(),
+        runtime=object(),
+        telemetry=object(),
+    )
+
+    with pytest.raises(PolicyViolation, match="between 1 and 200"):
+        application.unreachable_commit_inspect(commit_sha=SHA, max_paths=201)
+
+    assert git.calls == 0

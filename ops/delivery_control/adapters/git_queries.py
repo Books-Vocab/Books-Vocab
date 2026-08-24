@@ -24,6 +24,7 @@ from ..domain.unreachable_commits import (
     UNREACHABLE_COMMIT_SAMPLE_SIZE,
     UnreachableCommitEvidence,
     UnreachableCommitInventory,
+    validate_unreachable_commit_path_limit,
 )
 from .errors import AdapterCommandError, AdapterPayloadError
 from .git_client import GitCliClient
@@ -195,13 +196,15 @@ class GitQueries:
 
         if _COMMIT_SHA_RE.fullmatch(commit_sha) is None:
             raise AdapterPayloadError("unreachable commit SHA is malformed")
-        if type(max_paths) is not int or max_paths <= 0:
-            raise AdapterPayloadError("unreachable commit path limit is invalid")
+        try:
+            bounded_max_paths = validate_unreachable_commit_path_limit(max_paths)
+        except InvalidReceipt as error:
+            raise AdapterPayloadError(str(error)) from error
 
         inventory = self.unreachable_commit_inventory()
         for evidence in inventory.evidence:
             if evidence.commit_sha == commit_sha:
-                changed_paths = evidence.changed_paths[:max_paths]
+                changed_paths = evidence.changed_paths[:bounded_max_paths]
                 return replace(
                     evidence,
                     changed_paths=changed_paths,
@@ -213,7 +216,7 @@ class GitQueries:
             commit_sha=commit_sha,
             inventory_shas=inventory.shas,
             source_problem=source_problem,
-            max_paths=max_paths,
+            max_paths=bounded_max_paths,
         )
 
     def _inspect_unreachable_commit_from_inventory(

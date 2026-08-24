@@ -13,6 +13,17 @@ UNREACHABLE_COMMIT_SAMPLE_SIZE = 20
 UNREACHABLE_COMMIT_PATH_LIMIT = 200
 
 
+def validate_unreachable_commit_path_limit(value: object) -> int:
+    """Validate the public bound for one unreachable-commit path packet."""
+
+    if type(value) is not int or value < 1 or value > UNREACHABLE_COMMIT_PATH_LIMIT:
+        raise InvalidReceipt(
+            "unreachable commit path limit must be between 1 and "
+            f"{UNREACHABLE_COMMIT_PATH_LIMIT}"
+        )
+    return value
+
+
 def _text(value: str, field: str) -> None:
     if (
         type(value) is not str
@@ -199,4 +210,5 @@ __all__ = [
     "UNREACHABLE_COMMIT_SAMPLE_SIZE",
     "UnreachableCommitEvidence",
     "UnreachableCommitInventory",
+    "validate_unreachable_commit_path_limit",
 ]
