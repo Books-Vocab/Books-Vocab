@@ -50,6 +50,36 @@ def _registry_parse_error(error: Exception) -> str:
     return str(error)
 
 
+def _problem_signature(reason: str) -> str:
+    """Normalize one known low-level/parser wording pair for deduplication."""
+
+    text = reason.strip()
+    if text.startswith("registry-") and ": " in text:
+        text = text.split(": ", 1)[1]
+    if text.startswith("registry "):
+        text = text[len("registry ") :]
+    return text
+
+
+def _reported_problem_covers(
+    reported: list[InventoryProblem], candidate: InventoryProblem
+) -> bool:
+    """Avoid duplicating a fact already emitted by registry normalization.
+
+    This is deliberately identity/status/reason scoped.  A second, different
+    diagnostic for the same malformed record remains visible.
+    """
+
+    candidate_signature = _problem_signature(candidate.reason)
+    return any(
+        problem.identity == candidate.identity
+        and problem.identity_kind == candidate.identity_kind
+        and problem.record_status == candidate.record_status
+        and _problem_signature(problem.reason) == candidate_signature
+        for problem in reported
+    )
+
+
 def load_registry_list(
     runner: CommandRunnerPort, argv: tuple[str, ...]
 ) -> Mapping[str, Any]:
@@ -93,23 +123,23 @@ def registry_inventory(payload: Mapping[str, Any]) -> RegistryInventory:
             raw_status = (
                 raw.get("status") if isinstance(raw.get("status"), str) else None
             )
-            problems.append(
-                InventoryProblem(
-                    "registry",
-                    identity,
-                    _registry_parse_error(error),
-                    identity_kind=identity_kind,
-                    record_status=raw_status,
-                    record_path=(record_path if raw_status == "active" else None),
-                    owner_thread_id=(
-                        raw_owner.strip()
-                        if raw_status == "active"
-                        and isinstance(raw_owner, str)
-                        and raw_owner.strip()
-                        else None
-                    ),
-                )
+            candidate = InventoryProblem(
+                "registry",
+                identity,
+                _registry_parse_error(error),
+                identity_kind=identity_kind,
+                record_status=raw_status,
+                record_path=(record_path if raw_status == "active" else None),
+                owner_thread_id=(
+                    raw_owner.strip()
+                    if raw_status == "active"
+                    and isinstance(raw_owner, str)
+                    and raw_owner.strip()
+                    else None
+                ),
             )
+            if not _reported_problem_covers(problems, candidate):
+                problems.append(candidate)
     return RegistryInventory(records=tuple(records), problems=tuple(problems))
 
 

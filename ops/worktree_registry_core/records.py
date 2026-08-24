@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
-from lib.worktree_scope import scope_files, scope_problems
+from lib.worktree_scope import SCOPE_SCHEMA, scope_files, scope_problems
 
 SCHEMA = "kg.worktree.registry.v2"
 STATUS_ACTIVE = "active"
@@ -60,6 +61,56 @@ CURRENT_RECORD_FIELDS = (
     "terminal_proof",
     "discard_proof",
 )
+
+_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+def _scope_record_problem(record: dict[str, Any]) -> tuple[str, str] | None:
+    """Return the stable Scope fact shared by registry and delivery parsers."""
+
+    materialized = any(
+        field in record
+        for field in ("created_at", "claimed_at", "resolved_at", "base", "base_sha")
+    )
+    if "scope" not in record and not materialized:
+        # A few pre-materialization legacy claims contain only the branch/path
+        # identity.  Preserve their transition compatibility; once a concrete
+        # base/lifecycle fact exists, missing Scope is an explicit observation.
+        return None
+    if "scope" not in record:
+        return (
+            "registry-record-missing-field",
+            "registry record is missing required field: scope",
+        )
+    scope = record.get("scope")
+    if not isinstance(scope, dict):
+        return "registry-scope-invalid", "Scope must be an object"
+    if scope.get("schema") != SCOPE_SCHEMA:
+        return "registry-scope-invalid", f"Scope schema must be {SCOPE_SCHEMA}"
+    scope_findings = scope_problems(scope)
+    if not scope_findings:
+        return None
+    if not isinstance(scope.get("files"), list):
+        return "registry-scope-invalid", "Scope files must be a list"
+    if not scope["files"]:
+        return "registry-scope-invalid", "Scope must contain a non-empty tuple of files"
+    return "registry-scope-invalid", "Scope files contain malformed entries"
+
+
+def _record_base_sha(record: dict[str, Any]) -> str | None:
+    if "base_sha" not in record and record.get("status") not in TERMINAL_STATUSES:
+        # ``base`` is a legacy symbolic ref during pre-materialization claim
+        # creation.  The concrete base contract begins at base_sha/handback.
+        return None
+    value = record.get("base_sha") or record.get("base")
+    if record.get("status") in TERMINAL_STATUSES and not _SHA_RE.fullmatch(
+        str(value or "")
+    ):
+        seal = record.get("handback_seal")
+        sealed_base = seal.get("base_sha") if isinstance(seal, dict) else None
+        if isinstance(sealed_base, str) and _SHA_RE.fullmatch(sealed_base):
+            return sealed_base
+    return str(value or "")
 
 
 def norm_path(path: str) -> str:
@@ -258,6 +309,34 @@ def normalize_record(
                 "index": index,
                 "branch": record.get("branch"),
                 "status": status,
+            }
+        )
+    scope_problem = _scope_record_problem(record)
+    if scope_problem:
+        kind, reason = scope_problem
+        problems.append(
+            {
+                "kind": kind,
+                "index": index,
+                "branch": record.get("branch"),
+                "status": status,
+                "reason": reason,
+                **(
+                    {"field": "scope"}
+                    if kind == "registry-record-missing-field"
+                    else {}
+                ),
+            }
+        )
+    base_sha = _record_base_sha(record)
+    if base_sha is not None and not _SHA_RE.fullmatch(base_sha):
+        problems.append(
+            {
+                "kind": "registry-base-invalid",
+                "index": index,
+                "branch": record.get("branch"),
+                "status": status,
+                "reason": "registry base must be an exact commit SHA",
             }
         )
     proof_problem = stored_terminal_proof_problem(record)
