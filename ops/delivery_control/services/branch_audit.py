@@ -519,8 +519,13 @@ def build_branch_audit(
         for lane in inventory.lanes
     )
     malformed_registry_records = len(registry_record_problem_actions)
-    raw_active_registry_records = active_records + sum(
-        problem.record_status == "active" for problem in registry_record_problem_actions
+    malformed_active_record_identities = {
+        (problem.identity_kind, problem.identity, problem.record_status)
+        for problem in registry_record_problem_actions
+        if problem.record_status == "active"
+    }
+    raw_active_registry_records = active_records + len(
+        malformed_active_record_identities
     )
     published_records = sum(
         lane.registry is not None
