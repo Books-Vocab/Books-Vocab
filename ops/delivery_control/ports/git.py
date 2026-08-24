@@ -40,6 +40,13 @@ class GitQueryPort(Protocol):
     def is_ancestor(self, ancestor_sha: str, descendant_sha: str) -> bool: ...
 
 
+@runtime_checkable
+class GitDiffFingerprintPort(Protocol):
+    """Optional exact content-fingerprint capability for branch reconciliation."""
+
+    def diff_fingerprint(self, base_sha: str, head_sha: str) -> str: ...
+
+
 class BranchContentQueryPort(Protocol):
     """Read-only content evidence for a local branch review packet."""
 

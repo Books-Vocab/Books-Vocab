@@ -29,6 +29,7 @@ class BranchDisposition(StrEnum):
     ACTIVE_OR_PUBLISHED_LANE = "active_or_published_lane"
     MERGED_CLEANUP_READY = "merged_cleanup_ready"
     ABANDONED_WITH_HANDBACK = "abandoned_with_handback"
+    SUPERSEDED_BY_MERGED_PR = "superseded_by_merged_pr"
     CLOSED_DISPOSITION_REQUIRED = "closed_disposition_required"
     ORPHAN_LOCAL_RECONCILE = "orphan_local_reconcile"
     ORPHAN_REMOTE_RECONCILE = "orphan_remote_reconcile"
@@ -42,6 +43,7 @@ class BranchCleanupAction(StrEnum):
     FOLLOW_OWNER_LANE = "follow_owner_lane"
     CLEANUP_MERGED = "cleanup_merged"
     RECOVER_OWNER_OR_REQUIRE_DISCARD_PROOF = "recover_owner_or_require_discard_proof"
+    CLEANUP_SUPERSEDED = "cleanup_superseded_handback"
     RECONCILE_CLOSED_PR = "reconcile_closed_pr"
     RECONCILE_LOCAL_ORPHAN = "reconcile_local_orphan"
     RECONCILE_REMOTE_ORPHAN = "reconcile_remote_orphan"
@@ -87,6 +89,9 @@ class BranchRegistryEvidence:
     owner_thread_id: str | None = None
     scope_paths: tuple[str, ...] = ()
     external_ids: tuple[str, ...] = ()
+    superseded_pr_number: int | None = None
+    superseded_pr_head_sha: str | None = None
+    superseded_patch_fingerprint: str | None = None
 
     def __post_init__(self) -> None:
         for field_name in ("lane_id", "branch", "path", "status"):
@@ -107,6 +112,28 @@ class BranchRegistryEvidence:
             raise InvalidReceipt(
                 "handback_digest must be a lowercase SHA-256 digest or null"
             )
+        if self.superseded_pr_number is not None and (
+            type(self.superseded_pr_number) is not int or self.superseded_pr_number <= 0
+        ):
+            raise InvalidReceipt("superseded_pr_number must be positive or null")
+        _optional_sha(self.superseded_pr_head_sha, "superseded_pr_head_sha")
+        if self.superseded_patch_fingerprint is not None and (
+            type(self.superseded_patch_fingerprint) is not str
+            or _DIGEST_RE.fullmatch(self.superseded_patch_fingerprint) is None
+        ):
+            raise InvalidReceipt(
+                "superseded_patch_fingerprint must be a SHA-256 digest or null"
+            )
+        if self.superseded_pr_number is None and (
+            self.superseded_pr_head_sha is not None
+            or self.superseded_patch_fingerprint is not None
+        ):
+            raise InvalidReceipt("superseded PR evidence must start with a PR number")
+        if self.superseded_pr_number is not None and (
+            self.superseded_pr_head_sha is None
+            or self.superseded_patch_fingerprint is None
+        ):
+            raise InvalidReceipt("superseded PR evidence requires head and fingerprint")
         _optional_text(self.owner_thread_id, "owner_thread_id")
         for field_name in ("scope_paths", "external_ids"):
             values = getattr(self, field_name)
@@ -147,6 +174,9 @@ class BranchRegistryEvidence:
             owner_thread_id=record.owner_thread_id,
             scope_paths=tuple(sorted(record.scope.paths)),
             external_ids=tuple(sorted(set(record.external_ids))),
+            superseded_pr_number=record.superseded_pr_number,
+            superseded_pr_head_sha=record.superseded_pr_head_sha,
+            superseded_patch_fingerprint=record.superseded_patch_fingerprint,
         )
 
 

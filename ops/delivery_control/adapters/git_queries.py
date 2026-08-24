@@ -45,6 +45,7 @@ from .git_parsing import (
 
 UNREACHABLE_COMMIT_SCAN_TIMEOUT_SECONDS = 30.0
 _COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+_HUNK_HEADER_RE = re.compile(r"^@@ -[0-9]+(?:,[0-9]+)? \+[0-9]+(?:,[0-9]+)? @@")
 
 
 def _normalized_error(error: Exception) -> str:
@@ -350,6 +351,36 @@ class GitQueries:
         if result.exit_code == 1 and not result.stderr.strip():
             return False
         raise AdapterCommandError(result)
+
+    def diff_fingerprint(self, base_sha: str, head_sha: str) -> str:
+        """Hash patch content without base-specific blob ids or line numbers."""
+
+        for name, sha in (("base", base_sha), ("head", head_sha)):
+            if _COMMIT_SHA_RE.fullmatch(sha) is None:
+                raise AdapterPayloadError(f"{name} commit SHA is malformed")
+            try:
+                self.client.run("cat-file", "-e", f"{sha}^{{commit}}")
+            except AdapterCommandError:
+                self.client.run("fetch", "--quiet", "--no-tags", "origin", sha)
+                self.client.run("cat-file", "-e", f"{sha}^{{commit}}")
+        payload = self.client.run(
+            "diff",
+            "--binary",
+            "--no-ext-diff",
+            "--no-color",
+            "--unified=0",
+            "--find-renames=100%",
+            "--find-copies=100%",
+            f"{base_sha}..{head_sha}",
+        )
+        normalized: list[str] = []
+        for line in payload.splitlines():
+            if line.startswith("index "):
+                continue
+            if line.startswith("@@ "):
+                line = _HUNK_HEADER_RE.sub("@@", line)
+            normalized.append(line.rstrip())
+        return hashlib.sha256("\n".join(normalized).encode("utf-8")).hexdigest()
 
     def inspect_branch_content(
         self,

@@ -59,6 +59,7 @@ from .services import (
     queue,
     required_repair,
     sync_main,
+    superseded_handback,
     telemetry_operations,
     unreachable_commit,
     unregistered_branch,
@@ -800,6 +801,27 @@ class DeliveryApplication:
             git_command=self.git,
             github=self.github,
         ).discard(
+            branch=branch,
+            expected_head_sha=expected_head_sha,
+            operator=operator,
+            reason=reason,
+        )
+
+    def supersede_abandoned_handback(
+        self,
+        *,
+        branch: str,
+        expected_head_sha: str,
+        operator: str,
+        reason: str,
+    ) -> object:
+        return superseded_handback.SupersededHandbackService(
+            registry_query=self.registry,
+            registry_command=self.registry,
+            git_query=self.git,
+            git_command=self.git,
+            github=self.github,
+        ).supersede(
             branch=branch,
             expected_head_sha=expected_head_sha,
             operator=operator,

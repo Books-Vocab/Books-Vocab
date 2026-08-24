@@ -14,6 +14,8 @@ from ..domain.observations import (
     RegistryCollisionClaim,
     RegistrySnapshot,
 )
+from ..domain.superseded_handback import validate_superseded_proof_shape
+from worktree_registry_core.records import superseded_proof_problem
 from .registry_seals import legacy_seal_valid, parse_initial_holds
 from .timestamps import parse_optional_timestamp
 
@@ -250,6 +252,20 @@ def parse_registry_record(payload: Mapping[str, Any]) -> RegistrySnapshot:
         if handback_valid and isinstance(seal, Mapping)
         else ()
     )
+    superseded_proof = payload.get("superseded_proof")
+    superseded_pr_number: int | None = None
+    superseded_pr_head_sha: str | None = None
+    superseded_patch_fingerprint: str | None = None
+    if superseded_proof is not None:
+        if (problem := validate_superseded_proof_shape(superseded_proof)) is not None:
+            raise ValueError(problem)
+        proof_problem = superseded_proof_problem(dict(payload))
+        if proof_problem is not None:
+            raise ValueError(proof_problem)
+        assert isinstance(superseded_proof, Mapping)
+        superseded_pr_number = superseded_proof["merged_pr_number"]
+        superseded_pr_head_sha = superseded_proof["merged_pr_head_sha"]
+        superseded_patch_fingerprint = superseded_proof["patch_fingerprint"]
     return RegistrySnapshot(
         lane_id=lane_id,
         branch=branch,
@@ -284,6 +300,9 @@ def parse_registry_record(payload: Mapping[str, Any]) -> RegistrySnapshot:
         ),
         handback_outcomes=handback_outcomes,
         handback_initial_holds=handback_initial_holds,
+        superseded_pr_number=superseded_pr_number,
+        superseded_pr_head_sha=superseded_pr_head_sha,
+        superseded_patch_fingerprint=superseded_patch_fingerprint,
     )
 
 

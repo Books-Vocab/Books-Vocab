@@ -116,3 +116,33 @@ def discard_registry(
         or not isinstance(payload["records"][0].get("discard_proof"), Mapping)
     ):
         raise AdapterPayloadError("registry discard readback is not exact")
+
+
+def supersede_registry(
+    *,
+    runner: CommandRunnerPort,
+    argv: tuple[str, ...],
+    lane_id: str,
+) -> None:
+    """Persist and read back one superseded-handback proof."""
+
+    result = runner.run(argv)
+    if result.exit_code != 0:
+        raise CompareAndSwapConflict(
+            f"superseded proof recording failed for {lane_id}: "
+            f"{result.stderr or result.stdout}"
+        )
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise AdapterPayloadError("registry supersede returned invalid JSON") from error
+    if (
+        not isinstance(payload, Mapping)
+        or payload.get("action") != "supersede"
+        or payload.get("status") != "abandoned"
+        or not isinstance(payload.get("records"), list)
+        or len(payload["records"]) != 1
+        or not isinstance(payload["records"][0], Mapping)
+        or not isinstance(payload["records"][0].get("superseded_proof"), Mapping)
+    ):
+        raise AdapterPayloadError("registry supersede readback is not exact")

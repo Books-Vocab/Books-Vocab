@@ -60,6 +60,7 @@ from worktree_registry_core.inspection import record_view as _record_view
 from worktree_registry_core.lifecycle import (
     DISCARD_PROOF_SCHEMA,
     PUBLIC_RESOLVE_STATUSES,
+    superseded_proof_with_digest,
     TERMINAL_PROOF_SCHEMA,
     discard_proof_with_digest,
     terminal_proof_with_digest,
@@ -67,6 +68,7 @@ from worktree_registry_core.lifecycle import (
 from worktree_registry_core.lifecycle_cli import (
     cmd_discard as _cmd_discard,
     cmd_resolve as _cmd_resolve,
+    cmd_supersede as _cmd_supersede,
 )
 from worktree_registry_core.maintenance import cmd_compact, cmd_sweep
 from worktree_registry_core.published_base import cmd_record_published_base
@@ -93,6 +95,7 @@ REGISTRY_MUTATING_COMMANDS = frozenset(
         "hand-back",
         "resolve",
         "discard",
+        "supersede",
         "record-published-base",
         "sweep",
         "compact",
@@ -141,6 +144,7 @@ __all__ = (
     "save_state",
     "terminal_proof_with_digest",
     "discard_proof_with_digest",
+    "superseded_proof_with_digest",
     "validate_handback_seal",
 )
 
@@ -187,6 +191,7 @@ def _parser() -> argparse.ArgumentParser:
             "hand-back": cmd_hand_back,
             "resolve": cmd_resolve,
             "discard": _cmd_discard,
+            "supersede": _cmd_supersede,
             "record-published-base": cmd_record_published_base,
             "sweep": cmd_sweep,
             "compact": cmd_compact,

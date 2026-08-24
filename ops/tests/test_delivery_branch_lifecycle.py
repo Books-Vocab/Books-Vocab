@@ -39,6 +39,9 @@ def _record(
     handed_back_sha: str | None = None,
     base_sha: str = SHA_A,
     owner_thread_id: str | None = None,
+    superseded_pr_number: int | None = None,
+    superseded_pr_head_sha: str | None = None,
+    superseded_patch_fingerprint: str | None = None,
 ) -> RegistrySnapshot:
     return RegistrySnapshot(
         lane_id=f"LANE-{branch}",
@@ -51,6 +54,9 @@ def _record(
         handed_back_sha=handed_back_sha,
         handback_valid=handed_back_sha is not None,
         owner_thread_id=owner_thread_id,
+        superseded_pr_number=superseded_pr_number,
+        superseded_pr_head_sha=superseded_pr_head_sha,
+        superseded_patch_fingerprint=superseded_patch_fingerprint,
     )
 
 
@@ -177,6 +183,35 @@ def test_abandoned_handback_cannot_be_silently_deleted() -> None:
     assert (
         asset.cleanup_action
         is BranchCleanupAction.RECOVER_OWNER_OR_REQUIRE_DISCARD_PROOF
+    )
+
+
+def test_superseded_handback_is_a_distinct_terminal_candidate() -> None:
+    branch = "feat/superseded"
+    assets = project_branch_lifecycle(
+        branch_inventory=BranchInventory(
+            local=((branch, SHA_B),),
+            remote=((branch, SHA_C),),
+        ),
+        records=(
+            _record(
+                branch,
+                status="abandoned",
+                handed_back_sha=SHA_B,
+                superseded_pr_number=42,
+                superseded_pr_head_sha=SHA_C,
+                superseded_patch_fingerprint="d" * 64,
+            ),
+        ),
+        pull_requests=(_pr(42, branch, state="MERGED", head_sha=SHA_C),),
+    ).assets
+
+    assert {asset.disposition for asset in assets} == {
+        BranchDisposition.SUPERSEDED_BY_MERGED_PR
+    }
+    assert all(
+        asset.cleanup_action is BranchCleanupAction.CLEANUP_SUPERSEDED
+        for asset in assets
     )
 
 
