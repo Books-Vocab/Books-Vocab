@@ -10,7 +10,7 @@ OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
 from delivery_control.adapters.errors import AdapterCommandError, AdapterPayloadError
-from delivery_control.adapters import github_commands
+from delivery_control.adapters import github_commands, github_parsing
 from delivery_control.adapters.github_cli import GitHubCliAdapter
 from delivery_control.domain.candidate_issues import CANDIDATE_ISSUE_LABEL
 from delivery_control.domain.errors import CompareAndSwapConflict
@@ -104,6 +104,23 @@ def _queue_configuration_payload(*, configured: bool) -> dict[str, object]:
             }
         }
     }
+
+
+@pytest.mark.parametrize(
+    "parser",
+    (
+        github_parsing.parse_pull_request,
+        github_parsing.parse_candidate_issue,
+        github_parsing.parse_demand_issue,
+    ),
+    ids=("pull-request", "candidate-issue", "demand-issue"),
+)
+@pytest.mark.parametrize("payload", (None, [], "not-an-object"))
+def test_direct_github_parsers_currently_leak_attribute_error_for_non_objects(
+    parser, payload: object
+) -> None:
+    with pytest.raises(AttributeError):
+        parser(payload)
 
 
 def test_github_adapter_reads_open_exact_label_candidate_issues() -> None:
