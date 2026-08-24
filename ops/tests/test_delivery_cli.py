@@ -1366,12 +1366,14 @@ def test_cli_exposes_watchdog_without_dispatching(capsys: object) -> None:
             ],
             application_factory=lambda **_: FakeApplication(),
         )
-        == 0
+        == 2
     )
 
     payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
     assert payload["command"] == "watchdog"
     assert payload["result"]["action"] == "noop"
+    assert payload["verdict"] == "observation"
+    assert payload["dispatch_authorized"] is False
 
 
 @pytest.mark.parametrize("command", ["watchdog", "watchdog-claim"])
@@ -1395,13 +1397,14 @@ def test_watchdog_help_documents_required_global_runtime_receipt(
             "watchdog",
             (
                 "read-only observation",
-                "exit 0 does not authorize wake or dispatch",
+                "verdict=observation, dispatch_authorized=false, exit 2",
+                "must not retry or wake",
             ),
         ),
         (
             "watchdog-claim",
             (
-                "only verdict=wake-authorized, action=wake, wake_claimed=true may exit 0",
+                "only verdict=wake-authorized, action=wake, wake_claimed=true, dispatch_authorized=true may exit 0",
                 "noop/escalate/wake_claimed=false/claim conflict are valid no-wake observations",
                 "ok=true, verdict=no-wake, exit 2",
                 "must not retry or wake",
@@ -1512,6 +1515,7 @@ def test_cli_exposes_watchdog_claim_before_external_dispatch(capsys: object) -> 
     payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
     assert payload["command"] == "watchdog-claim"
     assert payload["result"]["wake_claimed"] is True
+    assert payload["dispatch_authorized"] is True
     assert payload["verdict"] == "wake-authorized"
 
 
@@ -1574,11 +1578,34 @@ def test_watchdog_claim_no_wake_is_not_a_dispatch_success(
     assert payload["ok"] is True
     assert payload["command"] == "watchdog-claim"
     assert payload["verdict"] == expected_verdict
+    assert payload["dispatch_authorized"] is False
     assert payload["result"] == result
 
 
-def test_watchdog_read_only_observation_does_not_use_dispatch_exit_semantics(
-    capsys: object,
+@pytest.mark.parametrize(
+    "result",
+    [
+        {"action": "noop", "reason": "runtime is frozen", "wake_claimed": False},
+        {
+            "action": "wake",
+            "reason": "stale runtime is eligible",
+            "wake_id": "wake-1",
+            "wake_claimed": False,
+        },
+        {
+            "action": "escalate",
+            "reason": "runtime receipt is missing",
+            "wake_claimed": False,
+        },
+        {
+            "action": "escalate",
+            "reason": "runtime timestamp is in the future",
+            "wake_claimed": False,
+        },
+    ],
+)
+def test_watchdog_read_only_observation_is_never_dispatch_authorized(
+    result: dict[str, object], capsys: object
 ) -> None:
     class FakeApplication:
         def watchdog(
@@ -1589,7 +1616,7 @@ def test_watchdog_read_only_observation_does_not_use_dispatch_exit_semantics(
         ) -> object:
             assert supervisor_thread_id == "supervisor-thread"
             assert stale_after_seconds == 300
-            return {"action": "wake", "wake_id": "wake-1", "wake_claimed": False}
+            return result
 
     assert (
         main(
@@ -1602,12 +1629,15 @@ def test_watchdog_read_only_observation_does_not_use_dispatch_exit_semantics(
             ],
             application_factory=lambda **_: FakeApplication(),
         )
-        == 0
+        == 2
     )
 
     payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
     assert payload["command"] == "watchdog"
-    assert payload["verdict"] == "success"
+    assert payload["ok"] is True
+    assert payload["verdict"] == "observation"
+    assert payload["dispatch_authorized"] is False
+    assert payload["result"] == result
 
 
 def test_cli_publishes_atomic_runtime_receipt(tmp_path: Path, capsys: object) -> None:
