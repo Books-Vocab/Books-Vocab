@@ -71,6 +71,8 @@ class CandidateSpec:
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, object]) -> CandidateSpec:
+        if not isinstance(payload, Mapping):
+            raise ValueError("candidate contract payload must be an object")
         if set(payload) != {
             "schema",
             "severity",
