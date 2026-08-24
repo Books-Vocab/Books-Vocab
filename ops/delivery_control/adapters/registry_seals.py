@@ -32,8 +32,23 @@ def legacy_seal_valid(record: Mapping[str, Any]) -> bool:
         return False
     if seal.get("branch") != record.get("branch"):
         return False
-    if seal.get("owner_thread_id") != record.get("codex_thread_id"):
+    record_owner = record.get("codex_thread_id")
+    if type(record_owner) is not str or not record_owner.strip():
         return False
+    if "owner_thread_id" not in seal:
+        # Historical abandoned seals predate owner_thread_id.  The exact
+        # owner on the abandoned registry record is the only permitted
+        # compatibility source; no branch/title/external-id inference.
+        if record.get("status") != "abandoned":
+            return False
+    else:
+        seal_owner = seal.get("owner_thread_id")
+        if (
+            type(seal_owner) is not str
+            or not seal_owner.strip()
+            or seal_owner != record_owner
+        ):
+            return False
     if (
         Path(str(seal.get("path", ""))).expanduser().resolve()
         != Path(str(record.get("path", ""))).expanduser().resolve()
