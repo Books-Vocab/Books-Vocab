@@ -1527,6 +1527,41 @@ def test_metrics_exposes_active_registry_residue_separately_from_development() -
     assert metrics.malformed_active_registry_records == 1
 
 
+def test_malformed_active_registry_cardinality_deduplicates_diagnostics() -> None:
+    inventory = DeliveryInventory(
+        lanes=(),
+        source_problems=(
+            InventoryProblem(
+                "registry",
+                "debug/malformed-active",
+                "claim_generation must be a non-negative integer",
+                identity_kind="branch",
+                record_status="active",
+            ),
+            InventoryProblem(
+                "registry",
+                "debug/malformed-active",
+                "registry record is missing required field: scope",
+                identity_kind="branch",
+                record_status="active",
+            ),
+            InventoryProblem(
+                "registry",
+                "debug/malformed-history",
+                "claim_generation must be a non-negative integer",
+                identity_kind="branch",
+                record_status="abandoned",
+            ),
+        ),
+    )
+
+    metrics = measure_pipeline(inventory)
+
+    assert metrics.source_problems == 3
+    assert metrics.malformed_active_registry_records == 1
+    assert metrics.raw_active_registry_records == 1
+
+
 def test_unknown_unregistered_worktree_cleanliness_is_a_source_problem() -> None:
     path = Path("/tmp/unregistered-unknown")
     inventory = DeliveryInventory(
