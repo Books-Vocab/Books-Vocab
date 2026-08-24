@@ -25,6 +25,13 @@ _HOLD_LABELS = {
     "delivery-hold:security",
     "security",
 }
+_HOLD_PHRASE = re.compile(
+    r"\b(?:publish\s+only|security\s+hold|p0\s+hold|p1\s+hold)\b",
+    re.IGNORECASE,
+)
+_HOLD_NEGATION = re.compile(
+    r"\b(?:no|not|without|never|none|absent|missing)\b", re.IGNORECASE
+)
 _MALFORMED_LIVE_REGISTRY_STATUSES = frozenset({"active", "cleanup_pending"})
 
 
@@ -37,15 +44,22 @@ def _references_issue(value: str, number: int) -> bool:
     )
 
 
+def _body_has_explicit_hold(body: str) -> bool:
+    for match in _HOLD_PHRASE.finditer(body):
+        line_start = body.rfind("\n", 0, match.start()) + 1
+        context = body[line_start : match.start()]
+        context = re.split(r"[.!?;:]\s*", context)[-1]
+        if not _HOLD_NEGATION.search(context):
+            return True
+    return False
+
+
 def _issue_is_held(issue: DemandIssue) -> bool:
     labels = {label.casefold() for label in issue.labels}
     body = issue.body.casefold()
     return (
         bool(labels & _HOLD_LABELS)
-        or "publish only" in body
-        or "security hold" in body
-        or "p0 hold" in body
-        or "p1 hold" in body
+        or _body_has_explicit_hold(body)
         or (
             issue.candidate_spec is not None
             and bool(issue.candidate_spec.initial_holds)

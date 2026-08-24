@@ -356,7 +356,9 @@ def test_malformed_active_registry_issue_reference_is_audit_only() -> None:
     assert projected.dispatchable_candidate_issues == ()
 
 
-def test_terminal_malformed_registry_history_does_not_become_active_observation() -> None:
+def test_terminal_malformed_registry_history_does_not_become_active_observation() -> (
+    None
+):
     issue = parse_demand_issue(_payload(1187))
     problem = InventoryProblem(
         "registry",
@@ -400,6 +402,38 @@ def test_explicit_security_hold_wins_over_existing_owner_mapping() -> None:
         DemandIssueInventory((issue,), raw_count=1),
         registry_records=(_record(21, "active", external_id="#21"),),
     )
+
+    assert projected.records[0].disposition is IssueDisposition.SECURITY_HOLD
+
+
+def test_negative_hold_language_does_not_hold_candidate_1409() -> None:
+    issue = parse_demand_issue(
+        _payload(
+            1409,
+            labels=(CANDIDATE_ISSUE_LABEL,),
+            body=(
+                render_candidate_body(_spec(1409))
+                + "\n\nDelivery Triage\n"
+                + "No P0/P1/security hold; without security impact."
+            ),
+        )
+    )
+
+    assert issue.candidate_spec is not None
+    assert issue.candidate_spec.initial_holds == ()
+
+    projected = project_demand_inventory(DemandIssueInventory((issue,), raw_count=1))
+
+    assert projected.records[0].disposition is IssueDisposition.DISPATCHABLE_CANDIDATE
+    assert projected.dispatchable_candidate_issues[0].number == 1409
+
+
+def test_publish_only_is_an_explicit_security_hold() -> None:
+    issue = parse_demand_issue(
+        _payload(1410, body="PUBLISH ONLY until security clearance.")
+    )
+
+    projected = project_demand_inventory(DemandIssueInventory((issue,), raw_count=1))
 
     assert projected.records[0].disposition is IssueDisposition.SECURITY_HOLD
 
