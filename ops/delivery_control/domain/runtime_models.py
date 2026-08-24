@@ -70,6 +70,8 @@ class RuntimeReceipt:
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any]) -> RuntimeReceipt:
+        if not isinstance(payload, Mapping):
+            raise InvalidReceipt("runtime receipt payload must be an object")
         if payload.get("schema") != RUNTIME_SCHEMA:
             raise InvalidReceipt("runtime receipt schema is unsupported")
         try:

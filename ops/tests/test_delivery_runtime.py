@@ -10,12 +10,17 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.adapters.runtime import RuntimeStatusMap  # noqa: E402
-from delivery_control.adapters.runtime_receipt import RuntimeReceiptFile  # noqa: E402
-from delivery_control.application import build_application  # noqa: E402
-from delivery_control.controller.runtime_watchdog import evaluate_runtime_watchdog  # noqa: E402
-from delivery_control.domain.errors import CompareAndSwapConflict, PolicyViolation  # noqa: E402
-from delivery_control.domain.runtime_models import (  # noqa: E402
+from delivery_control.adapters.runtime import RuntimeStatusMap
+from delivery_control.adapters.runtime_receipt import RuntimeReceiptFile
+from delivery_control.application import build_application
+from delivery_control.controller.runtime_watchdog import (
+    evaluate_runtime_watchdog,
+)
+from delivery_control.domain.errors import (
+    CompareAndSwapConflict,
+    PolicyViolation,
+)
+from delivery_control.domain.runtime_models import (
     RUNTIME_SCHEMA,
     RuntimeReceipt,
     RuntimeState,
@@ -361,6 +366,18 @@ def test_malformed_runtime_receipt_fails_closed(tmp_path: Path) -> None:
 
     with pytest.raises(PolicyViolation, match="runtime receipt is malformed"):
         RuntimeStatusMap.from_file(path)
+
+
+@pytest.mark.parametrize("payload", (["not", "an", "object"], "not an object", None))
+def test_runtime_receipt_file_rejects_non_object_json_payloads(
+    tmp_path: Path,
+    payload: object,
+) -> None:
+    path = tmp_path / "runtime.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(PolicyViolation, match="runtime receipt is unreadable"):
+        RuntimeReceiptFile(path).read()
 
 
 def test_invalid_stale_threshold_is_rejected() -> None:
