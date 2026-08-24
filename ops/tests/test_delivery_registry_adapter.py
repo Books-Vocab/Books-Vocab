@@ -245,6 +245,62 @@ def test_registry_adapter_surfaces_malformed_records_without_hiding_valid_ones(
     assert inventory.problems[0].record_status == "active"
 
 
+@pytest.mark.parametrize("owner_thread_id", [None, "owner-thread"])
+def test_registry_adapter_preserves_malformed_active_owner_observation(
+    tmp_path: Path, owner_thread_id: str | None
+) -> None:
+    branch = "debug/malformed-owner"
+    path = tmp_path / "malformed-owner"
+    record = {
+        "branch": branch,
+        "path": str(path),
+        "status": "active",
+        "external_ids": ["DIRECT-1"],
+        "base": "a" * 40,
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"operation": "modify", "path": "ops/a.py"}],
+        },
+        "codex_thread_id": owner_thread_id,
+        "claim_generation": None,
+    }
+    runner = StaticRunner(
+        [
+            CommandResult(
+                argv=("registry", "list"),
+                exit_code=0,
+                stdout=json.dumps(
+                    {
+                        "records": [record],
+                        "problems": [
+                            {
+                                "kind": "registry-claim-generation-invalid",
+                                "index": 0,
+                                "branch": branch,
+                                "status": "active",
+                                "reason": "claim_generation must be a non-negative integer",
+                            }
+                        ],
+                    }
+                ),
+                stderr="",
+            )
+        ]
+    )
+
+    inventory = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    ).list_records()
+
+    assert len(inventory.problems) == 2
+    assert {problem.identity for problem in inventory.problems} == {branch}
+    assert all(problem.record_status == "active" for problem in inventory.problems)
+    assert all(problem.record_path == path.resolve() for problem in inventory.problems)
+    assert {problem.owner_thread_id for problem in inventory.problems} == {
+        owner_thread_id
+    }
+
+
 def test_registry_adapter_surfaces_reported_problems_and_unknown_statuses(
     tmp_path: Path,
 ) -> None:

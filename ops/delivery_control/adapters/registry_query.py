@@ -83,15 +83,29 @@ def registry_inventory(payload: Mapping[str, Any]) -> RegistryInventory:
         try:
             records.append(parse_registry_record(raw))
         except (KeyError, TypeError, ValueError, InvalidScope) as error:
+            raw_path = raw.get("path")
+            record_path = None
+            if isinstance(raw_path, str) and raw_path.strip():
+                candidate_path = Path(raw_path).expanduser()
+                if candidate_path.is_absolute():
+                    record_path = candidate_path.resolve()
+            raw_owner = raw.get("codex_thread_id")
+            raw_status = (
+                raw.get("status") if isinstance(raw.get("status"), str) else None
+            )
             problems.append(
                 InventoryProblem(
                     "registry",
                     identity,
                     _registry_parse_error(error),
                     identity_kind=identity_kind,
-                    record_status=(
-                        raw.get("status")
-                        if isinstance(raw.get("status"), str)
+                    record_status=raw_status,
+                    record_path=(record_path if raw_status == "active" else None),
+                    owner_thread_id=(
+                        raw_owner.strip()
+                        if raw_status == "active"
+                        and isinstance(raw_owner, str)
+                        and raw_owner.strip()
                         else None
                     ),
                 )

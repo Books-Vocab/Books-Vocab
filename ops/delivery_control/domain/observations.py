@@ -91,6 +91,11 @@ class InventoryProblem:
     # valid RegistrySnapshot.  Adapter-reported/global problems leave this
     # unset because they are not tied to one raw record.
     record_status: str | None = None
+    # A malformed registry record is still an ownership observation. Preserve
+    # the raw path and owner so metrics can classify it as owner-bound or
+    # ownerless without promoting the malformed claim into a valid lane.
+    record_path: Path | None = None
+    owner_thread_id: str | None = None
 
 
 @dataclass(frozen=True)

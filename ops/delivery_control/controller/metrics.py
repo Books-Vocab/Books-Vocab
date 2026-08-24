@@ -235,29 +235,58 @@ def measure_pipeline(
         for lane in lanes
         if lane.registry is not None and lane.registry.status == "active"
     )
-    malformed_active_registry_records = len(
-        {
-            (problem.identity_kind, problem.identity, problem.record_status)
-            for problem in inventory.source_problems
-            if problem.source == "registry" and problem.record_status == "active"
-        }
-    )
+    malformed_active_registry_observations: dict[
+        tuple[str | None, str, str], tuple[str | None, Path | None]
+    ] = {}
+    for problem in inventory.source_problems:
+        if problem.source != "registry" or problem.record_status != "active":
+            continue
+        identity = (problem.identity_kind, problem.identity, problem.record_status)
+        current_observation = malformed_active_registry_observations.get(identity)
+        # Conflicting diagnostics for one raw record stay audit-only: an
+        # unknown/empty owner wins over a non-empty owner so no recovery wake
+        # can be inferred from inconsistent evidence.
+        if current_observation is None:
+            malformed_active_registry_observations[identity] = (
+                problem.owner_thread_id,
+                problem.record_path,
+            )
+        else:
+            current_owner, current_path = current_observation
+            malformed_active_registry_observations[identity] = (
+                None
+                if current_owner is None or problem.owner_thread_id is None
+                else current_owner,
+                current_path or problem.record_path,
+            )
+    malformed_active_registry_records = len(malformed_active_registry_observations)
+    malformed_active_registry_without_worktree = {
+        identity: owner_and_path[0]
+        for identity, owner_and_path in malformed_active_registry_observations.items()
+        if owner_and_path[1] is not None
+        and owner_and_path[1].resolve() not in physical_paths
+    }
     active_registry_records = len(active_registry_lanes)
     raw_active_registry_records = (
         active_registry_records + malformed_active_registry_records
     )
     active_registry_without_worktree = sum(
         lane.physical is None for lane in active_registry_lanes
-    )
+    ) + len(malformed_active_registry_without_worktree)
     active_registry_without_worktree_owner_bound = sum(
         lane.physical is None
         and bool(lane.registry is not None and lane.registry.owner_thread_id)
         for lane in active_registry_lanes
+    ) + sum(
+        owner is not None
+        for owner in malformed_active_registry_without_worktree.values()
     )
     active_registry_without_worktree_ownerless = sum(
         lane.physical is None
         and not bool(lane.registry is not None and lane.registry.owner_thread_id)
         for lane in active_registry_lanes
+    ) + sum(
+        owner is None for owner in malformed_active_registry_without_worktree.values()
     )
     active_registry_without_worktree_owner_reachable = sum(
         lane.physical is None
