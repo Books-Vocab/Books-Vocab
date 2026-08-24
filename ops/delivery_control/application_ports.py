@@ -7,6 +7,7 @@ from typing import Protocol
 
 from .ports.git import (
     BranchContentQueryPort,
+    GitDiffFingerprintPort,
     GitCommandPort,
     GitQueryPort,
     UnreachableCommitQueryPort,
@@ -22,6 +23,7 @@ from .ports.registry import (
     RegistryDiscardCommandPort,
     RegistryPublicationQueryPort,
     RegistryQueryPort,
+    RegistrySupersedeCommandPort,
 )
 
 
@@ -32,6 +34,7 @@ def _utc_now() -> datetime:
 class DeliveryGitPort(
     GitQueryPort,
     BranchContentQueryPort,
+    GitDiffFingerprintPort,
     UnreachableCommitQueryPort,
     GitCommandPort,
     Protocol,
@@ -54,6 +57,7 @@ class DeliveryRegistryPort(
     RegistryCleanupQueryPort,
     RegistryCommandPort,
     RegistryDiscardCommandPort,
+    RegistrySupersedeCommandPort,
     Protocol,
 ):
     pass

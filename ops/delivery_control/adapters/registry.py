@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -11,7 +12,12 @@ from ..domain.observations import (
     RegistrySnapshot,
 )
 from ..ports.process import CommandRunnerPort
-from .registry_command import discard_registry, record_published_base, resolve_registry
+from .registry_command import (
+    discard_registry,
+    record_published_base,
+    resolve_registry,
+    supersede_registry,
+)
 from .registry_parsing import (
     parse_collision_claim,
     parse_registry_record,
@@ -175,6 +181,35 @@ class RegistryCliAdapter:
                 operator,
                 "--reason",
                 reason,
+            ),
+            lane_id=lane_id,
+        )
+
+    def supersede(
+        self,
+        *,
+        lane_id: str,
+        expected_claim_generation: int,
+        expected_branch: str,
+        expected_path: str,
+        expected_head_sha: str,
+        proof_body: dict[str, object],
+    ) -> None:
+        supersede_registry(
+            runner=self.runner,
+            argv=self._argv(
+                "supersede",
+                "--json",
+                "--branch",
+                expected_branch,
+                "--path",
+                expected_path,
+                "--expected-generation",
+                str(expected_claim_generation),
+                "--expected-head-sha",
+                expected_head_sha,
+                "--superseded-proof",
+                json.dumps(proof_body, ensure_ascii=False, sort_keys=True),
             ),
             lane_id=lane_id,
         )

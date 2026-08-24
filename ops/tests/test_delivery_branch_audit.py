@@ -165,6 +165,56 @@ def test_branch_audit_exposes_owner_evidence_for_owner_lane() -> None:
     assert report.assets[0].owner_thread_ids == (owner_thread_id,)
 
 
+def test_branch_audit_emits_superseded_handback_cleanup_command() -> None:
+    branch = "feat/superseded"
+    record = RegistrySnapshot(
+        lane_id="LANE-SUPERSEDED",
+        branch=branch,
+        path=Path("/tmp/superseded"),
+        status="abandoned",
+        scope=Scope.from_paths(modify=("ops/example.py",)),
+        base_sha=SHA_A,
+        claim_generation=1,
+        handed_back_sha=SHA_B,
+        handback_valid=True,
+        superseded_pr_number=42,
+        superseded_pr_head_sha="c" * 40,
+        superseded_patch_fingerprint="d" * 64,
+    )
+    lifecycle = project_branch_lifecycle(
+        branch_inventory=BranchInventory(
+            local=((branch, SHA_B),),
+            remote=((branch, "c" * 40),),
+        ),
+        records=(record,),
+        pull_requests=(_pr(42, branch, "MERGED", "c" * 40),),
+    )
+    report = build_branch_audit(
+        DeliveryInventory(
+            lanes=(),
+            branch_lifecycle=lifecycle,
+            live_main_sha=SHA_A,
+            local_main_sha=SHA_A,
+        )
+    )
+
+    actions = [
+        item
+        for item in report.actions
+        if item.disposition is BranchDisposition.SUPERSEDED_BY_MERGED_PR
+    ]
+    assert len(actions) == 2
+    assert all(item.safe_terminal for item in actions)
+    assert all(
+        item.suggested_command
+        == (
+            "./ops/delivery.py supersede-abandoned-handback --branch "
+            f"{branch} --expected-head-sha {SHA_B}"
+        )
+        for item in actions
+    )
+
+
 def test_branch_audit_action_preserves_exact_pair_without_changing_disposition() -> (
     None
 ):

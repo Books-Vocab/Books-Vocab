@@ -126,6 +126,9 @@ class RegistrySnapshot:
     handed_back_at: datetime | None = None
     handback_outcomes: tuple[HandbackOutcome, ...] = ()
     handback_initial_holds: tuple[str, ...] = ()
+    superseded_pr_number: int | None = None
+    superseded_pr_head_sha: str | None = None
+    superseded_patch_fingerprint: str | None = None
 
 
 @dataclass(frozen=True)

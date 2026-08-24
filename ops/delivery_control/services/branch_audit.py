@@ -377,6 +377,40 @@ def _action_for_asset(
             ),
             suggested_command=command,
         )
+    if asset.disposition is BranchDisposition.SUPERSEDED_BY_MERGED_PR:
+        evidence = next(
+            (
+                item
+                for item in asset.registry_evidence
+                if item.superseded_pr_number is not None
+                and item.handed_back_sha is not None
+            ),
+            None,
+        )
+        safe_terminal = evidence is not None
+        command = (
+            "./ops/delivery.py supersede-abandoned-handback "
+            f"--branch {asset.branch} --expected-head-sha "
+            f"{evidence.handed_back_sha}"
+            if evidence is not None
+            else None
+        )
+        return BranchAuditAction(
+            branch=asset.branch,
+            side=asset.side,
+            sha=asset.sha,
+            disposition=asset.disposition,
+            cleanup_action=asset.cleanup_action,
+            owner_thread_ids=asset.owner_thread_ids,
+            category=("safe_terminal_candidate" if safe_terminal else "inspect"),
+            safe_terminal=safe_terminal,
+            next_step=(
+                "run the exact superseded-handback CAS command"
+                if safe_terminal
+                else "reconcile superseded proof before cleanup"
+            ),
+            suggested_command=command,
+        )
     if asset.disposition is BranchDisposition.ORPHAN_LOCAL_RECONCILE:
         eligible = orphan_preflight is not None and orphan_preflight.eligible
         blockers = (

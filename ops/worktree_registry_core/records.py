@@ -13,6 +13,13 @@ import re
 from pathlib import Path
 from typing import Any
 
+from delivery_control.domain.superseded_handback import (
+    SUPERSEDED_PROOF_DISPOSITION,
+    SUPERSEDED_PROOF_SCHEMA,
+    superseded_proof_body,
+    superseded_proof_with_digest as _superseded_proof_with_digest,
+    validate_superseded_proof_shape,
+)
 from lib.worktree_scope import SCOPE_SCHEMA, scope_files, scope_problems
 
 SCHEMA = "kg.worktree.registry.v2"
@@ -60,6 +67,7 @@ CURRENT_RECORD_FIELDS = (
     "handback_outcomes",
     "terminal_proof",
     "discard_proof",
+    "superseded_proof",
 )
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -158,6 +166,12 @@ def discard_proof_with_digest(body: dict[str, Any]) -> dict[str, Any]:
     ).encode("utf-8")
     proof["digest"] = hashlib.sha256(encoded).hexdigest()
     return proof
+
+
+def superseded_proof_with_digest(body: dict[str, Any]) -> dict[str, Any]:
+    """Attach an immutable superseded-by-merged-PR proof digest."""
+
+    return _superseded_proof_with_digest(body)
 
 
 def terminal_proof_problem(
@@ -263,6 +277,52 @@ def discard_proof_problem(record: dict[str, Any]) -> str | None:
     return None
 
 
+def superseded_proof_problem(record: dict[str, Any]) -> str | None:
+    """Validate an abandoned handback superseded by one exact merged PR."""
+
+    proof = record.get("superseded_proof")
+    if proof is None:
+        return None
+    if record.get("status") != STATUS_ABANDONED:
+        return "superseded proof is only valid for abandoned disposition"
+    if (problem := validate_superseded_proof_shape(proof)) is not None:
+        return problem
+    assert isinstance(proof, dict)
+    digest = proof.get("digest")
+    body = superseded_proof_body(proof)
+    encoded = json.dumps(
+        body, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    if digest != hashlib.sha256(encoded).hexdigest():
+        return "superseded proof digest is invalid"
+    expected = {
+        "schema": SUPERSEDED_PROOF_SCHEMA,
+        "disposition": SUPERSEDED_PROOF_DISPOSITION,
+        "branch": record.get("branch"),
+        "handback_sha": record.get("handed_back_sha"),
+        "claim_generation": record.get("claim_generation"),
+        "base_sha": record.get("base_sha"),
+        "handback_digest": (
+            record.get("handback_seal", {}).get("digest")
+            if isinstance(record.get("handback_seal"), dict)
+            else None
+        ),
+        "merged_pr_branch": record.get("branch"),
+    }
+    for key, value in expected.items():
+        if body.get(key) != value:
+            return f"superseded proof {key} does not match abandoned handback"
+    allowed_lane_ids = record.get("external_ids") or [record.get("branch")]
+    if body.get("lane_id") not in allowed_lane_ids:
+        return "superseded proof lane does not match the registry claim"
+    expected_paths = tuple(
+        sorted(item.get("path") for item in scope_files(record.get("scope")))
+    )
+    if tuple(body.get("scope_paths", ())) != expected_paths:
+        return "superseded proof Scope does not match the registry claim"
+    return None
+
+
 def normalize_record(
     value: object, *, index: int
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
@@ -359,6 +419,17 @@ def normalize_record(
                 "branch": record.get("branch"),
                 "status": status,
                 "reason": discard_problem,
+            }
+        )
+    superseded_problem = superseded_proof_problem(record)
+    if superseded_problem:
+        problems.append(
+            {
+                "kind": "registry-superseded-proof-invalid",
+                "index": index,
+                "branch": record.get("branch"),
+                "status": status,
+                "reason": superseded_problem,
             }
         )
     return record, problems

@@ -42,6 +42,7 @@ MUTATING_COMMANDS = frozenset(
         "abandon-pr",
         "cleanup-abandoned",
         "discard-abandoned-handback",
+        "supersede-abandoned-handback",
         "discard-orphan-branch",
         "discard-unregistered-branch",
         "sync-main",
@@ -312,6 +313,14 @@ def _parser() -> argparse.ArgumentParser:
     discard_handback.add_argument("--expected-head-sha", required=True)
     discard_handback.add_argument("--operator", required=True)
     discard_handback.add_argument("--reason", required=True)
+    supersede_handback = commands.add_parser(
+        "supersede-abandoned-handback",
+        help="terminalize one abandoned handback proven equivalent to one merged PR",
+    )
+    supersede_handback.add_argument("--branch", required=True)
+    supersede_handback.add_argument("--expected-head-sha", required=True)
+    supersede_handback.add_argument("--operator", required=True)
+    supersede_handback.add_argument("--reason", required=True)
     discard_orphan = commands.add_parser(
         "discard-orphan-branch",
         help="discard one unregistered local branch already contained in main",
@@ -536,6 +545,13 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
         return application.cleanup_abandoned(args.branch)
     if args.command == "discard-abandoned-handback":
         return application.discard_abandoned_handback(
+            branch=args.branch,
+            expected_head_sha=args.expected_head_sha,
+            operator=args.operator,
+            reason=args.reason,
+        )
+    if args.command == "supersede-abandoned-handback":
+        return application.supersede_abandoned_handback(
             branch=args.branch,
             expected_head_sha=args.expected_head_sha,
             operator=args.operator,

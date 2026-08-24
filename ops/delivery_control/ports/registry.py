@@ -88,3 +88,19 @@ class RegistryDiscardCommandPort(Protocol):
         operator: str,
         reason: str,
     ) -> None: ...
+
+
+@runtime_checkable
+class RegistrySupersedeCommandPort(Protocol):
+    """Optional capability for merged-equivalent abandoned handbacks."""
+
+    def supersede(
+        self,
+        *,
+        lane_id: str,
+        expected_claim_generation: int,
+        expected_branch: str,
+        expected_path: str,
+        expected_head_sha: str,
+        proof_body: dict[str, object],
+    ) -> None: ...

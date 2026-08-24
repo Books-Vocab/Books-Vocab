@@ -857,3 +857,58 @@ def test_discard_proof_is_losslessly_retained_and_validated(tmp_path: Path) -> N
     state_path.write_text(json.dumps(tampered, indent=2) + "\n", encoding="utf-8")
     reloaded = registry.load_state(state_path)
     assert reloaded["problems"][0]["kind"] == "registry-discard-proof-invalid"
+
+
+def test_superseded_proof_is_losslessly_retained_and_validated(tmp_path: Path) -> None:
+    record = {
+        "branch": "feat/superseded-handback",
+        "path": str(tmp_path / "superseded-handback"),
+        "status": "abandoned",
+        "external_ids": ["DIRECT-SUPERSEDED"],
+        "claim_generation": 2,
+        "base_sha": "a" * 40,
+        "handed_back_sha": "b" * 40,
+        "handback_seal": {"digest": "f" * 64},
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"operation": "modify", "path": "ops/a.py"}],
+        },
+    }
+    record["superseded_proof"] = registry.superseded_proof_with_digest(
+        {
+            "schema": "kg.worktree.superseded-handback-proof.v1",
+            "disposition": "superseded_by_merged_pr",
+            "lane_id": "DIRECT-SUPERSEDED",
+            "branch": record["branch"],
+            "handback_sha": record["handed_back_sha"],
+            "claim_generation": 2,
+            "base_sha": record["base_sha"],
+            "handback_digest": "f" * 64,
+            "merged_pr_number": 42,
+            "merged_pr_state": "MERGED",
+            "merged_pr_base_branch": "main",
+            "merged_pr_branch": record["branch"],
+            "merged_pr_head_sha": "c" * 40,
+            "merged_pr_base_sha": "d" * 40,
+            "patch_fingerprint": "e" * 64,
+            "scope_paths": ["ops/a.py"],
+            "operator": "supervisor",
+            "reason": "merged PR contains the same exact patch",
+        }
+    )
+    state_path = tmp_path / "registry.json"
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+
+    assert (
+        registry.main(["compact", "--state", str(state_path), "--commit", "--json"])
+        == registry.EXIT_OK
+    )
+    persisted = registry.load_state(state_path)
+    assert persisted.get("problems", []) == []
+    assert persisted["records"][0]["superseded_proof"] == record["superseded_proof"]
+
+    tampered = json.loads(state_path.read_text(encoding="utf-8"))
+    tampered["records"][0]["superseded_proof"]["merged_pr_number"] = 99
+    state_path.write_text(json.dumps(tampered, indent=2) + "\n", encoding="utf-8")
+    reloaded = registry.load_state(state_path)
+    assert reloaded["problems"][0]["kind"] == "registry-superseded-proof-invalid"

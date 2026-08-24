@@ -148,6 +148,16 @@ PR readiness workflow 的 parser 入口是：
 
 `discard-abandoned-handback` 是 owner recovery 之後的最後一條窄路徑：只接受 ownerless、已 abandoned、具有效 typed handback、沒有任何 PR history、沒有 physical worktree、local／remote ref 仍等於 expected HEAD 的單一 branch。它先以 registry CAS 寫入帶 digest 的 `kg.worktree.discard-proof.v1`，再以 expected HEAD 刪除 exact local／remote ref；任何 owner、dirty worktree、PR history、remote drift 或 canonical main 問題都 fail closed。這不是批次 prune，也不會替有 owner 的 lane 做決策；同一 operator／reason 可安全重試。
 
+若原 owner 的 abandoned handback 與同一 branch 唯一的一個已合併 PR 已證明是相同內容，才使用另一條明確分離的終止路徑：
+
+```bash
+./ops/delivery.py supersede-abandoned-handback --branch <branch> \
+  --expected-head-sha <handback-head> --operator <identity> \
+  --reason '<why the merged PR supersedes this handback>'
+```
+
+這條命令不是接管或重新發布。它先驗證 canonical `main == origin/main`、abandoned registry claim、唯一 merged PR、target／Scope、normalized content fingerprint，以及 local／remote ref 的 exact SHA；接著以 registry CAS 寫入 `kg.worktree.superseded-handback-proof.v1`，再刪除只屬於該已證明重複 lane 的 local／remote refs。結果 disposition 是 `superseded_by_merged_pr`，並保留 merged PR number／head／fingerprint 作 audit evidence。任何 owner、physical worktree、dirty state、remote drift、非唯一 PR history、Scope mismatch 或 content mismatch 都 fail closed；不得用這條路徑繞過 owner recovery、security hold、PR publish 或 merged cleanup。
+
 對沒有 registry claim、沒有 PR history、沒有 physical worktree、沒有 remote ref，且 branch tip 已經是 live `origin/main` ancestor 的 local orphan，使用更窄的 `discard-orphan-branch`：
 
 ```bash

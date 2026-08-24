@@ -120,6 +120,28 @@ def _exact_merged_evidence(
     return record_head is not None and record_head == merged_prs[0].head_sha
 
 
+def _exact_superseded_evidence(
+    records: tuple[RegistrySnapshot, ...],
+    pull_requests: tuple[PullRequestSnapshot, ...],
+) -> bool:
+    """Recognize one abandoned handback proven redundant by one merged PR."""
+
+    if len(records) != 1 or len(pull_requests) != 1:
+        return False
+    record = records[0]
+    pull_request = pull_requests[0]
+    return (
+        record.status == "abandoned"
+        and record.handed_back_sha is not None
+        and record.superseded_pr_number == pull_request.number
+        and record.superseded_pr_head_sha == pull_request.head_sha
+        and record.superseded_patch_fingerprint is not None
+        and pull_request.state == "MERGED"
+        and pull_request.base_branch == "main"
+        and pull_request.branch == record.branch
+    )
+
+
 def _asset(
     *,
     branch: str,
@@ -267,6 +289,22 @@ def _project_asset(
     merged_prs = tuple(item for item in pull_requests if item.state == "MERGED")
     merged_records = tuple(item for item in records if item.status == "merged")
     dirty = bool(_dirty_paths(physical, snapshots))
+    if _exact_superseded_evidence(records, pull_requests) and not dirty:
+        return _asset(
+            branch=branch,
+            side=side,
+            sha=sha,
+            disposition=BranchDisposition.SUPERSEDED_BY_MERGED_PR,
+            action=BranchCleanupAction.CLEANUP_SUPERSEDED,
+            reason=(
+                "abandoned handback has exact proof that its content is already "
+                "represented by one merged PR"
+            ),
+            records=records,
+            pull_requests=pull_requests,
+            physical=physical,
+            snapshots=snapshots,
+        )
     if (
         merged_prs
         and merged_records

@@ -18,7 +18,12 @@ from .records import (
     terminal_proof_problem,
     terminal_proof_with_digest,  # noqa: F401 - compatibility export for registry facade
 )
-from .records import discard_proof_problem, discard_proof_with_digest
+from .records import (
+    discard_proof_problem,
+    discard_proof_with_digest,
+    superseded_proof_problem,
+    superseded_proof_with_digest,
+)
 
 PUBLIC_RESOLVE_STATUSES = (
     STATUS_CLEANUP_PENDING,
@@ -34,6 +39,7 @@ __all__ = [
     "TransitionRequest",
     "TransitionResult",
     "discard_record",
+    "supersede_record",
     "discard_proof_problem",
     "discard_proof_with_digest",
     "source_statuses",
@@ -151,6 +157,70 @@ def discard_record(
     if (problem := discard_proof_problem(candidate)) is not None:
         return TransitionResult(None, problem)
     record["discard_proof"] = proof
+    return TransitionResult(record)
+
+
+def supersede_record(
+    state: dict[str, Any],
+    *,
+    branch: str | None,
+    path: str | None,
+    expected_generation: int,
+    expected_head_sha: str,
+    proof_body: dict[str, Any],
+    claim_generation: Callable[[dict[str, Any], str], int | None],
+    record_matches: Callable[..., bool],
+    is_commit_sha: Callable[[object], bool],
+) -> TransitionResult:
+    """Record exact evidence that an abandoned handback is redundant.
+
+    This does not claim that the handback SHA itself landed.  The proof keeps
+    the merged PR SHA and content fingerprint separate, so cleanup can remove
+    both exact refs without rewriting the historical merged receipt.
+    """
+
+    operator = proof_body.get("operator")
+    reason = proof_body.get("reason")
+    if type(operator) is not str or not operator.strip():
+        return TransitionResult(None, "superseded proof requires an operator")
+    if type(reason) is not str or not reason.strip():
+        return TransitionResult(None, "superseded proof requires a reason")
+    matches = [
+        record
+        for record in state.get("records", [])
+        if isinstance(record, dict)
+        and record.get("status") == STATUS_ABANDONED
+        and record_matches(record, branch=branch, path=path)
+        and claim_generation(record, "claim_generation") == expected_generation
+    ]
+    if len(matches) != 1:
+        return TransitionResult(
+            None, "no unique abandoned registry record matches supersede"
+        )
+    record = matches[0]
+    if not is_commit_sha(record.get("handed_back_sha")):
+        return TransitionResult(None, "superseded handback has no exact stored HEAD")
+    if record.get("handed_back_sha") != expected_head_sha:
+        return TransitionResult(None, "superseded handback HEAD does not match")
+    existing = record.get("superseded_proof")
+    if existing is not None:
+        if superseded_proof_problem(record) is not None:
+            return TransitionResult(None, "existing superseded proof is invalid")
+        if (
+            isinstance(existing, dict)
+            and {key: value for key, value in existing.items() if key != "digest"}
+            == proof_body
+        ):
+            return TransitionResult(record)
+        return TransitionResult(
+            None, "existing superseded proof differs from requested proof"
+        )
+    proof = superseded_proof_with_digest(proof_body)
+    candidate = dict(record)
+    candidate["superseded_proof"] = proof
+    if (problem := superseded_proof_problem(candidate)) is not None:
+        return TransitionResult(None, problem)
+    record["superseded_proof"] = proof
     return TransitionResult(record)
 
 

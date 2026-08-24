@@ -99,6 +99,18 @@ def build_parser(
     discard.add_argument("--reason", required=True)
     discard.set_defaults(func=handlers["discard"])
 
+    supersede = sub.add_parser(
+        "supersede",
+        help="record exact evidence that an abandoned handback is superseded by a merged PR",
+    )
+    common(supersede)
+    supersede.add_argument("--branch")
+    supersede.add_argument("--path")
+    supersede.add_argument("--expected-generation", type=int)
+    supersede.add_argument("--expected-head-sha")
+    supersede.add_argument("--superseded-proof", required=True)
+    supersede.set_defaults(func=handlers["supersede"])
+
     published_base = sub.add_parser(
         "record-published-base",
         help="record the exact GitHub PR base after publication",
