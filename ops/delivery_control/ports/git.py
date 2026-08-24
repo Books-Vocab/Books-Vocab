@@ -3,8 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+from ..domain.branch_content import (
+    BRANCH_CONTENT_COMMIT_SUMMARY_LIMIT,
+    BranchContentEvidence,
+)
 from ..domain.branch_refs import BranchInventory
-from ..domain.branch_content import BranchContentEvidence
 from ..domain.observations import (
     CanonicalCheckoutSnapshot,
     MainLandingSnapshot,
@@ -45,7 +48,7 @@ class BranchContentQueryPort(Protocol):
         *,
         branch: str,
         base_sha: str,
-        max_commit_summaries: int = 20,
+        max_commit_summaries: int = BRANCH_CONTENT_COMMIT_SUMMARY_LIMIT,
     ) -> BranchContentEvidence: ...
 
     def first_parent_landings(

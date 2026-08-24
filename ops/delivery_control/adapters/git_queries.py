@@ -8,8 +8,10 @@ from dataclasses import replace
 from pathlib import Path
 
 from ..domain.branch_content import (
+    BRANCH_CONTENT_COMMIT_SUMMARY_LIMIT,
     BRANCH_CONTENT_PATH_LIMIT,
     BranchContentEvidence,
+    validate_branch_content_limit,
 )
 from ..domain.branch_refs import BranchInventory
 from ..domain.errors import InvalidReceipt
@@ -42,7 +44,6 @@ from .git_parsing import (
 )
 
 UNREACHABLE_COMMIT_SCAN_TIMEOUT_SECONDS = 30.0
-BRANCH_CONTENT_COMMIT_SUMMARY_LIMIT = 20
 _COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
@@ -359,6 +360,15 @@ class GitQueries:
     ) -> BranchContentEvidence:
         """Read bounded diff evidence for one local branch against live main."""
 
+        try:
+            bounded_max_commit_summaries = validate_branch_content_limit(
+                max_commit_summaries,
+                field="branch content commit summary limit",
+                maximum=BRANCH_CONTENT_COMMIT_SUMMARY_LIMIT,
+            )
+        except InvalidReceipt as error:
+            raise AdapterPayloadError(str(error)) from error
+
         head_sha = self.local_branch_sha(branch)
         if head_sha is None:
             raise AdapterCommandError(
@@ -390,11 +400,11 @@ class GitQueries:
         summaries_payload = self.client.run(
             "log",
             "--format=%H%x09%s",
-            f"--max-count={max_commit_summaries + 1}",
+            f"--max-count={bounded_max_commit_summaries + 1}",
             f"{base_sha}..{head_sha}",
         )
         summaries, truncated = parse_commit_summaries(
-            summaries_payload, limit=max_commit_summaries
+            summaries_payload, limit=bounded_max_commit_summaries
         )
         all_changed_paths = tuple(sorted(change.path for change in changes))
         return BranchContentEvidence(

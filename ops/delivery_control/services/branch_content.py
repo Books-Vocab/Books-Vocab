@@ -5,8 +5,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import replace
 
-from ..domain.branch_content import BRANCH_REVIEW_PATH_LIMIT, BranchContentEvidence
-from ..domain.errors import DeliverySourceError
+from ..domain.branch_content import (
+    BRANCH_CONTENT_COMMIT_SUMMARY_LIMIT,
+    BRANCH_REVIEW_PATH_LIMIT,
+    BranchContentEvidence,
+    validate_branch_content_limit,
+)
+from ..domain.errors import DeliverySourceError, InvalidReceipt
 from ..ports.git import BranchContentQueryPort
 
 
@@ -21,7 +26,7 @@ class BranchContentService:
         *,
         branch: str,
         base_sha: str,
-        max_commit_summaries: int = 20,
+        max_commit_summaries: int = BRANCH_CONTENT_COMMIT_SUMMARY_LIMIT,
     ) -> BranchContentEvidence:
         try:
             return self.git.inspect_branch_content(
@@ -41,7 +46,7 @@ class BranchContentService:
         *,
         branches: Iterable[str],
         base_sha: str,
-        max_commit_summaries: int = 20,
+        max_commit_summaries: int = BRANCH_CONTENT_COMMIT_SUMMARY_LIMIT,
     ) -> dict[str, BranchContentEvidence]:
         return {
             branch: self.inspect(
@@ -65,13 +70,19 @@ class BranchContentService:
         command; review plans only need a small deterministic sample per item.
         """
 
-        if type(max_paths) is not int or max_paths <= 0:
-            raise ValueError("review path limit must be a positive integer")
-        if len(evidence.changed_paths) <= max_paths:
+        try:
+            bounded_max_paths = validate_branch_content_limit(
+                max_paths,
+                field="review path limit",
+                maximum=BRANCH_REVIEW_PATH_LIMIT,
+            )
+        except InvalidReceipt as error:
+            raise ValueError(str(error)) from error
+        if len(evidence.changed_paths) <= bounded_max_paths:
             return evidence
         return replace(
             evidence,
-            changed_paths=evidence.changed_paths[:max_paths],
+            changed_paths=evidence.changed_paths[:bounded_max_paths],
             changed_paths_truncated=True,
         )
 
