@@ -929,6 +929,55 @@ def test_cli_exposes_branch_audit_and_forwards_supervision_paths(
     assert payload["result"]["schema"] == "kg.delivery.branch-audit.v1"
 
 
+def test_cli_serializes_bounded_unreachable_commit_evidence(capsys: object) -> None:
+    commit_sha = "a" * 40
+    evidence = {
+        "schema": "kg.delivery.unreachable-commit.v1",
+        "commit_sha": commit_sha,
+        "parent_shas": ["b" * 40],
+        "subject": "preserve object",
+        "unreachable": True,
+        "changed_paths": ["ops/example.py"],
+        "changed_path_count": 1,
+        "changed_paths_truncated": False,
+        "change_fingerprint": "c" * 64,
+        "disposition": "preserve_for_owner_correlation",
+        "source_problem_scope": None,
+        "next_step": "correlate with an owner, Issue, or PR before any lifecycle action",
+        "complete": True,
+        "error": None,
+    }
+
+    class FakeApplication:
+        def branch_audit(
+            self, *, supervision_worktree_paths: tuple[Path, ...]
+        ) -> object:
+            return {
+                "schema": "kg.delivery.branch-audit.v1",
+                "complete": True,
+                "unreachable_commit_count": 3998,
+                "unreachable_commit_sample": [commit_sha],
+                "unreachable_commit_evidence": [evidence],
+            }
+
+    assert (
+        main(
+            ["branch-audit"],
+            application_factory=lambda **_: FakeApplication(),
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    result = payload["result"]
+    assert result["unreachable_commit_count"] == 3998
+    assert result["unreachable_commit_sample"] == [commit_sha]
+    assert result["unreachable_commit_evidence"][0]["commit_sha"] == commit_sha
+    assert result["unreachable_commit_evidence"][0]["changed_paths"] == [
+        "ops/example.py"
+    ]
+
+
 def test_cli_serializes_additive_branch_registry_evidence(capsys: object) -> None:
     evidence = BranchRegistryEvidence(
         lane_id="LANE-CLI-EVIDENCE",

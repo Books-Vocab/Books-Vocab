@@ -30,6 +30,7 @@ from delivery_control.domain.states import (
     NextAction,
 )
 from delivery_control.domain.unreachable_commits import (
+    UnreachableCommitEvidence,
     UnreachableCommitInventory,
 )
 from delivery_control.services.branch_audit import (
@@ -849,6 +850,42 @@ def test_branch_audit_quarantines_unreachable_commit_objects_without_lane_action
     assert report.unreachable_commit_count == 2
     assert report.unreachable_commit_sample == (SHA_A, SHA_B)
     assert "correlate unreachable commit objects" in report.unreachable_commit_next_step
+
+
+def test_branch_audit_projects_unreachable_commit_evidence_additively() -> None:
+    inventory = DeliveryInventory(
+        lanes=(),
+        branch_lifecycle=project_branch_lifecycle(
+            branch_inventory=BranchInventory(),
+        ),
+    )
+    evidence = UnreachableCommitEvidence(
+        schema="kg.delivery.unreachable-commit.v1",
+        commit_sha=SHA_A,
+        parent_shas=(SHA_B,),
+        subject="preserve object",
+        unreachable=True,
+        changed_paths=("ops/example.py",),
+        changed_path_count=1,
+        changed_paths_truncated=False,
+        change_fingerprint="c" * 64,
+        disposition="preserve_for_owner_correlation",
+        source_problem_scope=None,
+        next_step="correlate with an owner, Issue, or PR before any lifecycle action",
+        complete=True,
+    )
+
+    report = build_branch_audit(
+        inventory,
+        unreachable_commits=UnreachableCommitInventory(
+            shas=(SHA_A,),
+            evidence=(evidence,),
+        ),
+    )
+
+    assert report.unreachable_commit_count == 1
+    assert report.unreachable_commit_sample == (SHA_A,)
+    assert report.unreachable_commit_evidence == (evidence,)
 
 
 def test_branch_audit_projects_unreachable_source_diagnostics_into_completeness() -> (

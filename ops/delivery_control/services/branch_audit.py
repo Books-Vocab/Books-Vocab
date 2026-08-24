@@ -17,6 +17,7 @@ from ..domain.inventory import DeliveryInventory
 from ..domain.observations import InventoryProblem, RegistrySnapshot
 from ..domain.unreachable_commits import (
     EMPTY_UNREACHABLE_COMMIT_INVENTORY,
+    UnreachableCommitEvidence,
     UnreachableCommitInventory,
 )
 from .orphan_branch import OrphanBranchPreflight
@@ -110,6 +111,7 @@ class BranchAuditReport:
     open_pull_requests: int
     unreachable_commit_count: int
     unreachable_commit_sample: tuple[str, ...]
+    unreachable_commit_evidence: tuple[UnreachableCommitEvidence, ...]
     unreachable_commit_next_step: str
     disposition_counts: dict[str, int]
     action_counts: dict[str, int]
@@ -575,6 +577,7 @@ def build_branch_audit(
         open_pull_requests=len(open_prs),
         unreachable_commit_count=unreachable_commits.count,
         unreachable_commit_sample=unreachable_commits.sample,
+        unreachable_commit_evidence=unreachable_commits.evidence,
         unreachable_commit_next_step=unreachable_commit_next_step,
         disposition_counts=inventory.branch_lifecycle.counts,
         action_counts={

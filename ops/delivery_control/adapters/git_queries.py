@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from dataclasses import replace
 from pathlib import Path
 
 from ..domain.branch_content import (
@@ -11,16 +12,18 @@ from ..domain.branch_content import (
     BranchContentEvidence,
 )
 from ..domain.branch_refs import BranchInventory
+from ..domain.errors import InvalidReceipt
 from ..domain.observations import (
     CanonicalCheckoutSnapshot,
     MainLandingSnapshot,
     PhysicalWorktree,
     WorktreeSnapshot,
 )
-from ..domain.unreachable_commits import UnreachableCommitInventory
 from ..domain.unreachable_commits import (
     UNREACHABLE_COMMIT_PATH_LIMIT,
+    UNREACHABLE_COMMIT_SAMPLE_SIZE,
     UnreachableCommitEvidence,
+    UnreachableCommitInventory,
 )
 from .errors import AdapterCommandError, AdapterPayloadError
 from .git_client import GitCliClient
@@ -33,13 +36,39 @@ from .git_parsing import (
     parse_origin_main_sha,
     parse_parent_sha,
     parse_remote_branch_sha,
-    parse_worktrees,
     parse_unreachable_commit_shas,
+    parse_worktrees,
 )
 
 UNREACHABLE_COMMIT_SCAN_TIMEOUT_SECONDS = 30.0
 BRANCH_CONTENT_COMMIT_SUMMARY_LIMIT = 20
 _COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+def _normalized_error(error: Exception) -> str:
+    detail = " ".join(str(error).split())
+    return detail or error.__class__.__name__
+
+
+def _incomplete_unreachable_commit_evidence(
+    *, commit_sha: str, error: str
+) -> UnreachableCommitEvidence:
+    return UnreachableCommitEvidence(
+        schema="kg.delivery.unreachable-commit.v1",
+        commit_sha=commit_sha,
+        parent_shas=(),
+        subject=None,
+        unreachable=True,
+        changed_paths=(),
+        changed_path_count=0,
+        changed_paths_truncated=False,
+        change_fingerprint=None,
+        disposition="preserve_with_source_problem",
+        source_problem_scope="git_objects",
+        next_step="repair bounded object metadata before any owner or cleanup decision",
+        complete=False,
+        error=error,
+    )
 
 
 class GitQueries:
@@ -124,10 +153,36 @@ class GitQueries:
         )
         if result.exit_code != 0:
             problems = (f"git fsck exited with {result.exit_code}", *problems)
+        sample_evidence: list[UnreachableCommitEvidence] = []
+        sample_problems = list(problems)
+        source_problem = "; ".join(problems)
+        for commit_sha in shas[:UNREACHABLE_COMMIT_SAMPLE_SIZE]:
+            try:
+                sample_evidence.append(
+                    self._inspect_unreachable_commit_from_inventory(
+                        commit_sha=commit_sha,
+                        inventory_shas=shas,
+                        source_problem=source_problem,
+                        max_paths=UNREACHABLE_COMMIT_PATH_LIMIT,
+                    )
+                )
+            except (AdapterCommandError, AdapterPayloadError, InvalidReceipt) as error:
+                detail = _normalized_error(error)
+                sample_problems.append(
+                    f"unreachable commit {commit_sha} evidence: {detail}"
+                )
+                sample_evidence.append(
+                    _incomplete_unreachable_commit_evidence(
+                        commit_sha=commit_sha,
+                        error=detail,
+                    )
+                )
+        final_problems = tuple(sample_problems)
         return UnreachableCommitInventory(
             shas=shas,
-            problems=problems,
-            complete=not problems,
+            problems=final_problems,
+            complete=not final_problems,
+            evidence=tuple(sample_evidence),
         )
 
     def inspect_unreachable_commit(
@@ -144,8 +199,32 @@ class GitQueries:
             raise AdapterPayloadError("unreachable commit path limit is invalid")
 
         inventory = self.unreachable_commit_inventory()
+        for evidence in inventory.evidence:
+            if evidence.commit_sha == commit_sha:
+                changed_paths = evidence.changed_paths[:max_paths]
+                return replace(
+                    evidence,
+                    changed_paths=changed_paths,
+                    changed_paths_truncated=evidence.changed_path_count
+                    > len(changed_paths),
+                )
         source_problem = "; ".join(inventory.problems)
-        if not inventory.complete and commit_sha not in inventory.shas:
+        return self._inspect_unreachable_commit_from_inventory(
+            commit_sha=commit_sha,
+            inventory_shas=inventory.shas,
+            source_problem=source_problem,
+            max_paths=max_paths,
+        )
+
+    def _inspect_unreachable_commit_from_inventory(
+        self,
+        *,
+        commit_sha: str,
+        inventory_shas: tuple[str, ...],
+        source_problem: str,
+        max_paths: int,
+    ) -> UnreachableCommitEvidence:
+        if source_problem and commit_sha not in inventory_shas:
             return UnreachableCommitEvidence(
                 schema="kg.delivery.unreachable-commit.v1",
                 commit_sha=commit_sha,
@@ -162,7 +241,7 @@ class GitQueries:
                 complete=False,
                 error=source_problem,
             )
-        if inventory.complete is True and commit_sha not in inventory.shas:
+        if not source_problem and commit_sha not in inventory_shas:
             return UnreachableCommitEvidence(
                 schema="kg.delivery.unreachable-commit.v1",
                 commit_sha=commit_sha,

@@ -8,7 +8,6 @@ import pytest
 
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
-# ruff: noqa: E402
 
 from delivery_control.adapters.errors import AdapterCommandError
 from delivery_control.adapters.git_cli import GitCliAdapter
@@ -25,8 +24,10 @@ from delivery_control.domain.observations import (
     FileOperation,
     PhysicalWorktree,
 )
-from delivery_control.domain.unreachable_commits import UnreachableCommitInventory
-from delivery_control.domain.unreachable_commits import UnreachableCommitEvidence
+from delivery_control.domain.unreachable_commits import (
+    UnreachableCommitEvidence,
+    UnreachableCommitInventory,
+)
 from delivery_control.ports.process import CommandResult
 
 
@@ -541,32 +542,123 @@ def test_git_adapter_preserves_fsck_diagnostics_and_commit_quarantine(
                     f"unreachable commit {commit_a}\n"
                 ),
                 "error: refs/.DS_Store: badRefName: invalid refname format\n",
-            )
+            ),
+            CommandResult(
+                ("git",),
+                0,
+                f"{commit_a}\0{'d' * 40}\0subject a",
+                "",
+            ),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(
+                ("git",),
+                0,
+                f"{commit_b}\0{'d' * 40}\0subject b",
+                "",
+            ),
+            CommandResult(("git",), 0, "", ""),
         ]
     )
     adapter = GitCliAdapter(repo=tmp_path, runner=runner)
 
     inventory = adapter.unreachable_commit_inventory()
 
-    assert inventory == UnreachableCommitInventory(
-        shas=(commit_a, commit_b),
-        problems=(
-            "git fsck exited with 8",
-            "error: refs/.DS_Store: badRefName: invalid refname format",
-        ),
-        complete=False,
+    assert inventory.shas == (commit_a, commit_b)
+    assert inventory.problems == (
+        "git fsck exited with 8",
+        "error: refs/.DS_Store: badRefName: invalid refname format",
     )
-    assert runner.calls == [
-        (
-            "git",
-            "-C",
-            str(tmp_path.resolve()),
-            "fsck",
-            "--unreachable",
-            "--no-reflogs",
-            "--no-progress",
+    assert inventory.complete is False
+    assert tuple(item.commit_sha for item in inventory.evidence) == (
+        commit_a,
+        commit_b,
+    )
+    assert all(item.complete is False for item in inventory.evidence)
+    assert sum(call[-4] == "fsck" for call in runner.calls) == 1
+
+
+def test_git_adapter_projects_bounded_sample_evidence_from_one_fsck_inventory(
+    tmp_path: Path,
+) -> None:
+    commit_a = "a" * 40
+    commit_b = "b" * 40
+    parent = "c" * 40
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("git",),
+                0,
+                f"unreachable commit {commit_b}\nunreachable commit {commit_a}\n",
+                "",
+            ),
+            CommandResult(
+                ("git",),
+                0,
+                f"{commit_a}\0{parent}\0valid subject",
+                "",
+            ),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), 0, "malformed metadata", ""),
+        ]
+    )
+
+    inventory = GitCliAdapter(
+        repo=tmp_path, runner=runner
+    ).unreachable_commit_inventory()
+
+    assert inventory.count == 2
+    assert len(inventory.evidence) == 2
+    valid, malformed = inventory.evidence
+    assert valid.commit_sha == commit_a
+    assert valid.complete is True
+    assert valid.subject == "valid subject"
+    assert malformed.commit_sha == commit_b
+    assert malformed.complete is False
+    assert malformed.disposition == "preserve_with_source_problem"
+    assert malformed.source_problem_scope == "git_objects"
+    assert malformed.error == "unreachable commit metadata is malformed"
+    assert inventory.complete is False
+    assert any("unreachable commit b" in problem for problem in inventory.problems)
+    assert sum("fsck" in call for call in runner.calls) == 1
+
+
+def test_git_adapter_caps_unreachable_commit_evidence_at_twenty_objects(
+    tmp_path: Path,
+) -> None:
+    commits = tuple(f"{index:040x}" for index in range(21))
+    parent = "f" * 40
+    responses = [
+        CommandResult(
+            ("git",),
+            0,
+            "".join(f"unreachable commit {commit}\n" for commit in commits),
+            "",
         )
     ]
+    for index, commit in enumerate(commits[:20]):
+        responses.extend(
+            [
+                CommandResult(
+                    ("git",),
+                    0,
+                    f"{commit}\0{parent}\0subject {index}",
+                    "",
+                ),
+                CommandResult(("git",), 0, "", ""),
+            ]
+        )
+
+    runner = StaticRunner(responses)
+    inventory = GitCliAdapter(
+        repo=tmp_path, runner=runner
+    ).unreachable_commit_inventory()
+
+    assert inventory.count == 21
+    assert len(inventory.sample) == 20
+    assert len(inventory.evidence) == 20
+    assert tuple(item.commit_sha for item in inventory.evidence) == commits[:20]
+    assert sum("fsck" in call for call in runner.calls) == 1
+    assert len(runner.calls) == 41
 
 
 def test_git_adapter_bounds_fsck_and_preserves_timeout_as_incomplete(
