@@ -24,6 +24,7 @@ from delivery_control.domain.observations import (
 from delivery_control.domain.states import LaneDecision, LaneState, NextAction
 from delivery_control.domain.telemetry import (
     DurationSample,
+    InvalidTelemetry,
     TelemetryMetric,
     TelemetryReadResult,
     main_subject,
@@ -52,10 +53,10 @@ def _sample(
 
 
 @pytest.mark.parametrize("payload", [[], "not-an-object", None])
-def test_duration_sample_from_payload_non_object_shape_currently_leaks_attribute_error(
+def test_duration_sample_from_payload_rejects_non_object_payloads(
     payload: object,
 ) -> None:
-    with pytest.raises(AttributeError):
+    with pytest.raises(InvalidTelemetry, match="telemetry payload must be an object"):
         DurationSample.from_payload(payload)  # type: ignore[arg-type]
 
 
