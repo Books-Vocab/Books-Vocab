@@ -165,6 +165,7 @@ class FakeGit:
         local_main: str = BASE,
         origin_main: str = BASE,
         origin_main_readbacks: tuple[str, ...] = (),
+        remote_branch_readbacks: tuple[str | None, ...] = (),
         canonical_branch: str = "main",
         canonical_clean: bool = True,
         replacement_worktree_after_remove: PhysicalWorktree | None = None,
@@ -184,6 +185,7 @@ class FakeGit:
         self.local_main = local_main
         self.origin_main = origin_main
         self.origin_main_readbacks = list(origin_main_readbacks)
+        self.remote_branch_readbacks = list(remote_branch_readbacks)
         self.canonical_branch = canonical_branch
         self.canonical_clean = canonical_clean
         self.replacement_worktree_after_remove = replacement_worktree_after_remove
@@ -217,6 +219,8 @@ class FakeGit:
         return self.local_sha
 
     def remote_branch_sha(self, branch: str) -> str | None:
+        if self.remote_branch_readbacks:
+            self.remote_sha = self.remote_branch_readbacks.pop(0)
         return self.remote_sha
 
     def remove_worktree(self, path: Path, *, expected_head_sha: str) -> None:
@@ -515,6 +519,22 @@ def test_publish_release_rechecks_pr_before_terminal_disposition() -> None:
     assert registry.record.status == "cleanup_pending"
     assert git.actions == ["remove-worktree", "delete-local"]
     assert git.remote_sha == HEAD
+
+
+def test_publish_release_fails_closed_when_remote_branch_disappears_before_terminal_cas() -> None:
+    receipt = _receipt()
+    registry = FakeRegistry(_record(receipt))
+    git = FakeGit(receipt, remote_branch_readbacks=(HEAD, None))
+
+    with pytest.raises(PolicyViolation, match="remote branch"):
+        _service(
+            receipt, registry=registry, git=git, state="OPEN"
+        ).release_after_publish(receipt=receipt, pull_request_number=9)
+
+    assert registry.transitions == ["cleanup_pending"]
+    assert registry.record.status == "cleanup_pending"
+    assert git.actions == ["remove-worktree", "delete-local"]
+    assert git.remote_sha is None
 
 
 def test_merged_cleanup_rechecks_pr_before_remote_delete() -> None:
