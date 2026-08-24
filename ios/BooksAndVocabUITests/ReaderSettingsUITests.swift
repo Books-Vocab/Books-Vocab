@@ -10,6 +10,50 @@ final class ReaderSettingsUITests: UITestCase {
     }
 
     @MainActor
+    func testReaderThemeGlassPickerExposesThreeAdaptiveTiles() throws {
+        let app = launchIsolatedApp(
+            fixtures: [.readerRealBookLibrary],
+            perfLog: "reader-settings-theme-glass-picker"
+        )
+        let bookshelf = AppPage(app: app).goToBookshelf()
+        guard let bookCard = bookshelf.exactlyOneBookCard(timeout: 10) else {
+            XCTFail("Reader UI World must materialize exactly one book before settings can be opened")
+            return
+        }
+        bookCard.tapWhenReady()
+
+        let reader = ReaderPage(app: app)
+        guard reader.waitForContent(ReaderPage.seededContentMarker, timeout: 45) else {
+            XCTFail("production Reader must render the seeded book content")
+            return
+        }
+        reader.openSettings()
+        guard reader.settingsPreviewElement(timeout: 5) != nil else {
+            XCTFail("Reader settings must expose the preview before theme tiles are inspected")
+            return
+        }
+
+        var tileWidths: [CGFloat] = []
+        for theme in ["light", "sepia", "dark"] {
+            XCTAssertTrue(reader.selectTheme(theme), "theme tile must remain addressable: \(theme)")
+            let option = reader.themeOption(theme)
+            tileWidths.append(option.frame.width)
+            XCTAssertGreaterThanOrEqual(option.frame.height, 44, "theme tile must preserve the HIG hit target")
+            XCTAssertTrue(option.isHittable, "theme tile must remain hittable: \(theme)")
+            XCTAssertFalse(option.label.isEmpty, "theme tile must expose its localized label: \(theme)")
+            XCTAssertTrue(option.isSelected, "selected theme tile must expose the selected state: \(theme)")
+            captureStep("\(theme)-theme-tile", app: app)
+        }
+        if let firstTileWidth = tileWidths.first {
+            for width in tileWidths.dropFirst() {
+                XCTAssertEqual(width, firstTileWidth, accuracy: 1, "adaptive theme tiles must remain equal width")
+            }
+        }
+
+        XCTAssertTrue(reader.closeSettings(), "Reader settings must close through the production Done action")
+    }
+
+    @MainActor
     func testProductionReaderSettingsRoundTripAfterReaderReopen() throws {
         let app = launchIsolatedApp(
             fixtures: [.readerRealBookLibrary],
@@ -321,5 +365,14 @@ final class ReaderSettingsUITests: UITestCase {
             accuracy: 1,
             "Dynamic Type must not make line-height changes resize the fixed preview viewport"
         )
+
+        for theme in ["light", "sepia", "dark"] {
+            XCTAssertTrue(reader.selectTheme(theme), "Dynamic Type theme tile must remain addressable: \(theme)")
+            let option = reader.themeOption(theme)
+            XCTAssertGreaterThanOrEqual(option.frame.height, 44, "Dynamic Type tile must preserve the HIG hit target")
+            XCTAssertTrue(option.isHittable, "Dynamic Type tile must remain hittable: \(theme)")
+            XCTAssertTrue(option.isSelected, "Dynamic Type selected theme tile must expose selected state: \(theme)")
+        }
+        captureStep("dynamic-type-theme-tiles", app: app)
     }
 }
