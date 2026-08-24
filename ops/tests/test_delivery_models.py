@@ -112,6 +112,12 @@ def test_scope_delete_round_trips_without_changing_the_v1_wire_shape() -> None:
     assert scope.paths == ("ops/new.py", "ops/old.py")
 
 
+@pytest.mark.parametrize("payload", [[], "not-an-object", None])
+def test_scope_from_payload_rejects_non_object_payloads(payload: object) -> None:
+    with pytest.raises(InvalidScope, match="Scope payload must be an object"):
+        Scope.from_payload(payload)  # type: ignore[arg-type]
+
+
 @pytest.mark.parametrize(
     "path",
     ["", "/absolute.py", "../escape.py", "ops/../escape.py", "./ops/file.py"],
