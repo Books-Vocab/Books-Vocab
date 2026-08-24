@@ -1268,6 +1268,20 @@ def test_cli_routes_paged_branch_review_plan_as_observation(capsys: object) -> N
     assert payload["result"]["remaining_count"] == 7
 
 
+def test_branch_review_plan_help_documents_bounded_pagination(
+    capsys: object,
+) -> None:
+    with pytest.raises(SystemExit) as caught:
+        _parser().parse_args(["branch-review-plan", "--help"])
+
+    assert caught.value.code == 0
+    normalized_help = " ".join(capsys.readouterr().out.split())  # type: ignore[attr-defined]
+    assert "--offset N" in normalized_help
+    assert "N >= 0" in normalized_help
+    assert "--limit N" in normalized_help
+    assert "1 <= N <= 20" in normalized_help
+
+
 def test_cli_routes_explicit_unregistered_branch_discard(capsys: object) -> None:
     class FakeApplication:
         def discard_unregistered_branch(
