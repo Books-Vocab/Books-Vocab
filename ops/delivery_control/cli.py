@@ -64,6 +64,13 @@ def _jsonable(value: object) -> object:
     return value
 
 
+def _watchdog_runtime_status_epilog(command: str) -> str:
+    return (
+        "Required global option: --runtime-status-file PATH; "
+        f"place it before the {command} subcommand."
+    )
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Deterministic KG delivery control plane"
@@ -142,13 +149,16 @@ def _parser() -> argparse.ArgumentParser:
         help="exact supervision checkout path; repeat once per checkout",
     )
     watchdog = commands.add_parser(
-        "watchdog", help="read liveness and return a non-dispatching wake decision"
+        "watchdog",
+        help="read liveness and return a non-dispatching wake decision",
+        epilog=_watchdog_runtime_status_epilog("watchdog"),
     )
     watchdog.add_argument("--supervisor-thread", required=True)
     watchdog.add_argument("--stale-after-seconds", type=int, default=300)
     watchdog_claim = commands.add_parser(
         "watchdog-claim",
         help="atomically claim one stale wake before external scheduler dispatch",
+        epilog=_watchdog_runtime_status_epilog("watchdog-claim"),
     )
     watchdog_claim.add_argument("--supervisor-thread", required=True)
     watchdog_claim.add_argument("--stale-after-seconds", type=int, default=300)

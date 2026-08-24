@@ -14,6 +14,7 @@ sys.path.insert(0, str(OPS))
 from delivery_control.cli import (
     DeliveryApplication,
     RuntimeStatusMap,
+    _parser,
     main,
 )
 from delivery_control.domain.branch_lifecycle import (
@@ -1289,6 +1290,20 @@ def test_cli_exposes_watchdog_without_dispatching(capsys: object) -> None:
     payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
     assert payload["command"] == "watchdog"
     assert payload["result"]["action"] == "noop"
+
+
+@pytest.mark.parametrize("command", ["watchdog", "watchdog-claim"])
+def test_watchdog_help_documents_required_global_runtime_receipt(
+    command: str, capsys: object
+) -> None:
+    with pytest.raises(SystemExit) as caught:
+        _parser().parse_args([command, "--help"])
+
+    assert caught.value.code == 0
+    help_text = capsys.readouterr().out  # type: ignore[attr-defined]
+    normalized_help = " ".join(help_text.split())
+    assert "--runtime-status-file PATH" in normalized_help
+    assert f"before the {command} subcommand" in normalized_help
 
 
 def test_cli_preserves_command_exit_when_stdout_pipe_closes(
