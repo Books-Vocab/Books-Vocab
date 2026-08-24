@@ -22,15 +22,14 @@ from .controller.dogfood import (
 from .controller.metrics import measure_merge_cadence, measure_pipeline
 from .controller.runtime_watchdog import evaluate_runtime_watchdog
 from .controller.worktree_boundary import partition_worktrees
-from .domain.branch_lifecycle import BranchDisposition
+from .domain import errors, models, observations, states
 from .domain.branch_content import (
     BRANCH_REVIEW_PAGE_LIMIT,
     BranchContentEvidence,
     BranchContentReviewItem,
     BranchContentReviewPlan,
 )
-from .domain.branch_lifecycle import BranchSide
-from .domain import errors, models, observations, states
+from .domain.branch_lifecycle import BranchDisposition, BranchSide
 from .domain.candidate_issues import CandidateSpec
 from .domain.demand_issues import IssueDisposition
 from .domain.runtime_models import RuntimeReceipt, WatchdogAction
@@ -48,19 +47,19 @@ from .ports.telemetry import TelemetryStorePort
 from .services import (
     abandon,
     abandoned_handback,
-    branch_content,
     branch_audit,
+    branch_content,
     cleanup,
     inspect,
     legacy_cleanup,
     metadata,
+    orphan_branch,
     queue,
     required_repair,
-    orphan_branch,
     sync_main,
     telemetry_operations,
-    unregistered_branch,
     unreachable_commit,
+    unregistered_branch,
 )
 from .services import holds as hold_services
 from .services.issue_admission import assert_candidate_scope_available
@@ -68,7 +67,6 @@ from .services.issue_triage import build_triage_plan
 from .services.pr_contract import parse_pull_request_body
 from .services.publish import PublishService, receipt_from_active_claim
 from .services.publish_preflight import PublishPreflightService
-
 
 _REVIEWABLE_LOCAL_ORPHAN_BLOCKERS = frozenset(
     {"orphan branch tip is not an ancestor of live origin/main"}
@@ -100,7 +98,7 @@ def _branch_review_next_step(action: object, content: BranchContentEvidence) -> 
     """
 
     if content.complete and content.unlanded:
-        branch = getattr(action, "branch")
+        branch = action.branch
         return (
             "review unlanded content; if explicit discard is chosen, invoke "
             "discard-unregistered-branch with "
@@ -109,7 +107,7 @@ def _branch_review_next_step(action: object, content: BranchContentEvidence) -> 
             "operator, reason, and --confirm-unmerged are required; "
             "no automatic deletion"
         )
-    return str(getattr(action, "next_step"))
+    return str(action.next_step)
 
 
 @dataclass(frozen=True)
@@ -205,11 +203,14 @@ class DeliveryApplication:
             branch=branch,
             base_sha=main_sha,
         )
-        if expected_head_sha is not None and evidence.complete:
-            if evidence.head_sha != expected_head_sha:
-                raise errors.PolicyViolation(
-                    "branch content HEAD differs from expected inspection SHA"
-                )
+        if (
+            expected_head_sha is not None
+            and evidence.complete
+            and evidence.head_sha != expected_head_sha
+        ):
+            raise errors.PolicyViolation(
+                "branch content HEAD differs from expected inspection SHA"
+            )
         return evidence
 
     def unreachable_commit_inspect(
@@ -628,11 +629,20 @@ class DeliveryApplication:
                 "published PR does not map to one exact typed registry handback"
             )
         branch_inventory = self.github.list_pull_requests_for_branch(receipt.branch)
-        if branch_inventory.problems or len(branch_inventory.records) != 1:
+        current_open = tuple(
+            pull_request
+            for pull_request in branch_inventory.records
+            if pull_request.state == "OPEN"
+        )
+        if (
+            branch_inventory.problems
+            or len(current_open) != 1
+            or current_open[0].number != before.number
+        ):
             raise errors.PolicyViolation(
                 "published branch does not map to one unique PR"
             )
-        mapped = branch_inventory.records[0]
+        mapped = current_open[0]
         if (
             mapped.number != before.number
             or mapped.state != "OPEN"
