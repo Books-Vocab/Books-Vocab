@@ -209,8 +209,7 @@ class CleanupService:
         if record.status == "merged":
             raise PolicyViolation("merged lane requires terminal cleanup")
         self._pull_request(receipt, pull_request_number, expected_state="OPEN")
-        if self.git_query.remote_branch_sha(receipt.branch) != receipt.head_sha:
-            raise PolicyViolation("remote branch does not preserve published HEAD")
+        self._require_remote_head(receipt)
         self._validate_local_assets(receipt)
         if record.status == "published":
             existing = self._result(receipt, "published")
@@ -222,6 +221,7 @@ class CleanupService:
             pull_request_number=pull_request_number,
             expected_pr_state="OPEN",
         )
+        self._require_remote_head(receipt)
         self._complete_cleanup_lease(
             receipt,
             "published",
@@ -229,6 +229,10 @@ class CleanupService:
             expected_pr_state="OPEN",
         )
         return self._result(receipt, "published")
+
+    def _require_remote_head(self, receipt: HandbackReceipt) -> None:
+        if self.git_query.remote_branch_sha(receipt.branch) != receipt.head_sha:
+            raise PolicyViolation("remote branch does not preserve published HEAD")
 
     def _validate_local_assets(self, receipt: HandbackReceipt) -> None:
         physical = self._sealed_worktree(receipt)
