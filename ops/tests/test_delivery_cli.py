@@ -619,6 +619,70 @@ def test_telemetry_failure_does_not_block_cleanup_or_main_sync() -> None:
     assert synced["telemetry_warnings"][0].code == "telemetry_append_failed"
 
 
+def test_issue_intake_cli_requires_an_object_payload(tmp_path: Path, capsys) -> None:
+    payload = tmp_path / "intake.json"
+    payload.write_text("[]", encoding="utf-8")
+
+    assert (
+        main(
+            [
+                "--repo",
+                str(tmp_path),
+                "issue-intake",
+                "--payload-file",
+                str(payload),
+            ],
+            application_factory=lambda **_: object(),
+        )
+        == 1
+    )
+    assert "payload must be an object" in capsys.readouterr().err
+
+
+def test_issue_intake_cli_is_one_raw_issue_operation(tmp_path: Path, capsys) -> None:
+    payload = tmp_path / "intake.json"
+    payload.write_text(
+        json.dumps(
+            {
+                "schema": "kg.delivery.issue-intake.v1",
+                "title": "CLI intake",
+                "body": "raw report",
+                "labels": ["bug"],
+                "source": "scout",
+                "provenance": "fixture:cli",
+                "severity": "P3",
+                "priority": 3,
+                "acceptance": ["read back"],
+                "scope": Scope.from_paths(modify=("ops/cli.py",)).to_payload(),
+                "operator": "supervisor",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class FakeApplication:
+        def create_issue(self, *, request):
+            assert request.title == "CLI intake"
+            return {"raw_issue": True, "candidate": False}
+
+    assert (
+        main(
+            [
+                "--repo",
+                str(tmp_path),
+                "issue-intake",
+                "--payload-file",
+                str(payload),
+            ],
+            application_factory=lambda **_: FakeApplication(),
+        )
+        == 0
+    )
+    output = json.loads(capsys.readouterr().out)
+    assert output["command"] == "issue-intake"
+    assert output["result"] == {"candidate": False, "raw_issue": True}
+
+
 def test_cleanup_and_main_sync_record_post_merge_durations() -> None:
     registry = FakeRegistry()
     git = FakeGit()

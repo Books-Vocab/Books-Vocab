@@ -17,6 +17,7 @@ from .adapters.operation_lock import OperationLock
 from .adapters.runtime import RuntimeStatusMap
 from .application import DeliveryApplication, build_application
 from .domain.candidate_issues import CandidateSpec
+from .domain.demand_issues import IssueIntakeRequest
 from .domain.errors import DeliveryContractError, DeliverySourceError
 from .domain.runtime_models import RuntimeReceipt, RuntimeState
 from .domain.states import HoldKind
@@ -28,6 +29,7 @@ COMMAND_SCHEMA = "kg.delivery.command.v1"
 MUTATING_COMMANDS = frozenset(
     {
         "admit-candidate",
+        "issue-intake",
         "watchdog-claim",
         "runtime-receipt",
         "receipt",
@@ -246,6 +248,12 @@ def _parser() -> argparse.ArgumentParser:
     admit_candidate.add_argument("--payload-file", type=Path, default=Path("-"))
     admit_candidate.add_argument("--triage-reason", required=True)
     admit_candidate.add_argument("--operator", required=True)
+
+    issue_intake = commands.add_parser(
+        "issue-intake",
+        help="create exactly one raw GitHub Issue; does not admit a candidate",
+    )
+    issue_intake.add_argument("--payload-file", type=Path, default=Path("-"))
 
     receipt = commands.add_parser("receipt", help="normalize one active handback")
     receipt.add_argument("--lane", required=True)
@@ -514,6 +522,23 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
             triage_reason=args.triage_reason,
             operator=args.operator,
         )
+    if args.command == "issue-intake":
+        raw = (
+            sys.stdin.read()
+            if args.payload_file == Path("-")
+            else args.payload_file.read_text(encoding="utf-8")
+        )
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as error:
+            raise DeliveryContractError(
+                "issue intake payload is invalid JSON"
+            ) from error
+        try:
+            request = IssueIntakeRequest.from_payload(payload)
+        except (TypeError, ValueError) as error:
+            raise DeliveryContractError(str(error)) from error
+        return application.create_issue(request=request)
     if args.command == "receipt":
         return application.receipt(args.lane)
     if args.command == "publish":

@@ -18,14 +18,27 @@ from delivery_control.domain.candidate_issues import (
     CandidateSeverity,
     CandidateSpec,
 )
+from delivery_control.domain.demand_issues import (
+    DemandIssue,
+    ISSUE_INTAKE_SCHEMA,
+    IssueDisposition,
+    IssueIntakeRequest,
+    issue_body_sha256,
+)
 from delivery_control.domain.errors import (
     CompareAndSwapConflict,
     DeliverySourceError,
     PolicyViolation,
 )
 from delivery_control.domain.models import Scope
+from delivery_control.domain.observations import (
+    PullRequestInventory,
+    RegistryCollisionClaim,
+    RegistryCollisionInventory,
+)
 from delivery_control.ports.process import CommandResult
 from delivery_control.services.candidate_contract import render_candidate_body
+from delivery_control.services.issue_admission import assert_issue_intake_available
 
 
 class StaticRunner:
@@ -75,6 +88,78 @@ def _issue(
         "updatedAt": "2026-08-22T01:00:00Z",
         "labels": [{"name": label} for label in labels],
     }
+
+
+def _intake_payload(
+    *, labels: list[str] | None = None, body: str = "A bounded report"
+) -> dict[str, object]:
+    return {
+        "schema": ISSUE_INTAKE_SCHEMA,
+        "title": "A bounded raw Issue",
+        "body": body,
+        "labels": labels or ["bug"],
+        "source": "scout",
+        "provenance": "fixture:issue-intake",
+        "severity": "P2",
+        "priority": 7,
+        "acceptance": ["The raw Issue is read back exactly."],
+        "scope": Scope.from_paths(modify=("ops/fixture.py",)).to_payload(),
+        "operator": "supervisor",
+    }
+
+
+def _intake_repository() -> str:
+    return json.dumps(
+        {
+            "data": {
+                "repository": {
+                    "id": "R_1",
+                    "labels": {
+                        "nodes": [
+                            {"id": "L_bug", "name": "bug"},
+                        ],
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                    },
+                }
+            }
+        }
+    )
+
+
+def _intake_issue_graphql(
+    *,
+    number: int = 91,
+    title: str = "A bounded raw Issue",
+    body: str,
+    labels: tuple[str, ...] = ("bug",),
+    client_mutation_id: str | None = None,
+    mutation: bool = False,
+) -> str:
+    issue = {
+        "id": f"I_{number}",
+        "number": number,
+        "url": f"https://github.com/owner/repo/issues/{number}",
+        "title": title,
+        "body": body,
+        "updatedAt": "2026-08-25T00:00:00Z",
+        "state": "OPEN",
+        "labels": {
+            "nodes": [{"name": label} for label in labels],
+            "pageInfo": {"hasNextPage": False, "endCursor": None},
+        },
+    }
+    if mutation:
+        return json.dumps(
+            {
+                "data": {
+                    "createIssue": {
+                        "clientMutationId": client_mutation_id,
+                        "issue": issue,
+                    }
+                }
+            }
+        )
+    return json.dumps({"data": {"repository": {"issue": issue}}})
 
 
 def _graphql(
@@ -534,3 +619,234 @@ def test_admission_fails_closed_on_fingerprint_drift_without_retry() -> None:
         )
 
     assert not any(call[:3] == ("gh", "issue", "edit") for call in runner.calls)
+
+
+def test_issue_intake_payload_is_explicit_and_object_only() -> None:
+    valid = _intake_payload()
+    request = IssueIntakeRequest.from_payload(valid)
+    assert request.title == "A bounded raw Issue"
+    assert request.scope.paths == ("ops/fixture.py",)
+
+    with pytest.raises(ValueError, match="payload must be an object"):
+        IssueIntakeRequest.from_payload([])  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="fields are not exact"):
+        IssueIntakeRequest.from_payload({**valid, "unexpected": True})
+    with pytest.raises(ValueError, match="labels"):
+        IssueIntakeRequest.from_payload({**valid, "labels": []})
+
+
+def test_issue_intake_adapter_creates_once_and_reads_back_exactly() -> None:
+    request = IssueIntakeRequest.from_payload(_intake_payload())
+    body = request.render_body()
+    runner = StaticRunner(
+        [
+            _repo_name(),
+            _result(_intake_repository()),
+            _repo_name(),
+            _result(
+                _intake_issue_graphql(
+                    body=body,
+                    client_mutation_id=request.client_mutation_id,
+                    mutation=True,
+                )
+            ),
+            _repo_name(),
+            _result(_intake_issue_graphql(body=body)),
+        ]
+    )
+
+    receipt = GitHubCliAdapter(runner=runner).create_issue(request=request)
+
+    assert receipt.issue.number == 91
+    assert receipt.issue.title == request.title
+    assert receipt.issue.body == body
+    assert receipt.issue.labels == request.labels
+    assert receipt.source_fingerprint == request.source_fingerprint
+    assert CANDIDATE_ISSUE_LABEL not in receipt.issue.labels
+    assert sum(call[:3] == ("gh", "api", "graphql") for call in runner.calls) == 3
+    graphql_queries = [
+        call[call.index("-f") + 1] for call in runner.calls if "-f" in call
+    ]
+    assert sum("createIssue" in query for query in graphql_queries) == 1
+
+
+def test_issue_intake_adapter_stops_on_malformed_mutation_without_retry() -> None:
+    request = IssueIntakeRequest.from_payload(_intake_payload())
+    runner = StaticRunner(
+        [
+            _repo_name(),
+            _result(_intake_repository()),
+            _repo_name(),
+            _result(json.dumps({"data": {"createIssue": None}})),
+        ]
+    )
+
+    with pytest.raises(AdapterPayloadError, match="createIssue"):
+        GitHubCliAdapter(runner=runner).create_issue(request=request)
+
+    assert sum(call[:3] == ("gh", "api", "graphql") for call in runner.calls) == 2
+    assert not any(
+        "DeliveryReadIssue" in call[call.index("-f") + 1]
+        for call in runner.calls
+        if "-f" in call
+    )
+
+
+def test_issue_intake_adapter_fails_closed_on_readback_drift() -> None:
+    request = IssueIntakeRequest.from_payload(_intake_payload())
+    body = request.render_body()
+    runner = StaticRunner(
+        [
+            _repo_name(),
+            _result(_intake_repository()),
+            _repo_name(),
+            _result(
+                _intake_issue_graphql(
+                    body=body,
+                    client_mutation_id=request.client_mutation_id,
+                    mutation=True,
+                )
+            ),
+            _repo_name(),
+            _result(_intake_issue_graphql(body=body, title="drifted title")),
+        ]
+    )
+
+    with pytest.raises(CompareAndSwapConflict, match="read back"):
+        GitHubCliAdapter(runner=runner).create_issue(request=request)
+
+    assert sum(call[:3] == ("gh", "api", "graphql") for call in runner.calls) == 3
+
+
+def test_issue_intake_preflight_rejects_duplicate_security_and_scope_collisions() -> (
+    None
+):
+    request = IssueIntakeRequest.from_payload(_intake_payload())
+    duplicate = DemandIssue(
+        number=91,
+        url="https://github.com/owner/repo/issues/91",
+        node_id="I_91",
+        title=request.title,
+        labels=request.labels,
+        body=request.render_body(),
+        updated_at=datetime.fromisoformat("2026-08-25T00:00:00+00:00"),
+        body_sha256=issue_body_sha256(request.render_body()),
+        disposition=IssueDisposition.TRIAGE_REQUIRED,
+    )
+
+    with pytest.raises(PolicyViolation, match="source fingerprint"):
+        assert_issue_intake_available(
+            request=request,
+            demand_issues=(duplicate,),
+            registry=RegistryCollisionInventory(records=()),
+            pull_requests=PullRequestInventory(records=()),
+            changed_paths=lambda _number: (),
+        )
+
+    with pytest.raises(PolicyViolation, match="security"):
+        assert_issue_intake_available(
+            request=IssueIntakeRequest.from_payload(
+                _intake_payload(labels=["security"])
+            ),
+            demand_issues=(),
+            registry=RegistryCollisionInventory(records=()),
+            pull_requests=PullRequestInventory(records=()),
+            changed_paths=lambda _number: (),
+        )
+
+    assert_issue_intake_available(
+        request=IssueIntakeRequest.from_payload(
+            _intake_payload(body="No P0/P1/security hold; no security impact.")
+        ),
+        demand_issues=(),
+        registry=RegistryCollisionInventory(records=()),
+        pull_requests=PullRequestInventory(records=()),
+        changed_paths=lambda _number: (),
+    )
+
+    with pytest.raises(PolicyViolation, match="overlaps active registry"):
+        assert_issue_intake_available(
+            request=request,
+            demand_issues=(),
+            registry=RegistryCollisionInventory(
+                records=(
+                    RegistryCollisionClaim(
+                        lane_id="DIRECT-OTHER",
+                        branch="debug/other",
+                        scope=request.scope,
+                    ),
+                )
+            ),
+            pull_requests=PullRequestInventory(records=()),
+            changed_paths=lambda _number: (),
+        )
+
+
+def test_issue_intake_inventory_then_candidate_admission_is_separate() -> None:
+    request = IssueIntakeRequest.from_payload(_intake_payload())
+    raw_body = request.render_body()
+    spec = CandidateSpec(
+        severity=request.severity,
+        priority=request.priority,
+        scope=request.scope,
+        acceptance=request.acceptance,
+    )
+    admitted_body = render_candidate_body(
+        spec,
+        original_body=raw_body,
+        triage_reason="separate explicit admission",
+        operator="supervisor",
+    )
+    runner = StaticRunner(
+        [
+            _repo_name(),
+            _result(_intake_repository()),
+            _repo_name(),
+            _result(
+                _intake_issue_graphql(
+                    body=raw_body,
+                    client_mutation_id=request.client_mutation_id,
+                    mutation=True,
+                )
+            ),
+            _repo_name(),
+            _result(_intake_issue_graphql(body=raw_body)),
+            _repo_name(),
+            _result(_graphql([_issue(91, body=raw_body, labels=("bug",))])),
+            _repo_name(),
+            _result(_graphql([_issue(91, body=raw_body, labels=("bug",))])),
+            _result(json.dumps([{"name": CANDIDATE_ISSUE_LABEL}])),
+            _result(),
+            _repo_name(),
+            _result(_graphql([_issue(91, body=admitted_body, labels=("bug",))])),
+            _result(),
+            _repo_name(),
+            _result(
+                _graphql(
+                    [
+                        _issue(
+                            91,
+                            body=admitted_body,
+                            labels=("bug", CANDIDATE_ISSUE_LABEL),
+                        )
+                    ]
+                )
+            ),
+        ]
+    )
+    adapter = GitHubCliAdapter(runner=runner)
+
+    created = adapter.create_issue(request=request)
+    inventory = adapter.list_open_issues()
+    assert inventory.records[0].candidate is None
+    admitted = adapter.admit_candidate(
+        issue_number=created.issue.number,
+        expected_updated_at=datetime.fromisoformat("2026-08-22T01:00:00+00:00"),
+        expected_body_sha256=created.issue.body_sha256,
+        spec=spec,
+        triage_reason="separate explicit admission",
+        operator="supervisor",
+    )
+
+    assert admitted.candidate_spec == spec
+    assert CANDIDATE_ISSUE_LABEL in admitted.labels

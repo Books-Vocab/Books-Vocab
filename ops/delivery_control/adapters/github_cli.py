@@ -8,7 +8,11 @@ from pathlib import Path
 from typing import Any
 
 from ..domain.candidate_issues import CandidateIssue, CandidateIssueInventory
-from ..domain.demand_issues import DemandIssue, DemandIssueInventory
+from ..domain.demand_issues import (
+    DemandIssue,
+    DemandIssueInventory,
+    IssueIntakeReceipt,
+)
 from ..domain.observations import (
     CheckSnapshot,
     MergeQueueEntrySnapshot,
@@ -121,6 +125,9 @@ class GitHubCliAdapter:
 
     def admit_candidate(self, **kwargs: Any) -> DemandIssue:
         return self._issue_commands.admit_candidate(**kwargs)
+
+    def create_issue(self, **kwargs: Any) -> IssueIntakeReceipt:
+        return self._issue_commands.create_issue(**kwargs)
 
     def list_open_pull_requests(self) -> PullRequestInventory:
         self.queue.clear_observed_snapshots()

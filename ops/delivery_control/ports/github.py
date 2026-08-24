@@ -4,7 +4,12 @@ from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from ..domain.candidate_issues import CandidateIssueInventory, CandidateSpec
-from ..domain.demand_issues import DemandIssue, DemandIssueInventory
+from ..domain.demand_issues import (
+    DemandIssue,
+    DemandIssueInventory,
+    IssueIntakeReceipt,
+    IssueIntakeRequest,
+)
 from ..domain.observations import (
     CheckSnapshot,
     MergeQueueEntrySnapshot,
@@ -72,6 +77,13 @@ class GitHubIssueCommandPort(Protocol):
         triage_reason: str,
         operator: str,
     ) -> DemandIssue: ...
+
+
+@runtime_checkable
+class GitHubIssueIntakePort(Protocol):
+    """Optional mutation capability for one explicit raw Issue intake."""
+
+    def create_issue(self, *, request: IssueIntakeRequest) -> IssueIntakeReceipt: ...
 
 
 @runtime_checkable
