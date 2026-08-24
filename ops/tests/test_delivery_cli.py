@@ -1306,6 +1306,39 @@ def test_watchdog_help_documents_required_global_runtime_receipt(
     assert f"before the {command} subcommand" in normalized_help
 
 
+@pytest.mark.parametrize(
+    ("command", "required_phrases"),
+    [
+        (
+            "watchdog",
+            (
+                "read-only observation",
+                "exit 0 does not authorize wake or dispatch",
+            ),
+        ),
+        (
+            "watchdog-claim",
+            (
+                "only verdict=wake-authorized, action=wake, wake_claimed=true may exit 0",
+                "noop/escalate/wake_claimed=false/claim conflict are valid no-wake observations",
+                "ok=true, verdict=no-wake, exit 2",
+                "must not retry or wake",
+            ),
+        ),
+    ],
+)
+def test_watchdog_help_documents_dispatch_boundary(
+    command: str, required_phrases: tuple[str, ...], capsys: object
+) -> None:
+    with pytest.raises(SystemExit) as caught:
+        _parser().parse_args([command, "--help"])
+
+    assert caught.value.code == 0
+    normalized_help = " ".join(capsys.readouterr().out.split())  # type: ignore[attr-defined]
+    for phrase in required_phrases:
+        assert phrase in normalized_help
+
+
 def test_cli_preserves_command_exit_when_stdout_pipe_closes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
