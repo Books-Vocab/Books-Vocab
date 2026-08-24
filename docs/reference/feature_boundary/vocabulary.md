@@ -4,6 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksAndVocab/Views/Vocabulary/
+  - ios/BooksAndVocab/Services/
 verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 -->
 # Vocabulary Feature Boundary
@@ -32,6 +33,7 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 | `Scenes/KGVocabCoordinator.swift` | `@Observable @MainActor final class KGVocabCoordinator`，batch delete / archive 收斂集中於 coordinator；archive 的本地可收斂集合為 `updated_words ∪ not_found`，`failed` 才保留重試 |
 | `Scenes/SyncCoordinator.swift` | `@Observable @MainActor final class SyncCoordinator`，含 `SyncFailureKind`；`PipelineStep` / `SyncPhase` 已移至 `Services/SyncProgress.swift`（設定頁的逐步同步進度共用同一組型別）；所有 Card 經同一個 vocab projection 收斂 |
 | `Scenes/AddLinkCoordinator.swift` | `@Observable @MainActor final class AddLinkCoordinator`，集中既有詞庫候選搜尋與 manual-link begin/create/commit 的流程狀態 |
+| `Scenes/AddLinkCreationCoordinator.swift` | `@Observable @MainActor final class AddLinkCreationCoordinator`，守衛本地 pending／failed／archived target，提交單一 idempotent missing-target operation、輪詢 durable steps，完成後交給既有 serialized vocabulary pull 做 canonical projection；A 的 context 只作 B 的義項判斷線索，不在本地建立帶有 A 內容的 B 卡片 |
 
 ### Presenter Layer（純 UI 呈現）
 
@@ -104,8 +106,9 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 | `Scenes/ReviewSessionPersistence.swift` | 複習 session 落地/恢復邏輯 |
 | `Scenes/SelectionModeState.swift` | 列表多選模式狀態 |
 | `Scenes/OverviewTab.swift` | `struct OverviewTab: View`，Vocab 入口 overview tab |
-| `Scenes/AddLinkSheet.swift` | `struct AddLinkSheet: View`，KG 手動加連線 sheet；搜尋同 Notebook 的既有詞條並把流程狀態委派 `AddLinkCoordinator` |
+| `Scenes/AddLinkSheet.swift` | `struct AddLinkSheet: View`，KG 手動加連線 sheet；搜尋同 Notebook 的既有詞條並把流程狀態委派 `AddLinkCoordinator`，查無 target 時提供建立並連結入口；送出的 context 是 A 的 sense clue，不是 B 的例句 |
 | `Scenes/AddLinkCoordinator.swift` | `@Observable` 加連線流程狀態機；本地候選搜尋與 manual link 的 begin/create/commit 在此收斂 |
+| `Scenes/AddLinkCreationProgressView.swift` | missing-target operation 的進度外殼；直接使用 Settings 的 `SettingsSyncProgressPanel` 與 `PipelineStep`，保持同一套進度視覺語言 |
 | `Scenes/WordDetailSheet.swift` | `struct WordDetailSheet: View`，負責 scene 組裝、routing 與 sheet chrome；link / archive orchestration 委派 `WordDetailSceneState`。封存後**刻意不 dismiss**（圖示翻轉即回饋兼 undo）；刪除走 `confirmationDialog` 並**指名損失**（連結數取自 presenterState），確認後 `queueDelete` + dismiss。`offersLifecycleActions` 由 `showsInlineChrome` 推導：唯一為 false 的宿主 `LinkedCardOverlayStack` 自繪 header，封存鈕本就不渲染，若不一併關掉刪除，該疊層會變成「只能刪不能封存」 |
 | `Scenes/WordDetailCopy.swift` | `enum WordDetailCopy`，詳情頁文案（慣例對齊 `NotebookListCopy`）。`deleteMessage(linkCount:)` 依連結數分流，無連結時不印「0 條」 |
 | `Scenes/WordEditSheet.swift` | `struct WordEditSheet: View` |
@@ -177,6 +180,7 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 - `WordDetailSceneState`：Word Detail scene owner，持有 presenterState / link error 與 link mutation orchestration
 - `VocabularyGraphLinkMutation`：Vocabulary feature-local pure domain helper，供多個 scene 共用 graph-link optimistic mutation / rollback 規則
 - `SyncCoordinator`：同步流程狀態，僅 `SyncView` 持有
+- `AddLinkCreationCoordinator`：missing-target Add Link 的 server operation／polling／canonical pull projection 狀態，僅 `AddLinkSheet` 持有；dismiss 只停止 client polling，不取消 server operation
 - `KGVocabCoordinator`：Books & Vocab 詞彙列表狀態，僅 `KGVocabView` 持有
 - `VocabularyListCoordinator`：詞彙列表主導航狀態，由 `VocabularyListView` 持有
 - Presentation models（`Presentation/`）：純值類型，可跨 layer 傳遞，但不持有 mutable state
