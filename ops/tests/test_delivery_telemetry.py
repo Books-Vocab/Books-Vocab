@@ -51,6 +51,14 @@ def _sample(
     )
 
 
+@pytest.mark.parametrize("payload", [[], "not-an-object", None])
+def test_duration_sample_from_payload_non_object_shape_currently_leaks_attribute_error(
+    payload: object,
+) -> None:
+    with pytest.raises(AttributeError):
+        DurationSample.from_payload(payload)  # type: ignore[arg-type]
+
+
 def test_ndjson_append_is_idempotent_and_conflicting_key_fails_cas(
     tmp_path: Path,
 ) -> None:
