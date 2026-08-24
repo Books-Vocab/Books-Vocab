@@ -310,6 +310,21 @@ def test_intent_type_is_only_branch_naming() -> None:
     assert coordinator._intent_type("anything", "debug") == "debug"
 
 
+def test_open_help_documents_owner_bound_external_id_contract(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as caught:
+        coordinator._parser().parse_args(["open", "--help"])
+
+    assert caught.value.code == 0
+    help_text = " ".join(capsys.readouterr().out.split())
+    assert "--external-id" in help_text
+    assert "--delegated" in help_text
+    assert "--codex-thread-id" in help_text
+    assert "non-blank" in help_text
+    assert "before base resolution, registry, branch, or worktree mutation" in help_text
+
+
 def test_open_requires_external_id_before_registry_or_worktree_mutation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
