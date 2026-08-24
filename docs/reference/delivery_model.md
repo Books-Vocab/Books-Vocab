@@ -24,11 +24,15 @@ scope:
   - ops/delivery_control/
   - ops/worktree_registry.py
   - ops/worktree_orchestrate.py
-verified_against: afe016c4ea2fcbd7306f9c4f40b4556e77865100
+  - docs/reference/kg-delivery-lifecycle.mmd
+  - docs/reference/架構.rtf
+verified_against: f7c647b189446899775ed0843b875862f29a3a26
 -->
 # GitHub-native Delivery Model
 
 這是 KG 交付模型的唯一權威文件。它定義工作如何進入系統、如何收斂到 PR，以及本機工具不能承擔什麼；它不記錄某一張 Issue、某一個 PR 或某一輪工作的即時狀態。
+
+人讀版的伴隨產物是 [lifecycle Mermaid 圖](kg-delivery-lifecycle.mmd) 與 [架構 RTF](架構.rtf)。兩者都是 derived artifacts，不另立交付語義；本文件、相關 SOP 或控制面契約改變時，必須在同一輪同步檢查並更新它們。
 
 ## 第一性原理
 

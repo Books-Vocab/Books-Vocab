@@ -130,6 +130,33 @@ documents:
       - ops/worktree_registry.py
       - ops/worktree_orchestrate.py
 
+  - id: asset.delivery_lifecycle_diagram
+    path: docs/reference/kg-delivery-lifecycle.mmd
+    kind: assets
+    authority: derived
+    triggers:
+      - delivery-model-changed
+      - delivery-control-dogfood-changed
+    sources:
+      - docs/reference/delivery_model.md
+      - docs/sop/delivery_control_dogfood.md
+      - docs/runbook/system.md
+      - ops/delivery_control/
+      - ops/worktree_orchestrate.py
+
+  - id: asset.delivery_architecture_rtf
+    path: docs/reference/架構.rtf
+    kind: assets
+    authority: derived
+    triggers:
+      - delivery-model-changed
+      - delivery-control-dogfood-changed
+    sources:
+      - docs/reference/delivery_model.md
+      - docs/reference/kg-delivery-lifecycle.mmd
+      - docs/sop/delivery_control_dogfood.md
+      - docs/runbook/system.md
+
   - id: reference.product_surface
     path: docs/reference/product_surface.md
     kind: reference

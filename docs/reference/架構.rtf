@@ -1,0 +1,168 @@
+{\rtf1\ansi\ansicpg950\cocoartf2868
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fnil\fcharset136 PingFangTC-Ultralight;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\pard\tx560\tx1120\tx1680\tx2240\tx2800\tx3360\tx3920\tx4480\tx5040\tx5600\tx6160\tx6720\pardirnatural\partightenfactor0
+
+\f0\fs26 \cf0 KG Delivery Control Plane\'a1\'47\'a5\'e6\'a5\'49\'a5\'cd\'a9\'52\'b6\'67\'b4\'c1\'bb\'50\'c3\'ad\'ba\'41\'ac\'79\'a4\'f4\'bd\'75\
+\
+\'a4\'e5\'a5\'f3\'a9\'77\'a6\'ec\
+========\
+\'b3\'6f\'ac\'4f\'a4\'40\'a5\'f7\'b5\'b9\'a4\'48\'be\'5c\'c5\'aa\'aa\'ba\'ac\'5b\'ba\'63\'c1\'60\'c4\'fd\'a1\'43\'a5\'e6\'a5\'49\'a8\'a4\'a6\'e2\'a1\'42\'c3\'d2\'be\'da\'bb\'50\'a9\'52\'a5\'4f\'ab\'b4\'ac\'f9\'aa\'ba\'b0\'df\'a4\'40\'c5\'76\'ab\'c2\'a8\'d3\'b7\'bd\'ac\'4f\
+docs/reference/delivery_model.md\'a1\'46\'ac\'79\'b5\'7b\'b9\'cf\'ac\'4f docs/reference/kg-delivery-lifecycle.mmd\'a1\'43\
+\'a5\'bb\'a4\'e5\'a5\'f3\'a4\'a3\'b0\'4f\'bf\'fd\'ac\'59\'a4\'40\'b1\'69 Issue\'a1\'42PR\'a1\'42branch\'a1\'42worktree\'a1\'42UDID \'a9\'ce\'b7\'ed\'ab\'65\'bc\'c6\'a6\'72\'a1\'41\'a4\'5d\'a4\'a3\'ab\'c5\'ba\'d9\
+production readiness\'a1\'43\'ad\'59\'a5\'bb\'a4\'e5\'a5\'f3\'bb\'50 delivery_model.md \'a4\'a3\'a4\'40\'ad\'50\'a1\'41\'a5\'48 SoT \'ac\'b0\'b7\'c7\'a1\'41\'a8\'c3\'a6\'62\'a6\'50\'a4\'40\
+\'a6\'b8\'a4\'e5\'a5\'f3\'c5\'dc\'a7\'f3\'a4\'a4\'a7\'f3\'b7\'73\'a5\'bb\'a4\'e5\'a5\'f3\'bb\'50 Mermaid \'b9\'cf\'a1\'43\
+\
+\'b2\'c4\'a4\'40\'a9\'ca\'ad\'ec\'b2\'7a\
+==========\
+GitHub \'ac\'4f durable delivery queue\'a1\'46local worktree \'a5\'75\'ac\'4f\'a6\'b3 owner \'aa\'ba\'bc\'c8\'ae\'c9\'b9\'ea\'a7\'40\'c0\'f4\'b9\'d2\'a1\'43\
+\'b1\'b1\'a8\'ee\'ad\'b1\'a4\'a3\'c0\'b3\'a7\'e2\'b2\'e1\'a4\'d1\'b0\'54\'ae\'a7\'a1\'42idle session \'a9\'ce local backlog \'b7\'ed\'a7\'40\'a4\'75\'a7\'40\'af\'75\'ac\'db\'a1\'43\'a8\'43\'a4\'40\'b1\'f8 lane\
+\'b3\'a3\'a5\'b2\'b6\'b7\'af\'e0\'a5\'48 owner\'a1\'42branch\'a1\'42path\'a1\'42base\'a1\'42HEAD\'a1\'42exact Scope\'a1\'42digest\'a1\'42registry\'a1\'42PR\
+\'bb\'50 terminal proof \'ad\'ab\'ab\'d8\'a1\'43\
+\
+\'a7\'5d\'a6\'52\'b6\'71\'b5\'a5\'a9\'f3\'b3\'cc\'ba\'43\'b6\'a5\'ac\'71\'a1\'47\
+\'b0\'dd\'c3\'44\'a8\'d1\'c0\'b3 \'a1\'f7 \'b9\'ea\'a7\'40 \'a1\'f7 handback \'a1\'f7 PR publication \'a1\'f7 required CI \'a1\'f7 merge queue\'a1\'43\
+\'a6\'5d\'a6\'b9\'bc\'57\'a5\'5b Worker \'a4\'a3\'ac\'4f\'a5\'52\'a4\'c0\'b1\'f8\'a5\'f3\'a1\'46\'a5\'b2\'b6\'b7\'a6\'50\'ae\'c9\'ba\'fb\'ab\'f9\'ad\'d4\'bf\'ef\'a8\'d1\'c0\'b3\'a1\'42\'b5\'75 required gate\'a1\'42\'a5\'69\'ae\'f8\'b6\'4f\'aa\'ba\
+PR buffer\'a1\'41\'a5\'48\'a4\'ce merge \'ab\'e1\'a6\'50\'a8\'42\'bb\'50\'b2\'4d\'b2\'7a\'aa\'ba\'b3\'ac\'c0\'f4\'a1\'43\
+\
+\'a5\'bf\'a6\'a1\'a5\'cd\'a9\'52\'b6\'67\'b4\'c1\
+============\
+raw demand\
+  \'a1\'f7 triage\
+  \'a1\'f7 dispatchable candidate\
+  \'a1\'f7 admitted lane\
+  \'a1\'f7 active implementation\
+  \'a1\'f7 typed handback\
+  \'a1\'f7 durable PR\
+  \'a1\'f7 required checks\
+  \'a1\'f7 merge-ready\
+  \'a1\'f7 merge-front\
+  \'a1\'f7 native merge queue\
+  \'a1\'f7 merged\
+  \'a1\'f7 terminal cleanup\
+\
+1. Raw demand \'bb\'50 triage\
+-----------------------\
+User \'a9\'ce Backlog Scout \'a5\'69\'a5\'48\'b4\'a3\'a8\'d1\'bb\'dd\'a8\'44\'a1\'43Scout \'ad\'ba\'a5\'fd\'bd\'4c\'c2\'49\'a9\'d2\'a6\'b3 raw Issues\'a1\'41\'a6\'d3\'a4\'a3\'ac\'4f\'a5\'75\
+\'ac\'64 candidate label\'a1\'43\'a8\'43\'ad\'d3 open Issue \'b3\'a3\'a5\'b2\'b6\'b7\'b6\'69\'a4\'4a\'b0\'df\'a4\'40 disposition\'a1\'47malformed\'a1\'42\
+security/P0/P1\'a1\'42\'a4\'77\'a6\'b3 owner/PR\'a1\'42terminal history\'a1\'42typed candidate\'a1\'42blocked\'a1\'42\
+legacy \'a9\'ce triage_required\'a1\'43quarantine \'bb\'50 source problem \'a4\'b4\'ab\'4f\'af\'64\'a6\'62 raw inventory\'a1\'41\
+\'a4\'a3\'af\'e0\'b3\'51\'a6\'a9\'b1\'bc\'ab\'e1\'a6\'41\'a6\'5e\'b3\'f8\'a1\'75\'a8\'53\'a6\'b3\'a4\'75\'a7\'40\'a1\'76\'a1\'43\
+\
+\'a5\'75\'a6\'b3\'b3\'71\'b9\'4c triage\'a1\'42\'a8\'e3\'b3\'c6 exact Scope\'a1\'42acceptance\'a1\'42priority\'a1\'42hold \'bb\'50 required\
+evidence \'aa\'ba\'b6\'b5\'a5\'d8\'a1\'41\'a4\'7e\'b7\'7c\'a7\'eb\'bc\'76\'a6\'a8 dispatchable candidate\'a1\'43candidate reservoir \'bb\'50 raw\
+backlog \'ac\'4f\'a8\'e2\'ad\'d3\'a4\'a3\'a6\'50\'a4\'f4\'ae\'77\'a1\'46raw demand \'a6\'73\'a6\'62\'a4\'a3\'a5\'4e\'aa\'ed\'a5\'69\'a5\'48\'ac\'a3\'a4\'75\'a1\'41candidate=0 \'a4\'5d\'a4\'a3\'a5\'4e\'aa\'ed\
+\'a8\'53\'a6\'b3\'bb\'dd\'a8\'44\'a1\'43\
+\
+2. Dispatch \'bb\'50 owner\
+--------------------\
+\'bb\'dd\'ad\'6e Issue\'a1\'feProject \'b0\'6c\'c2\'dc\'aa\'ba\'a4\'75\'a7\'40\'a8\'ab\'a1\'47\
+IM \'a1\'f7 Issue \'a1\'f7 Issue Solver \'a1\'f7 branch/worktree \'a1\'f7 typed handback\'a1\'43\
+\
+\'bb\'dd\'a8\'44\'a4\'77\'b2\'4d\'b7\'a1\'a5\'42\'a5\'69\'aa\'bd\'b1\'b5\'b0\'f5\'a6\'e6\'aa\'ba\'a4\'75\'a7\'40\'a8\'ab\'a1\'47\
+User\'a1\'feIM \'a1\'f7 Worker \'a1\'f7 branch/worktree \'a1\'f7 typed handback\'a1\'43\
+\
+\'a8\'e2\'b1\'f8\'b8\'f4\'ae\'7c\'b3\'a3\'a5\'b2\'b6\'b7\'a5\'fd\'a7\'b9\'a6\'a8 supported materialization\'a1\'42owner identity\'a1\'42host\'a1\'42path\'a1\'42\
+base\'a1\'42exact Scope \'bb\'50 collision preflight\'a1\'43Issue Solver \'a5\'75\'b3\'42\'b2\'7a\'a4\'77\'b5\'6e\'b0\'4f Issue\'a1\'46Worker\
+\'a5\'75\'b3\'42\'b2\'7a direct assignment\'a1\'43\'a4\'a3\'af\'e0\'b4\'5f\'ac\'a1 ownerless \'c2\'c2 lane\'a1\'42\'a4\'a3\'af\'e0 takeover\'a1\'41\'a4\'5d\'a4\'a3\'af\'e0\'ac\'b0\'a4\'46\
+\'b6\'f1\'ae\'65\'b6\'71\'a6\'d3\'ab\'d8\'a5\'df duplicate Issue\'a1\'42branch\'a1\'42worktree \'a9\'ce session\'a1\'43\
+\
+3. Local implementation \'bb\'50 handback\
+------------------------------------\
+Worker\'a1\'feSolver \'a5\'75\'a6\'62\'a6\'db\'a4\'76\'aa\'ba product worktree \'a4\'ba\'a7\'b9\'a6\'a8\'b3\'cc\'a4\'70\'c5\'dc\'a7\'f3\'a1\'43\'bc\'d0\'b7\'c7\'b6\'b6\'a7\'c7\'ac\'4f RED\'a1\'42\'b3\'cc\'a4\'70\
+\'ad\'d7\'b4\'5f\'a1\'42GREEN\'a1\'41\'a6\'41\'b2\'a3\'a5\'cd kg.worktree.handback.v1\'a1\'43handback \'a6\'dc\'a4\'d6\'ad\'6e\'ab\'4f\'af\'64\'a1\'47\
+\
+owner/thread\'a1\'42branch\'a1\'42path\'a1\'42base/origin_main\'a1\'42HEAD\'a1\'42exact Scope\'a1\'42content digest\'a1\'42\
+\'c5\'e7\'c3\'d2\'a9\'52\'a5\'4f\'bb\'50\'b5\'b2\'aa\'47\'a1\'42provenance\'a1\'42security/docs/release impact\'a1\'41\'a5\'48\'a4\'ce\'a5\'b2\'ad\'6e\'aa\'ba blocker\'a1\'43\
+\
+clean tree\'a1\'42focused test\'a1\'42seal \'a9\'ce\'b2\'e1\'a4\'d1\'ba\'4b\'ad\'6e\'b3\'a3\'a4\'a3\'ac\'4f PR\'a1\'42merge\'a1\'42release \'a9\'ce full-suite\
+\'c3\'d2\'be\'da\'a1\'43\'b5\'4c\'aa\'6b\'a6\'77\'a5\'fe\'a7\'b9\'a6\'a8\'ae\'c9\'ad\'6e\'a6\'5e\'b3\'f8 exact blocker \'a9\'ce\'a8\'ab\'a9\'fa\'bd\'54 terminal disposition\'a1\'46\'a4\'a3\'a5\'48\'a7\'52\'b0\'a3\
+\'b8\'ea\'ae\'c6\'a1\'42\'a7\'ef registry \'a9\'ce\'b1\'b5\'ba\'de owner \'a8\'d3\'bb\'73\'b3\'79\'ba\'f1\'bf\'4f\'a1\'43\
+\
+4. PI\'a1\'feIM\'a1\'47handback \'c5\'dc\'a6\'a8 durable PR\
+-----------------------------------\
+PI \'ac\'4f IM\'a1\'fecoordination boundary \'a4\'55\'aa\'ba publication function\'a1\'43\'a6\'ac\'a8\'ec typed handback\
+\'ab\'e1\'a1\'41\'c0\'b3\'a5\'df\'a7\'59\'c5\'e7\'c3\'d2 owner\'a1\'42clean commit\'a1\'42Scope\'a1\'42\'b0\'df\'a4\'40 mapping\'a1\'42remote branch\'a1\'42PR body\
+\'bb\'50 exact HEAD\'a1\'41\'ab\'d8\'a5\'df\'a9\'ce\'a7\'f3\'b7\'73\'b0\'df\'a4\'40 PR\'a1\'41\'a8\'c3\'a6\'62 remote/PR readback \'a7\'b9\'a6\'a8\'ab\'e1\'c4\'c0\'a9\'f1 local\
+worktree \'bb\'50 local branch\'a1\'43\'b5\'a5\'ab\'dd CI \'a4\'a3\'bb\'dd\'ad\'6e\'ab\'4f\'af\'64\'a5\'bb\'a6\'61 worktree\'a1\'46GitHub PR \'a4\'7e\'ac\'4f\'b5\'a5\'ab\'dd\'b0\'cf\'a1\'43\
+\
+Publication \'a4\'a3\'ad\'6e\'a8\'44\'a9\'d2\'a6\'b3 PR \'b3\'a3\'a5\'fd reanchor \'a8\'ec current main\'a1\'43\'be\'fa\'a5\'76 base \'a5\'69\'a5\'48\'a5\'fd\'b5\'6f\'a5\'ac\'a1\'46\
+\'a5\'75\'a6\'b3 merge-front \'a4\'7e\'bb\'dd\'ad\'6e JIT freshness\'a1\'43\'ad\'59 tuple\'a1\'42Scope\'a1\'42owner \'a9\'ce remote readback\
+\'a4\'a3\'a4\'40\'ad\'50\'a1\'41\'a6\'5e\'a8\'ec\'a6\'50\'a4\'40 owner lane resume/reconcile\'a1\'46\'a4\'a3\'a5\'69\'b1\'b5\'ba\'de\'a1\'42\'ad\'ab\'ab\'d8 duplicate PR \'a9\'ce\
+\'c2\'d0\'bb\'5c\'a4\'48\'a4\'75\'a4\'ba\'ae\'65\'a1\'43\
+\
+5. PR validation \'bb\'50 hard gate\
+-----------------------------\
+Readiness \'c5\'e7\'c3\'d2 metadata\'a1\'42Scope \'bb\'50 handback provenance\'a1\'43Required gate \'ac\'4f\'b5\'75\'aa\'ba\
+repository baseline\'a1\'42\'ae\'d6\'a4\'df deterministic tests \'bb\'50\'a5\'b2\'ad\'6e\'a6\'77\'a5\'fe\'a4\'a3\'c5\'dc\'b6\'71\'a1\'43\'a7\'b9\'be\'e3 backend\'a1\'42\
+iOS\'a1\'42UI\'a1\'42ops\'a1\'42confidence suite \'a4\'b4\'b5\'4d\'a6\'b3\'bb\'f9\'ad\'c8\'a1\'41\'a6\'fd\'b3\'71\'b1\'60\'ac\'4f advisory\'a1\'46\'a5\'75\'a6\'b3\'a9\'fa\'bd\'54\'aa\'ba\
+P0/P1/security hold \'a4\'7e\'a4\'c9\'af\'c5\'ac\'b0 merge blocker\'a1\'43\
+\
+Required SUCCESS \'a4\'a3\'ac\'4f merge authorization\'a1\'43CM \'a4\'b4\'b6\'b7\'ad\'ab\'c5\'aa\'a1\'47non-draft\'a1\'42mergeable\'a1\'42\
+exact current base/head/Scope/handback\'a1\'42review\'a1\'fehold\'a1\'41\'a5\'48\'a4\'ce\'a8\'53\'a6\'b3 P0/P1/security\
+hold\'a1\'43Required failure \'a5\'d1\'ad\'ec owner \'ad\'d7\'b4\'5f\'a1\'46\'b5\'4c\'aa\'6b\'ad\'d7\'b4\'5f\'ab\'68\'a5\'48 supported terminal proof\
+\'c2\'f7\'b6\'7d\'a5\'44\'bd\'75\'a1\'43\'a6\'77\'a5\'fe lane \'bb\'50\'a4\'40\'af\'eb lane \'a4\'c0\'c2\'f7\'a1\'41\'a4\'a3\'b1\'6f\'aa\'fd\'b6\'eb\'b5\'4c\'c3\'f6\'ad\'d4\'bf\'ef\'a1\'43\
+\
+6. CM\'a1\'47merge-front\'a1\'42queue\'a1\'42sync\
+--------------------------------\
+CM \'a5\'75\'ae\'f8\'b6\'4f merge-front\'a1\'43\'b9\'ef stale PR \'a5\'75\'b0\'b5\'a6\'50 owner JIT reanchor\'a1\'41\'a4\'a3\'af\'e0\'a6\'5d\'a8\'43\'a4\'40\'ad\'d3 PR\
+\'b8\'a8\'a6\'61\'b4\'4e rebase \'a5\'fe\'b3\'a1\'ab\'e1\'a4\'e8\'a6\'ee\'a6\'43\'a1\'43\'b3\'71\'b9\'4c exact hard gate \'ab\'e1\'a1\'41\'a8\'cf\'a5\'ce native GitHub merge\
+queue\'a1\'46\'b8\'54\'a4\'ee\'a4\'e2\'b0\'ca\'c2\'b6\'b9\'4c queue \'a9\'ce\'a7\'e2 mergeable=true \'b7\'ed\'a6\'a8\'a7\'b9\'be\'e3\'c3\'d2\'be\'da\'a1\'43\
+\
+Merge \'ab\'e1\'a5\'d1 CM \'b2\'a3\'a5\'cd merge receipt \'a8\'c3\'a5\'48 supported sync-main \'c5\'fd canonical local\
+main \'bb\'50 origin/main \'ac\'db\'b5\'a5\'a1\'43PI\'a1\'feIM \'a6\'41\'a8\'cc exact merged receipt \'a7\'b9\'a6\'a8 terminal cleanup\'a1\'47\
+registry=merged/resolved\'a1\'42terminal proof\'a1\'42local/remote branch \'bb\'50 product worktree\
+\'b2\'be\'b0\'a3\'a1\'42prune dry-run empty\'a1\'43\'b3\'cc\'ab\'e1\'a4\'7e\'ac\'4f lifecycle complete\'a1\'46release\'a1\'fedeploy \'ac\'4f\'a5\'74\'a4\'40\'ad\'d3\
+\'a6\'b3 approval\'a1\'42artifact\'a1\'42health \'bb\'50 rollback \'aa\'ba\'ac\'79\'b5\'7b\'a1\'43\
+\
+7. Supervisor \'bb\'50 watchdog \'c3\'e4\'ac\'c9\
+------------------------------\
+Supervisor \'ac\'4f\'a5\'7c\'ad\'d3\'b9\'42\'a7\'40\'a8\'a4\'a6\'e2\'a4\'a7\'a4\'40\'a1\'41\'a4\'a3\'ac\'4f\'a7\'f3\'b0\'aa\'bc\'68\'a1\'41\'a4\'5d\'a4\'a3\'ac\'4f\'b2\'a3\'ab\'7e\'b9\'ea\'a7\'40\'aa\'cc\'a1\'43\'a5\'a6\'a5\'75\'c5\'aa\
+deterministic metrics\'a1\'41\'a7\'50\'c2\'5f freeze\'a1\'42ramp\'a1\'42incident\'a1\'41\'a8\'c3\'c4\'b2\'b5\'6f\'ac\'4a\'a6\'b3\'a8\'a4\'a6\'e2\'aa\'ba bounded\
+action\'a1\'43\'a5\'a6\'a4\'a3\'a7\'ef product code\'a1\'42\'a4\'a3\'be\'de\'a7\'40 Issue\'a1\'fePR\'a1\'feregistry\'a1\'42\'a4\'a3\'b1\'b5\'ba\'de owner\'a1\'43\
+\
+watchdog \'ac\'4f liveness receipt \'bb\'50 one-shot CAS\'a1\'41\'a4\'a3\'ac\'4f session factory\'a1\'43\'a5\'75\'a6\'b3\
+action=wake \'a5\'42 wake_claimed=true \'aa\'ba\'b5\'b2\'aa\'47\'a4\'7e\'ac\'4f wake-authorized\'a1\'46healthy noop\'a1\'42audit\'a1\'42\
+escalate\'a1\'42claim conflict\'a1\'42frozen/archived \'b3\'a3\'a4\'a3\'ac\'4f\'ac\'47\'bb\'d9\'a1\'41\'a4\'5d\'b5\'b4\'b9\'ef\'a4\'a3\'af\'e0\'ab\'d8\'a5\'df session\'a1\'43\
+\'af\'ca\'a4\'d6 receipt\'a1\'42future timestamp\'a1\'42stale \'a9\'ce\'a4\'a3\'a4\'40\'ad\'50\'aa\'ba\'ae\'c9\'b6\'a1\'c3\'d2\'be\'da\'ad\'6e fail closed \'a6\'a8\
+observation/escalate\'a1\'41\'a4\'a3\'b1\'6f\'b3\'51 shell exit code \'bb\'7e\'a7\'50\'a6\'a8\'a6\'a8\'a5\'5c dispatch\'a1\'43\
+\
+8. \'bc\'d2\'a6\'a1\'bb\'50\'ae\'65\'b6\'71\
+--------------\
+Control-plane qualification \'a5\'75\'c5\'e7\'c3\'d2 registry\'a1\'42watchdog\'a1\'42handback\'a1\'42PR\'a1\'42merge\'a1\'42\
+sync\'a1\'42cleanup \'a4\'75\'a8\'e3\'bb\'50\'c3\'d2\'be\'da\'bc\'d2\'ab\'ac\'a1\'41\'a4\'a3\'ad\'70\'a4\'4a production throughput\'a1\'43\
+\
+Production-mode dogfood \'a4\'7e\'ac\'4f\'af\'75\'b9\'ea\'bb\'dd\'a8\'44\'b8\'67\'b9\'4c\'a7\'b9\'be\'e3\'a5\'cd\'a9\'52\'b6\'67\'b4\'c1\'a1\'41\'a8\'c3\'b3\'76\'a8\'42 ramp\'a1\'47\
+1 \'a1\'f7 3 \'a1\'f7 4 \'a1\'f7 8/12 \'ad\'d3\'a8\'c3\'a6\'e6 lane\'a1\'43Steady-state target \'ac\'4f\'a1\'47\'ad\'d4\'bf\'ef 20\'a1\'5630\'a1\'42active\
+Worker/Solver 8\'a1\'5612\'a1\'42durable PR 10\'a1\'5615\'a1\'42handback\'a1\'f7PR p95 \'a1\'d860 \'ac\'ed\'a1\'42required\'a1\'f7queue\
+p95 \'a1\'d830 \'ac\'ed\'a1\'42merge\'a1\'f7sync \'a1\'d830 \'ac\'ed\'a1\'42merge\'a1\'f7cleanup \'a1\'d860 \'ac\'ed\'a1\'41\'a8\'c3\'a6\'62\'af\'75\'b9\'ea\'a8\'d1\'c0\'b3\'bb\'50 GitHub\
+\'ae\'65\'b6\'71\'a5\'bf\'b1\'60\'ae\'c9\'a1\'41\'a5\'48\'a4\'40\'a4\'70\'ae\'c9\'a6\'dc\'a4\'d6 12 \'ad\'d3 merged PR \'c5\'e7\'c3\'d2\'a1\'41\'a6\'d3\'a4\'a3\'ac\'4f\'a4\'66\'c0\'59\'ab\'c5\'ba\'d9\'a1\'43\
+\
+\'a5\'48\'a4\'55\'a5\'7c\'ad\'d3\'bc\'c6\'a6\'72\'a4\'a3\'a5\'69\'b2\'56\'a5\'ce\'a1\'47\
+raw demand=0\'a1\'47\'af\'75\'aa\'ba\'a8\'53\'a6\'b3\'bb\'dd\'a8\'44\'a1\'43\
+dispatchable candidate=0\'a1\'47\'a6\'b3\'bb\'dd\'a8\'44\'a1\'41\'a6\'fd\'a5\'d8\'ab\'65\'a8\'53\'a6\'b3\'a6\'77\'a5\'fe\'a5\'69\'ac\'a3\'a4\'75\'b6\'b5\'a5\'d8\'a1\'43\
+publishable handback=0\'a1\'47\'a5\'d8\'ab\'65\'a8\'53\'a6\'b3\'a5\'69\'a5\'df\'a7\'59\'a5\'5d\'b8\'cb\'a6\'a8 PR \'aa\'ba handback\'a1\'43\
+merge-ready=0\'a1\'47\'a6\'b3 PR\'a1\'41\'a6\'fd\'a5\'d8\'ab\'65\'a8\'53\'a6\'b3\'a5\'69\'a6\'58\'a8\'d6\'aa\'ba PR\'a1\'43\
+\
+\'a5\'f4\'a6\'f3 session churn\'a1\'42\'bf\'f9\'bb\'7e wake\'a1\'42owner takeover\'a1\'42Scope collision\'a1\'42main drift\'a1\'42\
+security bypass\'a1\'42hidden backlog \'a9\'ce cleanup residue \'b3\'a3\'ac\'4f incident\'a1\'43Incident \'ae\'c9\
+freeze \'b7\'73 admission\'a1\'fewake\'a1\'41\'a6\'fd\'c4\'7e\'c4\'f2 drain \'a4\'77\'b5\'6f\'a5\'ac\'aa\'ba durable PR\'a1\'46\'a4\'a3\'ad\'6e\'a5\'ce\'b0\'b1\'a4\'ee\'c6\'5b\'b4\'fa\'a8\'d3\
+\'b1\'bb\'bb\'5c\'ac\'79\'a4\'f4\'bd\'75\'a5\'bc\'a7\'b9\'a6\'a8\'a1\'43\
+\
+9. iOS release \'c3\'e4\'ac\'c9\
+-------------------\
+iOS \'a5\'5c\'af\'e0\'a5\'e6\'a5\'49\'a4\'b4\'bf\'ed\'b4\'60\'a6\'50\'a4\'40\'b1\'f8 Worker \'a1\'f7 handback \'a1\'f7 PR \'a1\'f7 required \'a1\'f7 merge \'a1\'f7 cleanup\
+\'a5\'cd\'a9\'52\'b6\'67\'b4\'c1\'a1\'43TestFlight\'a1\'42App Store \'bb\'50 backend production deploy \'a4\'a3\'b5\'a5\'a6\'50\'a9\'f3 dogfood\'a1\'46\
+\'a5\'a6\'ad\'cc\'a5\'b2\'b6\'b7\'b1\'71\'a4\'77\'a6\'58\'a8\'d6\'aa\'ba main \'a8\'ab\'a6\'55\'a6\'db release SOP\'a1\'41\'c5\'e7\'c3\'d2\'aa\'a9\'a5\'bb\'a1\'42build\'a1\'42artifact\'a1\'42ASC \'a9\'ce\
+production readback\'a1\'42approval \'bb\'50 rollback\'a1\'43\'a4\'a3\'af\'e0\'a6\'5d PR merged \'a9\'ce Simulator PASS\
+\'b4\'4e\'ab\'c5\'ba\'d9 TestFlight \'a4\'77\'b5\'6f\'a5\'ac\'a1\'43\
+\
+\'ba\'fb\'c5\'40\'b3\'57\'ab\'68\
+========\
+\'a5\'bb RTF \'bb\'50 Mermaid \'b9\'cf\'b3\'a3\'ac\'4f derived human-facing artifacts\'a1\'43\'ad\'d7\'a7\'ef delivery_model.md\'a1\'42\
+delivery_control SOP\'a1\'42watchdog\'a1\'42registry\'a1\'42PI\'a1\'feCM lifecycle \'a9\'ce release boundary \'ae\'c9\'a1\'41\
+\'a6\'50\'a4\'40\'c5\'dc\'a7\'f3\'a5\'b2\'b6\'b7\'ad\'ab\'b7\'73\'c0\'cb\'ac\'64\'a8\'e2\'a5\'f7\'c0\'c9\'ae\'d7\'a1\'46\'ad\'59\'a4\'ba\'ae\'65\'bb\'50 SoT \'a4\'a3\'a4\'40\'ad\'50\'a1\'41\'a5\'48 SoT \'ac\'b0\'b7\'c7\'a8\'c3\'a5\'df\'a7\'59\'ad\'d7\'a5\'bf\'a1\'43\'a4\'e5\'a5\'f3\
+\'a5\'75\'ab\'4f\'a6\'73\'c3\'ad\'a9\'77\'a1\'42\'a5\'69\'ad\'ab\'b2\'7b\'aa\'ba\'ab\'b4\'ac\'f9\'a1\'41\'a4\'a3\'ab\'4f\'a6\'73\'a4\'40\'a6\'b8\'a9\'ca telemetry\'a1\'42\'b7\'ed\'ab\'65 PR number\'a1\'42branch\'a1\'42UDID\
+\'a9\'ce agent \'b2\'e1\'a4\'d1\'b6\'69\'ab\'d7\'a1\'43\
+}
