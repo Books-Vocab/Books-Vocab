@@ -17,8 +17,10 @@ from delivery_control.domain.superseded_handback import (
     SUPERSEDED_PROOF_DISPOSITION,
     SUPERSEDED_PROOF_SCHEMA,
     superseded_proof_body,
-    superseded_proof_with_digest as _superseded_proof_with_digest,
     validate_superseded_proof_shape,
+)
+from delivery_control.domain.superseded_handback import (
+    superseded_proof_with_digest as _superseded_proof_with_digest,
 )
 from lib.worktree_scope import SCOPE_SCHEMA, scope_files, scope_problems
 
@@ -295,13 +297,24 @@ def superseded_proof_problem(record: dict[str, Any]) -> str | None:
     ).encode("utf-8")
     if digest != hashlib.sha256(encoded).hexdigest():
         return "superseded proof digest is invalid"
+    canonical_base_sha = _record_base_sha(record)
+    seal = record.get("handback_seal")
+    sealed_base_sha = seal.get("base_sha") if isinstance(seal, dict) else None
+    if (
+        not isinstance(canonical_base_sha, str)
+        or not _SHA_RE.fullmatch(canonical_base_sha)
+        or not isinstance(sealed_base_sha, str)
+        or not _SHA_RE.fullmatch(sealed_base_sha)
+        or sealed_base_sha != canonical_base_sha
+    ):
+        return "superseded proof base_sha does not match abandoned handback"
     expected = {
         "schema": SUPERSEDED_PROOF_SCHEMA,
         "disposition": SUPERSEDED_PROOF_DISPOSITION,
         "branch": record.get("branch"),
         "handback_sha": record.get("handed_back_sha"),
         "claim_generation": record.get("claim_generation"),
-        "base_sha": record.get("base_sha"),
+        "base_sha": canonical_base_sha,
         "handback_digest": (
             record.get("handback_seal", {}).get("digest")
             if isinstance(record.get("handback_seal"), dict)
