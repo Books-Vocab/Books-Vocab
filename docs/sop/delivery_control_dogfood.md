@@ -147,6 +147,8 @@ canary promotion 前 `canary_solver_limit=1`；不能直接為追求數量啟動
 
 `publish` 驗證 owner／generation／branch／path／base／parent／HEAD／Scope／digest，push 並建立或更新唯一 PR，做 exact remote-head readback，再以 registry CAS 記錄 GitHub target 的 `published_base_sha`，最後用 cleanup lease 移除 local worktree／local branch。原始 typed hand-back 的 `base_sha` 保持 immutable，不會被 PR target 漂移覆寫；若 PR 已 durable 但 CAS 中斷，可對同一 PR 重跑 `record-published-base`，由 exact tuple／head／body／Scope guards 收斂。歷史 base 可以 durable publish；不要求 current-base，也不等待大型 local gate 或 GitHub CI。
 
+同一 branch 可以保留已合併或已關閉的 PR history；`record-published-base` 的唯一性只投影 branch inventory 中的 current `OPEN` PR。它必須恰好找到一筆，且 number 必須等於本次明確傳入的 PR；歷史 records 仍保留為 evidence，不會被刪除或當成 current candidate。若沒有、超過一筆 `OPEN`，指定 PR 不在 `OPEN` candidates，或 history inventory 有 source problem，命令一律 fail closed。
+
 若 publication 已成功、local release 中斷，只重試：
 
 ```bash
