@@ -235,9 +235,12 @@ def measure_pipeline(
         for lane in lanes
         if lane.registry is not None and lane.registry.status == "active"
     )
-    malformed_active_registry_records = sum(
-        problem.source == "registry" and problem.record_status == "active"
-        for problem in inventory.source_problems
+    malformed_active_registry_records = len(
+        {
+            (problem.identity_kind, problem.identity, problem.record_status)
+            for problem in inventory.source_problems
+            if problem.source == "registry" and problem.record_status == "active"
+        }
     )
     active_registry_records = len(active_registry_lanes)
     raw_active_registry_records = (
