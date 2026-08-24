@@ -612,6 +612,54 @@ def test_collision_inventory_projects_reported_claim_status(
         assert inventory.problems == ()
 
 
+def test_collision_inventory_scopes_claim_generation_problem_to_valid_claim(
+    tmp_path: Path,
+) -> None:
+    active = {
+        "branch": "feat/malformed-active-claim",
+        "path": str(tmp_path / "malformed-active-claim"),
+        "status": "active",
+        "external_ids": ["#1187"],
+        "base": "a" * 40,
+        "claim_generation": None,
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"operation": "modify", "path": "ops/occupied.py"}],
+        },
+    }
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("registry",),
+                0,
+                json.dumps(
+                    {
+                        "records": [active],
+                        "problems": [
+                            {
+                                "kind": "registry-claim-generation-invalid",
+                                "index": 0,
+                                "branch": active["branch"],
+                                "status": "active",
+                                "reason": "claim_generation must be a non-negative integer",
+                            }
+                        ],
+                    }
+                ),
+                "",
+            )
+        ]
+    )
+
+    inventory = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    ).list_collision_claims()
+
+    assert inventory.problems == ()
+    assert inventory.records[0].branch == active["branch"]
+    assert inventory.records[0].scope.paths == ("ops/occupied.py",)
+
+
 def test_exact_claim_query_ignores_unrelated_malformed_history(
     tmp_path: Path,
 ) -> None:
