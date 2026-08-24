@@ -196,46 +196,12 @@ extension ReaderSettingsPresenter {
         }
     }
 
-    private func themeOptionLabel(_ theme: ReaderTheme) -> some View {
-        HStack(spacing: AppSpacing.s2) {
-            Label(theme.displayName, systemImage: theme.icon)
-            AppRoundedRect(roundness: AppRoundness.pill)
-                .fill(appSkin.readerThemeSwatchColor(theme))
-                .frame(
-                    width: ReaderMetrics.vocabThemeSwatchWidth,
-                    height: ReaderMetrics.vocabThemeSwatchHeight
-                )
-        }
-    }
-
-    /// An explicit button list keeps each theme choice addressable in UI tests.
-    /// SwiftUI's inline Picker does not preserve child accessibility identifiers
-    /// in the XCTest hierarchy, making theme counterexamples flaky by construction.
+    /// An explicit glass tile grid keeps each theme choice addressable in UI
+    /// tests. SwiftUI's inline Picker does not preserve child accessibility
+    /// identifiers in the XCTest hierarchy, making theme counterexamples flaky
+    /// by construction.
     private var themeOptions: some View {
-        VStack(spacing: 0) {
-            ForEach(ReaderTheme.allCases) { theme in
-                Button {
-                    onSelectTheme(theme)
-                } label: {
-                    HStack(spacing: AppSpacing.s2) {
-                        themeOptionLabel(theme)
-                        Spacer(minLength: AppSpacing.s2)
-                        if bindings.theme.wrappedValue == theme {
-                            Image(systemName: "checkmark")
-                                .foregroundStyle(.tint)
-                                .accessibilityHidden(true)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("reader.settings.theme.\(theme.rawValue.lowercased())")
-                .accessibilityAddTraits(bindings.theme.wrappedValue == theme ? .isSelected : [])
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("reader.settings.theme")
+        ReaderThemeGlassPicker(selection: bindings.theme, onSelect: onSelectTheme)
     }
 
     private var underlineOpacitySelection: Binding<Double> {
