@@ -38,6 +38,23 @@ extension KGService {
         )
     }
 
+    func updateNotebookSettings(
+        id: String,
+        reviewPolicy: KGNotebookSettingsPatchGroup<KGNotebookReviewPolicy>? = nil,
+        cardLayout: KGNotebookSettingsPatchGroup<KGNotebookCardLayout>? = nil
+    ) async throws -> KGNotebook {
+        guard reviewPolicy != nil || cardLayout != nil else {
+            throw URLError(.badURL)
+        }
+        let body = KGNotebookSettingsPatch(reviewPolicy: reviewPolicy, cardLayout: cardLayout)
+        return try await authenticatedDecode(
+            KGNotebook.self,
+            path: "api/notebooks/\(id)/settings",
+            method: "PATCH",
+            body: try JSONEncoder().encode(body)
+        )
+    }
+
     func deleteNotebook(id: String) async throws {
         try await authenticatedVoid(path: "api/notebooks/\(id)", method: "DELETE")
     }

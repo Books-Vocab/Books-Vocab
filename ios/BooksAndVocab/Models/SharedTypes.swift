@@ -141,6 +141,59 @@ struct KGNotebook: Codable, Identifiable {
     /// 純 optional → synthesized Codable 走 decodeIfPresent（present→值 / absent→nil），行為可預測。
     let sourceSharedDeckId: String?
     let sourceVersion: Int?
+
+    /// Optional on purpose: older servers return notebook metadata only and
+    /// must continue to resolve to the user-global review defaults.
+    let settings: KGNotebookSettings?
+
+    init(
+        id: String,
+        name: String,
+        color: String?,
+        coverPattern: String?,
+        sortOrder: Int,
+        isDefault: Bool,
+        isDeleted: Bool,
+        cardCount: Int,
+        updatedAt: String?,
+        sourceSharedDeckId: String?,
+        sourceVersion: Int?,
+        settings: KGNotebookSettings? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.color = color
+        self.coverPattern = coverPattern
+        self.sortOrder = sortOrder
+        self.isDefault = isDefault
+        self.isDeleted = isDeleted
+        self.cardCount = cardCount
+        self.updatedAt = updatedAt
+        self.sourceSharedDeckId = sourceSharedDeckId
+        self.sourceVersion = sourceVersion
+        self.settings = settings
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, color, coverPattern, sortOrder, isDefault, isDeleted
+        case cardCount, updatedAt, sourceSharedDeckId, sourceVersion, settings
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        name = try values.decode(String.self, forKey: .name)
+        color = try values.decodeIfPresent(String.self, forKey: .color)
+        coverPattern = try values.decodeIfPresent(String.self, forKey: .coverPattern)
+        sortOrder = try values.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
+        isDefault = try values.decodeIfPresent(Bool.self, forKey: .isDefault) ?? false
+        isDeleted = try values.decodeIfPresent(Bool.self, forKey: .isDeleted) ?? false
+        cardCount = try values.decodeIfPresent(Int.self, forKey: .cardCount) ?? 0
+        updatedAt = try values.decodeIfPresent(String.self, forKey: .updatedAt)
+        sourceSharedDeckId = try values.decodeIfPresent(String.self, forKey: .sourceSharedDeckId)
+        sourceVersion = try values.decodeIfPresent(Int.self, forKey: .sourceVersion)
+        settings = try values.decodeIfPresent(KGNotebookSettings.self, forKey: .settings)
+    }
 }
 
 // MARK: - Shared Decks (Explore) wire models

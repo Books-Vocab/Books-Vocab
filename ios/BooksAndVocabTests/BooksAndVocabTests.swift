@@ -322,6 +322,75 @@ struct BooksAndVocabTests {
         TodayReviewSessionSnapshotStore.clear(for: nil)
     }
 
+    @Test @MainActor func mixedNotebookFlushResolvesPolicyPerEntry() async throws {
+        TodayReviewSessionSnapshotStore.clear(for: nil)
+        defer { TodayReviewSessionSnapshotStore.clear(for: nil) }
+
+        let container = try ModelContainer(
+            for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let context = ModelContext(container)
+
+        let custom = VocabularyEntry(
+            word: "custom", translation: "自訂", context: "A custom policy.", bookTitle: "Sample"
+        )
+        custom.kgCardId = "card-custom"
+        custom.notebookId = "notebook-custom"
+        custom.markSynced()
+
+        let global = VocabularyEntry(
+            word: "global", translation: "全域", context: "The global policy.", bookTitle: "Sample"
+        )
+        global.kgCardId = "card-global"
+        global.notebookId = "notebook-global"
+        global.markSynced()
+
+        context.insert(custom)
+        context.insert(global)
+        #expect(context.safeSave())
+
+        let state = TodayReviewState(
+            entries: [custom, global],
+            allEntries: [custom, global],
+            currentUserID: "mixed-policy-user"
+        )
+        state.submit(.remembered, container: container, reviewSettings: .default)
+        state.submit(.remembered, container: container, reviewSettings: .default)
+
+        let customPolicy = ReviewPolicy(
+            mode: .custom,
+            customInitialIntervalHours: 3,
+            customRememberedMultiplier: 1.7,
+            customForgotMultiplier: 0.4,
+            customMinimumIntervalHours: 2,
+            customMaximumIntervalHours: 900
+        )
+        let snapshot = NotebookSettingsResolver(
+            globalReviewSettings: .default,
+            globalCardLayout: .default,
+            overrides: [
+                "notebook-custom": NotebookSettingsOverride(reviewPolicy: customPolicy, cardLayout: nil)
+            ]
+        ).snapshot(for: ["notebook-custom", "notebook-global"])
+        state.flushPendingAnswers(container: container, notebookSettingsSnapshot: snapshot)
+
+        var records: [ReviewRecord] = []
+        for _ in 0..<400 {
+            records = try context.fetch(FetchDescriptor<ReviewRecord>())
+            if records.count == 2 { break }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+
+        let savedEntries = try context.fetch(FetchDescriptor<VocabularyEntry>())
+        let savedCustom = savedEntries.first { $0.kgCardId == "card-custom" }
+        let savedGlobal = savedEntries.first { $0.kgCardId == "card-global" }
+
+        #expect(abs((savedCustom?.reviewIntervalHours ?? 0) - 5.1) < 0.001)
+        #expect(savedGlobal?.reviewIntervalHours == 60)
+        #expect(records.count == 2)
+    }
+
     @Test func todayReviewSnapshotIsolatesPerUserOnSave() async throws {
         TodayReviewSessionSnapshotStore.clear(for: nil)
         defer { TodayReviewSessionSnapshotStore.clear(for: nil) }

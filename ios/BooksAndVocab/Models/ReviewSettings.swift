@@ -2,7 +2,7 @@ import Foundation
 import Observation
 import SwiftUI
 
-enum ReviewSettingsMode: String, CaseIterable {
+enum ReviewSettingsMode: String, CaseIterable, Codable, Hashable, Sendable {
     case relaxed
     case intensive
     case custom
@@ -24,7 +24,7 @@ enum ReviewSettingsMode: String, CaseIterable {
     }
 }
 
-enum AutoplaySpeed: String, CaseIterable {
+enum AutoplaySpeed: String, CaseIterable, Hashable, Sendable {
     case slow
     case normal
     case fast
@@ -64,7 +64,7 @@ enum AutoplaySpeed: String, CaseIterable {
     }
 }
 
-struct ReviewSettings {
+struct ReviewSettings: Equatable, Sendable {
     var mode: ReviewSettingsMode
     var customInitialIntervalHours: Double
     var customRememberedMultiplier: Double

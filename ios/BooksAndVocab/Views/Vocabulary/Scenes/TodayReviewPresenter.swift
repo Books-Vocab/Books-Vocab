@@ -130,6 +130,10 @@ struct TodayReviewPresenter: View {
     }
 
     let state: TodayReviewPresenterState
+    var notebookSettingsResolver = NotebookSettingsResolver(
+        globalReviewSettings: .default,
+        globalCardLayout: .default
+    )
     let isHelpPresented: Bool
     let showFirstRunHint: Bool
     let onClose: () -> Void
