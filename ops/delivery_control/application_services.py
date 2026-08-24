@@ -35,7 +35,9 @@ from .domain.demand_issues import IssueDisposition
 from .domain.runtime_models import RuntimeReceipt, WatchdogAction
 from .domain.unreachable_commits import (
     EMPTY_UNREACHABLE_COMMIT_INVENTORY,
+    UNREACHABLE_COMMIT_PATH_LIMIT,
     UnreachableCommitInventory,
+    validate_unreachable_commit_path_limit,
 )
 from .ports.github import GitHubIssueCommandPort
 from .ports.runtime import (
@@ -217,13 +219,17 @@ class DeliveryApplication:
         self,
         *,
         commit_sha: str,
-        max_paths: int = 200,
+        max_paths: int = UNREACHABLE_COMMIT_PATH_LIMIT,
     ) -> object:
         """Return bounded evidence without creating a ref or delivery claim."""
 
+        try:
+            bounded_max_paths = validate_unreachable_commit_path_limit(max_paths)
+        except errors.InvalidReceipt as error:
+            raise errors.PolicyViolation(str(error)) from error
         return unreachable_commit.UnreachableCommitService(git=self.git).inspect(
             commit_sha,
-            max_paths=max_paths,
+            max_paths=bounded_max_paths,
         )
 
     def branch_review_plan(

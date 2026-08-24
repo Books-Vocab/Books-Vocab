@@ -1208,6 +1208,18 @@ def test_cli_routes_unreachable_commit_inspection(capsys: object) -> None:
     assert payload["result"]["disposition"] == "preserve_for_owner_correlation"
 
 
+def test_unreachable_commit_help_documents_bounded_max_paths(
+    capsys: object,
+) -> None:
+    with pytest.raises(SystemExit) as caught:
+        _parser().parse_args(["unreachable-commit-inspect", "--help"])
+
+    assert caught.value.code == 0
+    normalized_help = " ".join(capsys.readouterr().out.split())  # type: ignore[attr-defined]
+    assert "--max-paths N" in normalized_help
+    assert "1 <= N <= 200" in normalized_help
+
+
 def test_cli_keeps_incomplete_unreachable_observation_transport_success(
     capsys: object,
 ) -> None:
