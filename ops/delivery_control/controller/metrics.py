@@ -53,6 +53,10 @@ class PipelineMetrics:
     # Direct construction without a raw Issue inventory must remain unknown;
     # callers must opt into an empty, complete inventory explicitly.
     raw_open_issues: int | None = None
+    # Direct construction without a raw GitHub PR inventory must remain
+    # unknown. Measured inventories expose the unique raw open-PR count
+    # separately from the owner-mapped durable PR reservoir in open_prs.
+    raw_open_prs: int | None = None
     unadmitted_open_issues: int | None = None
     active_registry_records: int = 0
     raw_active_registry_records: int = 0
@@ -435,6 +439,7 @@ def measure_pipeline(
         live_main_sha=inventory.live_main_sha,
         local_main_sha=inventory.local_main_sha,
         raw_open_issues=inventory.demand_issues.raw_open_issues,
+        raw_open_prs=len(all_pull_request_numbers),
         unadmitted_open_issues=inventory.demand_issues.unadmitted_open_issues,
         active_registry_records=active_registry_records,
         raw_active_registry_records=raw_active_registry_records,
