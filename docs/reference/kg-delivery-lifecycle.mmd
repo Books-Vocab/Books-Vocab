@@ -1,0 +1,155 @@
+%%{init: {"theme": "neutral", "flowchart": {"htmlLabels": true, "curve": "basis", "nodeSpacing": 28, "rankSpacing": 42}, "themeVariables": {"fontFamily": "-apple-system, BlinkMacSystemFont, PingFang TC, Noto Sans CJK TC, sans-serif", "fontSize": "15px"}}}%%
+flowchart TB
+    subgraph Intake["1. Raw demand、triage 與收件"]
+        U["User 發現問題／提出需求"]
+        BS["Backlog Scout<br/>盤點所有 raw demand、去重、重現、triage"]
+        RAW["Raw Issue inventory<br/>每個 open Issue 都有唯一 disposition"]
+        TRIAGE["Triage plan<br/>severity／priority／Scope／acceptance／required evidence"]
+        DECIDE{"是否需要 Issue？"}
+        ISSUE["GitHub Issue<br/>唯一需求／追蹤／討論來源"]
+        DIRECT["Direct assignment packet<br/>明確需求、Scope、acceptance、owner provenance"]
+        CAND["Dispatchable candidate reservoir<br/>只收 exact typed candidate；不建立本地 backlog"]
+
+        U --> DECIDE
+        BS --> RAW --> TRIAGE
+        DECIDE -->|"需要排程、追蹤、討論<br/>或 acceptance 定義"| ISSUE
+        DECIDE -->|"範圍清楚、可直接執行"| DIRECT
+        TRIAGE -->|"安全且證據完整"| CAND
+        TRIAGE -.->|"legacy／blocked／security／malformed<br/>保留 raw、不可強行 admission"| RAW
+    end
+
+    subgraph Dispatch["2. Dispatch：只建立一條有 owner 的 lane"]
+        ADMIT["Admission preflight<br/>duplicate／hold／Scope collision／owner／host"]
+        IS["Issue Solver<br/>只處理已 admission 的 Issue"]
+        WK["Worker<br/>只處理 direct assignment"]
+        ISSUE --> ADMIT
+        DIRECT --> ADMIT
+        CAND --> ADMIT
+        ADMIT -->|"Issue path"| IS
+        ADMIT -->|"Direct path"| WK
+        ADMIT -.->|"fail closed"| BLOCK["Exact blocker／quarantine／terminal disposition"]
+    end
+
+    subgraph Local["3. Local implementation：owner + Scope + evidence"]
+        CLAIM["Supported materialize／adopt<br/>branch + product worktree + registry claim"]
+        PREFLIGHT{"owner／path／base／Scope／collision<br/>與 physical state 是否 exact？"}
+        IMPLEMENT["限定 Scope 實作<br/>TDD：RED → 最小修復 → GREEN"]
+        COMMIT["Local commit<br/>clean worktree、focused validation"]
+        HB["Typed handback<br/>kg.worktree.handback.v1<br/>base／HEAD／Scope／digest／outcomes／provenance"]
+        TERMINAL["Supported terminal disposition<br/>abandoned／superseded／merged + immutable proof"]
+
+        IS --> CLAIM
+        WK --> CLAIM
+        CLAIM --> PREFLIGHT
+        PREFLIGHT -->|"否"| BLOCK
+        PREFLIGHT -->|"是"| IMPLEMENT
+        IMPLEMENT --> COMMIT --> HB
+        IMPLEMENT -.->|"不可安全完成"| TERMINAL
+    end
+
+    subgraph Publication["4. PI／IM：handback → durable PR"]
+        TRANSPORT{"Transport invariants<br/>owner、clean commit、exact Scope、唯一 mapping"}
+        RESUME["Same-owner resume／reconcile<br/>不接管、不重建 duplicate lane"]
+        PUSH["Push remote branch<br/>建立或更新唯一 PR"]
+        READBACK{"PR／remote／body／registry<br/>exact readback 是否一致？"}
+        PR["Durable GitHub PR<br/>本地 worktree 不是等待佇列"]
+        LOCALCLEAN["Publication 後立即 supported cleanup<br/>釋放 local worktree／local branch"]
+
+        HB --> TRANSPORT
+        TRANSPORT -->|"失敗"| RESUME
+        TRANSPORT -->|"通過；不要求所有 PR current-base"| PUSH --> READBACK
+        READBACK -->|"不一致／drift"| RESUME
+        READBACK -->|"一致"| PR --> LOCALCLEAN
+        RESUME -->|"仍值得完成"| CLAIM
+        RESUME -->|"失效／重複／無價值"| TERMINAL
+    end
+
+    subgraph GitHub["5. PR validation：required 與 advisory 分層"]
+        READY["Readiness contract<br/>metadata／Scope／handback provenance"]
+        REQUIRED["Required gate<br/>短、必要 repository baseline"]
+        FULL["Confidence／full CI<br/>backend／iOS／UI／ops 等"]
+        BODYFIX["PI body-only repair<br/>重新 readback／觸發 readiness"]
+        FIXDECIDE{"Required failure<br/>是否可由原 owner 修復？"}
+        ABANDONPR["Supported PR terminalization<br/>保留證據，不自動刪除或接管"]
+        GREEN["完整 CI 全綠<br/>較強 release evidence"]
+        ADVISORY{"非 required failure<br/>是否揭露 P0/P1/security？"}
+        HOLD["Explicit hard hold<br/>禁止 merge／release"]
+        FOLLOWUP["Advisory follow-up<br/>不可宣稱完整綠，但不阻擋 hard gate"]
+
+        LOCALCLEAN --> PR
+        PR --> READY
+        PR --> REQUIRED
+        PR --> FULL
+        READY -->|"metadata failure"| BODYFIX --> READY
+        READY -->|"tuple／Scope／owner 失真"| RESUME
+        REQUIRED -->|"FAIL"| FIXDECIDE
+        FIXDECIDE -->|"是"| RESUME
+        FIXDECIDE -->|"否"| ABANDONPR --> TERMINAL
+        REQUIRED -->|"SUCCESS"| CMGATE
+        FULL -->|"全綠"| GREEN --> CMGATE
+        FULL -->|"失敗／取消／skipped"| ADVISORY
+        ADVISORY -->|"是"| HOLD --> CMGATE
+        ADVISORY -->|"否"| FOLLOWUP --> CMGATE
+    end
+
+    subgraph Merge["6. CM：只消費 merge-front"]
+        CMGATE{"Final hard gate<br/>non-draft、mergeable<br/>exact owner／base／HEAD／Scope／handback<br/>required SUCCESS、無 P0/P1/security hold"}
+        BASE{"是否 merge-front<br/>且由 live main 可驗證？"}
+        REANCHOR["只對 merge-front JIT reanchor<br/>同 owner、重跑 required；不 rebase 全佇列"]
+        QUEUE["Native GitHub merge queue<br/>exact-head admission"]
+        MERGE["Merge 到 origin/main"]
+        SYNC["CM supported sync-main<br/>canonical local main == origin/main"]
+        RECEIPT["Merge receipt<br/>交給 PI／IM 做 terminal cleanup"]
+        PI_CLEAN["PI／IM supported terminal cleanup<br/>registry merged／resolved、branch／worktree 清零"]
+        RELEASE{"是否有明確 release／deploy 意圖？"}
+        PROD["獨立 Release／Deploy SOP<br/>approval／artifact／health／rollback"]
+        DONE["Lifecycle complete"]
+
+        CMGATE -->|"失敗：hold／conflict／tuple 不完整"| RESUME
+        CMGATE -->|"通過"| BASE
+        BASE -->|"stale 且為 merge-front"| REANCHOR --> REQUIRED
+        BASE -->|"current／merge-group 可驗證"| QUEUE --> MERGE --> SYNC --> RECEIPT --> PI_CLEAN --> RELEASE
+        RELEASE -->|"否"| DONE
+        RELEASE -->|"是"| PROD --> DONE
+    end
+
+    subgraph Control["7. Supervisor／watchdog：觀測，不接管"]
+        METRICS["Deterministic metrics<br/>raw demand、candidates、active、handbacks、PR、required、queue、cleanup、SLO"]
+        PLAN["Plan action<br/>triage／recover／replenish／publish／merge／cleanup"]
+        WATCH["Watchdog receipt<br/>只做 liveness observation + one-shot CAS"]
+        WAKE{"結果是否 wake-authorized？<br/>action=wake 且 wake_claimed=true"}
+        WAKESESSION["只建立／喚醒唯一 active session"]
+        NOWAKE["healthy noop／audit／escalate／claim conflict<br/>不是錯誤，但絕對不得建立 session"]
+        SUP["Supervisor<br/>判斷 freeze／ramp／incident；不改 code、不接管 owner"]
+
+        SUP --> METRICS --> PLAN
+        SUP --> WATCH --> WAKE
+        WAKE -->|"是"| WAKESESSION
+        WAKE -->|"否"| NOWAKE
+        PLAN -.->|"只觸發既有角色的 bounded action"| BS
+        WAKESESSION -.->|"交給既有 owner lane"| IS
+        WAKESESSION -.->|"交給既有 owner lane"| WK
+    end
+
+    subgraph Modes["8. Operational modes：不要把 qualification 說成 steady state"]
+        QUAL["Control-plane qualification<br/>少量 lane；驗證工具與證據模型<br/>不計 production throughput"]
+        RAMP["Production-mode dogfood ramp<br/>1 → 3 → 4 → 8/12 lanes"]
+        STEADY["Steady state target<br/>candidate 20–30、active 8–12、durable PR 10–15<br/>≥12 merged PR/hour；SLO 以實測為準"]
+        INCIDENT["Incident／freeze<br/>停止新 admission／wake；保留既有 durable PR drain"]
+        QUAL -->|"工具與 evidence 穩定"| RAMP -->|"連續量測達標"| STEADY
+        RAMP -.->|"session churn／owner takeover／main drift／security bypass"| INCIDENT
+        STEADY -.->|"任一安全邊界破壞"| INCIDENT
+    end
+
+    classDef source fill:#e8f1ff,stroke:#3b6ea8,color:#17324d;
+    classDef work fill:#fff4d8,stroke:#9a7218,color:#3d2d08;
+    classDef github fill:#eaf7ea,stroke:#4b844b,color:#183b18;
+    classDef danger fill:#fde9e7,stroke:#a3453d,color:#4c1713;
+    classDef observe fill:#f0eaff,stroke:#7354a6,color:#28173d;
+    classDef done fill:#e9f7f4,stroke:#367b6d,color:#153a33;
+    class U,BS,RAW,TRIAGE,DECIDE,ISSUE,DIRECT,CAND source;
+    class ADMIT,IS,WK,CLAIM,PREFLIGHT,IMPLEMENT,COMMIT,HB,TRANSPORT,RESUME,PUSH,READBACK,LOCALCLEAN work;
+    class PR,READY,REQUIRED,FULL,BODYFIX,FIXDECIDE,ABANDONPR,GREEN,ADVISORY,CMGATE,BASE,REANCHOR,QUEUE,MERGE,SYNC,RECEIPT,PI_CLEAN,RELEASE,PROD github;
+    class BLOCK,TERMINAL,HOLD,FOLLOWUP,INCIDENT,NOWAKE danger;
+    class METRICS,PLAN,WATCH,WAKE,WAKESESSION,SUP,QUAL,RAMP,STEADY observe;
+    class DONE done;
