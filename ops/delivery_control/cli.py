@@ -65,9 +65,22 @@ def _jsonable(value: object) -> object:
 
 
 def _watchdog_runtime_status_epilog(command: str) -> str:
-    return (
+    runtime_status_contract = (
         "Required global option: --runtime-status-file PATH; "
         f"place it before the {command} subcommand."
+    )
+    if command == "watchdog":
+        return (
+            f"{runtime_status_contract} This is a read-only observation; "
+            "exit 0 does not authorize wake or dispatch."
+        )
+    return (
+        f"{runtime_status_contract} only "
+        "verdict=wake-authorized, action=wake, wake_claimed=true may exit 0 "
+        "and authorize one session; "
+        "noop/escalate/wake_claimed=false/claim conflict are valid no-wake "
+        "observations with ok=true, verdict=no-wake, exit 2; "
+        "must not retry or wake."
     )
 
 
