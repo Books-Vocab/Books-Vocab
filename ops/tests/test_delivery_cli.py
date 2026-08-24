@@ -10,12 +10,18 @@ import pytest
 
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
-# ruff: noqa: E402
 
 from delivery_control.cli import (
     DeliveryApplication,
     RuntimeStatusMap,
     main,
+)
+from delivery_control.domain.branch_lifecycle import (
+    BranchAsset,
+    BranchCleanupAction,
+    BranchDisposition,
+    BranchRegistryEvidence,
+    BranchSide,
 )
 from delivery_control.domain.candidate_issues import (
     CandidateSeverity,
@@ -923,6 +929,57 @@ def test_cli_exposes_branch_audit_and_forwards_supervision_paths(
     assert payload["result"]["schema"] == "kg.delivery.branch-audit.v1"
 
 
+def test_cli_serializes_additive_branch_registry_evidence(capsys: object) -> None:
+    evidence = BranchRegistryEvidence(
+        lane_id="LANE-CLI-EVIDENCE",
+        branch="feat/cli-evidence",
+        path="/tmp/cli-evidence",
+        status="published",
+        claim_generation=4,
+        base_sha=BASE,
+        published_base_sha=HEAD,
+        handed_back_sha=HEAD,
+        handback_digest=DIGEST,
+        owner_thread_id=None,
+        scope_paths=("ops/a.py",),
+        external_ids=(),
+    )
+    asset = BranchAsset(
+        branch="feat/cli-evidence",
+        side=BranchSide.REMOTE,
+        sha=HEAD,
+        disposition=BranchDisposition.ACTIVE_OR_PUBLISHED_LANE,
+        cleanup_action=BranchCleanupAction.FOLLOW_OWNER_LANE,
+        reason="owned lane",
+        registry_evidence=(evidence,),
+    )
+
+    class FakeApplication:
+        def branch_audit(
+            self, *, supervision_worktree_paths: tuple[Path, ...]
+        ) -> object:
+            return {
+                "schema": "kg.delivery.branch-audit.v1",
+                "complete": True,
+                "assets": (asset,),
+            }
+
+    assert (
+        main(
+            ["branch-audit"],
+            application_factory=lambda **_: FakeApplication(),
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    serialized = payload["result"]["assets"][0]["registry_evidence"][0]
+    assert serialized["lane_id"] == "LANE-CLI-EVIDENCE"
+    assert serialized["published_base_sha"] == HEAD
+    assert serialized["owner_thread_id"] is None
+    assert serialized["external_ids"] == []
+
+
 def test_cli_marks_incomplete_branch_audit_as_observation_without_transport_error(
     capsys: object,
 ) -> None:
@@ -1183,7 +1240,7 @@ def test_cli_exposes_watchdog_without_dispatching(capsys: object) -> None:
 def test_cli_preserves_command_exit_when_stdout_pipe_closes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import delivery_control.cli as cli
+    from delivery_control import cli
 
     class FakeApplication:
         def inspect(self, *, supervision_worktree_paths: tuple[Path, ...]) -> object:

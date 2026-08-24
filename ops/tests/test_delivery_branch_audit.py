@@ -6,40 +6,42 @@ from pathlib import Path
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.domain.branch_lifecycle import (  # noqa: E402
+from delivery_control.domain.branch_lifecycle import (
     BranchCleanupAction,
     BranchDisposition,
+    BranchRegistryEvidence,
     BranchSide,
 )
-from delivery_control.domain.branch_refs import BranchInventory  # noqa: E402
-from delivery_control.domain.inventory import (  # noqa: E402
+from delivery_control.domain.branch_refs import BranchInventory
+from delivery_control.domain.inventory import (
     DeliveryInventory,
     LaneInspection,
 )
-from delivery_control.domain.models import Scope  # noqa: E402
-from delivery_control.domain.observations import (  # noqa: E402
+from delivery_control.domain.models import Scope
+from delivery_control.domain.observations import (
     InventoryProblem,
     PhysicalWorktree,
     PullRequestSnapshot,
     RegistrySnapshot,
 )
-from delivery_control.domain.states import (  # noqa: E402
+from delivery_control.domain.states import (
     LaneDecision,
     LaneState,
     NextAction,
 )
-from delivery_control.domain.unreachable_commits import UnreachableCommitInventory  # noqa: E402
-from delivery_control.services.branch_audit import (  # noqa: E402
+from delivery_control.domain.unreachable_commits import (
+    UnreachableCommitInventory,
+)
+from delivery_control.services.branch_audit import (
     BranchAuditSourceProblem,
     build_branch_audit,
 )
-from delivery_control.services.branch_lifecycle_projection import (  # noqa: E402
+from delivery_control.services.branch_lifecycle_projection import (
     project_branch_lifecycle,
 )
-from delivery_control.services.orphan_branch import (  # noqa: E402
+from delivery_control.services.orphan_branch import (
     OrphanBranchPreflight,
 )
-
 
 SHA_A = "a" * 40
 SHA_B = "b" * 40
@@ -160,6 +162,96 @@ def test_branch_audit_exposes_owner_evidence_for_owner_lane() -> None:
     assert action.category == "owner_lane"
     assert action.owner_thread_ids == (owner_thread_id,)
     assert report.assets[0].owner_thread_ids == (owner_thread_id,)
+
+
+def test_branch_asset_exposes_complete_registry_evidence() -> None:
+    record = RegistrySnapshot(
+        lane_id="LANE-EVIDENCE",
+        branch="feat/evidence",
+        path=Path("/tmp/feat-evidence"),
+        status="active",
+        scope=Scope.from_paths(modify=("ops/z.py", "ops/a.py")),
+        base_sha=SHA_A,
+        published_base_sha=SHA_B,
+        external_ids=("z-external", "a-external"),
+        claim_generation=2,
+        owner_thread_id="owner-evidence",
+        handed_back_sha=SHA_A,
+        handback_digest="d" * 64,
+    )
+
+    lifecycle = project_branch_lifecycle(
+        branch_inventory=BranchInventory(local=(("feat/evidence", SHA_A),)),
+        records=(record,),
+    )
+
+    assert lifecycle.assets[0].registry_evidence == (
+        BranchRegistryEvidence(
+            lane_id="LANE-EVIDENCE",
+            branch="feat/evidence",
+            path=str(Path("/tmp/feat-evidence").resolve()),
+            status="active",
+            claim_generation=2,
+            base_sha=SHA_A,
+            published_base_sha=SHA_B,
+            handed_back_sha=SHA_A,
+            handback_digest="d" * 64,
+            owner_thread_id="owner-evidence",
+            scope_paths=("ops/a.py", "ops/z.py"),
+            external_ids=("a-external", "z-external"),
+        ),
+    )
+
+
+def test_branch_asset_registry_evidence_preserves_deterministic_multi_record_order() -> (
+    None
+):
+    records = (
+        RegistrySnapshot(
+            lane_id="LANE-Z",
+            branch="feat/multi-evidence",
+            path=Path("/tmp/multi-z"),
+            status="abandoned",
+            scope=Scope.from_paths(modify=("ops/z.py",)),
+            base_sha=SHA_A,
+            claim_generation=3,
+            handed_back_sha=SHA_B,
+        ),
+        RegistrySnapshot(
+            lane_id="LANE-A",
+            branch="feat/multi-evidence",
+            path=Path("/tmp/multi-a"),
+            status="merged",
+            scope=Scope.from_paths(modify=("ops/a.py",)),
+            base_sha=SHA_A,
+            claim_generation=1,
+            handed_back_sha=SHA_B,
+        ),
+    )
+
+    lifecycle = project_branch_lifecycle(
+        branch_inventory=BranchInventory(
+            remote=(("feat/multi-evidence", SHA_B),),
+        ),
+        records=records,
+    )
+
+    assert tuple(item.lane_id for item in lifecycle.assets[0].registry_evidence) == (
+        "LANE-A",
+        "LANE-Z",
+    )
+    assert tuple(item.status for item in lifecycle.assets[0].registry_evidence) == (
+        "merged",
+        "abandoned",
+    )
+
+
+def test_branch_asset_without_registry_has_empty_evidence() -> None:
+    lifecycle = project_branch_lifecycle(
+        branch_inventory=BranchInventory(local=(("feat/unregistered", SHA_A),))
+    )
+
+    assert lifecycle.assets[0].registry_evidence == ()
 
 
 def test_branch_audit_keeps_unknown_asset_incomplete() -> None:
@@ -657,6 +749,11 @@ def test_branch_audit_surfaces_registry_only_active_claim() -> None:
     assert action.status == "active"
     assert action.claim_generation == 1
     assert action.handed_back_sha == SHA_B
+    assert action.registry_evidence.owner_thread_id is None
+    assert action.registry_evidence.published_base_sha is None
+    assert action.registry_evidence.handback_digest is None
+    assert action.registry_evidence.scope_paths == ("ops/example.py",)
+    assert action.registry_evidence.external_ids == ()
     assert action.safe_terminal is False
     assert action.category == "registry_only_residue"
     assert "recover the original owner" in action.next_step
