@@ -310,6 +310,118 @@ def test_intent_type_is_only_branch_naming() -> None:
     assert coordinator._intent_type("anything", "debug") == "debug"
 
 
+def test_open_requires_external_id_before_registry_or_worktree_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(coordinator, "_require_unfrozen", lambda command: None)
+    monkeypatch.setattr(
+        coordinator,
+        "_resolve_commit",
+        lambda *_args: pytest.fail("missing external id must fail before resolution"),
+    )
+    monkeypatch.setattr(
+        coordinator,
+        "_registry_register",
+        lambda **_kwargs: pytest.fail("missing external id must not mutate registry"),
+    )
+    monkeypatch.setattr(
+        coordinator,
+        "_git",
+        lambda *_args, **_kwargs: pytest.fail(
+            "missing external id must not mutate git"
+        ),
+    )
+
+    worktree = tmp_path / "worktree"
+    args = Namespace(
+        slug="missing-external-id",
+        intent="fix direct lane identity",
+        type="debug",
+        path=str(worktree),
+        external_id=[],
+        base="origin/main",
+        codex_thread_id="owner-thread",
+        delegated=True,
+        state=str(tmp_path / "registry.json"),
+        scope=json.dumps(_scope_for("ops/example.py")),
+        scope_file=None,
+        json=True,
+    )
+
+    assert coordinator.cmd_open(args) == coordinator.EXIT_BLOCK
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {
+        "schema": coordinator.SCHEMA,
+        "action": "refused",
+        "reason": "--external-id is required for delegated or owner-bound open",
+    }
+    assert not worktree.exists()
+
+
+def test_open_accepts_external_id_for_owner_bound_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    base_sha = "a" * 40
+    registered: dict[str, object] = {}
+    monkeypatch.setattr(coordinator, "_require_unfrozen", lambda command: None)
+    monkeypatch.setattr(coordinator, "_resolve_commit", lambda *_args: base_sha)
+    monkeypatch.setattr(
+        coordinator,
+        "_registry_register",
+        lambda **kwargs: (
+            registered.update(kwargs) or coordinator.registry.EXIT_OK,
+            {
+                "branch": "debug/owner-bound-open",
+                "path": str(tmp_path / "worktree"),
+                "claim_generation": 0,
+                "base_sha": base_sha,
+            },
+        ),
+    )
+    git_calls: list[list[str]] = []
+    monkeypatch.setattr(
+        coordinator,
+        "_git",
+        lambda argv, cwd=coordinator.ROOT: git_calls.append(argv) or (0, ""),
+    )
+
+    args = Namespace(
+        slug="owner-bound-open",
+        intent="fix direct lane identity",
+        type="debug",
+        path=str(tmp_path / "worktree"),
+        external_id=["DIRECT-TEST-OWNER-BOUND"],
+        base="origin/main",
+        codex_thread_id="owner-thread",
+        delegated=True,
+        state=str(tmp_path / "registry.json"),
+        scope=json.dumps(_scope_for("ops/example.py")),
+        scope_file=None,
+        json=True,
+    )
+
+    assert coordinator.cmd_open(args) == coordinator.EXIT_OK
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["action"] == "open"
+    assert registered["external_ids"] == ["DIRECT-TEST-OWNER-BOUND"]
+    assert git_calls == [
+        [
+            "worktree",
+            "add",
+            "-b",
+            "debug/owner-bound-open",
+            str(tmp_path / "worktree"),
+            base_sha,
+        ]
+    ]
+
+
 def test_open_uses_exact_base_for_failed_provisioning_compensation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -34,8 +34,8 @@ ROOT = OPS_DIR.parent
 if str(OPS_DIR) not in sys.path:
     sys.path.insert(0, str(OPS_DIR))
 
-import worktree_reanchor
 import worktree_cleanup
+import worktree_reanchor
 import worktree_registry as registry
 import worktree_resume
 from delivery_control.adapters.operation_lock import OperationLock
@@ -241,7 +241,24 @@ def cmd_open(args: argparse.Namespace) -> int:
             human=f"✗ open refused: path exists: {worktree}",
         )
         return EXIT_USAGE
-    external_ids = list(args.external_id or [])
+    external_ids = list(getattr(args, "external_id", []) or [])
+    requires_external_id = bool(
+        getattr(args, "delegated", False) or getattr(args, "codex_thread_id", None)
+    )
+    if requires_external_id and not any(
+        isinstance(external_id, str) and external_id.strip()
+        for external_id in external_ids
+    ):
+        _emit(
+            {
+                "schema": SCHEMA,
+                "action": "refused",
+                "reason": "--external-id is required for delegated or owner-bound open",
+            },
+            as_json=args.json,
+            human="✗ open refused: --external-id is required for delegated or owner-bound open",
+        )
+        return EXIT_BLOCK
     base_sha = _resolve_commit(ROOT, args.base)
     if base_sha is None:
         _emit(
