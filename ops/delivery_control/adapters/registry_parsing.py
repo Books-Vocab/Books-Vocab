@@ -46,6 +46,41 @@ def _reported_problem_identity(raw: Mapping[str, Any], index: int) -> tuple[str,
     return f"record[{index}]", "record"
 
 
+def _raw_record_for_problem(
+    payload: Mapping[str, Any], raw: Mapping[str, Any] | None
+) -> Mapping[str, Any] | None:
+    records = payload.get("records")
+    if not isinstance(records, list):
+        return None
+    index = raw.get("index") if isinstance(raw, Mapping) else None
+    if type(index) is int and 0 <= index < len(records):
+        record = records[index]
+        if isinstance(record, Mapping):
+            return record
+    identity = raw.get("identity") if isinstance(raw, Mapping) else None
+    identity = (
+        raw.get("branch") if not identity and isinstance(raw, Mapping) else identity
+    )
+    if isinstance(identity, str) and identity.strip():
+        for record in records:
+            if isinstance(record, Mapping) and record.get("branch") == identity:
+                return record
+    return None
+
+
+def _raw_record_path(record: Mapping[str, Any] | None) -> Path | None:
+    value = record.get("path") if isinstance(record, Mapping) else None
+    if not isinstance(value, str) or not value.strip():
+        return None
+    path = Path(value).expanduser()
+    return path.resolve() if path.is_absolute() else None
+
+
+def _raw_owner_thread_id(record: Mapping[str, Any] | None) -> str | None:
+    value = record.get("codex_thread_id") if isinstance(record, Mapping) else None
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
 def reported_problems(payload: Mapping[str, Any]) -> tuple[InventoryProblem, ...]:
     if "problems" not in payload:
         return ()
@@ -60,12 +95,25 @@ def reported_problems(payload: Mapping[str, Any]) -> tuple[InventoryProblem, ...
         )
     problems: list[InventoryProblem] = []
     for index, raw in enumerate(raw_problems):
+        record = _raw_record_for_problem(
+            payload, raw if isinstance(raw, Mapping) else None
+        )
+        record_path = _raw_record_path(record)
+        owner_thread_id = _raw_owner_thread_id(record)
         identity = raw.get("identity") if isinstance(raw, Mapping) else None
         reason = raw.get("reason") if isinstance(raw, Mapping) else None
         record_status = (
             raw.get("status")
             if isinstance(raw, Mapping) and isinstance(raw.get("status"), str)
             else None
+        )
+        if record_status is None and isinstance(record, Mapping):
+            raw_status = record.get("status")
+            if raw_status == "active":
+                record_status = raw_status
+        observed_record_path = record_path if record_status == "active" else None
+        observed_owner_thread_id = (
+            owner_thread_id if record_status == "active" else None
         )
         if (
             isinstance(identity, str)
@@ -80,6 +128,8 @@ def reported_problems(payload: Mapping[str, Any]) -> tuple[InventoryProblem, ...
                     reason.strip(),
                     identity_kind=_reported_identity_kind(raw),
                     record_status=record_status,
+                    record_path=observed_record_path,
+                    owner_thread_id=observed_owner_thread_id,
                 )
             )
             continue
@@ -105,6 +155,8 @@ def reported_problems(payload: Mapping[str, Any]) -> tuple[InventoryProblem, ...
                         _reported_identity_kind(raw) or inferred_identity_kind
                     ),
                     record_status=record_status,
+                    record_path=observed_record_path,
+                    owner_thread_id=observed_owner_thread_id,
                 )
             )
             continue
@@ -113,6 +165,8 @@ def reported_problems(payload: Mapping[str, Any]) -> tuple[InventoryProblem, ...
                 "registry",
                 f"problem[{index}]",
                 "registry problem entry is malformed",
+                record_path=observed_record_path,
+                owner_thread_id=observed_owner_thread_id,
             )
         )
     return tuple(problems)

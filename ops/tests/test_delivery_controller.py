@@ -1528,6 +1528,7 @@ def test_metrics_exposes_active_registry_residue_separately_from_development() -
 
 
 def test_malformed_active_registry_cardinality_deduplicates_diagnostics() -> None:
+    malformed_path = Path("/tmp/malformed-active")
     inventory = DeliveryInventory(
         lanes=(),
         source_problems=(
@@ -1537,6 +1538,7 @@ def test_malformed_active_registry_cardinality_deduplicates_diagnostics() -> Non
                 "claim_generation must be a non-negative integer",
                 identity_kind="branch",
                 record_status="active",
+                record_path=malformed_path,
             ),
             InventoryProblem(
                 "registry",
@@ -1544,6 +1546,7 @@ def test_malformed_active_registry_cardinality_deduplicates_diagnostics() -> Non
                 "registry record is missing required field: scope",
                 identity_kind="branch",
                 record_status="active",
+                record_path=malformed_path,
             ),
             InventoryProblem(
                 "registry",
@@ -1560,6 +1563,49 @@ def test_malformed_active_registry_cardinality_deduplicates_diagnostics() -> Non
     assert metrics.source_problems == 3
     assert metrics.malformed_active_registry_records == 1
     assert metrics.raw_active_registry_records == 1
+    assert metrics.active_registry_without_worktree == 1
+    assert metrics.active_registry_without_worktree_ownerless == 1
+    assert metrics.active_registry_without_worktree_owner_bound == 0
+
+
+def test_malformed_active_owner_bound_and_ownerless_split_is_audit_only() -> None:
+    ownerless_path = Path("/tmp/malformed-ownerless")
+    owner_bound_path = Path("/tmp/malformed-owner-bound")
+    inventory = DeliveryInventory(
+        lanes=(),
+        source_problems=(
+            InventoryProblem(
+                "registry",
+                "debug/malformed-ownerless",
+                "claim_generation must be a non-negative integer",
+                identity_kind="branch",
+                record_status="active",
+                record_path=ownerless_path,
+                owner_thread_id=None,
+            ),
+            InventoryProblem(
+                "registry",
+                "debug/malformed-owner-bound",
+                "claim_generation must be a non-negative integer",
+                identity_kind="branch",
+                record_status="active",
+                record_path=owner_bound_path,
+                owner_thread_id="owner-thread",
+            ),
+        ),
+    )
+
+    metrics = measure_pipeline(inventory)
+    decision = decide_capacity(
+        metrics, measure_merge_cadence((), now=datetime(2026, 8, 24, tzinfo=UTC))
+    )
+
+    assert metrics.raw_active_registry_records == 2
+    assert metrics.active_registry_without_worktree == 2
+    assert metrics.active_registry_without_worktree_ownerless == 1
+    assert metrics.active_registry_without_worktree_owner_bound == 1
+    assert ControlAction.AUDIT_OWNERLESS_LANES in decision.actions
+    assert ControlAction.RECOVER_OWNER_BOUND_LANE not in decision.actions
 
 
 def test_unknown_unregistered_worktree_cleanliness_is_a_source_problem() -> None:
