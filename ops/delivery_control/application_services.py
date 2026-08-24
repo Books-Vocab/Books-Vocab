@@ -31,7 +31,7 @@ from .domain.branch_content import (
 )
 from .domain.branch_lifecycle import BranchDisposition, BranchSide
 from .domain.candidate_issues import CandidateSpec
-from .domain.demand_issues import IssueDisposition
+from .domain.demand_issues import IssueDisposition, IssueIntakeRequest
 from .domain.runtime_models import RuntimeReceipt, WatchdogAction
 from .domain.unreachable_commits import (
     EMPTY_UNREACHABLE_COMMIT_INVENTORY,
@@ -39,7 +39,7 @@ from .domain.unreachable_commits import (
     UnreachableCommitInventory,
     validate_unreachable_commit_path_limit,
 )
-from .ports.github import GitHubIssueCommandPort
+from .ports.github import GitHubIssueCommandPort, GitHubIssueIntakePort
 from .ports.runtime import (
     AgentRuntimePort,
     RuntimeReceiptPort,
@@ -65,7 +65,10 @@ from .services import (
     unregistered_branch,
 )
 from .services import holds as hold_services
-from .services.issue_admission import assert_candidate_scope_available
+from .services.issue_admission import (
+    assert_candidate_scope_available,
+    assert_issue_intake_available,
+)
 from .services.issue_triage import build_triage_plan
 from .services.pr_contract import parse_pull_request_body
 from .services.publish import PublishService, receipt_from_active_claim
@@ -402,6 +405,27 @@ class DeliveryApplication:
             triage_reason=triage_reason,
             operator=operator,
         )
+
+    def create_issue(self, *, request: IssueIntakeRequest) -> object:
+        """Create one raw Issue; a separate CAS admission creates candidates."""
+
+        inventory = self.inspect().demand_issues
+        if not inventory.complete or inventory.problems or inventory.source_entries:
+            raise errors.DeliverySourceError(
+                "cannot create an Issue from an incomplete raw inventory"
+            )
+        assert_issue_intake_available(
+            request=request,
+            demand_issues=inventory.records,
+            registry=self.registry.list_collision_claims(),
+            pull_requests=self.github.list_open_pull_requests(),
+            changed_paths=self.github.changed_paths,
+        )
+        if not isinstance(self.github, GitHubIssueIntakePort):
+            raise errors.PolicyViolation(
+                "GitHub adapter does not expose one-Issue intake capability"
+            )
+        return self.github.create_issue(request=request)
 
     def metrics(
         self,

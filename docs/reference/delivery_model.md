@@ -209,6 +209,12 @@ Watchdog 的 read／claim 邊界也是控制面契約：`watchdog` 只做唯讀�
 
 Issue intake 與 candidate reservoir 是兩個不同的觀測層。`issue-inventory` 先以 `kg.delivery.issue-inventory.v1` 完整分頁讀取所有 open Issues；raw total 永遠包含 quarantine、legacy、malformed、blocked、owner-bound 與已發布／終止歷史，不能用 candidate label 查詢代替。每個可解析 Issue 僅能有一個 deterministic disposition：`source_problem` → `security_hold` → `owner_bound` → `published_pr` → `terminal_history` → `dispatchable_candidate` → `blocked` → `legacy_unmapped` → `triage_required`。Issue body SHA-256、updatedAt、registry mapping、命中的 PR numbers 與原因都隨 inventory 輸出；API 缺欄位或分頁不完整也會保留 raw count 並產生 source problem。
 
+若要把一個已完成去重與 Scope／owner／security preflight 的觀測登記為 GitHub raw Issue，BS／IM 只能使用一次一張的 `issue-intake` command。它要求 exact `title`、`body`、`labels`、`source`、`provenance`、`severity`、`priority`、`acceptance`、structured Scope 與 operator payload；adapter 會在 mutation 前重讀 raw Issue／registry／PR，並在唯一 GraphQL `createIssue` 後 exact readback number／node／URL／title／body／labels／source fingerprint。任何 duplicate、Scope／owner collision、security hold、malformed response 或 readback drift 都 fail closed，沒有自動 retry 或覆寫人工內容。`clientMutationId` 只是同一筆 intake 的 deterministic identity，不是重試授權。這個 command 只建立 raw Issue，不會加入 `delivery:candidate`、candidate reservoir、wake 或 dispatch；建立後仍必須另一次以 expected `updatedAt`／body SHA CAS 執行 `admit-candidate`。raw intake 不是 owner admission、session／worktree 建立或 mutation dispatch 授權。
+
+```bash
+./ops/delivery.py issue-intake --payload-file '<issue-intake.json>'
+```
+
 Registry `external_ids` 對 Issue 的 mapping 只接受三種 exact identity reference：`#N`、`/issues/N`，或去除前後空白後的 bare positive numeric `N`。bare numeric 只在整個 external ID 完整等於該 Issue number 時成立；任意文字中的數字、前導零或其他 Issue number 都不會被猜測成 mapping。這個 mapping 只修正觀測與 terminal／owner precedence，不會重新 admission、reopen、wake 或授權任何 mutation。
 
 若 registry record 因 claim generation、Scope 或其他 ownership fact malformed 而無法成為 `RegistrySnapshot`，adapter 仍會從同一 raw record 保留合法 `external_ids`。Issue projection 只把命中的 `active`／`cleanup_pending` ID 放入 additive `malformed_active_registry_external_ids` 與 `issues_with_malformed_active_claim`，作為 audit-only provenance；它不會填入 valid `mapped_external_ids`，也不會把 Issue 轉成 owner-bound、建立 session/worktree、wake、takeover、cleanup 或 dispatch。terminal malformed history 不進這個欄位。
