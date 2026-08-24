@@ -1,10 +1,12 @@
 import SwiftUI
+import SwiftData
 
 struct AddLinkSheet: View {
     @ObserveInjection private var inject
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appSkin) private var appSkin
     @Environment(\.kgService) private var kgService
+    @Environment(\.modelContext) private var modelContext
 
     let sourceEntry: VocabularyEntry
     let allEntries: [VocabularyEntry]
@@ -12,6 +14,7 @@ struct AddLinkSheet: View {
 
     @State private var searchText = ""
     @State private var coordinator = AddLinkCoordinator()
+    @State private var creationCoordinator = AddLinkCreationCoordinator()
 
     init(
         sourceEntry: VocabularyEntry,
@@ -41,14 +44,25 @@ struct AddLinkSheet: View {
                     )
                 }
 
-                searchField
-                    .padding(appSkin.metrics.cardBlockPadding)
+                if creationCoordinator.phase == .running {
+                    AddLinkCreationProgressView(coordinator: creationCoordinator)
+                        .padding(.horizontal, appSkin.metrics.cardBlockPadding)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                } else {
+                    if creationCoordinator.phase == .blocked,
+                       let message = creationCoordinator.message {
+                        AppBanner(message: message, systemImage: "exclamationmark.triangle")
+                    }
 
-                List {
-                    localSection
+                    searchField
+                        .padding(appSkin.metrics.cardBlockPadding)
+
+                    List {
+                        localSection
+                    }
+                    .listStyle(.insetGrouped)
+                    .scrollContentBackground(.hidden)
                 }
-                .listStyle(.insetGrouped)
-                .scrollContentBackground(.hidden)
             }
             .vocabCanvasBackground()
             .navigationTitle(L10n.string("新增連結"))
@@ -66,7 +80,16 @@ struct AddLinkSheet: View {
                 dismiss()
             }
         }
-        .onDisappear { coordinator.cancel() }
+        .onChange(of: creationCoordinator.phase) { _, phase in
+            guard phase == .succeeded || phase == .succeededWithWarnings else { return }
+            onLinked()
+            dismiss()
+        }
+        .onDisappear {
+            coordinator.cancel()
+            // Cancelling the client poll does not cancel the durable operation.
+            creationCoordinator.cancel()
+        }
         .enableInjection()
     }
 
@@ -77,8 +100,7 @@ struct AddLinkSheet: View {
                     .foregroundStyle(appSkin.palette.tertiaryText)
                     .accessibilityIdentifier("addLink.local.empty")
             } else if filteredEntries.isEmpty {
-                Text(L10n.string("沒有結果"))
-                    .foregroundStyle(appSkin.palette.tertiaryText)
+                missingTargetSection
             } else {
                 ForEach(filteredEntries) { entry in
                     Button { selectEntry(entry) } label: {
@@ -101,11 +123,68 @@ struct AddLinkSheet: View {
         }
     }
 
+    @ViewBuilder
+    private var missingTargetSection: some View {
+        switch AddLinkCreationCoordinator.localTargetState(
+            query: searchText,
+            sourceEntry: sourceEntry,
+            allEntries: allEntries
+        ) {
+        case .missing:
+            if kgService is any AddLinkOperationServing {
+                Button(action: startCreation) {
+                    HStack(spacing: appSkin.spacing.inlineGap) {
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundStyle(appSkin.palette.accent)
+                        VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+                            Text(L10n.string("建立"))
+                                .foregroundStyle(appSkin.palette.primaryText)
+                            Text(searchText.trimmingCharacters(in: .whitespacesAndNewlines))
+                                .font(appSkin.typography.caption)
+                                .foregroundStyle(appSkin.palette.secondaryText)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                }
+                .accessibilityIdentifier("addLink.create")
+                .listRowBackground(Color.clear)
+            } else {
+                Text(L10n.string("沒有結果"))
+                    .foregroundStyle(appSkin.palette.tertiaryText)
+            }
+        case .pending, .failed:
+            Text(L10n.string("此單字尚未同步，無法建立連結"))
+                .foregroundStyle(appSkin.palette.tertiaryText)
+        case .archived:
+            Text(L10n.string("封存"))
+                .foregroundStyle(appSkin.palette.tertiaryText)
+        case .active:
+            Text(L10n.string("已建立"))
+                .foregroundStyle(appSkin.palette.tertiaryText)
+        case .source:
+            Text(L10n.string("新增連結失敗"))
+                .foregroundStyle(appSkin.palette.tertiaryText)
+        }
+    }
+
     private func selectEntry(_ entry: VocabularyEntry) {
         coordinator.startLinkExisting(
             target: entry,
             sourceEntry: sourceEntry,
             using: kgService
+        )
+    }
+
+    private func startCreation() {
+        guard let operationService = kgService as? any AddLinkOperationServing else { return }
+        creationCoordinator.start(
+            word: searchText,
+            sourceEntry: sourceEntry,
+            allEntries: allEntries,
+            operationService: operationService,
+            syncService: kgService,
+            container: modelContext.container
         )
     }
 

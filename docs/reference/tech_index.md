@@ -32,8 +32,8 @@ verified_against: afe016c4ea2fcbd7306f9c4f40b4556e77865100
 ## Backend routes and data
 
 - API routers：`backend/src/kg/routers/`；schemas／response models：`backend/src/kg/api_models/`。
-- Vocabulary intake／CRUD／sync：`backend/src/kg/vocab_*.py`、`backend/src/kg/vocab_handlers/`。
-- Graph links：`backend/src/kg/graph_*.py` 與 vocabulary router；詳情以 `docs/reference/sync_lifecycle.md` 為準。
+- Vocabulary intake／CRUD／sync：`backend/src/kg/vocab_*.py`、`backend/src/kg/vocab_handlers/`；missing-target Add Link 的 durable composite operation 在 `backend/src/kg/vocab_add_link_operation.py`，request／status schemas 在 `backend/src/kg/api_models/vocab_add_link.py`。A 的原始 context 只作 B 的 sense-disambiguation 參照，不落地成 B 的例句或關係文案。
+- Graph links：`backend/src/kg/graph_*.py` 與 vocabulary router；`POST /api/graph/links/ensure-target` 只 enqueue、`GET /api/operations/{operation_id}` 讀取狀態，詳情以 `docs/reference/sync_lifecycle.md` 為準。
 - Podcast：`backend/src/kg/podcast_*.py`；生成與音訊工作流在 `lab/podcast/`。
 - Provider registry／費率：`backend/src/kg/llm/providers.py`；變動同步 `docs/reference/cost_baseline.md`。
 - Database／migration：backend migration entry 與 deployment SOP；不要從本文件猜資料表或直接拼 SQL。
@@ -42,7 +42,7 @@ verified_against: afe016c4ea2fcbd7306f9c4f40b4556e77865100
 ## iOS modules
 
 - Reader／bookshelf：`ios/BooksAndVocab/Views/Reader/`、`Views/Bookshelf/`、`Services/`。
-- Vocabulary／sync／review：`Views/Vocabulary/`、`Views/TodayReview/`、`Services/KGService+*.swift`。
+- Vocabulary／sync／review：`Views/Vocabulary/`、`Views/TodayReview/`、`Services/KGService+*.swift`；missing-target Add Link 的 operation wire contract／client transport 在 `Services/AddLinkOperation.swift`、`Services/KGService+AddLinkOperation.swift`，context 僅作建立 B 時的私有義項線索，完成後沿用既有 serialized vocabulary pull。
 - Notebook：`Views/Notebook/`；binding／outbox／tombstone 規則見 notebook boundary。
 - Podcast：`Views/Podcast/`、`Services/Podcast*`；Release visibility 以 feature flag 與 tests 為準。
 - Explore：`Views/Explore/`、shared deck service；catalog contract 見 discover boundary。

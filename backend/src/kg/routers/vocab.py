@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, BackgroundTasks, Header, Query
 from fastapi.responses import Response
 from pydantic import Field
 
 from ..api_models import (
+    AddLinkOperationRequest,
+    AddLinkOperationResponse,
     ArchiveWordRequest,
     ArchiveWordResponse,
     BatchArchiveRequest,
@@ -36,9 +38,19 @@ from ..deps import (
     _graph_store,
     _notebook_store,
     _review_event_store,
+    get_user_lock,
     logger,
 )
+from ..exceptions import BadRequestError, ConflictError, NotFoundError
+from ..notebook import validate_notebook_access
 from ..service_factories import create_client
+from ..vocab_add_link_operation import (
+    IdempotencyConflict,
+    create_operation,
+    get_operation,
+    operation_response,
+    run_add_link_operation,
+)
 from ..vocab_handlers import (
     add_vocab_response,
     archive_word_response,
@@ -90,6 +102,62 @@ def list_vocab(
     if next_cursor is not None:
         response.headers["X-Next-Cursor"] = next_cursor
     return result
+
+
+@router.post(
+    "/api/graph/links/ensure-target",
+    response_model=AddLinkOperationResponse,
+    status_code=202,
+)
+async def enqueue_add_link_operation(
+    req: AddLinkOperationRequest,
+    background_tasks: BackgroundTasks,
+    user: CurrentUser,
+    idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=128)],
+    notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
+):
+    validate_notebook_access(_notebook_store(user["dir"]), notebook_id)
+    source = _card_store(user["dir"]).get(req.from_id)
+    if (
+        source is None
+        or source.is_deleted
+        or source.is_archived
+        or source.notebook_id != notebook_id
+    ):
+        raise NotFoundError("Card", req.from_id)
+
+    normalized_key = idempotency_key.strip()
+    if not normalized_key:
+        raise BadRequestError("Idempotency-Key must not be blank")
+    try:
+        record, created = create_operation(
+            user_id=user["id"],
+            notebook_id=notebook_id,
+            idempotency_key=normalized_key,
+            payload=req.model_dump(mode="json"),
+        )
+    except IdempotencyConflict as exc:
+        raise ConflictError(str(exc)) from exc
+    if created:
+        background_tasks.add_task(
+            run_add_link_operation,
+            record["operation_id"],
+            user,
+            card_store_factory=_card_store,
+            graph_store_factory=_graph_store,
+            get_user_lock_fn=get_user_lock,
+            client_factory=create_client,
+            logger=logger,
+        )
+    return operation_response(record)
+
+
+@router.get("/api/operations/{operation_id}", response_model=AddLinkOperationResponse)
+def get_add_link_operation(operation_id: str, user: CurrentUser):
+    record = get_operation(user["id"], operation_id)
+    if record is None:
+        raise NotFoundError("Operation", operation_id)
+    return operation_response(record)
 
 
 # Static paths MUST be registered before {word} path parameter

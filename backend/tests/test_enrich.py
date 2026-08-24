@@ -58,6 +58,16 @@ class TestBuildPrompt:
         assert "a" in prompt
         assert "b" in prompt
 
+    def test_private_disambiguation_context_is_not_card_example(self):
+        card = _make_card("light", "光", ["The light was bright."])
+        prompt = _build_prompt(
+            [card],
+            disambiguation_context_by_card_id={card.id: "a light meal after work"},
+        )
+        assert '"disambiguation_context": "a light meal after work"' in prompt
+        assert '"context":' not in prompt
+        assert "只供本次" in prompt
+
 
 # ---------------------------------------------------------------------------
 # _parse_enrich_response
