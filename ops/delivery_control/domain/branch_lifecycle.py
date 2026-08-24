@@ -167,6 +167,8 @@ class BranchAsset:
     dirty_worktree_paths: tuple[str, ...] = ()
     owner_thread_ids: tuple[str, ...] = ()
     registry_evidence: tuple[BranchRegistryEvidence, ...] = ()
+    paired_ref_side: BranchSide | None = None
+    paired_ref_sha: str | None = None
 
     def __post_init__(self) -> None:
         _require_text(self.branch, "branch")
@@ -179,6 +181,22 @@ class BranchAsset:
         object.__setattr__(self, "side", side)
         object.__setattr__(self, "disposition", disposition)
         object.__setattr__(self, "cleanup_action", action)
+        if self.paired_ref_side is None:
+            if self.paired_ref_sha is not None:
+                raise InvalidReceipt("paired_ref_sha requires a paired_ref_side")
+        else:
+            try:
+                paired_side = BranchSide(self.paired_ref_side)
+            except (TypeError, ValueError) as error:
+                raise InvalidReceipt("paired_ref_side is invalid") from error
+            if paired_side is side:
+                raise InvalidReceipt("paired_ref_side must be the opposite side")
+            object.__setattr__(self, "paired_ref_side", paired_side)
+            if (
+                type(self.paired_ref_sha) is not str
+                or _SHA_RE.fullmatch(self.paired_ref_sha) is None
+            ):
+                raise InvalidReceipt("paired_ref_sha must be a lowercase commit SHA")
         if type(self.sha) is not str or not _SHA_RE.fullmatch(self.sha):
             raise InvalidReceipt("branch asset SHA must be a lowercase commit SHA")
         _require_text(self.reason, "branch lifecycle reason")

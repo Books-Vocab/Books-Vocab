@@ -8,22 +8,22 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.domain.branch_lifecycle import (  # noqa: E402
+from delivery_control.domain.branch_lifecycle import (
     BranchAsset,
     BranchCleanupAction,
     BranchDisposition,
     BranchSide,
 )
-from delivery_control.domain.branch_refs import BranchInventory  # noqa: E402
-from delivery_control.domain.errors import InvalidReceipt  # noqa: E402
-from delivery_control.domain.models import Scope  # noqa: E402
-from delivery_control.domain.observations import (  # noqa: E402
+from delivery_control.domain.branch_refs import BranchInventory
+from delivery_control.domain.errors import InvalidReceipt
+from delivery_control.domain.models import Scope
+from delivery_control.domain.observations import (
     PhysicalWorktree,
     PullRequestSnapshot,
     RegistrySnapshot,
     WorktreeSnapshot,
 )
-from delivery_control.services.branch_lifecycle_projection import (  # noqa: E402
+from delivery_control.services.branch_lifecycle_projection import (
     project_branch_lifecycle,
 )
 
@@ -102,6 +102,63 @@ def test_open_pr_branch_is_durable_but_sha_drift_is_preserved() -> None:
     assert durable.cleanup_action is BranchCleanupAction.PRESERVE_DURABLE_PR
     assert drifted.disposition is BranchDisposition.REMOTE_DRIFT
     assert drifted.cleanup_action is BranchCleanupAction.PRESERVE_REMOTE_DRIFT
+
+
+def test_same_branch_refs_expose_exact_pair_for_equal_and_drifted_sha() -> None:
+    equal = project_branch_lifecycle(
+        branch_inventory=BranchInventory(
+            local=(("feat/pair", SHA_B),),
+            remote=(("feat/pair", SHA_B),),
+        )
+    )
+    drifted = project_branch_lifecycle(
+        branch_inventory=BranchInventory(
+            local=(("feat/pair-drift", SHA_B),),
+            remote=(("feat/pair-drift", SHA_C),),
+        )
+    )
+
+    local_equal, remote_equal = equal.assets
+    local_drift, remote_drift = drifted.assets
+    assert (local_equal.paired_ref_side, local_equal.paired_ref_sha) == (
+        BranchSide.REMOTE,
+        SHA_B,
+    )
+    assert (remote_equal.paired_ref_side, remote_equal.paired_ref_sha) == (
+        BranchSide.LOCAL,
+        SHA_B,
+    )
+    assert (local_drift.paired_ref_side, local_drift.paired_ref_sha) == (
+        BranchSide.REMOTE,
+        SHA_C,
+    )
+    assert (remote_drift.paired_ref_side, remote_drift.paired_ref_sha) == (
+        BranchSide.LOCAL,
+        SHA_B,
+    )
+    assert local_drift.disposition is BranchDisposition.ORPHAN_LOCAL_RECONCILE
+    assert remote_drift.disposition is BranchDisposition.ORPHAN_REMOTE_RECONCILE
+
+
+def test_single_sided_ref_has_explicit_null_pair() -> None:
+    asset = project_branch_lifecycle(
+        branch_inventory=BranchInventory(local=(("feat/single", SHA_A),))
+    ).local[0]
+
+    assert asset.paired_ref_side is None
+    assert asset.paired_ref_sha is None
+
+
+def test_protected_main_keeps_exact_pair_evidence() -> None:
+    assets = project_branch_lifecycle(
+        branch_inventory=BranchInventory(
+            local=(("main", SHA_A),),
+            remote=(("main", SHA_A),),
+        )
+    ).assets
+
+    assert all(asset.disposition is BranchDisposition.PROTECTED for asset in assets)
+    assert all(asset.paired_ref_sha == SHA_A for asset in assets)
 
 
 def test_abandoned_handback_cannot_be_silently_deleted() -> None:
