@@ -333,6 +333,51 @@ def test_security_hold_still_precedes_bare_numeric_registry_history() -> None:
     assert projected.records[0].mapped_external_ids == ("1415",)
 
 
+def test_malformed_active_registry_issue_reference_is_audit_only() -> None:
+    issue = parse_demand_issue(_payload(1187, labels=("blocked",)))
+    problem = InventoryProblem(
+        "registry",
+        "feat/issue-1187-library-format-validation-20260820",
+        "claim_generation must be a non-negative integer",
+        identity_kind="branch",
+        record_status="active",
+        record_external_ids=("#1187",),
+    )
+
+    projected = project_demand_inventory(
+        DemandIssueInventory((issue,), raw_count=1),
+        registry_problems=(problem,),
+    )
+
+    observed = projected.records[0]
+    assert observed.disposition is IssueDisposition.BLOCKED
+    assert observed.mapped_external_ids == ()
+    assert observed.malformed_active_registry_external_ids == ("#1187",)
+    assert projected.dispatchable_candidate_issues == ()
+
+
+def test_terminal_malformed_registry_history_does_not_become_active_observation() -> None:
+    issue = parse_demand_issue(_payload(1187))
+    problem = InventoryProblem(
+        "registry",
+        "feat/issue-1187-library-format-validation-20260820",
+        "claim_generation must be a non-negative integer",
+        identity_kind="branch",
+        record_status="abandoned",
+        record_external_ids=("#1187",),
+    )
+
+    projected = project_demand_inventory(
+        DemandIssueInventory((issue,), raw_count=1),
+        registry_problems=(problem,),
+    )
+
+    observed = projected.records[0]
+    assert observed.disposition is IssueDisposition.TRIAGE_REQUIRED
+    assert observed.mapped_external_ids == ()
+    assert observed.malformed_active_registry_external_ids == ()
+
+
 def test_security_candidate_is_observable_but_not_dispatchable() -> None:
     issue = parse_demand_issue(
         _payload(

@@ -81,6 +81,17 @@ def _raw_owner_thread_id(record: Mapping[str, Any] | None) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
+def record_external_ids(record: Mapping[str, Any] | None) -> tuple[str, ...]:
+    """Preserve only explicit, well-formed IDs from one raw registry record."""
+
+    values = record.get("external_ids") if isinstance(record, Mapping) else None
+    if not isinstance(values, list) or any(
+        type(value) is not str or not value.strip() for value in values
+    ):
+        return ()
+    return tuple(value.strip() for value in values)
+
+
 def reported_problems(payload: Mapping[str, Any]) -> tuple[InventoryProblem, ...]:
     if "problems" not in payload:
         return ()
@@ -130,6 +141,7 @@ def reported_problems(payload: Mapping[str, Any]) -> tuple[InventoryProblem, ...
                     record_status=record_status,
                     record_path=observed_record_path,
                     owner_thread_id=observed_owner_thread_id,
+                    record_external_ids=record_external_ids(record),
                 )
             )
             continue
@@ -157,6 +169,7 @@ def reported_problems(payload: Mapping[str, Any]) -> tuple[InventoryProblem, ...
                     record_status=record_status,
                     record_path=observed_record_path,
                     owner_thread_id=observed_owner_thread_id,
+                    record_external_ids=record_external_ids(record),
                 )
             )
             continue
@@ -167,6 +180,7 @@ def reported_problems(payload: Mapping[str, Any]) -> tuple[InventoryProblem, ...
                 "registry problem entry is malformed",
                 record_path=observed_record_path,
                 owner_thread_id=observed_owner_thread_id,
+                record_external_ids=record_external_ids(record),
             )
         )
     return tuple(problems)

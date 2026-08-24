@@ -188,6 +188,7 @@ def collect_inventory_sources(
         raw_issue_inventory,
         registry_records=records,
         pull_requests=tuple(pull_requests),
+        registry_problems=registry_inventory.problems,
     )
     if pr_mapping_problems:
         projected_demand = replace(

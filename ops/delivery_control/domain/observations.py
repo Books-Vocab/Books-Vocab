@@ -96,6 +96,10 @@ class InventoryProblem:
     # ownerless without promoting the malformed claim into a valid lane.
     record_path: Path | None = None
     owner_thread_id: str | None = None
+    # Preserve exact external IDs from the same malformed raw registry
+    # record. Consumers may use these only for deterministic audit joins;
+    # they never turn the malformed record into a valid claim.
+    record_external_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

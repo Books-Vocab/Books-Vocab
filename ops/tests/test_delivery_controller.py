@@ -25,6 +25,7 @@ from delivery_control.controller.metrics import (
 )
 from delivery_control.controller.timings import PipelineTimings
 from delivery_control.controller.worktree_boundary import partition_worktrees
+from delivery_control.adapters.github_parsing import parse_demand_issue
 from delivery_control.domain.branch_lifecycle import (
     BranchAsset,
     BranchCleanupAction,
@@ -39,6 +40,7 @@ from delivery_control.domain.candidate_issues import (
     CandidateSpec,
     unclaimed_candidate_issues,
 )
+from delivery_control.domain.demand_issues import DemandIssueInventory
 from delivery_control.domain.isolation import IsolationSummary
 from delivery_control.domain.models import Scope
 from delivery_control.domain.observations import (
@@ -56,6 +58,7 @@ from delivery_control.domain.states import (
     derive_lane_decision,
 )
 from delivery_control.services.inspect import DeliveryInventory, LaneInspection
+from delivery_control.services.demand_projection import project_demand_inventory
 
 
 def _metrics(**changes: int) -> PipelineMetrics:
@@ -1582,6 +1585,43 @@ def test_metrics_exposes_active_registry_residue_separately_from_development() -
         == metrics.active_registry_records
     )
     assert metrics.malformed_active_registry_records == 1
+
+
+def test_metrics_exposes_malformed_active_registry_issue_observation_without_claim() -> None:
+    issue = parse_demand_issue(
+        {
+            "id": "I_1187",
+            "number": 1187,
+            "url": "https://github.com/owner/repo/issues/1187",
+            "title": "Issue 1187",
+            "body": "plain request",
+            "updatedAt": "2026-08-22T01:00:00Z",
+            "labels": [{"name": "blocked"}],
+        }
+    )
+    problem = InventoryProblem(
+        "registry",
+        "feat/issue-1187-library-format-validation-20260820",
+        "claim_generation must be a non-negative integer",
+        identity_kind="branch",
+        record_status="active",
+        record_external_ids=("#1187",),
+    )
+    projected = project_demand_inventory(
+        DemandIssueInventory((issue,), raw_count=1),
+        registry_problems=(problem,),
+    )
+    inventory = DeliveryInventory(
+        lanes=(),
+        demand_issues=projected,
+        source_problems=(problem,),
+    )
+
+    metrics = measure_pipeline(inventory)
+
+    assert metrics.issues_with_malformed_active_claim == 1
+    assert metrics.issues_with_active_claim == 0
+    assert metrics.dispatchable_candidate_issues == 0
 
 
 def test_malformed_active_registry_cardinality_deduplicates_diagnostics() -> None:
