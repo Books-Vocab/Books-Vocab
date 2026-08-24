@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -1412,6 +1412,16 @@ def test_pipeline_supply_counts_only_owner_mapped_open_prs() -> None:
                     LaneState.UNKNOWN, NextAction.INSPECT, "unmapped"
                 ),
             ),
+            LaneInspection(
+                key="PR#7-duplicate",
+                registry=None,
+                physical=None,
+                snapshot=None,
+                pull_requests=(pull_request,),
+                decision=LaneDecision(
+                    LaneState.UNKNOWN, NextAction.INSPECT, "duplicate observation"
+                ),
+            ),
         )
     )
 
@@ -1419,6 +1429,53 @@ def test_pipeline_supply_counts_only_owner_mapped_open_prs() -> None:
 
     assert metrics.open_prs == 1
     assert metrics.unmapped_open_prs == 1
+    assert metrics.raw_open_prs == 2
+    assert asdict(metrics)["raw_open_prs"] == 2
+
+
+def test_pipeline_counts_quarantined_security_pr_in_raw_open_prs() -> None:
+    pull_request = PullRequestSnapshot(
+        number=1376,
+        url="https://example.test/pull/1376",
+        branch="debug/security",
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+        state="OPEN",
+        draft=False,
+        mergeable=True,
+        body="PUBLISH ONLY: security hold pending",
+    )
+    inventory = DeliveryInventory(
+        lanes=(
+            LaneInspection(
+                key="PR#1376",
+                registry=None,
+                physical=None,
+                snapshot=None,
+                pull_requests=(pull_request,),
+                decision=LaneDecision(
+                    LaneState.SECURITY_HOLD,
+                    NextAction.INSPECT,
+                    "security hold",
+                ),
+            ),
+        ),
+        isolation=IsolationSummary(quarantined_open_prs=1),
+    )
+
+    metrics = measure_pipeline(inventory)
+
+    assert metrics.raw_open_prs == 1
+    assert metrics.open_prs == 0
+    assert metrics.unmapped_open_prs == 1
+    assert metrics.quarantined_open_prs == 1
+    assert metrics.actionable_unmapped_open_prs == 0
+
+
+def test_legacy_direct_metrics_leave_raw_open_prs_unknown() -> None:
+    metrics = _metrics()
+
+    assert metrics.raw_open_prs is None
 
 
 def test_idle_worktrees_include_clean_unregistered_physical_checkout() -> None:
