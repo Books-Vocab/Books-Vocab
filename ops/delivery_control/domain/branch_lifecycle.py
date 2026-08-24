@@ -12,9 +12,10 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from .errors import InvalidReceipt
-from .observations import InventoryProblem
+from .observations import InventoryProblem, RegistrySnapshot
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+_DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 class BranchSide(StrEnum):
@@ -58,6 +59,97 @@ def _require_text(value: object, field: str) -> str:
     return value
 
 
+def _optional_text(value: object, field: str) -> None:
+    if value is not None:
+        _require_text(value, field)
+
+
+def _optional_sha(value: object, field: str) -> None:
+    if value is not None and (
+        type(value) is not str or _SHA_RE.fullmatch(value) is None
+    ):
+        raise InvalidReceipt(f"{field} must be a lowercase commit SHA or null")
+
+
+@dataclass(frozen=True)
+class BranchRegistryEvidence:
+    """Non-authorizing provenance joined from one registry record."""
+
+    lane_id: str
+    branch: str
+    path: str
+    status: str
+    claim_generation: int | None = None
+    base_sha: str | None = None
+    published_base_sha: str | None = None
+    handed_back_sha: str | None = None
+    handback_digest: str | None = None
+    owner_thread_id: str | None = None
+    scope_paths: tuple[str, ...] = ()
+    external_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        for field_name in ("lane_id", "branch", "path", "status"):
+            _require_text(getattr(self, field_name), field_name)
+        if self.claim_generation is not None and (
+            type(self.claim_generation) is not int or self.claim_generation < 0
+        ):
+            raise InvalidReceipt(
+                "claim_generation must be a non-negative integer or null"
+            )
+        _optional_sha(self.base_sha, "base_sha")
+        _optional_sha(self.published_base_sha, "published_base_sha")
+        _optional_sha(self.handed_back_sha, "handed_back_sha")
+        if self.handback_digest is not None and (
+            type(self.handback_digest) is not str
+            or _DIGEST_RE.fullmatch(self.handback_digest) is None
+        ):
+            raise InvalidReceipt(
+                "handback_digest must be a lowercase SHA-256 digest or null"
+            )
+        _optional_text(self.owner_thread_id, "owner_thread_id")
+        for field_name in ("scope_paths", "external_ids"):
+            values = getattr(self, field_name)
+            if type(values) is not tuple or any(
+                type(value) is not str or not value for value in values
+            ):
+                raise InvalidReceipt(f"{field_name} must contain canonical text")
+            if tuple(sorted(set(values))) != values:
+                raise InvalidReceipt(f"{field_name} must be sorted and unique")
+
+    @property
+    def sort_key(self) -> tuple[str, str, str, str, int, str]:
+        """Stable ordering key; record identity is never inferred from reason."""
+
+        return (
+            self.lane_id,
+            self.branch,
+            self.path,
+            self.status,
+            self.claim_generation if self.claim_generation is not None else -1,
+            self.handed_back_sha or "",
+        )
+
+    @classmethod
+    def from_snapshot(cls, record: RegistrySnapshot) -> BranchRegistryEvidence:
+        """Project a validated RegistrySnapshot without granting any authority."""
+
+        return cls(
+            lane_id=record.lane_id,
+            branch=record.branch,
+            path=str(record.path.resolve()),
+            status=record.status,
+            claim_generation=record.claim_generation,
+            base_sha=record.base_sha,
+            published_base_sha=record.published_base_sha,
+            handed_back_sha=record.handed_back_sha,
+            handback_digest=record.handback_digest,
+            owner_thread_id=record.owner_thread_id,
+            scope_paths=tuple(sorted(record.scope.paths)),
+            external_ids=tuple(sorted(set(record.external_ids))),
+        )
+
+
 @dataclass(frozen=True)
 class BranchAsset:
     """One observed local or remote ref and its deterministic disposition."""
@@ -74,6 +166,7 @@ class BranchAsset:
     physical_worktree_paths: tuple[str, ...] = ()
     dirty_worktree_paths: tuple[str, ...] = ()
     owner_thread_ids: tuple[str, ...] = ()
+    registry_evidence: tuple[BranchRegistryEvidence, ...] = ()
 
     def __post_init__(self) -> None:
         _require_text(self.branch, "branch")
@@ -112,6 +205,14 @@ class BranchAsset:
                 raise InvalidReceipt(f"{field_name} must contain canonical text")
             if tuple(sorted(set(values))) != values:
                 raise InvalidReceipt(f"{field_name} must be sorted and unique")
+        if type(self.registry_evidence) is not tuple or any(
+            not isinstance(value, BranchRegistryEvidence)
+            for value in self.registry_evidence
+        ):
+            raise InvalidReceipt("registry_evidence must contain typed evidence")
+        evidence_keys = tuple(value.sort_key for value in self.registry_evidence)
+        if evidence_keys != tuple(sorted(evidence_keys)):
+            raise InvalidReceipt("registry_evidence must be canonically sorted")
         if self.protected != (self.disposition is BranchDisposition.PROTECTED):
             raise InvalidReceipt("protected flag does not match branch disposition")
 
@@ -172,5 +273,6 @@ __all__ = [
     "BranchCleanupAction",
     "BranchDisposition",
     "BranchLifecycleInventory",
+    "BranchRegistryEvidence",
     "BranchSide",
 ]

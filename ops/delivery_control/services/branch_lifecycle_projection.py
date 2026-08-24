@@ -11,6 +11,7 @@ from ..domain.branch_lifecycle import (
     BranchCleanupAction,
     BranchDisposition,
     BranchLifecycleInventory,
+    BranchRegistryEvidence,
     BranchSide,
 )
 from ..domain.branch_refs import BranchInventory
@@ -62,6 +63,19 @@ def _expected_heads(
     }
     values.update(item.head_sha for item in pull_requests)
     return frozenset(values)
+
+
+def _registry_evidence(
+    records: tuple[RegistrySnapshot, ...],
+) -> tuple[BranchRegistryEvidence, ...]:
+    """Join every matching record without collapsing contradictory evidence."""
+
+    return tuple(
+        sorted(
+            (BranchRegistryEvidence.from_snapshot(record) for record in records),
+            key=lambda item: item.sort_key,
+        )
+    )
 
 
 def _unique_heads(values: tuple[str | None, ...]) -> frozenset[str]:
@@ -139,6 +153,7 @@ def _asset(
                 }
             )
         ),
+        registry_evidence=_registry_evidence(records),
     )
 
 

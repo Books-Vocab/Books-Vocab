@@ -10,6 +10,7 @@ from ..domain.branch_lifecycle import (
     BranchAsset,
     BranchCleanupAction,
     BranchDisposition,
+    BranchRegistryEvidence,
     BranchSide,
 )
 from ..domain.inventory import DeliveryInventory
@@ -58,6 +59,7 @@ class BranchAuditRegistryAction:
     base_sha: str
     handed_back_sha: str | None
     owner_thread_id: str | None
+    registry_evidence: BranchRegistryEvidence
     category: str
     safe_terminal: bool
     next_step: str
@@ -285,6 +287,7 @@ def _registry_only_action(
         category="registry_only_residue",
         safe_terminal=False,
         next_step=next_step,
+        registry_evidence=BranchRegistryEvidence.from_snapshot(record),
     )
 
 
