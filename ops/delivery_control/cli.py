@@ -646,7 +646,8 @@ def main(
         # transport event; retain the command's domain exit code and avoid a
         # second traceback during interpreter shutdown.
         try:
-            sys.stdout = open(os.devnull, "w", encoding="utf-8")
+            # Keep the devnull stream alive through interpreter shutdown.
+            sys.stdout = open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115
         except OSError:
             pass
     return _result_exit_code(args.command, result)
