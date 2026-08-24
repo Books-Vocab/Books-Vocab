@@ -461,6 +461,74 @@ def test_invalid_terminal_claim_generation_is_audit_only(tmp_path: Path) -> None
     assert mutation_blockers(state) == []
 
 
+def test_active_only_list_scopes_terminal_diagnostics_but_keeps_unknown_facts(
+    tmp_path: Path, capsys
+) -> None:
+    state_path = tmp_path / "registry.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "records": [
+                    {
+                        "branch": "feat/active-bad-claim",
+                        "path": str(tmp_path / "active-bad-claim"),
+                        "status": "active",
+                        "external_ids": ["ISSUE-ACTIVE-BAD-CLAIM"],
+                        "claim_generation": None,
+                        "base": "a" * 40,
+                        "scope": {
+                            "schema": "kg.worktree.scope.v1",
+                            "files": [{"operation": "modify", "path": "ops/a.py"}],
+                        },
+                    },
+                    {
+                        "branch": "feat/terminal-bad-base",
+                        "path": str(tmp_path / "terminal-bad-base"),
+                        "status": "abandoned",
+                        "external_ids": ["ISSUE-TERMINAL-BAD-BASE"],
+                        "claim_generation": 0,
+                        "base": "not-a-commit-sha",
+                        "scope": {
+                            "schema": "kg.worktree.scope.v1",
+                            "files": [{"operation": "modify", "path": "ops/b.py"}],
+                        },
+                    },
+                    "unknown-record",
+                ]
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    rc = registry.main(
+        [
+            "list",
+            "--state",
+            str(state_path),
+            "--active-only",
+            "--json",
+        ]
+    )
+
+    assert rc == registry.EXIT_OK
+    payload = json.loads(capsys.readouterr().out)
+    assert [record["branch"] for record in payload["records"]] == [
+        "feat/active-bad-claim"
+    ]
+    assert payload["problems"] == [
+        {
+            "kind": "registry-claim-generation-invalid",
+            "index": 0,
+            "branch": "feat/active-bad-claim",
+            "status": "active",
+            "reason": "claim_generation must be a non-negative integer",
+        },
+        {"kind": "registry-record-not-object", "index": 2},
+    ]
+
+
 def test_missing_claim_generation_on_persisted_claim_is_invalid(tmp_path: Path) -> None:
     state_path = tmp_path / "registry.json"
     state_path.write_text(
