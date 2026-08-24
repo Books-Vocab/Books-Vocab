@@ -29,6 +29,8 @@ from .timestamps import parse_optional_timestamp
 
 
 def parse_pull_request(payload: Mapping[str, Any]) -> PullRequestSnapshot:
+    if not isinstance(payload, Mapping):
+        raise AdapterPayloadError("GitHub PR payload must be an object")
     required = {
         "id": str,
         "number": int,
@@ -114,6 +116,8 @@ def parse_pull_request_inventory(
 
 
 def parse_candidate_issue(payload: Mapping[str, Any]) -> CandidateIssue:
+    if not isinstance(payload, Mapping):
+        raise AdapterPayloadError("GitHub candidate Issue payload must be an object")
     number = payload.get("number")
     url = payload.get("url")
     state = payload.get("state")
@@ -178,6 +182,8 @@ def parse_candidate_issue_inventory(
 def parse_demand_issue(payload: Mapping[str, Any]) -> DemandIssue:
     """Parse one raw open Issue without requiring candidate admission metadata."""
 
+    if not isinstance(payload, Mapping):
+        raise AdapterPayloadError("GitHub raw Issue payload must be an object")
     number = payload.get("number")
     url = payload.get("url")
     node_id = payload.get("id")
