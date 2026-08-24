@@ -71,6 +71,11 @@ class CandidateSpec:
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, object]) -> CandidateSpec:
+        if not isinstance(payload, Mapping):
+            # Preserve the candidate contract's existing ValueError family for malformed payloads.
+            raise ValueError(  # noqa: TRY004
+                "candidate contract payload must be an object"
+            )
         if set(payload) != {
             "schema",
             "severity",

@@ -21,11 +21,19 @@ def _spec() -> CandidateSpec:
     return CandidateSpec(
         severity=CandidateSeverity.P2,
         priority=20,
-        scope=Scope.from_paths(
-            modify=("ops/example.py", "ops/tests/test_example.py")
-        ),
+        scope=Scope.from_paths(modify=("ops/example.py", "ops/tests/test_example.py")),
         acceptance=("Regression is reproduced.", "Focused proof is green."),
     )
+
+
+@pytest.mark.parametrize("payload", [None, [], "not-an-object"])
+def test_candidate_spec_from_payload_rejects_non_object_payloads(
+    payload: object,
+) -> None:
+    with pytest.raises(
+        ValueError, match="candidate contract payload must be an object"
+    ):
+        CandidateSpec.from_payload(payload)  # type: ignore[arg-type]
 
 
 def test_candidate_body_round_trips_exact_metadata() -> None:
