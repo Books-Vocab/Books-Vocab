@@ -39,6 +39,7 @@ from delivery_control.domain.demand_issues import (
     IssueDisposition,
     issue_body_sha256,
 )
+from delivery_control.domain.errors import PolicyViolation
 from delivery_control.domain.models import Scope
 from delivery_control.domain.observations import (
     PullRequestInventory,
@@ -360,6 +361,94 @@ def test_branch_review_plan_pages_orphans_and_preserves_incomplete_audit(
         + "; operator, reason, and --confirm-unmerged are required; "
         "no automatic deletion"
     )
+
+
+def test_branch_review_plan_rejects_offset_beyond_total_candidates(
+    tmp_path: Path,
+) -> None:
+    application = DeliveryApplication(
+        repo=tmp_path,
+        git=Mock(),
+        github=Mock(),
+        registry=Mock(),
+        runtime=Mock(),
+        telemetry=Mock(),
+    )
+    action = SimpleNamespace(
+        side=BranchSide.LOCAL,
+        branch="backup/orphan",
+        sha="b" * 40,
+        category="local_orphan_blocked",
+        review_command="./ops/delivery.py branch-inspect ...",
+        orphan_preflight=SimpleNamespace(
+            eligible=False,
+            blockers=("orphan branch tip is not an ancestor of live origin/main",),
+        ),
+        next_step="review content",
+    )
+    audit = SimpleNamespace(
+        actions=(action,),
+        live_main_sha="a" * 40,
+        complete=False,
+        source_problem_actions=(),
+    )
+
+    with (
+        patch.object(DeliveryApplication, "branch_audit", return_value=audit),
+        pytest.raises(
+            PolicyViolation,
+            match="branch review offset exceeds total candidates",
+        ),
+    ):
+        application.branch_review_plan(offset=2, limit=20)
+
+
+def test_branch_review_plan_preserves_empty_end_page(
+    tmp_path: Path,
+) -> None:
+    application = DeliveryApplication(
+        repo=tmp_path,
+        git=Mock(),
+        github=Mock(),
+        registry=Mock(),
+        runtime=Mock(),
+        telemetry=Mock(),
+    )
+    action = SimpleNamespace(
+        side=BranchSide.LOCAL,
+        branch="backup/orphan",
+        sha="b" * 40,
+        category="local_orphan_blocked",
+        review_command="./ops/delivery.py branch-inspect ...",
+        orphan_preflight=SimpleNamespace(
+            eligible=False,
+            blockers=("orphan branch tip is not an ancestor of live origin/main",),
+        ),
+        next_step="review content",
+    )
+    audit = SimpleNamespace(
+        actions=(action,),
+        live_main_sha="a" * 40,
+        complete=True,
+        source_problem_actions=(),
+    )
+
+    with (
+        patch.object(DeliveryApplication, "branch_audit", return_value=audit),
+        patch.object(
+            BranchContentService,
+            "inspect_many",
+            side_effect=AssertionError("empty end page must not inspect content"),
+        ),
+    ):
+        plan = application.branch_review_plan(offset=1, limit=20)
+
+    assert plan.offset == plan.total_candidates == plan.reviewed_count == 1
+    assert plan.items == ()
+    assert plan.remaining_count == 0
+    assert plan.audit_complete is True
+    assert plan.reviewable_complete is False
+    assert plan.complete is False
 
 
 def test_branch_review_plan_later_page_cannot_claim_reviewable_completion(
