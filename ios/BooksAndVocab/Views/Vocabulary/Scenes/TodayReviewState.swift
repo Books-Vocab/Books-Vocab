@@ -496,14 +496,14 @@ final class TodayReviewState {
     /// ONLY after the store actually holds the data.
     func flushPendingAnswers(
         container: ModelContainer,
-        reviewSettings: ReviewSettings,
+        notebookSettingsSnapshot: NotebookSettingsSnapshot,
         onFinalize: @escaping @MainActor () -> Void = {},
         onFailure: (@MainActor @Sendable () -> Void)? = nil
     ) {
         persistence.flushPendingAnswers(
             submittedAnswers: scoring.submittedAnswers,
             container: container,
-            reviewSettings: reviewSettings,
+            notebookSettingsSnapshot: notebookSettingsSnapshot,
             onFinalize: onFinalize,
             onFailure: onFailure,
             onFlushed: { [weak self] indices in
@@ -511,6 +511,26 @@ final class TodayReviewState {
                     for i in indices { self.scoring.markFlushed(at: i) }
                 }
             }
+        )
+    }
+
+    /// Compatibility overload for legacy callers and single-notebook tests.
+    /// The production review route captures a mixed-notebook snapshot.
+    func flushPendingAnswers(
+        container: ModelContainer,
+        reviewSettings: ReviewSettings,
+        onFinalize: @escaping @MainActor () -> Void = {},
+        onFailure: (@MainActor @Sendable () -> Void)? = nil
+    ) {
+        let snapshot = NotebookSettingsResolver(
+            globalReviewSettings: reviewSettings,
+            globalCardLayout: .default
+        ).snapshot(for: [])
+        flushPendingAnswers(
+            container: container,
+            notebookSettingsSnapshot: snapshot,
+            onFinalize: onFinalize,
+            onFailure: onFailure
         )
     }
 
@@ -550,14 +570,30 @@ final class TodayReviewState {
     /// Safe to call on every appear.
     func reflushUnflushedRestoredAnswers(
         container: ModelContainer,
-        reviewSettings: ReviewSettings,
+        notebookSettingsSnapshot: NotebookSettingsSnapshot,
         onSaveFailure: (@MainActor @Sendable () -> Void)? = nil
     ) {
         flushPendingAnswers(
             container: container,
-            reviewSettings: reviewSettings,
+            notebookSettingsSnapshot: notebookSettingsSnapshot,
             onFinalize: { [weak self] in self?.persistSnapshot() },
             onFailure: onSaveFailure
+        )
+    }
+
+    func reflushUnflushedRestoredAnswers(
+        container: ModelContainer,
+        reviewSettings: ReviewSettings,
+        onSaveFailure: (@MainActor @Sendable () -> Void)? = nil
+    ) {
+        let snapshot = NotebookSettingsResolver(
+            globalReviewSettings: reviewSettings,
+            globalCardLayout: .default
+        ).snapshot(for: [])
+        reflushUnflushedRestoredAnswers(
+            container: container,
+            notebookSettingsSnapshot: snapshot,
+            onSaveFailure: onSaveFailure
         )
     }
 

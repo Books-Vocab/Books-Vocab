@@ -98,7 +98,25 @@ protocol NotebookServing: AnyObject {
     func fetchNotebooks() async throws -> [KGNotebook]
     func createNotebook(name: String, color: String?, coverPattern: String?) async throws -> KGNotebook
     func updateNotebook(id: String, name: String?, color: String?, coverPattern: String?) async throws -> KGNotebook
+    func updateNotebookSettings(
+        id: String,
+        reviewPolicy: KGNotebookSettingsPatchGroup<KGNotebookReviewPolicy>?,
+        cardLayout: KGNotebookSettingsPatchGroup<KGNotebookCardLayout>?
+    ) async throws -> KGNotebook
     func deleteNotebook(id: String) async throws
+}
+
+extension NotebookServing {
+    /// Older fixture services can keep their metadata-only notebook contract;
+    /// the settings screen treats this as a best-effort remote capability and
+    /// retains the local projection when the server does not implement it.
+    func updateNotebookSettings(
+        id: String,
+        reviewPolicy: KGNotebookSettingsPatchGroup<KGNotebookReviewPolicy>?,
+        cardLayout: KGNotebookSettingsPatchGroup<KGNotebookCardLayout>?
+    ) async throws -> KGNotebook {
+        throw URLError(.unsupportedURL)
+    }
 }
 
 /// 使用者設定讀取能力。

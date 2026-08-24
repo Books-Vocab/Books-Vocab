@@ -100,6 +100,7 @@ private struct TodayReviewPhaseSessionScene: View {
         do {
             let container = try ModelContainer(
                 for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+                NotebookSettingsProjection.self,
                 configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
             )
             let entries = try UITestFixtureSeed.insertReviewDeckSeed(reviewSeed, into: container.mainContext)

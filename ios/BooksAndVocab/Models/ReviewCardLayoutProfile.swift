@@ -5,7 +5,7 @@ import SwiftUI
 /// Optional content blocks that can be arranged around the review card's core
 /// prompt and answer. The core prompt/answer are mode semantics and deliberately
 /// do not participate in this persisted layout profile.
-enum ReviewCardField: String, CaseIterable, Codable, Hashable {
+enum ReviewCardField: String, CaseIterable, Codable, Hashable, Sendable {
     case partOfSpeech
     case difficultyTier
     case example
@@ -35,7 +35,7 @@ enum ReviewCardField: String, CaseIterable, Codable, Hashable {
 /// 使用者實際能選的東西（APP-20260808-7f0f3a）。取代「六個欄位各自 on/off ×
 /// 正反兩面」的 2^6 × 2^6 自由度：那個自由度絕大多數組合沒有意義，也沒有人
 /// 知道該開哪個。每個方向只在「正常」與「精簡」之間選。
-enum ReviewCardLayoutPreset: String, CaseIterable, Codable, Hashable {
+enum ReviewCardLayoutPreset: String, CaseIterable, Codable, Hashable, Sendable {
     /// 今天的預設，也就是重構前的畫面。
     case standard
     /// 拿掉例句、詳解、搭配詞 —— 正反面都不留。
@@ -106,7 +106,7 @@ struct ReviewCardModeLayout: Equatable {
     }
 }
 
-struct ReviewCardLayoutProfile: Equatable, Codable {
+struct ReviewCardLayoutProfile: Equatable, Codable, Sendable {
     var recognition: ReviewCardLayoutPreset
     var production: ReviewCardLayoutPreset
 

@@ -86,7 +86,8 @@ struct VocabularyListView: View {
             onExportCSV: { coordinator.exportCSV(entries: syncedEntries, toastCoordinator: toastCoordinator) },
             onExportJSON: { coordinator.exportJSON(entries: syncedEntries, toastCoordinator: toastCoordinator) },
             onExportAnki: { coordinator.exportAnki(entries: syncedEntries, toastCoordinator: toastCoordinator) },
-            hasSyncedEntries: !syncedEntries.isEmpty
+            hasSyncedEntries: !syncedEntries.isEmpty,
+            notebookId: notebookId
         ))
         .modifier(VocabularyListSheets(
             coordinator: coordinator,
