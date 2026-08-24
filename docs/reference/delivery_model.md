@@ -261,6 +261,8 @@ branch-audit 的 branch-scoped source problem 會同步投影到該 branch actio
 
 `branch-audit` 的每個 `source_problem_action` 另外標示 `actionability`：`blocking` 代表目前仍觀測到相符的 local／remote ref、physical worktree 或 PR，必須先走原 owner／source lifecycle；`quarantined_history` 代表只剩無現存交付資產的 malformed registry history。後者仍保留在完整 audit、並使整體 audit 保持 incomplete，但不應被計成 live WIP、wake、cleanup 或其他 mutation 授權；報告頂層的 `actionable_source_problems` 與 `quarantined_source_problems` 必須能加總回 source-problem action 數量。
 
+`branch-audit` 的 `raw_active_registry_records` 與 metrics 採同一 cardinality 契約：它等於可解析的 active claim，加上 malformed active record 的唯一 `(identity_kind, identity, record_status)` identity。`malformed_registry_records`、`registry_record_problem_actions` 與 `registry_record_problem_status_counts` 則保留每一筆 diagnostic entry；同一 raw record 的多個 reason 不得被靜默刪除，也不得被誤加總成多筆 active record。diagnostic 數與 record cardinality 必須分開閱讀。
+
 ## 遷移後的判斷準則
 
 保留真正產品程式碼與測試、backend／iOS 測試入口、GitHub Actions、PR template／required checks、deployment safety wrapper、生產批准／health gate／rollback、CloudKit／資料庫／域名／App Store／TestFlight SOP、docs registry／impact／lint、薄型本地 coordinator，以及長任務 process-safety ledger。凡是只為模擬 GitHub Issue、Project、PR、review、merge 或狀態追蹤而存在的本地描述、資料庫、看板與流程，都不屬於這個模型。

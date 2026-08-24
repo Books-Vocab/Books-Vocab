@@ -300,6 +300,90 @@ def test_branch_audit_counts_malformed_active_registry_record_without_admitting_
     assert report.registry_record_problem_status_counts == {"active": 1}
 
 
+def test_branch_audit_deduplicates_active_record_cardinality_but_keeps_diagnostics() -> (
+    None
+):
+    inventory = DeliveryInventory(
+        lanes=(),
+        branch_lifecycle=project_branch_lifecycle(
+            branch_inventory=BranchInventory(),
+        ),
+        source_problems=(
+            InventoryProblem(
+                "registry",
+                "feat/malformed",
+                "claim_generation must be a non-negative integer",
+                identity_kind="branch",
+                record_status="active",
+            ),
+            InventoryProblem(
+                "registry",
+                "feat/malformed",
+                "lifecycle timestamp is malformed",
+                identity_kind="branch",
+                record_status="active",
+            ),
+        ),
+    )
+
+    report = build_branch_audit(inventory)
+
+    assert report.raw_active_registry_records == 1
+    assert report.malformed_registry_records == 2
+    assert len(report.registry_record_problem_actions) == 2
+    assert report.registry_record_problem_status_counts == {"active": 2}
+
+
+def test_branch_audit_counts_distinct_active_identities_and_excludes_terminal_history() -> (
+    None
+):
+    inventory = DeliveryInventory(
+        lanes=(),
+        branch_lifecycle=project_branch_lifecycle(
+            branch_inventory=BranchInventory(),
+        ),
+        source_problems=(
+            InventoryProblem(
+                "registry",
+                "feat/malformed",
+                "claim_generation invalid",
+                identity_kind="branch",
+                record_status="active",
+            ),
+            InventoryProblem(
+                "registry",
+                "feat/malformed",
+                "timestamp invalid",
+                identity_kind="branch",
+                record_status="active",
+            ),
+            InventoryProblem(
+                "registry",
+                "/tmp/malformed",
+                "path claim invalid",
+                identity_kind="path",
+                record_status="active",
+            ),
+            InventoryProblem(
+                "registry",
+                "feat/malformed",
+                "old terminal diagnostic",
+                identity_kind="branch",
+                record_status="abandoned",
+            ),
+        ),
+    )
+
+    report = build_branch_audit(inventory)
+
+    assert report.raw_active_registry_records == 2
+    assert report.malformed_registry_records == 4
+    assert report.registry_record_problem_status_counts == {
+        "abandoned": 1,
+        "active": 3,
+    }
+
+
 def test_branch_audit_marks_unobserved_registry_history_as_quarantined() -> None:
     inventory = DeliveryInventory(
         lanes=(),
