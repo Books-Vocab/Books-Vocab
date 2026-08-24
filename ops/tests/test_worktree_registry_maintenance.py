@@ -12,6 +12,7 @@ import worktree_registry as registry  # noqa: E402
 from worktree_registry_core.records import (  # noqa: E402
     mutation_blockers,
     mutation_blockers_for_target,
+    superseded_proof_problem,
 )
 
 
@@ -868,7 +869,7 @@ def test_superseded_proof_is_losslessly_retained_and_validated(tmp_path: Path) -
         "claim_generation": 2,
         "base_sha": "a" * 40,
         "handed_back_sha": "b" * 40,
-        "handback_seal": {"digest": "f" * 64},
+        "handback_seal": {"base_sha": "a" * 40, "digest": "f" * 64},
         "scope": {
             "schema": "kg.worktree.scope.v1",
             "files": [{"operation": "modify", "path": "ops/a.py"}],
@@ -912,3 +913,91 @@ def test_superseded_proof_is_losslessly_retained_and_validated(tmp_path: Path) -
     state_path.write_text(json.dumps(tampered, indent=2) + "\n", encoding="utf-8")
     reloaded = registry.load_state(state_path)
     assert reloaded["problems"][0]["kind"] == "registry-superseded-proof-invalid"
+
+
+def _superseded_record_for_base_validation(
+    tmp_path: Path,
+    *,
+    status: str = "abandoned",
+    raw_base_sha: object = None,
+    seal_base_sha: object = "a" * 40,
+    proof_base_sha: str = "a" * 40,
+) -> dict[str, object]:
+    record: dict[str, object] = {
+        "branch": "feat/superseded-base-validation",
+        "path": str(tmp_path / "superseded-base-validation"),
+        "status": status,
+        "external_ids": ["DIRECT-SUPERSEDED-BASE"],
+        "claim_generation": 2,
+        "base_sha": raw_base_sha,
+        "handed_back_sha": "b" * 40,
+        "handback_seal": {
+            "base_sha": seal_base_sha,
+            "digest": "f" * 64,
+        },
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"operation": "modify", "path": "ops/a.py"}],
+        },
+    }
+    record["superseded_proof"] = registry.superseded_proof_with_digest(
+        {
+            "schema": "kg.worktree.superseded-handback-proof.v1",
+            "disposition": "superseded_by_merged_pr",
+            "lane_id": "DIRECT-SUPERSEDED-BASE",
+            "branch": record["branch"],
+            "handback_sha": record["handed_back_sha"],
+            "claim_generation": 2,
+            "base_sha": proof_base_sha,
+            "handback_digest": "f" * 64,
+            "merged_pr_number": 42,
+            "merged_pr_state": "MERGED",
+            "merged_pr_base_branch": "main",
+            "merged_pr_branch": record["branch"],
+            "merged_pr_head_sha": "c" * 40,
+            "merged_pr_base_sha": "d" * 40,
+            "patch_fingerprint": "e" * 64,
+            "scope_paths": ["ops/a.py"],
+            "operator": "supervisor",
+            "reason": "merged PR contains the same exact patch",
+        }
+    )
+    return record
+
+
+def test_superseded_proof_uses_immutable_seal_base_when_raw_base_cleared(
+    tmp_path: Path,
+) -> None:
+    record = _superseded_record_for_base_validation(tmp_path)
+
+    assert superseded_proof_problem(record) is None
+
+
+@pytest.mark.parametrize(
+    ("status", "raw_base_sha", "seal_base_sha", "proof_base_sha"),
+    [
+        ("active", None, "a" * 40, "a" * 40),
+        ("published", None, "a" * 40, "a" * 40),
+        ("abandoned", None, "b" * 40, "a" * 40),
+        ("abandoned", None, "not-a-sha", "a" * 40),
+        ("abandoned", None, "a" * 40, "b" * 40),
+        ("abandoned", "a" * 40, "b" * 40, "a" * 40),
+        ("abandoned", "a" * 40, "not-a-sha", "a" * 40),
+    ],
+)
+def test_superseded_proof_base_validation_remains_fail_closed(
+    tmp_path: Path,
+    status: str,
+    raw_base_sha: object,
+    seal_base_sha: object,
+    proof_base_sha: str,
+) -> None:
+    record = _superseded_record_for_base_validation(
+        tmp_path,
+        status=status,
+        raw_base_sha=raw_base_sha,
+        seal_base_sha=seal_base_sha,
+        proof_base_sha=proof_base_sha,
+    )
+
+    assert superseded_proof_problem(record) is not None
