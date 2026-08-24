@@ -34,6 +34,18 @@ def _reported_identity_kind(raw: Mapping[str, Any]) -> str | None:
     return value if isinstance(value, str) and value in _IDENTITY_KINDS else None
 
 
+def _reported_problem_identity(raw: Mapping[str, Any], index: int) -> tuple[str, str]:
+    """Recover the raw record identity carried beside a reported problem."""
+
+    branch = raw.get("branch")
+    if branch:
+        return str(branch), "branch"
+    path = raw.get("path")
+    if path:
+        return str(path), "path"
+    return f"record[{index}]", "record"
+
+
 def reported_problems(payload: Mapping[str, Any]) -> tuple[InventoryProblem, ...]:
     if "problems" not in payload:
         return ()
@@ -50,6 +62,11 @@ def reported_problems(payload: Mapping[str, Any]) -> tuple[InventoryProblem, ...
     for index, raw in enumerate(raw_problems):
         identity = raw.get("identity") if isinstance(raw, Mapping) else None
         reason = raw.get("reason") if isinstance(raw, Mapping) else None
+        record_status = (
+            raw.get("status")
+            if isinstance(raw, Mapping) and isinstance(raw.get("status"), str)
+            else None
+        )
         if (
             isinstance(identity, str)
             and identity.strip()
@@ -62,17 +79,20 @@ def reported_problems(payload: Mapping[str, Any]) -> tuple[InventoryProblem, ...
                     identity.strip(),
                     reason.strip(),
                     identity_kind=_reported_identity_kind(raw),
+                    record_status=record_status,
                 )
             )
             continue
         kind = raw.get("kind") if isinstance(raw, Mapping) else None
         record_index = raw.get("index") if isinstance(raw, Mapping) else None
         if isinstance(kind, str) and kind.strip():
-            problem_identity = (
-                f"record[{record_index}]"
-                if type(record_index) is int and record_index >= 0
-                else f"problem[{index}]"
-            )
+            if type(record_index) is int and record_index >= 0:
+                problem_identity, inferred_identity_kind = _reported_problem_identity(
+                    raw, record_index
+                )
+            else:
+                problem_identity = f"problem[{index}]"
+                inferred_identity_kind = _reported_identity_kind(raw)
             detail = kind.strip()
             if isinstance(reason, str) and reason.strip():
                 detail = f"{detail}: {reason.strip()}"
@@ -82,10 +102,9 @@ def reported_problems(payload: Mapping[str, Any]) -> tuple[InventoryProblem, ...
                     problem_identity,
                     detail,
                     identity_kind=(
-                        "record"
-                        if type(record_index) is int and record_index >= 0
-                        else _reported_identity_kind(raw)
+                        _reported_identity_kind(raw) or inferred_identity_kind
                     ),
+                    record_status=record_status,
                 )
             )
             continue

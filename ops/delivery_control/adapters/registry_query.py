@@ -23,6 +23,10 @@ from .registry_parsing import (
     reported_problems,
 )
 
+_COLLISION_TERMINAL_STATUSES = frozenset({"published", "merged", "abandoned"})
+_COLLISION_ACTIVE_STATUSES = frozenset({"active", "cleanup_pending"})
+_SCOPED_CLAIM_PROBLEM_PREFIX = "registry-claim-generation-invalid"
+
 
 def _registry_identity(raw: Mapping[str, Any], index: int) -> tuple[str, str]:
     """Return an identity and its source field without guessing later."""
@@ -97,7 +101,8 @@ def registry_inventory(payload: Mapping[str, Any]) -> RegistryInventory:
 
 def collision_inventory(payload: Mapping[str, Any]) -> RegistryCollisionInventory:
     records: list[RegistryCollisionClaim] = []
-    problems = list(reported_problems(payload))
+    reported = list(reported_problems(payload))
+    problems: list[InventoryProblem] = []
     for index, raw in enumerate(payload["records"]):
         if not isinstance(raw, Mapping):
             problems.append(
@@ -134,6 +139,22 @@ def collision_inventory(payload: Mapping[str, Any]) -> RegistryCollisionInventor
                     identity_kind=identity_kind,
                 )
             )
+    parsed_branches = {record.branch for record in records}
+    for problem in reported:
+        if problem.record_status in _COLLISION_TERMINAL_STATUSES:
+            continue
+        if (
+            problem.reason.startswith(_SCOPED_CLAIM_PROBLEM_PREFIX)
+            and problem.record_status in _COLLISION_ACTIVE_STATUSES
+            and problem.identity_kind == "branch"
+            and problem.identity in parsed_branches
+        ):
+            # The collision projection has independently recovered the exact
+            # branch and Scope. Claim-generation repair remains visible in the
+            # full registry inventory, but it must not become a global
+            # publisher blocker for disjoint lanes.
+            continue
+        problems.append(problem)
     return RegistryCollisionInventory(records=tuple(records), problems=tuple(problems))
 
 
