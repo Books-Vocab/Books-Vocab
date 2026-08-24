@@ -50,7 +50,7 @@ workflow `pr-gate` 的 check run `confidence` 失敗、非預期 skip、取消�
 
 Runtime receipt 的時間一致性也是 liveness evidence：若 `last_progress_at`／`observed_at` 晚於 watchdog 的 `now`，或 `last_progress_at` 晚於同一 receipt 的 `observed_at`，watchdog 必須回 `escalate` 且不產生 `wake_id`，要求外部 clock／runtime status audit；不得將不可信時間戳當成 healthy/noop 或直接建立 session。
 
-`watchdog` 與 `watchdog-claim` 都必須明確傳入 `--runtime-status-file`；省略這個 global option 是呼叫契約錯誤，不可被解讀成「receipt 缺失」。有 receipt path 但檔案不存在，才是可觀測的未知 receipt 狀態。
+`watchdog` 與 `watchdog-claim` 都必須明確傳入 `--runtime-status-file`；省略這個 global option 是呼叫契約錯誤，不可被解讀成「receipt 缺失」。兩個 subcommand 的 help 也會重複顯示這個 required global option 與「必須放在 subcommand 前」的順序，避免 caller 因 help 不完整而重試。有 receipt path 但檔案不存在，才是可觀測的未知 receipt 狀態。
 
 ### 先觀測，再執行 exact action
 
