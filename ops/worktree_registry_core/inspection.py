@@ -57,33 +57,46 @@ def conflicts(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def cmd_list(args: argparse.Namespace) -> int:
     target = state_path(args)
     state = load_state(target)
-    selected = [record for record in state["records"] if isinstance(record, dict)]
+    selected = [
+        (index, record)
+        for index, record in enumerate(state["records"])
+        if isinstance(record, dict)
+    ]
     if args.active_only:
         selected = [
-            record for record in selected if record.get("status") == STATUS_ACTIVE
+            (index, record)
+            for index, record in selected
+            if record.get("status") == STATUS_ACTIVE
         ]
     if args.branch:
         selected = [
-            record for record in selected if record.get("branch") == args.branch
+            (index, record)
+            for index, record in selected
+            if record.get("branch") == args.branch
         ]
     if args.path:
         selected = [
-            record for record in selected if record_matches(record, path=args.path)
+            (index, record)
+            for index, record in selected
+            if record_matches(record, path=args.path)
         ]
     if args.external_id:
         selected = [
-            record
-            for record in selected
+            (index, record)
+            for index, record in selected
             if args.external_id in _readable_external_ids(record)
         ]
+    selected_indexes = {index for index, _ in selected}
+    selected_records = [record for _, record in selected]
+    selected_problems = _problems_for_selection(state, selected_indexes)
     if args.conflicts:
         print(
             json.dumps(
                 {
                     "schema": SCHEMA,
                     "ledger": str(target),
-                    "conflicts": conflicts(selected),
-                    "problems": state.get("problems", []),
+                    "conflicts": conflicts(selected_records),
+                    "problems": selected_problems,
                 },
                 indent=2,
                 ensure_ascii=False,
@@ -96,19 +109,19 @@ def cmd_list(args: argparse.Namespace) -> int:
                 {
                     "schema": SCHEMA,
                     "ledger": str(target),
-                    "records": [record_view(record) for record in selected],
-                    "problems": state.get("problems", []),
+                    "records": [record_view(record) for record in selected_records],
+                    "problems": selected_problems,
                 },
                 indent=2,
                 ensure_ascii=False,
             )
         )
         return EXIT_OK
-    if not selected:
+    if not selected_records:
         print(f"(empty ledger: {target})")
         return EXIT_OK
     print("branch\texternal_ids\tstatus\tpath\tscope\tthread")
-    for record in selected:
+    for record in selected_records:
         print(
             "\t".join(
                 [
@@ -122,6 +135,32 @@ def cmd_list(args: argparse.Namespace) -> int:
             )
         )
     return EXIT_OK
+
+
+def _problems_for_selection(
+    state: dict[str, Any], selected_indexes: set[int]
+) -> list[dict[str, Any]]:
+    """Project record-scoped diagnostics with the same selector as records.
+
+    Unknown diagnostics remain visible because an unresolvable record identity
+    is itself a fail-closed fact.  Known record diagnostics follow the selected
+    record set, so ``--active-only`` does not present terminal history as an
+    active ownership problem.
+    """
+
+    records = state.get("records", [])
+    selected_problems: list[dict[str, Any]] = []
+    for problem in state.get("problems", []):
+        index = problem.get("index")
+        if (
+            type(index) is not int
+            or index < 0
+            or index >= len(records)
+            or not isinstance(records[index], dict)
+            or index in selected_indexes
+        ):
+            selected_problems.append(problem)
+    return selected_problems
 
 
 def _readable_external_ids(record: dict[str, Any]) -> list[str]:
