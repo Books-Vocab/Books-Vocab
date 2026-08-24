@@ -1168,14 +1168,32 @@ def _parser() -> argparse.ArgumentParser:
     pre.add_argument("--incoming-main")
     pre.set_defaults(func=cmd_preflight)
 
-    op = sub.add_parser("open", help="create a branch and linked worktree")
+    op = sub.add_parser(
+        "open",
+        help="create a branch and linked worktree",
+        epilog=(
+            "Owner-bound contract: when delegated mode is enabled with "
+            "--delegated or --codex-thread-id is supplied, provide at least "
+            "one --external-id with a non-blank value. This validation runs "
+            "before base resolution, registry, branch, or worktree mutation; "
+            "legacy non-owner open semantics are unchanged."
+        ),
+    )
     common(op)
     op.add_argument("--intent", required=True)
     op.add_argument("--slug", required=True)
     op.add_argument("--type", choices=BRANCH_TYPES)
     op.add_argument("--base", default=BASE_DEFAULT)
     op.add_argument("--path", default=None)
-    op.add_argument("--external-id", action="append", default=[])
+    op.add_argument(
+        "--external-id",
+        action="append",
+        default=[],
+        help=(
+            "durable lane identity; required and non-blank for delegated "
+            "or owner-bound open"
+        ),
+    )
     op.add_argument("--scope")
     op.add_argument("--scope-file")
     op.add_argument("--codex-thread-id")

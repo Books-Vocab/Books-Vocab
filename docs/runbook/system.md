@@ -27,6 +27,19 @@ verified_against: afe016c4ea2fcbd7306f9c4f40b4556e77865100
 3. 依 channel 和對象討論：IM channel 和派遣 IM 討論並 hand-back 給同一 IM；User channel 和 User 討論，hand-back 給指定 IM，未指定則先選定一個 IM。
 4. 建立 local commit 與 typed hand-back；Worker 不開 PR、不 push。PI 收到 hand-back 後立即以 exact HEAD 建立 durable PR，再釋放 local worktree／branch。
 
+#### Owner-bound open identity
+
+`worktree_orchestrate.py open` 的 delegated／owner-bound caller 必須提供至少一個非空白 `--external-id`：
+
+```bash
+./ops/worktree_orchestrate.py open \
+  --delegated --codex-thread-id <owner-thread> \
+  --external-id <durable-lane-id> \
+  --intent '<intent>' --slug <slug> --scope-file <scope.json>
+```
+
+當 `--delegated` 啟用或提供 `--codex-thread-id` 時，缺少或只有空白的 external identity 會在 base resolve、registry、branch 與 worktree mutation 之前 fail closed。沒有這些 owner-bound flags 的 legacy non-owner open 維持原語義。既有缺少 identity 的 terminal records 只作 audit evidence，不批次補寫、接管或刪除。
+
 ### GitHub Issue → Issue Solver
 
 適用於需要排序、Project／milestone、討論、拆解或長期追蹤的工作。
