@@ -292,12 +292,69 @@ def test_registry_adapter_preserves_malformed_active_owner_observation(
         script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
     ).list_records()
 
-    assert len(inventory.problems) == 2
+    # The low-level registry report and the delivery parser observe the same
+    # malformed claim.  The adapter must preserve that fact once, rather than
+    # counting the parser's equivalent exception as a second problem.
+    assert len(inventory.problems) == 1
     assert {problem.identity for problem in inventory.problems} == {branch}
     assert all(problem.record_status == "active" for problem in inventory.problems)
     assert all(problem.record_path == path.resolve() for problem in inventory.problems)
     assert {problem.owner_thread_id for problem in inventory.problems} == {
         owner_thread_id
+    }
+
+
+def test_registry_adapter_keeps_distinct_reported_facts_for_one_record(
+    tmp_path: Path,
+) -> None:
+    branch = "debug/malformed-multiple-facts"
+    record = {
+        "branch": branch,
+        "path": str(tmp_path / "malformed-multiple-facts"),
+        "status": "active",
+        "external_ids": ["DIRECT-MULTIPLE-FACTS"],
+        "base": "not-a-commit-sha",
+        "claim_generation": 0,
+    }
+    runner = StaticRunner(
+        [
+            CommandResult(
+                argv=("registry", "list"),
+                exit_code=0,
+                stdout=json.dumps(
+                    {
+                        "records": [record],
+                        "problems": [
+                            {
+                                "kind": "registry-record-missing-field",
+                                "index": 0,
+                                "branch": branch,
+                                "status": "active",
+                                "reason": "registry record is missing required field: scope",
+                            },
+                            {
+                                "kind": "registry-base-invalid",
+                                "index": 0,
+                                "branch": branch,
+                                "status": "active",
+                                "reason": "registry base must be an exact commit SHA",
+                            },
+                        ],
+                    }
+                ),
+                stderr="",
+            )
+        ]
+    )
+
+    inventory = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    ).list_records()
+
+    assert len(inventory.problems) == 2
+    assert {problem.reason for problem in inventory.problems} == {
+        "registry-record-missing-field: registry record is missing required field: scope",
+        "registry-base-invalid: registry base must be an exact commit SHA",
     }
 
 
