@@ -28,13 +28,14 @@ from delivery_control.domain.candidate_issues import (
     CandidateSeverity,
     CandidateSpec,
 )
-from delivery_control.domain.errors import CompareAndSwapConflict
+from delivery_control.domain.errors import CompareAndSwapConflict, PolicyViolation
 from delivery_control.domain.models import CheckStatus, Scope
 from delivery_control.domain.observations import (
     CanonicalCheckoutSnapshot,
     CheckSnapshot,
     FileChange,
     FileOperation,
+    InventoryProblem,
     MainLandingSnapshot,
     MergeQueueEntrySnapshot,
     PhysicalWorktree,
@@ -271,6 +272,8 @@ class FakeGit:
 class FakeGitHub:
     def __init__(self) -> None:
         self.pull_request: PullRequestSnapshot | None = None
+        self.branch_history: tuple[PullRequestSnapshot, ...] = ()
+        self.branch_inventory_problems: tuple[InventoryProblem, ...] = ()
         self.publish_base = BASE
         self.queue_entry: MergeQueueEntrySnapshot | None = None
         self.recent_merges: tuple[datetime, ...] = ()
@@ -287,7 +290,10 @@ class FakeGitHub:
     def list_pull_requests_for_branch(self, branch: str) -> PullRequestInventory:
         if self.pull_request is None or self.pull_request.branch != branch:
             return PullRequestInventory(())
-        return PullRequestInventory((self.pull_request,))
+        return PullRequestInventory(
+            self.branch_history + (self.pull_request,),
+            self.branch_inventory_problems,
+        )
 
     def trigger_readiness(
         self, *, number: int, branch: str, head_sha: str
@@ -404,6 +410,82 @@ class MemoryTelemetry:
 class FailingTelemetry(MemoryTelemetry):
     def append(self, sample: DurationSample) -> bool:
         raise OSError("telemetry disk unavailable")
+
+
+def _historical_pull_request(
+    *, number: int = 40, state: str = "MERGED"
+) -> PullRequestSnapshot:
+    return PullRequestSnapshot(
+        number=number,
+        url=f"https://example.test/pull/{number}",
+        branch=BRANCH,
+        base_sha=BASE,
+        head_sha="d" * 40,
+        state=state,
+        draft=False,
+        mergeable=True,
+        title="historical delivery",
+        body="historical delivery body",
+        node_id=f"PR_{number}",
+        created_at=EVENT_START.replace(second=10),
+        merged_at=EVENT_START.replace(second=20) if state == "MERGED" else None,
+    )
+
+
+def _application(
+    registry: FakeRegistry, git: FakeGit, github: FakeGitHub
+) -> DeliveryApplication:
+    return DeliveryApplication(
+        repo=Path("/repo"),
+        git=git,
+        github=github,
+        registry=registry,
+        runtime=RuntimeStatusMap({"thread-cli": "running"}),
+        telemetry=MemoryTelemetry(),
+    )
+
+
+def test_publish_ignores_merged_branch_history_for_published_base() -> None:
+    registry = FakeRegistry()
+    git = FakeGit()
+    github = FakeGitHub()
+    github.branch_history = (_historical_pull_request(),)
+
+    _application(registry, git, github).publish(
+        lane_id="DIRECT-CLI", title="fix: exact delivery"
+    )
+
+    assert registry.record.published_base_sha == BASE
+
+
+def test_publish_rejects_multiple_current_open_branch_prs() -> None:
+    registry = FakeRegistry()
+    git = FakeGit()
+    github = FakeGitHub()
+    github.branch_history = (_historical_pull_request(state="OPEN"),)
+
+    with pytest.raises(
+        PolicyViolation, match="published branch does not map to one unique PR"
+    ):
+        _application(registry, git, github).publish(
+            lane_id="DIRECT-CLI", title="fix: exact delivery"
+        )
+
+
+def test_publish_rejects_branch_history_inventory_problems() -> None:
+    registry = FakeRegistry()
+    git = FakeGit()
+    github = FakeGitHub()
+    github.branch_inventory_problems = (
+        InventoryProblem("github", BRANCH, "history page unavailable"),
+    )
+
+    with pytest.raises(
+        PolicyViolation, match="published branch does not map to one unique PR"
+    ):
+        _application(registry, git, github).publish(
+            lane_id="DIRECT-CLI", title="fix: exact delivery"
+        )
 
 
 def test_publish_command_makes_github_durable_then_releases_local_assets() -> None:
