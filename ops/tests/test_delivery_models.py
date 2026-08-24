@@ -11,19 +11,21 @@ sys.path.insert(0, str(OPS))
 
 from delivery_control.domain import (
     handback_models,
-    models as models_facade,
     scope_models,
     terminal_proof_models,
     validation_models,
 )
+from delivery_control.domain import (
+    models as models_facade,
+)
 from delivery_control.domain.errors import InvalidReceipt, InvalidScope
 from delivery_control.domain.models import (
-    CheckStatus,
     HANDBACK_SCHEMA,
+    SCOPE_SCHEMA,
+    CheckStatus,
     HandbackOutcome,
     HandbackReceipt,
     MergedPullRequestProof,
-    SCOPE_SCHEMA,
     Scope,
     ScopeFile,
     ScopeOperation,
@@ -166,6 +168,12 @@ def test_handback_receipt_round_trips_as_typed_canonical_payload() -> None:
         "ops/tests/test_a.py",
     ]
     assert HandbackReceipt.from_payload(payload) == receipt
+
+
+@pytest.mark.parametrize("payload", [[], "not-an-object", None])
+def test_handback_receipt_rejects_non_object_payloads(payload: object) -> None:
+    with pytest.raises(InvalidReceipt, match="handback receipt"):
+        HandbackReceipt.from_payload(payload)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(

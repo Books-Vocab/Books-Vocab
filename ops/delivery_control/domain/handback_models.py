@@ -94,6 +94,8 @@ class HandbackReceipt:
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any]) -> HandbackReceipt:
+        if not isinstance(payload, Mapping):
+            raise InvalidReceipt("handback receipt payload must be an object")
         if payload.get("schema") != HANDBACK_SCHEMA:
             raise InvalidReceipt(f"handback schema must be {HANDBACK_SCHEMA}")
         try:
