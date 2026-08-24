@@ -38,6 +38,8 @@ class BranchAuditAction:
     orphan_preflight: OrphanBranchPreflight | None = None
     review_command: str | None = None
     owner_thread_ids: tuple[str, ...] = ()
+    paired_ref_side: BranchSide | None = None
+    paired_ref_sha: str | None = None
 
 
 @dataclass(frozen=True)
@@ -459,6 +461,19 @@ def _action_for_asset(
     )
 
 
+def _with_paired_ref(
+    action: BranchAuditAction,
+    asset: BranchAsset,
+) -> BranchAuditAction:
+    """Add exact sibling-ref evidence without changing the action semantics."""
+
+    return replace(
+        action,
+        paired_ref_side=asset.paired_ref_side,
+        paired_ref_sha=asset.paired_ref_sha,
+    )
+
+
 def build_branch_audit(
     inventory: DeliveryInventory,
     *,
@@ -496,7 +511,10 @@ def build_branch_audit(
         if problem.source == "registry" and problem.record_status is not None
     )
     actions = tuple(
-        _action_for_asset(asset, orphan_preflight=preflights.get(asset.branch))
+        _with_paired_ref(
+            _action_for_asset(asset, orphan_preflight=preflights.get(asset.branch)),
+            asset,
+        )
         for asset in assets
     )
     complete = (

@@ -164,6 +164,42 @@ def test_branch_audit_exposes_owner_evidence_for_owner_lane() -> None:
     assert report.assets[0].owner_thread_ids == (owner_thread_id,)
 
 
+def test_branch_audit_action_preserves_exact_pair_without_changing_disposition() -> (
+    None
+):
+    lifecycle = project_branch_lifecycle(
+        branch_inventory=BranchInventory(
+            local=(("feat/audit-pair", SHA_A),),
+            remote=(("feat/audit-pair", SHA_B),),
+        )
+    )
+    inventory = DeliveryInventory(
+        lanes=(),
+        branch_lifecycle=lifecycle,
+        live_main_sha=SHA_A,
+        local_main_sha=SHA_A,
+    )
+
+    report = build_branch_audit(inventory)
+
+    local_action = next(
+        item for item in report.actions if item.side is BranchSide.LOCAL
+    )
+    remote_action = next(
+        item for item in report.actions if item.side is BranchSide.REMOTE
+    )
+    assert (local_action.paired_ref_side, local_action.paired_ref_sha) == (
+        BranchSide.REMOTE,
+        SHA_B,
+    )
+    assert (remote_action.paired_ref_side, remote_action.paired_ref_sha) == (
+        BranchSide.LOCAL,
+        SHA_A,
+    )
+    assert local_action.disposition is BranchDisposition.ORPHAN_LOCAL_RECONCILE
+    assert remote_action.disposition is BranchDisposition.ORPHAN_REMOTE_RECONCILE
+
+
 def test_branch_asset_exposes_complete_registry_evidence() -> None:
     record = RegistrySnapshot(
         lane_id="LANE-EVIDENCE",

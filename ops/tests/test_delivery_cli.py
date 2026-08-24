@@ -952,6 +952,8 @@ def test_cli_serializes_additive_branch_registry_evidence(capsys: object) -> Non
         cleanup_action=BranchCleanupAction.FOLLOW_OWNER_LANE,
         reason="owned lane",
         registry_evidence=(evidence,),
+        paired_ref_side=BranchSide.LOCAL,
+        paired_ref_sha=BASE,
     )
 
     class FakeApplication:
@@ -978,6 +980,9 @@ def test_cli_serializes_additive_branch_registry_evidence(capsys: object) -> Non
     assert serialized["published_base_sha"] == HEAD
     assert serialized["owner_thread_id"] is None
     assert serialized["external_ids"] == []
+    asset_serialized = payload["result"]["assets"][0]
+    assert asset_serialized["paired_ref_side"] == "local"
+    assert asset_serialized["paired_ref_sha"] == BASE
 
 
 def test_cli_marks_incomplete_branch_audit_as_observation_without_transport_error(

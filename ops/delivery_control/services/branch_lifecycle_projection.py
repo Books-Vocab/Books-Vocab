@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 
 from ..domain.branch_lifecycle import (
@@ -378,18 +379,37 @@ def project_branch_lifecycle(
         (BranchSide.REMOTE, branch_inventory.remote),
     ):
         for branch, sha in refs:
-            assets.append(
-                _project_asset(
-                    branch=branch,
-                    side=side,
-                    sha=sha,
-                    records=records_by_branch.get(branch, ()),
-                    pull_requests=prs_by_branch.get(branch, ()),
-                    physical=physical_by_branch.get(branch, ()),
-                    snapshots=snapshots,
-                    protected_branches=protected_branches,
-                )
+            asset = _project_asset(
+                branch=branch,
+                side=side,
+                sha=sha,
+                records=records_by_branch.get(branch, ()),
+                pull_requests=prs_by_branch.get(branch, ()),
+                physical=physical_by_branch.get(branch, ()),
+                snapshots=snapshots,
+                protected_branches=protected_branches,
             )
+            opposite_refs = (
+                branch_inventory.remote
+                if side is BranchSide.LOCAL
+                else branch_inventory.local
+            )
+            matches = tuple(
+                candidate_sha
+                for candidate_branch, candidate_sha in opposite_refs
+                if candidate_branch == branch
+            )
+            if len(matches) == 1:
+                asset = replace(
+                    asset,
+                    paired_ref_side=(
+                        BranchSide.REMOTE
+                        if side is BranchSide.LOCAL
+                        else BranchSide.LOCAL
+                    ),
+                    paired_ref_sha=matches[0],
+                )
+            assets.append(asset)
     return BranchLifecycleInventory(assets=tuple(assets))
 
 
