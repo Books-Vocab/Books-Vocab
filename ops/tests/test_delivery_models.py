@@ -11,19 +11,21 @@ sys.path.insert(0, str(OPS))
 
 from delivery_control.domain import (
     handback_models,
-    models as models_facade,
     scope_models,
     terminal_proof_models,
     validation_models,
 )
+from delivery_control.domain import (
+    models as models_facade,
+)
 from delivery_control.domain.errors import InvalidReceipt, InvalidScope
 from delivery_control.domain.models import (
-    CheckStatus,
     HANDBACK_SCHEMA,
+    SCOPE_SCHEMA,
+    CheckStatus,
     HandbackOutcome,
     HandbackReceipt,
     MergedPullRequestProof,
-    SCOPE_SCHEMA,
     Scope,
     ScopeFile,
     ScopeOperation,
