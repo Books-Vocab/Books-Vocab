@@ -72,11 +72,13 @@ def _watchdog_runtime_status_epilog(command: str) -> str:
     if command == "watchdog":
         return (
             f"{runtime_status_contract} This is a read-only observation; "
-            "exit 0 does not authorize wake or dispatch."
+            "verdict=observation, dispatch_authorized=false, exit 2; "
+            "it never authorizes wake or dispatch; must not retry or wake."
         )
     return (
         f"{runtime_status_contract} only "
-        "verdict=wake-authorized, action=wake, wake_claimed=true may exit 0 "
+        "verdict=wake-authorized, action=wake, wake_claimed=true, "
+        "dispatch_authorized=true may exit 0 "
         "and authorize one session; "
         "noop/escalate/wake_claimed=false/claim conflict are valid no-wake "
         "observations with ok=true, verdict=no-wake, exit 2; "
@@ -553,6 +555,8 @@ def _runtime_timestamp(value: str | None, name: str) -> datetime | None:
 
 
 def _result_exit_code(command: str, result: object) -> int:
+    if command == "watchdog":
+        return 2
     if command == "watchdog-claim":
         return 0 if _watchdog_dispatch_authorized(result) else 2
     # These commands are read-only evidence surfaces.  An incomplete audit
@@ -632,6 +636,10 @@ def main(
         "verdict": _command_verdict(args.command, result),
         "result": _jsonable(result),
     }
+    if args.command == "watchdog":
+        payload["dispatch_authorized"] = False
+    elif args.command == "watchdog-claim":
+        payload["dispatch_authorized"] = _watchdog_dispatch_authorized(result)
     try:
         print(
             json.dumps(
@@ -656,6 +664,8 @@ def main(
 def _command_verdict(command: str, result: object) -> str:
     """Expose domain incompleteness separately from command transport success."""
 
+    if command == "watchdog":
+        return "observation"
     if command == "watchdog-claim":
         return "wake-authorized" if _watchdog_dispatch_authorized(result) else "no-wake"
     if command in {
