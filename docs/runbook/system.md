@@ -120,9 +120,12 @@ Candidate Issue body 先由 deterministic contract 產生並重驗：
 ```bash
 ./ops/worktree_orchestrate.py resume-published --lane <lane> --branch <branch> --owner-thread-id <thread> --claim-generation <generation> --expected-remote-head <sha> --path <new-path>
 ./ops/worktree_orchestrate.py reanchor --merge-front-pr <number> --lane <lane> --branch <branch> --owner-thread-id <thread> --claim-generation <generation> --expected-remote-head <sha> --live-main <sha> --path <new-path>
+./ops/worktree_orchestrate.py recover-published-remote --pr <number> --lane <lane> --branch <branch> --owner-thread-id <thread> --claim-generation <generation> --expected-base <sha> --expected-head <sha> --path <new-path>
 ```
 
 兩者都只做 exact same-owner local lifecycle transition，不操作 GitHub、不測試、不 hand-back、不 push；`resume-published` 保留 original recorded base，`reanchor` 以 `published_base_sha` 證明目前 PR 的既有 target 觀測，再把新的 owner generation 改用仍通過 remote CAS 的 live main。這兩個 base 不得混寫：原始 `base_sha` 保留 hand-back provenance，`published_base_sha` 只描述 GitHub PR target。owner 修復／rebase後必須重新 commit（若有變更）與 typed hand-back，PI 再更新同一 PR。
+
+`recover-published-remote` 是與 `resume-published` 分離的窄 transaction，只處理唯一 `published`／`cleanup_pending` claim 的 remote branch 明確遺失。它必須帶一個明確 PR number，先以 immutable PR HEAD ref（`refs/pull/<number>/head`）取得 exact commit，再重讀 owner、generation、typed handback seal、base／HEAD／body／Scope／digest、PR history、native queue、hold 與 live `origin/main`。只有 remote ref 仍為空時，才以 `--force-with-lease=<ref>:` 建立 exact branch；push command 成功即記錄為本次 attempt-owned，後續 readback 若失敗則只對仍是 exact HEAD 的本次資產做 CAS compensation，遇到 race ref 絕不刪除。成功後立即驗證 remote SHA 與 PR readback，最後移除本次建立的 temporary worktree／local branch。它不遞增 registry generation、不替換 claim、不修改 PR/body/labels；任何 race、drift 或 readback／compensation failure 都 fail closed。
 
 PR readiness workflow 的 parser 入口是：
 

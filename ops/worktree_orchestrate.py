@@ -36,6 +36,7 @@ if str(OPS_DIR) not in sys.path:
 
 import worktree_cleanup
 import worktree_reanchor
+import worktree_reanchor_core.published_remote_recovery as worktree_published_remote_recovery
 import worktree_registry as registry
 import worktree_resume
 from delivery_control.adapters.operation_lock import OperationLock
@@ -51,7 +52,16 @@ EXIT_OK = 0
 EXIT_BLOCK = 1
 EXIT_USAGE = 64
 MUTATING_COMMANDS = frozenset(
-    {"open", "adopt", "reanchor", "resume-published", "hand-back", "resolve", "freeze"}
+    {
+        "open",
+        "adopt",
+        "reanchor",
+        "resume-published",
+        "recover-published-remote",
+        "hand-back",
+        "resolve",
+        "freeze",
+    }
 )
 
 
@@ -415,6 +425,12 @@ def cmd_reanchor(args: argparse.Namespace) -> int:
 def cmd_resume_published(args: argparse.Namespace) -> int:
     return worktree_resume.cmd_resume(
         args, freeze_reason=_require_unfrozen("resume-published")
+    )
+
+
+def cmd_recover_published_remote(args: argparse.Namespace) -> int:
+    return worktree_published_remote_recovery.cmd_recover(
+        args, freeze_reason=_require_unfrozen("recover-published-remote")
     )
 
 
@@ -1217,6 +1233,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     worktree_resume.add_parser(
         sub, common=common, handler=cmd_resume_published, default_repo=ROOT
+    )
+    worktree_published_remote_recovery.add_parser(
+        sub, common=common, handler=cmd_recover_published_remote, default_repo=ROOT
     )
 
     gate = sub.add_parser("gate", help="run focused local checks for changed files")
