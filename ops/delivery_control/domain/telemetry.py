@@ -133,6 +133,8 @@ class DurationSample:
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any]) -> DurationSample:
+        if not isinstance(payload, Mapping):
+            raise InvalidTelemetry("telemetry payload must be an object")
         try:
             if payload.get("schema") != TELEMETRY_SCHEMA:
                 raise InvalidTelemetry(f"telemetry schema must be {TELEMETRY_SCHEMA}")
