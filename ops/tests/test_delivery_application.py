@@ -8,38 +8,47 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import pytest
+
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.adapters.registry import RegistryCliAdapter  # noqa: E402
-from delivery_control.adapters.telemetry_ndjson import TelemetryNdjsonAdapter  # noqa: E402
-from delivery_control.domain.candidate_issues import (  # noqa: E402
+from delivery_control.adapters.registry import RegistryCliAdapter
+from delivery_control.adapters.telemetry_ndjson import (
+    TelemetryNdjsonAdapter,
+)
+from delivery_control.application import (
+    DeliveryApplication,
+    build_application,
+)
+from delivery_control.controller.dogfood import DogfoodProfile
+from delivery_control.controller.metrics import MergeCadence
+from delivery_control.domain.branch_content import (
+    BRANCH_REVIEW_PATH_LIMIT,
+    BranchContentEvidence,
+)
+from delivery_control.domain.branch_lifecycle import BranchSide
+from delivery_control.domain.candidate_issues import (
     CANDIDATE_ISSUE_LABEL,
     CandidateSeverity,
     CandidateSpec,
 )
-from delivery_control.application import DeliveryApplication, build_application  # noqa: E402
-from delivery_control.controller.dogfood import DogfoodProfile  # noqa: E402
-from delivery_control.controller.metrics import MergeCadence  # noqa: E402
-from delivery_control.domain.branch_content import (  # noqa: E402
-    BRANCH_REVIEW_PATH_LIMIT,
-    BranchContentEvidence,
-)
-from delivery_control.domain.branch_lifecycle import BranchSide  # noqa: E402
-from delivery_control.domain.demand_issues import (  # noqa: E402
+from delivery_control.domain.demand_issues import (
     DemandIssue,
     DemandIssueInventory,
     IssueDisposition,
     issue_body_sha256,
 )
-from delivery_control.domain.models import Scope  # noqa: E402
-from delivery_control.domain.observations import (  # noqa: E402
+from delivery_control.domain.models import Scope
+from delivery_control.domain.observations import (
     PullRequestInventory,
     RegistryCollisionInventory,
 )
-from delivery_control.services.branch_content import BranchContentService  # noqa: E402
-from delivery_control.services.inspect import DeliveryInventory  # noqa: E402
-from delivery_control.services.candidate_contract import render_candidate_body  # noqa: E402
+from delivery_control.services.branch_content import BranchContentService
+from delivery_control.services.candidate_contract import (
+    render_candidate_body,
+)
+from delivery_control.services.inspect import DeliveryInventory
 
 
 def test_admit_candidate_retries_an_already_converged_candidate_without_mutation(
@@ -676,3 +685,55 @@ def test_inspect_forwards_supervision_worktree_paths(tmp_path: Path) -> None:
     assert service.return_value.inspect.call_args.kwargs[
         "supervision_worktree_paths"
     ] == (Path("/supervision"),)
+
+
+@pytest.mark.parametrize("max_paths", (0, 21, 10**9, 1.5, True))
+def test_branch_content_review_rejects_overlarge_path_samples(
+    max_paths: object,
+) -> None:
+    evidence = BranchContentEvidence(
+        schema="kg.delivery.branch-content.v1",
+        branch="backup/orphan",
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+        base_is_ancestor=False,
+        ahead_commit_count=1,
+        behind_commit_count=0,
+        changed_paths=tuple(f"file-{index:02d}.txt" for index in range(25)),
+        changed_path_count=25,
+        changed_paths_truncated=False,
+        change_fingerprint="c" * 64,
+        commit_subjects=("feature",),
+        commit_subjects_truncated=False,
+        complete=True,
+    )
+
+    with pytest.raises(ValueError, match="between 1 and 20"):
+        BranchContentService.compact_for_review(evidence, max_paths=max_paths)
+
+
+def test_branch_content_review_preserves_valid_bounded_samples() -> None:
+    evidence = BranchContentEvidence(
+        schema="kg.delivery.branch-content.v1",
+        branch="backup/orphan",
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+        base_is_ancestor=False,
+        ahead_commit_count=1,
+        behind_commit_count=0,
+        changed_paths=tuple(f"file-{index:02d}.txt" for index in range(25)),
+        changed_path_count=25,
+        changed_paths_truncated=False,
+        change_fingerprint="c" * 64,
+        commit_subjects=("feature",),
+        commit_subjects_truncated=False,
+        complete=True,
+    )
+
+    one = BranchContentService.compact_for_review(evidence, max_paths=1)
+    twenty = BranchContentService.compact_for_review(evidence, max_paths=20)
+
+    assert len(one.changed_paths) == 1
+    assert len(twenty.changed_paths) == 20
+    assert one.changed_path_count == twenty.changed_path_count == 25
+    assert one.change_fingerprint == twenty.change_fingerprint == "c" * 64

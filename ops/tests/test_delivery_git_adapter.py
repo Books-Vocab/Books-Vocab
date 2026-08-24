@@ -745,6 +745,55 @@ def test_git_parsers_normalize_payloads_without_a_runner(tmp_path: Path) -> None
     )
 
 
+@pytest.mark.parametrize("max_commit_summaries", (0, 21, 10**9, 1.5, True))
+def test_git_adapter_rejects_overlarge_commit_summary_requests(
+    tmp_path: Path,
+    max_commit_summaries: object,
+) -> None:
+    runner = StaticRunner([])
+    adapter = GitCliAdapter(repo=tmp_path, runner=runner)
+
+    with pytest.raises(AdapterPayloadError, match="between 1 and 20"):
+        adapter.inspect_branch_content(
+            branch="backup/orphan",
+            base_sha="a" * 40,
+            max_commit_summaries=max_commit_summaries,
+        )
+
+    assert runner.calls == []
+
+
+def test_git_adapter_preserves_valid_commit_summary_bounds(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test")
+    (repo / "README").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README")
+    _git(repo, "commit", "-qm", "base")
+    base_sha = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-qc", "backup/orphan")
+    (repo / "README").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "README")
+    _git(repo, "commit", "-qm", "feature")
+
+    adapter = GitCliAdapter(repo=repo)
+    one = adapter.inspect_branch_content(
+        branch="backup/orphan",
+        base_sha=base_sha,
+        max_commit_summaries=1,
+    )
+    twenty = adapter.inspect_branch_content(
+        branch="backup/orphan",
+        base_sha=base_sha,
+        max_commit_summaries=20,
+    )
+
+    assert one.commit_subjects == twenty.commit_subjects == ("feature",)
+    assert one.changed_paths == twenty.changed_paths == ("README",)
+
+
 class StaticRunner:
     def __init__(self, responses: list[CommandResult]) -> None:
         self.responses = list(responses)
