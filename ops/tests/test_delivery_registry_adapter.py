@@ -627,6 +627,46 @@ def test_active_claim_does_not_fallback_from_legacy_base_alias(
         ).find_terminal_claim(branch="feat/legacy-terminal")
 
 
+def test_abandoned_seal_without_handback_generation_uses_claim_generation(
+    tmp_path: Path,
+) -> None:
+    abandoned = _legacy_terminal_with_exact_seal_base(tmp_path)
+    abandoned.pop("handback_claim_generation")
+
+    record = RegistryCliAdapter._record(abandoned)
+
+    assert record.handback_claim_generation is None
+    assert record.handback_valid
+
+
+@pytest.mark.parametrize("status", ("active", "published"))
+def test_non_abandoned_seal_without_handback_generation_stays_invalid(
+    tmp_path: Path,
+    status: str,
+) -> None:
+    record_payload = _legacy_terminal_with_exact_seal_base(tmp_path)
+    record_payload.pop("handback_claim_generation")
+    record_payload["status"] = status
+    record_payload["base_sha"] = "a" * 40
+
+    record = RegistryCliAdapter._record(record_payload)
+
+    assert not record.handback_valid
+
+
+@pytest.mark.parametrize("handback_generation", (1, None))
+def test_abandoned_seal_with_mismatched_handback_generation_stays_invalid(
+    tmp_path: Path,
+    handback_generation: int | None,
+) -> None:
+    abandoned = _legacy_terminal_with_exact_seal_base(tmp_path)
+    abandoned["handback_claim_generation"] = handback_generation
+
+    record = RegistryCliAdapter._record(abandoned)
+
+    assert not record.handback_valid
+
+
 def test_collision_inventory_blocks_active_record_with_unusable_scope(
     tmp_path: Path,
 ) -> None:

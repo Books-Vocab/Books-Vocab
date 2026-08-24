@@ -47,7 +47,24 @@ def legacy_seal_valid(record: Mapping[str, Any]) -> bool:
         return False
     if seal.get("handed_back_at") != record.get("handed_back_at"):
         return False
-    if record.get("claim_generation") != record.get("handback_claim_generation"):
+    claim_generation = record.get("claim_generation")
+    handback_claim_generation = record.get("handback_claim_generation")
+    if "handback_claim_generation" not in record:
+        # Historical abandoned records predate this field; their immutable
+        # seal and claim generation are the only available CAS identity.
+        if (
+            record.get("status") != "abandoned"
+            or type(claim_generation) is not int
+            or claim_generation < 0
+        ):
+            return False
+    elif (
+        type(claim_generation) is not int
+        or claim_generation < 0
+        or type(handback_claim_generation) is not int
+        or handback_claim_generation < 0
+        or handback_claim_generation != claim_generation
+    ):
         return False
     outcomes = seal.get("outcomes")
     return isinstance(outcomes, list) and not any(
