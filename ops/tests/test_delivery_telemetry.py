@@ -305,8 +305,7 @@ def test_sync_records_every_first_parent_landing_by_exact_merge_sha(
     git = _LandingGit(
         origin_sha=second,
         history=(
-            f"{first}\t2026-08-21T11:59:20+00:00\n"
-            f"{second}\t2026-08-21T11:59:50+00:00"
+            f"{first}\t2026-08-21T11:59:20+00:00\n{second}\t2026-08-21T11:59:50+00:00"
         ),
     )
     store = TelemetryNdjsonAdapter(tmp_path / "telemetry.ndjson")
@@ -317,15 +316,11 @@ def test_sync_records_every_first_parent_landing_by_exact_merge_sha(
         clock=lambda: now,
     )
 
-    warnings = operations.after_sync(
-        MainSyncResult("a" * 40, second, second, True)
-    )
+    warnings = operations.after_sync(MainSyncResult("a" * 40, second, second, True))
     result = store.read_since(now - timedelta(hours=1))
 
     assert warnings == ()
-    assert {
-        sample.subject: sample.duration_seconds for sample in result.samples
-    } == {
+    assert {sample.subject: sample.duration_seconds for sample in result.samples} == {
         main_subject(origin_main_sha=first): 40.0,
         main_subject(origin_main_sha=second): 10.0,
     }
@@ -353,9 +348,7 @@ def test_sync_surfaces_incomplete_landing_history_instead_of_dropping_samples(
         clock=lambda: now,
     )
 
-    warnings = operations.after_sync(
-        MainSyncResult("a" * 40, origin, origin, True)
-    )
+    warnings = operations.after_sync(MainSyncResult("a" * 40, origin, origin, True))
 
     assert [warning.code for warning in warnings] == [
         "telemetry_merge_history_incomplete"
@@ -389,11 +382,7 @@ def test_sync_without_git_history_never_silently_collapses_multiple_landings(
         clock=lambda: now,
     )
 
-    warnings = operations.after_sync(
-        MainSyncResult("a" * 40, origin, origin, True)
-    )
+    warnings = operations.after_sync(MainSyncResult("a" * 40, origin, origin, True))
 
-    assert [warning.code for warning in warnings] == [
-        "telemetry_source_read_failed"
-    ]
+    assert [warning.code for warning in warnings] == ["telemetry_source_read_failed"]
     assert store.read_since(now - timedelta(hours=1)).samples == ()
