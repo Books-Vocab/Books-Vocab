@@ -42,6 +42,10 @@ class DemandIssue:
     candidate_spec: CandidateSpec | None = None
     mapped_external_ids: tuple[str, ...] = ()
     mapped_pull_request_numbers: tuple[int, ...] = ()
+    # A malformed active registry record can still be joined by its explicit
+    # external ID for audit. This is intentionally separate from valid lane
+    # mappings and never authorizes owner recovery or dispatch.
+    malformed_active_registry_external_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if type(self.number) is not int or self.number <= 0:
@@ -75,6 +79,13 @@ class DemandIssue:
             for item in self.mapped_pull_request_numbers
         ):
             raise TypeError("Issue pull request mappings must be positive integers")
+        if type(self.malformed_active_registry_external_ids) is not tuple or any(
+            type(item) is not str or not item.strip()
+            for item in self.malformed_active_registry_external_ids
+        ):
+            raise TypeError(
+                "Malformed registry Issue references must be canonical text"
+            )
         if self.updated_at is not None and (
             not isinstance(self.updated_at, datetime)
             or self.updated_at.utcoffset() is None
@@ -91,6 +102,11 @@ class DemandIssue:
             self,
             "mapped_pull_request_numbers",
             tuple(sorted(set(self.mapped_pull_request_numbers))),
+        )
+        object.__setattr__(
+            self,
+            "malformed_active_registry_external_ids",
+            tuple(sorted(set(self.malformed_active_registry_external_ids))),
         )
 
     @property

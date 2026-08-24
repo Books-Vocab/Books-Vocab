@@ -302,6 +302,9 @@ def test_registry_adapter_preserves_malformed_active_owner_observation(
     assert {problem.owner_thread_id for problem in inventory.problems} == {
         owner_thread_id
     }
+    assert {problem.record_external_ids for problem in inventory.problems} == {
+        ("DIRECT-1",)
+    }
 
 
 def test_registry_adapter_keeps_distinct_reported_facts_for_one_record(
@@ -405,6 +408,7 @@ def test_registry_adapter_surfaces_reported_problems_and_unknown_statuses(
             "record[0]",
             "registry-record-not-object",
             identity_kind="record",
+            record_external_ids=("#unknown",),
         ),
         InventoryProblem(
             "registry",
@@ -412,6 +416,7 @@ def test_registry_adapter_surfaces_reported_problems_and_unknown_statuses(
             "unsupported registry status: 'legacy-migrating'",
             identity_kind="branch",
             record_status="legacy-migrating",
+            record_external_ids=("#unknown",),
         ),
     )
 

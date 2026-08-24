@@ -84,6 +84,7 @@ class PipelineMetrics:
     legacy_open_issues: int = 0
     issues_with_active_claim: int = 0
     issues_with_published_pr: int = 0
+    issues_with_malformed_active_claim: int = 0
     issue_source_problems: int = 0
     issue_inventory_complete: bool = False
     clean_unregistered_worktrees: int = 0
@@ -473,6 +474,10 @@ def measure_pipeline(
         ),
         issues_with_published_pr=inventory.demand_issues.count(
             IssueDisposition.PUBLISHED_PR
+        ),
+        issues_with_malformed_active_claim=sum(
+            bool(issue.malformed_active_registry_external_ids)
+            for issue in inventory.demand_issues.records
         ),
         issue_source_problems=(issue_source_problems + issue_inventory_problem),
         issue_inventory_complete=inventory.demand_issues.complete,

@@ -20,6 +20,7 @@ from .errors import AdapterCommandError, AdapterPayloadError
 from .registry_parsing import (
     parse_collision_claim,
     parse_registry_record,
+    record_external_ids,
     reported_problems,
 )
 
@@ -137,6 +138,7 @@ def registry_inventory(payload: Mapping[str, Any]) -> RegistryInventory:
                     and raw_owner.strip()
                     else None
                 ),
+                record_external_ids=record_external_ids(raw),
             )
             if not _reported_problem_covers(problems, candidate):
                 problems.append(candidate)

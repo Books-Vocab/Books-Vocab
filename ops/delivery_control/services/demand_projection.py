@@ -12,6 +12,7 @@ from ..domain.demand_issues import (
     IssueDisposition,
 )
 from ..domain.observations import (
+    InventoryProblem,
     PullRequestSnapshot,
     RegistrySnapshot,
 )
@@ -24,6 +25,7 @@ _HOLD_LABELS = {
     "delivery-hold:security",
     "security",
 }
+_MALFORMED_LIVE_REGISTRY_STATUSES = frozenset({"active", "cleanup_pending"})
 
 
 def _references_issue(value: str, number: int) -> bool:
@@ -89,6 +91,24 @@ def _mapped_prs(
     )
 
 
+def _malformed_active_registry_external_ids(
+    issue: DemandIssue,
+    problems: Iterable[InventoryProblem],
+) -> tuple[str, ...]:
+    return tuple(
+        sorted(
+            {
+                external_id
+                for problem in problems
+                if problem.source == "registry"
+                and problem.record_status in _MALFORMED_LIVE_REGISTRY_STATUSES
+                for external_id in problem.record_external_ids
+                if _references_issue(external_id, issue.number)
+            }
+        )
+    )
+
+
 def _source_problem_issue_numbers(inventory: DemandIssueInventory) -> frozenset[int]:
     """Return every Issue number implicated by a malformed raw entry.
 
@@ -117,6 +137,7 @@ def project_demand_inventory(
     *,
     registry_records: tuple[RegistrySnapshot, ...] = (),
     pull_requests: tuple[PullRequestSnapshot, ...] = (),
+    registry_problems: tuple[InventoryProblem, ...] = (),
 ) -> DemandIssueInventory:
     """Apply a stable precedence so every parsed Issue has one disposition."""
 
@@ -132,6 +153,9 @@ def project_demand_inventory(
         )
         mapped_pull_request_numbers = tuple(
             pull_request.number for pull_request in mapped_prs
+        )
+        malformed_active_registry_external_ids = (
+            _malformed_active_registry_external_ids(issue, registry_problems)
         )
         if issue.number in source_problem_numbers:
             disposition = IssueDisposition.SOURCE_PROBLEM
@@ -191,6 +215,9 @@ def project_demand_inventory(
                 candidate_spec=issue.candidate_spec,
                 mapped_external_ids=mapped_external_ids,
                 mapped_pull_request_numbers=mapped_pull_request_numbers,
+                malformed_active_registry_external_ids=(
+                    malformed_active_registry_external_ids
+                ),
             )
         )
     return DemandIssueInventory(
