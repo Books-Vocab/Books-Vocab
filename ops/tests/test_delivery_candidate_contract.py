@@ -28,6 +28,11 @@ def _spec() -> CandidateSpec:
     )
 
 
+def test_candidate_spec_from_payload_none_currently_leaks_type_error() -> None:
+    with pytest.raises(TypeError):
+        CandidateSpec.from_payload(None)  # type: ignore[arg-type]
+
+
 def test_candidate_body_round_trips_exact_metadata() -> None:
     spec = _spec()
 
