@@ -72,6 +72,7 @@ if [[ ! "$MAX_TEST_EXECUTION_TIME_ALLOWANCE" =~ ^[0-9]+$ || "$MAX_TEST_EXECUTION
   exit 64
 fi
 LEASED_DEVICE=''                            # udid of an auto-leased simulator, released in cleanup
+RESOLVED_DEVICE_UDID=''                     # exact UDID returned by simulator ensure-booted
 LEASE_OWNER_TOKEN="kg-ios-test-$$-$(date +%s)-${RANDOM:-0}"
 SIMULATOR_BOOT_SELECTOR=''
 GREP_PATTERN=""
@@ -994,10 +995,33 @@ XCRESULT_HARNESS_OVERHEAD_MS=0
 INVOCATION_OVERHEAD_MS=0
 lease_json=""
 boot_simulator_if_needed() {
-  local boot_start_ms boot_end_ms
+  local boot_start_ms boot_end_ms boot_payload resolved_device
   boot_start_ms="$(ios_test_now_ms)"
-  echo "[ios_test] simulator ensure-booted — device=\"$SIMULATOR_BOOT_SELECTOR\" (up to ~30s if cold-starting from scratch)..."
-  "$IOS_OPS" simulator ensure-booted --device "$SIMULATOR_BOOT_SELECTOR"
+  RESOLVED_DEVICE_UDID=''
+  if ! boot_payload="$("$IOS_OPS" simulator ensure-booted --device "$SIMULATOR_BOOT_SELECTOR" --json)"; then
+    if ! jq -r '
+      "[ios][simulator] schema=\(.schema // "unknown") action=\(.action // "ensure-booted") status=\(.status // "error") selector=\(.selector // "") device=\(.device.udid // "")",
+      (.errors[]? | "[ios][simulator] error key=\(.key // "") status=\(.status // "") exitCode=\(.exitCode // "") error=\(.error // "")")
+    ' <<<"$boot_payload" >&2 2>/dev/null; then
+      printf '%s\n' "$boot_payload" >&2
+    fi
+    return 1
+  fi
+  if ! resolved_device="$(jq -er '
+    select(.status == "ok")
+    | .device.udid
+    | select(type == "string" and length > 0)
+  ' <<<"$boot_payload")"; then
+    echo "[ios_test] simulator ensure-booted did not return a usable device UDID" >&2
+    return 1
+  fi
+  RESOLVED_DEVICE_UDID="$resolved_device"
+  jq -r '
+    "[ios][simulator] schema=\(.schema) action=\(.action) status=\(.status) selector=\(.selector) device=\(.device.udid // "")",
+    "[ios][simulator] boot status=\(.boot.status) exitCode=\(.boot.exitCode // "") wasAlreadyBooted=\(.boot.wasAlreadyBooted) waitedForBootstatus=\(.boot.waitedForBootstatus)",
+    "[ios][simulator] timings totalMs=\(.timings.totalMs) resolveMs=\(.timings.resolveMs) bootMs=\(.timings.bootMs) bootstatusMs=\(.timings.bootstatusMs)",
+    (.errors[]? | "[ios][simulator] error key=\(.key) status=\(.status) exitCode=\(.exitCode // "") error=\(.error // "")")
+  ' <<<"$boot_payload" >&"$(( JSON_MODE ? 2 : 1 ))"
   boot_end_ms="$(ios_test_now_ms)"
   BOOT_MS=$(( boot_end_ms - boot_start_ms ))
 }
@@ -1513,6 +1537,10 @@ resolve_run_device_udid() {
   case "${DESTINATION:-}" in
     *"id="*) printf '%s\n' "${DESTINATION##*id=}"; return 0 ;;
   esac
+  if [[ -n "${RESOLVED_DEVICE_UDID:-}" ]]; then
+    printf '%s\n' "$RESOLVED_DEVICE_UDID"
+    return 0
+  fi
   return 1
 }
 

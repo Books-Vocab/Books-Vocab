@@ -1353,6 +1353,66 @@ variant_profile="$(
   && ok "ios_test variant id records launch profile state" \
   || fail_t "ios_test profile variant id wrong: $variant_profile"
 
+section "ios_test carries resolved simulator UDID into evidence"
+ios_udid_tmp="$(mktemp -d)"
+cat >"$ios_udid_tmp/fake-ios-ops.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+cat <<'JSON'
+{"schema":"kg.ios.simulator.v1","action":"ensure-booted","status":"ok","selector":"iPhone 17 Pro Max","device":{"udid":"fixture-iphone-17-pro-max","state":"Booted"},"boot":{"status":"ok","exitCode":0,"wasAlreadyBooted":false,"waitedForBootstatus":true},"timings":{"totalMs":1,"resolveMs":1,"bootMs":0,"bootstatusMs":0},"errors":[]}
+JSON
+EOF
+chmod +x "$ios_udid_tmp/fake-ios-ops.sh"
+ios_udid_log="$ios_udid_tmp/snippet.log"
+if bash -c '
+  set -euo pipefail
+  script="$1"
+  IOS_OPS="$2"
+  SIMULATOR_BOOT_SELECTOR="iPhone 17 Pro Max"
+  JSON_MODE=0
+  BOOT_MS=0
+  RESOLVED_DEVICE_UDID=""
+  ios_test_now_ms() { printf "100\n"; }
+  eval "$(sed -n "/^boot_simulator_if_needed()/,/^}/p" "$script")"
+  eval "$(sed -n "/^resolve_run_device_udid()/,/^}/p" "$script")"
+  boot_simulator_if_needed
+  [[ "$RESOLVED_DEVICE_UDID" == "fixture-iphone-17-pro-max" ]]
+  [[ "$(resolve_run_device_udid)" == "fixture-iphone-17-pro-max" ]]
+' _ "$WORKSPACE/ops/ios_test.sh" "$ios_udid_tmp/fake-ios-ops.sh" >"$ios_udid_log" 2>&1; then
+  ok "ios_test carries ensure-booted UDID into UI evidence resolution"
+else
+  fail_t "ios_test lost ensure-booted UDID before evidence stage: $(tail -5 "$ios_udid_log" | tr "\n" " ")"
+fi
+cat >"$ios_udid_tmp/fake-ios-ops-missing-udid.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+cat <<'JSON'
+{"schema":"kg.ios.simulator.v1","action":"ensure-booted","status":"ok","selector":"iPhone 17 Pro Max","device":{"udid":null,"state":"Booted"},"boot":{"status":"ok","exitCode":0,"wasAlreadyBooted":true,"waitedForBootstatus":true},"timings":{"totalMs":1,"resolveMs":1,"bootMs":0,"bootstatusMs":0},"errors":[]}
+JSON
+EOF
+chmod +x "$ios_udid_tmp/fake-ios-ops-missing-udid.sh"
+ios_udid_invalid_log="$ios_udid_tmp/invalid-snippet.log"
+if bash -c '
+  set -euo pipefail
+  script="$1"
+  IOS_OPS="$2"
+  SIMULATOR_BOOT_SELECTOR="iPhone 17 Pro Max"
+  JSON_MODE=0
+  BOOT_MS=0
+  RESOLVED_DEVICE_UDID=""
+  ios_test_now_ms() { printf "100\n"; }
+  eval "$(sed -n "/^boot_simulator_if_needed()/,/^}/p" "$script")"
+  if boot_simulator_if_needed; then
+    exit 1
+  fi
+  [[ -z "$RESOLVED_DEVICE_UDID" ]]
+' _ "$WORKSPACE/ops/ios_test.sh" "$ios_udid_tmp/fake-ios-ops-missing-udid.sh" >"$ios_udid_invalid_log" 2>&1; then
+  ok "ios_test rejects an ensure-booted payload without a usable UDID"
+  rm -rf "$ios_udid_tmp"
+else
+  fail_t "ios_test accepted an unusable ensure-booted payload: $(tail -5 "$ios_udid_invalid_log" | tr "\n" " ")"
+fi
+
 section "ios_test fixture dataset flag (--dataset/--dataset-file)"
 ds_out="$("$WORKSPACE/ops/ios_test.sh" --dataset marketing_demo -g Foo 2>&1 || true)"
 [[ "$ds_out" == *"requires --ui"* ]] \
