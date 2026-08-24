@@ -137,6 +137,7 @@ class UnreachableCommitInventory:
     shas: tuple[str, ...] = ()
     problems: tuple[str, ...] = ()
     complete: bool = True
+    evidence: tuple[UnreachableCommitEvidence, ...] = ()
 
     def __post_init__(self) -> None:
         if type(self.shas) is not tuple or any(
@@ -160,6 +161,25 @@ class UnreachableCommitInventory:
             raise InvalidReceipt(
                 "incomplete unreachable commit inventory requires a problem"
             )
+        if (
+            type(self.evidence) is not tuple
+            or len(self.evidence) > UNREACHABLE_COMMIT_SAMPLE_SIZE
+        ):
+            raise InvalidReceipt("unreachable commit evidence sample is invalid")
+        if any(
+            not isinstance(item, UnreachableCommitEvidence) for item in self.evidence
+        ):
+            raise InvalidReceipt("unreachable commit evidence entries are invalid")
+        evidence_shas = tuple(item.commit_sha for item in self.evidence)
+        if len(set(evidence_shas)) != len(evidence_shas):
+            raise InvalidReceipt("unreachable commit evidence is duplicated")
+        sample = self.shas[:UNREACHABLE_COMMIT_SAMPLE_SIZE]
+        if any(commit_sha not in sample for commit_sha in evidence_shas):
+            raise InvalidReceipt("unreachable commit evidence is outside the sample")
+        if evidence_shas != tuple(
+            commit_sha for commit_sha in sample if commit_sha in evidence_shas
+        ):
+            raise InvalidReceipt("unreachable commit evidence is not canonical")
 
     @property
     def count(self) -> int:
