@@ -303,6 +303,49 @@ def test_registry_adapter_surfaces_reported_problems_and_unknown_statuses(
     )
 
 
+@pytest.mark.parametrize("status", ["merged", "active"])
+def test_registry_adapter_preserves_reported_record_identity_and_status(
+    status: str,
+) -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("registry",),
+                0,
+                json.dumps(
+                    {
+                        "records": [],
+                        "problems": [
+                            {
+                                "kind": "registry-claim-generation-invalid",
+                                "index": 36,
+                                "branch": "feat/terminal-history",
+                                "status": status,
+                                "reason": "claim_generation must be a non-negative integer",
+                            }
+                        ],
+                    }
+                ),
+                "",
+            )
+        ]
+    )
+
+    inventory = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    ).list_records()
+
+    assert inventory.problems == (
+        InventoryProblem(
+            "registry",
+            "feat/terminal-history",
+            "registry-claim-generation-invalid: claim_generation must be a non-negative integer",
+            identity_kind="branch",
+            record_status=status,
+        ),
+    )
+
+
 def test_registry_adapter_fails_closed_on_unusable_terminal_history(
     tmp_path: Path,
 ) -> None:
