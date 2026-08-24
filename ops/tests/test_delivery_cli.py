@@ -1344,6 +1344,40 @@ def test_cli_routes_paged_branch_review_plan_as_observation(capsys: object) -> N
     assert payload["result"]["remaining_count"] == 7
 
 
+def test_cli_serializes_branch_review_offset_policy_violation_as_json_error(
+    capsys: object,
+) -> None:
+    class FakeApplication:
+        def branch_review_plan(self, *, offset: int, limit: int) -> object:
+            assert offset == 20
+            assert limit == 20
+            raise PolicyViolation(
+                "branch review offset exceeds total candidates; "
+                "re-read branch review inventory before retrying"
+            )
+
+    assert (
+        main(
+            ["branch-review-plan", "--offset", "20", "--limit", "20"],
+            application_factory=lambda **_: FakeApplication(),
+        )
+        == 1
+    )
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    payload = json.loads(captured.err)
+    assert payload == {
+        "command": "branch-review-plan",
+        "error": (
+            "branch review offset exceeds total candidates; "
+            "re-read branch review inventory before retrying"
+        ),
+        "ok": False,
+        "schema": "kg.delivery.command.v1",
+    }
+
+
 def test_branch_review_plan_help_documents_bounded_pagination(
     capsys: object,
 ) -> None:

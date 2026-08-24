@@ -58,8 +58,8 @@ from .services import (
     orphan_branch,
     queue,
     required_repair,
-    sync_main,
     superseded_handback,
+    sync_main,
     telemetry_operations,
     unreachable_commit,
     unregistered_branch,
@@ -259,6 +259,11 @@ class DeliveryApplication:
                 key=lambda action: (action.branch, action.sha),
             )
         )
+        if offset > len(candidates):
+            raise errors.PolicyViolation(
+                "branch review offset exceeds total candidates; "
+                "re-read branch review inventory before retrying"
+            )
         selected = (
             candidates[offset : offset + limit]
             if audit.live_main_sha is not None
