@@ -288,14 +288,29 @@ final class VocabularyLibraryFlowUITests: UITestCase {
         let emptyResultSearchField = app.textFields["addLink.searchField"]
         emptyResultSearchField.tapWhenReady()
         emptyResultSearchField.typeText("zzqxv")
-        guard app.staticTexts.matching(NSPredicate(format: "label == %@", "沒有結果"))
-            .exactlyOneElement(timeout: 5, named: "AddLink no-results state") != nil else {
-            captureStep("add-link-no-results-missing", app: app)
+        guard let createAffordance = app.buttons
+            .matching(identifier: "addLink.create")
+            .exactlyOneElement(timeout: 5, named: "AddLink missing-target create affordance") else {
+            captureStep("add-link-create-affordance-missing", app: app)
             return
         }
+        XCTAssertEqual(
+            emptyResultSearchField.value as? String,
+            "zzqxv",
+            "AddLink missing-target query must remain visible without tapping create"
+        )
+        XCTAssertTrue(
+            createAffordance.label.contains("zzqxv"),
+            "AddLink create affordance must preserve the missing target query"
+        )
+        XCTAssertEqual(
+            app.staticTexts.matching(NSPredicate(format: "label == %@", "沒有結果")).count,
+            0,
+            "missing-target AddLink must expose create, not the legacy no-results state"
+        )
         XCTAssertTrue(waitUntilEmpty(candidateQuery(for: "fortuitous")))
         XCTAssertTrue(waitUntilEmpty(candidateQuery(for: "happy accident")))
-        captureStep("add-link-no-results", app: app)
+        captureStep("add-link-missing-target-create", app: app)
     }
 
     @MainActor
