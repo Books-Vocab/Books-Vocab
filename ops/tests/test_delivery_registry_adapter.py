@@ -557,6 +557,61 @@ def test_collision_inventory_ignores_malformed_terminal_history(
     assert inventory.problems == ()
 
 
+@pytest.mark.parametrize(
+    ("status", "collision_problem_expected"),
+    [
+        ("merged", False),
+        ("abandoned", False),
+        ("published", False),
+        ("active", True),
+        ("cleanup_pending", True),
+    ],
+)
+def test_collision_inventory_projects_reported_claim_status(
+    status: str, collision_problem_expected: bool
+) -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("registry",),
+                0,
+                json.dumps(
+                    {
+                        "records": [],
+                        "problems": [
+                            {
+                                "kind": "registry-claim-generation-invalid",
+                                "index": 36,
+                                "branch": "feat/malformed-claim",
+                                "status": status,
+                                "reason": "claim_generation must be a non-negative integer",
+                            }
+                        ],
+                    }
+                ),
+                "",
+            )
+        ]
+    )
+
+    inventory = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    ).list_collision_claims()
+
+    if collision_problem_expected:
+        assert inventory.problems == (
+            InventoryProblem(
+                "registry",
+                "feat/malformed-claim",
+                "registry-claim-generation-invalid: claim_generation must be a non-negative integer",
+                identity_kind="branch",
+                record_status=status,
+            ),
+        )
+    else:
+        assert inventory.problems == ()
+
+
 def test_exact_claim_query_ignores_unrelated_malformed_history(
     tmp_path: Path,
 ) -> None:

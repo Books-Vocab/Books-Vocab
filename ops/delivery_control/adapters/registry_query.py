@@ -23,6 +23,8 @@ from .registry_parsing import (
     reported_problems,
 )
 
+_COLLISION_TERMINAL_STATUSES = frozenset({"published", "merged", "abandoned"})
+
 
 def _registry_identity(raw: Mapping[str, Any], index: int) -> tuple[str, str]:
     """Return an identity and its source field without guessing later."""
@@ -97,7 +99,11 @@ def registry_inventory(payload: Mapping[str, Any]) -> RegistryInventory:
 
 def collision_inventory(payload: Mapping[str, Any]) -> RegistryCollisionInventory:
     records: list[RegistryCollisionClaim] = []
-    problems = list(reported_problems(payload))
+    problems = [
+        problem
+        for problem in reported_problems(payload)
+        if problem.record_status not in _COLLISION_TERMINAL_STATUSES
+    ]
     for index, raw in enumerate(payload["records"]):
         if not isinstance(raw, Mapping):
             problems.append(
