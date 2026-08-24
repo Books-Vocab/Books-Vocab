@@ -135,8 +135,20 @@ def _parser() -> argparse.ArgumentParser:
         "branch-review-plan",
         help="page blocked local-orphan content for read-only review",
     )
-    branch_review_plan.add_argument("--offset", type=int, default=0)
-    branch_review_plan.add_argument("--limit", type=int, default=5)
+    branch_review_plan.add_argument(
+        "--offset",
+        type=int,
+        default=0,
+        metavar="N",
+        help="zero-based page offset (N >= 0)",
+    )
+    branch_review_plan.add_argument(
+        "--limit",
+        type=int,
+        default=5,
+        metavar="N",
+        help="page size (1 <= N <= 20)",
+    )
     metrics = commands.add_parser("metrics", help="measure current queue reservoirs")
     metrics.add_argument(
         "--supervision-worktree",
