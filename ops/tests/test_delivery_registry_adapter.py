@@ -584,7 +584,9 @@ def _legacy_terminal_with_exact_seal_base(tmp_path: Path) -> dict[str, object]:
             "schema": "kg.worktree.scope.v1",
             "files": [{"operation": "modify", "path": "ops/legacy.py"}],
         },
-        "codex_thread_id": None,
+        # Historical abandoned seals predate owner_thread_id in the seal,
+        # while the registry record still carries the authoritative owner.
+        "codex_thread_id": "legacy-owner-thread",
         "claim_generation": 0,
         "handback_claim_generation": 0,
         "handed_back_sha": "b" * 40,
@@ -637,6 +639,52 @@ def test_abandoned_seal_without_handback_generation_uses_claim_generation(
 
     assert record.handback_claim_generation is None
     assert record.handback_valid
+
+
+def _set_seal_owner(record_payload: dict[str, object], owner: object) -> None:
+    seal = dict(record_payload["handback_seal"])  # type: ignore[arg-type]
+    seal["owner_thread_id"] = owner
+    body = {key: value for key, value in seal.items() if key != "digest"}
+    seal["digest"] = hashlib.sha256(
+        json.dumps(
+            body, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    record_payload["handback_seal"] = seal
+
+
+def test_abandoned_seal_with_mismatched_owner_stays_invalid(tmp_path: Path) -> None:
+    abandoned = _legacy_terminal_with_exact_seal_base(tmp_path)
+    _set_seal_owner(abandoned, "different-owner-thread")
+
+    record = RegistryCliAdapter._record(abandoned)
+
+    assert not record.handback_valid
+
+
+@pytest.mark.parametrize("owner", (None, "", 123))
+def test_abandoned_seal_requires_nonempty_record_owner(
+    tmp_path: Path, owner: object
+) -> None:
+    abandoned = _legacy_terminal_with_exact_seal_base(tmp_path)
+    abandoned["codex_thread_id"] = owner
+
+    record = RegistryCliAdapter._record(abandoned)
+
+    assert not record.handback_valid
+
+
+@pytest.mark.parametrize("status", ("active", "published"))
+def test_non_abandoned_seal_without_owner_stays_invalid(
+    tmp_path: Path, status: str
+) -> None:
+    record_payload = _legacy_terminal_with_exact_seal_base(tmp_path)
+    record_payload["status"] = status
+    record_payload["base_sha"] = "a" * 40
+
+    record = RegistryCliAdapter._record(record_payload)
+
+    assert not record.handback_valid
 
 
 @pytest.mark.parametrize("status", ("active", "published"))
