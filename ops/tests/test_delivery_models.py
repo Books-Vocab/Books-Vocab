@@ -113,10 +113,8 @@ def test_scope_delete_round_trips_without_changing_the_v1_wire_shape() -> None:
 
 
 @pytest.mark.parametrize("payload", [[], "not-an-object", None])
-def test_scope_from_payload_non_object_shape_currently_leaks_attribute_error(
-    payload: object,
-) -> None:
-    with pytest.raises(AttributeError):
+def test_scope_from_payload_rejects_non_object_payloads(payload: object) -> None:
+    with pytest.raises(InvalidScope, match="Scope payload must be an object"):
         Scope.from_payload(payload)  # type: ignore[arg-type]
 
 

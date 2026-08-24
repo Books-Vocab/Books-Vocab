@@ -95,6 +95,8 @@ class Scope:
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any]) -> Scope:
+        if not isinstance(payload, Mapping):
+            raise InvalidScope("Scope payload must be an object")
         if payload.get("schema") != SCOPE_SCHEMA:
             raise InvalidScope(f"Scope schema must be {SCOPE_SCHEMA}")
         raw_files = payload.get("files")
