@@ -168,6 +168,12 @@ def test_handback_receipt_round_trips_as_typed_canonical_payload() -> None:
     assert HandbackReceipt.from_payload(payload) == receipt
 
 
+@pytest.mark.parametrize("payload", [[], "not-an-object", None])
+def test_handback_receipt_rejects_non_object_payloads(payload: object) -> None:
+    with pytest.raises(InvalidReceipt, match="handback receipt"):
+        HandbackReceipt.from_payload(payload)  # type: ignore[arg-type]
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [
