@@ -17,6 +17,7 @@ from ..domain.observations import (
 )
 
 _ISSUE_REF = re.compile(r"(?:#|/issues/)(?P<number>[1-9][0-9]*)\b", re.IGNORECASE)
+_BARE_ISSUE_REF = re.compile(r"[1-9][0-9]*\Z")
 _HOLD_LABELS = {
     "delivery-hold:p0",
     "delivery-hold:p1",
@@ -26,6 +27,9 @@ _HOLD_LABELS = {
 
 
 def _references_issue(value: str, number: int) -> bool:
+    stripped = value.strip()
+    if _BARE_ISSUE_REF.fullmatch(stripped):
+        return int(stripped) == number
     return any(
         int(match.group("number")) == number for match in _ISSUE_REF.finditer(value)
     )

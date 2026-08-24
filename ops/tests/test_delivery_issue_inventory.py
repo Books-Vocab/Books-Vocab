@@ -237,6 +237,102 @@ def test_projection_assigns_one_disposition_with_fixed_precedence() -> None:
     assert projected.records[-1].mapped_pull_request_numbers == (11,)
 
 
+@pytest.mark.parametrize("status", ["merged", "abandoned"])
+def test_projection_maps_exact_bare_numeric_registry_issue_history(
+    status: str,
+) -> None:
+    issue = parse_demand_issue(_payload(1415))
+
+    projected = project_demand_inventory(
+        DemandIssueInventory((issue,), raw_count=1),
+        registry_records=(_record(1415, status, external_id="1415"),),
+    )
+
+    assert projected.records[0].disposition is IssueDisposition.TERMINAL_HISTORY
+    assert projected.records[0].mapped_external_ids == ("1415",)
+    assert projected.unadmitted_open_issues == 0
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        ("active", IssueDisposition.OWNER_BOUND),
+        ("published", IssueDisposition.PUBLISHED_PR),
+    ],
+)
+def test_bare_numeric_registry_mapping_preserves_live_lane_precedence(
+    status: str,
+    expected: IssueDisposition,
+) -> None:
+    issue = parse_demand_issue(_payload(1415))
+
+    projected = project_demand_inventory(
+        DemandIssueInventory((issue,), raw_count=1),
+        registry_records=(_record(1415, status, external_id="1415"),),
+    )
+
+    assert projected.records[0].disposition is expected
+    assert projected.records[0].mapped_external_ids == ("1415",)
+
+
+def test_bare_numeric_registry_mapping_does_not_guess_substrings() -> None:
+    issue = parse_demand_issue(_payload(1415))
+
+    projected = project_demand_inventory(
+        DemandIssueInventory((issue,), raw_count=1),
+        registry_records=(
+            _record(1415, "merged", external_id="14150"),
+            _record(1415, "merged", external_id="ticket-1415"),
+        ),
+    )
+
+    assert projected.records[0].disposition is IssueDisposition.TRIAGE_REQUIRED
+    assert projected.records[0].mapped_external_ids == ()
+    assert projected.unadmitted_open_issues == 1
+
+
+@pytest.mark.parametrize(
+    "external_id",
+    ["#1415", "https://github.com/owner/repo/issues/1415"],
+)
+def test_existing_issue_reference_forms_remain_exactly_supported(
+    external_id: str,
+) -> None:
+    issue = parse_demand_issue(_payload(1415))
+
+    projected = project_demand_inventory(
+        DemandIssueInventory((issue,), raw_count=1),
+        registry_records=(_record(1415, "merged", external_id=external_id),),
+    )
+
+    assert projected.records[0].disposition is IssueDisposition.TERMINAL_HISTORY
+    assert projected.records[0].mapped_external_ids == (external_id,)
+
+
+def test_non_numeric_registry_external_id_does_not_map_by_issue_substring() -> None:
+    issue = parse_demand_issue(_payload(1415))
+
+    projected = project_demand_inventory(
+        DemandIssueInventory((issue,), raw_count=1),
+        registry_records=(_record(1415, "merged", external_id="ticket-1415"),),
+    )
+
+    assert projected.records[0].disposition is IssueDisposition.TRIAGE_REQUIRED
+    assert projected.records[0].mapped_external_ids == ()
+
+
+def test_security_hold_still_precedes_bare_numeric_registry_history() -> None:
+    issue = parse_demand_issue(_payload(1415, labels=("security",)))
+
+    projected = project_demand_inventory(
+        DemandIssueInventory((issue,), raw_count=1),
+        registry_records=(_record(1415, "merged", external_id="1415"),),
+    )
+
+    assert projected.records[0].disposition is IssueDisposition.SECURITY_HOLD
+    assert projected.records[0].mapped_external_ids == ("1415",)
+
+
 def test_security_candidate_is_observable_but_not_dispatchable() -> None:
     issue = parse_demand_issue(
         _payload(
