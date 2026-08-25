@@ -49,6 +49,7 @@ class OrphanBranchPreflight:
     eligible: bool
     passed_checks: tuple[str, ...]
     blockers: tuple[str, ...]
+    patch_equivalent_to_main: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -196,6 +197,7 @@ class OrphanBranchDiscardService:
         blockers: list[str] = []
         passed: list[str] = []
         main_sha: str | None = None
+        patch_equivalent_to_main: bool | None = None
         if not branch or branch == "main" or branch.startswith("-"):
             blockers.append("orphan discard requires a non-main branch")
         if _SHA_RE.fullmatch(expected_head_sha) is None:
@@ -275,9 +277,29 @@ class OrphanBranchDiscardService:
                     blockers.append(f"ancestor query failed: {error}")
                 else:
                     if not ancestor:
-                        blockers.append(
-                            "orphan branch tip is not an ancestor of live origin/main"
-                        )
+                        checker = getattr(self.git_query, "is_patch_equivalent", None)
+                        if not callable(checker):
+                            blockers.append(
+                                "orphan branch tip is not an ancestor of live origin/main"
+                            )
+                        else:
+                            try:
+                                patch_equivalent_to_main = bool(
+                                    checker(expected_head_sha, main_sha)
+                                )
+                            except DeliverySourceError as error:
+                                blockers.append(
+                                    f"patch-equivalence query failed: {error}"
+                                )
+                            else:
+                                if patch_equivalent_to_main:
+                                    passed.append(
+                                        "local branch commits are patch-equivalent to live origin/main"
+                                    )
+                                else:
+                                    blockers.append(
+                                        "orphan branch tip is not an ancestor of live origin/main and is not patch-equivalent"
+                                    )
                     else:
                         passed.append(
                             "local branch tip is an ancestor of live origin/main"
@@ -291,6 +313,7 @@ class OrphanBranchDiscardService:
             eligible=not blockers,
             passed_checks=tuple(passed),
             blockers=tuple(blockers),
+            patch_equivalent_to_main=patch_equivalent_to_main,
         )
 
     def preflight(
@@ -359,9 +382,11 @@ class OrphanBranchDiscardService:
                 "orphan branch still has a remote ref; preserve remote lifecycle"
             )
         if not self.git_query.is_ancestor(expected_head_sha, main_sha):
-            raise PolicyViolation(
-                "orphan branch tip is not an ancestor of live origin/main"
-            )
+            checker = getattr(self.git_query, "is_patch_equivalent", None)
+            if not callable(checker) or not bool(checker(expected_head_sha, main_sha)):
+                raise PolicyViolation(
+                    "orphan branch tip is not an ancestor of live origin/main and is not patch-equivalent"
+                )
 
         latest_main = self._canonical_main()
         if latest_main != main_sha:
@@ -373,6 +398,14 @@ class OrphanBranchDiscardService:
         if self.git_query.remote_branch_sha(branch) is not None:
             raise PolicyViolation("remote orphan ref appeared during discard preflight")
         self._assert_no_physical_worktree(branch)
+        if not self.git_query.is_ancestor(expected_head_sha, latest_main):
+            checker = getattr(self.git_query, "is_patch_equivalent", None)
+            if not callable(checker) or not bool(
+                checker(expected_head_sha, latest_main)
+            ):
+                raise PolicyViolation(
+                    "orphan branch tip is not an ancestor of live origin/main and is not patch-equivalent"
+                )
 
         self.git_command.delete_local_branch(
             branch,

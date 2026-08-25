@@ -93,6 +93,9 @@ class GitCliAdapter:
     def is_ancestor(self, ancestor_sha: str, descendant_sha: str) -> bool:
         return self._queries.is_ancestor(ancestor_sha, descendant_sha)
 
+    def is_patch_equivalent(self, branch_sha: str, main_sha: str) -> bool:
+        return self._queries.is_patch_equivalent(branch_sha, main_sha)
+
     def diff_fingerprint(self, base_sha: str, head_sha: str) -> str:
         return self._queries.diff_fingerprint(base_sha, head_sha)
 

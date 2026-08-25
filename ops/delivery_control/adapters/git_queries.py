@@ -352,6 +352,28 @@ class GitQueries:
             return False
         raise AdapterCommandError(result)
 
+    def is_patch_equivalent(self, branch_sha: str, main_sha: str) -> bool:
+        """Return whether every branch-only commit is already equivalent in main."""
+
+        for name, sha in (("branch", branch_sha), ("main", main_sha)):
+            if _COMMIT_SHA_RE.fullmatch(sha) is None:
+                raise AdapterPayloadError(f"{name} commit SHA is malformed")
+        result = self.client.execute("cherry", main_sha, branch_sha)
+        if result.exit_code != 0:
+            raise AdapterCommandError(result)
+
+        signs: list[str] = []
+        for line in result.stdout.splitlines():
+            fields = line.split()
+            if not fields:
+                continue
+            if len(fields) != 2 or fields[0] not in {"+", "-"}:
+                raise AdapterPayloadError("git cherry returned malformed output")
+            if _COMMIT_SHA_RE.fullmatch(fields[1]) is None:
+                raise AdapterPayloadError("git cherry returned malformed commit SHA")
+            signs.append(fields[0])
+        return all(sign == "-" for sign in signs)
+
     def diff_fingerprint(self, base_sha: str, head_sha: str) -> str:
         """Hash patch content without base-specific blob ids or line numbers."""
 
