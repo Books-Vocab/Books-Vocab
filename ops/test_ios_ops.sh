@@ -568,6 +568,10 @@ section "Release gate surface"
 gate_pass_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" gate release --json)"
 echo "$gate_pass_json" | jq -e '.schema=="kg.ios.gate.v1" and .name=="release" and .verdict=="pass" and .exitCode==0 and .summary.blocks==0 and (.todos|length >= 1) and (.manual|length == 1)' >/dev/null \
   && ok "gate release --json emits pass verdict" || fail_t "gate release pass invalid: $gate_pass_json"
+sentry_fixture_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" sentry --json)"
+echo "$sentry_fixture_json" | jq -e '.readiness.build_can_import == true and .build_evidence.source == "fixture"' >/dev/null \
+  && ok "fixture Sentry readiness supplies deterministic build evidence" \
+  || fail_t "fixture Sentry readiness lacks deterministic build evidence: $sentry_fixture_json"
 gate_text="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" gate release)"
 echo "$gate_text" | grep -q 'verdict=pass' \
   && ok "gate release text emits verdict" || fail_t "gate release text missing verdict: $gate_text"
