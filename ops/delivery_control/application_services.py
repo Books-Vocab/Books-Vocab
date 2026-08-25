@@ -402,7 +402,7 @@ class DeliveryApplication:
             raise errors.PolicyViolation(
                 "GitHub adapter does not expose one-Issue admission capability"
             )
-        return self.github.admit_candidate(
+        self.github.admit_candidate(
             issue_number=issue_number,
             expected_updated_at=expected_updated_at,
             expected_body_sha256=expected_body_sha256,
@@ -410,6 +410,32 @@ class DeliveryApplication:
             triage_reason=triage_reason,
             operator=operator,
         )
+        final_inventory = self.inspect().demand_issues
+        if (
+            not final_inventory.complete
+            or final_inventory.problems
+            or final_inventory.source_entries
+        ):
+            raise errors.DeliverySourceError(
+                "candidate admission readback requires a complete Issue inventory"
+            )
+        final_matches = [
+            item for item in final_inventory.records if item.number == issue_number
+        ]
+        if len(final_matches) != 1:
+            raise errors.PolicyViolation(
+                f"Issue #{issue_number} admission readback is not uniquely projected"
+            )
+        final_issue = final_matches[0]
+        if (
+            final_issue.disposition is not IssueDisposition.DISPATCHABLE_CANDIDATE
+            or final_issue.candidate_spec != spec
+        ):
+            raise errors.PolicyViolation(
+                f"Issue #{issue_number} admission projection did not converge to "
+                "the exact dispatchable candidate"
+            )
+        return final_issue
 
     def create_issue(self, *, request: IssueIntakeRequest) -> object:
         """Create one raw Issue; a separate CAS admission creates candidates."""
