@@ -47,6 +47,7 @@ class FakeGit:
         canonical_clean: bool = True,
         origin: str = BASE,
         ancestor: bool = True,
+        patch_equivalent: bool = False,
         failure: str | None = None,
         branch_inventory: BranchInventory | None = None,
     ) -> None:
@@ -58,6 +59,7 @@ class FakeGit:
         self.canonical_clean = canonical_clean
         self.origin = origin
         self.ancestor = ancestor
+        self.patch_equivalent = patch_equivalent
         self.failure = failure
         self.actions: list[str] = []
         self.branch_inventory_snapshot = branch_inventory or BranchInventory(
@@ -108,6 +110,11 @@ class FakeGit:
         if self.failure == "ancestor":
             raise DeliverySourceError("ancestor query unavailable")
         return self.ancestor
+
+    def is_patch_equivalent(self, branch_sha: str, main_sha: str) -> bool:
+        if self.failure == "patch_equivalent":
+            raise DeliverySourceError("patch-equivalence query unavailable")
+        return self.patch_equivalent
 
     def delete_local_branch(self, branch: str, *, expected_head_sha: str) -> None:
         assert expected_head_sha == HEAD
@@ -219,6 +226,49 @@ def test_preflight_reports_blocker_without_deleting() -> None:
     assert "remote ref" in "; ".join(result.blockers)
     assert "ancestor" in "; ".join(result.blockers)
     assert git.actions == []
+
+
+def test_preflight_accepts_nonancestor_tip_when_patches_are_equivalent() -> None:
+    git = FakeGit(ancestor=False, patch_equivalent=True)
+
+    result = _build_service(git=git).preflight(
+        branch=BRANCH,
+        expected_head_sha=HEAD,
+    )
+
+    assert result.eligible
+    assert result.patch_equivalent_to_main is True
+    assert any("patch-equivalent" in check for check in result.passed_checks)
+    assert result.blockers == ()
+    assert git.actions == []
+
+
+def test_discards_nonancestor_tip_when_patches_are_equivalent() -> None:
+    git = FakeGit(ancestor=False, patch_equivalent=True)
+
+    result = _build_service(git=git).discard(
+        branch=BRANCH,
+        expected_head_sha=HEAD,
+        operator="supervisor",
+        reason="exact patch-equivalent orphan with no owner or PR",
+    )
+
+    assert result.disposition == "orphan_local_discarded"
+    assert git.actions == ["delete-local"]
+
+
+def test_preflight_fails_closed_when_patch_equivalence_evidence_is_unavailable() -> (
+    None
+):
+    result = _build_service(
+        git=FakeGit(ancestor=False, failure="patch_equivalent")
+    ).preflight(
+        branch=BRANCH,
+        expected_head_sha=HEAD,
+    )
+
+    assert result.eligible is False
+    assert "patch-equivalence query failed" in "; ".join(result.blockers)
 
 
 @pytest.mark.parametrize(

@@ -213,6 +213,63 @@ def test_git_adapter_reads_ancestor_relation_without_mutation(tmp_path: Path) ->
     assert not adapter.is_ancestor(tip, base)
 
 
+def test_git_adapter_reads_patch_equivalence_without_mutation(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test")
+    (repo / "tracked.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "tracked.txt")
+    _git(repo, "commit", "-qm", "base")
+    _git(repo, "switch", "-qc", "feat/equivalent")
+    (repo / "tracked.txt").write_text("tip\n", encoding="utf-8")
+    _git(repo, "commit", "-qam", "feature change")
+    feature_tip = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-q", "main")
+    (repo / "tracked.txt").write_text("tip\n", encoding="utf-8")
+    _git(repo, "commit", "-qam", "equivalent main change")
+    main_tip = _git(repo, "rev-parse", "HEAD")
+
+    adapter = GitCliAdapter(repo=repo)
+
+    assert adapter.is_patch_equivalent(feature_tip, main_tip)
+
+
+def test_git_adapter_reports_unique_patch_as_not_equivalent(tmp_path: Path) -> None:
+    runner = StaticRunner([CommandResult(("git",), 0, f"+ {'c' * 40}\n", "")])
+
+    assert not GitCliAdapter(repo=tmp_path, runner=runner).is_patch_equivalent(
+        "a" * 40, "b" * 40
+    )
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    ("malformed output\n", f"- {'z' * 40}\n"),
+)
+def test_git_adapter_rejects_malformed_patch_equivalence_output(
+    tmp_path: Path, stdout: str
+) -> None:
+    runner = StaticRunner([CommandResult(("git",), 0, stdout, "")])
+
+    with pytest.raises(AdapterPayloadError, match="git cherry returned malformed"):
+        GitCliAdapter(repo=tmp_path, runner=runner).is_patch_equivalent(
+            "a" * 40, "b" * 40
+        )
+
+
+def test_git_adapter_propagates_patch_equivalence_command_failure(
+    tmp_path: Path,
+) -> None:
+    runner = StaticRunner([CommandResult(("git",), 128, "", "fatal: cherry failed")])
+
+    with pytest.raises(AdapterCommandError, match="cherry failed"):
+        GitCliAdapter(repo=tmp_path, runner=runner).is_patch_equivalent(
+            "a" * 40, "b" * 40
+        )
+
+
 @pytest.mark.parametrize("stderr", ("fatal: permission denied", "runner unavailable"))
 def test_git_adapter_ancestor_query_propagates_source_failures(
     tmp_path: Path, stderr: str
