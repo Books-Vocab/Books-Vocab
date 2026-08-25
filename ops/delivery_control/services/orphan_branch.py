@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from time import monotonic
 from dataclasses import dataclass
 
 from ..domain.branch_refs import BranchInventory
@@ -19,6 +20,7 @@ from ..ports.github import GitHubQueryPort
 from ..ports.registry import RegistryQueryPort
 
 _SHA_RE = re.compile(r"[0-9a-f]{40}")
+PATCH_EQUIVALENCE_BATCH_TIMEOUT_SECONDS = 30.0
 
 
 @dataclass(frozen=True)
@@ -193,6 +195,7 @@ class OrphanBranchDiscardService:
         expected_head_sha: str,
         pr_history: PullRequestInventory | None,
         snapshot: _OrphanPreflightSnapshot | None,
+        patch_equivalence_deadline: float | None = None,
     ) -> OrphanBranchPreflight:
         blockers: list[str] = []
         passed: list[str] = []
@@ -282,6 +285,11 @@ class OrphanBranchDiscardService:
                             blockers.append(
                                 "orphan branch tip is not an ancestor of live origin/main"
                             )
+                        elif (
+                            patch_equivalence_deadline is not None
+                            and monotonic() >= patch_equivalence_deadline
+                        ):
+                            blockers.append("patch-equivalence batch budget exhausted")
                         else:
                             try:
                                 patch_equivalent_to_main = bool(
@@ -329,6 +337,7 @@ class OrphanBranchDiscardService:
             expected_head_sha=expected_head_sha,
             pr_history=pr_history,
             snapshot=None,
+            patch_equivalence_deadline=None,
         )
 
     def preflight_many(
@@ -343,12 +352,16 @@ class OrphanBranchDiscardService:
         if not ordered:
             return {}
         snapshot = self._snapshot()
+        patch_equivalence_deadline = (
+            monotonic() + PATCH_EQUIVALENCE_BATCH_TIMEOUT_SECONDS
+        )
         return {
             branch: self._preflight(
                 branch=branch,
                 expected_head_sha=expected_head_sha,
                 pr_history=pr_history,
                 snapshot=snapshot,
+                patch_equivalence_deadline=patch_equivalence_deadline,
             )
             for branch, expected_head_sha in ordered
         }

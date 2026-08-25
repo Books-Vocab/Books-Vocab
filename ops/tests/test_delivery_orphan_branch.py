@@ -18,6 +18,7 @@ from delivery_control.domain.observations import (  # noqa: E402
     RegistryInventory,
     RegistrySnapshot,
 )
+import delivery_control.services.orphan_branch as orphan_branch_module  # noqa: E402
 from delivery_control.services.orphan_branch import OrphanBranchDiscardService  # noqa: E402
 
 BASE = "a" * 40
@@ -72,6 +73,7 @@ class FakeGit:
         self.branch_inventory_calls = 0
         self.local_calls = 0
         self.remote_calls = 0
+        self.patch_equivalent_calls = 0
 
     def canonical_checkout(self) -> CanonicalCheckoutSnapshot:
         self.canonical_calls += 1
@@ -112,6 +114,7 @@ class FakeGit:
         return self.ancestor
 
     def is_patch_equivalent(self, branch_sha: str, main_sha: str) -> bool:
+        self.patch_equivalent_calls += 1
         if self.failure == "patch_equivalent":
             raise DeliverySourceError("patch-equivalence query unavailable")
         return self.patch_equivalent
@@ -212,6 +215,30 @@ def test_preflight_many_reuses_one_stable_git_snapshot() -> None:
     assert git.branch_inventory_calls == 1
     assert git.local_calls == 0
     assert git.remote_calls == 0
+
+
+def test_preflight_many_stops_patch_equivalence_after_batch_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ticks = iter((0.0, 31.0, 31.0))
+    monkeypatch.setattr(orphan_branch_module, "monotonic", lambda: next(ticks))
+    git = FakeGit(
+        ancestor=False,
+        branch_inventory=BranchInventory(
+            local=((BRANCH, HEAD), (OTHER_BRANCH, HEAD)),
+        ),
+    )
+
+    results = _build_service(git=git).preflight_many(
+        branches=((BRANCH, HEAD), (OTHER_BRANCH, HEAD)),
+        pr_history=PullRequestInventory(()),
+    )
+
+    assert git.patch_equivalent_calls == 0
+    assert all(
+        "patch-equivalence batch budget exhausted" in item.blockers[0]
+        for item in results.values()
+    )
 
 
 def test_preflight_reports_blocker_without_deleting() -> None:
