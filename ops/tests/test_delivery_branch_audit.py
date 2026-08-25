@@ -434,6 +434,33 @@ def test_branch_audit_keeps_source_problems_visible_and_fail_closed() -> None:
     assert report.registry_record_problem_status_counts == {}
 
 
+def test_branch_audit_preserves_registry_external_ids_in_source_actions() -> None:
+    lifecycle = project_branch_lifecycle(
+        branch_inventory=BranchInventory(local=(("feat/malformed", SHA_A),))
+    )
+    inventory = DeliveryInventory(
+        lanes=(),
+        branch_lifecycle=lifecycle,
+        source_problems=(
+            InventoryProblem(
+                "registry",
+                "feat/malformed",
+                "claim_generation must be a non-negative integer",
+                identity_kind="branch",
+                record_status="active",
+                record_external_ids=("#1187",),
+            ),
+        ),
+    )
+
+    report = build_branch_audit(inventory)
+
+    assert report.source_problem_actions[0].record_external_ids == ("#1187",)
+    assert report.registry_record_problem_actions[0].record_external_ids == ("#1187",)
+    assert report.complete is False
+    assert report.actionable_source_problems == 1
+
+
 def test_branch_audit_counts_malformed_active_registry_record_without_admitting_it() -> (
     None
 ):
