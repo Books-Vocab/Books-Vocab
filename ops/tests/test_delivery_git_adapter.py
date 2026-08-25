@@ -615,6 +615,39 @@ def test_git_adapter_collects_branch_refs_with_two_bulk_queries(
     assert runner.calls[1][-3:] == ("ls-remote", "--heads", "origin")
 
 
+def test_git_adapter_bounds_origin_main_remote_ref_query(
+    tmp_path: Path,
+) -> None:
+    runner = TimeoutAwareRunner()
+
+    with pytest.raises(AdapterCommandError, match="timed out"):
+        GitCliAdapter(repo=tmp_path, runner=runner).origin_main_sha()
+
+    assert runner.timeout_seconds == 30.0
+
+
+def test_git_adapter_bounds_single_remote_branch_ref_query(
+    tmp_path: Path,
+) -> None:
+    runner = TimeoutAwareRunner()
+
+    with pytest.raises(AdapterCommandError, match="timed out"):
+        GitCliAdapter(repo=tmp_path, runner=runner).remote_branch_sha("feat/one")
+
+    assert runner.timeout_seconds == 30.0
+
+
+def test_git_adapter_bounds_bulk_remote_branch_ref_query(
+    tmp_path: Path,
+) -> None:
+    runner = RemoteInventoryTimeoutRunner()
+
+    with pytest.raises(AdapterCommandError, match="timed out"):
+        GitCliAdapter(repo=tmp_path, runner=runner).branch_inventory()
+
+    assert runner.timeout_seconds == 30.0
+
+
 def test_git_adapter_preserves_fsck_diagnostics_and_commit_quarantine(
     tmp_path: Path,
 ) -> None:
@@ -896,3 +929,15 @@ class TimeoutAwareRunner:
             stderr=f"command timed out after {timeout_seconds:g}s",
             timed_out=True,
         )
+
+
+class RemoteInventoryTimeoutRunner(TimeoutAwareRunner):
+    def run(self, argv: tuple[str, ...], *, cwd: Path | None = None) -> CommandResult:
+        if argv[-1] == "refs/heads":
+            return CommandResult(
+                argv=argv,
+                exit_code=0,
+                stdout="main\t" + "a" * 40 + "\n",
+                stderr="",
+            )
+        raise AssertionError(f"unexpected unbounded remote query: {argv}")
