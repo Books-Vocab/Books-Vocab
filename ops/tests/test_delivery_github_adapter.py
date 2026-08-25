@@ -230,6 +230,72 @@ def test_github_graphql_mutation_does_not_retry_transient_failure() -> None:
     assert runner.calls == [argv]
 
 
+def test_github_graphql_mutation_with_flags_before_endpoint_does_not_retry() -> None:
+    argv = (
+        "gh",
+        "api",
+        "--method",
+        "GET",
+        "graphql",
+        "-f",
+        "query=mutation DeliveryCreateIssue { createIssue { issue { number } } }",
+    )
+    runner = StaticRunner(
+        [
+            CommandResult(argv, 1, "", "connection reset by peer"),
+            CommandResult(argv, 0, '{"data":{}}', ""),
+        ]
+    )
+
+    with pytest.raises(AdapterCommandError):
+        GitHubCliClient(repo=Path("/tmp/kg-github-retry"), runner=runner).load_json(
+            argv
+        )
+
+    assert runner.calls == [argv]
+
+
+def test_github_graphql_query_with_flags_before_endpoint_retries() -> None:
+    argv = (
+        "gh",
+        "api",
+        "--method",
+        "GET",
+        "graphql",
+        "-f",
+        "query=query Viewer { viewer { login } }",
+    )
+    runner = StaticRunner(
+        [
+            CommandResult(argv, 1, "", "connection reset by peer"),
+            CommandResult(argv, 0, '{"data":{"viewer":{"login":"octocat"}}}', ""),
+        ]
+    )
+
+    assert GitHubCliClient(repo=Path("/tmp/kg-github-retry"), runner=runner).load_json(
+        argv
+    ) == {"data": {"viewer": {"login": "octocat"}}}
+    assert runner.calls == [argv, argv]
+
+
+def test_github_json_query_exposes_each_command_attempt() -> None:
+    repo = Path("/tmp/kg-github-retry")
+    argv = ("gh", "repo", "view", "--json", "nameWithOwner")
+    first = CommandResult(argv, 1, "", "connection reset by peer")
+    second = CommandResult(argv, 0, '{"nameWithOwner":"owner/repo"}', "")
+    client = GitHubCliClient(repo=repo, runner=StaticRunner([first, second]))
+
+    assert client.load_json(argv) == {"nameWithOwner": "owner/repo"}
+    attempts = client.last_command_attempts
+    assert len(attempts) == 2
+    assert attempts[0].argv == argv
+    assert attempts[0].cwd == repo
+    assert attempts[0].result is first
+    assert attempts[1].argv == argv
+    assert attempts[1].cwd == repo
+    assert attempts[1].result is second
+
+
 @pytest.mark.parametrize(
     "field_flag",
     ("-f", "--field", "-F", "--raw-field", "--input"),
