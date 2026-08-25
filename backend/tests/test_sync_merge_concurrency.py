@@ -5,9 +5,27 @@ from __future__ import annotations
 import logging
 from datetime import UTC, timedelta
 
+import pytest
+
 from kg.vocab_crud import list_vocab_cards
 from kg.vocab_review import push_review_states
-from test_sync_merge import _entry, _iso, _make_store, _now
+from test_sync_merge import _entry, _iso, _now
+from test_sync_merge import _make_store as _create_store
+
+_stores = []
+
+
+def _make_store(tmp_path):
+    store = _create_store(tmp_path)
+    _stores.append(store)
+    return store
+
+
+@pytest.fixture(autouse=True)
+def _close_card_stores():
+    yield
+    while _stores:
+        _stores.pop().close()
 
 # CardStore.update — updated_at auto-bump
 # ============================================================================
