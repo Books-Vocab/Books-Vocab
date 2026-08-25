@@ -27,6 +27,7 @@ from delivery_control.adapters.subprocess_runner import SubprocessCommandRunner
 from delivery_control.domain.errors import CompareAndSwapConflict
 from delivery_control.domain.observations import (
     CanonicalCheckoutSnapshot,
+    InventoryProblem,
     PhysicalWorktree,
     RegistryInventory,
     RegistrySnapshot,
@@ -213,22 +214,84 @@ class SupersededMainReconciler:
         self.registry = registry
         self.command = command
 
+    @staticmethod
+    def _registry_problem_targets_lane(
+        problem: InventoryProblem,
+        request: ReconcileRequest,
+        record: RegistrySnapshot,
+    ) -> bool:
+        """Match only explicit target identity; never infer from free-form text."""
+
+        if problem.identity in {
+            request.branch,
+            request.external_id,
+            str(record.path.resolve()),
+        }:
+            return True
+        if request.external_id in problem.record_external_ids:
+            return True
+        if problem.record_path is not None and (
+            problem.record_path.resolve() == record.path.resolve()
+        ):
+            return True
+        if problem.identity_kind == "path":
+            candidate = Path(problem.identity).expanduser()
+            if candidate.is_absolute() and candidate.resolve() == record.path.resolve():
+                return True
+        return False
+
+    @staticmethod
+    def _registry_problem_observation(problem: InventoryProblem) -> dict[str, object]:
+        return {
+            "identity": problem.identity,
+            "kind": problem.identity_kind,
+            "status": problem.record_status,
+            "reason": problem.reason,
+        }
+
+    @classmethod
+    def _scope_registry_problems(
+        cls,
+        problems: tuple[InventoryProblem, ...],
+        request: ReconcileRequest,
+        record: RegistrySnapshot,
+    ) -> tuple[dict[str, object], ...]:
+        observations: list[dict[str, object]] = []
+        for problem in problems:
+            if cls._registry_problem_targets_lane(problem, request, record):
+                raise ReconcileBlocked(f"registry source problem: {problem.reason}")
+            if problem.identity_kind not in {"branch", "path", "record"}:
+                raise ReconcileBlocked(f"registry source problem: {problem.reason}")
+            if problem.identity_kind == "record" and (
+                problem.record_path is None and not problem.record_external_ids
+            ):
+                raise ReconcileBlocked(f"registry source problem: {problem.reason}")
+            observations.append(cls._registry_problem_observation(problem))
+        return tuple(
+            sorted(
+                observations,
+                key=lambda item: (
+                    str(item["identity"]),
+                    str(item["kind"]),
+                    str(item["status"]),
+                    str(item["reason"]),
+                ),
+            )
+        )
+
     def _registry_record(
         self,
         request: ReconcileRequest,
         *,
         local: CommitIdentity,
         source: CommitIdentity,
-    ) -> RegistrySnapshot:
+    ) -> tuple[RegistrySnapshot, tuple[dict[str, object], ...]]:
         try:
             inventory = self.registry.list_records()
         except Exception as error:
             raise ReconcileBlocked(
                 f"registry source problem: {_clean_error(error)}"
             ) from error
-        if inventory.problems:
-            reasons = "; ".join(problem.reason for problem in inventory.problems)
-            raise ReconcileBlocked(f"registry source problem: {reasons}")
 
         branch_matches = [
             record for record in inventory.records if record.branch == request.branch
@@ -282,6 +345,11 @@ class SupersededMainReconciler:
             raise ReconcileBlocked(
                 "published registry lane lacks published-base evidence"
             )
+        observations = self._scope_registry_problems(
+            inventory.problems,
+            request,
+            record,
+        )
         expected_changes = _changes(source.changes)
         if _scope_changes(record) != expected_changes:
             raise ReconcileBlocked("registry Scope differs from merged source Scope")
@@ -298,7 +366,7 @@ class SupersededMainReconciler:
             raise ReconcileBlocked(
                 "published or terminal registry lane still has a physical worktree"
             )
-        return record
+        return record, observations
 
     def _preflight(self, request: ReconcileRequest) -> dict[str, object]:
         try:
@@ -458,7 +526,9 @@ class SupersededMainReconciler:
                 f"ancestry source problem: {_clean_error(error)}"
             ) from error
 
-        record = self._registry_record(request, local=local, source=source)
+        record, registry_observations = self._registry_record(
+            request, local=local, source=source
+        )
         return {
             "before": before,
             "source": {
@@ -509,6 +579,7 @@ class SupersededMainReconciler:
                     "patch_id": source_patch_id,
                 },
             },
+            "registry_observations": registry_observations,
             "record": record,
         }
 
@@ -628,6 +699,9 @@ class SupersededMainReconciler:
             "pr": evidence["pr"],
             "owner": evidence["owner"],
             "fingerprint": evidence["fingerprint"],
+            "registry": {
+                "scoped_observations": list(evidence["registry_observations"]),
+            },
         }
 
 
