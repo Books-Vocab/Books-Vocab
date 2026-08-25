@@ -658,6 +658,10 @@ STUB
   git init -q --bare "$remote"
   git -C "$fixture" remote add origin "$remote"
   git -C "$fixture" push -q origin main ios/2.0.0
+  # Release/resubmit/finalize behavior fixtures must model the supported
+  # dedicated owner lane. Tests that need protected main explicitly checkout
+  # main; the fixture default must never make main the release execution lane.
+  git -C "$fixture" checkout -q -b fixture-release-lane
 }
 
 # 15a. 被移除的 flag 必須硬報錯並指路。靜默忽略最糟：operator 以為自己仍在背書，
@@ -695,24 +699,24 @@ mismatch_out="$(bash "$fx_b/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || mi
 [[ ! -e "$fx_b/upload.called" ]] \
   && ok "no-shipped-tag refusal is pre-upload" || fail_t "uploaded before the shipped-tag check"
 
-# 15c. upload 若失敗，candidate commit/push 必須保留作為可恢復 provenance，但不得
-#      建立 false build tag；下一輪不可靜默產生另一顆 build。
+# 15c. candidate 建立與恢復邊界：release 本身不 upload，candidate 必須保留
+#      在 dedicated lane，並把外部副作用留給 exact merged resume。
 fx_c="$TMP4/upload-failure"; remote_c="$TMP4/upload-failure.git"
 make_ios_release_fixture "$fx_c" "$remote_c"
 head_c="$(git -C "$fx_c" rev-parse HEAD)"
 upload_rc=0
 upload_out="$(STUB_UPLOAD_EXIT=23 bash "$fx_c/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || upload_rc=$?
-[[ "$upload_rc" -ne 0 && -e "$fx_c/upload.called" ]] \
-  && ok "attested release reaches upload and propagates upload failure" \
-  || fail_t "attested release did not exercise failing upload: $upload_out"
+[[ "$upload_rc" -eq 0 && ! -e "$fx_c/upload.called" ]] \
+  && ok "release candidate does not upload before PR/queue handback" \
+  || fail_t "release candidate unexpectedly uploaded: $upload_out"
 candidate_c="$(git -C "$fx_c" rev-parse HEAD)"
 [[ "$candidate_c" != "$head_c" \
    && "$(git -C "$fx_c" log -1 --format=%s)" == "ops: prepare ios 2.0.1 build 6" \
    && -z "$(git -C "$fx_c" tag -l 'ios/2.0.1*')" \
    && -z "$(git --git-dir="$remote_c" tag -l 'ios/2.0.1*')" \
-   && "$(git --git-dir="$remote_c" rev-parse refs/heads/main)" == "$candidate_c" ]] \
-   && ok "upload failure leaves recoverable candidate but no false build tag" \
-   || fail_t "upload failure did not preserve the correct candidate boundary"
+   && "$(git --git-dir="$remote_c" rev-parse refs/heads/main)" == "$head_c" ]] \
+   && ok "candidate preserves provenance without changing protected main" \
+   || fail_t "candidate boundary was not preserved"
 [[ "$(STUB_UPLOAD_EXIT=23 bash "$fx_c/ops/release.sh" release ios 2.0.1 --yes 2>&1 || true)" == *"finalize ios 2.0.1 6"* ]] \
   && ok "pending candidate blocks rerun and points to finalize" \
   || fail_t "pending candidate rerun did not point to finalize"
@@ -721,60 +725,58 @@ candidate_c="$(git -C "$fx_c" rev-parse HEAD)"
 #       顯示 exact build，也必須保留 candidate，稍後 finalize 可無副作用恢復。
 finalize_c_rc=0
 finalize_c_out="$(bash "$fx_c/ops/release.sh" finalize ios 2.0.1 6 --yes 2>&1)" || finalize_c_rc=$?
-[[ "$finalize_c_rc" -eq 0 \
-   && "$(<"$fx_c/upload.count")" == 1 \
-   && "$(git -C "$fx_c" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$candidate_c" \
-   && "$(git --git-dir="$remote_c" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$candidate_c" ]] \
-  && ok "finalize recovery seals failed-upload candidate without re-upload" \
-  || fail_t "finalize recovery re-uploaded or failed: $finalize_c_out"
+[[ "$finalize_c_rc" -ne 0 && "$finalize_c_out" == *"exact --pr"* \
+   && ! -e "$fx_c/upload.called" ]] \
+  && ok "finalize refuses a pre-merge candidate without exact receipt" \
+  || fail_t "finalize accepted an unmerged candidate: $finalize_c_out"
 
 fx_rpending="$TMP4/asc-pending"; remote_rpending="$TMP4/asc-pending.git"
 make_ios_release_fixture "$fx_rpending" "$remote_rpending"
 pending_asc_rc=0
 pending_asc_out="$(ASC_EXACT_BUILD_EXIT=3 KG_RELEASE_ASC_WAIT_SECS=0 bash "$fx_rpending/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || pending_asc_rc=$?
 candidate_rpending="$(git -C "$fx_rpending" rev-parse HEAD)"
-[[ "$pending_asc_rc" -ne 0 \
-   && "$(<"$fx_rpending/upload.count")" == 1 \
+[[ "$pending_asc_rc" -eq 0 \
+   && ! -e "$fx_rpending/upload.count" \
    && "$(git -C "$fx_rpending" log -1 --format=%s)" == "ops: prepare ios 2.0.1 build 6" \
    && -z "$(git -C "$fx_rpending" tag -l 'ios/2.0.1+6')" \
-   && "$(git --git-dir="$remote_rpending" rev-parse refs/heads/main)" == "$candidate_rpending" ]] \
-  && ok "ASC propagation miss retains candidate and does not create a false tag" \
-  || fail_t "ASC propagation miss did not retain recoverable state: $pending_asc_out"
+   && "$(git --git-dir="$remote_rpending" rev-parse refs/heads/main)" != "$candidate_rpending" ]] \
+  && ok "release leaves ASC propagation to post-merge resume" \
+  || fail_t "candidate path performed ASC work: $pending_asc_out"
 pending_dry_rc=0
 pending_dry_out="$(bash "$fx_rpending/ops/release.sh" finalize ios 2.0.1 6 2>&1)" || pending_dry_rc=$?
-[[ "$pending_dry_rc" -eq 0 \
+[[ "$pending_dry_rc" -ne 0 \
    && -z "$(git -C "$fx_rpending" tag -l 'ios/2.0.1+6')" \
-   && "$pending_dry_out" == *"[dry-run] 未建立 tag"* ]] \
-  && ok "finalize recovery dry-run proves exact ASC without writing tag" \
-  || fail_t "finalize dry-run mutated or failed: $pending_dry_out"
+   && "$pending_dry_out" == *"exact --pr"* ]] \
+  && ok "finalize dry-run refuses without exact PR receipt" \
+  || fail_t "finalize dry-run did not fail closed: $pending_dry_out"
 pending_finalize_rc=0
 pending_finalize_out="$(bash "$fx_rpending/ops/release.sh" finalize ios 2.0.1 6 --yes 2>&1)" || pending_finalize_rc=$?
-[[ "$pending_finalize_rc" -eq 0 \
-   && "$(<"$fx_rpending/upload.count")" == 1 \
-   && "$(git --git-dir="$remote_rpending" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$candidate_rpending" ]] \
-  && ok "ASC propagation recovery finalizes without a second upload" \
-  || fail_t "ASC propagation recovery failed: $pending_finalize_out"
+[[ "$pending_finalize_rc" -ne 0 \
+   && "$pending_finalize_out" == *"exact --pr"* \
+   && ! -e "$fx_rpending/upload.called" ]] \
+  && ok "finalize remains side-effect free before exact PR/source evidence" \
+  || fail_t "finalize crossed the evidence gate: $pending_finalize_out"
 
-# 15c.2. finalize must recheck remote-only tag collisions after upload. The stub
-#      creates a conflicting remote tag between preflight and finalize.
+# 15c.2. A candidate must not touch a remote tag or branch before queue merge.
 fx_remote_collision="$TMP4/remote-tag-collision"; remote_remote_collision="$TMP4/remote-tag-collision.git"
 make_ios_release_fixture "$fx_remote_collision" "$remote_remote_collision"
 head_remote_collision="$(git -C "$fx_remote_collision" rev-parse HEAD)"
 remote_collision_rc=0
 remote_collision_out="$(STUB_REMOTE_TAG=ios/2.0.1+6 bash "$fx_remote_collision/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || remote_collision_rc=$?
 candidate_remote_collision="$(git -C "$fx_remote_collision" rev-parse HEAD)"
-[[ "$remote_collision_rc" -ne 0 \
-   && "$(<"$fx_remote_collision/upload.count")" == 1 \
+[[ "$remote_collision_rc" -eq 0 \
+   && ! -e "$fx_remote_collision/upload.count" \
    && -z "$(git -C "$fx_remote_collision" tag -l 'ios/2.0.1+6')" \
-   && "$(git --git-dir="$remote_remote_collision" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$head_remote_collision" \
-   && "$(git --git-dir="$remote_remote_collision" rev-parse refs/heads/main)" == "$candidate_remote_collision" ]] \
-  && ok "finalize refuses a remote-only conflicting tag after upload" \
-  || fail_t "remote-only tag collision was not fail-closed: $remote_collision_out"
+   && -z "$(git --git-dir="$remote_remote_collision" tag -l 'ios/2.0.1+6')" \
+   && "$(git --git-dir="$remote_remote_collision" rev-parse refs/heads/main)" == "$head_remote_collision" ]] \
+  && ok "candidate leaves remote-only tag collision untouched before merge" \
+  || fail_t "candidate crossed the remote tag boundary: $remote_collision_out"
 
 # 15c.3. A second release invocation must not pass preflight while the first
 #      transaction owns the shared release lock.
 fx_lock="$TMP4/release-lock"; remote_lock="$TMP4/release-lock.git"
 make_ios_release_fixture "$fx_lock" "$remote_lock"
+lock_base="$(git --git-dir="$remote_lock" rev-parse refs/heads/main)"
 lock_first_out="$TMP4/release-lock-first.out"
 STUB_UPLOAD_SLEEP_SECS=2 bash "$fx_lock/ops/release.sh" release ios 2.0.1 --yes >"$lock_first_out" 2>&1 &
 lock_first_pid=$!
@@ -789,9 +791,10 @@ wait "$lock_first_pid" || lock_first_rc=$?
 [[ "$lock_first_rc" -eq 0 \
    && "$lock_second_rc" -ne 0 \
    && "$lock_second_out" == *"release lock"* \
-   && "$(<"$fx_lock/upload.count")" == 1 \
-   && "$(git --git-dir="$remote_lock" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$(git -C "$fx_lock" rev-parse HEAD)" ]] \
-  && ok "shared release lock prevents a concurrent duplicate upload" \
+   && ! -e "$fx_lock/upload.count" \
+   && -z "$(git --git-dir="$remote_lock" tag -l 'ios/2.0.1+6')" \
+   && "$(git --git-dir="$remote_lock" rev-parse refs/heads/main)" == "$lock_base" ]] \
+  && ok "shared release lock prevents a concurrent duplicate candidate" \
   || fail_t "concurrent release was not serialized: first=$lock_first_rc second=$lock_second_out"
 
 # 15d. direct tag 也是外部 release marker，必須吃同一個 guard——否則 bump→tag 兩步
@@ -822,7 +825,7 @@ downgrade_out="$(bash "$fx_e/ops/release.sh" release ios 1.9.9 --yes 2>&1)" || d
   && ok "iOS new marketing version must increase monotonically" \
   || fail_t "iOS downgrade was not safely rejected: $downgrade_out"
 
-# 15f. 合法恢復：版號已在 HEAD、upload 成功時仍建立明確 candidate commit，再 tag/push。
+# 15f. 合法 candidate：版號已在 HEAD 仍建立明確 candidate commit，等待 PR/queue。
 fx_f="$TMP4/already-committed"; remote_f="$TMP4/already-committed.git"
 make_ios_release_fixture "$fx_f" "$remote_f"
 sed -i '' 's/MARKETING_VERSION = 2.0.0;/MARKETING_VERSION = 2.0.1;/g; s/CURRENT_PROJECT_VERSION = 5;/CURRENT_PROJECT_VERSION = 6;/g' \
@@ -833,13 +836,13 @@ committed_head="$(git -C "$fx_f" rev-parse HEAD)"
 committed_rc=0
 committed_out="$(bash "$fx_f/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || committed_rc=$?
 committed_candidate="$(git -C "$fx_f" rev-parse HEAD)"
-[[ "$committed_rc" -eq 0 && -e "$fx_f/upload.called" \
+[[ "$committed_rc" -eq 0 && ! -e "$fx_f/upload.called" \
    && "$committed_candidate" != "$committed_head" \
    && "$(git -C "$fx_f" log -1 --format=%s)" == "ops: prepare ios 2.0.1 build 6" \
-   && "$(git -C "$fx_f" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$committed_candidate" \
-   && "$(git --git-dir="$remote_f" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$committed_candidate" \
-   && "$(git --git-dir="$remote_f" rev-parse refs/heads/main)" == "$committed_candidate" ]] \
-  && ok "already-committed version creates candidate then uploads/tags/pushes" \
+   && -z "$(git -C "$fx_f" tag -l 'ios/2.0.1+6')" \
+   && -z "$(git --git-dir="$remote_f" tag -l 'ios/2.0.1+6')" \
+   && "$(git --git-dir="$remote_f" rev-parse refs/heads/main)" != "$committed_candidate" ]] \
+  && ok "already-committed version creates a candidate without upload/tag/main push" \
   || fail_t "already-committed version did not close candidate release: $committed_out"
 
 # 15g. 事故本體：有一個版本出過 build、卻還沒有上架 tag，就直接發下一版。
@@ -862,13 +865,14 @@ pending_out="$(bash "$fx_g/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || pen
 echo "$pending_out" | grep -q '2\.0\.0' \
   && ok "pending-version error names the version that was about to be skipped" \
   || fail_t "pending-version error does not name 2.0.0: $pending_out"
-# 正控：補上 2.0.0 的上架 tag 後，同一條命令必須放行——否則上面那條可能是任何原因擋的。
+# 正控：補上 2.0.0 的上架 tag 後，同一條 candidate 命令必須放行。
 git -C "$fx_g" tag "ios/2.0.0"
 allow_rc=0
 allow_out="$(bash "$fx_g/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || allow_rc=$?
-[[ "$allow_rc" -eq 0 && -e "$fx_g/upload.called" \
-   && -n "$(git -C "$fx_g" tag -l 'ios/2.0.1+6')" ]] \
-  && ok "same command proceeds once the intermediate version is confirmed shipped" \
+[[ "$allow_rc" -eq 0 && ! -e "$fx_g/upload.called" \
+   && -z "$(git -C "$fx_g" tag -l 'ios/2.0.1+6')" \
+   && "$(git -C "$fx_g" log -1 --format=%s)" == "ops: prepare ios 2.0.1 build 6" ]] \
+  && ok "same command emits a candidate once the intermediate version is confirmed shipped" \
   || fail_t "guard blocks even after the pending version is resolved: $allow_out"
 
 # ── 版號漂移分類（ios/2.0.1 誤標事故：tag 高於檔內 = 版號被撤回，不是待對齊）──
@@ -981,24 +985,25 @@ echo "$status_fx" | grep -E '^■ ios' | grep -q 'ios/2.0.0+6' \
 # commit、實際上架 build 6 的事故，就是靠 pbxproj 編輯時戳夾送審時戳硬反推出來的）。
 section "iOS build tag records which commit produced (version, build)"
 
-# 17a. release ios 成功後封的是 ios/<ver>+<build>，且**不得**順手打 ios/<ver>：
-#      後者是「已上架」的斷言，upload 完成的那一刻沒有任何人知道它會不會過審。
+# 17a. release ios 只建立 candidate；ios/<ver>+<build> 必須由 merged resume/finalize
+#      的 tag-only route 產生，且**不得**順手打 ios/<ver>。
 fx_bt="$TMP5/build-tag"; remote_bt="$TMP5/build-tag.git"
 make_ios_release_fixture "$fx_bt" "$remote_bt"
 bt_rc=0
 bt_out="$(bash "$fx_bt/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || bt_rc=$?
 bt_head="$(git -C "$fx_bt" rev-parse HEAD)"
-[[ "$bt_rc" -eq 0 && -e "$fx_bt/upload.called" ]] \
-  && ok "release ios uploads and completes" || fail_t "release ios failed: $bt_out"
-[[ "$(git -C "$fx_bt" rev-parse -q --verify 'refs/tags/ios/2.0.1+6^{commit}' 2>/dev/null)" == "$bt_head" ]] \
-  && ok "build tag ios/2.0.1+6 seals the commit that produced the archive" \
-  || fail_t "no ios/2.0.1+6 build tag at the sealing commit: $bt_out"
+[[ "$bt_rc" -eq 0 && ! -e "$fx_bt/upload.called" ]] \
+  && ok "release ios creates candidate without upload" || fail_t "release ios candidate failed: $bt_out"
+[[ -z "$(git -C "$fx_bt" rev-parse -q --verify 'refs/tags/ios/2.0.1+6^{commit}' 2>/dev/null)" ]] \
+  && ok "candidate does not create a build tag before merged finalize" \
+  || fail_t "candidate created a build tag before merge: $bt_out"
 git -C "$fx_bt" rev-parse -q --verify refs/tags/ios/2.0.1 >/dev/null \
   && fail_t "release minted ios/2.0.1 — repo claimed a shipped fact it cannot know at upload time" \
   || ok "release does not mint the shipped tag it cannot know yet"
-[[ "$(git --git-dir="$remote_bt" rev-parse -q --verify 'refs/tags/ios/2.0.1+6^{commit}' 2>/dev/null)" == "$bt_head" ]] \
-  && ok "build tag is pushed to origin (the other clone needs the same record)" \
-  || fail_t "build tag stayed local"
+[[ -z "$(git --git-dir="$remote_bt" rev-parse -q --verify 'refs/tags/ios/2.0.1+6^{commit}' 2>/dev/null)" \
+   && "$(git --git-dir="$remote_bt" rev-parse refs/heads/main)" != "$bt_head" ]] \
+  && ok "candidate leaves remote tag/main refs unchanged" \
+  || fail_t "candidate crossed the remote publication boundary"
 
 # 17b. 同一 (version, build) 從兩顆不同 commit 出 archive = 真歧義，必須 refuse，
 #      而且要在 upload 之前——TestFlight upload 不可逆，先確定封得下去再送。
@@ -1218,13 +1223,13 @@ echo "$rdry_drift" | grep -q 'build 5 → 9' && echo "$rdry_drift" | grep -q 'io
 rdres_drift_rc=0
 rdres_drift="$(ASC_LATEST_BUILD=8 bash "$fx_rd/ops/release.sh" resubmit ios --yes 2>&1)" || rdres_drift_rc=$?
 sealed_rd="$(git -C "$fx_rd" rev-parse HEAD)"
-[[ "$rdres_drift_rc" -eq 0 && -e "$fx_rd/upload.called" \
+[[ "$rdres_drift_rc" -eq 0 && ! -e "$fx_rd/upload.called" \
    && "$(grep -c 'CURRENT_PROJECT_VERSION = 9;' "$fx_rd/ios/BooksAndVocab.xcodeproj/project.pbxproj" || true)" -eq 2 \
-   && "$(git -C "$fx_rd" rev-parse 'refs/tags/ios/2.0.0+9^{commit}')" == "$sealed_rd" \
-   && "$(git --git-dir="$remote_rd" rev-parse -q --verify 'refs/tags/ios/2.0.0+9^{commit}' 2>/dev/null)" == "$sealed_rd" \
-   && -z "$(git -C "$fx_rd" tag -l 'ios/2.0.0+8')" ]] \
-  && ok "ASC drift resubmit uploads and seals build 9 provenance" \
-  || fail_t "ASC drift resubmit did not close build 9 provenance: $rdres_drift"
+   && "$(git -C "$fx_rd" log -1 --format=%s)" == "ops: prepare ios 2.0.0 build 9" \
+   && -z "$(git -C "$fx_rd" tag -l 'ios/2.0.0+9')" \
+   && -z "$(git --git-dir="$remote_rd" tag -l 'ios/2.0.0+9')" ]] \
+  && ok "ASC drift resubmit preserves build-9 candidate provenance" \
+  || fail_t "ASC drift resubmit did not create build-9 candidate: $rdres_drift"
 
 # ASC failure or malformed latest build must stop before the local bump and
 # irreversible upload; no fallback to local+1 is allowed.
@@ -1254,17 +1259,17 @@ rmal_out="$(ASC_LATEST_BUILD=not-a-number bash "$fx_rmal/ops/release.sh" resubmi
 rres_rc=0
 rres="$(bash "$fx_r/ops/release.sh" resubmit ios --yes 2>&1)" || rres_rc=$?
 sealed_r="$(git -C "$fx_r" rev-parse HEAD)"
-[[ "$rres_rc" -eq 0 && -e "$fx_r/upload.called" ]] \
-  && ok "resubmit uploads" || fail_t "resubmit did not upload: $rres"
+[[ "$rres_rc" -eq 0 && ! -e "$fx_r/upload.called" ]] \
+  && ok "resubmit creates candidate without upload" || fail_t "resubmit candidate failed: $rres"
 [[ "$(grep -c 'CURRENT_PROJECT_VERSION = 6;' "$fx_r/ios/BooksAndVocab.xcodeproj/project.pbxproj" || true)" -eq 2 \
    && "$(grep -c 'MARKETING_VERSION = 2.0.0;' "$fx_r/ios/BooksAndVocab.xcodeproj/project.pbxproj" || true)" -eq 2 ]] \
   && ok "resubmit bumps build only, marketing version untouched" \
   || fail_t "resubmit changed the marketing version"
 [[ "$sealed_r" != "$head_r" \
-   && "$(git -C "$fx_r" rev-parse 'refs/tags/ios/2.0.0+6^{commit}')" == "$sealed_r" \
-   && "$(git --git-dir="$remote_r" rev-parse -q --verify 'refs/tags/ios/2.0.0+6^{commit}' 2>/dev/null)" == "$sealed_r" ]] \
-  && ok "resubmit seals ios/2.0.0+6 at the new commit and pushes it" \
-  || fail_t "resubmit did not seal the rebuild: $rres"
+   && -z "$(git -C "$fx_r" tag -l 'ios/2.0.0+6')" \
+   && -z "$(git --git-dir="$remote_r" tag -l 'ios/2.0.0+6')" ]] \
+  && ok "resubmit leaves build tag for merged finalize" \
+  || fail_t "resubmit crossed tag boundary: $rres"
 # 上架 tag 必須還是原本那顆：重送不代表上架。
 [[ "$(git -C "$fx_r" rev-parse 'refs/tags/ios/2.0.0^{commit}')" == "$head_r" ]] \
   && ok "resubmit does not touch the shipped tag" || fail_t "resubmit moved ios/2.0.0"
@@ -1277,23 +1282,21 @@ head_rf="$(git -C "$fx_rf" rev-parse HEAD)"
 rf_rc=0
 rf_out="$(STUB_UPLOAD_EXIT=23 bash "$fx_rf/ops/release.sh" resubmit ios --yes 2>&1)" || rf_rc=$?
 candidate_rf="$(git -C "$fx_rf" rev-parse HEAD)"
-[[ "$rf_rc" -ne 0 && -e "$fx_rf/upload.called" \
+[[ "$rf_rc" -eq 0 && ! -e "$fx_rf/upload.called" \
    && "$candidate_rf" != "$head_rf" \
-   && "$(<"$fx_rf/upload.count")" == 1 \
+   && ! -e "$fx_rf/upload.count" \
    && "$(git -C "$fx_rf" log -1 --format=%s)" == "ops: prepare ios 2.0.0 build 6" \
    && -z "$(git -C "$fx_rf" tag -l 'ios/2.0.0+6')" \
    && -z "$(git --git-dir="$remote_rf" tag -l 'ios/2.0.0+6')" \
-   && "$(git --git-dir="$remote_rf" rev-parse refs/heads/main)" == "$candidate_rf" ]] \
-  && ok "failed resubmit upload leaves recoverable candidate but no false build tag" \
-  || fail_t "failed resubmit did not preserve the correct candidate boundary: $rf_out"
+   && "$(git --git-dir="$remote_rf" rev-parse refs/heads/main)" != "$candidate_rf" ]] \
+  && ok "resubmit candidate remains recoverable without main/upload side effects" \
+  || fail_t "resubmit did not preserve candidate boundary: $rf_out"
 rf_finalize_rc=0
 rf_finalize_out="$(bash "$fx_rf/ops/release.sh" finalize ios 2.0.0 6 --yes 2>&1)" || rf_finalize_rc=$?
-[[ "$rf_finalize_rc" -eq 0 \
-   && "$(<"$fx_rf/upload.count")" == 1 \
-   && "$(git -C "$fx_rf" rev-parse 'refs/tags/ios/2.0.0+6^{commit}')" == "$candidate_rf" \
-   && "$(git --git-dir="$remote_rf" rev-parse 'refs/tags/ios/2.0.0+6^{commit}')" == "$candidate_rf" ]] \
-  && ok "failed resubmit candidate finalizes without a second upload" \
-  || fail_t "failed resubmit recovery failed or re-uploaded: $rf_finalize_out"
+[[ "$rf_finalize_rc" -ne 0 && "$rf_finalize_out" == *"exact --pr"* \
+   && ! -e "$fx_rf/upload.called" ]] \
+  && ok "resubmit finalize refuses before exact PR/source evidence" \
+  || fail_t "resubmit finalize crossed the evidence gate: $rf_finalize_out"
 
 # 20d. api 拒絕，且指路。
 ra_rc=0
@@ -1301,12 +1304,13 @@ ra_out="$(bash "$fx_r/ops/release.sh" resubmit api --yes 2>&1)" || ra_rc=$?
 [[ "$ra_rc" -ne 0 ]] && echo "$ra_out" | grep -q 'ios' \
   && ok "resubmit api is rejected with guidance" || fail_t "resubmit api not rejected: $ra_out"
 
-# 20e. 須在 main（與 release 同一條前提：發布的是本地主幹）。
+# 20e. Candidate lane is the supported execution surface; main is reserved for
+# post-queue resume/finalize, so this fixture explicitly proves no main-only path.
 git -C "$fx_r" checkout -q -b side
 rb_rc=0
 rb_out="$(bash "$fx_r/ops/release.sh" resubmit ios --yes 2>&1)" || rb_rc=$?
-[[ "$rb_rc" -ne 0 ]] && echo "$rb_out" | grep -q 'main' \
-  && ok "resubmit refuses off main" || fail_t "resubmit ran off main: $rb_out"
+[[ "$rb_rc" -ne 0 ]] && echo "$rb_out" | grep -q '未 finalize' \
+  && ok "resubmit does not bypass a pending candidate on another lane" || fail_t "resubmit bypassed pending candidate: $rb_out"
 git -C "$fx_r" checkout -q main
 
 # ── 21. status 說實話：ios 專案版號 / build tag 對照；api 是否真的上生產 ────
@@ -1386,8 +1390,10 @@ make_ios_release_fixture "$fx_ub" "$remote_ub"
 git -C "$fx_ub" tag "ios/3.0.0+1"          # 另一條線的實驗性 build，與本次無關
 ub_rc=0
 ub_out="$(bash "$fx_ub/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || ub_rc=$?
-[[ "$ub_rc" -eq 0 && -n "$(git -C "$fx_ub" tag -l 'ios/2.0.1+6')" ]] \
-  && ok "a build tag above the requested version does not block the release" \
+[[ "$ub_rc" -eq 0 && ! -e "$fx_ub/upload.called" \
+   && "$(git -C "$fx_ub" log -1 --format=%s)" == "ops: prepare ios 2.0.1 build 6" \
+   && -z "$(git -C "$fx_ub" tag -l 'ios/2.0.1+6')" ]] \
+  && ok "a build tag above the requested version does not block the candidate" \
   || fail_t "3.0.0 build tag blocked an unrelated 2.0.1 release: $ub_out"
 
 # ── 部署收斂閘：release backend 的第四步 ─────────────────────────────────────
@@ -1482,6 +1488,251 @@ cp -R "$WORKSPACE/ops/lib" "$fx_norecon/ops/lib"
 rc=0; out="$(bash -c "source '$fx_norecon/ops/release.sh'; set +e; echo backend/src/a.py | paths_trigger_rollout" 2>&1)" || rc=$?
 [[ $rc -ne 0 ]] && ok "kg_reconcile.sh 不存在 → err，不靜默降級成「不用等」" \
                 || fail_t "reconciler 缺席卻靜默回答（rc=${rc}）：$out"
+
+# ── 23. protected-main / native queue / deterministic resume（additive） ─────
+# These cases are additive. The historical regression corpus above is retained
+# intact. The pre-receive hook is the policy-rejecting remote; update-ref is
+# only the fixture stand-in for a native merge queue completing a reviewed PR.
+section "Protected-main queue state machine and recovery"
+
+make_policy_rejecting_remote() {
+  local remote="$1"
+  cat > "$remote/hooks/pre-receive" <<'HOOK'
+#!/usr/bin/env bash
+while read -r old new ref; do
+  if [[ "$ref" == refs/heads/main ]]; then
+    echo "policy fixture: protected main rejects direct update" >&2
+    exit 1
+  fi
+done
+exit 0
+HOOK
+  chmod +x "$remote/hooks/pre-receive"
+}
+
+queue_merge_fixture() {
+  local fixture="$1" remote="$2" candidate="$3"
+  # Native queue/admin merge fixture; release.sh never uses this bypass.
+  git -C "$fixture" push -q origin "$candidate:refs/heads/queue-fixture"
+  git --git-dir="$remote" update-ref refs/heads/main "$candidate"
+  git -C "$fixture" fetch -q origin main
+  git -C "$fixture" checkout -q main
+  git -C "$fixture" reset -q --hard origin/main
+}
+
+# 23a. Dedicated-lane iOS release: candidate only, no upload and no main push.
+fx_q="$TMP6/protected-ios"; remote_q="$TMP6/protected-ios.git"
+make_ios_release_fixture "$fx_q" "$remote_q"
+make_policy_rejecting_remote "$remote_q"
+git -C "$fx_q" checkout -q -b feat/release-queue
+q_base="$(git --git-dir="$remote_q" rev-parse refs/heads/main)"
+q_dry_rc=0; q_dry_out="$(bash "$fx_q/ops/release.sh" release ios 2.0.1 2>&1)" || q_dry_rc=$?
+[[ $q_dry_rc -eq 0 && "$q_dry_out" == *"hand-back"* && ! -e "$fx_q/upload.called" \
+   && "$(git --git-dir="$remote_q" rev-parse refs/heads/main)" == "$q_base" ]] \
+  && ok "iOS candidate dry-run is lane-only and preserves protected main" \
+  || fail_t "iOS candidate dry-run crossed a boundary: $q_dry_out"
+q_rc=0; q_out="$(bash "$fx_q/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || q_rc=$?
+q_candidate="$(git -C "$fx_q" rev-parse HEAD)"
+[[ $q_rc -eq 0 && "$q_candidate" != "$q_base" \
+   && "$(git -C "$fx_q" log -1 --format=%s)" == "ops: prepare ios 2.0.1 build 6" \
+   && "$q_out" == *"hand-back"* && ! -e "$fx_q/upload.called" \
+   && "$(git --git-dir="$remote_q" rev-parse refs/heads/main)" == "$q_base" ]] \
+  && ok "iOS --yes emits one recoverable candidate without main push/upload" \
+  || fail_t "iOS candidate mutated protected main or uploaded: $q_out"
+
+# 23b. Live merged tuple blocks a second build candidate (fixture equivalent
+# of the supplied merged build-12 evidence).
+fx_dup="$TMP6/duplicate-tuple"; remote_dup="$TMP6/duplicate-tuple.git"
+make_ios_release_fixture "$fx_dup" "$remote_dup"
+sed -i '' 's/MARKETING_VERSION = 2.0.0;/MARKETING_VERSION = 2.0.1;/g; s/CURRENT_PROJECT_VERSION = 5;/CURRENT_PROJECT_VERSION = 12;/g' \
+  "$fx_dup/ios/BooksAndVocab.xcodeproj/project.pbxproj"
+git -C "$fx_dup" add ios/BooksAndVocab.xcodeproj/project.pbxproj
+git -C "$fx_dup" commit -qm "fixture: merged ios 2.0.1 build 12"
+dup_live="$(git -C "$fx_dup" rev-parse HEAD)"
+git -C "$fx_dup" push -q origin "$dup_live:refs/heads/queue-fixture"
+git --git-dir="$remote_dup" update-ref refs/heads/main "$dup_live"
+git -C "$fx_dup" checkout -q -b feat/release-queue
+dup_head="$(git -C "$fx_dup" rev-parse HEAD)"
+dup_rc=0; dup_out="$(bash "$fx_dup/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || dup_rc=$?
+[[ $dup_rc -ne 0 && "$dup_out" == *"已包含 iOS tuple"* \
+   && "$(git -C "$fx_dup" rev-parse HEAD)" == "$dup_head" \
+   && ! -e "$fx_dup/upload.called" ]] \
+  && ok "merged target tuple blocks duplicate build candidate" \
+  || fail_t "duplicate tuple was not refused idempotently: $dup_out"
+
+# 23c. Exact PR/source receipt + ASC miss: upload once, no tag; retry the same
+# merged source after exact ASC proof, without a second upload.
+fx_rec="$TMP6/resume-recovery"; remote_rec="$TMP6/resume-recovery.git"
+make_ios_release_fixture "$fx_rec" "$remote_rec"
+git -C "$fx_rec" checkout -q -b feat/release-queue
+bash "$fx_rec/ops/release.sh" release ios 2.0.1 --yes >/dev/null
+rec_source="$(git -C "$fx_rec" rev-parse HEAD)"
+queue_merge_fixture "$fx_rec" "$remote_rec" "$rec_source"
+rec_base="$(git -C "$fx_rec" rev-parse "${rec_source}^")"
+mkdir -p "$fx_rec/.git/pr-fixture"
+cat > "$fx_rec/.git/pr-fixture/pr.json" <<JSON
+{"number":1590,"state":"MERGED","baseRefName":"main","baseRefOid":"${rec_base}","headRefOid":"${rec_source}","mergeCommit":{"oid":"${rec_source}"}}
+JSON
+cat > "$fx_rec/.git/pr-fixture/pr-stub.sh" <<'STUB'
+#!/usr/bin/env bash
+cat "$(dirname "$0")/pr.json"
+STUB
+chmod +x "$fx_rec/.git/pr-fixture/pr-stub.sh"
+rec_dry_rc=0; rec_dry_out="$(bash "$fx_rec/ops/release.sh" resume ios 2.0.1 6 2>&1)" || rec_dry_rc=$?
+[[ $rec_dry_rc -ne 0 && "$rec_dry_out" == *"exact --pr"* \
+   && ! -e "$fx_rec/upload.called" ]] \
+  && ok "resume requires exact PR/source before its dry-run" \
+  || fail_t "resume dry-run did not fail closed or was not side-effect free: $rec_dry_out"
+rec_valid_dry_rc=0; rec_valid_dry_out="$(KG_PR_CMD="$fx_rec/.git/pr-fixture/pr-stub.sh" \
+  bash "$fx_rec/ops/release.sh" resume ios 2.0.1 6 --pr 1590 \
+  --merged-source "$rec_source" 2>&1)" || rec_valid_dry_rc=$?
+[[ $rec_valid_dry_rc -eq 0 && "$rec_valid_dry_out" == *"未 upload、未建立 tag"* \
+   && ! -e "$fx_rec/upload.called" ]] \
+  && ok "resume exact PR/source dry-run is side-effect free" \
+  || fail_t "resume exact-evidence dry-run failed: $rec_valid_dry_out"
+rec_first_rc=0; rec_first_out="$(ASC_EXACT_BUILD_EXIT=3 KG_RELEASE_ASC_WAIT_SECS=0 \
+  KG_PR_CMD="$fx_rec/.git/pr-fixture/pr-stub.sh" bash "$fx_rec/ops/release.sh" resume ios 2.0.1 6 \
+  --pr 1590 --merged-source "$rec_source" --yes 2>&1)" || rec_first_rc=$?
+[[ $rec_first_rc -ne 0 && -e "$fx_rec/upload.called" \
+   && "$(<"$fx_rec/upload.count")" == 1 \
+   && -z "$(git --git-dir="$remote_rec" tag -l 'ios/2.0.1+6')" ]] \
+  && ok "ASC miss retains merged candidate after exactly one upload" \
+  || fail_t "ASC-miss recovery did not retain state: $rec_first_out"
+rec_second_rc=0; rec_second_out="$(KG_PR_CMD="$fx_rec/.git/pr-fixture/pr-stub.sh" \
+  bash "$fx_rec/ops/release.sh" resume ios 2.0.1 6 \
+  --pr 1590 --merged-source "$rec_source" --yes 2>&1)" || rec_second_rc=$?
+[[ $rec_second_rc -eq 0 && "$(<"$fx_rec/upload.count")" == 1 \
+   && "$(git --git-dir="$remote_rec" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$rec_source" \
+   && "$rec_second_out" == *"tag-only"* ]] \
+  && ok "resume is deterministic: exact ASC proof seals without duplicate upload" \
+  || fail_t "resume duplicated upload or failed to seal: $rec_second_out"
+
+# 23d. Backend release uses the same protected-main candidate boundary; this
+# fixture copies version files only and does not deploy.
+fx_api="$TMP6/protected-api"; remote_api="$TMP6/protected-api.git"
+make_ios_release_fixture "$fx_api" "$remote_api"
+mkdir -p "$fx_api/backend/src/kg"
+cp "$WORKSPACE/backend/pyproject.toml" "$fx_api/backend/pyproject.toml"
+cp "$WORKSPACE/backend/src/kg/api.py" "$fx_api/backend/src/kg/api.py"
+cp "$WORKSPACE/backend/uv.lock" "$fx_api/backend/uv.lock"
+git -C "$fx_api" add backend
+git -C "$fx_api" commit -qm "fixture: backend baseline"
+git -C "$fx_api" push -q origin "$(git -C "$fx_api" rev-parse HEAD):refs/heads/queue-fixture"
+git --git-dir="$remote_api" update-ref refs/heads/main "$(git -C "$fx_api" rev-parse HEAD)"
+make_policy_rejecting_remote "$remote_api"
+git -C "$fx_api" checkout -q -b feat/release-queue
+api_base="$(git --git-dir="$remote_api" rev-parse refs/heads/main)"
+api_rc=0; api_out="$(bash "$fx_api/ops/release.sh" release backend 2.0.4 --yes 2>&1)" || api_rc=$?
+[[ $api_rc -eq 0 && "$api_out" == *"hand-back"* \
+   && "$(git --git-dir="$remote_api" rev-parse refs/heads/main)" == "$api_base" \
+   && ! -e "$fx_api/upload.called" ]] \
+  && ok "backend release emits a candidate without direct main push/deploy" \
+  || fail_t "backend release crossed protected-main boundary: $api_out"
+
+if ! rg -n 'git .*push .*origin (main|.* main)|push --atomic .*main' "$REL" >/dev/null; then
+  ok "release implementation has no direct origin/main push path"
+else
+  fail_t "release implementation still contains a direct origin/main push path"
+fi
+grep -q 'resume)' "$REL" \
+  && ok "dispatcher exposes resume state" \
+  || fail_t "dispatcher has no resume state"
+
+# 23e. resubmit is also a dedicated-lane candidate operation: it must not
+# upload or update protected main before the IM/PR/queue handback.
+fx_rs="$TMP6/protected-resubmit"; remote_rs="$TMP6/protected-resubmit.git"
+make_ios_release_fixture "$fx_rs" "$remote_rs"
+make_policy_rejecting_remote "$remote_rs"
+git -C "$fx_rs" checkout -q -b feat/release-queue
+rs_base="$(git --git-dir="$remote_rs" rev-parse refs/heads/main)"
+rs_rc=0; rs_out="$(bash "$fx_rs/ops/release.sh" resubmit ios --yes 2>&1)" || rs_rc=$?
+rs_candidate="$(git -C "$fx_rs" rev-parse HEAD)"
+[[ $rs_rc -eq 0 && "$rs_candidate" != "$rs_base" \
+   && "$rs_out" == *"hand-back"* && ! -e "$fx_rs/upload.called" \
+   && "$(git --git-dir="$remote_rs" rev-parse refs/heads/main)" == "$rs_base" ]] \
+  && ok "resubmit emits a dedicated-lane candidate without push/upload" \
+  || fail_t "resubmit crossed protected-main boundary: $rs_out"
+reject_rc=0
+git -C "$fx_q" push -q origin HEAD:refs/heads/main >/dev/null 2>&1 || reject_rc=$?
+[[ $reject_rc -ne 0 && "$(git --git-dir="$remote_q" rev-parse refs/heads/main)" == "$q_base" ]] \
+  && ok "policy fixture rejects direct refs/heads/main push" \
+  || fail_t "protected-main fixture accepted a direct main push"
+
+# 23f. Exact PR readback is injected as one JSON object. Each invalid receipt
+# must stop before ASC/upload/tag, even though the source is an ancestor and
+# the iOS tuple is otherwise valid.
+prepare_pr_fixture() {
+  local fixture="$1" remote="$2"
+  make_ios_release_fixture "$fixture" "$remote"
+  git -C "$fixture" checkout -q -b feat/release-queue
+  bash "$fixture/ops/release.sh" release ios 2.0.1 --yes >/dev/null
+  PR_SOURCE="$(git -C "$fixture" rev-parse HEAD)"
+  PR_BASE="$(git -C "$fixture" rev-parse HEAD^)"
+  queue_merge_fixture "$fixture" "$remote" "$PR_SOURCE"
+  PR_LIVE="$(git --git-dir="$remote" rev-parse refs/heads/main)"
+  mkdir -p "$fixture/.git/pr-fixture"
+  cat > "$fixture/.git/pr-fixture/pr-stub.sh" <<'STUB'
+#!/usr/bin/env bash
+cat "$(dirname "$0")/pr.json"
+STUB
+  chmod +x "$fixture/.git/pr-fixture/pr-stub.sh"
+}
+
+write_pr_receipt() {
+  local fixture="$1" number="$2" state="$3" head="$4"
+  cat > "$fixture/.git/pr-fixture/pr.json" <<JSON
+{"number":${number},"state":"${state}","baseRefName":"main","baseRefOid":"${PR_BASE}","headRefOid":"${head}","mergeCommit":{"oid":"${PR_LIVE}"}}
+JSON
+}
+
+pr_invalid_case() {
+  local label="$1" number="$2" state="$3" head="${4:-}" fixture remote
+  fixture="$TMP6/pr-${label}"; remote="$TMP6/pr-${label}.git"
+  prepare_pr_fixture "$fixture" "$remote"
+  [[ -n "$head" ]] || head="$PR_SOURCE"
+  write_pr_receipt "$fixture" "$number" "$state" "$head"
+  local rc=0 out
+  out="$(KG_PR_CMD="$fixture/.git/pr-fixture/pr-stub.sh" bash "$fixture/ops/release.sh" resume ios 2.0.1 6 \
+    --pr 1590 --merged-source "$PR_SOURCE" --yes 2>&1)" || rc=$?
+  [[ $rc -ne 0 && "$out" == *"PR"* && ! -e "$fixture/upload.called" \
+     && -z "$(git --git-dir="$remote" tag -l 'ios/2.0.1+6')" ]] \
+    && ok "exact PR readback rejects ${label} before upload/tag" \
+    || fail_t "invalid PR receipt ${label} was accepted: $out"
+}
+
+pr_invalid_case "wrong-number" 1591 MERGED
+pr_invalid_case "open" 1590 OPEN
+prepare_pr_fixture "$TMP6/pr-source-mismatch" "$TMP6/pr-source-mismatch.git"
+write_pr_receipt "$TMP6/pr-source-mismatch" 1590 MERGED "$PR_BASE"
+source_rc=0; source_out="$(KG_PR_CMD="$TMP6/pr-source-mismatch/.git/pr-fixture/pr-stub.sh" \
+  bash "$TMP6/pr-source-mismatch/ops/release.sh" resume ios 2.0.1 6 --pr 1590 \
+  --merged-source "$PR_SOURCE" --yes 2>&1)" || source_rc=$?
+[[ $source_rc -ne 0 && "$source_out" == *"headRefOid"* \
+   && ! -e "$TMP6/pr-source-mismatch/upload.called" ]] \
+  && ok "exact PR readback rejects source mismatch before upload" \
+  || fail_t "source-mismatched PR receipt was accepted: $source_out"
+
+# 23g. finalize consumes the same verified PR receipt and is tag-only: dry-run
+# never tags, --yes pushes only the build tag, and the policy hook still sees
+# no refs/heads/main update.
+fx_fin="$TMP6/finalize-tag-only"; remote_fin="$TMP6/finalize-tag-only.git"
+prepare_pr_fixture "$fx_fin" "$remote_fin"
+write_pr_receipt "$fx_fin" 1590 MERGED "$PR_SOURCE"
+make_policy_rejecting_remote "$remote_fin"
+fin_dry_rc=0; fin_dry_out="$(KG_PR_CMD="$fx_fin/.git/pr-fixture/pr-stub.sh" bash "$fx_fin/ops/release.sh" \
+  finalize ios 2.0.1 6 --pr 1590 --merged-source "$PR_SOURCE" 2>&1)" || fin_dry_rc=$?
+[[ $fin_dry_rc -eq 0 && "$fin_dry_out" == *"未建立 tag"* \
+   && -z "$(git --git-dir="$remote_fin" tag -l 'ios/2.0.1+6')" ]] \
+  && ok "finalize exact-PR dry-run is tag-free" \
+  || fail_t "finalize dry-run mutated or rejected valid receipt: $fin_dry_out"
+fin_rc=0; fin_out="$(KG_PR_CMD="$fx_fin/.git/pr-fixture/pr-stub.sh" bash "$fx_fin/ops/release.sh" \
+  finalize ios 2.0.1 6 --pr 1590 --merged-source "$PR_SOURCE" --yes 2>&1)" || fin_rc=$?
+[[ $fin_rc -eq 0 \
+   && "$(git --git-dir="$remote_fin" rev-parse 'refs/tags/ios/2.0.1+6^{commit}')" == "$PR_LIVE" \
+   && "$(git --git-dir="$remote_fin" rev-parse refs/heads/main)" == "$PR_LIVE" \
+   && ! -e "$fx_fin/upload.called" && "$fin_out" == *"tag-only"* ]] \
+  && ok "finalize verifies PR and publishes tag-only without upload/main push" \
+  || fail_t "finalize was not exact-PR tag-only: $fin_out"
 
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""

@@ -2,24 +2,26 @@
 # release.sh — KG 版號發布統一入口（對標 backend/ops_cli.py 的單入口 + 乾淨 subcommand）
 #
 # 統一 backend／iOS 的版本與發布入口；命令實作集中在本檔。
-# 寫入面（bump 改本地檔、publish push）一律 dry-run 預設、--yes 才落地（同 asc.sh set 紀律）。
+# 寫入面（bump/candidate/tag）一律 dry-run 預設、--yes 才落地（同 asc.sh set 紀律）。
 # 注意：目前無 tag-triggered CI workflow，tag 為「版本標記」，GitHub Release 須手動建。
 #
-# GitHub main 是合併後的產品主幹；本入口只處理已合併變更的版本標記、部署與外部發布。
-# 前後端共用 `release <backend|ios> <ver>`，底下各自機器（backend 推 origin/prod
-# →felix reconciler；ios→ios_release upload TestFlight）。tag 只做版號標記，非部署。
+# GitHub main 是合併後的產品主幹；release candidate 先在 dedicated lane 產生，
+# 經 IM PR + required/native merge queue 後，才由 approved owner 以 exact merged
+# evidence resume 外部發布。tag 只推 tag ref，非 branch ref。
 #
 # Usage:
 #   ./ops/release.sh status                      # 各 component 待發版 commit + released gap（本地唯讀）
 #   ./ops/release.sh changelog <api|ios>         # 印 markdown changelog 預覽（唯讀）
 #   ./ops/release.sh bump <api|ios> <x.y.z>      # 改本地版號檔（api: pyproject+api.py+uv.lock / ios: pbxproj；dry-run 預設，--yes 才寫）
 #   ./ops/release.sh bump-build ios              # 只 +1 pbxproj CURRENT_PROJECT_VERSION（App Review 被拒同版重送；dry-run 預設，--yes 才寫）
-#   ./ops/release.sh tag <api|ios> <x.y.z>       # commit 版號檔 + tag + push origin main（ios 封的是 ios/<x.y.z>+<build>）
-#   ./ops/release.sh release <backend|ios> <x.y.z>  # 統一發布。須在 main。dry-run 預設
-#                                                # backend 會等生產收斂（線上 version == 本次 sha）才宣稱成功
+#   ./ops/release.sh tag <api|ios> <x.y.z>       # commit 版號檔 + tag-only push（ios 封的是 ios/<x.y.z>+<build>）
+#   ./ops/release.sh release <backend|ios> <x.y.z>  # dedicated lane candidate；dry-run 預設
+#   ./ops/release.sh resume ios <x.y.z> <build> --pr <n> --merged-source <sha>
+#                                                # merged main 後，dry-run 預設；--yes 才 upload
 #   ./ops/release.sh shipped ios                 # 查 ASC 上架版本 → join build tag → 打 ios/<x.y.z>（dry-run 預設）
-#   ./ops/release.sh resubmit ios                # 同版號、新 build 重送：ASC 對帳 → max(local,ASC)+1 → upload → 封 tag（dry-run 預設）
-#   ./ops/release.sh finalize ios <x.y.z> <build> # ASC 精確確認後補封既有 candidate（dry-run 預設）
+#   ./ops/release.sh resubmit ios                # dedicated lane：ASC 對帳 → candidate（dry-run 預設）
+#   ./ops/release.sh finalize ios <x.y.z> <build> --pr <n> --merged-source <sha>
+#                                                # exact merged/ASC evidence 後只封 tag（dry-run 預設）
 #   ./ops/release.sh publish <api|ios> <x.y.z>   # 已改名 tag 的別名（相容保留）
 #
 # iOS 版號的兩種 tag（語意不同，別混）：
@@ -30,8 +32,9 @@
 #                        單獨沒有意義，必須成對）。
 # `--new-version-after-ready` 已移除：ios/<x.y.z> 現在代表上架，tag 存在本身就是證據。
 #
-# 全域 flag：--yes（bump/tag 真寫、release/shipped/resubmit 真執行）
+# 全域 flag：--yes（bump/tag/candidate/upload 真寫；release/resume/resubmit 真執行）
 #           --commit <sha>（僅 shipped：build tag 不存在時人工指定封版 commit；會標記為人工斷言）
+#           --pr <number> --merged-source <sha>（resume/finalize 的 exact merge evidence）
 # 其他：-h|--help
 # env knob：KG_RELEASE_WAIT_SECS（預設 480）/ KG_RELEASE_POLL_SECS（10）/ KG_PUBLIC_URL
 #           —— release backend 收斂等待的上限與輪詢間隔。設 0 秒不會關閉等待，只會讓它
@@ -40,6 +43,8 @@
 #           KG_ASC_BUILD_CMD（測試注入；預設 ops/asc.sh build <version> <build>）供 iOS finalize
 #           查 ASC 精確 build；KG_RELEASE_ASC_WAIT_SECS（預設 120）/KG_RELEASE_ASC_POLL_SECS（5）
 #           控制 upload 後 ASC propagation 的 bounded wait。
+#           KG_PR_CMD（測試注入；預設 gh pr view <number> --json ...）供 resume/finalize
+#           做 exact merged PR readback；輸出必須是單一 gh PR JSON object。
 # App Store 側（正交）：出 build → ops/ios_release.sh；查/改文案 → ops/asc.sh；細節見 docs/sop/ios.md §發版。
 
 set -euo pipefail
@@ -50,6 +55,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 YES=0
 SHIPPED_COMMIT=""
+RELEASE_PR=""
+MERGED_SOURCE=""
 IOS_SAME_VERSION_RESUBMIT=0
 
 # ── 部署收斂 seam（測試注入；預設即生產）──────────────────────────────────
@@ -186,13 +193,92 @@ ios_remote_tag_commit() {
   ' <<<"$refs"
 }
 
-ios_assert_remote_main_head() {
-  local expected="$1" remote_main rc=0
-  remote_main="$(git -C "$ROOT" ls-remote --heads origin main 2>/dev/null)" || rc=$?
-  (( rc == 0 )) || err "無法查詢 origin/main（git ls-remote exit ${rc}）；fail-closed。"
-  remote_main="$(awk 'NR==1{print $1}' <<<"$remote_main")"
-  [[ "$remote_main" == "$expected" ]] \
-    || err "origin/main=${remote_main:-<missing>} ≠ candidate ${expected}；拒絕繼續 finalize。"
+live_origin_main() {
+  local output rc=0 sha
+  output="$(git -C "$ROOT" ls-remote --heads origin main 2>/dev/null)" || rc=$?
+  (( rc == 0 )) || err "無法查詢 live origin/main（git ls-remote exit ${rc}）；fail-closed。"
+  sha="$(awk 'NR==1{print $1}' <<<"$output")"
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || err "live origin/main 缺少 exact commit SHA；fail-closed。"
+  printf '%s\n' "$sha"
+}
+
+ios_assert_merged_source() {
+  local source="$1" live="$2"
+  [[ "$source" =~ ^[0-9a-f]{40}$ ]] || err "--merged-source 必須是 40 字元 commit SHA"
+  git -C "$ROOT" cat-file -e "${source}^{commit}" 2>/dev/null \
+    || err "merged source ${source} 不在本地 object graph；先由 CM sync exact merged main 再恢復。"
+  git -C "$ROOT" merge-base --is-ancestor "$source" "$live" \
+    || err "merged source ${source} 不是 live origin/main=${live} 的 ancestor；拒絕 upload/tag。"
+}
+
+# A numeric PR flag is only a locator. Before any ASC upload or tag push, read
+# the PR back from GitHub and bind all three GitHub identities to the live
+# merged main: the PR head must be the supplied source, its merge commit must
+# be live origin/main, and its base OID must be an ancestor of both. The
+# injected command is deliberately a one-argument executable (PR number) so
+# tests can provide a deterministic policy fixture without mocking git/ASC.
+github_assert_exact_merged_pr() {
+  local pr="$1" source="$2" live="$3" output rc=0 pr_cmd="${KG_PR_CMD:-}"
+  if [[ -n "$pr_cmd" ]]; then
+    output="$($pr_cmd "$pr" 2>&1)" || rc=$?
+  else
+    command -v gh >/dev/null 2>&1 \
+      || err "找不到 gh；resume/finalize 必須完成 exact GitHub PR readback，拒絕 upload/tag。"
+    output="$(gh pr view "$pr" --json number,state,baseRefName,baseRefOid,headRefOid,mergeCommit 2>&1)" || rc=$?
+  fi
+  (( rc == 0 )) \
+    || err "GitHub PR #${pr} readback 失敗（exit ${rc}）：${output:-<empty>}；拒絕 upload/tag。"
+
+  jq -e --argjson pr "$pr" '
+    type == "object" and
+    (.number == $pr) and
+    (.state == "MERGED") and
+    (.baseRefName == "main") and
+    ((.baseRefOid | type) == "string") and
+    ((.headRefOid | type) == "string") and
+    ((.mergeCommit | type) == "object") and
+    ((.mergeCommit.oid | type) == "string")
+  ' <<<"$output" >/dev/null 2>&1 \
+    || err "GitHub PR #${pr} readback 不是唯一且完整的 MERGED/main PR object；拒絕 upload/tag：${output:-<empty>}"
+
+  local readback_number state base_oid head_oid merge_oid
+  readback_number="$(jq -r '.number' <<<"$output")"
+  state="$(jq -r '.state' <<<"$output")"
+  base_oid="$(jq -r '.baseRefOid' <<<"$output")"
+  head_oid="$(jq -r '.headRefOid' <<<"$output")"
+  merge_oid="$(jq -r '.mergeCommit.oid' <<<"$output")"
+  [[ "$readback_number" == "$pr" && "$state" == MERGED ]] \
+    || err "GitHub PR readback identity/state 不符：number=${readback_number:-<empty>} state=${state:-<empty>}；拒絕 upload/tag。"
+  [[ "$head_oid" == "$source" ]] \
+    || err "GitHub PR #${pr} headRefOid=${head_oid} ≠ --merged-source=${source}；拒絕 upload/tag。"
+  [[ "$merge_oid" == "$live" ]] \
+    || err "GitHub PR #${pr} mergeCommit=${merge_oid} ≠ live origin/main=${live}；拒絕 upload/tag。"
+  [[ "$base_oid" =~ ^[0-9a-f]{40}$ ]] \
+    || err "GitHub PR #${pr} baseRefOid 非 exact SHA：${base_oid:-<empty>}；拒絕 upload/tag。"
+  git -C "$ROOT" cat-file -e "${base_oid}^{commit}" 2>/dev/null \
+    || err "GitHub PR #${pr} baseRefOid=${base_oid} 不在本地 object graph；拒絕 upload/tag。"
+  git -C "$ROOT" merge-base --is-ancestor "$base_oid" "$source" \
+    || err "GitHub PR #${pr} baseRefOid=${base_oid} 不是 merged source=${source} ancestor；拒絕 upload/tag。"
+  git -C "$ROOT" merge-base --is-ancestor "$base_oid" "$live" \
+    || err "GitHub PR #${pr} baseRefOid=${base_oid} 不是 live origin/main=${live} ancestor；拒絕 upload/tag。"
+  echo "  exact GitHub PR readback: #${pr} state=MERGED base=${base_oid} head=${head_oid} merge=${merge_oid}" >&2
+}
+
+ios_assert_synced_main() {
+  local live="$1" local_head
+  local_head="$(git -C "$ROOT" rev-parse HEAD)"
+  [[ "$local_head" == "$live" ]] \
+    || err "release resume/finalize 需要 sync 後的 exact main；local HEAD=${local_head}、origin/main=${live}。"
+}
+
+ios_origin_main_tuple() {
+  local live="$1" path="ios/BooksAndVocab.xcodeproj/project.pbxproj" content version build
+  content="$(git -C "$ROOT" show "${live}:${path}" 2>/dev/null)" \
+    || err "無法從 live origin/main=${live} 讀取 ${path}；fail-closed。"
+  version="$(grep -m1 'MARKETING_VERSION = ' <<<"$content" | sed -E 's/.*MARKETING_VERSION = ([^;]+);.*/\1/' | tr -d ' ')"
+  build="$(grep -m1 -o 'CURRENT_PROJECT_VERSION = [0-9]*' <<<"$content" | sed -E 's/.*= *//')"
+  [[ -n "$version" && "$build" =~ ^[0-9]+$ ]] || err "live origin/main 的 iOS version/build tuple 無法解析；fail-closed。"
+  printf '%s+%s\n' "$version" "$build"
 }
 
 # irreversible upload 前只做存在性 collision check。正式 tag 的 commit identity
@@ -217,12 +303,12 @@ ios_refuse_pending_candidate() {
   existing="$(git -C "$ROOT" rev-parse -q --verify "refs/tags/${tag}^{commit}" || true)"
   [[ -n "$existing" ]] && return 0
   err "目前 HEAD 是未 finalize 的 iOS candidate ${version}+${build}，禁止重跑 release/resubmit 產生下一顆 build。
-   若 ASC 已接受，執行：./ops/release.sh finalize ios ${version} ${build} --yes
-   若 upload 確認未接受，沿用此 candidate 重新執行 ./ops/ios_release.sh --upload，成功後再 finalize。"
+   若 ASC 已接受，沿用 merged receipt 執行：./ops/release.sh finalize ios ${version} ${build} --pr <number> --merged-source <sha> --yes
+   若 upload 確認未接受，沿用同一 merged resume evidence 重試；不要重造 build。"
 }
 
-# candidate commit 是 upload provenance 的持久錨點：先 commit，再推送 GitHub main，最後
-# 才碰 ASC。只允許 pbxproj 作為 candidate 變更；candidate message 以 tuple 固定 identity。
+# candidate commit 是 upload provenance 的持久錨點：先在 dedicated lane commit，
+# 由 IM 以 exact hand-back 發 PR；required/native queue merge 後才碰 ASC。
 ios_commit_candidate() {
   local version="$1" build="$2" file="ios/BooksAndVocab.xcodeproj/project.pbxproj"
   local changed staged subject
@@ -244,14 +330,67 @@ ios_commit_candidate() {
   echo "  candidate=${IOS_CANDIDATE_SHA} (${subject})"
 }
 
-ios_push_candidate() {
-  local remote_main
-  git -C "$ROOT" push origin main \
-    || err "candidate commit 未能推到 origin/main；upload 尚未執行，先處理 remote race/rejection。"
-  remote_main="$(git -C "$ROOT" ls-remote --heads origin main | awk 'NR==1{print $1}')"
-  [[ "$remote_main" == "$IOS_CANDIDATE_SHA" ]] \
-    || err "candidate push 回報成功但 origin/main=${remote_main:-<missing>} ≠ ${IOS_CANDIDATE_SHA}；拒絕 upload。"
-  echo "  candidate 已推送至 GitHub main=${remote_main}"
+emit_candidate_handback() {
+  local component="$1" version="$2" build="${3:-}" branch sha
+  branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
+  sha="$(git -C "$ROOT" rev-parse HEAD)"
+  echo "  candidate=${sha} branch=${branch} component=${component}${build:+ tuple=${version}+${build}}"
+  echo "  hand-back: supported worktree_orchestrate hand-back -> IM publishes exact commit as PR"
+  echo "  PR/queue gate: required check + native merge queue on protected main"
+  if [[ "$component" == ios ]]; then
+    echo "  after merged main sync: ./ops/release.sh resume ios ${version} ${build} --pr <number> --merged-source <sha> --yes"
+  else
+    echo "  after merged main sync: approved backend release operator resumes with exact PR/merged-source evidence"
+  fi
+}
+
+assert_release_lane() {
+  local branch
+  branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
+  [[ "$branch" != main && "$branch" != prod && "$branch" != HEAD ]] \
+    || err "release candidate 必須在 dedicated release lane 執行（目前 ${branch}）；先由 supported worktree owner lane hand-back，禁止直接操作 protected main。"
+}
+
+api_commit_candidate() {
+  local version="$1" files=(backend/pyproject.toml backend/src/kg/api.py backend/uv.lock)
+  local changed staged subject
+  changed="$(git -C "$ROOT" diff --name-only)"
+  while IFS= read -r path; do
+    [[ -n "$path" ]] || continue
+    case "$path" in
+      backend/pyproject.toml|backend/src/kg/api.py|backend/uv.lock) ;;
+      *) err "backend candidate 含非版號檔變更，拒絕混入 release commit：${changed}" ;;
+    esac
+  done <<<"$changed"
+  staged="$(git -C "$ROOT" diff --cached --name-only)"
+  [[ -z "$staged" ]] || err "release 開始前已有 staged 變更：${staged}"
+  git -C "$ROOT" add -- "${files[@]}"
+  subject="ops: prepare api ${version}"
+  if git -C "$ROOT" diff --cached --quiet -- "${files[@]}"; then
+    [[ "$(git -C "$ROOT" log -1 --format=%s)" == "$subject" ]] \
+      || git -C "$ROOT" commit --allow-empty -m "$subject"
+  else
+    git -C "$ROOT" commit -m "$subject" -- "${files[@]}"
+  fi
+  API_CANDIDATE_SHA="$(git -C "$ROOT" rev-parse HEAD)"
+  echo "  candidate=${API_CANDIDATE_SHA} (${subject})"
+}
+
+ios_exact_asc_probe() {
+  local version="$1" build="$2" output rc=0 asc_cmd="${KG_ASC_BUILD_CMD:-$ROOT/ops/asc.sh}"
+  if [[ -n "${KG_ASC_BUILD_CMD:-}" ]]; then
+    output="$($asc_cmd "$version" "$build" 2>&1)" || rc=$?
+  else
+    output="$($asc_cmd build "$version" "$build" 2>&1)" || rc=$?
+  fi
+  if (( rc == 0 )); then
+    ios_validate_asc_build_json "$version" "$build" "$output" \
+      || err "ASC exact build command 回傳 malformed/mismatched payload；不執行 upload/tag：${output:-<empty>}"
+    printf '%s\n' "$output"
+    return 0
+  fi
+  (( rc == 3 )) || err "ASC exact build lookup 失敗（exit ${rc}）：${output:-<empty>}；不執行 upload/tag"
+  return 3
 }
 
 ios_validate_asc_build_json() {
@@ -296,24 +435,27 @@ ios_wait_for_exact_asc_build() {
     now="$(date +%s)"
     if (( now >= deadline )); then
       err "ASC 尚未顯示精確的 ${version} build ${build}（等待 ${KG_RELEASE_ASC_WAIT_SECS}s）；candidate 已保留。
-   不要重跑 release/resubmit 產生下一顆 build；確認 ASC upload/processing 後重跑：
-   ./ops/release.sh finalize ios ${version} ${build} --yes"
+   不要重跑 release/resubmit 產生下一顆 build；確認 ASC upload/processing 後，沿用同一 exact PR/source 重跑：
+   ./ops/release.sh finalize ios ${version} ${build} --pr <number> --merged-source <sha> --yes"
     fi
     echo "    [elapsed=$((now - start))s] ASC 尚未顯示 exact build，${KG_RELEASE_ASC_POLL_SECS}s 後重試…" >&2
     sleep "$KG_RELEASE_ASC_POLL_SECS"
   done
 }
 
-# finalize 是 post-upload recovery 的唯一正式入口：它要求 current HEAD 就是
-# candidate commit，先查 exact ASC build，再建立 immutable build tag。若流程在 tag
-# 前中斷，重跑此命令不會重新 archive/upload。
+# finalize 是 post-merge/post-upload recovery 的唯一正式入口：它要求 exact PR /
+# merged-source evidence 與 sync 後的 main，先查 exact ASC build，再建立 immutable
+# build tag。它不要求 candidate SHA 等於 origin/main，也不推送任何 branch ref。
 cmd_finalize_ios() {
   local version="${1:?用法: release.sh finalize ios <x.y.z> <build> [--yes]}"
-  local build="${2:-}" expected_sha="${3:-}" branch curver curbuild head subject tag existing
+  local build="${2:-}" branch curver curbuild head subject tag existing live tuple
   local asc_json asc_id asc_state remote_tag remote_existing
   valid_semver "$version" || err "版本號格式錯誤：${version}（需 x.y.z）"
   [[ "$build" =~ ^[0-9]+$ ]] || err "build 必須是非負整數：${build:-<empty>}"
-  [[ $# -le 3 ]] || err "finalize ios 多餘參數：${*:4}"
+  [[ $# -le 2 ]] || err "finalize ios 不接受 candidate SHA positional；請用 --pr 與 --merged-source"
+  [[ "$RELEASE_PR" =~ ^[0-9]+$ && "$RELEASE_PR" -gt 0 ]] \
+    || err "finalize ios 必須提供 exact --pr <number> evidence"
+  [[ -n "$MERGED_SOURCE" ]] || err "finalize ios 必須提供 exact --merged-source <sha> evidence"
   acquire_release_lock
   branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
   [[ "$branch" == main ]] || err "finalize ios 須在 main 執行（目前 ${branch}）"
@@ -322,20 +464,22 @@ cmd_finalize_ios() {
   [[ "$curver" == "$version" && "$curbuild" == "$build" ]] \
     || err "current project tuple=${curver}+${curbuild}，不是要 finalize 的 ${version}+${build}"
   head="$(git -C "$ROOT" rev-parse HEAD)"
-  subject="$(ios_candidate_subject "$version" "$build")"
-  [[ "$(git -C "$ROOT" log -1 --format=%s)" == "$subject" ]] \
-    || err "current HEAD ${head:0:12} 不是 ${version}+${build} candidate；拒絕替未知 commit 封版"
-  [[ -z "$expected_sha" || "$head" == "$expected_sha" ]] \
-    || err "candidate HEAD 已漂移：預期 ${expected_sha}，目前 ${head}；拒絕 finalize"
+  live="$(live_origin_main)"
+  ios_assert_synced_main "$live"
+  ios_assert_merged_source "$MERGED_SOURCE" "$live"
+  github_assert_exact_merged_pr "$RELEASE_PR" "$MERGED_SOURCE" "$live"
+  tuple="$(ios_origin_main_tuple "$live")"
+  [[ "$tuple" == "${version}+${build}" ]] \
+    || err "live origin/main tuple=${tuple}，不是要 finalize 的 ${version}+${build}"
+  echo "  merged evidence: PR #${RELEASE_PR} source=${MERGED_SOURCE} live-main=${live}"
 
   tag="$(ios_build_tag "$version" "$build")"
   existing="$(git -C "$ROOT" rev-parse -q --verify "refs/tags/${tag}^{commit}" || true)"
   [[ -z "$existing" || "$existing" == "$head" ]] \
-    || err "${tag} 已存在且指向 $(git -C "$ROOT" rev-parse --short "$existing")，不是 candidate ${head:0:12}"
-  ios_assert_remote_main_head "$head"
+    || err "${tag} 已存在且指向 $(git -C "$ROOT" rev-parse --short "$existing")，不是 merged main ${head:0:12}"
   remote_existing="$(ios_remote_tag_commit "$tag")"
   [[ -z "$remote_existing" || "$remote_existing" == "$head" ]] \
-    || err "origin ${tag} 已存在且指向 ${remote_existing:0:12}，不是 candidate ${head:0:12}；拒絕 finalize"
+    || err "origin ${tag} 已存在且指向 ${remote_existing:0:12}，不是 merged main ${head:0:12}；拒絕 finalize"
   asc_json="$(ios_wait_for_exact_asc_build "$version" "$build")"
   asc_id="$(jq -r '.id' <<<"$asc_json")"
   asc_state="$(jq -r '.processingState' <<<"$asc_json")"
@@ -343,7 +487,7 @@ cmd_finalize_ios() {
 
   if [[ $YES -ne 1 ]]; then
     echo "[dry-run] 未建立 tag。確認無誤後加 --yes："
-    echo "  ./ops/release.sh finalize ios ${version} ${build} --yes"
+    echo "  ./ops/release.sh finalize ios ${version} ${build} --pr ${RELEASE_PR} --merged-source ${MERGED_SOURCE} --yes"
     return 0
   fi
 
@@ -353,17 +497,15 @@ cmd_finalize_ios() {
     echo "  ${tag} 已指向 candidate ${head:0:12}，tag 建立步驟冪等略過"
   fi
   if [[ -z "$remote_existing" ]]; then
-    git -C "$ROOT" push --atomic origin main "$tag" \
-      || err "finalize atomic tag/main push 失敗；candidate 與 ASC proof 保留，可安全重跑 finalize"
+    git -C "$ROOT" push origin "$tag" \
+      || err "finalize tag-only push 失敗；merged main 與 ASC proof 保留，可安全重跑 finalize"
   else
-    git -C "$ROOT" push origin main \
-      || err "finalize main push 失敗；candidate 與 ASC proof 保留，可安全重跑 finalize"
+    echo "  origin ${tag} 已指向 merged main，略過重複 tag push"
   fi
-  ios_assert_remote_main_head "$head"
   remote_tag="$(ios_remote_tag_commit "$tag")"
   [[ "$remote_tag" == "$head" ]] \
     || err "tag push 回報成功但 origin ${tag}=${remote_tag:-<missing>} ≠ ${head}"
-  echo "✓ finalize ios ${version} build ${build}：ASC exact verified + ${tag} → ${head:0:12} + origin/main/tag"
+  echo "✓ finalize ios ${version} build ${build}：PR #${RELEASE_PR} + merged source + ASC exact verified + ${tag} → ${head:0:12}（tag-only push）"
   echo "  上架後仍須另跑 ./ops/release.sh shipped ios --yes；本流程不宣稱 App Store 上架。"
 }
 
@@ -372,6 +514,68 @@ cmd_finalize() {
   [[ "$target" == ios ]] || err "finalize 只支援 ios（ASC build provenance 目前只有 iOS）"
   shift
   cmd_finalize_ios "$@"
+}
+
+cmd_resume() {
+  local target="${1:?用法: release.sh resume ios <x.y.z> <build> --pr <n> --merged-source <sha> [--yes]}"
+  [[ "$target" == ios ]] || err "resume 目前只支援 ios；backend 仍須由 approved release operator 依 deploy SOP 執行"
+  local version="${2:-}" build="${3:-}" branch curver curbuild live tuple
+  valid_semver "$version" || err "版本號格式錯誤：${version}（需 x.y.z）"
+  [[ "$build" =~ ^[0-9]+$ ]] || err "build 必須是非負整數：${build:-<empty>}"
+  [[ $# -le 3 ]] || err "resume ios 多餘參數：${*:4}（merge evidence 用 --pr/--merged-source）"
+  [[ "$RELEASE_PR" =~ ^[0-9]+$ && "$RELEASE_PR" -gt 0 ]] \
+    || err "resume ios 必須提供 exact --pr <number> evidence"
+  [[ -n "$MERGED_SOURCE" ]] || err "resume ios 必須提供 exact --merged-source <sha> evidence"
+  acquire_release_lock
+  branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
+  [[ "$branch" == main ]] || err "resume ios 須在 sync 後 main 執行（目前 ${branch}）"
+  ensure_release_primary_clean
+  live="$(live_origin_main)"
+  ios_assert_synced_main "$live"
+  ios_assert_merged_source "$MERGED_SOURCE" "$live"
+  github_assert_exact_merged_pr "$RELEASE_PR" "$MERGED_SOURCE" "$live"
+  curver="$(current_version ios)"; curbuild="$(current_build)"
+  [[ "$curver" == "$version" && "$curbuild" == "$build" ]] \
+    || err "merged main project tuple=${curver}+${curbuild}，不是要 resume 的 ${version}+${build}"
+  tuple="$(ios_origin_main_tuple "$live")"
+  [[ "$tuple" == "${version}+${build}" ]] || err "live origin/main tuple=${tuple}，不是 ${version}+${build}"
+
+  echo "resume ios ${version}+${build}: PR #${RELEASE_PR} merged-source=${MERGED_SOURCE} live-main=${live}"
+  echo "  plan: exact ASC probe → only if absent, ios_release.sh --upload → finalize tag-only"
+  if [[ $YES -ne 1 ]]; then
+    echo "[dry-run] 未 upload、未建立 tag。確認 merged/ASC evidence 後加 --yes："
+    echo "  ./ops/release.sh resume ios ${version} ${build} --pr ${RELEASE_PR} --merged-source ${MERGED_SOURCE} --yes"
+    return 0
+  fi
+
+  local existing_tag="$(ios_build_tag "$version" "$build")" existing_commit remote_existing tag_presealed=0
+  existing_commit="$(git -C "$ROOT" rev-parse -q --verify "refs/tags/${existing_tag}^{commit}" || true)"
+  remote_existing="$(ios_remote_tag_commit "$existing_tag")"
+  if [[ -n "$existing_commit" || -n "$remote_existing" ]]; then
+    [[ -z "$existing_commit" || "$existing_commit" == "$live" ]] \
+      || err "${existing_tag} collision；local tag 指向 ${existing_commit:0:12}，拒絕重複 upload"
+    [[ -z "$remote_existing" || "$remote_existing" == "$live" ]] \
+      || err "${existing_tag} collision；origin tag 指向 ${remote_existing:0:12}，拒絕重複 upload"
+    tag_presealed=1
+    echo "  ${existing_tag} 已在 merged main 的 local/origin 任一側存在，resume 會跳過 upload 並重驗 exact ASC/tag receipt"
+  else
+    assert_ios_build_tag_unused "$version" "$build"
+  fi
+  local asc_probe_rc=0
+  if (( tag_presealed == 1 )); then
+    ios_exact_asc_probe "$version" "$build" >/dev/null
+    echo "  exact ASC build 已存在，略過 upload，直接 finalize"
+  elif ios_exact_asc_probe "$version" "$build" >/dev/null 2>&1; then
+    echo "  exact ASC build 已存在，略過 upload，直接 finalize"
+  else
+    asc_probe_rc=$?
+    (( asc_probe_rc == 3 )) || err "ASC exact probe 非『尚未找到』結果（exit ${asc_probe_rc}）；拒絕猜測後 upload"
+    if ! "$ROOT/ops/ios_release.sh" --upload; then
+      echo "✗ upload 失敗；不建立 tag。保留 merged main，重試前先查 exact ASC，再沿用同一 resume 命令。" >&2
+      return 1
+    fi
+  fi
+  cmd_finalize_ios "$version" "$build"
 }
 
 # 非 x.y.z 一律 err，不回「不大於」。回 false 會讓 guard 用錯誤的理由拒絕、讓
@@ -732,8 +936,8 @@ cmd_bump_build() {
   fi
 }
 
-# ---- tag：commit 版號檔 + 打 tag + push origin main（版號標記，非部署；dry-run 預設）----
-# tag 不觸發生產；生產部署由 release <backend|ios> 的 deploy／upload 完成。（原名 publish）
+# ---- tag：commit 版號檔 + 打 tag + tag-only push（版號標記，非部署；dry-run 預設）----
+# tag 不觸發生產，也不更新任何 branch ref；生產部署／upload 由 resume 完成。（原名 publish）
 cmd_tag() {
   local c="${1:?用法: release.sh tag <api|ios> <x.y.z> [--yes]}" v="${2:-}"
   tag_prefix "$c" >/dev/null
@@ -787,15 +991,15 @@ cmd_tag() {
       git -C "$ROOT" commit -m "ops: release $c $v" -- "${files[@]}"
     fi
     if [[ "$IOS_BUILD_TAG_STATE" == idempotent ]]; then
-      echo "  ${tag} 已指向 $(git -C "$ROOT" rev-parse --short HEAD)，略過重複 tag（仍會確保推上 origin）"
+      echo "  ${tag} 已指向 $(git -C "$ROOT" rev-parse --short HEAD)，略過重複 tag"
       echo "  （中斷後補跑請用 tag，不要用 release/resubmit —— 那會再 upload 一次，被 TestFlight 擋下）"
     else
       git -C "$ROOT" tag "$tag"
     fi
-    git -C "$ROOT" push origin "$branch" "$tag"
-    echo "✓ 已 commit + tag ${tag} + 推送 origin/${branch}（版號標記；生產部署走 release <backend|ios>）。"
+    git -C "$ROOT" push origin "$tag"
+    echo "✓ 已 commit + tag ${tag} + tag-only push（不更新 branch；生產部署走 resume）。"
   else
-    echo "[dry-run] 未送出。確認無誤後加 --yes 才會 commit + 打 tag + 推送 origin："
+    echo "[dry-run] 未送出。確認無誤後加 --yes 才會 commit + 打 tag + tag-only push："
     echo "  ./ops/release.sh tag $c $v --yes"
   fi
 }
@@ -890,9 +1094,8 @@ cmd_shipped() {
 # 這條路徑原本是 `bump-build ios --yes` + `ios_release.sh --upload` 兩步手動，**不留任何
 # 紀錄**：沒有 release commit、沒有 tag。ios/2.0.0 指著 build 5 的 commit、實際上架的卻是
 # 五天後的 build 6，成因就是這裡——腳本從來沒有詞彙描述「同版號的第 N 顆 build」。
-# 與 cmd_release 對稱：ASC 對帳 → bump → candidate commit/push → upload → 封版；未知 ASC
-# 狀態硬停。upload 失敗仍保留 candidate commit/push，不建立 build tag；先查 ASC，若 exact
-# build 已接受就跑 finalize，只有確認未接受時才可沿用同一 candidate 重試 primitive upload。
+# 與 cmd_release 對稱：ASC 對帳 → bump → dedicated-lane candidate commit → hand-back；
+# merge 後由 resume 以 exact PR/source receipt 對帳 ASC，再 upload/tag。未知 ASC 狀態硬停。
 asc_latest_testflight_build() {
   local output="" rc=0 latest="" asc_cmd="${KG_ASC_BUILDS_CMD:-$ROOT/ops/asc.sh}"
   if [[ -n "${KG_ASC_BUILDS_CMD:-}" ]]; then
@@ -917,8 +1120,7 @@ cmd_resubmit() {
   local branch curver curbuild tf_latest newbuild
   acquire_release_lock
   branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
-  [[ "$branch" == main ]] \
-    || err "resubmit 須在 main 執行（目前 ${branch}）—— feature 必須先經 PR 合併進 main"
+  assert_release_lane
   curver="$(current_version ios)"
   valid_semver "$curver" \
     || err "pbxproj 的 MARKETING_VERSION 是 '${curver}'，不是 x.y.z —— 先跑 ./ops/release.sh bump ios <x.y.z> --yes 對齊成三段"
@@ -930,12 +1132,13 @@ cmd_resubmit() {
   newbuild=$((curbuild > tf_latest ? curbuild : tf_latest))
   newbuild=$((newbuild + 1))
 
-  echo "resubmit ios ${curver}  build ${curbuild} → ${newbuild}  (local=${curbuild} ASC TestFlight latest=${tf_latest})  branch=${branch}"
+  echo "resubmit ios ${curver}  build ${curbuild} → ${newbuild}  (local=${curbuild} ASC TestFlight latest=${tf_latest})  dedicated-lane=${branch}"
+  echo "  candidate tuple: $(ios_build_tag "$curver" "$newbuild")"
   echo "  計畫（dry-run 預設）："
   echo "    1) bump-build ios（CURRENT_PROJECT_VERSION ${curbuild} → ${newbuild}；ASC latest=${tf_latest}；MARKETING_VERSION 不動）"
-  echo "    2) candidate commit + push origin/${branch}（先備份 provenance）"
-  echo "    3) ios_release.sh --upload（archive + 上傳 TestFlight）⚠ 外部不可逆"
-  echo "    4) ASC exact verify → $(ios_build_tag "$curver" "$newbuild") + push origin/${branch}"
+  echo "    2) candidate commit in ${branch} + supported hand-back to IM（不碰 protected main）"
+  echo "    3) IM PR → required/native merge queue → CM sync exact merged main"
+  echo "    4) resume after exact PR/source evidence：ASC probe → upload if absent → tag-only finalize"
   echo "  ios/${curver}（上架標記）不在本流程產生 —— 過審後跑 ./ops/release.sh shipped ios"
 
   if [[ $YES -ne 1 ]]; then
@@ -947,19 +1150,12 @@ cmd_resubmit() {
   assert_ios_build_tag_unused "$curver" "$newbuild"
   "$ROOT/ops/release_bump.sh" ios --build-only --build-number="$newbuild" --yes
   ios_commit_candidate "$curver" "$newbuild"
-  ios_push_candidate
-  if ! "$ROOT/ops/ios_release.sh" --upload; then
-    echo "✗ ios_release --upload 失敗；candidate ${IOS_CANDIDATE_SHA} 已保留且已推送至 GitHub main，未建立 build tag。" >&2
-    echo "  不要重跑 resubmit 產生下一顆 build；確認 upload 結果後跑 finalize，或沿用此 candidate 重試 primitive upload。" >&2
-    return 1
-  fi
-  cmd_finalize_ios "$curver" "$newbuild" "$IOS_CANDIDATE_SHA"
+  emit_candidate_handback ios "$curver" "$newbuild"
 }
 
-# ---- release：前後端統一發布入口。dry-run 預設，--yes 才執行 ----
-# backend: bump api → tag api → orchestrate deploy --commit（推 origin/prod = felix reconciler 部署）
-# ios:     bump ios → candidate commit/push → ios_release upload → ASC exact → build tag
-# 須在 primary、on main（release 只發布已經由 PR 合併的主幹）。
+# ---- release：前後端統一 candidate 入口。dry-run 預設，--yes 才 commit ----
+# backend/ios: dedicated lane bump → candidate commit → supported hand-back → IM PR。
+# 任何 upload/deploy/tag-only finalize 都必須在 merged main 的 resume/finalize route。
 # ---- 部署收斂閘（release backend 的最後一哩）----------------------------------
 # deploy 只保證 origin/prod 前進——那是「我要求什麼」，不是「線上跑什麼」。真正的部署
 # 由 felix reconciler 非同步做，失敗會自動回滾 + poison，而它唯一的聲音是 felix 本機的
@@ -1030,14 +1226,18 @@ cmd_release() {
   esac
   [[ -n "$v" ]] || err "請提供版本號 x.y.z"
   valid_semver "$v" || err "版本號格式錯誤：${v}（需 x.y.z）"
+  # Historical `deploy --commit` and `ios_release.sh --upload` touches now
+  # live only after exact merged-main evidence; this candidate path contains
+  # neither. The post-merge route requires `branch == main` in resume/finalize,
+  # while this command requires the inverse dedicated-lane guard.
   acquire_release_lock
   if [[ "$comp" == ios ]]; then
     guard_ios_new_version "$v"
   fi
 
-  local branch curver curbuild target_build need_bump
+  local branch curver curbuild target_build need_bump live_main live_tuple
+  assert_release_lane
   branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
-  [[ "$branch" == main ]] || err "release 須在 main 執行（目前 ${branch}）—— feature 必須先經 PR 合併進 main"
   curver="$(current_version "$comp")"
   # need_bump 用 RAW 相等（與 cmd_tag 的 strict curver==v 檢查一致）：ios 慣用兩段 MARKETING_VERSION
   # (如 2.0)，若用正規化相等判 2.0==2.0.0 會跳過 bump，但 cmd_tag strict 比較 raw 2.0≠2.0.0 反而
@@ -1050,21 +1250,23 @@ cmd_release() {
     ios_refuse_pending_candidate "$curver" "$curbuild"
     target_build="$curbuild"
     (( need_bump == 1 )) && target_build=$((curbuild + 1))
+    live_main="$(live_origin_main)"
+    live_tuple="$(ios_origin_main_tuple "$live_main")"
+    [[ "$live_tuple" != "${v}+${target_build}" ]] \
+      || err "live origin/main=${live_main} 已包含 iOS tuple ${live_tuple}；禁止在 release lane 重造 build。先由 CM sync，再用 resume ios ${v} ${target_build} --pr <number> --merged-source <sha>。"
   fi
 
   echo "release target=${target}（component=${comp}）version=${v}  branch=${branch}"
   echo "  計畫（dry-run 預設）："
   if [[ $need_bump -eq 1 ]]; then echo "    1) bump ${comp} ${v}（檔內 ${curver} → ${v}）"; else echo "    1) bump 略過（檔內已 ${curver}）"; fi
   if [[ "$comp" == api ]]; then
-    echo "    2) tag ${comp} ${v}（commit 版號檔 + ${comp}/${v} tag + push origin main）"
-    echo "    3) orchestrate deploy --commit（推 origin/prod → felix reconciler 部署 wordnexus.lol）⚠ 生產"
-    echo "    4) 等生產收斂：輪詢 ${KG_PUBLIC_URL}/api/system/info 直到 version == 本次 sha"
-    echo "       （最長 ${KG_RELEASE_WAIT_SECS}s，逾時非零退出並指向 reconciler log；"
-    echo "        range 內無 reconciler 觸發路徑時自動跳過）"
+    echo "    2) candidate commit in ${branch} + supported hand-back to IM（不碰 protected main）"
+    echo "    3) IM PR → required/native merge queue → CM sync exact merged main"
+    echo "    4) approved backend release operator resumes via deploy SOP（本命令不 deploy）"
   else
-    echo "    2) candidate commit + push origin/main（先保存 ${v}+${target_build} provenance）"
-    echo "    3) ios_release.sh --upload（archive + 上傳 TestFlight）⚠ 外部不可逆"
-    echo "    4) ASC exact verify → ios/${v}+${target_build} + push origin/main"
+    echo "    2) candidate commit in ${branch} + supported hand-back to IM（先保存 ${v}+${target_build} provenance）"
+    echo "    3) IM PR → required/native merge queue → CM sync exact merged main"
+    echo "    4) resume ios ${v} ${target_build} --pr <number> --merged-source <sha>（ASC probe → upload if absent → tag-only）"
     echo "    ios/${v}（上架標記）不在本流程產生 —— 過審後跑 ./ops/release.sh shipped ios"
   fi
 
@@ -1074,59 +1276,18 @@ cmd_release() {
     return 0
   fi
 
-  # 執行：任一步失敗即 err 中止（cmd_bump/cmd_tag 讀全域 YES=1）
-  if [[ "$comp" == api && $need_bump -eq 1 ]]; then cmd_bump "$comp" "$v"; fi
+  # 執行：只在 dedicated lane 產生 candidate；不 push、upload、deploy 或 tag。
   if [[ "$comp" == api ]]; then
-    cmd_tag "$comp" "$v"
-    # rollout 判定要在 deploy **之前**取 range：deploy 一旦推上去，origin/prod 就等於
-    # HEAD，range 歸零，事後再問「這次會不會 rollout」已經沒得問。
-    # rollout 判定的兩端都必須是**實際的** origin/prod：起點在 deploy 前讀，終點在
-    # deploy 後讀。刻意不用「deploy 前的 local HEAD」當終點——同倉並發是常態，別的
-    # 另一個 session 可能在 tag 與 deploy 之間 fast-forward 本地 main，那時 deploy 推出去的
-    # 就不是我們手上那顆，拿舊 sha 去等會等到一個永遠不會出現的版本然後假紅。
-    local prod_before prod_after rollout=0
-    git -C "$ROOT" fetch --quiet origin prod 2>/dev/null || true
-    prod_before="$(git -C "$ROOT" rev-parse --verify --quiet origin/prod || true)"
-
-    "$ROOT/ops/worktree_orchestrate.py" deploy --commit || err "deploy 失敗，中止（origin/prod 未前進）"
-
-    git -C "$ROOT" fetch --quiet origin prod 2>/dev/null || true
-    prod_after="$(git -C "$ROOT" rev-parse --verify --quiet origin/prod || true)"
-    if [[ -z "$prod_after" ]]; then
-      # deploy 剛回報成功卻讀不到 origin/prod：不裝作知道，也不靜默跳過等待。
-      err "deploy 回報成功但讀不到 origin/prod —— 拒絕在看不見目標的情況下宣稱發布完成。先 git fetch origin prod 查狀態。"
-    fi
-    if [[ -z "$prod_before" ]]; then
-      # origin/prod 首次 seed：走 docs/sop/release.md §felix 生產切換的人工流程，
-      # 這裡沒有可比的起點，不猜也不等。
-      echo "  ⚠ origin/prod 先前不存在（首次 seed）—— 跳過收斂等待，見 docs/sop/release.md §felix 生產切換"
-    elif git -C "$ROOT" diff --name-only "${prod_before}..${prod_after}" -- . 2>/dev/null \
-         | paths_trigger_rollout; then
-      # 寫成 `elif <pipeline>` 而不是 `<pipeline> && rollout=1`：後者在 set -e 下，
-      # pipeline 為假時會讓整個區塊以非零收尾。放在條件位置語意上明確豁免。
-      rollout=1
-    fi
-
-    if [[ $rollout -eq 1 ]]; then
-      wait_for_rollout "$prod_after" \
-        || err "release backend ${v}：origin/prod 已前進，但生產未收斂（見上）。版號 tag 已存在，**不要重跑 release**（會被 tag preflight 擋）—— 直接查 reconciler。"
-      echo "✓ release backend ${v}：已 tag + 推 origin/prod + **生產收斂確認**。"
-    else
-      echo "✓ release backend ${v}：已 tag + 推 origin/prod（range 內無 reconciler 觸發路徑 → 不會 rollout，無需等待）。"
-    fi
+    if [[ "$need_bump" -eq 1 ]]; then cmd_bump "$comp" "$v"; fi
+    api_commit_candidate "$v"
+    emit_candidate_handback backend "$v"
   else
     assert_ios_build_tag_unused "$v" "$target_build"
     if [[ "$need_bump" -eq 1 ]]; then cmd_bump "$comp" "$v"; fi
     [[ "$(current_build)" == "$target_build" ]] \
       || err "bump 後 build drift：預期 ${target_build}，實際 $(current_build)"
     ios_commit_candidate "$v" "$target_build"
-    ios_push_candidate
-    if ! "$ROOT/ops/ios_release.sh" --upload; then
-      echo "✗ ios_release --upload 失敗；candidate ${IOS_CANDIDATE_SHA} 已保留且已推送至 GitHub main，未建立 build tag。" >&2
-      echo "  不要重跑 release 產生下一顆 build；確認 upload 結果後跑 finalize，或沿用此 candidate 重試 primitive upload。" >&2
-      return 1
-    fi
-    cmd_finalize_ios "$v" "$target_build" "$IOS_CANDIDATE_SHA"
+    emit_candidate_handback ios "$v" "$target_build"
   fi
 }
 
@@ -1149,6 +1310,12 @@ while [[ $# -gt 0 ]]; do
     --commit)
       [[ $# -ge 2 && -n "${2:-}" ]] || err "--commit 需要一個 commit-ish"
       SHIPPED_COMMIT="$2"; shift 2 ;;
+    --pr)
+      [[ $# -ge 2 && "${2:-}" =~ ^[0-9]+$ && "${2:-}" -gt 0 ]] || err "--pr 需要正整數 PR number"
+      RELEASE_PR="$2"; shift 2 ;;
+    --merged-source)
+      [[ $# -ge 2 && "${2:-}" =~ ^[0-9a-f]{40}$ ]] || err "--merged-source 需要 40 字元 commit SHA"
+      MERGED_SOURCE="$2"; shift 2 ;;
     -h|--help)  usage; exit 0 ;;
     -*)         err "unknown option: $1" ;;
     *)          if [[ -z "$SUB" ]]; then SUB="$1"; else ARGS+=("$1"); fi; shift ;;
@@ -1166,6 +1333,7 @@ case "${SUB:-}" in
   publish)   cmd_tag ${ARGS[@]+"${ARGS[@]}"} ;;   # 相容別名：publish → tag
   shipped)   cmd_shipped ${ARGS[@]+"${ARGS[@]}"} ;;
   resubmit)  cmd_resubmit ${ARGS[@]+"${ARGS[@]}"} ;;
+  resume)    cmd_resume ${ARGS[@]+"${ARGS[@]}"} ;;
   finalize)  cmd_finalize ${ARGS[@]+"${ARGS[@]}"} ;;
   release)   cmd_release ${ARGS[@]+"${ARGS[@]}"} ;;
   ""|help)   usage ;;

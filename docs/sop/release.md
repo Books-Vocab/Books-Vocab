@@ -37,9 +37,74 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 6. Verify the deployed/build state independently and record the exact version and evidence.
 7. If health verification fails, stop traffic or revert according to `docs/sop/deploy.md`; do not improvise a second path.
 
+## Candidate state machine and recovery
+
+`ops/release.sh release <backend|ios> <version>` and `resubmit ios` are candidate
+commands. They must run in the dedicated owner lane. With `--yes` they may change
+only the assigned version files and create a deterministic candidate commit; they do
+not push a branch, update protected `main`, upload to ASC, deploy backend, or create a
+tag. The owner then runs the supported worktree hand-back and IM publishes that exact
+commit as one PR:
+
+```text
+dedicated lane candidate
+  -> supported worktree_orchestrate hand-back
+  -> IM publishes the exact commit as one PR
+  -> required check + native merge queue on protected main
+  -> CM exact merged receipt + canonical main sync
+  -> ASC upload only if exact build is not already present
+  -> exact ASC proof
+  -> finalize tag-only push
+```
+
+For iOS, resume only after the PR is merged and canonical `main` is synced to the
+live `origin/main`. Supply both immutable merge evidence fields; the candidate SHA
+does not need to equal the merged main SHA:
+
+```bash
+./ops/release.sh resume ios <version> <build> \
+  --pr <merged-pr-number> --merged-source <40-char-merged-source-sha>
+./ops/release.sh resume ios <version> <build> \
+  --pr <merged-pr-number> --merged-source <40-char-merged-source-sha> --yes
+```
+
+`--pr` is not an attestation. Before any ASC upload or tag push, `resume` and
+`finalize` perform an exact GitHub PR readback (normally `gh pr view`; tests may
+inject a one-argument `KG_PR_CMD`). The readback must be one PR object whose
+number matches, `state=MERGED`, `baseRefName=main`, `headRefOid` equals
+`--merged-source`, `mergeCommit.oid` equals live `origin/main`, and
+`baseRefOid` is an ancestor of both source and live main. Readback failure,
+wrong/open PR, source mismatch, or stale merge commit is fail-closed before ASC
+or tag side effects; PR body and branch name are not guessed as evidence.
+
+The first command is a dry-run. The `--yes` form probes exact ASC first, uploads only
+when that exact `(version, build)` is absent, and then calls the tag-only finalizer.
+If upload or ASC propagation fails, keep the merged main and run the same resume
+command again after checking ASC; it never bumps a new build. If upload already
+landed, the exact ASC probe skips a second upload. To recover only the final tag:
+
+```bash
+./ops/release.sh finalize ios <version> <build> \
+  --pr <merged-pr-number> --merged-source <40-char-merged-source-sha>
+./ops/release.sh finalize ios <version> <build> \
+  --pr <merged-pr-number> --merged-source <40-char-merged-source-sha> --yes
+```
+
+`finalize` requires current local `main == live origin/main`, proves the merged source
+is an ancestor, checks exact ASC state, and pushes only `ios/<version>+<build>`; it never
+pushes a branch ref. If live `origin/main` already contains the requested iOS tuple,
+the candidate command refuses to create another build and points to `resume`.
+
 ## Backend
 
-Use `ops/release.sh` as the release entry and `ops/devops_kg_safe.sh` for remote or production operations. `ops/kg_reconcile.sh` is the host-side convergence service when enabled; its health gate and rollback behavior are part of the deployment contract. Database migrations, secrets, domain routing, container ports and host ownership remain governed by `docs/sop/deploy.md` and `docs/reference/host_topology.md`.
+Use `ops/release.sh release backend <version>` only to create the dedicated-lane
+candidate. After PR/queue merge and canonical sync, an approved release operator may
+run the backend deployment path through `ops/devops_kg_safe.sh` and its SOP. The
+candidate path never pushes `main` and never deploys. `ops/kg_reconcile.sh` is the
+host-side convergence service when enabled; its health gate and rollback behavior are
+part of the deployment contract. Database migrations, secrets, domain routing,
+container ports and host ownership remain governed by `docs/sop/deploy.md` and
+`docs/reference/host_topology.md`.
 
 ## iOS
 
