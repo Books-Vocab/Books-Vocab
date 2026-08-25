@@ -145,3 +145,70 @@ class GitCommands:
                 "local main readback differs after fast-forward"
             )
         return readback
+
+    def park_main_to_origin(
+        self, *, expected_local_sha: str, expected_origin_sha: str
+    ) -> str:
+        """CAS-park a preserved local main tip without reset/rebase/merge."""
+
+        if expected_local_sha == expected_origin_sha:
+            raise CompareAndSwapConflict(
+                "main park requires distinct local and origin SHA values"
+            )
+        if self.client.run("branch", "--show-current") != "main":
+            raise CompareAndSwapConflict("canonical checkout is not on main")
+        if self.query.local_main_sha() != expected_local_sha:
+            raise CompareAndSwapConflict("local main changed before main park")
+        if self.query.origin_main_sha() != expected_origin_sha:
+            raise CompareAndSwapConflict("origin/main changed before main park")
+        if self.client.run("status", "--porcelain=v1", "--untracked-files=all"):
+            raise CompareAndSwapConflict("canonical main is dirty")
+
+        detached = False
+
+        def restore_main() -> str | None:
+            if not detached:
+                return None
+            try:
+                self.client.run("switch", "main")
+            except AdapterCommandError as error:
+                return str(error)
+            return None
+
+        try:
+            self.client.run("checkout", "--detach", expected_origin_sha)
+            detached = True
+            if self.query.local_main_sha() != expected_local_sha:
+                raise CompareAndSwapConflict("local main changed during main park")
+            if self.query.origin_main_sha() != expected_origin_sha:
+                raise CompareAndSwapConflict("origin/main changed during main park")
+            self.client.run(
+                "update-ref",
+                "refs/heads/main",
+                expected_origin_sha,
+                expected_local_sha,
+            )
+            self.client.run("switch", "main")
+            detached = False
+        except CompareAndSwapConflict:
+            compensation_error = restore_main()
+            detail = "canonical main park CAS precondition failed"
+            if compensation_error is not None:
+                detail += f"; compensation failed: {compensation_error}"
+            raise CompareAndSwapConflict(detail)
+        except AdapterCommandError as error:
+            compensation_error = restore_main()
+            detail = f"canonical main park failed: {error}"
+            if compensation_error is not None:
+                detail += f"; compensation failed: {compensation_error}"
+            raise CompareAndSwapConflict(detail) from error
+
+        if self.client.run("branch", "--show-current") != "main":
+            raise CompareAndSwapConflict("canonical checkout is not on main after park")
+        if self.query.origin_main_sha() != expected_origin_sha:
+            raise CompareAndSwapConflict("origin/main changed after main park")
+        if self.query.local_main_sha() != expected_origin_sha:
+            raise CompareAndSwapConflict("local main readback differs after main park")
+        if self.client.run("status", "--porcelain=v1", "--untracked-files=all"):
+            raise CompareAndSwapConflict("canonical main is dirty after main park")
+        return expected_origin_sha

@@ -10,6 +10,7 @@ import pytest
 
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
+# ruff: noqa: E402
 
 from delivery_control.cli import (
     DeliveryApplication,
@@ -60,6 +61,8 @@ DIGEST = "c" * 64
 BRANCH = "feat/cli"
 WORKTREE = Path("/tmp/cli-worktree").resolve()
 EVENT_START = datetime(2026, 8, 21, tzinfo=UTC)
+OWNER = "owner-main-divergence"
+EXTERNAL_ID = "DIRECT-DELIVERY-MAIN-DIVERGENCE-PRESERVATION-20250825"
 
 
 def _record() -> RegistrySnapshot:
@@ -97,12 +100,13 @@ class FakeRegistry:
     def __init__(self) -> None:
         self.record = _record()
         self.fail_resolve_once = False
+        self.extra_records: tuple[RegistrySnapshot, ...] = ()
 
     def get(self, lane_id: str) -> RegistrySnapshot | None:
         return self.record if lane_id == self.record.lane_id else None
 
     def list_records(self) -> RegistryInventory:
-        return RegistryInventory((self.record,))
+        return RegistryInventory((self.record, *self.extra_records))
 
     def list_collision_claims(self) -> RegistryCollisionInventory:
         return RegistryCollisionInventory(
@@ -187,6 +191,11 @@ class FakeGit:
         self.fail_remove_once = False
         self.main_local = BASE
         self.main_origin = BASE
+        self.main_branch = "main"
+        self.main_clean = True
+        self.park_calls = 0
+        self.fail_park_readback = False
+        self.race_on_park = False
 
     def inspect_worktree(self, path: Path, base_sha: str) -> WorktreeSnapshot:
         if path == Path("/repo"):
@@ -204,7 +213,12 @@ class FakeGit:
         return self.snapshot
 
     def canonical_checkout(self) -> CanonicalCheckoutSnapshot:
-        return CanonicalCheckoutSnapshot(Path("/repo"), "main", self.main_local, True)
+        return CanonicalCheckoutSnapshot(
+            Path("/repo"),
+            self.main_branch,
+            self.main_local,
+            self.main_clean,
+        )
 
     def list_worktrees(self) -> tuple[PhysicalWorktree, ...]:
         return self.worktrees
@@ -248,6 +262,9 @@ class FakeGit:
     def origin_main_sha(self) -> str:
         return self.main_origin
 
+    def is_ancestor(self, ancestor_sha: str, descendant_sha: str) -> bool:
+        return ancestor_sha == BASE and descendant_sha == HEAD
+
     def first_parent_landings(
         self, *, before_sha: str, after_sha: str
     ) -> tuple[MainLandingSnapshot, ...]:
@@ -266,6 +283,20 @@ class FakeGit:
         assert expected_local_sha == self.main_local
         assert expected_origin_sha == self.main_origin
         self.main_local = expected_origin_sha
+        return expected_origin_sha
+
+    def park_main_to_origin(
+        self, *, expected_local_sha: str, expected_origin_sha: str
+    ) -> str:
+        assert expected_local_sha == self.main_local
+        assert expected_origin_sha == self.main_origin
+        self.park_calls += 1
+        if self.race_on_park:
+            self.main_origin = "d" * 40
+            raise CompareAndSwapConflict("injected origin race")
+        self.main_local = expected_origin_sha
+        if self.fail_park_readback:
+            return "e" * 40
         return expected_origin_sha
 
 
@@ -443,6 +474,188 @@ def _application(
         runtime=RuntimeStatusMap({"thread-cli": "running"}),
         telemetry=MemoryTelemetry(),
     )
+
+
+def test_reconcile_main_preserves_local_divergence_before_cas_park() -> None:
+    registry = FakeRegistry()
+    registry.record = replace(
+        registry.record,
+        owner_thread_id=OWNER,
+        external_ids=(EXTERNAL_ID,),
+        base_sha=BASE,
+    )
+    git = FakeGit()
+    git.main_local = HEAD
+    git.main_origin = BASE
+
+    result = _application(registry, git, FakeGitHub()).reconcile_main(
+        expected_local_head=HEAD,
+        expected_origin_head=BASE,
+        preservation_branch=BRANCH,
+        preservation_path=WORKTREE,
+        owner_thread_id=OWNER,
+        external_id=EXTERNAL_ID,
+        operator="operator-main",
+        reason="preserve one local-only main commit before reconciliation",
+    )
+
+    assert result.changed is True
+    assert result.idempotent is False
+    assert result.receipt.preserved_head_sha == HEAD
+    assert result.receipt.expected_local_head == HEAD
+    assert result.receipt.expected_origin_head == BASE
+    assert result.receipt.owner_thread_id == OWNER
+    assert result.receipt.external_id == EXTERNAL_ID
+    assert git.park_calls == 1
+    assert git.main_local == BASE
+
+
+def _divergent_preservation_fixture() -> tuple[
+    FakeRegistry, FakeGit, DeliveryApplication
+]:
+    registry = FakeRegistry()
+    registry.record = replace(
+        registry.record,
+        owner_thread_id=OWNER,
+        external_ids=(EXTERNAL_ID,),
+        base_sha=BASE,
+    )
+    git = FakeGit()
+    git.main_local = HEAD
+    git.main_origin = BASE
+    return registry, git, _application(registry, git, FakeGitHub())
+
+
+def _preserve_request() -> dict[str, object]:
+    return {
+        "expected_local_head": HEAD,
+        "expected_origin_head": BASE,
+        "preservation_branch": BRANCH,
+        "preservation_path": WORKTREE,
+        "owner_thread_id": OWNER,
+        "external_id": EXTERNAL_ID,
+        "operator": "operator-main",
+        "reason": "preserve one local-only main commit before reconciliation",
+    }
+
+
+def test_reconcile_main_retry_is_idempotent_and_keeps_original_reachable() -> None:
+    registry, git, application = _divergent_preservation_fixture()
+    request = _preserve_request()
+
+    first = application.reconcile_main(**request)
+    second = application.reconcile_main(**request)
+
+    assert first.changed is True
+    assert second.changed is False
+    assert second.idempotent is True
+    assert git.park_calls == 1
+    assert git.local == HEAD
+    assert git.main_local == BASE
+    assert registry.record.status == "active"
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    (
+        ("main_clean", False, "canonical checkout must be clean"),
+        ("main_branch", "feature", "canonical checkout must be on main"),
+    ),
+)
+def test_reconcile_main_rejects_dirty_or_non_main_canonical_checkout(
+    field: str, value: object, message: str
+) -> None:
+    _registry, git, application = _divergent_preservation_fixture()
+    setattr(git, field, value)
+
+    with pytest.raises(PolicyViolation, match=message):
+        application.reconcile_main(**_preserve_request())
+
+    assert git.park_calls == 0
+
+
+def test_reconcile_main_rejects_wrong_local_or_origin_cas_inputs() -> None:
+    _registry, git, application = _divergent_preservation_fixture()
+
+    with pytest.raises(CompareAndSwapConflict, match="local main changed"):
+        application.reconcile_main(
+            **{**_preserve_request(), "expected_local_head": "f" * 40}
+        )
+
+    with pytest.raises(CompareAndSwapConflict, match="origin/main changed"):
+        application.reconcile_main(
+            **{**_preserve_request(), "expected_origin_head": "f" * 40}
+        )
+
+    assert git.park_calls == 0
+
+
+def test_reconcile_main_rejects_registry_duplicate_and_remote_collision() -> None:
+    registry, git, application = _divergent_preservation_fixture()
+    registry.extra_records = (replace(registry.record, lane_id="duplicate"),)
+
+    with pytest.raises(PolicyViolation, match="duplicate registry claims"):
+        application.reconcile_main(**_preserve_request())
+
+    registry.extra_records = ()
+    git.remote = HEAD
+    with pytest.raises(PolicyViolation, match="remote ref"):
+        application.reconcile_main(**_preserve_request())
+
+    assert git.park_calls == 0
+
+
+def test_reconcile_main_fails_closed_on_cas_race_and_readback_failure() -> None:
+    _registry, git, application = _divergent_preservation_fixture()
+    git.race_on_park = True
+
+    with pytest.raises(CompareAndSwapConflict, match="injected origin race"):
+        application.reconcile_main(**_preserve_request())
+
+    _registry, git, application = _divergent_preservation_fixture()
+    git.fail_park_readback = True
+    with pytest.raises(PolicyViolation, match="non-exact origin/main SHA"):
+        application.reconcile_main(**_preserve_request())
+
+
+def test_cli_returns_structured_json_error_and_nonzero_exit_for_preservation_policy(
+    capsys: object,
+) -> None:
+    class FailingApplication:
+        def reconcile_main(self, **_kwargs: object) -> object:
+            raise PolicyViolation("preservation registry claim is not exact")
+
+    assert (
+        main(
+            [
+                "--repo",
+                "/tmp/cli-main-reconcile",
+                "preserve-main",
+                "--expected-local-head",
+                HEAD,
+                "--expected-origin-head",
+                BASE,
+                "--preservation-branch",
+                BRANCH,
+                "--preservation-path",
+                str(WORKTREE),
+                "--owner",
+                OWNER,
+                "--external-id",
+                EXTERNAL_ID,
+                "--operator",
+                "operator-main",
+                "--reason",
+                "preserve local main",
+            ],
+            application_factory=lambda **_: FailingApplication(),
+        )
+        == 1
+    )
+    payload = json.loads(capsys.readouterr().err)
+    assert payload["command"] == "preserve-main"
+    assert payload["ok"] is False
+    assert payload["error"] == "preservation registry claim is not exact"
 
 
 def test_publish_ignores_merged_branch_history_for_published_base() -> None:

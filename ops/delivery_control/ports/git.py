@@ -91,3 +91,7 @@ class GitCommandPort(Protocol):
     def fast_forward_main(
         self, *, expected_local_sha: str, expected_origin_sha: str
     ) -> str: ...
+
+    def park_main_to_origin(
+        self, *, expected_local_sha: str, expected_origin_sha: str
+    ) -> str: ...
