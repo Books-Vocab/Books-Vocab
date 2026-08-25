@@ -67,7 +67,8 @@ def _pricing_provider(call_type: str, provider: str | None) -> LLMProvider:
         # routed provider, but the anomaly itself must not stay silent.
         logger.warning(
             "token_usage row tagged unknown provider %r; pricing %s at routed provider",
-            provider, call_type,
+            provider,
+            call_type,
         )
     return provider_for(call_type)
 
@@ -93,10 +94,7 @@ def token_cost_usd(
     p = _pricing_provider(call_type, provider)
     if call_type == "embed":
         return (input_tokens / 1_000_000) * p.embed_price_per_m
-    return (
-        (input_tokens / 1_000_000) * p.input_price_per_m
-        + (output_tokens / 1_000_000) * p.output_price_per_m
-    )
+    return (input_tokens / 1_000_000) * p.input_price_per_m + (output_tokens / 1_000_000) * p.output_price_per_m
 
 
 # Conservative per-call cost estimate (USD) held as an in-flight reservation
@@ -312,9 +310,7 @@ def get_quota_state(user_id: str, *, is_pro: bool = False) -> QuotaState:
     return {"fraction": fraction, "reset_seconds": _ROLLING_WINDOW_SECONDS}
 
 
-def get_all_quota_usage(
-    *, is_pro_by_user: dict[str, bool] | None = None
-) -> dict[str, dict]:
+def get_all_quota_usage(*, is_pro_by_user: dict[str, bool] | None = None) -> dict[str, dict]:
     """Return 24h quota usage for all users (admin only).
 
     ``is_pro_by_user`` maps user_id → Pro entitlement, so each user's
