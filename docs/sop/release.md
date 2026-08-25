@@ -72,10 +72,14 @@ does not need to equal the merged main SHA:
 `finalize` perform an exact GitHub PR readback (normally `gh pr view`; tests may
 inject a one-argument `KG_PR_CMD`). The readback must be one PR object whose
 number matches, `state=MERGED`, `baseRefName=main`, `headRefOid` equals
-`--merged-source`, `mergeCommit.oid` equals live `origin/main`, and
-`baseRefOid` is an ancestor of both source and live main. Readback failure,
-wrong/open PR, source mismatch, or stale merge commit is fail-closed before ASC
-or tag side effects; PR body and branch name are not guessed as evidence.
+`--merged-source`, `mergeCommit.oid` is an exact commit ancestor of live
+`origin/main`, and `baseRefOid` is an ancestor of both source and live main.
+The live tip may include later merged PRs, so the release agent can run in
+parallel with development; after the PR is merged and canonical `main` is
+synced, resume with a fresh live readback. Readback failure, wrong/open PR,
+source mismatch, missing/non-commit/non-ancestor merge commit, or invalid base
+is fail-closed before ASC or tag side effects; PR body and branch name are not
+guessed as evidence.
 
 The first command is a dry-run. The `--yes` form probes exact ASC first, uploads only
 when that exact `(version, build)` is absent, and then calls the tag-only finalizer.
