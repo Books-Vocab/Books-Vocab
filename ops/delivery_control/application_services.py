@@ -155,8 +155,22 @@ class DeliveryApplication:
         )
         orphan_assets = tuple(
             asset
-            for asset in inventory.branch_lifecycle.local
+            for asset in inventory.branch_lifecycle.assets
+            if asset.disposition
+            in {
+                BranchDisposition.ORPHAN_LOCAL_RECONCILE,
+                BranchDisposition.ORPHAN_REMOTE_RECONCILE,
+            }
+        )
+        local_orphan_assets = tuple(
+            asset
+            for asset in orphan_assets
             if asset.disposition is BranchDisposition.ORPHAN_LOCAL_RECONCILE
+        )
+        remote_orphan_assets = tuple(
+            asset
+            for asset in orphan_assets
+            if asset.disposition is BranchDisposition.ORPHAN_REMOTE_RECONCILE
         )
         branch_history_snapshot = None
         list_pull_requests_for_branches = getattr(
@@ -177,7 +191,11 @@ class DeliveryApplication:
                     ),
                 )
         orphan_preflights = orphan_service.preflight_many(
-            branches=tuple((asset.branch, asset.sha) for asset in orphan_assets),
+            branches=tuple((asset.branch, asset.sha) for asset in local_orphan_assets),
+            pr_history=branch_history_snapshot,
+        )
+        remote_orphan_preflights = orphan_service.preflight_remote_many(
+            branches=tuple((asset.branch, asset.sha) for asset in remote_orphan_assets),
             pr_history=branch_history_snapshot,
         )
         unreachable_commits = EMPTY_UNREACHABLE_COMMIT_INVENTORY
@@ -193,6 +211,7 @@ class DeliveryApplication:
         return branch_audit.build_branch_audit(
             inventory,
             orphan_preflights=orphan_preflights,
+            remote_orphan_preflights=remote_orphan_preflights,
             unreachable_commits=unreachable_commits,
         )
 
@@ -897,6 +916,26 @@ class DeliveryApplication:
             git_command=self.git,
             github=self.github,
         ).discard(
+            branch=branch,
+            expected_head_sha=expected_head_sha,
+            operator=operator,
+            reason=reason,
+        )
+
+    def discard_orphan_remote_branch(
+        self,
+        *,
+        branch: str,
+        expected_head_sha: str,
+        operator: str,
+        reason: str,
+    ) -> object:
+        return orphan_branch.OrphanBranchDiscardService(
+            registry=self.registry,
+            git_query=self.git,
+            git_command=self.git,
+            github=self.github,
+        ).discard_remote(
             branch=branch,
             expected_head_sha=expected_head_sha,
             operator=operator,

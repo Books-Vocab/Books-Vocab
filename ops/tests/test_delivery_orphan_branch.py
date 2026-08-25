@@ -124,6 +124,11 @@ class FakeGit:
         self.actions.append("delete-local")
         self.local = None
 
+    def delete_remote_branch(self, branch: str, *, expected_head_sha: str) -> None:
+        assert expected_head_sha == HEAD
+        self.actions.append("delete-remote")
+        self.remote = None
+
 
 class FakeGitHub:
     def __init__(self, inventory: PullRequestInventory | None = None) -> None:
@@ -165,6 +170,81 @@ def test_discards_unregistered_local_branch_already_in_main() -> None:
     assert result.worktree_absent
     assert len(result.proof_digest) == 64
     assert git.actions == ["delete-local"]
+
+
+def test_discards_unregistered_remote_branch_already_in_main() -> None:
+    git = FakeGit(local=None, remote=HEAD)
+
+    result = _build_service(git=git).discard_remote(
+        branch=BRANCH,
+        expected_head_sha=HEAD,
+        operator="supervisor",
+        reason="exact remote ancestor orphan with no owner or PR",
+    )
+
+    assert result.disposition == "orphan_remote_discarded"
+    assert result.main_sha == BASE
+    assert result.local_branch_absent and result.remote_branch_absent
+    assert result.worktree_absent
+    assert len(result.proof_digest) == 64
+    assert git.actions == ["delete-remote"]
+
+
+def test_discards_exact_paired_local_and_remote_orphan_refs() -> None:
+    git = FakeGit(local=HEAD, remote=HEAD)
+
+    result = _build_service(git=git).discard_remote(
+        branch=BRANCH,
+        expected_head_sha=HEAD,
+        operator="supervisor",
+        reason="exact paired refs are already represented in main",
+    )
+
+    assert result.disposition == "orphan_remote_discarded"
+    assert result.local_branch_absent and result.remote_branch_absent
+    assert git.actions == ["delete-local", "delete-remote"]
+
+
+def test_remote_preflight_is_eligible_only_for_exact_remote_ref() -> None:
+    git = FakeGit(local=None, remote=HEAD)
+
+    result = _build_service(git=git).preflight_remote(
+        branch=BRANCH,
+        expected_head_sha=HEAD,
+    )
+
+    assert result.eligible
+    assert result.schema == "kg.delivery.orphan-branch-preflight.v1"
+    assert result.side == "remote"
+    assert result.blockers == ()
+    assert git.actions == []
+
+
+def test_remote_preflight_accepts_exact_paired_local_ref() -> None:
+    git = FakeGit(local=HEAD, remote=HEAD)
+
+    result = _build_service(git=git).preflight_remote(
+        branch=BRANCH,
+        expected_head_sha=HEAD,
+    )
+
+    assert result.eligible
+    assert any("paired local branch" in check for check in result.passed_checks)
+    assert git.actions == []
+
+
+def test_remote_discard_fails_closed_on_remote_drift() -> None:
+    git = FakeGit(local=None, remote="c" * 40)
+
+    with pytest.raises(PolicyViolation, match="remote orphan branch changed"):
+        _build_service(git=git).discard_remote(
+            branch=BRANCH,
+            expected_head_sha=HEAD,
+            operator="supervisor",
+            reason="must not delete a drifted remote ref",
+        )
+
+    assert git.actions == []
 
 
 def test_preflight_is_read_only_and_reports_all_passed_checks() -> None:
