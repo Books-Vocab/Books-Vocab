@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -332,7 +333,32 @@ def test_preflight_reports_blocker_without_deleting() -> None:
     assert result.eligible is False
     assert "remote ref" in "; ".join(result.blockers)
     assert "ancestor" in "; ".join(result.blockers)
+    assert "patch-equivalence not evaluated because other blockers exist" in "; ".join(
+        result.blockers
+    )
+    assert result.patch_equivalent_to_main is None
+    assert git.patch_equivalent_calls == 0
     assert git.actions == []
+
+
+def test_preflight_skips_patch_equivalence_for_pr_history_blocker() -> None:
+    git = FakeGit(ancestor=False)
+    github = FakeGitHub(
+        PullRequestInventory((SimpleNamespace(branch=BRANCH),))  # type: ignore[arg-type]
+    )
+
+    result = _build_service(git=git, github=github).preflight(
+        branch=BRANCH,
+        expected_head_sha=HEAD,
+    )
+
+    assert result.eligible is False
+    assert "PR history" in "; ".join(result.blockers)
+    assert "patch-equivalence not evaluated because other blockers exist" in "; ".join(
+        result.blockers
+    )
+    assert result.patch_equivalent_to_main is None
+    assert git.patch_equivalent_calls == 0
 
 
 def test_preflight_accepts_nonancestor_tip_when_patches_are_equivalent() -> None:
@@ -347,6 +373,7 @@ def test_preflight_accepts_nonancestor_tip_when_patches_are_equivalent() -> None
     assert result.patch_equivalent_to_main is True
     assert any("patch-equivalent" in check for check in result.passed_checks)
     assert result.blockers == ()
+    assert git.patch_equivalent_calls == 1
     assert git.actions == []
 
 
