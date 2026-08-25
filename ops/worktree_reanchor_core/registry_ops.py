@@ -153,6 +153,14 @@ def _preflight_published(
         raise ReanchorRefused("expected remote HEAD differs from original hand-back")
     if not registry._has_valid_stored_handback(original):
         raise ReanchorRefused("original published claim lacks a valid typed hand-back")
+    recorded_path = Path(str(original["path"])).expanduser().resolve()
+    requested_path = target.expanduser().resolve()
+    if requested_path != recorded_path:
+        raise ReanchorRefused(
+            "resume target path differs from exact original claim path",
+            recorded_path=str(recorded_path),
+            requested_path=str(requested_path),
+        )
     if not lane_id.strip() or claim_generation < 0:
         raise ReanchorRefused(
             "lane and claim generation must identify one original claim"
