@@ -26,13 +26,25 @@ _TRANSIENT_ERROR_MARKERS = (
     "temporary failure in name resolution",
     "network is unreachable",
 )
+_GH_API_INPUT_FLAGS = frozenset(("-f", "--field", "-F", "--raw-field", "--input"))
 
 
 def _option_value(argv: tuple[str, ...], *options: str) -> str | None:
-    for index, value in enumerate(argv[:-1]):
+    for index, value in enumerate(argv):
         if value in options:
-            return argv[index + 1]
+            return argv[index + 1] if index + 1 < len(argv) else None
+        for option in options:
+            if value.startswith(f"{option}="):
+                return value.partition("=")[2]
     return None
+
+
+def _has_gh_api_input(argv: tuple[str, ...]) -> bool:
+    return any(
+        value in _GH_API_INPUT_FLAGS
+        or value.startswith(("--field=", "--raw-field=", "--input=", "-f", "-F"))
+        for value in argv
+    )
 
 
 def _is_read_only_json_query(argv: tuple[str, ...]) -> bool:
@@ -54,7 +66,9 @@ def _is_read_only_json_query(argv: tuple[str, ...]) -> bool:
             return False
         operation = query.lstrip()
         return operation.startswith(("query ", "query{", "{"))
-    return method is None or method.upper() == "GET"
+    if method is not None:
+        return method.upper() == "GET"
+    return not _has_gh_api_input(argv)
 
 
 def _is_transient_failure(result: CommandResult) -> bool:

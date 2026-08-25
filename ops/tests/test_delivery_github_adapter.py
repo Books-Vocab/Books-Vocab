@@ -231,6 +231,77 @@ def test_github_graphql_mutation_does_not_retry_transient_failure() -> None:
 
 
 @pytest.mark.parametrize(
+    "field_flag",
+    ("-f", "--field", "-F", "--raw-field", "--input"),
+)
+def test_github_api_fields_without_method_do_not_retry(
+    field_flag: str,
+) -> None:
+    argv = ("gh", "api", "repos/owner/repo", field_flag, "key=value")
+    runner = StaticRunner(
+        [
+            CommandResult(argv, 1, "", "connection reset by peer"),
+            CommandResult(argv, 0, '{"ok":true}', ""),
+        ]
+    )
+
+    with pytest.raises(AdapterCommandError):
+        GitHubCliClient(repo=Path("/tmp/kg-github-retry"), runner=runner).load_json(
+            argv
+        )
+
+    assert runner.calls == [argv]
+
+
+def test_github_api_without_method_or_input_retries() -> None:
+    argv = ("gh", "api", "repos/owner/repo")
+    runner = StaticRunner(
+        [
+            CommandResult(argv, 1, "", "TLS handshake timeout"),
+            CommandResult(argv, 0, '{"ok":true}', ""),
+        ]
+    )
+
+    assert GitHubCliClient(repo=Path("/tmp/kg-github-retry"), runner=runner).load_json(
+        argv
+    ) == {"ok": True}
+    assert runner.calls == [argv, argv]
+
+
+def test_github_api_explicit_get_retries() -> None:
+    argv = ("gh", "api", "repos/owner/repo", "--method", "GET")
+    runner = StaticRunner(
+        [
+            CommandResult(argv, 1, "", "temporary network failure"),
+            CommandResult(argv, 0, '{"ok":true}', ""),
+        ]
+    )
+
+    assert GitHubCliClient(repo=Path("/tmp/kg-github-retry"), runner=runner).load_json(
+        argv
+    ) == {"ok": True}
+    assert runner.calls == [argv, argv]
+
+
+@pytest.mark.parametrize("method", ("POST", "PATCH", "DELETE"))
+def test_github_api_explicit_mutation_methods_do_not_retry(method: str) -> None:
+    argv = ("gh", "api", "repos/owner/repo", "--method", method)
+    runner = StaticRunner(
+        [
+            CommandResult(argv, 1, "", "connection refused"),
+            CommandResult(argv, 0, '{"ok":true}', ""),
+        ]
+    )
+
+    with pytest.raises(AdapterCommandError):
+        GitHubCliClient(repo=Path("/tmp/kg-github-retry"), runner=runner).load_json(
+            argv
+        )
+
+    assert runner.calls == [argv]
+
+
+@pytest.mark.parametrize(
     ("parser", "message"),
     (
         (
