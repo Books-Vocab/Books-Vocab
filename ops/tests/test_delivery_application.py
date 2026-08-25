@@ -555,6 +555,68 @@ def test_branch_review_plan_pages_orphans_and_preserves_incomplete_audit(
     )
 
 
+def test_branch_review_plan_accepts_patch_equivalence_content_blocker(
+    tmp_path: Path,
+) -> None:
+    application = DeliveryApplication(
+        repo=tmp_path,
+        git=Mock(),
+        github=Mock(),
+        registry=Mock(),
+        runtime=Mock(),
+        telemetry=Mock(),
+    )
+    evidence = BranchContentEvidence(
+        schema="kg.delivery.branch-content.v1",
+        branch="backup/patch-equivalent-orphan",
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+        base_is_ancestor=False,
+        ahead_commit_count=2,
+        behind_commit_count=1,
+        changed_paths=("feature.py",),
+        changed_path_count=1,
+        changed_paths_truncated=False,
+        change_fingerprint="c" * 64,
+        commit_subjects=("feature",),
+        commit_subjects_truncated=False,
+        complete=True,
+    )
+    blocker = (
+        "orphan branch tip is not an ancestor of live origin/main "
+        "and is not patch-equivalent"
+    )
+    action = SimpleNamespace(
+        side=BranchSide.LOCAL,
+        branch="backup/patch-equivalent-orphan",
+        sha="b" * 40,
+        category="local_orphan_blocked",
+        review_command="./ops/delivery.py branch-inspect ...",
+        orphan_preflight=SimpleNamespace(eligible=False, blockers=(blocker,)),
+        next_step="review content",
+    )
+    audit = SimpleNamespace(
+        actions=(action,),
+        live_main_sha="a" * 40,
+        complete=True,
+        source_problem_actions=(),
+    )
+
+    with (
+        patch.object(DeliveryApplication, "branch_audit", return_value=audit),
+        patch.object(
+            BranchContentService,
+            "inspect_many",
+            return_value={"backup/patch-equivalent-orphan": evidence},
+        ),
+    ):
+        plan = application.branch_review_plan(offset=0, limit=1)
+
+    assert plan.total_candidates == 1
+    assert plan.items[0].branch == "backup/patch-equivalent-orphan"
+    assert plan.items[0].preflight_blockers == (blocker,)
+
+
 def test_branch_review_plan_rejects_offset_beyond_total_candidates(
     tmp_path: Path,
 ) -> None:
@@ -824,6 +886,11 @@ def test_branch_review_plan_excludes_lifecycle_owned_orphans(
         )
 
     reviewable = "backup/reviewable"
+    patch_equivalent = "backup/patch-equivalent"
+    patch_equivalence_blocker = (
+        "orphan branch tip is not an ancestor of live origin/main "
+        "and is not patch-equivalent"
+    )
     with (
         patch.object(
             DeliveryApplication,
@@ -833,6 +900,10 @@ def test_branch_review_plan_excludes_lifecycle_owned_orphans(
                     action(
                         reviewable,
                         ("orphan branch tip is not an ancestor of live origin/main",),
+                    ),
+                    action(
+                        patch_equivalent,
+                        (patch_equivalence_blocker,),
                     ),
                     action(
                         "backup/remote",
@@ -866,6 +937,7 @@ def test_branch_review_plan_excludes_lifecycle_owned_orphans(
                 branch: content(branch)
                 for branch in (
                     reviewable,
+                    patch_equivalent,
                     "backup/remote",
                     "backup/pr-history",
                     "debug/owner",
@@ -876,8 +948,8 @@ def test_branch_review_plan_excludes_lifecycle_owned_orphans(
     ):
         plan = application.branch_review_plan(offset=0, limit=20)
 
-    assert plan.total_candidates == 1
-    assert plan.items[0].branch == reviewable
+    assert plan.total_candidates == 2
+    assert {item.branch for item in plan.items} == {reviewable, patch_equivalent}
 
 
 def test_metrics_forwards_supervision_worktree_paths_to_inspect(

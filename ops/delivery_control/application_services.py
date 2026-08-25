@@ -75,7 +75,13 @@ from .services.publish import PublishService, receipt_from_active_claim
 from .services.publish_preflight import PublishPreflightService
 
 _REVIEWABLE_LOCAL_ORPHAN_BLOCKERS = frozenset(
-    {"orphan branch tip is not an ancestor of live origin/main"}
+    {
+        "orphan branch tip is not an ancestor of live origin/main",
+        (
+            "orphan branch tip is not an ancestor of live origin/main "
+            "and is not patch-equivalent"
+        ),
+    }
 )
 
 
@@ -90,7 +96,8 @@ def _is_reviewable_local_orphan(action: object) -> bool:
         and getattr(action, "review_command", None) is not None
         and preflight is not None
         and not preflight.eligible
-        and set(blockers) == _REVIEWABLE_LOCAL_ORPHAN_BLOCKERS
+        and len(blockers) == 1
+        and next(iter(blockers)) in _REVIEWABLE_LOCAL_ORPHAN_BLOCKERS
     )
 
 
