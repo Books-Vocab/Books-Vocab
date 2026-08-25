@@ -30,6 +30,12 @@ from delivery_control.services.branch_lifecycle_projection import (
 SHA_A = "a" * 40
 SHA_B = "b" * 40
 SHA_C = "c" * 40
+LIVE_MAIN_SHA = "116db511972b4873a298c0e7738322c2f14745d7"
+PR_1614_BRANCH = "debug/delivery-github-read-retry-20250825"
+PR_1614_PREVIOUS_HEAD_SHA = "0e7dff28134b8ec07b55ce1174fcb12d8b8a51ec"
+PR_1614_HEAD_SHA = "88c302f2ede3aedcffbd99e1a800fff117d7c088"
+PR_1614_EXTERNAL_ID = "DIRECT-DELIVERY-GITHUB-READ-RETRY-20250825"
+PR_1614_OWNER_THREAD = "01a03883-26b6-7cb1-af18-4c518b3a8e5f"
 
 
 def _record(
@@ -38,7 +44,11 @@ def _record(
     status: str,
     handed_back_sha: str | None = None,
     base_sha: str = SHA_A,
+    claim_generation: int = 1,
     owner_thread_id: str | None = None,
+    external_ids: tuple[str, ...] = (),
+    scope: Scope | None = None,
+    path: Path | None = None,
     superseded_pr_number: int | None = None,
     superseded_pr_head_sha: str | None = None,
     superseded_patch_fingerprint: str | None = None,
@@ -46,11 +56,12 @@ def _record(
     return RegistrySnapshot(
         lane_id=f"LANE-{branch}",
         branch=branch,
-        path=Path(f"/tmp/{branch.replace('/', '-')}"),
+        path=path or Path(f"/tmp/{branch.replace('/', '-')}"),
         status=status,
-        scope=Scope.from_paths(modify=("ops/example.py",)),
+        scope=scope or Scope.from_paths(modify=("ops/example.py",)),
         base_sha=base_sha,
-        claim_generation=1,
+        claim_generation=claim_generation,
+        external_ids=external_ids,
         handed_back_sha=handed_back_sha,
         handback_valid=handed_back_sha is not None,
         owner_thread_id=owner_thread_id,
@@ -66,12 +77,13 @@ def _pr(
     *,
     state: str,
     head_sha: str,
+    base_sha: str = SHA_A,
 ) -> PullRequestSnapshot:
     return PullRequestSnapshot(
         number=number,
         url=f"https://github.com/example/repo/pull/{number}",
         branch=branch,
-        base_sha=SHA_A,
+        base_sha=base_sha,
         head_sha=head_sha,
         state=state,
         draft=False,
@@ -321,6 +333,63 @@ def test_duplicate_live_claims_are_unknown_and_not_cleanup_ready() -> None:
 
     assert asset.disposition is BranchDisposition.UNKNOWN
     assert asset.cleanup_action is BranchCleanupAction.INSPECT_UNKNOWN
+
+
+def test_terminal_abandoned_history_does_not_collide_with_current_published_open_pr() -> (
+    None
+):
+    asset = project_branch_lifecycle(
+        branch_inventory=BranchInventory(
+            remote=((PR_1614_BRANCH, PR_1614_HEAD_SHA),),
+        ),
+        records=(
+            _record(
+                PR_1614_BRANCH,
+                status="abandoned",
+                handed_back_sha=PR_1614_PREVIOUS_HEAD_SHA,
+                base_sha=LIVE_MAIN_SHA,
+                claim_generation=0,
+                owner_thread_id=PR_1614_OWNER_THREAD,
+                external_ids=(PR_1614_EXTERNAL_ID,),
+            ),
+            _record(
+                PR_1614_BRANCH,
+                status="published",
+                handed_back_sha=PR_1614_HEAD_SHA,
+                base_sha=LIVE_MAIN_SHA,
+                claim_generation=1,
+                owner_thread_id=PR_1614_OWNER_THREAD,
+                external_ids=(PR_1614_EXTERNAL_ID,),
+            ),
+        ),
+        pull_requests=(
+            _pr(
+                1614,
+                PR_1614_BRANCH,
+                state="OPEN",
+                head_sha=PR_1614_HEAD_SHA,
+                base_sha=LIVE_MAIN_SHA,
+            ),
+        ),
+    ).remote[0]
+
+    assert asset.disposition is BranchDisposition.ACTIVE_OR_PUBLISHED_LANE
+    assert asset.cleanup_action is BranchCleanupAction.FOLLOW_OWNER_LANE
+    assert not asset.cleanup_ready
+    assert asset.sha == PR_1614_HEAD_SHA
+    assert asset.pull_request_numbers == (1614,)
+    assert asset.registry_statuses == ("abandoned", "published")
+    assert asset.owner_thread_ids == (PR_1614_OWNER_THREAD,)
+    assert [
+        (item.status, item.claim_generation, item.handed_back_sha)
+        for item in asset.registry_evidence
+    ] == [
+        ("abandoned", 0, PR_1614_PREVIOUS_HEAD_SHA),
+        ("published", 1, PR_1614_HEAD_SHA),
+    ]
+    assert all(
+        item.external_ids == (PR_1614_EXTERNAL_ID,) for item in asset.registry_evidence
+    )
 
 
 def test_explicit_backup_can_be_protected_without_being_main() -> None:
