@@ -50,6 +50,7 @@ sentry_summary_json() {
   local api_authenticated project_reachable runtime_event_seen symbolication_ready
   local required_package_revision="d82bb1c5eb353a593573a5624bb370f5a1f500ce"
   local fixture_mode=0
+  local fixture_build_evidence=0
   if [[ -n "${KG_IOS_OPS_SENTRY_SOURCE_FIXTURE:-}" ]]; then
     source="$KG_IOS_OPS_SENTRY_SOURCE_FIXTURE"
   fi
@@ -59,9 +60,11 @@ sentry_summary_json() {
   if [[ -n "${KG_IOS_OPS_SENTRY_RESOLVED_FIXTURE:-}" ]]; then
     resolved="$KG_IOS_OPS_SENTRY_RESOLVED_FIXTURE"
   fi
-  if [[ "${KG_IOS_OPS_FIXTURE:-}" == "1" ]] \
-    || [[ -n "${KG_IOS_OPS_SENTRY_SOURCE_EXISTS_FIXTURE:-}${KG_IOS_OPS_SENTRY_CAN_IMPORT_FIXTURE:-}${KG_IOS_OPS_SENTRY_DSN_FIXTURE:-}${KG_IOS_OPS_SENTRY_PACKAGE_FIXTURE:-}${KG_IOS_OPS_SENTRY_TARGET_FIXTURE:-}" ]]; then
+  if [[ -n "${KG_IOS_OPS_SENTRY_SOURCE_EXISTS_FIXTURE:-}${KG_IOS_OPS_SENTRY_CAN_IMPORT_FIXTURE:-}${KG_IOS_OPS_SENTRY_DSN_FIXTURE:-}${KG_IOS_OPS_SENTRY_PACKAGE_FIXTURE:-}${KG_IOS_OPS_SENTRY_TARGET_FIXTURE:-}" ]]; then
     fixture_mode=1
+  fi
+  if [[ "${KG_IOS_OPS_FIXTURE:-}" == "1" ]]; then
+    fixture_build_evidence=1
   fi
   if [[ -n "${KG_IOS_OPS_SENTRY_SOURCE_EXISTS_FIXTURE:-}" ]]; then
     source_exists="$KG_IOS_OPS_SENTRY_SOURCE_EXISTS_FIXTURE"
@@ -169,7 +172,7 @@ sentry_summary_json() {
     build_can_import="$KG_IOS_OPS_SENTRY_BUILD_CAN_IMPORT_FIXTURE"
     build_evidence_source="fixture"
     build_evidence_artifact=""
-  elif (( fixture_mode )); then
+  elif (( fixture_build_evidence )); then
     build_can_import="true"
     build_evidence_source="fixture"
     build_evidence_artifact=""
@@ -226,28 +229,15 @@ sentry_summary_json() {
     fi
   fi
 
-  if (( fixture_mode )); then
-    api_configured=1
-  elif [[ -n "${SENTRY_API_URL:-}" && -n "${SENTRY_AUTH_TOKEN:-}" && -n "${SENTRY_ORG:-}" && -n "${SENTRY_PROJECT_IOS:-}" ]]; then
+  if [[ -n "${SENTRY_API_URL:-}" && -n "${SENTRY_AUTH_TOKEN:-}" && -n "${SENTRY_ORG:-}" && -n "${SENTRY_PROJECT_IOS:-}" ]]; then
     api_configured=1
   else
     api_configured=0
   fi
-  api_authenticated="${KG_IOS_OPS_SENTRY_API_AUTHENTICATED_FIXTURE:-}"
-  project_reachable="${KG_IOS_OPS_SENTRY_PROJECT_REACHABLE_FIXTURE:-}"
-  runtime_event_seen="${KG_IOS_OPS_SENTRY_RUNTIME_EVENT_FIXTURE:-}"
-  symbolication_ready="${KG_IOS_OPS_SENTRY_SYMBOLICATION_FIXTURE:-}"
-  if (( fixture_mode )); then
-    [[ -n "$api_authenticated" ]] || api_authenticated="true"
-    [[ -n "$project_reachable" ]] || project_reachable="true"
-    [[ -n "$runtime_event_seen" ]] || runtime_event_seen="true"
-    [[ -n "$symbolication_ready" ]] || symbolication_ready="true"
-  else
-    [[ -n "$api_authenticated" ]] || api_authenticated="unchecked"
-    [[ -n "$project_reachable" ]] || project_reachable="unchecked"
-    [[ -n "$runtime_event_seen" ]] || runtime_event_seen="unchecked"
-    [[ -n "$symbolication_ready" ]] || symbolication_ready="unchecked"
-  fi
+  api_authenticated="${KG_IOS_OPS_SENTRY_API_AUTHENTICATED_FIXTURE:-unchecked}"
+  project_reachable="${KG_IOS_OPS_SENTRY_PROJECT_REACHABLE_FIXTURE:-unchecked}"
+  runtime_event_seen="${KG_IOS_OPS_SENTRY_RUNTIME_EVENT_FIXTURE:-unchecked}"
+  symbolication_ready="${KG_IOS_OPS_SENTRY_SYMBOLICATION_FIXTURE:-unchecked}"
 
   jq -n \
     --arg schema "kg.ios.sentry.v1" \
