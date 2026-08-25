@@ -10,7 +10,7 @@ import itertools
 import logging
 import threading
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import NamedTuple
 
 from .exceptions import QuotaExceededError
@@ -67,7 +67,8 @@ def _pricing_provider(call_type: str, provider: str | None) -> LLMProvider:
         # routed provider, but the anomaly itself must not stay silent.
         logger.warning(
             "token_usage row tagged unknown provider %r; pricing %s at routed provider",
-            provider, call_type,
+            provider,
+            call_type,
         )
     return provider_for(call_type)
 
@@ -93,10 +94,7 @@ def token_cost_usd(
     p = _pricing_provider(call_type, provider)
     if call_type == "embed":
         return (input_tokens / 1_000_000) * p.embed_price_per_m
-    return (
-        (input_tokens / 1_000_000) * p.input_price_per_m
-        + (output_tokens / 1_000_000) * p.output_price_per_m
-    )
+    return (input_tokens / 1_000_000) * p.input_price_per_m + (output_tokens / 1_000_000) * p.output_price_per_m
 
 
 # Conservative per-call cost estimate (USD) held as an in-flight reservation
@@ -239,21 +237,34 @@ def _window_cutoff_iso() -> str:
     return datetime.fromtimestamp(cutoff, tz=UTC).isoformat()
 
 
+def _utc_instant_cutoff_bounds(cutoff_iso: str) -> tuple[str, str]:
+    """Return an indexed candidate bound and an exact UTC-instant cutoff."""
+    cutoff = datetime.fromisoformat(cutoff_iso)
+    candidate_bound = (cutoff.date() - timedelta(days=1)).isoformat()
+    return candidate_bound, cutoff_iso
+
+
+def _utc_instant_predicate(column: str) -> str:
+    """Build the SQL predicate for an ISO-8601 UTC instant column."""
+    return f"{column} >= ? AND julianday({column}) >= julianday(?)"
+
+
 def _recorded_usd(user_id: str) -> float:
     """Recorded USD cost (last 24 h), excluding in-flight reservations."""
     cutoff_iso = _window_cutoff_iso()
+    candidate_bound, cutoff_iso = _utc_instant_cutoff_bounds(cutoff_iso)
 
     with _lock:
         conn = _get_conn()
         rows = conn.execute(
-            """
+            f"""
             SELECT call_type, provider,
                    SUM(input_tokens) AS total_in, SUM(output_tokens) AS total_out
             FROM token_usage
-            WHERE user_id = ? AND created_at >= ?
+            WHERE user_id = ? AND {_utc_instant_predicate("created_at")}
             GROUP BY call_type, provider
             """,
-            (user_id, cutoff_iso),
+            (user_id, candidate_bound, cutoff_iso),
         ).fetchall()
 
     total = 0.0
@@ -299,9 +310,7 @@ def get_quota_state(user_id: str, *, is_pro: bool = False) -> QuotaState:
     return {"fraction": fraction, "reset_seconds": _ROLLING_WINDOW_SECONDS}
 
 
-def get_all_quota_usage(
-    *, is_pro_by_user: dict[str, bool] | None = None
-) -> dict[str, dict]:
+def get_all_quota_usage(*, is_pro_by_user: dict[str, bool] | None = None) -> dict[str, dict]:
     """Return 24h quota usage for all users (admin only).
 
     ``is_pro_by_user`` maps user_id → Pro entitlement, so each user's
@@ -312,20 +321,21 @@ def get_all_quota_usage(
     """
     pro_by_user = is_pro_by_user or {}
     cutoff_iso = _window_cutoff_iso()
+    candidate_bound, cutoff_iso = _utc_instant_cutoff_bounds(cutoff_iso)
 
     with _lock:
         conn = _get_conn()
         rows = conn.execute(
-            """
+            f"""
             SELECT user_id, call_type, provider,
                    COUNT(*) AS cnt,
                    SUM(input_tokens) AS total_in,
                    SUM(output_tokens) AS total_out
             FROM token_usage
-            WHERE created_at >= ?
+            WHERE {_utc_instant_predicate("created_at")}
             GROUP BY user_id, call_type, provider
             """,
-            (cutoff_iso,),
+            (candidate_bound, cutoff_iso),
         ).fetchall()
 
     result: dict[str, dict] = {}
@@ -360,8 +370,9 @@ def get_user_usage_range(user_id: str, *, since_iso: str | None = None) -> dict:
     where = "WHERE user_id = ?"
     params: list = [user_id]
     if since_iso is not None:
-        where += " AND created_at >= ?"
-        params.append(since_iso)
+        candidate_bound, since_iso = _utc_instant_cutoff_bounds(since_iso)
+        where += f" AND {_utc_instant_predicate('created_at')}"
+        params.extend([candidate_bound, since_iso])
 
     with _lock:
         conn = _get_conn()
