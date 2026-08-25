@@ -12,6 +12,7 @@ sys.path.insert(0, str(OPS))
 from delivery_control.adapters import github_commands, github_parsing
 from delivery_control.adapters.errors import AdapterCommandError, AdapterPayloadError
 from delivery_control.adapters.github_cli import GitHubCliAdapter
+from delivery_control.adapters.github_client import GitHubCliClient
 from delivery_control.domain.candidate_issues import CANDIDATE_ISSUE_LABEL
 from delivery_control.domain.errors import CompareAndSwapConflict
 from delivery_control.domain.models import CheckStatus
@@ -25,9 +26,11 @@ class StaticRunner:
     def __init__(self, responses: list[CommandResult]) -> None:
         self.responses = list(responses)
         self.calls: list[tuple[str, ...]] = []
+        self.cwds: list[Path | None] = []
 
     def run(self, argv: tuple[str, ...], *, cwd: Path | None = None) -> CommandResult:
         self.calls.append(argv)
+        self.cwds.append(cwd)
         return self.responses.pop(0)
 
 
@@ -104,6 +107,127 @@ def _queue_configuration_payload(*, configured: bool) -> dict[str, object]:
             }
         }
     }
+
+
+def test_github_json_query_retries_transient_failure_once() -> None:
+    repo = Path("/tmp/kg-github-retry")
+    argv = ("gh", "repo", "view", "--json", "nameWithOwner")
+    runner = StaticRunner(
+        [
+            CommandResult(argv, 1, "", "TLS handshake timeout"),
+            CommandResult(argv, 0, '{"nameWithOwner":"owner/repo"}', ""),
+        ]
+    )
+
+    payload = GitHubCliClient(repo=repo, runner=runner).load_json(argv)
+
+    assert payload == {"nameWithOwner": "owner/repo"}
+    assert runner.calls == [argv, argv]
+    assert runner.cwds == [repo, repo]
+
+
+def test_github_json_query_retries_timed_out_result_once() -> None:
+    argv = ("gh", "repo", "view", "--json", "nameWithOwner")
+    runner = StaticRunner(
+        [
+            CommandResult(argv, 1, "", "", timed_out=True),
+            CommandResult(argv, 0, '{"nameWithOwner":"owner/repo"}', ""),
+        ]
+    )
+
+    payload = GitHubCliClient(
+        repo=Path("/tmp/kg-github-retry"), runner=runner
+    ).load_json(argv)
+
+    assert payload == {"nameWithOwner": "owner/repo"}
+    assert runner.calls == [argv, argv]
+
+
+def test_github_json_query_retry_exhaustion_preserves_command_failure() -> None:
+    repo = Path("/tmp/kg-github-retry")
+    argv = ("gh", "repo", "view", "--json", "nameWithOwner")
+    first = CommandResult(argv, 1, "", "connection reset by peer")
+    second = CommandResult(argv, 1, "", "connection refused")
+    runner = StaticRunner([first, second])
+
+    with pytest.raises(AdapterCommandError) as error:
+        GitHubCliClient(repo=repo, runner=runner).load_json(argv)
+
+    assert error.value.result is second
+    assert runner.calls == [argv, argv]
+    assert runner.cwds == [repo, repo]
+
+
+def test_github_json_query_does_not_retry_permanent_failure() -> None:
+    argv = ("gh", "repo", "view", "--json", "nameWithOwner")
+    runner = StaticRunner(
+        [
+            CommandResult(argv, 1, "", "HTTP 403: permission denied"),
+            CommandResult(argv, 0, '{"nameWithOwner":"owner/repo"}', ""),
+        ]
+    )
+
+    with pytest.raises(AdapterCommandError):
+        GitHubCliClient(repo=Path("/tmp/kg-github-retry"), runner=runner).load_json(
+            argv
+        )
+
+    assert runner.calls == [argv]
+
+
+def test_github_json_query_does_not_retry_malformed_json() -> None:
+    argv = ("gh", "repo", "view", "--json", "nameWithOwner")
+    runner = StaticRunner(
+        [
+            CommandResult(argv, 0, "not-json", ""),
+            CommandResult(argv, 0, '{"nameWithOwner":"owner/repo"}', ""),
+        ]
+    )
+
+    with pytest.raises(AdapterPayloadError, match="invalid JSON"):
+        GitHubCliClient(repo=Path("/tmp/kg-github-retry"), runner=runner).load_json(
+            argv
+        )
+
+    assert runner.calls == [argv]
+
+
+def test_github_mutation_does_not_retry_transient_failure() -> None:
+    argv = ("gh", "workflow", "run", "pr-gate.yml")
+    runner = StaticRunner(
+        [
+            CommandResult(argv, 1, "", "temporary network failure"),
+            CommandResult(argv, 0, "", ""),
+        ]
+    )
+
+    with pytest.raises(AdapterCommandError):
+        GitHubCliClient(repo=Path("/tmp/kg-github-retry"), runner=runner).run(argv)
+
+    assert runner.calls == [argv]
+
+
+def test_github_graphql_mutation_does_not_retry_transient_failure() -> None:
+    argv = (
+        "gh",
+        "api",
+        "graphql",
+        "-f",
+        "query=mutation DeliveryCreateIssue { createIssue { issue { number } } }",
+    )
+    runner = StaticRunner(
+        [
+            CommandResult(argv, 1, "", "connection reset by peer"),
+            CommandResult(argv, 0, '{"data":{}}', ""),
+        ]
+    )
+
+    with pytest.raises(AdapterCommandError):
+        GitHubCliClient(repo=Path("/tmp/kg-github-retry"), runner=runner).load_json(
+            argv
+        )
+
+    assert runner.calls == [argv]
 
 
 @pytest.mark.parametrize(
