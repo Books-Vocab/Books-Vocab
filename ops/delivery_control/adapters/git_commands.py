@@ -165,12 +165,31 @@ class GitCommands:
             raise CompareAndSwapConflict("canonical main is dirty")
 
         detached = False
+        main_parked = False
 
-        def restore_main() -> str | None:
-            if not detached:
-                return None
+        def compensate() -> str | None:
+            """Restore the original main ref before returning a failed CAS."""
+
+            nonlocal detached, main_parked
             try:
-                self.client.run("switch", "main")
+                if main_parked:
+                    if not detached:
+                        if self.client.run(
+                            "status", "--porcelain=v1", "--untracked-files=all"
+                        ):
+                            return "canonical main became dirty during compensation"
+                        self.client.run("checkout", "--detach", expected_local_sha)
+                        detached = True
+                    self.client.run(
+                        "update-ref",
+                        "refs/heads/main",
+                        expected_local_sha,
+                        expected_origin_sha,
+                    )
+                    main_parked = False
+                if detached:
+                    self.client.run("switch", "main")
+                    detached = False
             except AdapterCommandError as error:
                 return str(error)
             return None
@@ -188,27 +207,50 @@ class GitCommands:
                 expected_origin_sha,
                 expected_local_sha,
             )
+            main_parked = True
+            if self.query.origin_main_sha() != expected_origin_sha:
+                raise CompareAndSwapConflict("origin/main changed during main park")
+            if self.query.local_main_sha() != expected_origin_sha:
+                raise CompareAndSwapConflict("local main changed during main park")
             self.client.run("switch", "main")
             detached = False
         except CompareAndSwapConflict:
-            compensation_error = restore_main()
+            compensation_error = compensate()
             detail = "canonical main park CAS precondition failed"
             if compensation_error is not None:
                 detail += f"; compensation failed: {compensation_error}"
             raise CompareAndSwapConflict(detail)
         except AdapterCommandError as error:
-            compensation_error = restore_main()
+            compensation_error = compensate()
             detail = f"canonical main park failed: {error}"
             if compensation_error is not None:
                 detail += f"; compensation failed: {compensation_error}"
             raise CompareAndSwapConflict(detail) from error
 
-        if self.client.run("branch", "--show-current") != "main":
-            raise CompareAndSwapConflict("canonical checkout is not on main after park")
-        if self.query.origin_main_sha() != expected_origin_sha:
-            raise CompareAndSwapConflict("origin/main changed after main park")
-        if self.query.local_main_sha() != expected_origin_sha:
-            raise CompareAndSwapConflict("local main readback differs after main park")
-        if self.client.run("status", "--porcelain=v1", "--untracked-files=all"):
-            raise CompareAndSwapConflict("canonical main is dirty after main park")
+        try:
+            if self.client.run("branch", "--show-current") != "main":
+                raise CompareAndSwapConflict(
+                    "canonical checkout is not on main after park"
+                )
+            if self.query.origin_main_sha() != expected_origin_sha:
+                raise CompareAndSwapConflict("origin/main changed after main park")
+            if self.query.local_main_sha() != expected_origin_sha:
+                raise CompareAndSwapConflict(
+                    "local main readback differs after main park"
+                )
+            if self.client.run("status", "--porcelain=v1", "--untracked-files=all"):
+                raise CompareAndSwapConflict("canonical main is dirty after main park")
+        except CompareAndSwapConflict:
+            compensation_error = compensate()
+            detail = "canonical main park readback failed"
+            if compensation_error is not None:
+                detail += f"; compensation failed: {compensation_error}"
+            raise CompareAndSwapConflict(detail)
+        except AdapterCommandError as error:
+            compensation_error = compensate()
+            detail = f"canonical main park readback failed: {error}"
+            if compensation_error is not None:
+                detail += f"; compensation failed: {compensation_error}"
+            raise CompareAndSwapConflict(detail) from error
+        main_parked = False
         return expected_origin_sha

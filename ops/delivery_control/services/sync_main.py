@@ -209,22 +209,38 @@ class MainPreservationService:
         inventory = self.registry.list_records()
         if inventory.problems:
             raise PolicyViolation("registry inventory is incomplete")
+        branch_matches = tuple(
+            item for item in inventory.records if item.branch == branch
+        )
+        path_matches = tuple(
+            item for item in inventory.records if item.path.resolve() == path
+        )
         exact = tuple(
             item
             for item in inventory.records
             if item.branch == branch and item.path.resolve() == path
         )
-        if len(exact) != 1:
-            if len(exact) > 1:
+        if len(exact) > 1:
+            raise PolicyViolation(
+                "preservation branch/path has duplicate registry claims"
+            )
+        if not exact:
+            if branch_matches or path_matches:
                 raise PolicyViolation(
-                    "preservation branch/path has duplicate registry claims"
+                    "preservation branch or path has a registry collision"
                 )
             raise PolicyViolation(
                 "preservation branch/path has no exact owner-bound registry claim"
             )
+        if len(branch_matches) != 1 or len(path_matches) != 1:
+            raise PolicyViolation(
+                "preservation branch or path has a registry collision"
+            )
         record = exact[0]
         if record.status != "active":
             raise PolicyViolation("preservation registry claim is not active")
+        if len(record.external_ids) != len(set(record.external_ids)):
+            raise PolicyViolation("preservation registry external ids are duplicated")
         if record.owner_thread_id != owner_thread_id:
             raise PolicyViolation("preservation registry owner differs from request")
         if external_id not in record.external_ids:

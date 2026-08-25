@@ -10,7 +10,6 @@ import pytest
 
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
-# ruff: noqa: E402
 
 from delivery_control.cli import (
     DeliveryApplication,
@@ -595,6 +594,18 @@ def test_reconcile_main_rejects_registry_duplicate_and_remote_collision() -> Non
     registry.extra_records = (replace(registry.record, lane_id="duplicate"),)
 
     with pytest.raises(PolicyViolation, match="duplicate registry claims"):
+        application.reconcile_main(**_preserve_request())
+
+    registry.extra_records = (
+        replace(registry.record, lane_id="branch-collision", path=Path("/other")),
+    )
+    with pytest.raises(PolicyViolation, match="registry collision"):
+        application.reconcile_main(**_preserve_request())
+
+    registry.extra_records = (
+        replace(registry.record, lane_id="path-collision", branch="other"),
+    )
+    with pytest.raises(PolicyViolation, match="registry collision"):
         application.reconcile_main(**_preserve_request())
 
     registry.extra_records = ()
