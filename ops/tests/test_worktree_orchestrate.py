@@ -588,6 +588,49 @@ def test_gate_plan_routes_product_surfaces_to_existing_entry_points() -> None:
     assert "shell-syntax:ops/example.sh" in names
 
 
+def test_gate_plan_adds_pinned_changed_python_format_check(tmp_path: Path) -> None:
+    for relative_path in ("ops/zeta.py", "ops/alpha.py"):
+        path = tmp_path / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("value = 1\n")
+
+    plan = coordinator._plan_checks(
+        ["ops/zeta.py", "ops/alpha.py", "ops/deleted.py", "README.md"],
+        worktree=tmp_path,
+    )
+
+    assert [item for item in plan if item["name"] == "python-format-check"] == [
+        {
+            "name": "python-format-check",
+            "kind": "shell",
+            "cwd": ".",
+            "cmd": [
+                "uv",
+                "run",
+                "--no-project",
+                "--python",
+                "3.13",
+                "--with",
+                "ruff==0.16.3",
+                "ruff",
+                "format",
+                "--check",
+                "ops/alpha.py",
+                "ops/zeta.py",
+            ],
+            "level": "block",
+        }
+    ]
+
+
+def test_gate_plan_skips_python_format_check_without_existing_python(
+    tmp_path: Path,
+) -> None:
+    plan = coordinator._plan_checks(["README.md", "ops/example.sh"], worktree=tmp_path)
+
+    assert not any(item["name"] == "python-format-check" for item in plan)
+
+
 def test_gate_plan_skips_deleted_shell_file_in_target_worktree(tmp_path: Path) -> None:
     plan = coordinator._plan_checks(
         [".claude/skills/app-debug/find-polluter.sh"], worktree=tmp_path

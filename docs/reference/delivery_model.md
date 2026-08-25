@@ -285,6 +285,8 @@ patch-equivalence 也是 bounded observation：單次 `git cherry` 最多執行 
 
 Scope 只回答「本機哪個工作樹可改哪些檔案」；Issue acceptance、PR review 與 production approval 各自留在 GitHub 或 domain SOP。local hand-back 是交給 IM 的執行證據，不是第二個交付狀態機，也不等於 PR 已建立。
 
+本地 `worktree_orchestrate gate` 與 typed hand-back 對所有仍存在的 changed Python 檔案，必須執行同一個 pinned formatter contract：`uv run --no-project --python 3.13 --with ruff==0.16.3 ruff format --check <changed Python paths>`；沒有 changed Python 檔案時不產生此 check。這是 local hand-back 的必要證據，remote required check 仍由 GitHub Actions 掌握並保持 authoritative。
+
 有效的 typed hand-back 只會釋放它所 seal 的那一個 idle claim 的本機 admission claim：branch/path 必須仍指向乾淨且與 sealed HEAD 相同的 worktree。重新 register、adopt 或 reuse active branch/path 會開始新的 claim，並使先前 receipt 的 admission release 失效；舊 receipt/seal 仍保留作 audit evidence。新的 claim 只有在 fresh hand-back 後才能再次釋放本機 admission，且這不改變 GitHub Issue、PR 或 merge 的狀態。
 
 長任務的本機安全帳本另由 `ops/task_registry.py` 與 `ops/lib/streaming_command.py` 負責。它只記錄 process identity、process group、heartbeat、log path 與 terminal outcome，用來避免誤殺或靜默等待本機程序；它不是 Issue、Project、PR、backlog 或任何產品工作項目的狀態。

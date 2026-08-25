@@ -609,6 +609,36 @@ def _plan_checks(
                 "level": "block",
             }
         )
+    python_files = sorted(
+        {
+            item
+            for item in files
+            if item.endswith(".py")
+            and (worktree is None or (worktree / item).is_file())
+        }
+    )
+    if python_files:
+        checks.append(
+            {
+                "name": "python-format-check",
+                "kind": "shell",
+                "cwd": ".",
+                "cmd": [
+                    "uv",
+                    "run",
+                    "--no-project",
+                    "--python",
+                    "3.13",
+                    "--with",
+                    "ruff==0.16.3",
+                    "ruff",
+                    "format",
+                    "--check",
+                    *python_files,
+                ],
+                "level": "block",
+            }
+        )
     return checks
 
 
