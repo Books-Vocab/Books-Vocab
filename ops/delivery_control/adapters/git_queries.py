@@ -45,6 +45,7 @@ from .git_parsing import (
 
 UNREACHABLE_COMMIT_SCAN_TIMEOUT_SECONDS = 30.0
 PATCH_EQUIVALENCE_QUERY_TIMEOUT_SECONDS = 5.0
+REMOTE_REF_QUERY_TIMEOUT_SECONDS = 30.0
 _COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _HUNK_HEADER_RE = re.compile(r"^@@ -[0-9]+(?:,[0-9]+)? \+[0-9]+(?:,[0-9]+)? @@")
 
@@ -140,8 +141,17 @@ class GitQueries:
             "--format=%(refname:strip=2)%09%(objectname)",
             "refs/heads",
         )
-        remote_output = self.client.run("ls-remote", "--heads", "origin")
+        remote_output = self._remote_ref_query("ls-remote", "--heads", "origin")
         return parse_branch_inventory(local_output, remote_output)
+
+    def _remote_ref_query(self, *args: str) -> str:
+        result = self.client.execute_with_timeout(
+            *args,
+            timeout_seconds=REMOTE_REF_QUERY_TIMEOUT_SECONDS,
+        )
+        if result.exit_code != 0:
+            raise AdapterCommandError(result)
+        return result.stdout.strip()
 
     def unreachable_commit_inventory(self) -> UnreachableCommitInventory:
         result = self.client.execute_with_timeout(
@@ -312,7 +322,7 @@ class GitQueries:
     def remote_branch_sha(self, branch: str) -> str | None:
         ref = f"refs/heads/{branch}"
         return parse_remote_branch_sha(
-            self.client.run("ls-remote", "origin", ref),
+            self._remote_ref_query("ls-remote", "origin", ref),
             branch=branch,
         )
 
@@ -337,7 +347,7 @@ class GitQueries:
 
     def origin_main_sha(self) -> str:
         return parse_origin_main_sha(
-            self.client.run("ls-remote", "origin", "refs/heads/main")
+            self._remote_ref_query("ls-remote", "origin", "refs/heads/main")
         )
 
     def is_ancestor(self, ancestor_sha: str, descendant_sha: str) -> bool:
