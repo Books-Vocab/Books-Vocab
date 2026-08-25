@@ -5,8 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from time import monotonic
 from dataclasses import dataclass
+from time import monotonic
 
 from ..domain.branch_refs import BranchInventory
 from ..domain.errors import DeliverySourceError, PolicyViolation
@@ -20,6 +20,7 @@ from ..ports.github import GitHubQueryPort
 from ..ports.registry import RegistryQueryPort
 
 _SHA_RE = re.compile(r"[0-9a-f]{40}")
+_TERMINAL_REGISTRY_STATUSES = frozenset({"merged", "abandoned"})
 PATCH_EQUIVALENCE_BATCH_TIMEOUT_SECONDS = 30.0
 PATCH_EQUIVALENCE_SKIPPED_BLOCKER = (
     "orphan branch tip is not an ancestor of live origin/main; "
@@ -110,14 +111,33 @@ class OrphanBranchDiscardService:
             )
         return origin_sha
 
-    def _assert_unregistered(self, branch: str) -> None:
-        inventory = self.registry.list_records()
+    @staticmethod
+    def _is_terminal_registry_problem_for_branch(branch: str, problem: object) -> bool:
+        return (
+            getattr(problem, "source", None) == "registry"
+            and getattr(problem, "identity", None) == branch
+            and getattr(problem, "identity_kind", None) == "branch"
+            and getattr(problem, "record_status", None) in _TERMINAL_REGISTRY_STATUSES
+        )
+
+    @classmethod
+    def _assert_registry_unregistered(
+        cls, branch: str, inventory: RegistryInventory
+    ) -> bool:
         if any(record.branch == branch for record in inventory.records):
             raise PolicyViolation(
                 "branch has a registry claim; use the owner-preserving lifecycle"
             )
-        if any(problem.identity == branch for problem in inventory.problems):
+        if inventory.problems and not all(
+            cls._is_terminal_registry_problem_for_branch(branch, problem)
+            for problem in inventory.problems
+        ):
             raise PolicyViolation("registry has a source problem for the target branch")
+        return bool(inventory.problems)
+
+    def _assert_unregistered(self, branch: str) -> bool:
+        inventory = self.registry.list_records()
+        return self._assert_registry_unregistered(branch, inventory)
 
     def _assert_no_pr_history(
         self, branch: str, *, inventory: PullRequestInventory | None = None
@@ -172,16 +192,13 @@ class OrphanBranchDiscardService:
     @staticmethod
     def _assert_unregistered_snapshot(
         branch: str, snapshot: _OrphanPreflightSnapshot
-    ) -> None:
+    ) -> bool:
         if snapshot.registry_error is not None:
             raise DeliverySourceError(snapshot.registry_error)
         assert snapshot.registry is not None
-        if any(record.branch == branch for record in snapshot.registry.records):
-            raise PolicyViolation(
-                "branch has a registry claim; use the owner-preserving lifecycle"
-            )
-        if any(problem.identity == branch for problem in snapshot.registry.problems):
-            raise PolicyViolation("registry has a source problem for the target branch")
+        return OrphanBranchDiscardService._assert_registry_unregistered(
+            branch, snapshot.registry
+        )
 
     @staticmethod
     def _assert_no_physical_worktree_snapshot(
@@ -207,6 +224,7 @@ class OrphanBranchDiscardService:
         passed: list[str] = []
         main_sha: str | None = None
         patch_equivalent_to_main: bool | None = None
+        terminal_registry_audit = False
         if not branch or branch == "main" or branch.startswith("-"):
             blockers.append("orphan discard requires a non-main branch")
         if _SHA_RE.fullmatch(expected_head_sha) is None:
@@ -227,13 +245,20 @@ class OrphanBranchDiscardService:
         if not blockers:
             try:
                 if snapshot is None:
-                    self._assert_unregistered(branch)
+                    terminal_registry_audit = self._assert_unregistered(branch)
                 else:
-                    self._assert_unregistered_snapshot(branch, snapshot)
+                    terminal_registry_audit = self._assert_unregistered_snapshot(
+                        branch, snapshot
+                    )
             except DeliverySourceError as error:
                 blockers.append(str(error))
             else:
-                passed.append("registry has no claim or source problem for branch")
+                passed.append(
+                    "registry has no active claim; terminal source problems retained "
+                    "as audit evidence"
+                    if terminal_registry_audit
+                    else "registry has no claim or source problem for branch"
+                )
             try:
                 self._assert_no_pr_history(branch, inventory=pr_history)
             except DeliverySourceError as error:

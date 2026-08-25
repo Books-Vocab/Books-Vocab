@@ -9,18 +9,24 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.domain.branch_refs import BranchInventory  # noqa: E402
-from delivery_control.domain.errors import DeliverySourceError, PolicyViolation  # noqa: E402
-from delivery_control.domain.models import Scope  # noqa: E402
-from delivery_control.domain.observations import (  # noqa: E402
+import delivery_control.services.orphan_branch as orphan_branch_module
+from delivery_control.domain.branch_refs import BranchInventory
+from delivery_control.domain.errors import (
+    DeliverySourceError,
+    PolicyViolation,
+)
+from delivery_control.domain.models import Scope
+from delivery_control.domain.observations import (
     CanonicalCheckoutSnapshot,
+    InventoryProblem,
     PhysicalWorktree,
     PullRequestInventory,
     RegistryInventory,
     RegistrySnapshot,
 )
-import delivery_control.services.orphan_branch as orphan_branch_module  # noqa: E402
-from delivery_control.services.orphan_branch import OrphanBranchDiscardService  # noqa: E402
+from delivery_control.services.orphan_branch import (
+    OrphanBranchDiscardService,
+)
 
 BASE = "a" * 40
 HEAD = "b" * 40
@@ -339,6 +345,133 @@ def test_preflight_reports_blocker_without_deleting() -> None:
     assert result.patch_equivalent_to_main is None
     assert git.patch_equivalent_calls == 0
     assert git.actions == []
+
+
+@pytest.mark.parametrize("status", ("merged", "abandoned"))
+def test_terminal_target_registry_problem_is_audit_only_for_preflight_and_discard(
+    status: str,
+) -> None:
+    registry = FakeRegistry(
+        RegistryInventory(
+            (),
+            (
+                InventoryProblem(
+                    "registry",
+                    BRANCH,
+                    "registry base must be an exact commit SHA",
+                    identity_kind="branch",
+                    record_status=status,
+                ),
+            ),
+        )
+    )
+
+    preflight_git = FakeGit()
+    preflight = _build_service(git=preflight_git, registry=registry).preflight(
+        branch=BRANCH,
+        expected_head_sha=HEAD,
+    )
+
+    assert preflight.eligible
+    assert preflight.blockers == ()
+    assert any("audit evidence" in check for check in preflight.passed_checks)
+    assert preflight_git.patch_equivalent_calls == 0
+
+    discard_git = FakeGit()
+    result = _build_service(git=discard_git, registry=registry).discard(
+        branch=BRANCH,
+        expected_head_sha=HEAD,
+        operator="supervisor",
+        reason="terminal malformed registry record is audit-only",
+    )
+
+    assert result.disposition == "orphan_local_discarded"
+    assert discard_git.actions == ["delete-local"]
+
+
+@pytest.mark.parametrize("status", ("active", "cleanup_pending", "published"))
+def test_nonterminal_or_published_target_registry_problem_stays_fail_closed(
+    status: str,
+) -> None:
+    registry = FakeRegistry(
+        RegistryInventory(
+            (),
+            (
+                InventoryProblem(
+                    "registry",
+                    BRANCH,
+                    "registry record is malformed",
+                    identity_kind="branch",
+                    record_status=status,
+                ),
+            ),
+        )
+    )
+    git = FakeGit()
+
+    result = _build_service(git=git, registry=registry).preflight(
+        branch=BRANCH,
+        expected_head_sha=HEAD,
+    )
+
+    assert result.eligible is False
+    assert "registry has a source problem" in "; ".join(result.blockers)
+    assert result.patch_equivalent_to_main is None
+    assert git.patch_equivalent_calls == 0
+
+
+@pytest.mark.parametrize(
+    "problem",
+    (
+        InventoryProblem(
+            "registry",
+            "registry-global",
+            "registry source is incomplete",
+        ),
+        InventoryProblem(
+            "registry",
+            BRANCH,
+            "terminal record has no explicit identity kind",
+            record_status="abandoned",
+        ),
+        InventoryProblem(
+            "registry",
+            "other-branch",
+            "terminal record is not scoped to the target",
+            identity_kind="branch",
+            record_status="abandoned",
+        ),
+    ),
+)
+def test_unscoped_or_mixed_registry_source_problems_stay_fail_closed(
+    problem: InventoryProblem,
+) -> None:
+    registry = FakeRegistry(
+        RegistryInventory(
+            (),
+            (
+                InventoryProblem(
+                    "registry",
+                    BRANCH,
+                    "registry base must be an exact commit SHA",
+                    identity_kind="branch",
+                    record_status="abandoned",
+                ),
+                problem,
+            ),
+        )
+    )
+    git = FakeGit()
+
+    result = _build_service(git=git, registry=registry).preflight(
+        branch=BRANCH,
+        expected_head_sha=HEAD,
+    )
+
+    assert result.eligible is False
+    assert "registry has a source problem" in "; ".join(result.blockers)
+    assert result.patch_equivalent_to_main is None
+    assert git.patch_equivalent_calls == 0
 
 
 def test_preflight_skips_patch_equivalence_for_pr_history_blocker() -> None:
