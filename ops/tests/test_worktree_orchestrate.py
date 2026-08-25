@@ -1079,7 +1079,7 @@ def _reanchor_fixture(
         state_path,
         {"schema": coordinator.registry.SCHEMA, "records": [record]},
     )
-    target = tmp_path / "reanchored"
+    target = tmp_path / "released-worktree"
     expected = {
         "base_sha": base_sha,
         "remote_head": remote_head,
@@ -1475,6 +1475,30 @@ def test_resume_published_recreates_exact_head_and_preserves_recorded_base(
     assert active["handed_back_sha"] is None
 
 
+def test_resume_published_rejects_requested_path_drift_before_mutation(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, state_path, _recorded_target, expected = _reanchor_fixture(tmp_path)
+    wrong_target = tmp_path / "wrong-resume-target"
+    before = coordinator.registry.load_state(state_path)
+    original_path = Path(str(before["records"][0]["path"])).resolve()
+
+    rc = coordinator.main(_resume_argv(repo, state_path, wrong_target, expected))
+
+    payload = json.loads(capsys.readouterr().out)
+    state = coordinator.registry.load_state(state_path)
+    assert rc == coordinator.EXIT_BLOCK
+    assert (
+        payload["reason"] == "resume target path differs from exact original claim path"
+    )
+    assert payload["recorded_path"] == str(original_path)
+    assert payload["requested_path"] == str(wrong_target.resolve())
+    assert state == before
+    assert not wrong_target.exists()
+    assert _git(repo, "branch", "--list", "feat/exact-pr") == ""
+
+
 def test_resume_published_accepts_legacy_record_base_without_base_sha(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -1778,8 +1802,8 @@ def test_resume_published_rejects_dirty_unreleased_recorded_worktree(
 
     payload = json.loads(capsys.readouterr().out)
     assert rc == coordinator.EXIT_BLOCK
-    assert "released" in payload["reason"] or "dirty" in payload["reason"]
-    assert not target.exists()
+    assert any(word in payload["reason"] for word in ("released", "dirty", "new"))
+    assert target.exists()
 
 
 def test_resume_published_rejects_duplicate_and_unknown_registry_truth(
