@@ -319,6 +319,7 @@ def _action_for_asset(
     asset: BranchAsset,
     *,
     orphan_preflight: OrphanBranchPreflight | None = None,
+    remote_orphan_preflight: OrphanBranchPreflight | None = None,
 ) -> BranchAuditAction:
     if asset.disposition is BranchDisposition.PROTECTED:
         return BranchAuditAction(
@@ -451,6 +452,13 @@ def _action_for_asset(
             ),
         )
     if asset.disposition is BranchDisposition.ORPHAN_REMOTE_RECONCILE:
+        preflight = remote_orphan_preflight
+        eligible = preflight is not None and preflight.eligible
+        blockers = (
+            "; ".join(preflight.blockers)
+            if preflight is not None
+            else "exact remote orphan preflight has not run"
+        )
         return BranchAuditAction(
             branch=asset.branch,
             side=asset.side,
@@ -458,9 +466,22 @@ def _action_for_asset(
             disposition=asset.disposition,
             cleanup_action=asset.cleanup_action,
             owner_thread_ids=asset.owner_thread_ids,
-            category="remote_orphan_reconcile",
-            safe_terminal=False,
-            next_step="reconcile the original owner/lifecycle; never delete from audit",
+            category=(
+                "safe_terminal_candidate" if eligible else "remote_orphan_reconcile"
+            ),
+            safe_terminal=eligible,
+            next_step=(
+                "run the exact discard-orphan-remote-branch CAS command"
+                if eligible
+                else f"resolve exact preflight blockers: {blockers}"
+            ),
+            suggested_command=(
+                "./ops/delivery.py discard-orphan-remote-branch "
+                f"--branch {asset.branch} --expected-head-sha {asset.sha}"
+                if eligible
+                else None
+            ),
+            orphan_preflight=preflight,
         )
     if asset.disposition is BranchDisposition.ABANDONED_WITH_HANDBACK:
         return BranchAuditAction(
@@ -516,6 +537,7 @@ def build_branch_audit(
     inventory: DeliveryInventory,
     *,
     orphan_preflights: Mapping[str, OrphanBranchPreflight] | None = None,
+    remote_orphan_preflights: Mapping[str, OrphanBranchPreflight] | None = None,
     unreachable_commits: UnreachableCommitInventory = EMPTY_UNREACHABLE_COMMIT_INVENTORY,
 ) -> BranchAuditReport:
     """Build a one-to-one action list without performing any mutation."""
@@ -531,6 +553,7 @@ def build_branch_audit(
         for problem in unreachable_commits.problems
     )
     preflights = orphan_preflights or {}
+    remote_preflights = remote_orphan_preflights or {}
     registry_only_actions = _registry_only_actions(inventory, assets=assets)
     observed_branches = _observed_branch_names(inventory)
     source_problem_actions = tuple(
@@ -550,7 +573,11 @@ def build_branch_audit(
     )
     actions = tuple(
         _with_paired_ref(
-            _action_for_asset(asset, orphan_preflight=preflights.get(asset.branch)),
+            _action_for_asset(
+                asset,
+                orphan_preflight=preflights.get(asset.branch),
+                remote_orphan_preflight=remote_preflights.get(asset.branch),
+            ),
             asset,
         )
         for asset in assets

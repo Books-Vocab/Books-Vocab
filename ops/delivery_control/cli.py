@@ -346,6 +346,14 @@ def _parser() -> argparse.ArgumentParser:
     discard_orphan.add_argument("--expected-head-sha", required=True)
     discard_orphan.add_argument("--operator", required=True)
     discard_orphan.add_argument("--reason", required=True)
+    discard_remote_orphan = commands.add_parser(
+        "discard-orphan-remote-branch",
+        help="discard one unregistered remote branch already contained in main",
+    )
+    discard_remote_orphan.add_argument("--branch", required=True)
+    discard_remote_orphan.add_argument("--expected-head-sha", required=True)
+    discard_remote_orphan.add_argument("--operator", required=True)
+    discard_remote_orphan.add_argument("--reason", required=True)
     discard_unregistered = commands.add_parser(
         "discard-unregistered-branch",
         help="discard one explicitly reviewed unlanded local-only branch",
@@ -625,6 +633,13 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
         )
     if args.command == "discard-orphan-branch":
         return application.discard_orphan_branch(
+            branch=args.branch,
+            expected_head_sha=args.expected_head_sha,
+            operator=args.operator,
+            reason=args.reason,
+        )
+    if args.command == "discard-orphan-remote-branch":
+        return application.discard_orphan_remote_branch(
             branch=args.branch,
             expected_head_sha=args.expected_head_sha,
             operator=args.operator,

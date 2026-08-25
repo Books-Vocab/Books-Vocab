@@ -52,6 +52,7 @@ class OrphanBranchPreflight:
     passed_checks: tuple[str, ...]
     blockers: tuple[str, ...]
     patch_equivalent_to_main: bool | None = None
+    side: str = "local"
 
 
 @dataclass(frozen=True)
@@ -196,6 +197,7 @@ class OrphanBranchDiscardService:
         pr_history: PullRequestInventory | None,
         snapshot: _OrphanPreflightSnapshot | None,
         patch_equivalence_deadline: float | None = None,
+        remote_only: bool = False,
     ) -> OrphanBranchPreflight:
         blockers: list[str] = []
         passed: list[str] = []
@@ -254,7 +256,16 @@ class OrphanBranchDiscardService:
             except DeliverySourceError as error:
                 blockers.append(f"local branch HEAD query failed: {error}")
             else:
-                if local_sha != expected_head_sha:
+                if remote_only:
+                    if local_sha is None:
+                        passed.append("local branch ref is absent")
+                    elif local_sha == expected_head_sha:
+                        passed.append("paired local branch HEAD equals expected SHA")
+                    else:
+                        blockers.append(
+                            "paired local branch changed or has an unexpected HEAD"
+                        )
+                elif local_sha != expected_head_sha:
                     blockers.append("local branch HEAD changed or is absent")
                 else:
                     passed.append("local branch HEAD equals expected SHA")
@@ -269,7 +280,12 @@ class OrphanBranchDiscardService:
             except DeliverySourceError as error:
                 blockers.append(f"remote branch query failed: {error}")
             else:
-                if remote_sha is not None:
+                if remote_only:
+                    if remote_sha != expected_head_sha:
+                        blockers.append("remote orphan branch changed or is absent")
+                    else:
+                        passed.append("remote branch HEAD equals expected SHA")
+                elif remote_sha is not None:
                     blockers.append("orphan branch still has a remote ref")
                 else:
                     passed.append("remote branch ref is absent")
@@ -322,6 +338,7 @@ class OrphanBranchDiscardService:
             passed_checks=tuple(passed),
             blockers=tuple(blockers),
             patch_equivalent_to_main=patch_equivalent_to_main,
+            side="remote" if remote_only else "local",
         )
 
     def preflight(
@@ -362,6 +379,55 @@ class OrphanBranchDiscardService:
                 pr_history=pr_history,
                 snapshot=snapshot,
                 patch_equivalence_deadline=patch_equivalence_deadline,
+            )
+            for branch, expected_head_sha in ordered
+        }
+
+    def preflight_remote(
+        self,
+        *,
+        branch: str,
+        expected_head_sha: str,
+        pr_history: PullRequestInventory | None = None,
+    ) -> OrphanBranchPreflight:
+        """Evaluate one remote orphan without changing any state.
+
+        An exact paired local ref is accepted as part of the same CAS packet;
+        the discard command removes both refs only after both remain exact.
+        """
+
+        return self._preflight(
+            branch=branch,
+            expected_head_sha=expected_head_sha,
+            pr_history=pr_history,
+            snapshot=None,
+            patch_equivalence_deadline=None,
+            remote_only=True,
+        )
+
+    def preflight_remote_many(
+        self,
+        *,
+        branches: tuple[tuple[str, str], ...],
+        pr_history: PullRequestInventory | None = None,
+    ) -> dict[str, OrphanBranchPreflight]:
+        """Preflight remote orphan refs from one stable snapshot."""
+
+        ordered = tuple(dict.fromkeys(branches))
+        if not ordered:
+            return {}
+        snapshot = self._snapshot()
+        patch_equivalence_deadline = (
+            monotonic() + PATCH_EQUIVALENCE_BATCH_TIMEOUT_SECONDS
+        )
+        return {
+            branch: self._preflight(
+                branch=branch,
+                expected_head_sha=expected_head_sha,
+                pr_history=pr_history,
+                snapshot=snapshot,
+                patch_equivalence_deadline=patch_equivalence_deadline,
+                remote_only=True,
             )
             for branch, expected_head_sha in ordered
         }
@@ -444,6 +510,117 @@ class OrphanBranchDiscardService:
         return OrphanBranchDiscardResult(
             schema="kg.delivery.orphan-branch-proof.v1",
             disposition="orphan_local_discarded",
+            branch=branch,
+            head_sha=expected_head_sha,
+            main_sha=main_sha,
+            operator=operator,
+            reason=reason,
+            proof_digest=proof_digest,
+            local_branch_absent=True,
+            remote_branch_absent=True,
+            worktree_absent=True,
+        )
+
+    def discard_remote(
+        self,
+        *,
+        branch: str,
+        expected_head_sha: str,
+        operator: str,
+        reason: str,
+    ) -> OrphanBranchDiscardResult:
+        """CAS-delete one unregistered remote ref already represented in main.
+
+        A local ref at the same exact SHA is treated as a paired asset. It is
+        removed first through its own expected-HEAD CAS, then the remote ref is
+        removed through its exact-HEAD CAS. A drifted or mismatched local ref
+        remains fail-closed.
+        """
+
+        if not branch or branch == "main" or branch.startswith("-"):
+            raise PolicyViolation("remote orphan discard requires a non-main branch")
+        if _SHA_RE.fullmatch(expected_head_sha) is None:
+            raise PolicyViolation(
+                "remote orphan discard requires an exact lowercase HEAD SHA"
+            )
+        if not operator.strip() or not reason.strip():
+            raise PolicyViolation(
+                "remote orphan discard requires a non-empty operator and reason"
+            )
+
+        main_sha = self._canonical_main()
+        self._assert_unregistered(branch)
+        self._assert_no_pr_history(branch)
+        self._assert_no_physical_worktree(branch)
+
+        local_sha = self.git_query.local_branch_sha(branch)
+        if local_sha is not None and local_sha != expected_head_sha:
+            raise PolicyViolation(
+                "paired local branch changed or has an unexpected HEAD"
+            )
+        if self.git_query.remote_branch_sha(branch) != expected_head_sha:
+            raise PolicyViolation("remote orphan branch changed or is absent")
+        if not self.git_query.is_ancestor(expected_head_sha, main_sha):
+            checker = getattr(self.git_query, "is_patch_equivalent", None)
+            if not callable(checker) or not bool(checker(expected_head_sha, main_sha)):
+                raise PolicyViolation(
+                    "remote orphan branch tip is not an ancestor of live origin/main and is not patch-equivalent"
+                )
+
+        latest_main = self._canonical_main()
+        if latest_main != main_sha:
+            raise PolicyViolation("origin/main changed during remote orphan discard")
+        latest_local_sha = self.git_query.local_branch_sha(branch)
+        if latest_local_sha is not None and latest_local_sha != expected_head_sha:
+            raise PolicyViolation(
+                "paired local branch changed during discard preflight"
+            )
+        if self.git_query.remote_branch_sha(branch) != expected_head_sha:
+            raise PolicyViolation(
+                "remote orphan branch changed during discard preflight"
+            )
+        self._assert_no_physical_worktree(branch)
+        if not self.git_query.is_ancestor(expected_head_sha, latest_main):
+            checker = getattr(self.git_query, "is_patch_equivalent", None)
+            if not callable(checker) or not bool(
+                checker(expected_head_sha, latest_main)
+            ):
+                raise PolicyViolation(
+                    "remote orphan branch tip is not an ancestor of live origin/main and is not patch-equivalent"
+                )
+
+        if latest_local_sha == expected_head_sha:
+            self.git_command.delete_local_branch(
+                branch,
+                expected_head_sha=expected_head_sha,
+            )
+            if self.git_query.local_branch_sha(branch) is not None:
+                raise PolicyViolation("paired local orphan ref remains after discard")
+
+        self.git_command.delete_remote_branch(
+            branch,
+            expected_head_sha=expected_head_sha,
+        )
+        if self.git_query.remote_branch_sha(branch) is not None:
+            raise PolicyViolation("remote orphan ref remains after discard")
+        if self.git_query.local_branch_sha(branch) is not None:
+            raise PolicyViolation("remote orphan local ref appeared after discard")
+        self._assert_no_physical_worktree(branch)
+
+        proof = {
+            "branch": branch,
+            "head_sha": expected_head_sha,
+            "main_sha": main_sha,
+            "operator": operator,
+            "reason": reason,
+            "schema": "kg.delivery.orphan-remote-branch-proof.v1",
+        }
+        proof_digest = hashlib.sha256(
+            json.dumps(proof, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        return OrphanBranchDiscardResult(
+            schema="kg.delivery.orphan-remote-branch-proof.v1",
+            disposition="orphan_remote_discarded",
             branch=branch,
             head_sha=expected_head_sha,
             main_sha=main_sha,
