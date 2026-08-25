@@ -90,6 +90,7 @@ class BranchAuditSourceProblem:
     affected_branch: str | None = None
     record_status: str | None = None
     actionability: SourceProblemActionability = SourceProblemActionability.BLOCKING
+    record_external_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -203,6 +204,7 @@ def _source_problem_action(
         affected_branch=affected_branch,
         record_status=problem.record_status,
         actionability=actionability,
+        record_external_ids=problem.record_external_ids,
     )
 
 
