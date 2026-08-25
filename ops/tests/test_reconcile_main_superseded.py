@@ -215,6 +215,55 @@ def test_exact_build12_success_only_parks_main_and_preserves_evidence() -> None:
     assert registry.mutation_calls == 0
 
 
+def test_source_head_typed_handback_is_accepted_with_equivalent_local_candidate() -> (
+    None
+):
+    service, git, registry, _ = _service()
+    registry.record = RegistrySnapshot(
+        **{**registry.record.__dict__, "handed_back_sha": SOURCE}
+    )
+
+    result = service.reconcile(_request())
+
+    assert result["verdict"] == "success"
+    assert result["before"]["local_main_head"] == LOCAL
+    assert result["owner"]["handed_back_sha"] == SOURCE
+    assert result["source"]["head_sha"] == SOURCE
+    assert result["fingerprint"]["local"]["normalized"] == FINGERPRINT
+    assert result["fingerprint"]["source"]["normalized"] == FINGERPRINT
+    assert git.park_calls == [(LOCAL, ORIGIN)]
+    assert registry.record.handed_back_sha == SOURCE
+
+
+def test_unrelated_registry_handback_sha_still_fails_closed() -> None:
+    service, git, registry, _ = _service()
+    registry.record = RegistrySnapshot(
+        **{**registry.record.__dict__, "handed_back_sha": "a" * 40}
+    )
+
+    result = service.reconcile(_request())
+
+    assert result["verdict"] == "blocked"
+    assert "handback" in result["reason"]
+    assert git.park_calls == []
+    assert git.local_main == LOCAL
+
+
+def test_source_head_typed_handback_still_requires_content_fingerprint() -> None:
+    service, git, registry, _ = _service()
+    registry.record = RegistrySnapshot(
+        **{**registry.record.__dict__, "handed_back_sha": SOURCE}
+    )
+    git.patch_ids[(LOCAL_PARENT, LOCAL)] = "a" * 40
+
+    result = service.reconcile(_request())
+
+    assert result["verdict"] == "blocked"
+    assert "fingerprint" in result["reason"]
+    assert git.park_calls == []
+    assert git.local_main == LOCAL
+
+
 def test_local_patch_mismatch_fails_closed_before_cas() -> None:
     service, git, _, _ = _service()
     git.patch_ids[(LOCAL_PARENT, LOCAL)] = "a" * 40

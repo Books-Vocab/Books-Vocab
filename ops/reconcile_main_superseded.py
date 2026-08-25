@@ -325,9 +325,12 @@ class SupersededMainReconciler:
             )
         if not record.handback_valid or record.handed_back_sha is None:
             raise ReconcileBlocked("registry lane lacks a valid typed handback")
-        if record.handed_back_sha != request.expected_local_main_head:
+        if record.handed_back_sha not in {
+            request.expected_local_main_head,
+            request.merged_source_head_sha,
+        }:
             raise ReconcileBlocked(
-                "registry typed handback differs from expected local main HEAD"
+                "registry typed handback differs from expected local or merged source HEAD"
             )
         if record.handback_claim_generation != record.claim_generation:
             raise ReconcileBlocked(
