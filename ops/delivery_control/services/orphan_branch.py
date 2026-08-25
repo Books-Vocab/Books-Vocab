@@ -21,6 +21,10 @@ from ..ports.registry import RegistryQueryPort
 
 _SHA_RE = re.compile(r"[0-9a-f]{40}")
 PATCH_EQUIVALENCE_BATCH_TIMEOUT_SECONDS = 30.0
+PATCH_EQUIVALENCE_SKIPPED_BLOCKER = (
+    "orphan branch tip is not an ancestor of live origin/main; "
+    "patch-equivalence not evaluated because other blockers exist"
+)
 
 
 @dataclass(frozen=True)
@@ -295,7 +299,9 @@ class OrphanBranchDiscardService:
                 except DeliverySourceError as error:
                     blockers.append(f"ancestor query failed: {error}")
                 else:
-                    if not ancestor:
+                    if not ancestor and blockers:
+                        blockers.append(PATCH_EQUIVALENCE_SKIPPED_BLOCKER)
+                    elif not ancestor:
                         checker = getattr(self.git_query, "is_patch_equivalent", None)
                         if not callable(checker):
                             blockers.append(
