@@ -188,6 +188,8 @@ CM 只在 PR 的 typed contract、required checks、branch rules、mergeability 
 
 `.github/workflows/pr-readiness.yml` 先用 `ops/delivery.py validate-pr-body` 驗證 PR body 只含一份合法 `kg.delivery.handback.v1` machine receipt，並把 receipt 綁到 exact PR HEAD；workflow 不自行重寫另一套 regex schema。`.github/workflows/pr-gate.yml` 的 workflow `pr-gate` 會產生短、可重現的 `required` check run；它只回答這個 PR 是否滿足 repository 基線，不代表所有受影響 domain 都已完整驗證。若 exact published PR 的 required 為 `ABSENT` 或 `FAILURE`，PI 可用 `trigger-required` 重新 dispatch 同一 workflow；command 在 dispatch 前重讀 unique PR mapping、registry receipt、body、paths、base／HEAD 與目前 check status，manual workflow 也必須收到 exact PR number／base／HEAD，checkout 後再次證明 HEAD。`PENDING`／`SUCCESS` 拒絕重複 dispatch；這個修復不清除 hold，也不產生 merge eligibility。
 
+`repo-gate` 也會以 workflow 提供的 exact `BASE_SHA`／`HEAD_SHA` 取得兩個 commit 間的 changed Python paths，並在集合非空時以 pinned `ruff format --check` 驗證這個 Scope；沒有 changed Python path 是合法的 bounded pass。這是 required repository contract 的一部分，不能由 advisory `confidence` 的受影響 surface 結果取代；其餘 required／owner／merge 與 security semantics 不變。
+
 同一 workflow 的 `confidence` check run 是 advisory outcome：它提供完整的**受影響** backend／iOS／UI／ops fan-out，nonblocking 只代表不佔用 native merge queue 的串行 gate，不代表可忽略。慢速 backend／ops／iOS lane 由可測的 changed-path policy 選擇：明確無關才會顯示 `skipped`，未知或改動 routing policy 時 fail-closed 為全跑；被選中的 lane 必須 `success`。
 
 因此固定採以下判讀：
