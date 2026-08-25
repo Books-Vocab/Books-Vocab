@@ -1685,6 +1685,20 @@ write_pr_receipt() {
 JSON
 }
 
+write_pr_receipt_with_merge() {
+  local fixture="$1" number="$2" state="$3" head="$4" merge="$5"
+  cat > "$fixture/.git/pr-fixture/pr.json" <<JSON
+{"number":${number},"state":"${state}","baseRefName":"main","baseRefOid":"${PR_BASE}","headRefOid":"${head}","mergeCommit":{"oid":"${merge}"}}
+JSON
+}
+
+write_pr_receipt_with_base_and_merge() {
+  local fixture="$1" number="$2" state="$3" base="$4" head="$5" merge="$6"
+  cat > "$fixture/.git/pr-fixture/pr.json" <<JSON
+{"number":${number},"state":"${state}","baseRefName":"main","baseRefOid":"${base}","headRefOid":"${head}","mergeCommit":{"oid":"${merge}"}}
+JSON
+}
+
 pr_invalid_case() {
   local label="$1" number="$2" state="$3" head="${4:-}" fixture remote
   fixture="$TMP6/pr-${label}"; remote="$TMP6/pr-${label}.git"
@@ -1711,6 +1725,80 @@ source_rc=0; source_out="$(KG_PR_CMD="$TMP6/pr-source-mismatch/.git/pr-fixture/p
    && ! -e "$TMP6/pr-source-mismatch/upload.called" ]] \
   && ok "exact PR readback rejects source mismatch before upload" \
   || fail_t "source-mismatched PR receipt was accepted: $source_out"
+
+# 23f.1. A merged PR's merge commit may be an ancestor of a later live main;
+# the live tip is not required to be the PR merge commit itself.
+fx_merge_ancestor="$TMP6/pr-merge-ancestor"; remote_merge_ancestor="$TMP6/pr-merge-ancestor.git"
+prepare_pr_fixture "$fx_merge_ancestor" "$remote_merge_ancestor"
+merge_ancestor_commit="$PR_LIVE"
+git -C "$fx_merge_ancestor" commit --allow-empty -qm "fixture: subsequent main landing"
+merge_ancestor_live="$(git -C "$fx_merge_ancestor" rev-parse HEAD)"
+git -C "$fx_merge_ancestor" push -q origin "$merge_ancestor_live:refs/heads/queue-descendant"
+git --git-dir="$remote_merge_ancestor" update-ref refs/heads/main "$merge_ancestor_live"
+write_pr_receipt_with_merge "$fx_merge_ancestor" 1590 MERGED "$PR_SOURCE" "$merge_ancestor_commit"
+merge_ancestor_rc=0; merge_ancestor_out="$(KG_PR_CMD="$fx_merge_ancestor/.git/pr-fixture/pr-stub.sh" \
+  bash "$fx_merge_ancestor/ops/release.sh" resume ios 2.0.1 6 --pr 1590 \
+  --merged-source "$PR_SOURCE" 2>&1)" || merge_ancestor_rc=$?
+[[ $merge_ancestor_rc -eq 0 && "$merge_ancestor_out" == *"未 upload、未建立 tag"* \
+   && ! -e "$fx_merge_ancestor/upload.called" \
+   && -z "$(git --git-dir="$remote_merge_ancestor" tag -l 'ios/2.0.1+6')" ]] \
+  && ok "merged PR merge commit ancestor of live main is accepted" \
+  || fail_t "merged ancestor receipt was rejected or mutated: $merge_ancestor_out"
+
+pr_merge_nonancestor="$TMP6/pr-merge-nonancestor"; remote_merge_nonancestor="$TMP6/pr-merge-nonancestor.git"
+prepare_pr_fixture "$pr_merge_nonancestor" "$remote_merge_nonancestor"
+nonancestor_tree="$(git -C "$pr_merge_nonancestor" rev-parse "${PR_LIVE}^{tree}")"
+nonancestor_merge="$(printf 'fixture: unrelated merge object\n' | git -C "$pr_merge_nonancestor" commit-tree "$nonancestor_tree")"
+write_pr_receipt_with_merge "$pr_merge_nonancestor" 1590 MERGED "$PR_SOURCE" "$nonancestor_merge"
+nonancestor_rc=0; nonancestor_out="$(KG_PR_CMD="$pr_merge_nonancestor/.git/pr-fixture/pr-stub.sh" \
+  bash "$pr_merge_nonancestor/ops/release.sh" resume ios 2.0.1 6 --pr 1590 \
+  --merged-source "$PR_SOURCE" --yes 2>&1)" || nonancestor_rc=$?
+[[ $nonancestor_rc -ne 0 && "$nonancestor_out" == *"ancestor"* \
+   && ! -e "$pr_merge_nonancestor/upload.called" \
+   && -z "$(git --git-dir="$remote_merge_nonancestor" tag -l 'ios/2.0.1+6')" ]] \
+  && ok "unrelated merge commit is rejected before upload/tag" \
+  || fail_t "unrelated merge commit was accepted or mutated: $nonancestor_out"
+
+pr_merge_noncommit="$TMP6/pr-merge-noncommit"; remote_merge_noncommit="$TMP6/pr-merge-noncommit.git"
+prepare_pr_fixture "$pr_merge_noncommit" "$remote_merge_noncommit"
+noncommit_oid="$(git -C "$pr_merge_noncommit" rev-parse "${PR_LIVE}^{tree}")"
+write_pr_receipt_with_merge "$pr_merge_noncommit" 1590 MERGED "$PR_SOURCE" "$noncommit_oid"
+noncommit_rc=0; noncommit_out="$(KG_PR_CMD="$pr_merge_noncommit/.git/pr-fixture/pr-stub.sh" \
+  bash "$pr_merge_noncommit/ops/release.sh" resume ios 2.0.1 6 --pr 1590 \
+  --merged-source "$PR_SOURCE" --yes 2>&1)" || noncommit_rc=$?
+[[ $noncommit_rc -ne 0 && "$noncommit_out" == *"不是可驗證的 commit"* \
+   && ! -e "$pr_merge_noncommit/upload.called" \
+   && -z "$(git --git-dir="$remote_merge_noncommit" tag -l 'ios/2.0.1+6')" ]] \
+  && ok "non-commit merge object is rejected before upload/tag" \
+  || fail_t "non-commit merge object was accepted or mutated: $noncommit_out"
+
+pr_merge_missing="$TMP6/pr-merge-missing"; remote_merge_missing="$TMP6/pr-merge-missing.git"
+prepare_pr_fixture "$pr_merge_missing" "$remote_merge_missing"
+cat > "$pr_merge_missing/.git/pr-fixture/pr.json" <<JSON
+{"number":1590,"state":"MERGED","baseRefName":"main","baseRefOid":"${PR_BASE}","headRefOid":"${PR_SOURCE}","mergeCommit":null}
+JSON
+missing_rc=0; missing_out="$(KG_PR_CMD="$pr_merge_missing/.git/pr-fixture/pr-stub.sh" \
+  bash "$pr_merge_missing/ops/release.sh" resume ios 2.0.1 6 --pr 1590 \
+  --merged-source "$PR_SOURCE" --yes 2>&1)" || missing_rc=$?
+[[ $missing_rc -ne 0 && "$missing_out" == *"不是唯一且完整的 MERGED/main PR object"* \
+   && ! -e "$pr_merge_missing/upload.called" \
+   && -z "$(git --git-dir="$remote_merge_missing" tag -l 'ios/2.0.1+6')" ]] \
+  && ok "missing merge commit is rejected before upload/tag" \
+  || fail_t "missing merge commit was accepted or mutated: $missing_out"
+
+pr_base_mismatch="$TMP6/pr-base-mismatch"; remote_base_mismatch="$TMP6/pr-base-mismatch.git"
+prepare_pr_fixture "$pr_base_mismatch" "$remote_base_mismatch"
+base_mismatch_tree="$(git -C "$pr_base_mismatch" rev-parse "${PR_LIVE}^{tree}")"
+base_mismatch_oid="$(printf 'fixture: unrelated base object\n' | git -C "$pr_base_mismatch" commit-tree "$base_mismatch_tree")"
+write_pr_receipt_with_base_and_merge "$pr_base_mismatch" 1590 MERGED "$base_mismatch_oid" "$PR_SOURCE" "$PR_LIVE"
+base_rc=0; base_out="$(KG_PR_CMD="$pr_base_mismatch/.git/pr-fixture/pr-stub.sh" \
+  bash "$pr_base_mismatch/ops/release.sh" resume ios 2.0.1 6 --pr 1590 \
+  --merged-source "$PR_SOURCE" --yes 2>&1)" || base_rc=$?
+[[ $base_rc -ne 0 && "$base_out" == *"baseRefOid"* \
+   && ! -e "$pr_base_mismatch/upload.called" \
+   && -z "$(git --git-dir="$remote_base_mismatch" tag -l 'ios/2.0.1+6')" ]] \
+  && ok "base ancestry mismatch is rejected before upload/tag" \
+  || fail_t "base ancestry mismatch was accepted or mutated: $base_out"
 
 # 23g. finalize consumes the same verified PR receipt and is tag-only: dry-run
 # never tags, --yes pushes only the build tag, and the policy hook still sees

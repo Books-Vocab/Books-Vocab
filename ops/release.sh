@@ -214,7 +214,8 @@ ios_assert_merged_source() {
 # A numeric PR flag is only a locator. Before any ASC upload or tag push, read
 # the PR back from GitHub and bind all three GitHub identities to the live
 # merged main: the PR head must be the supplied source, its merge commit must
-# be live origin/main, and its base OID must be an ancestor of both. The
+# be an exact commit ancestor of live origin/main, and its base OID must be an
+# ancestor of both. The live tip may include later merged PRs. The
 # injected command is deliberately a one-argument executable (PR number) so
 # tests can provide a deterministic policy fixture without mocking git/ASC.
 github_assert_exact_merged_pr() {
@@ -251,8 +252,12 @@ github_assert_exact_merged_pr() {
     || err "GitHub PR readback identity/state 不符：number=${readback_number:-<empty>} state=${state:-<empty>}；拒絕 upload/tag。"
   [[ "$head_oid" == "$source" ]] \
     || err "GitHub PR #${pr} headRefOid=${head_oid} ≠ --merged-source=${source}；拒絕 upload/tag。"
-  [[ "$merge_oid" == "$live" ]] \
-    || err "GitHub PR #${pr} mergeCommit=${merge_oid} ≠ live origin/main=${live}；拒絕 upload/tag。"
+  [[ "$merge_oid" =~ ^[0-9a-f]{40}$ ]] \
+    || err "GitHub PR #${pr} mergeCommit.oid 非 exact commit SHA：${merge_oid:-<empty>}；拒絕 upload/tag。"
+  git -C "$ROOT" cat-file -e "${merge_oid}^{commit}" 2>/dev/null \
+    || err "GitHub PR #${pr} mergeCommit=${merge_oid} 不是可驗證的 commit；拒絕 upload/tag。"
+  git -C "$ROOT" merge-base --is-ancestor "$merge_oid" "$live" \
+    || err "GitHub PR #${pr} mergeCommit=${merge_oid} 不是 live origin/main=${live} 的 ancestor；拒絕 upload/tag。"
   [[ "$base_oid" =~ ^[0-9a-f]{40}$ ]] \
     || err "GitHub PR #${pr} baseRefOid 非 exact SHA：${base_oid:-<empty>}；拒絕 upload/tag。"
   git -C "$ROOT" cat-file -e "${base_oid}^{commit}" 2>/dev/null \
