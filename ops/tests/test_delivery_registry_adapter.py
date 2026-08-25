@@ -10,13 +10,14 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.adapters.errors import AdapterPayloadError  # noqa: E402
-from delivery_control.adapters.registry import RegistryCliAdapter  # noqa: E402
-from delivery_control.domain.models import MergedPullRequestProof  # noqa: E402
-from delivery_control.domain.observations import (  # noqa: E402
+from delivery_control.adapters.errors import AdapterPayloadError
+from delivery_control.adapters.registry import RegistryCliAdapter
+from delivery_control.domain.models import MergedPullRequestProof
+from delivery_control.domain.observations import (
     InventoryProblem,
 )
-from delivery_control.ports.process import CommandResult  # noqa: E402
+from delivery_control.ports.process import CommandResult
+from delivery_control.ports.registry import LegacyTerminalClaim
 
 
 class StaticRunner:
@@ -490,6 +491,90 @@ def test_registry_adapter_fails_closed_on_unusable_terminal_history(
             record_status="merged",
         ),
     )
+
+
+def _legacy_merged_symbolic_base(tmp_path: Path) -> dict[str, object]:
+    return {
+        "branch": "codex/ios-ci-latency-20260819",
+        "path": str(tmp_path / "ios-ci-latency"),
+        "status": "merged",
+        "base": "main",
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"operation": "modify", "path": "ops/ios_build.sh"}],
+        },
+    }
+
+
+def test_terminal_claim_projects_legacy_merged_symbolic_base_without_typed_handback(
+    tmp_path: Path,
+) -> None:
+    terminal = _legacy_merged_symbolic_base(tmp_path)
+    runner = StaticRunner(
+        [CommandResult(("registry",), 0, json.dumps({"records": [terminal]}), "")]
+    )
+
+    record = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    ).find_terminal_claim(branch=terminal["branch"])
+
+    assert isinstance(record, LegacyTerminalClaim)
+    assert record.status == "merged"
+    assert record.base_sha == "main"
+    assert record.handed_back_sha is None
+    assert record.scope.paths == ("ops/ios_build.sh",)
+
+
+def test_registry_inventory_remains_strict_for_legacy_merged_symbolic_base(
+    tmp_path: Path,
+) -> None:
+    terminal = _legacy_merged_symbolic_base(tmp_path)
+    runner = StaticRunner(
+        [CommandResult(("registry",), 0, json.dumps({"records": [terminal]}), "")]
+    )
+
+    inventory = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    ).list_records()
+
+    assert inventory.records == ()
+    assert inventory.problems[0].reason == "registry base must be an exact commit SHA"
+
+
+def test_legacy_terminal_projection_rejects_bad_symbolic_base(tmp_path: Path) -> None:
+    terminal = _legacy_merged_symbolic_base(tmp_path)
+    terminal["base"] = "origin/main"
+    runner = StaticRunner(
+        [CommandResult(("registry",), 0, json.dumps({"records": [terminal]}), "")]
+    )
+
+    with pytest.raises(
+        AdapterPayloadError, match="terminal registry claim is malformed"
+    ):
+        RegistryCliAdapter(
+            script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+        ).find_terminal_claim(branch=terminal["branch"])
+
+
+def test_legacy_terminal_projection_rejects_duplicate_target_records(
+    tmp_path: Path,
+) -> None:
+    terminal = _legacy_merged_symbolic_base(tmp_path)
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("registry",),
+                0,
+                json.dumps({"records": [terminal, terminal]}),
+                "",
+            )
+        ]
+    )
+
+    with pytest.raises(AdapterPayloadError, match="multiple registry claims"):
+        RegistryCliAdapter(
+            script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+        ).find_terminal_claim(branch=terminal["branch"])
 
 
 def test_collision_inventory_uses_scope_from_active_legacy_record(

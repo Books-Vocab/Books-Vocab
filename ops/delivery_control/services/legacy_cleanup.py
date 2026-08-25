@@ -10,7 +10,7 @@ from ..domain.observations import (
 )
 from ..ports.git import GitCommandPort, GitQueryPort
 from ..ports.github import GitHubCommandPort, GitHubQueryPort
-from ..ports.registry import RegistryTerminalQueryPort
+from ..ports.registry import LegacyTerminalClaim, RegistryTerminalQueryPort
 from .abandon import AbandonResult
 from .cleanup import CleanupResult
 from .pr_contract import pull_request_holds
@@ -53,17 +53,35 @@ class LegacyTerminalCleanupService:
         record = self._record(pull_request.branch, expected_status="merged")
         self._validate_pr(pull_request, record, expected_state="MERGED")
         physical = self._validate_assets(pull_request, record)
+        expected_changed_paths = self._changed_paths(pull_request.number)
 
         if physical is not None:
+            self._recheck_merged(
+                pull_request_number,
+                record,
+                pull_request,
+                expected_changed_paths,
+            )
             self.git_command.remove_worktree(
                 physical.path, expected_head_sha=pull_request.head_sha
             )
         if self.git_query.local_branch_sha(pull_request.branch) is not None:
+            self._recheck_merged(
+                pull_request_number,
+                record,
+                pull_request,
+                expected_changed_paths,
+            )
             self.git_command.delete_local_branch(
                 pull_request.branch, expected_head_sha=pull_request.head_sha
             )
         if self.git_query.remote_branch_sha(pull_request.branch) is not None:
-            self._recheck_merged(pull_request_number, record)
+            self._recheck_merged(
+                pull_request_number,
+                record,
+                pull_request,
+                expected_changed_paths,
+            )
             self.git_command.delete_remote_branch(
                 pull_request.branch, expected_head_sha=pull_request.head_sha
             )
@@ -159,7 +177,9 @@ class LegacyTerminalCleanupService:
             raise PolicyViolation("branch does not map to one unique open PR")
         return pull_request
 
-    def _record(self, branch: str, *, expected_status: str) -> RegistrySnapshot:
+    def _record(
+        self, branch: str, *, expected_status: str
+    ) -> RegistrySnapshot | LegacyTerminalClaim:
         record = self.registry.find_terminal_claim(branch=branch)
         if record is None or record.status != expected_status:
             raise PolicyViolation("branch has no exact terminal registry claim")
@@ -168,7 +188,7 @@ class LegacyTerminalCleanupService:
     def _validate_pr(
         self,
         pull_request: PullRequestSnapshot,
-        record: RegistrySnapshot,
+        record: RegistrySnapshot | LegacyTerminalClaim,
         *,
         expected_state: str,
     ) -> None:
@@ -176,11 +196,25 @@ class LegacyTerminalCleanupService:
             pull_request.state != expected_state
             or pull_request.base_branch != "main"
             or pull_request.branch != record.branch
-            or pull_request.base_sha != record.base_sha
-            or pull_request.head_sha != record.handed_back_sha
             or expected_state == "MERGED"
             and pull_request.merged_at is None
-            or tuple(sorted(self.github_query.changed_paths(pull_request.number)))
+        ):
+            raise PolicyViolation(
+                "legacy PR differs from the exact terminal registry claim"
+            )
+        if isinstance(record, LegacyTerminalClaim):
+            if (
+                record.handed_back_sha is not None
+                and pull_request.head_sha != record.handed_back_sha
+            ):
+                raise PolicyViolation(
+                    "legacy PR differs from the exact terminal registry claim"
+                )
+            return
+        if (
+            pull_request.base_sha != record.base_sha
+            or pull_request.head_sha != record.handed_back_sha
+            or self._changed_paths(pull_request.number)
             != tuple(sorted(record.scope.paths))
         ):
             raise PolicyViolation(
@@ -188,9 +222,13 @@ class LegacyTerminalCleanupService:
             )
 
     def _validate_assets(
-        self, pull_request: PullRequestSnapshot, record: RegistrySnapshot
+        self,
+        pull_request: PullRequestSnapshot,
+        record: RegistrySnapshot | LegacyTerminalClaim,
     ) -> PhysicalWorktree | None:
-        physical = self._physical_for_branch(pull_request.branch, record)
+        physical = self._physical_for_branch(
+            pull_request.branch, record, pull_request=pull_request
+        )
         self._validate_ref(pull_request.branch, pull_request.head_sha, "local")
         self._validate_ref(pull_request.branch, pull_request.head_sha, "remote")
         return physical
@@ -207,7 +245,11 @@ class LegacyTerminalCleanupService:
         self._validate_ref(pull_request.branch, pull_request.head_sha, "remote")
 
     def _physical_for_branch(
-        self, branch: str, record: RegistrySnapshot
+        self,
+        branch: str,
+        record: RegistrySnapshot | LegacyTerminalClaim,
+        *,
+        pull_request: PullRequestSnapshot | None = None,
     ) -> PhysicalWorktree | None:
         matches = tuple(
             item
@@ -224,13 +266,28 @@ class LegacyTerminalCleanupService:
             or physical.path.resolve() != record.path.resolve()
         ):
             raise PolicyViolation("terminal worktree path or branch drifted")
-        snapshot = self.git_query.inspect_worktree(physical.path, record.base_sha)
+        expected_base_sha = (
+            pull_request.base_sha if pull_request is not None else record.base_sha
+        )
+        expected_head_sha = (
+            pull_request.head_sha
+            if pull_request is not None
+            else record.handed_back_sha
+        )
+        if expected_base_sha is None or expected_head_sha is None:
+            raise PolicyViolation("terminal worktree evidence is incomplete")
+        expected_changed_paths = (
+            self._changed_paths(pull_request.number)
+            if pull_request is not None
+            else tuple(sorted(record.scope.paths))
+        )
+        snapshot = self.git_query.inspect_worktree(physical.path, expected_base_sha)
         if (
             not snapshot.clean
             or snapshot.branch != branch
-            or snapshot.head_sha != record.handed_back_sha
-            or tuple(sorted(snapshot.changed_paths))
-            != tuple(sorted(record.scope.paths))
+            or snapshot.base_sha != expected_base_sha
+            or snapshot.head_sha != expected_head_sha
+            or tuple(sorted(snapshot.changed_paths)) != expected_changed_paths
         ):
             raise PolicyViolation(
                 "terminal worktree is dirty or differs from the exact claim"
@@ -249,10 +306,23 @@ class LegacyTerminalCleanupService:
             )
 
     def _recheck_merged(
-        self, pull_request_number: int, record: RegistrySnapshot
+        self,
+        pull_request_number: int,
+        record: RegistrySnapshot | LegacyTerminalClaim,
+        expected: PullRequestSnapshot,
+        expected_changed_paths: tuple[str, ...],
     ) -> None:
         current = self._single_branch_pr(pull_request_number)
         self._validate_pr(current, record, expected_state="MERGED")
+        if (
+            current.base_sha != expected.base_sha
+            or current.head_sha != expected.head_sha
+            or self._changed_paths(current.number) != expected_changed_paths
+        ):
+            raise PolicyViolation("merged PR changed before asset deletion")
+
+    def _changed_paths(self, pull_request_number: int) -> tuple[str, ...]:
+        return tuple(sorted(self.github_query.changed_paths(pull_request_number)))
 
     def _result(self, disposition: str, branch: str) -> CleanupResult:
         return CleanupResult(

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ..domain.errors import InvalidScope
+from ..domain.models import Scope
 from ..domain.observations import (
     InventoryProblem,
     RegistryCollisionClaim,
@@ -16,6 +17,7 @@ from ..domain.observations import (
     RegistrySnapshot,
 )
 from ..ports.process import CommandRunnerPort
+from ..ports.registry import LegacyTerminalClaim
 from .errors import AdapterCommandError, AdapterPayloadError
 from .registry_parsing import (
     parse_collision_claim,
@@ -57,8 +59,7 @@ def _problem_signature(reason: str) -> str:
     text = reason.strip()
     if text.startswith("registry-") and ": " in text:
         text = text.split(": ", 1)[1]
-    if text.startswith("registry "):
-        text = text[len("registry ") :]
+    text = text.removeprefix("registry ")
     return text
 
 
@@ -268,7 +269,7 @@ def exact_claim(
 
 def terminal_claim(
     payload: Mapping[str, Any], *, branch: str
-) -> RegistrySnapshot | None:
+) -> RegistrySnapshot | LegacyTerminalClaim | None:
     """Resolve one terminal claim without parsing unrelated broken records.
 
     Legacy cleanup is deliberately narrower than full inventory: unrelated
@@ -277,14 +278,23 @@ def terminal_claim(
     fail closed.
     """
 
-    matches: list[RegistrySnapshot] = []
+    matches: list[RegistrySnapshot | LegacyTerminalClaim] = []
     for raw in payload["records"]:
         if not isinstance(raw, Mapping) or raw.get("branch") != branch:
             continue
         try:
             record = parse_registry_record(raw)
         except (KeyError, TypeError, ValueError, InvalidScope) as error:
-            raise AdapterPayloadError("terminal registry claim is malformed") from error
+            if raw.get("status") != "merged":
+                raise AdapterPayloadError(
+                    "terminal registry claim is malformed"
+                ) from error
+            try:
+                record = _parse_legacy_terminal_claim(raw)
+            except (KeyError, TypeError, ValueError, InvalidScope) as legacy_error:
+                raise AdapterPayloadError(
+                    "terminal registry claim is malformed"
+                ) from legacy_error
         matches.append(record)
     if len(matches) <= 1:
         return matches[0] if matches else None
@@ -295,7 +305,58 @@ def terminal_claim(
     # caller can validate against the live PR.  If history contains more than
     # one hand-back-bearing claim, or none at all, the evidence remains
     # ambiguous and must stay fail-closed.
+    if any(isinstance(record, LegacyTerminalClaim) for record in matches):
+        raise AdapterPayloadError("multiple registry claims found for terminal branch")
     handed_back = [record for record in matches if record.handed_back_sha]
     if len(handed_back) == 1:
         return handed_back[0]
     raise AdapterPayloadError("multiple registry claims found for terminal branch")
+
+
+def _parse_legacy_terminal_claim(raw: Mapping[str, Any]) -> LegacyTerminalClaim:
+    """Project only the narrow legacy shape needed by merged cleanup."""
+
+    if raw.get("status") != "merged":
+        raise ValueError("legacy terminal claim must be merged")
+    branch = raw.get("branch")
+    path_value = raw.get("path")
+    if not isinstance(branch, str) or not branch.strip():
+        raise ValueError("legacy terminal claim branch is malformed")
+    if not isinstance(path_value, str) or not path_value.strip():
+        raise ValueError("legacy terminal claim path is malformed")
+    path = Path(path_value).expanduser()
+    if not path.is_absolute():
+        raise ValueError("legacy terminal claim path is malformed")
+
+    base_value = raw.get("base_sha")
+    if base_value is None:
+        base_value = raw.get("base")
+    if base_value not in (None, "main"):
+        raise ValueError("legacy terminal claim base is not symbolic main")
+
+    handed_back_sha = raw.get("handed_back_sha")
+    if handed_back_sha is not None and (
+        not isinstance(handed_back_sha, str)
+        or len(handed_back_sha) != 40
+        or any(char not in "0123456789abcdef" for char in handed_back_sha)
+    ):
+        raise ValueError("legacy terminal claim hand-back is malformed")
+
+    scope = Scope.from_payload(raw["scope"])
+    external_ids = raw.get("external_ids")
+    lane_id = branch
+    if external_ids is not None and not isinstance(external_ids, list):
+        raise ValueError("legacy terminal claim external IDs are malformed")
+    if isinstance(external_ids, list) and external_ids:
+        if not all(isinstance(value, str) and value.strip() for value in external_ids):
+            raise ValueError("legacy terminal claim external IDs are malformed")
+        lane_id = external_ids[0].strip()
+    return LegacyTerminalClaim(
+        lane_id=lane_id,
+        branch=branch,
+        path=path.resolve(),
+        status="merged",
+        scope=scope,
+        base_sha=base_value or None,
+        handed_back_sha=handed_back_sha,
+    )

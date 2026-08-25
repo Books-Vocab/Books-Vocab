@@ -1,14 +1,28 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from ..domain.models import HandbackReceipt, MergedPullRequestProof
+from ..domain.models import HandbackReceipt, MergedPullRequestProof, Scope
 from ..domain.observations import (
     RegistryCollisionInventory,
     RegistryInventory,
     RegistrySnapshot,
 )
+
+
+@dataclass(frozen=True)
+class LegacyTerminalClaim:
+    """Migration-only projection for an otherwise-untyped merged claim."""
+
+    lane_id: str
+    branch: str
+    path: Path
+    status: str
+    scope: Scope
+    base_sha: str | None = None
+    handed_back_sha: str | None = None
 
 
 @runtime_checkable
@@ -39,7 +53,9 @@ class RegistryCleanupQueryPort(Protocol):
 
 @runtime_checkable
 class RegistryTerminalQueryPort(Protocol):
-    def find_terminal_claim(self, *, branch: str) -> RegistrySnapshot | None: ...
+    def find_terminal_claim(
+        self, *, branch: str
+    ) -> RegistrySnapshot | LegacyTerminalClaim | None: ...
 
 
 @runtime_checkable
