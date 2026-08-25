@@ -175,7 +175,7 @@ metadata 漂移只修同一 PR：
 ./ops/delivery.py --repo /Users/chenliangyu/project/kg trigger-required --pr '<number>'
 ```
 
-command 會再次驗證 unique PR mapping、typed receipt、registry generation、Scope／paths、base／HEAD 與 canonical body；required 已 `PENDING`／`SUCCESS` 時拒絕。dispatch 保留所有 P0／P1／security holds，且不代表 Ready／merge eligibility。
+command 會再次驗證 unique PR mapping、typed receipt、registry generation、Scope／paths、base／HEAD 與 canonical body；required 已 `PENDING`／`SUCCESS` 時拒絕。dispatch 保留所有 P0／P1／security holds，且不代表 Ready／merge eligibility。若 metrics 已以 `security_hold_global=false` 證明 hold 只屬於 exact Issue／PR lane，其他無關 candidate 可以繼續受控 birth；held lane 仍不可 queue／merge，`pipeline_ready`／`ramp_ready` 仍為 false。legacy 或 scope 不完整的 metrics 為 `null`，必須 fail-closed throttle，不能用計數猜測 hold 不相干。
 
 若 required failure 是 code failure而不是可重觸發的 transient failure，publication 後的 local assets 已被正確清除，PI 不可要求 owner 在不存在的 worktree 修 code。先用 original published generation、owner、branch 與 exact remote HEAD 重建同一 owner lane：
 

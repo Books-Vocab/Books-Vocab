@@ -94,6 +94,10 @@ class PipelineMetrics:
     security_hold_issues: int = 0
     collision_rate: float = 0.0
     required_failure_rate: float = 0.0
+    # A measured inventory may prove that every hard hold belongs to an
+    # identified Issue/PR lane. None preserves legacy/direct fail-closed
+    # behavior: without scope evidence, a hard hold is treated as global.
+    security_hold_global: bool | None = None
     timings: PipelineTimings = field(default_factory=PipelineTimings)
     quarantined_source_problems: int = 0
     quarantined_blocked_lanes: int = 0
@@ -494,6 +498,9 @@ def measure_pipeline(
         security_hold_issues=inventory.demand_issues.count(
             IssueDisposition.SECURITY_HOLD
         ),
+        # This is scope evidence, not clearance. Readiness and merge gates
+        # still remain blocked while any hold exists.
+        security_hold_global=False,
         required_failure_rate=(
             required_failed / required_terminal if required_terminal else 0.0
         ),

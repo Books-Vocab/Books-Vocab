@@ -1031,6 +1031,24 @@ def test_hard_holds_block_ramp_and_solver_birth_until_reconciled() -> None:
     )
 
 
+def test_lane_scoped_hard_hold_does_not_throttle_unrelated_candidate_birth() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+    decision = decide_capacity(
+        _metrics(
+            dispatchable_candidate_issues=2,
+            security_hold_lanes=1,
+            security_hold_issues=1,
+            security_hold_global=False,
+        ),
+        cadence,
+    )
+
+    assert ControlAction.RECONCILE_HOLDS in decision.actions
+    assert ControlAction.THROTTLE_SOLVERS not in decision.actions
+    assert ControlAction.DISPATCH_SOLVERS in decision.actions
+    assert decision.desired_new_solvers == 2
+
+
 def test_controller_disables_solver_birth_for_unmapped_or_duplicate_prs() -> None:
     cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
 
@@ -1473,6 +1491,9 @@ def test_pipeline_counts_quarantined_security_pr_in_raw_open_prs() -> None:
     assert metrics.unmapped_open_prs == 1
     assert metrics.quarantined_open_prs == 1
     assert metrics.actionable_unmapped_open_prs == 0
+    assert metrics.security_hold_global is False
+    assert metrics.pipeline_ready is False
+    assert metrics.ramp_ready is False
 
 
 def test_legacy_direct_metrics_leave_raw_open_prs_unknown() -> None:
@@ -1587,7 +1608,9 @@ def test_metrics_exposes_active_registry_residue_separately_from_development() -
     assert metrics.malformed_active_registry_records == 1
 
 
-def test_metrics_exposes_malformed_active_registry_issue_observation_without_claim() -> None:
+def test_metrics_exposes_malformed_active_registry_issue_observation_without_claim() -> (
+    None
+):
     issue = parse_demand_issue(
         {
             "id": "I_1187",

@@ -345,10 +345,12 @@ def decide_capacity(
             ControlAction.THROTTLE_SOLVERS,
             "solver dispatch is disabled while registry cleanup leases are pending",
         )
-    elif metrics.security_hold_issues or metrics.security_hold_lanes:
+    elif metrics.security_hold_global is not False and (
+        metrics.security_hold_issues or metrics.security_hold_lanes
+    ):
         add(
             ControlAction.THROTTLE_SOLVERS,
-            "solver dispatch is disabled while explicit hard holds remain",
+            "solver dispatch is disabled while hard-hold scope is unknown",
         )
     elif (
         collision_saturated
