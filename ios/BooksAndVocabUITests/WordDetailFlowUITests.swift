@@ -90,6 +90,7 @@ final class WordDetailFlowUITests: UITestCase {
             metadata.frame.minY,
             "Word Detail metadata must follow the forms section"
         )
+        captureStep("word-detail-hierarchy", app: app)
     }
 
     private func element(
