@@ -317,6 +317,86 @@ def test_malformed_or_ownerless_registry_fails_closed() -> None:
     assert git.park_calls == []
 
 
+def test_unrelated_branch_scoped_registry_problem_is_observed_without_blocking() -> (
+    None
+):
+    service, git, registry, _ = _service()
+    registry.problems = (
+        InventoryProblem(
+            "registry",
+            "release/historical-1187",
+            "registry record is malformed",
+            identity_kind="branch",
+            record_status="abandoned",
+        ),
+    )
+
+    result = service.reconcile(_request())
+
+    assert result["verdict"] == "success"
+    assert result["registry"]["scoped_observations"] == [
+        {
+            "identity": "release/historical-1187",
+            "kind": "branch",
+            "status": "abandoned",
+            "reason": "registry record is malformed",
+        }
+    ]
+    assert git.park_calls == [(LOCAL, ORIGIN)]
+
+
+def test_target_scoped_registry_problem_still_fails_closed() -> None:
+    service, git, registry, _ = _service()
+    registry.problems = (
+        InventoryProblem(
+            "registry",
+            BRANCH,
+            "registry record is malformed",
+            identity_kind="branch",
+            record_status="published",
+        ),
+    )
+
+    result = service.reconcile(_request())
+
+    assert result["verdict"] == "blocked"
+    assert "registry" in result["reason"]
+    assert git.park_calls == []
+
+
+@pytest.mark.parametrize(
+    "problem",
+    (
+        InventoryProblem(
+            "registry",
+            str(REGISTRY_PATH),
+            "registry path is malformed",
+            identity_kind="path",
+            record_status="published",
+        ),
+        InventoryProblem(
+            "registry",
+            "other-identity",
+            "registry external-id is malformed",
+            identity_kind="branch",
+            record_status="published",
+            record_external_ids=(EXTERNAL,),
+        ),
+    ),
+)
+def test_target_path_or_external_id_registry_problem_fails_closed(
+    problem: InventoryProblem,
+) -> None:
+    service, git, registry, _ = _service()
+    registry.problems = (problem,)
+
+    result = service.reconcile(_request())
+
+    assert result["verdict"] == "blocked"
+    assert "registry" in result["reason"]
+    assert git.park_calls == []
+
+
 def test_duplicate_registry_lane_fails_closed() -> None:
     service, git, registry, _ = _service()
     registry.extra_records = (registry.record,)
