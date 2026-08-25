@@ -27,6 +27,13 @@ from ..services.candidate_contract import parse_candidate_body
 from .errors import AdapterPayloadError
 from .timestamps import parse_optional_timestamp
 
+_REVIEW_DECISIONS = frozenset({"REVIEW_REQUIRED", "CHANGES_REQUESTED", "APPROVED"})
+
+
+def _parse_review_decision(payload: Mapping[str, Any]) -> str | None:
+    value = payload.get("reviewDecision")
+    return value if isinstance(value, str) and value in _REVIEW_DECISIONS else None
+
 
 def parse_pull_request(payload: Mapping[str, Any]) -> PullRequestSnapshot:
     if not isinstance(payload, Mapping):
@@ -79,6 +86,7 @@ def parse_pull_request(payload: Mapping[str, Any]) -> PullRequestSnapshot:
         merged_at=parse_optional_timestamp(
             payload.get("mergedAt"), field="GitHub PR mergedAt"
         ),
+        review_decision=_parse_review_decision(payload),
     )
 
 
