@@ -10,7 +10,7 @@ scope:
   - ops/kg_reconcile.sh
   - backend/
   - ios/
-verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
+verified_against: 24f2120d7118af81b6812a50a4c489aff3b466ec
 -->
 # Release SOP
 
@@ -45,6 +45,30 @@ only the assigned version files and create a deterministic candidate commit; the
 not push a branch, update protected `main`, upload to ASC, deploy backend, or create a
 tag. The owner then runs the supported worktree hand-back and IM publishes that exact
 commit as one PR:
+
+The release agent is independent from the development checkout. If it does not
+already have a dedicated lane, materialize one from the **live** `origin/main` before
+running `release` or `resubmit`; never turn the canonical `main` checkout into a
+candidate. The open command is the supported ownership boundary (the external ID and
+thread ID are durable evidence, not chat-only labels):
+
+```bash
+LIVE_MAIN="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+./ops/worktree_orchestrate.py open --json \
+  --intent "iOS release <version>+<build>" \
+  --slug "release-ios-<version>-<build>-<date>" \
+  --base "$LIVE_MAIN" \
+  --external-id "DIRECT-RELEASE-IOS-<version>-<build>-<date>" \
+  --scope '{"schema":"kg.worktree.scope.v1","files":[{"path":"ios/BooksAndVocab.xcodeproj/project.pbxproj","operation":"modify"}]}' \
+  --codex-thread-id "$RELEASE_AGENT_THREAD" --delegated
+```
+
+For `resubmit`, `<build>` is the exact target printed by the dry-run after the ASC
+readback; it is not a manually guessed number. Run the release command only from the
+returned worktree, preserve its exact branch/base/Scope, and hand back through
+`worktree_orchestrate.py`. If the open/preflight command reports a collision, malformed
+ownership, or a main-SHA drift, stop and re-read live state rather than using the
+canonical checkout as a fallback.
 
 ```text
 dedicated lane candidate
