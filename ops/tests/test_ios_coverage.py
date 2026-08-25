@@ -37,12 +37,24 @@ def run_coverage(fixture: dict, *args: str) -> subprocess.CompletedProcess[str]:
 def test_ios_coverage_reports_app_target_line_rate() -> None:
     fixture = {
         "targets": [
-            {"name": "BooksAndVocabTests", "lineCoverage": 0.25, "coveredLines": 5, "executableLines": 20},
-            {"name": "BooksAndVocab", "lineCoverage": 0.8125, "coveredLines": 65, "executableLines": 80},
+            {
+                "name": "BooksAndVocabTests",
+                "lineCoverage": 0.25,
+                "coveredLines": 5,
+                "executableLines": 20,
+            },
+            {
+                "name": "BooksAndVocab",
+                "lineCoverage": 0.8125,
+                "coveredLines": 65,
+                "executableLines": 80,
+            },
         ]
     }
 
-    proc = run_coverage(fixture, "--target", "BooksAndVocab", "--fail-under-lines", "80")
+    proc = run_coverage(
+        fixture, "--target", "BooksAndVocab", "--fail-under-lines", "80"
+    )
 
     assert proc.returncode == 0, proc.stderr
     payload = json.loads(proc.stdout)
@@ -55,14 +67,50 @@ def test_ios_coverage_reports_app_target_line_rate() -> None:
     assert payload["thresholds"]["lineCoverage"]["failUnder"] == 80.0
 
 
-def test_ios_coverage_fails_under_threshold_with_machine_readable_error() -> None:
+def test_ios_coverage_matches_xcode_app_target_suffix() -> None:
     fixture = {
         "targets": [
-            {"name": "BooksAndVocab", "lineCoverage": 0.799, "coveredLines": 799, "executableLines": 1000}
+            {
+                "name": "BooksAndVocab.app",
+                "lineCoverage": 0.25313034308355431,
+                "coveredLines": 24724,
+                "executableLines": 97673,
+            },
+            {
+                "name": "BooksAndVocabTests.xctest",
+                "lineCoverage": 0.98635117900849323,
+                "coveredLines": 36350,
+                "executableLines": 36853,
+            },
         ]
     }
 
-    proc = run_coverage(fixture, "--target", "BooksAndVocab", "--fail-under-lines", "80")
+    proc = run_coverage(fixture, "--target", "BooksAndVocab")
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["verdict"] == "pass"
+    assert payload["summary"]["target"] == "BooksAndVocab"
+    assert payload["summary"]["lineCoverage"] == 25.31
+    assert payload["summary"]["coveredLines"] == 24724
+    assert payload["summary"]["executableLines"] == 97673
+
+
+def test_ios_coverage_fails_under_threshold_with_machine_readable_error() -> None:
+    fixture = {
+        "targets": [
+            {
+                "name": "BooksAndVocab",
+                "lineCoverage": 0.799,
+                "coveredLines": 799,
+                "executableLines": 1000,
+            }
+        ]
+    }
+
+    proc = run_coverage(
+        fixture, "--target", "BooksAndVocab", "--fail-under-lines", "80"
+    )
 
     assert proc.returncode == 1
     payload = json.loads(proc.stdout)
@@ -74,8 +122,18 @@ def test_ios_coverage_fails_under_threshold_with_machine_readable_error() -> Non
 def test_ios_coverage_keeps_tests_out_of_default_app_target_selection() -> None:
     fixture = {
         "targets": [
-            {"name": "BooksAndVocabTests", "lineCoverage": 1.0, "coveredLines": 100, "executableLines": 100},
-            {"name": "BooksAndVocab", "lineCoverage": 0.5, "coveredLines": 50, "executableLines": 100},
+            {
+                "name": "BooksAndVocabTests",
+                "lineCoverage": 1.0,
+                "coveredLines": 100,
+                "executableLines": 100,
+            },
+            {
+                "name": "BooksAndVocab",
+                "lineCoverage": 0.5,
+                "coveredLines": 50,
+                "executableLines": 100,
+            },
         ]
     }
 
@@ -90,7 +148,12 @@ def test_ios_coverage_keeps_tests_out_of_default_app_target_selection() -> None:
 def test_ios_coverage_fails_closed_for_unknown_explicit_target() -> None:
     fixture = {
         "targets": [
-            {"name": "BooksAndVocab", "lineCoverage": 0.5, "coveredLines": 50, "executableLines": 100}
+            {
+                "name": "BooksAndVocab",
+                "lineCoverage": 0.5,
+                "coveredLines": 50,
+                "executableLines": 100,
+            }
         ]
     }
 
