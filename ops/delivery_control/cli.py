@@ -54,6 +54,7 @@ MUTATING_COMMANDS = frozenset(
         "discard-abandoned-handback",
         "supersede-abandoned-handback",
         "discard-orphan-branch",
+        "discard-orphan-remote-branch",
         "discard-unregistered-branch",
         "sync-main",
         *MAIN_PRESERVATION_COMMANDS,

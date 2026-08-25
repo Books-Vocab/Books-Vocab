@@ -1300,6 +1300,71 @@ def test_cli_routes_unregistered_remote_orphan_discard(capsys: object) -> None:
     ]
 
 
+def test_cli_serializes_remote_orphan_discard_with_operation_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: object,
+) -> None:
+    from delivery_control import cli as cli_module
+
+    lock_calls: list[tuple[object, ...]] = []
+
+    class FakeLock:
+        def __init__(self, repo: Path, *, command: str) -> None:
+            lock_calls.append(("init", repo, command))
+
+        def __enter__(self) -> "FakeLock":
+            lock_calls.append(("enter",))
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            lock_calls.append(("exit",))
+
+    class FakeApplication:
+        repo = tmp_path
+
+        def discard_orphan_remote_branch(
+            self,
+            *,
+            branch: str,
+            expected_head_sha: str,
+            operator: str,
+            reason: str,
+        ) -> object:
+            del branch, expected_head_sha, operator, reason
+            return {"disposition": "orphan_remote_discarded"}
+
+    monkeypatch.setattr(cli_module, "OperationLock", FakeLock)
+    head = "b" * 40
+
+    assert (
+        main(
+            [
+                "--repo",
+                str(tmp_path),
+                "discard-orphan-remote-branch",
+                "--branch",
+                "feat/orphan",
+                "--expected-head-sha",
+                head,
+                "--operator",
+                "supervisor",
+                "--reason",
+                "ancestor remote branch has no unmerged changes",
+            ],
+            application_factory=lambda **_: FakeApplication(),
+        )
+        == 0
+    )
+
+    capsys.readouterr()  # type: ignore[attr-defined]
+    assert lock_calls == [
+        ("init", tmp_path, "discard-orphan-remote-branch"),
+        ("enter",),
+        ("exit",),
+    ]
+
+
 def test_cli_exposes_dogfood_preflight_as_read_only_json(capsys: object) -> None:
     class FakeApplication:
         def dogfood_preflight(
