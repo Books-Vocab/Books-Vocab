@@ -77,6 +77,37 @@ jobs:
         run: |
           git diff --check "$BASE_SHA" "$HEAD_SHA"
 
+      - name: Check changed Python formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          for sha_name in BASE_SHA HEAD_SHA; do
+            sha="${!sha_name}"
+            if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "$sha_name is not an exact 40-character commit SHA: $sha" >&2
+              exit 1
+            fi
+            resolved_sha="$(git rev-parse --verify "$sha^{commit}")"
+            if [[ "$resolved_sha" != "$sha" ]]; then
+              echo "$sha_name does not resolve exactly: expected $sha, got $resolved_sha" >&2
+              exit 1
+            fi
+          done
+          actual_sha="$(git rev-parse HEAD)"
+          if [[ "$actual_sha" != "$HEAD_SHA" ]]; then
+            echo "format checkout drift: expected $HEAD_SHA, got $actual_sha" >&2
+            exit 1
+          fi
+          changed_python=()
+          while IFS= read -r path; do
+            [[ -n "$path" ]] && changed_python+=("$path")
+          done < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- '*.py')
+          if ((${#changed_python[@]} == 0)); then
+            echo "no changed Python files; format check skipped"
+            exit 0
+          fi
+          uv run --no-project --python 3.13 --with 'ruff==0.16.3' ruff format --check "${changed_python[@]}"
+
       - name: Check ops test coverage classification
         run: ./ops/tests/test_ops_ci_coverage.sh
 
