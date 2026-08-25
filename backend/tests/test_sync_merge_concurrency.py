@@ -5,16 +5,34 @@ from __future__ import annotations
 import logging
 from datetime import UTC, timedelta
 
+import pytest
+
 from kg.vocab_crud import list_vocab_cards
 from kg.vocab_review import push_review_states
-from test_sync_merge import _entry, _iso, _make_store, _now
+from test_sync_merge import _entry, _iso, _now
+from test_sync_merge import _make_store as _create_store
+
+_stores = []
+
+
+def _make_store(tmp_path):
+    store = _create_store(tmp_path)
+    _stores.append(store)
+    return store
+
+
+@pytest.fixture(autouse=True)
+def _close_card_stores():
+    yield
+    while _stores:
+        _stores.pop().close()
+
 
 # CardStore.update — updated_at auto-bump
 # ============================================================================
 
 
 class TestCardStoreUpdate:
-
     def test_update_bumps_updated_at(self, tmp_path):
         """Any field change via update() must bump updated_at."""
         store = _make_store(tmp_path)
@@ -22,6 +40,7 @@ class TestCardStoreUpdate:
         original_updated = card.updated_at
 
         import time
+
         time.sleep(0.05)
 
         store.update(card.id, review_count=5)
@@ -117,22 +136,31 @@ class TestThreeEndConcurrentSync:
 
         base = _now() - timedelta(hours=10)
         ts_ios = base + timedelta(hours=1)
-        ts_mac = base + timedelta(hours=5)   # newest
+        ts_mac = base + timedelta(hours=5)  # newest
         ts_server = base + timedelta(hours=3)
 
         ios_entry = _entry(
-            "lucid", _iso(ts_ios),
-            review_count=2, review_streak=2, review_interval_hours=12.0,
+            "lucid",
+            _iso(ts_ios),
+            review_count=2,
+            review_streak=2,
+            review_interval_hours=12.0,
             last_review_feedback=1,
         )
         mac_entry = _entry(
-            "lucid", _iso(ts_mac),
-            review_count=4, review_streak=4, review_interval_hours=48.0,
+            "lucid",
+            _iso(ts_mac),
+            review_count=4,
+            review_streak=4,
+            review_interval_hours=48.0,
             last_review_feedback=1,
         )
         server_entry = _entry(
-            "lucid", _iso(ts_server),
-            review_count=3, review_streak=3, review_interval_hours=24.0,
+            "lucid",
+            _iso(ts_server),
+            review_count=3,
+            review_streak=3,
+            review_interval_hours=24.0,
             last_review_feedback=0,
         )
 
@@ -171,15 +199,27 @@ class TestThreeEndConcurrentSync:
             card = store.add("nuance", "細微差別")
             base = _now() - timedelta(hours=10)
             payloads = {
-                "ios": _entry("nuance", _iso(base + timedelta(hours=1)),
-                              review_count=2, review_streak=2,
-                              review_interval_hours=12.0),
-                "mac": _entry("nuance", _iso(base + timedelta(hours=5)),
-                              review_count=4, review_streak=4,
-                              review_interval_hours=48.0),
-                "server": _entry("nuance", _iso(base + timedelta(hours=3)),
-                                 review_count=3, review_streak=3,
-                                 review_interval_hours=24.0),
+                "ios": _entry(
+                    "nuance",
+                    _iso(base + timedelta(hours=1)),
+                    review_count=2,
+                    review_streak=2,
+                    review_interval_hours=12.0,
+                ),
+                "mac": _entry(
+                    "nuance",
+                    _iso(base + timedelta(hours=5)),
+                    review_count=4,
+                    review_streak=4,
+                    review_interval_hours=48.0,
+                ),
+                "server": _entry(
+                    "nuance",
+                    _iso(base + timedelta(hours=3)),
+                    review_count=3,
+                    review_streak=3,
+                    review_interval_hours=24.0,
+                ),
             }
             for who in order:
                 push_review_states([payloads[who]], cards_store=store, logger=log)
@@ -299,13 +339,23 @@ class TestThreeEndConcurrentSync:
 
         def _builder(card, _graph, _cards_by_id):
             return CardResponse(
-                id=card.id, content=card.content, meaning=card.meaning,
-                pos=card.pos, difficulty=card.difficulty, difficultyTier="unknown",
-                note=card.note, examples=card.examples, mode=card.mode,
-                isDeleted=card.is_deleted, inflections=card.inflections or [],
-                linksByKind={}, reviewIntervalHours=card.review_interval_hours,
-                nextReviewAt=None, lastReviewedAt=None,
-                reviewCount=card.review_count, lapseCount=card.lapse_count,
+                id=card.id,
+                content=card.content,
+                meaning=card.meaning,
+                pos=card.pos,
+                difficulty=card.difficulty,
+                difficultyTier="unknown",
+                note=card.note,
+                examples=card.examples,
+                mode=card.mode,
+                isDeleted=card.is_deleted,
+                inflections=card.inflections or [],
+                linksByKind={},
+                reviewIntervalHours=card.review_interval_hours,
+                nextReviewAt=None,
+                lastReviewedAt=None,
+                reviewCount=card.review_count,
+                lapseCount=card.lapse_count,
                 reviewStreak=card.review_streak,
                 lastReviewFeedback=card.last_review_feedback,
             )
@@ -334,8 +384,11 @@ class TestThreeEndConcurrentSync:
         # Now push from a client that thinks the card still exists.
         client_time = _now()
         entry = _entry(
-            "revive", _iso(client_time),
-            card_id=card.id, review_count=11, review_streak=3,
+            "revive",
+            _iso(client_time),
+            card_id=card.id,
+            review_count=11,
+            review_streak=3,
             review_interval_hours=36.0,
         )
         result = push_review_states([entry], cards_store=store, logger=logging.getLogger())
