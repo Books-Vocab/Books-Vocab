@@ -825,7 +825,9 @@ downgrade_out="$(bash "$fx_e/ops/release.sh" release ios 1.9.9 --yes 2>&1)" || d
   && ok "iOS new marketing version must increase monotonically" \
   || fail_t "iOS downgrade was not safely rejected: $downgrade_out"
 
-# 15f. 合法 candidate：版號已在 HEAD 仍建立明確 candidate commit，等待 PR/queue。
+# 15f. 版號若已在一個尚未以 live main 為基底的 local commit，不能把它
+#      當成合法 release lane；必須重新 materialize exact live main，避免把
+#      未審查的來源帶進 release PR。
 fx_f="$TMP4/already-committed"; remote_f="$TMP4/already-committed.git"
 make_ios_release_fixture "$fx_f" "$remote_f"
 sed -i '' 's/MARKETING_VERSION = 2.0.0;/MARKETING_VERSION = 2.0.1;/g; s/CURRENT_PROJECT_VERSION = 5;/CURRENT_PROJECT_VERSION = 6;/g' \
@@ -836,14 +838,15 @@ committed_head="$(git -C "$fx_f" rev-parse HEAD)"
 committed_rc=0
 committed_out="$(bash "$fx_f/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || committed_rc=$?
 committed_candidate="$(git -C "$fx_f" rev-parse HEAD)"
-[[ "$committed_rc" -eq 0 && ! -e "$fx_f/upload.called" \
-   && "$committed_candidate" != "$committed_head" \
-   && "$(git -C "$fx_f" log -1 --format=%s)" == "ops: prepare ios 2.0.1 build 6" \
+[[ "$committed_rc" -ne 0 \
+   && "$committed_out" == *"exact live origin/main"* \
+   && "$committed_candidate" == "$committed_head" \
+   && "$(grep -c 'CURRENT_PROJECT_VERSION = 6;' "$fx_f/ios/BooksAndVocab.xcodeproj/project.pbxproj" || true)" -eq 2 \
+   && ! -e "$fx_f/upload.called" \
    && -z "$(git -C "$fx_f" tag -l 'ios/2.0.1+6')" \
-   && -z "$(git --git-dir="$remote_f" tag -l 'ios/2.0.1+6')" \
-   && "$(git --git-dir="$remote_f" rev-parse refs/heads/main)" != "$committed_candidate" ]] \
-  && ok "already-committed version creates a candidate without upload/tag/main push" \
-  || fail_t "already-committed version did not close candidate release: $committed_out"
+   && -z "$(git --git-dir="$remote_f" tag -l 'ios/2.0.1+6')" ]] \
+  && ok "already-committed version requires a fresh live-based release lane" \
+  || fail_t "already-committed stale lane was not rejected: $committed_out"
 
 # 15g. 事故本體：有一個版本出過 build、卻還沒有上架 tag，就直接發下一版。
 #      2.0.1 事故就是這個形狀——2.0.0 還在審（build 5 已上傳），卻已 bump 成 2.0.1。
@@ -1539,6 +1542,46 @@ q_candidate="$(git -C "$fx_q" rev-parse HEAD)"
    && "$(git --git-dir="$remote_q" rev-parse refs/heads/main)" == "$q_base" ]] \
   && ok "iOS --yes emits one recoverable candidate without main push/upload" \
   || fail_t "iOS candidate mutated protected main or uploaded: $q_out"
+
+# 23a.1. A feature branch is only a release lane when it is exactly based on
+# live origin/main.  Otherwise a clean branch can smuggle unmerged product
+# commits (ahead) or a stale release base (behind) into the candidate PR.
+fx_lane_ahead="$TMP6/release-lane-ahead"; remote_lane_ahead="$TMP6/release-lane-ahead.git"
+make_ios_release_fixture "$fx_lane_ahead" "$remote_lane_ahead"
+git -C "$fx_lane_ahead" checkout -q -b feat/release-queue
+lane_ahead_base="$(git --git-dir="$remote_lane_ahead" rev-parse refs/heads/main)"
+git -C "$fx_lane_ahead" commit --allow-empty -qm "fixture: unmerged product change"
+lane_ahead_head="$(git -C "$fx_lane_ahead" rev-parse HEAD)"
+lane_ahead_rc=0
+lane_ahead_out="$(bash "$fx_lane_ahead/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || lane_ahead_rc=$?
+[[ $lane_ahead_rc -ne 0 \
+   && "$lane_ahead_out" == *"exact live origin/main"* \
+   && "$(git -C "$fx_lane_ahead" rev-parse HEAD)" == "$lane_ahead_head" \
+   && "$(grep -c 'CURRENT_PROJECT_VERSION = 5;' "$fx_lane_ahead/ios/BooksAndVocab.xcodeproj/project.pbxproj" || true)" -eq 2 \
+   && ! -e "$fx_lane_ahead/upload.called" \
+   && "$(git --git-dir="$remote_lane_ahead" rev-parse refs/heads/main)" == "$lane_ahead_base" ]] \
+  && ok "release refuses a lane ahead of live main before candidate mutation" \
+  || fail_t "release accepted an ahead/stale lane: $lane_ahead_out"
+
+fx_lane_behind="$TMP6/release-lane-behind"; remote_lane_behind="$TMP6/release-lane-behind.git"
+make_ios_release_fixture "$fx_lane_behind" "$remote_lane_behind"
+git -C "$fx_lane_behind" checkout -q -b feat/release-queue
+lane_behind_base="$(git -C "$fx_lane_behind" rev-parse HEAD)"
+git -C "$fx_lane_behind" commit --allow-empty -qm "fixture: newer live main"
+lane_behind_live="$(git -C "$fx_lane_behind" rev-parse HEAD)"
+git -C "$fx_lane_behind" checkout -q -B feat/release-queue "$lane_behind_base"
+git -C "$fx_lane_behind" push -q origin "$lane_behind_live:refs/heads/queue-fixture"
+git --git-dir="$remote_lane_behind" update-ref refs/heads/main "$lane_behind_live"
+lane_behind_rc=0
+lane_behind_out="$(bash "$fx_lane_behind/ops/release.sh" release ios 2.0.1 --yes 2>&1)" || lane_behind_rc=$?
+[[ $lane_behind_rc -ne 0 \
+   && "$lane_behind_out" == *"exact live origin/main"* \
+   && "$(git -C "$fx_lane_behind" rev-parse HEAD)" == "$lane_behind_base" \
+   && "$(grep -c 'CURRENT_PROJECT_VERSION = 5;' "$fx_lane_behind/ios/BooksAndVocab.xcodeproj/project.pbxproj" || true)" -eq 2 \
+   && ! -e "$fx_lane_behind/upload.called" \
+   && "$(git --git-dir="$remote_lane_behind" rev-parse refs/heads/main)" == "$lane_behind_live" ]] \
+  && ok "release refuses a lane behind live main before candidate mutation" \
+  || fail_t "release accepted a behind/stale lane: $lane_behind_out"
 
 # 23b. Live merged tuple blocks a second build candidate (fixture equivalent
 # of the supplied merged build-12 evidence).

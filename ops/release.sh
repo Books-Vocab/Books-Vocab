@@ -349,11 +349,24 @@ emit_candidate_handback() {
   fi
 }
 
-assert_release_lane() {
+assert_release_lane_branch() {
   local branch
   branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
   [[ "$branch" != main && "$branch" != prod && "$branch" != HEAD ]] \
     || err "release candidate 必須在 dedicated release lane 執行（目前 ${branch}）；先由 supported worktree owner lane hand-back，禁止直接操作 protected main。"
+}
+
+assert_release_lane_base() {
+  local live head
+  # A non-main branch is not sufficient: it may contain unmerged product
+  # commits or have been forked before another main landing.  In either case
+  # a version-only candidate would smuggle unrelated/stale source into the
+  # release PR.  Bind the candidate lane to the live protected base immediately
+  # before any version mutation or candidate commit.
+  live="$(live_origin_main)"
+  head="$(git -C "$ROOT" rev-parse HEAD)"
+  [[ "$head" == "$live" ]] \
+    || err "release candidate lane 必須以 exact live origin/main 建立；目前 HEAD=${head}、live origin/main=${live}。請重新 materialize dedicated lane；禁止在 stale 或含未合併 commit 的 branch 上產生 candidate。"
 }
 
 api_commit_candidate() {
@@ -1125,7 +1138,7 @@ cmd_resubmit() {
   local branch curver curbuild tf_latest newbuild
   acquire_release_lock
   branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
-  assert_release_lane
+  assert_release_lane_branch
   curver="$(current_version ios)"
   valid_semver "$curver" \
     || err "pbxproj 的 MARKETING_VERSION 是 '${curver}'，不是 x.y.z —— 先跑 ./ops/release.sh bump ios <x.y.z> --yes 對齊成三段"
@@ -1133,6 +1146,7 @@ cmd_resubmit() {
   [[ "$curbuild" =~ ^[0-9]+$ ]] || err "讀不到 pbxproj 的 CURRENT_PROJECT_VERSION：'${curbuild}'"
   ensure_release_primary_clean
   ios_refuse_pending_candidate "$curver" "$curbuild"
+  assert_release_lane_base
   tf_latest="$(asc_latest_testflight_build)"
   newbuild=$((curbuild > tf_latest ? curbuild : tf_latest))
   newbuild=$((newbuild + 1))
@@ -1241,7 +1255,7 @@ cmd_release() {
   fi
 
   local branch curver curbuild target_build need_bump live_main live_tuple
-  assert_release_lane
+  assert_release_lane_branch
   branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
   curver="$(current_version "$comp")"
   # need_bump 用 RAW 相等（與 cmd_tag 的 strict curver==v 檢查一致）：ios 慣用兩段 MARKETING_VERSION
@@ -1260,6 +1274,7 @@ cmd_release() {
     [[ "$live_tuple" != "${v}+${target_build}" ]] \
       || err "live origin/main=${live_main} 已包含 iOS tuple ${live_tuple}；禁止在 release lane 重造 build。先由 CM sync，再用 resume ios ${v} ${target_build} --pr <number> --merged-source <sha>。"
   fi
+  assert_release_lane_base
 
   echo "release target=${target}（component=${comp}）version=${v}  branch=${branch}"
   echo "  計畫（dry-run 預設）："
