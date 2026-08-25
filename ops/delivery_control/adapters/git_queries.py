@@ -44,6 +44,7 @@ from .git_parsing import (
 )
 
 UNREACHABLE_COMMIT_SCAN_TIMEOUT_SECONDS = 30.0
+PATCH_EQUIVALENCE_QUERY_TIMEOUT_SECONDS = 5.0
 _COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _HUNK_HEADER_RE = re.compile(r"^@@ -[0-9]+(?:,[0-9]+)? \+[0-9]+(?:,[0-9]+)? @@")
 
@@ -358,7 +359,12 @@ class GitQueries:
         for name, sha in (("branch", branch_sha), ("main", main_sha)):
             if _COMMIT_SHA_RE.fullmatch(sha) is None:
                 raise AdapterPayloadError(f"{name} commit SHA is malformed")
-        result = self.client.execute("cherry", main_sha, branch_sha)
+        result = self.client.execute_with_timeout(
+            "cherry",
+            main_sha,
+            branch_sha,
+            timeout_seconds=PATCH_EQUIVALENCE_QUERY_TIMEOUT_SECONDS,
+        )
         if result.exit_code != 0:
             raise AdapterCommandError(result)
 

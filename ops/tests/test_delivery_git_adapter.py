@@ -270,6 +270,19 @@ def test_git_adapter_propagates_patch_equivalence_command_failure(
         )
 
 
+def test_git_adapter_bounds_patch_equivalence_query(
+    tmp_path: Path,
+) -> None:
+    runner = TimeoutAwareRunner()
+
+    with pytest.raises(AdapterCommandError, match="timed out"):
+        GitCliAdapter(repo=tmp_path, runner=runner).is_patch_equivalent(
+            "a" * 40, "b" * 40
+        )
+
+    assert runner.timeout_seconds == 5.0
+
+
 @pytest.mark.parametrize("stderr", ("fatal: permission denied", "runner unavailable"))
 def test_git_adapter_ancestor_query_propagates_source_failures(
     tmp_path: Path, stderr: str
