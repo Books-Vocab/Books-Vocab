@@ -26,6 +26,14 @@ from .services.candidate_contract import parse_candidate_body, render_candidate_
 from .services.pr_contract import validate_pull_request_body
 
 COMMAND_SCHEMA = "kg.delivery.command.v1"
+MAIN_PRESERVATION_COMMANDS = frozenset(
+    {
+        "preserve-main",
+        "reconcile-main",
+        "preserve-main-divergence",
+        "reconcile-main-divergence",
+    }
+)
 MUTATING_COMMANDS = frozenset(
     {
         "admit-candidate",
@@ -48,6 +56,7 @@ MUTATING_COMMANDS = frozenset(
         "discard-orphan-branch",
         "discard-unregistered-branch",
         "sync-main",
+        *MAIN_PRESERVATION_COMMANDS,
     }
 )
 
@@ -351,6 +360,38 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="confirm that unlanded local commits may be discarded",
     )
+    preserve_main = commands.add_parser(
+        "preserve-main",
+        aliases=(
+            "reconcile-main",
+            "preserve-main-divergence",
+            "reconcile-main-divergence",
+        ),
+        help="preserve one owner-bound local main tip and CAS-park canonical main",
+    )
+    preserve_main.add_argument(
+        "--expected-local-head",
+        "--expected-local-sha",
+        dest="expected_local_head",
+        required=True,
+    )
+    preserve_main.add_argument(
+        "--expected-origin-head",
+        "--expected-origin-sha",
+        dest="expected_origin_head",
+        required=True,
+    )
+    preserve_main.add_argument("--preservation-branch", required=True)
+    preserve_main.add_argument("--preservation-path", type=Path, required=True)
+    preserve_main.add_argument(
+        "--owner-thread-id",
+        "--owner",
+        dest="owner_thread_id",
+        required=True,
+    )
+    preserve_main.add_argument("--external-id", required=True)
+    preserve_main.add_argument("--operator", required=True)
+    preserve_main.add_argument("--reason", required=True)
     commands.add_parser("sync-main", help="ff-only synchronize canonical main")
     return parser
 
@@ -600,6 +641,17 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
         )
     if args.command == "sync-main":
         return application.sync_main()
+    if args.command in MAIN_PRESERVATION_COMMANDS:
+        return application.reconcile_main(
+            expected_local_head=args.expected_local_head,
+            expected_origin_head=args.expected_origin_head,
+            preservation_branch=args.preservation_branch,
+            preservation_path=args.preservation_path,
+            owner_thread_id=args.owner_thread_id,
+            external_id=args.external_id,
+            operator=args.operator,
+            reason=args.reason,
+        )
     raise AssertionError(f"unhandled command: {args.command}")
 
 

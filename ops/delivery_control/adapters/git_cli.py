@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..domain.branch_refs import BranchInventory
 from ..domain.branch_content import BranchContentEvidence
+from ..domain.branch_refs import BranchInventory
 from ..domain.observations import (
     CanonicalCheckoutSnapshot,
     FileChange,
@@ -150,6 +150,14 @@ class GitCliAdapter:
         self, *, expected_local_sha: str, expected_origin_sha: str
     ) -> str:
         return self._commands.fast_forward_main(
+            expected_local_sha=expected_local_sha,
+            expected_origin_sha=expected_origin_sha,
+        )
+
+    def park_main_to_origin(
+        self, *, expected_local_sha: str, expected_origin_sha: str
+    ) -> str:
+        return self._commands.park_main_to_origin(
             expected_local_sha=expected_local_sha,
             expected_origin_sha=expected_origin_sha,
         )

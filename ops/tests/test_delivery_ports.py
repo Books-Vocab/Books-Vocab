@@ -5,12 +5,16 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
-# ruff: noqa: E402
 
+from delivery_control.adapters.errors import AdapterCommandError
+from delivery_control.adapters.git_commands import GitCommands
 from delivery_control.domain.branch_refs import BranchInventory
 from delivery_control.domain.candidate_issues import CandidateIssueInventory
+from delivery_control.domain.errors import CompareAndSwapConflict
 from delivery_control.domain.models import (
     HandbackReceipt,
 )
@@ -30,6 +34,7 @@ from delivery_control.domain.unreachable_commits import UnreachableCommitInvento
 from delivery_control.ports.clock import ClockPort
 from delivery_control.ports.git import GitCommandPort, GitQueryPort
 from delivery_control.ports.github import GitHubCommandPort, GitHubQueryPort
+from delivery_control.ports.process import CommandResult
 from delivery_control.ports.registry import (
     RegistryCleanupQueryPort,
     RegistryCommandPort,
@@ -102,6 +107,11 @@ def test_ports_are_small_runtime_checkable_capability_contracts() -> None:
             return None
 
         def fast_forward_main(
+            self, *, expected_local_sha: str, expected_origin_sha: str
+        ) -> str:
+            return expected_origin_sha
+
+        def park_main_to_origin(
             self, *, expected_local_sha: str, expected_origin_sha: str
         ) -> str:
             return expected_origin_sha
@@ -303,3 +313,167 @@ def test_package_imports_work_from_repository_root_without_sys_path_patch() -> N
         text=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_git_commands_park_main_uses_cas_without_reset_rebase_delete_or_merge() -> None:
+    base = "a" * 40
+    local = "b" * 40
+
+    class Query:
+        def __init__(self) -> None:
+            self.local = local
+            self.origin = base
+
+        def local_main_sha(self) -> str:
+            return self.local
+
+        def origin_main_sha(self) -> str:
+            return self.origin
+
+    class Client:
+        def __init__(self, query: Query) -> None:
+            self.query = query
+            self.branch = "main"
+            self.calls: list[tuple[str, ...]] = []
+
+        def run(self, *args: str, cwd: Path | None = None) -> str:
+            del cwd
+            self.calls.append(args)
+            if args == ("branch", "--show-current"):
+                return self.branch
+            if args == ("status", "--porcelain=v1", "--untracked-files=all"):
+                return ""
+            if args[:2] == ("checkout", "--detach"):
+                self.branch = ""
+                return ""
+            if args[:1] == ("update-ref",):
+                self.query.local = base
+                return ""
+            if args == ("switch", "main"):
+                self.branch = "main"
+                return ""
+            raise AssertionError(args)
+
+    query = Query()
+    client = Client(query)
+    result = GitCommands(
+        repo=Path("/repo"), client=client, query=query
+    ).park_main_to_origin(expected_local_sha=local, expected_origin_sha=base)
+
+    assert result == base
+    assert query.local == base
+    assert client.branch == "main"
+    assert ("update-ref", "refs/heads/main", base, local) in client.calls
+    assert not {
+        command
+        for call in client.calls
+        for command in call
+        if command in {"reset", "rebase", "delete", "merge"}
+    }
+
+
+def test_git_commands_park_main_compensates_detach_when_cas_mutation_fails() -> None:
+    base = "a" * 40
+    local = "b" * 40
+
+    class Query:
+        def local_main_sha(self) -> str:
+            return local
+
+        def origin_main_sha(self) -> str:
+            return base
+
+    class Client:
+        def __init__(self) -> None:
+            self.branch = "main"
+            self.calls: list[tuple[str, ...]] = []
+
+        def run(self, *args: str, cwd: Path | None = None) -> str:
+            del cwd
+            self.calls.append(args)
+            if args == ("branch", "--show-current"):
+                return self.branch
+            if args == ("status", "--porcelain=v1", "--untracked-files=all"):
+                return ""
+            if args[:2] == ("checkout", "--detach"):
+                self.branch = ""
+                return ""
+            if args[:1] == ("update-ref",):
+                raise AdapterCommandError(CommandResult(args, 1, "", "CAS race", False))
+            if args == ("switch", "main"):
+                self.branch = "main"
+                return ""
+            raise AssertionError(args)
+
+    query = Query()
+    client = Client()
+    with pytest.raises(CompareAndSwapConflict, match="canonical main park failed"):
+        GitCommands(repo=Path("/repo"), client=client, query=query).park_main_to_origin(
+            expected_local_sha=local, expected_origin_sha=base
+        )
+
+    assert client.branch == "main"
+    assert client.calls[-1] == ("switch", "main")
+
+
+def test_git_commands_park_main_compensates_local_ref_when_origin_drifts() -> None:
+    base = "a" * 40
+    local = "b" * 40
+    drifted_origin = "c" * 40
+
+    class Query:
+        def __init__(self) -> None:
+            self.local = local
+            self.origin = base
+
+        def local_main_sha(self) -> str:
+            return self.local
+
+        def origin_main_sha(self) -> str:
+            return self.origin
+
+    class Client:
+        def __init__(self, query: Query) -> None:
+            self.query = query
+            self.branch = "main"
+            self.update_count = 0
+
+        def run(self, *args: str, cwd: Path | None = None) -> str:
+            del cwd
+            if args == ("branch", "--show-current"):
+                return self.branch
+            if args == ("status", "--porcelain=v1", "--untracked-files=all"):
+                return ""
+            if args[:2] == ("checkout", "--detach"):
+                self.branch = ""
+                return ""
+            if args[:1] == ("update-ref",):
+                self.update_count += 1
+                if self.update_count == 1:
+                    self.query.local = base
+                    self.query.origin = drifted_origin
+                else:
+                    assert args == (
+                        "update-ref",
+                        "refs/heads/main",
+                        local,
+                        base,
+                    )
+                    self.query.local = local
+                return ""
+            if args == ("switch", "main"):
+                self.branch = "main"
+                return ""
+            raise AssertionError(args)
+
+    query = Query()
+    client = Client(query)
+    with pytest.raises(CompareAndSwapConflict, match="CAS precondition failed"):
+        GitCommands(repo=Path("/repo"), client=client, query=query).park_main_to_origin(
+            expected_local_sha=local, expected_origin_sha=base
+        )
+
+    assert client.branch == "main"
+    assert client.update_count == 2
+    assert query.local == local
+    assert query.origin == drifted_origin

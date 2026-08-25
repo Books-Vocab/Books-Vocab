@@ -886,6 +886,36 @@ class DeliveryApplication:
         warnings = self._operation_telemetry().after_sync(result)
         return {"sync": result, "telemetry_warnings": warnings}
 
+    def reconcile_main(
+        self,
+        *,
+        expected_local_head: str,
+        expected_origin_head: str,
+        preservation_branch: str,
+        preservation_path: Path,
+        owner_thread_id: str,
+        external_id: str,
+        operator: str,
+        reason: str,
+    ) -> object:
+        """Preserve one owner-bound local tip before a canonical-main CAS park."""
+
+        return sync_main.MainPreservationService(
+            canonical_path=self.repo,
+            query=self.git,
+            command=self.git,
+            registry=self.registry,
+        ).preserve(
+            expected_local_head=expected_local_head,
+            expected_origin_head=expected_origin_head,
+            preservation_branch=preservation_branch,
+            preservation_path=preservation_path,
+            owner_thread_id=owner_thread_id,
+            external_id=external_id,
+            operator=operator,
+            reason=reason,
+        )
+
     def _receipt_from_pr(self, number: int) -> models.HandbackReceipt:
         return parse_pull_request_body(self.github.get_pull_request(number).body)
 
