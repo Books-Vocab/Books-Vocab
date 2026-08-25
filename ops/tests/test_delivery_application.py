@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from dataclasses import fields
+from dataclasses import fields, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -75,6 +75,11 @@ def test_admit_candidate_retries_an_already_converged_candidate_without_mutation
         reason="Issue has an exact typed candidate contract and no active mapping",
         candidate_spec=spec,
     )
+    adapter_result = replace(
+        issue,
+        disposition=IssueDisposition.TRIAGE_REQUIRED,
+        reason="open Issue has not been triaged",
+    )
 
     class GitHub:
         def __init__(self) -> None:
@@ -88,7 +93,7 @@ def test_admit_candidate_retries_an_already_converged_candidate_without_mutation
 
         def admit_candidate(self, **_kwargs: object) -> DemandIssue:
             self.admission_calls += 1
-            return issue
+            return adapter_result
 
     github = GitHub()
     registry = Mock()
@@ -106,7 +111,10 @@ def test_admit_candidate_retries_an_already_converged_candidate_without_mutation
     with patch.object(
         DeliveryApplication,
         "inspect",
-        return_value=SimpleNamespace(demand_issues=inventory),
+        side_effect=(
+            SimpleNamespace(demand_issues=inventory),
+            SimpleNamespace(demand_issues=inventory),
+        ),
     ):
         result = application.admit_candidate(
             issue_number=7,
@@ -118,6 +126,190 @@ def test_admit_candidate_retries_an_already_converged_candidate_without_mutation
         )
 
     assert result is issue
+    assert github.admission_calls == 1
+
+
+def test_admit_candidate_returns_full_projection_after_new_admission(
+    tmp_path: Path,
+) -> None:
+    spec = CandidateSpec(
+        severity=CandidateSeverity.P2,
+        priority=7,
+        scope=Scope.from_paths(
+            modify=("backend/tests/test_sync_merge_concurrency.py",)
+        ),
+        acceptance=("The admission readback is dispatchable.",),
+    )
+    original_body = "Current Issue report"
+    candidate_body = render_candidate_body(spec, original_body=original_body)
+    initial_issue = DemandIssue(
+        number=1348,
+        url="https://github.com/owner/repo/issues/1348",
+        node_id="I_1348",
+        title="Issue 1348",
+        labels=(),
+        body=original_body,
+        updated_at=datetime.fromisoformat("2026-08-21T02:17:01+00:00"),
+        body_sha256=issue_body_sha256(original_body),
+    )
+    projected_issue = DemandIssue(
+        number=1348,
+        url=initial_issue.url,
+        node_id=initial_issue.node_id,
+        title=initial_issue.title,
+        labels=(CANDIDATE_ISSUE_LABEL,),
+        body=candidate_body,
+        updated_at=initial_issue.updated_at,
+        body_sha256=issue_body_sha256(candidate_body),
+        disposition=IssueDisposition.DISPATCHABLE_CANDIDATE,
+        reason="Issue has an exact typed candidate contract and no active mapping",
+        candidate_spec=spec,
+    )
+    adapter_result = replace(
+        projected_issue,
+        disposition=IssueDisposition.TRIAGE_REQUIRED,
+        reason="open Issue has not been triaged",
+    )
+
+    class GitHub:
+        def __init__(self) -> None:
+            self.admission_calls = 0
+
+        def list_open_pull_requests(self) -> PullRequestInventory:
+            return PullRequestInventory(records=())
+
+        def changed_paths(self, _number: int) -> tuple[str, ...]:
+            return ()
+
+        def admit_candidate(self, **_kwargs: object) -> DemandIssue:
+            self.admission_calls += 1
+            return adapter_result
+
+    github = GitHub()
+    registry = Mock()
+    registry.list_collision_claims.return_value = RegistryCollisionInventory(records=())
+    application = DeliveryApplication(
+        repo=tmp_path,
+        git=Mock(),
+        github=github,
+        registry=registry,
+        runtime=Mock(),
+        telemetry=Mock(),
+    )
+    initial_inventory = DemandIssueInventory(records=(initial_issue,), raw_count=1)
+    projected_inventory = DemandIssueInventory(records=(projected_issue,), raw_count=1)
+
+    with patch.object(
+        DeliveryApplication,
+        "inspect",
+        side_effect=(
+            SimpleNamespace(demand_issues=initial_inventory),
+            SimpleNamespace(demand_issues=projected_inventory),
+        ),
+    ) as inspect:
+        result = application.admit_candidate(
+            issue_number=1348,
+            expected_updated_at=initial_issue.updated_at,
+            expected_body_sha256=initial_issue.body_sha256,
+            spec=spec,
+            triage_reason="bounded current-main admission",
+            operator="user",
+        )
+
+    assert result is projected_issue
+    assert result.disposition is IssueDisposition.DISPATCHABLE_CANDIDATE
+    assert result.candidate_spec == spec
+    assert github.admission_calls == 1
+    assert inspect.call_count == 2
+
+
+def test_admit_candidate_fails_closed_when_projection_does_not_converge(
+    tmp_path: Path,
+) -> None:
+    spec = CandidateSpec(
+        severity=CandidateSeverity.P2,
+        priority=7,
+        scope=Scope.from_paths(
+            modify=("backend/tests/test_sync_merge_concurrency.py",)
+        ),
+        acceptance=("The admission projection must converge.",),
+    )
+    original_body = "Current Issue report"
+    candidate_body = render_candidate_body(spec, original_body=original_body)
+    initial_issue = DemandIssue(
+        number=1348,
+        url="https://github.com/owner/repo/issues/1348",
+        node_id="I_1348",
+        title="Issue 1348",
+        labels=(),
+        body=original_body,
+        updated_at=datetime.fromisoformat("2026-08-21T02:17:01+00:00"),
+        body_sha256=issue_body_sha256(original_body),
+    )
+    drifted_issue = DemandIssue(
+        number=1348,
+        url=initial_issue.url,
+        node_id=initial_issue.node_id,
+        title=initial_issue.title,
+        labels=(CANDIDATE_ISSUE_LABEL,),
+        body=candidate_body,
+        updated_at=initial_issue.updated_at,
+        body_sha256=issue_body_sha256(candidate_body),
+        reason="open Issue has not been triaged",
+        candidate_spec=spec,
+    )
+
+    class GitHub:
+        def __init__(self) -> None:
+            self.admission_calls = 0
+
+        def list_open_pull_requests(self) -> PullRequestInventory:
+            return PullRequestInventory(records=())
+
+        def changed_paths(self, _number: int) -> tuple[str, ...]:
+            return ()
+
+        def admit_candidate(self, **_kwargs: object) -> DemandIssue:
+            self.admission_calls += 1
+            return drifted_issue
+
+    github = GitHub()
+    registry = Mock()
+    registry.list_collision_claims.return_value = RegistryCollisionInventory(records=())
+    application = DeliveryApplication(
+        repo=tmp_path,
+        git=Mock(),
+        github=github,
+        registry=registry,
+        runtime=Mock(),
+        telemetry=Mock(),
+    )
+    initial_inventory = DemandIssueInventory(records=(initial_issue,), raw_count=1)
+    drifted_inventory = DemandIssueInventory(records=(drifted_issue,), raw_count=1)
+
+    with (
+        patch.object(
+            DeliveryApplication,
+            "inspect",
+            side_effect=(
+                SimpleNamespace(demand_issues=initial_inventory),
+                SimpleNamespace(demand_issues=drifted_inventory),
+            ),
+        ),
+        pytest.raises(
+            PolicyViolation,
+            match="admission projection did not converge",
+        ),
+    ):
+        application.admit_candidate(
+            issue_number=1348,
+            expected_updated_at=initial_issue.updated_at,
+            expected_body_sha256=initial_issue.body_sha256,
+            spec=spec,
+            triage_reason="bounded current-main admission",
+            operator="user",
+        )
+
     assert github.admission_calls == 1
 
 
