@@ -107,6 +107,7 @@ struct NotebookSettingsView: View {
                 },
                 onDone: { isLayoutEditorPresented = false }
             )
+            .appAppearanceScheme()
         }
         .enableInjection()
     }
