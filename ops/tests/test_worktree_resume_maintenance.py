@@ -9,21 +9,29 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.domain.models import CheckStatus
+from delivery_control.domain.models import CheckStatus, HandbackReceipt, Scope
 from delivery_control.domain.observations import (
     CheckSnapshot,
     MergeQueueEntrySnapshot,
     PullRequestInventory,
     PullRequestSnapshot,
 )
+from delivery_control.services.pr_contract import render_pull_request_body
 from worktree_reanchor_core.errors import ReanchorRefused
-from worktree_reanchor_core.lifecycle_proof import (
-    verify_resume_lifecycle,
+from worktree_reanchor_core.lifecycle_proof import verify_resume_lifecycle
+from worktree_reanchor_core.resume_domain import (
+    build_request,
+    verify_merged_maintenance_lifecycle,
 )
-from worktree_reanchor_core.resume_domain import build_request
 
 BASE = "1" * 40
 HEAD = "3" * 40
+PARENT = "2" * 40
+LANE = "DIRECT-MERGED-MAINTENANCE"
+BRANCH = "debug/merged-maintenance"
+OWNER = "owner-thread"
+DIGEST = "4" * 64
+SCOPE = Scope.from_paths(modify=("docs/runbook/system.md",))
 
 
 def _pr() -> PullRequestSnapshot:
@@ -38,6 +46,36 @@ def _pr() -> PullRequestSnapshot:
         mergeable=True,
         node_id="PR_1468",
         body="typed handback",
+    )
+
+
+def _merged_pr(*, body: str | None = None) -> PullRequestSnapshot:
+    receipt = HandbackReceipt(
+        lane_id=LANE,
+        owner_thread_id=OWNER,
+        claim_generation=0,
+        branch=BRANCH,
+        worktree_path="/tmp/merged-maintenance-source",
+        base_sha=BASE,
+        parent_sha=PARENT,
+        head_sha=HEAD,
+        origin_main_sha=BASE,
+        content_digest=DIGEST,
+        scope=SCOPE,
+    )
+    return PullRequestSnapshot(
+        number=1591,
+        url="https://example.test/pull/1591",
+        branch=BRANCH,
+        base_sha=BASE,
+        head_sha=HEAD,
+        state="MERGED",
+        draft=False,
+        mergeable=True,
+        base_branch="main",
+        node_id="PR_1591",
+        merged_at=datetime(2026, 8, 25, tzinfo=UTC),
+        body=body if body is not None else render_pull_request_body(receipt),
     )
 
 
@@ -99,6 +137,62 @@ def test_maintenance_resume_rejects_missing_required_observation() -> None:
             expected_base_sha=BASE,
             expected_remote_head=HEAD,
             require_failed=False,
+        )
+
+
+def test_merged_maintenance_accepts_only_exact_typed_proof() -> None:
+    proof = verify_merged_maintenance_lifecycle(
+        _merged_pr(),
+        lane_id=LANE,
+        branch=BRANCH,
+        owner_thread_id=OWNER,
+        claim_generation=0,
+        expected_remote_head=HEAD,
+        previous_handback=HEAD,
+        recorded_base_sha=BASE,
+        published_base_sha=BASE,
+        source_parent_sha=PARENT,
+        declared_scope=(("docs/runbook/system.md", "modify"),),
+        handback_digest=DIGEST,
+    )
+
+    assert proof.action == "reconcile-merged-maintenance"
+    assert proof.verdict == "terminal-reconciliation-ready"
+    assert proof.pr_number == 1591
+    assert proof.head_sha == HEAD
+
+
+def test_merged_maintenance_missing_typed_proof_is_blocked() -> None:
+    with pytest.raises(ReanchorRefused, match="typed delivery receipt"):
+        verify_merged_maintenance_lifecycle(
+            _merged_pr(body="merged without receipt"),
+            lane_id=LANE,
+            branch=BRANCH,
+            owner_thread_id=OWNER,
+            claim_generation=0,
+            expected_remote_head=HEAD,
+            previous_handback=HEAD,
+            recorded_base_sha=BASE,
+            published_base_sha=BASE,
+            source_parent_sha=PARENT,
+            declared_scope=(("docs/runbook/system.md", "modify"),),
+            handback_digest=DIGEST,
+        )
+
+
+def test_same_head_required_failure_resume_remains_blocked(tmp_path: Path) -> None:
+    with pytest.raises(ReanchorRefused, match="different current remote HEAD"):
+        build_request(
+            repo=tmp_path,
+            state_path=tmp_path / "registry.json",
+            lane_id="DIRECT-TEST",
+            branch="feat/test",
+            owner_thread_id="owner",
+            claim_generation=0,
+            expected_remote_head=HEAD,
+            previous_handback=HEAD,
+            target=tmp_path / "worktree",
+            mode="required-failure",
         )
 
 
