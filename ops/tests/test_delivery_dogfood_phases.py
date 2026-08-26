@@ -1,3 +1,5 @@
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import sys
@@ -128,6 +130,61 @@ def test_pilot_without_candidate_is_supply_blocked_not_healthy() -> None:
     assert "healthy" not in readiness.next_actions
 
 
+def test_pilot_accepts_an_explicit_direct_assignment_without_candidate() -> None:
+    metrics = _metrics(
+        candidate_issues=0,
+        dispatchable_candidate_issues=0,
+        raw_open_issues=54,
+        unadmitted_open_issues=54,
+    )
+
+    readiness = assess_phase_readiness(
+        _base(metrics),
+        mode="pilot",
+        direct_assignment_available=True,
+    )
+
+    assert readiness.ready is True
+    assert readiness.pilot_ready is True
+    assert readiness.direct_assignment_available is True
+    assert readiness.dispatchable_candidate_issues == 0
+    assert "triage_existing_issues" in readiness.next_actions
+
+
+def test_pilot_keeps_existing_reservoir_and_known_worktrees_observational() -> None:
+    metrics = _metrics(
+        active_development=2,
+        open_prs=10,
+        handbacks_publishable=1,
+        published_local_cleanup=1,
+    )
+    base = replace(
+        _base(metrics),
+        blockers=(
+            "pre-dogfood development lanes remain",
+            "pre-dogfood handbacks remain local",
+            "owner-mapped PR reservoir is not empty",
+            "physical worktree baseline is not canonical-main only",
+        ),
+    )
+
+    readiness = assess_phase_readiness(base, mode="pilot")
+
+    assert readiness.ready is True
+    assert readiness.global_freeze is False
+    assert "pre-dogfood development lanes remain" not in readiness.lane_blockers
+    assert "pre-dogfood handbacks remain local" not in readiness.lane_blockers
+    assert "owner-mapped PR reservoir is not empty" not in readiness.lane_blockers
+    assert (
+        "physical worktree baseline is not canonical-main only"
+        not in readiness.lane_blockers
+    )
+    assert (
+        "durable PR reservoir remains (10); it is not a global freeze"
+        in readiness.warnings
+    )
+
+
 def test_global_source_uncertainty_freezes_pilot() -> None:
     metrics = _metrics(
         source_problems=1,
@@ -207,7 +264,34 @@ def test_phase_result_is_additive_json_and_observation_not_authorization() -> No
     assert isinstance(payload, dict)
     assert payload["schema"] == "kg.delivery.dogfood-readiness.v2"
     assert payload["dispatch_authorized"] is False
+    assert payload["direct_assignment_available"] is False
     assert payload["mode"] == "pilot"
+
+
+def test_cli_projects_direct_assignment_as_observation_only() -> None:
+    metrics = _metrics(
+        candidate_issues=0,
+        dispatchable_candidate_issues=0,
+        raw_open_issues=54,
+        unadmitted_open_issues=54,
+    )
+
+    class FakeApplication:
+        def dogfood_preflight(
+            self, *, supervision_worktree_paths: tuple[Path, ...]
+        ) -> DogfoodReadiness:
+            assert supervision_worktree_paths == ()
+            return _base(metrics)
+
+    args = _parser().parse_args(
+        ["dogfood-preflight", "--mode", "pilot", "--direct-assignment"]
+    )
+    result = run_command(args, FakeApplication())
+
+    assert result.ready is True
+    assert result.pilot_ready is True
+    assert result.direct_assignment_available is True
+    assert result.dispatch_authorized is False
 
 
 def test_cli_projects_explicit_pilot_mode_without_granting_authority() -> None:

@@ -75,6 +75,7 @@ class PhaseDogfoodReadiness:
     metrics: PipelineMetrics
     cadence: MergeCadence
     profile: DogfoodProfile
+    direct_assignment_available: bool = False
     dispatch_authorized: bool = field(default=False, init=False)
     schema: str = field(default=PHASE_READINESS_SCHEMA, init=False)
 
@@ -94,6 +95,15 @@ _GLOBAL_BLOCKER_TEXT = frozenset(
         "explicit P0/P1/security hold scope is global or unknown",
         "canonical worktree is missing",
         "canonical worktree baseline is unavailable",
+    }
+)
+
+_OBSERVATION_ONLY_BLOCKER_TEXT = frozenset(
+    {
+        "pre-dogfood development lanes remain",
+        "pre-dogfood handbacks remain local",
+        "owner-mapped PR reservoir is not empty",
+        "physical worktree baseline is not canonical-main only",
     }
 )
 
@@ -159,9 +169,9 @@ def _lane_blockers(
     metrics = base.metrics
     blockers: list[str] = []
     for blocker in base.blockers:
-        if blocker not in _GLOBAL_BLOCKER_TEXT and (
-            blocker != "physical worktree baseline is not canonical-main only"
-            or base.canonical_worktree_present
+        if (
+            blocker not in _GLOBAL_BLOCKER_TEXT
+            and blocker not in _OBSERVATION_ONLY_BLOCKER_TEXT
         ):
             _append_unique(blockers, blocker)
     if (metrics.actionable_blocked_lanes or 0) > 0:
@@ -412,6 +422,7 @@ def assess_phase_readiness(
         metrics=metrics,
         cadence=base.cadence,
         profile=base.profile,
+        direct_assignment_available=direct_assignment_available,
     )
 
 

@@ -212,6 +212,14 @@ def _parser() -> argparse.ArgumentParser:
             "this flag belongs after dogfood-preflight and never grants mutation authority"
         ),
     )
+    dogfood.add_argument(
+        "--direct-assignment",
+        action="store_true",
+        help=(
+            "observe an already-authorized bounded direct-assignment packet; "
+            "this never creates a lane or grants mutation authority"
+        ),
+    )
     watchdog = commands.add_parser(
         "watchdog",
         help="read liveness and return a non-dispatching wake decision",
@@ -508,7 +516,11 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
                 window=timedelta(hours=1),
             )
             base_readiness = replace(base_readiness, cadence=cadence)
-        return assess_phase_readiness(base_readiness, mode=selected_mode)
+        return assess_phase_readiness(
+            base_readiness,
+            mode=selected_mode,
+            direct_assignment_available=bool(getattr(args, "direct_assignment", False)),
+        )
     if args.command == "watchdog":
         if args.runtime_status_file is None:
             raise DeliveryContractError("watchdog requires --runtime-status-file")
