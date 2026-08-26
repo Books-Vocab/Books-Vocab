@@ -57,7 +57,7 @@ def test_agent_review_rejects_hard_findings_but_accepts_nonblocking_review() -> 
     assert "P(0|1)" in source
     assert "security" in source
     assert "blocker_evidence" in source
-    assert 'review_evidence" -gt 0 || "$reaction_evidence" -gt 0' in source
+    assert 'review_evidence" -gt 0 || "$reviewed_issue_evidence" -gt 0' in source
     assert "P2" not in source
 
 
@@ -80,3 +80,11 @@ def test_agent_review_emits_trusted_workflow_run_provenance() -> None:
     assert "external_id" in source
     assert "kg.agent-review.v1" in source
     assert "details_url" in source
+
+
+def test_agent_review_accepts_exact_head_codex_issue_comment() -> None:
+    source = _workflow()
+
+    assert "issues/$PR_NUMBER/comments" in source
+    assert "Reviewed commit" in source
+    assert "reviewed_issue_evidence" in source
