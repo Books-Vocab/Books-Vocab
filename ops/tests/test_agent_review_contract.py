@@ -18,7 +18,15 @@ def test_agent_review_runs_from_trusted_events_only() -> None:
     assert "pull_request_review_comment:" in source
     assert "issue_comment:" in source
     assert "\n  pull_request:\n" not in source
-    assert "actions/checkout" not in source
+    assert (
+        "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1" in source
+    )
+    assert (
+        "astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1"
+        in source
+    )
+    assert "ref: ${{ github.event.repository.default_branch }}" in source
+    assert "github.event.pull_request.head.sha" not in source
     assert "github.event.comment.body, '@codex review'" in source
 
 

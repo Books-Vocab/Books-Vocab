@@ -34,6 +34,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
+      # The repository workflow contract requires pinned actions.  Only the
+      # trusted default branch is checked out; no pull-request ref is ever
+      # executed by this workflow.  setup-uv is pinned for the same supply
+      # chain contract even though this evidence-only job uses shell tooling.
+      - name: Check out trusted default branch metadata
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+      - name: Set up pinned uv runtime
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: false
       - name: Evaluate exact-head independent review evidence
         env:
           GH_TOKEN: ${{ github.token }}
