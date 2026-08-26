@@ -9,12 +9,12 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.adapters.errors import AdapterPayloadError
-from delivery_control.adapters.github_checks import GitHubChecks
-from delivery_control.adapters.github_client import GitHubCliClient
-from delivery_control.domain.models import CheckStatus
-from delivery_control.domain.observations import PullRequestSnapshot
-from delivery_control.ports.process import CommandResult
+from delivery_control.adapters.errors import AdapterPayloadError  # noqa: E402
+from delivery_control.adapters.github_checks import GitHubChecks  # noqa: E402
+from delivery_control.adapters.github_client import GitHubCliClient  # noqa: E402
+from delivery_control.domain.models import CheckStatus  # noqa: E402
+from delivery_control.domain.observations import PullRequestSnapshot  # noqa: E402
+from delivery_control.ports.process import CommandResult  # noqa: E402
 
 HEAD = "a" * 40
 BASE = "b" * 40
@@ -236,6 +236,57 @@ def test_live_required_snapshot_uses_latest_duplicate_required_context() -> None
 
     assert snapshot.status is CheckStatus.SUCCESS
     assert snapshot.names == ("agent-review", "required")
+
+
+def test_live_required_snapshot_normalizes_exact_zero_check_result() -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("gh", "pr", "checks"),
+                1,
+                "no checks reported on the 'feat/12' branch\n",
+                "",
+            ),
+        ]
+    )
+
+    snapshot = _checks(runner).required_snapshot(12)
+
+    assert snapshot.status is CheckStatus.ABSENT
+    assert snapshot.names == ()
+    assert snapshot.head_sha == HEAD
+
+
+def test_live_required_snapshot_rejects_zero_check_branch_drift() -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("gh", "pr", "checks"),
+                1,
+                "no checks reported on the 'different-branch' branch\n",
+                "",
+            ),
+        ]
+    )
+
+    with pytest.raises(AdapterPayloadError, match="zero-result branch"):
+        _checks(runner).required_snapshot(12)
+
+
+def test_live_required_snapshot_rejects_non_contract_non_json_result() -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("gh", "pr", "checks"),
+                1,
+                "no checks were found",
+                "",
+            ),
+        ]
+    )
+
+    with pytest.raises(AdapterPayloadError, match="invalid JSON"):
+        _checks(runner).required_snapshot(12)
 
 
 @pytest.mark.parametrize(

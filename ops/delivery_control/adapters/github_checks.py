@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 
@@ -12,6 +14,8 @@ from .errors import AdapterPayloadError
 from .github_client import GitHubCliClient
 from .github_required_batch import batch_required_snapshots
 from .timestamps import parse_optional_timestamp
+
+_NO_REQUIRED_CHECKS_RE = re.compile(r"no checks reported on the '([^'\n]+)' branch")
 
 
 def _status_from_states(states: set[str]) -> CheckStatus:
@@ -64,18 +68,31 @@ class GitHubChecks:
     def _required_snapshot_live(
         self, number: int, *, before: PullRequestSnapshot
     ) -> CheckSnapshot:
-        payload = self.client.load_json(
-            (
-                "gh",
-                "pr",
-                "checks",
-                str(number),
-                "--required",
-                "--json",
-                "name,state,startedAt,completedAt",
-            ),
-            allow_nonzero=True,
+        argv = (
+            "gh",
+            "pr",
+            "checks",
+            str(number),
+            "--required",
+            "--json",
+            "name,state,startedAt,completedAt",
         )
+        output = self.client.run(argv, allow_nonzero=True)
+        empty_result = _NO_REQUIRED_CHECKS_RE.fullmatch(output)
+        if empty_result is not None:
+            if empty_result.group(1) != before.branch:
+                raise AdapterPayloadError(
+                    "GitHub required checks zero-result branch does not match "
+                    "the exact PR"
+                )
+            payload: object = []
+        else:
+            try:
+                payload = json.loads(output)
+            except json.JSONDecodeError as error:
+                raise AdapterPayloadError(
+                    f"invalid JSON from {' '.join(argv)}"
+                ) from error
         if not isinstance(payload, list):
             raise AdapterPayloadError("GitHub required checks must be a JSON list")
         observations: dict[str, tuple[str, datetime | None, datetime | None, int]] = {}
