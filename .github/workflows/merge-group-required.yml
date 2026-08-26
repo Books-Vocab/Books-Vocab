@@ -9,6 +9,8 @@ on:
 
 permissions:
   contents: read
+  checks: read
+  pull-requests: read
 
 concurrency:
   group: merge-group-required-${{ github.event.merge_group.head_sha || github.run_id }}
@@ -41,3 +43,86 @@ jobs:
 
       - name: Run short repository gate
         run: ./ops/test_ops.sh docs-lint worktree context-routing github-workflows delivery-control
+
+  agent-review:
+    name: agent-review
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verify exact queued PR has independent review evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          MERGE_GROUP_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$MERGE_GROUP_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "merge-group HEAD is not an exact commit SHA" >&2
+            exit 1
+          fi
+
+          head_ref="${MERGE_GROUP_HEAD_REF:-$GITHUB_REF}"
+          pr_number="$(sed -nE 's#.*\/pr-([0-9]+)([-/].*)?$#\1#p' <<<"$head_ref")"
+          if [[ ! "$pr_number" =~ ^[0-9]+$ ]]; then
+            echo "merge-group ref does not identify exactly one PR: $head_ref" >&2
+            exit 1
+          fi
+
+          owner="${REPOSITORY%%/*}"
+          repository_name="${REPOSITORY#*/}"
+          if [[ -z "$owner" || -z "$repository_name" || "$owner" == "$REPOSITORY" ]]; then
+            echo "repository identity is malformed: $REPOSITORY" >&2
+            exit 1
+          fi
+
+          merge_queue_query='query($owner:String!,$name:String!,$branch:String!){repository(owner:$owner,name:$name){mergeQueue(branch:$branch){entries(first:10){nodes{headCommit{oid} pullRequest{number headRefOid baseRefName state} solo state}}}}}'
+          queue_json="$(gh api graphql \
+            -f query="$merge_queue_query" \
+            -F owner="$owner" \
+            -F name="$repository_name" \
+            -F branch=main)"
+          queue_entry="$(jq -c \
+            --arg group_sha "$MERGE_GROUP_HEAD_SHA" \
+            --argjson number "$pr_number" \
+            '[.data.repository.mergeQueue.entries.nodes[]? | select(.headCommit.oid == $group_sha and .pullRequest.number == $number and .solo == true)] | if length == 1 then .[0] else empty end' \
+            <<<"$queue_json")"
+          if [[ -z "$queue_entry" ]]; then
+            echo "merge-group must map to exactly one solo queued PR" >&2
+            exit 1
+          fi
+
+          queued_head_sha="$(jq -r '.pullRequest.headRefOid // empty' <<<"$queue_entry")"
+          if [[ ! "$queued_head_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "queued PR HEAD is not an exact commit SHA" >&2
+            exit 1
+          fi
+
+          pr_json="$(gh api "repos/$REPOSITORY/pulls/$pr_number")"
+          pr_state="$(jq -r '.state // empty' <<<"$pr_json")"
+          pr_base="$(jq -r '.base.ref // empty' <<<"$pr_json")"
+          pr_head_sha="$(jq -r '.head.sha // empty' <<<"$pr_json")"
+          if [[ "$pr_state" != "open" || "$pr_base" != "main" ]]; then
+            echo "queued PR is not an open main-target PR" >&2
+            exit 1
+          fi
+          if [[ "$pr_head_sha" != "$queued_head_sha" ]]; then
+            echo "queued PR HEAD drifted while evaluating merge-group evidence" >&2
+            exit 1
+          fi
+
+          checks_json="$(gh api \
+            "repos/$REPOSITORY/commits/$pr_head_sha/check-runs?per_page=100" \
+            -H 'Accept: application/vnd.github+json')"
+          review_count="$(jq -r \
+            --arg head_sha "$pr_head_sha" \
+            '[.check_runs[]? | select(.name == "agent-review" and .head_sha == $head_sha and .conclusion == "success")] | length' \
+            <<<"$checks_json")"
+          if [[ "$review_count" -lt 1 ]]; then
+            echo "exact queued PR HEAD has no successful agent-review evidence" >&2
+            exit 1
+          fi
+
+          echo "agent-review evidence verified for PR #$pr_number at exact HEAD $pr_head_sha in merge-group $MERGE_GROUP_HEAD_SHA"
