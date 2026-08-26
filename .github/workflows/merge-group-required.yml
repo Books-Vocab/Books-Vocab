@@ -117,7 +117,13 @@ jobs:
             -H 'Accept: application/vnd.github+json')"
           review_state="$(jq -r \
             --arg head_sha "$pr_head_sha" \
-            '[.check_runs[]? | select(.name == "agent-review" and .head_sha == $head_sha)\
+            '[.check_runs[]? | select(\
+                .name == "agent-review"\
+                and .head_sha == $head_sha\
+                and (.external_id // "") == ""\
+                and ((.output.title // "") | startswith("Independent agent review "))\
+                and ((.output.summary // "") | startswith("Exact head \($head_sha) "))\
+              )\
              | {id: (.id // 0), status: (.status // ""), conclusion: (.conclusion // ""),\
                 started_at: (.started_at // ""), completed_at: (.completed_at // "")}\
             ] | sort_by([.started_at, .completed_at, .id]) | last // empty\

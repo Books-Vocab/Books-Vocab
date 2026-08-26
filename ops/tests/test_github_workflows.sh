@@ -212,6 +212,12 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
     || fail "merge-group independent review gate does not select the latest exact-head review run"
   grep -q 'last' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not select the latest exact-head review run"
+  grep -q 'external_id' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not bind evidence to the trusted review check artifact"
+  grep -q 'Independent agent review' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not validate trusted review output"
+  grep -q 'startswith' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not distinguish the trusted review artifact"
   grep -q 'completed|success' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not require completed successful exact-head evidence"
 fi
