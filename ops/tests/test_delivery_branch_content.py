@@ -19,6 +19,8 @@ from delivery_control.domain.branch_content import (  # noqa: E402
     BranchContentReviewPlan,
 )
 from delivery_control.domain.errors import InvalidReceipt  # noqa: E402
+from delivery_control.ports.process import CommandResult  # noqa: E402
+from delivery_control.services.branch_content import BranchContentService  # noqa: E402
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -41,6 +43,22 @@ def _repo(tmp_path: Path) -> tuple[Path, str]:
     _git(repo, "add", ".")
     _git(repo, "commit", "-qm", "base")
     return repo, _git(repo, "rev-parse", "HEAD")
+
+
+def _remote_only_repo(tmp_path: Path) -> tuple[Path, str, str]:
+    repo, base_sha = _repo(tmp_path)
+    remote = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+    _git(repo, "remote", "add", "origin", str(remote))
+    _git(repo, "switch", "-qc", "feat/remote-only")
+    (repo / "remote.py").write_text("value = 1\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "add remote-only feature")
+    remote_head = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "push", "-q", "origin", "HEAD:refs/heads/feat/remote-only")
+    _git(repo, "switch", "main")
+    _git(repo, "branch", "-D", "feat/remote-only")
+    return repo, base_sha, remote_head
 
 
 def test_parse_commit_summaries_preserves_bounded_truncation() -> None:
@@ -86,6 +104,91 @@ def test_git_adapter_returns_unlanded_branch_content_packet(tmp_path: Path) -> N
     assert evidence.changed_paths_truncated is False
     assert evidence.commit_subjects == ("add feature",)
     assert len(evidence.change_fingerprint) == 64
+
+
+def test_git_adapter_inspects_remote_only_branch_at_exact_remote_head(
+    tmp_path: Path,
+) -> None:
+    repo, base_sha, remote_head = _remote_only_repo(tmp_path)
+
+    evidence = GitCliAdapter(repo=repo).inspect_branch_content(
+        branch="feat/remote-only",
+        base_sha=base_sha,
+    )
+
+    assert evidence.complete
+    assert evidence.head_sha == remote_head
+    assert evidence.base_is_ancestor is True
+    assert evidence.ahead_commit_count == 1
+    assert evidence.behind_commit_count == 0
+    assert evidence.changed_paths == ("remote.py",)
+    assert evidence.changed_path_count == 1
+    assert evidence.commit_subjects == ("add remote-only feature",)
+    assert len(evidence.change_fingerprint) == 64
+    assert (
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo),
+                "show-ref",
+                "--verify",
+                "--quiet",
+                "refs/heads/feat/remote-only",
+            ],
+            check=False,
+        ).returncode
+        == 1
+    )
+
+
+def test_git_adapter_missing_remote_branch_remains_structured_incomplete(
+    tmp_path: Path,
+) -> None:
+    repo, base_sha = _repo(tmp_path)
+    remote = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+    _git(repo, "remote", "add", "origin", str(remote))
+
+    evidence = BranchContentService(git=GitCliAdapter(repo=repo)).inspect(
+        branch="feat/missing",
+        base_sha=base_sha,
+    )
+
+    assert evidence.complete is False
+    assert evidence.error is not None
+    assert "not found in local or remote refs" in evidence.error
+
+
+def test_git_adapter_missing_remote_object_remains_structured_incomplete(
+    tmp_path: Path,
+) -> None:
+    base_sha = "a" * 40
+    remote_head = "b" * 40
+    runner = StaticRunner(
+        [
+            CommandResult(("git",), 1, "", ""),
+            CommandResult(
+                ("git",),
+                0,
+                f"{remote_head}\trefs/heads/feat/remote-only\n",
+                "",
+            ),
+            CommandResult(("git",), 128, "", "fatal: missing commit object"),
+        ]
+    )
+
+    evidence = BranchContentService(
+        git=GitCliAdapter(repo=tmp_path, runner=runner)
+    ).inspect(
+        branch="feat/remote-only",
+        base_sha=base_sha,
+    )
+
+    assert evidence.complete is False
+    assert evidence.error is not None
+    assert "command failed" in evidence.error
+    assert all("fetch" not in call for call in runner.calls)
 
 
 def test_git_adapter_bounds_changed_paths_but_keeps_exact_fingerprint(
@@ -176,3 +279,13 @@ def test_branch_review_plan_requires_audit_and_page_consistency() -> None:
             items=plan.items,
             reviewable_complete=True,
         )
+
+
+class StaticRunner:
+    def __init__(self, responses: list[CommandResult]) -> None:
+        self.responses = list(responses)
+        self.calls: list[tuple[str, ...]] = []
+
+    def run(self, argv: tuple[str, ...], *, cwd: Path | None = None) -> CommandResult:
+        self.calls.append(argv)
+        return self.responses.pop(0)
