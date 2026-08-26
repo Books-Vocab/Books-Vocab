@@ -23,6 +23,10 @@ from delivery_control.services.pr_contract import (
 from .errors import ReanchorRefused
 
 REQUIRED_CODE_CONTEXT = ("required",)
+TRUSTED_REQUIRED_CODE_CONTEXT = ("agent-review", "required")
+ACCEPTED_REQUIRED_CODE_CONTEXTS = frozenset(
+    {REQUIRED_CODE_CONTEXT, TRUSTED_REQUIRED_CODE_CONTEXT}
+)
 MERGE_FRONT_POLICY = "lowest-required-green-unheld-pr-number"
 
 
@@ -143,6 +147,8 @@ def _exact_open_pr(
 def _required(
     github: RecoveryGitHubPort,
     pull_request: PullRequestSnapshot,
+    *,
+    allow_combined_context: bool = False,
 ) -> CheckSnapshot:
     check = _read(
         f"PR#{pull_request.number} required check",
@@ -155,7 +161,13 @@ def _required(
             check_head_sha=check.head_sha,
             pull_request_head_sha=pull_request.head_sha,
         )
-    if check.names != REQUIRED_CODE_CONTEXT:
+    normalized_context = tuple(sorted(set(check.names)))
+    accepted_contexts = (
+        ACCEPTED_REQUIRED_CODE_CONTEXTS
+        if allow_combined_context
+        else frozenset({REQUIRED_CODE_CONTEXT})
+    )
+    if normalized_context not in accepted_contexts:
         raise ReanchorRefused(
             "recovery requires the exact required code failure context",
             pull_request=pull_request.number,
@@ -180,7 +192,11 @@ def verify_resume_lifecycle(
         expected_base_sha=expected_base_sha,
         expected_remote_head=expected_remote_head,
     )
-    check = _required(github, pull_request)
+    check = _required(
+        github,
+        pull_request,
+        allow_combined_context=not require_failed,
+    )
     if require_failed and check.status is not CheckStatus.FAILURE:
         raise ReanchorRefused(
             "resume-published is allowed only for an exact required code failure",
@@ -228,7 +244,7 @@ def _eligible_merge_front(
         or receipt.head_sha != pull_request.head_sha
     ):
         return False
-    check = _required(github, pull_request)
+    check = _required(github, pull_request, allow_combined_context=True)
     return check.status is CheckStatus.SUCCESS
 
 
@@ -271,7 +287,11 @@ def verify_reanchor_lifecycle(
         raise ReanchorRefused("reanchor requires the PR to be mergeable")
     if pull_request_holds(candidate):
         raise ReanchorRefused("reanchor refuses a PR with an explicit hard hold")
-    candidate_check = _required(github, candidate)
+    candidate_check = _required(
+        github,
+        candidate,
+        allow_combined_context=True,
+    )
     if candidate_check.status is not CheckStatus.SUCCESS:
         raise ReanchorRefused("reanchor requires an exact required-green PR")
 
