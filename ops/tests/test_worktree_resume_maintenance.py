@@ -9,17 +9,25 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.domain.models import CheckStatus, HandbackReceipt, Scope
-from delivery_control.domain.observations import (
+from delivery_control.domain.models import (  # noqa: E402
+    CheckStatus,
+    HandbackReceipt,
+    Scope,
+)
+from delivery_control.domain.observations import (  # noqa: E402
     CheckSnapshot,
     MergeQueueEntrySnapshot,
     PullRequestInventory,
     PullRequestSnapshot,
 )
-from delivery_control.services.pr_contract import render_pull_request_body
-from worktree_reanchor_core.errors import ReanchorRefused
-from worktree_reanchor_core.lifecycle_proof import verify_resume_lifecycle
-from worktree_reanchor_core.resume_domain import (
+from delivery_control.services.pr_contract import render_pull_request_body  # noqa: E402
+from worktree_reanchor_core.errors import ReanchorRefused  # noqa: E402
+from worktree_reanchor_core.lifecycle_proof import (  # noqa: E402
+    verify_resume_lifecycle,
+)
+from worktree_reanchor_core import resume_transaction  # noqa: E402
+from worktree_reanchor_core.domain import RegistryPreflight  # noqa: E402
+from worktree_reanchor_core.resume_domain import (  # noqa: E402
     build_request,
     verify_merged_maintenance_lifecycle,
 )
@@ -138,6 +146,84 @@ def test_maintenance_resume_rejects_missing_required_observation() -> None:
             expected_remote_head=HEAD,
             require_failed=False,
         )
+
+
+def test_perform_resume_allows_same_head_maintenance_for_open_pr(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    candidate = _pr()
+    github = FakeGitHub(_check(CheckStatus.SUCCESS))
+    github.all_for_branch = (candidate,)
+    preflight = RegistryPreflight(
+        original={
+            "base": BASE,
+            "base_sha": BASE,
+            "path": str(tmp_path / "released"),
+        },
+        fingerprint="fingerprint",
+        base_sha=BASE,
+        published_base_sha=BASE,
+        declared=(("docs/runbook/system.md", "modify"),),
+    )
+
+    monkeypatch.setattr(
+        resume_transaction.git_ops, "validate_repository", lambda _: None
+    )
+    monkeypatch.setattr(
+        resume_transaction.git_ops, "_git", lambda *_args, **_kwargs: (0, "")
+    )
+    monkeypatch.setattr(
+        resume_transaction.registry_ops,
+        "preflight_resume",
+        lambda **_: preflight,
+    )
+    monkeypatch.setattr(
+        resume_transaction.lifecycle_proof,
+        "build_github",
+        lambda *_args, **_kwargs: github,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops,
+        "validate_released_assets",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops,
+        "ensure_exact_source",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops,
+        "provision_exact",
+        lambda *_args, **_kwargs: HEAD,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops,
+        "verify_remote_head",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        resume_transaction.registry_ops,
+        "register_resumed",
+        lambda **_: {"claim_generation": 1},
+    )
+
+    payload = resume_transaction.perform_resume(
+        repo=tmp_path,
+        state_path=tmp_path / "registry.json",
+        lane_id="DIRECT-TEST",
+        branch=candidate.branch,
+        owner_thread_id="owner-thread",
+        claim_generation=0,
+        expected_remote_head=HEAD,
+        target=tmp_path / "target",
+        previous_handback=HEAD,
+        mode="maintenance",
+    )
+
+    assert payload["status"] == "ready-for-owner-fix"
+    assert payload["mode"] == "maintenance"
+    assert payload["head"] == HEAD
 
 
 def test_merged_maintenance_accepts_only_exact_typed_proof() -> None:
