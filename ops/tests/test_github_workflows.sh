@@ -204,8 +204,15 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
   fi
   grep -q 'pullRequest.headRefOid' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not bind queue membership to the PR head ref"
-  grep -q 'solo == true' "$MERGE_GROUP_REQUIRED" \
-    || fail "merge-group independent review gate does not fail closed for grouped entries"
+  if grep -q 'solo == true' "$MERGE_GROUP_REQUIRED"; then
+    fail "merge-group independent review gate incorrectly rejects grouped entries"
+  fi
+  grep -q 'group_pr_numbers' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not enumerate grouped PRs"
+  grep -q 'target_position' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not bound group membership by queue position"
+  grep -q 'for group_pr_number in' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not validate each grouped PR"
   grep -q 'check-runs' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not read PR check evidence"
   grep -q 'sort_by' "$MERGE_GROUP_REQUIRED" \
@@ -214,12 +221,20 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
     || fail "merge-group independent review gate does not select the latest exact-head review run"
   grep -q 'external_id' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not bind evidence to the trusted review check artifact"
+  grep -q 'details_url' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not bind evidence to a workflow run"
+  grep -q 'workflow_id' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not verify trusted workflow identity"
+  grep -q 'agent-review.yml' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not identify the trusted workflow"
   grep -q 'Independent agent review' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not validate trusted review output"
   grep -q 'startswith' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not distinguish the trusted review artifact"
-  grep -q 'completed|success' "$MERGE_GROUP_REQUIRED" \
-    || fail "merge-group independent review gate does not require completed successful exact-head evidence"
+  grep -q '== "completed"' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not require completed exact-head evidence"
+  grep -q '== "success"' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not require successful exact-head evidence"
 fi
 
 # Keep Actions on the Node 24 generation.  Pinned SHAs preserve supply-chain
