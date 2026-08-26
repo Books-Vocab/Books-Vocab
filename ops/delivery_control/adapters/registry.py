@@ -12,6 +12,7 @@ from ..domain.observations import (
     RegistrySnapshot,
 )
 from ..ports.process import CommandRunnerPort
+from ..ports.registry import LegacyTerminalClaim
 from .registry_command import (
     discard_registry,
     record_published_base,
@@ -84,7 +85,9 @@ class RegistryCliAdapter:
             claim_generation=claim_generation,
         )
 
-    def find_terminal_claim(self, *, branch: str) -> RegistrySnapshot | None:
+    def find_terminal_claim(
+        self, *, branch: str
+    ) -> RegistrySnapshot | LegacyTerminalClaim | None:
         return terminal_claim(self._list_payload(), branch=branch)
 
     def resolve(
