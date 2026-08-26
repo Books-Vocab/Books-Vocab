@@ -186,6 +186,25 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
   if grep -Eq 'backend-quality|ops-suite|ios-quality|llm-eval|ui-quality-gate|confidence' <<<"$merge_group_required_block"; then
     fail "merge-group required gate imports slow confidence jobs"
   fi
+  grep -q '^  agent-review:' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group required workflow has no independent review gate"
+  agent_review_block="$(awk '
+    /^  agent-review:/ { in_review=1; next }
+    in_review && /^  [A-Za-z0-9_-]+:/ { exit }
+    in_review { print }
+  ' "$MERGE_GROUP_REQUIRED")"
+  grep -q '^    name: agent-review$' <<<"$agent_review_block" \
+    || fail "merge-group independent review gate does not emit the required context"
+  grep -q 'github.event.merge_group.head_sha' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate is not bound to the merge-group HEAD"
+  grep -q 'mergeQueue' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not read queue membership"
+  grep -q 'solo == true' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not fail closed for grouped entries"
+  grep -q 'check-runs' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not read PR check evidence"
+  grep -q 'agent-review.*conclusion == "success"' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not require successful exact-head evidence"
 fi
 
 # Keep Actions on the Node 24 generation.  Pinned SHAs preserve supply-chain
