@@ -38,7 +38,9 @@ def _json(path: Path) -> dict:
 
 
 def test_catalog_fixed_month_binds_the_calendar_date_without_undefined_symbol() -> None:
-    source = _text(IOS / "BooksAndVocab/Debug/Scenarios/VocabCalendarGridScenarios.swift")
+    source = _text(
+        IOS / "BooksAndVocab/Debug/Scenarios/VocabCalendarGridScenarios.swift"
+    )
 
     assert "calendar.date(from: comps) ?? month" not in source
     assert re.search(
@@ -49,7 +51,9 @@ def test_catalog_fixed_month_binds_the_calendar_date_without_undefined_symbol() 
     )
 
 
-def test_ui_calendar_uses_the_canonical_dense_seed_and_proves_clock_provenance() -> None:
+def test_ui_calendar_uses_the_canonical_dense_seed_and_proves_clock_provenance() -> (
+    None
+):
     launch_source = _text(IOS / "BooksAndVocabUITests/Helpers/UITestAppLaunch.swift")
     seed_source = _text(IOS / "BooksAndVocab/Support/UITestFixtureSeed.swift")
     seed_files = "\n".join(
@@ -61,13 +65,19 @@ def test_ui_calendar_uses_the_canonical_dense_seed_and_proves_clock_provenance()
     assert "case reviewCalendarDense" in launch_source
     assert "-seedFixture:vocabulary:reviewCalendarDense" in launch_source
     assert 'case "vocabulary"' in seed_source
-    assert "FixtureDatasetStore.requireVocabularySeed(for: .reviewCalendarDense)" in seed_files
-    assert len(
-        re.findall(
-            r"fixtures:\s*\[\.authSignedIn,\s*\.reviewCalendarDense\]",
-            ui_test,
+    assert (
+        "FixtureDatasetStore.requireVocabularySeed(for: .reviewCalendarDense)"
+        in seed_files
+    )
+    assert (
+        len(
+            re.findall(
+                r"fixtures:\s*\[\.authSignedIn,\s*\.reviewCalendarDense\]",
+                ui_test,
+            )
         )
-    ) == 2
+        == 2
+    )
     assert "fixtures: [.shellNavigation]" not in ui_test
     assert "reviewCalendar.clock.history_plan.anchor_day" in ui_test
     assert "reviewCalendar.clock.live" in ui_test
@@ -80,7 +90,9 @@ def test_ui_calendar_uses_the_canonical_dense_seed_and_proves_clock_provenance()
 
 
 def test_ui_world_production_composition_has_one_fixture_clock_boundary() -> None:
-    clock = _text(IOS / "BooksAndVocab/Views/Vocabulary/Scenes/ReviewCalendarPresenter.swift")
+    clock = _text(
+        IOS / "BooksAndVocab/Views/Vocabulary/Scenes/ReviewCalendarPresenter.swift"
+    )
     stats = _text(IOS / "BooksAndVocab/Views/Vocabulary/Scenes/StatsPresenter.swift")
     overview = _text(IOS / "BooksAndVocab/Views/Vocabulary/Scenes/OverviewTab.swift")
 
@@ -88,12 +100,21 @@ def test_ui_world_production_composition_has_one_fixture_clock_boundary() -> Non
     assert "uiWorldOrLive" in clock
     assert "ReviewCalendarAccessibility.clock" in clock
     assert "reviewClock" in stats
-    assert "ReviewCalendarClock.live(settings: reviewSettingsStore.settings)" not in stats
+    assert (
+        "ReviewCalendarClock.live(settings: reviewSettingsStore.settings)" not in stats
+    )
     assert "reviewClock: ReviewCalendarClock.uiWorldOrLive" in overview
-    assert "Date()" not in clock.split("static func uiWorldOrLive", 1)[-1].split("var startOfToday", 1)[0]
+    assert (
+        "Date()"
+        not in clock.split("static func uiWorldOrLive", 1)[-1].split(
+            "var startOfToday", 1
+        )[0]
+    )
 
 
-def test_history_plan_geometry_matches_production_timezone_and_real_day_buckets() -> None:
+def test_history_plan_geometry_matches_production_timezone_and_real_day_buckets() -> (
+    None
+):
     plan = _json(ROOT / "ops/demo/ui_world_seed/history_plan.json")
     anchor = date.fromisoformat(plan["anchor_day"])
     zone = ZoneInfo(plan["review_clock_time_zone"])
@@ -120,14 +141,17 @@ def test_history_plan_geometry_matches_production_timezone_and_real_day_buckets(
     # production -10 offset. One explicit plan-owned event crosses the
     # boundary so the UI evidence can prove UTC/local-day conversion.
     boundary_matches = [
-        event for event in history
+        event
+        for event in history
         if all(event.get(key) == value for key, value in boundary.items())
     ]
     assert boundary_matches == [boundary]
     assert all(
         event == boundary
         or datetime.fromisoformat(event["reviewedAt"].replace("Z", "+00:00")).date()
-        == datetime.fromisoformat(event["reviewedAt"].replace("Z", "+00:00")).astimezone(zone).date()
+        == datetime.fromisoformat(event["reviewedAt"].replace("Z", "+00:00"))
+        .astimezone(zone)
+        .date()
         for event in history
     )
 
@@ -149,7 +173,9 @@ def test_p9_fixture_schema_keeps_exact_nested_review_calendar_keys() -> None:
         )
 
 
-def test_canonical_producer_keeps_source_plan_and_both_committed_artifacts_in_lockstep() -> None:
+def test_canonical_producer_keeps_source_plan_and_both_committed_artifacts_in_lockstep() -> (
+    None
+):
     """The plan and shaped spec, not a stale JSON snapshot, own P9 geometry."""
     plan = _json(ROOT / "ops/demo/ui_world_seed/history_plan.json")
     spec = _json(ROOT / "ops/demo/ui_world_seed/scenario_account_spec.json")
@@ -191,9 +217,11 @@ def test_canonical_producer_keeps_source_plan_and_both_committed_artifacts_in_lo
             f"{path}: reviewHistory UTC hours escaped history_plan window "
             f"[{lo},{hi}]: {sorted(set(event_hours))}"
         )
-        assert [event for event in history if all(
-            event.get(key) == value for key, value in boundary.items()
-        )] == [boundary]
+        assert [
+            event
+            for event in history
+            if all(event.get(key) == value for key, value in boundary.items())
+        ] == [boundary]
         current = 0
         cursor = anchor
         while day_counts.get(cursor.isoformat(), 0) > 0:
@@ -233,16 +261,18 @@ def test_canonical_producer_keeps_source_plan_and_both_committed_artifacts_in_lo
         expected_primary_due,
     )
     assert marketing_geometry[:3] == generated_geometry[:3]
-    generated_dense = _json(
-        ROOT / "ops/demo/generated/ios_fixture_dataset.json"
-    )["vocabulary"]["reviewCalendarDense"]
-    marketing_dense = _json(
-        ROOT / "ops/fixtures/ui_worlds/marketing_demo.json"
-    )["vocabulary"]["reviewCalendarDense"]
+    generated_dense = _json(ROOT / "ops/demo/generated/ios_fixture_dataset.json")[
+        "vocabulary"
+    ]["reviewCalendarDense"]
+    marketing_dense = _json(ROOT / "ops/fixtures/ui_worlds/marketing_demo.json")[
+        "vocabulary"
+    ]["reviewCalendarDense"]
     assert generated_dense == marketing_dense
 
 
-def test_generic_emitter_has_only_history_plan_clock_and_explicit_legacy_contract() -> None:
+def test_generic_emitter_has_only_history_plan_clock_and_explicit_legacy_contract() -> (
+    None
+):
     emitter = _text(ROOT / "ops/demo/emit_ios.py")
     clock_module = _text(ROOT / "ops/review_calendar_clock.py")
 
@@ -270,7 +300,9 @@ def test_generated_evidence_metadata_uses_portable_v2_provenance() -> None:
 
 
 def test_p9_swift_decoders_reject_unknown_keys_at_nested_boundaries() -> None:
-    app_seed = _text(IOS / "BooksAndVocab/Support/Fixtures/Core/FixtureDatasetSeeds.swift")
+    app_seed = _text(
+        IOS / "BooksAndVocab/Support/Fixtures/Core/FixtureDatasetSeeds.swift"
+    )
     ui_test = _text(IOS / "BooksAndVocabUITests/FixtureDatasetUITests.swift")
 
     for declaration in (
@@ -344,22 +376,33 @@ def test_installed_fixture_proof_is_app_materialized_and_runner_read_only() -> N
 
 
 def test_review_calendar_render_path_only_reads_cached_proof() -> None:
-    presenter = _text(IOS / "BooksAndVocab/Views/Vocabulary/Scenes/ReviewCalendarPresenter.swift")
+    presenter = _text(
+        IOS / "BooksAndVocab/Views/Vocabulary/Scenes/ReviewCalendarPresenter.swift"
+    )
     store = _text(IOS / "BooksAndVocab/Support/Fixtures/Core/FixtureDatasetStore.swift")
+    resolver = _text(
+        IOS / "BooksAndVocab/Support/Fixtures/Core/FixtureDatasetResolver.swift"
+    )
 
     assert "preparedEvidenceFixtureProofValue" in presenter
     assert "materializeEvidenceFixture" not in presenter
     assert "JSONEncoder" not in presenter
     assert "Data(contentsOf:" not in presenter
-    assert "JSONEncoder" in store
-    prepared_accessor = store.split("static func preparedEvidenceFixtureProofValue()", 1)[1].split("\n    }", 1)[0]
+    assert "JSONEncoder" in resolver
+    assert "materializeEvidenceFixture" in resolver
+    assert "JSONEncoder" not in store
+    prepared_accessor = store.split(
+        "static func preparedEvidenceFixtureProofValue()", 1
+    )[1].split("\n    }", 1)[0]
     assert "JSONEncoder" not in prepared_accessor
     assert "Data(contentsOf:" not in prepared_accessor
     assert "SHA256" not in prepared_accessor
 
 
 def test_empty_day_exposes_selected_state_and_exact_zero_count() -> None:
-    presenter = _text(IOS / "BooksAndVocab/Views/Vocabulary/Scenes/ReviewCalendarPresenter.swift")
+    presenter = _text(
+        IOS / "BooksAndVocab/Views/Vocabulary/Scenes/ReviewCalendarPresenter.swift"
+    )
     page = _text(IOS / "BooksAndVocabUITests/Pages/OverviewPage.swift")
     ui_test = _text(IOS / "BooksAndVocabUITests/FixtureDatasetUITests.swift")
 
@@ -392,7 +435,9 @@ def test_ios_test_fails_closed_when_p9_outer_contract_rejects_sidecar() -> None:
     assert "return 1" in validation_block
 
 
-def test_p9_outer_path_contract_resolves_macos_private_var_alias(tmp_path: Path) -> None:
+def test_p9_outer_path_contract_resolves_macos_private_var_alias(
+    tmp_path: Path,
+) -> None:
     """The outer verdict may retain /var while the validator sees /private/var."""
     workspace = tmp_path / "evidence"
     workspace.mkdir()
@@ -411,7 +456,9 @@ def test_p9_outer_path_contract_resolves_macos_private_var_alias(tmp_path: Path)
     source_commit = "a" * 40
     dataset_sha = "b" * 64
     device = "43FA3E1B-16F8-4144-B17D-53D5E4728FC6"
-    selector = "FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors"
+    selector = (
+        "FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors"
+    )
     record = make_record(
         fixture_id="review-calendar.calendar",
         step_label="calendar",
