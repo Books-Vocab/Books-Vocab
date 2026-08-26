@@ -10,20 +10,24 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.domain.models import CheckStatus, HandbackReceipt, Scope  # noqa: E402
-from delivery_control.domain.observations import (  # noqa: E402
+from delivery_control.domain.models import (
+    CheckStatus,
+    HandbackReceipt,
+    Scope,
+)
+from delivery_control.domain.observations import (
     CheckSnapshot,
     MergeQueueEntrySnapshot,
     PullRequestInventory,
     PullRequestSnapshot,
 )
-from worktree_reanchor_core.errors import ReanchorRefused  # noqa: E402
-from worktree_reanchor_core import git_ops  # noqa: E402
-from worktree_reanchor_core.lifecycle_proof import (  # noqa: E402
+from delivery_control.services.pr_contract import render_pull_request_body
+from worktree_reanchor_core import git_ops
+from worktree_reanchor_core.errors import ReanchorRefused
+from worktree_reanchor_core.lifecycle_proof import (
     verify_reanchor_lifecycle,
     verify_resume_lifecycle,
 )
-from delivery_control.services.pr_contract import render_pull_request_body  # noqa: E402
 
 BASE = "1" * 40
 LIVE = "2" * 40
@@ -176,6 +180,34 @@ def test_resume_lifecycle_accepts_only_exact_open_required_code_failure() -> Non
     assert proof.base_sha == BASE
     assert proof.head_sha == HEAD
     assert proof.required_status is CheckStatus.FAILURE
+
+
+def test_reanchor_lifecycle_accepts_required_green_with_trusted_agent_review_context() -> (
+    None
+):
+    candidate = _pr(42, branch="feat/exact-pr")
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        checks={
+            42: _check(
+                CheckStatus.SUCCESS,
+                names=("agent-review", "required"),
+            )
+        },
+        open_prs=(candidate,),
+    )
+
+    proof = verify_reanchor_lifecycle(
+        github,
+        pull_request_number=42,
+        branch="feat/exact-pr",
+        expected_base_sha=BASE,
+        expected_remote_head=HEAD,
+        live_main_sha=LIVE,
+    )
+
+    assert proof.pull_request_number == 42
+    assert proof.required_status is CheckStatus.SUCCESS
 
 
 @pytest.mark.parametrize(

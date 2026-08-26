@@ -23,6 +23,10 @@ from delivery_control.services.pr_contract import (
 from .errors import ReanchorRefused
 
 REQUIRED_CODE_CONTEXT = ("required",)
+TRUSTED_REQUIRED_CODE_CONTEXT = ("agent-review", "required")
+ACCEPTED_REQUIRED_CODE_CONTEXTS = frozenset(
+    {REQUIRED_CODE_CONTEXT, TRUSTED_REQUIRED_CODE_CONTEXT}
+)
 MERGE_FRONT_POLICY = "lowest-required-green-unheld-pr-number"
 
 
@@ -155,7 +159,7 @@ def _required(
             check_head_sha=check.head_sha,
             pull_request_head_sha=pull_request.head_sha,
         )
-    if check.names != REQUIRED_CODE_CONTEXT:
+    if check.names not in ACCEPTED_REQUIRED_CODE_CONTEXTS:
         raise ReanchorRefused(
             "recovery requires the exact required code failure context",
             pull_request=pull_request.number,
