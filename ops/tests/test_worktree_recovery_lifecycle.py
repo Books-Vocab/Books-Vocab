@@ -226,6 +226,29 @@ def test_maintenance_resume_accepts_combined_required_context() -> None:
     assert proof.required_status is CheckStatus.SUCCESS
 
 
+def test_maintenance_resume_deduplicates_repeated_agent_review_context() -> None:
+    candidate = _pr(42, branch="feat/exact-pr")
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        checks={
+            42: _check(
+                CheckStatus.SUCCESS,
+                names=("agent-review", "agent-review", "required"),
+            )
+        },
+    )
+
+    proof = verify_resume_lifecycle(
+        github,
+        branch="feat/exact-pr",
+        expected_base_sha=BASE,
+        expected_remote_head=HEAD,
+        require_failed=False,
+    )
+
+    assert proof.required_status is CheckStatus.SUCCESS
+
+
 def test_reanchor_lifecycle_accepts_required_green_with_trusted_agent_review_context() -> (
     None
 ):

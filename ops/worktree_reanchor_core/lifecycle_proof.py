@@ -161,12 +161,13 @@ def _required(
             check_head_sha=check.head_sha,
             pull_request_head_sha=pull_request.head_sha,
         )
+    normalized_context = tuple(sorted(set(check.names)))
     accepted_contexts = (
         ACCEPTED_REQUIRED_CODE_CONTEXTS
         if allow_combined_context
         else frozenset({REQUIRED_CODE_CONTEXT})
     )
-    if check.names not in accepted_contexts:
+    if normalized_context not in accepted_contexts:
         raise ReanchorRefused(
             "recovery requires the exact required code failure context",
             pull_request=pull_request.number,
