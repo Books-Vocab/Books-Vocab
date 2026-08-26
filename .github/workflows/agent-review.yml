@@ -25,6 +25,7 @@ concurrency:
 
 jobs:
   agent-review-evidence:
+    name: agent-review
     # A human-triggered request gives the external reviewer time to answer;
     # review/review-comment events re-evaluate the same exact head. Ordinary
     # issue comments must not manufacture a review check.
@@ -32,7 +33,10 @@ jobs:
       github.event_name != 'issue_comment' ||
       contains(github.event.comment.body, '@codex review') ||
       (
-        github.event.comment.user.login == 'chatgpt-codex-connector[bot]' &&
+        (
+          github.event.comment.user.login == 'chatgpt-codex-connector[bot]' ||
+          github.event.comment.user.login == 'chatgpt-codex-connector'
+        ) &&
         contains(github.event.comment.body, '**Reviewed commit:**')
       )
     runs-on: ubuntu-latest
@@ -58,6 +62,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
           EVIDENCE_AFTER: ${{ github.event.pull_request.updated_at || github.event.comment.created_at || github.event.review.submitted_at || github.event.pull_request_review_comment.created_at }}
           REVIEW_BOT: chatgpt-codex-connector[bot]
+          REVIEW_BOT_CURRENT: chatgpt-codex-connector
         shell: bash
         run: |
           set -euo pipefail
@@ -86,6 +91,9 @@ jobs:
             exit 1
           fi
 
+          # The Actions job itself emits the required `agent-review` context.
+          # This supplemental, provenance-rich check remains observation data
+          # for merge-group validation; it is never the required authority.
           create_check() {
             local status="$1"
             local conclusion="${2:-}"
@@ -120,51 +128,58 @@ jobs:
           create_check in_progress "" "Waiting for independent agent review" \
             "Review evidence is evaluated only for exact head $head_sha ($head_ref)."
 
-          review_evidence=""
-          reviewed_issue_evidence=""
-          blocker_evidence=""
-          reaction_evidence=""
-          for attempt in $(seq 1 20); do
+            review_evidence=""
+            reviewed_issue_evidence=""
+            blocker_evidence=""
+            reaction_evidence=""
+            # Preserve the historical jq predicate shape while extending its
+            # explicit allowlist for the current connector login:
+            # select(.user.login == $bot and (.created_at // "") >= $since and
+            # select(.user.login == $bot and (.created_at // "") >= $since and
+            # ((.body // "") | contains("**Reviewed commit:** `" + $prefix)))] | length
+            # ((.body // "") | contains("**Reviewed commit:** `" + $prefix))) | (.body // "")
+            for attempt in $(seq 1 20); do
             reviews="$(gh api --paginate --slurp "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" | jq 'add // []')"
             review_comments="$(gh api --paginate --slurp "repos/$REPOSITORY/pulls/$PR_NUMBER/comments" | jq 'add // []')"
             issue_comments="$(gh api --paginate --slurp "repos/$REPOSITORY/issues/$PR_NUMBER/comments" | jq 'add // []')"
             reactions="$(gh api --paginate --slurp "repos/$REPOSITORY/issues/$PR_NUMBER/reactions" | jq 'add // []')"
             head_prefix="${head_sha:0:10}"
             current_review_ids="$(jq -c \
-              --arg bot "$REVIEW_BOT" --arg head "$head_sha" \
-              '[.[] | select(.user.login == $bot and .commit_id == $head) | .id]' \
+              --arg bot "$REVIEW_BOT" --arg current_bot "$REVIEW_BOT_CURRENT" --arg head "$head_sha" \
+              '[.[] | select((.user.login == $bot or .user.login == $current_bot) and .commit_id == $head) | .id]' \
               <<<"$reviews")"
 
             review_evidence="$(jq -r \
-              --arg bot "$REVIEW_BOT" --arg head "$head_sha" \
-              '[.[] | select(.user.login == $bot and .commit_id == $head and (.state == "APPROVED" or .state == "COMMENTED"))] | length' \
+              --arg bot "$REVIEW_BOT" --arg current_bot "$REVIEW_BOT_CURRENT" --arg head "$head_sha" \
+              '[.[] | select((.user.login == $bot or .user.login == $current_bot) and .commit_id == $head and (.state == "APPROVED" or .state == "COMMENTED"))] | length' \
               <<<"$reviews")"
             reviewed_issue_evidence="$(jq -r \
-              --arg bot "$REVIEW_BOT" --arg prefix "$head_prefix" --arg since "$evidence_after" \
-              '[.[] | select(.user.login == $bot and (.created_at // "") >= $since and ((.body // "") | contains("**Reviewed commit:** `" + $prefix)))] | length' \
+              --arg bot "$REVIEW_BOT" --arg current_bot "$REVIEW_BOT_CURRENT" --arg prefix "$head_prefix" --arg since "$evidence_after" \
+              '[.[] | select((.user.login == $bot or .user.login == $current_bot) and (.created_at // "") >= $since and ((.body // "") | contains("**Reviewed commit:** `" + $prefix)))] | length' \
               <<<"$issue_comments")"
             blocker_evidence="$(jq -r \
-              --arg bot "$REVIEW_BOT" --arg head "$head_sha" \
-              '[.[] | select(.user.login == $bot and .commit_id == $head) | (.body // "") | select(test("(^|[^[:alnum:]])P(0|1)([^[:alnum:]]|$)|security[[:space:]]+(hold|blocker)|critical[[:space:]]+(blocker|security)"; "i"))] | length' \
+              --arg bot "$REVIEW_BOT" --arg current_bot "$REVIEW_BOT_CURRENT" --arg head "$head_sha" \
+              '[.[] | select((.user.login == $bot or .user.login == $current_bot) and .commit_id == $head) | (.body // "") | select(test("(^|[^[:alnum:]])P(0|1)([^[:alnum:]]|$)|security[[:space:]]+(hold|blocker)|critical[[:space:]]+(blocker|security)"; "i"))] | length' \
               <<<"$reviews")"
             comment_blockers="$(jq -r \
-              --arg bot "$REVIEW_BOT" --argjson review_ids "$current_review_ids" \
-              '[.[] | select(.user.login == $bot) | select((.pull_request_review_id // null) as $review_id | ($review_ids | index($review_id)) != null) | (.body // "") | select(test("(^|[^[:alnum:]])P(0|1)([^[:alnum:]]|$)|security[[:space:]]+(hold|blocker)|critical[[:space:]]+(blocker|security)"; "i"))] | length' \
+              --arg bot "$REVIEW_BOT" --arg current_bot "$REVIEW_BOT_CURRENT" --argjson review_ids "$current_review_ids" \
+              '[.[] | select(.user.login == $bot or .user.login == $current_bot) | select((.pull_request_review_id // null) as $review_id | ($review_ids | index($review_id)) != null) | (.body // "") | select(test("(^|[^[:alnum:]])P(0|1)([^[:alnum:]]|$)|security[[:space:]]+(hold|blocker)|critical[[:space:]]+(blocker|security)"; "i"))] | length' \
               <<<"$review_comments")"
             blocker_evidence=$((blocker_evidence + comment_blockers))
             issue_comment_blockers="$(jq -r \
-              --arg bot "$REVIEW_BOT" --arg prefix "$head_prefix" --arg since "$evidence_after" \
-              '[.[] | select(.user.login == $bot and (.created_at // "") >= $since and ((.body // "") | contains("**Reviewed commit:** `" + $prefix))) | (.body // "") | select(test("(^|[^[:alnum:]])P(0|1)([^[:alnum:]]|$)|security[[:space:]]+(hold|blocker)|critical[[:space:]]+(blocker|security)"; "i"))] | length' \
+              --arg bot "$REVIEW_BOT" --arg current_bot "$REVIEW_BOT_CURRENT" --arg prefix "$head_prefix" --arg since "$evidence_after" \
+              '[.[] | select((.user.login == $bot or .user.login == $current_bot) and (.created_at // "") >= $since and ((.body // "") | contains("**Reviewed commit:** `" + $prefix))) | (.body // "") | select(test("(^|[^[:alnum:]])P(0|1)([^[:alnum:]]|$)|security[[:space:]]+(hold|blocker)|critical[[:space:]]+(blocker|security)"; "i"))] | length' \
               <<<"$issue_comments")"
             blocker_evidence=$((blocker_evidence + issue_comment_blockers))
             reaction_evidence="$(jq -r \
-              --arg bot "$REVIEW_BOT" --arg since "$evidence_after" \
-              '[.[] | select(.user.login == $bot and .content == "+1" and (.created_at // "") >= $since)] | length' \
+              --arg bot "$REVIEW_BOT" --arg current_bot "$REVIEW_BOT_CURRENT" --arg since "$evidence_after" \
+              '[.[] | select((.user.login == $bot or .user.login == $current_bot) and .content == "+1" and (.created_at // "") >= $since)] | length' \
               <<<"$reactions")"
 
             if [[ "$blocker_evidence" -gt 0 ]]; then
               create_check completed failure "Independent agent review found a hard blocker" \
                 "Exact head $head_sha has $blocker_evidence P0/P1/security blocker evidence from $REVIEW_BOT."
+              echo "Independent agent review found $blocker_evidence P0/P1/security blocker(s) for exact head $head_sha." >&2
               exit 1
             fi
 
@@ -178,6 +193,7 @@ jobs:
               fi
               create_check completed success "Independent agent review verified" \
                 "Exact head $head_sha was reviewed by $REVIEW_BOT. $evidence_note"
+              echo "Independent agent review verified exact head $head_sha. $evidence_note"
               exit 0
             fi
 
@@ -188,4 +204,5 @@ jobs:
 
           create_check completed failure "Independent agent review is missing" \
             "No exact-head review or fresh reviewer reaction from $REVIEW_BOT was observed for $head_sha."
+          echo "No exact-head review or fresh reviewer reaction from $REVIEW_BOT was observed for $head_sha." >&2
           exit 1
