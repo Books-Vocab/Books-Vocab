@@ -223,6 +223,176 @@ def test_admit_candidate_returns_full_projection_after_new_admission(
     assert inspect.call_count == 2
 
 
+def test_admit_candidate_allows_explicitly_triaged_legacy_issue(
+    tmp_path: Path,
+) -> None:
+    spec = CandidateSpec(
+        severity=CandidateSeverity.P2,
+        priority=8,
+        scope=Scope.from_paths(
+            modify=("ios/BooksAndVocab/Views/Explore/ExploreView.swift",)
+        ),
+        acceptance=("The bounded Explore evidence flow is restored.",),
+    )
+    original_body = "Legacy Explore report with an explicit current-main scope."
+    candidate_body = render_candidate_body(spec, original_body=original_body)
+    initial_issue = DemandIssue(
+        number=992,
+        url="https://github.com/owner/repo/issues/992",
+        node_id="I_992",
+        title="Explore evidence flow",
+        labels=("legacy-ticket",),
+        body=original_body,
+        updated_at=datetime.fromisoformat("2026-08-19T04:49:02+00:00"),
+        body_sha256=issue_body_sha256(original_body),
+        disposition=IssueDisposition.LEGACY_UNMAPPED,
+        reason="legacy Issue has no typed candidate contract",
+    )
+    projected_issue = replace(
+        initial_issue,
+        labels=(CANDIDATE_ISSUE_LABEL,),
+        body=candidate_body,
+        body_sha256=issue_body_sha256(candidate_body),
+        disposition=IssueDisposition.DISPATCHABLE_CANDIDATE,
+        reason="Issue has an exact typed candidate contract and no active mapping",
+        candidate_spec=spec,
+    )
+
+    class GitHub:
+        def __init__(self) -> None:
+            self.admission_calls = 0
+
+        def list_open_pull_requests(self) -> PullRequestInventory:
+            return PullRequestInventory(records=())
+
+        def changed_paths(self, _number: int) -> tuple[str, ...]:
+            return ()
+
+        def admit_candidate(self, **_kwargs: object) -> DemandIssue:
+            self.admission_calls += 1
+            return projected_issue
+
+    github = GitHub()
+    registry = Mock()
+    registry.list_collision_claims.return_value = RegistryCollisionInventory(records=())
+    application = DeliveryApplication(
+        repo=tmp_path,
+        git=Mock(),
+        github=github,
+        registry=registry,
+        runtime=Mock(),
+        telemetry=Mock(),
+    )
+    initial_inventory = DemandIssueInventory(records=(initial_issue,), raw_count=1)
+    projected_inventory = DemandIssueInventory(records=(projected_issue,), raw_count=1)
+
+    with patch.object(
+        DeliveryApplication,
+        "inspect",
+        side_effect=(
+            SimpleNamespace(demand_issues=initial_inventory),
+            SimpleNamespace(demand_issues=projected_inventory),
+        ),
+    ):
+        result = application.admit_candidate(
+            issue_number=992,
+            expected_updated_at=initial_issue.updated_at,
+            expected_body_sha256=initial_issue.body_sha256,
+            spec=spec,
+            triage_reason="legacy Issue has explicit bounded Scope and acceptance",
+            operator="IM/production-dogfood-20260826",
+        )
+
+    assert result is projected_issue
+    assert result.disposition is IssueDisposition.DISPATCHABLE_CANDIDATE
+    assert result.candidate_spec == spec
+    assert github.admission_calls == 1
+
+
+@pytest.mark.parametrize(
+    "disposition",
+    (
+        IssueDisposition.SOURCE_PROBLEM,
+        IssueDisposition.SECURITY_HOLD,
+        IssueDisposition.OWNER_BOUND,
+        IssueDisposition.PUBLISHED_PR,
+        IssueDisposition.TERMINAL_HISTORY,
+        IssueDisposition.BLOCKED,
+    ),
+)
+def test_admit_candidate_keeps_non_triageable_dispositions_fail_closed(
+    tmp_path: Path,
+    disposition: IssueDisposition,
+) -> None:
+    spec = CandidateSpec(
+        severity=CandidateSeverity.P2,
+        priority=8,
+        scope=Scope.from_paths(modify=("ops/delivery.py",)),
+        acceptance=("The bounded delivery change is verified.",),
+    )
+    body = "Issue with a non-admissible disposition."
+    issue = DemandIssue(
+        number=993,
+        url="https://github.com/owner/repo/issues/993",
+        node_id="I_993",
+        title="Non-admissible issue",
+        labels=(),
+        body=body,
+        updated_at=datetime.fromisoformat("2026-08-19T04:50:00+00:00"),
+        body_sha256=issue_body_sha256(body),
+        disposition=disposition,
+        reason=f"fixture disposition: {disposition.value}",
+    )
+
+    class GitHub:
+        def __init__(self) -> None:
+            self.admission_calls = 0
+
+        def list_open_pull_requests(self) -> PullRequestInventory:
+            return PullRequestInventory(records=())
+
+        def changed_paths(self, _number: int) -> tuple[str, ...]:
+            return ()
+
+        def admit_candidate(self, **_kwargs: object) -> DemandIssue:
+            self.admission_calls += 1
+            return issue
+
+    github = GitHub()
+    registry = Mock()
+    application = DeliveryApplication(
+        repo=tmp_path,
+        git=Mock(),
+        github=github,
+        registry=registry,
+        runtime=Mock(),
+        telemetry=Mock(),
+    )
+    inventory = DemandIssueInventory(records=(issue,), raw_count=1)
+
+    with (
+        patch.object(
+            DeliveryApplication,
+            "inspect",
+            return_value=SimpleNamespace(demand_issues=inventory),
+        ),
+        pytest.raises(
+            PolicyViolation,
+            match=f"disposition is {disposition.value}",
+        ),
+    ):
+        application.admit_candidate(
+            issue_number=993,
+            expected_updated_at=issue.updated_at,
+            expected_body_sha256=issue.body_sha256,
+            spec=spec,
+            triage_reason="must not bypass this disposition",
+            operator="IM/production-dogfood-20260826",
+        )
+
+    assert github.admission_calls == 0
+
+
 def test_admit_candidate_fails_closed_when_projection_does_not_converge(
     tmp_path: Path,
 ) -> None:
