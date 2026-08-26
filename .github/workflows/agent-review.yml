@@ -24,7 +24,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  agent-review-evidence:
+  agent-review:
+    name: agent-review
     # A human-triggered request gives the external reviewer time to answer;
     # review/review-comment events re-evaluate the same exact head. Ordinary
     # issue comments must not manufacture a review check.
@@ -86,6 +87,9 @@ jobs:
             exit 1
           fi
 
+          # The Actions job itself emits the required `agent-review` context.
+          # This supplemental, provenance-rich check remains observation data
+          # for merge-group validation; it is never the required authority.
           create_check() {
             local status="$1"
             local conclusion="${2:-}"
@@ -165,6 +169,7 @@ jobs:
             if [[ "$blocker_evidence" -gt 0 ]]; then
               create_check completed failure "Independent agent review found a hard blocker" \
                 "Exact head $head_sha has $blocker_evidence P0/P1/security blocker evidence from $REVIEW_BOT."
+              echo "Independent agent review found $blocker_evidence P0/P1/security blocker(s) for exact head $head_sha." >&2
               exit 1
             fi
 
@@ -178,6 +183,7 @@ jobs:
               fi
               create_check completed success "Independent agent review verified" \
                 "Exact head $head_sha was reviewed by $REVIEW_BOT. $evidence_note"
+              echo "Independent agent review verified exact head $head_sha. $evidence_note"
               exit 0
             fi
 
@@ -188,4 +194,5 @@ jobs:
 
           create_check completed failure "Independent agent review is missing" \
             "No exact-head review or fresh reviewer reaction from $REVIEW_BOT was observed for $head_sha."
+          echo "No exact-head review or fresh reviewer reaction from $REVIEW_BOT was observed for $head_sha." >&2
           exit 1
