@@ -46,6 +46,29 @@ not push a branch, update protected `main`, upload to ASC, deploy backend, or cr
 tag. The owner then runs the supported worktree hand-back and IM publishes that exact
 commit as one PR:
 
+The candidate lane must be clean and its `HEAD` must equal a fresh live
+`origin/main` read immediately before the version transaction. A non-main branch by
+itself is not sufficient: an ahead branch could carry unreviewed product changes, and
+a behind branch could create a stale release candidate. `release` and `resubmit`
+reject both cases before changing version files or creating a candidate commit
+(they may read the current tuple first to recognize an existing pending candidate);
+re-materialize a fresh supported lane from the new live main instead of rebasing,
+copying, or using the canonical development checkout.
+
+`./ops/release.sh status` uses two different iOS boundaries. The latest
+`ios/<version>` tag means that marketing version was verified as App Store
+shipped; it is not the source boundary for a build that has already been
+sealed. If the current Xcode `(MARKETING_VERSION, CURRENT_PROJECT_VERSION)`
+tuple has an immutable `ios/<version>+<build>` tag reachable from the current
+checkout, status counts only iOS commits after that build tag as an unsealed
+candidate backlog. Commits after the build tag are still real work and remain
+visible.
+
+Status is an observation only. A sealed build tag does not authorize an ASC
+upload, a PR merge, a tag push, or a deployment; those actions still require
+the dedicated release lane, exact merged-main evidence, and the corresponding
+release command gates below.
+
 The release agent is independent from the development checkout. If it does not
 already have a dedicated lane, materialize one from the **live** `origin/main` before
 running `release` or `resubmit`; never turn the canonical `main` checkout into a
