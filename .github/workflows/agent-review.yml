@@ -141,7 +141,7 @@ jobs:
               <<<"$reviews")"
             reviewed_issue_evidence="$(jq -r \
               --arg bot "$REVIEW_BOT" --arg prefix "$head_prefix" --arg since "$evidence_after" \
-              '[.[] | select(.user.login == $bot and (.created_at // "") >= $since and ((.body // "") | contains("**Reviewed commit:** `" + $prefix))] | length' \
+              '[.[] | select(.user.login == $bot and (.created_at // "") >= $since and ((.body // "") | contains("**Reviewed commit:** `" + $prefix)))] | length' \
               <<<"$issue_comments")"
             blocker_evidence="$(jq -r \
               --arg bot "$REVIEW_BOT" --arg head "$head_sha" \

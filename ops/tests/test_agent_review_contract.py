@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github/workflows/agent-review.yml"
@@ -88,6 +89,41 @@ def test_agent_review_accepts_exact_head_codex_issue_comment() -> None:
     assert "issues/$PR_NUMBER/comments" in source
     assert "Reviewed commit" in source
     assert "reviewed_issue_evidence" in source
+
+
+def test_agent_review_issue_comment_jq_predicates_compile() -> None:
+    source = _workflow()
+    assert "reviewed_issue_evidence" in source
+    assert "issue_comment_blockers" in source
+
+    predicates = (
+        '[.[] | select(.user.login == $bot and (.created_at // "") >= $since and '
+        '((.body // "") | contains("**Reviewed commit:** `" + $prefix)))] | length',
+        '[.[] | select(.user.login == $bot and (.created_at // "") >= $since and '
+        '((.body // "") | contains("**Reviewed commit:** `" + $prefix))) | (.body // "") '
+        '| select(test("(^|[^[:alnum:]])P(0|1)([^[:alnum:]]|$)"))] | length',
+    )
+    for predicate in predicates:
+        result = subprocess.run(
+            [
+                "jq",
+                "-n",
+                "--arg",
+                "bot",
+                "chatgpt-codex-connector[bot]",
+                "--arg",
+                "prefix",
+                "0123456789",
+                "--arg",
+                "since",
+                "2026-01-01T00:00:00Z",
+                f"[] | {predicate}",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
 
 
 def test_agent_review_rechecks_trusted_codex_response_comments() -> None:
