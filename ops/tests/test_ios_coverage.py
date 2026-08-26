@@ -96,6 +96,32 @@ def test_ios_coverage_matches_xcode_app_target_suffix() -> None:
     assert payload["summary"]["executableLines"] == 97673
 
 
+def test_ios_coverage_default_selects_suffixed_app_target() -> None:
+    fixture = {
+        "targets": [
+            {
+                "name": "BooksAndVocabTests.xctest",
+                "lineCoverage": 0.98635117900849323,
+                "coveredLines": 36350,
+                "executableLines": 36853,
+            },
+            {
+                "name": "BooksAndVocab.app",
+                "lineCoverage": 0.25313034308355431,
+                "coveredLines": 24724,
+                "executableLines": 97673,
+            },
+        ]
+    }
+
+    proc = run_coverage(fixture)
+
+    assert proc.returncode == 0, proc.stderr
+    payload = json.loads(proc.stdout)
+    assert payload["summary"]["target"] == "BooksAndVocab"
+    assert payload["summary"]["lineCoverage"] == 25.31
+
+
 def test_ios_coverage_fails_under_threshold_with_machine_readable_error() -> None:
     fixture = {
         "targets": [

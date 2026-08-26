@@ -158,7 +158,7 @@ def parse_targets(payload: dict[str, Any]) -> list[CoverageTarget]:
 
 
 def is_app_target(target: CoverageTarget) -> bool:
-    lowered = target.name.lower()
+    lowered = normalized_target_name(target.name).lower()
     return not (
         lowered.endswith("tests")
         or lowered.endswith("uitests")
@@ -170,7 +170,10 @@ def is_app_target(target: CoverageTarget) -> bool:
 def normalized_target_name(name: str) -> str:
     """Normalize Xcode product suffixes while preserving other target names."""
 
-    return name[:-4] if name.endswith(".app") else name
+    for suffix in (".app", ".xctest"):
+        if name.endswith(suffix):
+            return name[: -len(suffix)]
+    return name
 
 
 def select_target(
@@ -183,7 +186,7 @@ def select_target(
                 return target
         return None
     for target in targets:
-        if target.name == DEFAULT_TARGET:
+        if normalized_target_name(target.name) == DEFAULT_TARGET:
             return target
     for target in targets:
         if is_app_target(target):
