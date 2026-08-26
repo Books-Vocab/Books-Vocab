@@ -24,7 +24,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  agent-review:
+  agent-review-evidence:
     # A human-triggered request gives the external reviewer time to answer;
     # review/review-comment events re-evaluate the same exact head. Ordinary
     # issue comments must not manufacture a review check.
