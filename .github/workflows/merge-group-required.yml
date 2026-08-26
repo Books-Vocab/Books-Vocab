@@ -85,9 +85,8 @@ jobs:
             -F name="$repository_name" \
             -F branch=main)"
           queue_entry="$(jq -c \
-            --arg group_sha "$MERGE_GROUP_HEAD_SHA" \
             --argjson number "$pr_number" \
-            '[.data.repository.mergeQueue.entries.nodes[]? | select(.headCommit.oid == $group_sha and .pullRequest.number == $number and .solo == true)] | if length == 1 then .[0] else empty end' \
+            '[.data.repository.mergeQueue.entries.nodes[]? | select(.pullRequest.number == $number and .pullRequest.headRefOid != null and .pullRequest.baseRefName == "main" and .pullRequest.state == "OPEN" and .solo == true)] | if length == 1 then .[0] else empty end' \
             <<<"$queue_json")"
           if [[ -z "$queue_entry" ]]; then
             echo "merge-group must map to exactly one solo queued PR" >&2
@@ -116,12 +115,16 @@ jobs:
           checks_json="$(gh api \
             "repos/$REPOSITORY/commits/$pr_head_sha/check-runs?per_page=100" \
             -H 'Accept: application/vnd.github+json')"
-          review_count="$(jq -r \
+          review_state="$(jq -r \
             --arg head_sha "$pr_head_sha" \
-            '[.check_runs[]? | select(.name == "agent-review" and .head_sha == $head_sha and .conclusion == "success")] | length' \
+            '[.check_runs[]? | select(.name == "agent-review" and .head_sha == $head_sha)\
+             | {id: (.id // 0), status: (.status // ""), conclusion: (.conclusion // ""),\
+                started_at: (.started_at // ""), completed_at: (.completed_at // "")}\
+            ] | sort_by([.started_at, .completed_at, .id]) | last // empty\
+            | if . == "" then "" else "\((.status | ascii_downcase))|\((.conclusion | ascii_downcase))" end' \
             <<<"$checks_json")"
-          if [[ "$review_count" -lt 1 ]]; then
-            echo "exact queued PR HEAD has no successful agent-review evidence" >&2
+          if [[ "$review_state" != "completed|success" ]]; then
+            echo "latest exact queued PR HEAD agent-review evidence is not successful" >&2
             exit 1
           fi
 
