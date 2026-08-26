@@ -97,6 +97,17 @@ def test_agent_review_rechecks_trusted_codex_response_comments() -> None:
     assert "contains(github.event.comment.body, '**Reviewed commit:**')" in source
 
 
+def test_agent_review_binds_inline_findings_to_exact_head_review() -> None:
+    source = _workflow()
+
+    # GitHub may expose an inline comment with the PR's latest commit id even
+    # when the comment belongs to an older review.  Only comments linked to a
+    # trusted review whose commit is the current head may block it.
+    assert "current_review_ids" in source
+    assert "pull_request_review_id" in source
+    assert "review_ids | index($review_id)" in source
+
+
 def test_agent_review_response_does_not_cancel_pr_event_poller() -> None:
     source = _workflow()
 

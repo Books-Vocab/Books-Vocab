@@ -130,6 +130,10 @@ jobs:
             issue_comments="$(gh api --paginate --slurp "repos/$REPOSITORY/issues/$PR_NUMBER/comments" | jq 'add // []')"
             reactions="$(gh api --paginate --slurp "repos/$REPOSITORY/issues/$PR_NUMBER/reactions" | jq 'add // []')"
             head_prefix="${head_sha:0:10}"
+            current_review_ids="$(jq -c \
+              --arg bot "$REVIEW_BOT" --arg head "$head_sha" \
+              '[.[] | select(.user.login == $bot and .commit_id == $head) | .id]' \
+              <<<"$reviews")"
 
             review_evidence="$(jq -r \
               --arg bot "$REVIEW_BOT" --arg head "$head_sha" \
@@ -144,8 +148,8 @@ jobs:
               '[.[] | select(.user.login == $bot and .commit_id == $head) | (.body // "") | select(test("(^|[^[:alnum:]])P(0|1)([^[:alnum:]]|$)|security[[:space:]]+(hold|blocker)|critical[[:space:]]+(blocker|security)"; "i"))] | length' \
               <<<"$reviews")"
             comment_blockers="$(jq -r \
-              --arg bot "$REVIEW_BOT" --arg head "$head_sha" \
-              '[.[] | select(.user.login == $bot and .commit_id == $head) | (.body // "") | select(test("(^|[^[:alnum:]])P(0|1)([^[:alnum:]]|$)|security[[:space:]]+(hold|blocker)|critical[[:space:]]+(blocker|security)"; "i"))] | length' \
+              --arg bot "$REVIEW_BOT" --argjson review_ids "$current_review_ids" \
+              '[.[] | select(.user.login == $bot) | select((.pull_request_review_id // null) as $review_id | ($review_ids | index($review_id)) != null) | (.body // "") | select(test("(^|[^[:alnum:]])P(0|1)([^[:alnum:]]|$)|security[[:space:]]+(hold|blocker)|critical[[:space:]]+(blocker|security)"; "i"))] | length' \
               <<<"$review_comments")"
             blocker_evidence=$((blocker_evidence + comment_blockers))
             issue_comment_blockers="$(jq -r \
