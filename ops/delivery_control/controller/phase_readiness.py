@@ -350,11 +350,7 @@ def assess_phase_readiness(
     selected_mode = DogfoodMode(mode)
     metrics = base.metrics
     classified = _backlog_classified(metrics, backlog_classified)
-    global_blockers = (
-        list(base.blockers)
-        if selected_mode is DogfoodMode.QUALIFICATION
-        else _global_blockers(base)
-    )
+    global_blockers = _global_blockers(base)
     candidate_available = (
         metrics.dispatchable_candidate_issues is not None
         and metrics.dispatchable_candidate_issues > 0
@@ -364,16 +360,12 @@ def assess_phase_readiness(
     )
     steady_verified = _steady_state_verified(base)
     ramp_ready = pilot_ready and base.canary_promotable and not global_blockers
-    lane_blockers = (
-        []
-        if selected_mode is DogfoodMode.QUALIFICATION
-        else _lane_blockers(
-            base,
-            mode=selected_mode,
-            pilot_ready=pilot_ready,
-            ramp_ready=ramp_ready,
-            steady_state_verified=steady_verified,
-        )
+    lane_blockers = _lane_blockers(
+        base,
+        mode=selected_mode,
+        pilot_ready=pilot_ready,
+        ramp_ready=ramp_ready,
+        steady_state_verified=steady_verified,
     )
     warnings = _warnings(base)
     actions = phase_next_actions(metrics, backlog_classified=classified)

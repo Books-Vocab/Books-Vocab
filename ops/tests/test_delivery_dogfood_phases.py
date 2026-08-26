@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -11,7 +12,7 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.cli import _jsonable, _parser
+from delivery_control.cli import _jsonable, _parser, run_command
 from delivery_control.controller.dogfood import (
     DogfoodProfile,
     DogfoodReadiness,
@@ -195,7 +196,8 @@ def test_explicit_qualification_preserves_legacy_readiness() -> None:
 
     assert readiness.ready is False
     assert readiness.blockers == ("legacy blocker",)
-    assert readiness.global_blockers == ("legacy blocker",)
+    assert readiness.global_blockers == ()
+    assert readiness.lane_blockers == ("legacy blocker",)
 
 
 def test_phase_result_is_additive_json_and_observation_not_authorization() -> None:
@@ -206,6 +208,94 @@ def test_phase_result_is_additive_json_and_observation_not_authorization() -> No
     assert payload["schema"] == "kg.delivery.dogfood-readiness.v2"
     assert payload["dispatch_authorized"] is False
     assert payload["mode"] == "pilot"
+
+
+def test_cli_projects_explicit_pilot_mode_without_granting_authority() -> None:
+    metrics = _metrics(raw_open_issues=3, unadmitted_open_issues=2)
+
+    class FakeApplication:
+        def dogfood_preflight(
+            self, *, supervision_worktree_paths: tuple[Path, ...]
+        ) -> DogfoodReadiness:
+            assert supervision_worktree_paths == ()
+            return _base(metrics)
+
+    args = _parser().parse_args(["dogfood-preflight", "--mode", "pilot"])
+    result = run_command(args, FakeApplication())
+
+    assert result.mode == "pilot"
+    assert result.ready is True
+    assert result.dispatch_authorized is False
+
+
+def test_cli_steady_mode_remeasures_an_exact_one_hour_window() -> None:
+    fixed_now = datetime(2026, 8, 26, 12, tzinfo=UTC)
+    merged = tuple(fixed_now - timedelta(minutes=5 * index) for index in range(12))
+
+    class FakeGitHub:
+        def recent_merge_times(self) -> tuple[datetime, ...]:
+            return merged
+
+    class FakeApplication:
+        github = FakeGitHub()
+
+        def clock(self) -> datetime:
+            return fixed_now
+
+        def dogfood_preflight(
+            self,
+            *,
+            now: datetime,
+            supervision_worktree_paths: tuple[Path, ...],
+        ) -> DogfoodReadiness:
+            assert now == fixed_now
+            assert supervision_worktree_paths == ()
+            return _base(
+                _metrics(), cadence=MergeCadence(900, 0, 0.0, None, None, None)
+            )
+
+    args = _parser().parse_args(["dogfood-preflight", "--mode", "steady"])
+    result = run_command(args, FakeApplication())
+
+    assert result.cadence.window_seconds == 3600
+    assert result.cadence.merged_count == 12
+
+
+def test_plan_exposes_phase_actions_without_replacing_capacity_decision() -> None:
+    metrics = _metrics(
+        raw_open_issues=4,
+        unadmitted_open_issues=3,
+        candidate_issues=2,
+        dispatchable_candidate_issues=2,
+    )
+
+    class FakeApplication:
+        def plan(
+            self, *, supervision_worktree_paths: tuple[Path, ...]
+        ) -> dict[str, object]:
+            assert supervision_worktree_paths == ()
+            return {"metrics": metrics, "decision": "legacy-decision"}
+
+    args = _parser().parse_args(["plan"])
+    result = run_command(args, FakeApplication())
+
+    assert result["decision"] == "legacy-decision"
+    assert result["backlog_classified"] is True
+    assert result["next_actions"] == (
+        "triage_existing_issues",
+        "dispatch_solvers",
+        "replenish_candidates",
+    )
+
+
+def test_lane_failure_does_not_become_global_freeze_for_pilot() -> None:
+    metrics = _metrics(required_failed=1, open_prs=1)
+
+    readiness = assess_phase_readiness(_base(metrics, ready=False), mode="pilot")
+
+    assert readiness.ready is True
+    assert readiness.global_freeze is False
+    assert "existing required checks are failed" in readiness.lane_blockers
 
 
 @pytest.mark.parametrize("mode", ("qualification", "pilot", "ramp", "steady"))
