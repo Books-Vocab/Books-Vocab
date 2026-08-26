@@ -50,14 +50,21 @@ final class ActiveNotebookStore {
 
     private let defaults: UserDefaults
     private let cloud: CloudKeyValueStore
+    private var accountID: String?
+    private var isAccountBoundarySuspended = false
 
     convenience init() {
         self.init(defaults: .standard)
     }
 
-    init(defaults: UserDefaults, cloud: CloudKeyValueStore = CloudPreferencesSync.shared) {
+    init(
+        defaults: UserDefaults,
+        cloud: CloudKeyValueStore = CloudPreferencesSync.shared,
+        accountID: String? = nil
+    ) {
         self.defaults = defaults
         self.cloud = cloud
+        self.accountID = AccountPreferenceNamespace.normalizedAccountID(accountID)
         // 三層 LWW：本地 vs iCloud KVS 取較新整組，寫回本地讓 capture consumer 看到
         // resolved 值（cloud 較新時不讀到舊 local）。
         //
@@ -65,33 +72,64 @@ final class ActiveNotebookStore {
         // resolved 是 (default, nil)，若寫回會把本地 activeId key 實體化成 "default"，
         // 破壞 `activeNotebookIdIfSet` 的「未設定回 nil」短路語意（reconcile 會對從未
         // 設定者做多餘清理）。
+        reloadProjection()
+    }
+
+    /// Switch the shared cursor to one authenticated account. The compatibility
+    /// raw key is only the current in-memory/UI projection; durable local and
+    /// iCloud state uses the account namespace.
+    func activateAccount(_ accountID: String?) {
+        self.accountID = AccountPreferenceNamespace.normalizedAccountID(accountID)
+        isAccountBoundarySuspended = false
+        reloadProjection()
+    }
+
+    /// Remove the visible cursor during an account boundary without deleting
+    /// the previous account's namespaced iCloud state.
+    func suspendForAccountBoundary() {
+        isAccountBoundarySuspended = true
+        accountID = nil
+        defaults.removeObject(forKey: Keys.activeId)
+        defaults.removeObject(forKey: Keys.updatedAt)
+    }
+
+    private func storageKey(_ key: String) -> String {
+        AccountPreferenceNamespace.key(key, accountID: accountID)
+    }
+
+    private func reloadProjection() {
         let resolved = ActiveNotebookLWW.resolve(
-            local: Self.readLocalState(defaults),
-            cloud: Self.readCloudState(cloud)
+            local: Self.readLocalState(defaults, accountID: accountID),
+            cloud: Self.readCloudState(cloud, accountID: accountID)
         )
+        defaults.removeObject(forKey: Keys.activeId)
+        defaults.removeObject(forKey: Keys.updatedAt)
         if resolved.updatedAt != nil {
-            Self.writeLocalState(resolved, into: defaults)
+            writeLocalState(resolved)
         }
     }
 
     /// 當前全域 active notebook id；未設定時回 `defaultNotebookId`。直讀本地層
     /// （已被 init / setActive 維護成 LWW resolved 值）。
     var activeNotebookId: String {
-        defaults.string(forKey: Keys.activeId) ?? Self.defaultNotebookId
+        guard !isAccountBoundarySuspended else { return Self.defaultNotebookId }
+        return defaults.string(forKey: storageKey(Keys.activeId)) ?? Self.defaultNotebookId
     }
 
     /// 本地 key 已設定時的 id（未設回 nil）。供 reconcile 還原「key 未設不處理」短路語意，
     /// 避免對從未設定的 default 做多餘清理 / 推時戳。
     var activeNotebookIdIfSet: String? {
-        defaults.string(forKey: Keys.activeId)
+        guard !isAccountBoundarySuspended else { return nil }
+        return defaults.string(forKey: storageKey(Keys.activeId))
     }
 
     /// 使用者切換 active notebook，或刪除後 fallback 指派。推進 updatedAt + 寫本地 + iCloud
     /// （整組原子：id 與 updatedAt 一起寫，跨裝置 LWW 取較新整組）。
     func setActive(_ id: String) {
+        guard !isAccountBoundarySuspended else { return }
         let ts = Date().timeIntervalSince1970
         let state = ActiveNotebookState(activeNotebookId: id, updatedAt: ts)
-        Self.writeLocalState(state, into: defaults)
+        writeLocalState(state)
         writeCloudState(state)
     }
 
@@ -105,23 +143,52 @@ final class ActiveNotebookStore {
     /// 登出 / 帳號切換清除本機 active notebook。只清本地：iCloud KVS 為 Apple-ID scope，
     /// 與 review settings 帳號切換策略一致不在此碰（避免清掉同 Apple 裝置其他登入態的值）。
     func clear() {
-        defaults.removeObject(forKey: Keys.activeId)
-        defaults.removeObject(forKey: Keys.updatedAt)
+        if accountID != nil {
+            defaults.removeObject(forKey: storageKey(Keys.activeId))
+            defaults.removeObject(forKey: storageKey(Keys.updatedAt))
+            defaults.removeObject(forKey: Keys.activeId)
+            defaults.removeObject(forKey: Keys.updatedAt)
+        } else {
+            defaults.removeObject(forKey: Keys.activeId)
+            defaults.removeObject(forKey: Keys.updatedAt)
+        }
     }
 
     // MARK: - Layer reads / writes (LWW inputs)
 
     static func readLocalState(_ defaults: UserDefaults) -> ActiveNotebookState {
+        readLocalState(defaults, accountID: nil)
+    }
+
+    private static func readLocalState(
+        _ defaults: UserDefaults,
+        accountID: String?
+    ) -> ActiveNotebookState {
         ActiveNotebookState(
-            activeNotebookId: defaults.string(forKey: Keys.activeId) ?? defaultNotebookId,
-            updatedAt: defaults.object(forKey: Keys.updatedAt) as? Double
+            activeNotebookId: defaults.string(
+                forKey: AccountPreferenceNamespace.key(Keys.activeId, accountID: accountID)
+            ) ?? defaultNotebookId,
+            updatedAt: defaults.object(
+                forKey: AccountPreferenceNamespace.key(Keys.updatedAt, accountID: accountID)
+            ) as? Double
         )
     }
 
     static func readCloudState(_ cloud: CloudKeyValueStore) -> ActiveNotebookState {
+        readCloudState(cloud, accountID: nil)
+    }
+
+    private static func readCloudState(
+        _ cloud: CloudKeyValueStore,
+        accountID: String?
+    ) -> ActiveNotebookState {
         ActiveNotebookState(
-            activeNotebookId: cloud.string(forKey: Keys.activeId) ?? defaultNotebookId,
-            updatedAt: cloud.double(forKey: Keys.updatedAt)
+            activeNotebookId: cloud.string(
+                forKey: AccountPreferenceNamespace.key(Keys.activeId, accountID: accountID)
+            ) ?? defaultNotebookId,
+            updatedAt: cloud.double(
+                forKey: AccountPreferenceNamespace.key(Keys.updatedAt, accountID: accountID)
+            )
         )
     }
 
@@ -132,18 +199,36 @@ final class ActiveNotebookStore {
         }
     }
 
+    private func writeLocalState(_ state: ActiveNotebookState) {
+        defaults.set(state.activeNotebookId, forKey: storageKey(Keys.activeId))
+        if let ts = state.updatedAt {
+            defaults.set(ts, forKey: storageKey(Keys.updatedAt))
+        }
+        // NotebookListView observes the legacy raw key. Keep it as a
+        // current-account projection while never using it as account storage.
+        if accountID != nil {
+            defaults.set(state.activeNotebookId, forKey: Keys.activeId)
+            if let ts = state.updatedAt {
+                defaults.set(ts, forKey: Keys.updatedAt)
+            }
+        }
+    }
+
     /// 整組寫雲端（id + updatedAt 一起）。updatedAt nil 時寫 0 sentinel（KVS 無 removeObject，
     /// 讀取端 0 視為「無有效時戳」由 LWW 比較處理）。
     private func writeCloudState(_ state: ActiveNotebookState) {
-        cloud.set(state.activeNotebookId, forKey: Keys.activeId)
-        cloud.set(state.updatedAt ?? 0, forKey: Keys.updatedAt)
+        cloud.set(state.activeNotebookId, forKey: storageKey(Keys.activeId))
+        cloud.set(state.updatedAt ?? 0, forKey: storageKey(Keys.updatedAt))
     }
 
     // MARK: - Backend sync / push support
 
     /// 當前 LWW 快照（push 帶 updatedAt 用；取本地層）。
     var snapshot: ActiveNotebookState {
-        Self.readLocalState(defaults)
+        guard !isAccountBoundarySuspended else {
+            return ActiveNotebookState(activeNotebookId: Self.defaultNotebookId, updatedAt: nil)
+        }
+        return Self.readLocalState(defaults, accountID: accountID)
     }
 
     /// Apply a server projection only when its group timestamp is newer than the
@@ -158,7 +243,8 @@ final class ActiveNotebookStore {
         if let localUpdatedAt = snapshot.updatedAt, serverUpdatedAt <= localUpdatedAt {
             return false
         }
-        Self.writeLocalState(state, into: defaults)
+        guard !isAccountBoundarySuspended else { return false }
+        writeLocalState(state)
         return true
     }
 }

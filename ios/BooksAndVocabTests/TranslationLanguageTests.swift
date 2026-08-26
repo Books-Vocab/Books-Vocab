@@ -287,4 +287,31 @@ struct TranslationLanguageTests {
         #expect(sourceAt == serverUpdatedAt)
         #expect(targetAt == serverUpdatedAt)
     }
+
+    @Test @MainActor func accountScopedTranslationPairDoesNotCrossReadOrWrite() {
+        let suite = "test.translation-account-scope.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        let cloud = FakeCloudKVStore()
+        defer { TranslationLanguage.activateAccount(nil) }
+
+        TranslationLanguage.activateAccount("account-a", defaults: defaults, cloud: cloud)
+        TranslationLanguage.currentSource = .ja
+        TranslationLanguage.currentTarget = .zhHans
+
+        TranslationLanguage.activateAccount("account-b", defaults: defaults, cloud: cloud)
+        let accountBSource = TranslationLanguage.currentSource
+        let accountBTarget = TranslationLanguage.currentTarget
+        #expect(accountBSource != .ja || accountBTarget != .zhHans)
+
+        TranslationLanguage.currentSource = .de
+        TranslationLanguage.currentTarget = .en
+        TranslationLanguage.activateAccount("account-a", defaults: defaults, cloud: cloud)
+        #expect(TranslationLanguage.currentSource == .ja)
+        #expect(TranslationLanguage.currentTarget == .zhHans)
+
+        TranslationLanguage.activateAccount("account-b", defaults: defaults, cloud: cloud)
+        #expect(TranslationLanguage.currentSource == .de)
+        #expect(TranslationLanguage.currentTarget == .en)
+    }
 }

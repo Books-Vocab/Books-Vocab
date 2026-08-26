@@ -61,6 +61,8 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 - Notebook 資料模型來自 SwiftData，**不**放 coordinator
 - `NotebookEditSheet` 的編輯草稿狀態為 sheet-local，submit 才走 coordinator 持久化
 - Notebook ID 解析必經 `resolveNotebookId` 單一入口（防 orphan）
+- 帳號偏好與 active notebook 游標仍沿用既有 `UserDefaults` / iCloud KVS / server projection API；登入帳號存在時，`ReviewSettingsStore`、`TranslationLanguage` 與 `ActiveNotebookStore` 的 durable keys 以 account namespace 隔離（account identifier 不直接進 key）。帳號切換先暫停舊 projection，再由 `SettingsCoordinator` 以 account generation 與 user identity 驗證非同步 response；延遲的舊帳號 response 不得套用到新帳號。未進入 authenticated account 的 guest/preview callers 保留既有 legacy namespace。
+- Active notebook 的 raw key 僅作當前帳號的 UI compatibility projection；notebook/card ownership、backend schema/API 與既有產品資料模型邊界不因 account namespace 改變。
 
 ## 共用依賴
 

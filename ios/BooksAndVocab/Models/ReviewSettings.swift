@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import Observation
 import SwiftUI
 
@@ -204,6 +205,30 @@ enum ReviewModeLWW {
     }
 }
 
+/// Account-scoped preference keys keep the existing UserDefaults/iCloud
+/// storage layers while preventing an opaque account identifier from becoming
+/// part of either key. `nil` deliberately retains the legacy guest/preview
+/// namespace for callers that have not entered an authenticated account.
+enum AccountPreferenceNamespace {
+    private static let prefix = "kg.account."
+
+    static func normalizedAccountID(_ accountID: String?) -> String? {
+        guard let accountID else { return nil }
+        let normalized = accountID
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .precomposedStringWithCanonicalMapping
+        return normalized.isEmpty ? nil : normalized
+    }
+
+    static func key(_ key: String, accountID: String?) -> String {
+        guard let normalizedAccountID = normalizedAccountID(accountID) else { return key }
+        let digest = SHA256.hash(data: Data(normalizedAccountID.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return "\(prefix)\(digest).\(key)"
+    }
+}
+
 @Observable
 final class ReviewSettingsStore {
     static let shared = ReviewSettingsStore()
@@ -221,32 +246,76 @@ final class ReviewSettingsStore {
 
     private let defaults: UserDefaults
     private let cloud: CloudKeyValueStore
+    private var accountID: String?
+    private var isAccountBoundarySuspended = false
     private(set) var settings: ReviewSettings
 
     convenience init() {
         self.init(defaults: .standard)
     }
 
-    init(defaults: UserDefaults, cloud: CloudKeyValueStore = CloudPreferencesSync.shared) {
+    init(
+        defaults: UserDefaults,
+        cloud: CloudKeyValueStore = CloudPreferencesSync.shared,
+        accountID: String? = nil
+    ) {
+        let normalizedAccountID = AccountPreferenceNamespace.normalizedAccountID(accountID)
         self.defaults = defaults
         self.cloud = cloud
+        self.accountID = normalizedAccountID
         // mode + 自訂 SRS 參數三層 LWW:本地(UserDefaults)與雲端(iCloud KVS)各取一組,
         // 比 updatedAt 取較新整組 → 跨裝置 SRS 間隔一致(否則各裝置複習排程不同)。
-        let resolvedMode = ReviewModeLWW.resolve(
-            local: Self.readLocalModeState(defaults),
-            cloud: Self.readCloudModeState(cloud)
-        )
         // pause clock 三層 LWW:本地(UserDefaults)與雲端(iCloud KVS)各取一組,比
         // updatedAt 取較新整組 → 跨裝置複習基準一致(否則各裝置算出不同 due 量)。
-        let resolvedPause = ReviewClockLWW.resolve(
-            local: Self.readLocalPauseState(defaults),
-            cloud: Self.readCloudPauseState(cloud)
+        self.settings = Self.loadSettings(
+            defaults: defaults,
+            cloud: cloud,
+            accountID: normalizedAccountID
         )
-        let autoplaySpeedRaw = defaults.string(forKey: Keys.autoplaySpeed)
-        let autoplaySpeed = autoplaySpeedRaw.flatMap(AutoplaySpeed.init(rawValue:)) ?? .normal
-        let autoplaySoundEnabled = defaults.object(forKey: Keys.autoplaySoundEnabled) as? Bool ?? true
+    }
 
-        self.settings = ReviewSettings(
+    /// Switch the shared store to one authenticated account. The in-memory
+    /// projection is replaced before any server await, and only that account's
+    /// local/iCloud keys are read.
+    func activateAccount(_ accountID: String?) {
+        self.accountID = AccountPreferenceNamespace.normalizedAccountID(accountID)
+        isAccountBoundarySuspended = false
+        settings = Self.loadSettings(defaults: defaults, cloud: cloud, accountID: self.accountID)
+    }
+
+    /// Hide the previous account's projection while AuthManager/Settings starts
+    /// the next account. This is intentionally non-persistent; the account's
+    /// namespaced cloud value remains available on its next activation.
+    func suspendForAccountBoundary() {
+        accountID = nil
+        isAccountBoundarySuspended = true
+        settings = .default
+    }
+
+    private func storageKey(_ key: String) -> String {
+        AccountPreferenceNamespace.key(key, accountID: accountID)
+    }
+
+    private static func loadSettings(
+        defaults: UserDefaults,
+        cloud: CloudKeyValueStore,
+        accountID: String?
+    ) -> ReviewSettings {
+        let resolvedMode = ReviewModeLWW.resolve(
+            local: readLocalModeState(defaults, accountID: accountID),
+            cloud: readCloudModeState(cloud, accountID: accountID)
+        )
+        let resolvedPause = ReviewClockLWW.resolve(
+            local: readLocalPauseState(defaults, accountID: accountID),
+            cloud: readCloudPauseState(cloud, accountID: accountID)
+        )
+        let autoplaySpeedRaw = defaults.string(forKey: AccountPreferenceNamespace.key(Keys.autoplaySpeed, accountID: accountID))
+        let autoplaySpeed = autoplaySpeedRaw.flatMap(AutoplaySpeed.init(rawValue:)) ?? .normal
+        let autoplaySoundEnabled = defaults.object(
+            forKey: AccountPreferenceNamespace.key(Keys.autoplaySoundEnabled, accountID: accountID)
+        ) as? Bool ?? true
+
+        return ReviewSettings(
             mode: resolvedMode.mode,
             customInitialIntervalHours: resolvedMode.customInitialIntervalHours,
             customRememberedMultiplier: resolvedMode.customRememberedMultiplier,
@@ -261,6 +330,7 @@ final class ReviewSettingsStore {
     }
 
     func update(_ settings: ReviewSettings) {
+        guard !isAccountBoundarySuspended else { return }
         let pauseChanged = settings.isProgressPaused != self.settings.isProgressPaused
             || settings.progressPausedAt != self.settings.progressPausedAt
         let modeChanged = settings.mode != self.settings.mode
@@ -277,7 +347,7 @@ final class ReviewSettingsStore {
         // 整組寫 iCloud(改 pause/autoplay 不該動 mode 的 LWW clock,否則跨裝置誤判較新)。
         if modeChanged {
             let ts = Date().timeIntervalSince1970
-            defaults.set(ts, forKey: Keys.modeUpdatedAt)
+            defaults.set(ts, forKey: storageKey(Keys.modeUpdatedAt))
             writeCloudMode(modeState, timestamp: ts)
         }
         // pause clock 本地層:總是寫(冪等,與既有行為一致)。
@@ -286,56 +356,101 @@ final class ReviewSettingsStore {
         // iCloud(改 mode/autoplay 不該動 pause 時鐘的 LWW clock,否則跨裝置誤判較新)。
         if pauseChanged {
             let ts = Date().timeIntervalSince1970
-            defaults.set(ts, forKey: Keys.progressUpdatedAt)
-            cloud.set(settings.isProgressPaused ? 1.0 : 0.0, forKey: Keys.isProgressPaused)
+            defaults.set(ts, forKey: storageKey(Keys.progressUpdatedAt))
+            cloud.set(settings.isProgressPaused ? 1.0 : 0.0, forKey: storageKey(Keys.isProgressPaused))
             // resume(無錨點)時寫 0 sentinel:KVS 無 removeObject,讀取端把 0 視為 nil。
-            cloud.set(settings.progressPausedAt?.timeIntervalSince1970 ?? 0, forKey: Keys.progressPausedAt)
-            cloud.set(ts, forKey: Keys.progressUpdatedAt)
+            cloud.set(settings.progressPausedAt?.timeIntervalSince1970 ?? 0, forKey: storageKey(Keys.progressPausedAt))
+            cloud.set(ts, forKey: storageKey(Keys.progressUpdatedAt))
         }
-        defaults.set(settings.autoplaySpeed.rawValue, forKey: Keys.autoplaySpeed)
-        defaults.set(settings.autoplaySoundEnabled, forKey: Keys.autoplaySoundEnabled)
+        defaults.set(settings.autoplaySpeed.rawValue, forKey: storageKey(Keys.autoplaySpeed))
+        defaults.set(settings.autoplaySoundEnabled, forKey: storageKey(Keys.autoplaySoundEnabled))
     }
 
     // MARK: - Pause clock layer reads (LWW inputs)
 
     static func readLocalPauseState(_ defaults: UserDefaults) -> PauseClockState {
+        readLocalPauseState(defaults, accountID: nil)
+    }
+
+    private static func readLocalPauseState(
+        _ defaults: UserDefaults,
+        accountID: String?
+    ) -> PauseClockState {
         PauseClockState(
-            isPaused: defaults.bool(forKey: Keys.isProgressPaused),
-            pausedAt: (defaults.object(forKey: Keys.progressPausedAt) as? Double)
+            isPaused: defaults.bool(forKey: AccountPreferenceNamespace.key(Keys.isProgressPaused, accountID: accountID)),
+            pausedAt: (defaults.object(
+                forKey: AccountPreferenceNamespace.key(Keys.progressPausedAt, accountID: accountID)
+            ) as? Double)
                 .map(Date.init(timeIntervalSince1970:)),
-            updatedAt: defaults.object(forKey: Keys.progressUpdatedAt) as? Double
+            updatedAt: defaults.object(
+                forKey: AccountPreferenceNamespace.key(Keys.progressUpdatedAt, accountID: accountID)
+            ) as? Double
         )
     }
 
     static func readCloudPauseState(_ cloud: CloudKeyValueStore) -> PauseClockState {
-        let pausedAtRaw = cloud.double(forKey: Keys.progressPausedAt)
+        readCloudPauseState(cloud, accountID: nil)
+    }
+
+    private static func readCloudPauseState(
+        _ cloud: CloudKeyValueStore,
+        accountID: String?
+    ) -> PauseClockState {
+        let pausedAtRaw = cloud.double(forKey: AccountPreferenceNamespace.key(Keys.progressPausedAt, accountID: accountID))
         return PauseClockState(
-            isPaused: (cloud.double(forKey: Keys.isProgressPaused) ?? 0) != 0,
+            isPaused: (cloud.double(
+                forKey: AccountPreferenceNamespace.key(Keys.isProgressPaused, accountID: accountID)
+            ) ?? 0) != 0,
             // 0 是 resume 時寫的 sentinel(KVS 無 removeObject),視為無錨點。
             pausedAt: pausedAtRaw.flatMap { $0 == 0 ? nil : Date(timeIntervalSince1970: $0) },
-            updatedAt: cloud.double(forKey: Keys.progressUpdatedAt)
+            updatedAt: cloud.double(
+                forKey: AccountPreferenceNamespace.key(Keys.progressUpdatedAt, accountID: accountID)
+            )
         )
     }
 
     // MARK: - Review mode layer reads (LWW inputs)
 
     static func readLocalModeState(_ defaults: UserDefaults) -> ReviewModeState {
-        let mode = defaults.string(forKey: Keys.mode)
+        readLocalModeState(defaults, accountID: nil)
+    }
+
+    private static func readLocalModeState(
+        _ defaults: UserDefaults,
+        accountID: String?
+    ) -> ReviewModeState {
+        let mode = defaults.string(forKey: AccountPreferenceNamespace.key(Keys.mode, accountID: accountID))
             .flatMap(ReviewSettingsMode.init(rawValue:)) ?? .relaxed
         return Self.modeState(
             mode: mode,
-            params: Self.decodeCustomParams(defaults.data(forKey: Keys.customParams)),
-            updatedAt: defaults.object(forKey: Keys.modeUpdatedAt) as? Double
+            params: Self.decodeCustomParams(
+                defaults.data(forKey: AccountPreferenceNamespace.key(Keys.customParams, accountID: accountID))
+            ),
+            updatedAt: defaults.object(
+                forKey: AccountPreferenceNamespace.key(Keys.modeUpdatedAt, accountID: accountID)
+            ) as? Double
         )
     }
 
     static func readCloudModeState(_ cloud: CloudKeyValueStore) -> ReviewModeState {
-        let mode = cloud.string(forKey: Keys.mode)
+        readCloudModeState(cloud, accountID: nil)
+    }
+
+    private static func readCloudModeState(
+        _ cloud: CloudKeyValueStore,
+        accountID: String?
+    ) -> ReviewModeState {
+        let mode = cloud.string(forKey: AccountPreferenceNamespace.key(Keys.mode, accountID: accountID))
             .flatMap(ReviewSettingsMode.init(rawValue:)) ?? .relaxed
         return Self.modeState(
             mode: mode,
-            params: Self.decodeCustomParams(cloud.string(forKey: Keys.customParams)?.data(using: .utf8)),
-            updatedAt: cloud.double(forKey: Keys.modeUpdatedAt)
+            params: Self.decodeCustomParams(
+                cloud.string(forKey: AccountPreferenceNamespace.key(Keys.customParams, accountID: accountID))?
+                    .data(using: .utf8)
+            ),
+            updatedAt: cloud.double(
+                forKey: AccountPreferenceNamespace.key(Keys.modeUpdatedAt, accountID: accountID)
+            )
         )
     }
 
@@ -396,9 +511,9 @@ final class ReviewSettingsStore {
 
     /// 寫 mode 三層的本地層(mode + customParams,冪等總是寫)。
     private func writeLocalMode(_ state: ReviewModeState) {
-        defaults.set(state.mode.rawValue, forKey: Keys.mode)
+        defaults.set(state.mode.rawValue, forKey: storageKey(Keys.mode))
         if let data = Self.encodeCustomParams(state) {
-            defaults.set(data, forKey: Keys.customParams)
+            defaults.set(data, forKey: storageKey(Keys.customParams))
         }
     }
 
@@ -406,18 +521,18 @@ final class ReviewSettingsStore {
     /// customParams 對固定 5 個 Double 的 dict 序列化不會失敗;萬一失敗,讀取端缺 key
     /// 經 `modeState` 回退 default 仍整組收斂(不會殘留他欄位的舊值)。
     private func writeCloudMode(_ state: ReviewModeState, timestamp: Double) {
-        cloud.set(state.mode.rawValue, forKey: Keys.mode)
+        cloud.set(state.mode.rawValue, forKey: storageKey(Keys.mode))
         if let json = Self.encodeCustomParams(state).flatMap({ String(data: $0, encoding: .utf8) }) {
-            cloud.set(json, forKey: Keys.customParams)
+            cloud.set(json, forKey: storageKey(Keys.customParams))
         }
-        cloud.set(timestamp, forKey: Keys.modeUpdatedAt)
+        cloud.set(timestamp, forKey: storageKey(Keys.modeUpdatedAt))
     }
 
     // MARK: - Review mode push/rollback support (Phase A3)
 
     /// 當前 mode 三層的 LWW 快照(rollback 前取;updatedAt 取本地層)。
     var reviewModeSnapshot: ReviewModeState {
-        Self.currentModeState(settings, updatedAt: Self.readLocalModeState(defaults).updatedAt)
+        Self.currentModeState(settings, updatedAt: Self.readLocalModeState(defaults, accountID: accountID).updatedAt)
     }
 
     /// 遠端 push 失敗時還原 mode 三層到快照(含原 updatedAt),使回滾值不會被 iCloud LWW
@@ -433,12 +548,12 @@ final class ReviewSettingsStore {
         settings = s
         writeLocalMode(snapshot)
         if let ts = snapshot.updatedAt {
-            defaults.set(ts, forKey: Keys.modeUpdatedAt)
+            defaults.set(ts, forKey: storageKey(Keys.modeUpdatedAt))
             writeCloudMode(snapshot, timestamp: ts)
         } else {
             // 先前從未寫過:清本地時戳;KVS 無 removeObject,寫 0 讓他裝置真寫(ts>0)勝出。
-            defaults.removeObject(forKey: Keys.modeUpdatedAt)
-            cloud.set(0.0, forKey: Keys.modeUpdatedAt)
+            defaults.removeObject(forKey: storageKey(Keys.modeUpdatedAt))
+            cloud.set(0.0, forKey: storageKey(Keys.modeUpdatedAt))
         }
     }
 
@@ -461,7 +576,7 @@ final class ReviewSettingsStore {
         s.customMaximumIntervalHours = state.customMaximumIntervalHours
         settings = s
         writeLocalMode(state)
-        defaults.set(serverUpdatedAt, forKey: Keys.modeUpdatedAt)
+        defaults.set(serverUpdatedAt, forKey: storageKey(Keys.modeUpdatedAt))
         return true
     }
 
@@ -472,7 +587,7 @@ final class ReviewSettingsStore {
         PauseClockState(
             isPaused: settings.isProgressPaused,
             pausedAt: settings.progressPausedAt,
-            updatedAt: Self.readLocalPauseState(defaults).updatedAt
+            updatedAt: Self.readLocalPauseState(defaults, accountID: accountID).updatedAt
         )
     }
 
@@ -485,16 +600,16 @@ final class ReviewSettingsStore {
         settings = s
         writeLocalPause(snapshot.isPaused, snapshot.pausedAt)
         if let ts = snapshot.updatedAt {
-            defaults.set(ts, forKey: Keys.progressUpdatedAt)
-            cloud.set(snapshot.isPaused ? 1.0 : 0.0, forKey: Keys.isProgressPaused)
-            cloud.set(snapshot.pausedAt?.timeIntervalSince1970 ?? 0, forKey: Keys.progressPausedAt)
-            cloud.set(ts, forKey: Keys.progressUpdatedAt)
+            defaults.set(ts, forKey: storageKey(Keys.progressUpdatedAt))
+            cloud.set(snapshot.isPaused ? 1.0 : 0.0, forKey: storageKey(Keys.isProgressPaused))
+            cloud.set(snapshot.pausedAt?.timeIntervalSince1970 ?? 0, forKey: storageKey(Keys.progressPausedAt))
+            cloud.set(ts, forKey: storageKey(Keys.progressUpdatedAt))
         } else {
             // 先前從未寫過:清本地時戳;KVS 無 removeObject,寫 0 讓他裝置真寫(ts>0)勝出。
-            defaults.removeObject(forKey: Keys.progressUpdatedAt)
-            cloud.set(0.0, forKey: Keys.isProgressPaused)
-            cloud.set(0.0, forKey: Keys.progressPausedAt)
-            cloud.set(0.0, forKey: Keys.progressUpdatedAt)
+            defaults.removeObject(forKey: storageKey(Keys.progressUpdatedAt))
+            cloud.set(0.0, forKey: storageKey(Keys.isProgressPaused))
+            cloud.set(0.0, forKey: storageKey(Keys.progressPausedAt))
+            cloud.set(0.0, forKey: storageKey(Keys.progressUpdatedAt))
         }
     }
 
@@ -513,22 +628,24 @@ final class ReviewSettingsStore {
         s.progressPausedAt = pausedAt
         settings = s
         writeLocalPause(isPaused, pausedAt)
-        defaults.set(serverUpdatedAt, forKey: Keys.progressUpdatedAt)
+        defaults.set(serverUpdatedAt, forKey: storageKey(Keys.progressUpdatedAt))
         return true
     }
 
     private func writeLocalPause(_ isPaused: Bool, _ pausedAt: Date?) {
-        defaults.set(isPaused, forKey: Keys.isProgressPaused)
+        defaults.set(isPaused, forKey: storageKey(Keys.isProgressPaused))
         if let at = pausedAt {
-            defaults.set(at.timeIntervalSince1970, forKey: Keys.progressPausedAt)
+            defaults.set(at.timeIntervalSince1970, forKey: storageKey(Keys.progressPausedAt))
         } else {
-            defaults.removeObject(forKey: Keys.progressPausedAt)
+            defaults.removeObject(forKey: storageKey(Keys.progressPausedAt))
         }
     }
 
     init(previewSettings: ReviewSettings) {
         self.defaults = .standard
         self.cloud = CloudPreferencesSync.shared
+        self.accountID = nil
+        self.isAccountBoundarySuspended = false
         self.settings = previewSettings
     }
 }

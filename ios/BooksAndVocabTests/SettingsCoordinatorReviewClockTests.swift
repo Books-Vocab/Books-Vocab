@@ -58,6 +58,57 @@ struct SettingsCoordinatorReviewClockTests {
         func fetchUserConfig() async throws -> KGUserConfig { userConfigToReturn }
     }
 
+    private struct DeferredConfigFailure: Error {}
+
+    private actor DeferredFailureGate {
+        private var started = false
+        private var released = false
+        private var startWaiters: [CheckedContinuation<Void, Never>] = []
+        private var releaseWaiter: CheckedContinuation<Void, Never>?
+
+        func waitUntilStarted() async {
+            guard !started else { return }
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                startWaiters.append(continuation)
+            }
+        }
+
+        func waitForRelease() async {
+            started = true
+            let waiters = startWaiters
+            startWaiters.removeAll()
+            waiters.forEach { $0.resume() }
+
+            guard !released else { return }
+            await withCheckedContinuation { releaseWaiter = $0 }
+        }
+
+        func release() {
+            released = true
+            releaseWaiter?.resume()
+            releaseWaiter = nil
+        }
+    }
+
+    private final class DeferredFailureKGService: HealthChecking, UserConfigFetching {
+        private let gate = DeferredFailureGate()
+
+        func healthCheck() async {}
+
+        func fetchUserConfig() async throws -> KGUserConfig {
+            await gate.waitForRelease()
+            throw DeferredConfigFailure()
+        }
+
+        func waitUntilStarted() async {
+            await gate.waitUntilStarted()
+        }
+
+        func release() async {
+            await gate.release()
+        }
+    }
+
     // MARK: - Helpers
 
     /// 走 `SettingsCoordinator.loadData` 路徑套用 server pause-clock，驗證
@@ -112,6 +163,26 @@ struct SettingsCoordinatorReviewClockTests {
         let expected = expectedUTCDate(year: 2026, month: 7, day: 9, hour: 14, minute: 59, second: 59)
         #expect(result.isPaused == true)
         #expect(result.pausedAt == expected)
+    }
+
+    @Test func delayedFailureFromPreviousAccountDoesNotSetCurrentAccountIssue() async {
+        let auth = MockAuth()
+        auth.userId = "account-a"
+        let service = DeferredFailureKGService()
+        let coordinator = SettingsCoordinator()
+
+        let task = Task { @MainActor in
+            await coordinator.loadData(authManager: auth, kgService: service)
+        }
+        await service.waitUntilStarted()
+
+        auth.userId = "account-b"
+        auth.token = "token-b"
+        coordinator.resetForAccountBoundary()
+        await service.release()
+        await task.value
+
+        #expect(coordinator.configurationIssue == nil)
     }
 
     /// 對照案例：含小數秒的既有格式仍要正確解析（防迴歸）。
@@ -313,5 +384,33 @@ struct SettingsCoordinatorReviewClockTests {
         #expect(cloud.double(forKey: "review_settings_progress_paused") == 0)
         #expect(cloud.double(forKey: "review_settings_progress_paused_at") == 0)
         #expect(cloud.double(forKey: "review_settings_progress_updated_at") == 0)
+    }
+
+    @Test func accountScopedReviewSettingsDoNotCrossReadOrWrite() {
+        let suite = "test.settings-review-account-scope.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        let cloud = FakeCloudKVStore()
+
+        let accountA = ReviewSettingsStore(defaults: defaults, cloud: cloud, accountID: "account-a")
+        var settingsA = accountA.settings
+        settingsA.mode = .intensive
+        settingsA.isProgressPaused = true
+        settingsA.progressPausedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        accountA.update(settingsA)
+
+        let accountB = ReviewSettingsStore(defaults: defaults, cloud: cloud, accountID: "account-b")
+        #expect(accountB.settings == ReviewSettings.default)
+
+        var settingsB = accountB.settings
+        settingsB.mode = .custom
+        settingsB.customInitialIntervalHours = 48
+        accountB.update(settingsB)
+
+        let restoredA = ReviewSettingsStore(defaults: defaults, cloud: cloud, accountID: "account-a")
+        #expect(restoredA.settings.mode == .intensive)
+        #expect(restoredA.settings.isProgressPaused)
+        #expect(restoredA.settings.progressPausedAt == Date(timeIntervalSince1970: 1_700_000_000))
+        #expect(restoredA.settings.customInitialIntervalHours == ReviewSettings.default.customInitialIntervalHours)
     }
 }

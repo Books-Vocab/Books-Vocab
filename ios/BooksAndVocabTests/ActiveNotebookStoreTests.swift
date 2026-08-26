@@ -271,6 +271,22 @@ struct ActiveNotebookStoreTests {
         #expect(cloud.string(forKey: "activeNotebookId") == "account-a-nb")
     }
 
+    @Test func accountScopedActiveNotebookRestoresOnlyItsOwnNamespace() {
+        let d = makeDefaults()
+        let cloud = FakeCloudKVStore()
+        let accountA = ActiveNotebookStore(defaults: d, cloud: cloud, accountID: "account-a")
+        accountA.setActive("account-a-nb")
+
+        let accountB = ActiveNotebookStore(defaults: d, cloud: cloud, accountID: "account-b")
+        #expect(accountB.activeNotebookId == ActiveNotebookStore.defaultNotebookId)
+        #expect(accountB.activeNotebookIdIfSet == nil)
+        accountB.setActive("account-b-nb")
+
+        let restoredA = ActiveNotebookStore(defaults: d, cloud: cloud, accountID: "account-a")
+        #expect(restoredA.activeNotebookId == "account-a-nb")
+        #expect(restoredA.activeNotebookIdIfSet == "account-a-nb")
+    }
+
     @Test func staleUserConfigResponseIsDiscardedAfterAccountSwitch() async {
         let d = makeDefaults()
         let store = ActiveNotebookStore(defaults: d, cloud: FakeCloudKVStore())
