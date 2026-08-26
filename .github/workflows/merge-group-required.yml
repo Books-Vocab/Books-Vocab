@@ -202,18 +202,34 @@ jobs:
             trusted_run="$(gh api "repos/$REPOSITORY/actions/runs/$run_id")"
             trusted_path="$(jq -r '.path // empty' <<<"$trusted_run")"
             trusted_event="$(jq -r '.event // empty' <<<"$trusted_run")"
-            trusted_head="$(jq -r '.head_sha // empty' <<<"$trusted_run")"
+            trusted_head_branch="$(jq -r '.head_branch // empty' <<<"$trusted_run")"
             trusted_status="$(jq -r '.status // empty' <<<"$trusted_run")"
             trusted_conclusion="$(jq -r '.conclusion // empty' <<<"$trusted_run")"
             trusted_workflow="$(jq -r '.workflow_id // empty' <<<"$trusted_run")"
+            trusted_pr_matches="$(jq -c \
+              --argjson number "$group_pr_number" \
+              --arg head_sha "$pr_head_sha" \
+              '[.pull_requests[]? | select(.number == $number and .head.sha == $head_sha and .base.ref == "main")]' \
+              <<<"$trusted_run")"
             case "$trusted_event" in
-              pull_request_target|pull_request|pull_request_review|pull_request_review_comment|issue_comment) ;;
+              issue_comment)
+                if [[ "$trusted_head_branch" != "main" ]]; then
+                  echo "group PR #$group_pr_number issue-comment review ran outside trusted main" >&2
+                  exit 1
+                fi
+                ;;
+              pull_request_target|pull_request_review|pull_request_review_comment)
+                if [[ "$(jq 'length' <<<"$trusted_pr_matches")" != "1" ]]; then
+                  echo "group PR #$group_pr_number review run is not associated with the exact PR HEAD" >&2
+                  exit 1
+                fi
+                ;;
               *)
                 echo "group PR #$group_pr_number review provenance event is not trusted" >&2
                 exit 1
                 ;;
             esac
-            if [[ "$trusted_path" != ".github/workflows/agent-review.yml" || "$trusted_workflow" != "$trusted_workflow_id" || "$trusted_head" != "$pr_head_sha" || "$trusted_status" != "completed" || "$trusted_conclusion" != "success" ]]; then
+            if [[ "$trusted_path" != ".github/workflows/agent-review.yml" || "$trusted_workflow" != "$trusted_workflow_id" || "$trusted_status" != "completed" || "$trusted_conclusion" != "success" ]]; then
               echo "group PR #$group_pr_number review provenance does not match trusted workflow run" >&2
               exit 1
             fi
