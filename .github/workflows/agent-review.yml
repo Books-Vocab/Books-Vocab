@@ -30,7 +30,11 @@ jobs:
     # issue comments must not manufacture a review check.
     if: >-
       github.event_name != 'issue_comment' ||
-      contains(github.event.comment.body, '@codex review')
+      contains(github.event.comment.body, '@codex review') ||
+      (
+        github.event.comment.user.login == 'chatgpt-codex-connector[bot]' &&
+        contains(github.event.comment.body, '**Reviewed commit:**')
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:

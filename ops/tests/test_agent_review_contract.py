@@ -88,3 +88,10 @@ def test_agent_review_accepts_exact_head_codex_issue_comment() -> None:
     assert "issues/$PR_NUMBER/comments" in source
     assert "Reviewed commit" in source
     assert "reviewed_issue_evidence" in source
+
+
+def test_agent_review_rechecks_trusted_codex_response_comments() -> None:
+    source = _workflow()
+
+    assert "github.event.comment.user.login == 'chatgpt-codex-connector[bot]'" in source
+    assert "contains(github.event.comment.body, '**Reviewed commit:**')" in source
