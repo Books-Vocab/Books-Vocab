@@ -168,6 +168,10 @@ class PullRequestSnapshot:
     labels: tuple[str, ...] = ()
     created_at: datetime | None = None
     merged_at: datetime | None = None
+    # GitHub's reviewDecision is an observation only. None is deliberately
+    # preserved for missing or unrecognized values so callers cannot infer
+    # approval from an incomplete review projection.
+    review_decision: str | None = None
 
     def __post_init__(self) -> None:
         if type(self.labels) is not tuple or any(

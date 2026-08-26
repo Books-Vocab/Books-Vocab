@@ -105,6 +105,15 @@ def assess_dogfood_readiness(
         "explicit P0/P1/security holds require terminal disposition",
     )
     block(metrics.open_prs > 0, "owner-mapped PR reservoir is not empty")
+    if metrics.review_gate_unresolved:
+        block(
+            True,
+            (
+                "open PR review gate is unresolved: "
+                f"{metrics.review_gate_unresolved} observation(s); "
+                "review status is not required-check or merge approval"
+            ),
+        )
     block(
         physical_worktree_count != 1 or not canonical_worktree_present,
         "physical worktree baseline is not canonical-main only",
@@ -150,6 +159,10 @@ def assess_dogfood_readiness(
     elif metrics.unadmitted_open_issues:
         warnings.append(
             "raw open Issues remain unadmitted; dogfood launch is not backlog-drained"
+        )
+    if metrics.open_prs and metrics.review_gate_unresolved is None:
+        warnings.append(
+            "open PR review-gate inventory is unknown; review status was not measured"
         )
     if not metrics.issue_inventory_complete:
         warnings.append("raw open Issue inventory is incomplete")

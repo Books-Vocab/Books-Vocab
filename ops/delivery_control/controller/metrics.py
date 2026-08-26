@@ -57,6 +57,13 @@ class PipelineMetrics:
     # unknown. Measured inventories expose the unique raw open-PR count
     # separately from the owner-mapped durable PR reservoir in open_prs.
     raw_open_prs: int | None = None
+    # Review-gate counts are measured only when the PR inventory was projected
+    # in this observation. None keeps direct legacy construction unknown rather
+    # than silently treating review status as approved or absent.
+    review_required: int | None = None
+    review_changes_requested: int | None = None
+    review_approved: int | None = None
+    review_observation_unknown: int | None = None
     unadmitted_open_issues: int | None = None
     active_registry_records: int = 0
     raw_active_registry_records: int = 0
@@ -177,6 +184,19 @@ class PipelineMetrics:
     def quarantined_lanes(self) -> int:
         return self.quarantined_blocked_lanes + self.quarantined_terminal_cleanup
 
+    @property
+    def review_gate_unresolved(self) -> int | None:
+        """Count review observations that cannot authorize merge or dispatch."""
+
+        counts = (
+            self.review_required,
+            self.review_changes_requested,
+            self.review_observation_unknown,
+        )
+        if any(count is None for count in counts):
+            return None
+        return sum(counts)  # type: ignore[arg-type]
+
 
 @dataclass(frozen=True)
 class MergeCadence:
@@ -236,6 +256,21 @@ def measure_pipeline(
         for pull_request in lane.pull_requests
         if pull_request.state == "OPEN"
     }
+    review_decisions_by_number: dict[int, set[str | None]] = {}
+    for lane in lanes:
+        for pull_request in lane.pull_requests:
+            if pull_request.state != "OPEN":
+                continue
+            review_decisions_by_number.setdefault(pull_request.number, set()).add(
+                pull_request.review_decision
+                if pull_request.review_decision
+                in {"REVIEW_REQUIRED", "CHANGES_REQUESTED", "APPROVED"}
+                else None
+            )
+    measured_review_decisions = tuple(
+        next(iter(decisions)) if len(decisions) == 1 else None
+        for decisions in review_decisions_by_number.values()
+    )
     physical_paths = {
         lane.physical.path.resolve() for lane in lanes if lane.physical is not None
     }
@@ -445,6 +480,10 @@ def measure_pipeline(
         local_main_sha=inventory.local_main_sha,
         raw_open_issues=inventory.demand_issues.raw_open_issues,
         raw_open_prs=len(all_pull_request_numbers),
+        review_required=measured_review_decisions.count("REVIEW_REQUIRED"),
+        review_changes_requested=measured_review_decisions.count("CHANGES_REQUESTED"),
+        review_approved=measured_review_decisions.count("APPROVED"),
+        review_observation_unknown=measured_review_decisions.count(None),
         unadmitted_open_issues=inventory.demand_issues.unadmitted_open_issues,
         active_registry_records=active_registry_records,
         raw_active_registry_records=raw_active_registry_records,

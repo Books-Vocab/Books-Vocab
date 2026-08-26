@@ -20,6 +20,7 @@ class ControlAction(StrEnum):
     AUDIT_BRANCH_LIFECYCLE = "audit_branch_lifecycle"
     AUDIT_CI_START_SLO = "audit_ci_start_slo"
     AUDIT_QUEUE_ADMISSION_SLO = "audit_queue_admission_slo"
+    AUDIT_PR_REVIEW_GATE = "audit_pr_review_gate"
     AUDIT_MERGE_CADENCE = "audit_merge_cadence"
     AUDIT_OWNERLESS_LANES = "audit_ownerless_lanes"
     AUDIT_UNREACHABLE_OWNER_LANES = "audit_unreachable_owner_lanes"
@@ -119,6 +120,17 @@ def decide_capacity(
             )
     if metrics.reanchor_required:
         add(ControlAction.REANCHOR_FRONT, "exact stale-base PRs await reanchor")
+    if metrics.review_gate_unresolved:
+        add(
+            ControlAction.AUDIT_PR_REVIEW_GATE,
+            (
+                "open PR review gate is unresolved: "
+                f"review_required={metrics.review_required}, "
+                f"changes_requested={metrics.review_changes_requested}, "
+                f"unknown={metrics.review_observation_unknown}; "
+                "observation only, no approval, merge, or dispatch authorization"
+            ),
+        )
     if not metrics.issue_inventory_complete or metrics.unadmitted_open_issues is None:
         add(
             ControlAction.TRIAGE_EXISTING_ISSUES,

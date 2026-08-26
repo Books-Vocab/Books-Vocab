@@ -22,7 +22,7 @@ from .github_parsing import (
 
 PR_FIELDS = (
     "id,number,url,headRefName,baseRefName,baseRefOid,headRefOid,state,isDraft,mergeable,title,body,"
-    "autoMergeRequest,labels,createdAt,mergedAt"
+    "autoMergeRequest,labels,createdAt,mergedAt,reviewDecision"
 )
 
 OPEN_PR_FILES_QUERY = """
@@ -63,6 +63,7 @@ nodes {
   }
   createdAt
   mergedAt
+  reviewDecision
 }
 pageInfo { hasNextPage endCursor }
 """.strip()
@@ -268,13 +269,11 @@ class GitHubQueries:
                 f"owner={owner}",
                 "-F",
                 f"name={name}",
-                *sum(
-                    (
-                        ["-F", f"branch{index}={branch}"]
-                        for index, branch in enumerate(ordered_branches)
-                    ),
-                    [],
-                ),
+                *[
+                    argument
+                    for index, branch in enumerate(ordered_branches)
+                    for argument in ("-F", f"branch{index}={branch}")
+                ],
             )
         )
         return _parse_pull_request_history_by_branch(payload, ordered_branches)
