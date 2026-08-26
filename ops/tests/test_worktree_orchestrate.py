@@ -1169,6 +1169,99 @@ def test_reanchor_recreates_exact_remote_branch_for_same_owner(
     assert active[0]["handed_back_sha"] is None
 
 
+def test_reanchor_accepts_active_typed_handback_for_same_owner(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, state_path, target, expected = _reanchor_fixture(tmp_path)
+    state = coordinator.registry.load_state(state_path)
+    state["records"][0]["status"] = coordinator.registry.STATUS_ACTIVE
+    coordinator.registry.save_state(state_path, state)
+
+    rc = coordinator.main(_reanchor_argv(repo, state_path, target, expected))
+
+    payload = json.loads(capsys.readouterr().out)
+    state = coordinator.registry.load_state(state_path)
+    old, active = state["records"]
+    assert rc == coordinator.EXIT_OK
+    assert payload["status"] == "ready-for-owner-tests"
+    assert old["status"] == "abandoned"
+    assert old["handback_seal"]
+    assert active["status"] == "active"
+    assert active["claim_generation"] == 5
+    assert active["base_sha"] == expected["live_main"]
+    assert active["scope"] == old["scope"]
+
+
+def test_reanchor_rejects_active_claim_without_typed_handback(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, state_path, target, expected = _reanchor_fixture(tmp_path)
+    state = coordinator.registry.load_state(state_path)
+    state["records"][0]["status"] = coordinator.registry.STATUS_ACTIVE
+    state["records"][0].pop("handback_seal")
+    coordinator.registry.save_state(state_path, state)
+
+    rc = coordinator.main(_reanchor_argv(repo, state_path, target, expected))
+
+    payload = json.loads(capsys.readouterr().out)
+    current = coordinator.registry.load_state(state_path)["records"]
+    assert rc == coordinator.EXIT_BLOCK
+    assert "typed hand-back" in payload["reason"]
+    assert len(current) == 1
+    assert current[0]["status"] == coordinator.registry.STATUS_ACTIVE
+    assert not target.exists()
+
+
+def test_reanchor_active_claim_preserves_owner_and_scope_guards(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, state_path, target, expected = _reanchor_fixture(tmp_path)
+    state = coordinator.registry.load_state(state_path)
+    state["records"][0]["status"] = coordinator.registry.STATUS_ACTIVE
+    state["records"][0]["scope"] = _scope_for("ops/other.py")
+    coordinator.registry.save_state(state_path, state)
+
+    rc = coordinator.main(_reanchor_argv(repo, state_path, target, expected))
+
+    payload = json.loads(capsys.readouterr().out)
+    current = coordinator.registry.load_state(state_path)["records"]
+    assert rc == coordinator.EXIT_BLOCK
+    assert "Scope" in payload["reason"]
+    assert len(current) == 1
+    assert current[0]["status"] == coordinator.registry.STATUS_ACTIVE
+    assert not target.exists()
+
+
+@pytest.mark.parametrize("mismatch", ("remote", "pr"))
+def test_reanchor_active_claim_preserves_remote_and_pr_guards(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    mismatch: str,
+) -> None:
+    repo, state_path, target, expected = _reanchor_fixture(tmp_path)
+    state = coordinator.registry.load_state(state_path)
+    state["records"][0]["status"] = coordinator.registry.STATUS_ACTIVE
+    coordinator.registry.save_state(state_path, state)
+    argv = _reanchor_argv(repo, state_path, target, expected)
+    if mismatch == "remote":
+        argv[argv.index("--expected-remote-head") + 1] = "a" * 40
+    else:
+        argv[argv.index("--merge-front-pr") + 1] = "41"
+
+    rc = coordinator.main(argv)
+
+    payload = json.loads(capsys.readouterr().out)
+    current = coordinator.registry.load_state(state_path)["records"]
+    assert rc == coordinator.EXIT_BLOCK
+    assert payload["reason"]
+    assert len(current) == 1
+    assert current[0]["status"] == coordinator.registry.STATUS_ACTIVE
+    assert not target.exists()
+
+
 def test_reanchor_accepts_direct_assignment_with_branch_lane_fallback(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -1309,11 +1402,16 @@ def test_reanchor_stale_remote_cas_compensates_local_assets(
     assert all(item["status"] != "active" for item in state["records"])
 
 
+@pytest.mark.parametrize("status", ("published", "active"))
 def test_reanchor_rejects_wrong_owner_before_git_mutation(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    status: str,
 ) -> None:
     repo, state_path, target, expected = _reanchor_fixture(tmp_path)
+    state = coordinator.registry.load_state(state_path)
+    state["records"][0]["status"] = status
+    coordinator.registry.save_state(state_path, state)
 
     rc = coordinator.main(
         _reanchor_argv(repo, state_path, target, expected, owner="other-owner")

@@ -12,7 +12,10 @@ import worktree_registry as registry
 from .domain import RegistryPreflight, commit_sha, declared_operations
 from .errors import ReanchorRefused
 
-_PUBLISHED_CLAIM_STATUSES = frozenset({"published", "cleanup_pending"})
+# An active claim may already have a typed hand-back when an owner resumes
+# after an interrupted transport.  It is reanchorable only through the same
+# immutable-seal and CAS checks as published claims.
+_PUBLISHED_CLAIM_STATUSES = frozenset({"active", "published", "cleanup_pending"})
 
 
 def _select_original(
