@@ -30,6 +30,21 @@ def _status_from_states(states: set[str]) -> CheckStatus:
     return CheckStatus.PENDING
 
 
+def _context_recency_key(
+    *,
+    started_at: datetime | None,
+    completed_at: datetime | None,
+    index: int,
+) -> tuple[bool, datetime, datetime, int]:
+    earliest = datetime.min.replace(tzinfo=UTC)
+    return (
+        started_at is not None or completed_at is not None,
+        started_at or completed_at or earliest,
+        completed_at or earliest,
+        index,
+    )
+
+
 class GitHubChecks:
     def __init__(
         self,
@@ -63,10 +78,7 @@ class GitHubChecks:
         )
         if not isinstance(payload, list):
             raise AdapterPayloadError("GitHub required checks must be a JSON list")
-        names: list[str] = []
-        states: set[str] = set()
-        starts: list[datetime | None] = []
-        completions: list[datetime | None] = []
+        observations: dict[str, tuple[str, datetime | None, datetime | None, int]] = {}
         for index, item in enumerate(payload):
             if not isinstance(item, Mapping):
                 raise AdapterPayloadError(f"required check[{index}] is not an object")
@@ -74,30 +86,40 @@ class GitHubChecks:
             state = item.get("state")
             if type(name) is not str or type(state) is not str:
                 raise AdapterPayloadError(f"required check[{index}] is malformed")
-            names.append(name)
-            states.add(state.upper())
-            starts.append(
-                parse_optional_timestamp(
-                    item.get("startedAt"),
-                    field=f"required check[{index}] startedAt",
-                )
+            started_at = parse_optional_timestamp(
+                item.get("startedAt"),
+                field=f"required check[{index}] startedAt",
             )
-            completions.append(
-                parse_optional_timestamp(
-                    item.get("completedAt"),
-                    field=f"required check[{index}] completedAt",
-                )
+            completed_at = parse_optional_timestamp(
+                item.get("completedAt"),
+                field=f"required check[{index}] completedAt",
             )
+            candidate = (state, started_at, completed_at, index)
+            previous = observations.get(name)
+            if previous is None or _context_recency_key(
+                started_at=started_at,
+                completed_at=completed_at,
+                index=index,
+            ) >= _context_recency_key(
+                started_at=previous[1],
+                completed_at=previous[2],
+                index=previous[3],
+            ):
+                observations[name] = candidate
         after = self.get_pull_request(number)
         if before.head_sha != after.head_sha:
             raise CompareAndSwapConflict(
                 "PR HEAD changed while reading required checks"
             )
+        starts = [item[1] for item in observations.values()]
+        completions = [item[2] for item in observations.values()]
         return CheckSnapshot(
-            status=_status_from_states(states),
+            status=_status_from_states(
+                {item[0].upper() for item in observations.values()}
+            ),
             head_sha=after.head_sha,
             observed_at=datetime.now(tz=UTC),
-            names=tuple(sorted(names)),
+            names=tuple(sorted(observations)),
             started_at=(
                 min(item for item in starts if item is not None)
                 if starts and all(item is not None for item in starts)

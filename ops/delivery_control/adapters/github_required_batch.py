@@ -32,6 +32,21 @@ def _status_from_states(states: set[str]) -> CheckStatus:
     return CheckStatus.PENDING
 
 
+def _context_recency_key(
+    *,
+    started_at: datetime | None,
+    completed_at: datetime | None,
+    index: int,
+) -> tuple[bool, datetime, datetime, int]:
+    earliest = datetime.min.replace(tzinfo=UTC)
+    return (
+        started_at is not None or completed_at is not None,
+        started_at or completed_at or earliest,
+        completed_at or earliest,
+        index,
+    )
+
+
 def _required_checks_query(numbers: tuple[int, ...]) -> str:
     fragments: list[str] = []
     for number in numbers:
@@ -125,10 +140,7 @@ def _snapshot_from_node(node: object, *, number: int) -> CheckSnapshot:
     if not isinstance(context_nodes, list):
         raise AdapterPayloadError(f"required PR {number} check connection is malformed")
 
-    names: list[str] = []
-    states: set[str] = set()
-    starts: list[datetime | None] = []
-    completions: list[datetime | None] = []
+    observations: dict[str, tuple[str, datetime | None, datetime | None, int]] = {}
     for index, item in enumerate(context_nodes):
         if not isinstance(item, Mapping):
             raise AdapterPayloadError(
@@ -155,17 +167,13 @@ def _snapshot_from_node(node: object, *, number: int) -> CheckSnapshot:
                 if raw_status.upper() == "COMPLETED" and type(conclusion) is str
                 else raw_status
             )
-            starts.append(
-                parse_optional_timestamp(
-                    item.get("startedAt"),
-                    field=f"required PR {number} check[{index}] startedAt",
-                )
+            started_at = parse_optional_timestamp(
+                item.get("startedAt"),
+                field=f"required PR {number} check[{index}] startedAt",
             )
-            completions.append(
-                parse_optional_timestamp(
-                    item.get("completedAt"),
-                    field=f"required PR {number} check[{index}] completedAt",
-                )
+            completed_at = parse_optional_timestamp(
+                item.get("completedAt"),
+                field=f"required PR {number} check[{index}] completedAt",
             )
         elif typename == "StatusContext":
             name = item.get("context")
@@ -181,20 +189,33 @@ def _snapshot_from_node(node: object, *, number: int) -> CheckSnapshot:
                 )
             if not required:
                 continue
-            starts.append(None)
-            completions.append(None)
+            started_at = None
+            completed_at = None
         else:
             raise AdapterPayloadError(
                 f"required PR {number} check[{index}] has unknown type"
             )
-        names.append(name)
-        states.add(state.upper())
+        candidate = (state, started_at, completed_at, index)
+        previous = observations.get(name)
+        if previous is None or _context_recency_key(
+            started_at=started_at,
+            completed_at=completed_at,
+            index=index,
+        ) >= _context_recency_key(
+            started_at=previous[1],
+            completed_at=previous[2],
+            index=previous[3],
+        ):
+            observations[name] = candidate
+
+    starts = [item[1] for item in observations.values()]
+    completions = [item[2] for item in observations.values()]
 
     return CheckSnapshot(
-        status=_status_from_states(states),
+        status=_status_from_states({item[0].upper() for item in observations.values()}),
         head_sha=head_sha,
         observed_at=datetime.now(tz=UTC),
-        names=tuple(sorted(names)),
+        names=tuple(sorted(observations)),
         started_at=(
             min(item for item in starts if item is not None)
             if starts and all(item is not None for item in starts)
