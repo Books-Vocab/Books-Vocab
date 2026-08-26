@@ -182,6 +182,50 @@ def test_resume_lifecycle_accepts_only_exact_open_required_code_failure() -> Non
     assert proof.required_status is CheckStatus.FAILURE
 
 
+def test_resume_lifecycle_rejects_combined_context_for_required_code_failure() -> None:
+    candidate = _pr(42, branch="feat/exact-pr")
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        checks={
+            42: _check(
+                CheckStatus.FAILURE,
+                names=("agent-review", "required"),
+            )
+        },
+    )
+
+    with pytest.raises(ReanchorRefused, match="exact required code failure context"):
+        verify_resume_lifecycle(
+            github,
+            branch="feat/exact-pr",
+            expected_base_sha=BASE,
+            expected_remote_head=HEAD,
+        )
+
+
+def test_maintenance_resume_accepts_combined_required_context() -> None:
+    candidate = _pr(42, branch="feat/exact-pr")
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        checks={
+            42: _check(
+                CheckStatus.SUCCESS,
+                names=("agent-review", "required"),
+            )
+        },
+    )
+
+    proof = verify_resume_lifecycle(
+        github,
+        branch="feat/exact-pr",
+        expected_base_sha=BASE,
+        expected_remote_head=HEAD,
+        require_failed=False,
+    )
+
+    assert proof.required_status is CheckStatus.SUCCESS
+
+
 def test_reanchor_lifecycle_accepts_required_green_with_trusted_agent_review_context() -> (
     None
 ):
