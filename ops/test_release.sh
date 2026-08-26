@@ -981,6 +981,27 @@ echo "$status_fx" | grep -E '^■ ios' | grep -q 'ios/2.0.0+6' \
   && fail_t "status reports the build tag as the last released version: $(echo "$status_fx" | grep -E '^■ ios')" \
   || ok "status caller reports the released tag, not the build tag"
 
+# A current project tuple with an existing build tag is already sealed.  Status
+# must measure only iOS commits after that build tag; counting from the shipped
+# marketing tag turns a completed build into a false pending backlog.
+fx_status_sealed="$TMP5/status-sealed-build"
+cp -R "$fx_lt" "$fx_status_sealed"
+sed -i '' 's/MARKETING_VERSION = 2.0.0;/MARKETING_VERSION = 2.0.1;/g; s/CURRENT_PROJECT_VERSION = 6;/CURRENT_PROJECT_VERSION = 12;/g' \
+  "$fx_status_sealed/ios/BooksAndVocab.xcodeproj/project.pbxproj"
+git -C "$fx_status_sealed" add ios/BooksAndVocab.xcodeproj/project.pbxproj
+git -C "$fx_status_sealed" commit -q -m "ios: prepare ios 2.0.1 build 12"
+git -C "$fx_status_sealed" tag "ios/2.0.1+12"
+status_sealed="$(bash "$fx_status_sealed/ops/release.sh" status 2>&1)"
+echo "$status_sealed" | grep -q 'ios/2.0.1+12' \
+  && ok "status exposes the current sealed iOS build tag" \
+  || fail_t "status omitted the current sealed iOS build tag: $status_sealed"
+echo "$status_sealed" | grep -q '自最新 build tag 無未封版 ios: commit' \
+  && ok "status measures unsealed iOS delta after the current build tag" \
+  || fail_t "status treated the sealed build as a pending iOS backlog: $status_sealed"
+echo "$status_sealed" | grep -q '待發版 1 筆 ios: commit' \
+  && fail_t "status still reports shipped-range commits as pending after build sealing" \
+  || ok "status does not report shipped-range commits as pending after build sealing"
+
 # ── 17. build tag：(version, build) → 封版 commit ───────────────────────────
 # Apple 只保留「當前」appStoreVersion，versionString 是可變欄位，build number 每個
 # marketing version 重新計數。所以「哪顆 commit 產生了哪顆 build」這個事實只有 repo

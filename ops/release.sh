@@ -669,6 +669,24 @@ ios_pending_versions() {  # $1=已上架版本 $2=本次要發的版本 → 印�
   printf '%s\n' "$out"
 }
 
+# A shipped marketing tag identifies the App Store source, while a build tag
+# identifies the exact (marketing version, build) tuple already archived or
+# uploaded. Once the current project tuple has a local build tag that is an
+# ancestor of HEAD, status must use that build tag as the iOS pending boundary;
+# otherwise the sealed candidate is reported as a new release backlog.
+ios_current_build_tag() {
+  local version build tag commit
+  version="$(current_version ios)"
+  build="$(current_build)"
+  valid_semver "$version" || return 0
+  [[ "$build" =~ ^[0-9]+$ ]] || return 0
+  tag="$(ios_build_tag "$version" "$build")"
+  commit="$(git -C "$ROOT" rev-parse -q --verify "refs/tags/${tag}^{commit}" || true)"
+  [[ -n "$commit" ]] || return 0
+  git -C "$ROOT" merge-base --is-ancestor "$commit" HEAD || return 0
+  printf '%s\n' "$tag"
+}
+
 # ios/<x.y.z> 現在的語意是「這個 marketing version 上架 App Store 的那顆 commit」，由
 # `shipped ios` 依 ASC 驗證後才物化。所以**它存在本身就是上架證據**，這個 guard 不再需要
 # operator 的 typed attestation（`--new-version-after-ready` 因此被移除），而是真的在檢查。
@@ -693,11 +711,24 @@ guard_ios_new_version() {
 
 # ---- status：各 component 待發版總覽（唯讀） ----
 cmd_status() {
+  local ios_status_sealed=0
   for c in api ios; do
     local tp cp lt range commits n suggest curver basever sv
+    local analysis_tag latest_build_tag analysis_is_build_tag
     tp="$(tag_prefix "$c")"; cp="$(commit_prefix "$c")"
     lt="$(last_tag "$c")"
-    if [[ -n "$lt" ]]; then range="$lt..HEAD"; else range=""; fi
+    analysis_tag="$lt"
+    latest_build_tag=""
+    analysis_is_build_tag=0
+    if [[ "$c" == ios ]]; then
+      latest_build_tag="$(ios_current_build_tag || true)"
+      if [[ -n "$latest_build_tag" ]]; then
+        analysis_tag="$latest_build_tag"
+        analysis_is_build_tag=1
+        ios_status_sealed=1
+      fi
+    fi
+    if [[ -n "$analysis_tag" ]]; then range="$analysis_tag..HEAD"; else range=""; fi
     if [[ -n "$range" ]]; then
       commits="$(git -C "$ROOT" log "$range" --oneline --no-merges 2>/dev/null | grep -iE "^[a-f0-9]+ $cp" || true)"
     else
@@ -731,9 +762,17 @@ cmd_status() {
         echo "      git push origin :refs/tags/${tp}${basever} && git tag -d ${tp}${basever}" ;;
     esac
     if [[ "$n" -eq 0 ]]; then
-      echo "   自上個 tag 無 $cp commit（無待發版）"
+      if [[ "$analysis_is_build_tag" -eq 1 ]]; then
+        echo "   自最新 build tag 無未封版 $cp commit（已封版 ${latest_build_tag}；不要重新建立 upload candidate）"
+      else
+        echo "   自上個 tag 無 $cp commit（無待發版）"
+      fi
     else
-      echo "   待發版 $n 筆 $cp commit；建議 $suggest → $sv"
+      if [[ "$analysis_is_build_tag" -eq 1 ]]; then
+        echo "   build tag 之後有 $n 筆尚未封版 $cp commit；建議 $suggest → $sv"
+      else
+        echo "   待發版 $n 筆 $cp commit；建議 $suggest → $sv"
+      fi
       printf '%s\n' "$commits" | head -15 | sed 's/^/     /'
       [[ "$n" -gt 15 ]] && echo "     … 還有 $((n-15)) 筆（完整清單見 ./ops/release.sh changelog ${c}）"
     fi
@@ -787,7 +826,11 @@ cmd_status() {
     fi
     echo
   done
-  echo "下一步：./ops/release.sh bump <c> <ver> --yes → changelog <c> → release <backend|ios> <ver> --yes"
+  if [[ "$ios_status_sealed" -eq 1 ]]; then
+    echo "下一步：確認 ASC／上架狀態；不要重複 bump 或 upload 已封版 tuple"
+  else
+    echo "下一步：./ops/release.sh bump <c> <ver> --yes → changelog <c> → release <backend|ios> <ver> --yes"
+  fi
 }
 
 # ---- changelog：委派 primitive（唯讀） ----
