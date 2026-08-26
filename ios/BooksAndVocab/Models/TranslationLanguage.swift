@@ -111,9 +111,17 @@ enum TranslationLanguage: String, CaseIterable, Identifiable, Codable {
         cloud: CloudKeyValueStore = CloudPreferencesSync.shared
     ) {
         withPersistence { context in
+            let normalizedAccountID = AccountPreferenceNamespace.normalizedAccountID(accountID)
+            if let normalizedAccountID {
+                migrateLegacyPreferences(
+                    defaults: defaults,
+                    cloud: cloud,
+                    accountID: normalizedAccountID
+                )
+            }
             context.defaults = defaults
             context.cloud = cloud
-            context.accountID = AccountPreferenceNamespace.normalizedAccountID(accountID)
+            context.accountID = normalizedAccountID
             context.isAccountBoundarySuspended = false
         }
     }
@@ -219,6 +227,40 @@ enum TranslationLanguage: String, CaseIterable, Identifiable, Codable {
 
     private static func resolveTargetDefault() -> TranslationLanguage {
         inferFromPreferredLanguages(allowed: targetLanguages) ?? .zhHant
+    }
+
+    private static func migrateLegacyPreferences(
+        defaults: UserDefaults,
+        cloud: CloudKeyValueStore,
+        accountID: String
+    ) {
+        AccountPreferenceNamespace.migrateLegacyIfNeeded(
+            accountID: accountID,
+            defaults: defaults,
+            feature: "translation-language"
+        ) {
+            for key in [sourceKey, targetKey, sourceUpdatedAtKey, targetUpdatedAtKey] {
+                AccountPreferenceNamespace.copyLegacyObject(
+                    key,
+                    defaults: defaults,
+                    accountID: accountID
+                )
+            }
+            for key in [sourceKey, targetKey] {
+                AccountPreferenceNamespace.copyLegacyCloudString(
+                    key,
+                    cloud: cloud,
+                    accountID: accountID
+                )
+            }
+            for key in [sourceUpdatedAtKey, targetUpdatedAtKey] {
+                AccountPreferenceNamespace.copyLegacyCloudDouble(
+                    key,
+                    cloud: cloud,
+                    accountID: accountID
+                )
+            }
+        }
     }
 
     private static func readPersisted(

@@ -62,9 +62,17 @@ final class ActiveNotebookStore {
         cloud: CloudKeyValueStore = CloudPreferencesSync.shared,
         accountID: String? = nil
     ) {
+        let normalizedAccountID = AccountPreferenceNamespace.normalizedAccountID(accountID)
+        if let normalizedAccountID {
+            Self.migrateLegacyPreferences(
+                defaults: defaults,
+                cloud: cloud,
+                accountID: normalizedAccountID
+            )
+        }
         self.defaults = defaults
         self.cloud = cloud
-        self.accountID = AccountPreferenceNamespace.normalizedAccountID(accountID)
+        self.accountID = normalizedAccountID
         // 三層 LWW：本地 vs iCloud KVS 取較新整組，寫回本地讓 capture consumer 看到
         // resolved 值（cloud 較新時不讀到舊 local）。
         //
@@ -79,7 +87,15 @@ final class ActiveNotebookStore {
     /// raw key is only the current in-memory/UI projection; durable local and
     /// iCloud state uses the account namespace.
     func activateAccount(_ accountID: String?) {
-        self.accountID = AccountPreferenceNamespace.normalizedAccountID(accountID)
+        let normalizedAccountID = AccountPreferenceNamespace.normalizedAccountID(accountID)
+        if let normalizedAccountID {
+            Self.migrateLegacyPreferences(
+                defaults: defaults,
+                cloud: cloud,
+                accountID: normalizedAccountID
+            )
+        }
+        self.accountID = normalizedAccountID
         isAccountBoundarySuspended = false
         reloadProjection()
     }
@@ -106,6 +122,36 @@ final class ActiveNotebookStore {
         defaults.removeObject(forKey: Keys.updatedAt)
         if resolved.updatedAt != nil {
             writeLocalState(resolved)
+        }
+    }
+
+    private static func migrateLegacyPreferences(
+        defaults: UserDefaults,
+        cloud: CloudKeyValueStore,
+        accountID: String
+    ) {
+        AccountPreferenceNamespace.migrateLegacyIfNeeded(
+            accountID: accountID,
+            defaults: defaults,
+            feature: "active-notebook"
+        ) {
+            for key in [Keys.activeId, Keys.updatedAt] {
+                AccountPreferenceNamespace.copyLegacyObject(
+                    key,
+                    defaults: defaults,
+                    accountID: accountID
+                )
+                AccountPreferenceNamespace.copyLegacyCloudString(
+                    key,
+                    cloud: cloud,
+                    accountID: accountID
+                )
+                AccountPreferenceNamespace.copyLegacyCloudDouble(
+                    key,
+                    cloud: cloud,
+                    accountID: accountID
+                )
+            }
         }
     }
 
@@ -140,18 +186,12 @@ final class ActiveNotebookStore {
         setActive(Self.defaultNotebookId)
     }
 
-    /// 登出 / 帳號切換清除本機 active notebook。只清本地：iCloud KVS 為 Apple-ID scope，
-    /// 與 review settings 帳號切換策略一致不在此碰（避免清掉同 Apple 裝置其他登入態的值）。
+    /// 清除相容用的 raw projection，不刪 account namespace。登出／帳號切換的
+    /// account-local active notebook 仍須在重新登入該帳號時恢復；因此所有
+    /// generic local-data cleanup 都只能移除目前 UI projection。
     func clear() {
-        if accountID != nil {
-            defaults.removeObject(forKey: storageKey(Keys.activeId))
-            defaults.removeObject(forKey: storageKey(Keys.updatedAt))
-            defaults.removeObject(forKey: Keys.activeId)
-            defaults.removeObject(forKey: Keys.updatedAt)
-        } else {
-            defaults.removeObject(forKey: Keys.activeId)
-            defaults.removeObject(forKey: Keys.updatedAt)
-        }
+        defaults.removeObject(forKey: Keys.activeId)
+        defaults.removeObject(forKey: Keys.updatedAt)
     }
 
     // MARK: - Layer reads / writes (LWW inputs)

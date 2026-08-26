@@ -26,6 +26,9 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
     private let sessionStore: any AuthSessionStoring
 
     @ObservationIgnored
+    private let accountPreferenceLifecycle: any AccountPreferenceLifecycle
+
+    @ObservationIgnored
     var appleSignInDelegate: AppleSignInDelegate?
 
     // Stored at app startup so any logout path can clear local data
@@ -64,11 +67,13 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
     init(
         verifier: any AuthVerifying = AuthBackendVerifier(),
         localDataCleaner: any LocalDataClearing = LocalDataCleanerService(),
-        sessionStore: any AuthSessionStoring = AuthSessionStore.makeSessionStore()
+        sessionStore: any AuthSessionStoring = AuthSessionStore.makeSessionStore(),
+        accountPreferenceLifecycle: any AccountPreferenceLifecycle = AccountPreferenceLifecycleCoordinator()
     ) {
         self.verifier = verifier
         self.localDataCleaner = localDataCleaner
         self.sessionStore = sessionStore
+        self.accountPreferenceLifecycle = accountPreferenceLifecycle
         applyPersistedSession(sessionStore.loadSession())
     }
 
@@ -97,6 +102,7 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
             self.keychainReadPending = false
             self.isLoggedIn = persisted.token != nil
         }
+        activateAccountPreferencesForCurrentSession()
     }
 
     /// Re-reads the persisted session if a prior read failed transiently. Intended to run
@@ -106,6 +112,17 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
     func refreshSessionIfNeeded() {
         guard keychainReadPending else { return }
         applyPersistedSession(sessionStore.loadSession())
+    }
+
+    /// Composition-root hook used before the first view and before a scene's
+    /// sync work. AuthManager also invokes it at every session transition so a
+    /// Settings view is never the first component to choose an account namespace.
+    func activateAccountPreferencesForCurrentSession() {
+        guard isLoggedIn, !isDemoMode else {
+            accountPreferenceLifecycle.suspend()
+            return
+        }
+        accountPreferenceLifecycle.activate(accountID: userId)
     }
 
     func login(userId: String, token: String) {
@@ -128,13 +145,14 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
             // 與 clearLocalData 對齊：漏清 review-event cursor 會讓經 login(customToken:)
             // 的手動帳號切換（SettingsCoordinator）讓 B 沿用 A 的 review pull cursor。
             defaults.removeObject(forKey: KGService.SyncKeys.reviewEventPullBoundary)
-            ActiveNotebookStore.shared.clear()
+            accountPreferenceLifecycle.suspend()
             defaults.removeObject(forKey: NotebookFilter.storageKey)
             AppAnalytics.track(.accountSwitchDetected)
         }
 
         self.userId = userIdStr
         self.token = tokenStr
+        accountPreferenceLifecycle.activate(accountID: userIdStr)
         sessionStore.persistProfile(
             userId: userIdStr,
             displayName: displayName,
@@ -161,6 +179,7 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
            existing != userIdStr,
            let container = self.modelContainer {
             AppLog.auth.info("Manual login account switch — clearing previous user's local data")
+            accountPreferenceLifecycle.suspend()
             await localDataCleaner.clearLocalData(container: container, reason: "manual_login_account_switch")
         }
         login(userId: customToken, token: customToken)
@@ -200,6 +219,7 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
     func logout(modelContainer: ModelContainer? = nil, reason: String = "user_logout") {
         AppAnalytics.track(.logoutPerformed(reason: reason))
         let container = modelContainer ?? self.modelContainer
+        accountPreferenceLifecycle.suspend()
         localDataCleanupGeneration += 1
         pendingLocalDataCleanup = Task { [previousCleanup = pendingLocalDataCleanup] in
             // Clear session state UP FRONT, before awaiting clearLocalData. The cleanup hops to
@@ -263,12 +283,14 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
         let isAccountSwitch = self.userId != nil && self.userId != userId
         if isAccountSwitch, let container = modelContainer {
             AppLog.auth.info("Account switch — clearing previous user's local data")
+            accountPreferenceLifecycle.suspend()
             await localDataCleaner.clearLocalData(container: container, reason: accountSwitchReason)
         }
         login(userId: userId, token: jwtToken)
     }
 
     func enterDemoMode(modelContainer: ModelContainer) {
+        accountPreferenceLifecycle.suspend()
         isDemoMode = true
         isLoggedIn = true
         displayName = "Demo"

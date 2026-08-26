@@ -16,6 +16,23 @@ import Testing
 @MainActor
 struct AuthManagerAccountSwitchTests {
 
+    private enum PreferenceEvent: Equatable {
+        case activate(String?)
+        case suspend
+    }
+
+    private final class RecordingPreferenceLifecycle: AccountPreferenceLifecycle {
+        var events: [PreferenceEvent] = []
+
+        func activate(accountID: String?) {
+            events.append(.activate(accountID))
+        }
+
+        func suspend() {
+            events.append(.suspend)
+        }
+    }
+
     private final class FixedSessionStore: AuthSessionStoring {
         let session: PersistedAuthSession
         init(userId: String?) {
@@ -60,14 +77,55 @@ struct AuthManagerAccountSwitchTests {
         return try! ModelContainer(for: Notebook.self, configurations: config)
     }
 
-    private func makeManager(priorUserId: String?, cleaner: RecordingCleaner) -> AuthManager {
+    private func makeManager(
+        priorUserId: String?,
+        cleaner: RecordingCleaner,
+        lifecycle: RecordingPreferenceLifecycle? = nil
+    ) -> AuthManager {
         let manager = AuthManager(
             verifier: NoopVerifier(),
             localDataCleaner: cleaner,
-            sessionStore: FixedSessionStore(userId: priorUserId)
+            sessionStore: FixedSessionStore(userId: priorUserId),
+            accountPreferenceLifecycle: lifecycle ?? RecordingPreferenceLifecycle()
         )
         manager.modelContainer = Self.makeContainer()
         return manager
+    }
+
+    @Test func coldStartActivatesPersistedAccountBeforeSettingsLoads() {
+        let lifecycle = RecordingPreferenceLifecycle()
+        _ = makeManager(
+            priorUserId: "cold-start-account",
+            cleaner: RecordingCleaner(),
+            lifecycle: lifecycle
+        )
+
+        #expect(lifecycle.events == [.activate("cold-start-account")])
+    }
+
+    @Test func switchingAccountsSuspendsPreviousNamespaceBeforeActivatingNext() {
+        let lifecycle = RecordingPreferenceLifecycle()
+        let manager = makeManager(
+            priorUserId: "account-a",
+            cleaner: RecordingCleaner(),
+            lifecycle: lifecycle
+        )
+        lifecycle.events.removeAll()
+
+        manager.login(userId: "account-b", token: "token-b")
+
+        #expect(lifecycle.events == [.suspend, .activate("account-b")])
+    }
+
+    @Test func emptyColdStartSuspendsAccountNamespace() {
+        let lifecycle = RecordingPreferenceLifecycle()
+        _ = makeManager(
+            priorUserId: nil,
+            cleaner: RecordingCleaner(),
+            lifecycle: lifecycle
+        )
+
+        #expect(lifecycle.events == [.suspend])
     }
 
     @Test func manual_login_switching_account_clears_previous_user_data() async {

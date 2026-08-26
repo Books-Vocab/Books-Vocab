@@ -101,6 +101,11 @@ struct BooksAndVocabApp: App {
             PodcastDownloadManager.shared.configure(modelContainer: outcome.container)
         }
         #endif
+
+        // AuthManager establishes the namespace during session construction;
+        // reassert it at the composition root before any view/task can load
+        // Settings so cold-start state never depends on SettingsView.
+        authManager.activateAccountPreferencesForCurrentSession()
     }
 
     @Environment(\.scenePhase) private var scenePhase
@@ -306,6 +311,7 @@ struct BooksAndVocabApp: App {
                         // transiently at launch (cold boot), resolving the unknown auth state
                         // before the sync guards below evaluate `isLoggedIn`.
                         authManager.refreshSessionIfNeeded()
+                        authManager.activateAccountPreferencesForCurrentSession()
                         Task {
                             await subscriptionManager.refresh(using: kgService, authManager: authManager)
                             guard authManager.isLoggedIn, !authManager.isDemoMode else { return }

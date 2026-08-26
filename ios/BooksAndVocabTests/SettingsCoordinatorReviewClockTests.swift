@@ -240,6 +240,55 @@ struct SettingsCoordinatorReviewClockTests {
         #expect(cloud.double(forKey: "review_settings_progress_updated_at") == nil)
     }
 
+    @Test func firstAccountActivationMigratesLegacyReviewPreferencesOnlyOnce() {
+        let suite = "test.review-legacy-migration.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        let cloud = FakeCloudKVStore()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let customParams: [String: Double] = [
+            "initialIntervalHours": 18,
+            "rememberedMultiplier": 2.1,
+            "forgotMultiplier": 0.4,
+            "minimumIntervalHours": 5,
+            "maximumIntervalHours": 1000,
+        ]
+        let customData = try! JSONSerialization.data(withJSONObject: customParams)
+        defaults.set("custom", forKey: "review_settings_mode")
+        defaults.set(customData, forKey: "review_settings_custom_params")
+        defaults.set(100.0, forKey: "review_settings_mode_updated_at")
+        defaults.set(true, forKey: "review_settings_progress_paused")
+        defaults.set(1_700_000_000.0, forKey: "review_settings_progress_paused_at")
+        defaults.set(101.0, forKey: "review_settings_progress_updated_at")
+        defaults.set("fast", forKey: "review_settings_autoplay_speed")
+        defaults.set(false, forKey: "review_settings_autoplay_sound_enabled")
+        cloud.set("custom", forKey: "review_settings_mode")
+        cloud.set(100.0, forKey: "review_settings_mode_updated_at")
+        cloud.set(1.0, forKey: "review_settings_progress_paused")
+        cloud.set(1_700_000_000.0, forKey: "review_settings_progress_paused_at")
+        cloud.set(101.0, forKey: "review_settings_progress_updated_at")
+
+        let accountA = ReviewSettingsStore(defaults: defaults, cloud: cloud, accountID: "account-a")
+        #expect(accountA.settings.mode == .custom)
+        #expect(accountA.settings.customInitialIntervalHours == 18)
+        #expect(accountA.settings.isProgressPaused)
+        #expect(accountA.settings.autoplaySpeed == .fast)
+        #expect(accountA.settings.autoplaySoundEnabled == false)
+        #expect(
+            defaults.string(
+                forKey: AccountPreferenceNamespace.key("review_settings_mode", accountID: "account-a")
+            ) == "custom"
+        )
+
+        let accountB = ReviewSettingsStore(defaults: defaults, cloud: cloud, accountID: "account-b")
+        #expect(accountB.settings == .default)
+        #expect(
+            defaults.string(
+                forKey: AccountPreferenceNamespace.key("review_settings_mode", accountID: "account-b")
+            ) == nil
+        )
+    }
+
     @Test func serverPauseClockIgnoredWhenLocalTimestampIsNewer() {
         let defaults = UserDefaults(suiteName: "test.settings-review-clock-local-newer.\(UUID().uuidString)")!
         defaults.set(true, forKey: "review_settings_progress_paused")

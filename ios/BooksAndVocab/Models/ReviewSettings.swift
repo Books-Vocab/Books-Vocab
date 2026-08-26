@@ -227,6 +227,59 @@ enum AccountPreferenceNamespace {
             .joined()
         return "\(prefix)\(digest).\(key)"
     }
+
+    /// Migrate the pre-account raw preference namespace exactly once per
+    /// preference family. The marker is deliberately global to the device/
+    /// Apple-ID store: legacy values describe the one existing local user and
+    /// must never be copied into every account that signs in afterwards.
+    static func migrateLegacyIfNeeded(
+        accountID: String?,
+        defaults: UserDefaults,
+        feature: String,
+        migration: () -> Void
+    ) {
+        guard normalizedAccountID(accountID) != nil else { return }
+        let marker = "kg.account.legacy-migration.\(feature).v1"
+        guard !defaults.bool(forKey: marker) else { return }
+        migration()
+        defaults.set(true, forKey: marker)
+    }
+
+    static func copyLegacyObject(
+        _ key: String,
+        defaults: UserDefaults,
+        accountID: String?
+    ) {
+        let namespacedKey = self.key(key, accountID: accountID)
+        guard defaults.object(forKey: namespacedKey) == nil,
+              let value = defaults.object(forKey: key)
+        else { return }
+        defaults.set(value, forKey: namespacedKey)
+    }
+
+    static func copyLegacyCloudString(
+        _ key: String,
+        cloud: CloudKeyValueStore,
+        accountID: String?
+    ) {
+        let namespacedKey = self.key(key, accountID: accountID)
+        guard cloud.string(forKey: namespacedKey) == nil,
+              let value = cloud.string(forKey: key)
+        else { return }
+        cloud.set(value, forKey: namespacedKey)
+    }
+
+    static func copyLegacyCloudDouble(
+        _ key: String,
+        cloud: CloudKeyValueStore,
+        accountID: String?
+    ) {
+        let namespacedKey = self.key(key, accountID: accountID)
+        guard cloud.double(forKey: namespacedKey) == nil,
+              let value = cloud.double(forKey: key)
+        else { return }
+        cloud.set(value, forKey: namespacedKey)
+    }
 }
 
 @Observable
@@ -260,6 +313,13 @@ final class ReviewSettingsStore {
         accountID: String? = nil
     ) {
         let normalizedAccountID = AccountPreferenceNamespace.normalizedAccountID(accountID)
+        if let normalizedAccountID {
+            Self.migrateLegacyPreferences(
+                defaults: defaults,
+                cloud: cloud,
+                accountID: normalizedAccountID
+            )
+        }
         self.defaults = defaults
         self.cloud = cloud
         self.accountID = normalizedAccountID
@@ -278,7 +338,15 @@ final class ReviewSettingsStore {
     /// projection is replaced before any server await, and only that account's
     /// local/iCloud keys are read.
     func activateAccount(_ accountID: String?) {
-        self.accountID = AccountPreferenceNamespace.normalizedAccountID(accountID)
+        let normalizedAccountID = AccountPreferenceNamespace.normalizedAccountID(accountID)
+        if let normalizedAccountID {
+            Self.migrateLegacyPreferences(
+                defaults: defaults,
+                cloud: cloud,
+                accountID: normalizedAccountID
+            )
+        }
+        self.accountID = normalizedAccountID
         isAccountBoundarySuspended = false
         settings = Self.loadSettings(defaults: defaults, cloud: cloud, accountID: self.accountID)
     }
@@ -294,6 +362,54 @@ final class ReviewSettingsStore {
 
     private func storageKey(_ key: String) -> String {
         AccountPreferenceNamespace.key(key, accountID: accountID)
+    }
+
+    private static func migrateLegacyPreferences(
+        defaults: UserDefaults,
+        cloud: CloudKeyValueStore,
+        accountID: String
+    ) {
+        AccountPreferenceNamespace.migrateLegacyIfNeeded(
+            accountID: accountID,
+            defaults: defaults,
+            feature: "review-settings"
+        ) {
+            for key in [
+                Keys.mode,
+                Keys.customParams,
+                Keys.modeUpdatedAt,
+                Keys.isProgressPaused,
+                Keys.progressPausedAt,
+                Keys.progressUpdatedAt,
+                Keys.autoplaySpeed,
+                Keys.autoplaySoundEnabled,
+            ] {
+                AccountPreferenceNamespace.copyLegacyObject(
+                    key,
+                    defaults: defaults,
+                    accountID: accountID
+                )
+            }
+            for key in [Keys.mode, Keys.customParams] {
+                AccountPreferenceNamespace.copyLegacyCloudString(
+                    key,
+                    cloud: cloud,
+                    accountID: accountID
+                )
+            }
+            for key in [
+                Keys.modeUpdatedAt,
+                Keys.isProgressPaused,
+                Keys.progressPausedAt,
+                Keys.progressUpdatedAt,
+            ] {
+                AccountPreferenceNamespace.copyLegacyCloudDouble(
+                    key,
+                    cloud: cloud,
+                    accountID: accountID
+                )
+            }
+        }
     }
 
     private static func loadSettings(
@@ -647,6 +763,25 @@ final class ReviewSettingsStore {
         self.accountID = nil
         self.isAccountBoundarySuspended = false
         self.settings = previewSettings
+    }
+}
+
+protocol AccountPreferenceLifecycle {
+    func activate(accountID: String?)
+    func suspend()
+}
+
+struct AccountPreferenceLifecycleCoordinator: AccountPreferenceLifecycle {
+    func activate(accountID: String?) {
+        ReviewSettingsStore.shared.activateAccount(accountID)
+        ActiveNotebookStore.shared.activateAccount(accountID)
+        TranslationLanguage.activateAccount(accountID)
+    }
+
+    func suspend() {
+        ReviewSettingsStore.shared.suspendForAccountBoundary()
+        ActiveNotebookStore.shared.suspendForAccountBoundary()
+        TranslationLanguage.suspendForAccountBoundary()
     }
 }
 

@@ -14,6 +14,14 @@ import Testing
 @Suite(.serialized)
 struct TranslationLanguageTests {
 
+    init() {
+        // The app composition root suspends the preference namespace when the
+        // host starts without an authenticated session. These tests exercise
+        // the legacy guest-compatible API directly, so explicitly enter that
+        // namespace before each suite instance.
+        TranslationLanguage.activateAccount(nil)
+    }
+
     // MARK: - inferFromPreferredLanguages
 
     @Test func exactMatchReturnsLanguage() {
@@ -313,5 +321,42 @@ struct TranslationLanguageTests {
         TranslationLanguage.activateAccount("account-b", defaults: defaults, cloud: cloud)
         #expect(TranslationLanguage.currentSource == .de)
         #expect(TranslationLanguage.currentTarget == .en)
+    }
+
+    @Test @MainActor func firstAccountActivationMigratesLegacyTranslationPairOnlyOnce() {
+        let suite = "test.translation-legacy-migration.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        let cloud = FakeCloudKVStore()
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            TranslationLanguage.activateAccount(nil)
+        }
+
+        defaults.set("ja", forKey: "translation_source_lang")
+        defaults.set(100.0, forKey: "translation_source_lang_updated_at")
+        defaults.set("zh-Hans", forKey: "translation_target_lang")
+        defaults.set(100.0, forKey: "translation_target_lang_updated_at")
+        cloud.set("ja", forKey: "translation_source_lang")
+        cloud.set(100.0, forKey: "translation_source_lang_updated_at")
+        cloud.set("zh-Hans", forKey: "translation_target_lang")
+        cloud.set(100.0, forKey: "translation_target_lang_updated_at")
+
+        TranslationLanguage.activateAccount("account-a", defaults: defaults, cloud: cloud)
+        #expect(TranslationLanguage.currentSource == .ja)
+        #expect(TranslationLanguage.currentTarget == .zhHans)
+        #expect(
+            defaults.string(
+                forKey: AccountPreferenceNamespace.key("translation_source_lang", accountID: "account-a")
+            ) == "ja"
+        )
+
+        TranslationLanguage.activateAccount("account-b", defaults: defaults, cloud: cloud)
+        #expect(TranslationLanguage.currentSource == .en)
+        #expect(TranslationLanguage.currentTarget == .zhHant)
+        #expect(
+            defaults.string(
+                forKey: AccountPreferenceNamespace.key("translation_source_lang", accountID: "account-b")
+            ) == nil
+        )
     }
 }
