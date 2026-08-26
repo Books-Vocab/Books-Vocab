@@ -37,7 +37,8 @@ def test_agent_review_has_read_only_source_permissions_and_check_write() -> None
     assert "issues: read" in source
     assert "pull-requests: read" in source
     assert "checks: write" in source
-    assert "REVIEW_BOT: chatgpt-codex-connector[bot]" in source
+    assert "REVIEW_BOT: chatgpt-codex-connector" in source
+    assert "REVIEW_BOT: chatgpt-codex-connector[bot]" not in source
 
 
 def test_agent_review_is_bound_to_pr_head_and_emits_exact_check() -> None:

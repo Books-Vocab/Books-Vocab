@@ -53,7 +53,8 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
           EVIDENCE_AFTER: ${{ github.event.pull_request.updated_at || github.event.comment.created_at || github.event.review.submitted_at || github.event.pull_request_review_comment.created_at }}
-          REVIEW_BOT: chatgpt-codex-connector[bot]
+          # GitHub REST exposes the bot login without the UI's [bot] suffix.
+          REVIEW_BOT: chatgpt-codex-connector
         shell: bash
         run: |
           set -euo pipefail
