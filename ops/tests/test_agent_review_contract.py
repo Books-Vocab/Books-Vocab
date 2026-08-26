@@ -57,5 +57,61 @@ def test_agent_review_rejects_hard_findings_but_accepts_nonblocking_review() -> 
     assert "P(0|1)" in source
     assert "security" in source
     assert "blocker_evidence" in source
-    assert 'review_evidence" -gt 0 || "$reaction_evidence" -gt 0' in source
+    assert 'review_evidence" -gt 0 || "$reviewed_issue_evidence" -gt 0' in source
     assert "P2" not in source
+
+
+def test_agent_review_evidence_has_one_required_check_identity() -> None:
+    source = _workflow()
+
+    # The workflow posts the required ``agent-review`` check explicitly.  Its
+    # Actions job must use a different name; otherwise a cancelled job check
+    # and the evidence check share one required context and can block native
+    # merge-queue admission even when the evidence check is green.
+    assert "\n  agent-review:\n" not in source
+    assert "\n  agent-review-evidence:\n" in source
+
+
+def test_agent_review_emits_trusted_workflow_run_provenance() -> None:
+    source = _workflow()
+
+    assert "GITHUB_RUN_ID" in source
+    assert "actions/runs/$GITHUB_RUN_ID" in source
+    assert "external_id" in source
+    assert "kg.agent-review.v1" in source
+    assert "details_url" in source
+
+
+def test_agent_review_accepts_exact_head_codex_issue_comment() -> None:
+    source = _workflow()
+
+    assert "issues/$PR_NUMBER/comments" in source
+    assert "Reviewed commit" in source
+    assert "reviewed_issue_evidence" in source
+
+
+def test_agent_review_rechecks_trusted_codex_response_comments() -> None:
+    source = _workflow()
+
+    assert "github.event.comment.user.login == 'chatgpt-codex-connector[bot]'" in source
+    assert "contains(github.event.comment.body, '**Reviewed commit:**')" in source
+
+
+def test_agent_review_binds_inline_findings_to_exact_head_review() -> None:
+    source = _workflow()
+
+    # GitHub may expose an inline comment with the PR's latest commit id even
+    # when the comment belongs to an older review.  Only comments linked to a
+    # trusted review whose commit is the current head may block it.
+    assert "current_review_ids" in source
+    assert "pull_request_review_id" in source
+    assert "review_ids | index($review_id)" in source
+
+
+def test_agent_review_response_does_not_cancel_pr_event_poller() -> None:
+    source = _workflow()
+
+    assert (
+        "group: agent-review-${{ github.event.pull_request.number || github.event.issue.number }}-${{ github.event_name }}"
+        in source
+    )
