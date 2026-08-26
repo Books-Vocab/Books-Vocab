@@ -87,6 +87,8 @@ jobs:
             local conclusion="${2:-}"
             local title="$3"
             local summary="$4"
+            local details_url="https://github.com/$REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            local external_id="kg.agent-review.v1:$GITHUB_RUN_ID:$head_sha"
             if [[ "$status" == "completed" ]]; then
               jq -n \
                 --arg name "agent-review" \
@@ -94,7 +96,9 @@ jobs:
                 --arg conclusion "$conclusion" \
                 --arg title "$title" \
                 --arg summary "$summary" \
-                '{name:$name, head_sha:$head_sha, status:"completed", conclusion:$conclusion, output:{title:$title, summary:$summary}}' \
+                --arg details_url "$details_url" \
+                --arg external_id "$external_id" \
+                '{name:$name, head_sha:$head_sha, status:"completed", conclusion:$conclusion, details_url:$details_url, external_id:$external_id, output:{title:$title, summary:$summary}}' \
                 | gh api "repos/$REPOSITORY/check-runs" --method POST --input - >/dev/null
             else
               jq -n \
@@ -102,7 +106,9 @@ jobs:
                 --arg head_sha "$head_sha" \
                 --arg title "$title" \
                 --arg summary "$summary" \
-                '{name:$name, head_sha:$head_sha, status:"in_progress", output:{title:$title, summary:$summary}}' \
+                --arg details_url "$details_url" \
+                --arg external_id "$external_id" \
+                '{name:$name, head_sha:$head_sha, status:"in_progress", details_url:$details_url, external_id:$external_id, output:{title:$title, summary:$summary}}' \
                 | gh api "repos/$REPOSITORY/check-runs" --method POST --input - >/dev/null
             fi
           }

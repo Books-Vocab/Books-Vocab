@@ -70,3 +70,13 @@ def test_agent_review_evidence_has_one_required_check_identity() -> None:
     # merge-queue admission even when the evidence check is green.
     assert "\n  agent-review:\n" not in source
     assert "\n  agent-review-evidence:\n" in source
+
+
+def test_agent_review_emits_trusted_workflow_run_provenance() -> None:
+    source = _workflow()
+
+    assert "GITHUB_RUN_ID" in source
+    assert "actions/runs/$GITHUB_RUN_ID" in source
+    assert "external_id" in source
+    assert "kg.agent-review.v1" in source
+    assert "details_url" in source
