@@ -15,7 +15,9 @@ from .github_client import GitHubCliClient
 from .github_required_batch import batch_required_snapshots
 from .timestamps import parse_optional_timestamp
 
-_NO_REQUIRED_CHECKS_RE = re.compile(r"no checks reported on the '([^'\n]+)' branch")
+_NO_REQUIRED_CHECKS_RE = re.compile(
+    r"no (?:required )?checks reported on the '([^'\n]+)' branch"
+)
 
 
 def _status_from_states(states: set[str]) -> CheckStatus:

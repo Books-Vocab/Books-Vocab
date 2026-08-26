@@ -9,15 +9,15 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.adapters.errors import (  # noqa: E402
+from delivery_control.adapters.errors import (
     AdapterCommandError,
     AdapterPayloadError,
 )
-from delivery_control.adapters.github_checks import GitHubChecks  # noqa: E402
-from delivery_control.adapters.github_client import GitHubCliClient  # noqa: E402
-from delivery_control.domain.models import CheckStatus  # noqa: E402
-from delivery_control.domain.observations import PullRequestSnapshot  # noqa: E402
-from delivery_control.ports.process import CommandResult  # noqa: E402
+from delivery_control.adapters.github_checks import GitHubChecks
+from delivery_control.adapters.github_client import GitHubCliClient
+from delivery_control.domain.models import CheckStatus
+from delivery_control.domain.observations import PullRequestSnapshot
+from delivery_control.ports.process import CommandResult
 
 HEAD = "a" * 40
 BASE = "b" * 40
@@ -268,6 +268,25 @@ def test_live_required_snapshot_normalizes_exact_zero_check_stderr_result() -> N
                 1,
                 "",
                 "no checks reported on the 'feat/12' branch\n",
+            ),
+        ]
+    )
+
+    snapshot = _checks(runner).required_snapshot(12)
+
+    assert snapshot.status is CheckStatus.ABSENT
+    assert snapshot.names == ()
+    assert snapshot.head_sha == HEAD
+
+
+def test_live_required_snapshot_normalizes_required_zero_check_stderr_result() -> None:
+    runner = StaticRunner(
+        [
+            CommandResult(
+                ("gh", "pr", "checks"),
+                1,
+                "",
+                "no required checks reported on the 'feat/12' branch\n",
             ),
         ]
     )
