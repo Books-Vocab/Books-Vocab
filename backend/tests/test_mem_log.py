@@ -134,11 +134,15 @@ def test_install_reuses_shared_handler_without_duplicate_attachments():
 
 
 def test_install_returns_working_handler():
+    targets = [logging.getLogger(name) for name in ("", "uvicorn", "uvicorn.error", "uvicorn.access")]
+    before = [list(target.handlers) for target in targets]
     h = install_memory_log_handler(maxlen=4)
     try:
         h.emit(_record(msg="installed"))
         rows = h.get()
         assert any(r["msg"] == "installed" for r in rows)
     finally:
-        for name in ("", "uvicorn", "uvicorn.error", "uvicorn.access"):
-            logging.getLogger(name).removeHandler(h)
+        for target, original in zip(targets, before, strict=True):
+            for handler in list(target.handlers):
+                if handler not in original:
+                    target.removeHandler(handler)
