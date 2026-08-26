@@ -79,7 +79,7 @@ jobs:
             exit 1
           fi
 
-          merge_queue_query='query($owner:String!,$name:String!,$branch:String!){repository(owner:$owner,name:$name){mergeQueue(branch:$branch){entries(first:100){pageInfo{hasNextPage} nodes{position headCommit{oid} pullRequest{number headRefOid baseRefName state} solo state}}}}}'
+          merge_queue_query='query($owner:String!,$name:String!,$branch:String!){repository(owner:$owner,name:$name){mergeQueue(branch:$branch){configuration{maximumEntriesToMerge} entries(first:100){pageInfo{hasNextPage} nodes{position headCommit{oid} pullRequest{number headRefOid baseRefName state} solo state}}}}}'
           queue_json="$(gh api graphql \
             -f query="$merge_queue_query" \
             -F owner="$owner" \
@@ -95,6 +95,11 @@ jobs:
           queue_nodes="$(jq -c 'if (.nodes | type) == "array" then .nodes else empty end' <<<"$queue_entries")"
           if [[ -z "$queue_nodes" ]]; then
             echo "merge-group queue entries are missing" >&2
+            exit 1
+          fi
+          maximum_entries_to_merge="$(jq -r '.data.repository.mergeQueue.configuration.maximumEntriesToMerge // empty' <<<"$queue_json")"
+          if [[ ! "$maximum_entries_to_merge" =~ ^[1-9][0-9]*$ ]]; then
+            echo "merge-group maximum entries configuration is malformed" >&2
             exit 1
           fi
           target_entries="$(jq -c \
@@ -113,18 +118,47 @@ jobs:
             exit 1
           fi
 
-          target_solo="$(jq -r 'if (.solo // false) then "true" else "false" end' <<<"$target_entry")"
-          group_start=$((target_position - 2))
+          target_solo="$(jq -r 'if (.solo | type) == "boolean" then (.solo | tostring) else "malformed" end' <<<"$target_entry")"
+          if [[ "$target_solo" == "malformed" ]]; then
+            echo "target queue entry solo flag is malformed" >&2
+            exit 1
+          fi
           if [[ "$target_solo" == "true" ]]; then
             group_start="$target_position"
-          elif ((group_start < 1)); then
-            group_start=1
+          else
+            group_start=$((target_position - maximum_entries_to_merge + 1))
+            if ((group_start < 1)); then
+              group_start=1
+            fi
+            previous_solo_position="$(jq -r \
+              --argjson target "$target_position" \
+              '[.[] | select((.position | type) == "number" and .position < $target and (.solo | type) == "boolean" and (.solo | tostring) == "true") | .position] | max // 0' \
+              <<<"$queue_nodes")"
+            if [[ ! "$previous_solo_position" =~ ^[0-9]+$ ]]; then
+              echo "merge-group queue solo boundary is malformed" >&2
+              exit 1
+            fi
+            if ((previous_solo_position >= group_start)); then
+              group_start=$((previous_solo_position + 1))
+            fi
+          fi
+          if ((group_start > target_position)); then
+            echo "merge-group queue membership boundary is invalid" >&2
+            exit 1
           fi
           group_entries="$(jq -c \
             --argjson start "$group_start" \
             --argjson target "$target_position" \
             'map(select((.position | type) == "number" and .position >= $start and .position <= $target)) | sort_by(.position)' \
             <<<"$queue_nodes")"
+          if ! jq -e \
+            --argjson start "$group_start" \
+            --argjson target_position "$target_position" \
+            'map(.position) == [range($start; ($target_position + 1))]' \
+            <<<"$group_entries" >/dev/null; then
+            echo "merge-group queue positions are incomplete or duplicated" >&2
+            exit 1
+          fi
           group_pr_numbers=( $(jq -r '.[] | .pullRequest.number // empty' <<<"$group_entries") )
           if (( ${#group_pr_numbers[@]} == 0 )); then
             echo "merge-group has no bounded PR membership" >&2
@@ -134,7 +168,6 @@ jobs:
             echo "merge-group queue positions are incomplete" >&2
             exit 1
           fi
-
           trusted_workflow_id="$(gh api "repos/$REPOSITORY/actions/workflows/agent-review.yml" --jq '.id // empty')"
           if [[ ! "$trusted_workflow_id" =~ ^[0-9]+$ ]]; then
             echo "trusted agent-review workflow identity is unavailable" >&2
@@ -170,24 +203,34 @@ jobs:
             checks_json="$(gh api \
               "repos/$REPOSITORY/commits/$pr_head_sha/check-runs?per_page=100" \
               -H 'Accept: application/vnd.github+json')"
-            review_json="$(jq -c \
+            review_candidates="$(jq -c \
               --arg head_sha "$pr_head_sha" \
               '[.check_runs[]? | select(\
                   .name == "agent-review"\
                   and .head_sha == $head_sha\
-                  and (.status // "" | ascii_downcase) == "completed"\
-                  and (.conclusion // "" | ascii_downcase) == "success"\
                   and ((.output.title // "") | startswith("Independent agent review "))\
                   and ((.output.summary // "") | startswith("Exact head \($head_sha) "))\
                   and ((.external_id // "") | startswith("kg.agent-review.v1:"))\
                 )\
                | {id: (.id // 0), status: (.status // ""), conclusion: (.conclusion // ""),\
                   started_at: (.started_at // ""), completed_at: (.completed_at // ""),\
+                  updated_at: (.updated_at // ""),\
                   details_url: (.details_url // ""), external_id: (.external_id // "")}\
-              ] | sort_by([.started_at, .completed_at, .id]) | last // empty' \
+              ]' \
               <<<"$checks_json")"
+            review_json="$(jq -c \
+              'sort_by([.updated_at, .completed_at, .started_at, .id]) | last // empty' \
+              <<<"$review_candidates")"
             if [[ -z "$review_json" ]]; then
-              echo "group PR #$group_pr_number has no successful exact-head agent-review evidence" >&2
+              echo "group PR #$group_pr_number has no trusted exact-head agent-review evidence" >&2
+              exit 1
+            fi
+            review_status="$(jq -r '.status | ascii_downcase' <<<"$review_json")"
+            review_conclusion="$(jq -r '.conclusion | ascii_downcase' <<<"$review_json")"
+            if [[ "$review_status" == "completed" && "$review_conclusion" == "success" ]]; then
+              :
+            else
+              echo "latest exact-head agent-review observation is not completed successfully" >&2
               exit 1
             fi
             details_url="$(jq -r '.details_url' <<<"$review_json")"

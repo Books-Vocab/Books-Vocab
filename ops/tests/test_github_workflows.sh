@@ -211,6 +211,15 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
     || fail "merge-group independent review gate does not enumerate grouped PRs"
   grep -q 'target_position' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not bound group membership by queue position"
+  grep -q 'maximumEntriesToMerge' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not use the live queue group-size contract"
+  if grep -Fq 'group_start=$((target_position - 2))' "$MERGE_GROUP_REQUIRED"; then
+    fail "merge-group independent review gate still assumes a fixed two-entry lookback"
+  fi
+  grep -q 'maximum_entries_to_merge' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not project live maximum group size"
+  grep -q 'range(.*target_position' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not prove contiguous queue membership"
   grep -q 'for group_pr_number in' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not validate each grouped PR"
   grep -q 'check-runs' "$MERGE_GROUP_REQUIRED" \
@@ -219,6 +228,12 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
     || fail "merge-group independent review gate does not select the latest exact-head review run"
   grep -q 'last' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not select the latest exact-head review run"
+  grep -q 'review_candidates=' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate filters review status before selecting the latest observation"
+  grep -q 'updated_at' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not order review observations by update time"
+  grep -q 'review_status' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not validate the selected latest review status"
   grep -q 'external_id' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not bind evidence to the trusted review check artifact"
   grep -q 'details_url' "$MERGE_GROUP_REQUIRED" \
