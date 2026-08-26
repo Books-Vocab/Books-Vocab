@@ -65,9 +65,9 @@ jobs:
           fi
 
           head_ref="${MERGE_GROUP_HEAD_REF:-$GITHUB_REF}"
-          pr_number="$(sed -nE 's#.*\/pr-([0-9]+)([-/].*)?$#\1#p' <<<"$head_ref")"
+          pr_number="$(grep -oE 'pr-[0-9]+' <<<"$head_ref" | tail -n 1 | sed 's/^pr-//')"
           if [[ ! "$pr_number" =~ ^[0-9]+$ ]]; then
-            echo "merge-group ref does not identify exactly one PR: $head_ref" >&2
+            echo "merge-group ref does not identify a target PR: $head_ref" >&2
             exit 1
           fi
 
@@ -78,60 +78,144 @@ jobs:
             exit 1
           fi
 
-          merge_queue_query='query($owner:String!,$name:String!,$branch:String!){repository(owner:$owner,name:$name){mergeQueue(branch:$branch){entries(first:10){nodes{headCommit{oid} pullRequest{number headRefOid baseRefName state} solo state}}}}}'
+          merge_queue_query='query($owner:String!,$name:String!,$branch:String!){repository(owner:$owner,name:$name){mergeQueue(branch:$branch){entries(first:100){pageInfo{hasNextPage} nodes{position headCommit{oid} pullRequest{number headRefOid baseRefName state} solo state}}}}}'
           queue_json="$(gh api graphql \
             -f query="$merge_queue_query" \
             -F owner="$owner" \
             -F name="$repository_name" \
             -F branch=main)"
-          queue_entry="$(jq -c \
+          queue_entries="$(jq -c '.data.repository.mergeQueue.entries // empty' <<<"$queue_json")"
+          if [[ -z "$queue_entries" ]] || [[ "$(jq -r \
+            'if (.pageInfo | type) == "object" and (.pageInfo.hasNextPage | type) == "boolean" then (.pageInfo.hasNextPage | tostring) else "malformed" end' \
+            <<<"$queue_entries")" != "false" ]]; then
+            echo "merge-group queue pageInfo is missing or truncated" >&2
+            exit 1
+          fi
+          queue_nodes="$(jq -c 'if (.nodes | type) == "array" then .nodes else empty end' <<<"$queue_entries")"
+          if [[ -z "$queue_nodes" ]]; then
+            echo "merge-group queue entries are missing" >&2
+            exit 1
+          fi
+          target_entries="$(jq -c \
             --argjson number "$pr_number" \
-            '[.data.repository.mergeQueue.entries.nodes[]? | select(.pullRequest.number == $number and .pullRequest.headRefOid != null and .pullRequest.baseRefName == "main" and .pullRequest.state == "OPEN" and .solo == true)] | if length == 1 then .[0] else empty end' \
-            <<<"$queue_json")"
-          if [[ -z "$queue_entry" ]]; then
-            echo "merge-group must map to exactly one solo queued PR" >&2
+            'map(select(.pullRequest.number == $number))' \
+            <<<"$queue_nodes")"
+          if [[ "$(jq 'length' <<<"$target_entries")" != "1" ]]; then
+            echo "merge-group ref must map to exactly one queued PR" >&2
             exit 1
           fi
 
-          queued_head_sha="$(jq -r '.pullRequest.headRefOid // empty' <<<"$queue_entry")"
-          if [[ ! "$queued_head_sha" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "queued PR HEAD is not an exact commit SHA" >&2
+          target_entry="$(jq -c '.[0]' <<<"$target_entries")"
+          target_position="$(jq -r '.position // empty' <<<"$target_entry")"
+          if [[ ! "$target_position" =~ ^[1-9][0-9]*$ ]]; then
+            echo "queued PR position is not an exact positive integer" >&2
             exit 1
           fi
 
-          pr_json="$(gh api "repos/$REPOSITORY/pulls/$pr_number")"
-          pr_state="$(jq -r '.state // empty' <<<"$pr_json")"
-          pr_base="$(jq -r '.base.ref // empty' <<<"$pr_json")"
-          pr_head_sha="$(jq -r '.head.sha // empty' <<<"$pr_json")"
-          if [[ "$pr_state" != "open" || "$pr_base" != "main" ]]; then
-            echo "queued PR is not an open main-target PR" >&2
+          target_solo="$(jq -r 'if (.solo // false) then "true" else "false" end' <<<"$target_entry")"
+          group_start=$((target_position - 2))
+          if [[ "$target_solo" == "true" ]]; then
+            group_start="$target_position"
+          elif ((group_start < 1)); then
+            group_start=1
+          fi
+          group_entries="$(jq -c \
+            --argjson start "$group_start" \
+            --argjson target "$target_position" \
+            'map(select((.position | type) == "number" and .position >= $start and .position <= $target)) | sort_by(.position)' \
+            <<<"$queue_nodes")"
+          group_pr_numbers=( $(jq -r '.[] | .pullRequest.number // empty' <<<"$group_entries") )
+          if (( ${#group_pr_numbers[@]} == 0 )); then
+            echo "merge-group has no bounded PR membership" >&2
             exit 1
           fi
-          if [[ "$pr_head_sha" != "$queued_head_sha" ]]; then
-            echo "queued PR HEAD drifted while evaluating merge-group evidence" >&2
-            exit 1
-          fi
-
-          checks_json="$(gh api \
-            "repos/$REPOSITORY/commits/$pr_head_sha/check-runs?per_page=100" \
-            -H 'Accept: application/vnd.github+json')"
-          review_state="$(jq -r \
-            --arg head_sha "$pr_head_sha" \
-            '[.check_runs[]? | select(\
-                .name == "agent-review"\
-                and .head_sha == $head_sha\
-                and (.external_id // "") == ""\
-                and ((.output.title // "") | startswith("Independent agent review "))\
-                and ((.output.summary // "") | startswith("Exact head \($head_sha) "))\
-              )\
-             | {id: (.id // 0), status: (.status // ""), conclusion: (.conclusion // ""),\
-                started_at: (.started_at // ""), completed_at: (.completed_at // "")}\
-            ] | sort_by([.started_at, .completed_at, .id]) | last // empty\
-            | if . == "" then "" else "\((.status | ascii_downcase))|\((.conclusion | ascii_downcase))" end' \
-            <<<"$checks_json")"
-          if [[ "$review_state" != "completed|success" ]]; then
-            echo "latest exact queued PR HEAD agent-review evidence is not successful" >&2
+          if [[ "$(jq 'length' <<<"$group_entries")" -ne "$((target_position - group_start + 1))" ]]; then
+            echo "merge-group queue positions are incomplete" >&2
             exit 1
           fi
 
-          echo "agent-review evidence verified for PR #$pr_number at exact HEAD $pr_head_sha in merge-group $MERGE_GROUP_HEAD_SHA"
+          trusted_workflow_id="$(gh api "repos/$REPOSITORY/actions/workflows/agent-review.yml" --jq '.id // empty')"
+          if [[ ! "$trusted_workflow_id" =~ ^[0-9]+$ ]]; then
+            echo "trusted agent-review workflow identity is unavailable" >&2
+            exit 1
+          fi
+
+          for group_pr_number in "${group_pr_numbers[@]}"; do
+            if [[ ! "$group_pr_number" =~ ^[1-9][0-9]*$ ]]; then
+              echo "merge-group PR number is malformed" >&2
+              exit 1
+            fi
+            queue_entry="$(jq -c \
+              --argjson number "$group_pr_number" \
+              'map(select(.pullRequest.number == $number)) | if length == 1 then .[0] else empty end' \
+              <<<"$queue_nodes")"
+            queued_head_sha="$(jq -r '.pullRequest.headRefOid // empty' <<<"$queue_entry")"
+            queued_base="$(jq -r '.pullRequest.baseRefName // empty' <<<"$queue_entry")"
+            queued_state="$(jq -r '.pullRequest.state // empty' <<<"$queue_entry")"
+            if [[ ! "$queued_head_sha" =~ ^[0-9a-f]{40}$ || "$queued_base" != "main" || "$queued_state" != "OPEN" ]]; then
+              echo "group PR #$group_pr_number is not an open main-target PR with an exact HEAD" >&2
+              exit 1
+            fi
+
+            pr_json="$(gh api "repos/$REPOSITORY/pulls/$group_pr_number")"
+            pr_state="$(jq -r '.state // empty' <<<"$pr_json")"
+            pr_base="$(jq -r '.base.ref // empty' <<<"$pr_json")"
+            pr_head_sha="$(jq -r '.head.sha // empty' <<<"$pr_json")"
+            if [[ "$pr_state" != "open" || "$pr_base" != "main" || "$pr_head_sha" != "$queued_head_sha" ]]; then
+              echo "group PR #$group_pr_number HEAD/base/state drifted while evaluating merge-group evidence" >&2
+              exit 1
+            fi
+
+            checks_json="$(gh api \
+              "repos/$REPOSITORY/commits/$pr_head_sha/check-runs?per_page=100" \
+              -H 'Accept: application/vnd.github+json')"
+            review_json="$(jq -c \
+              --arg head_sha "$pr_head_sha" \
+              '[.check_runs[]? | select(\
+                  .name == "agent-review"\
+                  and .head_sha == $head_sha\
+                  and (.status // "" | ascii_downcase) == "completed"\
+                  and (.conclusion // "" | ascii_downcase) == "success"\
+                  and ((.output.title // "") | startswith("Independent agent review "))\
+                  and ((.output.summary // "") | startswith("Exact head \($head_sha) "))\
+                  and ((.external_id // "") | startswith("kg.agent-review.v1:"))\
+                )\
+               | {id: (.id // 0), status: (.status // ""), conclusion: (.conclusion // ""),\
+                  started_at: (.started_at // ""), completed_at: (.completed_at // ""),\
+                  details_url: (.details_url // ""), external_id: (.external_id // "")}\
+              ] | sort_by([.started_at, .completed_at, .id]) | last // empty' \
+              <<<"$checks_json")"
+            if [[ -z "$review_json" ]]; then
+              echo "group PR #$group_pr_number has no successful exact-head agent-review evidence" >&2
+              exit 1
+            fi
+            details_url="$(jq -r '.details_url' <<<"$review_json")"
+            run_id="$(sed -nE 's#^https://github.com/[^/]+/[^/]+/actions/runs/([0-9]+)$#\1#p' <<<"$details_url")"
+            expected_details_url="https://github.com/$REPOSITORY/actions/runs/$run_id"
+            expected_external_id="kg.agent-review.v1:$run_id:$pr_head_sha"
+            if [[ ! "$run_id" =~ ^[0-9]+$ || "$details_url" != "$expected_details_url" || "$(jq -r '.external_id' <<<"$review_json")" != "$expected_external_id" ]]; then
+              echo "group PR #$group_pr_number review evidence provenance is malformed" >&2
+              exit 1
+            fi
+
+            trusted_run="$(gh api "repos/$REPOSITORY/actions/runs/$run_id")"
+            trusted_path="$(jq -r '.path // empty' <<<"$trusted_run")"
+            trusted_event="$(jq -r '.event // empty' <<<"$trusted_run")"
+            trusted_head="$(jq -r '.head_sha // empty' <<<"$trusted_run")"
+            trusted_status="$(jq -r '.status // empty' <<<"$trusted_run")"
+            trusted_conclusion="$(jq -r '.conclusion // empty' <<<"$trusted_run")"
+            trusted_workflow="$(jq -r '.workflow_id // empty' <<<"$trusted_run")"
+            case "$trusted_event" in
+              pull_request_target|pull_request|pull_request_review|pull_request_review_comment|issue_comment) ;;
+              *)
+                echo "group PR #$group_pr_number review provenance event is not trusted" >&2
+                exit 1
+                ;;
+            esac
+            if [[ "$trusted_path" != ".github/workflows/agent-review.yml" || "$trusted_workflow" != "$trusted_workflow_id" || "$trusted_head" != "$pr_head_sha" || "$trusted_status" != "completed" || "$trusted_conclusion" != "success" ]]; then
+              echo "group PR #$group_pr_number review provenance does not match trusted workflow run" >&2
+              exit 1
+            fi
+          done
+
+          echo "agent-review evidence verified for PRs ${group_pr_numbers[*]} in merge-group $MERGE_GROUP_HEAD_SHA"
