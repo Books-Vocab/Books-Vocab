@@ -15,7 +15,9 @@ verified_against: afe016c4ea2fcbd7306f9c4f40b4556e77865100
 -->
 # Delivery Control Dogfood SOP
 
-目的：以四個 top-level tasks 驗證 KG delivery control 能在不囤積本地 worktree、不繞過 required／hold、且 GitHub merge queue 正常時，持續接近每小時 12 個 merged PR。這是 canary 操作流程，不是另一套 Issue／PR／registry 狀態庫。
+目的：以四個 top-level tasks 讓真實需求持續通過 raw demand → triage → Worker／Issue Solver → typed handback → PR → required → native queue → merge → cleanup，並從一條 production-mode pilot 逐步提升到每小時 12 個 merged PR。這不是另一套 Issue／PR／registry 狀態庫。
+
+本 SOP 固定區分兩種模式：`qualification` 只驗證控制面 clean baseline，不計 production throughput；`pilot` 可在 raw backlog 尚未 drained 時執行一條 bounded 真實需求；`ramp` 才驗證並行度提升；`steady` 只報告一小時 SLO 與吞吐是否達標。`ready=true` 是指定 mode 的觀測結果，不是建立 session、worktree、PR 或 merge 的授權。
 
 角色、hard gate 與生命週期語義以 [`docs/reference/delivery_model.md`](../reference/delivery_model.md) 為準。本 SOP 只定義第一次上線的啟動、觀測、升級與停止程序。
 
@@ -31,14 +33,14 @@ verified_against: afe016c4ea2fcbd7306f9c4f40b4556e77865100
   --supervision-worktree /Users/chenliangyu/.codex/worktrees/e695/kg
 ```
 
-只有 `result.ready=true` 才能建立四個 tasks。preflight 必須同時證明：
+預設 `dogfood-preflight` 等同 `--mode qualification`，其 `result.ready=true` 只代表 clean-slate qualification 成立。要啟動 production-mode pilot，使用 `--mode pilot`；pilot 不要求 PR 清零、raw backlog 清零、candidate reservoir 補滿或所有 lane 沒有 review／CI blocker，但必須沒有 global freeze，且至少有一個可驗證 candidate 或 direct-assignment packet。preflight 必須同時觀測：
 
 - canonical checkout 是 clean `main`，且 local `main == origin/main`；
 - `main` 已 protected、required contexts 包含短 gate `required`、native merge queue 已啟用；
 - delivery inventory 中只剩 canonical main；若啟動器使用 detached supervision checkout，必須以
   `--supervision-worktree` 逐一列出 exact path。未列出的 worktree 一律仍算 delivery／unknown
   blocker；不得用 `.codex` 路徑前綴或名稱猜測來排除；
-- 沒有可行動的 active development、local handback、cleanup lease、blocked lane、unmapped／duplicate PR 或 **global** source problem；
+- qualification 才要求沒有可行動的 active development、local handback、cleanup lease、blocked lane、unmapped／duplicate PR 或 **global** source problem；pilot／ramp 只把這些列為對應 lane blocker，global blocker 才停止新 admission；
 - 歷史 source problem、owner-recovery residue、無 physical worktree 的 terminal branch residue，以及明確 security/P0/P1 hold
   必須被 control plane 以 quarantine counters 明確標示。它們仍保留原始 evidence、不可 merge／刪除／接管，
   但不能阻塞與其無關的 delivery lane；任何新鮮且可行動的同類問題仍會讓 preflight fail。
@@ -46,9 +48,18 @@ verified_against: afe016c4ea2fcbd7306f9c4f40b4556e77865100
   preflight warning，並讓受影響 branch/object 的 cleanup 與 ramp 保持受限。這種 warning 絕不是 dispatch、cleanup、
   takeover 或 wake 授權；要清除它仍須走原 owner／source lifecycle。舊版 direct-constructed metrics 沒有 scope split
   時，仍以 aggregate source problem fail closed。
-- 現存 PR reservoir 為空；security／P0／P1 hold 必須先得到 terminal disposition，不能藏在 canary baseline。
+- qualification 才要求現存 PR reservoir 為空；security／P0／P1 hold 必須持續有明確 partition，held lane 不得 queue／merge，但不應阻塞有獨立證據的無關 pilot lane。
 
-candidate Issue reservoir 可以是空的；clean-slate baseline 只要求 read-only candidate query 可被可信解析，不要求啟動前先囤候選或建立本地 backlog。
+`backlog_classified=true` 只表示 raw Issue inventory 完整，且每一筆 raw Issue／source entry 都有唯一 disposition；它不要求每筆都成為 candidate，也不表示 `backlog_drained=true`。qualification 的 candidate reservoir 可以是空的；pilot 則需要至少一個可安全派工的 candidate 或 direct-assignment packet。raw backlog 存在時，BS 應輸出 `triage_existing_issues`，不能回報「沒有工作」。
+
+可用的 phase-aware command：
+
+```bash
+./ops/delivery.py --repo /Users/chenliangyu/project/kg dogfood-preflight --mode qualification
+./ops/delivery.py --repo /Users/chenliangyu/project/kg dogfood-preflight --mode pilot
+./ops/delivery.py --repo /Users/chenliangyu/project/kg dogfood-preflight --mode ramp
+./ops/delivery.py --repo /Users/chenliangyu/project/kg dogfood-preflight --mode steady
+```
 
 本地 `worktree` 測試群組會先取得 repository common Git directory 下的 blocking
 test-execution lock。這只序列化會共用 registry fixture／mutation lock 的測試程序；production
@@ -117,7 +128,7 @@ quarantine 是可驗證的隔離投影，不是 cleanup 成功、owner 恢復、
 1. 先執行 `issue-inventory`，raw count 必須與分頁讀取結果一致；source problem、security、legacy、blocked、owner-bound、published 與 terminal history 都留在結果中，不能因 quarantine 從 backlog 隱藏。
 2. 執行 `triage-plan`，只為一個 Issue 產生完整 triage evidence。`needs-triage`、未分類或 legacy 不會自動進候選；已有 owner／PR mapping 的 Issue 走 recovery，不重開第二條線。
 3. 對明確可安全派工的單一 Issue，先以 `render-candidate-body`／`validate-candidate-body` 產生 exact contract，再執行 `admit-candidate`。admission 是串行 read-before/write/readback；任何 fingerprint drift、Scope collision、hold、label 缺失或 readback mismatch 都停止，不自動重試或覆寫人工內容。
-4. 只有 raw backlog 已分類完成且 dispatchable reservoir 低於 20 時，才執行 `replenish_candidates`；BS fan-out 的 auditors 仍先做 Issue／PR history、active Scope、physical worktree 去重。raw backlog 存在不會阻止既有 verified candidate dispatch。
+4. 只有 `backlog_classified=true` 且 dispatchable reservoir 低於 20 時，才執行 `replenish_candidates`；BS fan-out 的 auditors 仍先做 Issue／PR history、active Scope、physical worktree 去重。raw backlog 未分類時先 `triage_existing_issues`，但不會阻止既有 verified candidate 的獨立 dispatch。
 5. `desired_new_solvers` 只消費 controller 已排除 nonterminal registry occupancy 的既有 candidates；Issue Solver 仍只跑 focused proof，commit clean 後以 supported registry command 產生 `kg.worktree.handback.v1`；Issue contract 的每個初始 hard hold 都必須以 `hand-back --hold` 原樣寫入 immutable seal，PI 不可自行推測或清除。
 
 ```bash
@@ -134,7 +145,7 @@ quarantine 是可驗證的隔離投影，不是 cleanup 成功、owner 恢復、
 ./ops/worktree_registry.py hand-back --branch '<branch>' --outcomes '<validation.json>' [--hold security]
 ```
 
-canary promotion 前 `canary_solver_limit=1`；不能直接為追求數量啟動 8–12 lanes。
+pilot 先限制為一條完整 lane；pilot terminal proof 後才進入 3-lane promotion，不能直接為追求數量啟動 8–12 lanes。`ramp_ready=false` 只表示不能升級並行度，不表示 pilot 不可開始。
 
 ### PI：handback 到 PR
 

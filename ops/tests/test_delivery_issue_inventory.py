@@ -117,6 +117,7 @@ def test_raw_issue_inventory_keeps_malformed_entries_and_raw_total() -> None:
     assert inventory.source_entries[0].issue_number == 2
     assert inventory.source_entries[0].disposition is IssueDisposition.SOURCE_PROBLEM
     assert inventory.unadmitted_open_issues == 3
+    assert inventory.backlog_classified is True
     assert inventory.backlog_drained is False
 
 
@@ -173,6 +174,7 @@ def test_incomplete_issue_inventory_keeps_unknown_backlog_distinct_from_zero() -
     assert metrics.unadmitted_open_issues is None
     assert metrics.issue_inventory_complete is False
     assert metrics.backlog_drained is False
+    assert inventory.backlog_classified is False
     assert ControlAction.TRIAGE_EXISTING_ISSUES in decision.actions
 
 

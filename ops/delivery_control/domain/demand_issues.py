@@ -94,7 +94,7 @@ class IssueIntakeRequest:
         if len(set(self.acceptance)) != len(self.acceptance):
             raise ValueError("issue intake acceptance must not contain duplicates")
         if not isinstance(self.scope, Scope):
-            raise ValueError("issue intake Scope is invalid")
+            raise ValueError("issue intake Scope is invalid")  # noqa: TRY004
         if _ISSUE_INTAKE_BEGIN in self.body:
             raise ValueError("issue intake body must not contain a typed intake block")
         object.__setattr__(self, "labels", tuple(sorted(self.labels)))
@@ -102,7 +102,7 @@ class IssueIntakeRequest:
     @classmethod
     def from_payload(cls, payload: Mapping[str, object]) -> IssueIntakeRequest:
         if not isinstance(payload, Mapping):
-            raise ValueError("issue intake payload must be an object")
+            raise ValueError("issue intake payload must be an object")  # noqa: TRY004
         if set(payload) != _ISSUE_INTAKE_FIELDS:
             raise ValueError("issue intake payload fields are not exact")
         if payload.get("schema") != ISSUE_INTAKE_SCHEMA:
@@ -111,9 +111,9 @@ class IssueIntakeRequest:
         raw_acceptance = payload.get("acceptance")
         raw_scope = payload.get("scope")
         if not isinstance(raw_labels, list) or not isinstance(raw_acceptance, list):
-            raise ValueError("issue intake labels and acceptance must be lists")
+            raise ValueError("issue intake labels and acceptance must be lists")  # noqa: TRY004
         if not isinstance(raw_scope, Mapping):
-            raise ValueError("issue intake Scope must be an object")
+            raise ValueError("issue intake Scope must be an object")  # noqa: TRY004
         try:
             scope = Scope.from_payload(raw_scope)
             severity = CandidateSeverity(payload.get("severity"))
@@ -489,6 +489,20 @@ class DemandIssueInventory:
             )
             + max(0, self.raw_count - represented_entries)
         )
+
+    @property
+    def backlog_classified(self) -> bool:
+        """Whether every raw entry has one observable disposition.
+
+        Classification is intentionally weaker than admission: a complete
+        inventory may still contain triage-required, legacy, blocked, or
+        source-problem entries.  Those entries remain visible in the raw
+        backlog and keep ``backlog_drained`` false until they are resolved.
+        """
+
+        if not self.complete or self.raw_count is None:
+            return False
+        return sum(self.disposition_counts.values()) == self.raw_count
 
     @property
     def backlog_drained(self) -> bool:

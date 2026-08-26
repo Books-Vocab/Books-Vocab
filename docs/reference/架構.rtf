@@ -165,4 +165,16 @@ delivery_control SOP\'a1\'42watchdog\'a1\'42registry\'a1\'42PI\'a1\'feCM lifecyc
 \'a6\'50\'a4\'40\'c5\'dc\'a7\'f3\'a5\'b2\'b6\'b7\'ad\'ab\'b7\'73\'c0\'cb\'ac\'64\'a8\'e2\'a5\'f7\'c0\'c9\'ae\'d7\'a1\'46\'ad\'59\'a4\'ba\'ae\'65\'bb\'50 SoT \'a4\'a3\'a4\'40\'ad\'50\'a1\'41\'a5\'48 SoT \'ac\'b0\'b7\'c7\'a8\'c3\'a5\'df\'a7\'59\'ad\'d7\'a5\'bf\'a1\'43\'a4\'e5\'a5\'f3\
 \'a5\'75\'ab\'4f\'a6\'73\'c3\'ad\'a9\'77\'a1\'42\'a5\'69\'ad\'ab\'b2\'7b\'aa\'ba\'ab\'b4\'ac\'f9\'a1\'41\'a4\'a3\'ab\'4f\'a6\'73\'a4\'40\'a6\'b8\'a9\'ca telemetry\'a1\'42\'b7\'ed\'ab\'65 PR number\'a1\'42branch\'a1\'42UDID\
 \'a9\'ce agent \'b2\'e1\'a4\'d1\'b6\'69\'ab\'d7\'a1\'43\
+\
+\
+Phase-aware production modes\
+============================\
+qualification: clean control-plane baseline only; it is not production throughput.\
+pilot: one bounded real demand lane; an un-drained raw backlog does not stop safe work.\
+ramp: increase concurrency only after pilot terminal proof and measured safety.\
+steady: report one-hour throughput and SLO; it is never a launch prerequisite.\
+\
+backlog_classified means the raw inventory is complete and every raw Issue or source entry has one disposition. It does not mean backlog_drained, and it never grants admission, wake, merge, or release authority.\
+\
+The maintained project Mermaid and RTF artifacts are derived human-facing views. The delivery model remains the source of truth; neither artifact stores lifecycle state.\
 }
