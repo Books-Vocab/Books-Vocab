@@ -199,12 +199,21 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
     || fail "merge-group independent review gate is not bound to the merge-group HEAD"
   grep -q 'mergeQueue' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not read queue membership"
+  if grep -q 'headCommit.oid == "\$group_sha"' "$MERGE_GROUP_REQUIRED"; then
+    fail "merge-group independent review gate compares the synthetic group SHA to the PR head"
+  fi
+  grep -q 'pullRequest.headRefOid' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not bind queue membership to the PR head ref"
   grep -q 'solo == true' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not fail closed for grouped entries"
   grep -q 'check-runs' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not read PR check evidence"
-  grep -q 'agent-review.*conclusion == "success"' "$MERGE_GROUP_REQUIRED" \
-    || fail "merge-group independent review gate does not require successful exact-head evidence"
+  grep -q 'sort_by' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not select the latest exact-head review run"
+  grep -q 'last' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not select the latest exact-head review run"
+  grep -q 'completed|success' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not require completed successful exact-head evidence"
 fi
 
 # Keep Actions on the Node 24 generation.  Pinned SHAs preserve supply-chain
