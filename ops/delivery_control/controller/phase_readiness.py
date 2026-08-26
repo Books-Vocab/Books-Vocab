@@ -249,10 +249,21 @@ def phase_next_actions(
     metrics: PipelineMetrics,
     *,
     backlog_classified: bool | None = None,
+    global_freeze: bool = False,
 ) -> tuple[str, ...]:
     """Return deterministic supply/flow actions without granting authority."""
 
     actions: list[str] = []
+    if metrics.actionable_source_problems:
+        actions.append("inspect_sources")
+    if metrics.reanchor_required:
+        actions.append("reanchor_front")
+    if metrics.pr_contract_failed:
+        actions.append("repair_pr_contract")
+    if metrics.required_failed:
+        actions.append("repair_required")
+    if metrics.required_absent:
+        actions.append("trigger_required")
     raw_open_issues = metrics.raw_open_issues
     if (
         raw_open_issues is None
@@ -273,16 +284,20 @@ def phase_next_actions(
         actions.append("cleanup_local")
     if (metrics.actionable_terminal_cleanup or 0) > 0:
         actions.append("cleanup_terminal")
+    if global_freeze:
+        actions.append("recover_blockers")
 
     dispatchable = metrics.dispatchable_candidate_issues
     if (
-        dispatchable is not None
+        not global_freeze
+        and dispatchable is not None
         and dispatchable > 0
         and metrics.active_development < STEADY_ACTIVE_SOLVER_MAX
     ):
         actions.append("dispatch_solvers")
     if (
-        backlog_classified is True
+        not global_freeze
+        and backlog_classified is True
         and dispatchable is not None
         and dispatchable < STEADY_CANDIDATE_MIN
     ):
@@ -299,9 +314,27 @@ def _timing_meets(
     return samples >= STEADY_REQUIRED_SAMPLES and p95 is not None and p95 <= threshold
 
 
-def _steady_state_verified(base: DogfoodReadiness) -> bool:
+def _steady_state_verified(
+    base: DogfoodReadiness,
+    *,
+    backlog_classified: bool | None,
+) -> bool:
     cadence = base.cadence
-    timings = base.metrics.timings
+    metrics = base.metrics
+    timings = metrics.timings
+    candidate_count = metrics.dispatchable_candidate_issues
+    merge_ready_or_queued = max(metrics.required_green, metrics.merge_queue_depth)
+    if (
+        backlog_classified is not True
+        or candidate_count is None
+        or not STEADY_CANDIDATE_MIN <= candidate_count <= 30
+        or not STEADY_ACTIVE_SOLVER_TARGET
+        <= metrics.active_development
+        <= STEADY_ACTIVE_SOLVER_MAX
+        or not 10 <= metrics.open_prs <= 15
+        or merge_ready_or_queued < 3
+    ):
+        return False
     if (
         cadence.window_seconds != STEADY_WINDOW_SECONDS
         or cadence.merged_count < STEADY_MERGE_TARGET
@@ -368,7 +401,10 @@ def assess_phase_readiness(
     pilot_ready = not global_blockers and (
         candidate_available or direct_assignment_available
     )
-    steady_verified = _steady_state_verified(base)
+    steady_verified = _steady_state_verified(
+        base,
+        backlog_classified=classified,
+    )
     ramp_ready = pilot_ready and base.canary_promotable and not global_blockers
     lane_blockers = _lane_blockers(
         base,
@@ -378,7 +414,11 @@ def assess_phase_readiness(
         steady_state_verified=steady_verified,
     )
     warnings = _warnings(base)
-    actions = phase_next_actions(metrics, backlog_classified=classified)
+    actions = phase_next_actions(
+        metrics,
+        backlog_classified=classified,
+        global_freeze=bool(global_blockers),
+    )
     if selected_mode is DogfoodMode.STEADY and not steady_verified:
         _append_unique(
             warnings, "steady mode is an observation of one-hour throughput and SLOs"

@@ -200,6 +200,23 @@ def test_global_source_uncertainty_freezes_pilot() -> None:
     assert "delivery source inventory is incomplete" in readiness.global_blockers
 
 
+def test_global_freeze_suppresses_dispatch_and_replenishment_actions() -> None:
+    metrics = _metrics(
+        candidate_issues=5,
+        dispatchable_candidate_issues=5,
+        source_problems=1,
+        actionable_source_problems=1,
+        actionable_global_source_problems=1,
+        source_problem_scope_counts=(("global", 1),),
+    )
+
+    readiness = assess_phase_readiness(_base(metrics), mode="pilot")
+
+    assert readiness.global_freeze is True
+    assert "dispatch_solvers" not in readiness.next_actions
+    assert "replenish_candidates" not in readiness.next_actions
+
+
 def test_ramp_requires_pilot_promotion_proof_not_drained_backlog() -> None:
     metrics = _metrics(raw_open_issues=5, unadmitted_open_issues=4)
     cadence = MergeCadence(900, 3, 12.0, 300.0, 300.0, 60.0)
@@ -217,6 +234,11 @@ def test_ramp_requires_pilot_promotion_proof_not_drained_backlog() -> None:
 
 def test_steady_requires_one_hour_throughput_and_transport_slos() -> None:
     metrics = _metrics(
+        active_development=8,
+        open_prs=10,
+        candidate_issues=20,
+        dispatchable_candidate_issues=20,
+        required_green=3,
         raw_open_issues=5,
         unadmitted_open_issues=4,
         timings=PipelineTimings(
@@ -242,6 +264,32 @@ def test_steady_requires_one_hour_throughput_and_transport_slos() -> None:
     assert readiness.steady_state_verified is True
     assert readiness.ready is True
     assert readiness.backlog_drained is False
+
+
+def test_steady_requires_the_target_reservoir_bands() -> None:
+    metrics = _metrics(
+        timings=PipelineTimings(
+            window_seconds=3600,
+            handback_to_pr_samples=12,
+            handback_to_pr_p95_seconds=60.0,
+            pr_to_required_start_samples=12,
+            pr_to_required_start_p95_seconds=60.0,
+            required_duration_samples=12,
+            required_duration_p95_seconds=240.0,
+            required_success_to_enqueue_samples=12,
+            required_success_to_enqueue_p95_seconds=30.0,
+            merge_to_sync_samples=12,
+            merge_to_sync_p95_seconds=30.0,
+            merge_to_cleanup_samples=12,
+            merge_to_cleanup_p95_seconds=60.0,
+        )
+    )
+    cadence = MergeCadence(3600, 12, 12.0, 300.0, 300.0, 120.0)
+
+    readiness = assess_phase_readiness(_base(metrics, cadence=cadence), mode="steady")
+
+    assert readiness.steady_state_verified is False
+    assert readiness.ready is False
 
 
 def test_explicit_qualification_preserves_legacy_readiness() -> None:
@@ -370,6 +418,22 @@ def test_plan_exposes_phase_actions_without_replacing_capacity_decision() -> Non
         "dispatch_solvers",
         "replenish_candidates",
     )
+
+
+def test_phase_actions_expose_existing_recovery_work() -> None:
+    metrics = _metrics(
+        reanchor_required=1,
+        pr_contract_failed=1,
+        required_failed=1,
+        required_absent=1,
+    )
+
+    readiness = assess_phase_readiness(_base(metrics), mode="pilot")
+
+    assert "reanchor_front" in readiness.next_actions
+    assert "repair_pr_contract" in readiness.next_actions
+    assert "repair_required" in readiness.next_actions
+    assert "trigger_required" in readiness.next_actions
 
 
 def test_lane_failure_does_not_become_global_freeze_for_pilot() -> None:
