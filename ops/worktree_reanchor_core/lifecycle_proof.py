@@ -172,6 +172,7 @@ def _required(
             "recovery requires the exact required code failure context",
             pull_request=pull_request.number,
             required_contexts=list(check.names),
+            required_status=check.status.value,
         )
     return check
 
@@ -244,7 +245,15 @@ def _eligible_merge_front(
         or receipt.head_sha != pull_request.head_sha
     ):
         return False
-    check = _required(github, pull_request, allow_combined_context=True)
+    try:
+        check = _required(github, pull_request, allow_combined_context=True)
+    except ReanchorRefused as exc:
+        if (
+            exc.details.get("required_status") == CheckStatus.ABSENT.value
+            and exc.details.get("required_contexts") == []
+        ):
+            return False
+        raise
     return check.status is CheckStatus.SUCCESS
 
 

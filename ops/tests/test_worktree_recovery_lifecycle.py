@@ -367,6 +367,30 @@ def test_reanchor_lifecycle_accepts_oldest_required_green_unheld_pr() -> None:
     assert proof.merge_front_policy == "lowest-required-green-unheld-pr-number"
 
 
+def test_reanchor_lifecycle_ignores_unrelated_pr_without_required_checks() -> None:
+    candidate = _pr(42, branch="feat/exact-pr")
+    unrelated = _pr(43, branch="feat/unrelated")
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        open_prs=(candidate, unrelated),
+        checks={
+            42: _check(CheckStatus.SUCCESS),
+            43: _check(CheckStatus.ABSENT, head=HEAD, names=()),
+        },
+    )
+
+    proof = verify_reanchor_lifecycle(
+        github,
+        pull_request_number=42,
+        branch="feat/exact-pr",
+        expected_base_sha=BASE,
+        expected_remote_head=HEAD,
+        live_main_sha=LIVE,
+    )
+
+    assert proof.pull_request_number == 42
+
+
 def test_reanchor_lifecycle_skips_earlier_pr_with_mismatched_typed_receipt() -> None:
     malformed = _pr(
         41,
@@ -491,6 +515,19 @@ def test_reanchor_lifecycle_defers_to_existing_native_queue_entry() -> None:
             _pr(42, branch="feat/exact-pr"),
             _check(CheckStatus.FAILURE),
             "required-green",
+        ),
+        (
+            _pr(42, branch="feat/exact-pr"),
+            _check(CheckStatus.ABSENT, names=()),
+            "required code failure context",
+        ),
+        (
+            _pr(42, branch="feat/exact-pr"),
+            _check(
+                CheckStatus.SUCCESS,
+                names=("agent-review", "required", "unexpected"),
+            ),
+            "required code failure context",
         ),
         (
             _pr(42, branch="feat/exact-pr", body="P0 hold"),
