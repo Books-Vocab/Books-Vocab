@@ -229,6 +229,12 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
     || fail "merge-group independent review gate does not identify the trusted workflow"
   grep -q '^  actions: read$' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not have Actions read permission"
+  grep -q 'pull_requests' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not verify PR association"
+  grep -q 'head.sha' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not bind PR association to exact HEAD"
+  grep -q 'issue_comment' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not handle trusted issue-comment provenance"
   grep -q 'Independent agent review' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not validate trusted review output"
   grep -q 'startswith' "$MERGE_GROUP_REQUIRED" \
