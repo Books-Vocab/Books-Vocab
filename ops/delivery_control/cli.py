@@ -7,7 +7,7 @@ import json
 import os
 import sys
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, is_dataclass, replace
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from pathlib import Path
@@ -16,6 +16,12 @@ from typing import Any
 from .adapters.operation_lock import OperationLock
 from .adapters.runtime import RuntimeStatusMap
 from .application import DeliveryApplication, build_application
+from .controller.metrics import measure_merge_cadence
+from .controller.phase_readiness import (
+    DogfoodMode,
+    assess_phase_readiness,
+    phase_next_actions,
+)
 from .domain.candidate_issues import CandidateSpec
 from .domain.demand_issues import IssueIntakeRequest
 from .domain.errors import DeliveryContractError, DeliverySourceError
@@ -196,6 +202,15 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=[],
         help="exact supervision checkout path; repeat once per checkout",
+    )
+    dogfood.add_argument(
+        "--mode",
+        choices=tuple(mode.value for mode in DogfoodMode),
+        default=None,
+        help=(
+            "explicit phase observation: qualification, pilot, ramp, or steady; "
+            "this flag belongs after dogfood-preflight and never grants mutation authority"
+        ),
     )
     watchdog = commands.add_parser(
         "watchdog",
@@ -450,13 +465,50 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
             supervision_worktree_paths=tuple(args.supervision_worktree)
         )
     if args.command == "plan":
-        return application.plan(
+        result = application.plan(
             supervision_worktree_paths=tuple(args.supervision_worktree)
         )
+        if not isinstance(result, Mapping):
+            return result
+        metrics = result.get("metrics")
+        if metrics is None:
+            return result
+        classified = (
+            None
+            if not getattr(metrics, "issue_inventory_complete", False)
+            or getattr(metrics, "raw_open_issues", None) is None
+            or getattr(metrics, "unadmitted_open_issues", None) is None
+            else True
+        )
+        return {
+            **result,
+            "backlog_classified": classified,
+            "next_actions": phase_next_actions(
+                metrics,
+                backlog_classified=classified,
+            ),
+        }
     if args.command == "dogfood-preflight":
-        return application.dogfood_preflight(
-            supervision_worktree_paths=tuple(args.supervision_worktree)
-        )
+        mode = getattr(args, "mode", None)
+        observed_at = application.clock() if mode == DogfoodMode.STEADY.value else None
+        dogfood_kwargs = {
+            "supervision_worktree_paths": tuple(args.supervision_worktree)
+        }
+        if observed_at is not None:
+            dogfood_kwargs["now"] = observed_at
+        base_readiness = application.dogfood_preflight(**dogfood_kwargs)
+        if mode is None:
+            return base_readiness
+        selected_mode = DogfoodMode(mode)
+        if selected_mode is DogfoodMode.STEADY:
+            cadence_now = observed_at or application.clock()
+            cadence = measure_merge_cadence(
+                application.github.recent_merge_times(),
+                now=cadence_now,
+                window=timedelta(hours=1),
+            )
+            base_readiness = replace(base_readiness, cadence=cadence)
+        return assess_phase_readiness(base_readiness, mode=selected_mode)
     if args.command == "watchdog":
         if args.runtime_status_file is None:
             raise DeliveryContractError("watchdog requires --runtime-status-file")
