@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from ..domain.errors import CompareAndSwapConflict
 from ..domain.models import CheckStatus
 from ..domain.observations import CheckSnapshot, PullRequestSnapshot
-from .errors import AdapterPayloadError
+from .errors import AdapterCommandError, AdapterPayloadError
 from .github_client import GitHubCliClient
 from .github_required_batch import batch_required_snapshots
 from .timestamps import parse_optional_timestamp
@@ -77,9 +77,24 @@ class GitHubChecks:
             "--json",
             "name,state,startedAt,completedAt",
         )
-        output = self.client.run(argv, allow_nonzero=True)
+        # ``gh pr checks`` reports an empty result with exit=1 and places the
+        # human-readable contract message on stderr.  Observe the raw command
+        # result here so the general client ``run`` fail-closed behavior stays
+        # unchanged for every other caller.
+        result = self.client.runner.run(argv, cwd=self.client.repo)
+        output = result.stdout.strip()
         empty_result = _NO_REQUIRED_CHECKS_RE.fullmatch(output)
-        if empty_result is not None:
+        stderr_empty_result = _NO_REQUIRED_CHECKS_RE.fullmatch(result.stderr.strip())
+        if result.exit_code == 1 and not output and stderr_empty_result is not None:
+            if stderr_empty_result.group(1) != before.branch:
+                raise AdapterPayloadError(
+                    "GitHub required checks zero-result branch does not match "
+                    "the exact PR"
+                )
+            payload: object = []
+        elif result.exit_code != 0 and not output:
+            raise AdapterCommandError(result)
+        elif empty_result is not None:
             if empty_result.group(1) != before.branch:
                 raise AdapterPayloadError(
                     "GitHub required checks zero-result branch does not match "
