@@ -56,6 +56,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           MERGE_GROUP_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
           MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+          MERGE_GROUP_PR_NUMBERS: ${{ join(github.event.merge_group.pull_requests.*.number, ',') }}
         shell: bash
         run: |
           set -euo pipefail
@@ -79,7 +80,38 @@ jobs:
             exit 1
           fi
 
-          merge_queue_query='query($owner:String!,$name:String!,$branch:String!){repository(owner:$owner,name:$name){mergeQueue(branch:$branch){configuration{maximumEntriesToMerge} entries(first:100){pageInfo{hasNextPage} nodes{position headCommit{oid} pullRequest{number headRefOid baseRefName state} solo state}}}}}'
+          if [[ -z "$MERGE_GROUP_PR_NUMBERS" ]]; then
+            echo "merge-group membership evidence is unavailable in the event payload" >&2
+            exit 1
+          fi
+          IFS=',' read -r -a group_pr_numbers <<<"$MERGE_GROUP_PR_NUMBERS"
+          if (( ${#group_pr_numbers[@]} == 0 )); then
+            echo "merge-group membership evidence is empty" >&2
+            exit 1
+          fi
+          for group_pr_number in "${group_pr_numbers[@]}"; do
+            if [[ ! "$group_pr_number" =~ ^[1-9][0-9]*$ ]]; then
+              echo "merge-group membership evidence contains a malformed PR number" >&2
+              exit 1
+            fi
+          done
+          sorted_group_pr_numbers=( $(printf '%s\n' "${group_pr_numbers[@]}" | sort -n) )
+          if (( ${#sorted_group_pr_numbers[@]} != ${#group_pr_numbers[@]} )); then
+            echo "merge-group membership evidence contains duplicate PRs" >&2
+            exit 1
+          fi
+          for ((index = 1; index < ${#sorted_group_pr_numbers[@]}; index++)); do
+            if [[ "${sorted_group_pr_numbers[index]}" == "${sorted_group_pr_numbers[index - 1]}" ]]; then
+              echo "merge-group membership evidence contains duplicate PRs" >&2
+              exit 1
+            fi
+          done
+          if ! printf '%s\n' "${group_pr_numbers[@]}" | grep -qx "$pr_number"; then
+            echo "merge-group target PR is absent from membership evidence" >&2
+            exit 1
+          fi
+
+          merge_queue_query='query($owner:String!,$name:String!,$branch:String!){repository(owner:$owner,name:$name){mergeQueue(branch:$branch){entries(first:100){pageInfo{hasNextPage} nodes{position headCommit{oid} pullRequest{number headRefOid baseRefName state} solo state}}}}}'
           queue_json="$(gh api graphql \
             -f query="$merge_queue_query" \
             -F owner="$owner" \
@@ -97,75 +129,46 @@ jobs:
             echo "merge-group queue entries are missing" >&2
             exit 1
           fi
-          maximum_entries_to_merge="$(jq -r '.data.repository.mergeQueue.configuration.maximumEntriesToMerge // empty' <<<"$queue_json")"
-          if [[ ! "$maximum_entries_to_merge" =~ ^[1-9][0-9]*$ ]]; then
-            echo "merge-group maximum entries configuration is malformed" >&2
-            exit 1
-          fi
           target_entries="$(jq -c \
             --argjson number "$pr_number" \
             'map(select(.pullRequest.number == $number))' \
             <<<"$queue_nodes")"
           if [[ "$(jq 'length' <<<"$target_entries")" != "1" ]]; then
-            echo "merge-group ref must map to exactly one queued PR" >&2
+            echo "merge-group target PR must map to exactly one queued entry" >&2
             exit 1
           fi
-
           target_entry="$(jq -c '.[0]' <<<"$target_entries")"
           target_position="$(jq -r '.position // empty' <<<"$target_entry")"
           if [[ ! "$target_position" =~ ^[1-9][0-9]*$ ]]; then
-            echo "queued PR position is not an exact positive integer" >&2
+            echo "queued target PR position is not an exact positive integer" >&2
             exit 1
           fi
-
           target_solo="$(jq -r 'if (.solo | type) == "boolean" then (.solo | tostring) else "malformed" end' <<<"$target_entry")"
           if [[ "$target_solo" == "malformed" ]]; then
             echo "target queue entry solo flag is malformed" >&2
             exit 1
           fi
-          if [[ "$target_solo" == "true" ]]; then
-            group_start="$target_position"
-          else
-            group_start=$((target_position - maximum_entries_to_merge + 1))
-            if ((group_start < 1)); then
-              group_start=1
-            fi
-            previous_solo_position="$(jq -r \
-              --argjson target "$target_position" \
-              '[.[] | select((.position | type) == "number" and .position < $target and (.solo | type) == "boolean" and (.solo | tostring) == "true") | .position] | max // 0' \
-              <<<"$queue_nodes")"
-            if [[ ! "$previous_solo_position" =~ ^[0-9]+$ ]]; then
-              echo "merge-group queue solo boundary is malformed" >&2
-              exit 1
-            fi
-            if ((previous_solo_position >= group_start)); then
-              group_start=$((previous_solo_position + 1))
-            fi
-          fi
-          if ((group_start > target_position)); then
-            echo "merge-group queue membership boundary is invalid" >&2
-            exit 1
-          fi
           group_entries="$(jq -c \
-            --argjson start "$group_start" \
-            --argjson target "$target_position" \
-            'map(select((.position | type) == "number" and .position >= $start and .position <= $target)) | sort_by(.position)' \
+            --argjson numbers "$(printf '%s\n' "${group_pr_numbers[@]}" | jq -Rsc 'split("\n")[:-1] | map(tonumber)')" \
+            'map(select(.pullRequest.number as $number | ($numbers | index($number)))) | sort_by(.position)' \
             <<<"$queue_nodes")"
+          if [[ "$(jq 'length' <<<"$group_entries")" -ne "${#group_pr_numbers[@]}" ]]; then
+            echo "merge-group event membership does not match live queue entries" >&2
+            exit 1
+          fi
+          if [[ "$target_solo" == "true" && "$(jq 'length' <<<"$group_entries")" != "1" ]]; then
+            echo "solo target has more than one merge-group member" >&2
+            exit 1
+          fi
           if ! jq -e \
-            --argjson start "$group_start" \
-            --argjson target_position "$target_position" \
-            'map(.position) == [range($start; ($target_position + 1))]' \
+            'map(.position) as $positions | ($positions | length) > 0 and ($positions | min) as $start | ($positions | max) as $target_position | ($positions | unique | length) == ($positions | length) and ($positions | sort) == [range($start; ($target_position + 1))]' \
             <<<"$group_entries" >/dev/null; then
-            echo "merge-group queue positions are incomplete or duplicated" >&2
+            echo "merge-group queue membership positions are non-contiguous or duplicated" >&2
             exit 1
           fi
-          group_pr_numbers=( $(jq -r '.[] | .pullRequest.number // empty' <<<"$group_entries") )
-          if (( ${#group_pr_numbers[@]} == 0 )); then
-            echo "merge-group has no bounded PR membership" >&2
-            exit 1
-          fi
-          if [[ "$(jq 'length' <<<"$group_entries")" -ne "$((target_position - group_start + 1))" ]]; then
-            echo "merge-group queue positions are incomplete" >&2
+          if ! jq -e --argjson target_position "$target_position" \
+            'any(.[]; .position == $target_position)' <<<"$group_entries" >/dev/null; then
+            echo "merge-group target position is absent from membership evidence" >&2
             exit 1
           fi
           trusted_workflow_id="$(gh api "repos/$REPOSITORY/actions/workflows/agent-review.yml" --jq '.id // empty')"
@@ -208,21 +211,63 @@ jobs:
               '[.check_runs[]? | select(\
                   .name == "agent-review"\
                   and .head_sha == $head_sha\
-                  and ((.output.title // "") | startswith("Independent agent review "))\
-                  and ((.output.summary // "") | startswith("Exact head \($head_sha) "))\
                   and ((.external_id // "") | startswith("kg.agent-review.v1:"))\
+                  and ((.details_url // "") | startswith("https://github.com/"))\
+                  and (((.output.title // "") | startswith("Independent agent review ")) or (.output.title // "") == "Waiting for independent agent review")\
+                  and ((.output.summary // "") | startswith("Exact head \($head_sha) "))\
                 )\
                | {id: (.id // 0), status: (.status // ""), conclusion: (.conclusion // ""),\
                   started_at: (.started_at // ""), completed_at: (.completed_at // ""),\
-                  updated_at: (.updated_at // ""),\
-                  details_url: (.details_url // ""), external_id: (.external_id // "")}\
+                  created_at: (.created_at // ""), updated_at: (.updated_at // ""),\
+                  details_url: (.details_url // ""), external_id: (.external_id // ""),\
+                  output_title: (.output.title // ""), output_summary: (.output.summary // "")}\
               ]' \
               <<<"$checks_json")"
+            review_provenance="[]"
+            while IFS= read -r review_candidate; do
+              details_url="$(jq -r '.details_url' <<<"$review_candidate")"
+              run_id="$(sed -nE 's#^https://github.com/[^/]+/[^/]+/actions/runs/([0-9]+)$#\1#p' <<<"$details_url")"
+              expected_details_url="https://github.com/$REPOSITORY/actions/runs/$run_id"
+              expected_external_id="kg.agent-review.v1:$run_id:$pr_head_sha"
+              if [[ ! "$run_id" =~ ^[0-9]+$ || "$details_url" != "$expected_details_url" || "$(jq -r '.external_id' <<<"$review_candidate")" != "$expected_external_id" ]]; then
+                continue
+              fi
+
+              trusted_run="$(gh api "repos/$REPOSITORY/actions/runs/$run_id")"
+              trusted_path="$(jq -r '.path // empty' <<<"$trusted_run")"
+              trusted_event="$(jq -r '.event // empty' <<<"$trusted_run")"
+              trusted_head_branch="$(jq -r '.head_branch // empty' <<<"$trusted_run")"
+              trusted_workflow="$(jq -r '.workflow_id // empty' <<<"$trusted_run")"
+              trusted_pr_matches="$(jq -c \
+                --argjson number "$group_pr_number" \
+                --arg head_sha "$pr_head_sha" \
+                '[.pull_requests[]? | select(.number == $number and .head.sha == $head_sha and .base.ref == "main")]' \
+                <<<"$trusted_run")"
+              provenance_ok="true"
+              if [[ "$trusted_path" != ".github/workflows/agent-review.yml" || "$trusted_workflow" != "$trusted_workflow_id" ]]; then
+                provenance_ok="false"
+              else
+                case "$trusted_event" in
+                  issue_comment)
+                    [[ "$trusted_head_branch" == "main" ]] || provenance_ok="false"
+                    ;;
+                  pull_request_target|pull_request_review|pull_request_review_comment)
+                    [[ "$(jq 'length' <<<"$trusted_pr_matches")" == "1" ]] || provenance_ok="false"
+                    ;;
+                  *)
+                    provenance_ok="false"
+                    ;;
+                esac
+              fi
+              if [[ "$provenance_ok" == "true" ]]; then
+                review_provenance="$(jq -c --argjson item "$review_candidate" '. + [$item]' <<<"$review_provenance")"
+              fi
+            done < <(jq -c '.[]' <<<"$review_candidates")
             review_json="$(jq -c \
-              'sort_by([.updated_at, .completed_at, .started_at, .id]) | last // empty' \
-              <<<"$review_candidates")"
+              'sort_by([.updated_at, .started_at, .completed_at, .created_at, .id]) | last // empty' \
+              <<<"$review_provenance")"
             if [[ -z "$review_json" ]]; then
-              echo "group PR #$group_pr_number has no trusted exact-head agent-review evidence" >&2
+              echo "group PR #$group_pr_number has no trusted exact-head review provenance" >&2
               exit 1
             fi
             review_status="$(jq -r '.status | ascii_downcase' <<<"$review_json")"
@@ -230,7 +275,7 @@ jobs:
             if [[ "$review_status" == "completed" && "$review_conclusion" == "success" ]]; then
               :
             else
-              echo "latest exact-head agent-review observation is not completed successfully" >&2
+              echo "latest trusted exact-head agent-review observation is not completed successfully" >&2
               exit 1
             fi
             details_url="$(jq -r '.details_url' <<<"$review_json")"
@@ -239,41 +284,6 @@ jobs:
             expected_external_id="kg.agent-review.v1:$run_id:$pr_head_sha"
             if [[ ! "$run_id" =~ ^[0-9]+$ || "$details_url" != "$expected_details_url" || "$(jq -r '.external_id' <<<"$review_json")" != "$expected_external_id" ]]; then
               echo "group PR #$group_pr_number review evidence provenance is malformed" >&2
-              exit 1
-            fi
-
-            trusted_run="$(gh api "repos/$REPOSITORY/actions/runs/$run_id")"
-            trusted_path="$(jq -r '.path // empty' <<<"$trusted_run")"
-            trusted_event="$(jq -r '.event // empty' <<<"$trusted_run")"
-            trusted_head_branch="$(jq -r '.head_branch // empty' <<<"$trusted_run")"
-            trusted_status="$(jq -r '.status // empty' <<<"$trusted_run")"
-            trusted_conclusion="$(jq -r '.conclusion // empty' <<<"$trusted_run")"
-            trusted_workflow="$(jq -r '.workflow_id // empty' <<<"$trusted_run")"
-            trusted_pr_matches="$(jq -c \
-              --argjson number "$group_pr_number" \
-              --arg head_sha "$pr_head_sha" \
-              '[.pull_requests[]? | select(.number == $number and .head.sha == $head_sha and .base.ref == "main")]' \
-              <<<"$trusted_run")"
-            case "$trusted_event" in
-              issue_comment)
-                if [[ "$trusted_head_branch" != "main" ]]; then
-                  echo "group PR #$group_pr_number issue-comment review ran outside trusted main" >&2
-                  exit 1
-                fi
-                ;;
-              pull_request_target|pull_request_review|pull_request_review_comment)
-                if [[ "$(jq 'length' <<<"$trusted_pr_matches")" != "1" ]]; then
-                  echo "group PR #$group_pr_number review run is not associated with the exact PR HEAD" >&2
-                  exit 1
-                fi
-                ;;
-              *)
-                echo "group PR #$group_pr_number review provenance event is not trusted" >&2
-                exit 1
-                ;;
-            esac
-            if [[ "$trusted_path" != ".github/workflows/agent-review.yml" || "$trusted_workflow" != "$trusted_workflow_id" || "$trusted_status" != "completed" || "$trusted_conclusion" != "success" ]]; then
-              echo "group PR #$group_pr_number review provenance does not match trusted workflow run" >&2
               exit 1
             fi
           done

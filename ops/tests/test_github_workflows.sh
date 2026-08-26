@@ -211,13 +211,15 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
     || fail "merge-group independent review gate does not enumerate grouped PRs"
   grep -q 'target_position' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not bound group membership by queue position"
-  grep -q 'maximumEntriesToMerge' "$MERGE_GROUP_REQUIRED" \
-    || fail "merge-group independent review gate does not use the live queue group-size contract"
-  if grep -Fq 'group_start=$((target_position - 2))' "$MERGE_GROUP_REQUIRED"; then
-    fail "merge-group independent review gate still assumes a fixed two-entry lookback"
+  grep -q 'MERGE_GROUP_PR_NUMBERS' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not consume explicit event membership"
+  grep -q 'merge_group.pull_requests' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not bind membership to merge-group event evidence"
+  grep -q 'membership evidence' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not fail closed without membership evidence"
+  if grep -q 'maximumEntriesToMerge\|maximum_entries_to_merge' "$MERGE_GROUP_REQUIRED"; then
+    fail "merge-group independent review gate infers membership from a configured ceiling"
   fi
-  grep -q 'maximum_entries_to_merge' "$MERGE_GROUP_REQUIRED" \
-    || fail "merge-group independent review gate does not project live maximum group size"
   grep -q 'range(.*target_position' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not prove contiguous queue membership"
   grep -q 'for group_pr_number in' "$MERGE_GROUP_REQUIRED" \
@@ -234,6 +236,8 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
     || fail "merge-group independent review gate does not order review observations by update time"
   grep -q 'review_status' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not validate the selected latest review status"
+  grep -q 'review_provenance' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not isolate malformed review provenance"
   grep -q 'external_id' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not bind evidence to the trusted review check artifact"
   grep -q 'details_url' "$MERGE_GROUP_REQUIRED" \
@@ -258,6 +262,22 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
     || fail "merge-group independent review gate does not require completed exact-head evidence"
   grep -q '== "success"' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group independent review gate does not require successful exact-head evidence"
+  queue_membership_fixture='[{"position":2},{"position":3},{"position":4},{"position":5}]'
+  jq -e 'map(.position) as $positions | ($positions | min) as $start | ($positions | max) as $target_position | ($positions | unique | length) == ($positions | length) and ($positions | sort) == [range($start; ($target_position + 1))]' \
+    <<<"$queue_membership_fixture" >/dev/null \
+    || fail "merge-group fixture rejects a valid group larger than three entries"
+  noncontiguous_fixture='[{"position":2},{"position":4}]'
+  if jq -e 'map(.position) as $positions | ($positions | min) as $start | ($positions | max) as $target_position | ($positions | unique | length) == ($positions | length) and ($positions | sort) == [range($start; ($target_position + 1))]' \
+    <<<"$noncontiguous_fixture" >/dev/null; then
+    fail "merge-group fixture accepts non-contiguous membership"
+  fi
+  review_fixture='[{"updated_at":"2026-08-26T15:00:00Z","status":"completed","conclusion":"success"},{"updated_at":"2026-08-26T15:01:00Z","status":"in_progress","conclusion":""}]'
+  latest_review_status="$(jq -r 'sort_by(.updated_at) | last.status' <<<"$review_fixture")"
+  [[ "$latest_review_status" == "in_progress" ]] \
+    || fail "review fixture does not select the newer in-progress observation"
+  malformed_review_fixture='[{"details_url":"not-a-run","external_id":"wrong"}]'
+  [[ "$(jq '[.[] | select((.details_url | startswith("https://github.com/")) and (.external_id | startswith("kg.agent-review.v1:")))] | length' <<<"$malformed_review_fixture")" == "0" ]] \
+    || fail "review fixture accepts malformed provenance"
 fi
 
 # Keep Actions on the Node 24 generation.  Pinned SHAs preserve supply-chain
