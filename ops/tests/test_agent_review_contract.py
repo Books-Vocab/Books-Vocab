@@ -95,3 +95,12 @@ def test_agent_review_rechecks_trusted_codex_response_comments() -> None:
 
     assert "github.event.comment.user.login == 'chatgpt-codex-connector[bot]'" in source
     assert "contains(github.event.comment.body, '**Reviewed commit:**')" in source
+
+
+def test_agent_review_response_does_not_cancel_pr_event_poller() -> None:
+    source = _workflow()
+
+    assert (
+        "group: agent-review-${{ github.event.pull_request.number || github.event.issue.number }}-${{ github.event_name }}"
+        in source
+    )
