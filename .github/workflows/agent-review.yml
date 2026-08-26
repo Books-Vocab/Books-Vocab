@@ -1,0 +1,163 @@
+name: agent-review
+
+# This workflow is deliberately evaluated from the trusted base branch. It
+# never checks out or executes pull-request code. The check records whether the
+# configured independent review agent examined this exact PR head.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+  pull_request_review_comment:
+    types: [created, edited, deleted]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  checks: write
+
+concurrency:
+  group: agent-review-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  agent-review:
+    # A human-triggered request gives the external reviewer time to answer;
+    # review/review-comment events re-evaluate the same exact head. Ordinary
+    # issue comments must not manufacture a review check.
+    if: >-
+      github.event_name != 'issue_comment' ||
+      contains(github.event.comment.body, '@codex review')
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      # The repository workflow contract requires pinned actions.  Only the
+      # trusted default branch is checked out; no pull-request ref is ever
+      # executed by this workflow.  setup-uv is pinned for the same supply
+      # chain contract even though this evidence-only job uses shell tooling.
+      - name: Check out trusted default branch metadata
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+      - name: Set up pinned uv runtime
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: false
+      - name: Evaluate exact-head independent review evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          EVIDENCE_AFTER: ${{ github.event.pull_request.updated_at || github.event.comment.created_at || github.event.review.submitted_at || github.event.pull_request_review_comment.created_at }}
+          REVIEW_BOT: chatgpt-codex-connector[bot]
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "invalid pull request number: $PR_NUMBER" >&2
+            exit 1
+          fi
+
+          pr_json="$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")"
+          head_sha="$(jq -r '.head.sha // empty' <<<"$pr_json")"
+          head_ref="$(jq -r '.head.ref // empty' <<<"$pr_json")"
+          if [[ ! "$head_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "PR head is not an exact commit SHA" >&2
+            exit 1
+          fi
+
+          commit_json="$(gh api "repos/$REPOSITORY/commits/$head_sha")"
+          head_timestamp="$(jq -r '.commit.committer.date // .commit.author.date // empty' <<<"$commit_json")"
+          evidence_after="$EVIDENCE_AFTER"
+          if [[ -z "$evidence_after" ]]; then
+            evidence_after="$head_timestamp"
+          fi
+          if [[ -z "$evidence_after" ]]; then
+            echo "PR head has no evidence timestamp" >&2
+            exit 1
+          fi
+
+          create_check() {
+            local status="$1"
+            local conclusion="${2:-}"
+            local title="$3"
+            local summary="$4"
+            if [[ "$status" == "completed" ]]; then
+              jq -n \
+                --arg name "agent-review" \
+                --arg head_sha "$head_sha" \
+                --arg conclusion "$conclusion" \
+                --arg title "$title" \
+                --arg summary "$summary" \
+                '{name:$name, head_sha:$head_sha, status:"completed", conclusion:$conclusion, output:{title:$title, summary:$summary}}' \
+                | gh api "repos/$REPOSITORY/check-runs" --method POST --input - >/dev/null
+            else
+              jq -n \
+                --arg name "agent-review" \
+                --arg head_sha "$head_sha" \
+                --arg title "$title" \
+                --arg summary "$summary" \
+                '{name:$name, head_sha:$head_sha, status:"in_progress", output:{title:$title, summary:$summary}}' \
+                | gh api "repos/$REPOSITORY/check-runs" --method POST --input - >/dev/null
+            fi
+          }
+
+          create_check in_progress "" "Waiting for independent agent review" \
+            "Review evidence is evaluated only for exact head $head_sha ($head_ref)."
+
+          review_evidence=""
+          blocker_evidence=""
+          reaction_evidence=""
+          for attempt in $(seq 1 20); do
+            reviews="$(gh api --paginate --slurp "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" | jq 'add // []')"
+            review_comments="$(gh api --paginate --slurp "repos/$REPOSITORY/pulls/$PR_NUMBER/comments" | jq 'add // []')"
+            reactions="$(gh api --paginate --slurp "repos/$REPOSITORY/issues/$PR_NUMBER/reactions" | jq 'add // []')"
+
+            review_evidence="$(jq -r \
+              --arg bot "$REVIEW_BOT" --arg head "$head_sha" \
+              '[.[] | select(.user.login == $bot and .commit_id == $head and (.state == "APPROVED" or .state == "COMMENTED"))] | length' \
+              <<<"$reviews")"
+            blocker_evidence="$(jq -r \
+              --arg bot "$REVIEW_BOT" --arg head "$head_sha" \
+              '[.[] | select(.user.login == $bot and .commit_id == $head) | (.body // "") | select(test("(^|[^[:alnum:]])P(0|1)([^[:alnum:]]|$)|security[[:space:]]+(hold|blocker)|critical[[:space:]]+(blocker|security)"; "i"))] | length' \
+              <<<"$reviews")"
+            comment_blockers="$(jq -r \
+              --arg bot "$REVIEW_BOT" --arg head "$head_sha" \
+              '[.[] | select(.user.login == $bot and .commit_id == $head) | (.body // "") | select(test("(^|[^[:alnum:]])P(0|1)([^[:alnum:]]|$)|security[[:space:]]+(hold|blocker)|critical[[:space:]]+(blocker|security)"; "i"))] | length' \
+              <<<"$review_comments")"
+            blocker_evidence=$((blocker_evidence + comment_blockers))
+            reaction_evidence="$(jq -r \
+              --arg bot "$REVIEW_BOT" --arg since "$evidence_after" \
+              '[.[] | select(.user.login == $bot and .content == "+1" and (.created_at // "") >= $since)] | length' \
+              <<<"$reactions")"
+
+            if [[ "$blocker_evidence" -gt 0 ]]; then
+              create_check completed failure "Independent agent review found a hard blocker" \
+                "Exact head $head_sha has $blocker_evidence P0/P1/security blocker evidence from $REVIEW_BOT."
+              exit 1
+            fi
+
+            if [[ "$review_evidence" -gt 0 || "$reaction_evidence" -gt 0 ]]; then
+              if [[ "$review_evidence" -gt 0 ]]; then
+                evidence_note="COMMENTED review is accepted when no P0/P1/security blocker is present."
+              else
+                evidence_note="The reviewer recorded a fresh +1 reaction after the exact-head event."
+              fi
+              create_check completed success "Independent agent review verified" \
+                "Exact head $head_sha was reviewed by $REVIEW_BOT. $evidence_note"
+              exit 0
+            fi
+
+            if [[ "$attempt" -lt 20 ]]; then
+              sleep 15
+            fi
+          done
+
+          create_check completed failure "Independent agent review is missing" \
+            "No exact-head review or fresh reviewer reaction from $REVIEW_BOT was observed for $head_sha."
+          exit 1

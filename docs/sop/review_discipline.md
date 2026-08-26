@@ -17,6 +17,20 @@ verified_against: 2d9f6fdbebca9fe0f2aa9a790f1498dded80050d
 
 [`docs/reference/delivery_model.md`](../reference/delivery_model.md) 定義 CM、IM、Worker、Issue Solver、CR 與 DS 的責任。GitHub PR 是變更的唯一 review surface；local review output 可以輔助診斷，但不能取代 PR conversation、required checks 或 branch protection。
 
+## Independent agent review boundary
+
+Collaborator approval 是 GitHub branch rule 的一種授權實作，不是「技術審查」本身。它同時提供兩件事：另一個 principal 的獨立判斷，以及 GitHub 可以驗證的 separation-of-duties 證據。獨立 agent 已完成 exact-head 審查時，不能把本人的 `gh pr review --approve` 當成替代；正確做法是由受信任的 base-branch workflow 將 agent 證據轉成 GitHub `agent-review` check。
+
+`agent-review` 的最低契約如下：
+
+- workflow 使用 `pull_request_target`／review events，從 trusted base 執行，不 checkout 或執行 PR 程式碼；
+- review 或 reaction 必須由已辨識的 independent reviewer identity 提供，且綁定目前 PR HEAD；舊 HEAD 的證據不算；
+- P0、P1、security hold 使 check 失敗；P2、advisory 或 baseline observation 只能作為 review warning；
+- check 必須以 `checks:write` 建立在 exact PR HEAD，並保留 reviewer、HEAD、結論與 blocker evidence；
+- shell caller、PI、CM 仍須讀取 check 的 exact conclusion，不得以 workflow exit code、local review 摘要或 self-approval 取代它。
+
+在 repository ruleset 尚未完成 `agent-review` 啟用前，既有 required collaborator approval 仍是硬條件；migration 完成後，ruleset 必須同時確認 `required` 與 `agent-review` 都是 exact-head required checks，才可移除舊的人工 approval requirement。這是 authorization migration，不是降低審查標準。
+
 CR 進場先執行 `./ops/agent_onboard.py --identity CR --intent review --entry pr-review --evidence '<JSON object with GitHub PR, exact HEAD, required checks>' --json`。只有 `status=ready` 才能載入 `code-review` skill 與本 SOP；這一步確認的是上下文，不是 merge 權限。
 
 ## PR 必須回答
@@ -35,7 +49,7 @@ PR 不是只有 code diff：CR 的 review 結論、DS 的文件 impact、Actions
 2. 先看行為與資料安全，再看可維護性、測試 seam、文件影響與 UI／i18n 契約。
 3. 對每個 blocker 指向檔案與行號，說明重現或推理依據；沒有證據就標為疑問，不寫成結論。
 4. 確認 required Actions checks 是這個 PR 的新鮮結果，而不是舊 commit 的綠燈。
-5. 在 GitHub PR 明確留下 approve、request changes 或 comment；不要用 repo 內自製狀態模擬審查結論。
+5. 在 GitHub PR 明確留下 approve、request changes 或 comment；若採用 `agent-review` migration，則由 trusted workflow 留下 exact-head check，不能用 repo 內自製狀態模擬審查結論。
 
 ## Required checks
 
