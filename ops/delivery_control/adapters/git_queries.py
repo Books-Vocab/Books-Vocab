@@ -466,6 +466,7 @@ class GitQueries:
                     f"branch {branch} not found in local or remote refs"
                 )
             self._ensure_commit_object(head_sha)
+            self._ensure_commit_object(base_sha)
         base_is_ancestor = self.is_ancestor(base_sha, head_sha)
         ahead_output = self.client.run("rev-list", "--count", f"{base_sha}..{head_sha}")
         behind_output = self.client.run(

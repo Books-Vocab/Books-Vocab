@@ -61,6 +61,61 @@ def _remote_only_repo(tmp_path: Path) -> tuple[Path, str, str]:
     return repo, base_sha, remote_head
 
 
+def _remote_only_repo_with_missing_live_base(
+    tmp_path: Path,
+) -> tuple[Path, str, str]:
+    repo, initial_sha = _repo(tmp_path)
+    remote = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+    _git(repo, "remote", "add", "origin", str(remote))
+
+    _git(repo, "switch", "-qc", "feat/remote-only")
+    (repo / "remote.py").write_text("value = 1\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "add remote-only feature")
+    remote_head = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "push", "-q", "origin", "HEAD:refs/heads/feat/remote-only")
+
+    _git(repo, "switch", "main")
+    (repo / "main.txt").write_text("main\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "advance live main")
+    base_sha = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "push", "-q", "origin", "HEAD:refs/heads/main")
+
+    _git(repo, "branch", "-D", "feat/remote-only")
+    subprocess.run(
+        ["git", "-C", str(repo), "update-ref", "-d", "refs/heads/main"],
+        check=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "update-ref",
+            "-d",
+            "refs/remotes/origin/feat/remote-only",
+        ],
+        check=False,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "update-ref",
+            "-d",
+            "refs/remotes/origin/main",
+        ],
+        check=False,
+    )
+    _git(repo, "reflog", "expire", "--expire=now", "--all")
+    _git(repo, "prune", "--expire=now")
+    assert initial_sha != base_sha
+    return repo, base_sha, remote_head
+
+
 def test_parse_commit_summaries_preserves_bounded_truncation() -> None:
     first = "a" * 40
     second = "b" * 40
@@ -211,6 +266,71 @@ def test_git_adapter_fetches_missing_remote_object_before_content_queries(
     assert not (repo / ".git" / "FETCH_HEAD").exists()
 
 
+def test_git_adapter_fetches_missing_remote_head_and_live_base_before_merge_base(
+    tmp_path: Path,
+) -> None:
+    repo, base_sha, remote_head = _remote_only_repo_with_missing_live_base(tmp_path)
+
+    for commit_sha in (base_sha, remote_head):
+        assert (
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(repo),
+                    "cat-file",
+                    "-e",
+                    f"{commit_sha}^{{commit}}",
+                ],
+                check=False,
+            ).returncode
+            != 0
+        )
+
+    evidence = GitCliAdapter(repo=repo).inspect_branch_content(
+        branch="feat/remote-only",
+        base_sha=base_sha,
+    )
+
+    assert evidence.complete
+    assert evidence.head_sha == remote_head
+    assert evidence.base_is_ancestor is False
+    assert evidence.ahead_commit_count == 1
+    assert evidence.behind_commit_count == 1
+    assert evidence.commit_subjects == ("add remote-only feature",)
+    assert (
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo),
+                "show-ref",
+                "--verify",
+                "--quiet",
+                "refs/heads/feat/remote-only",
+            ],
+            check=False,
+        ).returncode
+        == 1
+    )
+    assert (
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo),
+                "show-ref",
+                "--verify",
+                "--quiet",
+                "refs/remotes/origin/main",
+            ],
+            check=False,
+        ).returncode
+        == 1
+    )
+    assert not (repo / ".git" / "FETCH_HEAD").exists()
+
+
 def test_git_adapter_missing_remote_branch_remains_structured_incomplete(
     tmp_path: Path,
 ) -> None:
@@ -296,6 +416,46 @@ def test_git_adapter_remote_object_read_failure_after_fetch_remains_incomplete(
     assert evidence.error is not None
     assert "command failed" in evidence.error
     assert sum("fetch" in call for call in runner.calls) == 1
+    assert all("merge-base" not in call for call in runner.calls)
+
+
+def test_git_adapter_missing_live_base_object_remains_structured_incomplete(
+    tmp_path: Path,
+) -> None:
+    base_sha = "a" * 40
+    remote_head = "b" * 40
+    runner = StaticRunner(
+        [
+            CommandResult(("git",), 1, "", ""),
+            CommandResult(
+                ("git",),
+                0,
+                f"{remote_head}\trefs/heads/feat/remote-only\n",
+                "",
+            ),
+            CommandResult(("git",), 128, "", "fatal: missing commit object"),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), 128, "", "fatal: missing base object"),
+            CommandResult(("git",), 128, "", "fatal: live base unavailable"),
+        ]
+    )
+
+    evidence = BranchContentService(
+        git=GitCliAdapter(repo=tmp_path, runner=runner)
+    ).inspect(
+        branch="feat/remote-only",
+        base_sha=base_sha,
+    )
+
+    assert evidence.complete is False
+    assert evidence.error is not None
+    assert "command failed" in evidence.error
+    fetch_calls = [call for call in runner.calls if "fetch" in call]
+    assert len(fetch_calls) == 2
+    assert all("--no-write-fetch-head" in call for call in fetch_calls)
+    assert remote_head in fetch_calls[0]
+    assert base_sha in fetch_calls[1]
     assert all("merge-base" not in call for call in runner.calls)
 
 
