@@ -9,25 +9,25 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-from delivery_control.domain.models import (  # noqa: E402
+from delivery_control.domain.models import (
     CheckStatus,
     HandbackReceipt,
     Scope,
 )
-from delivery_control.domain.observations import (  # noqa: E402
+from delivery_control.domain.observations import (
     CheckSnapshot,
     MergeQueueEntrySnapshot,
     PullRequestInventory,
     PullRequestSnapshot,
 )
-from delivery_control.services.pr_contract import render_pull_request_body  # noqa: E402
-from worktree_reanchor_core.errors import ReanchorRefused  # noqa: E402
-from worktree_reanchor_core.lifecycle_proof import (  # noqa: E402
+from delivery_control.services.pr_contract import render_pull_request_body
+from worktree_reanchor_core import resume_transaction
+from worktree_reanchor_core.domain import RegistryPreflight
+from worktree_reanchor_core.errors import ReanchorRefused
+from worktree_reanchor_core.lifecycle_proof import (
     verify_resume_lifecycle,
 )
-from worktree_reanchor_core import resume_transaction  # noqa: E402
-from worktree_reanchor_core.domain import RegistryPreflight  # noqa: E402
-from worktree_reanchor_core.resume_domain import (  # noqa: E402
+from worktree_reanchor_core.resume_domain import (
     build_request,
     verify_merged_maintenance_lifecycle,
 )
