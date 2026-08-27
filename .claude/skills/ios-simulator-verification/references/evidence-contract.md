@@ -10,7 +10,7 @@ minimum identity tuple:
 | Field | Meaning | Required reading |
 |---|---|---|
 | `status` / `result` | `ok`, `fail`, or `inconclusive` | Never infer from process launch |
-| `exit` / `reason` | process classification | `1`, `65`, and `75` have different meanings |
+| `exit` / `reason` | process classification | helper-normalized `65` identifies lease exhaustion; raw producer status stays in the bundle |
 | `options.sourceCommit` | source provenance | Bind screenshots to this commit |
 | `options.sourceTreeDirty` | uncommitted source state | Dirty evidence is not a release claim |
 | `options.datasetID` / `datasetSHA256` | UI World provenance | Prevent fixture drift |
@@ -62,14 +62,16 @@ available slot, the producer emits the exact stderr marker
 recognizes that marker only for an invocation without explicit `--device` and normalizes it to:
 
 - `status=inconclusive` and `result=inconclusive`;
-- `exit=75`, the typed infrastructure-unavailable result;
+- `exit=65`, the typed lease-unavailable result (and helper process exit `65`);
 - `helper.contractStatus=lease-exhausted`;
-- `reason=simulator pool exhausted`.
+- `reason` containing `simulator pool exhausted` and an explicit-device recovery hint;
+- `helper.recoveryHint=retry with an explicit --device <UDID> after confirming a dedicated Simulator is available`.
 
 This is resource availability evidence, not a product test failure or pass. The run-scoped
-delegate stderr and bundle remain the diagnostic record. Account-disposability or unverifiable
-identity messages do not match this classification and must retain their own raw failure
-evidence; do not turn them into capacity advice.
+delegate stderr and bundle remain the diagnostic record, and the hint means to rerun with a
+known dedicated Simulator UDID after confirming that device is available. Account-disposability
+or unverifiable identity messages do not match this classification and must retain their own raw
+failure evidence; do not turn them into capacity advice.
 
 ## Evidence strength
 
