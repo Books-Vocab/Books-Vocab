@@ -45,6 +45,8 @@ from lib.worktree_scope import scope_files, scope_status
 SCHEMA = "kg.worktree.orchestrate.v2"
 GATE_SCHEMA = "kg.worktree.gate.v2"
 HANDOFF_SCHEMA = "kg.worktree.handoff.v1"
+IOS_DIAGNOSTICS_SCHEMA = "kg.ios.diagnostics.v1"
+IOS_TEST_CHECK = "ios-tests"
 BASE_DEFAULT = "main"
 BRANCH_TYPES = ("debug", "feat", "research")
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -534,7 +536,10 @@ def _rebase_preflight(
 
 
 def _plan_checks(
-    files: list[str], *, worktree: Path | None = None
+    files: list[str],
+    *,
+    worktree: Path | None = None,
+    scope_files: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = [
         {
@@ -592,11 +597,17 @@ def _plan_checks(
     if any(item.startswith("ios/") for item in files):
         checks.append(
             {
-                "name": "ios-tests",
+                "name": IOS_TEST_CHECK,
                 "kind": "shell",
                 "cwd": ".",
-                "cmd": ["./ops/ios_ops.sh", "test", "--unit"],
+                # Keep the full unit suite.  --json exposes the existing
+                # xcresult/log diagnostics so a failure can be downgraded only
+                # after its source is proven outside this changed Scope.
+                "cmd": ["./ops/ios_ops.sh", "test", "--unit", "--json"],
                 "level": "block",
+                "scope_files": sorted(
+                    set(scope_files if scope_files is not None else files)
+                ),
             }
         )
     if any(item.startswith(("ops/", ".github/workflows/")) for item in files):
@@ -642,6 +653,128 @@ def _plan_checks(
     return checks
 
 
+def _json_objects(output: str) -> list[dict[str, Any]]:
+    decoder = json.JSONDecoder()
+    objects: list[dict[str, Any]] = []
+    starts = [match.start() for match in re.finditer(r"(?m)^[ \t]*\{", output)]
+    for start in reversed(starts):
+        try:
+            value, _ = decoder.raw_decode(output[start:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            objects.append(value)
+    return objects
+
+
+def _extract_ios_diagnostics(output: str) -> dict[str, Any] | None:
+    for payload in _json_objects(output):
+        if payload.get("schema") == IOS_DIAGNOSTICS_SCHEMA:
+            return payload
+        diagnostics = payload.get("diagnostics")
+        if (
+            isinstance(diagnostics, dict)
+            and diagnostics.get("schema") == IOS_DIAGNOSTICS_SCHEMA
+        ):
+            return diagnostics
+    return None
+
+
+def _relative_worktree_path(value: Any, worktree: Path) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    raw = value.strip()
+    raw = raw.removeprefix("file://")
+    candidate = Path(raw)
+    root = worktree.resolve()
+    if not candidate.is_absolute():
+        if raw == ".." or raw.startswith("../"):
+            return None
+        candidate = root / candidate
+    try:
+        return candidate.resolve().relative_to(root).as_posix()
+    except (OSError, ValueError):
+        return None
+
+
+def _classify_ios_failure(
+    diagnostics: dict[str, Any] | None,
+    *,
+    scope_files: Any,
+    worktree: Path,
+) -> dict[str, Any]:
+    blocked = {
+        "verdict": "block",
+        "reason": "diagnostics-unavailable",
+        "failure_files": [],
+    }
+    if not isinstance(scope_files, list) or not scope_files:
+        blocked["reason"] = "changed-scope-unknown"
+        return blocked
+
+    scope_paths: set[str] = set()
+    for item in scope_files:
+        normalized = _relative_worktree_path(item, worktree)
+        if normalized is None:
+            blocked["reason"] = "changed-scope-unknown"
+            return blocked
+        scope_paths.add(normalized)
+
+    if not isinstance(diagnostics, dict):
+        return blocked
+    if diagnostics.get("schema") != IOS_DIAGNOSTICS_SCHEMA:
+        return blocked
+    if diagnostics.get("result") != "fail":
+        blocked["reason"] = "diagnostics-result-unknown"
+        return blocked
+    if diagnostics.get("truncated") is not False:
+        blocked["reason"] = "diagnostics-incomplete"
+        return blocked
+
+    counts = diagnostics.get("counts")
+    items = diagnostics.get("diagnostics")
+    total = diagnostics.get("totalDiagnostics")
+    error_count = counts.get("errors") if isinstance(counts, dict) else None
+    if (
+        not isinstance(error_count, int)
+        or isinstance(error_count, bool)
+        or error_count <= 0
+        or not isinstance(items, list)
+        or not isinstance(total, int)
+        or isinstance(total, bool)
+        or total != len(items)
+    ):
+        blocked["reason"] = "failure-evidence-incomplete"
+        return blocked
+
+    failures = [
+        item
+        for item in items
+        if isinstance(item, dict) and item.get("severity") == "error"
+    ]
+    if len(failures) != error_count:
+        blocked["reason"] = "failure-evidence-incomplete"
+        return blocked
+
+    failure_files: set[str] = set()
+    for item in failures:
+        normalized = _relative_worktree_path(item.get("file"), worktree)
+        if normalized is None:
+            blocked["reason"] = "failure-location-unknown"
+            return blocked
+        failure_files.add(normalized)
+
+    result = {
+        "verdict": "advisory",
+        "reason": "all-failures-outside-changed-scope",
+        "failure_files": sorted(failure_files),
+    }
+    if failure_files.intersection(scope_paths):
+        result["verdict"] = "block"
+        result["reason"] = "failure-in-changed-scope"
+    return result
+
+
 def _run_check(check: dict[str, Any], worktree: Path) -> dict[str, Any]:
     cwd = worktree / str(check.get("cwd") or ".")
     started = time.monotonic()
@@ -684,15 +817,38 @@ def _run_check(check: dict[str, Any], worktree: Path) -> dict[str, Any]:
         file=sys.stderr,
         flush=True,
     )
-    return {
+    diagnostics = (
+        _extract_ios_diagnostics(output)
+        if check.get("name") == IOS_TEST_CHECK
+        else None
+    )
+    level = check["level"]
+    failure_scope: dict[str, Any] | None = None
+    if check.get("name") == IOS_TEST_CHECK and returncode != 0:
+        failure_scope = _classify_ios_failure(
+            diagnostics,
+            scope_files=check.get("scope_files"),
+            worktree=worktree,
+        )
+        if failure_scope["verdict"] != "advisory":
+            level = "block"
+        else:
+            level = "advisory"
+    result: dict[str, Any] = {
         "name": check["name"],
         "cmd": check["cmd"],
         "cwd": check["cwd"],
+        "level": level,
         "status": "pass" if returncode == 0 else "block",
         "rc": returncode,
         "duration_s": round(duration, 3),
         "output_tail": output[-12000:],
     }
+    if diagnostics is not None:
+        result["diagnostics"] = diagnostics
+    if failure_scope is not None:
+        result["failure_scope"] = failure_scope
+    return result
 
 
 def _gate_record_path(state: str | None, worktree: Path) -> Path:
@@ -719,7 +875,7 @@ def cmd_gate(args: argparse.Namespace) -> int:
         )
         return EXIT_USAGE
     files = _changed_files(worktree, args.base)
-    checks = _plan_checks(files, worktree=worktree)
+    checks = _plan_checks(files, worktree=worktree, scope_files=files)
     payload: dict[str, Any] = {
         "schema": GATE_SCHEMA,
         "worktree": str(worktree),
@@ -736,7 +892,12 @@ def cmd_gate(args: argparse.Namespace) -> int:
         return EXIT_OK
     results = [_run_check(check, worktree) for check in checks]
     verdict = (
-        "block" if any(result["status"] == "block" for result in results) else "pass"
+        "block"
+        if any(
+            result.get("status") == "block" and result.get("level", "block") == "block"
+            for result in results
+        )
+        else "pass"
     )
     payload.update(
         {
