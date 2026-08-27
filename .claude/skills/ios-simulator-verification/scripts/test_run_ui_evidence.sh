@@ -33,6 +33,10 @@ case "${1:-}" in
   xcode) printf '%s\n' '{"status":"ok"}' ;;
   simulator) printf '%s\n' '{"status":"ok"}' ;;
   test)
+    if [[ "${FAKE_MODE:-ok}" == lease-exhausted ]]; then
+      printf '%s\n' '[ios_test] error: --lease requested but simulator pool is exhausted' >&2
+      exit 1
+    fi
     mkdir -p "$FAKE_ROOT/build"
     printf '%s\n' "$@" >"$FAKE_ROOT/build/test-args"
     fake_selector="${KG_UI_TEST_EXACT_SELECTOR:-}"
@@ -129,6 +133,25 @@ jq -e --arg source "$repo" --arg helper "$feature_helper" '
 # canonical control-plane entrypoint and must resolve its validator from the
 # repository that owns the skill, not from the feature worktree under test.
 runner="$helper"
+
+lease_exhausted_json="$tmp_root/lease-exhausted.json"
+set +e
+(cd "$repo" && FAKE_MODE=lease-exhausted "$runner" \
+  --dataset marketing_demo --lease --method SettingsFlowUITests/testSettingsFlow --json-out "$lease_exhausted_json" \
+  >"$tmp_root/lease-exhausted.out" 2>&1)
+lease_exhausted_rc=$?
+set -e
+[[ "$lease_exhausted_rc" -eq 75 ]]
+lease_exhausted_bundle="$(jq -er '.helper.bundleRoot' "$lease_exhausted_json")"
+grep -Fq -- '--lease requested but simulator pool is exhausted' \
+  "$lease_exhausted_bundle/artifacts/delegate.stderr.log"
+jq -e '
+  .status == "inconclusive"
+  and .result == "inconclusive"
+  and .exit == "75"
+  and (.reason | contains("pool exhausted"))
+  and .helper.contractStatus == "lease-exhausted"
+' "$lease_exhausted_json" >/dev/null
 
 set +e
 (cd "$repo" && "$runner" \
