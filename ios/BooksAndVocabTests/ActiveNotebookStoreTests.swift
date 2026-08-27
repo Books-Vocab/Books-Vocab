@@ -196,6 +196,18 @@ struct ActiveNotebookStoreTests {
         #expect(cloud.string(forKey: "activeNotebookId") == "nb-9")  // iCloud 不被清
     }
 
+    @Test func accountScopedClearKeepsDurableActiveNotebook() {
+        let d = makeDefaults()
+        let cloud = FakeCloudKVStore()
+        let store = ActiveNotebookStore(defaults: d, cloud: cloud, accountID: "account-a")
+        store.setActive("account-a-nb")
+
+        store.clear()
+
+        #expect(store.activeNotebookId == "account-a-nb")
+        #expect(store.activeNotebookIdIfSet == "account-a-nb")
+    }
+
     @Test("server 較新時套用 non-default active notebook，只寫本地層")
     func syncActiveNotebookFromServerAcceptsNewerNonDefault() {
         let d = makeDefaults()
@@ -269,6 +281,46 @@ struct ActiveNotebookStoreTests {
         #expect(accepted)
         #expect(store.activeNotebookId == "account-b-nb")
         #expect(cloud.string(forKey: "activeNotebookId") == "account-a-nb")
+    }
+
+    @Test func accountScopedActiveNotebookRestoresOnlyItsOwnNamespace() {
+        let d = makeDefaults()
+        let cloud = FakeCloudKVStore()
+        let accountA = ActiveNotebookStore(defaults: d, cloud: cloud, accountID: "account-a")
+        accountA.setActive("account-a-nb")
+
+        let accountB = ActiveNotebookStore(defaults: d, cloud: cloud, accountID: "account-b")
+        #expect(accountB.activeNotebookId == ActiveNotebookStore.defaultNotebookId)
+        #expect(accountB.activeNotebookIdIfSet == nil)
+        accountB.setActive("account-b-nb")
+
+        let restoredA = ActiveNotebookStore(defaults: d, cloud: cloud, accountID: "account-a")
+        #expect(restoredA.activeNotebookId == "account-a-nb")
+        #expect(restoredA.activeNotebookIdIfSet == "account-a-nb")
+    }
+
+    @Test func firstAccountActivationMigratesLegacyActiveNotebookOnlyOnce() {
+        let suite = "ActiveNotebookLegacyMigration-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        let cloud = FakeCloudKVStore()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        defaults.set("legacy-notebook", forKey: "activeNotebookId")
+        defaults.set(100.0, forKey: "active_notebook_updated_at")
+        cloud.set("legacy-notebook", forKey: "activeNotebookId")
+        cloud.set(100.0, forKey: "active_notebook_updated_at")
+
+        let accountA = ActiveNotebookStore(defaults: defaults, cloud: cloud, accountID: "account-a")
+        #expect(accountA.activeNotebookId == "legacy-notebook")
+        #expect(
+            defaults.string(
+                forKey: AccountPreferenceNamespace.key("activeNotebookId", accountID: "account-a")
+            ) == "legacy-notebook"
+        )
+
+        let accountB = ActiveNotebookStore(defaults: defaults, cloud: cloud, accountID: "account-b")
+        #expect(accountB.activeNotebookId == ActiveNotebookStore.defaultNotebookId)
+        #expect(accountB.activeNotebookIdIfSet == nil)
     }
 
     @Test func staleUserConfigResponseIsDiscardedAfterAccountSwitch() async {
