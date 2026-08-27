@@ -50,6 +50,10 @@ final class ExploreNavigationUITests: UITestCase {
         let loading = AppPage(app: loadingApp).goToExplore()
         XCTAssertTrue(loading.exploreLoadingState.waitUntilExists(timeout: 5))
         loading.assertExploreElementIsUnique(identifier: "explore.loadingState")
+        XCTAssertTrue(
+            loading.exploreAsset(assetID: "images.explore_required").waitUntilExists(timeout: 5)
+        )
+        loading.assertExploreAssetIsUnique(identifier: "explore.asset.images.explore_required")
         captureStep("explore-loading", app: loadingApp)
 
         let loadedApp = launchIsolatedApp(fixtures: [.explore("loaded")], perfLog: "explore-loaded")
