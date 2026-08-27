@@ -404,13 +404,23 @@ class DeliveryApplication:
             issue.disposition is IssueDisposition.DISPATCHABLE_CANDIDATE
             and issue.candidate_spec == spec
         )
+        triageable_dispositions = {
+            IssueDisposition.TRIAGE_REQUIRED,
+            IssueDisposition.LEGACY_UNMAPPED,
+        }
         if (
-            issue.disposition is not IssueDisposition.TRIAGE_REQUIRED
+            issue.disposition not in triageable_dispositions
             and not exact_existing_candidate
         ):
             raise errors.PolicyViolation(
                 f"Issue #{issue_number} disposition is {issue.disposition.value}, "
-                "not triage_required or an exact existing candidate"
+                "not triage_required/legacy_unmapped or an exact existing candidate"
+            )
+        if issue.disposition is IssueDisposition.LEGACY_UNMAPPED and (
+            type(triage_reason) is not str or not triage_reason.strip()
+        ):
+            raise errors.PolicyViolation(
+                "legacy_unmapped admission requires an explicit triage reason"
             )
         assert_candidate_scope_available(
             scope=spec.scope,
