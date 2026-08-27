@@ -47,6 +47,27 @@ printf '6\n' >"$fixture/testflight-builds.stdout"
 printf '2.0.1 PREPARE_FOR_SUBMISSION\n' >"$fixture/asc-versions.stdout"
 printf '{"verdict":{"status":"pass","blockCount":0},"blocks":[]}\n' >"$fixture/app-review-gate.stdout"
 
+# An empty Organizer inventory still has the human-facing column header. The
+# provider boundary must not expose that header as an archive observation.
+empty_fixture="$tmp/empty-organizer"
+mkdir -p "$empty_fixture"
+printf 'created_at\tname\tbundle_id\tversion\tbuild\tarchive\n' >"$empty_fixture/organizer-latest.stdout"
+empty_organizer_line="$(
+  KG_IOS_OPS_FIXTURE=1 \
+  KG_IOS_OPS_RELEASE_SOURCE_FIXTURE_DIR="$empty_fixture" \
+  KG_IOS_OPS_HEARTBEAT_INTERVAL=0.05 \
+    bash -c '
+      ROOT="$1"
+      SCRIPT_DIR="$ROOT/ops"
+      source "$ROOT/ops/lib/ios_ops_core.sh"
+      read_organizer_latest
+    ' _ "$ROOT" 2>/dev/null
+)"
+[[ -z "$empty_organizer_line" ]] || {
+  echo "empty Organizer inventory leaked a header as data: $empty_organizer_line" >&2
+  exit 1
+}
+
 KG_IOS_OPS_FIXTURE=1 \
 KG_IOS_OPS_RELEASE_SOURCE_FIXTURE_DIR="$fixture" \
 KG_IOS_OPS_RELEASE_SOURCE_FIXTURE_DELAY=0.3 \
