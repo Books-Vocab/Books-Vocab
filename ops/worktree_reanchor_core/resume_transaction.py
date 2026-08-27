@@ -163,10 +163,12 @@ def perform_resume(
                 proof=proof,
                 recorded_base=str(preflight.original["base"]),
             )
-        if request.previous_handback == request.expected_remote_head:
-            raise ReanchorRefused(
-                "same-head maintenance requires a merged PR reconciliation proof"
-            )
+        # An open PR may need bounded same-head maintenance when a non-code
+        # gate (for example independent review evidence) failed after the
+        # original hand-back was published.  The exact open-PR, owner, queue,
+        # remote-head, and registry preflights above remain mandatory; the
+        # required-code-failure resume path still rejects same-head requests
+        # in ``build_request``.
     initial_lifecycle = lifecycle_proof.verify_resume_lifecycle(
         github,
         branch=request.branch,
