@@ -102,7 +102,8 @@ def cmd_user_stats(args: argparse.Namespace) -> None:
     active = conn.execute("SELECT count(*) FROM card WHERE is_deleted = 0").fetchone()[0]
     deleted = conn.execute("SELECT count(*) FROM card WHERE is_deleted = 1").fetchone()[0]
     recent = conn.execute(
-        "SELECT id, content, updated_at FROM card WHERE is_deleted = 0 ORDER BY updated_at DESC LIMIT 5"
+        "SELECT id, content, updated_at FROM card "
+        "WHERE is_deleted = 0 ORDER BY julianday(updated_at) DESC, id DESC LIMIT 5"
     ).fetchall()
     conn.close()
 

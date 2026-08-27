@@ -129,6 +129,29 @@ class TestCardGet:
         result = _run_cli(str(tmp_path), "card-get", "ghost", "x")
         assert result.returncode != 0
 
+
+class TestUserStatsOrdering:
+    """user-stats recent activity ordering."""
+
+    def test_recent_orders_mixed_offsets_by_utc_instant_with_id_tiebreaker(self, tmp_path):
+        uid = "user1"
+        user_dir = tmp_path / "users" / uid
+        user_dir.mkdir(parents=True)
+        _create_cards_db(user_dir / "cards.db", [
+            ("tie-a", "tie a", "", 0, "2026-08-27T13:00:00+01:00", "2026-08-27T13:00:00+01:00"),
+            ("newest", "newest", "", 0, "2026-08-27T12:30:00+00:00", "2026-08-27T12:30:00+00:00"),
+            ("tie-z", "tie z", "", 0, "2026-08-27T12:00:00+00:00", "2026-08-27T12:00:00+00:00"),
+            ("oldest", "oldest", "", 0, "2026-08-27T11:30:00+00:00", "2026-08-27T11:30:00+00:00"),
+        ])
+
+        result = _run_cli(str(tmp_path), "user-stats", uid, "--json")
+
+        assert result.returncode == 0, result.stderr
+        assert [card["id"] for card in json.loads(result.stdout)["recent"]] == [
+            "newest", "tie-z", "tie-a", "oldest",
+        ]
+
+
 class TestProviderAwarePricing:
     """計價走 kg.quota_service.token_cost_usd — provider-aware。"""
 
