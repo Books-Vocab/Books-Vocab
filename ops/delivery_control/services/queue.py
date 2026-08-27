@@ -56,9 +56,8 @@ class QueueService:
         expected_body = render_pull_request_body(receipt, holds=durable_holds)
         if pull_request.body != expected_body:
             raise PolicyViolation("PR body differs from typed handback")
-        if tuple(sorted(self.github_query.changed_paths(pull_request_number))) != tuple(
-            sorted(receipt.scope.paths)
-        ):
+        changed_paths = set(self.github_query.changed_paths(pull_request_number))
+        if not changed_paths or not changed_paths.issubset(receipt.scope.paths):
             raise PolicyViolation("PR paths differ from typed Scope")
         required = self.github_query.required_check_snapshot(pull_request_number)
         decision = evaluate_merge_gate(
