@@ -182,7 +182,9 @@ def test_resume_lifecycle_accepts_only_exact_open_required_code_failure() -> Non
     assert proof.required_status is CheckStatus.FAILURE
 
 
-def test_resume_lifecycle_rejects_combined_context_for_required_code_failure() -> None:
+def test_resume_lifecycle_ignores_advisory_agent_review_for_required_code_failure() -> (
+    None
+):
     candidate = _pr(42, branch="feat/exact-pr")
     github = FakeGitHub(
         all_for_branch=(candidate,),
@@ -194,7 +196,24 @@ def test_resume_lifecycle_rejects_combined_context_for_required_code_failure() -
         },
     )
 
-    with pytest.raises(ReanchorRefused, match="exact required code failure context"):
+    proof = verify_resume_lifecycle(
+        github,
+        branch="feat/exact-pr",
+        expected_base_sha=BASE,
+        expected_remote_head=HEAD,
+    )
+
+    assert proof.required_status is CheckStatus.FAILURE
+
+
+def test_resume_lifecycle_rejects_agent_review_without_required_context() -> None:
+    candidate = _pr(42, branch="feat/exact-pr")
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        checks={42: _check(CheckStatus.SUCCESS, names=("agent-review",))},
+    )
+
+    with pytest.raises(ReanchorRefused, match="exact required code context"):
         verify_resume_lifecycle(
             github,
             branch="feat/exact-pr",
@@ -249,7 +268,7 @@ def test_maintenance_resume_deduplicates_repeated_agent_review_context() -> None
     assert proof.required_status is CheckStatus.SUCCESS
 
 
-def test_reanchor_lifecycle_accepts_required_green_with_trusted_agent_review_context() -> (
+def test_reanchor_lifecycle_accepts_required_green_with_optional_agent_review_context() -> (
     None
 ):
     candidate = _pr(42, branch="feat/exact-pr")
@@ -325,7 +344,7 @@ def test_reanchor_lifecycle_accepts_required_green_with_trusted_agent_review_con
                     )
                 },
             ),
-            "required code failure",
+            "required code context",
         ),
     ],
 )
@@ -519,7 +538,7 @@ def test_reanchor_lifecycle_defers_to_existing_native_queue_entry() -> None:
         (
             _pr(42, branch="feat/exact-pr"),
             _check(CheckStatus.ABSENT, names=()),
-            "required code failure context",
+            "required code context",
         ),
         (
             _pr(42, branch="feat/exact-pr"),
@@ -527,7 +546,7 @@ def test_reanchor_lifecycle_defers_to_existing_native_queue_entry() -> None:
                 CheckStatus.SUCCESS,
                 names=("agent-review", "required", "unexpected"),
             ),
-            "required code failure context",
+            "required code context",
         ),
         (
             _pr(42, branch="feat/exact-pr", body="P0 hold"),

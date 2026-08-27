@@ -91,9 +91,9 @@ jobs:
             exit 1
           fi
 
-          # The Actions job itself emits the required `agent-review` context.
-          # This supplemental, provenance-rich check remains observation data
-          # for merge-group validation; it is never the required authority.
+          # The Actions job emits the optional advisory `agent-review` context.
+          # This provenance-rich check remains quality observation data; the
+          # repository's only required authority is the short `required` gate.
           create_check() {
             local status="$1"
             local conclusion="${2:-}"

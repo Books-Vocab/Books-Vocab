@@ -65,10 +65,9 @@ def test_agent_review_rejects_hard_findings_but_accepts_nonblocking_review() -> 
 def test_agent_review_evidence_has_one_required_check_identity() -> None:
     source = _workflow()
 
-    # The workflow posts the required ``agent-review`` check explicitly.  Its
-    # Actions job must use a different name; otherwise a cancelled job check
-    # and the evidence check share one required context and can block native
-    # merge-queue admission even when the evidence check is green.
+    # The workflow posts the optional ``agent-review`` check explicitly.  Its
+    # Actions job must use a different name so the job and evidence remain
+    # separately observable for quality diagnostics.
     assert "\n  agent-review:\n" not in source
     assert "\n  agent-review-evidence:\n" in source
 
