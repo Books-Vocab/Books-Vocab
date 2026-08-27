@@ -326,6 +326,26 @@ class GitQueries:
             branch=branch,
         )
 
+    def _ensure_commit_object(self, commit_sha: str) -> None:
+        if _COMMIT_SHA_RE.fullmatch(commit_sha) is None:
+            raise AdapterPayloadError("remote branch head SHA is malformed")
+        try:
+            self.client.run("cat-file", "-e", f"{commit_sha}^{{commit}}")
+            return
+        except AdapterCommandError:
+            result = self.client.execute_with_timeout(
+                "fetch",
+                "--quiet",
+                "--no-tags",
+                "--no-write-fetch-head",
+                "origin",
+                commit_sha,
+                timeout_seconds=REMOTE_REF_QUERY_TIMEOUT_SECONDS,
+            )
+            if result.exit_code != 0:
+                raise AdapterCommandError(result)
+            self.client.run("cat-file", "-e", f"{commit_sha}^{{commit}}")
+
     def local_branch_sha(self, branch: str) -> str | None:
         ref = f"refs/heads/{branch}"
         result = self.client.execute("show-ref", "--verify", "--quiet", ref)
@@ -445,6 +465,7 @@ class GitQueries:
                 raise AdapterPayloadError(
                     f"branch {branch} not found in local or remote refs"
                 )
+            self._ensure_commit_object(head_sha)
         base_is_ancestor = self.is_ancestor(base_sha, head_sha)
         ahead_output = self.client.run("rev-list", "--count", f"{base_sha}..{head_sha}")
         behind_output = self.client.run(

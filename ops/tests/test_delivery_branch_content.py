@@ -142,6 +142,75 @@ def test_git_adapter_inspects_remote_only_branch_at_exact_remote_head(
     )
 
 
+def test_git_adapter_fetches_missing_remote_object_before_content_queries(
+    tmp_path: Path,
+) -> None:
+    repo, base_sha, remote_head = _remote_only_repo(tmp_path)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "update-ref",
+            "-d",
+            "refs/remotes/origin/feat/remote-only",
+        ],
+        check=False,
+    )
+    _git(repo, "reflog", "expire", "--expire=now", "--all")
+    _git(repo, "prune", "--expire=now")
+
+    assert (
+        subprocess.run(
+            ["git", "-C", str(repo), "cat-file", "-e", f"{remote_head}^{{commit}}"],
+            check=False,
+        ).returncode
+        != 0
+    )
+
+    evidence = GitCliAdapter(repo=repo).inspect_branch_content(
+        branch="feat/remote-only",
+        base_sha=base_sha,
+    )
+
+    assert evidence.complete
+    assert evidence.head_sha == remote_head
+    assert evidence.base_is_ancestor is True
+    assert evidence.changed_paths == ("remote.py",)
+    assert evidence.commit_subjects == ("add remote-only feature",)
+    assert (
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo),
+                "show-ref",
+                "--verify",
+                "--quiet",
+                "refs/heads/feat/remote-only",
+            ],
+            check=False,
+        ).returncode
+        == 1
+    )
+    assert (
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo),
+                "show-ref",
+                "--verify",
+                "--quiet",
+                "refs/remotes/origin/feat/remote-only",
+            ],
+            check=False,
+        ).returncode
+        == 1
+    )
+    assert not (repo / ".git" / "FETCH_HEAD").exists()
+
+
 def test_git_adapter_missing_remote_branch_remains_structured_incomplete(
     tmp_path: Path,
 ) -> None:
@@ -175,6 +244,7 @@ def test_git_adapter_missing_remote_object_remains_structured_incomplete(
                 "",
             ),
             CommandResult(("git",), 128, "", "fatal: missing commit object"),
+            CommandResult(("git",), 128, "", "fatal: remote object unavailable"),
         ]
     )
 
@@ -188,7 +258,45 @@ def test_git_adapter_missing_remote_object_remains_structured_incomplete(
     assert evidence.complete is False
     assert evidence.error is not None
     assert "command failed" in evidence.error
-    assert all("fetch" not in call for call in runner.calls)
+    fetch_calls = [call for call in runner.calls if "fetch" in call]
+    assert len(fetch_calls) == 1
+    assert "--no-write-fetch-head" in fetch_calls[0]
+    assert remote_head in fetch_calls[0]
+    assert all("merge-base" not in call for call in runner.calls)
+
+
+def test_git_adapter_remote_object_read_failure_after_fetch_remains_incomplete(
+    tmp_path: Path,
+) -> None:
+    base_sha = "a" * 40
+    remote_head = "b" * 40
+    runner = StaticRunner(
+        [
+            CommandResult(("git",), 1, "", ""),
+            CommandResult(
+                ("git",),
+                0,
+                f"{remote_head}\trefs/heads/feat/remote-only\n",
+                "",
+            ),
+            CommandResult(("git",), 128, "", "fatal: missing commit object"),
+            CommandResult(("git",), 0, "", ""),
+            CommandResult(("git",), 128, "", "fatal: missing commit object"),
+        ]
+    )
+
+    evidence = BranchContentService(
+        git=GitCliAdapter(repo=tmp_path, runner=runner)
+    ).inspect(
+        branch="feat/remote-only",
+        base_sha=base_sha,
+    )
+
+    assert evidence.complete is False
+    assert evidence.error is not None
+    assert "command failed" in evidence.error
+    assert sum("fetch" in call for call in runner.calls) == 1
+    assert all("merge-base" not in call for call in runner.calls)
 
 
 def test_git_adapter_bounds_changed_paths_but_keeps_exact_fingerprint(
