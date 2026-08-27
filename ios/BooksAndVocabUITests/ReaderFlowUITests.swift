@@ -152,6 +152,61 @@ final class ReaderFlowUITests: UITestCase {
     }
 
     @MainActor
+    func testReaderTOCCurrentAccessibilityContract() throws {
+        let app = launchIsolatedApp(
+            fixtures: [.authSignedIn, .readerRealBookLibrary],
+            extraEnvironment: Self.fixtureEnvironment,
+            perfLog: "reader-toc-accessibility-contract"
+        )
+        let bookshelf = AppPage(app: app).goToBookshelf()
+        XCTAssertTrue(bookshelf.anyBookCard.waitUntilExists(timeout: 10))
+
+        let reader = ReaderPage(app: app)
+        bookshelf.anyBookCard.tapWhenReady()
+        XCTAssertTrue(reader.webView.waitUntilExists(timeout: 45))
+        reader.expandHeaderButton.tapWhenReady()
+
+        let tocButton = reader.tableOfContentsButton
+        XCTAssertTrue(tocButton.waitUntilHittable(timeout: 10))
+        XCTAssertFalse(tocButton.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        tocButton.tap()
+
+        XCTAssertTrue(reader.waitUntilTableOfContentsSheetExists(timeout: 10))
+        XCTAssertTrue(reader.tableOfContentsSheet.waitUntilExists(timeout: 10))
+
+        XCTAssertTrue(reader.tocDone.waitUntilExists(timeout: 10))
+        XCTAssertFalse(reader.tocDone.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        XCTAssertTrue(reader.tocDone.isEnabled)
+
+        let idleState = "phase=idle;selected=;expected=;destination="
+        XCTAssertTrue(reader.tocNavigationStateReceipt.waitUntilExists(timeout: 10))
+        XCTAssertTrue(reader.tocNavigationStateReceipt.waitUntilValueEquals(idleState, timeout: 10))
+
+        let chapterRows = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "reader.toc.chapter.")
+        )
+        XCTAssertEqual(chapterRows.count, 2)
+
+        let introduction = reader.tocChapter(path: "0", label: "Introduction")
+        let practice = reader.tocChapter(path: "1", label: "Chapter Two — Practice")
+        XCTAssertTrue(introduction.waitUntilHittable(timeout: 10))
+        XCTAssertTrue(practice.waitUntilHittable(timeout: 10))
+        XCTAssertEqual(introduction.value as? String, "OEBPS/chapter1.xhtml")
+        XCTAssertEqual(practice.value as? String, "OEBPS/chapter2.xhtml")
+        XCTAssertFalse(introduction.isSelected)
+        XCTAssertFalse(practice.isSelected)
+        XCTAssertTrue(ReaderTOCEvidenceHref.isSafeRelative(introduction.value as? String ?? ""))
+        XCTAssertTrue(ReaderTOCEvidenceHref.isSafeRelative(practice.value as? String ?? ""))
+
+        practice.tapWhenReady()
+        let successState =
+            "phase=success;selected=Chapter Two — Practice;expected=OEBPS/chapter2.xhtml;destination=OEBPS/chapter2.xhtml"
+        XCTAssertTrue(reader.tocNavigationStateReceipt.waitUntilValueEquals(successState, timeout: 15))
+        XCTAssertTrue(reader.tocReaderOverlaySuccess.waitUntilExists(timeout: 10))
+        XCTAssertTrue(reader.waitUntilTableOfContentsSheetGone(timeout: 10))
+    }
+
+    @MainActor
     func testReaderTOCRequiredRealBookSelectionClosesOnlyAfterSuccess() throws {
         let app = launchIsolatedApp(
             fixtures: [.authSignedIn, .readerRealBookLibrary],
