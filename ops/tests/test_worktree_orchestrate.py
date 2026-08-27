@@ -586,6 +586,322 @@ def test_gate_plan_routes_product_surfaces_to_existing_entry_points() -> None:
     assert "ops-tests" in names
     assert "docs-lint" in names
     assert "shell-syntax:ops/example.sh" in names
+    levels = {item["name"]: item["level"] for item in plan}
+    assert levels["git-diff-check"] == "block"
+    assert levels["backend-tests"] == "block"
+    assert levels["ops-tests"] == "block"
+    assert levels["docs-lint"] == "block"
+    assert levels["shell-syntax:ops/example.sh"] == "block"
+    assert levels["ios-tests"] == "block"
+    ios_check = next(item for item in plan if item["name"] == "ios-tests")
+    assert ios_check["cmd"][-1] == "--json"
+    assert ios_check["scope_files"] == [
+        "backend/src/kg/app.py",
+        "docs/reference/tech_index.md",
+        "ios/BooksAndVocab/App.swift",
+        "ops/example.sh",
+    ]
+
+
+def _ios_failure_output(*, file: Path | None) -> str:
+    diagnostic = {
+        "severity": "error",
+        "category": "test",
+        "file": str(file) if file is not None else None,
+        "line": None,
+        "column": None,
+        "message": "BooksAndVocabTests/testSyncFails(): XCTAssertEqual failed",
+        "raw": "BooksAndVocabTests/testSyncFails(): XCTAssertEqual failed",
+    }
+    return json.dumps(
+        {
+            "schema": "kg.ios.run.v1",
+            "status": "fail",
+            "result": "fail",
+            "diagnostics": {
+                "schema": "kg.ios.diagnostics.v1",
+                "source": "xcresult-test-results",
+                "result": "fail",
+                "counts": {
+                    "errors": 1,
+                    "warnings": 0,
+                    "failedTests": 1,
+                },
+                "diagnostics": [diagnostic],
+                "truncated": False,
+                "totalDiagnostics": 1,
+            },
+        }
+    )
+
+
+def _ios_failure_check(output: str, scope_files: list[str]) -> dict[str, object]:
+    return {
+        "name": "ios-tests",
+        "kind": "shell",
+        "cwd": ".",
+        "cmd": [
+            "bash",
+            "-c",
+            'printf "%s" "$1"; exit 7',
+            "ios-check",
+            output,
+        ],
+        "level": "block",
+        "scope_files": scope_files,
+    }
+
+
+def test_run_check_downgrades_only_proven_scope_external_ios_failure(
+    tmp_path: Path,
+) -> None:
+    external_file = tmp_path / "ios" / "BooksAndVocabTests" / "Unrelated.swift"
+    result = coordinator._run_check(
+        _ios_failure_check(
+            _ios_failure_output(file=external_file),
+            ["ios/BooksAndVocab/Changed.swift"],
+        ),
+        tmp_path,
+    )
+
+    assert result["status"] == "block"
+    assert result["level"] == "advisory"
+    assert result["rc"] == 7
+    assert result["diagnostics"]["schema"] == "kg.ios.diagnostics.v1"
+    assert result["failure_scope"]["verdict"] == "advisory"
+    assert result["failure_scope"]["failure_files"] == [
+        "ios/BooksAndVocabTests/Unrelated.swift"
+    ]
+    assert _ios_failure_output(file=external_file) in result["output_tail"]
+
+
+def test_run_check_blocks_in_scope_ios_failure(tmp_path: Path) -> None:
+    changed_file = tmp_path / "ios" / "BooksAndVocab" / "Changed.swift"
+    result = coordinator._run_check(
+        _ios_failure_check(
+            _ios_failure_output(file=changed_file),
+            ["ios/BooksAndVocab/Changed.swift"],
+        ),
+        tmp_path,
+    )
+
+    assert result["status"] == "block"
+    assert result["level"] == "block"
+    assert result["failure_scope"]["verdict"] == "block"
+    assert result["failure_scope"]["reason"] == "failure-in-changed-scope"
+    assert result["output_tail"]
+
+
+def test_run_check_blocks_unknown_ios_failure(tmp_path: Path) -> None:
+    result = coordinator._run_check(
+        _ios_failure_check(
+            _ios_failure_output(file=None),
+            ["ios/BooksAndVocab/Changed.swift"],
+        ),
+        tmp_path,
+    )
+
+    assert result["status"] == "block"
+    assert result["level"] == "block"
+    assert result["failure_scope"]["verdict"] == "block"
+    assert result["failure_scope"]["reason"] == "failure-location-unknown"
+
+
+def test_gate_does_not_block_on_failed_advisory_ios_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: object,
+) -> None:
+    monkeypatch.setattr(
+        coordinator,
+        "_changed_files",
+        lambda worktree, base: ["ios/BooksAndVocab/Changed.swift"],
+    )
+
+    def fake_run_check(check: dict[str, object], worktree: Path) -> dict[str, object]:
+        failed = check["name"] == "ios-tests"
+        return {
+            "name": check["name"],
+            "cmd": check["cmd"],
+            "cwd": check["cwd"],
+            "status": "block" if failed else "pass",
+            "level": "advisory" if failed else check["level"],
+            "rc": 7 if failed else 0,
+            "duration_s": 0.001,
+            "output_tail": "scope-external-ios-failure" if failed else "",
+            "failure_scope": (
+                {
+                    "verdict": "advisory",
+                    "reason": "all-failures-outside-changed-scope",
+                    "failure_files": ["ios/BooksAndVocabTests/UnrelatedTests.swift"],
+                }
+                if failed
+                else None
+            ),
+        }
+
+    monkeypatch.setattr(coordinator, "_run_check", fake_run_check)
+    monkeypatch.setattr(
+        coordinator,
+        "_gate_record_path",
+        lambda state, worktree: tmp_path / "state" / "gate.json",
+    )
+    monkeypatch.setattr(
+        coordinator,
+        "_git",
+        lambda argv, cwd=coordinator.ROOT: (
+            (0, "test-head") if argv == ["rev-parse", "HEAD"] else (0, "")
+        ),
+    )
+
+    rc = coordinator.cmd_gate(
+        Namespace(
+            worktree=str(tmp_path),
+            base="test-base",
+            plan_only=False,
+            state=None,
+            json=True,
+        )
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    ios_result = next(
+        item for item in payload["results"] if item["name"] == "ios-tests"
+    )
+    assert rc == coordinator.EXIT_OK
+    assert payload["verdict"] == "pass"
+    assert ios_result["status"] == "block"
+    assert ios_result["level"] == "advisory"
+    assert ios_result["output_tail"] == "scope-external-ios-failure"
+
+
+@pytest.mark.parametrize(
+    "failure_reason",
+    [
+        "failure-in-changed-scope",
+        "failure-location-unknown",
+    ],
+)
+def test_gate_blocks_in_scope_or_unknown_ios_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: object,
+    failure_reason: str,
+) -> None:
+    monkeypatch.setattr(
+        coordinator,
+        "_changed_files",
+        lambda worktree, base: ["ios/BooksAndVocab/Changed.swift"],
+    )
+
+    def fake_run_check(check: dict[str, object], worktree: Path) -> dict[str, object]:
+        failed = check["name"] == "ios-tests"
+        return {
+            "name": check["name"],
+            "cmd": check["cmd"],
+            "cwd": check["cwd"],
+            "status": "block" if failed else "pass",
+            "level": "block" if failed else check["level"],
+            "rc": 7 if failed else 0,
+            "duration_s": 0.001,
+            "output_tail": "ios-failure" if failed else "",
+            "failure_scope": (
+                {"verdict": "block", "reason": failure_reason} if failed else None
+            ),
+        }
+
+    monkeypatch.setattr(coordinator, "_run_check", fake_run_check)
+    monkeypatch.setattr(
+        coordinator,
+        "_gate_record_path",
+        lambda state, worktree: tmp_path / "state" / "gate.json",
+    )
+    monkeypatch.setattr(
+        coordinator,
+        "_git",
+        lambda argv, cwd=coordinator.ROOT: (
+            (0, "test-head") if argv == ["rev-parse", "HEAD"] else (0, "")
+        ),
+    )
+
+    rc = coordinator.cmd_gate(
+        Namespace(
+            worktree=str(tmp_path),
+            base="test-base",
+            plan_only=False,
+            state=None,
+            json=True,
+        )
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    ios_result = next(
+        item for item in payload["results"] if item["name"] == "ios-tests"
+    )
+    assert rc == coordinator.EXIT_BLOCK
+    assert payload["verdict"] == "block"
+    assert ios_result["status"] == "block"
+    assert ios_result["level"] == "block"
+    assert ios_result["failure_scope"]["reason"] == failure_reason
+
+
+def test_gate_still_blocks_failed_block_level_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: object,
+) -> None:
+    monkeypatch.setattr(
+        coordinator,
+        "_changed_files",
+        lambda worktree, base: ["ops/worktree_orchestrate.py"],
+    )
+
+    def fake_run_check(check: dict[str, object], worktree: Path) -> dict[str, object]:
+        failed = check["name"] == "ops-tests"
+        return {
+            "name": check["name"],
+            "cmd": check["cmd"],
+            "cwd": check["cwd"],
+            "status": "block" if failed else "pass",
+            "level": check["level"],
+            "rc": 9 if failed else 0,
+            "duration_s": 0.001,
+            "output_tail": "scope-relevant-ops-failure" if failed else "",
+        }
+
+    monkeypatch.setattr(coordinator, "_run_check", fake_run_check)
+    monkeypatch.setattr(
+        coordinator,
+        "_gate_record_path",
+        lambda state, worktree: tmp_path / "state" / "gate.json",
+    )
+    monkeypatch.setattr(
+        coordinator,
+        "_git",
+        lambda argv, cwd=coordinator.ROOT: (
+            (0, "test-head") if argv == ["rev-parse", "HEAD"] else (0, "")
+        ),
+    )
+
+    rc = coordinator.cmd_gate(
+        Namespace(
+            worktree=str(tmp_path),
+            base="test-base",
+            plan_only=False,
+            state=None,
+            json=True,
+        )
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    ops_result = next(
+        item for item in payload["results"] if item["name"] == "ops-tests"
+    )
+    assert rc == coordinator.EXIT_BLOCK
+    assert payload["verdict"] == "block"
+    assert ops_result["status"] == "block"
+    assert ops_result["level"] == "block"
+    assert ops_result["output_tail"] == "scope-relevant-ops-failure"
 
 
 def test_gate_plan_adds_pinned_changed_python_format_check(tmp_path: Path) -> None:
