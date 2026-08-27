@@ -207,7 +207,7 @@ def _project_asset(
 
     live_records = tuple(item for item in records if item.status in _ACTIVE_STATUSES)
     expected_heads = _expected_heads(records, pull_requests)
-    if len(records) > 1 and live_records:
+    if len(live_records) > 1:
         return _asset(
             branch=branch,
             side=side,
