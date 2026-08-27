@@ -238,6 +238,42 @@ struct ReaderViewConfiguration: Equatable {
     }
 }
 
+/// Canonical discrete controls for Reader typography.
+///
+/// The settings panel, its preview harness, and the Readium-facing line-height
+/// slider all use this value source. Keeping the ranges here also lets stored
+/// values from older builds be clamped without making the view layer own model
+/// policy.
+enum ReaderTypographyMetrics {
+    static let fontSizeRange: ClosedRange<Double> = 0.75...2.0
+    static let fontSizeStep: Double = 0.125
+    static let lineHeightRange: ClosedRange<Double> = 1.0...2.5
+    static let lineHeightStep: Double = 0.1
+
+    static func steppedValue(
+        from value: Double,
+        by tickDelta: Int,
+        in range: ClosedRange<Double>,
+        step: Double
+    ) -> Double {
+        guard value.isFinite, step > 0, step.isFinite else { return range.lowerBound }
+        let currentTick = ((value - range.lowerBound) / step).rounded()
+        let nextTick = currentTick + Double(tickDelta)
+        let candidate = range.lowerBound + (nextTick * step)
+        let clamped = min(max(candidate, range.lowerBound), range.upperBound)
+        return (clamped * 1_000).rounded() / 1_000
+    }
+
+    static func quantizedValue(
+        _ value: Double,
+        in range: ClosedRange<Double>,
+        step: Double
+    ) -> Double {
+        steppedValue(from: value, by: 0, in: range, step: step)
+    }
+
+}
+
 /// 閱讀器偏好設定模型 — 全域單例，直接讀寫 UserDefaults 並同步至 iCloud KVS
 @Observable
 final class ReaderSettings {
@@ -251,6 +287,9 @@ final class ReaderSettings {
     private let kUnderlineOpacity = "reader_settings_underlineOpacity"
     private let kVocabHighlightColorPreset = "vocab_highlight_colorPreset"
     private let kVocabHighlightOpacity = "vocab_highlight_opacity"
+    private let kVocabHighlightCustomRed = "vocab_highlight_custom_red"
+    private let kVocabHighlightCustomGreen = "vocab_highlight_custom_green"
+    private let kVocabHighlightCustomBlue = "vocab_highlight_custom_blue"
     private let kShowHitTestingDebug = "reader_settings_showHitTestingDebug"
     private let kScrollMode = "reader_settings_scrollMode"
     private var cloudObserver: NSObjectProtocol? = nil
@@ -325,7 +364,14 @@ final class ReaderSettings {
         }
     }
 
-    /// 字級倍率的顯示字串。閱讀設定頁的 Stepper、設定▸偏好 的摘要列、以及
+    var vocabHighlightCustomSRGB: VocabHighlightSRGB = VocabHighlightPreferences.default.customSRGB {
+        didSet {
+            guard !isLoadingPersistedValues else { return }
+            persist(customSRGB: vocabHighlightCustomSRGB)
+        }
+    }
+
+    /// 字級倍率的顯示字串。閱讀設定頁的 adjustment row、設定▸偏好 的摘要列、以及
     /// Catalog harness 共用，免得同一個數字在不同入口 format 成不同樣子。
     /// static 版本給沒有 `ReaderSettings` 實例的呼叫端（harness）。
     static func fontSizeText(for scale: Double) -> String {
@@ -339,7 +385,8 @@ final class ReaderSettings {
     var vocabHighlightPreferences: VocabHighlightPreferences {
         VocabHighlightPreferences(
             colorPreset: vocabHighlightColorPreset,
-            opacity: underlineOpacity
+            opacity: underlineOpacity,
+            customSRGB: vocabHighlightCustomSRGB
         )
     }
 
@@ -417,10 +464,17 @@ final class ReaderSettings {
         let resolvedHighlight = VocabHighlightPreferences.resolve(
             storedPresetRaw: cloudPreset ?? savedPreset,
             storedOpacity: cloudOpacity ?? savedOpacity,
-            legacyOpacity: legacyCloudOpacity ?? legacySavedOpacity
+            legacyOpacity: legacyCloudOpacity ?? legacySavedOpacity,
+            storedCustomRed: cloud.double(forKey: kVocabHighlightCustomRed)
+                ?? persistedDouble(forKey: kVocabHighlightCustomRed),
+            storedCustomGreen: cloud.double(forKey: kVocabHighlightCustomGreen)
+                ?? persistedDouble(forKey: kVocabHighlightCustomGreen),
+            storedCustomBlue: cloud.double(forKey: kVocabHighlightCustomBlue)
+                ?? persistedDouble(forKey: kVocabHighlightCustomBlue)
         )
         self.vocabHighlightColorPreset = resolvedHighlight.colorPreset
         self.underlineOpacity = resolvedHighlight.opacity
+        self.vocabHighlightCustomSRGB = resolvedHighlight.customSRGB
 
         if cloudOpacity == nil && savedOpacity == nil {
             defaults.set(resolvedHighlight.opacity, forKey: kVocabHighlightOpacity)
@@ -429,6 +483,16 @@ final class ReaderSettings {
         if cloudPreset == nil && savedPreset == nil {
             defaults.set(resolvedHighlight.colorPreset.rawValue, forKey: kVocabHighlightColorPreset)
             cloud.set(resolvedHighlight.colorPreset.rawValue, forKey: kVocabHighlightColorPreset)
+        }
+        let customKeys = [
+            kVocabHighlightCustomRed,
+            kVocabHighlightCustomGreen,
+            kVocabHighlightCustomBlue,
+        ]
+        if customKeys.contains(where: {
+            cloud.double(forKey: $0) == nil && persistedDouble(forKey: $0) == nil
+        }) {
+            persist(customSRGB: resolvedHighlight.customSRGB)
         }
 
         self.showHitTestingDebug = defaults.bool(forKey: kShowHitTestingDebug)
@@ -466,6 +530,12 @@ final class ReaderSettings {
                    value != vocabHighlightColorPreset {
                     vocabHighlightColorPreset = value
                 }
+            case kVocabHighlightCustomRed:
+                updateCustomSRGBComponent(cloud.double(forKey: key), component: .red)
+            case kVocabHighlightCustomGreen:
+                updateCustomSRGBComponent(cloud.double(forKey: key), component: .green)
+            case kVocabHighlightCustomBlue:
+                updateCustomSRGBComponent(cloud.double(forKey: key), component: .blue)
             default:
                 break
             }
@@ -492,6 +562,7 @@ final class ReaderSettings {
         scrollMode = Self.defaultScrollMode
         vocabHighlightColorPreset = VocabHighlightPreferences.default.colorPreset
         underlineOpacity = VocabHighlightPreferences.default.opacity
+        vocabHighlightCustomSRGB = VocabHighlightPreferences.default.customSRGB
         showHitTestingDebug = Self.defaultShowHitTestingDebug
     }
 
@@ -516,6 +587,46 @@ final class ReaderSettings {
             showHitTestingDebug: ReaderDebugTools.isAvailable && showHitTestingDebug,
             swiftUIColorScheme: theme == .dark ? .dark : .light
         )
+    }
+
+    private enum CustomSRGBComponent {
+        case red, green, blue
+    }
+
+    private func persistedDouble(forKey key: String) -> Double? {
+        defaults.object(forKey: key) == nil ? nil : defaults.double(forKey: key)
+    }
+
+    private func persist(customSRGB: VocabHighlightSRGB) {
+        let values: [(String, Double)] = [
+            (kVocabHighlightCustomRed, customSRGB.red),
+            (kVocabHighlightCustomGreen, customSRGB.green),
+            (kVocabHighlightCustomBlue, customSRGB.blue),
+        ]
+        for (key, value) in values {
+            defaults.set(value, forKey: key)
+            cloud.set(value, forKey: key)
+        }
+    }
+
+    private func updateCustomSRGBComponent(
+        _ value: Double?,
+        component: CustomSRGBComponent
+    ) {
+        guard let value else { return }
+        let current = vocabHighlightCustomSRGB
+        let updated: VocabHighlightSRGB
+        switch component {
+        case .red:
+            updated = .init(red: value, green: current.green, blue: current.blue)
+        case .green:
+            updated = .init(red: current.red, green: value, blue: current.blue)
+        case .blue:
+            updated = .init(red: current.red, green: current.green, blue: value)
+        }
+        if updated != current {
+            vocabHighlightCustomSRGB = updated
+        }
     }
 }
 #endif

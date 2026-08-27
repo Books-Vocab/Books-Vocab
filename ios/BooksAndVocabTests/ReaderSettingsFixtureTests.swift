@@ -51,6 +51,28 @@ struct ReaderSettingsFixtureTests {
         #expect(settings.lineHeight == 2.1)
     }
 
+    @Test func customHighlightSRGBRoundTripsThroughBothPreferenceStores() {
+        let defaults = UserDefaults(suiteName: "test.reader-settings-custom.\(UUID().uuidString)")!
+        let cloud = ReaderSettingsFixtureCloudStore()
+        let expected = VocabHighlightSRGB(red: 0.1, green: 0.5, blue: 0.9)
+
+        let settings = ReaderSettings(defaults: defaults, cloud: cloud)
+        settings.vocabHighlightCustomSRGB = expected
+        settings.vocabHighlightColorPreset = .custom
+
+        #expect(defaults.double(forKey: "vocab_highlight_custom_red") == expected.red)
+        #expect(defaults.double(forKey: "vocab_highlight_custom_green") == expected.green)
+        #expect(defaults.double(forKey: "vocab_highlight_custom_blue") == expected.blue)
+        #expect(cloud.double(forKey: "vocab_highlight_custom_red") == expected.red)
+        #expect(cloud.double(forKey: "vocab_highlight_custom_green") == expected.green)
+        #expect(cloud.double(forKey: "vocab_highlight_custom_blue") == expected.blue)
+
+        let restored = ReaderSettings(defaults: defaults, cloud: cloud)
+        #expect(restored.vocabHighlightColorPreset == .custom)
+        #expect(restored.vocabHighlightCustomSRGB == expected)
+        #expect(restored.vocabHighlightPreferences.customSRGB == expected)
+    }
+
     private static var marketingDemoData: Data {
         get throws {
             let url = URL(fileURLWithPath: #filePath)

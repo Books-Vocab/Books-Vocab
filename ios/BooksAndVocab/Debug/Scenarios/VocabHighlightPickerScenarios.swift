@@ -20,6 +20,9 @@ enum VocabHighlightPickerScenarios {
             Scenario("Rose selected", layout: .fill) {
                 PickerScene(initial: .rose)
             }
+            Scenario("Custom selected", layout: .fill) {
+                PickerScene(initial: .custom)
+            }
             Scenario("Dark mode", layout: .fill) {
                 PickerScene(initial: .blue)
                     .preferredColorScheme(.dark)
@@ -32,16 +35,19 @@ enum VocabHighlightPickerScenarios {
 
 private struct PickerScene: View {
     @State private var selection: VocabHighlightColorPreset
+    @State private var customSRGB: VocabHighlightSRGB
 
     init(initial: VocabHighlightColorPreset) {
         self._selection = State(initialValue: initial)
+        self._customSRGB = State(initialValue: .default)
     }
 
     var body: some View {
         AppThemeContainer {
             VocabHighlightColorPresetPicker(
                 selection: $selection,
-                title: "螢光標記顏色"
+                customSRGB: $customSRGB,
+                title: L10n.string("vocab.highlight.color.label")
             )
             .environment(\.appSkin, AppSkin.previewNeutral)
             .padding(AppSpacing.s4)

@@ -29,7 +29,13 @@ struct ReaderPage {
     var settingsButton: XCUIElement { app.buttons["reader.header.settingsButton"] }
     var settingsDoneButton: XCUIElement { app.buttons["reader.settings.done"] }
     var settingsPreview: XCUIElement { app.otherElements["reader.settings.preview"] }
-    var fontSizeStepper: XCUIElement { app.steppers["reader.settings.fontSizeStepper"] }
+    var fontSizeStepper: XCUIElement { app.otherElements["reader.settings.fontSize"] }
+    var fontSizeDecrementButton: XCUIElement {
+        app.buttons["reader.settings.fontSize.decrement"]
+    }
+    var fontSizeIncrementButton: XCUIElement {
+        app.buttons["reader.settings.fontSize.increment"]
+    }
     var lineHeightIncrementButton: XCUIElement {
         app.buttons["reader.settings.lineHeight.increment"]
     }
@@ -44,7 +50,10 @@ struct ReaderPage {
         let predicate = NSPredicate(format: "identifier == %@", "reader.settings.highlightColor")
         return app.descendants(matching: .any).element(matching: predicate)
     }
-    var highlightOpacityPicker: XCUIElement { app.buttons["reader.settings.highlightOpacity"] }
+    var highlightOpacityPicker: XCUIElement { app.sliders["reader.settings.highlightOpacity"] }
+    var highlightCustomColorPicker: XCUIElement {
+        app.descendants(matching: .any)["reader.settings.highlightColor.custom"]
+    }
     var resetMenu: XCUIElement { app.buttons["reader.settings.resetMenu"] }
     var resetAllButton: XCUIElement { app.buttons["reader.settings.reset.all"] }
     var progressBadge: XCUIElement { app.staticTexts["reader.header.progressBadge"] }
@@ -85,12 +94,16 @@ struct ReaderPage {
         app.otherElements.matching(identifier: "reader.settings.preview")
     }
 
-    private var fontSizeStepperQuery: XCUIElementQuery {
-        app.steppers.matching(identifier: "reader.settings.fontSizeStepper")
+    private var fontSizeRowQuery: XCUIElementQuery {
+        app.descendants(matching: .any).matching(identifier: "reader.settings.fontSize")
     }
 
     private var fontSizeIncrementQuery: XCUIElementQuery {
-        fontSizeStepperQuery.buttons.matching(identifier: "Increment")
+        app.buttons.matching(identifier: "reader.settings.fontSize.increment")
+    }
+
+    private var fontSizeDecrementQuery: XCUIElementQuery {
+        app.buttons.matching(identifier: "reader.settings.fontSize.decrement")
     }
 
     private var lineHeightIncrementQuery: XCUIElementQuery {
@@ -489,6 +502,72 @@ struct ReaderPage {
         exactlyOne(lineHeightSliderQuery, named: "Reader line-height slider", timeout: timeout, file: file, line: line)
     }
 
+    func fontSizeAdjustmentRowElement(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        exactlyOne(fontSizeRowQuery, named: "Reader font-size adjustment row", timeout: timeout, file: file, line: line)
+    }
+
+    func highlightOpacitySliderElement(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        exactlyOne(
+            app.sliders.matching(identifier: "reader.settings.highlightOpacity"),
+            named: "Reader highlight opacity slider",
+            timeout: timeout,
+            file: file,
+            line: line
+        )
+    }
+
+    func highlightCustomColorPickerElement(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        exactlyOne(
+            app.descendants(matching: .any).matching(identifier: "reader.settings.highlightColor.custom"),
+            named: "Reader custom highlight color picker",
+            timeout: timeout,
+            file: file,
+            line: line
+        )
+    }
+
+    @discardableResult
+    func revealHighlightControls(
+        timeout: TimeInterval = 8,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let opacity = exactlyOneIfPresent(
+                app.sliders.matching(identifier: "reader.settings.highlightOpacity"),
+                named: "Reader highlight opacity slider",
+                timeout: 0.25,
+                file: file,
+                line: line
+            ), opacity.isHittable,
+               let custom = exactlyOneIfPresent(
+                   app.descendants(matching: .any).matching(identifier: "reader.settings.highlightColor.custom"),
+                   named: "Reader custom highlight color picker",
+                   timeout: 0.25,
+                   file: file,
+                   line: line
+               ), custom.isHittable {
+                return true
+            }
+            scrollSettingsPanel(towardTop: true)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        return false
+    }
+
     func webViewElement(
         timeout: TimeInterval = 5,
         file: StaticString = #filePath,
@@ -850,8 +929,8 @@ struct ReaderPage {
     @discardableResult
     func incrementFontSize(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Bool {
         guard exactlyOne(
-            fontSizeStepperQuery,
-            named: "Reader font-size stepper",
+            fontSizeRowQuery,
+            named: "Reader font-size adjustment row",
             file: file,
             line: line
         ) != nil else { return false }
@@ -862,6 +941,24 @@ struct ReaderPage {
             line: line
         ) else { return false }
         increment.tapWhenReady(file: file, line: line)
+        return true
+    }
+
+    @discardableResult
+    func decrementFontSize(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Bool {
+        guard exactlyOne(
+            fontSizeRowQuery,
+            named: "Reader font-size adjustment row",
+            file: file,
+            line: line
+        ) != nil else { return false }
+        guard let decrement = exactlyOne(
+            fontSizeDecrementQuery,
+            named: "Reader font-size decrement button",
+            file: file,
+            line: line
+        ) else { return false }
+        decrement.tapWhenReady(file: file, line: line)
         return true
     }
 

@@ -31,6 +31,7 @@ struct ReaderSettingsPresenter: View {
         let theme: Binding<ReaderTheme>
         let underlineOpacity: Binding<Double>
         let vocabHighlightColorPreset: Binding<VocabHighlightColorPreset>
+        let vocabHighlightCustomSRGB: Binding<VocabHighlightSRGB>
         let showHitTestingDebug: Binding<Bool>
         let scrollMode: Binding<Bool>
     }
@@ -43,16 +44,6 @@ struct ReaderSettingsPresenter: View {
     let onSelectUnderlineOpacity: (Double) -> Void
     /// 恢復預設 —— 與複習卡版面編輯器同形的 toolbar 入口。
     let onResetToDefaults: () -> Void
-
-    /// label 是 **L10n key**（由 `vocabHighlightSection` 丟給 `L10n.string`），
-    /// 不是要顯示的字。用中文字面當 key 會與其他畫面的同名字面撞在一起 ——
-    /// 「淡」「中」在 Localizable.strings 裡本來就有別的擁有者。
-    let opacityOptions: [(label: String, value: Double)] = [
-        ("reader.settings.highlight.opacity.hidden", 0.0),
-        ("reader.settings.highlight.opacity.light", 0.15),
-        ("reader.settings.highlight.opacity.medium", 0.35),
-        ("reader.settings.highlight.opacity.strong", 0.60)
-    ]
 
     var body: some View {
         vocabLayout
@@ -81,6 +72,7 @@ struct ReaderSettingsPresenter: View {
                     theme: .constant(.light),
                     underlineOpacity: .constant(0.35),
                     vocabHighlightColorPreset: .constant(.paper),
+                    vocabHighlightCustomSRGB: .constant(.default),
                     showHitTestingDebug: .constant(false),
                     scrollMode: .constant(false)
                 ),
@@ -112,6 +104,7 @@ struct ReaderSettingsPresenter: View {
                     theme: .constant(.dark),
                     underlineOpacity: .constant(0.0),
                     vocabHighlightColorPreset: .constant(.rose),
+                    vocabHighlightCustomSRGB: .constant(.default),
                     showHitTestingDebug: .constant(true),
                     scrollMode: .constant(true)
                 ),

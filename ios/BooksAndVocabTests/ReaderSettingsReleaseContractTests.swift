@@ -149,6 +149,37 @@ struct ReaderSettingsReleaseContractTests {
         #expect(!commandSource.contains("Task.sleep"))
     }
 
+    @Test func readerSettingsControlsShareCanonicalTypographyAndHighlightSources() throws {
+        let settingsSource = try String(
+            contentsOf: Self.sourceURL(relativeToProject: "BooksAndVocab/Models/ReaderSettings.swift"),
+            encoding: .utf8
+        )
+        let panelSource = try String(
+            contentsOf: Self.sourceURL(named: "ReaderSettingsPanel.swift"),
+            encoding: .utf8
+        )
+        let presenterSource = try String(
+            contentsOf: Self.sourceURL(named: "ReaderSettingsPresenter+Vocab.swift"),
+            encoding: .utf8
+        )
+        let preferencesSource = try String(
+            contentsOf: Self.sourceURL(relativeToProject: "BooksAndVocab/Models/VocabHighlightPreferences.swift"),
+            encoding: .utf8
+        )
+        let pickerSource = try String(
+            contentsOf: Self.sourceURL(named: "VocabHighlightColorPresetPicker.swift"),
+            encoding: .utf8
+        )
+
+        #expect(settingsSource.contains("ReaderTypographyMetrics"))
+        #expect(panelSource.contains("ReaderTypographyMetrics.fontSizeRange"))
+        #expect(presenterSource.contains("ReaderTypographyAdjustmentRow"))
+        #expect(presenterSource.contains("VocabHighlightPreferences.opacityStep"))
+        #expect(preferencesSource.contains("VocabHighlightSRGB"))
+        #expect(pickerSource.contains("ColorPicker"))
+        #expect(pickerSource.contains("supportsOpacity: false"))
+    }
+
     private static func sourceURL(named name: String) -> URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
