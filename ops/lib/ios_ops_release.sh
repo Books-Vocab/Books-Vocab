@@ -50,6 +50,7 @@ sentry_summary_json() {
   local api_authenticated project_reachable runtime_event_seen symbolication_ready
   local required_package_revision="d82bb1c5eb353a593573a5624bb370f5a1f500ce"
   local fixture_mode=0
+  local fixture_build_evidence=0
   if [[ -n "${KG_IOS_OPS_SENTRY_SOURCE_FIXTURE:-}" ]]; then
     source="$KG_IOS_OPS_SENTRY_SOURCE_FIXTURE"
   fi
@@ -61,6 +62,9 @@ sentry_summary_json() {
   fi
   if [[ -n "${KG_IOS_OPS_SENTRY_SOURCE_EXISTS_FIXTURE:-}${KG_IOS_OPS_SENTRY_CAN_IMPORT_FIXTURE:-}${KG_IOS_OPS_SENTRY_DSN_FIXTURE:-}${KG_IOS_OPS_SENTRY_PACKAGE_FIXTURE:-}${KG_IOS_OPS_SENTRY_TARGET_FIXTURE:-}" ]]; then
     fixture_mode=1
+  fi
+  if [[ "${KG_IOS_OPS_FIXTURE:-}" == "1" ]]; then
+    fixture_build_evidence=1
   fi
   if [[ -n "${KG_IOS_OPS_SENTRY_SOURCE_EXISTS_FIXTURE:-}" ]]; then
     source_exists="$KG_IOS_OPS_SENTRY_SOURCE_EXISTS_FIXTURE"
@@ -166,6 +170,10 @@ sentry_summary_json() {
   # contract tests without coupling this read-only summary to a build cache.
   if [[ -n "${KG_IOS_OPS_SENTRY_BUILD_CAN_IMPORT_FIXTURE:-}" ]]; then
     build_can_import="$KG_IOS_OPS_SENTRY_BUILD_CAN_IMPORT_FIXTURE"
+    build_evidence_source="fixture"
+    build_evidence_artifact=""
+  elif (( fixture_build_evidence )); then
+    build_can_import="true"
     build_evidence_source="fixture"
     build_evidence_artifact=""
   else
