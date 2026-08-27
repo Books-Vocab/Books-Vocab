@@ -56,6 +56,34 @@ struct VocabHighlightPreferencesTests {
         #expect(VocabHighlightColorPreset.blue.titleKey == "vocab.highlight.color.blue")
         #expect(VocabHighlightColorPreset.sage.titleKey == "vocab.highlight.color.sage")
         #expect(VocabHighlightColorPreset.rose.titleKey == "vocab.highlight.color.rose")
+        #expect(VocabHighlightColorPreset.custom.titleKey == "自訂")
+    }
+
+    @Test func customSRGBIsClampedAndSharedWithReaderCSS() {
+        let custom = VocabHighlightSRGB(red: -0.2, green: 0.5, blue: 1.4)
+        #expect(custom == VocabHighlightSRGB(red: 0, green: 0.5, blue: 1))
+
+        let preferences = VocabHighlightPreferences(
+            colorPreset: .custom,
+            opacity: 0.35,
+            customSRGB: VocabHighlightSRGB(red: 0.8, green: 0.2, blue: 0.1)
+        )
+        #expect(preferences.cssColor(for: .light) == "rgb(204, 51, 26)")
+
+        let css = ReaderContentStyleFactory.make(highlightPreferences: preferences).css()
+        #expect(css.contains("rgb(204 51 26 / clamp(0, calc(var(--vocab-opacity) * 1.05), 1))"))
+        #expect(PodcastVocabHighlightResolver.highlightColor(
+            for: preferences,
+            colorScheme: .light
+        ) == preferences.customSRGB.color)
+    }
+
+    @Test func opacityStepClampsAndQuantizesControlValues() {
+        #expect(VocabHighlightPreferences.opacityRange == 0...1)
+        #expect(VocabHighlightPreferences.opacityStep == 0.05)
+        #expect(VocabHighlightPreferences.quantizedOpacity(-0.1) == 0)
+        #expect(VocabHighlightPreferences.quantizedOpacity(0.37) == 0.35)
+        #expect(VocabHighlightPreferences.quantizedOpacity(1.1) == 1)
     }
 
     @Test func bridgePlannerEmitsContentStyleOnlyWhenCssChanges() {

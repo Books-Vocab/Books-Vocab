@@ -54,6 +54,54 @@ final class ReaderSettingsUITests: UITestCase {
     }
 
     @MainActor
+    func testReaderSettingsTypographyAndHighlightControlsExposeBoundedNativeInputs() throws {
+        let app = launchIsolatedApp(
+            fixtures: [.readerRealBookLibrary],
+            perfLog: "reader-settings-typography-highlight-controls"
+        )
+        let bookshelf = AppPage(app: app).goToBookshelf()
+        guard let bookCard = bookshelf.exactlyOneBookCard(timeout: 10) else {
+            XCTFail("Reader UI World must materialize exactly one book before settings can be opened")
+            return
+        }
+        bookCard.tapWhenReady()
+
+        let reader = ReaderPage(app: app)
+        guard reader.waitForContent(ReaderPage.seededContentMarker, timeout: 45) else {
+            XCTFail("production Reader must render the seeded book content")
+            return
+        }
+        reader.openSettings()
+
+        guard let fontRow = reader.fontSizeAdjustmentRowElement(timeout: 10) else {
+            XCTFail("Reader settings must expose the unified font-size adjustment row")
+            return
+        }
+        XCTAssertFalse(fontRow.label.isEmpty)
+        XCTAssertFalse(String(describing: fontRow.value ?? "").isEmpty)
+        XCTAssertTrue(reader.fontSizeDecrementButton.exists)
+        XCTAssertTrue(reader.fontSizeIncrementButton.exists)
+        XCTAssertGreaterThanOrEqual(reader.fontSizeIncrementButton.frame.height, 44)
+        XCTAssertGreaterThanOrEqual(reader.fontSizeDecrementButton.frame.height, 44)
+        captureStep("typography-adjustment-rows", app: app)
+
+        guard reader.revealHighlightControls(timeout: 10),
+              let opacity = reader.highlightOpacitySliderElement(timeout: 5),
+              let custom = reader.highlightCustomColorPickerElement(timeout: 5)
+        else {
+            XCTFail("Reader settings must expose the opacity step slider and custom sRGB picker")
+            return
+        }
+        XCTAssertFalse(opacity.label.isEmpty)
+        XCTAssertNotNil(opacity.value)
+        XCTAssertTrue(opacity.isHittable)
+        XCTAssertFalse(custom.label.isEmpty)
+        XCTAssertTrue(custom.isHittable)
+        captureStep("highlight-custom-srgb-and-opacity", app: app)
+        XCTAssertTrue(reader.closeSettings(), "Reader settings must close through the production Done action")
+    }
+
+    @MainActor
     func testProductionReaderSettingsRoundTripAfterReaderReopen() throws {
         let app = launchIsolatedApp(
             fixtures: [.readerRealBookLibrary],

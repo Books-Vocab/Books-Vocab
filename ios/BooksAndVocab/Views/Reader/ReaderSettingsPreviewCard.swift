@@ -162,7 +162,7 @@ struct ReaderSettingsPreviewCard: View {
         let opacity = min(1, max(0, preferences.opacity * selection.vocabOpacityMultiplier))
 
         return AppRoundedRect(roundness: Metrics.bandRoundness)
-            .fill(preferences.colorPreset.color(for: theme).opacity(opacity))
+            .fill(preferences.color(for: theme).opacity(opacity))
             .frame(height: resolvedFontSize * CGFloat(preferences.bandFraction))
             .padding(.horizontal, -Metrics.bandOverhang)
     }

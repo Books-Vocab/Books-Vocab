@@ -1,16 +1,73 @@
 #if os(iOS)
 import SwiftUI
 
+/// A persisted custom highlight colour in the extended sRGB UI range.
+///
+/// The Reader CSS and the native preview both consume these three components;
+/// keeping the value as data (rather than persisting a SwiftUI `Color`) avoids
+/// colour-space-dependent round trips and makes the preference portable to the
+/// Podcast renderer.
+struct VocabHighlightSRGB: Equatable {
+    let red: Double
+    let green: Double
+    let blue: Double
+
+    static let `default` = VocabHighlightSRGB(red: 0.90, green: 0.84, blue: 0.57)
+
+    init(red: Double, green: Double, blue: Double) {
+        self.red = Self.clamp(red)
+        self.green = Self.clamp(green)
+        self.blue = Self.clamp(blue)
+    }
+
+    /// Resolve a SwiftUI colour through the environment and retain only its
+    /// sRGB colour components. The picker disables alpha because opacity is a
+    /// separate Reader preference.
+    init(color: Color) {
+        let resolved = color.resolve(in: EnvironmentValues())
+        self.init(
+            red: Double(resolved.red),
+            green: Double(resolved.green),
+            blue: Double(resolved.blue)
+        )
+    }
+
+    var color: Color {
+        Color(red: red, green: green, blue: blue)
+    }
+
+    /// CSS Color 4's integer sRGB notation is explicit about the colour space
+    /// and keeps the generated stylesheet readable.
+    var cssColor: String {
+        "rgb(\(byte(red)), \(byte(green)), \(byte(blue)))"
+    }
+
+    private static func clamp(_ value: Double) -> Double {
+        guard value.isFinite else { return 0 }
+        return min(max(value, 0), 1)
+    }
+
+    private func byte(_ value: Double) -> Int {
+        Int((value * 255).rounded())
+    }
+}
+
 enum VocabHighlightColorPreset: String, CaseIterable, Identifiable {
     case paper
     case blue
     case sage
     case rose
+    case custom
+
+    static let presetCases: [Self] = [.paper, .blue, .sage, .rose]
 
     var id: String { rawValue }
 
     var titleKey: String {
-        "vocab.highlight.color.\(rawValue)"
+        // This key already exists in every supported locale; the custom
+        // colour does not need a new localization resource for this bounded
+        // feature change.
+        rawValue == "custom" ? "自訂" : "vocab.highlight.color.\(rawValue)"
     }
 
     /// 生字色帶的色相，以整數 HSL 表示。
@@ -55,6 +112,9 @@ enum VocabHighlightColorPreset: String, CaseIterable, Identifiable {
         case (.rose, .light): return HSL(hue: 350, saturation: 28, lightness: 58)
         case (.rose, .sepia): return HSL(hue: 350, saturation: 24, lightness: 50)
         case (.rose, .dark): return HSL(hue: 350, saturation: 30, lightness: 68)
+        // `hsl(for:)` remains a total API for source/preview contracts. The
+        // actual custom colour is supplied by `VocabHighlightPreferences`.
+        case (.custom, _): return HSL(hue: 43, saturation: 34, lightness: 62)
         }
     }
 
@@ -70,10 +130,16 @@ enum VocabHighlightColorPreset: String, CaseIterable, Identifiable {
     /// 與行銷截圖用的手調 RGB（只分 light / dark 兩階，且比 CSS 亮），改動它會
     /// 動到那些畫面。要與閱讀器正文同色的地方一律用這個。
     func color(for theme: ReaderTheme) -> Color {
-        Color(hsl: hsl(for: theme))
+        if self == .custom {
+            return VocabHighlightSRGB.default.color
+        }
+        return Color(hsl: hsl(for: theme))
     }
 
-    func swiftUIColor(for colorScheme: ColorScheme) -> Color {
+    func swiftUIColor(
+        for colorScheme: ColorScheme,
+        customSRGB: VocabHighlightSRGB? = nil
+    ) -> Color {
         switch self {
         case .paper:
             switch colorScheme {
@@ -99,6 +165,8 @@ enum VocabHighlightColorPreset: String, CaseIterable, Identifiable {
             case .dark: return Color(red: 0.78, green: 0.58, blue: 0.64)
             @unknown default: return Color(red: 0.70, green: 0.45, blue: 0.52)
             }
+        case .custom:
+            return (customSRGB ?? .default).color
         }
     }
 }
@@ -118,38 +186,93 @@ extension Color {
 struct VocabHighlightPreferences: Equatable {
     static let defaultOpacity = 0.22
     static let defaultBandFraction = 0.32
+    static let opacityRange: ClosedRange<Double> = 0...1
+    static let opacityStep = 0.05
     static let `default` = VocabHighlightPreferences(
         colorPreset: .paper,
         opacity: defaultOpacity,
-        bandFraction: defaultBandFraction
+        bandFraction: defaultBandFraction,
+        customSRGB: .default
     )
 
     var colorPreset: VocabHighlightColorPreset
     var opacity: Double
     var bandFraction: Double
+    var customSRGB: VocabHighlightSRGB
 
     var isEnabled: Bool { opacity > 0 }
 
     init(
         colorPreset: VocabHighlightColorPreset = .paper,
         opacity: Double = Self.defaultOpacity,
-        bandFraction: Double = Self.defaultBandFraction
+        bandFraction: Double = Self.defaultBandFraction,
+        customSRGB: VocabHighlightSRGB = .default
     ) {
         self.colorPreset = colorPreset
-        self.opacity = opacity
+        self.opacity = Self.clampedOpacity(opacity)
         self.bandFraction = bandFraction
+        self.customSRGB = customSRGB
+    }
+
+    static func quantizedOpacity(_ value: Double) -> Double {
+        let clamped = clampedOpacity(value)
+        let ticks = (clamped / opacityStep).rounded()
+        let quantized = (ticks * opacityStep * 100).rounded() / 100
+        return min(max(quantized, opacityRange.lowerBound), opacityRange.upperBound)
+    }
+
+    func color(for theme: ReaderTheme) -> Color {
+        if colorPreset == .custom {
+            return customSRGB.color
+        }
+        return colorPreset.color(for: theme)
+    }
+
+    /// Return the CSS colour function without its alpha value. Presets keep
+    /// their legacy HSL output; custom colours use explicit sRGB components.
+    func cssColor(for theme: ReaderTheme) -> String {
+        colorPreset == .custom ? customSRGB.cssColor : colorPreset.cssColor(for: theme)
+    }
+
+    func cssColorFunction(for theme: ReaderTheme, alphaExpression: String) -> String {
+        if colorPreset == .custom {
+            let components = customSRGBComponentString.replacingOccurrences(of: ", ", with: " ")
+            return "rgb(\(components) / \(alphaExpression))"
+        }
+        return "hsla(\(colorPreset.cssColor(for: theme)), \(alphaExpression))"
     }
 
     static func resolve(
         storedPresetRaw: String?,
         storedOpacity: Double?,
-        legacyOpacity: Double?
+        legacyOpacity: Double?,
+        storedCustomRed: Double? = nil,
+        storedCustomGreen: Double? = nil,
+        storedCustomBlue: Double? = nil
     ) -> VocabHighlightPreferences {
         VocabHighlightPreferences(
             colorPreset: storedPresetRaw.flatMap(VocabHighlightColorPreset.init(rawValue:)) ?? .paper,
             opacity: storedOpacity ?? legacyOpacity ?? defaultOpacity,
-            bandFraction: defaultBandFraction
+            bandFraction: defaultBandFraction,
+            customSRGB: VocabHighlightSRGB(
+                red: storedCustomRed ?? VocabHighlightSRGB.default.red,
+                green: storedCustomGreen ?? VocabHighlightSRGB.default.green,
+                blue: storedCustomBlue ?? VocabHighlightSRGB.default.blue
+            )
         )
+    }
+
+    private var customSRGBComponentString: String {
+        "\(byte(customSRGB.red)), \(byte(customSRGB.green)), \(byte(customSRGB.blue))"
+    }
+
+    private static func clampedOpacity(_ value: Double) -> Double {
+        guard value.isFinite else { return defaultOpacity }
+        return min(max(value, opacityRange.lowerBound), opacityRange.upperBound)
+    }
+
+    private func byte(_ value: Double) -> Int {
+        Int((value * 255).rounded())
     }
 }
 #endif

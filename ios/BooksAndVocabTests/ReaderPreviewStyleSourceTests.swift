@@ -95,6 +95,28 @@ struct ReaderPreviewStyleSourceTests {
     @Test func readerSettingsPreviewUsesOneGeometryAndRoundTripContract() {
         typealias Metrics = ReaderPresentationMetrics.SettingsPreview
 
+        #expect(ReaderTypographyMetrics.fontSizeRange == 0.75...2.0)
+        #expect(ReaderTypographyMetrics.fontSizeStep == 0.125)
+        #expect(Metrics.fontSizeRange == ReaderTypographyMetrics.fontSizeRange)
+        #expect(Metrics.fontSizeStep == ReaderTypographyMetrics.fontSizeStep)
+        #expect(ReaderTypographyMetrics.steppedValue(
+            from: ReaderTypographyMetrics.fontSizeRange.lowerBound,
+            by: -1,
+            in: ReaderTypographyMetrics.fontSizeRange,
+            step: ReaderTypographyMetrics.fontSizeStep
+        ) == ReaderTypographyMetrics.fontSizeRange.lowerBound)
+        #expect(ReaderTypographyMetrics.steppedValue(
+            from: ReaderTypographyMetrics.fontSizeRange.upperBound,
+            by: 1,
+            in: ReaderTypographyMetrics.fontSizeRange,
+            step: ReaderTypographyMetrics.fontSizeStep
+        ) == ReaderTypographyMetrics.fontSizeRange.upperBound)
+        #expect(ReaderTypographyMetrics.steppedValue(
+            from: 1.0,
+            by: 1,
+            in: ReaderTypographyMetrics.fontSizeRange,
+            step: ReaderTypographyMetrics.fontSizeStep
+        ) == 1.125)
         #expect(Metrics.lineHeightRange.lowerBound == 1.0)
         #expect(Metrics.lineHeightRange.upperBound == 2.5)
         #expect(Metrics.lineHeightStep == 0.1)
