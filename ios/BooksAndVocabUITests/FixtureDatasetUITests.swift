@@ -68,6 +68,7 @@ final class FixtureDatasetUITests: UITestCase {
     private enum ReviewCalendarEvidence {
         static let selector = "FixtureDatasetUITests/testReviewCalendarRequiredEvidenceUsesStableSelectors"
         static let source = "ios/BooksAndVocabUITests/FixtureDatasetUITests.swift"
+        static let calendarProjectionAttempts = 3
         static let requiredLabels = [
             "calendar",
             "empty-day",
@@ -804,13 +805,47 @@ final class FixtureDatasetUITests: UITestCase {
     private func moveCalendar(_ page: ReviewCalendarPage, from current: String, to target: String) {
         let currentParts = current.split(separator: "-").compactMap { Int($0) }
         let targetParts = target.split(separator: "-").compactMap { Int($0) }
-        guard currentParts.count == 2, targetParts.count == 2 else { return }
-        let delta = (targetParts[0] * 12 + targetParts[1]) - (currentParts[0] * 12 + currentParts[1])
-        if delta < 0 {
-            for _ in 0 ..< -delta { page.previousMonthButton.tapWhenReady() }
-        } else {
-            for _ in 0 ..< delta { page.nextMonthButton.tapWhenReady() }
+        guard currentParts.count == 2, targetParts.count == 2 else {
+            XCTFail("calendar navigation requires YYYY-MM day keys")
+            return
         }
+        let delta = (targetParts[0] * 12 + targetParts[1]) - (currentParts[0] * 12 + currentParts[1])
+        guard delta != 0 else { return }
+
+        let direction = delta < 0 ? -1 : 1
+        let button = direction < 0 ? page.previousMonthButton : page.nextMonthButton
+        for step in 1 ... abs(delta) {
+            let projectedMonth = monthKey(for: current, offset: direction * step)
+            guard let dayKey = dayKeys(in: projectedMonth).first else {
+                XCTFail("calendar navigation could not project a day for \(projectedMonth)")
+                return
+            }
+
+            var projected = false
+            for _ in 0 ..< ReviewCalendarEvidence.calendarProjectionAttempts {
+                guard button.waitUntilHittable(timeout: 5) else { continue }
+                button.tap()
+                if waitForProjectedCalendarDay(page.app, dayKey: dayKey) {
+                    projected = true
+                    break
+                }
+            }
+            XCTAssertTrue(
+                projected,
+                "calendar navigation must project target day before the next tap: \(dayKey)"
+            )
+        }
+    }
+
+    private func waitForProjectedCalendarDay(
+        _ app: XCUIApplication,
+        dayKey: String,
+        timeout: TimeInterval = 5
+    ) -> Bool {
+        let query = app.buttons.matching(identifier: "reviewCalendar.day.\(dayKey)")
+        let element = query.element(boundBy: 0)
+        guard element.waitUntilExists(timeout: timeout) else { return false }
+        return query.count == 1
     }
 
     private func assertEmptyDay(_ page: ReviewCalendarPage, label: String) throws {

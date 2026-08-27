@@ -520,3 +520,19 @@ def test_overview_page_requires_exactly_one_selector_match() -> None:
     assert ".firstMatch" not in source
     assert "query.count" in source
     assert "element(boundBy: 0)" in source
+
+
+def test_review_calendar_navigation_retries_until_stable_day_projection() -> None:
+    """Month navigation must wait for the keyed AX projection before continuing."""
+    ui_test = _text(IOS / "BooksAndVocabUITests/FixtureDatasetUITests.swift")
+
+    assert "calendarProjectionAttempts" in ui_test
+    assert "waitForProjectedCalendarDay" in ui_test
+    assert "reviewCalendar.day.\\(dayKey)" in ui_test
+    assert re.search(
+        r"for _ in 0 \.\.< ReviewCalendarEvidence\.calendarProjectionAttempts.*?"
+        r"waitForProjectedCalendarDay",
+        ui_test,
+        re.DOTALL,
+    )
+    assert "calendar navigation must project target day before the next tap" in ui_test
