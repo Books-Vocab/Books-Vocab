@@ -935,6 +935,52 @@ release_test_device_lock() {
 # the shared locks already released. See ops/lib/signal_traps.sh.
 kg_install_signal_traps cleanup
 
+# Initialize the per-invocation verdict before any operation that can fail.
+# Simulator leasing deliberately happens before xcodebuild, so a refusal must
+# still leave evidence for `ios_ops.sh` and the orchestration gate to read.
+kg_ios_verdict_init test "$PROJECT_ROOT"
+
+write_early_failure_verdict() {
+  local reason="$1" exit_code="${2:-1}" source_commit early_tree_status early_tree_dirty
+  source_commit="$(git -C "$PROJECT_ROOT" rev-parse HEAD 2>/dev/null || true)"
+  if early_tree_status="$(git -C "$PROJECT_ROOT" status --porcelain 2>/dev/null)"; then
+    if [[ -n "$early_tree_status" ]]; then early_tree_dirty=true; else early_tree_dirty=false; fi
+  else
+    early_tree_dirty=true
+  fi
+  printf 'RESULT=inconclusive EXIT=%s reason=%s caller=%s elapsed=0s $(kg_ios_verdict_identity_kv)\n' \
+    "$exit_code" "$reason" "$CALLER" >"$VERDICT_FILE"
+  jq -nc \
+    --arg schema "kg.ios.run-verdict.v1" \
+    --arg kind "test" \
+    --arg result "inconclusive" \
+    --arg exit "$exit_code" \
+    --arg reason "$reason" \
+    --arg caller "$CALLER" \
+    --arg cwd "$PROJECT_ROOT" \
+    --arg verdictFile "$VERDICT_FILE" \
+    --argjson ts "$(date +%s)" \
+    --argjson pid "$$" \
+    --arg sourceCommit "$source_commit" \
+    --argjson sourceTreeDirty "$early_tree_dirty" \
+    --arg elapsed "0s" \
+    ' {
+      schema:$schema,
+      kind:$kind,
+      status:$result,
+      result:$result,
+      exit:$exit,
+      reason:$reason,
+      caller:$caller,
+      invocation:{ts:$ts,pid:$pid,cwd:$cwd,verdictFile:$verdictFile},
+      options:{sourceCommit:$sourceCommit,sourceTreeDirty:$sourceTreeDirty},
+      elapsed:$elapsed,
+      executed:null,
+      artifacts:{log:null,xcresult:null}
+    }' >"$VERDICT_JSON_FILE"
+  kg_ios_verdict_publish
+}
+
 # Auto-lease a pool simulator for this run (parallel agents). Engaged by --lease
 # / KG_IOS_TEST_AUTOLEASE only when no explicit device/destination was given —
 # explicit targeting always wins. Done after the trap is armed so the lease is
@@ -945,15 +991,16 @@ if [[ "$AUTO_LEASE" -eq 1 && -z "$DEVICE_OVERRIDE" && -z "$DESTINATION_OVERRIDE"
   lease_json="$(
     KG_IOS_SIM_LEASE_OWNER_PID=$$ \
     KG_IOS_SIM_LEASE_OWNER_TOKEN="$LEASE_OWNER_TOKEN" \
-      "$IOS_OPS" simulator lease --json 2>/dev/null
+      "$IOS_OPS" simulator lease --json 2>/dev/null || true
   )"
-  LEASED_DEVICE="$(jq -r '.udid // empty' <<<"$lease_json" 2>/dev/null)"
+  LEASED_DEVICE="$(jq -r '.udid // empty' <<<"$lease_json" 2>/dev/null || true)"
   if [[ -z "$LEASED_DEVICE" ]]; then
     # `2>/dev/null` above drops the lease command's own diagnostics, so the
     # reason has to travel in the JSON or it is lost. A slot refused for
     # holding a real account is NOT exhaustion, and must not be reported as it.
-    lease_refused="$(jq -r '.refusedNonDisposable // 0' <<<"$lease_json" 2>/dev/null)"
-    lease_blind="$(jq -r '.refusedUnverifiable // 0' <<<"$lease_json" 2>/dev/null)"
+    lease_error="$(jq -r '.error // empty' <<<"$lease_json" 2>/dev/null || true)"
+    lease_refused="$(jq -r '.refusedNonDisposable // 0' <<<"$lease_json" 2>/dev/null || true)"
+    lease_blind="$(jq -r '.refusedUnverifiable // 0' <<<"$lease_json" 2>/dev/null || true)"
     [[ "${lease_refused:-0}" =~ ^[0-9]+$ ]] || lease_refused=0
     [[ "${lease_blind:-0}" =~ ^[0-9]+$ ]] || lease_blind=0
     if (( lease_blind > 0 )); then
@@ -961,11 +1008,19 @@ if [[ "$AUTO_LEASE" -eq 1 && -z "$DEVICE_OVERRIDE" && -z "$DESTINATION_OVERRIDE"
       # pool, and telling the operator to go log simulators out would send them
       # hunting for accounts that are not there.
       echo "[ios_test] error: --lease 拿不到 slot：$lease_blind 台 pool simulator 無法確認帳號歸屬——是偵測本身壞了（plutil 不見了 / CoreSimulator 路徑變了 / prefs 讀不到），不是有人登入。跑 './ops/ios_ops.sh simulator lease' 看每台的實際原因。" >&2
+      lease_reason="simulator-pool-unverifiable"
     elif (( lease_refused > 0 )); then
       echo "[ios_test] error: --lease 拿不到 slot：$lease_refused 台 pool simulator 因登著非拋棄帳號被拒絕出租（UI test fixture 會清空 app 容器）。跑 './ops/ios_ops.sh simulator lease' 看是哪幾台，處理掉再重試；調大 KG_IOS_SIM_POOL_SIZE 無效。" >&2
+      lease_reason="simulator-pool-blocked-non-disposable"
     else
       echo "[ios_test] error: --lease requested but simulator pool is exhausted" >&2
+      if [[ "$lease_error" == pool-exhausted:* ]]; then
+        lease_reason="simulator-pool-exhausted"
+      else
+        lease_reason="simulator-lease-failed"
+      fi
     fi
+    write_early_failure_verdict "$lease_reason" 1
     exit 1
   fi
   echo "[ios_test] leased simulator udid=$LEASED_DEVICE"
@@ -2090,8 +2145,6 @@ emit_ui_runner_lifecycle() {
 # fixed-path-then-private-copy dance is gone). The historical fixed path stays
 # as a last-writer-wins LATEST pointer for `ios_ops runs`. See
 # ops/lib/ios_run_verdict.sh.
-kg_ios_verdict_init test "$PROJECT_ROOT"
-
 validate_p9_review_calendar_sidecar() {
   local manifest_path="$1" verdict_path="$2"
   [[ -s "$manifest_path" ]] || return 0

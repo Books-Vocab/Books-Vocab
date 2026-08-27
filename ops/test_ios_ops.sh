@@ -1759,6 +1759,33 @@ echo "$missing_diag_json" | jq -e --arg log "$ios_test_retry_tmp/never-created.l
   && ok "ios_diagnostics reports missing fallback log as machine-readable error" || fail_t "ios_diagnostics missing-log fallback invalid: $missing_diag_json"
 rm -rf "$ios_test_retry_tmp"
 
+section "ios_test lease failure is a structured verdict"
+# A lease refusal happens before xcodebuild starts, so it must still publish a
+# per-invocation verdict.  Without that evidence the outer gate can only report
+# a misleading missing-artifacts/unknown result.
+lease_failure_tmp="$(mktemp -d "${TMPDIR:-/tmp}/kg-ios-lease-failure.XXXXXX")"
+lease_failure_out="$lease_failure_tmp/stdout"
+lease_failure_err="$lease_failure_tmp/stderr"
+lease_failure_rc=0
+KG_IOS_SIM_POOL_SIZE=0 \
+KG_IOS_SIM_LEASE_ROOT="$lease_failure_tmp/leases" \
+KG_IOS_VERDICT_FILE="$lease_failure_tmp/verdict" \
+  "$IOS_OPS" test --unit --lease --json >"$lease_failure_out" 2>"$lease_failure_err" || lease_failure_rc=$?
+[[ "$lease_failure_rc" -eq 1 ]] \
+  && ok "ios_test returns non-zero for an exhausted simulator pool" \
+  || fail_t "ios_test lease refusal exit changed: $lease_failure_rc"
+if [[ -s "$lease_failure_tmp/verdict.json" ]] \
+  && jq -e '.result == "inconclusive" and .reason == "simulator-pool-exhausted" and .exit == "1"' \
+      "$lease_failure_tmp/verdict.json" >/dev/null; then
+  ok "ios_test publishes a pool-exhaustion verdict before xcodebuild"
+else
+  fail_t "ios_test did not publish the expected pool-exhaustion verdict"
+fi
+grep -q "pool is exhausted" "$lease_failure_err" \
+  && ok "ios_test preserves the operator-facing pool exhaustion reason" \
+  || fail_t "ios_test lost the operator-facing pool exhaustion reason"
+rm -rf "$lease_failure_tmp"
+
 section "ios_test generic device compile is unsigned and cache-isolated"
 # The live-only Release gate uses generic/platform=iOS only to prove that the
 # UITest target compiles. It must not require an iOS Development identity, and
