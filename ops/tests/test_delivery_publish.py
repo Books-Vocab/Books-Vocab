@@ -822,6 +822,50 @@ def test_existing_pr_scope_may_grow_after_same_owner_reanchor() -> None:
     )
 
 
+def test_partial_publication_can_reconcile_owner_scope_to_exact_pr_paths() -> None:
+    """A PR created before scope-set must be recoverable without a duplicate PR."""
+
+    previous = _receipt(
+        claim_generation=2,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py", "ops/c.py")),
+    )
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    pull_request = _pull_request(
+        previous,
+        title="fix: delivery",
+        body=render_pull_request_body(previous),
+    )
+    service, _, github = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=_worktree(
+                receipt,
+                changes=(
+                    FileChange(FileOperation.MODIFY, "ops/a.py"),
+                    FileChange(FileOperation.MODIFY, "ops/b.py"),
+                ),
+            ),
+            remote_sha=receipt.head_sha,
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=pull_request,
+            changed_paths=receipt.scope.paths,
+        ),
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert github.create_calls == 0
+    assert github.update_calls == 1
+    assert parse_pull_request_body(result.pull_request.body) == receipt
+
+
 def test_partial_push_can_be_retried_to_repair_the_exact_pr_body() -> None:
     new_base = "f" * 40
     new_head = "9" * 40
