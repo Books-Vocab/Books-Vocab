@@ -3,7 +3,8 @@ flowchart TB
     subgraph Intake["1. Raw demand、triage 與收件"]
         U["User 發現問題／提出需求"]
         BS["Backlog Scout<br/>盤點所有 raw demand、去重、重現、triage"]
-        RAW["Raw Issue inventory<br/>每個 open Issue 都有唯一 disposition"]
+        RAW["Raw Issue inventory<br/>保留每個 open Issue 與 source observation"]
+        CLASSIFIED["backlog_classified<br/>inventory 完整、每個 raw entry 有唯一 disposition<br/>不等於 backlog_drained"]
         TRIAGE["Triage plan<br/>severity／priority／Scope／acceptance／required evidence"]
         DECIDE{"是否需要 Issue？"}
         ISSUE["GitHub Issue<br/>唯一需求／追蹤／討論來源"]
@@ -11,7 +12,7 @@ flowchart TB
         CAND["Dispatchable candidate reservoir<br/>只收 exact typed candidate；不建立本地 backlog"]
 
         U --> DECIDE
-        BS --> RAW --> TRIAGE
+        BS --> RAW --> CLASSIFIED --> TRIAGE
         DECIDE -->|"需要排程、追蹤、討論<br/>或 acceptance 定義"| ISSUE
         DECIDE -->|"範圍清楚、可直接執行"| DIRECT
         TRIAGE -->|"安全且證據完整"| CAND
@@ -133,10 +134,11 @@ flowchart TB
 
     subgraph Modes["8. Operational modes：不要把 qualification 說成 steady state"]
         QUAL["Control-plane qualification<br/>少量 lane；驗證工具與證據模型<br/>不計 production throughput"]
+        PILOT["Production-mode dogfood pilot<br/>一條 bounded 真實需求 lane<br/>raw backlog 可繼續存在"]
         RAMP["Production-mode dogfood ramp<br/>1 → 3 → 4 → 8/12 lanes"]
         STEADY["Steady state target<br/>candidate 20–30、active 8–12、durable PR 10–15<br/>≥12 merged PR/hour；SLO 以實測為準"]
         INCIDENT["Incident／freeze<br/>停止新 admission／wake；保留既有 durable PR drain"]
-        QUAL -->|"工具與 evidence 穩定"| RAMP -->|"連續量測達標"| STEADY
+        QUAL -->|"控制面安全、已有 candidate 或 direct packet"| PILOT -->|"pilot terminal proof"| RAMP -->|"連續量測達標"| STEADY
         RAMP -.->|"session churn／owner takeover／main drift／security bypass"| INCIDENT
         STEADY -.->|"任一安全邊界破壞"| INCIDENT
     end
@@ -147,9 +149,9 @@ flowchart TB
     classDef danger fill:#fde9e7,stroke:#a3453d,color:#4c1713;
     classDef observe fill:#f0eaff,stroke:#7354a6,color:#28173d;
     classDef done fill:#e9f7f4,stroke:#367b6d,color:#153a33;
-    class U,BS,RAW,TRIAGE,DECIDE,ISSUE,DIRECT,CAND source;
+    class U,BS,RAW,CLASSIFIED,TRIAGE,DECIDE,ISSUE,DIRECT,CAND source;
     class ADMIT,IS,WK,CLAIM,PREFLIGHT,IMPLEMENT,COMMIT,HB,TRANSPORT,RESUME,PUSH,READBACK,LOCALCLEAN work;
     class PR,READY,REQUIRED,FULL,BODYFIX,FIXDECIDE,ABANDONPR,GREEN,ADVISORY,CMGATE,BASE,REANCHOR,QUEUE,MERGE,SYNC,RECEIPT,PI_CLEAN,RELEASE,PROD github;
     class BLOCK,TERMINAL,HOLD,FOLLOWUP,INCIDENT,NOWAKE danger;
-    class METRICS,PLAN,WATCH,WAKE,WAKESESSION,SUP,QUAL,RAMP,STEADY observe;
+    class METRICS,PLAN,WATCH,WAKE,WAKESESSION,SUP,QUAL,PILOT,RAMP,STEADY observe;
     class DONE done;
