@@ -603,6 +603,20 @@ def test_gate_plan_routes_product_surfaces_to_existing_entry_points() -> None:
     ]
 
 
+def test_gate_plan_uses_a_leased_simulator_for_ios_checks() -> None:
+    plan = coordinator._plan_checks(["ios/BooksAndVocab/App.swift"])
+
+    ios_check = next(item for item in plan if item["name"] == "ios-tests")
+
+    assert ios_check["cmd"] == [
+        "./ops/ios_ops.sh",
+        "test",
+        "--unit",
+        "--lease",
+        "--json",
+    ]
+
+
 def _ios_failure_output(*, file: Path | None) -> str:
     diagnostic = {
         "severity": "error",

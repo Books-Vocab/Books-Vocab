@@ -600,10 +600,17 @@ def _plan_checks(
                 "name": IOS_TEST_CHECK,
                 "kind": "shell",
                 "cwd": ".",
-                # Keep the full unit suite.  --json exposes the existing
+                # Keep the full unit suite, but require an isolated pool
+                # simulator for every agent gate.  --json exposes the existing
                 # xcresult/log diagnostics so a failure can be downgraded only
                 # after its source is proven outside this changed Scope.
-                "cmd": ["./ops/ios_ops.sh", "test", "--unit", "--json"],
+                "cmd": [
+                    "./ops/ios_ops.sh",
+                    "test",
+                    "--unit",
+                    "--lease",
+                    "--json",
+                ],
                 "level": "block",
                 "scope_files": sorted(
                     set(scope_files if scope_files is not None else files)
