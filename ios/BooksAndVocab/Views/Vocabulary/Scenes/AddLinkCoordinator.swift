@@ -43,7 +43,7 @@ final class AddLinkCoordinator {
         return Array(allEntries.lazy.filter { entry in
             entry.id != sourceEntry.id
                 && entry.notebookId == sourceEntry.notebookId
-                && entry.kgCardId != nil
+                && entry.kgCardId?.isEmpty == false
                 && entry.syncAction != .delete
                 && !entry.isArchived
                 && !(entry.kgCardId.map(linkedIDs.contains) ?? false)
