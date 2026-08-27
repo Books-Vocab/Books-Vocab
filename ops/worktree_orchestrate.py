@@ -47,6 +47,9 @@ GATE_SCHEMA = "kg.worktree.gate.v2"
 HANDOFF_SCHEMA = "kg.worktree.handoff.v1"
 IOS_DIAGNOSTICS_SCHEMA = "kg.ios.diagnostics.v1"
 IOS_TEST_CHECK = "ios-tests"
+IOS_RECORDED_ISSUE_RE = re.compile(
+    r"recorded an issue at (?P<file>[^:\s]+):(?P<line>\d+):(?P<column>\d+):"
+)
 BASE_DEFAULT = "main"
 BRANCH_TYPES = ("debug", "feat", "research")
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -704,11 +707,49 @@ def _relative_worktree_path(value: Any, worktree: Path) -> str | None:
         return None
 
 
+def _raw_ios_failure_files(output: str | None, worktree: Path) -> list[str] | None:
+    if not isinstance(output, str):
+        return None
+    references = [
+        match.group("file") for match in IOS_RECORDED_ISSUE_RE.finditer(output)
+    ]
+    if not references:
+        return None
+
+    root = worktree.resolve()
+    resolved: set[str] = set()
+    for reference in references:
+        if reference.startswith(("/", "./")) or "/" in reference:
+            normalized = _relative_worktree_path(reference, root)
+        else:
+            matches: list[str] = []
+            try:
+                candidates = root.rglob("*")
+                for candidate in candidates:
+                    if candidate.name != reference or not candidate.is_file():
+                        continue
+                    try:
+                        relative = candidate.resolve().relative_to(root)
+                    except (OSError, ValueError):
+                        continue
+                    if ".git" in relative.parts:
+                        continue
+                    matches.append(relative.as_posix())
+            except OSError:
+                return None
+            normalized = matches[0] if len(matches) == 1 else None
+        if normalized is None:
+            return None
+        resolved.add(normalized)
+    return sorted(resolved)
+
+
 def _classify_ios_failure(
     diagnostics: dict[str, Any] | None,
     *,
     scope_files: Any,
     worktree: Path,
+    output: str | None = None,
 ) -> dict[str, Any]:
     blocked = {
         "verdict": "block",
@@ -764,11 +805,17 @@ def _classify_ios_failure(
         return blocked
 
     failure_files: set[str] = set()
+    raw_failure_files: list[str] | None = None
     for item in failures:
         normalized = _relative_worktree_path(item.get("file"), worktree)
         if normalized is None:
-            blocked["reason"] = "failure-location-unknown"
-            return blocked
+            if raw_failure_files is None:
+                raw_failure_files = _raw_ios_failure_files(output, worktree)
+            if raw_failure_files is None:
+                blocked["reason"] = "failure-location-unknown"
+                return blocked
+            failure_files.update(raw_failure_files)
+            continue
         failure_files.add(normalized)
 
     result = {
@@ -776,6 +823,9 @@ def _classify_ios_failure(
         "reason": "all-failures-outside-changed-scope",
         "failure_files": sorted(failure_files),
     }
+    if raw_failure_files is not None:
+        result["raw_failure_files"] = raw_failure_files
+        result["location_source"] = "recorded-issue-output"
     if failure_files.intersection(scope_paths):
         result["verdict"] = "block"
         result["reason"] = "failure-in-changed-scope"
@@ -836,6 +886,7 @@ def _run_check(check: dict[str, Any], worktree: Path) -> dict[str, Any]:
             diagnostics,
             scope_files=check.get("scope_files"),
             worktree=worktree,
+            output=output,
         )
         if failure_scope["verdict"] != "advisory":
             level = "block"
