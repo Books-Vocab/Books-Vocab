@@ -372,7 +372,7 @@ discover_failure_artifacts() {
 }
 
 write_fallback_verdict() {
-  local status="$1" result="$2" exit_value="$3" reason="$4" contract_status="$5"
+  local status="$1" result="$2" exit_value="$3" reason="$4" contract_status="$5" recovery_hint="${6:-}"
   local review_root_exists=false review_html_exists=false contact_exists=false quick4_exists=false manifest_exists=false video_exists=false xcresult_exists=false
   if [[ -s "$runner_log" ]]; then
     cp "$runner_log" "$stable_log"
@@ -393,6 +393,7 @@ write_fallback_verdict() {
     --arg exitValue "$exit_value" \
     --arg reason "$reason" \
     --arg contractStatus "$contract_status" \
+    --arg recoveryHint "$recovery_hint" \
     --arg bundle "$bundle_root" \
     --arg runId "$run_id" \
     --arg commandLog "$command_log" \
@@ -455,6 +456,7 @@ write_fallback_verdict() {
         retention:$retention,
         expiresAt:(if $expiresAt == "" then null else $expiresAt end),
         contractStatus:$contractStatus,
+        recoveryHint:(if $recoveryHint == "" then null else $recoveryHint end),
         toolRoot:$toolRoot, validator:$validator, toolResolution:$toolResolution,
         normalizedVerdict:($bundle + "/verdict.json")
       }
@@ -541,9 +543,10 @@ if [[ ! -s "$upstream_stdout" ]] || ! jq -e 'type == "object"' "$upstream_stdout
     exit 70
   fi
   if [[ -z "$device" ]] && grep -qF -- '[ios_test] error: --lease requested but simulator pool is exhausted' "$runner_log" 2>/dev/null; then
-    write_fallback_verdict inconclusive inconclusive 75 'simulator pool exhausted' lease-exhausted
-    echo "[ui-evidence] inconclusive: simulator lease exhausted; bundle=$bundle_root" >&2
-    exit 75
+    lease_recovery_hint='retry with an explicit --device <UDID> after confirming a dedicated Simulator is available'
+    write_fallback_verdict inconclusive inconclusive 65 "simulator pool exhausted; $lease_recovery_hint" lease-exhausted "$lease_recovery_hint"
+    echo "[ui-evidence] inconclusive: simulator lease exhausted; $lease_recovery_hint; bundle=$bundle_root" >&2
+    exit 65
   fi
   write_fallback_verdict fail fail "$run_rc" 'ios_ops did not emit a JSON object' invalid-upstream
   exit "$run_rc"

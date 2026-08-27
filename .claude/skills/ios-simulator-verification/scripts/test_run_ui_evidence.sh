@@ -141,16 +141,21 @@ set +e
   >"$tmp_root/lease-exhausted.out" 2>&1)
 lease_exhausted_rc=$?
 set -e
-[[ "$lease_exhausted_rc" -eq 75 ]]
+[[ "$lease_exhausted_rc" -eq 65 ]]
 lease_exhausted_bundle="$(jq -er '.helper.bundleRoot' "$lease_exhausted_json")"
 grep -Fq -- '--lease requested but simulator pool is exhausted' \
   "$lease_exhausted_bundle/artifacts/delegate.stderr.log"
+grep -Fq -- '--device <UDID>' "$tmp_root/lease-exhausted.out"
+test -f "$lease_exhausted_bundle/run-manifest.json"
+test -f "$lease_exhausted_bundle/command.txt"
 jq -e '
   .status == "inconclusive"
   and .result == "inconclusive"
-  and .exit == "75"
+  and .exit == "65"
   and (.reason | contains("pool exhausted"))
+  and (.reason | contains("--device <UDID>"))
   and .helper.contractStatus == "lease-exhausted"
+  and (.helper.recoveryHint | contains("--device <UDID>"))
 ' "$lease_exhausted_json" >/dev/null
 
 set +e

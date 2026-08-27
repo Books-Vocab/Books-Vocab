@@ -46,7 +46,7 @@ The production marks are reader.loading, reader.error, reader.retry, reader.load
   --json-out /tmp/<flow>-ui-evidence.json
 ```
 
-它委派下方的 `ios_ops.sh test --ui --json` producer，但額外把 source／dataset／device identity、真實執行數、verdict 與 artifact existence 做 fail-closed 驗證，並把 normalized verdict、run manifest、runner log、xcresult 與可取得的視覺產物保存至系統暫存的 ephemeral run bundle。runner 失敗或 JSON／artifact 不完整時也保留短期診斷 bundle，但結果只能是 `fail`／`inconclusive`；若 `--lease` 因 pool 沒有可用 slot 而在 producer 建立 verdict 前失敗，helper 會標成 `status=result=inconclusive`、`exit=75`、`helper.contractStatus=lease-exhausted`，不當成測試紅。
+它委派下方的 `ios_ops.sh test --ui --json` producer，但額外把 source／dataset／device identity、真實執行數、verdict 與 artifact existence 做 fail-closed 驗證，並把 normalized verdict、run manifest、runner log、xcresult 與可取得的視覺產物保存至系統暫存的 ephemeral run bundle。runner 失敗或 JSON／artifact 不完整時也保留短期診斷 bundle，但結果只能是 `fail`／`inconclusive`；若 `--lease` 因 pool 沒有可用 slot 而在 producer 建立 verdict 前失敗，helper 會標成 `status=result=inconclusive`、typed `exit=65`、`helper.contractStatus=lease-exhausted`，並給出 `--device <UDID>` recovery hint，不當成測試紅。
 
 新 helper bundle 的 SoT 是其自身 run manifest + normalized verdict；二進位視覺檔案在 TTL 後回收，永久 matrix 只能保存小型 provenance receipt。需要交付二進位證據時，才明確提升到 `build/ios-report/retained/`。
 
@@ -59,7 +59,7 @@ canonical_helper=/path/to/tool-repo/.claude/skills/ios-simulator-verification/sc
 
 helper 會將 source root 與 tool root 分開：dataset、HEAD/dirty、runner 與 bundle 來自 source；`ops/uitest_evidence_contract.py` 只從 helper 自身 skill repo 的 canonical location 解析。tool 不存在或 `--help` contract preflight 失敗時，在任何 Xcode 動作前回 `70/inconclusive`，具名記錄 `tool-missing`／`tool-invalid`；不把 validator 複製到 feature branch，也不降低 artifact contract。成功的 normalized verdict 保留 `helper.toolRoot`、`helper.validator` 與 `helper.toolResolution`，讓跨 worktree 的工具來源可稽核。
 
-`--lease` 若回傳 `[ios_test] error: --lease requested but simulator pool is exhausted` 且沒有 upstream verdict JSON，這是 host resource unavailable，不是產品測試失敗；helper 保留 delegate stderr，輸出 `reason=simulator pool exhausted` 與 `helper.contractStatus=lease-exhausted`，以 exit `75` 結束。只有無 explicit `--device` 的 lease run 才套用這個分類；其他 lease refusal 維持原始診斷。
+`--lease` 若回傳 `[ios_test] error: --lease requested but simulator pool is exhausted` 且沒有 upstream verdict JSON，這是 host resource unavailable，不是產品測試失敗；helper 保留 delegate stderr/run bundle，輸出 `status=result=inconclusive`、typed `exit=65`、`reason`／`helper.recoveryHint` 中的 `--device <UDID>` recovery hint 與 `helper.contractStatus=lease-exhausted`，並以 process exit `65` 結束。只有無 explicit `--device` 的 lease run 才套用這個分類；其他 lease refusal 維持原始診斷。
 
 `artifacts/ui-evidence-contract.json` 必須把每張 step PNG、contact/quick4 sheet、video 與 `UIreview.html` 綁定目前 bytes：除 `stepSha256` 外，還要有 `videoSha256` 與 `reviewHtmlSha256`；manifest 的 `relPath` 解析若逃出本次 run 的 screenshot root（含 symlink escape）即 fail-closed。
 

@@ -52,7 +52,7 @@ verified_against: afe016c4ea2fcbd7306f9c4f40b4556e77865100
 ## Operational entrypoints
 
 - Build／test：`ops/ios_ops.sh`、`ops/ios_build.sh`、`ops/ios_test.sh`。
-- UI flow evidence：`.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh`、`.claude/skills/ios-simulator-verification/references/evidence-contract.md`、`docs/sop/ui_flow_evidence.md`；lease pool 無 slot 時以 `status=result=inconclusive`、`exit=75`、`helper.contractStatus=lease-exhausted` 回報，不能當成測試失敗。
+- UI flow evidence：`.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh`、`.claude/skills/ios-simulator-verification/references/evidence-contract.md`、`docs/sop/ui_flow_evidence.md`；lease pool 無 slot 時以 `status=result=inconclusive`、typed `exit=65`、`helper.contractStatus=lease-exhausted` 與 `--device <UDID>` recovery hint 回報，不能當成測試失敗。
 - P9 Review Calendar evidence：`p9_review_calendar_evidence.py` 的 `validate` CLI（`uv run --python 3.13 python ops/p9_review_calendar_evidence.py validate <manifest> --workspace-root <run-root> --outer-verdict <verdict.json>`）驗證 `kg.p9.review_calendar.review_manifest.v2` sidecar、重新 hash 截圖與 app materialized fixture，並 exact-match outer verdict 的 `p9ReviewCalendarEvidence` artifact。UI evidence producer 傳遞 `KG_UI_TEST_APP_ARGS_JSON`、`KG_UI_TEST_SOURCE_COMMIT`、`KG_UI_TEST_DATASET_ID`、`KG_UI_TEST_DATASET_SHA256`、`KG_UI_TEST_DEVICE_UDID`、`KG_UI_TEST_SCREENSHOT_DIR`；app proof path 由 `KG_P9_INSTALLED_FIXTURE_PROOF_RELATIVE_PATH` 控制（相對 Documents，預設 `Evidence/<datasetID>.json`）。runner 在 validation 前唯讀取回 app 寫入的 proof。
 - iOS Sentry／agent diagnostics：`ops/ios_ops.sh sentry`、`ops/sentry_tool.py`、`ops/sentry_api.py`、`ops/sentry_contract.py`。
 - UI quality：`ops/ui_quality_plane.py`、`ops/ui_quality_gate.py`、`ops/ios_ops.sh quality`。
