@@ -172,7 +172,7 @@ def perform_resume(
     initial_lifecycle = lifecycle_proof.verify_resume_lifecycle(
         github,
         branch=request.branch,
-        expected_base_sha=preflight.base_sha,
+        expected_base_sha=preflight.published_base_sha,
         expected_remote_head=request.expected_remote_head,
         require_failed=(
             request.mode == "required-failure" and request.previous_handback is None
@@ -226,7 +226,7 @@ def perform_resume(
         final_lifecycle = lifecycle_proof.verify_resume_lifecycle(
             github,
             branch=request.branch,
-            expected_base_sha=preflight.base_sha,
+            expected_base_sha=preflight.published_base_sha,
             expected_remote_head=request.expected_remote_head,
             require_failed=(
                 request.mode == "required-failure" and request.previous_handback is None

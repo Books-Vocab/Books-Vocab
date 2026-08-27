@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -223,6 +224,83 @@ def test_perform_resume_allows_same_head_maintenance_for_open_pr(
 
     assert payload["status"] == "ready-for-owner-fix"
     assert payload["mode"] == "maintenance"
+    assert payload["head"] == HEAD
+
+
+def test_perform_resume_uses_published_pr_base_for_lifecycle_readback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    published_base = "5" * 40
+    github = FakeGitHub(_check(CheckStatus.FAILURE))
+    github.pr = replace(github.pr, base_sha=published_base)
+    preflight = RegistryPreflight(
+        original={
+            "base": BASE,
+            "base_sha": BASE,
+            "path": str(tmp_path / "released"),
+        },
+        fingerprint="fingerprint",
+        base_sha=BASE,
+        published_base_sha=published_base,
+        declared=(("docs/runbook/system.md", "modify"),),
+    )
+
+    monkeypatch.setattr(
+        resume_transaction.git_ops, "validate_repository", lambda _: None
+    )
+    monkeypatch.setattr(
+        resume_transaction.git_ops, "_git", lambda *_args, **_kwargs: (0, "")
+    )
+    monkeypatch.setattr(
+        resume_transaction.registry_ops,
+        "preflight_resume",
+        lambda **_: preflight,
+    )
+    monkeypatch.setattr(
+        resume_transaction.lifecycle_proof,
+        "build_github",
+        lambda *_args, **_kwargs: github,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops,
+        "validate_released_assets",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops,
+        "ensure_exact_source",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops,
+        "provision_exact",
+        lambda *_args, **_kwargs: HEAD,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops,
+        "verify_remote_head",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        resume_transaction.registry_ops,
+        "register_resumed",
+        lambda **_: {"claim_generation": 1},
+    )
+
+    payload = resume_transaction.perform_resume(
+        repo=tmp_path,
+        state_path=tmp_path / "registry.json",
+        lane_id="DIRECT-TEST",
+        branch=github.pr.branch,
+        owner_thread_id="owner-thread",
+        claim_generation=0,
+        expected_remote_head=HEAD,
+        target=tmp_path / "target",
+        previous_handback=HEAD,
+        mode="maintenance",
+    )
+
+    assert payload["status"] == "ready-for-owner-fix"
     assert payload["head"] == HEAD
 
 
