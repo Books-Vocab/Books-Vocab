@@ -48,8 +48,15 @@ def cmd_user_quota(args: argparse.Namespace) -> None:
     db_path = data_dir() / "token_usage.db"
     if not db_path.exists():
         if args.json:
-            emit_json({"user_id": uid, "used_usd": 0.0, "pro_limit_usd": pro_limit,
-                       "free_limit_usd": free_limit, "hourly": []})
+            emit_json(
+                {
+                    "user_id": uid,
+                    "used_usd": 0.0,
+                    "pro_limit_usd": pro_limit,
+                    "free_limit_usd": free_limit,
+                    "hourly": [],
+                }
+            )
             return
         print(f"token_usage.db not found at {db_path}")
         print(f"User: {uid}  |  Used: $0.000000  |  Pro limit: ${pro_limit:.2f}  |  Free limit: ${free_limit:.2f}")
@@ -71,13 +78,15 @@ def cmd_user_quota(args: argparse.Namespace) -> None:
         hourly[hour] = hourly.get(hour, 0.0) + token_cost_usd(call_type, inp, out, provider=provider)
 
     if args.json:
-        emit_json({
-            "user_id": uid,
-            "used_usd": round(total, 6),
-            "pro_limit_usd": pro_limit,
-            "free_limit_usd": free_limit,
-            "hourly": [{"hour": h, "cost_usd": round(v, 6)} for h, v in sorted(hourly.items())],
-        })
+        emit_json(
+            {
+                "user_id": uid,
+                "used_usd": round(total, 6),
+                "pro_limit_usd": pro_limit,
+                "free_limit_usd": free_limit,
+                "hourly": [{"hour": h, "cost_usd": round(v, 6)} for h, v in sorted(hourly.items())],
+            }
+        )
         return
 
     print(f"User: {uid}")
@@ -108,13 +117,15 @@ def cmd_user_stats(args: argparse.Namespace) -> None:
     conn.close()
 
     if args.json:
-        emit_json({
-            "user_id": uid,
-            "total": total,
-            "active": active,
-            "deleted": deleted,
-            "recent": [{"id": r[0], "content": r[1], "updated_at": r[2]} for r in recent],
-        })
+        emit_json(
+            {
+                "user_id": uid,
+                "total": total,
+                "active": active,
+                "deleted": deleted,
+                "recent": [{"id": r[0], "content": r[1], "updated_at": r[2]} for r in recent],
+            }
+        )
         return
 
     print(f"User: {uid}")
@@ -144,8 +155,11 @@ def cmd_user_config(args: argparse.Namespace) -> None:
         return
 
     tr, rc, rm, vu, al = (
-        flat["translation"], flat["review_clock"], flat["review_mode"],
-        flat["vocab_ui"], flat["auto_link"],
+        flat["translation"],
+        flat["review_clock"],
+        flat["review_mode"],
+        flat["vocab_ui"],
+        flat["auto_link"],
     )
     print(f"User: {uid}")
     print_table(
@@ -277,7 +291,9 @@ def cmd_quota_overview(args: argparse.Namespace) -> None:
     if not user_costs:
         print("(no usage in last 24h)")
         return
-    print_table(["User", "Cost (USD)", "Calls"], [[u["user_id"], f"${u['cost_usd']:.6f}", str(u["calls"])] for u in ranked])
+    print_table(
+        ["User", "Cost (USD)", "Calls"], [[u["user_id"], f"${u['cost_usd']:.6f}", str(u["calls"])] for u in ranked]
+    )
 
 
 def cmd_active_users(args: argparse.Namespace) -> None:
@@ -300,7 +316,13 @@ def cmd_active_users(args: argparse.Namespace) -> None:
     conn.close()
 
     if args.json:
-        emit_json({"hours": hours, "count": len(rows), "users": [{"user_id": r[0], "calls": r[1], "last_active": r[2]} for r in rows]})
+        emit_json(
+            {
+                "hours": hours,
+                "count": len(rows),
+                "users": [{"user_id": r[0], "calls": r[1], "last_active": r[2]} for r in rows],
+            }
+        )
         return
 
     if not rows:
@@ -320,15 +342,21 @@ def cmd_card_find(args: argparse.Namespace) -> None:
     conn = connect_ro(db_path)
     try:
         rows = conn.execute(
-            "SELECT id, content, is_deleted FROM card "
-            "WHERE content LIKE ? ESCAPE '\\' COLLATE NOCASE ORDER BY rowid",
+            "SELECT id, content, is_deleted FROM card WHERE content LIKE ? ESCAPE '\\' COLLATE NOCASE ORDER BY rowid",
             (f"%{escaped}%",),
         ).fetchall()
     finally:
         conn.close()
 
     if args.json:
-        emit_json({"user_id": uid, "substring": args.substring, "count": len(rows), "matches": [{"id": r[0], "content": r[1], "is_deleted": r[2]} for r in rows]})
+        emit_json(
+            {
+                "user_id": uid,
+                "substring": args.substring,
+                "count": len(rows),
+                "matches": [{"id": r[0], "content": r[1], "is_deleted": r[2]} for r in rows],
+            }
+        )
         return
     print_table(["id", "content (repr)", "is_deleted"], [[r[0], repr(r[1]), r[2]] for r in rows])
 
@@ -352,7 +380,14 @@ def cmd_card_get(args: argparse.Namespace) -> None:
         conn.close()
 
     if args.json:
-        emit_json({"user_id": uid, "key": args.key, "count": len(rows), "cards": [dict(zip(cols, row, strict=True)) for row in rows]})
+        emit_json(
+            {
+                "user_id": uid,
+                "key": args.key,
+                "count": len(rows),
+                "cards": [dict(zip(cols, row, strict=True)) for row in rows],
+            }
+        )
         return
     if not rows:
         print(f"(no card matching {args.key!r})")
@@ -382,8 +417,7 @@ def cmd_db_query(args: argparse.Namespace) -> None:
     try:
         if schema_mode:
             tables = conn.execute(
-                "SELECT name, sql FROM sqlite_master "
-                "WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+                "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
             ).fetchall()
             if json_mode:
                 emit_json({"tables": [{"name": t[0], "sql": t[1]} for t in tables]})
@@ -452,12 +486,20 @@ def cmd_sync_trace(args: argparse.Namespace) -> None:
                 event_type = "card_created" if created_today else "card_updated"
                 if r[2]:
                     event_type = "card_deleted"
-                events.append({
-                    "ts": r[5] or r[4] or "",
-                    "type": event_type,
-                    "source": "cards",
-                    "detail": {"id": r[0], "content": r[1], "notebook_id": r[3], "mode": r[6], "review_count": r[7]},
-                })
+                events.append(
+                    {
+                        "ts": r[5] or r[4] or "",
+                        "type": event_type,
+                        "source": "cards",
+                        "detail": {
+                            "id": r[0],
+                            "content": r[1],
+                            "notebook_id": r[3],
+                            "mode": r[6],
+                            "review_count": r[7],
+                        },
+                    }
+                )
         finally:
             conn.close()
 
@@ -475,12 +517,14 @@ def cmd_sync_trace(args: argparse.Namespace) -> None:
                 (uid, day),
             ).fetchall()
             for r in rows:
-                events.append({
-                    "ts": r[3] or "",
-                    "type": f"api_{r[0]}",
-                    "source": "token_usage",
-                    "detail": {"input_tokens": r[1], "output_tokens": r[2], "provider": r[4], "model": r[5]},
-                })
+                events.append(
+                    {
+                        "ts": r[3] or "",
+                        "type": f"api_{r[0]}",
+                        "source": "token_usage",
+                        "detail": {"input_tokens": r[1], "output_tokens": r[2], "provider": r[4], "model": r[5]},
+                    }
+                )
         finally:
             conn.close()
 
@@ -495,12 +539,14 @@ def cmd_sync_trace(args: argparse.Namespace) -> None:
                 (uid, day),
             ).fetchall()
             for r in rows:
-                events.append({
-                    "ts": r[5] or "",
-                    "type": "judge_accept" if r[3] else "judge_reject",
-                    "source": "judge_log",
-                    "detail": {"from_id": r[0], "to_id": r[1], "verdict": r[2], "reason": r[4]},
-                })
+                events.append(
+                    {
+                        "ts": r[5] or "",
+                        "type": "judge_accept" if r[3] else "judge_reject",
+                        "source": "judge_log",
+                        "detail": {"from_id": r[0], "to_id": r[1], "verdict": r[2], "reason": r[4]},
+                    }
+                )
         finally:
             conn.close()
 
@@ -515,12 +561,14 @@ def cmd_sync_trace(args: argparse.Namespace) -> None:
                 (uid, day),
             ).fetchall()
             for r in rows:
-                events.append({
-                    "ts": r[4] or "",
-                    "type": f"translate_{r[0]}",
-                    "source": "translate_log",
-                    "detail": {"word": r[1], "context": (r[2] or "")[:50] if r[2] else None, "latency_ms": r[3]},
-                })
+                events.append(
+                    {
+                        "ts": r[4] or "",
+                        "type": f"translate_{r[0]}",
+                        "source": "translate_log",
+                        "detail": {"word": r[1], "context": (r[2] or "")[:50] if r[2] else None, "latency_ms": r[3]},
+                    }
+                )
         finally:
             conn.close()
 
