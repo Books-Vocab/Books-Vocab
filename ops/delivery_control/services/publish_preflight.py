@@ -82,12 +82,19 @@ class PublishPreflightService:
         observed_paths: tuple[str, ...],
         remote_sha: str | None,
     ) -> None:
-        """Allow only monotonic Scope growth across an owner reanchor.
+        """Allow exact Scope evolution across an owner reanchor.
 
         A reanchored claim can legitimately add a file before publishing the
         same durable PR.  The old PR must still be self-describing and its
         changed paths must exactly match its previous typed receipt; otherwise
         a same-branch PR could be used to smuggle arbitrary Scope drift.
+
+        A PR can also have been created before a supported ``scope-set``
+        narrowed a handback to its actual changed paths.  That partial
+        publication is recoverable only when the new receipt is a strictly
+        narrower subset and GitHub's observed paths already equal that new
+        receipt.  This keeps the recovery bounded to the exact same owner,
+        branch, base, head, and generation transition.
         """
 
         try:
@@ -117,12 +124,16 @@ class PublishPreflightService:
 
         previous_paths = set(previous.scope.paths)
         observed = set(observed_paths)
-        if observed != previous_paths:
+        current_paths = set(receipt.scope.paths)
+        if observed != previous_paths and not (
+            partial_publication_matches
+            and current_paths < previous_paths
+            and observed == current_paths
+        ):
             raise PolicyViolation(
                 "existing PR paths differ from its typed handback Scope"
             )
 
-        current_paths = set(receipt.scope.paths)
         if receipt.claim_generation < previous.claim_generation:
             raise PolicyViolation(
                 "handback claim generation regressed from existing PR"
@@ -132,6 +143,8 @@ class PublishPreflightService:
                 raise PolicyViolation(
                     "existing PR Scope may only grow after an owner reanchor"
                 )
+            return
+        if current_paths < previous_paths and partial_publication_matches:
             return
         if not previous_paths.issubset(current_paths):
             raise PolicyViolation(
