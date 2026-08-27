@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 
 from ..domain.errors import CompareAndSwapConflict
 from ..domain.models import CheckStatus
 from ..domain.observations import CheckSnapshot, PullRequestSnapshot
-from .errors import AdapterPayloadError
+from .errors import AdapterCommandError, AdapterPayloadError
 from .github_client import GitHubCliClient
 from .github_required_batch import batch_required_snapshots
 from .timestamps import parse_optional_timestamp
+
+_NO_REQUIRED_CHECKS_RE = re.compile(
+    r"no (?:required )?checks reported on the '([^'\n]+)' branch"
+)
 
 
 def _status_from_states(states: set[str]) -> CheckStatus:
@@ -28,6 +34,21 @@ def _status_from_states(states: set[str]) -> CheckStatus:
     if states <= {"SUCCESS", "SKIPPED", "NEUTRAL"}:
         return CheckStatus.SUCCESS
     return CheckStatus.PENDING
+
+
+def _context_recency_key(
+    *,
+    started_at: datetime | None,
+    completed_at: datetime | None,
+    index: int,
+) -> tuple[bool, datetime, datetime, int]:
+    earliest = datetime.min.replace(tzinfo=UTC)
+    return (
+        started_at is not None or completed_at is not None,
+        started_at or completed_at or earliest,
+        completed_at or earliest,
+        index,
+    )
 
 
 class GitHubChecks:
@@ -49,24 +70,49 @@ class GitHubChecks:
     def _required_snapshot_live(
         self, number: int, *, before: PullRequestSnapshot
     ) -> CheckSnapshot:
-        payload = self.client.load_json(
-            (
-                "gh",
-                "pr",
-                "checks",
-                str(number),
-                "--required",
-                "--json",
-                "name,state,startedAt,completedAt",
-            ),
-            allow_nonzero=True,
+        argv = (
+            "gh",
+            "pr",
+            "checks",
+            str(number),
+            "--required",
+            "--json",
+            "name,state,startedAt,completedAt",
         )
+        # ``gh pr checks`` reports an empty result with exit=1 and places the
+        # human-readable contract message on stderr.  Observe the raw command
+        # result here so the general client ``run`` fail-closed behavior stays
+        # unchanged for every other caller.
+        result = self.client.runner.run(argv, cwd=self.client.repo)
+        output = result.stdout.strip()
+        empty_result = _NO_REQUIRED_CHECKS_RE.fullmatch(output)
+        stderr_empty_result = _NO_REQUIRED_CHECKS_RE.fullmatch(result.stderr.strip())
+        if result.exit_code == 1 and not output and stderr_empty_result is not None:
+            if stderr_empty_result.group(1) != before.branch:
+                raise AdapterPayloadError(
+                    "GitHub required checks zero-result branch does not match "
+                    "the exact PR"
+                )
+            payload: object = []
+        elif result.exit_code != 0 and not output:
+            raise AdapterCommandError(result)
+        elif empty_result is not None:
+            if empty_result.group(1) != before.branch:
+                raise AdapterPayloadError(
+                    "GitHub required checks zero-result branch does not match "
+                    "the exact PR"
+                )
+            payload: object = []
+        else:
+            try:
+                payload = json.loads(output)
+            except json.JSONDecodeError as error:
+                raise AdapterPayloadError(
+                    f"invalid JSON from {' '.join(argv)}"
+                ) from error
         if not isinstance(payload, list):
             raise AdapterPayloadError("GitHub required checks must be a JSON list")
-        names: list[str] = []
-        states: set[str] = set()
-        starts: list[datetime | None] = []
-        completions: list[datetime | None] = []
+        observations: dict[str, tuple[str, datetime | None, datetime | None, int]] = {}
         for index, item in enumerate(payload):
             if not isinstance(item, Mapping):
                 raise AdapterPayloadError(f"required check[{index}] is not an object")
@@ -74,30 +120,40 @@ class GitHubChecks:
             state = item.get("state")
             if type(name) is not str or type(state) is not str:
                 raise AdapterPayloadError(f"required check[{index}] is malformed")
-            names.append(name)
-            states.add(state.upper())
-            starts.append(
-                parse_optional_timestamp(
-                    item.get("startedAt"),
-                    field=f"required check[{index}] startedAt",
-                )
+            started_at = parse_optional_timestamp(
+                item.get("startedAt"),
+                field=f"required check[{index}] startedAt",
             )
-            completions.append(
-                parse_optional_timestamp(
-                    item.get("completedAt"),
-                    field=f"required check[{index}] completedAt",
-                )
+            completed_at = parse_optional_timestamp(
+                item.get("completedAt"),
+                field=f"required check[{index}] completedAt",
             )
+            candidate = (state, started_at, completed_at, index)
+            previous = observations.get(name)
+            if previous is None or _context_recency_key(
+                started_at=started_at,
+                completed_at=completed_at,
+                index=index,
+            ) >= _context_recency_key(
+                started_at=previous[1],
+                completed_at=previous[2],
+                index=previous[3],
+            ):
+                observations[name] = candidate
         after = self.get_pull_request(number)
         if before.head_sha != after.head_sha:
             raise CompareAndSwapConflict(
                 "PR HEAD changed while reading required checks"
             )
+        starts = [item[1] for item in observations.values()]
+        completions = [item[2] for item in observations.values()]
         return CheckSnapshot(
-            status=_status_from_states(states),
+            status=_status_from_states(
+                {item[0].upper() for item in observations.values()}
+            ),
             head_sha=after.head_sha,
             observed_at=datetime.now(tz=UTC),
-            names=tuple(sorted(names)),
+            names=tuple(sorted(observations)),
             started_at=(
                 min(item for item in starts if item is not None)
                 if starts and all(item is not None for item in starts)
