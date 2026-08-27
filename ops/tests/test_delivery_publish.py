@@ -321,6 +321,40 @@ def test_active_legacy_handback_normalizes_to_durable_receipt() -> None:
     assert receipt_from_active_claim(record, _worktree(receipt)) == receipt
 
 
+def test_active_handback_allows_declared_scope_subset() -> None:
+    receipt = _receipt(scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")))
+    record = _registry(
+        receipt,
+        handback_digest=receipt.content_digest,
+        handback_origin_main_sha=receipt.origin_main_sha,
+    )
+    snapshot = _worktree(
+        receipt,
+        changes=(FileChange(FileOperation.MODIFY, "ops/a.py"),),
+    )
+
+    assert receipt_from_active_claim(record, snapshot) == receipt
+
+
+def test_active_handback_rejects_actual_path_outside_declared_scope() -> None:
+    receipt = _receipt(scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")))
+    record = _registry(
+        receipt,
+        handback_digest=receipt.content_digest,
+        handback_origin_main_sha=receipt.origin_main_sha,
+    )
+    snapshot = _worktree(
+        receipt,
+        changes=(
+            FileChange(FileOperation.MODIFY, "ops/a.py"),
+            FileChange(FileOperation.MODIFY, "ops/other.py"),
+        ),
+    )
+
+    with pytest.raises(PolicyViolation, match="physical worktree differs"):
+        receipt_from_active_claim(record, snapshot)
+
+
 @pytest.mark.parametrize(
     ("canonical_branch", "canonical_clean", "message"),
     (
