@@ -27,6 +27,7 @@ from delivery_control.domain.observations import (
     RegistrySnapshot,
     WorktreeSnapshot,
 )
+from delivery_control.domain.policies import evaluate_publication
 from delivery_control.services.pr_contract import (
     parse_pull_request_body,
     render_pull_request_body,
@@ -353,6 +354,101 @@ def test_active_handback_rejects_actual_path_outside_declared_scope() -> None:
 
     with pytest.raises(PolicyViolation, match="physical worktree differs"):
         receipt_from_active_claim(record, snapshot)
+
+
+def test_publication_allows_nonempty_declared_scope_subset() -> None:
+    receipt = _receipt(scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")))
+
+    decision = evaluate_publication(
+        receipt=receipt,
+        registry=_registry(receipt),
+        worktree=_worktree(
+            receipt,
+            changes=(FileChange(FileOperation.MODIFY, "ops/a.py"),),
+        ),
+        duplicate_pr=False,
+        scope_collision=False,
+    )
+
+    assert decision.allowed
+    assert decision.reasons == ()
+
+
+def test_publication_rejects_empty_physical_changes() -> None:
+    receipt = _receipt()
+
+    decision = evaluate_publication(
+        receipt=receipt,
+        registry=_registry(receipt),
+        worktree=_worktree(receipt, changes=()),
+        duplicate_pr=False,
+        scope_collision=False,
+    )
+
+    assert not decision.allowed
+    assert "physical operations or paths differ from Scope" in decision.reasons
+
+
+def test_publication_rejects_actual_path_outside_declared_scope() -> None:
+    receipt = _receipt(scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")))
+
+    decision = evaluate_publication(
+        receipt=receipt,
+        registry=_registry(receipt),
+        worktree=_worktree(
+            receipt,
+            changes=(
+                FileChange(FileOperation.MODIFY, "ops/a.py"),
+                FileChange(FileOperation.MODIFY, "ops/other.py"),
+            ),
+        ),
+        duplicate_pr=False,
+        scope_collision=False,
+    )
+
+    assert not decision.allowed
+    assert "physical operations or paths differ from Scope" in decision.reasons
+
+
+def test_publication_rejects_operation_drift() -> None:
+    receipt = _receipt()
+
+    decision = evaluate_publication(
+        receipt=receipt,
+        registry=_registry(receipt),
+        worktree=_worktree(
+            receipt,
+            changes=(FileChange(FileOperation.ADD, "ops/a.py"),),
+        ),
+        duplicate_pr=False,
+        scope_collision=False,
+    )
+
+    assert not decision.allowed
+    assert "physical operations or paths differ from Scope" in decision.reasons
+
+
+def test_publication_accepts_exact_declared_scope_changes() -> None:
+    receipt = _receipt(
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+
+    decision = evaluate_publication(
+        receipt=receipt,
+        registry=_registry(receipt),
+        worktree=_worktree(
+            receipt,
+            changes=(
+                FileChange(FileOperation.MODIFY, "ops/a.py"),
+                FileChange(FileOperation.MODIFY, "ops/b.py"),
+            ),
+        ),
+        duplicate_pr=False,
+        scope_collision=False,
+    )
+
+    assert decision.allowed
+    assert decision.reasons == ()
 
 
 @pytest.mark.parametrize(
