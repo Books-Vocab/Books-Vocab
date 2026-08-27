@@ -3,6 +3,7 @@
 Covers ring-buffer eviction, level filtering, tail slicing, swallow-on-emit
 behavior, and the idempotent attach contract used by app startup.
 """
+
 from __future__ import annotations
 
 import logging
@@ -24,6 +25,7 @@ def _record(level: int = logging.INFO, msg: str = "hello") -> logging.LogRecord:
 
 # ---- ring buffer cap ------------------------------------------------------
 
+
 def test_ring_buffer_evicts_oldest_when_full():
     h = _MemoryLogHandler(maxlen=3)
     for i in range(5):
@@ -34,6 +36,7 @@ def test_ring_buffer_evicts_oldest_when_full():
 
 
 # ---- level filter ---------------------------------------------------------
+
 
 def test_get_filters_by_level():
     h = _MemoryLogHandler(maxlen=100)
@@ -48,6 +51,7 @@ def test_get_filters_by_level():
 
 
 # ---- tail slicing ---------------------------------------------------------
+
 
 def test_get_returns_tail_n():
     h = _MemoryLogHandler(maxlen=100)
@@ -83,6 +87,7 @@ def test_get_negative_n_does_not_misalign():
 
 # ---- emit must swallow exceptions ----------------------------------------
 
+
 class _BrokenRecord:
     """Looks vaguely like a LogRecord but explodes on attribute access used
     inside _MemoryLogHandler.emit (getMessage, created, levelname, name)."""
@@ -105,37 +110,39 @@ def test_emit_swallows_exceptions():
 
 # ---- install_memory_log_handler idempotency ------------------------------
 
-def test_install_attaches_handler_once_per_logger():
-    # Snapshot existing handler counts so we can assert deltas without
-    # depending on global logging state set up by other tests.
+
+def test_install_reuses_shared_handler_without_duplicate_attachments():
     targets = [logging.getLogger(n) for n in ("", "uvicorn", "uvicorn.error", "uvicorn.access")]
-    before = [len(t.handlers) for t in targets]
+    before = [list(t.handlers) for t in targets]
 
     h1 = install_memory_log_handler(maxlen=50)
-    after_first = [len(t.handlers) for t in targets]
-    assert all(after_first[i] == before[i] + 1 for i in range(len(targets)))
+    after_first = [list(t.handlers) for t in targets]
+    h2 = install_memory_log_handler(maxlen=50)
+    after_second = [list(t.handlers) for t in targets]
 
-    # Re-running with the SAME handler instance must not double-attach.
-    # (install_memory_log_handler returns a *new* handler each call, so
-    #  we exercise the dedupe code-path by attaching h1 a second time
-    #  via the same helper logic — mirror what's inside the impl.)
-    for t in targets:
-        if not any(h is h1 for h in t.handlers):
-            t.addHandler(h1)
-    after_second = [len(t.handlers) for t in targets]
-    assert after_second == after_first, "handler must not double-attach when present"
-
-    # Cleanup so we don't leak handlers across tests.
-    for t in targets:
-        t.removeHandler(h1)
+    try:
+        assert h2 is h1, "repeated installation must return the shared handler"
+        assert after_second == after_first, "repeated installation must not add handlers"
+        assert all(sum(handler is h1 for handler in t.handlers) == 1 for t in targets)
+    finally:
+        # Restore each logger's pre-test handler list without disturbing
+        # handlers installed by other tests or application setup.
+        for target, original in zip(targets, before, strict=True):
+            for handler in list(target.handlers):
+                if handler not in original:
+                    target.removeHandler(handler)
 
 
 def test_install_returns_working_handler():
+    targets = [logging.getLogger(name) for name in ("", "uvicorn", "uvicorn.error", "uvicorn.access")]
+    before = [list(target.handlers) for target in targets]
     h = install_memory_log_handler(maxlen=4)
     try:
         h.emit(_record(msg="installed"))
         rows = h.get()
         assert any(r["msg"] == "installed" for r in rows)
     finally:
-        for name in ("", "uvicorn", "uvicorn.error", "uvicorn.access"):
-            logging.getLogger(name).removeHandler(h)
+        for target, original in zip(targets, before, strict=True):
+            for handler in list(target.handlers):
+                if handler not in original:
+                    target.removeHandler(handler)

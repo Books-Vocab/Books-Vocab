@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import collections
 import logging
+import threading
 
 
 class _MemoryLogHandler(logging.Handler):
@@ -23,13 +24,16 @@ class _MemoryLogHandler(logging.Handler):
             from datetime import datetime as _dt
 
             from .request_context import request_id_var
-            self._buf.append({
-                "ts": _dt.fromtimestamp(record.created).strftime("%H:%M:%S"),
-                "level": record.levelname,
-                "name": record.name,
-                "msg": record.getMessage(),
-                "request_id": request_id_var.get("-"),
-            })
+
+            self._buf.append(
+                {
+                    "ts": _dt.fromtimestamp(record.created).strftime("%H:%M:%S"),
+                    "level": record.levelname,
+                    "name": record.name,
+                    "msg": record.getMessage(),
+                    "request_id": request_id_var.get("-"),
+                }
+            )
         except Exception:
             pass  # handler must never crash the application
 
@@ -44,16 +48,25 @@ class _MemoryLogHandler(logging.Handler):
         return rows[-n:]
 
 
+_shared_memory_log_handler: _MemoryLogHandler | None = None
+_shared_memory_log_handler_lock = threading.Lock()
+
+
 def install_memory_log_handler(maxlen: int = 1000) -> _MemoryLogHandler:
     """Create the shared memory log handler and attach it to the loggers
     surfaced by the admin dashboard (root + uvicorn family).
 
     Returns the handler so callers can read the ring buffer via ``.get()``.
     """
-    handler = _MemoryLogHandler(maxlen=maxlen)
-    handler.setLevel(logging.DEBUG)
-    for logger_name in ("", "uvicorn", "uvicorn.error", "uvicorn.access"):
-        target = logging.getLogger(logger_name)
-        if not any(h is handler for h in target.handlers):
-            target.addHandler(handler)
+    global _shared_memory_log_handler
+    with _shared_memory_log_handler_lock:
+        if _shared_memory_log_handler is None:
+            _shared_memory_log_handler = _MemoryLogHandler(maxlen=maxlen)
+            _shared_memory_log_handler.setLevel(logging.DEBUG)
+
+        handler = _shared_memory_log_handler
+        for logger_name in ("", "uvicorn", "uvicorn.error", "uvicorn.access"):
+            target = logging.getLogger(logger_name)
+            if not any(h is handler for h in target.handlers):
+                target.addHandler(handler)
     return handler
