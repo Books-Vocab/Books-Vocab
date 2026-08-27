@@ -9,6 +9,12 @@ import Testing
 
 struct TranslationLanguageDefaultTests {
 
+    init() {
+        // The hosted app suspends account-bound preferences before tests run.
+        // These tests exercise the guest-compatible nil-account namespace.
+        TranslationLanguage.activateAccount(nil)
+    }
+
     @Test func test_inferSource_zhHans_returns_zhHans() async throws {
         let result = TranslationLanguage.inferFromPreferredLanguages(
             allowed: TranslationLanguage.targetLanguages,
