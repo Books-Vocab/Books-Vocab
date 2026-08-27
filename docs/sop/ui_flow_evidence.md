@@ -46,7 +46,7 @@ The production marks are reader.loading, reader.error, reader.retry, reader.load
   --json-out /tmp/<flow>-ui-evidence.json
 ```
 
-它委派下方的 `ios_ops.sh test --ui --json` producer，但額外把 source／dataset／device identity、真實執行數、verdict 與 artifact existence 做 fail-closed 驗證，並把 normalized verdict、run manifest、runner log、xcresult 與可取得的視覺產物保存至系統暫存的 ephemeral run bundle。runner 失敗或 JSON／artifact 不完整時也保留短期診斷 bundle，但結果只能是 `fail`／`inconclusive`。
+它委派下方的 `ios_ops.sh test --ui --json` producer，但額外把 source／dataset／device identity、真實執行數、verdict 與 artifact existence 做 fail-closed 驗證，並把 normalized verdict、run manifest、runner log、xcresult 與可取得的視覺產物保存至系統暫存的 ephemeral run bundle。runner 失敗或 JSON／artifact 不完整時也保留短期診斷 bundle，但結果只能是 `fail`／`inconclusive`；若 `--lease` 因 pool 沒有可用 slot 而在 producer 建立 verdict 前失敗，helper 會標成 `status=result=inconclusive`、`exit=75`、`helper.contractStatus=lease-exhausted`，不當成測試紅。
 
 新 helper bundle 的 SoT 是其自身 run manifest + normalized verdict；二進位視覺檔案在 TTL 後回收，永久 matrix 只能保存小型 provenance receipt。需要交付二進位證據時，才明確提升到 `build/ios-report/retained/`。
 
@@ -58,6 +58,8 @@ canonical_helper=/path/to/tool-repo/.claude/skills/ios-simulator-verification/sc
 ```
 
 helper 會將 source root 與 tool root 分開：dataset、HEAD/dirty、runner 與 bundle 來自 source；`ops/uitest_evidence_contract.py` 只從 helper 自身 skill repo 的 canonical location 解析。tool 不存在或 `--help` contract preflight 失敗時，在任何 Xcode 動作前回 `70/inconclusive`，具名記錄 `tool-missing`／`tool-invalid`；不把 validator 複製到 feature branch，也不降低 artifact contract。成功的 normalized verdict 保留 `helper.toolRoot`、`helper.validator` 與 `helper.toolResolution`，讓跨 worktree 的工具來源可稽核。
+
+`--lease` 若回傳 `[ios_test] error: --lease requested but simulator pool is exhausted` 且沒有 upstream verdict JSON，這是 host resource unavailable，不是產品測試失敗；helper 保留 delegate stderr，輸出 `reason=simulator pool exhausted` 與 `helper.contractStatus=lease-exhausted`，以 exit `75` 結束。只有無 explicit `--device` 的 lease run 才套用這個分類；其他 lease refusal 維持原始診斷。
 
 `artifacts/ui-evidence-contract.json` 必須把每張 step PNG、contact/quick4 sheet、video 與 `UIreview.html` 綁定目前 bytes：除 `stepSha256` 外，還要有 `videoSha256` 與 `reviewHtmlSha256`；manifest 的 `relPath` 解析若逃出本次 run 的 screenshot root（含 symlink escape）即 fail-closed。
 
@@ -101,7 +103,7 @@ acceptance 與 visual acceptance。共享 selector 只有在 matrix 保留不同
 - AX transition 的驗證順序固定為「counterexample 初態 → locator／實際內容等 prerequisite → terminal state」；數量或 projection 已更新，不代表子節點已 materialize。Tab／toolbar 只能點 action-owning `Button`，若 identifier 落在 SF Symbol `Image` 或 `Other` content anchor，必須由 `tabBars.buttons` 找父 Button；不得以 Image、`firstMatch` 或座標代替。
 - 長 LazyVStack 必須在 production `ScrollView` 提供穩定 accessibility identifier；facet/query 後以該 scroll container 做 bounded semantic swipe，直到目標 row 真正 materialize。presentation／toolbar 做 exactly-one 前，先 bounded wait production identifier 的 `exists && hittable`，再驗 cardinality、type、geometry；等待不取代 exact assertion。
 - 別 `cmd | tail` 後讀 `$?`；讀 verdict file 或 JSON。
-- helper contract regression：`./.claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh`；它也驗證 non-zero／invalid JSON failure retention、explicit device、destination identity、selector forwarding 與缺 artifact fail-closed。
+- helper contract regression：`./.claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh`；它也驗證 lease-exhausted 的 typed inconclusive 分類、non-zero／invalid JSON failure retention、explicit device、destination identity、selector forwarding 與缺 artifact fail-closed。
 - 人工視覺 pass 必須以 `ops/uitest_review_attest.py` 寫入 run 的 `review_state.json`：`--all-steps` 覆蓋整份 manifest，且每項視覺判準用 repeatable `--visual-check '<check>'` 明名；pass 缺 visual check 或未覆蓋所有 asset 時拒絕。只審部分 step 可用 `--asset-id`，但只能記錄 partial／fail，不能當成完整 visual pass。寫入採 append-only `kg.ui.review-state.v2`，並以 manifest／evidence root hash 綁定目前 bundle。
 - 測試檔放 `ios/BooksAndVocabUITests/`（pbxproj 是 file-system-synchronized group，加檔不碰 pbxproj）。
 

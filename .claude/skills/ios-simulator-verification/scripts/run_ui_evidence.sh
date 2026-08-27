@@ -540,6 +540,11 @@ if [[ ! -s "$upstream_stdout" ]] || ! jq -e 'type == "object"' "$upstream_stdout
     write_fallback_verdict inconclusive inconclusive 70 'ios_ops did not emit a JSON object' invalid-upstream
     exit 70
   fi
+  if [[ -z "$device" ]] && grep -qF -- '[ios_test] error: --lease requested but simulator pool is exhausted' "$runner_log" 2>/dev/null; then
+    write_fallback_verdict inconclusive inconclusive 75 'simulator pool exhausted' lease-exhausted
+    echo "[ui-evidence] inconclusive: simulator lease exhausted; bundle=$bundle_root" >&2
+    exit 75
+  fi
   write_fallback_verdict fail fail "$run_rc" 'ios_ops did not emit a JSON object' invalid-upstream
   exit "$run_rc"
 fi
