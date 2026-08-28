@@ -182,7 +182,9 @@ def test_resume_lifecycle_accepts_only_exact_open_required_code_failure() -> Non
     assert proof.required_status is CheckStatus.FAILURE
 
 
-def test_resume_lifecycle_rejects_combined_context_for_required_code_failure() -> None:
+def test_resume_lifecycle_ignores_advisory_agent_review_for_required_code_failure() -> (
+    None
+):
     candidate = _pr(42, branch="feat/exact-pr")
     github = FakeGitHub(
         all_for_branch=(candidate,),
@@ -194,7 +196,24 @@ def test_resume_lifecycle_rejects_combined_context_for_required_code_failure() -
         },
     )
 
-    with pytest.raises(ReanchorRefused, match="exact required code failure context"):
+    proof = verify_resume_lifecycle(
+        github,
+        branch="feat/exact-pr",
+        expected_base_sha=BASE,
+        expected_remote_head=HEAD,
+    )
+
+    assert proof.required_status is CheckStatus.FAILURE
+
+
+def test_resume_lifecycle_rejects_agent_review_without_required_context() -> None:
+    candidate = _pr(42, branch="feat/exact-pr")
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        checks={42: _check(CheckStatus.SUCCESS, names=("agent-review",))},
+    )
+
+    with pytest.raises(ReanchorRefused, match="exact required code context"):
         verify_resume_lifecycle(
             github,
             branch="feat/exact-pr",
@@ -249,7 +268,7 @@ def test_maintenance_resume_deduplicates_repeated_agent_review_context() -> None
     assert proof.required_status is CheckStatus.SUCCESS
 
 
-def test_reanchor_lifecycle_accepts_required_green_with_trusted_agent_review_context() -> (
+def test_reanchor_lifecycle_accepts_required_green_with_optional_agent_review_context() -> (
     None
 ):
     candidate = _pr(42, branch="feat/exact-pr")
@@ -325,7 +344,7 @@ def test_reanchor_lifecycle_accepts_required_green_with_trusted_agent_review_con
                     )
                 },
             ),
-            "required code failure",
+            "required code context",
         ),
     ],
 )
@@ -449,6 +468,103 @@ def test_reanchor_lifecycle_accepts_current_pr_base_after_publication_observatio
     assert proof.required_status is CheckStatus.SUCCESS
 
 
+def test_reanchor_lifecycle_accepts_valid_typed_base_lag_after_pr_base_advances() -> (
+    None
+):
+    candidate = _pr(
+        42,
+        branch="feat/exact-pr",
+        base=LIVE,
+        body=_receipt_body(
+            number=42,
+            branch="feat/exact-pr",
+            base=BASE,
+            head=HEAD,
+        ),
+    )
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        open_prs=(candidate,),
+        checks={42: _check(CheckStatus.SUCCESS)},
+    )
+
+    proof = verify_reanchor_lifecycle(
+        github,
+        pull_request_number=42,
+        branch="feat/exact-pr",
+        expected_pr_base_sha=LIVE,
+        expected_remote_head=HEAD,
+        live_main_sha=LIVE,
+    )
+
+    assert proof.pull_request_number == 42
+    assert proof.base_sha == LIVE
+    assert proof.required_status is CheckStatus.SUCCESS
+
+
+def test_reanchor_lifecycle_accepts_typed_base_lag_before_current_main_reanchor() -> (
+    None
+):
+    candidate = _pr(
+        42,
+        branch="feat/exact-pr",
+        base=BASE,
+        body=_receipt_body(
+            number=42,
+            branch="feat/exact-pr",
+            base=LIVE,
+            head=HEAD,
+        ),
+    )
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        open_prs=(candidate,),
+        checks={42: _check(CheckStatus.SUCCESS)},
+    )
+
+    proof = verify_reanchor_lifecycle(
+        github,
+        pull_request_number=42,
+        branch="feat/exact-pr",
+        expected_pr_base_sha=BASE,
+        expected_remote_head=HEAD,
+        live_main_sha=LIVE,
+    )
+
+    assert proof.pull_request_number == 42
+    assert proof.base_sha == BASE
+    assert proof.required_status is CheckStatus.SUCCESS
+
+
+def test_reanchor_lifecycle_rejects_typed_base_lag_for_legacy_contract() -> None:
+    candidate = _pr(
+        42,
+        branch="feat/exact-pr",
+        base=BASE,
+        body=_receipt_body(
+            number=42,
+            branch="feat/exact-pr",
+            base=LIVE,
+            head=HEAD,
+        ),
+    )
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        open_prs=(candidate,),
+        checks={42: _check(CheckStatus.SUCCESS)},
+    )
+
+    with pytest.raises(ReanchorRefused, match="no required-green unheld merge-front"):
+        verify_reanchor_lifecycle(
+            github,
+            pull_request_number=42,
+            branch="feat/exact-pr",
+            expected_base_sha=BASE,
+            expected_remote_head=HEAD,
+            live_main_sha=LIVE,
+        )
+
+
 def test_reanchor_lifecycle_rejects_caller_selected_non_front_pr() -> None:
     earlier = _pr(41, head=OTHER_HEAD)
     candidate = _pr(42, branch="feat/exact-pr")
@@ -519,7 +635,7 @@ def test_reanchor_lifecycle_defers_to_existing_native_queue_entry() -> None:
         (
             _pr(42, branch="feat/exact-pr"),
             _check(CheckStatus.ABSENT, names=()),
-            "required code failure context",
+            "required code context",
         ),
         (
             _pr(42, branch="feat/exact-pr"),
@@ -527,7 +643,7 @@ def test_reanchor_lifecycle_defers_to_existing_native_queue_entry() -> None:
                 CheckStatus.SUCCESS,
                 names=("agent-review", "required", "unexpected"),
             ),
-            "required code failure context",
+            "required code context",
         ),
         (
             _pr(42, branch="feat/exact-pr", body="P0 hold"),

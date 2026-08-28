@@ -10,7 +10,7 @@ scope:
   - ops/worktree_orchestrate.py
   - ops/devops_kg_safe.sh
   - ops/release.sh
-verified_against: afe016c4ea2fcbd7306f9c4f40b4556e77865100
+verified_against: 5b5ac2fa158ec2f9508c0befa835720009a60fe5
 -->
 # KG Change Runbook
 
@@ -52,7 +52,7 @@ verified_against: afe016c4ea2fcbd7306f9c4f40b4556e77865100
 
 1. Worker 與 Issue Solver 都把所有 code change 收進同一個 PR 流程：`branch → local commit → typed hand-back → PI publish + local release → durable GitHub PR`；Worker 的 direct assignment packet 必須留下 dispatch provenance 與 hand-back recipient。
 2. PR 描述變更、測試命令與 exit status、風險、文件影響、rollback 方式，並標明 direct assignment 或關聯 Issue。
-3. `pr-readiness` 先用 typed machine receipt 驗證 exact PR HEAD；PR 的所有 GitHub required checks、branch rules、mergeability 與必要 environment approval 滿足後，CM 才可送入 native merge queue。CR／DS／完整 confidence 的 routine 結論平行收斂、不形成隱性 hard gate；若揭露 P0／P1／security，必須先寫成 durable hold。`pr-gate` 的 short `required` 上游各有 3 分鐘 hard stop、聚合本身 1 分鐘；backend／ops／iOS 的完整**受影響** `confidence` 是 advisory outcome，依 fail-closed changed-path policy 同時平行收斂，不形成所有 PR 的全域串行門檻。
+3. `pr-readiness` 先用 typed machine receipt 驗證 exact PR HEAD；PR 的所有 GitHub required checks、branch rules、mergeability 與必要 environment approval 滿足後，CM 才可送入 native merge queue。repository ruleset 目前只把短 `required` 設為 required context；`agent-review`、CR／DS／完整 confidence 的 routine 結論平行收斂、不形成 hard gate。它們若揭露 P0／P1／security，必須先寫成 durable hold，硬阻塞來自該 hold 而非 advisory check 的成功／失敗／缺失。`pr-gate` 的 short `required` 上游各有 3 分鐘 hard stop、聚合本身 1 分鐘；backend／ops／iOS 的完整**受影響** `confidence` 是 advisory outcome，依 fail-closed changed-path policy 同時平行收斂，不形成所有 PR 的全域串行門檻。
 4. merge group 跑獨立 short `required`；landing 後 CM cleanup exact merged residue，並從 canonical clean `main` 做 ff-only sync。GitHub `main` 是產品真相；依 release 意圖執行版本發布，production deploy 不因一般 merge 自動發生。
 
 workflow `pr-gate` 的 check run `confidence` 失敗、非預期 skip、取消或缺失必須保留為真實偏離並追蹤 fix-forward／rollback；它不會被 `required` 覆蓋，也不能被重新描述成 PASS。只有 CM 已確認 exact `main` 對相同受影響 surface 啟動等價驗證時，才可取消已被取代的 PR run；完整結論仍等主線 terminal result。合併速度與完整驗證是兩個不同的控制面。

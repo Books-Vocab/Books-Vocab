@@ -26,7 +26,7 @@ scope:
   - ops/worktree_orchestrate.py
   - docs/reference/kg-delivery-lifecycle.mmd
   - docs/reference/架構.rtf
-verified_against: f7c647b189446899775ed0843b875862f29a3a26
+verified_against: 5b5ac2fa158ec2f9508c0befa835720009a60fe5
 -->
 # GitHub-native Delivery Model
 
@@ -57,7 +57,7 @@ GitHub 是整套交付控制面：
 所有 code change 都要走：
 
 ```text
-branch → commit → PR → required + advisory confidence／CR／DS → CM merge → main → release/deploy（若有明確意圖）
+branch → commit → PR → required + optional agent-review／confidence／CR／DS → CM merge → main → release/deploy（若有明確意圖）
 ```
 
 `main` 不接受直接寫入。merge 不是 production approval；release、deploy、health gate、rollback 仍由各自安全邊界控制。
@@ -192,9 +192,11 @@ CM 只在 PR 的 typed contract、required checks、branch rules、mergeability 
 
 同一 workflow 的 `confidence` check run 是 advisory outcome：它提供完整的**受影響** backend／iOS／UI／ops fan-out，nonblocking 只代表不佔用 native merge queue 的串行 gate，不代表可忽略。慢速 backend／ops／iOS lane 由可測的 changed-path policy 選擇：明確無關才會顯示 `skipped`，未知或改動 routing policy 時 fail-closed 為全跑；被選中的 lane 必須 `success`。
 
+`agent-review` 是可選的品質與風險觀測 check，不是 repository ruleset 的 hard gate；目前 ruleset 只要求短 `required` context。它可以提供 exact-head 的獨立審查、reviewer provenance 與改進建議，未產生、失敗或延遲本身都不阻塞 native queue、merge、release 或一般 dispatch。若它或其他觀測明確發現 P0、P1 或 security 問題，仍必須以 durable typed hold／label 呈現；真正阻塞來源是該 hold，而不是 `agent-review` check 的 transport 結果。
+
 因此固定採以下判讀：
 
-- GitHub 對 exact PR HEAD 列出的所有 required checks 都成功，才是 merge 的最低 Actions 條件；仍須滿足 typed receipt、live base、branch rules 與其他安全條件。CR／DS 的 routine advisory 不等待；其 P0／P1／security 發現必須以 durable hold 呈現。
+- GitHub 對 exact PR HEAD 列出的所有 required checks 都成功，才是 merge 的最低 Actions 條件；目前唯一 repository-required context 是 `required`，仍須滿足 typed receipt、live base、branch rules 與其他安全條件。`agent-review`、CR／DS 的 routine advisory 不等待；其 P0／P1／security 發現必須以 durable hold 呈現。
 - `confidence` 失敗、缺失、非預期 `skipped`、取消或未完成時，PR 不得宣稱「完整綠」；也不得進入受影響的 release／deploy 路徑。
 - CM 只有在 GitHub 已顯示 exact merged `main` 對每個被選中的慢速 surface 啟動等價驗證時，才可取消已被取代的 PR confidence；取消本身不是 PASS，完整結論以該 `main` run 的 terminal 結果為準。
 - confidence 結果是 GitHub check run 的證據，不在 repo 內另建本地 confidence／merge 狀態；若要重跑，針對同一 PR HEAD 或 exact `main` 重新觸發 Actions。

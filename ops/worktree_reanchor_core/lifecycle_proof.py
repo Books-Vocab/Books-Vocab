@@ -22,11 +22,11 @@ from delivery_control.services.pr_contract import (
 
 from .errors import ReanchorRefused
 
-REQUIRED_CODE_CONTEXT = ("required",)
-TRUSTED_REQUIRED_CODE_CONTEXT = ("agent-review", "required")
-ACCEPTED_REQUIRED_CODE_CONTEXTS = frozenset(
-    {REQUIRED_CODE_CONTEXT, TRUSTED_REQUIRED_CODE_CONTEXT}
-)
+REQUIRED_CODE_CONTEXT = "required"
+# ``required`` is the repository's only blocking check.  ``agent-review`` may
+# still appear in historical or compatibility observations, but it is not a
+# merge or recovery authority.
+ADVISORY_CONTEXTS = frozenset({"agent-review"})
 MERGE_FRONT_POLICY = "lowest-required-green-unheld-pr-number"
 
 
@@ -147,8 +147,6 @@ def _exact_open_pr(
 def _required(
     github: RecoveryGitHubPort,
     pull_request: PullRequestSnapshot,
-    *,
-    allow_combined_context: bool = False,
 ) -> CheckSnapshot:
     check = _read(
         f"PR#{pull_request.number} required check",
@@ -162,14 +160,12 @@ def _required(
             pull_request_head_sha=pull_request.head_sha,
         )
     normalized_context = tuple(sorted(set(check.names)))
-    accepted_contexts = (
-        ACCEPTED_REQUIRED_CODE_CONTEXTS
-        if allow_combined_context
-        else frozenset({REQUIRED_CODE_CONTEXT})
+    hard_contexts = tuple(
+        context for context in normalized_context if context not in ADVISORY_CONTEXTS
     )
-    if normalized_context not in accepted_contexts:
+    if hard_contexts != (REQUIRED_CODE_CONTEXT,):
         raise ReanchorRefused(
-            "recovery requires the exact required code failure context",
+            "recovery requires the exact required code context",
             pull_request=pull_request.number,
             required_contexts=list(check.names),
             required_status=check.status.value,
@@ -193,11 +189,7 @@ def verify_resume_lifecycle(
         expected_base_sha=expected_base_sha,
         expected_remote_head=expected_remote_head,
     )
-    check = _required(
-        github,
-        pull_request,
-        allow_combined_context=not require_failed,
-    )
+    check = _required(github, pull_request)
     if require_failed and check.status is not CheckStatus.FAILURE:
         raise ReanchorRefused(
             "resume-published is allowed only for an exact required code failure",
@@ -220,6 +212,8 @@ def verify_resume_lifecycle(
 def _eligible_merge_front(
     github: RecoveryGitHubPort,
     pull_request: PullRequestSnapshot,
+    *,
+    allow_typed_base_lag: bool = False,
 ) -> bool:
     if (
         pull_request.state != "OPEN"
@@ -241,12 +235,13 @@ def _eligible_merge_front(
         return False
     if (
         receipt.branch != pull_request.branch
-        or receipt.base_sha != pull_request.base_sha
         or receipt.head_sha != pull_request.head_sha
     ):
         return False
+    if receipt.base_sha != pull_request.base_sha and not allow_typed_base_lag:
+        return False
     try:
-        check = _required(github, pull_request, allow_combined_context=True)
+        check = _required(github, pull_request)
     except ReanchorRefused as exc:
         if (
             exc.details.get("required_status") == CheckStatus.ABSENT.value
@@ -296,11 +291,7 @@ def verify_reanchor_lifecycle(
         raise ReanchorRefused("reanchor requires the PR to be mergeable")
     if pull_request_holds(candidate):
         raise ReanchorRefused("reanchor refuses a PR with an explicit hard hold")
-    candidate_check = _required(
-        github,
-        candidate,
-        allow_combined_context=True,
-    )
+    candidate_check = _required(github, candidate)
     if candidate_check.status is not CheckStatus.SUCCESS:
         raise ReanchorRefused("reanchor requires an exact required-green PR")
 
@@ -328,7 +319,22 @@ def verify_reanchor_lifecycle(
             (
                 pull_request
                 for pull_request in inventory.records
-                if _eligible_merge_front(github, pull_request)
+                if _eligible_merge_front(
+                    github,
+                    pull_request,
+                    # A same-owner publication may leave the immutable typed
+                    # handback base in the PR body while GitHub has already
+                    # advanced the PR target base.  The caller has validated
+                    # the exact published PR base; the subsequent reanchor Git
+                    # checks validate that base against live main.  Limit this
+                    # compatibility to that exact candidate.  All other PRs
+                    # still require body/base equality.
+                    allow_typed_base_lag=(
+                        pull_request.number == candidate.number
+                        and not legacy_base_contract
+                        and candidate.base_sha == published_base_sha
+                    ),
+                )
             ),
             key=lambda pull_request: pull_request.number,
         )
