@@ -26,6 +26,20 @@ struct AddLinkCoordinatorTests {
         #expect(result.map(\.word) == ["lucid"])
     }
 
+    @Test("local candidates exclude entries with an empty card id")
+    func localCandidatesExcludeEmptyCardID() {
+        let source = Self.entry("source", cardID: "source", notebook: "nb")
+        let unresolved = Self.entry("lucid", cardID: "", notebook: "nb")
+
+        let result = AddLinkCoordinator.localCandidates(
+            query: "lucid",
+            sourceEntry: source,
+            allEntries: [source, unresolved]
+        )
+
+        #expect(result.isEmpty)
+    }
+
     @Test("manual link validation surfaces missing source and treats duplicate as already linked")
     @MainActor
     func manualLinkValidation() async throws {
