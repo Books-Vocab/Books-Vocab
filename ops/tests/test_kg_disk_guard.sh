@@ -23,6 +23,17 @@ timestamp_minutes_ago() {
 
 [[ -f "$SCRIPT" ]] || { echo "missing $SCRIPT" >&2; exit 1; }
 
+echo "── help is read-only ──"
+root="$TMP/help"; state="$root/state.json"; cache="$root/.cache/ios-test-derived-data"
+mkdir -p "$cache/old/Build"; printf x > "$cache/old/Build/blob"
+if KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  "$SCRIPT" --help >/dev/null 2>&1; then
+  [[ ! -e "$state" && -d "$cache/old" ]] \
+    && ok "help does not run a guard tick" || bad "help changed guard state"
+else
+  bad "help exited non-zero"
+fi
+
 echo "── high free: bounded state, no action ──"
 state="$TMP/high/state.json"; mkdir -p "$TMP/high/.cache/ios-build-derived-data"
 KG_DISK_GUARD_WORKSPACE="$TMP/high" KG_DISK_GUARD_STATE="$state" \
@@ -276,6 +287,24 @@ grep -q 'missing-registered-lane' "$lane_state" && ok "missing active lane is vi
 grep -q '"verdict": "block"' "$lane_state" && ok "lane attribution fails closed" || bad "lane attribution did not fail closed"
 grep -q '"lane_usage_verdict":"block"' "$root/guard.json" && ok "guard state carries lane block" || bad "guard state missed lane block"
 grep -q '"lane_usage_rc":75' "$root/guard.json" && ok "guard state carries lane exit" || bad "guard state missed lane exit"
+
+echo "── lane report budget: slow attribution fails closed without hanging ──"
+root="$TMP/time-budget"; state="$root/guard.json"; lane_state="$root/lane-disk-usage.json"
+mkdir -p "$root"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_REGISTRY_STATE="$root/missing-registry.json" \
+  KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" \
+  KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS=0 \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  "$SCRIPT" >/dev/null 2>&1
+grep -q '"budget_seconds": 0.0' "$lane_state" \
+  && ok "lane report records its time budget" || bad "lane report budget missing"
+grep -q 'measurement-time-budget-exceeded' "$lane_state" \
+  && ok "time budget produces explicit measurement blocker" || bad "time budget blocker missing"
+grep -q '"lane_usage_rc":75' "$state" \
+  && ok "time budget reaches guard state" || bad "time budget guard state missing"
+grep -q '"lane_usage_budget_seconds":0' "$state" \
+  && ok "time budget is recorded in guard state" || bad "time budget state missing"
 
 echo "passed=$PASS failed=$FAIL"
 [[ "$FAIL" -eq 0 ]]

@@ -178,6 +178,15 @@ GitHub-hosted macOS runner 每次都是新的 VM；本機長存的 DerivedData �
 
 `ops/kg_disk_guard.sh` 每個 tick 同步更新這個小型狀態檔；它不建立 append-only log，也不在 active 或 unknown worktree 上做破壞性清理。預設每條 physical lane 上限 2 GiB、所有 physical lanes 合計上限 8 GiB，可用 `KG_DISK_GUARD_LANE_BUDGET_GIB` 與 `KG_DISK_GUARD_LANE_TOTAL_BUDGET_GIB` 明確調整。超限、無法量測、registry 不可讀或 active lane 遺失時，報告為 `verdict=block`，且 guard state 會保留 `lane_usage_verdict=block` 與 `lane_usage_rc` 供 admission／writer fail-closed；後續 writer 必須停止並交由 supported lifecycle 處理；只有既有 cache guard 在確認無 consumer 且持有 build lock 後才可自動淘汰可重建產物。
 
+歸戶掃描本身也有固定時間上限：`kg_disk_guard.sh` 預設以 30 秒呼叫
+`disk_usage.py --time-budget-seconds 30`。時間到了仍會原子寫出報告，保留已量到的
+partial bytes，但在 `measurement.budget_exhausted=true`、各受影響 lane 的
+`measurement_complete=false` 與 `policy.verdict=block` 中明確標示；partial 或 timeout
+絕不會被當成零 bytes，也不會授權清理或新的 writer。需要手動調整時只能透過
+`KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS`，無效值回到 30 秒。這使 guard 不會因為
+大型 workspace／DerivedData 遞迴掃描而永久佔住 lock；`ops/kg_disk_guard.sh --help`
+是純說明命令，不會啟動 guard tick、改狀態或刪 cache。
+
 報告把 canonical project 的 worktree 子樹排除後再加回每條 physical lane，避免同一份檔案被重複計算。`managed_allocated_bytes` 是 KG 受管理範圍的 accounting，不等於整台 Mac 的 filesystem usage：APFS snapshots、Git shared object、Xcode global DerivedData、Docker 與其他使用者資料另列在 `filesystem` 或既有 cache metrics。故「每條 lane 相加」是可驗證的 lane reservoir 總量，不應冒充整顆磁碟的唯一總量。
 
 閉環固定為：guard 觀測 → `lane_disk_usage.json` 歸戶 → 超限／遺失證據 fail-closed → active lane 由 owner 完成交接或 terminal cleanup → 再次觀測確認 worktree／branch／registry 狀態。測試入口為 `uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_disk_usage.py` 與 `./ops/tests/test_kg_disk_guard.sh`。

@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,7 @@ BLOCKED_EXIT = 75
 GIB = 1024**3
 LIVE_REGISTRY_STATUSES = {"active", "published", "cleanup_pending"}
 TERMINAL_REGISTRY_STATUSES = {"merged", "abandoned"}
+DEFAULT_TIME_BUDGET_SECONDS = 30.0
 
 
 def _path(value: str | Path) -> Path:
@@ -46,7 +48,12 @@ def _allocated_bytes(stat_result: os.stat_result) -> int:
     return int(blocks) * 512 if blocks else int(stat_result.st_size)
 
 
-def measure_tree(root: Path, *, excluded: set[Path] | None = None) -> dict[str, Any]:
+def measure_tree(
+    root: Path,
+    *,
+    excluded: set[Path] | None = None,
+    deadline: float | None = None,
+) -> dict[str, Any]:
     """Measure one bounded tree without following symlinked directories."""
 
     root = _path(root)
@@ -67,7 +74,20 @@ def measure_tree(root: Path, *, excluded: set[Path] | None = None) -> dict[str, 
     pending = [root]
     complete = True
     errors: list[str] = []
+
+    def budget_expired() -> bool:
+        return deadline is not None and time.monotonic() >= deadline
+
+    def record_budget_expiry() -> None:
+        nonlocal complete
+        complete = False
+        if "measurement-time-budget-exceeded" not in errors:
+            errors.append("measurement-time-budget-exceeded")
+
     while pending:
+        if budget_expired():
+            record_budget_expiry()
+            break
         directory = pending.pop()
         try:
             entries = list(os.scandir(directory))
@@ -76,6 +96,9 @@ def measure_tree(root: Path, *, excluded: set[Path] | None = None) -> dict[str, 
             errors.append(f"{directory}: {exc.__class__.__name__}")
             continue
         for entry in entries:
+            if budget_expired():
+                record_budget_expiry()
+                break
             entry_path = _path(entry.path)
             if entry_path in excluded:
                 continue
@@ -181,9 +204,10 @@ def _lane_entry(
     registry: dict[str, Any] | None,
     registry_index: int | None,
     physical: dict[str, Any] | None,
+    deadline: float | None = None,
 ) -> dict[str, Any]:
     if physical is not None and path.is_dir():
-        measured = measure_tree(path)
+        measured = measure_tree(path, deadline=deadline)
         exists = True
         physical_state = "present"
         head = physical.get("head")
@@ -227,10 +251,23 @@ def _lane_entry(
         entry["measurement_error"] = measured["error"]
     if measured.get("errors"):
         entry["measurement_errors"] = measured["errors"]
+        if "measurement-time-budget-exceeded" in measured["errors"]:
+            entry["measurement_error"] = "measurement-time-budget-exceeded"
     return entry
 
 
-def build_report(workspace: Path, state_path: Path) -> dict[str, Any]:
+def build_report(
+    workspace: Path,
+    state_path: Path,
+    *,
+    time_budget_seconds: float | None = None,
+) -> dict[str, Any]:
+    measurement_started = time.monotonic()
+    deadline = (
+        None
+        if time_budget_seconds is None
+        else measurement_started + max(0.0, time_budget_seconds)
+    )
     workspace = _path(workspace)
     state_path = _path(state_path)
     registry_records, registry_error = _load_registry(state_path)
@@ -263,6 +300,7 @@ def build_report(workspace: Path, state_path: Path) -> dict[str, Any]:
                 registry=record,
                 registry_index=index,
                 physical=physical,
+                deadline=deadline,
             )
         )
 
@@ -280,6 +318,7 @@ def build_report(workspace: Path, state_path: Path) -> dict[str, Any]:
                 registry=None,
                 registry_index=None,
                 physical=physical,
+                deadline=deadline,
             )
         )
 
@@ -298,7 +337,11 @@ def build_report(workspace: Path, state_path: Path) -> dict[str, Any]:
         if _path(item["path"]) != workspace
         and _relative_to(_path(item["path"]), workspace)
     }
-    workspace_measurement = measure_tree(workspace, excluded=nested_worktrees)
+    workspace_measurement = measure_tree(
+        workspace,
+        excluded=nested_worktrees,
+        deadline=deadline,
+    )
     physical_lanes_by_path = {
         Path(item["path"]): item
         for item in lanes
@@ -351,6 +394,20 @@ def build_report(workspace: Path, state_path: Path) -> dict[str, Any]:
         reasons.append("workspace-measurement-incomplete")
     if not all(item["measurement_complete"] for item in physical_lanes):
         reasons.append("lane-measurement-incomplete")
+    measurement_entries = [workspace_measurement]
+    measurement_entries.extend(
+        {
+            "errors": item.get("measurement_errors", []),
+        }
+        for item in lanes
+        if item.get("measurement_errors")
+    )
+    measurement_budget_exhausted = any(
+        "measurement-time-budget-exceeded" in item.get("errors", [])
+        for item in measurement_entries
+    )
+    if measurement_budget_exhausted:
+        reasons.append("measurement-time-budget-exceeded")
     if over_lane:
         reasons.extend(f"lane-budget-exceeded:{branch}" for branch in over_lane)
     if lane_allocated > total_lane_budget:
@@ -386,6 +443,11 @@ def build_report(workspace: Path, state_path: Path) -> dict[str, Any]:
         "schema": SCHEMA,
         "workspace": str(workspace),
         "registry": str(state_path),
+        "measurement": {
+            "budget_seconds": time_budget_seconds,
+            "elapsed_seconds": round(time.monotonic() - measurement_started, 3),
+            "budget_exhausted": measurement_budget_exhausted,
+        },
         "lanes": lanes,
         "lane_count": len([item for item in lanes if item["lane_kind"] == "lane"]),
         "history": {
@@ -455,12 +517,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workspace", default=str(Path(__file__).resolve().parents[1]))
     parser.add_argument("--state")
     parser.add_argument("--output")
+    parser.add_argument(
+        "--time-budget-seconds",
+        type=float,
+        default=DEFAULT_TIME_BUDGET_SECONDS,
+        help="maximum recursive measurement time before returning a fail-closed report",
+    )
     args = parser.parse_args(argv)
     workspace = _path(args.workspace)
     state = (
         _path(args.state) if args.state else workspace / ".cache/worktree_registry.json"
     )
-    report = build_report(workspace, state)
+    report = build_report(
+        workspace,
+        state,
+        time_budget_seconds=args.time_budget_seconds,
+    )
     if args.output:
         _write_atomic(_path(args.output), report)
     json.dump(report, sys.stdout, ensure_ascii=False, indent=2, sort_keys=True)
