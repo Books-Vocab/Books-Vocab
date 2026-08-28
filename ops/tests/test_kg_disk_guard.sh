@@ -13,6 +13,14 @@ export KG_DISK_GUARD_BUILD_LOCK_HELD=1
 ok(){ echo "  ✓ $*"; PASS=$((PASS+1)); }
 bad(){ echo "  ✗ $*"; FAIL=$((FAIL+1)); }
 
+timestamp_minutes_ago() {
+  local minutes="$1"
+  if date -v-"${minutes}"M '+%Y%m%d%H%M.%S' 2>/dev/null; then
+    return 0
+  fi
+  date -d "${minutes} minutes ago" '+%Y%m%d%H%M.%S'
+}
+
 [[ -f "$SCRIPT" ]] || { echo "missing $SCRIPT" >&2; exit 1; }
 
 echo "── high free: bounded state, no action ──"
@@ -29,8 +37,8 @@ root="$TMP/shared-reader-window"; cache="$root/.cache/ios-test-derived-data"; st
 mkdir -p "$cache"
 for key in a b c d; do mkdir -p "$cache/$key/Build"; printf x > "$cache/$key/Build/blob"; done
 mkdir -p "$cache/warm/Build"; printf x > "$cache/warm/Build/blob"
-touch -m -t "$(date -v-30M '+%Y%m%d%H%M.%S')" "$cache"/a "$cache"/b "$cache"/c "$cache"/d
-touch -m -t "$(date -v-45M '+%Y%m%d%H%M.%S')" "$cache/warm"
+touch -m -t "$(timestamp_minutes_ago 30)" "$cache"/a "$cache"/b "$cache"/c "$cache"/d
+touch -m -t "$(timestamp_minutes_ago 45)" "$cache/warm"
 KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
   KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
   KG_DISK_GUARD_CACHE_KEEP=1 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0 \
