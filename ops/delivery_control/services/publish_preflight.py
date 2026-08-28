@@ -204,10 +204,16 @@ class PublishPreflightService:
         current_changes_match = self._worktree_changes_match_scope(
             receipt=receipt, worktree=worktree
         )
-        if partial_publication_matches and (
-            observed != previous_paths or remote_sha != receipt.head_sha
-        ):
-            if not current_changes_match:
+        if partial_publication_matches:
+            if not observed.issubset(current_paths):
+                raise PolicyViolation(
+                    "owner reanchor cannot remove paths observed in existing PR"
+                )
+            if (
+                current_paths != previous_paths
+                or observed != previous_paths
+                or remote_sha != receipt.head_sha
+            ) and not current_changes_match:
                 raise PolicyViolation(
                     "current handback diff does not exactly match its typed Scope"
                 )
@@ -226,7 +232,7 @@ class PublishPreflightService:
                     "existing PR Scope may only grow after an owner reanchor"
                 )
             return
-        if current_paths < previous_paths and partial_publication_matches:
+        if partial_publication_matches:
             return
         if not previous_paths.issubset(current_paths):
             raise PolicyViolation(
