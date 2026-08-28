@@ -19,6 +19,11 @@ from ..domain.observations import (
 
 _ISSUE_REF = re.compile(r"(?:#|/issues/)(?P<number>[1-9][0-9]*)\b", re.IGNORECASE)
 _BARE_ISSUE_REF = re.compile(r"[1-9][0-9]*\Z")
+_STRUCTURED_ISSUE_REF = re.compile(
+    r"(?<![A-Z0-9])DIRECT-DELIVERY-(?:[A-Z0-9]+-)*ISSUE-"
+    r"(?P<number>[1-9][0-9]*)(?=$|[^A-Z0-9])",
+    re.IGNORECASE,
+)
 _HOLD_LABELS = {
     "delivery-hold:p0",
     "delivery-hold:p1",
@@ -40,7 +45,9 @@ def _references_issue(value: str, number: int) -> bool:
     if _BARE_ISSUE_REF.fullmatch(stripped):
         return int(stripped) == number
     return any(
-        int(match.group("number")) == number for match in _ISSUE_REF.finditer(value)
+        int(match.group("number")) == number
+        for pattern in (_ISSUE_REF, _STRUCTURED_ISSUE_REF)
+        for match in pattern.finditer(value)
     )
 
 

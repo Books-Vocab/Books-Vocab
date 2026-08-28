@@ -295,6 +295,52 @@ def test_bare_numeric_registry_mapping_does_not_guess_substrings() -> None:
 
 @pytest.mark.parametrize(
     "external_id",
+    [
+        "DIRECT-DELIVERY-ISSUE-1415-LIBRARY-FORMAT-20260827",
+        "DIRECT-DELIVERY-PRODUCTION-DOGFOOD-ISSUE-1415-20260827",
+    ],
+)
+def test_structured_direct_lane_external_id_maps_exact_issue_history(
+    external_id: str,
+) -> None:
+    issue = parse_demand_issue(_payload(1415))
+
+    projected = project_demand_inventory(
+        DemandIssueInventory((issue,), raw_count=1),
+        registry_records=(_record(1415, "merged", external_id=external_id),),
+    )
+
+    assert projected.records[0].disposition is IssueDisposition.TERMINAL_HISTORY
+    assert projected.records[0].mapped_external_ids == (external_id,)
+    assert projected.unadmitted_open_issues == 0
+
+
+def test_structured_direct_lane_external_id_does_not_guess_digits() -> None:
+    issue = parse_demand_issue(_payload(1415))
+
+    projected = project_demand_inventory(
+        DemandIssueInventory((issue,), raw_count=1),
+        registry_records=(
+            _record(
+                1415,
+                "merged",
+                external_id="DIRECT-DELIVERY-ISSUE-14150-WRONG-NUMBER",
+            ),
+            _record(
+                1415,
+                "merged",
+                external_id="DIRECT-DELIVERY-OTHER-1415-NOT-AN-ISSUE-REF",
+            ),
+        ),
+    )
+
+    assert projected.records[0].disposition is IssueDisposition.TRIAGE_REQUIRED
+    assert projected.records[0].mapped_external_ids == ()
+    assert projected.unadmitted_open_issues == 1
+
+
+@pytest.mark.parametrize(
+    "external_id",
     ["#1415", "https://github.com/owner/repo/issues/1415"],
 )
 def test_existing_issue_reference_forms_remain_exactly_supported(
