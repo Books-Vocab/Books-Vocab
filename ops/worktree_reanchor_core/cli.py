@@ -55,6 +55,9 @@ def cmd_reanchor(args: argparse.Namespace, *, freeze_reason: str | None = None) 
             live_main=args.live_main,
             target=Path(args.path).expanduser().resolve(),
             preserve_conflict=args.preserve_conflict,
+            allow_required_failure_recovery=getattr(
+                args, "allow_required_failure", False
+            ),
         )
     except ReanchorRefused as exc:
         payload = {
@@ -103,6 +106,14 @@ def add_parser(
         "--preserve-conflict",
         action="store_true",
         help="keep an exact rebase conflict registered for the original owner",
+    )
+    parser.add_argument(
+        "--allow-required-failure",
+        action="store_true",
+        help=(
+            "allow explicit same-owner local recovery from an exact required failure; "
+            "does not authorize queue or merge"
+        ),
     )
     parser.set_defaults(func=handler)
     return parser

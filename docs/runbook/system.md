@@ -119,15 +119,16 @@ Candidate Issue body 先由 deterministic contract 產生並重驗：
 
 `trigger-required` 只在同一 exact published PR 的 required 為 `ABSENT`／`FAILURE` 時 dispatch 帶 PR number／base／HEAD 的 workflow；`PENDING`／`SUCCESS` 拒絕重複觸發，hold 原樣保留且 dispatch 不代表 Ready。
 
-若 required 是 code failure，published PR 已取代 local assets，使用 original owner 的 exact tuple 恢復修復環境；若只是 merge-front base stale，才使用 JIT reanchor：
+若 required 是 code failure，published PR 已取代 local assets，使用 original owner 的 exact tuple 恢復修復環境；若只是 merge-front base stale，才使用 JIT reanchor。若 required failure 已由 exact evidence 證明是 current main 已包含的基線問題，原 owner 才可對同一 PR 使用明確的 `--allow-required-failure` local recovery；此模式只重建本地 worktree，不是 required／review／merge bypass：
 
 ```bash
 ./ops/worktree_orchestrate.py resume-published --lane <lane> --branch <branch> --owner-thread-id <thread> --claim-generation <generation> --expected-remote-head <sha> --path <new-path>
 ./ops/worktree_orchestrate.py reanchor --merge-front-pr <number> --lane <lane> --branch <branch> --owner-thread-id <thread> --claim-generation <generation> --expected-remote-head <sha> --live-main <sha> --path <new-path>
+./ops/worktree_orchestrate.py reanchor --allow-required-failure --merge-front-pr <number> --lane <lane> --branch <branch> --owner-thread-id <thread> --claim-generation <generation> --expected-remote-head <sha> --live-main <sha> --path <new-path>
 ./ops/worktree_orchestrate.py recover-published-remote --pr <number> --lane <lane> --branch <branch> --owner-thread-id <thread> --claim-generation <generation> --expected-base <sha> --expected-head <sha> --path <new-path>
 ```
 
-兩者都只做 exact same-owner local lifecycle transition，不操作 GitHub、不測試、不 hand-back、不 push；`resume-published` 保留 original recorded base，`reanchor` 以 `published_base_sha` 證明目前 PR 的既有 target 觀測，再把新的 owner generation 改用仍通過 remote CAS 的 live main。這兩個 base 不得混寫：原始 `base_sha` 保留 hand-back provenance，`published_base_sha` 只描述 GitHub PR target。owner 修復／rebase後必須重新 commit（若有變更）與 typed hand-back，PI 再更新同一 PR。
+三者都只做 exact same-owner local lifecycle transition，不操作 GitHub、不測試、不 hand-back、不 push；`resume-published` 保留 original recorded base，普通 `reanchor` 以 `published_base_sha` 證明目前 PR 的既有 target 觀測，再把新的 owner generation 改用仍通過 remote CAS 的 live main；`--allow-required-failure` 是明確的 owner-local required-failure recovery，跳過的是 merge-front 排序而非 required／review gate。這兩個 base 不得混寫：原始 `base_sha` 保留 hand-back provenance，`published_base_sha` 只描述 GitHub PR target。owner 修復／rebase後必須重新 commit（若有變更）與 typed hand-back，PI 再更新同一 PR。
 
 若 PR 已經 `MERGED`，原 owner 不得把它當成可繼續修改的 published lane。使用既有 `resume-published --mode maintenance` 入口作為窄的 post-merge reconciliation transaction，並帶上 exact previous hand-back；當 merged PR 的 head 與 previous hand-back 相同時，這是預期的 terminal proof，不是 advanced published resume。此路徑必須重新驗證同一 owner、lane、branch、claim generation、hand-back seal、PR target/base/head、唯一 PR history、typed receipt、source parent 與 Scope；它只回傳 `kg.worktree.resume-merged-maintenance.v1` 的 `action=reconcile-merged-maintenance`、`verdict=terminal-reconciliation-ready` 證據，不建立 worktree、不註冊 active claim、不改 ownership／publishability。上層收到後仍須以當下 live `main`、merged PR 與 registry evidence 執行 supported terminal reconciliation／cleanup；缺少任一 exact proof 一律 fail closed。OPEN PR 的 maintenance 與 required-failure resume 語義不變。
 

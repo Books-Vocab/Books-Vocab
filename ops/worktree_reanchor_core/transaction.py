@@ -27,6 +27,7 @@ def _request(
     live_main: str,
     target: Path,
     preserve_conflict: bool,
+    allow_required_failure_recovery: bool,
 ) -> ReanchorRequest:
     if merge_front_pr <= 0:
         raise ReanchorRefused("one positive merge-front PR candidate is required")
@@ -44,6 +45,7 @@ def _request(
         live_main=commit_sha(live_main, label="live main"),
         target=target,
         preserve_conflict=preserve_conflict,
+        allow_required_failure_recovery=allow_required_failure_recovery,
     )
 
 
@@ -60,6 +62,7 @@ def perform_reanchor(
     live_main: str,
     target: Path,
     preserve_conflict: bool = False,
+    allow_required_failure_recovery: bool = False,
 ) -> dict[str, object]:
     request = _request(
         repo=repo,
@@ -73,6 +76,7 @@ def perform_reanchor(
         live_main=live_main,
         target=target,
         preserve_conflict=preserve_conflict,
+        allow_required_failure_recovery=allow_required_failure_recovery,
     )
     git_ops.validate_repository(request.repo)
     preflight = registry_ops.preflight(
@@ -93,6 +97,7 @@ def perform_reanchor(
         expected_pr_base_sha=preflight.published_base_sha,
         expected_remote_head=request.expected_remote_head,
         live_main_sha=request.live_main,
+        allow_required_failure_recovery=request.allow_required_failure_recovery,
     )
     git_ops.validate_new_target(
         request.repo, target=request.target, branch=request.branch
@@ -129,6 +134,7 @@ def perform_reanchor(
             expected_pr_base_sha=preflight.published_base_sha,
             expected_remote_head=request.expected_remote_head,
             live_main_sha=request.live_main,
+            allow_required_failure_recovery=request.allow_required_failure_recovery,
         )
         if final_lifecycle != initial_lifecycle:
             raise ReanchorRefused("GitHub lifecycle changed during reanchor")

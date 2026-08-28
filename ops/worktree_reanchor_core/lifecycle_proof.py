@@ -28,6 +28,7 @@ REQUIRED_CODE_CONTEXT = "required"
 # merge or recovery authority.
 ADVISORY_CONTEXTS = frozenset({"agent-review"})
 MERGE_FRONT_POLICY = "lowest-required-green-unheld-pr-number"
+REQUIRED_FAILURE_RECOVERY_POLICY = "owner-local-required-failure-recovery"
 
 
 class RecoveryGitHubPort(Protocol):
@@ -263,8 +264,9 @@ def verify_reanchor_lifecycle(
     # Compatibility for callers written before publication began recording
     # the GitHub target OID separately from the typed handback base.
     expected_base_sha: str | None = None,
+    allow_required_failure_recovery: bool = False,
 ) -> RecoveryLifecycleProof:
-    """Prove that one published PR is the deterministic merge-front candidate."""
+    """Prove a merge-front reanchor or an explicit owner-local recovery."""
 
     legacy_base_contract = expected_pr_base_sha is None
     published_base_sha = expected_pr_base_sha or expected_base_sha
@@ -292,7 +294,25 @@ def verify_reanchor_lifecycle(
     if pull_request_holds(candidate):
         raise ReanchorRefused("reanchor refuses a PR with an explicit hard hold")
     candidate_check = _required(github, candidate)
-    if candidate_check.status is not CheckStatus.SUCCESS:
+    if allow_required_failure_recovery:
+        if candidate_check.status is not CheckStatus.FAILURE:
+            raise ReanchorRefused(
+                "required-failure recovery requires an exact required code failure",
+                pull_request=candidate.number,
+                required_status=candidate_check.status.value,
+            )
+        try:
+            receipt = parse_pull_request_body(candidate.body)
+        except DeliverySourceError as exc:
+            raise ReanchorRefused(
+                "required-failure recovery requires a valid typed PR receipt"
+            ) from exc
+        if receipt.branch != candidate.branch or receipt.head_sha != candidate.head_sha:
+            raise ReanchorRefused(
+                "required-failure recovery receipt differs from the exact PR identity",
+                pull_request=candidate.number,
+            )
+    elif candidate_check.status is not CheckStatus.SUCCESS:
         raise ReanchorRefused("reanchor requires an exact required-green PR")
 
     inventory = _read("open PR inventory", github.list_open_pull_requests)
@@ -314,6 +334,14 @@ def verify_reanchor_lifecycle(
                 pull_request=pull_request.number,
                 queue_entry=queue_entry.entry_id,
             )
+    if allow_required_failure_recovery:
+        return RecoveryLifecycleProof(
+            pull_request_number=candidate.number,
+            base_sha=candidate.base_sha,
+            head_sha=candidate.head_sha,
+            required_status=candidate_check.status,
+            merge_front_policy=REQUIRED_FAILURE_RECOVERY_POLICY,
+        )
     eligible = tuple(
         sorted(
             (
