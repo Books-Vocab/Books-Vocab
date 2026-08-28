@@ -127,6 +127,22 @@ write_cache_xctestrun() {
 PLIST
 }
 
+write_cache_xctestrun_with_code_coverage_path() {
+  local path="$1" asset_root="$2" source_prefix="$3"
+  cat >"$path" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>TestConfigurations</key><array><dict><key>TestTargets</key><array>
+<dict><key>TestingEnvironmentVariables</key><dict><key>KG_FIXTURE_ASSET_ROOT</key><string>$asset_root</string></dict></dict>
+</array></dict></array>
+<key>CodeCoverageBuildableInfos</key><array>
+<dict><key>SourceFilesCommonPathPrefix</key><string>$source_prefix</string></dict>
+</array>
+</dict></plist>
+PLIST
+}
+
 stale_sentinel="$cache_lifecycle_root/.kg-test-cache-complete-stale"
 stale_xctestrun="$cache_lifecycle_root/stale.xctestrun"
 write_cache_xctestrun "$stale_xctestrun" "$TMPROOT/old-worktree"
@@ -175,6 +191,64 @@ fi
 [[ -f "$plain_sentinel" ]] \
   && ok "plain cache completion marker remains intact" \
   || bad "plain cache completion marker was removed"
+
+section "cache completion rejects stale code coverage worktree paths"
+coverage_derived_root="$TMPROOT/coverage-derived"
+coverage_products="$coverage_derived_root/Build/Products"
+mkdir -p "$coverage_products/Debug-iphonesimulator/BooksAndVocab.app/PlugIns/BooksAndVocabTests.xctest"
+coverage_stale_source="$TMPROOT/old-code-coverage-worktree/ios/BooksAndVocab"
+mkdir -p "$coverage_stale_source"
+coverage_stale_sentinel="$coverage_derived_root/.kg-test-cache-complete-coverage-stale"
+coverage_stale_xctestrun="$coverage_products/coverage-stale.xctestrun"
+write_cache_xctestrun_with_code_coverage_path \
+  "$coverage_stale_xctestrun" "$current_root" "$coverage_stale_source"
+: >"$coverage_stale_sentinel"
+if ios_xctestrun_cache_is_complete \
+    "$coverage_stale_sentinel" "$coverage_stale_xctestrun" Debug iphonesimulator unit; then
+  bad "stale code coverage worktree cache was reused"
+else
+  ok "stale code coverage worktree cache is rejected"
+fi
+[[ ! -e "$coverage_stale_sentinel" ]] \
+  && ok "stale code coverage marker is invalidated" \
+  || bad "stale code coverage marker was retained"
+
+coverage_current_sentinel="$coverage_derived_root/.kg-test-cache-complete-coverage-current"
+coverage_current_xctestrun="$coverage_products/coverage-current.xctestrun"
+write_cache_xctestrun_with_code_coverage_path \
+  "$coverage_current_xctestrun" "$current_root" "$current_root/ios/BooksAndVocab"
+: >"$coverage_current_sentinel"
+if ios_xctestrun_cache_is_complete \
+    "$coverage_current_sentinel" "$coverage_current_xctestrun" Debug iphonesimulator unit; then
+  ok "current code coverage worktree cache remains reusable"
+else
+  bad "current code coverage worktree cache was rejected"
+fi
+[[ -f "$coverage_current_sentinel" ]] \
+  && ok "current code coverage marker remains intact" \
+  || bad "current code coverage marker was removed"
+
+section "cache completion preserves shared DerivedData source paths"
+shared_derived="$TMPROOT/shared-derived"
+shared_products="$shared_derived/Build/Products"
+shared_source="$shared_derived/SourcePackages/checkouts/example/Sources"
+mkdir -p \
+  "$shared_source" \
+  "$shared_products/Debug-iphonesimulator/BooksAndVocab.app/PlugIns/BooksAndVocabTests.xctest"
+shared_sentinel="$shared_derived/.kg-test-cache-complete-shared"
+shared_xctestrun="$shared_products/shared.xctestrun"
+write_cache_xctestrun_with_code_coverage_path \
+  "$shared_xctestrun" "$current_root" "$shared_source"
+: >"$shared_sentinel"
+if ios_xctestrun_cache_is_complete \
+    "$shared_sentinel" "$shared_xctestrun" Debug iphonesimulator unit; then
+  ok "shared DerivedData source path remains reusable"
+else
+  bad "shared DerivedData source path was rejected"
+fi
+[[ -f "$shared_sentinel" ]] \
+  && ok "shared DerivedData completion marker remains intact" \
+  || bad "shared DerivedData completion marker was removed"
 
 echo ""
 echo "passed=$pass failed=$fail"
