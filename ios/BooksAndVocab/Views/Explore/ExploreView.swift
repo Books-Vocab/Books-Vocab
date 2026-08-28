@@ -377,7 +377,7 @@ struct ExploreView: View {
     }
 
     private var loadingState: some View {
-        VStack {
+        VStack(spacing: AppSpacing.s2) {
             Spacer()
             AppLoadingStateCard(
                 title: L10n.string("explore.loading.title"),
@@ -386,6 +386,7 @@ struct ExploreView: View {
                 visualStyle: .app
             )
             .frame(maxWidth: 420)
+            fixtureAssetProof
             Spacer()
         }
         .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
