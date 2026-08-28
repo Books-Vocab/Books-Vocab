@@ -73,18 +73,6 @@ class PublishPreflightService:
                 return True
         return False
 
-    def _commits_are_ancestrally_related(self, first_sha: str, second_sha: str) -> bool:
-        if first_sha == second_sha:
-            return True
-        try:
-            return self.git.is_ancestor(first_sha, second_sha) or self.git.is_ancestor(
-                second_sha, first_sha
-            )
-        except DeliverySourceError as error:
-            raise PolicyViolation(
-                "existing PR base ancestry could not be verified"
-            ) from error
-
     def _existing_pr_base_matches_handback_bases(
         self,
         *,
@@ -92,10 +80,15 @@ class PublishPreflightService:
         handback_base_sha: str,
         pull_request_base_sha: str,
     ) -> bool:
-        return all(
-            self._commits_are_ancestrally_related(base_sha, pull_request_base_sha)
-            for base_sha in (previous_base_sha, handback_base_sha)
-        )
+        try:
+            return all(
+                self.git.is_ancestor(base_sha, pull_request_base_sha)
+                for base_sha in (previous_base_sha, handback_base_sha)
+            )
+        except DeliverySourceError as error:
+            raise PolicyViolation(
+                "existing PR base ancestry could not be verified"
+            ) from error
 
     def _validate_existing_pull_request_scope(
         self,

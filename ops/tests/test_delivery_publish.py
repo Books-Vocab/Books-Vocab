@@ -993,6 +993,56 @@ def test_partial_publication_refuses_unverified_pr_base(
     assert github.update_calls == 0
 
 
+def test_partial_publication_refuses_pr_base_older_than_handback_base() -> None:
+    current_main = "6" * 40
+    previous = _receipt(
+        claim_generation=2,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py", "ops/c.py")),
+    )
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    pull_request = replace(
+        _pull_request(
+            previous,
+            title="fix: delivery",
+            body=render_pull_request_body(previous),
+        ),
+        base_sha=current_main,
+        head_sha=receipt.head_sha,
+    )
+    service, git, github = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=_worktree(
+                receipt,
+                changes=(
+                    FileChange(FileOperation.MODIFY, "ops/a.py"),
+                    FileChange(FileOperation.MODIFY, "ops/b.py"),
+                ),
+            ),
+            remote_sha=receipt.head_sha,
+            ancestor_pairs=(
+                (current_main, previous.base_sha),
+                (current_main, receipt.base_sha),
+            ),
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=pull_request,
+            changed_paths=receipt.scope.paths,
+        ),
+    )
+
+    with pytest.raises(PolicyViolation, match="unrelated"):
+        service.publish(receipt=receipt, title="fix: delivery")
+
+    assert git.push_calls == []
+    assert github.update_calls == 0
+
+
 def test_partial_push_can_be_retried_to_repair_the_exact_pr_body() -> None:
     new_base = "f" * 40
     new_head = "9" * 40
