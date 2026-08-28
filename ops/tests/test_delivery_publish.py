@@ -935,6 +935,113 @@ def test_partial_publication_reconciles_stale_scope_when_remote_head_is_ancestor
     assert parse_pull_request_body(result.pull_request.body) == receipt
 
 
+def test_partial_publication_reconciles_stale_body_scope_with_typed_addition() -> None:
+    """Observed PR paths survive while stale body-only paths are replaced."""
+
+    observed_paths = (
+        "ios/BooksAndVocabTests/TranslationLanguageTests.swift",
+        "ios/BooksAndVocabTests/TranslationLanguageDefaultTests.swift",
+    )
+    stale_body_only_path = "ios/BooksAndVocab/Services/TranslationLanguage.swift"
+    new_typed_path = "ops/tests/test_delivery_publish.py"
+    previous = _receipt(
+        claim_generation=2,
+        head_sha=OLD_HEAD,
+        scope=Scope.from_paths(
+            modify=(*observed_paths, stale_body_only_path),
+        ),
+    )
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        scope=Scope.from_paths(modify=(*observed_paths, new_typed_path)),
+    )
+    pull_request = _pull_request(
+        previous,
+        title="old title",
+        body=render_pull_request_body(previous),
+    )
+    worktree = _worktree(
+        receipt,
+        changes=tuple(
+            FileChange(FileOperation.MODIFY, path) for path in receipt.scope.paths
+        ),
+    )
+    service, git, github = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=worktree,
+            remote_sha=previous.head_sha,
+            ancestor_pairs=((previous.head_sha, receipt.head_sha),),
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=pull_request,
+            changed_paths=observed_paths,
+        ),
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert git.push_calls == [(previous.head_sha, receipt.head_sha)]
+    assert github.create_calls == 0
+    assert github.update_calls == 1
+    assert parse_pull_request_body(result.pull_request.body) == receipt
+
+
+def test_partial_publication_requires_exact_diff_for_typed_scope_addition() -> None:
+    observed_paths = (
+        "ios/BooksAndVocabTests/TranslationLanguageTests.swift",
+        "ios/BooksAndVocabTests/TranslationLanguageDefaultTests.swift",
+    )
+    previous = _receipt(
+        claim_generation=2,
+        head_sha=OLD_HEAD,
+        scope=Scope.from_paths(
+            modify=(
+                *observed_paths,
+                "ios/BooksAndVocab/Services/TranslationLanguage.swift",
+            ),
+        ),
+    )
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        scope=Scope.from_paths(
+            modify=(*observed_paths, "ops/tests/test_delivery_publish.py"),
+        ),
+    )
+    pull_request = _pull_request(
+        previous,
+        body=render_pull_request_body(previous),
+    )
+    service, git, github = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=_worktree(
+                receipt,
+                changes=tuple(
+                    FileChange(FileOperation.MODIFY, path) for path in observed_paths
+                ),
+            ),
+            remote_sha=previous.head_sha,
+            ancestor_pairs=((previous.head_sha, receipt.head_sha),),
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=pull_request,
+            changed_paths=observed_paths,
+        ),
+    )
+
+    with pytest.raises(PolicyViolation, match="exactly match"):
+        service.publish(receipt=receipt, title="fix: delivery")
+
+    assert git.push_calls == []
+    assert github.update_calls == 0
+
+
 def test_partial_publication_reconciles_when_pr_base_already_matches_current_main() -> (
     None
 ):
