@@ -135,12 +135,12 @@ class PublishPreflightService:
         changed paths must exactly match its previous typed receipt; otherwise
         a same-branch PR could be used to smuggle arbitrary Scope drift.
 
-        A PR can also have been created before a supported ``scope-set``
-        narrowed a handback to its actual changed paths.  That partial
-        publication is recoverable only when the new receipt is a strictly
-        narrower subset and GitHub's observed paths already equal that new
-        receipt.  This keeps the recovery bounded to the exact same owner, branch,
-        head, ancestry-compatible handback base, and generation transition.
+        A PR can also have its target base advanced before its body is refreshed.
+        That partial publication is recoverable only when its old body still
+        identifies the same remote head, the remote head can advance to the new
+        receipt, and the current worktree diff exactly matches the new Scope.
+        This keeps the recovery bounded to the exact same owner, branch, head,
+        ancestry-compatible handback bases, and generation transition.
         """
 
         try:
@@ -155,9 +155,10 @@ class PublishPreflightService:
             or previous.branch != receipt.branch
         ):
             raise PolicyViolation("existing PR handback owner or lane differs")
+        previous_base_matches_pr = previous.base_sha == pull_request.base_sha
+        previous_head_matches_pr = previous.head_sha == pull_request.head_sha
         previous_tuple_matches_pr = (
-            previous.base_sha == pull_request.base_sha
-            and previous.head_sha == pull_request.head_sha
+            previous_base_matches_pr and previous_head_matches_pr
         )
         generation_advanced = receipt.claim_generation > previous.claim_generation
         if generation_advanced and not self._existing_pr_base_matches_handback_bases(
@@ -169,7 +170,7 @@ class PublishPreflightService:
                 "existing PR base is unrelated to old or new handback base"
             )
         head_can_advance = False
-        if generation_advanced and previous_tuple_matches_pr:
+        if generation_advanced and previous_head_matches_pr:
             head_can_advance = self._existing_pr_head_can_advance(
                 receipt=receipt,
                 pull_request=pull_request,

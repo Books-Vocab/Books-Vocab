@@ -935,6 +935,66 @@ def test_partial_publication_reconciles_stale_scope_when_remote_head_is_ancestor
     assert parse_pull_request_body(result.pull_request.body) == receipt
 
 
+def test_partial_publication_reconciles_when_pr_base_already_matches_current_main() -> (
+    None
+):
+    """A stale body tuple may advance when PR metadata already has the new base."""
+
+    previous = _receipt(
+        claim_generation=2,
+        head_sha=OLD_HEAD,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    current_base = "f" * 40
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        base_sha=current_base,
+        parent_sha=current_base,
+        origin_main_sha=current_base,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    pull_request = replace(
+        _pull_request(previous, body=render_pull_request_body(previous)),
+        number=1669,
+        base_sha=current_base,
+        head_sha=previous.head_sha,
+    )
+    assert previous.base_sha != pull_request.base_sha
+    assert previous.head_sha == pull_request.head_sha
+    assert previous.head_sha != receipt.head_sha
+    service, git, github = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=_worktree(
+                receipt,
+                changes=(
+                    FileChange(FileOperation.MODIFY, "ops/a.py"),
+                    FileChange(FileOperation.MODIFY, "ops/b.py"),
+                ),
+            ),
+            remote_sha=previous.head_sha,
+            ancestor_pairs=(
+                (previous.base_sha, receipt.base_sha),
+                (previous.head_sha, receipt.head_sha),
+            ),
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=pull_request,
+            changed_paths=receipt.scope.paths,
+        ),
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert git.push_calls == [(previous.head_sha, receipt.head_sha)]
+    assert github.create_calls == 0
+    assert github.update_calls == 1
+    assert parse_pull_request_body(result.pull_request.body) == receipt
+
+
 @pytest.mark.parametrize(
     ("ancestor_pairs", "worktree_changes", "message"),
     (
