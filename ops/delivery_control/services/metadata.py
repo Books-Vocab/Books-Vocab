@@ -48,7 +48,11 @@ def _receipt_from_current_claim(
         or record.handback_origin_main_sha is None
     ):
         raise PolicyViolation("current published claim differs from the old receipt")
-    published_base = record.published_base_sha or record.base_sha
+    # A resumed claim can be cleanup-pending before its PR target SHA has
+    # been copied back into the registry.  The current GitHub snapshot is the
+    # exact source for that missing observation; record-published-base can
+    # persist it after the receipt body has been reconciled.
+    published_base = record.published_base_sha or pull_request.base_sha
     if (
         pull_request.state != "OPEN"
         or pull_request.base_branch != "main"
