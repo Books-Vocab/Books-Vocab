@@ -20,9 +20,11 @@ KEEP="${KG_DISK_GUARD_CACHE_KEEP:-3}"
 # every tick; the manual sweep keeps its longer 6h default for a more
 # conservative operator-driven cleanup.
 MIN_AGE_HOURS="${KG_DISK_GUARD_CACHE_MIN_AGE_HOURS:-0}"
+READER_WINDOW_HOURS="${KG_DISK_GUARD_CACHE_READER_WINDOW_HOURS:-1}"
 DERIVED_DATA_MIN_AGE_HOURS="${KG_DISK_GUARD_DERIVED_DATA_MIN_AGE_HOURS:-6}"
 WORKTREE_CACHE_KEEP="${KG_DISK_GUARD_WORKTREE_CACHE_KEEP:-3}"
 WORKTREE_CACHE_MIN_AGE_HOURS="${KG_DISK_GUARD_WORKTREE_CACHE_MIN_AGE_HOURS:-0}"
+WORKTREE_READER_WINDOW_HOURS="${KG_DISK_GUARD_WORKTREE_READER_WINDOW_HOURS:-1}"
 BUILD_LOCK_FILE="${KG_DISK_GUARD_BUILD_LOCK_FILE:-/tmp/kg-ios-build.lock}"
 GUARD_LOCK_FILE="${KG_DISK_GUARD_LOCK_FILE:-/tmp/kg-disk-guard.lock}"
 DRY_RUN="${KG_DISK_GUARD_DRY_RUN:-0}"
@@ -243,9 +245,10 @@ trim_logs() {
 }
 
 evict_keyed_caches() {
-  local root
+  local root min_age_hours="$MIN_AGE_HOURS"
+  (( READER_WINDOW_HOURS > min_age_hours )) && min_age_hours="$READER_WINDOW_HOURS"
   export KG_IOS_CACHE_KEEP="$KEEP"
-  export KG_IOS_CACHE_EVICT_MIN_AGE_HOURS="$MIN_AGE_HOURS"
+  export KG_IOS_CACHE_EVICT_MIN_AGE_HOURS="$min_age_hours"
   export KG_IOS_CACHE_EVICT_DRY_RUN="$DRY_RUN"
   while IFS= read -r root; do
     kg_ios_cache_evict "$root" "" || true
@@ -253,12 +256,13 @@ evict_keyed_caches() {
 }
 
 evict_worktree_caches() {
-  local old_keep old_min old_dry
+  local old_keep old_min old_dry min_age_hours="$WORKTREE_CACHE_MIN_AGE_HOURS"
+  (( WORKTREE_READER_WINDOW_HOURS > min_age_hours )) && min_age_hours="$WORKTREE_READER_WINDOW_HOURS"
   old_keep="${KG_IOS_CACHE_KEEP:-}"
   old_min="${KG_IOS_CACHE_EVICT_MIN_AGE_HOURS:-}"
   old_dry="${KG_IOS_CACHE_EVICT_DRY_RUN:-}"
   export KG_IOS_CACHE_KEEP="$WORKTREE_CACHE_KEEP"
-  export KG_IOS_CACHE_EVICT_MIN_AGE_HOURS="$WORKTREE_CACHE_MIN_AGE_HOURS"
+  export KG_IOS_CACHE_EVICT_MIN_AGE_HOURS="$min_age_hours"
   export KG_IOS_CACHE_EVICT_DRY_RUN="$DRY_RUN"
   while IFS= read -r root; do
     kg_ios_cache_evict "$root" "" || true
@@ -270,7 +274,7 @@ evict_worktree_caches() {
 
 acquire_build_lock_nonblocking() {
   [[ "${KG_DISK_GUARD_BUILD_LOCK_HELD:-0}" == "1" ]] && return 0
-  if [[ -d "${BUILD_LOCK_FILE}.queue" ]] && find "${BUILD_LOCK_FILE}.queue" -mindepth 1 -maxdepth 1 -type f -print -quit 2>/dev/null | grep -q .; then
+  if [[ -d "${BUILD_LOCK_FILE}.queue" ]] && find "${BUILD_LOCK_FILE}.queue" -mindepth 1 -maxdepth 1 -type f -name 'ticket-*' -print -quit 2>/dev/null | grep -q .; then
     # The iOS callers use this queue to preserve FIFO order.  A recurring
     # cleanup tick must never jump ahead of an already queued build/test.
     return 1

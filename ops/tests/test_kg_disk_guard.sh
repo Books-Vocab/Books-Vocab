@@ -24,6 +24,20 @@ grep -q '"verdict":"ok"' "$state" && ok "high-free verdict ok" || bad "high-free
 grep -q '"action":"none"' "$state" && ok "high-free no action" || bad "high-free action"
 bytes1="$(wc -c < "$state")"
 
+echo "── healthy: reader window protects warm shared cache keys ──"
+root="$TMP/shared-reader-window"; cache="$root/.cache/ios-test-derived-data"; state="$root/state.json"
+mkdir -p "$cache"
+for key in a b c d; do mkdir -p "$cache/$key/Build"; printf x > "$cache/$key/Build/blob"; done
+mkdir -p "$cache/warm/Build"; printf x > "$cache/warm/Build/blob"
+touch -m -t "$(date -v-30M '+%Y%m%d%H%M.%S')" "$cache"/a "$cache"/b "$cache"/c "$cache"/d
+touch -m -t "$(date -v-45M '+%Y%m%d%H%M.%S')" "$cache/warm"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  KG_DISK_GUARD_CACHE_KEEP=1 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0 \
+  "$SCRIPT" >/dev/null 2>&1
+key_count="$(find "$cache" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
+[[ "$key_count" -eq 5 ]] && ok "warm reader window preserves shared keys" || bad "warm reader window changed keys: $key_count"
+
 echo "── healthy: shared keyed cache cap is enforced ──"
 root="$TMP/shared-overflow"; cache="$root/.cache/ios-test-derived-data"; state="$root/state.json"
 mkdir -p "$cache"
@@ -54,7 +68,7 @@ root="$TMP/queue-defer"; cache="$root/.cache/ios-test-derived-data"; state="$roo
 mkdir -p "$cache" "${build_lock}.queue"
 for key in a b c d; do mkdir -p "$cache/$key/Build"; printf x > "$cache/$key/Build/blob"; done
 touch -m -t 202001010000.00 "$cache"/*
-printf 123 > "${build_lock}.queue/ticket"
+printf 123 > "${build_lock}.queue/ticket-123"
 KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
   KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
   KG_DISK_GUARD_CACHE_KEEP=3 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0 KG_DISK_GUARD_BUILD_LOCK_FILE="$build_lock" \
@@ -62,6 +76,20 @@ KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
 key_count="$(find "$cache" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
 [[ "$key_count" -eq 4 ]] && ok "queued build cache preserved" || bad "queued build cache changed: $key_count"
 grep -q '"action":"deferred-build-lock"' "$state" && ok "queued build deferral recorded" || bad "queued build deferral missing"
+
+echo "── persistent queue metadata: guard may clean ──"
+root="$TMP/queue-metadata"; cache="$root/.cache/ios-test-derived-data"; state="$root/state.json"; build_lock="$root/build.lock"
+mkdir -p "$cache" "${build_lock}.queue"
+for key in a b c d; do mkdir -p "$cache/$key/Build"; printf x > "$cache/$key/Build/blob"; done
+touch -m -t 202001010000.00 "$cache"/*
+printf 1 > "${build_lock}.queue/.next"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  KG_DISK_GUARD_CACHE_KEEP=3 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0 KG_DISK_GUARD_BUILD_LOCK_FILE="$build_lock" \
+  env -u KG_DISK_GUARD_BUILD_LOCK_HELD "$SCRIPT" >/dev/null 2>&1
+key_count="$(find "$cache" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
+[[ "$key_count" -eq 3 ]] && ok "persistent queue metadata does not block cleanup" || bad "persistent queue metadata blocked cleanup: $key_count"
+grep -q '"action":"evict-old-ios-cache"' "$state" && ok "persistent queue metadata allows cleanup" || bad "persistent queue metadata action"
 
 echo "── critical: old keyed cache evicted ──"
 root="$TMP/low"; cache="$root/.cache/ios-test-derived-data"; state="$TMP/low/state.json"
