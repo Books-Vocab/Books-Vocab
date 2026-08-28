@@ -33,6 +33,8 @@ BUILD_LOCK_FILE="${KG_DISK_GUARD_BUILD_LOCK_FILE:-/tmp/kg-ios-build.lock}"
 GUARD_LOCK_FILE="${KG_DISK_GUARD_LOCK_FILE:-/tmp/kg-disk-guard.lock}"
 DRY_RUN="${KG_DISK_GUARD_DRY_RUN:-0}"
 UV_BIN="${KG_DISK_GUARD_UV_BIN:-$HOME/.local/bin/uv}"
+LANE_USAGE_BUDGET_SECONDS="${KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS:-30}"
+[[ "$LANE_USAGE_BUDGET_SECONDS" =~ ^[0-9]+$ ]] || LANE_USAGE_BUDGET_SECONDS=30
 LANE_USAGE_RC=0
 LANE_USAGE_VERDICT="unavailable"
 
@@ -266,10 +268,12 @@ write_lane_usage() {
   if [[ -x "$UV_BIN" ]]; then
     "$UV_BIN" run --no-project --python 3.13 "$SCRIPT_DIR/disk_usage.py" \
       --workspace "$WORKSPACE" --state "$REGISTRY_STATE" --output "$LANE_USAGE_STATE" \
+      --time-budget-seconds "$LANE_USAGE_BUDGET_SECONDS" \
       >/dev/null 2>&1 || rc=$?
   else
     "$SCRIPT_DIR/disk_usage.py" \
       --workspace "$WORKSPACE" --state "$REGISTRY_STATE" --output "$LANE_USAGE_STATE" \
+      --time-budget-seconds "$LANE_USAGE_BUDGET_SECONDS" \
       >/dev/null 2>&1 || rc=$?
   fi
   if (( rc != 0 )); then
@@ -379,14 +383,14 @@ evict_old_app_derived_data() {
 }
 
 write_state() {
-  local free="$1" prev="$2" growth="$3" active="$4" cache="$5" docker_cache="$6" docker_running="$7" worktree_cache="$8" worktree_keys="$9" worktree_overflow="${10}" cache_overflow="${11}" budget_kb="${12}" budget_overflow="${13}" verdict="${14}" reason="${15}" action="${16}" lane_usage_verdict="${17}" lane_usage_rc="${18}"
+  local free="$1" prev="$2" growth="$3" active="$4" cache="$5" docker_cache="$6" docker_running="$7" worktree_cache="$8" worktree_keys="$9" worktree_overflow="${10}" cache_overflow="${11}" budget_kb="${12}" budget_overflow="${13}" verdict="${14}" reason="${15}" action="${16}" lane_usage_verdict="${17}" lane_usage_rc="${18}" lane_usage_budget_seconds="${19}"
   local dir tmp
   dir="$(dirname "$STATE_FILE")"; mkdir -p "$dir" 2>/dev/null || return 1
   tmp="$STATE_FILE.$$.$RANDOM.tmp"
-  printf '{"schema":"kg.disk.guard.v1","host":"%s","free_bytes":%s,"previous_free_bytes":%s,"growth_bytes":%s,"active_build":%s,"cache_kb":%s,"cache_budget_kb":%s,"cache_budget_overflow_kb":%s,"docker_cache_kb":%s,"docker_active":%s,"worktree_cache_kb":%s,"worktree_cache_keys":%s,"worktree_cache_overflow_keys":%s,"cache_overflow_keys":%s,"verdict":"%s","reason":"%s","action":"%s","lane_usage_verdict":"%s","lane_usage_rc":%s,"at":"%s"}\n' \
+  printf '{"schema":"kg.disk.guard.v1","host":"%s","free_bytes":%s,"previous_free_bytes":%s,"growth_bytes":%s,"active_build":%s,"cache_kb":%s,"cache_budget_kb":%s,"cache_budget_overflow_kb":%s,"docker_cache_kb":%s,"docker_active":%s,"worktree_cache_kb":%s,"worktree_cache_keys":%s,"worktree_cache_overflow_keys":%s,"cache_overflow_keys":%s,"verdict":"%s","reason":"%s","action":"%s","lane_usage_verdict":"%s","lane_usage_rc":%s,"lane_usage_budget_seconds":%s,"at":"%s"}\n' \
     "$(hostname -s 2>/dev/null || echo unknown)" "$(number "$free")" "$(number "$prev")" "$(number "$growth")" \
     "$(number "$active")" "$(number "$cache")" "$(number "$budget_kb")" "$(number "$budget_overflow")" "$(number "$docker_cache")" "$(number "$docker_running")" \
-    "$(number "$worktree_cache")" "$(number "$worktree_keys")" "$(number "$worktree_overflow")" "$(number "$cache_overflow")" "$verdict" "$reason" "$action" "$lane_usage_verdict" "$(number "$lane_usage_rc")" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$tmp" || { rm -f "$tmp"; return 1; }
+    "$(number "$worktree_cache")" "$(number "$worktree_keys")" "$(number "$worktree_overflow")" "$(number "$cache_overflow")" "$verdict" "$reason" "$action" "$lane_usage_verdict" "$(number "$lane_usage_rc")" "$(number "$lane_usage_budget_seconds")" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$tmp" || { rm -f "$tmp"; return 1; }
   mv -f "$tmp" "$STATE_FILE"
 }
 
@@ -483,8 +487,25 @@ main() {
   # This is observation only: unknown or active lanes are never deleted by the
   # disk guard; their evidence is consumed by the supported lifecycle tools.
   write_lane_usage
-  write_state "$free" "$prev" "$growth" "$active" "$cache" "$docker_cache" "$docker_running" "$worktree_cache" "$worktree_keys" "$worktree_overflow" "$cache_overflow" "$cache_budget_kb" "$cache_budget_overflow" "$verdict" "$reason" "$action" "$LANE_USAGE_VERDICT" "$LANE_USAGE_RC"
+  write_state "$free" "$prev" "$growth" "$active" "$cache" "$docker_cache" "$docker_running" "$worktree_cache" "$worktree_keys" "$worktree_overflow" "$cache_overflow" "$cache_budget_kb" "$cache_budget_overflow" "$verdict" "$reason" "$action" "$LANE_USAGE_VERDICT" "$LANE_USAGE_RC" "$LANE_USAGE_BUDGET_SECONDS"
   logger -t kg-disk-guard "verdict=$verdict freeGiB=$free_gib growthGiB=$growth_gib activeBuild=$active dockerCacheGiB=$docker_gib dockerActive=$docker_running cacheKB=$cache cacheBudgetKB=$cache_budget_kb cacheBudgetOverflowKB=$cache_budget_overflow worktreeCacheKB=$worktree_cache worktreeKeys=$worktree_keys worktreeOverflowKeys=$worktree_overflow cacheOverflowKeys=$cache_overflow action=$action" 2>/dev/null || true
 }
+
+case "${1:-}" in
+  -h|--help)
+    cat <<'USAGE'
+Usage: ops/kg_disk_guard.sh
+
+Run one bounded disk-guard tick. The guard records lane attribution, defers
+cleanup while an iOS consumer is active, and only evicts rebuildable caches
+under its configured budgets. Unknown or active worktrees are never deleted.
+
+Environment:
+  KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS  attribution scan budget (default: 30)
+  KG_DISK_GUARD_DRY_RUN=1                  report intended cleanup only
+USAGE
+    exit 0
+    ;;
+esac
 
 main "$@"

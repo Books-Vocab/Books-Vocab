@@ -164,3 +164,33 @@ def test_terminal_registry_history_is_summarized_not_counted_as_live_lane(
     assert report["history"]["by_status"] == {"merged": 1}
     assert report["lane_count"] == 1
     assert len(json.dumps(report)) < 20_000
+
+
+def test_measurement_time_budget_fails_closed_with_structured_evidence(
+    tmp_path: Path,
+) -> None:
+    repo, _ = _repo_with_worktree(tmp_path)
+    state = tmp_path / "registry.json"
+    output = tmp_path / "lane-usage.json"
+    _write_registry(state, [])
+
+    assert (
+        main(
+            [
+                "--workspace",
+                str(repo),
+                "--state",
+                str(state),
+                "--output",
+                str(output),
+                "--time-budget-seconds",
+                "0",
+            ]
+        )
+        == 75
+    )
+
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["measurement"]["budget_seconds"] == 0.0
+    assert report["measurement"]["budget_exhausted"] is True
+    assert "measurement-time-budget-exceeded" in report["policy"]["reasons"]
