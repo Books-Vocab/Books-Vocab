@@ -73,6 +73,23 @@ class PublishPreflightService:
                 return True
         return False
 
+    def _existing_pr_base_matches_handback_bases(
+        self,
+        *,
+        previous_base_sha: str,
+        handback_base_sha: str,
+        pull_request_base_sha: str,
+    ) -> bool:
+        try:
+            return all(
+                self.git.is_ancestor(base_sha, pull_request_base_sha)
+                for base_sha in (previous_base_sha, handback_base_sha)
+            )
+        except DeliverySourceError as error:
+            raise PolicyViolation(
+                "existing PR base ancestry could not be verified"
+            ) from error
+
     def _validate_existing_pull_request_scope(
         self,
         *,
@@ -93,8 +110,8 @@ class PublishPreflightService:
         narrowed a handback to its actual changed paths.  That partial
         publication is recoverable only when the new receipt is a strictly
         narrower subset and GitHub's observed paths already equal that new
-        receipt.  This keeps the recovery bounded to the exact same owner,
-        branch, base, head, and generation transition.
+        receipt.  This keeps the recovery bounded to the exact same owner, branch,
+        head, ancestry-compatible handback base, and generation transition.
         """
 
         try:
@@ -113,9 +130,17 @@ class PublishPreflightService:
             previous.base_sha == pull_request.base_sha
             and previous.head_sha == pull_request.head_sha
         )
+        generation_advanced = receipt.claim_generation > previous.claim_generation
+        if generation_advanced and not self._existing_pr_base_matches_handback_bases(
+            previous_base_sha=previous.base_sha,
+            handback_base_sha=receipt.base_sha,
+            pull_request_base_sha=pull_request.base_sha,
+        ):
+            raise PolicyViolation(
+                "existing PR base is unrelated to old or new handback base"
+            )
         partial_publication_matches = (
-            previous.claim_generation < receipt.claim_generation
-            and pull_request.base_sha == receipt.base_sha
+            generation_advanced
             and pull_request.head_sha == receipt.head_sha
             and remote_sha == receipt.head_sha
         )
