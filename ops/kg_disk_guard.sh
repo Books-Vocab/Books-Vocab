@@ -14,6 +14,8 @@ CRIT_FREE_GIB="${KG_DISK_GUARD_CRIT_FREE_GIB:-10}"
 GROWTH_WARN_GIB="${KG_DISK_GUARD_GROWTH_WARN_GIB:-5}"
 DOCKER_WARN_GIB="${KG_DISK_GUARD_DOCKER_WARN_GIB:-2}"
 DOCKER_PRUNE_UNTIL="${KG_DISK_GUARD_DOCKER_PRUNE_UNTIL:-168h}"
+CACHE_BUDGET_GIB="${KG_DISK_GUARD_CACHE_BUDGET_GIB:-16}"
+CACHE_HEADROOM_GIB="${KG_DISK_GUARD_CACHE_HEADROOM_GIB:-6}"
 KEEP="${KG_DISK_GUARD_CACHE_KEEP:-3}"
 # The recurring guard already proves that no iOS consumer is running before it
 # acquires the build lock.  A zero age window therefore enforces the key cap on
@@ -75,7 +77,10 @@ shared_cache_roots() {
   for root in \
     "$WORKSPACE/.cache/ios-build-derived-data" \
     "$WORKSPACE/.cache/ios-test-derived-data" \
-    "$WORKSPACE/.cache/ios-catalyst-derived-data"; do
+    "$WORKSPACE/.cache/ios-catalyst-derived-data" \
+    "$WORKSPACE/.cache/ios-release-derived-data" \
+    "$WORKSPACE/.cache/ops-swift-build" \
+    "$WORKSPACE/ios/build"; do
     [[ -d "$root" ]] && printf '%s\n' "$root"
   done
 }
@@ -157,6 +162,13 @@ keyed_cache_overflow_keys() {
     (( count > KEEP )) && total=$((total + count - KEEP))
   done < <(shared_keyed_cache_roots)
   printf '%s' "$total"
+}
+
+cache_budget_overflow_kb() {
+  local cache="$1" budget_gib="$CACHE_BUDGET_GIB"
+  [[ "$budget_gib" =~ ^[0-9]+$ ]] || budget_gib=16
+  local budget_kb=$((budget_gib * 1048576))
+  (( cache > budget_kb )) && printf '%s' "$((cache - budget_kb))" || printf '0'
 }
 
 worktree_cache_kb() {
@@ -255,6 +267,23 @@ evict_keyed_caches() {
   done < <(shared_keyed_cache_roots)
 }
 
+evict_rebuildable_caches() {
+  local root
+  for root in \
+    "$WORKSPACE/.cache/ios-release-derived-data" \
+    "$WORKSPACE/.cache/ios-catalyst-derived-data" \
+    "$WORKSPACE/ios/build/BooksAndVocab.xcarchive" \
+    "$WORKSPACE/ios/build/export"; do
+    [[ -d "$root" ]] || continue
+    if [[ "$DRY_RUN" == "1" ]]; then
+      logger -t kg-disk-guard "would-evict rebuildable-cache root=$root" 2>/dev/null || true
+    else
+      rm -rf "$root" 2>/dev/null || true
+      logger -t kg-disk-guard "evicted rebuildable-cache root=$root" 2>/dev/null || true
+    fi
+  done
+}
+
 evict_worktree_caches() {
   local old_keep old_min old_dry min_age_hours="$WORKTREE_CACHE_MIN_AGE_HOURS"
   (( WORKTREE_READER_WINDOW_HOURS > min_age_hours )) && min_age_hours="$WORKTREE_READER_WINDOW_HOURS"
@@ -319,19 +348,19 @@ evict_old_app_derived_data() {
 }
 
 write_state() {
-  local free="$1" prev="$2" growth="$3" active="$4" cache="$5" docker_cache="$6" docker_running="$7" worktree_cache="$8" worktree_keys="$9" worktree_overflow="${10}" cache_overflow="${11}" verdict="${12}" reason="${13}" action="${14}"
+  local free="$1" prev="$2" growth="$3" active="$4" cache="$5" docker_cache="$6" docker_running="$7" worktree_cache="$8" worktree_keys="$9" worktree_overflow="${10}" cache_overflow="${11}" budget_kb="${12}" budget_overflow="${13}" verdict="${14}" reason="${15}" action="${16}"
   local dir tmp
   dir="$(dirname "$STATE_FILE")"; mkdir -p "$dir" 2>/dev/null || return 1
   tmp="$STATE_FILE.$$.$RANDOM.tmp"
-  printf '{"schema":"kg.disk.guard.v1","host":"%s","free_bytes":%s,"previous_free_bytes":%s,"growth_bytes":%s,"active_build":%s,"cache_kb":%s,"docker_cache_kb":%s,"docker_active":%s,"worktree_cache_kb":%s,"worktree_cache_keys":%s,"worktree_cache_overflow_keys":%s,"cache_overflow_keys":%s,"verdict":"%s","reason":"%s","action":"%s","at":"%s"}\n' \
+  printf '{"schema":"kg.disk.guard.v1","host":"%s","free_bytes":%s,"previous_free_bytes":%s,"growth_bytes":%s,"active_build":%s,"cache_kb":%s,"cache_budget_kb":%s,"cache_budget_overflow_kb":%s,"docker_cache_kb":%s,"docker_active":%s,"worktree_cache_kb":%s,"worktree_cache_keys":%s,"worktree_cache_overflow_keys":%s,"cache_overflow_keys":%s,"verdict":"%s","reason":"%s","action":"%s","at":"%s"}\n' \
     "$(hostname -s 2>/dev/null || echo unknown)" "$(number "$free")" "$(number "$prev")" "$(number "$growth")" \
-    "$(number "$active")" "$(number "$cache")" "$(number "$docker_cache")" "$(number "$docker_running")" \
+    "$(number "$active")" "$(number "$cache")" "$(number "$budget_kb")" "$(number "$budget_overflow")" "$(number "$docker_cache")" "$(number "$docker_running")" \
     "$(number "$worktree_cache")" "$(number "$worktree_keys")" "$(number "$worktree_overflow")" "$(number "$cache_overflow")" "$verdict" "$reason" "$action" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$tmp" || { rm -f "$tmp"; return 1; }
   mv -f "$tmp" "$STATE_FILE"
 }
 
 main() {
-  local free prev growth active cache docker_cache docker_running worktree_cache worktree_keys worktree_overflow cache_overflow free_gib growth_gib docker_gib verdict reason action lock_ready need_shared_cleanup build_lock_owned
+  local free prev growth active cache docker_cache docker_running worktree_cache worktree_keys worktree_overflow cache_overflow cache_budget_kb cache_budget_overflow free_gib growth_gib docker_gib verdict reason action lock_ready need_shared_cleanup build_lock_owned cache_budget_gib
   acquire_guard_lock_nonblocking || {
     logger -t kg-disk-guard 'skipped=already-running' 2>/dev/null || true
     return 0
@@ -341,6 +370,8 @@ main() {
   active="$(active_build)"; cache="$(cache_kb)"
   docker_cache="$(docker_cache_kb)"; docker_running="$(docker_active)"
   worktree_keys="$(worktree_cache_keys)"; worktree_overflow="$(worktree_cache_overflow_keys)"; cache_overflow="$(keyed_cache_overflow_keys)"; worktree_cache="$(worktree_cache_kb)"
+  cache_budget_gib="$CACHE_BUDGET_GIB"; [[ "$cache_budget_gib" =~ ^[0-9]+$ ]] || cache_budget_gib=16
+  cache_budget_kb=$((cache_budget_gib * 1048576)); cache_budget_overflow="$(cache_budget_overflow_kb "$cache")"
   free_gib=$((free / 1073741824)); growth_gib=$((growth / 1073741824))
   docker_gib=$((docker_cache / 1048576)); docker_warn_kb=$((DOCKER_WARN_GIB * 1048576)); verdict="ok"; reason="within-bounds"; action="none"
   if (( free_gib < CRIT_FREE_GIB )); then
@@ -351,6 +382,8 @@ main() {
     verdict="warning"; reason="rapid-growth"
   elif (( docker_cache >= docker_warn_kb )); then
     verdict="warning"; reason="docker-build-cache"
+  elif (( cache_budget_overflow > 0 )); then
+    verdict="warning"; reason="cache-budget-exceeded"
   elif (( cache_overflow > 0 )); then
     verdict="warning"; reason="ios-cache-overflow"
   elif (( worktree_overflow > 0 )); then
@@ -376,7 +409,7 @@ main() {
       need_shared_cleanup=0
       if [[ "$action" == "none" ]]; then
         need_shared_cleanup=1
-      elif [[ "$action" == "evict-worktree-cache" ]] && (( cache_overflow > 0 || free_gib < WARN_FREE_GIB )); then
+      elif [[ "$action" == "evict-worktree-cache" ]] && (( cache_overflow > 0 || cache_budget_overflow > 0 || free_gib < WARN_FREE_GIB )); then
         # Keep the existing pressure cleanup in the same guarded turn, and
         # also enforce the shared keyed-cache cap when disk space is healthy.
         need_shared_cleanup=1
@@ -384,7 +417,16 @@ main() {
       if (( need_shared_cleanup > 0 )); then
         if (( lock_ready == 1 )) || acquire_build_lock_nonblocking; then
           build_lock_owned=1
-          evict_keyed_caches
+          if (( cache_budget_overflow > 0 )); then
+            local old_keep="$KEEP"
+            KEEP=0
+            evict_keyed_caches
+            KEEP="$old_keep"
+            evict_rebuildable_caches
+            action="enforce-cache-budget"
+          else
+            evict_keyed_caches
+          fi
           if [[ "$action" == "none" ]]; then
             action="evict-old-ios-cache"
           elif [[ "$action" == "evict-worktree-cache" ]]; then
@@ -406,8 +448,8 @@ main() {
   # Known launchd logs are capped every tick, even while disk pressure is healthy.
   # Otherwise a quiet disk can still accumulate a multi-GB service log between alerts.
   trim_logs
-  write_state "$free" "$prev" "$growth" "$active" "$cache" "$docker_cache" "$docker_running" "$worktree_cache" "$worktree_keys" "$worktree_overflow" "$cache_overflow" "$verdict" "$reason" "$action"
-  logger -t kg-disk-guard "verdict=$verdict freeGiB=$free_gib growthGiB=$growth_gib activeBuild=$active dockerCacheGiB=$docker_gib dockerActive=$docker_running cacheKB=$cache worktreeCacheKB=$worktree_cache worktreeKeys=$worktree_keys worktreeOverflowKeys=$worktree_overflow cacheOverflowKeys=$cache_overflow action=$action" 2>/dev/null || true
+  write_state "$free" "$prev" "$growth" "$active" "$cache" "$docker_cache" "$docker_running" "$worktree_cache" "$worktree_keys" "$worktree_overflow" "$cache_overflow" "$cache_budget_kb" "$cache_budget_overflow" "$verdict" "$reason" "$action"
+  logger -t kg-disk-guard "verdict=$verdict freeGiB=$free_gib growthGiB=$growth_gib activeBuild=$active dockerCacheGiB=$docker_gib dockerActive=$docker_running cacheKB=$cache cacheBudgetKB=$cache_budget_kb cacheBudgetOverflowKB=$cache_budget_overflow worktreeCacheKB=$worktree_cache worktreeKeys=$worktree_keys worktreeOverflowKeys=$worktree_overflow cacheOverflowKeys=$cache_overflow action=$action" 2>/dev/null || true
 }
 
 main "$@"

@@ -66,6 +66,8 @@ source "$SCRIPT_DIR/lib/ios_build_progress.sh"
 source "$SCRIPT_DIR/lib/ios_lock_wait.sh"
 # shellcheck source=lib/ios_run_verdict.sh
 source "$SCRIPT_DIR/lib/ios_run_verdict.sh"
+# shellcheck source=lib/ios_disk_budget.sh
+source "$SCRIPT_DIR/lib/ios_disk_budget.sh"
 kg_ios_verdict_init archive "$ROOT"
 echo "[release] verdict=$VERDICT_FILE (latest pointer: $VERDICT_LATEST_FILE)"
 XCODEPROJ="$ROOT/ios/BooksAndVocab.xcodeproj"
@@ -246,11 +248,20 @@ trap cleanup EXIT
 LOCK_WAIT_MS="$(( $(now_ms) - START_TOTAL_MS ))"
 echo "[release] lock acquired by $CALLER (pid=$$)"
 
+# The archive and export paths are replace-on-run artifacts. Remove the prior
+# generation before measuring the next writer's budget, matching the cleanup
+# that previously happened immediately before each individual stage.
+rm -rf "$ARCHIVE" "$EXPORT_DIR"
+
+if ! kg_ios_disk_budget_preflight "$ROOT" "release"; then
+  echo "[release] blocked by disk budget; clean rebuildable cache before retry" >&2
+  exit "$KG_IOS_DISK_BUDGET_EXIT"
+fi
+
 [[ $DO_UPLOAD -eq 1 ]] && guard_build_number
 
 # ---- archive ----
 echo "[release] ▶ archive ($CONFIGURATION) — key=$KEY_ID …"
-rm -rf "$ARCHIVE"
 mkdir -p "$BUILD_DIR"
 START_ARCHIVE=$(date +%s)
 START_ARCHIVE_MS="$(now_ms)"
@@ -302,7 +313,6 @@ echo "[release] ✓ archive succeeded (${ARCHIVE_ELAPSED}s) log=$ARCHIVE_LOG xcr
 # 不帶 -allowProvisioningUpdates／auth：避免觸發 cloud-signing（現用 App Manager key 權限不足）。
 echo "[release] ▶ export ipa …"
 START_EXPORT_MS="$(now_ms)"
-rm -rf "$EXPORT_DIR"
 EXPORT_LOG="$(mktemp "${TMPDIR:-/tmp}/kg_ios_release_export.XXXXXX").log"
 set +e
 EXPORT_MONITOR_PID=$(start_tick_monitor "$EXPORT_LOG" "[release][export]" "$(date +%s)")
