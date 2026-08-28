@@ -212,6 +212,8 @@ def verify_resume_lifecycle(
 def _eligible_merge_front(
     github: RecoveryGitHubPort,
     pull_request: PullRequestSnapshot,
+    *,
+    allow_typed_base_lag: bool = False,
 ) -> bool:
     if (
         pull_request.state != "OPEN"
@@ -233,9 +235,10 @@ def _eligible_merge_front(
         return False
     if (
         receipt.branch != pull_request.branch
-        or receipt.base_sha != pull_request.base_sha
         or receipt.head_sha != pull_request.head_sha
     ):
+        return False
+    if receipt.base_sha != pull_request.base_sha and not allow_typed_base_lag:
         return False
     try:
         check = _required(github, pull_request)
@@ -316,7 +319,21 @@ def verify_reanchor_lifecycle(
             (
                 pull_request
                 for pull_request in inventory.records
-                if _eligible_merge_front(github, pull_request)
+                if _eligible_merge_front(
+                    github,
+                    pull_request,
+                    # A same-owner publication may leave the immutable typed
+                    # handback base in the PR body while GitHub has already
+                    # advanced the PR target base.  The caller has validated
+                    # both the published PR base and the live main SHA; limit
+                    # this compatibility to that exact candidate.  All other
+                    # PRs still require body/base equality.
+                    allow_typed_base_lag=(
+                        pull_request.number == candidate.number
+                        and not legacy_base_contract
+                        and candidate.base_sha == published_base_sha == live_main_sha
+                    ),
+                )
             ),
             key=lambda pull_request: pull_request.number,
         )
