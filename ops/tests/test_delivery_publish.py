@@ -217,6 +217,23 @@ class FakeGit:
         return expected_local_sha
 
 
+class FingerprintGit(FakeGit):
+    def __init__(
+        self,
+        receipt: HandbackReceipt,
+        *,
+        fingerprints: dict[tuple[str, str], str],
+        **kwargs: object,
+    ) -> None:
+        super().__init__(receipt, **kwargs)  # type: ignore[arg-type]
+        self.fingerprints = fingerprints
+        self.diff_fingerprint_calls: list[tuple[str, str]] = []
+
+    def diff_fingerprint(self, base_sha: str, head_sha: str) -> str:
+        self.diff_fingerprint_calls.append((base_sha, head_sha))
+        return self.fingerprints[(base_sha, head_sha)]
+
+
 class FakeGitHub:
     def __init__(
         self,
@@ -327,6 +344,68 @@ def _service(
         fake_git,
         fake_github,
     )
+
+
+def _non_ancestor_reanchor_service(
+    *,
+    fingerprints: tuple[str, str] | None = None,
+) -> tuple[HandbackReceipt, HandbackReceipt, PublishService, FakeGit, FakeGitHub]:
+    old_base = "1" * 40
+    new_base = "2" * 40
+    scope = Scope.from_paths(
+        modify=(
+            "ops/delivery_control/services/publish_preflight.py",
+            "ops/tests/test_delivery_publish.py",
+        )
+    )
+    previous = _receipt(
+        claim_generation=2,
+        base_sha=old_base,
+        parent_sha=old_base,
+        origin_main_sha=old_base,
+        head_sha=OLD_HEAD,
+        scope=scope,
+    )
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        base_sha=new_base,
+        parent_sha=new_base,
+        origin_main_sha=new_base,
+        head_sha=HEAD,
+        scope=scope,
+    )
+    pull_request = _pull_request(
+        previous,
+        title="old title",
+        body=render_pull_request_body(previous),
+    )
+    worktree = _worktree(
+        receipt,
+        changes=tuple(FileChange(FileOperation.MODIFY, path) for path in scope.paths),
+    )
+    git_kwargs = {
+        "snapshot": worktree,
+        "remote_sha": previous.head_sha,
+        "ancestor_pairs": ((previous.base_sha, receipt.base_sha),),
+    }
+    if fingerprints is None:
+        git: FakeGit = FakeGit(receipt, **git_kwargs)  # type: ignore[arg-type]
+    else:
+        git = FingerprintGit(
+            receipt,
+            fingerprints={
+                (previous.base_sha, previous.head_sha): fingerprints[0],
+                (receipt.base_sha, receipt.head_sha): fingerprints[1],
+            },
+            **git_kwargs,  # type: ignore[arg-type]
+        )
+    github = FakeGitHub(
+        receipt,
+        pull_request=pull_request,
+        changed_paths=scope.paths,
+    )
+    service, _, github = _service(receipt, git=git, github=github)
+    return previous, receipt, service, git, github
 
 
 def test_active_legacy_handback_normalizes_to_durable_receipt() -> None:
@@ -840,6 +919,49 @@ def test_existing_pr_scope_may_grow_after_same_owner_reanchor() -> None:
     )
 
 
+def test_partial_publication_accepts_patch_equivalent_non_ancestor_head() -> None:
+    previous, receipt, service, git, github = _non_ancestor_reanchor_service(
+        fingerprints=("equivalent", "equivalent")
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert git.push_calls == [(previous.head_sha, receipt.head_sha)]
+    assert github.create_calls == 0
+    assert github.update_calls == 1
+    assert isinstance(git, FingerprintGit)
+    assert git.diff_fingerprint_calls == [
+        (previous.base_sha, previous.head_sha),
+        (receipt.base_sha, receipt.head_sha),
+    ]
+    assert parse_pull_request_body(result.pull_request.body) == receipt
+
+
+def test_partial_publication_rejects_non_equivalent_non_ancestor_head() -> None:
+    _, receipt, service, git, github = _non_ancestor_reanchor_service(
+        fingerprints=("old-content", "new-content")
+    )
+
+    with pytest.raises(PolicyViolation, match="patch-equivalent"):
+        service.publish(receipt=receipt, title="fix: delivery")
+
+    assert git.push_calls == []
+    assert github.update_calls == 0
+
+
+def test_partial_publication_rejects_non_ancestor_without_fingerprint_capability() -> (
+    None
+):
+    _, receipt, service, git, github = _non_ancestor_reanchor_service()
+
+    with pytest.raises(PolicyViolation, match="fingerprint capability is unavailable"):
+        service.publish(receipt=receipt, title="fix: delivery")
+
+    assert git.push_calls == []
+    assert github.update_calls == 0
+
+
 def test_partial_publication_can_reconcile_owner_scope_to_exact_pr_paths() -> None:
     """A PR created before scope-set must be recoverable without a duplicate PR."""
 
@@ -1175,7 +1297,7 @@ def test_partial_publication_reconciles_when_existing_pr_base_is_ancestor_of_liv
                 FileChange(FileOperation.MODIFY, "ops/a.py"),
                 FileChange(FileOperation.MODIFY, "ops/b.py"),
             ),
-            "not an ancestor",
+            "fingerprint capability",
         ),
         (
             ((OLD_HEAD, HEAD),),

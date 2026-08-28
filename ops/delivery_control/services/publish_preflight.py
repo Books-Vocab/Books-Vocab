@@ -103,19 +103,35 @@ class PublishPreflightService:
         receipt: HandbackReceipt,
         pull_request: PullRequestSnapshot,
         remote_sha: str | None,
+        previous_base_sha: str,
+        previous_head_sha: str,
     ) -> bool:
         if remote_sha is None:
             raise PolicyViolation("existing PR branch is missing from remote")
         if pull_request.head_sha != remote_sha:
             raise PolicyViolation("existing PR head differs from remote branch")
+        if previous_head_sha != pull_request.head_sha:
+            raise PolicyViolation("existing PR handback head differs from PR head")
         if remote_sha == receipt.head_sha:
             return True
         try:
-            return self.git.is_ancestor(remote_sha, receipt.head_sha)
+            if self.git.is_ancestor(remote_sha, receipt.head_sha):
+                return True
         except DeliverySourceError as error:
             raise PolicyViolation(
                 "existing PR head ancestry could not be verified"
             ) from error
+        fingerprint = getattr(self.git, "diff_fingerprint", None)
+        if not callable(fingerprint):
+            raise PolicyViolation("exact content fingerprint capability is unavailable")
+        try:
+            previous_fingerprint = fingerprint(previous_base_sha, previous_head_sha)
+            current_fingerprint = fingerprint(receipt.base_sha, receipt.head_sha)
+        except DeliverySourceError as error:
+            raise PolicyViolation(
+                "existing PR patch equivalence could not be verified"
+            ) from error
+        return previous_fingerprint == current_fingerprint
 
     @staticmethod
     def _worktree_changes_match_scope(
@@ -182,10 +198,12 @@ class PublishPreflightService:
                 receipt=receipt,
                 pull_request=pull_request,
                 remote_sha=remote_sha,
+                previous_base_sha=previous.base_sha,
+                previous_head_sha=previous.head_sha,
             )
             if not head_can_advance:
                 raise PolicyViolation(
-                    "existing PR head is not an ancestor of handback HEAD"
+                    "existing PR head is not an ancestor or patch-equivalent to handback HEAD"
                 )
         partial_publication_matches = generation_advanced and (
             head_can_advance
