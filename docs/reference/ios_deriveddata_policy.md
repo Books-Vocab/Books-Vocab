@@ -165,6 +165,23 @@ GitHub-hosted macOS runner 每次都是新的 VM；本機長存的 DerivedData �
 
 **不變式**：所有會刪除共享產物的路徑先確認沒有活躍 consumer；guard 再取得 `/tmp/kg-ios-build.lock`，才會清理共享 keyed root。若 iOS FIFO lock queue 已有等待中的 `ticket-*`，guard 直接延後，不插隊；`.next` 等持久化序號 metadata 不代表等待者，不會阻止安全清理。活躍 build、未知 process state 或 lock contention 都 fail-closed 延後，不刪產物。`kg_ios_cache_evict` 仍保留 current key 與刪除前 mtime 重驗；guard 另以 `KG_DISK_GUARD_CACHE_READER_WINDOW_HOURS`（預設 `1h`）保護無鎖讀者，手動 sweep 的 6h min-age 也不變。讀者續命點：`ios_test.sh` 在 resolve 後 touch、builder 由 lib 進場 touch——並行 run（即使讀的是舊 key）不會被別人的 build 中途抽走產物。16 GiB 是 aggregate writer budget，不是對 APFS 所有使用者資料的 filesystem quota；若不可安全淘汰的 active build cache 仍超標，入口以 exit 75 阻止新 writer，避免繼續膨脹。回歸測試：`./ops/tests/test_kg_disk_guard.sh`、`./ops/tests/test_ios_disk_budget.sh` 與 `./ops/test_ops.sh ios-cache-evict`。
 
+## Per-lane 磁碟歸戶與閉環（2026-08-28）
+
+共享 cache 預算不能回答「是哪一條 lane 佔用空間」。`ops/disk_usage.py` 每次產生一份原子替換的 `kg.disk.lane-usage.v1` 報告，列出 registry 中目前仍可能佔用空間的 live lane、Git 實際 worktree、canonical main，以及每個路徑的 `logical_bytes` 與 APFS 可觀測的 `allocated_bytes`；merged／abandoned 等 terminal history 不塞進 live lane 清單，只在 `history` 以總數與 status 分布保留。未知 physical worktree 仍列出為 `ownership=unregistered`，不會被自動刪除；active／published／cleanup_pending 但實體路徑消失也保留為 `physical_state=missing`，並讓報告 fail-closed。
+
+```bash
+./ops/disk_usage.py \
+  --workspace /Users/chenliangyu/project/kg \
+  --state /Users/chenliangyu/project/kg/.cache/worktree_registry.json \
+  --output "$HOME/Library/Application Support/KG/lane_disk_usage.json"
+```
+
+`ops/kg_disk_guard.sh` 每個 tick 同步更新這個小型狀態檔；它不建立 append-only log，也不在 active 或 unknown worktree 上做破壞性清理。預設每條 physical lane 上限 2 GiB、所有 physical lanes 合計上限 8 GiB，可用 `KG_DISK_GUARD_LANE_BUDGET_GIB` 與 `KG_DISK_GUARD_LANE_TOTAL_BUDGET_GIB` 明確調整。超限、無法量測、registry 不可讀或 active lane 遺失時，報告為 `verdict=block`，且 guard state 會保留 `lane_usage_verdict=block` 與 `lane_usage_rc` 供 admission／writer fail-closed；後續 writer 必須停止並交由 supported lifecycle 處理；只有既有 cache guard 在確認無 consumer 且持有 build lock 後才可自動淘汰可重建產物。
+
+報告把 canonical project 的 worktree 子樹排除後再加回每條 physical lane，避免同一份檔案被重複計算。`managed_allocated_bytes` 是 KG 受管理範圍的 accounting，不等於整台 Mac 的 filesystem usage：APFS snapshots、Git shared object、Xcode global DerivedData、Docker 與其他使用者資料另列在 `filesystem` 或既有 cache metrics。故「每條 lane 相加」是可驗證的 lane reservoir 總量，不應冒充整顆磁碟的唯一總量。
+
+閉環固定為：guard 觀測 → `lane_disk_usage.json` 歸戶 → 超限／遺失證據 fail-closed → active lane 由 owner 完成交接或 terminal cleanup → 再次觀測確認 worktree／branch／registry 狀態。測試入口為 `uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_disk_usage.py` 與 `./ops/tests/test_kg_disk_guard.sh`。
+
 ## 驗證證據（2026-06-09）
 - 冷編 **88.6s** → 二次無改動 incremental **4.96s（18× 加速）**：共享快取確實重用。
 - 產物落在 `kg/.cache/ios-build-derived-data`（1.3G）；全域預設**零新孤兒**。

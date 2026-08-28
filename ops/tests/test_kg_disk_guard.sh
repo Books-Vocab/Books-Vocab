@@ -264,5 +264,18 @@ bytes2="$(wc -c < "$TMP/high/state.json")"
 state_count="$(find "$TMP/high" -maxdepth 1 -type f -name 'state.json*' | wc -l | tr -d ' ')"
 [[ "$bytes2" -lt 900 && "$state_count" -eq 1 ]] && ok "state bounded, one atomic file (${bytes2} bytes)" || bad "state accumulation: bytes=$bytes2 files=$state_count"
 
+echo "── lane usage: attribution is atomic and missing active lanes fail closed ──"
+root="$TMP/lane-usage"; state="$root/guard.json"; registry="$root/registry.json"; lane_state="$root/lane-disk-usage.json"
+mkdir -p "$root"
+printf '%s\n' '{"schema":"kg.worktree.registry.v2","records":[{"branch":"feat/missing-lane","path":"'$root'/missing-lane","status":"active","claim_generation":0,"external_ids":["DIRECT-DELIVERY-MISSING"]}]}' > "$registry"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" KG_DISK_GUARD_REGISTRY_STATE="$registry" \
+  KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) \
+  KG_DISK_GUARD_ACTIVE_BUILD=0 "$SCRIPT" >/dev/null 2>&1
+grep -q 'kg.disk.lane-usage.v1' "$lane_state" && ok "lane usage report is written" || bad "lane usage report missing"
+grep -q 'missing-registered-lane' "$lane_state" && ok "missing active lane is visible" || bad "missing active lane not visible"
+grep -q '"verdict": "block"' "$lane_state" && ok "lane attribution fails closed" || bad "lane attribution did not fail closed"
+grep -q '"lane_usage_verdict":"block"' "$root/guard.json" && ok "guard state carries lane block" || bad "guard state missed lane block"
+grep -q '"lane_usage_rc":75' "$root/guard.json" && ok "guard state carries lane exit" || bad "guard state missed lane exit"
+
 echo "passed=$PASS failed=$FAIL"
 [[ "$FAIL" -eq 0 ]]
