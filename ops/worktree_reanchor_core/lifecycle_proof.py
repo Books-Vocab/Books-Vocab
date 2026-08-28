@@ -325,13 +325,14 @@ def verify_reanchor_lifecycle(
                     # A same-owner publication may leave the immutable typed
                     # handback base in the PR body while GitHub has already
                     # advanced the PR target base.  The caller has validated
-                    # both the published PR base and the live main SHA; limit
-                    # this compatibility to that exact candidate.  All other
-                    # PRs still require body/base equality.
+                    # the exact published PR base; the subsequent reanchor Git
+                    # checks validate that base against live main.  Limit this
+                    # compatibility to that exact candidate.  All other PRs
+                    # still require body/base equality.
                     allow_typed_base_lag=(
                         pull_request.number == candidate.number
                         and not legacy_base_contract
-                        and candidate.base_sha == published_base_sha == live_main_sha
+                        and candidate.base_sha == published_base_sha
                     ),
                 )
             ),

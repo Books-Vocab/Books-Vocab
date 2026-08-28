@@ -502,6 +502,40 @@ def test_reanchor_lifecycle_accepts_valid_typed_base_lag_after_pr_base_advances(
     assert proof.required_status is CheckStatus.SUCCESS
 
 
+def test_reanchor_lifecycle_accepts_typed_base_lag_before_current_main_reanchor() -> (
+    None
+):
+    candidate = _pr(
+        42,
+        branch="feat/exact-pr",
+        base=BASE,
+        body=_receipt_body(
+            number=42,
+            branch="feat/exact-pr",
+            base=LIVE,
+            head=HEAD,
+        ),
+    )
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        open_prs=(candidate,),
+        checks={42: _check(CheckStatus.SUCCESS)},
+    )
+
+    proof = verify_reanchor_lifecycle(
+        github,
+        pull_request_number=42,
+        branch="feat/exact-pr",
+        expected_pr_base_sha=BASE,
+        expected_remote_head=HEAD,
+        live_main_sha=LIVE,
+    )
+
+    assert proof.pull_request_number == 42
+    assert proof.base_sha == BASE
+    assert proof.required_status is CheckStatus.SUCCESS
+
+
 def test_reanchor_lifecycle_rejects_typed_base_lag_for_legacy_contract() -> None:
     candidate = _pr(
         42,
