@@ -407,12 +407,43 @@ final class SettingsFlowUITests: UITestCase {
 }
 
 private enum SettingsFixtureManifest {
-    private static var url: URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent() // BooksAndVocabUITests
-            .deletingLastPathComponent() // ios
-            .deletingLastPathComponent() // repo root
-            .appendingPathComponent("ops/fixtures/ui_worlds/marketing_demo.json")
+    /// Read the canonical UI World bytes injected by `ios_test.sh` instead of
+    /// resolving a compile-time `#filePath`. The latter points at whichever
+    /// worktree produced a cached XCTest bundle and can silently become stale
+    /// when that worktree is removed.
+    private static func dataFromRunner() throws -> Data {
+        let environment = ProcessInfo.processInfo.environment
+        let compressedValue = environment["KG_FIXTURE_DATASET_DEFLATE_B64"]
+        let plainValue = environment["KG_FIXTURE_DATASET_B64"]
+        guard !(compressedValue != nil && plainValue != nil) else {
+            throw NSError(
+                domain: "SettingsFixtureManifest",
+                code: 5,
+                userInfo: [NSLocalizedDescriptionKey: "UI World runner sources are ambiguous"]
+            )
+        }
+
+        if let compressedValue {
+            guard let compressed = Data(base64Encoded: compressedValue) else {
+                throw NSError(
+                    domain: "SettingsFixtureManifest",
+                    code: 6,
+                    userInfo: [NSLocalizedDescriptionKey: "KG_FIXTURE_DATASET_DEFLATE_B64 is not valid base64"]
+                )
+            }
+            return try (compressed as NSData).decompressed(using: .zlib) as Data
+        }
+
+        guard let plainValue,
+              let data = Data(base64Encoded: plainValue)
+        else {
+            throw NSError(
+                domain: "SettingsFixtureManifest",
+                code: 7,
+                userInfo: [NSLocalizedDescriptionKey: "marketing_demo UI World is missing from the runner"]
+            )
+        }
+        return data
     }
 
     static func evidenceAssetID(for fixtureID: String) throws -> String {
@@ -444,7 +475,7 @@ private enum SettingsFixtureManifest {
     }
 
     private static func settingsSeed(for fixtureID: String) throws -> [String: Any] {
-        let data = try Data(contentsOf: url)
+        let data = try dataFromRunner()
         let root = try requiredDictionary(JSONSerialization.jsonObject(with: data), context: "UI World root")
         let settings = try requiredDictionary(root["settings"], context: "UI World settings")
         return try requiredDictionary(settings[fixtureID], context: "settings.\(fixtureID)")
