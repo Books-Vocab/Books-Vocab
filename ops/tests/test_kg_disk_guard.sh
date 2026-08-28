@@ -13,6 +13,41 @@ export KG_DISK_GUARD_BUILD_LOCK_HELD=1
 ok(){ echo "  ✓ $*"; PASS=$((PASS+1)); }
 bad(){ echo "  ✗ $*"; FAIL=$((FAIL+1)); }
 
+# Linux runners do not provide macOS's shlock.  Keep production behavior
+# fail-closed when it is unavailable, but give lock-acquisition fixtures the
+# same deterministic primitive used by the iOS lock contract tests.
+FAKE_BIN="$TMP/fake-bin"
+mkdir -p "$FAKE_BIN"
+cat >"$FAKE_BIN/shlock" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+lock_file=""
+owner_pid=""
+while (($#)); do
+  case "$1" in
+    -f) lock_file="$2"; shift 2 ;;
+    -p) owner_pid="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[[ -n "$lock_file" && -n "$owner_pid" ]]
+if [[ -f "$lock_file" ]]; then
+  held_pid="$(cat "$lock_file" 2>/dev/null || true)"
+  if [[ "$held_pid" =~ ^[0-9]+$ ]] && ! kill -0 "$held_pid" 2>/dev/null; then
+    rm -f "$lock_file"
+  else
+    exit 1
+  fi
+fi
+if mkdir "${lock_file}.claim" 2>/dev/null; then
+  printf '%s\n' "$owner_pid" >"$lock_file"
+  rmdir "${lock_file}.claim"
+  exit 0
+fi
+exit 1
+EOF
+chmod +x "$FAKE_BIN/shlock"
+
 timestamp_minutes_ago() {
   local minutes="$1"
   if date -v-"${minutes}"M '+%Y%m%d%H%M.%S' 2>/dev/null; then
@@ -79,7 +114,7 @@ touch -m -t 202001010000.00 "$cache"/*
 KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
   KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
   KG_DISK_GUARD_CACHE_KEEP=3 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0 KG_DISK_GUARD_BUILD_LOCK_FILE="$build_lock" \
-  env -u KG_DISK_GUARD_BUILD_LOCK_HELD "$SCRIPT" >/dev/null 2>&1
+  PATH="$FAKE_BIN:$PATH" env -u KG_DISK_GUARD_BUILD_LOCK_HELD "$SCRIPT" >/dev/null 2>&1
 [[ ! -e "$build_lock" ]] && ok "guard releases owned build lock" || bad "guard left build lock"
 
 echo "── queued build: guard defers without bypassing FIFO ──"
@@ -91,7 +126,7 @@ printf 123 > "${build_lock}.queue/ticket-123"
 KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
   KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
   KG_DISK_GUARD_CACHE_KEEP=3 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0 KG_DISK_GUARD_BUILD_LOCK_FILE="$build_lock" \
-  env -u KG_DISK_GUARD_BUILD_LOCK_HELD "$SCRIPT" >/dev/null 2>&1
+  PATH="$FAKE_BIN:$PATH" env -u KG_DISK_GUARD_BUILD_LOCK_HELD "$SCRIPT" >/dev/null 2>&1
 key_count="$(find "$cache" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
 [[ "$key_count" -eq 4 ]] && ok "queued build cache preserved" || bad "queued build cache changed: $key_count"
 grep -q '"action":"deferred-build-lock"' "$state" && ok "queued build deferral recorded" || bad "queued build deferral missing"
@@ -105,7 +140,7 @@ printf 1 > "${build_lock}.queue/.next"
 KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
   KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
   KG_DISK_GUARD_CACHE_KEEP=3 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0 KG_DISK_GUARD_BUILD_LOCK_FILE="$build_lock" \
-  env -u KG_DISK_GUARD_BUILD_LOCK_HELD "$SCRIPT" >/dev/null 2>&1
+  PATH="$FAKE_BIN:$PATH" env -u KG_DISK_GUARD_BUILD_LOCK_HELD "$SCRIPT" >/dev/null 2>&1
 key_count="$(find "$cache" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
 [[ "$key_count" -eq 3 ]] && ok "persistent queue metadata does not block cleanup" || bad "persistent queue metadata blocked cleanup: $key_count"
 grep -q '"action":"evict-old-ios-cache"' "$state" && ok "persistent queue metadata allows cleanup" || bad "persistent queue metadata action"
