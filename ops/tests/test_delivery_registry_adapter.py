@@ -12,7 +12,7 @@ sys.path.insert(0, str(OPS))
 
 from delivery_control.adapters.errors import AdapterPayloadError
 from delivery_control.adapters.registry import RegistryCliAdapter
-from delivery_control.domain.models import MergedPullRequestProof
+from delivery_control.domain.models import MergedPullRequestProof, Scope
 from delivery_control.domain.observations import (
     InventoryProblem,
 )
@@ -1073,6 +1073,34 @@ def test_registry_adapter_exposes_exact_legacy_handback_transport_fields(
     assert record.handed_back_at is not None
     assert record.handed_back_at.isoformat() == "2026-08-21T00:00:00+00:00"
     assert record.handback_initial_holds == ()
+
+
+def test_registry_adapter_finds_current_published_claim_without_generation(
+    tmp_path: Path,
+) -> None:
+    payload = _payload_with_initial_holds(tmp_path, [])
+    payload["status"] = "published"
+    payload["published_base_sha"] = "c" * 40
+    runner = StaticRunner(
+        [CommandResult(("registry",), 0, json.dumps({"records": [payload]}), "")]
+    )
+    scope = Scope.from_paths(modify=("ops/a.py",))
+
+    record = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    ).find_published_claim(
+        lane_id="#holds",
+        branch="feat/holds",
+        path=tmp_path / "holds",
+        owner_thread_id="thread-holds",
+        head_sha="b" * 40,
+        scope=scope,
+    )
+
+    assert record is not None
+    assert record.status == "published"
+    assert record.claim_generation == 4
+    assert record.published_base_sha == "c" * 40
 
 
 def _payload_with_initial_holds(

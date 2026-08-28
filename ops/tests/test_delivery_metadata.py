@@ -63,14 +63,44 @@ def _record(receipt: HandbackReceipt) -> RegistrySnapshot:
 
 
 class FakeRegistry:
-    def __init__(self, record: RegistrySnapshot) -> None:
+    def __init__(
+        self,
+        record: RegistrySnapshot,
+        *,
+        published_record: RegistrySnapshot | None = None,
+    ) -> None:
         self.record = record
+        self.published_record = published_record
 
     def list_records(self) -> RegistryInventory:
-        return RegistryInventory((self.record,))
+        return RegistryInventory((self.published_record or self.record,))
 
     def get(self, lane_id: str) -> RegistrySnapshot | None:
         return self.record if self.record.lane_id == lane_id else None
+
+    def find_published_claim(
+        self,
+        *,
+        lane_id: str,
+        branch: str,
+        path: Path,
+        owner_thread_id: str,
+        head_sha: str,
+        scope: Scope,
+    ) -> RegistrySnapshot | None:
+        candidate = self.published_record
+        if candidate is None:
+            return None
+        if (
+            candidate.lane_id != lane_id
+            or candidate.branch != branch
+            or candidate.path.resolve() != path.resolve()
+            or candidate.owner_thread_id != owner_thread_id
+            or candidate.handed_back_sha != head_sha
+            or candidate.scope != scope
+        ):
+            return None
+        return candidate
 
 
 class FakeGitHub:
@@ -171,3 +201,45 @@ def test_metadata_repair_refuses_noncanonical_registry_proof() -> None:
         ).repair(1)
 
     assert github.updates == 0
+
+
+def test_metadata_repair_reconciles_stale_published_generation_from_exact_claim() -> (
+    None
+):
+    original = _receipt()
+    current = replace(
+        _record(original),
+        claim_generation=3,
+        handback_claim_generation=3,
+        handback_digest="d" * 64,
+        published_base_sha="e" * 40,
+    )
+    github = FakeGitHub(
+        replace(
+            _pull_request(original, body=render_pull_request_body(original)),
+            base_sha="e" * 40,
+        )
+    )
+
+    result = MetadataRepairService(
+        registry=FakeRegistry(_record(original), published_record=current),
+        query=github,
+        command=github,
+    ).repair(1)
+
+    expected = HandbackReceipt(
+        lane_id=original.lane_id,
+        owner_thread_id=original.owner_thread_id,
+        claim_generation=3,
+        branch=original.branch,
+        worktree_path=original.worktree_path,
+        base_sha=original.base_sha,
+        parent_sha=original.parent_sha,
+        head_sha=original.head_sha,
+        origin_main_sha=original.origin_main_sha,
+        content_digest="d" * 64,
+        scope=original.scope,
+    )
+    assert result.changed
+    assert github.updates == 1
+    assert github.pull_request.body == render_pull_request_body(expected)
