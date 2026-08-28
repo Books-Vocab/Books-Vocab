@@ -721,6 +721,83 @@ def test_run_check_blocks_unknown_ios_failure(tmp_path: Path) -> None:
     assert result["failure_scope"]["reason"] == "failure-location-unknown"
 
 
+def test_run_check_recovers_external_ios_failure_from_recorded_issue_location(
+    tmp_path: Path,
+) -> None:
+    external_file = tmp_path / "ios" / "BooksAndVocabTests" / "Unrelated.swift"
+    external_file.parent.mkdir(parents=True)
+    external_file.write_text("", encoding="utf-8")
+    output = (
+        _ios_failure_output(file=None)
+        + "\n✘ Test testSyncFails() recorded an issue at "
+        "Unrelated.swift:17:9: XCTAssertEqual failed\n"
+    )
+
+    result = coordinator._run_check(
+        _ios_failure_check(output, ["ios/BooksAndVocab/Changed.swift"]),
+        tmp_path,
+    )
+
+    assert result["status"] == "block"
+    assert result["level"] == "advisory"
+    assert result["failure_scope"]["verdict"] == "advisory"
+    assert result["failure_scope"]["failure_files"] == [
+        "ios/BooksAndVocabTests/Unrelated.swift"
+    ]
+
+
+def test_run_check_blocks_in_scope_ios_failure_recovered_from_recorded_issue_location(
+    tmp_path: Path,
+) -> None:
+    changed_file = tmp_path / "ios" / "BooksAndVocab" / "Changed.swift"
+    changed_file.parent.mkdir(parents=True)
+    changed_file.write_text("", encoding="utf-8")
+    output = (
+        _ios_failure_output(file=None)
+        + "\n✘ Test testChanged() recorded an issue at Changed.swift:23:5: "
+        "XCTAssertTrue failed\n"
+    )
+
+    result = coordinator._run_check(
+        _ios_failure_check(output, ["ios/BooksAndVocab/Changed.swift"]),
+        tmp_path,
+    )
+
+    assert result["status"] == "block"
+    assert result["level"] == "block"
+    assert result["failure_scope"]["verdict"] == "block"
+    assert result["failure_scope"]["reason"] == "failure-in-changed-scope"
+    assert result["failure_scope"]["failure_files"] == [
+        "ios/BooksAndVocab/Changed.swift"
+    ]
+
+
+def test_run_check_blocks_ambiguous_recorded_issue_location(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "ios" / "First" / "Shared.swift"
+    second = tmp_path / "ios" / "Second" / "Shared.swift"
+    first.parent.mkdir(parents=True)
+    second.parent.mkdir(parents=True)
+    first.write_text("", encoding="utf-8")
+    second.write_text("", encoding="utf-8")
+    output = (
+        _ios_failure_output(file=None)
+        + "\n✘ Test testAmbiguous() recorded an issue at Shared.swift:4:2: "
+        "XCTFail\n"
+    )
+
+    result = coordinator._run_check(
+        _ios_failure_check(output, ["ios/BooksAndVocab/Changed.swift"]),
+        tmp_path,
+    )
+
+    assert result["status"] == "block"
+    assert result["level"] == "block"
+    assert result["failure_scope"]["verdict"] == "block"
+    assert result["failure_scope"]["reason"] == "failure-location-unknown"
+
+
 def test_gate_does_not_block_on_failed_advisory_ios_check(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
