@@ -170,6 +170,26 @@ KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
 [[ -d "$cache/old" ]] && ok "active build protects cache" || bad "active build deletion"
 grep -q '"action":"deferred-active-build"' "$state" && ok "active build deferred" || bad "active build action"
 
+echo "── aggregate cache budget: stale keyed cache is reclaimed ──"
+root="$TMP/budget"; cache="$root/.cache/ios-test-derived-data"; state="$TMP/budget/state.json"
+mkdir -p "$cache/old-a/Build" "$cache/old-b/Build" "$root/.cache/ios-release-derived-data/Build" \
+  "$root/ios/build/BooksAndVocab.xcarchive" "$root/ios/build/export"
+printf x > "$cache/old-a/Build/blob"; printf x > "$cache/old-b/Build/blob"
+printf x > "$root/ios/build/BooksAndVocab.xcarchive/blob"; printf x > "$root/ios/build/export/BooksAndVocab.ipa"
+touch -m -t 202001010000.00 "$cache/old-a" "$cache/old-b"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  KG_DISK_GUARD_CACHE_BUDGET_GIB=0 KG_DISK_GUARD_CACHE_HEADROOM_GIB=0 \
+  KG_DISK_GUARD_CACHE_KEEP=1 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0 \
+  KG_DISK_GUARD_CACHE_READER_WINDOW_HOURS=0 KG_DISK_GUARD_BUILD_LOCK_FILE="$TMP/budget.lock" \
+  "$SCRIPT" >/dev/null 2>&1
+grep -q '"reason":"cache-budget-exceeded"' "$state" && ok "cache budget breach recorded" || bad "cache budget reason missing"
+grep -q '"cache_budget_overflow_kb":[1-9]' "$state" && ok "cache budget overflow recorded" || bad "cache budget overflow missing"
+grep -q '"action":"enforce-cache-budget"' "$state" && ok "cache budget enforcement recorded" || bad "cache budget action missing"
+[[ ! -d "$cache/old-a" && ! -d "$cache/old-b" && ! -d "$root/.cache/ios-release-derived-data" \
+  && ! -d "$root/ios/build/BooksAndVocab.xcarchive" && ! -d "$root/ios/build/export" ]] \
+  && ok "stale rebuildable caches reclaimed" || bad "stale rebuildable caches remain"
+
 echo "── process probe failure: fail closed ──"
 root="$TMP/probe-fail"; cache="$root/.cache/ios-test-derived-data"; state="$TMP/probe-fail/state.json"
 mkdir -p "$cache/old/Build"; printf x > "$cache/old/Build/blob"; touch -m -t 202001010000.00 "$cache/old"
