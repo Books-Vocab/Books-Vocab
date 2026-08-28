@@ -29,6 +29,9 @@
 # 安靜產出空清單（= 一條都不淘汰，磁碟照樣塞爆）。見 lib/userland_compat.sh 的抬頭。
 # shellcheck source=./userland_compat.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/userland_compat.sh"
+# shellcheck source=./ios_disk_budget.sh
+DISK_BUDGET_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ios_disk_budget.sh"
+[[ -f "$DISK_BUDGET_LIB" ]] && source "$DISK_BUDGET_LIB"
 
 # kg_ios_cache_evict <cache_root> <current_key>
 kg_ios_cache_evict() {
@@ -37,8 +40,26 @@ kg_ios_cache_evict() {
   local keep="${KG_IOS_CACHE_KEEP:-3}"
   local min_age_hours="${KG_IOS_CACHE_EVICT_MIN_AGE_HOURS:-6}"
   local dry_run="${KG_IOS_CACHE_EVICT_DRY_RUN:-0}"
+  local effective_keep="$keep"
+  local budget_kb current_cache_kb cache_project_root
 
   [[ -d "$cache_root" ]] || return 0
+
+  # A keyed-cache eviction is also an opportunity to enforce the aggregate
+  # project budget.  Keep the current key and the reader safety window, but
+  # discard older generations more aggressively when the budget is exhausted.
+  if declare -F kg_ios_disk_budget_cache_kb >/dev/null 2>&1; then
+    cache_project_root="$(dirname "$(dirname "$cache_root")")"
+    current_cache_kb="$(kg_ios_disk_budget_cache_kb "$cache_project_root" 2>/dev/null || true)"
+    budget_kb="${KG_IOS_DISK_CACHE_BUDGET_KB:-}"
+    if [[ -z "$budget_kb" ]]; then
+      budget_kb="$(kg_ios_disk_budget_config 2>/dev/null | awk '{print $1}' || true)"
+    fi
+    if [[ "$current_cache_kb" =~ ^[0-9]+$ && "$budget_kb" =~ ^[0-9]+$ ]] && (( current_cache_kb > budget_kb )); then
+      effective_keep=0
+      echo "[ios_cache] aggregate budget exceeded cacheKB=$current_cache_kb budgetKB=$budget_kb; evicting stale keyed generations" >&2
+    fi
+  fi
 
   # 標記現用 key 為最新（即使本輪是 cache hit 也要續命）。
   # || true：caller 全是 set -e，touch 失敗（權限/唯讀 FS）不可殺整個 run。
@@ -70,7 +91,7 @@ kg_ios_cache_evict() {
     rank=$(( rank + 1 ))
     age_secs=$(( now - mtime ))
 
-    if [[ "$name" == "$current_key" ]] || (( rank <= keep )) || (( age_secs < min_age_secs )); then
+    if [[ "$name" == "$current_key" ]] || (( rank <= effective_keep )) || (( age_secs < min_age_secs )); then
       kept=$(( kept + 1 ))
       continue
     fi
@@ -105,7 +126,7 @@ kg_ios_cache_evict() {
   done
 
   if (( evicted > 0 )); then
-    echo "[ios_cache] eviction root=$cache_root keep=$keep minAgeH=$min_age_hours kept=$kept $( [[ "$dry_run" == "1" ]] && echo would-free || echo freed )KB=$freed_kb evicted=$evicted" >&2
+    echo "[ios_cache] eviction root=$cache_root keep=$effective_keep minAgeH=$min_age_hours kept=$kept $( [[ "$dry_run" == "1" ]] && echo would-free || echo freed )KB=$freed_kb evicted=$evicted" >&2
   fi
   return 0
 }
