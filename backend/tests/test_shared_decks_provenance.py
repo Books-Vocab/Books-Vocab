@@ -9,6 +9,7 @@ byte-equal roundtrip for specs predating shared decks (committed specs carry no
 provenance key). A spec that DOES carry notebook provenance must round-trip
 losslessly (field symmetry, §1.1).
 """
+
 from __future__ import annotations
 
 import json
@@ -25,9 +26,21 @@ from ops_helpers import run_ops_edit as _edit
 
 _NB_BASE_KEYS = {"name", "color", "cover_pattern", "sort_order", "is_default"}
 _CARD_BASE_KEYS = {
-    "content", "pos", "meaning", "examples", "collocations", "note",
-    "difficulty", "mode", "root_form", "inflections", "notebook",
-    "is_archived", "review",
+    "content",
+    "pos",
+    "meaning",
+    "examples",
+    "collocations",
+    "note",
+    "difficulty",
+    "mode",
+    "root_form",
+    "inflections",
+    "notebook",
+    "is_archived",
+    "is_reader_hidden",
+    "is_review_excluded",
+    "review",
 }
 
 
@@ -113,18 +126,26 @@ def test_notebook_response_has_provenance_fields():
 
 def test_notebook_entry_omits_null_provenance():
     row = {
-        "name": "A", "color": None, "cover_pattern": None,
-        "sort_order": 0, "is_default": False,
-        "source_shared_deck_id": None, "source_version": None,
+        "name": "A",
+        "color": None,
+        "cover_pattern": None,
+        "sort_order": 0,
+        "is_default": False,
+        "source_shared_deck_id": None,
+        "source_version": None,
     }
     assert set(_notebook_entry(row)) == _NB_BASE_KEYS
 
 
 def test_notebook_entry_emits_set_provenance():
     row = {
-        "name": "A", "color": None, "cover_pattern": None,
-        "sort_order": 0, "is_default": False,
-        "source_shared_deck_id": "deck_abc", "source_version": 3,
+        "name": "A",
+        "color": None,
+        "cover_pattern": None,
+        "sort_order": 0,
+        "is_default": False,
+        "source_shared_deck_id": "deck_abc",
+        "source_version": 3,
     }
     entry = _notebook_entry(row)
     assert entry["source_shared_deck_id"] == "deck_abc"
@@ -136,16 +157,14 @@ def test_card_entry_omits_null_provenance():
     # A card that was created organically (no shared-deck origin) carries a NULL
     # guid; export must omit the key entirely so specs predating shared decks
     # round-trip byte-equal (§1.1). Symmetric with _notebook_entry.
-    row = {"content": "x", "meaning": "y", "mode": "recognition",
-           "source_shared_card_guid": None}
+    row = {"content": "x", "meaning": "y", "mode": "recognition", "source_shared_card_guid": None}
     entry = _card_entry(row, "NB")
     assert "source_shared_card_guid" not in entry
     assert set(entry) == _CARD_BASE_KEYS
 
 
 def test_card_entry_emits_set_provenance():
-    row = {"content": "x", "meaning": "y", "mode": "recognition",
-           "source_shared_card_guid": "card-guid-123"}
+    row = {"content": "x", "meaning": "y", "mode": "recognition", "source_shared_card_guid": "card-guid-123"}
     entry = _card_entry(row, "NB")
     assert entry["source_shared_card_guid"] == "card-guid-123"
     assert set(entry) == _CARD_BASE_KEYS | {"source_shared_card_guid"}
@@ -155,8 +174,7 @@ def test_card_entry_emits_set_provenance():
 
 _PROVENANCE_SPEC = {
     "notebooks": [
-        {"name": "Copied Deck", "is_default": False,
-         "source_shared_deck_id": "deck_xyz", "source_version": 2},
+        {"name": "Copied Deck", "is_default": False, "source_shared_deck_id": "deck_xyz", "source_version": 2},
         {"name": "Plain", "is_default": True},
     ],
     "cards": [
@@ -203,8 +221,12 @@ _CARD_PROVENANCE_SPEC = {
     ],
     "cards": [
         # A card stamped with shared-card provenance (Phase 2 copy sets this).
-        {"content": "meticulous", "meaning": "一絲不苟的", "notebook": "Copied Deck",
-         "source_shared_card_guid": "card-guid-abc"},
+        {
+            "content": "meticulous",
+            "meaning": "一絲不苟的",
+            "notebook": "Copied Deck",
+            "source_shared_card_guid": "card-guid-abc",
+        },
         # An organically-created card in the same notebook: no provenance key.
         {"content": "plain", "meaning": "平凡的", "notebook": "Copied Deck"},
     ],
