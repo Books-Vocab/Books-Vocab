@@ -351,8 +351,16 @@ struct TranslationLanguageTests {
         )
 
         TranslationLanguage.activateAccount("account-b", defaults: defaults, cloud: cloud)
-        #expect(TranslationLanguage.currentSource == .en)
-        #expect(TranslationLanguage.currentTarget == .zhHant)
+        let expectedSource =
+            TranslationLanguage.inferFromPreferredLanguages(
+                allowed: TranslationLanguage.sourceLanguages
+            ) ?? .en
+        let expectedTarget =
+            TranslationLanguage.inferFromPreferredLanguages(
+                allowed: TranslationLanguage.targetLanguages
+            ) ?? .zhHant
+        #expect(TranslationLanguage.currentSource == expectedSource)
+        #expect(TranslationLanguage.currentTarget == expectedTarget)
         #expect(
             defaults.string(
                 forKey: AccountPreferenceNamespace.key("translation_source_lang", accountID: "account-b")
