@@ -31,6 +31,8 @@ def _receipt_from_current_claim(
 ) -> HandbackReceipt:
     """Rebuild a receipt only across an exact, owner-preserving generation drift."""
 
+    # The old PR body may carry a historical origin; the current registry seal
+    # remains the authoritative, separately validated origin below.
     if (
         record.status not in {"published", "cleanup_pending"}
         or record.lane_id != previous.lane_id
@@ -39,7 +41,6 @@ def _receipt_from_current_claim(
         or record.base_sha != previous.base_sha
         or record.owner_thread_id != previous.owner_thread_id
         or record.handed_back_sha != previous.head_sha
-        or record.handback_origin_main_sha != previous.origin_main_sha
         or record.scope != previous.scope
         or record.handback_claim_generation != record.claim_generation
         or not record.handback_valid

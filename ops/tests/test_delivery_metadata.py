@@ -243,3 +243,45 @@ def test_metadata_repair_reconciles_stale_published_generation_from_exact_claim(
     assert result.changed
     assert github.updates == 1
     assert github.pull_request.body == render_pull_request_body(expected)
+
+
+def test_metadata_repair_accepts_current_claim_after_origin_history_advances() -> None:
+    original = _receipt()
+    current_origin = "f" * 40
+    current = replace(
+        _record(original),
+        claim_generation=3,
+        handback_claim_generation=3,
+        handback_digest="d" * 64,
+        handback_origin_main_sha=current_origin,
+        published_base_sha="e" * 40,
+    )
+    github = FakeGitHub(
+        replace(
+            _pull_request(original, body=render_pull_request_body(original)),
+            base_sha="e" * 40,
+        )
+    )
+
+    result = MetadataRepairService(
+        registry=FakeRegistry(_record(original), published_record=current),
+        query=github,
+        command=github,
+    ).repair(1)
+
+    expected = HandbackReceipt(
+        lane_id=original.lane_id,
+        owner_thread_id=original.owner_thread_id,
+        claim_generation=3,
+        branch=original.branch,
+        worktree_path=original.worktree_path,
+        base_sha=original.base_sha,
+        parent_sha=original.parent_sha,
+        head_sha=original.head_sha,
+        origin_main_sha=current_origin,
+        content_digest="d" * 64,
+        scope=original.scope,
+    )
+    assert result.changed
+    assert github.updates == 1
+    assert github.pull_request.body == render_pull_request_body(expected)
