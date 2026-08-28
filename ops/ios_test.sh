@@ -1221,6 +1221,44 @@ stage_fixture_dataset_xctestrun() {
     KG_LIVE_DEMO_RUN,KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256,KG_FIXTURE_DATASET_B64,KG_FIXTURE_DATASET_DEFLATE_B64
 }
 
+# Some XCTest versions read process-level evidence from the target's
+# EnvironmentVariables rather than TestingEnvironmentVariables.  Keep the
+# two evidence keys scoped to the copied xctestrun so P9 tests can observe
+# their contract without changing the shared cache or the host shell env.
+stage_ui_runner_process_environment() {
+  local staged_path="$1" verdict_file="$2"
+  local roots_file env_root runner_root key value status=0
+  [[ -f "$staged_path" && -n "$verdict_file" ]] || return 1
+  if ! declare -F ios_xctestrun_cache_env_roots >/dev/null 2>&1; then
+    source "${KG_IOS_XCTESTRUN_CACHE_LIB:?ios xctestrun cache library is not loaded}"
+  fi
+  roots_file="$(mktemp "${TMPDIR:-/tmp}/kg_xctestrun_process_env_roots.XXXXXX")" || return 1
+  if ! ios_xctestrun_cache_env_roots "$staged_path" >"$roots_file" || [[ ! -s "$roots_file" ]]; then
+    rm -f "$roots_file"
+    return 1
+  fi
+  while IFS= read -r env_root; do
+    [[ -n "$env_root" ]] || continue
+    runner_root="${env_root%:TestingEnvironmentVariables}"
+    /usr/libexec/PlistBuddy -c "Add ${runner_root}:EnvironmentVariables dict" "$staged_path" 2>/dev/null || true
+    for key in KG_UI_TEST_SCREENSHOT_DIR KG_IOS_VERDICT_FILE; do
+      case "$key" in
+        KG_UI_TEST_SCREENSHOT_DIR) value="${UI_TEST_SCREENSHOT_DIR:-}" ;;
+        KG_IOS_VERDICT_FILE) value="$verdict_file" ;;
+      esac
+      [[ -n "$value" ]] || continue
+      /usr/libexec/PlistBuddy -c "Delete ${runner_root}:EnvironmentVariables:$key" "$staged_path" 2>/dev/null || true
+      if ! /usr/libexec/PlistBuddy -c "Add ${runner_root}:EnvironmentVariables:$key string $value" "$staged_path"; then
+        status=1
+        break
+      fi
+    done
+    [[ "$status" -eq 0 ]] || break
+  done <"$roots_file"
+  rm -f "$roots_file"
+  return "$status"
+}
+
 stage_ui_evidence_runner_environment() {
   local staged_path="$1" source_commit device verdict_file
   if [[ -z "$staged_path" || ! -f "$staged_path" ]]; then
@@ -1270,6 +1308,10 @@ stage_ui_evidence_runner_environment() {
   fi
   if ! ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_IOS_VERDICT_FILE "$verdict_file"; then
     echo "[ios_test] evidence stage failed: key=KG_IOS_VERDICT_FILE xctestrun=$staged_path" >&2
+    return 1
+  fi
+  if ! stage_ui_runner_process_environment "$staged_path" "$verdict_file"; then
+    echo "[ios_test] evidence stage failed: process environment xctestrun=$staged_path" >&2
     return 1
   fi
 }
