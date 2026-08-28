@@ -995,6 +995,70 @@ def test_partial_publication_reconciles_when_pr_base_already_matches_current_mai
     assert parse_pull_request_body(result.pull_request.body) == receipt
 
 
+def test_partial_publication_reconciles_when_existing_pr_base_is_ancestor_of_live() -> (
+    None
+):
+    """A same-owner PR on an older main can advance to the fresh handback base."""
+
+    existing_pr_base = "20ffc03ad12b09ecb0731d85bd89322a7132d564"
+    live_main = "4d844fc8126b900afab582bd5b0fa1a5e786e212"
+    scope = Scope.from_paths(
+        modify=(
+            "ops/delivery_control/services/publish_preflight.py",
+            "ops/tests/test_delivery_publish.py",
+        )
+    )
+    previous = _receipt(
+        claim_generation=2,
+        base_sha=existing_pr_base,
+        parent_sha=existing_pr_base,
+        origin_main_sha=existing_pr_base,
+        head_sha=OLD_HEAD,
+        scope=scope,
+    )
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        base_sha=live_main,
+        parent_sha=live_main,
+        origin_main_sha=live_main,
+        scope=scope,
+    )
+    pull_request = _pull_request(
+        previous,
+        title="old title",
+        body=render_pull_request_body(previous),
+    )
+    worktree = _worktree(
+        receipt,
+        changes=tuple(FileChange(FileOperation.MODIFY, path) for path in scope.paths),
+    )
+    service, git, github = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=worktree,
+            remote_sha=previous.head_sha,
+            ancestor_pairs=(
+                (existing_pr_base, live_main),
+                (previous.head_sha, receipt.head_sha),
+            ),
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=pull_request,
+            changed_paths=scope.paths,
+        ),
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert git.push_calls == [(previous.head_sha, receipt.head_sha)]
+    assert github.create_calls == 0
+    assert github.update_calls == 1
+    assert parse_pull_request_body(result.pull_request.body) == receipt
+
+
 @pytest.mark.parametrize(
     ("ancestor_pairs", "worktree_changes", "message"),
     (

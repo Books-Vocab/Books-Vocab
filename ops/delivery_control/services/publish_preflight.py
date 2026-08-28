@@ -81,9 +81,16 @@ class PublishPreflightService:
         pull_request_base_sha: str,
     ) -> bool:
         try:
-            return all(
-                self.git.is_ancestor(base_sha, pull_request_base_sha)
-                for base_sha in (previous_base_sha, handback_base_sha)
+            previous_base_reaches_pr = self.git.is_ancestor(
+                previous_base_sha, pull_request_base_sha
+            )
+            handback_base_reaches_pr = self.git.is_ancestor(
+                handback_base_sha, pull_request_base_sha
+            )
+            if previous_base_reaches_pr and handback_base_reaches_pr:
+                return True
+            return previous_base_reaches_pr and self.git.is_ancestor(
+                pull_request_base_sha, handback_base_sha
             )
         except DeliverySourceError as error:
             raise PolicyViolation(
