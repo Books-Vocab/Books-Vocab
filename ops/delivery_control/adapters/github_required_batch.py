@@ -14,20 +14,19 @@ from .timestamps import parse_optional_timestamp
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _MAX_BATCH_SIZE = 50
+_FAILURE_STATES = frozenset(
+    {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED"}
+)
+_SUCCESS_STATES = frozenset({"SUCCESS", "SKIPPED", "NEUTRAL"})
+_TERMINAL_STATES = _FAILURE_STATES | _SUCCESS_STATES
 
 
 def _status_from_states(states: set[str]) -> CheckStatus:
     if not states:
         return CheckStatus.ABSENT
-    if states & {
-        "FAILURE",
-        "ERROR",
-        "CANCELLED",
-        "TIMED_OUT",
-        "ACTION_REQUIRED",
-    }:
+    if states & _FAILURE_STATES:
         return CheckStatus.FAILURE
-    if states <= {"SUCCESS", "SKIPPED", "NEUTRAL"}:
+    if states <= _SUCCESS_STATES:
         return CheckStatus.SUCCESS
     return CheckStatus.PENDING
 
@@ -37,13 +36,42 @@ def _context_recency_key(
     started_at: datetime | None,
     completed_at: datetime | None,
     index: int,
-) -> tuple[bool, datetime, datetime, int]:
+) -> tuple[datetime, datetime, datetime, int]:
     earliest = datetime.min.replace(tzinfo=UTC)
     return (
-        started_at is not None or completed_at is not None,
-        started_at or completed_at or earliest,
+        completed_at or started_at or earliest,
         completed_at or earliest,
+        started_at or earliest,
         index,
+    )
+
+
+def _prefer_newer_context(
+    candidate: tuple[str, datetime | None, datetime | None, int],
+    previous: tuple[str, datetime | None, datetime | None, int],
+) -> bool:
+    # A timestamp-less pending duplicate cannot safely be proven stale.  Keep
+    # it as the observation so a stale terminal result never masks liveness.
+    candidate_unstamped_pending = (
+        candidate[0] not in _TERMINAL_STATES
+        and candidate[1] is None
+        and candidate[2] is None
+    )
+    previous_unstamped_pending = (
+        previous[0] not in _TERMINAL_STATES
+        and previous[1] is None
+        and previous[2] is None
+    )
+    if candidate_unstamped_pending != previous_unstamped_pending:
+        return candidate_unstamped_pending
+    return _context_recency_key(
+        started_at=candidate[1],
+        completed_at=candidate[2],
+        index=candidate[3],
+    ) >= _context_recency_key(
+        started_at=previous[1],
+        completed_at=previous[2],
+        index=previous[3],
     )
 
 
@@ -119,6 +147,10 @@ def _snapshot_from_node(node: object, *, number: int) -> CheckSnapshot:
         raise AdapterPayloadError(
             f"required PR {number} commit connection is malformed"
         )
+    if commit_nodes and not isinstance(commit_nodes[0], Mapping):
+        raise AdapterPayloadError(
+            f"required PR {number} commit connection is malformed"
+        )
     commit = commit_nodes[0].get("commit") if commit_nodes else None
     rollup = commit.get("statusCheckRollup") if isinstance(commit, Mapping) else None
     contexts = rollup.get("contexts") if isinstance(rollup, Mapping) else None
@@ -141,6 +173,7 @@ def _snapshot_from_node(node: object, *, number: int) -> CheckSnapshot:
         raise AdapterPayloadError(f"required PR {number} check connection is malformed")
 
     observations: dict[str, tuple[str, datetime | None, datetime | None, int]] = {}
+    context_kinds: dict[str, str] = {}
     for index, item in enumerate(context_nodes):
         if not isinstance(item, Mapping):
             raise AdapterPayloadError(
@@ -162,11 +195,15 @@ def _snapshot_from_node(node: object, *, number: int) -> CheckSnapshot:
                 raise AdapterPayloadError(
                     f"required PR {number} check[{index}] status is malformed"
                 )
-            state = (
-                conclusion
-                if raw_status.upper() == "COMPLETED" and type(conclusion) is str
-                else raw_status
-            )
+            if conclusion is not None and type(conclusion) is not str:
+                raise AdapterPayloadError(
+                    f"required PR {number} check[{index}] conclusion is malformed"
+                )
+            if raw_status.upper() == "COMPLETED" and conclusion is None:
+                raise AdapterPayloadError(
+                    f"required PR {number} check[{index}] conclusion is malformed"
+                )
+            state = conclusion if raw_status.upper() == "COMPLETED" else raw_status
             started_at = parse_optional_timestamp(
                 item.get("startedAt"),
                 field=f"required PR {number} check[{index}] startedAt",
@@ -195,24 +232,31 @@ def _snapshot_from_node(node: object, *, number: int) -> CheckSnapshot:
             raise AdapterPayloadError(
                 f"required PR {number} check[{index}] has unknown type"
             )
+        state = state.upper()
+        previous_kind = context_kinds.get(name)
+        if previous_kind is not None and previous_kind != typename:
+            raise AdapterPayloadError(
+                f"required PR {number} context kinds for {name!r} are ambiguous"
+            )
+        context_kinds[name] = typename
+        if (
+            started_at is not None
+            and completed_at is not None
+            and completed_at < started_at
+        ):
+            raise AdapterPayloadError(
+                f"required PR {number} check[{index}] timestamps are inconsistent"
+            )
         candidate = (state, started_at, completed_at, index)
         previous = observations.get(name)
-        if previous is None or _context_recency_key(
-            started_at=started_at,
-            completed_at=completed_at,
-            index=index,
-        ) >= _context_recency_key(
-            started_at=previous[1],
-            completed_at=previous[2],
-            index=previous[3],
-        ):
+        if previous is None or _prefer_newer_context(candidate, previous):
             observations[name] = candidate
 
     starts = [item[1] for item in observations.values()]
     completions = [item[2] for item in observations.values()]
 
     return CheckSnapshot(
-        status=_status_from_states({item[0].upper() for item in observations.values()}),
+        status=_status_from_states({item[0] for item in observations.values()}),
         head_sha=head_sha,
         observed_at=datetime.now(tz=UTC),
         names=tuple(sorted(observations)),
