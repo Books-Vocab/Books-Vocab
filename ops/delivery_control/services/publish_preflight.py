@@ -90,6 +90,34 @@ class PublishPreflightService:
                 "existing PR base ancestry could not be verified"
             ) from error
 
+    def _existing_pr_head_can_advance(
+        self,
+        *,
+        receipt: HandbackReceipt,
+        pull_request: PullRequestSnapshot,
+        remote_sha: str | None,
+    ) -> bool:
+        if remote_sha is None:
+            raise PolicyViolation("existing PR branch is missing from remote")
+        if pull_request.head_sha != remote_sha:
+            raise PolicyViolation("existing PR head differs from remote branch")
+        if remote_sha == receipt.head_sha:
+            return True
+        try:
+            return self.git.is_ancestor(remote_sha, receipt.head_sha)
+        except DeliverySourceError as error:
+            raise PolicyViolation(
+                "existing PR head ancestry could not be verified"
+            ) from error
+
+    @staticmethod
+    def _worktree_changes_match_scope(
+        *, receipt: HandbackReceipt, worktree: WorktreeSnapshot
+    ) -> bool:
+        expected = {(item.operation.value, item.path) for item in receipt.scope.files}
+        actual = {(item.operation.value, item.path) for item in worktree.changes}
+        return actual == expected
+
     def _validate_existing_pull_request_scope(
         self,
         *,
@@ -98,6 +126,7 @@ class PublishPreflightService:
         pull_request: PullRequestSnapshot,
         observed_paths: tuple[str, ...],
         remote_sha: str | None,
+        worktree: WorktreeSnapshot,
     ) -> None:
         """Allow exact Scope evolution across an owner reanchor.
 
@@ -139,10 +168,24 @@ class PublishPreflightService:
             raise PolicyViolation(
                 "existing PR base is unrelated to old or new handback base"
             )
-        partial_publication_matches = (
-            generation_advanced
-            and pull_request.head_sha == receipt.head_sha
-            and remote_sha == receipt.head_sha
+        head_can_advance = False
+        if generation_advanced and previous_tuple_matches_pr:
+            head_can_advance = self._existing_pr_head_can_advance(
+                receipt=receipt,
+                pull_request=pull_request,
+                remote_sha=remote_sha,
+            )
+            if not head_can_advance:
+                raise PolicyViolation(
+                    "existing PR head is not an ancestor of handback HEAD"
+                )
+        partial_publication_matches = generation_advanced and (
+            head_can_advance
+            or (
+                not previous_tuple_matches_pr
+                and pull_request.head_sha == receipt.head_sha
+                and remote_sha == receipt.head_sha
+            )
         )
         if not previous_tuple_matches_pr and not partial_publication_matches:
             raise PolicyViolation("existing PR body differs from its exact PR tuple")
@@ -150,11 +193,17 @@ class PublishPreflightService:
         previous_paths = set(previous.scope.paths)
         observed = set(observed_paths)
         current_paths = set(receipt.scope.paths)
-        if observed != previous_paths and not (
-            partial_publication_matches
-            and current_paths < previous_paths
-            and observed == current_paths
+        current_changes_match = self._worktree_changes_match_scope(
+            receipt=receipt, worktree=worktree
+        )
+        if partial_publication_matches and (
+            observed != previous_paths or remote_sha != receipt.head_sha
         ):
+            if not current_changes_match:
+                raise PolicyViolation(
+                    "current handback diff does not exactly match its typed Scope"
+                )
+        elif observed != previous_paths:
             raise PolicyViolation(
                 "existing PR paths differ from its typed handback Scope"
             )
@@ -207,6 +256,7 @@ class PublishPreflightService:
                 pull_request=pull_request,
                 observed_paths=observed_paths,
                 remote_sha=remote_sha,
+                worktree=worktree,
             )
         try:
             collision = self._scope_collision(
