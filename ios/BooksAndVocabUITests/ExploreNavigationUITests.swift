@@ -21,20 +21,15 @@ final class ExploreNavigationUITests: UITestCase {
 
     @MainActor
     private func openExplore(in app: XCUIApplication) -> AppPage {
-        // The shared AppPage resolver has a localized/system-image fallback.
-        // During back-to-back isolated launches, that fallback can resolve its
-        // dynamic first match before the tab tree is complete and tap Bookshelf
-        // instead. Wait for the production Explore tab identifier itself so a
-        // fixture state is never asserted on the wrong section.
-        let exploreTab = app.tabBars.buttons
+        let page = AppPage(app: app)
+        // The production tab item publishes this identifier on the action
+        // owning button in the UI-test build. Wait for that exact target so
+        // a broad descendant query cannot select an adjacent tab.
+        app.tabBars.buttons
             .matching(identifier: "tab.explore.button")
             .firstMatch
-        XCTAssertTrue(
-            exploreTab.waitUntilHittable(timeout: 10),
-            "Explore tab must expose its exact semantic button before navigation"
-        )
-        exploreTab.tap()
-        return AppPage(app: app)
+            .tapWhenReady(timeout: 10)
+        return page
     }
 
 
