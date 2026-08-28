@@ -61,7 +61,8 @@ class RequiredRepairService:
         receipt = parse_pull_request_body(pull_request.body)
         if expected_receipt is not None and receipt != expected_receipt:
             raise PolicyViolation("PR receipt changed during required repair")
-        exact_published_record(self.registry, receipt)
+        record = exact_published_record(self.registry, receipt)
+        published_target_base_sha = record.published_base_sha or record.base_sha
 
         inventory = self.query.list_pull_requests_for_branch(receipt.branch)
         if inventory.problems:
@@ -88,7 +89,7 @@ class RequiredRepairService:
             or pull_request.draft
             or pull_request.base_branch != "main"
             or pull_request.branch != receipt.branch
-            or pull_request.base_sha != receipt.base_sha
+            or pull_request.base_sha != published_target_base_sha
             or pull_request.head_sha != receipt.head_sha
             or pull_request.body != expected_body
         ):
