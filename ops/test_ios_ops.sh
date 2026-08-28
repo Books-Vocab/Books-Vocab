@@ -1138,6 +1138,11 @@ grep -q 'emit_ui_runner_lifecycle' "$WORKSPACE/ops/ios_test.sh" \
 grep -q 'KG_UI_TEST_SCREENSHOT_DIR' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'uitest_contact_sheet.py' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test captures UI step screenshots into a contact sheet" || fail_t "ios_test missing UI step contact sheet capture"
+grep -q '^stage_ui_runner_process_environment()' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'EnvironmentVariables' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'KG_UI_TEST_SCREENSHOT_DIR' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test stages P9 screenshot context into the runner process environment" \
+  || fail_t "ios_test does not stage P9 screenshot context into the runner process environment"
 [[ "$(grep -c '^stage_ui_evidence_runner_environment()' "$WORKSPACE/ops/ios_test.sh")" -eq 1 ]] \
   && grep -q 'verdict_file="\${KG_IOS_VERDICT_FILE:-\${VERDICT_FILE:-}}"' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'KG_IOS_VERDICT_FILE "\$verdict_file"' "$WORKSPACE/ops/ios_test.sh" \
@@ -1758,6 +1763,33 @@ missing_diag_json="$("$IOS_DIAG" --kind test --xcresult "$ios_test_retry_tmp/Mis
 echo "$missing_diag_json" | jq -e --arg log "$ios_test_retry_tmp/never-created.log" '.schema=="kg.ios.diagnostics.v1" and .source=="raw-log-missing" and .result=="fail" and .counts.errors==0 and .logError=="log file not found: \($log)" and (.xcresultError|length > 0) and .artifacts.log==$log' >/dev/null \
   && ok "ios_diagnostics reports missing fallback log as machine-readable error" || fail_t "ios_diagnostics missing-log fallback invalid: $missing_diag_json"
 rm -rf "$ios_test_retry_tmp"
+
+section "ios_test lease failure is a structured verdict"
+# A lease refusal happens before xcodebuild starts, so it must still publish a
+# per-invocation verdict.  Without that evidence the outer gate can only report
+# a misleading missing-artifacts/unknown result.
+lease_failure_tmp="$(mktemp -d "${TMPDIR:-/tmp}/kg-ios-lease-failure.XXXXXX")"
+lease_failure_out="$lease_failure_tmp/stdout"
+lease_failure_err="$lease_failure_tmp/stderr"
+lease_failure_rc=0
+KG_IOS_SIM_POOL_SIZE=0 \
+KG_IOS_SIM_LEASE_ROOT="$lease_failure_tmp/leases" \
+KG_IOS_VERDICT_FILE="$lease_failure_tmp/verdict" \
+  "$IOS_OPS" test --unit --lease --json >"$lease_failure_out" 2>"$lease_failure_err" || lease_failure_rc=$?
+[[ "$lease_failure_rc" -eq 1 ]] \
+  && ok "ios_test returns non-zero for an exhausted simulator pool" \
+  || fail_t "ios_test lease refusal exit changed: $lease_failure_rc"
+if [[ -s "$lease_failure_tmp/verdict.json" ]] \
+  && jq -e '.result == "inconclusive" and .reason == "simulator-pool-exhausted" and .exit == "1"' \
+      "$lease_failure_tmp/verdict.json" >/dev/null; then
+  ok "ios_test publishes a pool-exhaustion verdict before xcodebuild"
+else
+  fail_t "ios_test did not publish the expected pool-exhaustion verdict"
+fi
+grep -q "pool is exhausted" "$lease_failure_err" \
+  && ok "ios_test preserves the operator-facing pool exhaustion reason" \
+  || fail_t "ios_test lost the operator-facing pool exhaustion reason"
+rm -rf "$lease_failure_tmp"
 
 section "ios_test generic device compile is unsigned and cache-isolated"
 # The live-only Release gate uses generic/platform=iOS only to prove that the

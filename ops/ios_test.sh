@@ -935,6 +935,52 @@ release_test_device_lock() {
 # the shared locks already released. See ops/lib/signal_traps.sh.
 kg_install_signal_traps cleanup
 
+# Initialize the per-invocation verdict before any operation that can fail.
+# Simulator leasing deliberately happens before xcodebuild, so a refusal must
+# still leave evidence for `ios_ops.sh` and the orchestration gate to read.
+kg_ios_verdict_init test "$PROJECT_ROOT"
+
+write_early_failure_verdict() {
+  local reason="$1" exit_code="${2:-1}" source_commit early_tree_status early_tree_dirty
+  source_commit="$(git -C "$PROJECT_ROOT" rev-parse HEAD 2>/dev/null || true)"
+  if early_tree_status="$(git -C "$PROJECT_ROOT" status --porcelain 2>/dev/null)"; then
+    if [[ -n "$early_tree_status" ]]; then early_tree_dirty=true; else early_tree_dirty=false; fi
+  else
+    early_tree_dirty=true
+  fi
+  printf 'RESULT=inconclusive EXIT=%s reason=%s caller=%s elapsed=0s $(kg_ios_verdict_identity_kv)\n' \
+    "$exit_code" "$reason" "$CALLER" >"$VERDICT_FILE"
+  jq -nc \
+    --arg schema "kg.ios.run-verdict.v1" \
+    --arg kind "test" \
+    --arg result "inconclusive" \
+    --arg exit "$exit_code" \
+    --arg reason "$reason" \
+    --arg caller "$CALLER" \
+    --arg cwd "$PROJECT_ROOT" \
+    --arg verdictFile "$VERDICT_FILE" \
+    --argjson ts "$(date +%s)" \
+    --argjson pid "$$" \
+    --arg sourceCommit "$source_commit" \
+    --argjson sourceTreeDirty "$early_tree_dirty" \
+    --arg elapsed "0s" \
+    ' {
+      schema:$schema,
+      kind:$kind,
+      status:$result,
+      result:$result,
+      exit:$exit,
+      reason:$reason,
+      caller:$caller,
+      invocation:{ts:$ts,pid:$pid,cwd:$cwd,verdictFile:$verdictFile},
+      options:{sourceCommit:$sourceCommit,sourceTreeDirty:$sourceTreeDirty},
+      elapsed:$elapsed,
+      executed:null,
+      artifacts:{log:null,xcresult:null}
+    }' >"$VERDICT_JSON_FILE"
+  kg_ios_verdict_publish
+}
+
 # Auto-lease a pool simulator for this run (parallel agents). Engaged by --lease
 # / KG_IOS_TEST_AUTOLEASE only when no explicit device/destination was given —
 # explicit targeting always wins. Done after the trap is armed so the lease is
@@ -945,15 +991,16 @@ if [[ "$AUTO_LEASE" -eq 1 && -z "$DEVICE_OVERRIDE" && -z "$DESTINATION_OVERRIDE"
   lease_json="$(
     KG_IOS_SIM_LEASE_OWNER_PID=$$ \
     KG_IOS_SIM_LEASE_OWNER_TOKEN="$LEASE_OWNER_TOKEN" \
-      "$IOS_OPS" simulator lease --json 2>/dev/null
+      "$IOS_OPS" simulator lease --json 2>/dev/null || true
   )"
-  LEASED_DEVICE="$(jq -r '.udid // empty' <<<"$lease_json" 2>/dev/null)"
+  LEASED_DEVICE="$(jq -r '.udid // empty' <<<"$lease_json" 2>/dev/null || true)"
   if [[ -z "$LEASED_DEVICE" ]]; then
     # `2>/dev/null` above drops the lease command's own diagnostics, so the
     # reason has to travel in the JSON or it is lost. A slot refused for
     # holding a real account is NOT exhaustion, and must not be reported as it.
-    lease_refused="$(jq -r '.refusedNonDisposable // 0' <<<"$lease_json" 2>/dev/null)"
-    lease_blind="$(jq -r '.refusedUnverifiable // 0' <<<"$lease_json" 2>/dev/null)"
+    lease_error="$(jq -r '.error // empty' <<<"$lease_json" 2>/dev/null || true)"
+    lease_refused="$(jq -r '.refusedNonDisposable // 0' <<<"$lease_json" 2>/dev/null || true)"
+    lease_blind="$(jq -r '.refusedUnverifiable // 0' <<<"$lease_json" 2>/dev/null || true)"
     [[ "${lease_refused:-0}" =~ ^[0-9]+$ ]] || lease_refused=0
     [[ "${lease_blind:-0}" =~ ^[0-9]+$ ]] || lease_blind=0
     if (( lease_blind > 0 )); then
@@ -961,11 +1008,19 @@ if [[ "$AUTO_LEASE" -eq 1 && -z "$DEVICE_OVERRIDE" && -z "$DESTINATION_OVERRIDE"
       # pool, and telling the operator to go log simulators out would send them
       # hunting for accounts that are not there.
       echo "[ios_test] error: --lease 拿不到 slot：$lease_blind 台 pool simulator 無法確認帳號歸屬——是偵測本身壞了（plutil 不見了 / CoreSimulator 路徑變了 / prefs 讀不到），不是有人登入。跑 './ops/ios_ops.sh simulator lease' 看每台的實際原因。" >&2
+      lease_reason="simulator-pool-unverifiable"
     elif (( lease_refused > 0 )); then
       echo "[ios_test] error: --lease 拿不到 slot：$lease_refused 台 pool simulator 因登著非拋棄帳號被拒絕出租（UI test fixture 會清空 app 容器）。跑 './ops/ios_ops.sh simulator lease' 看是哪幾台，處理掉再重試；調大 KG_IOS_SIM_POOL_SIZE 無效。" >&2
+      lease_reason="simulator-pool-blocked-non-disposable"
     else
       echo "[ios_test] error: --lease requested but simulator pool is exhausted" >&2
+      if [[ "$lease_error" == pool-exhausted:* ]]; then
+        lease_reason="simulator-pool-exhausted"
+      else
+        lease_reason="simulator-lease-failed"
+      fi
     fi
+    write_early_failure_verdict "$lease_reason" 1
     exit 1
   fi
   echo "[ios_test] leased simulator udid=$LEASED_DEVICE"
@@ -1166,6 +1221,44 @@ stage_fixture_dataset_xctestrun() {
     KG_LIVE_DEMO_RUN,KG_LIVE_DEMO_ACCOUNT_IDENTITY_SHA256,KG_FIXTURE_DATASET_B64,KG_FIXTURE_DATASET_DEFLATE_B64
 }
 
+# Some XCTest versions read process-level evidence from the target's
+# EnvironmentVariables rather than TestingEnvironmentVariables.  Keep the
+# two evidence keys scoped to the copied xctestrun so P9 tests can observe
+# their contract without changing the shared cache or the host shell env.
+stage_ui_runner_process_environment() {
+  local staged_path="$1" verdict_file="$2"
+  local roots_file env_root runner_root key value status=0
+  [[ -f "$staged_path" && -n "$verdict_file" ]] || return 1
+  if ! declare -F ios_xctestrun_cache_env_roots >/dev/null 2>&1; then
+    source "${KG_IOS_XCTESTRUN_CACHE_LIB:?ios xctestrun cache library is not loaded}"
+  fi
+  roots_file="$(mktemp "${TMPDIR:-/tmp}/kg_xctestrun_process_env_roots.XXXXXX")" || return 1
+  if ! ios_xctestrun_cache_env_roots "$staged_path" >"$roots_file" || [[ ! -s "$roots_file" ]]; then
+    rm -f "$roots_file"
+    return 1
+  fi
+  while IFS= read -r env_root; do
+    [[ -n "$env_root" ]] || continue
+    runner_root="${env_root%:TestingEnvironmentVariables}"
+    /usr/libexec/PlistBuddy -c "Add ${runner_root}:EnvironmentVariables dict" "$staged_path" 2>/dev/null || true
+    for key in KG_UI_TEST_SCREENSHOT_DIR KG_IOS_VERDICT_FILE; do
+      case "$key" in
+        KG_UI_TEST_SCREENSHOT_DIR) value="${UI_TEST_SCREENSHOT_DIR:-}" ;;
+        KG_IOS_VERDICT_FILE) value="$verdict_file" ;;
+      esac
+      [[ -n "$value" ]] || continue
+      /usr/libexec/PlistBuddy -c "Delete ${runner_root}:EnvironmentVariables:$key" "$staged_path" 2>/dev/null || true
+      if ! /usr/libexec/PlistBuddy -c "Add ${runner_root}:EnvironmentVariables:$key string $value" "$staged_path"; then
+        status=1
+        break
+      fi
+    done
+    [[ "$status" -eq 0 ]] || break
+  done <"$roots_file"
+  rm -f "$roots_file"
+  return "$status"
+}
+
 stage_ui_evidence_runner_environment() {
   local staged_path="$1" source_commit device verdict_file
   if [[ -z "$staged_path" || ! -f "$staged_path" ]]; then
@@ -1215,6 +1308,10 @@ stage_ui_evidence_runner_environment() {
   fi
   if ! ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_IOS_VERDICT_FILE "$verdict_file"; then
     echo "[ios_test] evidence stage failed: key=KG_IOS_VERDICT_FILE xctestrun=$staged_path" >&2
+    return 1
+  fi
+  if ! stage_ui_runner_process_environment "$staged_path" "$verdict_file"; then
+    echo "[ios_test] evidence stage failed: process environment xctestrun=$staged_path" >&2
     return 1
   fi
 }
@@ -2090,8 +2187,6 @@ emit_ui_runner_lifecycle() {
 # fixed-path-then-private-copy dance is gone). The historical fixed path stays
 # as a last-writer-wins LATEST pointer for `ios_ops runs`. See
 # ops/lib/ios_run_verdict.sh.
-kg_ios_verdict_init test "$PROJECT_ROOT"
-
 validate_p9_review_calendar_sidecar() {
   local manifest_path="$1" verdict_path="$2"
   [[ -s "$manifest_path" ]] || return 0
