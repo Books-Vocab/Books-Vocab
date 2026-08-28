@@ -51,6 +51,14 @@ def test_catalog_fixed_month_binds_the_calendar_date_without_undefined_symbol() 
     )
 
 
+def test_review_calendar_catalog_uses_the_canonical_fixture_clock() -> None:
+    source = _text(IOS / "BooksAndVocab/Debug/Scenarios/ReviewCalendarScenarios.swift")
+
+    assert "FixtureReviewClock.required(" in source
+    assert "reviewHistory: seed.reviewHistory" in source
+    assert "StatsViewTime.clock(" not in source
+
+
 def test_ui_calendar_uses_the_canonical_dense_seed_and_proves_clock_provenance() -> (
     None
 ):
