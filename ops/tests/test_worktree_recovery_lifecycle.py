@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -23,6 +24,7 @@ from delivery_control.domain.observations import (
 )
 from delivery_control.services.pr_contract import render_pull_request_body
 from worktree_reanchor_core import git_ops
+from worktree_reanchor_core.cli import add_parser
 from worktree_reanchor_core.errors import ReanchorRefused
 from worktree_reanchor_core.lifecycle_proof import (
     verify_reanchor_lifecycle,
@@ -294,6 +296,101 @@ def test_reanchor_lifecycle_accepts_required_green_with_optional_agent_review_co
 
     assert proof.pull_request_number == 42
     assert proof.required_status is CheckStatus.SUCCESS
+
+
+def test_reanchor_lifecycle_accepts_explicit_required_failure_for_local_recovery() -> (
+    None
+):
+    candidate = _pr(42, branch="feat/exact-pr")
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        open_prs=(candidate,),
+        checks={42: _check(CheckStatus.FAILURE)},
+    )
+
+    proof = verify_reanchor_lifecycle(
+        github,
+        pull_request_number=42,
+        branch="feat/exact-pr",
+        expected_base_sha=BASE,
+        expected_remote_head=HEAD,
+        live_main_sha=LIVE,
+        allow_required_failure_recovery=True,
+    )
+
+    assert proof.pull_request_number == 42
+    assert proof.required_status is CheckStatus.FAILURE
+    assert proof.merge_front_policy == "owner-local-required-failure-recovery"
+
+
+@pytest.mark.parametrize(
+    ("status", "reason"),
+    [
+        (CheckStatus.SUCCESS, "exact required code failure"),
+        (CheckStatus.PENDING, "exact required code failure"),
+        (CheckStatus.ABSENT, "exact required code context"),
+    ],
+)
+def test_required_failure_recovery_rejects_non_failure_required_status(
+    status: CheckStatus, reason: str
+) -> None:
+    candidate = _pr(42, branch="feat/exact-pr")
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        open_prs=(candidate,),
+        checks={
+            42: _check(
+                status, names=() if status is CheckStatus.ABSENT else ("required",)
+            )
+        },
+    )
+
+    with pytest.raises(ReanchorRefused, match=reason):
+        verify_reanchor_lifecycle(
+            github,
+            pull_request_number=42,
+            branch="feat/exact-pr",
+            expected_base_sha=BASE,
+            expected_remote_head=HEAD,
+            live_main_sha=LIVE,
+            allow_required_failure_recovery=True,
+        )
+
+
+def test_reanchor_parser_exposes_required_failure_recovery_opt_in() -> None:
+    root = argparse.ArgumentParser()
+    subparsers = root.add_subparsers(dest="command")
+    add_parser(
+        subparsers,
+        common=lambda parser: None,
+        handler=lambda args: 0,
+        default_repo=Path("/repo"),
+    )
+
+    args = root.parse_args(
+        [
+            "reanchor",
+            "--merge-front-pr",
+            "42",
+            "--lane",
+            "DIRECT-PR-42",
+            "--branch",
+            "feat/exact-pr",
+            "--owner-thread-id",
+            "owner-thread-1",
+            "--claim-generation",
+            "0",
+            "--expected-remote-head",
+            HEAD,
+            "--live-main",
+            LIVE,
+            "--path",
+            "/tmp/pr-42",
+            "--allow-required-failure",
+        ]
+    )
+
+    assert args.allow_required_failure is True
 
 
 @pytest.mark.parametrize(
