@@ -16,8 +16,17 @@ CRIT_FREE_GIB="${KG_DISK_GUARD_CRIT_FREE_GIB:-10}"
 GROWTH_WARN_GIB="${KG_DISK_GUARD_GROWTH_WARN_GIB:-5}"
 DOCKER_WARN_GIB="${KG_DISK_GUARD_DOCKER_WARN_GIB:-2}"
 DOCKER_PRUNE_UNTIL="${KG_DISK_GUARD_DOCKER_PRUNE_UNTIL:-168h}"
-CACHE_BUDGET_GIB="${KG_DISK_GUARD_CACHE_BUDGET_GIB:-16}"
-CACHE_HEADROOM_GIB="${KG_DISK_GUARD_CACHE_HEADROOM_GIB:-6}"
+CACHE_BUDGET_GIB="${KG_DISK_GUARD_CACHE_BUDGET_GIB:-${KG_IOS_DISK_CACHE_BUDGET_GIB:-16}}"
+CACHE_HEADROOM_GIB="${KG_DISK_GUARD_CACHE_HEADROOM_GIB:-${KG_IOS_DISK_CACHE_HEADROOM_GIB:-6}}"
+[[ "$CACHE_BUDGET_GIB" =~ ^[0-9]+$ ]] || CACHE_BUDGET_GIB=16
+[[ "$CACHE_HEADROOM_GIB" =~ ^[0-9]+$ ]] || CACHE_HEADROOM_GIB=6
+CACHE_BUDGET_KB=$((CACHE_BUDGET_GIB * 1048576))
+CACHE_HEADROOM_KB=$((CACHE_HEADROOM_GIB * 1048576))
+if (( CACHE_HEADROOM_GIB <= CACHE_BUDGET_GIB )); then
+  CACHE_WRITER_LIMIT_KB=$(((CACHE_BUDGET_GIB - CACHE_HEADROOM_GIB) * 1048576))
+else
+  CACHE_WRITER_LIMIT_KB=0
+fi
 KEEP="${KG_DISK_GUARD_CACHE_KEEP:-3}"
 # The recurring guard already proves that no iOS consumer is running before it
 # acquires the build lock.  A zero age window therefore enforces the key cap on
@@ -132,6 +141,29 @@ worktree_keyed_cache_roots() {
   done
 }
 
+# A physical worktree is reclaimable only after the registry identifies it as
+# terminal.  Missing or unreadable ownership evidence is deliberately
+# fail-closed: the guard must never remove an unknown or active lane's cache.
+worktree_is_reclaimable() {
+  local worktree="$1"
+  command -v jq >/dev/null 2>&1 || return 1
+  [[ -r "$REGISTRY_STATE" ]] || return 1
+  jq -e --arg path "$worktree" '
+    ([.records[]? | select(.path == $path)]) as $matches
+    | ($matches | length > 0)
+      and ([$matches[] | .status] | all(. == "merged" or . == "abandoned"))
+  ' "$REGISTRY_STATE" >/dev/null 2>&1
+}
+
+reclaimable_worktree_keyed_cache_roots() {
+  local root worktree
+  while IFS= read -r root; do
+    worktree="${root%/.cache/*}"
+    [[ -n "$worktree" && "$worktree" != "$root" ]] || continue
+    worktree_is_reclaimable "$worktree" && printf '%s\n' "$root"
+  done < <(worktree_keyed_cache_roots)
+}
+
 cache_roots() {
   shared_cache_roots
   # Worktree DerivedData can be multi-GB and `du` may legitimately take minutes
@@ -173,9 +205,16 @@ keyed_cache_overflow_keys() {
 
 cache_budget_overflow_kb() {
   local cache="$1" budget_gib="$CACHE_BUDGET_GIB"
+  local budget_kb
   [[ "$budget_gib" =~ ^[0-9]+$ ]] || budget_gib=16
-  local budget_kb=$((budget_gib * 1048576))
+  budget_kb=$((budget_gib * 1048576))
   (( cache > budget_kb )) && printf '%s' "$((cache - budget_kb))" || printf '0'
+}
+
+cache_headroom_overflow_kb() {
+  local cache="$1" limit="$CACHE_WRITER_LIMIT_KB"
+  [[ "$cache" =~ ^[0-9]+$ && "$limit" =~ ^[0-9]+$ ]] || { printf '0'; return; }
+  (( cache > limit )) && printf '%s' "$((cache - limit))" || printf '0'
 }
 
 worktree_cache_kb() {
@@ -292,14 +331,19 @@ write_lane_usage() {
 }
 
 evict_keyed_caches() {
-  local root min_age_hours="$MIN_AGE_HOURS"
+  local root min_age_hours="$MIN_AGE_HOURS" old_budget
   (( READER_WINDOW_HOURS > min_age_hours )) && min_age_hours="$READER_WINDOW_HOURS"
+  old_budget="${KG_IOS_DISK_CACHE_BUDGET_KB:-}"
   export KG_IOS_CACHE_KEEP="$KEEP"
   export KG_IOS_CACHE_EVICT_MIN_AGE_HOURS="$min_age_hours"
   export KG_IOS_CACHE_EVICT_DRY_RUN="$DRY_RUN"
+  # The shared evictor understands this override and can therefore enforce
+  # the writer limit (budget minus headroom), not just the hard cache budget.
+  export KG_IOS_DISK_CACHE_BUDGET_KB="$CACHE_WRITER_LIMIT_KB"
   while IFS= read -r root; do
     kg_ios_cache_evict "$root" "" || true
   done < <(shared_keyed_cache_roots)
+  if [[ -n "$old_budget" ]]; then export KG_IOS_DISK_CACHE_BUDGET_KB="$old_budget"; else unset KG_IOS_DISK_CACHE_BUDGET_KB; fi
 }
 
 evict_rebuildable_caches() {
@@ -320,7 +364,7 @@ evict_rebuildable_caches() {
 }
 
 evict_worktree_caches() {
-  local old_keep old_min old_dry min_age_hours="$WORKTREE_CACHE_MIN_AGE_HOURS"
+  local old_keep old_min old_dry min_age_hours="$WORKTREE_CACHE_MIN_AGE_HOURS" eligible=0
   (( WORKTREE_READER_WINDOW_HOURS > min_age_hours )) && min_age_hours="$WORKTREE_READER_WINDOW_HOURS"
   old_keep="${KG_IOS_CACHE_KEEP:-}"
   old_min="${KG_IOS_CACHE_EVICT_MIN_AGE_HOURS:-}"
@@ -329,11 +373,13 @@ evict_worktree_caches() {
   export KG_IOS_CACHE_EVICT_MIN_AGE_HOURS="$min_age_hours"
   export KG_IOS_CACHE_EVICT_DRY_RUN="$DRY_RUN"
   while IFS= read -r root; do
+    eligible=1
     kg_ios_cache_evict "$root" "" || true
-  done < <(worktree_keyed_cache_roots)
+  done < <(reclaimable_worktree_keyed_cache_roots)
   if [[ -n "$old_keep" ]]; then export KG_IOS_CACHE_KEEP="$old_keep"; else unset KG_IOS_CACHE_KEEP; fi
   if [[ -n "$old_min" ]]; then export KG_IOS_CACHE_EVICT_MIN_AGE_HOURS="$old_min"; else unset KG_IOS_CACHE_EVICT_MIN_AGE_HOURS; fi
   if [[ -n "$old_dry" ]]; then export KG_IOS_CACHE_EVICT_DRY_RUN="$old_dry"; else unset KG_IOS_CACHE_EVICT_DRY_RUN; fi
+  (( eligible > 0 ))
 }
 
 acquire_build_lock_nonblocking() {
@@ -383,19 +429,19 @@ evict_old_app_derived_data() {
 }
 
 write_state() {
-  local free="$1" prev="$2" growth="$3" active="$4" cache="$5" docker_cache="$6" docker_running="$7" worktree_cache="$8" worktree_keys="$9" worktree_overflow="${10}" cache_overflow="${11}" budget_kb="${12}" budget_overflow="${13}" verdict="${14}" reason="${15}" action="${16}" lane_usage_verdict="${17}" lane_usage_rc="${18}" lane_usage_budget_seconds="${19}"
+  local free="$1" prev="$2" growth="$3" active="$4" cache="$5" docker_cache="$6" docker_running="$7" worktree_cache="$8" worktree_keys="$9" worktree_overflow="${10}" cache_overflow="${11}" budget_kb="${12}" budget_overflow="${13}" headroom_kb="${14}" writer_limit_kb="${15}" headroom_overflow="${16}" repair_remaining="${17}" repair_status="${18}" verdict="${19}" reason="${20}" action="${21}" lane_usage_verdict="${22}" lane_usage_rc="${23}" lane_usage_budget_seconds="${24}"
   local dir tmp
   dir="$(dirname "$STATE_FILE")"; mkdir -p "$dir" 2>/dev/null || return 1
   tmp="$STATE_FILE.$$.$RANDOM.tmp"
-  printf '{"schema":"kg.disk.guard.v1","host":"%s","free_bytes":%s,"previous_free_bytes":%s,"growth_bytes":%s,"active_build":%s,"cache_kb":%s,"cache_budget_kb":%s,"cache_budget_overflow_kb":%s,"docker_cache_kb":%s,"docker_active":%s,"worktree_cache_kb":%s,"worktree_cache_keys":%s,"worktree_cache_overflow_keys":%s,"cache_overflow_keys":%s,"verdict":"%s","reason":"%s","action":"%s","lane_usage_verdict":"%s","lane_usage_rc":%s,"lane_usage_budget_seconds":%s,"at":"%s"}\n' \
+  printf '{"schema":"kg.disk.guard.v1","host":"%s","free_bytes":%s,"previous_free_bytes":%s,"growth_bytes":%s,"active_build":%s,"cache_kb":%s,"cache_budget_kb":%s,"cache_budget_overflow_kb":%s,"cache_headroom_kb":%s,"cache_writer_limit_kb":%s,"cache_headroom_overflow_kb":%s,"cache_repair_remaining_kb":%s,"cache_repair_status":"%s","docker_cache_kb":%s,"docker_active":%s,"worktree_cache_kb":%s,"worktree_cache_keys":%s,"worktree_cache_overflow_keys":%s,"cache_overflow_keys":%s,"verdict":"%s","reason":"%s","action":"%s","lane_usage_verdict":"%s","lane_usage_rc":%s,"lane_usage_budget_seconds":%s,"at":"%s"}\n' \
     "$(hostname -s 2>/dev/null || echo unknown)" "$(number "$free")" "$(number "$prev")" "$(number "$growth")" \
-    "$(number "$active")" "$(number "$cache")" "$(number "$budget_kb")" "$(number "$budget_overflow")" "$(number "$docker_cache")" "$(number "$docker_running")" \
+    "$(number "$active")" "$(number "$cache")" "$(number "$budget_kb")" "$(number "$budget_overflow")" "$(number "$headroom_kb")" "$(number "$writer_limit_kb")" "$(number "$headroom_overflow")" "$(number "$repair_remaining")" "$repair_status" "$(number "$docker_cache")" "$(number "$docker_running")" \
     "$(number "$worktree_cache")" "$(number "$worktree_keys")" "$(number "$worktree_overflow")" "$(number "$cache_overflow")" "$verdict" "$reason" "$action" "$lane_usage_verdict" "$(number "$lane_usage_rc")" "$(number "$lane_usage_budget_seconds")" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$tmp" || { rm -f "$tmp"; return 1; }
   mv -f "$tmp" "$STATE_FILE"
 }
 
 main() {
-  local free prev growth active cache docker_cache docker_running worktree_cache worktree_keys worktree_overflow cache_overflow cache_budget_kb cache_budget_overflow free_gib growth_gib docker_gib verdict reason action lock_ready need_shared_cleanup build_lock_owned cache_budget_gib
+  local free prev growth active cache docker_cache docker_running worktree_cache worktree_keys worktree_overflow cache_overflow cache_budget_kb cache_budget_overflow cache_headroom_kb cache_writer_limit_kb cache_headroom_overflow cache_repair_remaining cache_repair_status cache_after free_gib growth_gib docker_gib verdict reason action lock_ready need_shared_cleanup build_lock_owned
   acquire_guard_lock_nonblocking || {
     logger -t kg-disk-guard 'skipped=already-running' 2>/dev/null || true
     return 0
@@ -405,8 +451,9 @@ main() {
   active="$(active_build)"; cache="$(cache_kb)"
   docker_cache="$(docker_cache_kb)"; docker_running="$(docker_active)"
   worktree_keys="$(worktree_cache_keys)"; worktree_overflow="$(worktree_cache_overflow_keys)"; cache_overflow="$(keyed_cache_overflow_keys)"; worktree_cache="$(worktree_cache_kb)"
-  cache_budget_gib="$CACHE_BUDGET_GIB"; [[ "$cache_budget_gib" =~ ^[0-9]+$ ]] || cache_budget_gib=16
-  cache_budget_kb=$((cache_budget_gib * 1048576)); cache_budget_overflow="$(cache_budget_overflow_kb "$cache")"
+  cache_budget_kb="$CACHE_BUDGET_KB"; cache_headroom_kb="$CACHE_HEADROOM_KB"; cache_writer_limit_kb="$CACHE_WRITER_LIMIT_KB"
+  cache_budget_overflow="$(cache_budget_overflow_kb "$cache")"; cache_headroom_overflow="$(cache_headroom_overflow_kb "$cache")"
+  cache_repair_remaining="$cache_headroom_overflow"; cache_repair_status="not-needed"
   free_gib=$((free / 1073741824)); growth_gib=$((growth / 1073741824))
   docker_gib=$((docker_cache / 1048576)); docker_warn_kb=$((DOCKER_WARN_GIB * 1048576)); verdict="ok"; reason="within-bounds"; action="none"
   if (( free_gib < CRIT_FREE_GIB )); then
@@ -419,6 +466,8 @@ main() {
     verdict="warning"; reason="docker-build-cache"
   elif (( cache_budget_overflow > 0 )); then
     verdict="warning"; reason="cache-budget-exceeded"
+  elif (( cache_headroom_overflow > 0 )); then
+    verdict="warning"; reason="cache-budget-headroom-exhausted"
   elif (( cache_overflow > 0 )); then
     verdict="warning"; reason="ios-cache-overflow"
   elif (( worktree_overflow > 0 )); then
@@ -427,8 +476,10 @@ main() {
   if [[ "$verdict" != "ok" ]]; then
     if [[ "$active" == "1" || "$docker_running" == "1" ]]; then
       action="deferred-active-build"
+      (( cache_headroom_overflow > 0 )) && cache_repair_status="deferred-active-build"
     elif [[ "$active" != "0" || "$docker_running" != "0" ]]; then
       action="deferred-process-observation"
+      (( cache_headroom_overflow > 0 )) && cache_repair_status="deferred-process-observation"
     else
       lock_ready=0
       build_lock_owned=0
@@ -436,15 +487,21 @@ main() {
         if acquire_build_lock_nonblocking; then
           lock_ready=1
           [[ "${KG_DISK_GUARD_BUILD_LOCK_HELD:-0}" == "1" ]] || build_lock_owned=1
-          evict_worktree_caches; action="evict-worktree-cache"
+          if evict_worktree_caches; then
+            action="evict-worktree-cache"
+          else
+            action="deferred-worktree-ownership"
+            (( cache_headroom_overflow > 0 )) && cache_repair_status="deferred-worktree-ownership"
+          fi
         else
           action="deferred-build-lock"
+          (( cache_headroom_overflow > 0 )) && cache_repair_status="deferred-build-lock"
         fi
       fi
       need_shared_cleanup=0
       if [[ "$action" == "none" ]]; then
         need_shared_cleanup=1
-      elif [[ "$action" == "evict-worktree-cache" ]] && (( cache_overflow > 0 || cache_budget_overflow > 0 || free_gib < WARN_FREE_GIB )); then
+      elif [[ "$action" == "evict-worktree-cache" || "$action" == "deferred-worktree-ownership" ]] && (( cache_overflow > 0 || cache_budget_overflow > 0 || cache_headroom_overflow > 0 || free_gib < WARN_FREE_GIB )); then
         # Keep the existing pressure cleanup in the same guarded turn, and
         # also enforce the shared keyed-cache cap when disk space is healthy.
         need_shared_cleanup=1
@@ -452,13 +509,17 @@ main() {
       if (( need_shared_cleanup > 0 )); then
         if (( lock_ready == 1 )) || acquire_build_lock_nonblocking; then
           build_lock_owned=1
-          if (( cache_budget_overflow > 0 )); then
+          if (( cache_budget_overflow > 0 || cache_headroom_overflow > 0 )); then
             local old_keep="$KEEP"
             KEEP=0
             evict_keyed_caches
             KEEP="$old_keep"
             evict_rebuildable_caches
-            action="enforce-cache-budget"
+            if (( cache_budget_overflow > 0 )); then
+              action="enforce-cache-budget"
+            else
+              action="enforce-cache-headroom"
+            fi
           else
             evict_keyed_caches
           fi
@@ -469,6 +530,17 @@ main() {
           fi
         elif [[ "$action" == "none" ]]; then
           action="deferred-build-lock"
+          (( cache_headroom_overflow > 0 )) && cache_repair_status="deferred-build-lock"
+        fi
+      fi
+      if (( cache_headroom_overflow > 0 )) && [[ "$cache_repair_status" == "not-needed" || "$cache_repair_status" == "deferred-worktree-ownership" ]]; then
+        cache_after="$(cache_kb)"
+        cache_repair_remaining="$(cache_headroom_overflow_kb "$cache_after")"
+        if (( cache_repair_remaining > 0 )); then
+          cache_repair_status="insufficient"
+          reason="cache-budget-headroom-unreleased"
+        else
+          cache_repair_status="repaired"
         fi
       fi
       if (( docker_cache >= docker_warn_kb )); then
@@ -487,8 +559,8 @@ main() {
   # This is observation only: unknown or active lanes are never deleted by the
   # disk guard; their evidence is consumed by the supported lifecycle tools.
   write_lane_usage
-  write_state "$free" "$prev" "$growth" "$active" "$cache" "$docker_cache" "$docker_running" "$worktree_cache" "$worktree_keys" "$worktree_overflow" "$cache_overflow" "$cache_budget_kb" "$cache_budget_overflow" "$verdict" "$reason" "$action" "$LANE_USAGE_VERDICT" "$LANE_USAGE_RC" "$LANE_USAGE_BUDGET_SECONDS"
-  logger -t kg-disk-guard "verdict=$verdict freeGiB=$free_gib growthGiB=$growth_gib activeBuild=$active dockerCacheGiB=$docker_gib dockerActive=$docker_running cacheKB=$cache cacheBudgetKB=$cache_budget_kb cacheBudgetOverflowKB=$cache_budget_overflow worktreeCacheKB=$worktree_cache worktreeKeys=$worktree_keys worktreeOverflowKeys=$worktree_overflow cacheOverflowKeys=$cache_overflow action=$action" 2>/dev/null || true
+  write_state "$free" "$prev" "$growth" "$active" "$cache" "$docker_cache" "$docker_running" "$worktree_cache" "$worktree_keys" "$worktree_overflow" "$cache_overflow" "$cache_budget_kb" "$cache_budget_overflow" "$cache_headroom_kb" "$cache_writer_limit_kb" "$cache_headroom_overflow" "$cache_repair_remaining" "$cache_repair_status" "$verdict" "$reason" "$action" "$LANE_USAGE_VERDICT" "$LANE_USAGE_RC" "$LANE_USAGE_BUDGET_SECONDS"
+  logger -t kg-disk-guard "verdict=$verdict freeGiB=$free_gib growthGiB=$growth_gib activeBuild=$active dockerCacheGiB=$docker_gib dockerActive=$docker_running cacheKB=$cache cacheBudgetKB=$cache_budget_kb cacheBudgetOverflowKB=$cache_budget_overflow cacheHeadroomKB=$cache_headroom_kb cacheWriterLimitKB=$cache_writer_limit_kb cacheHeadroomOverflowKB=$cache_headroom_overflow cacheRepairStatus=$cache_repair_status cacheRepairRemainingKB=$cache_repair_remaining worktreeCacheKB=$worktree_cache worktreeKeys=$worktree_keys worktreeOverflowKeys=$worktree_overflow cacheOverflowKeys=$cache_overflow action=$action" 2>/dev/null || true
 }
 
 case "${1:-}" in
