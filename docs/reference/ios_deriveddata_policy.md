@@ -167,7 +167,19 @@ GitHub-hosted macOS runner 每次都是新的 VM；本機長存的 DerivedData �
 
 ## Per-lane 磁碟歸戶與閉環（2026-08-28）
 
-共享 cache 預算不能回答「是哪一條 lane 佔用空間」。`ops/disk_usage.py` 每次產生一份原子替換的 `kg.disk.lane-usage.v1` 報告，列出 registry 中目前仍可能佔用空間的 live lane、Git 實際 worktree、canonical main，以及每個路徑的 `logical_bytes` 與 APFS 可觀測的 `allocated_bytes`；merged／abandoned 等 terminal history 不塞進 live lane 清單，只在 `history` 以總數與 status 分布保留。未知 physical worktree 仍列出為 `ownership=unregistered`，不會被自動刪除；active／published／cleanup_pending 但實體路徑消失也保留為 `physical_state=missing`，並讓報告 fail-closed。
+共享 cache 預算不能回答「是哪一條 lane 佔用空間」。`ops/disk_usage.py` 每次產生一份原子替換的 `kg.disk.lane-usage.v1` 報告，列出 registry 中的 live／terminal lane、Git 實際 worktree、canonical main，以及每個路徑的 `logical_bytes`、`allocated_bytes`、files、ownership、physical／lifecycle state 與 aggregate accounting；terminal residue 仍以 terminal identity 可追蹤，但不會被冒充成 active，也不會由 guard 自動刪除。歷史 registry path 缺失且沒有 physical bytes 時只保留 `missing-registered-lane` warning，不把零 bytes 當成未歸因空間或硬 quota blocker。
+
+已知但不屬於 delivery lane 的 supervision checkout，只能由 caller 重複傳入 exact path：
+
+```bash
+./ops/disk_usage.py \
+  --workspace /Users/chenliangyu/project/kg \
+  --state /Users/chenliangyu/project/kg/.cache/worktree_registry.json \
+  --supervision-worktree /absolute/path/to/supervision-checkout \
+  --output "$HOME/Library/Application Support/KG/lane_disk_usage.json"
+```
+
+`--supervision-worktree` 不接受 wildcard，也沒有預設排除；未列出的 physical worktree 一律仍算 delivery／unknown。報告的 `exclusions` 與 guard state 的 `lane_usage_exclusions` 都保留 caller requested／applied path，且 registered active／terminal path 或 canonical main 不可藉此隱藏。unregistered、dirty、unknown、branch identity mismatch、registry unreadable、measurement failure 與 per-lane／aggregate budget breach 仍是 hard block。
 
 ```bash
 ./ops/disk_usage.py \
@@ -176,7 +188,7 @@ GitHub-hosted macOS runner 每次都是新的 VM；本機長存的 DerivedData �
   --output "$HOME/Library/Application Support/KG/lane_disk_usage.json"
 ```
 
-`ops/kg_disk_guard.sh` 每個 tick 同步更新這個小型狀態檔；它不建立 append-only log，也不在 active 或 unknown worktree 上做破壞性清理。預設每條 physical lane 上限 2 GiB、所有 physical lanes 合計上限 8 GiB，可用 `KG_DISK_GUARD_LANE_BUDGET_GIB` 與 `KG_DISK_GUARD_LANE_TOTAL_BUDGET_GIB` 明確調整。超限、無法量測、registry 不可讀或 active lane 遺失時，報告為 `verdict=block`，且 guard state 會保留 `lane_usage_verdict=block` 與 `lane_usage_rc` 供 admission／writer fail-closed；後續 writer 必須停止並交由 supported lifecycle 處理；只有既有 cache guard 在確認無 consumer 且持有 build lock 後才可自動淘汰可重建產物。
+`ops/kg_disk_guard.sh` 每個 tick 同步更新這個小型狀態檔；它不建立 append-only log，也不在 active、unknown 或 terminal residue worktree 上做破壞性清理。可用重複的 `--supervision-worktree <exact-path>` 將 caller 明確提供的 supervision checkout 傳給 attribution scan；這個排除只影響 disk quota accounting，不改 registry lifecycle 的 fail-closed 規則。預設每條 physical lane 上限 2 GiB、所有未排除 physical lanes 合計上限 8 GiB，可用 `KG_DISK_GUARD_LANE_BUDGET_GIB` 與 `KG_DISK_GUARD_LANE_TOTAL_BUDGET_GIB` 明確調整。超限、無法量測、registry 不可讀、真正 unknown／dirty／unregistered physical worktree 時，報告為 `verdict=block`，且 guard state 會保留 `lane_usage_verdict=block` 與 `lane_usage_rc=75` 供 admission／writer fail-closed；只有既有 cache guard 在確認無 consumer 且持有 build lock 後才可自動淘汰可重建產物。missing registered path 本身若沒有 physical bytes 則為 `verdict=warning`、guard lane exit 0，讓可安全計量的新 lane 不被歷史紀錄誤擋。
 
 歸戶掃描本身也有固定時間上限：`kg_disk_guard.sh` 預設以 30 秒呼叫
 `disk_usage.py --time-budget-seconds 30`。時間到了仍會原子寫出報告，保留已量到的
@@ -187,7 +199,7 @@ partial bytes，但在 `measurement.budget_exhausted=true`、各受影響 lane �
 大型 workspace／DerivedData 遞迴掃描而永久佔住 lock；`ops/kg_disk_guard.sh --help`
 是純說明命令，不會啟動 guard tick、改狀態或刪 cache。
 
-報告把 canonical project 的 worktree 子樹排除後再加回每條 physical lane，避免同一份檔案被重複計算。`managed_allocated_bytes` 是 KG 受管理範圍的 accounting，不等於整台 Mac 的 filesystem usage：APFS snapshots、Git shared object、Xcode global DerivedData、Docker 與其他使用者資料另列在 `filesystem` 或既有 cache metrics。故「每條 lane 相加」是可驗證的 lane reservoir 總量，不應冒充整顆磁碟的唯一總量。
+報告把 canonical project 的 worktree 子樹排除後再加回每條 physical lane，並將 exact supervision exclusion 的 bytes 另列為 observed、排除於 managed aggregate，避免同一份檔案被重複計算。`managed_allocated_bytes` 是 KG 受管理範圍的 accounting，不等於整台 Mac 的 filesystem usage：APFS snapshots、Git shared object、Xcode global DerivedData、Docker 與其他使用者資料另列在 `filesystem` 或既有 cache metrics。故「每條 lane 相加」是可驗證的 lane reservoir 總量，不應冒充整顆磁碟的唯一總量。
 
 閉環固定為：guard 觀測 → `lane_disk_usage.json` 歸戶 → 超限／遺失證據 fail-closed → active lane 由 owner 完成交接或 terminal cleanup → 再次觀測確認 worktree／branch／registry 狀態。測試入口為 `uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_disk_usage.py` 與 `./ops/tests/test_kg_disk_guard.sh`。
 

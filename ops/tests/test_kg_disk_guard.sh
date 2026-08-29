@@ -10,6 +10,8 @@ PASS=0; FAIL=0
 # the test suite does not depend on launchd/shlock state from another run.
 export KG_DISK_GUARD_GUARD_LOCK_HELD=1
 export KG_DISK_GUARD_BUILD_LOCK_HELD=1
+export KG_DISK_GUARD_LANE_USAGE_STATE="$TMP/lane-disk-usage.json"
+export KG_DISK_GUARD_DERIVED_DATA_GLOBAL="$TMP/derived-data"
 ok(){ echo "  ✓ $*"; PASS=$((PASS+1)); }
 bad(){ echo "  ✗ $*"; FAIL=$((FAIL+1)); }
 
@@ -437,18 +439,67 @@ bytes2="$(wc -c < "$TMP/high/state.json")"
 state_count="$(find "$TMP/high" -maxdepth 1 -type f -name 'state.json*' | wc -l | tr -d ' ')"
 [[ "$bytes2" -lt 900 && "$state_count" -eq 1 ]] && ok "state bounded, one atomic file (${bytes2} bytes)" || bad "state accumulation: bytes=$bytes2 files=$state_count"
 
-echo "── lane usage: attribution is atomic and missing active lanes fail closed ──"
+echo "── lane usage: missing active lanes warn without blocking disk attribution ──"
 root="$TMP/lane-usage"; state="$root/guard.json"; registry="$root/registry.json"; lane_state="$root/lane-disk-usage.json"
 mkdir -p "$root"
+git -C "$root" init -b main >/dev/null 2>&1
+git -C "$root" config user.email disk-test@example.com
+git -C "$root" config user.name "Disk Test"
+printf 'main\n' > "$root/tracked.txt"
+git -C "$root" add tracked.txt >/dev/null 2>&1
+git -C "$root" commit -m initial >/dev/null 2>&1
 printf '%s\n' '{"schema":"kg.worktree.registry.v2","records":[{"branch":"feat/missing-lane","path":"'$root'/missing-lane","status":"active","claim_generation":0,"external_ids":["DIRECT-DELIVERY-MISSING"]}]}' > "$registry"
 KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" KG_DISK_GUARD_REGISTRY_STATE="$registry" \
   KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) \
   KG_DISK_GUARD_ACTIVE_BUILD=0 "$SCRIPT" >/dev/null 2>&1
 grep -q 'kg.disk.lane-usage.v1' "$lane_state" && ok "lane usage report is written" || bad "lane usage report missing"
 grep -q 'missing-registered-lane' "$lane_state" && ok "missing active lane is visible" || bad "missing active lane not visible"
-grep -q '"verdict": "block"' "$lane_state" && ok "lane attribution fails closed" || bad "lane attribution did not fail closed"
-grep -q '"lane_usage_verdict":"block"' "$root/guard.json" && ok "guard state carries lane block" || bad "guard state missed lane block"
-grep -q '"lane_usage_rc":75' "$root/guard.json" && ok "guard state carries lane exit" || bad "guard state missed lane exit"
+grep -q '"verdict": "warning"' "$lane_state" && ok "missing lane is warning-only" || bad "missing lane still blocks"
+grep -q '"lane_usage_verdict":"warning"' "$root/guard.json" && ok "guard state carries attribution warning" || bad "guard state missed attribution warning"
+grep -q '"lane_usage_rc":0' "$root/guard.json" && ok "warning keeps guard exit compatible" || bad "warning changed guard exit"
+
+echo "── lane usage: exact supervision checkout is excluded with state evidence ──"
+root="$TMP/supervision"; state="$root/guard.json"; registry="$root/registry.json"; lane_state="$root/lane-disk-usage.json"; supervision="$TMP/supervision-checkout"
+mkdir -p "$root"
+git -C "$root" init -b main >/dev/null 2>&1
+git -C "$root" config user.email disk-test@example.com
+git -C "$root" config user.name "Disk Test"
+printf 'main\n' > "$root/tracked.txt"
+git -C "$root" add tracked.txt >/dev/null 2>&1
+git -C "$root" commit -m initial >/dev/null 2>&1
+git -C "$root" worktree add -b supervision "$supervision" HEAD >/dev/null 2>&1
+printf 'supervision\n' > "$supervision/supervision.txt"
+printf '%s\n' '{"schema":"kg.worktree.registry.v2","records":[]}' > "$registry"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" KG_DISK_GUARD_REGISTRY_STATE="$registry" \
+  KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) \
+  KG_DISK_GUARD_ACTIVE_BUILD=0 "$SCRIPT" --supervision-worktree "$supervision" >/dev/null 2>&1
+grep -q 'supervision-checkout' "$lane_state" && ok "supervision path remains observable" || bad "supervision path missing from report"
+grep -q '"ownership": "excluded"' "$lane_state" && ok "supervision path is explicitly excluded" || bad "supervision path not excluded"
+grep -q '"supervision_worktree_paths": \[' "$lane_state" && ok "report records exclusion list" || bad "report exclusion list missing"
+grep -q '"lane_usage_exclusions":\[' "$state" && ok "guard state records exclusion list" || bad "guard state exclusion list missing"
+grep -q 'supervision-checkout' "$state" && ok "guard state records exact exclusion" || bad "guard state exact exclusion missing"
+grep -q '"lane_usage_verdict":"pass"' "$state" && ok "guard accepts exact supervision exclusion" || bad "guard blocks exact supervision exclusion"
+grep -q '"lane_usage_rc":0' "$state" && ok "supervision exclusion keeps guard exit compatible" || bad "supervision exclusion changed guard exit"
+
+echo "── lane usage: unregistered physical checkout is a hard block ──"
+root="$TMP/unregistered-physical"; state="$root/guard.json"; registry="$root/registry.json"; lane_state="$root/lane-disk-usage.json"; unregistered="$TMP/unregistered-checkout"
+mkdir -p "$root"
+git -C "$root" init -b main >/dev/null 2>&1
+git -C "$root" config user.email disk-test@example.com
+git -C "$root" config user.name "Disk Test"
+printf 'main\n' > "$root/tracked.txt"
+git -C "$root" add tracked.txt >/dev/null 2>&1
+git -C "$root" commit -m initial >/dev/null 2>&1
+git -C "$root" worktree add -b unregistered "$unregistered" HEAD >/dev/null 2>&1
+printf 'unregistered\n' > "$unregistered/unregistered.txt"
+printf '%s\n' '{"schema":"kg.worktree.registry.v2","records":[]}' > "$registry"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" KG_DISK_GUARD_REGISTRY_STATE="$registry" \
+  KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) \
+  KG_DISK_GUARD_ACTIVE_BUILD=0 "$SCRIPT" >/dev/null 2>&1
+grep -q '"unregistered-physical-worktree"' "$lane_state" && ok "unregistered checkout is visible" || bad "unregistered checkout missing"
+grep -q '"verdict": "block"' "$lane_state" && ok "unregistered checkout blocks" || bad "unregistered checkout did not block"
+grep -q '"lane_usage_verdict":"block"' "$state" && ok "guard state carries unregistered block" || bad "guard state missed unregistered block"
+grep -q '"lane_usage_rc":75' "$state" && ok "guard state carries hard-block exit" || bad "guard state missed hard-block exit"
 
 echo "── lane report budget: slow attribution fails closed without hanging ──"
 root="$TMP/time-budget"; state="$root/guard.json"; lane_state="$root/lane-disk-usage.json"

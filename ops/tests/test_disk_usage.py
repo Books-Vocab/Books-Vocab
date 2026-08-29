@@ -29,6 +29,8 @@ def _repo_with_worktree(tmp_path: Path) -> tuple[Path, Path]:
     worktree = tmp_path / "lane-one"
     _run_git(repo, "worktree", "add", "-b", "lane-one", str(worktree), "main")
     (worktree / "lane.txt").write_bytes(b"lane\n" * 128)
+    _run_git(worktree, "add", "lane.txt")
+    _run_git(worktree, "commit", "-m", "lane fixture")
     return repo, worktree
 
 
@@ -76,7 +78,7 @@ def test_report_attributes_registered_lanes_and_canonical_main(tmp_path: Path) -
     assert report["policy"]["verdict"] == "pass"
 
 
-def test_missing_active_registered_lane_is_visible_and_check_fails_closed(
+def test_missing_active_registered_lane_is_visible_and_warning_only(
     tmp_path: Path,
 ) -> None:
     repo = tmp_path / "repo"
@@ -105,15 +107,190 @@ def test_missing_active_registered_lane_is_visible_and_check_fails_closed(
 
     assert (
         main(["--workspace", str(repo), "--state", str(state), "--output", str(output)])
-        == 75
+        == 0
     )
     report = json.loads(output.read_text(encoding="utf-8"))
     entry = next(item for item in report["lanes"] if item["path"] == str(missing))
     assert entry["ownership"] == "registered"
     assert entry["exists"] is False
     assert entry["physical_state"] == "missing"
-    assert report["policy"]["verdict"] == "block"
+    assert report["policy"]["verdict"] == "warning"
     assert "missing-registered-lane" in report["policy"]["reasons"]
+
+
+def test_explicit_supervision_worktree_is_excluded_with_evidence(
+    tmp_path: Path,
+) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    supervision = tmp_path / "supervision"
+    _run_git(repo, "worktree", "add", "-b", "supervision", str(supervision), "main")
+    (supervision / "supervision.txt").write_bytes(b"supervision\n" * 128)
+    state = tmp_path / "registry.json"
+    output = tmp_path / "lane-usage.json"
+    _write_registry(
+        state,
+        [
+            {
+                "branch": "lane-one",
+                "path": str(worktree),
+                "status": "active",
+                "claim_generation": 0,
+                "external_ids": ["DIRECT-DELIVERY-TEST"],
+            }
+        ],
+    )
+
+    assert (
+        main(
+            [
+                "--workspace",
+                str(repo),
+                "--state",
+                str(state),
+                "--output",
+                str(output),
+                "--supervision-worktree",
+                str(supervision),
+            ]
+        )
+        == 0
+    )
+
+    report = json.loads(output.read_text(encoding="utf-8"))
+    entry = next(item for item in report["lanes"] if item["path"] == str(supervision))
+    assert entry["ownership"] == "excluded"
+    assert entry["physical_state"] == "excluded"
+    assert entry["allocated_bytes"] > 0
+    assert report["exclusions"]["supervision_worktree_paths"] == [str(supervision)]
+    assert report["policy"]["unregistered_physical_worktrees"] == []
+
+
+def test_dirty_registered_worktree_is_a_hard_block(tmp_path: Path) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    (worktree / "dirty.txt").write_text("dirty\n", encoding="utf-8")
+    state = tmp_path / "registry.json"
+    output = tmp_path / "lane-usage.json"
+    _write_registry(
+        state,
+        [
+            {
+                "branch": "lane-one",
+                "path": str(worktree),
+                "status": "active",
+                "claim_generation": 0,
+                "external_ids": ["DIRECT-DELIVERY-DIRTY"],
+            }
+        ],
+    )
+
+    assert (
+        main(["--workspace", str(repo), "--state", str(state), "--output", str(output)])
+        == 75
+    )
+    report = json.loads(output.read_text(encoding="utf-8"))
+    entry = next(item for item in report["lanes"] if item["path"] == str(worktree))
+    assert entry["physical_state"] == "dirty"
+    assert entry["worktree_state"] == "dirty"
+    assert report["policy"]["verdict"] == "block"
+    assert "dirty-physical-worktree" in report["policy"]["reasons"]
+
+
+def test_unknown_registry_status_is_a_hard_block(tmp_path: Path) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    state = tmp_path / "registry.json"
+    output = tmp_path / "lane-usage.json"
+    _write_registry(
+        state,
+        [
+            {
+                "branch": "lane-one",
+                "path": str(worktree),
+                "status": "paused",
+                "claim_generation": 0,
+                "external_ids": ["DIRECT-DELIVERY-UNKNOWN-STATUS"],
+            }
+        ],
+    )
+
+    assert (
+        main(["--workspace", str(repo), "--state", str(state), "--output", str(output)])
+        == 75
+    )
+    report = json.loads(output.read_text(encoding="utf-8"))
+    entry = next(item for item in report["lanes"] if item["path"] == str(worktree))
+    assert entry["registry_status"] == "paused"
+    assert entry["ownership"] == "registered"
+    assert report["policy"]["verdict"] == "block"
+    assert "unknown-registry-status" in report["policy"]["blocking_reasons"]
+
+
+def test_unregistered_physical_worktree_is_a_hard_block(
+    tmp_path: Path,
+) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    unregistered = tmp_path / "unregistered"
+    _run_git(repo, "worktree", "add", "-b", "unregistered", str(unregistered), "main")
+    (unregistered / "unregistered.txt").write_bytes(b"unregistered\n" * 128)
+    state = tmp_path / "registry.json"
+    output = tmp_path / "lane-usage.json"
+    _write_registry(
+        state,
+        [
+            {
+                "branch": "lane-one",
+                "path": str(worktree),
+                "status": "active",
+                "claim_generation": 0,
+                "external_ids": ["DIRECT-DELIVERY-TEST"],
+            }
+        ],
+    )
+
+    assert (
+        main(["--workspace", str(repo), "--state", str(state), "--output", str(output)])
+        == 75
+    )
+    report = json.loads(output.read_text(encoding="utf-8"))
+    entry = next(item for item in report["lanes"] if item["path"] == str(unregistered))
+    assert entry["ownership"] == "unregistered"
+    assert entry["physical_state"] == "present-unregistered"
+    assert report["policy"]["verdict"] == "block"
+    assert "unregistered-physical-worktree" in report["policy"]["reasons"]
+
+
+def test_terminal_registered_residue_is_visible_but_not_active(
+    tmp_path: Path,
+) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    state = tmp_path / "registry.json"
+    output = tmp_path / "lane-usage.json"
+    _write_registry(
+        state,
+        [
+            {
+                "branch": "lane-one",
+                "path": str(worktree),
+                "status": "merged",
+                "claim_generation": 0,
+                "external_ids": ["DIRECT-DELIVERY-HISTORY"],
+            }
+        ],
+    )
+
+    assert (
+        main(["--workspace", str(repo), "--state", str(state), "--output", str(output)])
+        == 0
+    )
+    report = json.loads(output.read_text(encoding="utf-8"))
+    entry = next(item for item in report["lanes"] if item["path"] == str(worktree))
+    assert entry["ownership"] == "registered"
+    assert entry["registry_status"] == "merged"
+    assert entry["physical_state"] == "terminal-residue"
+    assert report["policy"]["unregistered_physical_worktrees"] == []
+    assert (
+        report["accounting"]["physical_lane_allocated_bytes"]
+        >= entry["allocated_bytes"]
+    )
 
 
 @pytest.mark.parametrize("mode", ["logical_bytes", "allocated_bytes"])
@@ -121,7 +298,18 @@ def test_report_has_explicit_accounting_mode(mode: str, tmp_path: Path) -> None:
     repo, worktree = _repo_with_worktree(tmp_path)
     state = tmp_path / "registry.json"
     output = tmp_path / "lane-usage.json"
-    _write_registry(state, [])
+    _write_registry(
+        state,
+        [
+            {
+                "branch": "lane-one",
+                "path": str(worktree),
+                "status": "active",
+                "claim_generation": 0,
+                "external_ids": ["DIRECT-DELIVERY-ACCOUNTING"],
+            }
+        ],
+    )
 
     assert (
         main(["--workspace", str(repo), "--state", str(state), "--output", str(output)])
@@ -158,7 +346,9 @@ def test_terminal_registry_history_is_summarized_not_counted_as_live_lane(
         == 0
     )
     report = json.loads(output.read_text(encoding="utf-8"))
-    assert all(item["registry_status"] != "merged" for item in report["lanes"])
+    entry = next(item for item in report["lanes"] if item["path"] == str(worktree))
+    assert entry["registry_status"] == "merged"
+    assert entry["physical_state"] == "terminal-residue"
     assert report["history"]["records"] == 1
     assert report["history"]["terminal_records"] == 1
     assert report["history"]["by_status"] == {"merged": 1}
