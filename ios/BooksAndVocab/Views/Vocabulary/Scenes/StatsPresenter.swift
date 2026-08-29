@@ -155,13 +155,12 @@ struct StatsPresenter: View {
         }
         .task(id: graphKey) {
             // Fetches account-level links. Re-runs only when graphKey changes
-            // (auth state, entries.count, or retryToken bump from the inline
-            // error retry button), NOT on every view appearance — appearance ≠
-            // staleness. Known gap: hide/unhide while entries.count is stable
-            // will not auto-refresh the thumbnail until the next auth event,
-            // card add/remove, or manual retry. Long-term fix: promote
-            // KGGraphLink to @Model so @Query observers across stats/graph/
-            // word-detail views refresh automatically on any mutation.
+            // (auth state, graph-link revision, or retryToken bump from the
+            // inline error retry button), NOT on every view appearance —
+            // appearance ≠ staleness. The graph-link revision keeps a local
+            // hide/unhide mutation observable even when entries.count is stable.
+            // Long-term, KGGraphLink could become an @Model so @Query observers
+            // across stats/graph/word-detail views refresh from one source.
             guard shouldLoadGraphData else { return }
             await loadGraphLinks()
         }
@@ -281,6 +280,11 @@ struct StatsPresenter: View {
     private var graphKey: Int {
         var hasher = Hasher()
         hasher.combine(syncedEntries.count)
+        let graphLinksRevision = syncedEntries
+            .map { "\($0.id)|\($0.graphLinksJSON)" }
+            .sorted()
+            .joined(separator: "\u{1F}")
+        hasher.combine(graphLinksRevision)
         hasher.combine(authManager.isLoggedIn)
         hasher.combine(authManager.isDemoMode)
         hasher.combine(retryToken)
