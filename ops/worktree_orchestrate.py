@@ -41,6 +41,10 @@ import worktree_registry as registry
 import worktree_resume
 from delivery_control.adapters.operation_lock import OperationLock
 from lib.worktree_scope import scope_files, scope_status
+from worktree_reanchor_core import git_ops as reanchor_git_ops
+from worktree_reanchor_core import registry_ops as reanchor_registry_ops
+from worktree_reanchor_core.domain import commit_sha as reanchor_commit_sha
+from worktree_reanchor_core.errors import ReanchorRefused
 
 SCHEMA = "kg.worktree.orchestrate.v2"
 GATE_SCHEMA = "kg.worktree.gate.v2"
@@ -61,6 +65,7 @@ MUTATING_COMMANDS = frozenset(
         "open",
         "adopt",
         "reanchor",
+        "reanchor-handback",
         "resume-published",
         "recover-published-remote",
         "hand-back",
@@ -425,6 +430,345 @@ def cmd_reanchor(args: argparse.Namespace) -> int:
     return worktree_reanchor.cmd_reanchor(
         args, freeze_reason=_require_unfrozen("reanchor")
     )
+
+
+REANCHOR_HANDBACK_SCHEMA = "kg.worktree.reanchor-handback.v1"
+
+
+def _branch_pull_requests(repo: Path, branch: str) -> tuple[int, ...]:
+    """Read every PR for a branch before an owner-local handback reanchor."""
+
+    from delivery_control.adapters.github_cli import GitHubCliAdapter
+
+    try:
+        inventory = GitHubCliAdapter(repo=repo).list_pull_requests_for_branch(branch)
+    except Exception as exc:
+        raise ReanchorRefused(
+            "branch PR inventory could not be read",
+            error=f"{type(exc).__name__}: {exc}",
+        ) from exc
+    if inventory.problems:
+        raise ReanchorRefused(
+            "branch PR inventory contains malformed GitHub facts",
+            problems=[problem.reason for problem in inventory.problems],
+        )
+    return tuple(item.number for item in inventory.records)
+
+
+def _remote_main_sha(repo: Path) -> str:
+    """Read the authoritative remote main ref for an owner-local transition."""
+
+    return reanchor_git_ops._remote_head(repo, "main")
+
+
+def _reanchor_handback_diff_names(
+    worktree: Path, *, start: str, end: str
+) -> tuple[str, ...]:
+    rc, output = reanchor_git_ops._git(
+        ["diff", "--name-only", "--no-renames", f"{start}..{end}"], worktree
+    )
+    if rc != 0:
+        raise ReanchorRefused(
+            "reanchor handback diff could not be computed",
+            start=start,
+            end=end,
+            git=output,
+        )
+    return tuple(sorted({item for item in output.splitlines() if item}))
+
+
+def _reanchor_handback_payload(
+    *,
+    args: argparse.Namespace,
+    worktree: Path,
+    status: str,
+    reason: str | None = None,
+    **details: Any,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "schema": REANCHOR_HANDBACK_SCHEMA,
+        "action": "reanchor-handback",
+        "status": status,
+        "lane": args.lane,
+        "branch": args.branch,
+        "owner_thread_id": args.owner_thread_id,
+        "claim_generation": args.claim_generation,
+        "expected_head": args.expected_head_sha,
+        "live_main": args.live_main,
+        "worktree": str(worktree),
+    }
+    if reason:
+        payload["reason"] = reason
+    payload.update(details)
+    return payload
+
+
+def cmd_reanchor_handback(args: argparse.Namespace) -> int:
+    """Reanchor one owner-local typed handback that has no durable PR yet.
+
+    This is deliberately narrower than the PR-based ``reanchor`` command.  It
+    proves that the active owner claim is still exact, that no PR or remote
+    branch owns the branch, rebases the already-sealed local work onto the
+    supplied live main, and only then advances the registry claim generation.
+    """
+
+    refusal = _require_unfrozen("reanchor-handback")
+    worktree = _path(args.path)
+    if refusal:
+        payload = _reanchor_handback_payload(
+            args=args, worktree=worktree, status="blocked", reason=refusal
+        )
+        _emit(
+            payload, as_json=args.json, human=f"✗ reanchor-handback blocked: {refusal}"
+        )
+        return EXIT_BLOCK
+
+    repo = _path(args.repo)
+    state_path = (
+        Path(args.state).expanduser().resolve()
+        if args.state
+        else registry.default_state_path(repo)
+    )
+    try:
+        live_main = reanchor_commit_sha(args.live_main, label="live main")
+        expected_head = reanchor_commit_sha(
+            args.expected_head_sha, label="expected hand-back HEAD"
+        )
+        if args.claim_generation < 0:
+            raise ReanchorRefused("claim generation must be non-negative")
+        reanchor_git_ops.validate_repository(repo)
+        reanchor_git_ops.validate_repository(worktree)
+        remote_main = _remote_main_sha(repo)
+        if remote_main != live_main:
+            raise ReanchorRefused(
+                "supplied live main does not match remote origin/main",
+                live_main=live_main,
+                remote_main=remote_main,
+            )
+        preflight = reanchor_registry_ops.preflight(
+            state_path=state_path,
+            lane_id=args.lane,
+            branch=args.branch,
+            owner_thread_id=args.owner_thread_id,
+            claim_generation=args.claim_generation,
+            expected_remote_head=expected_head,
+            live_main=live_main,
+            target=worktree,
+        )
+        original = preflight.original
+        if original.get("status") != registry.STATUS_ACTIVE:
+            raise ReanchorRefused(
+                "reanchor-handback requires an active claim with a typed hand-back",
+                status=original.get("status"),
+            )
+        branch_rc, current_branch = reanchor_git_ops._git(
+            ["branch", "--show-current"], worktree
+        )
+        head_rc, current_head = reanchor_git_ops._git(
+            ["rev-parse", "--verify", "HEAD^{commit}"], worktree
+        )
+        status_rc, dirty = reanchor_git_ops._git(["status", "--porcelain=v1"], worktree)
+        if branch_rc != 0 or current_branch != args.branch:
+            raise ReanchorRefused("worktree branch differs from the exact active claim")
+        if head_rc != 0 or current_head != expected_head:
+            raise ReanchorRefused(
+                "worktree HEAD differs from the exact stored hand-back",
+                expected_head=expected_head,
+                observed_head=current_head,
+            )
+        if status_rc != 0 or dirty:
+            raise ReanchorRefused("owner worktree must be clean before reanchor")
+
+        rows = reanchor_git_ops._worktree_rows(repo)
+        matching_rows = [
+            row
+            for row in rows
+            if Path(row.get("worktree", "")).expanduser().resolve() == worktree
+        ]
+        if len(matching_rows) != 1 or matching_rows[0].get("branch") != (
+            f"refs/heads/{args.branch}"
+        ):
+            raise ReanchorRefused(
+                "physical worktree inventory does not match the active claim"
+            )
+        local_branch = reanchor_git_ops._local_branch_sha(repo, args.branch)
+        if local_branch != expected_head:
+            raise ReanchorRefused(
+                "local branch differs from the exact stored hand-back",
+                expected_head=expected_head,
+                observed_head=local_branch,
+            )
+
+        remote_rc, remote_output = reanchor_git_ops._git(
+            ["ls-remote", "--heads", "origin", f"refs/heads/{args.branch}"], repo
+        )
+        if remote_rc != 0:
+            raise ReanchorRefused(
+                "remote branch inventory could not be read", git=remote_output
+            )
+        if [line for line in remote_output.splitlines() if line.strip()]:
+            raise ReanchorRefused(
+                "active handback reanchor requires the remote branch to be absent"
+            )
+        pull_requests = _branch_pull_requests(repo, args.branch)
+        if pull_requests:
+            raise ReanchorRefused(
+                "active handback reanchor requires no branch PR",
+                pull_requests=list(pull_requests),
+            )
+
+        base_sha = preflight.base_sha
+        for label, ancestor, descendant in (
+            ("hand-back base", base_sha, expected_head),
+            ("hand-back base", base_sha, live_main),
+        ):
+            if (
+                reanchor_git_ops._git(
+                    ["merge-base", "--is-ancestor", ancestor, descendant], worktree
+                )[0]
+                != 0
+            ):
+                raise ReanchorRefused(
+                    f"{label} is not an ancestor of the exact target commit",
+                    ancestor=ancestor,
+                    descendant=descendant,
+                )
+        stored_scope = reanchor_git_ops.scope_operations(
+            worktree, start=base_sha, end=expected_head
+        )
+        if stored_scope != preflight.declared:
+            raise ReanchorRefused(
+                "stored hand-back differs from the exact declared Scope",
+                declared_scope=list(preflight.declared),
+                observed_scope=list(stored_scope),
+            )
+        scope_paths = tuple(item[0] for item in preflight.declared)
+        incoming_files = _reanchor_handback_diff_names(
+            worktree, start=base_sha, end=live_main
+        )
+        collisions = tuple(sorted(set(scope_paths).intersection(incoming_files)))
+        if collisions:
+            raise ReanchorRefused(
+                "incoming main changes collide with the declared Scope",
+                collisions=list(collisions),
+            )
+
+        rebase_rc, rebase_output = reanchor_git_ops._git(
+            ["rebase", "--onto", live_main, base_sha, args.branch], worktree
+        )
+        if rebase_rc != 0:
+            abort_rc, abort_output = reanchor_git_ops._git(
+                ["rebase", "--abort"], worktree
+            )
+            raise ReanchorRefused(
+                "active handback rebase failed; registry was left unchanged",
+                git=rebase_output,
+                rebase_abort_rc=abort_rc,
+                rebase_abort=abort_output,
+            )
+        rebased = True
+        try:
+            final_branch_rc, final_branch = reanchor_git_ops._git(
+                ["branch", "--show-current"], worktree
+            )
+            final_status_rc, final_dirty = reanchor_git_ops._git(
+                ["status", "--porcelain=v1"], worktree
+            )
+            final_head_rc, new_head = reanchor_git_ops._git(
+                ["rev-parse", "--verify", "HEAD^{commit}"], worktree
+            )
+            if (
+                final_branch_rc != 0
+                or final_branch != args.branch
+                or final_status_rc != 0
+                or final_dirty
+                or final_head_rc != 0
+            ):
+                raise ReanchorRefused(
+                    "reanchored worktree failed exact branch/clean/HEAD readback"
+                )
+            if (
+                reanchor_git_ops._git(
+                    ["merge-base", "--is-ancestor", live_main, new_head], worktree
+                )[0]
+                != 0
+            ):
+                raise ReanchorRefused("reanchored HEAD is not based on exact live main")
+            if (
+                reanchor_git_ops.scope_operations(
+                    worktree, start=live_main, end=new_head
+                )
+                != preflight.declared
+            ):
+                raise ReanchorRefused("reanchored branch differs from the exact Scope")
+            remote_main = _remote_main_sha(repo)
+            if remote_main != live_main:
+                raise ReanchorRefused(
+                    "remote origin/main changed during reanchor",
+                    live_main=live_main,
+                    remote_main=remote_main,
+                )
+            active = reanchor_registry_ops.register_active(
+                state_path=state_path,
+                preflight_result=preflight,
+                target=worktree,
+                live_main=live_main,
+                lane_id=args.lane,
+                claim_generation=args.claim_generation,
+            )
+            rebased = False
+        except Exception:
+            if rebased:
+                rollback_rc, rollback_output = reanchor_git_ops._git(
+                    ["reset", "--hard", expected_head], worktree
+                )
+                if rollback_rc != 0:
+                    raise ReanchorRefused(
+                        "active handback reanchor failed and exact rollback failed",
+                        rollback_rc=rollback_rc,
+                        rollback=rollback_output,
+                    )
+            raise
+    except (OSError, ReanchorRefused, TypeError, ValueError, KeyError) as exc:
+        reason = exc.reason if isinstance(exc, ReanchorRefused) else str(exc)
+        details = dict(exc.details) if isinstance(exc, ReanchorRefused) else {}
+        payload = _reanchor_handback_payload(
+            args=args, worktree=worktree, status="blocked", reason=reason, **details
+        )
+        _emit(
+            payload, as_json=args.json, human=f"✗ reanchor-handback blocked: {reason}"
+        )
+        return EXIT_BLOCK
+
+    payload = _reanchor_handback_payload(
+        args=args,
+        worktree=worktree,
+        status="ready-for-owner-tests",
+        previous_head=expected_head,
+        head=new_head,
+        base_sha=live_main,
+        claim_generation=active["claim_generation"],
+        scope=list(scope_paths),
+        registry={
+            "status": "pass",
+            "original_claim_generation": args.claim_generation,
+            "new_claim_generation": active["claim_generation"],
+            "old_base_sha": base_sha,
+        },
+        remote_branch="absent",
+        pull_requests=[],
+        next_action=(
+            "same owner runs the bounded gate and emits a fresh typed hand-back; "
+            "PI may then create the durable PR"
+        ),
+        not_performed=["tests", "hand-back", "push", "force-push"],
+    )
+    _emit(
+        payload,
+        as_json=args.json,
+        human=f"✓ reanchor-handback ready-for-owner-tests: {args.branch} @ {new_head[:12]}",
+    )
+    return EXIT_OK
 
 
 def cmd_resume_published(args: argparse.Namespace) -> int:
@@ -1480,6 +1824,26 @@ def _parser() -> argparse.ArgumentParser:
     worktree_reanchor.add_parser(
         sub, common=common, handler=cmd_reanchor, default_repo=ROOT
     )
+    reanchor_handback = sub.add_parser(
+        "reanchor-handback",
+        help="reanchor one owner-local typed handback before PR publication",
+        epilog=(
+            "This owner-local recovery requires an active exact claim, a clean "
+            "physical worktree, no remote branch, and no branch PR. It only "
+            "reanchors to the supplied live main; it does not run tests, push, "
+            "create a PR, or authorize a merge."
+        ),
+    )
+    common(reanchor_handback)
+    reanchor_handback.add_argument("--repo", default=str(ROOT))
+    reanchor_handback.add_argument("--lane", required=True)
+    reanchor_handback.add_argument("--branch", required=True)
+    reanchor_handback.add_argument("--owner-thread-id", required=True)
+    reanchor_handback.add_argument("--claim-generation", type=int, required=True)
+    reanchor_handback.add_argument("--expected-head-sha", required=True)
+    reanchor_handback.add_argument("--live-main", required=True)
+    reanchor_handback.add_argument("--path", required=True)
+    reanchor_handback.set_defaults(func=cmd_reanchor_handback)
     worktree_resume.add_parser(
         sub, common=common, handler=cmd_resume_published, default_repo=ROOT
     )
