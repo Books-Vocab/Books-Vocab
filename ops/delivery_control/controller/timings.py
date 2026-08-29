@@ -82,7 +82,7 @@ def _default_now(inventory: DeliveryInventory) -> datetime:
 def _publication_time_for_required_check(
     *,
     publication_sample: DurationSample | None,
-    pull_request_created_at: datetime | None,
+    initial_publication_at: datetime | None,
     required_started_at: datetime | None,
 ) -> datetime | None:
     """Choose a publication anchor that is valid for this required check.
@@ -99,10 +99,10 @@ def _publication_time_for_required_check(
     ):
         return publication_sample.completed_at
     if (
-        pull_request_created_at is not None
-        and pull_request_created_at <= required_started_at
+        initial_publication_at is not None
+        and initial_publication_at <= required_started_at
     ):
-        return pull_request_created_at
+        return initial_publication_at
     return None
 
 
@@ -190,9 +190,18 @@ def measure_pipeline_timings(
             publication_sample = (
                 samples.get(publication_key) if publication_key is not None else None
             )
+            initial_publication_at = (
+                pull_request.created_at
+                if (
+                    handed_back_at is not None
+                    and pull_request.created_at is not None
+                    and handed_back_at <= pull_request.created_at
+                )
+                else None
+            )
             publication_time = _publication_time_for_required_check(
                 publication_sample=publication_sample,
-                pull_request_created_at=pull_request.created_at,
+                initial_publication_at=initial_publication_at,
                 required_started_at=check.started_at,
             )
             observe(

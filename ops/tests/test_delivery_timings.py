@@ -183,5 +183,5 @@ def test_republication_after_required_start_does_not_create_negative_latency() -
     )
 
     assert timings.invalid_samples == 0
-    assert timings.pr_to_required_start_samples == 1
-    assert timings.pr_to_required_start_p95_seconds == 41.0
+    assert timings.pr_to_required_start_samples == 0
+    assert timings.pr_to_required_start_p95_seconds is None
