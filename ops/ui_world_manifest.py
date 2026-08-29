@@ -1,6 +1,9 @@
 #!/usr/bin/env -S uv run --python 3.13 python
 """Validate UI World v2 manifest files before a tool launches the app."""
 
+# This legacy validator predates the repository-wide formatter baseline. Keep
+# its established layout stable while the internal validation seams migrate.
+# fmt: off
 from __future__ import annotations
 
 import argparse

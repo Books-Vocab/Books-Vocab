@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# This legacy contract test predates the repository-wide formatter baseline.
+# fmt: off
 import importlib.util
 import json
 import re
