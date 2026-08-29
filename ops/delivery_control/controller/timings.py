@@ -79,6 +79,33 @@ def _default_now(inventory: DeliveryInventory) -> datetime:
     return max(observed, default=datetime.now(tz=UTC))
 
 
+def _publication_time_for_required_check(
+    *,
+    publication_sample: DurationSample | None,
+    pull_request_created_at: datetime | None,
+    required_started_at: datetime | None,
+) -> datetime | None:
+    """Choose a publication anchor that is valid for this required check.
+
+    A same-PR re-publication can be recorded after the required check has
+    already started.  That immutable sample remains useful evidence, but it
+    cannot be used as the start of a non-negative transport interval.
+    """
+    if required_started_at is None:
+        return None
+    if (
+        publication_sample is not None
+        and publication_sample.completed_at <= required_started_at
+    ):
+        return publication_sample.completed_at
+    if (
+        pull_request_created_at is not None
+        and pull_request_created_at <= required_started_at
+    ):
+        return pull_request_created_at
+    return None
+
+
 def measure_pipeline_timings(
     inventory: DeliveryInventory,
     *,
@@ -150,7 +177,6 @@ def measure_pipeline_timings(
                 head_sha=pull_request.head_sha,
             )
             publication_key = None
-            publication_time = None
             if lane.registry is not None:
                 publication_key = sample_key_for(
                     TelemetryMetric.HANDBACK_TO_PR,
@@ -164,14 +190,11 @@ def measure_pipeline_timings(
             publication_sample = (
                 samples.get(publication_key) if publication_key is not None else None
             )
-            if publication_sample is not None:
-                publication_time = publication_sample.completed_at
-            elif (
-                handed_back_at is not None
-                and pull_request.created_at is not None
-                and handed_back_at <= pull_request.created_at
-            ):
-                publication_time = pull_request.created_at
+            publication_time = _publication_time_for_required_check(
+                publication_sample=publication_sample,
+                pull_request_created_at=pull_request.created_at,
+                required_started_at=check.started_at,
+            )
             observe(
                 TelemetryMetric.PR_TO_REQUIRED_START,
                 pr_subject,
