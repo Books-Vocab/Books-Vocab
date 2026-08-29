@@ -393,7 +393,7 @@ def measure_pipeline(
     required_absent = sum(
         lane.registry is not None
         and lane.registry.status in {"published", "cleanup_pending"}
-        and lane.pull_requests
+        and bool(lane.pull_requests)
         and lane.pull_requests[0].state == "OPEN"
         and lane.required_check is not None
         and lane.required_check.status is CheckStatus.ABSENT
