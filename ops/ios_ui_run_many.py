@@ -10,22 +10,20 @@ are ephemeral unless the caller explicitly requests retention.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import selectors
-import signal
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
-from typing import Any, Iterable
 import uuid
-
+from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
 
 SCHEMA = "kg.ios.ui-run-many.v1"
 CLEANUP_SCHEMA = "kg.ios.ui-run-cleanup.v1"
@@ -118,7 +116,7 @@ def _write_json_atomic(path: Path, value: dict[str, Any]) -> None:
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _iso(value: datetime) -> str:
@@ -153,9 +151,7 @@ def _pid_alive(pid: int | None) -> bool:
     return True
 
 
-_IOS_CONSUMER_RE = re.compile(
-    r"(^|/)(?:xcodebuild|ios_test\.sh|run_ui_evidence\.sh|ios_ui_run_many\.py)(?:\s|$)"
-)
+_IOS_CONSUMER_RE = re.compile(r"(^|/)(?:xcodebuild|ios_test\.sh|run_ui_evidence\.sh|ios_ui_run_many\.py)(?:\s|$)")
 
 
 def _global_ios_consumers(*, exclude_pid: int | None = None) -> list[str]:
@@ -270,7 +266,7 @@ def _parse_time(value: Any) -> datetime | None:
     if not isinstance(value, str) or not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
     except ValueError:
         return None
 
@@ -491,7 +487,12 @@ def cleanup_runs(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 run_root / "helper-error.txt",
             )
         else:
-            helper_targets = (run_root / "prepare", run_root / "raw", run_root / "logs", publish_root)
+            helper_targets = (
+                run_root / "prepare",
+                run_root / "raw",
+                run_root / "logs",
+                publish_root,
+            )
         for target in helper_targets:
             if target is not None and target.exists() and target not in removable:
                 if not _inside(target, run_root) or target == run_root:
@@ -571,7 +572,10 @@ def cleanup_runs(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             candidate["action"] = "reclaimed"
             candidate["allocatedBytesAfter"] = _allocated_bytes(run_root)
             candidate["reclaimedBytes"] = (
-                max(0, (candidate["allocatedBytesBefore"] or 0) - (candidate["allocatedBytesAfter"] or 0))
+                max(
+                    0,
+                    (candidate["allocatedBytesBefore"] or 0) - (candidate["allocatedBytesAfter"] or 0),
+                )
                 if candidate["allocatedBytesBefore"] is not None
                 else None
             )
@@ -634,7 +638,7 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if staging_root.exists() and any(staging_root.iterdir()):
         raise RunManyError(f"refusing to reuse non-empty run staging directory: {staging_root}")
     staging_root.mkdir(parents=True, exist_ok=True)
-    publish_root = (args.publish_root.resolve() if args.publish_root else staging_root / "bundles")
+    publish_root = args.publish_root.resolve() if args.publish_root else staging_root / "bundles"
     if not _inside(publish_root, staging_root):
         raise RunManyError("--publish-root must be inside --output-dir so one run owns all artifacts")
     publish_root.mkdir(parents=True, exist_ok=True)
@@ -642,7 +646,7 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     log_root = staging_root / "logs"
     raw_root.mkdir(parents=True, exist_ok=True)
     log_root.mkdir(parents=True, exist_ok=True)
-    summary_path = (args.summary_out.resolve() if args.summary_out else staging_root / "summary.json")
+    summary_path = args.summary_out.resolve() if args.summary_out else staging_root / "summary.json"
     if not _inside(summary_path, staging_root):
         raise RunManyError("--summary-out must be inside --output-dir so one run owns all artifacts")
     methods_snapshot = staging_root / "methods.json"
@@ -717,8 +721,16 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     persist_summary()
     prepare = [
         str(root / "ops" / "ios_ops.sh"),
-        "test", "--ui", "--prepare-cache", "--ui-launch-profile", "ui-smoke",
-        "--configuration", args.configuration, "--device", device, "--json",
+        "test",
+        "--ui",
+        "--prepare-cache",
+        "--ui-launch-profile",
+        "ui-smoke",
+        "--configuration",
+        args.configuration,
+        "--device",
+        device,
+        "--json",
     ]
     try:
         prepare_rc = _run_streaming(
@@ -729,7 +741,10 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             log_path=log_root / "prepare.log",
             manifest_path=manifest_path,
         )
-        summary["prepareCache"] = {"status": "passed" if prepare_rc == 0 else "failed", "exit": prepare_rc}
+        summary["prepareCache"] = {
+            "status": "passed" if prepare_rc == 0 else "failed",
+            "exit": prepare_rc,
+        }
         persist_summary()
         if prepare_rc != 0:
             summary["status"] = "failed"
@@ -747,10 +762,21 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", item["selector"])
             output_path = raw_root / f"{index:02d}-{slug}.json"
             command = [
-                str(helper), "--dataset", item["datasetID"], "--method", item["selector"],
-                "--device", device, "--configuration", args.configuration,
-                "--ui-launch-profile", "ui-smoke", "--evidence-root", str(publish_root),
-                "--json-out", str(output_path),
+                str(helper),
+                "--dataset",
+                item["datasetID"],
+                "--method",
+                item["selector"],
+                "--device",
+                device,
+                "--configuration",
+                args.configuration,
+                "--ui-launch-profile",
+                "ui-smoke",
+                "--evidence-root",
+                str(publish_root),
+                "--json-out",
+                str(output_path),
             ]
             if args.retain:
                 command.insert(-2, "--retain")
@@ -768,11 +794,7 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             )
             metadata = _read_json(output_path) or {}
             helper_metadata = metadata.get("helper") if isinstance(metadata.get("helper"), dict) else {}
-            bundle_text = (
-                metadata.get("bundle")
-                or metadata.get("bundleRoot")
-                or helper_metadata.get("bundleRoot")
-            )
+            bundle_text = metadata.get("bundle") or metadata.get("bundleRoot") or helper_metadata.get("bundleRoot")
             bundle = Path(bundle_text).resolve() if isinstance(bundle_text, str) else None
             status = classify_bundle(bundle, rc) if bundle else "failed"
             if status != "passed_unattested":
@@ -859,14 +881,20 @@ def main() -> int:
             if args.summary_out is not None:
                 args.summary_out.parent.mkdir(parents=True, exist_ok=True)
                 args.summary_out.write_text(
-                    json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+                    json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
                 )
         else:
             summary, exit_code = cleanup_runs(args)
         print(json.dumps(summary, ensure_ascii=False, indent=2))
         return exit_code
     except (OSError, RunManyError, subprocess.CalledProcessError) as error:
-        print(json.dumps({"schema": SCHEMA, "status": "blocked", "error": str(error)}, ensure_ascii=False))
+        print(
+            json.dumps(
+                {"schema": SCHEMA, "status": "blocked", "error": str(error)},
+                ensure_ascii=False,
+            )
+        )
         return 65
 
 
