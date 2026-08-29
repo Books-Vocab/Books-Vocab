@@ -146,8 +146,7 @@ class CleanupService:
             or pull_request.branch != receipt.branch
             or pull_request.head_sha != receipt.head_sha
             or parsed_receipt != receipt
-            or tuple(sorted(self.github.changed_paths(number)))
-            != tuple(sorted(receipt.scope.paths))
+            or not receipt.scope.allows_changed_paths(self.github.changed_paths(number))
         ):
             raise PolicyViolation("PR does not prove the exact handback disposition")
         return pull_request
@@ -166,7 +165,7 @@ class CleanupService:
                 not snapshot.clean
                 or snapshot.head_sha != receipt.head_sha
                 or snapshot.branch != receipt.branch
-                or tuple(snapshot.changed_paths) != receipt.scope.paths
+                or not receipt.scope.allows_changed_paths(snapshot.changed_paths)
             ):
                 raise PolicyViolation("worktree changed after typed handback")
         local_sha = self.git_query.local_branch_sha(receipt.branch)
@@ -242,7 +241,7 @@ class CleanupService:
                 not snapshot.clean
                 or snapshot.head_sha != receipt.head_sha
                 or snapshot.branch != receipt.branch
-                or tuple(snapshot.changed_paths) != receipt.scope.paths
+                or not receipt.scope.allows_changed_paths(snapshot.changed_paths)
             ):
                 raise PolicyViolation("worktree changed after typed handback")
         local_sha = self.git_query.local_branch_sha(receipt.branch)

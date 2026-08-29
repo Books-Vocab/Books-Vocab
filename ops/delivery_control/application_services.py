@@ -750,8 +750,9 @@ class DeliveryApplication:
             or mapped.base_sha != before.base_sha
             or mapped.head_sha != receipt.head_sha
             or mapped.body != before.body
-            or tuple(sorted(self.github.changed_paths(before.number)))
-            != tuple(sorted(receipt.scope.paths))
+            or not receipt.scope.allows_changed_paths(
+                self.github.changed_paths(before.number)
+            )
         ):
             raise errors.PolicyViolation(
                 "published PR tuple changed before base recording"

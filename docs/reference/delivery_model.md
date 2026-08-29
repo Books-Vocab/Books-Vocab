@@ -288,7 +288,7 @@ patch-equivalence 也是 bounded observation：單次 `git cherry` 最多執行 
 - 把 worktree 或 agent 當成產品工作項目。
 - 取代 GitHub Actions、CM merge、release、deploy、production approval 或 rollback。
 
-Scope 只回答「本機哪個工作樹可改哪些檔案」；Issue acceptance、PR review 與 production approval 各自留在 GitHub 或 domain SOP。local hand-back 是交給 IM 的執行證據，不是第二個交付狀態機，也不等於 PR 已建立。
+Scope 只回答「本機哪個工作樹可改哪些檔案」；實際 commit 的 changed paths 必須是非空且不重複的 Scope 子集，未觸及宣告中的所有檔案不代表 hand-back 無效；空集合或超出 Scope 的觀測仍 fail closed。Issue acceptance、PR review 與 production approval 各自留在 GitHub 或 domain SOP。local hand-back 是交給 IM 的執行證據，不是第二個交付狀態機，也不等於 PR 已建立。
 
 本地 `worktree_orchestrate gate` 與 typed hand-back 對所有仍存在的 changed Python 檔案，必須執行同一個 pinned formatter contract：`uv run --no-project --python 3.13 --with ruff==0.16.3 ruff format --check <changed Python paths>`；沒有 changed Python 檔案時不產生此 check。這是 local hand-back 的必要證據，remote required check 仍由 GitHub Actions 掌握並保持 authoritative。
 

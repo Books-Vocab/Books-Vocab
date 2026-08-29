@@ -267,10 +267,12 @@ class FakeGitHub:
         receipt: HandbackReceipt,
         *,
         pull_request_readbacks: tuple[PullRequestSnapshot, ...] = (),
+        changed_paths: tuple[str, ...] | None = None,
     ) -> None:
         self.pull_request = pull_request
         self.receipt = receipt
         self.pull_request_readbacks = list(pull_request_readbacks)
+        self.paths = receipt.scope.paths if changed_paths is None else changed_paths
 
     def get_pull_request(self, number: int) -> PullRequestSnapshot:
         assert number == self.pull_request.number
@@ -279,7 +281,7 @@ class FakeGitHub:
         return self.pull_request
 
     def changed_paths(self, number: int) -> tuple[str, ...]:
-        return self.receipt.scope.paths
+        return self.paths
 
 
 def _service(
@@ -408,6 +410,30 @@ def test_publish_release_retry_is_idempotent_after_local_assets_are_absent() -> 
     assert result.worktree_absent and result.local_branch_absent
 
 
+def test_publish_release_accepts_actual_changed_paths_as_scope_subset() -> None:
+    receipt = replace(
+        _receipt(),
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    registry = FakeRegistry(_record(receipt))
+    git = FakeGit(receipt)
+    service = CleanupService(
+        registry_query=registry,
+        registry_command=registry,
+        git_query=git,
+        git_command=git,
+        github=FakeGitHub(
+            _pull_request(receipt, state="OPEN"),
+            receipt,
+            changed_paths=("ops/a.py",),
+        ),
+    )
+
+    result = service.release_after_publish(receipt=receipt, pull_request_number=9)
+
+    assert result.worktree_absent and result.local_branch_absent
+
+
 def test_merged_cleanup_removes_exact_remote_and_terminalizes_registry() -> None:
     receipt = _receipt()
     registry = FakeRegistry(_record(receipt, status="published"))
@@ -521,7 +547,9 @@ def test_publish_release_rechecks_pr_before_terminal_disposition() -> None:
     assert git.remote_sha == HEAD
 
 
-def test_publish_release_fails_closed_when_remote_branch_disappears_before_terminal_cas() -> None:
+def test_publish_release_fails_closed_when_remote_branch_disappears_before_terminal_cas() -> (
+    None
+):
     receipt = _receipt()
     registry = FakeRegistry(_record(receipt))
     git = FakeGit(receipt, remote_branch_readbacks=(HEAD, None))

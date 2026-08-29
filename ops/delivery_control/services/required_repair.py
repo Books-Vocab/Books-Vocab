@@ -94,9 +94,7 @@ class RequiredRepairService:
             or pull_request.body != expected_body
         ):
             raise PolicyViolation("PR tuple differs from the durable receipt")
-        if tuple(sorted(self.query.changed_paths(number))) != tuple(
-            sorted(receipt.scope.paths)
-        ):
+        if not receipt.scope.allows_changed_paths(self.query.changed_paths(number)):
             raise PolicyViolation("PR paths differ from typed Scope")
         return _RequiredContext(pull_request, receipt, holds)
 
