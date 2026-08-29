@@ -236,6 +236,96 @@ grep -q '"action":"enforce-cache-budget"' "$state" && ok "cache budget enforceme
   && ! -d "$root/ios/build/BooksAndVocab.xcarchive" && ! -d "$root/ios/build/export" ]] \
   && ok "stale rebuildable caches reclaimed" || bad "stale rebuildable caches remain"
 
+echo "── headroom exhausted: repair stale cache and preserve reader window ──"
+root="$TMP/headroom-repair"; cache="$root/.cache/ios-test-derived-data"; state="$root/state.json"
+mkdir -p "$cache/old/Build" "$cache/warm/Build"
+printf x > "$cache/old/Build/blob"; printf x > "$cache/warm/Build/blob"
+touch -m -t 202001010000.00 "$cache/old"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  KG_DISK_GUARD_CACHE_BUDGET_GIB=1 KG_DISK_GUARD_CACHE_HEADROOM_GIB=1 \
+  KG_DISK_GUARD_CACHE_KEEP=3 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0 \
+  KG_DISK_GUARD_CACHE_READER_WINDOW_HOURS=1 "$SCRIPT" >/dev/null 2>&1
+[[ ! -d "$cache/old" && -d "$cache/warm" ]] \
+  && ok "headroom repair evicts stale cache only" || bad "headroom repair changed reader-window cache"
+grep -q '"reason":"cache-budget-headroom-unreleased"' "$state" \
+  && ok "unreleased headroom is structured" || bad "unreleased headroom reason missing"
+grep -q '"action":"enforce-cache-headroom"' "$state" \
+  && ok "headroom repair action recorded" || bad "headroom repair action missing"
+grep -q '"cache_budget_overflow_kb":0' "$state" \
+  && ok "headroom case is below hard budget" || bad "headroom case misclassified as hard overflow"
+grep -q '"cache_headroom_overflow_kb":[1-9]' "$state" \
+  && ok "headroom overflow evidence recorded" || bad "headroom overflow evidence missing"
+grep -q '"cache_repair_status":"insufficient"' "$state" \
+  && ok "reader-window shortfall is explicit" || bad "reader-window shortfall missing"
+
+echo "── headroom exhausted: stale cache repair completes ──"
+root="$TMP/headroom-repaired"; cache="$root/.cache/ios-test-derived-data"; state="$root/state.json"
+mkdir -p "$cache/old/Build"; printf x > "$cache/old/Build/blob"; touch -m -t 202001010000.00 "$cache/old"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  KG_DISK_GUARD_CACHE_BUDGET_GIB=1 KG_DISK_GUARD_CACHE_HEADROOM_GIB=1 \
+  KG_DISK_GUARD_CACHE_KEEP=3 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0 \
+  "$SCRIPT" >/dev/null 2>&1
+[[ ! -d "$cache/old" ]] && ok "headroom repair reaches writer limit" || bad "headroom repair left stale cache"
+grep -q '"cache_repair_status":"repaired"' "$state" \
+  && ok "completed headroom repair is recorded" || bad "completed headroom repair missing"
+grep -q '"cache_repair_remaining_kb":0' "$state" \
+  && ok "completed headroom repair has no shortfall" || bad "completed headroom repair shortfall"
+
+echo "── headroom healthy: no-overflow is a no-op ──"
+root="$TMP/headroom-noop"; cache="$root/.cache/ios-test-derived-data"; state="$root/state.json"
+mkdir -p "$cache/kept/Build"; printf x > "$cache/kept/Build/blob"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  KG_DISK_GUARD_CACHE_BUDGET_GIB=2 KG_DISK_GUARD_CACHE_HEADROOM_GIB=1 \
+  KG_DISK_GUARD_CACHE_KEEP=3 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0 \
+  "$SCRIPT" >/dev/null 2>&1
+[[ -d "$cache/kept" ]] && ok "healthy headroom preserves cache" || bad "healthy headroom removed cache"
+grep -q '"verdict":"ok"' "$state" && ok "healthy headroom verdict ok" || bad "healthy headroom verdict"
+grep -q '"action":"none"' "$state" && ok "healthy headroom action none" || bad "healthy headroom action"
+
+echo "── headroom exhausted: active build defers ──"
+root="$TMP/headroom-active"; cache="$root/.cache/ios-test-derived-data"; state="$root/state.json"
+mkdir -p "$cache/old/Build"; printf x > "$cache/old/Build/blob"; touch -m -t 202001010000.00 "$cache/old"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=1 \
+  KG_DISK_GUARD_CACHE_BUDGET_GIB=1 KG_DISK_GUARD_CACHE_HEADROOM_GIB=1 \
+  KG_DISK_GUARD_CACHE_KEEP=3 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0 \
+  "$SCRIPT" >/dev/null 2>&1
+[[ -d "$cache/old" ]] && ok "active writer preserves headroom cache" || bad "active writer deleted headroom cache"
+grep -q '"reason":"cache-budget-headroom-exhausted"' "$state" \
+  && ok "active writer retains headroom evidence" || bad "active writer headroom reason missing"
+grep -q '"action":"deferred-active-build"' "$state" \
+  && ok "active writer deferral recorded" || bad "active writer deferral missing"
+
+echo "── headroom exhausted: held build lock defers ──"
+root="$TMP/headroom-lock"; cache="$root/.cache/ios-test-derived-data"; state="$root/state.json"; build_lock="$root/build.lock"
+mkdir -p "$cache/old/Build"; printf x > "$cache/old/Build/blob"; touch -m -t 202001010000.00 "$cache/old"
+printf '%s\n' "$$" > "$build_lock"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  KG_DISK_GUARD_CACHE_BUDGET_GIB=1 KG_DISK_GUARD_CACHE_HEADROOM_GIB=1 \
+  KG_DISK_GUARD_CACHE_KEEP=3 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0 \
+  KG_DISK_GUARD_BUILD_LOCK_FILE="$build_lock" PATH="$FAKE_BIN:$PATH" \
+  env -u KG_DISK_GUARD_BUILD_LOCK_HELD "$SCRIPT" >/dev/null 2>&1
+[[ -d "$cache/old" ]] && ok "held build lock preserves headroom cache" || bad "held build lock deleted headroom cache"
+grep -q '"action":"deferred-build-lock"' "$state" \
+  && ok "held build lock deferral recorded" || bad "held build lock deferral missing"
+rm -f "$build_lock"
+
+echo "── headroom exhausted: unknown process state fails closed ──"
+root="$TMP/headroom-probe"; cache="$root/.cache/ios-test-derived-data"; state="$root/state.json"
+mkdir -p "$cache/old/Build"; printf x > "$cache/old/Build/blob"; touch -m -t 202001010000.00 "$cache/old"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_PROCESS_PROBE_FAIL=1 \
+  KG_DISK_GUARD_CACHE_BUDGET_GIB=1 KG_DISK_GUARD_CACHE_HEADROOM_GIB=1 \
+  KG_DISK_GUARD_CACHE_KEEP=3 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0 \
+  "$SCRIPT" >/dev/null 2>&1
+[[ -d "$cache/old" ]] && ok "unknown process state preserves headroom cache" || bad "unknown process state deleted headroom cache"
+grep -q '"action":"deferred-process-observation"' "$state" \
+  && ok "unknown process deferral recorded" || bad "unknown process deferral missing"
+
 echo "── process probe failure: fail closed ──"
 root="$TMP/probe-fail"; cache="$root/.cache/ios-test-derived-data"; state="$TMP/probe-fail/state.json"
 mkdir -p "$cache/old/Build"; printf x > "$cache/old/Build/blob"; touch -m -t 202001010000.00 "$cache/old"
@@ -247,26 +337,42 @@ KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
 grep -q '"active_build":2' "$state" && ok "unknown process state recorded" || bad "unknown process state missing"
 grep -q '"action":"deferred-process-observation"' "$state" && ok "probe failure deferred" || bad "probe failure action"
 
-echo "── pressure-only: worktree cache sweep ──"
+echo "── pressure-only: unknown worktree cache is preserved ──"
 root="$TMP/worktree"; cache="$root/.claude/worktrees/w1/.cache/ios-test-derived-data"; state="$TMP/worktree/state.json"
 mkdir -p "$cache/old/Build"; printf x > "$cache/old/Build/blob"; touch -m -t 202001010000.00 "$cache/old"
 KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
-  KG_DISK_GUARD_FREE_BYTES=$((8*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  KG_DISK_GUARD_FREE_BYTES=$((15*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
   KG_DISK_GUARD_CACHE_KEEP=0 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=1 KG_DISK_GUARD_WORKTREE_CACHE_KEEP=0 \
   "$SCRIPT" >/dev/null 2>&1
-[[ ! -d "$cache/old" ]] && ok "pressure sweeps old worktree cache" || bad "worktree cache not swept"
+[[ -d "$cache/old" ]] && ok "pressure preserves unknown worktree cache" || bad "unknown worktree cache deleted"
+grep -q '"action":"deferred-worktree-ownership"' "$state" \
+  && ok "unknown worktree cleanup is deferred" || bad "unknown worktree cleanup was not deferred"
+
+echo "── pressure-only: active registered worktree cache is preserved ──"
+root="$TMP/worktree-active-registered"; cache="$root/.claude/worktrees/w1/.cache/ios-test-derived-data"; state="$root/state.json"; registry="$root/registry.json"
+mkdir -p "$cache/old/Build"; printf x > "$cache/old/Build/blob"; touch -m -t 202001010000.00 "$cache/old"
+printf '%s\n' '{"schema":"kg.worktree.registry.v2","records":[{"branch":"debug/test-w1","path":"'$root'/.claude/worktrees/w1","status":"active","claim_generation":0,"external_ids":["TEST-W1"]}]}' > "$registry"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_FREE_BYTES=$((15*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  KG_DISK_GUARD_CACHE_KEEP=0 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=1 KG_DISK_GUARD_WORKTREE_CACHE_KEEP=0 \
+  KG_DISK_GUARD_REGISTRY_STATE="$registry" "$SCRIPT" >/dev/null 2>&1
+[[ -d "$cache/old" ]] && ok "active registered worktree cache preserved" || bad "active worktree cache deleted"
+grep -q '"action":"deferred-worktree-ownership"' "$state" \
+  && ok "active registered worktree cleanup is deferred" || bad "active worktree cleanup was not deferred"
 
 echo "── healthy: worktree cache key cap ──"
-root="$TMP/worktree-overflow"; cache="$root/.claude/worktrees/w1/.cache/ios-test-derived-data"; state="$TMP/worktree-overflow/state.json"
+root="$TMP/worktree-overflow"; cache="$root/.claude/worktrees/w1/.cache/ios-test-derived-data"; state="$TMP/worktree-overflow/state.json"; registry="$root/registry.json"
 build_cache="$root/.claude/worktrees/w1/.cache/ios-build-derived-data"
 mkdir -p "$cache"
 for key in a b c d e; do mkdir -p "$cache/$key/Build"; printf x > "$cache/$key/Build/blob"; done
 touch -m -t 202001010000.00 "$cache"/*
 mkdir -p "$build_cache/Build" "$build_cache/Index.noindex" "$build_cache/ModuleCache.noindex" "$build_cache/Logs"
 touch -m -t 202001010000.00 "$build_cache"/*
+printf '%s\n' '{"schema":"kg.worktree.registry.v2","records":[{"branch":"debug/test-w1","path":"'$root'/.claude/worktrees/w1","status":"merged","claim_generation":0,"external_ids":["TEST-W1"]}]}' > "$registry"
 KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
   KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
   KG_DISK_GUARD_WORKTREE_CACHE_KEEP=3 KG_DISK_GUARD_WORKTREE_CACHE_MIN_AGE_HOURS=0 \
+  KG_DISK_GUARD_REGISTRY_STATE="$registry" \
   "$SCRIPT" >/dev/null 2>&1
 key_count="$(find "$cache" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
 [[ "$key_count" -eq 3 ]] && ok "healthy guard caps worktree cache keys" || bad "worktree cache key cap: $key_count"
