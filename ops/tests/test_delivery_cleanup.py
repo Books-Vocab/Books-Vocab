@@ -176,6 +176,35 @@ class FakeRegistry:
         self.record = replace(self.record, status=disposition)
 
 
+class TerminalThenCurrentRegistry(FakeRegistry):
+    def __init__(
+        self, terminal_record: RegistrySnapshot, current_record: RegistrySnapshot
+    ) -> None:
+        super().__init__(current_record)
+        self.terminal_record = terminal_record
+
+    def list_records(self) -> RegistryInventory:
+        return RegistryInventory((self.terminal_record, self.record))
+
+    def find_exact_claim(
+        self,
+        *,
+        lane_id: str,
+        branch: str,
+        path: Path,
+        claim_generation: int,
+    ) -> RegistrySnapshot | None:
+        for record in (self.terminal_record, self.record):
+            if (
+                record.lane_id == lane_id
+                and record.branch == branch
+                and record.path == path
+                and record.claim_generation == claim_generation
+            ):
+                return record
+        return None
+
+
 class FakeGit:
     def __init__(
         self,
@@ -480,6 +509,36 @@ def test_application_cleanup_bridges_previous_body_to_current_registry_claim() -
         scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
     )
     registry = FakeRegistry(_record(current, status="active"))
+    git = FakeGit(current, has_worktree=False, local_sha=None)
+    github = FakeGitHub(
+        _pull_request(
+            current,
+            state="MERGED",
+            body=render_pull_request_body(previous),
+        ),
+        current,
+    )
+    application = DeliveryApplication(
+        repo=Path("/repo"),
+        git=git,
+        github=github,
+        registry=registry,
+        runtime=Mock(),
+        telemetry=Mock(),
+    )
+
+    result = application.cleanup_merged(9)
+
+    assert result["cleanup"].disposition == "merged"
+    assert registry.transitions == ["cleanup_pending", "merged"]
+    assert git.actions == ["delete-remote"]
+
+
+def test_application_cleanup_skips_terminal_claim_for_current_generation() -> None:
+    current = _receipt()
+    previous = replace(current, claim_generation=1)
+    terminal = _record(previous, status="abandoned")
+    registry = TerminalThenCurrentRegistry(terminal, _record(current))
     git = FakeGit(current, has_worktree=False, local_sha=None)
     github = FakeGitHub(
         _pull_request(

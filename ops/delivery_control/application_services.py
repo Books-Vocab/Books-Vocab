@@ -1091,7 +1091,17 @@ class DeliveryApplication:
             claim_generation=body_receipt.claim_generation,
         )
         if exact is not None:
-            return body_receipt, exact, None
+            if exact.status in {
+                "active",
+                "published",
+                "cleanup_pending",
+                "merged",
+            }:
+                return body_receipt, exact, None
+            if exact.status != "abandoned":
+                raise errors.PolicyViolation(
+                    "typed receipt has an invalid registry claim"
+                )
         if not isinstance(self.registry, RegistryPublishedClaimQueryPort):
             raise errors.PolicyViolation("typed receipt has no exact registry claim")
         current = self.registry.find_published_claim(
