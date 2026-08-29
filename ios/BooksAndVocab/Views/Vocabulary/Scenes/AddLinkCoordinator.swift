@@ -27,6 +27,7 @@ final class AddLinkCoordinator {
 
     private var actionGeneration = 0
     private var actionTask: Task<Void, Never>?
+    private var actionTaskToken = 0
 
     nonisolated static func localCandidates(
         query: String,
@@ -41,11 +42,7 @@ final class AddLinkCoordinator {
             locale: .current
         )
         return Array(allEntries.lazy.filter { entry in
-            entry.id != sourceEntry.id
-                && entry.notebookId == sourceEntry.notebookId
-                && entry.kgCardId?.isEmpty == false
-                && entry.syncAction != .delete
-                && !entry.isArchived
+            Self.isEligibleTarget(entry, for: sourceEntry)
                 && !(entry.kgCardId.map(linkedIDs.contains) ?? false)
                 && (
                     entry.word.folding(
@@ -65,15 +62,21 @@ final class AddLinkCoordinator {
         sourceEntry: VocabularyEntry,
         using service: any GraphServing
     ) async {
+        guard !Task.isCancelled else { return }
         let generation = beginAction()
         guard sourceEntry.modelContext != nil,
               let sourceCardID = sourceEntry.kgCardId,
-              !sourceCardID.isEmpty else {
+              Self.hasUsableCardID(sourceCardID) else {
             failAction(.missingSourceCard, generation: generation)
             return
         }
-        guard let targetCardID = target.kgCardId, !targetCardID.isEmpty else {
+        guard let targetCardID = target.kgCardId,
+              Self.hasUsableCardID(targetCardID) else {
             failAction(.missingTargetCard, generation: generation)
+            return
+        }
+        guard Self.isEligibleTarget(target, for: sourceEntry) else {
+            failAction(.existingLinkFailed, generation: generation)
             return
         }
         let alreadyLinked = sourceEntry.graphLinksByKind.values
@@ -161,6 +164,10 @@ final class AddLinkCoordinator {
         using service: any GraphServing
     ) {
         cancelAction()
+        actionPhase = .linking
+        actionError = nil
+        actionTaskToken += 1
+        let taskToken = actionTaskToken
         actionTask = Task { @MainActor [weak self] in
             guard let self else { return }
             await self.linkExisting(
@@ -168,12 +175,13 @@ final class AddLinkCoordinator {
                 sourceEntry: sourceEntry,
                 using: service
             )
-            self.actionTask = nil
+            self.clearActionTask(taskToken: taskToken)
         }
     }
 
     func cancelAction() {
         let wasRunning = actionPhase == .linking
+        actionTaskToken += 1
         actionGeneration += 1
         actionTask?.cancel()
         actionTask = nil
@@ -207,6 +215,28 @@ final class AddLinkCoordinator {
         guard generation == actionGeneration else { return }
         actionPhase = .failed
         actionError = error
+    }
+
+    private func clearActionTask(taskToken: Int) {
+        guard actionTaskToken == taskToken else { return }
+        actionTask = nil
+    }
+
+    private nonisolated static func hasUsableCardID(_ cardID: String?) -> Bool {
+        guard let cardID else { return false }
+        return !cardID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private nonisolated static func isEligibleTarget(
+        _ target: VocabularyEntry,
+        for sourceEntry: VocabularyEntry
+    ) -> Bool {
+        target.id != sourceEntry.id
+            && target.notebookId == sourceEntry.notebookId
+            && target.kgCardId != sourceEntry.kgCardId
+            && !target.isArchived
+            && target.syncAction != .delete
+            && hasUsableCardID(target.kgCardId)
     }
 
     private static func isConflict(_ error: KGError) -> Bool {

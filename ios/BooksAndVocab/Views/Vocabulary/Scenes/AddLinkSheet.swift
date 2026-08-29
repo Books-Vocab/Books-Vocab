@@ -169,6 +169,7 @@ struct AddLinkSheet: View {
     }
 
     private func selectEntry(_ entry: VocabularyEntry) {
+        guard filteredEntries.contains(where: { $0.id == entry.id }) else { return }
         coordinator.startLinkExisting(
             target: entry,
             sourceEntry: sourceEntry,
