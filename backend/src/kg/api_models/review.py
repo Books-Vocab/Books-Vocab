@@ -1,18 +1,28 @@
 from __future__ import annotations
 
+import math
+
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ReviewStateEntry(BaseModel):
     word: str
     card_id: str | None = None  # precise matching; falls back to word if absent
-    review_interval_hours: float = Field(ge=0)
+    review_interval_hours: float = Field(ge=0, allow_inf_nan=False)
     next_review_at: str  # ISO8601
     last_reviewed_at: str  # ISO8601
     review_count: int = Field(ge=0)
     lapse_count: int = Field(ge=0)
     review_streak: int = Field(ge=0)
     last_review_feedback: int = Field(ge=-1, le=1)
+
+    @field_validator("review_interval_hours", mode="before")
+    @classmethod
+    def _replace_non_finite_interval_for_validation(cls, value: object) -> object:
+        # Keep the validation error JSON-safe so the API can return its normal 422.
+        if isinstance(value, float) and not math.isfinite(value):
+            return -1.0
+        return value
 
 
 class ReviewStatePushRequest(BaseModel):
