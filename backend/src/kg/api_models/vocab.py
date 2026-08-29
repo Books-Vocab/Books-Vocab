@@ -45,7 +45,7 @@ class CardPreferencesUpdateRequest(BaseModel):
     review_excluded: bool | None = None
 
     @model_validator(mode="after")
-    def require_preference(self) -> "CardPreferencesUpdateRequest":
+    def require_preference(self) -> CardPreferencesUpdateRequest:
         if self.reader_hidden is None and self.review_excluded is None:
             raise ValueError("At least one card preference is required")
         return self
