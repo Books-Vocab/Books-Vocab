@@ -1,6 +1,5 @@
 #if os(iOS)
 import SwiftUI
-import UIKit
 
 // MARK: - Native Settings Form
 
@@ -11,7 +10,7 @@ import UIKit
 ///          detents 與 drag indicator，不再自繪 panel 卡片與 handle）
 ///   分組  `Section` + `SettingsSectionHeader` / `SettingsSectionFooter`
 ///   選擇  `Picker` —— 行內單值用 `.menu`，選項本身值得一列（帶 icon / 色票）用 `.inline`
-///   數值  共用的 +/- adjustment row 與原生 `Slider`
+///   數值  共用的 +/- adjustment row；連續值才使用原生 `Slider`
 ///   開關  `Toggle`
 ///
 /// 具名承認的代價：自繪的 selection tile、label chip、control surface、群組
@@ -118,7 +117,7 @@ extension ReaderSettingsPresenter {
             ReaderTypographyAdjustmentRow(
                 title: L10n.string("reader.settings.lineHeight"),
                 value: String(format: "%.1f", bindings.lineHeight.wrappedValue),
-                rowIdentifier: "reader.settings.lineHeightTicks",
+                rowIdentifier: "reader.settings.lineHeight",
                 decrementIdentifier: "reader.settings.lineHeight.decrement",
                 incrementIdentifier: "reader.settings.lineHeight.increment",
                 canDecrement: bindings.lineHeight.wrappedValue > ReaderTypographyMetrics.lineHeightRange.lowerBound,
@@ -126,8 +125,6 @@ extension ReaderSettingsPresenter {
                 onDecrement: { changeLineHeight(by: -1) },
                 onIncrement: { changeLineHeight(by: 1) }
             )
-
-            ReaderSettingsLineHeightSlider(value: bindings.lineHeight)
 
             Picker(selection: bindings.scrollMode) {
                 Text(L10n.string("reader.settings.readingMode.paged")).tag(false)
@@ -296,171 +293,4 @@ private struct ReaderTypographyAdjustmentRow: View {
     }
 }
 
-private struct ReaderSettingsLineHeightSlider: View {
-    @Binding var value: Double
-
-    private typealias Metrics = ReaderPresentationMetrics.SettingsPreview
-
-    var body: some View {
-        VStack(spacing: AppSpacing.microGap) {
-            NativeReaderLineHeightSlider(value: $value)
-
-            HStack(spacing: 0) {
-                ForEach(Metrics.lineHeightTickValues.indices, id: \.self) { index in
-                    Rectangle()
-                        .fill(.secondary.opacity(index.isMultiple(of: 5) ? 0.55 : 0.3))
-                        .frame(width: 1, height: index.isMultiple(of: 5) ? 6 : 4)
-
-                    if index < Metrics.lineHeightTickCount - 1 {
-                        Spacer(minLength: 0)
-                    }
-                }
-            }
-            .padding(.horizontal, AppSpacing.s2)
-            .accessibilityHidden(true)
-        }
-    }
-}
-
-private struct NativeReaderLineHeightSlider: UIViewRepresentable {
-    @Binding var value: Double
-
-    private typealias Metrics = ReaderPresentationMetrics.SettingsPreview
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
-    }
-
-    func makeUIView(context: Context) -> UISlider {
-        let slider = UISlider(
-            frame: .zero
-        )
-        slider.minimumValue = Float(Metrics.lineHeightRange.lowerBound)
-        slider.maximumValue = Float(Metrics.lineHeightRange.upperBound)
-        // Keep the native control continuous for UIKit/XCTest interaction.
-        // Real drags commit only on release/cancel; a non-tracking XCTest
-        // value injection is committed immediately because it has no later
-        // touch-up event to close the interaction.
-        slider.isContinuous = true
-        slider.accessibilityLabel = L10n.string("reader.settings.lineHeight")
-        slider.accessibilityIdentifier = "reader.settings.lineHeight"
-        slider.accessibilityValue = Self.accessibilityValue(for: value)
-        slider.addTarget(
-            context.coordinator,
-            action: #selector(Coordinator.valueChanged(_:)),
-            for: .valueChanged
-        )
-        slider.addTarget(
-            context.coordinator,
-            action: #selector(Coordinator.beginInteraction(_:)),
-            for: .touchDown
-        )
-        for event in [UIControl.Event.touchUpInside, .touchUpOutside, .touchCancel] {
-            slider.addTarget(
-                context.coordinator,
-                action: #selector(Coordinator.commitValue(_:)),
-                for: event
-            )
-        }
-        slider.value = Float(Self.quantized(value))
-        return slider
-    }
-
-    func updateUIView(_ slider: UISlider, context: Context) {
-        context.coordinator.parent = self
-        // SwiftUI may redraw the representable while UIKit is still tracking
-        // a drag. Do not let the last committed Binding value overwrite the
-        // native control or its pending release value mid-interaction.
-        guard !context.coordinator.isInteracting,
-              context.coordinator.pendingValue == nil else { return }
-        let nextValue = Float(Self.quantized(value))
-        if abs(slider.value - nextValue) > 0.0001 {
-            slider.setValue(nextValue, animated: false)
-        }
-        slider.accessibilityValue = Self.accessibilityValue(for: value)
-    }
-
-    private static func quantized(_ rawValue: Double) -> Double {
-        ReaderTypographyMetrics.quantizedValue(
-            rawValue,
-            in: Metrics.lineHeightRange,
-            step: Metrics.lineHeightStep
-        )
-    }
-
-    private static func accessibilityValue(for rawValue: Double) -> String {
-        String(
-            format: "%.1f",
-            locale: Locale(identifier: "en_US_POSIX"),
-            quantized(rawValue)
-        )
-    }
-
-    final class Coordinator: NSObject {
-        var parent: NativeReaderLineHeightSlider
-        private(set) var isInteracting = false
-        private(set) var pendingValue: Double?
-
-        init(parent: NativeReaderLineHeightSlider) {
-            self.parent = parent
-        }
-
-        @objc
-        func beginInteraction(_ slider: UISlider) {
-            isInteracting = true
-        }
-
-        @objc
-        func valueChanged(_ slider: UISlider) {
-            let nextValue = Self.quantized(
-                Double(slider.value),
-                range: Metrics.lineHeightRange,
-                step: Metrics.lineHeightStep
-            )
-            slider.setValue(Float(nextValue), animated: false)
-            slider.accessibilityValue = Self.accessibilityValue(for: nextValue)
-            pendingValue = nextValue
-            // XCTest's `adjust(toNormalizedSliderPosition:)` can deliver a
-            // valueChanged event after tracking has ended without delivering a
-            // matching touch-up event. `isTracking` is the UIKit source of
-            // truth for that boundary; do not let a stale touchDown flag
-            // strand the endpoint value in `pendingValue`.
-            if !slider.isTracking {
-                commitPendingValue(slider)
-            }
-        }
-
-        @objc
-        func commitValue(_ slider: UISlider) {
-            valueChanged(slider)
-            commitPendingValue(slider)
-        }
-
-        private func commitPendingValue(_ slider: UISlider) {
-            parent.value = pendingValue ?? Self.quantized(
-                Double(slider.value),
-                range: Metrics.lineHeightRange,
-                step: Metrics.lineHeightStep
-            )
-            pendingValue = nil
-            isInteracting = false
-        }
-
-        private static func accessibilityValue(for value: Double) -> String {
-            String(
-                format: "%.1f",
-                locale: Locale(identifier: "en_US_POSIX"),
-                value
-            )
-        }
-
-        private static func quantized(
-            _ rawValue: Double,
-            range: ClosedRange<Double>,
-            step: Double
-        ) -> Double {
-            ReaderTypographyMetrics.quantizedValue(rawValue, in: range, step: step)
-        }
-    }
-}
 #endif
