@@ -18,7 +18,6 @@ import fnmatch
 import json
 import re
 import subprocess
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -38,8 +37,7 @@ def run_git(args: list[str], *, check: bool = True) -> str:
     result = subprocess.run(
         ["git", *args],
         check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         text=True,
     )
     if check and result.returncode != 0:
