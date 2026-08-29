@@ -15,6 +15,7 @@ struct AddLinkSheet: View {
     @State private var searchText = ""
     @State private var coordinator = AddLinkCoordinator()
     @State private var creationCoordinator = AddLinkCreationCoordinator()
+    @State private var creationAttempt = 0
 
     init(
         sourceEntry: VocabularyEntry,
@@ -44,8 +45,12 @@ struct AddLinkSheet: View {
                     )
                 }
 
-                if creationCoordinator.phase == .running {
-                    AddLinkCreationProgressView(coordinator: creationCoordinator)
+                if creationCoordinator.phase == .running || creationCoordinator.phase == .failed {
+                    AddLinkCreationProgressView(
+                        coordinator: creationCoordinator,
+                        onRetry: startCreation,
+                        attempt: creationAttempt
+                    )
                         .padding(.horizontal, appSkin.metrics.cardBlockPadding)
                         .frame(maxHeight: .infinity, alignment: .top)
                 } else {
@@ -179,6 +184,7 @@ struct AddLinkSheet: View {
 
     private func startCreation() {
         guard let operationService = kgService as? any AddLinkOperationServing else { return }
+        creationAttempt += 1
         creationCoordinator.start(
             word: searchText,
             sourceEntry: sourceEntry,

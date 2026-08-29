@@ -314,6 +314,131 @@ final class VocabularyLibraryFlowUITests: UITestCase {
     }
 
     @MainActor
+    func testAddLinkCreationFailureRemainsRetryable() throws {
+        let app = launchIsolatedApp(
+            fixtures: [.vocabulary("vocabLinkedCards")],
+            extraEnvironment: [
+                // Keep the production-mode creation path hermetic and force a
+                // retryable transport failure without changing the fixture.
+                "KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"
+            ],
+            perfLog: "vocabulary-add-link-retry"
+        )
+        captureStep("add-link-retry-launch", app: app)
+
+        let notebooks = AppPage(app: app).goToNotebooks()
+        guard notebooks.waitForNotebookCard(id: Self.addLinkNotebookID, timeout: 10) else {
+            captureStep("add-link-retry-notebook-missing", app: app)
+            XCTFail("AddLink fixture 必須種出 notebook " + Self.addLinkNotebookID)
+            return
+        }
+        notebooks.notebookCard(id: Self.addLinkNotebookID).tapWhenReady()
+        XCTAssertTrue(app.waitForNavigationToSettle())
+
+        let page = VocabularySearchPage(app: app)
+        guard page.searchField.waitUntilExists(timeout: 10) else {
+            captureStep("add-link-retry-vocabulary-list-missing", app: app)
+            XCTFail("AddLink fixture 必須渲染 vocabulary search field")
+            return
+        }
+        page.search("serendipity")
+        guard page.waitForRowMaterialized(word: "serendipity", timeout: 10) else {
+            captureStep("add-link-retry-source-row-missing", app: app)
+            XCTFail("AddLink fixture 必須 materialize source row serendipity")
+            return
+        }
+        page.row(word: "serendipity").tapWhenReady()
+
+        let addLinkTrigger = app.buttons.matching(
+            NSPredicate(format: "label == %@", "新增知識連結")
+        )
+        guard let trigger = addLinkTrigger.exactlyOneElement(
+            timeout: 10,
+            named: "AddLink retry detail trigger"
+        ) else {
+            captureStep("add-link-retry-trigger-missing", app: app)
+            return
+        }
+        trigger.tapWhenReady()
+
+        let searchField = app.textFields["addLink.searchField"]
+        guard searchField.waitUntilExists(timeout: 10) else {
+            captureStep("add-link-retry-sheet-missing", app: app)
+            XCTFail("AddLink retry flow 必須開啟 sheet")
+            return
+        }
+        searchField.tapWhenReady()
+        searchField.typeText("zzqxv")
+
+        guard let createAffordance = app.buttons
+            .matching(identifier: "addLink.create")
+            .exactlyOneElement(timeout: 10, named: "AddLink retry create affordance") else {
+            captureStep("add-link-retry-create-missing", app: app)
+            return
+        }
+        XCTAssertEqual(searchField.value as? String, "zzqxv")
+        createAffordance.tapWhenReady()
+
+        let progress = app.descendants(matching: .any)
+            .matching(identifier: "addLink.creation.progress")
+            .firstMatch
+        let errorQuery = app.descendants(matching: .any)
+            .matching(identifier: "addLink.creation.error")
+        let retryQuery = app.descendants(matching: .any)
+            .matching(identifier: "addLink.creation.retry")
+
+        guard let firstError = errorQuery.exactlyOneElement(
+            timeout: 30,
+            named: "AddLink first creation error"
+        ), let firstRetry = retryQuery.exactlyOneElement(
+            timeout: 5,
+            named: "AddLink first creation retry"
+        ) else {
+            captureStep("add-link-retry-first-failure-missing", app: app)
+            return
+        }
+        XCTAssertTrue(progress.waitUntilExists(timeout: 5))
+        XCTAssertTrue(
+            progress.waitUntilValueEquals("attempt-1", timeout: 5),
+            "first failure must expose the first creation attempt"
+        )
+        XCTAssertFalse(firstError.frame.isEmpty, "creation error must be visible")
+        XCTAssertTrue(firstRetry.isHittable, "creation retry must be actionable")
+        XCTAssertEqual(errorQuery.count, 1, "creation error identifier must be unique")
+        XCTAssertEqual(retryQuery.count, 1, "creation retry identifier must be unique")
+        XCTAssertEqual(app.buttons.matching(identifier: "addLink.cancel").count, 1, "sheet must remain open")
+        XCTAssertEqual(app.buttons.matching(identifier: "addLink.create").count, 0, "failed surface must replace create affordance")
+        captureStep("add-link-retry-first-failure", app: app)
+
+        firstRetry.tapWhenReady()
+        // Port 9 can reject in the same run-loop turn, so the attempt marker
+        // proves the retry action re-entered the production start path without
+        // depending on a transient running snapshot.
+        XCTAssertTrue(
+            progress.waitUntilValueEquals("attempt-2", timeout: 5),
+            "retry must start a new AddLink creation attempt"
+        )
+        guard let secondError = errorQuery.exactlyOneElement(
+            timeout: 30,
+            named: "AddLink second creation error"
+        ), let secondRetry = retryQuery.exactlyOneElement(
+            timeout: 5,
+            named: "AddLink second creation retry"
+        ) else {
+            captureStep("add-link-retry-second-failure-missing", app: app)
+            return
+        }
+        XCTAssertTrue(progress.waitUntilExists(timeout: 5))
+        XCTAssertFalse(secondError.frame.isEmpty, "second creation error must be visible")
+        XCTAssertTrue(secondRetry.isHittable, "second creation retry must be actionable")
+        XCTAssertEqual(errorQuery.count, 1, "second creation error identifier must be unique")
+        XCTAssertEqual(retryQuery.count, 1, "second creation retry identifier must be unique")
+        XCTAssertEqual(app.buttons.matching(identifier: "addLink.cancel").count, 1, "sheet must remain open after retry")
+        XCTAssertEqual(app.buttons.matching(identifier: "addLink.create").count, 0, "retry failure must not restore create affordance")
+        captureStep("add-link-retry-second-failure", app: app)
+    }
+
+    @MainActor
     func testWordDetailShowsFourCardManagementControlsAndDeleteWarning() throws {
         let app = launchIsolatedApp(
             fixtures: [.vocabulary("vocabLinkedCards")],

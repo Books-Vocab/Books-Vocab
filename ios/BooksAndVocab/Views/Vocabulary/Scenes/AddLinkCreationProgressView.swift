@@ -6,17 +6,31 @@ struct AddLinkCreationProgressView: View {
     @Environment(\.appSkin) private var appSkin
 
     let coordinator: AddLinkCreationCoordinator
+    var onRetry: (() -> Void)? = nil
+    let attempt: Int
 
     var body: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.tinyGap) {
             if let message = coordinator.message {
-                AppBanner(message: message, systemImage: bannerSystemImage)
+                if coordinator.phase == .failed {
+                    AppBanner(message: message, systemImage: bannerSystemImage)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("addLink.creation.error")
+                } else {
+                    AppBanner(message: message, systemImage: bannerSystemImage)
+                }
+                if coordinator.phase == .failed, let onRetry {
+                    Button(L10n.string("重試"), action: onRetry)
+                        .buttonStyle(.appCompactAction(.primary))
+                        .accessibilityIdentifier("addLink.creation.retry")
+                }
             }
             SettingsSyncProgressPanel(steps: coordinator.steps, fraction: coordinator.fraction)
         }
         .padding(.vertical, appSkin.spacing.tinyGap)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("addLink.creation.progress")
+        .accessibilityValue("attempt-\(attempt)")
         .enableInjection()
     }
 
