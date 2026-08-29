@@ -6,10 +6,8 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import sys
 from pathlib import Path
 from typing import Any
-
 
 SCHEMA = "kg.ios.ui-review-clusters.v1"
 REQUIREMENTS = {f"P{n}" for n in range(3, 16)}
@@ -43,7 +41,9 @@ def resolve_inside(root: Path, value: str, label: str) -> Path:
     try:
         path.relative_to(root.resolve())
     except ValueError as error:
-        raise ClusterManifestError(f"{label} escapes repository root: {value}") from error
+        raise ClusterManifestError(
+            f"{label} escapes repository root: {value}"
+        ) from error
     return path
 
 
@@ -74,12 +74,20 @@ def validate(manifest_path: Path, root: Path) -> dict[str, Any]:
         raise ClusterManifestError(f"cluster manifest schema must be {SCHEMA}")
     matrix_path = resolve_inside(root, str(manifest.get("matrix", "")), "matrix")
     matrix = load_json(matrix_path, "matrix")
-    requirements = matrix_requirements(matrix)
-    if manifest.get("defaultDatasetID") and not DATASET_RE.fullmatch(str(manifest["defaultDatasetID"])):
+    matrix_requirements(matrix)
+    if manifest.get("defaultDatasetID") and not DATASET_RE.fullmatch(
+        str(manifest["defaultDatasetID"])
+    ):
         raise ClusterManifestError("defaultDatasetID is unsafe")
     policy = manifest.get("batchPolicy")
-    if not isinstance(policy, dict) or policy.get("buildOnce") is not True or policy.get("runMany") is not True:
-        raise ClusterManifestError("batchPolicy must require buildOnce=true and runMany=true")
+    if (
+        not isinstance(policy, dict)
+        or policy.get("buildOnce") is not True
+        or policy.get("runMany") is not True
+    ):
+        raise ClusterManifestError(
+            "batchPolicy must require buildOnce=true and runMany=true"
+        )
     raw_clusters = manifest.get("clusters")
     if not isinstance(raw_clusters, list) or len(raw_clusters) != 4:
         raise ClusterManifestError("manifest must contain exactly four clusters")
@@ -96,40 +104,62 @@ def validate(manifest_path: Path, root: Path) -> dict[str, Any]:
         if not isinstance(cluster_requirements, list) or not cluster_requirements:
             raise ClusterManifestError(f"{cluster_id}.requirements must be non-empty")
         if any(value not in REQUIREMENTS for value in cluster_requirements):
-            raise ClusterManifestError(f"{cluster_id}.requirements contains unknown requirement")
+            raise ClusterManifestError(
+                f"{cluster_id}.requirements contains unknown requirement"
+            )
         overlap = seen_requirements.intersection(cluster_requirements)
         if overlap:
-            raise ClusterManifestError(f"requirements assigned to multiple clusters: {sorted(overlap)}")
+            raise ClusterManifestError(
+                f"requirements assigned to multiple clusters: {sorted(overlap)}"
+            )
         seen_requirements.update(cluster_requirements)
         source_modules = cluster.get("sourceModules")
         if not isinstance(source_modules, list) or not source_modules:
             raise ClusterManifestError(f"{cluster_id}.sourceModules must be non-empty")
-        missing = [value for value in source_modules if not isinstance(value, str) or not resolve_inside(root, value, f"{cluster_id}.sourceModules").is_file()]
+        missing = [
+            value
+            for value in source_modules
+            if not isinstance(value, str)
+            or not resolve_inside(root, value, f"{cluster_id}.sourceModules").is_file()
+        ]
         if missing:
             raise ClusterManifestError(f"{cluster_id}.sourceModules missing: {missing}")
         for field in ("acceptanceRefs", "visualStateRefs"):
             refs = cluster.get(field)
             if not isinstance(refs, dict) or set(refs) != set(cluster_requirements):
-                raise ClusterManifestError(f"{cluster_id}.{field} must cover every cluster requirement")
+                raise ClusterManifestError(
+                    f"{cluster_id}.{field} must cover every cluster requirement"
+                )
         run_plan = cluster.get("runPlan")
         if not isinstance(run_plan, list) or not run_plan:
             raise ClusterManifestError(f"{cluster_id}.runPlan must be non-empty")
         planned_requirements: set[str] = set()
         for run in run_plan:
-            if not isinstance(run, dict) or run.get("requirementID") not in cluster_requirements:
-                raise ClusterManifestError(f"{cluster_id}.runPlan has an invalid requirementID")
+            if (
+                not isinstance(run, dict)
+                or run.get("requirementID") not in cluster_requirements
+            ):
+                raise ClusterManifestError(
+                    f"{cluster_id}.runPlan has an invalid requirementID"
+                )
             requirement_id = run["requirementID"]
             planned_requirements.add(requirement_id)
             status = run.get("status")
             if status not in STATUSES:
-                raise ClusterManifestError(f"{cluster_id}/{requirement_id} has invalid status")
+                raise ClusterManifestError(
+                    f"{cluster_id}/{requirement_id} has invalid status"
+                )
             dataset_id = run.get("datasetID") or manifest.get("defaultDatasetID")
             if not isinstance(dataset_id, str) or not DATASET_RE.fullmatch(dataset_id):
-                raise ClusterManifestError(f"{cluster_id}/{requirement_id} has invalid datasetID")
+                raise ClusterManifestError(
+                    f"{cluster_id}/{requirement_id} has invalid datasetID"
+                )
             selector = run.get("selector")
             if selector is not None:
                 if not isinstance(selector, str) or not SELECTOR_RE.fullmatch(selector):
-                    raise ClusterManifestError(f"{cluster_id}/{requirement_id} has invalid selector: {selector!r}")
+                    raise ClusterManifestError(
+                        f"{cluster_id}/{requirement_id} has invalid selector: {selector!r}"
+                    )
                 owner = selector_owners.get(selector)
                 if owner is not None:
                     previous_cluster, previous_requirement = owner
@@ -145,10 +175,20 @@ def validate(manifest_path: Path, root: Path) -> dict[str, Any]:
                 else:
                     selector_owners[selector] = (cluster_id, requirement_id)
         if planned_requirements != set(cluster_requirements):
-            raise ClusterManifestError(f"{cluster_id}.runPlan must cover every cluster requirement")
-        cluster_results.append({"id": cluster_id, "requirements": cluster_requirements, "runCount": len(run_plan)})
+            raise ClusterManifestError(
+                f"{cluster_id}.runPlan must cover every cluster requirement"
+            )
+        cluster_results.append(
+            {
+                "id": cluster_id,
+                "requirements": cluster_requirements,
+                "runCount": len(run_plan),
+            }
+        )
     if seen_requirements != REQUIREMENTS:
-        raise ClusterManifestError(f"cluster partition must cover P3-P15; missing={sorted(REQUIREMENTS - seen_requirements)}")
+        raise ClusterManifestError(
+            f"cluster partition must cover P3-P15; missing={sorted(REQUIREMENTS - seen_requirements)}"
+        )
     if {cluster["id"] for cluster in cluster_results} != CLUSTERS:
         raise ClusterManifestError("cluster ids must be the canonical four-cluster set")
     return {
@@ -162,7 +202,9 @@ def validate(manifest_path: Path, root: Path) -> dict[str, Any]:
     }
 
 
-def expand_run_plan(manifest_path: Path, root: Path, cluster_id: str | None) -> list[dict[str, Any]]:
+def expand_run_plan(
+    manifest_path: Path, root: Path, cluster_id: str | None
+) -> list[dict[str, Any]]:
     validate(manifest_path, root)
     manifest = load_json(manifest_path, "cluster manifest")
     result: list[dict[str, Any]] = []
@@ -170,16 +212,24 @@ def expand_run_plan(manifest_path: Path, root: Path, cluster_id: str | None) -> 
         if cluster_id and cluster["id"] != cluster_id:
             continue
         for run in cluster["runPlan"]:
-            if run.get("selector") is None or run.get("status") in {"pending", "blocked"}:
+            if run.get("selector") is None or run.get("status") in {
+                "pending",
+                "blocked",
+            }:
                 continue
-            result.append({
-                "clusterID": cluster["id"],
-                "requirementID": run["requirementID"],
-                "selector": run["selector"],
-                "datasetID": run.get("datasetID") or manifest.get("defaultDatasetID"),
-                "status": run["status"],
-            })
-    if cluster_id and not any(cluster["id"] == cluster_id for cluster in manifest["clusters"]):
+            result.append(
+                {
+                    "clusterID": cluster["id"],
+                    "requirementID": run["requirementID"],
+                    "selector": run["selector"],
+                    "datasetID": run.get("datasetID")
+                    or manifest.get("defaultDatasetID"),
+                    "status": run["status"],
+                }
+            )
+    if cluster_id and not any(
+        cluster["id"] == cluster_id for cluster in manifest["clusters"]
+    ):
         raise ClusterManifestError(f"unknown cluster id: {cluster_id}")
     return result
 
@@ -204,7 +254,12 @@ def main() -> int:
             print(payload, end="")
         return 0
     except (OSError, ClusterManifestError) as error:
-        print(json.dumps({"schema": SCHEMA, "valid": False, "error": str(error)}, ensure_ascii=False))
+        print(
+            json.dumps(
+                {"schema": SCHEMA, "valid": False, "error": str(error)},
+                ensure_ascii=False,
+            )
+        )
         return 1
 
 
