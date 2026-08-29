@@ -352,11 +352,6 @@ def decide_capacity(
             ControlAction.RECOVER_BLOCKERS,
             "solver dispatch is disabled until PR ownership is exact",
         )
-    elif metrics.cleanup_pending:
-        add(
-            ControlAction.THROTTLE_SOLVERS,
-            "solver dispatch is disabled while registry cleanup leases are pending",
-        )
     elif metrics.security_hold_global is not False and (
         metrics.security_hold_issues or metrics.security_hold_lanes
     ):

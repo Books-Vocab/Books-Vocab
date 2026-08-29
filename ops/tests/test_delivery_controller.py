@@ -9,10 +9,10 @@ import pytest
 
 # The test imports the in-repository package after extending sys.path so it can
 # run from the repository's ops test harness.
-# ruff: noqa: E402
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
+from delivery_control.adapters.github_parsing import parse_demand_issue
 from delivery_control.controller.capacity import (
     DEFAULT_CAPACITY_POLICY,
     ControlAction,
@@ -27,7 +27,6 @@ from delivery_control.controller.metrics import (
 )
 from delivery_control.controller.timings import PipelineTimings
 from delivery_control.controller.worktree_boundary import partition_worktrees
-from delivery_control.adapters.github_parsing import parse_demand_issue
 from delivery_control.domain.branch_lifecycle import (
     BranchAsset,
     BranchCleanupAction,
@@ -60,8 +59,8 @@ from delivery_control.domain.states import (
     NextAction,
     derive_lane_decision,
 )
-from delivery_control.services.inspect import DeliveryInventory, LaneInspection
 from delivery_control.services.demand_projection import project_demand_inventory
+from delivery_control.services.inspect import DeliveryInventory, LaneInspection
 
 
 def _metrics(**changes: int) -> PipelineMetrics:
@@ -1916,6 +1915,21 @@ def test_cleanup_pending_pr_counts_as_durable_mapped_supply() -> None:
     decision = decide_capacity(metrics, cadence)
 
     assert ControlAction.CLEANUP_LOCAL in decision.actions
-    assert ControlAction.THROTTLE_SOLVERS in decision.actions
+    assert ControlAction.THROTTLE_SOLVERS not in decision.actions
     assert ControlAction.DISPATCH_SOLVERS not in decision.actions
     assert decision.desired_new_solvers == 0
+
+
+def test_cleanup_pending_is_lane_local_and_does_not_throttle_unrelated_candidates() -> (
+    None
+):
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+
+    decision = decide_capacity(
+        _metrics(cleanup_pending=1, open_prs=1, candidate_issues=1), cadence
+    )
+
+    assert ControlAction.CLEANUP_LOCAL in decision.actions
+    assert ControlAction.THROTTLE_SOLVERS not in decision.actions
+    assert ControlAction.DISPATCH_SOLVERS in decision.actions
+    assert decision.desired_new_solvers == 1
