@@ -16,6 +16,7 @@ import kg.routers.external_api as external_router
 from conftest import TEST_JWT_SECRET, _swap_settings, make_jwt
 from kg.api import app
 from kg.api_models.external_api import ExternalCardReviewRequest
+from kg.external_api_keys import list_api_keys
 from kg.external_api_rate_limit import ExternalRateLimiter, enrich_limiter, read_limiter, write_limiter
 from kg.settings import KGSettings
 
@@ -120,6 +121,57 @@ def test_external_api_key_is_listed_without_secret_and_can_be_revoked(external_a
         headers={"X-KG-API-Key": api_key},
     )
     assert rejected.status_code == 401
+
+
+def test_external_api_key_listing_orders_mixed_offsets_by_utc_and_key_id():
+    user_id = "user-1"
+    key_a = "a" * 32
+    key_b = "b" * 32
+    key_c = "c" * 32
+    key_d = "d" * 32
+    users = {
+        user_id: {"config": {}},
+        "other-user": {"config": {}},
+        "_external_api_keys": {
+            key_d: {
+                "user_id": user_id,
+                "label": "revoked",
+                "created_at": "2026-08-29T00:30:00+00:00",
+                "revoked_at": "2026-08-29T02:00:00+08:00",
+            },
+            key_a: {
+                "user_id": user_id,
+                "label": "tie-a",
+                "created_at": "2026-08-29T09:00:00+08:00",
+                "revoked_at": None,
+            },
+            key_c: {
+                "user_id": user_id,
+                "label": "tie-c",
+                "created_at": "2026-08-29T01:00:00Z",
+                "revoked_at": None,
+            },
+            key_b: {
+                "user_id": user_id,
+                "label": "newest",
+                "created_at": "2026-08-29T00:30:00-04:00",
+                "revoked_at": None,
+            },
+            "e" * 32: {
+                "user_id": "other-user",
+                "label": "filtered",
+                "created_at": "2026-08-30T00:00:00Z",
+                "revoked_at": None,
+            },
+        },
+    }
+
+    records = list_api_keys(user_id, load_users=lambda: users)
+
+    assert [record["keyId"] for record in records] == [key_b, key_c, key_a, key_d]
+    assert [record["label"] for record in records] == ["newest", "tie-c", "tie-a", "revoked"]
+    assert records[-1]["createdAt"] == "2026-08-29T00:30:00+00:00"
+    assert records[-1]["revokedAt"] == "2026-08-29T02:00:00+08:00"
 
 
 def test_external_card_ingest_is_idempotent_and_supports_card_operations(external_api):
