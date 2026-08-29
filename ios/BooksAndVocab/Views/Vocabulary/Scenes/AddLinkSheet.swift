@@ -269,6 +269,7 @@ struct AddLinkSheet: View {
             }
             .font(appSkin.typography.caption)
             .foregroundStyle(appSkin.palette.tertiaryText)
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier(AddLinkCoordinator.detailProvenanceIdentifier(for: entry))
         }
     }
