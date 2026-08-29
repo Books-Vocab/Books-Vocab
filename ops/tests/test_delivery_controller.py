@@ -5,6 +5,8 @@ from dataclasses import asdict, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 # The test imports the in-repository package after extending sys.path so it can
 # run from the repository's ops test harness.
 # ruff: noqa: E402
@@ -42,8 +44,9 @@ from delivery_control.domain.candidate_issues import (
 )
 from delivery_control.domain.demand_issues import DemandIssueInventory
 from delivery_control.domain.isolation import IsolationSummary
-from delivery_control.domain.models import Scope
+from delivery_control.domain.models import CheckStatus, Scope
 from delivery_control.domain.observations import (
+    CheckSnapshot,
     InventoryProblem,
     PhysicalWorktree,
     PullRequestSnapshot,
@@ -141,6 +144,110 @@ def _candidate(number: int) -> CandidateIssue:
             (f"Issue {number} is fixed.",),
         ),
     )
+
+
+def _pull_request(state: str) -> PullRequestSnapshot:
+    return PullRequestSnapshot(
+        number=1,
+        url="https://example.test/pull/1",
+        branch="feat/required",
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+        state=state,
+        draft=False,
+        mergeable=True,
+    )
+
+
+def _required_metrics_inventory(
+    *,
+    pull_requests: tuple[PullRequestSnapshot, ...],
+    required_status: CheckStatus,
+    registry_status: str = "published",
+) -> DeliveryInventory:
+    registry = RegistrySnapshot(
+        lane_id="#required",
+        branch="feat/required",
+        path=Path("/tmp/required"),
+        status=registry_status,
+        scope=Scope.from_paths(modify=("ops/required.py",)),
+        base_sha="a" * 40,
+        claim_generation=1,
+    )
+    required_check = CheckSnapshot(
+        status=required_status,
+        head_sha="b" * 40,
+        observed_at=datetime(2026, 8, 21, tzinfo=UTC),
+        names=() if required_status is CheckStatus.ABSENT else ("required",),
+    )
+    return DeliveryInventory(
+        lanes=(
+            LaneInspection(
+                key="#required",
+                registry=registry,
+                physical=None,
+                snapshot=None,
+                pull_requests=pull_requests,
+                decision=LaneDecision(
+                    LaneState.PR_WAITING_REQUIRED,
+                    NextAction.WAIT_REQUIRED,
+                    "waiting for required",
+                ),
+                required_check=required_check,
+            ),
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    (
+        "registry_status",
+        "pull_request_state",
+        "required_status",
+        "expected_absent",
+        "expected_running",
+        "expected_failed",
+    ),
+    (
+        ("published", None, CheckStatus.ABSENT, 0, 0, 0),
+        ("published", "OPEN", CheckStatus.ABSENT, 1, 0, 0),
+        ("cleanup_pending", "OPEN", CheckStatus.ABSENT, 1, 0, 0),
+        ("published", "CLOSED", CheckStatus.ABSENT, 0, 0, 0),
+        ("published", "OPEN", CheckStatus.SUCCESS, 0, 0, 0),
+        ("published", "OPEN", CheckStatus.FAILURE, 0, 0, 1),
+    ),
+    ids=(
+        "empty-absent",
+        "published-open-absent",
+        "cleanup-pending-open-absent",
+        "closed-absent",
+        "open-success",
+        "open-failure",
+    ),
+)
+def test_required_metrics_preserve_pr_and_check_status_semantics(
+    registry_status: str,
+    pull_request_state: str | None,
+    required_status: CheckStatus,
+    expected_absent: int,
+    expected_running: int,
+    expected_failed: int,
+) -> None:
+    metrics = measure_pipeline(
+        _required_metrics_inventory(
+            pull_requests=(
+                ()
+                if pull_request_state is None
+                else (_pull_request(pull_request_state),)
+            ),
+            required_status=required_status,
+            registry_status=registry_status,
+        )
+    )
+
+    assert metrics.required_absent == expected_absent
+    assert metrics.required_running == expected_running
+    assert metrics.required_failed == expected_failed
 
 
 def test_merge_cadence_measures_hourly_rate_and_nearest_rank_p95() -> None:
