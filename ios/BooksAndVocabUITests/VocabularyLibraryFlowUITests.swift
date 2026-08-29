@@ -314,6 +314,134 @@ final class VocabularyLibraryFlowUITests: UITestCase {
     }
 
     @MainActor
+    func testAddLinkLookupEvidenceMatrix() throws {
+        let app = launchIsolatedApp(
+            fixtures: [.vocabulary("vocabLinkedCards")],
+            extraEnvironment: [
+                "KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"
+            ],
+            perfLog: "vocabulary-add-link-lookup"
+        )
+        captureStep("add-link-lookup-launch", app: app)
+
+        let notebooks = AppPage(app: app).goToNotebooks()
+        guard notebooks.waitForNotebookCard(id: Self.addLinkNotebookID, timeout: 10) else {
+            XCTFail("AddLink lookup fixture 必須種出 notebook " + Self.addLinkNotebookID)
+            return
+        }
+        notebooks.notebookCard(id: Self.addLinkNotebookID).tapWhenReady()
+        XCTAssertTrue(app.waitForNavigationToSettle())
+
+        let page = VocabularySearchPage(app: app)
+        guard page.searchField.waitUntilExists(timeout: 10) else {
+            XCTFail("AddLink lookup flow 必須渲染 vocabulary search field")
+            return
+        }
+        page.search("serendipity")
+        guard page.waitForRowMaterialized(word: "serendipity", timeout: 10) else {
+            XCTFail("AddLink lookup fixture 必須 materialize source row serendipity")
+            return
+        }
+        page.row(word: "serendipity").tapWhenReady()
+        guard page.detailHeroWord.waitUntilExists(timeout: 10) else {
+            XCTFail("AddLink lookup source detail 必須存在")
+            return
+        }
+
+        let addLinkTrigger = app.buttons.matching(
+            NSPredicate(format: "label == %@", "新增知識連結")
+        )
+        guard let trigger = addLinkTrigger.exactlyOneElement(
+            timeout: 10,
+            named: "AddLink lookup detail trigger"
+        ) else {
+            return
+        }
+        trigger.tapWhenReady()
+
+        let lookupState = app.descendants(matching: .any)
+            .matching(identifier: "addLink.lookup.state")
+        guard lookupState.exactlyOneElement(
+            timeout: 5,
+            named: "AddLink lookup state marker"
+        ) != nil else {
+            XCTFail("AddLink lookup 必須暴露唯一 state marker")
+            return
+        }
+        XCTAssertTrue(lookupState.firstMatch.waitUntilValueEquals("idle", timeout: 5))
+        captureStep("add-link-lookup-idle", app: app)
+
+        let searchField = app.textFields["addLink.searchField"]
+        searchField.tapWhenReady()
+        searchField.typeText("fort")
+        XCTAssertTrue(lookupState.firstMatch.waitUntilValueEquals("results-2", timeout: 5))
+
+        let fortuitous = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", "fortuitous")
+        ).firstMatch
+        guard fortuitous.waitUntilExists(timeout: 5) else {
+            XCTFail("AddLink lookup 必須顯示 fortuitous candidate")
+            return
+        }
+        let evidence = fortuitous.value as? String ?? ""
+        XCTAssertTrue(evidence.contains("sense=Happening by chance"))
+        XCTAssertTrue(evidence.contains("example=The fortuitous meeting"))
+        XCTAssertTrue(evidence.contains("source=The Weight of Words"))
+        captureStep("add-link-lookup-results", app: app)
+
+        let cancel = app.buttons.matching(identifier: "addLink.cancel")
+        guard let cancelButton = cancel.exactlyOneElement(
+            timeout: 5,
+            named: "AddLink lookup cancel after results"
+        ) else {
+            return
+        }
+        cancelButton.tapWhenReady()
+        XCTAssertTrue(searchField.waitUntilGone(timeout: 5))
+        guard let reopenedTrigger = addLinkTrigger.exactlyOneElement(
+            timeout: 5,
+            named: "AddLink lookup reopened detail trigger"
+        ) else {
+            return
+        }
+        reopenedTrigger.tapWhenReady()
+        let emptySearchField = app.textFields["addLink.searchField"]
+        XCTAssertTrue(emptySearchField.waitUntilExists(timeout: 5))
+        emptySearchField.tapWhenReady()
+        emptySearchField.typeText("zzqxv")
+        XCTAssertTrue(lookupState.firstMatch.waitUntilValueEquals("empty", timeout: 5))
+        guard let createAffordance = app.buttons
+            .matching(identifier: "addLink.create")
+            .exactlyOneElement(timeout: 5, named: "AddLink lookup create affordance") else {
+            return
+        }
+        createAffordance.tapWhenReady()
+
+        let progress = app.descendants(matching: .any)
+            .matching(identifier: "addLink.creation.progress")
+            .firstMatch
+        XCTAssertTrue(progress.waitUntilValueEquals("attempt-1", timeout: 5))
+        XCTAssertTrue(
+            lookupState.firstMatch.waitUntilValueContains("error-attempt-1", timeout: 30)
+        )
+        captureStep("add-link-lookup-error", app: app)
+
+        let retry = app.buttons["addLink.creation.retry"]
+        guard retry.waitUntilExists(timeout: 5) else {
+            XCTFail("AddLink lookup failure 必須保留 retry")
+            return
+        }
+        retry.tapWhenReady()
+        XCTAssertTrue(progress.waitUntilValueEquals("attempt-2", timeout: 5))
+        XCTAssertTrue(
+            lookupState.firstMatch.waitUntilValueContains("retry-attempt-2", timeout: 2)
+                || lookupState.firstMatch.waitUntilValueContains("error-attempt-2", timeout: 30),
+            "retry 必須先暴露 retry 或最終 error state"
+        )
+        captureStep("add-link-lookup-retry", app: app)
+    }
+
+    @MainActor
     func testAddLinkCreationFailureRemainsRetryable() throws {
         let app = launchIsolatedApp(
             fixtures: [.vocabulary("vocabLinkedCards")],

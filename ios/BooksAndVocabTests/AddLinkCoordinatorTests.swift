@@ -67,6 +67,58 @@ struct AddLinkCoordinatorTests {
         #expect(result.map(\.word) == ["lucid"])
     }
 
+    @Test("AddLink lookup exposes deterministic idle, result, empty, loading, error, and retry states")
+    func lookupStateMatrix() {
+        #expect(
+            AddLinkCoordinator.lookupState(
+                query: "   ", candidateCount: 0, creationPhase: .idle, creationAttempt: 0
+            ) == .idle
+        )
+        #expect(
+            AddLinkCoordinator.lookupState(
+                query: "fort", candidateCount: 2, creationPhase: .idle, creationAttempt: 0
+            ) == .results(count: 2)
+        )
+        #expect(
+            AddLinkCoordinator.lookupState(
+                query: "zzqxv", candidateCount: 0, creationPhase: .idle, creationAttempt: 0
+            ) == .empty
+        )
+        #expect(
+            AddLinkCoordinator.lookupState(
+                query: "zzqxv", candidateCount: 0, creationPhase: .running, creationAttempt: 1
+            ) == .loading(attempt: 1)
+        )
+        #expect(
+            AddLinkCoordinator.lookupState(
+                query: "zzqxv", candidateCount: 0, creationPhase: .failed, creationAttempt: 1
+            ) == .error(attempt: 1)
+        )
+        #expect(
+            AddLinkCoordinator.lookupState(
+                query: "zzqxv", candidateCount: 0, creationPhase: .running, creationAttempt: 2
+            ) == .retry(attempt: 2)
+        )
+    }
+
+    @Test("AddLink lookup evidence retains sense, example, and source provenance")
+    func lookupEvidence() {
+        let entry = Self.entry("fortuitous", cardID: "target", notebook: "nb")
+        entry.translation = "偶然發生而幸運的"
+        entry.explanation = "Happening by chance, usually with a favorable result."
+        entry.reviewExamples = ["The fortuitous meeting changed the project’s direction."]
+        entry.chapterTitle = "Linked Cards"
+
+        let evidence = AddLinkCoordinator.lookupEvidence(for: entry)
+
+        #expect(evidence.contains("word=fortuitous"))
+        #expect(evidence.contains("translation=偶然發生而幸運的"))
+        #expect(evidence.contains("sense=Happening by chance, usually with a favorable result."))
+        #expect(evidence.contains("example=The fortuitous meeting changed the project’s direction."))
+        #expect(evidence.contains("source=Book"))
+        #expect(evidence.contains("chapter=Linked Cards"))
+    }
+
     @Test("manual link rejects an out-of-scope target before creating a link")
     @MainActor
     func manualLinkRejectsOutOfScopeTarget() async throws {
