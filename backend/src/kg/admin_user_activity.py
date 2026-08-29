@@ -46,15 +46,17 @@ def _translate_events(user_id: str, since_iso: str) -> list[dict[str, Any]]:
         ).fetchall()
     out: list[dict[str, Any]] = []
     for row in rows:
-        out.append({
-            "type": "translate",
-            "id": row[0],
-            "operation": row[1],
-            "word": row[2],
-            "context": row[3],
-            "latency_ms": row[4],
-            "created_at": row[5],
-        })
+        out.append(
+            {
+                "type": "translate",
+                "id": row[0],
+                "operation": row[1],
+                "word": row[2],
+                "context": row[3],
+                "latency_ms": row[4],
+                "created_at": row[5],
+            }
+        )
     return out
 
 
@@ -87,16 +89,18 @@ def _pipeline_events(user_id: str, since_iso: str) -> list[dict[str, Any]]:
                     ended,
                 )
                 duration_s = None
-        out.append({
-            "type": "pipeline",
-            "run_id": run_id,
-            "notebook_id": nb,
-            "trigger": trigger,
-            "status": status,
-            "duration_s": duration_s,
-            "ended_at": ended,
-            "created_at": started,
-        })
+        out.append(
+            {
+                "type": "pipeline",
+                "run_id": run_id,
+                "notebook_id": nb,
+                "trigger": trigger,
+                "status": status,
+                "duration_s": duration_s,
+                "ended_at": ended,
+                "created_at": started,
+            }
+        )
     return out
 
 
@@ -114,19 +118,21 @@ def _judge_events(user_id: str, since_iso: str) -> list[dict[str, Any]]:
         ).fetchall()
     out: list[dict[str, Any]] = []
     for row in rows:
-        out.append({
-            "type": "judge",
-            "id": row[0],
-            "notebook_id": row[1],
-            "from_id": row[2],
-            "to_id": row[3],
-            "similarity": row[4],
-            "verdict": row[5],
-            "confidence": row[6],
-            "accepted": bool(row[7]),
-            "source": row[8],
-            "created_at": row[9],
-        })
+        out.append(
+            {
+                "type": "judge",
+                "id": row[0],
+                "notebook_id": row[1],
+                "from_id": row[2],
+                "to_id": row[3],
+                "similarity": row[4],
+                "verdict": row[5],
+                "confidence": row[6],
+                "accepted": jl._accepted_from_storage(row[7]),
+                "source": row[8],
+                "created_at": row[9],
+            }
+        )
     return out
 
 

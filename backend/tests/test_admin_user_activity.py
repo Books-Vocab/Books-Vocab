@@ -1,4 +1,5 @@
 """Tests for admin_user_activity — unified recent-activity timeline."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -42,8 +43,7 @@ def _record_translate(user_id: str, *, word: str, when: datetime) -> None:
             "INSERT INTO translate_log (user_id, operation, word, context, context_hash,"
             " source_lang, target_lang, response_raw, latency_ms, created_at)"
             " VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (user_id, "translate_quick", word, "", "h_" + word, "en", "zh-Hant",
-             '{"t":"x"}', 5, when.isoformat()),
+            (user_id, "translate_quick", word, "", "h_" + word, "en", "zh-Hant", '{"t":"x"}', 5, when.isoformat()),
         )
         conn.commit()
 
@@ -56,8 +56,7 @@ def _record_pipeline(user_id: str, *, run_id: str, when: datetime, status: str =
         conn.execute(
             "INSERT INTO pipeline_runs (run_id, user_id, notebook_id, trigger,"
             " started_at, ended_at, status, steps) VALUES (?,?,?,?,?,?,?, '[]')",
-            (run_id, user_id, "default", "manual", when.isoformat(),
-             (when + timedelta(seconds=2)).isoformat(), status),
+            (run_id, user_id, "default", "manual", when.isoformat(), (when + timedelta(seconds=2)).isoformat(), status),
         )
         conn.commit()
 
@@ -71,8 +70,7 @@ def _record_judge(user_id: str, *, when: datetime, accepted: bool = True) -> Non
             "INSERT INTO judge_log (user_id, notebook_id, from_id, to_id, similarity,"
             " verdict, confidence, accepted, reject_reason, reason, source, created_at)"
             " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-            (user_id, "default", "c1", "c2", 0.8, "accept", 0.9,
-             int(accepted), None, "", "auto", when.isoformat()),
+            (user_id, "default", "c1", "c2", 0.8, "accept", 0.9, int(accepted), None, "", "auto", when.isoformat()),
         )
         conn.commit()
 
@@ -80,6 +78,7 @@ def _record_judge(user_id: str, *, when: datetime, accepted: bool = True) -> Non
 # ---------------------------------------------------------------------------
 # get_user_activity unit tests
 # ---------------------------------------------------------------------------
+
 
 def test_empty_returns_empty_events(activity_env):
     from kg.admin_user_activity import get_user_activity
@@ -171,6 +170,27 @@ def test_judge_event_shape(activity_env):
     assert ev["type"] == "judge"
     assert ev["accepted"] is False
     assert "created_at" in ev
+
+
+@pytest.mark.parametrize(
+    ("stored_value", "expected"),
+    [(0, False), (1, True), ("false", False), ("true", True)],
+)
+def test_judge_event_normalizes_legacy_text_booleans(activity_env, stored_value, expected):
+    """Admin activity must not treat legacy SQLite text ``"false"`` as truthy."""
+    import kg.judge_log as jl
+    from kg.admin_user_activity import get_user_activity
+
+    now = datetime.now(UTC)
+    _record_judge("u1", when=now - timedelta(minutes=1), accepted=True)
+    with jl._lock:
+        conn = jl._get_conn()
+        conn.execute("UPDATE judge_log SET accepted = ? WHERE user_id = ?", (stored_value, "u1"))
+        conn.commit()
+
+    result = get_user_activity("u1", hours=24)
+
+    assert result["events"][0]["accepted"] is expected
 
 
 def test_hours_clamp_to_max(activity_env):
