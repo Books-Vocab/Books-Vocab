@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 from pydantic import ValidationError
 
@@ -39,6 +41,7 @@ class TestNonEmptyStringContract:
         # None means "don't change" — only provided strings must be non-empty.
         r = NotebookUpdateRequest(name=None)
         assert r.name is None
+
 
 # --- ManualLinkRequest: empty string IDs ---
 
@@ -133,3 +136,12 @@ class TestReviewStateEntryValidation:
         e = self._valid_entry()
         assert e.review_count == 0
 
+    @pytest.mark.parametrize("value", [math.inf, math.nan])
+    def test_non_finite_interval_rejected(self, value):
+        with pytest.raises(ValidationError):
+            self._valid_entry(review_interval_hours=value)
+
+    @pytest.mark.parametrize("value", [0.0, 12.5])
+    def test_finite_nonnegative_interval_accepted(self, value):
+        entry = self._valid_entry(review_interval_hours=value)
+        assert entry.review_interval_hours == value

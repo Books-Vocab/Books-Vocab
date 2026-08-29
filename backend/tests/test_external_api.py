@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import collections
 import json
+import math
 import time
 import uuid
 from types import SimpleNamespace
@@ -9,10 +10,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 import kg.routers.external_api as external_router
 from conftest import TEST_JWT_SECRET, _swap_settings, make_jwt
 from kg.api import app
+from kg.api_models.external_api import ExternalCardReviewRequest
 from kg.external_api_rate_limit import ExternalRateLimiter, enrich_limiter, read_limiter, write_limiter
 from kg.settings import KGSettings
 
@@ -166,6 +169,70 @@ def test_external_card_ingest_is_idempotent_and_supports_card_operations(externa
     assert deleted.json() == {"cardId": card_id, "deleted": True}
 
 
+def _review_payload(interval):
+    return {
+        "reviewIntervalHours": interval,
+        "nextReviewAt": "2026-01-02T00:00:00Z",
+        "lastReviewedAt": "2026-01-01T00:00:00Z",
+        "reviewCount": 1,
+        "lapseCount": 0,
+        "reviewStreak": 1,
+        "lastReviewFeedback": 1,
+    }
+
+
+@pytest.mark.parametrize("value", [math.inf, math.nan])
+def test_external_card_review_request_rejects_non_finite_interval(value):
+    with pytest.raises(ValidationError):
+        ExternalCardReviewRequest(**_review_payload(value))
+
+
+@pytest.mark.parametrize("raw_interval", ["Infinity", "NaN"])
+def test_external_card_review_route_rejects_non_finite_interval_without_write(external_api, raw_interval):
+    api_key = _create_key(external_api)
+    headers = {"X-KG-API-Key": api_key}
+    created = external_api.client.post(
+        "/api/v1/cards",
+        json={"content": "finite review", "meaning": "有限複習"},
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    card_id = created.json()["card"]["id"]
+
+    payload = json.dumps(_review_payload(0)).replace("0", raw_interval, 1)
+    response = external_api.client.post(
+        f"/api/v1/cards/{card_id}/review",
+        content=payload,
+        headers={**headers, "Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 422, response.text
+    fetched = external_api.client.get(f"/api/v1/cards/{card_id}", headers=headers)
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.json()["reviewIntervalHours"] == 12.0
+
+
+def test_external_card_review_route_preserves_finite_interval(external_api):
+    api_key = _create_key(external_api)
+    headers = {"X-KG-API-Key": api_key}
+    created = external_api.client.post(
+        "/api/v1/cards",
+        json={"content": "finite review accepted", "meaning": "有限複習通過"},
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    card_id = created.json()["card"]["id"]
+
+    response = external_api.client.post(
+        f"/api/v1/cards/{card_id}/review",
+        json=_review_payload(24.5),
+        headers=headers,
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["reviewIntervalHours"] == 24.5
+
+
 def test_external_rate_limit_returns_standard_headers(external_api, monkeypatch):
     api_key = _create_key(external_api)
     limiter = ExternalRateLimiter(limit=1, window_seconds=60)
@@ -206,9 +273,7 @@ def test_external_api_is_not_double_limited_by_generic_ip_limiter(external_api):
 
     client_ip = "198.51.100.77"
     now = time.monotonic()
-    api_limiter._requests[client_ip] = collections.deque(
-        [now] * api_limiter.max_requests
-    )
+    api_limiter._requests[client_ip] = collections.deque([now] * api_limiter.max_requests)
 
     response = external_api.client.get(
         "/api/v1/cards",
@@ -218,9 +283,7 @@ def test_external_api_is_not_double_limited_by_generic_ip_limiter(external_api):
     assert response.status_code == 200, response.text
 
 
-def test_external_card_delete_treats_embedding_eviction_as_best_effort(
-    external_api, monkeypatch
-):
+def test_external_card_delete_treats_embedding_eviction_as_best_effort(external_api, monkeypatch):
     api_key = _create_key(external_api)
     headers = {"X-KG-API-Key": api_key}
     created = external_api.client.post(

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import math
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from .cards import CardResponse
 from .common import VocabSource
@@ -84,13 +85,21 @@ class ExternalCardDeleteResponse(BaseModel):
 
 
 class ExternalCardReviewRequest(BaseModel):
-    reviewIntervalHours: float = Field(ge=0)
+    reviewIntervalHours: float = Field(ge=0, allow_inf_nan=False)
     nextReviewAt: str
     lastReviewedAt: str
     reviewCount: int = Field(ge=0)
     lapseCount: int = Field(ge=0)
     reviewStreak: int = Field(ge=0)
     lastReviewFeedback: int = Field(ge=-1, le=1)
+
+    @field_validator("reviewIntervalHours", mode="before")
+    @classmethod
+    def _replace_non_finite_interval_for_validation(cls, value: object) -> object:
+        # Keep the validation error JSON-safe so the API can return its normal 422.
+        if isinstance(value, float) and not math.isfinite(value):
+            return -1.0
+        return value
 
 
 class ExternalEnrichRequest(BaseModel):
