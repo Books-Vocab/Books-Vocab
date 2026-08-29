@@ -46,6 +46,8 @@ LANE_USAGE_BUDGET_SECONDS="${KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS:-30}"
 [[ "$LANE_USAGE_BUDGET_SECONDS" =~ ^[0-9]+$ ]] || LANE_USAGE_BUDGET_SECONDS=30
 LANE_USAGE_RC=0
 LANE_USAGE_VERDICT="unavailable"
+LANE_USAGE_EXCLUSIONS_JSON='[]'
+SUPERVISION_WORKTREE_ARGS=()
 
 # shellcheck source=lib/ios_cache_evict.sh
 CACHE_LIB="${KG_DISK_GUARD_CACHE_LIB:-$SCRIPT_DIR/lib/ios_cache_evict.sh}"
@@ -303,16 +305,23 @@ trim_logs() {
 }
 
 write_lane_usage() {
-  local rc=0 observed="unavailable"
+  local rc=0 observed="unavailable" path
+  local -a command_args=(
+    --workspace "$WORKSPACE"
+    --state "$REGISTRY_STATE"
+    --output "$LANE_USAGE_STATE"
+    --time-budget-seconds "$LANE_USAGE_BUDGET_SECONDS"
+  )
+  for path in "${SUPERVISION_WORKTREE_ARGS[@]-}"; do
+    [[ -n "$path" ]] || continue
+    command_args+=(--supervision-worktree "$path")
+  done
   if [[ -x "$UV_BIN" ]]; then
     "$UV_BIN" run --no-project --python 3.13 "$SCRIPT_DIR/disk_usage.py" \
-      --workspace "$WORKSPACE" --state "$REGISTRY_STATE" --output "$LANE_USAGE_STATE" \
-      --time-budget-seconds "$LANE_USAGE_BUDGET_SECONDS" \
+      "${command_args[@]}" \
       >/dev/null 2>&1 || rc=$?
   else
-    "$SCRIPT_DIR/disk_usage.py" \
-      --workspace "$WORKSPACE" --state "$REGISTRY_STATE" --output "$LANE_USAGE_STATE" \
-      --time-budget-seconds "$LANE_USAGE_BUDGET_SECONDS" \
+    "$SCRIPT_DIR/disk_usage.py" "${command_args[@]}" \
       >/dev/null 2>&1 || rc=$?
   fi
   if (( rc != 0 )); then
@@ -326,6 +335,14 @@ write_lane_usage() {
     esac
   fi
   (( rc != 0 )) && observed="block"
+  if [[ -f "$LANE_USAGE_STATE" ]] && command -v jq >/dev/null 2>&1; then
+    LANE_USAGE_EXCLUSIONS_JSON="$(
+      jq -c '.exclusions.supervision_worktree_paths // []' "$LANE_USAGE_STATE" \
+        2>/dev/null || printf '[]'
+    )"
+  else
+    LANE_USAGE_EXCLUSIONS_JSON='[]'
+  fi
   LANE_USAGE_RC="$rc"
   LANE_USAGE_VERDICT="$observed"
 }
@@ -430,14 +447,14 @@ evict_old_app_derived_data() {
 }
 
 write_state() {
-  local free="$1" prev="$2" growth="$3" active="$4" cache="$5" docker_cache="$6" docker_running="$7" worktree_cache="$8" worktree_keys="$9" worktree_overflow="${10}" cache_overflow="${11}" budget_kb="${12}" budget_overflow="${13}" headroom_kb="${14}" writer_limit_kb="${15}" headroom_overflow="${16}" repair_remaining="${17}" repair_status="${18}" verdict="${19}" reason="${20}" action="${21}" lane_usage_verdict="${22}" lane_usage_rc="${23}" lane_usage_budget_seconds="${24}"
+  local free="$1" prev="$2" growth="$3" active="$4" cache="$5" docker_cache="$6" docker_running="$7" worktree_cache="$8" worktree_keys="$9" worktree_overflow="${10}" cache_overflow="${11}" budget_kb="${12}" budget_overflow="${13}" headroom_kb="${14}" writer_limit_kb="${15}" headroom_overflow="${16}" repair_remaining="${17}" repair_status="${18}" verdict="${19}" reason="${20}" action="${21}" lane_usage_verdict="${22}" lane_usage_rc="${23}" lane_usage_budget_seconds="${24}" lane_usage_exclusions_json="${25}"
   local dir tmp
   dir="$(dirname "$STATE_FILE")"; mkdir -p "$dir" 2>/dev/null || return 1
   tmp="$STATE_FILE.$$.$RANDOM.tmp"
-  printf '{"schema":"kg.disk.guard.v1","host":"%s","free_bytes":%s,"previous_free_bytes":%s,"growth_bytes":%s,"active_build":%s,"cache_kb":%s,"cache_budget_kb":%s,"cache_budget_overflow_kb":%s,"cache_headroom_kb":%s,"cache_writer_limit_kb":%s,"cache_headroom_overflow_kb":%s,"cache_repair_remaining_kb":%s,"cache_repair_status":"%s","docker_cache_kb":%s,"docker_active":%s,"worktree_cache_kb":%s,"worktree_cache_keys":%s,"worktree_cache_overflow_keys":%s,"cache_overflow_keys":%s,"verdict":"%s","reason":"%s","action":"%s","lane_usage_verdict":"%s","lane_usage_rc":%s,"lane_usage_budget_seconds":%s,"at":"%s"}\n' \
+  printf '{"schema":"kg.disk.guard.v1","host":"%s","free_bytes":%s,"previous_free_bytes":%s,"growth_bytes":%s,"active_build":%s,"cache_kb":%s,"cache_budget_kb":%s,"cache_budget_overflow_kb":%s,"cache_headroom_kb":%s,"cache_writer_limit_kb":%s,"cache_headroom_overflow_kb":%s,"cache_repair_remaining_kb":%s,"cache_repair_status":"%s","docker_cache_kb":%s,"docker_active":%s,"worktree_cache_kb":%s,"worktree_cache_keys":%s,"worktree_cache_overflow_keys":%s,"cache_overflow_keys":%s,"verdict":"%s","reason":"%s","action":"%s","lane_usage_verdict":"%s","lane_usage_rc":%s,"lane_usage_budget_seconds":%s,"lane_usage_exclusions":%s,"at":"%s"}\n' \
     "$(hostname -s 2>/dev/null || echo unknown)" "$(number "$free")" "$(number "$prev")" "$(number "$growth")" \
     "$(number "$active")" "$(number "$cache")" "$(number "$budget_kb")" "$(number "$budget_overflow")" "$(number "$headroom_kb")" "$(number "$writer_limit_kb")" "$(number "$headroom_overflow")" "$(number "$repair_remaining")" "$repair_status" "$(number "$docker_cache")" "$(number "$docker_running")" \
-    "$(number "$worktree_cache")" "$(number "$worktree_keys")" "$(number "$worktree_overflow")" "$(number "$cache_overflow")" "$verdict" "$reason" "$action" "$lane_usage_verdict" "$(number "$lane_usage_rc")" "$(number "$lane_usage_budget_seconds")" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$tmp" || { rm -f "$tmp"; return 1; }
+    "$(number "$worktree_cache")" "$(number "$worktree_keys")" "$(number "$worktree_overflow")" "$(number "$cache_overflow")" "$verdict" "$reason" "$action" "$lane_usage_verdict" "$(number "$lane_usage_rc")" "$(number "$lane_usage_budget_seconds")" "$lane_usage_exclusions_json" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$tmp" || { rm -f "$tmp"; return 1; }
   mv -f "$tmp" "$STATE_FILE"
 }
 
@@ -568,14 +585,15 @@ main() {
   # This is observation only: unknown or active lanes are never deleted by the
   # disk guard; their evidence is consumed by the supported lifecycle tools.
   write_lane_usage
-  write_state "$free" "$prev" "$growth" "$active" "$cache" "$docker_cache" "$docker_running" "$worktree_cache" "$worktree_keys" "$worktree_overflow" "$cache_overflow" "$cache_budget_kb" "$cache_budget_overflow" "$cache_headroom_kb" "$cache_writer_limit_kb" "$cache_headroom_overflow" "$cache_repair_remaining" "$cache_repair_status" "$verdict" "$reason" "$action" "$LANE_USAGE_VERDICT" "$LANE_USAGE_RC" "$LANE_USAGE_BUDGET_SECONDS"
+  write_state "$free" "$prev" "$growth" "$active" "$cache" "$docker_cache" "$docker_running" "$worktree_cache" "$worktree_keys" "$worktree_overflow" "$cache_overflow" "$cache_budget_kb" "$cache_budget_overflow" "$cache_headroom_kb" "$cache_writer_limit_kb" "$cache_headroom_overflow" "$cache_repair_remaining" "$cache_repair_status" "$verdict" "$reason" "$action" "$LANE_USAGE_VERDICT" "$LANE_USAGE_RC" "$LANE_USAGE_BUDGET_SECONDS" "$LANE_USAGE_EXCLUSIONS_JSON"
   logger -t kg-disk-guard "verdict=$verdict freeGiB=$free_gib growthGiB=$growth_gib activeBuild=$active dockerCacheGiB=$docker_gib dockerActive=$docker_running cacheKB=$cache cacheBudgetKB=$cache_budget_kb cacheBudgetOverflowKB=$cache_budget_overflow cacheHeadroomKB=$cache_headroom_kb cacheWriterLimitKB=$cache_writer_limit_kb cacheHeadroomOverflowKB=$cache_headroom_overflow cacheRepairStatus=$cache_repair_status cacheRepairRemainingKB=$cache_repair_remaining worktreeCacheKB=$worktree_cache worktreeKeys=$worktree_keys worktreeOverflowKeys=$worktree_overflow cacheOverflowKeys=$cache_overflow action=$action" 2>/dev/null || true
 }
 
-case "${1:-}" in
-  -h|--help)
-    cat <<'USAGE'
-Usage: ops/kg_disk_guard.sh
+while (($#)); do
+  case "$1" in
+    -h|--help)
+      cat <<'USAGE'
+Usage: ops/kg_disk_guard.sh [--supervision-worktree PATH ...]
 
 Run one bounded disk-guard tick. The guard records lane attribution, defers
 cleanup while an iOS consumer is active, and only evicts rebuildable caches
@@ -584,9 +602,24 @@ under its configured budgets. Unknown or active worktrees are never deleted.
 Environment:
   KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS  attribution scan budget (default: 30)
   KG_DISK_GUARD_DRY_RUN=1                  report intended cleanup only
+  --supervision-worktree PATH               exclude one exact caller-supplied
+                                            supervision checkout from lane quota
 USAGE
-    exit 0
-    ;;
-esac
+      exit 0
+      ;;
+    --supervision-worktree)
+      if (($# < 2)) || [[ -z "$2" ]]; then
+        echo "--supervision-worktree requires an exact path" >&2
+        exit 64
+      fi
+      SUPERVISION_WORKTREE_ARGS+=("$2")
+      shift 2
+      ;;
+    *)
+      echo "unknown option: $1" >&2
+      exit 64
+      ;;
+  esac
+done
 
-main "$@"
+main
