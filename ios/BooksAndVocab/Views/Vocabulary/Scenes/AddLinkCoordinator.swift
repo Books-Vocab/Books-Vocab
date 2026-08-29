@@ -46,6 +46,74 @@ enum AddLinkLookupState: Equatable {
     }
 }
 
+enum AddLinkDetailMaterializationState: Equatable {
+    case ready(senseCount: Int)
+    case missingExample(senseCount: Int)
+    case providerDecodeError
+    case recovered(senseCount: Int)
+
+    var accessibilityValue: String {
+        switch self {
+        case .ready(let senseCount):
+            return "ready-senses-\(senseCount)"
+        case .missingExample(let senseCount):
+            return "missing-example-senses-\(senseCount)"
+        case .providerDecodeError:
+            return "provider-decode-error-retryable"
+        case .recovered(let senseCount):
+            return "recovered-senses-\(senseCount)"
+        }
+    }
+}
+
+struct AddLinkDetailProjection: Equatable {
+    struct Sense: Equatable {
+        let id: String
+        let partOfSpeech: String?
+        let definition: String
+        let translation: String?
+        let examples: [String]
+    }
+
+    struct Provenance: Equatable {
+        let provider: String?
+        let source: String
+        let chapter: String?
+        let context: String
+    }
+
+    let word: String
+    let translation: String
+    let senses: [Sense]
+    let forms: [String]
+    let provenance: Provenance
+    let state: AddLinkDetailMaterializationState
+
+    var hasMissingExample: Bool {
+        senses.contains { $0.examples.isEmpty }
+    }
+}
+
+private struct AddLinkDetailPayload: Decodable {
+    let provider: String?
+    let senses: [AddLinkDetailPayloadSense]
+    let forms: [String]?
+}
+
+private struct AddLinkDetailPayloadSense: Decodable {
+    let id: String?
+    let partOfSpeech: String?
+    let definition: String
+    let translation: String?
+    let examples: [String]?
+}
+
+private enum AddLinkDetailPayloadDecode {
+    case plain
+    case decoded(AddLinkDetailPayload)
+    case malformed
+}
+
 @Observable @MainActor
 final class AddLinkCoordinator {
     private(set) var actionPhase: AddLinkActionPhase = .idle
@@ -105,20 +173,236 @@ final class AddLinkCoordinator {
         }
     }
 
-    nonisolated static func lookupEvidence(for entry: VocabularyEntry) -> String {
+    nonisolated static func lookupEvidence(
+        for entry: VocabularyEntry,
+        recoveringProviderError: Bool = false
+    ) -> String {
         func normalized(_ value: String?) -> String {
             guard let value else { return "" }
             return value.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
         }
 
-        return [
+        let detail = dictionaryDetailProjection(
+            for: entry,
+            recoveringProviderError: recoveringProviderError
+        )
+        let primarySense = detail.senses.first?.definition
+        let primaryExample = detail.senses.first?.examples.first
+        var evidence = [
             "word=\(normalized(entry.word))",
             "translation=\(normalized(entry.translation))",
-            "sense=\(normalized(entry.explanation))",
-            "example=\(normalized(entry.primaryReviewExample))",
+            "sense=\(normalized(primarySense))",
+            "example=\(normalized(primaryExample))",
             "source=\(normalized(entry.bookTitle))",
-            "chapter=\(normalized(entry.chapterTitle))"
-        ].joined(separator: " | ")
+            "chapter=\(normalized(entry.chapterTitle))",
+            "detail.state=\(detail.state.accessibilityValue)",
+            "detail.senses=\(detail.senses.count)"
+        ]
+
+        for (senseIndex, sense) in detail.senses.enumerated() {
+            evidence.append("detail.sense[\(senseIndex + 1)]=\(normalized(sense.definition))")
+            evidence.append(
+                "detail.sense[\(senseIndex + 1)].partOfSpeech=\(normalized(sense.partOfSpeech))"
+            )
+            evidence.append(
+                "detail.sense[\(senseIndex + 1)].translation=\(normalized(sense.translation))"
+            )
+            for (exampleIndex, example) in sense.examples.enumerated() {
+                evidence.append(
+                    "detail.example[\(senseIndex + 1),\(exampleIndex + 1)]=\(normalized(example))"
+                )
+            }
+        }
+
+        evidence.append("detail.missing-example=\(detail.hasMissingExample ? "true" : "false")")
+        evidence.append("detail.forms=\(detail.forms.map(normalized).joined(separator: ", "))")
+        evidence.append("detail.provenance.provider=\(normalized(detail.provenance.provider))")
+        evidence.append("detail.provenance.source=\(normalized(detail.provenance.source))")
+        evidence.append("detail.provenance.chapter=\(normalized(detail.provenance.chapter))")
+        evidence.append("detail.provenance.context=\(normalized(detail.provenance.context))")
+        if case .providerDecodeError = detail.state {
+            evidence.append("detail.recovery=retryable")
+        }
+        return evidence.joined(separator: " | ")
+    }
+
+    nonisolated static func dictionaryDetailProjection(
+        for entry: VocabularyEntry,
+        recoveringProviderError: Bool = false
+    ) -> AddLinkDetailProjection {
+        switch decodeDetailPayload(entry.explanation) {
+        case .plain:
+            return legacyDetailProjection(for: entry, state: nil)
+        case .decoded(let payload):
+            return payloadDetailProjection(payload, for: entry)
+        case .malformed:
+            if recoveringProviderError {
+                return legacyDetailProjection(
+                    for: entry,
+                    state: .recovered(senseCount: 1),
+                    useExplanation: false
+                )
+            }
+            return AddLinkDetailProjection(
+                word: entry.word,
+                translation: entry.translation,
+                senses: [],
+                forms: formValues(for: entry, payloadForms: nil),
+                provenance: provenance(for: entry, provider: nil),
+                state: .providerDecodeError
+            )
+        }
+    }
+
+    nonisolated static func detailIdentifier(for entry: VocabularyEntry) -> String {
+        "addLink.local.result.\(entry.kgCardId ?? entry.id.uuidString)"
+    }
+
+    nonisolated static func detailStateIdentifier(for entry: VocabularyEntry) -> String {
+        "\(detailIdentifier(for: entry)).state"
+    }
+
+    nonisolated static func detailSenseIdentifier(for entry: VocabularyEntry, index: Int) -> String {
+        "\(detailIdentifier(for: entry)).sense.\(index + 1)"
+    }
+
+    nonisolated static func detailExampleIdentifier(
+        for entry: VocabularyEntry,
+        senseIndex: Int,
+        exampleIndex: Int
+    ) -> String {
+        "\(detailIdentifier(for: entry)).sense.\(senseIndex + 1).example.\(exampleIndex + 1)"
+    }
+
+    nonisolated static func detailMissingExampleIdentifier(
+        for entry: VocabularyEntry,
+        senseIndex: Int
+    ) -> String {
+        "\(detailIdentifier(for: entry)).sense.\(senseIndex + 1).example.missing"
+    }
+
+    nonisolated static func detailFormsIdentifier(for entry: VocabularyEntry) -> String {
+        "\(detailIdentifier(for: entry)).forms"
+    }
+
+    nonisolated static func detailProvenanceIdentifier(for entry: VocabularyEntry) -> String {
+        "\(detailIdentifier(for: entry)).provenance"
+    }
+
+    nonisolated static func detailRetryIdentifier(for entry: VocabularyEntry) -> String {
+        "\(detailIdentifier(for: entry)).provider.retry"
+    }
+
+    private static let detailPayloadPrefix = "kg.dictionary.detail.v1:"
+
+    private nonisolated static func decodeDetailPayload(
+        _ explanation: String?
+    ) -> AddLinkDetailPayloadDecode {
+        guard let explanation,
+              explanation.hasPrefix(detailPayloadPrefix) else {
+            return .plain
+        }
+        let rawPayload = String(explanation.dropFirst(detailPayloadPrefix.count))
+        guard let data = rawPayload.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(AddLinkDetailPayload.self, from: data),
+              !payload.senses.isEmpty,
+              payload.senses.allSatisfy({ !$0.definition.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
+            return .malformed
+        }
+        return .decoded(payload)
+    }
+
+    private nonisolated static func payloadDetailProjection(
+        _ payload: AddLinkDetailPayload,
+        for entry: VocabularyEntry
+    ) -> AddLinkDetailProjection {
+        let senses = payload.senses.enumerated().map { index, value in
+            AddLinkDetailProjection.Sense(
+                id: cleaned(value.id) ?? "sense-\(index + 1)",
+                partOfSpeech: cleaned(value.partOfSpeech) ?? cleaned(entry.partOfSpeech),
+                definition: value.definition,
+                translation: cleaned(value.translation) ?? cleaned(entry.translation),
+                examples: cleanedValues(value.examples ?? [])
+            )
+        }
+        let state: AddLinkDetailMaterializationState = senses.contains { $0.examples.isEmpty }
+            ? .missingExample(senseCount: senses.count)
+            : .ready(senseCount: senses.count)
+        return AddLinkDetailProjection(
+            word: entry.word,
+            translation: entry.translation,
+            senses: senses,
+            forms: formValues(for: entry, payloadForms: payload.forms),
+            provenance: provenance(for: entry, provider: cleaned(payload.provider)),
+            state: state
+        )
+    }
+
+    private nonisolated static func legacyDetailProjection(
+        for entry: VocabularyEntry,
+        state: AddLinkDetailMaterializationState?,
+        useExplanation: Bool = true
+    ) -> AddLinkDetailProjection {
+        let definition = (useExplanation ? cleaned(entry.explanation) : nil)
+            ?? cleaned(entry.translation)
+            ?? entry.word
+        let senses = [
+            AddLinkDetailProjection.Sense(
+                id: "sense-1",
+                partOfSpeech: cleaned(entry.partOfSpeech),
+                definition: definition,
+                translation: cleaned(entry.translation),
+                examples: cleanedValues(entry.reviewExamples)
+            )
+        ]
+        let resolvedState = state ?? (senses[0].examples.isEmpty
+            ? .missingExample(senseCount: 1)
+            : .ready(senseCount: 1))
+        return AddLinkDetailProjection(
+            word: entry.word,
+            translation: entry.translation,
+            senses: senses,
+            forms: formValues(for: entry, payloadForms: nil),
+            provenance: provenance(for: entry, provider: nil),
+            state: resolvedState
+        )
+    }
+
+    private nonisolated static func formValues(
+        for entry: VocabularyEntry,
+        payloadForms: [String]?
+    ) -> [String] {
+        var values = payloadForms ?? []
+        if let rootForm = entry.rootForm { values.append(rootForm) }
+        values.append(contentsOf: entry.inflections)
+        return cleanedValues(values)
+    }
+
+    private nonisolated static func provenance(
+        for entry: VocabularyEntry,
+        provider: String?
+    ) -> AddLinkDetailProjection.Provenance {
+        AddLinkDetailProjection.Provenance(
+            provider: provider,
+            source: entry.bookTitle,
+            chapter: cleaned(entry.chapterTitle),
+            context: entry.context
+        )
+    }
+
+    private nonisolated static func cleaned(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let result = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return result.isEmpty ? nil : result
+    }
+
+    private nonisolated static func cleanedValues(_ values: [String]) -> [String] {
+        var result: [String] = []
+        for value in values {
+            guard let value = cleaned(value), !result.contains(value) else { continue }
+            result.append(value)
+        }
+        return result
     }
 
     func linkExisting(

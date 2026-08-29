@@ -16,6 +16,7 @@ struct AddLinkSheet: View {
     @State private var coordinator = AddLinkCoordinator()
     @State private var creationCoordinator = AddLinkCreationCoordinator()
     @State private var creationAttempt = 0
+    @State private var recoveredProviderErrors: Set<UUID> = []
 
     init(
         sourceEntry: VocabularyEntry,
@@ -124,43 +125,152 @@ struct AddLinkSheet: View {
                 missingTargetSection
             } else {
                 ForEach(filteredEntries) { entry in
-                    Button { selectEntry(entry) } label: {
-                        VStack(alignment: .leading, spacing: AppSpacing.microGap) {
-                            Text(entry.word)
-                                .font(appSkin.typography.rowWord)
-                                .foregroundStyle(appSkin.palette.primaryText)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                            Text(entry.translation)
-                                .font(appSkin.typography.caption)
-                                .foregroundStyle(appSkin.palette.tertiaryText)
-                                .lineLimit(2)
-                                .truncationMode(.tail)
-                            if let explanation = entry.explanation,
-                               !explanation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                Text(explanation)
-                                    .font(appSkin.typography.caption)
-                                    .foregroundStyle(appSkin.palette.secondaryText)
+                    let projection = AddLinkCoordinator.dictionaryDetailProjection(
+                        for: entry,
+                        recoveringProviderError: recoveredProviderErrors.contains(entry.id)
+                    )
+                    VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
+                        Button { selectEntry(entry) } label: {
+                            VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+                                Text(entry.word)
+                                    .font(appSkin.typography.rowWord)
+                                    .foregroundStyle(appSkin.palette.primaryText)
                                     .lineLimit(1)
                                     .truncationMode(.tail)
-                            }
-                            if let example = entry.primaryReviewExample,
-                               !example.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                Text(example)
+                                Text(entry.translation)
                                     .font(appSkin.typography.caption)
                                     .foregroundStyle(appSkin.palette.tertiaryText)
-                                    .lineLimit(1)
-                                    .truncationMode(.tail)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                         }
+                        .accessibilityIdentifier(AddLinkCoordinator.detailIdentifier(for: entry))
+                        .accessibilityValue(
+                            AddLinkCoordinator.lookupEvidence(
+                                for: entry,
+                                recoveringProviderError: recoveredProviderErrors.contains(entry.id)
+                            )
+                        )
+
+                        dictionaryDetail(projection, for: entry)
                     }
-                    .accessibilityIdentifier(
-                        "addLink.local.result.\(entry.kgCardId ?? entry.id.uuidString)"
-                    )
-                    .accessibilityValue(AddLinkCoordinator.lookupEvidence(for: entry))
                     .listRowBackground(Color.clear)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func dictionaryDetail(
+        _ projection: AddLinkDetailProjection,
+        for entry: VocabularyEntry
+    ) -> some View {
+        let detailID = AddLinkCoordinator.detailIdentifier(for: entry)
+        Color.clear
+            .frame(width: 1, height: 1)
+            .accessibilityElement()
+            .accessibilityIdentifier(AddLinkCoordinator.detailStateIdentifier(for: entry))
+            .accessibilityValue(
+                "\(projection.state.accessibilityValue)|senses=\(projection.senses.count)"
+            )
+
+        switch projection.state {
+        case .providerDecodeError:
+            VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+                Text(L10n.string("sync.failure.reason.decoding"))
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("\(detailID).provider.error")
+                Button(L10n.string("重試")) {
+                    recoveredProviderErrors.insert(entry.id)
+                }
+                .buttonStyle(.appCompactAction(.neutral))
+                .accessibilityIdentifier(AddLinkCoordinator.detailRetryIdentifier(for: entry))
+            }
+        case .ready, .missingExample, .recovered:
+            ForEach(Array(projection.senses.enumerated()), id: \.offset) { senseIndex, sense in
+                VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+                    if let partOfSpeech = sense.partOfSpeech {
+                        Text(L10n.string("reviewCardLayout.field.partOfSpeech") + ": " + partOfSpeech)
+                            .font(appSkin.typography.caption)
+                            .foregroundStyle(appSkin.palette.tertiaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier(
+                                "\(AddLinkCoordinator.detailSenseIdentifier(for: entry, index: senseIndex)).partOfSpeech"
+                            )
+                    }
+                    Text(sense.definition)
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier(
+                            AddLinkCoordinator.detailSenseIdentifier(for: entry, index: senseIndex)
+                        )
+                    if let translation = sense.translation,
+                       translation != projection.translation {
+                        Text(translation)
+                            .font(appSkin.typography.caption)
+                            .foregroundStyle(appSkin.palette.tertiaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier(
+                                "\(AddLinkCoordinator.detailSenseIdentifier(for: entry, index: senseIndex)).translation"
+                            )
+                    }
+                    if sense.examples.isEmpty {
+                        Color.clear
+                            .frame(width: 1, height: 1)
+                            .accessibilityElement()
+                            .accessibilityIdentifier(
+                                AddLinkCoordinator.detailMissingExampleIdentifier(
+                                    for: entry,
+                                    senseIndex: senseIndex
+                                )
+                            )
+                            .accessibilityValue("missing")
+                    } else {
+                        ForEach(Array(sense.examples.enumerated()), id: \.offset) { exampleIndex, example in
+                            Text(L10n.string("reviewCardLayout.field.example") + ": " + example)
+                                .font(appSkin.typography.caption)
+                                .foregroundStyle(appSkin.palette.tertiaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier(
+                                    AddLinkCoordinator.detailExampleIdentifier(
+                                        for: entry,
+                                        senseIndex: senseIndex,
+                                        exampleIndex: exampleIndex
+                                    )
+                                )
+                        }
+                    }
+                }
+                .accessibilityElement(children: .contain)
+            }
+
+            if !projection.forms.isEmpty {
+                Text(L10n.string("變化形") + ": " + projection.forms.joined(separator: ", "))
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier(AddLinkCoordinator.detailFormsIdentifier(for: entry))
+            }
+
+            VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+                Text(L10n.string("來源") + ": " + projection.provenance.source)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("\(detailID).provenance.source")
+                if let chapter = projection.provenance.chapter {
+                    Text(chapter)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("\(detailID).provenance.chapter")
+                }
+                Text(projection.provenance.context)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("\(detailID).provenance.context")
+            }
+            .font(appSkin.typography.caption)
+            .foregroundStyle(appSkin.palette.tertiaryText)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier(AddLinkCoordinator.detailProvenanceIdentifier(for: entry))
         }
     }
 
