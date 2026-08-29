@@ -31,6 +31,55 @@ Collaborator approval 與獨立 agent review 都是品質與風險的 review evi
 - `agent-review` 缺失、失敗、延遲或成功都不會單獨阻塞 queue／merge；若 evidence 明確指出 P0、P1 或 security，必須另行寫成 durable typed hold／label，該 hold 才是硬性阻塞來源。
 - repository ruleset 的 required contexts 應維持只有短 `required`。這是降低無意義的 transport gate，不是移除 review；agent-review 仍可用來改善品質與發現風險。
 
+## Bounded review-evidence preflight
+
+`ops/review_preflight.py` 是本機的 bounded、read-only evidence preflight。它只讀取 caller 提供的 JSON，輸出一份 `kg.review.preflight.v1` 摘要；不呼叫 GitHub、不建立或修改 review／check、不寫 backlog 或 status DB，也不執行 merge、release 或 production mutation。它協助 caller 在把證據交給 PR／CM 流程前分辨資料缺口，但不是另一個 review surface。
+
+輸入 schema 是 `kg.review.evidence.v1`，最小形狀如下；`pr`、`head`、`reviewer` 與 `deadline` 都是 opaque non-empty strings，只做 presence 與 exact equality，不解析、排序、截斷或正規化：
+
+```json
+{
+  "schema": "kg.review.evidence.v1",
+  "source": {"status": "ok"},
+  "target": {"pr": "<opaque-pr>", "head": "<opaque-head>"},
+  "required_snapshot": {
+    "status": "SUCCESS",
+    "pr": "<opaque-pr>",
+    "head": "<opaque-head>"
+  },
+  "review": {
+    "reviewer": "<opaque-reviewer>",
+    "deadline": "<opaque-deadline>",
+    "receipt": {
+      "schema": "kg.review.receipt.v1",
+      "status": "PASS",
+      "pr": "<opaque-pr>",
+      "head": "<opaque-head>",
+      "reviewer": "<opaque-reviewer>",
+      "deadline": "<opaque-deadline>",
+      "substantive": true,
+      "evidence": [{"kind": "<opaque-kind>", "detail": "<substantive-detail>"}]
+    }
+  }
+}
+```
+
+判讀順序與 verdict 固定如下：
+
+- `source.status=timeout` 回 `review_service_timeout`；`source.status=failure`、source 缺失／未知、輸入 JSON／schema／target 無法解析回 `source_failure`。兩者不能折疊成 `BLOCK` 或 `PASS`。
+- `required_snapshot` 缺失或欄位不完整回 `BLOCK`；status 不是 `SUCCESS`，或其 exact PR／HEAD 與 target 不同，回 `BLOCK`／`required_snapshot_stale`。
+- receipt 缺失或不完整、非 substantive、非 `PASS`，或 PR／HEAD／reviewer／deadline 任一不 exact，回 `BLOCK`，並在 `blockers` 保留具體 reason code（例如 `exact_head_mismatch`、`receipt_incomplete`）。
+- 只有 required snapshot 對 exact target，且 receipt 同時具備 `kg.review.receipt.v1`、substantive evidence、`PASS` 與 exact PR／HEAD／reviewer／deadline，才回 `PASS`。
+
+呼叫方式：
+
+```bash
+./ops/review_preflight.py --input <evidence.json> --json
+cat <evidence.json> | ./ops/review_preflight.py --json
+```
+
+命令永遠只讀 input、永遠輸出 JSON；exit code 是 `PASS=0`、`BLOCK=1`、`review_service_timeout=2`、`source_failure=3`。輸出中的 `authority` 會明示 GitHub review、required checks 與 CM merge authority 未被取代，caller 仍必須回到 PR 的 exact HEAD／required／review／branch rules 流程。
+
 CR 進場先執行 `./ops/agent_onboard.py --identity CR --intent review --entry pr-review --evidence '<JSON object with GitHub PR, exact HEAD, required checks>' --json`。只有 `status=ready` 才能載入 `code-review` skill 與本 SOP；這一步確認的是上下文，不是 merge 權限。
 
 ## PR 必須回答
