@@ -349,6 +349,7 @@ evict_keyed_caches() {
 evict_rebuildable_caches() {
   local root
   for root in \
+    "$WORKSPACE/.cache/ios-build-derived-data" \
     "$WORKSPACE/.cache/ios-release-derived-data" \
     "$WORKSPACE/.cache/ios-catalyst-derived-data" \
     "$WORKSPACE/ios/build/BooksAndVocab.xcarchive" \
@@ -441,7 +442,7 @@ write_state() {
 }
 
 main() {
-  local free prev growth active cache docker_cache docker_running worktree_cache worktree_keys worktree_overflow cache_overflow cache_budget_kb cache_budget_overflow cache_headroom_kb cache_writer_limit_kb cache_headroom_overflow cache_repair_remaining cache_repair_status cache_after free_gib growth_gib docker_gib verdict reason action lock_ready need_shared_cleanup build_lock_owned
+  local free prev growth active cache docker_cache docker_running worktree_cache worktree_keys worktree_overflow cache_overflow cache_budget_kb cache_budget_overflow cache_headroom_kb cache_writer_limit_kb cache_headroom_overflow cache_repair_remaining cache_repair_status cache_after cache_after_budget_overflow cache_after_headroom_overflow free_gib growth_gib docker_gib verdict reason action lock_ready need_shared_cleanup build_lock_owned
   acquire_guard_lock_nonblocking || {
     logger -t kg-disk-guard 'skipped=already-running' 2>/dev/null || true
     return 0
@@ -514,7 +515,15 @@ main() {
             KEEP=0
             evict_keyed_caches
             KEEP="$old_keep"
-            evict_rebuildable_caches
+            # Preserve incremental build data when keyed eviction alone has
+            # released enough writer headroom.  A full build-cache removal is
+            # the bounded cold-rebuild fallback, not the first response.
+            cache_after="$(cache_kb)"
+            cache_after_budget_overflow="$(cache_budget_overflow_kb "$cache_after")"
+            cache_after_headroom_overflow="$(cache_headroom_overflow_kb "$cache_after")"
+            if (( cache_after_budget_overflow > 0 || cache_after_headroom_overflow > 0 )); then
+              evict_rebuildable_caches
+            fi
             if (( cache_budget_overflow > 0 )); then
               action="enforce-cache-budget"
             else

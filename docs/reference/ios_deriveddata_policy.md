@@ -147,7 +147,7 @@ GitHub-hosted macOS runner 每次都是新的 VM；本機長存的 DerivedData �
 **機制**（`ops/lib/ios_cache_evict.sh`，`kg_ios_cache_evict <root> <current_key>`）：
 - 保留 = mtime 最新 `KG_IOS_CACHE_KEEP`（預設 3）條 ∪ current key ∪ `KG_IOS_CACHE_EVICT_MIN_AGE_HOURS`（預設 6h）內用過的條目；其餘按最舊優先 `rm -rf`。
 - `ops/kg_disk_guard.sh` 只把 `.cache/ios-test-derived-data` 與 `.cache/ios-catalog-derived-data` 視為 keyed root；`.cache/ios-build-derived-data`、`.cache/ios-release-derived-data` 的 Xcode 內部目錄不是 key，絕不交給這個 evictor，但它們仍計入 16 GiB aggregate budget。guard 即使設定 `KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0`，仍會套用預設 `KG_DISK_GUARD_CACHE_READER_WINDOW_HOURS=1` 的讀者安全窗；因此最近一小時內被讀取或觸碰的 key 不會因快照排序而被刪除。臨界磁碟清理全域 `BooksAndVocab-*` DerivedData 仍以 `KG_DISK_GUARD_DERIVED_DATA_MIN_AGE_HOURS` 預設 `6h` 保守保留，手動 `ios_clean_derived_data.sh` 也維持 `6h` 預設。
-- guard 每次 tick 都計算 `cache_overflow_keys` 與 `cache_budget_overflow_kb`。即使磁碟仍健康，只要 keyed root 超過 1 個世代或 aggregate budget 超標，就會在 build lock 下淘汰最舊且已離開 reader window 的 key；release/catalyst 與 `ios/build` 下的 archive/export 這類可重建產物也會在無 consumer 時移除。若只剩正在使用的 build cache 仍超標，guard 只留下證據，下一個 build/archive 不得繼續寫入。
+- guard 每次 tick 都計算 `cache_overflow_keys` 與 `cache_budget_overflow_kb`。即使磁碟仍健康，只要 keyed root 超過 1 個世代或 aggregate budget 超標，就會在 build lock 下淘汰最舊且已離開 reader window 的 key；共享 `ios-build-derived-data`、release/catalyst 與 `ios/build` 下的 archive/export 這類可重建產物，也會在無 consumer、持有 writer lock 且 aggregate budget/headroom 超標時移除。這不是 keyed eviction，而是整個可重建 build cache 的 bounded cold-rebuild fallback。若只剩正在使用的 build cache 仍超標，guard 只留下證據，下一個 build/archive 不得繼續寫入。
 - 只動 cache root 第一層**目錄**；log 全走 **stderr**（catalog caller stdout 是純 JSON）。
 - `KG_IOS_CACHE_EVICT_DRY_RUN=1` 只報告不刪。
 - `ios_clean_derived_data.sh --apply` 先確認 `xcodebuild`／runner／evidence
