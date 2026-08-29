@@ -30,6 +30,8 @@ X-KG-API-Key: kg_<key-id>.<secret>
 
 建立與使用都即時檢查 Pro entitlement。Pro 到期後既有 key 也不能使用；`DELETE /api/v1/api-keys/{key_id}` 仍允許用 JWT 撤銷 key。
 
+`GET /api/v1/api-keys` 只列出目前使用者的 keys，包含已撤銷項目以保留 `revokedAt` 狀態；結果依 `createdAt` 對應的 UTC instant 由新到舊排序。`createdAt` 的 ISO 8601 offset 會先正規化後再比較；若多筆 key 對應同一 instant，則以 `keyId` descending 作 deterministic tie-break。回應仍保留 `label`、`keyId`、`createdAt`、`revokedAt`，不回傳 secret 或 `apiKey`。
+
 ## Reader queue and upload
 
 閱讀器選字先建立本地 `pending + add` card，不會因此出現在外部 API 或伺服器。推薦 client 行為：
