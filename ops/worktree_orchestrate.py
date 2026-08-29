@@ -455,6 +455,12 @@ def _branch_pull_requests(repo: Path, branch: str) -> tuple[int, ...]:
     return tuple(item.number for item in inventory.records)
 
 
+def _remote_main_sha(repo: Path) -> str:
+    """Read the authoritative remote main ref for an owner-local transition."""
+
+    return reanchor_git_ops._remote_head(repo, "main")
+
+
 def _reanchor_handback_diff_names(
     worktree: Path, *, start: str, end: str
 ) -> tuple[str, ...]:
@@ -532,6 +538,13 @@ def cmd_reanchor_handback(args: argparse.Namespace) -> int:
             raise ReanchorRefused("claim generation must be non-negative")
         reanchor_git_ops.validate_repository(repo)
         reanchor_git_ops.validate_repository(worktree)
+        remote_main = _remote_main_sha(repo)
+        if remote_main != live_main:
+            raise ReanchorRefused(
+                "supplied live main does not match remote origin/main",
+                live_main=live_main,
+                remote_main=remote_main,
+            )
         preflight = reanchor_registry_ops.preflight(
             state_path=state_path,
             lane_id=args.lane,
@@ -688,6 +701,13 @@ def cmd_reanchor_handback(args: argparse.Namespace) -> int:
                 != preflight.declared
             ):
                 raise ReanchorRefused("reanchored branch differs from the exact Scope")
+            remote_main = _remote_main_sha(repo)
+            if remote_main != live_main:
+                raise ReanchorRefused(
+                    "remote origin/main changed during reanchor",
+                    live_main=live_main,
+                    remote_main=remote_main,
+                )
             active = reanchor_registry_ops.register_active(
                 state_path=state_path,
                 preflight_result=preflight,

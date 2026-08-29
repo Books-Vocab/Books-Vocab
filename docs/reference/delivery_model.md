@@ -294,6 +294,8 @@ Scope 只回答「本機哪個工作樹可改哪些檔案」；實際 commit 的
 
 same-owner 的 `resume-published`／`reanchor` 必須重用 original published claim 記錄的 exact absolute worktree path；requested target path 與 recorded path 解析後不一致時必須 fail closed。path drift 不會授權建立新 worktree，也不能把同一 owner 的本機 registry／physical ownership 拆成兩份。
 
+尚未建立 durable PR 的 active、owner-bound typed hand-back 若需要在 main 前進後重新對齊，原 owner 只能使用 `reanchor-handback`。它在 local rebase 前、以及 rebase 後 registry claim generation 更新前，以 `git ls-remote origin refs/heads/main` 兩次確認 supplied live SHA；任何遠端主幹讀值缺失或漂移都 fail closed，registry 保持不變，已完成的 rebase 會回復到原 hand-back HEAD。這條命令不測試、不 hand-back、不 push、不建立 PR，也不授權 merge；owner 仍須在同一 registered path 完成 bounded validation 與新的 typed hand-back，才交 PI publish。
+
 branch review queue 只接受兩種 local orphan content blocker：`orphan branch tip is not an ancestor of live origin/main`，以及 `orphan branch tip is not an ancestor of live origin/main and is not patch-equivalent`。remote ref、PR history、owner／registry claim 與 source-incomplete blocker 仍排除；此 queue 只提供 read-only content evidence 與雙重 CAS discard guidance，不授權 mutation。
 
 有效的 typed hand-back 只會釋放它所 seal 的那一個 idle claim 的本機 admission claim：branch/path 必須仍指向乾淨且與 sealed HEAD 相同的 worktree。重新 register、adopt 或 reuse active branch/path 會開始新的 claim，並使先前 receipt 的 admission release 失效；舊 receipt/seal 仍保留作 audit evidence。新的 claim 只有在 fresh hand-back 後才能再次釋放本機 admission，且這不改變 GitHub Issue、PR 或 merge 的狀態。

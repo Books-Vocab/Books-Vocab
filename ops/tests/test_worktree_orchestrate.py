@@ -2000,6 +2000,57 @@ def test_reanchor_handback_reanchors_owner_worktree_without_a_pull_request(
     assert active[0].get("handback_seal") is None
 
 
+def test_reanchor_handback_rejects_stale_supplied_live_main_before_rebase(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(coordinator, "_branch_pull_requests", lambda *_args: ())
+    repo, state_path, target, expected = _prepare_reanchor_handback(tmp_path)
+    argv = _reanchor_handback_argv(repo, state_path, target, expected)
+    argv[argv.index("--live-main") + 1] = str(expected["base_sha"])
+
+    rc = coordinator.main(argv)
+
+    payload = json.loads(capsys.readouterr().out)
+    record = coordinator.registry.load_state(state_path)["records"][0]
+    assert rc == coordinator.EXIT_BLOCK
+    assert "remote origin/main" in payload["reason"]
+    assert payload["live_main"] == expected["base_sha"]
+    assert payload["remote_main"] == expected["live_main"]
+    assert _git(target, "rev-parse", "HEAD") == expected["remote_head"]
+    assert record["status"] == coordinator.registry.STATUS_ACTIVE
+    assert record["claim_generation"] == 4
+
+
+def test_reanchor_handback_rolls_back_when_remote_main_changes_before_registry_update(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(coordinator, "_branch_pull_requests", lambda *_args: ())
+    repo, state_path, target, expected = _prepare_reanchor_handback(tmp_path)
+    remote_main_reads = iter((str(expected["live_main"]), "f" * 40))
+    monkeypatch.setattr(
+        coordinator,
+        "_remote_main_sha",
+        lambda _repo: next(remote_main_reads),
+    )
+
+    rc = coordinator.main(_reanchor_handback_argv(repo, state_path, target, expected))
+
+    payload = json.loads(capsys.readouterr().out)
+    record = coordinator.registry.load_state(state_path)["records"][0]
+    assert rc == coordinator.EXIT_BLOCK
+    assert payload["reason"] == "remote origin/main changed during reanchor"
+    assert payload["live_main"] == expected["live_main"]
+    assert payload["remote_main"] == "f" * 40
+    assert _git(target, "rev-parse", "HEAD") == expected["remote_head"]
+    assert record["status"] == coordinator.registry.STATUS_ACTIVE
+    assert record["claim_generation"] == 4
+    assert record["base_sha"] == expected["base_sha"]
+
+
 def test_reanchor_handback_rejects_wrong_owner_before_rebase(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -2081,6 +2132,7 @@ def test_reanchor_handback_rejects_incoming_scope_collision_before_rebase(
     monkeypatch.setattr(coordinator, "_branch_pull_requests", lambda *_args: ())
     repo, state_path, target, expected = _prepare_reanchor_handback(tmp_path)
     _commit(repo, "ops/reanchor_change.py", "main\n", "main changes declared scope")
+    _git(repo, "push", "-q", "origin", "main")
     expected["live_main"] = _git(repo, "rev-parse", "HEAD")
 
     rc = coordinator.main(_reanchor_handback_argv(repo, state_path, target, expected))
