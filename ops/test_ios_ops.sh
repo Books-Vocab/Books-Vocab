@@ -1161,6 +1161,84 @@ grep -q 'test-without-building' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test supports cache-first xctestrun reuse path" || fail_t "ios_test missing reuse-build path"
 grep -q 'ensure_xctestrun_ready_or_fail' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test guards missing xctestrun artifacts before test-without-building" || fail_t "ios_test missing xctestrun readiness guard"
+# App-written P9/Reader evidence needs a run-scoped screenshot directory even
+# when the caller did not request visual review artifacts.  Keep this executable
+# regression fixture so the runner contract cannot regress to visual-only setup.
+nonvisual_evidence_tmp="$(mktemp -d)"
+if bash -c '
+  set -euo pipefail
+  SCRIPT_DIR="'"$WORKSPACE"'/ops"
+  TEST_SCOPE="ui"
+  VISUAL_CAPTURE_ENABLED=0
+  UI_TEST_SCREENSHOT_DIR=""
+  UI_TEST_CONTACT_SHEET=""
+  UI_TEST_QUICK4_SHEET=""
+  UI_TEST_SCREENSHOT_MANIFEST=""
+  UI_TEST_VIDEO=""
+  UI_TEST_VIDEO_FILE=""
+  UI_TEST_VIDEO_SHA256=""
+  artifact_temp_dir() {
+    mkdir -p "'"$nonvisual_evidence_tmp"'/artifact"
+    printf "%s\n" "'"$nonvisual_evidence_tmp"'/artifact"
+  }
+  eval "$(sed -n "/^prepare_ui_step_screenshot_dir()/,/^}/p" "$SCRIPT_DIR/ios_test.sh")"
+  prepare_ui_step_screenshot_dir
+  [[ -n "$UI_TEST_SCREENSHOT_DIR" && -d "$UI_TEST_SCREENSHOT_DIR" ]]
+'; then
+  ok "ios_test allocates UI evidence directory without visual capture"
+else
+  fail_t "ios_test does not allocate UI evidence directory for nonvisual UI runs"
+fi
+
+nonvisual_stage_log="$nonvisual_evidence_tmp/stage.log"
+if bash -c '
+  set -euo pipefail
+  SCRIPT_DIR="'"$WORKSPACE"'/ops"
+  PROJECT_ROOT="'"$nonvisual_evidence_tmp"'/project"
+  TEST_SCOPE="ui"
+  VISUAL_CAPTURE_ENABLED=0
+  UI_TEST_SCREENSHOT_DIR="'"$nonvisual_evidence_tmp"'/artifact"
+  KG_IOS_VERDICT_FILE="'"$nonvisual_evidence_tmp"'/verdict.json"
+  VERDICT_FILE="$KG_IOS_VERDICT_FILE"
+  EVIDENCE_DATASET_ID="fixture-dataset"
+  EVIDENCE_DATASET_SHA256="0000000000000000000000000000000000000000000000000000000000000000"
+  mkdir -p "$PROJECT_ROOT" "$UI_TEST_SCREENSHOT_DIR"
+  : > "'"$nonvisual_evidence_tmp"'/staged.xctestrun"
+  git() { printf "%s\n" "fixture-source-commit"; }
+  resolve_run_device_udid() { printf "%s\n" "fixture-device-udid"; }
+  ios_xctestrun_cache_upsert_env_all_targets() {
+    printf "%s=%s\n" "$2" "$3" >> "'"$nonvisual_stage_log"'"
+  }
+  stage_ui_runner_process_environment() { :; }
+  eval "$(sed -n "/^stage_ui_evidence_runner_environment()/,/^}/p" "$SCRIPT_DIR/ios_test.sh")"
+  stage_ui_evidence_runner_environment "'"$nonvisual_evidence_tmp"'/staged.xctestrun"
+  grep -q '^KG_UI_TEST_SCREENSHOT_DIR=' "'"$nonvisual_stage_log"'"
+'; then
+  ok "ios_test stages nonvisual UI screenshot context into xctestrun"
+else
+  fail_t "ios_test does not stage nonvisual UI screenshot context"
+fi
+nonvisual_review_tmp="$nonvisual_evidence_tmp/review"
+mkdir -p "$nonvisual_review_tmp"
+printf 'fixture' >"$nonvisual_review_tmp/01-step.png"
+if bash -c '
+  set -euo pipefail
+  SCRIPT_DIR="'"$WORKSPACE"'/ops"
+  TEST_SCOPE="ui"
+  VISUAL_CAPTURE_ENABLED=0
+  UI_TEST_SCREENSHOT_DIR="'"$nonvisual_review_tmp"'"
+  UI_TEST_CONTACT_SHEET=""
+  UI_TEST_QUICK4_SHEET=""
+  UI_TEST_SCREENSHOT_MANIFEST=""
+  eval "$(sed -n "/^build_ui_step_contact_sheet()/,/^}/p" "$SCRIPT_DIR/ios_test.sh")"
+  build_ui_step_contact_sheet
+  [[ ! -e "'"$nonvisual_review_tmp"'/contact_sheet.png" ]]
+'; then
+  ok "ios_test keeps contact-sheet generation visual-only"
+else
+  fail_t "ios_test generated visual review output for a nonvisual UI run"
+fi
+rm -rf "$nonvisual_evidence_tmp"
 # Functional regression: fake UI step screenshots must yield the full visual
 # review trio — full contact sheet + quick4 sheet + selection manifest — and
 # generated sheets must never re-enter the manifest as fake steps.
