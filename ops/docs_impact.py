@@ -163,7 +163,9 @@ def scan_surface(root: Path, paths: list[str], pattern: str) -> int:
             if matcher.search(line):
                 print(f"SURFACE {relative}:{line_number}:{line}")
                 hits += 1
-    print(f"surface_scan: pattern={pattern} roots={len(paths)} files={len(files)} hits={hits}")
+    print(
+        f"surface_scan: pattern={pattern} roots={len(paths)} files={len(files)} hits={hits}"
+    )
     return 0
 
 
@@ -178,7 +180,9 @@ def default_changed_base() -> str:
 
 
 def changed_paths_since(base: str) -> list[str]:
-    if not run_git(["rev-parse", "--verify", f"{base}^{{commit}}"], check=False).strip():
+    if not run_git(
+        ["rev-parse", "--verify", f"{base}^{{commit}}"], check=False
+    ).strip():
         raise SystemExit(f"ERROR --since 不是有效 commit: {base}")
 
     # `<base>...HEAD` needs a merge-base; without one git exits 128 with EMPTY stdout,
@@ -188,7 +192,10 @@ def changed_paths_since(base: str) -> list[str]:
         # Two different causes share this symptom and git reports neither (its stderr
         # here is empty), so the cause has to be probed or the message will misdirect:
         # a truncated history is fixed by deepening the fetch, never by --files.
-        if run_git(["rev-parse", "--is-shallow-repository"], check=False).strip() == "true":
+        if (
+            run_git(["rev-parse", "--is-shallow-repository"], check=False).strip()
+            == "true"
+        ):
             raise SystemExit(
                 f"ERROR --since {base}:這是 shallow checkout,共同祖先很可能只是被截斷。"
                 "先 `git fetch --unshallow`(CI 設 fetch-depth: 0)再重跑;"
@@ -201,13 +208,20 @@ def changed_paths_since(base: str) -> list[str]:
 
     output = "\n".join(
         [
-            run_git(["diff", "--name-only", "--diff-filter=ACMR", f"{base}...HEAD"], check=False),
-            run_git(["diff", "--name-only", "--diff-filter=ACMR", "--cached"], check=False),
+            run_git(
+                ["diff", "--name-only", "--diff-filter=ACMR", f"{base}...HEAD"],
+                check=False,
+            ),
+            run_git(
+                ["diff", "--name-only", "--diff-filter=ACMR", "--cached"], check=False
+            ),
             run_git(["diff", "--name-only", "--diff-filter=ACMR"], check=False),
             run_git(["ls-files", "--others", "--exclude-standard"], check=False),
         ]
     )
-    return sorted({normalize_path(line) for line in output.splitlines() if line.strip()})
+    return sorted(
+        {normalize_path(line) for line in output.splitlines() if line.strip()}
+    )
 
 
 def source_matches(source: str, changed_path: str) -> bool:
@@ -241,8 +255,12 @@ def impact_documents(
     impacts: list[dict[str, object]] = []
     excluded_impacts: list[dict[str, object]] = []
     for doc in documents:
-        include_sources = [source for source in doc.sources if not source.startswith("!")]
-        exclude_sources = [source[1:] for source in doc.sources if source.startswith("!")]
+        include_sources = [
+            source for source in doc.sources if not source.startswith("!")
+        ]
+        exclude_sources = [
+            source[1:] for source in doc.sources if source.startswith("!")
+        ]
         matched_sources: set[str] = set()
         matched_paths: set[str] = set()
         excluded_sources: set[str] = set()
@@ -253,7 +271,9 @@ def impact_documents(
                 if not source_matches(source, changed_path):
                     continue
                 path_excludes = [
-                    f"!{exclude}" for exclude in exclude_sources if source_matches(exclude, changed_path)
+                    f"!{exclude}"
+                    for exclude in exclude_sources
+                    if source_matches(exclude, changed_path)
                 ]
                 if path_excludes:
                     if explain:
@@ -264,7 +284,11 @@ def impact_documents(
                 matched_sources.add(source)
                 matched_paths.add(changed_path)
         if matched_paths:
-            match_type = "broad" if any(is_broad_source(source) for source in matched_sources) else "exact"
+            match_type = (
+                "broad"
+                if any(is_broad_source(source) for source in matched_sources)
+                else "exact"
+            )
             if explain and excluded_paths:
                 match_type = "suppressed-partial"
             impact = {
@@ -299,9 +323,17 @@ def impact_documents(
             if doc.generator:
                 impact["generator"] = doc.generator
             excluded_impacts.append(impact)
-    impacts.sort(key=lambda impact: (match_type_rank(str(impact.get("match_type", ""))), str(impact["id"])))
+    impacts.sort(
+        key=lambda impact: (
+            match_type_rank(str(impact.get("match_type", ""))),
+            str(impact["id"]),
+        )
+    )
     excluded_impacts.sort(
-        key=lambda impact: (match_type_rank(str(impact.get("match_type", ""))), str(impact["id"]))
+        key=lambda impact: (
+            match_type_rank(str(impact.get("match_type", ""))),
+            str(impact["id"]),
+        )
     )
     return impacts, excluded_impacts
 
@@ -316,7 +348,9 @@ def print_human(
     base_label = base if base else "files"
     excluded_impacts = excluded_impacts or []
     if not impacts and not excluded_impacts:
-        print(f"docs_impact: no registry impacts (base={base_label}, changed={len(changed_paths)})")
+        print(
+            f"docs_impact: no registry impacts (base={base_label}, changed={len(changed_paths)})"
+        )
         return
 
     summary = f"docs_impact: base={base_label} changed={len(changed_paths)} impacts={len(impacts)}"
@@ -343,7 +377,9 @@ def print_human(
         if "excluded_paths" in impact:
             excluded_paths = f" excluded_changed={','.join(str(p) for p in impact['excluded_paths']) or '-'}"
         if "excluded_by" in impact:
-            excluded_by = f" excluded_by={','.join(str(p) for p in impact['excluded_by']) or '-'}"
+            excluded_by = (
+                f" excluded_by={','.join(str(p) for p in impact['excluded_by']) or '-'}"
+            )
         generator = f" generator={impact['generator']}" if "generator" in impact else ""
         print(
             "IMPACT "
@@ -371,9 +407,17 @@ def main(argv: list[str] | None = None) -> int:
         help="Git base rev; scans <rev>...HEAD (from the merge-base, so a base branch that "
         "moved on is not counted as this branch's work) plus index/worktree changes.",
     )
-    parser.add_argument("--files", nargs="+", help="Explicit changed paths, for tests or scripted callers.")
-    parser.add_argument("--registry", default="docs/registry.yml", help="Registry path.")
-    parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    parser.add_argument(
+        "--files",
+        nargs="+",
+        help="Explicit changed paths, for tests or scripted callers.",
+    )
+    parser.add_argument(
+        "--registry", default="docs/registry.yml", help="Registry path."
+    )
+    parser.add_argument(
+        "--json", action="store_true", help="Emit machine-readable JSON."
+    )
     parser.add_argument(
         "--explain",
         action="store_true",
@@ -418,14 +462,21 @@ def main(argv: list[str] | None = None) -> int:
         base = args.since or default_changed_base()
         changed_paths = changed_paths_since(base)
 
-    impacts, excluded_impacts = impact_documents(documents, changed_paths, explain=args.explain)
+    impacts, excluded_impacts = impact_documents(
+        documents, changed_paths, explain=args.explain
+    )
     if args.json:
         payload = {"base": base, "changed_paths": changed_paths, "impacts": impacts}
         if args.explain:
             payload["excluded_impacts"] = excluded_impacts
         print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
-        print_human(base, changed_paths, impacts, excluded_impacts=excluded_impacts if args.explain else None)
+        print_human(
+            base,
+            changed_paths,
+            impacts,
+            excluded_impacts=excluded_impacts if args.explain else None,
+        )
     return 0
 
 
