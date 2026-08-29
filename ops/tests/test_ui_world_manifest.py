@@ -538,6 +538,28 @@ def test_asset_hash_delegates_to_shared_provenance_helper(tmp_path: Path, monkey
     assert calls == [source]
 
 
+def test_manifest_facade_delegates_asset_validation_to_internal_seam(monkeypatch):
+    calls = []
+    original = MODULE._validate_asset_manifest
+
+    def observe(data, *, label, path):
+        calls.append((data["datasetID"], label, path))
+        return original(data, label=label, path=path)
+
+    monkeypatch.setattr(MODULE, "_validate_asset_manifest", observe)
+
+    assert validate_fixture_dataset_file(
+        ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json"
+    ) == "marketing_demo"
+    assert calls == [
+        (
+            "marketing_demo",
+            "UI World dataset",
+            ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json",
+        )
+    ]
+
+
 @pytest.mark.parametrize("field", ["sourcePath", "sha256", "byteSize", "contentType"])
 def test_validate_rejects_missing_asset_provenance_field(tmp_path: Path, field: str):
     data = _marketing_demo()
