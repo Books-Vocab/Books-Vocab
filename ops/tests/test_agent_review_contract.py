@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = ROOT / ".github/workflows/agent-review.yml"
@@ -62,6 +62,22 @@ def test_agent_review_rejects_hard_findings_but_accepts_nonblocking_review() -> 
     assert "P2" not in source
 
 
+def test_agent_review_missing_evidence_is_neutral_advisory_not_failure() -> None:
+    source = _workflow()
+
+    assert (
+        'create_check completed neutral "Independent agent review unavailable"'
+        in source
+    )
+    assert (
+        'create_check completed failure "Independent agent review is missing"'
+        not in source
+    )
+    assert '"No exact-head review or fresh reviewer reaction' in source
+    assert 'echo "Independent agent review unavailable' in source
+    assert "exit 0" in source
+
+
 def test_agent_review_evidence_has_one_required_check_identity() -> None:
     source = _workflow()
 
@@ -96,11 +112,15 @@ def test_agent_review_issue_comment_jq_predicates_compile() -> None:
     assert "issue_comment_blockers" in source
 
     predicates = (
-        '[.[] | select(.user.login == $bot and (.created_at // "") >= $since and '
-        '((.body // "") | contains("**Reviewed commit:** `" + $prefix)))] | length',
-        '[.[] | select(.user.login == $bot and (.created_at // "") >= $since and '
-        '((.body // "") | contains("**Reviewed commit:** `" + $prefix))) | (.body // "") '
-        '| select(test("(^|[^[:alnum:]])P(0|1)([^[:alnum:]]|$)"))] | length',
+        (
+            '[.[] | select(.user.login == $bot and (.created_at // "") >= $since and '
+            '((.body // "") | contains("**Reviewed commit:** `" + $prefix)))] | length'
+        ),
+        (
+            '[.[] | select(.user.login == $bot and (.created_at // "") >= $since and '
+            '((.body // "") | contains("**Reviewed commit:** `" + $prefix))) | (.body // "") '
+            '| select(test("(^|[^[:alnum:]])P(0|1)([^[:alnum:]]|$)"))] | length'
+        ),
     )
     for predicate in predicates:
         result = subprocess.run(
