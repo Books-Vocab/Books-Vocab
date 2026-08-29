@@ -28,6 +28,7 @@ from .registry_parsing import (
 
 _COLLISION_TERMINAL_STATUSES = frozenset({"published", "merged", "abandoned"})
 _COLLISION_ACTIVE_STATUSES = frozenset({"active", "cleanup_pending"})
+_CURRENT_DURABLE_CLAIM_STATUSES = frozenset({"active", "published", "cleanup_pending"})
 _SCOPED_CLAIM_PROBLEM_PREFIX = "registry-claim-generation-invalid"
 
 
@@ -280,9 +281,10 @@ def published_claim(
     """Find one current durable claim by stable handback identity.
 
     The caller already has an older receipt, so claim generation is deliberately
-    not part of the selector.  Only the exact branch/path/owner/head/Scope
-    identity may bridge that generation drift; unrelated malformed records do
-    not become global blockers, while a malformed matching record is fatal.
+    not part of the selector.  Only the exact branch/path/owner/head identity
+    plus a current Scope contained by the older requested Scope may bridge
+    that generation drift; unrelated malformed records do not become global
+    blockers, while a malformed matching record is fatal.
     """
 
     expected_path = path.expanduser().resolve()
@@ -290,7 +292,7 @@ def published_claim(
     for raw in payload["records"]:
         if not isinstance(raw, Mapping) or raw.get("branch") != branch:
             continue
-        if raw.get("status") not in {"published", "cleanup_pending"}:
+        if raw.get("status") not in _CURRENT_DURABLE_CLAIM_STATUSES:
             continue
         external_ids = raw.get("external_ids")
         if external_ids is not None and not isinstance(external_ids, list):
@@ -320,7 +322,7 @@ def published_claim(
             raise AdapterPayloadError(
                 "published registry claim is malformed"
             ) from error
-        if record.scope != scope:
+        if not set(record.scope.files).issubset(scope.files):
             raise AdapterPayloadError("published registry claim Scope differs")
         matches.append(record)
     if len(matches) > 1:

@@ -1103,6 +1103,32 @@ def test_registry_adapter_finds_current_published_claim_without_generation(
     assert record.published_base_sha == "c" * 40
 
 
+def test_registry_adapter_finds_current_claim_when_scope_is_narrower(
+    tmp_path: Path,
+) -> None:
+    payload = _payload_with_initial_holds(tmp_path, [])
+    payload["status"] = "active"
+    runner = StaticRunner(
+        [CommandResult(("registry",), 0, json.dumps({"records": [payload]}), "")]
+    )
+    previous_scope = Scope.from_paths(modify=("ops/a.py", "ops/b.py"))
+
+    record = RegistryCliAdapter(
+        script_path=Path("/repo/ops/worktree_registry.py"), runner=runner
+    ).find_published_claim(
+        lane_id="#holds",
+        branch="feat/holds",
+        path=tmp_path / "holds",
+        owner_thread_id="thread-holds",
+        head_sha="b" * 40,
+        scope=previous_scope,
+    )
+
+    assert record is not None
+    assert record.status == "active"
+    assert record.scope.paths == ("ops/a.py",)
+
+
 def _payload_with_initial_holds(
     tmp_path: Path, initial_holds: object, *, valid_digest: bool = True
 ) -> dict[str, object]:

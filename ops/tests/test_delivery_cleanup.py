@@ -3,12 +3,14 @@ from __future__ import annotations
 import sys
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
+from delivery_control.application_services import DeliveryApplication
 from delivery_control.domain.errors import CompareAndSwapConflict, PolicyViolation
 from delivery_control.domain.models import HandbackReceipt, Scope
 from delivery_control.domain.observations import (
@@ -128,6 +130,27 @@ class FakeRegistry:
             return self.record
         return None
 
+    def find_published_claim(
+        self,
+        *,
+        lane_id: str,
+        branch: str,
+        path: Path,
+        owner_thread_id: str,
+        head_sha: str,
+        scope: Scope,
+    ) -> RegistrySnapshot | None:
+        if (
+            self.record.lane_id == lane_id
+            and self.record.branch == branch
+            and self.record.path == path
+            and self.record.owner_thread_id == owner_thread_id
+            and self.record.handed_back_sha == head_sha
+            and self.record.status in {"active", "published", "cleanup_pending"}
+        ):
+            return self.record
+        return None
+
     def resolve(
         self,
         lane_id: str,
@@ -151,6 +174,35 @@ class FakeRegistry:
             assert terminal_proof is None
         self.transitions.append(disposition)
         self.record = replace(self.record, status=disposition)
+
+
+class TerminalThenCurrentRegistry(FakeRegistry):
+    def __init__(
+        self, terminal_record: RegistrySnapshot, current_record: RegistrySnapshot
+    ) -> None:
+        super().__init__(current_record)
+        self.terminal_record = terminal_record
+
+    def list_records(self) -> RegistryInventory:
+        return RegistryInventory((self.terminal_record, self.record))
+
+    def find_exact_claim(
+        self,
+        *,
+        lane_id: str,
+        branch: str,
+        path: Path,
+        claim_generation: int,
+    ) -> RegistrySnapshot | None:
+        for record in (self.terminal_record, self.record):
+            if (
+                record.lane_id == lane_id
+                and record.branch == branch
+                and record.path == path
+                and record.claim_generation == claim_generation
+            ):
+                return record
+        return None
 
 
 class FakeGit:
@@ -446,6 +498,122 @@ def test_merged_cleanup_removes_exact_remote_and_terminalizes_registry() -> None
     assert registry.transitions == ["cleanup_pending", "merged"]
     assert git.actions == ["delete-remote"]
     assert result.remote_branch_absent
+
+
+def test_application_cleanup_bridges_previous_body_to_current_registry_claim() -> None:
+    current = _receipt()
+    previous = replace(
+        current,
+        claim_generation=1,
+        content_digest="d" * 64,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    registry = FakeRegistry(_record(current, status="active"))
+    git = FakeGit(current, has_worktree=False, local_sha=None)
+    github = FakeGitHub(
+        _pull_request(
+            current,
+            state="MERGED",
+            body=render_pull_request_body(previous),
+        ),
+        current,
+    )
+    application = DeliveryApplication(
+        repo=Path("/repo"),
+        git=git,
+        github=github,
+        registry=registry,
+        runtime=Mock(),
+        telemetry=Mock(),
+    )
+
+    result = application.cleanup_merged(9)
+
+    assert result["cleanup"].disposition == "merged"
+    assert registry.transitions == ["cleanup_pending", "merged"]
+    assert git.actions == ["delete-remote"]
+
+
+def test_application_cleanup_skips_terminal_claim_for_current_generation() -> None:
+    current = _receipt()
+    previous = replace(current, claim_generation=1)
+    terminal = _record(previous, status="abandoned")
+    registry = TerminalThenCurrentRegistry(terminal, _record(current))
+    git = FakeGit(current, has_worktree=False, local_sha=None)
+    github = FakeGitHub(
+        _pull_request(
+            current,
+            state="MERGED",
+            body=render_pull_request_body(previous),
+        ),
+        current,
+    )
+    application = DeliveryApplication(
+        repo=Path("/repo"),
+        git=git,
+        github=github,
+        registry=registry,
+        runtime=Mock(),
+        telemetry=Mock(),
+    )
+
+    result = application.cleanup_merged(9)
+
+    assert result["cleanup"].disposition == "merged"
+    assert registry.transitions == ["cleanup_pending", "merged"]
+    assert git.actions == ["delete-remote"]
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    (
+        lambda record: replace(
+            record,
+            scope=Scope.from_paths(modify=("ops/other.py",)),
+        ),
+        lambda record: replace(
+            record,
+            handback_valid=False,
+        ),
+    ),
+    ids=("previous-scope-does-not-contain-current", "invalid-current-handback"),
+)
+def test_application_cleanup_does_not_bridge_unproven_previous_receipt(
+    mutate,
+) -> None:
+    current = _receipt()
+    previous = replace(
+        current,
+        claim_generation=1,
+        content_digest="d" * 64,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    current_record = _record(current, status="published")
+    current_record = mutate(current_record)
+    registry = FakeRegistry(current_record)
+    git = FakeGit(current, has_worktree=False, local_sha=None)
+    github = FakeGitHub(
+        _pull_request(
+            current,
+            state="MERGED",
+            body=render_pull_request_body(previous),
+        ),
+        current,
+    )
+    application = DeliveryApplication(
+        repo=Path("/repo"),
+        git=git,
+        github=github,
+        registry=registry,
+        runtime=Mock(),
+        telemetry=Mock(),
+    )
+
+    with pytest.raises(PolicyViolation, match="current registry claim"):
+        application.cleanup_merged(9)
+
+    assert registry.transitions == []
+    assert git.actions == []
 
 
 def test_cleanup_refuses_remote_drift() -> None:

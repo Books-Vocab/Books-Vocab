@@ -40,6 +40,7 @@ from .domain.unreachable_commits import (
     validate_unreachable_commit_path_limit,
 )
 from .ports.github import GitHubIssueCommandPort, GitHubIssueIntakePort
+from .ports.registry import RegistryPublishedClaimQueryPort
 from .ports.runtime import (
     AgentRuntimePort,
     RuntimeReceiptPort,
@@ -99,6 +100,72 @@ def _is_reviewable_local_orphan(action: object) -> bool:
         and len(blockers) == 1
         and next(iter(blockers)) in _REVIEWABLE_LOCAL_ORPHAN_BLOCKERS
     )
+
+
+def _receipt_from_current_claim_for_cleanup(
+    *,
+    previous: models.HandbackReceipt,
+    record: observations.RegistrySnapshot,
+    pull_request: observations.PullRequestSnapshot,
+    changed_paths: tuple[str, ...],
+) -> models.HandbackReceipt:
+    """Bridge one older PR body to a later, exact owner claim for cleanup.
+
+    A merged PR may retain the receipt that created it while the same owner
+    refreshes its registry claim before terminal cleanup.  The bridge is
+    intentionally narrower than a general metadata repair: it requires a
+    newer generation, stable lane/owner/branch/path/head identity, the
+    current claim's valid handback seal, and observed PR changes within the
+    current Scope.
+    """
+
+    current_files = set(record.scope.files)
+    previous_files = set(previous.scope.files)
+    if (
+        record.status not in {"active", "published", "cleanup_pending"}
+        or record.claim_generation <= previous.claim_generation
+        or record.lane_id != previous.lane_id
+        or record.branch != previous.branch
+        or record.path.resolve() != Path(previous.worktree_path).resolve()
+        or record.owner_thread_id != previous.owner_thread_id
+        or record.base_sha != previous.base_sha
+        or record.handed_back_sha != previous.head_sha
+        or record.handback_origin_main_sha != previous.origin_main_sha
+        or record.handback_claim_generation != record.claim_generation
+        or not record.handback_valid
+        or record.handback_digest is None
+        or record.handback_origin_main_sha is None
+        or not current_files.issubset(previous_files)
+        or pull_request.state != "MERGED"
+        or pull_request.base_branch != "main"
+        or pull_request.base_sha != previous.base_sha
+        or pull_request.branch != record.branch
+        or pull_request.head_sha != record.handed_back_sha
+        or not record.scope.allows_changed_paths(changed_paths)
+    ):
+        raise errors.PolicyViolation(
+            "current registry claim cannot bridge the previous PR receipt"
+        )
+    try:
+        return models.HandbackReceipt(
+            lane_id=record.lane_id,
+            owner_thread_id=record.owner_thread_id,
+            claim_generation=record.claim_generation,
+            branch=record.branch,
+            worktree_path=str(record.path),
+            base_sha=record.base_sha,
+            parent_sha=previous.parent_sha,
+            head_sha=record.handed_back_sha,
+            origin_main_sha=record.handback_origin_main_sha,
+            content_digest=record.handback_digest,
+            scope=record.scope,
+            validation=record.handback_outcomes,
+            initial_holds=record.handback_initial_holds,
+        )
+    except (TypeError, ValueError) as error:
+        raise errors.PolicyViolation(
+            "current registry claim handback is malformed"
+        ) from error
 
 
 def _branch_review_next_step(action: object, content: BranchContentEvidence) -> str:
@@ -851,10 +918,14 @@ class DeliveryApplication:
         pull_request = self.github.get_pull_request(pull_request_number)
         if "<!-- kg.delivery.receipt.v1" not in pull_request.body:
             return self._legacy_cleanup().cleanup_merged_pr(pull_request_number)
-        receipt = parse_pull_request_body(pull_request.body)
-        record = self._record_for_receipt(receipt)
+        body_receipt = parse_pull_request_body(pull_request.body)
+        receipt, record, previous_receipt = self._cleanup_receipt(
+            body_receipt, pull_request
+        )
         result = self._cleanup().finalize_merged(
-            receipt=receipt, pull_request_number=pull_request_number
+            receipt=receipt,
+            pull_request_number=pull_request_number,
+            body_receipt=previous_receipt,
         )
         warnings = self._operation_telemetry().after_cleanup(
             pull_request=pull_request,
@@ -1001,6 +1072,58 @@ class DeliveryApplication:
 
     def _receipt_from_pr(self, number: int) -> models.HandbackReceipt:
         return parse_pull_request_body(self.github.get_pull_request(number).body)
+
+    def _cleanup_receipt(
+        self,
+        body_receipt: models.HandbackReceipt,
+        pull_request: observations.PullRequestSnapshot,
+    ) -> tuple[
+        models.HandbackReceipt,
+        observations.RegistrySnapshot,
+        models.HandbackReceipt | None,
+    ]:
+        """Resolve one current claim while preserving an older PR-body receipt."""
+
+        exact = self.registry.find_exact_claim(
+            lane_id=body_receipt.lane_id,
+            branch=body_receipt.branch,
+            path=Path(body_receipt.worktree_path),
+            claim_generation=body_receipt.claim_generation,
+        )
+        if exact is not None:
+            if exact.status in {
+                "active",
+                "published",
+                "cleanup_pending",
+                "merged",
+            }:
+                return body_receipt, exact, None
+            if exact.status != "abandoned":
+                raise errors.PolicyViolation(
+                    "typed receipt has an invalid registry claim"
+                )
+        if not isinstance(self.registry, RegistryPublishedClaimQueryPort):
+            raise errors.PolicyViolation("typed receipt has no exact registry claim")
+        current = self.registry.find_published_claim(
+            lane_id=body_receipt.lane_id,
+            branch=body_receipt.branch,
+            path=Path(body_receipt.worktree_path),
+            owner_thread_id=body_receipt.owner_thread_id,
+            head_sha=body_receipt.head_sha,
+            scope=body_receipt.scope,
+        )
+        if current is None:
+            raise errors.PolicyViolation("typed receipt has no exact registry claim")
+        return (
+            _receipt_from_current_claim_for_cleanup(
+                previous=body_receipt,
+                record=current,
+                pull_request=pull_request,
+                changed_paths=self.github.changed_paths(pull_request.number),
+            ),
+            current,
+            body_receipt,
+        )
 
     def _record_for_receipt(
         self, receipt: models.HandbackReceipt
