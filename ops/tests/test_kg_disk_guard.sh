@@ -208,12 +208,15 @@ grep -q '"reason":"docker-build-cache"' "$state" && ok "2GiB+1 exact threshold w
 
 echo "── active build: defer and preserve ──"
 root="$TMP/active"; cache="$root/.cache/ios-test-derived-data"; state="$TMP/active/state.json"
+build_cache="$root/.cache/ios-build-derived-data"
 mkdir -p "$cache/old/Build"; printf x > "$cache/old/Build/blob"; touch -m -t 202001010000.00 "$cache/old"
+mkdir -p "$build_cache/Build"; printf x > "$build_cache/Build/blob"
 KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
   KG_DISK_GUARD_FREE_BYTES=$((8*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=1 \
   KG_DISK_GUARD_CACHE_KEEP=0 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=1 \
   "$SCRIPT" >/dev/null 2>&1
 [[ -d "$cache/old" ]] && ok "active build protects cache" || bad "active build deletion"
+[[ -d "$build_cache" ]] && ok "active build protects shared build cache" || bad "active build deleted shared build cache"
 grep -q '"action":"deferred-active-build"' "$state" && ok "active build deferred" || bad "active build action"
 
 echo "── aggregate cache budget: stale keyed cache is reclaimed ──"
@@ -272,6 +275,24 @@ grep -q '"cache_repair_status":"repaired"' "$state" \
   && ok "completed headroom repair is recorded" || bad "completed headroom repair missing"
 grep -q '"cache_repair_remaining_kb":0' "$state" \
   && ok "completed headroom repair has no shortfall" || bad "completed headroom repair shortfall"
+
+echo "── aggregate headroom: inactive shared build cache is rebuildable ──"
+root="$TMP/build-cache-repair"; cache="$root/.cache/ios-build-derived-data"; state="$root/state.json"
+mkdir -p "$cache/Build/Products"
+printf x > "$cache/Build/Products/blob"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  KG_DISK_GUARD_CACHE_BUDGET_GIB=1 KG_DISK_GUARD_CACHE_HEADROOM_GIB=1 \
+  KG_DISK_GUARD_CACHE_KEEP=3 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0 \
+  KG_DISK_GUARD_CACHE_READER_WINDOW_HOURS=0 \
+  KG_DISK_GUARD_BUILD_LOCK_FILE="$TMP/build-cache-repair.lock" \
+  "$SCRIPT" >/dev/null 2>&1
+[[ ! -d "$cache" ]] \
+  && ok "inactive shared build cache reclaimed" || bad "inactive shared build cache remains"
+grep -q '"cache_repair_status":"repaired"' "$state" \
+  && ok "build cache repair is recorded" || bad "build cache repair missing"
+grep -q '"cache_repair_remaining_kb":0' "$state" \
+  && ok "build cache repair has no shortfall" || bad "build cache repair shortfall"
 
 echo "── headroom healthy: no-overflow is a no-op ──"
 root="$TMP/headroom-noop"; cache="$root/.cache/ios-test-derived-data"; state="$root/state.json"
