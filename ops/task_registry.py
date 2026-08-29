@@ -25,21 +25,22 @@ import signal
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import uuid
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any
 
 from lib.lock_wait import exclusive_lock
-
 
 SCHEMA = "kg.task.registry.v1"
 STATUS_ACTIVE = "active"
 STATUS_FINISHED = "finished"
 DEFAULT_STALE_AFTER_SECONDS = 120.0
 _UTC = dt.timezone.utc
-DEFAULT_SESSION_ID = os.environ.get("KG_TASK_SESSION_ID") or f"session-{uuid.uuid4().hex}"
+DEFAULT_SESSION_ID = (
+    os.environ.get("KG_TASK_SESSION_ID") or f"session-{uuid.uuid4().hex}"
+)
 
 
 def _utc_now() -> dt.datetime:
@@ -67,8 +68,13 @@ def _as_datetime(value: str | dt.datetime | None) -> dt.datetime:
 
 def command_identity(command: Sequence[object]) -> dict[str, Any]:
     """Return stable, non-sensitive identity without retaining raw argv."""
-    values = [os.fspath(value) if isinstance(value, os.PathLike) else str(value) for value in command]
-    digest = hashlib.sha256("\0".join(values).encode("utf-8", errors="surrogatepass")).hexdigest()
+    values = [
+        os.fspath(value) if isinstance(value, os.PathLike) else str(value)
+        for value in command
+    ]
+    digest = hashlib.sha256(
+        "\0".join(values).encode("utf-8", errors="surrogatepass")
+    ).hexdigest()
     return {
         "basename": Path(values[0]).name if values else "",
         "arg_count": len(values),
@@ -241,8 +247,10 @@ def _load(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {"schema": SCHEMA, "records": []}
     data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict) or data.get("schema") != SCHEMA or not isinstance(
-        data.get("records"), list
+    if (
+        not isinstance(data, dict)
+        or data.get("schema") != SCHEMA
+        or not isinstance(data.get("records"), list)
     ):
         raise ValueError(f"malformed task registry state at {path}")
     return data
@@ -280,7 +288,9 @@ class TaskRegistry:
         return _load(Path(path).expanduser().resolve())
 
     def _update(self, callback: Callable[[dict[str, Any]], Any]) -> Any:
-        with exclusive_lock(self.lock_path, label=f"task-registry:{self.state_path.name}"):
+        with exclusive_lock(
+            self.lock_path, label=f"task-registry:{self.state_path.name}"
+        ):
             state = _load(self.state_path)
             result = callback(state)
             _atomic_save(self.state_path, state)
@@ -424,31 +434,90 @@ class TaskRegistry:
             try:
                 record = _record_or_error(state, task_id)
             except KeyError:
-                return {"task_id": task_id, "allowed": False, "reason": "unknown-task", "signals": []}
+                return {
+                    "task_id": task_id,
+                    "allowed": False,
+                    "reason": "unknown-task",
+                    "signals": [],
+                }
             if record.get("status") != STATUS_ACTIVE:
-                return {"task_id": task_id, "allowed": False, "reason": "finished-task", "signals": []}
+                return {
+                    "task_id": task_id,
+                    "allowed": False,
+                    "reason": "finished-task",
+                    "signals": [],
+                }
             if record.get("session_id") != owner_session:
-                return {"task_id": task_id, "allowed": False, "reason": "different-session", "signals": []}
+                return {
+                    "task_id": task_id,
+                    "allowed": False,
+                    "reason": "different-session",
+                    "signals": [],
+                }
             if record.get("worktree") != resolved_owner_worktree:
-                return {"task_id": task_id, "allowed": False, "reason": "different-worktree", "signals": []}
+                return {
+                    "task_id": task_id,
+                    "allowed": False,
+                    "reason": "different-worktree",
+                    "signals": [],
+                }
             heartbeat_at = record.get("heartbeat_at")
             if not heartbeat_at:
-                return {"task_id": task_id, "allowed": False, "reason": "missing-heartbeat", "signals": []}
-            if (current_time - _parse_timestamp(heartbeat_at)).total_seconds() <= stale_after:
-                return {"task_id": task_id, "allowed": False, "reason": "live-heartbeat", "signals": []}
+                return {
+                    "task_id": task_id,
+                    "allowed": False,
+                    "reason": "missing-heartbeat",
+                    "signals": [],
+                }
+            if (
+                current_time - _parse_timestamp(heartbeat_at)
+            ).total_seconds() <= stale_after:
+                return {
+                    "task_id": task_id,
+                    "allowed": False,
+                    "reason": "live-heartbeat",
+                    "signals": [],
+                }
             if record.get("pid") != expected_pid:
-                return {"task_id": task_id, "allowed": False, "reason": "pid-mismatch", "signals": []}
+                return {
+                    "task_id": task_id,
+                    "allowed": False,
+                    "reason": "pid-mismatch",
+                    "signals": [],
+                }
             if record.get("pgid") != expected_pgid:
-                return {"task_id": task_id, "allowed": False, "reason": "pgid-mismatch", "signals": []}
+                return {
+                    "task_id": task_id,
+                    "allowed": False,
+                    "reason": "pgid-mismatch",
+                    "signals": [],
+                }
             if record.get("start_identity") != expected_start_identity:
-                return {"task_id": task_id, "allowed": False, "reason": "pid-reuse", "signals": []}
+                return {
+                    "task_id": task_id,
+                    "allowed": False,
+                    "reason": "pid-reuse",
+                    "signals": [],
+                }
 
             current_identity = process_start_identity(expected_pid)
-            if current_identity is None or current_identity != record.get("start_identity"):
-                return {"task_id": task_id, "allowed": False, "reason": "pid-reuse", "signals": []}
+            if current_identity is None or current_identity != record.get(
+                "start_identity"
+            ):
+                return {
+                    "task_id": task_id,
+                    "allowed": False,
+                    "reason": "pid-reuse",
+                    "signals": [],
+                }
             current_pgid = process_group_id(expected_pid)
             if current_pgid is None or current_pgid != record.get("pgid"):
-                return {"task_id": task_id, "allowed": False, "reason": "pgid-mismatch", "signals": []}
+                return {
+                    "task_id": task_id,
+                    "allowed": False,
+                    "reason": "pgid-mismatch",
+                    "signals": [],
+                }
 
             plan = {
                 "task_id": task_id,
@@ -477,7 +546,9 @@ class TaskRegistry:
                 except ProcessLookupError:
                     pass
 
-            outcome = "stale-cleanup:" + (signals_sent[-1] if signals_sent else "already-exited")
+            outcome = "stale-cleanup:" + (
+                signals_sent[-1] if signals_sent else "already-exited"
+            )
             finished_at = _timestamp(current_time)
             record.update(
                 {
@@ -508,7 +579,9 @@ def _print_json(payload: object) -> None:
 
 
 def _cli(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="inspect and safely clean long-task ownership")
+    parser = argparse.ArgumentParser(
+        description="inspect and safely clean long-task ownership"
+    )
     parser.add_argument("--state-path")
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
     list_parser = subparsers.add_parser("list")
@@ -523,7 +596,9 @@ def _cli(argv: list[str] | None = None) -> int:
     cleanup.add_argument("--pid", type=int, required=True)
     cleanup.add_argument("--pgid", type=int, required=True)
     cleanup.add_argument("--start-identity", required=True)
-    cleanup.add_argument("--stale-after", type=float, default=DEFAULT_STALE_AFTER_SECONDS)
+    cleanup.add_argument(
+        "--stale-after", type=float, default=DEFAULT_STALE_AFTER_SECONDS
+    )
     cleanup.add_argument("--term-timeout", type=float, default=5.0)
     cleanup.add_argument("--commit", action="store_true")
     cleanup.add_argument("--json", action="store_true")
@@ -533,7 +608,9 @@ def _cli(argv: list[str] | None = None) -> int:
         payload: object = TaskRegistry.load(registry.state_path)
     elif args.subcommand == "status":
         try:
-            payload = _record_or_error(TaskRegistry.load(registry.state_path), args.task_id)
+            payload = _record_or_error(
+                TaskRegistry.load(registry.state_path), args.task_id
+            )
         except KeyError:
             payload = {"task_id": args.task_id, "error": "unknown-task"}
     else:
