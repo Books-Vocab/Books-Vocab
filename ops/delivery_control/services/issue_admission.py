@@ -6,6 +6,7 @@ from collections.abc import Callable, Iterable
 
 from ..domain.demand_issues import (
     DemandIssue,
+    IssueDisposition,
     IssueIntakeRequest,
     issue_intake_fingerprint,
 )
@@ -43,7 +44,10 @@ def assert_candidate_scope_available(
                 f"{claim.lane_id}: {', '.join(sorted(overlap))}"
             )
     for issue in demand_issues:
-        if issue.candidate_spec is None:
+        if (
+            issue.candidate_spec is None
+            or issue.disposition is IssueDisposition.TERMINAL_HISTORY
+        ):
             continue
         overlap = paths.intersection(issue.candidate_spec.scope.paths)
         if overlap:
