@@ -294,8 +294,9 @@ XCODEPROJ="$PROJECT_ROOT/ios/BooksAndVocab.xcodeproj"
 IOS_OPS="$SCRIPT_DIR/ios_ops.sh"
 # Evidence wrappers may pin every per-run log/result/snapshot below one unique
 # staging root. New visual runs use a short-lived temp root; the in-repo path is
-# reserved for an explicit retained report. Ordinary UI tests are behavior-only
-# unless --visual (or KG_IOS_VISUAL_CAPTURE=1) opts into visual capture.
+# reserved for an explicit retained report. UI evidence runs always receive a
+# short-lived screenshot directory for app-written proof; --visual (or
+# KG_IOS_VISUAL_CAPTURE=1) additionally opts into video and visual review pages.
 IOS_ARTIFACT_ROOT=""
 if [[ -n "${KG_IOS_ARTIFACT_ROOT:-}" ]]; then
   artifact_root_candidate="$KG_IOS_ARTIFACT_ROOT"
@@ -1272,8 +1273,8 @@ stage_ui_evidence_runner_environment() {
     echo "[ios_test] evidence stage blocked: source commit could not be resolved" >&2
     return 1
   fi
-  if [[ "$VISUAL_CAPTURE_ENABLED" == "1" && -z "${UI_TEST_SCREENSHOT_DIR:-}" ]]; then
-    echo "[ios_test] evidence stage blocked: UI_TEST_SCREENSHOT_DIR is missing" >&2
+  if [[ -z "${UI_TEST_SCREENSHOT_DIR:-}" ]]; then
+    echo "[ios_test] evidence stage blocked: UI_TEST_SCREENSHOT_DIR is missing for UI evidence" >&2
     return 1
   fi
   if [[ -z "$device" ]]; then
@@ -1288,11 +1289,9 @@ stage_ui_evidence_runner_environment() {
     echo "[ios_test] evidence stage failed: key=KG_UI_TEST_SOURCE_COMMIT xctestrun=$staged_path" >&2
     return 1
   fi
-  if [[ "$VISUAL_CAPTURE_ENABLED" == "1" ]]; then
-    if ! ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_UI_TEST_SCREENSHOT_DIR "$UI_TEST_SCREENSHOT_DIR"; then
-      echo "[ios_test] evidence stage failed: key=KG_UI_TEST_SCREENSHOT_DIR xctestrun=$staged_path" >&2
-      return 1
-    fi
+  if ! ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_UI_TEST_SCREENSHOT_DIR "$UI_TEST_SCREENSHOT_DIR"; then
+    echo "[ios_test] evidence stage failed: key=KG_UI_TEST_SCREENSHOT_DIR xctestrun=$staged_path" >&2
+    return 1
   fi
   if ! ios_xctestrun_cache_upsert_env_all_targets "$staged_path" KG_UI_TEST_DATASET_ID "$EVIDENCE_DATASET_ID"; then
     echo "[ios_test] evidence stage failed: key=KG_UI_TEST_DATASET_ID xctestrun=$staged_path" >&2
@@ -1627,7 +1626,6 @@ prepare_ui_step_screenshot_dir() {
   UI_TEST_VIDEO_FILE=""
   UI_TEST_VIDEO_SHA256=""
   [[ "$TEST_SCOPE" == "ui" || "$TEST_SCOPE" == "all" ]] || return 0
-  [[ "$VISUAL_CAPTURE_ENABLED" == "1" ]] || return 0
   UI_TEST_SCREENSHOT_DIR="$(artifact_temp_dir kg_ios_ui_steps)"
 }
 
@@ -1653,6 +1651,7 @@ resolve_run_device_udid() {
 # Screen recording around the UI-scope test invocation. The mp4 lands next to
 # the step screenshots so the whole visual-evidence trio+video shares one dir.
 start_ui_test_recording() {
+  [[ "$VISUAL_CAPTURE_ENABLED" == "1" ]] || return 0
   [[ -n "${UI_TEST_SCREENSHOT_DIR:-}" && -d "${UI_TEST_SCREENSHOT_DIR:-}" ]] || return 0
   local udid
   if ! udid="$(resolve_run_device_udid)"; then
@@ -1812,6 +1811,7 @@ build_ui_test_review_page() {
 }
 
 build_ui_step_contact_sheet() {
+  [[ "$VISUAL_CAPTURE_ENABLED" == "1" ]] || return 0
   [[ -n "${UI_TEST_SCREENSHOT_DIR:-}" && -d "$UI_TEST_SCREENSHOT_DIR" ]] || return 0
   if ! compgen -G "$UI_TEST_SCREENSHOT_DIR/*.png" >/dev/null; then
     export_ui_step_attachments_from_xcresult
