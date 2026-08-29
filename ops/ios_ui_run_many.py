@@ -52,7 +52,9 @@ def load_methods(path: Path) -> list[dict[str, str]]:
     if isinstance(raw, dict):
         raw = raw.get("runs")
     if not isinstance(raw, list) or not raw:
-        raise RunManyError("methods file must contain a non-empty list or {runs: [...]}")
+        raise RunManyError(
+            "methods file must contain a non-empty list or {runs: [...]}"
+        )
     result: list[dict[str, str]] = []
     for index, item in enumerate(raw):
         item = _object(item, f"runs[{index}]")
@@ -61,10 +63,14 @@ def load_methods(path: Path) -> list[dict[str, str]]:
         requirement_id = item.get("requirementID")
         cluster_id = item.get("clusterID")
         if not isinstance(selector, str) or not SELECTOR_RE.fullmatch(selector):
-            raise RunManyError(f"runs[{index}].selector must be an exact XCTest selector")
+            raise RunManyError(
+                f"runs[{index}].selector must be an exact XCTest selector"
+            )
         if not isinstance(dataset_id, str) or not DATASET_RE.fullmatch(dataset_id):
             raise RunManyError(f"runs[{index}].datasetID is unsafe")
-        if not isinstance(requirement_id, str) or not REQUIREMENT_RE.fullmatch(requirement_id):
+        if not isinstance(requirement_id, str) or not REQUIREMENT_RE.fullmatch(
+            requirement_id
+        ):
             raise RunManyError(f"runs[{index}].requirementID must be P3-P15")
         if not isinstance(cluster_id, str) or not cluster_id.strip():
             raise RunManyError(f"runs[{index}].clusterID must be non-empty")
@@ -111,7 +117,9 @@ def _read_json(path: Path) -> dict[str, Any] | None:
 def _write_json_atomic(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary.write_text(
+        json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
     temporary.replace(path)
 
 
@@ -151,7 +159,9 @@ def _pid_alive(pid: int | None) -> bool:
     return True
 
 
-_IOS_CONSUMER_RE = re.compile(r"(^|/)(?:xcodebuild|ios_test\.sh|run_ui_evidence\.sh|ios_ui_run_many\.py)(?:\s|$)")
+_IOS_CONSUMER_RE = re.compile(
+    r"(^|/)(?:xcodebuild|ios_test\.sh|run_ui_evidence\.sh|ios_ui_run_many\.py)(?:\s|$)"
+)
 
 
 def _global_ios_consumers(*, exclude_pid: int | None = None) -> list[str]:
@@ -220,7 +230,9 @@ def _active_lock_holders() -> list[dict[str, Any]]:
         try:
             raw = path.read_text(encoding="utf-8").strip()
         except OSError as error:
-            holders.append({"path": str(path), "status": "unreadable", "error": str(error)})
+            holders.append(
+                {"path": str(path), "status": "unreadable", "error": str(error)}
+            )
             continue
         try:
             pid = int(raw)
@@ -235,7 +247,11 @@ def _active_lock_holders() -> list[dict[str, Any]]:
                 "status": "active" if _pid_alive(pid) else "orphaned",
             }
         )
-    return [item for item in holders if item.get("status") in {"active", "invalid", "unreadable"}]
+    return [
+        item
+        for item in holders
+        if item.get("status") in {"active", "invalid", "unreadable"}
+    ]
 
 
 def _allocated_bytes(path: Path) -> int | None:
@@ -255,7 +271,9 @@ def _allocated_bytes(path: Path) -> int | None:
 def _free_bytes() -> int | None:
     """Read free bytes for `/` without recursively scanning the filesystem."""
     try:
-        result = subprocess.run(["df", "-k", "/"], text=True, capture_output=True, check=True)
+        result = subprocess.run(
+            ["df", "-k", "/"], text=True, capture_output=True, check=True
+        )
         fields = result.stdout.splitlines()[-1].split()
         return int(fields[3]) * 1024
     except (OSError, subprocess.CalledProcessError, ValueError, IndexError):
@@ -273,7 +291,11 @@ def _parse_time(value: Any) -> datetime | None:
 
 def _ephemeral_root() -> Path:
     configured = os.environ.get("KG_IOS_EPHEMERAL_ROOT")
-    return Path(configured).expanduser() if configured else Path(tempfile.gettempdir()) / "kg-ios-ui-run-many"
+    return (
+        Path(configured).expanduser()
+        if configured
+        else Path(tempfile.gettempdir()) / "kg-ios-ui-run-many"
+    )
 
 
 def classify_bundle(bundle: Path, upstream_returncode: int) -> str:
@@ -323,12 +345,18 @@ def _run_streaming(
         manifest["activePID"] = process.pid
         manifest["activePhase"] = phase
         _write_json_atomic(manifest_path, manifest)
-    print(f"[run-many] phase={phase} pid={process.pid} alive=true elapsed=0s", flush=True)
+    print(
+        f"[run-many] phase={phase} pid={process.pid} alive=true elapsed=0s", flush=True
+    )
     try:
         while True:
             events = poller.select(timeout=1.0)
             for key, _ in events:
-                chunk = key.fileobj.read1(8192) if hasattr(key.fileobj, "read1") else key.fileobj.read(8192)
+                chunk = (
+                    key.fileobj.read1(8192)
+                    if hasattr(key.fileobj, "read1")
+                    else key.fileobj.read(8192)
+                )
                 if not chunk:
                     poller.unregister(key.fileobj)
                     continue
@@ -398,7 +426,9 @@ def _publish_bundle(bundle: Path, publish_root: Path, selector: str) -> Path:
     # intentionally binds evidenceRoot.name to verdict.runId.
     destination = publish_root / bundle.name
     if destination.exists():
-        raise RunManyError(f"refusing to overwrite existing evidence bundle: {destination}")
+        raise RunManyError(
+            f"refusing to overwrite existing evidence bundle: {destination}"
+        )
     shutil.copytree(bundle, destination)
     source_prefix = str(bundle.resolve())
     destination_prefix = str(destination.resolve())
@@ -413,7 +443,9 @@ def _publish_bundle(bundle: Path, publish_root: Path, selector: str) -> Path:
         except UnicodeDecodeError:
             continue
         if source_prefix in text:
-            path.write_text(text.replace(source_prefix, destination_prefix), encoding="utf-8")
+            path.write_text(
+                text.replace(source_prefix, destination_prefix), encoding="utf-8"
+            )
     return destination
 
 
@@ -421,7 +453,9 @@ def cleanup_runs(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     """Preview/reclaim expired ephemeral visual runs, never retained reports."""
     staging_root = args.staging_root.resolve()
     if not staging_root.is_dir():
-        raise RunManyError(f"--staging-root must be an existing directory: {staging_root}")
+        raise RunManyError(
+            f"--staging-root must be an existing directory: {staging_root}"
+        )
     manifest_paths = sorted(staging_root.glob("*/run-manifest.json"))
     if len(manifest_paths) > args.max_runs:
         raise RunManyError(
@@ -470,14 +504,23 @@ def cleanup_runs(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         if isinstance(publish_root_value, str) and publish_root_value:
             publish_root = Path(publish_root_value).resolve()
             if not _inside(publish_root, run_root) or publish_root == run_root:
-                raise RunManyError(f"manifest publishRoot escaped run staging root: {manifest_path}")
+                raise RunManyError(
+                    f"manifest publishRoot escaped run staging root: {manifest_path}"
+                )
         removable: list[Path] = []
         if helper_manifest:
             # A single helper keeps its compact verdict/manifest/command receipt,
             # while all visual binaries and xcresult data live under artifacts.
-            helper_artifact_root = Path(str(manifest.get("artifactRoot", run_root / "artifacts"))).resolve()
-            if not _inside(helper_artifact_root, run_root) or helper_artifact_root == run_root:
-                raise RunManyError(f"manifest artifactRoot escaped helper run root: {manifest_path}")
+            helper_artifact_root = Path(
+                str(manifest.get("artifactRoot", run_root / "artifacts"))
+            ).resolve()
+            if (
+                not _inside(helper_artifact_root, run_root)
+                or helper_artifact_root == run_root
+            ):
+                raise RunManyError(
+                    f"manifest artifactRoot escaped helper run root: {manifest_path}"
+                )
             helper_targets = (
                 helper_artifact_root,
                 run_root / "upstream-verdict.json",
@@ -521,7 +564,9 @@ def cleanup_runs(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 "removable": [str(path) for path in removable],
                 "allocatedBytesBefore": allocated_before,
                 "blockers": blockers,
-                "action": "blocked" if blockers else ("delete" if args.commit else "preview-delete"),
+                "action": "blocked"
+                if blockers
+                else ("delete" if args.commit else "preview-delete"),
             }
         )
 
@@ -534,13 +579,17 @@ def cleanup_runs(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             for target_text in candidate["removable"]:
                 target = Path(target_text).resolve()
                 if not _inside(target, run_root) or target == run_root:
-                    raise RunManyError(f"cleanup target changed or escaped run root: {target}")
+                    raise RunManyError(
+                        f"cleanup target changed or escaped run root: {target}"
+                    )
                 if target.is_dir():
                     shutil.rmtree(target)
                 elif target.is_file() or target.is_symlink():
                     target.unlink()
                 elif target.exists():
-                    raise RunManyError(f"refusing to remove unknown cleanup target: {target}")
+                    raise RunManyError(
+                        f"refusing to remove unknown cleanup target: {target}"
+                    )
             receipt = {
                 "schema": CLEANUP_SCHEMA,
                 "runID": candidate["runID"],
@@ -561,7 +610,9 @@ def cleanup_runs(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             if candidate.get("orphanedRunning"):
                 manifest["status"] = "abandoned"
                 manifest["verdict"] = "abandoned"
-                manifest["reason"] = "expired-running-manifest-without-live-recorded-pid"
+                manifest["reason"] = (
+                    "expired-running-manifest-without-live-recorded-pid"
+                )
             manifest["cleanup"] = {
                 "status": "reclaimed",
                 "at": receipt["reclaimedAt"],
@@ -574,7 +625,8 @@ def cleanup_runs(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             candidate["reclaimedBytes"] = (
                 max(
                     0,
-                    (candidate["allocatedBytesBefore"] or 0) - (candidate["allocatedBytesAfter"] or 0),
+                    (candidate["allocatedBytesBefore"] or 0)
+                    - (candidate["allocatedBytesAfter"] or 0),
                 )
                 if candidate["allocatedBytesBefore"] is not None
                 else None
@@ -610,51 +662,83 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if args.device:
         device = _canonical_device(args.device)
     else:
-        raise RunManyError("an explicit canonical --device is required; lease is not implicit")
+        raise RunManyError(
+            "an explicit canonical --device is required; lease is not implicit"
+        )
     try:
-        source_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
-        dirty = bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=root, text=True).strip())
+        source_commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=root, text=True
+        ).strip()
+        dirty = bool(
+            subprocess.check_output(
+                ["git", "status", "--porcelain"], cwd=root, text=True
+            ).strip()
+        )
     except (OSError, subprocess.CalledProcessError) as error:
         raise RunManyError(f"cannot establish source provenance: {error}") from error
     if dirty:
         raise RunManyError("run-many requires a clean source tree")
     if args.retain:
         if args.output_dir is None:
-            raise RunManyError("--retain requires an explicit --output-dir under build/ios-report/retained")
+            raise RunManyError(
+                "--retain requires an explicit --output-dir under build/ios-report/retained"
+            )
         staging_root = args.output_dir.resolve()
         retained_root = (root / "build" / "ios-report" / "retained").resolve()
         if not _inside(staging_root, retained_root):
-            raise RunManyError("--retain --output-dir must be below build/ios-report/retained")
+            raise RunManyError(
+                "--retain --output-dir must be below build/ios-report/retained"
+            )
     elif args.output_dir is not None:
         staging_root = args.output_dir.resolve()
         if _inside(staging_root, root):
-            raise RunManyError("ephemeral run-many output must be outside the repository; use --retain for repo output")
+            raise RunManyError(
+                "ephemeral run-many output must be outside the repository; use --retain for repo output"
+            )
         if not _inside(staging_root, _ephemeral_root().resolve()):
-            raise RunManyError("ephemeral --output-dir must be below KG_IOS_EPHEMERAL_ROOT")
+            raise RunManyError(
+                "ephemeral --output-dir must be below KG_IOS_EPHEMERAL_ROOT"
+            )
     else:
         ephemeral_root = _ephemeral_root().resolve()
         ephemeral_root.mkdir(parents=True, exist_ok=True)
-        staging_root = Path(tempfile.mkdtemp(prefix="ui-batch-", dir=str(ephemeral_root))).resolve()
+        staging_root = Path(
+            tempfile.mkdtemp(prefix="ui-batch-", dir=str(ephemeral_root))
+        ).resolve()
     if staging_root.exists() and any(staging_root.iterdir()):
-        raise RunManyError(f"refusing to reuse non-empty run staging directory: {staging_root}")
+        raise RunManyError(
+            f"refusing to reuse non-empty run staging directory: {staging_root}"
+        )
     staging_root.mkdir(parents=True, exist_ok=True)
-    publish_root = args.publish_root.resolve() if args.publish_root else staging_root / "bundles"
+    publish_root = (
+        args.publish_root.resolve() if args.publish_root else staging_root / "bundles"
+    )
     if not _inside(publish_root, staging_root):
-        raise RunManyError("--publish-root must be inside --output-dir so one run owns all artifacts")
+        raise RunManyError(
+            "--publish-root must be inside --output-dir so one run owns all artifacts"
+        )
     publish_root.mkdir(parents=True, exist_ok=True)
     raw_root = staging_root / "raw"
     log_root = staging_root / "logs"
     raw_root.mkdir(parents=True, exist_ok=True)
     log_root.mkdir(parents=True, exist_ok=True)
-    summary_path = args.summary_out.resolve() if args.summary_out else staging_root / "summary.json"
+    summary_path = (
+        args.summary_out.resolve()
+        if args.summary_out
+        else staging_root / "summary.json"
+    )
     if not _inside(summary_path, staging_root):
-        raise RunManyError("--summary-out must be inside --output-dir so one run owns all artifacts")
+        raise RunManyError(
+            "--summary-out must be inside --output-dir so one run owns all artifacts"
+        )
     methods_snapshot = staging_root / "methods.json"
     shutil.copy2(methods_path, methods_snapshot)
     started_at = _now()
     run_id = f"ui-batch-{started_at.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
     manifest_path = staging_root / "run-manifest.json"
-    branch = subprocess.check_output(["git", "branch", "--show-current"], cwd=root, text=True).strip()
+    branch = subprocess.check_output(
+        ["git", "branch", "--show-current"], cwd=root, text=True
+    ).strip()
     manifest: dict[str, Any] = {
         "schema": "kg.ios.ui-run-manifest.v1",
         "runID": run_id,
@@ -677,7 +761,9 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         "methodsFile": str(methods_snapshot),
         "methodsSHA256": _sha256(methods_snapshot),
         "failureTTLSeconds": EPHEMERAL_TTL_SECONDS,
-        "expiresAt": None if args.retain else _iso(started_at + timedelta(seconds=EPHEMERAL_TTL_SECONDS)),
+        "expiresAt": None
+        if args.retain
+        else _iso(started_at + timedelta(seconds=EPHEMERAL_TTL_SECONDS)),
         "executions": [],
     }
     _write_json_atomic(manifest_path, manifest)
@@ -793,9 +879,19 @@ def run_batch(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 manifest_path=manifest_path,
             )
             metadata = _read_json(output_path) or {}
-            helper_metadata = metadata.get("helper") if isinstance(metadata.get("helper"), dict) else {}
-            bundle_text = metadata.get("bundle") or metadata.get("bundleRoot") or helper_metadata.get("bundleRoot")
-            bundle = Path(bundle_text).resolve() if isinstance(bundle_text, str) else None
+            helper_metadata = (
+                metadata.get("helper")
+                if isinstance(metadata.get("helper"), dict)
+                else {}
+            )
+            bundle_text = (
+                metadata.get("bundle")
+                or metadata.get("bundleRoot")
+                or helper_metadata.get("bundleRoot")
+            )
+            bundle = (
+                Path(bundle_text).resolve() if isinstance(bundle_text, str) else None
+            )
             status = classify_bundle(bundle, rc) if bundle else "failed"
             if status != "passed_unattested":
                 overall = max(overall, 1 if rc != 0 else 70)
