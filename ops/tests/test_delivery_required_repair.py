@@ -100,10 +100,11 @@ class FakeGitHub:
         pull_request: PullRequestSnapshot,
         *,
         statuses: tuple[CheckStatus, ...],
+        changed_paths: tuple[str, ...] = ("ops/a.py",),
     ) -> None:
         self.pull_request = pull_request
         self.statuses = list(statuses)
-        self.paths = ("ops/a.py",)
+        self.paths = changed_paths
         self.mapping = (pull_request,)
         self.dispatches: list[tuple[int, str, str, str]] = []
         self.get_reads = 0
@@ -183,6 +184,24 @@ def test_required_repair_accepts_recorded_published_target_base() -> None:
     service.trigger(17)
 
     assert github.dispatches == [(17, "feat/required", target_base, HEAD)]
+
+
+def test_required_repair_accepts_actual_changed_paths_as_scope_subset() -> None:
+    receipt = replace(
+        _receipt(),
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    registry = FakeRegistry(_record(receipt))
+    github = FakeGitHub(
+        _pull_request(receipt),
+        statuses=(CheckStatus.ABSENT, CheckStatus.ABSENT),
+        changed_paths=("ops/a.py",),
+    )
+    service = RequiredRepairService(registry=registry, query=github, command=github)
+
+    service.trigger(17)
+
+    assert github.dispatches == [(17, "feat/required", BASE, HEAD)]
 
 
 def test_required_repair_rejects_unrecorded_published_target_base_drift() -> None:

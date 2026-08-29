@@ -129,3 +129,19 @@ class Scope:
     @property
     def paths(self) -> tuple[str, ...]:
         return tuple(item.path for item in self.files)
+
+    def allows_changed_paths(self, changed_paths: Sequence[str]) -> bool:
+        """Return whether a non-empty observed change set fits this Scope.
+
+        Scope declares the files a lane is allowed to modify; a valid commit
+        may therefore touch a strict subset of that declaration. Empty or
+        duplicate observations remain invalid so missing or ambiguous GitHub
+        path evidence cannot satisfy a lifecycle check.
+        """
+
+        observed = tuple(changed_paths)
+        return (
+            bool(observed)
+            and len(observed) == len(set(observed))
+            and set(observed).issubset(self.paths)
+        )
