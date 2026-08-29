@@ -6,8 +6,8 @@ from ..api_models import (
     ArchiveWordRequest,
     BatchArchiveRequest,
     BatchDeleteRequest,
-    CardResponse,
     CardPreferencesUpdateRequest,
+    CardResponse,
     VocabContentUpdateRequest,
 )
 from ..vocab_crud import (
@@ -50,7 +50,8 @@ def list_vocab_response(
     None on the last page. Raises BadRequestError on a malformed cursor."""
     after = decode_cursor(cursor)
     stores = _resolve_stores(
-        user, notebook_id,
+        user,
+        notebook_id,
         card_store_factory=card_store_factory,
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
@@ -78,7 +79,8 @@ def lookup_word_response(
     notebook_id: str = "default",
 ) -> CardResponse:
     stores = _resolve_stores(
-        user, notebook_id,
+        user,
+        notebook_id,
         card_store_factory=card_store_factory,
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
@@ -103,7 +105,8 @@ def archive_word_response(
     notebook_id: str | None = None,
 ) -> dict[str, str]:
     stores = _resolve_stores(
-        user, notebook_id,
+        user,
+        notebook_id,
         card_store_factory=card_store_factory,
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
@@ -129,7 +132,8 @@ def update_word_content_response(
     notebook_id: str = "default",
 ) -> CardResponse:
     stores = _resolve_stores(
-        user, notebook_id,
+        user,
+        notebook_id,
         card_store_factory=card_store_factory,
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
@@ -158,7 +162,8 @@ def update_word_preferences_response(
     notebook_id: str = "default",
 ) -> CardResponse:
     stores = _resolve_stores(
-        user, notebook_id,
+        user,
+        notebook_id,
         card_store_factory=card_store_factory,
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
@@ -186,7 +191,8 @@ def delete_word_response(
     notebook_id: str = "default",
 ) -> dict[str, str]:
     stores = _resolve_stores(
-        user, notebook_id,
+        user,
+        notebook_id,
         card_store_factory=card_store_factory,
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
@@ -214,7 +220,8 @@ def batch_delete_response(
     notebook_id: str = "default",
 ) -> dict[str, Any]:
     stores = _resolve_stores(
-        user, notebook_id,
+        user,
+        notebook_id,
         card_store_factory=card_store_factory,
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
@@ -240,7 +247,8 @@ def batch_archive_response(
     notebook_id: str = "default",
 ) -> dict[str, Any]:
     stores = _resolve_stores(
-        user, notebook_id,
+        user,
+        notebook_id,
         card_store_factory=card_store_factory,
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
