@@ -50,6 +50,7 @@ from delivery_control.services.candidate_contract import (
     render_candidate_body,
 )
 from delivery_control.services.inspect import DeliveryInventory
+from delivery_control.services.issue_admission import assert_candidate_scope_available
 
 
 def test_admit_candidate_retries_an_already_converged_candidate_without_mutation(
@@ -481,6 +482,69 @@ def test_admit_candidate_fails_closed_when_projection_does_not_converge(
         )
 
     assert github.admission_calls == 1
+
+
+def test_candidate_scope_ignores_terminal_candidate_history_but_blocks_live_candidate() -> (
+    None
+):
+    scope = Scope.from_paths(
+        modify=("ops/delivery_control/services/issue_admission.py",)
+    )
+    spec = CandidateSpec(
+        severity=CandidateSeverity.P2,
+        priority=1,
+        scope=scope,
+        acceptance=("The candidate Scope remains exclusive while live.",),
+    )
+
+    def make_issue(*, number: int, disposition: IssueDisposition) -> DemandIssue:
+        body = f"Issue {number} historical candidate fixture"
+        return DemandIssue(
+            number=number,
+            url=f"https://github.com/Books-Vocab/Books-Vocab/issues/{number}",
+            node_id=f"I_{number}",
+            title=f"Issue {number}",
+            labels=(CANDIDATE_ISSUE_LABEL,),
+            body=body,
+            updated_at=None,
+            body_sha256=issue_body_sha256(body),
+            disposition=disposition,
+            reason=f"fixture disposition: {disposition.value}",
+            candidate_spec=spec,
+        )
+
+    empty_registry = RegistryCollisionInventory(records=())
+    empty_prs = PullRequestInventory(records=())
+
+    assert_candidate_scope_available(
+        scope=scope,
+        demand_issues=(
+            make_issue(
+                number=992,
+                disposition=IssueDisposition.TERMINAL_HISTORY,
+            ),
+        ),
+        registry=empty_registry,
+        pull_requests=empty_prs,
+        changed_paths=lambda _number: (),
+    )
+
+    with pytest.raises(
+        PolicyViolation,
+        match="candidate Scope overlaps typed candidate Issue #993",
+    ):
+        assert_candidate_scope_available(
+            scope=scope,
+            demand_issues=(
+                make_issue(
+                    number=993,
+                    disposition=IssueDisposition.DISPATCHABLE_CANDIDATE,
+                ),
+            ),
+            registry=empty_registry,
+            pull_requests=empty_prs,
+            changed_paths=lambda _number: (),
+        )
 
 
 def test_application_public_facade_preserves_constructor_contract() -> None:
