@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# This legacy contract test predates the repository-wide formatter baseline.
+# fmt: off
 import importlib.util
 import json
 import re
@@ -536,6 +538,28 @@ def test_asset_hash_delegates_to_shared_provenance_helper(tmp_path: Path, monkey
 
     assert MODULE._sha256_hex(source) == "shared-digest"
     assert calls == [source]
+
+
+def test_manifest_facade_delegates_asset_validation_to_internal_seam(monkeypatch):
+    calls = []
+    original = MODULE._validate_asset_manifest
+
+    def observe(data, *, label, path):
+        calls.append((data["datasetID"], label, path))
+        return original(data, label=label, path=path)
+
+    monkeypatch.setattr(MODULE, "_validate_asset_manifest", observe)
+
+    assert validate_fixture_dataset_file(
+        ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json"
+    ) == "marketing_demo"
+    assert calls == [
+        (
+            "marketing_demo",
+            "UI World dataset",
+            ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json",
+        )
+    ]
 
 
 @pytest.mark.parametrize("field", ["sourcePath", "sha256", "byteSize", "contentType"])

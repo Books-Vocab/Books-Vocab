@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# This legacy contract test predates the repository-wide formatter baseline.
+# fmt: off
 import importlib.util
 import hashlib
 import json
@@ -51,6 +53,22 @@ def test_audio_assets_declare_their_actual_mpeg_container():
         assert asset["contentType"] == "audio/mpeg"
         source_path = manifest._resolve_path(asset["sourcePath"])
         assert manifest._audio_container_type(source_path) == "audio/mpeg"
+
+
+def test_asset_validation_seam_returns_bucket_index_for_shared_fixture():
+    data = _load(BASELINE)
+
+    asset_types = manifest._validate_asset_manifest(
+        data,
+        label="UI World dataset",
+        path=BASELINE,
+    )
+
+    assert asset_types["catalog_reader_epub"] == "books"
+    assert asset_types["atomic_habits_ep1_flash_playable"] == "audio"
+    assert asset_types["atomic_habits_ep1_flash_srt_playable"] == "subtitles"
+    assert asset_types["atomic_habits_raw_ch_04"] == "text"
+    assert asset_types["notebook_cover_app_icon"] == "images"
 
 
 def test_validator_rejects_mp3_bytes_declared_as_m4a(tmp_path: Path):
