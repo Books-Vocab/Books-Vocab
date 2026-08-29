@@ -119,6 +119,80 @@ struct AddLinkCoordinatorTests {
         #expect(evidence.contains("chapter=Linked Cards"))
     }
 
+    @Test("dictionary detail projection keeps every sense, example, form, and provenance level")
+    func dictionaryDetailProjectionPreservesHierarchy() throws {
+        let entry = Self.entry("fortuitous", cardID: "target", notebook: "nb")
+        entry.translation = "偶然發生而幸運的"
+        entry.explanation = #"kg.dictionary.detail.v1:{"provider":"free_dictionary","senses":[{"definition":"Happening by chance, usually with a favorable result.","partOfSpeech":"adj.","translation":"偶然發生而幸運的","examples":["The fortuitous meeting changed the project's direction, preserving the complete first example."]},{"definition":"Occurring unexpectedly in a way that brings an advantage, with the long second sense still intact.","partOfSpeech":"adj.","translation":"意外而有利的","examples":["A fortuitous delay gave the researcher enough time to notice the pattern."]}]}"#
+        entry.rootForm = "fortuitous"
+        entry.inflections = ["fortuitously", "fortuitousness"]
+        entry.bookTitle = "The Weight of Words"
+        entry.chapterTitle = "Linked Cards"
+        entry.context = "A fortuitous delay gave the researcher time to notice the pattern."
+
+        let projection = AddLinkCoordinator.dictionaryDetailProjection(for: entry)
+
+        #expect(projection.state == .ready(senseCount: 2))
+        #expect(projection.senses.count == 2)
+        #expect(projection.senses[0].definition.contains("Happening by chance"))
+        #expect(projection.senses[1].definition.contains("long second sense still intact"))
+        #expect(projection.senses[0].examples == ["The fortuitous meeting changed the project's direction, preserving the complete first example."])
+        #expect(projection.forms == ["fortuitous", "fortuitously", "fortuitousness"])
+        #expect(projection.provenance.source == "The Weight of Words")
+        #expect(projection.provenance.chapter == "Linked Cards")
+        #expect(projection.provenance.context == entry.context)
+
+        let evidence = AddLinkCoordinator.lookupEvidence(for: entry)
+        #expect(evidence.contains("detail.senses=2"))
+        #expect(evidence.contains("detail.sense[2]=Occurring unexpectedly"))
+        #expect(evidence.contains("detail.example[2,1]=A fortuitous delay"))
+        #expect(evidence.contains("detail.forms=fortuitous, fortuitously, fortuitousness"))
+        #expect(evidence.contains("detail.provenance.source=The Weight of Words"))
+        #expect(evidence.contains("detail.provenance.chapter=Linked Cards"))
+    }
+
+    @Test("dictionary detail projection makes an absent explicit example observable")
+    func dictionaryDetailProjectionMissingExample() {
+        let entry = Self.entry("fortunate", cardID: "target", notebook: "nb")
+        entry.translation = "幸運的；有利的"
+        entry.explanation = "Favored by luck or resulting in a good outcome."
+        entry.context = "It was fortunate that the note survived in the old copy."
+        entry.reviewExamples = []
+
+        let projection = AddLinkCoordinator.dictionaryDetailProjection(for: entry)
+
+        #expect(projection.state == .missingExample(senseCount: 1))
+        #expect(projection.senses.count == 1)
+        #expect(projection.senses[0].examples.isEmpty)
+        #expect(!AddLinkCoordinator.lookupEvidence(for: entry).contains("example=It was fortunate"))
+        #expect(AddLinkCoordinator.lookupEvidence(for: entry).contains("detail.missing-example=true"))
+    }
+
+    @Test("provider decode error is retryable through a deterministic local recovery")
+    func dictionaryDetailProjectionProviderDecodeErrorRecovers() {
+        let entry = Self.entry("revelation", cardID: "target", notebook: "nb")
+        entry.translation = "揭示；驚人的新發現"
+        entry.explanation = "kg.dictionary.detail.v1:{malformed"
+        entry.reviewExamples = ["The archive produced one quiet revelation after another."]
+        entry.rootForm = "revelation"
+        entry.inflections = ["reveal", "revealed"]
+
+        let failed = AddLinkCoordinator.dictionaryDetailProjection(for: entry)
+        #expect(failed.state == .providerDecodeError)
+        #expect(failed.senses.isEmpty)
+
+        let recovered = AddLinkCoordinator.dictionaryDetailProjection(
+            for: entry,
+            recoveringProviderError: true
+        )
+        #expect(recovered.state == .recovered(senseCount: 1))
+        #expect(recovered.senses.first?.definition == entry.translation)
+        #expect(recovered.senses.first?.examples == entry.reviewExamples)
+        #expect(recovered.forms == ["revelation", "reveal", "revealed"])
+        #expect(AddLinkCoordinator.detailStateIdentifier(for: entry) == "addLink.local.result.target.state")
+        #expect(AddLinkCoordinator.detailRetryIdentifier(for: entry) == "addLink.local.result.target.provider.retry")
+    }
+
     @Test("manual link rejects an out-of-scope target before creating a link")
     @MainActor
     func manualLinkRejectsOutOfScopeTarget() async throws {

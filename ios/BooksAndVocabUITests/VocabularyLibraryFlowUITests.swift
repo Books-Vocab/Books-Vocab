@@ -248,6 +248,89 @@ final class VocabularyLibraryFlowUITests: UITestCase {
             "query fort 必須排除不匹配的 happy accident candidate"
         )
         captureStep("add-link-word-candidates", app: app)
+
+        let fortuitousDetailID = "addLink.local.result.vocab-linked-fortuitous"
+        guard let fortuitousState = app.descendants(matching: .any)
+            .matching(identifier: "\(fortuitousDetailID).state")
+            .exactlyOneElement(timeout: 5, named: "AddLink fortuitous detail state") else {
+            captureStep("add-link-fortuitous-detail-state-missing", app: app)
+            return
+        }
+        XCTAssertEqual(
+            fortuitousState.value as? String,
+            "ready-senses-2|senses=2",
+            "fortuitous must expose both dictionary senses"
+        )
+        guard let firstSense = app.descendants(matching: .any)
+            .matching(identifier: "\(fortuitousDetailID).sense.1")
+            .exactlyOneElement(timeout: 5, named: "AddLink fortuitous first sense"),
+            let secondSense = app.descendants(matching: .any)
+            .matching(identifier: "\(fortuitousDetailID).sense.2")
+            .exactlyOneElement(timeout: 5, named: "AddLink fortuitous second sense"),
+            let secondExample = app.descendants(matching: .any)
+            .matching(identifier: "\(fortuitousDetailID).sense.2.example.1")
+            .exactlyOneElement(timeout: 5, named: "AddLink fortuitous second example"),
+            let forms = app.descendants(matching: .any)
+            .matching(identifier: "\(fortuitousDetailID).forms")
+            .exactlyOneElement(timeout: 5, named: "AddLink fortuitous forms"),
+            let provenanceSource = app.descendants(matching: .any)
+            .matching(identifier: "\(fortuitousDetailID).provenance.source")
+            .exactlyOneElement(timeout: 5, named: "AddLink fortuitous source provenance"),
+            let provenanceChapter = app.descendants(matching: .any)
+            .matching(identifier: "\(fortuitousDetailID).provenance.chapter")
+            .exactlyOneElement(timeout: 5, named: "AddLink fortuitous chapter provenance"),
+            let provenanceContext = app.descendants(matching: .any)
+            .matching(identifier: "\(fortuitousDetailID).provenance.context")
+            .exactlyOneElement(timeout: 5, named: "AddLink fortuitous context provenance") else {
+            captureStep("add-link-fortuitous-detail-hierarchy-missing", app: app)
+            return
+        }
+        XCTAssertTrue(
+            firstSense.label.contains("complete definition remains available"),
+            "first sense must retain its complete long definition"
+        )
+        XCTAssertTrue(
+            secondSense.label.contains("second sense preserved as a separate hierarchy node"),
+            "second sense must remain a separate hierarchy node"
+        )
+        XCTAssertTrue(
+            secondExample.label.contains("enough time to notice the pattern"),
+            "second sense example must remain attached to that sense"
+        )
+        XCTAssertTrue(
+            forms.label.contains("fortuitously") && forms.label.contains("fortuitousness"),
+            "inflected forms must remain visible"
+        )
+        XCTAssertEqual(provenanceSource.label, "來源: The Weight of Words")
+        XCTAssertEqual(provenanceChapter.label, "Linked Cards")
+        XCTAssertTrue(
+            provenanceContext.label.contains("fortuitous delay"),
+            "context provenance must remain visible"
+        )
+
+        let fortunateDetailID = "addLink.local.result.vocab-linked-fortunate"
+        guard let fortunateState = app.descendants(matching: .any)
+            .matching(identifier: "\(fortunateDetailID).state")
+            .exactlyOneElement(timeout: 5, named: "AddLink fortunate detail state"),
+            let missingExample = app.descendants(matching: .any)
+            .matching(identifier: "\(fortunateDetailID).sense.1.example.missing")
+            .exactlyOneElement(timeout: 5, named: "AddLink fortunate missing example") else {
+            captureStep("add-link-fortunate-missing-example-missing", app: app)
+            return
+        }
+        XCTAssertEqual(
+            fortunateState.value as? String,
+            "missing-example-senses-1|senses=1",
+            "fortunate must expose its missing-example state"
+        )
+        XCTAssertEqual(missingExample.value as? String, "missing")
+        XCTAssertEqual(
+            app.descendants(matching: .any)
+                .matching(identifier: "\(fortunateDetailID).sense.1.example.1").count,
+            0,
+            "missing-example state must not fabricate an example"
+        )
+        captureStep("add-link-detail-multi-sense-missing-example", app: app)
         guard closeAddLinkSheet() else {
             captureStep("add-link-close-after-word-query-failed", app: app)
             XCTFail("AddLink sheet 必須可取消回到 word detail")
@@ -276,6 +359,63 @@ final class VocabularyLibraryFlowUITests: UITestCase {
         captureStep("add-link-multiword-candidate", app: app)
         guard closeAddLinkSheet() else {
             captureStep("add-link-close-after-multiword-query-failed", app: app)
+            XCTFail("AddLink sheet 必須可取消回到 word detail")
+            return
+        }
+
+        guard openAddLinkSheet() else {
+            captureStep("add-link-reopen-for-provider-error-failed", app: app)
+            XCTFail("word detail 必須可重新開啟 AddLink sheet 以驗證 provider recovery")
+            return
+        }
+        let providerErrorSearchField = app.textFields["addLink.searchField"]
+        providerErrorSearchField.tapWhenReady()
+        providerErrorSearchField.typeText("revelation")
+        guard candidateQuery(for: "revelation").exactlyOneElement(
+            timeout: 5,
+            named: "AddLink revelation candidate"
+        ) != nil else {
+            captureStep("add-link-provider-error-candidate-missing", app: app)
+            return
+        }
+        let revelationDetailID = "addLink.local.result.vocab-linked-revelation"
+        guard let providerErrorState = app.descendants(matching: .any)
+            .matching(identifier: "\(revelationDetailID).state")
+            .exactlyOneElement(timeout: 5, named: "AddLink provider decode-error state"),
+            let providerError = app.descendants(matching: .any)
+            .matching(identifier: "\(revelationDetailID).provider.error")
+            .exactlyOneElement(timeout: 5, named: "AddLink provider decode-error message"),
+            let providerRetry = app.descendants(matching: .any)
+            .matching(identifier: "\(revelationDetailID).provider.retry")
+            .exactlyOneElement(timeout: 5, named: "AddLink provider decode-error retry") else {
+            captureStep("add-link-provider-error-state-missing", app: app)
+            return
+        }
+        XCTAssertEqual(
+            providerErrorState.value as? String,
+            "provider-decode-error-retryable|senses=0"
+        )
+        XCTAssertFalse(providerError.label.isEmpty)
+        providerRetry.tapWhenReady()
+        XCTAssertTrue(
+            providerErrorState.waitUntilValueEquals("recovered-senses-1|senses=1", timeout: 5),
+            "provider retry must recover to a deterministic local detail"
+        )
+        XCTAssertTrue(providerError.waitUntilGone(timeout: 5))
+        guard let recoveredSense = app.descendants(matching: .any)
+            .matching(identifier: "\(revelationDetailID).sense.1")
+            .exactlyOneElement(timeout: 5, named: "AddLink recovered revelation sense"),
+            let recoveredExample = app.descendants(matching: .any)
+            .matching(identifier: "\(revelationDetailID).sense.1.example.1")
+            .exactlyOneElement(timeout: 5, named: "AddLink recovered revelation example") else {
+            captureStep("add-link-provider-recovery-detail-missing", app: app)
+            return
+        }
+        XCTAssertTrue(recoveredSense.label.contains("揭示；驚人的新發現"))
+        XCTAssertTrue(recoveredExample.label.contains("quiet revelation"))
+        captureStep("add-link-provider-decode-error-recovery", app: app)
+        guard closeAddLinkSheet() else {
+            captureStep("add-link-close-after-provider-recovery-failed", app: app)
             XCTFail("AddLink sheet 必須可取消回到 word detail")
             return
         }
