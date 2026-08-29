@@ -98,4 +98,27 @@ grep -F 'kg_ios_swiftpm_configure "$PROJECT_ROOT"' "$TEST" >/dev/null \
 grep -F '"${KG_IOS_SWIFTPM_XCODEBUILD_ARGS[@]}"' "$TEST" >/dev/null \
   || fail "ios_test build-for-testing does not pass SwiftPM cache arguments"
 
+echo "── ios_test writer disk-budget gate ──"
+rebuild_start="$(awk '/^rebuild_test_cache\(\) \{/ { print NR; exit }' "$TEST")"
+rebuild_end="$(awk 'NR > start && /^ensure_xctestrun_ready_or_fail\(\) \{/ { print NR; exit }' start="$rebuild_start" "$TEST")"
+[[ -n "$rebuild_start" && -n "$rebuild_end" ]] \
+  || fail "ios_test rebuild_test_cache function boundaries are not discoverable"
+rebuild_body="$(sed -n "${rebuild_start},$((rebuild_end - 1))p" "$TEST")"
+lock_line="$(awk '/^[[:space:]]*acquire_build_lock$/ { print NR; exit }' <<<"$rebuild_body")"
+eviction_line="$(awk '/^[[:space:]]*kg_ios_cache_evict / { print NR; exit }' <<<"$rebuild_body")"
+preflight_line="$(awk '/^[[:space:]]*if ! kg_ios_disk_budget_preflight / { print NR; exit }' <<<"$rebuild_body")"
+xcodebuild_line="$(awk '/^[[:space:]]*xcodebuild build-for-testing/ { print NR; exit }' <<<"$rebuild_body")"
+[[ -n "$lock_line" && -n "$eviction_line" && -n "$preflight_line" && -n "$xcodebuild_line" ]] \
+  || fail "ios_test build writer is missing lock, eviction, disk preflight, or xcodebuild"
+(( lock_line < eviction_line && eviction_line < preflight_line && preflight_line < xcodebuild_line )) \
+  || fail "ios_test disk preflight is not after eviction and before xcodebuild"
+grep -F 'disk_budget_project_root="$(dirname "$(dirname "$TEST_CACHE_ROOT")")"' <<<"$rebuild_body" >/dev/null \
+  || fail "ios_test disk preflight does not resolve the shared cache project root"
+grep -F 'kg_ios_disk_budget_preflight "$disk_budget_project_root" "test"' <<<"$rebuild_body" >/dev/null \
+  || fail "ios_test disk preflight does not identify the test writer"
+grep -F 'release_build_lock' <<<"$rebuild_body" >/dev/null \
+  || fail "ios_test disk-budget block does not release the shared build lock"
+grep -F 'return "$KG_IOS_DISK_BUDGET_EXIT"' <<<"$rebuild_body" >/dev/null \
+  || fail "ios_test disk-budget block does not preserve exit=75"
+
 echo "PASS: ios build cache lifecycle"

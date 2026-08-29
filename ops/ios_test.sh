@@ -1517,7 +1517,7 @@ rebuild_test_cache() {
   # cache while we waited for the lock. If the products are now ready, skip the
   # rebuild — both to avoid redundant work and, critically, to avoid overwriting
   # products another agent may already be reading during its unlocked test run.
-  local _xctestrun build_rc
+  local _xctestrun build_rc disk_budget_project_root
   _xctestrun="$(ios_test_find_xctestrun "$DERIVED_DATA_ROOT" 2>/dev/null || true)"
   if [[ -n "$_xctestrun" ]] && ios_test_cache_is_complete "$_xctestrun"; then
     # Waiter path: another agent built this exact cache while we held/waited for
@@ -1526,6 +1526,15 @@ rebuild_test_cache() {
     REBUILD_DID_BUILD=0
     release_build_lock
     return 0
+  fi
+  # TEST_CACHE_ROOT is anchored at the git-common project root for linked
+  # worktrees. Pass that same anchor so the aggregate preflight measures the
+  # shared test cache instead of reporting the worktree-local .cache as empty.
+  disk_budget_project_root="$(dirname "$(dirname "$TEST_CACHE_ROOT")")"
+  if ! kg_ios_disk_budget_preflight "$disk_budget_project_root" "test"; then
+    echo "[ios_test] blocked by disk budget; clean rebuildable cache before retry" >&2
+    release_build_lock
+    return "$KG_IOS_DISK_BUDGET_EXIT"
   fi
   REBUILD_DID_BUILD=1
   # A previous build may have been interrupted, leaving a partial cache with no
