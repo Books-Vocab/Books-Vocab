@@ -35,9 +35,25 @@ struct AddLinkSheet: View {
         )
     }
 
+    private var lookupState: AddLinkLookupState {
+        AddLinkCoordinator.lookupState(
+            query: searchText,
+            candidateCount: filteredEntries.count,
+            creationPhase: creationCoordinator.phase,
+            creationAttempt: creationAttempt
+        )
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                Text(lookupState.accessibilityValue)
+                    .font(.caption2)
+                    .foregroundStyle(.clear)
+                    .frame(width: 1, height: 1)
+                    .accessibilityIdentifier("addLink.lookup.state")
+                    .accessibilityValue(lookupState.accessibilityValue)
+
                 if coordinator.actionPhase == .failed {
                     AppBanner(
                         message: L10n.string("addLink.error.linkFailed"),
@@ -120,8 +136,28 @@ struct AddLinkSheet: View {
                                 .foregroundStyle(appSkin.palette.tertiaryText)
                                 .lineLimit(2)
                                 .truncationMode(.tail)
+                            if let explanation = entry.explanation,
+                               !explanation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Text(explanation)
+                                    .font(appSkin.typography.caption)
+                                    .foregroundStyle(appSkin.palette.secondaryText)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                            }
+                            if let example = entry.primaryReviewExample,
+                               !example.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Text(example)
+                                    .font(appSkin.typography.caption)
+                                    .foregroundStyle(appSkin.palette.tertiaryText)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                            }
                         }
                     }
+                    .accessibilityIdentifier(
+                        "addLink.local.result.\(entry.kgCardId ?? entry.id.uuidString)"
+                    )
+                    .accessibilityValue(AddLinkCoordinator.lookupEvidence(for: entry))
                     .listRowBackground(Color.clear)
                 }
             }

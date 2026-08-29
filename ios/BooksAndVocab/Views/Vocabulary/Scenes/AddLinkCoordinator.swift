@@ -20,6 +20,32 @@ enum AddLinkActionPhase: Equatable {
     case failed
 }
 
+enum AddLinkLookupState: Equatable {
+    case idle
+    case results(count: Int)
+    case empty
+    case loading(attempt: Int)
+    case error(attempt: Int)
+    case retry(attempt: Int)
+
+    var accessibilityValue: String {
+        switch self {
+        case .idle:
+            return "idle"
+        case .results(let count):
+            return "results-\(count)"
+        case .empty:
+            return "empty"
+        case .loading(let attempt):
+            return "loading-attempt-\(attempt)"
+        case .error(let attempt):
+            return "error-attempt-\(attempt)"
+        case .retry(let attempt):
+            return "retry-attempt-\(attempt)"
+        }
+    }
+}
+
 @Observable @MainActor
 final class AddLinkCoordinator {
     private(set) var actionPhase: AddLinkActionPhase = .idle
@@ -55,6 +81,44 @@ final class AddLinkCoordinator {
                     ).contains(folded)
                 )
         }.prefix(20))
+    }
+
+    nonisolated static func lookupState(
+        query: String,
+        candidateCount: Int,
+        creationPhase: AddLinkCreationPhase,
+        creationAttempt: Int
+    ) -> AddLinkLookupState {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else { return .idle }
+
+        let attempt = max(creationAttempt, 1)
+        switch creationPhase {
+        case .running:
+            return creationAttempt > 1
+                ? .retry(attempt: attempt)
+                : .loading(attempt: attempt)
+        case .failed:
+            return .error(attempt: attempt)
+        default:
+            return candidateCount > 0 ? .results(count: candidateCount) : .empty
+        }
+    }
+
+    nonisolated static func lookupEvidence(for entry: VocabularyEntry) -> String {
+        func normalized(_ value: String?) -> String {
+            guard let value else { return "" }
+            return value.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        }
+
+        return [
+            "word=\(normalized(entry.word))",
+            "translation=\(normalized(entry.translation))",
+            "sense=\(normalized(entry.explanation))",
+            "example=\(normalized(entry.primaryReviewExample))",
+            "source=\(normalized(entry.bookTitle))",
+            "chapter=\(normalized(entry.chapterTitle))"
+        ].joined(separator: " | ")
     }
 
     func linkExisting(
