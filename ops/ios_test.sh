@@ -1465,6 +1465,15 @@ run_xcodebuild_test_without_building_once() {
       emitted_this_loop=1
     fi
 
+    # A known service-hub failure is terminal before XCTest starts. Stop the
+    # child now; the shared classifier below turns its signal exit into typed
+    # infrastructure evidence instead of waiting for XCTest's allowance.
+    if kg_ios_test_runner_startup_unavailable "$TMPOUT"; then
+      echo "[ios_test] test-runner startup unavailable; terminating xcodebuild before XCTest timeout" >&2
+      kill "$xcode_pid" 2>/dev/null || true
+      break
+    fi
+
     now=$(date +%s)
     if [[ $((now - heartbeat_at)) -ge 30 ]]; then
       # Detail heartbeat every 30s: which test is currently running.
