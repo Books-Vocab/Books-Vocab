@@ -3,6 +3,7 @@
 Covers: GET /api/library/books, POST /api/library/books,
 PATCH /api/library/books/{book_id}, PUT /api/library/books/{book_id}/position.
 """
+
 from __future__ import annotations
 
 import json
@@ -89,9 +90,7 @@ class TestListBooks:
         b1 = _create_book(isolated_api.client, isolated_api.headers, "Book A")
         since = b1["updated_at"]
         _create_book(isolated_api.client, isolated_api.headers, "Book B")
-        resp = isolated_api.client.get(
-            "/api/library/books", headers=isolated_api.headers, params={"since": since}
-        )
+        resp = isolated_api.client.get("/api/library/books", headers=isolated_api.headers, params={"since": since})
         assert resp.status_code == 200
         data = resp.json()
         # Only Book B has updated_at > since (Book A's updated_at == since)
@@ -167,13 +166,70 @@ class TestUpdateBook:
     def test_update_notebook_binding(self, isolated_api):
         b = _create_book(isolated_api.client, isolated_api.headers, "Book")
         book_id = b["id"]
+        owned = isolated_api.client.post(
+            "/api/notebooks",
+            json={"name": "Reading"},
+            headers=isolated_api.headers,
+        )
+        assert owned.status_code == 201
         resp = isolated_api.client.patch(
             f"/api/library/books/{book_id}",
-            json={"notebook_id": "nb-123"},
+            json={"notebook_id": owned.json()["id"]},
             headers=isolated_api.headers,
         )
         assert resp.status_code == 200
-        assert resp.json()["notebook_id"] == "nb-123"
+        assert resp.json()["notebook_id"] == owned.json()["id"]
+
+    def test_update_notebook_binding_accepts_default_notebook(self, isolated_api):
+        b = _create_book(isolated_api.client, isolated_api.headers, "Book")
+        resp = isolated_api.client.patch(
+            f"/api/library/books/{b['id']}",
+            json={"notebook_id": "default"},
+            headers=isolated_api.headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["notebook_id"] == "default"
+
+    @pytest.mark.parametrize("notebook_kind", ["unknown", "deleted", "foreign"])
+    def test_update_notebook_binding_rejects_invalid_without_persisting(self, isolated_api, notebook_kind):
+        b = _create_book(isolated_api.client, isolated_api.headers, "Book")
+        if notebook_kind == "unknown":
+            notebook_id = "nb-does-not-exist"
+        elif notebook_kind == "deleted":
+            created = isolated_api.client.post(
+                "/api/notebooks",
+                json={"name": "Deleted"},
+                headers=isolated_api.headers,
+            )
+            assert created.status_code == 201
+            notebook_id = created.json()["id"]
+            deleted = isolated_api.client.delete(f"/api/notebooks/{notebook_id}", headers=isolated_api.headers)
+            assert deleted.status_code == 200
+        else:
+            from kg.notebook import NotebookStore
+
+            foreign_dir = isolated_api.data_dir / "users" / "foreign-user"
+            foreign = NotebookStore(foreign_dir / "notebooks.db").create("Foreign")
+            notebook_id = foreign.id
+
+        resp = isolated_api.client.patch(
+            f"/api/library/books/{b['id']}",
+            json={"notebook_id": notebook_id},
+            headers=isolated_api.headers,
+        )
+        assert resp.status_code == 403
+
+        unchanged = isolated_api.client.get("/api/library/books", headers=isolated_api.headers)
+        assert unchanged.status_code == 200
+        assert unchanged.json()[0]["notebook_id"] is None
+
+    def test_update_unknown_book_with_invalid_notebook_preserves_not_found(self, isolated_api):
+        resp = isolated_api.client.patch(
+            "/api/library/books/nonexistent",
+            json={"notebook_id": "nb-does-not-exist"},
+            headers=isolated_api.headers,
+        )
+        assert resp.status_code == 404
 
     def test_update_no_fields_raises_400(self, isolated_api):
         b = _create_book(isolated_api.client, isolated_api.headers, "Book")
