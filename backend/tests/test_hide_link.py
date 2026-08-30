@@ -326,6 +326,29 @@ class TestBuildLinksIncludesHidden:
         assert len(all_links) == 1
         assert all_links[0].hidden is False
 
+    def test_equal_normalized_words_are_tied_by_linked_card_id(self, store):
+        link_z = store.add_link("source", "card-z", LinkKind.CONTRASTS_WITH, 0.9, "z")
+        link_a = store.add_link("source", "card-a", LinkKind.CONTRASTS_WITH, 0.8, "a")
+
+        class OrderedGraph:
+            def get_links_for(self, card_id):
+                assert card_id == "source"
+                return [link_z, link_a]
+
+        cards_by_id = {
+            "card-z": FakeCard("card-z", content="Word"),
+            "card-a": FakeCard("card-a", content="word"),
+        }
+        result = build_links_by_kind(
+            "source",
+            graph=OrderedGraph(),
+            cards_by_id=cards_by_id,
+            link_kinds=list(LinkKind),
+            link_labels={LinkKind.CONTRASTS_WITH: "對比", LinkKind.SHARES_USAGE: "相關"},
+        )
+
+        assert [link.cardId for link in result["contrasts_with"]] == ["card-a", "card-z"]
+
 
 # --- blocked pairs ---
 

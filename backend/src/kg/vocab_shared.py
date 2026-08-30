@@ -167,7 +167,7 @@ def build_links_by_kind(
     for kind in link_kinds:
         items = grouped.get(kind.value)
         if items:
-            ordered[kind.value] = sorted(items, key=lambda item: _normalize_word(item.word))
+            ordered[kind.value] = sorted(items, key=lambda item: (_normalize_word(item.word), item.cardId))
 
     return ordered
 
