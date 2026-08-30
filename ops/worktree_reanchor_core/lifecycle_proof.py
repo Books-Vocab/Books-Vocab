@@ -148,6 +148,8 @@ def _exact_open_pr(
 def _required(
     github: RecoveryGitHubPort,
     pull_request: PullRequestSnapshot,
+    *,
+    allow_missing_required: bool = False,
 ) -> CheckSnapshot:
     check = _read(
         f"PR#{pull_request.number} required check",
@@ -161,6 +163,12 @@ def _required(
             pull_request_head_sha=pull_request.head_sha,
         )
     normalized_context = tuple(sorted(set(check.names)))
+    if (
+        allow_missing_required
+        and check.status is CheckStatus.ABSENT
+        and not normalized_context
+    ):
+        return check
     hard_contexts = tuple(
         context for context in normalized_context if context not in ADVISORY_CONTEXTS
     )
@@ -181,8 +189,14 @@ def verify_resume_lifecycle(
     expected_base_sha: str,
     expected_remote_head: str,
     require_failed: bool = True,
+    allow_missing_required: bool = False,
 ) -> RecoveryLifecycleProof:
-    """Prove that one published PR may be resumed for a code repair."""
+    """Prove that one published PR may be resumed for an owner-local repair.
+
+    Missing required evidence is accepted only when the caller explicitly uses
+    the maintenance contract.  It authorizes bounded same-owner repair of the
+    published lane; it never makes the PR merge-ready.
+    """
 
     pull_request = _exact_open_pr(
         github,
@@ -190,14 +204,22 @@ def verify_resume_lifecycle(
         expected_base_sha=expected_base_sha,
         expected_remote_head=expected_remote_head,
     )
-    check = _required(github, pull_request)
+    check = _required(
+        github,
+        pull_request,
+        allow_missing_required=allow_missing_required,
+    )
     if require_failed and check.status is not CheckStatus.FAILURE:
         raise ReanchorRefused(
             "resume-published is allowed only for an exact required code failure",
             pull_request=pull_request.number,
             required_status=check.status.value,
         )
-    if not require_failed and check.status is CheckStatus.ABSENT:
+    if (
+        not require_failed
+        and check.status is CheckStatus.ABSENT
+        and not (allow_missing_required and not check.names)
+    ):
         raise ReanchorRefused(
             "maintenance resume requires an observed required check",
             pull_request=pull_request.number,
