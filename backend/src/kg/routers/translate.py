@@ -30,9 +30,9 @@ async def translate_quick(req: TranslateRequest, response: Response, user: Curre
 
 @router.post("/api/translate/phrase", response_model=PhraseTranslateResponse)
 async def translate_phrase(req: TranslateRequest, response: Response, user: CurrentUser):
-    quota = _check_quota(user, "translate_phrase", response)
+    _check_quota(user, "translate_phrase", response)
     result = await translate_phrase_response(req, user, logger=logger)
-    _apply_quota_headers(response, quota)
+    _apply_quota_headers(response, get_quota_state(user["id"], is_pro=_is_pro(user)))
     return result
 
 
