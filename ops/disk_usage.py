@@ -100,7 +100,11 @@ def measure_tree(
             if budget_expired():
                 record_budget_expiry()
                 break
-            entry_path = _path(entry.path)
+            # ``os.scandir`` yields absolute paths when the parent is absolute.
+            # Avoid resolving every entry: this scan is itself bounded by the
+            # disk attribution deadline, and per-file ``Path.resolve`` makes
+            # large worktrees consume the entire safety budget.
+            entry_path = Path(entry.path)
             if entry_path in excluded:
                 continue
             try:

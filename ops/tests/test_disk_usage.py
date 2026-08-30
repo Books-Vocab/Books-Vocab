@@ -10,6 +10,7 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
+import disk_usage
 from disk_usage import main
 
 
@@ -39,6 +40,30 @@ def _write_registry(path: Path, records: list[dict[str, object]]) -> None:
         json.dumps({"schema": "kg.worktree.registry.v2", "records": records}),
         encoding="utf-8",
     )
+
+
+def test_measure_tree_does_not_resolve_each_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    for index in range(20):
+        (root / f"file-{index}").write_bytes(b"x")
+
+    original = disk_usage._path
+    calls: list[str | Path] = []
+
+    def tracking(value: str | Path) -> Path:
+        calls.append(value)
+        return original(value)
+
+    monkeypatch.setattr(disk_usage, "_path", tracking)
+
+    report = disk_usage.measure_tree(root)
+
+    assert report["complete"] is True
+    assert report["files"] == 20
+    assert len(calls) <= 1
 
 
 def test_report_attributes_registered_lanes_and_canonical_main(tmp_path: Path) -> None:
