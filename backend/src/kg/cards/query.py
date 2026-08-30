@@ -121,9 +121,7 @@ class CardQueryMixin:
             if notebook_id is not None:
                 statement = statement.where(Card.notebook_id == notebook_id)
             if after is not None:
-                statement = statement.where(
-                    tuple_(Card.updated_at, Card.id) > tuple_(after[0], after[1])
-                )
+                statement = statement.where(tuple_(Card.updated_at, Card.id) > tuple_(after[0], after[1]))
             statement = statement.order_by(Card.updated_at, Card.id).limit(limit)
             return list(session.exec(statement).all())
 
@@ -154,10 +152,17 @@ class CardQueryMixin:
                 params,
             ).all()
             since_utc = _utc_instant(since)
-            modified_ids = [
-                card_id
+            modified_rows = [
+                (card_id, _parse_stored_timestamp(updated_at))
                 for card_id, updated_at in rows
                 if _parse_stored_timestamp(updated_at) > since_utc
+            ]
+            modified_ids = [
+                card_id
+                for card_id, _updated_at in sorted(
+                    modified_rows,
+                    key=lambda row: (row[1], row[0]),
+                )
             ]
             if not modified_ids:
                 return []
@@ -176,8 +181,6 @@ class CardQueryMixin:
         """Single GROUP BY query returning {notebook_id: count}."""
         with Session(self.engine) as session:
             rows = session.exec(
-                select(Card.notebook_id, func.count())
-                .where(Card.is_deleted.is_(False))
-                .group_by(Card.notebook_id)
+                select(Card.notebook_id, func.count()).where(Card.is_deleted.is_(False)).group_by(Card.notebook_id)
             ).all()
             return {nb_id: cnt for nb_id, cnt in rows}
