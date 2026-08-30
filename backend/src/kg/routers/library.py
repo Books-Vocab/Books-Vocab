@@ -14,8 +14,9 @@ from ..api_models.library import (
     BookUpdateRequest,
     DeleteBookResponse,
 )
-from ..deps import CurrentUser, _library_store
+from ..deps import CurrentUser, _library_store, _notebook_store
 from ..exceptions import BadRequestError, ConflictError, NotFoundError
+from ..notebook import validate_notebook_access
 from ..settings import KGSettings
 
 # Presigned URL TTL (seconds) for asset upload/download targets.
@@ -37,11 +38,7 @@ def list_books(user: CurrentUser, since: str | None = None):
     books = store.all(include_deleted=True)
     if since:
         since_instant = _utc_instant(since)
-        books = [
-            b
-            for b in books
-            if b.updated_at and _utc_instant(b.updated_at) > since_instant
-        ]
+        books = [b for b in books if b.updated_at and _utc_instant(b.updated_at) > since_instant]
     return books
 
 
@@ -67,6 +64,10 @@ def update_book(book_id: str, req: BookUpdateRequest, user: CurrentUser):
         kwargs["notebook_id"] = req.notebook_id
     if not kwargs:
         raise BadRequestError("No fields to update")
+    if req.notebook_id is not None:
+        if store.get(book_id) is None:
+            raise NotFoundError("Book", book_id)
+        validate_notebook_access(_notebook_store(user["dir"]), req.notebook_id)
     book = store.update(book_id, req)
     if book is None:
         raise NotFoundError("Book", book_id)
@@ -145,10 +146,7 @@ def request_asset_upload(
 
     # Quota policy: reject obviously oversize assets before minting a target.
     if req.byte_size > settings.library_asset_max_bytes:
-        raise BadRequestError(
-            f"asset too large ({req.byte_size} bytes); "
-            f"max {settings.library_asset_max_bytes}"
-        )
+        raise BadRequestError(f"asset too large ({req.byte_size} bytes); max {settings.library_asset_max_bytes}")
 
     local_only = req.local_only or not settings.library_bucket
     if local_only:
