@@ -184,9 +184,14 @@ def _registry_preflight(request: RecoveryRequest) -> RegistryProof:
     if not isinstance(records, list):
         raise ReanchorRefused("registry records are malformed")
 
+    live_records = [
+        item
+        for item in records
+        if isinstance(item, dict) and item.get("status") in ELIGIBLE_STATUSES
+    ]
     lane_matches: list[dict[str, Any]] = []
     branch_matches: list[dict[str, Any]] = []
-    for item in records:
+    for item in live_records:
         if not isinstance(item, dict):
             continue
         try:

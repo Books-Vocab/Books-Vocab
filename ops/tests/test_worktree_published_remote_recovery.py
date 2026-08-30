@@ -486,6 +486,64 @@ def test_recovery_refuses_owner_registry_mismatch(tmp_path: Path) -> None:
         _perform(tmp_path, owner="other-owner")
 
 
+def test_recovery_ignores_terminal_history_when_selecting_published_claim(
+    tmp_path: Path,
+) -> None:
+    state_path, record, pull_request = _fixture(tmp_path)
+    historical = dict(record)
+    historical["status"] = "abandoned"
+    historical["claim_generation"] = 9
+    historical["handback_claim_generation"] = 9
+    historical["resolved_at"] = "2026-08-26T00:00:00Z"
+    state = coordinator.registry.load_state(state_path)
+    state["records"] = [historical, record]
+    coordinator.registry.save_state(state_path, state)
+
+    payload = recovery.perform_recovery(
+        repo=tmp_path / "repo",
+        state_path=state_path,
+        pull_request_number=42,
+        lane_id=LANE,
+        branch=BRANCH,
+        owner_thread_id=OWNER,
+        claim_generation=0,
+        expected_base_sha=BASE,
+        expected_head_sha=HEAD,
+        target=tmp_path / "recovered",
+        git=FakeGit(),
+        github=FakeGitHub(pull_request),
+    )
+
+    assert payload["status"] == "recovered"
+    assert payload["head"] == HEAD
+
+
+def test_recovery_rejects_multiple_live_registry_claims(tmp_path: Path) -> None:
+    state_path, record, pull_request = _fixture(tmp_path)
+    second_live = dict(record)
+    second_live["claim_generation"] = 1
+    second_live["handback_claim_generation"] = 1
+    state = coordinator.registry.load_state(state_path)
+    state["records"] = [record, second_live]
+    coordinator.registry.save_state(state_path, state)
+
+    with pytest.raises(ReanchorRefused, match="unambiguous"):
+        recovery.perform_recovery(
+            repo=tmp_path / "repo",
+            state_path=state_path,
+            pull_request_number=42,
+            lane_id=LANE,
+            branch=BRANCH,
+            owner_thread_id=OWNER,
+            claim_generation=0,
+            expected_base_sha=BASE,
+            expected_head_sha=HEAD,
+            target=tmp_path / "recovered",
+            git=FakeGit(),
+            github=FakeGitHub(pull_request),
+        )
+
+
 @pytest.mark.parametrize(
     "github",
     [
