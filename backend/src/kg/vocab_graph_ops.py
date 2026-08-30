@@ -30,14 +30,13 @@ from __future__ import annotations
 import logging
 from typing import Any, Protocol
 
-from .exceptions import ConflictError, NotFoundError
+from .exceptions import BadRequestError, ConflictError, NotFoundError
 
 logger = logging.getLogger(__name__)
 
 
 class LinkMutation(Protocol):
-    def __call__(self, link_id: str) -> None:
-        ...
+    def __call__(self, link_id: str) -> None: ...
 
 
 def _touch_both(cards_store: Any, from_id: str, to_id: str) -> None:
@@ -98,6 +97,8 @@ def create_manual_link(
         raise NotFoundError("Card", from_id)
     if not card_b or card_b.is_deleted or card_b.is_archived or card_b.notebook_id != notebook_id:
         raise NotFoundError("Card", to_id)
+    if from_id == to_id:
+        raise BadRequestError("cannot link a card to itself")
 
     existing = graph.find_link_between(from_id, to_id)
     if existing and existing.status == "active":
@@ -119,13 +120,17 @@ def create_manual_link(
         graph.unblock_pair(from_id, to_id)
 
     judgement = judge.evaluate(
-        card_a.content, card_a.meaning,
-        card_b.content, card_b.meaning,
-        from_id=from_id, to_id=to_id,
+        card_a.content,
+        card_a.meaning,
+        card_b.content,
+        card_b.meaning,
+        from_id=from_id,
+        to_id=to_id,
     )
 
     link = graph.add_link(
-        from_id, to_id,
+        from_id,
+        to_id,
         LinkKind(judgement.link),
         confidence=1.0,
         reason=judgement.reason,
@@ -173,7 +178,9 @@ def hide_graph_link(
 ) -> None:
     """Hide a link (user wants to stop seeing it but not permanently delete)."""
     _reversible_link_toggle(
-        link_id=link_id, graph=graph, cards_store=cards_store,
+        link_id=link_id,
+        graph=graph,
+        cards_store=cards_store,
         apply=lambda lid: graph.hide_link(lid, source="manual"),
         revert=lambda lid: graph.unhide_link(lid, source="manual"),
     )
@@ -187,7 +194,9 @@ def unhide_graph_link(
 ) -> None:
     """Unhide a previously hidden link."""
     _reversible_link_toggle(
-        link_id=link_id, graph=graph, cards_store=cards_store,
+        link_id=link_id,
+        graph=graph,
+        cards_store=cards_store,
         apply=lambda lid: graph.unhide_link(lid, source="manual"),
         revert=lambda lid: graph.hide_link(lid, source="manual"),
     )
