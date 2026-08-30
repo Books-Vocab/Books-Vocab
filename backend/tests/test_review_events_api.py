@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import sqlite3
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -101,6 +102,40 @@ def test_review_events_patch_rejects_invalid_interval_snapshots_without_write(is
     stored = isolated_api.client.get("/api/vocab/review-events", headers=isolated_api.headers)
     assert stored.status_code == 200, stored.text
     assert stored.json() == {"entries": [], "cursor": None}
+
+
+def test_review_events_get_reads_legacy_invalid_interval_while_push_rejects_it(isolated_api):
+    seed = isolated_api.client.patch(
+        "/api/vocab/review-events",
+        json={"entries": [_payload("evt-legacy")]},
+        headers=isolated_api.headers,
+    )
+    assert seed.status_code == 200, seed.text
+
+    db_path = isolated_api.data_dir / "users" / isolated_api.user_id / "review_events.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "UPDATE reviewevent SET interval_before = ? WHERE event_id = ?",
+            (-1.0, "evt-legacy"),
+        )
+        conn.commit()
+
+    legacy = isolated_api.client.get("/api/vocab/review-events", headers=isolated_api.headers)
+    assert legacy.status_code == 200, legacy.text
+    assert legacy.json()["entries"][0]["interval_before"] == -1.0
+
+    rejected_payload = _payload("evt-rejected")
+    rejected_payload["interval_before"] = -1.0
+    rejected = isolated_api.client.patch(
+        "/api/vocab/review-events",
+        json={"entries": [rejected_payload]},
+        headers=isolated_api.headers,
+    )
+    assert rejected.status_code == 422, rejected.text
+
+    still_only_legacy = isolated_api.client.get("/api/vocab/review-events", headers=isolated_api.headers)
+    assert still_only_legacy.status_code == 200, still_only_legacy.text
+    assert [entry["event_id"] for entry in still_only_legacy.json()["entries"]] == ["evt-legacy"]
 
 
 def test_review_events_duplicate_patch_skips(isolated_api):
