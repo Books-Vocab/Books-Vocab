@@ -5,11 +5,11 @@ from __future__ import annotations
 import re
 import time
 from collections.abc import Callable, Mapping
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from ..domain.errors import CompareAndSwapConflict
 from ..domain.observations import PullRequestSnapshot
-from .errors import AdapterPayloadError
+from .errors import AdapterCommandError, AdapterPayloadError
 from .github_client import GitHubCliClient
 from .github_queue import GitHubQueueGraphQLAdapter
 from .timestamps import parse_optional_timestamp
@@ -20,6 +20,7 @@ _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _ACTIVE_RUN_STATUSES = frozenset(
     {"queued", "in_progress", "waiting", "requested", "pending"}
 )
+_STALE_QUEUED_RUN_AFTER = timedelta(minutes=15)
 
 
 def _required_run_list_command(*, branch: str, head_sha: str) -> tuple[str, ...]:
@@ -40,6 +41,64 @@ def _required_run_list_command(*, branch: str, head_sha: str) -> tuple[str, ...]
         "--json",
         "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
     )
+
+
+def _select_exact_required_run(
+    payload: object,
+    *,
+    branch: str,
+    head_sha: str,
+) -> tuple[datetime, int, str, str | None]:
+    if not isinstance(payload, list):
+        raise AdapterPayloadError("GitHub required workflow list must be a JSON list")
+
+    candidates: list[tuple[datetime, int, str, str | None]] = []
+    for index, item in enumerate(payload):
+        if not isinstance(item, Mapping):
+            raise AdapterPayloadError(f"GitHub required workflow[{index}] is malformed")
+        database_id = item.get("databaseId")
+        head_branch = item.get("headBranch")
+        observed_head = item.get("headSha")
+        event = item.get("event")
+        status = item.get("status")
+        conclusion = item.get("conclusion")
+        if type(database_id) is not int or database_id <= 0:
+            raise AdapterPayloadError(
+                f"GitHub required workflow[{index}] databaseId is malformed"
+            )
+        if (
+            type(head_branch) is not str
+            or type(observed_head) is not str
+            or _SHA_RE.fullmatch(observed_head) is None
+            or type(event) is not str
+            or type(status) is not str
+            or conclusion is not None
+            and type(conclusion) is not str
+        ):
+            raise AdapterPayloadError(
+                f"GitHub required workflow[{index}] identity is malformed"
+            )
+        created_at = parse_optional_timestamp(
+            item.get("createdAt"),
+            field=f"GitHub required workflow[{index}] createdAt",
+        )
+        if created_at is None:
+            raise AdapterPayloadError(
+                f"GitHub required workflow[{index}] createdAt is required"
+            )
+        if (
+            head_branch != branch
+            or observed_head != head_sha
+            or event != "pull_request"
+        ):
+            continue
+        candidates.append((created_at, database_id, status.casefold(), conclusion))
+
+    if not candidates:
+        raise AdapterPayloadError(
+            "no exact pull_request pr-gate run exists for the required PR HEAD"
+        )
+    return max(candidates, key=lambda item: (item[0], item[1]))
 
 
 class GitHubCommands:
@@ -83,69 +142,45 @@ class GitHubCommands:
     ) -> tuple[str, ...]:
         del number, base_sha
         list_argv = _required_run_list_command(branch=branch, head_sha=head_sha)
-        payload = self.client.load_json(list_argv)
-        if not isinstance(payload, list):
-            raise AdapterPayloadError(
-                "GitHub required workflow list must be a JSON list"
-            )
-
-        candidates: list[tuple[datetime, int, str, str | None]] = []
-        for index, item in enumerate(payload):
-            if not isinstance(item, Mapping):
-                raise AdapterPayloadError(
-                    f"GitHub required workflow[{index}] is malformed"
-                )
-            database_id = item.get("databaseId")
-            head_branch = item.get("headBranch")
-            observed_head = item.get("headSha")
-            event = item.get("event")
-            status = item.get("status")
-            conclusion = item.get("conclusion")
-            if type(database_id) is not int or database_id <= 0:
-                raise AdapterPayloadError(
-                    f"GitHub required workflow[{index}] databaseId is malformed"
-                )
-            if (
-                type(head_branch) is not str
-                or type(observed_head) is not str
-                or _SHA_RE.fullmatch(observed_head) is None
-                or type(event) is not str
-                or type(status) is not str
-                or conclusion is not None
-                and type(conclusion) is not str
-            ):
-                raise AdapterPayloadError(
-                    f"GitHub required workflow[{index}] identity is malformed"
-                )
-            created_at = parse_optional_timestamp(
-                item.get("createdAt"),
-                field=f"GitHub required workflow[{index}] createdAt",
-            )
-            if created_at is None:
-                raise AdapterPayloadError(
-                    f"GitHub required workflow[{index}] createdAt is required"
-                )
-            if (
-                head_branch != branch
-                or observed_head != head_sha
-                or event != "pull_request"
-            ):
-                continue
-            candidates.append((created_at, database_id, status.casefold(), conclusion))
-
-        if not candidates:
-            raise AdapterPayloadError(
-                "no exact pull_request pr-gate run exists for the required PR HEAD"
-            )
-        created_at, database_id, status, conclusion = max(
-            candidates,
-            key=lambda item: (item[0], item[1]),
+        created_at, database_id, status, conclusion = _select_exact_required_run(
+            self.client.load_json(list_argv),
+            branch=branch,
+            head_sha=head_sha,
         )
-        del created_at
         if status in _ACTIVE_RUN_STATUSES:
-            raise AdapterPayloadError(
-                "exact pull_request pr-gate run is still active; refusing duplicate rerun"
+            queued_is_stale = (
+                status == "queued"
+                and datetime.now(tz=UTC) - created_at >= _STALE_QUEUED_RUN_AFTER
             )
+            if not queued_is_stale:
+                raise AdapterPayloadError(
+                    "exact pull_request pr-gate run is still active; refusing duplicate rerun"
+                )
+
+            cancel_argv = ("gh", "run", "cancel", "--force", str(database_id))
+            cancel_result = self.client.runner.run(
+                cancel_argv,
+                cwd=self.client.repo,
+            )
+            # Cancellation is asynchronous and may race with GitHub's own
+            # terminal transition. Never infer cancellation from exit status;
+            # select the same exact run again before rerunning it.
+            created_at, database_id, status, conclusion = _select_exact_required_run(
+                self.client.load_json(list_argv),
+                branch=branch,
+                head_sha=head_sha,
+            )
+            del created_at
+            if status in _ACTIVE_RUN_STATUSES:
+                if cancel_result.exit_code != 0:
+                    raise AdapterCommandError(cancel_result)
+                raise AdapterPayloadError(
+                    "stale exact pull_request pr-gate run remained active after forced cancel"
+                )
+            if status != "completed" or conclusion is None:
+                raise AdapterPayloadError(
+                    "exact pull_request pr-gate run has an invalid terminal state"
+                )
         if status != "completed" or conclusion is None:
             raise AdapterPayloadError(
                 "exact pull_request pr-gate run has an invalid terminal state"
