@@ -200,7 +200,12 @@ enum ReviewCalendarPresentation {
     ) -> [ReviewRecord] {
         records
             .filter { clock.dayKey(for: $0.reviewedAt) == dayKey }
-            .sorted { $0.reviewedAt > $1.reviewedAt }
+            .sorted {
+                if $0.reviewedAt != $1.reviewedAt {
+                    return $0.reviewedAt > $1.reviewedAt
+                }
+                return $0.id.uuidString < $1.id.uuidString
+            }
     }
 
     static func records(
