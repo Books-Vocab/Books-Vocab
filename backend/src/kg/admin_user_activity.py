@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 MAX_HOURS = 168  # 7 days — keeps per-source LIMIT bounded.
 MAX_PER_SOURCE = 500
 MAX_TOTAL_EVENTS = 500
+_SOURCE_PRECEDENCE = {"judge": 0, "pipeline": 1, "translate": 2}
 
 
 def _clamp_hours(hours: int) -> int:
@@ -66,13 +67,13 @@ def _pipeline_events(user_id: str, since_iso: str) -> list[dict[str, Any]]:
     with pl._lock:
         conn = pl._get_conn()
         rows = conn.execute(
-            "SELECT run_id, notebook_id, trigger, started_at, ended_at, status"
+            "SELECT id, run_id, notebook_id, trigger, started_at, ended_at, status"
             " FROM pipeline_runs WHERE user_id = ? AND started_at >= ?"
             " ORDER BY started_at DESC LIMIT ?",
             (user_id, since_iso, MAX_PER_SOURCE),
         ).fetchall()
     out: list[dict[str, Any]] = []
-    for run_id, nb, trigger, started, ended, status in rows:
+    for source_id, run_id, nb, trigger, started, ended, status in rows:
         duration_s: float | None = None
         if started and ended:
             try:
@@ -99,6 +100,7 @@ def _pipeline_events(user_id: str, since_iso: str) -> list[dict[str, Any]]:
                 "duration_s": duration_s,
                 "ended_at": ended,
                 "created_at": started,
+                "_source_id": source_id,
             }
         )
     return out
@@ -165,9 +167,18 @@ def get_user_activity(user_id: str, *, hours: int = 24) -> dict[str, Any]:
     truncated = {name: n >= MAX_PER_SOURCE for name, n in counts.items()}
 
     all_events = translate + pipeline + judge
-    all_events.sort(key=lambda e: e.get("created_at") or "", reverse=True)
+    all_events.sort(
+        key=lambda event: (
+            event.get("created_at") or "",
+            _SOURCE_PRECEDENCE[event["type"]],
+            event.get("_source_id", event.get("id", -1)),
+        ),
+        reverse=True,
+    )
     if len(all_events) > MAX_TOTAL_EVENTS:
         all_events = all_events[:MAX_TOTAL_EVENTS]
+    for event in all_events:
+        event.pop("_source_id", None)
 
     return {
         "user_id": user_id,
