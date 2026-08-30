@@ -142,8 +142,12 @@ def test_idempotency_and_request_conflict():
 
 def test_missing_target_translates_enriches_and_links_once():
     source = SimpleNamespace(
-        id="source-card", content="source", meaning="來源", notebook_id="default",
-        is_deleted=False, is_archived=False,
+        id="source-card",
+        content="source",
+        meaning="來源",
+        notebook_id="default",
+        is_deleted=False,
+        is_archived=False,
     )
     cards = Cards(source)
     graph = Graph()
@@ -158,15 +162,11 @@ def test_missing_target_translates_enriches_and_links_once():
 
     def link(**kwargs):
         calls.append("link")
-        result = SimpleNamespace(
-            id="link-1", from_id=kwargs["from_id"], to_id=kwargs["to_id"], status="active"
-        )
+        result = SimpleNamespace(id="link-1", from_id=kwargs["from_id"], to_id=kwargs["to_id"], status="active")
         graph.links.append(result)
         return result
 
-    operation, _ = create_operation(
-        user_id="user-1", notebook_id="default", idempotency_key="tap-2", payload=payload()
-    )
+    operation, _ = create_operation(user_id="user-1", notebook_id="default", idempotency_key="tap-2", payload=payload())
     run(operation["operation_id"], cards, graph, translate_fn=translate, enrich_fn=enrich, link_fn=link)
 
     result = get_operation("user-1", operation["operation_id"])
@@ -184,12 +184,20 @@ def test_missing_target_translates_enriches_and_links_once():
 
 def test_existing_target_skips_translation_and_enrichment():
     source = SimpleNamespace(
-        id="source-card", content="source", meaning="來源", notebook_id="default",
-        is_deleted=False, is_archived=False,
+        id="source-card",
+        content="source",
+        meaning="來源",
+        notebook_id="default",
+        is_deleted=False,
+        is_archived=False,
     )
     target = SimpleNamespace(
-        id="target-card", content="luminous", meaning="明亮的", notebook_id="default",
-        is_deleted=False, is_archived=False,
+        id="target-card",
+        content="luminous",
+        meaning="明亮的",
+        notebook_id="default",
+        is_deleted=False,
+        is_archived=False,
     )
     cards = Cards(source, target)
     graph = Graph()
@@ -204,13 +212,9 @@ def test_existing_target_skips_translation_and_enrichment():
 
     def link(**kwargs):
         calls.append("link")
-        return SimpleNamespace(
-            id="link-existing", from_id=kwargs["from_id"], to_id=kwargs["to_id"], status="active"
-        )
+        return SimpleNamespace(id="link-existing", from_id=kwargs["from_id"], to_id=kwargs["to_id"], status="active")
 
-    operation, _ = create_operation(
-        user_id="user-1", notebook_id="default", idempotency_key="tap-3", payload=payload()
-    )
+    operation, _ = create_operation(user_id="user-1", notebook_id="default", idempotency_key="tap-3", payload=payload())
     run(operation["operation_id"], cards, graph, translate_fn=translate, enrich_fn=enrich, link_fn=link)
 
     result = get_operation("user-1", operation["operation_id"])
@@ -221,8 +225,12 @@ def test_existing_target_skips_translation_and_enrichment():
 
 def test_enrichment_failure_is_pollable_warning_but_does_not_block_link():
     source = SimpleNamespace(
-        id="source-card", content="source", meaning="來源", notebook_id="default",
-        is_deleted=False, is_archived=False,
+        id="source-card",
+        content="source",
+        meaning="來源",
+        notebook_id="default",
+        is_deleted=False,
+        is_archived=False,
     )
     cards = Cards(source)
     graph = Graph()
@@ -234,15 +242,11 @@ def test_enrichment_failure_is_pollable_warning_but_does_not_block_link():
         raise TimeoutError("upstream")
 
     def link(**kwargs):
-        result = SimpleNamespace(
-            id="link-2", from_id=kwargs["from_id"], to_id=kwargs["to_id"], status="active"
-        )
+        result = SimpleNamespace(id="link-2", from_id=kwargs["from_id"], to_id=kwargs["to_id"], status="active")
         graph.links.append(result)
         return result
 
-    operation, _ = create_operation(
-        user_id="user-1", notebook_id="default", idempotency_key="tap-4", payload=payload()
-    )
+    operation, _ = create_operation(user_id="user-1", notebook_id="default", idempotency_key="tap-4", payload=payload())
     run(operation["operation_id"], cards, graph, translate_fn=translate, enrich_fn=enrich, link_fn=link)
 
     result = get_operation("user-1", operation["operation_id"])
@@ -253,8 +257,12 @@ def test_enrichment_failure_is_pollable_warning_but_does_not_block_link():
 
 def test_cancellation_interrupts_running_operation_and_current_step():
     source = SimpleNamespace(
-        id="source-card", content="source", meaning="來源", notebook_id="default",
-        is_deleted=False, is_archived=False,
+        id="source-card",
+        content="source",
+        meaning="來源",
+        notebook_id="default",
+        is_deleted=False,
+        is_archived=False,
     )
     cards = Cards(source)
     graph = Graph()
