@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import HTTPException
+from sqlalchemy import text
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, select
 
@@ -17,6 +18,18 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_NOTEBOOK_ID = "default"
 DEFAULT_NOTEBOOK_NAME = "我的單字本"
+
+
+def _utc_instant(value: datetime) -> datetime:
+    """Interpret naive stored timestamps as UTC and normalize aware ones."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _parse_stored_timestamp(value: str) -> datetime:
+    """Parse SQLite timestamp text without discarding its offset."""
+    return _utc_instant(datetime.fromisoformat(value.replace(" ", "T")))
 
 
 class Notebook(SQLModel, table=True):
@@ -182,15 +195,28 @@ class NotebookStore:
         reveals it (materialize bumps ``updated_at``, so the revealed copy is
         picked up by the next delta)."""
         with Session(self.engine) as session:
-            statement = (
-                select(Notebook)
-                .where(
-                    Notebook.updated_at > since,
-                    Notebook.is_staged.is_(False),
+            # SQLite stores DATETIME as text, so a direct comparison can order
+            # offset-bearing legacy values by wall clock instead of by instant.
+            # Read the raw values and apply the same UTC-instant contract as the
+            # card incremental-sync path before ordering by the stable id tie-break.
+            rows = session.execute(text("SELECT id, updated_at FROM notebook WHERE is_staged = 0")).all()
+            since_utc = _utc_instant(since)
+            modified_ids = [
+                notebook_id
+                for notebook_id, _updated_at in sorted(
+                    (
+                        (notebook_id, _parse_stored_timestamp(updated_at))
+                        for notebook_id, updated_at in rows
+                        if _parse_stored_timestamp(updated_at) > since_utc
+                    ),
+                    key=lambda row: (row[1], row[0]),
                 )
-                .order_by(Notebook.updated_at, Notebook.id)
-            )
-            return list(session.exec(statement).all())
+            ]
+            if not modified_ids:
+                return []
+            notebooks = session.exec(select(Notebook).where(Notebook.id.in_(modified_ids))).all()
+            notebooks_by_id = {notebook.id: notebook for notebook in notebooks}
+            return [notebooks_by_id[notebook_id] for notebook_id in modified_ids]
 
     def update(self, notebook_id: str, **kwargs) -> Notebook | None:
         with Session(self.engine) as session:
