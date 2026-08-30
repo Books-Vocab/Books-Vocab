@@ -97,6 +97,15 @@ def _check(status: CheckStatus) -> CheckSnapshot:
     )
 
 
+def _absent_check() -> CheckSnapshot:
+    return CheckSnapshot(
+        status=CheckStatus.ABSENT,
+        head_sha=HEAD,
+        observed_at=datetime(2026, 8, 23, tzinfo=UTC),
+        names=(),
+    )
+
+
 class FakeGitHub:
     def __init__(self, check: CheckSnapshot) -> None:
         self.pr = _pr()
@@ -149,11 +158,38 @@ def test_maintenance_resume_rejects_missing_required_observation() -> None:
         )
 
 
+def test_maintenance_resume_accepts_exact_required_absence_observation() -> None:
+    absent = CheckSnapshot(
+        status=CheckStatus.ABSENT,
+        head_sha=HEAD,
+        observed_at=datetime(2026, 8, 23, tzinfo=UTC),
+        names=(),
+    )
+
+    proof = verify_resume_lifecycle(
+        FakeGitHub(absent),
+        branch="debug/delivery-observation-batch-20260823",
+        expected_base_sha=BASE,
+        expected_remote_head=HEAD,
+        require_failed=False,
+        allow_missing_required=True,
+    )
+
+    assert proof.required_status is CheckStatus.ABSENT
+
+
+@pytest.mark.parametrize(
+    "check",
+    [_check(CheckStatus.SUCCESS), _absent_check()],
+    ids=["required-success", "required-absent"],
+)
 def test_perform_resume_allows_same_head_maintenance_for_open_pr(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    check: CheckSnapshot,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     candidate = _pr()
-    github = FakeGitHub(_check(CheckStatus.SUCCESS))
+    github = FakeGitHub(check)
     github.all_for_branch = (candidate,)
     preflight = RegistryPreflight(
         original={

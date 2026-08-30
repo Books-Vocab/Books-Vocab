@@ -177,6 +177,7 @@ def perform_resume(
         require_failed=(
             request.mode == "required-failure" and request.previous_handback is None
         ),
+        allow_missing_required=request.mode == "maintenance",
     )
     recorded_path = Path(str(preflight.original["path"])).expanduser().resolve()
     resume_git_ops.validate_released_assets(
@@ -231,6 +232,7 @@ def perform_resume(
             require_failed=(
                 request.mode == "required-failure" and request.previous_handback is None
             ),
+            allow_missing_required=request.mode == "maintenance",
         )
         if final_lifecycle != initial_lifecycle:
             raise ReanchorRefused("GitHub lifecycle changed during resume-published")
