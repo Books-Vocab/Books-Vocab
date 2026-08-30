@@ -249,3 +249,50 @@ def test_enrichment_failure_is_pollable_warning_but_does_not_block_link():
     assert result["status"] == "succeeded_with_warnings"
     assert "enrichment_failed" in result["warnings"]
     assert result["link_id"] == "link-2"
+
+
+def test_cancellation_interrupts_running_operation_and_current_step():
+    source = SimpleNamespace(
+        id="source-card", content="source", meaning="來源", notebook_id="default",
+        is_deleted=False, is_archived=False,
+    )
+    cards = Cards(source)
+    graph = Graph()
+    translate_started = asyncio.Event()
+    allow_translate = asyncio.Event()
+
+    async def translate(**_kwargs):
+        translate_started.set()
+        await allow_translate.wait()
+        return SimpleNamespace(t="發光的", p="adj.", r="luminous")
+
+    operation, _ = create_operation(
+        user_id="user-1", notebook_id="default", idempotency_key="tap-cancel", payload=payload()
+    )
+
+    async def exercise_cancellation():
+        task = asyncio.create_task(
+            run_add_link_operation(
+                operation["operation_id"],
+                user(),
+                card_store_factory=lambda _: cards,
+                graph_store_factory=lambda *_args, **_kwargs: graph,
+                get_user_lock_fn=lambda _uid: AsyncLock(),
+                translate_fn=translate,
+            )
+        )
+        await translate_started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(exercise_cancellation())
+
+    result = get_operation("user-1", operation["operation_id"])
+    assert result["status"] == "interrupted"
+    assert result["ended_at"] is not None
+    assert result["error_code"] == "cancelled"
+    translate_step = next(step for step in result["steps"] if step["id"] == "translate")
+    assert translate_step["status"] == "interrupted"
+    assert translate_step["detail_code"] == "cancelled"
+    assert get_operation("user-1", operation["operation_id"])["status"] != "running"

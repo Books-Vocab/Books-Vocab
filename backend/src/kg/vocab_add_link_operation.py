@@ -647,6 +647,10 @@ async def run_add_link_operation(
                 operation_id,
                 status="succeeded_with_warnings" if warnings else "succeeded",
             )
+        except asyncio.CancelledError:
+            update_step(operation_id, current_step, status="interrupted", detail_code="cancelled")
+            finish_operation(operation_id, status="interrupted", error_code="cancelled")
+            raise
         except Exception as exc:  # background failure becomes typed operation state
             logger.error("Add Link operation %s failed at %s: %s", operation_id, current_step, exc, exc_info=True)
             update_step(operation_id, current_step, status="error", detail_code=_error_code(current_step, exc))
