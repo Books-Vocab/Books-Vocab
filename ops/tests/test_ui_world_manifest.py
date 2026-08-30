@@ -25,8 +25,112 @@ UIWorldManifestError = MODULE.UIWorldManifestError
 validate_fixture_dataset_file = MODULE.validate_fixture_dataset_file
 
 
+DEMO_DATA_ROUTES = {
+    "demo-ios-emitter": "ops/tests/test_demo_ios_emitter.py",
+    "demo-ios-spec-emitter": "ops/tests/test_demo_ios_spec_emitter.py",
+    "shape-history": "ops/tests/test_shape_history.py",
+    "curation": "ops/tests/test_apply_curation.py",
+    "ui-world-manifest": "ops/tests/test_ui_world_manifest.py",
+    "uitest-flow-matrix": "ops/tests/test_uitest_flow_matrix.py",
+    "uitest-review-page": "ops/tests/test_uitest_review_page.py",
+    "uitest-evidence-contract": "ops/tests/test_uitest_evidence_contract.py",
+    "uitest-review-attest": "ops/tests/test_uitest_review_attest.py",
+}
+CANONICAL_DEMO_DATA_FILES = frozenset(
+    {
+        "ops/tests/test_demo_ios_emitter.py",
+        "ops/tests/test_demo_ios_spec_emitter.py",
+        "ops/tests/test_shape_history.py",
+        "ops/tests/test_apply_curation.py",
+        "ops/tests/test_ui_world_manifest.py",
+        "ops/tests/test_uitest_flow_matrix.py",
+        "ops/tests/test_uitest_review_page.py",
+        "ops/tests/test_uitest_evidence_contract.py",
+        "ops/tests/test_uitest_review_attest.py",
+    }
+)
+
+
+def _collect(path: str | Path) -> tuple[str, ...]:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            "--collect-only",
+            str(path),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode == 5:
+        raise AssertionError(f"zero-selector collection for {path}")
+    if result.returncode != 0:
+        raise AssertionError(f"collection failed for {path} (exit {result.returncode})")
+    nodeids = tuple(
+        line.strip()
+        for line in result.stdout.splitlines()
+        if line.strip().startswith("ops/tests/") and "::" in line
+    )
+    if not nodeids:
+        raise AssertionError(f"zero-selector collection for {path}")
+    return nodeids
+
+
 def _marketing_demo() -> dict:
     return json.loads((ROOT / "ops" / "fixtures" / "ui_worlds" / "marketing_demo.json").read_text(encoding="utf-8"))
+
+
+def test_demo_data_routes_collect_without_zero_selectors_and_have_unique_nodeids():
+    collected = []
+    for owner, path in DEMO_DATA_ROUTES.items():
+        nodeids = _collect(path)
+        assert nodeids, f"zero-selector collection for {owner}: {path}"
+        assert len(nodeids) == len(set(nodeids)), f"duplicate nodeids for {owner}: {path}"
+        collected.extend(nodeids)
+
+    assert collected
+    assert len(collected) == len(set(collected))
+
+
+def test_demo_data_route_files_and_owners_are_explicit():
+    owners = tuple(DEMO_DATA_ROUTES)
+    files = tuple(DEMO_DATA_ROUTES.values())
+
+    assert len(owners) == len(set(owners))
+    assert len(files) == len(set(files))
+    assert set(files) == CANONICAL_DEMO_DATA_FILES
+
+
+def test_demo_data_dispatcher_has_one_explicit_owner_per_route_file():
+    source = (ROOT / "ops/test_ops.sh").read_text(encoding="utf-8")
+    arm = source.split("demo-data)", 1)[1].split(";;", 1)[0]
+
+    for owner, path in DEMO_DATA_ROUTES.items():
+        assert arm.count(path) == 1, f"dispatcher ownership drift for {owner}: {path}"
+    assert "ops/tests/*.py" not in arm
+
+
+@pytest.mark.parametrize(
+    ("file_name", "contents", "message"),
+    (
+        ("test_malformed_collection.py", "def broken(:\n", "collection failed"),
+        ("test_zero_selector_collection.py", "VALUE = 1\n", "zero-selector"),
+    ),
+)
+def test_collection_probe_fails_closed_for_malformed_or_zero_selector(
+    tmp_path: Path, file_name: str, contents: str, message: str
+):
+    path = tmp_path / file_name
+    path.write_text(contents, encoding="utf-8")
+
+    with pytest.raises(AssertionError, match=message):
+        _collect(path)
 
 
 def test_marketing_demo_declares_canonical_explore_shared_decks_contract():
@@ -414,7 +518,7 @@ REVIEW_CARD_CAPTURE_CONTRACTS = {
 
 def _swift_fixture_ids(path: str, enum_name: str) -> set[str]:
     source = _swift_source(path)
-    match = re.search(rf"enum {enum_name}: String, CaseIterable \{{(?P<body>.*?)\n\}}", source, flags=re.S)
+    match = re.search(rf"enum {enum_name}: String, CaseIterable \{{(?P<body>.*?)\n\}}", source, flags=re.DOTALL)
     assert match, f"missing Swift enum {enum_name}"
     fixture_ids = set()
     for line in match.group("body").splitlines():
@@ -427,7 +531,7 @@ def _swift_fixture_ids(path: str, enum_name: str) -> set[str]:
 
 def _swift_string_set(path: str, constant_name: str) -> set[str]:
     source = _swift_source(path)
-    match = re.search(rf"static let {constant_name}: Set<String> = \[(?P<body>.*?)\n\s*\]", source, flags=re.S)
+    match = re.search(rf"static let {constant_name}: Set<String> = \[(?P<body>.*?)\n\s*\]", source, flags=re.DOTALL)
     assert match, f"missing Swift Set constant {constant_name}"
     values = set(re.findall(r'"([^"]+)"', match.group("body")))
     assert values, f"missing values for Swift Set constant {constant_name}"
@@ -477,7 +581,7 @@ def test_reader_invalid_destination_ui_flow_is_real_and_retryable():
     match = re.search(
         r"func testReaderTOCInvalidRealBookKeepsSheetOpenAndRetryable\(\) throws \{(?P<body>.*?)\n    \}",
         source,
-        flags=re.S,
+        flags=re.DOTALL,
     )
     assert match, "missing real invalid-book UI flow"
     body = match.group("body")
@@ -832,7 +936,7 @@ def test_review_card_evidence_fixtures_materialize_and_keep_asset_id_parity():
         re.findall(
             r"static let (\w+) = ReviewCardVisualEvidenceCapture\(\s*(.*?)\n\s*\)",
             visual_source,
-            flags=re.S,
+            flags=re.DOTALL,
         )
     )
     actual_asset_ids = set(re.findall(r'assetID:\s*"([^"]+-counterexample)"', visual_source))
@@ -851,7 +955,7 @@ def test_review_card_evidence_fixtures_materialize_and_keep_asset_id_parity():
         identity_block_match = re.search(
             rf"static let {contract['identity']} = CardIdentity\((.*?)\n        \)",
             identity_source,
-            flags=re.S,
+            flags=re.DOTALL,
         )
         assert identity_block_match, contract["identity"]
         identity_block = identity_block_match.group(1)
@@ -978,7 +1082,7 @@ def test_validate_rejects_graph_link_to_missing_in_seed_target(tmp_path: Path, d
     # validator 必須在這裡 fail-fast。
     data = _marketing_demo()
     mutated = False
-    for fixture_id, seed in data[domain].items():
+    for seed in data[domain].values():
         entries = seed.get("entries", [])
         if not entries:
             continue
