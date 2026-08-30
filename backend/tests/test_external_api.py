@@ -3,8 +3,10 @@ from __future__ import annotations
 import collections
 import json
 import math
+import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -330,6 +332,55 @@ def test_external_card_batch_preserves_success_and_duplicate_semantics(external_
     assert body["items"][0]["card"]["id"] == existing.json()["card"]["id"]
     assert body["items"][1]["card"]["content"] == "batch newly created"
     assert body["items"][2]["card"]["id"] == body["items"][1]["card"]["id"]
+
+
+def test_external_card_batch_concurrent_duplicate_requests_are_idempotent(external_api, monkeypatch):
+    api_key = _create_key(external_api)
+    headers = {"X-KG-API-Key": api_key}
+    store = external_router._card_store(external_api.data_dir / "users" / external_api.user_id)
+    original_add = type(store).add
+    add_barrier = threading.Barrier(2)
+    add_calls_lock = threading.Lock()
+    add_calls = 0
+    request_barrier = threading.Barrier(2)
+
+    def synchronize_duplicate_add(self, *args, **kwargs):
+        nonlocal add_calls
+        with add_calls_lock:
+            add_calls += 1
+            synchronize = add_calls <= 2
+        if synchronize:
+            add_barrier.wait(timeout=5)
+        return original_add(self, *args, **kwargs)
+
+    monkeypatch.setattr(type(store), "add", synchronize_duplicate_add)
+    payload = {
+        "items": [
+            {
+                "content": "concurrent batch duplicate",
+                "meaning": "created exactly once",
+                "clientId": "concurrent-client",
+            }
+        ]
+    }
+
+    def post_batch():
+        request_barrier.wait(timeout=5)
+        return external_api.client.post("/api/v1/cards/batch", json=payload, headers=headers)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        responses = list(executor.map(lambda _: post_batch(), range(2)))
+
+    assert sorted(response.status_code for response in responses) == [201, 201]
+    bodies = [response.json() for response in responses]
+    assert sorted(body["created"] for body in bodies) == [0, 1]
+    assert sorted(body["duplicates"] for body in bodies) == [0, 1]
+    assert sorted(body["items"][0]["created"] for body in bodies) == [False, True]
+    assert len({body["items"][0]["card"]["id"] for body in bodies}) == 1
+
+    listed = external_api.client.get("/api/v1/cards", headers=headers)
+    assert listed.status_code == 200, listed.text
+    assert [item["content"] for item in listed.json()["items"]] == ["concurrent batch duplicate"]
 
 
 def _review_payload(interval):
