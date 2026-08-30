@@ -61,6 +61,15 @@ import Testing
         doc.blocks.map(blockTag)
     }
 
+    private func sourceDocumentBlock(_ doc: CardDocument) -> CardDocumentSource? {
+        for block in doc.blocks {
+            if case .source(let source) = block {
+                return source
+            }
+        }
+        return nil
+    }
+
     // MARK: - parseInlines: plain text & each delimiter
 
     @Test(arguments: [
@@ -109,6 +118,8 @@ import Testing
         translation: String = "翻譯",
         examples: [String] = [],
         sourceContext: String = "",
+        bookTitle: String = "book",
+        chapterTitle: String? = nil,
         explanation: String? = nil,
         collocations: [String] = [],
         showsSourceContext: Bool = false
@@ -121,8 +132,8 @@ import Testing
             reviewModeTitle: "mode",
             examples: examples,
             sourceContext: sourceContext,
-            bookTitle: "book",
-            chapterTitle: nil,
+            bookTitle: bookTitle,
+            chapterTitle: chapterTitle,
             explanation: explanation,
             collocations: collocations,
             showsSourceContext: showsSourceContext
@@ -217,6 +228,47 @@ import Testing
     @Test func build_sourceContextButFlagOff_omitsSource() async throws {
         let doc = makeDoc(sourceContext: "in the book", showsSourceContext: false)
         #expect(blockTags(doc) == ["hero"])
+    }
+
+    @Test func build_withSourceContext_preservesContextBookAndChapter() throws {
+        let source = try #require(
+            sourceDocumentBlock(
+                makeDoc(
+                    sourceContext: "  A **marked** context.  ",
+                    bookTitle: "Book title",
+                    chapterTitle: "Chapter title",
+                    showsSourceContext: true
+                )
+            )
+        )
+        #expect(source.context.rawMarkdown == "A **marked** context.")
+        #expect(source.context.plainText == "A marked context.")
+        #expect(source.bookTitle == "Book title")
+        #expect(source.chapterTitle == "Chapter title")
+    }
+
+    @Test func sourceBlock_rendersContextBeforeBookAndChapter() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let sourceURL = testsDirectory
+            .deletingLastPathComponent()
+            .appendingPathComponent("BooksAndVocab/Views/Vocabulary/Components/CardDocumentView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let start = try #require(source.range(of: "struct CardDocumentSourceBlock: View"))
+        let end = try #require(
+            source.range(
+                of: "\nstruct CardDocumentCollocationsBlock: View",
+                range: start.upperBound..<source.endIndex
+            )
+        )
+        let sourceBlock = String(source[start.lowerBound..<end.lowerBound])
+
+        let contextCall = "CardInlineText(paragraph: source.context, style: .source)"
+        let contextPosition = try #require(sourceBlock.range(of: contextCall)?.lowerBound)
+        let bookPosition = try #require(sourceBlock.range(of: "Text(source.bookTitle)")?.lowerBound)
+
+        #expect(contextPosition < bookPosition)
+        #expect(sourceBlock.contains(".lineSpacing(appSkin.metrics.paragraphLineSpacing)"))
+        #expect(sourceBlock.contains("if let chapterTitle = source.chapterTitle"))
     }
 
     // Full assembly ordering: example precedes meaning precedes collocations

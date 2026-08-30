@@ -243,6 +243,9 @@ struct CardDocumentSourceBlock: View {
         VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
             CardSectionLabel(title: "來源".localized, systemImage: "book.closed")
 
+            CardInlineText(paragraph: source.context, style: .source)
+                .lineSpacing(appSkin.metrics.paragraphLineSpacing)
+
             HStack(spacing: appSkin.spacing.sourceMetadataGap) {
                 Text(source.bookTitle)
                 if let chapterTitle = source.chapterTitle {
