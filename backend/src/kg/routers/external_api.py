@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
+import sqlite3
 import threading
 import uuid
 from copy import copy
 from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request, Response
+from sqlalchemy.exc import OperationalError
 
 from ..api_models.cards import CardResponse
 from ..api_models.external_api import (
@@ -88,6 +91,15 @@ router = APIRouter(tags=["external-v1"])
 _OPERATIONS: dict[str, dict[str, str]] = {}
 _OPERATIONS_LOCK = threading.Lock()
 _MAX_REMEMBERED_OPERATIONS = 10_000
+_BATCH_WRITE_MAX_ATTEMPTS = 3
+
+
+def _is_retryable_sqlite_lock(exc: OperationalError) -> bool:
+    error_code = getattr(exc.orig, "sqlite_errorcode", None)
+    return isinstance(error_code, int) and error_code & 0xFF in {
+        sqlite3.SQLITE_BUSY,
+        sqlite3.SQLITE_LOCKED,
+    }
 
 
 def _remember_operation(operation_id: str, user_id: str, notebook_id: str) -> None:
@@ -380,16 +392,25 @@ def delete_external_api_key(key_id: str, request: Request, user: CurrentUser):
 async def ingest_card_batch(req: ExternalCardBatchRequest, response: Response, user: ExternalUser):
     _require_pro(user)
     await _admit_external(response, user, write_limiter)
-    items: list[ExternalCardIngestResponse] = []
-    created = 0
     cards = _card_store(user["dir"])
-    with cards.engine.begin() as connection:
-        transaction_cards = copy(cards)
-        transaction_cards.engine = connection
-        for entry in req.items:
-            card, was_created = _ingest_card(user, entry, cards=transaction_cards)
-            created += int(was_created)
-            items.append(ExternalCardIngestResponse(card=card, created=was_created, clientId=entry.clientId))
+    for attempt in range(_BATCH_WRITE_MAX_ATTEMPTS):
+        items: list[ExternalCardIngestResponse] = []
+        created = 0
+        try:
+            with cards.engine.begin() as connection:
+                connection.exec_driver_sql("BEGIN")
+                transaction_cards = copy(cards)
+                transaction_cards.engine = connection
+                for entry in req.items:
+                    with connection.begin_nested():
+                        card, was_created = _ingest_card(user, entry, cards=transaction_cards)
+                    created += int(was_created)
+                    items.append(ExternalCardIngestResponse(card=card, created=was_created, clientId=entry.clientId))
+            break
+        except OperationalError as exc:
+            if attempt + 1 == _BATCH_WRITE_MAX_ATTEMPTS or not _is_retryable_sqlite_lock(exc):
+                raise
+            await asyncio.sleep(0.01 * (2**attempt))
     return ExternalCardBatchResponse(items=items, created=created, duplicates=len(items) - created)
 
 
