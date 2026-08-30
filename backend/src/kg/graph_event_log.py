@@ -52,21 +52,21 @@ class GraphEventType(StrEnum):
     """一筆圖譜變動的種類。對應 GraphStore 的 mutation 方法。"""
 
     LINK_ADDED = "link_added"
-    LINK_UPDATED = "link_updated"        # confidence / kind / reason / status 改值
+    LINK_UPDATED = "link_updated"  # confidence / kind / reason / status 改值
     LINK_HIDDEN = "link_hidden"
-    LINK_UNHIDDEN = "link_unhidden"      # hidden → active(取消隱藏)
+    LINK_UNHIDDEN = "link_unhidden"  # hidden → active(取消隱藏)
     LINK_DEPRECATED = "link_deprecated"  # 刪卡連帶,標 status=deprecated
-    LINK_RESTORED = "link_restored"      # deprecated → active(卡復原連帶,與 unhidden 區隔)
-    LINK_DELETED = "link_deleted"        # 硬刪(物理移除 link + block pair)
+    LINK_RESTORED = "link_restored"  # deprecated → active(卡復原連帶,與 unhidden 區隔)
+    LINK_DELETED = "link_deleted"  # 硬刪(物理移除 link + block pair)
 
 
 class GraphEventSource(StrEnum):
     """變動的觸發管道。研究時可區分人工 vs AI vs ops。"""
 
-    AUTO = "auto"        # pipeline embed+judge 自動建 / 改
-    MANUAL = "manual"    # 使用者手動 API(vocab_graph_ops / vocab_crud)
-    OPS = "ops"          # ops_edit 工具
-    SYNTH = "synth"      # 一次性合成歷史回填(配 is_synthetic=True)
+    AUTO = "auto"  # pipeline embed+judge 自動建 / 改
+    MANUAL = "manual"  # 使用者手動 API(vocab_graph_ops / vocab_crud)
+    OPS = "ops"  # ops_edit 工具
+    SYNTH = "synth"  # 一次性合成歷史回填(配 is_synthetic=True)
 
 
 @dataclass(frozen=True)
@@ -122,9 +122,7 @@ class GraphEventStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.engine = create_engine(f"sqlite:///{self.path.absolute()}")
         _install_serializable_sqlite(self.engine)
-        GraphEvent.metadata.create_all(
-            self.engine, tables=[GraphEvent.__table__], checkfirst=True
-        )
+        GraphEvent.metadata.create_all(self.engine, tables=[GraphEvent.__table__], checkfirst=True)
 
     def _existing_event_ids(self, session: Session, event_ids: list[str]) -> set[str]:
         """Return which of ``event_ids`` this store already holds.
@@ -136,11 +134,7 @@ class GraphEventStore:
         known: set[str] = set()
         for start in range(0, len(event_ids), _EXISTS_QUERY_CHUNK):
             chunk = event_ids[start : start + _EXISTS_QUERY_CHUNK]
-            known.update(
-                session.exec(
-                    select(GraphEvent.event_id).where(GraphEvent.event_id.in_(chunk))
-                ).all()
-            )
+            known.update(session.exec(select(GraphEvent.event_id).where(GraphEvent.event_id.in_(chunk))).all())
         return known
 
     def insert_many(self, drafts: list[GraphEventDraft]) -> dict[str, int]:
@@ -150,9 +144,7 @@ class GraphEventStore:
         with Session(self.engine) as session:
             # 從現有 max 續接單調 ingestion clock,使新事件 ingested_at 嚴格遞增、唯一 ——
             # 即使遇 NTP 回撥或同微秒多筆寫入。
-            last_ingested = normalize_last_ingested(
-                session.exec(select(func.max(GraphEvent.ingested_at))).one()
-            )
+            last_ingested = normalize_last_ingested(session.exec(select(func.max(GraphEvent.ingested_at))).one())
             known_ids = self._existing_event_ids(session, [d.event_id for d in drafts])
             for d in drafts:
                 if d.event_id in known_ids:
@@ -230,9 +222,7 @@ class GraphEventStore:
 
     def all(self) -> list[GraphEvent]:
         with Session(self.engine) as session:
-            return list(
-                session.exec(select(GraphEvent).order_by(GraphEvent.ingested_at)).all()
-            )
+            return list(session.exec(select(GraphEvent).order_by(GraphEvent.ingested_at)).all())
 
     def get_since(self, since: datetime) -> list[GraphEvent]:
         # Strict ``>``: ingested_at 單調且唯一,cursor 邊界事件已交付過,不需重撈。
@@ -242,9 +232,7 @@ class GraphEventStore:
         with Session(self.engine) as session:
             return list(
                 session.exec(
-                    select(GraphEvent)
-                    .where(GraphEvent.ingested_at > since)
-                    .order_by(GraphEvent.ingested_at)
+                    select(GraphEvent).where(GraphEvent.ingested_at > since).order_by(GraphEvent.ingested_at)
                 ).all()
             )
 
@@ -320,9 +308,7 @@ class GraphSnapshotStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.engine = create_engine(f"sqlite:///{self.path.absolute()}")
         _install_serializable_sqlite(self.engine)
-        GraphSnapshot.metadata.create_all(
-            self.engine, tables=[GraphSnapshot.__table__], checkfirst=True
-        )
+        GraphSnapshot.metadata.create_all(self.engine, tables=[GraphSnapshot.__table__], checkfirst=True)
 
     def save(
         self,
@@ -395,7 +381,9 @@ class GraphSnapshotStore:
             stmt = select(GraphSnapshot)
             if notebook_id is not None:
                 stmt = stmt.where(GraphSnapshot.notebook_id == notebook_id)
-            rows = session.exec(stmt.order_by(GraphSnapshot.taken_at)).all()
+            # Stable secondary ordering keeps same-instant snapshots reproducible
+            # across SQLite plans and preserves the id tie-break used by latest().
+            rows = session.exec(stmt.order_by(GraphSnapshot.taken_at, GraphSnapshot.snapshot_id)).all()
             return [view for row in rows if (view := self._view(row)) is not None]
 
     def maybe_save_periodic(
@@ -413,9 +401,7 @@ class GraphSnapshotStore:
         """
 
         threshold = (
-            min_events_since_snapshot
-            if min_events_since_snapshot is not None
-            else self.PERIODIC_EVENT_THRESHOLD
+            min_events_since_snapshot if min_events_since_snapshot is not None else self.PERIODIC_EVENT_THRESHOLD
         )
         with Session(self.engine) as session:
             latest = session.exec(
