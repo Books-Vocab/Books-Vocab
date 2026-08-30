@@ -50,8 +50,7 @@ def _merge_card_review_state(
     # meaningfully sent" rather than malformed.
     if client_next is None and str(entry.next_review_at).strip():
         logger.warning(
-            "push_review_states: card %s has unparseable next_review_at %r; "
-            "schedule reset to None",
+            "push_review_states: card %s has unparseable next_review_at %r; schedule reset to None",
             card.id,
             entry.next_review_at,
         )
@@ -93,19 +92,51 @@ def push_review_states(
         return cards_by_word
 
     updated = 0
-    skipped = 0
+    # Coalesce exact-card entries before merging. The CardStore batch writer
+    # also keys updates by card id, so leaving duplicate tuples pending would
+    # let their input order decide which schedule survives.
+    coalesced_entries: list[ReviewStateEntry] = []
+    card_id_positions: dict[str, int] = {}
+    duplicate_entries = 0
+    for entry in entries:
+        if not entry.card_id:
+            coalesced_entries.append(entry)
+            continue
+
+        position = card_id_positions.get(entry.card_id)
+        if position is None:
+            card_id_positions[entry.card_id] = len(coalesced_entries)
+            coalesced_entries.append(entry)
+            continue
+
+        duplicate_entries += 1
+        existing = coalesced_entries[position]
+        entry_last = parse_datetime(entry.last_reviewed_at)
+        existing_last = parse_datetime(existing.last_reviewed_at)
+        if entry_last is None:
+            continue
+        if existing_last is None:
+            coalesced_entries[position] = entry
+            continue
+
+        newest = entry if entry_last >= existing_last else existing
+        coalesced_entries[position] = newest.model_copy(
+            update={
+                "review_count": max(entry.review_count, existing.review_count),
+                "lapse_count": max(entry.lapse_count, existing.lapse_count),
+            }
+        )
+
+    skipped = duplicate_entries
     pending_updates: list[tuple[str, dict]] = []
     # Pre-fetch all cards with card_id in one batch to avoid N+1
-    _card_ids_to_fetch = {e.card_id for e in entries if e.card_id}
+    _card_ids_to_fetch = {e.card_id for e in coalesced_entries if e.card_id}
     _cards_by_id = cards_store.get_batch(_card_ids_to_fetch) if _card_ids_to_fetch else {}
-    for entry in entries:
+    for entry in coalesced_entries:
         # Prefer card_id for precise matching; fall back to word matching.
         if entry.card_id:
             card = _cards_by_id.get(entry.card_id)
-            eligible = (
-                card is not None
-                and not card.is_deleted
-            )
+            eligible = card is not None and not card.is_deleted
             cards = [card] if eligible else []
         else:
             cards = _get_cards_by_word().get(_normalize_word(entry.word), [])
