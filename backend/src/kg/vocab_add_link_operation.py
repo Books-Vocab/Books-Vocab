@@ -113,9 +113,7 @@ def reset() -> None:
 
 
 def _request_hash(payload: dict[str, Any]) -> str:
-    encoded = json.dumps(
-        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -139,10 +137,22 @@ def _decode_json_list(raw: str) -> list[str]:
 
 def _row_to_dict(row: sqlite3.Row | tuple[Any, ...]) -> dict[str, Any]:
     names = (
-        "operation_id", "user_id", "notebook_id", "idempotency_key",
-        "request_hash", "request_json", "status", "sequence", "steps",
-        "target_card_id", "link_id", "warnings", "error_code", "created_at",
-        "updated_at", "ended_at",
+        "operation_id",
+        "user_id",
+        "notebook_id",
+        "idempotency_key",
+        "request_hash",
+        "request_json",
+        "status",
+        "sequence",
+        "steps",
+        "target_card_id",
+        "link_id",
+        "warnings",
+        "error_code",
+        "created_at",
+        "updated_at",
+        "ended_at",
     )
     values = dict(row) if isinstance(row, sqlite3.Row) else dict(zip(names, row, strict=True))
     try:
@@ -192,9 +202,15 @@ def create_operation(
                 "(operation_id, user_id, notebook_id, idempotency_key, request_hash, "
                 "request_json, steps, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
-                    operation_id, user_id, notebook_id, idempotency_key, request_hash,
+                    operation_id,
+                    user_id,
+                    notebook_id,
+                    idempotency_key,
+                    request_hash,
                     json.dumps(payload, ensure_ascii=False, sort_keys=True),
-                    json.dumps(_initial_steps(), ensure_ascii=False), now, now,
+                    json.dumps(_initial_steps(), ensure_ascii=False),
+                    now,
+                    now,
                 ),
             )
             conn.commit()
@@ -207,9 +223,7 @@ def create_operation(
                 raise
             result = _row_to_dict(existing)
             if result["request_hash"] != request_hash:
-                raise IdempotencyConflict(
-                    "Idempotency-Key was reused with a different request"
-                ) from None
+                raise IdempotencyConflict("Idempotency-Key was reused with a different request") from None
             return result, False
         return _select(operation_id) or {}, True
 
@@ -385,8 +399,13 @@ async def _default_translate(*, payload: dict[str, Any], user: dict[str, Any], l
 
 
 async def _default_enrich(
-    *, card: Any, cards: Any, user: dict[str, Any], client_factory: Callable | None,
-    logger: logging.Logger, progress: Callable[[dict[str, Any]], None] | None = None,
+    *,
+    card: Any,
+    cards: Any,
+    user: dict[str, Any],
+    client_factory: Callable | None,
+    logger: logging.Logger,
+    progress: Callable[[dict[str, Any]], None] | None = None,
     sense_context: str = "",
 ) -> None:
     from .deps_quota import _is_pro
@@ -398,10 +417,17 @@ async def _default_enrich(
     provider = provider_for("enrich")
     llm = TrackedLLM(
         (client_factory or create_client)(provider),
-        user["id"], provider=provider, enforce_quota=True, is_pro=_is_pro(user),
+        user["id"],
+        provider=provider,
+        enforce_quota=True,
+        is_pro=_is_pro(user),
     )
     async for message in enrich_cards_stream(
-        llm, [card], batch_size=1, max_workers=1, model=provider.chat_model,
+        llm,
+        [card],
+        batch_size=1,
+        max_workers=1,
+        model=provider.chat_model,
         disambiguation_context_by_card_id={card.id: sense_context} if sense_context.strip() else None,
     ):
         if progress is not None:
@@ -431,8 +457,15 @@ async def _default_enrich(
 
 
 def _default_link(
-    *, from_id: str, to_id: str, notebook_id: str, user: dict[str, Any], cards: Any,
-    graph: Any, client_factory: Callable | None, logger: logging.Logger,
+    *,
+    from_id: str,
+    to_id: str,
+    notebook_id: str,
+    user: dict[str, Any],
+    cards: Any,
+    graph: Any,
+    client_factory: Callable | None,
+    logger: logging.Logger,
 ) -> Any:
     from .deps_quota import _is_pro
     from .judge import ManualLinkJudge
@@ -445,13 +478,22 @@ def _default_link(
     judge = ManualLinkJudge(
         TrackedLLM(
             (client_factory or create_client)(provider),
-            user["id"], provider=provider, enforce_quota=True, is_pro=_is_pro(user),
+            user["id"],
+            provider=provider,
+            enforce_quota=True,
+            is_pro=_is_pro(user),
         ),
-        model=provider.chat_model, user_id=user["id"], notebook_id=notebook_id,
+        model=provider.chat_model,
+        user_id=user["id"],
+        notebook_id=notebook_id,
     )
     return create_manual_link(
-        from_id=from_id, to_id=to_id, cards_store=cards, graph=graph,
-        judge=judge, notebook_id=notebook_id,
+        from_id=from_id,
+        to_id=to_id,
+        cards_store=cards,
+        graph=graph,
+        judge=judge,
+        notebook_id=notebook_id,
     )
 
 
@@ -505,10 +547,7 @@ async def run_add_link_operation(
         warnings: list[str] = []
         try:
             source = cards.get(payload["from_id"])
-            if (
-                source is None or source.is_deleted or source.is_archived
-                or source.notebook_id != record["notebook_id"]
-            ):
+            if source is None or source.is_deleted or source.is_archived or source.notebook_id != record["notebook_id"]:
                 raise ValueError("source card unavailable")
 
             target_word = _clean_content(payload["target_word"])
@@ -535,7 +574,9 @@ async def run_add_link_operation(
                 else:
                     update_step(operation_id, current_step, status="running")
                     result = await (translate_fn or _default_translate)(
-                        payload=payload, user=user, logger=logger,
+                        payload=payload,
+                        user=user,
+                        logger=logger,
                     )
                     translation = (getattr(result, "t", "") or "").strip()
                     root_form = getattr(result, "r", None)
@@ -556,8 +597,7 @@ async def run_add_link_operation(
                 else:
                     update_step(operation_id, current_step, status="running")
                     source_json = (
-                        json.dumps(payload["source"], ensure_ascii=False)
-                        if payload.get("source") is not None else None
+                        json.dumps(payload["source"], ensure_ascii=False) if payload.get("source") is not None else None
                     )
                     target = cards.add(
                         content=target_word,
@@ -585,22 +625,32 @@ async def run_add_link_operation(
                             current=max(0, int(message.get("current", 0) or 0)),
                             total=max(1, int(message.get("total", 1) or 1)),
                             detail_code=(
-                                "retryable" if status == "retry"
-                                else "enrichment_failed" if status == "error" else "progress"
+                                "retryable"
+                                if status == "retry"
+                                else "enrichment_failed"
+                                if status == "error"
+                                else "progress"
                             ),
                         )
 
                     try:
                         if enrich_fn is None:
                             await _default_enrich(
-                                card=target, cards=cards, user=user,
-                                client_factory=client_factory, logger=logger,
-                                progress=report_enrichment, sense_context=payload.get("context", ""),
+                                card=target,
+                                cards=cards,
+                                user=user,
+                                client_factory=client_factory,
+                                logger=logger,
+                                progress=report_enrichment,
+                                sense_context=payload.get("context", ""),
                             )
                         else:
                             await enrich_fn(
-                                card=target, cards=cards, user=user,
-                                client_factory=client_factory, logger=logger,
+                                card=target,
+                                cards=cards,
+                                user=user,
+                                client_factory=client_factory,
+                                logger=logger,
                             )
                         update_step(operation_id, current_step, status="done", current=1, detail_code="completed")
                     except Exception as exc:  # enrichment is non-fatal for explicit link intent
@@ -628,7 +678,8 @@ async def run_add_link_operation(
                 }
                 link = (
                     await asyncio.to_thread(_default_link, **link_kwargs)
-                    if link_fn is None else await _maybe_await(link_fn(**link_kwargs))
+                    if link_fn is None
+                    else await _maybe_await(link_fn(**link_kwargs))
                 )
             except Exception as exc:
                 from .exceptions import ConflictError
@@ -647,6 +698,10 @@ async def run_add_link_operation(
                 operation_id,
                 status="succeeded_with_warnings" if warnings else "succeeded",
             )
+        except asyncio.CancelledError:
+            update_step(operation_id, current_step, status="interrupted", detail_code="cancelled")
+            finish_operation(operation_id, status="interrupted", error_code="cancelled")
+            raise
         except Exception as exc:  # background failure becomes typed operation state
             logger.error("Add Link operation %s failed at %s: %s", operation_id, current_step, exc, exc_info=True)
             update_step(operation_id, current_step, status="error", detail_code=_error_code(current_step, exc))
