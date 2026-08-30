@@ -13,6 +13,7 @@ The gate is server-authoritative: a free/guest caller never receives a byte of
 the full ``audio.*`` asset for a gated episode — the preview is a *separate*
 object (``ep_01/preview.*``) so there is nothing to truncate or bypass.
 """
+
 from __future__ import annotations
 
 import json
@@ -49,7 +50,16 @@ def tier_api(isolated_api):
     (series / "ep_02" / "subtitle.srt").write_text("1\n00:00:00,000 --> 00:00:01,000\nep2-secret\n")
     (podcasts / "index.json").write_text(json.dumps([{"id": "series_a", "title": "A"}]))
     (series / "metadata.json").write_text(
-        json.dumps({"id": "series_a", "title": "A", "episodes": [{"epNum": 1}, {"epNum": 2}]})
+        json.dumps(
+            {
+                "id": "series_a",
+                "title": "A",
+                "episodes": [
+                    {"episodeNumber": 1, "subtitleContent": "ep1-inline"},
+                    {"episodeNumber": 2, "subtitleContent": "ep2-inline-secret"},
+                ],
+            }
+        )
     )
 
     free_headers = {"Authorization": f"Bearer {make_jwt('u_free')}"}
@@ -63,6 +73,7 @@ def tier_api(isolated_api):
 
 # ── browse: guests allowed ──────────────────────────────────────────────────
 
+
 def test_guest_can_list_podcasts(tier_api):
     resp = tier_api.client.get("/api/podcasts")
     assert resp.status_code == 200
@@ -75,24 +86,43 @@ def test_guest_can_read_series_detail(tier_api):
     assert resp.json()["id"] == "series_a"
 
 
+def test_guest_series_detail_does_not_leak_inline_subtitles(tier_api):
+    resp = tier_api.client.get("/api/podcasts/series_a")
+    assert resp.status_code == 200
+    assert all("subtitleContent" not in episode for episode in resp.json()["episodes"])
+
+
+def test_free_series_detail_exposes_inline_subtitle_only_for_ep1(tier_api):
+    resp = tier_api.client.get("/api/podcasts/series_a", headers=tier_api.free_headers)
+    assert resp.status_code == 200
+    episodes = {episode["episodeNumber"]: episode for episode in resp.json()["episodes"]}
+    assert episodes[1]["subtitleContent"] == "ep1-inline"
+    assert "subtitleContent" not in episodes[2]
+
+
+def test_pro_series_detail_preserves_inline_subtitles(tier_api):
+    resp = tier_api.client.get("/api/podcasts/series_a", headers=tier_api.pro_headers)
+    assert resp.status_code == 200
+    episodes = {episode["episodeNumber"]: episode for episode in resp.json()["episodes"]}
+    assert episodes[1]["subtitleContent"] == "ep1-inline"
+    assert episodes[2]["subtitleContent"] == "ep2-inline-secret"
+
+
 def test_invalid_token_on_browse_still_401(tier_api):
     """A *present* but bogus token is a client-side auth error, not a guest —
     fail loud rather than silently downgrade to guest."""
-    resp = tier_api.client.get(
-        "/api/podcasts", headers={"Authorization": "Bearer not-a-jwt"}
-    )
+    resp = tier_api.client.get("/api/podcasts", headers={"Authorization": "Bearer not-a-jwt"})
     assert resp.status_code == 401
 
 
 @pytest.mark.parametrize("authorization", ["Basic abc", "Bearer"])
 def test_malformed_authorization_on_browse_still_401(tier_api, authorization):
-    resp = tier_api.client.get(
-        "/api/podcasts", headers={"Authorization": authorization}
-    )
+    resp = tier_api.client.get("/api/podcasts", headers={"Authorization": authorization})
     assert resp.status_code == 401
 
 
 # ── audio gate: guest ────────────────────────────────────────────────────────
+
 
 def test_guest_audio_blocked_auth_required(tier_api):
     resp = tier_api.client.get("/api/podcasts/series_a/1/audio")
@@ -103,11 +133,10 @@ def test_guest_audio_blocked_auth_required(tier_api):
 
 # ── audio gate: free ─────────────────────────────────────────────────────────
 
+
 def test_free_ep1_serves_preview_asset(tier_api):
     """Free tier on episode 1 gets the *preview* bytes, never the full audio."""
-    resp = tier_api.client.get(
-        "/api/podcasts/series_a/1/audio", headers=tier_api.free_headers
-    )
+    resp = tier_api.client.get("/api/podcasts/series_a/1/audio", headers=tier_api.free_headers)
     assert resp.status_code == 200
     assert resp.content == PREVIEW_EP1
     assert resp.content != FULL_EP1
@@ -124,33 +153,29 @@ def test_free_ep1_preview_supports_range(tier_api):
 
 
 def test_free_ep2_blocked_upgrade_required(tier_api):
-    resp = tier_api.client.get(
-        "/api/podcasts/series_a/2/audio", headers=tier_api.free_headers
-    )
+    resp = tier_api.client.get("/api/podcasts/series_a/2/audio", headers=tier_api.free_headers)
     assert resp.status_code == 403
     assert _error_code(resp.json()) == "upgrade_required"
 
 
 # ── audio gate: pro ──────────────────────────────────────────────────────────
 
+
 def test_pro_ep1_serves_full_audio(tier_api):
     """Pro gets the FULL audio on ep1 — not the preview stub."""
-    resp = tier_api.client.get(
-        "/api/podcasts/series_a/1/audio", headers=tier_api.pro_headers
-    )
+    resp = tier_api.client.get("/api/podcasts/series_a/1/audio", headers=tier_api.pro_headers)
     assert resp.status_code == 200
     assert resp.content == FULL_EP1
 
 
 def test_pro_ep2_serves_full_audio(tier_api):
-    resp = tier_api.client.get(
-        "/api/podcasts/series_a/2/audio", headers=tier_api.pro_headers
-    )
+    resp = tier_api.client.get("/api/podcasts/series_a/2/audio", headers=tier_api.pro_headers)
     assert resp.status_code == 200
     assert resp.content == FULL_EP2
 
 
 # ── subtitle gate (same wall as audio — no transcript leak of Pro episodes) ──
+
 
 def test_guest_subtitle_blocked_auth_required(tier_api):
     resp = tier_api.client.get("/api/podcasts/series_a/1/subtitle")
@@ -160,32 +185,27 @@ def test_guest_subtitle_blocked_auth_required(tier_api):
 
 def test_free_ep1_subtitle_allowed(tier_api):
     """ep1 is the free sample episode → its transcript is readable."""
-    resp = tier_api.client.get(
-        "/api/podcasts/series_a/1/subtitle", headers=tier_api.free_headers
-    )
+    resp = tier_api.client.get("/api/podcasts/series_a/1/subtitle", headers=tier_api.free_headers)
     assert resp.status_code == 200
     assert "ep1" in resp.text
 
 
 def test_free_ep2_subtitle_blocked_upgrade_required(tier_api):
     """The full transcript of a Pro-only episode must NOT leak to free tier."""
-    resp = tier_api.client.get(
-        "/api/podcasts/series_a/2/subtitle", headers=tier_api.free_headers
-    )
+    resp = tier_api.client.get("/api/podcasts/series_a/2/subtitle", headers=tier_api.free_headers)
     assert resp.status_code == 403
     assert _error_code(resp.json()) == "upgrade_required"
     assert "secret" not in resp.text
 
 
 def test_pro_ep2_subtitle_allowed(tier_api):
-    resp = tier_api.client.get(
-        "/api/podcasts/series_a/2/subtitle", headers=tier_api.pro_headers
-    )
+    resp = tier_api.client.get("/api/podcasts/series_a/2/subtitle", headers=tier_api.pro_headers)
     assert resp.status_code == 200
     assert "ep2-secret" in resp.text
 
 
 # ── helper ───────────────────────────────────────────────────────────────────
+
 
 def _error_code(body: dict) -> str:
     """The gate returns ``{"detail": {"code": ...}}`` — tolerate either a dict
