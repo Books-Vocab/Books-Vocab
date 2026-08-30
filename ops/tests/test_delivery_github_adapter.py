@@ -1372,6 +1372,88 @@ def test_github_adapter_recovers_stale_queued_exact_run() -> None:
     assert runner.calls == [list_command, cancel_command, list_command, rerun_command]
 
 
+def test_github_adapter_retries_cancel_race_until_exact_run_is_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    head_sha = "b" * 40
+    list_command = (
+        "gh",
+        "run",
+        "list",
+        "--workflow",
+        "pr-gate.yml",
+        "--branch",
+        "feat/one",
+        "--event",
+        "pull_request",
+        "--commit",
+        head_sha,
+        "--limit",
+        "20",
+        "--json",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+    )
+    cancel_command = ("gh", "run", "cancel", "--force", "12345")
+    rerun_command = ("gh", "run", "rerun", "12345")
+    queued_payload = json.dumps(
+        [
+            {
+                "databaseId": 12345,
+                "headBranch": "feat/one",
+                "headSha": head_sha,
+                "event": "pull_request",
+                "status": "queued",
+                "conclusion": None,
+                "createdAt": "2020-01-01T00:00:00Z",
+            }
+        ]
+    )
+    completed_payload = json.dumps(
+        [
+            {
+                "databaseId": 12345,
+                "headBranch": "feat/one",
+                "headSha": head_sha,
+                "event": "pull_request",
+                "status": "completed",
+                "conclusion": "failure",
+                "createdAt": "2020-01-01T00:00:00Z",
+            }
+        ]
+    )
+    runner = StaticRunner(
+        [
+            CommandResult(list_command, 0, queued_payload, ""),
+            CommandResult(
+                cancel_command,
+                1,
+                "",
+                "Cannot cancel a workflow run that is completed",
+            ),
+            CommandResult(list_command, 0, queued_payload, ""),
+            CommandResult(list_command, 0, completed_payload, ""),
+            CommandResult(rerun_command, 0, "", ""),
+        ]
+    )
+
+    monkeypatch.setattr(github_commands.time, "sleep", lambda _: None)
+    command = GitHubCliAdapter(runner=runner).trigger_required(
+        number=12,
+        branch="feat/one",
+        base_sha="a" * 40,
+        head_sha=head_sha,
+    )
+
+    assert command == rerun_command
+    assert runner.calls == [
+        list_command,
+        cancel_command,
+        list_command,
+        list_command,
+        rerun_command,
+    ]
+
+
 def test_github_adapter_does_not_cancel_recent_queued_exact_run() -> None:
     head_sha = "b" * 40
     list_command = (
