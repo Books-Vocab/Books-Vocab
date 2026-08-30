@@ -179,7 +179,7 @@ GitHub-hosted macOS runner 每次都是新的 VM；本機長存的 DerivedData �
   --output "$HOME/Library/Application Support/KG/lane_disk_usage.json"
 ```
 
-`--supervision-worktree` 不接受 wildcard，也沒有預設排除；未列出的 physical worktree 一律仍算 delivery／unknown。報告的 `exclusions` 與 guard state 的 `lane_usage_exclusions` 都保留 caller requested／applied path，且 registered active／terminal path 或 canonical main 不可藉此隱藏。unregistered、dirty、unknown、branch identity mismatch、registry unreadable、measurement failure 與 per-lane／aggregate budget breach 仍是 hard block。
+`--supervision-worktree` 不接受 wildcard，也沒有預設排除；未列出的 physical worktree 一律仍算 delivery／unknown。報告的 `exclusions` 與 guard state 的 `lane_usage_exclusions` 都保留 caller requested／applied path，且 registered active／terminal path 或 canonical main 不可藉此隱藏。unregistered、unknown、malformed、branch identity mismatch、registry unreadable、measurement failure、per-lane／aggregate budget breach，以及非 `active` registered lane 的 dirty worktree（`published`、`cleanup_pending`、`merged`、`abandoned`）仍是 hard block。唯一例外是 exact registered `active` implementation lane 的 dirty worktree：它是正常 in-progress 狀態，必須保留 dirty observation 與完整 bytes 歸戶，並繼續接受其他 policy gate；在沒有其他 blocker 時 verdict 可為 `pass`／`warning`。
 
 ```bash
 ./ops/disk_usage.py \
@@ -188,7 +188,7 @@ GitHub-hosted macOS runner 每次都是新的 VM；本機長存的 DerivedData �
   --output "$HOME/Library/Application Support/KG/lane_disk_usage.json"
 ```
 
-`ops/kg_disk_guard.sh` 每個 tick 同步更新這個小型狀態檔；它不建立 append-only log，也不在 active、unknown 或 terminal residue worktree 上做破壞性清理。可用重複的 `--supervision-worktree <exact-path>` 將 caller 明確提供的 supervision checkout 傳給 attribution scan；這個排除只影響 disk quota accounting，不改 registry lifecycle 的 fail-closed 規則。預設每條 physical lane 上限 2 GiB、所有未排除 physical lanes 合計上限 8 GiB，可用 `KG_DISK_GUARD_LANE_BUDGET_GIB` 與 `KG_DISK_GUARD_LANE_TOTAL_BUDGET_GIB` 明確調整。超限、無法量測、registry 不可讀、真正 unknown／dirty／unregistered physical worktree 時，報告為 `verdict=block`，且 guard state 會保留 `lane_usage_verdict=block` 與 `lane_usage_rc=75` 供 admission／writer fail-closed；只有既有 cache guard 在確認無 consumer 且持有 build lock 後才可自動淘汰可重建產物。missing registered path 本身若沒有 physical bytes 則為 `verdict=warning`、guard lane exit 0，讓可安全計量的新 lane 不被歷史紀錄誤擋。
+`ops/kg_disk_guard.sh` 每個 tick 同步更新這個小型狀態檔；它不建立 append-only log，也不在 active、unknown 或 terminal residue worktree 上做破壞性清理。可用重複的 `--supervision-worktree <exact-path>` 將 caller 明確提供的 supervision checkout 傳給 attribution scan；這個排除只影響 disk quota accounting，不改 registry lifecycle 的 fail-closed 規則。預設每條 physical lane 上限 2 GiB、所有未排除 physical lanes 合計上限 8 GiB，可用 `KG_DISK_GUARD_LANE_BUDGET_GIB` 與 `KG_DISK_GUARD_LANE_TOTAL_BUDGET_GIB` 明確調整。超限、無法量測、registry 不可讀、真正 unknown／dirty／unregistered physical worktree，以及非 `active` registered dirty lane 時，報告為 `verdict=block`，且 guard state 會保留 `lane_usage_verdict=block` 與 `lane_usage_rc=75` 供 admission／writer fail-closed；registered active dirty implementation lane 仍完整計入 per-lane／aggregate bytes，只有 budget／identity／measurement 等其他 gate 失敗才 block。只有既有 cache guard 在確認無 consumer 且持有 build lock 後才可自動淘汰可重建產物。missing registered path 本身若沒有 physical bytes 則為 `verdict=warning`、guard lane exit 0，讓可安全計量的新 lane 不被歷史紀錄誤擋。
 
 歸戶掃描本身也有固定時間上限：`kg_disk_guard.sh` 預設以 30 秒呼叫
 `disk_usage.py --time-budget-seconds 30`。時間到了仍會原子寫出報告，保留已量到的
