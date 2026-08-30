@@ -16,6 +16,7 @@ struct AddLinkSheet: View {
     @State private var coordinator = AddLinkCoordinator()
     @State private var creationCoordinator = AddLinkCreationCoordinator()
     @State private var creationAttempt = 0
+    @State private var didCompleteCreation = false
     @State private var recoveredProviderErrors: Set<UUID> = []
 
     init(
@@ -105,7 +106,9 @@ struct AddLinkSheet: View {
             }
         }
         .onChange(of: creationCoordinator.phase) { _, phase in
-            guard phase == .succeeded else { return }
+            guard phase == .succeeded || phase == .succeededWithWarnings,
+                  !didCompleteCreation else { return }
+            didCompleteCreation = true
             onLinked()
             dismiss()
         }
