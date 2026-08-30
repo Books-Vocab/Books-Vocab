@@ -221,6 +221,117 @@ def test_external_card_ingest_is_idempotent_and_supports_card_operations(externa
     assert deleted.json() == {"cardId": card_id, "deleted": True}
 
 
+def test_external_card_batch_rolls_back_when_later_entry_is_invalid(external_api):
+    api_key = _create_key(external_api)
+    headers = {"X-KG-API-Key": api_key}
+
+    response = external_api.client.post(
+        "/api/v1/cards/batch",
+        json={
+            "items": [
+                {
+                    "content": "batch atomic survivor",
+                    "meaning": "must be rolled back",
+                    "clientId": "valid-first",
+                },
+                {
+                    "content": "...",
+                    "meaning": "invalid after content cleanup",
+                    "clientId": "invalid-second",
+                },
+            ]
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 422, response.text
+    listed = external_api.client.get("/api/v1/cards", headers=headers)
+    assert listed.status_code == 200, listed.text
+    assert listed.json()["items"] == []
+
+
+def test_external_card_batch_rolls_back_when_later_write_fails(external_api, monkeypatch):
+    api_key = _create_key(external_api)
+    headers = {"X-KG-API-Key": api_key}
+    store = external_router._card_store(external_api.data_dir / "users" / external_api.user_id)
+    original_add = type(store).add
+    add_calls = 0
+
+    def fail_second_add(self, *args, **kwargs):
+        nonlocal add_calls
+        add_calls += 1
+        if add_calls == 2:
+            raise OSError("simulated second card write failure")
+        return original_add(self, *args, **kwargs)
+
+    monkeypatch.setattr(type(store), "add", fail_second_add)
+
+    response = external_api.client.post(
+        "/api/v1/cards/batch",
+        json={
+            "items": [
+                {"content": "batch write first", "clientId": "write-first"},
+                {"content": "batch write second", "clientId": "write-second"},
+            ]
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 500, response.text
+    listed = external_api.client.get("/api/v1/cards", headers=headers)
+    assert listed.status_code == 200, listed.text
+    assert listed.json()["items"] == []
+
+
+def test_external_card_batch_preserves_success_and_duplicate_semantics(external_api):
+    api_key = _create_key(external_api)
+    headers = {"X-KG-API-Key": api_key}
+    existing = external_api.client.post(
+        "/api/v1/cards",
+        json={"content": "batch duplicate", "meaning": "existing"},
+        headers=headers,
+    )
+    assert existing.status_code == 201, existing.text
+
+    response = external_api.client.post(
+        "/api/v1/cards/batch",
+        json={
+            "items": [
+                {
+                    "content": "Batch duplicate!",
+                    "meaning": "ignored duplicate payload",
+                    "clientId": "duplicate-client",
+                },
+                {
+                    "content": "batch newly created",
+                    "meaning": "new card",
+                    "clientId": "new-client",
+                },
+                {
+                    "content": "Batch newly created!",
+                    "meaning": "same-batch duplicate payload",
+                    "clientId": "same-batch-duplicate-client",
+                },
+            ]
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["created"] == 1
+    assert body["duplicates"] == 2
+    assert [item["clientId"] for item in body["items"]] == [
+        "duplicate-client",
+        "new-client",
+        "same-batch-duplicate-client",
+    ]
+    assert [item["created"] for item in body["items"]] == [False, True, False]
+    assert body["items"][0]["card"]["id"] == existing.json()["card"]["id"]
+    assert body["items"][1]["card"]["content"] == "batch newly created"
+    assert body["items"][2]["card"]["id"] == body["items"][1]["card"]["id"]
+
+
 def _review_payload(interval):
     return {
         "reviewIntervalHours": interval,

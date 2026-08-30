@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import uuid
+from copy import copy
 from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request, Response
@@ -183,8 +184,14 @@ def _card_or_404(user: UserRecord, card_id: str, notebook_id: str):
     return card
 
 
-def _render_card(user: UserRecord, card: Any, notebook_id: str) -> CardResponse:
-    cards = _card_store(user["dir"])
+def _render_card(
+    user: UserRecord,
+    card: Any,
+    notebook_id: str,
+    *,
+    cards: Any | None = None,
+) -> CardResponse:
+    cards = cards or _card_store(user["dir"])
     graph = _graph_store(user["dir"], notebook_id=notebook_id)
     cards_by_id: dict[str, Any] = {card.id: card}
     for link in graph.get_links_for(card.id):
@@ -195,16 +202,21 @@ def _render_card(user: UserRecord, card: Any, notebook_id: str) -> CardResponse:
     return _card_response(card, graph, cards_by_id)
 
 
-def _ingest_card(user: UserRecord, req: ExternalCardCreateRequest) -> tuple[CardResponse, bool]:
+def _ingest_card(
+    user: UserRecord,
+    req: ExternalCardCreateRequest,
+    *,
+    cards: Any | None = None,
+) -> tuple[CardResponse, bool]:
     _validate_notebook(user, req.notebookId)
     content = _clean_content(req.content)
     if not content:
         raise ValidationError("content must contain a word or phrase")
 
-    cards = _card_store(user["dir"])
+    cards = cards or _card_store(user["dir"])
     existing = cards.find_by_content(content, notebook_id=req.notebookId)
     if existing is not None:
-        return _render_card(user, existing, req.notebookId), False
+        return _render_card(user, existing, req.notebookId, cards=cards), False
 
     examples = list(req.examples)
     if req.context and not examples:
@@ -222,7 +234,7 @@ def _ingest_card(user: UserRecord, req: ExternalCardCreateRequest) -> tuple[Card
     )
     if req.note is not None:
         card = cards.update(card.id, note=req.note) or card
-    return _render_card(user, card, req.notebookId), True
+    return _render_card(user, card, req.notebookId, cards=cards), True
 
 
 @router.get("/api/v1/notebooks", response_model=list[NotebookResponse])
@@ -313,6 +325,7 @@ async def _run_external_pipeline(
         _mark_operation_failed(operation_id)
         try:
             from .. import pipeline_log
+
             pipeline_log.end_run(operation_id, "failed")
         except Exception:
             logger.warning("Failed to close external operation telemetry: %s", operation_id, exc_info=True)
@@ -369,10 +382,14 @@ async def ingest_card_batch(req: ExternalCardBatchRequest, response: Response, u
     await _admit_external(response, user, write_limiter)
     items: list[ExternalCardIngestResponse] = []
     created = 0
-    for entry in req.items:
-        card, was_created = _ingest_card(user, entry)
-        created += int(was_created)
-        items.append(ExternalCardIngestResponse(card=card, created=was_created, clientId=entry.clientId))
+    cards = _card_store(user["dir"])
+    with cards.engine.begin() as connection:
+        transaction_cards = copy(cards)
+        transaction_cards.engine = connection
+        for entry in req.items:
+            card, was_created = _ingest_card(user, entry, cards=transaction_cards)
+            created += int(was_created)
+            items.append(ExternalCardIngestResponse(card=card, created=was_created, clientId=entry.clientId))
     return ExternalCardBatchResponse(items=items, created=created, duplicates=len(items) - created)
 
 
@@ -506,7 +523,9 @@ async def delete_external_card(
         # successful delete into a retry-prone 5xx.
         logger.warning(
             "[%s] Failed to evict embedding for deleted card %s",
-            user["id"], card.id, exc_info=True,
+            user["id"],
+            card.id,
+            exc_info=True,
         )
     return ExternalCardDeleteResponse(cardId=card.id, deleted=True)
 
@@ -669,6 +688,7 @@ async def enqueue_external_enrich(
     quota = _check_quota(user, "pipeline", response)
     operation_id = uuid.uuid4().hex[:12]
     from .. import pipeline_log
+
     # Persist before scheduling the background task. If the process exits
     # between these two operations, startup recovery marks the run interrupted
     # and the operation remains queryable instead of disappearing from memory.
@@ -682,7 +702,9 @@ async def enqueue_external_enrich(
         notebook_id=req.notebookId,
     )
     _apply_quota_headers(response, quota)
-    return _queued_operation(operation_id, _operation_owner(operation_id) or {"notebook_id": req.notebookId, "status": "queued"})
+    return _queued_operation(
+        operation_id, _operation_owner(operation_id) or {"notebook_id": req.notebookId, "status": "queued"}
+    )
 
 
 @router.get("/api/v1/operations/{operation_id}", response_model=ExternalOperationResponse)
