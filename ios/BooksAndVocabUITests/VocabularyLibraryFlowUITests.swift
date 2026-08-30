@@ -707,7 +707,7 @@ final class VocabularyLibraryFlowUITests: UITestCase {
     }
 
     @MainActor
-    func testAddLinkCreationWarningSurfaceRemainsVisibleAndRetryable() throws {
+    func testAddLinkCreationWarningCompletesOnceAndDismisses() throws {
         let sheetSource = try AddLinkWarningSourceContract.source(
             relativePath: "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift"
         )
@@ -743,12 +743,26 @@ final class VocabularyLibraryFlowUITests: UITestCase {
         )
         let handlerSource = String(sheetSource[handlerStart.lowerBound..<handlerEnd.lowerBound])
         XCTAssertTrue(
-            handlerSource.contains("guard phase == .succeeded else { return }"),
-            "only pure success may dismiss the Add Link sheet"
+            handlerSource.contains("phase == .succeeded || phase == .succeededWithWarnings"),
+            "both success terminal outcomes must complete the Add Link sheet"
         )
         XCTAssertFalse(
-            handlerSource.contains("phase == .succeededWithWarnings"),
-            "warning completion must not share the pure-success dismiss path"
+            handlerSource.contains("guard phase == .succeeded else { return }"),
+            "warning completion must not be excluded from the terminal path"
+        )
+        XCTAssertTrue(
+            handlerSource.contains("!didCompleteCreation"),
+            "terminal completion must be guarded against duplicate callbacks"
+        )
+        XCTAssertTrue(
+            handlerSource.contains("didCompleteCreation = true"),
+            "terminal completion must latch before invoking the callback"
+        )
+        XCTAssertTrue(handlerSource.contains("onLinked()"), "terminal completion must notify the owner")
+        XCTAssertTrue(handlerSource.contains("dismiss()"), "terminal completion must dismiss the sheet")
+        XCTAssertTrue(
+            sheetSource.contains("@State private var didCompleteCreation = false"),
+            "completion latch must survive SwiftUI rerenders within the sheet"
         )
 
         let messageStart = try XCTUnwrap(
@@ -768,12 +782,6 @@ final class VocabularyLibraryFlowUITests: UITestCase {
         XCTAssertTrue(
             messageSource.contains("addLink.creation.warning"),
             "warning status must expose a deterministic accessibility identifier"
-        )
-        XCTAssertTrue(
-            messageSource.contains(
-                "if coordinator.phase == .failed || coordinator.phase == .succeededWithWarnings, let onRetry"
-            ),
-            "warning completion must expose the existing retry action"
         )
     }
 
