@@ -64,8 +64,23 @@ class ReviewEventEntry(BaseModel):
         return event_id
 
 
+class ReviewEventPushEntry(ReviewEventEntry):
+    """Validated review-event input; output entries remain legacy-compatible."""
+
+    interval_before: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    interval_after: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+
+    @field_validator("interval_before", "interval_after", mode="before")
+    @classmethod
+    def _replace_non_finite_interval_for_validation(cls, value: object) -> object:
+        # Keep the validation error JSON-safe so the API can return its normal 422.
+        if isinstance(value, float) and not math.isfinite(value):
+            return -1.0
+        return value
+
+
 class ReviewEventsPushRequest(BaseModel):
-    entries: list[ReviewEventEntry] = Field(max_length=10000)
+    entries: list[ReviewEventPushEntry] = Field(max_length=10000)
 
 
 class ReviewEventsPushResponse(BaseModel):
