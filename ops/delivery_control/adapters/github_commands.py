@@ -46,6 +46,17 @@ def _required_run_list_command(*, branch: str, head_sha: str) -> tuple[str, ...]
     )
 
 
+def _required_run_view_command(*, database_id: int) -> tuple[str, ...]:
+    return (
+        "gh",
+        "run",
+        "view",
+        str(database_id),
+        "--json",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+    )
+
+
 def _select_exact_required_run(
     payload: object,
     *,
@@ -194,11 +205,48 @@ class GitHubCommands:
                 if attempt + 1 < reread_attempts:
                     time.sleep(_CANCEL_REREAD_DELAY_SECONDS)
             else:
-                if cancel_result.exit_code != 0:
-                    raise AdapterCommandError(cancel_result)
-                raise AdapterPayloadError(
-                    "stale exact pull_request pr-gate run remained active after forced cancel"
-                )
+                if (
+                    cancel_result.exit_code == 0
+                    or _CANCEL_COMPLETED_RACE_MARKER not in cancel_detail
+                ):
+                    if cancel_result.exit_code != 0:
+                        raise AdapterCommandError(cancel_result)
+                    raise AdapterPayloadError(
+                        "stale exact pull_request pr-gate run remained active after forced cancel"
+                    )
+
+                expected_database_id = database_id
+                view_argv = _required_run_view_command(database_id=expected_database_id)
+                view_terminal = False
+                for attempt in range(_CANCEL_REREAD_ATTEMPTS):
+                    (
+                        view_created_at,
+                        viewed_database_id,
+                        view_status,
+                        view_conclusion,
+                    ) = _select_exact_required_run(
+                        [self.client.load_json(view_argv)],
+                        branch=branch,
+                        head_sha=head_sha,
+                    )
+                    del view_created_at
+                    if viewed_database_id != expected_database_id:
+                        raise AdapterPayloadError(
+                            "authoritative exact pull_request pr-gate run identity changed"
+                        )
+                    database_id = viewed_database_id
+                    status = view_status
+                    conclusion = view_conclusion
+                    if status not in _ACTIVE_RUN_STATUSES:
+                        view_terminal = True
+                        break
+                    if attempt + 1 < _CANCEL_REREAD_ATTEMPTS:
+                        time.sleep(_CANCEL_REREAD_DELAY_SECONDS)
+                if not view_terminal:
+                    raise AdapterPayloadError(
+                        "authoritative exact pull_request pr-gate run remained active "
+                        "after completed-cancel race"
+                    )
             if status != "completed" or conclusion is None:
                 raise AdapterPayloadError(
                     "exact pull_request pr-gate run has an invalid terminal state"
