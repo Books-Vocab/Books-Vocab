@@ -172,7 +172,7 @@ class NotebookStore:
             statement = select(Notebook)
             if conditions:
                 statement = statement.where(*conditions)
-            statement = statement.order_by(Notebook.sort_order, Notebook.created_at)
+            statement = statement.order_by(Notebook.sort_order, Notebook.created_at, Notebook.id)
             return list(session.exec(statement).all())
 
     def get_modified_since(self, since: datetime) -> list[Notebook]:
