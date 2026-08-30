@@ -29,6 +29,26 @@ struct BookshelfView: View {
     @State private var loginGate = LoginGateState()
     @State private var navigationPath = NavigationPath()
 
+    static func sortedBooks(_ books: [Book]) -> [Book] {
+        books.sorted { lhs, rhs in
+            switch (lhs.dateLastRead, rhs.dateLastRead) {
+            case let (lhsDate?, rhsDate?) where lhsDate != rhsDate:
+                return lhsDate > rhsDate
+            case (.some, .none):
+                return true
+            case (.none, .some):
+                return false
+            default:
+                break
+            }
+
+            if lhs.dateAdded != rhs.dateAdded {
+                return lhs.dateAdded > rhs.dateAdded
+            }
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
+    }
+
     // podcast 已抽離為獨立頂層 section（見 `PodcastHomeView`），本 view 回歸純書架：
     // 不再持有 podcastSeries query / overlay-pane selection / PodcastNavRoute 路由。
     // root content 恒定 + `navigationDestination(for: Book.self)` 的 reader push 契約保留。
@@ -268,7 +288,7 @@ struct BookshelfView: View {
     private var bookGrid: some View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: AppShellMetrics.sectionSpacing) {
-                ForEach(books) { book in
+                ForEach(Self.sortedBooks(books)) { book in
                     NavigationLink(value: book) {
                         BookCard(book: book, coverHeight: coverHeight)
                     }
