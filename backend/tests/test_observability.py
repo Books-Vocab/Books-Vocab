@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 import uuid
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -26,9 +27,7 @@ def isolated_api(tmp_path):
     users_file = data_dir / "users.json"
     data_dir / "users.json.lock"
     data_dir / "app_store_notifications.ndjson"
-    users_file.write_text(
-        json.dumps({user_id: {"config": {}}, "subscription": {"is_active": True}})
-    )
+    users_file.write_text(json.dumps({user_id: {"config": {}}, "subscription": {"is_active": True}}))
 
     token = make_jwt(user_id)
     headers = {"Authorization": f"Bearer {token}"}
@@ -61,7 +60,6 @@ def isolated_api(tmp_path):
 
 
 class TestRequestIdMiddleware:
-
     def test_response_has_x_request_id_header(self, isolated_api):
         r = isolated_api.client.get("/privacy")
         assert "x-request-id" in r.headers
@@ -91,23 +89,18 @@ class TestKGErrorObservability:
     """
 
     def test_client_error_is_logged_with_status_and_path(self, isolated_api):
-        r = isolated_api.client.get(
-            "/api/vocab/review-events?since=garbage", headers=isolated_api.headers
-        )
+        r = isolated_api.client.get("/api/vocab/review-events?since=garbage", headers=isolated_api.headers)
         assert r.status_code == 400, r.text
         warnings = _mem_log.get(n=200, level="WARNING")
         matching = [
             e
             for e in warnings
-            if "BadRequestError" in e["msg"]
-            and "/api/vocab/review-events" in e["msg"]
-            and "400" in e["msg"]
+            if "BadRequestError" in e["msg"] and "/api/vocab/review-events" in e["msg"] and "400" in e["msg"]
         ]
         assert matching, f"expected a warning log for the silent 400; got {warnings[-5:]}"
 
 
 class TestMemoryLogHandlerRequestId:
-
     def test_log_entry_contains_request_id_field(self):
         tok = request_id_var.set("test-rid-abc")
         try:
@@ -132,7 +125,6 @@ class TestMemoryLogHandlerRequestId:
 
 
 class TestHealthDeepCheck:
-
     def test_health_returns_disk_free_mb(self, isolated_api, tmp_path):
         user_id = isolated_api.user_id
         user_dir = isolated_api.data_dir / "users" / user_id
@@ -177,6 +169,32 @@ class TestHealthDeepCheck:
         body = r.json()
         assert "db_ok" in body
         assert body["db_ok"] is True
+
+    def test_health_returns_structured_degradation_when_db_check_fails(self, isolated_api):
+        user_id = isolated_api.user_id
+        user_dir = isolated_api.data_dir / "users" / user_id
+        user_dir.mkdir(parents=True, exist_ok=True)
+
+        cards_mock = MagicMock()
+        cards_mock.count.side_effect = sqlite3.DatabaseError("database is locked")
+        graph_mock = MagicMock()
+        graph_mock.link_count.return_value = 2
+        graph_mock.candidate_count.return_value = 1
+
+        with (
+            patch.object(user_router_mod, "_card_store", return_value=cards_mock),
+            patch.object(user_router_mod, "_graph_store", return_value=graph_mock),
+        ):
+            r = isolated_api.client.get("/api/health", headers=isolated_api.headers)
+
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["status"] == "degraded"
+        assert body["db_ok"] is False
+        assert body["cards"] == 0
+        assert body["links"] == 2
+        assert body["pendingCandidates"] == 1
+        cards_mock.count.assert_called_once_with()
 
     def test_health_returns_data_dir_exists(self, isolated_api):
         user_id = isolated_api.user_id

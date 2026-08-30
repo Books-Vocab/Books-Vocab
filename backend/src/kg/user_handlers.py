@@ -34,27 +34,21 @@ _logger = logging.getLogger(__name__)
 
 
 class CardStore(Protocol):
-    def count(self) -> int:
-        ...
+    def count(self) -> int: ...
 
 
 class GraphStore(Protocol):
-    def link_count(self) -> int:
-        ...
+    def link_count(self) -> int: ...
 
-    def candidate_count(self) -> int:
-        ...
+    def candidate_count(self) -> int: ...
 
 
 class CardStoreFactory(Protocol):
-    def __call__(self, user_dir: Path) -> CardStore:
-        ...
+    def __call__(self, user_dir: Path) -> CardStore: ...
 
 
 class GraphStoreFactory(Protocol):
-    def __call__(self, user_dir: Path) -> GraphStore:
-        ...
-
+    def __call__(self, user_dir: Path) -> GraphStore: ...
 
 
 def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
@@ -332,8 +326,9 @@ def health_response(
         last_mod = datetime.fromtimestamp(ts, tz=UTC).isoformat()
 
     db_ok = True
+    card_count = 0
     try:
-        cards.count()
+        card_count = cards.count()
     except (OSError, sqlite3.DatabaseError) as exc:
         _logger.warning("Health check failed for user %s: %s", user.get("uid"), exc)
         db_ok = False
@@ -345,8 +340,8 @@ def health_response(
         disk_free_mb = shutil.disk_usage(user_dir).free // (1024 * 1024)
 
     return HealthResponse(
-        status="ok",
-        cards=cards.count(),
+        status="ok" if db_ok else "degraded",
+        cards=card_count,
         links=graph.link_count(),
         pendingCandidates=graph.candidate_count(),
         lastModified=last_mod,
