@@ -3,10 +3,14 @@
 Covers: GET /api/notebooks, POST /api/notebooks, PATCH /api/notebooks/{nb_id},
 DELETE /api/notebooks/{nb_id}.
 """
+
 from __future__ import annotations
 
 import json
+import os
+import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -176,6 +180,52 @@ def test_list_notebooks_after_create(isolated_api):
     assert {"Alpha", "Beta"}.issubset(names)
 
 
+def test_list_notebooks_since_naive_timestamp_is_utc(isolated_api, monkeypatch):
+    """A naive ISO ``since`` value is a UTC wall-clock timestamp."""
+    previous_tz = os.environ.get("TZ")
+    monkeypatch.setenv("TZ", "Pacific/Honolulu")
+    time.tzset()
+    try:
+        client = isolated_api.client
+        h = isolated_api.headers
+        created = client.post("/api/notebooks", json={"name": "UTC Since", "color": "#123456"}, headers=h).json()
+        updated_at = datetime.fromisoformat(created["updatedAt"].replace("Z", "+00:00"))
+        since = (updated_at - timedelta(seconds=1)).replace(tzinfo=None).isoformat()
+
+        r = client.get("/api/notebooks", params={"since": since}, headers=h)
+
+        assert r.status_code == 200, r.text
+        assert created["id"] in _nb_ids(r.json())
+    finally:
+        if previous_tz is None:
+            monkeypatch.delenv("TZ", raising=False)
+        else:
+            monkeypatch.setenv("TZ", previous_tz)
+        time.tzset()
+
+
+def test_list_notebooks_since_preserves_aware_and_invalid_semantics(isolated_api):
+    client = isolated_api.client
+    h = isolated_api.headers
+    created = client.post("/api/notebooks", json={"name": "Aware Since", "color": "#654321"}, headers=h).json()
+    updated_at = datetime.fromisoformat(created["updatedAt"].replace("Z", "+00:00"))
+
+    equal_z = client.get("/api/notebooks", params={"since": created["updatedAt"]}, headers=h)
+    before_offset = client.get(
+        "/api/notebooks",
+        params={"since": (updated_at - timedelta(seconds=1)).astimezone(timezone(timedelta(hours=8))).isoformat()},
+        headers=h,
+    )
+    invalid = client.get("/api/notebooks", params={"since": "not-a-timestamp"}, headers=h)
+
+    assert equal_z.status_code == 200, equal_z.text
+    assert created["id"] not in _nb_ids(equal_z.json())
+    assert before_offset.status_code == 200, before_offset.text
+    assert created["id"] in _nb_ids(before_offset.json())
+    assert invalid.status_code == 400, invalid.text
+    assert invalid.json()["detail"] == "Invalid since timestamp"
+
+
 # ---------------------------------------------------------------------------
 # POST /api/notebooks
 # ---------------------------------------------------------------------------
@@ -267,7 +317,9 @@ def test_delete_non_default_notebook(isolated_api):
 
     # Add vocab cards to this notebook
     client.post("/api/vocab", json=[{"word": "apple", "translation": "蘋果"}], params={"notebook_id": nb_id}, headers=h)
-    client.post("/api/vocab", json=[{"word": "banana", "translation": "香蕉"}], params={"notebook_id": nb_id}, headers=h)
+    client.post(
+        "/api/vocab", json=[{"word": "banana", "translation": "香蕉"}], params={"notebook_id": nb_id}, headers=h
+    )
 
     r = client.delete(f"/api/notebooks/{nb_id}", headers=h)
     assert r.status_code == 200, r.text
@@ -408,17 +460,19 @@ def test_delete_notebook_with_cards(isolated_api):
     client = isolated_api.client
     h = isolated_api.headers
 
-    nb_id = client.post(
-        "/api/notebooks", json={"name": "HasCards", "color": "#abcdef"}, headers=h
-    ).json()["id"]
+    nb_id = client.post("/api/notebooks", json={"name": "HasCards", "color": "#abcdef"}, headers=h).json()["id"]
 
     client.post(
-        "/api/vocab", json=[{"word": "cat", "translation": "貓"}],
-        params={"notebook_id": nb_id}, headers=h,
+        "/api/vocab",
+        json=[{"word": "cat", "translation": "貓"}],
+        params={"notebook_id": nb_id},
+        headers=h,
     )
     client.post(
-        "/api/vocab", json=[{"word": "dog", "translation": "狗"}],
-        params={"notebook_id": nb_id}, headers=h,
+        "/api/vocab",
+        json=[{"word": "dog", "translation": "狗"}],
+        params={"notebook_id": nb_id},
+        headers=h,
     )
 
     r_before = client.get("/api/vocab", params={"notebook_id": nb_id}, headers=h)
@@ -445,9 +499,7 @@ def test_rename_notebook_keeps_id_stable(isolated_api):
     client = isolated_api.client
     h = isolated_api.headers
 
-    r_create = client.post(
-        "/api/notebooks", json={"name": "Before", "color": "#0a0a0a"}, headers=h
-    )
+    r_create = client.post("/api/notebooks", json={"name": "Before", "color": "#0a0a0a"}, headers=h)
     nb_id = r_create.json()["id"]
 
     r_patch = client.patch(f"/api/notebooks/{nb_id}", json={"name": "After"}, headers=h)
