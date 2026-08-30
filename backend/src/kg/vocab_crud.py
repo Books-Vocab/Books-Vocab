@@ -60,7 +60,9 @@ def decode_cursor(token: str | None) -> tuple[datetime, str] | None:
 
 
 def _resolve_with_neighbours(
-    cards: list[Any], graph: Any, cards_store: Any,
+    cards: list[Any],
+    graph: Any,
+    cards_store: Any,
 ) -> dict[str, Any]:
     """Build the ``cards_by_id`` map for a page: the page's own cards plus the
     graph neighbours (on other pages / soft-deleted) needed to render links.
@@ -107,20 +109,32 @@ class VocabCard(Protocol):
 
 
 class VocabGraph(Protocol):
-    def get_links_for(self, card_id: str) -> object:
-        ...
+    def get_links_for(self, card_id: str) -> object: ...
 
 
 class CardResponseBuilder(Protocol):
-    def __call__(
-        self, card: VocabCard, graph: VocabGraph, cards_by_id: dict[str, VocabCard]
-    ) -> CardResponse:
-        ...
+    def __call__(self, card: VocabCard, graph: VocabGraph, cards_by_id: dict[str, VocabCard]) -> CardResponse: ...
+
+
+def _parse_since_timestamp(raw: str) -> datetime | None:
+    """Parse ``since`` while interpreting naive ISO timestamps as UTC.
+
+    ``parse_datetime`` is retained as the fallback for its existing numeric
+    timestamp support and invalid-input behavior. Parsing ISO strings here
+    first preserves whether the caller supplied an offset before normalizing
+    the comparison instant.
+    """
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return parse_datetime(raw)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 class CardMutator(Protocol):
-    def __call__(self, card: VocabCard) -> None:
-        ...
+    def __call__(self, card: VocabCard) -> None: ...
 
 
 def list_vocab_cards(
@@ -142,15 +156,13 @@ def list_vocab_cards(
     ascending ``(updated_at, id)`` order so the cursor advances monotonically.
     """
     if since:
-        parsed_since = parse_datetime(since)
+        parsed_since = _parse_since_timestamp(since)
         if parsed_since is None:
             raise BadRequestError("Invalid since timestamp format. Expected ISO 8601.")
-        naive_since = parsed_since.replace(tzinfo=None) if parsed_since.tzinfo else parsed_since
+        naive_since = parsed_since.replace(tzinfo=None)
         # Incremental: fetch the modified set (already bounded), then order and
         # slice it by the same cursor so since + full-sync paginate identically.
-        modified = cards_store.get_modified_since(
-            naive_since, notebook_id=notebook_id
-        )
+        modified = cards_store.get_modified_since(naive_since, notebook_id=notebook_id)
         modified = sorted(modified, key=lambda c: (c.updated_at, c.id))
         if after is not None:
             modified = [c for c in modified if (c.updated_at, c.id) > after]
@@ -200,7 +212,9 @@ def lookup_vocab_word(
     return card_response_builder(card, graph, cards_by_id)
 
 
-def archive_vocab_word(word: str, *, archived: bool, cards_store: Any, graph: Any = None, notebook_id: str | None = None) -> ArchiveWordResponse:
+def archive_vocab_word(
+    word: str, *, archived: bool, cards_store: Any, graph: Any = None, notebook_id: str | None = None
+) -> ArchiveWordResponse:
     card = _resolve_card_or_raise(cards_store, word, notebook_id)
     cards_store.update(card.id, is_archived=archived)
     if graph is not None:
@@ -452,9 +466,7 @@ def batch_delete_vocab_words(
                     logger.exception("Restore failed for card %s after graph error", card.id)
                 raise _GraphOpFailed from exc
 
-    succeeded, not_found, failed = _batch_apply(
-        words, cards_store=cards_store, notebook_id=notebook_id, apply=_delete
-    )
+    succeeded, not_found, failed = _batch_apply(words, cards_store=cards_store, notebook_id=notebook_id, apply=_delete)
     deleted_words = [word for word, _ in succeeded]
     deleted_ids = [card.id for _, card in succeeded]
 
@@ -467,7 +479,8 @@ def batch_delete_vocab_words(
         except Exception:
             logger.warning(
                 "Failed to evict embeddings for %d deleted cards",
-                len(deleted_ids), exc_info=True,
+                len(deleted_ids),
+                exc_info=True,
             )
 
     return {
@@ -516,14 +529,10 @@ def batch_archive_vocab_words(
                 try:
                     cards_store.update(card.id, is_archived=not archived)
                 except Exception:
-                    logger.exception(
-                        "Rollback failed for card %s after graph error", card.id
-                    )
+                    logger.exception("Rollback failed for card %s after graph error", card.id)
                 raise _GraphOpFailed from exc
 
-    succeeded, not_found, failed = _batch_apply(
-        words, cards_store=cards_store, notebook_id=notebook_id, apply=_archive
-    )
+    succeeded, not_found, failed = _batch_apply(words, cards_store=cards_store, notebook_id=notebook_id, apply=_archive)
     updated_words = [word for word, _ in succeeded]
 
     return {
