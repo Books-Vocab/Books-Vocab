@@ -91,6 +91,15 @@ struct NotebookSortOptionTests {
         #expect(sorted.map(\.remoteId) == ["c", "b", "a"])
     }
 
+    @Test func equalNameKeysUseRemoteIdAsDeterministicTieBreaker() {
+        let b = makeNotebook(remoteId: "b", name: "Same")
+        let a = makeNotebook(remoteId: "a", name: "Same")
+        let stats: [String: NotebookStats] = [:]
+
+        let sorted = NotebookSortOption.nameAsc.sort([b, a], stats: stats)
+        #expect(sorted.map(\.remoteId) == ["a", "b"])
+    }
+
     // MARK: - createdNewest / createdOldest
 
     @Test func createdNewestPutsNewestFirst() {
