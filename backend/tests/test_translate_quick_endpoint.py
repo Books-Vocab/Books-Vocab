@@ -12,6 +12,7 @@ exercised in test_translate_cache_integration.py):
 These are *endpoint* tests using FastAPI's TestClient + the shared
 `isolated_api` fixture. The LLM client is stubbed via `create_async_client`.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -33,12 +34,16 @@ def _token_tracker_is_closed_after_module():
     assert token_tracker._conn is None, "token_tracker connection leaked past test module"
 
 
-def _stub_quick_llm(content: str = '{"t":"喚起","p":"v.","r":"evoke"}') -> MagicMock:
+def _stub_quick_llm(
+    content: str = '{"t":"喚起","p":"v.","r":"evoke"}',
+    *,
+    usage=None,
+) -> MagicMock:
     client = MagicMock()
     client.chat.completions.create = AsyncMock(
         return_value=SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
-            usage=None,
+            usage=usage,
         )
     )
     return client
@@ -69,6 +74,27 @@ def test_translate_quick_basic_request_returns_expected_shape(isolated_api):
     assert body["r"] == "evoke"
     # No leakage of unexpected keys (response_model strips them)
     assert set(body.keys()) <= {"t", "p", "r"}
+
+
+def test_translate_quick_success_header_reports_post_use_quota_snapshot(isolated_api):
+    """A successful response reports quota remaining after its LLM usage."""
+    client = isolated_api.client
+    headers = isolated_api.headers
+    usage = SimpleNamespace(prompt_tokens=1_000_000, completion_tokens=0)
+
+    fake = _stub_quick_llm(usage=usage)
+    with patch("kg.translate_handlers.create_async_client", return_value=fake):
+        r = client.post(
+            "/api/translate/quick",
+            json={"word": "evoke-quota-snapshot", "context": "The story can evoke deep memories."},
+            headers=headers,
+        )
+
+    assert r.status_code == 200, r.text
+    # The Pro test user has a $0.30 limit; 1M Gemini input tokens consume
+    # $0.10, leaving 2/3 of the quota. The old route emitted the pre-use 1.0.
+    assert r.headers["X-Quota-Fraction"] == "0.6667"
+    assert r.headers["X-Quota-Reset"] == "86400"
 
 
 def test_translate_quick_invalid_request_returns_422(isolated_api):
