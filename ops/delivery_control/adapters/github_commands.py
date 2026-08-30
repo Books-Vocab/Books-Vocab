@@ -21,6 +21,9 @@ _ACTIVE_RUN_STATUSES = frozenset(
     {"queued", "in_progress", "waiting", "requested", "pending"}
 )
 _STALE_QUEUED_RUN_AFTER = timedelta(minutes=15)
+_CANCEL_REREAD_ATTEMPTS = 3
+_CANCEL_REREAD_DELAY_SECONDS = 1.0
+_CANCEL_COMPLETED_RACE_MARKER = "cannot cancel a workflow run that is completed"
 
 
 def _required_run_list_command(*, branch: str, head_sha: str) -> tuple[str, ...]:
@@ -164,14 +167,33 @@ class GitHubCommands:
             )
             # Cancellation is asynchronous and may race with GitHub's own
             # terminal transition. Never infer cancellation from exit status;
-            # select the same exact run again before rerunning it.
-            created_at, database_id, status, conclusion = _select_exact_required_run(
-                self.client.load_json(list_argv),
-                branch=branch,
-                head_sha=head_sha,
+            # select the same exact run again before rerunning it. GitHub can
+            # report the run as already completed while the list endpoint
+            # briefly continues to expose its queued state, so only that
+            # specific race gets a bounded additional read window.
+            cancel_detail = f"{cancel_result.stdout}\n{cancel_result.stderr}".casefold()
+            reread_attempts = (
+                _CANCEL_REREAD_ATTEMPTS
+                if (
+                    cancel_result.exit_code != 0
+                    and _CANCEL_COMPLETED_RACE_MARKER in cancel_detail
+                )
+                else 1
             )
-            del created_at
-            if status in _ACTIVE_RUN_STATUSES:
+            for attempt in range(reread_attempts):
+                created_at, database_id, status, conclusion = (
+                    _select_exact_required_run(
+                        self.client.load_json(list_argv),
+                        branch=branch,
+                        head_sha=head_sha,
+                    )
+                )
+                del created_at
+                if status not in _ACTIVE_RUN_STATUSES:
+                    break
+                if attempt + 1 < reread_attempts:
+                    time.sleep(_CANCEL_REREAD_DELAY_SECONDS)
+            else:
                 if cancel_result.exit_code != 0:
                     raise AdapterCommandError(cancel_result)
                 raise AdapterPayloadError(
