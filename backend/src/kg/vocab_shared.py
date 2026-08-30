@@ -46,8 +46,7 @@ class VocabCard(Protocol):
 
 
 class VocabGraph(Protocol):
-    def get_links_for(self, card_id: str) -> object:
-        ...
+    def get_links_for(self, card_id: str) -> object: ...
 
 
 class LinkKind(Protocol):
@@ -69,15 +68,11 @@ class Tier(Protocol):
 
 
 class TierGetter(Protocol):
-    def __call__(self, word: str) -> Tier:
-        ...
+    def __call__(self, word: str) -> Tier: ...
 
 
 class CardResponseBuilder(Protocol):
-    def __call__(
-        self, card: VocabCard, graph: VocabGraph, cards_by_id: dict[str, VocabCard]
-    ) -> CardResponse:
-        ...
+    def __call__(self, card: VocabCard, graph: VocabGraph, cards_by_id: dict[str, VocabCard]) -> CardResponse: ...
 
 
 def _normalize_word(word: str) -> str:
@@ -167,7 +162,7 @@ def build_links_by_kind(
     for kind in link_kinds:
         items = grouped.get(kind.value)
         if items:
-            ordered[kind.value] = sorted(items, key=lambda item: _normalize_word(item.word))
+            ordered[kind.value] = sorted(items, key=lambda item: (_normalize_word(item.word), item.cardId))
 
     return ordered
 
