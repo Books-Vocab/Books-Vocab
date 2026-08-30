@@ -28,10 +28,8 @@ class SQLiteLifecycle:
     def connection(self) -> sqlite3.Connection | None:
         return self._conn
 
-    def get_connection(
-        self, db_path: Path | str, initialize: SchemaInitializer
-    ) -> sqlite3.Connection:
-        path = Path(db_path).absolute()
+    def get_connection(self, db_path: Path | str, initialize: SchemaInitializer) -> sqlite3.Connection:
+        path = Path(db_path).resolve()
         with self._lock:
             if self._conn is not None and self._path != path:
                 self._close_unlocked()
