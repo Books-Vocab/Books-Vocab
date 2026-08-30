@@ -62,7 +62,9 @@ struct AddLinkSheet: View {
                     )
                 }
 
-                if creationCoordinator.phase == .running || creationCoordinator.phase == .failed {
+                if creationCoordinator.phase == .running
+                    || creationCoordinator.phase == .failed
+                    || creationCoordinator.phase == .succeededWithWarnings {
                     AddLinkCreationProgressView(
                         coordinator: creationCoordinator,
                         onRetry: startCreation,
@@ -103,7 +105,7 @@ struct AddLinkSheet: View {
             }
         }
         .onChange(of: creationCoordinator.phase) { _, phase in
-            guard phase == .succeeded || phase == .succeededWithWarnings else { return }
+            guard phase == .succeeded else { return }
             onLinked()
             dismiss()
         }

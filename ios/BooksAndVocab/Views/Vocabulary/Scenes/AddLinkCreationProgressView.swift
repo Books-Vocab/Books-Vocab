@@ -12,14 +12,18 @@ struct AddLinkCreationProgressView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.tinyGap) {
             if let message = coordinator.message {
-                if coordinator.phase == .failed {
+                if coordinator.phase == .failed || coordinator.phase == .succeededWithWarnings {
                     AppBanner(message: message, systemImage: bannerSystemImage)
                         .accessibilityElement(children: .contain)
-                        .accessibilityIdentifier("addLink.creation.error")
+                        .accessibilityIdentifier(
+                            coordinator.phase == .succeededWithWarnings
+                                ? "addLink.creation.warning"
+                                : "addLink.creation.error"
+                        )
                 } else {
                     AppBanner(message: message, systemImage: bannerSystemImage)
                 }
-                if coordinator.phase == .failed, let onRetry {
+                if coordinator.phase == .failed || coordinator.phase == .succeededWithWarnings, let onRetry {
                     Button(L10n.string("重試"), action: onRetry)
                         .buttonStyle(.appCompactAction(.primary))
                         .accessibilityIdentifier("addLink.creation.retry")

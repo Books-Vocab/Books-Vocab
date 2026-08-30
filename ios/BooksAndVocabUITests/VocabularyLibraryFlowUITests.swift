@@ -707,6 +707,77 @@ final class VocabularyLibraryFlowUITests: UITestCase {
     }
 
     @MainActor
+    func testAddLinkCreationWarningSurfaceRemainsVisibleAndRetryable() throws {
+        let sheetSource = try AddLinkWarningSourceContract.source(
+            relativePath: "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift"
+        )
+        let progressSource = try AddLinkWarningSourceContract.source(
+            relativePath: "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkCreationProgressView.swift"
+        )
+
+        let visibilityStart = try XCTUnwrap(
+            sheetSource.range(of: "if creationCoordinator.phase == .running")
+        )
+        let visibilityEnd = try XCTUnwrap(
+            sheetSource.range(
+                of: "AddLinkCreationProgressView(",
+                range: visibilityStart.upperBound..<sheetSource.endIndex
+            )
+        )
+        let visibilitySource = String(
+            sheetSource[visibilityStart.lowerBound..<visibilityEnd.upperBound]
+        )
+        XCTAssertTrue(
+            visibilitySource.contains("creationCoordinator.phase == .succeededWithWarnings"),
+            "warning terminal state must keep the creation progress surface mounted"
+        )
+
+        let handlerStart = try XCTUnwrap(
+            sheetSource.range(of: ".onChange(of: creationCoordinator.phase)")
+        )
+        let handlerEnd = try XCTUnwrap(
+            sheetSource.range(
+                of: ".onDisappear",
+                range: handlerStart.upperBound..<sheetSource.endIndex
+            )
+        )
+        let handlerSource = String(sheetSource[handlerStart.lowerBound..<handlerEnd.lowerBound])
+        XCTAssertTrue(
+            handlerSource.contains("guard phase == .succeeded else { return }"),
+            "only pure success may dismiss the Add Link sheet"
+        )
+        XCTAssertFalse(
+            handlerSource.contains("phase == .succeededWithWarnings"),
+            "warning completion must not share the pure-success dismiss path"
+        )
+
+        let messageStart = try XCTUnwrap(
+            progressSource.range(of: "if let message = coordinator.message")
+        )
+        let panelStart = try XCTUnwrap(
+            progressSource.range(
+                of: "SettingsSyncProgressPanel(",
+                range: messageStart.upperBound..<progressSource.endIndex
+            )
+        )
+        let messageSource = String(progressSource[messageStart.lowerBound..<panelStart.lowerBound])
+        XCTAssertTrue(
+            messageSource.contains("coordinator.phase == .succeededWithWarnings"),
+            "warning message must use the visible creation status surface"
+        )
+        XCTAssertTrue(
+            messageSource.contains("addLink.creation.warning"),
+            "warning status must expose a deterministic accessibility identifier"
+        )
+        XCTAssertTrue(
+            messageSource.contains(
+                "if coordinator.phase == .failed || coordinator.phase == .succeededWithWarnings, let onRetry"
+            ),
+            "warning completion must expose the existing retry action"
+        )
+    }
+
+    @MainActor
     func testWordDetailShowsFourCardManagementControlsAndDeleteWarning() throws {
         let app = launchIsolatedApp(
             fixtures: [.vocabulary("vocabLinkedCards")],
@@ -755,5 +826,19 @@ final class VocabularyLibraryFlowUITests: UITestCase {
         )
         app.buttons["取消"].tapWhenReady()
         captureStep("word-detail-delete-warning", app: app)
+    }
+}
+
+private enum AddLinkWarningSourceContract {
+    static func source(relativePath: String) throws -> String {
+        let testFileURL = URL(fileURLWithPath: #filePath)
+        let repositoryURL = testFileURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        return try String(
+            contentsOf: repositoryURL.appendingPathComponent(relativePath),
+            encoding: .utf8
+        )
     }
 }
