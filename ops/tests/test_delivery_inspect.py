@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 # ruff: noqa: E402
-
 import sys
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -39,13 +38,13 @@ from delivery_control.domain.states import LaneState, NextAction
 from delivery_control.services.active_lane_projection import (
     project_active_lane as project_active_lane_implementation,
 )
+from delivery_control.services.candidate_contract import render_candidate_body
 from delivery_control.services.inspect import InspectService
 from delivery_control.services.lane_projection import (
     project_active_lane,
     project_published_lane,
 )
 from delivery_control.services.pr_contract import render_pull_request_body
-from delivery_control.services.candidate_contract import render_candidate_body
 from delivery_control.services.published_lane_projection import (
     project_published_lane as project_published_lane_implementation,
 )
@@ -569,6 +568,30 @@ def test_exact_stale_required_green_pr_is_the_only_reanchor_classification(
     )
 
     assert lane.decision.state is LaneState.REANCHOR
+    assert not lane.problems
+
+
+def test_published_lane_is_queue_ready_when_published_base_matches_live_main(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "lane"
+    published = replace(
+        _record(path, status="published"),
+        published_base_sha="d" * 40,
+    )
+    current = replace(_pull_request(path), base_sha="d" * 40)
+    service = InspectService(
+        registry=FakeRegistry((published,)),
+        git=FakeGit((), {}, main_sha="d" * 40),
+        github=FakeGitHub((current,)),
+        runtime=FakeRuntime(),
+    )
+
+    lane = next(
+        item for item in service.inspect().lanes if item.key.startswith("published:")
+    )
+
+    assert lane.decision.state is LaneState.READY_TO_QUEUE
     assert not lane.problems
 
 
