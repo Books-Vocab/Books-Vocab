@@ -192,6 +192,8 @@ CM 只在 PR 的 typed contract、required checks、branch rules、mergeability 
 
 `repo-gate` 也會以 workflow 提供的 exact `BASE_SHA`／`HEAD_SHA` 取得兩個 commit 間的 changed Python paths，並在集合非空時以 pinned `ruff format --check` 驗證這個 Scope；沒有 changed Python path 是合法的 bounded pass。這是 required repository contract 的一部分，不能由 advisory `confidence` 的受影響 surface 結果取代；其餘 required／owner／merge 與 security semantics 不變。
 
+若 `trigger-required` 對 stale exact run 收到「run 已完成」的 cancel 回覆，但 list endpoint 仍暫時回報 active，command 會在同一個 run ID 上 bounded 地讀取 `gh run view` 的完整 identity／status。只有 view 明確讀回相同 branch、HEAD、`pull_request` event 且為 terminal non-success，才允許 rerun；view 仍 active、identity 不一致、或 terminal evidence 不完整都維持 fail closed，不把 cancel 回覆本身當成狀態證據。
+
 同一 workflow 的 `confidence` check run 是 advisory outcome：它提供完整的**受影響** backend／iOS／UI／ops fan-out，nonblocking 只代表不佔用 native merge queue 的串行 gate，不代表可忽略。慢速 backend／ops／iOS lane 由可測的 changed-path policy 選擇：明確無關才會顯示 `skipped`，未知或改動 routing policy 時 fail-closed 為全跑；被選中的 lane 必須 `success`。
 
 `agent-review` 是可選的品質與風險觀測 check，不是 repository ruleset 的 hard gate；目前 ruleset 只要求短 `required` context。它可以提供 exact-head 的獨立審查、reviewer provenance 與改進建議，未產生、失敗或延遲本身都不阻塞 native queue、merge、release 或一般 dispatch。若它或其他觀測明確發現 P0、P1 或 security 問題，仍必須以 durable typed hold／label 呈現；真正阻塞來源是該 hold，而不是 `agent-review` check 的 transport 結果。
