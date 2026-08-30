@@ -45,8 +45,8 @@ class ReviewEventEntry(BaseModel):
     # SRS 前後狀態快照 — 複習當下由 iOS 計算,backend 原樣鏡像(不算 SRS)。研究「每張卡
     # 學習曲線 / 遺忘規律」需逐筆事件自包含,不能只靠卡片現狀聚合反推。舊 client 不帶這些
     # 欄位仍合法(default None),新 client(Phase 5)固化後上報。
-    interval_before: float | None = None
-    interval_after: float | None = None
+    interval_before: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    interval_after: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     next_review_before: str | None = None  # ISO8601
     next_review_after: str | None = None  # ISO8601
     review_count_after: int | None = None
@@ -62,6 +62,14 @@ class ReviewEventEntry(BaseModel):
         if not event_id.strip():
             raise ValueError("event_id must not be blank")
         return event_id
+
+    @field_validator("interval_before", "interval_after", mode="before")
+    @classmethod
+    def _replace_non_finite_interval_for_validation(cls, value: object) -> object:
+        # Keep the validation error JSON-safe so the API can return its normal 422.
+        if isinstance(value, float) and not math.isfinite(value):
+            return -1.0
+        return value
 
 
 class ReviewEventsPushRequest(BaseModel):

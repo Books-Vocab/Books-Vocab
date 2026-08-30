@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import math
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -63,6 +65,44 @@ def test_review_events_patch_rejects_blank_event_id_without_write(isolated_api, 
     assert stored.json() == {"entries": [], "cursor": None}
 
 
+@pytest.mark.parametrize("field", ["interval_before", "interval_after"])
+@pytest.mark.parametrize("value", [None, 0.0, 12.5])
+def test_review_events_patch_accepts_nonnegative_finite_interval_snapshots(isolated_api, field, value):
+    payload = _payload()
+    payload[field] = value
+
+    r = isolated_api.client.patch(
+        "/api/vocab/review-events",
+        json={"entries": [payload]},
+        headers=isolated_api.headers,
+    )
+
+    assert r.status_code == 200, r.text
+    stored = isolated_api.client.get("/api/vocab/review-events", headers=isolated_api.headers)
+    assert stored.status_code == 200, stored.text
+    assert stored.json()["entries"][0][field] == value
+
+
+@pytest.mark.parametrize("field", ["interval_before", "interval_after"])
+@pytest.mark.parametrize("value", [-1.0, math.nan, math.inf, -math.inf])
+def test_review_events_patch_rejects_invalid_interval_snapshots_without_write(isolated_api, field, value):
+    payload = _payload()
+    payload[field] = value
+
+    r = isolated_api.client.patch(
+        "/api/vocab/review-events",
+        content=json.dumps({"entries": [payload]}),
+        headers={**isolated_api.headers, "content-type": "application/json"},
+    )
+
+    assert r.status_code == 422, r.text
+    assert any(error["loc"][-1] == field for error in r.json()["detail"])
+
+    stored = isolated_api.client.get("/api/vocab/review-events", headers=isolated_api.headers)
+    assert stored.status_code == 200, stored.text
+    assert stored.json() == {"entries": [], "cursor": None}
+
+
 def test_review_events_duplicate_patch_skips(isolated_api):
     payload = {"entries": [_payload("evt-api-dup")]}
 
@@ -82,9 +122,7 @@ def test_review_events_since_filter(isolated_api):
         json={"entries": [_payload("evt-old", reviewed_at=datetime(2026, 6, 1, 10, 0, tzinfo=UTC))]},
         headers=isolated_api.headers,
     )
-    cursor = isolated_api.client.get(
-        "/api/vocab/review-events", headers=isolated_api.headers
-    ).json()["cursor"]
+    cursor = isolated_api.client.get("/api/vocab/review-events", headers=isolated_api.headers).json()["cursor"]
 
     # Second ingestion after the cursor.
     isolated_api.client.patch(
@@ -113,9 +151,7 @@ def test_review_events_since_with_literal_plus_is_not_corrupted(isolated_api):
         json={"entries": [_payload("evt-old", reviewed_at=datetime(2026, 6, 1, 10, 0, tzinfo=UTC))]},
         headers=isolated_api.headers,
     )
-    cursor = isolated_api.client.get(
-        "/api/vocab/review-events", headers=isolated_api.headers
-    ).json()["cursor"]
+    cursor = isolated_api.client.get("/api/vocab/review-events", headers=isolated_api.headers).json()["cursor"]
     isolated_api.client.patch(
         "/api/vocab/review-events",
         json={"entries": [_payload("evt-new", reviewed_at=datetime(2026, 6, 2, 10, 0, tzinfo=UTC))]},
