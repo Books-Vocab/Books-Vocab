@@ -458,6 +458,30 @@ grep -q '"verdict": "warning"' "$lane_state" && ok "missing lane is warning-only
 grep -q '"lane_usage_verdict":"warning"' "$root/guard.json" && ok "guard state carries attribution warning" || bad "guard state missed attribution warning"
 grep -q '"lane_usage_rc":0' "$root/guard.json" && ok "warning keeps guard exit compatible" || bad "warning changed guard exit"
 
+echo "── lane usage: active registered dirty implementation lane is attributable ──"
+root="$TMP/active-dirty"; state="$root/guard.json"; registry="$root/registry.json"; lane_state="$root/lane-disk-usage.json"; active_dirty="$TMP/active-dirty-worktree"
+mkdir -p "$root"
+git -C "$root" init -b main >/dev/null 2>&1
+git -C "$root" config user.email disk-test@example.com
+git -C "$root" config user.name "Disk Test"
+printf 'main\n' > "$root/tracked.txt"
+git -C "$root" add tracked.txt >/dev/null 2>&1
+git -C "$root" commit -m initial >/dev/null 2>&1
+git -C "$root" worktree add -b active-dirty "$active_dirty" HEAD >/dev/null 2>&1
+printf 'dirty\n' > "$active_dirty/dirty.txt"
+printf '%s\n' '{"schema":"kg.worktree.registry.v2","records":[{"branch":"active-dirty","path":"'$active_dirty'","status":"active","claim_generation":0,"external_ids":["DIRECT-DELIVERY-ACTIVE-DIRTY"]}]}' > "$registry"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" KG_DISK_GUARD_REGISTRY_STATE="$registry" \
+  KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) \
+  KG_DISK_GUARD_ACTIVE_BUILD=0 "$SCRIPT" >/dev/null 2>&1
+grep -q '"physical_state": "dirty"' "$lane_state" && ok "active dirty state is observable" || bad "active dirty state missing"
+grep -q 'active-dirty-worktree' "$lane_state" && ok "active dirty lane is named" || bad "active dirty lane missing"
+grep -q '"active_dirty_implementation_worktrees": \[' "$lane_state" && ok "active dirty classification is explicit" || bad "active dirty classification missing"
+grep -q '"blocking_dirty_physical_worktrees": \[\]' "$lane_state" && ok "active dirty lane is not a blocker" || bad "active dirty lane blocked"
+grep -Eq '"physical_lane_allocated_bytes": [1-9][0-9]*' "$lane_state" && ok "active dirty lane bytes are aggregated" || bad "active dirty aggregate bytes missing"
+grep -Eq '"allocated_bytes": [1-9][0-9]*' "$lane_state" && ok "active dirty lane bytes are attributed" || bad "active dirty lane bytes missing"
+grep -Eq '"lane_usage_verdict":"(pass|warning)"' "$state" && ok "guard accepts active dirty lane" || bad "guard rejects active dirty lane"
+grep -q '"lane_usage_rc":0' "$state" && ok "active dirty lane keeps guard exit compatible" || bad "active dirty lane changed guard exit"
+
 echo "── lane usage: exact supervision checkout is excluded with state evidence ──"
 root="$TMP/supervision"; state="$root/guard.json"; registry="$root/registry.json"; lane_state="$root/lane-disk-usage.json"; supervision="$TMP/supervision-checkout"
 mkdir -p "$root"

@@ -643,6 +643,24 @@ def build_report(
         for item in physical_lanes
         if item.get("worktree_state") == "dirty" and not item.get("excluded")
     )
+    active_dirty_implementation = sorted(
+        str(item["path"])
+        for item in physical_lanes
+        if item.get("worktree_state") == "dirty"
+        and not item.get("excluded")
+        and item.get("ownership") == "registered"
+        and item.get("registry_status") == "active"
+    )
+    blocking_dirty_physical = sorted(
+        str(item["path"])
+        for item in physical_lanes
+        if item.get("worktree_state") == "dirty"
+        and not item.get("excluded")
+        and not (
+            item.get("ownership") == "registered"
+            and item.get("registry_status") == "active"
+        )
+    )
     unknown_physical = sorted(
         str(item["path"])
         for item in physical_lanes
@@ -702,7 +720,7 @@ def build_report(
         if git_error == "measurement-time-budget-exceeded":
             blocking_reasons.append(git_error)
     if malformed_registry_records:
-        warning_reasons.append("registry-records-invalid")
+        blocking_reasons.append("registry-records-invalid")
     if missing_active:
         warning_reasons.append("missing-registered-lane")
     if missing_terminal:
@@ -717,7 +735,7 @@ def build_report(
             blocking_reasons.append("supervision-path-registered")
     if unregistered:
         blocking_reasons.append("unregistered-physical-worktree")
-    if dirty_physical:
+    if blocking_dirty_physical:
         blocking_reasons.append("dirty-physical-worktree")
     if unknown_physical:
         blocking_reasons.append("unknown-physical-worktree")
@@ -862,6 +880,8 @@ def build_report(
             "unknown_physical_worktrees": unknown_physical,
             "unknown_registry_paths": unknown_registry_paths,
             "unknown_registry_record_indices": unknown_registry_record_indices,
+            "active_dirty_implementation_worktrees": active_dirty_implementation,
+            "blocking_dirty_physical_worktrees": blocking_dirty_physical,
             "physical_identity_mismatches": sorted(
                 set(physical_identity_mismatches + detached_registered)
             ),
