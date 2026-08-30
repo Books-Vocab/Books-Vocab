@@ -108,6 +108,36 @@ def test_get_modified_since_orders_equal_updated_at_by_id(store):
     assert [notebook.id for notebook in modified] == ["nb-a", "nb-z"]
 
 
+def test_all_orders_equal_sort_order_and_created_at_by_id(store):
+    from datetime import UTC, datetime
+
+    from sqlmodel import Session
+
+    from kg.notebook import Notebook
+
+    created_at = datetime(2026, 1, 1, tzinfo=UTC)
+    with Session(store.engine) as session:
+        session.add_all(
+            [
+                Notebook(
+                    id="nb-z",
+                    name="Z",
+                    sort_order=1,
+                    created_at=created_at,
+                ),
+                Notebook(
+                    id="nb-a",
+                    name="A",
+                    sort_order=1,
+                    created_at=created_at,
+                ),
+            ]
+        )
+        session.commit()
+
+    assert [notebook.id for notebook in store.all()] == ["nb-a", "nb-z"]
+
+
 def test_cards_notebook_id_filter(tmp_path):
     from kg.cards import CardStore
 
