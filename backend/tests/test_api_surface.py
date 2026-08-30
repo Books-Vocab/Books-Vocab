@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 import uuid
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -131,6 +133,65 @@ def test_vocab_lifecycle_and_since_sync(isolated_api):
     assert r_lookup_deleted.status_code == 404
 
 
+def test_vocab_since_naive_iso_uses_utc_under_local_timezone(isolated_api, monkeypatch):
+    previous_tz = os.environ.get("TZ")
+    monkeypatch.setenv("TZ", "Asia/Taipei")
+    time.tzset()
+
+    try:
+        client = isolated_api.client
+        headers = isolated_api.headers
+        word = "timezone-boundary"
+        with patch.object(vocab_router_mod, "_embedding_store", return_value=_DummyEmbeddingStore()):
+            r_create = client.post(
+                "/api/vocab",
+                json=[{"word": word, "translation": "時區邊界", "context": "A timezone boundary."}],
+                headers=headers,
+            )
+        assert r_create.status_code == 200, r_create.text
+
+        r_all = client.get("/api/vocab", headers=headers)
+        assert r_all.status_code == 200, r_all.text
+        created = next(card for card in r_all.json() if card["content"] == word)
+        updated_at = created["updatedAt"]
+        assert updated_at is not None
+        created_instant = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+        plus_two = timezone(timedelta(hours=2))
+
+        def words_since(value: str) -> set[str]:
+            response = client.get("/api/vocab", params={"since": value}, headers=headers)
+            assert response.status_code == 200, response.text
+            return {card["content"] for card in response.json()}
+
+        same_instant_naive = created_instant.astimezone(UTC).replace(tzinfo=None).isoformat()
+        same_instant_utc = created_instant.astimezone(UTC).isoformat()
+        same_instant_plus_two = created_instant.astimezone(plus_two).isoformat()
+        assert word not in words_since(same_instant_naive)
+        assert word not in words_since(same_instant_utc)
+        assert word not in words_since(same_instant_plus_two)
+
+        before_plus_two = (created_instant - timedelta(microseconds=1)).astimezone(plus_two).isoformat()
+        after_plus_two = (created_instant + timedelta(microseconds=1)).astimezone(plus_two).isoformat()
+        assert word in words_since(before_plus_two)
+        assert word not in words_since(after_plus_two)
+
+        r_bad_since = client.get("/api/vocab", params={"since": "not-a-timestamp"}, headers=headers)
+        assert r_bad_since.status_code == 400
+
+        r_delete = client.delete(f"/api/vocab/{word}", headers=headers)
+        assert r_delete.status_code == 200, r_delete.text
+        changed = words_since(same_instant_utc)
+        assert word in changed
+        r_since_after_delete = client.get("/api/vocab", params={"since": same_instant_utc}, headers=headers)
+        assert any(card["content"] == word and card["isDeleted"] for card in r_since_after_delete.json())
+    finally:
+        if previous_tz is None:
+            monkeypatch.delenv("TZ", raising=False)
+        else:
+            monkeypatch.setenv("TZ", previous_tz)
+        time.tzset()
+
+
 def test_graph_links_returns_active_only(isolated_api):
     client = isolated_api.client
     headers = isolated_api.headers
@@ -207,10 +268,12 @@ def test_translate_endpoints_success_and_error(isolated_api):
     headers = isolated_api.headers
 
     fake_client = MagicMock()
-    fake_client.chat.completions.create = AsyncMock(return_value=SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"喚起","p":"v.","r":"evoke"}'))],
-        usage=None,
-    ))
+    fake_client.chat.completions.create = AsyncMock(
+        return_value=SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"喚起","p":"v.","r":"evoke"}'))],
+            usage=None,
+        )
+    )
     with patch("kg.translate_handlers.create_async_client", return_value=fake_client):
         r = client.post(
             "/api/translate/quick",
@@ -221,10 +284,12 @@ def test_translate_endpoints_success_and_error(isolated_api):
         assert r.json() == {"t": "喚起", "p": "v.", "r": "evoke"}
 
     fake_client_phrase = MagicMock()
-    fake_client_phrase.chat.completions.create = AsyncMock(return_value=SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"試探性地"}'))],
-        usage=None,
-    ))
+    fake_client_phrase.chat.completions.create = AsyncMock(
+        return_value=SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"試探性地"}'))],
+            usage=None,
+        )
+    )
     with patch("kg.translate_handlers.create_async_client", return_value=fake_client_phrase):
         r = client.post(
             "/api/translate/phrase",
@@ -235,10 +300,12 @@ def test_translate_endpoints_success_and_error(isolated_api):
         assert r.json()["t"] == "試探性地"
 
     fake_client_explain = MagicMock()
-    fake_client_explain.chat.completions.create = AsyncMock(return_value=SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content='{"e":"在此語境表示引發回憶。"}'))],
-        usage=None,
-    ))
+    fake_client_explain.chat.completions.create = AsyncMock(
+        return_value=SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content='{"e":"在此語境表示引發回憶。"}'))],
+            usage=None,
+        )
+    )
     with patch("kg.translate_handlers.create_async_client", return_value=fake_client_explain):
         r = client.post(
             "/api/translate/explain",
@@ -275,10 +342,12 @@ def test_translate_works_without_pro_subscription(isolated_api):
     isolated_api.users_file.write_text(json.dumps(users_data))
 
     fake_client = MagicMock()
-    fake_client.chat.completions.create = AsyncMock(return_value=SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"喚起","p":"v.","r":"evoke"}'))],
-        usage=None,
-    ))
+    fake_client.chat.completions.create = AsyncMock(
+        return_value=SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"喚起","p":"v.","r":"evoke"}'))],
+            usage=None,
+        )
+    )
     with patch("kg.translate_handlers.create_async_client", return_value=fake_client):
         r = client.post(
             "/api/translate/quick",
@@ -506,26 +575,32 @@ def test_admin_test_matrix_endpoints(isolated_api):
         "outcome": "passed",
         "totals": {"passed": 4, "failed": 0, "errors": 0, "skipped": 1, "total": 5},
         "selectedItems": ["renderer_truncation"],
-        "matrix": [{
-            "module": "tests/test_api_surface.py",
-            "passed": 4,
-            "failed": 0,
-            "errors": 0,
-            "skipped": 1,
-            "total": 5,
-        }],
-        "cases": [{
-            "id": "tests/test_api_surface.py::test_sample",
-            "module": "tests/test_api_surface.py",
-            "status": "PASSED",
-            "bucket": "passed",
-        }],
-        "itemResults": [{
-            "id": "renderer_truncation",
-            "status": "passed",
-            "counts": {"passed": 1, "failed": 0, "errors": 0, "skipped": 0},
-            "total": 1,
-        }],
+        "matrix": [
+            {
+                "module": "tests/test_api_surface.py",
+                "passed": 4,
+                "failed": 0,
+                "errors": 0,
+                "skipped": 1,
+                "total": 5,
+            }
+        ],
+        "cases": [
+            {
+                "id": "tests/test_api_surface.py::test_sample",
+                "module": "tests/test_api_surface.py",
+                "status": "PASSED",
+                "bucket": "passed",
+            }
+        ],
+        "itemResults": [
+            {
+                "id": "renderer_truncation",
+                "status": "passed",
+                "counts": {"passed": 1, "failed": 0, "errors": 0, "skipped": 0},
+                "total": 1,
+            }
+        ],
         "stdoutTail": [],
         "stderrTail": [],
     }
