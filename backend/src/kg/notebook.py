@@ -74,9 +74,7 @@ class NotebookStore:
     def ensure_default(self) -> Notebook:
         """Ensure the default notebook exists. Returns it."""
         with Session(self.engine) as session:
-            existing = session.exec(
-                select(Notebook).where(Notebook.id == DEFAULT_NOTEBOOK_ID)
-            ).first()
+            existing = session.exec(select(Notebook).where(Notebook.id == DEFAULT_NOTEBOOK_ID)).first()
             if existing:
                 return existing
             nb = Notebook(
@@ -106,9 +104,12 @@ class NotebookStore:
         plus the provenance columns, then reveals it via :meth:`materialize` once
         every card has landed."""
         nb = Notebook(
-            name=name, color=color, cover_pattern=cover_pattern,
+            name=name,
+            color=color,
+            cover_pattern=cover_pattern,
             source_shared_deck_id=source_shared_deck_id,
-            source_version=source_version, is_staged=is_staged,
+            source_version=source_version,
+            is_staged=is_staged,
         )
         with Session(self.engine) as session:
             session.add(nb)
@@ -150,9 +151,7 @@ class NotebookStore:
         with Session(self.engine) as session:
             return session.get(Notebook, notebook_id)
 
-    def all(
-        self, include_deleted: bool = False, *, include_staged: bool = False
-    ) -> list[Notebook]:
+    def all(self, include_deleted: bool = False, *, include_staged: bool = False) -> list[Notebook]:
         """Visible notebooks. Two ORTHOGONAL hide axes, defaulting off:
 
         * ``include_deleted`` — add soft-delete tombstones (the full sync-down
@@ -183,9 +182,13 @@ class NotebookStore:
         reveals it (materialize bumps ``updated_at``, so the revealed copy is
         picked up by the next delta)."""
         with Session(self.engine) as session:
-            statement = select(Notebook).where(
-                Notebook.updated_at > since,
-                Notebook.is_staged.is_(False),
+            statement = (
+                select(Notebook)
+                .where(
+                    Notebook.updated_at > since,
+                    Notebook.is_staged.is_(False),
+                )
+                .order_by(Notebook.updated_at, Notebook.id)
             )
             return list(session.exec(statement).all())
 

@@ -68,11 +68,44 @@ def test_cannot_delete_default(store):
 
 def test_get_modified_since(store):
     from datetime import UTC, datetime, timedelta
+
     before = datetime.now(UTC) - timedelta(seconds=1)
     store.create(name="New")
     modified = store.get_modified_since(before)
     assert len(modified) == 1
     assert modified[0].name == "New"
+
+
+def test_get_modified_since_orders_equal_updated_at_by_id(store):
+    from datetime import UTC, datetime, timedelta
+
+    from sqlmodel import Session
+
+    from kg.notebook import Notebook
+
+    updated_at = datetime(2026, 1, 1, tzinfo=UTC)
+    with Session(store.engine) as session:
+        session.add_all(
+            [
+                Notebook(
+                    id="nb-z",
+                    name="Z",
+                    created_at=updated_at,
+                    updated_at=updated_at,
+                ),
+                Notebook(
+                    id="nb-a",
+                    name="A",
+                    created_at=updated_at,
+                    updated_at=updated_at,
+                ),
+            ]
+        )
+        session.commit()
+
+    modified = store.get_modified_since(updated_at - timedelta(seconds=1))
+
+    assert [notebook.id for notebook in modified] == ["nb-a", "nb-z"]
 
 
 def test_cards_notebook_id_filter(tmp_path):
