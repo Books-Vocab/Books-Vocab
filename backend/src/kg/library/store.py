@@ -26,6 +26,14 @@ from ..sqlite_utils import make_sqlite_engine
 from ..vocab_shared import _dt_to_iso
 
 
+def _parse_utc_instant(value: str) -> datetime:
+    """Parse an ISO timestamp as an absolute UTC instant."""
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
 class LibraryBook(SQLModel, table=True):
     """Per-user book metadata (no raw file storage)."""
 
@@ -57,9 +65,7 @@ class LibraryStore:
     def __init__(self, path: Path) -> None:
         self.path = path
         self.engine = make_sqlite_engine(path)
-        LibraryBook.metadata.create_all(
-            self.engine, tables=[LibraryBook.__table__], checkfirst=True
-        )
+        LibraryBook.metadata.create_all(self.engine, tables=[LibraryBook.__table__], checkfirst=True)
 
     def close(self) -> None:
         """Dispose the SQLAlchemy engine and release connections.
@@ -156,7 +162,11 @@ class LibraryStore:
             book = session.get(LibraryBook, book_id)
             if book is None:
                 return None
-            if book.position_updated_at is None or req.updated_at > book.position_updated_at:
+            incoming_updated_at = _parse_utc_instant(req.updated_at)
+            current_updated_at = (
+                None if book.position_updated_at is None else _parse_utc_instant(book.position_updated_at)
+            )
+            if current_updated_at is None or incoming_updated_at > current_updated_at:
                 book.locator = req.locator
                 book.progression = req.progression
                 book.position_updated_at = req.updated_at

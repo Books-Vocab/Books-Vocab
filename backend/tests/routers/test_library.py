@@ -297,6 +297,93 @@ class TestPutPosition:
         assert stale.json()["progression"] == 0.75
         assert stale.json()["position_updated_at"] == "2026-06-13T12:00:00Z"
 
+    def test_put_position_treats_equivalent_timezone_offsets_as_equal(self, isolated_api):
+        b = _create_book(isolated_api.client, isolated_api.headers, "Book")
+        book_id = b["id"]
+
+        first = isolated_api.client.put(
+            f"/api/library/books/{book_id}/position",
+            json={
+                "locator": "first-locator",
+                "progression": 0.5,
+                "updated_at": "2026-06-13T13:00:00Z",
+            },
+            headers=isolated_api.headers,
+        )
+        assert first.status_code == 200
+
+        equivalent = isolated_api.client.put(
+            f"/api/library/books/{book_id}/position",
+            json={
+                "locator": "equivalent-locator",
+                "progression": 0.6,
+                "updated_at": "2026-06-13T14:00:00+02:00",
+            },
+            headers=isolated_api.headers,
+        )
+        assert equivalent.status_code == 200
+        assert equivalent.json()["locator"] == "first-locator"
+        assert equivalent.json()["progression"] == 0.5
+        assert equivalent.json()["position_updated_at"] == "2026-06-13T13:00:00Z"
+
+    def test_put_position_applies_newer_instant_across_timezone_offsets(self, isolated_api):
+        b = _create_book(isolated_api.client, isolated_api.headers, "Book")
+        book_id = b["id"]
+
+        first = isolated_api.client.put(
+            f"/api/library/books/{book_id}/position",
+            json={
+                "locator": "first-locator",
+                "progression": 0.5,
+                "updated_at": "2026-06-13T14:00:00+02:00",
+            },
+            headers=isolated_api.headers,
+        )
+        assert first.status_code == 200
+
+        newer = isolated_api.client.put(
+            f"/api/library/books/{book_id}/position",
+            json={
+                "locator": "newer-locator",
+                "progression": 0.7,
+                "updated_at": "2026-06-13T13:00:00Z",
+            },
+            headers=isolated_api.headers,
+        )
+        assert newer.status_code == 200
+        assert newer.json()["locator"] == "newer-locator"
+        assert newer.json()["progression"] == 0.7
+        assert newer.json()["position_updated_at"] == "2026-06-13T13:00:00Z"
+
+    def test_put_position_rejects_older_instant_across_timezone_offsets(self, isolated_api):
+        b = _create_book(isolated_api.client, isolated_api.headers, "Book")
+        book_id = b["id"]
+
+        first = isolated_api.client.put(
+            f"/api/library/books/{book_id}/position",
+            json={
+                "locator": "newer-locator",
+                "progression": 0.7,
+                "updated_at": "2026-06-13T13:00:00Z",
+            },
+            headers=isolated_api.headers,
+        )
+        assert first.status_code == 200
+
+        older = isolated_api.client.put(
+            f"/api/library/books/{book_id}/position",
+            json={
+                "locator": "older-locator",
+                "progression": 0.2,
+                "updated_at": "2026-06-13T14:00:00+03:00",
+            },
+            headers=isolated_api.headers,
+        )
+        assert older.status_code == 200
+        assert older.json()["locator"] == "newer-locator"
+        assert older.json()["progression"] == 0.7
+        assert older.json()["position_updated_at"] == "2026-06-13T13:00:00Z"
+
     def test_put_position_not_found(self, isolated_api):
         resp = isolated_api.client.put(
             "/api/library/books/nonexistent/position",
