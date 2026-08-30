@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from kg.notebook import DEFAULT_NOTEBOOK_ID, DEFAULT_NOTEBOOK_NAME, NotebookStore
@@ -106,6 +108,22 @@ def test_get_modified_since_orders_equal_updated_at_by_id(store):
     modified = store.get_modified_since(updated_at - timedelta(seconds=1))
 
     assert [notebook.id for notebook in modified] == ["nb-a", "nb-z"]
+
+
+def test_get_modified_since_compares_mixed_offsets_by_utc_instant(store):
+    notebook = store.create(name="Offset clock")
+
+    # SQLite stores DATETIME as text. A legacy client can leave an offset-bearing
+    # value whose local clock sorts before the UTC cursor despite being later.
+    with store.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "UPDATE notebook SET updated_at = ? WHERE id = ?",
+            ("2026-01-01 01:00:00-04:00", notebook.id),
+        )
+
+    modified = store.get_modified_since(datetime(2026, 1, 1, 4, 30, tzinfo=UTC))
+
+    assert [item.id for item in modified] == [notebook.id]
 
 
 def test_all_orders_equal_sort_order_and_created_at_by_id(store):
