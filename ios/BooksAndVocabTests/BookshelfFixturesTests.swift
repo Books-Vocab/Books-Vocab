@@ -52,6 +52,32 @@ import Testing
         #expect(catalogKeys == previewKeys)
     }
 
+    @Test func bookshelfBookOrderingIsDeterministicRegardlessOfInputOrder() {
+        let readAt = Date(timeIntervalSince1970: 2_000)
+        let unreadOlder = Self.makeBook(id: "00000000-0000-0000-0000-000000000001", dateAdded: 100)
+        let unreadNewer = Self.makeBook(id: "00000000-0000-0000-0000-000000000002", dateAdded: 200)
+        let sameReadEarlierID = Self.makeBook(
+            id: "00000000-0000-0000-0000-000000000003",
+            dateAdded: 300,
+            dateLastRead: readAt
+        )
+        let sameReadLaterID = Self.makeBook(
+            id: "00000000-0000-0000-0000-000000000004",
+            dateAdded: 300,
+            dateLastRead: readAt
+        )
+        let expectedIDs = [sameReadEarlierID.id, sameReadLaterID.id, unreadNewer.id, unreadOlder.id]
+
+        let firstInput = [unreadOlder, sameReadLaterID, unreadNewer, sameReadEarlierID]
+        let secondInput = [sameReadEarlierID, unreadNewer, sameReadLaterID, unreadOlder]
+
+        let firstResult = BookshelfView.sortedBooks(firstInput).map(\.id)
+        let secondResult = BookshelfView.sortedBooks(secondInput).map(\.id)
+
+        #expect(firstResult == expectedIDs)
+        #expect(secondResult == expectedIDs)
+    }
+
     @Test func bookshelfFixtureRegistryIsManifestOnly() throws {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent() // BooksAndVocabTests
@@ -253,6 +279,18 @@ import Testing
         #expect(FileManager.default.fileExists(atPath: sourceURL.path), "\(label): \(ref) source file must exist")
         let data = try Data(contentsOf: sourceURL)
         #expect(data.starts(with: Data("PK".utf8)), "\(label): \(ref) must be a ZIP-backed EPUB package")
+    }
+
+    private static func makeBook(
+        id: String,
+        dateAdded: TimeInterval,
+        dateLastRead: Date? = nil
+    ) -> Book {
+        let book = Book(title: id, author: "Test", fileName: "\(id).epub")
+        book.id = UUID(uuidString: id)!
+        book.dateAdded = Date(timeIntervalSince1970: dateAdded)
+        book.dateLastRead = dateLastRead
+        return book
     }
 }
 #endif
