@@ -1,4 +1,5 @@
 """Tests for admin graph-density endpoint."""
+
 from __future__ import annotations
 
 import json
@@ -12,6 +13,7 @@ from kg.cards import Card
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_cards_db(user_dir: Path, cards: list[dict]) -> None:
     """Create a cards.db with given card rows."""
@@ -53,6 +55,7 @@ def _make_graph_json(user_dir: Path, notebook_id: str, links: list[dict]) -> Non
 # compute_graph_density unit tests
 # ---------------------------------------------------------------------------
 
+
 class TestComputeGraphDensity:
     def test_empty_user_dir(self, tmp_path: Path):
         """No cards.db, no graph JSON → empty points."""
@@ -67,14 +70,27 @@ class TestComputeGraphDensity:
         """Cards but no links → density stays 0."""
         from kg.admin_graph_density import compute_graph_density
 
-        _make_cards_db(tmp_path, [
-            {"id": "c1", "content": "hello", "meaning": "你好",
-             "notebook_id": "default", "is_deleted": False,
-             "created_at": datetime(2025, 1, 1, tzinfo=UTC)},
-            {"id": "c2", "content": "world", "meaning": "世界",
-             "notebook_id": "default", "is_deleted": False,
-             "created_at": datetime(2025, 1, 2, tzinfo=UTC)},
-        ])
+        _make_cards_db(
+            tmp_path,
+            [
+                {
+                    "id": "c1",
+                    "content": "hello",
+                    "meaning": "你好",
+                    "notebook_id": "default",
+                    "is_deleted": False,
+                    "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+                },
+                {
+                    "id": "c2",
+                    "content": "world",
+                    "meaning": "世界",
+                    "notebook_id": "default",
+                    "is_deleted": False,
+                    "created_at": datetime(2025, 1, 2, tzinfo=UTC),
+                },
+            ],
+        )
 
         result = compute_graph_density(tmp_path, "default")
         assert len(result["points"]) == 2
@@ -88,19 +104,43 @@ class TestComputeGraphDensity:
         """Mixed cards and links produce correct cumulative density."""
         from kg.admin_graph_density import compute_graph_density
 
-        _make_cards_db(tmp_path, [
-            {"id": "c1", "content": "hello", "meaning": "你好",
-             "notebook_id": "default", "is_deleted": False,
-             "created_at": datetime(2025, 1, 1, tzinfo=UTC)},
-            {"id": "c2", "content": "world", "meaning": "世界",
-             "notebook_id": "default", "is_deleted": False,
-             "created_at": datetime(2025, 1, 2, tzinfo=UTC)},
-        ])
-        _make_graph_json(tmp_path, "default", [
-            {"id": "l1", "from_id": "c1", "to_id": "c2",
-             "kind": "contrasts_with", "confidence": 0.9, "reason": "test",
-             "created_at": "2025-01-03T00:00:00+00:00", "status": "active"},
-        ])
+        _make_cards_db(
+            tmp_path,
+            [
+                {
+                    "id": "c1",
+                    "content": "hello",
+                    "meaning": "你好",
+                    "notebook_id": "default",
+                    "is_deleted": False,
+                    "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+                },
+                {
+                    "id": "c2",
+                    "content": "world",
+                    "meaning": "世界",
+                    "notebook_id": "default",
+                    "is_deleted": False,
+                    "created_at": datetime(2025, 1, 2, tzinfo=UTC),
+                },
+            ],
+        )
+        _make_graph_json(
+            tmp_path,
+            "default",
+            [
+                {
+                    "id": "l1",
+                    "from_id": "c1",
+                    "to_id": "c2",
+                    "kind": "contrasts_with",
+                    "confidence": 0.9,
+                    "reason": "test",
+                    "created_at": "2025-01-03T00:00:00+00:00",
+                    "status": "active",
+                },
+            ],
+        )
 
         result = compute_graph_density(tmp_path, "default")
         assert len(result["points"]) == 3
@@ -115,14 +155,27 @@ class TestComputeGraphDensity:
         """Deleted cards should not appear in the timeline."""
         from kg.admin_graph_density import compute_graph_density
 
-        _make_cards_db(tmp_path, [
-            {"id": "c1", "content": "hello", "meaning": "你好",
-             "notebook_id": "default", "is_deleted": False,
-             "created_at": datetime(2025, 1, 1, tzinfo=UTC)},
-            {"id": "c2", "content": "deleted", "meaning": "已刪除",
-             "notebook_id": "default", "is_deleted": True,
-             "created_at": datetime(2025, 1, 2, tzinfo=UTC)},
-        ])
+        _make_cards_db(
+            tmp_path,
+            [
+                {
+                    "id": "c1",
+                    "content": "hello",
+                    "meaning": "你好",
+                    "notebook_id": "default",
+                    "is_deleted": False,
+                    "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+                },
+                {
+                    "id": "c2",
+                    "content": "deleted",
+                    "meaning": "已刪除",
+                    "notebook_id": "default",
+                    "is_deleted": True,
+                    "created_at": datetime(2025, 1, 2, tzinfo=UTC),
+                },
+            ],
+        )
 
         result = compute_graph_density(tmp_path, "default")
         assert len(result["points"]) == 1
@@ -131,22 +184,55 @@ class TestComputeGraphDensity:
         """Only active links count."""
         from kg.admin_graph_density import compute_graph_density
 
-        _make_cards_db(tmp_path, [
-            {"id": "c1", "content": "hello", "meaning": "你好",
-             "notebook_id": "default", "is_deleted": False,
-             "created_at": datetime(2025, 1, 1, tzinfo=UTC)},
-        ])
-        _make_graph_json(tmp_path, "default", [
-            {"id": "l1", "from_id": "c1", "to_id": "c2",
-             "kind": "contrasts_with", "confidence": 0.9, "reason": "test",
-             "created_at": "2025-01-02T00:00:00+00:00", "status": "active"},
-            {"id": "l2", "from_id": "c1", "to_id": "c3",
-             "kind": "contrasts_with", "confidence": 0.5, "reason": "test",
-             "created_at": "2025-01-03T00:00:00+00:00", "status": "deprecated"},
-            {"id": "l3", "from_id": "c1", "to_id": "c4",
-             "kind": "contrasts_with", "confidence": 0.5, "reason": "test",
-             "created_at": "2025-01-04T00:00:00+00:00", "status": "hidden"},
-        ])
+        _make_cards_db(
+            tmp_path,
+            [
+                {
+                    "id": "c1",
+                    "content": "hello",
+                    "meaning": "你好",
+                    "notebook_id": "default",
+                    "is_deleted": False,
+                    "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+                },
+            ],
+        )
+        _make_graph_json(
+            tmp_path,
+            "default",
+            [
+                {
+                    "id": "l1",
+                    "from_id": "c1",
+                    "to_id": "c2",
+                    "kind": "contrasts_with",
+                    "confidence": 0.9,
+                    "reason": "test",
+                    "created_at": "2025-01-02T00:00:00+00:00",
+                    "status": "active",
+                },
+                {
+                    "id": "l2",
+                    "from_id": "c1",
+                    "to_id": "c3",
+                    "kind": "contrasts_with",
+                    "confidence": 0.5,
+                    "reason": "test",
+                    "created_at": "2025-01-03T00:00:00+00:00",
+                    "status": "deprecated",
+                },
+                {
+                    "id": "l3",
+                    "from_id": "c1",
+                    "to_id": "c4",
+                    "kind": "contrasts_with",
+                    "confidence": 0.5,
+                    "reason": "test",
+                    "created_at": "2025-01-04T00:00:00+00:00",
+                    "status": "hidden",
+                },
+            ],
+        )
 
         result = compute_graph_density(tmp_path, "default")
         link_events = [p for p in result["points"] if p["event"] == "link"]
@@ -156,34 +242,126 @@ class TestComputeGraphDensity:
         """Events must be sorted by timestamp."""
         from kg.admin_graph_density import compute_graph_density
 
-        _make_cards_db(tmp_path, [
-            {"id": "c1", "content": "hello", "meaning": "你好",
-             "notebook_id": "default", "is_deleted": False,
-             "created_at": datetime(2025, 1, 3, tzinfo=UTC)},
-        ])
-        _make_graph_json(tmp_path, "default", [
-            {"id": "l1", "from_id": "c1", "to_id": "c2",
-             "kind": "contrasts_with", "confidence": 0.9, "reason": "test",
-             "created_at": "2025-01-01T00:00:00+00:00", "status": "active"},
-        ])
+        _make_cards_db(
+            tmp_path,
+            [
+                {
+                    "id": "c1",
+                    "content": "hello",
+                    "meaning": "你好",
+                    "notebook_id": "default",
+                    "is_deleted": False,
+                    "created_at": datetime(2025, 1, 3, tzinfo=UTC),
+                },
+            ],
+        )
+        _make_graph_json(
+            tmp_path,
+            "default",
+            [
+                {
+                    "id": "l1",
+                    "from_id": "c1",
+                    "to_id": "c2",
+                    "kind": "contrasts_with",
+                    "confidence": 0.9,
+                    "reason": "test",
+                    "created_at": "2025-01-01T00:00:00+00:00",
+                    "status": "active",
+                },
+            ],
+        )
 
         result = compute_graph_density(tmp_path, "default")
         assert result["points"][0]["event"] == "link"
         assert result["points"][1]["event"] == "card"
 
+    def test_equal_timestamp_events_are_stable_across_source_order(self, tmp_path: Path):
+        """Equal-time events use their source ids instead of storage order."""
+        from kg.admin_graph_density import compute_graph_density
+
+        links = [
+            {
+                "id": "l1",
+                "from_id": "c1",
+                "to_id": "c2",
+                "kind": "contrasts_with",
+                "confidence": 0.9,
+                "reason": "first",
+                "created_at": "2025-01-02T00:00:00+00:00",
+                "status": "active",
+            },
+            {
+                "id": "l2",
+                "from_id": "c1",
+                "to_id": "c3",
+                "kind": "contrasts_with",
+                "confidence": 0.8,
+                "reason": "second",
+                "created_at": "2025-01-01T19:00:00-05:00",
+                "status": "active",
+            },
+        ]
+        expected_points = [
+            {"ts": "2025-01-02T00:00:00+00:00", "event": "card", "cum_cards": 1, "cum_links": 0, "density": 0.0},
+            {"ts": "2025-01-02T00:00:00+00:00", "event": "link", "cum_cards": 1, "cum_links": 1, "density": 1.0},
+            {"ts": "2025-01-01T19:00:00-05:00", "event": "link", "cum_cards": 1, "cum_links": 2, "density": 2.0},
+        ]
+
+        results = []
+        for name, ordered_links in (("forward", links), ("reversed", list(reversed(links)))):
+            fixture_dir = tmp_path / name
+            fixture_dir.mkdir()
+            _make_cards_db(
+                fixture_dir,
+                [
+                    {
+                        "id": "c1",
+                        "content": "hello",
+                        "meaning": "你好",
+                        "notebook_id": "default",
+                        "is_deleted": False,
+                        "created_at": datetime(2025, 1, 2, tzinfo=UTC),
+                    },
+                ],
+            )
+            _make_graph_json(fixture_dir, "default", ordered_links)
+            results.append(compute_graph_density(fixture_dir, "default"))
+
+        assert results[0]["points"] == expected_points
+        assert results[1]["points"] == expected_points
+        assert results[0] == results[1]
+
     def test_graph_json_as_dict_fallback(self, tmp_path: Path):
         """Graph JSON stored as dict (legacy format) should also work."""
         from kg.admin_graph_density import compute_graph_density
 
-        _make_cards_db(tmp_path, [
-            {"id": "c1", "content": "hello", "meaning": "你好",
-             "notebook_id": "default", "is_deleted": False,
-             "created_at": datetime(2025, 1, 1, tzinfo=UTC)},
-        ])
+        _make_cards_db(
+            tmp_path,
+            [
+                {
+                    "id": "c1",
+                    "content": "hello",
+                    "meaning": "你好",
+                    "notebook_id": "default",
+                    "is_deleted": False,
+                    "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+                },
+            ],
+        )
         # Write as dict (legacy format)
-        links = {"l1": {"id": "l1", "from_id": "c1", "to_id": "c2",
-             "kind": "contrasts_with", "confidence": 0.9, "reason": "test",
-             "created_at": "2025-01-02T00:00:00+00:00", "status": "active"}}
+        links = {
+            "l1": {
+                "id": "l1",
+                "from_id": "c1",
+                "to_id": "c2",
+                "kind": "contrasts_with",
+                "confidence": 0.9,
+                "reason": "test",
+                "created_at": "2025-01-02T00:00:00+00:00",
+                "status": "active",
+            }
+        }
         (tmp_path / "graph_default.json").write_text(json.dumps(links))
 
         result = compute_graph_density(tmp_path, "default")
@@ -194,11 +372,19 @@ class TestComputeGraphDensity:
         """Malformed or empty graph JSON should not crash."""
         from kg.admin_graph_density import compute_graph_density
 
-        _make_cards_db(tmp_path, [
-            {"id": "c1", "content": "hello", "meaning": "你好",
-             "notebook_id": "default", "is_deleted": False,
-             "created_at": datetime(2025, 1, 1, tzinfo=UTC)},
-        ])
+        _make_cards_db(
+            tmp_path,
+            [
+                {
+                    "id": "c1",
+                    "content": "hello",
+                    "meaning": "你好",
+                    "notebook_id": "default",
+                    "is_deleted": False,
+                    "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+                },
+            ],
+        )
         (tmp_path / "graph_default.json").write_text("")
         result = compute_graph_density(tmp_path, "default")
         assert len(result["points"]) == 1  # card only
@@ -207,18 +393,39 @@ class TestComputeGraphDensity:
         """Links missing created_at should be skipped, not crash."""
         from kg.admin_graph_density import compute_graph_density
 
-        _make_cards_db(tmp_path, [
-            {"id": "c1", "content": "hello", "meaning": "你好",
-             "notebook_id": "default", "is_deleted": False,
-             "created_at": datetime(2025, 1, 1, tzinfo=UTC)},
-        ])
+        _make_cards_db(
+            tmp_path,
+            [
+                {
+                    "id": "c1",
+                    "content": "hello",
+                    "meaning": "你好",
+                    "notebook_id": "default",
+                    "is_deleted": False,
+                    "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+                },
+            ],
+        )
         links = [
-            {"id": "l1", "from_id": "c1", "to_id": "c2",
-             "kind": "contrasts_with", "confidence": 0.9, "reason": "ok",
-             "created_at": "2025-01-02T00:00:00+00:00", "status": "active"},
-            {"id": "l2", "from_id": "c1", "to_id": "c3",
-             "kind": "contrasts_with", "confidence": 0.5, "reason": "bad",
-             "status": "active"},  # no created_at
+            {
+                "id": "l1",
+                "from_id": "c1",
+                "to_id": "c2",
+                "kind": "contrasts_with",
+                "confidence": 0.9,
+                "reason": "ok",
+                "created_at": "2025-01-02T00:00:00+00:00",
+                "status": "active",
+            },
+            {
+                "id": "l2",
+                "from_id": "c1",
+                "to_id": "c3",
+                "kind": "contrasts_with",
+                "confidence": 0.5,
+                "reason": "bad",
+                "status": "active",
+            },  # no created_at
         ]
         (tmp_path / "graph_default.json").write_text(json.dumps(links))
 
