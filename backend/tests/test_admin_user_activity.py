@@ -320,6 +320,59 @@ def test_user_activity_mixes_pipeline_judge_translate_events_in_order(activity_e
     assert [e["run_id"] for e in pipelines] == ["p1", "p2"]
 
 
+def test_user_activity_equal_timestamps_use_source_precedence_and_native_id_desc(activity_env):
+    """Equal timestamps use source precedence, then each source's native id."""
+    from kg.admin_user_activity import get_user_activity
+
+    when = datetime.now(UTC)
+    _record_translate("u1", word="translate-old", when=when)
+    _record_translate("u1", word="translate-new", when=when)
+    _record_pipeline("u1", run_id="pipeline-old", when=when)
+    _record_pipeline("u1", run_id="pipeline-new", when=when)
+    _record_judge("u1", when=when)
+    _record_judge("u1", when=when)
+
+    result = get_user_activity("u1", hours=24)
+
+    assert [event["type"] for event in result["events"]] == [
+        "translate",
+        "translate",
+        "pipeline",
+        "pipeline",
+        "judge",
+        "judge",
+    ]
+    assert [event["word"] for event in result["events"] if event["type"] == "translate"] == [
+        "translate-new",
+        "translate-old",
+    ]
+    assert [event["run_id"] for event in result["events"] if event["type"] == "pipeline"] == [
+        "pipeline-new",
+        "pipeline-old",
+    ]
+    assert [event["id"] for event in result["events"] if event["type"] == "judge"] == [2, 1]
+    assert all("_source_id" not in event for event in result["events"])
+
+
+def test_user_activity_cap_keeps_newest_pipeline_ties(activity_env):
+    """Stable tie ordering must be applied before the MAX_TOTAL_EVENTS slice."""
+    from kg.admin_user_activity import MAX_PER_SOURCE, MAX_TOTAL_EVENTS, get_user_activity
+
+    when = datetime.now(UTC)
+    _record_translate("u1", word="translate", when=when)
+    for i in range(MAX_PER_SOURCE):
+        _record_pipeline("u1", run_id=f"pipeline-{i:03d}", when=when)
+
+    result = get_user_activity("u1", hours=24)
+
+    assert len(result["events"]) == MAX_TOTAL_EVENTS
+    assert result["events"][0]["type"] == "translate"
+    pipelines = [event["run_id"] for event in result["events"] if event["type"] == "pipeline"]
+    assert pipelines[0] == "pipeline-499"
+    assert pipelines[-1] == "pipeline-001"
+    assert "pipeline-000" not in pipelines
+
+
 def test_user_activity_paginates_correctly(activity_env):
     """With 550 mixed events, the response caps at 500 newest, no dupes, no drops above cap.
 
