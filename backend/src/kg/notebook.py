@@ -81,11 +81,22 @@ class NotebookStore:
         # creates the parent dir). create_all + column migration below run
         # after, so DDL lands on a WAL connection.
         self.engine = make_sqlite_engine(path)
-        Notebook.metadata.create_all(
-            self.engine,
-            tables=[Notebook.__table__, NotebookSettings.__table__],
-            checkfirst=True,
-        )
+        # SQLAlchemy's checkfirst=True is not atomic across independent
+        # engines: two legacy openers can both observe a missing table and
+        # then race on CREATE TABLE. Take SQLite's writer lock before the
+        # check/create boundary so the second opener rechecks after commit.
+        with self.engine.connect() as conn:
+            conn.exec_driver_sql("BEGIN IMMEDIATE")
+            try:
+                Notebook.metadata.create_all(
+                    conn,
+                    tables=[Notebook.__table__, NotebookSettings.__table__],
+                    checkfirst=True,
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
         self._migrate_columns()
 
     def _migrate_columns(self) -> None:
