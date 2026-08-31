@@ -283,6 +283,45 @@ class TestUpdateBook:
         )
         assert resp.status_code == 404
 
+    def test_update_rejects_deleted_book_without_mutating_tombstone(self, isolated_api):
+        book = _create_book(isolated_api.client, isolated_api.headers, "Book")
+        book_id = book["id"]
+
+        deleted = isolated_api.client.delete(
+            f"/api/library/books/{book_id}",
+            headers=isolated_api.headers,
+        )
+        assert deleted.status_code == 200
+        before_delete_retry = isolated_api.client.get(
+            "/api/library/books",
+            headers=isolated_api.headers,
+        ).json()[0]
+        deleted_again = isolated_api.client.delete(
+            f"/api/library/books/{book_id}",
+            headers=isolated_api.headers,
+        )
+        assert deleted_again.status_code == 200
+        after_delete_retry = isolated_api.client.get(
+            "/api/library/books",
+            headers=isolated_api.headers,
+        ).json()[0]
+        assert after_delete_retry == before_delete_retry
+
+        before = after_delete_retry
+        mutation = isolated_api.client.patch(
+            f"/api/library/books/{book_id}",
+            json={"title": "Changed tombstone"},
+            headers=isolated_api.headers,
+        )
+
+        assert mutation.status_code == 404
+        assert mutation.json()["code"] == "NotFoundError"
+        after = isolated_api.client.get(
+            "/api/library/books",
+            headers=isolated_api.headers,
+        ).json()[0]
+        assert after == before
+
     def test_update_requires_auth(self, isolated_api):
         resp = isolated_api.client.patch("/api/library/books/abc", json={"title": "X"})
         assert resp.status_code == 401
@@ -479,6 +518,59 @@ class TestPutPosition:
             headers=isolated_api.headers,
         )
         assert resp.status_code == 404
+
+    def test_put_position_rejects_deleted_book_without_mutating_tombstone(self, isolated_api):
+        book = _create_book(isolated_api.client, isolated_api.headers, "Book")
+        book_id = book["id"]
+        initial_position = isolated_api.client.put(
+            f"/api/library/books/{book_id}/position",
+            json={
+                "locator": "before-delete",
+                "progression": 0.25,
+                "updated_at": "2026-06-13T10:00:00Z",
+            },
+            headers=isolated_api.headers,
+        )
+        assert initial_position.status_code == 200
+
+        deleted = isolated_api.client.delete(
+            f"/api/library/books/{book_id}",
+            headers=isolated_api.headers,
+        )
+        assert deleted.status_code == 200
+        before_delete_retry = isolated_api.client.get(
+            "/api/library/books",
+            headers=isolated_api.headers,
+        ).json()[0]
+        deleted_again = isolated_api.client.delete(
+            f"/api/library/books/{book_id}",
+            headers=isolated_api.headers,
+        )
+        assert deleted_again.status_code == 200
+        after_delete_retry = isolated_api.client.get(
+            "/api/library/books",
+            headers=isolated_api.headers,
+        ).json()[0]
+        assert after_delete_retry == before_delete_retry
+
+        before = after_delete_retry
+        mutation = isolated_api.client.put(
+            f"/api/library/books/{book_id}/position",
+            json={
+                "locator": "changed-tombstone",
+                "progression": 0.75,
+                "updated_at": "2026-06-13T11:00:00Z",
+            },
+            headers=isolated_api.headers,
+        )
+
+        assert mutation.status_code == 404
+        assert mutation.json()["code"] == "NotFoundError"
+        after = isolated_api.client.get(
+            "/api/library/books",
+            headers=isolated_api.headers,
+        ).json()[0]
+        assert after == before
 
     def test_put_position_requires_auth(self, isolated_api):
         resp = isolated_api.client.put(

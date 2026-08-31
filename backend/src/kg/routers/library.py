@@ -67,9 +67,10 @@ def update_book(book_id: str, req: BookUpdateRequest, user: CurrentUser):
         kwargs["notebook_id"] = req.notebook_id
     if not kwargs:
         raise BadRequestError("No fields to update")
+    book = store.get(book_id)
+    if book is None or book.is_deleted:
+        raise NotFoundError("Book", book_id)
     if req.notebook_id is not None:
-        if store.get(book_id) is None:
-            raise NotFoundError("Book", book_id)
         validate_notebook_access(_notebook_store(user["dir"]), req.notebook_id)
     book = store.update(book_id, req)
     if book is None:
