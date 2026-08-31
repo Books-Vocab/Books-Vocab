@@ -97,9 +97,7 @@ class ReviewEventStore:
         table = ReviewEvent.__tablename__
         with self.engine.connect() as conn:
             ensure_columns(conn, table, dict(_WIDEN_COLUMNS))
-            conn.exec_driver_sql(
-                f"CREATE INDEX IF NOT EXISTS ix_{table}_is_synthetic ON {table} (is_synthetic)"
-            )
+            conn.exec_driver_sql(f"CREATE INDEX IF NOT EXISTS ix_{table}_is_synthetic ON {table} (is_synthetic)")
             conn.commit()
 
     def _migrate_ingested_at(self) -> None:
@@ -108,12 +106,8 @@ class ReviewEventStore:
         table = ReviewEvent.__tablename__
         with self.engine.connect() as conn:
             ensure_columns(conn, table, {"ingested_at": "DATETIME"})
-            conn.exec_driver_sql(
-                f"UPDATE {table} SET ingested_at = reviewed_at WHERE ingested_at IS NULL"
-            )
-            conn.exec_driver_sql(
-                f"CREATE INDEX IF NOT EXISTS ix_{table}_ingested_at ON {table} (ingested_at)"
-            )
+            conn.exec_driver_sql(f"UPDATE {table} SET ingested_at = reviewed_at WHERE ingested_at IS NULL")
+            conn.exec_driver_sql(f"CREATE INDEX IF NOT EXISTS ix_{table}_ingested_at ON {table} (ingested_at)")
             conn.commit()
 
     def _existing_event_ids(self, session: Session, event_ids: list[str]) -> set[str]:
@@ -131,11 +125,7 @@ class ReviewEventStore:
         known: set[str] = set()
         for start in range(0, len(event_ids), _EXISTS_QUERY_CHUNK):
             chunk = event_ids[start : start + _EXISTS_QUERY_CHUNK]
-            known.update(
-                session.exec(
-                    select(ReviewEvent.event_id).where(ReviewEvent.event_id.in_(chunk))
-                ).all()
-            )
+            known.update(session.exec(select(ReviewEvent.event_id).where(ReviewEvent.event_id.in_(chunk))).all())
         return known
 
     def insert_many(self, entries: list[ReviewEventEntry]) -> dict[str, int]:
@@ -145,9 +135,7 @@ class ReviewEventStore:
             # Continue the monotonic ingestion clock from the current max so each new
             # event gets a strictly increasing, unique ingested_at — even across a
             # backward wall-clock step (NTP) or multiple inserts within one microsecond.
-            last_ingested = normalize_last_ingested(
-                session.exec(select(func.max(ReviewEvent.ingested_at))).one()
-            )
+            last_ingested = normalize_last_ingested(session.exec(select(func.max(ReviewEvent.ingested_at))).one())
             # Pre-fetched ids only cover what was already committed. The loop adds
             # each accepted id so a repeated event_id *inside* one payload is still
             # skipped — the per-entry `session.get` used to catch that via autoflush.
@@ -187,19 +175,26 @@ class ReviewEventStore:
 
     def all(self) -> list[ReviewEvent]:
         with Session(self.engine) as session:
-            return list(session.exec(select(ReviewEvent).order_by(ReviewEvent.ingested_at)).all())
+            return list(
+                session.exec(
+                    select(ReviewEvent).order_by(
+                        ReviewEvent.ingested_at,
+                        ReviewEvent.event_id,
+                    )
+                ).all()
+            )
 
     def get_since(self, since: datetime) -> list[ReviewEvent]:
         # SQLite compares DATETIME values lexically, so rows written by older
         # versions with different offsets can cross the cursor boundary even when
         # their instants do not. Normalize both sides in Python before applying the
-        # strict ``>`` boundary; ingested_at is monotonic and unique by contract.
+        # strict ``>`` boundary; event_id makes legacy timestamp ties deterministic.
         since = _as_utc(since)
         with Session(self.engine) as session:
             events = list(session.exec(select(ReviewEvent)).all())
         return sorted(
             (event for event in events if _as_utc(event.ingested_at) > since),
-            key=lambda event: _as_utc(event.ingested_at),
+            key=lambda event: (_as_utc(event.ingested_at), event.event_id),
         )
 
     def close(self) -> None:
@@ -212,9 +207,7 @@ def push_review_events(entries: list[ReviewEventEntry], *, event_store: Any) -> 
     return event_store.insert_many(entries)
 
 
-def pull_review_events(
-    *, since: str | None, event_store: Any
-) -> tuple[list[ReviewEventEntry], str | None]:
+def pull_review_events(*, since: str | None, event_store: Any) -> tuple[list[ReviewEventEntry], str | None]:
     """Return (entries, cursor). ``cursor`` is the max ingestion timestamp of the
     returned batch, to be sent back as ``since`` on the next pull. An empty batch
     leaves the caller's cursor unchanged (echoes ``since``)."""
