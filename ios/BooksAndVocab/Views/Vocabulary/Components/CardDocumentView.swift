@@ -231,12 +231,17 @@ struct CardDocumentSourceBlock: View {
     @Environment(\.appSkin) private var appSkin
     let source: CardDocumentSource
 
-    private var copyText: String {
-        var parts = [source.bookTitle]
+    static func copyText(for source: CardDocumentSource) -> String {
+        var metadata = [source.bookTitle]
         if let chapter = source.chapterTitle {
-            parts.append(chapter)
+            metadata.append(chapter)
         }
-        return parts.joined(separator: " · ")
+        let metadataText = metadata.joined(separator: " · ")
+        return [source.context.plainText, metadataText].joined(separator: "\n")
+    }
+
+    private var copyText: String {
+        Self.copyText(for: source)
     }
 
     var body: some View {

@@ -247,6 +247,24 @@ import Testing
         #expect(source.chapterTitle == "Chapter title")
     }
 
+    @Test func sourceCopyText_includesPlainContextBeforeBookAndChapter() throws {
+        let source = try #require(
+            sourceDocumentBlock(
+                makeDoc(
+                    sourceContext: "A **marked** context.",
+                    bookTitle: "Book title",
+                    chapterTitle: "Chapter title",
+                    showsSourceContext: true
+                )
+            )
+        )
+
+        #expect(
+            CardDocumentSourceBlock.copyText(for: source)
+                == "A marked context.\nBook title · Chapter title"
+        )
+    }
+
     @Test func sourceBlock_rendersContextBeforeBookAndChapter() throws {
         let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         let sourceURL = testsDirectory
