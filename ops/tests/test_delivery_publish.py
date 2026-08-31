@@ -234,6 +234,39 @@ class FingerprintGit(FakeGit):
         return self.fingerprints[(base_sha, head_sha)]
 
 
+class WhitespaceNormalizedFingerprintGit(FingerprintGit):
+    def __init__(
+        self,
+        receipt: HandbackReceipt,
+        *,
+        fingerprints: dict[tuple[str, str], str],
+        normalized_equivalence: bool | Exception,
+        **kwargs: object,
+    ) -> None:
+        super().__init__(receipt, fingerprints=fingerprints, **kwargs)
+        self.normalized_equivalence = normalized_equivalence
+        self.normalized_equivalence_calls: list[tuple[str, str, str, str]] = []
+
+    def is_whitespace_normalized_patch_equivalent(
+        self,
+        previous_base_sha: str,
+        previous_head_sha: str,
+        current_base_sha: str,
+        current_head_sha: str,
+    ) -> bool:
+        self.normalized_equivalence_calls.append(
+            (
+                previous_base_sha,
+                previous_head_sha,
+                current_base_sha,
+                current_head_sha,
+            )
+        )
+        if isinstance(self.normalized_equivalence, Exception):
+            raise self.normalized_equivalence
+        return self.normalized_equivalence
+
+
 class FakeGitHub:
     def __init__(
         self,
@@ -349,6 +382,7 @@ def _service(
 def _non_ancestor_reanchor_service(
     *,
     fingerprints: tuple[str, str] | None = None,
+    normalized_equivalence: bool | Exception | None = None,
 ) -> tuple[HandbackReceipt, HandbackReceipt, PublishService, FakeGit, FakeGitHub]:
     old_base = "1" * 40
     new_base = "2" * 40
@@ -391,14 +425,23 @@ def _non_ancestor_reanchor_service(
     if fingerprints is None:
         git: FakeGit = FakeGit(receipt, **git_kwargs)  # type: ignore[arg-type]
     else:
-        git = FingerprintGit(
-            receipt,
-            fingerprints={
-                (previous.base_sha, previous.head_sha): fingerprints[0],
-                (receipt.base_sha, receipt.head_sha): fingerprints[1],
-            },
-            **git_kwargs,  # type: ignore[arg-type]
-        )
+        fingerprint_values = {
+            (previous.base_sha, previous.head_sha): fingerprints[0],
+            (receipt.base_sha, receipt.head_sha): fingerprints[1],
+        }
+        if normalized_equivalence is None:
+            git = FingerprintGit(
+                receipt,
+                fingerprints=fingerprint_values,
+                **git_kwargs,  # type: ignore[arg-type]
+            )
+        else:
+            git = WhitespaceNormalizedFingerprintGit(
+                receipt,
+                fingerprints=fingerprint_values,
+                normalized_equivalence=normalized_equivalence,
+                **git_kwargs,  # type: ignore[arg-type]
+            )
     github = FakeGitHub(
         receipt,
         pull_request=pull_request,
@@ -938,12 +981,121 @@ def test_partial_publication_accepts_patch_equivalent_non_ancestor_head() -> Non
     assert parse_pull_request_body(result.pull_request.body) == receipt
 
 
-def test_partial_publication_rejects_non_equivalent_non_ancestor_head() -> None:
+def test_partial_publication_accepts_whitespace_normalized_non_ancestor_head() -> None:
+    previous, receipt, service, git, github = _non_ancestor_reanchor_service(
+        fingerprints=("old-byte-content", "new-byte-content"),
+        normalized_equivalence=True,
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert git.push_calls == [(previous.head_sha, receipt.head_sha)]
+    assert github.create_calls == 0
+    assert github.update_calls == 1
+    assert isinstance(git, WhitespaceNormalizedFingerprintGit)
+    assert git.normalized_equivalence_calls == [
+        (
+            previous.base_sha,
+            previous.head_sha,
+            receipt.base_sha,
+            receipt.head_sha,
+        )
+    ]
+
+
+def test_partial_publication_rejects_non_equivalent_without_normalized_capability() -> (
+    None
+):
     _, receipt, service, git, github = _non_ancestor_reanchor_service(
         fingerprints=("old-content", "new-content")
     )
 
+    with pytest.raises(
+        PolicyViolation,
+        match="whitespace-normalized patch equivalence capability is unavailable",
+    ):
+        service.publish(receipt=receipt, title="fix: delivery")
+
+    assert git.push_calls == []
+    assert github.update_calls == 0
+
+
+def test_partial_publication_rejects_semantic_non_ancestor_delta() -> None:
+    _, receipt, service, git, github = _non_ancestor_reanchor_service(
+        fingerprints=("old-byte-content", "new-byte-content"),
+        normalized_equivalence=False,
+    )
+
     with pytest.raises(PolicyViolation, match="patch-equivalent"):
+        service.publish(receipt=receipt, title="fix: delivery")
+
+    assert git.push_calls == []
+    assert github.update_calls == 0
+
+
+def test_partial_publication_does_not_use_normalized_capability_for_scope_mismatch() -> (
+    None
+):
+    previous, receipt, service, git, github = _non_ancestor_reanchor_service(
+        fingerprints=("old-byte-content", "new-byte-content"),
+        normalized_equivalence=True,
+    )
+    assert github.pull_request is not None
+    git.snapshot = _worktree(
+        receipt,
+        changes=(FileChange(FileOperation.MODIFY, receipt.scope.paths[0]),),
+    )
+
+    with pytest.raises(
+        PolicyViolation,
+        match="current handback diff does not exactly match its typed Scope",
+    ):
+        service.publish(receipt=receipt, title="fix: delivery")
+
+    assert isinstance(git, WhitespaceNormalizedFingerprintGit)
+    assert git.normalized_equivalence_calls == []
+    assert previous.head_sha == github.pull_request.head_sha
+    assert git.push_calls == []
+    assert github.update_calls == 0
+
+
+def test_partial_publication_does_not_use_normalized_capability_for_identity_mismatch() -> (
+    None
+):
+    previous, receipt, service, git, github = _non_ancestor_reanchor_service(
+        fingerprints=("old-byte-content", "new-byte-content"),
+        normalized_equivalence=True,
+    )
+    assert github.pull_request is not None
+    github.pull_request = replace(
+        github.pull_request,
+        body=render_pull_request_body(
+            replace(previous, owner_thread_id="different-owner")
+        ),
+    )
+
+    with pytest.raises(
+        PolicyViolation, match="existing PR handback owner or lane differs"
+    ):
+        service.publish(receipt=receipt, title="fix: delivery")
+
+    assert isinstance(git, WhitespaceNormalizedFingerprintGit)
+    assert git.normalized_equivalence_calls == []
+    assert git.push_calls == []
+    assert github.update_calls == 0
+
+
+def test_partial_publication_rejects_unverifiable_whitespace_normalized_delta() -> None:
+    _, receipt, service, git, github = _non_ancestor_reanchor_service(
+        fingerprints=("old-byte-content", "new-byte-content"),
+        normalized_equivalence=DeliverySourceError("range-diff failed"),
+    )
+
+    with pytest.raises(
+        PolicyViolation,
+        match="whitespace-normalized patch equivalence could not be verified",
+    ):
         service.publish(receipt=receipt, title="fix: delivery")
 
     assert git.push_calls == []

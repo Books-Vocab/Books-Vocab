@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
+import io
 import re
+import tokenize
 from dataclasses import replace
 from pathlib import Path
 
@@ -45,9 +48,20 @@ from .git_parsing import (
 
 UNREACHABLE_COMMIT_SCAN_TIMEOUT_SECONDS = 30.0
 PATCH_EQUIVALENCE_QUERY_TIMEOUT_SECONDS = 5.0
+WHITESPACE_NORMALIZED_PATCH_EQUIVALENCE_QUERY_TIMEOUT_SECONDS = 5.0
+WHITESPACE_NORMALIZED_EXTRA_COMMIT_LIMIT = 20
 REMOTE_REF_QUERY_TIMEOUT_SECONDS = 30.0
 _COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _HUNK_HEADER_RE = re.compile(r"^@@ -[0-9]+(?:,[0-9]+)? \+[0-9]+(?:,[0-9]+)? @@")
+_RANGE_DIFF_MATCH_RE = re.compile(
+    r"^\s*\d+:\s+([0-9a-f]{40})\s+([=!])\s+\d+:\s+([0-9a-f]{40})(?:\s+.*)?$"
+)
+_RANGE_DIFF_LEFT_ONLY_RE = re.compile(
+    r"^\s*\d+:\s+[0-9a-f]{40}\s+<\s+-:\s+-+(?:\s+.*)?$"
+)
+_RANGE_DIFF_RIGHT_ONLY_RE = re.compile(
+    r"^\s*-:\s+-+\s+>\s+\d+:\s+([0-9a-f]{40})(?:\s+.*)?$"
+)
 
 
 def _normalized_error(error: Exception) -> str:
@@ -74,6 +88,48 @@ def _incomplete_unreachable_commit_evidence(
         complete=False,
         error=error,
     )
+
+
+def _parse_numstat_paths(payload: str) -> tuple[tuple[str, str, str], ...]:
+    if not payload:
+        return ()
+    if not payload.endswith("\0"):
+        raise AdapterPayloadError("git diff numstat payload is not NUL terminated")
+    rows: list[tuple[str, str, str]] = []
+    for index, row in enumerate(payload[:-1].split("\0")):
+        fields = row.split("\t")
+        if len(fields) != 3:
+            raise AdapterPayloadError(f"git diff numstat row {index} is malformed")
+        additions, deletions, path = fields
+        if (
+            not path
+            or (additions != "-" and not additions.isdigit())
+            or (deletions != "-" and not deletions.isdigit())
+        ):
+            raise AdapterPayloadError(
+                f"git diff numstat row {index} has invalid counts or path"
+            )
+        rows.append((additions, deletions, path))
+    return tuple(rows)
+
+
+def _python_format_signature(source: str) -> tuple[str, tuple[str, ...]] | None:
+    try:
+        tree = ast.parse(source)
+        comments = tuple(
+            item.string
+            for item in tokenize.generate_tokens(io.StringIO(source).readline)
+            if item.type == tokenize.COMMENT
+        )
+    except (IndentationError, SyntaxError, tokenize.TokenError, UnicodeError):
+        return None
+    return ast.dump(tree, include_attributes=False), comments
+
+
+def _python_format_only(before: str, after: str) -> bool:
+    before_signature = _python_format_signature(before)
+    after_signature = _python_format_signature(after)
+    return before_signature is not None and before_signature == after_signature
 
 
 class GitQueries:
@@ -439,6 +495,123 @@ class GitQueries:
                 line = _HUNK_HEADER_RE.sub("@@", line)
             normalized.append(line.rstrip())
         return hashlib.sha256("\n".join(normalized).encode("utf-8")).hexdigest()
+
+    def is_whitespace_normalized_patch_equivalent(
+        self,
+        previous_base_sha: str,
+        previous_head_sha: str,
+        current_base_sha: str,
+        current_head_sha: str,
+    ) -> bool:
+        """Allow only right-side Python formatting commits after range matching."""
+
+        shas = (
+            ("previous base", previous_base_sha),
+            ("previous head", previous_head_sha),
+            ("current base", current_base_sha),
+            ("current head", current_head_sha),
+        )
+        for name, sha in shas:
+            if _COMMIT_SHA_RE.fullmatch(sha) is None:
+                raise AdapterPayloadError(f"{name} commit SHA is malformed")
+            self._ensure_commit_object(sha)
+
+        result = self.client.execute_with_timeout(
+            "range-diff",
+            "--no-color",
+            "--no-patch",
+            "--no-dual-color",
+            "--abbrev=40",
+            f"{previous_base_sha}..{previous_head_sha}",
+            f"{current_base_sha}..{current_head_sha}",
+            timeout_seconds=WHITESPACE_NORMALIZED_PATCH_EQUIVALENCE_QUERY_TIMEOUT_SECONDS,
+        )
+        if result.exit_code != 0:
+            raise AdapterCommandError(result)
+
+        extra_commits: list[str] = []
+        matched_commits = 0
+        for line in result.stdout.splitlines():
+            if not line.strip():
+                continue
+            match = _RANGE_DIFF_MATCH_RE.fullmatch(line)
+            if match is not None:
+                matched_commits += 1
+                if match.group(2) != "=":
+                    return False
+                continue
+            if _RANGE_DIFF_LEFT_ONLY_RE.fullmatch(line):
+                return False
+            match = _RANGE_DIFF_RIGHT_ONLY_RE.fullmatch(line)
+            if match is not None:
+                extra_commits.append(match.group(1))
+                continue
+            raise AdapterPayloadError("git range-diff returned malformed output")
+
+        if (
+            matched_commits == 0
+            or len(extra_commits) > WHITESPACE_NORMALIZED_EXTRA_COMMIT_LIMIT
+        ):
+            return False
+        return all(self._is_python_format_only_commit(sha) for sha in extra_commits)
+
+    def _is_python_format_only_commit(self, commit_sha: str) -> bool:
+        metadata = self.client.run("rev-list", "--parents", "-n", "1", commit_sha)
+        fields = metadata.split()
+        if (
+            len(fields) != 2
+            or fields[0] != commit_sha
+            or _COMMIT_SHA_RE.fullmatch(fields[1]) is None
+        ):
+            raise AdapterPayloadError(
+                "git range-diff extra commit metadata is malformed"
+            )
+        parent_sha = fields[1]
+
+        summary = self.client.run(
+            "diff",
+            "--summary",
+            "--no-ext-diff",
+            "--no-renames",
+            f"{parent_sha}..{commit_sha}",
+        )
+        if summary:
+            return False
+
+        changes = parse_changed_files(
+            self.client.run(
+                "diff",
+                "--name-status",
+                "-z",
+                "--no-ext-diff",
+                "--no-renames",
+                f"{parent_sha}..{commit_sha}",
+            )
+        )
+        if any(change.operation.value != "modify" for change in changes):
+            return False
+        numstat = _parse_numstat_paths(
+            self.client.run(
+                "diff",
+                "--numstat",
+                "-z",
+                "--no-ext-diff",
+                "--no-renames",
+                f"{parent_sha}..{commit_sha}",
+            )
+        )
+        if {path for _, _, path in numstat} != {change.path for change in changes}:
+            raise AdapterPayloadError(
+                "git range-diff extra commit paths differ between diff queries"
+            )
+        for additions, deletions, path in numstat:
+            if additions == "-" or deletions == "-" or not path.endswith(".py"):
+                return False
+            before = self.client.run("show", f"{parent_sha}:{path}")
+            after = self.client.run("show", f"{commit_sha}:{path}")
+            if not _python_format_only(before, after):
+                return False
+        return True
 
     def inspect_branch_content(
         self,

@@ -236,6 +236,82 @@ def test_git_adapter_reads_patch_equivalence_without_mutation(tmp_path: Path) ->
     assert adapter.is_patch_equivalent(feature_tip, main_tip)
 
 
+@pytest.mark.parametrize(
+    ("formatted_source", "expected"),
+    (
+        (
+            ("value = function(\n    first,\n    second,\n)\n"),
+            True,
+        ),
+        (
+            ("value = function(\n    first,\n    third,\n)\n"),
+            False,
+        ),
+    ),
+)
+def test_git_adapter_classifies_whitespace_normalized_patch_equivalence(
+    tmp_path: Path,
+    formatted_source: str,
+    expected: bool,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test")
+    (repo / "sample.py").write_text(
+        "value = function(first, first)\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "sample.py")
+    _git(repo, "commit", "-qm", "base")
+    old_base = _git(repo, "rev-parse", "HEAD")
+
+    _git(repo, "switch", "-qc", "old-feature")
+    (repo / "sample.py").write_text(
+        "value = function(first, second)\n",
+        encoding="utf-8",
+    )
+    _git(repo, "commit", "-qam", "feature change")
+    old_head = _git(repo, "rev-parse", "HEAD")
+
+    _git(repo, "switch", "-q", "main")
+    (repo / "unrelated.txt").write_text("new base\n", encoding="utf-8")
+    _git(repo, "add", "unrelated.txt")
+    _git(repo, "commit", "-qm", "advance base")
+    new_base = _git(repo, "rev-parse", "HEAD")
+
+    _git(repo, "switch", "-qc", "new-feature")
+    (repo / "sample.py").write_text(
+        "value = function(first, second)\n",
+        encoding="utf-8",
+    )
+    _git(repo, "commit", "-qam", "feature change")
+    (repo / "sample.py").write_text(
+        formatted_source,
+        encoding="utf-8",
+    )
+    _git(repo, "commit", "-qam", "format feature test")
+    new_head = _git(repo, "rev-parse", "HEAD")
+    refs_before = _git(repo, "for-each-ref", "--format=%(refname) %(objectname)")
+
+    adapter = GitCliAdapter(repo=repo)
+
+    assert (
+        adapter.is_whitespace_normalized_patch_equivalent(
+            old_base,
+            old_head,
+            new_base,
+            new_head,
+        )
+        is expected
+    )
+    assert (
+        _git(repo, "for-each-ref", "--format=%(refname) %(objectname)") == refs_before
+    )
+    assert _git(repo, "branch", "--show-current") == "new-feature"
+
+
 def test_git_adapter_reports_unique_patch_as_not_equivalent(tmp_path: Path) -> None:
     runner = StaticRunner([CommandResult(("git",), 0, f"+ {'c' * 40}\n", "")])
 
