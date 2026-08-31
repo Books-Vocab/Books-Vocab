@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 import logging
 from datetime import UTC, datetime
 from typing import Any, NamedTuple, Protocol
@@ -21,19 +24,76 @@ from .vocab_shared import (
 logger = logging.getLogger(__name__)
 
 
-def encode_cursor(cursor: tuple[datetime, str] | None) -> str | None:
-    """Encode an ``(updated_at, id)`` cursor as the opaque token
-    ``f"{updated_at_iso}|{id}"``. Returns ``None`` for ``None`` (last page)."""
+class VocabCursor:
+    """A keyset position plus the request scope that produced it.
+
+    The position remains a two-item sequence for the card query layer and
+    compares equal to the historical ``(updated_at, id)`` tuple. ``scope`` is
+    ``None`` only for legacy in-process callers; wire cursors emitted by a
+    paginated request always carry ``(notebook_id, canonical_since)``.
+    """
+
+    __slots__ = ("updated_at", "card_id", "scope")
+
+    def __init__(
+        self,
+        updated_at: datetime,
+        card_id: str,
+        scope: tuple[str | None, str | None] | None = None,
+    ) -> None:
+        self.updated_at = updated_at
+        self.card_id = card_id
+        self.scope = scope
+
+    def __getitem__(self, index: int) -> datetime | str:
+        return (self.updated_at, self.card_id)[index]
+
+    def __iter__(self):
+        return iter((self.updated_at, self.card_id))
+
+    def __len__(self) -> int:
+        return 2
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, VocabCursor):
+            return (self.updated_at, self.card_id, self.scope) == (other.updated_at, other.card_id, other.scope)
+        if isinstance(other, tuple):
+            return (self.updated_at, self.card_id) == other
+        return NotImplemented
+
+
+def _encode_scope(scope: tuple[str | None, str | None]) -> str:
+    payload = json.dumps(
+        {"v": 1, "notebook": scope[0], "since": scope[1]},
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def encode_cursor(cursor: tuple[datetime, str] | VocabCursor | None) -> str | None:
+    """Encode a cursor as ``updated_at|id|scope``.
+
+    New response cursors include a URL-safe base64 scope payload. A plain
+    two-item tuple is retained for low-level in-process callers and emits the
+    historical unscoped representation; an unscoped wire cursor is rejected
+    when it is used by :func:`list_vocab_cards`.
+    """
     if cursor is None:
         return None
     updated_at, card_id = cursor
-    return f"{updated_at.isoformat()}|{card_id}"
+    token = f"{updated_at.isoformat()}|{card_id}"
+    if isinstance(cursor, VocabCursor) and cursor.scope is not None:
+        token += f"|{_encode_scope(cursor.scope)}"
+    return token
 
 
-def decode_cursor(token: str | None) -> tuple[datetime, str] | None:
-    """Decode an opaque cursor token back to ``(updated_at, id)``.
+def decode_cursor(token: str | None) -> VocabCursor | None:
+    """Decode an opaque cursor token back to a scoped two-item cursor.
 
-    Splits on the first ``|`` (ISO timestamps contain none; ids are hex).
+    The timestamp and id remain the keyset position. New tokens add a
+    URL-safe base64 scope payload after a second ``|``; old two-part tokens are
+    marked unscoped and are rejected by request pagination.
 
     The timestamp must round-trip to the **naive UTC** value stored in the card
     table verbatim. We parse with ``datetime.fromisoformat`` directly rather than
@@ -47,8 +107,11 @@ def decode_cursor(token: str | None) -> tuple[datetime, str] | None:
     """
     if not token:
         return None
-    raw_ts, sep, card_id = token.partition("|")
-    if not sep or not card_id:
+    raw_ts, sep, remainder = token.partition("|")
+    if not sep or not remainder:
+        raise BadRequestError("Invalid cursor")
+    card_id, scope_sep, scope_token = remainder.partition("|")
+    if not card_id or (scope_sep and not scope_token):
         raise BadRequestError("Invalid cursor")
     try:
         parsed = datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
@@ -56,7 +119,23 @@ def decode_cursor(token: str | None) -> tuple[datetime, str] | None:
         raise BadRequestError("Invalid cursor") from exc
     if parsed.tzinfo is not None:
         parsed = parsed.astimezone(UTC).replace(tzinfo=None)
-    return (parsed, card_id)
+    if not scope_sep:
+        return VocabCursor(parsed, card_id)
+    try:
+        padded = scope_token + "=" * (-len(scope_token) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
+    except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BadRequestError("Invalid cursor") from exc
+    if (
+        not isinstance(payload, dict)
+        or payload.get("v") != 1
+        or "notebook" not in payload
+        or "since" not in payload
+        or not (payload.get("notebook") is None or isinstance(payload.get("notebook"), str))
+        or not (payload.get("since") is None or isinstance(payload.get("since"), str))
+    ):
+        raise BadRequestError("Invalid cursor")
+    return VocabCursor(parsed, card_id, (payload["notebook"], payload["since"]))
 
 
 def _resolve_with_neighbours(
@@ -88,7 +167,11 @@ def _resolve_with_neighbours(
     return by_id
 
 
-def _page_cursor(cards: list[Any], limit: int) -> tuple[datetime, str] | None:
+def _page_cursor(
+    cards: list[Any],
+    limit: int,
+    scope: tuple[str | None, str | None],
+) -> VocabCursor | None:
     """Cursor for the next page, or ``None`` when this page drained the source.
 
     A full page (``len == limit``) means more rows *may* remain, so emit the
@@ -96,7 +179,7 @@ def _page_cursor(cards: list[Any], limit: int) -> tuple[datetime, str] | None:
     """
     if limit and len(cards) == limit:
         last = cards[-1]
-        return (last.updated_at, last.id)
+        return VocabCursor(last.updated_at, last.id, scope)
     return None
 
 
@@ -145,7 +228,7 @@ def list_vocab_cards(
     card_response_builder: CardResponseBuilder,
     notebook_id: str | None = None,
     limit: int = 5000,
-    after: tuple[datetime, str] | None = None,
+    after: tuple[datetime, str] | VocabCursor | None = None,
 ) -> tuple[list[CardResponse], tuple[datetime, str] | None]:
     """List vocab cards as ``(responses, next_cursor)``.
 
@@ -155,30 +238,39 @@ def list_vocab_cards(
     when a full page was returned (more rows may remain). Cards are returned in
     ascending ``(updated_at, id)`` order so the cursor advances monotonically.
     """
+    request_scope: tuple[str | None, str | None] = (notebook_id, None)
     if since is not None:
         parsed_since = _parse_since_timestamp(since)
         if parsed_since is None:
             raise BadRequestError("Invalid since timestamp format. Expected ISO 8601.")
         naive_since = parsed_since.replace(tzinfo=None)
+        request_scope = (notebook_id, naive_since.isoformat())
+    if isinstance(after, VocabCursor):
+        if after.scope is None:
+            raise BadRequestError("Cursor scope is missing")
+        if after.scope != request_scope:
+            raise BadRequestError("Cursor scope mismatch")
+    after_position = None if after is None else (after[0], after[1])
+    if since is not None:
         # Incremental: fetch the modified set (already bounded), then order and
         # slice it by the same cursor so since + full-sync paginate identically.
         modified = cards_store.get_modified_since(naive_since, notebook_id=notebook_id)
         modified = sorted(modified, key=lambda c: (c.updated_at, c.id))
-        if after is not None:
-            modified = [c for c in modified if (c.updated_at, c.id) > after]
+        if after_position is not None:
+            modified = [c for c in modified if (c.updated_at, c.id) > after_position]
         cards = modified[:limit]
     else:
         # Full sync: DB-bounded page (no full-table materialisation).
         cards = cards_store.page_cards(
             limit=limit,
-            after=after,
+            after=after_position,
             include_deleted=True,
             notebook_id=notebook_id,
         )
 
     cards_by_id = _resolve_with_neighbours(cards, graph, cards_store)
     responses = [card_response_builder(card, graph, cards_by_id) for card in cards]
-    return responses, _page_cursor(cards, limit)
+    return responses, _page_cursor(cards, limit, request_scope)
 
 
 def _resolve_card_or_raise(cards_store: Any, word: str, notebook_id: str | None) -> VocabCard:
