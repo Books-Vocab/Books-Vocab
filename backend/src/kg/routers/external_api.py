@@ -6,6 +6,7 @@ import asyncio
 import sqlite3
 import threading
 import uuid
+from collections import OrderedDict
 from copy import copy
 from typing import Annotated, Any
 
@@ -92,6 +93,31 @@ _OPERATIONS: dict[str, dict[str, str]] = {}
 _OPERATIONS_LOCK = threading.Lock()
 _MAX_REMEMBERED_OPERATIONS = 10_000
 _BATCH_WRITE_MAX_ATTEMPTS = 3
+_CARD_WRITE_LOCKS: OrderedDict[str, threading.Lock] = OrderedDict()
+_CARD_WRITE_LOCKS_MUTEX = threading.Lock()
+_MAX_CARD_WRITE_LOCKS = 500
+
+
+def _external_card_write_lock(user: UserRecord) -> threading.Lock:
+    """Return the bounded per-user lock for single-card creation."""
+    key = str(user["dir"].resolve())
+    with _CARD_WRITE_LOCKS_MUTEX:
+        lock = _CARD_WRITE_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            while len(_CARD_WRITE_LOCKS) >= _MAX_CARD_WRITE_LOCKS:
+                for candidate_key, candidate_lock in _CARD_WRITE_LOCKS.items():
+                    if not candidate_lock.locked():
+                        del _CARD_WRITE_LOCKS[candidate_key]
+                        break
+                else:
+                    # Do not evict a held/queued lock and risk creating a second
+                    # lock for the same user; a short-lived cap overrun is safe.
+                    break
+            _CARD_WRITE_LOCKS[key] = lock
+        else:
+            _CARD_WRITE_LOCKS.move_to_end(key)
+        return lock
 
 
 def _is_retryable_sqlite_lock(exc: OperationalError) -> bool:
@@ -219,6 +245,7 @@ def _ingest_card(
     req: ExternalCardCreateRequest,
     *,
     cards: Any | None = None,
+    write_lock: threading.Lock | None = None,
 ) -> tuple[CardResponse, bool]:
     _validate_notebook(user, req.notebookId)
     content = _clean_content(req.content)
@@ -234,16 +261,32 @@ def _ingest_card(
     if req.context and not examples:
         examples = [req.context]
     source = req.source.model_dump_json() if req.source is not None else None
-    card = cards.add(
-        content=content,
-        meaning=req.meaning.strip(),
-        pos=_normalize_pos(req.pos),
-        examples=examples,
-        collocations=list(req.collocations),
-        mode=req.mode,
-        notebook_id=req.notebookId,
-        source=source,
-    )
+    if write_lock is None:
+        card = cards.add(
+            content=content,
+            meaning=req.meaning.strip(),
+            pos=_normalize_pos(req.pos),
+            examples=examples,
+            collocations=list(req.collocations),
+            mode=req.mode,
+            notebook_id=req.notebookId,
+            source=source,
+        )
+    else:
+        with write_lock:
+            existing = cards.find_by_content(content, notebook_id=req.notebookId)
+            if existing is not None:
+                return _render_card(user, existing, req.notebookId, cards=cards), False
+            card = cards.add(
+                content=content,
+                meaning=req.meaning.strip(),
+                pos=_normalize_pos(req.pos),
+                examples=examples,
+                collocations=list(req.collocations),
+                mode=req.mode,
+                notebook_id=req.notebookId,
+                source=source,
+            )
     if req.note is not None:
         card = cards.update(card.id, note=req.note) or card
     return _render_card(user, card, req.notebookId, cards=cards), True
@@ -418,7 +461,7 @@ async def ingest_card_batch(req: ExternalCardBatchRequest, response: Response, u
 async def ingest_card(req: ExternalCardCreateRequest, response: Response, user: ExternalUser):
     _require_pro(user)
     await _admit_external(response, user, write_limiter)
-    card, created = _ingest_card(user, req)
+    card, created = _ingest_card(user, req, write_lock=_external_card_write_lock(user))
     return ExternalCardIngestResponse(card=card, created=created, clientId=req.clientId)
 
 
