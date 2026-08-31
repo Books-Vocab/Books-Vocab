@@ -241,7 +241,7 @@ grep -q '"action":"enforce-cache-budget"' "$state" && ok "cache budget enforceme
   && ! -d "$root/ios/build/BooksAndVocab.xcarchive" && ! -d "$root/ios/build/export" ]] \
   && ok "stale rebuildable caches reclaimed" || bad "stale rebuildable caches remain"
 
-echo "── headroom exhausted: repair stale cache and preserve reader window ──"
+echo "── headroom exhausted: reader window yields to writer budget ──"
 root="$TMP/headroom-repair"; cache="$root/.cache/ios-test-derived-data"; state="$root/state.json"
 mkdir -p "$cache/old/Build" "$cache/warm/Build"
 printf x > "$cache/old/Build/blob"; printf x > "$cache/warm/Build/blob"
@@ -251,18 +251,39 @@ KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
   KG_DISK_GUARD_CACHE_BUDGET_GIB=1 KG_DISK_GUARD_CACHE_HEADROOM_GIB=1 \
   KG_DISK_GUARD_CACHE_KEEP=3 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0 \
   KG_DISK_GUARD_CACHE_READER_WINDOW_HOURS=1 "$SCRIPT" >/dev/null 2>&1
-[[ ! -d "$cache/old" && -d "$cache/warm" ]] \
-  && ok "headroom repair evicts stale cache only" || bad "headroom repair changed reader-window cache"
-grep -q '"reason":"cache-budget-headroom-unreleased"' "$state" \
-  && ok "unreleased headroom is structured" || bad "unreleased headroom reason missing"
+[[ ! -d "$cache/old" && ! -d "$cache/warm" ]] \
+  && ok "headroom repair releases reader-window cache" || bad "headroom repair left writer headroom short"
+grep -q '"cache_repair_status":"repaired"' "$state" \
+  && ok "headroom repair converges to writer budget" || bad "headroom repair did not converge"
 grep -q '"action":"enforce-cache-headroom"' "$state" \
   && ok "headroom repair action recorded" || bad "headroom repair action missing"
 grep -q '"cache_budget_overflow_kb":0' "$state" \
   && ok "headroom case is below hard budget" || bad "headroom case misclassified as hard overflow"
 grep -q '"cache_headroom_overflow_kb":[1-9]' "$state" \
   && ok "headroom overflow evidence recorded" || bad "headroom overflow evidence missing"
-grep -q '"cache_repair_status":"insufficient"' "$state" \
-  && ok "reader-window shortfall is explicit" || bad "reader-window shortfall missing"
+grep -q '"cache_repair_remaining_kb":0' "$state" \
+  && ok "headroom repair has no remaining shortfall" || bad "headroom shortfall remains"
+
+echo "── headroom exhausted: recent reader-window keys yield to writer budget ──"
+root="$TMP/headroom-recent-repair"; cache="$root/.cache/ios-test-derived-data"; state="$root/state.json"
+mkdir -p "$cache"
+for key in oldest middle newest; do mkdir -p "$cache/$key/Build"; printf x > "$cache/$key/Build/blob"; done
+touch -m -t "$(timestamp_minutes_ago 50)" "$cache/oldest"
+touch -m -t "$(timestamp_minutes_ago 40)" "$cache/middle"
+touch -m -t "$(timestamp_minutes_ago 30)" "$cache/newest"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  KG_DISK_GUARD_CACHE_BUDGET_GIB=1 KG_DISK_GUARD_CACHE_HEADROOM_GIB=1 \
+  KG_DISK_GUARD_CACHE_KEEP=3 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0 \
+  KG_DISK_GUARD_CACHE_READER_WINDOW_HOURS=1 "$SCRIPT" >/dev/null 2>&1
+key_count="$(find "$cache" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
+[[ "$key_count" -eq 0 ]] \
+  && ok "recent reader-window keys yield to writer headroom repair" \
+  || bad "recent reader-window keys still block repair: $key_count"
+grep -q '"cache_repair_status":"repaired"' "$state" \
+  && ok "recent-key headroom repair is recorded" || bad "recent-key repair status missing"
+grep -q '"cache_repair_remaining_kb":0' "$state" \
+  && ok "recent-key headroom repair has no shortfall" || bad "recent-key repair shortfall"
 
 echo "── headroom exhausted: stale cache repair completes ──"
 root="$TMP/headroom-repaired"; cache="$root/.cache/ios-test-derived-data"; state="$root/state.json"
@@ -295,6 +316,20 @@ grep -q '"cache_repair_status":"repaired"' "$state" \
   && ok "build cache repair is recorded" || bad "build cache repair missing"
 grep -q '"cache_repair_remaining_kb":0' "$state" \
   && ok "build cache repair has no shortfall" || bad "build cache repair shortfall"
+
+echo "── aggregate budget: oldest-first eviction stops at target ──"
+root="$TMP/evict-order"; cache="$root/.cache/ios-test-derived-data"
+mkdir -p "$cache/old/Build" "$cache/new/Build"
+touch -m -t 202001010000.00 "$cache/old"
+touch -m -t 202001020000.00 "$cache/new"
+source "$ROOT/ops/lib/ios_cache_evict.sh"
+kg_ios_disk_budget_cache_kb() { printf '5'; }
+du() { printf '2\t%s\n' "${!#}"; }
+KG_IOS_CACHE_KEEP=0 KG_IOS_CACHE_EVICT_MIN_AGE_HOURS=0 KG_IOS_DISK_CACHE_BUDGET_KB=3 \
+  kg_ios_cache_evict "$cache" "" >/dev/null 2>&1
+unset -f du kg_ios_disk_budget_cache_kb
+[[ ! -d "$cache/old" && -d "$cache/new" ]] \
+  && ok "budget repair evicts the oldest key first" || bad "budget repair did not preserve newest key"
 
 echo "── headroom healthy: no-overflow is a no-op ──"
 root="$TMP/headroom-noop"; cache="$root/.cache/ios-test-derived-data"; state="$root/state.json"
