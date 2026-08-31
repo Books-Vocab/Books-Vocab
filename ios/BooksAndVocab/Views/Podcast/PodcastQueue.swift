@@ -19,6 +19,7 @@ enum PodcastQueue {
         let sorted = episodes.sorted { $0.episodeNumber < $1.episodeNumber }
         guard let idx = sorted.firstIndex(where: { $0.remoteId == current.remoteId }) else { return nil }
         for ep in sorted[sorted.index(after: idx)...] {
+            guard ep.episodeNumber > current.episodeNumber else { continue }
             guard ep.audioAvailable else { continue }
             return PodcastAccess.canPlay(
                 tier: tier,

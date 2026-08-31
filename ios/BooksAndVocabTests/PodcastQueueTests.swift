@@ -6,11 +6,34 @@ import Testing
 @Suite("PodcastQueue")
 struct PodcastQueueTests {
     /// 建測試 episode（ModelContext 外建構，僅供純函式測試）。
-    private func ep(_ n: Int, audio: Bool = true, preview: Bool = false) -> PodcastEpisode {
-        let e = PodcastEpisode(remoteId: "s_ep_\(n)", episodeNumber: n, title: "Ep \(n)", durationSec: 600)
+    private func ep(
+        _ n: Int,
+        audio: Bool = true,
+        preview: Bool = false,
+        remoteId: String? = nil
+    ) -> PodcastEpisode {
+        let e = PodcastEpisode(
+            remoteId: remoteId ?? "s_ep_\(n)",
+            episodeNumber: n,
+            title: "Ep \(n)",
+            durationSec: 600
+        )
         e.audioAvailable = audio
         e.previewAvailable = preview
         return e
+    }
+
+    @Test func duplicateEpisodeNumberIsNotNextEpisode() {
+        let current = ep(2, remoteId: "s_ep_2_current")
+        let duplicate = ep(2, remoteId: "s_ep_2_duplicate")
+
+        let next = PodcastQueue.nextPlayable(
+            in: [current, duplicate],
+            after: current,
+            tier: .pro
+        )
+
+        #expect(next == nil)
     }
 
     @Test func proAdvancesToImmediateNext() {
