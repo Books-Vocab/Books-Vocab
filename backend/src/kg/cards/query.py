@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from datetime import UTC, datetime
 
-from sqlalchemy import func, text, tuple_
+from sqlalchemy import BigInteger, String, case, cast, func, text, tuple_
 from sqlmodel import Session, select
 
 from ..text_utils import normalize_nfc_lower
@@ -26,6 +26,40 @@ def _utc_instant(value: datetime) -> datetime:
 def _parse_stored_timestamp(value: str) -> datetime:
     """Parse SQLite's ISO timestamp text without discarding its offset."""
     return _utc_instant(datetime.fromisoformat(value.replace(" ", "T")))
+
+
+def _epoch_microseconds(value: datetime) -> int:
+    """Return an exact UTC epoch key for a cursor timestamp."""
+    instant = _utc_instant(value)
+    epoch = datetime(1970, 1, 1, tzinfo=UTC)
+    delta = instant - epoch
+    return (delta.days * 86_400 + delta.seconds) * 1_000_000 + delta.microseconds
+
+
+def _is_ascii_digit(value, position: int):
+    """Build a SQLite expression that checks one timestamp character."""
+    return func.substr(value, position, 1).op("GLOB")("[0-9]")
+
+
+def _fractional_microseconds(value):
+    """Build an exact six-digit fractional-second expression for SQLite text."""
+    return case(
+        (func.substr(value, 20, 1) != ".", 0),
+        (~_is_ascii_digit(value, 21), 0),
+        (~_is_ascii_digit(value, 22), cast(func.substr(value, 21, 1), BigInteger) * 100_000),
+        (~_is_ascii_digit(value, 23), cast(func.substr(value, 21, 2), BigInteger) * 10_000),
+        (~_is_ascii_digit(value, 24), cast(func.substr(value, 21, 3), BigInteger) * 1_000),
+        (~_is_ascii_digit(value, 25), cast(func.substr(value, 21, 4), BigInteger) * 100),
+        (~_is_ascii_digit(value, 26), cast(func.substr(value, 21, 5), BigInteger) * 10),
+        else_=cast(func.substr(value, 21, 6), BigInteger),
+    )
+
+
+def _stored_timestamp_key(column):
+    """Build a UTC-microsecond key from an ISO timestamp stored in SQLite."""
+    value = cast(column, String)
+    seconds = cast(func.strftime("%s", value), BigInteger)
+    return seconds * 1_000_000 + _fractional_microseconds(value)
 
 
 class CardQueryMixin:
@@ -100,19 +134,18 @@ class CardQueryMixin:
         notebook_id: str | None,
     ) -> list[Card]:
         """Return at most ``limit`` cards ordered by the composite cursor
-        ``(updated_at, id)`` using a row-value comparison.
+        ``(updated_at, id)`` using a UTC-normalized row-value comparison.
 
         Bounded by ``.limit`` — does NOT materialise the whole table or build a
         dict. ``after`` is the ``(updated_at, id)`` of the last card of the
         previous page; ``None`` starts from the first page. Paging is gap-free
         and duplicate-free even when many cards share an ``updated_at`` because
-        ``id`` breaks ties. Backed by ``ix_card_updated_at_id``.
+        ``id`` breaks ties. SQLite's text timestamps are converted to exact
+        UTC-microsecond keys so legacy offset-bearing rows cannot corrupt the
+        cursor boundary.
 
-        Correctness relies on ``updated_at`` being stored as fixed-width UTC
-        text (SQLite drops tz offsets): all card writes stamp
-        ``datetime.now(UTC)`` server-side, so lexicographic text order equals
-        chronological order. A non-UTC / variable-width write would corrupt the
-        cursor ordering.
+        The normalized expression preserves the existing wire cursor and handles
+        both canonical UTC rows and legacy ISO timestamps with offsets.
         """
         with Session(self.engine) as session:
             statement = select(Card)
@@ -120,9 +153,12 @@ class CardQueryMixin:
                 statement = statement.where(Card.is_deleted.is_(False))
             if notebook_id is not None:
                 statement = statement.where(Card.notebook_id == notebook_id)
+            updated_at_key = _stored_timestamp_key(Card.updated_at)
             if after is not None:
-                statement = statement.where(tuple_(Card.updated_at, Card.id) > tuple_(after[0], after[1]))
-            statement = statement.order_by(Card.updated_at, Card.id).limit(limit)
+                statement = statement.where(
+                    tuple_(updated_at_key, Card.id) > tuple_(_epoch_microseconds(after[0]), after[1])
+                )
+            statement = statement.order_by(updated_at_key, Card.id).limit(limit)
             return list(session.exec(statement).all())
 
     def get_modified_since(
