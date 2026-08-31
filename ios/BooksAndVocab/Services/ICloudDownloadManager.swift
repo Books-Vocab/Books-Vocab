@@ -32,13 +32,13 @@ enum ICloudDownloadStateMapping {
         isTriggered: Bool,
         previous: ICloudFileState?
     ) -> ICloudFileState {
-        if status == NSMetadataUbiquitousItemDownloadingStatusCurrent
-            || status == NSMetadataUbiquitousItemDownloadingStatusDownloaded {
-            return .current
-        }
         if hasError {
             // 中途下載錯誤 → terminal failed，允許使用者重試。
             return .failed
+        }
+        if status == NSMetadataUbiquitousItemDownloadingStatusCurrent
+            || status == NSMetadataUbiquitousItemDownloadingStatusDownloaded {
+            return .current
         }
         if let p = percent, p > 0, p < 100 {
             return .downloading(p / 100.0)
