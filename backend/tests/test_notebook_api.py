@@ -294,6 +294,27 @@ def test_patch_notebook_name(isolated_api):
     assert r.json()["name"] == "New Name"
 
 
+def test_patch_notebook_refuses_staged_notebook_and_preserves_metadata(isolated_api):
+    from kg.notebook import NotebookStore
+
+    store = NotebookStore(isolated_api.data_dir / "users" / isolated_api.user_id / "notebooks.db")
+    staged = store.create("Staged metadata", is_staged=True)
+    try:
+        response = isolated_api.client.patch(
+            f"/api/notebooks/{staged.id}",
+            json={"name": "Should remain hidden"},
+            headers=isolated_api.headers,
+        )
+
+        assert response.status_code == 404, response.text
+        current = store.get(staged.id)
+        assert current is not None
+        assert current.name == "Staged metadata"
+        assert current.is_staged is True
+    finally:
+        store.close()
+
+
 def test_patch_notebook_color(isolated_api):
     client = isolated_api.client
     h = isolated_api.headers
