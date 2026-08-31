@@ -155,7 +155,7 @@ def list_vocab_cards(
     when a full page was returned (more rows may remain). Cards are returned in
     ascending ``(updated_at, id)`` order so the cursor advances monotonically.
     """
-    if since:
+    if since is not None:
         parsed_since = _parse_since_timestamp(since)
         if parsed_since is None:
             raise BadRequestError("Invalid since timestamp format. Expected ISO 8601.")

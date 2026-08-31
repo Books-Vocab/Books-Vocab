@@ -92,8 +92,8 @@ class TestIncrementalSync:
         assert "new_word" in words
         assert "old_word" not in words
 
-    def test_full_sync_returns_all_active_cards(self, tmp_path):
-        """Full sync (since=None) returns all non-deleted cards."""
+    def test_full_sync_returns_all_cards_including_tombstones(self, tmp_path):
+        """Full sync (since=None) returns active cards and tombstones."""
         store = _make_store(tmp_path)
         store.add("apple", "蘋果")
         store.add("banana", "香蕉")
@@ -112,7 +112,8 @@ class TestIncrementalSync:
         )
 
         words = {r.content for r in results}
-        assert words == {"apple", "banana"}
+        assert words == {"apple", "banana", "cherry"}
+        assert next(r for r in results if r.content == "cherry").isDeleted is True
 
     def test_invalid_since_raises_400(self, tmp_path):
         """Invalid since timestamp should raise HTTP 400."""
@@ -129,6 +130,43 @@ class TestIncrementalSync:
                 card_response_builder=self._build_response,
             )
         assert exc_info.value.status_code == 400
+
+    @pytest.mark.parametrize("since", ["", "   "])
+    def test_empty_since_raises_400(self, tmp_path, since):
+        """Explicit empty since values must not silently restart full sync."""
+        store = _make_store(tmp_path)
+        from unittest.mock import MagicMock
+
+        from kg.exceptions import BadRequestError
+
+        with pytest.raises(BadRequestError) as exc_info:
+            list_vocab_cards(
+                since=since,
+                cards_store=store,
+                graph=MagicMock(),
+                card_response_builder=self._build_response,
+            )
+        assert exc_info.value.status_code == 400
+
+    def test_numeric_since_remains_incremental(self, tmp_path):
+        """Numeric timestamp strings must continue using the incremental path."""
+        store = _make_store(tmp_path)
+        store.add("numeric_since", "數字游標")
+        from unittest.mock import MagicMock
+
+        store.get_modified_since = MagicMock(wraps=store.get_modified_since)
+        store.page_cards = MagicMock(wraps=store.page_cards)
+
+        results, _cursor = list_vocab_cards(
+            since="0",
+            cards_store=store,
+            graph=MagicMock(),
+            card_response_builder=self._build_response,
+        )
+
+        assert {r.content for r in results} == {"numeric_since"}
+        store.get_modified_since.assert_called_once()
+        store.page_cards.assert_not_called()
 
 
 # ============================================================================
