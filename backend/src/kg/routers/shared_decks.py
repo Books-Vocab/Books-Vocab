@@ -84,10 +84,16 @@ def _clamp(value: int, lo: int, hi: int) -> int:
     return max(lo, min(hi, value))
 
 
-def _deck_after(payload: dict, sort: str) -> tuple[object, str]:
+def _deck_after(payload: dict, sort: str, filters: dict[str, object]) -> tuple[object, str]:
     """Rebuild the keyset boundary from a decoded list cursor, sort-typed."""
     if payload.get("s") != sort:
         raise BadRequestError("Cursor sort mismatch")
+    encoded_filters = payload.get("f")
+    if encoded_filters is None:
+        if any(value is not None for value in filters.values()):
+            raise BadRequestError("Cursor filter mismatch")
+    elif encoded_filters != filters:
+        raise BadRequestError("Cursor filter mismatch")
     raw, deck_id = payload.get("v"), payload.get("id")
     if not isinstance(deck_id, str) or raw is None:
         raise BadRequestError("Invalid cursor")
@@ -99,9 +105,14 @@ def _deck_after(payload: dict, sort: str) -> tuple[object, str]:
     return str(raw), deck_id
 
 
-def _deck_cursor(deck: SharedDeck, sort: str, secret: str) -> str | None:
+def _deck_cursor(
+    deck: SharedDeck,
+    sort: str,
+    secret: str,
+    filters: dict[str, object],
+) -> str | None:
     value = deck.updated_at.isoformat() if sort == "recency" else deck.title_nfc_lower
-    return encode_cursor({"s": sort, "v": value, "id": deck.id}, secret)
+    return encode_cursor({"s": sort, "f": filters, "v": value, "id": deck.id}, secret)
 
 
 @router.get("/api/decks", response_model=DeckListResponse)
@@ -119,9 +130,15 @@ def list_decks(
         raise BadRequestError(f"sort must be one of {sorted(_SORTS)}")
     settings = request.app.state.kg_settings
     store = _shared_deck_store(settings)
+    filters = {
+        "q": q,
+        "category": category,
+        "languagePair": languagePair,
+        "official": official,
+    }
     after = None
     if cursor:
-        after = _deck_after(decode_cursor(cursor, settings.jwt_secret), sort)
+        after = _deck_after(decode_cursor(cursor, settings.jwt_secret), sort, filters)
     limit = _clamp(limit, 1, _MAX_LIMIT)
     rows = store.browse(
         limit=limit + 1,
@@ -134,7 +151,7 @@ def list_decks(
     )
     has_more = len(rows) > limit
     rows = rows[:limit]
-    next_cursor = _deck_cursor(rows[-1], sort, settings.jwt_secret) if has_more and rows else None
+    next_cursor = _deck_cursor(rows[-1], sort, settings.jwt_secret, filters) if has_more and rows else None
     return DeckListResponse(decks=[_summary(d) for d in rows], nextCursor=next_cursor)
 
 

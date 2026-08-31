@@ -224,3 +224,32 @@ def test_list_cursor_pages_decks_without_overlap(api):
     b2 = r2.json()
     seen = {d["deckId"] for d in b1["decks"]} | {d["deckId"] for d in b2["decks"]}
     assert len(seen) == 4
+
+
+def test_list_cursor_is_bound_to_filters(api):
+    base = datetime.now(UTC)
+    _insert_deck(api.store, "official_new", "Official New", updated_at=base)
+    _insert_deck(
+        api.store,
+        "official_old",
+        "Official Old",
+        updated_at=base - timedelta(minutes=1),
+    )
+    _insert_deck(
+        api.store,
+        "community_new",
+        "Community New",
+        source="community",
+        visibility="public",
+        updated_at=base + timedelta(minutes=1),
+    )
+
+    first = api.client.get("/api/decks?official=true&limit=1")
+    assert first.status_code == 200, first.text
+    cursor = first.json()["nextCursor"]
+    assert cursor
+
+    # A cursor from the official-only result set cannot safely page a different
+    # result set: doing so would silently skip the newer community deck.
+    changed_filter = api.client.get(f"/api/decks?cursor={cursor}")
+    assert changed_filter.status_code == 400, changed_filter.text
