@@ -110,6 +110,49 @@ def test_unique_ingested_at_keeps_ingestion_order_ahead_of_event_id(tmp_path):
     ]
 
 
+def test_full_pull_orders_legacy_offset_timestamps_by_utc_instant(tmp_path):
+    """Legacy offset-bearing watermarks must be ordered by their UTC instant."""
+    store = ReviewEventStore(tmp_path / "review_events.db")
+    push_review_events([_event("early"), _event("late")], event_store=store)
+
+    # 09:00 +02:00 is 07:00Z; 04:00 -04:00 is 08:00Z. SQLite's textual
+    # ordering would incorrectly put the later event first.
+    with sqlite3.connect(store.path) as conn:
+        conn.executemany(
+            "UPDATE reviewevent SET ingested_at = ? WHERE event_id = ?",
+            [
+                ("2026-06-01 09:00:00.000000+02:00", "early"),
+                ("2026-06-01 04:00:00.000000-04:00", "late"),
+            ],
+        )
+        conn.commit()
+
+    pulled, _cursor = pull_review_events(since=None, event_store=store)
+
+    assert [event.event_id for event in pulled] == ["early", "late"]
+
+
+def test_full_pull_cursor_normalizes_mixed_legacy_timestamp_forms(tmp_path):
+    """A full pull must compare naive and offset-aware legacy timestamps safely."""
+    store = ReviewEventStore(tmp_path / "review_events.db")
+    push_review_events([_event("offset"), _event("naive")], event_store=store)
+
+    with sqlite3.connect(store.path) as conn:
+        conn.executemany(
+            "UPDATE reviewevent SET ingested_at = ? WHERE event_id = ?",
+            [
+                ("2026-06-01 04:00:00.000000-04:00", "offset"),
+                ("2026-06-01 10:00:00.000000", "naive"),
+            ],
+        )
+        conn.commit()
+
+    pulled, cursor = pull_review_events(since=None, event_store=store)
+
+    assert [event.event_id for event in pulled] == ["offset", "naive"]
+    assert cursor == "2026-06-01T10:00:00Z"
+
+
 def test_duplicate_event_id_is_skipped(tmp_path):
     store = ReviewEventStore(tmp_path / "review_events.db")
     first = _event("evt-1", word="first")
