@@ -12,6 +12,7 @@ which fails loud on expiry.
 
 Write paths (copy/publish/rate/report) arrive in later phases.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -123,8 +124,13 @@ def list_decks(
         after = _deck_after(decode_cursor(cursor, settings.jwt_secret), sort)
     limit = _clamp(limit, 1, _MAX_LIMIT)
     rows = store.browse(
-        limit=limit + 1, sort=sort, after=after, q=q,
-        category=category, language_pair=languagePair, official=official,
+        limit=limit + 1,
+        sort=sort,
+        after=after,
+        q=q,
+        category=category,
+        language_pair=languagePair,
+        official=official,
     )
     has_more = len(rows) > limit
     rows = rows[:limit]
@@ -138,10 +144,8 @@ def get_deck(request: Request, deck_id: str):
     store = _shared_deck_store(settings)
     deck = store.get(deck_id)
     if deck is None:
-        raise NotFoundError("Deck not found")
-    cards = store.page_cards(
-        deck.id, version=deck.current_version, limit=_SAMPLE_CARDS + 1
-    )
+        raise NotFoundError("Deck")
+    cards = store.page_cards(deck.id, version=deck.current_version, limit=_SAMPLE_CARDS + 1)
     has_more = len(cards) > _SAMPLE_CARDS
     cards = cards[:_SAMPLE_CARDS]
     cards_cursor = (
@@ -149,7 +153,8 @@ def get_deck(request: Request, deck_id: str):
             {"k": "cards", "d": deck.id, "v": deck.current_version, "id": cards[-1].id},
             settings.jwt_secret,
         )
-        if has_more and cards else None
+        if has_more and cards
+        else None
     )
     return DeckDetailResponse(
         **_summary(deck).model_dump(),
@@ -169,7 +174,7 @@ def get_deck_cards(
     store = _shared_deck_store(settings)
     deck = store.get(deck_id)
     if deck is None:
-        raise NotFoundError("Deck not found")
+        raise NotFoundError("Deck")
     after = None
     if cursor:
         payload = decode_cursor(cursor, settings.jwt_secret)
@@ -183,9 +188,7 @@ def get_deck_cards(
         if not isinstance(after, str):
             raise BadRequestError("Invalid cursor")
     limit = _clamp(limit, 1, _MAX_CARD_LIMIT)
-    cards = store.page_cards(
-        deck.id, version=deck.current_version, limit=limit + 1, after=after
-    )
+    cards = store.page_cards(deck.id, version=deck.current_version, limit=limit + 1, after=after)
     has_more = len(cards) > limit
     cards = cards[:limit]
     next_cursor = (
@@ -193,7 +196,8 @@ def get_deck_cards(
             {"k": "cards", "d": deck.id, "v": deck.current_version, "id": cards[-1].id},
             settings.jwt_secret,
         )
-        if has_more and cards else None
+        if has_more and cards
+        else None
     )
     return DeckCardsResponse(cards=[_card(c) for c in cards], nextCursor=next_cursor)
 
@@ -206,9 +210,7 @@ def copy_deck(request: Request, deck_id: str, req: DeckCopyRequest, user: Curren
     :func:`copy_shared_deck`; this handler only wires stores + validates input."""
     key = (req.idempotencyKey or "").strip()
     if not key or len(key) > _MAX_IDEMPOTENCY_KEY:
-        raise BadRequestError(
-            f"idempotencyKey required (1-{_MAX_IDEMPOTENCY_KEY} chars)"
-        )
+        raise BadRequestError(f"idempotencyKey required (1-{_MAX_IDEMPOTENCY_KEY} chars)")
     settings = request.app.state.kg_settings
     outcome = copy_shared_deck(
         shared_store=_shared_deck_store(settings),
