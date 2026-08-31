@@ -167,7 +167,7 @@ GitHub-hosted macOS runner 每次都是新的 VM；本機長存的 DerivedData �
 
 ## Per-lane 磁碟歸戶與閉環（2026-08-28）
 
-共享 cache 預算不能回答「是哪一條 lane 佔用空間」。`ops/disk_usage.py` 每次產生一份原子替換的 `kg.disk.lane-usage.v1` 報告，列出 registry 中的 live／terminal lane、Git 實際 worktree、canonical main，以及每個路徑的 `logical_bytes`、`allocated_bytes`、files、ownership、physical／lifecycle state 與 aggregate accounting；terminal residue 仍以 terminal identity 可追蹤，但不會被冒充成 active，也不會由 guard 自動刪除。歷史 registry path 缺失且沒有 physical bytes 時只保留 `missing-registered-lane` warning，不把零 bytes 當成未歸因空間或硬 quota blocker。
+共享 cache 預算不能回答「是哪一條 lane 佔用空間」。`ops/disk_usage.py` 每次產生一份原子替換的 `kg.disk.lane-usage.v1` 報告，列出 registry 中的 live／terminal lane、Git 實際 worktree、canonical main，以及每個路徑的 `logical_bytes`、`allocated_bytes`、files、ownership、physical／lifecycle state 與 aggregate accounting；terminal residue 仍以 terminal identity 可追蹤，但不會被冒充成 active，也不會由 guard 自動刪除。`accounting.lane_accounting` 對每條 product lane 都保留 deterministic row；physical path 缺失或尚未完成檢查時，row 會帶 `exists=false` 或明確的 `measurement_error`，不會因只投影已存在的 physical path 而靜默漏掉 registered active lane。只有 `physical_lane_*` totals 與 `accounted_in_aggregate=true` 的 row 進入 bytes aggregate。歷史 registry path 缺失且沒有 physical bytes 時只保留 `missing-registered-lane` warning，不把零 bytes 當成未歸因空間或硬 quota blocker。
 
 已知但不屬於 delivery lane 的 supervision checkout，只能由 caller 重複傳入 exact path：
 

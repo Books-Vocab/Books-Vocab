@@ -502,6 +502,8 @@ KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" KG_DISK_GUARD_REGIS
   KG_DISK_GUARD_ACTIVE_BUILD=0 "$SCRIPT" >/dev/null 2>&1
 grep -q 'kg.disk.lane-usage.v1' "$lane_state" && ok "lane usage report is written" || bad "lane usage report missing"
 grep -q 'missing-registered-lane' "$lane_state" && ok "missing active lane is visible" || bad "missing active lane not visible"
+grep -q '"exists": false' "$lane_state" && ok "missing active lane has explicit accounting row" || bad "missing active lane accounting row missing"
+grep -q '"measurement_error": "path-missing"' "$lane_state" && ok "missing active lane error is explicit" || bad "missing active lane error missing"
 grep -q '"verdict": "warning"' "$lane_state" && ok "missing lane is warning-only" || bad "missing lane still blocks"
 grep -q '"lane_usage_verdict":"warning"' "$root/guard.json" && ok "guard state carries attribution warning" || bad "guard state missed attribution warning"
 grep -q '"lane_usage_rc":0' "$root/guard.json" && ok "warning keeps guard exit compatible" || bad "warning changed guard exit"

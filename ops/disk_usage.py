@@ -955,11 +955,13 @@ def build_report(
         verdict = "block"
 
     reasons = sorted({*blocking_reasons, *warning_reasons})
+    product_lanes = [item for item in lanes if item["lane_kind"] == "lane"]
     lane_accounting = [
         {
             "lane_key": item["lane_key"],
             "branch": item["branch"],
             "path": item["path"],
+            "exists": item["exists"],
             "ownership": item["ownership"],
             "registry_status": item["registry_status"],
             "lane_state": item["lane_state"],
@@ -967,12 +969,14 @@ def build_report(
             "logical_bytes": item["logical_bytes"],
             "allocated_bytes": item["allocated_bytes"],
             "files": item["files"],
+            "measurement_complete": item["measurement_complete"],
+            "measurement_error": item.get("measurement_error"),
+            "measurement_errors": item.get("measurement_errors", []),
             "accounted_in_aggregate": item["accounted_in_aggregate"],
         }
-        for item in physical_lanes
+        for item in product_lanes
     ]
 
-    product_lanes = [item for item in lanes if item["lane_kind"] == "lane"]
     classification_items: dict[str, list[dict[str, Any]]] = {
         "active": [],
         "active_but_missing": [],
