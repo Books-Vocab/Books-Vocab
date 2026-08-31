@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from kg.routers.podcast_browse import build_podcast_browse_router
+from kg.routers.podcast_browse import (
+    _filter_inline_subtitles,
+    build_podcast_browse_router,
+)
 
 
 def _route_surface(router: APIRouter) -> set[tuple[str, tuple[str, ...]]]:
-    return {
-        (route.path, tuple(sorted(route.methods or ())))
-        for route in router.routes
-    }
+    return {(route.path, tuple(sorted(route.methods or ()))) for route in router.routes}
 
 
 def test_build_podcast_browse_router_returns_named_surface():
@@ -28,3 +28,20 @@ def test_build_podcast_browse_router_returns_named_surface():
         ("/api/podcasts/{series_id}", ("GET",)),
         ("/api/podcasts/{series_id}/cover", ("GET",)),
     }
+
+
+def test_free_tier_hides_inline_subtitle_when_preview_is_unavailable():
+    detail = {
+        "id": "series_a",
+        "episodes": [
+            {
+                "episodeNumber": 1,
+                "previewAvailable": False,
+                "subtitleContent": "full transcript must stay hidden",
+            }
+        ],
+    }
+
+    filtered = _filter_inline_subtitles(detail, "free")
+
+    assert "subtitleContent" not in filtered["episodes"][0]

@@ -41,6 +41,11 @@ class ServeStaticMedia(Protocol):
 def _allows_inline_subtitle(value: dict[str, Any], tier: str) -> bool:
     if tier != "free":
         return False
+    # A publisher-provided false flag is authoritative: episode 1 is not a
+    # usable free preview in that state, so its inline transcript must remain
+    # hidden as well.  Missing flags retain the legacy episode-1 behaviour.
+    if value.get("previewAvailable", True) is not True:
+        return False
     for key in ("episodeNumber", "epNum"):
         episode_number = value.get(key)
         if type(episode_number) is int and is_free_previewable_episode(episode_number):
