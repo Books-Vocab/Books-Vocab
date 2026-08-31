@@ -6,6 +6,7 @@ struct WordEditSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.appSkin) private var appSkin
     @Bindable var entry: VocabularyEntry
+    var onSaved: (() -> Void)? = nil
 
     @State private var draftTranslation = ""
     @State private var draftExplanation = ""
@@ -95,6 +96,7 @@ struct WordEditSheet: View {
 
         do {
             try modelContext.save()
+            onSaved?()
             dismiss()
         } catch {
             saveError = "儲存失敗，請再試一次".localized

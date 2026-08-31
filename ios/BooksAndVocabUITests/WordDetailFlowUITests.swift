@@ -11,6 +11,9 @@ final class WordDetailFlowUITests: UITestCase {
         static let bookTitle = "On Writing Well"
         static let chapterTitle = "· Chapter 3 · Simplicity"
         static let syncStatus = "已同步"
+        static let editedTranslation = "brief"
+        static let editedExplanation = "Updated detail from Word Detail edit."
+        static let pendingSyncStatus = "待同步"
     }
 
     override func setUpWithError() throws {
@@ -91,6 +94,110 @@ final class WordDetailFlowUITests: UITestCase {
             "Word Detail metadata must follow the forms section"
         )
         captureStep("word-detail-hierarchy", app: app)
+    }
+
+    @MainActor
+    func testWordDetailEditRefreshesPresentationAndKeepsPendingSync() throws {
+        let app = launchIsolatedApp(fixtures: [.vocabulary("wordDetail")])
+        let notebooks = AppPage(app: app).goToNotebooks()
+
+        guard notebooks.waitForNotebookCard(id: Fixture.notebookID, timeout: 10) else {
+            XCTFail("Word Detail fixture must materialize its notebook")
+            return
+        }
+        notebooks.notebookCard(id: Fixture.notebookID).tapWhenReady()
+        XCTAssertTrue(app.waitForNavigationToSettle())
+
+        let vocabulary = VocabularySearchPage(app: app)
+        guard vocabulary.searchField.waitUntilExists(timeout: 10) else {
+            XCTFail("Word Detail fixture must materialize the vocabulary search field")
+            return
+        }
+        vocabulary.search(Fixture.word)
+        guard vocabulary.waitForRowMaterialized(word: Fixture.word, timeout: 10) else {
+            XCTFail("Word Detail fixture must materialize the target word row")
+            return
+        }
+        vocabulary.row(word: Fixture.word).tapWhenReady()
+
+        guard vocabulary.detailHeroWord.waitUntilExists(timeout: 10) else {
+            XCTFail("Selecting the target word must open Word Detail")
+            return
+        }
+
+        guard element("wordDetail.document", in: app, named: "Word Detail edit document") != nil else {
+            return
+        }
+        guard let editButton = app.buttons
+            .matching(NSPredicate(format: "label == %@", "編輯"))
+            .exactlyOneElement(timeout: 10, named: "Word Detail edit button") else {
+            return
+        }
+        editButton.tapWhenReady()
+
+        let editors = app.textViews
+        let translationEditor = editors.element(boundBy: 0)
+        let explanationEditor = editors.element(boundBy: 1)
+        guard translationEditor.waitUntilExists(timeout: 10),
+              explanationEditor.waitUntilExists(timeout: 10) else {
+            XCTFail("Word Detail edit sheet must expose translation and explanation editors")
+            return
+        }
+        XCTAssertEqual(translationEditor.value as? String, Fixture.translation)
+        XCTAssertEqual(explanationEditor.value as? String, Fixture.explanation)
+
+        let editedTranslation = appendText(
+            " \(Fixture.editedTranslation)",
+            to: translationEditor
+        )
+        let editedExplanation = appendText(
+            " \(Fixture.editedExplanation)",
+            to: explanationEditor
+        )
+        XCTAssertTrue(editedTranslation.contains(Fixture.editedTranslation))
+        XCTAssertTrue(editedExplanation.contains(Fixture.editedExplanation))
+
+        guard let saveButton = app.buttons
+            .matching(NSPredicate(format: "label == %@", "儲存"))
+            .exactlyOneElement(timeout: 10, named: "Word Detail edit save button") else {
+            return
+        }
+        saveButton.tapWhenReady()
+        XCTAssertTrue(translationEditor.waitUntilGone(timeout: 10))
+
+        guard let refreshedDocument = element(
+            "wordDetail.document",
+            in: app,
+            named: "Word Detail refreshed document"
+        ), let metadata = element(
+            "wordDetail.metadata",
+            in: app,
+            named: "Word Detail refreshed metadata"
+        ) else {
+            return
+        }
+        assertExactlyOneText(
+            editedTranslation,
+            in: refreshedDocument,
+            named: "Word Detail refreshed translation"
+        )
+        assertExactlyOneText(
+            editedExplanation,
+            in: refreshedDocument,
+            named: "Word Detail refreshed explanation"
+        )
+        assertExactlyOneText(
+            Fixture.pendingSyncStatus,
+            in: metadata,
+            named: "Word Detail pending sync metadata"
+        )
+        captureStep("word-detail-edit-refresh", app: app)
+    }
+
+    private func appendText(_ text: String, to editor: XCUIElement) -> String {
+        editor.tapWhenReady()
+        editor.typeText(text)
+        return editor.value as? String ?? ""
     }
 
     private func element(
