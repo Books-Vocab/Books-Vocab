@@ -114,6 +114,10 @@ class LibraryStore:
 
     def create(self, req: BookCreateRequest) -> BookMetadataResponse:
         with Session(self.engine) as session:
+            # Serialize the idempotency check with the insert across workers.
+            # SQLite's default deferred transaction lets concurrent callers all
+            # observe the same missing client_book_id before either commits.
+            session.connection().exec_driver_sql("BEGIN IMMEDIATE")
             # Idempotency: if client_book_id exists, return existing
             if req.client_book_id:
                 existing = session.exec(
