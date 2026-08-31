@@ -45,6 +45,8 @@ struct ReaderPage {
     var lineHeightAdjustmentRow: XCUIElement {
         app.otherElements["reader.settings.lineHeight"]
     }
+    var lineHeightAdjustmentRowCount: Int { lineHeightRowQuery.count }
+    var lineHeightNativeSliderCount: Int { lineHeightNativeSliderQuery.count }
     var readingModePicker: XCUIElement { app.buttons["reader.settings.readingMode"] }
     var fontPicker: XCUIElement { app.buttons["reader.settings.font"] }
     var themePicker: XCUIElement { app.otherElements["reader.settings.theme"] }
@@ -121,6 +123,13 @@ struct ReaderPage {
 
     private var lineHeightRowQuery: XCUIElementQuery {
         app.descendants(matching: .any).matching(identifier: "reader.settings.lineHeight")
+    }
+
+    /// The shared adjustment row owns the line-height identifier. A native
+    /// slider using that identifier would be the obsolete control and must
+    /// stay absent from the Reader settings accessibility tree.
+    private var lineHeightNativeSliderQuery: XCUIElementQuery {
+        app.sliders.matching(identifier: "reader.settings.lineHeight")
     }
 
     private var themeOptionQuery: (String) -> XCUIElementQuery {
@@ -507,6 +516,34 @@ struct ReaderPage {
         exactlyOne(
             lineHeightRowQuery,
             named: "Reader line-height adjustment row",
+            timeout: timeout,
+            file: file,
+            line: line
+        )
+    }
+
+    func lineHeightDecrementButtonElement(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        exactlyOne(
+            lineHeightDecrementQuery,
+            named: "Reader line-height decrement button",
+            timeout: timeout,
+            file: file,
+            line: line
+        )
+    }
+
+    func lineHeightIncrementButtonElement(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        exactlyOne(
+            lineHeightIncrementQuery,
+            named: "Reader line-height increment button",
             timeout: timeout,
             file: file,
             line: line

@@ -90,17 +90,31 @@ final class ReaderSettingsUITests: UITestCase {
         }
         XCTAssertFalse(lineHeightRow.label.isEmpty)
         XCTAssertFalse(String(describing: lineHeightRow.value ?? "").isEmpty)
-        XCTAssertTrue(reader.lineHeightDecrementButton.exists)
-        XCTAssertTrue(reader.lineHeightIncrementButton.exists)
-        XCTAssertGreaterThanOrEqual(reader.lineHeightIncrementButton.frame.height, 44)
-        XCTAssertGreaterThanOrEqual(reader.lineHeightDecrementButton.frame.height, 44)
+        XCTAssertEqual(
+            reader.lineHeightAdjustmentRowCount,
+            1,
+            "Reader settings must expose exactly one line-height adjustment row"
+        )
+        XCTAssertEqual(
+            reader.lineHeightNativeSliderCount,
+            0,
+            "Reader settings must not expose the obsolete native line-height slider"
+        )
+        guard let lineHeightDecrementButton = reader.lineHeightDecrementButtonElement(timeout: 5),
+              let lineHeightIncrementButton = reader.lineHeightIncrementButtonElement(timeout: 5)
+        else {
+            XCTFail("Reader settings must expose exactly one decrement and increment button for line height")
+            return
+        }
+        XCTAssertGreaterThanOrEqual(lineHeightIncrementButton.frame.height, 44)
+        XCTAssertGreaterThanOrEqual(lineHeightDecrementButton.frame.height, 44)
 
         XCTAssertTrue(reader.adjustLineHeight(toValue: "1.0"))
-        XCTAssertFalse(reader.lineHeightDecrementButton.isEnabled, "line-height decrement must disable at 1.0")
-        XCTAssertTrue(reader.lineHeightIncrementButton.isEnabled, "line-height increment must remain enabled above 1.0")
+        XCTAssertFalse(lineHeightDecrementButton.isEnabled, "line-height decrement must disable at 1.0")
+        XCTAssertTrue(lineHeightIncrementButton.isEnabled, "line-height increment must remain enabled above 1.0")
         XCTAssertTrue(reader.adjustLineHeight(toValue: "2.5"))
-        XCTAssertTrue(reader.lineHeightDecrementButton.isEnabled, "line-height decrement must remain enabled below 2.5")
-        XCTAssertFalse(reader.lineHeightIncrementButton.isEnabled, "line-height increment must disable at 2.5")
+        XCTAssertTrue(lineHeightDecrementButton.isEnabled, "line-height decrement must remain enabled below 2.5")
+        XCTAssertFalse(lineHeightIncrementButton.isEnabled, "line-height increment must disable at 2.5")
         captureStep("typography-adjustment-rows", app: app)
 
         guard reader.revealHighlightControls(timeout: 10),

@@ -10,7 +10,7 @@ import SwiftUI
 ///          detents 與 drag indicator，不再自繪 panel 卡片與 handle）
 ///   分組  `Section` + `SettingsSectionHeader` / `SettingsSectionFooter`
 ///   選擇  `Picker` —— 行內單值用 `.menu`，選項本身值得一列（帶 icon / 色票）用 `.inline`
-///   數值  共用的 +/- adjustment row；連續值才使用原生 `Slider`
+///   數值  離散值共用的 +/- adjustment row；連續值才使用原生 `Slider`
 ///   開關  `Toggle`
 ///
 /// 具名承認的代價：自繪的 selection tile、label chip、control surface、群組
@@ -116,7 +116,11 @@ extension ReaderSettingsPresenter {
 
             ReaderTypographyAdjustmentRow(
                 title: L10n.string("reader.settings.lineHeight"),
-                value: String(format: "%.1f", bindings.lineHeight.wrappedValue),
+                value: String(
+                    format: "%.1f",
+                    locale: Locale(identifier: "en_US_POSIX"),
+                    bindings.lineHeight.wrappedValue
+                ),
                 rowIdentifier: "reader.settings.lineHeight",
                 decrementIdentifier: "reader.settings.lineHeight.decrement",
                 incrementIdentifier: "reader.settings.lineHeight.increment",
