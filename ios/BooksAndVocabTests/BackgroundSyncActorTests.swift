@@ -255,6 +255,100 @@ struct BackgroundSyncActorTests {
         #expect(BackgroundSyncActor.contentDiffers(card: card, from: entry))
     }
 
+    /// A stale pull may carry the server's older content while a local edit is
+    /// waiting for its upload. Both retryable edit states must survive it.
+    @Test func syncDown_preservesLocalEditForPendingAndFailedEntries() async throws {
+        for syncStatus in [VocabularySyncState.pending.rawValue, VocabularySyncState.failed.rawValue] {
+            let container = try makeContainer()
+            let seedContext = ModelContext(container)
+            let local = VocabularyEntry(
+                word: "ephemeral",
+                translation: "local translation",
+                context: "local context",
+                explanation: "local note",
+                bookTitle: "Local Book"
+            )
+            local.kgCardId = "c-edit"
+            local.syncStatus = syncStatus
+            local.actionType = VocabularySyncAction.edit.rawValue
+            seedContext.insert(local)
+            try seedContext.save()
+
+            let actor = BackgroundSyncActor(modelContainer: container)
+            let staleRemote = try makeCard(id: "c-edit", content: "ephemeral", sourceJSON: nil)
+            try await actor.pullCardsToLocal(
+                fetchedCards: [staleRemote],
+                isIncremental: true,
+                progress: { _, _, _ in }
+            )
+
+            let entry = try fetchEntry(container, word: "ephemeral")
+            #expect(entry?.translation == "local translation")
+            #expect(entry?.explanation == "local note")
+            #expect(entry?.syncStatus == syncStatus)
+            #expect(entry?.actionType == VocabularySyncAction.edit.rawValue)
+        }
+    }
+
+    @Test func syncDown_syncedEntry_stillAcceptsRemoteContent() async throws {
+        let container = try makeContainer()
+        let seedContext = ModelContext(container)
+        let local = VocabularyEntry(
+            word: "ephemeral",
+            translation: "local translation",
+            context: "local context",
+            explanation: "local note",
+            bookTitle: "Local Book"
+        )
+        local.kgCardId = "c-remote-wins"
+        local.markSynced()
+        seedContext.insert(local)
+        try seedContext.save()
+
+        let actor = BackgroundSyncActor(modelContainer: container)
+        let remote = try makeCard(id: "c-remote-wins", content: "ephemeral", sourceJSON: nil)
+        try await actor.pullCardsToLocal(
+            fetchedCards: [remote],
+            isIncremental: true,
+            progress: { _, _, _ in }
+        )
+
+        let entry = try fetchEntry(container, word: "ephemeral")
+        #expect(entry?.translation == "meaning-ephemeral")
+        #expect(entry?.explanation == nil)
+        #expect(entry?.isSynced == true)
+        #expect(entry?.actionType == VocabularySyncAction.add.rawValue)
+    }
+
+    @Test func syncDown_pendingDelete_stillPreservesLocalEntry() async throws {
+        let container = try makeContainer()
+        let seedContext = ModelContext(container)
+        let local = VocabularyEntry(
+            word: "ephemeral",
+            translation: "local translation",
+            context: "local context",
+            explanation: "local note",
+            bookTitle: "Local Book"
+        )
+        local.kgCardId = "c-delete"
+        local.queueDelete()
+        seedContext.insert(local)
+        try seedContext.save()
+
+        let actor = BackgroundSyncActor(modelContainer: container)
+        let remote = try makeCard(id: "c-delete", content: "ephemeral", sourceJSON: nil)
+        try await actor.pullCardsToLocal(
+            fetchedCards: [remote],
+            isIncremental: true,
+            progress: { _, _, _ in }
+        )
+
+        let entry = try fetchEntry(container, word: "ephemeral")
+        #expect(entry?.translation == "local translation")
+        #expect(entry?.explanation == "local note")
+        #expect(entry?.isPendingDelete == true)
+    }
+
     // MARK: - Orphan cleanup safety-valve signalling
     //
     // Regression coverage for the sync-boundary leak: when a FULL sync's

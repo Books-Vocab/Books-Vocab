@@ -158,8 +158,9 @@ actor BackgroundSyncActor {
                     continue
                 }
 
-                if existingEntry.syncAction == .delete {
-                    // 本地標記為待刪除，不更新任何欄位，保留 syncStatus=0 讓 SyncView 可以 push
+                if existingEntry.syncAction == .delete ||
+                    (existingEntry.syncAction == .edit && !existingEntry.isSynced) {
+                    // Preserve local delete or retryable edit state; do not overwrite fields.
                 } else {
                     // Snapshot the verdict *before* the assignments below overwrite the
                     // fields it compares. SwiftData marks a property dirty on assignment
