@@ -241,6 +241,7 @@ async def _step_embed_and_judge(
         eligible.append((card_id, card, current_degree))
 
     similar_by_id: dict[str, list[tuple[str, float]]] = {}
+    failed_similarity_ids: list[str] = []
     if hasattr(embeddings, "find_similar_batch"):
         try:
             similar_by_id = embeddings.find_similar_batch(
@@ -248,6 +249,7 @@ async def _step_embed_and_judge(
             )
         except (OSError, ValueError) as exc:
             logger.warning("[%s] find_similar_batch failed: %s", uid, exc)
+            failed_similarity_ids = list(dict.fromkeys(cid for cid, _, _ in eligible))
             similar_by_id = {}
     else:
         for card_id, _, _ in eligible:
@@ -255,6 +257,14 @@ async def _step_embed_and_judge(
                 similar_by_id[card_id] = embeddings.find_similar(card_id, k=CANDIDATE_K)
             except (OSError, ValueError) as exc:
                 logger.warning("[%s] find_similar failed for '%s': %s", uid, card_id, exc)
+                failed_similarity_ids.append(card_id)
+
+    # ``pop_pending_judge`` removes cards before the lookup. Preserve only the
+    # cards whose lookup actually failed; a successful empty result is a normal
+    # completion and must remain consumed. GraphStore deduplicates this durable
+    # requeue, so a concurrent add cannot create duplicate pending work.
+    if failed_similarity_ids:
+        graph.add_pending_judge(list(dict.fromkeys(failed_similarity_ids)))
 
     per_card_similar: list[tuple[str, Any, int, list[tuple[str, float]]]] = []
     all_other_ids: set[str] = set()

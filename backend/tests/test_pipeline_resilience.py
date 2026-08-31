@@ -349,6 +349,34 @@ class _EmbeddingsAlreadyHave:
         pass
 
 
+class _SimilarityEmbeddings(_EmbeddingsAlreadyHave):
+    """Configurable similarity fake for pending-judge durability tests."""
+
+    def __init__(
+        self,
+        all_ids: list[str],
+        *,
+        error_type: type[Exception] | None = None,
+        empty: bool = False,
+    ) -> None:
+        super().__init__(all_ids)
+        self.error_type = error_type
+        self.empty = empty
+        self.fail = error_type is not None
+
+    def find_similar(self, card_id, k=3):
+        if self.fail:
+            raise self.error_type("similarity lookup failed")
+        if self.empty:
+            return []
+        return super().find_similar(card_id, k=k)
+
+
+class _BatchSimilarityEmbeddings(_SimilarityEmbeddings):
+    def find_similar_batch(self, card_ids, k=3):
+        return {card_id: self.find_similar(card_id, k=k) for card_id in card_ids}
+
+
 def _make_judgement(link: str = "shares_usage", confidence: float = 0.9, reason: str = "ok"):
     """Build a Judgement-like object (only fields the pipeline reads)."""
     return SimpleNamespace(link=link, confidence=confidence, reason=reason)
@@ -357,6 +385,101 @@ def _make_judgement(link: str = "shares_usage", confidence: float = 0.9, reason:
 # ════════════════════════════════════════════════════════════════════════
 # Cascading-failure tests
 # ════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.parametrize("lookup_mode", ["batch", "per-card"])
+@pytest.mark.parametrize("error_type", [OSError, ValueError])
+def test_similarity_lookup_failure_requeues_for_later_judge(lookup_mode, error_type):
+    """A failed similarity lookup must leave the popped card durably pending."""
+    logger = _FakeLogger()
+    uid = f"u_similarity_{lookup_mode}_{error_type.__name__}"
+    user = {"id": uid, "dir": Path(f"/tmp/{uid}"), "config": {}}
+    cards = _CardsForJudge(count=2)
+    graph = _GraphRecording(pending=["c1"])
+    embeddings_cls = (
+        _BatchSimilarityEmbeddings if lookup_mode == "batch" else _SimilarityEmbeddings
+    )
+    embeddings = embeddings_cls(["c0", "c1"], error_type=error_type)
+
+    class _AcceptingJudge:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def evaluate_batch(self, target_word, target_meaning, candidates, **kwargs):
+            return {
+                candidate_id: _make_judgement() if index == 0 else None
+                for index, (candidate_id, _word, _meaning) in enumerate(candidates)
+            }
+
+    async def run_twice():
+        import kg.judge as judge_mod
+
+        original_judge = judge_mod.Judge
+        judge_mod.Judge = _AcceptingJudge
+        try:
+            first_result = await _step_embed_and_judge(
+                uid, user,
+                card_store_factory=lambda d: cards,
+                graph_store_factory=lambda d, notebook_id="default": graph,
+                embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
+                client_factory=lambda provider: None,
+                logger=logger,
+                link_kind_enum=lambda value: value,
+            )
+            assert first_result == 0
+            assert graph._pending == ["c1"]
+            assert graph.added_pending == [["c1"]]
+
+            embeddings.fail = False
+            second_result = await _step_embed_and_judge(
+                uid, user,
+                card_store_factory=lambda d: cards,
+                graph_store_factory=lambda d, notebook_id="default": graph,
+                embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
+                client_factory=lambda provider: None,
+                logger=logger,
+                link_kind_enum=lambda value: value,
+            )
+            return first_result, second_result
+        finally:
+            judge_mod.Judge = original_judge
+
+    first_result, second_result = asyncio.run(run_twice())
+
+    assert first_result == 0
+    assert second_result == 1
+    assert graph._pending == []
+    assert len(graph.persisted_links) == 1
+    assert len({(from_id, to_id) for from_id, to_id, *_ in graph.persisted_links}) == 1
+
+
+@pytest.mark.parametrize("lookup_mode", ["batch", "per-card"])
+def test_empty_similarity_result_consumes_pending_without_requeue(lookup_mode):
+    """A genuine empty result is normal completion, not a retryable failure."""
+    logger = _FakeLogger()
+    uid = f"u_empty_similarity_{lookup_mode}"
+    user = {"id": uid, "dir": Path(f"/tmp/{uid}"), "config": {}}
+    cards = _CardsForJudge(count=2)
+    graph = _GraphRecording(pending=["c1"])
+    embeddings_cls = (
+        _BatchSimilarityEmbeddings if lookup_mode == "batch" else _SimilarityEmbeddings
+    )
+    embeddings = embeddings_cls(["c0", "c1"], empty=True)
+
+    result = asyncio.run(_step_embed_and_judge(
+        uid, user,
+        card_store_factory=lambda d: cards,
+        graph_store_factory=lambda d, notebook_id="default": graph,
+        embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
+        client_factory=lambda provider: None,
+        logger=logger,
+        link_kind_enum=lambda value: value,
+    ))
+
+    assert result == 0
+    assert graph._pending == []
+    assert graph.added_pending == []
+    assert graph.persisted_links == []
 
 
 def test_judge_partial_failure_does_not_corrupt_remaining():
