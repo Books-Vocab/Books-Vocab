@@ -22,14 +22,40 @@ final class ExploreNavigationUITests: UITestCase {
     @MainActor
     private func openExplore(in app: XCUIApplication) -> AppPage {
         let page = AppPage(app: app)
-        // The production tab item publishes this identifier on the action
-        // owning button in the UI-test build. Wait for that exact target so
-        // a broad descendant query cannot select an adjacent tab.
-        app.tabBars.buttons
+        exploreTabAction(in: app).tapWhenReady(timeout: 10)
+        return page
+    }
+
+    @MainActor
+    private func exploreTabAction(in app: XCUIApplication) -> XCUIElement {
+        let exact = app.tabBars.buttons
             .matching(identifier: "tab.explore.button")
             .firstMatch
-            .tapWhenReady(timeout: 10)
-        return page
+        if exact.exists && exact.isHittable {
+            return exact
+        }
+
+        // On iOS 26.4 the content identifier can be exposed on a non-hittable
+        // accessibility sibling. Resolve the action-owning tab button through
+        // its stable SF Symbol, and tap the parent button rather than the
+        // image child.
+        if let actionButton = app.tabBars.buttons.allElementsBoundByIndex.first(where: { button in
+            button.isHittable && button.descendants(matching: .any)
+                .matching(identifier: "sparkles")
+                .firstMatch
+                .exists
+        }) {
+            return actionButton
+        }
+
+        let identified = app.descendants(matching: .any)
+            .matching(identifier: "tab.explore")
+            .firstMatch
+        if identified.exists && identified.elementType == .button && identified.isHittable {
+            return identified
+        }
+
+        return exact
     }
 
 
