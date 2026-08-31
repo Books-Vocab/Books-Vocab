@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Annotated
+from collections.abc import Callable, Mapping
+from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi import Path as PathParam
+from pydantic import BeforeValidator
 
 from .. import podcast_progress as progress_store
 from ..api_models.podcast import (
@@ -15,6 +16,23 @@ from ..api_models.podcast import (
 from ..deps import CurrentUser
 
 _MAX_EPISODE_NUM = 999
+
+
+def _reject_boolean_progress_seconds(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        for field_name in ("position_sec", "duration_sec"):
+            if isinstance(value.get(field_name), bool):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"{field_name} must be a number",
+                )
+    return value
+
+
+_PodcastProgressPayload = Annotated[
+    PodcastProgressRequest,
+    BeforeValidator(_reject_boolean_progress_seconds),
+]
 
 
 def _canonical_updated_at(raw: str) -> str:
@@ -53,7 +71,7 @@ def build_podcast_progress_router(
     def upsert_user_progress(
         series_id: str,
         ep_num: Annotated[int, PathParam(ge=1, le=_MAX_EPISODE_NUM)],
-        payload: PodcastProgressRequest,
+        payload: _PodcastProgressPayload,
         user: CurrentUser,
     ):
         """Last-write-wins upsert keyed by ``(user, series, ep)``.
@@ -81,7 +99,9 @@ def build_podcast_progress_router(
     ):
         validate_series_id(series_id)
         row = progress_store.get_single(
-            user_id=user["id"], series_id=series_id, ep_num=ep_num,
+            user_id=user["id"],
+            series_id=series_id,
+            ep_num=ep_num,
         )
         if row is None:
             raise HTTPException(status_code=404, detail="No playback progress found")
