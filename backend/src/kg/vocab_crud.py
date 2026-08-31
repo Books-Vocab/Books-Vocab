@@ -216,6 +216,13 @@ def _parse_since_timestamp(raw: str) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
+def _utc_instant(value: datetime) -> datetime:
+    """Interpret naive card timestamps as UTC and normalize aware values."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
 class CardMutator(Protocol):
     def __call__(self, card: VocabCard) -> None: ...
 
@@ -255,9 +262,10 @@ def list_vocab_cards(
         # Incremental: fetch the modified set (already bounded), then order and
         # slice it by the same cursor so since + full-sync paginate identically.
         modified = cards_store.get_modified_since(naive_since, notebook_id=notebook_id)
-        modified = sorted(modified, key=lambda c: (c.updated_at, c.id))
+        modified = sorted(modified, key=lambda c: (_utc_instant(c.updated_at), c.id))
         if after_position is not None:
-            modified = [c for c in modified if (c.updated_at, c.id) > after_position]
+            after_instant = _utc_instant(after_position[0])
+            modified = [c for c in modified if (_utc_instant(c.updated_at), c.id) > (after_instant, after_position[1])]
         cards = modified[:limit]
     else:
         # Full sync: DB-bounded page (no full-table materialisation).

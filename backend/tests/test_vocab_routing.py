@@ -127,6 +127,7 @@ def test_manual_link_exact_call_type_env_override(monkeypatch):
 # ---------------------------------------------------------------------------
 
 import json
+import sqlite3
 import uuid
 
 from fastapi.testclient import TestClient
@@ -219,6 +220,58 @@ def test_cursor_follow(vocab_api):
 
     assert len(seen_ids) == 5
     assert len(set(seen_ids)) == 5  # gap-free + dup-free
+
+
+def _seed_mixed_timestamp_cards(api) -> None:
+    from kg.cards import CardStore
+
+    seed = [
+        ("a", "canonical-tie", "2024-01-01 10:00:00"),
+        ("b", "legacy-tie", "2024-01-01 12:00:00+02:00"),
+        ("c", "legacy-late", "2024-01-01 13:00:00+02:00"),
+        ("d", "canonical-latest", "2024-01-01 12:00:00"),
+    ]
+    db_path = api.data_dir / "users" / api.user_id / "cards.db"
+    store = CardStore(db_path)
+    try:
+        created = [store.add(content=content, meaning=content) for _, content, _ in seed]
+    finally:
+        store.close()
+
+    with sqlite3.connect(db_path) as connection:
+        connection.executemany(
+            "UPDATE card SET id = ?, updated_at = ? WHERE id = ?",
+            [(new_id, timestamp, card.id) for (new_id, _, timestamp), card in zip(seed, created, strict=True)],
+        )
+
+
+def test_incremental_vocab_paging_normalizes_mixed_timestamps_to_utc(vocab_api):
+    """Mixed legacy offsets keep incremental paging ordered and gap-free."""
+    _seed_mixed_timestamp_cards(vocab_api)
+
+    seen_ids: list[str] = []
+    cursor = None
+    pages = 0
+    while True:
+        params = {"since": "2023-12-31T00:00:00Z", "limit": 2}
+        if cursor is not None:
+            params["cursor"] = cursor
+        response = _get_vocab(vocab_api, **params)
+
+        assert response.status_code == 200, response.text
+        page_ids = [card["id"] for card in response.json()]
+        assert not (set(page_ids) & set(seen_ids))
+        seen_ids.extend(page_ids)
+        pages += 1
+        next_cursor = response.headers.get("X-Next-Cursor")
+        if next_cursor is None:
+            break
+        assert next_cursor != cursor
+        cursor = next_cursor
+        assert pages < 4
+
+    assert seen_ids == ["a", "b", "c", "d"]
+    assert len(set(seen_ids)) == 4
 
 
 def test_last_page_no_header(vocab_api):
