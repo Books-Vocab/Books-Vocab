@@ -7,6 +7,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 
+import pytest
+
 from kg.api_models import CardResponse, VocabEntry, VocabSource
 from kg.vocab_shared import card_response
 
@@ -129,14 +131,32 @@ def test_card_response_omits_malformed_persisted_source():
     assert response.source is None
 
 
-def test_card_response_preserves_valid_persisted_source():
-    response = _build_card_response(
-        json.dumps({"type": "web", "title": "Example Page", "url": "https://example.com"})
-    )
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            json.dumps({"type": "web", "url": "javascript:alert(1)"}),
+            id="invalid-url",
+        ),
+        pytest.param(json.dumps({"title": "Missing type"}), id="invalid-object-shape"),
+        pytest.param(
+            json.dumps({"type": "web", "title": {"nested": "value"}}),
+            id="invalid-field-type",
+        ),
+        pytest.param(json.dumps(["web"]), id="non-object-payload"),
+    ],
+)
+def test_card_response_omits_invalid_persisted_source(source: str):
+    """Invalid persisted source payloads must not escape card response construction."""
+    response = _build_card_response(source)
 
-    assert response.source == VocabSource(
-        type="web", title="Example Page", url="https://example.com"
-    )
+    assert response.source is None
+
+
+def test_card_response_preserves_valid_persisted_source():
+    response = _build_card_response(json.dumps({"type": "web", "title": "Example Page", "url": "https://example.com"}))
+
+    assert response.source == VocabSource(type="web", title="Example Page", url="https://example.com")
 
 
 def test_card_response_preserves_absent_persisted_source():
