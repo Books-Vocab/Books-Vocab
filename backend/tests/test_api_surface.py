@@ -133,6 +133,68 @@ def test_vocab_lifecycle_and_since_sync(isolated_api):
     assert r_lookup_deleted.status_code == 404
 
 
+def test_vocab_full_sync_includes_deleted_cards_with_scope_and_paging(isolated_api):
+    client = isolated_api.client
+    headers = isolated_api.headers
+
+    with patch.object(vocab_router_mod, "_embedding_store", return_value=_DummyEmbeddingStore()):
+        created = client.post(
+            "/api/vocab",
+            json=[
+                {"word": "full-sync-active", "translation": "仍在", "context": "An active card."},
+                {"word": "full-sync-deleted", "translation": "已刪", "context": "A deleted card."},
+            ],
+            headers=headers,
+        )
+    assert created.status_code == 200, created.text
+
+    deleted = client.delete("/api/vocab/full-sync-deleted", headers=headers)
+    assert deleted.status_code == 200, deleted.text
+
+    full_sync = client.get("/api/vocab", headers=headers)
+    assert full_sync.status_code == 200, full_sync.text
+    cards = {card["content"]: card for card in full_sync.json()}
+    assert set(cards) == {"full-sync-active", "full-sync-deleted"}
+    assert cards["full-sync-active"]["isDeleted"] is False
+    assert cards["full-sync-deleted"]["isDeleted"] is True
+
+    paged_cards = []
+    cursor = None
+    while True:
+        params = {"limit": 1}
+        if cursor is not None:
+            params["cursor"] = cursor
+        page = client.get("/api/vocab", params=params, headers=headers)
+        assert page.status_code == 200, page.text
+        paged_cards.extend(page.json())
+        cursor = page.headers.get("x-next-cursor")
+        if cursor is None:
+            break
+    assert {card["content"] for card in paged_cards} == set(cards)
+    assert len({card["id"] for card in paged_cards}) == len(paged_cards)
+
+    notebook = client.post("/api/notebooks", json={"name": "Scoped sync"}, headers=headers)
+    assert notebook.status_code == 201, notebook.text
+    notebook_id = notebook.json()["id"]
+    with patch.object(vocab_router_mod, "_embedding_store", return_value=_DummyEmbeddingStore()):
+        scoped_created = client.post(
+            "/api/vocab",
+            params={"notebook_id": notebook_id},
+            json=[{"word": "scoped-deleted", "translation": "範圍", "context": "A scoped card."}],
+            headers=headers,
+        )
+    assert scoped_created.status_code == 200, scoped_created.text
+    scoped_deleted = client.delete(
+        "/api/vocab/scoped-deleted", params={"notebook_id": notebook_id}, headers=headers
+    )
+    assert scoped_deleted.status_code == 200, scoped_deleted.text
+
+    scoped_sync = client.get("/api/vocab", params={"notebook_id": notebook_id}, headers=headers)
+    assert scoped_sync.status_code == 200, scoped_sync.text
+    assert [card["content"] for card in scoped_sync.json()] == ["scoped-deleted"]
+    assert scoped_sync.json()[0]["isDeleted"] is True
+
+
 def test_vocab_since_naive_iso_uses_utc_under_local_timezone(isolated_api, monkeypatch):
     previous_tz = os.environ.get("TZ")
     monkeypatch.setenv("TZ", "Asia/Taipei")
