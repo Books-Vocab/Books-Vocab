@@ -107,11 +107,18 @@ def _validate_cover_pattern(v: str | None) -> str | None:
     return v
 
 
+def _validate_non_blank_name(value: str | None) -> str | None:
+    if value is not None and not value.strip():
+        raise ValueError("name must contain at least one non-whitespace character")
+    return value
+
+
 class NotebookCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     color: str | None = Field(default=None, max_length=20, pattern=r"^#[0-9a-fA-F]{6}$")
     cover_pattern: str | None = Field(default=None, max_length=30)
 
+    _validate_name = field_validator("name")(staticmethod(_validate_non_blank_name))
     _validate_cover_pattern = field_validator("cover_pattern")(staticmethod(_validate_cover_pattern))
 
 
@@ -121,6 +128,7 @@ class NotebookUpdateRequest(BaseModel):
     sort_order: int | None = None
     cover_pattern: str | None = Field(default=None, max_length=30)
 
+    _validate_name = field_validator("name")(staticmethod(_validate_non_blank_name))
     _validate_cover_pattern = field_validator("cover_pattern")(staticmethod(_validate_cover_pattern))
 
 
