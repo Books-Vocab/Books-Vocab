@@ -12,6 +12,7 @@ import Foundation
 import Testing
 @testable import BooksAndVocab
 
+@Suite(.serialized)
 @MainActor
 struct SharedDeckCopyControllerTests {
 
@@ -74,6 +75,47 @@ struct SharedDeckCopyControllerTests {
 
         if case .failure = c.state {} else { Issue.record("expected .failure, got \(c.state)") }
         #expect(c.currentIdempotencyKey == "key-1", "a failed attempt keeps its key so retry reuses it")
+    }
+
+    // MARK: - Cancellation is a lifecycle outcome, not a copy failure
+
+    @Test func cancellation_returns_to_idle_without_failure_observability() async {
+        let c = controller()
+        let deckId = "cancelled-deck-\(UUID().uuidString)"
+        let fake = FakeDeckCopier([.failure(CancellationError())])
+        let failureBreadcrumbsBefore = AppDiagnosticContext.shared.snapshot().observations
+            .filter { $0 == "deck copy failed" }
+            .count
+
+        await c.copy(deckId: deckId, notebookName: "GRE 3000", using: fake)
+
+        #expect(c.state == .idle, "cancellation is a lifecycle outcome, not a failure UI")
+        #expect(c.currentIdempotencyKey == "key-1", "cancellation keeps the intent key for retry")
+        #expect(fake.receivedKeys == ["key-1"])
+
+        let observations = AppObservationStore.shared.preview(limit: 200).entries
+        #expect(!observations.contains {
+            $0.message.contains("event=deck_copy_failed deck_id=\(deckId)")
+        })
+        let failureBreadcrumbsAfter = AppDiagnosticContext.shared.snapshot().observations
+            .filter { $0 == "deck copy failed" }
+            .count
+        #expect(failureBreadcrumbsAfter == failureBreadcrumbsBefore)
+    }
+
+    @Test func cancellation_retry_reuses_key_and_success_clears_it() async {
+        let c = controller()
+        let fake = FakeDeckCopier([
+            .failure(CancellationError()),
+            .success(response())
+        ])
+
+        await c.copy(deckId: "d1", notebookName: "GRE 3000", using: fake)
+        await c.copy(deckId: "d1", notebookName: "GRE 3000", using: fake)
+
+        #expect(fake.receivedKeys == ["key-1", "key-1"])
+        if case .success = c.state {} else { Issue.record("expected .success after cancellation retry, got \(c.state)") }
+        #expect(c.currentIdempotencyKey == nil)
     }
 
     // MARK: - Retry reuses the SAME key (the core anti-duplicate invariant)
