@@ -238,7 +238,8 @@ def push_review_events(req: ReviewEventsPushRequest, user: CurrentUser):
     )
 
 
-@router.patch("/api/vocab/{word:path}/preferences", response_model=CardResponse)
+@router.patch("/api/vocab/{word:path}/preferences", response_model=CardResponse, include_in_schema=False)
+@router.patch("/api/vocab/{word}/preferences", response_model=CardResponse)
 def update_word_preferences(
     word: str,
     req: CardPreferencesUpdateRequest,
@@ -257,7 +258,8 @@ def update_word_preferences(
     )
 
 
-@router.patch("/api/vocab/{word:path}/archive", response_model=ArchiveWordResponse)
+@router.patch("/api/vocab/{word:path}/archive", response_model=ArchiveWordResponse, include_in_schema=False)
+@router.patch("/api/vocab/{word}/archive", response_model=ArchiveWordResponse)
 def archive_word(
     word: str,
     req: ArchiveWordRequest,
@@ -275,7 +277,8 @@ def archive_word(
     )
 
 
-@router.get("/api/vocab/{word:path}", response_model=CardResponse)
+@router.get("/api/vocab/{word:path}", response_model=CardResponse, include_in_schema=False)
+@router.get("/api/vocab/{word}", response_model=CardResponse)
 def lookup_word(
     word: str,
     user: CurrentUser,
@@ -292,7 +295,8 @@ def lookup_word(
     )
 
 
-@router.patch("/api/vocab/{word:path}", response_model=CardResponse)
+@router.patch("/api/vocab/{word:path}", response_model=CardResponse, include_in_schema=False)
+@router.patch("/api/vocab/{word}", response_model=CardResponse)
 def update_word_content(
     word: str,
     req: VocabContentUpdateRequest,
@@ -313,7 +317,8 @@ def update_word_content(
     )
 
 
-@router.delete("/api/vocab/{word:path}", response_model=DeleteWordResponse)
+@router.delete("/api/vocab/{word:path}", response_model=DeleteWordResponse, include_in_schema=False)
+@router.delete("/api/vocab/{word}", response_model=DeleteWordResponse)
 def delete_word(
     word: str,
     user: CurrentUser,
