@@ -172,7 +172,7 @@ def list_vocab_cards(
         cards = cards_store.page_cards(
             limit=limit,
             after=after,
-            include_deleted=False,
+            include_deleted=True,
             notebook_id=notebook_id,
         )
 
