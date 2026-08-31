@@ -239,7 +239,7 @@ final class WordDetailFlowUITests: UITestCase {
         in app: XCUIApplication,
         named name: String
     ) -> XCUIElement? {
-        let query = app.descendants(matching: .any).matching(identifier: identifier)
+        let query = app.buttons.matching(identifier: identifier)
         let deadline = Date().addingTimeInterval(10)
         while Date() < deadline {
             let active = query.allElementsBoundByIndex.filter { $0.isHittable }
