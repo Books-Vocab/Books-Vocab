@@ -264,14 +264,22 @@ struct StatsPresenter: View {
         retryToken &+= 1
     }
 
-    private var summaryKey: Int {
-        var hasher = Hasher()
-        hasher.combine(syncedEntries.count)
-        hasher.combine(reviewRecords.count)
-        hasher.combine(filter.selectedIds)
-        hasher.combine(forecastDays)
-        hasher.combine(activeProjectionClock.now)
-        return hasher.finalize()
+    private struct SummaryKey: Hashable {
+        let projection: StatsPresentation.ProjectionKey
+        let selectedNotebookIDs: Set<String>
+    }
+
+    private var summaryKey: SummaryKey {
+        let inputs = StatsPresentation.Inputs(
+            entries: filteredEntries,
+            reviewRecords: filteredReviewRecords,
+            forecastDays: forecastDays,
+            clock: activeProjectionClock
+        )
+        return SummaryKey(
+            projection: StatsPresentation.projectionKey(for: inputs),
+            selectedNotebookIDs: filter.selectedIds
+        )
     }
 
     /// Graph thumbnail refresh trigger. A single notebook filter changes the
