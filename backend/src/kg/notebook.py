@@ -312,7 +312,7 @@ class NotebookStore:
     def update(self, notebook_id: str, **kwargs) -> Notebook | None:
         with Session(self.engine) as session:
             nb = session.get(Notebook, notebook_id)
-            if nb is None or nb.is_deleted:
+            if nb is None or nb.is_deleted or nb.is_staged:
                 return None
             has_changes = False
             for key, value in kwargs.items():
