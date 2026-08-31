@@ -11,11 +11,12 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from .claims import claim_generation
 from .constants import EXIT_CLAIMED, EXIT_OK, EXIT_USAGE
 from .environment import load_state, resolve_now, state_path
-from .handback_cli import has_valid_stored, is_commit_sha
+from .handback_cli import has_valid_stored, is_ancestor, is_commit_sha
 from .inspection import record_view
 from .records import (
     SCHEMA,
@@ -28,6 +29,43 @@ from .records import (
     record_matches,
 )
 from .storage import ledger_lock, save_state
+
+
+def _is_supported_reanchor_advance(
+    record: dict[str, object],
+    *,
+    previous: str,
+    expected_head_sha: str,
+    expected_handback_base_sha: str,
+    published_base_sha: str,
+) -> bool:
+    """Prove the narrow same-owner base advance allowed after reanchor."""
+
+    if published_base_sha != expected_handback_base_sha:
+        return False
+    if record.get("delegated") is not True:
+        return False
+    owner_thread_id = record.get("codex_thread_id")
+    if not isinstance(owner_thread_id, str) or not owner_thread_id.strip():
+        return False
+    seal = record.get("handback_seal")
+    if not isinstance(seal, dict):
+        return False
+    if (
+        seal.get("base_sha") != expected_handback_base_sha
+        or seal.get("origin_main_sha") != expected_handback_base_sha
+        or seal.get("tip_sha") != expected_head_sha
+        or seal.get("owner_thread_id") != owner_thread_id
+        or seal.get("branch") != record.get("branch")
+    ):
+        return False
+    record_path = record.get("path")
+    seal_path = seal.get("path")
+    if not isinstance(record_path, str) or not record_path.strip():
+        return False
+    if not isinstance(seal_path, str) or norm_path(seal_path) != norm_path(record_path):
+        return False
+    return is_ancestor(Path(record_path), previous, published_base_sha)
 
 
 def cmd_record_published_base(args: argparse.Namespace) -> int:
@@ -130,12 +168,34 @@ def cmd_record_published_base(args: argparse.Namespace) -> int:
         if previous is not None and not is_commit_sha(previous):
             print("✗ existing published PR base is malformed", file=sys.stderr)
             return EXIT_CLAIMED
-        if previous is not None and previous != args.published_base_sha:
-            print(
-                "✗ published PR base differs from the existing recorded base",
-                file=sys.stderr,
-            )
-            return EXIT_CLAIMED
+        if previous is not None:
+            if previous == args.published_base_sha:
+                if args.published_base_sha != args.expected_handback_base_sha and (
+                    _is_supported_reanchor_advance(
+                        record,
+                        previous=previous,
+                        expected_head_sha=args.expected_head_sha,
+                        expected_handback_base_sha=args.expected_handback_base_sha,
+                        published_base_sha=args.expected_handback_base_sha,
+                    )
+                ):
+                    print(
+                        "✗ published PR base differs from the existing recorded base",
+                        file=sys.stderr,
+                    )
+                    return EXIT_CLAIMED
+            elif not _is_supported_reanchor_advance(
+                record,
+                previous=previous,
+                expected_head_sha=args.expected_head_sha,
+                expected_handback_base_sha=args.expected_handback_base_sha,
+                published_base_sha=args.published_base_sha,
+            ):
+                print(
+                    "✗ published PR base differs from the existing recorded base",
+                    file=sys.stderr,
+                )
+                return EXIT_CLAIMED
         record["published_base_sha"] = args.published_base_sha
         _, now_iso = resolve_now(args.at)
         record["published_base_recorded_at"] = now_iso
