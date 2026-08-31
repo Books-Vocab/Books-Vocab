@@ -144,6 +144,12 @@ def _replace_published(
             candidate=candidate,
         )
     candidate["base_sha"] = replacement_base_sha
+    published_base_sha = original.get("published_base_sha")
+    if published_base_sha is not None:
+        candidate["published_base_sha"] = commit_sha(
+            published_base_sha,
+            label="published PR base",
+        )
     return candidate
 
 

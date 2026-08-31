@@ -35,6 +35,7 @@ from worktree_reanchor_core.lifecycle_proof import (
 BASE = "1" * 40
 LIVE = "2" * 40
 HEAD = "3" * 40
+PUBLISHED_BASE = "8" * 40
 OTHER_HEAD = "4" * 40
 REMOTE_SOURCE_BASE = "5" * 40
 REMOTE_SOURCE_LIVE = "6" * 40
@@ -86,6 +87,199 @@ def _unhanded_active_state(tmp_path: Path) -> tuple[Path, Path]:
         {"schema": registry.SCHEMA, "records": [record]},
     )
     return state_path, recorded_path
+
+
+def _published_claim_state(tmp_path: Path) -> tuple[Path, Path]:
+    recorded_path = tmp_path / "published-owner-worktree"
+    record = {
+        "branch": "feat/published-base-propagation",
+        "path": str(recorded_path),
+        "intent": "same-owner published-base propagation",
+        "base": BASE,
+        "base_sha": BASE,
+        "status": "published",
+        "external_ids": ["DIRECT-PUBLISHED-BASE-PROPAGATION"],
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"path": "ops/reanchor_change.py", "operation": "add"}],
+        },
+        "codex_thread_id": "owner-thread-1",
+        "delegated": True,
+        "claim_generation": 0,
+        "handed_back_at": "2026-08-31T00:00:00Z",
+        "handed_back_sha": HEAD,
+        "handback_claim_generation": 0,
+        "published_base_sha": PUBLISHED_BASE,
+    }
+    record["handback_seal"] = registry._seal_with_digest(
+        registry._seal_body(
+            record,
+            base_sha=BASE,
+            tip_sha=HEAD,
+            outcomes=[{"name": "focused", "status": "success"}],
+            handed_back_at="2026-08-31T00:00:00Z",
+            origin_main_sha=BASE,
+        )
+    )
+    state_path = tmp_path / "worktree_registry.json"
+    registry.save_state(
+        state_path,
+        {"schema": registry.SCHEMA, "records": [record]},
+    )
+    return state_path, recorded_path
+
+
+def test_resume_then_reanchor_preserves_original_and_published_base(
+    tmp_path: Path,
+) -> None:
+    state_path, target = _published_claim_state(tmp_path)
+
+    resume_preflight = registry_ops.preflight_resume(
+        state_path=state_path,
+        lane_id="DIRECT-PUBLISHED-BASE-PROPAGATION",
+        branch="feat/published-base-propagation",
+        owner_thread_id="owner-thread-1",
+        claim_generation=0,
+        expected_remote_head=HEAD,
+        target=target,
+    )
+    resumed = registry_ops.register_resumed(
+        state_path=state_path,
+        preflight_result=resume_preflight,
+        target=target,
+        lane_id="DIRECT-PUBLISHED-BASE-PROPAGATION",
+        claim_generation=0,
+    )
+
+    assert resumed["base_sha"] == BASE
+    assert resumed["published_base_sha"] == PUBLISHED_BASE
+
+    reanchor_preflight = registry_ops.preflight(
+        state_path=state_path,
+        lane_id="DIRECT-PUBLISHED-BASE-PROPAGATION",
+        branch="feat/published-base-propagation",
+        owner_thread_id="owner-thread-1",
+        claim_generation=1,
+        expected_remote_head=HEAD,
+        live_main=LIVE,
+        target=target,
+    )
+    reanchored = registry_ops.register_active(
+        state_path=state_path,
+        preflight_result=reanchor_preflight,
+        target=target,
+        live_main=LIVE,
+        lane_id="DIRECT-PUBLISHED-BASE-PROPAGATION",
+        claim_generation=1,
+    )
+
+    assert reanchored["base_sha"] == LIVE
+    assert reanchored["published_base_sha"] == PUBLISHED_BASE
+
+
+def test_propagated_published_base_revalidates_current_pr_base(
+    tmp_path: Path,
+) -> None:
+    state_path, target = _published_claim_state(tmp_path)
+    resume_preflight = registry_ops.preflight_resume(
+        state_path=state_path,
+        lane_id="DIRECT-PUBLISHED-BASE-PROPAGATION",
+        branch="feat/published-base-propagation",
+        owner_thread_id="owner-thread-1",
+        claim_generation=0,
+        expected_remote_head=HEAD,
+        target=target,
+    )
+    resumed = registry_ops.register_resumed(
+        state_path=state_path,
+        preflight_result=resume_preflight,
+        target=target,
+        lane_id="DIRECT-PUBLISHED-BASE-PROPAGATION",
+        claim_generation=0,
+    )
+    reanchor_preflight = registry_ops.preflight(
+        state_path=state_path,
+        lane_id="DIRECT-PUBLISHED-BASE-PROPAGATION",
+        branch="feat/published-base-propagation",
+        owner_thread_id="owner-thread-1",
+        claim_generation=1,
+        expected_remote_head=HEAD,
+        live_main=LIVE,
+        target=target,
+    )
+    candidate = _pr(
+        1822,
+        branch="feat/published-base-propagation",
+        base=PUBLISHED_BASE,
+        head=HEAD,
+    )
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        open_prs=(candidate,),
+        checks={1822: _check(CheckStatus.SUCCESS)},
+    )
+
+    proof = verify_reanchor_lifecycle(
+        github,
+        pull_request_number=1822,
+        branch=candidate.branch,
+        expected_pr_base_sha=reanchor_preflight.published_base_sha,
+        expected_remote_head=HEAD,
+        live_main_sha=LIVE,
+    )
+
+    assert resumed["published_base_sha"] == PUBLISHED_BASE
+    assert reanchor_preflight.published_base_sha == PUBLISHED_BASE
+    assert proof.base_sha == PUBLISHED_BASE
+
+
+def test_missing_published_base_is_not_invented_for_new_claim(
+    tmp_path: Path,
+) -> None:
+    state_path, target = _published_claim_state(tmp_path)
+    state = registry.load_state(state_path)
+    state["records"][0].pop("published_base_sha")
+    registry.save_state(state_path, state)
+
+    preflight = registry_ops.preflight_resume(
+        state_path=state_path,
+        lane_id="DIRECT-PUBLISHED-BASE-PROPAGATION",
+        branch="feat/published-base-propagation",
+        owner_thread_id="owner-thread-1",
+        claim_generation=0,
+        expected_remote_head=HEAD,
+        target=target,
+    )
+    resumed = registry_ops.register_resumed(
+        state_path=state_path,
+        preflight_result=preflight,
+        target=target,
+        lane_id="DIRECT-PUBLISHED-BASE-PROPAGATION",
+        claim_generation=0,
+    )
+
+    assert resumed["base_sha"] == BASE
+    assert "published_base_sha" not in resumed
+
+
+def test_malformed_published_base_is_rejected_before_registration(
+    tmp_path: Path,
+) -> None:
+    state_path, target = _published_claim_state(tmp_path)
+    state = registry.load_state(state_path)
+    state["records"][0]["published_base_sha"] = "not-a-commit-sha"
+    registry.save_state(state_path, state)
+
+    with pytest.raises(ReanchorRefused, match="published PR base must be"):
+        registry_ops.preflight_resume(
+            state_path=state_path,
+            lane_id="DIRECT-PUBLISHED-BASE-PROPAGATION",
+            branch="feat/published-base-propagation",
+            owner_thread_id="owner-thread-1",
+            claim_generation=0,
+            expected_remote_head=HEAD,
+            target=target,
+        )
 
 
 def test_reanchor_accepts_exact_unhanded_active_remote_source_claim(
