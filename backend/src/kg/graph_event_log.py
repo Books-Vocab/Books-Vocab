@@ -358,23 +358,24 @@ class GraphSnapshotStore:
             is_synthetic=row.is_synthetic,
         )
 
+    def _latest_valid(self, session: Session, notebook_id: str) -> GraphSnapshotView | None:
+        rows = session.exec(
+            select(GraphSnapshot)
+            .where(GraphSnapshot.notebook_id == notebook_id)
+            .order_by(
+                GraphSnapshot.taken_at.desc(),  # type: ignore[attr-defined]
+                GraphSnapshot.snapshot_id.desc(),  # type: ignore[attr-defined]
+            )
+        ).all()
+        for row in rows:
+            view = self._view(row)
+            if view is not None:
+                return view
+        return None
+
     def latest(self, notebook_id: str) -> GraphSnapshotView | None:
         with Session(self.engine) as session:
-            rows = session.exec(
-                select(GraphSnapshot)
-                .where(GraphSnapshot.notebook_id == notebook_id)
-                # 次要排序 snapshot_id 打破同 taken_at 平手,讓 "latest" 確定(批量
-                # 同時戳寫入時不致非確定回任一筆)。
-                .order_by(
-                    GraphSnapshot.taken_at.desc(),  # type: ignore[attr-defined]
-                    GraphSnapshot.snapshot_id.desc(),  # type: ignore[attr-defined]
-                )
-            ).all()
-            for row in rows:
-                view = self._view(row)
-                if view is not None:
-                    return view
-            return None
+            return self._latest_valid(session, notebook_id)
 
     def all(self, *, notebook_id: str | None = None) -> list[GraphSnapshotView]:
         with Session(self.engine) as session:
@@ -404,14 +405,7 @@ class GraphSnapshotStore:
             min_events_since_snapshot if min_events_since_snapshot is not None else self.PERIODIC_EVENT_THRESHOLD
         )
         with Session(self.engine) as session:
-            latest = session.exec(
-                select(GraphSnapshot)
-                .where(GraphSnapshot.notebook_id == notebook_id)
-                .order_by(
-                    GraphSnapshot.taken_at.desc(),  # type: ignore[attr-defined]
-                    GraphSnapshot.snapshot_id.desc(),  # type: ignore[attr-defined]
-                )
-            ).first()
+            latest = self._latest_valid(session, notebook_id)
             if latest is None:
                 snapshot_id = uuid.uuid4().hex
                 session.add(
