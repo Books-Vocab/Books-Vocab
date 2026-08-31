@@ -81,7 +81,10 @@ def update_book(book_id: str, req: BookUpdateRequest, user: CurrentUser):
 @router.put("/api/library/books/{book_id}/position", response_model=BookMetadataResponse)
 def put_position(book_id: str, req: BookPositionRequest, user: CurrentUser):
     store = _library_store(user["dir"])
-    book = store.update_position(book_id, req)
+    try:
+        book = store.update_position(book_id, req)
+    except ValueError:
+        raise BadRequestError("Invalid updated_at timestamp") from None
     if book is None:
         raise NotFoundError("Book", book_id)
     return store._to_response(book)
