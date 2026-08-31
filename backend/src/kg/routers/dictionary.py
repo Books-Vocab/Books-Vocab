@@ -71,9 +71,7 @@ dictionary_lookup_leases = _DictionaryLookupLeases()
 
 
 @lru_cache(maxsize=8)
-def _build_lexical_service(
-    cache_path: str, positive_ttl_days: int, negative_ttl_hours: int
-) -> LexicalService:
+def _build_lexical_service(cache_path: str, positive_ttl_days: int, negative_ttl_hours: int) -> LexicalService:
     from datetime import timedelta
 
     return LexicalService(
@@ -105,19 +103,15 @@ def _admit(service: LexicalService, user_id: str, operation: str) -> None:
     if not dictionary_rate_limiter.admit(user_id):
         # Recorded here because the limiter refuses before LexicalService runs;
         # user-facing 429s would otherwise be invisible to `dictionary-health`.
-        service.cache.record_lookup(
-            service.provider.provider_id, operation, "throttled", 0
-        )
-        raise DictionaryRateLimitError(
-            "Dictionary search rate limit exceeded", headers={"Retry-After": "60"}
-        )
+        service.cache.record_lookup(service.provider.provider_id, operation, "throttled", 0)
+        raise DictionaryRateLimitError("Dictionary search rate limit exceeded", headers={"Retry-After": "60"})
 
 
 @router.get("/api/dictionary/search", response_model=DictionarySearchResponse)
 def search_dictionary(
     request: Request,
     user: CurrentUser,
-    q: str = Query(min_length=1, max_length=200),
+    q: str = Query(min_length=1, max_length=200, pattern=r".*\S.*"),
     source_lang: Literal["en"] = "en",
     target_lang: Literal["zh-Hant"] = "zh-Hant",
 ):
@@ -125,9 +119,7 @@ def search_dictionary(
     _require_enabled(settings)
     service = _lexical_service(settings)
     _admit(service, user["id"], "search")
-    result = service.search(
-        q, source_language=source_lang, target_language=target_lang
-    )
+    result = service.search(q, source_language=source_lang, target_language=target_lang)
     hits: list[DictionarySearchHit] = []
     if result.entry is not None:
         entry = result.entry
