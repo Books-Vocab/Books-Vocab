@@ -529,6 +529,24 @@ def test_patch_notebook_settings_refuses_staged_notebook_and_get_hides_it(isolat
         store.close()
 
 
+def test_vocab_api_rejects_staged_notebook_access(isolated_api):
+    from kg.notebook import NotebookStore
+
+    store = NotebookStore(isolated_api.data_dir / "users" / isolated_api.user_id / "notebooks.db")
+    staged = store.create("Staged", is_staged=True)
+    try:
+        response = isolated_api.client.get(
+            "/api/vocab",
+            params={"notebook_id": staged.id},
+            headers=isolated_api.headers,
+        )
+
+        assert response.status_code == 403, response.text
+        assert response.json()["detail"] == "Notebook access denied"
+    finally:
+        store.close()
+
+
 # ---------------------------------------------------------------------------
 # DELETE /api/notebooks/{nb_id}
 # ---------------------------------------------------------------------------
