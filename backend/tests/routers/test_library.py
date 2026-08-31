@@ -7,7 +7,9 @@ PATCH /api/library/books/{book_id}, PUT /api/library/books/{book_id}/position.
 from __future__ import annotations
 
 import json
+import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import pytest
@@ -296,6 +298,59 @@ class TestPutPosition:
         assert stale.json()["locator"] == "newer-locator"
         assert stale.json()["progression"] == 0.75
         assert stale.json()["position_updated_at"] == "2026-06-13T12:00:00Z"
+
+    def test_put_position_does_not_allow_stale_request_to_overwrite_newer_write(self, isolated_api, monkeypatch):
+        b = _create_book(isolated_api.client, isolated_api.headers, "Book")
+        book_id = b["id"]
+        stale_timestamp = "2026-06-13T11:00:00Z"
+        newer_timestamp = "2026-06-13T12:00:00Z"
+
+        stale_read = threading.Event()
+        allow_stale = threading.Event()
+        from kg.library import store as library_store
+
+        original_parse = library_store._parse_utc_instant
+
+        def pause_stale_request(value):
+            parsed = original_parse(value)
+            if value == stale_timestamp:
+                stale_read.set()
+                assert allow_stale.wait(timeout=5)
+            return parsed
+
+        monkeypatch.setattr(library_store, "_parse_utc_instant", pause_stale_request)
+
+        stale_payload = {
+            "locator": "stale-locator",
+            "progression": 0.25,
+            "updated_at": stale_timestamp,
+        }
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            stale_future = executor.submit(
+                isolated_api.client.put,
+                f"/api/library/books/{book_id}/position",
+                json=stale_payload,
+                headers=isolated_api.headers,
+            )
+            assert stale_read.wait(timeout=5)
+
+            newer = isolated_api.client.put(
+                f"/api/library/books/{book_id}/position",
+                json={
+                    "locator": "newer-locator",
+                    "progression": 0.75,
+                    "updated_at": newer_timestamp,
+                },
+                headers=isolated_api.headers,
+            )
+            assert newer.status_code == 200
+            allow_stale.set()
+            stale = stale_future.result(timeout=5)
+
+        assert stale.status_code == 200
+        assert stale.json()["locator"] == "newer-locator"
+        assert stale.json()["progression"] == 0.75
+        assert stale.json()["position_updated_at"] == newer_timestamp
 
     def test_put_position_treats_equivalent_timezone_offsets_as_equal(self, isolated_api):
         b = _create_book(isolated_api.client, isolated_api.headers, "Book")
