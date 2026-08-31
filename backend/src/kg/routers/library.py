@@ -37,7 +37,10 @@ def list_books(user: CurrentUser, since: str | None = None):
     store = _library_store(user["dir"])
     books = store.all(include_deleted=True)
     if since:
-        since_instant = _utc_instant(since)
+        try:
+            since_instant = _utc_instant(since)
+        except ValueError:
+            raise BadRequestError("Invalid since timestamp") from None
         books = [b for b in books if b.updated_at and _utc_instant(b.updated_at) > since_instant]
     return books
 
