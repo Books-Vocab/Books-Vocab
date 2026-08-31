@@ -133,6 +133,73 @@ def test_vocab_lifecycle_and_since_sync(isolated_api):
     assert r_lookup_deleted.status_code == 404
 
 
+def test_vocab_preferences_patch_round_trips_independent_fields_and_scope(isolated_api):
+    client = isolated_api.client
+    headers = isolated_api.headers
+    word = "preference-route"
+
+    with patch.object(vocab_router_mod, "_embedding_store", return_value=_DummyEmbeddingStore()):
+        created = client.post(
+            "/api/vocab",
+            json=[{"word": word, "translation": "偏好路由", "context": "A preference route."}],
+            headers=headers,
+        )
+    assert created.status_code == 200, created.text
+
+    before = client.get(f"/api/vocab/{word}", headers=headers)
+    assert before.status_code == 200, before.text
+    since = before.json()["updatedAt"]
+    assert since is not None
+
+    hidden = client.patch(
+        f"/api/vocab/{word}/preferences",
+        json={"reader_hidden": True},
+        headers=headers,
+    )
+    assert hidden.status_code == 200, hidden.text
+    assert hidden.json()["isReaderHidden"] is True
+    assert hidden.json()["isReviewExcluded"] is False
+
+    excluded = client.patch(
+        f"/api/vocab/{word}/preferences",
+        json={"review_excluded": True},
+        headers=headers,
+    )
+    assert excluded.status_code == 200, excluded.text
+    assert excluded.json()["isReaderHidden"] is True
+    assert excluded.json()["isReviewExcluded"] is True
+
+    unhide = client.patch(
+        f"/api/vocab/{word}/preferences",
+        json={"reader_hidden": False},
+        headers=headers,
+    )
+    assert unhide.status_code == 200, unhide.text
+    assert unhide.json()["isReaderHidden"] is False
+    assert unhide.json()["isReviewExcluded"] is True
+
+    lookup = client.get(f"/api/vocab/{word}", headers=headers)
+    assert lookup.status_code == 200, lookup.text
+    assert lookup.json()["isReaderHidden"] is False
+    assert lookup.json()["isReviewExcluded"] is True
+
+    sync = client.get("/api/vocab", params={"since": since}, headers=headers)
+    assert sync.status_code == 200, sync.text
+    synced = next(card for card in sync.json() if card["content"] == word)
+    assert synced["isReaderHidden"] is False
+    assert synced["isReviewExcluded"] is True
+
+    notebook = client.post("/api/notebooks", json={"name": "Wrong preference scope"}, headers=headers)
+    assert notebook.status_code == 201, notebook.text
+    wrong_scope = client.patch(
+        f"/api/vocab/{word}/preferences",
+        params={"notebook_id": notebook.json()["id"]},
+        json={"reader_hidden": True},
+        headers=headers,
+    )
+    assert wrong_scope.status_code == 404, wrong_scope.text
+
+
 def test_vocab_full_sync_includes_deleted_cards_with_scope_and_paging(isolated_api):
     client = isolated_api.client
     headers = isolated_api.headers

@@ -15,6 +15,7 @@ from ..api_models import (
     BatchArchiveResponse,
     BatchDeleteRequest,
     BatchDeleteResponse,
+    CardPreferencesUpdateRequest,
     CardResponse,
     DeleteWordResponse,
     GraphLinkResponse,
@@ -31,7 +32,6 @@ from ..api_models import (
 from ..deps import (
     CurrentUser,
     _apply_quota_headers,
-    _card_response,
     _card_store,
     _check_quota,
     _embedding_store,
@@ -41,6 +41,7 @@ from ..deps import (
     get_user_lock,
     logger,
 )
+from ..deps import _card_response as _build_card_response
 from ..exceptions import BadRequestError, ConflictError, NotFoundError
 from ..notebook import validate_notebook_access
 from ..service_factories import create_client
@@ -68,11 +69,20 @@ from ..vocab_handlers import (
     push_review_response,
     unhide_graph_link_response,
     update_word_content_response,
+    update_word_preferences_response,
 )
 
 NOTEBOOK_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
 
 router = APIRouter(tags=["vocab"])
+
+
+def _card_response(card, graph, cards_by_id):
+    """Expose per-card preferences on every vocabulary response surface."""
+    result = _build_card_response(card, graph, cards_by_id)
+    result.isReaderHidden = getattr(card, "is_reader_hidden", False)
+    result.isReviewExcluded = getattr(card, "is_review_excluded", False)
+    return result
 
 
 @router.get("/api/vocab", response_model=list[CardResponse])
@@ -90,8 +100,10 @@ def list_vocab(
     # opaque next-page cursor rides the X-Next-Cursor header (same out-of-band
     # pattern as X-Pipeline-Pending). A malformed cursor -> BadRequestError.
     result, next_cursor = list_vocab_response(
-        since=since, user=user,
-        card_store_factory=_card_store, graph_store_factory=_graph_store,
+        since=since,
+        user=user,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
         card_response_builder=_card_response,
         notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
@@ -118,12 +130,7 @@ async def enqueue_add_link_operation(
 ):
     validate_notebook_access(_notebook_store(user["dir"]), notebook_id)
     source = _card_store(user["dir"]).get(req.from_id)
-    if (
-        source is None
-        or source.is_deleted
-        or source.is_archived
-        or source.notebook_id != notebook_id
-    ):
+    if source is None or source.is_deleted or source.is_archived or source.notebook_id != notebook_id:
         raise NotFoundError("Card", req.from_id)
 
     normalized_key = idempotency_key.strip()
@@ -162,6 +169,7 @@ def get_add_link_operation(operation_id: str, user: CurrentUser):
 
 # Static paths MUST be registered before {word} path parameter
 
+
 @router.post("/api/vocab/batch-delete", response_model=BatchDeleteResponse)
 def batch_delete(
     req: BatchDeleteRequest,
@@ -169,7 +177,8 @@ def batch_delete(
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
 ):
     return batch_delete_response(
-        req, user,
+        req,
+        user,
         card_store_factory=_card_store,
         graph_store_factory=_graph_store,
         notebook_store_factory=_notebook_store,
@@ -186,7 +195,8 @@ def batch_archive(
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
 ):
     return batch_archive_response(
-        req, user,
+        req,
+        user,
         card_store_factory=_card_store,
         graph_store_factory=_graph_store,
         notebook_store_factory=_notebook_store,
@@ -202,8 +212,10 @@ def push_review(
     # notebook_id 不做過濾：iOS client 推送全部 notebook 的複習狀態，
     # 後端需在全域卡片中查找匹配。
     return push_review_response(
-        req, user,
-        card_store_factory=_card_store, logger=logger,
+        req,
+        user,
+        card_store_factory=_card_store,
+        logger=logger,
         notebook_id=None,
     )
 
@@ -211,7 +223,8 @@ def push_review(
 @router.get("/api/vocab/review-events", response_model=ReviewEventsResponse)
 def pull_review_events(user: CurrentUser, since: str | None = None):
     return pull_review_events_response(
-        since, user,
+        since,
+        user,
         review_event_store_factory=_review_event_store,
     )
 
@@ -219,8 +232,28 @@ def pull_review_events(user: CurrentUser, since: str | None = None):
 @router.patch("/api/vocab/review-events", response_model=ReviewEventsPushResponse)
 def push_review_events(req: ReviewEventsPushRequest, user: CurrentUser):
     return push_review_events_response(
-        req, user,
+        req,
+        user,
         review_event_store_factory=_review_event_store,
+    )
+
+
+@router.patch("/api/vocab/{word}/preferences", response_model=CardResponse)
+def update_word_preferences(
+    word: str,
+    req: CardPreferencesUpdateRequest,
+    user: CurrentUser,
+    notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
+):
+    return update_word_preferences_response(
+        word,
+        req,
+        user,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
+        card_response_builder=_card_response,
+        notebook_store_factory=_notebook_store,
+        notebook_id=notebook_id,
     )
 
 
@@ -231,13 +264,14 @@ def lookup_word(
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
 ):
     return lookup_word_response(
-        word, user,
-        card_store_factory=_card_store, graph_store_factory=_graph_store,
+        word,
+        user,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
         card_response_builder=_card_response,
         notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
     )
-
 
 
 @router.patch("/api/vocab/{word}", response_model=CardResponse)
@@ -250,8 +284,11 @@ def update_word_content(
     # Editorial content update (meaning / note). Distinct from
     # {word}/archive (archive toggle) and DELETE {word} (soft delete).
     return update_word_content_response(
-        word, req, user,
-        card_store_factory=_card_store, graph_store_factory=_graph_store,
+        word,
+        req,
+        user,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
         card_response_builder=_card_response,
         notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
@@ -259,8 +296,21 @@ def update_word_content(
 
 
 @router.patch("/api/vocab/{word}/archive", response_model=ArchiveWordResponse)
-def archive_word(word: str, req: ArchiveWordRequest, user: CurrentUser, notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN)):
-    return archive_word_response(word, req, user, card_store_factory=_card_store, graph_store_factory=_graph_store, notebook_store_factory=_notebook_store, notebook_id=notebook_id)
+def archive_word(
+    word: str,
+    req: ArchiveWordRequest,
+    user: CurrentUser,
+    notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
+):
+    return archive_word_response(
+        word,
+        req,
+        user,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
+        notebook_store_factory=_notebook_store,
+        notebook_id=notebook_id,
+    )
 
 
 @router.delete("/api/vocab/{word}", response_model=DeleteWordResponse)
@@ -270,8 +320,10 @@ def delete_word(
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
 ):
     return delete_word_response(
-        word, user,
-        card_store_factory=_card_store, graph_store_factory=_graph_store,
+        word,
+        user,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
         notebook_store_factory=_notebook_store,
         embedding_store_factory=_embedding_store,
         client_factory=create_client,
@@ -305,9 +357,12 @@ def create_graph_link(
     # translate, so an over-quota user cannot burn unbounded LLM cost.
     quota = _check_quota(user, "manual_link", response)
     result = create_manual_link_response(
-        req, user,
-        card_store_factory=_card_store, graph_store_factory=_graph_store,
-        client_factory=create_client, notebook_store_factory=_notebook_store,
+        req,
+        user,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
+        client_factory=create_client,
+        notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
     )
     _apply_quota_headers(response, quota)
@@ -321,9 +376,12 @@ def hide_graph_link(
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
 ):
     hide_graph_link_response(
-        link_id, user,
-        card_store_factory=_card_store, graph_store_factory=_graph_store,
-        notebook_store_factory=_notebook_store, notebook_id=notebook_id,
+        link_id,
+        user,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
+        notebook_store_factory=_notebook_store,
+        notebook_id=notebook_id,
     )
 
 
@@ -334,9 +392,12 @@ def unhide_graph_link(
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
 ):
     unhide_graph_link_response(
-        link_id, user,
-        card_store_factory=_card_store, graph_store_factory=_graph_store,
-        notebook_store_factory=_notebook_store, notebook_id=notebook_id,
+        link_id,
+        user,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
+        notebook_store_factory=_notebook_store,
+        notebook_id=notebook_id,
     )
 
 
@@ -347,9 +408,12 @@ def delete_graph_link(
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
 ):
     delete_graph_link_response(
-        link_id, user,
-        card_store_factory=_card_store, graph_store_factory=_graph_store,
-        notebook_store_factory=_notebook_store, notebook_id=notebook_id,
+        link_id,
+        user,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
+        notebook_store_factory=_notebook_store,
+        notebook_id=notebook_id,
     )
 
 
@@ -366,9 +430,12 @@ def add_vocab(
 ):
     quota = _check_quota(user, "vocab_add", response)
     result = add_vocab_response(
-        entries, user,
-        card_store_factory=_card_store, embedding_store_factory=_embedding_store,
-        graph_store_factory=_graph_store, client_factory=create_client,
+        entries,
+        user,
+        card_store_factory=_card_store,
+        embedding_store_factory=_embedding_store,
+        graph_store_factory=_graph_store,
+        client_factory=create_client,
         logger=logger,
         notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
