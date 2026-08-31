@@ -61,6 +61,10 @@ def decode_cursor(token: str | None, secret: str) -> dict[str, Any] | None:
         expected = _sign(body, secret)
     except UnicodeEncodeError as exc:
         raise BadRequestError("Invalid cursor") from exc
+    try:
+        sig.encode("ascii")
+    except UnicodeEncodeError as exc:
+        raise BadRequestError("Invalid cursor") from exc
     if not hmac.compare_digest(sig, expected):
         raise BadRequestError("Invalid cursor")
     try:

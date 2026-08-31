@@ -57,3 +57,10 @@ def test_non_ascii_malformed_token_is_rejected_as_bad_request():
         decode_cursor("é.invalid", _SECRET)
 
     assert exc_info.value.status_code == 400
+
+
+def test_non_ascii_signature_is_rejected_as_bad_request():
+    with pytest.raises(BadRequestError) as exc_info:
+        decode_cursor("YWJj.é", _SECRET)
+
+    assert exc_info.value.status_code == 400
