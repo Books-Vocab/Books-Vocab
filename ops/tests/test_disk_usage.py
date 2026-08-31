@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -538,3 +539,117 @@ def test_measurement_time_budget_fails_closed_with_structured_evidence(
     assert report["measurement"]["budget_seconds"] == 0.0
     assert report["measurement"]["budget_exhausted"] is True
     assert "measurement-time-budget-exceeded" in report["policy"]["reasons"]
+
+
+def test_codex_topology_and_lane_classifications_are_separate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repo, active = _repo_with_worktree(tmp_path)
+    terminal = repo / ".claude" / "worktrees" / "terminal"
+    unknown = repo / ".claude" / "worktrees" / "unknown"
+    codex_root = tmp_path / ".codex" / "worktrees"
+    unregistered = codex_root / "unregistered"
+    _run_git(repo, "worktree", "add", "-b", "terminal", str(terminal), "main")
+    _run_git(repo, "worktree", "add", "-b", "unknown", str(unknown), "main")
+    _run_git(repo, "worktree", "add", "-b", "unregistered", str(unregistered), "main")
+    monkeypatch.setenv("KG_DISK_USAGE_CODEX_WORKTREE_ROOT", str(codex_root))
+
+    missing = tmp_path / ".codex" / "worktrees" / "missing"
+    state = tmp_path / "registry.json"
+    _write_registry(
+        state,
+        [
+            {
+                "branch": "lane-one",
+                "path": str(active),
+                "status": "active",
+                "claim_generation": 0,
+            },
+            {
+                "branch": "missing",
+                "path": str(missing),
+                "status": "active",
+                "claim_generation": 0,
+            },
+            {
+                "branch": "terminal",
+                "path": str(terminal),
+                "status": "merged",
+                "claim_generation": 0,
+            },
+            {
+                "branch": "unknown",
+                "path": str(unknown),
+                "status": "paused",
+                "claim_generation": 0,
+            },
+        ],
+    )
+
+    report = disk_usage.build_report(repo, state)
+    classifications = report["lane_attribution"]["classifications"]
+
+    assert report["topology"]["observed_roots"] == sorted(
+        [str(repo / ".claude" / "worktrees"), str(codex_root)]
+    )
+    assert classifications["active"]["count"] == 1
+    assert classifications["active_but_missing"]["count"] == 1
+    assert classifications["physical_but_unregistered"]["count"] == 1
+    assert classifications["terminal_residue"]["count"] == 1
+    assert classifications["unknown"]["count"] == 1
+    assert classifications["active_but_missing"]["allocated_bytes"] == 0
+    assert classifications["active_but_missing"]["lane_keys"]
+    assert classifications["physical_but_unregistered"]["allocated_bytes"] > 0
+    assert classifications["terminal_residue"]["allocated_bytes"] > 0
+    assert (
+        len(report["lane_attribution"]["product_lane_keys"])
+        == report["lane_attribution"]["product_lane_count"]
+    )
+    assert report["policy"]["missing_active_lanes"] == [str(missing)]
+    assert report["policy"]["terminal_physical_residue"] == [str(terminal)]
+    assert report["policy"]["unregistered_physical_worktrees"] == [str(unregistered)]
+
+
+def test_codex_active_and_terminal_cache_residue_is_observed_not_evicted(
+    tmp_path: Path,
+) -> None:
+    """The shell guard must never own worktree lifecycle cleanup."""
+
+    script = Path(__file__).resolve().parents[1] / "kg_disk_guard.sh"
+    root = tmp_path / "guard"
+    registry = root / "registry.json"
+    state = root / "state.json"
+    cache = root / ".codex" / "worktrees" / "lane" / ".cache" / "ios-test-derived-data"
+    for key in ("a", "b", "c", "d"):
+        (cache / key / "Build").mkdir(parents=True)
+        (cache / key / "Build" / "blob").write_text("x", encoding="utf-8")
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    _write_registry(
+        registry,
+        [
+            {
+                "branch": "lane",
+                "path": str(root / ".codex" / "worktrees" / "lane"),
+                "status": "merged",
+                "claim_generation": 0,
+            }
+        ],
+    )
+    env = {
+        "KG_DISK_GUARD_WORKSPACE": str(root),
+        "KG_DISK_GUARD_STATE": str(state),
+        "KG_DISK_GUARD_REGISTRY_STATE": str(registry),
+        "KG_DISK_GUARD_CODEX_WORKTREE_ROOT": str(root / ".codex" / "worktrees"),
+        "KG_DISK_GUARD_LANE_USAGE_STATE": str(root / "lane.json"),
+        "KG_DISK_GUARD_FREE_BYTES": str(30 * 1073741824),
+        "KG_DISK_GUARD_ACTIVE_BUILD": "0",
+        "KG_DISK_GUARD_GUARD_LOCK_HELD": "1",
+        "KG_DISK_GUARD_BUILD_LOCK_HELD": "1",
+        "KG_DISK_GUARD_WORKTREE_CACHE_KEEP": "0",
+        "KG_DISK_GUARD_WORKTREE_CACHE_MIN_AGE_HOURS": "0",
+    }
+    completed = subprocess.run(
+        ["bash", str(script)], env={**dict(os.environ), **env}, check=False
+    )
+    assert completed.returncode == 0
+    assert all((cache / key).is_dir() for key in ("a", "b", "c", "d"))

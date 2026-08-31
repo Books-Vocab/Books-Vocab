@@ -43,6 +43,11 @@ kg_ios_cache_evict() {
   local effective_keep="$keep"
   local budget_kb current_cache_kb cache_project_root
 
+  KG_IOS_CACHE_EVICT_ATTEMPTED=0
+  KG_IOS_CACHE_EVICTED=0
+  KG_IOS_CACHE_EVICT_FAILED=0
+  KG_IOS_CACHE_EVICT_FREED_KB=0
+
   [[ -d "$cache_root" ]] || return 0
 
   # A keyed-cache eviction is also an opportunity to enforce the aggregate
@@ -110,23 +115,29 @@ kg_ios_cache_evict() {
     size_kb="$(du -sk "$path" 2>/dev/null | cut -f1)"
     [[ -n "$size_kb" ]] || size_kb=0
     age_h=$(( age_secs / 3600 ))
+    KG_IOS_CACHE_EVICT_ATTEMPTED=$(( KG_IOS_CACHE_EVICT_ATTEMPTED + 1 ))
     if [[ "$dry_run" == "1" ]]; then
       verb="would-evict"
     else
       verb="evicted"
       if ! rm -rf "$path" 2>/dev/null; then
         echo "[ios_cache] evict-failed key=$name (continuing)" >&2
+        KG_IOS_CACHE_EVICT_FAILED=$(( KG_IOS_CACHE_EVICT_FAILED + 1 ))
         kept=$(( kept + 1 ))
         continue
       fi
     fi
     echo "[ios_cache] $verb key=$name sizeKB=$size_kb ageH=$age_h" >&2
+    if [[ "$dry_run" != "1" ]]; then
+      KG_IOS_CACHE_EVICTED=$(( KG_IOS_CACHE_EVICTED + 1 ))
+    fi
     evicted=$(( evicted + 1 ))
     freed_kb=$(( freed_kb + size_kb ))
   done
 
-  if (( evicted > 0 )); then
-    echo "[ios_cache] eviction root=$cache_root keep=$effective_keep minAgeH=$min_age_hours kept=$kept $( [[ "$dry_run" == "1" ]] && echo would-free || echo freed )KB=$freed_kb evicted=$evicted" >&2
+  KG_IOS_CACHE_EVICT_FREED_KB="$freed_kb"
+  if (( KG_IOS_CACHE_EVICT_ATTEMPTED > 0 )); then
+    echo "[ios_cache] eviction root=$cache_root keep=$effective_keep minAgeH=$min_age_hours $( [[ "$dry_run" == "1" ]] && echo would-free || echo freed )KB=$freed_kb kept=$kept attempted=$KG_IOS_CACHE_EVICT_ATTEMPTED evicted=$KG_IOS_CACHE_EVICTED failed=$KG_IOS_CACHE_EVICT_FAILED" >&2
   fi
   return 0
 }

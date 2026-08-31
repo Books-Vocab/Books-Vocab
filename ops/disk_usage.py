@@ -30,6 +30,7 @@ LIVE_REGISTRY_STATUSES = {"active", "published", "cleanup_pending"}
 TERMINAL_REGISTRY_STATUSES = {"merged", "abandoned"}
 KNOWN_REGISTRY_STATUSES = LIVE_REGISTRY_STATUSES | TERMINAL_REGISTRY_STATUSES
 DEFAULT_TIME_BUDGET_SECONDS = 30.0
+DEFAULT_CODEX_WORKTREE_ROOT = Path.home() / ".codex" / "worktrees"
 
 
 def _path(value: str | Path) -> Path:
@@ -235,6 +236,129 @@ def _parse_worktrees(
     return records, None
 
 
+def _topology_roots(workspace: Path) -> list[Path]:
+    """Return the bounded worktree roots that this report observes."""
+
+    configured_codex_root = os.environ.get("KG_DISK_USAGE_CODEX_WORKTREE_ROOT")
+    roots = [
+        workspace / ".claude" / "worktrees",
+        _path(configured_codex_root)
+        if configured_codex_root
+        else _path(DEFAULT_CODEX_WORKTREE_ROOT),
+    ]
+    unique: list[Path] = []
+    for root in roots:
+        normalized = _path(root)
+        if normalized not in unique:
+            unique.append(normalized)
+    return unique
+
+
+def _topology_candidates(
+    root: Path, *, deadline: float | None = None, max_depth: int = 2
+) -> tuple[list[Path], str | None]:
+    """Enumerate only shallow checkout roots; never walk their project files."""
+
+    root = _path(root)
+    if not root.is_dir():
+        return [], None
+    candidates: list[Path] = []
+    pending: list[tuple[Path, int]] = [(root, 0)]
+    try:
+        while pending:
+            if deadline is not None and time.monotonic() >= deadline:
+                return candidates, "measurement-time-budget-exceeded"
+            directory, depth = pending.pop()
+            for entry in sorted(os.scandir(directory), key=lambda item: item.name):
+                if entry.is_symlink() or not entry.is_dir(follow_symlinks=False):
+                    continue
+                entry_path = Path(entry.path)
+                if (entry_path / ".git").exists():
+                    candidates.append(entry_path)
+                elif depth < max_depth:
+                    pending.append((entry_path, depth + 1))
+    except OSError as exc:
+        return candidates, f"topology-scan:{exc.__class__.__name__}"
+    return candidates, None
+
+
+def _git_output(path: Path, *args: str) -> str | None:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(path), *args],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return None
+    if completed.returncode != 0:
+        return None
+    value = completed.stdout.strip()
+    return value or None
+
+
+def _inspect_topology_worktree(path: Path) -> dict[str, Any] | None:
+    """Read identity/status for a topology checkout not returned by git list."""
+
+    head = _git_output(path, "rev-parse", "HEAD")
+    common_dir = _git_output(path, "rev-parse", "--git-common-dir")
+    if head is None or common_dir is None:
+        return None
+    branch = _git_output(path, "symbolic-ref", "--quiet", "--short", "HEAD")
+    try:
+        status = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(path),
+                "status",
+                "--porcelain=v1",
+                "--untracked-files=all",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return {
+            "path": path,
+            "head": head,
+            "branch": branch or "(detached)",
+            "inspection_complete": False,
+            "inspection_error": "git-status:OSError",
+            "worktree_state": "unknown",
+        }
+    if status.returncode != 0:
+        return {
+            "path": path,
+            "head": head,
+            "branch": branch or "(detached)",
+            "inspection_complete": False,
+            "inspection_error": f"git-status:exit-{status.returncode}",
+            "worktree_state": "unknown",
+        }
+    return {
+        "path": path,
+        "head": head,
+        "branch": branch or "(detached)",
+        "inspection_complete": True,
+        "dirty": bool(status.stdout.strip()),
+        "worktree_state": "dirty" if status.stdout.strip() else "clean",
+    }
+
+
+def _topology_name(path: Path, roots: list[Path]) -> str | None:
+    for root in roots:
+        if _relative_to(path, root):
+            return (
+                "codex"
+                if root.name == "worktrees" and ".codex" in root.parts
+                else "claude"
+            )
+    return None
+
+
 def _load_registry(state_path: Path) -> tuple[list[dict[str, Any]], str | None]:
     try:
         payload = json.loads(state_path.read_text(encoding="utf-8"))
@@ -279,6 +403,7 @@ def _lane_entry(
     physical_state_override: str | None = None,
     registry_match_count: int = 1,
     registry_statuses: list[str] | None = None,
+    topology: str | None = None,
 ) -> dict[str, Any]:
     if path.is_dir():
         measured = measure_tree(path, deadline=deadline)
@@ -353,6 +478,8 @@ def _lane_entry(
         ),
         "scope": _scope_paths(registry or {}),
     }
+    if topology is not None:
+        entry["topology"] = topology
     if physical is not None:
         entry["worktree_state"] = physical.get("worktree_state", "unknown")
         entry["inspection_complete"] = bool(physical.get("inspection_complete", False))
@@ -405,6 +532,33 @@ def build_report(
 
     registry_records, registry_error = _load_registry(state_path)
     physical_records, git_error = _parse_worktrees(workspace, deadline=deadline)
+    topology_roots = _topology_roots(workspace)
+    topology_errors: list[str] = []
+    workspace_common_dir = _git_output(workspace, "rev-parse", "--git-common-dir")
+    if workspace_common_dir is not None:
+        workspace_common_dir = str(_path(workspace / workspace_common_dir))
+    known_physical_paths = {item["path"] for item in physical_records}
+    for topology_root in topology_roots:
+        candidates, topology_error = _topology_candidates(
+            topology_root, deadline=deadline
+        )
+        if topology_error:
+            topology_errors.append(f"{topology_root}:{topology_error}")
+        for candidate in candidates:
+            if candidate in known_physical_paths:
+                continue
+            candidate_common_dir = _git_output(
+                candidate, "rev-parse", "--git-common-dir"
+            )
+            if candidate_common_dir is None:
+                continue
+            candidate_common_dir = str(_path(candidate / candidate_common_dir))
+            if candidate_common_dir != workspace_common_dir:
+                continue
+            inspected = _inspect_topology_worktree(candidate)
+            if inspected is not None:
+                physical_records.append(inspected)
+                known_physical_paths.add(candidate)
     physical_by_path: dict[Path, dict[str, Any]] = {}
     physical_path_counts: dict[Path, int] = {}
     for item in physical_records:
@@ -508,6 +662,7 @@ def build_report(
             registry_statuses=[
                 str(item[1].get("status") or "(missing)") for item in matches
             ],
+            topology=_topology_name(normalized, topology_roots),
         )
         entry["registry_indices"] = sorted(item[0] for item in matches)
         entry["external_ids"] = sorted(
@@ -536,6 +691,7 @@ def build_report(
             physical=physical,
             deadline=deadline,
             excluded=is_excluded,
+            topology=_topology_name(physical_path, topology_roots),
         )
         if lane_kind == "canonical-main":
             entry["ownership"] = "canonical"
@@ -562,6 +718,7 @@ def build_report(
             registry_index=None,
             physical=physical_by_path.get(workspace),
             deadline=deadline,
+            topology=_topology_name(workspace, topology_roots),
         )
         canonical["ownership"] = "canonical"
         canonical["lane_state"] = "canonical"
@@ -719,6 +876,8 @@ def build_report(
         blocking_reasons.append(git_error)
         if git_error == "measurement-time-budget-exceeded":
             blocking_reasons.append(git_error)
+    if topology_errors:
+        blocking_reasons.extend(topology_errors)
     if malformed_registry_records:
         blocking_reasons.append("registry-records-invalid")
     if missing_active:
@@ -813,6 +972,49 @@ def build_report(
         for item in physical_lanes
     ]
 
+    product_lanes = [item for item in lanes if item["lane_kind"] == "lane"]
+    classification_items: dict[str, list[dict[str, Any]]] = {
+        "active": [],
+        "active_but_missing": [],
+        "physical_but_unregistered": [],
+        "terminal_residue": [],
+        "unknown": [],
+    }
+    for item in product_lanes:
+        if item["registry_status"] in LIVE_REGISTRY_STATUSES:
+            classification = "active" if item["exists"] else "active_but_missing"
+        elif item["registry_status"] in TERMINAL_REGISTRY_STATUSES:
+            classification = "terminal_residue" if item["exists"] else "unknown"
+        elif item["ownership"] == "unregistered":
+            classification = "physical_but_unregistered"
+        else:
+            classification = "unknown"
+        classification_items[classification].append(item)
+
+    def classification_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
+        return {
+            "count": len(items),
+            "logical_bytes": sum(int(item["logical_bytes"]) for item in items),
+            "allocated_bytes": sum(int(item["allocated_bytes"]) for item in items),
+            "lane_keys": sorted(str(item["lane_key"]) for item in items),
+            "paths": sorted(str(item["path"]) for item in items),
+        }
+
+    lane_attribution = {
+        "product_lane_count": len(product_lanes),
+        "product_lane_logical_bytes": sum(
+            int(item["logical_bytes"]) for item in product_lanes
+        ),
+        "product_lane_allocated_bytes": sum(
+            int(item["allocated_bytes"]) for item in product_lanes
+        ),
+        "product_lane_keys": sorted(str(item["lane_key"]) for item in product_lanes),
+        "classifications": {
+            name: classification_summary(classification_items[name])
+            for name in sorted(classification_items)
+        },
+    }
+
     return {
         "schema": SCHEMA,
         "workspace": str(workspace),
@@ -822,8 +1024,26 @@ def build_report(
             "elapsed_seconds": round(time.monotonic() - measurement_started, 3),
             "budget_exhausted": measurement_budget_exhausted,
         },
+        "topology": {
+            "roots": [str(root) for root in topology_roots],
+            "observed_roots": sorted(
+                str(root) for root in topology_roots if root.is_dir()
+            ),
+            "observed_worktree_paths": sorted(
+                str(item["path"])
+                for item in physical_lanes
+                if item.get("topology") in {"claude", "codex"}
+            ),
+            "codex_worktree_paths": sorted(
+                str(item["path"])
+                for item in physical_lanes
+                if item.get("topology") == "codex"
+            ),
+            "errors": sorted(topology_errors),
+        },
         "lanes": lanes,
         "lane_count": len([item for item in lanes if item["lane_kind"] == "lane"]),
+        "lane_attribution": lane_attribution,
         "history": {
             "records": len(registry_records),
             "terminal_records": sum(
@@ -864,6 +1084,7 @@ def build_report(
             "nested_worktrees_excluded_from_workspace": sorted(
                 str(item) for item in nested_worktrees
             ),
+            "lane_attribution": lane_attribution,
         },
         "filesystem": filesystem_payload,
         "policy": {
