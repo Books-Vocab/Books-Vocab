@@ -176,8 +176,8 @@ struct PodcastCatalogReconciler {
     }
 
     /// Reconcile only authoritative, non-empty catalog responses for series
-    /// tombstones. Episode cleanup and progress dedup remain active for fetched
-    /// details even when the list response is empty.
+    /// tombstones and display order. Episode cleanup and progress dedup remain
+    /// active for fetched details even when the list response is empty.
     static func reconcile(
         serverSummaries: [PodcastSeriesSummary],
         fetchedDetails: [String: PodcastSeriesDetail],
@@ -186,6 +186,13 @@ struct PodcastCatalogReconciler {
         let ids = Set(serverSummaries.map(\.id))
         let allSeries = (try? context.fetch(FetchDescriptor<PodcastSeries>())) ?? []
         if !serverSummaries.isEmpty {
+            let seriesByRemoteId = Dictionary(
+                allSeries.map { ($0.remoteId, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+            for (ordinal, summary) in serverSummaries.enumerated() {
+                seriesByRemoteId[summary.id]?.sortOrder = ordinal
+            }
             for series in allSeries {
                 let shouldDelete = !ids.contains(series.remoteId)
                 if series.isSoftDeleted != shouldDelete {
