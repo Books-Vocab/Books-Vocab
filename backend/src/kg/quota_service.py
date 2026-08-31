@@ -240,7 +240,12 @@ def _window_cutoff_iso() -> str:
 def _utc_instant_cutoff_bounds(cutoff_iso: str) -> tuple[str, str]:
     """Return an indexed candidate bound and an exact UTC-instant cutoff."""
     cutoff = datetime.fromisoformat(cutoff_iso)
-    candidate_bound = (cutoff.date() - timedelta(days=1)).isoformat()
+    # The textual candidate bound must be based on the cutoff's UTC date. A
+    # local-date bound can exclude an equivalent timestamp with a negative
+    # offset before the local cutoff date, even when it is exactly on/after the
+    # UTC instant boundary.
+    cutoff_utc = cutoff if cutoff.tzinfo is None else cutoff.astimezone(UTC)
+    candidate_bound = (cutoff_utc.date() - timedelta(days=1)).isoformat()
     return candidate_bound, cutoff_iso
 
 
