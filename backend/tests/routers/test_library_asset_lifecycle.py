@@ -87,3 +87,70 @@ def test_deleted_book_asset_is_not_downloadable(isolated_api, monkeypatch):
         follow_redirects=False,
     )
     assert response.status_code == 404, response.text
+
+
+@pytest.mark.parametrize(
+    "library_bucket",
+    [None, "kg-library-test"],
+    ids=["local", "configured-bucket"],
+)
+@pytest.mark.parametrize(
+    "byte_size",
+    [10, 5 * 1024 * 1024 * 1024],
+    ids=["within-quota", "over-quota"],
+)
+def test_deleted_book_asset_upload_is_rejected_before_side_effects(
+    isolated_api, monkeypatch, library_bucket, byte_size
+):
+    """A tombstoned book cannot enter either asset-upload path."""
+    _swap_settings(
+        KGSettings(
+            data_dir=isolated_api.data_dir,
+            jwt_secret=TEST_JWT_SECRET,
+            library_bucket=library_bucket,
+        )
+    )
+
+    presign_calls = []
+
+    class FakeS3Client:
+        def generate_presigned_url(self, operation, *, Params, ExpiresIn):
+            presign_calls.append((operation, Params, ExpiresIn))
+            return "https://storage.test/presigned"
+
+    monkeypatch.setattr(library_router, "_library_s3_client", lambda settings: FakeS3Client())
+
+    book_id = _seed_book(isolated_api)
+    deleted = isolated_api.client.delete(f"/api/library/books/{book_id}", headers=isolated_api.headers)
+    assert deleted.status_code == 200, deleted.text
+
+    store = library_router._library_store(isolated_api.data_dir / "users" / isolated_api.user_id)
+    before = store.get(book_id)
+    assert before is not None and before.is_deleted
+    before_asset = (
+        before.asset_storage,
+        before.asset_object_key,
+        before.asset_byte_size,
+        before.asset_sha256,
+        before.updated_at,
+    )
+
+    response = isolated_api.client.post(
+        f"/api/library/books/{book_id}/asset-upload",
+        json={"format": "epub", "byte_size": byte_size},
+        headers=isolated_api.headers,
+    )
+
+    assert response.status_code == 404, response.text
+    assert response.json()["code"] == "NotFoundError"
+    assert presign_calls == []
+
+    after = store.get(book_id)
+    assert after is not None
+    assert (
+        after.asset_storage,
+        after.asset_object_key,
+        after.asset_byte_size,
+        after.asset_sha256,
+        after.updated_at,
+    ) == before_asset

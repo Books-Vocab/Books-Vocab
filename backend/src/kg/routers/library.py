@@ -146,6 +146,8 @@ def request_asset_upload(
     book = store.get(book_id)
     if book is None:
         raise NotFoundError("Book", book_id)
+    if book.is_deleted:
+        raise NotFoundError("Book", book_id)
 
     # Quota policy: reject obviously oversize assets before minting a target.
     if req.byte_size > settings.library_asset_max_bytes:
