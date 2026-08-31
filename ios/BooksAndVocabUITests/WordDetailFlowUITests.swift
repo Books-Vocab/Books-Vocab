@@ -154,16 +154,22 @@ final class WordDetailFlowUITests: UITestCase {
         XCTAssertEqual(translationEditor.value as? String, Fixture.translation)
         XCTAssertEqual(explanationEditor.value as? String, Fixture.explanation)
 
-        let editedTranslation = appendText(
+        let typedTranslation = appendText(
             " \(Fixture.editedTranslation)",
             to: translationEditor
         )
-        let editedExplanation = appendText(
+        let typedExplanation = appendText(
             " \(Fixture.editedExplanation)",
             to: explanationEditor
         )
-        XCTAssertTrue(editedTranslation.contains(Fixture.editedTranslation))
-        XCTAssertTrue(editedExplanation.contains(Fixture.editedExplanation))
+        XCTAssertTrue(typedTranslation.contains(Fixture.editedTranslation))
+        XCTAssertTrue(typedExplanation.contains(Fixture.editedExplanation))
+
+        // WordEditSheet persists trimmed editor values. Assert the rendered
+        // presentation against that save contract, while keeping the input
+        // assertions above on the raw editor values.
+        let editedTranslation = typedTranslation.trimmingCharacters(in: .whitespacesAndNewlines)
+        let editedExplanation = typedExplanation.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard let saveButton = activeIdentifiedElement(
             Selector.saveButton,
