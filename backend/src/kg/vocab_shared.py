@@ -114,7 +114,10 @@ def _dt_to_iso(dt: datetime | None) -> str | None:
     if dt is None:
         return None
     s = dt.isoformat()
-    if not s.endswith("Z") and "+" not in s:
+    # Only naive datetimes need the implicit UTC marker. Negative offsets do
+    # not contain "+", so checking the serialized string would produce an
+    # invalid value such as "...-05:00Z".
+    if not s.endswith("Z") and dt.utcoffset() is None:
         s += "Z"
     return s
 
