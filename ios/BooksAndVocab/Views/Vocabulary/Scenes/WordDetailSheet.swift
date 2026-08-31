@@ -116,7 +116,10 @@ struct WordDetailSheet: View {
             }
         }
         .toastSheet(isPresented: $isEditing) {
-            WordEditSheet(entry: entry)
+            WordEditSheet(
+                entry: entry,
+                onSaved: { state.refreshPresentation(for: entry, in: allEntries) }
+            )
         }
         .confirmationDialog(
             WordDetailCopy.deleteTitle(word: entry.word),
