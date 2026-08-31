@@ -5,6 +5,7 @@ it tamper-evident: a client cannot forge a cursor to page past the discovery
 WHERE filter, and a mutating sort counter (download/rating, Phase 3) cannot be
 steered by hand-crafted cursors.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -49,3 +50,10 @@ def test_wrong_secret_is_rejected():
 def test_malformed_token_is_rejected():
     with pytest.raises(BadRequestError):
         decode_cursor("not-a-valid-cursor", _SECRET)
+
+
+def test_non_ascii_malformed_token_is_rejected_as_bad_request():
+    with pytest.raises(BadRequestError) as exc_info:
+        decode_cursor("é.invalid", _SECRET)
+
+    assert exc_info.value.status_code == 400

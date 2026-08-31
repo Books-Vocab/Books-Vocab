@@ -9,6 +9,7 @@ sort (Phase 3) with a hand-crafted boundary. A bad/forged token raises
 ``BadRequestError`` rather than silently restarting from page one (which would
 loop the client forever on a corrupted cursor).
 """
+
 from __future__ import annotations
 
 import base64
@@ -35,9 +36,7 @@ _CURSOR_DOMAIN = b"kg.shared_decks.cursor.v1\x00"
 
 
 def _sign(body: str, secret: str) -> str:
-    tag = hmac.new(
-        secret.encode("utf-8"), _CURSOR_DOMAIN + body.encode("ascii"), hashlib.sha256
-    ).digest()
+    tag = hmac.new(secret.encode("utf-8"), _CURSOR_DOMAIN + body.encode("ascii"), hashlib.sha256).digest()
     return _b64u_encode(tag)
 
 
@@ -58,7 +57,10 @@ def decode_cursor(token: str | None, secret: str) -> dict[str, Any] | None:
     body, sep, sig = token.partition(".")
     if not sep or not body or not sig:
         raise BadRequestError("Invalid cursor")
-    expected = _sign(body, secret)
+    try:
+        expected = _sign(body, secret)
+    except UnicodeEncodeError as exc:
+        raise BadRequestError("Invalid cursor") from exc
     if not hmac.compare_digest(sig, expected):
         raise BadRequestError("Invalid cursor")
     try:
