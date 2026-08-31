@@ -211,8 +211,8 @@ struct KGVocabView: View {
         .onChange(of: query) { _, _ in
             selectionState.exit()
         }
-        .onChange(of: selectableIDs.count) { _, newCount in
-            selectionState.updateVisibleCount(newCount)
+        .onChange(of: selectableIDs, initial: true) { _, ids in
+            selectionState.updateVisibleIDs(ids)
         }
         .onChange(of: projection.visibleEntries.map(\.id)) { _, ids in
             if let selectedRowID, !ids.contains(selectedRowID) {
