@@ -492,6 +492,35 @@ class TestMergeUserConfigAutoLink:
             "updated_at": 1717668000.0,
         }
 
+    def test_stale_timestamp_does_not_overwrite_existing_group(self):
+        existing = {"enabled": False, "updated_at": 10.0}
+        config = {"auto_link": dict(existing)}
+
+        _merge_user_config(
+            config,
+            UserConfigRequest(auto_link=AutoLinkConfig(enabled=True, updated_at=9.0)),
+        )
+
+        assert config["auto_link"] == existing
+
+    @pytest.mark.parametrize(
+        ("incoming_updated_at", "expected"),
+        [
+            (11.0, {"enabled": True, "updated_at": 11.0}),
+            (10.0, {"enabled": False, "updated_at": 10.0}),
+            (None, {"enabled": True, "updated_at": None}),
+        ],
+    )
+    def test_timestamp_semantics_match_existing_config_groups(self, incoming_updated_at, expected):
+        config = {"auto_link": {"enabled": False, "updated_at": 10.0}}
+
+        _merge_user_config(
+            config,
+            UserConfigRequest(auto_link=AutoLinkConfig(enabled=True, updated_at=incoming_updated_at)),
+        )
+
+        assert config["auto_link"] == expected
+
     def test_none_preserves_existing(self):
         existing = {"enabled": False, "updated_at": 1.0}
         config = {"auto_link": dict(existing)}

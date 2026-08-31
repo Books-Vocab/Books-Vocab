@@ -179,7 +179,7 @@ def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
         }
     # Auto-link(judge pipeline 自動連結)開關。單一 updated_at 驅動整組 LWW。
     # 只在 client 有送時更新(None = 不動既有);缺省讀取端 fallback enabled=True。
-    if req.auto_link is not None:
+    if req.auto_link is not None and _should_apply_user_config_group(config, "auto_link", req.auto_link.updated_at):
         config["auto_link"] = {
             "enabled": req.auto_link.enabled,
             "updated_at": req.auto_link.updated_at,
