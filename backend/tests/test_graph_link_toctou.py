@@ -1,16 +1,18 @@
-"""Regression: add_link must dedup the same pair inside the lock (TOCTOU).
+"""Regression: add_link must dedup the same pair across store boundaries (TOCTOU).
 
 create_manual_link does check-then-act: find_link_between (None) → judge.evaluate
 (LLM, seconds, no lock held) → add_link. Two concurrent manual-link requests for
 the same pair both see None, both reach add_link, and -- because add_link did not
 re-check existence under _lock -- both inserted, yielding two active links for one
-pair. The fix makes add_link idempotent: under _lock, if an active/hidden link for
-the pair already exists, return it instead of inserting a duplicate.
+pair. The fix makes add_link idempotent: under _lock and the persisted link file
+lock, if an active/hidden link for the pair already exists, return it instead of
+inserting a duplicate.
 """
 
 from __future__ import annotations
 
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -27,12 +29,7 @@ def store(tmp_path):
 
 
 def _active_links_for_pair(store, a, b):
-    return [
-        lk
-        for lk in store.all_links()
-        if lk.status == "active"
-        and {lk.from_id, lk.to_id} == {a, b}
-    ]
+    return [lk for lk in store.all_links() if lk.status == "active" and {lk.from_id, lk.to_id} == {a, b}]
 
 
 def test_add_link_same_pair_is_idempotent(store):
@@ -83,6 +80,61 @@ def test_concurrent_add_link_same_pair_no_duplicate(store):
     assert not errors, f"Worker errors: {errors}"
     actives = _active_links_for_pair(store, "card_a", "card_b")
     assert len(actives) == 1, (
-        f"TOCTOU: {n_threads} concurrent add_link produced {len(actives)} "
-        "active links for one pair"
+        f"TOCTOU: {n_threads} concurrent add_link produced {len(actives)} active links for one pair"
     )
+
+
+def test_concurrent_add_link_across_instances_is_idempotent(tmp_path: Path):
+    """Separate GraphStore instances must dedup the same persisted pair."""
+    first = GraphStore(
+        links_path=tmp_path / "links.json",
+        candidates_path=tmp_path / "candidates.json",
+        blocked_path=tmp_path / "blocked.json",
+    )
+    second = GraphStore(
+        links_path=tmp_path / "links.json",
+        candidates_path=tmp_path / "candidates.json",
+        blocked_path=tmp_path / "blocked.json",
+    )
+    barrier = threading.Barrier(2)
+    result_ids: list[str] = []
+    errors: list[Exception] = []
+    result_lock = threading.Lock()
+
+    def add_link(graph: GraphStore) -> None:
+        try:
+            barrier.wait(timeout=5)
+            link = graph.add_link(
+                "card_a",
+                "card_b",
+                LinkKind.SHARES_USAGE,
+                0.9,
+                "cross-instance race",
+            )
+            with result_lock:
+                result_ids.append(link.id)
+        except Exception as exc:  # pragma: no cover - failure is asserted below
+            with result_lock:
+                errors.append(exc)
+
+    threads = [
+        threading.Thread(target=add_link, args=(first,)),
+        threading.Thread(target=add_link, args=(second,)),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert not errors
+    assert len(result_ids) == 2
+
+    reloaded = GraphStore(
+        links_path=tmp_path / "links.json",
+        candidates_path=tmp_path / "candidates.json",
+        blocked_path=tmp_path / "blocked.json",
+    )
+    active_links = _active_links_for_pair(reloaded, "card_a", "card_b")
+    assert len(active_links) == 1
+    assert set(result_ids) == {active_links[0].id}

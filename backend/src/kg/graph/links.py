@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import threading
+from pathlib import Path
 from typing import Any
 
+from .filelock import path_write_lock
 from .models import GraphLink, LinkKind
 
 
@@ -18,11 +20,17 @@ class _LinksMixin:
     _known_blocked_pairs: set[tuple[str, str]]
     _from_index: dict[str, set[str]]
     _to_index: dict[str, set[str]]
+    links_path: Path
+    _known_link_ids: set[str]
+    _links_write_lock: threading.Lock
 
     # Helpers supplied by other mixins / GraphStore.
     def _index_link(self, link: GraphLink) -> None: ...  # noqa: D102
     def _unindex_link(self, link: GraphLink) -> None: ...  # noqa: D102
     def _links_to_serializable(self) -> list[dict]: ...  # noqa: D102
+    def _read_json_list(self, path: Path) -> list[Any]: ...  # noqa: D102
+    @staticmethod
+    def _atomic_json_write(path: Path, data: Any, *, indent: int | None = 2) -> None: ...  # noqa: D102
     def _blocked_to_serializable(self) -> list[list[str]]: ...  # noqa: D102
     def _flush_links(self, snapshot: list[dict]) -> None: ...  # noqa: D102
     def _flush_blocked(self, snapshot: list[list[str]]) -> None: ...  # noqa: D102
@@ -37,6 +45,68 @@ class _LinksMixin:
     # Links
     # ------------------------------------------------------------------
 
+    def _find_persisted_link_for_pair(
+        self,
+        rows: list[Any],
+        from_id: str,
+        to_id: str,
+    ) -> GraphLink | None:
+        """Find an active/hidden link for a pair in a freshly-read disk snapshot."""
+        for row in rows:
+            if not isinstance(row, dict) or row.get("status", "active") not in ("active", "hidden"):
+                continue
+            row_from, row_to = row.get("from_id"), row.get("to_id")
+            if not ((row_from == from_id and row_to == to_id) or (row_from == to_id and row_to == from_id)):
+                continue
+            try:
+                return GraphLink.model_validate(row)
+            except (TypeError, ValueError):
+                # Match _load's tolerant handling: a malformed row cannot make
+                # a valid add_link request fail its semantic uniqueness check.
+                continue
+        return None
+
+    def _persist_new_link(self, link: GraphLink, snapshot: list[dict]) -> GraphLink | None:
+        """Persist a new link while atomically re-checking semantic pair uniqueness.
+
+        ``_flush_links`` protects file writes and merges foreign IDs, but it
+        cannot prevent two independent instances from both creating different
+        IDs for the same pair. Re-read and merge under the same file lock so a
+        second instance returns the first durable link instead of appending a
+        duplicate.
+        """
+        with self._links_write_lock, path_write_lock(self.links_path):
+            sequence = getattr(snapshot, "sequence", None)
+            if sequence is not None and sequence < getattr(self, "_last_flushed_links_snapshot_sequence", 0):
+                return None
+
+            disk_rows = self._read_json_list(self.links_path)
+            existing = self._find_persisted_link_for_pair(disk_rows, link.from_id, link.to_id)
+            if existing is not None and existing.id != link.id:
+                with self._lock:
+                    managed = self._links.pop(link.id, None)
+                    if managed is not None:
+                        self._unindex_link(managed)
+                    self._known_link_ids.discard(link.id)
+                return existing
+
+            snapshot_ids = {row["id"] for row in snapshot}
+            merged = list(snapshot)
+            for row in disk_rows:
+                if not isinstance(row, dict):
+                    merged.append(row)
+                    continue
+                row_id = row.get("id")
+                if row_id is None or row_id in snapshot_ids:
+                    continue
+                if row_id in self._known_link_ids:
+                    continue
+                merged.append(row)
+            self._atomic_json_write(self.links_path, merged)
+            if sequence is not None:
+                self._last_flushed_links_snapshot_sequence = sequence
+        return None
+
     def add_link(
         self,
         from_id: str,
@@ -47,14 +117,15 @@ class _LinksMixin:
         *,
         source: str = "auto",
     ) -> GraphLink:
-        """Create and store a new link. Idempotent per pair; disk write outside lock.
+        """Create and store a new link. Idempotent per pair across store instances.
 
         The sole caller (create_manual_link) does check-then-act: it reads
         find_link_between == None, runs a multi-second LLM call without holding
         _lock, then calls add_link. Two concurrent manual-link requests for the
-        same pair therefore both reach add_link. Re-checking existence *inside*
-        _lock closes the TOCTOU gap: an already-linked (active/hidden) pair
-        returns the existing link instead of inserting a duplicate.
+        same pair therefore both reach add_link. Re-checking inside _lock closes
+        the same-instance gap; _persist_new_link re-reads under the cross-process
+        file lock so an already-persisted (active/hidden) pair returns the
+        existing link instead of inserting a duplicate.
         """
         if from_id == to_id:
             raise ValueError("cannot link a card to itself")
@@ -74,12 +145,21 @@ class _LinksMixin:
             self._links[link.id] = link
             self._index_link(link)
             snapshot = self._links_to_serializable()
-        self._flush_links(snapshot)
+        existing = self._persist_new_link(link, snapshot)
+        if existing is not None:
+            return existing
         self._emit_graph_event(
-            "link_added", link_id=link.id, from_id=from_id, to_id=to_id,
+            "link_added",
+            link_id=link.id,
+            from_id=from_id,
+            to_id=to_id,
             links_snapshot=snapshot,
-            kind=str(kind), source=source, confidence_before=None,
-            confidence_after=confidence, status_before=None, status_after="active",
+            kind=str(kind),
+            source=source,
+            confidence_before=None,
+            confidence_after=confidence,
+            status_before=None,
+            status_after="active",
             reason=reason,
         )
         return link
@@ -113,15 +193,25 @@ class _LinksMixin:
             snapshot = self._links_to_serializable() if created else None
         if snapshot is not None:
             self._flush_links(snapshot)
-            self._emit_graph_events([
-                self._build_graph_event_draft(
-                    "link_added", link_id=lk.id, from_id=lk.from_id, to_id=lk.to_id,
-                    kind=str(lk.kind), source=source, confidence_before=None,
-                    confidence_after=lk.confidence, status_before=None, status_after="active",
-                    reason=lk.reason,
-                )
-                for lk in created
-            ], links_snapshot=snapshot)
+            self._emit_graph_events(
+                [
+                    self._build_graph_event_draft(
+                        "link_added",
+                        link_id=lk.id,
+                        from_id=lk.from_id,
+                        to_id=lk.to_id,
+                        kind=str(lk.kind),
+                        source=source,
+                        confidence_before=None,
+                        confidence_after=lk.confidence,
+                        status_before=None,
+                        status_after="active",
+                        reason=lk.reason,
+                    )
+                    for lk in created
+                ],
+                links_snapshot=snapshot,
+            )
         return created
 
     def get_links_for(self, card_id: str) -> list[GraphLink]:
@@ -146,9 +236,7 @@ class _LinksMixin:
             lk = self._links.get(lid)
             if lk is None or lk.status not in ("active", "hidden"):
                 continue
-            if (lk.from_id == id_a and lk.to_id == id_b) or (
-                lk.from_id == id_b and lk.to_id == id_a
-            ):
+            if (lk.from_id == id_a and lk.to_id == id_b) or (lk.from_id == id_b and lk.to_id == id_a):
                 return True
         return False
 
@@ -170,9 +258,7 @@ class _LinksMixin:
             lk = self._links.get(lid)
             if lk is None or lk.status not in ("active", "hidden"):
                 continue
-            if (lk.from_id == id_a and lk.to_id == id_b) or (
-                lk.from_id == id_b and lk.to_id == id_a
-            ):
+            if (lk.from_id == id_a and lk.to_id == id_b) or (lk.from_id == id_b and lk.to_id == id_a):
                 return lk
         return None
 
@@ -208,10 +294,18 @@ class _LinksMixin:
             snapshot = self._links_to_serializable()
         self._flush_links(snapshot)
         self._emit_graph_event(
-            "link_updated", link_id=link_id, from_id=from_id, to_id=to_id, kind=kind,
+            "link_updated",
+            link_id=link_id,
+            from_id=from_id,
+            to_id=to_id,
+            kind=kind,
             links_snapshot=snapshot,
-            source=source, confidence_before=conf_before, confidence_after=conf_after,
-            status_before=status_before, status_after=status_after, reason=reason_after,
+            source=source,
+            confidence_before=conf_before,
+            confidence_after=conf_after,
+            status_before=status_before,
+            status_after=status_after,
+            reason=reason_after,
         )
         return lk
 
@@ -227,10 +321,17 @@ class _LinksMixin:
             snapshot = self._links_to_serializable()
         self._flush_links(snapshot)
         self._emit_graph_event(
-            "link_hidden", link_id=link_id, from_id=from_id, to_id=to_id, kind=kind,
+            "link_hidden",
+            link_id=link_id,
+            from_id=from_id,
+            to_id=to_id,
+            kind=kind,
             links_snapshot=snapshot,
-            source=source, confidence_before=conf, confidence_after=conf,
-            status_before=status_before, status_after="hidden",
+            source=source,
+            confidence_before=conf,
+            confidence_after=conf,
+            status_before=status_before,
+            status_after="hidden",
         )
 
     def unhide_link(self, link_id: str, *, source: str = "auto") -> None:
@@ -245,10 +346,17 @@ class _LinksMixin:
             snapshot = self._links_to_serializable()
         self._flush_links(snapshot)
         self._emit_graph_event(
-            "link_unhidden", link_id=link_id, from_id=from_id, to_id=to_id, kind=kind,
+            "link_unhidden",
+            link_id=link_id,
+            from_id=from_id,
+            to_id=to_id,
+            kind=kind,
             links_snapshot=snapshot,
-            source=source, confidence_before=conf, confidence_after=conf,
-            status_before=status_before, status_after="active",
+            source=source,
+            confidence_before=conf,
+            confidence_after=conf,
+            status_before=status_before,
+            status_after="active",
         )
 
     def hard_delete_link(self, link_id: str, *, source: str = "auto") -> tuple[str, str]:
@@ -271,10 +379,17 @@ class _LinksMixin:
         self._flush_links(links_snapshot)
         self._flush_blocked(blocked_snapshot)
         self._emit_graph_event(
-            "link_deleted", link_id=link_id, from_id=from_id, to_id=to_id, kind=kind,
+            "link_deleted",
+            link_id=link_id,
+            from_id=from_id,
+            to_id=to_id,
+            kind=kind,
             links_snapshot=links_snapshot,
-            source=source, confidence_before=conf, confidence_after=None,
-            status_before=status_before, status_after=None,
+            source=source,
+            confidence_before=conf,
+            confidence_after=None,
+            status_before=status_before,
+            status_after=None,
         )
         return (from_id, to_id)
 
@@ -285,10 +400,7 @@ class _LinksMixin:
     def remove_blocked_pairs_for(self, card_id: str) -> None:
         """Remove all blocked pairs involving a card."""
         with self._lock:
-            self._blocked_pairs = {
-                pair for pair in self._blocked_pairs
-                if card_id not in pair
-            }
+            self._blocked_pairs = {pair for pair in self._blocked_pairs if card_id not in pair}
             snapshot = self._blocked_to_serializable()
         self._flush_blocked(snapshot)
 
