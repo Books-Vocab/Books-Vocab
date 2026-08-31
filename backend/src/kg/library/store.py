@@ -13,6 +13,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
+from sqlalchemy import update
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, select
 
@@ -163,18 +164,44 @@ class LibraryStore:
             if book is None:
                 return None
             incoming_updated_at = _parse_utc_instant(req.updated_at)
-            current_updated_at = (
-                None if book.position_updated_at is None else _parse_utc_instant(book.position_updated_at)
-            )
-            if current_updated_at is None or incoming_updated_at > current_updated_at:
-                book.locator = req.locator
-                book.progression = req.progression
-                book.position_updated_at = req.updated_at
-                book.updated_at = datetime.now(UTC)
-                session.add(book)
+            while True:
+                expected_position_updated_at = book.position_updated_at
+                current_updated_at = (
+                    None if expected_position_updated_at is None else _parse_utc_instant(expected_position_updated_at)
+                )
+                if current_updated_at is not None and incoming_updated_at <= current_updated_at:
+                    return book
+
+                # End the read transaction before the compare-and-swap write so
+                # a concurrent writer can commit without this session holding a
+                # stale SQLite snapshot.
+                session.rollback()
+                stmt = (
+                    update(LibraryBook)
+                    .where(LibraryBook.id == book_id)
+                    .where(
+                        LibraryBook.position_updated_at.is_(None)
+                        if expected_position_updated_at is None
+                        else LibraryBook.position_updated_at == expected_position_updated_at
+                    )
+                    .values(
+                        locator=req.locator,
+                        progression=req.progression,
+                        position_updated_at=req.updated_at,
+                        updated_at=datetime.now(UTC),
+                    )
+                )
+                result = session.exec(stmt)
                 session.commit()
-                session.refresh(book)
-            return book
+                if result.rowcount:
+                    return session.get(LibraryBook, book_id)
+
+                # Another writer won the CAS. Reload its position and compare
+                # again rather than allowing request arrival order to win.
+                session.rollback()
+                book = session.get(LibraryBook, book_id)
+                if book is None:
+                    return None
 
     def soft_delete(self, book_id: str) -> LibraryBook | None:
         """Soft-delete a book by flipping ``is_deleted`` and bumping
