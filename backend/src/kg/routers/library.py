@@ -197,6 +197,8 @@ def download_asset(book_id: str, user: CurrentUser, request: Request):
     book = store.get(book_id)
     if book is None:
         raise NotFoundError("Book", book_id)
+    if book.is_deleted:
+        raise NotFoundError("Book", book_id)
 
     if book.asset_storage != "object" or not book.asset_object_key:
         raise ConflictError("Book asset is not server-hosted (local-only)")
