@@ -10,6 +10,7 @@ import json
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -98,6 +99,38 @@ class TestListBooks:
         # Only Book B has updated_at > since (Book A's updated_at == since)
         assert len(data) >= 1
         assert any(d["title"] == "Book B" for d in data)
+
+    def test_list_with_since_filter_accepts_naive_utc_and_timezone_offsets(self, isolated_api):
+        book = _create_book(isolated_api.client, isolated_api.headers, "UTC Since")
+        updated_at = datetime.fromisoformat(book["updated_at"].replace("Z", "+00:00"))
+        before_update = updated_at - timedelta(seconds=1)
+        since_values = (
+            before_update.replace(tzinfo=None).isoformat(),
+            before_update.astimezone(timezone(timedelta(hours=8))).isoformat(),
+        )
+
+        for since in since_values:
+            resp = isolated_api.client.get(
+                "/api/library/books",
+                headers=isolated_api.headers,
+                params={"since": since},
+            )
+
+            assert resp.status_code == 200, resp.text
+            assert book["id"] in {item["id"] for item in resp.json()}
+
+    def test_list_with_invalid_since_returns_bad_request(self, isolated_api):
+        resp = isolated_api.client.get(
+            "/api/library/books",
+            headers=isolated_api.headers,
+            params={"since": "not-a-timestamp"},
+        )
+
+        assert resp.status_code == 400
+        assert resp.json() == {
+            "code": "BadRequestError",
+            "detail": "Invalid since timestamp",
+        }
 
     def test_list_requires_auth(self, isolated_api):
         resp = isolated_api.client.get("/api/library/books")
