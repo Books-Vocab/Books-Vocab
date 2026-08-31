@@ -117,6 +117,86 @@ def card_store(tmp_path):
 
 class TestBatchA_UsersJsonLock:
 
+    @pytest.mark.parametrize(
+        ("group", "config_json"),
+        [
+            (
+                "translation",
+                '{"source_lang":"en","target_lang":"ja","updated_at":BAD}',
+            ),
+            (
+                "review_clock",
+                '{"is_paused":true,"updated_at":BAD}',
+            ),
+            (
+                "review_mode",
+                '{"mode":"relaxed","updated_at":BAD}',
+            ),
+            (
+                "vocab_ui",
+                '{"active_notebook_id":"default","updated_at":BAD}',
+            ),
+            (
+                "auto_link",
+                '{"enabled":true,"updated_at":BAD}',
+            ),
+        ],
+    )
+    @pytest.mark.parametrize("bad_timestamp", ["1e309", "NaN", "Infinity", "-Infinity"])
+    def test_non_finite_config_timestamp_rejected_before_persistence(self, user_env, group, config_json, bad_timestamp):
+        """Every user-config LWW group rejects non-finite timestamps atomically."""
+        client, user_id, headers, data_dir = user_env
+        before = (data_dir / "users.json").read_bytes()
+
+        response = client.put(
+            "/api/user/config",
+            content=f'{{"{group}":{config_json.replace("BAD", bad_timestamp)}}}',
+            headers={**headers, "Content-Type": "application/json"},
+        )
+
+        assert response.status_code == 422, response.text
+        assert any(error["type"] == "finite_number" for error in response.json()["detail"])
+        assert (data_dir / "users.json").read_bytes() == before
+        assert json.loads((data_dir / "users.json").read_text())[user_id]["config"] == {}
+
+    def test_finite_config_timestamp_keeps_lww_behavior(self, user_env):
+        """Finite timestamps still apply newer groups and ignore stale groups."""
+        client, user_id, headers, data_dir = user_env
+
+        first = client.put(
+            "/api/user/config",
+            json={
+                "translation": {
+                    "source_lang": "en",
+                    "target_lang": "ja",
+                    "updated_at": 10.0,
+                }
+            },
+            headers=headers,
+        )
+        assert first.status_code == 200, first.text
+
+        stale = client.put(
+            "/api/user/config",
+            json={
+                "translation": {
+                    "source_lang": "en",
+                    "target_lang": "zh-Hant",
+                    "updated_at": 9.0,
+                }
+            },
+            headers=headers,
+        )
+        assert stale.status_code == 200, stale.text
+        assert stale.json()["translation"]["target_lang"] == "ja"
+
+        stored = json.loads((data_dir / "users.json").read_text())
+        assert stored[user_id]["config"]["translation"] == {
+            "source_lang": "en",
+            "target_lang": "ja",
+            "updated_at": 10.0,
+        }
+
     def test_sequential_config_update_persists(self, user_env):
         """PUT /api/user/config should write and return the updated config."""
         client, user_id, headers, data_dir = user_env
