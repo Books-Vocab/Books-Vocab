@@ -113,11 +113,30 @@ def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
     )
 
 
+def _should_apply_user_config_group(config: dict[str, Any], group: str, incoming_updated_at: float | None) -> bool:
+    """Apply timestamped group writes only when they move the group forward.
+
+    Requests without a timestamp retain the legacy overwrite behavior for
+    backwards compatibility with clients that predate the LWW field.
+    """
+    if incoming_updated_at is None:
+        return True
+    existing = config.get(group)
+    if not isinstance(existing, dict):
+        return True
+    existing_updated_at = existing.get("updated_at")
+    if not isinstance(existing_updated_at, (int, float)) or isinstance(existing_updated_at, bool):
+        return True
+    return incoming_updated_at > existing_updated_at
+
+
 def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
     # Translation config（source+target 偏好 + 單一 group updated_at 整組 LWW）。
     # 用 `is not None` 對齊其他 group（有送=更新, None=不動既有）；統一語意並消除
     # 「未來 model 變得可 falsy 就誤略過」的隱患（現 model 全 default 不會 falsy）。
-    if req.translation is not None:
+    if req.translation is not None and _should_apply_user_config_group(
+        config, "translation", req.translation.updated_at
+    ):
         config["translation"] = {
             "source_lang": req.translation.source_lang,
             "target_lang": req.translation.target_lang,
@@ -125,7 +144,9 @@ def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
         }
     # Review clock (pause state). 複合原子;resume 時 paused_at 已由 ReviewClockConfig
     # validator 正規化為 None。只在 client 有送 review_clock 時更新(None = 不動既有)。
-    if req.review_clock is not None:
+    if req.review_clock is not None and _should_apply_user_config_group(
+        config, "review_clock", req.review_clock.updated_at
+    ):
         rc = req.review_clock
         config["review_clock"] = {
             "is_paused": rc.is_paused,
@@ -134,7 +155,9 @@ def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
         }
     # Review mode + 自訂 SRS 參數。複合原子(mode + 5 custom_* 共用單一 updated_at);
     # 非法 mode 已由 ReviewModeConfig validator 正規化。只在 client 有送時更新(None = 不動既有)。
-    if req.review_mode is not None:
+    if req.review_mode is not None and _should_apply_user_config_group(
+        config, "review_mode", req.review_mode.updated_at
+    ):
         rm = req.review_mode
         config["review_mode"] = {
             "mode": rm.mode,
@@ -148,7 +171,7 @@ def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
     # Vocab UI(目前僅全域 active notebook 游標)。決定新選詞歸屬;單一 updated_at 驅動
     # 整組跨裝置 LWW。只在 client 有送時更新(None = 不動既有);stale id 由各 client
     # reconcile(後端此階段 passthrough,不驗 notebook 存在性,與其他 group 一致)。
-    if req.vocab_ui is not None:
+    if req.vocab_ui is not None and _should_apply_user_config_group(config, "vocab_ui", req.vocab_ui.updated_at):
         vu = req.vocab_ui
         config["vocab_ui"] = {
             "active_notebook_id": vu.active_notebook_id,
