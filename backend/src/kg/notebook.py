@@ -316,9 +316,9 @@ class NotebookStore:
             return nb
 
     def exists(self, notebook_id: str) -> bool:
-        """Check if a non-deleted notebook exists."""
+        """Check if a revealed, non-deleted notebook exists."""
         nb = self.get(notebook_id)
-        return nb is not None and not nb.is_deleted
+        return nb is not None and not nb.is_deleted and not nb.is_staged
 
     def delete(self, notebook_id: str) -> bool | None:
         """Soft-delete a notebook. Returns True if deleted, None if already
