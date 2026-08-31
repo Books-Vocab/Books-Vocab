@@ -37,6 +37,13 @@ class TranslateRequest(BaseModel):
     source_lang: str | None = None
     target_lang: str | None = None
 
+    @field_validator("word")
+    @classmethod
+    def validate_word_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Word must contain at least one non-whitespace character")
+        return v
+
     @field_validator("context", mode="before")
     @classmethod
     def normalize_context(cls, v: str) -> str:
