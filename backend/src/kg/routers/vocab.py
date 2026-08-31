@@ -15,6 +15,7 @@ from ..api_models import (
     BatchArchiveResponse,
     BatchDeleteRequest,
     BatchDeleteResponse,
+    CardPreferencesUpdateRequest,
     CardResponse,
     DeleteWordResponse,
     GraphLinkResponse,
@@ -31,7 +32,6 @@ from ..api_models import (
 from ..deps import (
     CurrentUser,
     _apply_quota_headers,
-    _card_response,
     _card_store,
     _check_quota,
     _embedding_store,
@@ -41,6 +41,7 @@ from ..deps import (
     get_user_lock,
     logger,
 )
+from ..deps import _card_response as _build_card_response
 from ..exceptions import BadRequestError, ConflictError, NotFoundError
 from ..notebook import validate_notebook_access
 from ..service_factories import create_client
@@ -68,11 +69,20 @@ from ..vocab_handlers import (
     push_review_response,
     unhide_graph_link_response,
     update_word_content_response,
+    update_word_preferences_response,
 )
 
 NOTEBOOK_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
 
 router = APIRouter(tags=["vocab"])
+
+
+def _card_response(card, graph, cards_by_id):
+    """Expose per-card preferences on every vocabulary response surface."""
+    result = _build_card_response(card, graph, cards_by_id)
+    result.isReaderHidden = getattr(card, "is_reader_hidden", False)
+    result.isReviewExcluded = getattr(card, "is_review_excluded", False)
+    return result
 
 
 @router.get("/api/vocab", response_model=list[CardResponse])
@@ -224,6 +234,25 @@ def push_review_events(req: ReviewEventsPushRequest, user: CurrentUser):
     )
 
 
+@router.patch("/api/vocab/{word}/preferences", response_model=CardResponse)
+def update_word_preferences(
+    word: str,
+    req: CardPreferencesUpdateRequest,
+    user: CurrentUser,
+    notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
+):
+    return update_word_preferences_response(
+        word,
+        req,
+        user,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
+        card_response_builder=_card_response,
+        notebook_store_factory=_notebook_store,
+        notebook_id=notebook_id,
+    )
+
+
 @router.get("/api/vocab/{word}", response_model=CardResponse)
 def lookup_word(
     word: str,
@@ -237,7 +266,6 @@ def lookup_word(
         notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
     )
-
 
 
 @router.patch("/api/vocab/{word}", response_model=CardResponse)
