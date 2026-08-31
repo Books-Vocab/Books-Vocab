@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -454,6 +456,77 @@ def test_patch_notebook_settings_preserves_auth_and_notebook_errors(isolated_api
 
     empty = client.patch(f"/api/notebooks/{nb_id}/settings", json={}, headers=h)
     assert empty.status_code == 422, empty.text
+
+
+def test_notebook_settings_concurrent_lww_never_allows_older_write_to_win(tmp_path):
+    from kg.notebook import NotebookStore
+
+    db_path = tmp_path / "users" / "u1" / "notebooks.db"
+    seed = NotebookStore(db_path)
+    nb = seed.create("Concurrent")
+    seed.update_settings(nb.id, review_policy=(_review_policy(initial=12), 100.0))
+
+    older = NotebookStore(db_path)
+    newer = NotebookStore(db_path)
+    barrier = threading.Barrier(2)
+
+    def write(store, updated_at, initial):
+        barrier.wait()
+        return store.update_settings(
+            nb.id,
+            review_policy=(_review_policy(initial=initial), updated_at),
+        )
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            old_result = executor.submit(write, older, 150.0, 24)
+            new_result = executor.submit(write, newer, 200.0, 48)
+            old_result.result()
+            new_result.result()
+
+        final = seed.get_settings(nb.id)
+        assert final is not None
+        assert final.review_policy_updated_at == 200.0
+        assert json.loads(final.review_policy)["customInitialIntervalHours"] == 48
+    finally:
+        older.close()
+        newer.close()
+        seed.close()
+
+
+@pytest.mark.parametrize("updated_at", ["NaN", "Infinity", "-Infinity"])
+def test_patch_notebook_settings_rejects_non_finite_updated_at(isolated_api, updated_at):
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Finite"}, headers=h).json()["id"]
+
+    body = f'{{"cardLayout": {{"value": {{"recognition": "compact", "production": "standard"}}, "updatedAt": {updated_at}}}}}'
+    r = client.patch(
+        f"/api/notebooks/{nb_id}/settings", content=body, headers={**h, "Content-Type": "application/json"}
+    )
+
+    assert r.status_code == 422, r.text
+    assert any(error["type"] == "finite_number" for error in r.json()["detail"])
+
+
+def test_patch_notebook_settings_refuses_staged_notebook_and_get_hides_it(isolated_api):
+    from kg.notebook import NotebookStore
+
+    store = NotebookStore(isolated_api.data_dir / "users" / isolated_api.user_id / "notebooks.db")
+    staged = store.create("Staged", is_staged=True)
+    try:
+        patch = isolated_api.client.patch(
+            f"/api/notebooks/{staged.id}/settings",
+            json={"cardLayout": {"value": _card_layout(), "updatedAt": 1.0}},
+            headers=isolated_api.headers,
+        )
+        assert patch.status_code == 404, patch.text
+
+        listed = isolated_api.client.get("/api/notebooks", headers=isolated_api.headers)
+        assert listed.status_code == 200, listed.text
+        assert staged.id not in _nb_ids(listed.json())
+    finally:
+        store.close()
 
 
 # ---------------------------------------------------------------------------

@@ -1,11 +1,33 @@
 from __future__ import annotations
 
+import math
 from typing import Final, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, FiniteFloat, field_validator, model_validator
+from pydantic_core import PydanticCustomError
 
 NotebookReviewMode = Literal["relaxed", "intensive", "custom"]
 NotebookCardLayoutPreset = Literal["standard", "compact"]
+_NON_FINITE_TIMESTAMP_MARKER = "<non-finite-updated-at>"
+
+
+def _is_non_finite_timestamp(value) -> bool:
+    return (isinstance(value, float) and not math.isfinite(value)) or (
+        isinstance(value, str) and value in {"NaN", "Infinity", "-Infinity"}
+    )
+
+
+def _sanitize_non_finite_timestamps(value):
+    if isinstance(value, dict):
+        return {
+            key: _NON_FINITE_TIMESTAMP_MARKER
+            if key == "updatedAt" and _is_non_finite_timestamp(item)
+            else _sanitize_non_finite_timestamps(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_sanitize_non_finite_timestamps(item) for item in value]
+    return value
 
 
 class NotebookReviewPolicy(BaseModel):
@@ -29,7 +51,14 @@ class NotebookSettingsGroup[ValueT](BaseModel):
 
 class NotebookSettingsPatchGroup[ValueT](BaseModel):
     value: ValueT | None = None
-    updatedAt: float
+    updatedAt: FiniteFloat
+
+    @field_validator("updatedAt", mode="before")
+    @classmethod
+    def reject_non_finite_updated_at(cls, value):
+        if value == _NON_FINITE_TIMESTAMP_MARKER or _is_non_finite_timestamp(value):
+            raise PydanticCustomError("finite_number", "Input should be a finite number")
+        return value
 
 
 class NotebookSettingsResponse(BaseModel):
@@ -40,6 +69,11 @@ class NotebookSettingsResponse(BaseModel):
 class NotebookSettingsPatchRequest(BaseModel):
     reviewPolicy: NotebookSettingsPatchGroup[NotebookReviewPolicy] | None = None
     cardLayout: NotebookSettingsPatchGroup[NotebookCardLayout] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def sanitize_non_finite_updated_at(cls, value):
+        return _sanitize_non_finite_timestamps(value)
 
     @model_validator(mode="after")
     def require_at_least_one_group(self):

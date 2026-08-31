@@ -201,35 +201,45 @@ class NotebookStore:
         stored timestamp. Reset values remain as timestamped tombstones so an
         older device cannot resurrect a cleared override.
         """
+        groups = (
+            (review_policy, "review_policy", "review_policy_updated_at"),
+            (card_layout, "card_layout", "card_layout_updated_at"),
+        )
         with Session(self.engine) as session:
-            nb = session.get(Notebook, notebook_id)
-            if nb is None or nb.is_deleted:
-                return None
-
-            settings = session.get(NotebookSettings, notebook_id)
-            if settings is None:
-                settings = NotebookSettings(notebook_id=notebook_id)
             has_changes = False
-
-            for incoming, value_attr, timestamp_attr in (
-                (review_policy, "review_policy", "review_policy_updated_at"),
-                (card_layout, "card_layout", "card_layout_updated_at"),
-            ):
+            for incoming, value_column, timestamp_column in groups:
                 if incoming is _UNSET:
                     continue
                 value, updated_at = incoming
-                stored_updated_at = getattr(settings, timestamp_attr)
-                if stored_updated_at is not None and updated_at <= stored_updated_at:
-                    continue
                 encoded = None if value is None else json.dumps(value, separators=(",", ":"), sort_keys=True)
-                setattr(settings, value_attr, encoded)
-                setattr(settings, timestamp_attr, updated_at)
-                has_changes = True
+                result = session.execute(
+                    text(
+                        f"""
+                        INSERT INTO notebook_settings
+                            (notebook_id, {value_column}, {timestamp_column})
+                        SELECT :notebook_id, :value, :updated_at
+                        WHERE EXISTS (
+                            SELECT 1 FROM notebook
+                            WHERE id = :notebook_id AND is_deleted = 0 AND is_staged = 0
+                        )
+                        ON CONFLICT(notebook_id) DO UPDATE SET
+                            {value_column} = excluded.{value_column},
+                            {timestamp_column} = excluded.{timestamp_column}
+                        WHERE notebook_settings.{timestamp_column} IS NULL
+                           OR excluded.{timestamp_column} > notebook_settings.{timestamp_column}
+                        """
+                    ),
+                    {"notebook_id": notebook_id, "value": encoded, "updated_at": updated_at},
+                )
+                has_changes = has_changes or result.rowcount > 0
 
+            nb = session.get(Notebook, notebook_id)
+            if nb is None or nb.is_deleted or nb.is_staged:
+                session.rollback()
+                return None
             if has_changes:
                 nb.updated_at = datetime.now(UTC)
                 session.add(nb)
-                session.add(settings)
                 session.commit()
                 session.refresh(nb)
             return nb
