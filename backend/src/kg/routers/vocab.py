@@ -238,7 +238,7 @@ def push_review_events(req: ReviewEventsPushRequest, user: CurrentUser):
     )
 
 
-@router.patch("/api/vocab/{word}/preferences", response_model=CardResponse)
+@router.patch("/api/vocab/{word:path}/preferences", response_model=CardResponse)
 def update_word_preferences(
     word: str,
     req: CardPreferencesUpdateRequest,
@@ -257,7 +257,25 @@ def update_word_preferences(
     )
 
 
-@router.get("/api/vocab/{word}", response_model=CardResponse)
+@router.patch("/api/vocab/{word:path}/archive", response_model=ArchiveWordResponse)
+def archive_word(
+    word: str,
+    req: ArchiveWordRequest,
+    user: CurrentUser,
+    notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
+):
+    return archive_word_response(
+        word,
+        req,
+        user,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
+        notebook_store_factory=_notebook_store,
+        notebook_id=notebook_id,
+    )
+
+
+@router.get("/api/vocab/{word:path}", response_model=CardResponse)
 def lookup_word(
     word: str,
     user: CurrentUser,
@@ -274,7 +292,7 @@ def lookup_word(
     )
 
 
-@router.patch("/api/vocab/{word}", response_model=CardResponse)
+@router.patch("/api/vocab/{word:path}", response_model=CardResponse)
 def update_word_content(
     word: str,
     req: VocabContentUpdateRequest,
@@ -295,25 +313,7 @@ def update_word_content(
     )
 
 
-@router.patch("/api/vocab/{word}/archive", response_model=ArchiveWordResponse)
-def archive_word(
-    word: str,
-    req: ArchiveWordRequest,
-    user: CurrentUser,
-    notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
-):
-    return archive_word_response(
-        word,
-        req,
-        user,
-        card_store_factory=_card_store,
-        graph_store_factory=_graph_store,
-        notebook_store_factory=_notebook_store,
-        notebook_id=notebook_id,
-    )
-
-
-@router.delete("/api/vocab/{word}", response_model=DeleteWordResponse)
+@router.delete("/api/vocab/{word:path}", response_model=DeleteWordResponse)
 def delete_word(
     word: str,
     user: CurrentUser,
