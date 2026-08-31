@@ -12,7 +12,10 @@ struct ArchivedVocabSheet: View {
 
     @Query(
         filter: #Predicate<VocabularyEntry> { $0.isArchived == true },
-        sort: \VocabularyEntry.word
+        sort: [
+            SortDescriptor<VocabularyEntry>(\VocabularyEntry.word),
+            SortDescriptor<VocabularyEntry>(\VocabularyEntry.id)
+        ]
     )
     private var archivedAllEntries: [VocabularyEntry]
     @State private var searchText = ""
