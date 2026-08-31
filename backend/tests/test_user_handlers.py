@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock
 
+import pytest
+
 from kg.api_models import (
     AutoLinkConfig,
     ReviewClockConfig,
@@ -26,12 +28,113 @@ from kg.user_store import collect_account_ids_for_deletion
 
 
 class TestMergeUserConfig:
+    @pytest.mark.parametrize(
+        ("group", "existing", "stale", "equal", "newer"),
+        [
+            (
+                "translation",
+                TranslationLanguageConfig(source_lang="en", target_lang="ja", updated_at=10.0),
+                TranslationLanguageConfig(source_lang="en", target_lang="ko", updated_at=9.0),
+                TranslationLanguageConfig(source_lang="en", target_lang="zh-Hans", updated_at=10.0),
+                TranslationLanguageConfig(source_lang="en", target_lang="en", updated_at=11.0),
+            ),
+            (
+                "review_clock",
+                ReviewClockConfig(is_paused=True, paused_at="2026-08-31T10:00:00Z", updated_at=10.0),
+                ReviewClockConfig(is_paused=False, updated_at=9.0),
+                ReviewClockConfig(is_paused=False, updated_at=10.0),
+                ReviewClockConfig(is_paused=False, updated_at=11.0),
+            ),
+            (
+                "review_mode",
+                ReviewModeConfig(mode="intensive", updated_at=10.0),
+                ReviewModeConfig(mode="relaxed", updated_at=9.0),
+                ReviewModeConfig(mode="custom", updated_at=10.0),
+                ReviewModeConfig(mode="custom", custom_initial_interval_hours=24.0, updated_at=11.0),
+            ),
+            (
+                "vocab_ui",
+                VocabUIConfig(active_notebook_id="nb-new", updated_at=10.0),
+                VocabUIConfig(active_notebook_id="nb-stale", updated_at=9.0),
+                VocabUIConfig(active_notebook_id="nb-equal", updated_at=10.0),
+                VocabUIConfig(active_notebook_id="nb-latest", updated_at=11.0),
+            ),
+        ],
+    )
+    def test_config_groups_use_strict_monotonic_updated_at(self, group, existing, stale, equal, newer):
+        initial = {
+            "translation": TranslationLanguageConfig(source_lang="en", target_lang="ja", updated_at=10.0).model_dump(),
+            "review_clock": ReviewClockConfig(
+                is_paused=True, paused_at="2026-08-31T10:00:00Z", updated_at=10.0
+            ).model_dump(),
+            "review_mode": ReviewModeConfig(mode="intensive", updated_at=10.0).model_dump(),
+            "vocab_ui": VocabUIConfig(active_notebook_id="nb-new", updated_at=10.0).model_dump(),
+        }
+        initial[group] = existing.model_dump()
+
+        for incoming in (stale, equal):
+            config = {name: dict(value) for name, value in initial.items()}
+            _merge_user_config(config, UserConfigRequest(**{group: incoming}))
+            assert config == initial
+
+        config = {name: dict(value) for name, value in initial.items()}
+        _merge_user_config(config, UserConfigRequest(**{group: newer}))
+        assert config[group] == newer.model_dump()
+        assert {name: value for name, value in config.items() if name != group} == {
+            name: value for name, value in initial.items() if name != group
+        }
+
+    def test_newer_group_value_is_retained_in_response_and_persistence(self, tmp_path):
+        store = {
+            "u1": {
+                "config": {
+                    "translation": {"source_lang": "en", "target_lang": "ja", "updated_at": 10.0},
+                    "review_mode": {"mode": "intensive", "updated_at": 10.0},
+                }
+            }
+        }
+
+        def load_users():
+            return {user_id: {"config": dict(record["config"])} for user_id, record in store.items()}
+
+        def save_users(updated):
+            store.clear()
+            store.update(updated)
+
+        stale_request = UserConfigRequest(
+            translation=TranslationLanguageConfig(source_lang="en", target_lang="ko", updated_at=9.0)
+        )
+        stale_response = update_user_config_response(
+            stale_request,
+            {"id": "u1"},
+            users_lock_file=tmp_path / "users.json.lock",
+            load_users=load_users,
+            save_users=save_users,
+        )
+        assert stale_response.translation.target_lang == "ja"
+        assert store["u1"]["config"]["translation"]["target_lang"] == "ja"
+
+        newer_request = UserConfigRequest(
+            translation=TranslationLanguageConfig(source_lang="en", target_lang="en", updated_at=11.0)
+        )
+        newer_response = update_user_config_response(
+            newer_request,
+            {"id": "u1"},
+            users_lock_file=tmp_path / "users.json.lock",
+            load_users=load_users,
+            save_users=save_users,
+        )
+        assert newer_response.translation.target_lang == "en"
+        assert store["u1"]["config"]["translation"] == {
+            "source_lang": "en",
+            "target_lang": "en",
+            "updated_at": 11.0,
+        }
+        assert store["u1"]["config"]["review_mode"] == {"mode": "intensive", "updated_at": 10.0}
 
     def test_translation_merge(self):
         config = {}
-        req = UserConfigRequest(
-            translation=TranslationLanguageConfig(source_lang="en", target_lang="ja")
-        )
+        req = UserConfigRequest(translation=TranslationLanguageConfig(source_lang="en", target_lang="ja"))
         _merge_user_config(config, req)
         assert config["translation"] == {"source_lang": "en", "target_lang": "ja", "updated_at": None}
 
@@ -43,9 +146,7 @@ class TestMergeUserConfig:
 
     def test_translation_overwrites_existing(self):
         config = {"translation": {"source_lang": "en", "target_lang": "ja"}}
-        req = UserConfigRequest(
-            translation=TranslationLanguageConfig(source_lang="en", target_lang="ko")
-        )
+        req = UserConfigRequest(translation=TranslationLanguageConfig(source_lang="en", target_lang="ko"))
         _merge_user_config(config, req)
         assert config["translation"] == {"source_lang": "en", "target_lang": "ko", "updated_at": None}
 
@@ -53,9 +154,7 @@ class TestMergeUserConfig:
         # LWW 時戳隨 group 一起寫入（對齊 review_mode / vocab_ui 家族）。
         config = {}
         req = UserConfigRequest(
-            translation=TranslationLanguageConfig(
-                source_lang="en", target_lang="ja", updated_at=1717668000.0
-            )
+            translation=TranslationLanguageConfig(source_lang="en", target_lang="ja", updated_at=1717668000.0)
         )
         _merge_user_config(config, req)
         assert config["translation"] == {
@@ -90,9 +189,7 @@ class TestMergeUserConfigReviewClock:
     def test_merge_paused(self):
         config = {}
         req = UserConfigRequest(
-            review_clock=ReviewClockConfig(
-                is_paused=True, paused_at="2026-06-06T10:00:00Z", updated_at=1717668000.0
-            )
+            review_clock=ReviewClockConfig(is_paused=True, paused_at="2026-06-06T10:00:00Z", updated_at=1717668000.0)
         )
         _merge_user_config(config, req)
         assert config["review_clock"] == {
@@ -105,9 +202,7 @@ class TestMergeUserConfigReviewClock:
         # is_paused=False 時 paused_at 必須被正規化清空,否則儲存層自相矛盾。
         config = {}
         req = UserConfigRequest(
-            review_clock=ReviewClockConfig(
-                is_paused=False, paused_at="2026-06-06T10:00:00Z", updated_at=1717668100.0
-            )
+            review_clock=ReviewClockConfig(is_paused=False, paused_at="2026-06-06T10:00:00Z", updated_at=1717668100.0)
         )
         _merge_user_config(config, req)
         assert config["review_clock"]["is_paused"] is False
@@ -124,9 +219,7 @@ class TestMergeUserConfigReviewClock:
         config = {}
         req = UserConfigRequest(
             translation=TranslationLanguageConfig(source_lang="en", target_lang="ja"),
-            review_clock=ReviewClockConfig(
-                is_paused=True, paused_at="2026-06-06T10:00:00Z", updated_at=2.0
-            ),
+            review_clock=ReviewClockConfig(is_paused=True, paused_at="2026-06-06T10:00:00Z", updated_at=2.0),
         )
         _merge_user_config(config, req)
         assert config["translation"] == {"source_lang": "en", "target_lang": "ja", "updated_at": None}
@@ -134,11 +227,14 @@ class TestMergeUserConfigReviewClock:
 
 
 class TestBuildUserConfigReviewClock:
-
     def test_build_includes_review_clock(self):
-        config = {"review_clock": {
-            "is_paused": True, "paused_at": "2026-06-06T10:00:00Z", "updated_at": 3.0,
-        }}
+        config = {
+            "review_clock": {
+                "is_paused": True,
+                "paused_at": "2026-06-06T10:00:00Z",
+                "updated_at": 3.0,
+            }
+        }
         resp = _build_user_config_response(config)
         assert resp.review_clock is not None
         assert resp.review_clock.is_paused is True
@@ -153,16 +249,17 @@ class TestBuildUserConfigReviewClock:
 
     def test_build_normalizes_persisted_boolean_strings(self):
         for value, expected in ((False, False), ("false", False), (True, True)):
-            resp = _build_user_config_response({
-                "review_clock": {"is_paused": value},
-                "auto_link": {"enabled": value},
-            })
+            resp = _build_user_config_response(
+                {
+                    "review_clock": {"is_paused": value},
+                    "auto_link": {"enabled": value},
+                }
+            )
             assert resp.review_clock.is_paused is expected
             assert resp.auto_link.enabled is expected
 
 
 class TestUpdateUserConfigReviewClockRoundTrip:
-
     def test_persists_review_clock_alongside_translation(self, tmp_path):
         import copy
 
@@ -178,12 +275,11 @@ class TestUpdateUserConfigReviewClockRoundTrip:
             store.update(copy.deepcopy(updated))
 
         req = UserConfigRequest(
-            review_clock=ReviewClockConfig(
-                is_paused=True, paused_at="2026-06-06T10:00:00Z", updated_at=5.0
-            )
+            review_clock=ReviewClockConfig(is_paused=True, paused_at="2026-06-06T10:00:00Z", updated_at=5.0)
         )
         resp = update_user_config_response(
-            req, {"id": "u1"},
+            req,
+            {"id": "u1"},
             users_lock_file=tmp_path / "users.json.lock",
             load_users=load_users,
             save_users=save_users,
@@ -246,9 +342,7 @@ class TestMergeUserConfigReviewMode:
         config = {}
         req = UserConfigRequest(
             translation=TranslationLanguageConfig(source_lang="en", target_lang="ja"),
-            review_clock=ReviewClockConfig(
-                is_paused=True, paused_at="2026-06-06T10:00:00Z", updated_at=2.0
-            ),
+            review_clock=ReviewClockConfig(is_paused=True, paused_at="2026-06-06T10:00:00Z", updated_at=2.0),
             review_mode=ReviewModeConfig(mode="intensive", updated_at=3.0),
         )
         _merge_user_config(config, req)
@@ -258,17 +352,18 @@ class TestMergeUserConfigReviewMode:
 
 
 class TestBuildUserConfigReviewMode:
-
     def test_build_includes_review_mode(self):
-        config = {"review_mode": {
-            "mode": "custom",
-            "custom_initial_interval_hours": 10.0,
-            "custom_remembered_multiplier": 2.2,
-            "custom_forgot_multiplier": 0.4,
-            "custom_minimum_interval_hours": 5.0,
-            "custom_maximum_interval_hours": 2000.0,
-            "updated_at": 3.0,
-        }}
+        config = {
+            "review_mode": {
+                "mode": "custom",
+                "custom_initial_interval_hours": 10.0,
+                "custom_remembered_multiplier": 2.2,
+                "custom_forgot_multiplier": 0.4,
+                "custom_minimum_interval_hours": 5.0,
+                "custom_maximum_interval_hours": 2000.0,
+                "updated_at": 3.0,
+            }
+        }
         resp = _build_user_config_response(config)
         assert resp.review_mode is not None
         assert resp.review_mode.mode == "custom"
@@ -285,7 +380,6 @@ class TestBuildUserConfigReviewMode:
 
 
 class TestUpdateUserConfigReviewModeRoundTrip:
-
     def test_persists_review_mode_alongside_translation(self, tmp_path):
         import copy
 
@@ -298,11 +392,10 @@ class TestUpdateUserConfigReviewModeRoundTrip:
             store.clear()
             store.update(copy.deepcopy(updated))
 
-        req = UserConfigRequest(
-            review_mode=ReviewModeConfig(mode="intensive", updated_at=5.0)
-        )
+        req = UserConfigRequest(review_mode=ReviewModeConfig(mode="intensive", updated_at=5.0))
         resp = update_user_config_response(
-            req, {"id": "u1"},
+            req,
+            {"id": "u1"},
             users_lock_file=tmp_path / "users.json.lock",
             load_users=load_users,
             save_users=save_users,
@@ -319,9 +412,7 @@ class TestMergeUserConfigVocabUI:
 
     def test_merge(self):
         config = {}
-        req = UserConfigRequest(
-            vocab_ui=VocabUIConfig(active_notebook_id="nb-42", updated_at=1717668000.0)
-        )
+        req = UserConfigRequest(vocab_ui=VocabUIConfig(active_notebook_id="nb-42", updated_at=1717668000.0))
         _merge_user_config(config, req)
         assert config["vocab_ui"] == {
             "active_notebook_id": "nb-42",
@@ -348,7 +439,6 @@ class TestMergeUserConfigVocabUI:
 
 
 class TestBuildUserConfigVocabUI:
-
     def test_build_includes_vocab_ui(self):
         config = {"vocab_ui": {"active_notebook_id": "nb-42", "updated_at": 3.0}}
         resp = _build_user_config_response(config)
@@ -364,7 +454,6 @@ class TestBuildUserConfigVocabUI:
 
 
 class TestUpdateUserConfigVocabUIRoundTrip:
-
     def test_persists_vocab_ui_alongside_translation(self, tmp_path):
         import copy
 
@@ -377,11 +466,10 @@ class TestUpdateUserConfigVocabUIRoundTrip:
             store.clear()
             store.update(copy.deepcopy(updated))
 
-        req = UserConfigRequest(
-            vocab_ui=VocabUIConfig(active_notebook_id="nb-99", updated_at=5.0)
-        )
+        req = UserConfigRequest(vocab_ui=VocabUIConfig(active_notebook_id="nb-99", updated_at=5.0))
         resp = update_user_config_response(
-            req, {"id": "u1"},
+            req,
+            {"id": "u1"},
             users_lock_file=tmp_path / "users.json.lock",
             load_users=load_users,
             save_users=save_users,
@@ -397,9 +485,7 @@ class TestMergeUserConfigAutoLink:
 
     def test_merge_disabled(self):
         config = {}
-        req = UserConfigRequest(
-            auto_link=AutoLinkConfig(enabled=False, updated_at=1717668000.0)
-        )
+        req = UserConfigRequest(auto_link=AutoLinkConfig(enabled=False, updated_at=1717668000.0))
         _merge_user_config(config, req)
         assert config["auto_link"] == {
             "enabled": False,
@@ -424,7 +510,6 @@ class TestMergeUserConfigAutoLink:
 
 
 class TestBuildUserConfigAutoLink:
-
     def test_build_includes_auto_link(self):
         config = {"auto_link": {"enabled": False, "updated_at": 3.0}}
         resp = _build_user_config_response(config)
@@ -447,7 +532,6 @@ class TestBuildUserConfigAutoLink:
 
 
 class TestUpdateUserConfigAutoLinkRoundTrip:
-
     def test_persists_auto_link_alongside_translation(self, tmp_path):
         import copy
 
@@ -460,11 +544,10 @@ class TestUpdateUserConfigAutoLinkRoundTrip:
             store.clear()
             store.update(copy.deepcopy(updated))
 
-        req = UserConfigRequest(
-            auto_link=AutoLinkConfig(enabled=False, updated_at=5.0)
-        )
+        req = UserConfigRequest(auto_link=AutoLinkConfig(enabled=False, updated_at=5.0))
         resp = update_user_config_response(
-            req, {"id": "u1"},
+            req,
+            {"id": "u1"},
             users_lock_file=tmp_path / "users.json.lock",
             load_users=load_users,
             save_users=save_users,
@@ -478,8 +561,8 @@ class TestUpdateUserConfigAutoLinkRoundTrip:
 # delete_user_account_response
 # ===========================================================================
 
-class TestDeleteUserAccountResponse:
 
+class TestDeleteUserAccountResponse:
     def _make_users_file(self, tmp_path, data):
         f = tmp_path / "users.json"
         f.write_text(json.dumps(data))
@@ -569,6 +652,7 @@ class TestDeleteUserAccountResponse:
         assert "u1" in revoked
         # 應為 ISO 格式字串
         from datetime import datetime
+
         dt = datetime.fromisoformat(revoked["u1"].replace("Z", "+00:00"))
         assert dt.year >= 2024
 
@@ -592,8 +676,8 @@ class TestDeleteUserAccountResponse:
 # health_response
 # ===========================================================================
 
-class TestHealthResponse:
 
+class TestHealthResponse:
     def test_health_returns_correct_stats(self, tmp_path):
         cards_mock = MagicMock()
         cards_mock.count.return_value = 42
