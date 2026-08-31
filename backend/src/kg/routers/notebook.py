@@ -1,16 +1,45 @@
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter
 
-from ..api_models import NotebookCreateRequest, NotebookResponse, NotebookUpdateRequest
+from ..api_models import (
+    NotebookCardLayout,
+    NotebookCreateRequest,
+    NotebookResponse,
+    NotebookReviewPolicy,
+    NotebookSettingsGroup,
+    NotebookSettingsPatchRequest,
+    NotebookSettingsResponse,
+    NotebookUpdateRequest,
+)
 from ..deps import CurrentUser, _card_store, _notebook_store
 from ..exceptions import BadRequestError, NotFoundError
+from ..notebook import NotebookSettings
 from ..vocab_shared import _dt_to_iso
 
 router = APIRouter(tags=["notebook"])
 
 
-def _notebook_response(nb, card_count: int = 0) -> NotebookResponse:
+def _settings_response(row: NotebookSettings | None) -> NotebookSettingsResponse:
+    def group(value: str | None, updated_at: float | None, model):
+        return NotebookSettingsGroup(
+            value=None if value is None else model.model_validate(json.loads(value)),
+            updatedAt=updated_at,
+        )
+
+    return NotebookSettingsResponse(
+        reviewPolicy=group(
+            row.review_policy if row else None, row.review_policy_updated_at if row else None, NotebookReviewPolicy
+        ),
+        cardLayout=group(
+            row.card_layout if row else None, row.card_layout_updated_at if row else None, NotebookCardLayout
+        ),
+    )
+
+
+def _notebook_response(nb, card_count: int = 0, settings: NotebookSettings | None = None) -> NotebookResponse:
     return NotebookResponse(
         id=nb.id,
         name=nb.name,
@@ -23,6 +52,7 @@ def _notebook_response(nb, card_count: int = 0) -> NotebookResponse:
         updatedAt=_dt_to_iso(nb.updated_at),
         sourceSharedDeckId=nb.source_shared_deck_id,
         sourceVersion=nb.source_version,
+        settings=_settings_response(settings),
     )
 
 
@@ -34,6 +64,7 @@ def list_notebooks(user: CurrentUser, since: str | None = None):
 
     if since:
         from ..user_store import parse_datetime
+
         parsed = parse_datetime(since)
         if parsed is None:
             raise BadRequestError("Invalid since timestamp")
@@ -43,8 +74,7 @@ def list_notebooks(user: CurrentUser, since: str | None = None):
 
     counts = cards.count_by_notebook()
     return [
-        _notebook_response(nb, card_count=counts.get(nb.id, 0))
-        for nb in notebooks
+        _notebook_response(nb, card_count=counts.get(nb.id, 0), settings=store.get_settings(nb.id)) for nb in notebooks
     ]
 
 
@@ -52,7 +82,7 @@ def list_notebooks(user: CurrentUser, since: str | None = None):
 def create_notebook(req: NotebookCreateRequest, user: CurrentUser):
     store = _notebook_store(user["dir"])
     nb = store.create(name=req.name, color=req.color, cover_pattern=req.cover_pattern)
-    return _notebook_response(nb)
+    return _notebook_response(nb, settings=store.get_settings(nb.id))
 
 
 @router.patch("/api/notebooks/{nb_id}", response_model=NotebookResponse)
@@ -73,7 +103,32 @@ def update_notebook(nb_id: str, req: NotebookUpdateRequest, user: CurrentUser):
     if nb is None:
         raise NotFoundError("Notebook", nb_id)
     cards = _card_store(user["dir"])
-    return _notebook_response(nb, card_count=cards.count(notebook_id=nb.id))
+    return _notebook_response(nb, card_count=cards.count(notebook_id=nb.id), settings=store.get_settings(nb.id))
+
+
+@router.patch("/api/notebooks/{nb_id}/settings", response_model=NotebookResponse)
+def update_notebook_settings(nb_id: str, req: NotebookSettingsPatchRequest, user: CurrentUser):
+    store = _notebook_store(user["dir"])
+    kwargs = {}
+    if req.reviewPolicy is not None:
+        kwargs["review_policy"] = (
+            None if req.reviewPolicy.value is None else req.reviewPolicy.value.model_dump(),
+            req.reviewPolicy.updatedAt,
+        )
+    if req.cardLayout is not None:
+        kwargs["card_layout"] = (
+            None if req.cardLayout.value is None else req.cardLayout.value.model_dump(),
+            req.cardLayout.updatedAt,
+        )
+    nb = store.update_settings(nb_id, **kwargs)
+    if nb is None:
+        raise NotFoundError("Notebook", nb_id)
+    cards = _card_store(user["dir"])
+    return _notebook_response(
+        nb,
+        card_count=cards.count(notebook_id=nb.id),
+        settings=store.get_settings(nb.id),
+    )
 
 
 @router.delete("/api/notebooks/{nb_id}")
@@ -93,10 +148,12 @@ def delete_notebook(nb_id: str, user: CurrentUser):
         # uses to create them), so a new artifact kind can't silently orphan a
         # file here as the two lists drift.
         from ..ops_shared import notebook_files
+
         for path in notebook_files(user["dir"], nb_id).values():
             for suffix in ("", ".bak", ".tmp"):
                 path.with_name(path.name + suffix).unlink(missing_ok=True)
         # Evict cached stores
         from ..service_factories import evict_notebook_cache
+
         evict_notebook_cache(user["dir"], nb_id)
     return {"deleted": nb_id, "cardsDeleted": cards_deleted}

@@ -45,8 +45,14 @@ from kg.api_models.library import (
 )
 from kg.api_models.notebook import (
     VALID_COVER_PATTERNS,
+    NotebookCardLayout,
     NotebookCreateRequest,
     NotebookResponse,
+    NotebookReviewPolicy,
+    NotebookSettingsGroup,
+    NotebookSettingsPatchGroup,
+    NotebookSettingsPatchRequest,
+    NotebookSettingsResponse,
     NotebookUpdateRequest,
     VocabUIConfig,
 )
@@ -142,7 +148,13 @@ __all__ = [
     "HealthResponse",
     "ManualLinkRequest",
     "NotebookCreateRequest",
+    "NotebookCardLayout",
+    "NotebookReviewPolicy",
     "NotebookResponse",
+    "NotebookSettingsGroup",
+    "NotebookSettingsPatchGroup",
+    "NotebookSettingsPatchRequest",
+    "NotebookSettingsResponse",
     "NotebookUpdateRequest",
     "PhraseTranslateResponse",
     "PipelineQueueResponse",
