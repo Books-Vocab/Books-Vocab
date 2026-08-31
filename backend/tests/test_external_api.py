@@ -223,6 +223,50 @@ def test_external_card_ingest_is_idempotent_and_supports_card_operations(externa
     assert deleted.json() == {"cardId": card_id, "deleted": True}
 
 
+def test_external_card_concurrent_duplicate_requests_are_idempotent(external_api, monkeypatch):
+    api_key = _create_key(external_api)
+    headers = {"X-KG-API-Key": api_key}
+    store = external_router._card_store(external_api.data_dir / "users" / external_api.user_id)
+    original_find = type(store).find_by_content
+    find_barrier = threading.Barrier(2)
+    find_calls_lock = threading.Lock()
+    find_calls = 0
+    request_barrier = threading.Barrier(2)
+
+    def synchronize_initial_lookup(self, *args, **kwargs):
+        nonlocal find_calls
+        result = original_find(self, *args, **kwargs)
+        with find_calls_lock:
+            find_calls += 1
+            synchronize = find_calls <= 2
+        if synchronize:
+            find_barrier.wait(timeout=5)
+        return result
+
+    monkeypatch.setattr(type(store), "find_by_content", synchronize_initial_lookup)
+    payload = {
+        "content": "concurrent single card",
+        "meaning": "created exactly once",
+        "clientId": "concurrent-single-client",
+    }
+
+    def post_card():
+        request_barrier.wait(timeout=5)
+        return external_api.client.post("/api/v1/cards", json=payload, headers=headers)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        responses = list(executor.map(lambda _: post_card(), range(2)))
+
+    assert sorted(response.status_code for response in responses) == [201, 201]
+    bodies = [response.json() for response in responses]
+    assert sorted(body["created"] for body in bodies) == [False, True]
+    assert len({body["card"]["id"] for body in bodies}) == 1
+
+    listed = external_api.client.get("/api/v1/cards", headers=headers)
+    assert listed.status_code == 200, listed.text
+    assert [item["content"] for item in listed.json()["items"]] == ["concurrent single card"]
+
+
 def test_external_card_batch_rolls_back_when_later_entry_is_invalid(external_api):
     api_key = _create_key(external_api)
     headers = {"X-KG-API-Key": api_key}
