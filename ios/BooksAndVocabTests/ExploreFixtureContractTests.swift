@@ -244,14 +244,60 @@ struct ExploreFixtureContractTests {
             let outcome = await service.syncAll(context: container.mainContext)
             #expect(outcome == .failed(.listFetch))
             let deckCount = try container.mainContext.fetch(FetchDescriptor<SharedDeck>()).count
+            #expect(deckCount > 0)
             #expect(
                 ExplorePhase.resolve(
                     isSyncing: false,
                     syncFailed: true,
                     totalDeckCount: deckCount,
-                    filteredCount: deckCount,
+                    filteredCount: 0,
+                    isFilteringOrSearching: true
+                ) == .noResults
+            )
+
+            let exploreViewURL = URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent() // BooksAndVocabTests
+                .deletingLastPathComponent() // ios
+                .appendingPathComponent("BooksAndVocab/Views/Explore/ExploreView.swift")
+            let source = try String(contentsOf: exploreViewURL, encoding: .utf8)
+            let noResultsStart = try #require(source.range(of: "private var noResultsState: some View"))
+            let errorStateStart = try #require(source.range(
+                of: "private var errorState: some View",
+                range: noResultsStart.upperBound..<source.endIndex
+            ))
+            let noResultsState = source[noResultsStart.lowerBound..<errorStateStart.lowerBound]
+            #expect(noResultsState.contains("if syncFailed"))
+            #expect(noResultsState.contains("syncFailureBanner"))
+            #expect(source.contains("private var syncFailureBanner: some View"))
+            #expect(source.contains("onRetry: { Task { await refreshCatalog() } }"))
+            #expect(source.contains("explore.partialState"))
+
+            #expect(
+                ExplorePhase.resolve(
+                    isSyncing: false,
+                    syncFailed: false,
+                    totalDeckCount: deckCount,
+                    filteredCount: 0,
+                    isFilteringOrSearching: true
+                ) == .noResults
+            )
+            #expect(
+                ExplorePhase.resolve(
+                    isSyncing: false,
+                    syncFailed: false,
+                    totalDeckCount: 0,
+                    filteredCount: 0,
                     isFilteringOrSearching: false
-                ) == .partial
+                ) == .empty
+            )
+            #expect(
+                ExplorePhase.resolve(
+                    isSyncing: false,
+                    syncFailed: true,
+                    totalDeckCount: 0,
+                    filteredCount: 0,
+                    isFilteringOrSearching: false
+                ) == .error
             )
         }
     }

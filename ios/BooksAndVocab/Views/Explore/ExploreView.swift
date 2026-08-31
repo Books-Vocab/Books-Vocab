@@ -206,14 +206,8 @@ struct ExploreView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppSpacing.s3) {
                 if syncFailed {
-                    AppBanner(
-                        message: L10n.string("explore.error.description"),
-                        systemImage: "exclamationmark.icloud",
-                        onRetry: { Task { await refreshCatalog() } }
-                    )
+                    syncFailureBanner
                     .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("explore.partialState")
                 }
                 filterBar
                 deckGrid
@@ -328,18 +322,33 @@ struct ExploreView: View {
 
     private var noResultsState: some View {
         stateScroll {
-            AppEmptyStateContent(
-                title: L10n.string("explore.noResults.title"),
-                systemImage: "magnifyingglass",
-                description: L10n.string("explore.noResults.description"),
-                action: AppEmptyStateAction(
-                    title: L10n.string("explore.noResults.clear"),
-                    systemImage: "xmark.circle",
-                    handler: { filter = ExploreFilter() }
-                ),
-                style: .bookshelf(appTheme)
-            )
+            VStack(spacing: AppSpacing.s2) {
+                if syncFailed {
+                    syncFailureBanner
+                }
+                AppEmptyStateContent(
+                    title: L10n.string("explore.noResults.title"),
+                    systemImage: "magnifyingglass",
+                    description: L10n.string("explore.noResults.description"),
+                    action: AppEmptyStateAction(
+                        title: L10n.string("explore.noResults.clear"),
+                        systemImage: "xmark.circle",
+                        handler: { filter = ExploreFilter() }
+                    ),
+                    style: .bookshelf(appTheme)
+                )
+            }
         }
+    }
+
+    private var syncFailureBanner: some View {
+        AppBanner(
+            message: L10n.string("explore.error.description"),
+            systemImage: "exclamationmark.icloud",
+            onRetry: { Task { await refreshCatalog() } }
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("explore.partialState")
     }
 
     private var errorState: some View {
