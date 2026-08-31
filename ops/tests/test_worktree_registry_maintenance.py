@@ -8,12 +8,218 @@ import pytest
 
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
-import worktree_registry as registry  # noqa: E402
-from worktree_registry_core.records import (  # noqa: E402
+import worktree_registry as registry
+from worktree_registry_core.records import (
     mutation_blockers,
     mutation_blockers_for_target,
     superseded_proof_problem,
 )
+
+
+def _git(worktree: Path, *args: str) -> str:
+    return_code, output = registry._git(list(args), worktree)
+    assert return_code == 0, output
+    return output
+
+
+def _reanchor_record(tmp_path: Path) -> tuple[dict[str, object], str, str, str]:
+    worktree = tmp_path / "published-base-reanchor"
+    worktree.mkdir()
+    _git(worktree, "init", "--quiet", "-b", "main")
+    _git(worktree, "config", "user.email", "test@example.com")
+    _git(worktree, "config", "user.name", "Test User")
+
+    (worktree / "base.txt").write_text("old\n", encoding="utf-8")
+    _git(worktree, "add", "base.txt")
+    _git(worktree, "commit", "--quiet", "-m", "old published base")
+    previous_published_base = _git(worktree, "rev-parse", "HEAD")
+
+    (worktree / "main.txt").write_text("new live main\n", encoding="utf-8")
+    _git(worktree, "add", "main.txt")
+    _git(worktree, "commit", "--quiet", "-m", "new live main")
+    live_main = _git(worktree, "rev-parse", "HEAD")
+
+    (worktree / "worker.txt").write_text("owner change\n", encoding="utf-8")
+    _git(worktree, "add", "worker.txt")
+    _git(worktree, "commit", "--quiet", "-m", "owner handback")
+    handback_head = _git(worktree, "rev-parse", "HEAD")
+
+    record: dict[str, object] = {
+        "branch": "debug/published-base-reanchor",
+        "path": str(worktree),
+        "intent": "record reanchored published PR target",
+        "base": live_main,
+        "base_sha": live_main,
+        "status": "active",
+        "external_ids": ["DIRECT-PUBLISHED-BASE-REANCHOR"],
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [
+                {
+                    "path": "ops/worktree_registry_core/published_base.py",
+                    "operation": "modify",
+                },
+                {
+                    "path": "ops/tests/test_worktree_registry_maintenance.py",
+                    "operation": "modify",
+                },
+            ],
+        },
+        "codex_thread_id": "owner-thread",
+        "delegated": True,
+        "claim_generation": 2,
+        "handed_back_at": "2026-09-01T00:00:00Z",
+        "handed_back_sha": handback_head,
+        "handback_claim_generation": 2,
+        "published_base_sha": previous_published_base,
+    }
+    record["handback_seal"] = registry._seal_with_digest(
+        registry._seal_body(
+            record,
+            base_sha=live_main,
+            tip_sha=handback_head,
+            outcomes=[{"name": "focused", "status": "success"}],
+            handed_back_at="2026-09-01T00:00:00Z",
+            origin_main_sha=live_main,
+        )
+    )
+    return record, previous_published_base, live_main, handback_head
+
+
+def _record_published_base_argv(
+    state: Path,
+    record: dict[str, object],
+    *,
+    expected_head: str,
+    handback_base: str,
+    published_base: str,
+) -> list[str]:
+    return [
+        "record-published-base",
+        "--state",
+        str(state),
+        "--lane",
+        "DIRECT-PUBLISHED-BASE-REANCHOR",
+        "--branch",
+        str(record["branch"]),
+        "--path",
+        str(record["path"]),
+        "--expected-generation",
+        "2",
+        "--expected-head-sha",
+        expected_head,
+        "--expected-handback-base-sha",
+        handback_base,
+        "--published-base-sha",
+        published_base,
+        "--at",
+        "2026-09-01T00:01:00Z",
+        "--json",
+    ]
+
+
+def test_record_published_base_allows_exact_reanchor_advance_and_is_deterministic(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "registry.json"
+    record, previous, live_main, handback_head = _reanchor_record(tmp_path)
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+    argv = _record_published_base_argv(
+        state_path,
+        record,
+        expected_head=handback_head,
+        handback_base=live_main,
+        published_base=live_main,
+    )
+
+    assert registry.main(argv) == registry.EXIT_OK
+    first = registry.load_state(state_path)["records"][0]
+    assert first["base_sha"] == live_main
+    assert first["published_base_sha"] == live_main
+    assert first["handback_seal"] == record["handback_seal"]
+    assert first["published_base_recorded_at"] == "2026-09-01T00:01:00Z"
+    assert previous != live_main
+
+    assert registry.main(argv) == registry.EXIT_OK
+    second = registry.load_state(state_path)["records"][0]
+    assert second == first
+
+
+def test_record_published_base_rejects_reanchor_with_stale_pr_base(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "registry.json"
+    record, previous, live_main, handback_head = _reanchor_record(tmp_path)
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+    original = state_path.read_text(encoding="utf-8")
+
+    assert (
+        registry.main(
+            _record_published_base_argv(
+                state_path,
+                record,
+                expected_head=handback_head,
+                handback_base=live_main,
+                published_base=previous,
+            )
+        )
+        == registry.EXIT_CLAIMED
+    )
+    assert state_path.read_text(encoding="utf-8") == original
+
+
+def test_record_published_base_rejects_non_ancestor_reanchor_base(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "registry.json"
+    record, _previous, live_main, handback_head = _reanchor_record(tmp_path)
+    worktree = Path(str(record["path"]))
+    _git(worktree, "switch", "--quiet", "--orphan", "unrelated")
+    _git(worktree, "commit", "--quiet", "--allow-empty", "-m", "unrelated base")
+    unrelated_base = _git(worktree, "rev-parse", "HEAD")
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+    original = state_path.read_text(encoding="utf-8")
+
+    assert (
+        registry.main(
+            _record_published_base_argv(
+                state_path,
+                record,
+                expected_head=handback_head,
+                handback_base=live_main,
+                published_base=unrelated_base,
+            )
+        )
+        == registry.EXIT_CLAIMED
+    )
+    assert state_path.read_text(encoding="utf-8") == original
+
+
+def test_record_published_base_requires_live_main_handback_evidence(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "registry.json"
+    record, previous, live_main, handback_head = _reanchor_record(tmp_path)
+    seal = dict(record["handback_seal"])
+    seal.pop("digest")
+    seal["origin_main_sha"] = previous
+    record["handback_seal"] = registry._seal_with_digest(seal)
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+    original = state_path.read_text(encoding="utf-8")
+
+    assert (
+        registry.main(
+            _record_published_base_argv(
+                state_path,
+                record,
+                expected_head=handback_head,
+                handback_base=live_main,
+                published_base=live_main,
+            )
+        )
+        == registry.EXIT_CLAIMED
+    )
+    assert state_path.read_text(encoding="utf-8") == original
 
 
 def _terminal_proof(record: dict) -> dict:
