@@ -184,9 +184,7 @@ def test_vocab_full_sync_includes_deleted_cards_with_scope_and_paging(isolated_a
             headers=headers,
         )
     assert scoped_created.status_code == 200, scoped_created.text
-    scoped_deleted = client.delete(
-        "/api/vocab/scoped-deleted", params={"notebook_id": notebook_id}, headers=headers
-    )
+    scoped_deleted = client.delete("/api/vocab/scoped-deleted", params={"notebook_id": notebook_id}, headers=headers)
     assert scoped_deleted.status_code == 200, scoped_deleted.text
 
     scoped_sync = client.get("/api/vocab", params={"notebook_id": notebook_id}, headers=headers)
