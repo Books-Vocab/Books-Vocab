@@ -91,6 +91,11 @@ def build_podcast_progress_router(
             updated_at=_canonical_updated_at(payload.updated_at),
         )
 
+    # The parent podcast router supplies the globals used by backend-quality's
+    # endpoint reflection. Keep the evaluated alias on the endpoint so that
+    # reflection does not need to resolve this child-module private name.
+    upsert_user_progress.__annotations__["payload"] = _PodcastProgressPayload
+
     @router.get("/api/podcasts/{series_id}/{ep_num}/progress", response_model=PodcastProgressResponse)
     def get_user_progress(
         series_id: str,
