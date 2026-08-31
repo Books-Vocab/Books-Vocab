@@ -1,6 +1,13 @@
 import SwiftUI
 import SwiftData
 
+enum KnowledgeGraphNotebookScope {
+    static func notebookID(for filter: NotebookFilter) -> String? {
+        guard filter.selectedIds.count == 1 else { return nil }
+        return filter.selectedIds.first
+    }
+}
+
 struct KnowledgeGraphView: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
@@ -9,11 +16,13 @@ struct KnowledgeGraphView: View {
     @Environment(\.detailRouter) private var detailRouter
     @Environment(\.reviewSettingsStore) private var reviewSettingsStore
     let allEntries: [VocabularyEntry]
+    let notebookId: String?
     private let shouldLoadGraphData: Bool
     @State private var coordinator: KnowledgeGraphCoordinator
 
-    init(allEntries: [VocabularyEntry]) {
+    init(allEntries: [VocabularyEntry], notebookId: String? = nil) {
         self.allEntries = allEntries
+        self.notebookId = notebookId
         self.shouldLoadGraphData = true
         _coordinator = State(initialValue: KnowledgeGraphCoordinator())
     }
@@ -22,9 +31,11 @@ struct KnowledgeGraphView: View {
     init(
         allEntries: [VocabularyEntry],
         initialGraphLinks: [KGGraphLink],
-        shouldLoadGraphData: Bool
+        shouldLoadGraphData: Bool,
+        notebookId: String? = nil
     ) {
         self.allEntries = allEntries
+        self.notebookId = notebookId
         self.shouldLoadGraphData = shouldLoadGraphData
         _coordinator = State(initialValue: KnowledgeGraphCoordinator(links: initialGraphLinks))
     }
@@ -48,7 +59,7 @@ struct KnowledgeGraphView: View {
         )
         .task {
             guard shouldLoadGraphData else { return }
-            await coordinator.loadGraphData(authManager: authManager, kgService: kgService)
+            await loadGraphData()
         }
         .onChange(of: coordinator.selectedEntry) { _, entry in
             if let entry, detailRouter != nil {
@@ -120,11 +131,34 @@ struct KnowledgeGraphView: View {
         coordinator.handleNodeTap(nodeID, allEntries: allEntries)
     }
 
+    private func loadGraphData() async {
+        guard let notebookId else {
+            await coordinator.loadGraphData(authManager: authManager, kgService: kgService)
+            return
+        }
+        guard authManager.isLoggedIn else { return }
+
+        if authManager.isDemoMode {
+            coordinator.links = DemoDataProvider.demoGraphLinks
+            return
+        }
+
+        coordinator.isLoading = true
+        coordinator.errorMessage = nil
+        defer { coordinator.isLoading = false }
+
+        do {
+            coordinator.links = try await kgService.pullGraphLinks(notebookId: notebookId)
+        } catch {
+            coordinator.errorMessage = error.localizedDescription
+        }
+    }
+
     /// Synchronous entry point for the error-state retry button — the only
     /// in-place way to re-run a failed `loadGraphData` without leaving the tab.
     /// `AppEmptyStateAction.handler` is sync, so the async load is bridged
     /// through a `Task`.
     private func reloadGraphData() {
-        Task { await coordinator.loadGraphData(authManager: authManager, kgService: kgService) }
+        Task { await loadGraphData() }
     }
 }

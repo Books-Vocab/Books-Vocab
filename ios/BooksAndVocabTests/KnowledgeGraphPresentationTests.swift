@@ -14,6 +14,26 @@ import Testing
 /// the non-error branches (logged-out / loading / no-nodes) carry no action.
 struct KnowledgeGraphPresentationTests {
 
+    // MARK: - Notebook-scoped graph loading
+
+    @Test func graphNotebookScope_selectsOnlySingleNotebook() {
+        #expect(
+            KnowledgeGraphNotebookScope.notebookID(
+                for: NotebookFilter(selectedIds: ["nb-1"])
+            ) == "nb-1"
+        )
+        #expect(
+            KnowledgeGraphNotebookScope.notebookID(
+                for: NotebookFilter(selectedIds: [])
+            ) == nil
+        )
+        #expect(
+            KnowledgeGraphNotebookScope.notebookID(
+                for: NotebookFilter(selectedIds: ["nb-1", "nb-2"])
+            ) == nil
+        )
+    }
+
     // MARK: - Error branch carries a retry action
 
     @Test func errorState_includesRetryAction() {
