@@ -20,6 +20,7 @@ from kg.routers import podcast_media as media_mod
 # _media_type_for
 # ---------------------------------------------------------------------------
 
+
 class TestMediaTypeFor:
     def test_m4a_returns_audio_mp4(self):
         assert media_mod._media_type_for("audio.m4a") == "audio/mp4"
@@ -34,6 +35,7 @@ class TestMediaTypeFor:
 # ---------------------------------------------------------------------------
 # _read_json_file
 # ---------------------------------------------------------------------------
+
 
 class TestReadJsonFile:
     def test_reads_valid_json(self, tmp_path, monkeypatch):
@@ -56,6 +58,7 @@ class TestReadJsonFile:
 # ---------------------------------------------------------------------------
 # _is_s3_not_found
 # ---------------------------------------------------------------------------
+
 
 class TestIsS3NotFound:
     def test_nosuchkey_exception(self):
@@ -115,6 +118,7 @@ class TestIsS3NotFound:
 # _s3_static_headers
 # ---------------------------------------------------------------------------
 
+
 class TestS3StaticHeaders:
     def test_content_length_and_etag(self):
         obj = {"ContentLength": 42, "ETag": '"abc"'}
@@ -151,6 +155,7 @@ class TestS3StaticHeaders:
 # ---------------------------------------------------------------------------
 # _iter_s3_body
 # ---------------------------------------------------------------------------
+
 
 class TestIterS3Body:
     def test_yields_chunks_and_closes(self):
@@ -207,6 +212,7 @@ class TestIterS3Body:
 # _read_bytes_from_s3
 # ---------------------------------------------------------------------------
 
+
 class TestReadBytesFromS3:
     def test_returns_bytes(self):
         body = MagicMock()
@@ -215,9 +221,7 @@ class TestReadBytesFromS3:
         def _get_obj(req, key, *, context):
             return {"Body": body}
 
-        result = media_mod._read_bytes_from_s3(
-            None, "s1/cover.png", context="cover", get_object_from_s3=_get_obj
-        )
+        result = media_mod._read_bytes_from_s3(None, "s1/cover.png", context="cover", get_object_from_s3=_get_obj)
         assert result == b"hello"
         body.close.assert_called_once_with()
 
@@ -225,15 +229,14 @@ class TestReadBytesFromS3:
         def _get_obj(req, key, *, context):
             return None
 
-        result = media_mod._read_bytes_from_s3(
-            None, "s1/cover.png", context="cover", get_object_from_s3=_get_obj
-        )
+        result = media_mod._read_bytes_from_s3(None, "s1/cover.png", context="cover", get_object_from_s3=_get_obj)
         assert result is None
 
 
 # ---------------------------------------------------------------------------
 # _get_object_from_s3
 # ---------------------------------------------------------------------------
+
 
 class TestGetObjectFromS3:
     def test_returns_object(self):
@@ -312,9 +315,11 @@ class TestGetObjectFromS3:
 # _read_json_from_s3
 # ---------------------------------------------------------------------------
 
+
 class TestReadJsonFromS3:
     def _make_s3(self, body_bytes: bytes | None = None, *, raise_exc: Exception | None = None):
         """Build a fake S3 client for _read_json_from_s3."""
+
         class _FakeBody:
             def __init__(self, data: bytes):
                 self._data = data
@@ -388,6 +393,7 @@ class TestReadJsonFromS3:
 
         class _FakeS3:
             exceptions = SimpleNamespace(NoSuchKey=_NoSuchKey)
+
             def get_object(self, Bucket, Key):  # noqa: N803
                 raise _NoSuchKey()
 
@@ -444,6 +450,7 @@ class TestReadJsonFromS3:
 # ---------------------------------------------------------------------------
 # _serve_static_media — disk mode
 # ---------------------------------------------------------------------------
+
 
 class TestServeStaticMediaDisk:
     def test_returns_file_content(self, tmp_path):
@@ -522,6 +529,7 @@ class TestServeStaticMediaDisk:
 # _serve_static_media — S3 non-streaming mode
 # ---------------------------------------------------------------------------
 
+
 class TestServeStaticMediaS3:
     def test_returns_response_from_bytes(self):
         def _read_bytes(req, key, *, context):
@@ -589,6 +597,7 @@ class TestServeStaticMediaS3:
 # _serve_static_media — S3 streaming mode
 # ---------------------------------------------------------------------------
 
+
 class TestServeStaticMediaS3Streaming:
     def test_returns_streaming_response(self):
         class _FakeBody:
@@ -653,6 +662,7 @@ class TestServeStaticMediaS3Streaming:
 # _serve_audio_from_s3
 # ---------------------------------------------------------------------------
 
+
 class TestServeAudioFromS3:
     def _request(self, bucket="bucket"):
         return SimpleNamespace(
@@ -701,9 +711,7 @@ class TestServeAudioFromS3:
         assert isinstance(resp, StreamingResponse)
         assert resp.headers["content-length"] == "1024"
         assert resp.headers["accept-ranges"] == "bytes"
-        fake_s3.get_object.assert_called_once_with(
-            Bucket="bucket", Key="series_x/ep_03/audio.m4a"
-        )
+        fake_s3.get_object.assert_called_once_with(Bucket="bucket", Key="series_x/ep_03/audio.m4a")
 
     def test_range_request_passed_through(self):
         class _FakeBody:
@@ -737,9 +745,52 @@ class TestServeAudioFromS3:
         )
         assert resp.status_code == 206
         assert resp.headers["content-range"] == "bytes 0-99/1024"
-        fake_s3.get_object.assert_called_once_with(
-            Bucket="bucket", Key="series_x/ep_01/audio.mp3", Range="bytes=0-99"
+        fake_s3.get_object.assert_called_once_with(Bucket="bucket", Key="series_x/ep_01/audio.mp3", Range="bytes=0-99")
+
+    def test_malformed_range_is_ignored_for_s3_audio(self):
+        """Malformed ranges must keep the endpoint's full-body fallback in S3 mode."""
+
+        class _FakeBody:
+            def read(self, size):
+                return b""
+
+            def close(self):
+                pass
+
+        fake_s3 = MagicMock()
+
+        def _get_object(**kwargs):
+            if "Range" in kwargs:
+                return {
+                    "Body": _FakeBody(),
+                    "ContentLength": 1024,
+                    "ResponseMetadata": {"HTTPStatusCode": 416},
+                }
+            return {
+                "Body": _FakeBody(),
+                "ContentLength": 1024,
+                "ResponseMetadata": {"HTTPStatusCode": 200},
+            }
+
+        fake_s3.get_object.side_effect = _get_object
+
+        resp = media_mod._serve_audio_from_s3(
+            self._request(),
+            "series_x",
+            1,
+            range_header="bytes=-0",
+            stem="audio",
+            settings_fn=media_mod._settings,
+            s3_client_fn=lambda req: fake_s3,
+            audio_filename=lambda req, sid, ep, stem: "audio.mp3",
+            media_type_for=media_mod._media_type_for,
+            is_s3_not_found_fn=lambda exc, s3: False,
+            iter_s3_body=lambda body, chunk_size=65536: media_mod._iter_s3_body(body, chunk_size),
+            logger_=MagicMock(),
         )
+
+        assert resp.status_code == 200
+        fake_s3.get_object.assert_called_once_with(Bucket="bucket", Key="series_x/ep_01/audio.mp3")
 
     def test_raises_404_on_audio_not_found(self):
         class _NoSuchKey(Exception):
