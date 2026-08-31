@@ -13,7 +13,13 @@ final class WordDetailFlowUITests: UITestCase {
         static let syncStatus = "已同步"
         static let editedTranslation = "brief"
         static let editedExplanation = "Updated detail from Word Detail edit."
-        static let pendingSyncStatus = "待同步"
+        static let pendingStateIndicator = "待同步"
+    }
+
+    private enum Selector {
+        static let translationEditor = "wordDetail.edit.translation"
+        static let explanationEditor = "wordDetail.edit.explanation"
+        static let saveButton = "wordDetail.edit.save"
     }
 
     override func setUpWithError() throws {
@@ -97,7 +103,7 @@ final class WordDetailFlowUITests: UITestCase {
     }
 
     @MainActor
-    func testWordDetailEditRefreshesPresentationAndKeepsPendingSync() throws {
+    func testWordDetailEditRefreshesPresentationAndKeepsPendingStateIndicator() throws {
         let app = launchIsolatedApp(fixtures: [.vocabulary("wordDetail")])
         let notebooks = AppPage(app: app).goToNotebooks()
 
@@ -128,18 +134,20 @@ final class WordDetailFlowUITests: UITestCase {
         guard element("wordDetail.document", in: app, named: "Word Detail edit document") != nil else {
             return
         }
-        guard let editButton = app.buttons
-            .matching(NSPredicate(format: "label == %@", "編輯"))
-            .exactlyOneElement(timeout: 10, named: "Word Detail edit button") else {
+        guard let editButton = activeEditButton(in: app) else {
             return
         }
         editButton.tapWhenReady()
 
-        let editors = app.textViews
-        let translationEditor = editors.element(boundBy: 0)
-        let explanationEditor = editors.element(boundBy: 1)
-        guard translationEditor.waitUntilExists(timeout: 10),
-              explanationEditor.waitUntilExists(timeout: 10) else {
+        guard let translationEditor = element(
+            Selector.translationEditor,
+            in: app,
+            named: "Word Detail translation editor"
+        ), let explanationEditor = element(
+            Selector.explanationEditor,
+            in: app,
+            named: "Word Detail explanation editor"
+        ) else {
             XCTFail("Word Detail edit sheet must expose translation and explanation editors")
             return
         }
@@ -157,9 +165,11 @@ final class WordDetailFlowUITests: UITestCase {
         XCTAssertTrue(editedTranslation.contains(Fixture.editedTranslation))
         XCTAssertTrue(editedExplanation.contains(Fixture.editedExplanation))
 
-        guard let saveButton = app.buttons
-            .matching(NSPredicate(format: "label == %@", "儲存"))
-            .exactlyOneElement(timeout: 10, named: "Word Detail edit save button") else {
+        guard let saveButton = activeIdentifiedElement(
+            Selector.saveButton,
+            in: app,
+            named: "Word Detail edit save button"
+        ) else {
             return
         }
         saveButton.tapWhenReady()
@@ -186,10 +196,12 @@ final class WordDetailFlowUITests: UITestCase {
             in: refreshedDocument,
             named: "Word Detail refreshed explanation"
         )
+        // This is the existing local presentation indicator only; this test
+        // does not claim that edit entered a sync transport.
         assertExactlyOneText(
-            Fixture.pendingSyncStatus,
+            Fixture.pendingStateIndicator,
             in: metadata,
-            named: "Word Detail pending sync metadata"
+            named: "Word Detail existing pending-state indicator"
         )
         captureStep("word-detail-edit-refresh", app: app)
     }
@@ -198,6 +210,50 @@ final class WordDetailFlowUITests: UITestCase {
         editor.tapWhenReady()
         editor.typeText(text)
         return editor.value as? String ?? ""
+    }
+
+    private func activeEditButton(in app: XCUIApplication) -> XCUIElement? {
+        // WordDetailPresenter owns this existing localized action outside this
+        // lane and does not publish a dedicated identifier. Resolve the
+        // semantic matches, then require exactly one active hittable element;
+        // edit-sheet controls below use stable identifiers owned by this lane.
+        let query = app.buttons.matching(NSPredicate(format: "label == %@", "編輯"))
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline {
+            let active = query.allElementsBoundByIndex.filter { $0.isHittable }
+            if active.count == 1 {
+                return active[0]
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+
+        let activeCount = query.allElementsBoundByIndex.filter { $0.isHittable }.count
+        XCTFail(
+            "Expected exactly one active Word Detail edit button, observed \(activeCount) active of \(query.count) semantic matches"
+        )
+        return nil
+    }
+
+    private func activeIdentifiedElement(
+        _ identifier: String,
+        in app: XCUIApplication,
+        named name: String
+    ) -> XCUIElement? {
+        let query = app.descendants(matching: .any).matching(identifier: identifier)
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline {
+            let active = query.allElementsBoundByIndex.filter { $0.isHittable }
+            if active.count == 1 {
+                return active[0]
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+
+        let activeCount = query.allElementsBoundByIndex.filter { $0.isHittable }.count
+        XCTFail(
+            "Expected exactly one active \(name), observed \(activeCount) active of \(query.count) identified matches"
+        )
+        return nil
     }
 
     private func element(

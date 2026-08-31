@@ -26,8 +26,16 @@ struct WordEditSheet: View {
                         )
                     }
 
-                    editSection(title: "翻譯結果".localized, text: $draftTranslation)
-                    editSection(title: "教學筆記".localized, text: $draftExplanation)
+                    editSection(
+                        title: "翻譯結果".localized,
+                        text: $draftTranslation,
+                        accessibilityIdentifier: "wordDetail.edit.translation"
+                    )
+                    editSection(
+                        title: "教學筆記".localized,
+                        text: $draftExplanation,
+                        accessibilityIdentifier: "wordDetail.edit.explanation"
+                    )
                 }
                 .padding(appSkin.spacing.cardPadding)
             }
@@ -37,6 +45,7 @@ struct WordEditSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消".localized) { dismiss() }
+                        .accessibilityIdentifier("wordDetail.edit.cancel")
                         .disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -45,6 +54,7 @@ struct WordEditSheet: View {
                             .controlSize(.small)
                     } else {
                         Button("儲存".localized) { save() }
+                            .accessibilityIdentifier("wordDetail.edit.save")
                             .fontWeight(.semibold)
                     }
                 }
@@ -57,7 +67,11 @@ struct WordEditSheet: View {
         .enableInjection()
     }
 
-    private func editSection(title: String, text: Binding<String>) -> some View {
+    private func editSection(
+        title: String,
+        text: Binding<String>,
+        accessibilityIdentifier: String
+    ) -> some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
             Text(title)
                 .font(appSkin.typography.caption)
@@ -66,6 +80,7 @@ struct WordEditSheet: View {
             TextEditor(text: text)
                 .font(appSkin.typography.body)
                 .foregroundStyle(appSkin.palette.primaryText)
+                .accessibilityIdentifier(accessibilityIdentifier)
                 .scrollContentBackground(.hidden)
                 .padding(appSkin.spacing.inlineGap)
                 .frame(minHeight: 80)
