@@ -579,6 +579,45 @@ class TestPutPosition:
         )
         assert resp.status_code == 404
 
+    def test_put_position_rejects_invalid_timestamp_without_mutating_position(self, isolated_api):
+        book = _create_book(isolated_api.client, isolated_api.headers, "Book")
+        book_id = book["id"]
+        initial = isolated_api.client.put(
+            f"/api/library/books/{book_id}/position",
+            json={
+                "locator": "initial-locator",
+                "progression": 0.25,
+                "updated_at": "2026-06-13T10:00:00Z",
+            },
+            headers=isolated_api.headers,
+        )
+        assert initial.status_code == 200
+        before = isolated_api.client.get(
+            "/api/library/books",
+            headers=isolated_api.headers,
+        ).json()[0]
+
+        invalid = isolated_api.client.put(
+            f"/api/library/books/{book_id}/position",
+            json={
+                "locator": "invalid-locator",
+                "progression": 0.75,
+                "updated_at": "not-an-iso-timestamp",
+            },
+            headers=isolated_api.headers,
+        )
+
+        assert invalid.status_code == 400
+        assert invalid.json() == {
+            "code": "BadRequestError",
+            "detail": "Invalid updated_at timestamp",
+        }
+        after = isolated_api.client.get(
+            "/api/library/books",
+            headers=isolated_api.headers,
+        ).json()[0]
+        assert after == before
+
     def test_put_position_rejects_deleted_book_without_mutating_tombstone(self, isolated_api):
         book = _create_book(isolated_api.client, isolated_api.headers, "Book")
         book_id = book["id"]
