@@ -157,6 +157,28 @@ struct SharedDeckPresentationTests {
         #expect(iEveryday != nil && iGRE != nil && iEveryday! < iGRE!)
     }
 
+    @Test func alphabetical_sort_tieBreaksEqualTitlesByRemoteId_andIsInputOrderIndependent() {
+        var f = ExploreFilter()
+        f.sort = .alphabetical
+
+        let exactTitleMatch = [
+            proj("deck-b", title: "Shared"),
+            proj("deck-a", title: "Shared"),
+        ]
+        let caseInsensitiveTitleMatch = [
+            proj("deck-d", title: "shared"),
+            proj("deck-c", title: "SHARED"),
+        ]
+
+        #expect(f.apply(to: exactTitleMatch).map(\.remoteId) == ["deck-a", "deck-b"])
+        #expect(f.apply(to: Array(exactTitleMatch.reversed())).map(\.remoteId) == ["deck-a", "deck-b"])
+        #expect(f.apply(to: caseInsensitiveTitleMatch).map(\.remoteId) == ["deck-c", "deck-d"])
+        #expect(
+            f.apply(to: Array(caseInsensitiveTitleMatch.reversed())).map(\.remoteId)
+                == ["deck-c", "deck-d"]
+        )
+    }
+
     @Test func recency_sort_prefers_updatedAt_then_sortOrder() {
         let now = Date()
         let decks = [
