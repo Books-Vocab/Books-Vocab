@@ -140,7 +140,7 @@ class LibraryStore:
     def update(self, book_id: str, req: BookUpdateRequest) -> LibraryBook | None:
         with Session(self.engine) as session:
             book = session.get(LibraryBook, book_id)
-            if book is None:
+            if book is None or book.is_deleted:
                 return None
             if req.title is not None:
                 book.title = req.title
@@ -161,7 +161,7 @@ class LibraryStore:
     def update_position(self, book_id: str, req: BookPositionRequest) -> LibraryBook | None:
         with Session(self.engine) as session:
             book = session.get(LibraryBook, book_id)
-            if book is None:
+            if book is None or book.is_deleted:
                 return None
             incoming_updated_at = _parse_utc_instant(req.updated_at)
             while True:
@@ -179,6 +179,7 @@ class LibraryStore:
                 stmt = (
                     update(LibraryBook)
                     .where(LibraryBook.id == book_id)
+                    .where(LibraryBook.is_deleted == False)  # noqa: E712
                     .where(
                         LibraryBook.position_updated_at.is_(None)
                         if expected_position_updated_at is None
@@ -200,7 +201,7 @@ class LibraryStore:
                 # again rather than allowing request arrival order to win.
                 session.rollback()
                 book = session.get(LibraryBook, book_id)
-                if book is None:
+                if book is None or book.is_deleted:
                     return None
 
     def soft_delete(self, book_id: str) -> LibraryBook | None:
