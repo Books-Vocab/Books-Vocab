@@ -15,28 +15,45 @@ class ResolvedStores:
 
 
 class CardStoreFactory(Protocol):
-    def __call__(self, user_dir: Path) -> Any:
-        ...
+    def __call__(self, user_dir: Path) -> Any: ...
 
 
 class NotebookStoreFactory(Protocol):
-    def __call__(self, user_dir: Path) -> Any:
-        ...
+    def __call__(self, user_dir: Path) -> Any: ...
 
 
 class GraphStoreFactory(Protocol):
-    def __call__(self, user_dir: Path, notebook_id: str = "default") -> Any:
-        ...
+    def __call__(self, user_dir: Path, notebook_id: str = "default") -> Any: ...
 
 
 class EmbeddingStoreFactory(Protocol):
-    def __call__(self, user_dir: Path, llm: Any, notebook_id: str = "default") -> Any:
-        ...
+    def __call__(self, user_dir: Path, llm: Any, notebook_id: str = "default") -> Any: ...
 
 
 class ClientFactory(Protocol):
-    def __call__(self, provider: Any) -> Any:
-        ...
+    def __call__(self, provider: Any) -> Any: ...
+
+
+class _CardNotebookGraph:
+    """Route graph reads to the notebook owning each card."""
+
+    def __init__(self, cards: Any, user_dir: Path, graph_store_factory: GraphStoreFactory) -> None:
+        self._cards = cards
+        self._user_dir = user_dir
+        self._graph_store_factory = graph_store_factory
+        self._graphs: dict[str, Any] = {}
+
+    def get_links_for(self, card_id: str) -> object:
+        card = self._cards.get(card_id)
+        if card is None:
+            return ()
+
+        notebook_id = getattr(card, "notebook_id", "default") or "default"
+        graph = self._graphs.get(notebook_id)
+        if graph is None:
+            graph = self._graph_store_factory(self._user_dir, notebook_id=notebook_id)
+            self._graphs[notebook_id] = graph
+        return graph.get_links_for(card_id)
 
 
 def _resolve_embedding_store(
@@ -79,7 +96,12 @@ def _resolve_stores(
     if notebook_id is not None and notebook_store_factory is not None:
         validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
     cards = card_store_factory(user["dir"])
-    graph = graph_store_factory(user["dir"], notebook_id=notebook_id or "default") if graph_store_factory is not None else None
+    if graph_store_factory is None:
+        graph = None
+    elif notebook_id is None:
+        graph = _CardNotebookGraph(cards, user["dir"], graph_store_factory)
+    else:
+        graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
     embeddings = _resolve_embedding_store(
         user,
         notebook_id or "default",
