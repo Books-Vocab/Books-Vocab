@@ -26,20 +26,21 @@ final class SelectionModeState {
         selectedIDs.removeAll()
     }
 
-    private var visibleCount: Int = 0
+    private var visibleIDs: Set<UUID> = []
 
     var isAllSelected: Bool {
-        visibleCount > 0 && selectedIDs.count == visibleCount
+        !visibleIDs.isEmpty && selectedIDs == visibleIDs
     }
 
-    func updateVisibleCount(_ count: Int) {
-        visibleCount = count
+    func updateVisibleIDs(_ ids: [UUID]) {
+        let visibleIDs = Set(ids)
+        self.visibleIDs = visibleIDs
+        selectedIDs.formIntersection(visibleIDs)
     }
 
     func exit() {
         isSelecting = false
         selectedIDs.removeAll()
-        visibleCount = 0
     }
 
     var selectionCount: Int { selectedIDs.count }
