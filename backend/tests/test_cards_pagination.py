@@ -1,10 +1,11 @@
 """E1 — query-layer bounded cursor pagination for CardStore.
 
 `page_cards` returns at most `limit` cards ordered by the composite cursor
-``(updated_at, id)`` using a row-value comparison, so paging is gap-free and
-duplicate-free even when many cards share the same ``updated_at``. Backed by a
-composite index ``ix_card_updated_at_id``.
+``(updated_at, id)`` using a UTC-normalized row-value comparison, so paging is
+gap-free and duplicate-free even when many cards share the same ``updated_at``
+or use legacy timezone offsets.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -14,6 +15,7 @@ from sqlalchemy import text
 from sqlmodel import Session
 
 from kg.cards.store import Card, CardStore
+from kg.vocab_crud import decode_cursor, encode_cursor
 
 
 @pytest.fixture()
@@ -23,7 +25,9 @@ def store(tmp_path):
     s.close()
 
 
-def _add(store: CardStore, card_id: str, *, updated_at: datetime, notebook_id: str = "default", is_deleted: bool = False) -> Card:
+def _add(
+    store: CardStore, card_id: str, *, updated_at: datetime, notebook_id: str = "default", is_deleted: bool = False
+) -> Card:
     # Insert directly so the test controls id + updated_at exactly (store.add
     # generates its own id/timestamps).
     card = Card(
@@ -115,6 +119,30 @@ def test_page_include_deleted_flag(store):
     assert {c.id for c in included} == {"live", "dead"}
 
 
+def test_page_cursor_does_not_skip_later_offset_timestamp_after_wire_round_trip(store):
+    """A UTC-normalized API cursor must advance past a legacy offset row."""
+    _add(store, "first", updated_at=datetime(2024, 1, 1))
+    _add(store, "second", updated_at=datetime(2024, 1, 1))
+    with store.engine.begin() as connection:
+        connection.execute(
+            text("UPDATE card SET updated_at = :timestamp WHERE id = :card_id"),
+            [
+                {"timestamp": "2024-01-01 09:00:00-05:00", "card_id": "first"},
+                {"timestamp": "2024-01-01 10:00:00-05:00", "card_id": "second"},
+            ],
+        )
+
+    first_page = store.page_cards(limit=1, after=None, include_deleted=True, notebook_id=None)
+    assert [card.id for card in first_page] == ["first"]
+
+    wire_cursor = encode_cursor((first_page[-1].updated_at, first_page[-1].id))
+    after = decode_cursor(wire_cursor)
+    assert after == (datetime(2024, 1, 1, 14, 0), "first")
+
+    second_page = store.page_cards(limit=1, after=after, include_deleted=True, notebook_id=None)
+    assert [card.id for card in second_page] == ["second"]
+
+
 def test_get_modified_since_compares_mixed_offsets_by_utc_instant(store):
     since = datetime(2024, 1, 1, 12, 0, tzinfo=UTC)
     timestamps = {
@@ -139,9 +167,7 @@ def test_index_exists(store):
     from sqlalchemy import text
 
     with store.engine.connect() as conn:
-        rows = conn.execute(
-            text("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='card'")
-        ).all()
+        rows = conn.execute(text("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='card'")).all()
     names = {r[0] for r in rows}
     assert "ix_card_updated_at_id" in names
     # old single-column index preserved
