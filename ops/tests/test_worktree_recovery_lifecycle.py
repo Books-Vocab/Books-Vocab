@@ -11,6 +11,7 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
+import worktree_registry as registry
 from delivery_control.domain.models import (
     CheckStatus,
     HandbackReceipt,
@@ -23,7 +24,7 @@ from delivery_control.domain.observations import (
     PullRequestSnapshot,
 )
 from delivery_control.services.pr_contract import render_pull_request_body
-from worktree_reanchor_core import git_ops
+from worktree_reanchor_core import git_ops, registry_ops
 from worktree_reanchor_core.cli import add_parser
 from worktree_reanchor_core.errors import ReanchorRefused
 from worktree_reanchor_core.lifecycle_proof import (
@@ -35,6 +36,12 @@ BASE = "1" * 40
 LIVE = "2" * 40
 HEAD = "3" * 40
 OTHER_HEAD = "4" * 40
+REMOTE_SOURCE_BASE = "5" * 40
+REMOTE_SOURCE_LIVE = "6" * 40
+REMOTE_SOURCE_HEAD = "7" * 40
+REMOTE_SOURCE_LANE = "DIRECT-REMOTE-SOURCE-1"
+REMOTE_SOURCE_BRANCH = "feat/exact-remote-source"
+REMOTE_SOURCE_OWNER = "owner-thread-1"
 
 
 def test_reanchor_git_timeout_is_structured_and_bounded(
@@ -51,6 +58,116 @@ def test_reanchor_git_timeout_is_structured_and_bounded(
 
     assert return_code == 124
     assert output == "partial\ngit command timed out after 120s"
+
+
+def _unhanded_active_state(tmp_path: Path) -> tuple[Path, Path]:
+    recorded_path = tmp_path / "owner-worktree"
+    record = {
+        "branch": REMOTE_SOURCE_BRANCH,
+        "path": str(recorded_path),
+        "intent": "same-owner remote-source reanchor",
+        "base": REMOTE_SOURCE_BASE,
+        "base_sha": REMOTE_SOURCE_BASE,
+        "status": "active",
+        "external_ids": [REMOTE_SOURCE_LANE],
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"path": "ops/reanchor_change.py", "operation": "add"}],
+        },
+        "codex_thread_id": REMOTE_SOURCE_OWNER,
+        "delegated": True,
+        "claim_generation": 2,
+        "handed_back_at": None,
+        "handed_back_sha": None,
+    }
+    state_path = tmp_path / "worktree_registry.json"
+    registry.save_state(
+        state_path,
+        {"schema": registry.SCHEMA, "records": [record]},
+    )
+    return state_path, recorded_path
+
+
+def test_reanchor_accepts_exact_unhanded_active_remote_source_claim(
+    tmp_path: Path,
+) -> None:
+    state_path, target = _unhanded_active_state(tmp_path)
+
+    preflight = registry_ops.preflight(
+        state_path=state_path,
+        lane_id=REMOTE_SOURCE_LANE,
+        branch=REMOTE_SOURCE_BRANCH,
+        owner_thread_id=REMOTE_SOURCE_OWNER,
+        claim_generation=2,
+        expected_remote_head=REMOTE_SOURCE_HEAD,
+        live_main=REMOTE_SOURCE_LIVE,
+        target=target,
+    )
+    active = registry_ops.register_active(
+        state_path=state_path,
+        preflight_result=preflight,
+        target=target,
+        live_main=REMOTE_SOURCE_LIVE,
+        lane_id=REMOTE_SOURCE_LANE,
+        claim_generation=2,
+    )
+
+    state = registry.load_state(state_path)
+    assert preflight.original["handed_back_sha"] is None
+    assert preflight.declared == (("ops/reanchor_change.py", "add"),)
+    assert active["status"] == "active"
+    assert active["claim_generation"] == 3
+    assert active["base_sha"] == REMOTE_SOURCE_LIVE
+    assert state["records"][0]["status"] == "abandoned"
+    assert state["records"][1]["status"] == "active"
+
+
+def test_resume_path_keeps_handback_required_for_unhanded_active_claim(
+    tmp_path: Path,
+) -> None:
+    state_path, target = _unhanded_active_state(tmp_path)
+
+    with pytest.raises(
+        ReanchorRefused, match="expected remote HEAD differs from original hand-back"
+    ):
+        registry_ops.preflight_resume(
+            state_path=state_path,
+            lane_id=REMOTE_SOURCE_LANE,
+            branch=REMOTE_SOURCE_BRANCH,
+            owner_thread_id=REMOTE_SOURCE_OWNER,
+            claim_generation=2,
+            expected_remote_head=REMOTE_SOURCE_HEAD,
+            target=target,
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"handed_back_at": "2026-08-31T00:00:00Z"},
+        {"handback_claim_generation": 2},
+        {"handback_seal": {}},
+    ],
+)
+def test_remote_source_does_not_accept_partial_handback_evidence(
+    tmp_path: Path, mutation: dict[str, object]
+) -> None:
+    state_path, target = _unhanded_active_state(tmp_path)
+    state = registry.load_state(state_path)
+    state["records"][0].update(mutation)
+    registry.save_state(state_path, state)
+
+    with pytest.raises(ReanchorRefused):
+        registry_ops.preflight(
+            state_path=state_path,
+            lane_id=REMOTE_SOURCE_LANE,
+            branch=REMOTE_SOURCE_BRANCH,
+            owner_thread_id=REMOTE_SOURCE_OWNER,
+            claim_generation=2,
+            expected_remote_head=REMOTE_SOURCE_HEAD,
+            live_main=REMOTE_SOURCE_LIVE,
+            target=target,
+        )
 
 
 def _receipt_body(
