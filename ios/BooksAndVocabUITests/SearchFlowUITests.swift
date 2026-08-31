@@ -80,6 +80,32 @@ final class SearchFlowUITests: UITestCase {
         }
         captureStep("vocab-list-ready", app: app)
 
+        // Clearing before the 300ms debounce completes must cancel the old
+        // query instead of allowing it to commit after the list is restored.
+        try step("search-rapid-clear-during-debounce", app: app) {
+            search.search("co")
+            search.clearSearch()
+
+            let observationDeadline = Date().addingTimeInterval(1.5)
+            var sawOldQueryAfterClear = false
+            while Date() < observationDeadline {
+                if search.row(word: "complement").exists,
+                   !search.row(word: "affect").exists {
+                    sawOldQueryAfterClear = true
+                    break
+                }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            }
+            XCTAssertTrue(
+                search.anyRowNotContaining("co").waitUntilExists(timeout: 5),
+                "clearing during debounce must restore an unfiltered vocabulary list"
+            )
+            XCTAssertFalse(
+                sawOldQueryAfterClear,
+                "a cancelled vocabulary query must not commit after clearing"
+            )
+        }
+
         // ── 4. 查詢 "compl" → 結果集真的只剩匹配項 ───────────────────────────
         try step("search-compl-results", app: app) {
             search.search("compl")
