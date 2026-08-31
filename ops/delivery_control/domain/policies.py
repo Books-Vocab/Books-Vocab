@@ -91,9 +91,12 @@ def evaluate_merge_gate(
         reasons.append("PR is draft")
     if not pull_request.mergeable:
         reasons.append("PR is not mergeable")
-    if pull_request.base_sha != live_main_sha or receipt.base_sha != live_main_sha:
+    if pull_request.base_sha != live_main_sha:
         reasons.append("PR or handback base is stale")
-    if registry.base_sha != live_main_sha:
+    if registry.base_sha != receipt.base_sha:
+        reasons.append("registry base differs from handback")
+    published_base_sha = registry.published_base_sha or registry.base_sha
+    if published_base_sha != live_main_sha:
         reasons.append("registry base is stale")
     if pull_request.head_sha != receipt.head_sha:
         reasons.append("PR head differs from handback")
