@@ -52,8 +52,14 @@ class _CardsBothFields:
     def all(self, include_deleted: bool = False, notebook_id: str | None = None):
         return [
             SimpleNamespace(
-                id="c1", content="evoke", pos="v.", note="note",
-                difficulty=None, is_deleted=False, is_archived=False, notebook_id="default",
+                id="c1",
+                content="evoke",
+                pos="v.",
+                note="note",
+                difficulty=None,
+                is_deleted=False,
+                is_archived=False,
+                notebook_id="default",
                 embed_text=lambda: "evoke",
             )
         ]
@@ -78,8 +84,13 @@ class _CardsNeedEnrich:
     def all(self, include_deleted: bool = False, notebook_id: str | None = None):
         return [
             SimpleNamespace(
-                id="c1", content="evoke", pos=None, note=None,
-                difficulty=None, is_deleted=False, notebook_id="default",
+                id="c1",
+                content="evoke",
+                pos=None,
+                note=None,
+                difficulty=None,
+                is_deleted=False,
+                notebook_id="default",
             )
         ]
 
@@ -148,6 +159,7 @@ def test_enrich_step_retries_on_transient_failure():
         enrich_calls.append(1)
         if len(enrich_calls) == 1:
             from openai import OpenAIError
+
             raise OpenAIError("rate limit")
         # second call: yield empty — no updates
         return
@@ -159,12 +171,14 @@ def test_enrich_step_retries_on_transient_failure():
         nonlocal original
         # Patch enrich_cards_stream inside _step_enrich lazy import scope
         import kg.enrich as enrich_mod
+
         original_stream = enrich_mod.enrich_cards_stream
 
         async def patched_stream(client, targets, **kwargs):
             enrich_calls.append(1)
             if len(enrich_calls) == 1:
                 from openai import OpenAIError
+
                 raise OpenAIError("rate limit")
             if False:
                 yield  # make async generator
@@ -312,10 +326,15 @@ class _GraphRecording:
         for from_id, to_id, kind, conf, reason in links:
             self.persisted_links.append((from_id, to_id, kind, conf, reason))
             self._existing_links.add((from_id, to_id))
-            persisted.append(SimpleNamespace(
-                from_id=from_id, to_id=to_id, kind=kind,
-                confidence=conf, reason=reason,
-            ))
+            persisted.append(
+                SimpleNamespace(
+                    from_id=from_id,
+                    to_id=to_id,
+                    kind=kind,
+                    confidence=conf,
+                    reason=reason,
+                )
+            )
         return persisted
 
     def batch_add_candidates(self, items):
@@ -396,9 +415,7 @@ def test_similarity_lookup_failure_requeues_for_later_judge(lookup_mode, error_t
     user = {"id": uid, "dir": Path(f"/tmp/{uid}"), "config": {}}
     cards = _CardsForJudge(count=2)
     graph = _GraphRecording(pending=["c1"])
-    embeddings_cls = (
-        _BatchSimilarityEmbeddings if lookup_mode == "batch" else _SimilarityEmbeddings
-    )
+    embeddings_cls = _BatchSimilarityEmbeddings if lookup_mode == "batch" else _SimilarityEmbeddings
     embeddings = embeddings_cls(["c0", "c1"], error_type=error_type)
 
     class _AcceptingJudge:
@@ -418,7 +435,8 @@ def test_similarity_lookup_failure_requeues_for_later_judge(lookup_mode, error_t
         judge_mod.Judge = _AcceptingJudge
         try:
             first_result = await _step_embed_and_judge(
-                uid, user,
+                uid,
+                user,
                 card_store_factory=lambda d: cards,
                 graph_store_factory=lambda d, notebook_id="default": graph,
                 embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
@@ -432,7 +450,8 @@ def test_similarity_lookup_failure_requeues_for_later_judge(lookup_mode, error_t
 
             embeddings.fail = False
             second_result = await _step_embed_and_judge(
-                uid, user,
+                uid,
+                user,
                 card_store_factory=lambda d: cards,
                 graph_store_factory=lambda d, notebook_id="default": graph,
                 embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
@@ -461,20 +480,21 @@ def test_empty_similarity_result_consumes_pending_without_requeue(lookup_mode):
     user = {"id": uid, "dir": Path(f"/tmp/{uid}"), "config": {}}
     cards = _CardsForJudge(count=2)
     graph = _GraphRecording(pending=["c1"])
-    embeddings_cls = (
-        _BatchSimilarityEmbeddings if lookup_mode == "batch" else _SimilarityEmbeddings
-    )
+    embeddings_cls = _BatchSimilarityEmbeddings if lookup_mode == "batch" else _SimilarityEmbeddings
     embeddings = embeddings_cls(["c0", "c1"], empty=True)
 
-    result = asyncio.run(_step_embed_and_judge(
-        uid, user,
-        card_store_factory=lambda d: cards,
-        graph_store_factory=lambda d, notebook_id="default": graph,
-        embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
-        client_factory=lambda provider: None,
-        logger=logger,
-        link_kind_enum=lambda value: value,
-    ))
+    result = asyncio.run(
+        _step_embed_and_judge(
+            uid,
+            user,
+            card_store_factory=lambda d: cards,
+            graph_store_factory=lambda d, notebook_id="default": graph,
+            embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
+            client_factory=lambda provider: None,
+            logger=logger,
+            link_kind_enum=lambda value: value,
+        )
+    )
 
     assert result == 0
     assert graph._pending == []
@@ -523,13 +543,15 @@ def test_judge_partial_failure_does_not_corrupt_remaining():
 
     async def run():
         import kg.judge as judge_mod
+
         original_judge = judge_mod.Judge
         judge_mod.Judge = _FakeJudge
         # _step_embed_and_judge imports Judge lazily — also patch ps reference
         # if it has been cached. (It hasn't, but defensive.)
         try:
             await _step_embed_and_judge(
-                uid, user,
+                uid,
+                user,
                 card_store_factory=lambda d: cards,
                 graph_store_factory=lambda d, notebook_id="default": graph,
                 embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
@@ -563,9 +585,7 @@ def test_judge_partial_failure_does_not_corrupt_remaining():
     #    in the requeue or it would orphan.
     assert graph.added_pending, "expected unprocessed cards to be requeued"
     requeued_flat = [cid for batch in graph.added_pending for cid in batch]
-    assert len(requeued_flat) == 6, (
-        f"Expected 6 requeued (c4..c9), got {len(requeued_flat)}: {requeued_flat}"
-    )
+    assert len(requeued_flat) == 6, f"Expected 6 requeued (c4..c9), got {len(requeued_flat)}: {requeued_flat}"
     assert "c4" in requeued_flat, "the failing card must be requeued, not orphaned"
 
     # 4. batch_touch called for persisted links (incremental-sync wakeup).
@@ -619,11 +639,13 @@ def test_judge_failure_during_result_consumption_does_not_orphan_card():
 
     async def run():
         import kg.judge as judge_mod
+
         original_judge = judge_mod.Judge
         judge_mod.Judge = _JudgeIllegalKindForC4
         try:
             await _step_embed_and_judge(
-                uid, user,
+                uid,
+                user,
                 card_store_factory=lambda d: cards,
                 graph_store_factory=lambda d, notebook_id="default": graph,
                 embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
@@ -640,24 +662,18 @@ def test_judge_failure_during_result_consumption_does_not_orphan_card():
     # ── Invariants ──
     # Cards 0..3 produced one valid link each.
     assert len(graph.persisted_links) == 4, (
-        f"Expected 4 links from c0..c3 before c4 raised, "
-        f"got {len(graph.persisted_links)}: {graph.persisted_links}"
+        f"Expected 4 links from c0..c3 before c4 raised, got {len(graph.persisted_links)}: {graph.persisted_links}"
     )
 
     # c4 raised mid-consumption. It MUST be requeued, not orphaned.
     requeued = [cid for batch in graph.added_pending for cid in batch]
     assert "c4" in requeued, (
-        f"c4 raised while its results were being consumed — it must be "
-        f"requeued, not orphaned. requeued={requeued}"
+        f"c4 raised while its results were being consumed — it must be requeued, not orphaned. requeued={requeued}"
     )
     # And c5..c9 (never started) requeued too → 6 total.
-    assert set(requeued) == {"c4", "c5", "c6", "c7", "c8", "c9"}, (
-        f"Expected c4..c9 requeued, got {sorted(requeued)}"
-    )
+    assert set(requeued) == {"c4", "c5", "c6", "c7", "c8", "c9"}, f"Expected c4..c9 requeued, got {sorted(requeued)}"
     # No card appears twice in the requeue.
-    assert len(requeued) == len(set(requeued)), (
-        f"a card was requeued more than once: {sorted(requeued)}"
-    )
+    assert len(requeued) == len(set(requeued)), f"a card was requeued more than once: {sorted(requeued)}"
 
 
 def test_quota_exhaustion_mid_run_halts_gracefully():
@@ -706,6 +722,7 @@ def test_quota_exhaustion_mid_run_halts_gracefully():
     async def run():
         import kg.judge as judge_mod
         import kg.pipeline_log as pipeline_log
+
         original_judge = judge_mod.Judge
         original_end_run = pipeline_log.end_run
         judge_mod.Judge = _QuotaJudge
@@ -737,8 +754,7 @@ def test_quota_exhaustion_mid_run_halts_gracefully():
     # ── Invariants ──
     # 1. Partial judge work persisted (the 1st evaluate_batch produced a link).
     assert len(graph.persisted_links) == 1, (
-        f"Expected 1 partial link committed before quota hit, "
-        f"got {len(graph.persisted_links)}"
+        f"Expected 1 partial link committed before quota hit, got {len(graph.persisted_links)}"
     )
 
     # 2. Unprocessed cards requeued — no orphans dropped on the floor.
@@ -750,14 +766,10 @@ def test_quota_exhaustion_mid_run_halts_gracefully():
     # 3. Pipeline_log MUST mark the run as ended (failed) — otherwise the
     #    run sits forever as "running" in telemetry.
     assert end_run_calls, (
-        "pipeline_log.end_run must be called even on quota exhaustion "
-        "(otherwise the run hangs in 'running' state)"
+        "pipeline_log.end_run must be called even on quota exhaustion (otherwise the run hangs in 'running' state)"
     )
     statuses = [s for _, s in end_run_calls]
-    assert "quota_exhausted" in statuses, (
-        f"quota exhaustion must end_run with 'quota_exhausted' status, "
-        f"got {statuses}"
-    )
+    assert "quota_exhausted" in statuses, f"quota exhaustion must end_run with 'quota_exhausted' status, got {statuses}"
 
 
 def test_embed_step_failure_after_judge_commit_does_not_revert_judge():
@@ -809,6 +821,7 @@ def test_embed_step_failure_after_judge_commit_does_not_revert_judge():
 
     async def run():
         import kg.judge as judge_mod
+
         original_judge = judge_mod.Judge
         judge_mod.Judge = _SuccessJudge
         # Arm difficulty-step failure AFTER enrich (which is skipped since
@@ -833,14 +846,11 @@ def test_embed_step_failure_after_judge_commit_does_not_revert_judge():
     # ── Invariants ──
     # 1. Judge phase committed BOTH cards' links (one each).
     assert len(graph.persisted_links) == 2, (
-        f"Expected 2 committed judge links before difficulty failure, "
-        f"got {len(graph.persisted_links)}"
+        f"Expected 2 committed judge links before difficulty failure, got {len(graph.persisted_links)}"
     )
 
     # 2. Difficulty step actually attempted batch_update (and raised).
-    assert cards.batch_update_calls, (
-        "difficulty step must have attempted batch_update before failing"
-    )
+    assert cards.batch_update_calls, "difficulty step must have attempted batch_update before failing"
 
     # 3. Pipeline_log run is closed (no hanging "running" state) and
     #    difficulty step is logged as failed — judge is NOT reverted.
@@ -848,15 +858,11 @@ def test_embed_step_failure_after_judge_commit_does_not_revert_judge():
     #    and graph.added_pending should be empty (nothing requeued for
     #    judge — all 2 cards processed successfully).
     assert not graph.added_pending, (
-        "judge processed all cards successfully — no requeue expected, "
-        f"but got {graph.added_pending}"
+        f"judge processed all cards successfully — no requeue expected, but got {graph.added_pending}"
     )
 
     # 4. The difficulty step error is logged (step isolation: error swallowed
     #    by `_run_step`, not propagated).
-    assert any(
-        "Difficulty failed" in m for m in logger.error_messages
-    ), (
-        f"difficulty failure must be logged as step error; "
-        f"got errors: {logger.error_messages}"
+    assert any("Difficulty failed" in m for m in logger.error_messages), (
+        f"difficulty failure must be logged as step error; got errors: {logger.error_messages}"
     )
