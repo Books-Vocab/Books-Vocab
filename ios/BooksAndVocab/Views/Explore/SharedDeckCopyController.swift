@@ -96,6 +96,8 @@ final class SharedDeckCopyController {
                 alreadyCopied: resp.alreadyCopied,
                 durationMs: Int(Date().timeIntervalSince(startedAt) * 1000)
             ))
+        } catch is CancellationError {
+            state = .idle
         } catch {
             AppLog.kg.warning("[Explore] deck copy failed for \(deckId): \(error.localizedDescription)")
             state = .failure(Self.message(for: error))
