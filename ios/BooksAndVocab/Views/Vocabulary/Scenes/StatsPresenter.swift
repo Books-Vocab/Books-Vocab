@@ -154,9 +154,10 @@ struct StatsPresenter: View {
             summary = StatsPresentation.project(inputs)
         }
         .task(id: graphKey) {
-            // Fetches account-level links. Re-runs only when graphKey changes
-            // (auth state, graph-link revision, or retryToken bump from the
-            // inline error retry button), NOT on every view appearance —
+            // Fetches default or single-notebook links. Re-runs only when graphKey
+            // changes (auth state, selected notebook, graph-link revision, or
+            // retryToken bump from the inline error retry button), NOT on every
+            // view appearance —
             // appearance ≠ staleness. The graph-link revision keeps a local
             // hide/unhide mutation observable even when entries.count is stable.
             // Long-term, KGGraphLink could become an @Model so @Query observers
@@ -200,7 +201,11 @@ struct StatsPresenter: View {
             return
         }
         do {
-            graphLinks = try await kgService.pullGraphLinks()
+            if let selectedNotebookId {
+                graphLinks = try await kgService.pullGraphLinks(notebookId: selectedNotebookId)
+            } else {
+                graphLinks = try await kgService.pullGraphLinks()
+            }
             graphLoadError = false
         } catch {
             // Failure is scoped to the graph card only — summary is built from
@@ -269,10 +274,9 @@ struct StatsPresenter: View {
         return hasher.finalize()
     }
 
-    /// Graph thumbnail refresh trigger. `pullGraphLinks` is an account-level
-    /// API — it returns ALL links regardless of notebook filter — so filter
-    /// changes must NOT invalidate this cache (filter only affects local node
-    /// filtering downstream). `forecastDays` is similarly irrelevant. Auth
+    /// Graph thumbnail refresh trigger. A single notebook filter changes the
+    /// request scope and must invalidate this cache; all/multi-notebook filters
+    /// retain the default request path. `forecastDays` is irrelevant. Auth
     /// toggles and entries.count (new cards may trigger backend link
     /// generation) trigger a re-pull; `retryToken` is bumped by the inline
     /// retry button so users can re-fetch after a network failure without
@@ -285,10 +289,15 @@ struct StatsPresenter: View {
             .sorted()
             .joined(separator: "\u{1F}")
         hasher.combine(graphLinksRevision)
+        hasher.combine(selectedNotebookId)
         hasher.combine(authManager.isLoggedIn)
         hasher.combine(authManager.isDemoMode)
         hasher.combine(retryToken)
         return hasher.finalize()
+    }
+
+    private var selectedNotebookId: String? {
+        KnowledgeGraphNotebookScope.notebookID(for: filter)
     }
 
     // MARK: - Graph Entry
@@ -320,7 +329,10 @@ struct StatsPresenter: View {
             }
         } else {
             NavigationLink {
-                KnowledgeGraphView(allEntries: filteredEntries)
+                KnowledgeGraphView(
+                    allEntries: filteredEntries,
+                    notebookId: selectedNotebookId
+                )
             } label: {
                 VocabCard(padding: 0) {
                     VStack(spacing: 0) {
