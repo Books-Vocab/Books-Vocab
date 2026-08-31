@@ -54,7 +54,7 @@ struct PodcastProgressPushState {
     static let minInterval: TimeInterval = 10
     static let minPercentJump: Double = 0.05
 
-    mutating func shouldPush(
+    func shouldPush(
         position: Double,
         duration: Double,
         now: Date,
@@ -62,8 +62,6 @@ struct PodcastProgressPushState {
     ) -> Bool {
         switch reason {
         case .pause, .episodeSwitch:
-            lastPushedAt = now
-            lastPushedPosition = position
             return true
         case .tick:
             break
@@ -72,8 +70,6 @@ struct PodcastProgressPushState {
         if duration <= 0 { return false }
 
         guard let lastAt = lastPushedAt, let lastPos = lastPushedPosition else {
-            lastPushedAt = now
-            lastPushedPosition = position
             return true
         }
 
@@ -81,11 +77,21 @@ struct PodcastProgressPushState {
         let percentJump = abs(position - lastPos) / duration
 
         if elapsed >= Self.minInterval || percentJump >= Self.minPercentJump {
-            lastPushedAt = now
-            lastPushedPosition = position
             return true
         }
         return false
+    }
+
+    /// Commits the throttle baseline after the corresponding request succeeds.
+    /// A late completion for an older snapshot cannot move the baseline back.
+    mutating func recordSuccessfulPush(position: Double, now: Date) {
+        if let lastAt = lastPushedAt {
+            let isNewer = now > lastAt
+            let winsSameInstantTie = now == lastAt && position >= (lastPushedPosition ?? 0)
+            guard isNewer || winsSameInstantTie else { return }
+        }
+        lastPushedAt = now
+        lastPushedPosition = position
     }
 }
 

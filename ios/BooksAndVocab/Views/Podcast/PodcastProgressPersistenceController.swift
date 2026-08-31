@@ -106,7 +106,7 @@ final class PodcastProgressPersistenceController {
             updatedAt: now
         )
         let service = PodcastSyncService(kgService: kgService)
-        Task.detached(priority: .utility) {
+        Task { @MainActor [weak self] in
             do {
                 try await service.pushProgress(
                     seriesId: captured.seriesId,
@@ -114,6 +114,10 @@ final class PodcastProgressPersistenceController {
                     positionSec: captured.positionSec,
                     durationSec: captured.durationSec,
                     updatedAt: captured.updatedAt
+                )
+                self?.pushState.recordSuccessfulPush(
+                    position: captured.positionSec,
+                    now: captured.updatedAt
                 )
             } catch {
                 AppLog.kg.warning("[PodcastSync] progress push failed: \(error.localizedDescription)")
