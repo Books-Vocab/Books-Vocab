@@ -10,6 +10,7 @@ Contract nailed here:
   would be a security/privacy regression);
 * pagination uses an opaque signed cursor; a tampered cursor is a 400.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -32,38 +33,70 @@ from kg.text_utils import normalize_nfc_lower
 
 # The 7 SRS columns that must never appear in a DeckCard payload.
 _SRS_KEYS = {
-    "reviewIntervalHours", "review_interval_hours",
-    "nextReviewAt", "next_review_at",
-    "lastReviewedAt", "last_reviewed_at",
-    "reviewCount", "review_count",
-    "lapseCount", "lapse_count",
-    "reviewStreak", "review_streak",
-    "lastReviewFeedback", "last_review_feedback",
+    "reviewIntervalHours",
+    "review_interval_hours",
+    "nextReviewAt",
+    "next_review_at",
+    "lastReviewedAt",
+    "last_reviewed_at",
+    "reviewCount",
+    "review_count",
+    "lapseCount",
+    "lapse_count",
+    "reviewStreak",
+    "review_streak",
+    "lastReviewFeedback",
+    "last_review_feedback",
 }
 
 
 def _insert_deck(
-    store, deck_id, title, *, source="official", visibility="official",
-    status="active", is_deleted=False, cards=None, updated_at=None, version=1,
+    store,
+    deck_id,
+    title,
+    *,
+    source="official",
+    visibility="official",
+    status="active",
+    is_deleted=False,
+    cards=None,
+    updated_at=None,
+    version=1,
 ):
     cards = cards or []
     now = updated_at or datetime.now(UTC)
     with Session(store.engine) as s:
-        s.add(SharedDeck(
-            id=deck_id, owner_id=None, title=title,
-            title_nfc_lower=normalize_nfc_lower(title),
-            source=source, visibility=visibility, status=status,
-            is_deleted=is_deleted, current_version=version,
-            card_count=len(cards), category="language", language_pair="en-zh",
-            updated_at=now, created_at=now,
-        ))
+        s.add(
+            SharedDeck(
+                id=deck_id,
+                owner_id=None,
+                title=title,
+                title_nfc_lower=normalize_nfc_lower(title),
+                source=source,
+                visibility=visibility,
+                status=status,
+                is_deleted=is_deleted,
+                current_version=version,
+                card_count=len(cards),
+                category="language",
+                language_pair="en-zh",
+                updated_at=now,
+                created_at=now,
+            )
+        )
         s.add(SharedDeckVersion(shared_deck_id=deck_id, version=version, content_hash="h"))
         for i, (content, meaning) in enumerate(cards):
-            s.add(SharedDeckCard(
-                id=f"{deck_id}-c{i:03d}", shared_deck_id=deck_id, version=version,
-                content_guid=f"g-{deck_id}-{i}", content=content, meaning=meaning,
-                mode="recognition",
-            ))
+            s.add(
+                SharedDeckCard(
+                    id=f"{deck_id}-c{i:03d}",
+                    shared_deck_id=deck_id,
+                    version=version,
+                    content_guid=f"g-{deck_id}-{i}",
+                    content=content,
+                    meaning=meaning,
+                    mode="recognition",
+                )
+            )
         s.commit()
 
 
@@ -84,8 +117,7 @@ def api(tmp_path):
 
 
 def test_guest_lists_official_decks(api):
-    _insert_deck(api.store, "deck_official", "Core 2000",
-                 cards=[("apple", "蘋果"), ("book", "書")])
+    _insert_deck(api.store, "deck_official", "Core 2000", cards=[("apple", "蘋果"), ("book", "書")])
     r = api.client.get("/api/decks")  # NO auth header
     assert r.status_code == 200, r.text
     body = r.json()
@@ -132,8 +164,7 @@ def test_cards_cursor_is_bound_to_deck_and_namespace(api):
 
 
 def test_deck_detail_returns_sample_cards_without_srs(api):
-    _insert_deck(api.store, "deck_x", "Sampler",
-                 cards=[("meticulous", "一絲不苟的"), ("plain", "平凡")])
+    _insert_deck(api.store, "deck_x", "Sampler", cards=[("meticulous", "一絲不苟的"), ("plain", "平凡")])
     r = api.client.get("/api/decks/deck_x")
     assert r.status_code == 200, r.text
     body = r.json()
@@ -165,6 +196,17 @@ def test_unknown_deck_is_404(api):
     assert api.client.get("/api/decks/nope/cards").status_code == 404
 
 
+def test_unknown_deck_error_detail_does_not_repeat_not_found(api):
+    for path in ("/api/decks/nope", "/api/decks/nope/cards"):
+        response = api.client.get(path)
+
+        assert response.status_code == 404
+        assert response.json() == {
+            "code": "NotFoundError",
+            "detail": "Deck not found",
+        }
+
+
 def test_tampered_cursor_is_400(api):
     _insert_deck(api.store, "deck_c", "C", cards=[("a", "1")])
     assert api.client.get("/api/decks?cursor=garbage.sig").status_code == 400
@@ -173,8 +215,7 @@ def test_tampered_cursor_is_400(api):
 def test_list_cursor_pages_decks_without_overlap(api):
     base = datetime.now(UTC)
     for i in range(4):
-        _insert_deck(api.store, f"deck_{i}", f"Deck {i}",
-                     cards=[("a", "1")], updated_at=base - timedelta(minutes=i))
+        _insert_deck(api.store, f"deck_{i}", f"Deck {i}", cards=[("a", "1")], updated_at=base - timedelta(minutes=i))
     r1 = api.client.get("/api/decks?limit=2")
     b1 = r1.json()
     assert len(b1["decks"]) == 2
