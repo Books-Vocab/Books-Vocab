@@ -28,10 +28,9 @@ else
   CACHE_WRITER_LIMIT_KB=0
 fi
 KEEP="${KG_DISK_GUARD_CACHE_KEEP:-3}"
-# The recurring guard already proves that no iOS consumer is running before it
-# acquires the build lock.  A zero age window therefore enforces the key cap on
-# every tick; the manual sweep keeps its longer 6h default for a more
-# conservative operator-driven cleanup.
+# Ordinary cap sweeps preserve the reader window.  An explicit writer-budget
+# repair drops that window only after the process probe is clear and the build
+# lock is held; manual sweeps keep their longer age policy.
 MIN_AGE_HOURS="${KG_DISK_GUARD_CACHE_MIN_AGE_HOURS:-0}"
 READER_WINDOW_HOURS="${KG_DISK_GUARD_CACHE_READER_WINDOW_HOURS:-1}"
 DERIVED_DATA_MIN_AGE_HOURS="${KG_DISK_GUARD_DERIVED_DATA_MIN_AGE_HOURS:-6}"
@@ -357,12 +356,19 @@ write_lane_usage() {
 }
 
 evict_keyed_caches() {
-  local root min_age_hours="$MIN_AGE_HOURS" old_budget
-  (( READER_WINDOW_HOURS > min_age_hours )) && min_age_hours="$READER_WINDOW_HOURS"
+  local root budget_only="${1:-0}" min_age_hours="$MIN_AGE_HOURS" old_budget old_budget_only old_budget_only_set=0
+  if [[ "$budget_only" == "1" ]]; then
+    min_age_hours=0
+  else
+    (( READER_WINDOW_HOURS > min_age_hours )) && min_age_hours="$READER_WINDOW_HOURS"
+  fi
   old_budget="${KG_IOS_DISK_CACHE_BUDGET_KB:-}"
+  [[ "${KG_IOS_CACHE_EVICT_BUDGET_ONLY+x}" == "x" ]] && old_budget_only_set=1
+  old_budget_only="${KG_IOS_CACHE_EVICT_BUDGET_ONLY:-}"
   export KG_IOS_CACHE_KEEP="$KEEP"
   export KG_IOS_CACHE_EVICT_MIN_AGE_HOURS="$min_age_hours"
   export KG_IOS_CACHE_EVICT_DRY_RUN="$DRY_RUN"
+  export KG_IOS_CACHE_EVICT_BUDGET_ONLY="$budget_only"
   # The shared evictor understands this override and can therefore enforce
   # the writer limit (budget minus headroom), not just the hard cache budget.
   export KG_IOS_DISK_CACHE_BUDGET_KB="$CACHE_WRITER_LIMIT_KB"
@@ -373,6 +379,7 @@ evict_keyed_caches() {
     CACHE_EVICTION_FAILED=$((CACHE_EVICTION_FAILED + ${KG_IOS_CACHE_EVICT_FAILED:-0}))
   done < <(shared_keyed_cache_roots)
   if [[ -n "$old_budget" ]]; then export KG_IOS_DISK_CACHE_BUDGET_KB="$old_budget"; else unset KG_IOS_DISK_CACHE_BUDGET_KB; fi
+  if (( old_budget_only_set == 1 )); then export KG_IOS_CACHE_EVICT_BUDGET_ONLY="$old_budget_only"; else unset KG_IOS_CACHE_EVICT_BUDGET_ONLY; fi
 }
 
 evict_rebuildable_caches() {
@@ -560,8 +567,10 @@ main() {
           build_lock_owned=1
           if (( cache_budget_overflow > 0 || cache_headroom_overflow > 0 )); then
             local old_keep="$KEEP"
+            local budget_only=0
+            (( cache_headroom_overflow > 0 )) && budget_only=1
             KEEP=0
-            evict_keyed_caches
+            evict_keyed_caches "$budget_only"
             KEEP="$old_keep"
             # Preserve incremental build data when keyed eviction alone has
             # released enough writer headroom.  A full build-cache removal is
