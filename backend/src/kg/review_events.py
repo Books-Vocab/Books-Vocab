@@ -61,6 +61,10 @@ class ReviewEvent(SQLModel, table=True):
     is_synthetic: bool = SQLField(default=False, index=True)
 
 
+def _ingestion_order_key(event: ReviewEvent) -> tuple[datetime, str]:
+    return _as_utc(event.ingested_at), event.event_id
+
+
 # SRS 快照 + is_synthetic 加寬欄位。為既有 store ADD COLUMN(SQLite 不支援改既有欄約束,
 # 故全部 nullable;既有列 SRS 快照落 NULL、is_synthetic 落 0)。card_id 維持 nullable —
 # 根治不靠 schema 約束而靠 Phase 5 iOS 固化 + 一次性遷移清舊垃圾,符合「不向後兼容、用資料
@@ -175,14 +179,8 @@ class ReviewEventStore:
 
     def all(self) -> list[ReviewEvent]:
         with Session(self.engine) as session:
-            return list(
-                session.exec(
-                    select(ReviewEvent).order_by(
-                        ReviewEvent.ingested_at,
-                        ReviewEvent.event_id,
-                    )
-                ).all()
-            )
+            events = list(session.exec(select(ReviewEvent)).all())
+        return sorted(events, key=_ingestion_order_key)
 
     def get_since(self, since: datetime) -> list[ReviewEvent]:
         # SQLite compares DATETIME values lexically, so rows written by older
@@ -194,7 +192,7 @@ class ReviewEventStore:
             events = list(session.exec(select(ReviewEvent)).all())
         return sorted(
             (event for event in events if _as_utc(event.ingested_at) > since),
-            key=lambda event: (_as_utc(event.ingested_at), event.event_id),
+            key=_ingestion_order_key,
         )
 
     def close(self) -> None:
@@ -217,7 +215,7 @@ def pull_review_events(*, since: str | None, event_store: Any) -> tuple[list[Rev
     else:
         events = event_store.all()
     entries = [_entry_from_event(event) for event in events]
-    cursor = _format_timestamp(max(event.ingested_at for event in events)) if events else since
+    cursor = _format_timestamp(max(_as_utc(event.ingested_at) for event in events)) if events else since
     return entries, cursor
 
 
