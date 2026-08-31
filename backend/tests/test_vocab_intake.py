@@ -17,7 +17,10 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+import pytest
+
 from kg.api_models import VocabEntry, VocabSource
+from kg.exceptions import ValidationError
 from kg.vocab_intake import _build_example, _derive_inflections, add_vocab_entries
 
 
@@ -222,6 +225,25 @@ class TestAddVocabEntries:
         # back to the existing card.
         assert result.cardIds == {"hello": "dup1"}
 
+    @pytest.mark.parametrize("word", [".", "   "])
+    def test_cleaned_empty_word_is_rejected_before_persistence(self, word):
+        store = _IntakeCardsStore()
+        embeddings = _IntakeEmbeddings()
+        graph = _IntakeGraph()
+
+        with pytest.raises(ValidationError) as exc_info:
+            add_vocab_entries(
+                [VocabEntry(word=word, translation="ignored", context="")],
+                **self._kwargs(cards=store, embeddings=embeddings, graph=graph),
+            )
+
+        assert exc_info.value.status_code == 422
+        assert store.add_calls == []
+        assert store.all_calls == []
+        assert store._cards == []
+        assert embeddings.added == []
+        assert graph.pending == []
+
     def test_response_card_ids_keyed_by_original_submitted_word(self):
         """Response cardIds/duplicates 用 client 送出的『原始』word 當 key,而非清洗後的。
 
@@ -277,9 +299,7 @@ class TestAddVocabEntries:
     def test_notebook_scope_threads_through(self):
         # Same word lives in another notebook — must NOT be treated as duplicate
         # because cards.all() is called with notebook_id filter.
-        store = _IntakeCardsStore(preload=[
-            _IntakeCard(id="other", content="hello", notebook_id="nb_other")
-        ])
+        store = _IntakeCardsStore(preload=[_IntakeCard(id="other", content="hello", notebook_id="nb_other")])
         entries = [VocabEntry(word="hello", translation="你好", context="")]
 
         result = add_vocab_entries(entries, notebook_id="nb_target", **self._kwargs(cards=store))
@@ -326,6 +346,7 @@ class TestAddVocabEntries:
         add_vocab_entries(entries, **self._kwargs(cards=store))
 
         import json
+
         raw = store.add_calls[0]["source"]
         assert raw is not None
         payload = json.loads(raw)
