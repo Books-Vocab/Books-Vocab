@@ -398,11 +398,59 @@ KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
   KG_DISK_GUARD_REGISTRY_STATE="$registry" \
   "$SCRIPT" >/dev/null 2>&1
 key_count="$(find "$cache" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
-[[ "$key_count" -eq 3 ]] && ok "healthy guard caps worktree cache keys" || bad "worktree cache key cap: $key_count"
+[[ "$key_count" -eq 5 ]] && ok "guard preserves terminal worktree cache keys" || bad "terminal worktree cache key count: $key_count"
 grep -q '"reason":"worktree-cache-overflow"' "$state" && ok "worktree overflow recorded" || bad "worktree overflow missing"
 grep -q '"worktree_cache_keys":5' "$state" && ok "worktree key count recorded" || bad "worktree key count missing"
+grep -q '"action":"deferred-worktree-ownership"' "$state" && ok "terminal worktree cleanup deferred" || bad "terminal worktree cleanup was attempted"
 [[ -d "$build_cache/Build" && -d "$build_cache/Index.noindex" && -d "$build_cache/ModuleCache.noindex" && -d "$build_cache/Logs" ]] \
   && ok "worktree build DerivedData internals preserved" || bad "worktree build DerivedData internals removed"
+
+echo "── .codex topology: active, terminal, and unknown worktrees are never evicted ──"
+root="$TMP/codex-topology"; state="$root/state.json"; registry="$root/registry.json"
+codex_root="$root/.codex/worktrees"
+for lane in active terminal unknown; do
+  cache="$codex_root/$lane/.cache/ios-test-derived-data"
+  for key in a b c d; do
+    mkdir -p "$cache/$key/Build"
+    printf x > "$cache/$key/Build/blob"
+  done
+done
+printf '%s\n' '{"schema":"kg.worktree.registry.v2","records":[{"branch":"active","path":"'$codex_root'/active","status":"active"},{"branch":"terminal","path":"'$codex_root'/terminal","status":"merged"},{"branch":"unknown","path":"'$codex_root'/unknown","status":"paused"}]}' > "$registry"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_REGISTRY_STATE="$registry" KG_DISK_GUARD_CODEX_WORKTREE_ROOT="$codex_root" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  KG_DISK_GUARD_WORKTREE_CACHE_KEEP=0 "$SCRIPT" >/dev/null 2>&1
+key_count=0
+for cache in "$codex_root"/*/.cache/ios-test-derived-data; do
+  [[ -d "$cache" ]] || continue
+  count="$(find "$cache" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
+  key_count=$((key_count + count))
+done
+[[ "$key_count" -eq 12 ]] && ok ".codex topology keys remain observable" || bad ".codex topology keys changed: $key_count"
+grep -q '"worktree_cache_keys":12' "$state" && ok ".codex topology count recorded" || bad ".codex topology count missing"
+grep -q '"action":"deferred-worktree-ownership"' "$state" && ok "active/terminal/unknown cleanup deferred" || bad "worktree cleanup action was not deferred"
+
+echo "── eviction failure: guard never reports budget repair success ──"
+root="$TMP/eviction-failure"; state="$root/state.json"; cache="$root/.cache/ios-test-derived-data"; failing_lib="$root/failing-cache-lib.sh"
+mkdir -p "$cache/old/Build"
+printf x > "$cache/old/Build/blob"
+cat > "$failing_lib" <<'EOF'
+kg_ios_cache_evict() {
+  KG_IOS_CACHE_EVICT_ATTEMPTED=1
+  KG_IOS_CACHE_EVICTED=0
+  KG_IOS_CACHE_EVICT_FAILED=1
+  return 0
+}
+EOF
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_CACHE_LIB="$failing_lib" KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) \
+  KG_DISK_GUARD_ACTIVE_BUILD=0 KG_DISK_GUARD_CACHE_BUDGET_GIB=0 KG_DISK_GUARD_CACHE_HEADROOM_GIB=0 \
+  "$SCRIPT" >/dev/null 2>&1
+grep -q '"cache_eviction_attempted":1' "$state" && ok "failed eviction attempted recorded" || bad "failed eviction attempt missing"
+grep -q '"cache_eviction_failed":1' "$state" && ok "failed eviction recorded" || bad "failed eviction missing"
+grep -q '"cache_repair_status":"failed"' "$state" && ok "failed budget repair is explicit" || bad "failed budget repair status missing"
+grep -q '"budget_repaired":0' "$state" && ok "failed repair is not reported repaired" || bad "failed repair falsely reported repaired"
+[[ -d "$cache/old" ]] && ok "failed eviction preserves cache" || bad "failed eviction removed cache"
 
 echo "── healthy: per-root cap does not sum roots ──"
 root="$TMP/worktree-multi"; state="$TMP/worktree-multi/state.json"

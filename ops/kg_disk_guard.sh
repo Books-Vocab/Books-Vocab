@@ -48,6 +48,10 @@ LANE_USAGE_RC=0
 LANE_USAGE_VERDICT="unavailable"
 LANE_USAGE_EXCLUSIONS_JSON='[]'
 SUPERVISION_WORKTREE_ARGS=()
+CACHE_EVICTION_ATTEMPTED=0
+CACHE_EVICTION_EVICTED=0
+CACHE_EVICTION_FAILED=0
+CACHE_BUDGET_REPAIRED=0
 
 # shellcheck source=lib/ios_cache_evict.sh
 CACHE_LIB="${KG_DISK_GUARD_CACHE_LIB:-$SCRIPT_DIR/lib/ios_cache_evict.sh}"
@@ -119,42 +123,47 @@ shared_keyed_cache_roots() {
 # Do not recursively walk every worktree on each tick.  The cache roots are a
 # fixed, shallow layout; globbing them is both bounded and immune to a giant
 # DerivedData subtree making the monitor itself consume the machine.
+worktree_topology_roots() {
+  printf '%s\n' "$WORKSPACE/.claude/worktrees"
+  printf '%s\n' "${KG_DISK_GUARD_CODEX_WORKTREE_ROOT:-$HOME/.codex/worktrees}"
+}
+
 worktree_cache_roots() {
-  local worktree kind root
-  [[ -d "$WORKSPACE/.claude/worktrees" ]] || return 0
-  for worktree in "$WORKSPACE"/.claude/worktrees/*; do
-    [[ -d "$worktree" ]] || continue
-    for kind in ios-build-derived-data ios-test-derived-data ios-catalyst-derived-data; do
-      root="$worktree/.cache/$kind"
-      [[ -d "$root" ]] && printf '%s\n' "$root"
+  local worktree_root worktree kind root
+  while IFS= read -r worktree_root; do
+    [[ -d "$worktree_root" ]] || continue
+    for worktree in "$worktree_root"/*; do
+      [[ -d "$worktree" ]] || continue
+      for kind in ios-build-derived-data ios-test-derived-data ios-catalyst-derived-data; do
+        root="$worktree/.cache/$kind"
+        [[ -d "$root" ]] && printf '%s\n' "$root"
+      done
     done
-  done
+  done < <(worktree_topology_roots)
 }
 
 worktree_keyed_cache_roots() {
-  local worktree kind root
-  [[ -d "$WORKSPACE/.claude/worktrees" ]] || return 0
-  for worktree in "$WORKSPACE"/.claude/worktrees/*; do
-    [[ -d "$worktree" ]] || continue
-    for kind in ios-test-derived-data ios-catalog-derived-data; do
-      root="$worktree/.cache/$kind"
-      [[ -d "$root" ]] && printf '%s\n' "$root"
+  local worktree_root worktree kind root
+  while IFS= read -r worktree_root; do
+    [[ -d "$worktree_root" ]] || continue
+    for worktree in "$worktree_root"/*; do
+      [[ -d "$worktree" ]] || continue
+      for kind in ios-test-derived-data ios-catalog-derived-data; do
+        root="$worktree/.cache/$kind"
+        [[ -d "$root" ]] && printf '%s\n' "$root"
+      done
     done
-  done
+  done < <(worktree_topology_roots)
 }
 
 # A physical worktree is reclaimable only after the registry identifies it as
 # terminal.  Missing or unreadable ownership evidence is deliberately
 # fail-closed: the guard must never remove an unknown or active lane's cache.
 worktree_is_reclaimable() {
-  local worktree="$1"
-  command -v jq >/dev/null 2>&1 || return 1
-  [[ -r "$REGISTRY_STATE" ]] || return 1
-  jq -e --arg path "$worktree" '
-    ([.records[]? | select(.path == $path)]) as $matches
-    | ($matches | length > 0)
-      and ([$matches[] | .status] | all(. == "merged" or . == "abandoned"))
-  ' "$REGISTRY_STATE" >/dev/null 2>&1
+  # Worktree lifecycle belongs to the registry/orchestrator owner.  The disk
+  # guard observes these paths but never evicts active, unknown, or terminal
+  # worktree residue.
+  return 1
 }
 
 reclaimable_worktree_keyed_cache_roots() {
@@ -171,7 +180,7 @@ cache_roots() {
   # Worktree DerivedData can be multi-GB and `du` may legitimately take minutes
   # while xcodebuild owns it.  The recurring guard must stay cheap; an operator
   # may opt in to the bounded max-depth sweep for a one-off audit.
-  if [[ "${KG_DISK_GUARD_SCAN_WORKTREES:-0}" == "1" && -d "$WORKSPACE/.claude/worktrees" ]]; then
+  if [[ "${KG_DISK_GUARD_SCAN_WORKTREES:-0}" == "1" ]]; then
     worktree_cache_roots
   fi
 }
@@ -359,6 +368,9 @@ evict_keyed_caches() {
   export KG_IOS_DISK_CACHE_BUDGET_KB="$CACHE_WRITER_LIMIT_KB"
   while IFS= read -r root; do
     kg_ios_cache_evict "$root" "" || true
+    CACHE_EVICTION_ATTEMPTED=$((CACHE_EVICTION_ATTEMPTED + ${KG_IOS_CACHE_EVICT_ATTEMPTED:-0}))
+    CACHE_EVICTION_EVICTED=$((CACHE_EVICTION_EVICTED + ${KG_IOS_CACHE_EVICTED:-0}))
+    CACHE_EVICTION_FAILED=$((CACHE_EVICTION_FAILED + ${KG_IOS_CACHE_EVICT_FAILED:-0}))
   done < <(shared_keyed_cache_roots)
   if [[ -n "$old_budget" ]]; then export KG_IOS_DISK_CACHE_BUDGET_KB="$old_budget"; else unset KG_IOS_DISK_CACHE_BUDGET_KB; fi
 }
@@ -373,10 +385,17 @@ evict_rebuildable_caches() {
     "$WORKSPACE/ios/build/export"; do
     [[ -d "$root" ]] || continue
     if [[ "$DRY_RUN" == "1" ]]; then
+      CACHE_EVICTION_ATTEMPTED=$((CACHE_EVICTION_ATTEMPTED + 1))
       logger -t kg-disk-guard "would-evict rebuildable-cache root=$root" 2>/dev/null || true
     else
-      rm -rf "$root" 2>/dev/null || true
-      logger -t kg-disk-guard "evicted rebuildable-cache root=$root" 2>/dev/null || true
+      CACHE_EVICTION_ATTEMPTED=$((CACHE_EVICTION_ATTEMPTED + 1))
+      if rm -rf "$root" 2>/dev/null; then
+        CACHE_EVICTION_EVICTED=$((CACHE_EVICTION_EVICTED + 1))
+        logger -t kg-disk-guard "evicted rebuildable-cache root=$root" 2>/dev/null || true
+      else
+        CACHE_EVICTION_FAILED=$((CACHE_EVICTION_FAILED + 1))
+        logger -t kg-disk-guard "eviction-failed rebuildable-cache root=$root" 2>/dev/null || true
+      fi
     fi
   done
 }
@@ -434,10 +453,17 @@ evict_old_app_derived_data() {
     age=$((now - mtime))
     (( age < DERIVED_DATA_MIN_AGE_HOURS * 3600 )) && continue
     if [[ "$DRY_RUN" == "1" ]]; then
+      CACHE_EVICTION_ATTEMPTED=$((CACHE_EVICTION_ATTEMPTED + 1))
       logger -t kg-disk-guard "would-evict old app DerivedData path=$path" 2>/dev/null || true
     else
-      rm -rf "$path" 2>/dev/null || true
-      logger -t kg-disk-guard "evicted old app DerivedData path=$path" 2>/dev/null || true
+      CACHE_EVICTION_ATTEMPTED=$((CACHE_EVICTION_ATTEMPTED + 1))
+      if rm -rf "$path" 2>/dev/null; then
+        CACHE_EVICTION_EVICTED=$((CACHE_EVICTION_EVICTED + 1))
+        logger -t kg-disk-guard "evicted old app DerivedData path=$path" 2>/dev/null || true
+      else
+        CACHE_EVICTION_FAILED=$((CACHE_EVICTION_FAILED + 1))
+        logger -t kg-disk-guard "eviction-failed old app DerivedData path=$path" 2>/dev/null || true
+      fi
     fi
   done < <(
     find "$dd" -mindepth 1 -maxdepth 1 -type d -name 'BooksAndVocab-*' -print 2>/dev/null \
@@ -447,13 +473,14 @@ evict_old_app_derived_data() {
 }
 
 write_state() {
-  local free="$1" prev="$2" growth="$3" active="$4" cache="$5" docker_cache="$6" docker_running="$7" worktree_cache="$8" worktree_keys="$9" worktree_overflow="${10}" cache_overflow="${11}" budget_kb="${12}" budget_overflow="${13}" headroom_kb="${14}" writer_limit_kb="${15}" headroom_overflow="${16}" repair_remaining="${17}" repair_status="${18}" verdict="${19}" reason="${20}" action="${21}" lane_usage_verdict="${22}" lane_usage_rc="${23}" lane_usage_budget_seconds="${24}" lane_usage_exclusions_json="${25}"
+  local free="$1" prev="$2" growth="$3" active="$4" cache="$5" docker_cache="$6" docker_running="$7" worktree_cache="$8" worktree_keys="$9" worktree_overflow="${10}" cache_overflow="${11}" budget_kb="${12}" budget_overflow="${13}" headroom_kb="${14}" writer_limit_kb="${15}" headroom_overflow="${16}" repair_remaining="${17}" repair_status="${18}" verdict="${19}" reason="${20}" action="${21}" lane_usage_verdict="${22}" lane_usage_rc="${23}" lane_usage_budget_seconds="${24}" lane_usage_exclusions_json="${25}" eviction_attempted="${26}" eviction_evicted="${27}" eviction_failed="${28}" budget_repaired="${29}"
   local dir tmp
   dir="$(dirname "$STATE_FILE")"; mkdir -p "$dir" 2>/dev/null || return 1
   tmp="$STATE_FILE.$$.$RANDOM.tmp"
-  printf '{"schema":"kg.disk.guard.v1","host":"%s","free_bytes":%s,"previous_free_bytes":%s,"growth_bytes":%s,"active_build":%s,"cache_kb":%s,"cache_budget_kb":%s,"cache_budget_overflow_kb":%s,"cache_headroom_kb":%s,"cache_writer_limit_kb":%s,"cache_headroom_overflow_kb":%s,"cache_repair_remaining_kb":%s,"cache_repair_status":"%s","docker_cache_kb":%s,"docker_active":%s,"worktree_cache_kb":%s,"worktree_cache_keys":%s,"worktree_cache_overflow_keys":%s,"cache_overflow_keys":%s,"verdict":"%s","reason":"%s","action":"%s","lane_usage_verdict":"%s","lane_usage_rc":%s,"lane_usage_budget_seconds":%s,"lane_usage_exclusions":%s,"at":"%s"}\n' \
+  printf '{"schema":"kg.disk.guard.v1","host":"%s","free_bytes":%s,"previous_free_bytes":%s,"growth_bytes":%s,"active_build":%s,"cache_kb":%s,"cache_budget_kb":%s,"cache_budget_overflow_kb":%s,"cache_headroom_kb":%s,"cache_writer_limit_kb":%s,"cache_headroom_overflow_kb":%s,"cache_repair_remaining_kb":%s,"cache_repair_status":"%s","cache_eviction_attempted":%s,"cache_eviction_evicted":%s,"cache_eviction_failed":%s,"budget_repaired":%s,"docker_cache_kb":%s,"docker_active":%s,"worktree_cache_kb":%s,"worktree_cache_keys":%s,"worktree_cache_overflow_keys":%s,"cache_overflow_keys":%s,"verdict":"%s","reason":"%s","action":"%s","lane_usage_verdict":"%s","lane_usage_rc":%s,"lane_usage_budget_seconds":%s,"lane_usage_exclusions":%s,"at":"%s"}\n' \
     "$(hostname -s 2>/dev/null || echo unknown)" "$(number "$free")" "$(number "$prev")" "$(number "$growth")" \
-    "$(number "$active")" "$(number "$cache")" "$(number "$budget_kb")" "$(number "$budget_overflow")" "$(number "$headroom_kb")" "$(number "$writer_limit_kb")" "$(number "$headroom_overflow")" "$(number "$repair_remaining")" "$repair_status" "$(number "$docker_cache")" "$(number "$docker_running")" \
+    "$(number "$active")" "$(number "$cache")" "$(number "$budget_kb")" "$(number "$budget_overflow")" "$(number "$headroom_kb")" "$(number "$writer_limit_kb")" "$(number "$headroom_overflow")" "$(number "$repair_remaining")" "$repair_status" \
+    "$(number "$eviction_attempted")" "$(number "$eviction_evicted")" "$(number "$eviction_failed")" "$(number "$budget_repaired")" "$(number "$docker_cache")" "$(number "$docker_running")" \
     "$(number "$worktree_cache")" "$(number "$worktree_keys")" "$(number "$worktree_overflow")" "$(number "$cache_overflow")" "$verdict" "$reason" "$action" "$lane_usage_verdict" "$(number "$lane_usage_rc")" "$(number "$lane_usage_budget_seconds")" "$lane_usage_exclusions_json" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$tmp" || { rm -f "$tmp"; return 1; }
   mv -f "$tmp" "$STATE_FILE"
 }
@@ -464,6 +491,10 @@ main() {
     logger -t kg-disk-guard 'skipped=already-running' 2>/dev/null || true
     return 0
   }
+  CACHE_EVICTION_ATTEMPTED=0
+  CACHE_EVICTION_EVICTED=0
+  CACHE_EVICTION_FAILED=0
+  CACHE_BUDGET_REPAIRED=0
   free="$(number "$(free_bytes)")"; prev="$(number "$(previous_free)")"
   growth=0; (( prev > free )) && growth=$((prev - free))
   active="$(active_build)"; cache="$(cache_kb)"
@@ -562,11 +593,15 @@ main() {
       if (( cache_headroom_overflow > 0 )) && [[ "$cache_repair_status" == "not-needed" || "$cache_repair_status" == "deferred-worktree-ownership" ]]; then
         cache_after="$(cache_kb)"
         cache_repair_remaining="$(cache_headroom_overflow_kb "$cache_after")"
-        if (( cache_repair_remaining > 0 )); then
+        if (( CACHE_EVICTION_FAILED > 0 )); then
+          cache_repair_status="failed"
+          reason="cache-budget-repair-failed"
+        elif (( cache_repair_remaining > 0 )); then
           cache_repair_status="insufficient"
           reason="cache-budget-headroom-unreleased"
         else
           cache_repair_status="repaired"
+          CACHE_BUDGET_REPAIRED=1
         fi
       fi
       if (( docker_cache >= docker_warn_kb )); then
@@ -578,6 +613,11 @@ main() {
       (( build_lock_owned == 1 )) && release_build_lock_if_owner
     fi
   fi
+  if (( CACHE_EVICTION_FAILED > 0 )); then
+    CACHE_BUDGET_REPAIRED=0
+    [[ "$verdict" == "ok" ]] && verdict="warning"
+    reason="cache-eviction-failed"
+  fi
   # Known launchd logs are capped every tick, even while disk pressure is healthy.
   # Otherwise a quiet disk can still accumulate a multi-GB service log between alerts.
   trim_logs
@@ -585,7 +625,7 @@ main() {
   # This is observation only: unknown or active lanes are never deleted by the
   # disk guard; their evidence is consumed by the supported lifecycle tools.
   write_lane_usage
-  write_state "$free" "$prev" "$growth" "$active" "$cache" "$docker_cache" "$docker_running" "$worktree_cache" "$worktree_keys" "$worktree_overflow" "$cache_overflow" "$cache_budget_kb" "$cache_budget_overflow" "$cache_headroom_kb" "$cache_writer_limit_kb" "$cache_headroom_overflow" "$cache_repair_remaining" "$cache_repair_status" "$verdict" "$reason" "$action" "$LANE_USAGE_VERDICT" "$LANE_USAGE_RC" "$LANE_USAGE_BUDGET_SECONDS" "$LANE_USAGE_EXCLUSIONS_JSON"
+  write_state "$free" "$prev" "$growth" "$active" "$cache" "$docker_cache" "$docker_running" "$worktree_cache" "$worktree_keys" "$worktree_overflow" "$cache_overflow" "$cache_budget_kb" "$cache_budget_overflow" "$cache_headroom_kb" "$cache_writer_limit_kb" "$cache_headroom_overflow" "$cache_repair_remaining" "$cache_repair_status" "$verdict" "$reason" "$action" "$LANE_USAGE_VERDICT" "$LANE_USAGE_RC" "$LANE_USAGE_BUDGET_SECONDS" "$LANE_USAGE_EXCLUSIONS_JSON" "$CACHE_EVICTION_ATTEMPTED" "$CACHE_EVICTION_EVICTED" "$CACHE_EVICTION_FAILED" "$CACHE_BUDGET_REPAIRED"
   logger -t kg-disk-guard "verdict=$verdict freeGiB=$free_gib growthGiB=$growth_gib activeBuild=$active dockerCacheGiB=$docker_gib dockerActive=$docker_running cacheKB=$cache cacheBudgetKB=$cache_budget_kb cacheBudgetOverflowKB=$cache_budget_overflow cacheHeadroomKB=$cache_headroom_kb cacheWriterLimitKB=$cache_writer_limit_kb cacheHeadroomOverflowKB=$cache_headroom_overflow cacheRepairStatus=$cache_repair_status cacheRepairRemainingKB=$cache_repair_remaining worktreeCacheKB=$worktree_cache worktreeKeys=$worktree_keys worktreeOverflowKeys=$worktree_overflow cacheOverflowKeys=$cache_overflow action=$action" 2>/dev/null || true
 }
 
