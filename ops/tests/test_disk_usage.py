@@ -144,6 +144,50 @@ def test_missing_active_registered_lane_is_visible_and_warning_only(
     assert "missing-registered-lane" in report["policy"]["reasons"]
 
 
+def test_accounting_keeps_missing_active_lane_as_explicit_row(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _run_git(repo, "init", "-b", "main")
+    _run_git(repo, "config", "user.email", "test@example.com")
+    _run_git(repo, "config", "user.name", "Disk Test")
+    (repo / "tracked.txt").write_text("main\n", encoding="utf-8")
+    _run_git(repo, "add", "tracked.txt")
+    _run_git(repo, "commit", "-m", "initial")
+    missing = tmp_path / "missing-lane"
+    state = tmp_path / "registry.json"
+    output = tmp_path / "lane-usage.json"
+    _write_registry(
+        state,
+        [
+            {
+                "branch": "missing-lane",
+                "path": str(missing),
+                "status": "active",
+                "claim_generation": 0,
+                "external_ids": ["DIRECT-DELIVERY-MISSING-ACCOUNTING"],
+            }
+        ],
+    )
+
+    assert (
+        main(["--workspace", str(repo), "--state", str(state), "--output", str(output)])
+        == 0
+    )
+    report = json.loads(output.read_text(encoding="utf-8"))
+    row = next(
+        item
+        for item in report["accounting"]["lane_accounting"]
+        if item["path"] == str(missing)
+    )
+    assert row["registry_status"] == "active"
+    assert row["exists"] is False
+    assert row["physical_state"] == "missing"
+    assert row["measurement_error"] == "path-missing"
+    assert row["accounted_in_aggregate"] is False
+
+
 def test_explicit_supervision_worktree_is_excluded_with_evidence(
     tmp_path: Path,
 ) -> None:
