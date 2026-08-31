@@ -39,10 +39,8 @@ def _is_supported_reanchor_advance(
     expected_handback_base_sha: str,
     published_base_sha: str,
 ) -> bool:
-    """Prove the narrow same-owner base advance allowed after reanchor."""
+    """Prove a same-owner published base is descended from both anchors."""
 
-    if published_base_sha != expected_handback_base_sha:
-        return False
     if record.get("delegated") is not True:
         return False
     owner_thread_id = record.get("codex_thread_id")
@@ -65,7 +63,9 @@ def _is_supported_reanchor_advance(
         return False
     if not isinstance(seal_path, str) or norm_path(seal_path) != norm_path(record_path):
         return False
-    return is_ancestor(Path(record_path), previous, published_base_sha)
+    return is_ancestor(Path(record_path), previous, published_base_sha) and is_ancestor(
+        Path(record_path), expected_handback_base_sha, published_base_sha
+    )
 
 
 def cmd_record_published_base(args: argparse.Namespace) -> int:

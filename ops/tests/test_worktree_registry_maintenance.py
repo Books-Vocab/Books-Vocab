@@ -145,6 +145,49 @@ def test_record_published_base_allows_exact_reanchor_advance_and_is_deterministi
     assert second == first
 
 
+@pytest.mark.parametrize("status", ["active", "published", "cleanup_pending"])
+def test_record_published_base_allows_live_descendant_of_handback_and_recorded_base(
+    tmp_path: Path, status: str
+) -> None:
+    state_path = tmp_path / "registry.json"
+    record, previous, handback_base, handback_head = _reanchor_record(tmp_path)
+    worktree = Path(str(record["path"]))
+    (worktree / "current-main.txt").write_text("current live main\n", encoding="utf-8")
+    _git(worktree, "add", "current-main.txt")
+    _git(worktree, "commit", "--quiet", "-m", "current live main")
+    current_live_main = _git(worktree, "rev-parse", "HEAD")
+    record["status"] = status
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+
+    assert (
+        _git(worktree, "merge-base", "--is-ancestor", previous, current_live_main) == ""
+    )
+    assert (
+        _git(
+            worktree,
+            "merge-base",
+            "--is-ancestor",
+            handback_base,
+            current_live_main,
+        )
+        == ""
+    )
+
+    argv = _record_published_base_argv(
+        state_path,
+        record,
+        expected_head=handback_head,
+        handback_base=handback_base,
+        published_base=current_live_main,
+    )
+    assert registry.main(argv) == registry.EXIT_OK
+    updated = registry.load_state(state_path)["records"][0]
+    assert updated["status"] == status
+    assert updated["base_sha"] == handback_base
+    assert updated["published_base_sha"] == current_live_main
+    assert updated["handback_seal"] == record["handback_seal"]
+
+
 def test_record_published_base_rejects_reanchor_with_stale_pr_base(
     tmp_path: Path,
 ) -> None:
