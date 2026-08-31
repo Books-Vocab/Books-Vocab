@@ -150,6 +150,21 @@ def _nb_ids(body: list[dict]) -> set[str]:
     return {nb["id"] for nb in body}
 
 
+def _review_policy(mode: str = "custom", initial: float = 12) -> dict:
+    return {
+        "mode": mode,
+        "customInitialIntervalHours": initial,
+        "customRememberedMultiplier": 1.9,
+        "customForgotMultiplier": 0.45,
+        "customMinimumIntervalHours": 6,
+        "customMaximumIntervalHours": 1440,
+    }
+
+
+def _card_layout(recognition: str = "compact", production: str = "standard") -> dict:
+    return {"recognition": recognition, "production": production}
+
+
 # ---------------------------------------------------------------------------
 # GET /api/notebooks
 # ---------------------------------------------------------------------------
@@ -164,6 +179,10 @@ def test_list_notebooks_empty_state(isolated_api):
     assert len(body) >= 1
     defaults = [nb for nb in body if nb["isDefault"]]
     assert len(defaults) == 1
+    assert defaults[0]["settings"] == {
+        "reviewPolicy": {"value": None, "updatedAt": None},
+        "cardLayout": {"value": None, "updatedAt": None},
+    }
 
 
 def test_list_notebooks_after_create(isolated_api):
@@ -301,6 +320,140 @@ def test_patch_no_fields_returns_400(isolated_api):
 
     r = client.patch(f"/api/notebooks/{nb_id}", json={}, headers=h)
     assert r.status_code == 400, r.text
+
+
+def test_patch_notebook_settings_returns_updated_notebook(isolated_api):
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Settings"}, headers=h).json()["id"]
+
+    r = client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        json={
+            "reviewPolicy": {
+                "value": {
+                    **_review_policy(),
+                },
+                "updatedAt": 100.0,
+            }
+        },
+        headers=h,
+    )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["settings"]["reviewPolicy"] == {
+        "value": _review_policy(),
+        "updatedAt": 100.0,
+    }
+    assert body["settings"]["cardLayout"] == {"value": None, "updatedAt": None}
+
+
+def test_patch_notebook_settings_groups_are_independent_and_listed(isolated_api):
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Group isolation"}, headers=h).json()["id"]
+
+    both = client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        json={
+            "reviewPolicy": {"value": _review_policy(), "updatedAt": 10.0},
+            "cardLayout": {"value": _card_layout(), "updatedAt": 20.0},
+        },
+        headers=h,
+    )
+    assert both.status_code == 200, both.text
+
+    review_only = client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        json={"reviewPolicy": {"value": _review_policy(initial=24), "updatedAt": 30.0}},
+        headers=h,
+    )
+    assert review_only.status_code == 200, review_only.text
+    assert review_only.json()["settings"]["reviewPolicy"]["value"]["customInitialIntervalHours"] == 24
+    assert review_only.json()["settings"]["cardLayout"]["value"] == _card_layout()
+
+    listed = client.get("/api/notebooks", headers=h)
+    assert listed.status_code == 200, listed.text
+    listed_nb = next(item for item in listed.json() if item["id"] == nb_id)
+    assert listed_nb["settings"] == review_only.json()["settings"]
+
+
+def test_patch_notebook_settings_reset_is_timestamped_and_rejects_older_value(isolated_api):
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Reset"}, headers=h).json()["id"]
+
+    client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        json={"reviewPolicy": {"value": _review_policy(), "updatedAt": 100.0}},
+        headers=h,
+    )
+    reset = client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        json={"reviewPolicy": {"value": None, "updatedAt": 110.0}},
+        headers=h,
+    )
+    assert reset.status_code == 200, reset.text
+    assert reset.json()["settings"]["reviewPolicy"] == {"value": None, "updatedAt": 110.0}
+
+    stale = client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        json={"reviewPolicy": {"value": _review_policy(initial=48), "updatedAt": 105.0}},
+        headers=h,
+    )
+    assert stale.status_code == 200, stale.text
+    assert stale.json()["settings"]["reviewPolicy"] == {"value": None, "updatedAt": 110.0}
+
+
+def test_patch_notebook_settings_persists_when_store_reopens(isolated_api):
+    from kg.notebook import NotebookStore
+
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Persistent"}, headers=h).json()["id"]
+    expected = _card_layout("compact", "compact")
+    r = client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        json={"cardLayout": {"value": expected, "updatedAt": 77.0}},
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+
+    store = NotebookStore(isolated_api.data_dir / "users" / isolated_api.user_id / "notebooks.db")
+    try:
+        row = store.get_settings(nb_id)
+        assert row is not None
+        assert row.card_layout_updated_at == 77.0
+        assert json.loads(row.card_layout) == expected
+    finally:
+        store.close()
+
+
+def test_patch_notebook_settings_preserves_auth_and_notebook_errors(isolated_api):
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Errors"}, headers=h).json()["id"]
+
+    assert client.patch(f"/api/notebooks/{nb_id}/settings", json={}).status_code == 401
+    assert (
+        client.patch(
+            "/api/notebooks/missing/settings", json={"cardLayout": {"value": None, "updatedAt": 1}}, headers=h
+        ).status_code
+        == 404
+    )
+
+    deleted_id = client.post("/api/notebooks", json={"name": "Deleted"}, headers=h).json()["id"]
+    assert client.delete(f"/api/notebooks/{deleted_id}", headers=h).status_code == 200
+    deleted = client.patch(
+        f"/api/notebooks/{deleted_id}/settings",
+        json={"cardLayout": {"value": None, "updatedAt": 1}},
+        headers=h,
+    )
+    assert deleted.status_code == 404, deleted.text
+
+    empty = client.patch(f"/api/notebooks/{nb_id}/settings", json={}, headers=h)
+    assert empty.status_code == 422, empty.text
 
 
 # ---------------------------------------------------------------------------

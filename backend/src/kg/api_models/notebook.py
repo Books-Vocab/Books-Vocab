@@ -1,8 +1,51 @@
 from __future__ import annotations
 
-from typing import Final
+from typing import Final, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+NotebookReviewMode = Literal["relaxed", "intensive", "custom"]
+NotebookCardLayoutPreset = Literal["standard", "compact"]
+
+
+class NotebookReviewPolicy(BaseModel):
+    mode: NotebookReviewMode
+    customInitialIntervalHours: float
+    customRememberedMultiplier: float
+    customForgotMultiplier: float
+    customMinimumIntervalHours: float
+    customMaximumIntervalHours: float
+
+
+class NotebookCardLayout(BaseModel):
+    recognition: NotebookCardLayoutPreset
+    production: NotebookCardLayoutPreset
+
+
+class NotebookSettingsGroup[ValueT](BaseModel):
+    value: ValueT | None = None
+    updatedAt: float | None = None
+
+
+class NotebookSettingsPatchGroup[ValueT](BaseModel):
+    value: ValueT | None = None
+    updatedAt: float
+
+
+class NotebookSettingsResponse(BaseModel):
+    reviewPolicy: NotebookSettingsGroup[NotebookReviewPolicy]
+    cardLayout: NotebookSettingsGroup[NotebookCardLayout]
+
+
+class NotebookSettingsPatchRequest(BaseModel):
+    reviewPolicy: NotebookSettingsPatchGroup[NotebookReviewPolicy] | None = None
+    cardLayout: NotebookSettingsPatchGroup[NotebookCardLayout] | None = None
+
+    @model_validator(mode="after")
+    def require_at_least_one_group(self):
+        if self.reviewPolicy is None and self.cardLayout is None:
+            raise ValueError("At least one notebook settings group is required")
+        return self
 
 
 class NotebookResponse(BaseModel):
@@ -18,6 +61,7 @@ class NotebookResponse(BaseModel):
     # Provenance (v1 inert): where this notebook was copied from (Phase 2 copy).
     sourceSharedDeckId: str | None = None
     sourceVersion: int | None = None
+    settings: NotebookSettingsResponse | None = None
 
 
 VALID_COVER_PATTERNS: Final[frozenset[str]] = frozenset({"dots", "lines", "grid", "waves", "circles", "noise"})

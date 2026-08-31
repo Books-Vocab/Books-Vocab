@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -55,6 +56,21 @@ class Notebook(SQLModel, table=True):
     source_version: int | None = None
 
 
+class NotebookSettings(SQLModel, table=True):
+    """Per-notebook review settings stored beside the notebook metadata."""
+
+    __tablename__ = "notebook_settings"
+
+    notebook_id: str = SQLField(primary_key=True)
+    review_policy: str | None = None
+    review_policy_updated_at: float | None = None
+    card_layout: str | None = None
+    card_layout_updated_at: float | None = None
+
+
+_UNSET = object()
+
+
 class NotebookStore:
     """SQLite-based notebook storage."""
 
@@ -65,7 +81,11 @@ class NotebookStore:
         # creates the parent dir). create_all + column migration below run
         # after, so DDL lands on a WAL connection.
         self.engine = make_sqlite_engine(path)
-        Notebook.metadata.create_all(self.engine, tables=[Notebook.__table__], checkfirst=True)
+        Notebook.metadata.create_all(
+            self.engine,
+            tables=[Notebook.__table__, NotebookSettings.__table__],
+            checkfirst=True,
+        )
         self._migrate_columns()
 
     def _migrate_columns(self) -> None:
@@ -163,6 +183,56 @@ class NotebookStore:
     def get(self, notebook_id: str) -> Notebook | None:
         with Session(self.engine) as session:
             return session.get(Notebook, notebook_id)
+
+    def get_settings(self, notebook_id: str) -> NotebookSettings | None:
+        with Session(self.engine) as session:
+            return session.get(NotebookSettings, notebook_id)
+
+    def update_settings(
+        self,
+        notebook_id: str,
+        *,
+        review_policy: tuple[dict | None, float] | object = _UNSET,
+        card_layout: tuple[dict | None, float] | object = _UNSET,
+    ) -> Notebook | None:
+        """Apply independently versioned notebook settings groups.
+
+        A group is only changed when its incoming timestamp is newer than the
+        stored timestamp. Reset values remain as timestamped tombstones so an
+        older device cannot resurrect a cleared override.
+        """
+        with Session(self.engine) as session:
+            nb = session.get(Notebook, notebook_id)
+            if nb is None or nb.is_deleted:
+                return None
+
+            settings = session.get(NotebookSettings, notebook_id)
+            if settings is None:
+                settings = NotebookSettings(notebook_id=notebook_id)
+            has_changes = False
+
+            for incoming, value_attr, timestamp_attr in (
+                (review_policy, "review_policy", "review_policy_updated_at"),
+                (card_layout, "card_layout", "card_layout_updated_at"),
+            ):
+                if incoming is _UNSET:
+                    continue
+                value, updated_at = incoming
+                stored_updated_at = getattr(settings, timestamp_attr)
+                if stored_updated_at is not None and updated_at <= stored_updated_at:
+                    continue
+                encoded = None if value is None else json.dumps(value, separators=(",", ":"), sort_keys=True)
+                setattr(settings, value_attr, encoded)
+                setattr(settings, timestamp_attr, updated_at)
+                has_changes = True
+
+            if has_changes:
+                nb.updated_at = datetime.now(UTC)
+                session.add(nb)
+                session.add(settings)
+                session.commit()
+                session.refresh(nb)
+            return nb
 
     def all(self, include_deleted: bool = False, *, include_staged: bool = False) -> list[Notebook]:
         """Visible notebooks. Two ORTHOGONAL hide axes, defaulting off:
