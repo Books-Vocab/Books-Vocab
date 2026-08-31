@@ -99,13 +99,19 @@ struct VocabularyListView: View {
             await kgService.healthCheck()
         }
         .task(id: searchText) {
+            let query = searchText
             guard !searchText.isEmpty else {
                 debouncedSearchText = ""
                 return
             }
-            try? await Task.sleep(for: Metrics.searchDebounce)
-            debouncedSearchText = searchText
-            PerfLog.search.mark("search.query.committed", "query=\(searchText)")
+            do {
+                try await Task.sleep(for: Metrics.searchDebounce)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled, query == searchText else { return }
+            debouncedSearchText = query
+            PerfLog.search.mark("search.query.committed", "query=\(query)")
         }
         .onChange(of: coordinator.activeReviewSession) { _, session in
             if let session, let detailRouter {
