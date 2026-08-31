@@ -58,6 +58,7 @@ def _plan_registration(
     target: Path,
     replacement_base: str,
     replacement_base_sha: str,
+    allow_unhanded_active: bool = False,
 ) -> dict[str, Any]:
     trial = copy.deepcopy(state)
     try:
@@ -75,6 +76,19 @@ def _plan_registration(
         target=target,
         replacement_base=replacement_base,
         replacement_base_sha=replacement_base_sha,
+        allow_unhanded_active=allow_unhanded_active,
+    )
+
+
+def _is_unhanded_active(record: dict[str, Any]) -> bool:
+    """Identify a fresh active claim with no partial hand-back evidence."""
+
+    return (
+        record.get("status") == "active"
+        and record.get("handed_back_at") is None
+        and record.get("handed_back_sha") is None
+        and record.get("handback_claim_generation") is None
+        and "handback_seal" not in record
     )
 
 
@@ -85,10 +99,13 @@ def _replace_published(
     target: Path,
     replacement_base: str,
     replacement_base_sha: str,
+    allow_unhanded_active: bool = False,
 ) -> dict[str, Any]:
     if original.get("status") not in _PUBLISHED_CLAIM_STATUSES:
         raise ReanchorRefused("original claim is no longer resumable")
-    if not registry._has_valid_stored_handback(original):
+    if not (
+        allow_unhanded_active and _is_unhanded_active(original)
+    ) and not registry._has_valid_stored_handback(original):
         raise ReanchorRefused("original published claim lacks a valid typed hand-back")
     _, resolved_at = registry.resolve_now()
     original["status"] = "abandoned"
@@ -142,6 +159,7 @@ def _preflight_published(
     previous_handback: str | None = None,
     replacement_base: str | None = None,
     replacement_base_sha: str | None = None,
+    allow_unhanded_active: bool = False,
 ) -> RegistryPreflight:
     state = registry.load_state(state_path)
     original = _select_original(
@@ -151,11 +169,17 @@ def _preflight_published(
         raise ReanchorRefused("caller branch differs from the exact original claim")
     if original.get("codex_thread_id") != owner_thread_id:
         raise ReanchorRefused("caller owner differs from the exact original owner")
-    expected_original_head = previous_handback or expected_remote_head
-    if original.get("handed_back_sha") != expected_original_head:
-        raise ReanchorRefused("expected remote HEAD differs from original hand-back")
-    if not registry._has_valid_stored_handback(original):
-        raise ReanchorRefused("original published claim lacks a valid typed hand-back")
+    remote_source_active = allow_unhanded_active and _is_unhanded_active(original)
+    if not remote_source_active:
+        expected_original_head = previous_handback or expected_remote_head
+        if original.get("handed_back_sha") != expected_original_head:
+            raise ReanchorRefused(
+                "expected remote HEAD differs from original hand-back"
+            )
+        if not registry._has_valid_stored_handback(original):
+            raise ReanchorRefused(
+                "original published claim lacks a valid typed hand-back"
+            )
     recorded_path = Path(str(original["path"])).expanduser().resolve()
     requested_path = target.expanduser().resolve()
     if requested_path != recorded_path:
@@ -196,6 +220,7 @@ def _preflight_published(
         target=target,
         replacement_base=planned_base,
         replacement_base_sha=planned_base_sha,
+        allow_unhanded_active=allow_unhanded_active,
     )
     return RegistryPreflight(
         original=original,
@@ -227,6 +252,7 @@ def preflight(
         target=target,
         replacement_base=live_main,
         replacement_base_sha=live_main,
+        allow_unhanded_active=True,
     )
     base_sha = result.base_sha
     if base_sha == live_main:
@@ -267,6 +293,7 @@ def _register_from_published(
     lane_id: str,
     claim_generation: int,
     action: str,
+    allow_unhanded_active: bool = False,
 ) -> dict[str, Any]:
     with registry._ledger_lock(state_path):
         state = registry.load_state(state_path)
@@ -281,6 +308,7 @@ def _register_from_published(
             target=target,
             replacement_base=replacement_base,
             replacement_base_sha=replacement_base_sha,
+            allow_unhanded_active=allow_unhanded_active,
         )
         registry.save_state(state_path, state)
     return active
@@ -304,6 +332,7 @@ def register_active(
         lane_id=lane_id,
         claim_generation=claim_generation,
         action="reanchor",
+        allow_unhanded_active=True,
     )
 
 
