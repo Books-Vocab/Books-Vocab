@@ -61,9 +61,18 @@ struct PodcastCoverCaching {
     static func isValidResponse(data: Data, response: URLResponse) -> Bool {
         guard let http = response as? HTTPURLResponse,
               (200..<300).contains(http.statusCode),
-              (http.mimeType ?? "").lowercased() == "image/png",
-              data.count >= pngSignature.count else { return false }
-        return Array(data.prefix(pngSignature.count)) == pngSignature
+              (http.mimeType ?? "").lowercased() == "image/png" else { return false }
+        return isDecodablePNG(data)
+    }
+
+    private static func isDecodablePNG(_ data: Data) -> Bool {
+        guard data.count >= pngSignature.count,
+              Array(data.prefix(pngSignature.count)) == pngSignature else { return false }
+        return CoverImageDownsampler.downsample(
+            data: data,
+            maxDimensionPoints: CoverImageDownsampler.defaultMaxDimension,
+            scale: 1
+        ) != nil
     }
 
     static func write(_ data: Data, to path: URL) throws {
@@ -134,7 +143,9 @@ struct PodcastCoverCaching {
         guard let series = try? context.fetch(descriptor).first,
               let remote = series.coverImageURL, !remote.isEmpty else { return }
         let cacheURL = cachedCoverURL(seriesId: seriesId, coverImageURL: remote)
-        if series.coverImagePath == cacheURL.path, (try? read(from: cacheURL)) != nil { return }
+        if series.coverImagePath == cacheURL.path,
+           let cachedData = try? read(from: cacheURL),
+           isDecodablePNG(cachedData) { return }
         let oldPath = series.coverImagePath
         let urlString = remote.hasPrefix("http") ? remote : "\(baseURL)\(remote)"
         do {
