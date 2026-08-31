@@ -7,6 +7,8 @@ import logging
 from datetime import datetime
 from typing import Any, Protocol
 
+from pydantic import ValidationError
+
 from .api_models import (
     CardLinkSummaryResponse,
     CardResponse,
@@ -125,7 +127,11 @@ def _parse_vocab_source(raw_source: str | None, *, card_id: str) -> VocabSource 
     except json.JSONDecodeError:
         logger.warning("Ignoring malformed persisted vocab source JSON for card %s", card_id)
         return None
-    return VocabSource(**payload)
+    try:
+        return VocabSource(**payload)
+    except (TypeError, ValidationError):
+        logger.warning("Ignoring invalid persisted vocab source for card %s", card_id)
+        return None
 
 
 def build_links_by_kind(
