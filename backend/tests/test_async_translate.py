@@ -84,9 +84,7 @@ async def test_run_explain_translate_returns_expected_shape():
         (run_explain_translate, "translate_explain", "{not valid json"),
     ],
 )
-async def test_invalid_provider_payload_is_external_error_and_not_cached(
-    runner, operation, content
-):
+async def test_invalid_provider_payload_is_external_error_and_not_cached(runner, operation, content):
     from kg.exceptions import ExternalServiceError
 
     req = TranslateRequest(word="evoke", context="context")
