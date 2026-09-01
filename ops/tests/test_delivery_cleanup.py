@@ -500,6 +500,67 @@ def test_merged_cleanup_removes_exact_remote_and_terminalizes_registry() -> None
     assert result.remote_branch_absent
 
 
+def test_merged_cleanup_reclaims_clean_terminal_pointer_residue(
+    tmp_path: Path,
+) -> None:
+    receipt = replace(_receipt(), worktree_path=str(tmp_path / "stale-terminal"))
+    residue = Path(receipt.worktree_path)
+    residue.mkdir()
+    (residue / ".git").write_text(
+        f"gitdir: {tmp_path / 'missing-worktree-admin'}\n", encoding="utf-8"
+    )
+
+    class ResidueRemovingFakeGit(FakeGit):
+        def remove_worktree(self, path: Path, *, expected_head_sha: str) -> None:
+            super().remove_worktree(path, expected_head_sha=expected_head_sha)
+            (path / ".git").unlink()
+            path.rmdir()
+
+    registry = FakeRegistry(_record(receipt, status="published"))
+    git = ResidueRemovingFakeGit(receipt, has_worktree=False, local_sha=None)
+
+    result = _service(
+        receipt, registry=registry, git=git, state="MERGED"
+    ).finalize_merged(receipt=receipt, pull_request_number=9)
+
+    assert git.actions == ["remove-worktree", "delete-remote"]
+    assert not residue.exists()
+    assert result.worktree_absent
+
+
+def test_merged_cleanup_refuses_registered_worktree_on_retry() -> None:
+    receipt = _receipt()
+    registry = FakeRegistry(_record(receipt, status="merged"))
+    git = FakeGit(receipt, has_worktree=True, local_sha=None, remote_sha=None)
+
+    with pytest.raises(PolicyViolation, match="unreconciled assets"):
+        _service(receipt, registry=registry, git=git, state="MERGED").finalize_merged(
+            receipt=receipt, pull_request_number=9
+        )
+
+    assert git.actions == []
+
+
+def test_publish_release_does_not_reclaim_terminal_pointer_residue_without_proof(
+    tmp_path: Path,
+) -> None:
+    receipt = replace(_receipt(), worktree_path=str(tmp_path / "stale-open"))
+    residue = Path(receipt.worktree_path)
+    residue.mkdir()
+    (residue / ".git").write_text(
+        f"gitdir: {tmp_path / 'missing-open-admin'}\n", encoding="utf-8"
+    )
+    registry = FakeRegistry(_record(receipt))
+    git = FakeGit(receipt, has_worktree=False, local_sha=None)
+
+    _service(receipt, registry=registry, git=git, state="OPEN").release_after_publish(
+        receipt=receipt, pull_request_number=9
+    )
+
+    assert git.actions == []
+    assert residue.exists()
+
+
 def test_application_cleanup_bridges_previous_body_to_current_registry_claim() -> None:
     current = _receipt()
     previous = replace(
