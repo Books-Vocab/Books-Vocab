@@ -31,6 +31,12 @@ TERMINAL_REGISTRY_STATUSES = {"merged", "abandoned"}
 KNOWN_REGISTRY_STATUSES = LIVE_REGISTRY_STATUSES | TERMINAL_REGISTRY_STATUSES
 DEFAULT_TIME_BUDGET_SECONDS = 30.0
 DEFAULT_CODEX_WORKTREE_ROOT = Path.home() / ".codex" / "worktrees"
+MEASUREMENT_BUDGET_ERROR = "measurement-time-budget-exceeded"
+MISSING_PATH_ERROR = "path-missing"
+
+
+class _MeasurementBudgetExceeded(RuntimeError):
+    """A bounded observation reached its caller-owned deadline."""
 
 
 def _path(value: str | Path) -> Path:
@@ -50,6 +56,38 @@ def _allocated_bytes(stat_result: os.stat_result) -> int:
     return int(blocks) * 512 if blocks else int(stat_result.st_size)
 
 
+def _deadline_expired(deadline: float | None) -> bool:
+    return deadline is not None and time.monotonic() >= deadline
+
+
+def _remaining_timeout(deadline: float | None) -> float | None:
+    if deadline is None:
+        return None
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise _MeasurementBudgetExceeded
+    return max(remaining, 0.001)
+
+
+def _is_budget_error(error: str | None) -> bool:
+    return bool(
+        error == MEASUREMENT_BUDGET_ERROR
+        or error
+        and error.endswith(f":{MEASUREMENT_BUDGET_ERROR}")
+    )
+
+
+def _mark_uninspected(records: list[dict[str, Any]], start: int, *, error: str) -> None:
+    for record in records[start:]:
+        record.update(
+            {
+                "inspection_complete": False,
+                "inspection_error": error,
+                "worktree_state": "unknown",
+            }
+        )
+
+
 def measure_tree(
     root: Path,
     *,
@@ -66,7 +104,7 @@ def measure_tree(
             "allocated_bytes": 0,
             "files": 0,
             "complete": False,
-            "error": "path-missing",
+            "error": MISSING_PATH_ERROR,
         }
 
     logical = 0
@@ -78,13 +116,13 @@ def measure_tree(
     errors: list[str] = []
 
     def budget_expired() -> bool:
-        return deadline is not None and time.monotonic() >= deadline
+        return _deadline_expired(deadline)
 
     def record_budget_expiry() -> None:
         nonlocal complete
         complete = False
-        if "measurement-time-budget-exceeded" not in errors:
-            errors.append("measurement-time-budget-exceeded")
+        if MEASUREMENT_BUDGET_ERROR not in errors:
+            errors.append(MEASUREMENT_BUDGET_ERROR)
 
     while pending:
         if budget_expired():
@@ -92,40 +130,46 @@ def measure_tree(
             break
         directory = pending.pop()
         try:
-            entries = list(os.scandir(directory))
+            entries = os.scandir(directory)
         except OSError as exc:
             complete = False
             errors.append(f"{directory}: {exc.__class__.__name__}")
             continue
-        for entry in entries:
-            if budget_expired():
-                record_budget_expiry()
-                break
-            # ``os.scandir`` yields absolute paths when the parent is absolute.
-            # Avoid resolving every entry: this scan is itself bounded by the
-            # disk attribution deadline, and per-file ``Path.resolve`` makes
-            # large worktrees consume the entire safety budget.
-            entry_path = Path(entry.path)
-            if entry_path in excluded:
-                continue
-            try:
-                stat_result = entry.stat(follow_symlinks=False)
-            except OSError as exc:
-                complete = False
-                errors.append(f"{entry_path}: {exc.__class__.__name__}")
-                continue
-            allocated += _allocated_bytes(stat_result)
-            if entry.is_symlink():
-                logical += int(stat_result.st_size)
-                files += 1
-            elif entry.is_dir(follow_symlinks=False):
-                pending.append(entry_path)
-            elif entry.is_file(follow_symlinks=False):
-                identity = (int(stat_result.st_dev), int(stat_result.st_ino))
-                if identity not in seen_files:
-                    seen_files.add(identity)
-                    logical += int(stat_result.st_size)
-                    files += 1
+        try:
+            with entries:
+                for entry in entries:
+                    if budget_expired():
+                        record_budget_expiry()
+                        break
+                    # ``os.scandir`` yields absolute paths when the parent is
+                    # absolute. Avoid resolving every entry: this scan is
+                    # itself bounded by the disk attribution deadline, and
+                    # per-file ``Path.resolve`` makes large worktrees consume
+                    # the entire safety budget.
+                    entry_path = Path(entry.path)
+                    if entry_path in excluded:
+                        continue
+                    try:
+                        stat_result = entry.stat(follow_symlinks=False)
+                    except OSError as exc:
+                        complete = False
+                        errors.append(f"{entry_path}: {exc.__class__.__name__}")
+                        continue
+                    allocated += _allocated_bytes(stat_result)
+                    if entry.is_symlink():
+                        logical += int(stat_result.st_size)
+                        files += 1
+                    elif entry.is_dir(follow_symlinks=False):
+                        pending.append(entry_path)
+                    elif entry.is_file(follow_symlinks=False):
+                        identity = (int(stat_result.st_dev), int(stat_result.st_ino))
+                        if identity not in seen_files:
+                            seen_files.add(identity)
+                            logical += int(stat_result.st_size)
+                            files += 1
+        except OSError as exc:
+            complete = False
+            errors.append(f"{directory}: {exc.__class__.__name__}")
     result: dict[str, Any] = {
         "logical_bytes": logical,
         "allocated_bytes": allocated,
@@ -140,17 +184,22 @@ def measure_tree(
 def _parse_worktrees(
     workspace: Path, *, deadline: float | None = None
 ) -> tuple[list[dict[str, Any]], str | None]:
-    if deadline is not None and time.monotonic() >= deadline:
-        return [], "measurement-time-budget-exceeded"
+    if _deadline_expired(deadline):
+        return [], MEASUREMENT_BUDGET_ERROR
     try:
         completed = subprocess.run(
             ["git", "-C", str(workspace), "worktree", "list", "--porcelain"],
             check=False,
             capture_output=True,
             text=True,
+            timeout=_remaining_timeout(deadline),
         )
+    except (_MeasurementBudgetExceeded, subprocess.TimeoutExpired):
+        return [], MEASUREMENT_BUDGET_ERROR
     except OSError as exc:
         return [], f"git-worktree-list:{exc.__class__.__name__}"
+    if _deadline_expired(deadline):
+        return [], MEASUREMENT_BUDGET_ERROR
     if completed.returncode != 0:
         return [], f"git-worktree-list:exit-{completed.returncode}"
 
@@ -173,23 +222,17 @@ def _parse_worktrees(
     if current is not None:
         records.append(current)
 
-    for record in records:
+    for index, record in enumerate(records):
         path = record["path"]
+        if _deadline_expired(deadline):
+            _mark_uninspected(records, index, error=MEASUREMENT_BUDGET_ERROR)
+            return records, MEASUREMENT_BUDGET_ERROR
         if not path.is_dir():
             record.update(
                 {
                     "inspection_complete": False,
-                    "inspection_error": "path-missing",
+                    "inspection_error": MISSING_PATH_ERROR,
                     "worktree_state": "missing",
-                }
-            )
-            continue
-        if deadline is not None and time.monotonic() >= deadline:
-            record.update(
-                {
-                    "inspection_complete": False,
-                    "inspection_error": "measurement-time-budget-exceeded",
-                    "worktree_state": "unknown",
                 }
             )
             continue
@@ -206,7 +249,11 @@ def _parse_worktrees(
                 check=False,
                 capture_output=True,
                 text=True,
+                timeout=_remaining_timeout(deadline),
             )
+        except (_MeasurementBudgetExceeded, subprocess.TimeoutExpired):
+            _mark_uninspected(records, index, error=MEASUREMENT_BUDGET_ERROR)
+            return records, MEASUREMENT_BUDGET_ERROR
         except OSError as exc:
             record.update(
                 {
@@ -216,6 +263,9 @@ def _parse_worktrees(
                 }
             )
             continue
+        if _deadline_expired(deadline):
+            _mark_uninspected(records, index, error=MEASUREMENT_BUDGET_ERROR)
+            return records, MEASUREMENT_BUDGET_ERROR
         if status.returncode != 0:
             record.update(
                 {
@@ -266,10 +316,19 @@ def _topology_candidates(
     pending: list[tuple[Path, int]] = [(root, 0)]
     try:
         while pending:
-            if deadline is not None and time.monotonic() >= deadline:
-                return candidates, "measurement-time-budget-exceeded"
+            if _deadline_expired(deadline):
+                return candidates, MEASUREMENT_BUDGET_ERROR
             directory, depth = pending.pop()
-            for entry in sorted(os.scandir(directory), key=lambda item: item.name):
+            entries = []
+            with os.scandir(directory) as scanner:
+                for entry in scanner:
+                    if _deadline_expired(deadline):
+                        return candidates, MEASUREMENT_BUDGET_ERROR
+                    entries.append(entry)
+            entries.sort(key=lambda item: item.name)
+            for entry in entries:
+                if _deadline_expired(deadline):
+                    return candidates, MEASUREMENT_BUDGET_ERROR
                 if entry.is_symlink() or not entry.is_dir(follow_symlinks=False):
                     continue
                 entry_path = Path(entry.path)
@@ -282,30 +341,41 @@ def _topology_candidates(
     return candidates, None
 
 
-def _git_output(path: Path, *args: str) -> str | None:
+def _git_output(path: Path, *args: str, deadline: float | None = None) -> str | None:
+    if _deadline_expired(deadline):
+        raise _MeasurementBudgetExceeded
     try:
         completed = subprocess.run(
             ["git", "-C", str(path), *args],
             check=False,
             capture_output=True,
             text=True,
+            timeout=_remaining_timeout(deadline),
         )
+    except (_MeasurementBudgetExceeded, subprocess.TimeoutExpired) as exc:
+        raise _MeasurementBudgetExceeded from exc
     except OSError:
         return None
+    if _deadline_expired(deadline):
+        raise _MeasurementBudgetExceeded
     if completed.returncode != 0:
         return None
     value = completed.stdout.strip()
     return value or None
 
 
-def _inspect_topology_worktree(path: Path) -> dict[str, Any] | None:
+def _inspect_topology_worktree(
+    path: Path, *, deadline: float | None = None
+) -> dict[str, Any] | None:
     """Read identity/status for a topology checkout not returned by git list."""
 
-    head = _git_output(path, "rev-parse", "HEAD")
-    common_dir = _git_output(path, "rev-parse", "--git-common-dir")
+    head = _git_output(path, "rev-parse", "HEAD", deadline=deadline)
+    common_dir = _git_output(path, "rev-parse", "--git-common-dir", deadline=deadline)
     if head is None or common_dir is None:
         return None
-    branch = _git_output(path, "symbolic-ref", "--quiet", "--short", "HEAD")
+    branch = _git_output(
+        path, "symbolic-ref", "--quiet", "--short", "HEAD", deadline=deadline
+    )
     try:
         status = subprocess.run(
             [
@@ -319,7 +389,17 @@ def _inspect_topology_worktree(path: Path) -> dict[str, Any] | None:
             check=False,
             capture_output=True,
             text=True,
+            timeout=_remaining_timeout(deadline),
         )
+    except (_MeasurementBudgetExceeded, subprocess.TimeoutExpired):
+        return {
+            "path": path,
+            "head": head,
+            "branch": branch or "(detached)",
+            "inspection_complete": False,
+            "inspection_error": MEASUREMENT_BUDGET_ERROR,
+            "worktree_state": "unknown",
+        }
     except OSError:
         return {
             "path": path,
@@ -327,6 +407,15 @@ def _inspect_topology_worktree(path: Path) -> dict[str, Any] | None:
             "branch": branch or "(detached)",
             "inspection_complete": False,
             "inspection_error": "git-status:OSError",
+            "worktree_state": "unknown",
+        }
+    if _deadline_expired(deadline):
+        return {
+            "path": path,
+            "head": head,
+            "branch": branch or "(detached)",
+            "inspection_complete": False,
+            "inspection_error": MEASUREMENT_BUDGET_ERROR,
             "worktree_state": "unknown",
         }
     if status.returncode != 0:
@@ -414,7 +503,7 @@ def _lane_entry(
             "allocated_bytes": 0,
             "files": 0,
             "complete": False,
-            "error": "path-missing",
+            "error": MISSING_PATH_ERROR,
         }
         exists = False
     if physical is not None:
@@ -495,8 +584,8 @@ def _lane_entry(
         entry["measurement_error"] = measured["error"]
     if measured.get("errors"):
         entry["measurement_errors"] = measured["errors"]
-        if "measurement-time-budget-exceeded" in measured["errors"]:
-            entry["measurement_error"] = "measurement-time-budget-exceeded"
+        if MEASUREMENT_BUDGET_ERROR in measured["errors"]:
+            entry["measurement_error"] = MEASUREMENT_BUDGET_ERROR
     if physical_state_override is not None and exists:
         entry["underlying_physical_state"] = (
             physical.get("worktree_state", "unknown")
@@ -534,31 +623,61 @@ def build_report(
     physical_records, git_error = _parse_worktrees(workspace, deadline=deadline)
     topology_roots = _topology_roots(workspace)
     topology_errors: list[str] = []
-    workspace_common_dir = _git_output(workspace, "rev-parse", "--git-common-dir")
+    workspace_common_dir: str | None = None
+    try:
+        workspace_common_dir = _git_output(
+            workspace, "rev-parse", "--git-common-dir", deadline=deadline
+        )
+    except _MeasurementBudgetExceeded:
+        topology_errors.append(f"{workspace}:{MEASUREMENT_BUDGET_ERROR}")
     if workspace_common_dir is not None:
         workspace_common_dir = str(_path(workspace / workspace_common_dir))
     known_physical_paths = {item["path"] for item in physical_records}
+    topology_halted = _is_budget_error(git_error) or bool(
+        topology_errors and _is_budget_error(topology_errors[-1])
+    )
     for topology_root in topology_roots:
+        if topology_halted:
+            break
         candidates, topology_error = _topology_candidates(
             topology_root, deadline=deadline
         )
         if topology_error:
             topology_errors.append(f"{topology_root}:{topology_error}")
+            if _is_budget_error(topology_error):
+                topology_halted = True
         for candidate in candidates:
+            if topology_halted:
+                break
             if candidate in known_physical_paths:
                 continue
-            candidate_common_dir = _git_output(
-                candidate, "rev-parse", "--git-common-dir"
-            )
+            try:
+                candidate_common_dir = _git_output(
+                    candidate, "rev-parse", "--git-common-dir", deadline=deadline
+                )
+            except _MeasurementBudgetExceeded:
+                topology_errors.append(f"{candidate}:{MEASUREMENT_BUDGET_ERROR}")
+                topology_halted = True
+                break
             if candidate_common_dir is None:
                 continue
             candidate_common_dir = str(_path(candidate / candidate_common_dir))
             if candidate_common_dir != workspace_common_dir:
                 continue
-            inspected = _inspect_topology_worktree(candidate)
+            try:
+                inspected = _inspect_topology_worktree(candidate, deadline=deadline)
+            except _MeasurementBudgetExceeded:
+                topology_errors.append(f"{candidate}:{MEASUREMENT_BUDGET_ERROR}")
+                topology_halted = True
+                break
             if inspected is not None:
                 physical_records.append(inspected)
                 known_physical_paths.add(candidate)
+                if _is_budget_error(inspected.get("inspection_error")):
+                    topology_errors.append(
+                        f"{candidate}:{inspected['inspection_error']}"
+                    )
+                    topology_halted = True
     physical_by_path: dict[Path, dict[str, Any]] = {}
     physical_path_counts: dict[Path, int] = {}
     for item in physical_records:
@@ -823,7 +942,7 @@ def build_report(
         for item in physical_lanes
         if (
             not item.get("inspection_complete", True)
-            and item.get("inspection_error") != "path-missing"
+            and item.get("inspection_error") != MISSING_PATH_ERROR
         )
         or item.get("worktree_state") == "unknown"
         or item.get("physical_state") in {"unverified", "unknown-unregistered"}
@@ -861,21 +980,71 @@ def build_report(
         )
     except ValueError:
         total_lane_budget = 8 * GIB
-    over_lane = sorted(
-        {
-            str(item["path"])
-            for item in accounted_lanes
-            if int(item["allocated_bytes"]) > per_lane_budget
-        }
+    measurement_incomplete_reasons: set[str] = set()
+    if git_error:
+        measurement_incomplete_reasons.add(
+            MEASUREMENT_BUDGET_ERROR
+            if _is_budget_error(git_error)
+            else "worktree-inspection-incomplete"
+        )
+    for topology_error in topology_errors:
+        measurement_incomplete_reasons.add(
+            MEASUREMENT_BUDGET_ERROR
+            if _is_budget_error(topology_error)
+            else "topology-inspection-incomplete"
+        )
+    if not workspace_measurement["complete"]:
+        measurement_incomplete_reasons.add("workspace-measurement-incomplete")
+
+    lane_measurement_incomplete = False
+    for item in lanes:
+        if item["lane_kind"] != "lane":
+            continue
+        if item["exists"] and not item["measurement_complete"]:
+            measurement_errors = item.get("measurement_errors", [])
+            if _is_budget_error(item.get("measurement_error")) or any(
+                _is_budget_error(error) for error in measurement_errors
+            ):
+                measurement_incomplete_reasons.add(MEASUREMENT_BUDGET_ERROR)
+            else:
+                measurement_incomplete_reasons.add("lane-measurement-incomplete")
+            lane_measurement_incomplete = True
+        inspection_error = item.get("inspection_error")
+        if inspection_error and inspection_error != MISSING_PATH_ERROR:
+            measurement_incomplete_reasons.add(
+                MEASUREMENT_BUDGET_ERROR
+                if _is_budget_error(inspection_error)
+                else "worktree-inspection-incomplete"
+            )
+    measurement_budget_exhausted = (
+        MEASUREMENT_BUDGET_ERROR in measurement_incomplete_reasons
     )
+    measurement_incomplete = bool(measurement_incomplete_reasons)
+
+    # A partial scan is evidence for a fail-closed block, not evidence that a
+    # lane or aggregate is over quota.  Only complete observations can produce
+    # quota reasons.
+    over_lane = (
+        sorted(
+            {
+                str(item["path"])
+                for item in accounted_lanes
+                if int(item["allocated_bytes"]) > per_lane_budget
+            }
+        )
+        if not measurement_incomplete
+        else []
+    )
+    quota_reasons = [f"lane-budget-exceeded:{path}" for path in over_lane]
+    if not measurement_incomplete and lane_allocated > total_lane_budget:
+        quota_reasons.append("lane-total-budget-exceeded")
+    quota_exceeded = bool(quota_reasons)
     blocking_reasons: list[str] = []
     warning_reasons: list[str] = []
     if registry_error:
         blocking_reasons.append(registry_error)
     if git_error:
         blocking_reasons.append(git_error)
-        if git_error == "measurement-time-budget-exceeded":
-            blocking_reasons.append(git_error)
     if topology_errors:
         blocking_reasons.extend(topology_errors)
     if malformed_registry_records:
@@ -916,26 +1085,11 @@ def build_report(
         blocking_reasons.append("duplicate-live-registry-claim")
     if not workspace_measurement["complete"]:
         blocking_reasons.append("workspace-measurement-incomplete")
-    if not all(item["measurement_complete"] for item in accounted_lanes):
+    if lane_measurement_incomplete:
         blocking_reasons.append("lane-measurement-incomplete")
-    measurement_entries = [workspace_measurement]
-    measurement_entries.extend(
-        {
-            "errors": item.get("measurement_errors", []),
-        }
-        for item in lanes
-        if item.get("measurement_errors")
-    )
-    measurement_budget_exhausted = any(
-        "measurement-time-budget-exceeded" in item.get("errors", [])
-        for item in measurement_entries
-    )
     if measurement_budget_exhausted:
-        blocking_reasons.append("measurement-time-budget-exceeded")
-    if over_lane:
-        blocking_reasons.extend(f"lane-budget-exceeded:{path}" for path in over_lane)
-    if lane_allocated > total_lane_budget:
-        blocking_reasons.append("lane-total-budget-exceeded")
+        blocking_reasons.append(MEASUREMENT_BUDGET_ERROR)
+    blocking_reasons.extend(quota_reasons)
     if blocking_reasons:
         verdict = "block"
     elif warning_reasons:
@@ -1027,6 +1181,8 @@ def build_report(
             "budget_seconds": time_budget_seconds,
             "elapsed_seconds": round(time.monotonic() - measurement_started, 3),
             "budget_exhausted": measurement_budget_exhausted,
+            "status": "incomplete" if measurement_incomplete else "complete",
+            "incomplete_reasons": sorted(measurement_incomplete_reasons),
         },
         "topology": {
             "roots": [str(root) for root in topology_roots],
@@ -1098,6 +1254,10 @@ def build_report(
             "reasons": sorted(set(reasons)),
             "blocking_reasons": sorted(set(blocking_reasons)),
             "warning_reasons": sorted(set(warning_reasons)),
+            "measurement_incomplete": measurement_incomplete,
+            "measurement_incomplete_reasons": sorted(measurement_incomplete_reasons),
+            "quota_exceeded": quota_exceeded,
+            "quota_reasons": sorted(set(quota_reasons)),
             "missing_active_lanes": missing_active,
             "missing_terminal_lanes": missing_terminal,
             "unregistered_physical_worktrees": unregistered,
