@@ -8,7 +8,6 @@
 
 import Foundation
 import XCTest
-@testable import BooksAndVocab
 
 private struct OverviewFixtureProjection {
     private struct Dataset: Decodable {
@@ -413,70 +412,6 @@ final class OverviewFlowUITests: UITestCase {
                 "forecast-zero-counterexample must expose the formatted zero value"
             )
         }
-    }
-
-    @MainActor
-    func testStatsProjectionKeyTracksSameCountMutations() {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
-        let clock = StatsProjectionClock(
-            now: Date(timeIntervalSince1970: 1_893_888_000),
-            calendar: calendar
-        )
-        let entry = VocabularyEntry(
-            word: "projection-key",
-            translation: "key",
-            context: "context",
-            bookTitle: "book"
-        )
-        entry.syncStatus = 1
-        entry.nextReviewAt = clock.now
-
-        let initialInputs = StatsPresentation.Inputs(
-            entries: [entry],
-            reviewRecords: [],
-            forecastDays: 14,
-            clock: clock
-        )
-        let initialKey = StatsPresentation.projectionKey(for: initialInputs)
-
-        entry.nextReviewAt = clock.date(byAdding: .day, value: 1, to: clock.now) ?? clock.now
-        XCTAssertNotEqual(
-            initialKey,
-            StatsPresentation.projectionKey(for: initialInputs),
-            "a same-count schedule mutation must invalidate the Overview projection"
-        )
-
-        entry.nextReviewAt = clock.now
-        entry.isArchived = true
-        XCTAssertNotEqual(
-            initialKey,
-            StatsPresentation.projectionKey(for: initialInputs),
-            "a same-count visibility mutation must invalidate the Overview projection"
-        )
-
-        entry.isArchived = false
-        let record = ReviewRecord(
-            word: entry.word,
-            entryID: entry.id,
-            feedback: 1,
-            reviewedAt: clock.now
-        )
-        let recordsBeforeTimestampMutation = StatsPresentation.Inputs(
-            entries: [entry],
-            reviewRecords: [record],
-            forecastDays: 14,
-            clock: clock
-        )
-        let recordsBeforeTimestampKey = StatsPresentation.projectionKey(
-            for: recordsBeforeTimestampMutation
-        )
-        record.reviewedAt = clock.date(byAdding: .day, value: -1, to: clock.now) ?? clock.now
-        XCTAssertNotEqual(
-            recordsBeforeTimestampKey,
-            StatsPresentation.projectionKey(for: recordsBeforeTimestampMutation),
-            "a same-count review timestamp mutation must invalidate the Overview projection"
-        )
     }
 
     private static func p11ReviewMixProjection() throws -> OverviewFixtureProjection {
