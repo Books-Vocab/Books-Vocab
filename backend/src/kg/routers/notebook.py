@@ -62,7 +62,7 @@ def list_notebooks(user: CurrentUser, since: str | None = None):
     store.ensure_default()
     cards = _card_store(user["dir"])
 
-    if since:
+    if since is not None:
         from ..user_store import parse_datetime
 
         parsed = parse_datetime(since)

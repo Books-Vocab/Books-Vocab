@@ -247,6 +247,18 @@ def test_list_notebooks_since_preserves_aware_and_invalid_semantics(isolated_api
     assert invalid.json()["detail"] == "Invalid since timestamp"
 
 
+def test_list_notebooks_rejects_explicit_empty_since(isolated_api):
+    """An explicit empty incremental cursor must not restart full sync."""
+    response = isolated_api.client.get(
+        "/api/notebooks",
+        params={"since": ""},
+        headers=isolated_api.headers,
+    )
+
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"] == "Invalid since timestamp"
+
+
 # ---------------------------------------------------------------------------
 # POST /api/notebooks
 # ---------------------------------------------------------------------------
