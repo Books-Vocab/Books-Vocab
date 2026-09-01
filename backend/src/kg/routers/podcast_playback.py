@@ -26,8 +26,7 @@ class ServeAudioFromS3(Protocol):
         range_header: str | None,
         *,
         stem: str,
-    ) -> StreamingResponse:
-        ...
+    ) -> StreamingResponse: ...
 
 
 class ServeStaticMedia(Protocol):
@@ -42,8 +41,7 @@ class ServeStaticMedia(Protocol):
         headers: dict[str, str] | None = None,
         transform: Callable[[bytes], bytes | str] = lambda b: b,
         stream_s3: bool = False,
-    ) -> StreamingResponse:
-        ...
+    ) -> StreamingResponse: ...
 
 
 def _parse_range_header(range_header: str, file_size: int) -> tuple[int, int] | None:
@@ -89,7 +87,11 @@ def _parse_range_header(range_header: str, file_size: int) -> tuple[int, int] | 
             headers={"Content-Range": f"bytes */{file_size}"},
         )
     if end < start:
-        return None
+        raise HTTPException(
+            status_code=416,
+            detail="Range not satisfiable",
+            headers={"Content-Range": f"bytes */{file_size}"},
+        )
     return (start, end)
 
 
