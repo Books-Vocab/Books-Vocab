@@ -65,13 +65,17 @@ class GitCommands:
         return readback
 
     def remove_worktree(self, path: Path, *, expected_head_sha: str) -> None:
-        path = path.resolve()
+        requested_path = Path(path)
+        if requested_path.is_symlink():
+            raise CompareAndSwapConflict("worktree path is a symlink")
+        path = requested_path.resolve()
         if path == self.repo:
             raise CompareAndSwapConflict("refusing to remove canonical checkout")
         matches = tuple(
             item for item in self.query.list_worktrees() if item.path.resolve() == path
         )
         if not matches:
+            self._remove_terminal_pointer_residue(path)
             return
         if len(matches) != 1:
             raise AdapterPayloadError("worktree path did not resolve uniquely")
@@ -86,6 +90,64 @@ class GitCommands:
         self.client.run("worktree", "remove", "--", str(path))
         if any(item.path.resolve() == path for item in self.query.list_worktrees()):
             raise CompareAndSwapConflict("worktree still exists after cleanup")
+
+    @staticmethod
+    def _remove_terminal_pointer_residue(path: Path) -> None:
+        """Remove only a clean directory left by a dead Git worktree pointer."""
+
+        if not path.exists():
+            return
+        if path.is_symlink() or not path.is_dir():
+            raise CompareAndSwapConflict("terminal residue path is not a directory")
+        try:
+            entries = tuple(path.iterdir())
+        except OSError as error:
+            raise CompareAndSwapConflict(
+                "terminal residue path could not be inspected"
+            ) from error
+        if len(entries) != 1 or entries[0].name != ".git":
+            raise CompareAndSwapConflict("terminal residue path is not clean")
+
+        pointer = path / ".git"
+        if pointer.is_symlink() or not pointer.is_file():
+            raise CompareAndSwapConflict(
+                "terminal residue .git pointer is not immutable"
+            )
+        try:
+            contents = pointer.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as error:
+            raise CompareAndSwapConflict(
+                "terminal residue .git pointer could not be read"
+            ) from error
+        lines = contents.splitlines()
+        if len(lines) != 1 or not lines[0].startswith("gitdir: "):
+            raise CompareAndSwapConflict("terminal residue .git pointer is invalid")
+        target_text = lines[0][len("gitdir: ") :].strip()
+        if not target_text:
+            raise CompareAndSwapConflict("terminal residue .git pointer is empty")
+        target = Path(target_text)
+        if not target.is_absolute():
+            target = pointer.parent / target
+        if target.is_symlink() or target.exists():
+            raise CompareAndSwapConflict(
+                "terminal residue still has Git worktree metadata"
+            )
+
+        try:
+            pointer.unlink()
+            path.rmdir()
+        except OSError as error:
+            # Restore the pointer if the directory stayed empty.  A failed
+            # readback must not silently turn a residue directory into an
+            # unclassified path.
+            try:
+                if path.is_dir() and not path.is_symlink() and not any(path.iterdir()):
+                    pointer.write_text(contents, encoding="utf-8")
+            except OSError:
+                pass
+            raise CompareAndSwapConflict(
+                "terminal residue changed or could not be removed"
+            ) from error
 
     def delete_local_branch(self, branch: str, *, expected_head_sha: str) -> None:
         if branch == "main":

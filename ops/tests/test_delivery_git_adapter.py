@@ -547,6 +547,51 @@ def test_git_worktree_remove_is_idempotent_only_when_inventory_is_absent(
     assert runner.calls[0][-3:] == ("worktree", "list", "--porcelain")
 
 
+def test_git_worktree_remove_reclaims_clean_broken_pointer_residue(
+    tmp_path: Path,
+) -> None:
+    residue = tmp_path / "stale-terminal"
+    residue.mkdir()
+    (residue / ".git").write_text(
+        f"gitdir: {tmp_path / 'missing-worktree-admin'}\n", encoding="utf-8"
+    )
+    runner = StaticRunner([CommandResult(("git",), 0, "", "")])
+
+    GitCliAdapter(repo=tmp_path, runner=runner).remove_worktree(
+        residue, expected_head_sha="b" * 40
+    )
+
+    assert not residue.exists()
+
+
+def test_git_worktree_remove_refuses_non_clean_or_live_pointer_residue(
+    tmp_path: Path,
+) -> None:
+    cases = (
+        ("untracked", "gitdir: /missing/admin\n"),
+        ("live-metadata", None),
+    )
+    for name, pointer in cases:
+        residue = tmp_path / name
+        residue.mkdir()
+        if pointer is None:
+            gitdir = tmp_path / "live-admin"
+            gitdir.mkdir()
+            pointer = f"gitdir: {gitdir}\n"
+        (residue / ".git").write_text(pointer, encoding="utf-8")
+        if name == "untracked":
+            (residue / "untracked.txt").write_text("changed\n", encoding="utf-8")
+        runner = StaticRunner([CommandResult(("git",), 0, "", "")])
+
+        with pytest.raises(CompareAndSwapConflict, match="residue"):
+            GitCliAdapter(repo=tmp_path, runner=runner).remove_worktree(
+                residue, expected_head_sha="b" * 40
+            )
+
+        assert residue.exists()
+        assert (residue / ".git").exists()
+
+
 @pytest.mark.parametrize(
     ("exit_code", "stderr"),
     (
