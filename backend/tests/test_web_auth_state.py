@@ -80,6 +80,7 @@ def _extract_state_from_redirect(location: str) -> str:
 
 # ---------- Google ----------
 
+
 def test_google_login_sets_oauth_state_cookie(web_auth_env):
     resp = web_auth_env.client.get("/auth/web/google/login", follow_redirects=False)
     assert resp.status_code == 307
@@ -134,6 +135,16 @@ def test_google_callback_state_mismatch_rejected(web_auth_env):
     assert resp.status_code == 400
 
 
+def test_google_callback_non_ascii_state_rejected_without_server_error(web_auth_env):
+    """A provider-returned non-ASCII state must be a normal CSRF failure."""
+    web_auth_env.client.get("/auth/web/google/login", follow_redirects=False)
+    resp = web_auth_env.client.get(
+        "/auth/web/google/callback?code=fake-code&state=%C3%A9",
+        follow_redirects=False,
+    )
+    assert resp.status_code == 400
+
+
 def test_google_callback_missing_cookie_rejected(web_auth_env):
     # No login first → no cookie
     resp = web_auth_env.client.get(
@@ -149,7 +160,8 @@ def test_google_callback_with_matching_state_proceeds(web_auth_env):
 
     # Mock token exchange + id_token verification
     fake_token_resp = httpx.Response(
-        200, json={"id_token": "fake-id-token"},
+        200,
+        json={"id_token": "fake-id-token"},
         request=httpx.Request("POST", "https://oauth2.googleapis.com/token"),
     )
 
@@ -159,8 +171,10 @@ def test_google_callback_with_matching_state_proceeds(web_auth_env):
     async def fake_verify(token, client_id):
         return "google-user-123", "test@example.com", True
 
-    with patch("httpx.AsyncClient.post", new=fake_post), \
-         patch("kg.routers.web_auth.verify_google_token", new=fake_verify):
+    with (
+        patch("httpx.AsyncClient.post", new=fake_post),
+        patch("kg.routers.web_auth.verify_google_token", new=fake_verify),
+    ):
         resp = web_auth_env.client.get(
             f"/auth/web/google/callback?code=fake-code&state={state}",
             follow_redirects=False,
@@ -196,7 +210,8 @@ def test_google_callback_retries_transient_token_exchange_error(web_auth_env):
     login_resp = web_auth_env.client.get("/auth/web/google/login", follow_redirects=False)
     state = _extract_state_from_redirect(login_resp.headers["location"])
     fake_token_resp = httpx.Response(
-        200, json={"id_token": "fake-id-token"},
+        200,
+        json={"id_token": "fake-id-token"},
         request=httpx.Request("POST", "https://oauth2.googleapis.com/token"),
     )
     attempts = []
@@ -216,9 +231,11 @@ def test_google_callback_retries_transient_token_exchange_error(web_auth_env):
     async def no_sleep(_seconds):
         return None
 
-    with patch("httpx.AsyncClient.post", new=fake_post), \
-         patch("kg.routers.web_auth.verify_google_token", new=fake_verify), \
-         patch("kg.routers.web_auth.asyncio.sleep", new=no_sleep):
+    with (
+        patch("httpx.AsyncClient.post", new=fake_post),
+        patch("kg.routers.web_auth.verify_google_token", new=fake_verify),
+        patch("kg.routers.web_auth.asyncio.sleep", new=no_sleep),
+    ):
         resp = web_auth_env.client.get(
             f"/auth/web/google/callback?code=fake-code&state={state}",
             follow_redirects=False,
@@ -229,6 +246,7 @@ def test_google_callback_retries_transient_token_exchange_error(web_auth_env):
 
 
 # ---------- Apple ----------
+
 
 def test_apple_login_sets_oauth_state_cookie(web_auth_env):
     resp = web_auth_env.client.get("/auth/web/apple/login", follow_redirects=False)

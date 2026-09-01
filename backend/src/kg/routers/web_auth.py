@@ -76,7 +76,7 @@ def _clear_state_cookie(response: Response) -> None:
 
 def _verify_state(request: Request, provided: str | None) -> None:
     expected = request.cookies.get(_OAUTH_STATE_COOKIE)
-    if not expected or not provided or not secrets.compare_digest(expected, provided):
+    if not expected or not provided or not secrets.compare_digest(expected.encode("utf-8"), provided.encode("utf-8")):
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
 
 
