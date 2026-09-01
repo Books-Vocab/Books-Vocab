@@ -45,7 +45,7 @@ enum KnowledgeGraphPresentation {
         showIsolatedNodes: Bool = false,
         now: Date = Date()
     ) -> [KnowledgeGraphNode] {
-        let presentationNodeIDs = Set(
+        let presentationNodeIDs: Set<String> = Set(
             entries.compactMap { entry in
                 guard entry.isSynced,
                       entry.syncAction != .delete,
