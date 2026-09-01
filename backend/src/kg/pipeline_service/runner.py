@@ -22,28 +22,23 @@ _STEP_ERRORS = (OpenAIError, OSError, ValueError, RuntimeError, KGError)
 
 
 class AsyncLockFactory(Protocol):
-    async def __call__(self, user_id: str) -> Any:
-        ...
+    async def __call__(self, user_id: str) -> Any: ...
 
 
 class CardStoreFactory(Protocol):
-    def __call__(self, user_dir: Any) -> Any:
-        ...
+    def __call__(self, user_dir: Any) -> Any: ...
 
 
 class GraphStoreFactory(Protocol):
-    def __call__(self, user_dir: Any, notebook_id: str = "default") -> Any:
-        ...
+    def __call__(self, user_dir: Any, notebook_id: str = "default") -> Any: ...
 
 
 class EmbeddingStoreFactory(Protocol):
-    def __call__(self, user_dir: Any, llm: Any, notebook_id: str = "default") -> Any:
-        ...
+    def __call__(self, user_dir: Any, llm: Any, notebook_id: str = "default") -> Any: ...
 
 
 class ClientFactory(Protocol):
-    def __call__(self, provider: Any) -> Any:
-        ...
+    def __call__(self, provider: Any) -> Any: ...
 
 
 def _telemetry(logger: logging.Logger, method: str, *args: Any, **kwargs: Any) -> None:
@@ -54,6 +49,7 @@ def _telemetry(logger: logging.Logger, method: str, *args: Any, **kwargs: Any) -
     """
     try:
         from .. import pipeline_log
+
         getattr(pipeline_log, method)(*args, **kwargs)
     except Exception:
         logger.warning("Failed to record pipeline telemetry", exc_info=True)
@@ -83,9 +79,11 @@ async def _run_step(
     try:
         if retry:
             result = await async_retry(
-                coro_fn, max_attempts=2,
+                coro_fn,
+                max_attempts=2,
                 retryable_exceptions=retryable_exceptions,
-                step_name=name, uid=uid,
+                step_name=name,
+                uid=uid,
             )
         else:
             result = await coro_fn()
@@ -138,6 +136,7 @@ async def run_pipeline_background(
     # but queued set happens before lock acquire, so pop can clobber set.
     with _PIPELINE_RUNNING_LOCK:
         _PIPELINE_RUNNING[uid] = _PIPELINE_RUNNING.get(uid, 0) + 1
+    telemetry_ended = False
     try:
         async with lock:
             run_id = run_id or uuid.uuid4().hex[:12]
@@ -154,28 +153,44 @@ async def run_pipeline_background(
 
                 pipeline_status = "completed"
 
-                status = await _run_step(uid, "Enrich", lambda: _step_enrich(
-                    uid, user,
-                    card_store_factory=card_store_factory,
-                    client_factory=client_factory,
+                status = await _run_step(
+                    uid,
+                    "Enrich",
+                    lambda: _step_enrich(
+                        uid,
+                        user,
+                        card_store_factory=card_store_factory,
+                        client_factory=client_factory,
+                        logger=logger,
+                        force=force_enrich,
+                        notebook_id=notebook_id,
+                    ),
                     logger=logger,
-                    force=force_enrich,
-                    notebook_id=notebook_id,
-                ), logger=logger, retry=True, run_id=run_id)
+                    retry=True,
+                    run_id=run_id,
+                )
                 if status == "quota_exhausted":
                     pipeline_status = "quota_exhausted"
 
                 if pipeline_status != "quota_exhausted":
-                    status = await _run_step(uid, "EmbedAndJudge", lambda: _step_embed_and_judge(
-                        uid, user,
-                        card_store_factory=card_store_factory,
-                        graph_store_factory=graph_store_factory,
-                        embedding_store_factory=embedding_store_factory,
-                        client_factory=client_factory,
+                    status = await _run_step(
+                        uid,
+                        "EmbedAndJudge",
+                        lambda: _step_embed_and_judge(
+                            uid,
+                            user,
+                            card_store_factory=card_store_factory,
+                            graph_store_factory=graph_store_factory,
+                            embedding_store_factory=embedding_store_factory,
+                            client_factory=client_factory,
+                            logger=logger,
+                            link_kind_enum=link_kind_enum,
+                            notebook_id=notebook_id,
+                        ),
                         logger=logger,
-                        link_kind_enum=link_kind_enum,
-                        notebook_id=notebook_id,
-                    ), logger=logger, retry=True, run_id=run_id)
+                        retry=True,
+                        run_id=run_id,
+                    )
                     if status == "quota_exhausted":
                         pipeline_status = "quota_exhausted"
 
@@ -184,22 +199,31 @@ async def run_pipeline_background(
                     # so we always run it unless an earlier step quota-halted
                     # (in which case the user is in a soft-degraded state and
                     # we want a clean halt boundary).
-                    await _run_step(uid, "Difficulty", lambda: _step_difficulty(
-                        uid, user,
-                        card_store_factory=card_store_factory,
+                    await _run_step(
+                        uid,
+                        "Difficulty",
+                        lambda: _step_difficulty(
+                            uid,
+                            user,
+                            card_store_factory=card_store_factory,
+                            logger=logger,
+                            notebook_id=notebook_id,
+                        ),
                         logger=logger,
-                        notebook_id=notebook_id,
-                    ), logger=logger, run_id=run_id)
+                        run_id=run_id,
+                    )
 
                 if pipeline_status == "quota_exhausted":
                     logger.warning("[%s] Pipeline halted: quota exhausted.", uid)
                 else:
                     logger.info("[%s] Pipeline completed.", uid)
                 _telemetry(logger, "end_run", run_id, pipeline_status)
+                telemetry_ended = True
 
             except asyncio.CancelledError:
                 logger.warning("[%s] Pipeline cancelled; marking telemetry interrupted.", uid)
                 _telemetry(logger, "end_run", run_id, "interrupted")
+                telemetry_ended = True
                 raise
             except _STEP_ERRORS as exc:
                 # Mirrors `_STEP_ERRORS` so any unexpected leak from a step
@@ -219,10 +243,25 @@ async def run_pipeline_background(
                 logger.error(
                     "[%s] Pipeline aborted due to non-recoverable error "
                     "(user/notebook may have been deleted mid-queue): %s",
-                    uid, exc, exc_info=True,
+                    uid,
+                    exc,
+                    exc_info=True,
                 )
                 _telemetry(logger, "end_run", run_id, "failed")
     finally:
+        current_task = asyncio.current_task()
+        if (
+            telemetry_started
+            and run_id
+            and not telemetry_ended
+            and current_task is not None
+            and current_task.cancelling()
+        ):
+            logger.warning(
+                "[%s] Pipeline cancelled while waiting for lock; marking telemetry interrupted.",
+                uid,
+            )
+            _telemetry(logger, "end_run", run_id, "interrupted")
         # Pair with the increment above. The outer try/finally guards
         # against cancellation while awaiting `lock.__aenter__()` — the
         # decrement still runs and we don't leak the refcount.
