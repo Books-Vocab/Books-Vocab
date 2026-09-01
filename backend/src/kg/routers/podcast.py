@@ -44,7 +44,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Annotated  # noqa: F401
 
-from fastapi import APIRouter, Header, HTTPException, Request  # noqa: F401
+from fastapi import APIRouter, Header, HTTPException, Request, Response  # noqa: F401
 from fastapi import Path as PathParam  # noqa: F401
 from fastapi.responses import StreamingResponse  # noqa: F401
 
