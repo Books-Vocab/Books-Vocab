@@ -11,6 +11,7 @@ inserting a duplicate.
 
 from __future__ import annotations
 
+import json
 import threading
 from pathlib import Path
 
@@ -30,6 +31,60 @@ def store(tmp_path):
 
 def _active_links_for_pair(store, a, b):
     return [lk for lk in store.all_links() if lk.status == "active" and {lk.from_id, lk.to_id} == {a, b}]
+
+
+def test_loading_persisted_duplicate_pair_keeps_one_deterministic_link(tmp_path: Path):
+    """A historical TOCTOU duplicate must be repaired before a new add."""
+    links_path = tmp_path / "links.json"
+    first = {
+        "id": "first",
+        "from_id": "card_a",
+        "to_id": "card_b",
+        "kind": "contrasts_with",
+        "confidence": 0.9,
+        "reason": "first persisted winner",
+        "created_at": "2026-09-01T00:00:00Z",
+        "status": "active",
+    }
+    duplicate = {**first, "id": "duplicate", "reason": "stale duplicate"}
+    links_path.write_text(json.dumps([first, duplicate]), encoding="utf-8")
+
+    graph = GraphStore(
+        links_path=links_path,
+        candidates_path=tmp_path / "candidates.json",
+        blocked_path=tmp_path / "blocked.json",
+    )
+
+    assert [link.id for link in _active_links_for_pair(graph, "card_a", "card_b")] == ["first"]
+    assert json.loads(links_path.read_text(encoding="utf-8")) == [first]
+
+
+def test_graph_state_isolated_by_user_and_notebook(tmp_path: Path):
+    """Identical card IDs in separate user/notebook files never cross-pollinate."""
+    user_a_notebook = GraphStore(
+        links_path=tmp_path / "user-a" / "graph_reading.json",
+        candidates_path=tmp_path / "user-a" / "candidates_reading.json",
+        blocked_path=tmp_path / "user-a" / "blocked_reading.json",
+    )
+    user_a_other_notebook = GraphStore(
+        links_path=tmp_path / "user-a" / "graph_work.json",
+        candidates_path=tmp_path / "user-a" / "candidates_work.json",
+        blocked_path=tmp_path / "user-a" / "blocked_work.json",
+    )
+    user_b_notebook = GraphStore(
+        links_path=tmp_path / "user-b" / "graph_reading.json",
+        candidates_path=tmp_path / "user-b" / "candidates_reading.json",
+        blocked_path=tmp_path / "user-b" / "blocked_reading.json",
+    )
+
+    user_a_notebook.add_link("same-card-a", "same-card-b", LinkKind.SHARES_USAGE, 0.8, "user a")
+    user_a_other_notebook.add_link("same-card-a", "same-card-b", LinkKind.CONTRASTS_WITH, 0.7, "other notebook")
+    user_b_notebook.add_link("same-card-a", "same-card-b", LinkKind.SHARES_USAGE, 0.6, "user b")
+
+    assert len(user_a_notebook.all_links()) == 1
+    assert user_a_notebook.all_links()[0].reason == "user a"
+    assert user_a_other_notebook.all_links()[0].reason == "other notebook"
+    assert user_b_notebook.all_links()[0].reason == "user b"
 
 
 def test_add_link_same_pair_is_idempotent(store):
