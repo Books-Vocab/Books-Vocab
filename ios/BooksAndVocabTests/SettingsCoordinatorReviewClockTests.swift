@@ -435,6 +435,44 @@ struct SettingsCoordinatorReviewClockTests {
         #expect(cloud.double(forKey: "review_settings_progress_updated_at") == 0)
     }
 
+    @Test func restoringUnwrittenReviewModeClearsStaleCloudPayload() {
+        let suite = "test.settings-review-mode-restore-empty.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let cloud = FakeCloudKVStore()
+        cloud.set("intensive", forKey: "review_settings_mode")
+        cloud.set(
+            "{\"initialIntervalHours\":30,\"rememberedMultiplier\":2.2,\"forgotMultiplier\":0.4,\"minimumIntervalHours\":8,\"maximumIntervalHours\":1500}",
+            forKey: "review_settings_custom_params"
+        )
+        cloud.set(100.0, forKey: "review_settings_mode_updated_at")
+
+        let store = ReviewSettingsStore(defaults: defaults, cloud: cloud)
+        let baseline = ReviewSettings.default
+        store.restoreModeState(
+            ReviewModeState(
+                mode: baseline.mode,
+                customInitialIntervalHours: baseline.customInitialIntervalHours,
+                customRememberedMultiplier: baseline.customRememberedMultiplier,
+                customForgotMultiplier: baseline.customForgotMultiplier,
+                customMinimumIntervalHours: baseline.customMinimumIntervalHours,
+                customMaximumIntervalHours: baseline.customMaximumIntervalHours,
+                updatedAt: nil
+            )
+        )
+
+        let rebuilt = ReviewSettingsStore(defaults: defaults, cloud: cloud)
+
+        #expect(rebuilt.settings.mode == .relaxed)
+        #expect(rebuilt.settings.customInitialIntervalHours == baseline.customInitialIntervalHours)
+        #expect(rebuilt.settings.customRememberedMultiplier == baseline.customRememberedMultiplier)
+        #expect(rebuilt.settings.customForgotMultiplier == baseline.customForgotMultiplier)
+        #expect(rebuilt.settings.customMinimumIntervalHours == baseline.customMinimumIntervalHours)
+        #expect(rebuilt.settings.customMaximumIntervalHours == baseline.customMaximumIntervalHours)
+        #expect(cloud.string(forKey: "review_settings_mode") == "relaxed")
+        #expect(cloud.double(forKey: "review_settings_mode_updated_at") == 0)
+    }
+
     @Test func accountScopedReviewSettingsDoNotCrossReadOrWrite() {
         let suite = "test.settings-review-account-scope.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
