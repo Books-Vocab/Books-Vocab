@@ -1,4 +1,5 @@
 """Tests for the /api/system/info endpoint (no auth required)."""
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -24,15 +25,13 @@ def _test_clients_are_closed():
         closed.add(id(client))
         return original_close(client)
 
-    with patch.object(TestClient, "__init__", track_init), \
-         patch.object(TestClient, "close", track_close):
+    with patch.object(TestClient, "__init__", track_init), patch.object(TestClient, "close", track_close):
         yield
 
     assert {id(client) for client in clients} == closed
 
 
 class TestSystemInfoEndpoint:
-
     def test_returns_200_without_auth(self):
         client = TestClient(app, raise_server_exceptions=False)
         try:
@@ -135,6 +134,17 @@ class TestSystemInfoEndpoint:
         finally:
             client.close()
 
+    def test_response_is_not_cacheable(self):
+        """Dynamic deployment and uptime data must not be served stale."""
+        with patch("kg.routers.system.observability_alerts.run_all_checks"):
+            client = TestClient(app, raise_server_exceptions=False)
+            try:
+                r = client.get("/api/system/info")
+                assert r.status_code == 200
+                assert r.headers.get("cache-control") == "no-store"
+            finally:
+                client.close()
+
     # ---------------------------------------------------------------------
     # Wiring: /api/system/info must fire observability_alerts.run_all_checks
     # piggyback-style on every poll. This is the only entry point for the
@@ -160,8 +170,10 @@ class TestSystemInfoEndpoint:
             return fn(*args, **kwargs)
 
         calls = []
-        with patch("kg.routers.system.run_in_threadpool", new=fake_threadpool), \
-             patch("kg.routers.system.observability_alerts.run_all_checks") as m:
+        with (
+            patch("kg.routers.system.run_in_threadpool", new=fake_threadpool),
+            patch("kg.routers.system.observability_alerts.run_all_checks") as m,
+        ):
             client = TestClient(app, raise_server_exceptions=False)
             try:
                 r = client.get("/api/system/info")
