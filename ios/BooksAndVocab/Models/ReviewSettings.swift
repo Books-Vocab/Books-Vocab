@@ -667,9 +667,10 @@ final class ReviewSettingsStore {
             defaults.set(ts, forKey: storageKey(Keys.modeUpdatedAt))
             writeCloudMode(snapshot, timestamp: ts)
         } else {
-            // 先前從未寫過:清本地時戳;KVS 無 removeObject,寫 0 讓他裝置真寫(ts>0)勝出。
+            // 先前從未寫過:清本地時戳並還原整組 cloud payload;KVS 無 removeObject,
+            // timestamp 寫 0 讓其他裝置真寫(ts>0)勝出。
             defaults.removeObject(forKey: storageKey(Keys.modeUpdatedAt))
-            cloud.set(0.0, forKey: storageKey(Keys.modeUpdatedAt))
+            writeCloudMode(snapshot, timestamp: 0.0)
         }
     }
 
