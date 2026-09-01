@@ -600,6 +600,37 @@ def test_measurement_time_budget_fails_closed_with_structured_evidence(
     assert "measurement-time-budget-exceeded" in report["policy"]["reasons"]
 
 
+def test_measurement_time_budget_has_a_fixed_upper_bound(
+    tmp_path: Path,
+) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    state = tmp_path / "registry.json"
+    output = tmp_path / "lane-usage.json"
+    _write_registry(
+        state,
+        [{"branch": "lane-one", "path": str(worktree), "status": "active"}],
+    )
+
+    assert (
+        main(
+            [
+                "--workspace",
+                str(repo),
+                "--state",
+                str(state),
+                "--output",
+                str(output),
+                "--time-budget-seconds",
+                "9999",
+            ]
+        )
+        == 0
+    )
+
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["measurement"]["budget_seconds"] == 240.0
+
+
 def test_git_status_timeout_is_structured_as_incomplete_not_quota_excess(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -190,14 +190,22 @@ GitHub-hosted macOS runner 每次都是新的 VM；本機長存的 DerivedData �
 
 `ops/kg_disk_guard.sh` 每個 tick 同步更新這個小型狀態檔；它不建立 append-only log，也不在 active、unknown 或 terminal residue worktree 上做破壞性清理。可用重複的 `--supervision-worktree <exact-path>` 將 caller 明確提供的 supervision checkout 傳給 attribution scan；這個排除只影響 disk quota accounting，不改 registry lifecycle 的 fail-closed 規則。預設每條 physical lane 上限 2 GiB、所有未排除 physical lanes 合計上限 8 GiB，可用 `KG_DISK_GUARD_LANE_BUDGET_GIB` 與 `KG_DISK_GUARD_LANE_TOTAL_BUDGET_GIB` 明確調整。超限、無法量測、registry 不可讀、真正 unknown／dirty／unregistered physical worktree，以及非 `active` registered dirty lane 時，報告為 `verdict=block`，且 guard state 會保留 `lane_usage_verdict=block` 與 `lane_usage_rc=75` 供 admission／writer fail-closed；registered active dirty implementation lane 仍完整計入 per-lane／aggregate bytes，只有 budget／identity／measurement 等其他 gate 失敗才 block。只有既有 cache guard 在確認無 consumer 且持有 build lock 後才可自動淘汰可重建產物。missing registered path 本身若沒有 physical bytes 則為 `verdict=warning`、guard lane exit 0，讓可安全計量的新 lane 不被歷史紀錄誤擋。
 
-歸戶掃描本身也有固定時間上限：`kg_disk_guard.sh` 預設以 30 秒呼叫
-`disk_usage.py --time-budget-seconds 30`。時間到了仍會原子寫出報告，保留已量到的
+歸戶掃描本身也有固定時間上限：`kg_disk_guard.sh` 預設以 240 秒呼叫
+`disk_usage.py --time-budget-seconds 240`，且任何 caller 提供的值都會被硬性封頂在 240 秒。時間到了仍會原子寫出報告，保留已量到的
 partial bytes，但在 `measurement.budget_exhausted=true`、各受影響 lane 的
 `measurement_complete=false` 與 `policy.verdict=block` 中明確標示；partial 或 timeout
 絕不會被當成零 bytes，也不會授權清理或新的 writer。需要手動調整時只能透過
-`KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS`，無效值回到 30 秒。這使 guard 不會因為
+`KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS`，無效值回到 240 秒，超過 240 秒也會被截斷。這使 guard 不會因為
 大型 workspace／DerivedData 遞迴掃描而永久佔住 lock；`ops/kg_disk_guard.sh --help`
 是純說明命令，不會啟動 guard tick、改狀態或刪 cache。
+
+每個 iOS writer 也會消費 guard 的 atomic state：若 state 明確報告
+`xctest_devices_verdict=block` 或 global `verdict=block`，build/test/release 立即以 exit 75
+停止，不會繼續製造新的 XCTestDevices 或 DerivedData。需要 shared-state freshness 的 caller
+可設定 `KG_IOS_DISK_GUARD_ENFORCE_XCTEST=1`；此時缺失、格式錯誤或超過
+`KG_IOS_DISK_GUARD_MAX_AGE_SECONDS`（預設 900 秒）的 state 同樣 fail-closed。這只阻止新的
+writer，不會自動刪除 active、non-ephemeral 或無法證明可回收的 XCTestDevices；它們仍須經
+支援的 Xcode／Simulator 手動處置並留下 readback。
 
 報告把 canonical project 的 worktree 子樹排除後再加回每條 physical lane，並將 exact supervision exclusion 的 bytes 另列為 observed、排除於 managed aggregate，避免同一份檔案被重複計算。`managed_allocated_bytes` 是 KG 受管理範圍的 accounting，不等於整台 Mac 的 filesystem usage：APFS snapshots、Git shared object、Xcode global DerivedData、Docker 與其他使用者資料另列在 `filesystem` 或既有 cache metrics；global `BooksAndVocab-*` DerivedData 的固定 cap 由 `kg_disk_guard.sh` 另行觀測與修復。故「每條 lane 相加」是可驗證的 lane reservoir 總量，不應冒充整顆磁碟的唯一總量。
 
