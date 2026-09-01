@@ -252,7 +252,7 @@ def _read_json_from_s3(
     body = _read_s3_body(obj["Body"])
     try:
         return json.loads(body)
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         logger_.error(
             "Podcast %s corrupt in s3://%s/%s: %s",
             context,
