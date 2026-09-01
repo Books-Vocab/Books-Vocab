@@ -165,6 +165,13 @@ struct ReaderVocabularyCaptureTests {
         #expect(!lookedUp.contains("hiding"))
     }
 
+    @Test func selectedPunctuationOnlyNoise_isDroppedBeforeNormalizeWord() {
+        #expect(
+            ReaderWordCapture.sanitizeSelectedWord("!?") == nil,
+            "punctuation-only PDF selection must not reach normalizeWord as an empty capture"
+        )
+    }
+
     // MARK: - saveEntry insert path
 
     @Test func saveEntry_insertsNewEntryWithBookIdAndResolvedNotebookId() throws {
