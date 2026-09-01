@@ -132,3 +132,20 @@ def test_dictionary_search_rejects_whitespace_only_query_before_lookup(isolated_
     assert response.status_code == 422
     assert response.json()["detail"][0]["loc"][-1] == "q"
     assert calls == []
+
+
+def test_dictionary_detail_rate_limit_error_names_entry_operation(isolated_api, monkeypatch):
+    import kg.routers.dictionary as dictionary_router
+
+    isolated_api.client.app.state.kg_settings = replace(
+        isolated_api.client.app.state.kg_settings,
+        dictionary_lookup_enabled=True,
+    )
+    monkeypatch.setattr(dictionary_router.dictionary_rate_limiter, "admit", lambda _user_id: False)
+    response = isolated_api.client.get(
+        "/api/dictionary/entries/free_dictionary/en.bWlzc2luZw?target_lang=zh-Hant",
+        headers=isolated_api.headers,
+    )
+
+    assert response.status_code == 429
+    assert response.json()["detail"] == "Dictionary entry rate limit exceeded"
