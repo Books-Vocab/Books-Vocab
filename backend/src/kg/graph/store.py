@@ -107,7 +107,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         # by me" (drop) from "added by another instance" (preserve) on merge.
         self._known_pending_judge: set[str] = set()
         self._from_index: dict[str, set[str]] = {}  # card_id -> set of link_ids
-        self._to_index: dict[str, set[str]] = {}    # card_id -> set of link_ids
+        self._to_index: dict[str, set[str]] = {}  # card_id -> set of link_ids
         self._load()
 
     # ------------------------------------------------------------------
@@ -132,10 +132,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
             self._index_link(link)
 
     def _rebuild_candidate_set(self) -> None:
-        self._candidate_set = {
-            self._normalize_pair(c.from_id, c.to_id)
-            for c in self._candidates
-        }
+        self._candidate_set = {self._normalize_pair(c.from_id, c.to_id) for c in self._candidates}
 
     def _resolve_event_store(self) -> GraphEventStore | None:
         """取 live event_store。provider(生產)優先,每次重解析以避開 LRU 逐出後的死引用;
@@ -214,7 +211,9 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         except Exception:  # noqa: BLE001 — 帳本失敗不得打斷圖譜寫入
             logger.warning(
                 "graph event emit failed (%d drafts, first=%s)",
-                len(drafts), drafts[0].event_type, exc_info=True,
+                len(drafts),
+                drafts[0].event_type,
+                exc_info=True,
             )
 
     def _emit_graph_event(
@@ -237,14 +236,24 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         if self._event_store_provider is None and self._event_store is None:
             if self._snapshot_store_provider is None and self._snapshot_store is None:
                 return
-        self._emit_graph_events([
-            self._build_graph_event_draft(
-                event_type, link_id=link_id, from_id=from_id, to_id=to_id, kind=kind,
-                source=source, confidence_before=confidence_before,
-                confidence_after=confidence_after, status_before=status_before,
-                status_after=status_after, reason=reason,
-            )
-        ], links_snapshot=links_snapshot)
+        self._emit_graph_events(
+            [
+                self._build_graph_event_draft(
+                    event_type,
+                    link_id=link_id,
+                    from_id=from_id,
+                    to_id=to_id,
+                    kind=kind,
+                    source=source,
+                    confidence_before=confidence_before,
+                    confidence_after=confidence_after,
+                    status_before=status_before,
+                    status_after=status_after,
+                    reason=reason,
+                )
+            ],
+            links_snapshot=links_snapshot,
+        )
 
     # Link kinds removed from the enum; silently drop on load.
     _RETIRED_KINDS: ClassVar[frozenset[str]] = frozenset({"confusable"})
@@ -261,6 +270,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         if self.links_path.exists():
             data = self._read_json_list(self.links_path)
             dirty = False
+            loaded_pairs: set[tuple[str, str]] = set()
             for lk in data:
                 if not isinstance(lk, dict):
                     logger.warning(
@@ -280,6 +290,17 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
                     self._known_blocked_pairs.add(pair)
                     continue
                 link = GraphLink.model_validate(lk)
+                if link.status in ("active", "hidden"):
+                    pair = self._normalize_pair(link.from_id, link.to_id)
+                    if pair in loaded_pairs:
+                        # A previous TOCTOU race may have left duplicate active
+                        # rows on disk. Keep the first persisted row as the
+                        # deterministic winner and let _save_links remove the
+                        # later row during the normal atomic flush.
+                        dirty = True
+                        self._known_link_ids.add(link.id)
+                        continue
+                    loaded_pairs.add(pair)
                 self._links[link.id] = link
                 self._known_link_ids.add(link.id)
             if dirty:
@@ -289,9 +310,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
             data = self._read_json_list(self.candidates_path)
             self._candidates = [CandidatePair.model_validate(c) for c in data]
             for c in self._candidates:
-                self._known_candidate_pairs.add(
-                    self._normalize_pair(c.from_id, c.to_id)
-                )
+                self._known_candidate_pairs.add(self._normalize_pair(c.from_id, c.to_id))
         # Load pending_judge
         if self.pending_judge_path and self.pending_judge_path.exists():
             pj_data = self._read_json_list(self.pending_judge_path)
@@ -330,14 +349,24 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
             snapshot = self._links_to_serializable() if affected else None
         if snapshot is not None:
             self._flush_links(snapshot)
-            self._emit_graph_events([
-                self._build_graph_event_draft(
-                    "link_deprecated", link_id=lk.id, from_id=lk.from_id, to_id=lk.to_id,
-                    kind=str(lk.kind), source=source, confidence_before=lk.confidence,
-                    confidence_after=lk.confidence, status_before="active", status_after="deprecated",
-                )
-                for lk in affected
-            ], links_snapshot=snapshot)
+            self._emit_graph_events(
+                [
+                    self._build_graph_event_draft(
+                        "link_deprecated",
+                        link_id=lk.id,
+                        from_id=lk.from_id,
+                        to_id=lk.to_id,
+                        kind=str(lk.kind),
+                        source=source,
+                        confidence_before=lk.confidence,
+                        confidence_after=lk.confidence,
+                        status_before="active",
+                        status_after="deprecated",
+                    )
+                    for lk in affected
+                ],
+                links_snapshot=snapshot,
+            )
         return len(affected)
 
     def restore_links_for(self, card_id: str, cards_store, *, source: str = "auto") -> int:
@@ -356,14 +385,24 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
             snapshot = self._links_to_serializable() if affected else None
         if snapshot is not None:
             self._flush_links(snapshot)
-            self._emit_graph_events([
-                self._build_graph_event_draft(
-                    "link_restored", link_id=lk.id, from_id=lk.from_id, to_id=lk.to_id,
-                    kind=str(lk.kind), source=source, confidence_before=lk.confidence,
-                    confidence_after=lk.confidence, status_before="deprecated", status_after="active",
-                )
-                for lk in affected
-            ], links_snapshot=snapshot)
+            self._emit_graph_events(
+                [
+                    self._build_graph_event_draft(
+                        "link_restored",
+                        link_id=lk.id,
+                        from_id=lk.from_id,
+                        to_id=lk.to_id,
+                        kind=str(lk.kind),
+                        source=source,
+                        confidence_before=lk.confidence,
+                        confidence_after=lk.confidence,
+                        status_before="deprecated",
+                        status_after="active",
+                    )
+                    for lk in affected
+                ],
+                links_snapshot=snapshot,
+            )
         return len(affected)
 
     def cleanup_for_card(self, card_id: str, *, remove_blocked: bool = False, source: str = "auto") -> dict:
