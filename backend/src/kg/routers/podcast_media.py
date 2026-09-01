@@ -182,7 +182,7 @@ def _media_type_for(filename: str) -> str:
 
 
 def _normalise_range_header(range_header: str | None) -> str | None:
-    """Return a supported single range or ignore malformed range syntax."""
+    """Return one syntactically valid range; storage handles unsatisfiable ranges."""
     if not range_header:
         return None
     normalized = range_header.strip()
@@ -196,9 +196,10 @@ def _normalise_range_header(range_header: str | None) -> str | None:
         if not start_s:
             valid = int(end_s) > 0
         else:
-            start = int(start_s)
-            end = int(end_s) if end_s else None
-            valid = end is None or end >= start
+            int(start_s)
+            if end_s:
+                int(end_s)
+            valid = True
     except ValueError:
         return None
     return normalized if valid else None
