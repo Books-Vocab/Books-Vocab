@@ -45,8 +45,20 @@ enum KnowledgeGraphPresentation {
         showIsolatedNodes: Bool = false,
         now: Date = Date()
     ) -> [KnowledgeGraphNode] {
+        let presentationNodeIDs: Set<String> = Set(
+            entries.compactMap { entry in
+                guard entry.isSynced,
+                      entry.syncAction != .delete,
+                      !entry.isArchived,
+                      let kgId = entry.kgCardId
+                else { return nil }
+                return kgId
+            }
+        )
         var degreeMap: [String: Int] = [:]
-        for link in links {
+        for link in links where presentationNodeIDs.contains(link.fromId)
+            && presentationNodeIDs.contains(link.toId)
+        {
             degreeMap[link.fromId, default: 0] += 1
             degreeMap[link.toId, default: 0] += 1
         }

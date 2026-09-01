@@ -14,6 +14,57 @@ import Testing
 /// the non-error branches (logged-out / loading / no-nodes) carry no action.
 struct KnowledgeGraphPresentationTests {
 
+    // MARK: - Graph node/edge consistency
+
+    @Test func nodes_ignoreDanglingEndpoints_whenComputingDegree() {
+        let source = Self.entry(word: "source", cardID: "source")
+        let archivedTarget = Self.entry(word: "archived", cardID: "archived", archived: true)
+        let links = [
+            Self.link(id: "missing-target", from: "source", to: "missing"),
+            Self.link(id: "archived-target", from: "source", to: "archived"),
+        ]
+
+        let nodes = KnowledgeGraphPresentation.nodes(
+            from: [source, archivedTarget],
+            links: links
+        )
+        let edges = KnowledgeGraphPresentation.edges(
+            from: links,
+            validNodeIDs: Set(nodes.map(\.id))
+        )
+
+        #expect(nodes.isEmpty, "dangling endpoints must not make a node appear linked")
+        #expect(edges.isEmpty, "every rendered edge must have two rendered endpoints")
+    }
+
+    @Test func nodes_keepTwoSidedLinks_andIsolatedNodeToggle() {
+        let linkedSource = Self.entry(word: "source", cardID: "source")
+        let linkedTarget = Self.entry(word: "target", cardID: "target")
+        let isolated = Self.entry(word: "isolated", cardID: "isolated")
+        let links = [Self.link(id: "source-target", from: "source", to: "target")]
+
+        let linkedNodes = KnowledgeGraphPresentation.nodes(
+            from: [linkedSource, linkedTarget, isolated],
+            links: links
+        )
+        let allNodes = KnowledgeGraphPresentation.nodes(
+            from: [linkedSource, linkedTarget, isolated],
+            links: links,
+            showIsolatedNodes: true
+        )
+
+        #expect(linkedNodes.map(\.id) == ["source", "target"])
+        #expect(linkedNodes.allSatisfy { $0.degree == 1 })
+        #expect(allNodes.map(\.id) == ["source", "target", "isolated"])
+        #expect(allNodes.first { $0.id == "isolated" }?.degree == 0)
+        #expect(
+            KnowledgeGraphPresentation.edges(
+                from: links,
+                validNodeIDs: Set(linkedNodes.map(\.id))
+            ).count == 1
+        )
+    }
+
     // MARK: - Notebook-scoped graph loading
 
     @Test func graphNotebookScope_selectsOnlySingleNotebook() {
@@ -125,6 +176,34 @@ struct KnowledgeGraphPresentationTests {
             onRetry: {}
         )
         #expect(state == nil, "a graph with nodes resolves to `.content`, no empty state")
+    }
+
+    private static func entry(
+        word: String,
+        cardID: String,
+        archived: Bool = false
+    ) -> VocabularyEntry {
+        let entry = VocabularyEntry(
+            word: word,
+            translation: word,
+            context: "",
+            bookTitle: "Book"
+        )
+        entry.syncStatus = VocabularySyncState.synced.rawValue
+        entry.kgCardId = cardID
+        entry.isArchived = archived
+        return entry
+    }
+
+    private static func link(id: String, from: String, to: String) -> KGGraphLink {
+        KGGraphLink(
+            id: id,
+            fromId: from,
+            toId: to,
+            kind: "shares_usage",
+            confidence: 1,
+            reason: "test"
+        )
     }
 }
 #endif
