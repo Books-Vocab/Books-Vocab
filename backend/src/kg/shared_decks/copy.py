@@ -28,7 +28,8 @@ here so the router stays a thin adapter:
   plane with ZERO inter-card links (§2), so remap is a structural no-op today;
   the old→new id map is still built so a future link-carrying schema flows
   through :func:`_remap_graph_links` unchanged. We do NOT synthesize links.
-* **download_count**: atomic SQL increment (never Python get-then-set).
+* **download_count**: exactly-once log-marked atomic increment (never Python
+  get-then-set), so retries recover a finalizer crash without double-counting.
 """
 
 from __future__ import annotations
@@ -173,11 +174,10 @@ def _replay(
     # Defensive re-materialize: if a prior copy crashed in the window between
     # record_copy (committed) and materialize, the notebook is still hidden. The
     # retry that lands here reveals it — self-healing, and a no-op once visible.
-    if notebook_store.materialize(log.result_notebook_id):
-        # The request that reveals the staged notebook owns the one download
-        # count increment. This also recovers a crash before the original
-        # request reached its counter finalizer.
-        shared_store.increment_download_count(deck_id)
+    notebook_store.materialize(log.result_notebook_id)
+    # The log marker makes this safe for both the original request and every
+    # replay, including a crash after materialize but before finalization.
+    shared_store.finalize_copy_download(log.copier_id, log.idempotency_key, deck_id)
     nb = notebook_store.get(log.result_notebook_id)
     return CopyOutcome(
         notebook_id=log.result_notebook_id,
@@ -353,8 +353,8 @@ def _copy_locked(
     # Post-commit finalizers — best-effort, never compensated (rolling back after
     # the idempotency log is committed would strand its pointer). A crash here is
     # recovered by the next retry via _replay.
-    if notebook_store.materialize(nb.id):
-        shared_store.increment_download_count(deck.id)
+    notebook_store.materialize(nb.id)
+    shared_store.finalize_copy_download(copier_id, idempotency_key, deck.id)
     return CopyOutcome(
         notebook_id=nb.id,
         notebook_name=unique_name,

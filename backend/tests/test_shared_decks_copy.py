@@ -26,7 +26,7 @@ from kg.cards import CardStore
 from kg.exceptions import ConflictError, NotFoundError
 from kg.notebook import NotebookStore
 from kg.shared_decks.copy import copy_shared_deck
-from kg.shared_decks.store import SharedDeck, SharedDeckStore
+from kg.shared_decks.store import SharedDeck, SharedDeckCopyLog, SharedDeckStore
 from ops_helpers import run_ops_cli as _cli
 
 _DECK_CARDS = [
@@ -239,6 +239,72 @@ def test_copy_idempotent_retry(tmp_path):
     # exactly one copy notebook, and the download counted once
     assert len([n for n in nbs.all() if not n.is_default]) == 1
     assert shared.get("deck_a").download_count == 1
+
+
+def test_replay_repairs_download_count_after_counter_finalizer_crash(tmp_path, monkeypatch):
+    """A retry must finish the counter after materialize already succeeded."""
+    user_dir, shared, cards, nbs = _stores(tmp_path)
+    _publish_deck(shared)
+
+    real_finalize = shared.finalize_copy_download
+    calls = {"count": 0}
+
+    def fail_once(copier_id, idempotency_key, deck_id):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise RuntimeError("injected counter finalizer crash")
+        return real_finalize(copier_id, idempotency_key, deck_id)
+
+    monkeypatch.setattr(shared, "finalize_copy_download", fail_once)
+    with pytest.raises(RuntimeError, match="counter finalizer"):
+        _copy(shared, cards, nbs, user_dir, key="counter-retry")
+
+    log = shared.get_copy_log("u1", "counter-retry")
+    assert log is not None
+    assert nbs.get(log.result_notebook_id).is_staged is False
+    assert shared.get("deck_a").download_count == 0
+
+    replay = _copy(shared, cards, nbs, user_dir, key="counter-retry")
+
+    assert replay.already_copied is True
+    assert replay.notebook_id == log.result_notebook_id
+    assert shared.get("deck_a").download_count == 1
+
+
+def test_existing_copy_log_is_marked_counted_during_migration(tmp_path):
+    """Legacy rows must not be counted again when replay support is deployed."""
+    db_path = tmp_path / "shared_decks.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE shared_deck_copy_log (
+                copier_id TEXT NOT NULL,
+                idempotency_key TEXT NOT NULL,
+                source_shared_deck_id TEXT NOT NULL,
+                source_version INTEGER NOT NULL DEFAULT 0,
+                result_notebook_id TEXT NOT NULL DEFAULT '',
+                created_at DATETIME,
+                PRIMARY KEY (copier_id, idempotency_key)
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO shared_deck_copy_log
+                (copier_id, idempotency_key, source_shared_deck_id, result_notebook_id)
+            VALUES (?, ?, ?, ?)
+            """,
+            ("u1", "legacy-key", "deck_a", "notebook-a"),
+        )
+        conn.commit()
+
+    shared = SharedDeckStore(db_path)
+    try:
+        log = shared.get_copy_log("u1", "legacy-key")
+        assert isinstance(log, SharedDeckCopyLog)
+        assert log.download_counted is True
+    finally:
+        shared.close()
 
 
 def test_copy_rejects_cross_deck_idempotency_reuse(tmp_path):
