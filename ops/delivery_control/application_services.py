@@ -937,7 +937,7 @@ class DeliveryApplication:
         pull_request = self.github.get_pull_request(pull_request_number)
         if "<!-- kg.delivery.receipt.v1" not in pull_request.body:
             return self._legacy_cleanup().abandon_open_pr(pull_request_number)
-        return abandon.AbandonService(
+        result = abandon.AbandonService(
             registry_query=self.registry,
             registry_command=self.registry,
             git_query=self.git,
@@ -945,6 +945,11 @@ class DeliveryApplication:
             github_query=self.github,
             github_command=self.github,
         ).abandon(pull_request_number=pull_request_number)
+        if not isinstance(result, abandon.TypedAbandonResult):
+            raise errors.DeliverySourceError(
+                "typed PR abandonment returned an unstructured result"
+            )
+        return result
 
     def cleanup_abandoned(self, branch: str) -> object:
         return self._legacy_cleanup().cleanup_abandoned_branch(branch)

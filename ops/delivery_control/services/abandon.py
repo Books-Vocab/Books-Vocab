@@ -11,7 +11,7 @@ from ..domain.observations import PullRequestSnapshot, RegistrySnapshot
 from ..ports.git import GitCommandPort, GitQueryPort
 from ..ports.github import GitHubCommandPort, GitHubQueryPort
 from ..ports.registry import RegistryCleanupQueryPort, RegistryCommandPort
-from .pr_contract import parse_pull_request_body
+from .pr_contract import parse_pull_request_body, pull_request_holds
 
 
 @dataclass(frozen=True)
@@ -23,15 +23,41 @@ class AbandonResult:
 
 
 @dataclass(frozen=True)
+class ScopeMismatchEvidence:
+    """Durable evidence for a published receipt wider than its observed diff."""
+
+    kind: str
+    declared_scope_paths: tuple[str, ...]
+    actual_changed_paths: tuple[str, ...]
+    scope_only_paths: tuple[str, ...]
+    outside_scope_paths: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class TypedAbandonResult(AbandonResult):
+    """Typed abandonment result without changing legacy cleanup output."""
+
+    verdict: str = "terminalized"
+    malformed_published_lane: bool = False
+    delivery_succeeded: bool = False
+    mismatch_evidence: ScopeMismatchEvidence | None = None
+
+
+@dataclass(frozen=True)
 class _AbandonContext:
     receipt: HandbackReceipt
     pull_request: PullRequestSnapshot
     registry: RegistrySnapshot
     remote_sha: str | None
+    mismatch_evidence: ScopeMismatchEvidence | None
 
 
 class AbandonService:
-    """Close one exact unqueued PR and terminalize only its published lane."""
+    """Close one exact unqueued PR and terminalize only its published lane.
+
+    A strict typed-Scope superset is terminalized only as an explicitly
+    malformed non-delivery, with the observed mismatch retained in the result.
+    """
 
     def __init__(
         self,
@@ -61,7 +87,7 @@ class AbandonService:
         if not checkout.clean:
             raise PolicyViolation("canonical checkout is dirty before abandonment")
 
-    def abandon(self, *, pull_request_number: int) -> AbandonResult:
+    def abandon(self, *, pull_request_number: int) -> TypedAbandonResult:
         self._require_canonical_main()
         context = self._read_exact(pull_request_number)
         if context.registry.status == "abandoned":
@@ -85,12 +111,16 @@ class AbandonService:
             expected_head_sha=context.receipt.head_sha,
             expected_body=context.pull_request.body,
         )
-        self._validate_pr(
+        closed_mismatch_evidence = self._validate_pr(
             closed,
             context.receipt,
             expected_state="CLOSED",
             pull_request_number=pull_request_number,
         )
+        if closed_mismatch_evidence != context.mismatch_evidence:
+            raise CompareAndSwapConflict(
+                "PR Scope evidence changed after closing the PR"
+            )
 
         try:
             closed_context = self._read_exact(pull_request_number)
@@ -98,6 +128,7 @@ class AbandonService:
                 closed_context.pull_request.state != "CLOSED"
                 or closed_context.registry.status != "published"
                 or closed_context.remote_sha != context.receipt.head_sha
+                or closed_context.mismatch_evidence != context.mismatch_evidence
             ):
                 raise CompareAndSwapConflict(
                     "abandonment tuple changed after closing the PR"
@@ -115,13 +146,16 @@ class AbandonService:
                 terminal_context.pull_request.state != "CLOSED"
                 or terminal_context.registry.status != "abandoned"
                 or terminal_context.remote_sha != context.receipt.head_sha
+                or terminal_context.mismatch_evidence != context.mismatch_evidence
             ):
                 raise CompareAndSwapConflict(
                     "abandoned registry transition did not read back exactly"
                 )
         except (DeliverySourceError, OSError) as error:
             terminal_context = self._read_terminal_if_committed(
-                pull_request_number, context.receipt
+                pull_request_number,
+                context.receipt,
+                expected_mismatch_evidence=context.mismatch_evidence,
             )
             if terminal_context is None:
                 self._reopen_after_uncommitted_failure(context, error)
@@ -142,6 +176,8 @@ class AbandonService:
         listed = inventory.records[0]
         if (
             listed.branch != pull_request.branch
+            or listed.number != pull_request.number
+            or listed.node_id != pull_request.node_id
             or listed.base_branch != pull_request.base_branch
             or listed.base_sha != pull_request.base_sha
             or listed.head_sha != pull_request.head_sha
@@ -162,9 +198,11 @@ class AbandonService:
             is not None
         ):
             raise PolicyViolation("PR is already scheduled in the merge queue")
+        if pull_request_holds(pull_request):
+            raise PolicyViolation("abandonment refuses a PR with an explicit hard hold")
 
         receipt = parse_pull_request_body(pull_request.body)
-        self._validate_pr(
+        mismatch_evidence = self._validate_pr(
             pull_request,
             receipt,
             expected_state=pull_request.state,
@@ -185,6 +223,7 @@ class AbandonService:
             pull_request=pull_request,
             registry=registry,
             remote_sha=self.git_query.remote_branch_sha(receipt.branch),
+            mismatch_evidence=mismatch_evidence,
         )
 
     def _validate_pr(
@@ -194,7 +233,7 @@ class AbandonService:
         *,
         expected_state: str,
         pull_request_number: int,
-    ) -> None:
+    ) -> ScopeMismatchEvidence | None:
         if (
             pull_request.number != pull_request_number
             or pull_request.state != expected_state
@@ -203,10 +242,32 @@ class AbandonService:
             or pull_request.branch != receipt.branch
             or pull_request.head_sha != receipt.head_sha
             or parse_pull_request_body(pull_request.body) != receipt
-            or tuple(sorted(self.github_query.changed_paths(pull_request_number)))
-            != tuple(sorted(receipt.scope.paths))
         ):
             raise PolicyViolation("PR differs from the exact typed receipt")
+        changed_paths = tuple(self.github_query.changed_paths(pull_request_number))
+        if not changed_paths:
+            raise PolicyViolation("PR changed paths are empty")
+        if len(changed_paths) != len(set(changed_paths)):
+            raise PolicyViolation("PR changed paths contain duplicates")
+        expected_paths = tuple(sorted(receipt.scope.paths))
+        actual_paths = tuple(sorted(changed_paths))
+        outside_scope_paths = tuple(
+            sorted(set(actual_paths).difference(receipt.scope.paths))
+        )
+        if outside_scope_paths:
+            raise PolicyViolation("PR changed paths fall outside typed Scope")
+        if actual_paths == expected_paths:
+            return None
+        if not receipt.scope.allows_changed_paths(changed_paths):
+            raise PolicyViolation("PR changed paths do not fit typed Scope")
+        return ScopeMismatchEvidence(
+            kind="scope-strict-superset",
+            declared_scope_paths=expected_paths,
+            actual_changed_paths=actual_paths,
+            scope_only_paths=tuple(
+                sorted(set(expected_paths).difference(actual_paths))
+            ),
+        )
 
     @staticmethod
     def _validate_registry(
@@ -214,8 +275,11 @@ class AbandonService:
     ) -> None:
         if registry.status not in {"published", "abandoned"}:
             raise PolicyViolation("registry is not in a post-publication state")
-        if registry.owner_thread_id != receipt.owner_thread_id:
-            raise PolicyViolation("registry owner differs from typed PR owner")
+        if (
+            registry.lane_id != receipt.lane_id
+            or registry.owner_thread_id != receipt.owner_thread_id
+        ):
+            raise PolicyViolation("registry lane or owner differs from typed PR owner")
         if (
             registry.branch != receipt.branch
             or registry.path.resolve() != Path(receipt.worktree_path).resolve()
@@ -240,7 +304,11 @@ class AbandonService:
             )
 
     def _read_terminal_if_committed(
-        self, pull_request_number: int, receipt: HandbackReceipt
+        self,
+        pull_request_number: int,
+        receipt: HandbackReceipt,
+        *,
+        expected_mismatch_evidence: ScopeMismatchEvidence | None,
     ) -> _AbandonContext | None:
         try:
             context = self._read_exact(pull_request_number)
@@ -251,6 +319,7 @@ class AbandonService:
             and context.pull_request.state == "CLOSED"
             and context.registry.status == "abandoned"
             and context.remote_sha == receipt.head_sha
+            and context.mismatch_evidence == expected_mismatch_evidence
         ):
             return context
         return None
@@ -265,6 +334,7 @@ class AbandonService:
                 or current.pull_request.state != "CLOSED"
                 or current.registry.status != "published"
                 or current.remote_sha != original.receipt.head_sha
+                or current.mismatch_evidence != original.mismatch_evidence
             ):
                 raise CompareAndSwapConflict(
                     "closed PR tuple is no longer safe to compensate"
@@ -275,12 +345,16 @@ class AbandonService:
                 expected_head_sha=original.receipt.head_sha,
                 expected_body=original.pull_request.body,
             )
-            self._validate_pr(
+            reopened_mismatch_evidence = self._validate_pr(
                 reopened,
                 original.receipt,
                 expected_state="OPEN",
                 pull_request_number=original.pull_request.number,
             )
+            if reopened_mismatch_evidence != original.mismatch_evidence:
+                raise CompareAndSwapConflict(
+                    "PR Scope evidence changed during compensation"
+                )
         except (DeliverySourceError, OSError) as compensation_error:
             raise CompareAndSwapConflict(
                 f"abandonment failed ({cause}); exact PR reopen compensation failed: "
@@ -306,13 +380,21 @@ class AbandonService:
             or final.pull_request.state != "CLOSED"
             or final.registry.status != "abandoned"
             or final.remote_sha is not None
+            or final.mismatch_evidence != context.mismatch_evidence
         ):
             raise CompareAndSwapConflict(
                 "abandoned PR terminal state did not read back exactly"
             )
-        return AbandonResult(
+        return TypedAbandonResult(
             pull_request_number=final.pull_request.number,
             pull_request_state=final.pull_request.state,
             registry_status=final.registry.status,
             remote_branch_absent=True,
+            verdict=(
+                "terminalized-malformed"
+                if context.mismatch_evidence is not None
+                else "terminalized"
+            ),
+            malformed_published_lane=context.mismatch_evidence is not None,
+            mismatch_evidence=context.mismatch_evidence,
         )
