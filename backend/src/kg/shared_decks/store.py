@@ -35,7 +35,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, select
 
-from ..sqlite_utils import make_sqlite_engine
+from ..sqlite_utils import ensure_columns, make_sqlite_engine
 from ..text_utils import normalize_nfc_lower
 
 # Discovery WHERE (browse + detail): a deck is publicly reachable only when all
@@ -227,8 +227,7 @@ class SharedDeckReport(SQLModel, table=True):
 
 
 class SharedDeckCopyLog(SQLModel, table=True):
-    """Copy idempotency store + rating-eligibility gate. A transport retry
-    replays to the same ``result_notebook_id`` via the composite PK."""
+    """Copy idempotency store + exactly-once download finalizer."""
 
     __tablename__ = "shared_deck_copy_log"
 
@@ -237,6 +236,9 @@ class SharedDeckCopyLog(SQLModel, table=True):
     source_shared_deck_id: str = SQLField(default="")
     source_version: int = SQLField(default=0)
     result_notebook_id: str = SQLField(default="")
+    # The marker and shared-deck counter are committed in one transaction so a
+    # retry can distinguish a committed count from a crash before finalization.
+    download_counted: bool = SQLField(default=False)
     created_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
 
 
@@ -260,6 +262,22 @@ class SharedDeckStore:
         # Explicit table list (not a bare ``metadata.create_all``): the shared
         # SQLModel registry also holds Card/Notebook/... — only ours here.
         SQLModel.metadata.create_all(self.engine, tables=_SHARED_DECK_TABLES, checkfirst=True)
+        self._migrate_copy_log()
+
+    def _migrate_copy_log(self) -> None:
+        """Add the exactly-once counter marker to pre-existing copy logs.
+
+        A legacy row came from the old copy path, whose finalizer counted the
+        download before returning. Treating those rows as already finalized
+        preserves historical counts when the new replay path is deployed.
+        """
+        with self.engine.connect() as conn:
+            ensure_columns(
+                conn,
+                SharedDeckCopyLog.__tablename__,
+                {"download_counted": "INTEGER NOT NULL DEFAULT 1"},
+            )
+            conn.commit()
 
     def close(self) -> None:
         """Dispose the engine (required for LRU eviction — see LibraryStore)."""
@@ -407,6 +425,40 @@ class SharedDeckStore:
                 (deck_id,),
             )
             session.commit()
+
+    def finalize_copy_download(self, copier_id: str, idempotency_key: str, deck_id: str) -> bool:
+        """Count one committed copy exactly once.
+
+        The copy log marker and the catalog counter share one transaction. A
+        process crash before commit leaves the marker false for the next retry;
+        a committed transaction makes later retries a no-op.
+        """
+        with Session(self.engine) as session:
+            connection = session.connection()
+            marked = connection.exec_driver_sql(
+                """
+                UPDATE shared_deck_copy_log
+                   SET download_counted = 1
+                 WHERE copier_id = ?
+                   AND idempotency_key = ?
+                   AND source_shared_deck_id = ?
+                   AND download_counted = 0
+                """,
+                (copier_id, idempotency_key, deck_id),
+            )
+            if marked.rowcount != 1:
+                session.rollback()
+                return False
+
+            counted = connection.exec_driver_sql(
+                "UPDATE shared_deck SET download_count = download_count + 1 WHERE id = ?",
+                (deck_id,),
+            )
+            if counted.rowcount != 1:
+                session.rollback()
+                raise RuntimeError(f"shared deck missing during copy finalization: {deck_id}")
+            session.commit()
+            return True
 
     # ── write side (official governance, Phase 1b-ii) ──────────────
 
