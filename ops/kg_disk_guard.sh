@@ -345,6 +345,41 @@ trim_logs() {
   done < <(printf '%s\n' "$raw" | tr ':' '\n')
 }
 
+kill_process_tree() {
+  local pid="$1" signal="$2" children child
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 0
+  children="$(pgrep -P "$pid" 2>/dev/null || true)"
+  if [[ -z "$children" ]]; then
+    children="$(ps -axo pid=,ppid= 2>/dev/null | awk -v parent="$pid" '$2 == parent {print $1}' || true)"
+  fi
+  for child in $children; do
+    kill_process_tree "$child" "$signal"
+  done
+  kill "-$signal" "$pid" 2>/dev/null || true
+}
+
+run_bounded_command() {
+  local pid deadline timeout_seconds
+  "$@" >/dev/null 2>&1 &
+  pid="$!"
+  # A zero internal measurement budget still needs a brief process-startup
+  # grace so disk_usage.py can atomically write its explicit timeout report.
+  # A stuck external process remains bounded and fail-closed.
+  timeout_seconds="$LANE_USAGE_BUDGET_SECONDS"
+  (( timeout_seconds < 1 )) && timeout_seconds=1
+  deadline=$((SECONDS + timeout_seconds))
+  while kill -0 "$pid" 2>/dev/null; do
+    if (( SECONDS >= deadline )); then
+      kill_process_tree "$pid" TERM
+      kill_process_tree "$pid" KILL
+      wait "$pid" 2>/dev/null || true
+      return 75
+    fi
+    sleep 0.1
+  done
+  wait "$pid"
+}
+
 write_lane_usage() {
   local rc=0 observed="unavailable" path
   local -a command_args=(
@@ -361,11 +396,11 @@ write_lane_usage() {
     command_args+=(--supervision-worktree "$path")
   done
   if [[ -x "$UV_BIN" ]]; then
-    "$UV_BIN" run --no-project --python 3.13 "$SCRIPT_DIR/disk_usage.py" \
+    run_bounded_command "$UV_BIN" run --no-project --python 3.13 "$SCRIPT_DIR/disk_usage.py" \
       "${command_args[@]}" \
       >/dev/null 2>&1 || rc=$?
   else
-    "$SCRIPT_DIR/disk_usage.py" "${command_args[@]}" \
+    run_bounded_command "$SCRIPT_DIR/disk_usage.py" "${command_args[@]}" \
       >/dev/null 2>&1 || rc=$?
   fi
   if (( rc != 0 )); then

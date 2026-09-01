@@ -714,6 +714,48 @@ grep -q '"lane_usage_rc":75' "$state" \
 grep -q '"lane_usage_budget_seconds":0' "$state" \
   && ok "time budget is recorded in guard state" || bad "time budget state missing"
 
+echo "── lane report budget: external attribution process is hard-stopped ──"
+root="$TMP/external-timeout"; state="$root/guard.json"; lane_state="$root/lane-disk-usage.json"; fake_uv="$root/fake-uv"; child_pid_file="$root/child.pid"
+mkdir -p "$root"
+cat >"$fake_uv" <<'EOF'
+#!/usr/bin/env bash
+set -u
+sleep 5 &
+child="$!"
+printf '%s\n' "$child" > "${FAKE_PID_FILE:?}"
+wait "$child"
+EOF
+chmod +x "$fake_uv"
+started=$SECONDS
+if KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_REGISTRY_STATE="$root/missing-registry.json" \
+  KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" \
+  KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS=1 \
+  KG_DISK_GUARD_UV_BIN="$fake_uv" FAKE_PID_FILE="$child_pid_file" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  "$SCRIPT" >/dev/null 2>&1; then
+  external_rc=0
+else
+  external_rc=$?
+fi
+elapsed=$((SECONDS - started))
+(( external_rc == 0 )) && ok "guard preserves command exit compatibility" || bad "guard command exit changed after external timeout"
+(( elapsed <= 3 )) && ok "external attribution is stopped within the hard budget" || bad "external attribution exceeded hard budget (${elapsed}s)"
+grep -q '"lane_usage_rc":75' "$state" \
+  && ok "external timeout reaches guard state as a hard block" || bad "external timeout did not reach guard state"
+grep -q '"lane_usage_budget_seconds":1' "$state" \
+  && ok "external timeout records its configured budget" || bad "external timeout budget missing"
+if [[ -s "$child_pid_file" ]]; then
+  child_pid="$(cat "$child_pid_file")"
+  if ! kill -0 "$child_pid" 2>/dev/null; then
+    ok "external timeout does not leave a child process"
+  else
+    bad "external timeout left a child process"
+  fi
+else
+  bad "external timeout fixture did not record its child"
+fi
+
 echo "── shared XCTestDevices: over-budget platform storage is visible and untouched ──"
 root="$TMP/xctest-budget"; xctest="$root/XCTestDevices"; state="$root/guard.json"; registry="$root/registry.json"; lane_state="$root/lane-disk-usage.json"
 udid="55555555-5555-4555-8555-555555555555"; device="$xctest/$udid"
