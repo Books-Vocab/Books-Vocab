@@ -201,6 +201,32 @@ def test_concurrent_add_link_across_instances_is_idempotent(tmp_path: Path):
     assert second.find_link_between("card_a", "card_b").id == winner_id
 
 
+def test_batch_add_link_does_not_report_discarded_stale_instance_link(tmp_path: Path):
+    """A stale pipeline store must not report a provisional loser as created."""
+    first = GraphStore(
+        links_path=tmp_path / "links.json",
+        candidates_path=tmp_path / "candidates.json",
+        blocked_path=tmp_path / "blocked.json",
+    )
+    second = GraphStore(
+        links_path=tmp_path / "links.json",
+        candidates_path=tmp_path / "candidates.json",
+        blocked_path=tmp_path / "blocked.json",
+    )
+
+    winner = first.batch_add_links([("card_a", "card_b", LinkKind.CONTRASTS_WITH, 1.0, "winner")])[0]
+    stale_created = second.batch_add_links([("card_a", "card_b", LinkKind.SHARES_USAGE, 0.9, "stale loser")])
+
+    assert stale_created == []
+    assert second.find_link_between("card_a", "card_b").id == winner.id
+    reloaded = GraphStore(
+        links_path=tmp_path / "links.json",
+        candidates_path=tmp_path / "candidates.json",
+        blocked_path=tmp_path / "blocked.json",
+    )
+    assert [link.id for link in _active_links_for_pair(reloaded, "card_a", "card_b")] == [winner.id]
+
+
 def test_losing_snapshot_cannot_restore_duplicate_after_reconciliation(tmp_path: Path, monkeypatch):
     """A queued unrelated flush must not resurrect a discarded provisional ID."""
     winner_store = GraphStore(
