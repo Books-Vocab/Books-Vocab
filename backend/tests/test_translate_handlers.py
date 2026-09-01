@@ -33,6 +33,7 @@ def _isolate_provider(monkeypatch):
 
 def _run(exc):
     """Call _safe_translate with a coro that raises ``exc``; return the coroutine."""
+
     async def boom(req, user, **kw):
         raise exc
 
@@ -50,8 +51,11 @@ async def test_success_passthrough():
         return {"ok": True}
 
     result = await th._safe_translate(
-        ok, TranslateRequest(word="x"), {"id": "u1"},
-        call_type="translate_quick", label="translate/quick",
+        ok,
+        TranslateRequest(word="x"),
+        {"id": "u1"},
+        call_type="translate_quick",
+        label="translate/quick",
     )
     assert result == {"ok": True}
 
@@ -68,6 +72,29 @@ async def test_openai_error_maps_to_external_service_error():
         await _run(OpenAIError("upstream boom"))
     assert ei.value.label == "translate/quick"
     assert ei.value.to_detail() == {"code": "EXTERNAL_SERVICE_ERROR", "label": "translate/quick"}
+
+
+async def test_client_setup_errors_map_to_opaque_500(monkeypatch):
+    def fail_client_setup(_provider):
+        raise RuntimeError("GEMINI_API_KEY=secret was not configured")
+
+    monkeypatch.setattr(th, "create_async_client", fail_client_setup)
+
+    async def never_called(req, user, **kw):
+        raise AssertionError("translation coroutine must not be called")
+
+    with pytest.raises(KGError) as ei:
+        await th._safe_translate(
+            never_called,
+            TranslateRequest(word="x"),
+            {"id": "u1"},
+            call_type="translate_quick",
+            label="translate/quick",
+        )
+
+    assert ei.value.status_code == 500
+    assert str(ei.value) == "translate/quick failed"
+    assert "secret" not in str(ei.value.to_detail())
 
 
 @pytest.mark.parametrize("exc", [TimeoutError("waited"), httpx.ConnectError("no route")])
