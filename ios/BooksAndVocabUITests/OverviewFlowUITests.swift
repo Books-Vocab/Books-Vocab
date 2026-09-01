@@ -267,6 +267,8 @@ final class OverviewFlowUITests: UITestCase {
         }
 
         try step("forecast-zero", app: app) {
+            overview.scrollToForecastRange(14)
+            overview.selectForecastRange(14)
             overview.scrollToForecastBucket(expected.forecastDayKey)
             overview.assertUniqueForecastContract()
             assertForecastProjection(expected, days: 14, on: overview)
@@ -323,6 +325,8 @@ final class OverviewFlowUITests: UITestCase {
             )
             counterexampleOverview.assertMetricCardsHaveUniformGeometry()
             counterexampleOverview.calendar.assertExists(timeout: 10)
+            counterexampleOverview.scrollToForecastRange(14)
+            counterexampleOverview.selectForecastRange(14)
             counterexampleOverview.assertUniqueForecastContract()
             assertForecastProjection(counterexampleExpected, days: 14, on: counterexampleOverview)
             let zeroCounterexample = counterexampleApp.descendants(matching: .any)
@@ -395,6 +399,8 @@ final class OverviewFlowUITests: UITestCase {
             overview.assertMetric("reviewedToday", value: expected.formattedCount(0))
             overview.assertMetric("dueToday", value: expected.formattedCount(0))
             overview.calendar.assertExists(timeout: 10)
+            overview.scrollToForecastRange(14)
+            overview.selectForecastRange(14)
             overview.scrollToForecastBucket(expected.forecastDayKey)
             overview.assertUniqueForecastContract()
             assertForecastProjection(expected, days: 14, on: overview)

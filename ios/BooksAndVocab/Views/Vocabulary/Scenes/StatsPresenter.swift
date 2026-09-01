@@ -674,30 +674,14 @@ struct StatsPresenter: View {
 
             VocabCard {
                 VStack(spacing: 0) {
-                    ZStack {
-                        VocabForecastChart(buckets: summary.forecast)
-                            .frame(height: 160)
-                    }
-                    .frame(height: 160)
-                    // Keep the chart visual while replacing its unstable
-                    // GeometryReader-generated AX subtree with virtual
-                    // children. `accessibilityChildren` does not affect the
-                    // rendered chart layout or scroll content size.
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityIdentifier("overview.forecast.chart")
-                    .accessibilityValue(
-                        LocaleAwareFormatter.shared.string(from: NSNumber(value: summary.forecast.map(\.count).reduce(0, +)))
-                    )
-                    .accessibilityChildren {
-                        ForEach(summary.forecast) { bucket in
-                            Text(bucket.label)
-                                .accessibilityElement()
-                                .accessibilityIdentifier("forecast.bucket.\(bucket.id)")
-                                .accessibilityValue(
-                                    "\(bucket.label), \(LocaleAwareFormatter.shared.string(from: NSNumber(value: bucket.count)))"
-                                )
-                        }
-                    }
+                    VocabForecastChart(buckets: summary.forecast)
+                        .frame(height: 160)
+                        // Keep the chart anchor while exposing each bar's
+                        // live AX identifier through the nested GeometryReader.
+                        // Without containment, iOS 26 can render the chart but
+                        // omit forecast.bucket.* descendants from the snapshot.
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("overview.forecast.chart")
                     Color.clear
                         .frame(width: 1, height: 1)
                         .accessibilityElement()
