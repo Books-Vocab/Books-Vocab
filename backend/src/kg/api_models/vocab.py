@@ -74,6 +74,13 @@ class VocabContentUpdateRequest(BaseModel):
     note: str | None = Field(default=None, max_length=5000)
     explanation: str | None = Field(default=None, max_length=5000)
 
+    @field_validator("meaning")
+    @classmethod
+    def validate_meaning_not_blank(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            raise ValueError("meaning must contain at least one non-whitespace character")
+        return v
+
 
 class DeleteWordResponse(BaseModel):
     deleted: str
