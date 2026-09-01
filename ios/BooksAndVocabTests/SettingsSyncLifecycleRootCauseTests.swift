@@ -6,6 +6,28 @@ import Testing
 @Suite("Settings sync lifecycle root cause", .serialized)
 @MainActor
 struct SettingsSyncLifecycleRootCauseTests {
+    @Test("partial terminal feedback explains incomplete sync and retryable items")
+    func partialTerminalFeedbackUsesDistinctLocalizedSemantics() throws {
+        let source = try Self.settingsSyncLifecycleFeedbackSource()
+
+        #expect(source.contains("case .partial"))
+        #expect(source.contains("L10n.string(\"部分同步完成\")"))
+        #expect(source.contains("L10n.string(\"部分項目未成功同步，可直接再次重試。\")"))
+        #expect(source.contains(".accessibilityValue(Text(accessibilityValue))"))
+        #expect(source.contains("dataOutcome: dataOutcome"))
+    }
+
+    @Test("terminal feedback keeps generic failure actions and survives panel collapse")
+    func terminalFeedbackBoundariesRemainUnchanged() throws {
+        let source = try Self.settingsSyncLifecycleFeedbackSource()
+
+        #expect(source.contains("title: L10n.string(\"同步失敗\")"))
+        #expect(source.contains("primaryIdentifier: \"settings.syncLifecycle.retryButton\""))
+        #expect(source.contains("secondaryIdentifier: \"settings.syncLifecycle.dismissButton\""))
+        #expect(source.contains(".accessibilityIdentifier(\"settings.syncLifecycle\")"))
+        #expect(source.contains(".transition(.statusRowReveal)"))
+    }
+
     @Test("fixture evidence rejects events from a prior account session")
     func fixtureEvidenceIsSessionScoped() {
         let oldSession = SettingsSyncFixtureEvidenceStore.shared.beginSession()
@@ -46,6 +68,15 @@ struct SettingsSyncLifecycleRootCauseTests {
                 SettingsSyncTransportEvent(round: 1, path: "/api/vocab", statusCode: 200)
             ]
         )
+    }
+
+    private static func settingsSyncLifecycleFeedbackSource() throws -> String {
+        let testsURL = URL(fileURLWithPath: #filePath)
+        let sourceURL = testsURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("BooksAndVocab/Views/Settings/SettingsSyncLifecycleFeedback.swift")
+        return try String(contentsOf: sourceURL, encoding: .utf8)
     }
 
     @Test("canonical sync summary accepts terminal error provenance")

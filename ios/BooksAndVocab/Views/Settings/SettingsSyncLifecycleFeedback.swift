@@ -29,12 +29,17 @@ struct SettingsSyncLifecycleFeedback: View {
                 secondaryAction: nil,
                 attempt: attempt,
                 dataOutcome: dataOutcome,
-                evidence: evidence
+                evidence: evidence,
+                accessibilityValue: L10n.string("同步完成")
             )
         case .terminalError(let message):
+            let copy = SettingsSyncLifecycleFeedbackCopy.terminalError(
+                dataOutcome: dataOutcome,
+                message: message
+            )
             feedback(
-                title: L10n.string("同步失敗"),
-                message: message,
+                title: copy.title,
+                message: copy.message,
                 tone: appTheme.palette.warning,
                 systemImage: "exclamationmark.triangle.fill",
                 primaryTitle: L10n.string("重試"),
@@ -45,7 +50,8 @@ struct SettingsSyncLifecycleFeedback: View {
                 secondaryAction: actions.dismissSyncStatus,
                 attempt: attempt,
                 dataOutcome: dataOutcome,
-                evidence: evidence
+                evidence: evidence,
+                accessibilityValue: copy.accessibilityValue
             )
         case .idle, .syncing, .retry, .dismissed:
             EmptyView()
@@ -65,7 +71,8 @@ struct SettingsSyncLifecycleFeedback: View {
         secondaryAction: (() -> Void)?,
         attempt: Int,
         dataOutcome: SettingsSyncDataOutcome,
-        evidence: SettingsSyncLifecycleEvidence?
+        evidence: SettingsSyncLifecycleEvidence?,
+        accessibilityValue: String
     ) -> some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.tinyGap) {
             HStack(spacing: appSkin.spacing.inlineGap) {
@@ -117,6 +124,7 @@ struct SettingsSyncLifecycleFeedback: View {
         .padding(.vertical, appSkin.spacing.tinyGap)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings.syncLifecycle")
+        .accessibilityValue(Text(accessibilityValue))
         .transition(.statusRowReveal)
         .animation(AppMotion.feedbackPulse, value: lifecycle)
         .enableInjection()
@@ -127,6 +135,36 @@ struct SettingsSyncLifecycleFeedback: View {
         case .terminalSuccess: return "terminalSuccess"
         case .terminalError: return "terminalError"
         default: return "nonTerminal"
+        }
+    }
+}
+
+private struct SettingsSyncLifecycleFeedbackCopy {
+    let title: String
+    let message: String
+    let accessibilityValue: String
+
+    static func terminalError(
+        dataOutcome: SettingsSyncDataOutcome,
+        message: String
+    ) -> Self {
+        switch dataOutcome {
+        case .partial:
+            let retryNotice = L10n.string("部分項目未成功同步，可直接再次重試。")
+            let detail = message == L10n.string("同步失敗") ? nil : message
+            return Self(
+                title: L10n.string("部分同步完成"),
+                message: [retryNotice, detail]
+                    .compactMap { $0 }
+                    .joined(separator: "\n"),
+                accessibilityValue: retryNotice
+            )
+        case .none, .complete:
+            return Self(
+                title: L10n.string("同步失敗"),
+                message: message,
+                accessibilityValue: L10n.string("同步失敗")
+            )
         }
     }
 }
