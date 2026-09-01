@@ -145,7 +145,7 @@ struct BookCard: View {
             case .notDownloaded:
                 cloudIconBadge
             case .failed:
-                retryBadge
+                EmptyView()
             case .current:
                 EmptyView()
             }
@@ -161,22 +161,6 @@ struct BookCard: View {
             .padding(AppBookshelfMetrics.badgePadding)
             .background(.ultraThinMaterial, in: Circle())
             .padding(AppBookshelfMetrics.badgePadding)
-    }
-
-    /// 下載失敗 → 可點重試徽章
-    private var retryBadge: some View {
-        Button {
-            downloadManager.triggerDownload(for: book.epubFileName)
-        } label: {
-            Image(systemName: "exclamationmark.icloud")
-                .font(AppFonts.caption2(weight: .semibold))
-                .foregroundStyle(appTheme.palette.warning)
-                .padding(AppBookshelfMetrics.badgePadding)
-                .background(.ultraThinMaterial, in: Circle())
-                .padding(AppBookshelfMetrics.badgePadding)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("iCloud 下載失敗，點擊重試".localized)
     }
 
     private func progressBar(_ progress: Double) -> some View {
@@ -200,6 +184,39 @@ struct BookCard: View {
                 .opacity(clamped > 0 ? 1 : 0)
         }
         .accessibilityHidden(clamped <= 0)
+    }
+}
+
+/// 下載失敗 → 可點重試徽章。
+///
+/// This control is intentionally rendered beside, rather than inside, the
+/// `NavigationLink` label so retry cannot also activate book navigation.
+struct BookCardRetryButton: View {
+    @ObserveInjection private var inject
+    @Environment(\.appTheme) private var appTheme
+    @Environment(\.iCloudDownloadManager) private var downloadManager
+    let fileName: String
+
+    var body: some View {
+        Group {
+            if case .failed? = downloadManager.state(for: fileName) {
+                Button {
+                    downloadManager.triggerDownload(for: fileName)
+                } label: {
+                    Image(systemName: "exclamationmark.icloud")
+                        .font(AppFonts.caption2(weight: .semibold))
+                        .foregroundStyle(appTheme.palette.warning)
+                        .padding(AppBookshelfMetrics.badgePadding)
+                        .background(.ultraThinMaterial, in: Circle())
+                        .padding(AppBookshelfMetrics.badgePadding)
+                }
+                .buttonStyle(.plain)
+                .contentShape(Circle())
+                .accessibilityLabel("iCloud 下載失敗，點擊重試".localized)
+                .accessibilityIdentifier("bookshelf.bookCard.retryDownload")
+            }
+        }
+        .enableInjection()
     }
 }
 
