@@ -203,6 +203,34 @@ partial bytes，但在 `measurement.budget_exhausted=true`、各受影響 lane �
 
 閉環固定為：guard 觀測 → `lane_disk_usage.json` 歸戶 → 超限／遺失證據 fail-closed → active lane 由 owner 完成交接或 terminal cleanup → 再次觀測確認 worktree／branch／registry 狀態。測試入口為 `uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_disk_usage.py` 與 `./ops/tests/test_kg_disk_guard.sh`。
 
+## Shared XCTestDevices platform store（2026-09-02）
+
+`~/Library/Developer/XCTestDevices` is shared Xcode test-device storage, not a
+delivery lane and not user data owned by any product worktree. The disk report
+observes only the root's immediate device directories in deterministic name
+order, reads each direct `device.plist`, and measures each device tree under
+the caller's existing time budget. It never treats a missing, malformed,
+identity-mismatched, active, or non-ephemeral plist as reclaimable.
+
+The additive report field is
+`accounting.shared_platform_storage.xctest_devices`. It records the exact
+root, logical/allocated bytes, device count, metadata and measurement status,
+the shared budget, overflow, and per-device reclaim evidence. The default
+shared budget is 16 GiB and is configurable with
+`KG_DISK_GUARD_XCTEST_DEVICES_BUDGET_GIB` or
+`--xctest-devices-budget-gib`. Exceeding it is always a blocking policy result;
+the guard cannot report `within-bounds` while the store is over budget.
+
+Automatic reclaim is opt-in with
+`KG_DISK_GUARD_XCTEST_DEVICES_AUTO_RECLAIM=1` (or the disk report flag). The
+only candidate is an exact UUID whose plist proves `isEphemeral=true`,
+`isDeleted=true`, a known inactive state, and matching `UDID`. Reclaim uses
+only `xcrun simctl delete` after the UUID is also present in `simctl list`; the
+root is remeasured afterward. If no supported command or exact proof exists,
+the guard emits `xctest-devices-manual-review-required` and leaves the store
+untouched. Unknown, active, non-ephemeral, and user-data paths are never
+deleted.
+
 ## 驗證證據（2026-06-09）
 - 冷編 **88.6s** → 二次無改動 incremental **4.96s（18× 加速）**：共享快取確實重用。
 - 產物落在 `kg/.cache/ios-build-derived-data`（1.3G）；全域預設**零新孤兒**。

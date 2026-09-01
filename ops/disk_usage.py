@@ -15,6 +15,8 @@ import argparse
 import hashlib
 import json
 import os
+import plistlib
+import re
 import shutil
 import subprocess
 import sys
@@ -31,8 +33,17 @@ TERMINAL_REGISTRY_STATUSES = {"merged", "abandoned"}
 KNOWN_REGISTRY_STATUSES = LIVE_REGISTRY_STATUSES | TERMINAL_REGISTRY_STATUSES
 DEFAULT_TIME_BUDGET_SECONDS = 30.0
 DEFAULT_CODEX_WORKTREE_ROOT = Path.home() / ".codex" / "worktrees"
+DEFAULT_XCTEST_DEVICES_ROOT = Path.home() / "Library" / "Developer" / "XCTestDevices"
+DEFAULT_XCTEST_DEVICES_BUDGET_GIB = 16
 MEASUREMENT_BUDGET_ERROR = "measurement-time-budget-exceeded"
 MISSING_PATH_ERROR = "path-missing"
+XCTEST_DEVICES_METADATA_ERROR = "xctest-devices-metadata-unavailable"
+XCTEST_DEVICES_MEASUREMENT_ERROR = "xctest-devices-measurement-incomplete"
+XCTEST_DEVICES_BUDGET_ERROR = "xctest-devices-budget-exceeded"
+XCTEST_DEVICES_MANUAL_REVIEW_ERROR = "xctest-devices-manual-review-required"
+_XCTEST_UDID_RE = re.compile(
+    r"^[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$"
+)
 
 
 class _MeasurementBudgetExceeded(RuntimeError):
@@ -86,6 +97,291 @@ def _mark_uninspected(records: list[dict[str, Any]], start: int, *, error: str) 
                 "worktree_state": "unknown",
             }
         )
+
+
+def _xctest_devices_root(value: str | Path | None) -> Path:
+    if value is not None:
+        return _path(value)
+    configured = os.environ.get("KG_XCTEST_DEVICES_ROOT")
+    return _path(configured) if configured else _path(DEFAULT_XCTEST_DEVICES_ROOT)
+
+
+def _configured_xctest_devices_budget_gib() -> int:
+    raw = os.environ.get("KG_XCTEST_DEVICES_BUDGET_GIB")
+    try:
+        return max(0, int(raw)) if raw is not None else DEFAULT_XCTEST_DEVICES_BUDGET_GIB
+    except (TypeError, ValueError):
+        return DEFAULT_XCTEST_DEVICES_BUDGET_GIB
+
+
+def _xctest_state(value: object) -> tuple[bool, bool]:
+    """Return (known, active) without treating an unknown state as safe."""
+
+    if isinstance(value, bool):
+        return False, False
+    if isinstance(value, int):
+        # CoreSimulator's plist uses 1 for Shutdown and 2 for Booted.
+        return value in {1, 2}, value == 2
+    if isinstance(value, str):
+        normalized = " ".join(value.casefold().replace("_", " ").split())
+        if normalized in {"shutdown", "shut down", "stopped", "deleted"}:
+            return True, False
+        if normalized in {
+            "booted",
+            "running",
+            "active",
+            "launching",
+            "creating",
+            "shutting down",
+        }:
+            return True, True
+    return False, False
+
+
+def _read_xctest_device_plist(path: Path, udid: str) -> tuple[dict[str, Any], str | None]:
+    try:
+        with path.open("rb") as handle:
+            payload = plistlib.load(handle)
+    except FileNotFoundError:
+        return {}, "plist-missing"
+    except (OSError, plistlib.InvalidFileException, ValueError, TypeError):
+        return {}, "plist-malformed"
+    if not isinstance(payload, dict):
+        return {}, "plist-malformed"
+    required = ("UDID", "isEphemeral", "isDeleted", "state")
+    if any(key not in payload for key in required):
+        return {}, "plist-missing-required-field"
+    if payload.get("UDID") != udid or not isinstance(payload.get("UDID"), str):
+        return {}, "plist-identity-mismatch"
+    if not isinstance(payload.get("isEphemeral"), bool) or not isinstance(
+        payload.get("isDeleted"), bool
+    ):
+        return {}, "plist-flag-invalid"
+    state_known, active = _xctest_state(payload.get("state"))
+    if not state_known:
+        return {}, "plist-state-unknown"
+    return {
+        "udid": udid,
+        "is_ephemeral": payload["isEphemeral"],
+        "is_deleted": payload["isDeleted"],
+        "state": payload["state"],
+        "state_known": state_known,
+        "active": active,
+    }, None
+
+
+def _simctl_has_device(command: str, udid: str) -> bool:
+    try:
+        completed = subprocess.run(
+            [command, "simctl", "list", "devices", "--json"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if completed.returncode != 0:
+            return False
+        payload = json.loads(completed.stdout)
+    except (OSError, subprocess.SubprocessError, TypeError, ValueError):
+        return False
+    serialized = json.dumps(payload, ensure_ascii=False)
+    return udid in serialized
+
+
+def _reclaim_xctest_device(candidate: dict[str, Any]) -> dict[str, Any]:
+    """Use only Apple's supported simctl delete after exact identity proof.
+
+    XCTestDevices normally are not in simctl's inventory.  In that case this
+    deliberately returns a manual-review result and never touches the path.
+    """
+
+    udid = str(candidate.get("udid", ""))
+    if not _XCTEST_UDID_RE.fullmatch(udid):
+        return {"status": "manual-review", "reason": "invalid-udid"}
+    command = shutil.which("xcrun")
+    if not command:
+        return {
+            "status": "manual-review",
+            "reason": "supported-command-unavailable",
+        }
+    if not _simctl_has_device(command, udid):
+        return {
+            "status": "manual-review",
+            "reason": "device-not-listed-by-simctl",
+        }
+    try:
+        completed = subprocess.run(
+            [command, "simctl", "delete", udid],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {
+            "status": "manual-review",
+            "reason": f"supported-command-failed:{exc.__class__.__name__}",
+        }
+    if completed.returncode != 0:
+        return {"status": "manual-review", "reason": "supported-command-failed"}
+    return {"status": "reclaimed", "command": "xcrun simctl delete"}
+
+
+def inspect_xctest_devices(
+    root: str | Path | None = None,
+    *,
+    budget_bytes: int = DEFAULT_XCTEST_DEVICES_BUDGET_GIB * GIB,
+    deadline: float | None = None,
+    auto_reclaim: bool = False,
+) -> dict[str, Any]:
+    """Bounded accounting for the shared, non-lane XCTestDevices store."""
+
+    normalized_root = _xctest_devices_root(root)
+    base: dict[str, Any] = {
+        "root": str(normalized_root),
+        "exists": False,
+        "status": "absent",
+        "attribution": "shared-host-platform",
+        "logical_bytes": 0,
+        "allocated_bytes": 0,
+        "files": 0,
+        "device_count": 0,
+        "measurement_complete": True,
+        "metadata_complete": True,
+        "measurement_errors": [],
+        "budget_bytes": max(0, int(budget_bytes)),
+        "budget_exceeded": False,
+        "budget_overflow_bytes": 0,
+        "devices": [],
+        "reclaim": {
+            "requested": bool(auto_reclaim),
+            "status": "not-requested",
+            "candidates": [],
+            "attempted": 0,
+            "succeeded": 0,
+            "results": [],
+        },
+    }
+    if not normalized_root.is_dir():
+        return base
+
+    base["exists"] = True
+    base["status"] = "measured"
+    entries: list[os.DirEntry[str]] = []
+    try:
+        with os.scandir(normalized_root) as scanner:
+            entries = sorted(scanner, key=lambda item: item.name)
+    except OSError as exc:
+        base.update(
+            {
+                "status": "measurement-incomplete",
+                "measurement_complete": False,
+                "measurement_errors": [f"root-scan:{exc.__class__.__name__}"],
+            }
+        )
+        return base
+
+    errors: list[str] = []
+    devices: list[dict[str, Any]] = []
+    processed_entries = 0
+    for entry in entries:
+        if _deadline_expired(deadline):
+            errors.append(MEASUREMENT_BUDGET_ERROR)
+            break
+        processed_entries += 1
+        entry_path = Path(entry.path)
+        try:
+            stat_result = entry.stat(follow_symlinks=False)
+        except OSError as exc:
+            errors.append(f"{entry.name}:stat:{exc.__class__.__name__}")
+            continue
+        if not entry.is_dir(follow_symlinks=False):
+            base["logical_bytes"] += int(stat_result.st_size)
+            base["allocated_bytes"] += _allocated_bytes(stat_result)
+            base["files"] += 1
+            errors.append(f"unexpected-root-entry:{entry.name}")
+            continue
+        base["device_count"] += 1
+        measured = measure_tree(entry_path, deadline=deadline)
+        base["logical_bytes"] += int(measured["logical_bytes"])
+        base["allocated_bytes"] += int(measured["allocated_bytes"])
+        base["files"] += int(measured["files"])
+        if not measured["complete"]:
+            errors.extend(
+                f"{entry.name}:{error}"
+                for error in measured.get("errors", ["measurement-incomplete"])
+            )
+        metadata, metadata_error = _read_xctest_device_plist(
+            entry_path / "device.plist", entry.name
+        )
+        if metadata_error:
+            errors.append(f"{entry.name}:{metadata_error}")
+            base["metadata_complete"] = False
+        candidate = bool(
+            not metadata_error
+            and _XCTEST_UDID_RE.fullmatch(entry.name)
+            and metadata["is_ephemeral"]
+            and metadata["is_deleted"]
+            and metadata["state_known"]
+            and not metadata["active"]
+        )
+        device = {
+            "udid": entry.name,
+            "path": str(entry_path),
+            "logical_bytes": int(measured["logical_bytes"]),
+            "allocated_bytes": int(measured["allocated_bytes"]),
+            "measurement_complete": bool(measured["complete"]),
+            "metadata_complete": metadata_error is None,
+            "reclaimable": candidate,
+            "active": metadata.get("active") if metadata else None,
+            "is_ephemeral": metadata.get("is_ephemeral") if metadata else None,
+            "is_deleted": metadata.get("is_deleted") if metadata else None,
+            "state": metadata.get("state") if metadata else None,
+        }
+        if metadata_error:
+            device["metadata_error"] = metadata_error
+        devices.append(device)
+    if processed_entries < len(entries) and MEASUREMENT_BUDGET_ERROR not in errors:
+        errors.append(MEASUREMENT_BUDGET_ERROR)
+
+    base["devices"] = devices
+    base["measurement_errors"] = sorted(set(errors))[:20]
+    base["measurement_complete"] = not any(
+        error == MEASUREMENT_BUDGET_ERROR or error.endswith(f":{MEASUREMENT_BUDGET_ERROR}")
+        for error in errors
+    )
+    if not base["measurement_complete"]:
+        base["status"] = "measurement-incomplete"
+    elif not base["metadata_complete"]:
+        base["status"] = "metadata-unavailable"
+    candidates = [device for device in devices if device["reclaimable"]]
+    base["reclaim"]["candidates"] = [device["udid"] for device in candidates]
+    base["budget_exceeded"] = base["allocated_bytes"] > base["budget_bytes"]
+    base["budget_overflow_bytes"] = max(
+        0, base["allocated_bytes"] - base["budget_bytes"]
+    )
+    if base["budget_exceeded"]:
+        base["reclaim"]["status"] = "manual-review"
+        if auto_reclaim and candidates and base["measurement_complete"] and base["metadata_complete"]:
+            results = []
+            for candidate in candidates:
+                result = _reclaim_xctest_device(candidate)
+                results.append({"udid": candidate["udid"], **result})
+                base["reclaim"]["attempted"] += 1
+                if result.get("status") == "reclaimed":
+                    base["reclaim"]["succeeded"] += 1
+            base["reclaim"]["results"] = results
+            if base["reclaim"]["succeeded"]:
+                refreshed = inspect_xctest_devices(
+                    normalized_root,
+                    budget_bytes=base["budget_bytes"],
+                    deadline=deadline,
+                    auto_reclaim=False,
+                )
+                refreshed["reclaim"] = base["reclaim"]
+                refreshed["reclaim"]["status"] = "reclaimed"
+                return refreshed
+    return base
 
 
 def measure_tree(
@@ -604,6 +900,9 @@ def build_report(
     *,
     time_budget_seconds: float | None = None,
     supervision_worktree_paths: tuple[str | Path, ...] = (),
+    xctest_devices_root: str | Path | None = None,
+    xctest_devices_budget_gib: int = DEFAULT_XCTEST_DEVICES_BUDGET_GIB,
+    auto_reclaim_xctest_devices: bool = False,
 ) -> dict[str, Any]:
     measurement_started = time.monotonic()
     deadline = (
@@ -613,6 +912,12 @@ def build_report(
     )
     workspace = _path(workspace)
     state_path = _path(state_path)
+    xctest_devices = inspect_xctest_devices(
+        xctest_devices_root,
+        budget_bytes=max(0, int(xctest_devices_budget_gib)) * GIB,
+        deadline=deadline,
+        auto_reclaim=auto_reclaim_xctest_devices,
+    )
     requested_supervision_paths: list[Path] = []
     for value in supervision_worktree_paths:
         normalized = _path(value)
@@ -1089,6 +1394,15 @@ def build_report(
         blocking_reasons.append("lane-measurement-incomplete")
     if measurement_budget_exhausted:
         blocking_reasons.append(MEASUREMENT_BUDGET_ERROR)
+    if xctest_devices["exists"]:
+        if not xctest_devices["measurement_complete"]:
+            blocking_reasons.append(XCTEST_DEVICES_MEASUREMENT_ERROR)
+        if not xctest_devices["metadata_complete"]:
+            blocking_reasons.append(XCTEST_DEVICES_METADATA_ERROR)
+        if xctest_devices["budget_exceeded"]:
+            blocking_reasons.append(XCTEST_DEVICES_BUDGET_ERROR)
+            if xctest_devices["reclaim"]["status"] != "reclaimed":
+                blocking_reasons.append(XCTEST_DEVICES_MANUAL_REVIEW_ERROR)
     blocking_reasons.extend(quota_reasons)
     if blocking_reasons:
         verdict = "block"
@@ -1245,6 +1559,9 @@ def build_report(
                 str(item) for item in nested_worktrees
             ),
             "lane_attribution": lane_attribution,
+            "shared_platform_storage": {
+                "xctest_devices": xctest_devices,
+            },
         },
         "filesystem": filesystem_payload,
         "policy": {
@@ -1328,6 +1645,22 @@ def main(argv: list[str] | None = None) -> int:
         metavar="PATH",
         help="exclude this exact caller-supplied supervision worktree from managed quota",
     )
+    parser.add_argument(
+        "--xctest-devices-root",
+        default=None,
+        help="shared XCTestDevices root (default: KG_XCTEST_DEVICES_ROOT or the Apple host path)",
+    )
+    parser.add_argument(
+        "--xctest-devices-budget-gib",
+        type=int,
+        default=_configured_xctest_devices_budget_gib(),
+        help="shared XCTestDevices budget in GiB (default: 16)",
+    )
+    parser.add_argument(
+        "--auto-reclaim-xctest-devices",
+        action="store_true",
+        help="attempt only exact stale/ephemeral devices via supported simctl; otherwise fail closed",
+    )
     args = parser.parse_args(argv)
     workspace = _path(args.workspace)
     state = (
@@ -1338,6 +1671,9 @@ def main(argv: list[str] | None = None) -> int:
         state,
         time_budget_seconds=args.time_budget_seconds,
         supervision_worktree_paths=tuple(args.supervision_worktree),
+        xctest_devices_root=args.xctest_devices_root,
+        xctest_devices_budget_gib=args.xctest_devices_budget_gib,
+        auto_reclaim_xctest_devices=args.auto_reclaim_xctest_devices,
     )
     if args.output:
         _write_atomic(_path(args.output), report)

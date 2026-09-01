@@ -10,6 +10,11 @@ source "$SCRIPT_DIR/lib/userland_compat.sh"
 STATE_FILE="${KG_DISK_GUARD_STATE:-$HOME/Library/Application Support/KG/disk_guard.json}"
 REGISTRY_STATE="${KG_DISK_GUARD_REGISTRY_STATE:-$WORKSPACE/.cache/worktree_registry.json}"
 LANE_USAGE_STATE="${KG_DISK_GUARD_LANE_USAGE_STATE:-$HOME/Library/Application Support/KG/lane_disk_usage.json}"
+XCTEST_DEVICES_ROOT="${KG_DISK_GUARD_XCTEST_DEVICES_ROOT:-${KG_XCTEST_DEVICES_ROOT:-$HOME/Library/Developer/XCTestDevices}}"
+XCTEST_DEVICES_BUDGET_GIB="${KG_DISK_GUARD_XCTEST_DEVICES_BUDGET_GIB:-${KG_XCTEST_DEVICES_BUDGET_GIB:-16}}"
+[[ "$XCTEST_DEVICES_BUDGET_GIB" =~ ^[0-9]+$ ]] || XCTEST_DEVICES_BUDGET_GIB=16
+XCTEST_DEVICES_BUDGET_KB=$((XCTEST_DEVICES_BUDGET_GIB * 1048576))
+XCTEST_DEVICES_AUTO_RECLAIM="${KG_DISK_GUARD_XCTEST_DEVICES_AUTO_RECLAIM:-0}"
 DERIVED_DATA_GLOBAL="${KG_DISK_GUARD_DERIVED_DATA_GLOBAL:-$HOME/Library/Developer/Xcode/DerivedData}"
 WARN_FREE_GIB="${KG_DISK_GUARD_WARN_FREE_GIB:-20}"
 CRIT_FREE_GIB="${KG_DISK_GUARD_CRIT_FREE_GIB:-10}"
@@ -49,6 +54,13 @@ LANE_USAGE_BUDGET_SECONDS="${KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS:-30}"
 LANE_USAGE_RC=0
 LANE_USAGE_VERDICT="unavailable"
 LANE_USAGE_EXCLUSIONS_JSON='[]'
+XCTEST_DEVICES_KB=0
+XCTEST_DEVICES_OVERFLOW_KB=0
+XCTEST_DEVICES_COUNT=0
+XCTEST_DEVICES_VERDICT="unavailable"
+XCTEST_DEVICES_RECLAIM_STATUS="not-requested"
+XCTEST_DEVICES_MANUAL_REVIEW=0
+XCTEST_DEVICES_REPORT_ERROR=0
 SUPERVISION_WORKTREE_ARGS=()
 CACHE_EVICTION_ATTEMPTED=0
 CACHE_EVICTION_EVICTED=0
@@ -339,7 +351,10 @@ write_lane_usage() {
     --state "$REGISTRY_STATE"
     --output "$LANE_USAGE_STATE"
     --time-budget-seconds "$LANE_USAGE_BUDGET_SECONDS"
+    --xctest-devices-root "$XCTEST_DEVICES_ROOT"
+    --xctest-devices-budget-gib "$XCTEST_DEVICES_BUDGET_GIB"
   )
+  [[ "$XCTEST_DEVICES_AUTO_RECLAIM" == "1" ]] && command_args+=(--auto-reclaim-xctest-devices)
   for path in "${SUPERVISION_WORKTREE_ARGS[@]-}"; do
     [[ -n "$path" ]] || continue
     command_args+=(--supervision-worktree "$path")
@@ -373,6 +388,29 @@ write_lane_usage() {
   fi
   LANE_USAGE_RC="$rc"
   LANE_USAGE_VERDICT="$observed"
+  XCTEST_DEVICES_KB=0
+  XCTEST_DEVICES_OVERFLOW_KB=0
+  XCTEST_DEVICES_COUNT=0
+  XCTEST_DEVICES_VERDICT="unavailable"
+  XCTEST_DEVICES_RECLAIM_STATUS="not-requested"
+  XCTEST_DEVICES_MANUAL_REVIEW=0
+  XCTEST_DEVICES_REPORT_ERROR=0
+  if [[ -f "$LANE_USAGE_STATE" ]] && command -v jq >/dev/null 2>&1; then
+    if jq -e '.accounting.shared_platform_storage.xctest_devices' "$LANE_USAGE_STATE" >/dev/null 2>&1; then
+      XCTEST_DEVICES_KB="$(jq -r '(.accounting.shared_platform_storage.xctest_devices.allocated_bytes // 0) / 1024 | floor' "$LANE_USAGE_STATE")"
+      XCTEST_DEVICES_OVERFLOW_KB="$(jq -r '(.accounting.shared_platform_storage.xctest_devices.budget_overflow_bytes // 0) / 1024 | floor' "$LANE_USAGE_STATE")"
+      XCTEST_DEVICES_COUNT="$(jq -r '.accounting.shared_platform_storage.xctest_devices.device_count // 0' "$LANE_USAGE_STATE")"
+      XCTEST_DEVICES_VERDICT="$(jq -r 'if .accounting.shared_platform_storage.xctest_devices.exists != true then "absent" elif .accounting.shared_platform_storage.xctest_devices.measurement_complete != true or .accounting.shared_platform_storage.xctest_devices.metadata_complete != true or .accounting.shared_platform_storage.xctest_devices.budget_exceeded == true then "block" else "pass" end' "$LANE_USAGE_STATE")"
+      XCTEST_DEVICES_RECLAIM_STATUS="$(jq -r '.accounting.shared_platform_storage.xctest_devices.reclaim.status // "not-requested"' "$LANE_USAGE_STATE")"
+      if [[ "$XCTEST_DEVICES_VERDICT" == "block" ]] && [[ "$XCTEST_DEVICES_RECLAIM_STATUS" != "reclaimed" ]]; then
+        XCTEST_DEVICES_MANUAL_REVIEW=1
+      fi
+    else
+      XCTEST_DEVICES_REPORT_ERROR=1
+    fi
+  else
+    XCTEST_DEVICES_REPORT_ERROR=1
+  fi
 }
 
 evict_keyed_caches() {
@@ -534,15 +572,15 @@ evict_global_derived_data() {
 }
 
 write_state() {
-  local free="$1" prev="$2" growth="$3" active="$4" cache="$5" docker_cache="$6" docker_running="$7" worktree_cache="$8" worktree_keys="$9" worktree_overflow="${10}" cache_overflow="${11}" budget_kb="${12}" budget_overflow="${13}" headroom_kb="${14}" writer_limit_kb="${15}" headroom_overflow="${16}" repair_remaining="${17}" repair_status="${18}" verdict="${19}" reason="${20}" action="${21}" lane_usage_verdict="${22}" lane_usage_rc="${23}" lane_usage_budget_seconds="${24}" lane_usage_exclusions_json="${25}" eviction_attempted="${26}" eviction_evicted="${27}" eviction_failed="${28}" budget_repaired="${29}" derived_data="${30}" derived_data_budget="${31}" derived_data_overflow="${32}"
+  local free="$1" prev="$2" growth="$3" active="$4" cache="$5" docker_cache="$6" docker_running="$7" worktree_cache="$8" worktree_keys="$9" worktree_overflow="${10}" cache_overflow="${11}" budget_kb="${12}" budget_overflow="${13}" headroom_kb="${14}" writer_limit_kb="${15}" headroom_overflow="${16}" repair_remaining="${17}" repair_status="${18}" verdict="${19}" reason="${20}" action="${21}" lane_usage_verdict="${22}" lane_usage_rc="${23}" lane_usage_budget_seconds="${24}" lane_usage_exclusions_json="${25}" eviction_attempted="${26}" eviction_evicted="${27}" eviction_failed="${28}" budget_repaired="${29}" derived_data="${30}" derived_data_budget="${31}" derived_data_overflow="${32}" xctest_devices_kb="${33}" xctest_devices_budget_kb="${34}" xctest_devices_overflow_kb="${35}" xctest_devices_count="${36}" xctest_devices_verdict="${37}" xctest_devices_reclaim_status="${38}" xctest_devices_manual_review="${39}"
   local dir tmp
   dir="$(dirname "$STATE_FILE")"; mkdir -p "$dir" 2>/dev/null || return 1
   tmp="$STATE_FILE.$$.$RANDOM.tmp"
-  printf '{"schema":"kg.disk.guard.v1","host":"%s","free_bytes":%s,"previous_free_bytes":%s,"growth_bytes":%s,"active_build":%s,"cache_kb":%s,"cache_budget_kb":%s,"cache_budget_overflow_kb":%s,"cache_headroom_kb":%s,"cache_writer_limit_kb":%s,"cache_headroom_overflow_kb":%s,"cache_repair_remaining_kb":%s,"cache_repair_status":"%s","cache_eviction_attempted":%s,"cache_eviction_evicted":%s,"cache_eviction_failed":%s,"budget_repaired":%s,"derived_data_kb":%s,"derived_data_budget_kb":%s,"derived_data_overflow_kb":%s,"docker_cache_kb":%s,"docker_active":%s,"worktree_cache_kb":%s,"worktree_cache_keys":%s,"worktree_cache_overflow_keys":%s,"cache_overflow_keys":%s,"verdict":"%s","reason":"%s","action":"%s","lane_usage_verdict":"%s","lane_usage_rc":%s,"lane_usage_budget_seconds":%s,"lane_usage_exclusions":%s,"at":"%s"}\n' \
+  printf '{"schema":"kg.disk.guard.v1","host":"%s","free_bytes":%s,"previous_free_bytes":%s,"growth_bytes":%s,"active_build":%s,"cache_kb":%s,"cache_budget_kb":%s,"cache_budget_overflow_kb":%s,"cache_headroom_kb":%s,"cache_writer_limit_kb":%s,"cache_headroom_overflow_kb":%s,"cache_repair_remaining_kb":%s,"cache_repair_status":"%s","cache_eviction_attempted":%s,"cache_eviction_evicted":%s,"cache_eviction_failed":%s,"budget_repaired":%s,"derived_data_kb":%s,"derived_data_budget_kb":%s,"derived_data_overflow_kb":%s,"xctest_devices_kb":%s,"xctest_devices_budget_kb":%s,"xctest_devices_overflow_kb":%s,"xctest_devices_count":%s,"xctest_devices_verdict":"%s","xctest_devices_reclaim_status":"%s","xctest_devices_manual_review":%s,"docker_cache_kb":%s,"docker_active":%s,"worktree_cache_kb":%s,"worktree_cache_keys":%s,"worktree_cache_overflow_keys":%s,"cache_overflow_keys":%s,"verdict":"%s","reason":"%s","action":"%s","lane_usage_verdict":"%s","lane_usage_rc":%s,"lane_usage_budget_seconds":%s,"lane_usage_exclusions":%s,"at":"%s"}\n' \
     "$(hostname -s 2>/dev/null || echo unknown)" "$(number "$free")" "$(number "$prev")" "$(number "$growth")" \
     "$(number "$active")" "$(number "$cache")" "$(number "$budget_kb")" "$(number "$budget_overflow")" "$(number "$headroom_kb")" "$(number "$writer_limit_kb")" "$(number "$headroom_overflow")" "$(number "$repair_remaining")" "$repair_status" \
     "$(number "$eviction_attempted")" "$(number "$eviction_evicted")" "$(number "$eviction_failed")" "$(number "$budget_repaired")" \
-    "$(number "$derived_data")" "$(number "$derived_data_budget")" "$(number "$derived_data_overflow")" "$(number "$docker_cache")" "$(number "$docker_running")" \
+    "$(number "$derived_data")" "$(number "$derived_data_budget")" "$(number "$derived_data_overflow")" "$(number "$xctest_devices_kb")" "$(number "$xctest_devices_budget_kb")" "$(number "$xctest_devices_overflow_kb")" "$(number "$xctest_devices_count")" "$xctest_devices_verdict" "$xctest_devices_reclaim_status" "$(number "$xctest_devices_manual_review")" "$(number "$docker_cache")" "$(number "$docker_running")" \
     "$(number "$worktree_cache")" "$(number "$worktree_keys")" "$(number "$worktree_overflow")" "$(number "$cache_overflow")" "$verdict" "$reason" "$action" "$lane_usage_verdict" "$(number "$lane_usage_rc")" "$(number "$lane_usage_budget_seconds")" "$lane_usage_exclusions_json" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$tmp" || { rm -f "$tmp"; return 1; }
   mv -f "$tmp" "$STATE_FILE"
 }
@@ -696,7 +734,21 @@ main() {
   # This is observation only: unknown or active lanes are never deleted by the
   # disk guard; their evidence is consumed by the supported lifecycle tools.
   write_lane_usage
-  write_state "$free" "$prev" "$growth" "$active" "$cache" "$docker_cache" "$docker_running" "$worktree_cache" "$worktree_keys" "$worktree_overflow" "$cache_overflow" "$cache_budget_kb" "$cache_budget_overflow" "$cache_headroom_kb" "$cache_writer_limit_kb" "$cache_headroom_overflow" "$cache_repair_remaining" "$cache_repair_status" "$verdict" "$reason" "$action" "$LANE_USAGE_VERDICT" "$LANE_USAGE_RC" "$LANE_USAGE_BUDGET_SECONDS" "$LANE_USAGE_EXCLUSIONS_JSON" "$CACHE_EVICTION_ATTEMPTED" "$CACHE_EVICTION_EVICTED" "$CACHE_EVICTION_FAILED" "$CACHE_BUDGET_REPAIRED" "$derived_data" "$DERIVED_DATA_BUDGET_KB" "$derived_data_overflow"
+  if (( XCTEST_DEVICES_REPORT_ERROR == 1 )); then
+    verdict="block"
+    reason="xctest-devices-report-unavailable"
+    action="manual-review-xctest-devices"
+  elif [[ "$XCTEST_DEVICES_VERDICT" == "block" ]]; then
+    verdict="block"
+    if (( XCTEST_DEVICES_MANUAL_REVIEW == 1 )); then
+      reason="xctest-devices-manual-review-required"
+      action="manual-review-xctest-devices"
+    else
+      reason="xctest-devices-budget-exceeded"
+      action="reclaimed-xctest-devices"
+    fi
+  fi
+  write_state "$free" "$prev" "$growth" "$active" "$cache" "$docker_cache" "$docker_running" "$worktree_cache" "$worktree_keys" "$worktree_overflow" "$cache_overflow" "$cache_budget_kb" "$cache_budget_overflow" "$cache_headroom_kb" "$cache_writer_limit_kb" "$cache_headroom_overflow" "$cache_repair_remaining" "$cache_repair_status" "$verdict" "$reason" "$action" "$LANE_USAGE_VERDICT" "$LANE_USAGE_RC" "$LANE_USAGE_BUDGET_SECONDS" "$LANE_USAGE_EXCLUSIONS_JSON" "$CACHE_EVICTION_ATTEMPTED" "$CACHE_EVICTION_EVICTED" "$CACHE_EVICTION_FAILED" "$CACHE_BUDGET_REPAIRED" "$derived_data" "$DERIVED_DATA_BUDGET_KB" "$derived_data_overflow" "$XCTEST_DEVICES_KB" "$XCTEST_DEVICES_BUDGET_KB" "$XCTEST_DEVICES_OVERFLOW_KB" "$XCTEST_DEVICES_COUNT" "$XCTEST_DEVICES_VERDICT" "$XCTEST_DEVICES_RECLAIM_STATUS" "$XCTEST_DEVICES_MANUAL_REVIEW"
   logger -t kg-disk-guard "verdict=$verdict freeGiB=$free_gib growthGiB=$growth_gib activeBuild=$active dockerCacheGiB=$docker_gib dockerActive=$docker_running cacheKB=$cache cacheBudgetKB=$cache_budget_kb cacheBudgetOverflowKB=$cache_budget_overflow cacheHeadroomKB=$cache_headroom_kb cacheWriterLimitKB=$cache_writer_limit_kb cacheHeadroomOverflowKB=$cache_headroom_overflow cacheRepairStatus=$cache_repair_status cacheRepairRemainingKB=$cache_repair_remaining derivedDataKB=$derived_data derivedDataBudgetKB=$DERIVED_DATA_BUDGET_KB derivedDataOverflowKB=$derived_data_overflow worktreeCacheKB=$worktree_cache worktreeKeys=$worktree_keys worktreeOverflowKeys=$worktree_overflow cacheOverflowKeys=$cache_overflow action=$action" 2>/dev/null || true
 }
 

@@ -12,6 +12,8 @@ export KG_DISK_GUARD_GUARD_LOCK_HELD=1
 export KG_DISK_GUARD_BUILD_LOCK_HELD=1
 export KG_DISK_GUARD_LANE_USAGE_STATE="$TMP/lane-disk-usage.json"
 export KG_DISK_GUARD_DERIVED_DATA_GLOBAL="$TMP/derived-data"
+export KG_DISK_GUARD_XCTEST_DEVICES_ROOT="$TMP/xctest-devices"
+export KG_DISK_GUARD_XCTEST_DEVICES_BUDGET_GIB=16
 ok(){ echo "  ✓ $*"; PASS=$((PASS+1)); }
 bad(){ echo "  ✗ $*"; FAIL=$((FAIL+1)); }
 
@@ -596,7 +598,7 @@ for i in 1 2 3 4 5; do
 done
 bytes2="$(wc -c < "$TMP/high/state.json")"
 state_count="$(find "$TMP/high" -maxdepth 1 -type f -name 'state.json*' | wc -l | tr -d ' ')"
-[[ "$bytes2" -lt 900 && "$state_count" -eq 1 ]] && ok "state bounded, one atomic file (${bytes2} bytes)" || bad "state accumulation: bytes=$bytes2 files=$state_count"
+[[ "$bytes2" -lt 1400 && "$state_count" -eq 1 ]] && ok "state bounded, one atomic file (${bytes2} bytes)" || bad "state accumulation: bytes=$bytes2 files=$state_count"
 
 echo "── lane usage: missing active lanes warn without blocking disk attribution ──"
 root="$TMP/lane-usage"; state="$root/guard.json"; registry="$root/registry.json"; lane_state="$root/lane-disk-usage.json"
@@ -703,6 +705,23 @@ grep -q '"lane_usage_rc":75' "$state" \
   && ok "time budget reaches guard state" || bad "time budget guard state missing"
 grep -q '"lane_usage_budget_seconds":0' "$state" \
   && ok "time budget is recorded in guard state" || bad "time budget state missing"
+
+echo "── shared XCTestDevices: over-budget platform storage is visible and untouched ──"
+root="$TMP/xctest-budget"; xctest="$root/XCTestDevices"; state="$root/guard.json"; registry="$root/registry.json"; lane_state="$root/lane-disk-usage.json"
+udid="55555555-5555-4555-8555-555555555555"; device="$xctest/$udid"
+mkdir -p "$device/data"
+printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>UDID</key><string>'"$udid"'</string><key>isEphemeral</key><false/><key>isDeleted</key><false/><key>state</key><string>Shutdown</string></dict></plist>' > "$device/device.plist"
+dd if=/dev/zero of="$device/data/payload" bs=1024 count=4 >/dev/null 2>&1
+printf '%s\n' '{"schema":"kg.worktree.registry.v2","records":[]}' > "$registry"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" KG_DISK_GUARD_REGISTRY_STATE="$registry" \
+  KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" KG_DISK_GUARD_XCTEST_DEVICES_ROOT="$xctest" \
+  KG_DISK_GUARD_XCTEST_DEVICES_BUDGET_GIB=0 KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) \
+  KG_DISK_GUARD_ACTIVE_BUILD=0 "$SCRIPT" >/dev/null 2>&1
+grep -q 'xctest-devices-budget-exceeded' "$lane_state" && ok "shared XCTestDevices budget block is recorded" || bad "shared XCTestDevices budget block missing"
+grep -q '"attribution": "shared-host-platform"' "$lane_state" && ok "shared XCTestDevices attribution is platform-scoped" || bad "shared XCTestDevices attribution missing"
+grep -q '"xctest_devices_verdict":"block"' "$state" && ok "guard cannot claim within-bounds over shared budget" || bad "guard claimed within-bounds over shared budget"
+grep -q '"xctest_devices_manual_review":1' "$state" && ok "unsafe shared device is manual review" || bad "shared device manual review missing"
+[[ -d "$device" ]] && ok "non-ephemeral shared device is untouched" || bad "non-ephemeral shared device was deleted"
 
 echo "passed=$PASS failed=$FAIL"
 [[ "$FAIL" -eq 0 ]]
