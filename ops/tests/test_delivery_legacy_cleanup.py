@@ -89,7 +89,10 @@ class FakeGit:
         canonical_clean: bool = True,
         snapshot_clean: bool = True,
         snapshot_head: str = HEAD,
-        snapshot_changes: tuple[FileChange, ...] = (FileChange("modify", "ops/example.py"),),
+        snapshot_branch: str = BRANCH,
+        snapshot_changes: tuple[FileChange, ...] = (
+            FileChange("modify", "ops/example.py"),
+        ),
     ) -> None:
         self.local = local
         self.remote = remote
@@ -98,6 +101,7 @@ class FakeGit:
         self.canonical_clean = canonical_clean
         self.snapshot_clean = snapshot_clean
         self.snapshot_head = snapshot_head
+        self.snapshot_branch = snapshot_branch
         self.snapshot_changes = snapshot_changes
         self.actions: list[str] = []
 
@@ -115,7 +119,7 @@ class FakeGit:
     def inspect_worktree(self, path: Path, base_sha: str) -> WorktreeSnapshot:
         return WorktreeSnapshot(
             path=path,
-            branch=BRANCH,
+            branch=self.snapshot_branch,
             base_sha=base_sha,
             head_sha=self.snapshot_head,
             parent_sha=BASE,
@@ -353,6 +357,7 @@ def test_legacy_abandoned_branch_releases_exact_clean_physical_worktree() -> Non
         remote=None,
         physical=physical,
         snapshot_head=BASE,
+        snapshot_branch=branch,
         snapshot_changes=(),
     )
     github = FakeGitHub(replace(_pr(state="CLOSED"), number=-1, branch=branch))

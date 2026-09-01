@@ -125,6 +125,12 @@ def preflight_resolve_remove(
             f"target worktree branch mismatch: expected {branch}, "
             f"observed {observed_branch.strip() or 'unknown'}"
         )
+    rc, observed_head = git(["rev-parse", "--verify", "HEAD^{commit}"], worktree)
+    if rc != 0 or observed_head.strip() != expected_head_sha:
+        return (
+            f"target worktree HEAD mismatch: expected {expected_head_sha}, "
+            f"observed {observed_head.strip() or 'unknown'}"
+        )
     return None
 
 
