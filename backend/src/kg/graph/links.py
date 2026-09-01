@@ -223,6 +223,13 @@ class _LinksMixin:
             for pair in sorted(pair_locks):
                 locks.enter_context(self._pair_thread_lock(pair))
                 locks.enter_context(path_write_lock(self._pair_lock_path(pair)))
+            # A stale instance may already have a provisional link for a pair
+            # that another instance persisted first. Reconcile before flushing
+            # so the stale snapshot cannot put its provisional row first and
+            # accidentally replace the durable winner.
+            self._reconcile_persisted_pairs(snapshot, pair_locks)
+            with self._lock:
+                snapshot = self._links_to_serializable()
             self._flush_links(snapshot)
             return self._reconcile_persisted_pairs(snapshot, pairs, preferred_link=preferred_link)
 
@@ -333,6 +340,14 @@ class _LinksMixin:
                 snapshot,
                 pair_locks={self._normalize_pair(lk.from_id, lk.to_id) for lk in created},
             )
+            # Reconciliation can discard a provisional link when a stale
+            # GraphStore instance races with another writer for the same pair.
+            # Only links still owned by this instance after reconciliation were
+            # actually created by this batch; reporting the discarded object
+            # would overcount pipeline work and emit an event for a dead ID.
+            with self._lock:
+                persisted_created = [link for link in created if self._links.get(link.id) is link]
+                event_snapshot = self._links_to_serializable() if persisted_created else None
             self._emit_graph_events(
                 [
                     self._build_graph_event_draft(
@@ -348,10 +363,11 @@ class _LinksMixin:
                         status_after="active",
                         reason=lk.reason,
                     )
-                    for lk in created
+                    for lk in persisted_created
                 ],
-                links_snapshot=snapshot,
+                links_snapshot=event_snapshot,
             )
+            created = persisted_created
         return created
 
     def get_links_for(self, card_id: str) -> list[GraphLink]:
