@@ -16,6 +16,13 @@ class VocabEntry(BaseModel):
     root_form: str | None = None  # AI-determined lemma from translate/quick
     source: VocabSource | None = None
 
+    @field_validator("translation")
+    @classmethod
+    def validate_translation_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("translation must contain at least one non-whitespace character")
+        return v
+
     @field_validator("context", mode="before")
     @classmethod
     def normalize_context(cls, v: str) -> str:
