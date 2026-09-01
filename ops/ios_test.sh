@@ -368,6 +368,8 @@ source "$SCRIPT_DIR/lib/ios_lock_wait.sh"
 source "$SCRIPT_DIR/lib/ios_test_failure_verdict.sh"
 # shellcheck source=lib/ios_cache_evict.sh
 source "$SCRIPT_DIR/lib/ios_cache_evict.sh"
+# shellcheck source=lib/ios_disk_budget.sh
+source "$SCRIPT_DIR/lib/ios_disk_budget.sh"
 # shellcheck source=lib/ios_test_video_archive.sh
 source "$SCRIPT_DIR/lib/ios_test_video_archive.sh"
 # shellcheck source=lib/ios_run_verdict.sh
