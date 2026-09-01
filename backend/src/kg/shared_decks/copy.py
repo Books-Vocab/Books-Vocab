@@ -30,6 +30,7 @@ here so the router stays a thin adapter:
   through :func:`_remap_graph_links` unchanged. We do NOT synthesize links.
 * **download_count**: atomic SQL increment (never Python get-then-set).
 """
+
 from __future__ import annotations
 
 import json
@@ -133,9 +134,7 @@ def _remap_graph_links(
         if lk.get("from_id") in id_map and lk.get("to_id") in id_map
     ]
     if remapped:
-        (user_dir / f"graph_{notebook_id}.json").write_text(
-            json.dumps(remapped, ensure_ascii=False), encoding="utf-8"
-        )
+        (user_dir / f"graph_{notebook_id}.json").write_text(json.dumps(remapped, ensure_ascii=False), encoding="utf-8")
 
 
 def _compensate(
@@ -174,7 +173,11 @@ def _replay(
     # Defensive re-materialize: if a prior copy crashed in the window between
     # record_copy (committed) and materialize, the notebook is still hidden. The
     # retry that lands here reveals it — self-healing, and a no-op once visible.
-    notebook_store.materialize(log.result_notebook_id)
+    if notebook_store.materialize(log.result_notebook_id):
+        # The request that reveals the staged notebook owns the one download
+        # count increment. This also recovers a crash before the original
+        # request reached its counter finalizer.
+        shared_store.increment_download_count(deck_id)
     nb = notebook_store.get(log.result_notebook_id)
     return CopyOutcome(
         notebook_id=log.result_notebook_id,
@@ -223,10 +226,16 @@ def copy_shared_deck(
     # the first's committed notebook and disambiguates to "X (2)".
     with _user_copy_lock(user_dir):
         return _copy_locked(
-            shared_store=shared_store, card_store=card_store,
-            notebook_store=notebook_store, user_dir=user_dir, deck=deck,
-            copier_id=copier_id, idempotency_key=idempotency_key,
-            notebook_name=notebook_name, now=now, _on_card=_on_card,
+            shared_store=shared_store,
+            card_store=card_store,
+            notebook_store=notebook_store,
+            user_dir=user_dir,
+            deck=deck,
+            copier_id=copier_id,
+            idempotency_key=idempotency_key,
+            notebook_name=notebook_name,
+            now=now,
+            _on_card=_on_card,
         )
 
 
@@ -265,8 +274,12 @@ def _copy_locked(
     # every card lands + count-equality holds. is_staged (NOT is_deleted) is the
     # barrier, so the reveal can never resurrect a user-deleted copy on replay.
     nb = notebook_store.create(
-        name=unique_name, color=deck.color, cover_pattern=deck.cover_pattern,
-        source_shared_deck_id=deck.id, source_version=version, is_staged=True,
+        name=unique_name,
+        color=deck.color,
+        cover_pattern=deck.cover_pattern,
+        source_shared_deck_id=deck.id,
+        source_version=version,
+        is_staged=True,
     )
 
     id_map: dict[str, str] = {}
@@ -274,10 +287,17 @@ def _copy_locked(
     try:
         for i, sc in enumerate(src_cards):
             card, was_created = card_store.add_shared_copy(
-                content=sc.content, meaning=sc.meaning, pos=sc.pos,
-                examples=sc.examples, collocations=sc.collocations, note=sc.note,
-                difficulty=sc.difficulty, mode=sc.mode, root_form=sc.root_form,
-                inflections=sc.inflections, notebook_id=nb.id,
+                content=sc.content,
+                meaning=sc.meaning,
+                pos=sc.pos,
+                examples=sc.examples,
+                collocations=sc.collocations,
+                note=sc.note,
+                difficulty=sc.difficulty,
+                mode=sc.mode,
+                root_form=sc.root_form,
+                inflections=sc.inflections,
+                notebook_id=nb.id,
                 # strictly-monotonic, distinct per card (§4.4 tie defense)
                 updated_at=now + timedelta(milliseconds=i),
                 source_shared_card_guid=sc.content_guid,
@@ -313,9 +333,7 @@ def _copy_locked(
     # prevent). With the log first, a crash before materialize self-heals — the
     # retry finds the log and _replay reveals the still-hidden notebook.
     try:
-        recorded = shared_store.record_copy(
-            copier_id, idempotency_key, deck.id, version, nb.id
-        )
+        recorded = shared_store.record_copy(copier_id, idempotency_key, deck.id, version, nb.id)
     except Exception:
         # record_copy only converts an idempotency collision to False; any other
         # fault (e.g. OperationalError: database is locked) escapes. The staged
@@ -335,11 +353,15 @@ def _copy_locked(
     # Post-commit finalizers — best-effort, never compensated (rolling back after
     # the idempotency log is committed would strand its pointer). A crash here is
     # recovered by the next retry via _replay.
-    notebook_store.materialize(nb.id)
-    shared_store.increment_download_count(deck.id)
+    if notebook_store.materialize(nb.id):
+        shared_store.increment_download_count(deck.id)
     return CopyOutcome(
-        notebook_id=nb.id, notebook_name=unique_name, deck_id=deck.id,
-        source_version=version, card_count=created, already_copied=False,
+        notebook_id=nb.id,
+        notebook_name=unique_name,
+        deck_id=deck.id,
+        source_version=version,
+        card_count=created,
+        already_copied=False,
     )
 
 

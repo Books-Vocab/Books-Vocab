@@ -13,6 +13,7 @@ The load-bearing guardrails (all asserted here):
 * copied count == source snapshot (fail-loud on NOCASE/NFC collapse).
 * download_count atomic increment.
 """
+
 from __future__ import annotations
 
 import json
@@ -29,21 +30,33 @@ from kg.shared_decks.store import SharedDeck, SharedDeckStore
 from ops_helpers import run_ops_cli as _cli
 
 _DECK_CARDS = [
-    {"content": "meticulous", "pos": "adj.", "meaning": "一絲不苟的",
-     "examples": ["Her **meticulous** notes."], "collocations": ["meticulous planning"],
-     "note": "teacher note", "difficulty": 4.5, "mode": "recognition",
-     "root_form": None, "inflections": []},
+    {
+        "content": "meticulous",
+        "pos": "adj.",
+        "meaning": "一絲不苟的",
+        "examples": ["Her **meticulous** notes."],
+        "collocations": ["meticulous planning"],
+        "note": "teacher note",
+        "difficulty": 4.5,
+        "mode": "recognition",
+        "root_form": None,
+        "inflections": [],
+    },
     {"content": "wince", "pos": "v.", "meaning": "畏縮", "mode": "recognition"},
     {"content": "ubiquitous", "pos": "adj.", "meaning": "無所不在的", "mode": "recognition"},
 ]
 
 
-def _publish_deck(shared_store, *, deck_id="deck_a", title="Official Starter",
-                  cards=None):
+def _publish_deck(shared_store, *, deck_id="deck_a", title="Official Starter", cards=None):
     return shared_store.publish_official(
-        deck_id=deck_id, title=title, cards=cards if cards is not None else _DECK_CARDS,
-        color="#112233", cover_pattern="waves", language_pair="en-zh",
-        category="language", publisher_display_name="KG Team",
+        deck_id=deck_id,
+        title=title,
+        cards=cards if cards is not None else _DECK_CARDS,
+        color="#112233",
+        cover_pattern="waves",
+        language_pair="en-zh",
+        category="language",
+        publisher_display_name="KG Team",
     )
 
 
@@ -59,21 +72,34 @@ def _stores(tmp_path, uid="u1"):
 def _dictionary_sidecar_count(cards_db) -> int:
     """Transitional assertion helper: retired schemas omit the table entirely."""
     with sqlite3.connect(cards_db) as conn:
-        exists = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='dictionary_entry'"
-        ).fetchone()
+        exists = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='dictionary_entry'").fetchone()
         if exists is None:
             return 0
         return conn.execute("SELECT COUNT(*) FROM dictionary_entry").fetchone()[0]
 
 
-def _copy(shared_store, card_store, notebook_store, user_dir, *, deck_id="deck_a",
-          copier_id="u1", key="k1", notebook_name=None, on_card=None):
+def _copy(
+    shared_store,
+    card_store,
+    notebook_store,
+    user_dir,
+    *,
+    deck_id="deck_a",
+    copier_id="u1",
+    key="k1",
+    notebook_name=None,
+    on_card=None,
+):
     return copy_shared_deck(
-        shared_store=shared_store, card_store=card_store,
-        notebook_store=notebook_store, user_dir=user_dir,
-        deck_id=deck_id, copier_id=copier_id, idempotency_key=key,
-        notebook_name=notebook_name, _on_card=on_card,
+        shared_store=shared_store,
+        card_store=card_store,
+        notebook_store=notebook_store,
+        user_dir=user_dir,
+        deck_id=deck_id,
+        copier_id=copier_id,
+        idempotency_key=key,
+        notebook_name=notebook_name,
+        _on_card=on_card,
     )
 
 
@@ -301,6 +327,7 @@ def test_replay_self_heals_staged_notebook(tmp_path, monkeypatch):
     assert nb.is_staged is False
     assert nb.is_deleted is False
     assert len([n for n in nbs.all() if not n.is_default]) == 1
+    assert shared.get("deck_a").download_count == 1
 
 
 def test_replay_does_not_resurrect_user_deleted_notebook(tmp_path):
@@ -340,8 +367,8 @@ def test_concurrent_same_user_copies_no_duplicate_active_name(tmp_path):
     user_dir, shared, cards, nbs = _stores(tmp_path)
     _publish_deck(shared)
 
-    a_mid = threading.Event()   # A: inside its critical section (holds the lock)
-    a_go = threading.Event()    # main → A: you may finish
+    a_mid = threading.Event()  # A: inside its critical section (holds the lock)
+    a_go = threading.Event()  # main → A: you may finish
     results: dict[str, object] = {}
     errors: dict[str, BaseException] = {}
 
@@ -452,8 +479,7 @@ def test_world_export_tolerates_db_without_is_staged_column(tmp_path):
         "is_deleted INTEGER DEFAULT 0)"  # NOTE: no is_staged column
     )
     conn.execute(
-        "INSERT INTO notebook (id, name, sort_order, is_default, is_deleted) "
-        "VALUES ('n1', 'Legacy Book', 0, 0, 0)"
+        "INSERT INTO notebook (id, name, sort_order, is_default, is_deleted) VALUES ('n1', 'Legacy Book', 0, 0, 0)"
     )
     conn.commit()
     conn.close()
@@ -472,10 +498,13 @@ def test_homograph_collapse_fails_loud(tmp_path):
     # Two homographs distinct by (pos, meaning) → two distinct shared cards, but
     # they collapse under the card table's (content COLLATE NOCASE, notebook_id)
     # uniqueness. Count-equality must catch that, not silently drop a card.
-    _publish_deck(shared, cards=[
-        {"content": "Lead", "pos": "n.", "meaning": "鉛", "mode": "recognition"},
-        {"content": "lead", "pos": "v.", "meaning": "帶領", "mode": "recognition"},
-    ])
+    _publish_deck(
+        shared,
+        cards=[
+            {"content": "Lead", "pos": "n.", "meaning": "鉛", "mode": "recognition"},
+            {"content": "lead", "pos": "v.", "meaning": "帶領", "mode": "recognition"},
+        ],
+    )
     assert len(shared.all_cards("deck_a", version=1)) == 2
 
     with pytest.raises(ConflictError):
@@ -579,14 +608,10 @@ def test_copy_endpoint_end_to_end(isolated_api):
     # The regular vocab projection is the copied deck's only card surface.
     # iOS targeted pull must see every copied card immediately, with no
     # dictionary projection or review opt-in required.
-    vocab = env.client.get(
-        "/api/vocab", params={"notebook_id": nb_id}, headers=env.headers
-    )
+    vocab = env.client.get("/api/vocab", params={"notebook_id": nb_id}, headers=env.headers)
     assert vocab.status_code == 200, vocab.text
     copied_cards = vocab.json()
-    assert {card["content"] for card in copied_cards} == {
-        card["content"] for card in _DECK_CARDS
-    }
+    assert {card["content"] for card in copied_cards} == {card["content"] for card in _DECK_CARDS}
     assert all("cardRole" not in card for card in copied_cards)
     assert all("reviewEligible" not in card for card in copied_cards)
 
