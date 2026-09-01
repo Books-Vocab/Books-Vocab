@@ -676,14 +676,21 @@ struct StatsPresenter: View {
                 VStack(spacing: 0) {
                     VocabForecastChart(buckets: summary.forecast)
                         .frame(height: 160)
-                        // Keep the chart visual as one AX element. Its nested
-                        // GeometryReader can render all bars while iOS omits
-                        // some descendants from the live accessibility tree.
-                        // The explicit bucket nodes below provide a stable,
-                        // one-to-one projection for UI automation and assistive
-                        // technology without changing the rendered chart.
-                        .accessibilityElement(children: .ignore)
+                        // Keep the chart visual out of the AX tree. Its nested
+                        // GeometryReader can render all bars while iOS exposes
+                        // an unstable subset of descendants. The explicit
+                        // bucket nodes below provide the stable, one-to-one
+                        // projection for UI automation and assistive technology
+                        // without changing the rendered chart.
+                        .accessibilityHidden(true)
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .accessibilityElement()
                         .accessibilityIdentifier("overview.forecast.chart")
+                        .accessibilityLabel(StatsCopy.forecastTitle)
+                        .accessibilityValue(
+                            LocaleAwareFormatter.shared.string(from: NSNumber(value: summary.forecast.map(\.count).reduce(0, +)))
+                        )
                     VStack(spacing: 0) {
                         ForEach(summary.forecast) { bucket in
                             Color.clear
