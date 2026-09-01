@@ -338,6 +338,9 @@ def test_active_registered_dirty_worktree_still_enforces_lane_budget(
         >= entry["allocated_bytes"]
     )
     assert str(worktree) in report["policy"]["lane_budget_exceeded"]
+    assert report["policy"]["measurement_incomplete"] is False
+    assert report["policy"]["quota_exceeded"] is True
+    assert f"lane-budget-exceeded:{worktree}" in report["policy"]["quota_reasons"]
     assert "dirty-physical-worktree" not in report["policy"]["blocking_reasons"]
 
 
@@ -583,6 +586,96 @@ def test_measurement_time_budget_fails_closed_with_structured_evidence(
     assert report["measurement"]["budget_seconds"] == 0.0
     assert report["measurement"]["budget_exhausted"] is True
     assert "measurement-time-budget-exceeded" in report["policy"]["reasons"]
+
+
+def test_git_status_timeout_is_structured_as_incomplete_not_quota_excess(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    state = tmp_path / "registry.json"
+    _write_registry(
+        state,
+        [
+            {
+                "branch": "lane-one",
+                "path": str(worktree),
+                "status": "active",
+                "claim_generation": 0,
+            }
+        ],
+    )
+    original_run = disk_usage.subprocess.run
+
+    def timeout_git_status(command: list[str], **kwargs: object) -> object:
+        if command[:3] == ["git", "-C", str(worktree)] and "status" in command:
+            timeout = kwargs.get("timeout")
+            assert isinstance(timeout, (int, float)) and 0 < timeout <= 5
+            raise subprocess.TimeoutExpired(command, kwargs.get("timeout"))
+        return original_run(command, **kwargs)
+
+    monkeypatch.setattr(disk_usage.subprocess, "run", timeout_git_status)
+
+    report = disk_usage.build_report(repo, state, time_budget_seconds=5)
+
+    assert report["measurement"]["status"] == "incomplete"
+    assert report["measurement"]["incomplete_reasons"] == [
+        "measurement-time-budget-exceeded"
+    ]
+    assert report["policy"]["verdict"] == "block"
+    assert report["policy"]["measurement_incomplete"] is True
+    assert report["policy"]["quota_exceeded"] is False
+
+
+def test_historical_missing_lanes_keep_audit_identity_without_global_measurement_block(
+    tmp_path: Path,
+) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    state = tmp_path / "registry.json"
+    missing_records = [
+        {
+            "branch": f"history-{index}",
+            "path": str(tmp_path / "history" / str(index)),
+            "status": "merged",
+            "claim_generation": 0,
+            "external_ids": [f"MERGED-HISTORY-{index}"],
+        }
+        for index in range(1000)
+    ]
+    _write_registry(
+        state,
+        [
+            {
+                "branch": "lane-one",
+                "path": str(worktree),
+                "status": "active",
+                "claim_generation": 0,
+                "external_ids": ["DIRECT-DELIVERY-ACTIVE"],
+            },
+            *missing_records,
+        ],
+    )
+
+    report = disk_usage.build_report(repo, state, time_budget_seconds=5)
+
+    assert report["measurement"]["status"] == "complete"
+    assert report["policy"]["verdict"] == "warning"
+    assert report["policy"]["measurement_incomplete"] is False
+    assert report["policy"]["quota_exceeded"] is False
+    assert len(report["policy"]["missing_terminal_lanes"]) == 1000
+    history_row = next(
+        item
+        for item in report["accounting"]["lane_accounting"]
+        if item["path"] == str(tmp_path / "history" / "999")
+    )
+    history_lane = next(
+        item
+        for item in report["lanes"]
+        if item["path"] == str(tmp_path / "history" / "999")
+    )
+    assert history_row["registry_status"] == "merged"
+    assert history_row["measurement_error"] == "path-missing"
+    assert history_lane["external_ids"] == ["MERGED-HISTORY-999"]
+    assert history_lane["lane_key"]
 
 
 def test_codex_topology_and_lane_classifications_are_separate(
