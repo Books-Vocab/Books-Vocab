@@ -105,7 +105,7 @@ def _tokens_by_day_and_type(cutoff_iso: str) -> dict[str, dict[str, int]]:
             "SELECT substr(created_at, 1, 10) AS d, call_type, "
             "       SUM(input_tokens) AS ti, SUM(output_tokens) AS to_ "
             "FROM token_usage "
-            "WHERE created_at >= ? "
+            "WHERE julianday(created_at) >= julianday(?) "
             "GROUP BY d, call_type",
             (cutoff_iso,),
         ).fetchall()
