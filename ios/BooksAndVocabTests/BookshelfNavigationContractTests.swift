@@ -1,6 +1,8 @@
 #if DEBUG
 import Foundation
+import SwiftData
 import Testing
+@testable import BooksAndVocab
 
 @Suite
 struct BookshelfNavigationContractTests {
@@ -77,5 +79,69 @@ struct BookshelfNavigationContractTests {
             "BookCard must keep the failed state non-interactive inside the link label"
         )
     }
+
+#if os(iOS)
+    @MainActor
+    private final class UncalledImportService: BookshelfImporting {
+        private func draft() -> ImportedBookDraft {
+            ImportedBookDraft(
+                title: "unused",
+                author: "unused",
+                coverImageData: nil,
+                fileName: "unused.epub",
+                format: .epub
+            )
+        }
+
+        func importBook(
+            from _: URL,
+            progress _: (@Sendable (Double) -> Void)?
+        ) async throws -> ImportedBookDraft {
+            draft()
+        }
+
+        func importTXT(
+            from _: URL,
+            progress _: (@Sendable (Double) -> Void)?
+        ) async throws -> ImportedBookDraft {
+            draft()
+        }
+
+        func importMD(
+            from _: URL,
+            progress _: (@Sendable (Double) -> Void)?
+        ) async throws -> ImportedBookDraft {
+            draft()
+        }
+
+        func importPDF(
+            from _: URL,
+            progress _: (@Sendable (Double) -> Void)?
+        ) async throws -> ImportedBookDraft {
+            draft()
+        }
+    }
+
+    @Test
+    @MainActor
+    func cancelledFileImporterDoesNotPresentImportError() throws {
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        let container = try ModelContainer(for: Book.self, configurations: configuration)
+        let coordinator = BookshelfCoordinator()
+        let toast = AppToastCoordinator()
+
+        coordinator.handleFileImport(
+            .failure(CocoaError(.userCancelled)),
+            modelContext: container.mainContext,
+            importService: UncalledImportService(),
+            toastCoordinator: toast
+        )
+
+        #expect(coordinator.errorMessage == nil)
+        #expect(coordinator.errorDiagnosis == nil)
+        #expect(!coordinator.showError)
+        #expect(toast.current == nil)
+    }
+#endif
 }
 #endif
