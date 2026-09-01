@@ -12,18 +12,25 @@ quota; the accounting section makes the shared/unassigned part explicit.
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
 import os
 import plistlib
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
 import time
 from pathlib import Path
 from typing import Any
+
+try:
+    import fcntl as _fcntl
+except ImportError:  # pragma: no cover - only non-POSIX runtimes
+    _fcntl = None
 
 SCHEMA = "kg.disk.lane-usage.v1"
 BLOCKED_EXIT = 75
@@ -41,6 +48,10 @@ XCTEST_DEVICES_METADATA_ERROR = "xctest-devices-metadata-unavailable"
 XCTEST_DEVICES_MEASUREMENT_ERROR = "xctest-devices-measurement-incomplete"
 XCTEST_DEVICES_BUDGET_ERROR = "xctest-devices-budget-exceeded"
 XCTEST_DEVICES_MANUAL_REVIEW_ERROR = "xctest-devices-manual-review-required"
+PHYSICAL_EXTENT_UNSUPPORTED = "physical-extents-unsupported"
+PHYSICAL_EXTENT_UNMAPPED = "physical-extents-unmapped"
+F_LOG2PHYS_EXT = 65
+_LOG2PHYS_EXT_FORMAT = "=Iqq"
 _XCTEST_UDID_RE = re.compile(r"^[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$")
 
 
@@ -63,6 +74,97 @@ def _relative_to(path: Path, root: Path) -> bool:
 def _allocated_bytes(stat_result: os.stat_result) -> int:
     blocks = getattr(stat_result, "st_blocks", 0)
     return int(blocks) * 512 if blocks else int(stat_result.st_size)
+
+
+def _supports_physical_extents() -> bool:
+    return sys.platform == "darwin" and _fcntl is not None
+
+
+def _physical_file_extents(
+    path: Path,
+    stat_result: os.stat_result,
+    *,
+    deadline: float | None = None,
+) -> tuple[list[tuple[int, int, int]], str | None]:
+    """Return APFS physical ranges for one file without reading its contents."""
+
+    if not _supports_physical_extents():
+        return [], "physical-extents-platform-unavailable"
+    size = int(stat_result.st_size)
+    if size <= 0:
+        return [], None
+    try:
+        descriptor = os.open(path, os.O_RDONLY)
+    except OSError as exc:
+        return [], f"physical-open:{exc.__class__.__name__}"
+
+    extents: list[tuple[int, int, int]] = []
+    offset = 0
+    try:
+        while offset < size:
+            if _deadline_expired(deadline):
+                return extents, MEASUREMENT_BUDGET_ERROR
+            request = struct.pack(
+                _LOG2PHYS_EXT_FORMAT,
+                0,
+                size - offset,
+                offset,
+            )
+            try:
+                raw = _fcntl.fcntl(descriptor, F_LOG2PHYS_EXT, request)
+            except OSError as exc:
+                if exc.errno in {
+                    errno.ENOTSUP,
+                    getattr(errno, "EOPNOTSUPP", errno.ENOTSUP),
+                    45,
+                }:
+                    return [], PHYSICAL_EXTENT_UNSUPPORTED
+                return extents, f"physical-query:{exc.__class__.__name__}"
+            _, contiguous_bytes, device_offset = struct.unpack(
+                _LOG2PHYS_EXT_FORMAT, raw
+            )
+            if contiguous_bytes <= 0:
+                return extents, PHYSICAL_EXTENT_UNMAPPED
+            contiguous_bytes = min(contiguous_bytes, size - offset)
+            if device_offset < 0:
+                # A negative device offset denotes a sparse/unallocated hole;
+                # advance through it without inventing physical bytes.
+                offset += contiguous_bytes
+                continue
+            extents.append(
+                (
+                    int(stat_result.st_dev),
+                    int(device_offset),
+                    int(device_offset + contiguous_bytes),
+                )
+            )
+            offset += contiguous_bytes
+    finally:
+        os.close(descriptor)
+    return extents, None
+
+
+def _union_physical_extents(
+    extents: list[tuple[int, int, int]],
+) -> int:
+    total = 0
+    current_device: int | None = None
+    current_start = 0
+    current_end = 0
+    for device, start, end in sorted(extents):
+        if end <= start:
+            continue
+        if device != current_device or start > current_end:
+            if current_device is not None:
+                total += current_end - current_start
+            current_device = device
+            current_start = start
+            current_end = end
+        elif end > current_end:
+            current_end = end
+    if current_device is not None:
+        total += current_end - current_start
+    return total
 
 
 def _deadline_expired(deadline: float | None) -> bool:
@@ -251,7 +353,17 @@ def inspect_xctest_devices(
         "measurement_complete": True,
         "metadata_complete": True,
         "measurement_errors": [],
+        "physical_measurement_complete": True,
+        "physical_measurement_errors": [],
+        "physical_measurement_warnings": [],
+        "physical_allocated_bytes": 0,
+        "physical_fallback_files": 0,
+        "physical_fallback_allocated_bytes": 0,
+        "allocation_method": (
+            "apfs-physical-extents" if _supports_physical_extents() else "st_blocks"
+        ),
         "budget_bytes": max(0, int(budget_bytes)),
+        "budget_allocated_bytes": 0,
         "budget_exceeded": False,
         "budget_overflow_bytes": 0,
         "devices": [],
@@ -285,10 +397,19 @@ def inspect_xctest_devices(
 
     errors: list[str] = []
     devices: list[dict[str, Any]] = []
+    physical_observation: dict[str, Any] = {
+        "extents": [],
+        "errors": [],
+        "warnings": [],
+        "fallback_files": 0,
+        "fallback_allocated_bytes": 0,
+    }
+    measurement_complete = True
     processed_entries = 0
     for entry in entries:
         if _deadline_expired(deadline):
             errors.append(MEASUREMENT_BUDGET_ERROR)
+            measurement_complete = False
             break
         processed_entries += 1
         entry_path = Path(entry.path)
@@ -296,19 +417,28 @@ def inspect_xctest_devices(
             stat_result = entry.stat(follow_symlinks=False)
         except OSError as exc:
             errors.append(f"{entry.name}:stat:{exc.__class__.__name__}")
+            measurement_complete = False
             continue
         if not entry.is_dir(follow_symlinks=False):
             base["logical_bytes"] += int(stat_result.st_size)
             base["allocated_bytes"] += _allocated_bytes(stat_result)
             base["files"] += 1
             errors.append(f"unexpected-root-entry:{entry.name}")
+            measurement_complete = False
             continue
         base["device_count"] += 1
-        measured = measure_tree(entry_path, deadline=deadline)
+        measured = measure_tree(
+            entry_path,
+            deadline=deadline,
+            physical_observation=(
+                physical_observation if _supports_physical_extents() else None
+            ),
+        )
         base["logical_bytes"] += int(measured["logical_bytes"])
         base["allocated_bytes"] += int(measured["allocated_bytes"])
         base["files"] += int(measured["files"])
         if not measured["complete"]:
+            measurement_complete = False
             errors.extend(
                 f"{entry.name}:{error}"
                 for error in measured.get("errors", ["measurement-incomplete"])
@@ -345,24 +475,59 @@ def inspect_xctest_devices(
         devices.append(device)
     if processed_entries < len(entries) and MEASUREMENT_BUDGET_ERROR not in errors:
         errors.append(MEASUREMENT_BUDGET_ERROR)
+        measurement_complete = False
 
     base["devices"] = devices
     base["measurement_errors"] = sorted(set(errors))[:20]
-    base["measurement_complete"] = not any(
-        error == MEASUREMENT_BUDGET_ERROR
-        or error.endswith(f":{MEASUREMENT_BUDGET_ERROR}")
-        for error in errors
-    )
+    base["measurement_complete"] = measurement_complete
     if not base["measurement_complete"]:
         base["status"] = "measurement-incomplete"
     elif not base["metadata_complete"]:
         base["status"] = "metadata-unavailable"
+
+    if _supports_physical_extents():
+        physical_errors = sorted(set(physical_observation["errors"]))
+        physical_warnings = sorted(set(physical_observation["warnings"]))
+        physical_allocated = _union_physical_extents(physical_observation["extents"])
+        fallback_files = int(physical_observation["fallback_files"])
+        fallback_allocated = int(physical_observation["fallback_allocated_bytes"])
+        base.update(
+            {
+                "physical_measurement_complete": not physical_errors,
+                "physical_measurement_errors": physical_errors[:20],
+                "physical_measurement_warnings": physical_warnings[:20],
+                "physical_allocated_bytes": physical_allocated,
+                "physical_fallback_files": fallback_files,
+                "physical_fallback_allocated_bytes": fallback_allocated,
+            }
+        )
+        if physical_errors:
+            base["measurement_complete"] = False
+            base["status"] = "measurement-incomplete"
+            base["measurement_errors"] = sorted(
+                set(base["measurement_errors"])
+                | {f"physical:{error}" for error in physical_errors}
+            )[:20]
+            base["allocation_method"] = "apfs-physical-extents-incomplete"
+            base["budget_allocated_bytes"] = None
+            base["budget_exceeded"] = None
+            base["budget_overflow_bytes"] = None
+        else:
+            base["budget_allocated_bytes"] = physical_allocated + fallback_allocated
+            base["allocation_method"] = (
+                "apfs-physical-extents+st_blocks-fallback"
+                if fallback_files
+                else "apfs-physical-extents"
+            )
+    else:
+        base["budget_allocated_bytes"] = base["allocated_bytes"]
+
     candidates = [device for device in devices if device["reclaimable"]]
     base["reclaim"]["candidates"] = [device["udid"] for device in candidates]
-    base["budget_exceeded"] = base["allocated_bytes"] > base["budget_bytes"]
-    base["budget_overflow_bytes"] = max(
-        0, base["allocated_bytes"] - base["budget_bytes"]
-    )
+    budget_allocated = base["budget_allocated_bytes"]
+    if budget_allocated is not None:
+        base["budget_exceeded"] = budget_allocated > base["budget_bytes"]
+        base["budget_overflow_bytes"] = max(0, budget_allocated - base["budget_bytes"])
     if base["budget_exceeded"]:
         base["reclaim"]["status"] = "manual-review"
         if (
@@ -397,6 +562,7 @@ def measure_tree(
     *,
     excluded: set[Path] | None = None,
     deadline: float | None = None,
+    physical_observation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Measure one bounded tree without following symlinked directories."""
 
@@ -471,6 +637,29 @@ def measure_tree(
                             seen_files.add(identity)
                             logical += int(stat_result.st_size)
                             files += 1
+                        if physical_observation is not None:
+                            extents, physical_error = _physical_file_extents(
+                                entry_path,
+                                stat_result,
+                                deadline=deadline,
+                            )
+                            physical_observation["extents"].extend(extents)
+                            if physical_error in {
+                                PHYSICAL_EXTENT_UNSUPPORTED,
+                                "physical-open:PermissionError",
+                            }:
+                                physical_observation["fallback_files"] += 1
+                                physical_observation["fallback_allocated_bytes"] += (
+                                    _allocated_bytes(stat_result)
+                                )
+                                physical_observation["warnings"].append(
+                                    f"{entry_path}: {physical_error}"
+                                )
+                            elif physical_error:
+                                complete = False
+                                error = f"{entry_path}: {physical_error}"
+                                errors.append(error)
+                                physical_observation["errors"].append(error)
         except OSError as exc:
             complete = False
             errors.append(f"{directory}: {exc.__class__.__name__}")

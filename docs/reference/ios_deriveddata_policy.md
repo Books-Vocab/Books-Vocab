@@ -214,9 +214,15 @@ identity-mismatched, active, or non-ephemeral plist as reclaimable.
 
 The additive report field is
 `accounting.shared_platform_storage.xctest_devices`. It records the exact
-root, logical/allocated bytes, device count, metadata and measurement status,
-the shared budget, overflow, and per-device reclaim evidence. The default
-shared budget is 16 GiB and is configurable with
+root, logical/raw allocated bytes, device count, metadata and measurement
+status, the shared budget, overflow, and per-device reclaim evidence. On
+Darwin, the budget uses the union of APFS physical extents, so APFS-cloned
+files shared by multiple XCTestDevices are counted once. The compatibility
+`allocated_bytes` field remains the raw per-file `st_blocks` observation for
+audit; `budget_allocated_bytes` is the value used for the fixed quota, and
+`allocation_method` records whether it used APFS extents or the conservative
+`st_blocks` fallback. An incomplete physical or tree observation is never
+treated as within budget. The default shared budget is 16 GiB and is configurable with
 `KG_DISK_GUARD_XCTEST_DEVICES_BUDGET_GIB` or
 `--xctest-devices-budget-gib`. Exceeding it is always a blocking policy result;
 the guard cannot report `within-bounds` while the store is over budget.

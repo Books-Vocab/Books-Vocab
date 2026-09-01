@@ -1092,3 +1092,80 @@ def test_xctest_devices_fields_are_additive_to_existing_report_schema(
     assert {"workspace", "registry", "lanes", "accounting", "policy"} <= report.keys()
     assert "shared_platform_storage" in report["accounting"]
     assert "xctest_devices" in report["accounting"]["shared_platform_storage"]
+
+
+def test_xctest_devices_propagates_non_timeout_tree_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    xctest_root = tmp_path / "XCTestDevices"
+    udid = "66666666-6666-4666-8666-666666666666"
+    _write_xctest_device(xctest_root, udid)
+
+    def incomplete_tree(*args: object, **kwargs: object) -> dict[str, object]:
+        return {
+            "logical_bytes": 4096,
+            "allocated_bytes": 4096,
+            "files": 1,
+            "complete": False,
+            "errors": ["permission-denied"],
+        }
+
+    monkeypatch.setattr(disk_usage, "measure_tree", incomplete_tree)
+
+    observed = disk_usage.inspect_xctest_devices(xctest_root)
+
+    assert observed["measurement_complete"] is False
+    assert observed["status"] == "measurement-incomplete"
+    assert f"{udid}:permission-denied" in observed["measurement_errors"]
+
+
+def test_xctest_devices_budget_uses_unique_physical_extents(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    xctest_root = tmp_path / "XCTestDevices"
+    udid = "77777777-7777-4777-8777-777777777777"
+    _write_xctest_device(xctest_root, udid)
+
+    monkeypatch.setattr(disk_usage, "_supports_physical_extents", lambda: True)
+
+    def shared_extent(
+        *args: object, **kwargs: object
+    ) -> tuple[list[tuple[int, int, int]], None]:
+        return [(9, 4096, 8192)], None
+
+    monkeypatch.setattr(disk_usage, "_physical_file_extents", shared_extent)
+
+    observed = disk_usage.inspect_xctest_devices(xctest_root, budget_bytes=1024 * 1024)
+
+    assert observed["allocation_method"] == "apfs-physical-extents"
+    assert observed["physical_allocated_bytes"] == 4096
+    assert observed["budget_allocated_bytes"] == 4096
+    assert observed["allocated_bytes"] > observed["budget_allocated_bytes"]
+    assert observed["measurement_complete"] is True
+
+
+def test_xctest_devices_physical_open_fallback_is_explicit_and_conservative(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    xctest_root = tmp_path / "XCTestDevices"
+    udid = "88888888-8888-4888-8888-888888888888"
+    _write_xctest_device(xctest_root, udid)
+
+    monkeypatch.setattr(disk_usage, "_supports_physical_extents", lambda: True)
+    monkeypatch.setattr(
+        disk_usage,
+        "_physical_file_extents",
+        lambda *args, **kwargs: ([], "physical-open:PermissionError"),
+    )
+
+    observed = disk_usage.inspect_xctest_devices(xctest_root, budget_bytes=1)
+
+    assert observed["allocation_method"] == "apfs-physical-extents+st_blocks-fallback"
+    assert observed["physical_measurement_complete"] is True
+    assert observed["physical_fallback_files"] == 2
+    assert (
+        observed["budget_allocated_bytes"]
+        == observed["physical_fallback_allocated_bytes"]
+    )
+    assert observed["budget_exceeded"] is True
+    assert observed["physical_measurement_warnings"]

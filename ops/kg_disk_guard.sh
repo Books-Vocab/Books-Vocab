@@ -397,7 +397,7 @@ write_lane_usage() {
   XCTEST_DEVICES_REPORT_ERROR=0
   if [[ -f "$LANE_USAGE_STATE" ]] && command -v jq >/dev/null 2>&1; then
     if jq -e '.accounting.shared_platform_storage.xctest_devices' "$LANE_USAGE_STATE" >/dev/null 2>&1; then
-      XCTEST_DEVICES_KB="$(jq -r '(.accounting.shared_platform_storage.xctest_devices.allocated_bytes // 0) / 1024 | floor' "$LANE_USAGE_STATE")"
+      XCTEST_DEVICES_KB="$(jq -r '(.accounting.shared_platform_storage.xctest_devices.budget_allocated_bytes // .accounting.shared_platform_storage.xctest_devices.allocated_bytes // 0) / 1024 | floor' "$LANE_USAGE_STATE")"
       XCTEST_DEVICES_OVERFLOW_KB="$(jq -r '(.accounting.shared_platform_storage.xctest_devices.budget_overflow_bytes // 0) / 1024 | floor' "$LANE_USAGE_STATE")"
       XCTEST_DEVICES_COUNT="$(jq -r '.accounting.shared_platform_storage.xctest_devices.device_count // 0' "$LANE_USAGE_STATE")"
       XCTEST_DEVICES_VERDICT="$(jq -r 'if .accounting.shared_platform_storage.xctest_devices.exists != true then "absent" elif .accounting.shared_platform_storage.xctest_devices.measurement_complete != true or .accounting.shared_platform_storage.xctest_devices.metadata_complete != true or .accounting.shared_platform_storage.xctest_devices.budget_exceeded == true then "block" else "pass" end' "$LANE_USAGE_STATE")"
