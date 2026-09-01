@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import collections
 import json
 import math
@@ -489,6 +490,18 @@ def test_external_card_review_route_preserves_finite_interval(external_api):
 
     assert response.status_code == 200, response.text
     assert response.json()["reviewIntervalHours"] == 24.5
+
+
+def test_external_rate_limiter_preserves_active_windows_at_key_cap():
+    async def run():
+        limiter = ExternalRateLimiter(limit=1, window_seconds=60, max_keys=2)
+        decisions = [await limiter.admit(key) for key in ("victim", "noise-a", "noise-b", "victim")]
+        return decisions, list(limiter._events)
+
+    decisions, keys = asyncio.run(run())
+
+    assert [decision.allowed for decision in decisions] == [True, True, False, False]
+    assert keys == ["noise-a", "victim"]
 
 
 def test_external_rate_limit_returns_standard_headers(external_api, monkeypatch):
