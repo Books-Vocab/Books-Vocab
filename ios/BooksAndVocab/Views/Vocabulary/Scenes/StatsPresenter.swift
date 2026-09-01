@@ -685,7 +685,7 @@ struct StatsPresenter: View {
                     // then provide the one-to-one projection for UI automation
                     // and assistive technology without changing the chart.
                     .accessibilityRepresentation {
-                        VStack(spacing: 0) {
+                        ZStack {
                             Text(StatsCopy.forecastTitle)
                                 .accessibilityElement()
                                 .accessibilityIdentifier("overview.forecast.chart")
