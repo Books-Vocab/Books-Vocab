@@ -9,11 +9,13 @@ is a **content plane only** — it structurally cannot carry any of the 7 SRS
 review columns that live on ``Card``. A publish path that snapshots into this
 table therefore *cannot* leak a copier's review schedule, by construction.
 """
+
 from __future__ import annotations
 
 from sqlalchemy import inspect
+from sqlmodel import Session
 
-from kg.shared_decks.store import SharedDeckStore
+from kg.shared_decks.store import SharedDeck, SharedDeckStore
 
 # The 7 spaced-review columns on ``Card`` (cards/model.py) — none may appear on
 # ``shared_deck_card``. Kept as a literal so the test fails loudly if someone
@@ -147,5 +149,45 @@ def test_shared_deck_index_columns_present(tmp_path):
             "report_count",
         ):
             assert expected in cols, f"shared_deck missing column: {expected}"
+    finally:
+        store.close()
+
+
+def test_identical_official_republish_restores_discoverability_axes(tmp_path):
+    """An idempotent official re-emit must repair stale server-authoritative axes."""
+    store = SharedDeckStore(tmp_path / "shared_decks.db")
+    cards = [{"content": "apple", "meaning": "蘋果"}]
+    try:
+        first = store.publish_official(deck_id="deck-a", title="Core", cards=cards)
+
+        # Simulate stale moderation/ownership state on the persisted row. The
+        # same official spec should restore the server-authoritative contract.
+        with Session(store.engine) as session:
+            deck = session.get(SharedDeck, "deck-a")
+            assert deck is not None
+            deck.source = "community"
+            deck.owner_id = "owner-a"
+            deck.visibility = "private"
+            deck.status = "removed"
+            deck.is_deleted = True
+            session.add(deck)
+            session.commit()
+
+        assert store.get("deck-a") is None
+        assert store.browse(limit=10) == []
+
+        outcome = store.publish_official(deck_id="deck-a", title="Core", cards=cards)
+
+        assert outcome["action"] == "metadata"
+        assert outcome["version"] == first["version"]
+        assert outcome["contentHash"] == first["contentHash"]
+        repaired = store.get("deck-a")
+        assert repaired is not None
+        assert repaired.source == "official"
+        assert repaired.owner_id is None
+        assert repaired.visibility == "official"
+        assert repaired.status == "active"
+        assert repaired.is_deleted is False
+        assert [deck.id for deck in store.browse(limit=10)] == ["deck-a"]
     finally:
         store.close()
