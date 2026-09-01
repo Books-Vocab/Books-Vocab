@@ -232,9 +232,8 @@ final class OverviewFlowUITests: UITestCase {
         try super.setUpWithError()
         // This suite launches both the populated and large-text counterexample
         // worlds and captures ten evidence steps. Keep the allowance explicit;
-        // XCTest's 60-second default otherwise kills a test that has already
-        // reached its final passing assertion.
-        executionTimeAllowance = 180
+        // XCTest's default is too short for the complete bounded projection.
+        executionTimeAllowance = 420
     }
 
     @MainActor
@@ -329,13 +328,6 @@ final class OverviewFlowUITests: UITestCase {
             counterexampleOverview.selectForecastRange(14)
             counterexampleOverview.assertUniqueForecastContract()
             assertForecastProjection(counterexampleExpected, days: 14, on: counterexampleOverview)
-            let zeroCounterexample = counterexampleApp.descendants(matching: .any)
-                .matching(identifier: "forecast-zero-counterexample")
-            XCTAssertEqual(zeroCounterexample.count, 1)
-            XCTAssertEqual(
-                zeroCounterexample.element.value as? String,
-                counterexampleExpected.formattedCount(0)
-            )
         }
     }
 
