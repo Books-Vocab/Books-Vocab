@@ -70,6 +70,71 @@ async def test_run_explain_translate_returns_expected_shape():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("runner", "operation", "content"),
+    [
+        (run_quick_translate, "translate_quick", '{"p":"v.","r":"evoke"}'),
+        (run_quick_translate, "translate_quick", '{"t":"","p":"v.","r":"evoke"}'),
+        (run_quick_translate, "translate_quick", "{not valid json"),
+        (run_phrase_translate, "translate_phrase", "{}"),
+        (run_phrase_translate, "translate_phrase", '{"t":""}'),
+        (run_phrase_translate, "translate_phrase", "{not valid json"),
+        (run_explain_translate, "translate_explain", '{"context":"extra"}'),
+        (run_explain_translate, "translate_explain", '{"e":""}'),
+        (run_explain_translate, "translate_explain", "{not valid json"),
+    ],
+)
+async def test_invalid_provider_payload_is_external_error_and_not_cached(
+    runner, operation, content
+):
+    from kg.exceptions import ExternalServiceError
+
+    req = TranslateRequest(word="evoke", context="context")
+    client = _fake_async_client(content)
+    logger = MagicMock()
+
+    with (
+        patch("kg.translate_service.translate_log.lookup", return_value=None),
+        patch("kg.translate_service.translate_log.record") as record,
+        pytest.raises(ExternalServiceError) as exc_info,
+    ):
+        await runner(
+            req,
+            {"id": "u_test"},
+            llm=TrackedLLM(client, "u_test"),
+            logger=logger,
+        )
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.label == f"{operation}/invalid_response"
+    record.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_invalid_cached_provider_payload_is_not_served_or_counted_as_hit():
+    from kg.exceptions import ExternalServiceError
+
+    req = TranslateRequest(word="evoke", context="context")
+    client = _fake_async_client('{"t":""}')
+    logger = MagicMock()
+
+    with (
+        patch("kg.translate_service.translate_log.lookup", return_value='{"t":""}'),
+        patch("kg.translate_service.translate_log.record_cache_hit") as record_cache_hit,
+        pytest.raises(ExternalServiceError) as exc_info,
+    ):
+        await run_phrase_translate(
+            req,
+            {"id": "u_test"},
+            llm=TrackedLLM(client, "u_test"),
+            logger=logger,
+        )
+
+    assert exc_info.value.status_code == 502
+    record_cache_hit.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_run_quick_translate_raises_on_empty_choices():
 
     req = TranslateRequest(word="evoke", context="context")

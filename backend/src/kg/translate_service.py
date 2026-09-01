@@ -151,6 +151,14 @@ def _parse_json_payload(raw: str | None) -> dict[str, Any]:
     return data
 
 
+def _validate_translation_payload(
+    data: dict[str, Any], *, required_field: str, operation: str
+) -> None:
+    value = data.get(required_field)
+    if not isinstance(value, str) or not value.strip():
+        raise ExternalServiceError(f"{operation}/invalid_response")
+
+
 async def _run_llm_translate(
     *,
     req: TranslateRequest,
@@ -159,6 +167,7 @@ async def _run_llm_translate(
     model: str,
     prompt_fn: Callable[[TranslateRequest, str, str, str], str],
     operation: str,
+    required_field: str,
     logger: logging.Logger | None = None,
 ) -> dict[str, Any]:
     """Common LLM translate flow: resolve langs -> cache check -> call -> parse -> record."""
@@ -170,6 +179,10 @@ async def _run_llm_translate(
     # Cache lookup — model is part of the key (see translate_log.lookup docstring).
     cached = translate_log.lookup(word_key, ctx_hash, source_lang, target_lang, operation, model)
     if cached is not None:
+        cached_data = _parse_json_payload(cached)
+        _validate_translation_payload(
+            cached_data, required_field=required_field, operation=operation
+        )
         # Record precise hit counter for admin observability. Short-circuits
         # never reach record(); without this they'd be invisible to metrics.
         try:
@@ -185,7 +198,7 @@ async def _run_llm_translate(
         except Exception:  # noqa: BLE001 — observability must never break translation
             if logger:
                 logger.exception("record_cache_hit failed (non-fatal)")
-        return _parse_json_payload(cached)
+        return cached_data
 
     # In-flight dedup: if an identical request is already running for this
     # user, await its future instead of firing a second LLM call. Keyed by
@@ -228,6 +241,9 @@ async def _run_llm_translate(
 
         raw = response.choices[0].message.content
         parsed = _parse_json_payload(raw)
+        _validate_translation_payload(
+            parsed, required_field=required_field, operation=operation
+        )
 
         # Only cache non-empty, meaningful responses
         if raw and parsed and any(parsed.values()):
@@ -254,15 +270,15 @@ async def _run_llm_translate(
 
 
 async def run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, llm: Any, logger: logging.Logger, model: str = "gemini-2.5-flash-lite") -> QuickTranslateResponse:
-    data = await _run_llm_translate(req=req, user=user, llm=llm, model=model, prompt_fn=quick_translate_prompt, operation="translate_quick", logger=logger)
+    data = await _run_llm_translate(req=req, user=user, llm=llm, model=model, prompt_fn=quick_translate_prompt, operation="translate_quick", required_field="t", logger=logger)
     return QuickTranslateResponse(t=data.get("t", ""), p=_normalize_pos(data.get("p")), r=data.get("r"))
 
 
 async def run_phrase_translate(req: TranslateRequest, user: dict[str, Any], *, llm: Any, logger: logging.Logger | None = None, model: str = "gemini-2.5-flash-lite") -> dict[str, str]:
-    data = await _run_llm_translate(req=req, user=user, llm=llm, model=model, prompt_fn=phrase_translate_prompt, operation="translate_phrase", logger=logger)
+    data = await _run_llm_translate(req=req, user=user, llm=llm, model=model, prompt_fn=phrase_translate_prompt, operation="translate_phrase", required_field="t", logger=logger)
     return {"t": data.get("t", "")}
 
 
 async def run_explain_translate(req: TranslateRequest, user: dict[str, Any], *, llm: Any, logger: logging.Logger | None = None, model: str = "gemini-2.5-flash-lite") -> ExplainResponse:
-    data = await _run_llm_translate(req=req, user=user, llm=llm, model=model, prompt_fn=explain_translate_prompt, operation="translate_explain", logger=logger)
+    data = await _run_llm_translate(req=req, user=user, llm=llm, model=model, prompt_fn=explain_translate_prompt, operation="translate_explain", required_field="e", logger=logger)
     return ExplainResponse(e=data.get("e", ""))
