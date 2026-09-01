@@ -15,9 +15,12 @@ XCTEST_DEVICES_BUDGET_GIB="${KG_DISK_GUARD_XCTEST_DEVICES_BUDGET_GIB:-${KG_XCTES
 [[ "$XCTEST_DEVICES_BUDGET_GIB" =~ ^[0-9]+$ ]] || XCTEST_DEVICES_BUDGET_GIB=16
 XCTEST_DEVICES_BUDGET_KB=$((XCTEST_DEVICES_BUDGET_GIB * 1048576))
 XCTEST_DEVICES_AUTO_RECLAIM="${KG_DISK_GUARD_XCTEST_DEVICES_AUTO_RECLAIM:-0}"
+SIMULATOR_RUNTIME_BUDGET_GIB="${KG_DISK_GUARD_SIMULATOR_RUNTIME_BUDGET_GIB:-${KG_SIMULATOR_RUNTIME_BUDGET_GIB:-56}}"
+[[ "$SIMULATOR_RUNTIME_BUDGET_GIB" =~ ^[0-9]+$ ]] || SIMULATOR_RUNTIME_BUDGET_GIB=56
+SIMULATOR_RUNTIME_BUDGET_KB=$((SIMULATOR_RUNTIME_BUDGET_GIB * 1048576))
 DERIVED_DATA_GLOBAL="${KG_DISK_GUARD_DERIVED_DATA_GLOBAL:-$HOME/Library/Developer/Xcode/DerivedData}"
-WARN_FREE_GIB="${KG_DISK_GUARD_WARN_FREE_GIB:-20}"
-CRIT_FREE_GIB="${KG_DISK_GUARD_CRIT_FREE_GIB:-10}"
+WARN_FREE_GIB="${KG_DISK_GUARD_WARN_FREE_GIB:-50}"
+CRIT_FREE_GIB="${KG_DISK_GUARD_CRIT_FREE_GIB:-36}"
 GROWTH_WARN_GIB="${KG_DISK_GUARD_GROWTH_WARN_GIB:-5}"
 DOCKER_WARN_GIB="${KG_DISK_GUARD_DOCKER_WARN_GIB:-2}"
 DOCKER_PRUNE_UNTIL="${KG_DISK_GUARD_DOCKER_PRUNE_UNTIL:-168h}"
@@ -62,6 +65,13 @@ XCTEST_DEVICES_VERDICT="unavailable"
 XCTEST_DEVICES_RECLAIM_STATUS="not-requested"
 XCTEST_DEVICES_MANUAL_REVIEW=0
 XCTEST_DEVICES_REPORT_ERROR=0
+SIMULATOR_RUNTIME_KB=0
+SIMULATOR_RUNTIME_OVERFLOW_KB=0
+SIMULATOR_RUNTIME_COUNT=0
+SIMULATOR_RUNTIME_VERDICT="unavailable"
+SIMULATOR_RUNTIME_RECLAIM_STATUS="not-supported"
+SIMULATOR_RUNTIME_MANUAL_REVIEW=0
+SIMULATOR_RUNTIME_REPORT_ERROR=0
 SUPERVISION_WORKTREE_ARGS=()
 CACHE_EVICTION_ATTEMPTED=0
 CACHE_EVICTION_EVICTED=0
@@ -389,6 +399,7 @@ write_lane_usage() {
     --time-budget-seconds "$LANE_USAGE_BUDGET_SECONDS"
     --xctest-devices-root "$XCTEST_DEVICES_ROOT"
     --xctest-devices-budget-gib "$XCTEST_DEVICES_BUDGET_GIB"
+    --simulator-runtime-budget-gib "$SIMULATOR_RUNTIME_BUDGET_GIB"
   )
   [[ "$XCTEST_DEVICES_AUTO_RECLAIM" == "1" ]] && command_args+=(--auto-reclaim-xctest-devices)
   for path in "${SUPERVISION_WORKTREE_ARGS[@]-}"; do
@@ -431,6 +442,13 @@ write_lane_usage() {
   XCTEST_DEVICES_RECLAIM_STATUS="not-requested"
   XCTEST_DEVICES_MANUAL_REVIEW=0
   XCTEST_DEVICES_REPORT_ERROR=0
+  SIMULATOR_RUNTIME_KB=0
+  SIMULATOR_RUNTIME_OVERFLOW_KB=0
+  SIMULATOR_RUNTIME_COUNT=0
+  SIMULATOR_RUNTIME_VERDICT="unavailable"
+  SIMULATOR_RUNTIME_RECLAIM_STATUS="not-supported"
+  SIMULATOR_RUNTIME_MANUAL_REVIEW=0
+  SIMULATOR_RUNTIME_REPORT_ERROR=0
   if [[ -f "$LANE_USAGE_STATE" ]] && command -v jq >/dev/null 2>&1; then
     if jq -e '.accounting.shared_platform_storage.xctest_devices' "$LANE_USAGE_STATE" >/dev/null 2>&1; then
       XCTEST_DEVICES_KB="$(jq -r '(.accounting.shared_platform_storage.xctest_devices.budget_allocated_bytes // .accounting.shared_platform_storage.xctest_devices.allocated_bytes // 0) / 1024 | floor' "$LANE_USAGE_STATE")"
@@ -446,6 +464,22 @@ write_lane_usage() {
     fi
   else
     XCTEST_DEVICES_REPORT_ERROR=1
+  fi
+  if [[ -f "$LANE_USAGE_STATE" ]] && command -v jq >/dev/null 2>&1; then
+    if jq -e '.accounting.shared_platform_storage.simulator_runtimes' "$LANE_USAGE_STATE" >/dev/null 2>&1; then
+      SIMULATOR_RUNTIME_KB="$(jq -r '(.accounting.shared_platform_storage.simulator_runtimes.budget_allocated_bytes // .accounting.shared_platform_storage.simulator_runtimes.allocated_bytes // 0) / 1024 | floor' "$LANE_USAGE_STATE")"
+      SIMULATOR_RUNTIME_OVERFLOW_KB="$(jq -r '(.accounting.shared_platform_storage.simulator_runtimes.budget_overflow_bytes // 0) / 1024 | floor' "$LANE_USAGE_STATE")"
+      SIMULATOR_RUNTIME_COUNT="$(jq -r '.accounting.shared_platform_storage.simulator_runtimes.runtime_count // 0' "$LANE_USAGE_STATE")"
+      SIMULATOR_RUNTIME_VERDICT="$(jq -r 'if (.accounting.shared_platform_storage.simulator_runtimes.exists != true) and ((.accounting.shared_platform_storage.simulator_runtimes.status // "") == "absent" or (.accounting.shared_platform_storage.simulator_runtimes.status // "") == "unsupported") then "absent" elif .accounting.shared_platform_storage.simulator_runtimes.measurement_complete != true or .accounting.shared_platform_storage.simulator_runtimes.budget_exceeded == true then "block" else "pass" end' "$LANE_USAGE_STATE")"
+      SIMULATOR_RUNTIME_RECLAIM_STATUS="$(jq -r '.accounting.shared_platform_storage.simulator_runtimes.reclaim.status // "not-supported"' "$LANE_USAGE_STATE")"
+      if [[ "$SIMULATOR_RUNTIME_VERDICT" == "block" ]]; then
+        SIMULATOR_RUNTIME_MANUAL_REVIEW=1
+      fi
+    else
+      SIMULATOR_RUNTIME_REPORT_ERROR=1
+    fi
+  else
+    SIMULATOR_RUNTIME_REPORT_ERROR=1
   fi
 }
 
@@ -608,15 +642,15 @@ evict_global_derived_data() {
 }
 
 write_state() {
-  local free="$1" prev="$2" growth="$3" active="$4" cache="$5" docker_cache="$6" docker_running="$7" worktree_cache="$8" worktree_keys="$9" worktree_overflow="${10}" cache_overflow="${11}" budget_kb="${12}" budget_overflow="${13}" headroom_kb="${14}" writer_limit_kb="${15}" headroom_overflow="${16}" repair_remaining="${17}" repair_status="${18}" verdict="${19}" reason="${20}" action="${21}" lane_usage_verdict="${22}" lane_usage_rc="${23}" lane_usage_budget_seconds="${24}" lane_usage_exclusions_json="${25}" eviction_attempted="${26}" eviction_evicted="${27}" eviction_failed="${28}" budget_repaired="${29}" derived_data="${30}" derived_data_budget="${31}" derived_data_overflow="${32}" xctest_devices_kb="${33}" xctest_devices_budget_kb="${34}" xctest_devices_overflow_kb="${35}" xctest_devices_count="${36}" xctest_devices_verdict="${37}" xctest_devices_reclaim_status="${38}" xctest_devices_manual_review="${39}"
+  local free="$1" prev="$2" growth="$3" active="$4" cache="$5" docker_cache="$6" docker_running="$7" worktree_cache="$8" worktree_keys="$9" worktree_overflow="${10}" cache_overflow="${11}" budget_kb="${12}" budget_overflow="${13}" headroom_kb="${14}" writer_limit_kb="${15}" headroom_overflow="${16}" repair_remaining="${17}" repair_status="${18}" verdict="${19}" reason="${20}" action="${21}" lane_usage_verdict="${22}" lane_usage_rc="${23}" lane_usage_budget_seconds="${24}" lane_usage_exclusions_json="${25}" eviction_attempted="${26}" eviction_evicted="${27}" eviction_failed="${28}" budget_repaired="${29}" derived_data="${30}" derived_data_budget="${31}" derived_data_overflow="${32}" xctest_devices_kb="${33}" xctest_devices_budget_kb="${34}" xctest_devices_overflow_kb="${35}" xctest_devices_count="${36}" xctest_devices_verdict="${37}" xctest_devices_reclaim_status="${38}" xctest_devices_manual_review="${39}" simulator_runtime_kb="${40}" simulator_runtime_budget_kb="${41}" simulator_runtime_overflow_kb="${42}" simulator_runtime_count="${43}" simulator_runtime_verdict="${44}" simulator_runtime_reclaim_status="${45}" simulator_runtime_manual_review="${46}"
   local dir tmp
   dir="$(dirname "$STATE_FILE")"; mkdir -p "$dir" 2>/dev/null || return 1
   tmp="$STATE_FILE.$$.$RANDOM.tmp"
-  printf '{"schema":"kg.disk.guard.v1","host":"%s","free_bytes":%s,"previous_free_bytes":%s,"growth_bytes":%s,"active_build":%s,"cache_kb":%s,"cache_budget_kb":%s,"cache_budget_overflow_kb":%s,"cache_headroom_kb":%s,"cache_writer_limit_kb":%s,"cache_headroom_overflow_kb":%s,"cache_repair_remaining_kb":%s,"cache_repair_status":"%s","cache_eviction_attempted":%s,"cache_eviction_evicted":%s,"cache_eviction_failed":%s,"budget_repaired":%s,"derived_data_kb":%s,"derived_data_budget_kb":%s,"derived_data_overflow_kb":%s,"xctest_devices_kb":%s,"xctest_devices_budget_kb":%s,"xctest_devices_overflow_kb":%s,"xctest_devices_count":%s,"xctest_devices_verdict":"%s","xctest_devices_reclaim_status":"%s","xctest_devices_manual_review":%s,"docker_cache_kb":%s,"docker_active":%s,"worktree_cache_kb":%s,"worktree_cache_keys":%s,"worktree_cache_overflow_keys":%s,"cache_overflow_keys":%s,"verdict":"%s","reason":"%s","action":"%s","lane_usage_verdict":"%s","lane_usage_rc":%s,"lane_usage_budget_seconds":%s,"lane_usage_exclusions":%s,"at":"%s"}\n' \
+  printf '{"schema":"kg.disk.guard.v1","host":"%s","free_bytes":%s,"previous_free_bytes":%s,"growth_bytes":%s,"active_build":%s,"cache_kb":%s,"cache_budget_kb":%s,"cache_budget_overflow_kb":%s,"cache_headroom_kb":%s,"cache_writer_limit_kb":%s,"cache_headroom_overflow_kb":%s,"cache_repair_remaining_kb":%s,"cache_repair_status":"%s","cache_eviction_attempted":%s,"cache_eviction_evicted":%s,"cache_eviction_failed":%s,"budget_repaired":%s,"derived_data_kb":%s,"derived_data_budget_kb":%s,"derived_data_overflow_kb":%s,"xctest_devices_kb":%s,"xctest_devices_budget_kb":%s,"xctest_devices_overflow_kb":%s,"xctest_devices_count":%s,"xctest_devices_verdict":"%s","xctest_devices_reclaim_status":"%s","xctest_devices_manual_review":%s,"simulator_runtime_kb":%s,"simulator_runtime_budget_kb":%s,"simulator_runtime_overflow_kb":%s,"simulator_runtime_count":%s,"simulator_runtime_verdict":"%s","simulator_runtime_reclaim_status":"%s","simulator_runtime_manual_review":%s,"docker_cache_kb":%s,"docker_active":%s,"worktree_cache_kb":%s,"worktree_cache_keys":%s,"worktree_cache_overflow_keys":%s,"cache_overflow_keys":%s,"verdict":"%s","reason":"%s","action":"%s","lane_usage_verdict":"%s","lane_usage_rc":%s,"lane_usage_budget_seconds":%s,"lane_usage_exclusions":%s,"at":"%s"}\n' \
     "$(hostname -s 2>/dev/null || echo unknown)" "$(number "$free")" "$(number "$prev")" "$(number "$growth")" \
     "$(number "$active")" "$(number "$cache")" "$(number "$budget_kb")" "$(number "$budget_overflow")" "$(number "$headroom_kb")" "$(number "$writer_limit_kb")" "$(number "$headroom_overflow")" "$(number "$repair_remaining")" "$repair_status" \
     "$(number "$eviction_attempted")" "$(number "$eviction_evicted")" "$(number "$eviction_failed")" "$(number "$budget_repaired")" \
-    "$(number "$derived_data")" "$(number "$derived_data_budget")" "$(number "$derived_data_overflow")" "$(number "$xctest_devices_kb")" "$(number "$xctest_devices_budget_kb")" "$(number "$xctest_devices_overflow_kb")" "$(number "$xctest_devices_count")" "$xctest_devices_verdict" "$xctest_devices_reclaim_status" "$(number "$xctest_devices_manual_review")" "$(number "$docker_cache")" "$(number "$docker_running")" \
+    "$(number "$derived_data")" "$(number "$derived_data_budget")" "$(number "$derived_data_overflow")" "$(number "$xctest_devices_kb")" "$(number "$xctest_devices_budget_kb")" "$(number "$xctest_devices_overflow_kb")" "$(number "$xctest_devices_count")" "$xctest_devices_verdict" "$xctest_devices_reclaim_status" "$(number "$xctest_devices_manual_review")" "$(number "$simulator_runtime_kb")" "$(number "$simulator_runtime_budget_kb")" "$(number "$simulator_runtime_overflow_kb")" "$(number "$simulator_runtime_count")" "$simulator_runtime_verdict" "$simulator_runtime_reclaim_status" "$(number "$simulator_runtime_manual_review")" "$(number "$docker_cache")" "$(number "$docker_running")" \
     "$(number "$worktree_cache")" "$(number "$worktree_keys")" "$(number "$worktree_overflow")" "$(number "$cache_overflow")" "$verdict" "$reason" "$action" "$lane_usage_verdict" "$(number "$lane_usage_rc")" "$(number "$lane_usage_budget_seconds")" "$lane_usage_exclusions_json" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$tmp" || { rm -f "$tmp"; return 1; }
   mv -f "$tmp" "$STATE_FILE"
 }
@@ -642,9 +676,9 @@ main() {
   cache_repair_remaining="$cache_headroom_overflow"; cache_repair_status="not-needed"
   free_gib=$((free / 1073741824)); growth_gib=$((growth / 1073741824))
   docker_gib=$((docker_cache / 1048576)); docker_warn_kb=$((DOCKER_WARN_GIB * 1048576)); verdict="ok"; reason="within-bounds"; action="none"
-  if (( free_gib < CRIT_FREE_GIB )); then
+  if (( free_gib <= CRIT_FREE_GIB )); then
     verdict="critical"; reason="free-below-critical"
-  elif (( free_gib < WARN_FREE_GIB )); then
+  elif (( free_gib <= WARN_FREE_GIB )); then
     verdict="warning"; reason="free-below-warning"
   elif (( growth_gib >= GROWTH_WARN_GIB )); then
     verdict="warning"; reason="rapid-growth"
@@ -689,7 +723,7 @@ main() {
       need_shared_cleanup=0
       if [[ "$action" == "none" ]]; then
         need_shared_cleanup=1
-      elif [[ "$action" == "evict-worktree-cache" || "$action" == "deferred-worktree-ownership" ]] && (( cache_overflow > 0 || cache_budget_overflow > 0 || cache_headroom_overflow > 0 || derived_data_overflow > 0 || free_gib < WARN_FREE_GIB )); then
+      elif [[ "$action" == "evict-worktree-cache" || "$action" == "deferred-worktree-ownership" ]] && (( cache_overflow > 0 || cache_budget_overflow > 0 || cache_headroom_overflow > 0 || derived_data_overflow > 0 || free_gib <= WARN_FREE_GIB )); then
         # Keep the existing pressure cleanup in the same guarded turn, and
         # also enforce the shared keyed-cache cap when disk space is healthy.
         need_shared_cleanup=1
@@ -752,7 +786,7 @@ main() {
       if (( docker_cache >= docker_warn_kb )); then
         prune_docker_cache; action="evict-old-ios-cache-and-docker-build-cache"
       fi
-      if (( free_gib < CRIT_FREE_GIB )); then
+      if (( free_gib <= CRIT_FREE_GIB )); then
         evict_old_app_derived_data; action="evict-old-ios-cache-and-derived-data"
       fi
       (( build_lock_owned == 1 )) && release_build_lock_if_owner
@@ -784,8 +818,17 @@ main() {
       action="reclaimed-xctest-devices"
     fi
   fi
-  write_state "$free" "$prev" "$growth" "$active" "$cache" "$docker_cache" "$docker_running" "$worktree_cache" "$worktree_keys" "$worktree_overflow" "$cache_overflow" "$cache_budget_kb" "$cache_budget_overflow" "$cache_headroom_kb" "$cache_writer_limit_kb" "$cache_headroom_overflow" "$cache_repair_remaining" "$cache_repair_status" "$verdict" "$reason" "$action" "$LANE_USAGE_VERDICT" "$LANE_USAGE_RC" "$LANE_USAGE_BUDGET_SECONDS" "$LANE_USAGE_EXCLUSIONS_JSON" "$CACHE_EVICTION_ATTEMPTED" "$CACHE_EVICTION_EVICTED" "$CACHE_EVICTION_FAILED" "$CACHE_BUDGET_REPAIRED" "$derived_data" "$DERIVED_DATA_BUDGET_KB" "$derived_data_overflow" "$XCTEST_DEVICES_KB" "$XCTEST_DEVICES_BUDGET_KB" "$XCTEST_DEVICES_OVERFLOW_KB" "$XCTEST_DEVICES_COUNT" "$XCTEST_DEVICES_VERDICT" "$XCTEST_DEVICES_RECLAIM_STATUS" "$XCTEST_DEVICES_MANUAL_REVIEW"
-  logger -t kg-disk-guard "verdict=$verdict freeGiB=$free_gib growthGiB=$growth_gib activeBuild=$active dockerCacheGiB=$docker_gib dockerActive=$docker_running cacheKB=$cache cacheBudgetKB=$cache_budget_kb cacheBudgetOverflowKB=$cache_budget_overflow cacheHeadroomKB=$cache_headroom_kb cacheWriterLimitKB=$cache_writer_limit_kb cacheHeadroomOverflowKB=$cache_headroom_overflow cacheRepairStatus=$cache_repair_status cacheRepairRemainingKB=$cache_repair_remaining derivedDataKB=$derived_data derivedDataBudgetKB=$DERIVED_DATA_BUDGET_KB derivedDataOverflowKB=$derived_data_overflow worktreeCacheKB=$worktree_cache worktreeKeys=$worktree_keys worktreeOverflowKeys=$worktree_overflow cacheOverflowKeys=$cache_overflow action=$action" 2>/dev/null || true
+  if (( SIMULATOR_RUNTIME_REPORT_ERROR == 1 )); then
+    verdict="block"
+    reason="simulator-runtime-report-unavailable"
+    action="manual-review-simulator-runtimes"
+  elif [[ "$SIMULATOR_RUNTIME_VERDICT" == "block" ]]; then
+    verdict="block"
+    reason="simulator-runtime-manual-review-required"
+    action="manual-review-simulator-runtimes"
+  fi
+  write_state "$free" "$prev" "$growth" "$active" "$cache" "$docker_cache" "$docker_running" "$worktree_cache" "$worktree_keys" "$worktree_overflow" "$cache_overflow" "$cache_budget_kb" "$cache_budget_overflow" "$cache_headroom_kb" "$cache_writer_limit_kb" "$cache_headroom_overflow" "$cache_repair_remaining" "$cache_repair_status" "$verdict" "$reason" "$action" "$LANE_USAGE_VERDICT" "$LANE_USAGE_RC" "$LANE_USAGE_BUDGET_SECONDS" "$LANE_USAGE_EXCLUSIONS_JSON" "$CACHE_EVICTION_ATTEMPTED" "$CACHE_EVICTION_EVICTED" "$CACHE_EVICTION_FAILED" "$CACHE_BUDGET_REPAIRED" "$derived_data" "$DERIVED_DATA_BUDGET_KB" "$derived_data_overflow" "$XCTEST_DEVICES_KB" "$XCTEST_DEVICES_BUDGET_KB" "$XCTEST_DEVICES_OVERFLOW_KB" "$XCTEST_DEVICES_COUNT" "$XCTEST_DEVICES_VERDICT" "$XCTEST_DEVICES_RECLAIM_STATUS" "$XCTEST_DEVICES_MANUAL_REVIEW" "$SIMULATOR_RUNTIME_KB" "$SIMULATOR_RUNTIME_BUDGET_KB" "$SIMULATOR_RUNTIME_OVERFLOW_KB" "$SIMULATOR_RUNTIME_COUNT" "$SIMULATOR_RUNTIME_VERDICT" "$SIMULATOR_RUNTIME_RECLAIM_STATUS" "$SIMULATOR_RUNTIME_MANUAL_REVIEW"
+  logger -t kg-disk-guard "verdict=$verdict freeGiB=$free_gib growthGiB=$growth_gib activeBuild=$active dockerCacheGiB=$docker_gib dockerActive=$docker_running cacheKB=$cache cacheBudgetKB=$cache_budget_kb cacheBudgetOverflowKB=$cache_budget_overflow cacheHeadroomKB=$cache_headroom_kb cacheWriterLimitKB=$cache_writer_limit_kb cacheHeadroomOverflowKB=$cache_headroom_overflow cacheRepairStatus=$cache_repair_status cacheRepairRemainingKB=$cache_repair_remaining derivedDataKB=$derived_data derivedDataBudgetKB=$DERIVED_DATA_BUDGET_KB derivedDataOverflowKB=$derived_data_overflow worktreeCacheKB=$worktree_cache worktreeKeys=$worktree_keys worktreeOverflowKeys=$worktree_overflow cacheOverflowKeys=$cache_overflow simulatorRuntimeKB=$SIMULATOR_RUNTIME_KB simulatorRuntimeBudgetKB=$SIMULATOR_RUNTIME_BUDGET_KB simulatorRuntimeOverflowKB=$SIMULATOR_RUNTIME_OVERFLOW_KB simulatorRuntimeCount=$SIMULATOR_RUNTIME_COUNT simulatorRuntimeVerdict=$SIMULATOR_RUNTIME_VERDICT action=$action" 2>/dev/null || true
 }
 
 while (($#)); do
@@ -799,6 +842,10 @@ cleanup while an iOS consumer is active, and only evicts rebuildable caches
 under its configured budgets. Unknown or active worktrees are never deleted.
 
 Environment:
+  KG_DISK_GUARD_WARN_FREE_GIB             warning floor (default: 50)
+  KG_DISK_GUARD_CRIT_FREE_GIB             critical floor, inclusive (default: 36)
+  KG_DISK_GUARD_SIMULATOR_RUNTIME_BUDGET_GIB
+                                          shared mounted runtime cap (default: 56)
   KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS  attribution scan budget (default: 240)
                                             values above 240 are clamped to 240
   KG_DISK_GUARD_DERIVED_DATA_BUDGET_GIB  global BooksAndVocab-* cap (default: 4)

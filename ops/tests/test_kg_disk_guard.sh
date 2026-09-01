@@ -14,6 +14,10 @@ export KG_DISK_GUARD_LANE_USAGE_STATE="$TMP/lane-disk-usage.json"
 export KG_DISK_GUARD_DERIVED_DATA_GLOBAL="$TMP/derived-data"
 export KG_DISK_GUARD_XCTEST_DEVICES_ROOT="$TMP/xctest-devices"
 export KG_DISK_GUARD_XCTEST_DEVICES_BUDGET_GIB=16
+# Existing fixtures use 30 GiB as a non-pressure value.  Keep that fixture
+# contract explicit while production defaults move to the 50/36 GiB floor.
+export KG_DISK_GUARD_WARN_FREE_GIB=20
+export KG_DISK_GUARD_CRIT_FREE_GIB=10
 ok(){ echo "  ✓ $*"; PASS=$((PASS+1)); }
 bad(){ echo "  ✗ $*"; FAIL=$((FAIL+1)); }
 
@@ -69,6 +73,12 @@ grep -q 'KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS:-240' "$SCRIPT" \
 grep -q 'attribution scan budget (default: 240)' "$SCRIPT" \
   && ok "guard help documents 240-second budget" \
   || bad "guard help budget is stale"
+grep -q 'WARN_FREE_GIB="\${KG_DISK_GUARD_WARN_FREE_GIB:-50}"' "$SCRIPT" \
+  && ok "guard default warning floor is 50 GiB" || bad "guard warning floor drifted"
+grep -q 'CRIT_FREE_GIB="\${KG_DISK_GUARD_CRIT_FREE_GIB:-36}"' "$SCRIPT" \
+  && ok "guard default critical floor is 36 GiB" || bad "guard critical floor drifted"
+grep -q 'SIMULATOR_RUNTIME_BUDGET_GIB.*:-56' "$SCRIPT" \
+  && ok "guard shared runtime budget is explicit" || bad "guard shared runtime budget missing"
 
 echo "── help is read-only ──"
 root="$TMP/help"; state="$root/state.json"; cache="$root/.cache/ios-test-derived-data"
@@ -293,6 +303,16 @@ KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
   "$SCRIPT" >/dev/null 2>&1
 grep -q '"reason":"docker-build-cache"' "$state" && ok "2GiB+1 exact threshold warns" || bad "exact docker threshold"
 [[ "$(wc -c < "$log")" -le 1024 ]] && ok "healthy disk still caps known log" || bad "healthy disk log cap"
+
+echo "── conservative free-space floor: exactly 36 GiB is critical ──"
+root="$TMP/free-floor"; state="$root/state.json"
+mkdir -p "$root"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_FREE_BYTES=$((36*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  KG_DISK_GUARD_WARN_FREE_GIB=50 KG_DISK_GUARD_CRIT_FREE_GIB=36 \
+  "$SCRIPT" >/dev/null 2>&1
+grep -q '"verdict":"critical"' "$state" && ok "36 GiB floor is critical" || bad "36 GiB floor was not critical"
+grep -q '"reason":"free-below-critical"' "$state" && ok "critical floor reason is explicit" || bad "critical floor reason missing"
 
 echo "── active build: defer and preserve ──"
 root="$TMP/active"; cache="$root/.cache/ios-test-derived-data"; state="$TMP/active/state.json"
@@ -720,10 +740,9 @@ mkdir -p "$root"
 cat >"$fake_uv" <<'EOF'
 #!/usr/bin/env bash
 set -u
+printf '%s\n' "$$" > "${FAKE_PID_FILE:?}"
 sleep 5 &
-child="$!"
-printf '%s\n' "$child" > "${FAKE_PID_FILE:?}"
-wait "$child"
+wait
 EOF
 chmod +x "$fake_uv"
 started=$SECONDS
@@ -772,6 +791,21 @@ grep -q '"attribution": "shared-host-platform"' "$lane_state" && ok "shared XCTe
 grep -q '"xctest_devices_verdict":"block"' "$state" && ok "guard cannot claim within-bounds over shared budget" || bad "guard claimed within-bounds over shared budget"
 grep -q '"xctest_devices_manual_review":1' "$state" && ok "unsafe shared device is manual review" || bad "shared device manual review missing"
 [[ -d "$device" ]] && ok "non-ephemeral shared device is untouched" || bad "non-ephemeral shared device was deleted"
+
+echo "── shared Simulator runtimes: visible, budgeted, and never auto-reclaimed ──"
+root="$TMP/simulator-runtime"; state="$root/guard.json"; registry="$root/registry.json"; lane_state="$root/lane-disk-usage.json"
+mkdir -p "$root"
+printf '%s\n' '{"schema":"kg.worktree.registry.v2","records":[]}' > "$registry"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" KG_DISK_GUARD_REGISTRY_STATE="$registry" \
+  KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" KG_DISK_GUARD_SIMULATOR_RUNTIME_BUDGET_GIB=56 \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  "$SCRIPT" >/dev/null 2>&1
+grep -q '"simulator_runtime_kb":' "$state" && ok "shared runtime bytes are in guard state" || bad "shared runtime bytes missing"
+grep -q '"simulator_runtime_budget_kb":58720256' "$state" && ok "shared runtime budget is recorded" || bad "shared runtime budget missing"
+grep -q '"simulator_runtime_count":' "$state" && ok "shared runtime count is recorded" || bad "shared runtime count missing"
+grep -q '"simulator_runtime_reclaim_status":"not-supported"' "$state" \
+  && ok "shared runtime reclaim is disabled" || bad "shared runtime reclaim contract drifted"
+grep -q '"simulator_runtimes"' "$lane_state" && ok "lane report has shared runtime bucket" || bad "lane report shared runtime bucket missing"
 
 echo "passed=$PASS failed=$FAIL"
 [[ "$FAIL" -eq 0 ]]
