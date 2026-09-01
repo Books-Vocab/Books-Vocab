@@ -69,6 +69,9 @@ class ReviewEventPushEntry(ReviewEventEntry):
 
     interval_before: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     interval_after: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    review_count_after: int | None = Field(default=None, ge=0)
+    streak_after: int | None = Field(default=None, ge=0)
+    lapse_after: int | None = Field(default=None, ge=0)
 
     @field_validator("interval_before", "interval_after", mode="before")
     @classmethod
