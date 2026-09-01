@@ -64,6 +64,7 @@ final class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, AS
                     let identityToken = String(data: identityTokenData, encoding: .utf8)
                 else {
                     AppLog.auth.error("Failed to get Apple identity token")
+                    authManager.recordProviderAuthenticationFailure()
                     return
                 }
 
@@ -116,6 +117,7 @@ final class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, AS
         let isUserCancel = nsError.domain == "com.apple.AuthenticationServices.AuthorizationError"
             && nsError.code == ASAuthorizationError.canceled.rawValue
         if !isUserCancel {
+            authManager?.recordProviderAuthenticationFailure()
             AppCrashReporting.record(error, context: "auth.apple.controller")
         }
     }

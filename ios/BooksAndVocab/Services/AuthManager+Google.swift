@@ -34,12 +34,16 @@ extension AuthManager {
             let nsError = error as NSError
             let isUserCancel = nsError.domain == "com.google.GIDSignIn" && nsError.code == -5
             if !isUserCancel {
+                recordProviderAuthenticationFailure()
                 AppCrashReporting.record(error, context: "auth.google.sdk")
             }
             return
         }
 
-        guard let user = result?.user else { return }
+        guard let user = result?.user else {
+            recordProviderAuthenticationFailure()
+            return
+        }
 
         let email = user.profile?.email ?? ""
         let name = user.profile?.name ?? ""
@@ -48,6 +52,7 @@ extension AuthManager {
 
         guard let idToken = user.idToken?.tokenString else {
             AppLog.auth.error("Failed to get Google ID token")
+            recordProviderAuthenticationFailure()
             return
         }
 

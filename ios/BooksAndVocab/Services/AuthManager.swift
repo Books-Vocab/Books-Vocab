@@ -309,6 +309,10 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
         authError = message
     }
 
+    func recordProviderAuthenticationFailure() {
+        setAuthError(L10n.string("登入暫時失敗"))
+    }
+
     #if targetEnvironment(simulator)
     func applyUITestPersistedSession(_ persisted: PersistedAuthSession) {
         applyPersistedSession(persisted)
