@@ -55,15 +55,61 @@ def test_record_lookup_prunes_fixed_offset_rows_by_utc_instant(tmp_path, monkeyp
 
     with closing(sqlite3.connect(cache_path)) as conn:
         events = {
-            row[0]: row[1]
-            for row in conn.execute(
-                "SELECT operation, created_at FROM lexical_lookup_event ORDER BY id"
-            )
+            row[0]: row[1] for row in conn.execute("SELECT operation, created_at FROM lexical_lookup_event ORDER BY id")
         }
 
     assert set(events) == {"newer_minus_one", "exact_boundary", "current"}
     assert events["exact_boundary"] == cutoff.isoformat()
     assert events["current"] == frozen_now.isoformat()
+
+
+def test_record_lookup_prunes_subsecond_utc_boundary_rows(tmp_path, monkeypatch) -> None:
+    import kg.lexical_cache as lexical_cache
+
+    frozen_now = datetime(2026, 5, 15, 0, 0, 0, 500000, tzinfo=UTC)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen_now.astimezone(tz) if tz is not None else frozen_now.replace(tzinfo=None)
+
+    monkeypatch.setattr(lexical_cache, "datetime", FrozenDateTime)
+
+    cache_path = tmp_path / "lexical_cache.db"
+    cache = lexical_cache.LexicalCache(cache_path)
+    cutoff = frozen_now - timedelta(days=lexical_cache.LOOKUP_EVENT_RETENTION_DAYS)
+    older_by_one_microsecond = cutoff - timedelta(microseconds=1)
+    newer_by_one_microsecond = cutoff + timedelta(microseconds=1)
+    seeded_events = [
+        (
+            "provider",
+            "older_by_one_microsecond",
+            "seed",
+            1,
+            older_by_one_microsecond.astimezone(timezone(timedelta(hours=1))).isoformat(),
+        ),
+        (
+            "provider",
+            "newer_by_one_microsecond",
+            "seed",
+            2,
+            newer_by_one_microsecond.astimezone(timezone(-timedelta(hours=1))).isoformat(),
+        ),
+    ]
+    with closing(sqlite3.connect(cache_path)) as conn, conn:
+        conn.executemany(
+            "INSERT INTO lexical_lookup_event"
+            "(provider, operation, outcome, duration_ms, created_at)"
+            " VALUES (?, ?, ?, ?, ?)",
+            seeded_events,
+        )
+
+    cache.record_lookup("provider", "current", "fresh", 3)
+
+    with closing(sqlite3.connect(cache_path)) as conn:
+        operations = [row[0] for row in conn.execute("SELECT operation FROM lexical_lookup_event ORDER BY id")]
+
+    assert operations == ["newer_by_one_microsecond", "current"]
 
 
 def test_record_lookup_retention_uses_utc_expression_index(tmp_path) -> None:
@@ -75,8 +121,7 @@ def test_record_lookup_retention_uses_utc_expression_index(tmp_path) -> None:
 
     with closing(sqlite3.connect(cache_path)) as conn:
         plan = conn.execute(
-            "EXPLAIN QUERY PLAN DELETE FROM lexical_lookup_event "
-            "WHERE datetime(created_at) < datetime(?)",
+            "EXPLAIN QUERY PLAN DELETE FROM lexical_lookup_event WHERE datetime(created_at) < datetime(?)",
             (cutoff,),
         ).fetchall()
 
