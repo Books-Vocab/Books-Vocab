@@ -212,14 +212,19 @@ def push_review_events(entries: list[ReviewEventEntry], *, event_store: Any) -> 
 def pull_review_events(*, since: str | None, event_store: Any) -> tuple[list[ReviewEventEntry], str | None]:
     """Return (entries, cursor). ``cursor`` is the max ingestion timestamp of the
     returned batch, to be sent back as ``since`` on the next pull. An empty batch
-    leaves the caller's cursor unchanged (echoes ``since``)."""
-    if since is not None:
-        parsed_since = _parse_iso8601_timestamp(since)
+    leaves the caller's cursor unchanged as the same canonical UTC instant."""
+    parsed_since = _parse_iso8601_timestamp(since) if since is not None else None
+    if parsed_since is not None:
         events = event_store.get_since(parsed_since)
     else:
         events = event_store.all()
     entries = [_entry_from_event(event) for event in events]
-    cursor = _format_timestamp(max(_as_utc(event.ingested_at) for event in events)) if events else since
+    if events:
+        cursor = _format_timestamp(max(_as_utc(event.ingested_at) for event in events))
+    elif parsed_since is not None:
+        cursor = _format_timestamp(parsed_since)
+    else:
+        cursor = None
     return entries, cursor
 
 
