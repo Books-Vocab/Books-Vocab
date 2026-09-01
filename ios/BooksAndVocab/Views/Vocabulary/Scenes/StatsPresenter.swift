@@ -685,28 +685,24 @@ struct StatsPresenter: View {
                     // then provide the one-to-one projection for UI automation
                     // and assistive technology without changing the chart.
                     .accessibilityRepresentation {
-                        Color.clear
-                            .frame(width: 1, height: 1)
-                            .accessibilityElement()
-                            .accessibilityIdentifier("overview.forecast.chart")
-                            .accessibilityLabel(StatsCopy.forecastTitle)
-                            .accessibilityValue(
-                                LocaleAwareFormatter.shared.string(from: NSNumber(value: summary.forecast.map(\.count).reduce(0, +)))
-                            )
-                    }
-                    VStack(spacing: 0) {
-                        ForEach(summary.forecast) { bucket in
-                            Color.clear
-                                .frame(width: 1, height: 1)
+                        VStack(spacing: 0) {
+                            Text(StatsCopy.forecastTitle)
                                 .accessibilityElement()
-                                .accessibilityLabel(bucket.label)
-                                .accessibilityIdentifier("forecast.bucket.\(bucket.id)")
+                                .accessibilityIdentifier("overview.forecast.chart")
                                 .accessibilityValue(
-                                    "\(bucket.label), \(LocaleAwareFormatter.shared.string(from: NSNumber(value: bucket.count)))"
+                                    LocaleAwareFormatter.shared.string(from: NSNumber(value: summary.forecast.map(\.count).reduce(0, +)))
                                 )
+                            ForEach(summary.forecast) { bucket in
+                                Text(bucket.label)
+                                    .accessibilityElement()
+                                    .accessibilityIdentifier("forecast.bucket.\(bucket.id)")
+                                    .accessibilityValue(
+                                        "\(bucket.label), \(LocaleAwareFormatter.shared.string(from: NSNumber(value: bucket.count)))"
+                                    )
+                            }
                         }
+                        .accessibilityElement(children: .contain)
                     }
-                    .frame(width: 1)
                     Color.clear
                         .frame(width: 1, height: 1)
                         .accessibilityElement()
