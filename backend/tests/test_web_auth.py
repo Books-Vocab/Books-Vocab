@@ -157,9 +157,9 @@ def test_google_callback_provider_error_is_redacted(web_auth_env, caplog):
         )
     assert resp.status_code == 400, resp.text
     assert _PROVIDER_ERROR_SENTINEL not in resp.text
-    assert any(
-        _PROVIDER_ERROR_SENTINEL in record.getMessage() for record in caplog.records
-    ), "raw provider error must be logged server-side"
+    assert any(_PROVIDER_ERROR_SENTINEL in record.getMessage() for record in caplog.records), (
+        "raw provider error must be logged server-side"
+    )
 
 
 def test_apple_callback_provider_error_is_redacted(web_auth_env, caplog):
@@ -177,9 +177,26 @@ def test_apple_callback_provider_error_is_redacted(web_auth_env, caplog):
         )
     assert resp.status_code == 400, resp.text
     assert _PROVIDER_ERROR_SENTINEL not in resp.text
-    assert any(
-        _PROVIDER_ERROR_SENTINEL in record.getMessage() for record in caplog.records
-    ), "raw provider error must be logged server-side"
+    assert any(_PROVIDER_ERROR_SENTINEL in record.getMessage() for record in caplog.records), (
+        "raw provider error must be logged server-side"
+    )
+
+
+def test_apple_callback_provider_error_without_id_token_returns_400(web_auth_env, caplog):
+    """Apple error form-posts may omit ``id_token`` and must still reach the
+    generic provider-error response instead of FastAPI's validation 422."""
+    client = web_auth_env.client
+    with caplog.at_level("WARNING", logger="kg.routers.web_auth"):
+        resp = client.post(
+            "/auth/web/apple/callback",
+            data={"error": _PROVIDER_ERROR_SENTINEL},
+            follow_redirects=False,
+        )
+    assert resp.status_code == 400, resp.text
+    assert _PROVIDER_ERROR_SENTINEL not in resp.text
+    assert any(_PROVIDER_ERROR_SENTINEL in record.getMessage() for record in caplog.records), (
+        "raw provider error must be logged server-side"
+    )
 
 
 # ── Cookie security attributes (full assertion) ──────────────────────────────

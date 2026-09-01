@@ -112,11 +112,15 @@ async def _exchange_google_code(data: dict[str, str]) -> httpx.Response:
 async def login_page(request: Request):
     settings = request.app.state.kg_settings
     nonce = secrets.token_urlsafe(32)
-    response = templates.TemplateResponse(request, "login.html", {
-        "apple_service_id": settings.apple_service_id,
-        "apple_redirect_uri": settings.apple_redirect_uri,
-        "oauth_state": nonce,
-    })
+    response = templates.TemplateResponse(
+        request,
+        "login.html",
+        {
+            "apple_service_id": settings.apple_service_id,
+            "apple_redirect_uri": settings.apple_redirect_uri,
+            "oauth_state": nonce,
+        },
+    )
     _set_state_cookie(response, nonce, samesite="none")
     return response
 
@@ -127,15 +131,17 @@ async def google_login(request: Request):
     if not settings.google_client_id:
         raise HTTPException(status_code=500, detail="GOOGLE_CLIENT_ID not configured")
     nonce = secrets.token_urlsafe(32)
-    params = urlencode({
-        "client_id": settings.google_client_id,
-        "redirect_uri": settings.google_redirect_uri,
-        "response_type": "code",
-        "scope": "openid email",
-        "access_type": "offline",
-        "prompt": "consent",
-        "state": nonce,
-    })
+    params = urlencode(
+        {
+            "client_id": settings.google_client_id,
+            "redirect_uri": settings.google_redirect_uri,
+            "response_type": "code",
+            "scope": "openid email",
+            "access_type": "offline",
+            "prompt": "consent",
+            "state": nonce,
+        }
+    )
     response = RedirectResponse(url=f"{GOOGLE_AUTH_URL}?{params}", status_code=307)
     _set_state_cookie(response, nonce)
     return response
@@ -153,17 +159,17 @@ async def apple_login(request: Request):
     """
     settings = request.app.state.kg_settings
     nonce = secrets.token_urlsafe(32)
-    params = urlencode({
-        "client_id": settings.apple_service_id,
-        "redirect_uri": settings.apple_redirect_uri,
-        "response_type": "code id_token",
-        "scope": "email",
-        "response_mode": "form_post",
-        "state": nonce,
-    })
-    response = RedirectResponse(
-        url=f"https://appleid.apple.com/auth/authorize?{params}", status_code=307
+    params = urlencode(
+        {
+            "client_id": settings.apple_service_id,
+            "redirect_uri": settings.apple_redirect_uri,
+            "response_type": "code id_token",
+            "scope": "email",
+            "response_mode": "form_post",
+            "state": nonce,
+        }
     )
+    response = RedirectResponse(url=f"https://appleid.apple.com/auth/authorize?{params}", status_code=307)
     _set_state_cookie(response, nonce, samesite="none")
     return response
 
@@ -191,13 +197,15 @@ async def google_callback(
     # Exchange code for tokens. Network failures (DNS, connect, timeout, read)
     # all subclass httpx.HTTPError; surface them as a 502 instead of a bare 500.
     try:
-        resp = await _exchange_google_code({
-            "code": code,
-            "client_id": settings.google_client_id,
-            "client_secret": settings.google_client_secret,
-            "redirect_uri": settings.google_redirect_uri,
-            "grant_type": "authorization_code",
-        })
+        resp = await _exchange_google_code(
+            {
+                "code": code,
+                "client_id": settings.google_client_id,
+                "client_secret": settings.google_client_secret,
+                "redirect_uri": settings.google_redirect_uri,
+                "grant_type": "authorization_code",
+            }
+        )
     except httpx.HTTPError as exc:
         logger.warning("Google token exchange request failed: %s", exc, exc_info=True)
         raise HTTPException(  # noqa: B904
@@ -213,23 +221,28 @@ async def google_callback(
         raise HTTPException(status_code=401, detail="No id_token in Google response")
 
     # Verify id_token and resolve user (reuse existing infra)
-    provider_user_id, token_email, email_verified = await verify_google_token(
-        id_token_str, settings.google_client_id
-    )
+    provider_user_id, token_email, email_verified = await verify_google_token(id_token_str, settings.google_client_id)
 
     load_users_fn = request.app.state.load_users
     save_users_fn = request.app.state.save_users
     canonical_user_id = _resolve_and_link_user(
-        provider_user_id, "google",
+        provider_user_id,
+        "google",
         email=token_email if email_verified else None,
-        settings=settings, load_users_fn=load_users_fn, save_users_fn=save_users_fn,
+        settings=settings,
+        load_users_fn=load_users_fn,
+        save_users_fn=save_users_fn,
     )
     jwt_token = _create_jwt_token(canonical_user_id, "google", settings=settings)
 
-    response = templates.TemplateResponse(request, "login_success.html", {
-        "token": jwt_token,
-        "user_id": canonical_user_id,
-    })
+    response = templates.TemplateResponse(
+        request,
+        "login_success.html",
+        {
+            "token": jwt_token,
+            "user_id": canonical_user_id,
+        },
+    )
     _clear_state_cookie(response)
     return response
 
@@ -237,7 +250,7 @@ async def google_callback(
 @router.post("/auth/web/apple/callback", response_class=HTMLResponse)
 async def apple_callback(
     request: Request,
-    id_token: str = Form(..., alias="id_token"),
+    id_token: str | None = Form(None, alias="id_token"),
     code: str = Form(None),
     state: str = Form(None),
     error: str = Form(None),
@@ -248,27 +261,35 @@ async def apple_callback(
         logger.warning("Apple OAuth callback returned provider error: %s", error)
         raise HTTPException(status_code=400, detail="Authentication failed")
 
+    if not id_token:
+        raise HTTPException(status_code=400, detail="Missing Apple identity token")
+
     _verify_state(request, state)
 
     settings = request.app.state.kg_settings
 
     # Verify Apple id_token (reuse existing infra)
-    provider_user_id, token_email, email_verified = verify_apple_token(
-        id_token, settings.apple_service_id
-    )
+    provider_user_id, token_email, email_verified = verify_apple_token(id_token, settings.apple_service_id)
 
     load_users_fn = request.app.state.load_users
     save_users_fn = request.app.state.save_users
     canonical_user_id = _resolve_and_link_user(
-        provider_user_id, "apple",
+        provider_user_id,
+        "apple",
         email=token_email if email_verified else None,
-        settings=settings, load_users_fn=load_users_fn, save_users_fn=save_users_fn,
+        settings=settings,
+        load_users_fn=load_users_fn,
+        save_users_fn=save_users_fn,
     )
     jwt_token = _create_jwt_token(canonical_user_id, "apple", settings=settings)
 
-    response = templates.TemplateResponse(request, "login_success.html", {
-        "token": jwt_token,
-        "user_id": canonical_user_id,
-    })
+    response = templates.TemplateResponse(
+        request,
+        "login_success.html",
+        {
+            "token": jwt_token,
+            "user_id": canonical_user_id,
+        },
+    )
     _clear_state_cookie(response)
     return response
