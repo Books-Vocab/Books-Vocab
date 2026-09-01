@@ -679,22 +679,21 @@ struct StatsPresenter: View {
                             .frame(height: 160)
                     }
                     .frame(height: 160)
-                    // Keep the chart visual as one AX element. Its nested
-                    // GeometryReader can render all bars while iOS exposes
-                    // an unstable subset of descendants. The explicit
-                    // bucket nodes below provide the stable, one-to-one
-                    // projection for UI automation and assistive technology
-                    // without changing the rendered chart.
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityIdentifier("overview.forecast.chart")
-                    Color.clear
-                        .frame(width: 1, height: 1)
-                        .accessibilityElement()
-                        .accessibilityIdentifier("overview.forecast.chart")
-                        .accessibilityLabel(StatsCopy.forecastTitle)
-                        .accessibilityValue(
-                            LocaleAwareFormatter.shared.string(from: NSNumber(value: summary.forecast.map(\.count).reduce(0, +)))
-                        )
+                    // Keep the chart visual while replacing its unstable
+                    // GeometryReader-generated AX subtree with one stable
+                    // chart representation. The explicit bucket nodes below
+                    // then provide the one-to-one projection for UI automation
+                    // and assistive technology without changing the chart.
+                    .accessibilityRepresentation {
+                        Color.clear
+                            .frame(width: 1, height: 1)
+                            .accessibilityElement()
+                            .accessibilityIdentifier("overview.forecast.chart")
+                            .accessibilityLabel(StatsCopy.forecastTitle)
+                            .accessibilityValue(
+                                LocaleAwareFormatter.shared.string(from: NSNumber(value: summary.forecast.map(\.count).reduce(0, +)))
+                            )
+                    }
                     VStack(spacing: 0) {
                         ForEach(summary.forecast) { bucket in
                             Color.clear
