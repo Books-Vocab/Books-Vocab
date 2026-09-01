@@ -138,6 +138,14 @@ def scope_operations(repo: Path, *, start: str, end: str) -> DeclaredOperations:
     return tuple(sorted(operations))
 
 
+def scope_operations_are_declared_subset(
+    observed: DeclaredOperations, declared: DeclaredOperations
+) -> bool:
+    """Allow a branch to realize only part of its declared file operations."""
+
+    return set(observed).issubset(declared)
+
+
 def validate_repository(repo: Path) -> None:
     if not repo.is_dir():
         raise ReanchorRefused("repository path is not a directory")
@@ -295,7 +303,8 @@ def ensure_commits_and_scope(
         raise ReanchorRefused("original base is not an ancestor of remote PR HEAD")
     if _git(["merge-base", "--is-ancestor", base_sha, live_main], repo)[0] != 0:
         raise ReanchorRefused("original base is not an ancestor of live main")
-    if scope_operations(repo, start=base_sha, end=remote_head) != declared:
+    observed = scope_operations(repo, start=base_sha, end=remote_head)
+    if not scope_operations_are_declared_subset(observed, declared):
         raise ReanchorRefused("remote PR branch differs from the exact original Scope")
 
 
@@ -368,7 +377,8 @@ def recreate_and_rebase(
         )
     if _git(["merge-base", "--is-ancestor", live_main, head], target)[0] != 0:
         raise ReanchorRefused("reanchored HEAD is not based on exact live main")
-    if scope_operations(target, start=live_main, end=head) != declared:
+    observed = scope_operations(target, start=live_main, end=head)
+    if not scope_operations_are_declared_subset(observed, declared):
         raise ReanchorRefused("reanchored branch differs from the exact original Scope")
     if reuse_existing:
         attempt.rebased_head = head
