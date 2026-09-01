@@ -8,6 +8,7 @@ and far cheaper than per-request fan-out. Cross-worker dedup would require a
 shared coordinator (Redis SETNX + pub/sub, etc.) and is intentionally out of
 scope here.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -112,9 +113,7 @@ def build_quick_translate_prompt(req: TranslateRequest, source_lang: str, target
     reproduce the production prompt without reaching into private internals and
     can never drift from how production constructs it.
     """
-    return quick_translate_prompt(
-        req, source_lang, target_lang, _context_around_word(req.context, req.word)
-    )
+    return quick_translate_prompt(req, source_lang, target_lang, _context_around_word(req.context, req.word))
 
 
 def phrase_translate_prompt(req: TranslateRequest, source_lang: str, target_lang: str, ctx: str) -> str:
@@ -201,7 +200,12 @@ async def _run_llm_translate(
     # the full cache key so different users / inputs never share state.
     inflight_key = (
         getattr(llm, "user_id", None),
-        word_key, ctx_hash, source_lang, target_lang, operation, model,
+        word_key,
+        ctx_hash,
+        source_lang,
+        target_lang,
+        operation,
+        model,
     )
     existing = _INFLIGHT.get(inflight_key)
     if existing is not None:
@@ -209,9 +213,7 @@ async def _run_llm_translate(
         # network) doesn't cascade-hang every concurrent caller. TimeoutError
         # surfaces to the client as a normal failure; the leader entry is
         # cleaned up by its own finally block.
-        return await asyncio.wait_for(
-            asyncio.shield(existing), timeout=_INFLIGHT_WAIT_TIMEOUT_S
-        )
+        return await asyncio.wait_for(asyncio.shield(existing), timeout=_INFLIGHT_WAIT_TIMEOUT_S)
 
     loop = asyncio.get_running_loop()
     fut: asyncio.Future = loop.create_future()
@@ -242,10 +244,15 @@ async def _run_llm_translate(
         # Only cache non-empty, meaningful responses
         if raw and parsed and any(parsed.values()):
             translate_log.record(
-                user_id=llm.user_id, operation=operation,
-                word=word_key, context=ctx, context_hash=ctx_hash,
-                source_lang=source_lang, target_lang=target_lang,
-                response_raw=raw, latency_ms=latency_ms,
+                user_id=llm.user_id,
+                operation=operation,
+                word=word_key,
+                context=ctx,
+                context_hash=ctx_hash,
+                source_lang=source_lang,
+                target_lang=target_lang,
+                response_raw=raw,
+                latency_ms=latency_ms,
                 model=model,
             )
 
@@ -263,7 +270,14 @@ async def _run_llm_translate(
             _INFLIGHT.pop(inflight_key, None)
 
 
-async def run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, llm: Any, logger: logging.Logger, model: str = "gemini-2.5-flash-lite") -> QuickTranslateResponse:
+async def run_quick_translate(
+    req: TranslateRequest,
+    user: dict[str, Any],
+    *,
+    llm: Any,
+    logger: logging.Logger,
+    model: str = "gemini-2.5-flash-lite",
+) -> QuickTranslateResponse:
     data = await _run_llm_translate(
         req=req,
         user=user,
@@ -277,7 +291,14 @@ async def run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, ll
     return QuickTranslateResponse(t=data.get("t", ""), p=_normalize_pos(data.get("p")), r=data.get("r"))
 
 
-async def run_phrase_translate(req: TranslateRequest, user: dict[str, Any], *, llm: Any, logger: logging.Logger | None = None, model: str = "gemini-2.5-flash-lite") -> dict[str, str]:
+async def run_phrase_translate(
+    req: TranslateRequest,
+    user: dict[str, Any],
+    *,
+    llm: Any,
+    logger: logging.Logger | None = None,
+    model: str = "gemini-2.5-flash-lite",
+) -> dict[str, str]:
     data = await _run_llm_translate(
         req=req,
         user=user,
@@ -291,7 +312,14 @@ async def run_phrase_translate(req: TranslateRequest, user: dict[str, Any], *, l
     return {"t": data.get("t", "")}
 
 
-async def run_explain_translate(req: TranslateRequest, user: dict[str, Any], *, llm: Any, logger: logging.Logger | None = None, model: str = "gemini-2.5-flash-lite") -> ExplainResponse:
+async def run_explain_translate(
+    req: TranslateRequest,
+    user: dict[str, Any],
+    *,
+    llm: Any,
+    logger: logging.Logger | None = None,
+    model: str = "gemini-2.5-flash-lite",
+) -> ExplainResponse:
     data = await _run_llm_translate(
         req=req,
         user=user,
