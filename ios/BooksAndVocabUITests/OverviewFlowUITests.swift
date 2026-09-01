@@ -432,8 +432,12 @@ final class OverviewFlowUITests: UITestCase {
             file: file,
             line: line
         )
+        // The production forecast is one fixed-height chart, not a vertical
+        // list of rows. Scroll the chart into view once; repeatedly swiping
+        // for each bucket can move the entire chart out of the viewport and
+        // makes a valid accessibility projection appear to disappear.
+        overview.scrollToForecastBucket(expected.forecastDayKey, file: file, line: line)
         for dayKey in expected.forecastDayKeys.prefix(days) {
-            overview.scrollToForecastBucket(dayKey, file: file, line: line)
             let bucket = overview.forecastBucket(dayKey, file: file, line: line)
             bucket.assertExists(timeout: 10, file: file, line: line)
             XCTAssertTrue(
