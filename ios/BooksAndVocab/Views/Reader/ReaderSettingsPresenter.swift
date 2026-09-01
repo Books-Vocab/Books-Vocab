@@ -15,6 +15,9 @@ struct ReaderSettingsPresenter: View {
         let fontScale: Double
         let canDecreaseFontSize: Bool
         let canIncreaseFontSize: Bool
+        let letterSpacingText: String
+        let canDecreaseLetterSpacing: Bool
+        let canIncreaseLetterSpacing: Bool
         /// 閱讀器**實際會渲染**的主題，給即時預覽用。
         ///
         /// 不可以拿 `bindings.theme` 代替：那個 binding 是給三選一 Picker 的，
@@ -27,6 +30,7 @@ struct ReaderSettingsPresenter: View {
 
     struct Bindings {
         let lineHeight: Binding<Double>
+        let letterSpacing: Binding<Double>
         let font: Binding<ReaderFont>
         let theme: Binding<ReaderTheme>
         let underlineOpacity: Binding<Double>
@@ -40,6 +44,8 @@ struct ReaderSettingsPresenter: View {
     let bindings: Bindings
     let onDecreaseFontSize: () -> Void
     let onIncreaseFontSize: () -> Void
+    let onDecreaseLetterSpacing: () -> Void
+    let onIncreaseLetterSpacing: () -> Void
     let onSelectTheme: (ReaderTheme) -> Void
     let onSelectUnderlineOpacity: (Double) -> Void
     /// 恢復預設 —— 與複習卡版面編輯器同形的 toolbar 入口。
@@ -64,10 +70,14 @@ struct ReaderSettingsPresenter: View {
                     fontScale: 1.0,
                     canDecreaseFontSize: true,
                     canIncreaseFontSize: true,
+                    letterSpacingText: ReaderSettings.letterSpacingText(for: 0),
+                    canDecreaseLetterSpacing: false,
+                    canIncreaseLetterSpacing: true,
                     previewTheme: .light
                 ),
                 bindings: .init(
                     lineHeight: .constant(1.4),
+                    letterSpacing: .constant(0),
                     font: .constant(.serif),
                     theme: .constant(.light),
                     underlineOpacity: .constant(0.35),
@@ -78,6 +88,8 @@ struct ReaderSettingsPresenter: View {
                 ),
                 onDecreaseFontSize: {},
                 onIncreaseFontSize: {},
+                onDecreaseLetterSpacing: {},
+                onIncreaseLetterSpacing: {},
                 onSelectTheme: { _ in },
                 onSelectUnderlineOpacity: { _ in },
                 onResetToDefaults: {}
@@ -96,10 +108,14 @@ struct ReaderSettingsPresenter: View {
                     fontScale: 0.75,
                     canDecreaseFontSize: false,
                     canIncreaseFontSize: true,
+                    letterSpacingText: ReaderSettings.letterSpacingText(for: 1),
+                    canDecreaseLetterSpacing: true,
+                    canIncreaseLetterSpacing: false,
                     previewTheme: .dark
                 ),
                 bindings: .init(
                     lineHeight: .constant(2.5),
+                    letterSpacing: .constant(1),
                     font: .constant(.sans),
                     theme: .constant(.dark),
                     underlineOpacity: .constant(0.0),
@@ -110,6 +126,8 @@ struct ReaderSettingsPresenter: View {
                 ),
                 onDecreaseFontSize: {},
                 onIncreaseFontSize: {},
+                onDecreaseLetterSpacing: {},
+                onIncreaseLetterSpacing: {},
                 onSelectTheme: { _ in },
                 onSelectUnderlineOpacity: { _ in },
                 onResetToDefaults: {}

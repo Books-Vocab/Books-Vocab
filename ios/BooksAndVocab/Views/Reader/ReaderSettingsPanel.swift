@@ -28,6 +28,9 @@ struct ReaderSettingsPanel: View {
             fontScale: settings.fontSize,
             canDecreaseFontSize: settings.fontSize > ReaderTypographyMetrics.fontSizeRange.lowerBound,
             canIncreaseFontSize: settings.fontSize < ReaderTypographyMetrics.fontSizeRange.upperBound,
+            letterSpacingText: settings.letterSpacingText,
+            canDecreaseLetterSpacing: settings.letterSpacing > ReaderTypographyMetrics.letterSpacingRange.lowerBound,
+            canIncreaseLetterSpacing: settings.letterSpacing < ReaderTypographyMetrics.letterSpacingRange.upperBound,
             previewTheme: appearanceStore.resolvedReaderTheme(systemColorScheme: colorScheme)
         )
     }
@@ -51,6 +54,8 @@ struct ReaderSettingsPanel: View {
             bindings: presenterBindings,
             onDecreaseFontSize: decreaseFontSize,
             onIncreaseFontSize: increaseFontSize,
+            onDecreaseLetterSpacing: decreaseLetterSpacing,
+            onIncreaseLetterSpacing: increaseLetterSpacing,
             onSelectTheme: selectTheme,
             onSelectUnderlineOpacity: selectUnderlineOpacity,
             onResetToDefaults: resetToDefaults
@@ -60,6 +65,7 @@ struct ReaderSettingsPanel: View {
     private var presenterBindings: ReaderSettingsPresenter.Bindings {
         .init(
             lineHeight: $settings.lineHeight,
+            letterSpacing: $settings.letterSpacing,
             font: $settings.font,
             theme: themeBinding,
             underlineOpacity: $settings.underlineOpacity,
@@ -85,6 +91,24 @@ struct ReaderSettingsPanel: View {
             by: 1,
             in: ReaderTypographyMetrics.fontSizeRange,
             step: ReaderTypographyMetrics.fontSizeStep
+        )
+    }
+
+    private func decreaseLetterSpacing() {
+        settings.letterSpacing = ReaderTypographyMetrics.steppedValue(
+            from: settings.letterSpacing,
+            by: -1,
+            in: ReaderTypographyMetrics.letterSpacingRange,
+            step: ReaderTypographyMetrics.letterSpacingStep
+        )
+    }
+
+    private func increaseLetterSpacing() {
+        settings.letterSpacing = ReaderTypographyMetrics.steppedValue(
+            from: settings.letterSpacing,
+            by: 1,
+            in: ReaderTypographyMetrics.letterSpacingRange,
+            step: ReaderTypographyMetrics.letterSpacingStep
         )
     }
 
@@ -145,6 +169,7 @@ struct ReaderSettingsPanelPreviewHarness: View {
 
     @State private var fontScale: Double?
     @State private var lineHeight: Double = 1.5
+    @State private var letterSpacing: Double = 0
     @State private var font: ReaderFont = .serif
     @State private var theme: ReaderTheme = .sepia
     @State private var underlineOpacity: Double = 0.35
@@ -164,6 +189,9 @@ struct ReaderSettingsPanelPreviewHarness: View {
                 && resolvedFontScale > ReaderTypographyMetrics.fontSizeRange.lowerBound,
             canIncreaseFontSize: canIncreaseFontSize
                 && resolvedFontScale < ReaderTypographyMetrics.fontSizeRange.upperBound,
+            letterSpacingText: ReaderSettings.letterSpacingText(for: letterSpacing),
+            canDecreaseLetterSpacing: letterSpacing > ReaderTypographyMetrics.letterSpacingRange.lowerBound,
+            canIncreaseLetterSpacing: letterSpacing < ReaderTypographyMetrics.letterSpacingRange.upperBound,
             // harness 的 theme 是直接的三選一，沒有 `.system` 要解析。
             previewTheme: theme
         )
@@ -172,6 +200,7 @@ struct ReaderSettingsPanelPreviewHarness: View {
     private var bindings: ReaderSettingsPresenter.Bindings {
         .init(
             lineHeight: $lineHeight,
+            letterSpacing: $letterSpacing,
             font: $font,
             theme: $theme,
             underlineOpacity: $underlineOpacity,
@@ -208,6 +237,22 @@ struct ReaderSettingsPanelPreviewHarness: View {
                         step: ReaderTypographyMetrics.fontSizeStep
                     )
                 },
+                onDecreaseLetterSpacing: {
+                    letterSpacing = ReaderTypographyMetrics.steppedValue(
+                        from: letterSpacing,
+                        by: -1,
+                        in: ReaderTypographyMetrics.letterSpacingRange,
+                        step: ReaderTypographyMetrics.letterSpacingStep
+                    )
+                },
+                onIncreaseLetterSpacing: {
+                    letterSpacing = ReaderTypographyMetrics.steppedValue(
+                        from: letterSpacing,
+                        by: 1,
+                        in: ReaderTypographyMetrics.letterSpacingRange,
+                        step: ReaderTypographyMetrics.letterSpacingStep
+                    )
+                },
                 onSelectTheme: { theme = $0 },
                 onSelectUnderlineOpacity: { underlineOpacity = $0 },
                 onResetToDefaults: resetHarnessToDefaults
@@ -222,6 +267,7 @@ struct ReaderSettingsPanelPreviewHarness: View {
         withAnimation(AppMotion.panelState) {
             fontScale = ReaderSettings.defaultFontSize
             lineHeight = ReaderSettings.defaultLineHeight
+            letterSpacing = ReaderSettings.defaultLetterSpacing
             font = ReaderSettings.defaultFont
             scrollMode = ReaderSettings.defaultScrollMode
             vocabHighlightColorPreset = VocabHighlightPreferences.default.colorPreset

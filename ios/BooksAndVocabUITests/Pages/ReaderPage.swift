@@ -47,6 +47,16 @@ struct ReaderPage {
     }
     var lineHeightAdjustmentRowCount: Int { lineHeightRowQuery.count }
     var lineHeightNativeSliderCount: Int { lineHeightNativeSliderQuery.count }
+    var letterSpacingAdjustmentRow: XCUIElement {
+        app.otherElements["reader.settings.letterSpacing"]
+    }
+    var letterSpacingAdjustmentRowCount: Int { letterSpacingRowQuery.count }
+    var letterSpacingDecrementButton: XCUIElement {
+        app.buttons["reader.settings.letterSpacing.decrement"]
+    }
+    var letterSpacingIncrementButton: XCUIElement {
+        app.buttons["reader.settings.letterSpacing.increment"]
+    }
     var readingModePicker: XCUIElement { app.buttons["reader.settings.readingMode"] }
     var fontPicker: XCUIElement { app.buttons["reader.settings.font"] }
     var themePicker: XCUIElement { app.otherElements["reader.settings.theme"] }
@@ -130,6 +140,18 @@ struct ReaderPage {
     /// stay absent from the Reader settings accessibility tree.
     private var lineHeightNativeSliderQuery: XCUIElementQuery {
         app.sliders.matching(identifier: "reader.settings.lineHeight")
+    }
+
+    private var letterSpacingIncrementQuery: XCUIElementQuery {
+        app.buttons.matching(identifier: "reader.settings.letterSpacing.increment")
+    }
+
+    private var letterSpacingDecrementQuery: XCUIElementQuery {
+        app.buttons.matching(identifier: "reader.settings.letterSpacing.decrement")
+    }
+
+    private var letterSpacingRowQuery: XCUIElementQuery {
+        app.descendants(matching: .any).matching(identifier: "reader.settings.letterSpacing")
     }
 
     private var themeOptionQuery: (String) -> XCUIElementQuery {
@@ -544,6 +566,48 @@ struct ReaderPage {
         exactlyOne(
             lineHeightIncrementQuery,
             named: "Reader line-height increment button",
+            timeout: timeout,
+            file: file,
+            line: line
+        )
+    }
+
+    func letterSpacingAdjustmentRowElement(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        exactlyOne(
+            letterSpacingRowQuery,
+            named: "Reader letter-spacing adjustment row",
+            timeout: timeout,
+            file: file,
+            line: line
+        )
+    }
+
+    func letterSpacingDecrementButtonElement(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        exactlyOne(
+            letterSpacingDecrementQuery,
+            named: "Reader letter-spacing decrement button",
+            timeout: timeout,
+            file: file,
+            line: line
+        )
+    }
+
+    func letterSpacingIncrementButtonElement(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        exactlyOne(
+            letterSpacingIncrementQuery,
+            named: "Reader letter-spacing increment button",
             timeout: timeout,
             file: file,
             line: line
@@ -1038,6 +1102,34 @@ struct ReaderPage {
         return waitForLineHeightValue(expectedValue, timeout: 5)
     }
 
+    @discardableResult
+    func adjustLetterSpacing(
+        toValue expectedValue: String,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> Bool {
+        guard let numericValue = Double(expectedValue) else { return false }
+        guard let currentValue = letterSpacingValue(timeout: 5) else { return false }
+
+        let delta = Int(((numericValue - currentValue) / 0.1).rounded())
+        guard delta != 0 else { return true }
+        guard revealLetterSpacingAdjustmentRow(timeout: 8, file: file, line: line) else { return false }
+        let buttonQuery = delta > 0 ? letterSpacingIncrementQuery : letterSpacingDecrementQuery
+        let buttonName = delta > 0 ? "Reader letter-spacing increment" : "Reader letter-spacing decrement"
+
+        for _ in 0..<abs(delta) {
+            guard let button = exactlyOne(
+                buttonQuery,
+                named: buttonName,
+                timeout: 5,
+                file: file,
+                line: line
+            ) else { return false }
+            button.tapWhenReady(timeout: 5, file: file, line: line)
+        }
+        return waitForLetterSpacingValue(expectedValue, timeout: 5)
+    }
+
     private func revealLineHeightAdjustmentRow(
         timeout: TimeInterval,
         file: StaticString,
@@ -1056,6 +1148,28 @@ struct ReaderPage {
             }
             // The typography rows are below the preview; swipe the panel
             // toward its lower rows until the line-height row is hittable.
+            scrollSettingsPanel(towardTop: true)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        return false
+    }
+
+    private func revealLetterSpacingAdjustmentRow(
+        timeout: TimeInterval,
+        file: StaticString,
+        line: UInt
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let row = exactlyOneIfPresent(
+                letterSpacingRowQuery,
+                named: "Reader letter-spacing adjustment row",
+                timeout: 0.25,
+                file: file,
+                line: line
+            ), row.isHittable, !row.frame.isEmpty, row.frame.intersects(app.frame) {
+                return true
+            }
             scrollSettingsPanel(towardTop: true)
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
@@ -1096,6 +1210,18 @@ struct ReaderPage {
         return Double(String(describing: raw))
     }
 
+    func letterSpacingValue(timeout: TimeInterval = 5) -> Double? {
+        guard let row = exactlyOne(
+            letterSpacingRowQuery,
+            named: "Reader letter-spacing adjustment row",
+            timeout: timeout
+        ) else {
+            return nil
+        }
+        guard let raw = row.value else { return nil }
+        return Double(String(describing: raw))
+    }
+
     @discardableResult
     func waitForLineHeightValue(_ value: String, timeout: TimeInterval = 5) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
@@ -1115,6 +1241,34 @@ struct ReaderPage {
         guard let row = exactlyOneIfPresent(
             lineHeightRowQuery,
             named: "Reader line-height adjustment row",
+            timeout: 0.25
+        ), let current = row.value,
+              let currentNumber = Double(String(describing: current)),
+              let expectedNumber = Double(value) else {
+            return false
+        }
+        return abs(currentNumber - expectedNumber) < 0.001
+    }
+
+    @discardableResult
+    func waitForLetterSpacingValue(_ value: String, timeout: TimeInterval = 5) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let row = exactlyOneIfPresent(
+                letterSpacingRowQuery,
+                named: "Reader letter-spacing adjustment row",
+                timeout: 0.25
+            ), let current = row.value,
+               let currentNumber = Double(String(describing: current)),
+               let expectedNumber = Double(value),
+               abs(currentNumber - expectedNumber) < 0.001 {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        guard let row = exactlyOneIfPresent(
+            letterSpacingRowQuery,
+            named: "Reader letter-spacing adjustment row",
             timeout: 0.25
         ), let current = row.value,
               let currentNumber = Double(String(describing: current)),
