@@ -72,4 +72,17 @@ struct NotebookFilterTests {
         #expect(loaded.selectedIds.isEmpty)
         #expect(!loaded.isFiltered)
     }
+
+    @Test func notebookListResetsFilterAtAccountBoundary() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("BooksAndVocab/Views/Vocabulary/Scenes/NotebookListView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let accountChange = try #require(source.range(of: ".onChange(of: accountTaskID)"))
+        let task = try #require(source.range(of: ".task(id: accountTaskID)", range: accountChange.upperBound..<source.endIndex))
+        let accountBoundaryBlock = source[accountChange.lowerBound..<task.lowerBound]
+
+        #expect(accountBoundaryBlock.contains("reviewFilter = NotebookFilter()"))
+    }
 }
