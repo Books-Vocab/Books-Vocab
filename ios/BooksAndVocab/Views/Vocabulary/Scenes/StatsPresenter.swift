@@ -679,13 +679,14 @@ struct StatsPresenter: View {
                             .frame(height: 160)
                     }
                     .frame(height: 160)
-                    // Keep the chart visual out of the AX tree. Its nested
+                    // Keep the chart visual as one AX element. Its nested
                     // GeometryReader can render all bars while iOS exposes
                     // an unstable subset of descendants. The explicit
                     // bucket nodes below provide the stable, one-to-one
                     // projection for UI automation and assistive technology
                     // without changing the rendered chart.
-                    .accessibilityHidden(true)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityIdentifier("overview.forecast.chart")
                     Color.clear
                         .frame(width: 1, height: 1)
                         .accessibilityElement()
