@@ -80,6 +80,7 @@ actor BackgroundSyncActor {
         // field already matched. Comparing content alone would report「已是最新」
         // while new rows materialised on screen.
         if !entry.isSynced { return true }
+        if entry.word != card.content { return true }
         if entry.translation != card.meaning { return true }
         if entry.partOfSpeech != card.pos { return true }
         if entry.explanation != card.note { return true }
@@ -171,6 +172,7 @@ actor BackgroundSyncActor {
                     }
 
                     // Update existing record
+                    existingEntry.word = card.content
                     existingEntry.translation = card.meaning
                     existingEntry.partOfSpeech = card.pos
                     existingEntry.explanation = card.note
