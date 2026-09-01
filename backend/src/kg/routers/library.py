@@ -36,7 +36,7 @@ def _utc_instant(value: str) -> datetime:
 def list_books(user: CurrentUser, since: str | None = None):
     store = _library_store(user["dir"])
     books = store.all(include_deleted=True)
-    if since:
+    if since is not None:
         try:
             since_instant = _utc_instant(since)
         except ValueError:
