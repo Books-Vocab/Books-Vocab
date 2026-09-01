@@ -10,6 +10,7 @@ from pathlib import Path
 
 from fastapi import HTTPException
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, select
 
@@ -127,7 +128,17 @@ class NotebookStore:
                 is_default=True,
             )
             session.add(nb)
-            session.commit()
+            try:
+                session.commit()
+            except IntegrityError:
+                # Another first-use request may have created the singleton
+                # between our read and insert. Re-read its committed row;
+                # unrelated integrity failures still propagate unchanged.
+                session.rollback()
+                existing = session.get(Notebook, DEFAULT_NOTEBOOK_ID)
+                if existing is None:
+                    raise
+                return existing
             session.refresh(nb)
             return nb
 
