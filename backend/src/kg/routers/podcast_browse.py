@@ -5,7 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
 from ..api_models.podcast import PodcastSeriesDetail, PodcastSeriesSummary
@@ -70,6 +70,11 @@ def _filter_inline_subtitles(value: Any, tier: str) -> Any:
     }
 
 
+def _set_tiered_browse_cache_headers(response: Response) -> None:
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Vary"] = "Authorization"
+
+
 def build_podcast_browse_router(
     *,
     validate_series_id: Callable[[str], None],
@@ -86,7 +91,8 @@ def build_podcast_browse_router(
         response_model=list[PodcastSeriesSummary],
         response_model_exclude_unset=True,
     )
-    def list_podcasts(request: Request, user: OptionalCurrentUser):
+    def list_podcasts(request: Request, response: Response, user: OptionalCurrentUser):
+        _set_tiered_browse_cache_headers(response)
         if using_s3(request):
             data = read_json_from_s3(request, "index.json", context="index")
             if data is None:
@@ -106,7 +112,13 @@ def build_podcast_browse_router(
         response_model=PodcastSeriesDetail,
         response_model_exclude_unset=True,
     )
-    def get_podcast_series(series_id: str, request: Request, user: OptionalCurrentUser):
+    def get_podcast_series(
+        series_id: str,
+        request: Request,
+        response: Response,
+        user: OptionalCurrentUser,
+    ):
+        _set_tiered_browse_cache_headers(response)
         validate_series_id(series_id)
         if using_s3(request):
             data = read_json_from_s3(
