@@ -11,7 +11,10 @@ from __future__ import annotations
 import sqlite3
 from contextlib import closing
 
-from kg.api_models.review import ReviewEventEntry
+import pytest
+from pydantic import ValidationError
+
+from kg.api_models.review import ReviewEventEntry, ReviewEventsPushRequest
 from kg.review_events import ReviewEventStore, pull_review_events, push_review_events
 
 
@@ -35,6 +38,15 @@ def _entry(event_id: str, **overrides) -> ReviewEventEntry:
     )
     base.update(overrides)
     return ReviewEventEntry(**base)
+
+
+@pytest.mark.parametrize("field", ["review_count_after", "streak_after", "lapse_after"])
+def test_push_rejects_negative_srs_counters(field):
+    payload = _entry("negative-counter").model_dump()
+    payload[field] = -1
+
+    with pytest.raises(ValidationError):
+        ReviewEventsPushRequest(entries=[payload])
 
 
 def test_new_fields_roundtrip(tmp_path):
@@ -147,8 +159,8 @@ def test_migrated_legacy_db_accepts_new_synthetic_writes(tmp_path):
         push_review_events([_entry("new1", is_synthetic=True)], event_store=store)
         entries, _ = pull_review_events(since=None, event_store=store)
         by_id = {e.event_id: e for e in entries}
-        assert set(by_id) == {"old1", "new1"}            # 新舊共存
-        assert by_id["old1"].is_synthetic is False       # 舊事件 migration 落 False
-        assert by_id["new1"].is_synthetic is True        # 新事件寫得進加寬欄
+        assert set(by_id) == {"old1", "new1"}  # 新舊共存
+        assert by_id["old1"].is_synthetic is False  # 舊事件 migration 落 False
+        assert by_id["new1"].is_synthetic is True  # 新事件寫得進加寬欄
         assert by_id["new1"].interval_after == 22.8
         assert by_id["new1"].streak_after == 2
