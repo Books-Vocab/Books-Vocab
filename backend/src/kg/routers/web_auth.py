@@ -213,6 +213,8 @@ async def google_callback(
         )
     if resp.status_code != 200:
         logger.warning("Google token exchange failed: %s %s", resp.status_code, resp.text)
+        if _is_transient_status(resp.status_code):
+            raise HTTPException(status_code=502, detail="Failed to reach Google authentication service")
         raise HTTPException(status_code=401, detail="Failed to exchange authorization code")
 
     token_data = resp.json()
