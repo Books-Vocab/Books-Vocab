@@ -17,6 +17,8 @@
     <key>KG_DISK_GUARD_WARN_FREE_GIB</key><string>20</string>
     <key>KG_DISK_GUARD_CRIT_FREE_GIB</key><string>10</string>
     <key>KG_DISK_GUARD_GROWTH_WARN_GIB</key><string>5</string>
+    <key>KG_DISK_GUARD_DERIVED_DATA_BUDGET_GIB</key><string>4</string>
+    <key>KG_DISK_GUARD_DERIVED_DATA_MIN_AGE_HOURS</key><string>6</string>
     <key>KG_DISK_GUARD_CACHE_BUDGET_GIB</key><string>16</string>
     <key>KG_DISK_GUARD_CACHE_HEADROOM_GIB</key><string>6</string>
     <key>KG_DISK_GUARD_DOCKER_WARN_GIB</key><string>2</string>

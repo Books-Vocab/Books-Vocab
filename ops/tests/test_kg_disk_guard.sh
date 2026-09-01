@@ -80,6 +80,82 @@ grep -q '"verdict":"ok"' "$state" && ok "high-free verdict ok" || bad "high-free
 grep -q '"action":"none"' "$state" && ok "high-free no action" || bad "high-free action"
 bytes1="$(wc -c < "$state")"
 
+echo "── healthy: global BooksAndVocab DerivedData has an independent byte bound ──"
+root="$TMP/global-dd-budget"; global_derived="$root/global-derived-data"; state="$root/state.json"
+mkdir -p "$global_derived/BooksAndVocab-old/Build" "$global_derived/BooksAndVocab-middle/Build" \
+  "$global_derived/BooksAndVocab-new/Build" "$global_derived/OtherProject-unmanaged/Build"
+dd if=/dev/zero of="$global_derived/BooksAndVocab-old/Build/blob" bs=1024 count=700 >/dev/null 2>&1
+dd if=/dev/zero of="$global_derived/BooksAndVocab-middle/Build/blob" bs=1024 count=700 >/dev/null 2>&1
+dd if=/dev/zero of="$global_derived/BooksAndVocab-new/Build/blob" bs=1024 count=700 >/dev/null 2>&1
+dd if=/dev/zero of="$global_derived/OtherProject-unmanaged/Build/blob" bs=1024 count=700 >/dev/null 2>&1
+touch -m -t 202001010000.00 "$global_derived/BooksAndVocab-old"
+touch -m -t 202001020000.00 "$global_derived/BooksAndVocab-middle"
+touch -m -t 202001030000.00 "$global_derived/BooksAndVocab-new"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_DERIVED_DATA_GLOBAL="$global_derived" \
+  KG_DISK_GUARD_DERIVED_DATA_BUDGET_GIB=0 KG_DISK_GUARD_DERIVED_DATA_MIN_AGE_HOURS=0 \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  KG_DISK_GUARD_BUILD_LOCK_FILE="$root/build.lock" "$SCRIPT" >/dev/null 2>&1
+dd_count="$(find "$global_derived" -mindepth 1 -maxdepth 1 -type d -name 'BooksAndVocab-*' | wc -l | tr -d ' ')"
+[[ "$dd_count" -eq 0 ]] && ok "healthy guard bounds global DerivedData" || bad "global DerivedData remains unbounded: $dd_count directories"
+grep -q '"reason":"derived-data-budget-exceeded"' "$state" \
+  && ok "global DerivedData budget breach recorded" || bad "global DerivedData budget reason missing"
+grep -q '"action":"enforce-derived-data-budget"' "$state" \
+  && ok "global DerivedData repair action recorded" || bad "global DerivedData repair action missing"
+grep -q '"derived_data_budget_kb":0' "$state" \
+  && ok "global DerivedData budget recorded" || bad "global DerivedData budget missing"
+[[ -d "$global_derived/OtherProject-unmanaged" ]] \
+  && ok "unmanaged global DerivedData is preserved" || bad "unmanaged global DerivedData was removed"
+
+echo "── global DerivedData: active consumer defers repair ──"
+root="$TMP/global-dd-active"; global_derived="$root/global-derived-data"; state="$root/state.json"
+mkdir -p "$global_derived/BooksAndVocab-active-a/Build" "$global_derived/BooksAndVocab-active-b/Build"
+printf x > "$global_derived/BooksAndVocab-active-a/Build/blob"
+printf x > "$global_derived/BooksAndVocab-active-b/Build/blob"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_DERIVED_DATA_GLOBAL="$global_derived" KG_DISK_GUARD_DERIVED_DATA_BUDGET_GIB=0 \
+  KG_DISK_GUARD_DERIVED_DATA_MIN_AGE_HOURS=0 KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) \
+  KG_DISK_GUARD_ACTIVE_BUILD=1 "$SCRIPT" >/dev/null 2>&1
+dd_count="$(find "$global_derived" -mindepth 1 -maxdepth 1 -type d -name 'BooksAndVocab-*' | wc -l | tr -d ' ')"
+[[ "$dd_count" -eq 2 ]] && ok "active consumer preserves global DerivedData" || bad "active consumer cleanup changed global DerivedData"
+grep -q '"action":"deferred-active-build"' "$state" \
+  && ok "active consumer deferral is recorded" || bad "active consumer deferral missing"
+
+echo "── global DerivedData: held build lock defers repair ──"
+root="$TMP/global-dd-lock"; global_derived="$root/global-derived-data"; state="$root/state.json"; build_lock="$root/build.lock"
+mkdir -p "$global_derived/BooksAndVocab-held/Build"
+printf x > "$global_derived/BooksAndVocab-held/Build/blob"
+printf '%s\n' "$$" > "$build_lock"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_DERIVED_DATA_GLOBAL="$global_derived" KG_DISK_GUARD_DERIVED_DATA_BUDGET_GIB=0 \
+  KG_DISK_GUARD_DERIVED_DATA_MIN_AGE_HOURS=0 KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) \
+  KG_DISK_GUARD_ACTIVE_BUILD=0 KG_DISK_GUARD_BUILD_LOCK_FILE="$build_lock" \
+  PATH="$FAKE_BIN:$PATH" env -u KG_DISK_GUARD_BUILD_LOCK_HELD "$SCRIPT" >/dev/null 2>&1
+[[ -d "$global_derived/BooksAndVocab-held" ]] \
+  && ok "held build lock preserves global DerivedData" || bad "held build lock deleted global DerivedData"
+grep -q '"action":"deferred-build-lock"' "$state" \
+  && ok "held build lock deferral is recorded" || bad "held build lock deferral missing"
+
+echo "── global DerivedData: dry-run preserves repair targets and exit semantics ──"
+root="$TMP/global-dd-dry-run"; global_derived="$root/global-derived-data"; state="$root/state.json"
+mkdir -p "$global_derived/BooksAndVocab-dry-a/Build" "$global_derived/BooksAndVocab-dry-b/Build"
+printf x > "$global_derived/BooksAndVocab-dry-a/Build/blob"
+printf x > "$global_derived/BooksAndVocab-dry-b/Build/blob"
+if KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_DERIVED_DATA_GLOBAL="$global_derived" KG_DISK_GUARD_DERIVED_DATA_BUDGET_GIB=0 \
+  KG_DISK_GUARD_DERIVED_DATA_MIN_AGE_HOURS=0 KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) \
+  KG_DISK_GUARD_ACTIVE_BUILD=0 KG_DISK_GUARD_DRY_RUN=1 "$SCRIPT" >/dev/null 2>&1; then
+  ok "dry-run keeps guard exit compatible"
+else
+  bad "dry-run changed guard exit semantics"
+fi
+dd_count="$(find "$global_derived" -mindepth 1 -maxdepth 1 -type d -name 'BooksAndVocab-*' | wc -l | tr -d ' ')"
+[[ "$dd_count" -eq 2 ]] && ok "dry-run preserves global DerivedData" || bad "dry-run deleted global DerivedData"
+grep -q '"action":"enforce-derived-data-budget"' "$state" \
+  && ok "dry-run repair action is recorded" || bad "dry-run repair action missing"
+grep -q '"cache_eviction_evicted":0' "$state" \
+  && ok "dry-run records no eviction" || bad "dry-run reports eviction"
+
 echo "── healthy: reader window protects warm shared cache keys ──"
 root="$TMP/shared-reader-window"; cache="$root/.cache/ios-test-derived-data"; state="$root/state.json"
 mkdir -p "$cache"
