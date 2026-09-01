@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -92,6 +93,15 @@ class ExternalCardReviewRequest(BaseModel):
     lapseCount: int = Field(ge=0)
     reviewStreak: int = Field(ge=0)
     lastReviewFeedback: int = Field(ge=-1, le=1)
+
+    @field_validator("nextReviewAt", "lastReviewedAt")
+    @classmethod
+    def validate_iso_timestamp(cls, value: str) -> str:
+        try:
+            datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("must be an ISO 8601 timestamp") from exc
+        return value
 
     @field_validator("reviewIntervalHours", mode="before")
     @classmethod
