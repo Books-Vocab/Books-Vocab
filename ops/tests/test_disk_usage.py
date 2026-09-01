@@ -911,7 +911,8 @@ def test_xctest_devices_measured_root_is_shared_not_a_product_lane(
     assert shared["budget_exceeded"] is False
     assert shared["attribution"] == "shared-host-platform"
     assert all(
-        str(xctest_root) not in item["path"] for item in report["accounting"]["lane_accounting"]
+        str(xctest_root) not in item["path"]
+        for item in report["accounting"]["lane_accounting"]
     )
     assert report["policy"]["verdict"] == "pass"
 

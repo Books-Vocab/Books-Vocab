@@ -41,9 +41,7 @@ XCTEST_DEVICES_METADATA_ERROR = "xctest-devices-metadata-unavailable"
 XCTEST_DEVICES_MEASUREMENT_ERROR = "xctest-devices-measurement-incomplete"
 XCTEST_DEVICES_BUDGET_ERROR = "xctest-devices-budget-exceeded"
 XCTEST_DEVICES_MANUAL_REVIEW_ERROR = "xctest-devices-manual-review-required"
-_XCTEST_UDID_RE = re.compile(
-    r"^[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$"
-)
+_XCTEST_UDID_RE = re.compile(r"^[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$")
 
 
 class _MeasurementBudgetExceeded(RuntimeError):
@@ -109,7 +107,9 @@ def _xctest_devices_root(value: str | Path | None) -> Path:
 def _configured_xctest_devices_budget_gib() -> int:
     raw = os.environ.get("KG_XCTEST_DEVICES_BUDGET_GIB")
     try:
-        return max(0, int(raw)) if raw is not None else DEFAULT_XCTEST_DEVICES_BUDGET_GIB
+        return (
+            max(0, int(raw)) if raw is not None else DEFAULT_XCTEST_DEVICES_BUDGET_GIB
+        )
     except (TypeError, ValueError):
         return DEFAULT_XCTEST_DEVICES_BUDGET_GIB
 
@@ -138,7 +138,9 @@ def _xctest_state(value: object) -> tuple[bool, bool]:
     return False, False
 
 
-def _read_xctest_device_plist(path: Path, udid: str) -> tuple[dict[str, Any], str | None]:
+def _read_xctest_device_plist(
+    path: Path, udid: str
+) -> tuple[dict[str, Any], str | None]:
     try:
         with path.open("rb") as handle:
             payload = plistlib.load(handle)
@@ -347,7 +349,8 @@ def inspect_xctest_devices(
     base["devices"] = devices
     base["measurement_errors"] = sorted(set(errors))[:20]
     base["measurement_complete"] = not any(
-        error == MEASUREMENT_BUDGET_ERROR or error.endswith(f":{MEASUREMENT_BUDGET_ERROR}")
+        error == MEASUREMENT_BUDGET_ERROR
+        or error.endswith(f":{MEASUREMENT_BUDGET_ERROR}")
         for error in errors
     )
     if not base["measurement_complete"]:
@@ -362,7 +365,12 @@ def inspect_xctest_devices(
     )
     if base["budget_exceeded"]:
         base["reclaim"]["status"] = "manual-review"
-        if auto_reclaim and candidates and base["measurement_complete"] and base["metadata_complete"]:
+        if (
+            auto_reclaim
+            and candidates
+            and base["measurement_complete"]
+            and base["metadata_complete"]
+        ):
             results = []
             for candidate in candidates:
                 result = _reclaim_xctest_device(candidate)
