@@ -73,6 +73,35 @@ struct NotebookFilterTests {
         #expect(!loaded.isFiltered)
     }
 
+    @Test func reconcileRemovesUnavailableIDsAndPersistsCleanup() {
+        let suite = UserDefaults(suiteName: #file)
+        defer { suite?.removePersistentDomain(forName: #file) }
+
+        var filter = NotebookFilter(selectedIds: ["nb-live", "nb-deleted"])
+        filter.save(to: suite!)
+
+        let changed = filter.reconcile(with: ["nb-live"], defaults: suite!)
+
+        #expect(changed)
+        #expect(filter.selectedIds == ["nb-live"])
+        #expect(NotebookFilter.load(from: suite!).selectedIds == ["nb-live"])
+    }
+
+    @Test func reconcileWhenAllSelectedNotebooksDisappearReturnsToAll() {
+        let suite = UserDefaults(suiteName: #file)
+        defer { suite?.removePersistentDomain(forName: #file) }
+
+        var filter = NotebookFilter(selectedIds: ["nb-deleted"])
+        filter.save(to: suite!)
+
+        let changed = filter.reconcile(with: [], defaults: suite!)
+
+        #expect(changed)
+        #expect(filter.selectedIds.isEmpty)
+        #expect(!filter.isFiltered)
+        #expect(NotebookFilter.load(from: suite!).selectedIds.isEmpty)
+    }
+
     @Test func notebookListResetsFilterAtAccountBoundary() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

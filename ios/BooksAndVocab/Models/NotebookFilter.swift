@@ -26,6 +26,23 @@ struct NotebookFilter: Equatable {
         defaults.set(Array(selectedIds), forKey: Self.storageKey)
     }
 
+    /// Removes selections that no longer exist in the live notebook collection.
+    ///
+    /// Returns whether the filter changed. Persist only when it did so that a
+    /// live collection refresh does not create unnecessary UserDefaults writes.
+    @discardableResult
+    mutating func reconcile(
+        with availableNotebookIds: Set<String>,
+        defaults: UserDefaults = .standard
+    ) -> Bool {
+        let reconciledIds = selectedIds.intersection(availableNotebookIds)
+        guard reconciledIds != selectedIds else { return false }
+
+        selectedIds = reconciledIds
+        save(to: defaults)
+        return true
+    }
+
     static func load() -> NotebookFilter {
         load(from: .standard)
     }

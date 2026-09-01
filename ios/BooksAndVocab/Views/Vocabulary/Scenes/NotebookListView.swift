@@ -106,6 +106,10 @@ struct NotebookListContent: View {
         NotebookSortOption(rawValue: sortOptionRaw) ?? .manual
     }
 
+    private var liveNotebookIDs: Set<String> {
+        Set(notebooks.filter { !$0.isSoftDeleted }.map(\.remoteId))
+    }
+
     /// 列表 body 所需的衍生資料（每本 notebook 統計 + 篩選後到期/未學集合 + 排序）。
     private struct ListModel {
         var stats: [String: NotebookStats] = [:]
@@ -375,6 +379,9 @@ struct NotebookListContent: View {
             }
             .onChange(of: accountTaskID) { _, _ in
                 reviewFilter = NotebookFilter()
+            }
+            .onChange(of: liveNotebookIDs, initial: true) { _, ids in
+                reviewFilter.reconcile(with: ids)
             }
             .task(id: accountTaskID) {
                 guard catalogTaskPolicy.runsTasks else { return }
