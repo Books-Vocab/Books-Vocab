@@ -962,6 +962,63 @@ def test_existing_pr_scope_may_grow_after_same_owner_reanchor() -> None:
     )
 
 
+def test_partial_publication_accepts_existing_pr_declared_scope_subset_after_reanchor() -> (
+    None
+):
+    """A reanchored PR may declare a file that is unchanged in its current patch."""
+
+    scope = Scope.from_paths(
+        modify=(
+            "ops/delivery_control/services/publish_preflight.py",
+            "ops/tests/test_delivery_publish.py",
+        )
+    )
+    previous = _receipt(
+        claim_generation=2,
+        head_sha=OLD_HEAD,
+        scope=scope,
+    )
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        scope=scope,
+    )
+    pull_request = replace(
+        _pull_request(
+            previous,
+            title="fix: delivery",
+            body=render_pull_request_body(previous),
+        ),
+        number=1889,
+    )
+    changed_path = "ops/delivery_control/services/publish_preflight.py"
+    worktree = _worktree(
+        receipt,
+        changes=(FileChange(FileOperation.MODIFY, changed_path),),
+    )
+    service, git, github = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=worktree,
+            remote_sha=previous.head_sha,
+            ancestor_pairs=((previous.head_sha, receipt.head_sha),),
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=pull_request,
+            changed_paths=(changed_path,),
+        ),
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert git.push_calls == [(previous.head_sha, receipt.head_sha)]
+    assert github.create_calls == 0
+    assert github.update_calls == 1
+    assert parse_pull_request_body(result.pull_request.body) == receipt
+
+
 def test_partial_publication_accepts_patch_equivalent_non_ancestor_head() -> None:
     previous, receipt, service, git, github = _non_ancestor_reanchor_service(
         fingerprints=("equivalent", "equivalent")
@@ -1034,7 +1091,7 @@ def test_partial_publication_rejects_semantic_non_ancestor_delta() -> None:
     assert github.update_calls == 0
 
 
-def test_partial_publication_does_not_use_normalized_capability_for_scope_mismatch() -> (
+def test_partial_publication_does_not_use_normalized_capability_for_out_of_scope_change() -> (
     None
 ):
     previous, receipt, service, git, github = _non_ancestor_reanchor_service(
@@ -1044,13 +1101,13 @@ def test_partial_publication_does_not_use_normalized_capability_for_scope_mismat
     assert github.pull_request is not None
     git.snapshot = _worktree(
         receipt,
-        changes=(FileChange(FileOperation.MODIFY, receipt.scope.paths[0]),),
+        changes=(
+            FileChange(FileOperation.MODIFY, receipt.scope.paths[0]),
+            FileChange(FileOperation.MODIFY, "ops/out-of-scope.py"),
+        ),
     )
 
-    with pytest.raises(
-        PolicyViolation,
-        match="current handback diff does not exactly match its typed Scope",
-    ):
+    with pytest.raises(PolicyViolation, match="physical operations or paths"):
         service.publish(receipt=receipt, title="fix: delivery")
 
     assert isinstance(git, WhitespaceNormalizedFingerprintGit)

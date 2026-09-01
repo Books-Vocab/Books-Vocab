@@ -162,11 +162,16 @@ class PublishPreflightService:
 
     @staticmethod
     def _worktree_changes_match_scope(
-        *, receipt: HandbackReceipt, worktree: WorktreeSnapshot
+        *,
+        receipt: HandbackReceipt,
+        worktree: WorktreeSnapshot,
+        exact: bool = False,
     ) -> bool:
         expected = {(item.operation.value, item.path) for item in receipt.scope.files}
         actual = {(item.operation.value, item.path) for item in worktree.changes}
-        return actual == expected
+        if exact:
+            return actual == expected
+        return bool(actual) and actual.issubset(expected)
 
     def _validate_existing_pull_request_scope(
         self,
@@ -180,10 +185,13 @@ class PublishPreflightService:
     ) -> None:
         """Allow exact Scope evolution across an owner reanchor.
 
-        A reanchored claim can legitimately add a file before publishing the
-        same durable PR.  The old PR must still be self-describing and its
-        changed paths must exactly match its previous typed receipt; otherwise
-        a same-branch PR could be used to smuggle arbitrary Scope drift.
+        A reanchored claim can legitimately retain declared files that are
+        unchanged in the current patch before publishing the same durable PR.
+        The old PR must still be self-describing and its changed paths must
+        fit its previous typed receipt; otherwise a same-branch PR could be
+        used to smuggle arbitrary Scope drift.  When the current typed Scope
+        itself changes, the current patch must still realize that full Scope
+        so an unmodified patch cannot authorize a Scope expansion.
 
         A PR can also have its target base advanced before its body is refreshed.
         That partial publication is recoverable only when its old body still
@@ -223,7 +231,9 @@ class PublishPreflightService:
         observed = set(observed_paths)
         current_paths = set(receipt.scope.paths)
         current_changes_match = self._worktree_changes_match_scope(
-            receipt=receipt, worktree=worktree
+            receipt=receipt,
+            worktree=worktree,
+            exact=receipt.scope != previous.scope,
         )
         if generation_advanced and previous_tuple_matches_pr:
             if not observed.issubset(current_paths):
