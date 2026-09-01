@@ -15,6 +15,7 @@ import argparse
 import errno
 import hashlib
 import json
+import math
 import os
 import plistlib
 import re
@@ -38,7 +39,8 @@ GIB = 1024**3
 LIVE_REGISTRY_STATUSES = {"active", "published", "cleanup_pending"}
 TERMINAL_REGISTRY_STATUSES = {"merged", "abandoned"}
 KNOWN_REGISTRY_STATUSES = LIVE_REGISTRY_STATUSES | TERMINAL_REGISTRY_STATUSES
-DEFAULT_TIME_BUDGET_SECONDS = 30.0
+DEFAULT_TIME_BUDGET_SECONDS = 240.0
+MAX_TIME_BUDGET_SECONDS = 240.0
 DEFAULT_CODEX_WORKTREE_ROOT = Path.home() / ".codex" / "worktrees"
 DEFAULT_XCTEST_DEVICES_ROOT = Path.home() / "Library" / "Developer" / "XCTestDevices"
 DEFAULT_XCTEST_DEVICES_BUDGET_GIB = 16
@@ -1102,10 +1104,18 @@ def build_report(
     auto_reclaim_xctest_devices: bool = False,
 ) -> dict[str, Any]:
     measurement_started = time.monotonic()
+    if time_budget_seconds is None:
+        effective_time_budget = None
+    elif not math.isfinite(time_budget_seconds):
+        effective_time_budget = 0.0
+    else:
+        effective_time_budget = min(
+            MAX_TIME_BUDGET_SECONDS, max(0.0, time_budget_seconds)
+        )
     deadline = (
         None
-        if time_budget_seconds is None
-        else measurement_started + max(0.0, time_budget_seconds)
+        if effective_time_budget is None
+        else measurement_started + effective_time_budget
     )
     workspace = _path(workspace)
     state_path = _path(state_path)
@@ -1689,7 +1699,7 @@ def build_report(
         "workspace": str(workspace),
         "registry": str(state_path),
         "measurement": {
-            "budget_seconds": time_budget_seconds,
+            "budget_seconds": effective_time_budget,
             "elapsed_seconds": round(time.monotonic() - measurement_started, 3),
             "budget_exhausted": measurement_budget_exhausted,
             "status": "incomplete" if measurement_incomplete else "complete",
@@ -1833,7 +1843,7 @@ def main(argv: list[str] | None = None) -> int:
         "--time-budget-seconds",
         type=float,
         default=DEFAULT_TIME_BUDGET_SECONDS,
-        help="maximum recursive measurement time before returning a fail-closed report",
+        help="maximum recursive measurement time (hard maximum: 240 seconds)",
     )
     parser.add_argument(
         "--supervision-worktree",

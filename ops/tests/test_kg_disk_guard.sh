@@ -62,6 +62,14 @@ timestamp_minutes_ago() {
 
 [[ -f "$SCRIPT" ]] || { echo "missing $SCRIPT" >&2; exit 1; }
 
+echo "── fixed attribution timebox contract ──"
+grep -q 'KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS:-240' "$SCRIPT" \
+  && ok "guard default attribution budget is 240 seconds" \
+  || bad "guard attribution budget default drifted"
+grep -q 'attribution scan budget (default: 240)' "$SCRIPT" \
+  && ok "guard help documents 240-second budget" \
+  || bad "guard help budget is stale"
+
 echo "── help is read-only ──"
 root="$TMP/help"; state="$root/state.json"; cache="$root/.cache/ios-test-derived-data"
 mkdir -p "$cache/old/Build"; printf x > "$cache/old/Build/blob"

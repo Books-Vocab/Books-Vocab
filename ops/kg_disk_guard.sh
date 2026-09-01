@@ -49,8 +49,9 @@ BUILD_LOCK_FILE="${KG_DISK_GUARD_BUILD_LOCK_FILE:-/tmp/kg-ios-build.lock}"
 GUARD_LOCK_FILE="${KG_DISK_GUARD_LOCK_FILE:-/tmp/kg-disk-guard.lock}"
 DRY_RUN="${KG_DISK_GUARD_DRY_RUN:-0}"
 UV_BIN="${KG_DISK_GUARD_UV_BIN:-$HOME/.local/bin/uv}"
-LANE_USAGE_BUDGET_SECONDS="${KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS:-30}"
-[[ "$LANE_USAGE_BUDGET_SECONDS" =~ ^[0-9]+$ ]] || LANE_USAGE_BUDGET_SECONDS=30
+LANE_USAGE_BUDGET_SECONDS="${KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS:-240}"
+[[ "$LANE_USAGE_BUDGET_SECONDS" =~ ^[0-9]+$ ]] || LANE_USAGE_BUDGET_SECONDS=240
+(( LANE_USAGE_BUDGET_SECONDS > 240 )) && LANE_USAGE_BUDGET_SECONDS=240
 LANE_USAGE_RC=0
 LANE_USAGE_VERDICT="unavailable"
 LANE_USAGE_EXCLUSIONS_JSON='[]'
@@ -763,7 +764,8 @@ cleanup while an iOS consumer is active, and only evicts rebuildable caches
 under its configured budgets. Unknown or active worktrees are never deleted.
 
 Environment:
-  KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS  attribution scan budget (default: 30)
+  KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS  attribution scan budget (default: 240)
+                                            values above 240 are clamped to 240
   KG_DISK_GUARD_DERIVED_DATA_BUDGET_GIB  global BooksAndVocab-* cap (default: 4)
   KG_DISK_GUARD_DRY_RUN=1                  report intended cleanup only
   --supervision-worktree PATH               exclude one exact caller-supplied
