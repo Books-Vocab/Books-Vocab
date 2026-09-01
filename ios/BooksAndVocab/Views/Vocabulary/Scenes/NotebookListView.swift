@@ -81,7 +81,7 @@ struct NotebookListContent: View {
     init(detailState: DetailRouter) {
         self.detailState = detailState
         _allEntries = Query(filter: VocabularyEntry.knowledgeListPredicate(), sort: \.dateAdded, order: .reverse)
-        _pendingEntries = Query(filter: #Predicate<VocabularyEntry> { $0.syncStatus != 1 && $0.actionType != "delete" })
+        _pendingEntries = Query(filter: #Predicate<VocabularyEntry> { $0.syncStatus != 1 })
     }
 
     @State private var showCreateSheet = false
