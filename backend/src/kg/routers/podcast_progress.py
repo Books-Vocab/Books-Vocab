@@ -21,7 +21,9 @@ _MAX_EPISODE_NUM = 999
 def _reject_boolean_progress_seconds(value: Any) -> Any:
     if isinstance(value, Mapping):
         for field_name in ("position_sec", "duration_sec"):
-            if isinstance(value.get(field_name), bool):
+            if field_name in value and (
+                isinstance(value[field_name], bool) or not isinstance(value[field_name], (int, float))
+            ):
                 raise HTTPException(
                     status_code=422,
                     detail=f"{field_name} must be a number",
