@@ -20,11 +20,7 @@ def _fake_async_client(content: str):
         usage=None,
     )
     mock_create = AsyncMock(return_value=response)
-    return SimpleNamespace(
-        chat=SimpleNamespace(
-            completions=SimpleNamespace(create=mock_create)
-        )
-    )
+    return SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=mock_create)))
 
 
 @pytest.fixture(autouse=True)
@@ -70,16 +66,78 @@ async def test_run_explain_translate_returns_expected_shape():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("runner", "operation", "content"),
+    [
+        (run_quick_translate, "translate_quick", '{"p":"v.","r":"evoke"}'),
+        (run_quick_translate, "translate_quick", '{"t":"","p":"v.","r":"evoke"}'),
+        (run_quick_translate, "translate_quick", "{not valid json"),
+        (run_phrase_translate, "translate_phrase", "{}"),
+        (run_phrase_translate, "translate_phrase", '{"t":""}'),
+        (run_phrase_translate, "translate_phrase", "{not valid json"),
+        (run_explain_translate, "translate_explain", '{"context":"extra"}'),
+        (run_explain_translate, "translate_explain", '{"e":""}'),
+        (run_explain_translate, "translate_explain", "{not valid json"),
+    ],
+)
+async def test_invalid_provider_payload_is_external_error_and_not_cached(runner, operation, content):
+    from kg.exceptions import ExternalServiceError
+
+    req = TranslateRequest(word="evoke", context="context")
+    client = _fake_async_client(content)
+    logger = MagicMock()
+
+    with (
+        patch("kg.translate_service.translate_log.lookup", return_value=None),
+        patch("kg.translate_service.translate_log.record") as record,
+        pytest.raises(ExternalServiceError) as exc_info,
+    ):
+        await runner(
+            req,
+            {"id": "u_test"},
+            llm=TrackedLLM(client, "u_test"),
+            logger=logger,
+        )
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.label == f"{operation}/invalid_response"
+    record.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_invalid_cached_provider_payload_is_not_served_or_counted_as_hit():
+    from kg.exceptions import ExternalServiceError
+
+    req = TranslateRequest(word="evoke", context="context")
+    client = _fake_async_client('{"t":""}')
+    logger = MagicMock()
+
+    with (
+        patch("kg.translate_service.translate_log.lookup", return_value='{"t":""}'),
+        patch("kg.translate_service.translate_log.record_cache_hit") as record_cache_hit,
+        pytest.raises(ExternalServiceError) as exc_info,
+    ):
+        await run_phrase_translate(
+            req,
+            {"id": "u_test"},
+            llm=TrackedLLM(client, "u_test"),
+            logger=logger,
+        )
+
+    assert exc_info.value.status_code == 502
+    record_cache_hit.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_run_quick_translate_raises_on_empty_choices():
 
     req = TranslateRequest(word="evoke", context="context")
     response = SimpleNamespace(choices=[], usage=None)
     mock_create = AsyncMock(return_value=response)
-    client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=mock_create))
-    )
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=mock_create)))
     logger = MagicMock()
     from kg.exceptions import ExternalServiceError
+
     with pytest.raises(ExternalServiceError) as exc_info:
         await run_quick_translate(req, {"id": "u_test"}, llm=TrackedLLM(client, "u_test"), logger=logger)
     assert exc_info.value.status_code == 502
@@ -103,6 +161,7 @@ async def test_async_translate_quota_check_blocks_exceeded():
     }
     with patch("kg.quota_service.check_and_get_quota", return_value=quota_exceeded):
         from kg.api import _check_quota
+
         with pytest.raises(QuotaExceededError) as exc_info:
             _check_quota(user, "translate_quick", None)
     assert exc_info.value.status_code == 429
@@ -124,8 +183,12 @@ async def test_safe_translate_maps_timeout_to_external_service_error():
     with patch("kg.translate_handlers.create_async_client", return_value=_fake_async_client("{}")):
         with pytest.raises(ExternalServiceError) as exc_info:
             await _safe_translate(
-                timing_out, req, user,
-                call_type="translate_quick", label="translate/quick", logger=logger,
+                timing_out,
+                req,
+                user,
+                call_type="translate_quick",
+                label="translate/quick",
+                logger=logger,
             )
     assert exc_info.value.status_code == 502
     assert exc_info.value.to_detail().get("label") == "translate/quick"
@@ -150,8 +213,12 @@ async def test_safe_translate_maps_httpx_error_to_external_service_error():
     with patch("kg.translate_handlers.create_async_client", return_value=_fake_async_client("{}")):
         with pytest.raises(ExternalServiceError) as exc_info:
             await _safe_translate(
-                network_failing, req, user,
-                call_type="translate_quick", label="translate/quick", logger=logger,
+                network_failing,
+                req,
+                user,
+                call_type="translate_quick",
+                label="translate/quick",
+                logger=logger,
             )
     assert exc_info.value.status_code == 502
     logger.exception.assert_called_once()
@@ -173,9 +240,7 @@ async def test_phrase_and_explain_pass_logger_on_error():
 
     def raising_factory():
         mock_create = AsyncMock(side_effect=OpenAIError("boom"))
-        return SimpleNamespace(
-            chat=SimpleNamespace(completions=SimpleNamespace(create=mock_create))
-        )
+        return SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=mock_create)))
 
     for handler in (translate_phrase_response, translate_explain_response):
         logger = MagicMock()
@@ -200,9 +265,7 @@ async def test_translate_handler_does_not_leak_openai_exc_to_client():
 
     def raising_factory():
         mock_create = AsyncMock(side_effect=OpenAIError(secret_msg))
-        return SimpleNamespace(
-            chat=SimpleNamespace(completions=SimpleNamespace(create=mock_create))
-        )
+        return SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=mock_create)))
 
     logger = MagicMock()
     with patch("kg.translate_handlers.create_async_client", return_value=raising_factory()):
