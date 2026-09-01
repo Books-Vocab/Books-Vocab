@@ -246,6 +246,35 @@ the guard emits `xctest-devices-manual-review-required` and leaves the store
 untouched. Unknown, active, non-ephemeral, and user-data paths are never
 deleted.
 
+## Shared Simulator runtime images（2026-09-02）
+
+Mounted iOS Simulator runtimes under `/Library/Developer/CoreSimulator/` are
+shared host-platform assets, not product lanes. `ops/disk_usage.py` discovers
+them through the read-only `hdiutil info` command and records the additive
+bucket `accounting.shared_platform_storage.simulator_runtimes`. Each mounted
+runtime keeps its mount path, source image path, image size, filesystem
+usage, measurement status, and deterministic allocation key. Repeated views of
+the same source image count once toward the shared budget; these bytes are
+never added to a product lane or used to make a lane look smaller.
+
+The default shared runtime budget is 56 GiB and can be changed only through
+`KG_DISK_GUARD_SIMULATOR_RUNTIME_BUDGET_GIB` or
+`--simulator-runtime-budget-gib`. Discovery or filesystem measurement failure,
+or an exceeded budget, is a blocking disk-guard result with explicit manual
+review evidence. The guard never deletes or unmounts Simulator runtime
+images: they are platform assets and have no safe per-lane owner. A blocked
+result therefore stops new iOS disk writers until an operator performs a
+supported platform-level cleanup and the next readback is within budget.
+
+The recurring guard also uses a conservative free-space floor: 50 GiB is a
+warning and 36 GiB (inclusive) is critical. At or below the critical floor,
+the guard records the block and only performs its existing bounded cleanup of
+rebuildable caches when the active-build, process, and build-lock checks allow
+it. It never removes active, unknown, user-owned, or unverified worktree data.
+The tracked LaunchAgent configuration carries the same 50/36 GiB floor and
+56 GiB runtime budget; reload it through the normal launchd maintenance path
+after the change is merged.
+
 ## 驗證證據（2026-06-09）
 - 冷編 **88.6s** → 二次無改動 incremental **4.96s（18× 加速）**：共享快取確實重用。
 - 產物落在 `kg/.cache/ios-build-derived-data`（1.3G）；全域預設**零新孤兒**。

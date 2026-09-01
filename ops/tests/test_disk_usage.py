@@ -22,6 +22,12 @@ def isolate_host_xctest_devices(
     """Never let unit tests inspect the operator's real XCTestDevices store."""
 
     monkeypatch.setenv("KG_XCTEST_DEVICES_ROOT", str(tmp_path / "XCTestDevices"))
+    monkeypatch.setattr(
+        disk_usage,
+        "_discover_simulator_runtimes",
+        lambda **_: ([], []),
+        raising=False,
+    )
 
 
 def _run_git(cwd: Path, *args: str) -> None:
@@ -1123,6 +1129,237 @@ def test_xctest_devices_fields_are_additive_to_existing_report_schema(
     assert {"workspace", "registry", "lanes", "accounting", "policy"} <= report.keys()
     assert "shared_platform_storage" in report["accounting"]
     assert "xctest_devices" in report["accounting"]["shared_platform_storage"]
+
+
+def test_simulator_runtime_inventory_is_additive_and_shared(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "iOS-runtime"
+    runtime.mkdir()
+    discovered = [
+        {
+            "mount_path": str(runtime),
+            "image_path": str(tmp_path / "iOS-runtime.dmg"),
+            "image_bytes": 8 * disk_usage.GIB,
+        }
+    ]
+
+    monkeypatch.setattr(
+        disk_usage,
+        "_discover_simulator_runtimes",
+        lambda **_: (discovered, []),
+    )
+    monkeypatch.setattr(
+        disk_usage.shutil,
+        "disk_usage",
+        lambda _: (10 * disk_usage.GIB, 6 * disk_usage.GIB, 4 * disk_usage.GIB),
+    )
+
+    observed = disk_usage.inspect_simulator_runtimes(budget_bytes=10 * disk_usage.GIB)
+
+    assert observed["status"] == "measured"
+    assert observed["attribution"] == "shared-host-platform"
+    assert observed["runtime_count"] == 1
+    assert observed["logical_bytes"] == 8 * disk_usage.GIB
+    assert observed["allocated_bytes"] == 8 * disk_usage.GIB
+    assert observed["budget_allocated_bytes"] == 8 * disk_usage.GIB
+    assert observed["budget_exceeded"] is False
+    assert observed["runtimes"][0]["mount_path"] == str(runtime)
+    assert observed["runtimes"][0]["used_bytes"] == 6 * disk_usage.GIB
+
+
+def test_simulator_runtime_budget_is_fail_closed_without_reclaim(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "iOS-runtime"
+    runtime.mkdir()
+    monkeypatch.setattr(
+        disk_usage,
+        "_discover_simulator_runtimes",
+        lambda **_: (
+            [
+                {
+                    "mount_path": str(runtime),
+                    "image_path": str(tmp_path / "iOS-runtime.dmg"),
+                    "image_bytes": 8 * disk_usage.GIB,
+                }
+            ],
+            [],
+        ),
+    )
+    monkeypatch.setattr(
+        disk_usage.shutil,
+        "disk_usage",
+        lambda _: (10 * disk_usage.GIB, 6 * disk_usage.GIB, 4 * disk_usage.GIB),
+    )
+
+    observed = disk_usage.inspect_simulator_runtimes(budget_bytes=5 * disk_usage.GIB)
+
+    assert observed["budget_exceeded"] is True
+    assert observed["budget_overflow_bytes"] == 3 * disk_usage.GIB
+    assert observed["reclaim"]["status"] == "manual-review"
+    assert observed["reclaim"]["attempted"] == 0
+
+
+def test_simulator_runtime_measurement_failure_is_explicit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "iOS-runtime"
+    runtime.mkdir()
+    monkeypatch.setattr(
+        disk_usage,
+        "_discover_simulator_runtimes",
+        lambda **_: (
+            [
+                {
+                    "mount_path": str(runtime),
+                    "image_path": str(tmp_path / "iOS-runtime.dmg"),
+                    "image_bytes": 8 * disk_usage.GIB,
+                }
+            ],
+            [],
+        ),
+    )
+
+    def unavailable(_: object) -> object:
+        raise OSError("runtime unavailable")
+
+    monkeypatch.setattr(disk_usage.shutil, "disk_usage", unavailable)
+
+    observed = disk_usage.inspect_simulator_runtimes(budget_bytes=10 * disk_usage.GIB)
+
+    assert observed["status"] == "measurement-incomplete"
+    assert observed["measurement_complete"] is False
+    assert observed["measurement_errors"] == [f"{runtime}:filesystem-usage:OSError"]
+    assert observed["budget_exceeded"] is None
+
+
+def test_hdiutil_parser_ignores_non_simulator_mounts_and_is_deterministic() -> None:
+    output = """
+================================================
+image-path      : /Users/test/other.dmg
+blockcount      : 10
+blocksize       : 512
+/dev/disk1s1    APFS    /Volumes/Other
+================================================
+image-path      : /System/Library/AssetsV2/runtime-a.dmg
+blockcount      : 20
+blocksize       : 512
+/dev/disk2s1    APFS    /Library/Developer/CoreSimulator/Volumes/iOS_A
+================================================
+image-path      : /System/Library/AssetsV2/runtime-b.dmg
+blockcount      : 30
+blocksize       : 512
+/dev/disk3s1    APFS    /Library/Developer/CoreSimulator/Volumes/iOS_B
+"""
+
+    runtimes, errors = disk_usage._parse_hdiutil_simulator_runtimes(output)
+
+    assert errors == []
+    assert runtimes == [
+        {
+            "mount_path": "/Library/Developer/CoreSimulator/Volumes/iOS_A",
+            "image_path": "/System/Library/AssetsV2/runtime-a.dmg",
+            "image_bytes": 20 * 512,
+        },
+        {
+            "mount_path": "/Library/Developer/CoreSimulator/Volumes/iOS_B",
+            "image_path": "/System/Library/AssetsV2/runtime-b.dmg",
+            "image_bytes": 30 * 512,
+        },
+    ]
+
+
+def test_simulator_runtime_budget_block_is_reported_without_reclaim(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime_report = {
+        "status": "budget-exceeded",
+        "attribution": "shared-host-platform",
+        "runtime_count": 2,
+        "logical_bytes": 12 * disk_usage.GIB,
+        "allocated_bytes": 12 * disk_usage.GIB,
+        "budget_allocated_bytes": 12 * disk_usage.GIB,
+        "budget_exceeded": True,
+        "budget_overflow_bytes": 2 * disk_usage.GIB,
+        "measurement_complete": True,
+        "metadata_complete": True,
+        "measurement_errors": [],
+        "runtimes": [],
+        "reclaim": {"status": "manual-review"},
+    }
+    monkeypatch.setattr(
+        disk_usage,
+        "inspect_simulator_runtimes",
+        lambda *args, **kwargs: runtime_report,
+    )
+    repo, worktree = _repo_with_worktree(tmp_path)
+    state = tmp_path / "registry.json"
+    _write_registry(
+        state,
+        [{"branch": "lane-one", "path": str(worktree), "status": "active"}],
+    )
+
+    report = disk_usage.build_report(repo, state, time_budget_seconds=30)
+
+    assert report["policy"]["verdict"] == "block"
+    assert "simulator-runtime-budget-exceeded" in report["policy"]["reasons"]
+    assert "simulator-runtime-manual-review-required" in report["policy"]["reasons"]
+
+
+def test_simulator_runtime_is_unsupported_without_blocking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(disk_usage.sys, "platform", "linux")
+    monkeypatch.setattr(
+        disk_usage,
+        "_discover_simulator_runtimes",
+        lambda **_: ([], ["platform-unsupported"]),
+    )
+
+    observed = disk_usage.inspect_simulator_runtimes()
+
+    assert observed["status"] == "unsupported"
+    assert observed["measurement_complete"] is True
+    assert observed["budget_exceeded"] is False
+
+
+def test_build_report_exposes_simulator_runtime_bucket(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    state = tmp_path / "registry.json"
+    _write_registry(
+        state,
+        [{"branch": "lane-one", "path": str(worktree), "status": "active"}],
+    )
+    runtime_report = {
+        "status": "measured",
+        "attribution": "shared-host-platform",
+        "runtime_count": 1,
+        "logical_bytes": 8 * disk_usage.GIB,
+        "allocated_bytes": 8 * disk_usage.GIB,
+        "budget_allocated_bytes": 8 * disk_usage.GIB,
+        "budget_exceeded": False,
+        "budget_overflow_bytes": 0,
+        "measurement_complete": True,
+        "metadata_complete": True,
+        "measurement_errors": [],
+        "runtimes": [],
+        "reclaim": {"status": "not-requested"},
+    }
+    monkeypatch.setattr(
+        disk_usage,
+        "inspect_simulator_runtimes",
+        lambda *args, **kwargs: runtime_report,
+        raising=False,
+    )
+
+    report = disk_usage.build_report(repo, state, time_budget_seconds=30)
+
+    shared = report["accounting"]["shared_platform_storage"]
+    assert shared["simulator_runtimes"] is runtime_report
+    assert report["policy"]["verdict"] == "pass"
 
 
 def test_xctest_devices_propagates_non_timeout_tree_failure(

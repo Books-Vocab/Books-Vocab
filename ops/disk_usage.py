@@ -44,12 +44,18 @@ MAX_TIME_BUDGET_SECONDS = 240.0
 DEFAULT_CODEX_WORKTREE_ROOT = Path.home() / ".codex" / "worktrees"
 DEFAULT_XCTEST_DEVICES_ROOT = Path.home() / "Library" / "Developer" / "XCTestDevices"
 DEFAULT_XCTEST_DEVICES_BUDGET_GIB = 16
+DEFAULT_SIMULATOR_RUNTIME_BUDGET_GIB = 56
+SIMULATOR_RUNTIME_ROOT = Path("/Library/Developer/CoreSimulator")
 MEASUREMENT_BUDGET_ERROR = "measurement-time-budget-exceeded"
 MISSING_PATH_ERROR = "path-missing"
 XCTEST_DEVICES_METADATA_ERROR = "xctest-devices-metadata-unavailable"
 XCTEST_DEVICES_MEASUREMENT_ERROR = "xctest-devices-measurement-incomplete"
 XCTEST_DEVICES_BUDGET_ERROR = "xctest-devices-budget-exceeded"
 XCTEST_DEVICES_MANUAL_REVIEW_ERROR = "xctest-devices-manual-review-required"
+SIMULATOR_RUNTIME_MEASUREMENT_ERROR = "simulator-runtime-measurement-incomplete"
+SIMULATOR_RUNTIME_DISCOVERY_ERROR = "simulator-runtime-discovery-unavailable"
+SIMULATOR_RUNTIME_BUDGET_ERROR = "simulator-runtime-budget-exceeded"
+SIMULATOR_RUNTIME_MANUAL_REVIEW_ERROR = "simulator-runtime-manual-review-required"
 PHYSICAL_EXTENT_UNSUPPORTED = "physical-extents-unsupported"
 PHYSICAL_EXTENT_UNMAPPED = "physical-extents-unmapped"
 F_LOG2PHYS_EXT = 65
@@ -216,6 +222,285 @@ def _configured_xctest_devices_budget_gib() -> int:
         )
     except (TypeError, ValueError):
         return DEFAULT_XCTEST_DEVICES_BUDGET_GIB
+
+
+def _configured_simulator_runtime_budget_gib() -> int:
+    raw = os.environ.get("KG_SIMULATOR_RUNTIME_BUDGET_GIB")
+    try:
+        return (
+            max(0, int(raw))
+            if raw is not None
+            else DEFAULT_SIMULATOR_RUNTIME_BUDGET_GIB
+        )
+    except (TypeError, ValueError):
+        return DEFAULT_SIMULATOR_RUNTIME_BUDGET_GIB
+
+
+def _parse_hdiutil_simulator_runtimes(
+    output: str,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Extract only mounted CoreSimulator runtime images from ``hdiutil``."""
+
+    records: list[dict[str, str]] = []
+    current: dict[str, str] = {}
+
+    def flush() -> None:
+        nonlocal current
+        if current:
+            records.append(current)
+            current = {}
+
+    for line in output.splitlines():
+        if line.startswith("===="):
+            flush()
+            continue
+        match = re.match(r"^([a-z][a-z0-9-]*)\s*:\s*(.*)$", line)
+        if match:
+            current[match.group(1)] = match.group(2).strip()
+            continue
+        mount_match = re.search(r"(/Library/Developer/CoreSimulator/[^\s]+)", line)
+        if mount_match:
+            current["mount-path"] = mount_match.group(1).rstrip("/")
+    flush()
+
+    runtimes: list[dict[str, Any]] = []
+    errors: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    for record in records:
+        mount_path = record.get("mount-path")
+        if not mount_path:
+            continue
+        image_path = record.get("image-path", "")
+        key = (mount_path, image_path)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            blockcount = int(record.get("blockcount", ""))
+            blocksize = int(record.get("blocksize", ""))
+        except (TypeError, ValueError):
+            errors.append(f"{mount_path}:missing-image-size")
+            continue
+        if blockcount < 0 or blocksize <= 0:
+            errors.append(f"{mount_path}:invalid-image-size")
+            continue
+        runtimes.append(
+            {
+                "mount_path": mount_path,
+                "image_path": image_path or None,
+                "image_bytes": blockcount * blocksize,
+            }
+        )
+    return sorted(
+        runtimes,
+        key=lambda item: (
+            str(item["mount_path"]),
+            str(item.get("image_path") or ""),
+        ),
+    ), sorted(set(errors))
+
+
+def _discover_simulator_runtimes(
+    *, deadline: float | None = None
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Discover mounted Apple Simulator runtime images without mutating state."""
+
+    if sys.platform != "darwin":
+        return [], ["platform-unsupported"]
+    command = shutil.which("hdiutil")
+    if command is None:
+        stable_command = Path("/usr/bin/hdiutil")
+        if stable_command.is_file() and os.access(stable_command, os.X_OK):
+            command = str(stable_command)
+    if command is None:
+        return [], ["hdiutil-command-unavailable"]
+    try:
+        timeout = _remaining_timeout(deadline)
+        if timeout is None:
+            timeout = 5.0
+        else:
+            timeout = min(timeout, 5.0)
+        completed = subprocess.run(
+            [command, "info"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except _MeasurementBudgetExceeded:
+        return [], [MEASUREMENT_BUDGET_ERROR]
+    except subprocess.TimeoutExpired:
+        return [], ["hdiutil-timeout"]
+    except OSError as exc:
+        return [], [f"hdiutil:{exc.__class__.__name__}"]
+    if completed.returncode != 0:
+        return [], [f"hdiutil-exit:{completed.returncode}"]
+    return _parse_hdiutil_simulator_runtimes(completed.stdout)
+
+
+def inspect_simulator_runtimes(
+    *,
+    budget_bytes: int = DEFAULT_SIMULATOR_RUNTIME_BUDGET_GIB * GIB,
+    deadline: float | None = None,
+    discovered: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Account for mounted Simulator runtimes as shared host platform storage.
+
+    Runtime images are read-only platform assets, not product lanes.  They are
+    observed and budgeted, but this guard never unmounts or deletes them.
+    """
+
+    budget = max(0, int(budget_bytes))
+    base: dict[str, Any] = {
+        "root": str(SIMULATOR_RUNTIME_ROOT),
+        "exists": False,
+        "status": "absent",
+        "attribution": "shared-host-platform",
+        "logical_bytes": 0,
+        "allocated_bytes": 0,
+        "runtime_count": 0,
+        "measurement_complete": True,
+        "measurement_errors": [],
+        "allocation_method": "hdiutil-blockcount",
+        "budget_bytes": budget,
+        "budget_allocated_bytes": 0,
+        "budget_exceeded": False,
+        "budget_overflow_bytes": 0,
+        "runtimes": [],
+        "reclaim": {
+            "requested": False,
+            "status": "not-supported",
+            "reason": "shared-runtime-images-never-auto-reclaimed",
+            "attempted": 0,
+            "succeeded": 0,
+            "results": [],
+        },
+    }
+    discovery_errors: list[str] = []
+    if discovered is None:
+        discovered, discovery_errors = _discover_simulator_runtimes(deadline=deadline)
+    if discovery_errors == ["platform-unsupported"] and not discovered:
+        base["status"] = "unsupported"
+        return base
+    if not discovered and discovery_errors:
+        base.update(
+            {
+                "status": "measurement-incomplete",
+                "measurement_complete": False,
+                "measurement_errors": sorted(set(discovery_errors))[:20],
+                "budget_allocated_bytes": None,
+                "budget_exceeded": None,
+                "budget_overflow_bytes": None,
+            }
+        )
+        return base
+    if not discovered:
+        return base
+
+    base["exists"] = True
+    base["runtime_count"] = len(discovered)
+    errors = list(discovery_errors)
+    runtimes: list[dict[str, Any]] = []
+    logical_bytes = 0
+    unique_allocated_bytes = 0
+    allocation_keys: set[str] = set()
+    measurement_complete = not discovery_errors
+    for item in sorted(
+        discovered,
+        key=lambda value: (
+            str(value.get("mount_path", "")),
+            str(value.get("image_path") or ""),
+        ),
+    ):
+        mount_path = str(item.get("mount_path", ""))
+        image_path = item.get("image_path")
+        image_bytes = item.get("image_bytes")
+        runtime: dict[str, Any] = {
+            "mount_path": mount_path,
+            "image_path": image_path,
+            "logical_bytes": 0,
+            "allocated_bytes": 0,
+            "total_bytes": None,
+            "used_bytes": None,
+            "free_bytes": None,
+            "measurement_complete": False,
+        }
+        try:
+            image_size = int(image_bytes)
+            if not mount_path or image_size <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            error = f"{mount_path or '<missing-mount>'}:invalid-image-size"
+            errors.append(error)
+            measurement_complete = False
+            runtime["measurement_error"] = error.rsplit(":", 1)[-1]
+            runtimes.append(runtime)
+            continue
+        if _deadline_expired(deadline):
+            error = f"{mount_path}:{MEASUREMENT_BUDGET_ERROR}"
+            errors.append(error)
+            measurement_complete = False
+            runtime["measurement_error"] = MEASUREMENT_BUDGET_ERROR
+            runtimes.append(runtime)
+            continue
+        try:
+            filesystem = shutil.disk_usage(mount_path)
+            total_bytes = int(filesystem[0])
+            used_bytes = int(filesystem[1])
+            free_bytes = int(filesystem[2])
+        except (OSError, TypeError, ValueError, IndexError) as exc:
+            error = f"{mount_path}:filesystem-usage:{exc.__class__.__name__}"
+            errors.append(error)
+            measurement_complete = False
+            runtime["measurement_error"] = "filesystem-usage"
+            runtimes.append(runtime)
+            continue
+        allocated_bytes = max(image_size, used_bytes)
+        allocation_key = str(image_path or mount_path)
+        if allocation_key not in allocation_keys:
+            allocation_keys.add(allocation_key)
+            unique_allocated_bytes += allocated_bytes
+        logical_bytes += image_size
+        runtime.update(
+            {
+                "logical_bytes": image_size,
+                "allocated_bytes": allocated_bytes,
+                "total_bytes": total_bytes,
+                "used_bytes": used_bytes,
+                "free_bytes": free_bytes,
+                "measurement_complete": True,
+                "allocation_key": allocation_key,
+            }
+        )
+        runtimes.append(runtime)
+
+    base["logical_bytes"] = logical_bytes
+    base["allocated_bytes"] = unique_allocated_bytes
+    base["runtimes"] = runtimes
+    base["measurement_errors"] = sorted(set(errors))[:20]
+    base["measurement_complete"] = measurement_complete
+    if not measurement_complete:
+        base.update(
+            {
+                "status": "measurement-incomplete",
+                "budget_allocated_bytes": None,
+                "budget_exceeded": None,
+                "budget_overflow_bytes": None,
+            }
+        )
+        return base
+    base["budget_allocated_bytes"] = unique_allocated_bytes
+    base["budget_exceeded"] = unique_allocated_bytes > budget
+    base["budget_overflow_bytes"] = max(0, unique_allocated_bytes - budget)
+    if base["budget_exceeded"]:
+        base["status"] = "budget-exceeded"
+        base["reclaim"]["status"] = "manual-review"
+        base["reclaim"]["reason"] = (
+            "shared-runtime-images-require-platform-level-manual-review"
+        )
+    else:
+        base["status"] = "measured"
+    return base
 
 
 def _xctest_state(value: object) -> tuple[bool, bool]:
@@ -1102,6 +1387,7 @@ def build_report(
     xctest_devices_root: str | Path | None = None,
     xctest_devices_budget_gib: int = DEFAULT_XCTEST_DEVICES_BUDGET_GIB,
     auto_reclaim_xctest_devices: bool = False,
+    simulator_runtime_budget_gib: int = DEFAULT_SIMULATOR_RUNTIME_BUDGET_GIB,
 ) -> dict[str, Any]:
     measurement_started = time.monotonic()
     if time_budget_seconds is None:
@@ -1119,6 +1405,10 @@ def build_report(
     )
     workspace = _path(workspace)
     state_path = _path(state_path)
+    simulator_runtimes = inspect_simulator_runtimes(
+        budget_bytes=max(0, int(simulator_runtime_budget_gib)) * GIB,
+        deadline=deadline,
+    )
     xctest_devices = inspect_xctest_devices(
         xctest_devices_root,
         budget_bytes=max(0, int(xctest_devices_budget_gib)) * GIB,
@@ -1610,6 +1900,14 @@ def build_report(
             blocking_reasons.append(XCTEST_DEVICES_BUDGET_ERROR)
             if xctest_devices["reclaim"]["status"] != "reclaimed":
                 blocking_reasons.append(XCTEST_DEVICES_MANUAL_REVIEW_ERROR)
+    if simulator_runtimes["status"] not in {"absent", "unsupported"}:
+        if not simulator_runtimes["measurement_complete"]:
+            blocking_reasons.append(SIMULATOR_RUNTIME_MEASUREMENT_ERROR)
+            blocking_reasons.append(SIMULATOR_RUNTIME_DISCOVERY_ERROR)
+        if simulator_runtimes["budget_exceeded"] is True:
+            blocking_reasons.append(SIMULATOR_RUNTIME_BUDGET_ERROR)
+            if simulator_runtimes["reclaim"]["status"] != "reclaimed":
+                blocking_reasons.append(SIMULATOR_RUNTIME_MANUAL_REVIEW_ERROR)
     blocking_reasons.extend(quota_reasons)
     if blocking_reasons:
         verdict = "block"
@@ -1768,6 +2066,7 @@ def build_report(
             "lane_attribution": lane_attribution,
             "shared_platform_storage": {
                 "xctest_devices": xctest_devices,
+                "simulator_runtimes": simulator_runtimes,
             },
         },
         "filesystem": filesystem_payload,
@@ -1868,6 +2167,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="attempt only exact stale/ephemeral devices via supported simctl; otherwise fail closed",
     )
+    parser.add_argument(
+        "--simulator-runtime-budget-gib",
+        type=int,
+        default=_configured_simulator_runtime_budget_gib(),
+        help="shared mounted Simulator runtime budget in GiB (default: 56; never auto-reclaimed)",
+    )
     args = parser.parse_args(argv)
     workspace = _path(args.workspace)
     state = (
@@ -1881,6 +2186,7 @@ def main(argv: list[str] | None = None) -> int:
         xctest_devices_root=args.xctest_devices_root,
         xctest_devices_budget_gib=args.xctest_devices_budget_gib,
         auto_reclaim_xctest_devices=args.auto_reclaim_xctest_devices,
+        simulator_runtime_budget_gib=args.simulator_runtime_budget_gib,
     )
     if args.output:
         _write_atomic(_path(args.output), report)
