@@ -580,7 +580,7 @@ struct ReaderPage {
         guard revealLetterSpacingAdjustmentRow(timeout: timeout, file: file, line: line) else {
             return nil
         }
-        exactlyOne(
+        return exactlyOne(
             letterSpacingRowQuery,
             named: "Reader letter-spacing adjustment row",
             timeout: timeout,
