@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, create_engine, select
 
@@ -21,7 +20,6 @@ from .sqlite_ledger import (
 )
 from .sqlite_ledger import (
     next_ingested_at,
-    normalize_last_ingested,
 )
 from .sqlite_ledger import (
     now_utc as _now,
@@ -139,7 +137,13 @@ class ReviewEventStore:
             # Continue the monotonic ingestion clock from the current max so each new
             # event gets a strictly increasing, unique ingested_at — even across a
             # backward wall-clock step (NTP) or multiple inserts within one microsecond.
-            last_ingested = normalize_last_ingested(session.exec(select(func.max(ReviewEvent.ingested_at))).one())
+            # Do not use SQL MAX here: SQLite orders legacy offset-bearing datetime
+            # strings lexically, which is not the same as their UTC instant order.
+            ingested_values = session.exec(select(ReviewEvent.ingested_at)).all()
+            last_ingested = max(
+                (_as_utc(value) for value in ingested_values if value is not None),
+                default=None,
+            )
             # Pre-fetched ids only cover what was already committed. The loop adds
             # each accepted id so a repeated event_id *inside* one payload is still
             # skipped — the per-entry `session.get` used to catch that via autoflush.
