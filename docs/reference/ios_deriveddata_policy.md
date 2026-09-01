@@ -50,8 +50,8 @@ verified_against: 8210e47aa53f8a2b03aafefadb7494098fa22cb1
 
 `git worktree remove` 砍掉 worktree，但全域 DerivedData 的那份**留下來變孤兒**。實測 9 天（6/1–6/9）累積 **252 份 / 110G**，全是同一個 Books & Vocab iOS 專案。
 
-### 附帶誤導：`XCTestDevices` 的 155G 是假的
-`du` 報 `~/Library/Developer/XCTestDevices` 155G，但刪光只釋出約 5G。原因是 UI test 的 runner 模擬器是系統 runtime 的 **APFS clone（copy-on-write）**，多份共享同一批磁碟 block，`du` 對每份重複計算（[APFS clone 機制](https://eclecticlight.co/2025/04/07/how-robust-are-apfs-clone-and-sparse-files/)）。**判讀 Xcode 空間時，clone 目錄的 `du` 數字不可信，以實際 `df` 釋出量為準。**
+### 歷史附帶誤導：舊 `XCTestDevices` 的 155G APFS-clone 事件（非目前 accounting 規則）
+在該次 155G 事件中，`du` 報 `~/Library/Developer/XCTestDevices` 155G，但刪光只釋出約 5G；原因是 UI test 的 runner 模擬器是系統 runtime 的 **APFS clone（copy-on-write）**，多份共享同一批磁碟 block，`du` 對每份重複計算（[APFS clone 機制](https://eclecticlight.co/2025/04/07/how-robust-are-apfs-clone-and-sparse-files/)）。這個結論只適用於該次歷史事件，**不表示目前的 `XCTestDevices` 裝置用量可視為假的**：現在的 disk guard 會量測每個裝置樹的 `allocated_bytes`，並以共享 16 GiB 預算判斷；超額、證據缺失或無法安全回收時 fail-closed 進入 manual review，active／non-ephemeral／不在 `simctl list` 的裝置一律不刪除（詳見下節）。
 
 ## 為什麼選「共享」而非「worktree-local」
 
