@@ -43,6 +43,23 @@ def test_get_since_compares_mixed_offset_ingestion_timestamps_as_instants(tmp_pa
         store.close()
 
 
+def test_empty_pull_normalizes_url_decoded_legacy_utc_cursor(tmp_path):
+    store = ReviewEventStore(tmp_path / "review_events.db")
+    try:
+        # An unescaped '+' in a legacy query cursor reaches the handler as a space.
+        legacy_since = "2026-05-14T16:30:00 00:00"
+
+        entries, cursor = pull_review_events(
+            since=legacy_since,
+            event_store=store,
+        )
+
+        assert entries == []
+        assert cursor == "2026-05-14T16:30:00Z"
+    finally:
+        store.close()
+
+
 def test_insert_after_legacy_offset_rows_stays_after_utc_cursor(tmp_path, monkeypatch):
     store = ReviewEventStore(tmp_path / "review_events.db")
     try:
