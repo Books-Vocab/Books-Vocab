@@ -373,6 +373,9 @@ struct NotebookListContent: View {
             .toastSheet(item: $coordinator.exportURL) { url in
                 PlatformShareView(url: url)
             }
+            .onChange(of: accountTaskID) { _, _ in
+                reviewFilter = NotebookFilter()
+            }
             .task(id: accountTaskID) {
                 guard catalogTaskPolicy.runsTasks else { return }
                 await coordinator.reconcileNotebooks(
