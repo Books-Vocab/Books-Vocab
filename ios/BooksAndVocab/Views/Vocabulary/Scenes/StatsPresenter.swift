@@ -676,12 +676,27 @@ struct StatsPresenter: View {
                 VStack(spacing: 0) {
                     VocabForecastChart(buckets: summary.forecast)
                         .frame(height: 160)
-                        // Keep the chart anchor while exposing each bar's
-                        // live AX identifier through the nested GeometryReader.
-                        // Without containment, iOS 26 can render the chart but
-                        // omit forecast.bucket.* descendants from the snapshot.
-                        .accessibilityElement(children: .contain)
+                        // Keep the chart visual as one AX element. Its nested
+                        // GeometryReader can render all bars while iOS omits
+                        // some descendants from the live accessibility tree.
+                        // The explicit bucket nodes below provide a stable,
+                        // one-to-one projection for UI automation and assistive
+                        // technology without changing the rendered chart.
+                        .accessibilityElement(children: .ignore)
                         .accessibilityIdentifier("overview.forecast.chart")
+                    VStack(spacing: 0) {
+                        ForEach(summary.forecast) { bucket in
+                            Color.clear
+                                .frame(width: 1, height: 1)
+                                .accessibilityElement()
+                                .accessibilityLabel(bucket.label)
+                                .accessibilityIdentifier("forecast.bucket.\(bucket.id)")
+                                .accessibilityValue(
+                                    "\(bucket.label), \(LocaleAwareFormatter.shared.string(from: NSNumber(value: bucket.count)))"
+                                )
+                        }
+                    }
+                    .frame(width: 1)
                     Color.clear
                         .frame(width: 1, height: 1)
                         .accessibilityElement()
