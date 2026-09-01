@@ -91,7 +91,7 @@ def update_notebook(nb_id: str, req: NotebookUpdateRequest, user: CurrentUser):
     kwargs = {}
     if req.name is not None:
         kwargs["name"] = req.name
-    if req.color is not None:
+    if "color" in req.model_fields_set:
         kwargs["color"] = req.color
     if req.cover_pattern is not None:
         kwargs["cover_pattern"] = req.cover_pattern if req.cover_pattern != "" else None

@@ -326,6 +326,22 @@ def test_patch_notebook_color(isolated_api):
     assert r.json()["color"] == "#ffffff"
 
 
+def test_patch_notebook_color_null_clears_existing_color(isolated_api):
+    client = isolated_api.client
+    h = isolated_api.headers
+
+    nb_id = client.post(
+        "/api/notebooks",
+        json={"name": "ClearColor", "color": "#112233"},
+        headers=h,
+    ).json()["id"]
+
+    r = client.patch(f"/api/notebooks/{nb_id}", json={"color": None}, headers=h)
+
+    assert r.status_code == 200, r.text
+    assert r.json()["color"] is None
+
+
 def test_patch_nonexistent_notebook_returns_404(isolated_api):
     r = isolated_api.client.patch(
         "/api/notebooks/nonexistent-id",
