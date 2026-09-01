@@ -577,6 +577,9 @@ struct ReaderPage {
         file: StaticString = #filePath,
         line: UInt = UInt(#line)
     ) -> XCUIElement? {
+        guard revealLetterSpacingAdjustmentRow(timeout: timeout, file: file, line: line) else {
+            return nil
+        }
         exactlyOne(
             letterSpacingRowQuery,
             named: "Reader letter-spacing adjustment row",
@@ -1211,6 +1214,9 @@ struct ReaderPage {
     }
 
     func letterSpacingValue(timeout: TimeInterval = 5) -> Double? {
+        guard revealLetterSpacingAdjustmentRow(timeout: timeout, file: #filePath, line: UInt(#line)) else {
+            return nil
+        }
         guard let row = exactlyOne(
             letterSpacingRowQuery,
             named: "Reader letter-spacing adjustment row",
@@ -1252,6 +1258,9 @@ struct ReaderPage {
 
     @discardableResult
     func waitForLetterSpacingValue(_ value: String, timeout: TimeInterval = 5) -> Bool {
+        guard revealLetterSpacingAdjustmentRow(timeout: timeout, file: #filePath, line: UInt(#line)) else {
+            return false
+        }
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if let row = exactlyOneIfPresent(
