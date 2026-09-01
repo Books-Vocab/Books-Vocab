@@ -237,7 +237,7 @@ async def google_callback(
 @router.post("/auth/web/apple/callback", response_class=HTMLResponse)
 async def apple_callback(
     request: Request,
-    id_token: str = Form(..., alias="id_token"),
+    id_token: str | None = Form(None, alias="id_token"),
     code: str = Form(None),
     state: str = Form(None),
     error: str = Form(None),
@@ -247,6 +247,9 @@ async def apple_callback(
         # server-side only (see google_callback above).
         logger.warning("Apple OAuth callback returned provider error: %s", error)
         raise HTTPException(status_code=400, detail="Authentication failed")
+
+    if not id_token:
+        raise HTTPException(status_code=400, detail="Missing Apple identity token")
 
     _verify_state(request, state)
 
