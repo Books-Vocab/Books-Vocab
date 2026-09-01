@@ -312,10 +312,14 @@ struct BookshelfView: View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: AppShellMetrics.sectionSpacing) {
                 ForEach(Self.sortedBooks(books)) { book in
-                    NavigationLink(value: book) {
-                        BookCard(book: book, coverHeight: coverHeight)
+                    ZStack(alignment: .topTrailing) {
+                        NavigationLink(value: book) {
+                            BookCard(book: book, coverHeight: coverHeight)
+                        }
+                        .buttonStyle(.bookshelfCard)
+
+                        BookCardRetryButton(fileName: book.epubFileName)
                     }
-                    .buttonStyle(.bookshelfCard)
                     .accessibilityIdentifier("book.card.\(book.id.uuidString)")
                     .accessibilityLabel("\(book.title), \(book.author)")
                     .accessibilityValue(BookshelfCopy.readingProgressAccessibilityValue(book.progression))
