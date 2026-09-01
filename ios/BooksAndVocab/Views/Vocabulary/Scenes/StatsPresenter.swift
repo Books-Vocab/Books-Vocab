@@ -680,28 +680,23 @@ struct StatsPresenter: View {
                     }
                     .frame(height: 160)
                     // Keep the chart visual while replacing its unstable
-                    // GeometryReader-generated AX subtree with one stable
-                    // chart representation. The explicit bucket nodes below
-                    // then provide the one-to-one projection for UI automation
-                    // and assistive technology without changing the chart.
-                    .accessibilityRepresentation {
-                        ZStack {
-                            Text(StatsCopy.forecastTitle)
+                    // GeometryReader-generated AX subtree with virtual
+                    // children. `accessibilityChildren` does not affect the
+                    // rendered chart layout or scroll content size.
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityIdentifier("overview.forecast.chart")
+                    .accessibilityValue(
+                        LocaleAwareFormatter.shared.string(from: NSNumber(value: summary.forecast.map(\.count).reduce(0, +)))
+                    )
+                    .accessibilityChildren {
+                        ForEach(summary.forecast) { bucket in
+                            Text(bucket.label)
                                 .accessibilityElement()
-                                .accessibilityIdentifier("overview.forecast.chart")
+                                .accessibilityIdentifier("forecast.bucket.\(bucket.id)")
                                 .accessibilityValue(
-                                    LocaleAwareFormatter.shared.string(from: NSNumber(value: summary.forecast.map(\.count).reduce(0, +)))
+                                    "\(bucket.label), \(LocaleAwareFormatter.shared.string(from: NSNumber(value: bucket.count)))"
                                 )
-                            ForEach(summary.forecast) { bucket in
-                                Text(bucket.label)
-                                    .accessibilityElement()
-                                    .accessibilityIdentifier("forecast.bucket.\(bucket.id)")
-                                    .accessibilityValue(
-                                        "\(bucket.label), \(LocaleAwareFormatter.shared.string(from: NSNumber(value: bucket.count)))"
-                                    )
-                            }
                         }
-                        .accessibilityElement(children: .contain)
                     }
                     Color.clear
                         .frame(width: 1, height: 1)
