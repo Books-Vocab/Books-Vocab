@@ -15,6 +15,15 @@ import disk_usage
 from disk_usage import main
 
 
+@pytest.fixture(autouse=True)
+def isolate_host_xctest_devices(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Never let unit tests inspect the operator's real XCTestDevices store."""
+
+    monkeypatch.setenv("KG_XCTEST_DEVICES_ROOT", str(tmp_path / "XCTestDevices"))
+
+
 def _run_git(cwd: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=cwd, check=True, stdout=subprocess.DEVNULL)
 
@@ -561,10 +570,13 @@ def test_terminal_registry_history_is_summarized_not_counted_as_live_lane(
 def test_measurement_time_budget_fails_closed_with_structured_evidence(
     tmp_path: Path,
 ) -> None:
-    repo, _ = _repo_with_worktree(tmp_path)
+    repo, worktree = _repo_with_worktree(tmp_path)
     state = tmp_path / "registry.json"
     output = tmp_path / "lane-usage.json"
-    _write_registry(state, [])
+    _write_registry(
+        state,
+        [{"branch": "lane-one", "path": str(worktree), "status": "active"}],
+    )
 
     assert (
         main(
@@ -790,3 +802,370 @@ def test_codex_active_and_terminal_cache_residue_is_observed_not_evicted(
     )
     assert completed.returncode == 0
     assert all((cache / key).is_dir() for key in ("a", "b", "c", "d"))
+
+
+def _write_xctest_device(
+    root: Path,
+    udid: str,
+    *,
+    is_ephemeral: bool = False,
+    is_deleted: bool = False,
+    state: str = "Shutdown",
+    plist_text: str | None = None,
+) -> Path:
+    device = root / udid
+    (device / "data").mkdir(parents=True)
+    plist = device / "device.plist"
+    if plist_text is None:
+        plist.write_bytes(
+            __import__("plistlib").dumps(
+                {
+                    "UDID": udid,
+                    "isEphemeral": is_ephemeral,
+                    "isDeleted": is_deleted,
+                    "state": state,
+                }
+            )
+        )
+    else:
+        plist.write_text(plist_text, encoding="utf-8")
+    (device / "data" / "payload").write_bytes(b"x" * 4096)
+    return device
+
+
+def test_xctest_devices_absent_root_is_explicit_and_non_blocking(
+    tmp_path: Path,
+) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    state = tmp_path / "registry.json"
+    output = tmp_path / "lane-usage.json"
+    _write_registry(
+        state,
+        [{"branch": "lane-one", "path": str(worktree), "status": "active"}],
+    )
+    absent = tmp_path / "missing-xctest-devices"
+
+    assert (
+        main(
+            [
+                "--workspace",
+                str(repo),
+                "--state",
+                str(state),
+                "--output",
+                str(output),
+                "--xctest-devices-root",
+                str(absent),
+            ]
+        )
+        == 0
+    )
+    report = json.loads(output.read_text(encoding="utf-8"))
+    shared = report["accounting"]["shared_platform_storage"]["xctest_devices"]
+    assert shared["exists"] is False
+    assert shared["status"] == "absent"
+    assert shared["attribution"] == "shared-host-platform"
+    assert report["policy"]["verdict"] == "pass"
+
+
+def test_xctest_devices_measured_root_is_shared_not_a_product_lane(
+    tmp_path: Path,
+) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    xctest_root = tmp_path / "XCTestDevices"
+    _write_xctest_device(
+        xctest_root,
+        "11111111-1111-4111-8111-111111111111",
+        is_ephemeral=False,
+    )
+    state = tmp_path / "registry.json"
+    output = tmp_path / "lane-usage.json"
+    _write_registry(
+        state,
+        [{"branch": "lane-one", "path": str(worktree), "status": "active"}],
+    )
+
+    assert (
+        main(
+            [
+                "--workspace",
+                str(repo),
+                "--state",
+                str(state),
+                "--output",
+                str(output),
+                "--xctest-devices-root",
+                str(xctest_root),
+                "--xctest-devices-budget-gib",
+                "1",
+            ]
+        )
+        == 0
+    )
+    report = json.loads(output.read_text(encoding="utf-8"))
+    shared = report["accounting"]["shared_platform_storage"]["xctest_devices"]
+    assert shared["exists"] is True
+    assert shared["status"] == "measured"
+    assert shared["device_count"] == 1
+    assert shared["allocated_bytes"] > 0
+    assert shared["budget_exceeded"] is False
+    assert shared["attribution"] == "shared-host-platform"
+    assert all(
+        str(xctest_root) not in item["path"]
+        for item in report["accounting"]["lane_accounting"]
+    )
+    assert report["policy"]["verdict"] == "pass"
+
+
+@pytest.mark.parametrize("kind", ["missing", "malformed"])
+def test_xctest_devices_metadata_failure_blocks_without_reclaim(
+    kind: str, tmp_path: Path
+) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    xctest_root = tmp_path / "XCTestDevices"
+    udid = "22222222-2222-4222-8222-222222222222"
+    device = _write_xctest_device(xctest_root, udid)
+    if kind == "missing":
+        (device / "device.plist").unlink()
+    else:
+        (device / "device.plist").write_text("not a plist", encoding="utf-8")
+    state = tmp_path / "registry.json"
+    output = tmp_path / "lane-usage.json"
+    _write_registry(
+        state,
+        [{"branch": "lane-one", "path": str(worktree), "status": "active"}],
+    )
+
+    assert (
+        main(
+            [
+                "--workspace",
+                str(repo),
+                "--state",
+                str(state),
+                "--output",
+                str(output),
+                "--xctest-devices-root",
+                str(xctest_root),
+            ]
+        )
+        == 75
+    )
+    report = json.loads(output.read_text(encoding="utf-8"))
+    shared = report["accounting"]["shared_platform_storage"]["xctest_devices"]
+    assert shared["measurement_complete"] is True
+    assert shared["metadata_complete"] is False
+    assert report["policy"]["verdict"] == "block"
+    assert "xctest-devices-metadata-unavailable" in report["policy"]["blocking_reasons"]
+
+
+def test_xctest_devices_active_and_non_ephemeral_are_never_reclaim_candidates(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    xctest_root = tmp_path / "XCTestDevices"
+    _write_xctest_device(
+        xctest_root,
+        "33333333-3333-4333-8333-333333333333",
+        is_ephemeral=False,
+        is_deleted=True,
+        state="Booted",
+    )
+    state = tmp_path / "registry.json"
+    output = tmp_path / "lane-usage.json"
+    _write_registry(
+        state,
+        [{"branch": "lane-one", "path": str(worktree), "status": "active"}],
+    )
+
+    def should_not_run(_: dict[str, object]) -> dict[str, object]:
+        raise AssertionError("unsafe XCTestDevices candidate was reclaimed")
+
+    monkeypatch.setattr(disk_usage, "_reclaim_xctest_device", should_not_run)
+    assert (
+        main(
+            [
+                "--workspace",
+                str(repo),
+                "--state",
+                str(state),
+                "--output",
+                str(output),
+                "--xctest-devices-root",
+                str(xctest_root),
+                "--xctest-devices-budget-gib",
+                "0",
+                "--auto-reclaim-xctest-devices",
+            ]
+        )
+        == 75
+    )
+    report = json.loads(output.read_text(encoding="utf-8"))
+    shared = report["accounting"]["shared_platform_storage"]["xctest_devices"]
+    assert shared["reclaim"]["candidates"] == []
+    assert shared["reclaim"]["status"] == "manual-review"
+    assert (xctest_root / "33333333-3333-4333-8333-333333333333").exists()
+
+
+def test_xctest_devices_supported_ephemeral_stale_reclaim_is_narrow_and_remeasured(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    xctest_root = tmp_path / "XCTestDevices"
+    udid = "44444444-4444-4444-8444-444444444444"
+    device = _write_xctest_device(
+        xctest_root,
+        udid,
+        is_ephemeral=True,
+        is_deleted=True,
+        state="Shutdown",
+    )
+    state = tmp_path / "registry.json"
+    output = tmp_path / "lane-usage.json"
+    _write_registry(
+        state,
+        [{"branch": "lane-one", "path": str(worktree), "status": "active"}],
+    )
+    calls: list[str] = []
+
+    def supported_reclaim(candidate: dict[str, object]) -> dict[str, object]:
+        calls.append(str(candidate["udid"]))
+        assert candidate["is_ephemeral"] is True
+        assert candidate["is_deleted"] is True
+        assert candidate["active"] is False
+        for child in sorted(device.iterdir(), reverse=True):
+            if child.is_dir():
+                for nested in sorted(child.rglob("*"), reverse=True):
+                    if nested.is_file() or nested.is_symlink():
+                        nested.unlink()
+                child.rmdir()
+            else:
+                child.unlink()
+        device.rmdir()
+        return {"status": "reclaimed", "command": "supported-test-command"}
+
+    monkeypatch.setattr(disk_usage, "_reclaim_xctest_device", supported_reclaim)
+    assert (
+        main(
+            [
+                "--workspace",
+                str(repo),
+                "--state",
+                str(state),
+                "--output",
+                str(output),
+                "--xctest-devices-root",
+                str(xctest_root),
+                "--xctest-devices-budget-gib",
+                "0",
+                "--auto-reclaim-xctest-devices",
+            ]
+        )
+        == 0
+    )
+    report = json.loads(output.read_text(encoding="utf-8"))
+    shared = report["accounting"]["shared_platform_storage"]["xctest_devices"]
+    assert calls == [udid]
+    assert shared["reclaim"]["status"] == "reclaimed"
+    assert shared["reclaim"]["succeeded"] == 1
+    assert shared["allocated_bytes"] == 0
+    assert shared["budget_exceeded"] is False
+
+
+def test_xctest_devices_fields_are_additive_to_existing_report_schema(
+    tmp_path: Path,
+) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    state = tmp_path / "registry.json"
+    output = tmp_path / "lane-usage.json"
+    _write_registry(
+        state,
+        [{"branch": "lane-one", "path": str(worktree), "status": "active"}],
+    )
+
+    assert (
+        main(["--workspace", str(repo), "--state", str(state), "--output", str(output)])
+        == 0
+    )
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["schema"] == "kg.disk.lane-usage.v1"
+    assert {"workspace", "registry", "lanes", "accounting", "policy"} <= report.keys()
+    assert "shared_platform_storage" in report["accounting"]
+    assert "xctest_devices" in report["accounting"]["shared_platform_storage"]
+
+
+def test_xctest_devices_propagates_non_timeout_tree_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    xctest_root = tmp_path / "XCTestDevices"
+    udid = "66666666-6666-4666-8666-666666666666"
+    _write_xctest_device(xctest_root, udid)
+
+    def incomplete_tree(*args: object, **kwargs: object) -> dict[str, object]:
+        return {
+            "logical_bytes": 4096,
+            "allocated_bytes": 4096,
+            "files": 1,
+            "complete": False,
+            "errors": ["permission-denied"],
+        }
+
+    monkeypatch.setattr(disk_usage, "measure_tree", incomplete_tree)
+
+    observed = disk_usage.inspect_xctest_devices(xctest_root)
+
+    assert observed["measurement_complete"] is False
+    assert observed["status"] == "measurement-incomplete"
+    assert f"{udid}:permission-denied" in observed["measurement_errors"]
+
+
+def test_xctest_devices_budget_uses_unique_physical_extents(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    xctest_root = tmp_path / "XCTestDevices"
+    udid = "77777777-7777-4777-8777-777777777777"
+    _write_xctest_device(xctest_root, udid)
+
+    monkeypatch.setattr(disk_usage, "_supports_physical_extents", lambda: True)
+
+    def shared_extent(
+        *args: object, **kwargs: object
+    ) -> tuple[list[tuple[int, int, int]], None]:
+        return [(9, 4096, 8192)], None
+
+    monkeypatch.setattr(disk_usage, "_physical_file_extents", shared_extent)
+
+    observed = disk_usage.inspect_xctest_devices(xctest_root, budget_bytes=1024 * 1024)
+
+    assert observed["allocation_method"] == "apfs-physical-extents"
+    assert observed["physical_allocated_bytes"] == 4096
+    assert observed["budget_allocated_bytes"] == 4096
+    assert observed["allocated_bytes"] > observed["budget_allocated_bytes"]
+    assert observed["measurement_complete"] is True
+
+
+def test_xctest_devices_physical_open_fallback_is_explicit_and_conservative(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    xctest_root = tmp_path / "XCTestDevices"
+    udid = "88888888-8888-4888-8888-888888888888"
+    _write_xctest_device(xctest_root, udid)
+
+    monkeypatch.setattr(disk_usage, "_supports_physical_extents", lambda: True)
+    monkeypatch.setattr(
+        disk_usage,
+        "_physical_file_extents",
+        lambda *args, **kwargs: ([], "physical-open:PermissionError"),
+    )
+
+    observed = disk_usage.inspect_xctest_devices(xctest_root, budget_bytes=1)
+
+    assert observed["allocation_method"] == "apfs-physical-extents+st_blocks-fallback"
+    assert observed["physical_measurement_complete"] is True
+    assert observed["physical_fallback_files"] == 2
+    assert (
+        observed["budget_allocated_bytes"]
+        == observed["physical_fallback_allocated_bytes"]
+    )
+    assert observed["budget_exceeded"] is True
+    assert observed["physical_measurement_warnings"]

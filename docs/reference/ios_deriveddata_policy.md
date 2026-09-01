@@ -50,8 +50,8 @@ verified_against: 8210e47aa53f8a2b03aafefadb7494098fa22cb1
 
 `git worktree remove` 砍掉 worktree，但全域 DerivedData 的那份**留下來變孤兒**。實測 9 天（6/1–6/9）累積 **252 份 / 110G**，全是同一個 Books & Vocab iOS 專案。
 
-### 附帶誤導：`XCTestDevices` 的 155G 是假的
-`du` 報 `~/Library/Developer/XCTestDevices` 155G，但刪光只釋出約 5G。原因是 UI test 的 runner 模擬器是系統 runtime 的 **APFS clone（copy-on-write）**，多份共享同一批磁碟 block，`du` 對每份重複計算（[APFS clone 機制](https://eclecticlight.co/2025/04/07/how-robust-are-apfs-clone-and-sparse-files/)）。**判讀 Xcode 空間時，clone 目錄的 `du` 數字不可信，以實際 `df` 釋出量為準。**
+### 歷史附帶誤導：舊 `XCTestDevices` 的 155G APFS-clone 事件（非目前 accounting 規則）
+在該次 155G 事件中，`du` 報 `~/Library/Developer/XCTestDevices` 155G，但刪光只釋出約 5G；原因是 UI test 的 runner 模擬器是系統 runtime 的 **APFS clone（copy-on-write）**，多份共享同一批磁碟 block，`du` 對每份重複計算（[APFS clone 機制](https://eclecticlight.co/2025/04/07/how-robust-are-apfs-clone-and-sparse-files/)）。這個結論只適用於該次歷史事件，**不表示目前的 `XCTestDevices` 裝置用量可視為假的**：現在的 disk guard 會量測每個裝置樹的 `allocated_bytes`，並以共享 16 GiB 預算判斷；超額、證據缺失或無法安全回收時 fail-closed 進入 manual review，active／non-ephemeral／不在 `simctl list` 的裝置一律不刪除（詳見下節）。
 
 ## 為什麼選「共享」而非「worktree-local」
 
@@ -202,6 +202,40 @@ partial bytes，但在 `measurement.budget_exhausted=true`、各受影響 lane �
 報告把 canonical project 的 worktree 子樹排除後再加回每條 physical lane，並將 exact supervision exclusion 的 bytes 另列為 observed、排除於 managed aggregate，避免同一份檔案被重複計算。`managed_allocated_bytes` 是 KG 受管理範圍的 accounting，不等於整台 Mac 的 filesystem usage：APFS snapshots、Git shared object、Xcode global DerivedData、Docker 與其他使用者資料另列在 `filesystem` 或既有 cache metrics；global `BooksAndVocab-*` DerivedData 的固定 cap 由 `kg_disk_guard.sh` 另行觀測與修復。故「每條 lane 相加」是可驗證的 lane reservoir 總量，不應冒充整顆磁碟的唯一總量。
 
 閉環固定為：guard 觀測 → `lane_disk_usage.json` 歸戶 → 超限／遺失證據 fail-closed → active lane 由 owner 完成交接或 terminal cleanup → 再次觀測確認 worktree／branch／registry 狀態。測試入口為 `uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_disk_usage.py` 與 `./ops/tests/test_kg_disk_guard.sh`。
+
+## Shared XCTestDevices platform store（2026-09-02）
+
+`~/Library/Developer/XCTestDevices` is shared Xcode test-device storage, not a
+delivery lane and not user data owned by any product worktree. The disk report
+observes only the root's immediate device directories in deterministic name
+order, reads each direct `device.plist`, and measures each device tree under
+the caller's existing time budget. It never treats a missing, malformed,
+identity-mismatched, active, or non-ephemeral plist as reclaimable.
+
+The additive report field is
+`accounting.shared_platform_storage.xctest_devices`. It records the exact
+root, logical/raw allocated bytes, device count, metadata and measurement
+status, the shared budget, overflow, and per-device reclaim evidence. On
+Darwin, the budget uses the union of APFS physical extents, so APFS-cloned
+files shared by multiple XCTestDevices are counted once. The compatibility
+`allocated_bytes` field remains the raw per-file `st_blocks` observation for
+audit; `budget_allocated_bytes` is the value used for the fixed quota, and
+`allocation_method` records whether it used APFS extents or the conservative
+`st_blocks` fallback. An incomplete physical or tree observation is never
+treated as within budget. The default shared budget is 16 GiB and is configurable with
+`KG_DISK_GUARD_XCTEST_DEVICES_BUDGET_GIB` or
+`--xctest-devices-budget-gib`. Exceeding it is always a blocking policy result;
+the guard cannot report `within-bounds` while the store is over budget.
+
+Automatic reclaim is opt-in with
+`KG_DISK_GUARD_XCTEST_DEVICES_AUTO_RECLAIM=1` (or the disk report flag). The
+only candidate is an exact UUID whose plist proves `isEphemeral=true`,
+`isDeleted=true`, a known inactive state, and matching `UDID`. Reclaim uses
+only `xcrun simctl delete` after the UUID is also present in `simctl list`; the
+root is remeasured afterward. If no supported command or exact proof exists,
+the guard emits `xctest-devices-manual-review-required` and leaves the store
+untouched. Unknown, active, non-ephemeral, and user-data paths are never
+deleted.
 
 ## 驗證證據（2026-06-09）
 - 冷編 **88.6s** → 二次無改動 incremental **4.96s（18× 加速）**：共享快取確實重用。
