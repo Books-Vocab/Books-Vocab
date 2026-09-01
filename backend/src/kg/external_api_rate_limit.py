@@ -61,6 +61,10 @@ class ExternalRateLimiter:
         async with self._lock:
             events = self._events.get(key)
             if events is None:
+                if len(self._events) >= self.max_keys:
+                    self._gc(cutoff)
+                if len(self._events) >= self.max_keys:
+                    return RateLimitDecision(False, self.limit, 0, 1)
                 events = collections.deque()
                 self._events[key] = events
             else:
