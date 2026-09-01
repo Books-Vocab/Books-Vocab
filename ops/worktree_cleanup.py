@@ -2,7 +2,8 @@
 
 The registry owns the local ownership disposition.  This module owns the
 follow-up physical cleanup, and deliberately keeps remote branches outside its
-mutation surface.
+mutation surface.  Every physical removal remains bound to an exact clean
+branch/head readback.
 """
 
 from __future__ import annotations

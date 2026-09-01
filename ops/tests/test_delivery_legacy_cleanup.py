@@ -88,6 +88,8 @@ class FakeGit:
         canonical_branch: str = "main",
         canonical_clean: bool = True,
         snapshot_clean: bool = True,
+        snapshot_head: str = HEAD,
+        snapshot_changes: tuple[FileChange, ...] = (FileChange("modify", "ops/example.py"),),
     ) -> None:
         self.local = local
         self.remote = remote
@@ -95,6 +97,8 @@ class FakeGit:
         self.canonical_branch = canonical_branch
         self.canonical_clean = canonical_clean
         self.snapshot_clean = snapshot_clean
+        self.snapshot_head = snapshot_head
+        self.snapshot_changes = snapshot_changes
         self.actions: list[str] = []
 
     def list_worktrees(self) -> tuple[PhysicalWorktree, ...]:
@@ -113,10 +117,10 @@ class FakeGit:
             path=path,
             branch=BRANCH,
             base_sha=base_sha,
-            head_sha=HEAD,
+            head_sha=self.snapshot_head,
             parent_sha=BASE,
             clean=self.snapshot_clean,
-            changes=(FileChange("modify", "ops/example.py"),),
+            changes=self.snapshot_changes,
         )
 
     def local_branch_sha(self, branch: str) -> str | None:
@@ -136,7 +140,7 @@ class FakeGit:
         self.remote = None
 
     def remove_worktree(self, path: Path, *, expected_head_sha: str) -> None:
-        assert expected_head_sha == HEAD
+        assert expected_head_sha in {BASE, HEAD}
         self.actions.append("remove-worktree")
         self.physical = ()
 
@@ -336,6 +340,29 @@ def test_legacy_abandoned_branch_at_base_can_be_released_without_pr() -> None:
     assert result.disposition == "abandoned"
     assert result.local_branch_absent and result.remote_branch_absent
     assert git.actions == ["delete-local"]
+
+
+def test_legacy_abandoned_branch_releases_exact_clean_physical_worktree() -> None:
+    branch = "debug/no-pr"
+    record = replace(
+        _record(status="abandoned", handed_back_sha=None), branch=branch, base_sha=BASE
+    )
+    physical = (PhysicalWorktree(PATH, BASE, branch),)
+    git = FakeGit(
+        local=BASE,
+        remote=None,
+        physical=physical,
+        snapshot_head=BASE,
+        snapshot_changes=(),
+    )
+    github = FakeGitHub(replace(_pr(state="CLOSED"), number=-1, branch=branch))
+
+    result = _service(record, git, github).cleanup_abandoned_branch(branch)
+
+    assert result.disposition == "abandoned"
+    assert result.worktree_absent
+    assert result.local_branch_absent and result.remote_branch_absent
+    assert git.actions == ["remove-worktree", "delete-local"]
 
 
 def test_legacy_abandoned_cleanup_refuses_before_ref_delete_without_main() -> None:

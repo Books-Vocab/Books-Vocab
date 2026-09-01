@@ -19,7 +19,11 @@ _TERMINAL = {"merged", "abandoned"}
 
 
 class LegacyTerminalCleanupService:
-    """Release only provable legacy assets; never repairs their registry records."""
+    """Release only provable legacy assets; never repairs their registry records.
+
+    An abandoned no-hand-back claim may still have a physical checkout.  That
+    checkout is releasable only when its clean base checkout is proven exact.
+    """
 
     def __init__(
         self,
