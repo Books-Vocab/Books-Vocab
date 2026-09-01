@@ -37,7 +37,14 @@ def _write(cwd: Path, relative: str, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def _same_path_fixture(tmp_path: Path) -> tuple[Path, Path, Path, str, str, str]:
+def _same_path_fixture(
+    tmp_path: Path,
+    *,
+    source_files: tuple[tuple[str, str], ...] = (
+        ("ops/reanchor_change.py", "source\n"),
+    ),
+    declared_scope: tuple[tuple[str, str], ...] | None = None,
+) -> tuple[Path, Path, Path, str, str, str]:
     remote = tmp_path / "remote.git"
     repo = tmp_path / "repo"
     target = tmp_path / "owner-worktree"
@@ -57,8 +64,9 @@ def _same_path_fixture(tmp_path: Path) -> tuple[Path, Path, Path, str, str, str]
     _git(repo, "push", "-q", "origin", "main")
 
     _git(repo, "switch", "-c", BRANCH)
-    _write(repo, "ops/reanchor_change.py", "source\n")
-    _git(repo, "add", "ops/reanchor_change.py")
+    for relative, content in source_files:
+        _write(repo, relative, content)
+    _git(repo, "add", *(relative for relative, _content in source_files))
     _git(repo, "commit", "-m", "source")
     remote_head = _git(repo, "rev-parse", "HEAD")
     _git(repo, "push", "-q", "origin", f"HEAD:refs/heads/{BRANCH}")
@@ -75,6 +83,7 @@ def _same_path_fixture(tmp_path: Path) -> tuple[Path, Path, Path, str, str, str]
     # original owner already has the exact recorded branch/path checked out.
     _git(repo, "worktree", "add", "--detach", str(target), remote_head)
     _git(target, "switch", "-c", BRANCH)
+    scope = declared_scope or tuple((relative, "add") for relative, _ in source_files)
     record = {
         "branch": BRANCH,
         "path": str(target),
@@ -86,7 +95,8 @@ def _same_path_fixture(tmp_path: Path) -> tuple[Path, Path, Path, str, str, str]
         "scope": {
             "schema": "kg.worktree.scope.v1",
             "files": [
-                {"path": "ops/reanchor_change.py", "operation": "add"},
+                {"path": relative, "operation": operation}
+                for relative, operation in scope
             ],
         },
         "codex_thread_id": OWNER,
@@ -101,6 +111,106 @@ def _same_path_fixture(tmp_path: Path) -> tuple[Path, Path, Path, str, str, str]
         {"schema": registry.SCHEMA, "records": [record]},
     )
     return repo, state_path, target, base, remote_head, live_main
+
+
+def _subset_scope_fixture(tmp_path: Path) -> tuple[Path, Path, Path, str, str, str]:
+    return _same_path_fixture(
+        tmp_path,
+        source_files=(
+            ("ops/reanchor_change.py", "source\n"),
+            ("ops/reanchor_test.py", "source\n"),
+        ),
+        declared_scope=(
+            ("ops/reanchor_change.py", "add"),
+            ("ops/reanchor_test.py", "add"),
+            ("ops/reanchor_unused.py", "modify"),
+        ),
+    )
+
+
+def test_reanchor_accepts_declared_scope_as_upper_bound_for_changed_subset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, state_path, target, _base, remote_head, live_main = _subset_scope_fixture(
+        tmp_path
+    )
+    lifecycle = SimpleNamespace(
+        merge_front_policy="owner-local-required-failure-recovery"
+    )
+    monkeypatch.setattr(
+        transaction.lifecycle_proof, "build_github", lambda *_args, **_kwargs: object()
+    )
+    monkeypatch.setattr(
+        transaction.lifecycle_proof,
+        "verify_reanchor_lifecycle",
+        lambda *_args, **_kwargs: lifecycle,
+    )
+
+    payload = transaction.perform_reanchor(
+        repo=repo,
+        state_path=state_path,
+        merge_front_pr=42,
+        lane_id=LANE,
+        branch=BRANCH,
+        owner_thread_id=OWNER,
+        claim_generation=1,
+        expected_remote_head=remote_head,
+        live_main=live_main,
+        target=target,
+        allow_required_failure_recovery=True,
+    )
+
+    assert payload["status"] == "ready-for-owner-tests"
+    assert payload["scope"] == [
+        "ops/reanchor_change.py",
+        "ops/reanchor_test.py",
+        "ops/reanchor_unused.py",
+    ]
+    assert _git(target, "diff", "--name-status", f"{live_main}..HEAD") == (
+        "A\tops/reanchor_change.py\nA\tops/reanchor_test.py"
+    )
+
+
+@pytest.mark.parametrize(
+    "declared_scope",
+    [
+        pytest.param(
+            (
+                ("ops/reanchor_change.py", "add"),
+                ("ops/reanchor_unused.py", "modify"),
+                ("ops/reanchor_other.py", "add"),
+            ),
+            id="out-of-scope-path",
+        ),
+        pytest.param(
+            (
+                ("ops/reanchor_change.py", "add"),
+                ("ops/reanchor_test.py", "modify"),
+                ("ops/reanchor_unused.py", "modify"),
+            ),
+            id="operation-mismatch",
+        ),
+    ],
+)
+def test_reanchor_subset_scope_still_rejects_non_declared_operations(
+    tmp_path: Path,
+    declared_scope: tuple[tuple[str, str], ...],
+) -> None:
+    repo, _state_path, _target, base, remote_head, live_main = _subset_scope_fixture(
+        tmp_path
+    )
+
+    with pytest.raises(
+        ReanchorRefused, match="remote PR branch differs from the exact original Scope"
+    ):
+        git_ops.ensure_commits_and_scope(
+            repo,
+            branch=BRANCH,
+            base_sha=base,
+            remote_head=remote_head,
+            live_main=live_main,
+            declared=declared_scope,
+        )
 
 
 def test_reanchor_reuses_exact_path_authorized_by_resumed_claim(
