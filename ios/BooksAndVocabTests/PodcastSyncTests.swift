@@ -75,7 +75,7 @@ struct PodcastSyncTests {
     }
 
     @Test func cover_response_validation_requires_http_success_png_type_and_magic() {
-        let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x01])
+        let png = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")!
         let ok = httpResponse(status: 200, contentType: "image/png")
         #expect(PodcastSyncService.isValidCoverResponse(data: png, response: ok))
 
