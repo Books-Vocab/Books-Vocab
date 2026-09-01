@@ -17,6 +17,18 @@ logger = logging.getLogger(__name__)
 LOOKUP_EVENT_RETENTION_DAYS = 14
 
 
+def _utc_instant(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
 class CachedLexicalValue(BaseModel):
     entry: LexicalEntry | None
     fresh: bool
@@ -46,10 +58,7 @@ class LexicalCache:
                     expires_at TEXT NOT NULL
                 )"""
             )
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS ix_lexical_cache_entry_key "
-                "ON lexical_cache(provider, entry_key)"
-            )
+            conn.execute("CREATE INDEX IF NOT EXISTS ix_lexical_cache_entry_key ON lexical_cache(provider, entry_key)")
             conn.execute(
                 """CREATE TABLE IF NOT EXISTS lexical_provider_request (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,8 +81,7 @@ class LexicalCache:
                 )"""
             )
             conn.execute(
-                "CREATE INDEX IF NOT EXISTS ix_lexical_lookup_event_created_at "
-                "ON lexical_lookup_event(created_at)"
+                "CREATE INDEX IF NOT EXISTS ix_lexical_lookup_event_created_at ON lexical_lookup_event(created_at)"
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS ix_lexical_lookup_event_created_at_utc "
@@ -148,9 +156,7 @@ class LexicalCache:
                 ),
             )
 
-    def record_lookup(
-        self, provider: str, operation: str, outcome: str, duration_ms: int
-    ) -> None:
+    def record_lookup(self, provider: str, operation: str, outcome: str, duration_ms: int) -> None:
         """Append one lookup outcome for ops. Best effort — never fails a lookup.
 
         Observability that can break the thing it observes is worse than none,
@@ -159,7 +165,8 @@ class LexicalCache:
         caps insert volume at ~1k/hour, so the indexed delete stays cheap.
         """
         now = datetime.now(UTC)
-        cutoff = (now - timedelta(days=LOOKUP_EVENT_RETENTION_DAYS)).isoformat()
+        cutoff = now - timedelta(days=LOOKUP_EVENT_RETENTION_DAYS)
+        cutoff_iso = cutoff.isoformat()
         try:
             with closing(sqlite3.connect(self.path, timeout=5.0)) as conn, conn:
                 conn.execute(
@@ -169,9 +176,21 @@ class LexicalCache:
                     (provider, operation, outcome, int(duration_ms), now.isoformat()),
                 )
                 conn.execute(
-                    "DELETE FROM lexical_lookup_event "
-                    "WHERE datetime(created_at) < datetime(?)",
-                    (cutoff,),
+                    "DELETE FROM lexical_lookup_event WHERE datetime(created_at) < datetime(?)",
+                    (cutoff_iso,),
+                )
+                boundary_rows = conn.execute(
+                    "SELECT id, created_at FROM lexical_lookup_event WHERE datetime(created_at) = datetime(?)",
+                    (cutoff_iso,),
+                ).fetchall()
+                stale_ids = [
+                    event_id
+                    for event_id, created_at in boundary_rows
+                    if (created_at_utc := _utc_instant(created_at)) is not None and created_at_utc < cutoff
+                ]
+                conn.executemany(
+                    "DELETE FROM lexical_lookup_event WHERE id = ?",
+                    ((event_id,) for event_id in stale_ids),
                 )
         except sqlite3.Error:
             logger.warning("Dictionary lookup telemetry write failed", exc_info=True)
@@ -180,9 +199,7 @@ class LexicalCache:
         """Atomically reserve one upstream call across workers sharing this cache."""
         now = time.time()
         window_start = now - 3600.0
-        with closing(
-            sqlite3.connect(self.path, timeout=5.0, isolation_level=None)
-        ) as conn, conn:
+        with closing(sqlite3.connect(self.path, timeout=5.0, isolation_level=None)) as conn, conn:
             conn.execute("BEGIN IMMEDIATE")
             conn.execute(
                 "DELETE FROM lexical_provider_request WHERE requested_at <= ?",
@@ -190,8 +207,7 @@ class LexicalCache:
             )
             request_count = int(
                 conn.execute(
-                    "SELECT COUNT(*) FROM lexical_provider_request "
-                    "WHERE provider = ? AND requested_at > ?",
+                    "SELECT COUNT(*) FROM lexical_provider_request WHERE provider = ? AND requested_at > ?",
                     (provider, window_start),
                 ).fetchone()[0]
             )
