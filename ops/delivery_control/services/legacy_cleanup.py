@@ -19,7 +19,11 @@ _TERMINAL = {"merged", "abandoned"}
 
 
 class LegacyTerminalCleanupService:
-    """Release only provable legacy assets; never repairs their registry records."""
+    """Release only provable legacy assets; never repairs their registry records.
+
+    An abandoned no-hand-back claim may still have a physical checkout.  That
+    checkout is releasable only when its clean base checkout is proven exact.
+    """
 
     def __init__(
         self,
@@ -141,15 +145,23 @@ class LegacyTerminalCleanupService:
         if inventory.records:
             raise PolicyViolation("abandoned branch has PR history")
         physical = self._physical_for_branch(branch, record)
-        if physical is not None:
-            raise PolicyViolation("abandoned branch still has a physical worktree")
         self._validate_ref(branch, record.base_sha, "local")
         self._validate_ref(branch, record.base_sha, "remote")
+        if physical is not None:
+            current_physical = self._recheck_abandoned(
+                branch, record, require_physical=True
+            )
+            assert current_physical is not None
+            self.git_command.remove_worktree(
+                current_physical.path, expected_head_sha=record.base_sha
+            )
         if self.git_query.local_branch_sha(branch) is not None:
+            self._recheck_abandoned(branch, record)
             self.git_command.delete_local_branch(
                 branch, expected_head_sha=record.base_sha
             )
         if self.git_query.remote_branch_sha(branch) is not None:
+            self._recheck_abandoned(branch, record)
             self.git_command.delete_remote_branch(
                 branch, expected_head_sha=record.base_sha
             )
@@ -270,20 +282,17 @@ class LegacyTerminalCleanupService:
             pull_request.base_sha if pull_request is not None else record.base_sha
         )
         expected_head_sha = (
-            pull_request.head_sha
-            if pull_request is not None
-            else record.handed_back_sha
+            pull_request.head_sha if pull_request is not None else record.base_sha
         )
         if expected_base_sha is None or expected_head_sha is None:
             raise PolicyViolation("terminal worktree evidence is incomplete")
         expected_changed_paths = (
-            self._changed_paths(pull_request.number)
-            if pull_request is not None
-            else tuple(sorted(record.scope.paths))
+            self._changed_paths(pull_request.number) if pull_request is not None else ()
         )
         snapshot = self.git_query.inspect_worktree(physical.path, expected_base_sha)
         if (
-            not snapshot.clean
+            physical.head_sha != expected_head_sha
+            or not snapshot.clean
             or snapshot.branch != branch
             or snapshot.base_sha != expected_base_sha
             or snapshot.head_sha != expected_head_sha
@@ -292,6 +301,28 @@ class LegacyTerminalCleanupService:
             raise PolicyViolation(
                 "terminal worktree is dirty or differs from the exact claim"
             )
+        return physical
+
+    def _recheck_abandoned(
+        self,
+        branch: str,
+        record: RegistrySnapshot | LegacyTerminalClaim,
+        *,
+        require_physical: bool = False,
+    ) -> PhysicalWorktree | None:
+        current_record = self._record(branch, expected_status="abandoned")
+        if current_record != record:
+            raise PolicyViolation("abandoned terminal registry claim changed")
+        inventory = self.github_query.list_pull_requests_for_branch(branch)
+        if inventory.problems:
+            raise PolicyViolation("GitHub branch PR inventory is incomplete")
+        if inventory.records:
+            raise PolicyViolation("abandoned branch has PR history")
+        physical = self._physical_for_branch(branch, record)
+        if require_physical and physical is None:
+            raise PolicyViolation("abandoned branch physical worktree disappeared")
+        self._validate_ref(branch, record.base_sha, "local")
+        self._validate_ref(branch, record.base_sha, "remote")
         return physical
 
     def _validate_ref(self, branch: str, expected: str, kind: str) -> None:
