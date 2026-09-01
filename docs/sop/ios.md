@@ -165,7 +165,7 @@ ASC live state 必須由 `./ops/asc_reviewer_mirror.py audit ... --commit --bund
 
 ### 磁碟預算與 writer gate
 
-所有 iOS build/test intermediate cache 與 release archive/export 只可寫入已知的 `.cache/` 或 `ios/build/` roots；這些受管理產物合計以 **16 GiB** 為固定預算，寫入前另保留 **6 GiB headroom**，並要求檔案系統至少有 **20 GiB free**。`ops/kg_disk_guard.sh` 每 5 分鐘以原子狀態檔記錄快取總量、超額量與清理動作；沒有活躍 consumer、成功持有既有 build lock 且 aggregate budget/headroom 超標時，會淘汰可重建的舊 key，必要時回收整個共享 build DerivedData／release／Catalyst cache／archive/export，讓下一次 build 走 bounded cold rebuild。guard 不會刪除正在使用、狀態未知或 lock 被其他 writer 持有的產物。
+所有 iOS build/test intermediate cache 與 release archive/export 只可寫入已知的 `.cache/` 或 `ios/build/` roots；這些受管理 writer cache 合計以 **16 GiB** 為固定預算，寫入前另保留 **6 GiB headroom**，並要求檔案系統至少有 **20 GiB free**。Xcode 全域 `BooksAndVocab-*` DerivedData 不混入這個 aggregate，另由 `KG_DISK_GUARD_DERIVED_DATA_BUDGET_GIB` 預設 **4 GiB** 的固定 byte cap 管理。`ops/kg_disk_guard.sh` 每 5 分鐘以同一份 atomic receipt 記錄兩個預算、overflow 與清理動作；healthy free space 也會對 global DD 超額啟動 oldest-first repair，只有 process probe clear、沒有 active consumer 且成功持有既有 build lock 才可刪除可重建目錄。active／未知 process、FIFO ticket 或 lock contention 只會 `deferred-*`，不刪產物；guard 的 dry-run 與既有 exit semantics 不變。
 
 `ops/ios_build.sh` 與 `ops/ios_release.sh` 在取得 writer lock 後執行同一個 `kg_ios_disk_budget_preflight`。若 free space、快取大小或設定無法可靠讀取，或預算／headroom 不足，command 以 **exit 75** fail-closed，並輸出 `kg.ios.disk-budget.v1` 的原因；這不是產品測試失敗，也不是繼續寫入的許可。先讓 guard 清理安全的 rebuildable cache，或由維運者透過既有 `ios_clean_derived_data.sh` dry-run／apply 流程收斂後再重試。這個預算只約束 KG 管理的 iOS writer cache，不是對整台 APFS 或使用者資料的刪除授權。
 

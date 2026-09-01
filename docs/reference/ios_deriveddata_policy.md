@@ -30,7 +30,7 @@ verified_against: 8210e47aa53f8a2b03aafefadb7494098fa22cb1
 - iOS build 的 DerivedData 一律走 **單一共享快取**：`<主repo>/.cache/ios-build-derived-data`，由 `git-common-dir` 錨定，所有 worktree 解析到同一路徑；release archive/export 固定落在 `<主repo>/ios/build/`，每次 release 取代上一代。
 - **不要**自己呼叫不帶 `-derivedDataPath` 的 `xcodebuild`，也不要改 `ops/ios_build.sh` 移除該旗標。那會讓快取掉回 Xcode 全域預設位置，每個 worktree 路徑生一份孤兒。
 - build / test 共用 `/tmp/kg-ios-build.lock` 序列化，共享快取**不會**並行寫壞。
-- `com.kg.disk-guard` 每 5 分鐘檢查並維持每個 keyed root 最多 1 個可重建世代；所有受管理 iOS cache 合計以 **16 GiB** 為硬預算，且每次新建前保留 **6 GiB** headroom。活躍 iOS 工作會先延後清理，完成後再收斂超出的 key；預算或可用空間不足時，新的 build/archive 以 exit 75 fail-closed。
+- `com.kg.disk-guard` 每 5 分鐘檢查並維持每個 keyed root 最多 1 個可重建世代；所有受管理 iOS writer cache 合計以 **16 GiB** 為硬預算，且每次新建前保留 **6 GiB** headroom。Xcode 全域 `BooksAndVocab-*` DerivedData 另以 **4 GiB** 固定 byte cap 管理，不混入上述 aggregate；活躍／未知 iOS 工作或 lock contention 會先延後清理，安全時按最舊優先收斂可重建目錄。預算或可用空間不足時，新的 build/archive 以 exit 75 fail-closed。
 - UITest 的截圖、video、UIreview、xcresult 是 agent 觀察產物，不是 DerivedData：視覺 run 預設進系統暫存的 run bundle 並帶 TTL；只有顯式 `--retain` 才進 `build/ios-report/retained/`。source tree 只保存 fixture、契約與小型 receipt。
 - GitHub-hosted iOS CI 另有**唯讀的 SwiftPM source cache**；它不是 DerivedData，也不與本機 `.cache/` 共用。PR 可還原，只有成功的 `main` push 會寫入。
 
@@ -146,7 +146,7 @@ GitHub-hosted macOS runner 每次都是新的 VM；本機長存的 DerivedData �
 
 **機制**（`ops/lib/ios_cache_evict.sh`，`kg_ios_cache_evict <root> <current_key>`）：
 - 保留 = mtime 最新 `KG_IOS_CACHE_KEEP`（預設 3）條 ∪ current key ∪ `KG_IOS_CACHE_EVICT_MIN_AGE_HOURS`（預設 6h）內用過的條目；其餘按最舊優先 `rm -rf`。
-- `ops/kg_disk_guard.sh` 只把 `.cache/ios-test-derived-data` 與 `.cache/ios-catalog-derived-data` 視為 keyed root；`.cache/ios-build-derived-data`、`.cache/ios-release-derived-data` 的 Xcode 內部目錄不是 key，絕不交給這個 evictor，但它們仍計入 16 GiB aggregate budget。guard 即使設定 `KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0`，仍會套用預設 `KG_DISK_GUARD_CACHE_READER_WINDOW_HOURS=1` 的讀者安全窗；因此最近一小時內被讀取或觸碰的 key 不會因快照排序而被刪除。臨界磁碟清理全域 `BooksAndVocab-*` DerivedData 仍以 `KG_DISK_GUARD_DERIVED_DATA_MIN_AGE_HOURS` 預設 `6h` 保守保留，手動 `ios_clean_derived_data.sh` 也維持 `6h` 預設。
+- `ops/kg_disk_guard.sh` 只把 `.cache/ios-test-derived-data` 與 `.cache/ios-catalog-derived-data` 視為 keyed root；`.cache/ios-build-derived-data`、`.cache/ios-release-derived-data` 的 Xcode 內部目錄不是 key，絕不交給這個 evictor，但它們仍計入 16 GiB aggregate budget。guard 即使設定 `KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0`，仍會套用預設 `KG_DISK_GUARD_CACHE_READER_WINDOW_HOURS=1` 的讀者安全窗；因此最近一小時內被讀取或觸碰的 key 不會因快照排序而被刪除。另以 `derived_data_kb`、`derived_data_budget_kb`、`derived_data_overflow_kb` 在同一份 atomic receipt 記錄 global `BooksAndVocab-*` byte cap；`KG_DISK_GUARD_DERIVED_DATA_BUDGET_GIB` 預設 4，超額且 healthy free space 也會觸發 `reason=derived-data-budget-exceeded`，在 process probe clear 且持有同一 build lock 時按 mtime／path deterministic oldest-first 淘汰。`KG_DISK_GUARD_DERIVED_DATA_MIN_AGE_HOURS` 預設 `6h` 的安全窗仍保留；active consumer、未知 process、FIFO ticket 或 lock contention 時只記錄 `deferred-*`，不刪目錄。
 - guard 每次 tick 都計算 `cache_overflow_keys` 與 `cache_budget_overflow_kb`。即使磁碟仍健康，只要 keyed root 超過 1 個世代或 aggregate budget 超標，就會在 build lock 下淘汰最舊且已離開 reader window 的 key；共享 `ios-build-derived-data`、release/catalyst 與 `ios/build` 下的 archive/export 這類可重建產物，也會在無 consumer、持有 writer lock 且 aggregate budget/headroom 超標時移除。這不是 keyed eviction，而是整個可重建 build cache 的 bounded cold-rebuild fallback。若只剩正在使用的 build cache 仍超標，guard 只留下證據，下一個 build/archive 不得繼續寫入。
 - 只動 cache root 第一層**目錄**；log 全走 **stderr**（catalog caller stdout 是純 JSON）。
 - `KG_IOS_CACHE_EVICT_DRY_RUN=1` 只報告不刪。
@@ -163,7 +163,7 @@ GitHub-hosted macOS runner 每次都是新的 VM；本機長存的 DerivedData �
 | `ios_test.sh` `rebuild_test_cache` | 取得 build lock 後、build 前 | 持鎖互斥寫者；無鎖讀者（test-without-building）靠 resolve 時 `touch` 續命 + reader window |
 | `ios_clean_derived_data.sh` | 手動 sweep（dry-run 預設，`--apply` 才刪） | active consumer/lock guard；通過後 current_key 留空，靠 keep-N + min-age；保留 cleanup receipt |
 
-**不變式**：所有會刪除共享產物的路徑先確認沒有活躍 consumer；guard 再取得 `/tmp/kg-ios-build.lock`，才會清理共享 keyed root。若 iOS FIFO lock queue 已有等待中的 `ticket-*`，guard 直接延後，不插隊；`.next` 等持久化序號 metadata 不代表等待者，不會阻止安全清理。活躍 build、未知 process state 或 lock contention 都 fail-closed 延後，不刪產物。`kg_ios_cache_evict` 仍保留 current key 與刪除前 mtime 重驗；guard 另以 `KG_DISK_GUARD_CACHE_READER_WINDOW_HOURS`（預設 `1h`）保護無鎖讀者，手動 sweep 的 6h min-age 也不變。讀者續命點：`ios_test.sh` 在 resolve 後 touch、builder 由 lib 進場 touch——並行 run（即使讀的是舊 key）不會被別人的 build 中途抽走產物。16 GiB 是 aggregate writer budget，不是對 APFS 所有使用者資料的 filesystem quota；若不可安全淘汰的 active build cache 仍超標，入口以 exit 75 阻止新 writer，避免繼續膨脹。回歸測試：`./ops/tests/test_kg_disk_guard.sh`、`./ops/tests/test_ios_disk_budget.sh` 與 `./ops/test_ops.sh ios-cache-evict`。
+**不變式**：所有會刪除共享產物的路徑先確認沒有活躍 consumer；guard 再取得 `/tmp/kg-ios-build.lock`，才會清理共享 keyed root 或 global `BooksAndVocab-*` DerivedData。若 iOS FIFO lock queue 已有等待中的 `ticket-*`，guard 直接延後，不插隊；`.next` 等持久化序號 metadata 不代表等待者，不會阻止安全清理。活躍 build、未知 process state 或 lock contention 都 fail-closed 延後，不刪產物。`kg_ios_cache_evict` 仍保留 current key 與刪除前 mtime 重驗；global DD 只依 exact `BooksAndVocab-*` first-level directories、cap、mtime/path 與既有 age guard，自動清理不會碰其他 Xcode project。guard 另以 `KG_DISK_GUARD_CACHE_READER_WINDOW_HOURS`（預設 `1h`）保護無鎖讀者，手動 sweep 的 6h min-age 也不變；`KG_DISK_GUARD_DRY_RUN=1` 仍只記錄 intended eviction、不刪任何目錄。讀者續命點：`ios_test.sh` 在 resolve 後 touch、builder 由 lib 進場 touch——並行 run（即使讀的是舊 key）不會被別人的 build 中途抽走產物。16 GiB 是 aggregate writer budget，不是對整台 APFS 或 global DD 的 filesystem quota；global DD 另有 4 GiB guard cap。若不可安全淘汰的 active build cache 仍超標，入口以 exit 75 阻止新 writer，避免繼續膨脹。回歸測試：`./ops/tests/test_kg_disk_guard.sh`、`./ops/tests/test_ios_disk_budget.sh` 與 `./ops/test_ops.sh ios-cache-evict`。
 
 ## Per-lane 磁碟歸戶與閉環（2026-08-28）
 
@@ -199,7 +199,7 @@ partial bytes，但在 `measurement.budget_exhausted=true`、各受影響 lane �
 大型 workspace／DerivedData 遞迴掃描而永久佔住 lock；`ops/kg_disk_guard.sh --help`
 是純說明命令，不會啟動 guard tick、改狀態或刪 cache。
 
-報告把 canonical project 的 worktree 子樹排除後再加回每條 physical lane，並將 exact supervision exclusion 的 bytes 另列為 observed、排除於 managed aggregate，避免同一份檔案被重複計算。`managed_allocated_bytes` 是 KG 受管理範圍的 accounting，不等於整台 Mac 的 filesystem usage：APFS snapshots、Git shared object、Xcode global DerivedData、Docker 與其他使用者資料另列在 `filesystem` 或既有 cache metrics。故「每條 lane 相加」是可驗證的 lane reservoir 總量，不應冒充整顆磁碟的唯一總量。
+報告把 canonical project 的 worktree 子樹排除後再加回每條 physical lane，並將 exact supervision exclusion 的 bytes 另列為 observed、排除於 managed aggregate，避免同一份檔案被重複計算。`managed_allocated_bytes` 是 KG 受管理範圍的 accounting，不等於整台 Mac 的 filesystem usage：APFS snapshots、Git shared object、Xcode global DerivedData、Docker 與其他使用者資料另列在 `filesystem` 或既有 cache metrics；global `BooksAndVocab-*` DerivedData 的固定 cap 由 `kg_disk_guard.sh` 另行觀測與修復。故「每條 lane 相加」是可驗證的 lane reservoir 總量，不應冒充整顆磁碟的唯一總量。
 
 閉環固定為：guard 觀測 → `lane_disk_usage.json` 歸戶 → 超限／遺失證據 fail-closed → active lane 由 owner 完成交接或 terminal cleanup → 再次觀測確認 worktree／branch／registry 狀態。測試入口為 `uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_disk_usage.py` 與 `./ops/tests/test_kg_disk_guard.sh`。
 
@@ -211,7 +211,7 @@ partial bytes，但在 `measurement.budget_exhausted=true`、各受影響 lane �
 
 ## 維運
 - 清舊孤兒 / keyed cache / 壞模擬器：`./ops/ios_clean_derived_data.sh`（預設 dry-run，`--apply` 才刪，`--days N` 控全域孤兒年齡門檻；keyed cache 淘汰參數見上節 env var）。
-- 查詢自動 guard 狀態：`$HOME/Library/Application Support/KG/disk_guard.json`；`cache_overflow_keys>0` 代表下一個無活躍 iOS consumer 的 tick 會收斂到保留上限，`action=deferred-*` 代表 guard 正確選擇等待，不是直接刪除。
+- 查詢自動 guard 狀態：`$HOME/Library/Application Support/KG/disk_guard.json`；`cache_overflow_keys>0` 代表下一個無活躍 iOS consumer 的 tick 會收斂到保留上限，`derived_data_overflow_kb>0` 代表 global `BooksAndVocab-*` 超過固定 cap，`action=deferred-*` 代表 guard 正確選擇等待，不是直接刪除。
 - 換 Xcode 版本後若 incremental 行為異常：刪 `kg/.cache/ios-build-derived-data` 重新冷編即可（純可重建）。
 
 ## Agent 守則
