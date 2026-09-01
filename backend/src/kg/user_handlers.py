@@ -13,6 +13,7 @@ from typing import Any, Protocol
 from fastapi import HTTPException
 from filelock import FileLock
 
+from . import podcast_progress
 from .account_erasure import ObjectStorageClient, delete_account_assets
 from .api_models import (
     AutoLinkConfig,
@@ -272,6 +273,7 @@ def delete_user_account_response(
             library_bucket=library_bucket,
             library_s3_client=library_s3_client,
         )
+        podcast_progress.delete_for_users(ids_to_delete)
 
         revoked_before = users.get("_revoked_before")
         if not isinstance(revoked_before, dict):
