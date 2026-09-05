@@ -56,6 +56,36 @@ exit 1
 EOF
 chmod +x "$FAKE_BIN/shlock"
 
+# Generic cache fixtures must not rescan the host's real .codex history on
+# every invocation. They use a deterministic pass report; the lane-specific
+# section below switches back to the real disk-usage command.
+LANE_FIXTURE_UV="$TMP/lane-fixture-uv"
+cat >"$LANE_FIXTURE_UV" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while (($#)); do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[[ -n "$output" ]]
+mkdir -p "$(dirname "$output")"
+printf '%s\n' \
+  '{' \
+  '  "schema": "kg.disk.lane-usage.v1",' \
+  '  "verdict": "pass",' \
+  '  "policy": {"verdict": "pass", "blocking_reasons": [], "warning_reasons": [], "reasons": []},' \
+  '  "exclusions": {"supervision_worktree_paths": []},' \
+  '  "accounting": {"shared_platform_storage": {"xctest_devices": {"exists": false, "status": "absent", "measurement_complete": true, "metadata_complete": true, "budget_exceeded": false, "reclaim": {"status": "not-requested"}}, "simulator_runtimes": {"exists": false, "status": "absent", "measurement_complete": true, "budget_exceeded": false, "reclaim": {"status": "not-supported"}}}}' \
+  '}' >"$output"
+EOF
+chmod +x "$LANE_FIXTURE_UV"
+export KG_DISK_GUARD_UV_BIN="$LANE_FIXTURE_UV"
+export KG_DISK_USAGE_CODEX_WORKTREE_ROOT="$TMP/codex-worktrees"
+mkdir -p "$KG_DISK_USAGE_CODEX_WORKTREE_ROOT"
+
 timestamp_minutes_ago() {
   local minutes="$1"
   if date -v-"${minutes}"M '+%Y%m%d%H%M.%S' 2>/dev/null; then
@@ -629,6 +659,7 @@ state_count="$(find "$TMP/high" -maxdepth 1 -type f -name 'state.json*' | wc -l 
 [[ "$bytes2" -lt 1400 && "$state_count" -eq 1 ]] && ok "state bounded, one atomic file (${bytes2} bytes)" || bad "state accumulation: bytes=$bytes2 files=$state_count"
 
 echo "── lane usage: missing active lanes warn without blocking disk attribution ──"
+export KG_DISK_GUARD_UV_BIN="$HOME/.local/bin/uv"
 root="$TMP/lane-usage"; state="$root/guard.json"; registry="$root/registry.json"; lane_state="$root/lane-disk-usage.json"
 mkdir -p "$root"
 git -C "$root" init -b main >/dev/null 2>&1
@@ -733,6 +764,25 @@ grep -q '"lane_usage_rc":75' "$state" \
   && ok "time budget reaches guard state" || bad "time budget guard state missing"
 grep -q '"lane_usage_budget_seconds":0' "$state" \
   && ok "time budget is recorded in guard state" || bad "time budget state missing"
+
+echo "── lane usage: attribution block prevents an ok guard summary ──"
+root="$TMP/lane-usage-block"; state="$root/guard.json"; lane_state="$root/lane-disk-usage.json"
+mkdir -p "$root"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_REGISTRY_STATE="$root/missing-registry.json" \
+  KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" \
+  KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS=20 \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  "$SCRIPT" >/dev/null 2>&1
+grep -q '"lane_usage_verdict":"block"' "$state" \
+  && ok "lane attribution block is visible in guard state" \
+  || bad "lane attribution block is missing from guard state"
+grep -q '"lane_usage_rc":75' "$state" \
+  && ok "lane attribution block keeps its structured exit evidence" \
+  || bad "lane attribution exit evidence is missing"
+grep -q '"verdict":"block"' "$state" \
+  && ok "lane attribution block prevents false ok summary" \
+  || bad "lane attribution block was reported as ok"
 
 echo "── lane report budget: external attribution process is hard-stopped ──"
 root="$TMP/external-timeout"; state="$root/guard.json"; lane_state="$root/lane-disk-usage.json"; fake_uv="$root/fake-uv"; child_pid_file="$root/child.pid"
