@@ -283,7 +283,10 @@ struct BooksAndVocabApp: App {
                         // logout-cleanup gate 在 KGService.backgroundSync 入口單點生效
                         // （四個 sync 觸發點共用），call site 不再各自 await。
                         AppLog.kg.info("Post-login sync triggered")
-                        await kgService.backgroundSync(container: modelContainer)
+                        await kgService.backgroundSync(
+                            container: modelContainer,
+                            progress: PodcastBackgroundSyncStatusStore.report
+                        )
                         await kgService.fetchQuota()
                         // Rebuild the Apple-ID-scoped book library on login. Books
                         // bind to the Apple ID (CloudStore/CloudKit + per-Apple-ID
@@ -317,7 +320,10 @@ struct BooksAndVocabApp: App {
                             guard authManager.isLoggedIn, !authManager.isDemoMode else { return }
                             AppAnalytics.track(.backgroundSyncTriggered)
                             let syncStart = Date()
-                            await kgService.backgroundSync(container: modelContainer)
+                            await kgService.backgroundSync(
+                                container: modelContainer,
+                                progress: PodcastBackgroundSyncStatusStore.report
+                            )
                             await kgService.fetchQuota()
                             // Poke main context so @Query picks up background actor's save
                             try? modelContainer.mainContext.save()

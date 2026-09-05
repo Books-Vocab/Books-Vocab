@@ -6,6 +6,53 @@
 import Foundation
 import SwiftData
 
+enum PodcastBackgroundSyncStatus: Equatable, Sendable {
+    case idle
+    case running
+    case warning(String)
+}
+
+/// Bridges the automatic app-level sync reporter to the Podcast home.
+///
+/// This is intentionally separate from `SyncProgressStore`: the latter belongs to
+/// the user-initiated Settings sync sheet, while this small status is the only
+/// state the Podcast tab needs from post-login/scenePhase syncs.
+@Observable
+final class PodcastBackgroundSyncStatusStore: @unchecked Sendable {
+    static let shared = PodcastBackgroundSyncStatusStore()
+
+    private(set) var status: PodcastBackgroundSyncStatus = .idle
+
+    @MainActor
+    func apply(_ event: SyncProgressEvent) {
+        switch event {
+        case .started(.push):
+            // A new round supersedes a previous catalog warning. The Podcast leg
+            // may still be waiting for its turn, so keep the tab otherwise quiet.
+            status = .idle
+        case .started(.podcast):
+            status = .running
+        case .finished(.podcast, let stepStatus, let detail):
+            switch stepStatus {
+            case .error:
+                status = .warning(detail.isEmpty ? L10n.string("同步失敗") : detail)
+            default:
+                status = .idle
+            }
+        default:
+            break
+        }
+    }
+
+    /// Reporter passed only by automatic app-level sync triggers. The main-actor
+    /// hop keeps `@Observable` mutation out of the sync executor.
+    static let report: SyncProgressReporting = { event in
+        Task { @MainActor in
+            shared.apply(event)
+        }
+    }
+}
+
 #if DEBUG
 private enum SettingsResetFailureInjector {
     // Scope the once-token to this app process. A persistent fixed key made a
