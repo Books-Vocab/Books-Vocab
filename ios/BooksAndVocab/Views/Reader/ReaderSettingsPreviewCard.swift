@@ -16,6 +16,7 @@ import SwiftUI
 /// | 字體 | `ReaderFont.previewFontName` | 與 `family` 同一個 enum、同一批 TTF |
 /// | 字級 | `fontScale` × `baseFontSize` | 倍率就是送進 `EPUBPreferences.fontSize` 的那個 |
 /// | 行距 | `lineHeight` | 送進 `EPUBPreferences.lineHeight` 的那個 |
+/// | 字距 | `letterSpacing` | 送進 `EPUBPreferences.letterSpacing` 的那個 |
 /// | 紙色 / 墨色 | `ReaderTheme.paperColor` / `.inkColor` | 紙色即 WebView 背景；墨色即 ReadiumCSS 前景 |
 /// | 生字色帶 | `ReaderContentStyle` | 色相、濃度倍率、色帶高度、圓角都取自產 CSS 的同一個物件 |
 ///
@@ -38,11 +39,12 @@ struct ReaderSettingsPreviewLayoutContract: Equatable {
 struct ReaderSettingsPreviewCard: View {
     @ObserveInjection private var inject
 
-    /// 這五個就是 `ReaderSettings.viewConfiguration(systemColorScheme:)` 拿去組
+    /// 這六個就是 `ReaderSettings.viewConfiguration(systemColorScheme:)` 拿去組
     /// `ReaderViewConfiguration` 的同一批輸入。閱讀器多一個旋鈕，這裡就會少一個。
     let font: ReaderFont
     let fontScale: Double
     let lineHeight: Double
+    let letterSpacing: Double
     let theme: ReaderTheme
     let vocabHighlightPreferences: VocabHighlightPreferences
 
@@ -106,6 +108,23 @@ struct ReaderSettingsPreviewCard: View {
         return fontSize * (CGFloat(lineHeight) - Metrics.intrinsicLineHeightRatio)
     }
 
+    /// ReadiumCSS converts the normalized preference to `rem / 2`. Apply that
+    /// same proportion to the preview's reference font so the control keeps its
+    /// meaning when the font-size adjustment changes.
+    static func letterSpacingPoints(fontSize: CGFloat, letterSpacing: Double) -> CGFloat {
+        guard fontSize.isFinite, letterSpacing.isFinite else { return 0 }
+        let normalized = ReaderTypographyMetrics.quantizedValue(
+            letterSpacing,
+            in: ReaderTypographyMetrics.letterSpacingRange,
+            step: ReaderTypographyMetrics.letterSpacingStep
+        )
+        return fontSize * CGFloat(normalized) / 2
+    }
+
+    private var resolvedLetterSpacing: CGFloat {
+        Self.letterSpacingPoints(fontSize: resolvedFontSize, letterSpacing: letterSpacing)
+    }
+
     /// 詞距跟著字級縮放，否則放大字級時字會擠在一起。
     private var wordSpacing: CGFloat {
         resolvedFontSize * Metrics.wordSpacingRatio
@@ -133,6 +152,7 @@ struct ReaderSettingsPreviewCard: View {
     ) -> some View {
         let base = Text(token.text)
             .font(.custom(font.previewFontName, size: resolvedFontSize))
+            .tracking(resolvedLetterSpacing)
             .foregroundStyle(theme.inkColor)
 
         switch token.emphasis {
@@ -203,6 +223,7 @@ extension ReaderSettingsPreviewCard {
                     font: .serif,
                     fontScale: 1.0,
                     lineHeight: 1.4,
+                    letterSpacing: 0,
                     theme: .sepia,
                     vocabHighlightPreferences: .default
                 )
@@ -220,6 +241,7 @@ extension ReaderSettingsPreviewCard {
                     font: .mono,
                     fontScale: 2.0,
                     lineHeight: 2.5,
+                    letterSpacing: 1,
                     theme: .dark,
                     vocabHighlightPreferences: VocabHighlightPreferences(
                         colorPreset: .rose,

@@ -109,6 +109,33 @@ final class ReaderSettingsUITests: UITestCase {
         XCTAssertGreaterThanOrEqual(lineHeightIncrementButton.frame.height, 44)
         XCTAssertGreaterThanOrEqual(lineHeightDecrementButton.frame.height, 44)
 
+        guard let letterSpacingRow = reader.letterSpacingAdjustmentRowElement(timeout: 10) else {
+            XCTFail("Reader settings must expose one letter-spacing adjustment row")
+            return
+        }
+        XCTAssertFalse(letterSpacingRow.label.isEmpty)
+        XCTAssertFalse(String(describing: letterSpacingRow.value ?? "").isEmpty)
+        XCTAssertEqual(
+            reader.letterSpacingAdjustmentRowCount,
+            1,
+            "Reader settings must expose exactly one letter-spacing adjustment row"
+        )
+        guard let letterSpacingDecrementButton = reader.letterSpacingDecrementButtonElement(timeout: 5),
+              let letterSpacingIncrementButton = reader.letterSpacingIncrementButtonElement(timeout: 5)
+        else {
+            XCTFail("Reader settings must expose exactly one decrement and increment button for letter spacing")
+            return
+        }
+        XCTAssertGreaterThanOrEqual(letterSpacingIncrementButton.frame.height, 44)
+        XCTAssertGreaterThanOrEqual(letterSpacingDecrementButton.frame.height, 44)
+
+        XCTAssertTrue(reader.adjustLetterSpacing(toValue: "0.0"))
+        XCTAssertFalse(letterSpacingDecrementButton.isEnabled, "letter-spacing decrement must disable at 0.0")
+        XCTAssertTrue(letterSpacingIncrementButton.isEnabled, "letter-spacing increment must remain enabled above 0.0")
+        XCTAssertTrue(reader.adjustLetterSpacing(toValue: "1.0"))
+        XCTAssertTrue(letterSpacingDecrementButton.isEnabled, "letter-spacing decrement must remain enabled below 1.0")
+        XCTAssertFalse(letterSpacingIncrementButton.isEnabled, "letter-spacing increment must disable at 1.0")
+
         XCTAssertTrue(reader.adjustLineHeight(toValue: "1.0"))
         XCTAssertFalse(lineHeightDecrementButton.isEnabled, "line-height decrement must disable at 1.0")
         XCTAssertTrue(lineHeightIncrementButton.isEnabled, "line-height increment must remain enabled above 1.0")
@@ -192,6 +219,8 @@ final class ReaderSettingsUITests: UITestCase {
         // Mutate real persisted Reader settings, not the DEBUG preview harness.
         XCTAssertTrue(reader.adjustLineHeight(toValue: "1.0"))
         XCTAssertTrue(reader.waitForLineHeightValue("1", timeout: 5))
+        XCTAssertTrue(reader.adjustLetterSpacing(toValue: "0.5"))
+        XCTAssertTrue(reader.waitForLetterSpacingValue("0.5", timeout: 5))
         XCTAssertTrue(reader.selectTheme("dark"), "production theme option must be addressable")
         XCTAssertTrue(reader.themeIsSelected("dark"))
         XCTAssertTrue(reader.selectHighlightColor("blue"), "production highlight color option must be addressable")
@@ -206,6 +235,7 @@ final class ReaderSettingsUITests: UITestCase {
             "font=\(initialFont)",
             "fontSize=\(initialFontSize)",
             "lineHeight=1.00",
+            "letterSpacing=0.50",
             "readingMode=\(initialReadingMode)",
             "theme=dark"
         ]
@@ -261,6 +291,7 @@ final class ReaderSettingsUITests: UITestCase {
         captureStep("settings-reopened", app: app)
         XCTAssertEqual(reopenedPreview.frame.height, initialPreviewHeight, accuracy: 1)
         XCTAssertTrue(reader.waitForLineHeightValue("1", timeout: 5))
+        XCTAssertTrue(reader.waitForLetterSpacingValue("0.5", timeout: 5))
         XCTAssertTrue(reader.themeIsSelected("dark"))
         XCTAssertTrue(reader.resetReaderSettings(), "Reader settings must expose the production reset action")
         captureStep("reset", app: app)

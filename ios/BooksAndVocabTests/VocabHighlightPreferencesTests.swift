@@ -56,7 +56,7 @@ struct VocabHighlightPreferencesTests {
         #expect(VocabHighlightColorPreset.blue.titleKey == "vocab.highlight.color.blue")
         #expect(VocabHighlightColorPreset.sage.titleKey == "vocab.highlight.color.sage")
         #expect(VocabHighlightColorPreset.rose.titleKey == "vocab.highlight.color.rose")
-        #expect(VocabHighlightColorPreset.custom.titleKey == "自訂")
+        #expect(VocabHighlightColorPreset.custom.titleKey == "vocab.highlight.color.custom")
     }
 
     @Test func customSRGBIsClampedAndSharedWithReaderCSS() {
@@ -76,6 +76,18 @@ struct VocabHighlightPreferencesTests {
             for: preferences,
             colorScheme: .light
         ) == preferences.customSRGB.color)
+    }
+
+    @Test func customHighlightPreviewRetainsItsColorAcrossReaderThemes() {
+        let preferences = VocabHighlightPreferences(
+            colorPreset: .custom,
+            opacity: 0.35,
+            customSRGB: VocabHighlightSRGB(red: 0.8, green: 0.2, blue: 0.1)
+        )
+
+        for theme in ReaderTheme.allCases {
+            #expect(preferences.color(for: theme) == preferences.customSRGB.color)
+        }
     }
 
     @Test func opacityStepClampsAndQuantizesControlValues() {

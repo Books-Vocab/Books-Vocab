@@ -144,6 +144,7 @@ struct ReaderSettingsBridgeState: Equatable {
     let font: ReaderFont
     let fontScale: Double
     let lineHeight: Double
+    let letterSpacing: Double
     let scrollMode: Bool
     let theme: ReaderTheme
 
@@ -151,12 +152,14 @@ struct ReaderSettingsBridgeState: Equatable {
         font: ReaderFont,
         fontScale: Double,
         lineHeight: Double,
+        letterSpacing: Double = 0,
         scrollMode: Bool,
         theme: ReaderTheme
     ) {
         self.font = font
         self.fontScale = fontScale
         self.lineHeight = lineHeight
+        self.letterSpacing = letterSpacing
         self.scrollMode = scrollMode
         self.theme = theme
     }
@@ -182,6 +185,7 @@ struct ReaderSettingsBridgeState: Equatable {
             font: font,
             fontScale: navigatorSettings.fontSize,
             lineHeight: lineHeight,
+            letterSpacing: navigatorSettings.letterSpacing ?? ReaderSettings.defaultLetterSpacing,
             scrollMode: navigatorSettings.scroll,
             theme: theme
         )
@@ -195,6 +199,7 @@ struct ReaderSettingsBridgeState: Equatable {
             "font=\(font.rawValue)",
             "fontSize=\(Self.decimal(fontScale))",
             "lineHeight=\(Self.decimal(lineHeight))",
+            "letterSpacing=\(Self.decimal(letterSpacing))",
             "readingMode=\(readingMode)",
             "theme=\(theme.rawValue.lowercased())"
         ].joined(separator: ";")
@@ -240,8 +245,8 @@ struct ReaderViewConfiguration: Equatable {
 
 /// Canonical discrete controls for Reader typography.
 ///
-/// The settings panel, its preview harness, and the Readium-facing line-height
-/// slider all use this value source. Keeping the ranges here also lets stored
+/// The settings panel, its preview harness, and the Readium-facing typography
+/// controls all use this value source. Keeping the ranges here also lets stored
 /// values from older builds be clamped without making the view layer own model
 /// policy.
 enum ReaderTypographyMetrics {
@@ -249,6 +254,8 @@ enum ReaderTypographyMetrics {
     static let fontSizeStep: Double = 0.125
     static let lineHeightRange: ClosedRange<Double> = 1.0...2.5
     static let lineHeightStep: Double = 0.1
+    static let letterSpacingRange: ClosedRange<Double> = 0.0...1.0
+    static let letterSpacingStep: Double = 0.1
 
     static func steppedValue(
         from value: Double,
@@ -284,6 +291,7 @@ final class ReaderSettings {
     private let kFont = "reader_settings_font"
     private let kFontSize = "reader_settings_fontSize"
     private let kLineHeight = "reader_settings_lineHeight"
+    private let kLetterSpacing = "reader_settings_letterSpacing"
     private let kUnderlineOpacity = "reader_settings_underlineOpacity"
     private let kVocabHighlightColorPreset = "vocab_highlight_colorPreset"
     private let kVocabHighlightOpacity = "vocab_highlight_opacity"
@@ -303,6 +311,7 @@ final class ReaderSettings {
     static let defaultFont: ReaderFont = .serif
     static let defaultFontSize: Double = 1.0
     static let defaultLineHeight: Double = 1.4
+    static let defaultLetterSpacing: Double = 0.0
     static let defaultScrollMode = false
     static let defaultShowHitTestingDebug = false
 
@@ -327,6 +336,16 @@ final class ReaderSettings {
             guard !isLoadingPersistedValues else { return }
             defaults.set(lineHeight, forKey: kLineHeight)
             cloud.set(lineHeight, forKey: kLineHeight)
+        }
+    }
+
+    /// Readium's bounded letter-spacing preference. The persisted scalar uses
+    /// the same 0...1 / 0.1 contract as `EPUBPreferencesEditor`.
+    var letterSpacing: Double = ReaderSettings.defaultLetterSpacing {
+        didSet {
+            guard !isLoadingPersistedValues else { return }
+            defaults.set(letterSpacing, forKey: kLetterSpacing)
+            cloud.set(letterSpacing, forKey: kLetterSpacing)
         }
     }
 
@@ -378,8 +397,16 @@ final class ReaderSettings {
         String(format: "%.2gx", scale)
     }
 
+    static func letterSpacingText(for value: Double) -> String {
+        String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), value)
+    }
+
     var fontSizeText: String {
         Self.fontSizeText(for: fontSize)
+    }
+
+    var letterSpacingText: String {
+        Self.letterSpacingText(for: letterSpacing)
     }
 
     var vocabHighlightPreferences: VocabHighlightPreferences {
@@ -443,6 +470,20 @@ final class ReaderSettings {
         } else {
             let saved = defaults.double(forKey: kLineHeight)
             if saved > 0 { self.lineHeight = saved }
+        }
+
+        if let cloudLetterSpacing = cloud.double(forKey: kLetterSpacing) {
+            self.letterSpacing = ReaderTypographyMetrics.quantizedValue(
+                cloudLetterSpacing,
+                in: ReaderTypographyMetrics.letterSpacingRange,
+                step: ReaderTypographyMetrics.letterSpacingStep
+            )
+        } else if let savedLetterSpacing = persistedDouble(forKey: kLetterSpacing) {
+            self.letterSpacing = ReaderTypographyMetrics.quantizedValue(
+                savedLetterSpacing,
+                in: ReaderTypographyMetrics.letterSpacingRange,
+                step: ReaderTypographyMetrics.letterSpacingStep
+            )
         }
 
         if let cloudScroll = cloud.double(forKey: kScrollMode) {
@@ -518,6 +559,15 @@ final class ReaderSettings {
                 if let value = cloud.double(forKey: key), value != fontSize { fontSize = value }
             case kLineHeight:
                 if let value = cloud.double(forKey: key), value != lineHeight { lineHeight = value }
+            case kLetterSpacing:
+                if let value = cloud.double(forKey: key) {
+                    let normalized = ReaderTypographyMetrics.quantizedValue(
+                        value,
+                        in: ReaderTypographyMetrics.letterSpacingRange,
+                        step: ReaderTypographyMetrics.letterSpacingStep
+                    )
+                    if normalized != letterSpacing { letterSpacing = normalized }
+                }
             case kScrollMode:
                 if let value = cloud.double(forKey: key) { let v = value > 0.5; if v != scrollMode { scrollMode = v } }
             case kUnderlineOpacity where !hasNewHighlightOpacity:
@@ -559,6 +609,7 @@ final class ReaderSettings {
         font = Self.defaultFont
         fontSize = Self.defaultFontSize
         lineHeight = Self.defaultLineHeight
+        letterSpacing = Self.defaultLetterSpacing
         scrollMode = Self.defaultScrollMode
         vocabHighlightColorPreset = VocabHighlightPreferences.default.colorPreset
         underlineOpacity = VocabHighlightPreferences.default.opacity
@@ -577,6 +628,11 @@ final class ReaderSettings {
                 backgroundColor: ReadiumNavigator.Color(color: paper),
                 fontFamily: font.family,
                 fontSize: fontSize,
+                letterSpacing: ReaderTypographyMetrics.quantizedValue(
+                    letterSpacing,
+                    in: ReaderTypographyMetrics.letterSpacingRange,
+                    step: ReaderTypographyMetrics.letterSpacingStep
+                ),
                 lineHeight: lineHeight,
                 publisherStyles: false,
                 scroll: scrollMode,

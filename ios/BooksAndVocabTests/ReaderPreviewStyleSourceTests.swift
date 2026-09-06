@@ -92,6 +92,33 @@ struct ReaderPreviewStyleSourceTests {
         #expect(maximum > next)
     }
 
+    @Test func previewLetterSpacingUsesTheBoundedReadiumScale() {
+        #expect(ReaderTypographyMetrics.letterSpacingRange == 0...1)
+        #expect(ReaderTypographyMetrics.letterSpacingStep == 0.1)
+        #expect(ReaderTypographyMetrics.steppedValue(
+            from: ReaderTypographyMetrics.letterSpacingRange.lowerBound,
+            by: -1,
+            in: ReaderTypographyMetrics.letterSpacingRange,
+            step: ReaderTypographyMetrics.letterSpacingStep
+        ) == ReaderTypographyMetrics.letterSpacingRange.lowerBound)
+        #expect(ReaderTypographyMetrics.steppedValue(
+            from: ReaderTypographyMetrics.letterSpacingRange.upperBound,
+            by: 1,
+            in: ReaderTypographyMetrics.letterSpacingRange,
+            step: ReaderTypographyMetrics.letterSpacingStep
+        ) == ReaderTypographyMetrics.letterSpacingRange.upperBound)
+        #expect(ReaderTypographyMetrics.steppedValue(
+            from: 0.2,
+            by: 1,
+            in: ReaderTypographyMetrics.letterSpacingRange,
+            step: ReaderTypographyMetrics.letterSpacingStep
+        ) == 0.3)
+
+        #expect(ReaderSettingsPreviewCard.letterSpacingPoints(fontSize: 20, letterSpacing: 0) == 0)
+        #expect(ReaderSettingsPreviewCard.letterSpacingPoints(fontSize: 20, letterSpacing: 0.4) == 4)
+        #expect(ReaderSettingsPreviewCard.letterSpacingPoints(fontSize: 20, letterSpacing: 1) == 10)
+    }
+
     @Test func readerSettingsPreviewUsesOneGeometryAndRoundTripContract() {
         typealias Metrics = ReaderPresentationMetrics.SettingsPreview
 
