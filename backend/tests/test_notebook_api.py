@@ -400,6 +400,33 @@ def test_patch_notebook_settings_returns_updated_notebook(isolated_api):
     assert body["settings"]["cardLayout"] == {"value": None, "updatedAt": None}
 
 
+def test_patch_notebook_settings_rejects_inverted_review_interval(isolated_api):
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Review bounds"}, headers=h).json()["id"]
+
+    valid = _review_policy()
+    seeded = client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        json={"reviewPolicy": {"value": valid, "updatedAt": 100.0}},
+        headers=h,
+    )
+    assert seeded.status_code == 200, seeded.text
+
+    invalid = {**valid, "customMinimumIntervalHours": 24, "customMaximumIntervalHours": 12}
+    rejected = client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        json={"reviewPolicy": {"value": invalid, "updatedAt": 200.0}},
+        headers=h,
+    )
+    assert rejected.status_code == 422, rejected.text
+
+    listed = client.get("/api/notebooks", headers=h)
+    assert listed.status_code == 200, listed.text
+    notebook = next(item for item in listed.json() if item["id"] == nb_id)
+    assert notebook["settings"]["reviewPolicy"] == {"value": valid, "updatedAt": 100.0}
+
+
 def test_patch_notebook_settings_groups_are_independent_and_listed(isolated_api):
     client = isolated_api.client
     h = isolated_api.headers
