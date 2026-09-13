@@ -38,6 +38,13 @@ class TestMalformedInput:
         assert _normalize_context("\n\n\n") == ""
         assert _normalize_context("  ") == ""
 
+    def test_translate_request_collapses_unicode_whitespace_separators(self) -> None:
+        separators = "\u2028\u2029\u202f\u205f\u3000"
+        for separator in separators:
+            raw = "alpha" + separator + "target" + separator + "omega"
+            request = TranslateRequest(word="target", context=raw)
+            assert request.context == "alpha target omega"
+
     def test_only_zero_width_chars(self) -> None:
         """Zero-width / NBSP / various Unicode spaces collapse to nothing."""
         # ​ (ZWSP) and   (NBSP) are in the collapse set.

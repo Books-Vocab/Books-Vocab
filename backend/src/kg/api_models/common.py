@@ -6,8 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel
 
-_WS = re.compile(r"[\u00a0\u2000-\u200b\t\r]+")
-_NL = re.compile(r"\n+")
+_WS = re.compile(r"[\s\u200b]+")
 _MULTISPACE = re.compile(r" {2,}")
 
 
@@ -17,7 +16,6 @@ def _normalize_context(v: str) -> str:
         return ""
     v = unicodedata.normalize("NFC", v)
     v = _WS.sub(" ", v)
-    v = _NL.sub(" ", v)
     v = _MULTISPACE.sub(" ", v)
     return v.strip()
 
@@ -41,4 +39,4 @@ class VocabSource(BaseModel):
     type: Literal["book", "web"]
     title: str | None = None
     url: Annotated[str, AfterValidator(_validate_http_url)] | None = None  # web only
-    chapter: str | None = None   # book only
+    chapter: str | None = None  # book only
