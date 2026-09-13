@@ -178,6 +178,20 @@ def test_dictionary_detail_uses_public_camel_case_payload(isolated_api, monkeypa
                 params={"q": "invoke"},
                 headers=isolated_api.headers,
             )
+            search_attribution = search.json()["hits"][0]["attribution"]
+            assert set(search_attribution) == {
+                "provider",
+                "sourceUrl",
+                "licenseName",
+                "licenseUrl",
+                "attributionText",
+            }
+            assert not {
+                "source_url",
+                "license_name",
+                "license_url",
+                "attribution_text",
+            } & set(search_attribution)
             entry_key = search.json()["hits"][0]["entryKey"]
             detail = isolated_api.client.get(
                 f"/api/dictionary/entries/free_dictionary/{entry_key}",
