@@ -15,6 +15,14 @@ def store(tmp_path):
 
 
 class TestAddAndGet:
+    def test_add_treats_nfc_equivalent_content_as_duplicate(self, store):
+        first = store.add(content="cafe\u0301", meaning="coffee shop")
+
+        second = store.add(content="café", meaning="coffee shop")
+
+        assert second.id == first.id
+        assert store.count() == 1
+
     def test_add_returns_card_with_id(self, store):
         card = store.add(content="ephemeral", meaning="lasting for a very short time")
         assert card.id
@@ -238,9 +246,11 @@ def test_get_batch_returns_matching_cards(tmp_path):
         assert set(result.keys()) == {c1.id, c3.id}
         assert result[c1.id].content == "hello"
 
+
 def test_get_batch_empty_set(tmp_path):
     with closing(CardStore(tmp_path / "cards.db")) as store:
         assert store.get_batch(set()) == {}
+
 
 def test_get_batch_missing_ids(tmp_path):
     with closing(CardStore(tmp_path / "cards.db")) as store:
@@ -331,8 +341,7 @@ class TestBatchUpdateNoN1:
         select_queries = [q for q in queries if "card" in q.lower()]
         # Must be exactly 1 SELECT (the WHERE IN batch fetch), not 3 individual SELECTs
         assert len(select_queries) == 1, (
-            f"Expected 1 SELECT query (batch WHERE IN), got {len(select_queries)}. "
-            f"Queries: {select_queries}"
+            f"Expected 1 SELECT query (batch WHERE IN), got {len(select_queries)}. Queries: {select_queries}"
         )
 
     def test_batch_update_intake_consistency(self, store):
@@ -360,9 +369,14 @@ class TestVocabIntakeNoN1:
         class TrackingCardsStore:
             def __init__(self):
                 self._cards = [
-                    SimpleNamespace(id="c1", content="ephemeral", meaning="short-lived",
-                                    is_deleted=False, is_archived=False,
-                                    embed_text=lambda: "ephemeral: short-lived")
+                    SimpleNamespace(
+                        id="c1",
+                        content="ephemeral",
+                        meaning="short-lived",
+                        is_deleted=False,
+                        is_archived=False,
+                        embed_text=lambda: "ephemeral: short-lived",
+                    )
                 ]
 
             def all(self, include_deleted=False, notebook_id=None):
@@ -376,9 +390,14 @@ class TestVocabIntakeNoN1:
                 return None
 
             def add(self, content, meaning, **kwargs):
-                c = SimpleNamespace(id=f"new_{content}", content=content, meaning=meaning,
-                                    is_deleted=False, is_archived=False,
-                                    embed_text=lambda: f"{content}: {meaning}")
+                c = SimpleNamespace(
+                    id=f"new_{content}",
+                    content=content,
+                    meaning=meaning,
+                    is_deleted=False,
+                    is_archived=False,
+                    embed_text=lambda: f"{content}: {meaning}",
+                )
                 self._cards.append(c)
                 return c
 
@@ -389,13 +408,18 @@ class TestVocabIntakeNoN1:
                 return None
 
         class TrackingEmbeddings:
-            def has(self, card_id): return False
-            def add(self, card_id, vec): pass
-            def add_batch(self, items): pass
+            def has(self, card_id):
+                return False
+
+            def add(self, card_id, vec):
+                pass
+
+            def add_batch(self, items):
+                pass
 
         entries = [
             VocabEntry(word="ephemeral", translation="短暫的"),  # duplicate
-            VocabEntry(word="lucid", translation="清晰的"),        # new
+            VocabEntry(word="lucid", translation="清晰的"),  # new
         ]
 
         result = add_vocab_entries(
@@ -556,16 +580,19 @@ class TestFindByContent:
         from sqlmodel import Session
 
         from kg.text_utils import normalize_nfc_lower
+
         with closing(CardStore(tmp_path / "cards_perf.db")) as store:
             # Bulk insert 5000 cards via ORM in a single transaction
             with Session(store.engine) as session:
                 for i in range(5000):
                     content = f"word{i:05d}"
-                    session.add(Card(
-                        content=content,
-                        content_nfc_lower=normalize_nfc_lower(content),
-                        meaning="m",
-                    ))
+                    session.add(
+                        Card(
+                            content=content,
+                            content_nfc_lower=normalize_nfc_lower(content),
+                            meaning="m",
+                        )
+                    )
                 session.commit()
             # Add a decomposed-unicode card to force a path that previously fell
             # through to the full-scan fallback
@@ -596,9 +623,7 @@ class TestNfcLowerMigration:
         # Re-open: migration should backfill
         with closing(CardStore(db_path)) as store2:
             with store2.engine.connect() as conn:
-                rows = dict(conn.exec_driver_sql(
-                    "SELECT content, content_nfc_lower FROM card"
-                ).fetchall())
+                rows = dict(conn.exec_driver_sql("SELECT content, content_nfc_lower FROM card").fetchall())
             assert rows["Café"] == "café"
             assert rows["HELLO"] == "hello"
             # And lookups work

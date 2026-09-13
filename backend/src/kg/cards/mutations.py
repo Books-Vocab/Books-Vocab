@@ -47,18 +47,22 @@ class CardMutationMixin:
         if not content or not content.strip():
             raise ValueError("content must be non-empty")
         norm = normalize_nfc(content)
+        content_key = normalize_nfc_lower(content)
         with Session(self.engine) as session:
-            row = session.connection().exec_driver_sql(
-                "SELECT id FROM card WHERE content = ? COLLATE NOCASE "
-                "AND notebook_id = ? AND is_deleted = 0 LIMIT 1",
-                (norm, notebook_id),
-            ).first()
+            row = (
+                session.connection()
+                .exec_driver_sql(
+                    "SELECT id FROM card WHERE content_nfc_lower = ? AND notebook_id = ? AND is_deleted = 0 LIMIT 1",
+                    (content_key, notebook_id),
+                )
+                .first()
+            )
             if row:
                 return session.get(Card, row[0])  # type: ignore[return-value]
 
             card = Card(
-                content=content,
-                content_nfc_lower=normalize_nfc_lower(content),
+                content=norm,
+                content_nfc_lower=content_key,
                 meaning=meaning,
                 pos=pos,
                 examples=examples or [],
@@ -80,11 +84,15 @@ class CardMutationMixin:
                     exc_info=True,
                 )
                 session.rollback()
-                row = session.connection().exec_driver_sql(
-                    "SELECT id FROM card WHERE content = ? COLLATE NOCASE "
-                    "AND notebook_id = ? AND is_deleted = 0 LIMIT 1",
-                    (norm, notebook_id),
-                ).first()
+                row = (
+                    session.connection()
+                    .exec_driver_sql(
+                        "SELECT id FROM card WHERE content_nfc_lower = ? "
+                        "AND notebook_id = ? AND is_deleted = 0 LIMIT 1",
+                        (content_key, notebook_id),
+                    )
+                    .first()
+                )
                 if row:
                     return session.get(Card, row[0])  # type: ignore[return-value]
                 raise
@@ -125,18 +133,22 @@ class CardMutationMixin:
         if not content or not content.strip():
             raise ValueError("content must be non-empty")
         norm = normalize_nfc(content)
+        content_key = normalize_nfc_lower(content)
         with Session(self.engine) as session:
-            row = session.connection().exec_driver_sql(
-                "SELECT id FROM card WHERE content = ? COLLATE NOCASE "
-                "AND notebook_id = ? AND is_deleted = 0 LIMIT 1",
-                (norm, notebook_id),
-            ).first()
+            row = (
+                session.connection()
+                .exec_driver_sql(
+                    "SELECT id FROM card WHERE content_nfc_lower = ? AND notebook_id = ? AND is_deleted = 0 LIMIT 1",
+                    (content_key, notebook_id),
+                )
+                .first()
+            )
             if row:
                 return session.get(Card, row[0]), False  # type: ignore[return-value]
 
             card = Card(
-                content=content,
-                content_nfc_lower=normalize_nfc_lower(content),
+                content=norm,
+                content_nfc_lower=content_key,
                 meaning=meaning,
                 pos=pos,
                 examples=examples or [],
@@ -155,11 +167,15 @@ class CardMutationMixin:
                 session.commit()
             except IntegrityError:
                 session.rollback()
-                row = session.connection().exec_driver_sql(
-                    "SELECT id FROM card WHERE content = ? COLLATE NOCASE "
-                    "AND notebook_id = ? AND is_deleted = 0 LIMIT 1",
-                    (norm, notebook_id),
-                ).first()
+                row = (
+                    session.connection()
+                    .exec_driver_sql(
+                        "SELECT id FROM card WHERE content_nfc_lower = ? "
+                        "AND notebook_id = ? AND is_deleted = 0 LIMIT 1",
+                        (content_key, notebook_id),
+                    )
+                    .first()
+                )
                 if row:
                     return session.get(Card, row[0]), False  # type: ignore[return-value]
                 raise
@@ -175,17 +191,15 @@ class CardMutationMixin:
         with Session(self.engine) as session:
             card_ids = [
                 row[0]
-                for row in session.connection().exec_driver_sql(
-                    "SELECT id FROM card WHERE notebook_id = ?", (notebook_id,)
-                ).fetchall()
+                for row in session.connection()
+                .exec_driver_sql("SELECT id FROM card WHERE notebook_id = ?", (notebook_id,))
+                .fetchall()
             ]
             if not card_ids:
                 return 0
             placeholders = ", ".join("?" for _ in card_ids)
             params = tuple(card_ids)
-            session.connection().exec_driver_sql(
-                f"DELETE FROM card WHERE id IN ({placeholders})", params
-            )
+            session.connection().exec_driver_sql(f"DELETE FROM card WHERE id IN ({placeholders})", params)
             count = len(card_ids)
             session.commit()
             return count
@@ -210,7 +224,8 @@ class CardMutationMixin:
             if key in seen:
                 keeper = seen[key]
                 if (card.review_count, -card.created_at.timestamp()) > (
-                    keeper.review_count, -keeper.created_at.timestamp()
+                    keeper.review_count,
+                    -keeper.created_at.timestamp(),
                 ):
                     to_delete.append(keeper)
                     seen[key] = card
@@ -308,7 +323,10 @@ class CardMutationMixin:
             return False
 
     def batch_touch(
-        self, card_ids: set[str] | list[str], *, notebook_id: str | None = None,
+        self,
+        card_ids: set[str] | list[str],
+        *,
+        notebook_id: str | None = None,
     ) -> int:
         """Bump updated_at for multiple cards in a single transaction.
 
@@ -362,10 +380,7 @@ class CardMutationMixin:
         now = datetime.now(UTC)
         with Session(self.engine) as session:
             # Single WHERE IN query instead of N individual session.get() calls
-            cards_by_id = {
-                card.id: card
-                for card in session.exec(select(Card).where(Card.id.in_(card_ids))).all()
-            }
+            cards_by_id = {card.id: card for card in session.exec(select(Card).where(Card.id.in_(card_ids))).all()}
             for card_id, card in cards_by_id.items():
                 if card.is_deleted:
                     continue
