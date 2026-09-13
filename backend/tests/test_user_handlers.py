@@ -4,6 +4,7 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi import HTTPException
 
 from kg.api_models import (
     AutoLinkConfig,
@@ -162,6 +163,39 @@ class TestMergeUserConfig:
             "target_lang": "ja",
             "updated_at": 1717668000.0,
         }
+
+
+def test_update_user_config_does_not_recreate_terminated_account(tmp_path):
+    """An update that passed auth before deletion must not resurrect the account."""
+    import copy
+
+    store = {
+        "_revoked_before": {"u1": "2026-09-13T09:00:00+00:00"},
+        "_terminated": ["u1"],
+    }
+    saved = []
+
+    def load_users():
+        return copy.deepcopy(store)
+
+    def save_users(updated):
+        saved.append(copy.deepcopy(updated))
+        store.clear()
+        store.update(copy.deepcopy(updated))
+
+    with pytest.raises(HTTPException) as exc_info:
+        update_user_config_response(
+            UserConfigRequest(translation=TranslationLanguageConfig(target_lang="ja")),
+            {"id": "u1"},
+            users_lock_file=tmp_path / "users.json.lock",
+            load_users=load_users,
+            save_users=save_users,
+        )
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "Account was deleted. Please sign in again."
+    assert "u1" not in store
+    assert saved == []
 
 
 class TestBuildUserConfigTranslation:
