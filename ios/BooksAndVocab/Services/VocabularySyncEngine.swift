@@ -8,6 +8,12 @@ protocol VocabularySyncEngineServing: AnyObject {
     func batchAdd(entries: [VocabularyEntry], notebookId: String) async throws -> KGAddResponse
     func batchDeleteCards(words: [String], notebookId: String) async throws -> KGBatchDeleteResponse
     func deleteCard(word: String, notebookId: String) async throws
+    func updateCardContent(
+        word: String,
+        translation: String,
+        explanation: String?,
+        notebookId: String
+    ) async throws
     func triggerPipeline(notebookId: String) async throws
     func pushReviewStates(container: ModelContainer) async throws -> (updated: Int, skipped: Int)
     func pushReviewEvents(container: ModelContainer) async throws -> (inserted: Int, skipped: Int)
@@ -29,6 +35,10 @@ enum VocabularySyncEvent {
 struct VocabularySyncResult {
     let terminalOutcome: SyncTerminalOutcome
     let durationMs: Int
+}
+
+enum VocabularySyncEngineError: Error {
+    case contentUpdateUnavailable
 }
 
 @MainActor
@@ -67,6 +77,11 @@ final class VocabularySyncEngine: VocabularySyncExecuting {
             let adds = pendingEntries.filter {
                 !sanitizedDeletedEntryIds.contains($0.id)
                     && $0.syncAction == .add
+                    && $0.shouldUploadOnNextSync
+            }
+            let edits = pendingEntries.filter {
+                !sanitizedDeletedEntryIds.contains($0.id)
+                    && $0.syncAction == .edit
                     && $0.shouldUploadOnNextSync
             }
 
@@ -159,6 +174,27 @@ final class VocabularySyncEngine: VocabularySyncExecuting {
                     ))
                 }
             }
+
+            for entry in edits {
+                if Task.isCancelled { return cancelledResult(since: start) }
+                entry.prepareForRetryAttempt()
+                do {
+                    try await service.updateCardContent(
+                        word: entry.word,
+                        translation: entry.translation,
+                        explanation: entry.explanation,
+                        notebookId: entry.notebookId
+                    )
+                    if Task.isCancelled { return cancelledResult(since: start) }
+                    entry.markSynced()
+                } catch is CancellationError {
+                    return cancelledResult(since: start)
+                } catch {
+                    entry.markSyncFailed()
+                    encounteredFailure = true
+                }
+            }
+            if !edits.isEmpty { modelContext.safeSave() }
 
             emit(.stepStarted("trigger"))
             let affectedNotebookIds = Set(adds.map(\.notebookId)).filter { !$0.isEmpty }
@@ -260,6 +296,23 @@ final class KGServingVocabularySyncAdapter: VocabularySyncEngineServing {
 
     func deleteCard(word: String, notebookId: String) async throws {
         try await base.deleteCard(word: word, notebookId: notebookId)
+    }
+
+    func updateCardContent(
+        word: String,
+        translation: String,
+        explanation: String?,
+        notebookId: String
+    ) async throws {
+        guard let contentUpdater = base as? any VocabularyContentUpdating else {
+            throw VocabularySyncEngineError.contentUpdateUnavailable
+        }
+        try await contentUpdater.updateCardContent(
+            word: word,
+            translation: translation,
+            explanation: explanation,
+            notebookId: notebookId
+        )
     }
 
     func triggerPipeline(notebookId: String) async throws {

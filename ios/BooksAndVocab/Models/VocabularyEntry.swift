@@ -113,9 +113,14 @@ final class VocabularyEntry {
     var isPending: Bool { syncState == .pending }
     var isPendingAdd: Bool { syncState == .pending && syncAction == .add }
     var isPendingDelete: Bool { syncState == .pending && syncAction == .delete }
+    var isPendingEdit: Bool { syncState == .pending && syncAction == .edit }
     var isFailedAdd: Bool { syncState == .failed && syncAction == .add }
     var isFailedDelete: Bool { syncState == .failed && syncAction == .delete }
-    var shouldUploadOnNextSync: Bool { isPendingAdd || isPendingDelete || isFailedAdd || isFailedDelete }
+    var isFailedEdit: Bool { syncState == .failed && syncAction == .edit }
+    var shouldUploadOnNextSync: Bool {
+        isPendingAdd || isPendingDelete || isPendingEdit
+            || isFailedAdd || isFailedDelete || isFailedEdit
+    }
     var shouldAppearInReader: Bool { syncAction != .delete && !isArchived && !isReaderHidden }
     var shouldAppearInReview: Bool { shouldAppearInKnowledgeList && !isReviewExcluded }
     var shouldAppearInKnowledgeList: Bool { isSynced && syncAction != .delete && !isArchived }
