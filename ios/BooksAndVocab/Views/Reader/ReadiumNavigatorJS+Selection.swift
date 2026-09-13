@@ -150,10 +150,11 @@ extension ReadiumNavigatorJS {
 
             var text = textNode.textContent;
             var offset = range.startOffset;
+            var wordCharacter = /[\\p{L}\\p{M}\\p{N}'-]/u;
             var start = offset;
-            while (start > 0 && /[a-zA-Z'\\\\-]/.test(text[start - 1])) start--;
+            while (start > 0 && wordCharacter.test(text[start - 1])) start--;
             var end = offset;
-            while (end < text.length && /[a-zA-Z'\\\\-]/.test(text[end])) end++;
+            while (end < text.length && wordCharacter.test(text[end])) end++;
 
             var word = text.slice(start, end).replace(/^['-]+|['-]+$/g, '');
             if (word.length < 2) return null;
