@@ -236,6 +236,13 @@ def update_user_config_response(
         user_id = user["id"]
 
         if user_id not in users:
+            terminated = users.get("_terminated")
+            if isinstance(terminated, list) and user_id in terminated:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Account was deleted. Please sign in again.",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
             users[user_id] = {}
 
         if "config" not in users[user_id]:
