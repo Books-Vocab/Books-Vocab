@@ -38,6 +38,12 @@ class NotebookReviewPolicy(BaseModel):
     customMinimumIntervalHours: float
     customMaximumIntervalHours: float
 
+    @model_validator(mode="after")
+    def require_ordered_custom_intervals(self):
+        if self.customMinimumIntervalHours > self.customMaximumIntervalHours:
+            raise ValueError("customMinimumIntervalHours must not exceed customMaximumIntervalHours")
+        return self
+
 
 class NotebookCardLayout(BaseModel):
     recognition: NotebookCardLayoutPreset
