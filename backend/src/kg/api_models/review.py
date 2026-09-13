@@ -24,6 +24,13 @@ class ReviewStateEntry(BaseModel):
             return -1.0
         return value
 
+    @field_validator("review_count", "lapse_count", "review_streak", mode="before")
+    @classmethod
+    def _reject_boolean_counter_values(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError("review counters must be integers")
+        return value
+
 
 class ReviewStatePushRequest(BaseModel):
     entries: list[ReviewStateEntry] = Field(max_length=5000)
