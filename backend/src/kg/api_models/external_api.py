@@ -75,6 +75,13 @@ class ExternalCardUpdateRequest(BaseModel):
     collocations: list[str] | None = Field(default=None, max_length=20)
     mode: Literal["recognition", "production"] | None = None
 
+    @field_validator("meaning")
+    @classmethod
+    def validate_meaning_not_blank(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("meaning must contain at least one non-whitespace character")
+        return value
+
 
 class ExternalCardArchiveRequest(BaseModel):
     archived: bool

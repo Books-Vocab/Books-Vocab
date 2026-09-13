@@ -224,6 +224,30 @@ def test_external_card_ingest_is_idempotent_and_supports_card_operations(externa
     assert deleted.json() == {"cardId": card_id, "deleted": True}
 
 
+@pytest.mark.parametrize("meaning", [" ", "\t", "\n"])
+def test_external_card_update_rejects_blank_meaning(external_api, meaning):
+    api_key = _create_key(external_api)
+    headers = {"X-KG-API-Key": api_key}
+    created = external_api.client.post(
+        "/api/v1/cards",
+        json={"content": "durable", "meaning": "lasting"},
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    card_id = created.json()["card"]["id"]
+
+    rejected = external_api.client.patch(
+        f"/api/v1/cards/{card_id}",
+        json={"meaning": meaning},
+        headers=headers,
+    )
+
+    assert rejected.status_code == 422, rejected.text
+    fetched = external_api.client.get(f"/api/v1/cards/{card_id}", headers=headers)
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.json()["meaning"] == "lasting"
+
+
 def test_external_card_concurrent_duplicate_requests_are_idempotent(external_api, monkeypatch):
     api_key = _create_key(external_api)
     headers = {"X-KG-API-Key": api_key}
