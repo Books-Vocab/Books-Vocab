@@ -25,6 +25,9 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections import deque
+from concurrent.futures import Future, ThreadPoolExecutor
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +61,8 @@ SIMULATOR_RUNTIME_BUDGET_ERROR = "simulator-runtime-budget-exceeded"
 SIMULATOR_RUNTIME_MANUAL_REVIEW_ERROR = "simulator-runtime-manual-review-required"
 PHYSICAL_EXTENT_UNSUPPORTED = "physical-extents-unsupported"
 PHYSICAL_EXTENT_UNMAPPED = "physical-extents-unmapped"
+PHYSICAL_EXTENT_WORKERS = 8
+PHYSICAL_EXTENT_PENDING = 64
 F_LOG2PHYS_EXT = 65
 _LOG2PHYS_EXT_FORMAT = "=Iqq"
 _XCTEST_UDID_RE = re.compile(r"^[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$")
@@ -98,6 +103,8 @@ def _physical_file_extents(
 
     if not _supports_physical_extents():
         return [], "physical-extents-platform-unavailable"
+    if _deadline_expired(deadline):
+        return [], MEASUREMENT_BUDGET_ERROR
     size = int(stat_result.st_size)
     if size <= 0:
         return [], None
@@ -881,75 +888,118 @@ def measure_tree(
         if MEASUREMENT_BUDGET_ERROR not in errors:
             errors.append(MEASUREMENT_BUDGET_ERROR)
 
-    while pending:
+    # Keep traversal and evidence on the caller thread. Only the blocking
+    # per-file queries run in parallel; a bounded FIFO also caps retained
+    # paths, stats and completed-but-uncollected extent lists.
+    queries: deque[
+        tuple[
+            Path, os.stat_result, Future[tuple[list[tuple[int, int, int]], str | None]]
+        ]
+    ] = deque()
+
+    def collect_query() -> None:
+        nonlocal complete
+        entry_path, stat_result, future = queries.popleft()
+        try:
+            extents, physical_error = future.result(
+                timeout=_remaining_timeout(deadline)
+            )
+        except (TimeoutError, _MeasurementBudgetExceeded):
+            future.cancel()
+            extents, physical_error = [], MEASUREMENT_BUDGET_ERROR
+        except Exception as exc:  # noqa: BLE001 - unexpected worker errors fail closed
+            extents, physical_error = [], f"physical-worker:{exc.__class__.__name__}"
+        # A syscall may return its final extent after the deadline. Even a
+        # successful or fallback result then remains an incomplete observation.
         if budget_expired():
-            record_budget_expiry()
-            break
-        directory = pending.pop()
-        try:
-            entries = os.scandir(directory)
-        except OSError as exc:
+            physical_error = MEASUREMENT_BUDGET_ERROR
+        physical_observation["extents"].extend(extents)
+        if physical_error in {
+            PHYSICAL_EXTENT_UNSUPPORTED,
+            "physical-open:PermissionError",
+        }:
+            physical_observation["fallback_files"] += 1
+            physical_observation["fallback_allocated_bytes"] += _allocated_bytes(
+                stat_result
+            )
+            physical_observation["warnings"].append(f"{entry_path}: {physical_error}")
+        elif physical_error:
             complete = False
-            errors.append(f"{directory}: {exc.__class__.__name__}")
-            continue
-        try:
-            with entries:
-                for entry in entries:
-                    if budget_expired():
-                        record_budget_expiry()
-                        break
-                    # ``os.scandir`` yields absolute paths when the parent is
-                    # absolute. Avoid resolving every entry: this scan is
-                    # itself bounded by the disk attribution deadline, and
-                    # per-file ``Path.resolve`` makes large worktrees consume
-                    # the entire safety budget.
-                    entry_path = Path(entry.path)
-                    if entry_path in excluded:
-                        continue
-                    try:
-                        stat_result = entry.stat(follow_symlinks=False)
-                    except OSError as exc:
-                        complete = False
-                        errors.append(f"{entry_path}: {exc.__class__.__name__}")
-                        continue
-                    allocated += _allocated_bytes(stat_result)
-                    if entry.is_symlink():
-                        logical += int(stat_result.st_size)
-                        files += 1
-                    elif entry.is_dir(follow_symlinks=False):
-                        pending.append(entry_path)
-                    elif entry.is_file(follow_symlinks=False):
-                        identity = (int(stat_result.st_dev), int(stat_result.st_ino))
-                        if identity not in seen_files:
-                            seen_files.add(identity)
+            error = f"{entry_path}: {physical_error}"
+            errors.append(error)
+            physical_observation["errors"].append(error)
+
+    with ExitStack() as stack:
+        executor = None
+        if physical_observation is not None:
+            executor = ThreadPoolExecutor(max_workers=PHYSICAL_EXTENT_WORKERS)
+            # Python cannot interrupt an in-flight filesystem syscall. Do not
+            # delay partial evidence; the guard's process deadline is the outer
+            # backstop. Workers never mutate this report after it is returned.
+            stack.callback(executor.shutdown, wait=False, cancel_futures=True)
+        while pending:
+            if budget_expired():
+                record_budget_expiry()
+                break
+            directory = pending.pop()
+            try:
+                entries = os.scandir(directory)
+            except OSError as exc:
+                complete = False
+                errors.append(f"{directory}: {exc.__class__.__name__}")
+                continue
+            try:
+                with entries:
+                    for entry in entries:
+                        if budget_expired():
+                            record_budget_expiry()
+                            break
+                        # scandir already yields absolute paths. Resolving
+                        # every entry can consume the entire measurement budget.
+                        entry_path = Path(entry.path)
+                        if entry_path in excluded:
+                            continue
+                        try:
+                            stat_result = entry.stat(follow_symlinks=False)
+                        except OSError as exc:
+                            complete = False
+                            errors.append(f"{entry_path}: {exc.__class__.__name__}")
+                            continue
+                        allocated += _allocated_bytes(stat_result)
+                        if entry.is_symlink():
                             logical += int(stat_result.st_size)
                             files += 1
-                        if physical_observation is not None:
-                            extents, physical_error = _physical_file_extents(
-                                entry_path,
-                                stat_result,
-                                deadline=deadline,
+                        elif entry.is_dir(follow_symlinks=False):
+                            pending.append(entry_path)
+                        elif entry.is_file(follow_symlinks=False):
+                            identity = (
+                                int(stat_result.st_dev),
+                                int(stat_result.st_ino),
                             )
-                            physical_observation["extents"].extend(extents)
-                            if physical_error in {
-                                PHYSICAL_EXTENT_UNSUPPORTED,
-                                "physical-open:PermissionError",
-                            }:
-                                physical_observation["fallback_files"] += 1
-                                physical_observation["fallback_allocated_bytes"] += (
-                                    _allocated_bytes(stat_result)
+                            if identity not in seen_files:
+                                seen_files.add(identity)
+                                logical += int(stat_result.st_size)
+                                files += 1
+                            if executor is not None:
+                                queries.append(
+                                    (
+                                        entry_path,
+                                        stat_result,
+                                        executor.submit(
+                                            _physical_file_extents,
+                                            entry_path,
+                                            stat_result,
+                                            deadline=deadline,
+                                        ),
+                                    )
                                 )
-                                physical_observation["warnings"].append(
-                                    f"{entry_path}: {physical_error}"
-                                )
-                            elif physical_error:
-                                complete = False
-                                error = f"{entry_path}: {physical_error}"
-                                errors.append(error)
-                                physical_observation["errors"].append(error)
-        except OSError as exc:
-            complete = False
-            errors.append(f"{directory}: {exc.__class__.__name__}")
+                                if len(queries) >= PHYSICAL_EXTENT_PENDING:
+                                    collect_query()
+            except OSError as exc:
+                complete = False
+                errors.append(f"{directory}: {exc.__class__.__name__}")
+        while queries:
+            collect_query()
     result: dict[str, Any] = {
         "logical_bytes": logical,
         "allocated_bytes": allocated,

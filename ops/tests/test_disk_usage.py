@@ -4,6 +4,8 @@ import json
 import os
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -1410,6 +1412,258 @@ def test_xctest_devices_budget_uses_unique_physical_extents(
     assert observed["budget_allocated_bytes"] == 4096
     assert observed["allocated_bytes"] > observed["budget_allocated_bytes"]
     assert observed["measurement_complete"] is True
+
+
+def test_xctest_devices_queries_physical_extents_concurrently(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    xctest_root = tmp_path / "XCTestDevices"
+    udid = "99999999-9999-4999-8999-999999999999"
+    _write_xctest_device(xctest_root, udid)
+
+    monkeypatch.setattr(disk_usage, "_supports_physical_extents", lambda: True)
+    two_queries_started = threading.Event()
+    release_queries = threading.Event()
+    calls_started = 0
+    calls_lock = threading.Lock()
+
+    def blocking_extent_query(
+        *args: object, **kwargs: object
+    ) -> tuple[list[tuple[int, int, int]], None]:
+        nonlocal calls_started
+        with calls_lock:
+            calls_started += 1
+            query_index = calls_started
+            if calls_started >= 2:
+                two_queries_started.set()
+        release_queries.wait(timeout=2)
+        return [(9, query_index * 4096, (query_index + 1) * 4096)], None
+
+    monkeypatch.setattr(disk_usage, "_physical_file_extents", blocking_extent_query)
+    result: dict[str, object] = {}
+
+    def inspect() -> None:
+        result.update(disk_usage.inspect_xctest_devices(xctest_root))
+
+    inspector = threading.Thread(target=inspect)
+    inspector.start()
+    try:
+        assert two_queries_started.wait(timeout=0.5)
+    finally:
+        release_queries.set()
+        inspector.join(timeout=2)
+
+    assert not inspector.is_alive()
+    assert result["measurement_complete"] is True
+
+
+def test_xctest_extent_concurrency_bounds_workers_and_pending_results(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root = tmp_path / "XCTestDevices"
+    udid = "99999999-9999-4999-8999-999999999999"
+    _write_xctest_device(root, udid)
+    for index in range(128):
+        (root / udid / f"file-{index}").write_bytes(b"x")
+    monkeypatch.setattr(disk_usage, "_supports_physical_extents", lambda: True)
+    release = threading.Event()
+    queue_full = threading.Event()
+    all_workers_started = threading.Event()
+    lock = threading.Lock()
+    submitted = active = peak = 0
+
+    class TrackingExecutor(disk_usage.ThreadPoolExecutor):
+        def submit(self, *args, **kwargs):
+            nonlocal submitted
+            submitted += 1
+            result = super().submit(*args, **kwargs)
+            if submitted == disk_usage.PHYSICAL_EXTENT_PENDING:
+                queue_full.set()
+            return result
+
+    def query(*args, **kwargs):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+            if active == disk_usage.PHYSICAL_EXTENT_WORKERS:
+                all_workers_started.set()
+        try:
+            assert release.wait(timeout=5)
+            return [(9, 0, 4096)], None
+        finally:
+            with lock:
+                active -= 1
+
+    monkeypatch.setattr(disk_usage, "ThreadPoolExecutor", TrackingExecutor)
+    monkeypatch.setattr(disk_usage, "_physical_file_extents", query)
+    result = {}
+    inspector = threading.Thread(
+        target=lambda: result.update(disk_usage.inspect_xctest_devices(root))
+    )
+    inspector.start()
+    try:
+        assert all_workers_started.wait(timeout=2)
+        assert queue_full.wait(timeout=2)
+        assert submitted == disk_usage.PHYSICAL_EXTENT_PENDING == 64
+        assert peak == disk_usage.PHYSICAL_EXTENT_WORKERS == 8
+    finally:
+        release.set()
+        inspector.join(timeout=5)
+    assert not inspector.is_alive()
+    assert result["measurement_complete"] is True
+    assert submitted == 130
+    assert active == 0
+    assert peak <= 8
+    assert result["physical_allocated_bytes"] == 4096
+
+
+def test_xctest_extent_evidence_is_independent_of_completion_order(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root = tmp_path / "XCTestDevices"
+    for number in (1, 2, 3):
+        _write_xctest_device(root, f"{number:08d}-9999-4999-8999-999999999999")
+    monkeypatch.setattr(disk_usage, "_supports_physical_extents", lambda: True)
+
+    def query(path, *args, **kwargs):
+        if path.name == "device.plist":
+            return [], disk_usage.PHYSICAL_EXTENT_UNSUPPORTED
+        return [(9, 0, 8192), (9, 4096, 12288), (10, 0, 4096)], None
+
+    monkeypatch.setattr(disk_usage, "PHYSICAL_EXTENT_WORKERS", 1)
+    monkeypatch.setattr(disk_usage, "_physical_file_extents", query)
+    serial = disk_usage.inspect_xctest_devices(root)
+    assert serial["physical_allocated_bytes"] == 16384
+    assert serial["physical_fallback_files"] == 3
+    monkeypatch.setattr(disk_usage, "PHYSICAL_EXTENT_WORKERS", 8)
+    first_started = threading.Event()
+    second_finished = threading.Event()
+    lock = threading.Lock()
+    calls = 0
+
+    def reordered_query(*args, **kwargs):
+        nonlocal calls
+        with lock:
+            calls += 1
+            index = calls
+        if index == 1:
+            first_started.set()
+            assert second_finished.wait(timeout=2)
+        elif index == 2:
+            assert first_started.wait(timeout=2)
+            second_finished.set()
+        return query(*args, **kwargs)
+
+    monkeypatch.setattr(disk_usage, "_physical_file_extents", reordered_query)
+    assert disk_usage.inspect_xctest_devices(root) == serial
+
+
+def test_xctest_extent_timeout_returns_partial_evidence_without_late_mutation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root = tmp_path / "XCTestDevices"
+    _write_xctest_device(root, "99999999-9999-4999-8999-999999999999")
+    monkeypatch.setattr(disk_usage, "_supports_physical_extents", lambda: True)
+    release = threading.Event()
+    started = threading.Event()
+    executors = []
+
+    class TrackingExecutor(disk_usage.ThreadPoolExecutor):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            executors.append(self)
+
+    def query(*args, **kwargs):
+        started.set()
+        assert release.wait(timeout=5)
+        return [(9, 0, 4096)], None
+
+    monkeypatch.setattr(disk_usage, "ThreadPoolExecutor", TrackingExecutor)
+    monkeypatch.setattr(disk_usage, "_physical_file_extents", query)
+    observed = {}
+    inspector = threading.Thread(
+        target=lambda: observed.update(
+            disk_usage.inspect_xctest_devices(
+                root, deadline=time.monotonic() + 0.2, auto_reclaim=True, budget_bytes=1
+            )
+        )
+    )
+    inspector.start()
+    try:
+        assert started.wait(timeout=2)
+        inspector.join(timeout=1)
+        assert not inspector.is_alive()
+        assert observed["measurement_complete"] is False
+        assert observed["physical_measurement_complete"] is False
+        assert observed["budget_allocated_bytes"] is None
+        assert observed["budget_exceeded"] is None
+        assert observed["allocated_bytes"] > 0
+        assert observed["reclaim"]["attempted"] == 0
+        assert any(
+            disk_usage.MEASUREMENT_BUDGET_ERROR in item
+            for item in observed["physical_measurement_errors"]
+        )
+        frozen = json.dumps(observed, sort_keys=True)
+    finally:
+        release.set()
+        inspector.join(timeout=5)
+        for executor in executors:
+            executor.shutdown(wait=True)
+    assert json.dumps(observed, sort_keys=True) == frozen
+
+
+def test_xctest_extent_worker_failure_is_incomplete_not_fallback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root = tmp_path / "XCTestDevices"
+    _write_xctest_device(root, "99999999-9999-4999-8999-999999999999")
+    monkeypatch.setattr(disk_usage, "_supports_physical_extents", lambda: True)
+
+    def query(*args, **kwargs):
+        raise RuntimeError("unexpected worker failure")
+
+    monkeypatch.setattr(disk_usage, "_physical_file_extents", query)
+    observed = disk_usage.inspect_xctest_devices(root)
+    assert observed["measurement_complete"] is False
+    assert observed["budget_allocated_bytes"] is None
+    assert observed["physical_fallback_files"] == 0
+    assert all(
+        "physical-worker:RuntimeError" in item
+        for item in observed["physical_measurement_errors"]
+    )
+
+
+def test_expired_extent_query_does_not_open_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    path = tmp_path / "file"
+    path.write_bytes(b"x")
+    stat_result = path.stat()
+    monkeypatch.setattr(disk_usage, "_supports_physical_extents", lambda: True)
+    monkeypatch.setattr(
+        disk_usage.os, "open", lambda *args: pytest.fail("expired query opened a file")
+    )
+    assert disk_usage._physical_file_extents(
+        path, stat_result, deadline=time.monotonic() - 1
+    ) == ([], disk_usage.MEASUREMENT_BUDGET_ERROR)
+
+
+def test_xctest_st_blocks_path_does_not_start_extent_workers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root = tmp_path / "XCTestDevices"
+    _write_xctest_device(root, "99999999-9999-4999-8999-999999999999")
+    monkeypatch.setattr(disk_usage, "_supports_physical_extents", lambda: False)
+    monkeypatch.setattr(
+        disk_usage,
+        "ThreadPoolExecutor",
+        lambda **kwargs: pytest.fail("fallback started workers"),
+    )
+    observed = disk_usage.inspect_xctest_devices(root)
+    assert observed["measurement_complete"] is True
+    assert observed["allocation_method"] == "st_blocks"
+    assert observed["budget_allocated_bytes"] == observed["allocated_bytes"]
 
 
 def test_xctest_devices_physical_open_fallback_is_explicit_and_conservative(
