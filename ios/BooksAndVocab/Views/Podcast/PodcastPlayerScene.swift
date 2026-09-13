@@ -238,7 +238,8 @@ struct PodcastPlayerScene: View {
                     episode: episode,
                     modelContext: modelContext,
                     kgService: kgService,
-                    catalogPreview: preview
+                    catalogPreview: preview,
+                    isPreviewPlayback: accessState.isPreviewPlayback
                 )
                 return
             }
@@ -251,7 +252,8 @@ struct PodcastPlayerScene: View {
             sessionController.load(
                 episode: episode,
                 modelContext: modelContext,
-                kgService: kgService
+                kgService: kgService,
+                isPreviewPlayback: accessState.isPreviewPlayback
             )
         }
         .onChange(of: VocabularyHighlightSignature.make(
@@ -480,7 +482,8 @@ struct PodcastPlayerScene: View {
         sessionController.reloadEpisode(
             episode: episode,
             modelContext: modelContext,
-            kgService: kgService
+            kgService: kgService,
+            isPreviewPlayback: accessState.isPreviewPlayback
         )
     }
 
