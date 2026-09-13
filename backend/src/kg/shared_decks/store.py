@@ -30,7 +30,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import JSON, Column, String, UniqueConstraint, cast, func, or_, tuple_
+from sqlalchemy import JSON, Column, String, UniqueConstraint, cast, exists, func, or_, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, select
@@ -324,11 +324,16 @@ class SharedDeckStore:
             if q:
                 needle = normalize_nfc_lower(q).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
                 pattern = f"%{needle}%"
+                tag_values = func.json_each(SharedDeck.tags).table_valued("value").alias("shared_deck_tags")
                 stmt = stmt.where(
                     or_(
                         SharedDeck.title_nfc_lower.like(pattern, escape="\\"),
                         func.lower(cast(SharedDeck.publisher_display_name, String)).like(pattern, escape="\\"),
-                        func.lower(cast(SharedDeck.tags, String)).like(pattern, escape="\\"),
+                        exists(
+                            select(1)
+                            .select_from(tag_values)
+                            .where(func.lower(cast(tag_values.c.value, String)).like(pattern, escape="\\"))
+                        ),
                     )
                 )
             if category:

@@ -100,3 +100,12 @@ def test_deck_search_cursor_paginates_the_combined_match_set(shared_decks_api):
         "deck-author",
         "deck-tag",
     }
+
+
+def test_deck_search_does_not_match_json_syntax_in_tags(shared_decks_api):
+    _insert_deck(shared_decks_api.store, "deck-tag", "Academic", tags=["academic"])
+
+    response = shared_decks_api.client.get("/api/decks", params={"q": "["})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["decks"] == []
