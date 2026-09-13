@@ -35,6 +35,128 @@ struct VocabularySyncEngineTests {
         #expect(service.calls == ["add", "trigger", "pushStates", "pushEvents", "pull", "pullReviewEvents"])
     }
 
+    @Test("a pending or failed edit remains uploadable")
+    func editedEntriesRemainUploadable() {
+        let entry = makePendingEdit()
+
+        #expect(entry.shouldUploadOnNextSync)
+
+        entry.markSyncFailed()
+
+        #expect(entry.shouldUploadOnNextSync)
+    }
+
+    @Test("successful edit sends one content update and converges")
+    func successfulEditConverges() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let entry = makePendingEdit(notebookId: "notebook-a")
+        context.insert(entry)
+        try context.save()
+
+        let service = FakeVocabularySyncService()
+        let result = await VocabularySyncEngine().execute(
+            pendingEntries: [entry],
+            modelContext: context,
+            service: service,
+            emit: { _ in }
+        )
+
+        #expect(result.terminalOutcome == .completed)
+        #expect(service.editRequests == [
+            EditRequest(
+                word: entry.word,
+                translation: entry.translation,
+                explanation: entry.explanation,
+                notebookId: "notebook-a"
+            )
+        ])
+        #expect(entry.isSynced)
+        #expect(entry.syncAction == .add)
+        #expect(!entry.shouldUploadOnNextSync)
+    }
+
+    @Test("a failed edit stays retryable and makes sync partial")
+    func failedEditCanRetry() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let entry = makePendingEdit()
+        context.insert(entry)
+        try context.save()
+
+        let service = FakeVocabularySyncService()
+        service.editError = TestError.expected
+
+        let failedResult = await VocabularySyncEngine().execute(
+            pendingEntries: [entry],
+            modelContext: context,
+            service: service,
+            emit: { _ in }
+        )
+
+        #expect(failedResult.terminalOutcome == .partial)
+        #expect(entry.isFailed)
+        #expect(entry.syncAction == .edit)
+        #expect(entry.shouldUploadOnNextSync)
+        #expect(service.editRequests.count == 1)
+
+        service.editError = nil
+        let retryResult = await VocabularySyncEngine().execute(
+            pendingEntries: [entry],
+            modelContext: context,
+            service: service,
+            emit: { _ in }
+        )
+
+        #expect(retryResult.terminalOutcome == .completed)
+        #expect(service.editRequests.count == 2)
+        #expect(entry.isSynced)
+        #expect(entry.syncAction == .add)
+        #expect(!entry.shouldUploadOnNextSync)
+    }
+
+    @Test("cancelling an edit keeps it pending for retry")
+    func editCancellationKeepsRetryableState() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let entry = makePendingEdit()
+        context.insert(entry)
+        try context.save()
+
+        let service = FakeVocabularySyncService()
+        service.blockEdit = true
+        let task = Task { @MainActor in
+            await VocabularySyncEngine().execute(
+                pendingEntries: [entry],
+                modelContext: context,
+                service: service,
+                emit: { _ in }
+            )
+        }
+        let editStarted = await service.waitUntilEditStarted()
+        #expect(editStarted)
+        task.cancel()
+        let result = await task.value
+
+        #expect(result.terminalOutcome == .keepCancelled)
+        #expect(entry.isPending)
+        #expect(entry.syncAction == .edit)
+        #expect(entry.shouldUploadOnNextSync)
+    }
+
+    @Test("content edit payload uses the backend PATCH field names")
+    func contentEditPayloadUsesBackendFields() throws {
+        let payload = KGService.vocabContentPayload(
+            translation: "edited translation",
+            explanation: "edited explanation"
+        )
+        let data = try JSONEncoder().encode(payload)
+        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+
+        #expect(json["meaning"] as? String == "edited translation")
+        #expect(json["explanation"] as? String == "edited explanation")
+    }
+
     @Test("trigger failure is partial and does not prevent the remaining sync stages")
     func partialFailureContinues() async throws {
         let container = try makeContainer()
@@ -122,10 +244,32 @@ struct VocabularySyncEngineTests {
             bookTitle: "book"
         )
     }
+
+    private func makePendingEdit(
+        word: String = "edited",
+        notebookId: String = "notebook-a"
+    ) -> VocabularyEntry {
+        let entry = makeEntry(word: word)
+        entry.notebookId = notebookId
+        entry.kgCardId = "card-1"
+        entry.markSynced()
+        entry.translation = "edited translation"
+        entry.explanation = "edited explanation"
+        entry.syncAction = .edit
+        entry.syncState = .pending
+        return entry
+    }
 }
 
 private enum TestError: Error {
     case expected
+}
+
+private struct EditRequest: Equatable {
+    let word: String
+    let translation: String
+    let explanation: String?
+    let notebookId: String
 }
 
 @MainActor
@@ -133,9 +277,13 @@ private final class FakeVocabularySyncService: VocabularySyncEngineServing {
     var addResponse = KGAddResponse(created: 0, skipped: 0, duplicates: [], cardIds: [:])
     var triggerError: Error?
     var batchDeleteError: Error?
+    var editError: Error?
     var blockAdd = false
+    var blockEdit = false
     private(set) var calls: [String] = []
+    private(set) var editRequests: [EditRequest] = []
     private var addStarted = false
+    private var editStarted = false
 
     func batchAdd(entries: [VocabularyEntry], notebookId: String) async throws -> KGAddResponse {
         calls.append("add")
@@ -154,6 +302,28 @@ private final class FakeVocabularySyncService: VocabularySyncEngineServing {
 
     func deleteCard(word: String, notebookId: String) async throws {
         calls.append("delete")
+    }
+
+    func updateCardContent(
+        word: String,
+        translation: String,
+        explanation: String?,
+        notebookId: String
+    ) async throws {
+        calls.append("edit")
+        editStarted = true
+        editRequests.append(
+            EditRequest(
+                word: word,
+                translation: translation,
+                explanation: explanation,
+                notebookId: notebookId
+            )
+        )
+        if blockEdit {
+            try await Task.sleep(for: .seconds(60))
+        }
+        if let editError { throw editError }
     }
 
     func triggerPipeline(notebookId: String) async throws {
@@ -188,5 +358,13 @@ private final class FakeVocabularySyncService: VocabularySyncEngineServing {
         while !addStarted {
             await Task.yield()
         }
+    }
+
+    func waitUntilEditStarted() async -> Bool {
+        for _ in 0..<1_000 {
+            if editStarted { return true }
+            await Task.yield()
+        }
+        return editStarted
     }
 }
