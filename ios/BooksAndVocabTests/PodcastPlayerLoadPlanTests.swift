@@ -65,6 +65,47 @@ struct PodcastPlayerLoadPlanTests {
         #expect(plan.subtitleSource == .unavailable)
     }
 
+    @Test func previewPlaybackUsesPreviewDuration() throws {
+        let episode = makeEpisode()
+        episode.audioURL = "https://example.com/audio.m4a"
+        episode.previewAvailable = true
+        episode.previewDurationSec = 180
+
+        let plan = try #require(PodcastPlayerLoadPlan.make(
+            episode: episode,
+            isPreviewPlayback: true
+        ))
+
+        #expect(plan.durationSec == 180)
+    }
+
+    @Test func fullPlaybackIgnoresPreviewDuration() throws {
+        let episode = makeEpisode()
+        episode.audioURL = "https://example.com/audio.m4a"
+        episode.previewAvailable = true
+        episode.previewDurationSec = 180
+
+        let plan = try #require(PodcastPlayerLoadPlan.make(
+            episode: episode,
+            isPreviewPlayback: false
+        ))
+
+        #expect(plan.durationSec == 42)
+    }
+
+    @Test func previewPlaybackWithoutMetadataLetsAudioResolveItsDuration() throws {
+        let episode = makeEpisode()
+        episode.audioURL = "https://example.com/audio.m4a"
+        episode.previewAvailable = true
+
+        let plan = try #require(PodcastPlayerLoadPlan.make(
+            episode: episode,
+            isPreviewPlayback: true
+        ))
+
+        #expect(plan.durationSec == 0)
+    }
+
     private func makeEpisode() -> PodcastEpisode {
         PodcastEpisode(remoteId: "series_ep_1", episodeNumber: 1, title: "Pilot", durationSec: 42)
     }

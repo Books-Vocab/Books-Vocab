@@ -16,6 +16,7 @@ struct PodcastPlayerLoadPlan: Equatable {
 
     static func make(
         episode: PodcastEpisode,
+        isPreviewPlayback: Bool = false,
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     ) -> PodcastPlayerLoadPlan? {
         let localURL: URL? = {
@@ -31,7 +32,7 @@ struct PodcastPlayerLoadPlan: Equatable {
             usesLocalAudio: localURL != nil,
             subtitleSource: subtitleSource(for: episode),
             title: episode.displayTitle,
-            durationSec: episode.durationSec
+            durationSec: isPreviewPlayback ? episode.previewDurationSec : episode.durationSec
         )
     }
 
