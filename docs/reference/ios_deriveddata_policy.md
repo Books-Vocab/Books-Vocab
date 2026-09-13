@@ -212,6 +212,8 @@ writer，不會自動刪除 active、non-ephemeral 或無法證明可回收的 X
 
 閉環固定為：guard 觀測 → `lane_disk_usage.json` 歸戶 → 超限／遺失證據 fail-closed → active lane 由 owner 完成交接或 terminal cleanup → 再次觀測確認 worktree／branch／registry 狀態。測試入口為 `uv run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_disk_usage.py` 與 `./ops/tests/test_kg_disk_guard.sh`。
 
+為避免大型 XCTestDevices 樹的 APFS physical-extent 查詢耗盡整個歸戶時間窗，Darwin 上的單檔 extent syscall 使用固定 8 個 worker、最多保留 64 個待回收結果；目錄走訪與 extent union 仍在 caller thread，以維持 deterministic accounting。worker 不會寫入報告，逾時、取消或未預期例外都保留 partial bytes 並標記 `measurement_complete=false`／`budget_allocated_bytes=null`，不會被當成健康或授權清理。非 Darwin 或 extent 不支援時不建立 worker，維持原有 `st_blocks` fallback。這只改善觀測延遲，不放寬 clone-aware physical accounting、固定預算或 fail-closed 規則。
+
 ## Shared XCTestDevices platform store（2026-09-02）
 
 `~/Library/Developer/XCTestDevices` is shared Xcode test-device storage, not a
