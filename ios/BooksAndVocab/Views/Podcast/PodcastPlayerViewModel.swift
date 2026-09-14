@@ -427,7 +427,7 @@ final class PodcastPlayerViewModel {
     }
 
     func skip(seconds: Double) {
-        let target = max(0, min(duration, currentTime + seconds))
+        let target = PodcastSeekPolicy.clamp(currentTime + seconds, duration: duration)
         seek(to: target)
     }
 
