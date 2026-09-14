@@ -4,7 +4,7 @@ import math
 from typing import Any
 
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, RootModel, model_validator
 
 
 class PodcastSeriesSummary(RootModel[dict[str, Any]]):
@@ -44,8 +44,8 @@ class PodcastProgressRequest(BaseModel):
 class PodcastProgressResponse(BaseModel):
     series_id: str = Field(min_length=1)
     ep_num: int = Field(ge=1)
-    position_sec: float = Field(ge=0.0)
-    duration_sec: float = Field(ge=0.0)
+    position_sec: FiniteFloat = Field(ge=0.0)
+    duration_sec: FiniteFloat = Field(ge=0.0)
     updated_at: str = Field(min_length=1)
 
 
