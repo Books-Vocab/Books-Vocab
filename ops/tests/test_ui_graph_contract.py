@@ -1,4 +1,5 @@
 """Contract tests for the toolchain-free ``ui_graph`` query path."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -11,12 +12,23 @@ from pathlib import Path
 OPS = Path(__file__).resolve().parent.parent
 ROOT = OPS.parent
 CLI = OPS / "ui_graph.py"
-CONTRACT = OPS / "tests" / "fixtures" / "evidence_manifests" / "ui-graph-missing-index.json"
+CONTRACT = (
+    OPS / "tests" / "fixtures" / "evidence_manifests" / "ui-graph-missing-index.json"
+)
 
 _spec = importlib.util.spec_from_file_location("ui_graph", CLI)
 ui_graph = importlib.util.module_from_spec(_spec)
 assert _spec.loader is not None
 _spec.loader.exec_module(ui_graph)
+
+
+def test_contract_is_reached_by_ui_graph_dispatcher():
+    dispatcher = (ROOT / "ops" / "test_ops.sh").read_text(encoding="utf-8")
+    ui_graph_arm = dispatcher.split("    ui-graph)", 1)[1].split("    log-assert)", 1)[
+        0
+    ]
+
+    assert "ops/tests/test_ui_graph_contract.py" in ui_graph_arm
 
 
 def test_type_query_refuses_implicit_build_and_reports_missing_index(tmp_path):
@@ -64,11 +76,17 @@ def test_explicit_build_is_the_only_build_path(monkeypatch, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["schema"] == "kg.ui.graph.v1"
     assert payload["nodeCount"] == 0
-    assert calls == [("ios/BooksAndVocab/", ("struct", "class"), {
-        "records_json": None,
-        "store_path": None,
-        "label": "ui_graph",
-    })]
+    assert calls == [
+        (
+            "ios/BooksAndVocab/",
+            ("struct", "class"),
+            {
+                "records_json": None,
+                "store_path": None,
+                "label": "ui_graph",
+            },
+        )
+    ]
 
 
 def test_contract_manifest_is_verified_and_bounded():
