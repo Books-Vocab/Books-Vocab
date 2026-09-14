@@ -60,6 +60,25 @@ struct PodcastPlayerViewModelTests {
     }
 
     @Test
+    func skipForwardBeforeDurationLoadsPreservesTheRequestedTarget() {
+        let audio = FakeAudioEngine()
+        let viewModel = PodcastPlayerViewModel(
+            hostNames: [],
+            audioEngine: audio,
+            subtitleEngine: FakeSubtitleEngine()
+        )
+
+        viewModel.loadEpisode(
+            audioURL: URL(string: "https://example.com/episode.mp3")!,
+            subtitleContent: nil
+        )
+        viewModel.skip(seconds: 15)
+
+        #expect(viewModel.duration == 0)
+        #expect(audio.currentTime == 15)
+    }
+
+    @Test
     func injectedSubtitleEngineDrivesVisibleSentences() {
         let audio = FakeAudioEngine()
         let subtitles = FakeSubtitleEngine(sentences: [
