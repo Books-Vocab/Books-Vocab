@@ -4,8 +4,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..lexical import LexicalAttribution
-
 
 def _to_camel(value: str) -> str:
     head, *tail = value.split("_")
@@ -66,7 +64,7 @@ class DictionarySearchHit(BaseModel):
     language: str
     partsOfSpeech: list[str] = Field(default_factory=list)
     hasExamples: bool
-    attribution: LexicalAttribution
+    attribution: _DictionaryAttribution
 
 
 class DictionarySearchResponse(BaseModel):
