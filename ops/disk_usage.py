@@ -1278,6 +1278,27 @@ def _topology_name(path: Path, roots: list[Path]) -> str | None:
     return None
 
 
+def _is_codex_supervision_checkout(path: Path, roots: list[Path]) -> bool:
+    """Recognise Codex's fixed ``<session>/kg`` supervision checkout shape.
+
+    These checkouts are orchestration containers, not product delivery lanes.
+    They remain fully measured and visible, but their absence from the product
+    registry must not be reported as an unregistered product worktree.  The
+    shape is deliberately exact so an arbitrary checkout below the Codex root
+    still fails closed.
+    """
+
+    for root in roots:
+        if root.name != "worktrees" or ".codex" not in root.parts:
+            continue
+        try:
+            relative = path.relative_to(root)
+        except ValueError:
+            continue
+        return len(relative.parts) == 2 and relative.parts[1] == "kg"
+    return False
+
+
 def _load_registry(state_path: Path) -> tuple[list[dict[str, Any]], str | None]:
     try:
         payload = json.loads(state_path.read_text(encoding="utf-8"))
@@ -1651,7 +1672,15 @@ def build_report(
         if physical_path in registry_by_path:
             continue
         branch = str(physical.get("branch") or "(detached)")
-        lane_kind = "canonical-main" if physical_path == workspace else "lane"
+        topology = _topology_name(physical_path, topology_roots)
+        is_supervision = _is_codex_supervision_checkout(physical_path, topology_roots)
+        lane_kind = (
+            "canonical-main"
+            if physical_path == workspace
+            else "supervision"
+            if is_supervision
+            else "lane"
+        )
         is_excluded = physical_path in applied_exclusions
         entry = _lane_entry(
             branch=branch,
@@ -1662,11 +1691,14 @@ def build_report(
             physical=physical,
             deadline=deadline,
             excluded=is_excluded,
-            topology=_topology_name(physical_path, topology_roots),
+            topology=topology,
         )
         if lane_kind == "canonical-main":
             entry["ownership"] = "canonical"
             entry["lane_state"] = "canonical"
+        elif lane_kind == "supervision":
+            entry["ownership"] = "supervision"
+            entry["lane_state"] = "supervision"
         elif not is_excluded and entry["exists"]:
             # Keep the ownership state explicit while exposing dirty/unknown in
             # the separate worktree_state fields populated above.
@@ -1723,6 +1755,23 @@ def build_report(
         if item["lane_kind"] == "lane" and item["exists"]
     }
     physical_lanes = list(physical_lanes_by_path.values())
+    supervision_worktrees = [
+        item for item in lanes if item["lane_kind"] == "supervision" and item["exists"]
+    ]
+    dirty_supervision = sorted(
+        str(item["path"])
+        for item in supervision_worktrees
+        if item.get("worktree_state") == "dirty"
+    )
+    unknown_supervision = sorted(
+        str(item["path"])
+        for item in supervision_worktrees
+        if (
+            not item.get("inspection_complete", True)
+            or item.get("worktree_state") == "unknown"
+            or item.get("physical_state") == "unknown"
+        )
+    )
     accounted_lanes = [
         item for item in physical_lanes if item["accounted_in_aggregate"]
     ]
@@ -1850,7 +1899,7 @@ def build_report(
 
     lane_measurement_incomplete = False
     for item in lanes:
-        if item["lane_kind"] != "lane":
+        if item["lane_kind"] not in {"lane", "supervision"}:
             continue
         if item["exists"] and not item["measurement_complete"]:
             measurement_errors = item.get("measurement_errors", [])
@@ -1915,6 +1964,10 @@ def build_report(
             blocking_reasons.append("supervision-path-registered")
     if unregistered:
         blocking_reasons.append("unregistered-physical-worktree")
+    if dirty_supervision:
+        blocking_reasons.append("dirty-supervision-worktree")
+    if unknown_supervision:
+        blocking_reasons.append("unknown-supervision-worktree")
     if blocking_dirty_physical:
         blocking_reasons.append("dirty-physical-worktree")
     if unknown_physical:
@@ -2040,6 +2093,16 @@ def build_report(
             name: classification_summary(classification_items[name])
             for name in sorted(classification_items)
         },
+        "supervision_worktree_count": len(supervision_worktrees),
+        "supervision_worktree_logical_bytes": sum(
+            int(item["logical_bytes"]) for item in supervision_worktrees
+        ),
+        "supervision_worktree_allocated_bytes": sum(
+            int(item["allocated_bytes"]) for item in supervision_worktrees
+        ),
+        "supervision_worktree_paths": sorted(
+            str(item["path"]) for item in supervision_worktrees
+        ),
     }
 
     return {
@@ -2105,6 +2168,13 @@ def build_report(
             "active_physical_lane_count": len(active_physical_lanes),
             "terminal_physical_lane_count": len(terminal_physical_lanes),
             "excluded_physical_lane_count": len(excluded_lanes),
+            "supervision_worktree_count": len(supervision_worktrees),
+            "supervision_worktree_logical_bytes": sum(
+                int(item["logical_bytes"]) for item in supervision_worktrees
+            ),
+            "supervision_worktree_allocated_bytes": sum(
+                int(item["allocated_bytes"]) for item in supervision_worktrees
+            ),
             "lane_accounting": lane_accounting,
             "managed_logical_bytes": workspace_measurement["logical_bytes"]
             + lane_logical,
@@ -2140,6 +2210,11 @@ def build_report(
             "unknown_registry_record_indices": unknown_registry_record_indices,
             "active_dirty_implementation_worktrees": active_dirty_implementation,
             "blocking_dirty_physical_worktrees": blocking_dirty_physical,
+            "supervision_physical_worktrees": sorted(
+                str(item["path"]) for item in supervision_worktrees
+            ),
+            "dirty_supervision_worktrees": dirty_supervision,
+            "unknown_supervision_worktrees": unknown_supervision,
             "physical_identity_mismatches": sorted(
                 set(physical_identity_mismatches + detached_registered)
             ),

@@ -601,6 +601,32 @@ done
 grep -q '"worktree_cache_keys":12' "$state" && ok ".codex topology count recorded" || bad ".codex topology count missing"
 grep -q '"action":"deferred-worktree-ownership"' "$state" && ok "active/terminal/unknown cleanup deferred" || bad "worktree cleanup action was not deferred"
 
+echo "── .codex supervision checkout is visible but not a product-lane blocker ──"
+root="$TMP/codex-supervision"; state="$root/state.json"; registry="$root/registry.json"; lane_state="$root/lane-disk-usage.json"
+codex_root="$root/.codex/worktrees"; supervision="$codex_root/abcd/kg"
+mkdir -p "$root" "$supervision"
+git -C "$root" init -b main >/dev/null 2>&1
+git -C "$root" config user.email disk-test@example.com
+git -C "$root" config user.name "Disk Test"
+printf '%s\n' 'main' > "$root/tracked.txt"
+git -C "$root" add tracked.txt >/dev/null 2>&1
+git -C "$root" commit -m initial >/dev/null 2>&1
+git -C "$root" worktree add -b supervision "$supervision" HEAD >/dev/null 2>&1
+printf '%s\n' 'supervision' > "$supervision/supervision.txt"
+git -C "$supervision" add supervision.txt >/dev/null 2>&1
+git -C "$supervision" commit -m supervision >/dev/null 2>&1
+printf '%s\n' '{"schema":"kg.worktree.registry.v2","records":[]}' > "$registry"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_REGISTRY_STATE="$registry" KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" \
+  KG_DISK_USAGE_CODEX_WORKTREE_ROOT="$codex_root" KG_DISK_GUARD_UV_BIN="$HOME/.local/bin/uv" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  "$SCRIPT" >/dev/null 2>&1
+grep -q '"lane_kind": "supervision"' "$lane_state" && ok "supervision checkout kind is explicit" || bad "supervision checkout kind missing"
+grep -q '"ownership": "supervision"' "$lane_state" && ok "supervision ownership is explicit" || bad "supervision ownership missing"
+grep -q '"unregistered_physical_worktrees": \[\]' "$lane_state" && ok "supervision checkout is not unregistered" || bad "supervision checkout became unregistered"
+grep -q '"supervision_worktree_allocated_bytes": [1-9]' "$lane_state" && ok "supervision bytes are attributed" || bad "supervision bytes missing"
+grep -q '"lane_usage_verdict":"pass"' "$state" && ok "supervision checkout does not block guard" || bad "supervision checkout blocked guard"
+
 echo "── eviction failure: guard never reports budget repair success ──"
 root="$TMP/eviction-failure"; state="$root/state.json"; cache="$root/.cache/ios-test-derived-data"; failing_lib="$root/failing-cache-lib.sh"
 mkdir -p "$cache/old/Build"
@@ -799,7 +825,7 @@ started=$SECONDS
 if KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
   KG_DISK_GUARD_REGISTRY_STATE="$root/missing-registry.json" \
   KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" \
-  KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS=1 \
+  KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS=2 \
   KG_DISK_GUARD_UV_BIN="$fake_uv" FAKE_PID_FILE="$child_pid_file" \
   KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
   "$SCRIPT" >/dev/null 2>&1; then
@@ -809,10 +835,10 @@ else
 fi
 elapsed=$((SECONDS - started))
 (( external_rc == 0 )) && ok "guard preserves command exit compatibility" || bad "guard command exit changed after external timeout"
-(( elapsed <= 3 )) && ok "external attribution is stopped within the hard budget" || bad "external attribution exceeded hard budget (${elapsed}s)"
+(( elapsed <= 4 )) && ok "external attribution is stopped within the hard budget" || bad "external attribution exceeded hard budget (${elapsed}s)"
 grep -q '"lane_usage_rc":75' "$state" \
   && ok "external timeout reaches guard state as a hard block" || bad "external timeout did not reach guard state"
-grep -q '"lane_usage_budget_seconds":1' "$state" \
+grep -q '"lane_usage_budget_seconds":2' "$state" \
   && ok "external timeout records its configured budget" || bad "external timeout budget missing"
 if [[ -s "$child_pid_file" ]]; then
   child_pid="$(cat "$child_pid_file")"

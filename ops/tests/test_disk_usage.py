@@ -14,7 +14,7 @@ OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
 import disk_usage
-from disk_usage import main
+from disk_usage import BLOCKED_EXIT, main
 
 
 @pytest.fixture(autouse=True)
@@ -250,6 +250,87 @@ def test_explicit_supervision_worktree_is_excluded_with_evidence(
     assert entry["allocated_bytes"] > 0
     assert report["exclusions"]["supervision_worktree_paths"] == [str(supervision)]
     assert report["policy"]["unregistered_physical_worktrees"] == []
+
+
+def test_codex_supervision_checkout_is_observed_without_product_lane_block(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    codex_root = tmp_path / ".codex" / "worktrees"
+    supervision = codex_root / "abcd" / "kg"
+    supervision.parent.mkdir(parents=True)
+    _run_git(repo, "worktree", "add", "-b", "supervision", str(supervision), "main")
+    (supervision / "supervision.txt").write_bytes(b"supervision\n" * 128)
+    _run_git(supervision, "add", "supervision.txt")
+    _run_git(supervision, "commit", "-m", "supervision fixture")
+    monkeypatch.setenv("KG_DISK_USAGE_CODEX_WORKTREE_ROOT", str(codex_root))
+    state = tmp_path / "registry.json"
+    output = tmp_path / "lane-usage.json"
+    _write_registry(
+        state,
+        [
+            {
+                "branch": "lane-one",
+                "path": str(worktree),
+                "status": "active",
+                "claim_generation": 0,
+                "external_ids": ["DIRECT-DELIVERY-TEST"],
+            }
+        ],
+    )
+
+    assert (
+        main(["--workspace", str(repo), "--state", str(state), "--output", str(output)])
+        == 0
+    )
+
+    report = json.loads(output.read_text(encoding="utf-8"))
+    entry = next(item for item in report["lanes"] if item["path"] == str(supervision))
+    assert entry["lane_kind"] == "supervision"
+    assert entry["ownership"] == "supervision"
+    assert entry["accounted_in_aggregate"] is False
+    assert entry["allocated_bytes"] > 0
+    assert report["policy"]["unregistered_physical_worktrees"] == []
+    assert report["policy"]["supervision_physical_worktrees"] == [str(supervision)]
+    assert (
+        report["accounting"]["supervision_worktree_allocated_bytes"]
+        >= entry["allocated_bytes"]
+    )
+
+
+def test_codex_non_supervision_checkout_remains_unregistered_block(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    codex_root = tmp_path / ".codex" / "worktrees"
+    unregistered = codex_root / "abcd" / "other"
+    unregistered.parent.mkdir(parents=True)
+    _run_git(repo, "worktree", "add", "-b", "unregistered", str(unregistered), "main")
+    monkeypatch.setenv("KG_DISK_USAGE_CODEX_WORKTREE_ROOT", str(codex_root))
+    state = tmp_path / "registry.json"
+    output = tmp_path / "lane-usage.json"
+    _write_registry(
+        state,
+        [
+            {
+                "branch": "lane-one",
+                "path": str(worktree),
+                "status": "active",
+                "claim_generation": 0,
+                "external_ids": ["DIRECT-DELIVERY-TEST"],
+            }
+        ],
+    )
+
+    assert (
+        main(["--workspace", str(repo), "--state", str(state), "--output", str(output)])
+        == BLOCKED_EXIT
+    )
+
+    report = json.loads(output.read_text(encoding="utf-8"))
+    entry = next(item for item in report["lanes"] if item["path"] == str(unregistered))
+    assert entry["ownership"] == "unregistered"
+    assert report["policy"]["unregistered_physical_worktrees"] == [str(unregistered)]
 
 
 def test_active_registered_dirty_worktree_is_attributed_without_blocking(
