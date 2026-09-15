@@ -31,6 +31,31 @@ Collaborator approval 與獨立 agent review 都是品質與風險的 review evi
 - `agent-review` 缺失、失敗、延遲或成功都不會單獨阻塞 queue／merge；若 evidence 明確指出 P0、P1 或 security，必須另行寫成 durable typed hold／label，該 hold 才是硬性阻塞來源。
 - repository ruleset 的 required contexts 應維持只有短 `required`。這是降低無意義的 transport gate，不是移除 review；agent-review 仍可用來改善品質與發現風險。
 
+## External-agent connector receipt boundary
+
+`multi_agent_v1` external agents are not repo-local subprocesses.  The caller
+must receive an opaque `target_id`, an initial handshake, bounded heartbeat
+observations, and a terminal status from the named connector/account owner
+before treating the target as usable.  `pending_init`, rejected, timeout,
+unknown, missing heartbeat, or missing terminal status remain fail-closed.
+
+An optional hand-back `review_manifest` must be repo-relative.  The machine
+boundary is:
+
+```bash
+./ops/review_audit.sh --kind external-agent --manifest <path> --json
+```
+
+Every external-agent step records a non-empty transition, a boolean
+`fail_closed` observation, and a non-empty opaque `evidence_path`.  The audit
+is structural only: it rejects local `pid`／`pgid`／`process_id`／`task_registry`
+keys, but it cannot manufacture connector behavior or account-owner evidence.
+An audit pass therefore does not mean external qualification, wake/dispatch,
+Gate authority, merge readiness, or production release approval.
+Without the named connector/account-owner receipt, the Issue fixture remains
+`pending`; never synthesize a `verified` target or heartbeat just to satisfy the
+machine shape check.
+
 ## Bounded review-evidence preflight
 
 `ops/review_preflight.py` 是本機的 bounded、read-only evidence preflight。它只讀取 caller 提供的 JSON，輸出一份 `kg.review.preflight.v1` 摘要；不呼叫 GitHub、不建立或修改 review／check、不寫 backlog 或 status DB，也不執行 merge、release 或 production mutation。它協助 caller 在把證據交給 PR／CM 流程前分辨資料缺口，但不是另一個 review surface。
