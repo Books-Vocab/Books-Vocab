@@ -231,7 +231,8 @@ def _replace_abandoned(
     if "handback_outcomes" in original:
         candidate["handback_outcomes"] = copy.deepcopy(original["handback_outcomes"])
     if (
-        candidate.get("claim_generation") != int(original["claim_generation"]) + 1
+        type(candidate.get("claim_generation")) is not int
+        or candidate.get("claim_generation") <= int(original["claim_generation"])
         or candidate.get("branch") != original.get("branch")
         or candidate.get("codex_thread_id") != original.get("codex_thread_id")
         or candidate.get("external_ids") != registry._legacy_external_ids(original)

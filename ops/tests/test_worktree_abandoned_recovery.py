@@ -122,6 +122,44 @@ def test_abandoned_recovery_rejects_another_live_claim(tmp_path: Path) -> None:
         )
 
 
+def test_abandoned_recovery_uses_next_generation_after_later_terminal_history(
+    tmp_path: Path,
+) -> None:
+    original = _record(tmp_path)
+    later = dict(original)
+    later["claim_generation"] = 2
+    later["handed_back_at"] = None
+    later["handed_back_sha"] = None
+    later.pop("handback_claim_generation", None)
+    later.pop("handback_seal", None)
+    state_path = tmp_path / "registry.json"
+    registry.save_state(
+        state_path,
+        {"schema": registry.SCHEMA, "records": [original, later]},
+    )
+
+    preflight = registry_ops.preflight_abandoned(
+        state_path=state_path,
+        lane_id=LANE,
+        branch=BRANCH,
+        owner_thread_id=OWNER,
+        claim_generation=1,
+        expected_remote_head=HEAD,
+        target=tmp_path / "owner-worktree",
+    )
+    recovered = registry_ops.register_recovered_abandoned(
+        state_path=state_path,
+        preflight_result=preflight,
+        target=tmp_path / "owner-worktree",
+        lane_id=LANE,
+        claim_generation=1,
+    )
+
+    assert recovered["claim_generation"] == 3
+    assert recovered["handback_claim_generation"] == 3
+    assert registry._has_valid_stored_handback(recovered)
+
+
 class _GitHub:
     def __init__(self, pull_request: PullRequestSnapshot) -> None:
         self.pull_request = pull_request
