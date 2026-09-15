@@ -87,9 +87,7 @@ class _CandidatesMixin:
                 result = self._candidates[:]
                 if not result:
                     return result
-                popped_pairs = {
-                    self._normalize_pair(c.from_id, c.to_id) for c in result
-                }
+                popped_pairs = {self._normalize_pair(c.from_id, c.to_id) for c in result}
                 snapshot = [
                     c.model_dump(mode="json")
                     for c in self._candidates
@@ -98,8 +96,7 @@ class _CandidatesMixin:
             self._flush_candidates(snapshot)
             with self._lock:
                 self._candidates = [
-                    c for c in self._candidates
-                    if self._normalize_pair(c.from_id, c.to_id) not in popped_pairs
+                    c for c in self._candidates if self._normalize_pair(c.from_id, c.to_id) not in popped_pairs
                 ]
                 self._rebuild_candidate_set()
         return result
@@ -181,12 +178,14 @@ class _CandidatesMixin:
 
     def remove_pending_judge_for(self, card_id: str) -> int:
         """Remove a specific card ID from pending judge. Returns 1 if removed, 0 otherwise."""
-        with self._lock:
-            if card_id not in self._pending_judge:
-                return 0
-            self._pending_judge.discard(card_id)
-            snapshot = sorted(self._pending_judge)
-        self._flush_pending_judge(snapshot)
+        with self._pending_judge_pop_lock:
+            with self._lock:
+                if card_id not in self._pending_judge:
+                    return 0
+                snapshot = sorted(self._pending_judge - {card_id})
+            self._flush_pending_judge(snapshot)
+            with self._lock:
+                self._pending_judge.discard(card_id)
         return 1
 
     def pending_judge_count(self) -> int:
@@ -200,10 +199,7 @@ class _CandidatesMixin:
         """Remove all pending candidates involving a card. Returns count removed."""
         with self._lock:
             before = len(self._candidates)
-            self._candidates = [
-                c for c in self._candidates
-                if c.from_id != card_id and c.to_id != card_id
-            ]
+            self._candidates = [c for c in self._candidates if c.from_id != card_id and c.to_id != card_id]
             removed = before - len(self._candidates)
             if removed:
                 self._rebuild_candidate_set()

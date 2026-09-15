@@ -107,6 +107,55 @@ class TestRemovePendingJudgeFor:
         assert store.pending_judge_count() == 2
         assert set(store.pop_pending_judge()) == {"card_a", "card_c"}
 
+    def test_flush_failure_keeps_memory_and_disk_consistent(self, tmp_path):
+        pj_path = tmp_path / "pending_judge.json"
+        store = GraphStore(
+            links_path=tmp_path / "links.json",
+            candidates_path=tmp_path / "candidates.json",
+            blocked_path=tmp_path / "blocked.json",
+            pending_judge_path=pj_path,
+        )
+        store.add_pending_judge(["card_a", "card_b"])
+
+        def boom(snapshot):
+            raise OSError("disk full")
+
+        store._flush_pending_judge = boom
+
+        with pytest.raises(OSError):
+            store.remove_pending_judge_for("card_a")
+
+        assert store._pending_judge == {"card_a", "card_b"}
+        assert set(json.loads(pj_path.read_text())) == {"card_a", "card_b"}
+        reloaded = GraphStore(
+            links_path=tmp_path / "links.json",
+            candidates_path=tmp_path / "candidates.json",
+            blocked_path=tmp_path / "blocked.json",
+            pending_judge_path=pj_path,
+        )
+        assert reloaded._pending_judge == {"card_a", "card_b"}
+
+    def test_successful_removal_persists_only_requested_card_removal(self, tmp_path):
+        pj_path = tmp_path / "pending_judge.json"
+        store = GraphStore(
+            links_path=tmp_path / "links.json",
+            candidates_path=tmp_path / "candidates.json",
+            blocked_path=tmp_path / "blocked.json",
+            pending_judge_path=pj_path,
+        )
+        store.add_pending_judge(["card_a", "card_b", "card_c"])
+
+        assert store.remove_pending_judge_for("card_b") == 1
+        assert set(json.loads(pj_path.read_text())) == {"card_a", "card_c"}
+
+        reloaded = GraphStore(
+            links_path=tmp_path / "links.json",
+            candidates_path=tmp_path / "candidates.json",
+            blocked_path=tmp_path / "blocked.json",
+            pending_judge_path=pj_path,
+        )
+        assert reloaded._pending_judge == {"card_a", "card_c"}
+
     def test_remove_nonexistent_is_noop(self, store):
         store.add_pending_judge(["card_a"])
         store.remove_pending_judge_for("card_z")
@@ -117,6 +166,27 @@ class TestRemovePendingJudgeFor:
         result = store.cleanup_for_card("card_a")
         assert result["pending_judge_removed"] == 1
         assert store.pending_judge_count() == 1
+
+    def test_cleanup_for_card_persists_remainder_for_reload(self, tmp_path):
+        pj_path = tmp_path / "pending_judge.json"
+        store = GraphStore(
+            links_path=tmp_path / "links.json",
+            candidates_path=tmp_path / "candidates.json",
+            blocked_path=tmp_path / "blocked.json",
+            pending_judge_path=pj_path,
+        )
+        store.add_pending_judge(["card_a", "card_b"])
+
+        result = store.cleanup_for_card("card_a")
+
+        assert result["pending_judge_removed"] == 1
+        reloaded = GraphStore(
+            links_path=tmp_path / "links.json",
+            candidates_path=tmp_path / "candidates.json",
+            blocked_path=tmp_path / "blocked.json",
+            pending_judge_path=pj_path,
+        )
+        assert reloaded._pending_judge == {"card_b"}
 
 
 class TestPendingJudgeLoadValidation:
@@ -210,15 +280,11 @@ class TestPopPendingJudgeFlushFailure:
         # must never diverge.
         mem = set(store._pending_judge)
         disk = set(json.loads(pj_path.read_text()))
-        assert mem == disk, (
-            f"memory/disk diverged after flush failure: "
-            f"mem={mem}, disk={disk}"
-        )
+        assert mem == disk, f"memory/disk diverged after flush failure: mem={mem}, disk={disk}"
         # The IDs must not be lost — disk still has the old data, so memory
         # must too (otherwise a reload resurrects orphans).
         assert mem == {"card_a", "card_b"}, (
-            f"flush failed but in-memory pending_judge was cleared anyway "
-            f"→ IDs lost until next reload: mem={mem}"
+            f"flush failed but in-memory pending_judge was cleared anyway → IDs lost until next reload: mem={mem}"
         )
 
 
@@ -230,10 +296,8 @@ class TestMigrateCandidatesToPending:
 
         # Write old-style candidates data
         old_candidates = [
-            {"from_id": "card_a", "to_id": "card_b", "similarity": 0.85,
-             "created_at": "2026-01-01T00:00:00Z"},
-            {"from_id": "card_c", "to_id": "card_d", "similarity": 0.72,
-             "created_at": "2026-01-01T00:00:00Z"},
+            {"from_id": "card_a", "to_id": "card_b", "similarity": 0.85, "created_at": "2026-01-01T00:00:00Z"},
+            {"from_id": "card_c", "to_id": "card_d", "similarity": 0.72, "created_at": "2026-01-01T00:00:00Z"},
         ]
         cand_path.write_text(json.dumps(old_candidates))
 
@@ -256,8 +320,7 @@ class TestMigrateCandidatesToPending:
         """Without pending_judge_path, candidates stay as-is."""
         cand_path = tmp_path / "candidates.json"
         old_candidates = [
-            {"from_id": "card_a", "to_id": "card_b", "similarity": 0.85,
-             "created_at": "2026-01-01T00:00:00Z"},
+            {"from_id": "card_a", "to_id": "card_b", "similarity": 0.85, "created_at": "2026-01-01T00:00:00Z"},
         ]
         cand_path.write_text(json.dumps(old_candidates))
 
