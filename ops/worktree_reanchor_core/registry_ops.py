@@ -47,6 +47,39 @@ def _select_original(
     return matches[0]
 
 
+def _select_abandoned(
+    state: dict[str, Any], *, lane_id: str, claim_generation: int
+) -> dict[str, Any]:
+    """Select one terminal claim without treating it as a live owner.
+
+    Recovery is intentionally a separate path: an abandoned row is evidence,
+    never permission to mutate.  The caller must prove the exact PR and the
+    original owner before a new generation is created.
+    """
+
+    matches: list[dict[str, Any]] = []
+    for record in state.get("records", []):
+        if not isinstance(record, dict) or record.get("status") != "abandoned":
+            continue
+        try:
+            external_ids = registry._legacy_external_ids(record)
+        except (TypeError, ValueError):
+            continue
+        lane_matches = lane_id in external_ids or (
+            not external_ids and record.get("branch") == lane_id
+        )
+        if lane_matches and record.get("claim_generation") == claim_generation:
+            matches.append(record)
+    if len(matches) != 1:
+        raise ReanchorRefused(
+            "abandoned selector must match exactly one terminal claim",
+            lane_id=lane_id,
+            claim_generation=claim_generation,
+            matches=len(matches),
+        )
+    return matches[0]
+
+
 def _fingerprint(record: dict[str, Any]) -> str:
     return json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
@@ -149,6 +182,65 @@ def _replace_published(
         candidate["published_base_sha"] = commit_sha(
             published_base_sha,
             label="published PR base",
+        )
+    return candidate
+
+
+def _replace_abandoned(
+    state: dict[str, Any],
+    *,
+    original: dict[str, Any],
+    target: Path,
+) -> dict[str, Any]:
+    """Create a new published generation while retaining terminal history."""
+
+    if original.get("status") != "abandoned":
+        raise ReanchorRefused("only an abandoned claim can use abandoned-pr recovery")
+    if not registry._has_valid_stored_handback(original):
+        raise ReanchorRefused("abandoned claim lacks a valid typed hand-back")
+    seal = original.get("handback_seal")
+    if not isinstance(seal, dict):
+        raise ReanchorRefused("abandoned claim lacks its immutable hand-back seal")
+    base_sha = seal.get("base_sha")
+    if not isinstance(base_sha, str):
+        raise ReanchorRefused("abandoned hand-back seal lacks an exact base SHA")
+    rc, candidate = registry._register_record(
+        state,
+        branch=str(original["branch"]),
+        path=str(target),
+        intent=str(original["intent"]),
+        base=str(original.get("base") or base_sha),
+        external_ids=registry._legacy_external_ids(original),
+        scope=original.get("scope"),
+        codex_thread_id=original.get("codex_thread_id"),
+        delegated=original.get("delegated"),
+    )
+    if rc != registry.EXIT_OK:
+        raise ReanchorRefused(
+            f"new same-owner recovery claim refused: {candidate.get('reason', candidate)}",
+            registry=candidate,
+        )
+    candidate["status"] = "published"
+    candidate["base_sha"] = base_sha
+    published_base_sha = original.get("published_base_sha") or base_sha
+    candidate["published_base_sha"] = published_base_sha
+    candidate["handed_back_at"] = original.get("handed_back_at")
+    candidate["handed_back_sha"] = original.get("handed_back_sha")
+    candidate["handback_claim_generation"] = candidate["claim_generation"]
+    candidate["handback_seal"] = copy.deepcopy(seal)
+    if "handback_outcomes" in original:
+        candidate["handback_outcomes"] = copy.deepcopy(original["handback_outcomes"])
+    if (
+        candidate.get("claim_generation") != int(original["claim_generation"]) + 1
+        or candidate.get("branch") != original.get("branch")
+        or candidate.get("codex_thread_id") != original.get("codex_thread_id")
+        or candidate.get("external_ids") != registry._legacy_external_ids(original)
+        or candidate.get("scope") != original.get("scope")
+        or Path(str(candidate.get("path"))).resolve() != target
+        or not registry._has_valid_stored_handback(candidate)
+    ):
+        raise ReanchorRefused(
+            "recovered claim would not preserve exact owner/branch/Scope/hand-back"
         )
     return candidate
 
@@ -289,6 +381,62 @@ def preflight_resume(
     )
 
 
+def preflight_abandoned(
+    *,
+    state_path: Path,
+    lane_id: str,
+    branch: str,
+    owner_thread_id: str,
+    claim_generation: int,
+    expected_remote_head: str,
+    target: Path,
+) -> RegistryPreflight:
+    state = registry.load_state(state_path)
+    original = _select_abandoned(
+        state, lane_id=lane_id, claim_generation=claim_generation
+    )
+    if original.get("branch") != branch:
+        raise ReanchorRefused("caller branch differs from the exact abandoned claim")
+    if original.get("codex_thread_id") != owner_thread_id:
+        raise ReanchorRefused("caller owner differs from the exact abandoned claim")
+    if original.get("handed_back_sha") != expected_remote_head:
+        raise ReanchorRefused(
+            "expected remote HEAD differs from the abandoned hand-back"
+        )
+    if not registry._has_valid_stored_handback(original):
+        raise ReanchorRefused("abandoned claim lacks a valid typed hand-back")
+    recorded_path = Path(str(original["path"])).expanduser().resolve()
+    requested_path = target.expanduser().resolve()
+    if requested_path != recorded_path:
+        raise ReanchorRefused(
+            "recovery target path differs from the exact abandoned claim path",
+            recorded_path=str(recorded_path),
+            requested_path=str(requested_path),
+        )
+    seal = original.get("handback_seal")
+    base_sha = commit_sha(
+        seal.get("base_sha") if isinstance(seal, dict) else None,
+        label="abandoned hand-back base",
+    )
+    published_base_sha = commit_sha(
+        original.get("published_base_sha") or base_sha,
+        label="published PR base",
+    )
+    declared = declared_operations(original.get("scope"))
+    trial = copy.deepcopy(state)
+    trial_original = _select_abandoned(
+        trial, lane_id=lane_id, claim_generation=claim_generation
+    )
+    _replace_abandoned(trial, original=trial_original, target=target)
+    return RegistryPreflight(
+        original=original,
+        fingerprint=_fingerprint(original),
+        base_sha=base_sha,
+        published_base_sha=published_base_sha,
+        declared=declared,
+    )
+
+
 def _register_from_published(
     *,
     state_path: Path,
@@ -361,3 +509,23 @@ def register_resumed(
         claim_generation=claim_generation,
         action="resume-published",
     )
+
+
+def register_recovered_abandoned(
+    *,
+    state_path: Path,
+    preflight_result: RegistryPreflight,
+    target: Path,
+    lane_id: str,
+    claim_generation: int,
+) -> dict[str, Any]:
+    with registry._ledger_lock(state_path):
+        state = registry.load_state(state_path)
+        current = _select_abandoned(
+            state, lane_id=lane_id, claim_generation=claim_generation
+        )
+        if _fingerprint(current) != preflight_result.fingerprint:
+            raise ReanchorRefused("abandoned registry claim changed during recovery")
+        return_record = _replace_abandoned(state, original=current, target=target)
+        registry.save_state(state_path, state)
+    return return_record

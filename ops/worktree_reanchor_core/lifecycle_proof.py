@@ -57,7 +57,7 @@ class RecoveryLifecycleProof:
 def build_github(repo: Path, *, operation: str) -> RecoveryGitHubPort:
     """Use the existing typed GitHub CLI query adapter at the CLI boundary."""
 
-    if operation not in {"reanchor", "resume-published"}:
+    if operation not in {"reanchor", "resume-published", "recover-abandoned-pr"}:
         raise ValueError(f"unsupported recovery operation: {operation}")
     return GitHubCliAdapter(repo=repo)
 
@@ -224,6 +224,76 @@ def verify_resume_lifecycle(
             "maintenance resume requires an observed required check",
             pull_request=pull_request.number,
         )
+    return RecoveryLifecycleProof(
+        pull_request_number=pull_request.number,
+        base_sha=pull_request.base_sha,
+        head_sha=pull_request.head_sha,
+        required_status=check.status,
+    )
+
+
+def verify_abandoned_pr_lifecycle(
+    github: RecoveryGitHubPort,
+    *,
+    lane_id: str,
+    branch: str,
+    owner_thread_id: str,
+    claim_generation: int,
+    expected_base_sha: str,
+    expected_remote_head: str,
+    recorded_base_sha: str,
+    declared_scope: tuple[tuple[str, str], ...],
+    handback_digest: str | None,
+) -> RecoveryLifecycleProof:
+    """Prove an open PR is recoverable without reviving an ownerless lane."""
+
+    pull_request = _exact_open_pr(
+        github,
+        branch=branch,
+        expected_base_sha=expected_base_sha,
+        expected_remote_head=expected_remote_head,
+    )
+    try:
+        receipt = parse_pull_request_body(pull_request.body)
+        holds = pull_request_holds(pull_request)
+    except DeliverySourceError as exc:
+        raise ReanchorRefused(
+            f"abandoned PR recovery requires an exact typed receipt: {exc}"
+        ) from exc
+    if holds:
+        raise ReanchorRefused(
+            "abandoned PR recovery refuses a PR with an explicit hard hold",
+            holds=sorted(item.value for item in holds),
+        )
+    actual_scope = tuple(
+        sorted((item.path, item.operation.value) for item in receipt.scope.files)
+    )
+    expected_scope = tuple(sorted(declared_scope))
+    comparisons = (
+        (receipt.lane_id, lane_id, "lane"),
+        (receipt.branch, branch, "branch"),
+        (receipt.owner_thread_id, owner_thread_id, "owner"),
+        (receipt.claim_generation, claim_generation, "claim generation"),
+        (receipt.base_sha, recorded_base_sha, "hand-back base"),
+        (receipt.head_sha, expected_remote_head, "hand-back HEAD"),
+        (actual_scope, expected_scope, "Scope"),
+    )
+    for actual, expected, label in comparisons:
+        if actual != expected:
+            raise ReanchorRefused(
+                f"abandoned PR {label} evidence differs from the exact claim",
+                expected=expected,
+                actual=actual,
+            )
+    if handback_digest is not None and receipt.content_digest != handback_digest:
+        raise ReanchorRefused(
+            "abandoned PR receipt digest differs from the stored hand-back seal",
+            expected_digest=handback_digest,
+            actual_digest=receipt.content_digest,
+        )
+    # Required failure or missing evidence is a lane-local repair reason.  It
+    # is never an authorization to merge or bypass review.
+    check = _required(github, pull_request, allow_missing_required=True)
     return RecoveryLifecycleProof(
         pull_request_number=pull_request.number,
         base_sha=pull_request.base_sha,

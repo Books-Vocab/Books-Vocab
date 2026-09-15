@@ -17,6 +17,133 @@ from .resume_domain import (
 )
 
 
+def _validate_existing_abandoned_assets(
+    repo: Path,
+    *,
+    target: Path,
+    branch: str,
+    base_sha: str,
+    remote_head: str,
+    declared: tuple[tuple[str, str], ...],
+) -> None:
+    """Read-only proof for a released-looking but still existing owner checkout."""
+
+    if not target.is_dir():
+        raise ReanchorRefused(
+            "abandoned PR recovery requires the exact existing owner worktree",
+            path=str(target),
+        )
+    rows = git_ops._worktree_rows(repo)
+    matching = [
+        row
+        for row in rows
+        if Path(str(row.get("worktree") or "")).expanduser().resolve() == target
+    ]
+    if len(matching) != 1:
+        raise ReanchorRefused(
+            "abandoned PR recovery requires one exact registered physical worktree",
+            path=str(target),
+            matches=len(matching),
+        )
+    branch_rc, current_branch = git_ops._git(["branch", "--show-current"], target)
+    status_rc, dirty = git_ops._git(["status", "--porcelain=v1"], target)
+    head_rc, current_head = git_ops._git(
+        ["rev-parse", "--verify", "HEAD^{commit}"], target
+    )
+    if (
+        branch_rc != 0
+        or current_branch != branch
+        or status_rc != 0
+        or dirty
+        or head_rc != 0
+        or current_head != remote_head
+    ):
+        raise ReanchorRefused(
+            "abandoned PR recovery requires a clean worktree at the exact remote HEAD",
+            branch=current_branch,
+            head=current_head,
+            dirty=dirty,
+        )
+    if git_ops._remote_head(repo, branch) != remote_head:
+        raise ReanchorRefused("remote branch changed during abandoned PR recovery")
+    for label, sha in (
+        ("abandoned hand-back base", base_sha),
+        ("remote HEAD", remote_head),
+    ):
+        rc, output = git_ops._git(["cat-file", "-e", f"{sha}^{{commit}}"], repo)
+        if rc != 0:
+            raise ReanchorRefused(f"{label} commit is unavailable", git=output)
+    if (
+        git_ops._git(["merge-base", "--is-ancestor", base_sha, remote_head], repo)[0]
+        != 0
+    ):
+        raise ReanchorRefused(
+            "abandoned hand-back base is not an ancestor of the PR HEAD"
+        )
+    if git_ops.scope_operations(repo, start=base_sha, end=remote_head) != declared:
+        raise ReanchorRefused(
+            "abandoned PR branch differs from the exact original Scope"
+        )
+
+
+def _perform_abandoned_recovery(request) -> dict[str, object]:  # type: ignore[no-untyped-def]
+    """Restore one exact abandoned PR claim for the original owner only."""
+
+    preflight = registry_ops.preflight_abandoned(
+        state_path=request.state_path,
+        lane_id=request.lane_id,
+        branch=request.branch,
+        owner_thread_id=request.owner_thread_id,
+        claim_generation=request.claim_generation,
+        expected_remote_head=request.expected_remote_head,
+        target=request.target,
+    )
+    github = lifecycle_proof.build_github(
+        request.repo, operation="recover-abandoned-pr"
+    )
+    handback_seal = preflight.original.get("handback_seal")
+    handback_digest = (
+        handback_seal.get("digest") if isinstance(handback_seal, dict) else None
+    )
+    proof = lifecycle_proof.verify_abandoned_pr_lifecycle(
+        github,
+        lane_id=request.lane_id,
+        branch=request.branch,
+        owner_thread_id=request.owner_thread_id,
+        claim_generation=request.claim_generation,
+        expected_base_sha=preflight.published_base_sha,
+        expected_remote_head=request.expected_remote_head,
+        recorded_base_sha=preflight.base_sha,
+        declared_scope=preflight.declared,
+        handback_digest=handback_digest,
+    )
+    _validate_existing_abandoned_assets(
+        request.repo,
+        target=request.target,
+        branch=request.branch,
+        base_sha=preflight.base_sha,
+        remote_head=request.expected_remote_head,
+        declared=preflight.declared,
+    )
+    active = registry_ops.register_recovered_abandoned(
+        state_path=request.state_path,
+        preflight_result=preflight,
+        target=request.target,
+        lane_id=request.lane_id,
+        claim_generation=request.claim_generation,
+    )
+    payload = success_payload(
+        request,
+        active=active,
+        recorded_base=str(preflight.original.get("base") or preflight.base_sha),
+        base_sha=preflight.base_sha,
+        pull_request_number=proof.pull_request_number,
+    )
+    payload["recovery"] = "abandoned-pr"
+    payload["required_status"] = proof.required_status.value
+    return payload
+
+
 def _unique_branch_pr(
     github: lifecycle_proof.RecoveryGitHubPort, *, branch: str
 ) -> PullRequestSnapshot:
@@ -118,6 +245,8 @@ def perform_resume(
         mode=mode,
     )
     git_ops.validate_repository(request.repo)
+    if request.mode == "abandoned-pr":
+        return _perform_abandoned_recovery(request)
     preflight = registry_ops.preflight_resume(
         state_path=request.state_path,
         lane_id=request.lane_id,
