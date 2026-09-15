@@ -102,11 +102,13 @@ def add_parser(
     )
     parser.add_argument(
         "--mode",
-        choices=("required-failure", "maintenance"),
+        choices=("required-failure", "maintenance", "abandoned-pr"),
         default="required-failure",
         help=(
             "resume contract: required-failure needs an exact required failure; "
-            "maintenance permits same-owner work on an exact published PR"
+            "maintenance permits same-owner work on an exact published PR; "
+            "abandoned-pr restores one exact owner PR whose registry claim is "
+            "terminal history only"
         ),
     )
     parser.add_argument("--path", required=True)
