@@ -9,6 +9,7 @@ dispatch or embedding a second Python program in it.
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -40,7 +41,16 @@ def _read_local(path: Path) -> dict[str, str]:
 def _read_remote(path: str, server: str) -> dict[str, str]:
     ssh_bin = os.environ.get("KG_SSH_BIN", "ssh")
     proc = subprocess.run(
-        [ssh_bin, "-T", "-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes", server, f"cat {path}"],
+        [
+            ssh_bin,
+            "-T",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            "-o",
+            "BatchMode=yes",
+            server,
+            shlex.join(["cat", "--", path]),
+        ],
         capture_output=True,
         text=True,
         check=False,
