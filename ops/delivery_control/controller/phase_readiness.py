@@ -113,6 +113,12 @@ def _append_unique(items: list[str], value: str) -> None:
         items.append(value)
 
 
+def _has_actionable_unmapped_open_prs(metrics: PipelineMetrics) -> bool:
+    """Only actionable unknown PRs freeze unrelated production lanes."""
+
+    return (metrics.actionable_unmapped_open_prs or 0) > 0
+
+
 def _backlog_classified(metrics: PipelineMetrics, explicit: bool | None) -> bool | None:
     if explicit is not None:
         return explicit
@@ -145,7 +151,7 @@ def _global_blockers(base: DogfoodReadiness) -> list[str]:
         _append_unique(blockers, "delivery source inventory is incomplete")
     if not metrics.issue_inventory_complete:
         _append_unique(blockers, "raw open Issue inventory is incomplete")
-    if (metrics.actionable_unmapped_open_prs or 0) > 0:
+    if _has_actionable_unmapped_open_prs(metrics):
         _append_unique(blockers, "open PRs lack exact owner mapping")
     if metrics.duplicate_pr_mappings > 0:
         _append_unique(blockers, "PR mappings are not unique")
