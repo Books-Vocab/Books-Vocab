@@ -680,6 +680,79 @@ def test_quarantined_open_prs_do_not_count_as_actionable_blockers() -> None:
     assert measured.actionable_blocked_lanes == 0
 
 
+def test_unmapped_external_automation_pr_is_quarantined_but_stays_visible() -> None:
+    pull_request = PullRequestSnapshot(
+        number=1932,
+        url="https://github.com/astral-sh/setup-uv/pull/1932",
+        branch="dependabot/github_actions/astral-sh/setup-uv-6.1.0",
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+        state="OPEN",
+        draft=False,
+        mergeable=True,
+        body="Bump astral-sh/setup-uv from 6.0.0 to 6.1.0",
+    )
+    measured = measure_pipeline(
+        DeliveryInventory(
+            lanes=(
+                LaneInspection(
+                    key="PR#1932",
+                    registry=None,
+                    physical=None,
+                    snapshot=None,
+                    pull_requests=(pull_request,),
+                    decision=LaneDecision(
+                        LaneState.UNKNOWN,
+                        NextAction.INSPECT,
+                        "external automation PR",
+                    ),
+                ),
+            )
+        )
+    )
+
+    assert measured.raw_open_prs == 1
+    assert measured.unmapped_open_prs == 1
+    assert measured.quarantined_open_prs == 1
+    assert measured.actionable_unmapped_open_prs == 0
+
+
+def test_unmapped_local_pr_remains_actionable() -> None:
+    pull_request = PullRequestSnapshot(
+        number=1934,
+        url="https://github.com/Books-Vocab/Books-Vocab/pull/1934",
+        branch="debug/unowned-delivery-lane",
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+        state="OPEN",
+        draft=False,
+        mergeable=True,
+    )
+    measured = measure_pipeline(
+        DeliveryInventory(
+            lanes=(
+                LaneInspection(
+                    key="PR#1934",
+                    registry=None,
+                    physical=None,
+                    snapshot=None,
+                    pull_requests=(pull_request,),
+                    decision=LaneDecision(
+                        LaneState.UNKNOWN,
+                        NextAction.INSPECT,
+                        "unowned local PR",
+                    ),
+                ),
+            )
+        )
+    )
+
+    assert measured.raw_open_prs == 1
+    assert measured.unmapped_open_prs == 1
+    assert measured.quarantined_open_prs == 0
+    assert measured.actionable_unmapped_open_prs == 1
+
+
 def test_controller_triggers_missing_required_without_overproducing_solvers() -> None:
     cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
 

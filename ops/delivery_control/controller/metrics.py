@@ -10,11 +10,13 @@ from pathlib import Path
 
 from ..domain.branch_lifecycle import BranchDisposition, BranchSide
 from ..domain.demand_issues import IssueDisposition
+from ..domain.errors import PolicyViolation
 from ..domain.models import CheckStatus
-from ..domain.observations import InventoryProblem
+from ..domain.observations import InventoryProblem, PullRequestSnapshot
 from ..domain.states import LaneState
 from ..domain.telemetry import TelemetryReadResult
 from ..services.inspect import DeliveryInventory
+from ..services.pr_contract import parse_pull_request_body
 from .timings import (
     PipelineTimings,
     measure_pipeline_timings,
@@ -216,6 +218,29 @@ _BLOCKED = {
     LaneState.UNKNOWN,
 }
 
+_EXTERNAL_AUTOMATION_BRANCH_PREFIXES = ("dependabot/", "renovate/")
+
+
+def _is_unmapped_external_automation_pr(
+    pull_request: PullRequestSnapshot,
+) -> bool:
+    """Quarantine external automation PRs without a valid delivery receipt.
+
+    Automation PRs remain visible in raw inventory, but their third-party
+    changelog references must not become actionable local delivery demand.
+    A valid typed receipt keeps the conservative owner-mapping contract.
+    """
+
+    if not pull_request.branch.casefold().startswith(
+        _EXTERNAL_AUTOMATION_BRANCH_PREFIXES
+    ):
+        return False
+    try:
+        parse_pull_request_body(pull_request.body)
+    except PolicyViolation:
+        return True
+    return False
+
 
 def measure_pipeline(
     inventory: DeliveryInventory,
@@ -255,6 +280,14 @@ def measure_pipeline(
         and lane.registry.status in {"active", "cleanup_pending", "published"}
         for pull_request in lane.pull_requests
         if pull_request.state == "OPEN"
+    }
+    automation_quarantined_pull_request_numbers = {
+        pull_request.number
+        for lane in lanes
+        if lane.registry is None
+        for pull_request in lane.pull_requests
+        if pull_request.state == "OPEN"
+        and _is_unmapped_external_automation_pr(pull_request)
     }
     review_decisions_by_number: dict[int, set[str | None]] = {}
     for lane in lanes:
@@ -546,7 +579,10 @@ def measure_pipeline(
         timings=timings,
         quarantined_source_problems=isolation.quarantined_source_problems,
         quarantined_blocked_lanes=isolation.quarantined_blocked_lanes,
-        quarantined_open_prs=isolation.quarantined_open_prs,
+        quarantined_open_prs=(
+            isolation.quarantined_open_prs
+            + len(automation_quarantined_pull_request_numbers)
+        ),
         quarantined_terminal_cleanup=isolation.quarantined_terminal_cleanup,
         actionable_source_problems=max(
             0,
@@ -563,7 +599,8 @@ def measure_pipeline(
         actionable_unmapped_open_prs=max(
             0,
             len(all_pull_request_numbers - mapped_pull_request_numbers)
-            - isolation.quarantined_open_prs,
+            - isolation.quarantined_open_prs
+            - len(automation_quarantined_pull_request_numbers),
         ),
         actionable_terminal_cleanup=max(
             0,
