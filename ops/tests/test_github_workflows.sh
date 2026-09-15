@@ -186,6 +186,98 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
   if grep -Eq 'backend-quality|ops-suite|ios-quality|llm-eval|ui-quality-gate|confidence' <<<"$merge_group_required_block"; then
     fail "merge-group required gate imports slow confidence jobs"
   fi
+  grep -q '^  agent-review:' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group required workflow has no independent review gate"
+  agent_review_block="$(awk '
+    /^  agent-review:/ { in_review=1; next }
+    in_review && /^  [A-Za-z0-9_-]+:/ { exit }
+    in_review { print }
+  ' "$MERGE_GROUP_REQUIRED")"
+  grep -q '^    name: agent-review$' <<<"$agent_review_block" \
+    || fail "merge-group independent review gate does not emit the required context"
+  grep -q 'github.event.merge_group.head_sha' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate is not bound to the merge-group HEAD"
+  grep -q 'mergeQueue' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not read queue membership"
+  if grep -q 'headCommit.oid == "\$group_sha"' "$MERGE_GROUP_REQUIRED"; then
+    fail "merge-group independent review gate compares the synthetic group SHA to the PR head"
+  fi
+  grep -q 'pullRequest.headRefOid' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not bind queue membership to the PR head ref"
+  if grep -q 'solo == true' "$MERGE_GROUP_REQUIRED"; then
+    fail "merge-group independent review gate incorrectly rejects grouped entries"
+  fi
+  grep -q 'group_pr_numbers' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not enumerate grouped PRs"
+  grep -q 'target_position' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not bound group membership by queue position"
+  grep -q 'MERGE_GROUP_PR_NUMBERS' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not consume explicit event membership"
+  grep -q 'merge_group.pull_requests' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not bind membership to merge-group event evidence"
+  grep -q 'membership evidence' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not fail closed without membership evidence"
+  if grep -q 'maximumEntriesToMerge\|maximum_entries_to_merge' "$MERGE_GROUP_REQUIRED"; then
+    fail "merge-group independent review gate infers membership from a configured ceiling"
+  fi
+  grep -q 'range(.*target_position' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not prove contiguous queue membership"
+  grep -q 'for group_pr_number in' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not validate each grouped PR"
+  grep -q 'check-runs' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not read PR check evidence"
+  grep -q 'sort_by' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not select the latest exact-head review run"
+  grep -q 'last' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not select the latest exact-head review run"
+  grep -q 'review_candidates=' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate filters review status before selecting the latest observation"
+  grep -q 'updated_at' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not order review observations by update time"
+  grep -q 'review_status' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not validate the selected latest review status"
+  grep -q 'review_provenance' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not isolate malformed review provenance"
+  grep -q 'external_id' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not bind evidence to the trusted review check artifact"
+  grep -q 'details_url' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not bind evidence to a workflow run"
+  grep -q 'workflow_id' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not verify trusted workflow identity"
+  grep -q 'agent-review.yml' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not identify the trusted workflow"
+  grep -q '^  actions: read$' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not have Actions read permission"
+  grep -q 'pull_requests' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not verify PR association"
+  grep -q 'head.sha' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not bind PR association to exact HEAD"
+  grep -q 'issue_comment' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not handle trusted issue-comment provenance"
+  grep -q 'Independent agent review' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not validate trusted review output"
+  grep -q 'startswith' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not distinguish the trusted review artifact"
+  grep -q '== "completed"' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not require completed exact-head evidence"
+  grep -q '== "success"' "$MERGE_GROUP_REQUIRED" \
+    || fail "merge-group independent review gate does not require successful exact-head evidence"
+  queue_membership_fixture='[{"position":2},{"position":3},{"position":4},{"position":5}]'
+  jq -e 'map(.position) as $positions | ($positions | min) as $start | ($positions | max) as $target_position | ($positions | unique | length) == ($positions | length) and ($positions | sort) == [range($start; ($target_position + 1))]' \
+    <<<"$queue_membership_fixture" >/dev/null \
+    || fail "merge-group fixture rejects a valid group larger than three entries"
+  noncontiguous_fixture='[{"position":2},{"position":4}]'
+  if jq -e 'map(.position) as $positions | ($positions | min) as $start | ($positions | max) as $target_position | ($positions | unique | length) == ($positions | length) and ($positions | sort) == [range($start; ($target_position + 1))]' \
+    <<<"$noncontiguous_fixture" >/dev/null; then
+    fail "merge-group fixture accepts non-contiguous membership"
+  fi
+  review_fixture='[{"updated_at":"2026-08-26T15:00:00Z","status":"completed","conclusion":"success"},{"updated_at":"2026-08-26T15:01:00Z","status":"in_progress","conclusion":""}]'
+  latest_review_status="$(jq -r 'sort_by(.updated_at) | last.status' <<<"$review_fixture")"
+  [[ "$latest_review_status" == "in_progress" ]] \
+    || fail "review fixture does not select the newer in-progress observation"
+  malformed_review_fixture='[{"details_url":"not-a-run","external_id":"wrong"}]'
+  [[ "$(jq '[.[] | select((.details_url | startswith("https://github.com/")) and (.external_id | startswith("kg.agent-review.v1:")))] | length' <<<"$malformed_review_fixture")" == "0" ]] \
+    || fail "review fixture accepts malformed provenance"
 fi
 
 # Keep Actions on the Node 24 generation.  Pinned SHAs preserve supply-chain
