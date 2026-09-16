@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -352,6 +352,40 @@ def test_user_activity_equal_timestamps_use_source_precedence_and_native_id_desc
     ]
     assert [event["id"] for event in result["events"] if event["type"] == "judge"] == [2, 1]
     assert all("_source_id" not in event for event in result["events"])
+
+
+def test_user_activity_uses_utc_instants_for_mixed_offset_cutoff_and_order(activity_env, monkeypatch):
+    """Legacy offset-bearing rows must use UTC instants for window and merge order."""
+    import kg.admin_user_activity as activity
+
+    frozen_now = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen_now if tz is not None else frozen_now.replace(tzinfo=None)
+
+    monkeypatch.setattr(activity, "datetime", FrozenDateTime)
+
+    # 11:30Z is outside the 24h window but lexically newer than the UTC cutoff.
+    _record_pipeline(
+        "u1",
+        run_id="outside-utc",
+        when=datetime(2026, 9, 16, 13, 30, tzinfo=timezone(timedelta(hours=2))),
+    )
+    # 12:00Z is exactly on the inclusive boundary, despite its +02:00 spelling.
+    _record_translate(
+        "u1",
+        word="boundary-utc",
+        when=datetime(2026, 9, 16, 14, 0, tzinfo=timezone(timedelta(hours=2))),
+    )
+    _record_judge("u1", when=datetime(2026, 9, 16, 13, 30, tzinfo=UTC))
+
+    result = activity.get_user_activity("u1", hours=24)
+
+    assert result["counts"] == {"translate": 1, "pipeline": 0, "judge": 1}
+    assert [event["type"] for event in result["events"]] == ["judge", "translate"]
+    assert [event["word"] for event in result["events"] if event["type"] == "translate"] == ["boundary-utc"]
 
 
 def test_user_activity_cap_keeps_newest_pipeline_ties(activity_env):
