@@ -51,6 +51,82 @@ def test_review_events_push_and_pull(isolated_api):
     assert body["cursor"] is not None
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("review_count_after", True),
+        ("review_count_after", False),
+        ("streak_after", True),
+        ("streak_after", False),
+        ("lapse_after", True),
+        ("lapse_after", False),
+    ],
+)
+def test_review_events_patch_rejects_boolean_srs_counters_without_write(isolated_api, field, value):
+    payload = _payload("evt-bool-counter")
+    payload[field] = value
+
+    r = isolated_api.client.patch(
+        "/api/vocab/review-events",
+        json={"entries": [payload]},
+        headers=isolated_api.headers,
+    )
+
+    assert r.status_code == 422, r.text
+    stored = isolated_api.client.get("/api/vocab/review-events", headers=isolated_api.headers)
+    assert stored.status_code == 200, stored.text
+    assert stored.json() == {"entries": [], "cursor": None}
+
+
+def test_review_events_patch_rejects_mixed_boolean_batch_without_partial_write(isolated_api):
+    valid = _payload("evt-valid-counter")
+    valid.update(review_count_after=3, streak_after=2, lapse_after=1)
+    invalid = _payload("evt-invalid-counter")
+    invalid["streak_after"] = True
+
+    r = isolated_api.client.patch(
+        "/api/vocab/review-events",
+        json={"entries": [valid, invalid]},
+        headers=isolated_api.headers,
+    )
+
+    assert r.status_code == 422, r.text
+    stored = isolated_api.client.get("/api/vocab/review-events", headers=isolated_api.headers)
+    assert stored.status_code == 200, stored.text
+    assert stored.json() == {"entries": [], "cursor": None}
+
+
+def test_review_events_patch_accepts_integer_srs_counters_and_nullable_defaults(isolated_api):
+    payload = _payload("evt-integer-counter")
+    payload.update(review_count_after=3, streak_after=2, lapse_after=1)
+
+    r = isolated_api.client.patch(
+        "/api/vocab/review-events",
+        json={"entries": [payload]},
+        headers=isolated_api.headers,
+    )
+
+    assert r.status_code == 200, r.text
+    stored = isolated_api.client.get("/api/vocab/review-events", headers=isolated_api.headers)
+    assert stored.status_code == 200, stored.text
+    assert stored.json()["entries"][0]["review_count_after"] == 3
+    assert stored.json()["entries"][0]["streak_after"] == 2
+    assert stored.json()["entries"][0]["lapse_after"] == 1
+
+    legacy = _payload("evt-nullable-counter")
+    legacy_response = isolated_api.client.patch(
+        "/api/vocab/review-events",
+        json={"entries": [legacy]},
+        headers=isolated_api.headers,
+    )
+    assert legacy_response.status_code == 200, legacy_response.text
+    entries = isolated_api.client.get("/api/vocab/review-events", headers=isolated_api.headers).json()["entries"]
+    legacy_entry = next(entry for entry in entries if entry["event_id"] == "evt-nullable-counter")
+    assert legacy_entry["review_count_after"] is None
+    assert legacy_entry["streak_after"] is None
+    assert legacy_entry["lapse_after"] is None
+
+
 @pytest.mark.parametrize("event_id", ["", " ", "\t\n"])
 def test_review_events_patch_rejects_blank_event_id_without_write(isolated_api, event_id):
     r = isolated_api.client.patch(
