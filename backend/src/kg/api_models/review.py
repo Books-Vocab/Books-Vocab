@@ -88,6 +88,13 @@ class ReviewEventPushEntry(ReviewEventEntry):
             return -1.0
         return value
 
+    @field_validator("review_count_after", "streak_after", "lapse_after", mode="before")
+    @classmethod
+    def _reject_boolean_srs_counter_values(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError("review event SRS counters must be integers")
+        return value
+
 
 class ReviewEventsPushRequest(BaseModel):
     entries: list[ReviewEventPushEntry] = Field(max_length=10000)
