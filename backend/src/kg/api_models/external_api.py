@@ -110,6 +110,13 @@ class ExternalCardReviewRequest(BaseModel):
             raise ValueError("must be an ISO 8601 timestamp") from exc
         return value
 
+    @field_validator("reviewCount", "lapseCount", "reviewStreak", mode="before")
+    @classmethod
+    def _reject_boolean_counter_values(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError("review counters must be integers")
+        return value
+
     @field_validator("reviewIntervalHours", mode="before")
     @classmethod
     def _replace_non_finite_interval_for_validation(cls, value: object) -> object:
