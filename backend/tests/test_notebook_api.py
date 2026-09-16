@@ -427,6 +427,41 @@ def test_patch_notebook_settings_rejects_inverted_review_interval(isolated_api):
     assert notebook["settings"]["reviewPolicy"] == {"value": valid, "updatedAt": 100.0}
 
 
+@pytest.mark.parametrize(
+    "field",
+    [
+        "customInitialIntervalHours",
+        "customRememberedMultiplier",
+        "customForgotMultiplier",
+        "customMinimumIntervalHours",
+        "customMaximumIntervalHours",
+    ],
+)
+@pytest.mark.parametrize("non_finite", ["NaN", "Infinity", "-Infinity"])
+def test_patch_notebook_settings_rejects_non_finite_review_policy_values(isolated_api, field, non_finite):
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Finite review policy"}, headers=h).json()["id"]
+
+    value = _review_policy()
+    body = json.dumps({"reviewPolicy": {"value": value, "updatedAt": 100.0}})
+    marker = f'"{field}": {json.dumps(value[field])}'
+    body = body.replace(marker, f'"{field}": {non_finite}', 1)
+    rejected = client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        content=body,
+        headers={**h, "Content-Type": "application/json"},
+    )
+
+    assert rejected.status_code == 422, rejected.text
+    assert any(error["type"] == "finite_number" for error in rejected.json()["detail"])
+
+    listed = client.get("/api/notebooks", headers=h)
+    assert listed.status_code == 200, listed.text
+    notebook = next(item for item in listed.json() if item["id"] == nb_id)
+    assert notebook["settings"]["reviewPolicy"] == {"value": None, "updatedAt": None}
+
+
 def test_patch_notebook_settings_groups_are_independent_and_listed(isolated_api):
     client = isolated_api.client
     h = isolated_api.headers
