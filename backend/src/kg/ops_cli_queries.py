@@ -32,6 +32,21 @@ from kg.user_store import load_users_from
 
 from .ops_cli_shared import _cutoff_iso, _flatten_user_config, _ops_passthrough_normalize
 
+_MIN_UTC = datetime.min.replace(tzinfo=UTC)
+
+
+def _utc_instant(value: str | None) -> datetime | None:
+    """Parse a stored ISO timestamp as a comparable UTC instant."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
 
 def _quota_limit(name: str, default: float) -> float:
     value = _env_float(name, default)
@@ -482,7 +497,8 @@ def cmd_sync_trace(args: argparse.Namespace) -> None:
                 (day, day),
             ).fetchall()
             for r in rows:
-                created_today = bool(r[4] and r[4][:10] == day)
+                created_at = _utc_instant(r[4])
+                created_today = bool(created_at and created_at.date().isoformat() == day)
                 event_type = "card_created" if created_today else "card_updated"
                 if r[2]:
                     event_type = "card_deleted"
@@ -572,7 +588,7 @@ def cmd_sync_trace(args: argparse.Namespace) -> None:
         finally:
             conn.close()
 
-    events.sort(key=lambda e: e["ts"])
+    events.sort(key=lambda e: _utc_instant(e["ts"]) or _MIN_UTC)
     if args.json:
         emit_json({"user_id": uid, "date": day, "count": len(events), "events": events})
         return
