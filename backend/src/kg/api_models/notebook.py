@@ -9,6 +9,14 @@ from pydantic_core import PydanticCustomError
 NotebookReviewMode = Literal["relaxed", "intensive", "custom"]
 NotebookCardLayoutPreset = Literal["standard", "compact"]
 _NON_FINITE_TIMESTAMP_MARKER = "<non-finite-updated-at>"
+_NON_FINITE_REVIEW_POLICY_VALUE_MARKER = "<non-finite-review-policy-value>"
+_REVIEW_POLICY_NUMERIC_FIELDS = (
+    "customInitialIntervalHours",
+    "customRememberedMultiplier",
+    "customForgotMultiplier",
+    "customMinimumIntervalHours",
+    "customMaximumIntervalHours",
+)
 
 
 def _is_non_finite_timestamp(value) -> bool:
@@ -22,6 +30,8 @@ def _sanitize_non_finite_timestamps(value):
         return {
             key: _NON_FINITE_TIMESTAMP_MARKER
             if key == "updatedAt" and _is_non_finite_timestamp(item)
+            else _NON_FINITE_REVIEW_POLICY_VALUE_MARKER
+            if key in _REVIEW_POLICY_NUMERIC_FIELDS and _is_non_finite_timestamp(item)
             else _sanitize_non_finite_timestamps(item)
             for key, item in value.items()
         }
@@ -32,11 +42,18 @@ def _sanitize_non_finite_timestamps(value):
 
 class NotebookReviewPolicy(BaseModel):
     mode: NotebookReviewMode
-    customInitialIntervalHours: float
-    customRememberedMultiplier: float
-    customForgotMultiplier: float
-    customMinimumIntervalHours: float
-    customMaximumIntervalHours: float
+    customInitialIntervalHours: FiniteFloat
+    customRememberedMultiplier: FiniteFloat
+    customForgotMultiplier: FiniteFloat
+    customMinimumIntervalHours: FiniteFloat
+    customMaximumIntervalHours: FiniteFloat
+
+    @field_validator(*_REVIEW_POLICY_NUMERIC_FIELDS, mode="before")
+    @classmethod
+    def reject_non_finite_values(cls, value):
+        if value == _NON_FINITE_REVIEW_POLICY_VALUE_MARKER:
+            raise PydanticCustomError("finite_number", "Input should be a finite number")
+        return value
 
     @model_validator(mode="after")
     def require_ordered_custom_intervals(self):
