@@ -516,6 +516,35 @@ def test_external_card_review_route_preserves_finite_interval(external_api):
     assert response.json()["reviewIntervalHours"] == 24.5
 
 
+@pytest.mark.parametrize("field", ["reviewCount", "lapseCount", "reviewStreak"])
+def test_external_card_review_rejects_boolean_counters_without_write(external_api, field):
+    api_key = _create_key(external_api)
+    headers = {"X-KG-API-Key": api_key}
+    created = external_api.client.post(
+        "/api/v1/cards",
+        json={"content": "boolean review counter", "meaning": "布林計數器"},
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    card_id = created.json()["card"]["id"]
+
+    payload = _review_payload(24.5)
+    payload[field] = True
+    response = external_api.client.post(
+        f"/api/v1/cards/{card_id}/review",
+        json=payload,
+        headers=headers,
+    )
+
+    assert response.status_code == 422, response.text
+    fetched = external_api.client.get(f"/api/v1/cards/{card_id}", headers=headers)
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.json()["reviewIntervalHours"] == 12.0
+    assert fetched.json()["reviewCount"] == 0
+    assert fetched.json()["lapseCount"] == 0
+    assert fetched.json()["reviewStreak"] == 0
+
+
 @pytest.mark.parametrize("field", ["nextReviewAt", "lastReviewedAt"])
 def test_external_card_review_rejects_invalid_timestamps_without_write(external_api, field):
     api_key = _create_key(external_api)
