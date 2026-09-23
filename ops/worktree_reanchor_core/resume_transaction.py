@@ -314,6 +314,7 @@ def perform_resume(
         recorded_path=recorded_path,
         target=request.target,
         branch=request.branch,
+        expected_head=request.expected_remote_head,
     )
     resume_git_ops.ensure_exact_source(
         request.repo,
@@ -347,6 +348,7 @@ def perform_resume(
             base_sha=preflight.base_sha,
             declared=preflight.declared,
             attempt=attempt,
+            recorded_path=recorded_path,
         )
         resume_git_ops.verify_remote_head(
             request.repo,
