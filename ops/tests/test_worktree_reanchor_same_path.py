@@ -216,7 +216,9 @@ def test_reanchor_subset_scope_still_rejects_non_declared_operations(
 def test_published_resume_accepts_nonempty_declared_scope_subset(
     tmp_path: Path,
 ) -> None:
-    repo, _state_path, target, base, remote_head, _live_main = _subset_scope_fixture(tmp_path)
+    repo, _state_path, target, base, remote_head, _live_main = _subset_scope_fixture(
+        tmp_path
+    )
     declared = (
         ("ops/reanchor_change.py", "add"),
         ("ops/reanchor_test.py", "add"),
@@ -289,7 +291,9 @@ def test_published_resume_scope_validation_fails_closed(
     base_kind: str,
     declared: tuple[tuple[str, str], ...],
 ) -> None:
-    repo, _state_path, _target, base, remote_head, _live_main = _subset_scope_fixture(tmp_path)
+    repo, _state_path, _target, base, remote_head, _live_main = _subset_scope_fixture(
+        tmp_path
+    )
     source_base = remote_head if base_kind == "remote-head" else base
 
     with pytest.raises(
