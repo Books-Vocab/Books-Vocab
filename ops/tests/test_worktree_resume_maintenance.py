@@ -261,6 +261,105 @@ def test_resume_provision_reuses_existing_target_without_git_mutation(
     assert not attempt.branch_created
 
 
+def test_resume_provision_fast_forwards_exact_owner_path_from_previous_handback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    target = tmp_path / "released"
+    target.mkdir()
+    calls: list[list[str]] = []
+    merged = False
+
+    def fake_git(args: list[str], _repo: Path) -> tuple[int, str]:
+        nonlocal merged
+        calls.append(args)
+        if args == ["rev-parse", "--verify", "HEAD^{commit}"]:
+            return 0, HEAD if merged else BASE
+        if args == ["merge", "--ff-only", HEAD]:
+            merged = True
+            return 0, ""
+        return 0, ""
+
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops.git_ops,
+        "validate_authorized_existing_target",
+        lambda *_args, **_: None,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops,
+        "verify_remote_head",
+        lambda *_args, **_: None,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops.git_ops,
+        "_git",
+        fake_git,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops.git_ops,
+        "scope_operations",
+        lambda *_args, **_: (("docs/runbook/system.md", "modify"),),
+    )
+
+    head = resume_transaction.resume_git_ops.provision_exact(
+        tmp_path,
+        target=target,
+        branch="debug/exact-owner",
+        remote_head=HEAD,
+        previous_handback=BASE,
+        base_sha=BASE,
+        declared=(("docs/runbook/system.md", "modify"),),
+        attempt=resume_transaction.resume_git_ops.ProvisioningAttempt(),
+        recorded_path=target,
+    )
+
+    assert head == HEAD
+    assert ["merge", "--ff-only", HEAD] in calls
+
+
+def test_resume_provision_refuses_non_fast_forward_existing_owner_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    target = tmp_path / "released"
+    target.mkdir()
+
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops.git_ops,
+        "validate_authorized_existing_target",
+        lambda *_args, **_: None,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops,
+        "verify_remote_head",
+        lambda *_args, **_: None,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops.git_ops,
+        "_git",
+        lambda args, _repo: (
+            (0, BASE)
+            if args == ["rev-parse", "--verify", "HEAD^{commit}"]
+            else (
+                (1, "non-fast-forward")
+                if args == ["merge", "--ff-only", HEAD]
+                else (0, "")
+            )
+        ),
+    )
+
+    with pytest.raises(ReanchorRefused, match="fast-forward"):
+        resume_transaction.resume_git_ops.provision_exact(
+            tmp_path,
+            target=target,
+            branch="debug/exact-owner",
+            remote_head=HEAD,
+            previous_handback=BASE,
+            base_sha=BASE,
+            declared=(("docs/runbook/system.md", "modify"),),
+            attempt=resume_transaction.resume_git_ops.ProvisioningAttempt(),
+            recorded_path=target,
+        )
+
+
 @pytest.mark.parametrize(
     "check",
     [_check(CheckStatus.SUCCESS), _absent_check()],
