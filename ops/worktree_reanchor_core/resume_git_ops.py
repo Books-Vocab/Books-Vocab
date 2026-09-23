@@ -35,6 +35,7 @@ def validate_released_assets(
     target: Path,
     branch: str,
     expected_head: str | None = None,
+    previous_handback: str | None = None,
 ) -> None:
     requested_path = target.expanduser().resolve()
     exact_recorded_path = recorded_path.expanduser().resolve()
@@ -43,13 +44,14 @@ def validate_released_assets(
         and requested_path == exact_recorded_path
         and os.path.lexists(target)
     ):
+        existing_head = previous_handback or expected_head
         try:
             git_ops.validate_authorized_existing_target(
                 repo,
                 recorded_path=recorded_path,
                 target=target,
                 branch=branch,
-                expected_head=expected_head,
+                expected_head=existing_head,
             )
         except ReanchorRefused as exc:
             raise ReanchorRefused(
@@ -133,24 +135,46 @@ def provision_exact(
     declared: DeclaredOperations,
     attempt: ProvisioningAttempt,
     recorded_path: Path | None = None,
+    previous_handback: str | None = None,
 ) -> str:
     if target.exists() or target.is_symlink():
         if recorded_path is None:
             raise ReanchorRefused(
                 "existing resume target requires the exact recorded owner path"
             )
+        existing_head = previous_handback or remote_head
         git_ops.validate_authorized_existing_target(
             repo,
             recorded_path=recorded_path,
             target=target,
             branch=branch,
-            expected_head=remote_head,
+            expected_head=existing_head,
         )
         verify_remote_head(repo, branch=branch, expected_head=remote_head)
         head_rc, head = git_ops._git(["rev-parse", "--verify", "HEAD^{commit}"], target)
+        if head_rc != 0 or head != existing_head:
+            raise ReanchorRefused(
+                "authorized existing worktree HEAD differs from the exact previous hand-back",
+                expected_head=existing_head,
+                observed_head=head,
+            )
+        if existing_head != remote_head:
+            rc, output = git_ops._git(["merge", "--ff-only", remote_head], target)
+            if rc != 0:
+                raise ReanchorRefused(
+                    "published worktree cannot fast-forward to the exact remote HEAD",
+                    expected_head=remote_head,
+                    previous_handback=existing_head,
+                    git=output,
+                )
+            head_rc, head = git_ops._git(
+                ["rev-parse", "--verify", "HEAD^{commit}"], target
+            )
         if head_rc != 0 or head != remote_head:
             raise ReanchorRefused(
-                "authorized existing worktree HEAD differs from the exact remote HEAD"
+                "authorized existing worktree failed exact remote HEAD readback",
+                expected_head=remote_head,
+                observed_head=head,
             )
         observed = git_ops.scope_operations(target, start=base_sha, end=head)
         if not observed or not git_ops.scope_operations_are_declared_subset(

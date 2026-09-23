@@ -315,6 +315,7 @@ def perform_resume(
         target=request.target,
         branch=request.branch,
         expected_head=request.expected_remote_head,
+        previous_handback=request.previous_handback,
     )
     resume_git_ops.ensure_exact_source(
         request.repo,
@@ -349,6 +350,7 @@ def perform_resume(
             declared=preflight.declared,
             attempt=attempt,
             recorded_path=recorded_path,
+            previous_handback=request.previous_handback,
         )
         resume_git_ops.verify_remote_head(
             request.repo,
