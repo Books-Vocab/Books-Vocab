@@ -68,7 +68,10 @@ def _is_supported_reanchor_advance(
     return (
         is_ancestor(worktree, previous, published_base_sha)
         and is_ancestor(worktree, expected_handback_base_sha, origin_main_sha)
-        and is_ancestor(worktree, origin_main_sha, published_base_sha)
+        and (
+            is_ancestor(worktree, published_base_sha, origin_main_sha)
+            or is_ancestor(worktree, origin_main_sha, published_base_sha)
+        )
     )
 
 

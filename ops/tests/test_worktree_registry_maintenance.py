@@ -231,6 +231,37 @@ def test_record_published_base_allows_historical_handback_base_with_newer_origin
     assert updated["handback_seal"] == record["handback_seal"]
 
 
+def test_record_published_base_allows_stale_pr_target_ancestor_of_origin_observation(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "registry.json"
+    record, previous, handback_base, handback_head = _reanchor_record(tmp_path)
+    worktree = Path(str(record["path"]))
+    (worktree / "owner-observation.txt").write_text(
+        "owner observed newer origin main\n", encoding="utf-8"
+    )
+    _git(worktree, "add", "owner-observation.txt")
+    _git(worktree, "commit", "--quiet", "-m", "owner origin observation")
+    origin_observation = _git(worktree, "rev-parse", "HEAD")
+    seal = dict(record["handback_seal"])
+    seal.pop("digest")
+    seal["origin_main_sha"] = origin_observation
+    record["handback_seal"] = registry._seal_with_digest(seal)
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+
+    argv = _record_published_base_argv(
+        state_path,
+        record,
+        expected_head=handback_head,
+        handback_base=handback_base,
+        published_base=handback_base,
+    )
+    assert registry.main(argv) == registry.EXIT_OK
+    updated = registry.load_state(state_path)["records"][0]
+    assert updated["published_base_sha"] == handback_base
+    assert previous != handback_base
+
+
 def test_record_published_base_rejects_reanchor_with_stale_pr_base(
     tmp_path: Path,
 ) -> None:
