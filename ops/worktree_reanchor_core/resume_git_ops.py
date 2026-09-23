@@ -34,7 +34,30 @@ def validate_released_assets(
     recorded_path: Path,
     target: Path,
     branch: str,
+    expected_head: str | None = None,
 ) -> None:
+    requested_path = target.expanduser().resolve()
+    exact_recorded_path = recorded_path.expanduser().resolve()
+    if (
+        expected_head is not None
+        and requested_path == exact_recorded_path
+        and os.path.lexists(target)
+    ):
+        try:
+            git_ops.validate_authorized_existing_target(
+                repo,
+                recorded_path=recorded_path,
+                target=target,
+                branch=branch,
+                expected_head=expected_head,
+            )
+        except ReanchorRefused as exc:
+            raise ReanchorRefused(
+                f"released published worktree validation failed: {exc.reason}",
+                **exc.details,
+            ) from exc
+        return
+
     git_ops.validate_new_target(repo, target=target, branch=branch)
     ref = f"refs/heads/{branch}"
     rc, local_refs = git_ops._git(["for-each-ref", "--format=%(refname)", ref], repo)
@@ -109,7 +132,35 @@ def provision_exact(
     base_sha: str,
     declared: DeclaredOperations,
     attempt: ProvisioningAttempt,
+    recorded_path: Path | None = None,
 ) -> str:
+    if target.exists() or target.is_symlink():
+        if recorded_path is None:
+            raise ReanchorRefused(
+                "existing resume target requires the exact recorded owner path"
+            )
+        git_ops.validate_authorized_existing_target(
+            repo,
+            recorded_path=recorded_path,
+            target=target,
+            branch=branch,
+            expected_head=remote_head,
+        )
+        verify_remote_head(repo, branch=branch, expected_head=remote_head)
+        head_rc, head = git_ops._git(["rev-parse", "--verify", "HEAD^{commit}"], target)
+        if head_rc != 0 or head != remote_head:
+            raise ReanchorRefused(
+                "authorized existing worktree HEAD differs from the exact remote HEAD"
+            )
+        observed = git_ops.scope_operations(target, start=base_sha, end=head)
+        if not observed or not git_ops.scope_operations_are_declared_subset(
+            observed, declared
+        ):
+            raise ReanchorRefused(
+                "resumed branch differs from the exact original Scope"
+            )
+        return head
+
     rc, output = git_ops._git(
         ["worktree", "add", "--detach", str(target), remote_head], repo
     )

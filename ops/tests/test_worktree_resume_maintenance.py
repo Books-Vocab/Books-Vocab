@@ -178,6 +178,89 @@ def test_maintenance_resume_accepts_exact_required_absence_observation() -> None
     assert proof.required_status is CheckStatus.ABSENT
 
 
+def test_resume_reuses_exact_existing_owner_worktree_for_published_resume(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    target = tmp_path / "released"
+    target.mkdir()
+    calls: list[tuple[str, str]] = []
+
+    def authorized_existing_target(_repo: Path, **kwargs: object) -> None:
+        calls.append(("existing", str(kwargs["target"])))
+
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops.git_ops,
+        "validate_authorized_existing_target",
+        authorized_existing_target,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops.git_ops,
+        "validate_new_target",
+        lambda *_args, **_kwargs: pytest.fail(
+            "same-owner resume must not require a new worktree target"
+        ),
+    )
+    resume_transaction.resume_git_ops.validate_released_assets(
+        tmp_path,
+        recorded_path=target,
+        target=target,
+        branch="debug/exact-owner",
+        expected_head=HEAD,
+    )
+
+    assert calls == [("existing", str(target))]
+
+
+def test_resume_provision_reuses_existing_target_without_git_mutation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    target = tmp_path / "released"
+    target.mkdir()
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops.git_ops,
+        "validate_authorized_existing_target",
+        lambda *_args, **_: None,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops,
+        "verify_remote_head",
+        lambda *_args, **_: None,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops.git_ops,
+        "scope_operations",
+        lambda *_args, **_: (("docs/runbook/system.md", "modify"),),
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops.git_ops,
+        "_git",
+        lambda args, _repo: (
+            (calls.append(list(args)) or (0, HEAD))
+            if args == ["rev-parse", "--verify", "HEAD^{commit}"]
+            else (pytest.fail(f"unexpected Git mutation: {args}"), "")
+        ),
+    )
+
+    attempt = resume_transaction.resume_git_ops.ProvisioningAttempt()
+    head = resume_transaction.resume_git_ops.provision_exact(
+        tmp_path,
+        target=target,
+        branch="debug/exact-owner",
+        remote_head=HEAD,
+        base_sha=BASE,
+        declared=(("docs/runbook/system.md", "modify"),),
+        attempt=attempt,
+        recorded_path=target,
+    )
+
+    assert head == HEAD
+    assert calls == [["rev-parse", "--verify", "HEAD^{commit}"]]
+    assert not attempt.target_added
+    assert not attempt.branch_created
+
+
 @pytest.mark.parametrize(
     "check",
     [_check(CheckStatus.SUCCESS), _absent_check()],
