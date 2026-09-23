@@ -20,6 +20,29 @@ description: "使用 GitHub Issue（需要規劃時）、branch、PR 與 Actions
 
 `ops/worktree_orchestrate.py` 只做本機可驗證動作：`preflight`、`open`、`adopt`、`gate`、`hand-back`、`reanchor`、`resume-published`、`resolve`、`freeze`。IM／PI 使用它控制 local worktree lifecycle；它不建立、更新、排序或關閉 GitHub Issue／Project／PR，也不執行 push 或 merge。`reanchor` 只重建同 owner 的 merge-front 並對齊 live main；`resume-published` 只從 exact remote PR HEAD 重建同 owner code-fix lane。兩者都不代替 owner 測試、hand-back、push 或 force-push。
 
+## External-agent liveness boundary
+
+`multi_agent_v1` external agent is a separate control plane from the repo-local
+`ops/task_registry.py` subprocess registry.  A caller may treat an external
+target as usable only after the connector has supplied an opaque `target_id`,
+an initial handshake, a bounded heartbeat observation, and a terminal status.
+`pending_init`, rejected, timeout, unknown, missing heartbeat, or missing
+terminal status fail closed.  A local PID／PGID、active worktree、commit or
+task-registry row is never proof of external-agent liveness.
+
+When the connector returns a repo-relative receipt, bind it through the
+hand-back outcome's `review_manifest` field and run:
+
+```bash
+./ops/review_audit.sh --kind external-agent --manifest <path> --json
+```
+
+The audit checks receipt shape and fail-closed fields only; a pass does not
+create connector/account-owner evidence, wake or dispatch an agent, grant Gate
+authority, or qualify production dogfood.
+Without a named connector/account-owner receipt, keep the Issue fixture
+pending and do not synthesize a verified target or heartbeat.
+
 ## Standard flow
 
 1. 先確認 repo、branch、HEAD、工作樹 clean state 與 active ownership。
