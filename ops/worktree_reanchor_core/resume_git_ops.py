@@ -82,7 +82,8 @@ def ensure_exact_source(
             raise ReanchorRefused(f"{label} commit is unavailable", git=output)
     if git_ops._git(["merge-base", "--is-ancestor", base_sha, remote_head], repo)[0] != 0:
         raise ReanchorRefused("original base is not an ancestor of remote PR HEAD")
-    if git_ops.scope_operations(repo, start=base_sha, end=remote_head) != declared:
+    observed = git_ops.scope_operations(repo, start=base_sha, end=remote_head)
+    if not observed or not git_ops.scope_operations_are_declared_subset(observed, declared):
         raise ReanchorRefused("remote PR branch differs from the exact original Scope")
 
 
@@ -111,7 +112,8 @@ def provision_exact(
         or head != remote_head
     ):
         raise ReanchorRefused("resumed worktree failed exact branch/clean/HEAD readback")
-    if git_ops.scope_operations(target, start=base_sha, end=head) != declared:
+    observed = git_ops.scope_operations(target, start=base_sha, end=head)
+    if not observed or not git_ops.scope_operations_are_declared_subset(observed, declared):
         raise ReanchorRefused("resumed branch differs from the exact original Scope")
     return head
 
