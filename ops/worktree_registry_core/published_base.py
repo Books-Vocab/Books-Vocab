@@ -49,9 +49,10 @@ def _is_supported_reanchor_advance(
     seal = record.get("handback_seal")
     if not isinstance(seal, dict):
         return False
+    origin_main_sha = seal.get("origin_main_sha")
     if (
         seal.get("base_sha") != expected_handback_base_sha
-        or seal.get("origin_main_sha") != expected_handback_base_sha
+        or not is_commit_sha(origin_main_sha)
         or seal.get("tip_sha") != expected_head_sha
         or seal.get("owner_thread_id") != owner_thread_id
         or seal.get("branch") != record.get("branch")
@@ -63,8 +64,11 @@ def _is_supported_reanchor_advance(
         return False
     if not isinstance(seal_path, str) or norm_path(seal_path) != norm_path(record_path):
         return False
-    return is_ancestor(Path(record_path), previous, published_base_sha) and is_ancestor(
-        Path(record_path), expected_handback_base_sha, published_base_sha
+    worktree = Path(record_path)
+    return (
+        is_ancestor(worktree, previous, published_base_sha)
+        and is_ancestor(worktree, expected_handback_base_sha, origin_main_sha)
+        and is_ancestor(worktree, origin_main_sha, published_base_sha)
     )
 
 
