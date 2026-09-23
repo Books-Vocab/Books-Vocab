@@ -166,20 +166,27 @@ async def test_cache_miss_calls_llm_and_records(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_empty_llm_response_not_cached(tmp_path, monkeypatch):
-    """Empty or malformed LLM response should not be cached."""
+@pytest.mark.parametrize("content", ["", "{}", '{"t":""}', "{not valid json"])
+async def test_empty_llm_response_not_cached(content, tmp_path, monkeypatch):
+    """Empty or malformed provider payloads fail closed with one stable contract."""
     import kg.translate_log as tl
+    from kg.exceptions import ExternalServiceError
+
     monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
     tl._reset()
 
-    client = _fake_async_client('{}')
+    client = _fake_async_client(content)
     req = TranslateRequest(word="hollow", context="A hollow victory.")
-    result = await run_quick_translate(
-        req, {"id": "u_test"},
-        llm=TrackedLLM(client, "u_test"),
-        logger=SimpleNamespace(error=lambda *a, **kw: None),
-    )
-    assert result.t == ""  # parsed but empty
+    with pytest.raises(ExternalServiceError) as exc_info:
+        await run_quick_translate(
+            req, {"id": "u_test"},
+            llm=TrackedLLM(client, "u_test"),
+            logger=SimpleNamespace(error=lambda *a, **kw: None),
+        )
+    assert exc_info.value.to_detail() == {
+        "code": "EXTERNAL_SERVICE_ERROR",
+        "label": "translate_quick/invalid_response",
+    }
 
     # Should NOT be cached
     from kg.translate_service import _context_around_word
