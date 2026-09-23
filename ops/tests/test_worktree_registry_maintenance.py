@@ -188,6 +188,49 @@ def test_record_published_base_allows_live_descendant_of_handback_and_recorded_b
     assert updated["handback_seal"] == record["handback_seal"]
 
 
+def test_record_published_base_allows_historical_handback_base_with_newer_origin_main(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "registry.json"
+    record, previous, live_main, handback_head = _reanchor_record(tmp_path)
+    record["base"] = previous
+    record["base_sha"] = previous
+    seal = dict(record["handback_seal"])
+    seal.pop("digest")
+    seal["base_sha"] = previous
+    seal["origin_main_sha"] = live_main
+    record["handback_seal"] = registry._seal_with_digest(seal)
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+
+    assert (
+        _git(
+            Path(str(record["path"])),
+            "merge-base",
+            "--is-ancestor",
+            previous,
+            live_main,
+        )
+        == ""
+    )
+
+    assert (
+        registry.main(
+            _record_published_base_argv(
+                state_path,
+                record,
+                expected_head=handback_head,
+                handback_base=previous,
+                published_base=live_main,
+            )
+        )
+        == registry.EXIT_OK
+    )
+    updated = registry.load_state(state_path)["records"][0]
+    assert updated["base_sha"] == previous
+    assert updated["published_base_sha"] == live_main
+    assert updated["handback_seal"] == record["handback_seal"]
+
+
 def test_record_published_base_rejects_reanchor_with_stale_pr_base(
     tmp_path: Path,
 ) -> None:
@@ -238,14 +281,14 @@ def test_record_published_base_rejects_non_ancestor_reanchor_base(
     assert state_path.read_text(encoding="utf-8") == original
 
 
-def test_record_published_base_requires_live_main_handback_evidence(
+def test_record_published_base_rejects_malformed_origin_main_handback_evidence(
     tmp_path: Path,
 ) -> None:
     state_path = tmp_path / "registry.json"
-    record, previous, live_main, handback_head = _reanchor_record(tmp_path)
+    record, _previous, live_main, handback_head = _reanchor_record(tmp_path)
     seal = dict(record["handback_seal"])
     seal.pop("digest")
-    seal["origin_main_sha"] = previous
+    seal["origin_main_sha"] = "not-a-commit"
     record["handback_seal"] = registry._seal_with_digest(seal)
     registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
     original = state_path.read_text(encoding="utf-8")
