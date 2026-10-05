@@ -29,6 +29,7 @@ def test_registry_is_versioned_and_shipped() -> None:
     assert set(registry["profiles"]) >= {
         "backend.targeted-pytest",
         "ops.docs-lint-registry",
+        "ops.compute-contract-tests",
     }
 
 
@@ -283,6 +284,16 @@ def test_profile_registry_rejects_production_and_unsafe_contracts() -> None:
     profile["git_metadata_required"] = True
     with pytest.raises(ContractError, match="git-metadata"):
         validate_profile(profile, name="backend.targeted-pytest")
+
+
+def test_remote_profile_is_explicit_and_resolves_remote_eligibility() -> None:
+    registry = load_profile_registry(REGISTRY)
+    profile = registry["profiles"]["ops.compute-contract-tests"]
+
+    assert profile["remote_eligible"] is True
+    assert profile["resource_class"] == "compute-remote"
+    resolved = resolve_profile("ops.compute-contract-tests", {})
+    assert resolved["spec"]["remote_eligible"] is True
 
 
 @pytest.mark.parametrize("placeholder", ["a", "b"])

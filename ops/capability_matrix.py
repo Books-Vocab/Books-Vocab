@@ -79,6 +79,8 @@ SURFACES = [
     Surface("ios.ops.archive-upload", "./ops/ios_ops.sh", "./ops/ios_ops.sh archive --upload --json", "production-capable", "external-upload local-build", "external", "archive/export/upload build artifact"),
     Surface("compute.profile.backend-targeted-pytest", "ops/compute_profiles.yml", "profile:backend.targeted-pytest", "operator", "local-test", "local", "controlled backend targeted pytest plan; no raw shell or remote host"),
     Surface("compute.profile.docs-lint-registry", "ops/compute_profiles.yml", "profile:ops.docs-lint-registry", "observer", "repo-read", "repo", "controlled docs registry lint plan"),
+    Surface("compute.profile.compute-contract-tests", "ops/compute_profiles.yml", "profile:ops.compute-contract-tests", "operator", "local-test", "local/remote", "bounded compute router/transport contract tests with explicit Felix eligibility"),
+    Surface("compute.router", "ops/lib/compute_router.py", "compute route --mode <local|auto|felix>", "operator", "repo-read", "local/remote", "deterministic guarded compute placement; no agent scheduling"),
 ]
 
 
