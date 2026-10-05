@@ -47,11 +47,15 @@ class ControlAction(StrEnum):
 @dataclass(frozen=True)
 class CapacityPolicy:
     min_open_prs: int = 10
-    max_open_prs: int = 15
+    # These are historical reservoir targets, not admission ceilings.  A
+    # production-mode controller must not stop verified work merely because a
+    # queue watermark was reached; actual resource/backpressure observations
+    # below are the only dispatch limits.
+    max_open_prs: int | None = None
     min_candidate_issues: int = 20
     max_candidate_issues: int = 30
-    target_active_solvers: int = 8
-    max_active_solvers: int = 12
+    target_active_solvers: int | None = None
+    max_active_solvers: int | None = None
     min_required_running: int = 3
     max_required_running: int = 4
     min_merge_ready_or_queued: int = 3
@@ -62,7 +66,7 @@ class CapacityPolicy:
     max_pr_to_required_start_p95_seconds: float = 60.0
     max_required_success_to_enqueue_p95_seconds: float = 30.0
     max_collision_pressure: float = 0.20
-    max_new_solvers_per_cycle: int = 4
+    max_new_solvers_per_cycle: int | None = None
 
 
 @dataclass(frozen=True)
@@ -107,7 +111,7 @@ def decide_capacity(
         )
         add(ControlAction.AUDIT_MERGE_CADENCE, cadence_reason)
         cadence_recovery_supply = (
-            metrics.open_prs
+            (metrics.open_prs or 0)
             + metrics.handbacks_publishable
             + metrics.active_development
             + metrics.required_green
@@ -337,7 +341,9 @@ def decide_capacity(
         and observed_required_p95 > policy.max_required_p95_seconds
     ) or metrics.required_running > policy.max_required_running
     collision_saturated = metrics.collision_rate > policy.max_collision_pressure
-    pr_saturated = metrics.open_prs >= policy.max_open_prs
+    pr_saturated = (
+        policy.max_open_prs is not None and metrics.open_prs >= policy.max_open_prs
+    )
     desired_new_solvers = 0
     unsafe_pr_inventory = bool(
         metrics.actionable_unmapped_open_prs or metrics.duplicate_pr_mappings
@@ -363,37 +369,52 @@ def decide_capacity(
         collision_saturated
         or ci_saturated
         or pr_saturated
-        or metrics.active_development >= policy.max_active_solvers
+        or (
+            policy.max_active_solvers is not None
+            and metrics.active_development >= policy.max_active_solvers
+        )
     ):
         add(
             ControlAction.THROTTLE_SOLVERS,
             "collision pressure, CI, PR, or active-solver WIP reached its safe ceiling",
         )
     else:
-        durable_supply = metrics.open_prs + metrics.handbacks_publishable
+        durable_supply = (metrics.open_prs or 0) + metrics.handbacks_publishable
         durable_supply_gap = max(0, policy.min_open_prs - durable_supply)
-        solver_gap = max(0, policy.target_active_solvers - metrics.active_development)
+        solver_gap = (
+            None
+            if policy.target_active_solvers is None
+            else max(0, policy.target_active_solvers - metrics.active_development)
+        )
         # Active Solver capacity is a leading reservoir, not a lagging alarm.
         # Waiting until merge cadence degrades before restoring it creates a
         # predictable starvation sawtooth: the PR queue drains first, then new
         # implementation work starts too late to preserve the five-minute SLO.
-        # Healthy cadence therefore does not suppress birth below the target
-        # band; the independent PR/CI/collision ceilings above remain the
-        # backpressure mechanisms.
-        if durable_supply < policy.max_open_prs and solver_gap:
-            desired_new_solvers = min(
-                solver_gap,
-                metrics.dispatchable_candidate_issues,
-                policy.max_new_solvers_per_cycle,
-                max(0, policy.max_active_solvers - metrics.active_development),
-            )
+        # Healthy cadence therefore does not suppress birth below a fixed
+        # target band.  With the default unbounded policy, candidate supply is
+        # the requested amount; only measured safety/resource backpressure
+        # above can stop it.  A caller may still inject explicit finite limits
+        # for a controlled canary or a test.
+        if (policy.max_open_prs is None or durable_supply < policy.max_open_prs) and (
+            solver_gap is None or solver_gap > 0
+        ):
+            dispatch_limits = [max(0, metrics.dispatchable_candidate_issues)]
+            if solver_gap is not None:
+                dispatch_limits.append(solver_gap)
+            if policy.max_new_solvers_per_cycle is not None:
+                dispatch_limits.append(policy.max_new_solvers_per_cycle)
+            if policy.max_active_solvers is not None:
+                dispatch_limits.append(
+                    max(0, policy.max_active_solvers - metrics.active_development)
+                )
+            desired_new_solvers = min(dispatch_limits)
             if desired_new_solvers:
                 add(
                     ControlAction.DISPATCH_SOLVERS,
                     (
                         "existing unclaimed candidates can restore the active-solver "
-                        f"band while durable supply is {durable_supply} "
-                        f"(floor gap {durable_supply_gap})"
+                        "band while durable supply is "
+                        f"{durable_supply} (floor gap {durable_supply_gap})"
                     ),
                 )
 
