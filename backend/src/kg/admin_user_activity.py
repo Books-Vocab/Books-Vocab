@@ -61,6 +61,26 @@ def _utc_instant_predicate(column: str) -> str:
     return f"{column} >= ? AND julianday({column}) >= julianday(?)"
 
 
+def _filter_rows_by_utc_cutoff(
+    rows: list[Any], timestamp_index: int, since_iso: str
+) -> list[Any]:
+    """Apply an exact UTC cutoff after SQLite's indexed candidate filter.
+
+    SQLite's ``julianday`` is an efficient candidate filter, but its floating
+    point precision can admit a sub-millisecond row just before the boundary.
+    The Python comparison is the final exact-instant check.
+    """
+    cutoff = _utc_instant(since_iso)
+    if cutoff is None:
+        return []
+    return [
+        row
+        for row in rows
+        if (instant := _utc_instant(row[timestamp_index])) is not None
+        and instant >= cutoff
+    ]
+
+
 def _translate_events(user_id: str, since_iso: str) -> list[dict[str, Any]]:
     import kg.translate_log as tl
 
@@ -74,6 +94,7 @@ def _translate_events(user_id: str, since_iso: str) -> list[dict[str, Any]]:
             " ORDER BY julianday(created_at) DESC, id DESC LIMIT ?",
             (user_id, candidate_bound, exact_cutoff, MAX_PER_SOURCE),
         ).fetchall()
+    rows = _filter_rows_by_utc_cutoff(rows, 5, since_iso)
     out: list[dict[str, Any]] = []
     for row in rows:
         out.append(
@@ -103,6 +124,7 @@ def _pipeline_events(user_id: str, since_iso: str) -> list[dict[str, Any]]:
             " ORDER BY julianday(started_at) DESC, id DESC LIMIT ?",
             (user_id, candidate_bound, exact_cutoff, MAX_PER_SOURCE),
         ).fetchall()
+    rows = _filter_rows_by_utc_cutoff(rows, 4, since_iso)
     out: list[dict[str, Any]] = []
     for source_id, run_id, nb, trigger, started, ended, status in rows:
         duration_s: float | None = None
@@ -151,6 +173,7 @@ def _judge_events(user_id: str, since_iso: str) -> list[dict[str, Any]]:
             " ORDER BY julianday(created_at) DESC, id DESC LIMIT ?",
             (user_id, candidate_bound, exact_cutoff, MAX_PER_SOURCE),
         ).fetchall()
+    rows = _filter_rows_by_utc_cutoff(rows, 9, since_iso)
     out: list[dict[str, Any]] = []
     for row in rows:
         out.append(

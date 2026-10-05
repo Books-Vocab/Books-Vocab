@@ -398,6 +398,30 @@ def test_user_activity_uses_utc_instants_for_mixed_offset_cutoff_and_order(activ
     ]
 
 
+def test_user_activity_excludes_submillisecond_event_before_utc_cutoff(activity_env, monkeypatch):
+    """The exact UTC cutoff must not inherit SQLite julianday rounding."""
+    import kg.admin_user_activity as activity
+
+    frozen_now = datetime(2026, 9, 17, 12, 0, 0, 900, tzinfo=UTC)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen_now if tz is not None else frozen_now.replace(tzinfo=None)
+
+    monkeypatch.setattr(activity, "datetime", FrozenDateTime)
+    _record_translate(
+        "u1",
+        word="just-before-cutoff",
+        when=datetime(2026, 9, 16, 12, 0, 0, 500, tzinfo=UTC),
+    )
+
+    result = activity.get_user_activity("u1", hours=24)
+
+    assert result["events"] == []
+    assert result["counts"] == {"translate": 0, "pipeline": 0, "judge": 0}
+
+
 def test_user_activity_cap_keeps_newest_pipeline_ties(activity_env):
     """Stable tie ordering must be applied before the MAX_TOTAL_EVENTS slice."""
     from kg.admin_user_activity import MAX_PER_SOURCE, MAX_TOTAL_EVENTS, get_user_activity
