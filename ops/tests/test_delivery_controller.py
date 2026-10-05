@@ -793,9 +793,9 @@ def test_controller_requests_scope_repartition_under_collision_pressure() -> Non
     assert DEFAULT_CAPACITY_POLICY.max_collision_pressure == 0.20
     assert ControlAction.RECOVER_BLOCKERS in decision.actions
     assert ControlAction.IMPROVE_SCOPE_PARTITION in decision.actions
-    assert ControlAction.THROTTLE_SOLVERS in decision.actions
-    assert ControlAction.DISPATCH_SOLVERS not in decision.actions
-    assert decision.desired_new_solvers == 0
+    assert ControlAction.THROTTLE_SOLVERS not in decision.actions
+    assert ControlAction.DISPATCH_SOLVERS in decision.actions
+    assert decision.desired_new_solvers == 30
 
 
 def test_solver_birth_respects_active_wip_ceiling() -> None:

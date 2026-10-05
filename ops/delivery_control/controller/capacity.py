@@ -340,7 +340,6 @@ def decide_capacity(
         observed_required_p95 is not None
         and observed_required_p95 > policy.max_required_p95_seconds
     ) or metrics.required_running > policy.max_required_running
-    collision_saturated = metrics.collision_rate > policy.max_collision_pressure
     pr_saturated = (
         policy.max_open_prs is not None and metrics.open_prs >= policy.max_open_prs
     )
@@ -366,8 +365,7 @@ def decide_capacity(
             "solver dispatch is disabled while hard-hold scope is unknown",
         )
     elif (
-        collision_saturated
-        or ci_saturated
+        ci_saturated
         or pr_saturated
         or (
             policy.max_active_solvers is not None
@@ -376,7 +374,7 @@ def decide_capacity(
     ):
         add(
             ControlAction.THROTTLE_SOLVERS,
-            "collision pressure, CI, PR, or active-solver WIP reached its safe ceiling",
+            "CI, PR, or active-solver WIP reached its safe ceiling",
         )
     else:
         durable_supply = (metrics.open_prs or 0) + metrics.handbacks_publishable
