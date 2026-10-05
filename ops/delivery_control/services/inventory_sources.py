@@ -263,6 +263,39 @@ def collect_inventory_sources(
             continue
         path_sets[f"worktree:{path}"] = set(snapshot.changed_paths)
 
+    # Candidate labels do not prove that an old unregistered checkout is
+    # harmless.  Exclude a candidate whose declared Scope overlaps any live
+    # registry, PR, or physical-worktree observation.  Terminal history is not
+    # in path_sets, so historical overlap remains audit evidence only.
+    candidate_scope_collisions: dict[int, tuple[str, ...]] = {}
+    for candidate in dispatchable_candidate_issues:
+        candidate_paths = set(candidate.spec.scope.paths)
+        collision_keys_for_candidate = tuple(
+            sorted(
+                key
+                for key, observed_paths in path_sets.items()
+                if candidate_paths.intersection(observed_paths)
+            )
+        )
+        if collision_keys_for_candidate:
+            candidate_scope_collisions[candidate.number] = collision_keys_for_candidate
+    if candidate_scope_collisions:
+        dispatchable_candidate_issues = tuple(
+            candidate
+            for candidate in dispatchable_candidate_issues
+            if candidate.number not in candidate_scope_collisions
+        )
+    candidate_collision_problems = tuple(
+        InventoryProblem(
+            "candidate",
+            f"Issue#{number}",
+            "candidate Scope overlaps live delivery evidence: " + ", ".join(keys),
+            identity_kind="issue",
+            record_external_ids=(str(number),),
+        )
+        for number, keys in sorted(candidate_scope_collisions.items())
+    )
+
     return InspectionSources(
         records=records,
         active_records=active_records,
@@ -272,7 +305,7 @@ def collect_inventory_sources(
         demand_issues=projected_demand,
         candidate_issues=candidate_issues,
         dispatchable_candidate_issues=dispatchable_candidate_issues,
-        issue_source_problems=projected_demand.problems,
+        issue_source_problems=projected_demand.problems + candidate_collision_problems,
         live_main_sha=live_main_sha,
         local_main_sha=local_main_sha,
         branch_inventory=branch_inventory,
@@ -285,6 +318,7 @@ def collect_inventory_sources(
         source_problems=(
             registry_inventory.problems
             + invalid_registry_statuses
+            + candidate_collision_problems
             + tuple(
                 problem
                 for problem in github_problems
