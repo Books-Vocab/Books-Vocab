@@ -1723,9 +1723,7 @@ def build_report(
             deadline=deadline,
             excluded=is_excluded,
             scan_excluded=_nested_worktree_paths(physical_path, known_worktree_paths),
-            measured=workspace_measurement
-            if physical_path == workspace
-            else None,
+            measured=workspace_measurement if physical_path == workspace else None,
             topology=topology,
         )
         if lane_kind == "canonical-main":
