@@ -211,7 +211,9 @@ def validate_profile(
         _fail("invalid-field", "minimum_tier")
     if not isinstance(profile.get("timeout_seconds"), int) or profile["timeout_seconds"] <= 0:
         _fail("invalid-field", "timeout_seconds")
-    if profile.get("remote_eligible") is not False:
+    if not isinstance(profile.get("remote_eligible"), bool):
+        _fail("invalid-field", "remote_eligible")
+    if profile["remote_eligible"] and profile["resource_class"] != "compute-remote":
         _fail("remote-ineligible", name)
     if profile.get("git_metadata_required") is not False:
         _fail("git-metadata", name)
@@ -301,7 +303,7 @@ def resolve_profile(
         "resource_class": profile["resource_class"],
         "minimum_tier": profile["minimum_tier"],
         "timeout_seconds": profile["timeout_seconds"],
-        "remote_eligible": False,
+        "remote_eligible": profile["remote_eligible"],
         "git_metadata_required": False,
         "side_effects": list(profile["side_effects"]),
         "network_policy": profile["network_policy"],

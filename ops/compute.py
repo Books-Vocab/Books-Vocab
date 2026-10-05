@@ -1,9 +1,9 @@
 #!/usr/bin/env -S uv run --python 3.13 python
-"""Bounded local execution for the shipped typed compute-profile registry.
+"""Bounded local/auto/Felix execution for typed compute profiles.
 
 The profile registry is the source of truth for command shape and safety.  This
-entrypoint only plans or runs profiles against a clean local checkout; it never
-connects to a remote host, invokes a shell, or performs a production write.
+entrypoint only uses literal argv and explicit admission/provenance facts; it
+never invokes a shell, schedules an agent, or performs a production write.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import time
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,13 @@ from lib.compute_contract import (
     ContractError,
     load_profile_registry,
     resolve_profile,
+)
+from lib.compute_router import choose_route, remote_failure
+from lib.xmachine_transport import (
+    TransportError,
+    build_xmachine_argv,
+    make_request,
+    verify_remote_result,
 )
 
 
@@ -116,6 +124,43 @@ def _parameters(args: argparse.Namespace) -> dict[str, str]:
     return params
 
 
+def _admission(args: argparse.Namespace) -> dict[str, Any]:
+    if args.admission_file is None:
+        return {}
+    try:
+        value = json.loads(args.admission_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise CliError("admission", str(error)) from error
+    if not isinstance(value, dict):
+        raise CliError("admission", "admission file must contain an object")
+    return value
+
+
+def _route(
+    args: argparse.Namespace,
+    *,
+    spec: dict[str, Any],
+    git: dict[str, Any],
+    admission: dict[str, Any],
+) -> dict[str, Any]:
+    return choose_route(
+        args.mode,
+        live_admission=admission.get("live") is True and admission.get("host") == "felix",
+        remote_eligible=spec["remote_eligible"] is True and admission.get("remote_eligible") is True,
+        source_clean=git["clean"] and admission.get("source_clean") is True,
+        runner_verified=(
+            admission.get("runner_clean") is True
+            and admission.get("runner_image_digest") == spec["runner_image_digest"]
+        ),
+        sandbox_verified=(
+            admission.get("sandbox_clean") is True
+            and admission.get("sandbox_policy") == spec["sandbox_policy"]
+        ),
+        local_cost_ms=int(admission.get("local_cost_ms", 1_000)),
+        felix_cost_ms=int(admission.get("felix_cost_ms", 1_000)),
+    )
+
+
 def _resolve(
     args: argparse.Namespace, *, require_clean: bool
 ) -> tuple[dict[str, Any], dict[str, Any], set[str]]:
@@ -141,6 +186,7 @@ def _plan(args: argparse.Namespace) -> dict[str, Any]:
     resolved, git, capabilities = _resolve(args, require_clean=False)
     spec = resolved["spec"]
     missing = sorted(set(spec["required_capabilities"]) - capabilities)
+    route = _route(args, spec=spec, git=git, admission=_admission(args))
     return {
         "schema": SCHEMA,
         "command": "plan",
@@ -162,12 +208,19 @@ def _plan(args: argparse.Namespace) -> dict[str, Any]:
             "remote_eligible": spec["remote_eligible"],
             "side_effects": list(spec["side_effects"]),
             "mutation_authority": False,
+            "route": route,
         },
     }
 
 
-def _run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
-    resolved, git, capabilities = _resolve(args, require_clean=True)
+def _run_local(
+    args: argparse.Namespace,
+    *,
+    resolved: dict[str, Any],
+    git: dict[str, Any],
+    capabilities: set[str],
+    route: dict[str, Any],
+) -> tuple[dict[str, Any], int]:
     spec = resolved["spec"]
     missing = sorted(set(spec["required_capabilities"]) - capabilities)
     if missing:
@@ -216,9 +269,107 @@ def _run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "timeout_seconds": spec["timeout_seconds"],
             "artifact_contract": spec["artifact_contract"],
             "mutation_authority": False,
+            "route": route,
         },
     }
     return payload, returncode if returncode != 0 else 0
+
+
+def _run_felix(
+    args: argparse.Namespace,
+    *,
+    resolved: dict[str, Any],
+    git: dict[str, Any],
+    route: dict[str, Any],
+    admission: dict[str, Any],
+) -> tuple[dict[str, Any], int]:
+    spec = resolved["spec"]
+    repo = args.repo.resolve()
+    request_id = hashlib.sha256(
+        f"{resolved['profile']}:{git['head']}:{resolved['spec_digest']}".encode()
+    ).hexdigest()[:24]
+    nonce = hashlib.sha256(f"nonce:{request_id}".encode()).hexdigest()
+    now = int(admission.get("now", 0))
+    signing_key = resolved["spec_digest"]
+    request = make_request(
+        request_id=request_id,
+        nonce=nonce,
+        profile=resolved["profile"],
+        argv=resolved["argv"],
+        source_head=git["head"],
+        profile_digest=resolved["spec_digest"],
+        runner_image_digest=spec["runner_image_digest"],
+        sandbox_policy=spec["sandbox_policy"],
+        issued_at=now,
+        expires_at=now + 60,
+        signing_key=signing_key,
+        source_root=str(repo),
+        source_clean=git["clean"],
+    )
+    launcher = build_xmachine_argv(resolved["argv"])
+    child_started = False
+    try:
+        child_started = True
+        completed = subprocess.run(
+            launcher,
+            cwd=str(repo),
+            input=json.dumps(request, ensure_ascii=False, sort_keys=True),
+            capture_output=True,
+            check=False,
+            env={"PATH": os.environ.get("PATH", ""), "UV_NO_CACHE": "1"},
+            shell=False,
+            text=True,
+            timeout=spec["timeout_seconds"],
+        )
+        if completed.returncode != 0:
+            raise CliError("remote-child", f"returncode={completed.returncode}")
+        result = json.loads(completed.stdout)
+        verify_remote_result(request, result, signing_key=signing_key, now=now + 1)
+    except (OSError, json.JSONDecodeError, TransportError, CliError) as error:
+        failure = remote_failure(_error_code(error), child_started=child_started)
+        return {
+            "schema": SCHEMA,
+            "command": "run",
+            "ok": False,
+            "verdict": "failed",
+            "result": {
+                "profile": resolved["profile"],
+                "route": failure,
+                "launcher_argv": launcher,
+                "shell": False,
+            },
+        }, ERROR_EXIT
+
+    cache_dir = repo / ".cache" / "compute"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    artifact_path = cache_dir / f"{request_id}.json"
+    artifact_path.write_text(json.dumps(result, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+    return {
+        "schema": SCHEMA,
+        "command": "run",
+        "ok": True,
+        "verdict": "success",
+        "result": {
+            "profile": resolved["profile"],
+            "route": route,
+            "launcher_argv": launcher,
+            "shell": False,
+            "artifact_path": str(artifact_path),
+            "mutation_authority": False,
+        },
+    }, 0
+
+
+def _run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    resolved, git, capabilities = _resolve(args, require_clean=args.mode == "local")
+    spec = resolved["spec"]
+    admission = _admission(args)
+    route = _route(args, spec=spec, git=git, admission=admission)
+    if route["selected"] is None:
+        raise CliError(route["reason_code"])
+    if route["selected"] == "felix":
+        return _run_felix(args, resolved=resolved, git=git, route=route, admission=admission)
+    return _run_local(args, resolved=resolved, git=git, capabilities=capabilities, route=route)
 
 
 def _status(args: argparse.Namespace) -> dict[str, Any]:
@@ -263,6 +414,8 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("profile")
         command.add_argument("--param", action="append", default=[])
         command.add_argument("--test-path")
+        command.add_argument("--mode", choices=("local", "auto", "felix"), default="local")
+        command.add_argument("--admission-file", type=Path)
     commands.add_parser("status", help="observe registry and local runner state")
     return parser
 
@@ -276,6 +429,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "plan":
             payload = _plan(args)
+            payload["ok"] = payload["ok"] and payload["result"]["route"]["selected"] is not None
+            payload["verdict"] = "planned" if payload["ok"] else "blocked"
             _emit(payload)
             return 0 if payload["ok"] else ERROR_EXIT
         if args.command == "run":
