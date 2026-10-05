@@ -49,6 +49,7 @@ DEFAULT_XCTEST_DEVICES_ROOT = Path.home() / "Library" / "Developer" / "XCTestDev
 DEFAULT_XCTEST_DEVICES_BUDGET_GIB = 16
 DEFAULT_SIMULATOR_RUNTIME_BUDGET_GIB = 56
 SIMULATOR_RUNTIME_ROOT = Path("/Library/Developer/CoreSimulator")
+GIT_METADATA_DIRNAME = ".git"
 MEASUREMENT_BUDGET_ERROR = "measurement-time-budget-exceeded"
 MISSING_PATH_ERROR = "path-missing"
 XCTEST_DEVICES_METADATA_ERROR = "xctest-devices-metadata-unavailable"
@@ -954,6 +955,8 @@ def measure_tree(
                         if budget_expired():
                             record_budget_expiry()
                             break
+                        if entry.name == GIT_METADATA_DIRNAME:
+                            continue
                         # scandir already yields absolute paths. Resolving
                         # every entry can consume the entire measurement budget.
                         entry_path = Path(entry.path)
@@ -1330,6 +1333,15 @@ def _lane_key(branch: str, path: Path, index: int | None = None) -> str:
     return hashlib.sha256(f"{branch}\0{path}{suffix}".encode()).hexdigest()[:16]
 
 
+def _nested_worktree_paths(root: Path, candidates: set[Path]) -> set[Path]:
+    normalized_root = _path(root)
+    return {
+        path
+        for path in candidates
+        if path != normalized_root and _relative_to(path, normalized_root)
+    }
+
+
 def _lane_entry(
     *,
     branch: str,
@@ -1340,23 +1352,29 @@ def _lane_entry(
     physical: dict[str, Any] | None,
     deadline: float | None = None,
     excluded: bool = False,
+    scan_excluded: set[Path] | None = None,
+    measured: dict[str, Any] | None = None,
     physical_state_override: str | None = None,
     registry_match_count: int = 1,
     registry_statuses: list[str] | None = None,
     topology: str | None = None,
 ) -> dict[str, Any]:
-    if path.is_dir():
-        measured = measure_tree(path, deadline=deadline)
-        exists = True
-    else:
-        measured = {
-            "logical_bytes": 0,
-            "allocated_bytes": 0,
-            "files": 0,
-            "complete": False,
-            "error": MISSING_PATH_ERROR,
-        }
-        exists = False
+    exists = path.is_dir()
+    if measured is None:
+        if exists:
+            measured = measure_tree(
+                path,
+                excluded=scan_excluded,
+                deadline=deadline,
+            )
+        else:
+            measured = {
+                "logical_bytes": 0,
+                "allocated_bytes": 0,
+                "files": 0,
+                "complete": False,
+                "error": MISSING_PATH_ERROR,
+            }
     if physical is not None:
         head = physical.get("head")
         observed_branch = physical.get("branch")
@@ -1587,6 +1605,17 @@ def build_report(
         normalized = _path(record_path)
         registry_by_path.setdefault(normalized, []).append((index, record))
 
+    known_worktree_paths = set(physical_by_path) | set(registry_by_path)
+    nested_worktrees = _nested_worktree_paths(
+        workspace,
+        {path for path in known_worktree_paths if path.is_dir()},
+    )
+    workspace_measurement = measure_tree(
+        workspace,
+        excluded=nested_worktrees,
+        deadline=deadline,
+    )
+
     applied_exclusions: list[Path] = []
     exclusion_rejections: list[dict[str, str]] = []
     for supervision_path in requested_supervision_paths:
@@ -1645,6 +1674,8 @@ def build_report(
             registry_index=selected_index,
             physical=physical_by_path.get(normalized),
             deadline=deadline,
+            scan_excluded=_nested_worktree_paths(normalized, known_worktree_paths),
+            measured=workspace_measurement if normalized == workspace else None,
             physical_state_override=(
                 "terminal-residue"
                 if is_terminal and normalized in physical_by_path
@@ -1691,6 +1722,10 @@ def build_report(
             physical=physical,
             deadline=deadline,
             excluded=is_excluded,
+            scan_excluded=_nested_worktree_paths(physical_path, known_worktree_paths),
+            measured=workspace_measurement
+            if physical_path == workspace
+            else None,
             topology=topology,
         )
         if lane_kind == "canonical-main":
@@ -1721,6 +1756,8 @@ def build_report(
             registry_index=None,
             physical=physical_by_path.get(workspace),
             deadline=deadline,
+            scan_excluded=nested_worktrees,
+            measured=workspace_measurement,
             topology=_topology_name(workspace, topology_roots),
         )
         canonical["ownership"] = "canonical"
@@ -1735,19 +1772,6 @@ def build_report(
             item["branch"],
             item["registry_index"] or -1,
         ),
-    )
-    nested_worktrees = {
-        _path(item["path"])
-        for item in lanes
-        if item["lane_kind"] == "lane"
-        and item["exists"]
-        and _path(item["path"]) != workspace
-        and _relative_to(_path(item["path"]), workspace)
-    }
-    workspace_measurement = measure_tree(
-        workspace,
-        excluded=nested_worktrees,
-        deadline=deadline,
     )
     physical_lanes_by_path = {
         Path(item["path"]): item
