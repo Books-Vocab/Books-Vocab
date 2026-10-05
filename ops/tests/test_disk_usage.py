@@ -84,6 +84,62 @@ def test_measure_tree_does_not_resolve_each_entry(
     assert len(calls) <= 1
 
 
+def test_measure_tree_skips_git_metadata_by_default(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    project_file = root / "project.txt"
+    project_file.write_bytes(b"project\n")
+    git_objects = root / ".git" / "objects" / "pack"
+    git_objects.mkdir(parents=True)
+    (git_objects / "large.pack").write_bytes(b"git-object\n" * 4096)
+
+    report = disk_usage.measure_tree(root)
+
+    assert report["complete"] is True
+    assert report["files"] == 1
+    assert report["logical_bytes"] == project_file.stat().st_size
+    assert report["allocated_bytes"] == disk_usage._allocated_bytes(project_file.stat())
+
+
+def test_lane_measurement_excludes_nested_registered_worktree(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    nested = worktree / "nested-lane"
+    nested.mkdir()
+    (nested / "nested.txt").write_bytes(b"nested\n")
+    state = tmp_path / "registry.json"
+    _write_registry(
+        state,
+        [
+            {
+                "branch": "lane-one",
+                "path": str(worktree),
+                "status": "active",
+                "claim_generation": 0,
+            },
+            {
+                "branch": "nested-lane",
+                "path": str(nested),
+                "status": "active",
+                "claim_generation": 0,
+            },
+        ],
+    )
+    original_measure_tree = disk_usage.measure_tree
+    exclusions: dict[str, set[Path]] = {}
+
+    def tracking_measure_tree(root: Path, **kwargs: object) -> dict[str, object]:
+        exclusions[str(root)] = set(kwargs.get("excluded", set()))
+        return original_measure_tree(root, **kwargs)
+
+    monkeypatch.setattr(disk_usage, "measure_tree", tracking_measure_tree)
+
+    disk_usage.build_report(repo, state, time_budget_seconds=5)
+
+    assert nested in exclusions[str(worktree)]
+
+
 def test_report_attributes_registered_lanes_and_canonical_main(tmp_path: Path) -> None:
     repo, worktree = _repo_with_worktree(tmp_path)
     state = tmp_path / "registry.json"
