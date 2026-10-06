@@ -66,9 +66,14 @@ REGISTRY_PATH = OPS_DIR / "compute_profiles.yml"
 # Fixed transport: the remote command is a constant with no dynamic value.
 SSH_TARGET = "chenliangyu@100.118.39.104"  # felix, tailnet address (host_topology.md)
 SSH_BIN_DEFAULT = "/usr/bin/ssh"
+# The launcher holds the receipt-signing key, so it must run reviewed code from
+# an exact merged commit.  It lives in a dedicated, detached checkout on Felix
+# (~/kg-compute, updated only by an operator to a merged main SHA) and never in
+# the ~/kg-prod service tree, so installing or updating it cannot touch, and
+# does not require releasing, the production backend.
 REMOTE_COMMAND = (
     "~/.local/bin/uv run --python 3.13 --script "
-    "~/kg-prod/ops/felix_compute_launcher.py exec"
+    "~/kg-compute/ops/felix_compute_launcher.py exec"
 )
 RELAY_TIMEOUT_SECONDS = 840.0
 
