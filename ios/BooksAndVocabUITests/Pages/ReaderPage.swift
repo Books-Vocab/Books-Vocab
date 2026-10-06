@@ -463,7 +463,18 @@ struct ReaderPage {
         file: StaticString = #filePath,
         line: UInt = UInt(#line)
     ) {
-        let projections = app.webViews.allElementsBoundByIndex.filter { !$0.frame.isEmpty }
+        // The web view element can exist before WebKit has laid it out, so its
+        // frame is briefly empty and not yet hittable.  Poll for a bounded time
+        // instead of asserting on the first snapshot.
+        func visibleProjections() -> [XCUIElement] {
+            app.webViews.allElementsBoundByIndex.filter { !$0.frame.isEmpty }
+        }
+        var projections = visibleProjections()
+        let deadline = Date().addingTimeInterval(10)
+        while !(projections.contains { $0.exists && $0.isHittable }), Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+            projections = visibleProjections()
+        }
         XCTAssertFalse(
             projections.isEmpty,
             "Reader must expose at least one Readium web view projection",
