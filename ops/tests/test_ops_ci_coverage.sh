@@ -87,6 +87,43 @@ for group in "${MAC_GROUPS[@]}"; do
   fi
 done
 
+# File-level reachability for tests known to be routed (IMP-20260818-2167f4).
+# Format "<group>:<test file>": the group's case arm in ops/test_ops.sh must
+# mention the file.  Not a full reachability scan; extend as files are routed.
+ROUTED_TESTS=(
+  "ui-graph:ops/tests/test_ui_graph_contract.py"
+)
+
+# Print one group's case arm from a test_ops.sh-shaped file.
+group_arm() {
+  awk -v g="$1" '
+    index($0, "    " g ")") == 1 { inside=1; print; next }
+    inside && /^    [a-z0-9-]+\)/ { exit }
+    inside { print }
+  ' "$2"
+}
+
+check_routed() {
+  local script="$1" entry group file
+  for entry in "${ROUTED_TESTS[@]}"; do
+    group="${entry%%:*}"; file="${entry#*:}"
+    [[ -f "$file" ]] || { echo "✗ routed test file missing: $file" >&2; return 1; }
+    group_arm "$group" "$script" | grep -qF "$file" \
+      || { echo "✗ $file is not executed by group $group in $script" >&2; return 1; }
+  done
+}
+
+check_routed ops/test_ops.sh || failed=1
+
+# Falsification: dropping the routing must turn the check red.
+mutant="$(mktemp)"
+trap 'rm -f "$mutant"' EXIT
+grep -vF 'test_ui_graph_contract.py' ops/test_ops.sh >"$mutant" || true
+if check_routed "$mutant" 2>/dev/null; then
+  echo "✗ falsification failed: routed-test check stayed green without the routing" >&2
+  failed=1
+fi
+
 if [[ "${1:-}" == "--print-linux-groups" ]]; then
   (( failed == 0 )) || exit 1
   printf '%s\n' "${LINUX_GROUPS[@]}"
