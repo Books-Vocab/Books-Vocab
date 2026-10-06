@@ -28,6 +28,8 @@ from conftest import TEST_ALGORITHM, TEST_JWT_SECRET, make_settings
 from kg.api_models import AuthVerifyRequest
 from kg.auth_handlers import auth_verify_response
 from kg.auth_service import resolve_and_link_user
+from kg.cards import CardStore
+from kg.notebook import NotebookStore
 from kg.user_context import resolve_current_user
 from kg.user_handlers import delete_user_account_response
 from kg.user_store import parse_datetime as _parse_datetime
@@ -305,6 +307,107 @@ async def test_linked_apple_sub_only_follow_up_keeps_canonical_user(tmp_path):
     assert users["apple-sub"]["_linked_to"] == "google-sub"
     assert canonical_data.exists()
     assert json.loads(canonical_data.read_text())["title"] == "canonical data"
+
+
+@pytest.mark.asyncio
+async def test_linked_alias_token_reuses_canonical_data_wedge(tmp_path):
+    """Old alias JWTs must converge on the canonical data after a verified link.
+
+    The alias account can have created cards/notebooks before its provider
+    identity becomes verified.  Once the same provider sub is linked to an
+    existing canonical account, both the old alias token and the new canonical
+    token must resolve to one writable directory without hiding that data.
+    """
+    users_file, lock, load, save = _make_user_store(tmp_path)
+    settings = make_settings(tmp_path)
+    canonical_email = "canonical@example.com"
+
+    canonical_kwargs = _build_handler_kwargs(
+        users_file,
+        lock,
+        provider="google",
+        sub="canonical-sub",
+        email=canonical_email,
+        email_verified=True,
+    )
+    canonical_resp = await auth_verify_response(
+        AuthVerifyRequest(provider="google", token="canonical", email=None),
+        **canonical_kwargs,
+    )
+    assert canonical_resp.user_id == "canonical-sub"
+
+    alias_kwargs = _build_handler_kwargs(
+        users_file,
+        lock,
+        provider="apple",
+        sub="alias-sub",
+        email="unverified@example.com",
+        email_verified=False,
+    )
+    alias_resp = await auth_verify_response(
+        AuthVerifyRequest(provider="apple", token="alias", email=None),
+        **alias_kwargs,
+    )
+    assert alias_resp.user_id == "alias-sub"
+
+    canonical_dir = tmp_path / "users" / "canonical-sub"
+    alias_dir = tmp_path / "users" / "alias-sub"
+    canonical_dir.mkdir(parents=True)
+    canonical_notebooks = NotebookStore(canonical_dir / "notebooks.db")
+    canonical_notebooks.ensure_default()
+    canonical_notebooks.close()
+    alias_notebooks = NotebookStore(alias_dir / "notebooks.db")
+    alias_notebook = alias_notebooks.create("Alias-era notebook")
+    alias_notebooks.close()
+    alias_cards = CardStore(alias_dir / "cards.db")
+    alias_card = alias_cards.add(
+        content="alias-era card",
+        meaning="must survive linking",
+        notebook_id=alias_notebook.id,
+    )
+    alias_cards.close()
+
+    verified_alias_kwargs = _build_handler_kwargs(
+        users_file,
+        lock,
+        provider="apple",
+        sub="alias-sub",
+        email=canonical_email,
+        email_verified=True,
+    )
+    linked_resp = await auth_verify_response(
+        AuthVerifyRequest(provider="apple", token="alias-verified", email=None),
+        **verified_alias_kwargs,
+    )
+    assert linked_resp.user_id == "canonical-sub"
+
+    canonical_record = resolve_current_user(
+        linked_resp.access_token,
+        settings=settings,
+        load_users=load,
+        parse_datetime=_parse_datetime,
+    )
+    old_alias_record = resolve_current_user(
+        alias_resp.access_token,
+        settings=settings,
+        load_users=load,
+        parse_datetime=_parse_datetime,
+    )
+
+    assert canonical_record["id"] == old_alias_record["id"] == "canonical-sub"
+    assert canonical_record["dir"] == old_alias_record["dir"] == canonical_dir
+    assert not alias_dir.exists()
+
+    merged_cards = CardStore(canonical_dir / "cards.db")
+    try:
+        assert merged_cards.get(alias_card.id).content == "alias-era card"
+    finally:
+        merged_cards.close()
+    merged_notebooks = NotebookStore(canonical_dir / "notebooks.db")
+    try:
+        assert merged_notebooks.get(alias_notebook.id).name == "Alias-era notebook"
+    finally:
+        merged_notebooks.close()
 
 
 # --------------------------------------------------------------------------- #
