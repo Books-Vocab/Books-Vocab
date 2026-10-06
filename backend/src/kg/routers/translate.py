@@ -38,7 +38,7 @@ async def translate_phrase(req: TranslateRequest, response: Response, user: Curr
 
 @router.post("/api/translate/explain", response_model=ExplainResponse)
 async def translate_explain(req: TranslateRequest, response: Response, user: CurrentUser):
-    quota = _check_quota(user, "translate_explain", response)
+    _check_quota(user, "translate_explain", response)
     result = await translate_explain_response(req, user, logger=logger)
-    _apply_quota_headers(response, quota)
+    _apply_quota_headers(response, get_quota_state(user["id"], is_pro=_is_pro(user)))
     return result

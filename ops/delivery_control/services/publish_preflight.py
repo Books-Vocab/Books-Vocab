@@ -105,6 +105,7 @@ class PublishPreflightService:
         remote_sha: str | None,
         previous_base_sha: str,
         previous_head_sha: str,
+        previous_tuple_matches_pr: bool,
     ) -> bool:
         if remote_sha is None:
             raise PolicyViolation("existing PR branch is missing from remote")
@@ -131,15 +132,46 @@ class PublishPreflightService:
             raise PolicyViolation(
                 "existing PR patch equivalence could not be verified"
             ) from error
-        return previous_fingerprint == current_fingerprint
+        if previous_fingerprint == current_fingerprint:
+            return True
+        if not previous_tuple_matches_pr:
+            return False
+        normalized_equivalence = getattr(
+            self.git, "is_whitespace_normalized_patch_equivalent", None
+        )
+        if not callable(normalized_equivalence):
+            raise PolicyViolation(
+                "whitespace-normalized patch equivalence capability is unavailable"
+            )
+        try:
+            equivalent = normalized_equivalence(
+                previous_base_sha,
+                previous_head_sha,
+                receipt.base_sha,
+                receipt.head_sha,
+            )
+        except DeliverySourceError as error:
+            raise PolicyViolation(
+                "whitespace-normalized patch equivalence could not be verified"
+            ) from error
+        if type(equivalent) is not bool:
+            raise PolicyViolation(
+                "whitespace-normalized patch equivalence could not be verified"
+            )
+        return equivalent
 
     @staticmethod
     def _worktree_changes_match_scope(
-        *, receipt: HandbackReceipt, worktree: WorktreeSnapshot
+        *,
+        receipt: HandbackReceipt,
+        worktree: WorktreeSnapshot,
+        exact: bool = False,
     ) -> bool:
         expected = {(item.operation.value, item.path) for item in receipt.scope.files}
         actual = {(item.operation.value, item.path) for item in worktree.changes}
-        return actual == expected
+        if exact:
+            return actual == expected
+        return bool(actual) and actual.issubset(expected)
 
     def _validate_existing_pull_request_scope(
         self,
@@ -153,10 +185,13 @@ class PublishPreflightService:
     ) -> None:
         """Allow exact Scope evolution across an owner reanchor.
 
-        A reanchored claim can legitimately add a file before publishing the
-        same durable PR.  The old PR must still be self-describing and its
-        changed paths must exactly match its previous typed receipt; otherwise
-        a same-branch PR could be used to smuggle arbitrary Scope drift.
+        A reanchored claim can legitimately retain declared files that are
+        unchanged in the current patch before publishing the same durable PR.
+        The old PR must still be self-describing and its changed paths must
+        fit its previous typed receipt; otherwise a same-branch PR could be
+        used to smuggle arbitrary Scope drift.  When the current typed Scope
+        itself changes, the current patch must still realize that full Scope
+        so an unmodified patch cannot authorize a Scope expansion.
 
         A PR can also have its target base advanced before its body is refreshed.
         That partial publication is recoverable only when its old body still
@@ -192,6 +227,27 @@ class PublishPreflightService:
             raise PolicyViolation(
                 "existing PR base is unrelated to old or new handback base"
             )
+        previous_paths = set(previous.scope.paths)
+        observed = set(observed_paths)
+        current_paths = set(receipt.scope.paths)
+        current_changes_match = self._worktree_changes_match_scope(
+            receipt=receipt,
+            worktree=worktree,
+            exact=receipt.scope != previous.scope,
+        )
+        if generation_advanced and previous_tuple_matches_pr:
+            if not observed.issubset(current_paths):
+                raise PolicyViolation(
+                    "owner reanchor cannot remove paths observed in existing PR"
+                )
+            if (
+                current_paths != previous_paths
+                or observed != previous_paths
+                or remote_sha != receipt.head_sha
+            ) and not current_changes_match:
+                raise PolicyViolation(
+                    "current handback diff does not exactly match its typed Scope"
+                )
         head_can_advance = False
         if generation_advanced and previous_head_matches_pr:
             head_can_advance = self._existing_pr_head_can_advance(
@@ -200,6 +256,7 @@ class PublishPreflightService:
                 remote_sha=remote_sha,
                 previous_base_sha=previous.base_sha,
                 previous_head_sha=previous.head_sha,
+                previous_tuple_matches_pr=previous_tuple_matches_pr,
             )
             if not head_can_advance:
                 raise PolicyViolation(
@@ -216,12 +273,6 @@ class PublishPreflightService:
         if not previous_tuple_matches_pr and not partial_publication_matches:
             raise PolicyViolation("existing PR body differs from its exact PR tuple")
 
-        previous_paths = set(previous.scope.paths)
-        observed = set(observed_paths)
-        current_paths = set(receipt.scope.paths)
-        current_changes_match = self._worktree_changes_match_scope(
-            receipt=receipt, worktree=worktree
-        )
         if partial_publication_matches:
             if not observed.issubset(current_paths):
                 raise PolicyViolation(
@@ -278,9 +329,26 @@ class PublishPreflightService:
             raise PolicyViolation("duplicate open PRs exist for handback branch")
         pull_request = branch_matches[0] if branch_matches else None
         remote_sha = self.git.remote_branch_sha(receipt.branch)
+        if pull_request is not None and pull_request.base_branch != "main":
+            raise PolicyViolation("existing PR does not target main")
+        try:
+            collision = self._scope_collision(
+                receipt=receipt,
+                registry=registry,
+                pull_requests=pull_request_inventory.records,
+            )
+        except DeliverySourceError as error:
+            raise PolicyViolation(f"collision inventory failed: {error}") from error
         if pull_request is not None:
-            if pull_request.base_branch != "main":
-                raise PolicyViolation("existing PR does not target main")
+            preflight_decision = evaluate_publication(
+                receipt=receipt,
+                registry=registry,
+                worktree=worktree,
+                duplicate_pr=False,
+                scope_collision=collision,
+            )
+            if not preflight_decision.allowed:
+                raise PolicyViolation("; ".join(preflight_decision.reasons))
             observed_paths = self.github.changed_paths(pull_request.number)
             self._validate_existing_pull_request_scope(
                 receipt=receipt,
@@ -290,14 +358,6 @@ class PublishPreflightService:
                 remote_sha=remote_sha,
                 worktree=worktree,
             )
-        try:
-            collision = self._scope_collision(
-                receipt=receipt,
-                registry=registry,
-                pull_requests=pull_request_inventory.records,
-            )
-        except DeliverySourceError as error:
-            raise PolicyViolation(f"collision inventory failed: {error}") from error
         decision = evaluate_publication(
             receipt=receipt,
             registry=registry,

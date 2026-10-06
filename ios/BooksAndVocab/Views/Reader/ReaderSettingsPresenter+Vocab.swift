@@ -83,6 +83,7 @@ extension ReaderSettingsPresenter {
                 font: bindings.font.wrappedValue,
                 fontScale: state.fontScale,
                 lineHeight: bindings.lineHeight.wrappedValue,
+                letterSpacing: bindings.letterSpacing.wrappedValue,
                 theme: state.previewTheme,
                 vocabHighlightPreferences: VocabHighlightPreferences(
                     colorPreset: bindings.vocabHighlightColorPreset.wrappedValue,
@@ -130,6 +131,18 @@ extension ReaderSettingsPresenter {
                 onIncrement: { changeLineHeight(by: 1) }
             )
 
+            ReaderTypographyAdjustmentRow(
+                title: L10n.string("reader.settings.letterSpacing"),
+                value: state.letterSpacingText,
+                rowIdentifier: "reader.settings.letterSpacing",
+                decrementIdentifier: "reader.settings.letterSpacing.decrement",
+                incrementIdentifier: "reader.settings.letterSpacing.increment",
+                canDecrement: state.canDecreaseLetterSpacing,
+                canIncrement: state.canIncreaseLetterSpacing,
+                onDecrement: { changeLetterSpacing(by: -1) },
+                onIncrement: { changeLetterSpacing(by: 1) }
+            )
+
             Picker(selection: bindings.scrollMode) {
                 Text(L10n.string("reader.settings.readingMode.paged")).tag(false)
                 Text(L10n.string("reader.settings.readingMode.scroll")).tag(true)
@@ -149,6 +162,15 @@ extension ReaderSettingsPresenter {
             by: tickDelta,
             in: ReaderTypographyMetrics.lineHeightRange,
             step: ReaderTypographyMetrics.lineHeightStep
+        )
+    }
+
+    private func changeLetterSpacing(by tickDelta: Int) {
+        bindings.letterSpacing.wrappedValue = ReaderTypographyMetrics.steppedValue(
+            from: bindings.letterSpacing.wrappedValue,
+            by: tickDelta,
+            in: ReaderTypographyMetrics.letterSpacingRange,
+            step: ReaderTypographyMetrics.letterSpacingStep
         )
     }
 

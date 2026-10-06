@@ -32,6 +32,26 @@ from kg.user_store import load_users_from
 
 from .ops_cli_shared import _cutoff_iso, _flatten_user_config, _ops_passthrough_normalize
 
+_MIN_UTC = datetime.min.replace(tzinfo=UTC)
+
+
+def _utc_instant(value: str | None) -> datetime | None:
+    """Parse a stored ISO timestamp as a comparable UTC instant."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _is_utc_day(value: str | None, day: str) -> bool:
+    instant = _utc_instant(value)
+    return bool(instant and instant.date().isoformat() == day)
+
 
 def _quota_limit(name: str, default: float) -> float:
     value = _env_float(name, default)
@@ -477,12 +497,14 @@ def cmd_sync_trace(args: argparse.Namespace) -> None:
                 "SELECT id, content, is_deleted, "
                 f"{_card_col('notebook_id')}, created_at, updated_at, "
                 f"{_card_col('mode')}, {_card_col('review_count')}, {_card_col('next_review_at')} "
-                "FROM card WHERE date(created_at) = ? OR date(updated_at) = ? "
+                "FROM card "
                 "ORDER BY updated_at",
-                (day, day),
             ).fetchall()
             for r in rows:
-                created_today = bool(r[4] and r[4][:10] == day)
+                created_at = _utc_instant(r[4])
+                if not (_is_utc_day(r[4], day) or _is_utc_day(r[5], day)):
+                    continue
+                created_today = bool(created_at and created_at.date().isoformat() == day)
                 event_type = "card_created" if created_today else "card_updated"
                 if r[2]:
                     event_type = "card_deleted"
@@ -512,11 +534,13 @@ def cmd_sync_trace(args: argparse.Namespace) -> None:
             model = "model" if "model" in tcols else "NULL"
             rows = conn.execute(
                 f"SELECT call_type, input_tokens, output_tokens, created_at, {prov}, {model} "
-                "FROM token_usage WHERE user_id = ? AND date(created_at) = ? "
+                "FROM token_usage WHERE user_id = ? "
                 "ORDER BY created_at",
-                (uid, day),
+                (uid,),
             ).fetchall()
             for r in rows:
+                if not _is_utc_day(r[3], day):
+                    continue
                 events.append(
                     {
                         "ts": r[3] or "",
@@ -534,11 +558,13 @@ def cmd_sync_trace(args: argparse.Namespace) -> None:
         try:
             rows = conn.execute(
                 "SELECT from_id, to_id, verdict, accepted, reject_reason, created_at "
-                "FROM judge_log WHERE user_id = ? AND date(created_at) = ? "
+                "FROM judge_log WHERE user_id = ? "
                 "ORDER BY created_at",
-                (uid, day),
+                (uid,),
             ).fetchall()
             for r in rows:
+                if not _is_utc_day(r[5], day):
+                    continue
                 events.append(
                     {
                         "ts": r[5] or "",
@@ -556,11 +582,13 @@ def cmd_sync_trace(args: argparse.Namespace) -> None:
         try:
             rows = conn.execute(
                 "SELECT operation, word, context, latency_ms, created_at "
-                "FROM translate_log WHERE user_id = ? AND date(created_at) = ? "
+                "FROM translate_log WHERE user_id = ? "
                 "ORDER BY created_at",
-                (uid, day),
+                (uid,),
             ).fetchall()
             for r in rows:
+                if not _is_utc_day(r[4], day):
+                    continue
                 events.append(
                     {
                         "ts": r[4] or "",
@@ -572,7 +600,7 @@ def cmd_sync_trace(args: argparse.Namespace) -> None:
         finally:
             conn.close()
 
-    events.sort(key=lambda e: e["ts"])
+    events.sort(key=lambda e: _utc_instant(e["ts"]) or _MIN_UTC)
     if args.json:
         emit_json({"user_id": uid, "date": day, "count": len(events), "events": events})
         return

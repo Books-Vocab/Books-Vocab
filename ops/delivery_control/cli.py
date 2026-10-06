@@ -880,6 +880,14 @@ def _command_verdict(command: str, result: object) -> str:
             else getattr(result, "ready", None)
         )
         return "ready" if ready is True else "blocked"
+    if command == "abandon-pr":
+        malformed = (
+            result.get("malformed_published_lane")
+            if isinstance(result, Mapping)
+            else getattr(result, "malformed_published_lane", None)
+        )
+        if malformed is True:
+            return "terminalized-malformed"
     return "success"
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import collections
 import json
 import math
@@ -221,6 +222,30 @@ def test_external_card_ingest_is_idempotent_and_supports_card_operations(externa
     deleted = external_api.client.delete(f"/api/v1/cards/{card_id}", headers=headers)
     assert deleted.status_code == 200, deleted.text
     assert deleted.json() == {"cardId": card_id, "deleted": True}
+
+
+@pytest.mark.parametrize("meaning", [" ", "\t", "\n"])
+def test_external_card_update_rejects_blank_meaning(external_api, meaning):
+    api_key = _create_key(external_api)
+    headers = {"X-KG-API-Key": api_key}
+    created = external_api.client.post(
+        "/api/v1/cards",
+        json={"content": "durable", "meaning": "lasting"},
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    card_id = created.json()["card"]["id"]
+
+    rejected = external_api.client.patch(
+        f"/api/v1/cards/{card_id}",
+        json={"meaning": meaning},
+        headers=headers,
+    )
+
+    assert rejected.status_code == 422, rejected.text
+    fetched = external_api.client.get(f"/api/v1/cards/{card_id}", headers=headers)
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.json()["meaning"] == "lasting"
 
 
 def test_external_card_concurrent_duplicate_requests_are_idempotent(external_api, monkeypatch):
@@ -489,6 +514,74 @@ def test_external_card_review_route_preserves_finite_interval(external_api):
 
     assert response.status_code == 200, response.text
     assert response.json()["reviewIntervalHours"] == 24.5
+
+
+@pytest.mark.parametrize("field", ["reviewCount", "lapseCount", "reviewStreak"])
+def test_external_card_review_rejects_boolean_counters_without_write(external_api, field):
+    api_key = _create_key(external_api)
+    headers = {"X-KG-API-Key": api_key}
+    created = external_api.client.post(
+        "/api/v1/cards",
+        json={"content": "boolean review counter", "meaning": "布林計數器"},
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    card_id = created.json()["card"]["id"]
+
+    payload = _review_payload(24.5)
+    payload[field] = True
+    response = external_api.client.post(
+        f"/api/v1/cards/{card_id}/review",
+        json=payload,
+        headers=headers,
+    )
+
+    assert response.status_code == 422, response.text
+    fetched = external_api.client.get(f"/api/v1/cards/{card_id}", headers=headers)
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.json()["reviewIntervalHours"] == 12.0
+    assert fetched.json()["reviewCount"] == 0
+    assert fetched.json()["lapseCount"] == 0
+    assert fetched.json()["reviewStreak"] == 0
+
+
+@pytest.mark.parametrize("field", ["nextReviewAt", "lastReviewedAt"])
+def test_external_card_review_rejects_invalid_timestamps_without_write(external_api, field):
+    api_key = _create_key(external_api)
+    headers = {"X-KG-API-Key": api_key}
+    created = external_api.client.post(
+        "/api/v1/cards",
+        json={"content": "invalid review timestamp", "meaning": "無效時間"},
+        headers=headers,
+    )
+    assert created.status_code == 201, created.text
+    card_id = created.json()["card"]["id"]
+
+    payload = _review_payload(24.5)
+    payload[field] = "not-a-timestamp"
+    response = external_api.client.post(
+        f"/api/v1/cards/{card_id}/review",
+        json=payload,
+        headers=headers,
+    )
+
+    assert response.status_code == 422, response.text
+    fetched = external_api.client.get(f"/api/v1/cards/{card_id}", headers=headers)
+    assert fetched.status_code == 200, fetched.text
+    assert fetched.json()["reviewIntervalHours"] == 12.0
+    assert fetched.json()["reviewCount"] == 0
+
+
+def test_external_rate_limiter_preserves_active_windows_at_key_cap():
+    async def run():
+        limiter = ExternalRateLimiter(limit=1, window_seconds=60, max_keys=2)
+        decisions = [await limiter.admit(key) for key in ("victim", "noise-a", "noise-b", "victim")]
+        return decisions, list(limiter._events)
+
+    decisions, keys = asyncio.run(run())
+
+    assert [decision.allowed for decision in decisions] == [True, True, False, False]
+    assert keys == ["noise-a", "victim"]
 
 
 def test_external_rate_limit_returns_standard_headers(external_api, monkeypatch):

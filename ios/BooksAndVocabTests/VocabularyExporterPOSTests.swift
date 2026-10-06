@@ -14,9 +14,9 @@ import Testing
 @Suite(.serialized)
 struct VocabularyExporterPOSTests {
 
-    private func makeEntry() -> VocabularyEntry {
+    private func makeEntry(word: String = "invoke") -> VocabularyEntry {
         VocabularyEntry(
-            word: "invoke",
+            word: word,
             translation: "引用",
             context: "The lawyer invoked the law.",
             explanation: "to call upon",
@@ -29,6 +29,20 @@ struct VocabularyExporterPOSTests {
         let url = try #require(url)
         defer { try? FileManager.default.removeItem(at: url) }
         return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    private func expectIndependentExports(
+        _ export: ([VocabularyEntry]) -> URL?
+    ) throws {
+        let firstURL = try #require(export([makeEntry()]))
+        let firstData = try Data(contentsOf: firstURL)
+        defer { try? FileManager.default.removeItem(at: firstURL) }
+
+        let secondURL = try #require(export([makeEntry(word: "cite")]))
+        defer { try? FileManager.default.removeItem(at: secondURL) }
+
+        #expect(firstURL != secondURL)
+        #expect(try Data(contentsOf: firstURL) == firstData)
     }
 
     @Test func test_csv_emits_part_of_speech() throws {
@@ -72,5 +86,17 @@ struct VocabularyExporterPOSTests {
         )
         let csv = try read(VocabularyExporter.exportAsCSV(entries: [entry]))
         #expect(csv.contains("\"v., n.\""))
+    }
+
+    @Test func test_csv_exports_are_independent() throws {
+        try expectIndependentExports(VocabularyExporter.exportAsCSV(entries:))
+    }
+
+    @Test func test_json_exports_are_independent() throws {
+        try expectIndependentExports(VocabularyExporter.exportAsJSON(entries:))
+    }
+
+    @Test func test_anki_exports_are_independent() throws {
+        try expectIndependentExports(VocabularyExporter.exportAsAnki(entries:))
     }
 }

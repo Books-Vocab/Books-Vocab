@@ -24,6 +24,17 @@ _STRUCTURED_ISSUE_REF = re.compile(
     r"(?P<number>[1-9][0-9]*)(?=$|[^A-Z0-9])",
     re.IGNORECASE,
 )
+_GITHUB_ISSUE_URL = re.compile(
+    r"https?://github\.com/(?P<repository>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)"
+    r"/issues/(?P<number>[1-9][0-9]*)\b",
+    re.IGNORECASE,
+)
+_GITHUB_PULL_URL = re.compile(
+    r"https?://github\.com/(?P<repository>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)"
+    r"/pull/(?P<number>[1-9][0-9]*)\b",
+    re.IGNORECASE,
+)
+_DELIVERY_RECEIPT_MARKER = "<!-- kg.delivery.receipt.v1"
 _HOLD_LABELS = {
     "delivery-hold:p0",
     "delivery-hold:p1",
@@ -108,7 +119,39 @@ def _mapped_prs(
         pull_request
         for pull_request in pull_requests
         if _references_issue(pull_request.title, issue.number)
-        or _references_issue(pull_request.body, issue.number)
+        or _pull_request_body_references_issue(pull_request, issue.number)
+    )
+
+
+def _pull_request_body_references_issue(
+    pull_request: PullRequestSnapshot,
+    number: int,
+) -> bool:
+    """Accept only typed or repository-qualified Issue evidence from PR bodies.
+
+    PR bodies routinely embed third-party release notes.  A bare ``#N`` or
+    ``/issues/N`` in such prose is not evidence that the PR belongs to this
+    repository's Issue N.  Titles remain a deliberately narrow compatibility
+    path; body mappings require either the typed delivery receipt/lane identity
+    or a GitHub Issue URL in the same repository as the PR itself.
+    """
+
+    body = pull_request.body
+    if _DELIVERY_RECEIPT_MARKER in body and _references_issue(body, number):
+        return True
+    if _STRUCTURED_ISSUE_REF.search(body):
+        return any(
+            int(match.group("number")) == number
+            for match in _STRUCTURED_ISSUE_REF.finditer(body)
+        )
+    pull_match = _GITHUB_PULL_URL.search(pull_request.url)
+    if pull_match is None:
+        return False
+    repository = pull_match.group("repository").casefold()
+    return any(
+        match.group("repository").casefold() == repository
+        and int(match.group("number")) == number
+        for match in _GITHUB_ISSUE_URL.finditer(body)
     )
 
 

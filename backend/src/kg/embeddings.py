@@ -83,7 +83,7 @@ class EmbeddingStore:
         # a generic name if the .npy stem doesn't start with "embeddings".
         stem = self.embeddings_path.stem  # e.g. "embeddings_default"
         if stem.startswith("embeddings_"):
-            suffix = stem[len("embeddings_"):]
+            suffix = stem[len("embeddings_") :]
             name = f"embeddings_meta_{suffix}.json"
         elif stem == "embeddings":
             name = "embeddings_meta.json"
@@ -142,7 +142,8 @@ class EmbeddingStore:
                 except OSError as e:
                     logger.warning(
                         "Failed to quarantine embedding file %s: %s",
-                        path, e,
+                        path,
+                        e,
                     )
 
     def _load(self) -> None:
@@ -187,8 +188,11 @@ class EmbeddingStore:
             "EmbeddingStore meta mismatch at %s: on-disk model=%r dim=%r, "
             "active model=%r dim=%r. Quarantining stale vectors and "
             "starting empty; re-embed will backfill on next pipeline run.",
-            self.embeddings_path, stale_model, stale_dim,
-            self.model, self.dim,
+            self.embeddings_path,
+            stale_model,
+            stale_dim,
+            self.model,
+            self.dim,
         )
         self._quarantine_stale(str(stale_model), int(stale_dim) if isinstance(stale_dim, int) else 0)
         # Sidecar must reflect active config now.
@@ -236,10 +240,7 @@ class EmbeddingStore:
             return self._degrade_corrupt("ids_json_unreadable", detail=repr(e))
 
         # --- Structural consistency (#546) -------------------------------
-        reason = (
-            self._shape_dim_violation(vectors)
-            or self._row_id_violation(vectors, ids)
-        )
+        reason = self._shape_dim_violation(vectors) or self._row_id_violation(vectors, ids)
         if reason is not None:
             return self._degrade_corrupt(reason)
 
@@ -263,7 +264,8 @@ class EmbeddingStore:
             "EmbeddingStore corrupt vectors at %s (%s%s): likely an "
             "interrupted save. Quarantining and starting empty; re-embed "
             "will backfill on next pipeline run.",
-            self.embeddings_path, reason,
+            self.embeddings_path,
+            reason,
             f"; {detail}" if detail else "",
         )
         self._quarantine_corrupt(reason)
@@ -405,7 +407,7 @@ class EmbeddingStore:
                 return vecs
             except OpenAIError as e:
                 if attempt < _EMBED_MAX_RETRIES - 1:
-                    time.sleep(_EMBED_BACKOFF_BASE ** attempt)
+                    time.sleep(_EMBED_BACKOFF_BASE**attempt)
                     continue
                 logger.error("Embedding API error: %s", e, exc_info=True)
                 raise e
@@ -421,8 +423,14 @@ class EmbeddingStore:
         Items already present are silently skipped. Performs one API call,
         one np.vstack, and one disk save for the entire batch.
         """
-        # Filter out already-embedded cards
-        new_items = [(cid, text) for cid, text in items if cid not in self._id_set]
+        # Filter out already-embedded cards and duplicate IDs in this batch.
+        seen_ids = set(self._id_set)
+        new_items = []
+        for cid, text in items:
+            if cid in seen_ids:
+                continue
+            seen_ids.add(cid)
+            new_items.append((cid, text))
         if not new_items:
             return
 
@@ -467,9 +475,7 @@ class EmbeddingStore:
         if not to_drop:
             return 0
 
-        keep_mask = np.array(
-            [cid not in to_drop for cid in self._ids], dtype=bool
-        )
+        keep_mask = np.array([cid not in to_drop for cid in self._ids], dtype=bool)
         self._embeddings = self._embeddings[keep_mask]
         self._ids = [cid for cid in self._ids if cid not in to_drop]
         self._id_set = set(self._ids)
@@ -552,9 +558,7 @@ class EmbeddingStore:
                 results.append((self._ids[i], float(similarities[i])))
         return results[:k]
 
-    def find_similar_batch(
-        self, card_ids: list[str], k: int = 10
-    ) -> dict[str, list[tuple[str, float]]]:
+    def find_similar_batch(self, card_ids: list[str], k: int = 10) -> dict[str, list[tuple[str, float]]]:
         """Top-k neighbours for many query cards in one matrix product.
 
         Equivalent to ``{cid: self.find_similar(cid, k) for cid in card_ids}``

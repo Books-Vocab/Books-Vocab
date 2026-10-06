@@ -17,7 +17,7 @@ from .errors import ReanchorRefused
 SCHEMA = "kg.worktree.resume-published.v1"
 EXIT_OK = 0
 EXIT_BLOCK = 1
-ResumeMode = Literal["required-failure", "maintenance"]
+ResumeMode = Literal["required-failure", "maintenance", "abandoned-pr"]
 
 
 @dataclass(frozen=True)
@@ -162,8 +162,10 @@ def build_request(
         )
     if claim_generation < 0:
         raise ReanchorRefused("claim generation must be non-negative")
-    if mode not in {"required-failure", "maintenance"}:
-        raise ReanchorRefused("resume mode must be 'required-failure' or 'maintenance'")
+    if mode not in {"required-failure", "maintenance", "abandoned-pr"}:
+        raise ReanchorRefused(
+            "resume mode must be 'required-failure', 'maintenance', or 'abandoned-pr'"
+        )
     current_head = commit_sha(expected_remote_head, label="expected remote HEAD")
     previous_head = (
         commit_sha(previous_handback, label="previous hand-back")
@@ -215,7 +217,7 @@ def success_payload(
         "next_action": (
             "same owner may perform bounded maintenance, runs tests, and emits "
             "a fresh typed hand-back; PI updates the same published PR"
-            if request.mode == "maintenance"
+            if request.mode in {"maintenance", "abandoned-pr"}
             else "same owner fixes the required code failure, runs tests, and emits "
             "a fresh typed hand-back; PI updates the same published PR"
         ),

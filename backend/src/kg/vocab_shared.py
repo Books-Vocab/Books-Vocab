@@ -7,6 +7,8 @@ import logging
 from datetime import datetime
 from typing import Any, Protocol
 
+from pydantic import ValidationError
+
 from .api_models import (
     CardLinkSummaryResponse,
     CardResponse,
@@ -112,7 +114,10 @@ def _dt_to_iso(dt: datetime | None) -> str | None:
     if dt is None:
         return None
     s = dt.isoformat()
-    if not s.endswith("Z") and "+" not in s:
+    # Only naive datetimes need the implicit UTC marker. Negative offsets do
+    # not contain "+", so checking the serialized string would produce an
+    # invalid value such as "...-05:00Z".
+    if not s.endswith("Z") and dt.utcoffset() is None:
         s += "Z"
     return s
 
@@ -125,7 +130,11 @@ def _parse_vocab_source(raw_source: str | None, *, card_id: str) -> VocabSource 
     except json.JSONDecodeError:
         logger.warning("Ignoring malformed persisted vocab source JSON for card %s", card_id)
         return None
-    return VocabSource(**payload)
+    try:
+        return VocabSource(**payload)
+    except (TypeError, ValidationError):
+        logger.warning("Ignoring invalid persisted vocab source for card %s", card_id)
+        return None
 
 
 def build_links_by_kind(

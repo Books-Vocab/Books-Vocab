@@ -429,6 +429,23 @@ class TestReadJsonFromS3:
         assert ei.value.status_code == 500
         assert "Malformed metadata" in ei.value.detail
 
+    def test_raises_500_on_invalid_utf8_json(self):
+        def _settings(req):
+            return SimpleNamespace(podcast_bucket="bucket")
+
+        with pytest.raises(HTTPException) as ei:
+            media_mod._read_json_from_s3(
+                None,
+                "s1/metadata.json",
+                context="metadata",
+                settings_fn=_settings,
+                s3_client_fn=lambda req: self._make_s3(b"\xff"),
+                is_s3_not_found_fn=lambda exc, s3: False,
+                logger_=MagicMock(),
+            )
+        assert ei.value.status_code == 500
+        assert "Malformed metadata" in ei.value.detail
+
     def test_raises_502_on_s3_error(self):
         def _settings(req):
             return SimpleNamespace(podcast_bucket="bucket")

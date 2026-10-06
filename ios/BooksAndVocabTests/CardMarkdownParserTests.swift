@@ -13,9 +13,9 @@
 //       collocations / source) for a card.
 //
 //  All expected values were derived by reading the implementations line-by-line
-//  (NOT from any spec) — these pin *actual* behavior, including a deliberately
-//  surprising one: an empty `explanation` does NOT fall back to `translation`
-//  for meaning paragraphs (CardDocumentBuilder.swift:78-80).
+//  (NOT from any spec) — these pin the ordered card-document contract,
+//  including the regression that a translation remains visible when
+//  explanation is empty.
 //
 //  Note: `CardDocumentInline` and `CardDocumentBlock` are NOT Equatable, so the
 //  helpers below pattern-match to extract values / tags rather than `==`.
@@ -70,6 +70,15 @@ import Testing
         return nil
     }
 
+    private func meaningTitle(_ doc: CardDocument) -> String? {
+        for block in doc.blocks {
+            if case .meaning(let meaning) = block {
+                return meaning.title
+            }
+        }
+        return nil
+    }
+
     // MARK: - parseInlines: plain text & each delimiter
 
     @Test(arguments: [
@@ -115,7 +124,7 @@ import Testing
     // MARK: - CardDocumentBuilder.build
 
     private func makeDoc(
-        translation: String = "翻譯",
+        translation: String = "",
         examples: [String] = [],
         sourceContext: String = "",
         bookTitle: String = "book",
@@ -154,18 +163,17 @@ import Testing
         #expect(blockTags(doc) == ["hero", "divider", "meaning"])
     }
 
-    // Empty-string explanation is trimmed to "" → buildMeaningParagraphs returns []
-    // and does NOT fall back to translation (CardDocumentBuilder.swift:78-80).
-    // So no meaning block even though translation is non-empty. Pins the
-    // deliberately-no-fallback design.
-    @Test func build_emptyExplanation_doesNotFallBackToTranslation() async throws {
+    // Empty explanation still preserves a non-empty translation in the meaning
+    // title, so Word Detail and share text do not lose the card's translation.
+    @Test func build_emptyExplanation_preservesTranslation() async throws {
         let doc = makeDoc(translation: "非空翻譯", explanation: "")
-        #expect(blockTags(doc) == ["hero"])
+        #expect(blockTags(doc) == ["hero", "divider", "meaning"])
+        #expect(meaningTitle(doc) == "非空翻譯")
     }
 
-    // Whitespace-only explanation also trims to "" → no meaning block.
+    // Whitespace-only explanation is still allowed to show a non-empty translation.
     @Test func build_whitespaceExplanation_yieldsNoMeaning() async throws {
-        let doc = makeDoc(explanation: "   \n  ")
+        let doc = makeDoc(translation: "", explanation: "   \n  ")
         #expect(blockTags(doc) == ["hero"])
     }
 

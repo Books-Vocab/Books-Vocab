@@ -83,6 +83,7 @@ struct PodcastProgressSyncTests {
         var state = PodcastProgressPushState()
         let t0 = Date()
         _ = state.shouldPush(position: 10.0, duration: 100.0, now: t0, reason: .tick)
+        state.recordSuccessfulPush(position: 10.0, now: t0)
         let later = t0.addingTimeInterval(5)
         let again = state.shouldPush(position: 12.0, duration: 100.0, now: later, reason: .tick)
         #expect(again == false)
@@ -92,6 +93,7 @@ struct PodcastProgressSyncTests {
         var state = PodcastProgressPushState()
         let t0 = Date()
         _ = state.shouldPush(position: 10.0, duration: 100.0, now: t0, reason: .tick)
+        state.recordSuccessfulPush(position: 10.0, now: t0)
         let later = t0.addingTimeInterval(11)
         let again = state.shouldPush(position: 11.0, duration: 100.0, now: later, reason: .tick)
         #expect(again == true)
@@ -101,6 +103,7 @@ struct PodcastProgressSyncTests {
         var state = PodcastProgressPushState()
         let t0 = Date()
         _ = state.shouldPush(position: 10.0, duration: 100.0, now: t0, reason: .tick)
+        state.recordSuccessfulPush(position: 10.0, now: t0)
         let later = t0.addingTimeInterval(2)
         let again = state.shouldPush(position: 16.0, duration: 100.0, now: later, reason: .tick)
         #expect(again == true)
@@ -110,6 +113,7 @@ struct PodcastProgressSyncTests {
         var state = PodcastProgressPushState()
         let t0 = Date()
         _ = state.shouldPush(position: 10.0, duration: 100.0, now: t0, reason: .tick)
+        state.recordSuccessfulPush(position: 10.0, now: t0)
         let later = t0.addingTimeInterval(1)
         let again = state.shouldPush(position: 10.5, duration: 100.0, now: later, reason: .pause)
         #expect(again == true)
@@ -119,11 +123,55 @@ struct PodcastProgressSyncTests {
         var state = PodcastProgressPushState()
         let t0 = Date()
         _ = state.shouldPush(position: 10.0, duration: 100.0, now: t0, reason: .tick)
+        state.recordSuccessfulPush(position: 10.0, now: t0)
         let again = state.shouldPush(
             position: 10.1, duration: 100.0,
             now: t0.addingTimeInterval(1), reason: .episodeSwitch
         )
         #expect(again == true)
+    }
+
+    @Test func throttle_failed_attempt_does_not_consume_successful_baseline() {
+        var state = PodcastProgressPushState()
+        let t0 = Date()
+        state.recordSuccessfulPush(position: 10.0, now: t0)
+
+        // The 5% jump makes this attempt eligible, but it fails before the
+        // success commit. The same snapshot must remain eligible on retry.
+        #expect(
+            state.shouldPush(
+                position: 16.0, duration: 100.0,
+                now: t0.addingTimeInterval(2), reason: .tick
+            ) == true
+        )
+        #expect(
+            state.shouldPush(
+                position: 16.0, duration: 100.0,
+                now: t0.addingTimeInterval(3), reason: .tick
+            ) == true
+        )
+    }
+
+    @Test func throttle_success_commits_baseline_after_request() {
+        var state = PodcastProgressPushState()
+        let t0 = Date()
+        state.recordSuccessfulPush(position: 10.0, now: t0)
+
+        let pushedAt = t0.addingTimeInterval(2)
+        #expect(
+            state.shouldPush(
+                position: 16.0, duration: 100.0,
+                now: pushedAt, reason: .tick
+            ) == true
+        )
+        state.recordSuccessfulPush(position: 16.0, now: pushedAt)
+
+        #expect(
+            state.shouldPush(
+                position: 16.5, duration: 100.0,
+                now: t0.addingTimeInterval(3), reason: .tick
+            ) == false
+        )
     }
 
     @Test func throttle_zero_duration_never_pushes_on_tick() {

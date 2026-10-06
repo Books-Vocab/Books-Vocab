@@ -37,6 +37,24 @@ struct ICloudDownloadStateMappingTests {
         )
     }
 
+    @Test func downloadErrorWinsForCurrentStatus() {
+        #expect(
+            ICloudDownloadStateMapping.resolve(
+                status: current, percent: 100, hasError: true,
+                isTriggered: false, previous: .current
+            ) == .failed
+        )
+    }
+
+    @Test func downloadErrorWinsForDownloadedStatus() {
+        #expect(
+            ICloudDownloadStateMapping.resolve(
+                status: downloaded, percent: 100, hasError: true,
+                isTriggered: false, previous: .current
+            ) == .failed
+        )
+    }
+
     @Test func downloadErrorWinsOverEverything() {
         #expect(
             ICloudDownloadStateMapping.resolve(

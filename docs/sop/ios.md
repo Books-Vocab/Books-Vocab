@@ -159,13 +159,19 @@ ASC live state 必須由 `./ops/asc_reviewer_mirror.py audit ... --commit --bund
 
 修復後立刻重跑 Step 1。反覆「編譯 → 讀上下文 → 修改」直到 Exit Code 歸零。
 
+## CloudKit 環境與本機資料隔離
+
+本 app 的 CloudKit 環境設定以 `ios/BooksAndVocab/BooksAndVocab.entitlements` 為準；目前 entitlement 明確固定為 `Production`，所以不可只憑「Xcode Debug」推定它連到 Development。變更 entitlement 或簽章設定前，先核對 build 的 resolved entitlement。曾發生環境切換造成書列 purge/reimport，再被 reconciler 的去重 export 放大成刪除；不要在正式使用中的 iPhone 上測試環境切換。需要隔離驗證時使用 disposable simulator 或獨立測試裝置，並避免刪除正式 app 資料來排除同步問題。
+
+新增 CloudKit-backed `@Model` 後，Development schema 成功不代表 Production 已就緒；發布前須確認 schema 已部署到 app 實際使用的 Production CloudKit container。遇到 mirroring 失敗時，保留原始 `CKErrorDomain` 與 nested partial errors，逐層定位子錯誤，不要只依外層錯誤碼重置本機資料。
+
 ## iOS 測試入口（`ops/ios_ops.sh test` / `ops/ios_test.sh`）
 
 `ops/ios_test.sh` 與 `ios_build.sh` 共用 `/tmp/kg-ios-build.lock`。**鎖是細粒度的**：只在 `build-for-testing`（共享 DerivedData 的唯一寫者）期間持有，`test-without-building` 執行階段**不持鎖**。test 產物為 content-keyed 且寫入完成後加 `.kg-test-cache-complete` sentinel（hit 偵測與 double-check 都要求 sentinel，擋住中斷留下的 half-written cache），故並行 agent 可各自在獨立模擬器上同時跑測試而不互相排隊。build 走 `<主repo>/.cache/ios-build-derived-data`（`git-common-dir` 錨定，所有 worktree 同一路徑，禁止改用 Xcode 全域預設位置否則洩漏路徑雜湊孤兒）；test 走 `.cache/ios-test-derived-data`（platform/arch keyed，pool 各 sim 共享暖快取）。政策與根因詳見 [`docs/reference/ios_deriveddata_policy.md`](../reference/ios_deriveddata_policy.md)。
 
 ### 磁碟預算與 writer gate
 
-所有 iOS build/test intermediate cache 與 release archive/export 只可寫入已知的 `.cache/` 或 `ios/build/` roots；這些受管理產物合計以 **16 GiB** 為固定預算，寫入前另保留 **6 GiB headroom**，並要求檔案系統至少有 **20 GiB free**。`ops/kg_disk_guard.sh` 每 5 分鐘以原子狀態檔記錄快取總量、超額量與清理動作；沒有活躍 consumer、成功持有既有 build lock 且 aggregate budget/headroom 超標時，會淘汰可重建的舊 key，必要時回收整個共享 build DerivedData／release／Catalyst cache／archive/export，讓下一次 build 走 bounded cold rebuild。guard 不會刪除正在使用、狀態未知或 lock 被其他 writer 持有的產物。
+所有 iOS build/test intermediate cache 與 release archive/export 只可寫入已知的 `.cache/` 或 `ios/build/` roots；這些受管理 writer cache 合計以 **16 GiB** 為固定預算，寫入前另保留 **6 GiB headroom**，並要求檔案系統至少有 **20 GiB free**。Xcode 全域 `BooksAndVocab-*` DerivedData 不混入這個 aggregate，另由 `KG_DISK_GUARD_DERIVED_DATA_BUDGET_GIB` 預設 **4 GiB** 的固定 byte cap 管理。`ops/kg_disk_guard.sh` 每 5 分鐘以同一份 atomic receipt 記錄兩個預算、overflow 與清理動作；healthy free space 也會對 global DD 超額啟動 oldest-first repair，只有 process probe clear、沒有 active consumer 且成功持有既有 build lock 才可刪除可重建目錄。active／未知 process、FIFO ticket 或 lock contention 只會 `deferred-*`，不刪產物；guard 的 dry-run 與既有 exit semantics 不變。
 
 `ops/ios_build.sh` 與 `ops/ios_release.sh` 在取得 writer lock 後執行同一個 `kg_ios_disk_budget_preflight`。若 free space、快取大小或設定無法可靠讀取，或預算／headroom 不足，command 以 **exit 75** fail-closed，並輸出 `kg.ios.disk-budget.v1` 的原因；這不是產品測試失敗，也不是繼續寫入的許可。先讓 guard 清理安全的 rebuildable cache，或由維運者透過既有 `ios_clean_derived_data.sh` dry-run／apply 流程收斂後再重試。這個預算只約束 KG 管理的 iOS writer cache，不是對整台 APFS 或使用者資料的刪除授權。
 

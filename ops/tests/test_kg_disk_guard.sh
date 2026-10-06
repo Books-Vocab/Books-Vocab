@@ -12,6 +12,12 @@ export KG_DISK_GUARD_GUARD_LOCK_HELD=1
 export KG_DISK_GUARD_BUILD_LOCK_HELD=1
 export KG_DISK_GUARD_LANE_USAGE_STATE="$TMP/lane-disk-usage.json"
 export KG_DISK_GUARD_DERIVED_DATA_GLOBAL="$TMP/derived-data"
+export KG_DISK_GUARD_XCTEST_DEVICES_ROOT="$TMP/xctest-devices"
+export KG_DISK_GUARD_XCTEST_DEVICES_BUDGET_GIB=16
+# Existing fixtures use 30 GiB as a non-pressure value.  Keep that fixture
+# contract explicit while production defaults move to the 50/36 GiB floor.
+export KG_DISK_GUARD_WARN_FREE_GIB=20
+export KG_DISK_GUARD_CRIT_FREE_GIB=10
 ok(){ echo "  ✓ $*"; PASS=$((PASS+1)); }
 bad(){ echo "  ✗ $*"; FAIL=$((FAIL+1)); }
 
@@ -50,6 +56,36 @@ exit 1
 EOF
 chmod +x "$FAKE_BIN/shlock"
 
+# Generic cache fixtures must not rescan the host's real .codex history on
+# every invocation. They use a deterministic pass report; the lane-specific
+# section below switches back to the real disk-usage command.
+LANE_FIXTURE_UV="$TMP/lane-fixture-uv"
+cat >"$LANE_FIXTURE_UV" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while (($#)); do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[[ -n "$output" ]]
+mkdir -p "$(dirname "$output")"
+printf '%s\n' \
+  '{' \
+  '  "schema": "kg.disk.lane-usage.v1",' \
+  '  "verdict": "pass",' \
+  '  "policy": {"verdict": "pass", "blocking_reasons": [], "warning_reasons": [], "reasons": []},' \
+  '  "exclusions": {"supervision_worktree_paths": []},' \
+  '  "accounting": {"shared_platform_storage": {"xctest_devices": {"exists": false, "status": "absent", "measurement_complete": true, "metadata_complete": true, "budget_exceeded": false, "reclaim": {"status": "not-requested"}}, "simulator_runtimes": {"exists": false, "status": "absent", "measurement_complete": true, "budget_exceeded": false, "reclaim": {"status": "not-supported"}}}}' \
+  '}' >"$output"
+EOF
+chmod +x "$LANE_FIXTURE_UV"
+export KG_DISK_GUARD_UV_BIN="$LANE_FIXTURE_UV"
+export KG_DISK_USAGE_CODEX_WORKTREE_ROOT="$TMP/codex-worktrees"
+mkdir -p "$KG_DISK_USAGE_CODEX_WORKTREE_ROOT"
+
 timestamp_minutes_ago() {
   local minutes="$1"
   if date -v-"${minutes}"M '+%Y%m%d%H%M.%S' 2>/dev/null; then
@@ -59,6 +95,20 @@ timestamp_minutes_ago() {
 }
 
 [[ -f "$SCRIPT" ]] || { echo "missing $SCRIPT" >&2; exit 1; }
+
+echo "── fixed attribution timebox contract ──"
+grep -q 'KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS:-240' "$SCRIPT" \
+  && ok "guard default attribution budget is 240 seconds" \
+  || bad "guard attribution budget default drifted"
+grep -q 'attribution scan budget (default: 240)' "$SCRIPT" \
+  && ok "guard help documents 240-second budget" \
+  || bad "guard help budget is stale"
+grep -q 'WARN_FREE_GIB="\${KG_DISK_GUARD_WARN_FREE_GIB:-50}"' "$SCRIPT" \
+  && ok "guard default warning floor is 50 GiB" || bad "guard warning floor drifted"
+grep -q 'CRIT_FREE_GIB="\${KG_DISK_GUARD_CRIT_FREE_GIB:-36}"' "$SCRIPT" \
+  && ok "guard default critical floor is 36 GiB" || bad "guard critical floor drifted"
+grep -q 'SIMULATOR_RUNTIME_BUDGET_GIB.*:-56' "$SCRIPT" \
+  && ok "guard shared runtime budget is explicit" || bad "guard shared runtime budget missing"
 
 echo "── help is read-only ──"
 root="$TMP/help"; state="$root/state.json"; cache="$root/.cache/ios-test-derived-data"
@@ -79,6 +129,82 @@ KG_DISK_GUARD_WORKSPACE="$TMP/high" KG_DISK_GUARD_STATE="$state" \
 grep -q '"verdict":"ok"' "$state" && ok "high-free verdict ok" || bad "high-free verdict"
 grep -q '"action":"none"' "$state" && ok "high-free no action" || bad "high-free action"
 bytes1="$(wc -c < "$state")"
+
+echo "── healthy: global BooksAndVocab DerivedData has an independent byte bound ──"
+root="$TMP/global-dd-budget"; global_derived="$root/global-derived-data"; state="$root/state.json"
+mkdir -p "$global_derived/BooksAndVocab-old/Build" "$global_derived/BooksAndVocab-middle/Build" \
+  "$global_derived/BooksAndVocab-new/Build" "$global_derived/OtherProject-unmanaged/Build"
+dd if=/dev/zero of="$global_derived/BooksAndVocab-old/Build/blob" bs=1024 count=700 >/dev/null 2>&1
+dd if=/dev/zero of="$global_derived/BooksAndVocab-middle/Build/blob" bs=1024 count=700 >/dev/null 2>&1
+dd if=/dev/zero of="$global_derived/BooksAndVocab-new/Build/blob" bs=1024 count=700 >/dev/null 2>&1
+dd if=/dev/zero of="$global_derived/OtherProject-unmanaged/Build/blob" bs=1024 count=700 >/dev/null 2>&1
+touch -m -t 202001010000.00 "$global_derived/BooksAndVocab-old"
+touch -m -t 202001020000.00 "$global_derived/BooksAndVocab-middle"
+touch -m -t 202001030000.00 "$global_derived/BooksAndVocab-new"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_DERIVED_DATA_GLOBAL="$global_derived" \
+  KG_DISK_GUARD_DERIVED_DATA_BUDGET_GIB=0 KG_DISK_GUARD_DERIVED_DATA_MIN_AGE_HOURS=0 \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  KG_DISK_GUARD_BUILD_LOCK_FILE="$root/build.lock" "$SCRIPT" >/dev/null 2>&1
+dd_count="$(find "$global_derived" -mindepth 1 -maxdepth 1 -type d -name 'BooksAndVocab-*' | wc -l | tr -d ' ')"
+[[ "$dd_count" -eq 0 ]] && ok "healthy guard bounds global DerivedData" || bad "global DerivedData remains unbounded: $dd_count directories"
+grep -q '"reason":"derived-data-budget-exceeded"' "$state" \
+  && ok "global DerivedData budget breach recorded" || bad "global DerivedData budget reason missing"
+grep -q '"action":"enforce-derived-data-budget"' "$state" \
+  && ok "global DerivedData repair action recorded" || bad "global DerivedData repair action missing"
+grep -q '"derived_data_budget_kb":0' "$state" \
+  && ok "global DerivedData budget recorded" || bad "global DerivedData budget missing"
+[[ -d "$global_derived/OtherProject-unmanaged" ]] \
+  && ok "unmanaged global DerivedData is preserved" || bad "unmanaged global DerivedData was removed"
+
+echo "── global DerivedData: active consumer defers repair ──"
+root="$TMP/global-dd-active"; global_derived="$root/global-derived-data"; state="$root/state.json"
+mkdir -p "$global_derived/BooksAndVocab-active-a/Build" "$global_derived/BooksAndVocab-active-b/Build"
+printf x > "$global_derived/BooksAndVocab-active-a/Build/blob"
+printf x > "$global_derived/BooksAndVocab-active-b/Build/blob"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_DERIVED_DATA_GLOBAL="$global_derived" KG_DISK_GUARD_DERIVED_DATA_BUDGET_GIB=0 \
+  KG_DISK_GUARD_DERIVED_DATA_MIN_AGE_HOURS=0 KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) \
+  KG_DISK_GUARD_ACTIVE_BUILD=1 "$SCRIPT" >/dev/null 2>&1
+dd_count="$(find "$global_derived" -mindepth 1 -maxdepth 1 -type d -name 'BooksAndVocab-*' | wc -l | tr -d ' ')"
+[[ "$dd_count" -eq 2 ]] && ok "active consumer preserves global DerivedData" || bad "active consumer cleanup changed global DerivedData"
+grep -q '"action":"deferred-active-build"' "$state" \
+  && ok "active consumer deferral is recorded" || bad "active consumer deferral missing"
+
+echo "── global DerivedData: held build lock defers repair ──"
+root="$TMP/global-dd-lock"; global_derived="$root/global-derived-data"; state="$root/state.json"; build_lock="$root/build.lock"
+mkdir -p "$global_derived/BooksAndVocab-held/Build"
+printf x > "$global_derived/BooksAndVocab-held/Build/blob"
+printf '%s\n' "$$" > "$build_lock"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_DERIVED_DATA_GLOBAL="$global_derived" KG_DISK_GUARD_DERIVED_DATA_BUDGET_GIB=0 \
+  KG_DISK_GUARD_DERIVED_DATA_MIN_AGE_HOURS=0 KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) \
+  KG_DISK_GUARD_ACTIVE_BUILD=0 KG_DISK_GUARD_BUILD_LOCK_FILE="$build_lock" \
+  PATH="$FAKE_BIN:$PATH" env -u KG_DISK_GUARD_BUILD_LOCK_HELD "$SCRIPT" >/dev/null 2>&1
+[[ -d "$global_derived/BooksAndVocab-held" ]] \
+  && ok "held build lock preserves global DerivedData" || bad "held build lock deleted global DerivedData"
+grep -q '"action":"deferred-build-lock"' "$state" \
+  && ok "held build lock deferral is recorded" || bad "held build lock deferral missing"
+
+echo "── global DerivedData: dry-run preserves repair targets and exit semantics ──"
+root="$TMP/global-dd-dry-run"; global_derived="$root/global-derived-data"; state="$root/state.json"
+mkdir -p "$global_derived/BooksAndVocab-dry-a/Build" "$global_derived/BooksAndVocab-dry-b/Build"
+printf x > "$global_derived/BooksAndVocab-dry-a/Build/blob"
+printf x > "$global_derived/BooksAndVocab-dry-b/Build/blob"
+if KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_DERIVED_DATA_GLOBAL="$global_derived" KG_DISK_GUARD_DERIVED_DATA_BUDGET_GIB=0 \
+  KG_DISK_GUARD_DERIVED_DATA_MIN_AGE_HOURS=0 KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) \
+  KG_DISK_GUARD_ACTIVE_BUILD=0 KG_DISK_GUARD_DRY_RUN=1 "$SCRIPT" >/dev/null 2>&1; then
+  ok "dry-run keeps guard exit compatible"
+else
+  bad "dry-run changed guard exit semantics"
+fi
+dd_count="$(find "$global_derived" -mindepth 1 -maxdepth 1 -type d -name 'BooksAndVocab-*' | wc -l | tr -d ' ')"
+[[ "$dd_count" -eq 2 ]] && ok "dry-run preserves global DerivedData" || bad "dry-run deleted global DerivedData"
+grep -q '"action":"enforce-derived-data-budget"' "$state" \
+  && ok "dry-run repair action is recorded" || bad "dry-run repair action missing"
+grep -q '"cache_eviction_evicted":0' "$state" \
+  && ok "dry-run records no eviction" || bad "dry-run reports eviction"
 
 echo "── healthy: reader window protects warm shared cache keys ──"
 root="$TMP/shared-reader-window"; cache="$root/.cache/ios-test-derived-data"; state="$root/state.json"
@@ -208,6 +334,16 @@ KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
 grep -q '"reason":"docker-build-cache"' "$state" && ok "2GiB+1 exact threshold warns" || bad "exact docker threshold"
 [[ "$(wc -c < "$log")" -le 1024 ]] && ok "healthy disk still caps known log" || bad "healthy disk log cap"
 
+echo "── conservative free-space floor: exactly 36 GiB is critical ──"
+root="$TMP/free-floor"; state="$root/state.json"
+mkdir -p "$root"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_FREE_BYTES=$((36*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  KG_DISK_GUARD_WARN_FREE_GIB=50 KG_DISK_GUARD_CRIT_FREE_GIB=36 \
+  "$SCRIPT" >/dev/null 2>&1
+grep -q '"verdict":"critical"' "$state" && ok "36 GiB floor is critical" || bad "36 GiB floor was not critical"
+grep -q '"reason":"free-below-critical"' "$state" && ok "critical floor reason is explicit" || bad "critical floor reason missing"
+
 echo "── active build: defer and preserve ──"
 root="$TMP/active"; cache="$root/.cache/ios-test-derived-data"; state="$TMP/active/state.json"
 build_cache="$root/.cache/ios-build-derived-data"
@@ -241,7 +377,7 @@ grep -q '"action":"enforce-cache-budget"' "$state" && ok "cache budget enforceme
   && ! -d "$root/ios/build/BooksAndVocab.xcarchive" && ! -d "$root/ios/build/export" ]] \
   && ok "stale rebuildable caches reclaimed" || bad "stale rebuildable caches remain"
 
-echo "── headroom exhausted: repair stale cache and preserve reader window ──"
+echo "── headroom exhausted: reader window yields to writer budget ──"
 root="$TMP/headroom-repair"; cache="$root/.cache/ios-test-derived-data"; state="$root/state.json"
 mkdir -p "$cache/old/Build" "$cache/warm/Build"
 printf x > "$cache/old/Build/blob"; printf x > "$cache/warm/Build/blob"
@@ -251,18 +387,39 @@ KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
   KG_DISK_GUARD_CACHE_BUDGET_GIB=1 KG_DISK_GUARD_CACHE_HEADROOM_GIB=1 \
   KG_DISK_GUARD_CACHE_KEEP=3 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0 \
   KG_DISK_GUARD_CACHE_READER_WINDOW_HOURS=1 "$SCRIPT" >/dev/null 2>&1
-[[ ! -d "$cache/old" && -d "$cache/warm" ]] \
-  && ok "headroom repair evicts stale cache only" || bad "headroom repair changed reader-window cache"
-grep -q '"reason":"cache-budget-headroom-unreleased"' "$state" \
-  && ok "unreleased headroom is structured" || bad "unreleased headroom reason missing"
+[[ ! -d "$cache/old" && ! -d "$cache/warm" ]] \
+  && ok "headroom repair releases reader-window cache" || bad "headroom repair left writer headroom short"
+grep -q '"cache_repair_status":"repaired"' "$state" \
+  && ok "headroom repair converges to writer budget" || bad "headroom repair did not converge"
 grep -q '"action":"enforce-cache-headroom"' "$state" \
   && ok "headroom repair action recorded" || bad "headroom repair action missing"
 grep -q '"cache_budget_overflow_kb":0' "$state" \
   && ok "headroom case is below hard budget" || bad "headroom case misclassified as hard overflow"
 grep -q '"cache_headroom_overflow_kb":[1-9]' "$state" \
   && ok "headroom overflow evidence recorded" || bad "headroom overflow evidence missing"
-grep -q '"cache_repair_status":"insufficient"' "$state" \
-  && ok "reader-window shortfall is explicit" || bad "reader-window shortfall missing"
+grep -q '"cache_repair_remaining_kb":0' "$state" \
+  && ok "headroom repair has no remaining shortfall" || bad "headroom shortfall remains"
+
+echo "── headroom exhausted: recent reader-window keys yield to writer budget ──"
+root="$TMP/headroom-recent-repair"; cache="$root/.cache/ios-test-derived-data"; state="$root/state.json"
+mkdir -p "$cache"
+for key in oldest middle newest; do mkdir -p "$cache/$key/Build"; printf x > "$cache/$key/Build/blob"; done
+touch -m -t "$(timestamp_minutes_ago 50)" "$cache/oldest"
+touch -m -t "$(timestamp_minutes_ago 40)" "$cache/middle"
+touch -m -t "$(timestamp_minutes_ago 30)" "$cache/newest"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  KG_DISK_GUARD_CACHE_BUDGET_GIB=1 KG_DISK_GUARD_CACHE_HEADROOM_GIB=1 \
+  KG_DISK_GUARD_CACHE_KEEP=3 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0 \
+  KG_DISK_GUARD_CACHE_READER_WINDOW_HOURS=1 "$SCRIPT" >/dev/null 2>&1
+key_count="$(find "$cache" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
+[[ "$key_count" -eq 0 ]] \
+  && ok "recent reader-window keys yield to writer headroom repair" \
+  || bad "recent reader-window keys still block repair: $key_count"
+grep -q '"cache_repair_status":"repaired"' "$state" \
+  && ok "recent-key headroom repair is recorded" || bad "recent-key repair status missing"
+grep -q '"cache_repair_remaining_kb":0' "$state" \
+  && ok "recent-key headroom repair has no shortfall" || bad "recent-key repair shortfall"
 
 echo "── headroom exhausted: stale cache repair completes ──"
 root="$TMP/headroom-repaired"; cache="$root/.cache/ios-test-derived-data"; state="$root/state.json"
@@ -295,6 +452,20 @@ grep -q '"cache_repair_status":"repaired"' "$state" \
   && ok "build cache repair is recorded" || bad "build cache repair missing"
 grep -q '"cache_repair_remaining_kb":0' "$state" \
   && ok "build cache repair has no shortfall" || bad "build cache repair shortfall"
+
+echo "── aggregate budget: oldest-first eviction stops at target ──"
+root="$TMP/evict-order"; cache="$root/.cache/ios-test-derived-data"
+mkdir -p "$cache/old/Build" "$cache/new/Build"
+touch -m -t 202001010000.00 "$cache/old"
+touch -m -t 202001020000.00 "$cache/new"
+source "$ROOT/ops/lib/ios_cache_evict.sh"
+kg_ios_disk_budget_cache_kb() { printf '5'; }
+du() { printf '2\t%s\n' "${!#}"; }
+KG_IOS_CACHE_KEEP=0 KG_IOS_CACHE_EVICT_MIN_AGE_HOURS=0 KG_IOS_DISK_CACHE_BUDGET_KB=3 \
+  kg_ios_cache_evict "$cache" "" >/dev/null 2>&1
+unset -f du kg_ios_disk_budget_cache_kb
+[[ ! -d "$cache/old" && -d "$cache/new" ]] \
+  && ok "budget repair evicts the oldest key first" || bad "budget repair did not preserve newest key"
 
 echo "── headroom healthy: no-overflow is a no-op ──"
 root="$TMP/headroom-noop"; cache="$root/.cache/ios-test-derived-data"; state="$root/state.json"
@@ -430,6 +601,32 @@ done
 grep -q '"worktree_cache_keys":12' "$state" && ok ".codex topology count recorded" || bad ".codex topology count missing"
 grep -q '"action":"deferred-worktree-ownership"' "$state" && ok "active/terminal/unknown cleanup deferred" || bad "worktree cleanup action was not deferred"
 
+echo "── .codex supervision checkout is visible but not a product-lane blocker ──"
+root="$TMP/codex-supervision"; state="$root/state.json"; registry="$root/registry.json"; lane_state="$root/lane-disk-usage.json"
+codex_root="$root/.codex/worktrees"; supervision="$codex_root/abcd/kg"
+mkdir -p "$root" "$supervision"
+git -C "$root" init -b main >/dev/null 2>&1
+git -C "$root" config user.email disk-test@example.com
+git -C "$root" config user.name "Disk Test"
+printf '%s\n' 'main' > "$root/tracked.txt"
+git -C "$root" add tracked.txt >/dev/null 2>&1
+git -C "$root" commit -m initial >/dev/null 2>&1
+git -C "$root" worktree add -b supervision "$supervision" HEAD >/dev/null 2>&1
+printf '%s\n' 'supervision' > "$supervision/supervision.txt"
+git -C "$supervision" add supervision.txt >/dev/null 2>&1
+git -C "$supervision" commit -m supervision >/dev/null 2>&1
+printf '%s\n' '{"schema":"kg.worktree.registry.v2","records":[]}' > "$registry"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_REGISTRY_STATE="$registry" KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" \
+  KG_DISK_USAGE_CODEX_WORKTREE_ROOT="$codex_root" KG_DISK_GUARD_UV_BIN="$HOME/.local/bin/uv" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  "$SCRIPT" >/dev/null 2>&1
+grep -q '"lane_kind": "supervision"' "$lane_state" && ok "supervision checkout kind is explicit" || bad "supervision checkout kind missing"
+grep -q '"ownership": "supervision"' "$lane_state" && ok "supervision ownership is explicit" || bad "supervision ownership missing"
+grep -q '"unregistered_physical_worktrees": \[\]' "$lane_state" && ok "supervision checkout is not unregistered" || bad "supervision checkout became unregistered"
+grep -q '"supervision_worktree_allocated_bytes": [1-9]' "$lane_state" && ok "supervision bytes are attributed" || bad "supervision bytes missing"
+grep -q '"lane_usage_verdict":"pass"' "$state" && ok "supervision checkout does not block guard" || bad "supervision checkout blocked guard"
+
 echo "── eviction failure: guard never reports budget repair success ──"
 root="$TMP/eviction-failure"; state="$root/state.json"; cache="$root/.cache/ios-test-derived-data"; failing_lib="$root/failing-cache-lib.sh"
 mkdir -p "$cache/old/Build"
@@ -485,9 +682,10 @@ for i in 1 2 3 4 5; do
 done
 bytes2="$(wc -c < "$TMP/high/state.json")"
 state_count="$(find "$TMP/high" -maxdepth 1 -type f -name 'state.json*' | wc -l | tr -d ' ')"
-[[ "$bytes2" -lt 900 && "$state_count" -eq 1 ]] && ok "state bounded, one atomic file (${bytes2} bytes)" || bad "state accumulation: bytes=$bytes2 files=$state_count"
+[[ "$bytes2" -lt 1400 && "$state_count" -eq 1 ]] && ok "state bounded, one atomic file (${bytes2} bytes)" || bad "state accumulation: bytes=$bytes2 files=$state_count"
 
 echo "── lane usage: missing active lanes warn without blocking disk attribution ──"
+export KG_DISK_GUARD_UV_BIN="$HOME/.local/bin/uv"
 root="$TMP/lane-usage"; state="$root/guard.json"; registry="$root/registry.json"; lane_state="$root/lane-disk-usage.json"
 mkdir -p "$root"
 git -C "$root" init -b main >/dev/null 2>&1
@@ -502,6 +700,8 @@ KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" KG_DISK_GUARD_REGIS
   KG_DISK_GUARD_ACTIVE_BUILD=0 "$SCRIPT" >/dev/null 2>&1
 grep -q 'kg.disk.lane-usage.v1' "$lane_state" && ok "lane usage report is written" || bad "lane usage report missing"
 grep -q 'missing-registered-lane' "$lane_state" && ok "missing active lane is visible" || bad "missing active lane not visible"
+grep -q '"exists": false' "$lane_state" && ok "missing active lane has explicit accounting row" || bad "missing active lane accounting row missing"
+grep -q '"measurement_error": "path-missing"' "$lane_state" && ok "missing active lane error is explicit" || bad "missing active lane error missing"
 grep -q '"verdict": "warning"' "$lane_state" && ok "missing lane is warning-only" || bad "missing lane still blocks"
 grep -q '"lane_usage_verdict":"warning"' "$root/guard.json" && ok "guard state carries attribution warning" || bad "guard state missed attribution warning"
 grep -q '"lane_usage_rc":0' "$root/guard.json" && ok "warning keeps guard exit compatible" || bad "warning changed guard exit"
@@ -590,6 +790,98 @@ grep -q '"lane_usage_rc":75' "$state" \
   && ok "time budget reaches guard state" || bad "time budget guard state missing"
 grep -q '"lane_usage_budget_seconds":0' "$state" \
   && ok "time budget is recorded in guard state" || bad "time budget state missing"
+
+echo "── lane usage: attribution block prevents an ok guard summary ──"
+root="$TMP/lane-usage-block"; state="$root/guard.json"; lane_state="$root/lane-disk-usage.json"
+mkdir -p "$root"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_REGISTRY_STATE="$root/missing-registry.json" \
+  KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" \
+  KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS=20 \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  "$SCRIPT" >/dev/null 2>&1
+grep -q '"lane_usage_verdict":"block"' "$state" \
+  && ok "lane attribution block is visible in guard state" \
+  || bad "lane attribution block is missing from guard state"
+grep -q '"lane_usage_rc":75' "$state" \
+  && ok "lane attribution block keeps its structured exit evidence" \
+  || bad "lane attribution exit evidence is missing"
+grep -q '"verdict":"block"' "$state" \
+  && ok "lane attribution block prevents false ok summary" \
+  || bad "lane attribution block was reported as ok"
+
+echo "── lane report budget: external attribution process is hard-stopped ──"
+root="$TMP/external-timeout"; state="$root/guard.json"; lane_state="$root/lane-disk-usage.json"; fake_uv="$root/fake-uv"; child_pid_file="$root/child.pid"
+mkdir -p "$root"
+cat >"$fake_uv" <<'EOF'
+#!/usr/bin/env bash
+set -u
+printf '%s\n' "$$" > "${FAKE_PID_FILE:?}"
+sleep 5 &
+wait
+EOF
+chmod +x "$fake_uv"
+started=$SECONDS
+if KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_REGISTRY_STATE="$root/missing-registry.json" \
+  KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" \
+  KG_DISK_GUARD_LANE_USAGE_BUDGET_SECONDS=2 \
+  KG_DISK_GUARD_UV_BIN="$fake_uv" FAKE_PID_FILE="$child_pid_file" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  "$SCRIPT" >/dev/null 2>&1; then
+  external_rc=0
+else
+  external_rc=$?
+fi
+elapsed=$((SECONDS - started))
+(( external_rc == 0 )) && ok "guard preserves command exit compatibility" || bad "guard command exit changed after external timeout"
+(( elapsed <= 4 )) && ok "external attribution is stopped within the hard budget" || bad "external attribution exceeded hard budget (${elapsed}s)"
+grep -q '"lane_usage_rc":75' "$state" \
+  && ok "external timeout reaches guard state as a hard block" || bad "external timeout did not reach guard state"
+grep -q '"lane_usage_budget_seconds":2' "$state" \
+  && ok "external timeout records its configured budget" || bad "external timeout budget missing"
+if [[ -s "$child_pid_file" ]]; then
+  child_pid="$(cat "$child_pid_file")"
+  if ! kill -0 "$child_pid" 2>/dev/null; then
+    ok "external timeout does not leave a child process"
+  else
+    bad "external timeout left a child process"
+  fi
+else
+  bad "external timeout fixture did not record its child"
+fi
+
+echo "── shared XCTestDevices: over-budget platform storage is visible and untouched ──"
+root="$TMP/xctest-budget"; xctest="$root/XCTestDevices"; state="$root/guard.json"; registry="$root/registry.json"; lane_state="$root/lane-disk-usage.json"
+udid="55555555-5555-4555-8555-555555555555"; device="$xctest/$udid"
+mkdir -p "$device/data"
+printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>UDID</key><string>'"$udid"'</string><key>isEphemeral</key><false/><key>isDeleted</key><false/><key>state</key><string>Shutdown</string></dict></plist>' > "$device/device.plist"
+dd if=/dev/zero of="$device/data/payload" bs=1024 count=4 >/dev/null 2>&1
+printf '%s\n' '{"schema":"kg.worktree.registry.v2","records":[]}' > "$registry"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" KG_DISK_GUARD_REGISTRY_STATE="$registry" \
+  KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" KG_DISK_GUARD_XCTEST_DEVICES_ROOT="$xctest" \
+  KG_DISK_GUARD_XCTEST_DEVICES_BUDGET_GIB=0 KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) \
+  KG_DISK_GUARD_ACTIVE_BUILD=0 "$SCRIPT" >/dev/null 2>&1
+grep -q 'xctest-devices-budget-exceeded' "$lane_state" && ok "shared XCTestDevices budget block is recorded" || bad "shared XCTestDevices budget block missing"
+grep -q '"attribution": "shared-host-platform"' "$lane_state" && ok "shared XCTestDevices attribution is platform-scoped" || bad "shared XCTestDevices attribution missing"
+grep -q '"xctest_devices_verdict":"block"' "$state" && ok "guard cannot claim within-bounds over shared budget" || bad "guard claimed within-bounds over shared budget"
+grep -q '"xctest_devices_manual_review":1' "$state" && ok "unsafe shared device is manual review" || bad "shared device manual review missing"
+[[ -d "$device" ]] && ok "non-ephemeral shared device is untouched" || bad "non-ephemeral shared device was deleted"
+
+echo "── shared Simulator runtimes: visible, budgeted, and never auto-reclaimed ──"
+root="$TMP/simulator-runtime"; state="$root/guard.json"; registry="$root/registry.json"; lane_state="$root/lane-disk-usage.json"
+mkdir -p "$root"
+printf '%s\n' '{"schema":"kg.worktree.registry.v2","records":[]}' > "$registry"
+KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" KG_DISK_GUARD_REGISTRY_STATE="$registry" \
+  KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" KG_DISK_GUARD_SIMULATOR_RUNTIME_BUDGET_GIB=56 \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  "$SCRIPT" >/dev/null 2>&1
+grep -q '"simulator_runtime_kb":' "$state" && ok "shared runtime bytes are in guard state" || bad "shared runtime bytes missing"
+grep -q '"simulator_runtime_budget_kb":58720256' "$state" && ok "shared runtime budget is recorded" || bad "shared runtime budget missing"
+grep -q '"simulator_runtime_count":' "$state" && ok "shared runtime count is recorded" || bad "shared runtime count missing"
+grep -q '"simulator_runtime_reclaim_status":"not-supported"' "$state" \
+  && ok "shared runtime reclaim is disabled" || bad "shared runtime reclaim contract drifted"
+grep -q '"simulator_runtimes"' "$lane_state" && ok "lane report has shared runtime bucket" || bad "lane report shared runtime bucket missing"
 
 echo "passed=$PASS failed=$FAIL"
 [[ "$FAIL" -eq 0 ]]

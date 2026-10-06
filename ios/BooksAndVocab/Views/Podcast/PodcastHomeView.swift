@@ -25,12 +25,20 @@ enum PodcastHomePhase: Equatable {
         isLoggedIn: Bool,
         isSyncing: Bool,
         syncFailed: Bool,
-        seriesCount: Int
+        seriesCount: Int,
+        backgroundSyncStatus: PodcastBackgroundSyncStatus = .idle
     ) -> PodcastHomePhase {
         if seriesCount > 0 { return .content }
-        if isSyncing { return .loading }
-        if syncFailed { return .error }
+        if isSyncing || backgroundSyncStatus == .running { return .loading }
+        if syncFailed || backgroundSyncStatus.isWarning { return .error }
         return .empty
+    }
+}
+
+private extension PodcastBackgroundSyncStatus {
+    var isWarning: Bool {
+        if case .warning = self { return true }
+        return false
     }
 }
 
@@ -63,13 +71,15 @@ struct PodcastHomeView: View {
     @State private var navigationPath = NavigationPath()
     @State private var isSyncingCatalog = false
     @State private var syncFailed = false
+    @State private var backgroundSyncStatusStore = PodcastBackgroundSyncStatusStore.shared
 
     private var phase: PodcastHomePhase {
         PodcastHomePhase.resolve(
             isLoggedIn: authManager.isLoggedIn,
             isSyncing: isSyncingCatalog,
             syncFailed: syncFailed,
-            seriesCount: sortedPodcastSeries.count
+            seriesCount: sortedPodcastSeries.count,
+            backgroundSyncStatus: backgroundSyncStatusStore.status
         )
     }
 
@@ -160,15 +170,24 @@ struct PodcastHomeView: View {
     // MARK: - 內容（continue shelf 堆疊 + 所有節目 grid）
 
     private var content: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.s5) {
-                if !continueItems.isEmpty {
-                    continueShelf
-                        .padding(.top, AppSpacing.s2)
-                }
-                seriesGridSection
+        VStack(spacing: 0) {
+            if backgroundSyncStatusStore.status != .idle {
+                backgroundSyncStatusBanner
+                    .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                    .padding(.top, AppSpacing.s2)
+                    .padding(.bottom, AppSpacing.s2)
             }
-            .animateContentFade(podcastSeries.count)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: AppSpacing.s5) {
+                    if !continueItems.isEmpty {
+                        continueShelf
+                            .padding(.top, AppSpacing.s2)
+                    }
+                    seriesGridSection
+                }
+                .animateContentFade(podcastSeries.count)
+            }
         }
         // 電腦模式無下拉刷新；改由 Catalyst-only toolbar 刷新鈕提供（見 body toolbar）。
 #if !targetEnvironment(macCatalyst)
@@ -301,6 +320,31 @@ struct PodcastHomeView: View {
             await refreshPodcastCatalog()
         }
 #endif
+    }
+
+    @ViewBuilder
+    private var backgroundSyncStatusBanner: some View {
+        switch backgroundSyncStatusStore.status {
+        case .idle:
+            EmptyView()
+        case .running:
+            AppStateMessageCard(
+                title: L10n.string("正在同步播客"),
+                systemImage: "arrow.triangle.2.circlepath",
+                description: L10n.string("背景同步正在更新播客節目清單")
+            ) {
+                ProgressView()
+                    .controlSize(.small)
+            }
+            .accessibilityIdentifier("podcast.backgroundSyncStatus")
+        case .warning(let message):
+            AppStateMessageCard(
+                title: L10n.string("播客同步提醒"),
+                systemImage: "exclamationmark.triangle",
+                description: message
+            )
+            .accessibilityIdentifier("podcast.backgroundSyncStatus")
+        }
     }
 
     // MARK: - 同步 / 預熱 / 追蹤（自 BookshelfView re-home，行為逐字保留）

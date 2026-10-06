@@ -1,3 +1,4 @@
+import Observation
 import SwiftUI
 
 // MARK: - Data in
@@ -8,6 +9,22 @@ struct ReviewCardContent {
     let card: CardPresentation
     let linkGroups: [ReviewCardLinkGroup]
     let backDocument: CardDocument
+    /// Resident swipe slots copy this value type as cards advance. Keep the
+    /// measurement state in the prepared card so the slot can be recycled
+    /// without making the hidden probes cold again for every card.
+    let measurementCache: ReviewCardMeasurementCache
+
+    init(
+        card: CardPresentation,
+        linkGroups: [ReviewCardLinkGroup],
+        backDocument: CardDocument,
+        measurementCache: ReviewCardMeasurementCache = .init()
+    ) {
+        self.card = card
+        self.linkGroups = linkGroups
+        self.backDocument = backDocument
+        self.measurementCache = measurementCache
+    }
 }
 
 struct ReviewCardLinkGroup: Identifiable {
@@ -46,6 +63,70 @@ struct ReviewCardSectionMeasurement: Equatable {
     let cardKey: String
 }
 
+/// Geometry measured by a card belongs to the prepared card, not to the
+/// resident view slot. `TodayReviewCardCache.prewarm` keeps the prepared-card
+/// value for the lookahead window, so a recycled slot receives the same cache
+/// when a card comes back without remounting its hidden probes.
+@Observable
+final class ReviewCardMeasurementCache {
+    private(set) var naturalSectionHeights: [ReviewCardMeasurementKey: CGFloat] = [:]
+    private(set) var intermediateSectionHeights: [ReviewCardMeasurementKey: CGFloat] = [:]
+    private(set) var compactSectionHeights: [ReviewCardMeasurementKey: CGFloat] = [:]
+    private(set) var measuredFrontHeight: CGFloat = 0
+    private(set) var measuredFrontCardKey: String?
+
+    func value(
+        for key: ReviewCardMeasurementKey,
+        level: ReviewCardLayoutSolver.MeasurementLevel
+    ) -> CGFloat? {
+        switch level {
+        case .natural: naturalSectionHeights[key]
+        case .intermediate: intermediateSectionHeights[key]
+        case .compact: compactSectionHeights[key]
+        }
+    }
+
+    func missingLevels(
+        for key: ReviewCardMeasurementKey
+    ) -> [ReviewCardLayoutSolver.MeasurementLevel] {
+        ReviewCardLayoutSolver.missingMeasurementLevels(
+            hasNatural: naturalSectionHeights[key] != nil,
+            hasIntermediate: intermediateSectionHeights[key] != nil,
+            hasCompact: compactSectionHeights[key] != nil
+        )
+    }
+
+    @discardableResult
+    func record(
+        _ height: CGFloat,
+        for key: ReviewCardMeasurementKey,
+        level: ReviewCardLayoutSolver.MeasurementLevel
+    ) -> Bool {
+        guard height > 0 else { return false }
+        switch level {
+        case .natural:
+            guard abs((naturalSectionHeights[key] ?? 0) - height) > 0.5 else { return false }
+            naturalSectionHeights[key] = height
+        case .intermediate:
+            guard abs((intermediateSectionHeights[key] ?? 0) - height) > 0.5 else { return false }
+            intermediateSectionHeights[key] = height
+        case .compact:
+            guard abs((compactSectionHeights[key] ?? 0) - height) > 0.5 else { return false }
+            compactSectionHeights[key] = height
+        }
+        return true
+    }
+
+    @discardableResult
+    func recordFront(_ measurement: ReviewCardFrontMeasurement) -> Bool {
+        guard measurement.height > 0 else { return false }
+        measuredFrontCardKey = measurement.cardKey
+        guard abs(measuredFrontHeight - measurement.height) > 0.5 else { return false }
+        measuredFrontHeight = measurement.height
+        return true
+    }
+}
+
 // MARK: - Review Card
 
 /// 一張完整的複習卡：正面摺頁 ＋ 右上角 chrome ＋ 背面摺頁 ＋ 摺疊動畫。
@@ -74,15 +155,25 @@ struct ReviewCardView: View {
     var actions: ReviewCardActions = .none
     var onFrontHeightChange: ((CGFloat) -> Void)? = nil
 
-    /// 三階量測快取，屬於這張卡自己（原本住在 presenter 的 @State，只有卡片渲染
-    /// 讀寫）。
-    @State private var reviewNaturalSectionHeights: [ReviewCardMeasurementKey: CGFloat] = [:]
-    @State private var reviewIntermediateSectionHeights: [ReviewCardMeasurementKey: CGFloat] = [:]
-    @State private var reviewCompactSectionHeights: [ReviewCardMeasurementKey: CGFloat] = [:]
     /// 自量的寬度（量測 key 的 bucket）與正面高度（背面預算的被減數）。
     @State private var containerWidth: CGFloat = 393
-    @State private var measuredFrontHeight: CGFloat = 0
-    @State private var measuredFrontCardKey: String?
+    /// This is only a transient mount gate. The actual measurements live in
+    /// `content.measurementCache`, which survives resident-slot recycling.
+    @State private var measurementProbeReadyToken: String?
+
+    private var reviewMeasurementCache: ReviewCardMeasurementCache { content.measurementCache }
+
+    private var measurementProbeCardToken: String {
+        "\(currentCardKey)|\(ObjectIdentifier(reviewMeasurementCache))"
+    }
+
+    private var measurementProbeTaskID: String {
+        "\(measurementProbeCardToken)|interactive=\(interactive)|sections=\(measuresSections)"
+    }
+
+    private var shouldMountMeasurementProbes: Bool {
+        measuresSections && interactive && measurementProbeReadyToken == measurementProbeCardToken
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -108,10 +199,9 @@ struct ReviewCardView: View {
                 // Update the identity even when two adjacent cards happen to have
                 // the same height; otherwise the old key would keep this valid
                 // measurement quarantined forever.
-                measuredFrontCardKey = measurement.cardKey
-                guard abs(measuredFrontHeight - height) > 0.5 else { return }
-                measuredFrontHeight = height
-                onFrontHeightChange?(height)
+                if reviewMeasurementCache.recordFront(measurement) {
+                    onFrontHeightChange?(height)
+                }
             }
 
             // 永遠存在於 view tree — PaperFoldModifier(Animatable) 直接驅動摺疊動畫。
@@ -126,6 +216,14 @@ struct ReviewCardView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { newWidth in
             guard newWidth > 0, abs(containerWidth - newWidth) > 0.5 else { return }
             containerWidth = newWidth
+        }
+        .task(id: measurementProbeTaskID) {
+            measurementProbeReadyToken = nil
+            guard measuresSections, interactive else { return }
+            let cardToken = measurementProbeCardToken
+            try? await Task.sleep(for: .milliseconds(100))
+            guard !Task.isCancelled, cardToken == measurementProbeCardToken else { return }
+            measurementProbeReadyToken = cardToken
         }
         .enableInjection()
     }
@@ -175,7 +273,7 @@ struct ReviewCardView: View {
                 currentCard,
                 layout: layout,
                 drawnHeight: drawnHeight,
-                measuresSections: measuresSections && interactive
+                measuresSections: shouldMountMeasurementProbes
             )
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .frame(height: drawnHeight, alignment: .topLeading)
@@ -444,9 +542,9 @@ struct ReviewCardView: View {
         // 背面只有互動中的那張會 mount，而 activeShellHeight 回傳的就是那一格的高度。
         let backAvailableHeight = viewport.backHeight(
             frontOccupied: ReviewCardViewport.frontOccupiedHeight(
-                measuredCardKey: measuredFrontCardKey,
+                measuredCardKey: reviewMeasurementCache.measuredFrontCardKey,
                 currentCardKey: currentCardKey,
-                measuredHeight: measuredFrontHeight
+                measuredHeight: reviewMeasurementCache.measuredFrontHeight
             ) + TodayReviewMetrics.stackLayerMicroOffset
         )
         let layout = reviewCardLayout(for: currentCard, face: .back, availableHeight: backAvailableHeight)
@@ -743,9 +841,9 @@ struct ReviewCardView: View {
             let key = reviewMeasurementKey(for: currentCard, face: face, section: section)
             let fallback = defaults[section] ?? .init(naturalHeight: 0)
             return (section, ReviewCardLayoutSolver.Measurement(
-                naturalHeight: reviewNaturalSectionHeights[key] ?? fallback.naturalHeight,
-                intermediateHeight: reviewIntermediateSectionHeights[key] ?? fallback.intermediateHeight,
-                compactHeight: reviewCompactSectionHeights[key] ?? fallback.compactHeight
+                naturalHeight: reviewMeasurementCache.value(for: key, level: .natural) ?? fallback.naturalHeight,
+                intermediateHeight: reviewMeasurementCache.value(for: key, level: .intermediate) ?? fallback.intermediateHeight,
+                compactHeight: reviewMeasurementCache.value(for: key, level: .compact) ?? fallback.compactHeight
             ))
         })
         return ReviewCardLayoutSolver.solve(.init(
@@ -786,17 +884,7 @@ struct ReviewCardView: View {
     ) {
         guard height > 0 else { return }
         let key = reviewMeasurementKey(for: currentCard, face: face, section: section)
-        switch level {
-        case .natural:
-            guard abs((reviewNaturalSectionHeights[key] ?? 0) - height) > 0.5 else { return }
-            reviewNaturalSectionHeights[key] = height
-        case .intermediate:
-            guard abs((reviewIntermediateSectionHeights[key] ?? 0) - height) > 0.5 else { return }
-            reviewIntermediateSectionHeights[key] = height
-        case .compact:
-            guard abs((reviewCompactSectionHeights[key] ?? 0) - height) > 0.5 else { return }
-            reviewCompactSectionHeights[key] = height
-        }
+        reviewMeasurementCache.record(height, for: key, level: level)
     }
 
     @ViewBuilder
@@ -805,34 +893,32 @@ struct ReviewCardView: View {
         currentCard: ReviewCardContent,
         face: ReviewCardFace
     ) -> some View {
-        let key = reviewMeasurementKey(for: currentCard, face: face, section: .field(field))
-        let levels = ReviewCardLayoutSolver.missingMeasurementLevels(
-            hasNatural: reviewNaturalSectionHeights[key] != nil,
-            hasIntermediate: reviewIntermediateSectionHeights[key] != nil,
-            hasCompact: reviewCompactSectionHeights[key] != nil
-        )
-        ZStack(alignment: .topLeading) {
-            ForEach(levels, id: \.self) { level in
-                reviewOptionalField(
-                    field,
-                    currentCard: currentCard,
-                    face: face,
-                    policy: .measurementProbe(for: field, level: level)
-                )
-                .fixedSize(horizontal: false, vertical: true)
-                .hidden()
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-                .onGeometryChange(for: ReviewCardSectionMeasurement.self) {
-                    ReviewCardSectionMeasurement(height: $0.size.height, cardKey: currentCardKey)
-                } action: { measurement in
-                    recordReviewSectionHeight(
-                        measurement.height,
+        if shouldMountMeasurementProbes {
+            let key = reviewMeasurementKey(for: currentCard, face: face, section: .field(field))
+            let levels = reviewMeasurementCache.missingLevels(for: key)
+            ZStack(alignment: .topLeading) {
+                ForEach(levels, id: \.self) { level in
+                    reviewOptionalField(
+                        field,
                         currentCard: currentCard,
                         face: face,
-                        section: .field(field),
-                        level: level
+                        policy: .measurementProbe(for: field, level: level)
                     )
+                    .fixedSize(horizontal: false, vertical: true)
+                    .hidden()
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                    .onGeometryChange(for: ReviewCardSectionMeasurement.self) {
+                        ReviewCardSectionMeasurement(height: $0.size.height, cardKey: currentCardKey)
+                    } action: { measurement in
+                        recordReviewSectionHeight(
+                            measurement.height,
+                            currentCard: currentCard,
+                            face: face,
+                            section: .field(field),
+                            level: level
+                        )
+                    }
                 }
             }
         }

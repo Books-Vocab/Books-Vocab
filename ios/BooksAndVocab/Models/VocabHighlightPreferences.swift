@@ -64,10 +64,7 @@ enum VocabHighlightColorPreset: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     var titleKey: String {
-        // This key already exists in every supported locale; the custom
-        // colour does not need a new localization resource for this bounded
-        // feature change.
-        rawValue == "custom" ? "自訂" : "vocab.highlight.color.\(rawValue)"
+        "vocab.highlight.color.\(rawValue)"
     }
 
     /// 生字色帶的色相，以整數 HSL 表示。

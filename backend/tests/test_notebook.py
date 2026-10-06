@@ -31,6 +31,32 @@ def test_ensure_default_idempotent(store):
     assert nb1.id == nb2.id
 
 
+def test_ensure_default_handles_first_use_race(store, monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from sqlmodel import Session
+
+    barrier = threading.Barrier(2)
+    original_exec = Session.exec
+
+    def synchronise_first_reads(self, statement, *args, **kwargs):
+        result = original_exec(self, statement, *args, **kwargs)
+        barrier.wait(timeout=10)
+        return result
+
+    monkeypatch.setattr(Session, "exec", synchronise_first_reads)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(store.ensure_default) for _ in range(2)]
+            results = [future.result() for future in futures]
+    finally:
+        Session.exec = original_exec
+
+    assert [notebook.id for notebook in results] == [DEFAULT_NOTEBOOK_ID] * 2
+    assert [notebook.id for notebook in store.all(include_deleted=True, include_staged=True)] == [DEFAULT_NOTEBOOK_ID]
+
+
 def test_create_notebook(store):
     nb = store.create(name="TOEFL", color="#FF0000")
     assert nb.name == "TOEFL"

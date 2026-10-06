@@ -51,6 +51,75 @@ enum StatsPresentation {
         }
     }
 
+    /// Value identity for the inputs consumed by `project(_:)`.
+    ///
+    /// SwiftData can re-evaluate a view when a model field changes without
+    /// changing the number of query results. A count-only task identity would
+    /// then leave metrics, activity, or forecast buckets projected from the
+    /// previous values. Capturing the projection fields as values gives the
+    /// presenter an order-independent, collision-free task key.
+    struct ProjectionKey: Hashable {
+        struct Entry: Hashable {
+            let id: UUID
+            let notebookId: String
+            let syncStatus: Int
+            let actionType: String
+            let isArchived: Bool
+            let nextReviewAt: Date
+        }
+
+        struct Review: Hashable {
+            let id: UUID
+            let notebookId: String
+            let reviewedAt: Date
+        }
+
+        let entries: [Entry]
+        let reviews: [Review]
+        let forecastDays: Int
+        let now: Date
+        let timeZoneIdentifier: String
+    }
+
+    static func projectionKey(for inputs: Inputs) -> ProjectionKey {
+        let entryKeys = inputs.entries.map {
+            ProjectionKey.Entry(
+                id: $0.id,
+                notebookId: $0.notebookId,
+                syncStatus: $0.syncStatus,
+                actionType: $0.actionType,
+                isArchived: $0.isArchived,
+                nextReviewAt: $0.nextReviewAt
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.id != rhs.id { return lhs.id.uuidString < rhs.id.uuidString }
+            if lhs.notebookId != rhs.notebookId { return lhs.notebookId < rhs.notebookId }
+            return lhs.nextReviewAt < rhs.nextReviewAt
+        }
+
+        let reviewKeys = inputs.reviewRecords.map {
+            ProjectionKey.Review(
+                id: $0.id,
+                notebookId: $0.notebookId,
+                reviewedAt: $0.reviewedAt
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.id != rhs.id { return lhs.id.uuidString < rhs.id.uuidString }
+            if lhs.notebookId != rhs.notebookId { return lhs.notebookId < rhs.notebookId }
+            return lhs.reviewedAt < rhs.reviewedAt
+        }
+
+        return ProjectionKey(
+            entries: entryKeys,
+            reviews: reviewKeys,
+            forecastDays: inputs.forecastDays,
+            now: inputs.clock.now,
+            timeZoneIdentifier: inputs.clock.calendar.timeZone.identifier
+        )
+    }
+
     struct Summary {
         let totalCards: Int
         let reviewedToday: Int

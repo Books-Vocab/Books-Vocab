@@ -27,8 +27,9 @@ struct TodayReviewBlockReuseTests {
         return entry
     }
 
-    /// Card B: no context / explanation / collocations.
-    /// Full doc ⇒ [hero]; reviewBackSubset() drops hero ⇒ [] (empty).
+    /// Card B: translation only; no context / explanation / collocations.
+    /// Full doc ⇒ [hero, divider, meaning]; reviewBackSubset() drops the hero
+    /// but retains the translation-only meaning block ⇒ [meaning].
     private func makeMinimalEntry() -> VocabularyEntry {
         let entry = VocabularyEntry(
             word: "void",
@@ -66,9 +67,9 @@ struct TodayReviewBlockReuseTests {
         let currentTags = caseTags(current.backDocument)
         let nextTags = caseTags(next.backDocument)
 
-        // Card A is structurally rich, Card B is empty ⇒ sequences differ.
+        // Card A is structurally rich, Card B is translation-only ⇒ sequences differ.
         #expect(currentTags == ["example", "divider", "meaning", "divider", "collocations"])
-        #expect(nextTags == [])
+        #expect(nextTags == ["meaning"])
         #expect(currentTags != nextTags)
     }
 
@@ -117,7 +118,7 @@ struct TodayReviewBlockReuseTests {
 
         // offset prefix prevents same-type-different-position collisions.
         #expect(richKeys == ["0-example", "1-divider", "2-meaning", "3-divider", "4-collocations"])
-        #expect(minimalKeys == [])
+        #expect(minimalKeys == ["0-meaning"])
 
         // At every offset present in the longer doc, if the caseTag differs (here every
         // offset, since minimal is empty) the composite key differs ⇒ delete + insert.

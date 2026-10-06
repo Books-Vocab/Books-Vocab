@@ -19,6 +19,7 @@ MAX_HOURS = 168  # 7 days — keeps per-source LIMIT bounded.
 MAX_PER_SOURCE = 500
 MAX_TOTAL_EVENTS = 500
 _SOURCE_PRECEDENCE = {"judge": 0, "pipeline": 1, "translate": 2}
+_MIN_UTC = datetime.min.replace(tzinfo=UTC)
 
 
 def _clamp_hours(hours: int) -> int:
@@ -34,16 +35,44 @@ def _clamp_hours(hours: int) -> int:
     return h
 
 
+def _utc_instant(value: str | None) -> datetime | None:
+    """Parse an ISO timestamp as a comparable UTC instant."""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _utc_cutoff_params(since_iso: str) -> tuple[str, str]:
+    """Return a conservative indexed date bound plus the exact cutoff."""
+    cutoff = _utc_instant(since_iso)
+    if cutoff is None:
+        return since_iso, since_iso
+    return (cutoff.date() - timedelta(days=1)).isoformat(), since_iso
+
+
+def _utc_instant_predicate(column: str) -> str:
+    """Build an SQLite predicate that filters ISO timestamps by UTC instant."""
+    return f"{column} >= ? AND julianday({column}) >= julianday(?)"
+
+
 def _translate_events(user_id: str, since_iso: str) -> list[dict[str, Any]]:
     import kg.translate_log as tl
 
+    candidate_bound, exact_cutoff = _utc_cutoff_params(since_iso)
     with tl._lock:
         conn = tl._get_conn()
         rows = conn.execute(
             "SELECT id, operation, word, context, latency_ms, created_at"
-            " FROM translate_log WHERE user_id = ? AND created_at >= ?"
-            " ORDER BY id DESC LIMIT ?",
-            (user_id, since_iso, MAX_PER_SOURCE),
+            " FROM translate_log WHERE user_id = ? AND "
+            f"{_utc_instant_predicate('created_at')}"
+            " ORDER BY julianday(created_at) DESC, id DESC LIMIT ?",
+            (user_id, candidate_bound, exact_cutoff, MAX_PER_SOURCE),
         ).fetchall()
     out: list[dict[str, Any]] = []
     for row in rows:
@@ -64,13 +93,15 @@ def _translate_events(user_id: str, since_iso: str) -> list[dict[str, Any]]:
 def _pipeline_events(user_id: str, since_iso: str) -> list[dict[str, Any]]:
     import kg.pipeline_log as pl
 
+    candidate_bound, exact_cutoff = _utc_cutoff_params(since_iso)
     with pl._lock:
         conn = pl._get_conn()
         rows = conn.execute(
             "SELECT id, run_id, notebook_id, trigger, started_at, ended_at, status"
-            " FROM pipeline_runs WHERE user_id = ? AND started_at >= ?"
-            " ORDER BY started_at DESC LIMIT ?",
-            (user_id, since_iso, MAX_PER_SOURCE),
+            " FROM pipeline_runs WHERE user_id = ? AND "
+            f"{_utc_instant_predicate('started_at')}"
+            " ORDER BY julianday(started_at) DESC, id DESC LIMIT ?",
+            (user_id, candidate_bound, exact_cutoff, MAX_PER_SOURCE),
         ).fetchall()
     out: list[dict[str, Any]] = []
     for source_id, run_id, nb, trigger, started, ended, status in rows:
@@ -109,14 +140,16 @@ def _pipeline_events(user_id: str, since_iso: str) -> list[dict[str, Any]]:
 def _judge_events(user_id: str, since_iso: str) -> list[dict[str, Any]]:
     import kg.judge_log as jl
 
+    candidate_bound, exact_cutoff = _utc_cutoff_params(since_iso)
     with jl._lock:
         conn = jl._get_conn()
         rows = conn.execute(
             "SELECT id, notebook_id, from_id, to_id, similarity, verdict,"
             " confidence, accepted, source, created_at"
-            " FROM judge_log WHERE user_id = ? AND created_at >= ?"
-            " ORDER BY id DESC LIMIT ?",
-            (user_id, since_iso, MAX_PER_SOURCE),
+            " FROM judge_log WHERE user_id = ? AND "
+            f"{_utc_instant_predicate('created_at')}"
+            " ORDER BY julianday(created_at) DESC, id DESC LIMIT ?",
+            (user_id, candidate_bound, exact_cutoff, MAX_PER_SOURCE),
         ).fetchall()
     out: list[dict[str, Any]] = []
     for row in rows:
@@ -169,7 +202,7 @@ def get_user_activity(user_id: str, *, hours: int = 24) -> dict[str, Any]:
     all_events = translate + pipeline + judge
     all_events.sort(
         key=lambda event: (
-            event.get("created_at") or "",
+            _utc_instant(event.get("created_at")) or _MIN_UTC,
             _SOURCE_PRECEDENCE[event["type"]],
             event.get("_source_id", event.get("id", -1)),
         ),

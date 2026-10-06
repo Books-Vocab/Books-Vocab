@@ -169,11 +169,11 @@ struct SubscriptionPaywallSheet: View {
                 } label: {
                     paywallActionLabel(
                         title: ctaButtonTitle,
-                        isLoading: subscriptionManager.isLoading
+                        isLoading: subscriptionManager.isLoading || productLoadState == .loading
                     )
                 }
                 .buttonStyle(.vocabAction(.primary))
-                .disabled(subscriptionManager.isLoading)
+                .disabled(subscriptionManager.isLoading || productLoadState != .ready)
 
                 Button {
                     Task {
@@ -188,7 +188,7 @@ struct SubscriptionPaywallSheet: View {
 
             purchaseStatusCard
 
-            if subscriptionManager.proProduct == nil, subscriptionManager.lastError != nil {
+            if productLoadState != .ready {
                 loadProductsRetryCard
             }
 
@@ -217,18 +217,27 @@ struct SubscriptionPaywallSheet: View {
     }
 
     private var loadProductsRetryCard: some View {
-        VocabStateMessageCard(
-            title: L10n.string("訂閱方案載入中"),
-            systemImage: "arrow.clockwise.circle",
-            description: L10n.string("App Store 尚未回傳訂閱資訊，請稍候或點下方重試。")
+        let isLoading = productLoadState == .loading
+        return VocabStateMessageCard(
+            title: isLoading ? L10n.string("正在載入訂閱方案") : L10n.string("訂閱方案載入失敗"),
+            systemImage: isLoading ? "hourglass" : "arrow.clockwise.circle",
+            description: isLoading
+                ? L10n.string("正在從 App Store 取得訂閱資訊。")
+                : L10n.string("App Store 尚未回傳訂閱資訊，請稍候或點下方重試。")
         ) {
-            Button {
-                Task { await subscriptionManager.loadProducts() }
-            } label: {
-                paywallActionLabel(title: L10n.string("重新載入"), font: appSkin.typography.caption)
+            if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel(L10n.string("正在載入訂閱方案"))
+            } else {
+                Button {
+                    Task { await subscriptionManager.loadProducts() }
+                } label: {
+                    paywallActionLabel(title: L10n.string("重新載入"), font: appSkin.typography.caption)
+                }
+                .buttonStyle(.vocabAction(.neutral))
+                .disabled(subscriptionManager.isLoading)
             }
-            .buttonStyle(.vocabAction(.neutral))
-            .disabled(subscriptionManager.isLoading)
         }
     }
 
@@ -280,6 +289,13 @@ struct SubscriptionPaywallSheet: View {
     /// 所有文案邏輯收斂到該 enum（可單元測試），此處僅為 view-binding 薄轉發。
     private var pro: KGSubscriptionStatus { subscriptionManager.entitlements.pro }
     private var productPrice: String? { subscriptionManager.proProduct?.displayPrice }
+    private var productLoadState: SubscriptionProductLoadState {
+        SubscriptionManager.productLoadState(
+            isLoading: subscriptionManager.isLoading,
+            hasProduct: subscriptionManager.proProduct != nil,
+            hasError: subscriptionManager.lastError != nil
+        )
+    }
 
     private var isCancelledButActive: Bool { pro.isCancelledButActive }
     private var isAdminGranted: Bool { SubscriptionPaywallCopy.isAdminGranted(pro) }

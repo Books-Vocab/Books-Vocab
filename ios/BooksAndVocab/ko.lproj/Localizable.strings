@@ -1024,6 +1024,7 @@
 "vocab.highlight.color.blue" = "파랑";
 "vocab.highlight.color.sage" = "세이지";
 "vocab.highlight.color.rose" = "로즈";
+"vocab.highlight.color.custom" = "사용자 지정";
 
 /* Bookshelf — CloudKit 還原狀態線（2026-06-11 書庫透明化） */
 "正在確認 iCloud 書庫…" = "iCloud 서재 확인 중…";
@@ -1161,6 +1162,7 @@
 "reader.settings.section.debug" = "개발자 및 디버그";
 "reader.settings.fontSize" = "글자 크기";
 "reader.settings.lineHeight" = "행간";
+"reader.settings.letterSpacing" = "자간";
 "reader.settings.readingMode" = "읽기 모드";
 "reader.settings.readingMode.paged" = "페이지";
 "reader.settings.readingMode.scroll" = "스크롤";

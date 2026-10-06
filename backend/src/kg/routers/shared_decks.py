@@ -137,7 +137,9 @@ def list_decks(
         "official": official,
     }
     after = None
-    if cursor:
+    if cursor is not None:
+        if not cursor:
+            raise BadRequestError("Invalid cursor")
         after = _deck_after(decode_cursor(cursor, settings.jwt_secret), sort, filters)
     limit = _clamp(limit, 1, _MAX_LIMIT)
     rows = store.browse(
@@ -193,7 +195,9 @@ def get_deck_cards(
     if deck is None:
         raise NotFoundError("Deck")
     after = None
-    if cursor:
+    if cursor is not None:
+        if not cursor:
+            raise BadRequestError("Invalid cursor")
         payload = decode_cursor(cursor, settings.jwt_secret)
         # Bind the cursor to this endpoint (k) and deck (d): a list cursor or
         # another deck's cards cursor is a 400, not a silently-accepted boundary.

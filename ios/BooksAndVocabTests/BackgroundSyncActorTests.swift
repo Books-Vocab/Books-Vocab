@@ -39,16 +39,18 @@ struct BackgroundSyncActorTests {
         id: String = "c1",
         content: String,
         sourceJSON: String?,
+        meaning: String? = nil,
         lastReviewedAt: String? = nil,
         readerHidden: Bool? = nil,
         reviewExcluded: Bool? = nil
     ) throws -> KGCard {
         let sourceFragment = sourceJSON.map { ",\"source\":\($0)" } ?? ""
+        let meaningValue = meaning ?? "meaning-\(content)"
         let reviewFragment = lastReviewedAt.map { ",\"lastReviewedAt\":\"\($0)\"" } ?? ""
         let readerHiddenFragment = readerHidden.map { ",\"isReaderHidden\":\($0)" } ?? ""
         let reviewExcludedFragment = reviewExcluded.map { ",\"isReviewExcluded\":\($0)" } ?? ""
         let json = """
-        {"id":"\(id)","content":"\(content)","meaning":"meaning-\(content)",
+        {"id":"\(id)","content":"\(content)","meaning":"\(meaningValue)",
          "pos":null,"difficulty":null,"difficultyTier":null,"note":null,
          "collocations":[],"examples":["an example"],"mode":"recognition",
          "isDeleted":false,"notebookId":"default"\(sourceFragment)\(reviewFragment)\(readerHiddenFragment)\(reviewExcludedFragment)}
@@ -318,6 +320,44 @@ struct BackgroundSyncActorTests {
         #expect(entry?.explanation == nil)
         #expect(entry?.isSynced == true)
         #expect(entry?.actionType == VocabularySyncAction.add.rawValue)
+    }
+
+    @Test func syncDown_existingEntry_appliesRemoteContentIdentityChange() async throws {
+        let container = try makeContainer()
+        let seedContext = ModelContext(container)
+        let local = VocabularyEntry(
+            word: "old-word",
+            translation: "meaning-old-word",
+            context: "an example",
+            bookTitle: BackgroundSyncActor.fallbackBookTitle
+        )
+        local.kgCardId = "c-word-rename"
+        local.reviewExamples = ["an example"]
+        local.markSynced()
+        seedContext.insert(local)
+        try seedContext.save()
+
+        let actor = BackgroundSyncActor(modelContainer: container)
+        let remote = try makeCard(
+            id: "c-word-rename",
+            content: "new-word",
+            sourceJSON: nil,
+            meaning: "meaning-old-word"
+        )
+
+        #expect(BackgroundSyncActor.contentDiffers(card: remote, from: local))
+
+        let result = try await actor.pullCardsToLocal(
+            fetchedCards: [remote],
+            isIncremental: true,
+            progress: { _, _, _ in }
+        )
+
+        let entries = try ModelContext(container).fetch(FetchDescriptor<VocabularyEntry>())
+        #expect(result.updated == 1)
+        #expect(entries.count == 1)
+        #expect(entries.first?.word == "new-word")
+        #expect(entries.first?.kgCardId == "c-word-rename")
     }
 
     @Test func syncDown_pendingDelete_stillPreservesLocalEntry() async throws {

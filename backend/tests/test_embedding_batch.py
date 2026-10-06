@@ -75,6 +75,39 @@ class TestAddBatch:
         for i in range(3):
             assert store.has(f"card_{i}")
 
+    def test_add_batch_deduplicates_duplicate_ids_in_input_order(self, tmp_path: Path):
+        """A batch stores each new card ID once, keeping its first occurrence."""
+        store, client = _make_store(tmp_path, preload_ids=["existing"])
+        requested_inputs: list[list[str]] = []
+
+        def create_embeddings(**kwargs):
+            requested_inputs.append(kwargs["input"])
+            return _mock_embedding_response(len(kwargs["input"]))
+
+        client.embeddings.create.side_effect = create_embeddings
+
+        store.add_batch(
+            [
+                ("new-a", "first text"),
+                ("new-a", "duplicate text"),
+                ("existing", "already stored"),
+                ("new-b", "second text"),
+            ]
+        )
+
+        assert json.loads((tmp_path / "ids.json").read_text()) == [
+            "existing",
+            "new-a",
+            "new-b",
+        ]
+        assert requested_inputs == [["first text", "second text"]]
+        assert store._ids == ["existing", "new-a", "new-b"]
+        assert store.count() == 3
+
+        reloaded, _ = _make_store(tmp_path)
+        assert reloaded._ids == ["existing", "new-a", "new-b"]
+        assert reloaded.count() == 3
+
     def test_add_batch_skips_existing(self, tmp_path: Path):
         """Batch should skip cards that already exist."""
         store, client = _make_store(tmp_path, preload_ids=["existing_1"])

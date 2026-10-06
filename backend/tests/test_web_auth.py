@@ -115,6 +115,45 @@ def test_google_callback_token_exchange_non_200_returns_401(web_auth_env):
     assert resp.status_code == 401, resp.text
 
 
+@pytest.mark.parametrize("status_code", [500, 429])
+def test_google_callback_exhausted_transient_token_exchange_returns_502(web_auth_env, status_code):
+    """Exhausted upstream transient failures stay distinguishable from auth failures."""
+    client = web_auth_env.client
+    state = _bootstrap_google_state(client)
+    attempts = []
+    sleeps = []
+    fake_resp = httpx.Response(
+        status_code,
+        json={"error": "temporarily_unavailable"},
+        request=httpx.Request("POST", "https://oauth2.googleapis.com/token"),
+    )
+
+    async def fake_post(self, url, data=None, **kwargs):
+        attempts.append(url)
+        return fake_resp
+
+    async def fake_sleep(seconds):
+        sleeps.append(seconds)
+
+    with (
+        patch("httpx.AsyncClient.post", new=fake_post),
+        patch("kg.routers.web_auth.asyncio.sleep", new=fake_sleep),
+        patch("kg.routers.web_auth.verify_google_token") as verify_mock,
+        patch("kg.routers.web_auth._resolve_and_link_user") as resolve_mock,
+    ):
+        resp = client.get(
+            f"/auth/web/google/callback?code=fake-code&state={state}",
+            follow_redirects=False,
+        )
+
+    assert resp.status_code == 502, resp.text
+    assert resp.json() == {"detail": "Failed to reach Google authentication service"}
+    assert len(attempts) == 3
+    assert sleeps == [0.2, 0.5]
+    verify_mock.assert_not_called()
+    resolve_mock.assert_not_called()
+
+
 def test_google_callback_missing_id_token_returns_401(web_auth_env):
     """A 200 token response that omits ``id_token`` → 401 (no OIDC identity to
     verify), guarding against a None slipping into verify_google_token."""
@@ -157,9 +196,9 @@ def test_google_callback_provider_error_is_redacted(web_auth_env, caplog):
         )
     assert resp.status_code == 400, resp.text
     assert _PROVIDER_ERROR_SENTINEL not in resp.text
-    assert any(
-        _PROVIDER_ERROR_SENTINEL in record.getMessage() for record in caplog.records
-    ), "raw provider error must be logged server-side"
+    assert any(_PROVIDER_ERROR_SENTINEL in record.getMessage() for record in caplog.records), (
+        "raw provider error must be logged server-side"
+    )
 
 
 def test_apple_callback_provider_error_is_redacted(web_auth_env, caplog):
@@ -177,9 +216,26 @@ def test_apple_callback_provider_error_is_redacted(web_auth_env, caplog):
         )
     assert resp.status_code == 400, resp.text
     assert _PROVIDER_ERROR_SENTINEL not in resp.text
-    assert any(
-        _PROVIDER_ERROR_SENTINEL in record.getMessage() for record in caplog.records
-    ), "raw provider error must be logged server-side"
+    assert any(_PROVIDER_ERROR_SENTINEL in record.getMessage() for record in caplog.records), (
+        "raw provider error must be logged server-side"
+    )
+
+
+def test_apple_callback_provider_error_without_id_token_returns_400(web_auth_env, caplog):
+    """Apple error form-posts may omit ``id_token`` and must still reach the
+    generic provider-error response instead of FastAPI's validation 422."""
+    client = web_auth_env.client
+    with caplog.at_level("WARNING", logger="kg.routers.web_auth"):
+        resp = client.post(
+            "/auth/web/apple/callback",
+            data={"error": _PROVIDER_ERROR_SENTINEL},
+            follow_redirects=False,
+        )
+    assert resp.status_code == 400, resp.text
+    assert _PROVIDER_ERROR_SENTINEL not in resp.text
+    assert any(_PROVIDER_ERROR_SENTINEL in record.getMessage() for record in caplog.records), (
+        "raw provider error must be logged server-side"
+    )
 
 
 # ── Cookie security attributes (full assertion) ──────────────────────────────

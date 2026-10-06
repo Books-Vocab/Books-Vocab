@@ -36,7 +36,8 @@ struct TodayReviewCardCache {
         storage[entry.id] = .init(
             card: card,
             linkGroups: compactGroups,
-            backDocument: backDocument
+            backDocument: backDocument,
+            measurementCache: .init()
         )
     }
 
@@ -92,7 +93,8 @@ struct TodayReviewCardCache {
         return .init(
             card: card,
             linkGroups: compactGroups,
-            backDocument: backDocument
+            backDocument: backDocument,
+            measurementCache: .init()
         )
     }
 }

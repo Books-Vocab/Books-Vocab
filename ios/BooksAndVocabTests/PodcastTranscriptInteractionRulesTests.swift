@@ -5,6 +5,24 @@ import Testing
 
 @Suite("PodcastTranscriptInteractionRules")
 struct PodcastTranscriptInteractionRulesTests {
+    @Test func wordSelectionClearsViewportSelectionBeforeForwarding() {
+        var selection: PodcastSentenceSelection? = PodcastSentenceSelection(
+            sentenceId: 7,
+            initialRange: NSRange(location: 0, length: 5)
+        )
+        var forwarded: (word: String, context: String)?
+        let handler = PodcastTranscriptViewport.makeWordSelectionHandler(
+            clearSelection: { selection = nil },
+            onWordTap: { word, context in forwarded = (word, context) }
+        )
+
+        handler("word", "marked context")
+
+        #expect(selection == nil)
+        #expect(forwarded?.word == "word")
+        #expect(forwarded?.context == "marked context")
+    }
+
     @Test func followControlHiddenDuringSelectionOnAllPlatforms() {
         #expect(PodcastFollowControlVisibility.shouldShow(
             isFollowing: true,

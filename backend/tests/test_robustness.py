@@ -24,6 +24,7 @@ from unittest.mock import MagicMock, patch
 def _future_iso(days: int = 30) -> str:
     return (datetime.now(tz=UTC) + timedelta(days=days)).isoformat()
 
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -49,6 +50,7 @@ from kg.settings import KGSettings
 # Fixture: per-test isolated data directory
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def user_env(tmp_path):
     """
@@ -63,18 +65,22 @@ def user_env(tmp_path):
     users_file = tmp_path / "users.json"
     tmp_path / "users.json.lock"
     tmp_path / "app_store_notifications.ndjson"
-    users_file.write_text(json.dumps({
-        user_id: {
-            "config": {},
-            "subscription": {
-                "is_active": True,
-                "status": "active",
-                "plan_name": "Books & Vocab Pro",
-                "trial_days": 7,
-                "will_renew": True,
-            },
-        }
-    }))
+    users_file.write_text(
+        json.dumps(
+            {
+                user_id: {
+                    "config": {},
+                    "subscription": {
+                        "is_active": True,
+                        "status": "active",
+                        "plan_name": "Books & Vocab Pro",
+                        "trial_days": 7,
+                        "will_renew": True,
+                    },
+                }
+            }
+        )
+    )
 
     original_settings = app.state.kg_settings
     original_load = app.state.load_users
@@ -116,14 +122,93 @@ def card_store(tmp_path):
 
 
 class TestBatchA_UsersJsonLock:
+    @pytest.mark.parametrize(
+        ("group", "config_json"),
+        [
+            (
+                "translation",
+                '{"source_lang":"en","target_lang":"ja","updated_at":BAD}',
+            ),
+            (
+                "review_clock",
+                '{"is_paused":true,"updated_at":BAD}',
+            ),
+            (
+                "review_mode",
+                '{"mode":"relaxed","updated_at":BAD}',
+            ),
+            (
+                "vocab_ui",
+                '{"active_notebook_id":"default","updated_at":BAD}',
+            ),
+            (
+                "auto_link",
+                '{"enabled":true,"updated_at":BAD}',
+            ),
+        ],
+    )
+    @pytest.mark.parametrize("bad_timestamp", ["1e309", "NaN", "Infinity", "-Infinity"])
+    def test_non_finite_config_timestamp_rejected_before_persistence(self, user_env, group, config_json, bad_timestamp):
+        """Every user-config LWW group rejects non-finite timestamps atomically."""
+        client, user_id, headers, data_dir = user_env
+        before = (data_dir / "users.json").read_bytes()
+
+        response = client.put(
+            "/api/user/config",
+            content=f'{{"{group}":{config_json.replace("BAD", bad_timestamp)}}}',
+            headers={**headers, "Content-Type": "application/json"},
+        )
+
+        assert response.status_code == 422, response.text
+        assert any(error["type"] == "finite_number" for error in response.json()["detail"])
+        assert (data_dir / "users.json").read_bytes() == before
+        assert json.loads((data_dir / "users.json").read_text())[user_id]["config"] == {}
+
+    def test_finite_config_timestamp_keeps_lww_behavior(self, user_env):
+        """Finite timestamps still apply newer groups and ignore stale groups."""
+        client, user_id, headers, data_dir = user_env
+
+        first = client.put(
+            "/api/user/config",
+            json={
+                "translation": {
+                    "source_lang": "en",
+                    "target_lang": "ja",
+                    "updated_at": 10.0,
+                }
+            },
+            headers=headers,
+        )
+        assert first.status_code == 200, first.text
+
+        stale = client.put(
+            "/api/user/config",
+            json={
+                "translation": {
+                    "source_lang": "en",
+                    "target_lang": "zh-Hant",
+                    "updated_at": 9.0,
+                }
+            },
+            headers=headers,
+        )
+        assert stale.status_code == 200, stale.text
+        assert stale.json()["translation"]["target_lang"] == "ja"
+
+        stored = json.loads((data_dir / "users.json").read_text())
+        assert stored[user_id]["config"]["translation"] == {
+            "source_lang": "en",
+            "target_lang": "ja",
+            "updated_at": 10.0,
+        }
 
     def test_sequential_config_update_persists(self, user_env):
         """PUT /api/user/config should write and return the updated config."""
         client, user_id, headers, data_dir = user_env
 
-        r = client.put("/api/user/config",
-                       json={"translation": {"source_lang": "en", "target_lang": "zh-Hant"}},
-                       headers=headers)
+        r = client.put(
+            "/api/user/config", json={"translation": {"source_lang": "en", "target_lang": "zh-Hant"}}, headers=headers
+        )
         assert r.status_code == 200, r.text
         body = r.json()
         assert body["translation"]["source_lang"] == "en"
@@ -137,9 +222,11 @@ class TestBatchA_UsersJsonLock:
 
         def do_put(i):
             try:
-                r = client.put("/api/user/config",
-                               json={"translation": {"source_lang": "en", "target_lang": "zh-Hant"}},
-                               headers=headers)
+                r = client.put(
+                    "/api/user/config",
+                    json={"translation": {"source_lang": "en", "target_lang": "zh-Hant"}},
+                    headers=headers,
+                )
                 statuses.append(r.status_code)
             except Exception as e:
                 errors.append(str(e))
@@ -165,7 +252,9 @@ class TestBatchA_UsersJsonLock:
         """GET /api/user/config should reflect what was PUT."""
         client, user_id, headers, data_dir = user_env
 
-        client.put("/api/user/config", json={"translation": {"source_lang": "en", "target_lang": "ja"}}, headers=headers)
+        client.put(
+            "/api/user/config", json={"translation": {"source_lang": "en", "target_lang": "ja"}}, headers=headers
+        )
         r = client.get("/api/user/config", headers=headers)
         assert r.status_code == 200
         assert r.json()["translation"]["target_lang"] == "ja"
@@ -258,8 +347,8 @@ class TestBatchA_UsersJsonLock:
 # BATCH A-1b — account deletion
 # ============================================================================
 
-class TestBatchA_AccountDeletion:
 
+class TestBatchA_AccountDeletion:
     def test_delete_account_removes_user_record_and_directory(self, user_env):
         client, user_id, headers, data_dir = user_env
 
@@ -328,18 +417,18 @@ class TestBatchA_AccountDeletion:
 # BATCH A-2 — No print() in pipeline modules (AST check)
 # ============================================================================
 
-class TestBatchA_NoPrintInModules:
 
+class TestBatchA_NoPrintInModules:
     def _find_print_calls(self, mod) -> list[int]:
         import ast
         import inspect
+
         source = inspect.getsource(mod)
         tree = ast.parse(source)
         return [
-            node.lineno for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "print"
+            node.lineno
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "print"
         ]
 
     def test_api_module(self):
@@ -360,6 +449,7 @@ class TestBatchA_NoPrintInModules:
 
         # Force client_factory() to blow up inside pipeline steps
         import kg.routers.pipeline as pipeline_router_mod
+
         with patch.object(pipeline_router_mod, "create_client", side_effect=Exception("API down")):
             with caplog.at_level(logging.ERROR, logger="kg.api"):
                 r = client.post("/api/pipeline", headers=headers)
@@ -377,8 +467,8 @@ class TestBatchA_NoPrintInModules:
 # BATCH C-1 — CardStore.count() uses SQL COUNT(*)
 # ============================================================================
 
-class TestBatchC_CardStoreCount:
 
+class TestBatchC_CardStoreCount:
     def test_count_empty(self, card_store):
         assert card_store.count() == 0
 
@@ -411,6 +501,7 @@ class TestBatchC_CardStoreCount:
 
         # Simpler: patch the scalar method and verify it's called
         from sqlmodel import Session as SM
+
         original_scalar = SM.scalar
 
         scalar_called = []
@@ -430,8 +521,8 @@ class TestBatchC_CardStoreCount:
 # BATCH C-2 — Pipeline embedding backfill
 # ============================================================================
 
-class TestBatchC_EmbeddingBackfill:
 
+class TestBatchC_EmbeddingBackfill:
     def test_backfill_detects_cards_without_embedding(self, tmp_path, card_store):
         """Cards added to DB but with no embedding must be found by backfill logic."""
         from kg.embeddings import EmbeddingStore
@@ -441,9 +532,7 @@ class TestBatchC_EmbeddingBackfill:
         # _embed() calls self.llm.embed(...), not .embeddings.create. dim must
         # match the store's configured dim or the guard will raise.
         mock_client = MagicMock()
-        mock_client.embed.return_value = MagicMock(
-            data=[MagicMock(index=0, embedding=[0.1] * 768)]
-        )
+        mock_client.embed.return_value = MagicMock(data=[MagicMock(index=0, embedding=[0.1] * 768)])
         emb = EmbeddingStore(
             tmp_path / "embeddings.npy",
             tmp_path / "card_ids.json",
@@ -462,9 +551,7 @@ class TestBatchC_EmbeddingBackfill:
         card = card_store.add("orphan", "孤立")
 
         mock_client = MagicMock()
-        mock_client.embed.return_value = MagicMock(
-            data=[MagicMock(index=0, embedding=[0.1] * 768)]
-        )
+        mock_client.embed.return_value = MagicMock(data=[MagicMock(index=0, embedding=[0.1] * 768)])
         emb = EmbeddingStore(
             tmp_path / "embeddings.npy",
             tmp_path / "card_ids.json",
@@ -491,9 +578,7 @@ class TestBatchC_EmbeddingBackfill:
         def counting_embed(*args, **kwargs):
             call_count["n"] += 1
             texts = kwargs.get("input", [])
-            return MagicMock(
-                data=[MagicMock(index=i, embedding=[0.2] * 768) for i in range(len(texts))]
-            )
+            return MagicMock(data=[MagicMock(index=i, embedding=[0.2] * 768) for i in range(len(texts))])
 
         mock_client.embed.side_effect = counting_embed
 
@@ -514,16 +599,15 @@ class TestBatchC_EmbeddingBackfill:
             if not emb.has(c.id):
                 emb.add(c.id, c.embed_text())
 
-        assert call_count["n"] == first_count, \
-            "Backfill called embedding API again for card that already had embedding"
+        assert call_count["n"] == first_count, "Backfill called embedding API again for card that already had embedding"
 
 
 # ============================================================================
 # BATCH D — async get_user_lock atomicity
 # ============================================================================
 
-class TestBatchD_UserLockAtomic:
 
+class TestBatchD_UserLockAtomic:
     def test_get_user_lock_is_async(self):
         assert asyncio.iscoroutinefunction(api_mod.get_user_lock)
 
@@ -550,12 +634,11 @@ class TestBatchD_UserLockAtomic:
     def test_concurrent_creation_no_duplicate_lock(self):
         """50 concurrent coroutines requesting the same user's lock must
         all receive the exact same Lock object (no race-created duplicates)."""
+
         async def run():
             api_mod._USER_LOCKS.clear()
             deps_mod._USER_LOCKS_MUTEX = None
-            locks = await asyncio.gather(*[
-                api_mod.get_user_lock("race_user") for _ in range(50)
-            ])
+            locks = await asyncio.gather(*[api_mod.get_user_lock("race_user") for _ in range(50)])
             return len({id(lk) for lk in locks})
 
         unique = asyncio.run(run())
@@ -585,8 +668,8 @@ class TestBatchD_UserLockAtomic:
 # BATCH E — Vocab concurrent write integrity
 # ============================================================================
 
-class TestBatchE_VocabConcurrentWrite:
 
+class TestBatchE_VocabConcurrentWrite:
     def test_concurrent_cardstore_no_data_loss(self, card_store):
         """10 concurrent CardStore.add() threads must not lose any write (SQLite WAL safety).
 

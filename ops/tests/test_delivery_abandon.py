@@ -27,7 +27,7 @@ BRANCH = "feat/abandon"
 WORKTREE = Path("/tmp/abandon").resolve()
 
 
-def _receipt() -> HandbackReceipt:
+def _receipt(*, scope: Scope | None = None) -> HandbackReceipt:
     return HandbackReceipt(
         lane_id="ISSUE-ABANDON",
         owner_thread_id="thread-owner",
@@ -39,14 +39,17 @@ def _receipt() -> HandbackReceipt:
         head_sha=HEAD,
         origin_main_sha=BASE,
         content_digest="c" * 64,
-        scope=Scope.from_paths(modify=("ops/a.py",)),
+        scope=scope or Scope.from_paths(modify=("ops/a.py",)),
     )
 
 
 def _record(
-    *, status: str = "published", owner: str = "thread-owner"
+    *,
+    status: str = "published",
+    owner: str = "thread-owner",
+    receipt: HandbackReceipt | None = None,
 ) -> RegistrySnapshot:
-    receipt = _receipt()
+    receipt = receipt or _receipt()
     return RegistrySnapshot(
         lane_id=receipt.lane_id,
         branch=receipt.branch,
@@ -65,8 +68,14 @@ def _record(
     )
 
 
-def _pr(*, state: str = "OPEN", head: str = HEAD) -> PullRequestSnapshot:
-    receipt = _receipt()
+def _pr(
+    *,
+    state: str = "OPEN",
+    head: str = HEAD,
+    receipt: HandbackReceipt | None = None,
+    labels: tuple[str, ...] = (),
+) -> PullRequestSnapshot:
+    receipt = receipt or _receipt()
     return PullRequestSnapshot(
         number=17,
         url="https://example.test/pull/17",
@@ -79,6 +88,7 @@ def _pr(*, state: str = "OPEN", head: str = HEAD) -> PullRequestSnapshot:
         title="fix: abandoned lane",
         body=render_pull_request_body(receipt),
         node_id="PR_17",
+        labels=labels,
     )
 
 
@@ -133,7 +143,9 @@ class FakeRegistry:
 
 
 class FakeGit:
-    def __init__(self, *, canonical_branch: str = "main", canonical_clean: bool = True) -> None:
+    def __init__(
+        self, *, canonical_branch: str = "main", canonical_clean: bool = True
+    ) -> None:
         self.remote_sha: str | None = HEAD
         self.local_sha: str | None = None
         self.worktrees: tuple[object, ...] = ()
@@ -195,9 +207,15 @@ def test_abandon_refuses_before_pr_or_remote_mutation_without_canonical_main(
 
 
 class FakeGitHub:
-    def __init__(self, pull_request: PullRequestSnapshot | None = None) -> None:
+    def __init__(
+        self,
+        pull_request: PullRequestSnapshot | None = None,
+        *,
+        actual_paths: tuple[str, ...] = ("ops/a.py",),
+    ) -> None:
         self.pull_request = pull_request or _pr()
         self.inventory = PullRequestInventory((self.pull_request,))
+        self.actual_paths = actual_paths
         self.queue_entry: MergeQueueEntrySnapshot | None = None
         self.fail_close = False
         self.fail_reopen = False
@@ -213,7 +231,7 @@ class FakeGitHub:
 
     def changed_paths(self, number: int) -> tuple[str, ...]:
         assert number == 17
-        return ("ops/a.py",)
+        return self.actual_paths
 
     def merge_queue_entry_snapshot(
         self, pull_request_id: str
@@ -295,6 +313,66 @@ def test_abandon_closes_exact_pr_terminalizes_registry_and_deletes_remote() -> N
     assert github.actions == ["close-pr"]
     assert registry.actions == ["abandon-registry"]
     assert git.actions == ["delete-remote"]
+
+
+def test_abandon_terminalizes_strict_scope_superset_as_explicit_non_delivery() -> None:
+    receipt = _receipt(
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/declared-but-untouched.py"))
+    )
+    registry = FakeRegistry(_record(receipt=receipt))
+    github = FakeGitHub(_pr(receipt=receipt))
+    original_body = github.pull_request.body
+    service, registry, git, github = _service(registry=registry, github=github)
+
+    result = service.abandon(pull_request_number=17)
+
+    assert result.pull_request_state == "CLOSED"
+    assert result.registry_status == "abandoned"
+    assert result.remote_branch_absent
+    assert result.malformed_published_lane is True
+    assert result.delivery_succeeded is False
+    assert result.mismatch_evidence is not None
+    assert result.mismatch_evidence.kind == "scope-strict-superset"
+    assert result.mismatch_evidence.actual_changed_paths == ("ops/a.py",)
+    assert result.mismatch_evidence.scope_only_paths == (
+        "ops/declared-but-untouched.py",
+    )
+    assert github.pull_request.body == original_body
+    assert registry.record.scope == receipt.scope
+    assert github.actions == ["close-pr"]
+    assert registry.actions == ["abandon-registry"]
+    assert git.actions == ["delete-remote"]
+
+
+@pytest.mark.parametrize(
+    "actual_paths",
+    (("ops/a.py", "ops/outside.py"), ("ops/outside.py",)),
+)
+def test_abandon_rejects_changed_paths_outside_typed_scope_before_mutation(
+    actual_paths: tuple[str, ...],
+) -> None:
+    github = FakeGitHub(actual_paths=actual_paths)
+    service, registry, git, github = _service(github=github)
+
+    with pytest.raises(PolicyViolation):
+        service.abandon(pull_request_number=17)
+
+    assert github.actions == []
+    assert registry.actions == []
+    assert git.actions == []
+
+
+def test_abandon_rejects_explicit_hold_before_mutation() -> None:
+    github = FakeGitHub(_pr(labels=("delivery-hold:p1",)))
+    github.inventory = PullRequestInventory((github.pull_request,))
+    service, registry, git, github = _service(github=github)
+
+    with pytest.raises(PolicyViolation, match="hold"):
+        service.abandon(pull_request_number=17)
+
+    assert github.actions == []
+    assert registry.actions == []
+    assert git.actions == []
 
 
 def test_abandon_rejects_queued_pr_before_any_mutation() -> None:

@@ -143,6 +143,30 @@ def test_translate_quick_invalid_request_returns_422(isolated_api):
     assert "detail" in r_bad_lang.json()
 
 
+def test_translate_quick_all_whitespace_word_returns_422_before_quota_or_provider(
+    isolated_api,
+):
+    """Whitespace-only words are rejected before any billable work begins."""
+    client = isolated_api.client
+    headers = isolated_api.headers
+
+    with (
+        patch("kg.routers.translate._check_quota") as quota_check,
+        patch("kg.translate_handlers.create_async_client") as create_async_client,
+    ):
+        responses = [
+            client.post("/api/translate/quick", json={"word": word}, headers=headers)
+            for word in ("   ", "\t\t", "\n \t\n")
+        ]
+
+    for response in responses:
+        assert response.status_code == 422, response.text
+        assert "detail" in response.json()
+
+    quota_check.assert_not_called()
+    create_async_client.assert_not_called()
+
+
 def test_translate_quick_unauthenticated_returns_401(isolated_api):
     """Expired and invalid bearer tokens must yield 401 + WWW-Authenticate.
 

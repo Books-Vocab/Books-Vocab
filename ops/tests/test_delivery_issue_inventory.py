@@ -293,6 +293,61 @@ def test_bare_numeric_registry_mapping_does_not_guess_substrings() -> None:
     assert projected.unadmitted_open_issues == 1
 
 
+def test_external_dependabot_changelog_issue_reference_does_not_map_local_issue() -> (
+    None
+):
+    issue = parse_demand_issue(_payload(1018))
+    external_pr = PullRequestSnapshot(
+        number=1932,
+        url="https://github.com/Books-Vocab/Books-Vocab/pull/1932",
+        branch="dependabot/github_actions/astral-sh/setup-uv-10.1.0",
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+        state="OPEN",
+        draft=False,
+        mergeable=True,
+        title="build(deps): bump astral-sh/setup-uv from 10.0.1 to 10.1.0",
+        body=(
+            "Release notes: https://redirect.github.com/astral-sh/setup-uv/issues/1018"
+        ),
+        node_id="PR_1932",
+    )
+
+    projected = project_demand_inventory(
+        DemandIssueInventory((issue,), raw_count=1),
+        pull_requests=(external_pr,),
+    )
+
+    assert projected.records[0].disposition is IssueDisposition.TRIAGE_REQUIRED
+    assert projected.records[0].mapped_pull_request_numbers == ()
+    assert projected.unadmitted_open_issues == 1
+
+
+def test_typed_delivery_pr_issue_reference_still_maps_local_issue() -> None:
+    issue = parse_demand_issue(_payload(1018))
+    delivery_pr = PullRequestSnapshot(
+        number=1911,
+        url="https://github.com/Books-Vocab/Books-Vocab/pull/1911",
+        branch="debug/production-dogfood-issue-1018-20260915",
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+        state="OPEN",
+        draft=False,
+        mergeable=True,
+        title="Production dogfood: review contract evidence boundary",
+        body="<!-- kg.delivery.receipt.v1\nDIRECT-DELIVERY-PRODUCTION-DOGFOOD-ISSUE-1018-20260915\n-->",
+        node_id="PR_1911",
+    )
+
+    projected = project_demand_inventory(
+        DemandIssueInventory((issue,), raw_count=1),
+        pull_requests=(delivery_pr,),
+    )
+
+    assert projected.records[0].disposition is IssueDisposition.OWNER_BOUND
+    assert projected.records[0].mapped_pull_request_numbers == (1911,)
+
+
 @pytest.mark.parametrize(
     "external_id",
     [

@@ -61,14 +61,30 @@ protocol CardPreferenceUpdating: AnyObject {
     ) async throws -> KGCard
 }
 
+/// Narrow capability for syncing edited vocabulary content without widening
+/// the shared `KGServing` protocol for this bounded change.
+protocol VocabularyContentUpdating: AnyObject {
+    func updateCardContent(
+        word: String,
+        translation: String,
+        explanation: String?,
+        notebookId: String
+    ) async throws
+}
+
 private struct KGCardPreferencesUpdate: Encodable {
     let reader_hidden: Bool?
     let review_excluded: Bool?
 }
 
+struct KGVocabContentUpdate: Encodable, Equatable {
+    let meaning: String
+    let explanation: String?
+}
+
 // MARK: - Vocabulary CRUD
 
-extension KGService: CardPreferenceUpdating {
+extension KGService: CardPreferenceUpdating, VocabularyContentUpdating {
 
     func deleteCard(word: String, notebookId: String) async throws {
         try await authenticatedVoid(
@@ -114,6 +130,32 @@ extension KGService: CardPreferenceUpdating {
                 KGCardPreferencesUpdate(
                     reader_hidden: readerHidden,
                     review_excluded: reviewExcluded
+                )
+            )
+        )
+    }
+
+    static func vocabContentPayload(
+        translation: String,
+        explanation: String?
+    ) -> KGVocabContentUpdate {
+        KGVocabContentUpdate(meaning: translation, explanation: explanation)
+    }
+
+    func updateCardContent(
+        word: String,
+        translation: String,
+        explanation: String?,
+        notebookId: String
+    ) async throws {
+        try await authenticatedVoid(
+            path: "api/vocab/\(word)",
+            method: "PATCH",
+            queryItems: [URLQueryItem(name: "notebook_id", value: notebookId)],
+            body: try JSONEncoder().encode(
+                Self.vocabContentPayload(
+                    translation: translation,
+                    explanation: explanation
                 )
             )
         )

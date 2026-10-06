@@ -1,11 +1,12 @@
 """System-level observability endpoint — no auth required."""
+
 from __future__ import annotations
 
 import logging
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
@@ -47,10 +48,12 @@ router = APIRouter(tags=["system"])
 
 
 @router.get("/api/system/info", response_model=SystemInfoResponse)
-async def system_info() -> SystemInfoResponse:
+async def system_info(response: Response) -> SystemInfoResponse:
+    response.headers["Cache-Control"] = "no-store"
     version = _VERSION
 
     from datetime import UTC, datetime
+
     started_at = datetime.fromtimestamp(_STARTED_AT, tz=UTC).isoformat()
     uptime_seconds = int(time.time() - _STARTED_AT)
 

@@ -29,6 +29,36 @@ struct WordDetailSceneStateTests {
         #expect(state.presenterState?.navigableLinkCardIDs == ["peer-card"])
     }
 
+    @Test func refreshPresentation_usesPausedReviewClockForStatusAndProgress() {
+        let now = Date()
+        let pausedAt = now.addingTimeInterval(-2 * 60 * 60)
+        let entry = makeEntry(cardId: "root-card", word: "meticulous")
+        entry.syncStatus = VocabularySyncState.synced.rawValue
+        entry.reviewCount = 1
+        entry.lastReviewedAt = pausedAt
+        entry.nextReviewAt = now.addingTimeInterval(-60 * 60)
+
+        let store = ReviewSettingsStore.shared
+        store.activateAccount(nil)
+        let originalPause = store.pauseClockSnapshot
+        defer { store.restorePauseState(originalPause) }
+
+        var pausedSettings = store.settings
+        pausedSettings.isProgressPaused = true
+        pausedSettings.progressPausedAt = pausedAt
+        store.update(pausedSettings)
+
+        #expect(store.settings.isProgressPaused)
+        #expect(store.settings.progressPausedAt == pausedAt)
+        #expect(store.settings.reviewReferenceDate(now: now) == pausedAt)
+
+        let state = WordDetailSceneState()
+        state.refreshPresentation(for: entry, in: [entry])
+
+        #expect(state.presenterState?.reviewProgress?.statusLabel == L10n.string("已複習"))
+        #expect(state.presenterState?.reviewProgress?.ratio == 0)
+    }
+
     @Test func linkedEntry_resolvesPeerFromAllEntries() {
         let entry = makeEntry(cardId: "root-card", word: "meticulous")
         let peer = makeEntry(cardId: "peer-card", word: "precise")

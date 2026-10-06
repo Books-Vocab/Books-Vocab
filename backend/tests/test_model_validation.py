@@ -13,6 +13,7 @@ from kg.api_models import (
     NotebookCreateRequest,
     NotebookUpdateRequest,
     ReviewStateEntry,
+    VocabContentUpdateRequest,
     VocabEntry,
 )
 
@@ -25,9 +26,19 @@ class TestNonEmptyStringContract:
         with pytest.raises(ValidationError):
             VocabEntry(word="hello", translation="")
 
+    @pytest.mark.parametrize("translation", [" ", "\t", "\n"])
+    def test_whitespace_only_translation_rejected(self, translation):
+        with pytest.raises(ValidationError):
+            VocabEntry(word="hello", translation=translation)
+
     def test_non_empty_translation_accepted(self):
         e = VocabEntry(word="hello", translation="你好")
         assert e.translation == "你好"
+
+    @pytest.mark.parametrize("meaning", [" ", "\t", "\n"])
+    def test_whitespace_only_content_update_meaning_rejected(self, meaning):
+        with pytest.raises(ValidationError):
+            VocabContentUpdateRequest(meaning=meaning)
 
     def test_empty_notebook_create_name_rejected(self):
         with pytest.raises(ValidationError):

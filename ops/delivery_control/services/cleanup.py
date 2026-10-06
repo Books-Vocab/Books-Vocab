@@ -187,6 +187,7 @@ class CleanupService:
         pull_request_number: int,
         expected_pr_state: str,
         body_receipt: HandbackReceipt | None = None,
+        allow_terminal_residue: bool = False,
     ) -> None:
         physical = self._sealed_worktree(receipt)
         if physical is not None:
@@ -202,8 +203,13 @@ class CleanupService:
         if local_sha is not None and local_sha != receipt.head_sha:
             raise PolicyViolation("local branch changed after typed handback")
 
+        terminal_residue = (
+            allow_terminal_residue
+            and physical is None
+            and Path(receipt.worktree_path).exists()
+        )
         checked_pull_request = False
-        if physical is not None:
+        if physical is not None or terminal_residue:
             self._pull_request(
                 receipt,
                 pull_request_number,
@@ -212,7 +218,8 @@ class CleanupService:
             )
             checked_pull_request = True
             self.git_command.remove_worktree(
-                physical.path, expected_head_sha=receipt.head_sha
+                physical.path if physical is not None else Path(receipt.worktree_path),
+                expected_head_sha=receipt.head_sha,
             )
         if local_sha is not None:
             self._pull_request(
@@ -319,11 +326,21 @@ class CleanupService:
         )
         if record.status == "merged":
             result = self._result(receipt, "merged")
-            if not (
-                result.worktree_absent
-                and result.local_branch_absent
-                and result.remote_branch_absent
-            ):
+            if not (result.local_branch_absent and result.remote_branch_absent):
+                raise PolicyViolation("merged registry record has unreconciled assets")
+            if not result.worktree_absent:
+                raise PolicyViolation("merged registry record has unreconciled assets")
+            if not Path(receipt.worktree_path).exists():
+                return result
+            self._remove_local_assets(
+                receipt,
+                pull_request_number=pull_request_number,
+                expected_pr_state="MERGED",
+                body_receipt=body_receipt,
+                allow_terminal_residue=True,
+            )
+            result = self._result(receipt, "merged")
+            if not result.worktree_absent:
                 raise PolicyViolation("merged registry record has unreconciled assets")
             return result
         self._acquire_cleanup_lease(receipt, record)
@@ -332,6 +349,7 @@ class CleanupService:
             pull_request_number=pull_request_number,
             expected_pr_state="MERGED",
             body_receipt=body_receipt,
+            allow_terminal_residue=True,
         )
         remote_sha = self.git_query.remote_branch_sha(receipt.branch)
         if remote_sha is not None:

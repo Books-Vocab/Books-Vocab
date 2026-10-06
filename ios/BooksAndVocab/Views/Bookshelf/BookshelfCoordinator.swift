@@ -88,11 +88,18 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                 toastCoordinator: toastCoordinator
             )
         case .failure(let error):
+            guard !Self.isFileImporterCancellation(error) else { return }
             let typed = BookshelfImportError.classify(error)
             errorMessage = typed.errorDescription
             errorDiagnosis = typed.diagnosisLabel
             showError = true
         }
+    }
+
+    private static func isFileImporterCancellation(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == NSCocoaErrorDomain
+            && nsError.code == CocoaError.Code.userCancelled.rawValue
     }
 
     /// Resolve the appropriate import method for a given file extension.

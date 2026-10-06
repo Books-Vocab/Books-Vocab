@@ -12,16 +12,29 @@ quota; the accounting section makes the shared/unassigned part explicit.
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
+import math
 import os
+import plistlib
+import re
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
 import time
+from collections import deque
+from concurrent.futures import Future, ThreadPoolExecutor
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
+
+try:
+    import fcntl as _fcntl
+except ImportError:  # pragma: no cover - only non-POSIX runtimes
+    _fcntl = None
 
 SCHEMA = "kg.disk.lane-usage.v1"
 BLOCKED_EXIT = 75
@@ -29,8 +42,35 @@ GIB = 1024**3
 LIVE_REGISTRY_STATUSES = {"active", "published", "cleanup_pending"}
 TERMINAL_REGISTRY_STATUSES = {"merged", "abandoned"}
 KNOWN_REGISTRY_STATUSES = LIVE_REGISTRY_STATUSES | TERMINAL_REGISTRY_STATUSES
-DEFAULT_TIME_BUDGET_SECONDS = 30.0
+DEFAULT_TIME_BUDGET_SECONDS = 240.0
+MAX_TIME_BUDGET_SECONDS = 240.0
 DEFAULT_CODEX_WORKTREE_ROOT = Path.home() / ".codex" / "worktrees"
+DEFAULT_XCTEST_DEVICES_ROOT = Path.home() / "Library" / "Developer" / "XCTestDevices"
+DEFAULT_XCTEST_DEVICES_BUDGET_GIB = 16
+DEFAULT_SIMULATOR_RUNTIME_BUDGET_GIB = 56
+SIMULATOR_RUNTIME_ROOT = Path("/Library/Developer/CoreSimulator")
+GIT_METADATA_DIRNAME = ".git"
+MEASUREMENT_BUDGET_ERROR = "measurement-time-budget-exceeded"
+MISSING_PATH_ERROR = "path-missing"
+XCTEST_DEVICES_METADATA_ERROR = "xctest-devices-metadata-unavailable"
+XCTEST_DEVICES_MEASUREMENT_ERROR = "xctest-devices-measurement-incomplete"
+XCTEST_DEVICES_BUDGET_ERROR = "xctest-devices-budget-exceeded"
+XCTEST_DEVICES_MANUAL_REVIEW_ERROR = "xctest-devices-manual-review-required"
+SIMULATOR_RUNTIME_MEASUREMENT_ERROR = "simulator-runtime-measurement-incomplete"
+SIMULATOR_RUNTIME_DISCOVERY_ERROR = "simulator-runtime-discovery-unavailable"
+SIMULATOR_RUNTIME_BUDGET_ERROR = "simulator-runtime-budget-exceeded"
+SIMULATOR_RUNTIME_MANUAL_REVIEW_ERROR = "simulator-runtime-manual-review-required"
+PHYSICAL_EXTENT_UNSUPPORTED = "physical-extents-unsupported"
+PHYSICAL_EXTENT_UNMAPPED = "physical-extents-unmapped"
+PHYSICAL_EXTENT_WORKERS = 8
+PHYSICAL_EXTENT_PENDING = 64
+F_LOG2PHYS_EXT = 65
+_LOG2PHYS_EXT_FORMAT = "=Iqq"
+_XCTEST_UDID_RE = re.compile(r"^[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$")
+
+
+class _MeasurementBudgetExceeded(RuntimeError):
+    """A bounded observation reached its caller-owned deadline."""
 
 
 def _path(value: str | Path) -> Path:
@@ -50,11 +90,774 @@ def _allocated_bytes(stat_result: os.stat_result) -> int:
     return int(blocks) * 512 if blocks else int(stat_result.st_size)
 
 
+def _supports_physical_extents() -> bool:
+    return sys.platform == "darwin" and _fcntl is not None
+
+
+def _physical_file_extents(
+    path: Path,
+    stat_result: os.stat_result,
+    *,
+    deadline: float | None = None,
+) -> tuple[list[tuple[int, int, int]], str | None]:
+    """Return APFS physical ranges for one file without reading its contents."""
+
+    if not _supports_physical_extents():
+        return [], "physical-extents-platform-unavailable"
+    if _deadline_expired(deadline):
+        return [], MEASUREMENT_BUDGET_ERROR
+    size = int(stat_result.st_size)
+    if size <= 0:
+        return [], None
+    try:
+        descriptor = os.open(path, os.O_RDONLY)
+    except OSError as exc:
+        return [], f"physical-open:{exc.__class__.__name__}"
+
+    extents: list[tuple[int, int, int]] = []
+    offset = 0
+    try:
+        while offset < size:
+            if _deadline_expired(deadline):
+                return extents, MEASUREMENT_BUDGET_ERROR
+            request = struct.pack(
+                _LOG2PHYS_EXT_FORMAT,
+                0,
+                size - offset,
+                offset,
+            )
+            try:
+                raw = _fcntl.fcntl(descriptor, F_LOG2PHYS_EXT, request)
+            except OSError as exc:
+                if exc.errno in {
+                    errno.ENOTSUP,
+                    getattr(errno, "EOPNOTSUPP", errno.ENOTSUP),
+                    45,
+                }:
+                    return [], PHYSICAL_EXTENT_UNSUPPORTED
+                return extents, f"physical-query:{exc.__class__.__name__}"
+            _, contiguous_bytes, device_offset = struct.unpack(
+                _LOG2PHYS_EXT_FORMAT, raw
+            )
+            if contiguous_bytes <= 0:
+                return extents, PHYSICAL_EXTENT_UNMAPPED
+            contiguous_bytes = min(contiguous_bytes, size - offset)
+            if device_offset < 0:
+                # A negative device offset denotes a sparse/unallocated hole;
+                # advance through it without inventing physical bytes.
+                offset += contiguous_bytes
+                continue
+            extents.append(
+                (
+                    int(stat_result.st_dev),
+                    int(device_offset),
+                    int(device_offset + contiguous_bytes),
+                )
+            )
+            offset += contiguous_bytes
+    finally:
+        os.close(descriptor)
+    return extents, None
+
+
+def _union_physical_extents(
+    extents: list[tuple[int, int, int]],
+) -> int:
+    total = 0
+    current_device: int | None = None
+    current_start = 0
+    current_end = 0
+    for device, start, end in sorted(extents):
+        if end <= start:
+            continue
+        if device != current_device or start > current_end:
+            if current_device is not None:
+                total += current_end - current_start
+            current_device = device
+            current_start = start
+            current_end = end
+        elif end > current_end:
+            current_end = end
+    if current_device is not None:
+        total += current_end - current_start
+    return total
+
+
+def _deadline_expired(deadline: float | None) -> bool:
+    return deadline is not None and time.monotonic() >= deadline
+
+
+def _remaining_timeout(deadline: float | None) -> float | None:
+    if deadline is None:
+        return None
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise _MeasurementBudgetExceeded
+    return max(remaining, 0.001)
+
+
+def _is_budget_error(error: str | None) -> bool:
+    return bool(
+        error == MEASUREMENT_BUDGET_ERROR
+        or error
+        and error.endswith(f":{MEASUREMENT_BUDGET_ERROR}")
+    )
+
+
+def _mark_uninspected(records: list[dict[str, Any]], start: int, *, error: str) -> None:
+    for record in records[start:]:
+        record.update(
+            {
+                "inspection_complete": False,
+                "inspection_error": error,
+                "worktree_state": "unknown",
+            }
+        )
+
+
+def _xctest_devices_root(value: str | Path | None) -> Path:
+    if value is not None:
+        return _path(value)
+    configured = os.environ.get("KG_XCTEST_DEVICES_ROOT")
+    return _path(configured) if configured else _path(DEFAULT_XCTEST_DEVICES_ROOT)
+
+
+def _configured_xctest_devices_budget_gib() -> int:
+    raw = os.environ.get("KG_XCTEST_DEVICES_BUDGET_GIB")
+    try:
+        return (
+            max(0, int(raw)) if raw is not None else DEFAULT_XCTEST_DEVICES_BUDGET_GIB
+        )
+    except (TypeError, ValueError):
+        return DEFAULT_XCTEST_DEVICES_BUDGET_GIB
+
+
+def _configured_simulator_runtime_budget_gib() -> int:
+    raw = os.environ.get("KG_SIMULATOR_RUNTIME_BUDGET_GIB")
+    try:
+        return (
+            max(0, int(raw))
+            if raw is not None
+            else DEFAULT_SIMULATOR_RUNTIME_BUDGET_GIB
+        )
+    except (TypeError, ValueError):
+        return DEFAULT_SIMULATOR_RUNTIME_BUDGET_GIB
+
+
+def _parse_hdiutil_simulator_runtimes(
+    output: str,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Extract only mounted CoreSimulator runtime images from ``hdiutil``."""
+
+    records: list[dict[str, str]] = []
+    current: dict[str, str] = {}
+
+    def flush() -> None:
+        nonlocal current
+        if current:
+            records.append(current)
+            current = {}
+
+    for line in output.splitlines():
+        if line.startswith("===="):
+            flush()
+            continue
+        match = re.match(r"^([a-z][a-z0-9-]*)\s*:\s*(.*)$", line)
+        if match:
+            current[match.group(1)] = match.group(2).strip()
+            continue
+        mount_match = re.search(r"(/Library/Developer/CoreSimulator/[^\s]+)", line)
+        if mount_match:
+            current["mount-path"] = mount_match.group(1).rstrip("/")
+    flush()
+
+    runtimes: list[dict[str, Any]] = []
+    errors: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    for record in records:
+        mount_path = record.get("mount-path")
+        if not mount_path:
+            continue
+        image_path = record.get("image-path", "")
+        key = (mount_path, image_path)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            blockcount = int(record.get("blockcount", ""))
+            blocksize = int(record.get("blocksize", ""))
+        except (TypeError, ValueError):
+            errors.append(f"{mount_path}:missing-image-size")
+            continue
+        if blockcount < 0 or blocksize <= 0:
+            errors.append(f"{mount_path}:invalid-image-size")
+            continue
+        runtimes.append(
+            {
+                "mount_path": mount_path,
+                "image_path": image_path or None,
+                "image_bytes": blockcount * blocksize,
+            }
+        )
+    return sorted(
+        runtimes,
+        key=lambda item: (
+            str(item["mount_path"]),
+            str(item.get("image_path") or ""),
+        ),
+    ), sorted(set(errors))
+
+
+def _discover_simulator_runtimes(
+    *, deadline: float | None = None
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Discover mounted Apple Simulator runtime images without mutating state."""
+
+    if sys.platform != "darwin":
+        return [], ["platform-unsupported"]
+    command = shutil.which("hdiutil")
+    if command is None:
+        stable_command = Path("/usr/bin/hdiutil")
+        if stable_command.is_file() and os.access(stable_command, os.X_OK):
+            command = str(stable_command)
+    if command is None:
+        return [], ["hdiutil-command-unavailable"]
+    try:
+        timeout = _remaining_timeout(deadline)
+        if timeout is None:
+            timeout = 5.0
+        else:
+            timeout = min(timeout, 5.0)
+        completed = subprocess.run(
+            [command, "info"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except _MeasurementBudgetExceeded:
+        return [], [MEASUREMENT_BUDGET_ERROR]
+    except subprocess.TimeoutExpired:
+        return [], ["hdiutil-timeout"]
+    except OSError as exc:
+        return [], [f"hdiutil:{exc.__class__.__name__}"]
+    if completed.returncode != 0:
+        return [], [f"hdiutil-exit:{completed.returncode}"]
+    return _parse_hdiutil_simulator_runtimes(completed.stdout)
+
+
+def inspect_simulator_runtimes(
+    *,
+    budget_bytes: int = DEFAULT_SIMULATOR_RUNTIME_BUDGET_GIB * GIB,
+    deadline: float | None = None,
+    discovered: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Account for mounted Simulator runtimes as shared host platform storage.
+
+    Runtime images are read-only platform assets, not product lanes.  They are
+    observed and budgeted, but this guard never unmounts or deletes them.
+    """
+
+    budget = max(0, int(budget_bytes))
+    base: dict[str, Any] = {
+        "root": str(SIMULATOR_RUNTIME_ROOT),
+        "exists": False,
+        "status": "absent",
+        "attribution": "shared-host-platform",
+        "logical_bytes": 0,
+        "allocated_bytes": 0,
+        "runtime_count": 0,
+        "measurement_complete": True,
+        "measurement_errors": [],
+        "allocation_method": "hdiutil-blockcount",
+        "budget_bytes": budget,
+        "budget_allocated_bytes": 0,
+        "budget_exceeded": False,
+        "budget_overflow_bytes": 0,
+        "runtimes": [],
+        "reclaim": {
+            "requested": False,
+            "status": "not-supported",
+            "reason": "shared-runtime-images-never-auto-reclaimed",
+            "attempted": 0,
+            "succeeded": 0,
+            "results": [],
+        },
+    }
+    discovery_errors: list[str] = []
+    if discovered is None:
+        discovered, discovery_errors = _discover_simulator_runtimes(deadline=deadline)
+    if discovery_errors == ["platform-unsupported"] and not discovered:
+        base["status"] = "unsupported"
+        return base
+    if not discovered and discovery_errors:
+        base.update(
+            {
+                "status": "measurement-incomplete",
+                "measurement_complete": False,
+                "measurement_errors": sorted(set(discovery_errors))[:20],
+                "budget_allocated_bytes": None,
+                "budget_exceeded": None,
+                "budget_overflow_bytes": None,
+            }
+        )
+        return base
+    if not discovered:
+        return base
+
+    base["exists"] = True
+    base["runtime_count"] = len(discovered)
+    errors = list(discovery_errors)
+    runtimes: list[dict[str, Any]] = []
+    logical_bytes = 0
+    unique_allocated_bytes = 0
+    allocation_keys: set[str] = set()
+    measurement_complete = not discovery_errors
+    for item in sorted(
+        discovered,
+        key=lambda value: (
+            str(value.get("mount_path", "")),
+            str(value.get("image_path") or ""),
+        ),
+    ):
+        mount_path = str(item.get("mount_path", ""))
+        image_path = item.get("image_path")
+        image_bytes = item.get("image_bytes")
+        runtime: dict[str, Any] = {
+            "mount_path": mount_path,
+            "image_path": image_path,
+            "logical_bytes": 0,
+            "allocated_bytes": 0,
+            "total_bytes": None,
+            "used_bytes": None,
+            "free_bytes": None,
+            "measurement_complete": False,
+        }
+        try:
+            image_size = int(image_bytes)
+            if not mount_path or image_size <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            error = f"{mount_path or '<missing-mount>'}:invalid-image-size"
+            errors.append(error)
+            measurement_complete = False
+            runtime["measurement_error"] = error.rsplit(":", 1)[-1]
+            runtimes.append(runtime)
+            continue
+        if _deadline_expired(deadline):
+            error = f"{mount_path}:{MEASUREMENT_BUDGET_ERROR}"
+            errors.append(error)
+            measurement_complete = False
+            runtime["measurement_error"] = MEASUREMENT_BUDGET_ERROR
+            runtimes.append(runtime)
+            continue
+        try:
+            filesystem = shutil.disk_usage(mount_path)
+            total_bytes = int(filesystem[0])
+            used_bytes = int(filesystem[1])
+            free_bytes = int(filesystem[2])
+        except (OSError, TypeError, ValueError, IndexError) as exc:
+            error = f"{mount_path}:filesystem-usage:{exc.__class__.__name__}"
+            errors.append(error)
+            measurement_complete = False
+            runtime["measurement_error"] = "filesystem-usage"
+            runtimes.append(runtime)
+            continue
+        allocated_bytes = max(image_size, used_bytes)
+        allocation_key = str(image_path or mount_path)
+        if allocation_key not in allocation_keys:
+            allocation_keys.add(allocation_key)
+            unique_allocated_bytes += allocated_bytes
+        logical_bytes += image_size
+        runtime.update(
+            {
+                "logical_bytes": image_size,
+                "allocated_bytes": allocated_bytes,
+                "total_bytes": total_bytes,
+                "used_bytes": used_bytes,
+                "free_bytes": free_bytes,
+                "measurement_complete": True,
+                "allocation_key": allocation_key,
+            }
+        )
+        runtimes.append(runtime)
+
+    base["logical_bytes"] = logical_bytes
+    base["allocated_bytes"] = unique_allocated_bytes
+    base["runtimes"] = runtimes
+    base["measurement_errors"] = sorted(set(errors))[:20]
+    base["measurement_complete"] = measurement_complete
+    if not measurement_complete:
+        base.update(
+            {
+                "status": "measurement-incomplete",
+                "budget_allocated_bytes": None,
+                "budget_exceeded": None,
+                "budget_overflow_bytes": None,
+            }
+        )
+        return base
+    base["budget_allocated_bytes"] = unique_allocated_bytes
+    base["budget_exceeded"] = unique_allocated_bytes > budget
+    base["budget_overflow_bytes"] = max(0, unique_allocated_bytes - budget)
+    if base["budget_exceeded"]:
+        base["status"] = "budget-exceeded"
+        base["reclaim"]["status"] = "manual-review"
+        base["reclaim"]["reason"] = (
+            "shared-runtime-images-require-platform-level-manual-review"
+        )
+    else:
+        base["status"] = "measured"
+    return base
+
+
+def _xctest_state(value: object) -> tuple[bool, bool]:
+    """Return (known, active) without treating an unknown state as safe."""
+
+    if isinstance(value, bool):
+        return False, False
+    if isinstance(value, int):
+        # CoreSimulator's plist uses 1 for Shutdown and 2 for Booted.
+        return value in {1, 2}, value == 2
+    if isinstance(value, str):
+        normalized = " ".join(value.casefold().replace("_", " ").split())
+        if normalized in {"shutdown", "shut down", "stopped", "deleted"}:
+            return True, False
+        if normalized in {
+            "booted",
+            "running",
+            "active",
+            "launching",
+            "creating",
+            "shutting down",
+        }:
+            return True, True
+    return False, False
+
+
+def _read_xctest_device_plist(
+    path: Path, udid: str
+) -> tuple[dict[str, Any], str | None]:
+    try:
+        with path.open("rb") as handle:
+            payload = plistlib.load(handle)
+    except FileNotFoundError:
+        return {}, "plist-missing"
+    except (OSError, plistlib.InvalidFileException, ValueError, TypeError):
+        return {}, "plist-malformed"
+    if not isinstance(payload, dict):
+        return {}, "plist-malformed"
+    required = ("UDID", "isEphemeral", "isDeleted", "state")
+    if any(key not in payload for key in required):
+        return {}, "plist-missing-required-field"
+    if payload.get("UDID") != udid or not isinstance(payload.get("UDID"), str):
+        return {}, "plist-identity-mismatch"
+    if not isinstance(payload.get("isEphemeral"), bool) or not isinstance(
+        payload.get("isDeleted"), bool
+    ):
+        return {}, "plist-flag-invalid"
+    state_known, active = _xctest_state(payload.get("state"))
+    if not state_known:
+        return {}, "plist-state-unknown"
+    return {
+        "udid": udid,
+        "is_ephemeral": payload["isEphemeral"],
+        "is_deleted": payload["isDeleted"],
+        "state": payload["state"],
+        "state_known": state_known,
+        "active": active,
+    }, None
+
+
+def _simctl_has_device(command: str, udid: str) -> bool:
+    try:
+        completed = subprocess.run(
+            [command, "simctl", "list", "devices", "--json"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if completed.returncode != 0:
+            return False
+        payload = json.loads(completed.stdout)
+    except (OSError, subprocess.SubprocessError, TypeError, ValueError):
+        return False
+    serialized = json.dumps(payload, ensure_ascii=False)
+    return udid in serialized
+
+
+def _reclaim_xctest_device(candidate: dict[str, Any]) -> dict[str, Any]:
+    """Use only Apple's supported simctl delete after exact identity proof.
+
+    XCTestDevices normally are not in simctl's inventory.  In that case this
+    deliberately returns a manual-review result and never touches the path.
+    """
+
+    udid = str(candidate.get("udid", ""))
+    if not _XCTEST_UDID_RE.fullmatch(udid):
+        return {"status": "manual-review", "reason": "invalid-udid"}
+    command = shutil.which("xcrun")
+    if not command:
+        return {
+            "status": "manual-review",
+            "reason": "supported-command-unavailable",
+        }
+    if not _simctl_has_device(command, udid):
+        return {
+            "status": "manual-review",
+            "reason": "device-not-listed-by-simctl",
+        }
+    try:
+        completed = subprocess.run(
+            [command, "simctl", "delete", udid],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {
+            "status": "manual-review",
+            "reason": f"supported-command-failed:{exc.__class__.__name__}",
+        }
+    if completed.returncode != 0:
+        return {"status": "manual-review", "reason": "supported-command-failed"}
+    return {"status": "reclaimed", "command": "xcrun simctl delete"}
+
+
+def inspect_xctest_devices(
+    root: str | Path | None = None,
+    *,
+    budget_bytes: int = DEFAULT_XCTEST_DEVICES_BUDGET_GIB * GIB,
+    deadline: float | None = None,
+    auto_reclaim: bool = False,
+) -> dict[str, Any]:
+    """Bounded accounting for the shared, non-lane XCTestDevices store."""
+
+    normalized_root = _xctest_devices_root(root)
+    base: dict[str, Any] = {
+        "root": str(normalized_root),
+        "exists": False,
+        "status": "absent",
+        "attribution": "shared-host-platform",
+        "logical_bytes": 0,
+        "allocated_bytes": 0,
+        "files": 0,
+        "device_count": 0,
+        "measurement_complete": True,
+        "metadata_complete": True,
+        "measurement_errors": [],
+        "physical_measurement_complete": True,
+        "physical_measurement_errors": [],
+        "physical_measurement_warnings": [],
+        "physical_allocated_bytes": 0,
+        "physical_fallback_files": 0,
+        "physical_fallback_allocated_bytes": 0,
+        "allocation_method": (
+            "apfs-physical-extents" if _supports_physical_extents() else "st_blocks"
+        ),
+        "budget_bytes": max(0, int(budget_bytes)),
+        "budget_allocated_bytes": 0,
+        "budget_exceeded": False,
+        "budget_overflow_bytes": 0,
+        "devices": [],
+        "reclaim": {
+            "requested": bool(auto_reclaim),
+            "status": "not-requested",
+            "candidates": [],
+            "attempted": 0,
+            "succeeded": 0,
+            "results": [],
+        },
+    }
+    if not normalized_root.is_dir():
+        return base
+
+    base["exists"] = True
+    base["status"] = "measured"
+    entries: list[os.DirEntry[str]] = []
+    try:
+        with os.scandir(normalized_root) as scanner:
+            entries = sorted(scanner, key=lambda item: item.name)
+    except OSError as exc:
+        base.update(
+            {
+                "status": "measurement-incomplete",
+                "measurement_complete": False,
+                "measurement_errors": [f"root-scan:{exc.__class__.__name__}"],
+            }
+        )
+        return base
+
+    errors: list[str] = []
+    devices: list[dict[str, Any]] = []
+    physical_observation: dict[str, Any] = {
+        "extents": [],
+        "errors": [],
+        "warnings": [],
+        "fallback_files": 0,
+        "fallback_allocated_bytes": 0,
+    }
+    measurement_complete = True
+    processed_entries = 0
+    for entry in entries:
+        if _deadline_expired(deadline):
+            errors.append(MEASUREMENT_BUDGET_ERROR)
+            measurement_complete = False
+            break
+        processed_entries += 1
+        entry_path = Path(entry.path)
+        try:
+            stat_result = entry.stat(follow_symlinks=False)
+        except OSError as exc:
+            errors.append(f"{entry.name}:stat:{exc.__class__.__name__}")
+            measurement_complete = False
+            continue
+        if not entry.is_dir(follow_symlinks=False):
+            base["logical_bytes"] += int(stat_result.st_size)
+            base["allocated_bytes"] += _allocated_bytes(stat_result)
+            base["files"] += 1
+            errors.append(f"unexpected-root-entry:{entry.name}")
+            measurement_complete = False
+            continue
+        base["device_count"] += 1
+        measured = measure_tree(
+            entry_path,
+            deadline=deadline,
+            physical_observation=(
+                physical_observation if _supports_physical_extents() else None
+            ),
+        )
+        base["logical_bytes"] += int(measured["logical_bytes"])
+        base["allocated_bytes"] += int(measured["allocated_bytes"])
+        base["files"] += int(measured["files"])
+        if not measured["complete"]:
+            measurement_complete = False
+            errors.extend(
+                f"{entry.name}:{error}"
+                for error in measured.get("errors", ["measurement-incomplete"])
+            )
+        metadata, metadata_error = _read_xctest_device_plist(
+            entry_path / "device.plist", entry.name
+        )
+        if metadata_error:
+            errors.append(f"{entry.name}:{metadata_error}")
+            base["metadata_complete"] = False
+        candidate = bool(
+            not metadata_error
+            and _XCTEST_UDID_RE.fullmatch(entry.name)
+            and metadata["is_ephemeral"]
+            and metadata["is_deleted"]
+            and metadata["state_known"]
+            and not metadata["active"]
+        )
+        device = {
+            "udid": entry.name,
+            "path": str(entry_path),
+            "logical_bytes": int(measured["logical_bytes"]),
+            "allocated_bytes": int(measured["allocated_bytes"]),
+            "measurement_complete": bool(measured["complete"]),
+            "metadata_complete": metadata_error is None,
+            "reclaimable": candidate,
+            "active": metadata.get("active") if metadata else None,
+            "is_ephemeral": metadata.get("is_ephemeral") if metadata else None,
+            "is_deleted": metadata.get("is_deleted") if metadata else None,
+            "state": metadata.get("state") if metadata else None,
+        }
+        if metadata_error:
+            device["metadata_error"] = metadata_error
+        devices.append(device)
+    if processed_entries < len(entries) and MEASUREMENT_BUDGET_ERROR not in errors:
+        errors.append(MEASUREMENT_BUDGET_ERROR)
+        measurement_complete = False
+
+    base["devices"] = devices
+    base["measurement_errors"] = sorted(set(errors))[:20]
+    base["measurement_complete"] = measurement_complete
+    if not base["measurement_complete"]:
+        base["status"] = "measurement-incomplete"
+    elif not base["metadata_complete"]:
+        base["status"] = "metadata-unavailable"
+
+    if _supports_physical_extents():
+        physical_errors = sorted(set(physical_observation["errors"]))
+        physical_warnings = sorted(set(physical_observation["warnings"]))
+        physical_allocated = _union_physical_extents(physical_observation["extents"])
+        fallback_files = int(physical_observation["fallback_files"])
+        fallback_allocated = int(physical_observation["fallback_allocated_bytes"])
+        base.update(
+            {
+                "physical_measurement_complete": not physical_errors,
+                "physical_measurement_errors": physical_errors[:20],
+                "physical_measurement_warnings": physical_warnings[:20],
+                "physical_allocated_bytes": physical_allocated,
+                "physical_fallback_files": fallback_files,
+                "physical_fallback_allocated_bytes": fallback_allocated,
+            }
+        )
+        if physical_errors:
+            base["measurement_complete"] = False
+            base["status"] = "measurement-incomplete"
+            base["measurement_errors"] = sorted(
+                set(base["measurement_errors"])
+                | {f"physical:{error}" for error in physical_errors}
+            )[:20]
+            base["allocation_method"] = "apfs-physical-extents-incomplete"
+            base["budget_allocated_bytes"] = None
+            base["budget_exceeded"] = None
+            base["budget_overflow_bytes"] = None
+        else:
+            base["budget_allocated_bytes"] = physical_allocated + fallback_allocated
+            base["allocation_method"] = (
+                "apfs-physical-extents+st_blocks-fallback"
+                if fallback_files
+                else "apfs-physical-extents"
+            )
+    else:
+        base["budget_allocated_bytes"] = base["allocated_bytes"]
+
+    candidates = [device for device in devices if device["reclaimable"]]
+    base["reclaim"]["candidates"] = [device["udid"] for device in candidates]
+    budget_allocated = base["budget_allocated_bytes"]
+    if budget_allocated is not None:
+        base["budget_exceeded"] = budget_allocated > base["budget_bytes"]
+        base["budget_overflow_bytes"] = max(0, budget_allocated - base["budget_bytes"])
+    if base["budget_exceeded"]:
+        base["reclaim"]["status"] = "manual-review"
+        if (
+            auto_reclaim
+            and candidates
+            and base["measurement_complete"]
+            and base["metadata_complete"]
+        ):
+            results = []
+            for candidate in candidates:
+                result = _reclaim_xctest_device(candidate)
+                results.append({"udid": candidate["udid"], **result})
+                base["reclaim"]["attempted"] += 1
+                if result.get("status") == "reclaimed":
+                    base["reclaim"]["succeeded"] += 1
+            base["reclaim"]["results"] = results
+            if base["reclaim"]["succeeded"]:
+                refreshed = inspect_xctest_devices(
+                    normalized_root,
+                    budget_bytes=base["budget_bytes"],
+                    deadline=deadline,
+                    auto_reclaim=False,
+                )
+                refreshed["reclaim"] = base["reclaim"]
+                refreshed["reclaim"]["status"] = "reclaimed"
+                return refreshed
+    return base
+
+
 def measure_tree(
     root: Path,
     *,
     excluded: set[Path] | None = None,
     deadline: float | None = None,
+    physical_observation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Measure one bounded tree without following symlinked directories."""
 
@@ -66,7 +869,7 @@ def measure_tree(
             "allocated_bytes": 0,
             "files": 0,
             "complete": False,
-            "error": "path-missing",
+            "error": MISSING_PATH_ERROR,
         }
 
     logical = 0
@@ -78,54 +881,128 @@ def measure_tree(
     errors: list[str] = []
 
     def budget_expired() -> bool:
-        return deadline is not None and time.monotonic() >= deadline
+        return _deadline_expired(deadline)
 
     def record_budget_expiry() -> None:
         nonlocal complete
         complete = False
-        if "measurement-time-budget-exceeded" not in errors:
-            errors.append("measurement-time-budget-exceeded")
+        if MEASUREMENT_BUDGET_ERROR not in errors:
+            errors.append(MEASUREMENT_BUDGET_ERROR)
 
-    while pending:
-        if budget_expired():
-            record_budget_expiry()
-            break
-        directory = pending.pop()
+    # Keep traversal and evidence on the caller thread. Only the blocking
+    # per-file queries run in parallel; a bounded FIFO also caps retained
+    # paths, stats and completed-but-uncollected extent lists.
+    queries: deque[
+        tuple[
+            Path, os.stat_result, Future[tuple[list[tuple[int, int, int]], str | None]]
+        ]
+    ] = deque()
+
+    def collect_query() -> None:
+        nonlocal complete
+        entry_path, stat_result, future = queries.popleft()
         try:
-            entries = list(os.scandir(directory))
-        except OSError as exc:
+            extents, physical_error = future.result(
+                timeout=_remaining_timeout(deadline)
+            )
+        except (TimeoutError, _MeasurementBudgetExceeded):
+            future.cancel()
+            extents, physical_error = [], MEASUREMENT_BUDGET_ERROR
+        except Exception as exc:  # noqa: BLE001 - unexpected worker errors fail closed
+            extents, physical_error = [], f"physical-worker:{exc.__class__.__name__}"
+        # A syscall may return its final extent after the deadline. Even a
+        # successful or fallback result then remains an incomplete observation.
+        if budget_expired():
+            physical_error = MEASUREMENT_BUDGET_ERROR
+        physical_observation["extents"].extend(extents)
+        if physical_error in {
+            PHYSICAL_EXTENT_UNSUPPORTED,
+            "physical-open:PermissionError",
+        }:
+            physical_observation["fallback_files"] += 1
+            physical_observation["fallback_allocated_bytes"] += _allocated_bytes(
+                stat_result
+            )
+            physical_observation["warnings"].append(f"{entry_path}: {physical_error}")
+        elif physical_error:
             complete = False
-            errors.append(f"{directory}: {exc.__class__.__name__}")
-            continue
-        for entry in entries:
+            error = f"{entry_path}: {physical_error}"
+            errors.append(error)
+            physical_observation["errors"].append(error)
+
+    with ExitStack() as stack:
+        executor = None
+        if physical_observation is not None:
+            executor = ThreadPoolExecutor(max_workers=PHYSICAL_EXTENT_WORKERS)
+            # Python cannot interrupt an in-flight filesystem syscall. Do not
+            # delay partial evidence; the guard's process deadline is the outer
+            # backstop. Workers never mutate this report after it is returned.
+            stack.callback(executor.shutdown, wait=False, cancel_futures=True)
+        while pending:
             if budget_expired():
                 record_budget_expiry()
                 break
-            # ``os.scandir`` yields absolute paths when the parent is absolute.
-            # Avoid resolving every entry: this scan is itself bounded by the
-            # disk attribution deadline, and per-file ``Path.resolve`` makes
-            # large worktrees consume the entire safety budget.
-            entry_path = Path(entry.path)
-            if entry_path in excluded:
-                continue
+            directory = pending.pop()
             try:
-                stat_result = entry.stat(follow_symlinks=False)
+                entries = os.scandir(directory)
             except OSError as exc:
                 complete = False
-                errors.append(f"{entry_path}: {exc.__class__.__name__}")
+                errors.append(f"{directory}: {exc.__class__.__name__}")
                 continue
-            allocated += _allocated_bytes(stat_result)
-            if entry.is_symlink():
-                logical += int(stat_result.st_size)
-                files += 1
-            elif entry.is_dir(follow_symlinks=False):
-                pending.append(entry_path)
-            elif entry.is_file(follow_symlinks=False):
-                identity = (int(stat_result.st_dev), int(stat_result.st_ino))
-                if identity not in seen_files:
-                    seen_files.add(identity)
-                    logical += int(stat_result.st_size)
-                    files += 1
+            try:
+                with entries:
+                    for entry in entries:
+                        if budget_expired():
+                            record_budget_expiry()
+                            break
+                        if entry.name == GIT_METADATA_DIRNAME:
+                            continue
+                        # scandir already yields absolute paths. Resolving
+                        # every entry can consume the entire measurement budget.
+                        entry_path = Path(entry.path)
+                        if entry_path in excluded:
+                            continue
+                        try:
+                            stat_result = entry.stat(follow_symlinks=False)
+                        except OSError as exc:
+                            complete = False
+                            errors.append(f"{entry_path}: {exc.__class__.__name__}")
+                            continue
+                        allocated += _allocated_bytes(stat_result)
+                        if entry.is_symlink():
+                            logical += int(stat_result.st_size)
+                            files += 1
+                        elif entry.is_dir(follow_symlinks=False):
+                            pending.append(entry_path)
+                        elif entry.is_file(follow_symlinks=False):
+                            identity = (
+                                int(stat_result.st_dev),
+                                int(stat_result.st_ino),
+                            )
+                            if identity not in seen_files:
+                                seen_files.add(identity)
+                                logical += int(stat_result.st_size)
+                                files += 1
+                            if executor is not None:
+                                queries.append(
+                                    (
+                                        entry_path,
+                                        stat_result,
+                                        executor.submit(
+                                            _physical_file_extents,
+                                            entry_path,
+                                            stat_result,
+                                            deadline=deadline,
+                                        ),
+                                    )
+                                )
+                                if len(queries) >= PHYSICAL_EXTENT_PENDING:
+                                    collect_query()
+            except OSError as exc:
+                complete = False
+                errors.append(f"{directory}: {exc.__class__.__name__}")
+        while queries:
+            collect_query()
     result: dict[str, Any] = {
         "logical_bytes": logical,
         "allocated_bytes": allocated,
@@ -140,17 +1017,22 @@ def measure_tree(
 def _parse_worktrees(
     workspace: Path, *, deadline: float | None = None
 ) -> tuple[list[dict[str, Any]], str | None]:
-    if deadline is not None and time.monotonic() >= deadline:
-        return [], "measurement-time-budget-exceeded"
+    if _deadline_expired(deadline):
+        return [], MEASUREMENT_BUDGET_ERROR
     try:
         completed = subprocess.run(
             ["git", "-C", str(workspace), "worktree", "list", "--porcelain"],
             check=False,
             capture_output=True,
             text=True,
+            timeout=_remaining_timeout(deadline),
         )
+    except (_MeasurementBudgetExceeded, subprocess.TimeoutExpired):
+        return [], MEASUREMENT_BUDGET_ERROR
     except OSError as exc:
         return [], f"git-worktree-list:{exc.__class__.__name__}"
+    if _deadline_expired(deadline):
+        return [], MEASUREMENT_BUDGET_ERROR
     if completed.returncode != 0:
         return [], f"git-worktree-list:exit-{completed.returncode}"
 
@@ -173,23 +1055,17 @@ def _parse_worktrees(
     if current is not None:
         records.append(current)
 
-    for record in records:
+    for index, record in enumerate(records):
         path = record["path"]
+        if _deadline_expired(deadline):
+            _mark_uninspected(records, index, error=MEASUREMENT_BUDGET_ERROR)
+            return records, MEASUREMENT_BUDGET_ERROR
         if not path.is_dir():
             record.update(
                 {
                     "inspection_complete": False,
-                    "inspection_error": "path-missing",
+                    "inspection_error": MISSING_PATH_ERROR,
                     "worktree_state": "missing",
-                }
-            )
-            continue
-        if deadline is not None and time.monotonic() >= deadline:
-            record.update(
-                {
-                    "inspection_complete": False,
-                    "inspection_error": "measurement-time-budget-exceeded",
-                    "worktree_state": "unknown",
                 }
             )
             continue
@@ -206,7 +1082,11 @@ def _parse_worktrees(
                 check=False,
                 capture_output=True,
                 text=True,
+                timeout=_remaining_timeout(deadline),
             )
+        except (_MeasurementBudgetExceeded, subprocess.TimeoutExpired):
+            _mark_uninspected(records, index, error=MEASUREMENT_BUDGET_ERROR)
+            return records, MEASUREMENT_BUDGET_ERROR
         except OSError as exc:
             record.update(
                 {
@@ -216,6 +1096,9 @@ def _parse_worktrees(
                 }
             )
             continue
+        if _deadline_expired(deadline):
+            _mark_uninspected(records, index, error=MEASUREMENT_BUDGET_ERROR)
+            return records, MEASUREMENT_BUDGET_ERROR
         if status.returncode != 0:
             record.update(
                 {
@@ -266,10 +1149,19 @@ def _topology_candidates(
     pending: list[tuple[Path, int]] = [(root, 0)]
     try:
         while pending:
-            if deadline is not None and time.monotonic() >= deadline:
-                return candidates, "measurement-time-budget-exceeded"
+            if _deadline_expired(deadline):
+                return candidates, MEASUREMENT_BUDGET_ERROR
             directory, depth = pending.pop()
-            for entry in sorted(os.scandir(directory), key=lambda item: item.name):
+            entries = []
+            with os.scandir(directory) as scanner:
+                for entry in scanner:
+                    if _deadline_expired(deadline):
+                        return candidates, MEASUREMENT_BUDGET_ERROR
+                    entries.append(entry)
+            entries.sort(key=lambda item: item.name)
+            for entry in entries:
+                if _deadline_expired(deadline):
+                    return candidates, MEASUREMENT_BUDGET_ERROR
                 if entry.is_symlink() or not entry.is_dir(follow_symlinks=False):
                     continue
                 entry_path = Path(entry.path)
@@ -282,30 +1174,41 @@ def _topology_candidates(
     return candidates, None
 
 
-def _git_output(path: Path, *args: str) -> str | None:
+def _git_output(path: Path, *args: str, deadline: float | None = None) -> str | None:
+    if _deadline_expired(deadline):
+        raise _MeasurementBudgetExceeded
     try:
         completed = subprocess.run(
             ["git", "-C", str(path), *args],
             check=False,
             capture_output=True,
             text=True,
+            timeout=_remaining_timeout(deadline),
         )
+    except (_MeasurementBudgetExceeded, subprocess.TimeoutExpired) as exc:
+        raise _MeasurementBudgetExceeded from exc
     except OSError:
         return None
+    if _deadline_expired(deadline):
+        raise _MeasurementBudgetExceeded
     if completed.returncode != 0:
         return None
     value = completed.stdout.strip()
     return value or None
 
 
-def _inspect_topology_worktree(path: Path) -> dict[str, Any] | None:
+def _inspect_topology_worktree(
+    path: Path, *, deadline: float | None = None
+) -> dict[str, Any] | None:
     """Read identity/status for a topology checkout not returned by git list."""
 
-    head = _git_output(path, "rev-parse", "HEAD")
-    common_dir = _git_output(path, "rev-parse", "--git-common-dir")
+    head = _git_output(path, "rev-parse", "HEAD", deadline=deadline)
+    common_dir = _git_output(path, "rev-parse", "--git-common-dir", deadline=deadline)
     if head is None or common_dir is None:
         return None
-    branch = _git_output(path, "symbolic-ref", "--quiet", "--short", "HEAD")
+    branch = _git_output(
+        path, "symbolic-ref", "--quiet", "--short", "HEAD", deadline=deadline
+    )
     try:
         status = subprocess.run(
             [
@@ -319,7 +1222,17 @@ def _inspect_topology_worktree(path: Path) -> dict[str, Any] | None:
             check=False,
             capture_output=True,
             text=True,
+            timeout=_remaining_timeout(deadline),
         )
+    except (_MeasurementBudgetExceeded, subprocess.TimeoutExpired):
+        return {
+            "path": path,
+            "head": head,
+            "branch": branch or "(detached)",
+            "inspection_complete": False,
+            "inspection_error": MEASUREMENT_BUDGET_ERROR,
+            "worktree_state": "unknown",
+        }
     except OSError:
         return {
             "path": path,
@@ -327,6 +1240,15 @@ def _inspect_topology_worktree(path: Path) -> dict[str, Any] | None:
             "branch": branch or "(detached)",
             "inspection_complete": False,
             "inspection_error": "git-status:OSError",
+            "worktree_state": "unknown",
+        }
+    if _deadline_expired(deadline):
+        return {
+            "path": path,
+            "head": head,
+            "branch": branch or "(detached)",
+            "inspection_complete": False,
+            "inspection_error": MEASUREMENT_BUDGET_ERROR,
             "worktree_state": "unknown",
         }
     if status.returncode != 0:
@@ -357,6 +1279,27 @@ def _topology_name(path: Path, roots: list[Path]) -> str | None:
                 else "claude"
             )
     return None
+
+
+def _is_codex_supervision_checkout(path: Path, roots: list[Path]) -> bool:
+    """Recognise Codex's fixed ``<session>/kg`` supervision checkout shape.
+
+    These checkouts are orchestration containers, not product delivery lanes.
+    They remain fully measured and visible, but their absence from the product
+    registry must not be reported as an unregistered product worktree.  The
+    shape is deliberately exact so an arbitrary checkout below the Codex root
+    still fails closed.
+    """
+
+    for root in roots:
+        if root.name != "worktrees" or ".codex" not in root.parts:
+            continue
+        try:
+            relative = path.relative_to(root)
+        except ValueError:
+            continue
+        return len(relative.parts) == 2 and relative.parts[1] == "kg"
+    return False
 
 
 def _load_registry(state_path: Path) -> tuple[list[dict[str, Any]], str | None]:
@@ -390,6 +1333,15 @@ def _lane_key(branch: str, path: Path, index: int | None = None) -> str:
     return hashlib.sha256(f"{branch}\0{path}{suffix}".encode()).hexdigest()[:16]
 
 
+def _nested_worktree_paths(root: Path, candidates: set[Path]) -> set[Path]:
+    normalized_root = _path(root)
+    return {
+        path
+        for path in candidates
+        if path != normalized_root and _relative_to(path, normalized_root)
+    }
+
+
 def _lane_entry(
     *,
     branch: str,
@@ -400,23 +1352,29 @@ def _lane_entry(
     physical: dict[str, Any] | None,
     deadline: float | None = None,
     excluded: bool = False,
+    scan_excluded: set[Path] | None = None,
+    measured: dict[str, Any] | None = None,
     physical_state_override: str | None = None,
     registry_match_count: int = 1,
     registry_statuses: list[str] | None = None,
     topology: str | None = None,
 ) -> dict[str, Any]:
-    if path.is_dir():
-        measured = measure_tree(path, deadline=deadline)
-        exists = True
-    else:
-        measured = {
-            "logical_bytes": 0,
-            "allocated_bytes": 0,
-            "files": 0,
-            "complete": False,
-            "error": "path-missing",
-        }
-        exists = False
+    exists = path.is_dir()
+    if measured is None:
+        if exists:
+            measured = measure_tree(
+                path,
+                excluded=scan_excluded,
+                deadline=deadline,
+            )
+        else:
+            measured = {
+                "logical_bytes": 0,
+                "allocated_bytes": 0,
+                "files": 0,
+                "complete": False,
+                "error": MISSING_PATH_ERROR,
+            }
     if physical is not None:
         head = physical.get("head")
         observed_branch = physical.get("branch")
@@ -495,8 +1453,8 @@ def _lane_entry(
         entry["measurement_error"] = measured["error"]
     if measured.get("errors"):
         entry["measurement_errors"] = measured["errors"]
-        if "measurement-time-budget-exceeded" in measured["errors"]:
-            entry["measurement_error"] = "measurement-time-budget-exceeded"
+        if MEASUREMENT_BUDGET_ERROR in measured["errors"]:
+            entry["measurement_error"] = MEASUREMENT_BUDGET_ERROR
     if physical_state_override is not None and exists:
         entry["underlying_physical_state"] = (
             physical.get("worktree_state", "unknown")
@@ -515,15 +1473,37 @@ def build_report(
     *,
     time_budget_seconds: float | None = None,
     supervision_worktree_paths: tuple[str | Path, ...] = (),
+    xctest_devices_root: str | Path | None = None,
+    xctest_devices_budget_gib: int = DEFAULT_XCTEST_DEVICES_BUDGET_GIB,
+    auto_reclaim_xctest_devices: bool = False,
+    simulator_runtime_budget_gib: int = DEFAULT_SIMULATOR_RUNTIME_BUDGET_GIB,
 ) -> dict[str, Any]:
     measurement_started = time.monotonic()
+    if time_budget_seconds is None:
+        effective_time_budget = None
+    elif not math.isfinite(time_budget_seconds):
+        effective_time_budget = 0.0
+    else:
+        effective_time_budget = min(
+            MAX_TIME_BUDGET_SECONDS, max(0.0, time_budget_seconds)
+        )
     deadline = (
         None
-        if time_budget_seconds is None
-        else measurement_started + max(0.0, time_budget_seconds)
+        if effective_time_budget is None
+        else measurement_started + effective_time_budget
     )
     workspace = _path(workspace)
     state_path = _path(state_path)
+    simulator_runtimes = inspect_simulator_runtimes(
+        budget_bytes=max(0, int(simulator_runtime_budget_gib)) * GIB,
+        deadline=deadline,
+    )
+    xctest_devices = inspect_xctest_devices(
+        xctest_devices_root,
+        budget_bytes=max(0, int(xctest_devices_budget_gib)) * GIB,
+        deadline=deadline,
+        auto_reclaim=auto_reclaim_xctest_devices,
+    )
     requested_supervision_paths: list[Path] = []
     for value in supervision_worktree_paths:
         normalized = _path(value)
@@ -534,31 +1514,61 @@ def build_report(
     physical_records, git_error = _parse_worktrees(workspace, deadline=deadline)
     topology_roots = _topology_roots(workspace)
     topology_errors: list[str] = []
-    workspace_common_dir = _git_output(workspace, "rev-parse", "--git-common-dir")
+    workspace_common_dir: str | None = None
+    try:
+        workspace_common_dir = _git_output(
+            workspace, "rev-parse", "--git-common-dir", deadline=deadline
+        )
+    except _MeasurementBudgetExceeded:
+        topology_errors.append(f"{workspace}:{MEASUREMENT_BUDGET_ERROR}")
     if workspace_common_dir is not None:
         workspace_common_dir = str(_path(workspace / workspace_common_dir))
     known_physical_paths = {item["path"] for item in physical_records}
+    topology_halted = _is_budget_error(git_error) or bool(
+        topology_errors and _is_budget_error(topology_errors[-1])
+    )
     for topology_root in topology_roots:
+        if topology_halted:
+            break
         candidates, topology_error = _topology_candidates(
             topology_root, deadline=deadline
         )
         if topology_error:
             topology_errors.append(f"{topology_root}:{topology_error}")
+            if _is_budget_error(topology_error):
+                topology_halted = True
         for candidate in candidates:
+            if topology_halted:
+                break
             if candidate in known_physical_paths:
                 continue
-            candidate_common_dir = _git_output(
-                candidate, "rev-parse", "--git-common-dir"
-            )
+            try:
+                candidate_common_dir = _git_output(
+                    candidate, "rev-parse", "--git-common-dir", deadline=deadline
+                )
+            except _MeasurementBudgetExceeded:
+                topology_errors.append(f"{candidate}:{MEASUREMENT_BUDGET_ERROR}")
+                topology_halted = True
+                break
             if candidate_common_dir is None:
                 continue
             candidate_common_dir = str(_path(candidate / candidate_common_dir))
             if candidate_common_dir != workspace_common_dir:
                 continue
-            inspected = _inspect_topology_worktree(candidate)
+            try:
+                inspected = _inspect_topology_worktree(candidate, deadline=deadline)
+            except _MeasurementBudgetExceeded:
+                topology_errors.append(f"{candidate}:{MEASUREMENT_BUDGET_ERROR}")
+                topology_halted = True
+                break
             if inspected is not None:
                 physical_records.append(inspected)
                 known_physical_paths.add(candidate)
+                if _is_budget_error(inspected.get("inspection_error")):
+                    topology_errors.append(
+                        f"{candidate}:{inspected['inspection_error']}"
+                    )
+                    topology_halted = True
     physical_by_path: dict[Path, dict[str, Any]] = {}
     physical_path_counts: dict[Path, int] = {}
     for item in physical_records:
@@ -594,6 +1604,17 @@ def build_report(
             continue
         normalized = _path(record_path)
         registry_by_path.setdefault(normalized, []).append((index, record))
+
+    known_worktree_paths = set(physical_by_path) | set(registry_by_path)
+    nested_worktrees = _nested_worktree_paths(
+        workspace,
+        {path for path in known_worktree_paths if path.is_dir()},
+    )
+    workspace_measurement = measure_tree(
+        workspace,
+        excluded=nested_worktrees,
+        deadline=deadline,
+    )
 
     applied_exclusions: list[Path] = []
     exclusion_rejections: list[dict[str, str]] = []
@@ -653,6 +1674,8 @@ def build_report(
             registry_index=selected_index,
             physical=physical_by_path.get(normalized),
             deadline=deadline,
+            scan_excluded=_nested_worktree_paths(normalized, known_worktree_paths),
+            measured=workspace_measurement if normalized == workspace else None,
             physical_state_override=(
                 "terminal-residue"
                 if is_terminal and normalized in physical_by_path
@@ -680,7 +1703,15 @@ def build_report(
         if physical_path in registry_by_path:
             continue
         branch = str(physical.get("branch") or "(detached)")
-        lane_kind = "canonical-main" if physical_path == workspace else "lane"
+        topology = _topology_name(physical_path, topology_roots)
+        is_supervision = _is_codex_supervision_checkout(physical_path, topology_roots)
+        lane_kind = (
+            "canonical-main"
+            if physical_path == workspace
+            else "supervision"
+            if is_supervision
+            else "lane"
+        )
         is_excluded = physical_path in applied_exclusions
         entry = _lane_entry(
             branch=branch,
@@ -691,11 +1722,16 @@ def build_report(
             physical=physical,
             deadline=deadline,
             excluded=is_excluded,
-            topology=_topology_name(physical_path, topology_roots),
+            scan_excluded=_nested_worktree_paths(physical_path, known_worktree_paths),
+            measured=workspace_measurement if physical_path == workspace else None,
+            topology=topology,
         )
         if lane_kind == "canonical-main":
             entry["ownership"] = "canonical"
             entry["lane_state"] = "canonical"
+        elif lane_kind == "supervision":
+            entry["ownership"] = "supervision"
+            entry["lane_state"] = "supervision"
         elif not is_excluded and entry["exists"]:
             # Keep the ownership state explicit while exposing dirty/unknown in
             # the separate worktree_state fields populated above.
@@ -718,6 +1754,8 @@ def build_report(
             registry_index=None,
             physical=physical_by_path.get(workspace),
             deadline=deadline,
+            scan_excluded=nested_worktrees,
+            measured=workspace_measurement,
             topology=_topology_name(workspace, topology_roots),
         )
         canonical["ownership"] = "canonical"
@@ -733,25 +1771,29 @@ def build_report(
             item["registry_index"] or -1,
         ),
     )
-    nested_worktrees = {
-        _path(item["path"])
-        for item in lanes
-        if item["lane_kind"] == "lane"
-        and item["exists"]
-        and _path(item["path"]) != workspace
-        and _relative_to(_path(item["path"]), workspace)
-    }
-    workspace_measurement = measure_tree(
-        workspace,
-        excluded=nested_worktrees,
-        deadline=deadline,
-    )
     physical_lanes_by_path = {
         Path(item["path"]): item
         for item in lanes
         if item["lane_kind"] == "lane" and item["exists"]
     }
     physical_lanes = list(physical_lanes_by_path.values())
+    supervision_worktrees = [
+        item for item in lanes if item["lane_kind"] == "supervision" and item["exists"]
+    ]
+    dirty_supervision = sorted(
+        str(item["path"])
+        for item in supervision_worktrees
+        if item.get("worktree_state") == "dirty"
+    )
+    unknown_supervision = sorted(
+        str(item["path"])
+        for item in supervision_worktrees
+        if (
+            not item.get("inspection_complete", True)
+            or item.get("worktree_state") == "unknown"
+            or item.get("physical_state") == "unknown"
+        )
+    )
     accounted_lanes = [
         item for item in physical_lanes if item["accounted_in_aggregate"]
     ]
@@ -823,7 +1865,7 @@ def build_report(
         for item in physical_lanes
         if (
             not item.get("inspection_complete", True)
-            and item.get("inspection_error") != "path-missing"
+            and item.get("inspection_error") != MISSING_PATH_ERROR
         )
         or item.get("worktree_state") == "unknown"
         or item.get("physical_state") in {"unverified", "unknown-unregistered"}
@@ -861,21 +1903,71 @@ def build_report(
         )
     except ValueError:
         total_lane_budget = 8 * GIB
-    over_lane = sorted(
-        {
-            str(item["path"])
-            for item in accounted_lanes
-            if int(item["allocated_bytes"]) > per_lane_budget
-        }
+    measurement_incomplete_reasons: set[str] = set()
+    if git_error:
+        measurement_incomplete_reasons.add(
+            MEASUREMENT_BUDGET_ERROR
+            if _is_budget_error(git_error)
+            else "worktree-inspection-incomplete"
+        )
+    for topology_error in topology_errors:
+        measurement_incomplete_reasons.add(
+            MEASUREMENT_BUDGET_ERROR
+            if _is_budget_error(topology_error)
+            else "topology-inspection-incomplete"
+        )
+    if not workspace_measurement["complete"]:
+        measurement_incomplete_reasons.add("workspace-measurement-incomplete")
+
+    lane_measurement_incomplete = False
+    for item in lanes:
+        if item["lane_kind"] not in {"lane", "supervision"}:
+            continue
+        if item["exists"] and not item["measurement_complete"]:
+            measurement_errors = item.get("measurement_errors", [])
+            if _is_budget_error(item.get("measurement_error")) or any(
+                _is_budget_error(error) for error in measurement_errors
+            ):
+                measurement_incomplete_reasons.add(MEASUREMENT_BUDGET_ERROR)
+            else:
+                measurement_incomplete_reasons.add("lane-measurement-incomplete")
+            lane_measurement_incomplete = True
+        inspection_error = item.get("inspection_error")
+        if inspection_error and inspection_error != MISSING_PATH_ERROR:
+            measurement_incomplete_reasons.add(
+                MEASUREMENT_BUDGET_ERROR
+                if _is_budget_error(inspection_error)
+                else "worktree-inspection-incomplete"
+            )
+    measurement_budget_exhausted = (
+        MEASUREMENT_BUDGET_ERROR in measurement_incomplete_reasons
     )
+    measurement_incomplete = bool(measurement_incomplete_reasons)
+
+    # A partial scan is evidence for a fail-closed block, not evidence that a
+    # lane or aggregate is over quota.  Only complete observations can produce
+    # quota reasons.
+    over_lane = (
+        sorted(
+            {
+                str(item["path"])
+                for item in accounted_lanes
+                if int(item["allocated_bytes"]) > per_lane_budget
+            }
+        )
+        if not measurement_incomplete
+        else []
+    )
+    quota_reasons = [f"lane-budget-exceeded:{path}" for path in over_lane]
+    if not measurement_incomplete and lane_allocated > total_lane_budget:
+        quota_reasons.append("lane-total-budget-exceeded")
+    quota_exceeded = bool(quota_reasons)
     blocking_reasons: list[str] = []
     warning_reasons: list[str] = []
     if registry_error:
         blocking_reasons.append(registry_error)
     if git_error:
         blocking_reasons.append(git_error)
-        if git_error == "measurement-time-budget-exceeded":
-            blocking_reasons.append(git_error)
     if topology_errors:
         blocking_reasons.extend(topology_errors)
     if malformed_registry_records:
@@ -894,6 +1986,10 @@ def build_report(
             blocking_reasons.append("supervision-path-registered")
     if unregistered:
         blocking_reasons.append("unregistered-physical-worktree")
+    if dirty_supervision:
+        blocking_reasons.append("dirty-supervision-worktree")
+    if unknown_supervision:
+        blocking_reasons.append("unknown-supervision-worktree")
     if blocking_dirty_physical:
         blocking_reasons.append("dirty-physical-worktree")
     if unknown_physical:
@@ -916,26 +2012,28 @@ def build_report(
         blocking_reasons.append("duplicate-live-registry-claim")
     if not workspace_measurement["complete"]:
         blocking_reasons.append("workspace-measurement-incomplete")
-    if not all(item["measurement_complete"] for item in accounted_lanes):
+    if lane_measurement_incomplete:
         blocking_reasons.append("lane-measurement-incomplete")
-    measurement_entries = [workspace_measurement]
-    measurement_entries.extend(
-        {
-            "errors": item.get("measurement_errors", []),
-        }
-        for item in lanes
-        if item.get("measurement_errors")
-    )
-    measurement_budget_exhausted = any(
-        "measurement-time-budget-exceeded" in item.get("errors", [])
-        for item in measurement_entries
-    )
     if measurement_budget_exhausted:
-        blocking_reasons.append("measurement-time-budget-exceeded")
-    if over_lane:
-        blocking_reasons.extend(f"lane-budget-exceeded:{path}" for path in over_lane)
-    if lane_allocated > total_lane_budget:
-        blocking_reasons.append("lane-total-budget-exceeded")
+        blocking_reasons.append(MEASUREMENT_BUDGET_ERROR)
+    if xctest_devices["exists"]:
+        if not xctest_devices["measurement_complete"]:
+            blocking_reasons.append(XCTEST_DEVICES_MEASUREMENT_ERROR)
+        if not xctest_devices["metadata_complete"]:
+            blocking_reasons.append(XCTEST_DEVICES_METADATA_ERROR)
+        if xctest_devices["budget_exceeded"]:
+            blocking_reasons.append(XCTEST_DEVICES_BUDGET_ERROR)
+            if xctest_devices["reclaim"]["status"] != "reclaimed":
+                blocking_reasons.append(XCTEST_DEVICES_MANUAL_REVIEW_ERROR)
+    if simulator_runtimes["status"] not in {"absent", "unsupported"}:
+        if not simulator_runtimes["measurement_complete"]:
+            blocking_reasons.append(SIMULATOR_RUNTIME_MEASUREMENT_ERROR)
+            blocking_reasons.append(SIMULATOR_RUNTIME_DISCOVERY_ERROR)
+        if simulator_runtimes["budget_exceeded"] is True:
+            blocking_reasons.append(SIMULATOR_RUNTIME_BUDGET_ERROR)
+            if simulator_runtimes["reclaim"]["status"] != "reclaimed":
+                blocking_reasons.append(SIMULATOR_RUNTIME_MANUAL_REVIEW_ERROR)
+    blocking_reasons.extend(quota_reasons)
     if blocking_reasons:
         verdict = "block"
     elif warning_reasons:
@@ -955,11 +2053,13 @@ def build_report(
         verdict = "block"
 
     reasons = sorted({*blocking_reasons, *warning_reasons})
+    product_lanes = [item for item in lanes if item["lane_kind"] == "lane"]
     lane_accounting = [
         {
             "lane_key": item["lane_key"],
             "branch": item["branch"],
             "path": item["path"],
+            "exists": item["exists"],
             "ownership": item["ownership"],
             "registry_status": item["registry_status"],
             "lane_state": item["lane_state"],
@@ -967,12 +2067,14 @@ def build_report(
             "logical_bytes": item["logical_bytes"],
             "allocated_bytes": item["allocated_bytes"],
             "files": item["files"],
+            "measurement_complete": item["measurement_complete"],
+            "measurement_error": item.get("measurement_error"),
+            "measurement_errors": item.get("measurement_errors", []),
             "accounted_in_aggregate": item["accounted_in_aggregate"],
         }
-        for item in physical_lanes
+        for item in product_lanes
     ]
 
-    product_lanes = [item for item in lanes if item["lane_kind"] == "lane"]
     classification_items: dict[str, list[dict[str, Any]]] = {
         "active": [],
         "active_but_missing": [],
@@ -1013,6 +2115,16 @@ def build_report(
             name: classification_summary(classification_items[name])
             for name in sorted(classification_items)
         },
+        "supervision_worktree_count": len(supervision_worktrees),
+        "supervision_worktree_logical_bytes": sum(
+            int(item["logical_bytes"]) for item in supervision_worktrees
+        ),
+        "supervision_worktree_allocated_bytes": sum(
+            int(item["allocated_bytes"]) for item in supervision_worktrees
+        ),
+        "supervision_worktree_paths": sorted(
+            str(item["path"]) for item in supervision_worktrees
+        ),
     }
 
     return {
@@ -1020,9 +2132,11 @@ def build_report(
         "workspace": str(workspace),
         "registry": str(state_path),
         "measurement": {
-            "budget_seconds": time_budget_seconds,
+            "budget_seconds": effective_time_budget,
             "elapsed_seconds": round(time.monotonic() - measurement_started, 3),
             "budget_exhausted": measurement_budget_exhausted,
+            "status": "incomplete" if measurement_incomplete else "complete",
+            "incomplete_reasons": sorted(measurement_incomplete_reasons),
         },
         "topology": {
             "roots": [str(root) for root in topology_roots],
@@ -1076,6 +2190,13 @@ def build_report(
             "active_physical_lane_count": len(active_physical_lanes),
             "terminal_physical_lane_count": len(terminal_physical_lanes),
             "excluded_physical_lane_count": len(excluded_lanes),
+            "supervision_worktree_count": len(supervision_worktrees),
+            "supervision_worktree_logical_bytes": sum(
+                int(item["logical_bytes"]) for item in supervision_worktrees
+            ),
+            "supervision_worktree_allocated_bytes": sum(
+                int(item["allocated_bytes"]) for item in supervision_worktrees
+            ),
             "lane_accounting": lane_accounting,
             "managed_logical_bytes": workspace_measurement["logical_bytes"]
             + lane_logical,
@@ -1085,6 +2206,10 @@ def build_report(
                 str(item) for item in nested_worktrees
             ),
             "lane_attribution": lane_attribution,
+            "shared_platform_storage": {
+                "xctest_devices": xctest_devices,
+                "simulator_runtimes": simulator_runtimes,
+            },
         },
         "filesystem": filesystem_payload,
         "policy": {
@@ -1094,6 +2219,10 @@ def build_report(
             "reasons": sorted(set(reasons)),
             "blocking_reasons": sorted(set(blocking_reasons)),
             "warning_reasons": sorted(set(warning_reasons)),
+            "measurement_incomplete": measurement_incomplete,
+            "measurement_incomplete_reasons": sorted(measurement_incomplete_reasons),
+            "quota_exceeded": quota_exceeded,
+            "quota_reasons": sorted(set(quota_reasons)),
             "missing_active_lanes": missing_active,
             "missing_terminal_lanes": missing_terminal,
             "unregistered_physical_worktrees": unregistered,
@@ -1103,6 +2232,11 @@ def build_report(
             "unknown_registry_record_indices": unknown_registry_record_indices,
             "active_dirty_implementation_worktrees": active_dirty_implementation,
             "blocking_dirty_physical_worktrees": blocking_dirty_physical,
+            "supervision_physical_worktrees": sorted(
+                str(item["path"]) for item in supervision_worktrees
+            ),
+            "dirty_supervision_worktrees": dirty_supervision,
+            "unknown_supervision_worktrees": unknown_supervision,
             "physical_identity_mismatches": sorted(
                 set(physical_identity_mismatches + detached_registered)
             ),
@@ -1155,7 +2289,7 @@ def main(argv: list[str] | None = None) -> int:
         "--time-budget-seconds",
         type=float,
         default=DEFAULT_TIME_BUDGET_SECONDS,
-        help="maximum recursive measurement time before returning a fail-closed report",
+        help="maximum recursive measurement time (hard maximum: 240 seconds)",
     )
     parser.add_argument(
         "--supervision-worktree",
@@ -1163,6 +2297,28 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         metavar="PATH",
         help="exclude this exact caller-supplied supervision worktree from managed quota",
+    )
+    parser.add_argument(
+        "--xctest-devices-root",
+        default=None,
+        help="shared XCTestDevices root (default: KG_XCTEST_DEVICES_ROOT or the Apple host path)",
+    )
+    parser.add_argument(
+        "--xctest-devices-budget-gib",
+        type=int,
+        default=_configured_xctest_devices_budget_gib(),
+        help="shared XCTestDevices budget in GiB (default: 16)",
+    )
+    parser.add_argument(
+        "--auto-reclaim-xctest-devices",
+        action="store_true",
+        help="attempt only exact stale/ephemeral devices via supported simctl; otherwise fail closed",
+    )
+    parser.add_argument(
+        "--simulator-runtime-budget-gib",
+        type=int,
+        default=_configured_simulator_runtime_budget_gib(),
+        help="shared mounted Simulator runtime budget in GiB (default: 56; never auto-reclaimed)",
     )
     args = parser.parse_args(argv)
     workspace = _path(args.workspace)
@@ -1174,6 +2330,10 @@ def main(argv: list[str] | None = None) -> int:
         state,
         time_budget_seconds=args.time_budget_seconds,
         supervision_worktree_paths=tuple(args.supervision_worktree),
+        xctest_devices_root=args.xctest_devices_root,
+        xctest_devices_budget_gib=args.xctest_devices_budget_gib,
+        auto_reclaim_xctest_devices=args.auto_reclaim_xctest_devices,
+        simulator_runtime_budget_gib=args.simulator_runtime_budget_gib,
     )
     if args.output:
         _write_atomic(_path(args.output), report)

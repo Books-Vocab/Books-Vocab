@@ -100,13 +100,14 @@ struct ReaderSettingsReleaseContractTests {
             font: .mono,
             fontScale: 1.25,
             lineHeight: 2.1,
+            letterSpacing: 0.4,
             scrollMode: true,
             theme: .dark
         )
 
         #expect(
             state.accessibilityValue
-                == "font=Mono;fontSize=1.25;lineHeight=2.10;readingMode=scroll;theme=dark"
+                == "font=Mono;fontSize=1.25;lineHeight=2.10;letterSpacing=0.40;readingMode=scroll;theme=dark"
         )
     }
 
@@ -118,6 +119,7 @@ struct ReaderSettingsReleaseContractTests {
                 font: .serif,
                 fontScale: 1,
                 lineHeight: 1.4,
+                letterSpacing: 0,
                 scrollMode: false,
                 theme: .light
             ),
@@ -127,6 +129,7 @@ struct ReaderSettingsReleaseContractTests {
         #expect(state.accessibilityValue.contains("status=ready"))
         #expect(state.accessibilityValue.contains("navigator=D8A8F3A7-6A9E-4D43-BE87-5F2A3C2E8C11"))
         #expect(state.accessibilityValue.contains("lineHeight=1.40"))
+        #expect(state.accessibilityValue.contains("letterSpacing=0.00"))
     }
 
     @Test func readerPageNeverResolvesAnImplicitFirstMatch() throws {
@@ -173,7 +176,9 @@ struct ReaderSettingsReleaseContractTests {
 
         #expect(settingsSource.contains("ReaderTypographyMetrics"))
         #expect(panelSource.contains("ReaderTypographyMetrics.fontSizeRange"))
+        #expect(panelSource.contains("ReaderTypographyMetrics.letterSpacingRange"))
         #expect(presenterSource.contains("ReaderTypographyAdjustmentRow"))
+        #expect(presenterSource.contains("reader.settings.letterSpacing"))
         #expect(presenterSource.contains("VocabHighlightPreferences.opacityStep"))
         #expect(preferencesSource.contains("VocabHighlightSRGB"))
         #expect(pickerSource.contains("ColorPicker"))

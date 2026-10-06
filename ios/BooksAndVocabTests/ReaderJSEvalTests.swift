@@ -44,5 +44,20 @@ struct ReaderJSEvalTests {
             return
         }
     }
+
+    /// EPUB content is not limited to ASCII words: the converter already
+    /// preserves Latin-1 text such as `café`. The selection scanner must use
+    /// Unicode letter boundaries or a tap on that word is truncated to `caf`.
+    @Test func selectionScriptTreatsUnicodeLettersAsWordCharacters() {
+        let script = ReadiumNavigatorJS.buildSelectionScript(isDebugMode: "false")
+
+        #expect(script.contains("\\p{L}"))
+        #expect(script.contains("\\p{M}"))
+        #expect(script.contains("\\p{N}"))
+        #expect(script.contains("]/u"),
+                "the Unicode character class must be emitted as a JavaScript regex with the u flag")
+        #expect(!script.contains("[a-zA-Z'\\\\-]"),
+                "selection must not truncate non-ASCII Latin words")
+    }
 }
 #endif

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from fastapi import HTTPException
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, select
 
@@ -81,11 +82,22 @@ class NotebookStore:
         # creates the parent dir). create_all + column migration below run
         # after, so DDL lands on a WAL connection.
         self.engine = make_sqlite_engine(path)
-        Notebook.metadata.create_all(
-            self.engine,
-            tables=[Notebook.__table__, NotebookSettings.__table__],
-            checkfirst=True,
-        )
+        # SQLAlchemy's checkfirst=True is not atomic across independent
+        # engines: two legacy openers can both observe a missing table and
+        # then race on CREATE TABLE. Take SQLite's writer lock before the
+        # check/create boundary so the second opener rechecks after commit.
+        with self.engine.connect() as conn:
+            conn.exec_driver_sql("BEGIN IMMEDIATE")
+            try:
+                Notebook.metadata.create_all(
+                    conn,
+                    tables=[Notebook.__table__, NotebookSettings.__table__],
+                    checkfirst=True,
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
         self._migrate_columns()
 
     def _migrate_columns(self) -> None:
@@ -116,7 +128,17 @@ class NotebookStore:
                 is_default=True,
             )
             session.add(nb)
-            session.commit()
+            try:
+                session.commit()
+            except IntegrityError:
+                # Another first-use request may have created the singleton
+                # between our read and insert. Re-read its committed row;
+                # unrelated integrity failures still propagate unchanged.
+                session.rollback()
+                existing = session.get(Notebook, DEFAULT_NOTEBOOK_ID)
+                if existing is None:
+                    raise
+                return existing
             session.refresh(nb)
             return nb
 
@@ -301,7 +323,7 @@ class NotebookStore:
     def update(self, notebook_id: str, **kwargs) -> Notebook | None:
         with Session(self.engine) as session:
             nb = session.get(Notebook, notebook_id)
-            if nb is None or nb.is_deleted:
+            if nb is None or nb.is_deleted or nb.is_staged:
                 return None
             has_changes = False
             for key, value in kwargs.items():

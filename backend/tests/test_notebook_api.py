@@ -247,6 +247,18 @@ def test_list_notebooks_since_preserves_aware_and_invalid_semantics(isolated_api
     assert invalid.json()["detail"] == "Invalid since timestamp"
 
 
+def test_list_notebooks_rejects_explicit_empty_since(isolated_api):
+    """An explicit empty incremental cursor must not restart full sync."""
+    response = isolated_api.client.get(
+        "/api/notebooks",
+        params={"since": ""},
+        headers=isolated_api.headers,
+    )
+
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"] == "Invalid since timestamp"
+
+
 # ---------------------------------------------------------------------------
 # POST /api/notebooks
 # ---------------------------------------------------------------------------
@@ -294,6 +306,27 @@ def test_patch_notebook_name(isolated_api):
     assert r.json()["name"] == "New Name"
 
 
+def test_patch_notebook_refuses_staged_notebook_and_preserves_metadata(isolated_api):
+    from kg.notebook import NotebookStore
+
+    store = NotebookStore(isolated_api.data_dir / "users" / isolated_api.user_id / "notebooks.db")
+    staged = store.create("Staged metadata", is_staged=True)
+    try:
+        response = isolated_api.client.patch(
+            f"/api/notebooks/{staged.id}",
+            json={"name": "Should remain hidden"},
+            headers=isolated_api.headers,
+        )
+
+        assert response.status_code == 404, response.text
+        current = store.get(staged.id)
+        assert current is not None
+        assert current.name == "Staged metadata"
+        assert current.is_staged is True
+    finally:
+        store.close()
+
+
 def test_patch_notebook_color(isolated_api):
     client = isolated_api.client
     h = isolated_api.headers
@@ -303,6 +336,22 @@ def test_patch_notebook_color(isolated_api):
     r = client.patch(f"/api/notebooks/{nb_id}", json={"color": "#ffffff"}, headers=h)
     assert r.status_code == 200, r.text
     assert r.json()["color"] == "#ffffff"
+
+
+def test_patch_notebook_color_null_clears_existing_color(isolated_api):
+    client = isolated_api.client
+    h = isolated_api.headers
+
+    nb_id = client.post(
+        "/api/notebooks",
+        json={"name": "ClearColor", "color": "#112233"},
+        headers=h,
+    ).json()["id"]
+
+    r = client.patch(f"/api/notebooks/{nb_id}", json={"color": None}, headers=h)
+
+    assert r.status_code == 200, r.text
+    assert r.json()["color"] is None
 
 
 def test_patch_nonexistent_notebook_returns_404(isolated_api):
@@ -349,6 +398,68 @@ def test_patch_notebook_settings_returns_updated_notebook(isolated_api):
         "updatedAt": 100.0,
     }
     assert body["settings"]["cardLayout"] == {"value": None, "updatedAt": None}
+
+
+def test_patch_notebook_settings_rejects_inverted_review_interval(isolated_api):
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Review bounds"}, headers=h).json()["id"]
+
+    valid = _review_policy()
+    seeded = client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        json={"reviewPolicy": {"value": valid, "updatedAt": 100.0}},
+        headers=h,
+    )
+    assert seeded.status_code == 200, seeded.text
+
+    invalid = {**valid, "customMinimumIntervalHours": 24, "customMaximumIntervalHours": 12}
+    rejected = client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        json={"reviewPolicy": {"value": invalid, "updatedAt": 200.0}},
+        headers=h,
+    )
+    assert rejected.status_code == 422, rejected.text
+
+    listed = client.get("/api/notebooks", headers=h)
+    assert listed.status_code == 200, listed.text
+    notebook = next(item for item in listed.json() if item["id"] == nb_id)
+    assert notebook["settings"]["reviewPolicy"] == {"value": valid, "updatedAt": 100.0}
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "customInitialIntervalHours",
+        "customRememberedMultiplier",
+        "customForgotMultiplier",
+        "customMinimumIntervalHours",
+        "customMaximumIntervalHours",
+    ],
+)
+@pytest.mark.parametrize("non_finite", ["NaN", "Infinity", "-Infinity"])
+def test_patch_notebook_settings_rejects_non_finite_review_policy_values(isolated_api, field, non_finite):
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Finite review policy"}, headers=h).json()["id"]
+
+    value = _review_policy()
+    body = json.dumps({"reviewPolicy": {"value": value, "updatedAt": 100.0}})
+    marker = f'"{field}": {json.dumps(value[field])}'
+    body = body.replace(marker, f'"{field}": {non_finite}', 1)
+    rejected = client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        content=body,
+        headers={**h, "Content-Type": "application/json"},
+    )
+
+    assert rejected.status_code == 422, rejected.text
+    assert any(error["type"] == "finite_number" for error in rejected.json()["detail"])
+
+    listed = client.get("/api/notebooks", headers=h)
+    assert listed.status_code == 200, listed.text
+    notebook = next(item for item in listed.json() if item["id"] == nb_id)
+    assert notebook["settings"]["reviewPolicy"] == {"value": None, "updatedAt": None}
 
 
 def test_patch_notebook_settings_groups_are_independent_and_listed(isolated_api):

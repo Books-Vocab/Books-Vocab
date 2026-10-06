@@ -104,7 +104,7 @@ def _admit(service: LexicalService, user_id: str, operation: str) -> None:
         # Recorded here because the limiter refuses before LexicalService runs;
         # user-facing 429s would otherwise be invisible to `dictionary-health`.
         service.cache.record_lookup(service.provider.provider_id, operation, "throttled", 0)
-        raise DictionaryRateLimitError("Dictionary search rate limit exceeded", headers={"Retry-After": "60"})
+        raise DictionaryRateLimitError(f"Dictionary {operation} rate limit exceeded", headers={"Retry-After": "60"})
 
 
 @router.get("/api/dictionary/search", response_model=DictionarySearchResponse)

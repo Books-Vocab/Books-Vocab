@@ -92,20 +92,18 @@ def push_review_states(
         return cards_by_word
 
     updated = 0
-    # Coalesce exact-card entries before merging. The CardStore batch writer
+    # Coalesce logical-card entries before merging. The CardStore batch writer
     # also keys updates by card id, so leaving duplicate tuples pending would
-    # let their input order decide which schedule survives.
+    # let their input order decide which schedule survives. Legacy entries
+    # without card_id use normalized word identity for the same reason.
     coalesced_entries: list[ReviewStateEntry] = []
-    card_id_positions: dict[str, int] = {}
+    entry_positions: dict[tuple[str, str], int] = {}
     duplicate_entries = 0
     for entry in entries:
-        if not entry.card_id:
-            coalesced_entries.append(entry)
-            continue
-
-        position = card_id_positions.get(entry.card_id)
+        key = ("card_id", entry.card_id) if entry.card_id else ("word", _normalize_word(entry.word))
+        position = entry_positions.get(key)
         if position is None:
-            card_id_positions[entry.card_id] = len(coalesced_entries)
+            entry_positions[key] = len(coalesced_entries)
             coalesced_entries.append(entry)
             continue
 

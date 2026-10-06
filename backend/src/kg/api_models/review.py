@@ -24,6 +24,13 @@ class ReviewStateEntry(BaseModel):
             return -1.0
         return value
 
+    @field_validator("review_count", "lapse_count", "review_streak", mode="before")
+    @classmethod
+    def _reject_boolean_counter_values(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError("review counters must be integers")
+        return value
+
 
 class ReviewStatePushRequest(BaseModel):
     entries: list[ReviewStateEntry] = Field(max_length=5000)
@@ -69,6 +76,9 @@ class ReviewEventPushEntry(ReviewEventEntry):
 
     interval_before: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     interval_after: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    review_count_after: int | None = Field(default=None, ge=0)
+    streak_after: int | None = Field(default=None, ge=0)
+    lapse_after: int | None = Field(default=None, ge=0)
 
     @field_validator("interval_before", "interval_after", mode="before")
     @classmethod
@@ -76,6 +86,13 @@ class ReviewEventPushEntry(ReviewEventEntry):
         # Keep the validation error JSON-safe so the API can return its normal 422.
         if isinstance(value, float) and not math.isfinite(value):
             return -1.0
+        return value
+
+    @field_validator("review_count_after", "streak_after", "lapse_after", mode="before")
+    @classmethod
+    def _reject_boolean_srs_counter_values(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError("review event SRS counters must be integers")
         return value
 
 

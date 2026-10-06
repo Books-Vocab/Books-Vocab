@@ -6,6 +6,7 @@
 # returns a structured fail-closed result when the writer budget is exhausted.
 
 KG_IOS_DISK_BUDGET_EXIT=75
+KG_IOS_DISK_GUARD_STATE_DEFAULT="${HOME}/Library/Application Support/KG/disk_guard.json"
 
 kg_ios_disk_budget_number() {
   case "${1:-}" in
@@ -66,6 +67,105 @@ kg_ios_disk_budget_config() {
   printf '%s %s %s\n' "$((budget_gib * 1048576))" "$((headroom_gib * 1048576))" "$((min_free_gib * 1073741824))"
 }
 
+kg_ios_disk_guard_json_string() {
+  local state="$1" key="$2"
+  sed -nE "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" "$state" \
+    | head -1
+}
+
+kg_ios_disk_guard_timestamp_epoch() {
+  local timestamp="$1" epoch
+  epoch="$(date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$timestamp" "+%s" 2>/dev/null || true)"
+  if [[ "$epoch" =~ ^[0-9]+$ ]]; then
+    printf '%s' "$epoch"
+    return 0
+  fi
+  epoch="$(date -u -d "$timestamp" "+%s" 2>/dev/null || true)"
+  [[ "$epoch" =~ ^[0-9]+$ ]] || return 1
+  printf '%s' "$epoch"
+}
+
+kg_ios_disk_budget_guard_state() {
+  local operation="${1:-ios-write}"
+  local state="${KG_IOS_DISK_GUARD_STATE:-$KG_IOS_DISK_GUARD_STATE_DEFAULT}"
+  local enforce="${KG_IOS_DISK_GUARD_ENFORCE_XCTEST:-0}"
+  local max_age="${KG_IOS_DISK_GUARD_MAX_AGE_SECONDS:-900}"
+  local schema verdict xctest_verdict manual_review at epoch now age
+
+  [[ "$enforce" == "1" ]] || enforce=0
+  if [[ ! -f "$state" ]]; then
+    if (( enforce == 1 )); then
+      echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block reason=disk-guard-state-missing state=$state" >&2
+      return "$KG_IOS_DISK_BUDGET_EXIT"
+    fi
+    return 0
+  fi
+
+  schema="$(kg_ios_disk_guard_json_string "$state" schema)"
+  verdict="$(kg_ios_disk_guard_json_string "$state" verdict)"
+  xctest_verdict="$(kg_ios_disk_guard_json_string "$state" xctest_devices_verdict)"
+  manual_review="$(sed -nE 's/.*"xctest_devices_manual_review"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$state" | head -1)"
+  at="$(kg_ios_disk_guard_json_string "$state" at)"
+
+  if [[ "$schema" != "kg.disk.guard.v1" ]]; then
+    echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block reason=disk-guard-state-invalid state=$state" >&2
+    return "$KG_IOS_DISK_BUDGET_EXIT"
+  fi
+
+  # An explicit platform or global guard block is authoritative even when the
+  # caller has not opted into freshness enforcement.  A stale "pass" is only
+  # accepted by legacy callers that have not enabled the shared-state gate.
+  if [[ "$xctest_verdict" == "block" || "$xctest_verdict" == "critical" ]]; then
+    if [[ "$manual_review" == "1" ]]; then
+      echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block reason=xctest-devices-manual-review-required state=$state" >&2
+    else
+      echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block reason=xctest-devices-budget-exceeded state=$state" >&2
+    fi
+    return "$KG_IOS_DISK_BUDGET_EXIT"
+  fi
+  if [[ "$verdict" == "block" || "$verdict" == "critical" ]]; then
+    echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block reason=disk-guard-blocked state=$state" >&2
+    return "$KG_IOS_DISK_BUDGET_EXIT"
+  fi
+
+  if (( enforce == 1 )); then
+    [[ "$max_age" =~ ^[0-9]+$ ]] || {
+      echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block reason=disk-guard-state-invalid state=$state" >&2
+      return "$KG_IOS_DISK_BUDGET_EXIT"
+    }
+    epoch="$(kg_ios_disk_guard_timestamp_epoch "$at" 2>/dev/null || true)"
+    now="$(date +%s)"
+    if [[ ! "$epoch" =~ ^[0-9]+$ ]]; then
+      echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block reason=disk-guard-state-invalid state=$state" >&2
+      return "$KG_IOS_DISK_BUDGET_EXIT"
+    fi
+    age=$((now - epoch))
+    if (( epoch > now + max_age )); then
+      echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block reason=disk-guard-state-future state=$state ageSeconds=$age maxAgeSeconds=$max_age" >&2
+      return "$KG_IOS_DISK_BUDGET_EXIT"
+    fi
+    if (( age > max_age )); then
+      echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block reason=disk-guard-state-stale state=$state ageSeconds=$age maxAgeSeconds=$max_age" >&2
+      return "$KG_IOS_DISK_BUDGET_EXIT"
+    fi
+    case "$xctest_verdict" in
+      pass|absent) ;;
+      *)
+        echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block reason=disk-guard-state-invalid state=$state" >&2
+        return "$KG_IOS_DISK_BUDGET_EXIT"
+        ;;
+    esac
+    case "$verdict" in
+      ok|warning) ;;
+      *)
+        echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block reason=disk-guard-state-invalid state=$state" >&2
+        return "$KG_IOS_DISK_BUDGET_EXIT"
+        ;;
+    esac
+  fi
+  return 0
+}
+
 kg_ios_disk_budget_preflight() {
   local project_root="${1:?project root is required}"
   local operation="${2:-ios-write}"
@@ -98,6 +198,7 @@ kg_ios_disk_budget_preflight() {
     fi
     return "$KG_IOS_DISK_BUDGET_EXIT"
   fi
+  kg_ios_disk_budget_guard_state "$operation" || return $?
   echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=pass freeBytes=$free_bytes cacheKB=$cache_kb budgetKB=$budget_kb headroomKB=$headroom_kb" >&2
   return 0
 }

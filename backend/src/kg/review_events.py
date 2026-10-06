@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, create_engine, select
 
@@ -21,7 +20,6 @@ from .sqlite_ledger import (
 )
 from .sqlite_ledger import (
     next_ingested_at,
-    normalize_last_ingested,
 )
 from .sqlite_ledger import (
     now_utc as _now,
@@ -139,7 +137,13 @@ class ReviewEventStore:
             # Continue the monotonic ingestion clock from the current max so each new
             # event gets a strictly increasing, unique ingested_at — even across a
             # backward wall-clock step (NTP) or multiple inserts within one microsecond.
-            last_ingested = normalize_last_ingested(session.exec(select(func.max(ReviewEvent.ingested_at))).one())
+            # Do not use SQL MAX here: SQLite orders legacy offset-bearing datetime
+            # strings lexically, which is not the same as their UTC instant order.
+            ingested_values = session.exec(select(ReviewEvent.ingested_at)).all()
+            last_ingested = max(
+                (_as_utc(value) for value in ingested_values if value is not None),
+                default=None,
+            )
             # Pre-fetched ids only cover what was already committed. The loop adds
             # each accepted id so a repeated event_id *inside* one payload is still
             # skipped — the per-entry `session.get` used to catch that via autoflush.
@@ -208,14 +212,19 @@ def push_review_events(entries: list[ReviewEventEntry], *, event_store: Any) -> 
 def pull_review_events(*, since: str | None, event_store: Any) -> tuple[list[ReviewEventEntry], str | None]:
     """Return (entries, cursor). ``cursor`` is the max ingestion timestamp of the
     returned batch, to be sent back as ``since`` on the next pull. An empty batch
-    leaves the caller's cursor unchanged (echoes ``since``)."""
-    if since is not None:
-        parsed_since = _parse_iso8601_timestamp(since)
+    leaves the caller's cursor unchanged as the same canonical UTC instant."""
+    parsed_since = _parse_iso8601_timestamp(since) if since is not None else None
+    if parsed_since is not None:
         events = event_store.get_since(parsed_since)
     else:
         events = event_store.all()
     entries = [_entry_from_event(event) for event in events]
-    cursor = _format_timestamp(max(_as_utc(event.ingested_at) for event in events)) if events else since
+    if events:
+        cursor = _format_timestamp(max(_as_utc(event.ingested_at) for event in events))
+    elif parsed_since is not None:
+        cursor = _format_timestamp(parsed_since)
+    else:
+        cursor = None
     return entries, cursor
 
 

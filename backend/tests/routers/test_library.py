@@ -15,11 +15,14 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import event
 
 import kg.api as api_mod
 import kg.deps as deps_mod
 from conftest import TEST_JWT_SECRET, _swap_settings, make_jwt
 from kg.api import app
+from kg.api_models.library import BookCreateRequest
+from kg.library.store import LibraryStore
 from kg.settings import KGSettings
 
 
@@ -178,6 +181,63 @@ class TestCreateBook:
         assert data2["id"] == id1
         assert data2["title"] == "First"  # Original title preserved
 
+    def test_concurrent_create_is_idempotent(self, isolated_api):
+        store = LibraryStore(isolated_api.data_dir / "users" / isolated_api.user_id / "library.db")
+        request = BookCreateRequest(client_book_id="concurrent-book", title="Concurrent", format="epub")
+        parties = 8
+        start = threading.Barrier(parties)
+        begin_gate = threading.Barrier(parties)
+        lookup_gate = threading.Barrier(parties)
+        state_lock = threading.Lock()
+        state = {"begin_seen": False, "lookup_count": 0}
+
+        def coordinate_create(conn, cursor, statement, parameters, context, executemany):
+            normalized = " ".join(statement.lower().split())
+            if normalized == "begin immediate":
+                with state_lock:
+                    state["begin_seen"] = True
+                begin_gate.wait(timeout=10)
+                return
+            if normalized.startswith("select") and "client_book_id" in normalized:
+                with state_lock:
+                    old_code = not state["begin_seen"] and state["lookup_count"] < parties
+                    if old_code:
+                        state["lookup_count"] += 1
+                if old_code:
+                    lookup_gate.wait(timeout=10)
+
+        event.listen(store.engine, "before_cursor_execute", coordinate_create)
+
+        def create_book(_):
+            start.wait(timeout=10)
+            return store.create(request)
+
+        try:
+            with ThreadPoolExecutor(max_workers=parties) as executor:
+                responses = list(executor.map(create_book, range(parties)))
+            rows = store.all(include_deleted=True)
+        finally:
+            event.remove(store.engine, "before_cursor_execute", coordinate_create)
+            store.close()
+
+        assert len(responses) == parties
+        assert len({response.id for response in responses}) == 1
+        assert len(rows) == 1
+        assert rows[0].client_book_id == "concurrent-book"
+
+    def test_client_book_id_is_scoped_per_user(self, isolated_api):
+        first_store = LibraryStore(isolated_api.data_dir / "users" / isolated_api.user_id / "library.db")
+        second_store = LibraryStore(isolated_api.data_dir / "users" / "other-user" / "library.db")
+        request = BookCreateRequest(client_book_id="same-client-id", title="Per user", format="epub")
+        try:
+            first = first_store.create(request)
+            second = second_store.create(request)
+        finally:
+            first_store.close()
+            second_store.close()
+
+        assert first.id != second.id
+
     def test_create_requires_auth(self, isolated_api):
         resp = isolated_api.client.post("/api/library/books", json={"client_book_id": "x", "title": "X"})
         assert resp.status_code == 401
@@ -282,6 +342,45 @@ class TestUpdateBook:
             headers=isolated_api.headers,
         )
         assert resp.status_code == 404
+
+    def test_update_rejects_deleted_book_without_mutating_tombstone(self, isolated_api):
+        book = _create_book(isolated_api.client, isolated_api.headers, "Book")
+        book_id = book["id"]
+
+        deleted = isolated_api.client.delete(
+            f"/api/library/books/{book_id}",
+            headers=isolated_api.headers,
+        )
+        assert deleted.status_code == 200
+        before_delete_retry = isolated_api.client.get(
+            "/api/library/books",
+            headers=isolated_api.headers,
+        ).json()[0]
+        deleted_again = isolated_api.client.delete(
+            f"/api/library/books/{book_id}",
+            headers=isolated_api.headers,
+        )
+        assert deleted_again.status_code == 200
+        after_delete_retry = isolated_api.client.get(
+            "/api/library/books",
+            headers=isolated_api.headers,
+        ).json()[0]
+        assert after_delete_retry == before_delete_retry
+
+        before = after_delete_retry
+        mutation = isolated_api.client.patch(
+            f"/api/library/books/{book_id}",
+            json={"title": "Changed tombstone"},
+            headers=isolated_api.headers,
+        )
+
+        assert mutation.status_code == 404
+        assert mutation.json()["code"] == "NotFoundError"
+        after = isolated_api.client.get(
+            "/api/library/books",
+            headers=isolated_api.headers,
+        ).json()[0]
+        assert after == before
 
     def test_update_requires_auth(self, isolated_api):
         resp = isolated_api.client.patch("/api/library/books/abc", json={"title": "X"})
@@ -479,6 +578,98 @@ class TestPutPosition:
             headers=isolated_api.headers,
         )
         assert resp.status_code == 404
+
+    def test_put_position_rejects_invalid_timestamp_without_mutating_position(self, isolated_api):
+        book = _create_book(isolated_api.client, isolated_api.headers, "Book")
+        book_id = book["id"]
+        initial = isolated_api.client.put(
+            f"/api/library/books/{book_id}/position",
+            json={
+                "locator": "initial-locator",
+                "progression": 0.25,
+                "updated_at": "2026-06-13T10:00:00Z",
+            },
+            headers=isolated_api.headers,
+        )
+        assert initial.status_code == 200
+        before = isolated_api.client.get(
+            "/api/library/books",
+            headers=isolated_api.headers,
+        ).json()[0]
+
+        invalid = isolated_api.client.put(
+            f"/api/library/books/{book_id}/position",
+            json={
+                "locator": "invalid-locator",
+                "progression": 0.75,
+                "updated_at": "not-an-iso-timestamp",
+            },
+            headers=isolated_api.headers,
+        )
+
+        assert invalid.status_code == 400
+        assert invalid.json() == {
+            "code": "BadRequestError",
+            "detail": "Invalid updated_at timestamp",
+        }
+        after = isolated_api.client.get(
+            "/api/library/books",
+            headers=isolated_api.headers,
+        ).json()[0]
+        assert after == before
+
+    def test_put_position_rejects_deleted_book_without_mutating_tombstone(self, isolated_api):
+        book = _create_book(isolated_api.client, isolated_api.headers, "Book")
+        book_id = book["id"]
+        initial_position = isolated_api.client.put(
+            f"/api/library/books/{book_id}/position",
+            json={
+                "locator": "before-delete",
+                "progression": 0.25,
+                "updated_at": "2026-06-13T10:00:00Z",
+            },
+            headers=isolated_api.headers,
+        )
+        assert initial_position.status_code == 200
+
+        deleted = isolated_api.client.delete(
+            f"/api/library/books/{book_id}",
+            headers=isolated_api.headers,
+        )
+        assert deleted.status_code == 200
+        before_delete_retry = isolated_api.client.get(
+            "/api/library/books",
+            headers=isolated_api.headers,
+        ).json()[0]
+        deleted_again = isolated_api.client.delete(
+            f"/api/library/books/{book_id}",
+            headers=isolated_api.headers,
+        )
+        assert deleted_again.status_code == 200
+        after_delete_retry = isolated_api.client.get(
+            "/api/library/books",
+            headers=isolated_api.headers,
+        ).json()[0]
+        assert after_delete_retry == before_delete_retry
+
+        before = after_delete_retry
+        mutation = isolated_api.client.put(
+            f"/api/library/books/{book_id}/position",
+            json={
+                "locator": "changed-tombstone",
+                "progression": 0.75,
+                "updated_at": "2026-06-13T11:00:00Z",
+            },
+            headers=isolated_api.headers,
+        )
+
+        assert mutation.status_code == 404
+        assert mutation.json()["code"] == "NotFoundError"
+        after = isolated_api.client.get(
+            "/api/library/books",
+            headers=isolated_api.headers,
+        ).json()[0]
+        assert after == before
 
     def test_put_position_requires_auth(self, isolated_api):
         resp = isolated_api.client.put(

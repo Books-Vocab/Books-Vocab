@@ -99,9 +99,20 @@ def perform_reanchor(
         live_main_sha=request.live_main,
         allow_required_failure_recovery=request.allow_required_failure_recovery,
     )
-    git_ops.validate_new_target(
-        request.repo, target=request.target, branch=request.branch
-    )
+    recorded_path = Path(str(preflight.original["path"])).expanduser().resolve()
+    reuse_existing = request.target.exists() or request.target.is_symlink()
+    if reuse_existing:
+        git_ops.validate_authorized_existing_target(
+            request.repo,
+            recorded_path=recorded_path,
+            target=request.target,
+            branch=request.branch,
+            expected_head=request.expected_remote_head,
+        )
+    else:
+        git_ops.validate_new_target(
+            request.repo, target=request.target, branch=request.branch
+        )
     git_ops.verify_remote_cas(
         request.repo,
         branch=request.branch,
@@ -116,7 +127,11 @@ def perform_reanchor(
         live_main=request.live_main,
         declared=preflight.declared,
     )
+    attempt = git_ops.ReanchorAttempt(existing_target=reuse_existing)
     try:
+        rebase_options = (
+            {"reuse_existing": True, "attempt": attempt} if reuse_existing else {}
+        )
         head = git_ops.recreate_and_rebase(
             request.repo,
             target=request.target,
@@ -126,6 +141,7 @@ def perform_reanchor(
             live_main=request.live_main,
             declared=preflight.declared,
             preserve_conflict=request.preserve_conflict,
+            **rebase_options,
         )
         final_lifecycle = lifecycle_proof.verify_reanchor_lifecycle(
             github,
@@ -162,8 +178,18 @@ def perform_reanchor(
                     claim_generation=request.claim_generation,
                 )
             except (OSError, ReanchorRefused, TypeError, ValueError) as register_exc:
-                cleanup = compensation.safe_compensate(
-                    request.repo, target=request.target, branch=request.branch
+                cleanup = (
+                    git_ops.compensate_existing(
+                        request.repo,
+                        target=request.target,
+                        branch=request.branch,
+                        expected_head=request.expected_remote_head,
+                        attempt=attempt,
+                    )
+                    if reuse_existing
+                    else compensation.safe_compensate(
+                        request.repo, target=request.target, branch=request.branch
+                    )
                 )
                 details = dict(
                     register_exc.details
@@ -184,8 +210,18 @@ def perform_reanchor(
                 merge_front_policy=initial_lifecycle.merge_front_policy,
                 git_output=str(exc.details.get("git", "")),
             )
-        cleanup = compensation.safe_compensate(
-            request.repo, target=request.target, branch=request.branch
+        cleanup = (
+            git_ops.compensate_existing(
+                request.repo,
+                target=request.target,
+                branch=request.branch,
+                expected_head=request.expected_remote_head,
+                attempt=attempt,
+            )
+            if reuse_existing
+            else compensation.safe_compensate(
+                request.repo, target=request.target, branch=request.branch
+            )
         )
         details = dict(exc.details) if isinstance(exc, ReanchorRefused) else {}
         details["compensation"] = cleanup

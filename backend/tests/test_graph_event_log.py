@@ -8,7 +8,7 @@ is_synthetic 區分合成過去 / 真實未來。本帳本補上圖譜「怎麼�
 from __future__ import annotations
 
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlmodel import Session
 
@@ -281,6 +281,44 @@ def test_corrupt_snapshot_json_is_skipped_on_read(tmp_path):
     assert latest.snapshot_id == valid_id
     assert latest.links == [{"id": "valid", "from": "a", "to": "b"}]
     assert [snapshot.snapshot_id for snapshot in store.all(notebook_id="default")] == [valid_id]
+
+
+def test_periodic_snapshot_uses_older_valid_snapshot_when_newest_is_corrupt(tmp_path, monkeypatch):
+    """Periodic checkpointing must not use an unreadable snapshot as its watermark."""
+    import kg.graph_event_log as mod
+
+    path = tmp_path / "graph_events.db"
+    events = GraphEventStore(path)
+    snapshots = GraphSnapshotStore(path)
+    event_at = datetime(2026, 2, 1, tzinfo=UTC)
+    monkeypatch.setattr(mod, "_now", lambda: event_at)
+    events.insert_many([_draft("e1")])
+
+    valid_id = snapshots.save(
+        "default",
+        [{"id": "valid"}],
+        is_synthetic=True,
+        taken_at=event_at - timedelta(days=1),
+    )
+    corrupt_id = snapshots.save(
+        "default",
+        [{"id": "corrupt"}],
+        is_synthetic=False,
+        taken_at=event_at + timedelta(days=1),
+    )
+
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "UPDATE graphsnapshot SET links_json=? WHERE snapshot_id=?",
+            ("not-json", corrupt_id),
+        )
+
+    result = snapshots.maybe_save_periodic("default", [{"id": "fresh"}], min_events_since_snapshot=1)
+
+    assert result["saved"] is True
+    assert result["reason"] == "event-threshold"
+    assert result["events_since_snapshot"] == 1
+    assert snapshots.latest("default").snapshot_id != valid_id
 
 
 def test_all_snapshots_breaks_taken_at_ties_by_snapshot_id(tmp_path):
