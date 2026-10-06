@@ -20,6 +20,7 @@ struct PodcastPlayerLoadPlan: Equatable {
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     ) -> PodcastPlayerLoadPlan? {
         let localURL: URL? = {
+            guard !isPreviewPlayback else { return nil }
             guard let path = episode.localAudioPath, fileExists(path) else { return nil }
             return URL(fileURLWithPath: path)
         }()

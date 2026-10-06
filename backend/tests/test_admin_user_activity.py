@@ -373,6 +373,13 @@ def test_user_activity_uses_utc_instants_for_mixed_offset_cutoff_and_order(activ
         run_id="outside-utc",
         when=datetime(2026, 9, 16, 13, 30, tzinfo=timezone(timedelta(hours=2))),
     )
+    # The local spelling is lexically before the cutoff, but -02:00 makes
+    # this a newer UTC instant. The indexed date bound must retain it.
+    _record_translate(
+        "u1",
+        word="newer-utc",
+        when=datetime(2026, 9, 16, 11, 45, tzinfo=timezone(-timedelta(hours=2))),
+    )
     # 12:00Z is exactly on the inclusive boundary, despite its +02:00 spelling.
     _record_translate(
         "u1",
@@ -383,9 +390,12 @@ def test_user_activity_uses_utc_instants_for_mixed_offset_cutoff_and_order(activ
 
     result = activity.get_user_activity("u1", hours=24)
 
-    assert result["counts"] == {"translate": 1, "pipeline": 0, "judge": 1}
-    assert [event["type"] for event in result["events"]] == ["judge", "translate"]
-    assert [event["word"] for event in result["events"] if event["type"] == "translate"] == ["boundary-utc"]
+    assert result["counts"] == {"translate": 2, "pipeline": 0, "judge": 1}
+    assert [event["type"] for event in result["events"]] == ["translate", "judge", "translate"]
+    assert [event["word"] for event in result["events"] if event["type"] == "translate"] == [
+        "newer-utc",
+        "boundary-utc",
+    ]
 
 
 def test_user_activity_cap_keeps_newest_pipeline_ties(activity_env):

@@ -11,7 +11,7 @@ OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
 import worktree_registry as registry
-from worktree_reanchor_core import git_ops, transaction
+from worktree_reanchor_core import git_ops, resume_git_ops, transaction
 from worktree_reanchor_core.errors import ReanchorRefused
 
 LANE = "DIRECT-DELIVERY-REANCHOR-SAME-PATH-RESUME-20260901"
@@ -210,6 +210,101 @@ def test_reanchor_subset_scope_still_rejects_non_declared_operations(
             remote_head=remote_head,
             live_main=live_main,
             declared=declared_scope,
+        )
+
+
+def test_published_resume_accepts_nonempty_declared_scope_subset(
+    tmp_path: Path,
+) -> None:
+    repo, _state_path, target, base, remote_head, _live_main = _subset_scope_fixture(
+        tmp_path
+    )
+    declared = (
+        ("ops/reanchor_change.py", "add"),
+        ("ops/reanchor_test.py", "add"),
+        ("ops/reanchor_unused.py", "modify"),
+    )
+
+    resume_git_ops.ensure_exact_source(
+        repo,
+        branch=BRANCH,
+        base_sha=base,
+        remote_head=remote_head,
+        declared=declared,
+    )
+
+    _git(repo, "worktree", "remove", "--force", str(target))
+    _git(repo, "branch", "-D", BRANCH)
+    resumed_target = tmp_path / "resumed-owner-worktree"
+    attempt = resume_git_ops.ProvisioningAttempt()
+    head = resume_git_ops.provision_exact(
+        repo,
+        target=resumed_target,
+        branch=BRANCH,
+        remote_head=remote_head,
+        base_sha=base,
+        declared=declared,
+        attempt=attempt,
+    )
+
+    assert head == remote_head
+    assert _git(resumed_target, "status", "--porcelain=v1") == ""
+    assert _git(resumed_target, "branch", "--show-current") == BRANCH
+    assert _git(resumed_target, "diff", "--name-status", f"{base}..HEAD") == (
+        "A\tops/reanchor_change.py\nA\tops/reanchor_test.py"
+    )
+
+
+@pytest.mark.parametrize(
+    ("base_kind", "declared"),
+    [
+        pytest.param(
+            "remote-head",
+            (
+                ("ops/reanchor_change.py", "add"),
+                ("ops/reanchor_test.py", "add"),
+                ("ops/reanchor_unused.py", "modify"),
+            ),
+            id="empty-diff",
+        ),
+        pytest.param(
+            "base",
+            (
+                ("ops/reanchor_change.py", "add"),
+                ("ops/reanchor_unused.py", "modify"),
+            ),
+            id="out-of-scope-path",
+        ),
+        pytest.param(
+            "base",
+            (
+                ("ops/reanchor_change.py", "add"),
+                ("ops/reanchor_test.py", "modify"),
+                ("ops/reanchor_unused.py", "modify"),
+            ),
+            id="operation-mismatch",
+        ),
+    ],
+)
+def test_published_resume_scope_validation_fails_closed(
+    tmp_path: Path,
+    base_kind: str,
+    declared: tuple[tuple[str, str], ...],
+) -> None:
+    repo, _state_path, _target, base, remote_head, _live_main = _subset_scope_fixture(
+        tmp_path
+    )
+    source_base = remote_head if base_kind == "remote-head" else base
+
+    with pytest.raises(
+        ReanchorRefused, match="remote PR branch differs from the exact original Scope"
+    ):
+        resume_git_ops.ensure_exact_source(
+            repo,
+            branch=BRANCH,
+            base_sha=source_base,
+            remote_head=remote_head,
+            declared=declared,
         )
 
 

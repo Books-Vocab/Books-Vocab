@@ -17,6 +17,24 @@ struct PodcastPlayerLoadPlanTests {
         #expect(plan.usesLocalAudio)
     }
 
+    @Test func previewPlaybackUsesRemoteAudioInsteadOfCachedFullAudio() throws {
+        let episode = makeEpisode()
+        episode.localAudioPath = "/tmp/local-full-audio.m4a"
+        episode.audioURL = "https://example.com/preview.m4a"
+        episode.previewAvailable = true
+        episode.previewDurationSec = 180
+
+        let plan = try #require(PodcastPlayerLoadPlan.make(
+            episode: episode,
+            isPreviewPlayback: true,
+            fileExists: { $0 == "/tmp/local-full-audio.m4a" }
+        ))
+
+        #expect(plan.audioURL == URL(string: "https://example.com/preview.m4a"))
+        #expect(plan.usesLocalAudio == false)
+        #expect(plan.durationSec == 180)
+    }
+
     @Test func missingLocalAudioFallsBackToRemoteAudio() throws {
         let episode = makeEpisode()
         episode.localAudioPath = "/tmp/missing.m4a"

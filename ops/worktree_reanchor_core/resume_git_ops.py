@@ -29,17 +29,46 @@ def verify_remote_head(repo: Path, *, branch: str, expected_head: str) -> None:
 
 
 def validate_released_assets(
-    repo: Path, *, recorded_path: Path, target: Path, branch: str,
+    repo: Path,
+    *,
+    recorded_path: Path,
+    target: Path,
+    branch: str,
+    expected_head: str | None = None,
+    previous_handback: str | None = None,
 ) -> None:
+    requested_path = target.expanduser().resolve()
+    exact_recorded_path = recorded_path.expanduser().resolve()
+    if (
+        expected_head is not None
+        and requested_path == exact_recorded_path
+        and os.path.lexists(target)
+    ):
+        existing_head = previous_handback or expected_head
+        try:
+            git_ops.validate_authorized_existing_target(
+                repo,
+                recorded_path=recorded_path,
+                target=target,
+                branch=branch,
+                expected_head=existing_head,
+            )
+        except ReanchorRefused as exc:
+            raise ReanchorRefused(
+                f"released published worktree validation failed: {exc.reason}",
+                **exc.details,
+            ) from exc
+        return
+
     git_ops.validate_new_target(repo, target=target, branch=branch)
     ref = f"refs/heads/{branch}"
-    rc, local_refs = git_ops._git(
-        ["for-each-ref", "--format=%(refname)", ref], repo
-    )
+    rc, local_refs = git_ops._git(["for-each-ref", "--format=%(refname)", ref], repo)
     if rc != 0 or local_refs not in {"", ref}:
         raise ReanchorRefused("local branch inventory cannot be proven exact")
     if local_refs == ref:
-        raise ReanchorRefused("local branch already exists; duplicate resume is forbidden")
+        raise ReanchorRefused(
+            "local branch already exists; duplicate resume is forbidden"
+        )
     rows = git_ops._worktree_rows(repo)
     recorded_rows = [
         row
@@ -65,7 +94,11 @@ def validate_released_assets(
 
 
 def ensure_exact_source(
-    repo: Path, *, branch: str, base_sha: str, remote_head: str,
+    repo: Path,
+    *,
+    branch: str,
+    base_sha: str,
+    remote_head: str,
     declared: DeclaredOperations,
 ) -> None:
     verify_remote_head(repo, branch=branch, expected_head=remote_head)
@@ -80,16 +113,78 @@ def ensure_exact_source(
         rc, output = git_ops._git(["cat-file", "-e", f"{sha}^{{commit}}"], repo)
         if rc != 0:
             raise ReanchorRefused(f"{label} commit is unavailable", git=output)
-    if git_ops._git(["merge-base", "--is-ancestor", base_sha, remote_head], repo)[0] != 0:
+    if (
+        git_ops._git(["merge-base", "--is-ancestor", base_sha, remote_head], repo)[0]
+        != 0
+    ):
         raise ReanchorRefused("original base is not an ancestor of remote PR HEAD")
-    if git_ops.scope_operations(repo, start=base_sha, end=remote_head) != declared:
+    observed = git_ops.scope_operations(repo, start=base_sha, end=remote_head)
+    if not observed or not git_ops.scope_operations_are_declared_subset(
+        observed, declared
+    ):
         raise ReanchorRefused("remote PR branch differs from the exact original Scope")
 
 
 def provision_exact(
-    repo: Path, *, target: Path, branch: str, remote_head: str,
-    base_sha: str, declared: DeclaredOperations, attempt: ProvisioningAttempt,
+    repo: Path,
+    *,
+    target: Path,
+    branch: str,
+    remote_head: str,
+    base_sha: str,
+    declared: DeclaredOperations,
+    attempt: ProvisioningAttempt,
+    recorded_path: Path | None = None,
+    previous_handback: str | None = None,
 ) -> str:
+    if target.exists() or target.is_symlink():
+        if recorded_path is None:
+            raise ReanchorRefused(
+                "existing resume target requires the exact recorded owner path"
+            )
+        existing_head = previous_handback or remote_head
+        git_ops.validate_authorized_existing_target(
+            repo,
+            recorded_path=recorded_path,
+            target=target,
+            branch=branch,
+            expected_head=existing_head,
+        )
+        verify_remote_head(repo, branch=branch, expected_head=remote_head)
+        head_rc, head = git_ops._git(["rev-parse", "--verify", "HEAD^{commit}"], target)
+        if head_rc != 0 or head != existing_head:
+            raise ReanchorRefused(
+                "authorized existing worktree HEAD differs from the exact previous hand-back",
+                expected_head=existing_head,
+                observed_head=head,
+            )
+        if existing_head != remote_head:
+            rc, output = git_ops._git(["merge", "--ff-only", remote_head], target)
+            if rc != 0:
+                raise ReanchorRefused(
+                    "published worktree cannot fast-forward to the exact remote HEAD",
+                    expected_head=remote_head,
+                    previous_handback=existing_head,
+                    git=output,
+                )
+            head_rc, head = git_ops._git(
+                ["rev-parse", "--verify", "HEAD^{commit}"], target
+            )
+        if head_rc != 0 or head != remote_head:
+            raise ReanchorRefused(
+                "authorized existing worktree failed exact remote HEAD readback",
+                expected_head=remote_head,
+                observed_head=head,
+            )
+        observed = git_ops.scope_operations(target, start=base_sha, end=head)
+        if not observed or not git_ops.scope_operations_are_declared_subset(
+            observed, declared
+        ):
+            raise ReanchorRefused(
+                "resumed branch differs from the exact original Scope"
+            )
+        return head
+
     rc, output = git_ops._git(
         ["worktree", "add", "--detach", str(target), remote_head], repo
     )
@@ -106,25 +201,39 @@ def provision_exact(
     status_rc, status = git_ops._git(["status", "--porcelain=v1"], target)
     head_rc, head = git_ops._git(["rev-parse", "--verify", "HEAD^{commit}"], target)
     if (
-        branch_rc != 0 or current_branch != branch or status_rc != 0 or status
-        or head_rc != 0 or COMMIT_SHA_RE.fullmatch(head) is None
+        branch_rc != 0
+        or current_branch != branch
+        or status_rc != 0
+        or status
+        or head_rc != 0
+        or COMMIT_SHA_RE.fullmatch(head) is None
         or head != remote_head
     ):
-        raise ReanchorRefused("resumed worktree failed exact branch/clean/HEAD readback")
-    if git_ops.scope_operations(target, start=base_sha, end=head) != declared:
+        raise ReanchorRefused(
+            "resumed worktree failed exact branch/clean/HEAD readback"
+        )
+    observed = git_ops.scope_operations(target, start=base_sha, end=head)
+    if not observed or not git_ops.scope_operations_are_declared_subset(
+        observed, declared
+    ):
         raise ReanchorRefused("resumed branch differs from the exact original Scope")
     return head
 
 
 def compensate(
-    repo: Path, *, target: Path, branch: str, expected_head: str,
+    repo: Path,
+    *,
+    target: Path,
+    branch: str,
+    expected_head: str,
     attempt: ProvisioningAttempt,
 ) -> dict[str, Any]:
     steps: list[dict[str, Any]] = []
     if attempt.target_added:
         rows = git_ops._worktree_rows(repo)
         target_rows = [
-            row for row in rows
+            row
+            for row in rows
             if Path(row.get("worktree", "")).expanduser().resolve() == target
         ]
         target_head = git_ops._git(["rev-parse", "HEAD^{commit}"], target)[1]
@@ -133,7 +242,10 @@ def compensate(
                 ["worktree", "remove", "--force", str(target)], repo
             )
             steps.append({"action": "worktree-remove", "rc": rc, "output": output})
-    if attempt.branch_created and git_ops._local_branch_sha(repo, branch) == expected_head:
+    if (
+        attempt.branch_created
+        and git_ops._local_branch_sha(repo, branch) == expected_head
+    ):
         rc, output = git_ops._git(
             ["update-ref", "-d", f"refs/heads/{branch}", expected_head], repo
         )
@@ -141,9 +253,8 @@ def compensate(
     path_remaining = os.path.lexists(target)
     branch_remaining = git_ops._local_branch_sha(repo, branch) is not None
     return {
-        "complete": not path_remaining and not (
-            attempt.branch_created and branch_remaining
-        ),
+        "complete": not path_remaining
+        and not (attempt.branch_created and branch_remaining),
         "path_remaining": path_remaining,
         "branch_remaining": branch_remaining,
         "steps": steps,

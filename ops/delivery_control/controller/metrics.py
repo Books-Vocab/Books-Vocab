@@ -619,6 +619,8 @@ def _source_problem_scope(problem: InventoryProblem) -> str:
         return "branch"
     if source == "git" and identity_kind == "git_objects":
         return "git_objects"
+    if source == "candidate" and identity_kind == "issue":
+        return "issue"
     return "global"
 
 

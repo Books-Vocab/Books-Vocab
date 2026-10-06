@@ -179,6 +179,13 @@ def _source_problem_action(
             "refresh the exact GitHub inventory; do not publish, discard, or delete "
             "branch assets while PR evidence is incomplete"
         )
+    elif source == "candidate" and problem.identity_kind == "issue":
+        scope = "issue"
+        category = "candidate_source_problem"
+        next_step = (
+            "keep this candidate blocked until its exact Scope collision is resolved; "
+            "do not treat the issue-scoped observation as a global dispatch freeze"
+        )
     elif source == "git":
         scope = "global"
         category = "git_source_problem"
