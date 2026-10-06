@@ -6,6 +6,20 @@ name: ios-quality
 
 on:
   workflow_call:
+    inputs:
+      # Routed by ops/ci_scope_router.sh. Anything other than a validated
+      # `targeted` request (including absent inputs on push/dispatch) runs the
+      # full path; see the `plan` job.
+      ios_mode:
+        description: iOS confidence mode from the scope router (full or targeted)
+        required: false
+        default: full
+        type: string
+      ios_selectors:
+        description: Space-separated Suite/Method selectors, only meaningful when ios_mode is targeted
+        required: false
+        default: ''
+        type: string
   workflow_dispatch:
     inputs:
       runner:
@@ -44,8 +58,50 @@ env:
   IOS_SIMULATOR_NAME: iPhone 17 Pro Max
 
 jobs:
+  # Fail-closed mode resolution. Targeted needs a router-requested mode AND a
+  # selector list that is strictly Suite/Method tokens on a single line; every
+  # other value (missing, malformed, multi-line, empty) resolves to full.
+  plan:
+    name: ios-plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+      selectors: ${{ steps.plan.outputs.selectors }}
+    steps:
+      - name: Resolve iOS confidence mode
+        id: plan
+        env:
+          REQUESTED_MODE: ${{ inputs.ios_mode }}
+          REQUESTED_SELECTORS: ${{ inputs.ios_selectors }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mode=full
+          selectors=''
+          if [[ "$REQUESTED_MODE" == 'targeted' && "$REQUESTED_SELECTORS" != *$'\n'* ]]; then
+            read -r -a items <<<"$REQUESTED_SELECTORS"
+            valid=0
+            if ((${#items[@]} > 0)); then
+              valid=1
+              for item in "${items[@]}"; do
+                [[ "$item" =~ ^[A-Za-z0-9_]+/[A-Za-z0-9_]+$ ]] || valid=0
+              done
+            fi
+            if ((valid == 1)); then
+              mode=targeted
+              selectors="${items[*]}"
+            fi
+          fi
+          printf 'mode=%s\nselectors=%s\n' "$mode" "$selectors" >> "$GITHUB_OUTPUT"
+          echo "ios confidence mode: $mode"
+
   ios-build:
     name: ios-build
+    needs: [plan, ios-targeted]
+    # Full path unless a validated targeted run accepted its own result. A
+    # skipped or failed plan leaves mode empty, which is also full.
+    if: ${{ always() && (needs.plan.outputs.mode != 'targeted' || needs.ios-targeted.outputs.fallback_full == 'true') }}
     # PRs use macos-26. A maintainer may manually benchmark the documented
     # Intel alternative before changing the default; the dispatch choice
     # admits only the two documented GitHub-hosted labels.
@@ -148,6 +204,8 @@ jobs:
 
   ios-tests:
     name: ios-tests (${{ matrix.scope }})
+    needs: [plan, ios-targeted]
+    if: ${{ always() && (needs.plan.outputs.mode != 'targeted' || needs.ios-targeted.outputs.fallback_full == 'true') }}
     runs-on: ${{ github.event.inputs.runner || 'macos-26' }}
     timeout-minutes: 25
     strategy:
@@ -274,5 +332,162 @@ jobs:
             ${{ runner.temp }}/ios-${{ matrix.scope }}.log
             ${{ runner.temp }}/ios-${{ matrix.scope }}-verdict*
             ${{ runner.temp }}/ios-${{ matrix.scope }}-artifacts/**
+          if-no-files-found: warn
+          retention-days: 7
+
+  # Single-UITests-file confidence: run exactly the router-discovered selectors,
+  # no video/visual capture. A zero-test or count-mismatched result is never
+  # reported as success; it hands the PR to the full path above instead.
+  ios-targeted:
+    name: ios-targeted
+    needs: plan
+    if: ${{ needs.plan.outputs.mode == 'targeted' }}
+    runs-on: ${{ github.event.inputs.runner || 'macos-26' }}
+    timeout-minutes: 25
+    outputs:
+      fallback_full: ${{ steps.verdict.outputs.fallback_full }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - name: Select Xcode and verify simulator
+        id: xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          selected=''
+          for candidate in \
+            /Applications/Xcode_26.5.app \
+            /Applications/Xcode_26.4.1.app \
+            /Applications/Xcode_26.4.app \
+            /Applications/Xcode.app; do
+            if [[ -d "$candidate" ]]; then
+              selected="$candidate"
+              break
+            fi
+          done
+          [[ -n "$selected" ]] || { echo 'No supported Xcode installation found' >&2; exit 1; }
+          sudo xcode-select --switch "$selected"
+          printf 'DEVELOPER_DIR=%s/Contents/Developer\n' "$selected" >> "$GITHUB_ENV"
+          xcodebuild -version
+          printf 'cache_key=%s\n' "$(xcodebuild -version | shasum -a 256 | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          xcrun simctl list runtimes
+          xcrun simctl list devices available | grep -F "${IOS_SIMULATOR_NAME} (" >/dev/null
+
+      - name: Restore SwiftPM source cache
+        id: swiftpm-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/kg-ios-swiftpm
+          key: ios-swiftpm-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.xcode.outputs.cache_key }}-${{ hashFiles('ios/BooksAndVocab.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+
+      - name: Prepare SwiftPM cache root
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/kg-ios-swiftpm"
+          printf 'KG_IOS_SWIFTPM_CACHE_DIR=%s/kg-ios-swiftpm\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+
+      - name: Ensure simulator and export UDID
+        shell: bash
+        run: |
+          set -euo pipefail
+          simulator_json="$(./ops/ios_ops.sh simulator ensure-booted \
+            --device "$IOS_SIMULATOR_NAME" --json)"
+          simulator_udid="$(jq -er '.device.udid // empty' <<<"$simulator_json")"
+          printf 'IOS_SIMULATOR_UDID=%s\n' "$simulator_udid" >> "$GITHUB_ENV"
+          printf 'Using simulator UDID: %s\n' "$simulator_udid"
+
+      - name: Validate UI World
+        run: uv run --no-project --python 3.13 python ops/ui_world_manifest.py validate ops/fixtures/ui_worlds/marketing_demo.json
+
+      - name: Run targeted UI selectors
+        id: run
+        # The verdict step below owns pass/fail/fallback; a red run here must
+        # not hide a zero-executed result behind an early job failure.
+        continue-on-error: true
+        env:
+          CI: '1'
+          KG_IOS_BUILD_LOCK_TIMEOUT: '1800'
+          KG_IOS_TEST_MAX_EXECUTION_TIME_ALLOWANCE: '420'
+          KG_IOS_VISUAL_CAPTURE: '0'
+          KG_IOS_VERDICT_FILE: ${{ runner.temp }}/ios-targeted-verdict
+          IOS_TARGETED_SELECTORS: ${{ needs.plan.outputs.selectors }}
+        shell: bash
+        run: |
+          set -o pipefail
+          read -r -a selectors <<<"$IOS_TARGETED_SELECTORS"
+          ((${#selectors[@]} > 0)) || { echo 'no targeted selectors' >&2; exit 1; }
+          ./ops/ios_ops.sh test \
+            --ui \
+            --dataset marketing_demo \
+            --device "$IOS_SIMULATOR_UDID" \
+            --json \
+            "${selectors[@]}" \
+            2>&1 | tee "$RUNNER_TEMP/ios-targeted.log"
+
+      - name: Verify executed count or fall back to full
+        id: verdict
+        if: ${{ always() }}
+        env:
+          RUN_OUTCOME: ${{ steps.run.outcome }}
+          VERDICT_JSON: ${{ runner.temp }}/ios-targeted-verdict.json
+          IOS_TARGETED_SELECTORS: ${{ needs.plan.outputs.selectors }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          read -r -a selectors <<<"$IOS_TARGETED_SELECTORS"
+          expected="${#selectors[@]}"
+          reason=''
+          executed=''
+          if [[ -s "$VERDICT_JSON" ]]; then
+            reason="$(jq -r '.reason // empty' "$VERDICT_JSON")"
+            executed="$(jq -r '.executed // empty' "$VERDICT_JSON")"
+          fi
+          if [[ "$RUN_OUTCOME" == 'success' && "$executed" =~ ^[0-9]+$ ]] && ((executed == expected)); then
+            echo "targeted run executed $executed/$expected selectors"
+            exit 0
+          fi
+          # Success without the expected count, or the harness's own zero-test
+          # guard, means the targeted evidence is not trustworthy: run full.
+          if [[ "$RUN_OUTCOME" == 'success' || "$reason" == 'false-green-0-executed' ]]; then
+            echo "::warning::targeted run is not trustworthy (outcome=$RUN_OUTCOME executed='${executed}' expected=$expected reason='${reason}'); falling back to the full iOS path"
+            printf 'fallback_full=true\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "targeted run failed (outcome=$RUN_OUTCOME reason='${reason}')" >&2
+          exit 1
+
+      - name: Collect test evidence on failure
+        if: ${{ always() }}
+        env:
+          VERDICT_JSON: ${{ runner.temp }}/ios-targeted-verdict.json
+          ARTIFACT_DIR: ${{ runner.temp }}/ios-targeted-artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          if [[ -s "$VERDICT_JSON" ]]; then
+            jq -r '.artifacts | [.log, .xcresult] | .[] | select(type == "string" and length > 0)' "$VERDICT_JSON" \
+              | while IFS= read -r source; do
+                  [[ -e "$source" ]] || continue
+                  cp -R "$source" "$ARTIFACT_DIR/$(basename "$source")"
+                done
+          fi
+
+      - name: Upload test evidence
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ios-targeted-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ios-targeted.log
+            ${{ runner.temp }}/ios-targeted-verdict*
+            ${{ runner.temp }}/ios-targeted-artifacts/**
           if-no-files-found: warn
           retention-days: 7

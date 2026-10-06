@@ -341,6 +341,125 @@ for ios_dependency in \
     || fail "iOS push trigger omits dependency: $ios_dependency"
 done
 
+# --- iOS selector-aware routing (Issue #1051) --------------------------------
+# The router decides; ios-quality re-validates and owns the full fallback. These
+# checks pin both the wiring and the executable shell of the two decision steps.
+grep -Fq 'ios_mode: ${{ steps.plan.outputs.ios_mode }}' "$PR_GATE" \
+  || fail "pr-gate changed-paths does not export the router ios_mode"
+grep -Fq 'ios_selectors: ${{ steps.plan.outputs.ios_selectors }}' "$PR_GATE" \
+  || fail "pr-gate changed-paths does not export the router ios_selectors"
+grep -Fq 'ios_mode: ${{ needs.changed-paths.outputs.ios_mode }}' "$PR_GATE" \
+  || fail "pr-gate does not forward ios_mode to ios-quality"
+grep -Fq 'ios_selectors: ${{ needs.changed-paths.outputs.ios_selectors }}' "$PR_GATE" \
+  || fail "pr-gate does not forward ios_selectors to ios-quality"
+
+ruby -e 'require "yaml"; y = YAML.load_file(ARGV[0]); i = y[true]["workflow_call"]["inputs"]
+  exit 1 unless i["ios_mode"]["default"] == "full" && i["ios_selectors"]["default"] == "" &&
+    i["ios_mode"]["type"] == "string" && i["ios_selectors"]["type"] == "string" &&
+    i["ios_mode"]["required"] == false && i["ios_selectors"]["required"] == false' "$IOS" \
+  || fail "ios-quality workflow_call inputs are not optional string inputs defaulting to full"
+grep -q '^  plan:' "$IOS" || fail "ios-quality has no fail-closed plan job"
+grep -q '^  ios-targeted:' "$IOS" || fail "ios-quality has no targeted job"
+# Full path is the default: both full jobs run unless a validated targeted run
+# accepted its own result, and a failed/skipped plan still means full.
+full_gate="if: \${{ always() && (needs.plan.outputs.mode != 'targeted' || needs.ios-targeted.outputs.fallback_full == 'true') }}"
+[[ "$(grep -cF "$full_gate" "$IOS")" == 2 ]] \
+  || fail "ios-build and ios-tests are not both gated as full-unless-targeted-accepted"
+grep -Fq "if: \${{ needs.plan.outputs.mode == 'targeted' }}" "$IOS" \
+  || fail "targeted job is not gated on a validated targeted plan"
+grep -Fq "matrix.scope" "$IOS" && grep -Fq -- '- scope: unit' "$IOS" && grep -Fq -- '- scope: ui-smoke' "$IOS" \
+  || fail "full iOS matrix (unit, ui-smoke) was altered"
+# Targeted invocation: exactly the planned selectors, no video/visual capture.
+grep -Fq "KG_IOS_VISUAL_CAPTURE: '0'" "$IOS" \
+  || fail "targeted iOS run does not pin KG_IOS_VISUAL_CAPTURE=0"
+if grep -Eq -- '--visual|--visual-capture|KG_IOS_VISUAL_CAPTURE: .1|KG_IOS_VISUAL_ROOT|--video' "$IOS"; then
+  fail "iOS workflow enables visual capture or video"
+fi
+grep -Fq '"${selectors[@]}"' "$IOS" \
+  || fail "targeted iOS run does not pass exactly the planned selectors"
+if awk '/^  ios-targeted:/{on=1} on' "$IOS" | grep -Eq -- '--file|--grep|-g '; then
+  fail "targeted iOS run widens selection beyond the planned selectors"
+fi
+grep -Fq 'IOS_TARGETED_SELECTORS: ${{ needs.plan.outputs.selectors }}' "$IOS" \
+  || fail "targeted job selectors do not come from the validated plan output"
+grep -Fq 'false-green-0-executed' "$IOS" \
+  || fail "targeted job does not wire the zero-executed guard to the full fallback"
+grep -Fq 'fallback_full: ${{ steps.verdict.outputs.fallback_full }}' "$IOS" \
+  || fail "targeted job does not export the full-fallback signal"
+
+extract_step_run() {
+  ruby -e 'require "yaml"; y = YAML.load_file(ARGV[0])
+    step = y["jobs"][ARGV[1]]["steps"].find { |s| s["id"] == ARGV[2] }
+    abort "missing step" unless step
+    puts step["run"]' "$IOS" "$1" "$2"
+}
+
+wf_tmp="$(mktemp -d)"
+trap 'rm -rf "$wf_tmp"' EXIT
+extract_step_run plan plan > "$wf_tmp/plan.sh"
+extract_step_run ios-targeted verdict > "$wf_tmp/verdict.sh"
+
+# plan: only a strictly valid single-line Suite/Method list stays targeted.
+plan_mode() {
+  local out="$wf_tmp/plan.out"
+  : > "$out"
+  REQUESTED_MODE="$1" REQUESTED_SELECTORS="$2" GITHUB_OUTPUT="$out" bash "$wf_tmp/plan.sh" >/dev/null 2>&1 || { echo ERROR; return; }
+  grep '^mode=' "$out" | head -1 | cut -d= -f2-
+}
+expect_plan() {
+  local label="$1" mode="$2" selectors="$3" expected="$4" actual
+  actual="$(plan_mode "$mode" "$selectors")"
+  [[ "$actual" == "$expected" ]] || fail "ios plan: $label expected $expected, got $actual"
+}
+expect_plan 'valid single selector' targeted 'OverviewFlowUITests/testA' targeted
+expect_plan 'valid multiple selectors' targeted 'OverviewFlowUITests/testA OverviewFlowUITests/testB' targeted
+expect_plan 'missing mode' '' 'OverviewFlowUITests/testA' full
+expect_plan 'explicit full' full 'OverviewFlowUITests/testA' full
+expect_plan 'case-variant mode' TARGETED 'OverviewFlowUITests/testA' full
+expect_plan 'unknown mode' narrow 'OverviewFlowUITests/testA' full
+expect_plan 'targeted without selectors' targeted '' full
+expect_plan 'whitespace-only selectors' targeted '   ' full
+expect_plan 'suite-only selector' targeted 'OverviewFlowUITests' full
+expect_plan 'target-qualified selector' targeted 'BooksAndVocabUITests/OverviewFlowUITests/testA' full
+expect_plan 'valid plus invalid selector' targeted 'OverviewFlowUITests/testA bad' full
+expect_plan 'shell metacharacters' targeted 'OverviewFlowUITests/test;rm' full
+expect_plan 'command substitution' targeted '$(id)/testA' full
+expect_plan 'newline output injection' targeted $'OverviewFlowUITests/testA\nmode=targeted' full
+
+# verdict: success needs the exact executed count; zero-test guard and count
+# mismatch fall back to full; genuine red stays red.
+run_verdict() {
+  local outcome="$1" verdict="$2" out="$wf_tmp/verdict.out" json="$wf_tmp/verdict.json" rc=0
+  : > "$out"
+  rm -f "$json"
+  [[ "$verdict" == '-' ]] || printf '%s\n' "$verdict" > "$json"
+  RUN_OUTCOME="$outcome" VERDICT_JSON="$json" IOS_TARGETED_SELECTORS='OverviewFlowUITests/testA OverviewFlowUITests/testB' \
+    GITHUB_OUTPUT="$out" bash "$wf_tmp/verdict.sh" >/dev/null 2>&1 || rc=$?
+  if grep -qx 'fallback_full=true' "$out"; then
+    echo "fallback rc=$rc"
+  else
+    echo "plain rc=$rc"
+  fi
+}
+expect_verdict() {
+  local label="$1" outcome="$2" verdict="$3" expected="$4" actual
+  actual="$(run_verdict "$outcome" "$verdict")"
+  [[ "$actual" == "$expected" ]] || fail "ios verdict: $label expected '$expected', got '$actual'"
+}
+expect_verdict 'exact executed count passes' success '{"result":"ok","executed":"2"}' 'plain rc=0'
+expect_verdict 'executed below selector count falls back' success '{"result":"ok","executed":"1"}' 'fallback rc=0'
+expect_verdict 'executed above selector count falls back' success '{"result":"ok","executed":"3"}' 'fallback rc=0'
+expect_verdict 'zero executed falls back' success '{"result":"ok","executed":"0"}' 'fallback rc=0'
+expect_verdict 'missing executed falls back' success '{"result":"ok","executed":null}' 'fallback rc=0'
+expect_verdict 'non-numeric executed falls back' success '{"result":"ok","executed":"two"}' 'fallback rc=0'
+expect_verdict 'success without a verdict file falls back' success - 'fallback rc=0'
+expect_verdict 'harness zero-test guard falls back' failure '{"result":"fail","reason":"false-green-0-executed","executed":"0"}' 'fallback rc=0'
+expect_verdict 'genuine test failure stays red' failure '{"result":"fail","reason":"tests-failed","executed":"2"}' 'plain rc=1'
+expect_verdict 'build failure stays red' failure '{"result":"fail","reason":"build-failed","executed":null}' 'plain rc=1'
+expect_verdict 'failure without a verdict stays red' failure - 'plain rc=1'
+expect_verdict 'cancelled run stays red' cancelled - 'plain rc=1'
+
+
 OPS=".github/workflows/ops-suite.yml"
 grep -q 'fromJSON' "$OPS" || fail "ops-suite does not derive its matrix from the classified group list"
 grep -q 'matrix.shard' "$OPS" || fail "ops-suite has no parallel shard matrix"

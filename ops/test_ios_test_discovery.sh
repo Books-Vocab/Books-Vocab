@@ -674,6 +674,63 @@ else
   ok "UIreview 只由 write_json_verdict 以 final result 建立"
 fi
 
+# ── 23. selector-list contract used by ops/ci_scope_router.sh admission ─────
+# The router admits targeted iOS CI only from this exact output shape. If the
+# list format drifts, router admission must fail closed instead of mis-parsing.
+section "ios_test.sh --ui --list --file selector contract (CI admission)"
+ADMIT_FILE="ios/BooksAndVocabUITests/OverviewFlowUITests.swift"
+if [[ -f "$WORKSPACE/$ADMIT_FILE" ]]; then
+  ADMIT_OUT="$(cd "$WORKSPACE" && "$IOS_TEST" --ui --list --file "$ADMIT_FILE" 2>/dev/null)" && ADMIT_RC=0 || ADMIT_RC=$?
+  [[ "$ADMIT_RC" -eq 0 ]] \
+    && ok "--ui --list --file 對含測試的 UITests 檔 exit 0" \
+    || fail_t "--ui --list --file exit $ADMIT_RC（應 0）"
+
+  ADMIT_SEL="$(grep -c '^-only-testing:' <<<"$ADMIT_OUT" || true)"
+  ADMIT_BAD="$(grep -vcE '^-only-testing:BooksAndVocabUITests/[A-Za-z0-9_]+/[A-Za-z0-9_]+$|^\[ios_test\] matched [0-9]+ tests? in file ' <<<"$ADMIT_OUT" || true)"
+  [[ "$ADMIT_SEL" -ge 1 ]] \
+    && ok "輸出至少一個 selector（$ADMIT_SEL）" \
+    || fail_t "輸出沒有任何 -only-testing selector: $ADMIT_OUT"
+  [[ "$ADMIT_BAD" -eq 0 ]] \
+    && ok "每個 selector 都是 Target/Suite/Method，無 suite-only／雜訊行" \
+    || fail_t "輸出含非 Target/Suite/Method 行（admission 必須退回 full）: $ADMIT_OUT"
+  ADMIT_HDR="$(sed -nE 's/^\[ios_test\] matched ([0-9]+) tests? in file .*/\1/p' <<<"$ADMIT_OUT")"
+  [[ -z "$ADMIT_HDR" || "$ADMIT_HDR" -eq "$ADMIT_SEL" ]] \
+    && ok "matched N 標頭與 selector 行數一致" \
+    || fail_t "matched 標頭 $ADMIT_HDR 與 selector 行數 $ADMIT_SEL 不一致"
+
+  # Positional Suite/Method (what ios-quality passes) resolves to the very same
+  # fully qualified selector, so the workflow runs what the router discovered.
+  ADMIT_FIRST="$(grep -m1 '^-only-testing:' <<<"$ADMIT_OUT")"
+  ADMIT_SUITE_METHOD="${ADMIT_FIRST#-only-testing:BooksAndVocabUITests/}"
+  ADMIT_POS="$(cd "$WORKSPACE" && "$IOS_TEST" --ui --list "$ADMIT_SUITE_METHOD" 2>/dev/null)" || ADMIT_POS=""
+  [[ "$ADMIT_POS" == "$ADMIT_FIRST" ]] \
+    && ok "positional Suite/Method 解析為相同的 Target/Suite/Method selector" \
+    || fail_t "positional $ADMIT_SUITE_METHOD → '$ADMIT_POS'（預期 '$ADMIT_FIRST'）"
+
+  # End to end with the real discovery command (no stub): targeted.
+  ADMIT_ROUTE="$(printf '%s\n' "$ADMIT_FILE" | "$WORKSPACE/ops/ci_scope_router.sh" --paths-stdin --format json)" || ADMIT_ROUTE=""
+  [[ "$(jq -r '.ios_mode' <<<"$ADMIT_ROUTE" 2>/dev/null)" == targeted \
+    && "$(jq -r '.ios_selectors | split(" ") | length' <<<"$ADMIT_ROUTE" 2>/dev/null)" -eq "$ADMIT_SEL" ]] \
+    && ok "router 以真實 discovery 對單檔 UITests 選 targeted 且 selector 數相符" \
+    || fail_t "router 真實 discovery 結果不符: $ADMIT_ROUTE"
+else
+  fail_t "$ADMIT_FILE 不存在，無法鎖定 admission selector 契約"
+fi
+
+# A file with no tests, a missing file and a helper file must never yield
+# selectors: zero output + non-zero exit is what lets the router fall back.
+for ADMIT_NEG in \
+  "ios/BooksAndVocabUITests/UITestLaunchSupport.swift" \
+  "ios/BooksAndVocabUITests/Helpers/UITestDiagnostics.swift" \
+  "ios/BooksAndVocabUITests/NoSuchFileUITests.swift"; do
+  ADMIT_NEG_OUT="$(cd "$WORKSPACE" && "$IOS_TEST" --ui --list --file "$ADMIT_NEG" 2>/dev/null)" && ADMIT_NEG_RC=0 || ADMIT_NEG_RC=$?
+  if [[ "$ADMIT_NEG_RC" -ne 0 ]] && ! grep -q '^-only-testing:' <<<"$ADMIT_NEG_OUT"; then
+    ok "無測試／缺檔 $ADMIT_NEG：exit $ADMIT_NEG_RC 且無 selector"
+  else
+    fail_t "$ADMIT_NEG 應非零退出且無 selector（rc=$ADMIT_NEG_RC out=$ADMIT_NEG_OUT）"
+  fi
+done
+
 # ── result ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"
