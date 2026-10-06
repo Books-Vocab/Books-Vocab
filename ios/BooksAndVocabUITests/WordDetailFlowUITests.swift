@@ -102,6 +102,25 @@ final class WordDetailFlowUITests: UITestCase {
         captureStep("word-detail-hierarchy", app: app)
     }
 
+    func testWordDetailRefreshKeyTracksSyncedContentWithoutChangingGraphLinks() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("BooksAndVocab/Views/Vocabulary/Scenes/WordDetailSheet.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(
+            source.contains("entry.id") && source.contains("entry.graphLinksJSON.hashValue"),
+            "Word Detail refresh identity must continue to include entry identity and graph links"
+        )
+        XCTAssertTrue(
+            source.contains("entry.translation.hashValue")
+                && source.contains("entry.explanation?.hashValue")
+                && source.contains("entry.reviewExamples.hashValue"),
+            "Word Detail refresh identity must track content installed by background sync"
+        )
+    }
+
     @MainActor
     func testWordDetailEditRefreshesPresentationAndKeepsPendingStateIndicator() throws {
         let app = launchIsolatedApp(fixtures: [.vocabulary("wordDetail")])
