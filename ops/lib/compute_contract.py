@@ -273,6 +273,13 @@ def validate_profile(
         _fail("invalid-field", "remote_eligible")
     if profile["remote_eligible"] and profile["resource_class"] != "compute-remote":
         _fail("remote-ineligible", name)
+    if profile["remote_eligible"] and not required_capabilities <= runner_capabilities:
+        # The remote sandbox has no network and no bootstrap, so the pinned runner
+        # image must already provide everything the profile needs.
+        _fail(
+            "remote-capability",
+            f"{name}:{','.join(sorted(required_capabilities - runner_capabilities))}",
+        )
     if profile.get("git_metadata_required") is not False:
         _fail("git-metadata", name)
     effects = profile.get("side_effects")
