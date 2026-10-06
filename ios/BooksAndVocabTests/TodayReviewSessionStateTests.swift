@@ -1,4 +1,6 @@
+import Foundation
 import Testing
+import SwiftData
 @testable import BooksAndVocab
 
 struct TodayReviewSessionStateTests {
@@ -77,6 +79,66 @@ struct TodayReviewSessionStateTests {
         #expect(state.currentIndex == 1)
         #expect(Set(state.queue[1...]) == Set(["beta", "gamma", "delta"]))
         #expect(state.revealStage == .front)
+    }
+
+    @Test @MainActor func submittedAnswersStayBoundToCardIdentityAfterShuffle() throws {
+        let userID = "today-review-shuffle-score-test"
+        TodayReviewSessionSnapshotStore.clear(for: nil)
+        ReviewSessionStore.clear(userID: userID)
+        defer {
+            TodayReviewSessionSnapshotStore.clear(for: userID)
+            ReviewSessionStore.clear(userID: userID)
+        }
+
+        let container = try ModelContainer(
+            for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let context = ModelContext(container)
+        let alpha = VocabularyEntry(
+            word: "alpha", translation: "A", context: "Alpha context", bookTitle: "Sample"
+        )
+        let beta = VocabularyEntry(
+            word: "beta", translation: "B", context: "Beta context", bookTitle: "Sample"
+        )
+        let gamma = VocabularyEntry(
+            word: "gamma", translation: "C", context: "Gamma context", bookTitle: "Sample"
+        )
+        for entry in [alpha, beta, gamma] {
+            entry.markSynced()
+            context.insert(entry)
+        }
+        #expect(context.safeSave())
+
+        let state = TodayReviewState(
+            entries: [alpha, beta, gamma],
+            allEntries: [alpha, beta, gamma],
+            currentUserID: userID
+        )
+        #expect(state.queue.map(\.id) == [alpha.id, beta.id, gamma.id])
+
+        state.submit(.remembered, container: container, reviewSettings: .default)
+        state.submit(.forgot, container: container, reviewSettings: .default)
+        state.goPrevious()
+        #expect(state.currentEntry === beta)
+
+        var rng = FixedIndexRNG(indices: [UInt64.max])
+        state.shuffleQueue(using: &rng)
+
+        #expect(state.currentEntry === gamma)
+        state.submit(.remembered, container: container, reviewSettings: .default)
+
+        #expect(state.rememberedCount == 2)
+        #expect(state.forgotCount == 1)
+        #expect(state.submittedAnswers.count == 3)
+
+        var answersByCardID: [UUID: TodayReviewState.SubmittedAnswer] = [:]
+        for (index, answer) in state.submittedAnswers where index < state.queue.count {
+            answersByCardID[state.queue[index].id] = answer
+        }
+        #expect(answersByCardID[alpha.id]?.feedback == .remembered)
+        #expect(answersByCardID[beta.id]?.feedback == .forgot)
+        #expect(answersByCardID[gamma.id]?.feedback == .remembered)
     }
 }
 

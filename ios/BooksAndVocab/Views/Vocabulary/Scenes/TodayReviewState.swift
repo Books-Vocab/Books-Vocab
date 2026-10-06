@@ -27,10 +27,22 @@ final class TodayReviewState {
     // MARK: - Delegated concerns
 
     let scoring = ReviewScoringState()
+    /// Integer keys remain for snapshot compatibility, but their meaning is
+    /// stable card identity rather than the card's mutable queue position.
+    private var scoringIndexByEntryID: [UUID: Int] = [:]
 
     // MARK: - Scoring (forwarded projections — keep external API stable)
 
-    var submittedAnswers: [Int: SubmittedAnswer] { scoring.submittedAnswers }
+    /// Project identity-bound answers back to the current queue indices for
+    /// snapshot and persistence consumers.
+    var submittedAnswers: [Int: SubmittedAnswer] {
+        queue.enumerated().reduce(into: [Int: SubmittedAnswer]()) { answers, item in
+            let (index, entry) = item
+            guard let scoringIndex = scoringIndexByEntryID[entry.id],
+                  let answer = scoring.submittedAnswers[scoringIndex] else { return }
+            answers[index] = answer
+        }
+    }
     var rememberedFeedbackTrigger: Int { scoring.rememberedFeedbackTrigger }
     var forgotFeedbackTrigger: Int { scoring.forgotFeedbackTrigger }
     var forgotCount: Int { scoring.forgotCount }
@@ -80,6 +92,9 @@ final class TodayReviewState {
             // since the shuffle was saved; new cards are appended and missing cards filtered.
             allowPartialQueue: true
         ) ?? reviewEntries
+        scoringIndexByEntryID = Dictionary(
+            uniqueKeysWithValues: ordered.enumerated().map { ($1.id, $0) }
+        )
         let _msLoad = PerfChannel.ms(since: _tLoad)
         let _tRestore = DispatchTime.now()
         let restored = ReviewSessionPersistence.restoreSnapshotIfPossible(
@@ -107,7 +122,11 @@ final class TodayReviewState {
                 currentUserID: currentUserID
             )
             scoring.restore(
-                submittedAnswers: restored.submittedAnswers,
+                submittedAnswers: Self.rekeyAnswers(
+                    restored.submittedAnswers,
+                    queue: restored.queue,
+                    scoringIndexByEntryID: scoringIndexByEntryID
+                ),
                 rememberedCount: restored.rememberedCount,
                 forgotCount: restored.forgotCount
             )
@@ -274,9 +293,14 @@ final class TodayReviewState {
     }
 
     func shuffleQueue() {
+        var rng = SystemRandomNumberGenerator()
+        shuffleQueue(using: &rng)
+    }
+
+    func shuffleQueue<RNG: RandomNumberGenerator>(using rng: inout RNG) {
         guard session.canShuffle else { return }
         withAnimation(AppMotion.reviewNavigationSpring) {
-            _ = session.shuffleRemaining()
+            _ = session.shuffleRemaining(using: &rng)
         }
         syncCurrentEntryDerivedState()
         syncQueueMetadata()
@@ -454,14 +478,15 @@ final class TodayReviewState {
         container: ModelContainer,
         reviewSettings: ReviewSettings
     ) {
-        guard currentEntry != nil else { return }
-        if scoring.hasAnswer(at: currentIndex) {
+        guard let entry = currentEntry,
+              let scoringIndex = scoringIndexByEntryID[entry.id] else { return }
+        if scoring.hasAnswer(at: scoringIndex) {
             advancePastAlreadyScoredCard()
             return
         }
 
         PerfLog.review.mark("submit.enter", "idx=\(currentIndex) fb=\(feedback == .remembered ? "R" : "F")")
-        scoring.record(feedback, at: currentIndex)
+        scoring.record(feedback, at: scoringIndex)
 
         AppAnalytics.track(.reviewCardSubmitted(
             feedback: feedback == .remembered ? "remembered" : "forgot",
@@ -500,15 +525,22 @@ final class TodayReviewState {
         onFinalize: @escaping @MainActor () -> Void = {},
         onFailure: (@MainActor @Sendable () -> Void)? = nil
     ) {
+        let queuedEntryIDs = queue.map(\.id)
         persistence.flushPendingAnswers(
-            submittedAnswers: scoring.submittedAnswers,
+            submittedAnswers: submittedAnswers,
             container: container,
             notebookSettingsSnapshot: notebookSettingsSnapshot,
             onFinalize: onFinalize,
             onFailure: onFailure,
             onFlushed: { [weak self] indices in
                 if let self {
-                    for i in indices { self.scoring.markFlushed(at: i) }
+                    for index in indices {
+                        guard index < queuedEntryIDs.count,
+                              let scoringIndex = self.scoringIndexByEntryID[queuedEntryIDs[index]] else {
+                            continue
+                        }
+                        self.scoring.markFlushed(at: scoringIndex)
+                    }
                 }
             }
         )
@@ -602,7 +634,7 @@ final class TodayReviewState {
             sessionStartTime: sessionStartTime,
             currentIndex: currentIndex,
             queueCount: queue.count,
-            submittedAnswers: scoring.submittedAnswers
+            submittedAnswers: submittedAnswers
         )
     }
 
@@ -648,5 +680,18 @@ final class TodayReviewState {
 
     private func syncCurrentEntryDerivedState() {
         collocationState.sync(from: currentEntry)
+    }
+
+    private static func rekeyAnswers(
+        _ answers: [Int: SubmittedAnswer],
+        queue: [VocabularyEntry],
+        scoringIndexByEntryID: [UUID: Int]
+    ) -> [Int: SubmittedAnswer] {
+        answers.reduce(into: [Int: SubmittedAnswer]()) { rekeyed, item in
+            let (queueIndex, answer) = item
+            guard queueIndex < queue.count,
+                  let scoringIndex = scoringIndexByEntryID[queue[queueIndex].id] else { return }
+            rekeyed[scoringIndex] = answer
+        }
     }
 }
