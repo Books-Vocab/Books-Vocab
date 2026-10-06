@@ -113,6 +113,7 @@ struct WelcomeView: View {
             Button("試用".localized, action: onTryDemo)
                 .font(AppFonts.caption(weight: .semibold))
                 .foregroundStyle(appTheme.palette.accent)
+                .accessibilityIdentifier("welcome.tryDemoButton")
                 .accessibilityAddTraits(.isButton)
         }
         .foregroundStyle(appTheme.palette.secondaryText)
@@ -126,7 +127,7 @@ struct WelcomeView: View {
             AppRoundedRect(roundness: AppRoundness.control)
                 .stroke(appTheme.palette.accent.opacity(AppBannerMetrics.borderOpacity), lineWidth: AppMetrics.dividerStandard)
         )
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 
     private var stepIndicator: some View {
