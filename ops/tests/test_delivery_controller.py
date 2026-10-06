@@ -9,6 +9,7 @@ import pytest
 
 # The test imports the in-repository package after extending sys.path so it can
 # run from the repository's ops test harness.
+# ruff: noqa: E402
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
@@ -605,6 +606,26 @@ def test_pipeline_metrics_exposes_branch_scoped_source_residue() -> None:
     assert measured.actionable_source_problems == 1
     assert measured.actionable_global_source_problems == 0
     assert measured.pipeline_ready is False
+
+
+def test_pipeline_metrics_keeps_candidate_collision_lane_scoped() -> None:
+    measured = measure_pipeline(
+        DeliveryInventory(
+            lanes=(),
+            source_problems=(
+                InventoryProblem(
+                    "candidate",
+                    "Issue#1939",
+                    "candidate Scope overlaps live delivery evidence",
+                    identity_kind="issue",
+                ),
+            ),
+        )
+    )
+
+    assert measured.source_problem_scope_counts == (("issue", 1),)
+    assert measured.actionable_source_problems == 1
+    assert measured.actionable_global_source_problems == 0
 
 
 def test_pipeline_metrics_direct_construction_keeps_legacy_optional_baselines() -> None:
