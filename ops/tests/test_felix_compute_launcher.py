@@ -282,13 +282,16 @@ def _no_leaks(rig, *outputs):
 # -------------------------------------------------------- registry / profile
 
 
-def test_shipped_registry_has_closed_source_identity_profile_without_pinned_key():
+def test_shipped_registry_has_closed_source_identity_profile_and_a_valid_pinned_key():
     registry = load_profile_registry(REGISTRY)
     profile = registry["profiles"][PROFILE]
     assert profile["remote_eligible"] is False
     assert profile["parameters"] == {}
     assert profile["sandbox_policy"] == "repo-readonly"
-    assert "felix_receipt_public_key" not in registry
+    # The Felix-held receipt key is pinned through git review: standard base64
+    # of exactly one raw 32-byte Ed25519 public key.
+    pinned = registry["felix_receipt_public_key"]
+    assert len(base64.b64decode(pinned, validate=True)) == 32
     assert resolve_profile(PROFILE, {}, registry_path=REGISTRY)["argv"][0] == "python"
     with pytest.raises(ContractError, match="extra-parameter"):
         resolve_profile(PROFILE, {"x": "y"}, registry_path=REGISTRY)
@@ -694,6 +697,8 @@ def _selftest_env(rig, monkeypatch, *, role="oscar", node="oscar-test", pinned=T
         registry["felix_receipt_public_key"] = base64.b64encode(
             rig.signer.public_bytes()
         ).decode()
+    else:
+        registry.pop("felix_receipt_public_key", None)
     path = rig.repo / "ops" / "compute_profiles.yml"
     path.write_text(json.dumps(registry))
     _git(rig.repo, "add", ".")

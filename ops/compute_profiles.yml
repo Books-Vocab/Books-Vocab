@@ -1,6 +1,7 @@
 {
   "schema": "kg.compute_profiles.v1",
   "version": 1,
+  "felix_receipt_public_key": "jWn3+ZKSjpss6pdQzJPiKoBss5JEkFa9qQJbnsGygYE=",
   "runner_image_provenance": {
     "source": "ghcr.io/astral-sh/uv:python3.13-bookworm@sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a",
     "digest": "sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a",
