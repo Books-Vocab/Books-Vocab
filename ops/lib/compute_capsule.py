@@ -14,7 +14,9 @@ class CapsuleError(ValueError):
 
 
 def _git(repo: Path, *args: str) -> str:
-    result = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, check=False, text=True)
+    result = subprocess.run(
+        ["git", "-C", str(repo), *args], capture_output=True, check=False, text=True
+    )
     if result.returncode:
         raise CapsuleError(f"git: {result.stderr.strip() or 'command failed'}")
     return result.stdout
@@ -31,15 +33,48 @@ def _digest(files: list[tuple[str, bytes]]) -> str:
     return digest.hexdigest()
 
 
+def _symlink_stays_in_tree(root: Path, commit: str, relative: str) -> bool:
+    """True when a tracked symlink's target is a relative path inside the tree."""
+
+    blob = subprocess.run(
+        ["git", "-C", str(root), "show", f"{commit}:{relative}"],
+        capture_output=True,
+        check=False,
+    )
+    if blob.returncode:
+        return False
+    try:
+        target = blob.stdout.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    if (
+        not target.strip()
+        or target != target.strip()
+        or "\0" in target
+        or target.startswith("/")
+    ):
+        return False
+    joined = os.path.normpath(os.path.join(os.path.dirname(relative), target))
+    return (
+        joined != "."
+        and joined != ".."
+        and not joined.startswith("../")
+        and not os.path.isabs(joined)
+    )
+
+
 @dataclass(frozen=True)
 class Capsule:
     commit: str
     tree_sha256: str
     files: tuple[str, ...]
     materialized_root: Path
+    excluded_symlinks: tuple[str, ...] = ()
 
 
-def materialize_tracked_capsule(repo: Path | str, commit: str, destination: Path | str) -> Capsule:
+def materialize_tracked_capsule(
+    repo: Path | str, commit: str, destination: Path | str
+) -> Capsule:
     root = Path(repo).resolve()
     dest = Path(destination).resolve()
     if not root.is_dir() or not commit or len(commit) != 40:
@@ -55,9 +90,20 @@ def materialize_tracked_capsule(repo: Path | str, commit: str, destination: Path
         raise CapsuleError("source-git-dirty")
     entries = _git(root, "ls-tree", "-r", "--full-tree", commit).splitlines()
     files: list[tuple[str, bytes]] = []
+    excluded_symlinks: list[str] = []
     for entry in entries:
         meta, relative = entry.split("\t", 1)
         mode, kind, _object = meta.split(" ", 2)
+        if kind == "blob" and mode == "120000":
+            # Tracked symlinks (e.g. AGENTS.md -> CLAUDE.md) are repository
+            # conventions whose real targets are regular tracked files already in
+            # the capsule.  Leave the link itself out, but only when it stays
+            # inside the tree; anything else is refused.  Felix extracts regular
+            # files only and hashes regular files only, so both sides agree.
+            if not _symlink_stays_in_tree(root, commit, relative):
+                raise CapsuleError(f"symlink-escape: {relative}")
+            excluded_symlinks.append(relative)
+            continue
         if kind != "blob" or mode not in {"100644", "100755"}:
             raise CapsuleError(f"special-file: {relative}")
         if relative.startswith(".git/") or relative == ".git":
@@ -81,13 +127,27 @@ def materialize_tracked_capsule(repo: Path | str, commit: str, destination: Path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
         os.chmod(target, 0o444)
-    for directory in sorted((path for path in dest.rglob("*") if path.is_dir()), key=lambda p: len(p.parts), reverse=True):
+    for directory in sorted(
+        (path for path in dest.rglob("*") if path.is_dir()),
+        key=lambda p: len(p.parts),
+        reverse=True,
+    ):
         os.chmod(directory, 0o555)
     os.chmod(dest, 0o555)
-    materialized = [(path.relative_to(dest).as_posix(), path.read_bytes()) for path in dest.rglob("*") if path.is_file()]
+    materialized = [
+        (path.relative_to(dest).as_posix(), path.read_bytes())
+        for path in dest.rglob("*")
+        if path.is_file()
+    ]
     materialized.sort()
     digest = _digest(materialized)
     expected = _digest(files)
     if digest != expected:
         raise CapsuleError("materialized-tree-digest")
-    return Capsule(commit, expected, tuple(relative for relative, _data in files), dest)
+    return Capsule(
+        commit,
+        expected,
+        tuple(relative for relative, _data in files),
+        dest,
+        tuple(sorted(excluded_symlinks)),
+    )

@@ -26,7 +26,9 @@ from lib.compute_receipt import (
 
 
 def _git(repo: Path, *args: str) -> str:
-    result = subprocess.run(["git", "-C", str(repo), *args], check=True, text=True, capture_output=True)
+    result = subprocess.run(
+        ["git", "-C", str(repo), *args], check=True, text=True, capture_output=True
+    )
     return result.stdout.strip()
 
 
@@ -37,7 +39,16 @@ def _committed_repo(tmp_path: Path) -> tuple[Path, str]:
     (repo / "backend").mkdir()
     (repo / "backend" / "test.py").write_text("print('ok')\n", encoding="utf-8")
     _git(repo, "add", ".")
-    _git(repo, "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "fixture")
+    _git(
+        repo,
+        "-c",
+        "user.name=fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-qm",
+        "fixture",
+    )
     return repo, _git(repo, "rev-parse", "HEAD")
 
 
@@ -61,8 +72,19 @@ def test_admission_requires_host_health_and_exact_sandbox():
     safe = {
         "host_role": "felix",
         "host_id": "felix-test",
-        "health": {"healthy": True, "deploy_lock": False, "backup_active": False, "reconcile_active": False},
-        "sandbox": {"network": "none", "read_only_rootfs": True, "non_root": True, "cap_drop": ["ALL"], "no_new_privileges": True},
+        "health": {
+            "healthy": True,
+            "deploy_lock": False,
+            "backup_active": False,
+            "reconcile_active": False,
+        },
+        "sandbox": {
+            "network": "none",
+            "read_only_rootfs": True,
+            "non_root": True,
+            "cap_drop": ["ALL"],
+            "no_new_privileges": True,
+        },
     }
     assert admit(safe).host_id == "felix-test"
     with pytest.raises(AdmissionError, match="deploy-lock"):
@@ -73,7 +95,19 @@ def test_admission_requires_host_health_and_exact_sandbox():
 
 def test_receipt_is_asymmetric_and_ack_is_controller_only(tmp_path: Path):
     signer = ReceiptSigner.generate()
-    payload = {"job_id": "job-1", "request_digest": "a" * 64, "source_commit": "b" * 40, "profile": "fake.echo", "spec_digest": "c" * 64, "runner_image_digest": "sha256:" + "d" * 64, "host_id": "felix", "returncode": 0, "duration_ms": 1, "log_digest": "e" * 64, "artifact_digest": "f" * 64}
+    payload = {
+        "job_id": "job-1",
+        "request_digest": "a" * 64,
+        "source_commit": "b" * 40,
+        "profile": "fake.echo",
+        "spec_digest": "c" * 64,
+        "runner_image_digest": "sha256:" + "d" * 64,
+        "host_id": "felix",
+        "returncode": 0,
+        "duration_ms": 1,
+        "log_digest": "e" * 64,
+        "artifact_digest": "f" * 64,
+    }
     receipt = signer.sign(payload)
     assert signer.verify(receipt)["job_id"] == "job-1"
     public_verifier = ReceiptSigner.from_public_bytes(signer.public_bytes())
@@ -142,7 +176,9 @@ def test_ack_concurrent_verify_consumes_once(tmp_path: Path):
         except AckReplayError:
             results.append("replay")
 
-    threads = [threading.Thread(target=verify, args=(authority,)) for authority in authorities]
+    threads = [
+        threading.Thread(target=verify, args=(authority,)) for authority in authorities
+    ]
     for thread in threads:
         thread.start()
     for thread in threads:
@@ -160,3 +196,66 @@ def test_worker_refuses_caller_paths_and_admin_is_honest():
     report = selftest_payload()
     assert report["mode"] == "local-fixture"
     assert report["cross_host_verified"] is False
+
+
+def _repo_with_symlinks(tmp_path: Path, links: dict[str, str]) -> tuple[Path, str]:
+    repo = tmp_path / "repo-links"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    (repo / "CLAUDE.md").write_text("rules\n", encoding="utf-8")
+    (repo / "skills").mkdir()
+    (repo / "skills" / "a.md").write_text("skill\n", encoding="utf-8")
+    (repo / ".agents").mkdir()
+    for name, target in links.items():
+        (repo / name).parent.mkdir(parents=True, exist_ok=True)
+        (repo / name).symlink_to(target)
+    _git(repo, "add", ".")
+    _git(
+        repo,
+        "-c",
+        "user.name=fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-qm",
+        "fixture",
+    )
+    return repo, _git(repo, "rev-parse", "HEAD")
+
+
+def test_tracked_capsule_excludes_validated_in_tree_symlinks(tmp_path: Path):
+    # The repository tracks convention links (AGENTS.md -> CLAUDE.md,
+    # .agents/skills -> ../skills).  Their real targets are regular tracked
+    # files that are already in the capsule, so the links themselves are left
+    # out, recorded, and do not change the tree digest.
+    repo, commit = _repo_with_symlinks(
+        tmp_path, {"AGENTS.md": "CLAUDE.md", ".agents/skills": "../skills"}
+    )
+    capsule = materialize_tracked_capsule(repo, commit, tmp_path / "capsule")
+    assert "CLAUDE.md" in capsule.files and "skills/a.md" in capsule.files
+    assert "AGENTS.md" not in capsule.files and ".agents/skills" not in capsule.files
+    assert capsule.excluded_symlinks == (".agents/skills", "AGENTS.md")
+    assert not (capsule.materialized_root / "AGENTS.md").exists()
+    (tmp_path / "plain").mkdir()
+    plain, plain_commit = _repo_with_symlinks(tmp_path / "plain", {})
+    plain_capsule = materialize_tracked_capsule(
+        plain, plain_commit, tmp_path / "plain-capsule"
+    )
+    assert plain_capsule.tree_sha256 == capsule.tree_sha256
+
+
+@pytest.mark.parametrize(
+    ("link", "target"),
+    [
+        ("escape", "/etc/passwd"),
+        ("up", "../outside"),
+        ("deep-up", "skills/../../outside"),
+        ("blank", " "),
+    ],
+)
+def test_tracked_capsule_rejects_symlinks_that_leave_the_tree(
+    tmp_path: Path, link: str, target: str
+):
+    repo, commit = _repo_with_symlinks(tmp_path, {link: target})
+    with pytest.raises(CapsuleError, match="symlink"):
+        materialize_tracked_capsule(repo, commit, tmp_path / "capsule")
