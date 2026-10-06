@@ -66,16 +66,11 @@ def evaluate_publication(
         reasons.append("HEAD differs from handback")
     if worktree.parent_sha != receipt.parent_sha:
         reasons.append("parent differs from handback")
-    expected_changes = tuple(
-        sorted(
-            (FileOperation(item.operation.value), item.path)
-            for item in receipt.scope.files
-        )
+    expected_changes = frozenset(
+        (FileOperation(item.operation.value), item.path) for item in receipt.scope.files
     )
-    actual_changes = tuple(
-        sorted((item.operation, item.path) for item in worktree.changes)
-    )
-    if actual_changes != expected_changes:
+    actual_changes = frozenset((item.operation, item.path) for item in worktree.changes)
+    if not actual_changes or not actual_changes.issubset(expected_changes):
         reasons.append("physical operations or paths differ from Scope")
     return PolicyDecision(allowed=not reasons, reasons=tuple(reasons))
 
@@ -96,9 +91,12 @@ def evaluate_merge_gate(
         reasons.append("PR is draft")
     if not pull_request.mergeable:
         reasons.append("PR is not mergeable")
-    if pull_request.base_sha != live_main_sha or receipt.base_sha != live_main_sha:
+    if pull_request.base_sha != live_main_sha:
         reasons.append("PR or handback base is stale")
-    if registry.base_sha != live_main_sha:
+    if registry.base_sha != receipt.base_sha:
+        reasons.append("registry base differs from handback")
+    published_base_sha = registry.published_base_sha or registry.base_sha
+    if published_base_sha != live_main_sha:
         reasons.append("registry base is stale")
     if pull_request.head_sha != receipt.head_sha:
         reasons.append("PR head differs from handback")

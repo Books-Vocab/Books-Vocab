@@ -73,7 +73,8 @@ enum VocabularyExporter {
     // MARK: - Internal Helpers
 
     private static func saveToTemp(content: String, filename: String) -> URL? {
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
+        let uniqueFilename = "\(UUID().uuidString)-\(filename)"
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(uniqueFilename)
         do {
             try content.write(to: tempURL, atomically: true, encoding: .utf8)
             return tempURL

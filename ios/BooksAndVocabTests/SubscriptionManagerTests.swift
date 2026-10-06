@@ -312,6 +312,47 @@ struct SubscriptionManagerTests {
 
     // MARK: - Static configuration constants
 
+    // MARK: - Product loading presentation state
+
+    @MainActor
+    @Test func productLoadState_distinguishes_loading_ready_and_retry() {
+        #expect(
+            SubscriptionManager.productLoadState(
+                isLoading: true,
+                hasProduct: false,
+                hasError: false
+            ) == .loading
+        )
+        #expect(
+            SubscriptionManager.productLoadState(
+                isLoading: false,
+                hasProduct: false,
+                hasError: false
+            ) == .loading
+        )
+        #expect(
+            SubscriptionManager.productLoadState(
+                isLoading: false,
+                hasProduct: true,
+                hasError: false
+            ) == .ready
+        )
+        #expect(
+            SubscriptionManager.productLoadState(
+                isLoading: false,
+                hasProduct: false,
+                hasError: true
+            ) == .retry
+        )
+        #expect(
+            SubscriptionManager.productLoadState(
+                isLoading: true,
+                hasProduct: true,
+                hasError: true
+            ) == .ready
+        )
+    }
+
     @MainActor
     @Test func proProductID_is_stable_and_exposed_via_instance() {
         // The product identifier is a release-critical constant; pin it and confirm

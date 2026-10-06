@@ -22,12 +22,13 @@ from delivery_control.services.pr_contract import (
 
 from .errors import ReanchorRefused
 
-REQUIRED_CODE_CONTEXT = ("required",)
-TRUSTED_REQUIRED_CODE_CONTEXT = ("agent-review", "required")
-ACCEPTED_REQUIRED_CODE_CONTEXTS = frozenset(
-    {REQUIRED_CODE_CONTEXT, TRUSTED_REQUIRED_CODE_CONTEXT}
-)
+REQUIRED_CODE_CONTEXT = "required"
+# ``required`` is the repository's only blocking check.  ``agent-review`` may
+# still appear in historical or compatibility observations, but it is not a
+# merge or recovery authority.
+ADVISORY_CONTEXTS = frozenset({"agent-review"})
 MERGE_FRONT_POLICY = "lowest-required-green-unheld-pr-number"
+REQUIRED_FAILURE_RECOVERY_POLICY = "owner-local-required-failure-recovery"
 
 
 class RecoveryGitHubPort(Protocol):
@@ -56,7 +57,7 @@ class RecoveryLifecycleProof:
 def build_github(repo: Path, *, operation: str) -> RecoveryGitHubPort:
     """Use the existing typed GitHub CLI query adapter at the CLI boundary."""
 
-    if operation not in {"reanchor", "resume-published"}:
+    if operation not in {"reanchor", "resume-published", "recover-abandoned-pr"}:
         raise ValueError(f"unsupported recovery operation: {operation}")
     return GitHubCliAdapter(repo=repo)
 
@@ -148,7 +149,7 @@ def _required(
     github: RecoveryGitHubPort,
     pull_request: PullRequestSnapshot,
     *,
-    allow_combined_context: bool = False,
+    allow_missing_required: bool = False,
 ) -> CheckSnapshot:
     check = _read(
         f"PR#{pull_request.number} required check",
@@ -162,14 +163,18 @@ def _required(
             pull_request_head_sha=pull_request.head_sha,
         )
     normalized_context = tuple(sorted(set(check.names)))
-    accepted_contexts = (
-        ACCEPTED_REQUIRED_CODE_CONTEXTS
-        if allow_combined_context
-        else frozenset({REQUIRED_CODE_CONTEXT})
+    if (
+        allow_missing_required
+        and check.status is CheckStatus.ABSENT
+        and not normalized_context
+    ):
+        return check
+    hard_contexts = tuple(
+        context for context in normalized_context if context not in ADVISORY_CONTEXTS
     )
-    if normalized_context not in accepted_contexts:
+    if hard_contexts != (REQUIRED_CODE_CONTEXT,):
         raise ReanchorRefused(
-            "recovery requires the exact required code failure context",
+            "recovery requires the exact required code context",
             pull_request=pull_request.number,
             required_contexts=list(check.names),
             required_status=check.status.value,
@@ -184,8 +189,14 @@ def verify_resume_lifecycle(
     expected_base_sha: str,
     expected_remote_head: str,
     require_failed: bool = True,
+    allow_missing_required: bool = False,
 ) -> RecoveryLifecycleProof:
-    """Prove that one published PR may be resumed for a code repair."""
+    """Prove that one published PR may be resumed for an owner-local repair.
+
+    Missing required evidence is accepted only when the caller explicitly uses
+    the maintenance contract.  It authorizes bounded same-owner repair of the
+    published lane; it never makes the PR merge-ready.
+    """
 
     pull_request = _exact_open_pr(
         github,
@@ -196,7 +207,7 @@ def verify_resume_lifecycle(
     check = _required(
         github,
         pull_request,
-        allow_combined_context=not require_failed,
+        allow_missing_required=allow_missing_required,
     )
     if require_failed and check.status is not CheckStatus.FAILURE:
         raise ReanchorRefused(
@@ -204,7 +215,11 @@ def verify_resume_lifecycle(
             pull_request=pull_request.number,
             required_status=check.status.value,
         )
-    if not require_failed and check.status is CheckStatus.ABSENT:
+    if (
+        not require_failed
+        and check.status is CheckStatus.ABSENT
+        and not (allow_missing_required and not check.names)
+    ):
         raise ReanchorRefused(
             "maintenance resume requires an observed required check",
             pull_request=pull_request.number,
@@ -217,9 +232,81 @@ def verify_resume_lifecycle(
     )
 
 
+def verify_abandoned_pr_lifecycle(
+    github: RecoveryGitHubPort,
+    *,
+    lane_id: str,
+    branch: str,
+    owner_thread_id: str,
+    claim_generation: int,
+    expected_base_sha: str,
+    expected_remote_head: str,
+    recorded_base_sha: str,
+    declared_scope: tuple[tuple[str, str], ...],
+    handback_digest: str | None,
+) -> RecoveryLifecycleProof:
+    """Prove an open PR is recoverable without reviving an ownerless lane."""
+
+    pull_request = _exact_open_pr(
+        github,
+        branch=branch,
+        expected_base_sha=expected_base_sha,
+        expected_remote_head=expected_remote_head,
+    )
+    try:
+        receipt = parse_pull_request_body(pull_request.body)
+        holds = pull_request_holds(pull_request)
+    except DeliverySourceError as exc:
+        raise ReanchorRefused(
+            f"abandoned PR recovery requires an exact typed receipt: {exc}"
+        ) from exc
+    if holds:
+        raise ReanchorRefused(
+            "abandoned PR recovery refuses a PR with an explicit hard hold",
+            holds=sorted(item.value for item in holds),
+        )
+    actual_scope = tuple(
+        sorted((item.path, item.operation.value) for item in receipt.scope.files)
+    )
+    expected_scope = tuple(sorted(declared_scope))
+    comparisons = (
+        (receipt.lane_id, lane_id, "lane"),
+        (receipt.branch, branch, "branch"),
+        (receipt.owner_thread_id, owner_thread_id, "owner"),
+        (receipt.claim_generation, claim_generation, "claim generation"),
+        (receipt.base_sha, recorded_base_sha, "hand-back base"),
+        (receipt.head_sha, expected_remote_head, "hand-back HEAD"),
+        (actual_scope, expected_scope, "Scope"),
+    )
+    for actual, expected, label in comparisons:
+        if actual != expected:
+            raise ReanchorRefused(
+                f"abandoned PR {label} evidence differs from the exact claim",
+                expected=expected,
+                actual=actual,
+            )
+    if handback_digest is not None and receipt.content_digest != handback_digest:
+        raise ReanchorRefused(
+            "abandoned PR receipt digest differs from the stored hand-back seal",
+            expected_digest=handback_digest,
+            actual_digest=receipt.content_digest,
+        )
+    # Required failure or missing evidence is a lane-local repair reason.  It
+    # is never an authorization to merge or bypass review.
+    check = _required(github, pull_request, allow_missing_required=True)
+    return RecoveryLifecycleProof(
+        pull_request_number=pull_request.number,
+        base_sha=pull_request.base_sha,
+        head_sha=pull_request.head_sha,
+        required_status=check.status,
+    )
+
+
 def _eligible_merge_front(
     github: RecoveryGitHubPort,
     pull_request: PullRequestSnapshot,
+    *,
+    allow_typed_base_lag: bool = False,
 ) -> bool:
     if (
         pull_request.state != "OPEN"
@@ -241,12 +328,13 @@ def _eligible_merge_front(
         return False
     if (
         receipt.branch != pull_request.branch
-        or receipt.base_sha != pull_request.base_sha
         or receipt.head_sha != pull_request.head_sha
     ):
         return False
+    if receipt.base_sha != pull_request.base_sha and not allow_typed_base_lag:
+        return False
     try:
-        check = _required(github, pull_request, allow_combined_context=True)
+        check = _required(github, pull_request)
     except ReanchorRefused as exc:
         if (
             exc.details.get("required_status") == CheckStatus.ABSENT.value
@@ -268,8 +356,9 @@ def verify_reanchor_lifecycle(
     # Compatibility for callers written before publication began recording
     # the GitHub target OID separately from the typed handback base.
     expected_base_sha: str | None = None,
+    allow_required_failure_recovery: bool = False,
 ) -> RecoveryLifecycleProof:
-    """Prove that one published PR is the deterministic merge-front candidate."""
+    """Prove a merge-front reanchor or an explicit owner-local recovery."""
 
     legacy_base_contract = expected_pr_base_sha is None
     published_base_sha = expected_pr_base_sha or expected_base_sha
@@ -296,12 +385,26 @@ def verify_reanchor_lifecycle(
         raise ReanchorRefused("reanchor requires the PR to be mergeable")
     if pull_request_holds(candidate):
         raise ReanchorRefused("reanchor refuses a PR with an explicit hard hold")
-    candidate_check = _required(
-        github,
-        candidate,
-        allow_combined_context=True,
-    )
-    if candidate_check.status is not CheckStatus.SUCCESS:
+    candidate_check = _required(github, candidate)
+    if allow_required_failure_recovery:
+        if candidate_check.status is not CheckStatus.FAILURE:
+            raise ReanchorRefused(
+                "required-failure recovery requires an exact required code failure",
+                pull_request=candidate.number,
+                required_status=candidate_check.status.value,
+            )
+        try:
+            receipt = parse_pull_request_body(candidate.body)
+        except DeliverySourceError as exc:
+            raise ReanchorRefused(
+                "required-failure recovery requires a valid typed PR receipt"
+            ) from exc
+        if receipt.branch != candidate.branch or receipt.head_sha != candidate.head_sha:
+            raise ReanchorRefused(
+                "required-failure recovery receipt differs from the exact PR identity",
+                pull_request=candidate.number,
+            )
+    elif candidate_check.status is not CheckStatus.SUCCESS:
         raise ReanchorRefused("reanchor requires an exact required-green PR")
 
     inventory = _read("open PR inventory", github.list_open_pull_requests)
@@ -323,12 +426,35 @@ def verify_reanchor_lifecycle(
                 pull_request=pull_request.number,
                 queue_entry=queue_entry.entry_id,
             )
+    if allow_required_failure_recovery:
+        return RecoveryLifecycleProof(
+            pull_request_number=candidate.number,
+            base_sha=candidate.base_sha,
+            head_sha=candidate.head_sha,
+            required_status=candidate_check.status,
+            merge_front_policy=REQUIRED_FAILURE_RECOVERY_POLICY,
+        )
     eligible = tuple(
         sorted(
             (
                 pull_request
                 for pull_request in inventory.records
-                if _eligible_merge_front(github, pull_request)
+                if _eligible_merge_front(
+                    github,
+                    pull_request,
+                    # A same-owner publication may leave the immutable typed
+                    # handback base in the PR body while GitHub has already
+                    # advanced the PR target base.  The caller has validated
+                    # the exact published PR base; the subsequent reanchor Git
+                    # checks validate that base against live main.  Limit this
+                    # compatibility to that exact candidate.  All other PRs
+                    # still require body/base equality.
+                    allow_typed_base_lag=(
+                        pull_request.number == candidate.number
+                        and not legacy_base_contract
+                        and candidate.base_sha == published_base_sha
+                    ),
+                )
             ),
             key=lambda pull_request: pull_request.number,
         )

@@ -39,7 +39,7 @@ def _digest(secret: str) -> str:
 def _parse_key(value: str | None) -> tuple[str, str] | None:
     if not isinstance(value, str) or not value.startswith(EXTERNAL_API_KEY_PREFIX):
         return None
-    body = value[len(EXTERNAL_API_KEY_PREFIX):]
+    body = value[len(EXTERNAL_API_KEY_PREFIX) :]
     key_id, separator, secret = body.partition(".")
     if not separator or not key_id or not secret:
         return None
@@ -68,6 +68,19 @@ def _public_record(key_id: str, record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _created_at_sort_key(record: dict[str, Any]) -> tuple[datetime, str]:
+    value = record.get("createdAt")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (AttributeError, TypeError, ValueError):
+        parsed = datetime.min.replace(tzinfo=UTC)
+    else:
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        parsed = parsed.astimezone(UTC)
+    return parsed, str(record.get("keyId") or "")
+
+
 def issue_api_key(
     user_id: str,
     *,
@@ -89,9 +102,7 @@ def issue_api_key(
         active_count = sum(
             1
             for record in key_index.values()
-            if isinstance(record, dict)
-            and record.get("user_id") == user_id
-            and not record.get("revoked_at")
+            if isinstance(record, dict) and record.get("user_id") == user_id and not record.get("revoked_at")
         )
         if active_count >= MAX_ACTIVE_KEYS_PER_USER:
             raise ValueError("Maximum active external API keys reached")
@@ -128,7 +139,7 @@ def list_api_keys(
         for key_id, record in key_index.items()
         if isinstance(record, dict) and record.get("user_id") == user_id
     ]
-    records.sort(key=lambda record: record.get("createdAt") or "", reverse=True)
+    records.sort(key=_created_at_sort_key, reverse=True)
     return records
 
 

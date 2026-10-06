@@ -51,6 +51,26 @@ struct ReaderSettingsFixtureTests {
         #expect(settings.lineHeight == 2.1)
     }
 
+    @Test func letterSpacingPersistsAcrossBothStoresAndFeedsReadiumPreferences() {
+        let defaults = UserDefaults(suiteName: "test.reader-settings-letter-spacing.\(UUID().uuidString)")!
+        let cloud = ReaderSettingsFixtureCloudStore()
+        let settings = ReaderSettings(defaults: defaults, cloud: cloud)
+
+        settings.letterSpacing = 0.4
+
+        #expect(defaults.double(forKey: "reader_settings_letterSpacing") == 0.4)
+        #expect(cloud.double(forKey: "reader_settings_letterSpacing") == 0.4)
+        #expect(
+            settings.viewConfiguration(systemColorScheme: .light).epubPreferences.letterSpacing == 0.4
+        )
+
+        let restored = ReaderSettings(defaults: defaults, cloud: cloud)
+        #expect(restored.letterSpacing == 0.4)
+        #expect(
+            restored.viewConfiguration(systemColorScheme: .light).epubPreferences.letterSpacing == 0.4
+        )
+    }
+
     @Test func customHighlightSRGBRoundTripsThroughBothPreferenceStores() {
         let defaults = UserDefaults(suiteName: "test.reader-settings-custom.\(UUID().uuidString)")!
         let cloud = ReaderSettingsFixtureCloudStore()

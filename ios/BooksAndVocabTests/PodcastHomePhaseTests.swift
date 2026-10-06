@@ -57,4 +57,52 @@ struct PodcastHomePhaseTests {
 
         #expect(phase == .content)
     }
+
+    @Test func backgroundSyncRunningWithNoCatalogShowsLoading() {
+        let phase = PodcastHomePhase.resolve(
+            isLoggedIn: true,
+            isSyncing: false,
+            syncFailed: false,
+            seriesCount: 0,
+            backgroundSyncStatus: .running
+        )
+
+        #expect(phase == .loading)
+    }
+
+    @Test func backgroundSyncRunningKeepsExistingCatalogVisible() {
+        let phase = PodcastHomePhase.resolve(
+            isLoggedIn: true,
+            isSyncing: false,
+            syncFailed: false,
+            seriesCount: 3,
+            backgroundSyncStatus: .running
+        )
+
+        #expect(phase == .content)
+    }
+
+    @Test func backgroundSyncWarningWithNoCatalogShowsRetryableError() {
+        let phase = PodcastHomePhase.resolve(
+            isLoggedIn: true,
+            isSyncing: false,
+            syncFailed: false,
+            seriesCount: 0,
+            backgroundSyncStatus: .warning(L10n.string("目錄讀取失敗"))
+        )
+
+        #expect(phase == .error)
+    }
+
+    @Test func backgroundSyncWarningKeepsExistingCatalogVisible() {
+        let phase = PodcastHomePhase.resolve(
+            isLoggedIn: true,
+            isSyncing: false,
+            syncFailed: false,
+            seriesCount: 3,
+            backgroundSyncStatus: .warning(L10n.string("目錄讀取失敗"))
+        )
+
+        #expect(phase == .content)
+    }
 }

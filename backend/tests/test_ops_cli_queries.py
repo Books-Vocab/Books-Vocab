@@ -305,6 +305,141 @@ class TestSyncTrace:
         assert result.returncode == 0
         assert "Total events: 0" in result.stdout
 
+    def test_missing_databases_keep_json_count_contract(self, tmp_path):
+        result = _run_cli(str(tmp_path), "sync-trace", "u1", "--date", "2026-09-17", "--json")
+
+        assert result.returncode == 0, result.stderr
+        assert json.loads(result.stdout) == {
+            "user_id": "u1",
+            "date": "2026-09-17",
+            "count": 0,
+            "events": [],
+        }
+
+    def test_card_created_classification_uses_utc_day_for_offset_timestamp(self, tmp_path):
+        uid = "u1"
+        user_dir = tmp_path / "users" / uid
+        user_dir.mkdir(parents=True)
+        _create_cards_db(
+            user_dir / "cards.db",
+            [
+                (
+                    "c1",
+                    "offset-card",
+                    "meaning",
+                    0,
+                    "2026-09-17T00:30:00+02:00",
+                    "2026-09-17T00:30:00+02:00",
+                ),
+            ],
+        )
+
+        result = _run_cli(str(tmp_path), "sync-trace", uid, "--date", "2026-09-16", "--json")
+
+        assert result.returncode == 0, result.stderr
+        data = json.loads(result.stdout)
+        assert data["count"] == 1
+        assert data["events"][0]["type"] == "card_created"
+
+    def test_events_sort_by_utc_instant_across_offset_spellings(self, tmp_path):
+        uid = "u1"
+        _create_token_usage_db(
+            tmp_path,
+            [(uid, "translate", 1, 1, "2026-09-17T03:00:00+00:00")],
+        )
+        _create_translate_log_db(
+            tmp_path,
+            [
+                (
+                    uid,
+                    "quick",
+                    "offset-word",
+                    None,
+                    "hash",
+                    "en",
+                    "zh",
+                    "{}",
+                    1,
+                    "2026-09-16T23:30:00-0400",
+                ),
+            ],
+        )
+
+        result = _run_cli(str(tmp_path), "sync-trace", uid, "--date", "2026-09-17", "--json")
+
+        assert result.returncode == 0, result.stderr
+        data = json.loads(result.stdout)
+        assert [event["type"] for event in data["events"]] == [
+            "api_translate",
+            "translate_quick",
+        ]
+
+    def test_all_sources_use_utc_day_and_preserve_equal_instant_tie_break(self, tmp_path):
+        uid = "u1"
+        user_dir = tmp_path / "users" / uid
+        user_dir.mkdir(parents=True)
+        _create_cards_db(
+            user_dir / "cards.db",
+            [
+                (
+                    "updated-card",
+                    "offset-card",
+                    "meaning",
+                    0,
+                    "2026-09-16T23:00:00+00:00",
+                    "2026-09-16T23:30:00-0400",
+                ),
+            ],
+        )
+        _create_token_usage_db(
+            tmp_path,
+            [(uid, "translate", 1, 1, "2026-09-16T23:30:00-0400")],
+        )
+        _create_judge_log_db(
+            tmp_path,
+            [
+                (
+                    uid,
+                    "from",
+                    "to",
+                    "related",
+                    1,
+                    1.0,
+                    1,
+                    "2026-09-16T23:45:00-0400",
+                    None,
+                ),
+            ],
+        )
+        _create_translate_log_db(
+            tmp_path,
+            [
+                (
+                    uid,
+                    "quick",
+                    "offset-word",
+                    None,
+                    "hash",
+                    "en",
+                    "zh",
+                    "{}",
+                    1,
+                    "2026-09-16T23:30:00-0400",
+                ),
+            ],
+        )
+
+        result = _run_cli(str(tmp_path), "sync-trace", uid, "--date", "2026-09-17", "--json")
+
+        assert result.returncode == 0, result.stderr
+        data = json.loads(result.stdout)
+        assert [(event["type"], event["source"]) for event in data["events"]] == [
+            ("card_updated", "cards"),
+            ("api_translate", "token_usage"),
+            ("translate_quick", "translate_log"),
+            ("judge_accept", "judge_log"),
+        ]
+
 
 class TestJsonContract:
     """統一輸出契約 — 每個 data-query 命令都應支援 --json 並回傳合法 JSON。"""

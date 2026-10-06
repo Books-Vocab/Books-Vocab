@@ -40,16 +40,117 @@ from delivery_control.domain.demand_issues import (
     issue_body_sha256,
 )
 from delivery_control.domain.errors import PolicyViolation
-from delivery_control.domain.models import Scope
+from delivery_control.domain.models import HandbackReceipt, Scope
 from delivery_control.domain.observations import (
     PullRequestInventory,
+    PullRequestSnapshot,
     RegistryCollisionInventory,
+    RegistrySnapshot,
 )
 from delivery_control.services.branch_content import BranchContentService
 from delivery_control.services.candidate_contract import (
     render_candidate_body,
 )
 from delivery_control.services.inspect import DeliveryInventory
+from delivery_control.services.issue_admission import assert_candidate_scope_available
+from delivery_control.services.pr_contract import render_pull_request_body
+
+
+def test_scope_accepts_nonempty_changed_path_subset_and_rejects_outside_paths() -> None:
+    scope = Scope.from_paths(modify=("ops/a.py", "ops/b.py"))
+
+    assert scope.allows_changed_paths(("ops/a.py",))
+    assert not scope.allows_changed_paths(())
+    assert not scope.allows_changed_paths(("ops/other.py",))
+
+
+def test_record_published_base_accepts_actual_pr_paths_as_scope_subset(
+    tmp_path: Path,
+) -> None:
+    base_sha = "a" * 40
+    head_sha = "b" * 40
+    receipt = HandbackReceipt(
+        lane_id="DIRECT-SCOPE-SUBSET",
+        owner_thread_id="thread-scope-subset",
+        claim_generation=0,
+        branch="feat/scope-subset",
+        worktree_path=str(tmp_path / "worktree"),
+        base_sha=base_sha,
+        parent_sha=base_sha,
+        head_sha=head_sha,
+        origin_main_sha=base_sha,
+        content_digest="c" * 64,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    body = render_pull_request_body(receipt)
+    pull_request = PullRequestSnapshot(
+        number=17,
+        url="https://example.test/pull/17",
+        branch=receipt.branch,
+        base_sha=base_sha,
+        head_sha=head_sha,
+        state="OPEN",
+        draft=False,
+        mergeable=True,
+        body=body,
+    )
+    record = RegistrySnapshot(
+        lane_id=receipt.lane_id,
+        branch=receipt.branch,
+        path=Path(receipt.worktree_path),
+        status="active",
+        scope=receipt.scope,
+        base_sha=base_sha,
+        claim_generation=receipt.claim_generation,
+        owner_thread_id=receipt.owner_thread_id,
+        handed_back_sha=head_sha,
+        handback_claim_generation=receipt.claim_generation,
+        handback_valid=True,
+        handback_digest=receipt.content_digest,
+        handback_origin_main_sha=receipt.origin_main_sha,
+    )
+
+    class GitHub:
+        def __init__(self) -> None:
+            self.recorded_base: str | None = None
+
+        def get_pull_request(self, number: int) -> PullRequestSnapshot:
+            assert number == pull_request.number
+            return pull_request
+
+        def list_pull_requests_for_branch(self, branch: str) -> PullRequestInventory:
+            assert branch == receipt.branch
+            return PullRequestInventory(records=(pull_request,))
+
+        def changed_paths(self, number: int) -> tuple[str, ...]:
+            assert number == pull_request.number
+            return ("ops/a.py",)
+
+    class Registry:
+        def __init__(self) -> None:
+            self.record = record
+
+        def find_exact_claim(self, **_kwargs: object) -> RegistrySnapshot:
+            return self.record
+
+        def record_published_base(self, **kwargs: object) -> None:
+            self.record = replace(
+                self.record,
+                published_base_sha=kwargs["published_base_sha"],
+            )
+
+    github = GitHub()
+    registry = Registry()
+    result = DeliveryApplication(
+        repo=tmp_path,
+        git=Mock(),
+        github=github,
+        registry=registry,
+        runtime=Mock(),
+        telemetry=Mock(),
+    ).record_published_base(pull_request.number)
+
+    assert result["published_base_sha"] == base_sha
 
 
 def test_admit_candidate_retries_an_already_converged_candidate_without_mutation(
@@ -481,6 +582,69 @@ def test_admit_candidate_fails_closed_when_projection_does_not_converge(
         )
 
     assert github.admission_calls == 1
+
+
+def test_candidate_scope_ignores_terminal_candidate_history_but_blocks_live_candidate() -> (
+    None
+):
+    scope = Scope.from_paths(
+        modify=("ops/delivery_control/services/issue_admission.py",)
+    )
+    spec = CandidateSpec(
+        severity=CandidateSeverity.P2,
+        priority=1,
+        scope=scope,
+        acceptance=("The candidate Scope remains exclusive while live.",),
+    )
+
+    def make_issue(*, number: int, disposition: IssueDisposition) -> DemandIssue:
+        body = f"Issue {number} historical candidate fixture"
+        return DemandIssue(
+            number=number,
+            url=f"https://github.com/Books-Vocab/Books-Vocab/issues/{number}",
+            node_id=f"I_{number}",
+            title=f"Issue {number}",
+            labels=(CANDIDATE_ISSUE_LABEL,),
+            body=body,
+            updated_at=None,
+            body_sha256=issue_body_sha256(body),
+            disposition=disposition,
+            reason=f"fixture disposition: {disposition.value}",
+            candidate_spec=spec,
+        )
+
+    empty_registry = RegistryCollisionInventory(records=())
+    empty_prs = PullRequestInventory(records=())
+
+    assert_candidate_scope_available(
+        scope=scope,
+        demand_issues=(
+            make_issue(
+                number=992,
+                disposition=IssueDisposition.TERMINAL_HISTORY,
+            ),
+        ),
+        registry=empty_registry,
+        pull_requests=empty_prs,
+        changed_paths=lambda _number: (),
+    )
+
+    with pytest.raises(
+        PolicyViolation,
+        match="candidate Scope overlaps typed candidate Issue #993",
+    ):
+        assert_candidate_scope_available(
+            scope=scope,
+            demand_issues=(
+                make_issue(
+                    number=993,
+                    disposition=IssueDisposition.DISPATCHABLE_CANDIDATE,
+                ),
+            ),
+            registry=empty_registry,
+            pull_requests=empty_prs,
+            changed_paths=lambda _number: (),
+        )
 
 
 def test_application_public_facade_preserves_constructor_contract() -> None:

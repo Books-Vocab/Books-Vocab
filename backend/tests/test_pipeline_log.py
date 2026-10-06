@@ -152,7 +152,21 @@ def test_corrupt_steps_update_is_a_noop(operation):
     else:
         pipeline_log.end_step("r1", "Enrich")
 
-    stored_steps = conn.execute(
-        "SELECT steps FROM pipeline_runs WHERE run_id = ?", ("r1",)
-    ).fetchone()[0]
+    stored_steps = conn.execute("SELECT steps FROM pipeline_runs WHERE run_id = ?", ("r1",)).fetchone()[0]
     assert stored_steps == "not-json"
+
+
+def test_get_runs_orders_offset_timestamps_before_applying_limit():
+    conn = pipeline_log._get_conn()
+    conn.executemany(
+        "INSERT INTO pipeline_runs (run_id, user_id, notebook_id, trigger, started_at) VALUES (?, ?, ?, ?, ?)",
+        [
+            ("older-real", "u1", "nb1", "manual", "2026-08-29T03:00:00+00:00"),
+            ("newer-real", "u1", "nb1", "manual", "2026-08-29T00:30:00-04:00"),
+        ],
+    )
+    conn.commit()
+
+    runs = pipeline_log.get_runs("u1", limit=1)
+
+    assert [run["run_id"] for run in runs] == ["newer-real"]

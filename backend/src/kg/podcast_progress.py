@@ -22,6 +22,7 @@ auto-creates the table; no manual migration needed.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -64,14 +65,13 @@ def _get_conn() -> sqlite3.Connection:
     global _conn
     if _conn is None and _lifecycle.connection is not None:
         _lifecycle.reset()
-    _conn = _lifecycle.get_connection(
-        _resolve_data_dir() / "podcast_progress.db", _initialize_schema
-    )
+    _conn = _lifecycle.get_connection(_resolve_data_dir() / "podcast_progress.db", _initialize_schema)
     return _conn
 
 
 def _initialize_schema(conn: sqlite3.Connection) -> None:
     from .sqlite_utils import init_sqlite_pragmas
+
     init_sqlite_pragmas(conn)
     conn.execute(
         """
@@ -86,9 +86,7 @@ def _initialize_schema(conn: sqlite3.Connection) -> None:
         )
         """
     )
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_pp_user ON podcast_progress(user_id)"
-    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pp_user ON podcast_progress(user_id)")
 
 
 def parse_instant(value: str) -> datetime | None:
@@ -245,3 +243,25 @@ def list_for_user(*, user_id: str, limit: int = 500) -> list[dict]:
             (user_id, limit),
         ).fetchall()
     return [_row_dict(s, e, p, d, u) for s, e, p, d, u in rows]
+
+
+def delete_for_users(user_ids: Iterable[str]) -> int:
+    """Delete every playback-progress row owned by the supplied user IDs.
+
+    Account erasure needs this global store cleanup because the database lives
+    at the data root rather than under each user's directory. Repeated calls
+    are safe: already-absent rows are simply not counted, and unrelated user
+    IDs are never included in the parameterized deletes.
+    """
+    ids = tuple(dict.fromkeys(user_ids))
+    if not ids:
+        return 0
+
+    with _lock:
+        conn = _get_conn()
+        cursor = conn.executemany(
+            "DELETE FROM podcast_progress WHERE user_id = ?",
+            ((user_id,) for user_id in ids),
+        )
+        conn.commit()
+    return cursor.rowcount

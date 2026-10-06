@@ -1039,6 +1039,7 @@
 "vocab.highlight.color.blue" = "藍色";
 "vocab.highlight.color.sage" = "鼠尾草";
 "vocab.highlight.color.rose" = "玫瑰";
+"vocab.highlight.color.custom" = "自訂";
 
 /* Bookshelf — CloudKit 還原狀態線（2026-06-11 書庫透明化） */
 "正在確認 iCloud 書庫…" = "正在確認 iCloud 書庫…";
@@ -1176,6 +1177,7 @@
 "reader.settings.section.debug" = "開發者與除錯";
 "reader.settings.fontSize" = "字級";
 "reader.settings.lineHeight" = "行距";
+"reader.settings.letterSpacing" = "字距";
 "reader.settings.readingMode" = "閱讀模式";
 "reader.settings.readingMode.paged" = "翻頁";
 "reader.settings.readingMode.scroll" = "捲動";

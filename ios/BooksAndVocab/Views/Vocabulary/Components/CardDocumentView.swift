@@ -231,17 +231,25 @@ struct CardDocumentSourceBlock: View {
     @Environment(\.appSkin) private var appSkin
     let source: CardDocumentSource
 
-    private var copyText: String {
-        var parts = [source.bookTitle]
+    static func copyText(for source: CardDocumentSource) -> String {
+        var metadata = [source.bookTitle]
         if let chapter = source.chapterTitle {
-            parts.append(chapter)
+            metadata.append(chapter)
         }
-        return parts.joined(separator: " · ")
+        let metadataText = metadata.joined(separator: " · ")
+        return [source.context.plainText, metadataText].joined(separator: "\n")
+    }
+
+    private var copyText: String {
+        Self.copyText(for: source)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
             CardSectionLabel(title: "來源".localized, systemImage: "book.closed")
+
+            CardInlineText(paragraph: source.context, style: .source)
+                .lineSpacing(appSkin.metrics.paragraphLineSpacing)
 
             HStack(spacing: appSkin.spacing.sourceMetadataGap) {
                 Text(source.bookTitle)

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 # ruff: noqa: E402
-
 import sys
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -39,13 +38,13 @@ from delivery_control.domain.states import LaneState, NextAction
 from delivery_control.services.active_lane_projection import (
     project_active_lane as project_active_lane_implementation,
 )
+from delivery_control.services.candidate_contract import render_candidate_body
 from delivery_control.services.inspect import InspectService
 from delivery_control.services.lane_projection import (
     project_active_lane,
     project_published_lane,
 )
 from delivery_control.services.pr_contract import render_pull_request_body
-from delivery_control.services.candidate_contract import render_candidate_body
 from delivery_control.services.published_lane_projection import (
     project_published_lane as project_published_lane_implementation,
 )
@@ -453,6 +452,77 @@ def test_candidate_reservoir_checks_every_registry_external_id(
     assert [item.number for item in inventory.candidate_issues] == [8]
 
 
+def test_dispatchable_candidate_excludes_live_unregistered_scope_collision(
+    tmp_path: Path,
+) -> None:
+    candidate = CandidateIssue(
+        1939,
+        "https://github.com/owner/repo/issues/1939",
+        CandidateSpec(
+            CandidateSeverity.P1,
+            1,
+            Scope.from_paths(
+                modify=(
+                    "backend/src/kg/api_models/external_api.py",
+                    "backend/tests/test_external_api.py",
+                )
+            ),
+            ("Boolean counters are rejected before mutation.",),
+        ),
+    )
+    unknown_path = tmp_path / "unregistered"
+    unknown_snapshot = WorktreeSnapshot(
+        path=unknown_path,
+        branch=None,
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+        parent_sha="a" * 40,
+        clean=True,
+        changes=tuple(
+            FileChange(FileOperation.MODIFY, path)
+            for path in (
+                "backend/src/kg/api_models/external_api.py",
+                "backend/tests/test_external_api.py",
+            )
+        ),
+    )
+
+    raw_issue = parse_demand_issue(
+        {
+            "id": "I_1939",
+            "number": 1939,
+            "url": "https://github.com/owner/repo/issues/1939",
+            "title": "Issue 1939",
+            "body": render_candidate_body(candidate.spec),
+            "updatedAt": "2026-08-22T01:00:00Z",
+            "labels": [{"name": CANDIDATE_ISSUE_LABEL}],
+        }
+    )
+
+    class RawIssueGitHub(FakeGitHub):
+        def list_open_issues(self) -> DemandIssueInventory:
+            return DemandIssueInventory(records=(raw_issue,), raw_count=1)
+
+    inventory = InspectService(
+        registry=FakeRegistry(()),
+        git=FakeGit(
+            (PhysicalWorktree(unknown_path, "b" * 40, None),),
+            {unknown_path: unknown_snapshot},
+        ),
+        github=RawIssueGitHub((), candidates=(candidate,)),
+        runtime=FakeRuntime(),
+    ).inspect()
+
+    assert [item.number for item in inventory.candidate_issues] == [1939]
+    assert inventory.dispatchable_candidate_issues == ()
+    assert any(
+        problem.identity == "Issue#1939"
+        and problem.source == "candidate"
+        and "worktree:" in problem.reason
+        for problem in inventory.source_problems
+    )
+
+
 def test_candidate_query_failure_is_a_source_problem(tmp_path: Path) -> None:
     class BrokenCandidateGitHub(FakeGitHub):
         def list_open_candidate_issues(self) -> CandidateIssueInventory:
@@ -520,6 +590,43 @@ def test_raw_issues_remain_visible_when_open_pr_inventory_fails(
     assert inventory.dispatchable_candidate_issues == ()
 
 
+def test_single_open_pr_observation_problem_does_not_block_unrelated_candidate(
+    tmp_path: Path,
+) -> None:
+    candidate = _candidate(7)
+    issue = parse_demand_issue(
+        {
+            "id": "I_7",
+            "number": 7,
+            "url": "https://github.com/owner/repo/issues/7",
+            "title": "Issue 7",
+            "body": render_candidate_body(candidate.spec),
+            "updatedAt": "2026-08-22T01:00:00Z",
+            "labels": [{"name": CANDIDATE_ISSUE_LABEL}],
+        }
+    )
+
+    class MalformedPullRequestGitHub(FakeGitHub):
+        def list_open_issues(self) -> DemandIssueInventory:
+            return DemandIssueInventory(records=(issue,), raw_count=1)
+
+    inventory = InspectService(
+        registry=FakeRegistry(()),
+        git=FakeGit((), {}),
+        github=MalformedPullRequestGitHub(
+            (),
+            problems=(InventoryProblem("github", "PR#99", "malformed PR payload"),),
+        ),
+        runtime=FakeRuntime(),
+    ).inspect()
+
+    assert [item.number for item in inventory.candidate_issues] == [7]
+    assert [item.number for item in inventory.dispatchable_candidate_issues] == [7]
+    assert InventoryProblem("github", "PR#99", "malformed PR payload") in (
+        inventory.source_problems
+    )
+
+
 def test_inspect_service_never_marks_dirty_or_head_drift_ready(tmp_path: Path) -> None:
     path = tmp_path / "lane"
     physical = PhysicalWorktree(path=path, head_sha="c" * 40, branch="feat/one")
@@ -569,6 +676,30 @@ def test_exact_stale_required_green_pr_is_the_only_reanchor_classification(
     )
 
     assert lane.decision.state is LaneState.REANCHOR
+    assert not lane.problems
+
+
+def test_published_lane_is_queue_ready_when_published_base_matches_live_main(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "lane"
+    published = replace(
+        _record(path, status="published"),
+        published_base_sha="d" * 40,
+    )
+    current = replace(_pull_request(path), base_sha="d" * 40)
+    service = InspectService(
+        registry=FakeRegistry((published,)),
+        git=FakeGit((), {}, main_sha="d" * 40),
+        github=FakeGitHub((current,)),
+        runtime=FakeRuntime(),
+    )
+
+    lane = next(
+        item for item in service.inspect().lanes if item.key.startswith("published:")
+    )
+
+    assert lane.decision.state is LaneState.READY_TO_QUEUE
     assert not lane.problems
 
 

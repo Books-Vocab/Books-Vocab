@@ -71,7 +71,7 @@ def scope_matches_snapshot(
         (FileOperation(item.operation.value), item.path) for item in record.scope.files
     }
     actual = {(item.operation, item.path) for item in snapshot.changes}
-    return actual == expected
+    return actual.issubset(expected)
 
 
 def collision_keys(path_sets: dict[str, set[str]]) -> set[str]:

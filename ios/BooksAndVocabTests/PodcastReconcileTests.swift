@@ -130,6 +130,8 @@ struct PodcastReconcileTests {
         let s1 = makeSeries("a")
         let s2 = makeSeries("b")
         ctx.insert(s1); ctx.insert(s2)
+        s1.sortOrder = 7
+        s2.sortOrder = 8
         try ctx.save()
 
         PodcastSyncService.reconcileLocalState(
@@ -141,6 +143,9 @@ struct PodcastReconcileTests {
 
         let all = try ctx.fetch(FetchDescriptor<PodcastSeries>())
         #expect(all.allSatisfy { $0.isSoftDeleted == false }, "空 server list 不可 tombstone 任何 series")
+        let byId = Dictionary(uniqueKeysWithValues: all.map { ($0.remoteId, $0) })
+        #expect(byId["a"]?.sortOrder == 7, "空 server list 不可改變 sortOrder")
+        #expect(byId["b"]?.sortOrder == 8, "空 server list 不可改變 sortOrder")
     }
 
     @Test func reconcile_resurrects_returned_series() throws {
@@ -159,6 +164,30 @@ struct PodcastReconcileTests {
 
         let fetched = try ctx.fetch(FetchDescriptor<PodcastSeries>()).first
         #expect(fetched?.isSoftDeleted == false)
+    }
+
+    @Test func reconcile_nonempty_catalog_applies_response_ordinal_without_detail_fetch() throws {
+        let ctx = try makeContext()
+        let first = makeSeries("a")
+        first.sortOrder = 41
+        let second = makeSeries("b")
+        second.sortOrder = 42
+        ctx.insert(first); ctx.insert(second)
+        try ctx.save()
+
+        // Both details are skipped, but the non-empty catalog response still
+        // carries the stable display order through its response ordinal.
+        PodcastSyncService.reconcileLocalState(
+            serverSummaries: [summary("a"), summary("b")],
+            fetchedDetails: [:],
+            context: ctx
+        )
+        try ctx.save()
+
+        let all = try ctx.fetch(FetchDescriptor<PodcastSeries>())
+        let byId = Dictionary(uniqueKeysWithValues: all.map { ($0.remoteId, $0) })
+        #expect(byId["a"]?.sortOrder == 0)
+        #expect(byId["b"]?.sortOrder == 1)
     }
 
     @Test func reconcile_deletes_orphan_progress() throws {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -10,6 +11,7 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
+import worktree_registry as registry
 from delivery_control.domain.models import (
     CheckStatus,
     HandbackReceipt,
@@ -22,7 +24,8 @@ from delivery_control.domain.observations import (
     PullRequestSnapshot,
 )
 from delivery_control.services.pr_contract import render_pull_request_body
-from worktree_reanchor_core import git_ops
+from worktree_reanchor_core import git_ops, registry_ops
+from worktree_reanchor_core.cli import add_parser
 from worktree_reanchor_core.errors import ReanchorRefused
 from worktree_reanchor_core.lifecycle_proof import (
     verify_reanchor_lifecycle,
@@ -32,7 +35,14 @@ from worktree_reanchor_core.lifecycle_proof import (
 BASE = "1" * 40
 LIVE = "2" * 40
 HEAD = "3" * 40
+PUBLISHED_BASE = "8" * 40
 OTHER_HEAD = "4" * 40
+REMOTE_SOURCE_BASE = "5" * 40
+REMOTE_SOURCE_LIVE = "6" * 40
+REMOTE_SOURCE_HEAD = "7" * 40
+REMOTE_SOURCE_LANE = "DIRECT-REMOTE-SOURCE-1"
+REMOTE_SOURCE_BRANCH = "feat/exact-remote-source"
+REMOTE_SOURCE_OWNER = "owner-thread-1"
 
 
 def test_reanchor_git_timeout_is_structured_and_bounded(
@@ -49,6 +59,309 @@ def test_reanchor_git_timeout_is_structured_and_bounded(
 
     assert return_code == 124
     assert output == "partial\ngit command timed out after 120s"
+
+
+def _unhanded_active_state(tmp_path: Path) -> tuple[Path, Path]:
+    recorded_path = tmp_path / "owner-worktree"
+    record = {
+        "branch": REMOTE_SOURCE_BRANCH,
+        "path": str(recorded_path),
+        "intent": "same-owner remote-source reanchor",
+        "base": REMOTE_SOURCE_BASE,
+        "base_sha": REMOTE_SOURCE_BASE,
+        "status": "active",
+        "external_ids": [REMOTE_SOURCE_LANE],
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"path": "ops/reanchor_change.py", "operation": "add"}],
+        },
+        "codex_thread_id": REMOTE_SOURCE_OWNER,
+        "delegated": True,
+        "claim_generation": 2,
+        "handed_back_at": None,
+        "handed_back_sha": None,
+    }
+    state_path = tmp_path / "worktree_registry.json"
+    registry.save_state(
+        state_path,
+        {"schema": registry.SCHEMA, "records": [record]},
+    )
+    return state_path, recorded_path
+
+
+def _published_claim_state(tmp_path: Path) -> tuple[Path, Path]:
+    recorded_path = tmp_path / "published-owner-worktree"
+    record = {
+        "branch": "feat/published-base-propagation",
+        "path": str(recorded_path),
+        "intent": "same-owner published-base propagation",
+        "base": BASE,
+        "base_sha": BASE,
+        "status": "published",
+        "external_ids": ["DIRECT-PUBLISHED-BASE-PROPAGATION"],
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"path": "ops/reanchor_change.py", "operation": "add"}],
+        },
+        "codex_thread_id": "owner-thread-1",
+        "delegated": True,
+        "claim_generation": 0,
+        "handed_back_at": "2026-08-31T00:00:00Z",
+        "handed_back_sha": HEAD,
+        "handback_claim_generation": 0,
+        "published_base_sha": PUBLISHED_BASE,
+    }
+    record["handback_seal"] = registry._seal_with_digest(
+        registry._seal_body(
+            record,
+            base_sha=BASE,
+            tip_sha=HEAD,
+            outcomes=[{"name": "focused", "status": "success"}],
+            handed_back_at="2026-08-31T00:00:00Z",
+            origin_main_sha=BASE,
+        )
+    )
+    state_path = tmp_path / "worktree_registry.json"
+    registry.save_state(
+        state_path,
+        {"schema": registry.SCHEMA, "records": [record]},
+    )
+    return state_path, recorded_path
+
+
+def test_resume_then_reanchor_preserves_original_and_published_base(
+    tmp_path: Path,
+) -> None:
+    state_path, target = _published_claim_state(tmp_path)
+
+    resume_preflight = registry_ops.preflight_resume(
+        state_path=state_path,
+        lane_id="DIRECT-PUBLISHED-BASE-PROPAGATION",
+        branch="feat/published-base-propagation",
+        owner_thread_id="owner-thread-1",
+        claim_generation=0,
+        expected_remote_head=HEAD,
+        target=target,
+    )
+    resumed = registry_ops.register_resumed(
+        state_path=state_path,
+        preflight_result=resume_preflight,
+        target=target,
+        lane_id="DIRECT-PUBLISHED-BASE-PROPAGATION",
+        claim_generation=0,
+    )
+
+    assert resumed["base_sha"] == BASE
+    assert resumed["published_base_sha"] == PUBLISHED_BASE
+
+    reanchor_preflight = registry_ops.preflight(
+        state_path=state_path,
+        lane_id="DIRECT-PUBLISHED-BASE-PROPAGATION",
+        branch="feat/published-base-propagation",
+        owner_thread_id="owner-thread-1",
+        claim_generation=1,
+        expected_remote_head=HEAD,
+        live_main=LIVE,
+        target=target,
+    )
+    reanchored = registry_ops.register_active(
+        state_path=state_path,
+        preflight_result=reanchor_preflight,
+        target=target,
+        live_main=LIVE,
+        lane_id="DIRECT-PUBLISHED-BASE-PROPAGATION",
+        claim_generation=1,
+    )
+
+    assert reanchored["base_sha"] == LIVE
+    assert reanchored["published_base_sha"] == PUBLISHED_BASE
+
+
+def test_propagated_published_base_revalidates_current_pr_base(
+    tmp_path: Path,
+) -> None:
+    state_path, target = _published_claim_state(tmp_path)
+    resume_preflight = registry_ops.preflight_resume(
+        state_path=state_path,
+        lane_id="DIRECT-PUBLISHED-BASE-PROPAGATION",
+        branch="feat/published-base-propagation",
+        owner_thread_id="owner-thread-1",
+        claim_generation=0,
+        expected_remote_head=HEAD,
+        target=target,
+    )
+    resumed = registry_ops.register_resumed(
+        state_path=state_path,
+        preflight_result=resume_preflight,
+        target=target,
+        lane_id="DIRECT-PUBLISHED-BASE-PROPAGATION",
+        claim_generation=0,
+    )
+    reanchor_preflight = registry_ops.preflight(
+        state_path=state_path,
+        lane_id="DIRECT-PUBLISHED-BASE-PROPAGATION",
+        branch="feat/published-base-propagation",
+        owner_thread_id="owner-thread-1",
+        claim_generation=1,
+        expected_remote_head=HEAD,
+        live_main=LIVE,
+        target=target,
+    )
+    candidate = _pr(
+        1822,
+        branch="feat/published-base-propagation",
+        base=PUBLISHED_BASE,
+        head=HEAD,
+    )
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        open_prs=(candidate,),
+        checks={1822: _check(CheckStatus.SUCCESS)},
+    )
+
+    proof = verify_reanchor_lifecycle(
+        github,
+        pull_request_number=1822,
+        branch=candidate.branch,
+        expected_pr_base_sha=reanchor_preflight.published_base_sha,
+        expected_remote_head=HEAD,
+        live_main_sha=LIVE,
+    )
+
+    assert resumed["published_base_sha"] == PUBLISHED_BASE
+    assert reanchor_preflight.published_base_sha == PUBLISHED_BASE
+    assert proof.base_sha == PUBLISHED_BASE
+
+
+def test_missing_published_base_is_not_invented_for_new_claim(
+    tmp_path: Path,
+) -> None:
+    state_path, target = _published_claim_state(tmp_path)
+    state = registry.load_state(state_path)
+    state["records"][0].pop("published_base_sha")
+    registry.save_state(state_path, state)
+
+    preflight = registry_ops.preflight_resume(
+        state_path=state_path,
+        lane_id="DIRECT-PUBLISHED-BASE-PROPAGATION",
+        branch="feat/published-base-propagation",
+        owner_thread_id="owner-thread-1",
+        claim_generation=0,
+        expected_remote_head=HEAD,
+        target=target,
+    )
+    resumed = registry_ops.register_resumed(
+        state_path=state_path,
+        preflight_result=preflight,
+        target=target,
+        lane_id="DIRECT-PUBLISHED-BASE-PROPAGATION",
+        claim_generation=0,
+    )
+
+    assert resumed["base_sha"] == BASE
+    assert "published_base_sha" not in resumed
+
+
+def test_malformed_published_base_is_rejected_before_registration(
+    tmp_path: Path,
+) -> None:
+    state_path, target = _published_claim_state(tmp_path)
+    state = registry.load_state(state_path)
+    state["records"][0]["published_base_sha"] = "not-a-commit-sha"
+    registry.save_state(state_path, state)
+
+    with pytest.raises(ReanchorRefused, match="published PR base must be"):
+        registry_ops.preflight_resume(
+            state_path=state_path,
+            lane_id="DIRECT-PUBLISHED-BASE-PROPAGATION",
+            branch="feat/published-base-propagation",
+            owner_thread_id="owner-thread-1",
+            claim_generation=0,
+            expected_remote_head=HEAD,
+            target=target,
+        )
+
+
+def test_reanchor_accepts_exact_unhanded_active_remote_source_claim(
+    tmp_path: Path,
+) -> None:
+    state_path, target = _unhanded_active_state(tmp_path)
+
+    preflight = registry_ops.preflight(
+        state_path=state_path,
+        lane_id=REMOTE_SOURCE_LANE,
+        branch=REMOTE_SOURCE_BRANCH,
+        owner_thread_id=REMOTE_SOURCE_OWNER,
+        claim_generation=2,
+        expected_remote_head=REMOTE_SOURCE_HEAD,
+        live_main=REMOTE_SOURCE_LIVE,
+        target=target,
+    )
+    active = registry_ops.register_active(
+        state_path=state_path,
+        preflight_result=preflight,
+        target=target,
+        live_main=REMOTE_SOURCE_LIVE,
+        lane_id=REMOTE_SOURCE_LANE,
+        claim_generation=2,
+    )
+
+    state = registry.load_state(state_path)
+    assert preflight.original["handed_back_sha"] is None
+    assert preflight.declared == (("ops/reanchor_change.py", "add"),)
+    assert active["status"] == "active"
+    assert active["claim_generation"] == 3
+    assert active["base_sha"] == REMOTE_SOURCE_LIVE
+    assert state["records"][0]["status"] == "abandoned"
+    assert state["records"][1]["status"] == "active"
+
+
+def test_resume_path_keeps_handback_required_for_unhanded_active_claim(
+    tmp_path: Path,
+) -> None:
+    state_path, target = _unhanded_active_state(tmp_path)
+
+    with pytest.raises(
+        ReanchorRefused, match="expected remote HEAD differs from original hand-back"
+    ):
+        registry_ops.preflight_resume(
+            state_path=state_path,
+            lane_id=REMOTE_SOURCE_LANE,
+            branch=REMOTE_SOURCE_BRANCH,
+            owner_thread_id=REMOTE_SOURCE_OWNER,
+            claim_generation=2,
+            expected_remote_head=REMOTE_SOURCE_HEAD,
+            target=target,
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"handed_back_at": "2026-08-31T00:00:00Z"},
+        {"handback_claim_generation": 2},
+        {"handback_seal": {}},
+    ],
+)
+def test_remote_source_does_not_accept_partial_handback_evidence(
+    tmp_path: Path, mutation: dict[str, object]
+) -> None:
+    state_path, target = _unhanded_active_state(tmp_path)
+    state = registry.load_state(state_path)
+    state["records"][0].update(mutation)
+    registry.save_state(state_path, state)
+
+    with pytest.raises(ReanchorRefused):
+        registry_ops.preflight(
+            state_path=state_path,
+            lane_id=REMOTE_SOURCE_LANE,
+            branch=REMOTE_SOURCE_BRANCH,
+            owner_thread_id=REMOTE_SOURCE_OWNER,
+            claim_generation=2,
+            expected_remote_head=REMOTE_SOURCE_HEAD,
+            live_main=REMOTE_SOURCE_LIVE,
+            target=target,
+        )
 
 
 def _receipt_body(
@@ -182,7 +495,9 @@ def test_resume_lifecycle_accepts_only_exact_open_required_code_failure() -> Non
     assert proof.required_status is CheckStatus.FAILURE
 
 
-def test_resume_lifecycle_rejects_combined_context_for_required_code_failure() -> None:
+def test_resume_lifecycle_ignores_advisory_agent_review_for_required_code_failure() -> (
+    None
+):
     candidate = _pr(42, branch="feat/exact-pr")
     github = FakeGitHub(
         all_for_branch=(candidate,),
@@ -194,7 +509,24 @@ def test_resume_lifecycle_rejects_combined_context_for_required_code_failure() -
         },
     )
 
-    with pytest.raises(ReanchorRefused, match="exact required code failure context"):
+    proof = verify_resume_lifecycle(
+        github,
+        branch="feat/exact-pr",
+        expected_base_sha=BASE,
+        expected_remote_head=HEAD,
+    )
+
+    assert proof.required_status is CheckStatus.FAILURE
+
+
+def test_resume_lifecycle_rejects_agent_review_without_required_context() -> None:
+    candidate = _pr(42, branch="feat/exact-pr")
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        checks={42: _check(CheckStatus.SUCCESS, names=("agent-review",))},
+    )
+
+    with pytest.raises(ReanchorRefused, match="exact required code context"):
         verify_resume_lifecycle(
             github,
             branch="feat/exact-pr",
@@ -249,7 +581,7 @@ def test_maintenance_resume_deduplicates_repeated_agent_review_context() -> None
     assert proof.required_status is CheckStatus.SUCCESS
 
 
-def test_reanchor_lifecycle_accepts_required_green_with_trusted_agent_review_context() -> (
+def test_reanchor_lifecycle_accepts_required_green_with_optional_agent_review_context() -> (
     None
 ):
     candidate = _pr(42, branch="feat/exact-pr")
@@ -275,6 +607,101 @@ def test_reanchor_lifecycle_accepts_required_green_with_trusted_agent_review_con
 
     assert proof.pull_request_number == 42
     assert proof.required_status is CheckStatus.SUCCESS
+
+
+def test_reanchor_lifecycle_accepts_explicit_required_failure_for_local_recovery() -> (
+    None
+):
+    candidate = _pr(42, branch="feat/exact-pr")
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        open_prs=(candidate,),
+        checks={42: _check(CheckStatus.FAILURE)},
+    )
+
+    proof = verify_reanchor_lifecycle(
+        github,
+        pull_request_number=42,
+        branch="feat/exact-pr",
+        expected_base_sha=BASE,
+        expected_remote_head=HEAD,
+        live_main_sha=LIVE,
+        allow_required_failure_recovery=True,
+    )
+
+    assert proof.pull_request_number == 42
+    assert proof.required_status is CheckStatus.FAILURE
+    assert proof.merge_front_policy == "owner-local-required-failure-recovery"
+
+
+@pytest.mark.parametrize(
+    ("status", "reason"),
+    [
+        (CheckStatus.SUCCESS, "exact required code failure"),
+        (CheckStatus.PENDING, "exact required code failure"),
+        (CheckStatus.ABSENT, "exact required code context"),
+    ],
+)
+def test_required_failure_recovery_rejects_non_failure_required_status(
+    status: CheckStatus, reason: str
+) -> None:
+    candidate = _pr(42, branch="feat/exact-pr")
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        open_prs=(candidate,),
+        checks={
+            42: _check(
+                status, names=() if status is CheckStatus.ABSENT else ("required",)
+            )
+        },
+    )
+
+    with pytest.raises(ReanchorRefused, match=reason):
+        verify_reanchor_lifecycle(
+            github,
+            pull_request_number=42,
+            branch="feat/exact-pr",
+            expected_base_sha=BASE,
+            expected_remote_head=HEAD,
+            live_main_sha=LIVE,
+            allow_required_failure_recovery=True,
+        )
+
+
+def test_reanchor_parser_exposes_required_failure_recovery_opt_in() -> None:
+    root = argparse.ArgumentParser()
+    subparsers = root.add_subparsers(dest="command")
+    add_parser(
+        subparsers,
+        common=lambda parser: None,
+        handler=lambda args: 0,
+        default_repo=Path("/repo"),
+    )
+
+    args = root.parse_args(
+        [
+            "reanchor",
+            "--merge-front-pr",
+            "42",
+            "--lane",
+            "DIRECT-PR-42",
+            "--branch",
+            "feat/exact-pr",
+            "--owner-thread-id",
+            "owner-thread-1",
+            "--claim-generation",
+            "0",
+            "--expected-remote-head",
+            HEAD,
+            "--live-main",
+            LIVE,
+            "--path",
+            "/tmp/pr-42",
+            "--allow-required-failure",
+        ]
+    )
+
+    assert args.allow_required_failure is True
 
 
 @pytest.mark.parametrize(
@@ -325,7 +752,7 @@ def test_reanchor_lifecycle_accepts_required_green_with_trusted_agent_review_con
                     )
                 },
             ),
-            "required code failure",
+            "required code context",
         ),
     ],
 )
@@ -449,6 +876,103 @@ def test_reanchor_lifecycle_accepts_current_pr_base_after_publication_observatio
     assert proof.required_status is CheckStatus.SUCCESS
 
 
+def test_reanchor_lifecycle_accepts_valid_typed_base_lag_after_pr_base_advances() -> (
+    None
+):
+    candidate = _pr(
+        42,
+        branch="feat/exact-pr",
+        base=LIVE,
+        body=_receipt_body(
+            number=42,
+            branch="feat/exact-pr",
+            base=BASE,
+            head=HEAD,
+        ),
+    )
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        open_prs=(candidate,),
+        checks={42: _check(CheckStatus.SUCCESS)},
+    )
+
+    proof = verify_reanchor_lifecycle(
+        github,
+        pull_request_number=42,
+        branch="feat/exact-pr",
+        expected_pr_base_sha=LIVE,
+        expected_remote_head=HEAD,
+        live_main_sha=LIVE,
+    )
+
+    assert proof.pull_request_number == 42
+    assert proof.base_sha == LIVE
+    assert proof.required_status is CheckStatus.SUCCESS
+
+
+def test_reanchor_lifecycle_accepts_typed_base_lag_before_current_main_reanchor() -> (
+    None
+):
+    candidate = _pr(
+        42,
+        branch="feat/exact-pr",
+        base=BASE,
+        body=_receipt_body(
+            number=42,
+            branch="feat/exact-pr",
+            base=LIVE,
+            head=HEAD,
+        ),
+    )
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        open_prs=(candidate,),
+        checks={42: _check(CheckStatus.SUCCESS)},
+    )
+
+    proof = verify_reanchor_lifecycle(
+        github,
+        pull_request_number=42,
+        branch="feat/exact-pr",
+        expected_pr_base_sha=BASE,
+        expected_remote_head=HEAD,
+        live_main_sha=LIVE,
+    )
+
+    assert proof.pull_request_number == 42
+    assert proof.base_sha == BASE
+    assert proof.required_status is CheckStatus.SUCCESS
+
+
+def test_reanchor_lifecycle_rejects_typed_base_lag_for_legacy_contract() -> None:
+    candidate = _pr(
+        42,
+        branch="feat/exact-pr",
+        base=BASE,
+        body=_receipt_body(
+            number=42,
+            branch="feat/exact-pr",
+            base=LIVE,
+            head=HEAD,
+        ),
+    )
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        open_prs=(candidate,),
+        checks={42: _check(CheckStatus.SUCCESS)},
+    )
+
+    with pytest.raises(ReanchorRefused, match="no required-green unheld merge-front"):
+        verify_reanchor_lifecycle(
+            github,
+            pull_request_number=42,
+            branch="feat/exact-pr",
+            expected_base_sha=BASE,
+            expected_remote_head=HEAD,
+            live_main_sha=LIVE,
+        )
+
+
 def test_reanchor_lifecycle_rejects_caller_selected_non_front_pr() -> None:
     earlier = _pr(41, head=OTHER_HEAD)
     candidate = _pr(42, branch="feat/exact-pr")
@@ -519,7 +1043,7 @@ def test_reanchor_lifecycle_defers_to_existing_native_queue_entry() -> None:
         (
             _pr(42, branch="feat/exact-pr"),
             _check(CheckStatus.ABSENT, names=()),
-            "required code failure context",
+            "required code context",
         ),
         (
             _pr(42, branch="feat/exact-pr"),
@@ -527,7 +1051,7 @@ def test_reanchor_lifecycle_defers_to_existing_native_queue_entry() -> None:
                 CheckStatus.SUCCESS,
                 names=("agent-review", "required", "unexpected"),
             ),
-            "required code failure context",
+            "required code context",
         ),
         (
             _pr(42, branch="feat/exact-pr", body="P0 hold"),

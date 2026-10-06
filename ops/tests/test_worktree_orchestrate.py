@@ -586,6 +586,413 @@ def test_gate_plan_routes_product_surfaces_to_existing_entry_points() -> None:
     assert "ops-tests" in names
     assert "docs-lint" in names
     assert "shell-syntax:ops/example.sh" in names
+    levels = {item["name"]: item["level"] for item in plan}
+    assert levels["git-diff-check"] == "block"
+    assert levels["backend-tests"] == "block"
+    assert levels["ops-tests"] == "block"
+    assert levels["docs-lint"] == "block"
+    assert levels["shell-syntax:ops/example.sh"] == "block"
+    assert levels["ios-tests"] == "block"
+    ios_check = next(item for item in plan if item["name"] == "ios-tests")
+    assert ios_check["cmd"][-1] == "--json"
+    assert ios_check["scope_files"] == [
+        "backend/src/kg/app.py",
+        "docs/reference/tech_index.md",
+        "ios/BooksAndVocab/App.swift",
+        "ops/example.sh",
+    ]
+
+
+def test_gate_plan_uses_a_leased_simulator_for_ios_checks() -> None:
+    plan = coordinator._plan_checks(["ios/BooksAndVocab/App.swift"])
+
+    ios_check = next(item for item in plan if item["name"] == "ios-tests")
+
+    assert ios_check["cmd"] == [
+        "./ops/ios_ops.sh",
+        "test",
+        "--unit",
+        "--lease",
+        "--json",
+    ]
+
+
+def _ios_failure_output(*, file: Path | None) -> str:
+    diagnostic = {
+        "severity": "error",
+        "category": "test",
+        "file": str(file) if file is not None else None,
+        "line": None,
+        "column": None,
+        "message": "BooksAndVocabTests/testSyncFails(): XCTAssertEqual failed",
+        "raw": "BooksAndVocabTests/testSyncFails(): XCTAssertEqual failed",
+    }
+    return json.dumps(
+        {
+            "schema": "kg.ios.run.v1",
+            "status": "fail",
+            "result": "fail",
+            "diagnostics": {
+                "schema": "kg.ios.diagnostics.v1",
+                "source": "xcresult-test-results",
+                "result": "fail",
+                "counts": {
+                    "errors": 1,
+                    "warnings": 0,
+                    "failedTests": 1,
+                },
+                "diagnostics": [diagnostic],
+                "truncated": False,
+                "totalDiagnostics": 1,
+            },
+        }
+    )
+
+
+def _ios_failure_check(output: str, scope_files: list[str]) -> dict[str, object]:
+    return {
+        "name": "ios-tests",
+        "kind": "shell",
+        "cwd": ".",
+        "cmd": [
+            "bash",
+            "-c",
+            'printf "%s" "$1"; exit 7',
+            "ios-check",
+            output,
+        ],
+        "level": "block",
+        "scope_files": scope_files,
+    }
+
+
+def test_run_check_downgrades_only_proven_scope_external_ios_failure(
+    tmp_path: Path,
+) -> None:
+    external_file = tmp_path / "ios" / "BooksAndVocabTests" / "Unrelated.swift"
+    result = coordinator._run_check(
+        _ios_failure_check(
+            _ios_failure_output(file=external_file),
+            ["ios/BooksAndVocab/Changed.swift"],
+        ),
+        tmp_path,
+    )
+
+    assert result["status"] == "block"
+    assert result["level"] == "advisory"
+    assert result["rc"] == 7
+    assert result["diagnostics"]["schema"] == "kg.ios.diagnostics.v1"
+    assert result["failure_scope"]["verdict"] == "advisory"
+    assert result["failure_scope"]["failure_files"] == [
+        "ios/BooksAndVocabTests/Unrelated.swift"
+    ]
+    assert _ios_failure_output(file=external_file) in result["output_tail"]
+
+
+def test_run_check_blocks_in_scope_ios_failure(tmp_path: Path) -> None:
+    changed_file = tmp_path / "ios" / "BooksAndVocab" / "Changed.swift"
+    result = coordinator._run_check(
+        _ios_failure_check(
+            _ios_failure_output(file=changed_file),
+            ["ios/BooksAndVocab/Changed.swift"],
+        ),
+        tmp_path,
+    )
+
+    assert result["status"] == "block"
+    assert result["level"] == "block"
+    assert result["failure_scope"]["verdict"] == "block"
+    assert result["failure_scope"]["reason"] == "failure-in-changed-scope"
+    assert result["output_tail"]
+
+
+def test_run_check_blocks_unknown_ios_failure(tmp_path: Path) -> None:
+    result = coordinator._run_check(
+        _ios_failure_check(
+            _ios_failure_output(file=None),
+            ["ios/BooksAndVocab/Changed.swift"],
+        ),
+        tmp_path,
+    )
+
+    assert result["status"] == "block"
+    assert result["level"] == "block"
+    assert result["failure_scope"]["verdict"] == "block"
+    assert result["failure_scope"]["reason"] == "failure-location-unknown"
+
+
+def test_run_check_recovers_external_ios_failure_from_recorded_issue_location(
+    tmp_path: Path,
+) -> None:
+    external_file = tmp_path / "ios" / "BooksAndVocabTests" / "Unrelated.swift"
+    external_file.parent.mkdir(parents=True)
+    external_file.write_text("", encoding="utf-8")
+    output = (
+        _ios_failure_output(file=None)
+        + "\n✘ Test testSyncFails() recorded an issue at "
+        "Unrelated.swift:17:9: XCTAssertEqual failed\n"
+    )
+
+    result = coordinator._run_check(
+        _ios_failure_check(output, ["ios/BooksAndVocab/Changed.swift"]),
+        tmp_path,
+    )
+
+    assert result["status"] == "block"
+    assert result["level"] == "advisory"
+    assert result["failure_scope"]["verdict"] == "advisory"
+    assert result["failure_scope"]["failure_files"] == [
+        "ios/BooksAndVocabTests/Unrelated.swift"
+    ]
+
+
+def test_run_check_blocks_in_scope_ios_failure_recovered_from_recorded_issue_location(
+    tmp_path: Path,
+) -> None:
+    changed_file = tmp_path / "ios" / "BooksAndVocab" / "Changed.swift"
+    changed_file.parent.mkdir(parents=True)
+    changed_file.write_text("", encoding="utf-8")
+    output = (
+        _ios_failure_output(file=None)
+        + "\n✘ Test testChanged() recorded an issue at Changed.swift:23:5: "
+        "XCTAssertTrue failed\n"
+    )
+
+    result = coordinator._run_check(
+        _ios_failure_check(output, ["ios/BooksAndVocab/Changed.swift"]),
+        tmp_path,
+    )
+
+    assert result["status"] == "block"
+    assert result["level"] == "block"
+    assert result["failure_scope"]["verdict"] == "block"
+    assert result["failure_scope"]["reason"] == "failure-in-changed-scope"
+    assert result["failure_scope"]["failure_files"] == [
+        "ios/BooksAndVocab/Changed.swift"
+    ]
+
+
+def test_run_check_blocks_ambiguous_recorded_issue_location(
+    tmp_path: Path,
+) -> None:
+    first = tmp_path / "ios" / "First" / "Shared.swift"
+    second = tmp_path / "ios" / "Second" / "Shared.swift"
+    first.parent.mkdir(parents=True)
+    second.parent.mkdir(parents=True)
+    first.write_text("", encoding="utf-8")
+    second.write_text("", encoding="utf-8")
+    output = (
+        _ios_failure_output(file=None)
+        + "\n✘ Test testAmbiguous() recorded an issue at Shared.swift:4:2: "
+        "XCTFail\n"
+    )
+
+    result = coordinator._run_check(
+        _ios_failure_check(output, ["ios/BooksAndVocab/Changed.swift"]),
+        tmp_path,
+    )
+
+    assert result["status"] == "block"
+    assert result["level"] == "block"
+    assert result["failure_scope"]["verdict"] == "block"
+    assert result["failure_scope"]["reason"] == "failure-location-unknown"
+
+
+def test_gate_does_not_block_on_failed_advisory_ios_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: object,
+) -> None:
+    monkeypatch.setattr(
+        coordinator,
+        "_changed_files",
+        lambda worktree, base: ["ios/BooksAndVocab/Changed.swift"],
+    )
+
+    def fake_run_check(check: dict[str, object], worktree: Path) -> dict[str, object]:
+        failed = check["name"] == "ios-tests"
+        return {
+            "name": check["name"],
+            "cmd": check["cmd"],
+            "cwd": check["cwd"],
+            "status": "block" if failed else "pass",
+            "level": "advisory" if failed else check["level"],
+            "rc": 7 if failed else 0,
+            "duration_s": 0.001,
+            "output_tail": "scope-external-ios-failure" if failed else "",
+            "failure_scope": (
+                {
+                    "verdict": "advisory",
+                    "reason": "all-failures-outside-changed-scope",
+                    "failure_files": ["ios/BooksAndVocabTests/UnrelatedTests.swift"],
+                }
+                if failed
+                else None
+            ),
+        }
+
+    monkeypatch.setattr(coordinator, "_run_check", fake_run_check)
+    monkeypatch.setattr(
+        coordinator,
+        "_gate_record_path",
+        lambda state, worktree: tmp_path / "state" / "gate.json",
+    )
+    monkeypatch.setattr(
+        coordinator,
+        "_git",
+        lambda argv, cwd=coordinator.ROOT: (
+            (0, "test-head") if argv == ["rev-parse", "HEAD"] else (0, "")
+        ),
+    )
+
+    rc = coordinator.cmd_gate(
+        Namespace(
+            worktree=str(tmp_path),
+            base="test-base",
+            plan_only=False,
+            state=None,
+            json=True,
+        )
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    ios_result = next(
+        item for item in payload["results"] if item["name"] == "ios-tests"
+    )
+    assert rc == coordinator.EXIT_OK
+    assert payload["verdict"] == "pass"
+    assert ios_result["status"] == "block"
+    assert ios_result["level"] == "advisory"
+    assert ios_result["output_tail"] == "scope-external-ios-failure"
+
+
+@pytest.mark.parametrize(
+    "failure_reason",
+    [
+        "failure-in-changed-scope",
+        "failure-location-unknown",
+    ],
+)
+def test_gate_blocks_in_scope_or_unknown_ios_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: object,
+    failure_reason: str,
+) -> None:
+    monkeypatch.setattr(
+        coordinator,
+        "_changed_files",
+        lambda worktree, base: ["ios/BooksAndVocab/Changed.swift"],
+    )
+
+    def fake_run_check(check: dict[str, object], worktree: Path) -> dict[str, object]:
+        failed = check["name"] == "ios-tests"
+        return {
+            "name": check["name"],
+            "cmd": check["cmd"],
+            "cwd": check["cwd"],
+            "status": "block" if failed else "pass",
+            "level": "block" if failed else check["level"],
+            "rc": 7 if failed else 0,
+            "duration_s": 0.001,
+            "output_tail": "ios-failure" if failed else "",
+            "failure_scope": (
+                {"verdict": "block", "reason": failure_reason} if failed else None
+            ),
+        }
+
+    monkeypatch.setattr(coordinator, "_run_check", fake_run_check)
+    monkeypatch.setattr(
+        coordinator,
+        "_gate_record_path",
+        lambda state, worktree: tmp_path / "state" / "gate.json",
+    )
+    monkeypatch.setattr(
+        coordinator,
+        "_git",
+        lambda argv, cwd=coordinator.ROOT: (
+            (0, "test-head") if argv == ["rev-parse", "HEAD"] else (0, "")
+        ),
+    )
+
+    rc = coordinator.cmd_gate(
+        Namespace(
+            worktree=str(tmp_path),
+            base="test-base",
+            plan_only=False,
+            state=None,
+            json=True,
+        )
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    ios_result = next(
+        item for item in payload["results"] if item["name"] == "ios-tests"
+    )
+    assert rc == coordinator.EXIT_BLOCK
+    assert payload["verdict"] == "block"
+    assert ios_result["status"] == "block"
+    assert ios_result["level"] == "block"
+    assert ios_result["failure_scope"]["reason"] == failure_reason
+
+
+def test_gate_still_blocks_failed_block_level_check(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: object,
+) -> None:
+    monkeypatch.setattr(
+        coordinator,
+        "_changed_files",
+        lambda worktree, base: ["ops/worktree_orchestrate.py"],
+    )
+
+    def fake_run_check(check: dict[str, object], worktree: Path) -> dict[str, object]:
+        failed = check["name"] == "ops-tests"
+        return {
+            "name": check["name"],
+            "cmd": check["cmd"],
+            "cwd": check["cwd"],
+            "status": "block" if failed else "pass",
+            "level": check["level"],
+            "rc": 9 if failed else 0,
+            "duration_s": 0.001,
+            "output_tail": "scope-relevant-ops-failure" if failed else "",
+        }
+
+    monkeypatch.setattr(coordinator, "_run_check", fake_run_check)
+    monkeypatch.setattr(
+        coordinator,
+        "_gate_record_path",
+        lambda state, worktree: tmp_path / "state" / "gate.json",
+    )
+    monkeypatch.setattr(
+        coordinator,
+        "_git",
+        lambda argv, cwd=coordinator.ROOT: (
+            (0, "test-head") if argv == ["rev-parse", "HEAD"] else (0, "")
+        ),
+    )
+
+    rc = coordinator.cmd_gate(
+        Namespace(
+            worktree=str(tmp_path),
+            base="test-base",
+            plan_only=False,
+            state=None,
+            json=True,
+        )
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    ops_result = next(
+        item for item in payload["results"] if item["name"] == "ops-tests"
+    )
+    assert rc == coordinator.EXIT_BLOCK
+    assert payload["verdict"] == "block"
+    assert ops_result["status"] == "block"
+    assert ops_result["level"] == "block"
+    assert ops_result["output_tail"] == "scope-relevant-ops-failure"
 
 
 def test_gate_plan_adds_pinned_changed_python_format_check(tmp_path: Path) -> None:
@@ -1128,6 +1535,65 @@ def _reanchor_argv(
     return argv
 
 
+def _reanchor_handback_argv(
+    repo: Path,
+    state_path: Path,
+    target: Path,
+    expected: dict[str, object],
+    *,
+    owner: str = "owner-thread-1",
+    generation: int = 4,
+) -> list[str]:
+    return [
+        "reanchor-handback",
+        "--repo",
+        str(repo),
+        "--state",
+        str(state_path),
+        "--lane",
+        "DIRECT-REANCHOR-1",
+        "--branch",
+        "feat/exact-pr",
+        "--owner-thread-id",
+        owner,
+        "--claim-generation",
+        str(generation),
+        "--expected-head-sha",
+        str(expected["remote_head"]),
+        "--live-main",
+        str(expected["live_main"]),
+        "--path",
+        str(target),
+        "--json",
+    ]
+
+
+def _prepare_reanchor_handback(
+    tmp_path: Path,
+    *,
+    remove_remote: bool = True,
+) -> tuple[Path, Path, Path, dict[str, object]]:
+    repo, state_path, target, expected = _reanchor_fixture(tmp_path)
+    if remove_remote:
+        remote = tmp_path / "remote.git"
+        _git(remote, "update-ref", "-d", "refs/heads/feat/exact-pr")
+        _git(repo, "update-ref", "-d", "refs/remotes/origin/feat/exact-pr")
+    _git(
+        repo,
+        "worktree",
+        "add",
+        "-b",
+        "feat/exact-pr",
+        str(target),
+        str(expected["remote_head"]),
+    )
+    state = coordinator.registry.load_state(state_path)
+    state["records"][0]["status"] = coordinator.registry.STATUS_ACTIVE
+    state["records"][0]["path"] = str(target)
+    coordinator.registry.save_state(state_path, state)
+    return repo, state_path, target, expected
+
+
 def test_reanchor_recreates_exact_remote_branch_for_same_owner(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -1502,6 +1968,209 @@ def test_reanchor_conflict_can_remain_registered_for_original_owner(
         _git(repo, "ls-remote", "origin", "refs/heads/feat/exact-pr").split()[0]
         == expected["remote_head"]
     )
+
+
+def test_reanchor_handback_reanchors_owner_worktree_without_a_pull_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(coordinator, "_branch_pull_requests", lambda *_args: ())
+    repo, state_path, target, expected = _prepare_reanchor_handback(tmp_path)
+
+    rc = coordinator.main(_reanchor_handback_argv(repo, state_path, target, expected))
+
+    payload = json.loads(capsys.readouterr().out)
+    records = coordinator.registry.load_state(state_path)["records"]
+    active = [item for item in records if item["status"] == "active"]
+    assert rc == coordinator.EXIT_OK
+    assert payload["action"] == "reanchor-handback"
+    assert payload["status"] == "ready-for-owner-tests"
+    assert payload["previous_head"] == expected["remote_head"]
+    assert payload["base_sha"] == expected["live_main"]
+    assert _git(target, "branch", "--show-current") == "feat/exact-pr"
+    assert (
+        _git(target, "merge-base", "--is-ancestor", str(expected["live_main"]), "HEAD")
+        == ""
+    )
+    assert [item["status"] for item in records] == ["abandoned", "active"]
+    assert active[0]["claim_generation"] == 5
+    assert active[0]["base_sha"] == expected["live_main"]
+    assert active[0]["handed_back_sha"] is None
+    assert active[0].get("handback_seal") is None
+
+
+def test_reanchor_handback_rejects_stale_supplied_live_main_before_rebase(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(coordinator, "_branch_pull_requests", lambda *_args: ())
+    repo, state_path, target, expected = _prepare_reanchor_handback(tmp_path)
+    argv = _reanchor_handback_argv(repo, state_path, target, expected)
+    argv[argv.index("--live-main") + 1] = str(expected["base_sha"])
+
+    rc = coordinator.main(argv)
+
+    payload = json.loads(capsys.readouterr().out)
+    record = coordinator.registry.load_state(state_path)["records"][0]
+    assert rc == coordinator.EXIT_BLOCK
+    assert "remote origin/main" in payload["reason"]
+    assert payload["live_main"] == expected["base_sha"]
+    assert payload["remote_main"] == expected["live_main"]
+    assert _git(target, "rev-parse", "HEAD") == expected["remote_head"]
+    assert record["status"] == coordinator.registry.STATUS_ACTIVE
+    assert record["claim_generation"] == 4
+
+
+def test_reanchor_handback_rolls_back_when_remote_main_changes_before_registry_update(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(coordinator, "_branch_pull_requests", lambda *_args: ())
+    repo, state_path, target, expected = _prepare_reanchor_handback(tmp_path)
+    remote_main_reads = iter((str(expected["live_main"]), "f" * 40))
+    monkeypatch.setattr(
+        coordinator,
+        "_remote_main_sha",
+        lambda _repo: next(remote_main_reads),
+    )
+
+    rc = coordinator.main(_reanchor_handback_argv(repo, state_path, target, expected))
+
+    payload = json.loads(capsys.readouterr().out)
+    record = coordinator.registry.load_state(state_path)["records"][0]
+    assert rc == coordinator.EXIT_BLOCK
+    assert payload["reason"] == "remote origin/main changed during reanchor"
+    assert payload["live_main"] == expected["live_main"]
+    assert payload["remote_main"] == "f" * 40
+    assert _git(target, "rev-parse", "HEAD") == expected["remote_head"]
+    assert record["status"] == coordinator.registry.STATUS_ACTIVE
+    assert record["claim_generation"] == 4
+    assert record["base_sha"] == expected["base_sha"]
+
+
+def test_reanchor_handback_rejects_wrong_owner_before_rebase(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, state_path, target, expected = _prepare_reanchor_handback(tmp_path)
+
+    rc = coordinator.main(
+        _reanchor_handback_argv(repo, state_path, target, expected, owner="other-owner")
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == coordinator.EXIT_BLOCK
+    assert "owner" in payload["reason"]
+    assert _git(target, "rev-parse", "HEAD") == expected["remote_head"]
+
+
+def test_reanchor_handback_rejects_existing_remote_branch_before_rebase(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo, state_path, target, expected = _prepare_reanchor_handback(
+        tmp_path, remove_remote=False
+    )
+
+    rc = coordinator.main(_reanchor_handback_argv(repo, state_path, target, expected))
+
+    payload = json.loads(capsys.readouterr().out)
+    record = coordinator.registry.load_state(state_path)["records"][0]
+    assert rc == coordinator.EXIT_BLOCK
+    assert "remote branch" in payload["reason"]
+    assert _git(target, "rev-parse", "HEAD") == expected["remote_head"]
+    assert record["status"] == coordinator.registry.STATUS_ACTIVE
+    assert record["claim_generation"] == 4
+
+
+def test_reanchor_handback_rejects_existing_pr_before_rebase(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(coordinator, "_branch_pull_requests", lambda *_args: (42,))
+    repo, state_path, target, expected = _prepare_reanchor_handback(tmp_path)
+
+    rc = coordinator.main(_reanchor_handback_argv(repo, state_path, target, expected))
+
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == coordinator.EXIT_BLOCK
+    assert "no branch PR" in payload["reason"]
+    assert payload["pull_requests"] == [42]
+    assert _git(target, "rev-parse", "HEAD") == expected["remote_head"]
+
+
+def test_reanchor_handback_reports_declared_and_observed_scope_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(coordinator, "_branch_pull_requests", lambda *_args: ())
+    repo, state_path, target, expected = _prepare_reanchor_handback(tmp_path)
+    state = coordinator.registry.load_state(state_path)
+    state["records"][0]["scope"] = _scope_for("ops/declared.py")
+    coordinator.registry.save_state(state_path, state)
+
+    rc = coordinator.main(_reanchor_handback_argv(repo, state_path, target, expected))
+
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == coordinator.EXIT_BLOCK
+    assert payload["reason"] == "stored hand-back differs from the exact declared Scope"
+    assert payload["declared_scope"] == [["ops/declared.py", "modify"]]
+    assert payload["observed_scope"] == [["ops/reanchor_change.py", "add"]]
+    assert _git(target, "rev-parse", "HEAD") == expected["remote_head"]
+
+
+def test_reanchor_handback_rejects_incoming_scope_collision_before_rebase(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(coordinator, "_branch_pull_requests", lambda *_args: ())
+    repo, state_path, target, expected = _prepare_reanchor_handback(tmp_path)
+    _commit(repo, "ops/reanchor_change.py", "main\n", "main changes declared scope")
+    _git(repo, "push", "-q", "origin", "main")
+    expected["live_main"] = _git(repo, "rev-parse", "HEAD")
+
+    rc = coordinator.main(_reanchor_handback_argv(repo, state_path, target, expected))
+
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == coordinator.EXIT_BLOCK
+    assert "collide" in payload["reason"]
+    assert payload["collisions"] == ["ops/reanchor_change.py"]
+    assert _git(target, "rev-parse", "HEAD") == expected["remote_head"]
+
+
+def test_reanchor_handback_rolls_back_when_registry_update_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(coordinator, "_branch_pull_requests", lambda *_args: ())
+
+    def fail_register(**_kwargs: object) -> None:
+        raise ReanchorRefused("injected registry update failure")
+
+    monkeypatch.setattr(
+        coordinator.reanchor_registry_ops,
+        "register_active",
+        fail_register,
+    )
+    repo, state_path, target, expected = _prepare_reanchor_handback(tmp_path)
+
+    rc = coordinator.main(_reanchor_handback_argv(repo, state_path, target, expected))
+
+    payload = json.loads(capsys.readouterr().out)
+    record = coordinator.registry.load_state(state_path)["records"][0]
+    assert rc == coordinator.EXIT_BLOCK
+    assert payload["reason"] == "injected registry update failure"
+    assert _git(target, "rev-parse", "HEAD") == expected["remote_head"]
+    assert record["status"] == coordinator.registry.STATUS_ACTIVE
+    assert record["claim_generation"] == 4
+    assert record["base_sha"] == expected["base_sha"]
 
 
 def _resume_argv(

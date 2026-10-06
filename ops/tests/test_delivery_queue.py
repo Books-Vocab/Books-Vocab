@@ -144,7 +144,7 @@ class FakeGitHub:
         self.receipt = receipt
         self.pull_request = pull_request or _pull_request(receipt)
         self.required = required
-        self.paths = paths or receipt.scope.paths
+        self.paths = receipt.scope.paths if paths is None else paths
         self.merge_queue = merge_queue
         self.enqueue_calls: list[tuple[int, str, str, str]] = []
 
@@ -299,6 +299,29 @@ def test_queue_blocks_metadata_or_scope_drift() -> None:
     path_service, _ = _service(receipt, github=path_drift)
     with pytest.raises(PolicyViolation, match="paths"):
         path_service.enqueue(receipt=receipt, pull_request_number=11)
+
+
+def test_queue_allows_pr_paths_subset_of_receipt_scope() -> None:
+    receipt = replace(
+        _receipt(),
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    github = FakeGitHub(receipt, paths=("ops/a.py",))
+    service, github = _service(receipt, github=github)
+
+    service.enqueue(receipt=receipt, pull_request_number=11)
+
+    assert github.enqueue_calls
+
+
+def test_queue_rejects_empty_pr_paths() -> None:
+    receipt = _receipt()
+    github = FakeGitHub(receipt, paths=())
+    service, github = _service(receipt, github=github)
+
+    with pytest.raises(PolicyViolation, match="paths"):
+        service.enqueue(receipt=receipt, pull_request_number=11)
+    assert not github.enqueue_calls
 
 
 @pytest.mark.parametrize(

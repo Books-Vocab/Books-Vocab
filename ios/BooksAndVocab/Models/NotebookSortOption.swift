@@ -98,7 +98,11 @@ extension NotebookSortOption {
         return notebooks.sorted { lhs, rhs in
             // 預設 notebook 永遠最前
             if lhs.isDefault != rhs.isDefault { return lhs.isDefault }
-            return comparator(lhs, rhs)
+            if comparator(lhs, rhs) { return true }
+            if comparator(rhs, lhs) { return false }
+            // Every equal primary key gets a deterministic order instead of
+            // depending on the collection sort implementation's stability.
+            return lhs.remoteId < rhs.remoteId
         }
     }
 }

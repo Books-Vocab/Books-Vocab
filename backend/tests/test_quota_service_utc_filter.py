@@ -19,6 +19,9 @@ from kg.quota_service import (
 _CUTOFF = "2026-01-02T00:00:00+00:00"
 _STALE_OFFSET = "2026-01-02T00:30:00+02:00"
 _INCLUDED_UTC = "2026-01-02T00:30:00+00:00"
+_OFFSET_CUTOFF = "2026-01-02T00:00:00+14:00"
+_EXACT_DIFFERENT_OFFSET = "2025-12-31T20:00:00-14:00"
+_BEFORE_DIFFERENT_OFFSET = "2025-12-31T19:59:59.999999-14:00"
 
 
 @pytest.fixture
@@ -81,3 +84,15 @@ def test_quota_readers_filter_mixed_offsets_by_utc_instant(quota_db):
     assert state["fraction"] == pytest.approx(0.5)
     assert check["exceeded"] is False
     assert checked == check
+
+
+def test_usage_range_includes_exact_utc_endpoint_across_offsets(quota_db):
+    """A timezone-aware cutoff compares instants, even when local dates differ."""
+    _insert_usage(quota_db, _EXACT_DIFFERENT_OFFSET, 150_000)
+    _insert_usage(quota_db, _BEFORE_DIFFERENT_OFFSET, 300_000)
+
+    ranged = get_user_usage_range("user1", since_iso=_OFFSET_CUTOFF)
+
+    assert ranged["calls"]["translate"]["count"] == 1
+    assert ranged["tokens"]["translate"]["input_tokens"] == 150_000
+    assert ranged["total_calls"] == 1

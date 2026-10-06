@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Callable
 from email.utils import formatdate
 from functools import lru_cache
@@ -17,61 +18,51 @@ from ..settings import KGSettings
 logger = logging.getLogger(__name__)
 
 _S3_AUDIO_FMT_CACHE: dict[tuple[str | None, str], str] = {}
+_AUDIO_RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
 
 
 class S3SettingsProvider(Protocol):
-    def __call__(self, request: Request) -> KGSettings:
-        ...
+    def __call__(self, request: Request) -> KGSettings: ...
 
 
 class S3ClientProvider(Protocol):
-    def __call__(self, request: Request) -> Any:
-        ...
+    def __call__(self, request: Request) -> Any: ...
 
 
 class IsS3NotFound(Protocol):
-    def __call__(self, exc: Exception, s3: Any) -> bool:
-        ...
+    def __call__(self, exc: Exception, s3: Any) -> bool: ...
 
 
 class ReadJsonFromS3(Protocol):
-    def __call__(self, request: Request, key: str, *, context: str) -> Any:
-        ...
+    def __call__(self, request: Request, key: str, *, context: str) -> Any: ...
 
 
 class AudioFormatResolver(Protocol):
-    def __call__(self, request: Request, series_id: str) -> str:
-        ...
+    def __call__(self, request: Request, series_id: str) -> str: ...
 
 
 class GetObjectFromS3(Protocol):
-    def __call__(self, request: Request, key: str, *, context: str) -> dict[str, Any] | None:
-        ...
+    def __call__(self, request: Request, key: str, *, context: str) -> dict[str, Any] | None: ...
 
 
 class IterS3Body(Protocol):
-    def __call__(self, body: Any, chunk_size: int) -> Any:
-        ...
+    def __call__(self, body: Any, chunk_size: int) -> Any: ...
 
 
 class AudioFilenameBuilder(Protocol):
-    def __call__(self, request: Request, series_id: str, ep_num: int, *, stem: str = FULL_AUDIO_STEM) -> str:
-        ...
+    def __call__(self, request: Request, series_id: str, ep_num: int, *, stem: str = FULL_AUDIO_STEM) -> str: ...
 
 
 class LoggerProtocol(Protocol):
-    def error(self, *args: Any, **kwargs: Any) -> None:
-        ...
+    def error(self, *args: Any, **kwargs: Any) -> None: ...
 
 
 class ReadBytesFromS3(Protocol):
-    def __call__(self, request: Request, key: str, *, context: str) -> bytes | None:
-        ...
+    def __call__(self, request: Request, key: str, *, context: str) -> bytes | None: ...
 
 
 class StaticHeadersBuilder(Protocol):
-    def __call__(self, obj: dict[str, Any], base_headers: dict[str, str] | None = None) -> dict[str, str]:
-        ...
+    def __call__(self, obj: dict[str, Any], base_headers: dict[str, str] | None = None) -> dict[str, str]: ...
 
 
 def _podcasts_dir(request: Request | None = None) -> Path:
@@ -190,6 +181,30 @@ def _media_type_for(filename: str) -> str:
     return "audio/mp4" if filename.endswith(".m4a") else "audio/mpeg"
 
 
+def _normalise_range_header(range_header: str | None) -> str | None:
+    """Return one syntactically valid range; storage handles unsatisfiable ranges."""
+    if not range_header:
+        return None
+    normalized = range_header.strip()
+    match = _AUDIO_RANGE_RE.fullmatch(normalized)
+    if match is None:
+        return None
+    start_s, end_s = match.groups()
+    if not start_s and not end_s:
+        return None
+    try:
+        if not start_s:
+            valid = int(end_s) > 0
+        else:
+            int(start_s)
+            if end_s:
+                int(end_s)
+            valid = True
+    except ValueError:
+        return None
+    return normalized if valid else None
+
+
 def _read_json_file(path: Path, *, context: str, logger_: LoggerProtocol) -> Any:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -238,7 +253,7 @@ def _read_json_from_s3(
     body = _read_s3_body(obj["Body"])
     try:
         return json.loads(body)
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         logger_.error(
             "Podcast %s corrupt in s3://%s/%s: %s",
             context,
@@ -374,8 +389,9 @@ def _serve_audio_from_s3(
     media_type = media_type_for(filename)
 
     get_kwargs = {"Bucket": cfg.podcast_bucket, "Key": key}
-    if range_header:
-        get_kwargs["Range"] = range_header
+    normalized_range = _normalise_range_header(range_header)
+    if normalized_range is not None:
+        get_kwargs["Range"] = normalized_range
 
     try:
         obj = s3.get_object(**get_kwargs)

@@ -1023,6 +1023,7 @@
 "vocab.highlight.color.blue" = "ブルー";
 "vocab.highlight.color.sage" = "セージ";
 "vocab.highlight.color.rose" = "ローズ";
+"vocab.highlight.color.custom" = "カスタム";
 
 /* Bookshelf — CloudKit 還原狀態線（2026-06-11 書庫透明化） */
 "正在確認 iCloud 書庫…" = "iCloud ライブラリを確認中…";
@@ -1160,6 +1161,7 @@
 "reader.settings.section.debug" = "開発者とデバッグ";
 "reader.settings.fontSize" = "文字サイズ";
 "reader.settings.lineHeight" = "行間";
+"reader.settings.letterSpacing" = "文字間隔";
 "reader.settings.readingMode" = "読書モード";
 "reader.settings.readingMode.paged" = "ページ送り";
 "reader.settings.readingMode.scroll" = "スクロール";

@@ -152,6 +152,38 @@ struct PodcastEpisodeSessionControllerTests {
         #expect(store.savedEpisodeIds == [episode.remoteId, episode.remoteId])
     }
 
+    @Test
+    func previewPlaybackDecisionReachesSessionLoader() async throws {
+        let loader = FakeSessionLoader()
+        let controller = PodcastEpisodeSessionController(
+            loader: loader,
+            progressStore: FakeProgressStore(),
+            queue: FakeEpisodeQueue()
+        )
+        let context = try makeContext()
+        let kgService = KGService()
+        let episode = makeEpisode(id: "series_ep_1", number: 1)
+
+        controller.load(
+            episode: episode,
+            modelContext: context,
+            kgService: kgService,
+            isPreviewPlayback: true
+        )
+        await settle()
+        #expect(loader.previewPlaybackFlags == [true])
+
+        loader.resolve(
+            episodeId: episode.remoteId,
+            outcome: .loaded(
+                plan: makePlan(for: episode),
+                subtitle: .content("subtitle"),
+                audioHeaders: [:]
+            )
+        )
+        await settle()
+    }
+
     private func makeEpisode(id: String, number: Int) -> PodcastEpisode {
         PodcastEpisode(remoteId: id, episodeNumber: number, title: "Episode", durationSec: 100)
     }
@@ -188,6 +220,7 @@ struct PodcastEpisodeSessionControllerTests {
 private final class FakeSessionLoader: PodcastEpisodeSessionLoading {
     private(set) var startedEpisodeIds: [String] = []
     private(set) var cancelledEpisodeIds: [String] = []
+    private(set) var previewPlaybackFlags: [Bool] = []
     private var continuations: [String: CheckedContinuation<PodcastEpisodeSessionLoadOutcome, Never>] = [:]
     private(set) var viewModels: [String: PodcastPlayerViewModel] = [:]
     private(set) var audioEngines: [String: FakeAudioEngine] = [:]
@@ -206,9 +239,11 @@ private final class FakeSessionLoader: PodcastEpisodeSessionLoading {
 
     func load(
         episode: PodcastEpisode,
+        isPreviewPlayback: Bool,
         kgService: any AuthTokenProviding
     ) async -> PodcastEpisodeSessionLoadOutcome {
         startedEpisodeIds.append(episode.remoteId)
+        previewPlaybackFlags.append(isPreviewPlayback)
         let outcome = await withCheckedContinuation { continuation in
             continuations[episode.remoteId] = continuation
         }

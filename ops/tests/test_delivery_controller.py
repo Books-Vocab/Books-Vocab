@@ -5,12 +5,15 @@ from dataclasses import asdict, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 # The test imports the in-repository package after extending sys.path so it can
 # run from the repository's ops test harness.
 # ruff: noqa: E402
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
+from delivery_control.adapters.github_parsing import parse_demand_issue
 from delivery_control.controller.capacity import (
     DEFAULT_CAPACITY_POLICY,
     ControlAction,
@@ -25,7 +28,6 @@ from delivery_control.controller.metrics import (
 )
 from delivery_control.controller.timings import PipelineTimings
 from delivery_control.controller.worktree_boundary import partition_worktrees
-from delivery_control.adapters.github_parsing import parse_demand_issue
 from delivery_control.domain.branch_lifecycle import (
     BranchAsset,
     BranchCleanupAction,
@@ -42,8 +44,9 @@ from delivery_control.domain.candidate_issues import (
 )
 from delivery_control.domain.demand_issues import DemandIssueInventory
 from delivery_control.domain.isolation import IsolationSummary
-from delivery_control.domain.models import Scope
+from delivery_control.domain.models import CheckStatus, Scope
 from delivery_control.domain.observations import (
+    CheckSnapshot,
     InventoryProblem,
     PhysicalWorktree,
     PullRequestSnapshot,
@@ -57,8 +60,8 @@ from delivery_control.domain.states import (
     NextAction,
     derive_lane_decision,
 )
-from delivery_control.services.inspect import DeliveryInventory, LaneInspection
 from delivery_control.services.demand_projection import project_demand_inventory
+from delivery_control.services.inspect import DeliveryInventory, LaneInspection
 
 
 def _metrics(**changes: int) -> PipelineMetrics:
@@ -143,6 +146,110 @@ def _candidate(number: int) -> CandidateIssue:
     )
 
 
+def _pull_request(state: str) -> PullRequestSnapshot:
+    return PullRequestSnapshot(
+        number=1,
+        url="https://example.test/pull/1",
+        branch="feat/required",
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+        state=state,
+        draft=False,
+        mergeable=True,
+    )
+
+
+def _required_metrics_inventory(
+    *,
+    pull_requests: tuple[PullRequestSnapshot, ...],
+    required_status: CheckStatus,
+    registry_status: str = "published",
+) -> DeliveryInventory:
+    registry = RegistrySnapshot(
+        lane_id="#required",
+        branch="feat/required",
+        path=Path("/tmp/required"),
+        status=registry_status,
+        scope=Scope.from_paths(modify=("ops/required.py",)),
+        base_sha="a" * 40,
+        claim_generation=1,
+    )
+    required_check = CheckSnapshot(
+        status=required_status,
+        head_sha="b" * 40,
+        observed_at=datetime(2026, 8, 21, tzinfo=UTC),
+        names=() if required_status is CheckStatus.ABSENT else ("required",),
+    )
+    return DeliveryInventory(
+        lanes=(
+            LaneInspection(
+                key="#required",
+                registry=registry,
+                physical=None,
+                snapshot=None,
+                pull_requests=pull_requests,
+                decision=LaneDecision(
+                    LaneState.PR_WAITING_REQUIRED,
+                    NextAction.WAIT_REQUIRED,
+                    "waiting for required",
+                ),
+                required_check=required_check,
+            ),
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    (
+        "registry_status",
+        "pull_request_state",
+        "required_status",
+        "expected_absent",
+        "expected_running",
+        "expected_failed",
+    ),
+    (
+        ("published", None, CheckStatus.ABSENT, 0, 0, 0),
+        ("published", "OPEN", CheckStatus.ABSENT, 1, 0, 0),
+        ("cleanup_pending", "OPEN", CheckStatus.ABSENT, 1, 0, 0),
+        ("published", "CLOSED", CheckStatus.ABSENT, 0, 0, 0),
+        ("published", "OPEN", CheckStatus.SUCCESS, 0, 0, 0),
+        ("published", "OPEN", CheckStatus.FAILURE, 0, 0, 1),
+    ),
+    ids=(
+        "empty-absent",
+        "published-open-absent",
+        "cleanup-pending-open-absent",
+        "closed-absent",
+        "open-success",
+        "open-failure",
+    ),
+)
+def test_required_metrics_preserve_pr_and_check_status_semantics(
+    registry_status: str,
+    pull_request_state: str | None,
+    required_status: CheckStatus,
+    expected_absent: int,
+    expected_running: int,
+    expected_failed: int,
+) -> None:
+    metrics = measure_pipeline(
+        _required_metrics_inventory(
+            pull_requests=(
+                ()
+                if pull_request_state is None
+                else (_pull_request(pull_request_state),)
+            ),
+            required_status=required_status,
+            registry_status=registry_status,
+        )
+    )
+
+    assert metrics.required_absent == expected_absent
+    assert metrics.required_running == expected_running
+    assert metrics.required_failed == expected_failed
+
+
 def test_merge_cadence_measures_hourly_rate_and_nearest_rank_p95() -> None:
     now = datetime(2026, 8, 21, 12, tzinfo=UTC)
     merged = tuple(now - timedelta(minutes=offset) for offset in (25, 20, 15, 10, 5))
@@ -222,7 +329,23 @@ def test_controller_drains_every_existing_reservoir_without_serializing() -> Non
     assert ControlAction.REPAIR_PR_CONTRACT in decision.actions
     assert ControlAction.CLEANUP_TERMINAL in decision.actions
     assert ControlAction.RECOVER_BLOCKERS in decision.actions
-    assert decision.desired_new_solvers == 4
+    assert decision.desired_new_solvers == 30
+
+
+def test_default_policy_dispatches_all_verified_candidates_without_lane_cap() -> None:
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+
+    decision = decide_capacity(
+        _metrics(candidate_issues=61, active_development=37, open_prs=24),
+        cadence,
+    )
+
+    assert DEFAULT_CAPACITY_POLICY.max_open_prs is None
+    assert DEFAULT_CAPACITY_POLICY.max_active_solvers is None
+    assert DEFAULT_CAPACITY_POLICY.max_new_solvers_per_cycle is None
+    assert ControlAction.THROTTLE_SOLVERS not in decision.actions
+    assert ControlAction.DISPATCH_SOLVERS in decision.actions
+    assert decision.desired_new_solvers == 61
 
 
 def test_transport_slo_breach_is_not_a_publish_command_without_handbacks() -> None:
@@ -485,6 +608,26 @@ def test_pipeline_metrics_exposes_branch_scoped_source_residue() -> None:
     assert measured.pipeline_ready is False
 
 
+def test_pipeline_metrics_keeps_candidate_collision_lane_scoped() -> None:
+    measured = measure_pipeline(
+        DeliveryInventory(
+            lanes=(),
+            source_problems=(
+                InventoryProblem(
+                    "candidate",
+                    "Issue#1939",
+                    "candidate Scope overlaps live delivery evidence",
+                    identity_kind="issue",
+                ),
+            ),
+        )
+    )
+
+    assert measured.source_problem_scope_counts == (("issue", 1),)
+    assert measured.actionable_source_problems == 1
+    assert measured.actionable_global_source_problems == 0
+
+
 def test_pipeline_metrics_direct_construction_keeps_legacy_optional_baselines() -> None:
     measured = _metrics()
 
@@ -574,7 +717,80 @@ def test_quarantined_open_prs_do_not_count_as_actionable_blockers() -> None:
     assert measured.actionable_blocked_lanes == 0
 
 
-def test_controller_triggers_missing_required_without_overproducing_solvers() -> None:
+def test_unmapped_external_automation_pr_is_quarantined_but_stays_visible() -> None:
+    pull_request = PullRequestSnapshot(
+        number=1932,
+        url="https://github.com/astral-sh/setup-uv/pull/1932",
+        branch="dependabot/github_actions/astral-sh/setup-uv-6.1.0",
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+        state="OPEN",
+        draft=False,
+        mergeable=True,
+        body="Bump astral-sh/setup-uv from 6.0.0 to 6.1.0",
+    )
+    measured = measure_pipeline(
+        DeliveryInventory(
+            lanes=(
+                LaneInspection(
+                    key="PR#1932",
+                    registry=None,
+                    physical=None,
+                    snapshot=None,
+                    pull_requests=(pull_request,),
+                    decision=LaneDecision(
+                        LaneState.UNKNOWN,
+                        NextAction.INSPECT,
+                        "external automation PR",
+                    ),
+                ),
+            )
+        )
+    )
+
+    assert measured.raw_open_prs == 1
+    assert measured.unmapped_open_prs == 1
+    assert measured.quarantined_open_prs == 1
+    assert measured.actionable_unmapped_open_prs == 0
+
+
+def test_unmapped_local_pr_remains_actionable() -> None:
+    pull_request = PullRequestSnapshot(
+        number=1934,
+        url="https://github.com/Books-Vocab/Books-Vocab/pull/1934",
+        branch="debug/unowned-delivery-lane",
+        base_sha="a" * 40,
+        head_sha="b" * 40,
+        state="OPEN",
+        draft=False,
+        mergeable=True,
+    )
+    measured = measure_pipeline(
+        DeliveryInventory(
+            lanes=(
+                LaneInspection(
+                    key="PR#1934",
+                    registry=None,
+                    physical=None,
+                    snapshot=None,
+                    pull_requests=(pull_request,),
+                    decision=LaneDecision(
+                        LaneState.UNKNOWN,
+                        NextAction.INSPECT,
+                        "unowned local PR",
+                    ),
+                ),
+            )
+        )
+    )
+
+    assert measured.raw_open_prs == 1
+    assert measured.unmapped_open_prs == 1
+    assert measured.quarantined_open_prs == 0
+    assert measured.actionable_unmapped_open_prs == 1
+
+
+def test_controller_triggers_missing_required_without_artificial_solver_cap() -> None:
     cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
 
     decision = decide_capacity(
@@ -582,8 +798,9 @@ def test_controller_triggers_missing_required_without_overproducing_solvers() ->
     )
 
     assert ControlAction.TRIGGER_REQUIRED in decision.actions
-    assert ControlAction.THROTTLE_SOLVERS in decision.actions
-    assert decision.desired_new_solvers == 0
+    assert ControlAction.THROTTLE_SOLVERS not in decision.actions
+    assert ControlAction.DISPATCH_SOLVERS in decision.actions
+    assert decision.desired_new_solvers == 30
 
 
 def test_controller_requests_scope_repartition_under_collision_pressure() -> None:
@@ -597,26 +814,35 @@ def test_controller_requests_scope_repartition_under_collision_pressure() -> Non
     assert DEFAULT_CAPACITY_POLICY.max_collision_pressure == 0.20
     assert ControlAction.RECOVER_BLOCKERS in decision.actions
     assert ControlAction.IMPROVE_SCOPE_PARTITION in decision.actions
-    assert ControlAction.THROTTLE_SOLVERS in decision.actions
-    assert ControlAction.DISPATCH_SOLVERS not in decision.actions
-    assert decision.desired_new_solvers == 0
+    assert ControlAction.THROTTLE_SOLVERS not in decision.actions
+    assert ControlAction.DISPATCH_SOLVERS in decision.actions
+    assert decision.desired_new_solvers == 30
 
 
 def test_solver_birth_respects_active_wip_ceiling() -> None:
     cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
 
+    bounded_policy = replace(
+        DEFAULT_CAPACITY_POLICY,
+        min_open_prs=15,
+        target_active_solvers=8,
+        max_active_solvers=12,
+        max_new_solvers_per_cycle=4,
+    )
     decision = decide_capacity(
         _metrics(candidate_issues=30, active_development=7),
         cadence,
-        policy=replace(DEFAULT_CAPACITY_POLICY, min_open_prs=15),
+        policy=bounded_policy,
     )
 
-    assert DEFAULT_CAPACITY_POLICY.target_active_solvers == 8
-    assert DEFAULT_CAPACITY_POLICY.max_active_solvers == 12
+    assert bounded_policy.target_active_solvers == 8
+    assert bounded_policy.max_active_solvers == 12
     assert decision.desired_new_solvers == 1
 
     above_target = decide_capacity(
-        _metrics(candidate_issues=30, active_development=11), cadence
+        _metrics(candidate_issues=30, active_development=11),
+        cadence,
+        policy=bounded_policy,
     )
     assert above_target.desired_new_solvers == 0
 
@@ -633,8 +859,8 @@ def test_controller_keeps_solver_band_while_pr_reservoir_drains() -> None:
         cadence,
     )
 
-    assert first_cycle.desired_new_solvers == 4
-    assert second_cycle.desired_new_solvers == 4
+    assert first_cycle.desired_new_solvers == 30
+    assert second_cycle.desired_new_solvers == 26
     assert ControlAction.DISPATCH_SOLVERS in first_cycle.actions
     assert ControlAction.DISPATCH_SOLVERS in second_cycle.actions
 
@@ -652,7 +878,7 @@ def test_controller_keeps_solver_band_before_cadence_degrades() -> None:
     )
 
     assert healthy_cadence.merges_per_hour == 12.0
-    assert decision.desired_new_solvers == 4
+    assert decision.desired_new_solvers == 30
     assert ControlAction.DISPATCH_SOLVERS in decision.actions
 
 
@@ -737,7 +963,7 @@ def test_controller_reports_healthy_only_with_cadence_and_capacity_watermarks() 
         healthy_cadence,
     )
 
-    assert decision.actions == (ControlAction.HEALTHY,)
+    assert decision.actions == (ControlAction.DISPATCH_SOLVERS,)
 
 
 def test_controller_stops_solver_birth_at_pr_ceiling_even_below_solver_target() -> None:
@@ -746,10 +972,11 @@ def test_controller_stops_solver_birth_at_pr_ceiling_even_below_solver_target() 
     decision = decide_capacity(
         _metrics(
             candidate_issues=30,
-            open_prs=DEFAULT_CAPACITY_POLICY.max_open_prs,
+            open_prs=15,
             active_development=2,
         ),
         cadence,
+        policy=replace(DEFAULT_CAPACITY_POLICY, max_open_prs=15),
     )
 
     assert ControlAction.THROTTLE_SOLVERS in decision.actions
@@ -879,7 +1106,7 @@ def test_branch_scoped_source_residue_does_not_block_unrelated_solver_dispatch()
     assert ControlAction.INSPECT_SOURCES in decision.actions
     assert ControlAction.RECOVER_BLOCKERS not in decision.actions
     assert ControlAction.DISPATCH_SOLVERS in decision.actions
-    assert decision.desired_new_solvers == 4
+    assert decision.desired_new_solvers == 30
 
 
 def test_controller_surfaces_owner_residue_without_blocking_verified_dispatch() -> None:
@@ -896,7 +1123,7 @@ def test_controller_surfaces_owner_residue_without_blocking_verified_dispatch() 
     assert ControlAction.RECOVER_OWNER_BOUND_LANE in decision.actions
     assert ControlAction.DISPATCH_SOLVERS in decision.actions
     assert ControlAction.THROTTLE_SOLVERS not in decision.actions
-    assert decision.desired_new_solvers == 4
+    assert decision.desired_new_solvers == 30
 
 
 def test_controller_audits_ownerless_residue_without_recovery_wake() -> None:
@@ -1809,6 +2036,21 @@ def test_cleanup_pending_pr_counts_as_durable_mapped_supply() -> None:
     decision = decide_capacity(metrics, cadence)
 
     assert ControlAction.CLEANUP_LOCAL in decision.actions
-    assert ControlAction.THROTTLE_SOLVERS in decision.actions
+    assert ControlAction.THROTTLE_SOLVERS not in decision.actions
     assert ControlAction.DISPATCH_SOLVERS not in decision.actions
     assert decision.desired_new_solvers == 0
+
+
+def test_cleanup_pending_is_lane_local_and_does_not_throttle_unrelated_candidates() -> (
+    None
+):
+    cadence = measure_merge_cadence((), now=datetime(2026, 8, 21, tzinfo=UTC))
+
+    decision = decide_capacity(
+        _metrics(cleanup_pending=1, open_prs=1, candidate_issues=1), cadence
+    )
+
+    assert ControlAction.CLEANUP_LOCAL in decision.actions
+    assert ControlAction.THROTTLE_SOLVERS not in decision.actions
+    assert ControlAction.DISPATCH_SOLVERS in decision.actions
+    assert decision.desired_new_solvers == 1

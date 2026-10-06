@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 import uuid
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -131,6 +133,192 @@ def test_vocab_lifecycle_and_since_sync(isolated_api):
     assert r_lookup_deleted.status_code == 404
 
 
+def test_vocab_preferences_patch_round_trips_independent_fields_and_scope(isolated_api):
+    client = isolated_api.client
+    headers = isolated_api.headers
+    word = "preference-route"
+
+    with patch.object(vocab_router_mod, "_embedding_store", return_value=_DummyEmbeddingStore()):
+        created = client.post(
+            "/api/vocab",
+            json=[{"word": word, "translation": "偏好路由", "context": "A preference route."}],
+            headers=headers,
+        )
+    assert created.status_code == 200, created.text
+
+    before = client.get(f"/api/vocab/{word}", headers=headers)
+    assert before.status_code == 200, before.text
+    since = before.json()["updatedAt"]
+    assert since is not None
+
+    hidden = client.patch(
+        f"/api/vocab/{word}/preferences",
+        json={"reader_hidden": True},
+        headers=headers,
+    )
+    assert hidden.status_code == 200, hidden.text
+    assert hidden.json()["isReaderHidden"] is True
+    assert hidden.json()["isReviewExcluded"] is False
+
+    excluded = client.patch(
+        f"/api/vocab/{word}/preferences",
+        json={"review_excluded": True},
+        headers=headers,
+    )
+    assert excluded.status_code == 200, excluded.text
+    assert excluded.json()["isReaderHidden"] is True
+    assert excluded.json()["isReviewExcluded"] is True
+
+    unhide = client.patch(
+        f"/api/vocab/{word}/preferences",
+        json={"reader_hidden": False},
+        headers=headers,
+    )
+    assert unhide.status_code == 200, unhide.text
+    assert unhide.json()["isReaderHidden"] is False
+    assert unhide.json()["isReviewExcluded"] is True
+
+    lookup = client.get(f"/api/vocab/{word}", headers=headers)
+    assert lookup.status_code == 200, lookup.text
+    assert lookup.json()["isReaderHidden"] is False
+    assert lookup.json()["isReviewExcluded"] is True
+
+    sync = client.get("/api/vocab", params={"since": since}, headers=headers)
+    assert sync.status_code == 200, sync.text
+    synced = next(card for card in sync.json() if card["content"] == word)
+    assert synced["isReaderHidden"] is False
+    assert synced["isReviewExcluded"] is True
+
+    notebook = client.post("/api/notebooks", json={"name": "Wrong preference scope"}, headers=headers)
+    assert notebook.status_code == 201, notebook.text
+    wrong_scope = client.patch(
+        f"/api/vocab/{word}/preferences",
+        params={"notebook_id": notebook.json()["id"]},
+        json={"reader_hidden": True},
+        headers=headers,
+    )
+    assert wrong_scope.status_code == 404, wrong_scope.text
+
+
+def test_vocab_full_sync_includes_deleted_cards_with_scope_and_paging(isolated_api):
+    client = isolated_api.client
+    headers = isolated_api.headers
+
+    with patch.object(vocab_router_mod, "_embedding_store", return_value=_DummyEmbeddingStore()):
+        created = client.post(
+            "/api/vocab",
+            json=[
+                {"word": "full-sync-active", "translation": "仍在", "context": "An active card."},
+                {"word": "full-sync-deleted", "translation": "已刪", "context": "A deleted card."},
+            ],
+            headers=headers,
+        )
+    assert created.status_code == 200, created.text
+
+    deleted = client.delete("/api/vocab/full-sync-deleted", headers=headers)
+    assert deleted.status_code == 200, deleted.text
+
+    full_sync = client.get("/api/vocab", headers=headers)
+    assert full_sync.status_code == 200, full_sync.text
+    cards = {card["content"]: card for card in full_sync.json()}
+    assert set(cards) == {"full-sync-active", "full-sync-deleted"}
+    assert cards["full-sync-active"]["isDeleted"] is False
+    assert cards["full-sync-deleted"]["isDeleted"] is True
+
+    paged_cards = []
+    cursor = None
+    while True:
+        params = {"limit": 1}
+        if cursor is not None:
+            params["cursor"] = cursor
+        page = client.get("/api/vocab", params=params, headers=headers)
+        assert page.status_code == 200, page.text
+        paged_cards.extend(page.json())
+        cursor = page.headers.get("x-next-cursor")
+        if cursor is None:
+            break
+    assert {card["content"] for card in paged_cards} == set(cards)
+    assert len({card["id"] for card in paged_cards}) == len(paged_cards)
+
+    notebook = client.post("/api/notebooks", json={"name": "Scoped sync"}, headers=headers)
+    assert notebook.status_code == 201, notebook.text
+    notebook_id = notebook.json()["id"]
+    with patch.object(vocab_router_mod, "_embedding_store", return_value=_DummyEmbeddingStore()):
+        scoped_created = client.post(
+            "/api/vocab",
+            params={"notebook_id": notebook_id},
+            json=[{"word": "scoped-deleted", "translation": "範圍", "context": "A scoped card."}],
+            headers=headers,
+        )
+    assert scoped_created.status_code == 200, scoped_created.text
+    scoped_deleted = client.delete("/api/vocab/scoped-deleted", params={"notebook_id": notebook_id}, headers=headers)
+    assert scoped_deleted.status_code == 200, scoped_deleted.text
+
+    scoped_sync = client.get("/api/vocab", params={"notebook_id": notebook_id}, headers=headers)
+    assert scoped_sync.status_code == 200, scoped_sync.text
+    assert [card["content"] for card in scoped_sync.json()] == ["scoped-deleted"]
+    assert scoped_sync.json()[0]["isDeleted"] is True
+
+
+def test_vocab_since_naive_iso_uses_utc_under_local_timezone(isolated_api, monkeypatch):
+    previous_tz = os.environ.get("TZ")
+    monkeypatch.setenv("TZ", "Asia/Taipei")
+    time.tzset()
+
+    try:
+        client = isolated_api.client
+        headers = isolated_api.headers
+        word = "timezone-boundary"
+        with patch.object(vocab_router_mod, "_embedding_store", return_value=_DummyEmbeddingStore()):
+            r_create = client.post(
+                "/api/vocab",
+                json=[{"word": word, "translation": "時區邊界", "context": "A timezone boundary."}],
+                headers=headers,
+            )
+        assert r_create.status_code == 200, r_create.text
+
+        r_all = client.get("/api/vocab", headers=headers)
+        assert r_all.status_code == 200, r_all.text
+        created = next(card for card in r_all.json() if card["content"] == word)
+        updated_at = created["updatedAt"]
+        assert updated_at is not None
+        created_instant = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+        plus_two = timezone(timedelta(hours=2))
+
+        def words_since(value: str) -> set[str]:
+            response = client.get("/api/vocab", params={"since": value}, headers=headers)
+            assert response.status_code == 200, response.text
+            return {card["content"] for card in response.json()}
+
+        same_instant_naive = created_instant.astimezone(UTC).replace(tzinfo=None).isoformat()
+        same_instant_utc = created_instant.astimezone(UTC).isoformat()
+        same_instant_plus_two = created_instant.astimezone(plus_two).isoformat()
+        assert word not in words_since(same_instant_naive)
+        assert word not in words_since(same_instant_utc)
+        assert word not in words_since(same_instant_plus_two)
+
+        before_plus_two = (created_instant - timedelta(microseconds=1)).astimezone(plus_two).isoformat()
+        after_plus_two = (created_instant + timedelta(microseconds=1)).astimezone(plus_two).isoformat()
+        assert word in words_since(before_plus_two)
+        assert word not in words_since(after_plus_two)
+
+        r_bad_since = client.get("/api/vocab", params={"since": "not-a-timestamp"}, headers=headers)
+        assert r_bad_since.status_code == 400
+
+        r_delete = client.delete(f"/api/vocab/{word}", headers=headers)
+        assert r_delete.status_code == 200, r_delete.text
+        changed = words_since(same_instant_utc)
+        assert word in changed
+        r_since_after_delete = client.get("/api/vocab", params={"since": same_instant_utc}, headers=headers)
+        assert any(card["content"] == word and card["isDeleted"] for card in r_since_after_delete.json())
+    finally:
+        if previous_tz is None:
+            monkeypatch.delenv("TZ", raising=False)
+        else:
+            monkeypatch.setenv("TZ", previous_tz)
+        time.tzset()
+
+
 def test_graph_links_returns_active_only(isolated_api):
     client = isolated_api.client
     headers = isolated_api.headers
@@ -207,10 +395,12 @@ def test_translate_endpoints_success_and_error(isolated_api):
     headers = isolated_api.headers
 
     fake_client = MagicMock()
-    fake_client.chat.completions.create = AsyncMock(return_value=SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"喚起","p":"v.","r":"evoke"}'))],
-        usage=None,
-    ))
+    fake_client.chat.completions.create = AsyncMock(
+        return_value=SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"喚起","p":"v.","r":"evoke"}'))],
+            usage=None,
+        )
+    )
     with patch("kg.translate_handlers.create_async_client", return_value=fake_client):
         r = client.post(
             "/api/translate/quick",
@@ -221,10 +411,12 @@ def test_translate_endpoints_success_and_error(isolated_api):
         assert r.json() == {"t": "喚起", "p": "v.", "r": "evoke"}
 
     fake_client_phrase = MagicMock()
-    fake_client_phrase.chat.completions.create = AsyncMock(return_value=SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"試探性地"}'))],
-        usage=None,
-    ))
+    fake_client_phrase.chat.completions.create = AsyncMock(
+        return_value=SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"試探性地"}'))],
+            usage=None,
+        )
+    )
     with patch("kg.translate_handlers.create_async_client", return_value=fake_client_phrase):
         r = client.post(
             "/api/translate/phrase",
@@ -235,10 +427,12 @@ def test_translate_endpoints_success_and_error(isolated_api):
         assert r.json()["t"] == "試探性地"
 
     fake_client_explain = MagicMock()
-    fake_client_explain.chat.completions.create = AsyncMock(return_value=SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content='{"e":"在此語境表示引發回憶。"}'))],
-        usage=None,
-    ))
+    fake_client_explain.chat.completions.create = AsyncMock(
+        return_value=SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content='{"e":"在此語境表示引發回憶。"}'))],
+            usage=None,
+        )
+    )
     with patch("kg.translate_handlers.create_async_client", return_value=fake_client_explain):
         r = client.post(
             "/api/translate/explain",
@@ -275,10 +469,12 @@ def test_translate_works_without_pro_subscription(isolated_api):
     isolated_api.users_file.write_text(json.dumps(users_data))
 
     fake_client = MagicMock()
-    fake_client.chat.completions.create = AsyncMock(return_value=SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"喚起","p":"v.","r":"evoke"}'))],
-        usage=None,
-    ))
+    fake_client.chat.completions.create = AsyncMock(
+        return_value=SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"喚起","p":"v.","r":"evoke"}'))],
+            usage=None,
+        )
+    )
     with patch("kg.translate_handlers.create_async_client", return_value=fake_client):
         r = client.post(
             "/api/translate/quick",
@@ -506,26 +702,32 @@ def test_admin_test_matrix_endpoints(isolated_api):
         "outcome": "passed",
         "totals": {"passed": 4, "failed": 0, "errors": 0, "skipped": 1, "total": 5},
         "selectedItems": ["renderer_truncation"],
-        "matrix": [{
-            "module": "tests/test_api_surface.py",
-            "passed": 4,
-            "failed": 0,
-            "errors": 0,
-            "skipped": 1,
-            "total": 5,
-        }],
-        "cases": [{
-            "id": "tests/test_api_surface.py::test_sample",
-            "module": "tests/test_api_surface.py",
-            "status": "PASSED",
-            "bucket": "passed",
-        }],
-        "itemResults": [{
-            "id": "renderer_truncation",
-            "status": "passed",
-            "counts": {"passed": 1, "failed": 0, "errors": 0, "skipped": 0},
-            "total": 1,
-        }],
+        "matrix": [
+            {
+                "module": "tests/test_api_surface.py",
+                "passed": 4,
+                "failed": 0,
+                "errors": 0,
+                "skipped": 1,
+                "total": 5,
+            }
+        ],
+        "cases": [
+            {
+                "id": "tests/test_api_surface.py::test_sample",
+                "module": "tests/test_api_surface.py",
+                "status": "PASSED",
+                "bucket": "passed",
+            }
+        ],
+        "itemResults": [
+            {
+                "id": "renderer_truncation",
+                "status": "passed",
+                "counts": {"passed": 1, "failed": 0, "errors": 0, "skipped": 0},
+                "total": 1,
+            }
+        ],
         "stdoutTail": [],
         "stderrTail": [],
     }

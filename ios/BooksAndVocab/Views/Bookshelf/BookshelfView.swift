@@ -11,6 +11,31 @@ import SwiftData
 import TipKit
 import UniformTypeIdentifiers
 
+private struct BookshelfRootContent<EmptyContent: View, PopulatedContent: View>: View {
+    let isEmpty: Bool
+    let emptyContent: EmptyContent
+    let populatedContent: PopulatedContent
+
+    init(
+        isEmpty: Bool,
+        @ViewBuilder emptyContent: () -> EmptyContent,
+        @ViewBuilder populatedContent: () -> PopulatedContent
+    ) {
+        self.isEmpty = isEmpty
+        self.emptyContent = emptyContent()
+        self.populatedContent = populatedContent()
+    }
+
+    @ViewBuilder
+    var body: some View {
+        if isEmpty {
+            emptyContent
+        } else {
+            populatedContent
+        }
+    }
+}
+
 /// 書架主頁 — 簡約留白設計
 struct BookshelfView: View {
     @ObserveInjection private var inject
@@ -29,6 +54,26 @@ struct BookshelfView: View {
     @State private var loginGate = LoginGateState()
     @State private var navigationPath = NavigationPath()
 
+    static func sortedBooks(_ books: [Book]) -> [Book] {
+        books.sorted { lhs, rhs in
+            switch (lhs.dateLastRead, rhs.dateLastRead) {
+            case let (lhsDate?, rhsDate?) where lhsDate != rhsDate:
+                return lhsDate > rhsDate
+            case (.some, .none):
+                return true
+            case (.none, .some):
+                return false
+            default:
+                break
+            }
+
+            if lhs.dateAdded != rhs.dateAdded {
+                return lhs.dateAdded > rhs.dateAdded
+            }
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
+    }
+
     // podcast 已抽離為獨立頂層 section（見 `PodcastHomeView`），本 view 回歸純書架：
     // 不再持有 podcastSeries query / overlay-pane selection / PodcastNavRoute 路由。
     // root content 恒定 + `navigationDestination(for: Book.self)` 的 reader push 契約保留。
@@ -43,15 +88,13 @@ struct BookshelfView: View {
                 appTheme.palette.pageBackground
                     .ignoresSafeArea()
 
-                // root content 恒定：books grid / empty。這是 NavigationStack
-                // 的直接 root subtree，其 structural identity **必須穩定**——
-                // root-content swap 會永久破壞 value-based push（NAVDBG 坐實）。
-                // 對齊 NotebookListView 的 root-恒定模式。
-                if books.isEmpty {
-                    emptyState
-                } else {
-                    bookGrid
-                }
+                // Keep the NavigationStack's direct root subtree stable while
+                // BookshelfRootContent switches between the empty and populated states.
+                BookshelfRootContent(
+                    isEmpty: books.isEmpty,
+                    emptyContent: { emptyState },
+                    populatedContent: { bookGrid }
+                )
 
                 if coordinator.isLoading {
                     loadingOverlay
@@ -268,11 +311,15 @@ struct BookshelfView: View {
     private var bookGrid: some View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: AppShellMetrics.sectionSpacing) {
-                ForEach(books) { book in
-                    NavigationLink(value: book) {
-                        BookCard(book: book, coverHeight: coverHeight)
+                ForEach(Self.sortedBooks(books)) { book in
+                    ZStack(alignment: .topTrailing) {
+                        NavigationLink(value: book) {
+                            BookCard(book: book, coverHeight: coverHeight)
+                        }
+                        .buttonStyle(.bookshelfCard)
+
+                        BookCardRetryButton(fileName: book.epubFileName)
                     }
-                    .buttonStyle(.bookshelfCard)
                     .accessibilityIdentifier("book.card.\(book.id.uuidString)")
                     .accessibilityLabel("\(book.title), \(book.author)")
                     .accessibilityValue(BookshelfCopy.readingProgressAccessibilityValue(book.progression))

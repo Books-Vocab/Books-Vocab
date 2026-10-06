@@ -13,6 +13,7 @@ Covers:
 * path-traversal rejection via existing ``_SERIES_ID_RE`` + ``Path()`` guards
 * 404 when file missing
 """
+
 from __future__ import annotations
 
 import pytest
@@ -107,7 +108,6 @@ def test_audio_range_unsatisfiable_416(audio_api):
         "bytes=0-50,60-70",  # multi-range — not supported, fall back
         "bytes=-5-10",  # negative start
         "bytes=abc-def",  # non-numeric bounds
-        "bytes=10-5",  # end < start
     ],
 )
 def test_audio_malformed_range_falls_back_to_200(audio_api, bad_range):
@@ -119,6 +119,17 @@ def test_audio_malformed_range_falls_back_to_200(audio_api, bad_range):
     )
     assert resp.status_code == 200, f"Range={bad_range!r} should fall back to 200"
     assert resp.content == PAYLOAD
+
+
+def test_audio_reversed_range_returns_416(audio_api):
+    """A syntactically valid but unsatisfiable reversed range is rejected."""
+    api, _ = audio_api
+    resp = api.client.get(
+        "/api/podcasts/series_a/1/audio",
+        headers={**api.headers, "Range": "bytes=10-5"},
+    )
+    assert resp.status_code == 416
+    assert resp.headers.get("content-range") == f"bytes */{len(PAYLOAD)}"
 
 
 def test_audio_not_found(audio_api):
@@ -163,9 +174,7 @@ def test_audio_series_id_rejects_bad_inputs(audio_api, bad_id):
 def test_audio_ep_num_rejects_bad_inputs(audio_api, bad_ep_num):
     """Out-of-range / non-integer ep_num must be rejected with 422."""
     api, _ = audio_api
-    resp = api.client.get(
-        f"/api/podcasts/series_a/{bad_ep_num}/audio", headers=api.headers
-    )
+    resp = api.client.get(f"/api/podcasts/series_a/{bad_ep_num}/audio", headers=api.headers)
     assert resp.status_code == 422
 
 

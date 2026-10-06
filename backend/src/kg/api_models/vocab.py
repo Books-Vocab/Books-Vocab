@@ -16,6 +16,13 @@ class VocabEntry(BaseModel):
     root_form: str | None = None  # AI-determined lemma from translate/quick
     source: VocabSource | None = None
 
+    @field_validator("translation")
+    @classmethod
+    def validate_translation_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("translation must contain at least one non-whitespace character")
+        return v
+
     @field_validator("context", mode="before")
     @classmethod
     def normalize_context(cls, v: str) -> str:
@@ -45,7 +52,7 @@ class CardPreferencesUpdateRequest(BaseModel):
     review_excluded: bool | None = None
 
     @model_validator(mode="after")
-    def require_preference(self) -> "CardPreferencesUpdateRequest":
+    def require_preference(self) -> CardPreferencesUpdateRequest:
         if self.reader_hidden is None and self.review_excluded is None:
             raise ValueError("At least one card preference is required")
         return self
@@ -66,6 +73,13 @@ class VocabContentUpdateRequest(BaseModel):
     meaning: str | None = Field(default=None, min_length=1, max_length=1000)
     note: str | None = Field(default=None, max_length=5000)
     explanation: str | None = Field(default=None, max_length=5000)
+
+    @field_validator("meaning")
+    @classmethod
+    def validate_meaning_not_blank(cls, v: str | None) -> str | None:
+        if v is not None and not v.strip():
+            raise ValueError("meaning must contain at least one non-whitespace character")
+        return v
 
 
 class DeleteWordResponse(BaseModel):

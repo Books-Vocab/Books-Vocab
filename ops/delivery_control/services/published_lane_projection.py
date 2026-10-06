@@ -80,7 +80,7 @@ def project_published_lane(
         and not queued
         and not pull_request.draft
         and pull_request.mergeable
-        and pull_request.base_sha == sources.live_main_sha == record.base_sha
+        and pull_request.base_sha == sources.live_main_sha == published_base_sha
         and pull_request.head_sha == record.handed_back_sha
         and body_exact
         and record.handback_valid
@@ -100,7 +100,7 @@ def project_published_lane(
         and not pull_request.draft
         and pull_request.mergeable
         and pull_request.base_sha == published_base_sha
-        and record.base_sha != sources.live_main_sha
+        and published_base_sha != sources.live_main_sha
         and pull_request.head_sha == record.handed_back_sha
         and body_exact
         and record.handback_valid

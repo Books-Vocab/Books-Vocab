@@ -174,6 +174,62 @@ ios_xctestrun_cache_path_matches_worktree() {
   [[ "$resolved_candidate" == "$expected_root" ]]
 }
 
+ios_xctestrun_cache_path_within_root() {
+  local candidate="$1" root="$2" resolved_candidate resolved_root
+  [[ -n "$candidate" && -n "$root" ]] || return 1
+  resolved_root="$(cd "$root" 2>/dev/null && pwd -P)" || return 1
+  if [[ -d "$candidate" ]]; then
+    resolved_candidate="$(cd "$candidate" 2>/dev/null && pwd -P)" || return 1
+  elif [[ -f "$candidate" ]]; then
+    resolved_candidate="$(cd "$(dirname "$candidate")" 2>/dev/null && pwd -P)/$(basename "$candidate")" || return 1
+  else
+    return 1
+  fi
+  [[ "$resolved_candidate" == "$resolved_root" || "$resolved_candidate" == "$resolved_root/"* ]]
+}
+
+ios_xctestrun_cache_derived_data_root() {
+  local xctestrun_path="$1"
+  cd "$(dirname "$xctestrun_path")/../.." 2>/dev/null && pwd -P
+}
+
+ios_xctestrun_cache_source_path_valid() {
+  local candidate="$1" expected_root="$2" derived_data_root="$3"
+  [[ "$candidate" == /* ]] || return 0
+  ios_xctestrun_cache_path_within_root "$candidate" "$expected_root" && return 0
+  ios_xctestrun_cache_path_within_root "$candidate" "$derived_data_root"
+}
+
+ios_xctestrun_cache_code_coverage_paths_valid() {
+  local xctestrun_path="$1" expected_root="$2"
+  local derived_data_root info_index=0 source_index source_path
+  derived_data_root="$(ios_xctestrun_cache_derived_data_root "$xctestrun_path")" || return 1
+
+  while /usr/libexec/PlistBuddy \
+      -c "Print :CodeCoverageBuildableInfos:$info_index" \
+      "$xctestrun_path" >/dev/null 2>&1; do
+    if source_path="$(/usr/libexec/PlistBuddy \
+        -c "Print :CodeCoverageBuildableInfos:$info_index:SourceFilesCommonPathPrefix" \
+        "$xctestrun_path" 2>/dev/null)"; then
+      [[ -n "$source_path" ]] || return 1
+      ios_xctestrun_cache_source_path_valid \
+        "$source_path" "$expected_root" "$derived_data_root" || return 1
+    fi
+
+    source_index=0
+    while source_path="$(/usr/libexec/PlistBuddy \
+        -c "Print :CodeCoverageBuildableInfos:$info_index:SourceFiles:$source_index" \
+        "$xctestrun_path" 2>/dev/null)"; do
+      if [[ "$source_path" == /* ]]; then
+        ios_xctestrun_cache_source_path_valid \
+          "$source_path" "$expected_root" "$derived_data_root" || return 1
+      fi
+      source_index=$((source_index + 1))
+    done
+    info_index=$((info_index + 1))
+  done
+}
+
 ios_xctestrun_cache_worktree_path_valid() {
   local xctestrun_path="$1" expected_root="${2:-}" env_roots env_root asset_root
   [[ -f "$xctestrun_path" ]] || return 1
@@ -181,6 +237,12 @@ ios_xctestrun_cache_worktree_path_valid() {
     expected_root="$(ios_xctestrun_cache_current_worktree_root)" || return 1
   fi
   [[ -n "$expected_root" ]] || return 1
+
+  # Xcode records source roots in CodeCoverageBuildableInfos.  The product
+  # cache is shared between linked worktrees, so package sources under this
+  # xctestrun's DerivedData root remain valid; project sources must resolve to
+  # the current worktree instead of an older checkout.
+  ios_xctestrun_cache_code_coverage_paths_valid "$xctestrun_path" "$expected_root" || return 1
 
   # KG_FIXTURE_ASSET_ROOT is copied into the xctestrun by Xcode and then
   # forwarded to the app.  A shared cache can therefore carry an absolute

@@ -4,8 +4,12 @@ import Testing
 @testable import BooksAndVocab
 
 struct PodcastCoverCacheTests {
+    private func validPNG() throws -> Data {
+        try #require(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="))
+    }
+
     @Test func cover_cache_component_validates_png_response() {
-        let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x01])
+        let png = try! validPNG()
         let response = HTTPURLResponse(
             url: URL(string: "https://example.test/cover.png")!,
             statusCode: 200,
@@ -15,6 +19,83 @@ struct PodcastCoverCacheTests {
 
         #expect(PodcastCoverCaching.isValidResponse(data: png, response: response))
         #expect(!PodcastCoverCaching.isValidResponse(data: Data("html".utf8), response: response))
+    }
+
+    @Test @MainActor func valid_cache_skips_fetch_and_malformed_cache_repairs_on_next_sync() async throws {
+        let schema = Schema([PodcastSeries.self])
+        let container = try ModelContainer(
+            for: schema,
+            configurations: [ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)]
+        )
+        let context = ModelContext(container)
+        let series = PodcastSeries(remoteId: "cache-test", title: "Cache test", hostNames: [])
+        series.coverImageURL = "https://example.test/cover.png?v=cache-test"
+        let cacheURL = PodcastCoverCaching.cachedCoverURL(
+            seriesId: series.remoteId,
+            coverImageURL: series.coverImageURL
+        )
+        defer { try? FileManager.default.removeItem(at: cacheURL) }
+        context.insert(series)
+        try context.save()
+
+        let valid = try validPNG()
+        try PodcastCoverCaching.write(valid, to: cacheURL)
+        series.coverImagePath = cacheURL.path
+        var fetchCount = 0
+        let kgService = KGService()
+        await PodcastCoverCaching.cacheCoverIfNeeded(
+            seriesId: series.remoteId,
+            context: context,
+            kgService: kgService,
+            baseURL: "https://example.test",
+            fetch: { _ in
+                fetchCount += 1
+                throw URLError(.resourceUnavailable)
+            }
+        )
+        #expect(fetchCount == 0)
+
+        for malformed in [
+            Data(),
+            Data("<html>error</html>".utf8),
+            Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A]),
+            Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x01]),
+        ] {
+            try PodcastCoverCaching.write(malformed, to: cacheURL)
+            var attempts = 0
+            let fetch: (String) async throws -> (Data, URLResponse) = { _ in
+                attempts += 1
+                fetchCount += 1
+                let responseData = attempts == 1 ? Data("not-a-png".utf8) : valid
+                let response = HTTPURLResponse(
+                    url: URL(string: "https://example.test/cover.png")!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "image/png"]
+                )!
+                return (responseData, response)
+            }
+
+            await PodcastCoverCaching.cacheCoverIfNeeded(
+                seriesId: series.remoteId,
+                context: context,
+                kgService: kgService,
+                baseURL: "https://example.test",
+                fetch: fetch
+            )
+            await PodcastCoverCaching.cacheCoverIfNeeded(
+                seriesId: series.remoteId,
+                context: context,
+                kgService: kgService,
+                baseURL: "https://example.test",
+                fetch: fetch
+            )
+            #expect(attempts == 2)
+        }
+
+        #expect(fetchCount == 8)
+        #expect(try PodcastCoverCaching.read(from: cacheURL) == valid)
+        #expect(series.coverImagePath == cacheURL.path)
     }
 
     @Test func catalog_transport_exposes_injectable_request_boundary() async throws {

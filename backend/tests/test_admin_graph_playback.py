@@ -1,4 +1,5 @@
 """Tests for admin graph-playback endpoint."""
+
 from __future__ import annotations
 
 import json
@@ -12,6 +13,7 @@ from kg.cards import Card
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_cards_db(user_dir: Path, cards: list[dict]) -> None:
     """Create a cards.db with given card rows."""
@@ -36,6 +38,7 @@ def _make_graph_json(user_dir: Path, notebook_id: str, links: list[dict]) -> Non
 # compute_graph_playback unit tests
 # ---------------------------------------------------------------------------
 
+
 class TestComputeGraphPlayback:
     def test_empty_user_dir(self, tmp_path: Path):
         """No cards.db, no graph JSON -> empty nodes/edges."""
@@ -51,14 +54,27 @@ class TestComputeGraphPlayback:
         """Cards but no graph file -> nodes with no edges."""
         from kg.admin_graph_playback import compute_graph_playback
 
-        _make_cards_db(tmp_path, [
-            {"id": "c1", "content": "hello", "meaning": "你好",
-             "notebook_id": "default", "is_deleted": False,
-             "created_at": datetime(2025, 1, 1, tzinfo=UTC)},
-            {"id": "c2", "content": "world", "meaning": "世界",
-             "notebook_id": "default", "is_deleted": False,
-             "created_at": datetime(2025, 1, 2, tzinfo=UTC)},
-        ])
+        _make_cards_db(
+            tmp_path,
+            [
+                {
+                    "id": "c1",
+                    "content": "hello",
+                    "meaning": "你好",
+                    "notebook_id": "default",
+                    "is_deleted": False,
+                    "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+                },
+                {
+                    "id": "c2",
+                    "content": "world",
+                    "meaning": "世界",
+                    "notebook_id": "default",
+                    "is_deleted": False,
+                    "created_at": datetime(2025, 1, 2, tzinfo=UTC),
+                },
+            ],
+        )
 
         result = compute_graph_playback(tmp_path, "default")
         assert len(result["nodes"]) == 2
@@ -72,19 +88,43 @@ class TestComputeGraphPlayback:
         """Cards + active links -> correct nodes and edges, sorted by created_at."""
         from kg.admin_graph_playback import compute_graph_playback
 
-        _make_cards_db(tmp_path, [
-            {"id": "c1", "content": "hello", "meaning": "你好",
-             "notebook_id": "default", "is_deleted": False,
-             "created_at": datetime(2025, 1, 2, tzinfo=UTC)},
-            {"id": "c2", "content": "world", "meaning": "世界",
-             "notebook_id": "default", "is_deleted": False,
-             "created_at": datetime(2025, 1, 1, tzinfo=UTC)},
-        ])
-        _make_graph_json(tmp_path, "default", [
-            {"id": "l1", "from_id": "c1", "to_id": "c2",
-             "kind": "contrasts_with", "confidence": 0.85, "reason": "opposites",
-             "created_at": "2025-01-03T00:00:00+00:00", "status": "active"},
-        ])
+        _make_cards_db(
+            tmp_path,
+            [
+                {
+                    "id": "c1",
+                    "content": "hello",
+                    "meaning": "你好",
+                    "notebook_id": "default",
+                    "is_deleted": False,
+                    "created_at": datetime(2025, 1, 2, tzinfo=UTC),
+                },
+                {
+                    "id": "c2",
+                    "content": "world",
+                    "meaning": "世界",
+                    "notebook_id": "default",
+                    "is_deleted": False,
+                    "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+                },
+            ],
+        )
+        _make_graph_json(
+            tmp_path,
+            "default",
+            [
+                {
+                    "id": "l1",
+                    "from_id": "c1",
+                    "to_id": "c2",
+                    "kind": "contrasts_with",
+                    "confidence": 0.85,
+                    "reason": "opposites",
+                    "created_at": "2025-01-03T00:00:00+00:00",
+                    "status": "active",
+                },
+            ],
+        )
 
         result = compute_graph_playback(tmp_path, "default")
         # nodes sorted by created_at: c2 (Jan 1) before c1 (Jan 2)
@@ -99,18 +139,139 @@ class TestComputeGraphPlayback:
         assert edge["confidence"] == 0.85
         assert edge["reason"] == "opposites"
 
+    def test_equal_timestamp_nodes_use_stable_id(self, tmp_path: Path):
+        """Equal-timestamp nodes are ordered by id, not SQLite's source order."""
+        from kg.admin_graph_playback import compute_graph_playback
+
+        timestamp = datetime(2025, 1, 1, tzinfo=UTC)
+        _make_cards_db(
+            tmp_path,
+            [
+                {
+                    "id": "c2",
+                    "content": "world",
+                    "meaning": "世界",
+                    "notebook_id": "default",
+                    "is_deleted": False,
+                    "created_at": timestamp,
+                },
+                {
+                    "id": "c1",
+                    "content": "hello",
+                    "meaning": "你好",
+                    "notebook_id": "default",
+                    "is_deleted": False,
+                    "created_at": timestamp,
+                },
+            ],
+        )
+
+        result = compute_graph_playback(tmp_path, "default")
+
+        assert [node["id"] for node in result["nodes"]] == ["c1", "c2"]
+
+    def test_equal_timestamp_edges_use_stable_response_fields(self, tmp_path: Path):
+        """Equal-timestamp edges are ordered by every deterministic response field."""
+        from kg.admin_graph_playback import compute_graph_playback
+
+        created_at = "2025-01-01T00:00:00+00:00"
+        # Input is the exact reverse of the expected order. The final two
+        # entries also prove confidence/reason are deterministic tie-breakers.
+        _make_graph_json(
+            tmp_path,
+            "default",
+            [
+                {
+                    "id": "l5",
+                    "from_id": "c2",
+                    "to_id": "c1",
+                    "kind": "shares_usage",
+                    "confidence": 0.5,
+                    "reason": "second source",
+                    "created_at": created_at,
+                    "status": "active",
+                },
+                {
+                    "id": "l4",
+                    "from_id": "c1",
+                    "to_id": "c3",
+                    "kind": "contrasts_with",
+                    "confidence": 0.1,
+                    "reason": "to",
+                    "created_at": created_at,
+                    "status": "active",
+                },
+                {
+                    "id": "l3",
+                    "from_id": "c1",
+                    "to_id": "c2",
+                    "kind": "shares_usage",
+                    "confidence": 0.1,
+                    "reason": "kind",
+                    "created_at": created_at,
+                    "status": "active",
+                },
+                {
+                    "id": "l2",
+                    "from_id": "c1",
+                    "to_id": "c2",
+                    "kind": "contrasts_with",
+                    "confidence": 0.9,
+                    "reason": "z",
+                    "created_at": created_at,
+                    "status": "active",
+                },
+                {
+                    "id": "l1",
+                    "from_id": "c1",
+                    "to_id": "c2",
+                    "kind": "contrasts_with",
+                    "confidence": 0.1,
+                    "reason": "a",
+                    "created_at": created_at,
+                    "status": "active",
+                },
+            ],
+        )
+
+        result = compute_graph_playback(tmp_path, "default")
+
+        assert [
+            (edge["from_id"], edge["to_id"], edge["kind"], edge["confidence"], edge["reason"])
+            for edge in result["edges"]
+        ] == [
+            ("c1", "c2", "contrasts_with", 0.1, "a"),
+            ("c1", "c2", "contrasts_with", 0.9, "z"),
+            ("c1", "c2", "shares_usage", 0.1, "kind"),
+            ("c1", "c3", "contrasts_with", 0.1, "to"),
+            ("c2", "c1", "shares_usage", 0.5, "second source"),
+        ]
+
     def test_deleted_cards_excluded(self, tmp_path: Path):
         """Deleted cards should not appear in nodes."""
         from kg.admin_graph_playback import compute_graph_playback
 
-        _make_cards_db(tmp_path, [
-            {"id": "c1", "content": "hello", "meaning": "你好",
-             "notebook_id": "default", "is_deleted": False,
-             "created_at": datetime(2025, 1, 1, tzinfo=UTC)},
-            {"id": "c2", "content": "deleted", "meaning": "已刪除",
-             "notebook_id": "default", "is_deleted": True,
-             "created_at": datetime(2025, 1, 2, tzinfo=UTC)},
-        ])
+        _make_cards_db(
+            tmp_path,
+            [
+                {
+                    "id": "c1",
+                    "content": "hello",
+                    "meaning": "你好",
+                    "notebook_id": "default",
+                    "is_deleted": False,
+                    "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+                },
+                {
+                    "id": "c2",
+                    "content": "deleted",
+                    "meaning": "已刪除",
+                    "notebook_id": "default",
+                    "is_deleted": True,
+                    "created_at": datetime(2025, 1, 2, tzinfo=UTC),
+                },
+            ],
+        )
 
         result = compute_graph_playback(tmp_path, "default")
         assert len(result["nodes"]) == 1
@@ -120,22 +281,55 @@ class TestComputeGraphPlayback:
         """Only active links appear in edges."""
         from kg.admin_graph_playback import compute_graph_playback
 
-        _make_cards_db(tmp_path, [
-            {"id": "c1", "content": "hello", "meaning": "你好",
-             "notebook_id": "default", "is_deleted": False,
-             "created_at": datetime(2025, 1, 1, tzinfo=UTC)},
-        ])
-        _make_graph_json(tmp_path, "default", [
-            {"id": "l1", "from_id": "c1", "to_id": "c2",
-             "kind": "contrasts_with", "confidence": 0.9, "reason": "test",
-             "created_at": "2025-01-02T00:00:00+00:00", "status": "active"},
-            {"id": "l2", "from_id": "c1", "to_id": "c3",
-             "kind": "contrasts_with", "confidence": 0.5, "reason": "test",
-             "created_at": "2025-01-03T00:00:00+00:00", "status": "deprecated"},
-            {"id": "l3", "from_id": "c1", "to_id": "c4",
-             "kind": "contrasts_with", "confidence": 0.5, "reason": "test",
-             "created_at": "2025-01-04T00:00:00+00:00", "status": "hidden"},
-        ])
+        _make_cards_db(
+            tmp_path,
+            [
+                {
+                    "id": "c1",
+                    "content": "hello",
+                    "meaning": "你好",
+                    "notebook_id": "default",
+                    "is_deleted": False,
+                    "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+                },
+            ],
+        )
+        _make_graph_json(
+            tmp_path,
+            "default",
+            [
+                {
+                    "id": "l1",
+                    "from_id": "c1",
+                    "to_id": "c2",
+                    "kind": "contrasts_with",
+                    "confidence": 0.9,
+                    "reason": "test",
+                    "created_at": "2025-01-02T00:00:00+00:00",
+                    "status": "active",
+                },
+                {
+                    "id": "l2",
+                    "from_id": "c1",
+                    "to_id": "c3",
+                    "kind": "contrasts_with",
+                    "confidence": 0.5,
+                    "reason": "test",
+                    "created_at": "2025-01-03T00:00:00+00:00",
+                    "status": "deprecated",
+                },
+                {
+                    "id": "l3",
+                    "from_id": "c1",
+                    "to_id": "c4",
+                    "kind": "contrasts_with",
+                    "confidence": 0.5,
+                    "reason": "test",
+                    "created_at": "2025-01-04T00:00:00+00:00",
+                    "status": "hidden",
+                },
+            ],
+        )
 
         result = compute_graph_playback(tmp_path, "default")
         assert len(result["edges"]) == 1
@@ -145,22 +339,51 @@ class TestComputeGraphPlayback:
         """All active cards are returned as nodes, even those without edges."""
         from kg.admin_graph_playback import compute_graph_playback
 
-        _make_cards_db(tmp_path, [
-            {"id": "c1", "content": "hello", "meaning": "你好",
-             "notebook_id": "default", "is_deleted": False,
-             "created_at": datetime(2025, 1, 1, tzinfo=UTC)},
-            {"id": "c2", "content": "world", "meaning": "世界",
-             "notebook_id": "default", "is_deleted": False,
-             "created_at": datetime(2025, 1, 2, tzinfo=UTC)},
-            {"id": "c3", "content": "orphan", "meaning": "孤兒",
-             "notebook_id": "default", "is_deleted": False,
-             "created_at": datetime(2025, 1, 3, tzinfo=UTC)},
-        ])
-        _make_graph_json(tmp_path, "default", [
-            {"id": "l1", "from_id": "c1", "to_id": "c2",
-             "kind": "contrasts_with", "confidence": 0.9, "reason": "test",
-             "created_at": "2025-01-04T00:00:00+00:00", "status": "active"},
-        ])
+        _make_cards_db(
+            tmp_path,
+            [
+                {
+                    "id": "c1",
+                    "content": "hello",
+                    "meaning": "你好",
+                    "notebook_id": "default",
+                    "is_deleted": False,
+                    "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+                },
+                {
+                    "id": "c2",
+                    "content": "world",
+                    "meaning": "世界",
+                    "notebook_id": "default",
+                    "is_deleted": False,
+                    "created_at": datetime(2025, 1, 2, tzinfo=UTC),
+                },
+                {
+                    "id": "c3",
+                    "content": "orphan",
+                    "meaning": "孤兒",
+                    "notebook_id": "default",
+                    "is_deleted": False,
+                    "created_at": datetime(2025, 1, 3, tzinfo=UTC),
+                },
+            ],
+        )
+        _make_graph_json(
+            tmp_path,
+            "default",
+            [
+                {
+                    "id": "l1",
+                    "from_id": "c1",
+                    "to_id": "c2",
+                    "kind": "contrasts_with",
+                    "confidence": 0.9,
+                    "reason": "test",
+                    "created_at": "2025-01-04T00:00:00+00:00",
+                    "status": "active",
+                },
+            ],
+        )
 
         result = compute_graph_playback(tmp_path, "default")
         # All 3 active cards returned, even c3 which has no edges

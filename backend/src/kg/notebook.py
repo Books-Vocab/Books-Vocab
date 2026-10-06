@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import HTTPException
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, select
 
@@ -17,6 +20,18 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_NOTEBOOK_ID = "default"
 DEFAULT_NOTEBOOK_NAME = "我的單字本"
+
+
+def _utc_instant(value: datetime) -> datetime:
+    """Interpret naive stored timestamps as UTC and normalize aware ones."""
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _parse_stored_timestamp(value: str) -> datetime:
+    """Parse SQLite timestamp text without discarding its offset."""
+    return _utc_instant(datetime.fromisoformat(value.replace(" ", "T")))
 
 
 class Notebook(SQLModel, table=True):
@@ -42,6 +57,21 @@ class Notebook(SQLModel, table=True):
     source_version: int | None = None
 
 
+class NotebookSettings(SQLModel, table=True):
+    """Per-notebook review settings stored beside the notebook metadata."""
+
+    __tablename__ = "notebook_settings"
+
+    notebook_id: str = SQLField(primary_key=True)
+    review_policy: str | None = None
+    review_policy_updated_at: float | None = None
+    card_layout: str | None = None
+    card_layout_updated_at: float | None = None
+
+
+_UNSET = object()
+
+
 class NotebookStore:
     """SQLite-based notebook storage."""
 
@@ -52,7 +82,22 @@ class NotebookStore:
         # creates the parent dir). create_all + column migration below run
         # after, so DDL lands on a WAL connection.
         self.engine = make_sqlite_engine(path)
-        Notebook.metadata.create_all(self.engine, tables=[Notebook.__table__], checkfirst=True)
+        # SQLAlchemy's checkfirst=True is not atomic across independent
+        # engines: two legacy openers can both observe a missing table and
+        # then race on CREATE TABLE. Take SQLite's writer lock before the
+        # check/create boundary so the second opener rechecks after commit.
+        with self.engine.connect() as conn:
+            conn.exec_driver_sql("BEGIN IMMEDIATE")
+            try:
+                Notebook.metadata.create_all(
+                    conn,
+                    tables=[Notebook.__table__, NotebookSettings.__table__],
+                    checkfirst=True,
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
         self._migrate_columns()
 
     def _migrate_columns(self) -> None:
@@ -74,9 +119,7 @@ class NotebookStore:
     def ensure_default(self) -> Notebook:
         """Ensure the default notebook exists. Returns it."""
         with Session(self.engine) as session:
-            existing = session.exec(
-                select(Notebook).where(Notebook.id == DEFAULT_NOTEBOOK_ID)
-            ).first()
+            existing = session.exec(select(Notebook).where(Notebook.id == DEFAULT_NOTEBOOK_ID)).first()
             if existing:
                 return existing
             nb = Notebook(
@@ -85,7 +128,17 @@ class NotebookStore:
                 is_default=True,
             )
             session.add(nb)
-            session.commit()
+            try:
+                session.commit()
+            except IntegrityError:
+                # Another first-use request may have created the singleton
+                # between our read and insert. Re-read its committed row;
+                # unrelated integrity failures still propagate unchanged.
+                session.rollback()
+                existing = session.get(Notebook, DEFAULT_NOTEBOOK_ID)
+                if existing is None:
+                    raise
+                return existing
             session.refresh(nb)
             return nb
 
@@ -106,9 +159,12 @@ class NotebookStore:
         plus the provenance columns, then reveals it via :meth:`materialize` once
         every card has landed."""
         nb = Notebook(
-            name=name, color=color, cover_pattern=cover_pattern,
+            name=name,
+            color=color,
+            cover_pattern=cover_pattern,
             source_shared_deck_id=source_shared_deck_id,
-            source_version=source_version, is_staged=is_staged,
+            source_version=source_version,
+            is_staged=is_staged,
         )
         with Session(self.engine) as session:
             session.add(nb)
@@ -150,9 +206,67 @@ class NotebookStore:
         with Session(self.engine) as session:
             return session.get(Notebook, notebook_id)
 
-    def all(
-        self, include_deleted: bool = False, *, include_staged: bool = False
-    ) -> list[Notebook]:
+    def get_settings(self, notebook_id: str) -> NotebookSettings | None:
+        with Session(self.engine) as session:
+            return session.get(NotebookSettings, notebook_id)
+
+    def update_settings(
+        self,
+        notebook_id: str,
+        *,
+        review_policy: tuple[dict | None, float] | object = _UNSET,
+        card_layout: tuple[dict | None, float] | object = _UNSET,
+    ) -> Notebook | None:
+        """Apply independently versioned notebook settings groups.
+
+        A group is only changed when its incoming timestamp is newer than the
+        stored timestamp. Reset values remain as timestamped tombstones so an
+        older device cannot resurrect a cleared override.
+        """
+        groups = (
+            (review_policy, "review_policy", "review_policy_updated_at"),
+            (card_layout, "card_layout", "card_layout_updated_at"),
+        )
+        with Session(self.engine) as session:
+            has_changes = False
+            for incoming, value_column, timestamp_column in groups:
+                if incoming is _UNSET:
+                    continue
+                value, updated_at = incoming
+                encoded = None if value is None else json.dumps(value, separators=(",", ":"), sort_keys=True)
+                result = session.execute(
+                    text(
+                        f"""
+                        INSERT INTO notebook_settings
+                            (notebook_id, {value_column}, {timestamp_column})
+                        SELECT :notebook_id, :value, :updated_at
+                        WHERE EXISTS (
+                            SELECT 1 FROM notebook
+                            WHERE id = :notebook_id AND is_deleted = 0 AND is_staged = 0
+                        )
+                        ON CONFLICT(notebook_id) DO UPDATE SET
+                            {value_column} = excluded.{value_column},
+                            {timestamp_column} = excluded.{timestamp_column}
+                        WHERE notebook_settings.{timestamp_column} IS NULL
+                           OR excluded.{timestamp_column} > notebook_settings.{timestamp_column}
+                        """
+                    ),
+                    {"notebook_id": notebook_id, "value": encoded, "updated_at": updated_at},
+                )
+                has_changes = has_changes or result.rowcount > 0
+
+            nb = session.get(Notebook, notebook_id)
+            if nb is None or nb.is_deleted or nb.is_staged:
+                session.rollback()
+                return None
+            if has_changes:
+                nb.updated_at = datetime.now(UTC)
+                session.add(nb)
+                session.commit()
+                session.refresh(nb)
+            return nb
+
+    def all(self, include_deleted: bool = False, *, include_staged: bool = False) -> list[Notebook]:
         """Visible notebooks. Two ORTHOGONAL hide axes, defaulting off:
 
         * ``include_deleted`` — add soft-delete tombstones (the full sync-down
@@ -173,7 +287,7 @@ class NotebookStore:
             statement = select(Notebook)
             if conditions:
                 statement = statement.where(*conditions)
-            statement = statement.order_by(Notebook.sort_order, Notebook.created_at)
+            statement = statement.order_by(Notebook.sort_order, Notebook.created_at, Notebook.id)
             return list(session.exec(statement).all())
 
     def get_modified_since(self, since: datetime) -> list[Notebook]:
@@ -183,16 +297,33 @@ class NotebookStore:
         reveals it (materialize bumps ``updated_at``, so the revealed copy is
         picked up by the next delta)."""
         with Session(self.engine) as session:
-            statement = select(Notebook).where(
-                Notebook.updated_at > since,
-                Notebook.is_staged.is_(False),
-            )
-            return list(session.exec(statement).all())
+            # SQLite stores DATETIME as text, so a direct comparison can order
+            # offset-bearing legacy values by wall clock instead of by instant.
+            # Read the raw values and apply the same UTC-instant contract as the
+            # card incremental-sync path before ordering by the stable id tie-break.
+            rows = session.execute(text("SELECT id, updated_at FROM notebook WHERE is_staged = 0")).all()
+            since_utc = _utc_instant(since)
+            modified_ids = [
+                notebook_id
+                for notebook_id, _updated_at in sorted(
+                    (
+                        (notebook_id, _parse_stored_timestamp(updated_at))
+                        for notebook_id, updated_at in rows
+                        if _parse_stored_timestamp(updated_at) > since_utc
+                    ),
+                    key=lambda row: (row[1], row[0]),
+                )
+            ]
+            if not modified_ids:
+                return []
+            notebooks = session.exec(select(Notebook).where(Notebook.id.in_(modified_ids))).all()
+            notebooks_by_id = {notebook.id: notebook for notebook in notebooks}
+            return [notebooks_by_id[notebook_id] for notebook_id in modified_ids]
 
     def update(self, notebook_id: str, **kwargs) -> Notebook | None:
         with Session(self.engine) as session:
             nb = session.get(Notebook, notebook_id)
-            if nb is None or nb.is_deleted:
+            if nb is None or nb.is_deleted or nb.is_staged:
                 return None
             has_changes = False
             for key, value in kwargs.items():
@@ -207,9 +338,9 @@ class NotebookStore:
             return nb
 
     def exists(self, notebook_id: str) -> bool:
-        """Check if a non-deleted notebook exists."""
+        """Check if a revealed, non-deleted notebook exists."""
         nb = self.get(notebook_id)
-        return nb is not None and not nb.is_deleted
+        return nb is not None and not nb.is_deleted and not nb.is_staged
 
     def delete(self, notebook_id: str) -> bool | None:
         """Soft-delete a notebook. Returns True if deleted, None if already

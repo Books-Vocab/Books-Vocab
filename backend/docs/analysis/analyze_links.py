@@ -24,14 +24,15 @@ def main():
     top_K = np.sort(sim_mat, axis=1)[:, -K:][:, ::-1]
     candidates = np.sum(top_K > T)
     print(f"Candidates generated across 216 words with K={K} and T={T}: {candidates} (vs 1080 currently)")
-    print(f"Cost reduction: {(1080-candidates)/1080*100:.1f}%")
+    print(f"Cost reduction: {(1080 - candidates) / 1080 * 100:.1f}%")
 
     # How many active links survive?
     active_links = [lk for lk in graph if lk["status"] == "active"]
     survived = 0
     for lk in active_links:
         idx1, idx2 = id_to_idx.get(lk["from_id"]), id_to_idx.get(lk["to_id"])
-        if idx1 is None or idx2 is None: continue
+        if idx1 is None or idx2 is None:
+            continue
 
         row1 = sim_mat[idx1]
         sorted_indices = np.argsort(row1)[::-1]
@@ -49,7 +50,8 @@ def main():
         if found1 or found2:
             survived += 1
 
-    print(f"True links survived: {survived}/{len(active_links)} ({survived/len(active_links)*100:.1f}%)")
+    print(f"True links survived: {survived}/{len(active_links)} ({survived / len(active_links) * 100:.1f}%)")
+
 
 if __name__ == "__main__":
     main()

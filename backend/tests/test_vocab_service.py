@@ -3,7 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from types import SimpleNamespace
 
+from kg.difficulty import get_tier
+from kg.graph import GraphStore, LinkKind
 from kg.vocab_graph import graph_links_payload
+from kg.vocab_handlers.crud import list_vocab_response
+from kg.vocab_shared import card_response
 
 
 @dataclass
@@ -202,9 +206,33 @@ class _PartialFailingGraph:
 
 def test_graph_links_payload_only_returns_active_links():
     links = {
-        "l1": SimpleNamespace(id="l1", from_id="c1", to_id="c2", kind=SimpleNamespace(value="contrasts_with"), confidence=0.9, reason="r1", status="active"),
-        "l2": SimpleNamespace(id="l2", from_id="c2", to_id="c3", kind=SimpleNamespace(value="shares_usage"), confidence=0.7, reason="r2", status="deprecated"),
-        "l3": SimpleNamespace(id="l3", from_id="c3", to_id="c4", kind=SimpleNamespace(value="contrasts_with"), confidence=0.8, reason="r3", status="hidden"),
+        "l1": SimpleNamespace(
+            id="l1",
+            from_id="c1",
+            to_id="c2",
+            kind=SimpleNamespace(value="contrasts_with"),
+            confidence=0.9,
+            reason="r1",
+            status="active",
+        ),
+        "l2": SimpleNamespace(
+            id="l2",
+            from_id="c2",
+            to_id="c3",
+            kind=SimpleNamespace(value="shares_usage"),
+            confidence=0.7,
+            reason="r2",
+            status="deprecated",
+        ),
+        "l3": SimpleNamespace(
+            id="l3",
+            from_id="c3",
+            to_id="c4",
+            kind=SimpleNamespace(value="contrasts_with"),
+            confidence=0.8,
+            reason="r3",
+            status="hidden",
+        ),
     }
     graph = SimpleNamespace(
         all_links=lambda: links.values(),
@@ -240,8 +268,7 @@ def test_incremental_query_does_not_load_all_cards(tmp_path):
     builder = MagicMock(return_value=MagicMock())
 
     since = (now - timedelta(hours=1)).isoformat() + "Z"
-    list_vocab_cards(since=since, cards_store=cards_store, graph=graph,
-                     card_response_builder=builder, notebook_id=None)
+    list_vocab_cards(since=since, cards_store=cards_store, graph=graph, card_response_builder=builder, notebook_id=None)
 
     cards_store.get_modified_since.assert_called_once()
     cards_store.all_as_dict.assert_not_called()
@@ -281,16 +308,84 @@ def test_incremental_query_resolves_neighbour_links(tmp_path):
         link_labels = {k: k.value for k in LinkKind}
 
         def builder(card, g, cards_by_id):
-            return card_response(card, graph=g, cards_by_id=cards_by_id,
-                                 tier_getter=get_tier, link_kinds=link_kinds, link_labels=link_labels)
+            return card_response(
+                card,
+                graph=g,
+                cards_by_id=cards_by_id,
+                tier_getter=get_tier,
+                link_kinds=link_kinds,
+                link_labels=link_labels,
+            )
 
         since_str = since_dt.isoformat() + "Z"
-        results, _cursor = list_vocab_cards(since=since_str, cards_store=cards, graph=graph,
-                                            card_response_builder=builder, notebook_id=None)
+        results, _cursor = list_vocab_cards(
+            since=since_str, cards_store=cards, graph=graph, card_response_builder=builder, notebook_id=None
+        )
 
         assert len(results) == 1
         assert results[0].content == "fruit"
         assert "shares_usage" in results[0].linksByKind
         assert results[0].linksByKind["shares_usage"][0].word == "apple"
+    finally:
+        cards.close()
+
+
+def test_full_sync_uses_card_notebook_graph(tmp_path):
+    from kg.cards import CardStore
+
+    cards = CardStore(tmp_path / "cards.db")
+    try:
+        default_source = cards.add("default-source", meaning="default source", notebook_id="default")
+        default_target = cards.add("default-target", meaning="default target", notebook_id="default")
+        other_source = cards.add("other-source", meaning="other source", notebook_id="notebook-two")
+        other_target = cards.add("other-target", meaning="other target", notebook_id="notebook-two")
+
+        graphs = {
+            notebook_id: GraphStore(
+                tmp_path / f"graph_{notebook_id}.json",
+                tmp_path / f"candidates_{notebook_id}.json",
+                tmp_path / f"blocked_{notebook_id}.json",
+            )
+            for notebook_id in ("default", "notebook-two")
+        }
+        graphs["default"].batch_add_links(
+            [(default_source.id, default_target.id, LinkKind.CONTRASTS_WITH, 0.9, "default graph")]
+        )
+        graphs["notebook-two"].batch_add_links(
+            [(other_source.id, other_target.id, LinkKind.SHARES_USAGE, 0.8, "notebook graph")]
+        )
+
+        factory_calls = []
+
+        def graph_store_factory(_user_dir, *, notebook_id="default"):
+            factory_calls.append(notebook_id)
+            return graphs[notebook_id]
+
+        link_kinds = list(LinkKind)
+        link_labels = {kind: kind.value for kind in link_kinds}
+
+        def builder(card, graph, cards_by_id):
+            return card_response(
+                card,
+                graph=graph,
+                cards_by_id=cards_by_id,
+                tier_getter=get_tier,
+                link_kinds=link_kinds,
+                link_labels=link_labels,
+            )
+
+        responses, next_cursor = list_vocab_response(
+            since=None,
+            user={"dir": tmp_path},
+            card_store_factory=lambda _user_dir: cards,
+            graph_store_factory=graph_store_factory,
+            card_response_builder=builder,
+        )
+
+        by_id = {response.id: response for response in responses}
+        assert next_cursor is None
+        assert by_id[default_source.id].linksByKind["contrasts_with"][0].word == default_target.content
+        assert by_id[other_source.id].linksByKind["shares_usage"][0].word == other_target.content
+        assert sorted(factory_calls) == ["default", "notebook-two"]
     finally:
         cards.close()

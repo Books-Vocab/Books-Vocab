@@ -1,4 +1,5 @@
 """Graph density time-series computation for admin analytics."""
+
 from __future__ import annotations
 
 import json
@@ -60,7 +61,7 @@ def compute_graph_density(
     chronologically-sorted list of events, each carrying cumulative card/link
     counts and the resulting density ratio.
     """
-    events: list[tuple[datetime, str]] = []  # (ts, event_type)
+    events: list[tuple[datetime, str, str]] = []  # (ts, event_type, source_id)
 
     # ── cards from SQLite ──────────────────────────────────────────────
     cards_db = user_dir / "cards.db"
@@ -69,7 +70,7 @@ def compute_graph_density(
             ts = _parse_ts(created_at)
         except (ValueError, TypeError):
             continue
-        events.append((ts, "card"))
+        events.append((ts, "card", str(_id)))
 
     # ── links from graph JSON ──────────────────────────────────────────
     graph_path = user_dir / f"graph_{notebook_id}.json"
@@ -83,27 +84,29 @@ def compute_graph_density(
             ts = _parse_ts(created_at)
         except (ValueError, TypeError):
             continue
-        events.append((ts, "link"))
+        events.append((ts, "link", str(link.get("id", ""))))
 
     # ── sort & cumulative scan ─────────────────────────────────────────
-    events.sort(key=lambda e: e[0])
+    events.sort(key=lambda e: (e[0], e[1], e[2]))
 
     cum_cards = 0
     cum_links = 0
     points: list[dict[str, Any]] = []
-    for ts, event_type in events:
+    for ts, event_type, _source_id in events:
         if event_type == "card":
             cum_cards += 1
         else:
             cum_links += 1
         density = cum_links / cum_cards if cum_cards > 0 else 0.0
-        points.append({
-            "ts": ts.isoformat(),
-            "event": event_type,
-            "cum_cards": cum_cards,
-            "cum_links": cum_links,
-            "density": round(density, 6),
-        })
+        points.append(
+            {
+                "ts": ts.isoformat(),
+                "event": event_type,
+                "cum_cards": cum_cards,
+                "cum_links": cum_links,
+                "density": round(density, 6),
+            }
+        )
 
     return {
         "user_id": user_id,

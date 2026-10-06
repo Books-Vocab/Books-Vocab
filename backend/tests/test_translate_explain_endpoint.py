@@ -12,6 +12,7 @@ of the explain endpoint independently of the service-layer cache:
 
 LLM client is stubbed via `create_async_client` so no network is touched.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -23,12 +24,16 @@ import jwt as pyjwt
 from conftest import TEST_JWT_SECRET
 
 
-def _stub_explain_llm(content: str = '{"e":"To bring a feeling or memory to mind."}') -> MagicMock:
+def _stub_explain_llm(
+    content: str = '{"e":"To bring a feeling or memory to mind."}',
+    *,
+    usage=None,
+) -> MagicMock:
     client = MagicMock()
     client.chat.completions.create = AsyncMock(
         return_value=SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
-            usage=None,
+            usage=usage,
         )
     )
     return client
@@ -55,6 +60,25 @@ def test_explain_basic_request_returns_expected_shape(isolated_api):
     assert body["e"] == "To bring a feeling or memory to mind."
     # response_model strips any unexpected keys; lock the shape.
     assert set(body.keys()) == {"e"}
+
+
+def test_explain_success_header_reports_post_use_quota_snapshot(isolated_api):
+    """A successful explain response reports quota remaining after its LLM use."""
+    client = isolated_api.client
+    headers = isolated_api.headers
+    usage = SimpleNamespace(prompt_tokens=1_000_000, completion_tokens=0)
+
+    fake = _stub_explain_llm(usage=usage)
+    with patch("kg.translate_handlers.create_async_client", return_value=fake):
+        response = client.post(
+            "/api/translate/explain",
+            json={"word": "evoke-quota-snapshot", "context": "The story can evoke deep memories."},
+            headers=headers,
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.headers["X-Quota-Fraction"] == "0.6667"
+    assert response.headers["X-Quota-Reset"] == "86400"
 
 
 def test_explain_invalid_request_returns_422(isolated_api):

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -15,10 +15,10 @@ from test_sync_merge import _iso, _make_store, _now
 
 
 class TestIncrementalSync:
-
     def _build_response(self, card, graph, cards_by_id):
         """Minimal card response builder for testing."""
         from kg.api_models import CardResponse
+
         return CardResponse(
             id=card.id,
             content=card.content,
@@ -50,6 +50,7 @@ class TestIncrementalSync:
         store.delete(card.id)
 
         from unittest.mock import MagicMock
+
         mock_graph = MagicMock()
 
         results, _cursor = list_vocab_cards(
@@ -69,6 +70,7 @@ class TestIncrementalSync:
         store.add("old_word", "舊詞")
 
         import time
+
         time.sleep(0.05)
         since = _now()
         time.sleep(0.05)
@@ -76,6 +78,7 @@ class TestIncrementalSync:
         store.add("new_word", "新詞")
 
         from unittest.mock import MagicMock
+
         mock_graph = MagicMock()
 
         results, _cursor = list_vocab_cards(
@@ -89,8 +92,8 @@ class TestIncrementalSync:
         assert "new_word" in words
         assert "old_word" not in words
 
-    def test_full_sync_returns_all_active_cards(self, tmp_path):
-        """Full sync (since=None) returns all non-deleted cards."""
+    def test_full_sync_returns_all_cards_including_tombstones(self, tmp_path):
+        """Full sync (since=None) returns active cards and tombstones."""
         store = _make_store(tmp_path)
         store.add("apple", "蘋果")
         store.add("banana", "香蕉")
@@ -98,6 +101,7 @@ class TestIncrementalSync:
         store.delete(deleted.id)
 
         from unittest.mock import MagicMock
+
         mock_graph = MagicMock()
 
         results, _cursor = list_vocab_cards(
@@ -108,7 +112,8 @@ class TestIncrementalSync:
         )
 
         words = {r.content for r in results}
-        assert words == {"apple", "banana"}
+        assert words == {"apple", "banana", "cherry"}
+        assert next(r for r in results if r.content == "cherry").isDeleted is True
 
     def test_invalid_since_raises_400(self, tmp_path):
         """Invalid since timestamp should raise HTTP 400."""
@@ -125,6 +130,43 @@ class TestIncrementalSync:
                 card_response_builder=self._build_response,
             )
         assert exc_info.value.status_code == 400
+
+    @pytest.mark.parametrize("since", ["", "   "])
+    def test_empty_since_raises_400(self, tmp_path, since):
+        """Explicit empty since values must not silently restart full sync."""
+        store = _make_store(tmp_path)
+        from unittest.mock import MagicMock
+
+        from kg.exceptions import BadRequestError
+
+        with pytest.raises(BadRequestError) as exc_info:
+            list_vocab_cards(
+                since=since,
+                cards_store=store,
+                graph=MagicMock(),
+                card_response_builder=self._build_response,
+            )
+        assert exc_info.value.status_code == 400
+
+    def test_numeric_since_remains_incremental(self, tmp_path):
+        """Numeric timestamp strings must continue using the incremental path."""
+        store = _make_store(tmp_path)
+        store.add("numeric_since", "數字游標")
+        from unittest.mock import MagicMock
+
+        store.get_modified_since = MagicMock(wraps=store.get_modified_since)
+        store.page_cards = MagicMock(wraps=store.page_cards)
+
+        results, _cursor = list_vocab_cards(
+            since="0",
+            cards_store=store,
+            graph=MagicMock(),
+            card_response_builder=self._build_response,
+        )
+
+        assert {r.content for r in results} == {"numeric_since"}
+        store.get_modified_since.assert_called_once()
+        store.page_cards.assert_not_called()
 
 
 # ============================================================================
@@ -192,6 +234,49 @@ class TestIncrementalSyncEdges:
         )
         assert len(results) == 3
 
+    def test_incremental_sync_orders_by_utc_instant_then_card_id(self, tmp_path):
+        """Order results by actual UTC time, then id, not DB insertion order."""
+        from sqlalchemy import text
+        from sqlmodel import Session
+
+        from kg.cards.store import Card
+
+        store = _make_store(tmp_path)
+        since = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+        cards = [
+            Card(id="card-late", content="late", meaning="晚"),
+            Card(id="card-tie-z", content="tie-z", meaning="同時 z"),
+            Card(id="card-earlier", content="earlier", meaning="早"),
+            Card(id="card-tie-a", content="tie-a", meaning="同時 a"),
+        ]
+        with Session(store.engine) as session:
+            session.add_all(cards)
+            session.commit()
+
+        # Insert order is deliberately [late, tie-z, earlier, tie-a]. The
+        # tie cards use different offsets but represent the same UTC instant.
+        timestamps = {
+            "card-late": "2026-01-01 08:45:00-05:00",  # 13:45 UTC
+            "card-tie-z": "2026-01-01 12:30:00+00:00",  # 12:30 UTC
+            "card-earlier": "2026-01-01 12:15:00+00:00",  # 12:15 UTC
+            "card-tie-a": "2026-01-01 07:30:00-05:00",  # 12:30 UTC
+        }
+        with store.engine.begin() as connection:
+            for card_id, timestamp in timestamps.items():
+                connection.execute(
+                    text("UPDATE card SET updated_at = :timestamp, created_at = :timestamp WHERE id = :card_id"),
+                    {"timestamp": timestamp, "card_id": card_id},
+                )
+
+        results = store.get_modified_since(since)
+
+        assert [card.id for card in results] == [
+            "card-earlier",
+            "card-tie-a",
+            "card-tie-z",
+            "card-late",
+        ]
+
     def test_incremental_sync_includes_tombstones_after_since(self, tmp_path):
         """Soft-delete after `since` must surface a tombstone with isDeleted=True."""
         store = _make_store(tmp_path)
@@ -227,9 +312,7 @@ class TestIncrementalSyncEdges:
         )
 
         tombstones = [r for r in results if r.id == card.id]
-        assert len(tombstones) == 1, (
-            f"expected tombstone in incremental sync, got {len(tombstones)}"
-        )
+        assert len(tombstones) == 1, f"expected tombstone in incremental sync, got {len(tombstones)}"
         assert tombstones[0].isDeleted is True
 
     def test_incremental_sync_pagination_consistency(self, tmp_path):
@@ -272,13 +355,12 @@ class TestIncrementalSyncEdges:
 
         # No duplicates
         assert len(collected) == len(set(collected)), (
-            f"pagination produced duplicates: "
-            f"{[x for x in collected if collected.count(x) > 1][:5]}"
+            f"pagination produced duplicates: {[x for x in collected if collected.count(x) > 1][:5]}"
         )
         # No gaps — every card appears exactly once
         assert set(collected) == {cid for _, cid in ids_by_ts}, (
             f"pagination missed cards: "
-            f"missing={ {cid for _, cid in ids_by_ts} - set(collected)} "
+            f"missing={ {cid for _, cid in ids_by_ts} - set(collected) } "
             f"extra={set(collected) - {cid for _, cid in ids_by_ts}}"
         )
         assert len(collected) == total

@@ -5,6 +5,7 @@ import sys
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Self
 
 import pytest
 
@@ -1129,6 +1130,37 @@ def test_cli_routes_exact_post_publication_abandonment(capsys: object) -> None:
     assert application.calls == [41]
 
 
+def test_cli_surfaces_malformed_abandonment_as_non_delivery(capsys: object) -> None:
+    class FakeApplication:
+        def abandon_pr(self, pull_request_number: int) -> object:
+            assert pull_request_number == 41
+            return {
+                "registry_status": "abandoned",
+                "malformed_published_lane": True,
+                "delivery_succeeded": False,
+                "mismatch_evidence": {
+                    "kind": "scope-strict-superset",
+                    "declared_scope_paths": ["ops/a.py", "ops/untouched.py"],
+                    "actual_changed_paths": ["ops/a.py"],
+                    "scope_only_paths": ["ops/untouched.py"],
+                    "outside_scope_paths": [],
+                },
+            }
+
+    assert (
+        main(
+            ["abandon-pr", "--pr", "41"],
+            application_factory=lambda **_: FakeApplication(),
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)  # type: ignore[attr-defined]
+    assert payload["verdict"] == "terminalized-malformed"
+    assert payload["result"]["delivery_succeeded"] is False
+    assert payload["result"]["mismatch_evidence"]["kind"] == ("scope-strict-superset")
+
+
 def test_cli_routes_legacy_abandoned_branch_cleanup(capsys: object) -> None:
     class FakeApplication:
         def __init__(self) -> None:
@@ -1313,7 +1345,7 @@ def test_cli_serializes_remote_orphan_discard_with_operation_lock(
         def __init__(self, repo: Path, *, command: str) -> None:
             lock_calls.append(("init", repo, command))
 
-        def __enter__(self) -> "FakeLock":
+        def __enter__(self) -> Self:
             lock_calls.append(("enter",))
             return self
 

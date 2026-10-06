@@ -248,6 +248,89 @@ final class VocabularyLibraryFlowUITests: UITestCase {
             "query fort 必須排除不匹配的 happy accident candidate"
         )
         captureStep("add-link-word-candidates", app: app)
+
+        let fortuitousDetailID = "addLink.local.result.vocab-linked-fortuitous"
+        guard let fortuitousState = app.descendants(matching: .any)
+            .matching(identifier: "\(fortuitousDetailID).state")
+            .exactlyOneElement(timeout: 5, named: "AddLink fortuitous detail state") else {
+            captureStep("add-link-fortuitous-detail-state-missing", app: app)
+            return
+        }
+        XCTAssertEqual(
+            fortuitousState.value as? String,
+            "ready-senses-2|senses=2",
+            "fortuitous must expose both dictionary senses"
+        )
+        guard let firstSense = app.descendants(matching: .any)
+            .matching(identifier: "\(fortuitousDetailID).sense.1")
+            .exactlyOneElement(timeout: 5, named: "AddLink fortuitous first sense"),
+            let secondSense = app.descendants(matching: .any)
+            .matching(identifier: "\(fortuitousDetailID).sense.2")
+            .exactlyOneElement(timeout: 5, named: "AddLink fortuitous second sense"),
+            let secondExample = app.descendants(matching: .any)
+            .matching(identifier: "\(fortuitousDetailID).sense.2.example.1")
+            .exactlyOneElement(timeout: 5, named: "AddLink fortuitous second example"),
+            let forms = app.descendants(matching: .any)
+            .matching(identifier: "\(fortuitousDetailID).forms")
+            .exactlyOneElement(timeout: 5, named: "AddLink fortuitous forms"),
+            let provenanceSource = app.descendants(matching: .any)
+            .matching(identifier: "\(fortuitousDetailID).provenance.source")
+            .exactlyOneElement(timeout: 5, named: "AddLink fortuitous source provenance"),
+            let provenanceChapter = app.descendants(matching: .any)
+            .matching(identifier: "\(fortuitousDetailID).provenance.chapter")
+            .exactlyOneElement(timeout: 5, named: "AddLink fortuitous chapter provenance"),
+            let provenanceContext = app.descendants(matching: .any)
+            .matching(identifier: "\(fortuitousDetailID).provenance.context")
+            .exactlyOneElement(timeout: 5, named: "AddLink fortuitous context provenance") else {
+            captureStep("add-link-fortuitous-detail-hierarchy-missing", app: app)
+            return
+        }
+        XCTAssertTrue(
+            firstSense.label.contains("complete definition remains available"),
+            "first sense must retain its complete long definition"
+        )
+        XCTAssertTrue(
+            secondSense.label.contains("second sense preserved as a separate hierarchy node"),
+            "second sense must remain a separate hierarchy node"
+        )
+        XCTAssertTrue(
+            secondExample.label.contains("enough time to notice the pattern"),
+            "second sense example must remain attached to that sense"
+        )
+        XCTAssertTrue(
+            forms.label.contains("fortuitously") && forms.label.contains("fortuitousness"),
+            "inflected forms must remain visible"
+        )
+        XCTAssertEqual(provenanceSource.label, "來源: The Weight of Words")
+        XCTAssertEqual(provenanceChapter.label, "Linked Cards")
+        XCTAssertTrue(
+            provenanceContext.label.contains("fortuitous delay"),
+            "context provenance must remain visible"
+        )
+
+        let fortunateDetailID = "addLink.local.result.vocab-linked-fortunate"
+        guard let fortunateState = app.descendants(matching: .any)
+            .matching(identifier: "\(fortunateDetailID).state")
+            .exactlyOneElement(timeout: 5, named: "AddLink fortunate detail state"),
+            let missingExample = app.descendants(matching: .any)
+            .matching(identifier: "\(fortunateDetailID).sense.1.example.missing")
+            .exactlyOneElement(timeout: 5, named: "AddLink fortunate missing example") else {
+            captureStep("add-link-fortunate-missing-example-missing", app: app)
+            return
+        }
+        XCTAssertEqual(
+            fortunateState.value as? String,
+            "missing-example-senses-1|senses=1",
+            "fortunate must expose its missing-example state"
+        )
+        XCTAssertEqual(missingExample.value as? String, "missing")
+        XCTAssertEqual(
+            app.descendants(matching: .any)
+                .matching(identifier: "\(fortunateDetailID).sense.1.example.1").count,
+            0,
+            "missing-example state must not fabricate an example"
+        )
+        captureStep("add-link-detail-multi-sense-missing-example", app: app)
         guard closeAddLinkSheet() else {
             captureStep("add-link-close-after-word-query-failed", app: app)
             XCTFail("AddLink sheet 必須可取消回到 word detail")
@@ -276,6 +359,63 @@ final class VocabularyLibraryFlowUITests: UITestCase {
         captureStep("add-link-multiword-candidate", app: app)
         guard closeAddLinkSheet() else {
             captureStep("add-link-close-after-multiword-query-failed", app: app)
+            XCTFail("AddLink sheet 必須可取消回到 word detail")
+            return
+        }
+
+        guard openAddLinkSheet() else {
+            captureStep("add-link-reopen-for-provider-error-failed", app: app)
+            XCTFail("word detail 必須可重新開啟 AddLink sheet 以驗證 provider recovery")
+            return
+        }
+        let providerErrorSearchField = app.textFields["addLink.searchField"]
+        providerErrorSearchField.tapWhenReady()
+        providerErrorSearchField.typeText("revelation")
+        guard candidateQuery(for: "revelation").exactlyOneElement(
+            timeout: 5,
+            named: "AddLink revelation candidate"
+        ) != nil else {
+            captureStep("add-link-provider-error-candidate-missing", app: app)
+            return
+        }
+        let revelationDetailID = "addLink.local.result.vocab-linked-revelation"
+        guard let providerErrorState = app.descendants(matching: .any)
+            .matching(identifier: "\(revelationDetailID).state")
+            .exactlyOneElement(timeout: 5, named: "AddLink provider decode-error state"),
+            let providerError = app.descendants(matching: .any)
+            .matching(identifier: "\(revelationDetailID).provider.error")
+            .exactlyOneElement(timeout: 5, named: "AddLink provider decode-error message"),
+            let providerRetry = app.descendants(matching: .any)
+            .matching(identifier: "\(revelationDetailID).provider.retry")
+            .exactlyOneElement(timeout: 5, named: "AddLink provider decode-error retry") else {
+            captureStep("add-link-provider-error-state-missing", app: app)
+            return
+        }
+        XCTAssertEqual(
+            providerErrorState.value as? String,
+            "provider-decode-error-retryable|senses=0"
+        )
+        XCTAssertFalse(providerError.label.isEmpty)
+        providerRetry.tapWhenReady()
+        XCTAssertTrue(
+            providerErrorState.waitUntilValueEquals("recovered-senses-1|senses=1", timeout: 5),
+            "provider retry must recover to a deterministic local detail"
+        )
+        XCTAssertTrue(providerError.waitUntilGone(timeout: 5))
+        guard let recoveredSense = app.descendants(matching: .any)
+            .matching(identifier: "\(revelationDetailID).sense.1")
+            .exactlyOneElement(timeout: 5, named: "AddLink recovered revelation sense"),
+            let recoveredExample = app.descendants(matching: .any)
+            .matching(identifier: "\(revelationDetailID).sense.1.example.1")
+            .exactlyOneElement(timeout: 5, named: "AddLink recovered revelation example") else {
+            captureStep("add-link-provider-recovery-detail-missing", app: app)
+            return
+        }
+        XCTAssertTrue(recoveredSense.label.contains("揭示；驚人的新發現"))
+        XCTAssertTrue(recoveredExample.label.contains("quiet revelation"))
+        captureStep("add-link-provider-decode-error-recovery", app: app)
+        guard closeAddLinkSheet() else {
+            captureStep("add-link-close-after-provider-recovery-failed", app: app)
             XCTFail("AddLink sheet 必須可取消回到 word detail")
             return
         }
@@ -311,6 +451,338 @@ final class VocabularyLibraryFlowUITests: UITestCase {
         XCTAssertTrue(waitUntilEmpty(candidateQuery(for: "fortuitous")))
         XCTAssertTrue(waitUntilEmpty(candidateQuery(for: "happy accident")))
         captureStep("add-link-missing-target-create", app: app)
+    }
+
+    @MainActor
+    func testAddLinkLookupEvidenceMatrix() throws {
+        let app = launchIsolatedApp(
+            fixtures: [.vocabulary("vocabLinkedCards")],
+            extraEnvironment: [
+                "KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"
+            ],
+            perfLog: "vocabulary-add-link-lookup"
+        )
+        captureStep("add-link-lookup-launch", app: app)
+
+        let notebooks = AppPage(app: app).goToNotebooks()
+        guard notebooks.waitForNotebookCard(id: Self.addLinkNotebookID, timeout: 10) else {
+            XCTFail("AddLink lookup fixture 必須種出 notebook " + Self.addLinkNotebookID)
+            return
+        }
+        notebooks.notebookCard(id: Self.addLinkNotebookID).tapWhenReady()
+        XCTAssertTrue(app.waitForNavigationToSettle())
+
+        let page = VocabularySearchPage(app: app)
+        guard page.searchField.waitUntilExists(timeout: 10) else {
+            XCTFail("AddLink lookup flow 必須渲染 vocabulary search field")
+            return
+        }
+        page.search("serendipity")
+        guard page.waitForRowMaterialized(word: "serendipity", timeout: 10) else {
+            XCTFail("AddLink lookup fixture 必須 materialize source row serendipity")
+            return
+        }
+        page.row(word: "serendipity").tapWhenReady()
+        guard page.detailHeroWord.waitUntilExists(timeout: 10) else {
+            XCTFail("AddLink lookup source detail 必須存在")
+            return
+        }
+
+        let addLinkTrigger = app.buttons.matching(
+            NSPredicate(format: "label == %@", "新增知識連結")
+        )
+        guard let trigger = addLinkTrigger.exactlyOneElement(
+            timeout: 10,
+            named: "AddLink lookup detail trigger"
+        ) else {
+            return
+        }
+        trigger.tapWhenReady()
+
+        let lookupState = app.descendants(matching: .any)
+            .matching(identifier: "addLink.lookup.state")
+        guard lookupState.exactlyOneElement(
+            timeout: 5,
+            named: "AddLink lookup state marker"
+        ) != nil else {
+            XCTFail("AddLink lookup 必須暴露唯一 state marker")
+            return
+        }
+        XCTAssertTrue(lookupState.firstMatch.waitUntilValueEquals("idle", timeout: 5))
+        captureStep("add-link-lookup-idle", app: app)
+
+        let searchField = app.textFields["addLink.searchField"]
+        searchField.tapWhenReady()
+        searchField.typeText("fort")
+        XCTAssertTrue(lookupState.firstMatch.waitUntilValueEquals("results-2", timeout: 5))
+
+        let fortuitous = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", "fortuitous")
+        ).firstMatch
+        guard fortuitous.waitUntilExists(timeout: 5) else {
+            XCTFail("AddLink lookup 必須顯示 fortuitous candidate")
+            return
+        }
+        let evidence = fortuitous.value as? String ?? ""
+        XCTAssertTrue(evidence.contains("sense=Happening by chance"))
+        XCTAssertTrue(evidence.contains("example=The fortuitous meeting"))
+        XCTAssertTrue(evidence.contains("source=The Weight of Words"))
+        captureStep("add-link-lookup-results", app: app)
+
+        let cancel = app.buttons.matching(identifier: "addLink.cancel")
+        guard let cancelButton = cancel.exactlyOneElement(
+            timeout: 5,
+            named: "AddLink lookup cancel after results"
+        ) else {
+            return
+        }
+        cancelButton.tapWhenReady()
+        XCTAssertTrue(searchField.waitUntilGone(timeout: 5))
+        guard let reopenedTrigger = addLinkTrigger.exactlyOneElement(
+            timeout: 5,
+            named: "AddLink lookup reopened detail trigger"
+        ) else {
+            return
+        }
+        reopenedTrigger.tapWhenReady()
+        let emptySearchField = app.textFields["addLink.searchField"]
+        XCTAssertTrue(emptySearchField.waitUntilExists(timeout: 5))
+        emptySearchField.tapWhenReady()
+        emptySearchField.typeText("zzqxv")
+        XCTAssertTrue(lookupState.firstMatch.waitUntilValueEquals("empty", timeout: 5))
+        guard let createAffordance = app.buttons
+            .matching(identifier: "addLink.create")
+            .exactlyOneElement(timeout: 5, named: "AddLink lookup create affordance") else {
+            return
+        }
+        createAffordance.tapWhenReady()
+
+        let progress = app.descendants(matching: .any)
+            .matching(identifier: "addLink.creation.progress")
+            .firstMatch
+        XCTAssertTrue(progress.waitUntilValueEquals("attempt-1", timeout: 5))
+        XCTAssertTrue(
+            lookupState.firstMatch.waitUntilValueContains("error-attempt-1", timeout: 30)
+        )
+        captureStep("add-link-lookup-error", app: app)
+
+        let retry = app.buttons["addLink.creation.retry"]
+        guard retry.waitUntilExists(timeout: 5) else {
+            XCTFail("AddLink lookup failure 必須保留 retry")
+            return
+        }
+        retry.tapWhenReady()
+        XCTAssertTrue(progress.waitUntilValueEquals("attempt-2", timeout: 5))
+        XCTAssertTrue(
+            lookupState.firstMatch.waitUntilValueContains("retry-attempt-2", timeout: 2)
+                || lookupState.firstMatch.waitUntilValueContains("error-attempt-2", timeout: 30),
+            "retry 必須先暴露 retry 或最終 error state"
+        )
+        captureStep("add-link-lookup-retry", app: app)
+    }
+
+    @MainActor
+    func testAddLinkCreationFailureRemainsRetryable() throws {
+        let app = launchIsolatedApp(
+            fixtures: [.vocabulary("vocabLinkedCards")],
+            extraEnvironment: [
+                // Keep the production-mode creation path hermetic and force a
+                // retryable transport failure without changing the fixture.
+                "KG_UI_TEST_SERVER_URL": "http://127.0.0.1:9"
+            ],
+            perfLog: "vocabulary-add-link-retry"
+        )
+        captureStep("add-link-retry-launch", app: app)
+
+        let notebooks = AppPage(app: app).goToNotebooks()
+        guard notebooks.waitForNotebookCard(id: Self.addLinkNotebookID, timeout: 10) else {
+            captureStep("add-link-retry-notebook-missing", app: app)
+            XCTFail("AddLink fixture 必須種出 notebook " + Self.addLinkNotebookID)
+            return
+        }
+        notebooks.notebookCard(id: Self.addLinkNotebookID).tapWhenReady()
+        XCTAssertTrue(app.waitForNavigationToSettle())
+
+        let page = VocabularySearchPage(app: app)
+        guard page.searchField.waitUntilExists(timeout: 10) else {
+            captureStep("add-link-retry-vocabulary-list-missing", app: app)
+            XCTFail("AddLink fixture 必須渲染 vocabulary search field")
+            return
+        }
+        page.search("serendipity")
+        guard page.waitForRowMaterialized(word: "serendipity", timeout: 10) else {
+            captureStep("add-link-retry-source-row-missing", app: app)
+            XCTFail("AddLink fixture 必須 materialize source row serendipity")
+            return
+        }
+        page.row(word: "serendipity").tapWhenReady()
+
+        let addLinkTrigger = app.buttons.matching(
+            NSPredicate(format: "label == %@", "新增知識連結")
+        )
+        guard let trigger = addLinkTrigger.exactlyOneElement(
+            timeout: 10,
+            named: "AddLink retry detail trigger"
+        ) else {
+            captureStep("add-link-retry-trigger-missing", app: app)
+            return
+        }
+        trigger.tapWhenReady()
+
+        let searchField = app.textFields["addLink.searchField"]
+        guard searchField.waitUntilExists(timeout: 10) else {
+            captureStep("add-link-retry-sheet-missing", app: app)
+            XCTFail("AddLink retry flow 必須開啟 sheet")
+            return
+        }
+        searchField.tapWhenReady()
+        searchField.typeText("zzqxv")
+
+        guard let createAffordance = app.buttons
+            .matching(identifier: "addLink.create")
+            .exactlyOneElement(timeout: 10, named: "AddLink retry create affordance") else {
+            captureStep("add-link-retry-create-missing", app: app)
+            return
+        }
+        XCTAssertEqual(searchField.value as? String, "zzqxv")
+        createAffordance.tapWhenReady()
+
+        let progress = app.descendants(matching: .any)
+            .matching(identifier: "addLink.creation.progress")
+            .firstMatch
+        let errorQuery = app.descendants(matching: .any)
+            .matching(identifier: "addLink.creation.error")
+        let retryQuery = app.descendants(matching: .any)
+            .matching(identifier: "addLink.creation.retry")
+
+        guard let firstError = errorQuery.exactlyOneElement(
+            timeout: 30,
+            named: "AddLink first creation error"
+        ), let firstRetry = retryQuery.exactlyOneElement(
+            timeout: 5,
+            named: "AddLink first creation retry"
+        ) else {
+            captureStep("add-link-retry-first-failure-missing", app: app)
+            return
+        }
+        XCTAssertTrue(progress.waitUntilExists(timeout: 5))
+        XCTAssertTrue(
+            progress.waitUntilValueEquals("attempt-1", timeout: 5),
+            "first failure must expose the first creation attempt"
+        )
+        XCTAssertFalse(firstError.frame.isEmpty, "creation error must be visible")
+        XCTAssertTrue(firstRetry.isHittable, "creation retry must be actionable")
+        XCTAssertEqual(errorQuery.count, 1, "creation error identifier must be unique")
+        XCTAssertEqual(retryQuery.count, 1, "creation retry identifier must be unique")
+        XCTAssertEqual(app.buttons.matching(identifier: "addLink.cancel").count, 1, "sheet must remain open")
+        XCTAssertEqual(app.buttons.matching(identifier: "addLink.create").count, 0, "failed surface must replace create affordance")
+        captureStep("add-link-retry-first-failure", app: app)
+
+        firstRetry.tapWhenReady()
+        // Port 9 can reject in the same run-loop turn, so the attempt marker
+        // proves the retry action re-entered the production start path without
+        // depending on a transient running snapshot.
+        XCTAssertTrue(
+            progress.waitUntilValueEquals("attempt-2", timeout: 5),
+            "retry must start a new AddLink creation attempt"
+        )
+        guard let secondError = errorQuery.exactlyOneElement(
+            timeout: 30,
+            named: "AddLink second creation error"
+        ), let secondRetry = retryQuery.exactlyOneElement(
+            timeout: 5,
+            named: "AddLink second creation retry"
+        ) else {
+            captureStep("add-link-retry-second-failure-missing", app: app)
+            return
+        }
+        XCTAssertTrue(progress.waitUntilExists(timeout: 5))
+        XCTAssertFalse(secondError.frame.isEmpty, "second creation error must be visible")
+        XCTAssertTrue(secondRetry.isHittable, "second creation retry must be actionable")
+        XCTAssertEqual(errorQuery.count, 1, "second creation error identifier must be unique")
+        XCTAssertEqual(retryQuery.count, 1, "second creation retry identifier must be unique")
+        XCTAssertEqual(app.buttons.matching(identifier: "addLink.cancel").count, 1, "sheet must remain open after retry")
+        XCTAssertEqual(app.buttons.matching(identifier: "addLink.create").count, 0, "retry failure must not restore create affordance")
+        captureStep("add-link-retry-second-failure", app: app)
+    }
+
+    @MainActor
+    func testAddLinkCreationWarningCompletesOnceAndDismisses() throws {
+        let sheetSource = try AddLinkWarningSourceContract.source(
+            relativePath: "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkSheet.swift"
+        )
+        let progressSource = try AddLinkWarningSourceContract.source(
+            relativePath: "ios/BooksAndVocab/Views/Vocabulary/Scenes/AddLinkCreationProgressView.swift"
+        )
+
+        let visibilityStart = try XCTUnwrap(
+            sheetSource.range(of: "if creationCoordinator.phase == .running")
+        )
+        let visibilityEnd = try XCTUnwrap(
+            sheetSource.range(
+                of: "AddLinkCreationProgressView(",
+                range: visibilityStart.upperBound..<sheetSource.endIndex
+            )
+        )
+        let visibilitySource = String(
+            sheetSource[visibilityStart.lowerBound..<visibilityEnd.upperBound]
+        )
+        XCTAssertTrue(
+            visibilitySource.contains("creationCoordinator.phase == .succeededWithWarnings"),
+            "warning terminal state must keep the creation progress surface mounted"
+        )
+
+        let handlerStart = try XCTUnwrap(
+            sheetSource.range(of: ".onChange(of: creationCoordinator.phase)")
+        )
+        let handlerEnd = try XCTUnwrap(
+            sheetSource.range(
+                of: ".onDisappear",
+                range: handlerStart.upperBound..<sheetSource.endIndex
+            )
+        )
+        let handlerSource = String(sheetSource[handlerStart.lowerBound..<handlerEnd.lowerBound])
+        XCTAssertTrue(
+            handlerSource.contains("phase == .succeeded || phase == .succeededWithWarnings"),
+            "both success terminal outcomes must complete the Add Link sheet"
+        )
+        XCTAssertFalse(
+            handlerSource.contains("guard phase == .succeeded else { return }"),
+            "warning completion must not be excluded from the terminal path"
+        )
+        XCTAssertTrue(
+            handlerSource.contains("!didCompleteCreation"),
+            "terminal completion must be guarded against duplicate callbacks"
+        )
+        XCTAssertTrue(
+            handlerSource.contains("didCompleteCreation = true"),
+            "terminal completion must latch before invoking the callback"
+        )
+        XCTAssertTrue(handlerSource.contains("onLinked()"), "terminal completion must notify the owner")
+        XCTAssertTrue(handlerSource.contains("dismiss()"), "terminal completion must dismiss the sheet")
+        XCTAssertTrue(
+            sheetSource.contains("@State private var didCompleteCreation = false"),
+            "completion latch must survive SwiftUI rerenders within the sheet"
+        )
+
+        let messageStart = try XCTUnwrap(
+            progressSource.range(of: "if let message = coordinator.message")
+        )
+        let panelStart = try XCTUnwrap(
+            progressSource.range(
+                of: "SettingsSyncProgressPanel(",
+                range: messageStart.upperBound..<progressSource.endIndex
+            )
+        )
+        let messageSource = String(progressSource[messageStart.lowerBound..<panelStart.lowerBound])
+        XCTAssertTrue(
+            messageSource.contains("coordinator.phase == .succeededWithWarnings"),
+            "warning message must use the visible creation status surface"
+        )
+        XCTAssertTrue(
+            messageSource.contains("addLink.creation.warning"),
+            "warning status must expose a deterministic accessibility identifier"
+        )
     }
 
     @MainActor
@@ -362,5 +834,19 @@ final class VocabularyLibraryFlowUITests: UITestCase {
         )
         app.buttons["取消"].tapWhenReady()
         captureStep("word-detail-delete-warning", app: app)
+    }
+}
+
+private enum AddLinkWarningSourceContract {
+    static func source(relativePath: String) throws -> String {
+        let testFileURL = URL(fileURLWithPath: #filePath)
+        let repositoryURL = testFileURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        return try String(
+            contentsOf: repositoryURL.appendingPathComponent(relativePath),
+            encoding: .utf8
+        )
     }
 }

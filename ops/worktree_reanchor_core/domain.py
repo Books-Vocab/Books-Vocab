@@ -31,6 +31,7 @@ class ReanchorRequest:
     live_main: str
     target: Path
     preserve_conflict: bool = False
+    allow_required_failure_recovery: bool = False
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,11 @@ def success_payload(
         "status": "ready-for-owner-tests",
         "merge_front_pr": request.merge_front_pr,
         "merge_front_policy": merge_front_policy,
+        "recovery_mode": (
+            "required-failure"
+            if request.allow_required_failure_recovery
+            else "merge-front"
+        ),
         "lane": request.lane_id,
         "branch": request.branch,
         "owner_thread_id": request.owner_thread_id,
@@ -105,6 +111,11 @@ def conflict_payload(
         "status": "owner-action-required",
         "merge_front_pr": request.merge_front_pr,
         "merge_front_policy": merge_front_policy,
+        "recovery_mode": (
+            "required-failure"
+            if request.allow_required_failure_recovery
+            else "merge-front"
+        ),
         "lane": request.lane_id,
         "branch": request.branch,
         "owner_thread_id": request.owner_thread_id,

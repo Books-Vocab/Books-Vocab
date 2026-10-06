@@ -92,8 +92,7 @@ def _parse_steps(steps_json: str, *, run_id: str) -> list[dict] | None:
         _logger.warning("Ignoring corrupt pipeline steps for run %s: %s", run_id, exc)
         return None
     if not isinstance(steps, list) or any(
-        not isinstance(step, dict) or not isinstance(step.get("name"), str)
-        for step in steps
+        not isinstance(step, dict) or not isinstance(step.get("name"), str) for step in steps
     ):
         _logger.warning("Ignoring corrupt pipeline steps for run %s: invalid shape", run_id)
         return None
@@ -124,8 +123,12 @@ def start_step(run_id: str, name: str) -> None:
         steps = _parse_steps(row[0], run_id=run_id)
         if steps is None:
             return
-        steps.append({"name": name, "status": "running", "started_at": now, "ended_at": None, "items": 0, "error": None})
-        conn.execute("UPDATE pipeline_runs SET steps = ? WHERE run_id = ?", (json.dumps(steps, ensure_ascii=False), run_id))
+        steps.append(
+            {"name": name, "status": "running", "started_at": now, "ended_at": None, "items": 0, "error": None}
+        )
+        conn.execute(
+            "UPDATE pipeline_runs SET steps = ? WHERE run_id = ?", (json.dumps(steps, ensure_ascii=False), run_id)
+        )
         conn.commit()
 
 
@@ -147,7 +150,9 @@ def end_step(run_id: str, name: str, *, status: str = "ok", items: int = 0, erro
                 step["items"] = items
                 step["error"] = error
                 break
-        conn.execute("UPDATE pipeline_runs SET steps = ? WHERE run_id = ?", (json.dumps(steps, ensure_ascii=False), run_id))
+        conn.execute(
+            "UPDATE pipeline_runs SET steps = ? WHERE run_id = ?", (json.dumps(steps, ensure_ascii=False), run_id)
+        )
         conn.commit()
 
 
@@ -179,7 +184,8 @@ def get_runs(user_id: str, *, limit: int = 20) -> list[dict]:
         conn = _get_conn()
         rows = conn.execute(
             "SELECT run_id, user_id, notebook_id, trigger, started_at, ended_at, status, steps "
-            "FROM pipeline_runs WHERE user_id = ? ORDER BY started_at DESC LIMIT ?",
+            "FROM pipeline_runs WHERE user_id = ? "
+            "ORDER BY julianday(started_at) DESC, started_at DESC LIMIT ?",
             (user_id, limit),
         ).fetchall()
     result = []
@@ -188,9 +194,17 @@ def get_runs(user_id: str, *, limit: int = 20) -> list[dict]:
         for step in steps:
             step["duration_s"] = _duration_s(step.get("started_at"), step.get("ended_at"))
         duration_s = _duration_s(started, ended)
-        result.append({
-            "run_id": run_id, "user_id": uid, "notebook_id": nb,
-            "trigger": trigger, "started_at": started, "ended_at": ended,
-            "status": status, "duration_s": duration_s, "steps": steps,
-        })
+        result.append(
+            {
+                "run_id": run_id,
+                "user_id": uid,
+                "notebook_id": nb,
+                "trigger": trigger,
+                "started_at": started,
+                "ended_at": ended,
+                "status": status,
+                "duration_s": duration_s,
+                "steps": steps,
+            }
+        )
     return result

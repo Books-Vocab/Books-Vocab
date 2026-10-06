@@ -98,10 +98,24 @@ jobs:
             echo "format checkout drift: expected $HEAD_SHA, got $actual_sha" >&2
             exit 1
           fi
+          diff_base_sha="$BASE_SHA"
+          if ! git merge-base --is-ancestor "$BASE_SHA" "$HEAD_SHA"; then
+            if ! diff_base_sha="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"; then
+              echo "cannot determine a common ancestor for BASE_SHA and HEAD_SHA" >&2
+              exit 1
+            fi
+            echo "base is not an ancestor of HEAD; using merge-base $diff_base_sha for changed-file checks"
+          fi
           changed_python=()
-          while IFS= read -r path; do
-            [[ -n "$path" ]] && changed_python+=("$path")
-          done < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- '*.py')
+          if [[ "$diff_base_sha" == "$BASE_SHA" ]]; then
+            while IFS= read -r path; do
+              [[ -n "$path" ]] && changed_python+=("$path")
+            done < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- '*.py')
+          else
+            while IFS= read -r path; do
+              [[ -n "$path" ]] && changed_python+=("$path")
+            done < <(git diff --name-only "$diff_base_sha" "$HEAD_SHA" -- '*.py')
+          fi
           if ((${#changed_python[@]} == 0)); then
             echo "no changed Python files; format check skipped"
             exit 0

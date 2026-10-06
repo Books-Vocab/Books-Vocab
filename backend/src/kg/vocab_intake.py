@@ -80,6 +80,9 @@ def add_vocab_entries(
 ) -> VocabAddResponse:
     if len(entries) > MAX_BATCH_SIZE:
         raise ValidationError(f"Batch size {len(entries)} exceeds maximum of {MAX_BATCH_SIZE}")
+    cleaned_words = [_clean_content(entry.word) for entry in entries]
+    if any(not word for word in cleaned_words):
+        raise ValidationError("Word cannot be empty")
     # Build content→card dict once; eliminates per-duplicate find_by_content() DB
     # call. Shares the same normalized lookup as the batch CRUD paths
     # (cards.all() defaults to include_deleted=False, matching _build_content_lookup).
@@ -94,11 +97,10 @@ def add_vocab_entries(
     # 不到 "chateau" → 卡在佇列重送。內部 card_ids 仍以清洗後 word 為 key,供
     # embed_and_link_new_cards 查找(它會自行 _clean_content,見 vocab_graph.py)。
     duplicates: list[str] = []
-    card_ids: dict[str, str] = {}           # cleaned word -> id（內部 embed/link 用）
-    response_card_ids: dict[str, str] = {}   # 原始 entry.word -> id（對外 response 用）
+    card_ids: dict[str, str] = {}  # cleaned word -> id（內部 embed/link 用）
+    response_card_ids: dict[str, str] = {}  # 原始 entry.word -> id（對外 response 用）
 
-    for entry in entries:
-        word = _clean_content(entry.word)
+    for entry, word in zip(entries, cleaned_words, strict=True):
         norm = _normalize_word(word)
         if norm in existing:
             skipped += 1
@@ -130,8 +132,12 @@ def add_vocab_entries(
 
     if created > 0:
         embed_and_link_new_cards(
-            cards=cards, embeddings=embeddings, graph=graph,
-            card_ids=card_ids, entries=entries, logger=logger,
+            cards=cards,
+            embeddings=embeddings,
+            graph=graph,
+            card_ids=card_ids,
+            entries=entries,
+            logger=logger,
         )
 
     return VocabAddResponse(

@@ -30,12 +30,12 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import JSON, Column, String, UniqueConstraint, cast, func, tuple_
+from sqlalchemy import JSON, Column, String, UniqueConstraint, cast, exists, func, or_, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, select
 
-from ..sqlite_utils import make_sqlite_engine
+from ..sqlite_utils import ensure_columns, make_sqlite_engine
 from ..text_utils import normalize_nfc_lower
 
 # Discovery WHERE (browse + detail): a deck is publicly reachable only when all
@@ -47,16 +47,19 @@ _DISCOVERABLE_VISIBILITY = ("public", "official")
 # never collapse into a single card under uq_shared_deck_card_guid (§2.1).
 _CARD_GUID_NAMESPACE = uuid.UUID("7d1f4e2a-9c3b-5a86-b0d4-2f6e8c1a4b90")
 
+
 def card_content_guid(content: str, pos: str | None, mode: str, meaning: str) -> str:
     """Stable per-card identity over the discriminating axes. Case/diacritic
     folded on content+meaning; pos+mode kept verbatim so a homograph pair with
     different part-of-speech resolves to two distinct guids."""
-    key = "|".join((
-        normalize_nfc_lower(content),
-        pos or "",
-        mode or "recognition",
-        normalize_nfc_lower(meaning),
-    ))
+    key = "|".join(
+        (
+            normalize_nfc_lower(content),
+            pos or "",
+            mode or "recognition",
+            normalize_nfc_lower(meaning),
+        )
+    )
     return str(uuid.uuid5(_CARD_GUID_NAMESPACE, key))
 
 
@@ -97,9 +100,7 @@ def deck_content_hash(cards: list[dict]) -> str:
         cc = canonical_card(c)
         deduped.setdefault(cc["content_guid"], cc)
     canonical = sorted(deduped.values(), key=lambda c: c["content_guid"])
-    blob = json.dumps(
-        canonical, sort_keys=True, ensure_ascii=False, separators=(",", ":")
-    )
+    blob = json.dumps(canonical, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
@@ -182,11 +183,7 @@ class SharedDeckCard(SQLModel, table=True):
     """
 
     __tablename__ = "shared_deck_card"
-    __table_args__ = (
-        UniqueConstraint(
-            "shared_deck_id", "version", "content_guid", name="uq_shared_deck_card_guid"
-        ),
-    )
+    __table_args__ = (UniqueConstraint("shared_deck_id", "version", "content_guid", name="uq_shared_deck_card_guid"),)
 
     id: str = SQLField(default_factory=lambda: secrets.token_urlsafe(9), primary_key=True)
     shared_deck_id: str = SQLField(index=True)
@@ -230,8 +227,7 @@ class SharedDeckReport(SQLModel, table=True):
 
 
 class SharedDeckCopyLog(SQLModel, table=True):
-    """Copy idempotency store + rating-eligibility gate. A transport retry
-    replays to the same ``result_notebook_id`` via the composite PK."""
+    """Copy idempotency store + exactly-once download finalizer."""
 
     __tablename__ = "shared_deck_copy_log"
 
@@ -240,6 +236,9 @@ class SharedDeckCopyLog(SQLModel, table=True):
     source_shared_deck_id: str = SQLField(default="")
     source_version: int = SQLField(default=0)
     result_notebook_id: str = SQLField(default="")
+    # The marker and shared-deck counter are committed in one transaction so a
+    # retry can distinguish a committed count from a crash before finalization.
+    download_counted: bool = SQLField(default=False)
     created_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
 
 
@@ -262,9 +261,23 @@ class SharedDeckStore:
         self.engine = make_sqlite_engine(self.path)
         # Explicit table list (not a bare ``metadata.create_all``): the shared
         # SQLModel registry also holds Card/Notebook/... — only ours here.
-        SQLModel.metadata.create_all(
-            self.engine, tables=_SHARED_DECK_TABLES, checkfirst=True
-        )
+        SQLModel.metadata.create_all(self.engine, tables=_SHARED_DECK_TABLES, checkfirst=True)
+        self._migrate_copy_log()
+
+    def _migrate_copy_log(self) -> None:
+        """Add the exactly-once counter marker to pre-existing copy logs.
+
+        A legacy row came from the old copy path, whose finalizer counted the
+        download before returning. Treating those rows as already finalized
+        preserves historical counts when the new replay path is deployed.
+        """
+        with self.engine.connect() as conn:
+            ensure_columns(
+                conn,
+                SharedDeckCopyLog.__tablename__,
+                {"download_counted": "INTEGER NOT NULL DEFAULT 1"},
+            )
+            conn.commit()
 
     def close(self) -> None:
         """Dispose the engine (required for LRU eviction — see LibraryStore)."""
@@ -310,7 +323,19 @@ class SharedDeckStore:
             )
             if q:
                 needle = normalize_nfc_lower(q).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-                stmt = stmt.where(SharedDeck.title_nfc_lower.like(f"%{needle}%", escape="\\"))
+                pattern = f"%{needle}%"
+                tag_values = func.json_each(SharedDeck.tags).table_valued("value").alias("shared_deck_tags")
+                stmt = stmt.where(
+                    or_(
+                        SharedDeck.title_nfc_lower.like(pattern, escape="\\"),
+                        func.lower(cast(SharedDeck.publisher_display_name, String)).like(pattern, escape="\\"),
+                        exists(
+                            select(1)
+                            .select_from(tag_values)
+                            .where(func.lower(cast(tag_values.c.value, String)).like(pattern, escape="\\"))
+                        ),
+                    )
+                )
             if category:
                 stmt = stmt.where(SharedDeck.category == category)
             if language_pair:
@@ -340,9 +365,7 @@ class SharedDeckStore:
                 stmt = stmt.order_by(updated_at_utc.desc(), SharedDeck.id.desc())
             return list(session.exec(stmt.limit(limit)).all())
 
-    def page_cards(
-        self, deck_id: str, *, version: int, limit: int, after: str | None = None
-    ) -> list[SharedDeckCard]:
+    def page_cards(self, deck_id: str, *, version: int, limit: int, after: str | None = None) -> list[SharedDeckCard]:
         """Keyset page of a deck version's cards, ordered by immutable card id."""
         with Session(self.engine) as session:
             stmt = select(SharedDeckCard).where(
@@ -389,10 +412,15 @@ class SharedDeckStore:
         a concurrent/duplicate copy won the race, so the caller replays to the
         already-logged result instead of minting a second notebook."""
         with Session(self.engine) as session:
-            session.add(SharedDeckCopyLog(
-                copier_id=copier_id, idempotency_key=idempotency_key,
-                source_shared_deck_id=source_shared_deck_id,
-                source_version=source_version, result_notebook_id=result_notebook_id))
+            session.add(
+                SharedDeckCopyLog(
+                    copier_id=copier_id,
+                    idempotency_key=idempotency_key,
+                    source_shared_deck_id=source_shared_deck_id,
+                    source_version=source_version,
+                    result_notebook_id=result_notebook_id,
+                )
+            )
             try:
                 session.commit()
             except IntegrityError:
@@ -409,6 +437,40 @@ class SharedDeckStore:
                 (deck_id,),
             )
             session.commit()
+
+    def finalize_copy_download(self, copier_id: str, idempotency_key: str, deck_id: str) -> bool:
+        """Count one committed copy exactly once.
+
+        The copy log marker and the catalog counter share one transaction. A
+        process crash before commit leaves the marker false for the next retry;
+        a committed transaction makes later retries a no-op.
+        """
+        with Session(self.engine) as session:
+            connection = session.connection()
+            marked = connection.exec_driver_sql(
+                """
+                UPDATE shared_deck_copy_log
+                   SET download_counted = 1
+                 WHERE copier_id = ?
+                   AND idempotency_key = ?
+                   AND source_shared_deck_id = ?
+                   AND download_counted = 0
+                """,
+                (copier_id, idempotency_key, deck_id),
+            )
+            if marked.rowcount != 1:
+                session.rollback()
+                return False
+
+            counted = connection.exec_driver_sql(
+                "UPDATE shared_deck SET download_count = download_count + 1 WHERE id = ?",
+                (deck_id,),
+            )
+            if counted.rowcount != 1:
+                session.rollback()
+                raise RuntimeError(f"shared deck missing during copy finalization: {deck_id}")
+            session.commit()
+            return True
 
     # ── write side (official governance, Phase 1b-ii) ──────────────
 
@@ -458,13 +520,22 @@ class SharedDeckStore:
                 cur = session.get(SharedDeckVersion, (deck_id, deck.current_version))
                 if cur is not None and cur.content_hash == new_hash:
                     version = deck.current_version
-                    action = "metadata" if self._metadata_differs(
-                        deck, title=title, description=description,
-                        category=category, language_pair=language_pair, tags=tags,
-                        color=color, cover_pattern=cover_pattern,
-                        publisher_display_name=publisher_display_name,
-                        card_count=len(canonical_cards),
-                    ) else "noop"
+                    action = (
+                        "metadata"
+                        if self._metadata_differs(
+                            deck,
+                            title=title,
+                            description=description,
+                            category=category,
+                            language_pair=language_pair,
+                            tags=tags,
+                            color=color,
+                            cover_pattern=cover_pattern,
+                            publisher_display_name=publisher_display_name,
+                            card_count=len(canonical_cards),
+                        )
+                        else "noop"
+                    )
                 else:
                     version = deck.current_version + 1
                     self._write_version(session, deck_id, version, new_hash, canonical_cards)
@@ -472,8 +543,13 @@ class SharedDeckStore:
 
             if action == "noop":
                 # A true no-op: nothing added/mutated, updated_at untouched.
-                return {"action": "noop", "deckId": deck_id, "version": version,
-                        "contentHash": new_hash, "cardCount": deck.card_count}
+                return {
+                    "action": "noop",
+                    "deckId": deck_id,
+                    "version": version,
+                    "contentHash": new_hash,
+                    "cardCount": deck.card_count,
+                }
 
             # Apply deck-level metadata and re-assert the server-authoritative
             # axes (defensive: an official deck is always discoverable + trusted).
@@ -496,29 +572,55 @@ class SharedDeckStore:
             deck.updated_at = now
             session.add(deck)
             session.commit()
-            return {"action": action, "deckId": deck_id, "version": version,
-                    "contentHash": new_hash, "cardCount": len(canonical_cards)}
+            return {
+                "action": action,
+                "deckId": deck_id,
+                "version": version,
+                "contentHash": new_hash,
+                "cardCount": len(canonical_cards),
+            }
 
     @staticmethod
     def _write_version(
-        session: Session, deck_id: str, version: int, content_hash: str,
+        session: Session,
+        deck_id: str,
+        version: int,
+        content_hash: str,
         canonical_cards: list[dict],
     ) -> None:
-        session.add(SharedDeckVersion(
-            shared_deck_id=deck_id, version=version, content_hash=content_hash))
+        session.add(SharedDeckVersion(shared_deck_id=deck_id, version=version, content_hash=content_hash))
         for cc in canonical_cards:
-            session.add(SharedDeckCard(
-                shared_deck_id=deck_id, version=version,
-                content_guid=cc["content_guid"], content=cc["content"],
-                pos=cc["pos"], meaning=cc["meaning"], examples=cc["examples"],
-                collocations=cc["collocations"], note=cc["note"],
-                difficulty=cc["difficulty"], mode=cc["mode"],
-                root_form=cc["root_form"], inflections=cc["inflections"]))
+            session.add(
+                SharedDeckCard(
+                    shared_deck_id=deck_id,
+                    version=version,
+                    content_guid=cc["content_guid"],
+                    content=cc["content"],
+                    pos=cc["pos"],
+                    meaning=cc["meaning"],
+                    examples=cc["examples"],
+                    collocations=cc["collocations"],
+                    note=cc["note"],
+                    difficulty=cc["difficulty"],
+                    mode=cc["mode"],
+                    root_form=cc["root_form"],
+                    inflections=cc["inflections"],
+                )
+            )
 
     @staticmethod
     def _metadata_differs(
-        deck: SharedDeck, *, title, description, category, language_pair, tags,
-        color, cover_pattern, publisher_display_name, card_count,
+        deck: SharedDeck,
+        *,
+        title,
+        description,
+        category,
+        language_pair,
+        tags,
+        color,
+        cover_pattern,
+        publisher_display_name,
+        card_count,
     ) -> bool:
         return (
             deck.title != title
@@ -530,6 +632,11 @@ class SharedDeckStore:
             or deck.cover_pattern != cover_pattern
             or deck.publisher_display_name != publisher_display_name
             or deck.card_count != card_count
+            or deck.source != "official"
+            or deck.owner_id is not None
+            or deck.visibility != "official"
+            or deck.status != "active"
+            or deck.is_deleted
         )
 
 

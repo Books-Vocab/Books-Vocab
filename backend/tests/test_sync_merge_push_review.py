@@ -12,8 +12,8 @@ from test_sync_merge import _entry, _iso, _make_store, _now
 # push_review_states — conflict resolution
 # ============================================================================
 
-class TestPushReviewStates:
 
+class TestPushReviewStates:
     def test_client_newer_accepts_all_fields(self, tmp_path):
         """When client last_reviewed_at > server, all fields should be accepted."""
         store = _make_store(tmp_path)
@@ -63,7 +63,7 @@ class TestPushReviewStates:
             "lucid",
             _iso(client_time),
             review_count=8,  # higher than server
-            lapse_count=1,   # lower than server
+            lapse_count=1,  # lower than server
             review_streak=2,
             review_interval_hours=24.0,
         )
@@ -146,7 +146,7 @@ class TestPushReviewStates:
         entry = _entry(
             "precise",
             _iso(same_time),
-            review_count=3,   # equal
+            review_count=3,  # equal
             review_streak=2,
             review_interval_hours=24.0,
         )
@@ -172,9 +172,9 @@ class TestPushReviewStates:
         new_time = _now() + timedelta(seconds=1)
 
         entries = [
-            _entry("apple", _iso(new_time), review_count=10),     # client newer (server has None) → update
-            _entry("banana", _iso(old_time), review_count=1),      # server newer, counts lower → skip
-            _entry("cherry", _iso(new_time)),                       # not found → skip
+            _entry("apple", _iso(new_time), review_count=10),  # client newer (server has None) → update
+            _entry("banana", _iso(old_time), review_count=1),  # server newer, counts lower → skip
+            _entry("cherry", _iso(new_time)),  # not found → skip
         ]
 
         result = push_review_states(entries, cards_store=store, logger=logging.getLogger())
@@ -192,14 +192,14 @@ class TestPushReviewStates:
         entry = _entry(
             "nuance",
             _iso(client_time),
-            review_count=3,   # lower than server
-            lapse_count=8,    # higher than server
+            review_count=3,  # lower than server
+            lapse_count=8,  # higher than server
         )
 
         push_review_states([entry], cards_store=store, logger=logging.getLogger())
         updated = store.get(card.id)
         assert updated.review_count == 10  # max(3, 10)
-        assert updated.lapse_count == 8    # max(8, 5)
+        assert updated.lapse_count == 8  # max(8, 5)
 
     def test_card_id_targets_exact_card_cross_notebook(self, tmp_path):
         """When card_id is provided, only that exact card is updated — not same-word cards in other notebooks."""
@@ -250,6 +250,48 @@ class TestPushReviewStates:
 
         result = push_review_states([entry], cards_store=store, logger=logging.getLogger())
         assert result == {"updated": 0, "skipped": 1}
+
+    def test_duplicate_card_id_coalesces_to_newest_schedule(self, tmp_path):
+        """A stale duplicate must not overwrite the newest review schedule."""
+        store = _make_store(tmp_path)
+        card = store.add("review", "複習")
+
+        older_last = _now() - timedelta(hours=2)
+        newer_last = older_last + timedelta(hours=1)
+        older_entry = _entry(
+            "review",
+            _iso(older_last),
+            card_id=card.id,
+            review_interval_hours=12.0,
+            next_review_at=_iso(older_last + timedelta(hours=12)),
+            review_count=1,
+            review_streak=1,
+            last_review_feedback=0,
+        )
+        newer_entry = _entry(
+            "review",
+            _iso(newer_last),
+            card_id=card.id,
+            review_interval_hours=48.0,
+            next_review_at=_iso(newer_last + timedelta(hours=48)),
+            review_count=2,
+            review_streak=4,
+            last_review_feedback=1,
+        )
+
+        result = push_review_states(
+            [newer_entry, older_entry],
+            cards_store=store,
+            logger=logging.getLogger(),
+        )
+
+        assert result == {"updated": 1, "skipped": 1}
+        updated = store.get(card.id)
+        assert updated.review_interval_hours == 48.0
+        assert updated.next_review_at == (newer_last + timedelta(hours=48)).replace(tzinfo=None)
+        assert updated.review_streak == 4
+        assert updated.last_review_feedback == 1
+        assert updated.last_reviewed_at == newer_last.replace(tzinfo=None)
 
 
 # ============================================================================

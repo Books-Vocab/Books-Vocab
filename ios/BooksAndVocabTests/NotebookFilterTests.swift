@@ -72,4 +72,46 @@ struct NotebookFilterTests {
         #expect(loaded.selectedIds.isEmpty)
         #expect(!loaded.isFiltered)
     }
+
+    @Test func reconcileRemovesUnavailableIDsAndPersistsCleanup() {
+        let suite = UserDefaults(suiteName: #file)
+        defer { suite?.removePersistentDomain(forName: #file) }
+
+        var filter = NotebookFilter(selectedIds: ["nb-live", "nb-deleted"])
+        filter.save(to: suite!)
+
+        let changed = filter.reconcile(with: ["nb-live"], defaults: suite!)
+
+        #expect(changed)
+        #expect(filter.selectedIds == ["nb-live"])
+        #expect(NotebookFilter.load(from: suite!).selectedIds == ["nb-live"])
+    }
+
+    @Test func reconcileWhenAllSelectedNotebooksDisappearReturnsToAll() {
+        let suite = UserDefaults(suiteName: #file)
+        defer { suite?.removePersistentDomain(forName: #file) }
+
+        var filter = NotebookFilter(selectedIds: ["nb-deleted"])
+        filter.save(to: suite!)
+
+        let changed = filter.reconcile(with: [], defaults: suite!)
+
+        #expect(changed)
+        #expect(filter.selectedIds.isEmpty)
+        #expect(!filter.isFiltered)
+        #expect(NotebookFilter.load(from: suite!).selectedIds.isEmpty)
+    }
+
+    @Test func notebookListResetsFilterAtAccountBoundary() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("BooksAndVocab/Views/Vocabulary/Scenes/NotebookListView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let accountChange = try #require(source.range(of: ".onChange(of: accountTaskID)"))
+        let task = try #require(source.range(of: ".task(id: accountTaskID)", range: accountChange.upperBound..<source.endIndex))
+        let accountBoundaryBlock = source[accountChange.lowerBound..<task.lowerBound]
+
+        #expect(accountBoundaryBlock.contains("reviewFilter = NotebookFilter()"))
+    }
 }

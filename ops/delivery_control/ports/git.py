@@ -47,6 +47,19 @@ class GitDiffFingerprintPort(Protocol):
     def diff_fingerprint(self, base_sha: str, head_sha: str) -> str: ...
 
 
+@runtime_checkable
+class GitWhitespaceNormalizedPatchEquivalencePort(Protocol):
+    """Optional bounded capability for same-owner reanchor reconciliation."""
+
+    def is_whitespace_normalized_patch_equivalent(
+        self,
+        previous_base_sha: str,
+        previous_head_sha: str,
+        current_base_sha: str,
+        current_head_sha: str,
+    ) -> bool: ...
+
+
 class BranchContentQueryPort(Protocol):
     """Read-only content evidence for a local branch review packet."""
 

@@ -228,8 +228,23 @@ run_verdict_case \
   65 $'Keychain save failed: OSStatus -25291' \
   'inconclusive|75|keychain-unavailable-osstatus-25291'
 
+run_verdict_case \
+  "service-hub startup failure is infrastructure-unavailable" \
+  1 $'DTServiceHubClient failed to bless service hub\nunable to connect to com.apple.instruments.deviceservice.lockdown' \
+  'inconclusive|75|test-runner-startup-unavailable'
+run_verdict_case \
+  "test failure still wins over service-hub startup text" \
+  65 $'DTServiceHubClient failed to bless service hub\n** TEST EXECUTE FAILED **' \
+  'fail|1|tests-failed'
+run_verdict_case \
+  "unrelated xcode failure remains passthrough" \
+  65 'xcodebuild: an unrelated compiler error' \
+  'passthrough|65|'
+
 grep -qF 'kg_ios_classify_test_execution' "$ROOT/ops/ios_test.sh" || \
   fail "ios_test.sh does not use the tested verdict classifier"
+grep -qF 'kg_ios_test_runner_startup_unavailable "$TMPOUT"' "$ROOT/ops/ios_test.sh" || \
+  fail "ios_test.sh does not stop on known runner startup failure"
 
 test_fifo_ticket_queue_and_abandoned_waiter
 

@@ -11,7 +11,7 @@ scope:
   - ops/skill_route.py
   - docs/reference/project_onboarding.md
   - docs/sop/
-verified_against: 2d9f6fdbebca9fe0f2aa9a790f1498dded80050d
+verified_against: 5b5ac2fa158ec2f9508c0befa835720009a60fe5
 -->
 # Pull Request Review SOP
 
@@ -19,7 +19,7 @@ verified_against: 2d9f6fdbebca9fe0f2aa9a790f1498dded80050d
 
 ## Independent agent review boundary
 
-Collaborator approval 是 GitHub branch rule 的一種授權實作，不是「技術審查」本身。它同時提供兩件事：另一個 principal 的獨立判斷，以及 GitHub 可以驗證的 separation-of-duties 證據。獨立 agent 已完成 exact-head 審查時，不能把本人的 `gh pr review --approve` 當成替代；正確做法是由受信任的 base-branch workflow 將 agent 證據轉成 GitHub `agent-review` check。
+Collaborator approval 與獨立 agent review 都是品質與風險的 review evidence，不是單獨的 merge 授權。`agent-review` 由受信任的 base-branch workflow 產生 exact-head、可追溯的品質觀測；它目前是 optional advisory check，不是 repository ruleset 的 hard gate。只有 GitHub `required`、exact typed tuple、branch rules、mergeability 與明確安全 hold 才參與 merge admission。
 
 `agent-review` 的最低契約如下：
 
@@ -27,9 +27,58 @@ Collaborator approval 是 GitHub branch rule 的一種授權實作，不是「�
 - review 或 reaction 必須由已辨識的 independent reviewer identity 提供，且綁定目前 PR HEAD；舊 HEAD 的證據不算；
 - P0、P1、security hold 使 check 失敗；P2、advisory 或 baseline observation 只能作為 review warning；
 - check 必須以 `checks:write` 建立在 exact PR HEAD，並保留 reviewer、HEAD、結論與 blocker evidence；
-- shell caller、PI、CM 仍須讀取 check 的 exact conclusion，不得以 workflow exit code、local review 摘要或 self-approval 取代它。
+- shell caller、PI、CM 若讀取此 check，仍須保留 exact conclusion、reviewer、HEAD 與 blocker evidence；不得以 workflow exit code、local review 摘要或 self-approval 偽造 review 結論。
+- `agent-review` 缺失、失敗、延遲或成功都不會單獨阻塞 queue／merge；若 evidence 明確指出 P0、P1 或 security，必須另行寫成 durable typed hold／label，該 hold 才是硬性阻塞來源。
+- repository ruleset 的 required contexts 應維持只有短 `required`。這是降低無意義的 transport gate，不是移除 review；agent-review 仍可用來改善品質與發現風險。
 
-在 repository ruleset 尚未完成 `agent-review` 啟用前，既有 required collaborator approval 仍是硬條件；migration 完成後，ruleset 必須同時確認 `required` 與 `agent-review` 都是 exact-head required checks，才可移除舊的人工 approval requirement。這是 authorization migration，不是降低審查標準。
+## Bounded review-evidence preflight
+
+`ops/review_preflight.py` 是本機的 bounded、read-only evidence preflight。它只讀取 caller 提供的 JSON，輸出一份 `kg.review.preflight.v1` 摘要；不呼叫 GitHub、不建立或修改 review／check、不寫 backlog 或 status DB，也不執行 merge、release 或 production mutation。它協助 caller 在把證據交給 PR／CM 流程前分辨資料缺口，但不是另一個 review surface。
+
+輸入 schema 是 `kg.review.evidence.v1`，最小形狀如下；`pr`、`head`、`reviewer` 與 `deadline` 都是 opaque non-empty strings，只做 presence 與 exact equality，不解析、排序、截斷或正規化：
+
+```json
+{
+  "schema": "kg.review.evidence.v1",
+  "source": {"status": "ok"},
+  "target": {"pr": "<opaque-pr>", "head": "<opaque-head>"},
+  "required_snapshot": {
+    "status": "SUCCESS",
+    "pr": "<opaque-pr>",
+    "head": "<opaque-head>"
+  },
+  "review": {
+    "reviewer": "<opaque-reviewer>",
+    "deadline": "<opaque-deadline>",
+    "receipt": {
+      "schema": "kg.review.receipt.v1",
+      "status": "PASS",
+      "pr": "<opaque-pr>",
+      "head": "<opaque-head>",
+      "reviewer": "<opaque-reviewer>",
+      "deadline": "<opaque-deadline>",
+      "substantive": true,
+      "evidence": [{"kind": "<opaque-kind>", "detail": "<substantive-detail>"}]
+    }
+  }
+}
+```
+
+判讀順序與 verdict 固定如下：
+
+- `source.status=timeout` 回 `review_service_timeout`；`source.status=failure`、source 缺失／未知、輸入 JSON／schema／target 無法解析回 `source_failure`。兩者不能折疊成 `BLOCK` 或 `PASS`。
+- `required_snapshot` 缺失或欄位不完整回 `BLOCK`；status 不是 `SUCCESS`，或其 exact PR／HEAD 與 target 不同，回 `BLOCK`／`required_snapshot_stale`。
+- receipt 缺失或不完整、非 substantive、非 `PASS`，或 PR／HEAD／reviewer／deadline 任一不 exact，回 `BLOCK`，並在 `blockers` 保留具體 reason code（例如 `exact_head_mismatch`、`receipt_incomplete`）。
+- 只有 required snapshot 對 exact target，且 receipt 同時具備 `kg.review.receipt.v1`、substantive evidence、`PASS` 與 exact PR／HEAD／reviewer／deadline，才回 `PASS`。
+
+呼叫方式：
+
+```bash
+./ops/review_preflight.py --input <evidence.json> --json
+cat <evidence.json> | ./ops/review_preflight.py --json
+```
+
+命令永遠只讀 input、永遠輸出 JSON；exit code 是 `PASS=0`、`BLOCK=1`、`review_service_timeout=2`、`source_failure=3`。輸出中的 `authority` 會明示 GitHub review、required checks 與 CM merge authority 未被取代，caller 仍必須回到 PR 的 exact HEAD／required／review／branch rules 流程。
 
 CR 進場先執行 `./ops/agent_onboard.py --identity CR --intent review --entry pr-review --evidence '<JSON object with GitHub PR, exact HEAD, required checks>' --json`。只有 `status=ready` 才能載入 `code-review` skill 與本 SOP；這一步確認的是上下文，不是 merge 權限。
 
@@ -49,7 +98,7 @@ PR 不是只有 code diff：CR 的 review 結論、DS 的文件 impact、Actions
 2. 先看行為與資料安全，再看可維護性、測試 seam、文件影響與 UI／i18n 契約。
 3. 對每個 blocker 指向檔案與行號，說明重現或推理依據；沒有證據就標為疑問，不寫成結論。
 4. 確認 required Actions checks 是這個 PR 的新鮮結果，而不是舊 commit 的綠燈。
-5. 在 GitHub PR 明確留下 approve、request changes 或 comment；若採用 `agent-review` migration，則由 trusted workflow 留下 exact-head check，不能用 repo 內自製狀態模擬審查結論。
+5. 在 GitHub PR 明確留下 approve、request changes 或 comment；若使用 `agent-review`，則由 trusted workflow 留下 exact-head check，不能用 repo 內自製狀態模擬審查結論。它是可選品質證據，不是額外的 required context。
 
 ## Required checks
 

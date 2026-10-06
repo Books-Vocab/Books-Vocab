@@ -54,7 +54,7 @@ final class ReaderSettingsUITests: UITestCase {
     }
 
     @MainActor
-    func testReaderSettingsTypographyAndHighlightControlsExposeBoundedNativeInputs() throws {
+    func testReaderSettingsTypographyAndHighlightControlsExposeBoundedInputs() throws {
         let app = launchIsolatedApp(
             fixtures: [.readerRealBookLibrary],
             perfLog: "reader-settings-typography-highlight-controls"
@@ -83,6 +83,65 @@ final class ReaderSettingsUITests: UITestCase {
         XCTAssertTrue(reader.fontSizeIncrementButton.exists)
         XCTAssertGreaterThanOrEqual(reader.fontSizeIncrementButton.frame.height, 44)
         XCTAssertGreaterThanOrEqual(reader.fontSizeDecrementButton.frame.height, 44)
+
+        guard let lineHeightRow = reader.lineHeightAdjustmentRowElement(timeout: 10) else {
+            XCTFail("Reader settings must expose one line-height adjustment row")
+            return
+        }
+        XCTAssertFalse(lineHeightRow.label.isEmpty)
+        XCTAssertFalse(String(describing: lineHeightRow.value ?? "").isEmpty)
+        XCTAssertEqual(
+            reader.lineHeightAdjustmentRowCount,
+            1,
+            "Reader settings must expose exactly one line-height adjustment row"
+        )
+        XCTAssertEqual(
+            reader.lineHeightNativeSliderCount,
+            0,
+            "Reader settings must not expose the obsolete native line-height slider"
+        )
+        guard let lineHeightDecrementButton = reader.lineHeightDecrementButtonElement(timeout: 5),
+              let lineHeightIncrementButton = reader.lineHeightIncrementButtonElement(timeout: 5)
+        else {
+            XCTFail("Reader settings must expose exactly one decrement and increment button for line height")
+            return
+        }
+        XCTAssertGreaterThanOrEqual(lineHeightIncrementButton.frame.height, 44)
+        XCTAssertGreaterThanOrEqual(lineHeightDecrementButton.frame.height, 44)
+
+        guard let letterSpacingRow = reader.letterSpacingAdjustmentRowElement(timeout: 10) else {
+            XCTFail("Reader settings must expose one letter-spacing adjustment row")
+            return
+        }
+        XCTAssertFalse(letterSpacingRow.label.isEmpty)
+        XCTAssertFalse(String(describing: letterSpacingRow.value ?? "").isEmpty)
+        XCTAssertEqual(
+            reader.letterSpacingAdjustmentRowCount,
+            1,
+            "Reader settings must expose exactly one letter-spacing adjustment row"
+        )
+        guard let letterSpacingDecrementButton = reader.letterSpacingDecrementButtonElement(timeout: 5),
+              let letterSpacingIncrementButton = reader.letterSpacingIncrementButtonElement(timeout: 5)
+        else {
+            XCTFail("Reader settings must expose exactly one decrement and increment button for letter spacing")
+            return
+        }
+        XCTAssertGreaterThanOrEqual(letterSpacingIncrementButton.frame.height, 44)
+        XCTAssertGreaterThanOrEqual(letterSpacingDecrementButton.frame.height, 44)
+
+        XCTAssertTrue(reader.adjustLetterSpacing(toValue: "0.0"))
+        XCTAssertFalse(letterSpacingDecrementButton.isEnabled, "letter-spacing decrement must disable at 0.0")
+        XCTAssertTrue(letterSpacingIncrementButton.isEnabled, "letter-spacing increment must remain enabled above 0.0")
+        XCTAssertTrue(reader.adjustLetterSpacing(toValue: "1.0"))
+        XCTAssertTrue(letterSpacingDecrementButton.isEnabled, "letter-spacing decrement must remain enabled below 1.0")
+        XCTAssertFalse(letterSpacingIncrementButton.isEnabled, "letter-spacing increment must disable at 1.0")
+
+        XCTAssertTrue(reader.adjustLineHeight(toValue: "1.0"))
+        XCTAssertFalse(lineHeightDecrementButton.isEnabled, "line-height decrement must disable at 1.0")
+        XCTAssertTrue(lineHeightIncrementButton.isEnabled, "line-height increment must remain enabled above 1.0")
+        XCTAssertTrue(reader.adjustLineHeight(toValue: "2.5"))
+        XCTAssertTrue(lineHeightDecrementButton.isEnabled, "line-height decrement must remain enabled below 2.5")
+        XCTAssertFalse(lineHeightIncrementButton.isEnabled, "line-height increment must disable at 2.5")
         captureStep("typography-adjustment-rows", app: app)
 
         guard reader.revealHighlightControls(timeout: 10),
@@ -141,7 +200,7 @@ final class ReaderSettingsUITests: UITestCase {
         reader.openSettings()
         guard let preview = reader.settingsPreviewElement(timeout: 10),
               let panel = reader.settingsPanelElement(),
-              reader.lineHeightSliderElement(timeout: 5) != nil
+              reader.lineHeightAdjustmentRowElement(timeout: 5) != nil
         else {
             XCTFail("production Reader settings sheet must expose exact panel, preview, and line-height controls")
             return
@@ -158,8 +217,10 @@ final class ReaderSettingsUITests: UITestCase {
         XCTAssertTrue(panel.frame.contains(preview.frame), "preview must remain inside the settings sheet geometry")
 
         // Mutate real persisted Reader settings, not the DEBUG preview harness.
-        XCTAssertTrue(reader.adjustLineHeight(toNormalizedSliderPosition: 0))
+        XCTAssertTrue(reader.adjustLineHeight(toValue: "1.0"))
         XCTAssertTrue(reader.waitForLineHeightValue("1", timeout: 5))
+        XCTAssertTrue(reader.adjustLetterSpacing(toValue: "0.5"))
+        XCTAssertTrue(reader.waitForLetterSpacingValue("0.5", timeout: 5))
         XCTAssertTrue(reader.selectTheme("dark"), "production theme option must be addressable")
         XCTAssertTrue(reader.themeIsSelected("dark"))
         XCTAssertTrue(reader.selectHighlightColor("blue"), "production highlight color option must be addressable")
@@ -174,6 +235,7 @@ final class ReaderSettingsUITests: UITestCase {
             "font=\(initialFont)",
             "fontSize=\(initialFontSize)",
             "lineHeight=1.00",
+            "letterSpacing=0.50",
             "readingMode=\(initialReadingMode)",
             "theme=dark"
         ]
@@ -229,6 +291,7 @@ final class ReaderSettingsUITests: UITestCase {
         captureStep("settings-reopened", app: app)
         XCTAssertEqual(reopenedPreview.frame.height, initialPreviewHeight, accuracy: 1)
         XCTAssertTrue(reader.waitForLineHeightValue("1", timeout: 5))
+        XCTAssertTrue(reader.waitForLetterSpacingValue("0.5", timeout: 5))
         XCTAssertTrue(reader.themeIsSelected("dark"))
         XCTAssertTrue(reader.resetReaderSettings(), "Reader settings must expose the production reset action")
         captureStep("reset", app: app)
@@ -280,7 +343,7 @@ final class ReaderSettingsUITests: UITestCase {
         XCTAssertEqual(initialLineHeight, 2.1, accuracy: 0.01)
         captureStep("preview-2.1", app: app)
 
-        XCTAssertTrue(reader.adjustLineHeight(toNormalizedSliderPosition: 0))
+        XCTAssertTrue(reader.adjustLineHeight(toValue: "1.0"))
         XCTAssertTrue(reader.waitForLineHeightValue("1", timeout: 5))
         captureStep("preview-1.0", app: app)
         captureStep("preview-1.0-counterexample", app: app)
@@ -289,10 +352,10 @@ final class ReaderSettingsUITests: UITestCase {
         XCTAssertTrue(reader.waitForLineHeightValue("1.2", timeout: 5))
         captureStep("preview-1.2", app: app)
 
-        // The native slider/tick control must commit its release value into
-        // the production Reader bridge, not merely expose a transient AX
-        // value. Re-open the settings surface afterwards so the following
-        // endpoint/theme evidence still exercises the same live Reader.
+        // The shared adjustment row must commit its value into the production
+        // Reader bridge, not merely expose a transient AX value. Re-open the
+        // settings surface afterwards so the following endpoint/theme evidence
+        // still exercises the same live Reader.
         XCTAssertTrue(reader.closeSettings(), "Reader settings must commit the semantic line-height change")
         XCTAssertTrue(
             reader.waitForSettingsStateContaining(["lineHeight=1.20"], timeout: 10),
@@ -301,20 +364,20 @@ final class ReaderSettingsUITests: UITestCase {
         reader.openSettings()
         XCTAssertNotNil(reader.settingsPreviewElement(timeout: 5))
 
-        XCTAssertTrue(reader.adjustLineHeight(toNormalizedSliderPosition: 1))
+        XCTAssertTrue(reader.adjustLineHeight(toValue: "2.5"))
         XCTAssertTrue(reader.waitForLineHeightValue("2.5", timeout: 5))
         captureStep("preview-2.5", app: app)
         captureStep("preview-2.5-counterexample", app: app)
 
-        XCTAssertTrue(reader.closeSettings(), "Reader settings must commit the native slider endpoint")
+        XCTAssertTrue(reader.closeSettings(), "Reader settings must commit the shared adjustment-row endpoint")
         XCTAssertTrue(
             reader.waitForSettingsStateContaining(["lineHeight=2.50"], timeout: 10),
-            "Reader settings state must observe the committed 2.5 slider endpoint"
+            "Reader settings state must observe the committed 2.5 adjustment-row endpoint"
         )
         reader.openSettings()
         XCTAssertTrue(
             reader.waitForLineHeightValue("2.5", timeout: 5),
-            "reopened Reader settings must settle the committed slider endpoint"
+            "reopened Reader settings must settle the committed adjustment-row endpoint"
         )
         guard let reopenedPreview = reader.settingsPreviewElement(timeout: 5) else {
             XCTFail("Reader settings must recreate its preview after the endpoint commit")
@@ -372,7 +435,7 @@ final class ReaderSettingsUITests: UITestCase {
 
         guard let panel = reader.settingsPanelElement(),
               let preview = reader.settingsPreviewElement(timeout: 10),
-              let slider = reader.lineHeightSliderElement(timeout: 10),
+              let lineHeightRow = reader.lineHeightAdjustmentRowElement(timeout: 10),
               let done = reader.settingsDoneButtonElement(timeout: 10)
         else {
             XCTFail("Accessibility Dynamic Type must expose exact Reader settings controls")
@@ -384,7 +447,7 @@ final class ReaderSettingsUITests: UITestCase {
         XCTAssertGreaterThan(panel.frame.height, 0)
         XCTAssertGreaterThan(preview.frame.width, 0)
         XCTAssertGreaterThan(preview.frame.height, 0)
-        XCTAssertGreaterThan(slider.frame.width, 100)
+        XCTAssertGreaterThan(lineHeightRow.frame.width, 100)
         XCTAssertGreaterThan(done.frame.height, 30)
         XCTAssertTrue(done.isHittable)
         XCTAssertTrue(appFrame.contains(done.frame), "Done must remain within the app viewport at accessibility size")
@@ -392,16 +455,14 @@ final class ReaderSettingsUITests: UITestCase {
         captureStep("dynamic-type", app: app)
 
         XCTAssertFalse(preview.label.isEmpty, "preview must expose a localized accessibility label")
-        XCTAssertFalse(slider.label.isEmpty, "line-height control must expose a localized accessibility label")
-        XCTAssertNotNil(slider.value, "line-height control must expose its actual numeric value")
+        XCTAssertFalse(lineHeightRow.label.isEmpty, "line-height row must expose a localized accessibility label")
+        XCTAssertNotNil(lineHeightRow.value, "line-height row must expose its actual numeric value")
         XCTAssertFalse(done.label.isEmpty, "Done must expose a localized accessibility label")
         XCTAssertTrue(reader.showPreview())
 
         let viewportHeight = preview.frame.height
-        // At iOS 26.4 accessibility Dynamic Type, XCTest's normalized-slider
-        // endpoint injection does not reliably deliver the native UISlider
-        // release event. Use the production semantic tick action instead; the
-        // regular-size endpoint contract remains covered above.
+        // Use the production semantic adjustment-row action at accessibility
+        // Dynamic Type; the row owns the same bounded step contract.
         XCTAssertTrue(reader.adjustLineHeight(toValue: "2.5"))
         guard let resizedPreview = reader.settingsPreviewElement(timeout: 5) else {
             XCTFail("preview must remain in the accessibility tree after line-height change")

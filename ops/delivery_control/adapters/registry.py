@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from ..domain.models import MergedPullRequestProof
+from ..domain.models import MergedPullRequestProof, Scope
 from ..domain.observations import (
     RegistryCollisionInventory,
     RegistryInventory,
@@ -29,6 +29,7 @@ from .registry_query import (
     collision_inventory,
     exact_claim,
     load_registry_list,
+    published_claim,
     registry_inventory,
     terminal_claim,
 )
@@ -83,6 +84,26 @@ class RegistryCliAdapter:
             branch=branch,
             path=path,
             claim_generation=claim_generation,
+        )
+
+    def find_published_claim(
+        self,
+        *,
+        lane_id: str,
+        branch: str,
+        path: Path,
+        owner_thread_id: str,
+        head_sha: str,
+        scope: Scope,
+    ) -> RegistrySnapshot | None:
+        return published_claim(
+            self._list_payload(),
+            lane_id=lane_id,
+            branch=branch,
+            path=path,
+            owner_thread_id=owner_thread_id,
+            head_sha=head_sha,
+            scope=scope,
         )
 
     def find_terminal_claim(

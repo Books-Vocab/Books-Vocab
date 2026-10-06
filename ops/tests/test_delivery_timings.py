@@ -21,6 +21,12 @@ from delivery_control.domain.observations import (
     RegistrySnapshot,
 )
 from delivery_control.domain.states import LaneDecision, LaneState, NextAction
+from delivery_control.domain.telemetry import (
+    DurationSample,
+    TelemetryMetric,
+    TelemetryReadResult,
+    publication_subject,
+)
 
 
 def _inventory(*, created_offset_seconds: int = 30) -> DeliveryInventory:
@@ -150,3 +156,32 @@ def test_jit_reanchor_excludes_initial_publication_latency_without_source_proble
     assert timings.invalid_samples == 0
     assert timings.handback_to_pr_samples == 0
     assert metrics.source_problems == 0
+
+
+def test_republication_after_required_start_does_not_create_negative_latency() -> None:
+    inventory = _inventory(created_offset_seconds=-1)
+    lane = inventory.lanes[0]
+    assert lane.registry is not None
+    pull_request = lane.pull_requests[0]
+    start = lane.registry.handed_back_at
+    assert start is not None
+    superseded_publication = DurationSample(
+        metric=TelemetryMetric.HANDBACK_TO_PR,
+        subject=publication_subject(
+            lane_id=lane.registry.lane_id,
+            claim_generation=lane.registry.claim_generation,
+            head_sha=pull_request.head_sha,
+            pr_number=pull_request.number,
+        ),
+        started_at=start + timedelta(seconds=100),
+        completed_at=start + timedelta(seconds=120),
+    )
+
+    timings = measure_pipeline_timings(
+        inventory,
+        telemetry=TelemetryReadResult((superseded_publication,)),
+    )
+
+    assert timings.invalid_samples == 0
+    assert timings.pr_to_required_start_samples == 0
+    assert timings.pr_to_required_start_p95_seconds is None

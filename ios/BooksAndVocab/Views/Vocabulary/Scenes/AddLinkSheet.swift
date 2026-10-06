@@ -15,6 +15,9 @@ struct AddLinkSheet: View {
     @State private var searchText = ""
     @State private var coordinator = AddLinkCoordinator()
     @State private var creationCoordinator = AddLinkCreationCoordinator()
+    @State private var creationAttempt = 0
+    @State private var didCompleteCreation = false
+    @State private var recoveredProviderErrors: Set<UUID> = []
 
     init(
         sourceEntry: VocabularyEntry,
@@ -34,9 +37,25 @@ struct AddLinkSheet: View {
         )
     }
 
+    private var lookupState: AddLinkLookupState {
+        AddLinkCoordinator.lookupState(
+            query: searchText,
+            candidateCount: filteredEntries.count,
+            creationPhase: creationCoordinator.phase,
+            creationAttempt: creationAttempt
+        )
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                Text(lookupState.accessibilityValue)
+                    .font(.caption2)
+                    .foregroundStyle(.clear)
+                    .frame(width: 1, height: 1)
+                    .accessibilityIdentifier("addLink.lookup.state")
+                    .accessibilityValue(lookupState.accessibilityValue)
+
                 if coordinator.actionPhase == .failed {
                     AppBanner(
                         message: L10n.string("addLink.error.linkFailed"),
@@ -44,8 +63,14 @@ struct AddLinkSheet: View {
                     )
                 }
 
-                if creationCoordinator.phase == .running {
-                    AddLinkCreationProgressView(coordinator: creationCoordinator)
+                if creationCoordinator.phase == .running
+                    || creationCoordinator.phase == .failed
+                    || creationCoordinator.phase == .succeededWithWarnings {
+                    AddLinkCreationProgressView(
+                        coordinator: creationCoordinator,
+                        onRetry: startCreation,
+                        attempt: creationAttempt
+                    )
                         .padding(.horizontal, appSkin.metrics.cardBlockPadding)
                         .frame(maxHeight: .infinity, alignment: .top)
                 } else {
@@ -81,7 +106,9 @@ struct AddLinkSheet: View {
             }
         }
         .onChange(of: creationCoordinator.phase) { _, phase in
-            guard phase == .succeeded || phase == .succeededWithWarnings else { return }
+            guard phase == .succeeded || phase == .succeededWithWarnings,
+                  !didCompleteCreation else { return }
+            didCompleteCreation = true
             onLinked()
             dismiss()
         }
@@ -103,23 +130,152 @@ struct AddLinkSheet: View {
                 missingTargetSection
             } else {
                 ForEach(filteredEntries) { entry in
-                    Button { selectEntry(entry) } label: {
-                        VStack(alignment: .leading, spacing: AppSpacing.microGap) {
-                            Text(entry.word)
-                                .font(appSkin.typography.rowWord)
-                                .foregroundStyle(appSkin.palette.primaryText)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                            Text(entry.translation)
-                                .font(appSkin.typography.caption)
-                                .foregroundStyle(appSkin.palette.tertiaryText)
-                                .lineLimit(2)
-                                .truncationMode(.tail)
+                    let projection = AddLinkCoordinator.dictionaryDetailProjection(
+                        for: entry,
+                        recoveringProviderError: recoveredProviderErrors.contains(entry.id)
+                    )
+                    VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
+                        Button { selectEntry(entry) } label: {
+                            VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+                                Text(entry.word)
+                                    .font(appSkin.typography.rowWord)
+                                    .foregroundStyle(appSkin.palette.primaryText)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                Text(entry.translation)
+                                    .font(appSkin.typography.caption)
+                                    .foregroundStyle(appSkin.palette.tertiaryText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
+                        .accessibilityIdentifier(AddLinkCoordinator.detailIdentifier(for: entry))
+                        .accessibilityValue(
+                            AddLinkCoordinator.lookupEvidence(
+                                for: entry,
+                                recoveringProviderError: recoveredProviderErrors.contains(entry.id)
+                            )
+                        )
+
+                        dictionaryDetail(projection, for: entry)
                     }
                     .listRowBackground(Color.clear)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func dictionaryDetail(
+        _ projection: AddLinkDetailProjection,
+        for entry: VocabularyEntry
+    ) -> some View {
+        let detailID = AddLinkCoordinator.detailIdentifier(for: entry)
+        Color.clear
+            .frame(width: 1, height: 1)
+            .accessibilityElement()
+            .accessibilityIdentifier(AddLinkCoordinator.detailStateIdentifier(for: entry))
+            .accessibilityValue(
+                "\(projection.state.accessibilityValue)|senses=\(projection.senses.count)"
+            )
+
+        switch projection.state {
+        case .providerDecodeError:
+            VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+                Text(L10n.string("sync.failure.reason.decoding"))
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("\(detailID).provider.error")
+                Button(L10n.string("重試")) {
+                    recoveredProviderErrors.insert(entry.id)
+                }
+                .buttonStyle(.appCompactAction(.neutral))
+                .accessibilityIdentifier(AddLinkCoordinator.detailRetryIdentifier(for: entry))
+            }
+        case .ready, .missingExample, .recovered:
+            ForEach(Array(projection.senses.enumerated()), id: \.offset) { senseIndex, sense in
+                VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+                    if let partOfSpeech = sense.partOfSpeech {
+                        Text(L10n.string("reviewCardLayout.field.partOfSpeech") + ": " + partOfSpeech)
+                            .font(appSkin.typography.caption)
+                            .foregroundStyle(appSkin.palette.tertiaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier(
+                                "\(AddLinkCoordinator.detailSenseIdentifier(for: entry, index: senseIndex)).partOfSpeech"
+                            )
+                    }
+                    Text(sense.definition)
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier(
+                            AddLinkCoordinator.detailSenseIdentifier(for: entry, index: senseIndex)
+                        )
+                    if let translation = sense.translation,
+                       translation != projection.translation {
+                        Text(translation)
+                            .font(appSkin.typography.caption)
+                            .foregroundStyle(appSkin.palette.tertiaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier(
+                                "\(AddLinkCoordinator.detailSenseIdentifier(for: entry, index: senseIndex)).translation"
+                            )
+                    }
+                    if sense.examples.isEmpty {
+                        Color.clear
+                            .frame(width: 1, height: 1)
+                            .accessibilityElement()
+                            .accessibilityIdentifier(
+                                AddLinkCoordinator.detailMissingExampleIdentifier(
+                                    for: entry,
+                                    senseIndex: senseIndex
+                                )
+                            )
+                            .accessibilityValue("missing")
+                    } else {
+                        ForEach(Array(sense.examples.enumerated()), id: \.offset) { exampleIndex, example in
+                            Text(L10n.string("reviewCardLayout.field.example") + ": " + example)
+                                .font(appSkin.typography.caption)
+                                .foregroundStyle(appSkin.palette.tertiaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier(
+                                    AddLinkCoordinator.detailExampleIdentifier(
+                                        for: entry,
+                                        senseIndex: senseIndex,
+                                        exampleIndex: exampleIndex
+                                    )
+                                )
+                        }
+                    }
+                }
+                .accessibilityElement(children: .contain)
+            }
+
+            if !projection.forms.isEmpty {
+                Text(L10n.string("變化形") + ": " + projection.forms.joined(separator: ", "))
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier(AddLinkCoordinator.detailFormsIdentifier(for: entry))
+            }
+
+            VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+                Text(L10n.string("來源") + ": " + projection.provenance.source)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("\(detailID).provenance.source")
+                if let chapter = projection.provenance.chapter {
+                    Text(chapter)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("\(detailID).provenance.chapter")
+                }
+                Text(projection.provenance.context)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("\(detailID).provenance.context")
+            }
+            .font(appSkin.typography.caption)
+            .foregroundStyle(appSkin.palette.tertiaryText)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier(AddLinkCoordinator.detailProvenanceIdentifier(for: entry))
         }
     }
 
@@ -169,6 +325,7 @@ struct AddLinkSheet: View {
     }
 
     private func selectEntry(_ entry: VocabularyEntry) {
+        guard filteredEntries.contains(where: { $0.id == entry.id }) else { return }
         coordinator.startLinkExisting(
             target: entry,
             sourceEntry: sourceEntry,
@@ -178,6 +335,7 @@ struct AddLinkSheet: View {
 
     private func startCreation() {
         guard let operationService = kgService as? any AddLinkOperationServing else { return }
+        creationAttempt += 1
         creationCoordinator.start(
             word: searchText,
             sourceEntry: sourceEntry,

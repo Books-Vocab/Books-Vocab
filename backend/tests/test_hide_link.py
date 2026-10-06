@@ -186,8 +186,9 @@ from kg.vocab_shared import build_links_by_kind
 
 
 class FakeCard:
-    def __init__(self, id, content="word", meaning="meaning", is_deleted=False,
-                 is_archived=False, notebook_id="default"):
+    def __init__(
+        self, id, content="word", meaning="meaning", is_deleted=False, is_archived=False, notebook_id="default"
+    ):
         self.id = id
         self.content = content
         self.meaning = meaning
@@ -217,6 +218,7 @@ def _make_judge(response_json: str):
     resp.usage = None
     client.chat.completions.create.return_value = resp
     from kg.tracked_llm import TrackedLLM
+
     return ManualLinkJudge(TrackedLLM(client, "test_user"))
 
 
@@ -237,6 +239,7 @@ class TestHideGraphLinkService:
     def test_hide_nonexistent_raises_not_found(self, store):
         cards = FakeCardsStore([FakeCard("a")])
         from kg.exceptions import NotFoundError
+
         with pytest.raises(NotFoundError):
             hide_graph_link(link_id="nonexistent", graph=store, cards_store=cards)
 
@@ -274,12 +277,16 @@ class TestCreateManualLinkHiddenBranch:
         """Hidden link exists -> unhide directly, skip LLM, preserve original kind/reason."""
         lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "original reason")
         store.hide_link(lk.id)
-        cards = FakeCardsStore([
-            FakeCard("a", content="apple", meaning="蘋果"),
-            FakeCard("b", content="banana", meaning="香蕉"),
-        ])
+        cards = FakeCardsStore(
+            [
+                FakeCard("a", content="apple", meaning="蘋果"),
+                FakeCard("b", content="banana", meaning="香蕉"),
+            ]
+        )
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "新原因"}')
-        result = create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default")
+        result = create_manual_link(
+            from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default"
+        )
         assert result.status == "active"
         assert result.id == lk.id  # same link object
         assert result.reason == "original reason"  # LLM was NOT called
@@ -290,12 +297,16 @@ class TestCreateManualLinkHiddenBranch:
         lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
         store.hard_delete_link(lk.id)
         assert store.is_blocked("a", "b") is True
-        cards = FakeCardsStore([
-            FakeCard("a", content="apple", meaning="蘋果"),
-            FakeCard("b", content="banana", meaning="香蕉"),
-        ])
+        cards = FakeCardsStore(
+            [
+                FakeCard("a", content="apple", meaning="蘋果"),
+                FakeCard("b", content="banana", meaning="香蕉"),
+            ]
+        )
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "新原因"}')
-        result = create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default")
+        result = create_manual_link(
+            from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge, notebook_id="default"
+        )
         assert result is not None
         assert store.is_blocked("a", "b") is False
 
@@ -306,7 +317,9 @@ class TestBuildLinksIncludesHidden:
         store.hide_link(lk.id)
         cards_by_id = {"a": FakeCard("a", content="word_a"), "b": FakeCard("b", content="word_b")}
         result = build_links_by_kind(
-            "a", graph=store, cards_by_id=cards_by_id,
+            "a",
+            graph=store,
+            cards_by_id=cards_by_id,
             link_kinds=list(LinkKind),
             link_labels={LinkKind.CONTRASTS_WITH: "對比", LinkKind.SHARES_USAGE: "相關"},
         )
@@ -318,7 +331,9 @@ class TestBuildLinksIncludesHidden:
         store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
         cards_by_id = {"a": FakeCard("a", content="word_a"), "b": FakeCard("b", content="word_b")}
         result = build_links_by_kind(
-            "a", graph=store, cards_by_id=cards_by_id,
+            "a",
+            graph=store,
+            cards_by_id=cards_by_id,
             link_kinds=list(LinkKind),
             link_labels={LinkKind.CONTRASTS_WITH: "對比", LinkKind.SHARES_USAGE: "相關"},
         )
@@ -326,8 +341,32 @@ class TestBuildLinksIncludesHidden:
         assert len(all_links) == 1
         assert all_links[0].hidden is False
 
+    def test_equal_normalized_words_are_tied_by_linked_card_id(self, store):
+        link_z = store.add_link("source", "card-z", LinkKind.CONTRASTS_WITH, 0.9, "z")
+        link_a = store.add_link("source", "card-a", LinkKind.CONTRASTS_WITH, 0.8, "a")
+
+        class OrderedGraph:
+            def get_links_for(self, card_id):
+                assert card_id == "source"
+                return [link_z, link_a]
+
+        cards_by_id = {
+            "card-z": FakeCard("card-z", content="Word"),
+            "card-a": FakeCard("card-a", content="word"),
+        }
+        result = build_links_by_kind(
+            "source",
+            graph=OrderedGraph(),
+            cards_by_id=cards_by_id,
+            link_kinds=list(LinkKind),
+            link_labels={LinkKind.CONTRASTS_WITH: "對比", LinkKind.SHARES_USAGE: "相關"},
+        )
+
+        assert [link.cardId for link in result["contrasts_with"]] == ["card-a", "card-z"]
+
 
 # --- blocked pairs ---
+
 
 class TestDeleteWordClearsBlockedPairs:
     def test_remove_blocked_pairs_for_card(self, store):
@@ -349,6 +388,7 @@ class TestDeleteWordClearsBlockedPairs:
 
 
 # --- Task 4: HTTP endpoint regression tests ---
+
 
 class TestBilateralSyncEdges:
     """Bilateral hide/unhide visibility + blocked pair persistence across pipeline.
@@ -415,11 +455,13 @@ class TestBilateralSyncEdges:
 
         # Simulate a pipeline pass: embeddings think (a,b) and (b,a) and an
         # unrelated (a,c) are all similar enough to enqueue as candidates.
-        added = store.batch_add_candidates([
-            ("a", "b", 0.95),  # blocked → must be rejected
-            ("b", "a", 0.95),  # blocked (reverse orientation) → must be rejected
-            ("a", "c", 0.90),  # unrelated → must pass
-        ])
+        added = store.batch_add_candidates(
+            [
+                ("a", "b", 0.95),  # blocked → must be rejected
+                ("b", "a", 0.95),  # blocked (reverse orientation) → must be rejected
+                ("a", "c", 0.90),  # unrelated → must pass
+            ]
+        )
 
         # Only the unrelated pair was accepted as a candidate.
         assert added == 1

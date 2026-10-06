@@ -28,6 +28,7 @@ from .registry_parsing import (
 
 _COLLISION_TERMINAL_STATUSES = frozenset({"published", "merged", "abandoned"})
 _COLLISION_ACTIVE_STATUSES = frozenset({"active", "cleanup_pending"})
+_CURRENT_DURABLE_CLAIM_STATUSES = frozenset({"active", "published", "cleanup_pending"})
 _SCOPED_CLAIM_PROBLEM_PREFIX = "registry-claim-generation-invalid"
 
 
@@ -264,6 +265,68 @@ def exact_claim(
             matches.append(record)
     if len(matches) > 1:
         raise AdapterPayloadError("multiple exact registry claims found")
+    return matches[0] if matches else None
+
+
+def published_claim(
+    payload: Mapping[str, Any],
+    *,
+    lane_id: str,
+    branch: str,
+    path: Path,
+    owner_thread_id: str,
+    head_sha: str,
+    scope: Scope,
+) -> RegistrySnapshot | None:
+    """Find one current durable claim by stable handback identity.
+
+    The caller already has an older receipt, so claim generation is deliberately
+    not part of the selector.  Only the exact branch/path/owner/head identity
+    plus a current Scope contained by the older requested Scope may bridge
+    that generation drift; unrelated malformed records do not become global
+    blockers, while a malformed matching record is fatal.
+    """
+
+    expected_path = path.expanduser().resolve()
+    matches: list[RegistrySnapshot] = []
+    for raw in payload["records"]:
+        if not isinstance(raw, Mapping) or raw.get("branch") != branch:
+            continue
+        if raw.get("status") not in _CURRENT_DURABLE_CLAIM_STATUSES:
+            continue
+        external_ids = raw.get("external_ids")
+        if external_ids is not None and not isinstance(external_ids, list):
+            raise AdapterPayloadError("published registry claim is malformed")
+        raw_lane_id = (
+            str(external_ids[0])
+            if isinstance(external_ids, list) and external_ids
+            else branch
+        )
+        if raw_lane_id != lane_id:
+            continue
+        if raw.get("codex_thread_id") != owner_thread_id:
+            continue
+        if raw.get("handed_back_sha") != head_sha:
+            continue
+        raw_path = raw.get("path")
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            raise AdapterPayloadError("published registry claim is malformed")
+        candidate_path = Path(raw_path).expanduser()
+        if not candidate_path.is_absolute():
+            raise AdapterPayloadError("published registry claim is malformed")
+        if candidate_path.resolve() != expected_path:
+            continue
+        try:
+            record = parse_registry_record(raw)
+        except (KeyError, TypeError, ValueError, InvalidScope) as error:
+            raise AdapterPayloadError(
+                "published registry claim is malformed"
+            ) from error
+        if not set(record.scope.files).issubset(scope.files):
+            raise AdapterPayloadError("published registry claim Scope differs")
+        matches.append(record)
+    if len(matches) > 1:
+        raise AdapterPayloadError("multiple current published registry claims found")
     return matches[0] if matches else None
 
 

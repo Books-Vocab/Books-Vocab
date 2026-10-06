@@ -3,6 +3,9 @@ from __future__ import annotations
 import math
 
 import pytest
+from pydantic import ValidationError
+
+from kg.api_models.podcast import PodcastProgressResponse
 
 _ISO_NOW = "2026-05-14T12:00:00+00:00"
 
@@ -61,3 +64,50 @@ def test_progress_preserves_finite_non_negative_values(isolated_api):
     assert response.json()["duration_sec"] == 300.5
     assert math.isfinite(response.json()["position_sec"])
     assert math.isfinite(response.json()["duration_sec"])
+
+
+@pytest.mark.parametrize("field", ["position_sec", "duration_sec"])
+def test_progress_response_rejects_positive_infinity(field: str):
+    payload = {
+        "series_id": "series_a",
+        "ep_num": 1,
+        "position_sec": 10.0,
+        "duration_sec": 100.0,
+        "updated_at": _ISO_NOW,
+    }
+    payload[field] = float("inf")
+
+    with pytest.raises(ValidationError):
+        PodcastProgressResponse.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "field,bad_value",
+    [
+        ("position_sec", "10.0"),
+        ("position_sec", "NaN"),
+        ("position_sec", None),
+        ("position_sec", {}),
+        ("duration_sec", "100.0"),
+        ("duration_sec", "Infinity"),
+        ("duration_sec", None),
+        ("duration_sec", []),
+    ],
+)
+def test_progress_rejects_non_numeric_json_values_with_stable_error(isolated_api, field: str, bad_value):
+    values = {"position_sec": 10.0, "duration_sec": 100.0}
+    values[field] = bad_value
+
+    response = isolated_api.client.post(
+        "/api/podcasts/series_a/1/progress",
+        json={**values, "updated_at": _ISO_NOW},
+        headers=isolated_api.headers,
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": f"{field} must be a number"}
+    stored = isolated_api.client.get(
+        "/api/podcasts/series_a/1/progress",
+        headers=isolated_api.headers,
+    )
+    assert stored.status_code == 404

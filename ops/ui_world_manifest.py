@@ -1,6 +1,9 @@
 #!/usr/bin/env -S uv run --python 3.13 python
 """Validate UI World v2 manifest files before a tool launches the app."""
 
+# This legacy validator predates the repository-wide formatter baseline. Keep
+# its established layout stable while the internal validation seams migrate.
+# fmt: off
 from __future__ import annotations
 
 import argparse
@@ -2422,33 +2425,13 @@ def _validate_cross_references(data: dict[str, Any], *, label: str) -> None:
         _validate_seed_graph_links(entry_objs, set(entry_words), owner_prefix=f"reviewDeck.{fixture_id}", label=label)
 
 
-def validate_fixture_dataset_file(
-    path: Path,
+def _validate_asset_manifest(
+    data: Mapping[str, Any],
     *,
-    label: str = "UI World dataset",
-    require_review_clock: bool = False,
-    require_review_history_alignment: bool = False,
-) -> str:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise UIWorldManifestError(f"{label} 不是可讀 JSON: {path}: {exc}") from exc
-    if not isinstance(data, dict):
-        raise UIWorldManifestError(f"{label} top-level 必須是 object: {path}")
-    if data.get("schema") != FIXTURE_SCHEMA:
-        raise UIWorldManifestError(f"{label} schema 必須是 {FIXTURE_SCHEMA}: {path}")
-    keys = set(data)
-    extra = sorted(keys - FIXTURE_TOP_LEVEL_KEYS)
-    missing = sorted(REQUIRED_TOP_LEVEL_KEYS - keys)
-    if extra or missing:
-        raise UIWorldManifestError(
-            f"{label} top-level keys 不符合 UI World v2: extra={extra} missing={missing}"
-        )
-    dataset_id = data.get("datasetID")
-    if not isinstance(dataset_id, str) or not dataset_id.strip():
-        raise UIWorldManifestError(f"{label} datasetID 必須是非空字串: {path}")
-    _validate_fixture_domain_ids(data, label=label)
-
+    label: str,
+    path: Path,
+) -> dict[str, str]:
+    """Validate file-backed assets behind the manifest compatibility façade."""
     assets = data.get("assets")
     if not isinstance(assets, dict):
         raise UIWorldManifestError(f"{label} assets 必須是 object: {path}")
@@ -2547,6 +2530,37 @@ def validate_fixture_dataset_file(
                 content_type=content_type,
                 label=f"{label} {asset_label}",
             )
+    return asset_types
+
+
+def validate_fixture_dataset_file(
+    path: Path,
+    *,
+    label: str = "UI World dataset",
+    require_review_clock: bool = False,
+    require_review_history_alignment: bool = False,
+) -> str:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise UIWorldManifestError(f"{label} 不是可讀 JSON: {path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise UIWorldManifestError(f"{label} top-level 必須是 object: {path}")
+    if data.get("schema") != FIXTURE_SCHEMA:
+        raise UIWorldManifestError(f"{label} schema 必須是 {FIXTURE_SCHEMA}: {path}")
+    keys = set(data)
+    extra = sorted(keys - FIXTURE_TOP_LEVEL_KEYS)
+    missing = sorted(REQUIRED_TOP_LEVEL_KEYS - keys)
+    if extra or missing:
+        raise UIWorldManifestError(
+            f"{label} top-level keys 不符合 UI World v2: extra={extra} missing={missing}"
+        )
+    dataset_id = data.get("datasetID")
+    if not isinstance(dataset_id, str) or not dataset_id.strip():
+        raise UIWorldManifestError(f"{label} datasetID 必須是非空字串: {path}")
+    _validate_fixture_domain_ids(data, label=label)
+
+    asset_types = _validate_asset_manifest(data, label=label, path=path)
     _validate_shared_decks(data, label=label, asset_types=asset_types)
     _validate_preferences(data, label=label)
     _validate_auth_state(data, label=label)

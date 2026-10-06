@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -96,6 +97,15 @@ def _check(status: CheckStatus) -> CheckSnapshot:
     )
 
 
+def _absent_check() -> CheckSnapshot:
+    return CheckSnapshot(
+        status=CheckStatus.ABSENT,
+        head_sha=HEAD,
+        observed_at=datetime(2026, 8, 23, tzinfo=UTC),
+        names=(),
+    )
+
+
 class FakeGitHub:
     def __init__(self, check: CheckSnapshot) -> None:
         self.pr = _pr()
@@ -148,11 +158,220 @@ def test_maintenance_resume_rejects_missing_required_observation() -> None:
         )
 
 
-def test_perform_resume_allows_same_head_maintenance_for_open_pr(
+def test_maintenance_resume_accepts_exact_required_absence_observation() -> None:
+    absent = CheckSnapshot(
+        status=CheckStatus.ABSENT,
+        head_sha=HEAD,
+        observed_at=datetime(2026, 8, 23, tzinfo=UTC),
+        names=(),
+    )
+
+    proof = verify_resume_lifecycle(
+        FakeGitHub(absent),
+        branch="debug/delivery-observation-batch-20260823",
+        expected_base_sha=BASE,
+        expected_remote_head=HEAD,
+        require_failed=False,
+        allow_missing_required=True,
+    )
+
+    assert proof.required_status is CheckStatus.ABSENT
+
+
+def test_resume_reuses_exact_existing_owner_worktree_for_published_resume(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    target = tmp_path / "released"
+    target.mkdir()
+    calls: list[tuple[str, str]] = []
+
+    def authorized_existing_target(_repo: Path, **kwargs: object) -> None:
+        calls.append(("existing", str(kwargs["target"])))
+
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops.git_ops,
+        "validate_authorized_existing_target",
+        authorized_existing_target,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops.git_ops,
+        "validate_new_target",
+        lambda *_args, **_kwargs: pytest.fail(
+            "same-owner resume must not require a new worktree target"
+        ),
+    )
+    resume_transaction.resume_git_ops.validate_released_assets(
+        tmp_path,
+        recorded_path=target,
+        target=target,
+        branch="debug/exact-owner",
+        expected_head=HEAD,
+    )
+
+    assert calls == [("existing", str(target))]
+
+
+def test_resume_provision_reuses_existing_target_without_git_mutation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    target = tmp_path / "released"
+    target.mkdir()
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops.git_ops,
+        "validate_authorized_existing_target",
+        lambda *_args, **_: None,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops,
+        "verify_remote_head",
+        lambda *_args, **_: None,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops.git_ops,
+        "scope_operations",
+        lambda *_args, **_: (("docs/runbook/system.md", "modify"),),
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops.git_ops,
+        "_git",
+        lambda args, _repo: (
+            (calls.append(list(args)) or (0, HEAD))
+            if args == ["rev-parse", "--verify", "HEAD^{commit}"]
+            else (pytest.fail(f"unexpected Git mutation: {args}"), "")
+        ),
+    )
+
+    attempt = resume_transaction.resume_git_ops.ProvisioningAttempt()
+    head = resume_transaction.resume_git_ops.provision_exact(
+        tmp_path,
+        target=target,
+        branch="debug/exact-owner",
+        remote_head=HEAD,
+        base_sha=BASE,
+        declared=(("docs/runbook/system.md", "modify"),),
+        attempt=attempt,
+        recorded_path=target,
+    )
+
+    assert head == HEAD
+    assert calls == [["rev-parse", "--verify", "HEAD^{commit}"]]
+    assert not attempt.target_added
+    assert not attempt.branch_created
+
+
+def test_resume_provision_fast_forwards_exact_owner_path_from_previous_handback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    target = tmp_path / "released"
+    target.mkdir()
+    calls: list[list[str]] = []
+    merged = False
+
+    def fake_git(args: list[str], _repo: Path) -> tuple[int, str]:
+        nonlocal merged
+        calls.append(args)
+        if args == ["rev-parse", "--verify", "HEAD^{commit}"]:
+            return 0, HEAD if merged else BASE
+        if args == ["merge", "--ff-only", HEAD]:
+            merged = True
+            return 0, ""
+        return 0, ""
+
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops.git_ops,
+        "validate_authorized_existing_target",
+        lambda *_args, **_: None,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops,
+        "verify_remote_head",
+        lambda *_args, **_: None,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops.git_ops,
+        "_git",
+        fake_git,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops.git_ops,
+        "scope_operations",
+        lambda *_args, **_: (("docs/runbook/system.md", "modify"),),
+    )
+
+    head = resume_transaction.resume_git_ops.provision_exact(
+        tmp_path,
+        target=target,
+        branch="debug/exact-owner",
+        remote_head=HEAD,
+        previous_handback=BASE,
+        base_sha=BASE,
+        declared=(("docs/runbook/system.md", "modify"),),
+        attempt=resume_transaction.resume_git_ops.ProvisioningAttempt(),
+        recorded_path=target,
+    )
+
+    assert head == HEAD
+    assert ["merge", "--ff-only", HEAD] in calls
+
+
+def test_resume_provision_refuses_non_fast_forward_existing_owner_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    target = tmp_path / "released"
+    target.mkdir()
+
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops.git_ops,
+        "validate_authorized_existing_target",
+        lambda *_args, **_: None,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops,
+        "verify_remote_head",
+        lambda *_args, **_: None,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops.git_ops,
+        "_git",
+        lambda args, _repo: (
+            (0, BASE)
+            if args == ["rev-parse", "--verify", "HEAD^{commit}"]
+            else (
+                (1, "non-fast-forward")
+                if args == ["merge", "--ff-only", HEAD]
+                else (0, "")
+            )
+        ),
+    )
+
+    with pytest.raises(ReanchorRefused, match="fast-forward"):
+        resume_transaction.resume_git_ops.provision_exact(
+            tmp_path,
+            target=target,
+            branch="debug/exact-owner",
+            remote_head=HEAD,
+            previous_handback=BASE,
+            base_sha=BASE,
+            declared=(("docs/runbook/system.md", "modify"),),
+            attempt=resume_transaction.resume_git_ops.ProvisioningAttempt(),
+            recorded_path=target,
+        )
+
+
+@pytest.mark.parametrize(
+    "check",
+    [_check(CheckStatus.SUCCESS), _absent_check()],
+    ids=["required-success", "required-absent"],
+)
+def test_perform_resume_allows_same_head_maintenance_for_open_pr(
+    check: CheckSnapshot,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     candidate = _pr()
-    github = FakeGitHub(_check(CheckStatus.SUCCESS))
+    github = FakeGitHub(check)
     github.all_for_branch = (candidate,)
     preflight = RegistryPreflight(
         original={
@@ -223,6 +442,83 @@ def test_perform_resume_allows_same_head_maintenance_for_open_pr(
 
     assert payload["status"] == "ready-for-owner-fix"
     assert payload["mode"] == "maintenance"
+    assert payload["head"] == HEAD
+
+
+def test_perform_resume_uses_published_pr_base_for_lifecycle_readback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    published_base = "5" * 40
+    github = FakeGitHub(_check(CheckStatus.FAILURE))
+    github.pr = replace(github.pr, base_sha=published_base)
+    preflight = RegistryPreflight(
+        original={
+            "base": BASE,
+            "base_sha": BASE,
+            "path": str(tmp_path / "released"),
+        },
+        fingerprint="fingerprint",
+        base_sha=BASE,
+        published_base_sha=published_base,
+        declared=(("docs/runbook/system.md", "modify"),),
+    )
+
+    monkeypatch.setattr(
+        resume_transaction.git_ops, "validate_repository", lambda _: None
+    )
+    monkeypatch.setattr(
+        resume_transaction.git_ops, "_git", lambda *_args, **_kwargs: (0, "")
+    )
+    monkeypatch.setattr(
+        resume_transaction.registry_ops,
+        "preflight_resume",
+        lambda **_: preflight,
+    )
+    monkeypatch.setattr(
+        resume_transaction.lifecycle_proof,
+        "build_github",
+        lambda *_args, **_kwargs: github,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops,
+        "validate_released_assets",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops,
+        "ensure_exact_source",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops,
+        "provision_exact",
+        lambda *_args, **_kwargs: HEAD,
+    )
+    monkeypatch.setattr(
+        resume_transaction.resume_git_ops,
+        "verify_remote_head",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        resume_transaction.registry_ops,
+        "register_resumed",
+        lambda **_: {"claim_generation": 1},
+    )
+
+    payload = resume_transaction.perform_resume(
+        repo=tmp_path,
+        state_path=tmp_path / "registry.json",
+        lane_id="DIRECT-TEST",
+        branch=github.pr.branch,
+        owner_thread_id="owner-thread",
+        claim_generation=0,
+        expected_remote_head=HEAD,
+        target=tmp_path / "target",
+        previous_handback=HEAD,
+        mode="maintenance",
+    )
+
+    assert payload["status"] == "ready-for-owner-fix"
     assert payload["head"] == HEAD
 
 

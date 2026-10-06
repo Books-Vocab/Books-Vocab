@@ -193,6 +193,43 @@ unset -f stat
 [[ -d "$root/victim" ]] && ok "重驗時 mtime 變新的 key 走 keep 分支" || fail_t "keep 分支未生效，victim 被刪"
 [[ ! -d "$root/goner" ]] && ok "重驗仍舊的 key 照常淘汰" || fail_t "goner 未被淘汰"
 
+# ── 13. aggregate budget：cache caller 也會收斂舊 key ─────────────────────
+section "aggregate budget enforcement"
+project="$TMPROOT/budget-project"
+root="$project/.cache/ios-test-derived-data"
+build_root="$project/.cache/ios-build-derived-data"
+mkdir -p "$root/old-a/Build" "$root/old-b/Build" "$build_root/Build"
+printf x > "$root/old-a/Build/blob"; printf x > "$root/old-b/Build/blob"; printf x > "$build_root/Build/blob"
+touch -m -t 202001010000.00 "$root/old-a" "$root/old-b"
+KG_IOS_DISK_CACHE_ROOTS="$root:$build_root" \
+  KG_IOS_DISK_CACHE_BUDGET_GIB=0 KG_IOS_DISK_CACHE_HEADROOM_GIB=0 \
+  KG_IOS_CACHE_KEEP=3 KG_IOS_CACHE_EVICT_MIN_AGE_HOURS=0 \
+  kg_ios_cache_evict "$root" "" >/dev/null 2>&1
+[[ ! -d "$root/old-a" && ! -d "$root/old-b" ]] \
+  && ok "aggregate budget evicts stale keyed generations" \
+  || fail_t "aggregate budget left stale keyed generations"
+unset KG_IOS_DISK_CACHE_ROOTS KG_IOS_DISK_CACHE_BUDGET_GIB KG_IOS_DISK_CACHE_HEADROOM_GIB
+
+# ── 14. 失敗必須保留 machine-readable evidence，且維持 best-effort exit 0 ──
+section "eviction failure evidence"
+root="$(fresh_root 14)"
+build_entry "$root" old 500
+rm() { return 1; }
+if KG_IOS_CACHE_KEEP=0 KG_IOS_CACHE_EVICT_MIN_AGE_HOURS=0 \
+  kg_ios_cache_evict "$root" "" 2>/dev/null; then
+  ok "刪除失敗維持既有 exit 0 semantics"
+else
+  fail_t "刪除失敗不應改變既有 exit 0 semantics"
+fi
+unset -f rm
+[[ "${KG_IOS_CACHE_EVICT_ATTEMPTED:-0}" -eq 1 ]] \
+  && ok "failure attempted 計數可見" || fail_t "failure attempted 計數遺失"
+[[ "${KG_IOS_CACHE_EVICTED:-0}" -eq 0 ]] \
+  && ok "failure evicted 計數保持 0" || fail_t "failure 被誤計成 evicted"
+[[ "${KG_IOS_CACHE_EVICT_FAILED:-0}" -eq 1 ]] \
+  && ok "failure 計數可見" || fail_t "failure 計數遺失"
+[[ -d "$root/old" ]] && ok "刪除失敗保留 cache residue" || fail_t "刪除失敗仍移除了 residue"
+
 echo ""
 echo "passed=$pass failed=$fail"
 [[ $fail -eq 0 ]] || exit 1

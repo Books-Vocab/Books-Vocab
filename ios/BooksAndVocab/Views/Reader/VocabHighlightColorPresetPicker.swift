@@ -60,7 +60,7 @@ struct VocabHighlightColorPresetPicker: View {
             .modifier(OptionalAccessibilityIdentifier(id: accessibilityIdentifier))
 
             ColorPicker(
-                L10n.string("自訂"),
+                L10n.string("vocab.highlight.color.custom"),
                 selection: customColorBinding,
                 supportsOpacity: false
             )

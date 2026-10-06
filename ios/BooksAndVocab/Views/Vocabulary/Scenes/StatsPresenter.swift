@@ -154,14 +154,14 @@ struct StatsPresenter: View {
             summary = StatsPresentation.project(inputs)
         }
         .task(id: graphKey) {
-            // Fetches account-level links. Re-runs only when graphKey changes
-            // (auth state, entries.count, or retryToken bump from the inline
-            // error retry button), NOT on every view appearance — appearance ≠
-            // staleness. Known gap: hide/unhide while entries.count is stable
-            // will not auto-refresh the thumbnail until the next auth event,
-            // card add/remove, or manual retry. Long-term fix: promote
-            // KGGraphLink to @Model so @Query observers across stats/graph/
-            // word-detail views refresh automatically on any mutation.
+            // Fetches default or single-notebook links. Re-runs only when graphKey
+            // changes (auth state, selected notebook, graph-link revision, or
+            // retryToken bump from the inline error retry button), NOT on every
+            // view appearance —
+            // appearance ≠ staleness. The graph-link revision keeps a local
+            // hide/unhide mutation observable even when entries.count is stable.
+            // Long-term, KGGraphLink could become an @Model so @Query observers
+            // across stats/graph/word-detail views refresh from one source.
             guard shouldLoadGraphData else { return }
             await loadGraphLinks()
         }
@@ -201,7 +201,11 @@ struct StatsPresenter: View {
             return
         }
         do {
-            graphLinks = try await kgService.pullGraphLinks()
+            if let selectedNotebookId {
+                graphLinks = try await kgService.pullGraphLinks(notebookId: selectedNotebookId)
+            } else {
+                graphLinks = try await kgService.pullGraphLinks()
+            }
             graphLoadError = false
         } catch {
             // Failure is scoped to the graph card only — summary is built from
@@ -260,20 +264,27 @@ struct StatsPresenter: View {
         retryToken &+= 1
     }
 
-    private var summaryKey: Int {
-        var hasher = Hasher()
-        hasher.combine(syncedEntries.count)
-        hasher.combine(reviewRecords.count)
-        hasher.combine(filter.selectedIds)
-        hasher.combine(forecastDays)
-        hasher.combine(activeProjectionClock.now)
-        return hasher.finalize()
+    private struct SummaryKey: Hashable {
+        let projection: StatsPresentation.ProjectionKey
+        let selectedNotebookIDs: Set<String>
     }
 
-    /// Graph thumbnail refresh trigger. `pullGraphLinks` is an account-level
-    /// API — it returns ALL links regardless of notebook filter — so filter
-    /// changes must NOT invalidate this cache (filter only affects local node
-    /// filtering downstream). `forecastDays` is similarly irrelevant. Auth
+    private var summaryKey: SummaryKey {
+        let inputs = StatsPresentation.Inputs(
+            entries: filteredEntries,
+            reviewRecords: filteredReviewRecords,
+            forecastDays: forecastDays,
+            clock: activeProjectionClock
+        )
+        return SummaryKey(
+            projection: StatsPresentation.projectionKey(for: inputs),
+            selectedNotebookIDs: filter.selectedIds
+        )
+    }
+
+    /// Graph thumbnail refresh trigger. A single notebook filter changes the
+    /// request scope and must invalidate this cache; all/multi-notebook filters
+    /// retain the default request path. `forecastDays` is irrelevant. Auth
     /// toggles and entries.count (new cards may trigger backend link
     /// generation) trigger a re-pull; `retryToken` is bumped by the inline
     /// retry button so users can re-fetch after a network failure without
@@ -281,10 +292,20 @@ struct StatsPresenter: View {
     private var graphKey: Int {
         var hasher = Hasher()
         hasher.combine(syncedEntries.count)
+        let graphLinksRevision = syncedEntries
+            .map { "\($0.id)|\($0.graphLinksJSON)" }
+            .sorted()
+            .joined(separator: "\u{1F}")
+        hasher.combine(graphLinksRevision)
+        hasher.combine(selectedNotebookId)
         hasher.combine(authManager.isLoggedIn)
         hasher.combine(authManager.isDemoMode)
         hasher.combine(retryToken)
         return hasher.finalize()
+    }
+
+    private var selectedNotebookId: String? {
+        KnowledgeGraphNotebookScope.notebookID(for: filter)
     }
 
     // MARK: - Graph Entry
@@ -316,7 +337,10 @@ struct StatsPresenter: View {
             }
         } else {
             NavigationLink {
-                KnowledgeGraphView(allEntries: filteredEntries)
+                KnowledgeGraphView(
+                    allEntries: filteredEntries,
+                    notebookId: selectedNotebookId
+                )
             } label: {
                 VocabCard(padding: 0) {
                     VStack(spacing: 0) {

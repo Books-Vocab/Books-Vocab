@@ -15,13 +15,11 @@ from .types import UsersPayload
 
 
 class NormalizeUsersPayload(Protocol):
-    def __call__(self, users: dict[str, object]) -> tuple[dict[str, object], bool]:
-        ...
+    def __call__(self, users: dict[str, object]) -> tuple[dict[str, object], bool]: ...
 
 
 class DefaultSubscriptionPayload(Protocol):
-    def __call__(self) -> dict[str, object]:
-        ...
+    def __call__(self) -> dict[str, object]: ...
 
 
 def is_real_user(user_id: str, record: Any) -> bool:
@@ -192,7 +190,10 @@ def parse_datetime(raw: Any) -> datetime | None:
         return datetime.fromtimestamp(float(raw), tz=UTC)
     if isinstance(raw, str):
         try:
-            return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(UTC)
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                return parsed.replace(tzinfo=UTC)
+            return parsed.astimezone(UTC)
         except ValueError:
             try:
                 return datetime.fromtimestamp(float(raw), tz=UTC)

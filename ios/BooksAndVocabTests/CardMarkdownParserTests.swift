@@ -13,9 +13,9 @@
 //       collocations / source) for a card.
 //
 //  All expected values were derived by reading the implementations line-by-line
-//  (NOT from any spec) — these pin *actual* behavior, including a deliberately
-//  surprising one: an empty `explanation` does NOT fall back to `translation`
-//  for meaning paragraphs (CardDocumentBuilder.swift:78-80).
+//  (NOT from any spec) — these pin the ordered card-document contract,
+//  including the regression that a translation remains visible when
+//  explanation is empty.
 //
 //  Note: `CardDocumentInline` and `CardDocumentBlock` are NOT Equatable, so the
 //  helpers below pattern-match to extract values / tags rather than `==`.
@@ -59,6 +59,24 @@ import Testing
 
     private func blockTags(_ doc: CardDocument) -> [String] {
         doc.blocks.map(blockTag)
+    }
+
+    private func sourceDocumentBlock(_ doc: CardDocument) -> CardDocumentSource? {
+        for block in doc.blocks {
+            if case .source(let source) = block {
+                return source
+            }
+        }
+        return nil
+    }
+
+    private func meaningTitle(_ doc: CardDocument) -> String? {
+        for block in doc.blocks {
+            if case .meaning(let meaning) = block {
+                return meaning.title
+            }
+        }
+        return nil
     }
 
     // MARK: - parseInlines: plain text & each delimiter
@@ -106,9 +124,11 @@ import Testing
     // MARK: - CardDocumentBuilder.build
 
     private func makeDoc(
-        translation: String = "翻譯",
+        translation: String = "",
         examples: [String] = [],
         sourceContext: String = "",
+        bookTitle: String = "book",
+        chapterTitle: String? = nil,
         explanation: String? = nil,
         collocations: [String] = [],
         showsSourceContext: Bool = false
@@ -121,8 +141,8 @@ import Testing
             reviewModeTitle: "mode",
             examples: examples,
             sourceContext: sourceContext,
-            bookTitle: "book",
-            chapterTitle: nil,
+            bookTitle: bookTitle,
+            chapterTitle: chapterTitle,
             explanation: explanation,
             collocations: collocations,
             showsSourceContext: showsSourceContext
@@ -143,18 +163,17 @@ import Testing
         #expect(blockTags(doc) == ["hero", "divider", "meaning"])
     }
 
-    // Empty-string explanation is trimmed to "" → buildMeaningParagraphs returns []
-    // and does NOT fall back to translation (CardDocumentBuilder.swift:78-80).
-    // So no meaning block even though translation is non-empty. Pins the
-    // deliberately-no-fallback design.
-    @Test func build_emptyExplanation_doesNotFallBackToTranslation() async throws {
+    // Empty explanation still preserves a non-empty translation in the meaning
+    // title, so Word Detail and share text do not lose the card's translation.
+    @Test func build_emptyExplanation_preservesTranslation() async throws {
         let doc = makeDoc(translation: "非空翻譯", explanation: "")
-        #expect(blockTags(doc) == ["hero"])
+        #expect(blockTags(doc) == ["hero", "divider", "meaning"])
+        #expect(meaningTitle(doc) == "非空翻譯")
     }
 
-    // Whitespace-only explanation also trims to "" → no meaning block.
+    // Whitespace-only explanation is still allowed to show a non-empty translation.
     @Test func build_whitespaceExplanation_yieldsNoMeaning() async throws {
-        let doc = makeDoc(explanation: "   \n  ")
+        let doc = makeDoc(translation: "", explanation: "   \n  ")
         #expect(blockTags(doc) == ["hero"])
     }
 
@@ -217,6 +236,65 @@ import Testing
     @Test func build_sourceContextButFlagOff_omitsSource() async throws {
         let doc = makeDoc(sourceContext: "in the book", showsSourceContext: false)
         #expect(blockTags(doc) == ["hero"])
+    }
+
+    @Test func build_withSourceContext_preservesContextBookAndChapter() throws {
+        let source = try #require(
+            sourceDocumentBlock(
+                makeDoc(
+                    sourceContext: "  A **marked** context.  ",
+                    bookTitle: "Book title",
+                    chapterTitle: "Chapter title",
+                    showsSourceContext: true
+                )
+            )
+        )
+        #expect(source.context.rawMarkdown == "A **marked** context.")
+        #expect(source.context.plainText == "A marked context.")
+        #expect(source.bookTitle == "Book title")
+        #expect(source.chapterTitle == "Chapter title")
+    }
+
+    @Test func sourceCopyText_includesPlainContextBeforeBookAndChapter() throws {
+        let source = try #require(
+            sourceDocumentBlock(
+                makeDoc(
+                    sourceContext: "A **marked** context.",
+                    bookTitle: "Book title",
+                    chapterTitle: "Chapter title",
+                    showsSourceContext: true
+                )
+            )
+        )
+
+        #expect(
+            CardDocumentSourceBlock.copyText(for: source)
+                == "A marked context.\nBook title · Chapter title"
+        )
+    }
+
+    @Test func sourceBlock_rendersContextBeforeBookAndChapter() throws {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let sourceURL = testsDirectory
+            .deletingLastPathComponent()
+            .appendingPathComponent("BooksAndVocab/Views/Vocabulary/Components/CardDocumentView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let start = try #require(source.range(of: "struct CardDocumentSourceBlock: View"))
+        let end = try #require(
+            source.range(
+                of: "\nstruct CardDocumentCollocationsBlock: View",
+                range: start.upperBound..<source.endIndex
+            )
+        )
+        let sourceBlock = String(source[start.lowerBound..<end.lowerBound])
+
+        let contextCall = "CardInlineText(paragraph: source.context, style: .source)"
+        let contextPosition = try #require(sourceBlock.range(of: contextCall)?.lowerBound)
+        let bookPosition = try #require(sourceBlock.range(of: "Text(source.bookTitle)")?.lowerBound)
+
+        #expect(contextPosition < bookPosition)
+        #expect(sourceBlock.contains(".lineSpacing(appSkin.metrics.paragraphLineSpacing)"))
+        #expect(sourceBlock.contains("if let chapterTitle = source.chapterTitle"))
     }
 
     // Full assembly ordering: example precedes meaning precedes collocations

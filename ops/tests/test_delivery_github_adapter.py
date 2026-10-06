@@ -1062,32 +1062,748 @@ def test_github_close_rejects_tuple_drift_before_mutation() -> None:
     assert len(runner.calls) == 1
 
 
-def test_github_adapter_dispatches_required_workflow_with_exact_pr_tuple() -> None:
-    runner = StaticRunner([CommandResult(("gh",), 0, "", "")])
+def test_github_adapter_reruns_exact_pull_request_workflow_run() -> None:
+    head_sha = "b" * 40
+    list_command = (
+        "gh",
+        "run",
+        "list",
+        "--workflow",
+        "pr-gate.yml",
+        "--branch",
+        "feat/one",
+        "--event",
+        "pull_request",
+        "--commit",
+        head_sha,
+        "--limit",
+        "20",
+        "--json",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+    )
+    rerun_command = ("gh", "run", "rerun", "12345")
+    runner = StaticRunner(
+        [
+            CommandResult(
+                list_command,
+                0,
+                json.dumps(
+                    [
+                        {
+                            "databaseId": 12345,
+                            "headBranch": "feat/one",
+                            "headSha": head_sha,
+                            "event": "pull_request",
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "createdAt": "2026-08-29T00:00:00Z",
+                        }
+                    ]
+                ),
+                "",
+            ),
+            CommandResult(rerun_command, 0, "", ""),
+        ]
+    )
     adapter = GitHubCliAdapter(runner=runner)
 
     command = adapter.trigger_required(
         number=12,
         branch="feat/one",
         base_sha="a" * 40,
-        head_sha="b" * 40,
+        head_sha=head_sha,
     )
 
-    assert command == (
+    assert command == rerun_command
+    assert runner.calls == [list_command, rerun_command]
+
+
+def test_github_adapter_selects_latest_exact_pull_request_run() -> None:
+    head_sha = "b" * 40
+    list_command = (
         "gh",
-        "workflow",
         "run",
+        "list",
+        "--workflow",
         "pr-gate.yml",
-        "--ref",
+        "--branch",
         "feat/one",
-        "-f",
-        "pr_number=12",
-        "-f",
-        f"base_sha={'a' * 40}",
-        "-f",
-        f"head_sha={'b' * 40}",
+        "--event",
+        "pull_request",
+        "--commit",
+        head_sha,
+        "--limit",
+        "20",
+        "--json",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
     )
-    assert runner.calls == [command]
+    rerun_command = ("gh", "run", "rerun", "12346")
+    runner = StaticRunner(
+        [
+            CommandResult(
+                list_command,
+                0,
+                json.dumps(
+                    [
+                        {
+                            "databaseId": 12345,
+                            "headBranch": "feat/one",
+                            "headSha": head_sha,
+                            "event": "pull_request",
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "createdAt": "2026-08-29T00:00:00Z",
+                        },
+                        {
+                            "databaseId": 12346,
+                            "headBranch": "feat/one",
+                            "headSha": head_sha,
+                            "event": "pull_request",
+                            "status": "completed",
+                            "conclusion": "cancelled",
+                            "createdAt": "2026-08-29T00:01:00Z",
+                        },
+                        {
+                            "databaseId": 12347,
+                            "headBranch": "feat/one",
+                            "headSha": head_sha,
+                            "event": "workflow_dispatch",
+                            "status": "completed",
+                            "conclusion": "success",
+                            "createdAt": "2026-08-29T00:02:00Z",
+                        },
+                    ]
+                ),
+                "",
+            ),
+            CommandResult(rerun_command, 0, "", ""),
+        ]
+    )
+
+    command = GitHubCliAdapter(runner=runner).trigger_required(
+        number=12,
+        branch="feat/one",
+        base_sha="a" * 40,
+        head_sha=head_sha,
+    )
+
+    assert command == rerun_command
+    assert runner.calls == [list_command, rerun_command]
+
+
+def test_github_adapter_refuses_required_rerun_without_exact_pull_request_run() -> None:
+    head_sha = "b" * 40
+    list_command = (
+        "gh",
+        "run",
+        "list",
+        "--workflow",
+        "pr-gate.yml",
+        "--branch",
+        "feat/one",
+        "--event",
+        "pull_request",
+        "--commit",
+        head_sha,
+        "--limit",
+        "20",
+        "--json",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+    )
+    runner = StaticRunner(
+        [
+            CommandResult(
+                list_command,
+                0,
+                json.dumps(
+                    [
+                        {
+                            "databaseId": 12347,
+                            "headBranch": "feat/one",
+                            "headSha": head_sha,
+                            "event": "workflow_dispatch",
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "createdAt": "2026-08-29T00:00:00Z",
+                        }
+                    ]
+                ),
+                "",
+            )
+        ]
+    )
+
+    with pytest.raises(AdapterPayloadError, match="no exact pull_request"):
+        GitHubCliAdapter(runner=runner).trigger_required(
+            number=12,
+            branch="feat/one",
+            base_sha="a" * 40,
+            head_sha=head_sha,
+        )
+
+    assert runner.calls == [list_command]
+
+
+def test_github_adapter_refuses_duplicate_required_rerun_while_run_is_active() -> None:
+    head_sha = "b" * 40
+    list_command = (
+        "gh",
+        "run",
+        "list",
+        "--workflow",
+        "pr-gate.yml",
+        "--branch",
+        "feat/one",
+        "--event",
+        "pull_request",
+        "--commit",
+        head_sha,
+        "--limit",
+        "20",
+        "--json",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+    )
+    runner = StaticRunner(
+        [
+            CommandResult(
+                list_command,
+                0,
+                json.dumps(
+                    [
+                        {
+                            "databaseId": 12345,
+                            "headBranch": "feat/one",
+                            "headSha": head_sha,
+                            "event": "pull_request",
+                            "status": "in_progress",
+                            "conclusion": None,
+                            "createdAt": "2026-08-29T00:00:00Z",
+                        }
+                    ]
+                ),
+                "",
+            )
+        ]
+    )
+
+    with pytest.raises(AdapterPayloadError, match="still active"):
+        GitHubCliAdapter(runner=runner).trigger_required(
+            number=12,
+            branch="feat/one",
+            base_sha="a" * 40,
+            head_sha=head_sha,
+        )
+
+    assert runner.calls == [list_command]
+
+
+def test_github_adapter_recovers_stale_queued_exact_run() -> None:
+    head_sha = "b" * 40
+    list_command = (
+        "gh",
+        "run",
+        "list",
+        "--workflow",
+        "pr-gate.yml",
+        "--branch",
+        "feat/one",
+        "--event",
+        "pull_request",
+        "--commit",
+        head_sha,
+        "--limit",
+        "20",
+        "--json",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+    )
+    cancel_command = ("gh", "run", "cancel", "--force", "12345")
+    rerun_command = ("gh", "run", "rerun", "12345")
+    runner = StaticRunner(
+        [
+            CommandResult(
+                list_command,
+                0,
+                json.dumps(
+                    [
+                        {
+                            "databaseId": 12345,
+                            "headBranch": "feat/one",
+                            "headSha": head_sha,
+                            "event": "pull_request",
+                            "status": "queued",
+                            "conclusion": None,
+                            "createdAt": "2020-01-01T00:00:00Z",
+                        }
+                    ]
+                ),
+                "",
+            ),
+            CommandResult(cancel_command, 0, "", ""),
+            CommandResult(
+                list_command,
+                0,
+                json.dumps(
+                    [
+                        {
+                            "databaseId": 12345,
+                            "headBranch": "feat/one",
+                            "headSha": head_sha,
+                            "event": "pull_request",
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "createdAt": "2020-01-01T00:00:00Z",
+                        }
+                    ]
+                ),
+                "",
+            ),
+            CommandResult(rerun_command, 0, "", ""),
+        ]
+    )
+
+    command = GitHubCliAdapter(runner=runner).trigger_required(
+        number=12,
+        branch="feat/one",
+        base_sha="a" * 40,
+        head_sha=head_sha,
+    )
+
+    assert command == rerun_command
+    assert runner.calls == [list_command, cancel_command, list_command, rerun_command]
+
+
+def test_github_adapter_retries_cancel_race_until_exact_run_is_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    head_sha = "b" * 40
+    list_command = (
+        "gh",
+        "run",
+        "list",
+        "--workflow",
+        "pr-gate.yml",
+        "--branch",
+        "feat/one",
+        "--event",
+        "pull_request",
+        "--commit",
+        head_sha,
+        "--limit",
+        "20",
+        "--json",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+    )
+    cancel_command = ("gh", "run", "cancel", "--force", "12345")
+    rerun_command = ("gh", "run", "rerun", "12345")
+    queued_payload = json.dumps(
+        [
+            {
+                "databaseId": 12345,
+                "headBranch": "feat/one",
+                "headSha": head_sha,
+                "event": "pull_request",
+                "status": "queued",
+                "conclusion": None,
+                "createdAt": "2020-01-01T00:00:00Z",
+            }
+        ]
+    )
+    completed_payload = json.dumps(
+        [
+            {
+                "databaseId": 12345,
+                "headBranch": "feat/one",
+                "headSha": head_sha,
+                "event": "pull_request",
+                "status": "completed",
+                "conclusion": "failure",
+                "createdAt": "2020-01-01T00:00:00Z",
+            }
+        ]
+    )
+    runner = StaticRunner(
+        [
+            CommandResult(list_command, 0, queued_payload, ""),
+            CommandResult(
+                cancel_command,
+                1,
+                "",
+                "Cannot cancel a workflow run that is completed",
+            ),
+            CommandResult(list_command, 0, queued_payload, ""),
+            CommandResult(list_command, 0, completed_payload, ""),
+            CommandResult(rerun_command, 0, "", ""),
+        ]
+    )
+
+    monkeypatch.setattr(github_commands.time, "sleep", lambda _: None)
+    command = GitHubCliAdapter(runner=runner).trigger_required(
+        number=12,
+        branch="feat/one",
+        base_sha="a" * 40,
+        head_sha=head_sha,
+    )
+
+    assert command == rerun_command
+    assert runner.calls == [
+        list_command,
+        cancel_command,
+        list_command,
+        list_command,
+        rerun_command,
+    ]
+
+
+def test_github_adapter_reads_exact_run_view_after_stale_cancel_race(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    head_sha = "b" * 40
+    list_command = (
+        "gh",
+        "run",
+        "list",
+        "--workflow",
+        "pr-gate.yml",
+        "--branch",
+        "feat/one",
+        "--event",
+        "pull_request",
+        "--commit",
+        head_sha,
+        "--limit",
+        "20",
+        "--json",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+    )
+    cancel_command = ("gh", "run", "cancel", "--force", "12345")
+    view_command = (
+        "gh",
+        "run",
+        "view",
+        "12345",
+        "--json",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+    )
+    rerun_command = ("gh", "run", "rerun", "12345")
+    queued_payload = json.dumps(
+        [
+            {
+                "databaseId": 12345,
+                "headBranch": "feat/one",
+                "headSha": head_sha,
+                "event": "pull_request",
+                "status": "queued",
+                "conclusion": None,
+                "createdAt": "2020-01-01T00:00:00Z",
+            }
+        ]
+    )
+    terminal_payload = json.dumps(
+        {
+            "databaseId": 12345,
+            "headBranch": "feat/one",
+            "headSha": head_sha,
+            "event": "pull_request",
+            "status": "completed",
+            "conclusion": "failure",
+            "createdAt": "2020-01-01T00:00:00Z",
+        }
+    )
+    runner = StaticRunner(
+        [
+            CommandResult(list_command, 0, queued_payload, ""),
+            CommandResult(
+                cancel_command,
+                1,
+                "",
+                "Cannot cancel a workflow run that is completed",
+            ),
+            CommandResult(list_command, 0, queued_payload, ""),
+            CommandResult(list_command, 0, queued_payload, ""),
+            CommandResult(list_command, 0, queued_payload, ""),
+            CommandResult(view_command, 0, terminal_payload, ""),
+            CommandResult(rerun_command, 0, "", ""),
+        ]
+    )
+
+    monkeypatch.setattr(github_commands.time, "sleep", lambda _: None)
+    command = GitHubCliAdapter(runner=runner).trigger_required(
+        number=12,
+        branch="feat/one",
+        base_sha="a" * 40,
+        head_sha=head_sha,
+    )
+
+    assert command == rerun_command
+    assert runner.calls == [
+        list_command,
+        cancel_command,
+        list_command,
+        list_command,
+        list_command,
+        view_command,
+        rerun_command,
+    ]
+
+
+def test_github_adapter_keeps_cancel_race_fail_closed_if_run_view_stays_active(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    head_sha = "b" * 40
+    list_command = (
+        "gh",
+        "run",
+        "list",
+        "--workflow",
+        "pr-gate.yml",
+        "--branch",
+        "feat/one",
+        "--event",
+        "pull_request",
+        "--commit",
+        head_sha,
+        "--limit",
+        "20",
+        "--json",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+    )
+    cancel_command = ("gh", "run", "cancel", "--force", "12345")
+    view_command = (
+        "gh",
+        "run",
+        "view",
+        "12345",
+        "--json",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+    )
+    queued_payload = json.dumps(
+        {
+            "databaseId": 12345,
+            "headBranch": "feat/one",
+            "headSha": head_sha,
+            "event": "pull_request",
+            "status": "queued",
+            "conclusion": None,
+            "createdAt": "2020-01-01T00:00:00Z",
+        }
+    )
+    runner = StaticRunner(
+        [
+            CommandResult(
+                list_command,
+                0,
+                json.dumps([json.loads(queued_payload)]),
+                "",
+            ),
+            CommandResult(
+                cancel_command,
+                1,
+                "",
+                "Cannot cancel a workflow run that is completed",
+            ),
+            CommandResult(
+                list_command,
+                0,
+                json.dumps([json.loads(queued_payload)]),
+                "",
+            ),
+            CommandResult(
+                list_command,
+                0,
+                json.dumps([json.loads(queued_payload)]),
+                "",
+            ),
+            CommandResult(
+                list_command,
+                0,
+                json.dumps([json.loads(queued_payload)]),
+                "",
+            ),
+            CommandResult(view_command, 0, queued_payload, ""),
+            CommandResult(view_command, 0, queued_payload, ""),
+            CommandResult(view_command, 0, queued_payload, ""),
+        ]
+    )
+
+    monkeypatch.setattr(github_commands.time, "sleep", lambda _: None)
+    with pytest.raises(
+        AdapterPayloadError, match="authoritative exact.*remained active"
+    ):
+        GitHubCliAdapter(runner=runner).trigger_required(
+            number=12,
+            branch="feat/one",
+            base_sha="a" * 40,
+            head_sha=head_sha,
+        )
+
+    assert runner.calls == [
+        list_command,
+        cancel_command,
+        list_command,
+        list_command,
+        list_command,
+        view_command,
+        view_command,
+        view_command,
+    ]
+
+
+def test_github_adapter_does_not_cancel_recent_queued_exact_run() -> None:
+    head_sha = "b" * 40
+    list_command = (
+        "gh",
+        "run",
+        "list",
+        "--workflow",
+        "pr-gate.yml",
+        "--branch",
+        "feat/one",
+        "--event",
+        "pull_request",
+        "--commit",
+        head_sha,
+        "--limit",
+        "20",
+        "--json",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+    )
+    runner = StaticRunner(
+        [
+            CommandResult(
+                list_command,
+                0,
+                json.dumps(
+                    [
+                        {
+                            "databaseId": 12345,
+                            "headBranch": "feat/one",
+                            "headSha": head_sha,
+                            "event": "pull_request",
+                            "status": "queued",
+                            "conclusion": None,
+                            "createdAt": "2099-01-01T00:00:00Z",
+                        }
+                    ]
+                ),
+                "",
+            )
+        ]
+    )
+
+    with pytest.raises(AdapterPayloadError, match="still active"):
+        GitHubCliAdapter(runner=runner).trigger_required(
+            number=12,
+            branch="feat/one",
+            base_sha="a" * 40,
+            head_sha=head_sha,
+        )
+
+    assert runner.calls == [list_command]
+
+
+def test_github_adapter_keeps_stale_run_fail_closed_if_cancel_does_not_finish() -> None:
+    head_sha = "b" * 40
+    list_command = (
+        "gh",
+        "run",
+        "list",
+        "--workflow",
+        "pr-gate.yml",
+        "--branch",
+        "feat/one",
+        "--event",
+        "pull_request",
+        "--commit",
+        head_sha,
+        "--limit",
+        "20",
+        "--json",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+    )
+    cancel_command = ("gh", "run", "cancel", "--force", "12345")
+    queued_payload = json.dumps(
+        [
+            {
+                "databaseId": 12345,
+                "headBranch": "feat/one",
+                "headSha": head_sha,
+                "event": "pull_request",
+                "status": "queued",
+                "conclusion": None,
+                "createdAt": "2020-01-01T00:00:00Z",
+            }
+        ]
+    )
+    runner = StaticRunner(
+        [
+            CommandResult(list_command, 0, queued_payload, ""),
+            CommandResult(cancel_command, 0, "", ""),
+            CommandResult(list_command, 0, queued_payload, ""),
+        ]
+    )
+
+    with pytest.raises(AdapterPayloadError, match="remained active"):
+        GitHubCliAdapter(runner=runner).trigger_required(
+            number=12,
+            branch="feat/one",
+            base_sha="a" * 40,
+            head_sha=head_sha,
+        )
+
+    assert runner.calls == [list_command, cancel_command, list_command]
+
+
+def test_github_adapter_refuses_duplicate_rerun_after_exact_success() -> None:
+    head_sha = "b" * 40
+    list_command = (
+        "gh",
+        "run",
+        "list",
+        "--workflow",
+        "pr-gate.yml",
+        "--branch",
+        "feat/one",
+        "--event",
+        "pull_request",
+        "--commit",
+        head_sha,
+        "--limit",
+        "20",
+        "--json",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+    )
+    runner = StaticRunner(
+        [
+            CommandResult(
+                list_command,
+                0,
+                json.dumps(
+                    [
+                        {
+                            "databaseId": 12345,
+                            "headBranch": "feat/one",
+                            "headSha": head_sha,
+                            "event": "pull_request",
+                            "status": "completed",
+                            "conclusion": "success",
+                            "createdAt": "2026-08-29T00:00:00Z",
+                        }
+                    ]
+                ),
+                "",
+            )
+        ]
+    )
+
+    with pytest.raises(AdapterPayloadError, match="already succeeded"):
+        GitHubCliAdapter(runner=runner).trigger_required(
+            number=12,
+            branch="feat/one",
+            base_sha="a" * 40,
+            head_sha=head_sha,
+        )
+
+    assert runner.calls == [list_command]
 
 
 def test_github_adapter_dispatches_readiness_after_exact_metadata_publish() -> None:
@@ -1115,30 +1831,57 @@ def test_github_adapter_dispatches_readiness_after_exact_metadata_publish() -> N
     assert runner.calls == [command]
 
 
-def test_github_adapter_reports_required_workflow_dispatch_failure() -> None:
-    argv = (
+def test_github_adapter_reports_required_workflow_rerun_failure() -> None:
+    head_sha = "b" * 40
+    list_command = (
         "gh",
-        "workflow",
         "run",
+        "list",
+        "--workflow",
         "pr-gate.yml",
-        "--ref",
+        "--branch",
         "feat/one",
-        "-f",
-        "pr_number=12",
-        "-f",
-        f"base_sha={'a' * 40}",
-        "-f",
-        f"head_sha={'b' * 40}",
+        "--event",
+        "pull_request",
+        "--commit",
+        head_sha,
+        "--limit",
+        "20",
+        "--json",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
     )
-    runner = StaticRunner([CommandResult(argv, 1, "", "workflow dispatch rejected")])
+    rerun_command = ("gh", "run", "rerun", "12345")
+    runner = StaticRunner(
+        [
+            CommandResult(
+                list_command,
+                0,
+                json.dumps(
+                    [
+                        {
+                            "databaseId": 12345,
+                            "headBranch": "feat/one",
+                            "headSha": head_sha,
+                            "event": "pull_request",
+                            "status": "completed",
+                            "conclusion": "failure",
+                            "createdAt": "2026-08-29T00:00:00Z",
+                        }
+                    ]
+                ),
+                "",
+            ),
+            CommandResult(rerun_command, 1, "", "workflow rerun rejected"),
+        ]
+    )
 
     with pytest.raises(
         AdapterCommandError,
-        match=r"gh workflow run pr-gate\.yml.*workflow dispatch rejected",
+        match=r"gh run rerun 12345.*workflow rerun rejected",
     ):
         GitHubCliAdapter(runner=runner).trigger_required(
             number=12,
             branch="feat/one",
             base_sha="a" * 40,
-            head_sha="b" * 40,
+            head_sha=head_sha,
         )

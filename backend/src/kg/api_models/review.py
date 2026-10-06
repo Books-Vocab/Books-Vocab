@@ -1,18 +1,35 @@
 from __future__ import annotations
 
+import math
+
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ReviewStateEntry(BaseModel):
     word: str
     card_id: str | None = None  # precise matching; falls back to word if absent
-    review_interval_hours: float = Field(ge=0)
+    review_interval_hours: float = Field(ge=0, allow_inf_nan=False)
     next_review_at: str  # ISO8601
     last_reviewed_at: str  # ISO8601
     review_count: int = Field(ge=0)
     lapse_count: int = Field(ge=0)
     review_streak: int = Field(ge=0)
     last_review_feedback: int = Field(ge=-1, le=1)
+
+    @field_validator("review_interval_hours", mode="before")
+    @classmethod
+    def _replace_non_finite_interval_for_validation(cls, value: object) -> object:
+        # Keep the validation error JSON-safe so the API can return its normal 422.
+        if isinstance(value, float) and not math.isfinite(value):
+            return -1.0
+        return value
+
+    @field_validator("review_count", "lapse_count", "review_streak", mode="before")
+    @classmethod
+    def _reject_boolean_counter_values(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError("review counters must be integers")
+        return value
 
 
 class ReviewStatePushRequest(BaseModel):
@@ -54,8 +71,33 @@ class ReviewEventEntry(BaseModel):
         return event_id
 
 
+class ReviewEventPushEntry(ReviewEventEntry):
+    """Validated review-event input; output entries remain legacy-compatible."""
+
+    interval_before: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    interval_after: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    review_count_after: int | None = Field(default=None, ge=0)
+    streak_after: int | None = Field(default=None, ge=0)
+    lapse_after: int | None = Field(default=None, ge=0)
+
+    @field_validator("interval_before", "interval_after", mode="before")
+    @classmethod
+    def _replace_non_finite_interval_for_validation(cls, value: object) -> object:
+        # Keep the validation error JSON-safe so the API can return its normal 422.
+        if isinstance(value, float) and not math.isfinite(value):
+            return -1.0
+        return value
+
+    @field_validator("review_count_after", "streak_after", "lapse_after", mode="before")
+    @classmethod
+    def _reject_boolean_srs_counter_values(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError("review event SRS counters must be integers")
+        return value
+
+
 class ReviewEventsPushRequest(BaseModel):
-    entries: list[ReviewEventEntry] = Field(max_length=10000)
+    entries: list[ReviewEventPushEntry] = Field(max_length=10000)
 
 
 class ReviewEventsPushResponse(BaseModel):

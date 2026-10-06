@@ -52,6 +52,22 @@ class RegistryCleanupQueryPort(Protocol):
 
 
 @runtime_checkable
+class RegistryPublishedClaimQueryPort(Protocol):
+    """Find one current published claim without requiring its old generation."""
+
+    def find_published_claim(
+        self,
+        *,
+        lane_id: str,
+        branch: str,
+        path: Path,
+        owner_thread_id: str,
+        head_sha: str,
+        scope: Scope,
+    ) -> RegistrySnapshot | None: ...
+
+
+@runtime_checkable
 class RegistryTerminalQueryPort(Protocol):
     def find_terminal_claim(
         self, *, branch: str

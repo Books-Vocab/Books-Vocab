@@ -3,6 +3,7 @@
 Split into responsibility-focused submodules; this package re-exports every
 public name so callers (``routers/vocab.py``) need no changes.
 """
+
 from __future__ import annotations
 
 from ._shared import _resolve_stores
@@ -13,8 +14,8 @@ from .crud import (
     delete_word_response,
     list_vocab_response,
     lookup_word_response,
-    update_word_preferences_response,
     update_word_content_response,
+    update_word_preferences_response,
 )
 from .graph import (
     create_manual_link_response,

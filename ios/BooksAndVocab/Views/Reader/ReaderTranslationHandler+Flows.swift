@@ -10,6 +10,7 @@ extension ReaderTranslationHandler {
         isExpanded = false
         isPanelLarge = false
         explanationText = nil
+        isLoadingExplanation = false
         explanationStatus = nil
         translationErrorMessage = nil
         explanationErrorMessage = nil

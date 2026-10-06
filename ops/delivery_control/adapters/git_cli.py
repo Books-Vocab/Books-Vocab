@@ -99,6 +99,20 @@ class GitCliAdapter:
     def diff_fingerprint(self, base_sha: str, head_sha: str) -> str:
         return self._queries.diff_fingerprint(base_sha, head_sha)
 
+    def is_whitespace_normalized_patch_equivalent(
+        self,
+        previous_base_sha: str,
+        previous_head_sha: str,
+        current_base_sha: str,
+        current_head_sha: str,
+    ) -> bool:
+        return self._queries.is_whitespace_normalized_patch_equivalent(
+            previous_base_sha,
+            previous_head_sha,
+            current_base_sha,
+            current_head_sha,
+        )
+
     def inspect_branch_content(
         self,
         *,

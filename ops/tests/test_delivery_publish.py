@@ -27,6 +27,7 @@ from delivery_control.domain.observations import (
     RegistrySnapshot,
     WorktreeSnapshot,
 )
+from delivery_control.domain.policies import evaluate_publication
 from delivery_control.services.pr_contract import (
     parse_pull_request_body,
     render_pull_request_body,
@@ -159,11 +160,16 @@ class FakeGit:
         remote_sha: str | None = None,
         canonical_branch: str = "main",
         canonical_clean: bool = True,
+        ancestor_pairs: tuple[tuple[str, str], ...] = (),
+        ancestor_error: str | None = None,
     ) -> None:
         self.snapshot = snapshot or _worktree(receipt)
         self.remote_sha = remote_sha
         self.canonical_branch = canonical_branch
         self.canonical_clean = canonical_clean
+        self.ancestor_pairs = frozenset(ancestor_pairs)
+        self.ancestor_error = ancestor_error
+        self.ancestor_calls: list[tuple[str, str]] = []
         self.push_calls: list[tuple[str | None, str]] = []
         self.on_push: object | None = None
 
@@ -181,6 +187,19 @@ class FakeGit:
     def remote_branch_sha(self, branch: str) -> str | None:
         return self.remote_sha
 
+    def is_ancestor(self, ancestor_sha: str, descendant_sha: str) -> bool:
+        self.ancestor_calls.append((ancestor_sha, descendant_sha))
+        if self.ancestor_error is not None:
+            raise DeliverySourceError(self.ancestor_error)
+        return (
+            ancestor_sha == descendant_sha
+            or (
+                ancestor_sha,
+                descendant_sha,
+            )
+            in self.ancestor_pairs
+        )
+
     def push_branch(
         self,
         *,
@@ -196,6 +215,56 @@ class FakeGit:
         if callable(self.on_push):
             self.on_push(expected_local_sha)
         return expected_local_sha
+
+
+class FingerprintGit(FakeGit):
+    def __init__(
+        self,
+        receipt: HandbackReceipt,
+        *,
+        fingerprints: dict[tuple[str, str], str],
+        **kwargs: object,
+    ) -> None:
+        super().__init__(receipt, **kwargs)  # type: ignore[arg-type]
+        self.fingerprints = fingerprints
+        self.diff_fingerprint_calls: list[tuple[str, str]] = []
+
+    def diff_fingerprint(self, base_sha: str, head_sha: str) -> str:
+        self.diff_fingerprint_calls.append((base_sha, head_sha))
+        return self.fingerprints[(base_sha, head_sha)]
+
+
+class WhitespaceNormalizedFingerprintGit(FingerprintGit):
+    def __init__(
+        self,
+        receipt: HandbackReceipt,
+        *,
+        fingerprints: dict[tuple[str, str], str],
+        normalized_equivalence: bool | Exception,
+        **kwargs: object,
+    ) -> None:
+        super().__init__(receipt, fingerprints=fingerprints, **kwargs)
+        self.normalized_equivalence = normalized_equivalence
+        self.normalized_equivalence_calls: list[tuple[str, str, str, str]] = []
+
+    def is_whitespace_normalized_patch_equivalent(
+        self,
+        previous_base_sha: str,
+        previous_head_sha: str,
+        current_base_sha: str,
+        current_head_sha: str,
+    ) -> bool:
+        self.normalized_equivalence_calls.append(
+            (
+                previous_base_sha,
+                previous_head_sha,
+                current_base_sha,
+                current_head_sha,
+            )
+        )
+        if isinstance(self.normalized_equivalence, Exception):
+            raise self.normalized_equivalence
+        return self.normalized_equivalence
 
 
 class FakeGitHub:
@@ -310,6 +379,78 @@ def _service(
     )
 
 
+def _non_ancestor_reanchor_service(
+    *,
+    fingerprints: tuple[str, str] | None = None,
+    normalized_equivalence: bool | Exception | None = None,
+) -> tuple[HandbackReceipt, HandbackReceipt, PublishService, FakeGit, FakeGitHub]:
+    old_base = "1" * 40
+    new_base = "2" * 40
+    scope = Scope.from_paths(
+        modify=(
+            "ops/delivery_control/services/publish_preflight.py",
+            "ops/tests/test_delivery_publish.py",
+        )
+    )
+    previous = _receipt(
+        claim_generation=2,
+        base_sha=old_base,
+        parent_sha=old_base,
+        origin_main_sha=old_base,
+        head_sha=OLD_HEAD,
+        scope=scope,
+    )
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        base_sha=new_base,
+        parent_sha=new_base,
+        origin_main_sha=new_base,
+        head_sha=HEAD,
+        scope=scope,
+    )
+    pull_request = _pull_request(
+        previous,
+        title="old title",
+        body=render_pull_request_body(previous),
+    )
+    worktree = _worktree(
+        receipt,
+        changes=tuple(FileChange(FileOperation.MODIFY, path) for path in scope.paths),
+    )
+    git_kwargs = {
+        "snapshot": worktree,
+        "remote_sha": previous.head_sha,
+        "ancestor_pairs": ((previous.base_sha, receipt.base_sha),),
+    }
+    if fingerprints is None:
+        git: FakeGit = FakeGit(receipt, **git_kwargs)  # type: ignore[arg-type]
+    else:
+        fingerprint_values = {
+            (previous.base_sha, previous.head_sha): fingerprints[0],
+            (receipt.base_sha, receipt.head_sha): fingerprints[1],
+        }
+        if normalized_equivalence is None:
+            git = FingerprintGit(
+                receipt,
+                fingerprints=fingerprint_values,
+                **git_kwargs,  # type: ignore[arg-type]
+            )
+        else:
+            git = WhitespaceNormalizedFingerprintGit(
+                receipt,
+                fingerprints=fingerprint_values,
+                normalized_equivalence=normalized_equivalence,
+                **git_kwargs,  # type: ignore[arg-type]
+            )
+    github = FakeGitHub(
+        receipt,
+        pull_request=pull_request,
+        changed_paths=scope.paths,
+    )
+    service, _, github = _service(receipt, git=git, github=github)
+    return previous, receipt, service, git, github
+
+
 def test_active_legacy_handback_normalizes_to_durable_receipt() -> None:
     receipt = _receipt()
     record = _registry(
@@ -319,6 +460,135 @@ def test_active_legacy_handback_normalizes_to_durable_receipt() -> None:
     )
 
     assert receipt_from_active_claim(record, _worktree(receipt)) == receipt
+
+
+def test_active_handback_allows_declared_scope_subset() -> None:
+    receipt = _receipt(scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")))
+    record = _registry(
+        receipt,
+        handback_digest=receipt.content_digest,
+        handback_origin_main_sha=receipt.origin_main_sha,
+    )
+    snapshot = _worktree(
+        receipt,
+        changes=(FileChange(FileOperation.MODIFY, "ops/a.py"),),
+    )
+
+    assert receipt_from_active_claim(record, snapshot) == receipt
+
+
+def test_active_handback_rejects_actual_path_outside_declared_scope() -> None:
+    receipt = _receipt(scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")))
+    record = _registry(
+        receipt,
+        handback_digest=receipt.content_digest,
+        handback_origin_main_sha=receipt.origin_main_sha,
+    )
+    snapshot = _worktree(
+        receipt,
+        changes=(
+            FileChange(FileOperation.MODIFY, "ops/a.py"),
+            FileChange(FileOperation.MODIFY, "ops/other.py"),
+        ),
+    )
+
+    with pytest.raises(PolicyViolation, match="physical worktree differs"):
+        receipt_from_active_claim(record, snapshot)
+
+
+def test_publication_allows_nonempty_declared_scope_subset() -> None:
+    receipt = _receipt(scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")))
+
+    decision = evaluate_publication(
+        receipt=receipt,
+        registry=_registry(receipt),
+        worktree=_worktree(
+            receipt,
+            changes=(FileChange(FileOperation.MODIFY, "ops/a.py"),),
+        ),
+        duplicate_pr=False,
+        scope_collision=False,
+    )
+
+    assert decision.allowed
+    assert decision.reasons == ()
+
+
+def test_publication_rejects_empty_physical_changes() -> None:
+    receipt = _receipt()
+
+    decision = evaluate_publication(
+        receipt=receipt,
+        registry=_registry(receipt),
+        worktree=_worktree(receipt, changes=()),
+        duplicate_pr=False,
+        scope_collision=False,
+    )
+
+    assert not decision.allowed
+    assert "physical operations or paths differ from Scope" in decision.reasons
+
+
+def test_publication_rejects_actual_path_outside_declared_scope() -> None:
+    receipt = _receipt(scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")))
+
+    decision = evaluate_publication(
+        receipt=receipt,
+        registry=_registry(receipt),
+        worktree=_worktree(
+            receipt,
+            changes=(
+                FileChange(FileOperation.MODIFY, "ops/a.py"),
+                FileChange(FileOperation.MODIFY, "ops/other.py"),
+            ),
+        ),
+        duplicate_pr=False,
+        scope_collision=False,
+    )
+
+    assert not decision.allowed
+    assert "physical operations or paths differ from Scope" in decision.reasons
+
+
+def test_publication_rejects_operation_drift() -> None:
+    receipt = _receipt()
+
+    decision = evaluate_publication(
+        receipt=receipt,
+        registry=_registry(receipt),
+        worktree=_worktree(
+            receipt,
+            changes=(FileChange(FileOperation.ADD, "ops/a.py"),),
+        ),
+        duplicate_pr=False,
+        scope_collision=False,
+    )
+
+    assert not decision.allowed
+    assert "physical operations or paths differ from Scope" in decision.reasons
+
+
+def test_publication_accepts_exact_declared_scope_changes() -> None:
+    receipt = _receipt(
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+
+    decision = evaluate_publication(
+        receipt=receipt,
+        registry=_registry(receipt),
+        worktree=_worktree(
+            receipt,
+            changes=(
+                FileChange(FileOperation.MODIFY, "ops/a.py"),
+                FileChange(FileOperation.MODIFY, "ops/b.py"),
+            ),
+        ),
+        duplicate_pr=False,
+        scope_collision=False,
+    )
+
+    assert decision.allowed
+    assert decision.reasons == ()
 
 
 @pytest.mark.parametrize(
@@ -692,6 +962,811 @@ def test_existing_pr_scope_may_grow_after_same_owner_reanchor() -> None:
     )
 
 
+def test_partial_publication_accepts_existing_pr_declared_scope_subset_after_reanchor() -> (
+    None
+):
+    """A reanchored PR may declare a file that is unchanged in its current patch."""
+
+    scope = Scope.from_paths(
+        modify=(
+            "ops/delivery_control/services/publish_preflight.py",
+            "ops/tests/test_delivery_publish.py",
+        )
+    )
+    previous = _receipt(
+        claim_generation=2,
+        head_sha=OLD_HEAD,
+        scope=scope,
+    )
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        scope=scope,
+    )
+    pull_request = replace(
+        _pull_request(
+            previous,
+            title="fix: delivery",
+            body=render_pull_request_body(previous),
+        ),
+        number=1889,
+    )
+    changed_path = "ops/delivery_control/services/publish_preflight.py"
+    worktree = _worktree(
+        receipt,
+        changes=(FileChange(FileOperation.MODIFY, changed_path),),
+    )
+    service, git, github = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=worktree,
+            remote_sha=previous.head_sha,
+            ancestor_pairs=((previous.head_sha, receipt.head_sha),),
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=pull_request,
+            changed_paths=(changed_path,),
+        ),
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert git.push_calls == [(previous.head_sha, receipt.head_sha)]
+    assert github.create_calls == 0
+    assert github.update_calls == 1
+    assert parse_pull_request_body(result.pull_request.body) == receipt
+
+
+def test_partial_publication_accepts_patch_equivalent_non_ancestor_head() -> None:
+    previous, receipt, service, git, github = _non_ancestor_reanchor_service(
+        fingerprints=("equivalent", "equivalent")
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert git.push_calls == [(previous.head_sha, receipt.head_sha)]
+    assert github.create_calls == 0
+    assert github.update_calls == 1
+    assert isinstance(git, FingerprintGit)
+    assert git.diff_fingerprint_calls == [
+        (previous.base_sha, previous.head_sha),
+        (receipt.base_sha, receipt.head_sha),
+    ]
+    assert parse_pull_request_body(result.pull_request.body) == receipt
+
+
+def test_partial_publication_accepts_whitespace_normalized_non_ancestor_head() -> None:
+    previous, receipt, service, git, github = _non_ancestor_reanchor_service(
+        fingerprints=("old-byte-content", "new-byte-content"),
+        normalized_equivalence=True,
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert git.push_calls == [(previous.head_sha, receipt.head_sha)]
+    assert github.create_calls == 0
+    assert github.update_calls == 1
+    assert isinstance(git, WhitespaceNormalizedFingerprintGit)
+    assert git.normalized_equivalence_calls == [
+        (
+            previous.base_sha,
+            previous.head_sha,
+            receipt.base_sha,
+            receipt.head_sha,
+        )
+    ]
+
+
+def test_partial_publication_rejects_non_equivalent_without_normalized_capability() -> (
+    None
+):
+    _, receipt, service, git, github = _non_ancestor_reanchor_service(
+        fingerprints=("old-content", "new-content")
+    )
+
+    with pytest.raises(
+        PolicyViolation,
+        match="whitespace-normalized patch equivalence capability is unavailable",
+    ):
+        service.publish(receipt=receipt, title="fix: delivery")
+
+    assert git.push_calls == []
+    assert github.update_calls == 0
+
+
+def test_partial_publication_rejects_semantic_non_ancestor_delta() -> None:
+    _, receipt, service, git, github = _non_ancestor_reanchor_service(
+        fingerprints=("old-byte-content", "new-byte-content"),
+        normalized_equivalence=False,
+    )
+
+    with pytest.raises(PolicyViolation, match="patch-equivalent"):
+        service.publish(receipt=receipt, title="fix: delivery")
+
+    assert git.push_calls == []
+    assert github.update_calls == 0
+
+
+def test_partial_publication_does_not_use_normalized_capability_for_out_of_scope_change() -> (
+    None
+):
+    previous, receipt, service, git, github = _non_ancestor_reanchor_service(
+        fingerprints=("old-byte-content", "new-byte-content"),
+        normalized_equivalence=True,
+    )
+    assert github.pull_request is not None
+    git.snapshot = _worktree(
+        receipt,
+        changes=(
+            FileChange(FileOperation.MODIFY, receipt.scope.paths[0]),
+            FileChange(FileOperation.MODIFY, "ops/out-of-scope.py"),
+        ),
+    )
+
+    with pytest.raises(PolicyViolation, match="physical operations or paths"):
+        service.publish(receipt=receipt, title="fix: delivery")
+
+    assert isinstance(git, WhitespaceNormalizedFingerprintGit)
+    assert git.normalized_equivalence_calls == []
+    assert previous.head_sha == github.pull_request.head_sha
+    assert git.push_calls == []
+    assert github.update_calls == 0
+
+
+def test_partial_publication_does_not_use_normalized_capability_for_identity_mismatch() -> (
+    None
+):
+    previous, receipt, service, git, github = _non_ancestor_reanchor_service(
+        fingerprints=("old-byte-content", "new-byte-content"),
+        normalized_equivalence=True,
+    )
+    assert github.pull_request is not None
+    github.pull_request = replace(
+        github.pull_request,
+        body=render_pull_request_body(
+            replace(previous, owner_thread_id="different-owner")
+        ),
+    )
+
+    with pytest.raises(
+        PolicyViolation, match="existing PR handback owner or lane differs"
+    ):
+        service.publish(receipt=receipt, title="fix: delivery")
+
+    assert isinstance(git, WhitespaceNormalizedFingerprintGit)
+    assert git.normalized_equivalence_calls == []
+    assert git.push_calls == []
+    assert github.update_calls == 0
+
+
+def test_partial_publication_rejects_unverifiable_whitespace_normalized_delta() -> None:
+    _, receipt, service, git, github = _non_ancestor_reanchor_service(
+        fingerprints=("old-byte-content", "new-byte-content"),
+        normalized_equivalence=DeliverySourceError("range-diff failed"),
+    )
+
+    with pytest.raises(
+        PolicyViolation,
+        match="whitespace-normalized patch equivalence could not be verified",
+    ):
+        service.publish(receipt=receipt, title="fix: delivery")
+
+    assert git.push_calls == []
+    assert github.update_calls == 0
+
+
+def test_partial_publication_rejects_non_ancestor_without_fingerprint_capability() -> (
+    None
+):
+    _, receipt, service, git, github = _non_ancestor_reanchor_service()
+
+    with pytest.raises(PolicyViolation, match="fingerprint capability is unavailable"):
+        service.publish(receipt=receipt, title="fix: delivery")
+
+    assert git.push_calls == []
+    assert github.update_calls == 0
+
+
+def test_partial_publication_can_reconcile_owner_scope_to_exact_pr_paths() -> None:
+    """A PR created before scope-set must be recoverable without a duplicate PR."""
+
+    previous = _receipt(
+        claim_generation=2,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py", "ops/c.py")),
+    )
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    pull_request = _pull_request(
+        previous,
+        title="fix: delivery",
+        body=render_pull_request_body(previous),
+    )
+    service, _, github = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=_worktree(
+                receipt,
+                changes=(
+                    FileChange(FileOperation.MODIFY, "ops/a.py"),
+                    FileChange(FileOperation.MODIFY, "ops/b.py"),
+                ),
+            ),
+            remote_sha=receipt.head_sha,
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=pull_request,
+            changed_paths=receipt.scope.paths,
+        ),
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert github.create_calls == 0
+    assert github.update_calls == 1
+    assert parse_pull_request_body(result.pull_request.body) == receipt
+
+
+def test_partial_publication_reconciles_stale_scope_when_remote_head_is_ancestor() -> (
+    None
+):
+    """A stale body may follow a fast-forwarded same-owner PR when the new diff is exact."""
+
+    previous = _receipt(
+        claim_generation=2,
+        head_sha=OLD_HEAD,
+        scope=Scope.from_paths(
+            modify=("ops/a.py", "ops/b.py", "ops/stale.py"),
+        ),
+    )
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    pull_request = _pull_request(
+        previous,
+        title="old title",
+        body=render_pull_request_body(previous),
+    )
+    service, git, github = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=_worktree(
+                receipt,
+                changes=(
+                    FileChange(FileOperation.MODIFY, "ops/a.py"),
+                    FileChange(FileOperation.MODIFY, "ops/b.py"),
+                ),
+            ),
+            remote_sha=previous.head_sha,
+            ancestor_pairs=((previous.head_sha, receipt.head_sha),),
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=pull_request,
+            changed_paths=receipt.scope.paths,
+        ),
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert git.push_calls == [(previous.head_sha, receipt.head_sha)]
+    assert github.create_calls == 0
+    assert github.update_calls == 1
+    assert parse_pull_request_body(result.pull_request.body) == receipt
+
+
+def test_partial_publication_reconciles_stale_body_scope_with_typed_addition() -> None:
+    """Observed PR paths survive while stale body-only paths are replaced."""
+
+    observed_paths = (
+        "ios/BooksAndVocabTests/TranslationLanguageTests.swift",
+        "ios/BooksAndVocabTests/TranslationLanguageDefaultTests.swift",
+    )
+    stale_body_only_path = "ios/BooksAndVocab/Services/TranslationLanguage.swift"
+    new_typed_path = "ops/tests/test_delivery_publish.py"
+    previous = _receipt(
+        claim_generation=2,
+        head_sha=OLD_HEAD,
+        scope=Scope.from_paths(
+            modify=(*observed_paths, stale_body_only_path),
+        ),
+    )
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        scope=Scope.from_paths(modify=(*observed_paths, new_typed_path)),
+    )
+    pull_request = _pull_request(
+        previous,
+        title="old title",
+        body=render_pull_request_body(previous),
+    )
+    worktree = _worktree(
+        receipt,
+        changes=tuple(
+            FileChange(FileOperation.MODIFY, path) for path in receipt.scope.paths
+        ),
+    )
+    service, git, github = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=worktree,
+            remote_sha=previous.head_sha,
+            ancestor_pairs=((previous.head_sha, receipt.head_sha),),
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=pull_request,
+            changed_paths=observed_paths,
+        ),
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert git.push_calls == [(previous.head_sha, receipt.head_sha)]
+    assert github.create_calls == 0
+    assert github.update_calls == 1
+    assert parse_pull_request_body(result.pull_request.body) == receipt
+
+
+def test_partial_publication_requires_exact_diff_for_typed_scope_addition() -> None:
+    observed_paths = (
+        "ios/BooksAndVocabTests/TranslationLanguageTests.swift",
+        "ios/BooksAndVocabTests/TranslationLanguageDefaultTests.swift",
+    )
+    previous = _receipt(
+        claim_generation=2,
+        head_sha=OLD_HEAD,
+        scope=Scope.from_paths(
+            modify=(
+                *observed_paths,
+                "ios/BooksAndVocab/Services/TranslationLanguage.swift",
+            ),
+        ),
+    )
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        scope=Scope.from_paths(
+            modify=(*observed_paths, "ops/tests/test_delivery_publish.py"),
+        ),
+    )
+    pull_request = _pull_request(
+        previous,
+        body=render_pull_request_body(previous),
+    )
+    service, git, github = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=_worktree(
+                receipt,
+                changes=tuple(
+                    FileChange(FileOperation.MODIFY, path) for path in observed_paths
+                ),
+            ),
+            remote_sha=previous.head_sha,
+            ancestor_pairs=((previous.head_sha, receipt.head_sha),),
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=pull_request,
+            changed_paths=observed_paths,
+        ),
+    )
+
+    with pytest.raises(PolicyViolation, match="exactly match"):
+        service.publish(receipt=receipt, title="fix: delivery")
+
+    assert git.push_calls == []
+    assert github.update_calls == 0
+
+
+def test_partial_publication_reconciles_when_pr_base_already_matches_current_main() -> (
+    None
+):
+    """A stale body tuple may advance when PR metadata already has the new base."""
+
+    previous = _receipt(
+        claim_generation=2,
+        head_sha=OLD_HEAD,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    current_base = "f" * 40
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        base_sha=current_base,
+        parent_sha=current_base,
+        origin_main_sha=current_base,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    pull_request = replace(
+        _pull_request(previous, body=render_pull_request_body(previous)),
+        number=1669,
+        base_sha=current_base,
+        head_sha=previous.head_sha,
+    )
+    assert previous.base_sha != pull_request.base_sha
+    assert previous.head_sha == pull_request.head_sha
+    assert previous.head_sha != receipt.head_sha
+    service, git, github = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=_worktree(
+                receipt,
+                changes=(
+                    FileChange(FileOperation.MODIFY, "ops/a.py"),
+                    FileChange(FileOperation.MODIFY, "ops/b.py"),
+                ),
+            ),
+            remote_sha=previous.head_sha,
+            ancestor_pairs=(
+                (previous.base_sha, receipt.base_sha),
+                (previous.head_sha, receipt.head_sha),
+            ),
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=pull_request,
+            changed_paths=receipt.scope.paths,
+        ),
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert git.push_calls == [(previous.head_sha, receipt.head_sha)]
+    assert github.create_calls == 0
+    assert github.update_calls == 1
+    assert parse_pull_request_body(result.pull_request.body) == receipt
+
+
+def test_partial_publication_reconciles_when_existing_pr_base_is_ancestor_of_live() -> (
+    None
+):
+    """A same-owner PR on an older main can advance to the fresh handback base."""
+
+    existing_pr_base = "20ffc03ad12b09ecb0731d85bd89322a7132d564"
+    live_main = "4d844fc8126b900afab582bd5b0fa1a5e786e212"
+    scope = Scope.from_paths(
+        modify=(
+            "ops/delivery_control/services/publish_preflight.py",
+            "ops/tests/test_delivery_publish.py",
+        )
+    )
+    previous = _receipt(
+        claim_generation=2,
+        base_sha=existing_pr_base,
+        parent_sha=existing_pr_base,
+        origin_main_sha=existing_pr_base,
+        head_sha=OLD_HEAD,
+        scope=scope,
+    )
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        base_sha=live_main,
+        parent_sha=live_main,
+        origin_main_sha=live_main,
+        scope=scope,
+    )
+    pull_request = _pull_request(
+        previous,
+        title="old title",
+        body=render_pull_request_body(previous),
+    )
+    worktree = _worktree(
+        receipt,
+        changes=tuple(FileChange(FileOperation.MODIFY, path) for path in scope.paths),
+    )
+    service, git, github = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=worktree,
+            remote_sha=previous.head_sha,
+            ancestor_pairs=(
+                (existing_pr_base, live_main),
+                (previous.head_sha, receipt.head_sha),
+            ),
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=pull_request,
+            changed_paths=scope.paths,
+        ),
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert git.push_calls == [(previous.head_sha, receipt.head_sha)]
+    assert github.create_calls == 0
+    assert github.update_calls == 1
+    assert parse_pull_request_body(result.pull_request.body) == receipt
+
+
+@pytest.mark.parametrize(
+    ("ancestor_pairs", "worktree_changes", "message"),
+    (
+        (
+            (),
+            (
+                FileChange(FileOperation.MODIFY, "ops/a.py"),
+                FileChange(FileOperation.MODIFY, "ops/b.py"),
+            ),
+            "fingerprint capability",
+        ),
+        (
+            ((OLD_HEAD, HEAD),),
+            (FileChange(FileOperation.MODIFY, "ops/a.py"),),
+            "exactly match",
+        ),
+    ),
+)
+def test_partial_publication_refuses_unverified_head_or_current_scope(
+    ancestor_pairs: tuple[tuple[str, str], ...],
+    worktree_changes: tuple[FileChange, ...],
+    message: str,
+) -> None:
+    previous = _receipt(
+        claim_generation=2,
+        head_sha=OLD_HEAD,
+        scope=Scope.from_paths(
+            modify=("ops/a.py", "ops/b.py", "ops/stale.py"),
+        ),
+    )
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    pull_request = _pull_request(previous, body=render_pull_request_body(previous))
+    service, git, github = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=_worktree(receipt, changes=worktree_changes),
+            remote_sha=previous.head_sha,
+            ancestor_pairs=ancestor_pairs,
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=pull_request,
+            changed_paths=receipt.scope.paths,
+        ),
+    )
+
+    with pytest.raises(PolicyViolation, match=message):
+        service.publish(receipt=receipt, title="fix: delivery")
+
+    assert git.push_calls == []
+    assert github.update_calls == 0
+
+
+@pytest.mark.parametrize("mismatch", ("owner", "lane", "branch"))
+def test_partial_publication_refuses_previous_pr_identity_mismatch(
+    mismatch: str,
+) -> None:
+    previous = _receipt(
+        claim_generation=2,
+        head_sha=OLD_HEAD,
+        scope=Scope.from_paths(
+            modify=("ops/a.py", "ops/b.py", "ops/stale.py"),
+        ),
+    )
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    if mismatch == "owner":
+        previous = replace(previous, owner_thread_id="other-thread")
+    elif mismatch == "lane":
+        previous = replace(previous, lane_id="OTHER-LANE")
+    else:
+        previous = replace(previous, branch="other-branch")
+    pull_request = _pull_request(previous, body=render_pull_request_body(previous))
+    if mismatch == "branch":
+        pull_request = replace(pull_request, branch=receipt.branch)
+    service, git, github = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=_worktree(
+                receipt,
+                changes=(
+                    FileChange(FileOperation.MODIFY, "ops/a.py"),
+                    FileChange(FileOperation.MODIFY, "ops/b.py"),
+                ),
+            ),
+            remote_sha=previous.head_sha,
+            ancestor_pairs=((previous.head_sha, receipt.head_sha),),
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=pull_request,
+            changed_paths=receipt.scope.paths,
+        ),
+    )
+
+    with pytest.raises(
+        PolicyViolation, match="existing PR handback owner or lane differs"
+    ):
+        service.publish(receipt=receipt, title="fix: delivery")
+
+    assert git.push_calls == []
+    assert github.update_calls == 0
+
+
+def test_partial_publication_allows_pr_base_descendant_of_handback_base() -> None:
+    """A GitHub-created PR may target a newer main than the typed handback base."""
+
+    current_main = "6" * 40
+    previous = _receipt(
+        claim_generation=2,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py", "ops/c.py")),
+    )
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    pull_request = replace(
+        _pull_request(
+            previous,
+            title="fix: delivery",
+            body=render_pull_request_body(previous),
+        ),
+        base_sha=current_main,
+        head_sha=receipt.head_sha,
+    )
+    service, _, github = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=_worktree(
+                receipt,
+                changes=(
+                    FileChange(FileOperation.MODIFY, "ops/a.py"),
+                    FileChange(FileOperation.MODIFY, "ops/b.py"),
+                ),
+            ),
+            remote_sha=receipt.head_sha,
+            ancestor_pairs=((receipt.base_sha, current_main),),
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=pull_request,
+            changed_paths=receipt.scope.paths,
+        ),
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.UPDATED
+    assert github.create_calls == 0
+    assert github.update_calls == 1
+    assert parse_pull_request_body(result.pull_request.body) == receipt
+
+
+@pytest.mark.parametrize(
+    ("ancestor_pairs", "ancestor_error", "message"),
+    (
+        ((), None, "unrelated"),
+        ((), "git ancestry unavailable", "ancestry"),
+    ),
+)
+def test_partial_publication_refuses_unverified_pr_base(
+    ancestor_pairs: tuple[tuple[str, str], ...],
+    ancestor_error: str | None,
+    message: str,
+) -> None:
+    current_main = "6" * 40
+    previous = _receipt(
+        claim_generation=2,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py", "ops/c.py")),
+    )
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    pull_request = replace(
+        _pull_request(
+            previous,
+            title="fix: delivery",
+            body=render_pull_request_body(previous),
+        ),
+        base_sha=current_main,
+        head_sha=receipt.head_sha,
+    )
+    service, git, github = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=_worktree(
+                receipt,
+                changes=(
+                    FileChange(FileOperation.MODIFY, "ops/a.py"),
+                    FileChange(FileOperation.MODIFY, "ops/b.py"),
+                ),
+            ),
+            remote_sha=receipt.head_sha,
+            ancestor_pairs=ancestor_pairs,
+            ancestor_error=ancestor_error,
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=pull_request,
+            changed_paths=receipt.scope.paths,
+        ),
+    )
+
+    with pytest.raises(PolicyViolation, match=message):
+        service.publish(receipt=receipt, title="fix: delivery")
+
+    assert git.push_calls == []
+    assert github.update_calls == 0
+
+
+def test_partial_publication_refuses_pr_base_older_than_handback_base() -> None:
+    current_main = "6" * 40
+    previous = _receipt(
+        claim_generation=2,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py", "ops/c.py")),
+    )
+    receipt = _receipt(
+        claim_generation=previous.claim_generation + 1,
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    pull_request = replace(
+        _pull_request(
+            previous,
+            title="fix: delivery",
+            body=render_pull_request_body(previous),
+        ),
+        base_sha=current_main,
+        head_sha=receipt.head_sha,
+    )
+    service, git, github = _service(
+        receipt,
+        git=FakeGit(
+            receipt,
+            snapshot=_worktree(
+                receipt,
+                changes=(
+                    FileChange(FileOperation.MODIFY, "ops/a.py"),
+                    FileChange(FileOperation.MODIFY, "ops/b.py"),
+                ),
+            ),
+            remote_sha=receipt.head_sha,
+            ancestor_pairs=(
+                (current_main, previous.base_sha),
+                (current_main, receipt.base_sha),
+            ),
+        ),
+        github=FakeGitHub(
+            receipt,
+            pull_request=pull_request,
+            changed_paths=receipt.scope.paths,
+        ),
+    )
+
+    with pytest.raises(PolicyViolation, match="unrelated"):
+        service.publish(receipt=receipt, title="fix: delivery")
+
+    assert git.push_calls == []
+    assert github.update_calls == 0
+
+
 def test_partial_push_can_be_retried_to_repair_the_exact_pr_body() -> None:
     new_base = "f" * 40
     new_head = "9" * 40
@@ -719,6 +1794,7 @@ def test_partial_push_can_be_retried_to_repair_the_exact_pr_body() -> None:
             receipt,
             snapshot=_worktree(receipt),
             remote_sha=new_head,
+            ancestor_pairs=((previous.base_sha, new_base),),
         ),
         github=FakeGitHub(
             receipt,
@@ -759,6 +1835,7 @@ def test_partial_push_recovery_requires_remote_head_to_match() -> None:
             receipt,
             snapshot=_worktree(receipt),
             remote_sha=previous.head_sha,
+            ancestor_pairs=((previous.base_sha, new_base),),
         ),
         github=FakeGitHub(receipt, pull_request=partial),
     )

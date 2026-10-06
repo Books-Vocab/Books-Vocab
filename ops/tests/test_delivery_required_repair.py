@@ -44,7 +44,9 @@ def _receipt() -> HandbackReceipt:
     )
 
 
-def _record(receipt: HandbackReceipt) -> RegistrySnapshot:
+def _record(
+    receipt: HandbackReceipt, *, published_base_sha: str | None = None
+) -> RegistrySnapshot:
     return RegistrySnapshot(
         lane_id=receipt.lane_id,
         branch=receipt.branch,
@@ -53,6 +55,7 @@ def _record(receipt: HandbackReceipt) -> RegistrySnapshot:
         scope=receipt.scope,
         base_sha=receipt.base_sha,
         claim_generation=receipt.claim_generation,
+        published_base_sha=published_base_sha,
         owner_thread_id=receipt.owner_thread_id,
         handed_back_sha=receipt.head_sha,
         handback_claim_generation=receipt.claim_generation,
@@ -62,13 +65,15 @@ def _record(receipt: HandbackReceipt) -> RegistrySnapshot:
     )
 
 
-def _pull_request(receipt: HandbackReceipt) -> PullRequestSnapshot:
+def _pull_request(
+    receipt: HandbackReceipt, *, base_sha: str | None = None
+) -> PullRequestSnapshot:
     holds = frozenset({HoldKind.SECURITY})
     return PullRequestSnapshot(
         number=17,
         url="https://example.test/pull/17",
         branch=receipt.branch,
-        base_sha=receipt.base_sha,
+        base_sha=base_sha or receipt.base_sha,
         head_sha=receipt.head_sha,
         state="OPEN",
         draft=False,
@@ -95,10 +100,11 @@ class FakeGitHub:
         pull_request: PullRequestSnapshot,
         *,
         statuses: tuple[CheckStatus, ...],
+        changed_paths: tuple[str, ...] = ("ops/a.py",),
     ) -> None:
         self.pull_request = pull_request
         self.statuses = list(statuses)
-        self.paths = ("ops/a.py",)
+        self.paths = changed_paths
         self.mapping = (pull_request,)
         self.dispatches: list[tuple[int, str, str, str]] = []
         self.get_reads = 0
@@ -163,6 +169,55 @@ def test_required_repair_dispatches_only_repairable_statuses(
     assert result.merge_eligibility_assessed is False
     assert registry.reads >= 2
     assert github.get_reads >= 2
+
+
+def test_required_repair_accepts_recorded_published_target_base() -> None:
+    target_base = "d" * 40
+    receipt = _receipt()
+    registry = FakeRegistry(_record(receipt, published_base_sha=target_base))
+    github = FakeGitHub(
+        _pull_request(receipt, base_sha=target_base),
+        statuses=(CheckStatus.ABSENT, CheckStatus.ABSENT),
+    )
+    service = RequiredRepairService(registry=registry, query=github, command=github)
+
+    service.trigger(17)
+
+    assert github.dispatches == [(17, "feat/required", target_base, HEAD)]
+
+
+def test_required_repair_accepts_actual_changed_paths_as_scope_subset() -> None:
+    receipt = replace(
+        _receipt(),
+        scope=Scope.from_paths(modify=("ops/a.py", "ops/b.py")),
+    )
+    registry = FakeRegistry(_record(receipt))
+    github = FakeGitHub(
+        _pull_request(receipt),
+        statuses=(CheckStatus.ABSENT, CheckStatus.ABSENT),
+        changed_paths=("ops/a.py",),
+    )
+    service = RequiredRepairService(registry=registry, query=github, command=github)
+
+    service.trigger(17)
+
+    assert github.dispatches == [(17, "feat/required", BASE, HEAD)]
+
+
+def test_required_repair_rejects_unrecorded_published_target_base_drift() -> None:
+    target_base = "d" * 40
+    receipt = _receipt()
+    registry = FakeRegistry(_record(receipt, published_base_sha=target_base))
+    github = FakeGitHub(
+        _pull_request(receipt),
+        statuses=(CheckStatus.ABSENT, CheckStatus.ABSENT),
+    )
+    service = RequiredRepairService(registry=registry, query=github, command=github)
+
+    with pytest.raises(PolicyViolation, match="PR tuple differs"):
+        service.trigger(17)
+
+    assert github.dispatches == []
 
 
 @pytest.mark.parametrize("status", [CheckStatus.PENDING, CheckStatus.SUCCESS])
@@ -249,6 +304,6 @@ def test_pr_gate_manual_dispatch_is_exact_sha_only() -> None:
     assert "HEAD^" not in workflow
     assert "EVENT_SHA: ${{ github.sha }}" in workflow
     assert 'if [[ "$EVENT_SHA" != "$HEAD_SHA" ]]' in workflow
-    assert "git diff --check \"$BASE_SHA\" \"$HEAD_SHA\"" in workflow
+    assert 'git diff --check "$BASE_SHA" "$HEAD_SHA"' in workflow
     assert workflow.count("ref: ${{ env.HEAD_SHA }}") == 3
     assert workflow.count("Verify exact head checkout") == 3

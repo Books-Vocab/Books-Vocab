@@ -1,3 +1,5 @@
+import Foundation
+import SwiftData
 import Testing
 @testable import BooksAndVocab
 
@@ -11,6 +13,71 @@ import Testing
 /// per-card visibility flags 的組合不可漂移。
 @Suite("VocabularyEntry state predicates")
 struct VocabularyEntryStateTests {
+
+    @Test("封存排序對相同單字使用穩定 UUID tie-breaker")
+    func archivedQueryUsesStableUUIDTieBreakerAcrossPersistenceOrder() throws {
+        let source = try Self.archivedSheetSource()
+        #expect(
+            source.contains("SortDescriptor<VocabularyEntry>(\\VocabularyEntry.word)") &&
+                source.contains("SortDescriptor<VocabularyEntry>(\\VocabularyEntry.id)"),
+            "ArchivedVocabSheet query must sort equal words by stable id"
+        )
+
+        let firstID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+        let secondID = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+        let orderAB = try Self.persistedArchivedIDs(inserting: [firstID, secondID])
+        let orderBA = try Self.persistedArchivedIDs(inserting: [secondID, firstID])
+
+        #expect(orderAB == orderBA)
+        #expect(orderAB == [firstID, secondID])
+    }
+
+    private static func archivedSheetSource() throws -> String {
+        let testFileURL = URL(fileURLWithPath: #filePath)
+        let iosRootURL = testFileURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let sourceURL = iosRootURL
+            .appendingPathComponent("BooksAndVocab/Views/Vocabulary/Scenes/ArchivedVocabSheet.swift")
+        return try String(contentsOf: sourceURL, encoding: .utf8)
+    }
+
+    private static func persistedArchivedIDs(inserting ids: [UUID]) throws -> [UUID] {
+        let configuration = ModelConfiguration(
+            isStoredInMemoryOnly: true,
+            cloudKitDatabase: .none
+        )
+        let container = try ModelContainer(
+            for: VocabularyEntry.self,
+            configurations: configuration
+        )
+        let context = ModelContext(container)
+
+        for (index, id) in ids.enumerated() {
+            let entry = VocabularyEntry(
+                word: "duplicate",
+                translation: "翻譯",
+                context: "ctx",
+                bookTitle: "book"
+            )
+            entry.id = id
+            entry.notebookId = index == 0 ? "notebook-a" : "notebook-b"
+            entry.syncStatus = VocabularySyncState.synced.rawValue
+            entry.actionType = VocabularySyncAction.add.rawValue
+            entry.isArchived = true
+            context.insert(entry)
+        }
+        try context.save()
+
+        let descriptor = FetchDescriptor<VocabularyEntry>(
+            predicate: #Predicate<VocabularyEntry> { $0.isArchived == true },
+            sortBy: [
+                SortDescriptor(\VocabularyEntry.word),
+                SortDescriptor(\VocabularyEntry.id)
+            ]
+        )
+        return try context.fetch(descriptor).map(\.id)
+    }
 
     /// 建一筆 entry 並覆寫 sync 狀態欄位（init 預設 syncStatus=0/add/未封存）。
     private func entry(

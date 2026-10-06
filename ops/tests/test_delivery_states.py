@@ -282,7 +282,9 @@ def test_publication_policy_does_not_require_current_base_or_local_quality() -> 
     ).allowed
 
 
-def _registry(receipt: HandbackReceipt) -> RegistrySnapshot:
+def _registry(
+    receipt: HandbackReceipt, *, published_base_sha: str | None = None
+) -> RegistrySnapshot:
     return RegistrySnapshot(
         lane_id=receipt.lane_id,
         branch=receipt.branch,
@@ -295,6 +297,7 @@ def _registry(receipt: HandbackReceipt) -> RegistrySnapshot:
         handed_back_sha=receipt.head_sha,
         handback_claim_generation=receipt.claim_generation,
         handback_valid=True,
+        published_base_sha=published_base_sha,
     )
 
 
@@ -351,6 +354,92 @@ def test_merge_policy_requires_exact_live_base_required_success_and_no_hold() ->
     assert not stale.allowed
     assert "stale" in " ".join(stale.reasons)
     assert not held.allowed
+
+
+def test_merge_policy_uses_published_pr_target_after_handback_base_advances() -> None:
+    receipt = _receipt(base_sha="a" * 40)
+    pull_request = PullRequestSnapshot(
+        number=1,
+        url="https://example.test/pull/1",
+        branch=receipt.branch,
+        base_sha="c" * 40,
+        head_sha=receipt.head_sha,
+        state="OPEN",
+        draft=False,
+        mergeable=True,
+    )
+    decision = evaluate_merge_gate(
+        pull_request=pull_request,
+        receipt=receipt,
+        registry=_registry(receipt, published_base_sha="c" * 40),
+        live_main_sha="c" * 40,
+        required=CheckSnapshot(
+            status=CheckStatus.SUCCESS,
+            head_sha=receipt.head_sha,
+            observed_at=datetime(2026, 8, 21, tzinfo=UTC),
+            names=("required",),
+        ),
+    )
+
+    assert decision.allowed
+
+
+def test_merge_policy_rejects_published_pr_target_that_is_not_live() -> None:
+    receipt = _receipt(base_sha="a" * 40)
+    pull_request = PullRequestSnapshot(
+        number=1,
+        url="https://example.test/pull/1",
+        branch=receipt.branch,
+        base_sha="c" * 40,
+        head_sha=receipt.head_sha,
+        state="OPEN",
+        draft=False,
+        mergeable=True,
+    )
+    decision = evaluate_merge_gate(
+        pull_request=pull_request,
+        receipt=receipt,
+        registry=_registry(receipt, published_base_sha="b" * 40),
+        live_main_sha="c" * 40,
+        required=CheckSnapshot(
+            status=CheckStatus.SUCCESS,
+            head_sha=receipt.head_sha,
+            observed_at=datetime(2026, 8, 21, tzinfo=UTC),
+            names=("required",),
+        ),
+    )
+
+    assert not decision.allowed
+    assert "stale" in " ".join(decision.reasons)
+
+
+def test_merge_policy_requires_published_target_for_stale_handback() -> None:
+    receipt = _receipt(base_sha="a" * 40)
+    pull_request = PullRequestSnapshot(
+        number=1,
+        url="https://example.test/pull/1",
+        branch=receipt.branch,
+        base_sha="c" * 40,
+        head_sha=receipt.head_sha,
+        state="OPEN",
+        draft=False,
+        mergeable=True,
+    )
+    decision = evaluate_merge_gate(
+        pull_request=pull_request,
+        receipt=receipt,
+        registry=_registry(receipt),
+        live_main_sha="c" * 40,
+        required=CheckSnapshot(
+            status=CheckStatus.SUCCESS,
+            head_sha=receipt.head_sha,
+            observed_at=datetime(2026, 8, 21, tzinfo=UTC),
+            names=("required",),
+        ),
+    )
+
+    assert not decision.allowed
+    assert "stale" in " ".join(decision.reasons)
 
 
 def test_merge_policy_rejects_success_from_another_head() -> None:

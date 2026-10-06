@@ -37,6 +37,23 @@ def test_lifecycle_reuses_switches_resets_and_reopens(tmp_path: Path):
     assert reopened.execute("SELECT 1").fetchone() == (1,)
 
 
+def test_lifecycle_reuses_connection_for_equivalent_paths(tmp_path: Path):
+    from kg.sqlite_lifecycle import SQLiteLifecycle
+
+    lifecycle = SQLiteLifecycle()
+    database_dir = tmp_path / "nested"
+    database_dir.mkdir()
+    (database_dir / "child").mkdir()
+    canonical_path = database_dir / "lifecycle.db"
+    equivalent_path = database_dir / "child" / ".." / "lifecycle.db"
+
+    first = lifecycle.get_connection(canonical_path, _init_schema)
+    second = lifecycle.get_connection(equivalent_path, _init_schema)
+
+    assert second is first
+    assert first.execute("SELECT 1").fetchone() == (1,)
+
+
 def test_lifecycle_serializes_concurrent_first_open(tmp_path: Path):
     from kg.sqlite_lifecycle import SQLiteLifecycle
 
@@ -57,17 +74,28 @@ def _write_log_entry(module_name: str, suffix: str) -> None:
         from kg import judge_log
 
         judge_log.record(
-            user_id="u1", notebook_id="nb", from_id=f"from-{suffix}",
-            to_id="to", similarity=0.5, verdict="accept", confidence=0.9,
+            user_id="u1",
+            notebook_id="nb",
+            from_id=f"from-{suffix}",
+            to_id="to",
+            similarity=0.5,
+            verdict="accept",
+            confidence=0.9,
             accepted=True,
         )
     elif module_name == "kg.translate_log":
         from kg import translate_log
 
         translate_log.record(
-            user_id="u1", operation="translate", word=f"word-{suffix}",
-            context="", context_hash=suffix, source_lang="en",
-            target_lang="zh-Hant", response_raw="{}", latency_ms=1,
+            user_id="u1",
+            operation="translate",
+            word=f"word-{suffix}",
+            context="",
+            context_hash=suffix,
+            source_lang="en",
+            target_lang="zh-Hant",
+            response_raw="{}",
+            latency_ms=1,
         )
     elif module_name == "kg.pipeline_log":
         from kg import pipeline_log
@@ -81,8 +109,12 @@ def _write_log_entry(module_name: str, suffix: str) -> None:
         from kg import podcast_progress
 
         podcast_progress.upsert(
-            user_id="u1", series_id=f"series-{suffix}", ep_num=1,
-            position_sec=1, duration_sec=2, updated_at="2026-01-01T00:00:00Z",
+            user_id="u1",
+            series_id=f"series-{suffix}",
+            ep_num=1,
+            position_sec=1,
+            duration_sec=2,
+            updated_at="2026-01-01T00:00:00Z",
         )
     elif module_name == "kg.llm_error_log":
         from kg import llm_error_log

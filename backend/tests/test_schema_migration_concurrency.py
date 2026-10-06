@@ -44,8 +44,7 @@ def _schema_snapshot(path: Path) -> tuple[tuple[str, str, str | None], ...]:
     with closing(sqlite3.connect(path)) as conn:
         return tuple(
             conn.execute(
-                "SELECT type, name, sql FROM sqlite_master "
-                "WHERE type IN ('table', 'index') ORDER BY type, name"
+                "SELECT type, name, sql FROM sqlite_master WHERE type IN ('table', 'index') ORDER BY type, name"
             ).fetchall()
         )
 
@@ -55,6 +54,11 @@ def test_sqlite_schema_helpers_close_connections(tmp_path: Path):
     with closing(sqlite3.connect(path)) as conn:
         conn.execute("CREATE TABLE legacy_log (id INTEGER PRIMARY KEY)")
 
+    # Other backend tests may leave SQLAlchemy-owned connections pending until
+    # cyclic garbage collection.  Drain those diagnostics before measuring the
+    # connection owned by _columns so this assertion is isolated from suite
+    # ordering while still proving the helper closes its own connection.
+    gc.collect()
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always", ResourceWarning)
         _columns(path, "legacy_log")
@@ -148,12 +152,7 @@ def test_card_legacy_migration_is_safe_with_two_independent_stores(tmp_path: Pat
             "promoted_at",
         }.isdisjoint(columns)
         with closing(sqlite3.connect(path)) as conn:
-            tables = {
-                row[0]
-                for row in conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type = 'table'"
-                )
-            }
+            tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert {
             "dictionary_entry",
             "lexical_operations",

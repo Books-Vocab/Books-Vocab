@@ -1,7 +1,9 @@
 """Contract tests for account erasure of object-backed library assets."""
+
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -9,6 +11,7 @@ import pytest
 from fastapi import HTTPException
 from sqlmodel import Session
 
+from kg import podcast_progress
 from kg.account_erasure import delete_account_assets
 from kg.library.store import LibraryBook, LibraryStore
 from kg.user_handlers import delete_user_account_response
@@ -33,10 +36,7 @@ class _FakeObjectClient:
     def delete_object(self, *, Bucket: str, Key: str):  # noqa: N803
         self.calls.append(Key)
         self.directory_states.append(
-            {
-                uid: (self.data_dir / "users" / uid).exists()
-                for uid in ("canonical", "linked1")
-            }
+            {uid: (self.data_dir / "users" / uid).exists() for uid in ("canonical", "linked1")}
         )
         if Key in self.missing:
             raise _NoSuchKey(Key)
@@ -106,6 +106,73 @@ def _linked_users() -> dict:
         "canonical": {"linked_ids": ["linked1"], "config": {}},
         "linked1": {"_linked_to": "canonical", "config": {}},
     }
+
+
+def test_delete_account_removes_global_podcast_progress_for_canonical_and_linked_users(isolated_api):
+    canonical_id = isolated_api.user_id
+    linked_id = "linked_progress_user"
+    other_id = "other_user"
+
+    users = json.loads(isolated_api.users_file.read_text())
+    users[canonical_id]["linked_ids"] = [linked_id]
+    users[linked_id] = {"_linked_to": canonical_id, "config": {}}
+    isolated_api.users_file.write_text(json.dumps(users))
+
+    # The fixture's cache was not necessarily populated, but make the test
+    # independent of that implementation detail before the HTTP request.
+    from kg.api import app
+
+    app.state.user_store.invalidate()
+
+    for user_id, series_id in (
+        (canonical_id, "canonical-series"),
+        (linked_id, "linked-series"),
+        (other_id, "other-series"),
+    ):
+        podcast_progress.upsert(
+            user_id=user_id,
+            series_id=series_id,
+            ep_num=1,
+            position_sec=10.0,
+            duration_sec=100.0,
+            updated_at="2026-09-01T00:00:00+00:00",
+        )
+
+    deleted = isolated_api.client.delete("/api/user/account", headers=isolated_api.headers)
+
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json()["deleted_user_id"] == canonical_id
+    assert deleted.json()["linked_ids"] == [linked_id]
+
+    with sqlite3.connect(isolated_api.data_dir / "podcast_progress.db") as conn:
+        rows = conn.execute(
+            "SELECT user_id, COUNT(*) FROM podcast_progress GROUP BY user_id ORDER BY user_id"
+        ).fetchall()
+
+    assert rows == [(other_id, 1)]
+
+    # Preserve the existing account-deletion auth semantics on re-entry.
+    retry = isolated_api.client.delete("/api/user/account", headers=isolated_api.headers)
+    assert retry.status_code == 401
+
+
+def test_delete_for_users_is_idempotent_and_user_scoped(tmp_path):
+    podcast_progress.set_data_dir(tmp_path)
+
+    for user_id in ("deleted", "other"):
+        podcast_progress.upsert(
+            user_id=user_id,
+            series_id=f"{user_id}-series",
+            ep_num=1,
+            position_sec=10.0,
+            duration_sec=100.0,
+            updated_at="2026-09-01T00:00:00+00:00",
+        )
+
+    assert podcast_progress.delete_for_users(["deleted", "deleted"]) == 1
+    assert podcast_progress.delete_for_users(["deleted"]) == 0
+    assert podcast_progress.list_for_user(user_id="deleted") == []
+    assert [item["series_id"] for item in podcast_progress.list_for_user(user_id="other")] == ["other-series"]
 
 
 def test_all_primary_and_linked_object_keys_are_deleted_before_local_data(tmp_path):

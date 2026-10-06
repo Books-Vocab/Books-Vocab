@@ -117,7 +117,16 @@ struct ExploreFilter: Equatable {
                 }
             }
         case .alphabetical:
-            result.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+            result.sort { lhs, rhs in
+                switch lhs.title.localizedCaseInsensitiveCompare(rhs.title) {
+                case .orderedAscending:
+                    return true
+                case .orderedDescending:
+                    return false
+                case .orderedSame:
+                    return lhs.remoteId < rhs.remoteId
+                }
+            }
         }
         return result
     }
