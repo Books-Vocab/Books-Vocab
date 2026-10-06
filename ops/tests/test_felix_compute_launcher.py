@@ -860,3 +860,23 @@ def test_selftest_only_accepts_the_source_identity_profile(rig, monkeypatch, cap
     out = json.loads(capsys.readouterr().out)
     assert code == 2 and out["verified"] is False
     assert out["failure_code"] == "selftest-profile"
+
+
+def test_remote_command_is_a_constant_pointing_at_the_dedicated_checkout() -> None:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "felix_compute_launcher_under_test", LAUNCHER
+    )
+    assert spec and spec.loader
+    launcher = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(launcher)
+    command = launcher.REMOTE_COMMAND
+    # No dynamic value may ever reach the remote shell.
+    assert not any(
+        token in command for token in ("$", "{", "}", "`", ";", "&", "|", "<", ">")
+    )
+    # The signing-key holder runs from a dedicated pinned checkout, never from the
+    # production service tree.
+    assert "~/kg-compute/ops/felix_compute_launcher.py" in command
+    assert "kg-prod" not in command
