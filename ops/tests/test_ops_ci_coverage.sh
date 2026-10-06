@@ -94,6 +94,7 @@ ROUTED_TESTS=(
   "ui-graph:ops/tests/test_ui_graph_contract.py"
   "capability-matrix:ops/tests/test_compute_cli.py"
   "capability-matrix:ops/tests/test_compute_router.py"
+  "capability-matrix:ops/tests/test_felix_compute_launcher.py"
   "capability-matrix:ops/tests/test_xmachine_transport.py"
   "capability-matrix:ops/tests/test_compute_gate_adapter.py"
 )

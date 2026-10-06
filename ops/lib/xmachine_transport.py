@@ -41,6 +41,7 @@ from lib.compute_receipt import (
 OPS_DIR = Path(__file__).resolve().parents[1]
 LAUNCHER = OPS_DIR / "felix_compute_launcher.py"
 RECEIPT_SCHEMA = "kg.compute.receipt.v1"
+TRANSPORT_KIND = "xmachine-ssh"
 VERBS = ("probe", "submit", "fetch", "ack")
 RECEIPT_MAX_AGE_SECONDS = 600.0
 
@@ -188,8 +189,10 @@ class XmachineTransport:
             raise TransportError("launcher-output")
         return payload
 
-    def probe(self, job_id: str) -> dict[str, Any]:
-        return self._call("probe", job_id)
+    def probe(
+        self, job_id: str, *, fields: dict[str, str] | None = None
+    ) -> dict[str, Any]:
+        return self._call("probe", job_id, fields=fields)
 
     def submit(
         self, job_id: str, *, fields: dict[str, str], params: dict[str, str]
@@ -392,6 +395,7 @@ __all__ = [
     "AckReplayError",
     "LAUNCHER",
     "RECEIPT_SCHEMA",
+    "TRANSPORT_KIND",
     "TransportError",
     "XmachineTransport",
     "accept_receipt",
