@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 OPS = Path(__file__).resolve().parents[1]
+# ruff: noqa: E402
 sys.path.insert(0, str(OPS))
 
 from delivery_control.domain.branch_lifecycle import (
@@ -801,6 +802,43 @@ def test_branch_audit_keeps_unscoped_source_problem_global() -> None:
 
     assert report.source_problem_scope_counts == {"global": 1}
     assert report.safe_terminal_actions == ()
+
+
+def test_branch_audit_keeps_candidate_collision_issue_scoped() -> None:
+    lifecycle = project_branch_lifecycle(
+        branch_inventory=BranchInventory(local=(("feat/orphan", SHA_A),))
+    )
+    inventory = DeliveryInventory(
+        lanes=(),
+        branch_lifecycle=lifecycle,
+        source_problems=(
+            InventoryProblem(
+                "candidate",
+                "Issue#1939",
+                "candidate Scope overlaps live delivery evidence",
+                identity_kind="issue",
+            ),
+        ),
+    )
+
+    report = build_branch_audit(
+        inventory,
+        orphan_preflights={
+            "feat/orphan": OrphanBranchPreflight(
+                schema="kg.delivery.orphan-branch-preflight.v1",
+                branch="feat/orphan",
+                expected_head_sha=SHA_A,
+                main_sha=SHA_A,
+                eligible=True,
+                passed_checks=("all exact checks passed",),
+                blockers=(),
+            )
+        },
+    )
+
+    assert report.source_problem_scope_counts == {"issue": 1}
+    assert report.source_problem_actions[0].category == "candidate_source_problem"
+    assert report.actions[0].safe_terminal is True
 
 
 def test_branch_audit_exposes_local_orphan_preflight_blockers() -> None:
