@@ -285,7 +285,8 @@ def _no_leaks(rig, *outputs):
 def test_shipped_registry_has_closed_source_identity_profile_and_a_valid_pinned_key():
     registry = load_profile_registry(REGISTRY)
     profile = registry["profiles"][PROFILE]
-    assert profile["remote_eligible"] is False
+    # Remote eligibility was proven by the live Felix selftest (see #1988).
+    assert profile["remote_eligible"] is True
     assert profile["parameters"] == {}
     assert profile["sandbox_policy"] == "repo-readonly"
     # The Felix-held receipt key is pinned through git review: standard base64

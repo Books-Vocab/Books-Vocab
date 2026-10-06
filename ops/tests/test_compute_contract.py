@@ -300,13 +300,41 @@ def test_profile_registry_rejects_production_and_unsafe_contracts() -> None:
 
 
 def test_remote_profile_is_explicit_and_resolves_remote_eligibility() -> None:
+    # source-identity is the profile whose remote eligibility was proven by a live
+    # Felix selftest; it needs nothing beyond the pinned runner image.
     registry = load_profile_registry(REGISTRY)
-    profile = registry["profiles"]["ops.compute-contract-tests"]
+    profile = registry["profiles"]["source-identity"]
 
     assert profile["remote_eligible"] is True
     assert profile["resource_class"] == "compute-remote"
-    resolved = resolve_profile("ops.compute-contract-tests", {})
+    resolved = resolve_profile("source-identity", {})
     assert resolved["spec"]["remote_eligible"] is True
+
+
+def test_every_shipped_remote_eligible_profile_is_fully_served_by_its_runner() -> None:
+    registry = load_profile_registry(REGISTRY)
+    eligible = [
+        name for name, p in registry["profiles"].items() if p["remote_eligible"] is True
+    ]
+    assert eligible, "at least one profile must be remote eligible"
+    for name in eligible:
+        profile = registry["profiles"][name]
+        assert set(profile["required_capabilities"]) <= set(
+            profile["runner_capabilities"]
+        ), name
+
+
+def test_remote_eligible_profile_whose_runner_lacks_a_capability_is_rejected() -> None:
+    # The remote sandbox has no network and no bootstrap: a profile that needs
+    # pytest but whose runner image does not provide it can never succeed there.
+    registry = load_profile_registry(REGISTRY)
+    profile = copy.deepcopy(registry["profiles"]["ops.compute-contract-tests"])
+    assert "pytest" in profile["required_capabilities"]
+    assert "pytest" not in profile["runner_capabilities"]
+    profile["remote_eligible"] = True
+
+    with pytest.raises(ContractError, match="remote-capability"):
+        validate_profile(profile, name="ops.compute-contract-tests")
 
 
 @pytest.mark.parametrize("placeholder", ["a", "b"])
