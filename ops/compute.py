@@ -1,4 +1,4 @@
-#!/usr/bin/env -S uv run --python 3.13 python
+#!/usr/bin/env -S uv run --python 3.13 --with cryptography>=48,<49 python
 """Bounded local/auto/Felix execution for typed compute profiles.
 
 The profile registry is the source of truth for command shape and safety.  This
