@@ -152,11 +152,13 @@ enum ReaderPresentationMetrics {
         static let wordSpacingRatio: CGFloat = 0.25
         static let paragraphSpacingRatio: CGFloat = 0.9
         static let contentInset: CGFloat = AppSpacing.s4
-        /// ReaderSettings and its preview share one discrete line-height scale
-        /// in the native Slider and tick rail. Keeping the source here prevents
-        /// the control and preview from silently drifting apart.
-        static let lineHeightRange: ClosedRange<Double> = 1.0...2.5
-        static let lineHeightStep: Double = 0.1
+        /// ReaderSettings and its preview share one discrete typography scale.
+        /// The model owns the values; these aliases keep the existing preview
+        /// geometry API stable for callers and source contracts.
+        static let fontSizeRange = ReaderTypographyMetrics.fontSizeRange
+        static let fontSizeStep = ReaderTypographyMetrics.fontSizeStep
+        static let lineHeightRange = ReaderTypographyMetrics.lineHeightRange
+        static let lineHeightStep = ReaderTypographyMetrics.lineHeightStep
         static let lineHeightTickCount: Int = Int(
             ((lineHeightRange.upperBound - lineHeightRange.lowerBound) / lineHeightStep).rounded()
         ) + 1
@@ -329,7 +331,7 @@ private extension ReaderContentStyle {
             light: selection(
                 activeOutline: "1px solid rgba(121, 111, 90, 0.34)",
                 activeBackground: "rgba(186, 171, 137, 0.09)",
-                preset: highlightPreferences.colorPreset,
+                highlightPreferences: highlightPreferences,
                 theme: .light,
                 opacityMultiplier: 1.05,
                 bandFraction: highlightPreferences.bandFraction
@@ -337,7 +339,7 @@ private extension ReaderContentStyle {
             sepia: selection(
                 activeOutline: "1px solid rgba(126, 96, 66, 0.34)",
                 activeBackground: "rgba(168, 134, 92, 0.10)",
-                preset: highlightPreferences.colorPreset,
+                highlightPreferences: highlightPreferences,
                 theme: .sepia,
                 opacityMultiplier: 1.08,
                 bandFraction: highlightPreferences.bandFraction
@@ -345,7 +347,7 @@ private extension ReaderContentStyle {
             dark: selection(
                 activeOutline: "1px solid rgba(208, 196, 166, 0.30)",
                 activeBackground: "rgba(204, 186, 138, 0.10)",
-                preset: highlightPreferences.colorPreset,
+                highlightPreferences: highlightPreferences,
                 theme: .dark,
                 opacityMultiplier: 1.45,
                 bandFraction: highlightPreferences.bandFraction
@@ -358,7 +360,7 @@ private extension ReaderContentStyle {
     static func selection(
         activeOutline: String,
         activeBackground: String,
-        preset: VocabHighlightColorPreset,
+        highlightPreferences: VocabHighlightPreferences,
         theme: ReaderTheme,
         opacityMultiplier: Double,
         bandFraction: Double
@@ -367,7 +369,7 @@ private extension ReaderContentStyle {
             activeOutline: activeOutline,
             activeBackground: activeBackground,
             vocabBackground: vocabBackground(
-                preset: preset,
+                highlightPreferences: highlightPreferences,
                 theme: theme,
                 opacityMultiplier: opacityMultiplier,
                 bandFraction: bandFraction
@@ -377,13 +379,15 @@ private extension ReaderContentStyle {
     }
 
     static func vocabBackground(
-        preset: VocabHighlightColorPreset,
+        highlightPreferences: VocabHighlightPreferences,
         theme: ReaderTheme,
         opacityMultiplier: Double,
         bandFraction: Double
     ) -> String {
         let band = Int((bandFraction * 100).rounded())
-        return "linear-gradient(to top, hsla(\(preset.cssColor(for: theme)), clamp(0, calc(var(--vocab-opacity) * \(opacityMultiplier)), 1)) \(band)%, transparent \(band)%)"
+        let alpha = "clamp(0, calc(var(--vocab-opacity) * \(opacityMultiplier)), 1)"
+        let color = highlightPreferences.cssColorFunction(for: theme, alphaExpression: alpha)
+        return "linear-gradient(to top, \(color) \(band)%, transparent \(band)%)"
     }
 }
 #endif

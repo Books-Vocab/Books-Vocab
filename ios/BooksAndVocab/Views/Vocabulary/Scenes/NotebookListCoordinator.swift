@@ -233,6 +233,11 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             nb.coverPattern = remote.coverPattern
             nb.syncStatus = 1
             modelContext.insert(nb)
+            if let settings = remote.settings {
+                let projection = NotebookSettingsProjection(notebookId: remote.id)
+                projection.applyRemote(settings)
+                modelContext.insert(projection)
+            }
             if modelContext.safeSaveWithToast(toastCoordinator) {
                 toastCoordinator.success("已建立".localized)
             }
@@ -309,6 +314,11 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             }
             notebook.isSoftDeleted = true
             notebook.updatedAt = Date()
+            if let settings = (try? modelContext.fetch(
+                FetchDescriptor<NotebookSettingsProjection>()
+            ))?.first(where: { $0.notebookId == deletedId }) {
+                modelContext.delete(settings)
+            }
 
             // Hard guarantee mirror of the reconcile-path UserDefaults cleanup:
             // even if `setActiveNotebook` was a no-op (caller injection 不保證寫入)

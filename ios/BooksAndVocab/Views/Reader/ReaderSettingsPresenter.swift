@@ -5,9 +5,8 @@ import SwiftUI
 
 struct ReaderSettingsPresenter: View {
     @ObserveInjection private var inject
-    /// 只剩主題色票還需要 skin；版面寬窄由系統 sheet 的 detents 決定，
-    /// 不再自己讀 horizontalSizeClass 換 panel chrome。
-    @Environment(\.appSkin) var appSkin
+    /// 主題 preview 直接由 ReaderTheme 提供紙張與墨色；版面寬窄由系統
+    /// sheet 的 detents 決定，不再自己讀 horizontalSizeClass 換 panel chrome。
 
     struct State {
         let fontSizeText: String
@@ -16,6 +15,9 @@ struct ReaderSettingsPresenter: View {
         let fontScale: Double
         let canDecreaseFontSize: Bool
         let canIncreaseFontSize: Bool
+        let letterSpacingText: String
+        let canDecreaseLetterSpacing: Bool
+        let canIncreaseLetterSpacing: Bool
         /// 閱讀器**實際會渲染**的主題，給即時預覽用。
         ///
         /// 不可以拿 `bindings.theme` 代替：那個 binding 是給三選一 Picker 的，
@@ -28,10 +30,12 @@ struct ReaderSettingsPresenter: View {
 
     struct Bindings {
         let lineHeight: Binding<Double>
+        let letterSpacing: Binding<Double>
         let font: Binding<ReaderFont>
         let theme: Binding<ReaderTheme>
         let underlineOpacity: Binding<Double>
         let vocabHighlightColorPreset: Binding<VocabHighlightColorPreset>
+        let vocabHighlightCustomSRGB: Binding<VocabHighlightSRGB>
         let showHitTestingDebug: Binding<Bool>
         let scrollMode: Binding<Bool>
     }
@@ -40,20 +44,12 @@ struct ReaderSettingsPresenter: View {
     let bindings: Bindings
     let onDecreaseFontSize: () -> Void
     let onIncreaseFontSize: () -> Void
+    let onDecreaseLetterSpacing: () -> Void
+    let onIncreaseLetterSpacing: () -> Void
     let onSelectTheme: (ReaderTheme) -> Void
     let onSelectUnderlineOpacity: (Double) -> Void
     /// 恢復預設 —— 與複習卡版面編輯器同形的 toolbar 入口。
     let onResetToDefaults: () -> Void
-
-    /// label 是 **L10n key**（由 `vocabHighlightSection` 丟給 `L10n.string`），
-    /// 不是要顯示的字。用中文字面當 key 會與其他畫面的同名字面撞在一起 ——
-    /// 「淡」「中」在 Localizable.strings 裡本來就有別的擁有者。
-    let opacityOptions: [(label: String, value: Double)] = [
-        ("reader.settings.highlight.opacity.hidden", 0.0),
-        ("reader.settings.highlight.opacity.light", 0.15),
-        ("reader.settings.highlight.opacity.medium", 0.35),
-        ("reader.settings.highlight.opacity.strong", 0.60)
-    ]
 
     var body: some View {
         vocabLayout
@@ -74,19 +70,26 @@ struct ReaderSettingsPresenter: View {
                     fontScale: 1.0,
                     canDecreaseFontSize: true,
                     canIncreaseFontSize: true,
+                    letterSpacingText: ReaderSettings.letterSpacingText(for: 0),
+                    canDecreaseLetterSpacing: false,
+                    canIncreaseLetterSpacing: true,
                     previewTheme: .light
                 ),
                 bindings: .init(
                     lineHeight: .constant(1.4),
+                    letterSpacing: .constant(0),
                     font: .constant(.serif),
                     theme: .constant(.light),
                     underlineOpacity: .constant(0.35),
                     vocabHighlightColorPreset: .constant(.paper),
+                    vocabHighlightCustomSRGB: .constant(.default),
                     showHitTestingDebug: .constant(false),
                     scrollMode: .constant(false)
                 ),
                 onDecreaseFontSize: {},
                 onIncreaseFontSize: {},
+                onDecreaseLetterSpacing: {},
+                onIncreaseLetterSpacing: {},
                 onSelectTheme: { _ in },
                 onSelectUnderlineOpacity: { _ in },
                 onResetToDefaults: {}
@@ -105,19 +108,26 @@ struct ReaderSettingsPresenter: View {
                     fontScale: 0.75,
                     canDecreaseFontSize: false,
                     canIncreaseFontSize: true,
+                    letterSpacingText: ReaderSettings.letterSpacingText(for: 1),
+                    canDecreaseLetterSpacing: true,
+                    canIncreaseLetterSpacing: false,
                     previewTheme: .dark
                 ),
                 bindings: .init(
                     lineHeight: .constant(2.5),
+                    letterSpacing: .constant(1),
                     font: .constant(.sans),
                     theme: .constant(.dark),
                     underlineOpacity: .constant(0.0),
                     vocabHighlightColorPreset: .constant(.rose),
+                    vocabHighlightCustomSRGB: .constant(.default),
                     showHitTestingDebug: .constant(true),
                     scrollMode: .constant(true)
                 ),
                 onDecreaseFontSize: {},
                 onIncreaseFontSize: {},
+                onDecreaseLetterSpacing: {},
+                onIncreaseLetterSpacing: {},
                 onSelectTheme: { _ in },
                 onSelectUnderlineOpacity: { _ in },
                 onResetToDefaults: {}

@@ -10,7 +10,7 @@ scope:
   - ops/kg_reconcile.sh
   - backend/
   - ios/
-verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
+verified_against: 24f2120d7118af81b6812a50a4c489aff3b466ec
 -->
 # Release SOP
 
@@ -37,9 +37,125 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 6. Verify the deployed/build state independently and record the exact version and evidence.
 7. If health verification fails, stop traffic or revert according to `docs/sop/deploy.md`; do not improvise a second path.
 
+## Candidate state machine and recovery
+
+`ops/release.sh release <backend|ios> <version>` and `resubmit ios` are candidate
+commands. They must run in the dedicated owner lane. With `--yes` they may change
+only the assigned version files and create a deterministic candidate commit; they do
+not push a branch, update protected `main`, upload to ASC, deploy backend, or create a
+tag. The owner then runs the supported worktree hand-back and IM publishes that exact
+commit as one PR:
+
+The candidate lane must be clean and its `HEAD` must equal a fresh live
+`origin/main` read immediately before the version transaction. A non-main branch by
+itself is not sufficient: an ahead branch could carry unreviewed product changes, and
+a behind branch could create a stale release candidate. `release` and `resubmit`
+reject both cases before changing version files or creating a candidate commit
+(they may read the current tuple first to recognize an existing pending candidate);
+re-materialize a fresh supported lane from the new live main instead of rebasing,
+copying, or using the canonical development checkout.
+
+`./ops/release.sh status` uses two different iOS boundaries. The latest
+`ios/<version>` tag means that marketing version was verified as App Store
+shipped; it is not the source boundary for a build that has already been
+sealed. If the current Xcode `(MARKETING_VERSION, CURRENT_PROJECT_VERSION)`
+tuple has an immutable `ios/<version>+<build>` tag reachable from the current
+checkout, status counts only iOS commits after that build tag as an unsealed
+candidate backlog. Commits after the build tag are still real work and remain
+visible.
+
+Status is an observation only. A sealed build tag does not authorize an ASC
+upload, a PR merge, a tag push, or a deployment; those actions still require
+the dedicated release lane, exact merged-main evidence, and the corresponding
+release command gates below.
+
+The release agent is independent from the development checkout. If it does not
+already have a dedicated lane, materialize one from the **live** `origin/main` before
+running `release` or `resubmit`; never turn the canonical `main` checkout into a
+candidate. The open command is the supported ownership boundary (the external ID and
+thread ID are durable evidence, not chat-only labels):
+
+```bash
+LIVE_MAIN="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+./ops/worktree_orchestrate.py open --json \
+  --intent "iOS release <version>+<build>" \
+  --slug "release-ios-<version>-<build>-<date>" \
+  --base "$LIVE_MAIN" \
+  --external-id "DIRECT-RELEASE-IOS-<version>-<build>-<date>" \
+  --scope '{"schema":"kg.worktree.scope.v1","files":[{"path":"ios/BooksAndVocab.xcodeproj/project.pbxproj","operation":"modify"}]}' \
+  --codex-thread-id "$RELEASE_AGENT_THREAD" --delegated
+```
+
+For `resubmit`, `<build>` is the exact target printed by the dry-run after the ASC
+readback; it is not a manually guessed number. Run the release command only from the
+returned worktree, preserve its exact branch/base/Scope, and hand back through
+`worktree_orchestrate.py`. If the open/preflight command reports a collision, malformed
+ownership, or a main-SHA drift, stop and re-read live state rather than using the
+canonical checkout as a fallback.
+
+```text
+dedicated lane candidate
+  -> supported worktree_orchestrate hand-back
+  -> IM publishes the exact commit as one PR
+  -> required check + native merge queue on protected main
+  -> CM exact merged receipt + canonical main sync
+  -> ASC upload only if exact build is not already present
+  -> exact ASC proof
+  -> finalize tag-only push
+```
+
+For iOS, resume only after the PR is merged and canonical `main` is synced to the
+live `origin/main`. Supply both immutable merge evidence fields; the candidate SHA
+does not need to equal the merged main SHA:
+
+```bash
+./ops/release.sh resume ios <version> <build> \
+  --pr <merged-pr-number> --merged-source <40-char-merged-source-sha>
+./ops/release.sh resume ios <version> <build> \
+  --pr <merged-pr-number> --merged-source <40-char-merged-source-sha> --yes
+```
+
+`--pr` is not an attestation. Before any ASC upload or tag push, `resume` and
+`finalize` perform an exact GitHub PR readback (normally `gh pr view`; tests may
+inject a one-argument `KG_PR_CMD`). The readback must be one PR object whose
+number matches, `state=MERGED`, `baseRefName=main`, `headRefOid` equals
+`--merged-source`, `mergeCommit.oid` is an exact commit ancestor of live
+`origin/main`, and `baseRefOid` is an ancestor of both source and live main.
+The live tip may include later merged PRs, so the release agent can run in
+parallel with development; after the PR is merged and canonical `main` is
+synced, resume with a fresh live readback. Readback failure, wrong/open PR,
+source mismatch, missing/non-commit/non-ancestor merge commit, or invalid base
+is fail-closed before ASC or tag side effects; PR body and branch name are not
+guessed as evidence.
+
+The first command is a dry-run. The `--yes` form probes exact ASC first, uploads only
+when that exact `(version, build)` is absent, and then calls the tag-only finalizer.
+If upload or ASC propagation fails, keep the merged main and run the same resume
+command again after checking ASC; it never bumps a new build. If upload already
+landed, the exact ASC probe skips a second upload. To recover only the final tag:
+
+```bash
+./ops/release.sh finalize ios <version> <build> \
+  --pr <merged-pr-number> --merged-source <40-char-merged-source-sha>
+./ops/release.sh finalize ios <version> <build> \
+  --pr <merged-pr-number> --merged-source <40-char-merged-source-sha> --yes
+```
+
+`finalize` requires current local `main == live origin/main`, proves the merged source
+is an ancestor, checks exact ASC state, and pushes only `ios/<version>+<build>`; it never
+pushes a branch ref. If live `origin/main` already contains the requested iOS tuple,
+the candidate command refuses to create another build and points to `resume`.
+
 ## Backend
 
-Use `ops/release.sh` as the release entry and `ops/devops_kg_safe.sh` for remote or production operations. `ops/kg_reconcile.sh` is the host-side convergence service when enabled; its health gate and rollback behavior are part of the deployment contract. Database migrations, secrets, domain routing, container ports and host ownership remain governed by `docs/sop/deploy.md` and `docs/reference/host_topology.md`.
+Use `ops/release.sh release backend <version>` only to create the dedicated-lane
+candidate. After PR/queue merge and canonical sync, an approved release operator may
+run the backend deployment path through `ops/devops_kg_safe.sh` and its SOP. The
+candidate path never pushes `main` and never deploys. `ops/kg_reconcile.sh` is the
+host-side convergence service when enabled; its health gate and rollback behavior are
+part of the deployment contract. Database migrations, secrets, domain routing,
+container ports and host ownership remain governed by `docs/sop/deploy.md` and
+`docs/reference/host_topology.md`.
 
 ## iOS
 

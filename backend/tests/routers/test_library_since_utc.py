@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
 from kg.api_models.library import BookMetadataResponse
+from kg.exceptions import BadRequestError
 from kg.routers import library as library_router
 
 
@@ -43,3 +46,14 @@ def test_since_filter_compares_utc_instants_for_mixed_offsets(monkeypatch):
     )
 
     assert [book.id for book in result] == ["after"]
+
+
+def test_empty_since_is_rejected_instead_of_disabling_filter(monkeypatch):
+    monkeypatch.setattr(
+        library_router,
+        "_library_store",
+        lambda _user_dir: _FakeLibraryStore([]),
+    )
+
+    with pytest.raises(BadRequestError, match="Invalid since timestamp"):
+        library_router.list_books({"dir": "ignored"}, since="")

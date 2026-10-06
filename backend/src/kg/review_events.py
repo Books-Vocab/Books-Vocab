@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, create_engine, select
 
@@ -21,7 +20,6 @@ from .sqlite_ledger import (
 )
 from .sqlite_ledger import (
     next_ingested_at,
-    normalize_last_ingested,
 )
 from .sqlite_ledger import (
     now_utc as _now,
@@ -61,6 +59,10 @@ class ReviewEvent(SQLModel, table=True):
     is_synthetic: bool = SQLField(default=False, index=True)
 
 
+def _ingestion_order_key(event: ReviewEvent) -> tuple[datetime, str]:
+    return _as_utc(event.ingested_at), event.event_id
+
+
 # SRS 快照 + is_synthetic 加寬欄位。為既有 store ADD COLUMN(SQLite 不支援改既有欄約束,
 # 故全部 nullable;既有列 SRS 快照落 NULL、is_synthetic 落 0)。card_id 維持 nullable —
 # 根治不靠 schema 約束而靠 Phase 5 iOS 固化 + 一次性遷移清舊垃圾,符合「不向後兼容、用資料
@@ -97,9 +99,7 @@ class ReviewEventStore:
         table = ReviewEvent.__tablename__
         with self.engine.connect() as conn:
             ensure_columns(conn, table, dict(_WIDEN_COLUMNS))
-            conn.exec_driver_sql(
-                f"CREATE INDEX IF NOT EXISTS ix_{table}_is_synthetic ON {table} (is_synthetic)"
-            )
+            conn.exec_driver_sql(f"CREATE INDEX IF NOT EXISTS ix_{table}_is_synthetic ON {table} (is_synthetic)")
             conn.commit()
 
     def _migrate_ingested_at(self) -> None:
@@ -108,12 +108,8 @@ class ReviewEventStore:
         table = ReviewEvent.__tablename__
         with self.engine.connect() as conn:
             ensure_columns(conn, table, {"ingested_at": "DATETIME"})
-            conn.exec_driver_sql(
-                f"UPDATE {table} SET ingested_at = reviewed_at WHERE ingested_at IS NULL"
-            )
-            conn.exec_driver_sql(
-                f"CREATE INDEX IF NOT EXISTS ix_{table}_ingested_at ON {table} (ingested_at)"
-            )
+            conn.exec_driver_sql(f"UPDATE {table} SET ingested_at = reviewed_at WHERE ingested_at IS NULL")
+            conn.exec_driver_sql(f"CREATE INDEX IF NOT EXISTS ix_{table}_ingested_at ON {table} (ingested_at)")
             conn.commit()
 
     def _existing_event_ids(self, session: Session, event_ids: list[str]) -> set[str]:
@@ -131,11 +127,7 @@ class ReviewEventStore:
         known: set[str] = set()
         for start in range(0, len(event_ids), _EXISTS_QUERY_CHUNK):
             chunk = event_ids[start : start + _EXISTS_QUERY_CHUNK]
-            known.update(
-                session.exec(
-                    select(ReviewEvent.event_id).where(ReviewEvent.event_id.in_(chunk))
-                ).all()
-            )
+            known.update(session.exec(select(ReviewEvent.event_id).where(ReviewEvent.event_id.in_(chunk))).all())
         return known
 
     def insert_many(self, entries: list[ReviewEventEntry]) -> dict[str, int]:
@@ -145,8 +137,12 @@ class ReviewEventStore:
             # Continue the monotonic ingestion clock from the current max so each new
             # event gets a strictly increasing, unique ingested_at — even across a
             # backward wall-clock step (NTP) or multiple inserts within one microsecond.
-            last_ingested = normalize_last_ingested(
-                session.exec(select(func.max(ReviewEvent.ingested_at))).one()
+            # Do not use SQL MAX here: SQLite orders legacy offset-bearing datetime
+            # strings lexically, which is not the same as their UTC instant order.
+            ingested_values = session.exec(select(ReviewEvent.ingested_at)).all()
+            last_ingested = max(
+                (_as_utc(value) for value in ingested_values if value is not None),
+                default=None,
             )
             # Pre-fetched ids only cover what was already committed. The loop adds
             # each accepted id so a repeated event_id *inside* one payload is still
@@ -187,19 +183,20 @@ class ReviewEventStore:
 
     def all(self) -> list[ReviewEvent]:
         with Session(self.engine) as session:
-            return list(session.exec(select(ReviewEvent).order_by(ReviewEvent.ingested_at)).all())
+            events = list(session.exec(select(ReviewEvent)).all())
+        return sorted(events, key=_ingestion_order_key)
 
     def get_since(self, since: datetime) -> list[ReviewEvent]:
         # SQLite compares DATETIME values lexically, so rows written by older
         # versions with different offsets can cross the cursor boundary even when
         # their instants do not. Normalize both sides in Python before applying the
-        # strict ``>`` boundary; ingested_at is monotonic and unique by contract.
+        # strict ``>`` boundary; event_id makes legacy timestamp ties deterministic.
         since = _as_utc(since)
         with Session(self.engine) as session:
             events = list(session.exec(select(ReviewEvent)).all())
         return sorted(
             (event for event in events if _as_utc(event.ingested_at) > since),
-            key=lambda event: _as_utc(event.ingested_at),
+            key=_ingestion_order_key,
         )
 
     def close(self) -> None:
@@ -212,19 +209,22 @@ def push_review_events(entries: list[ReviewEventEntry], *, event_store: Any) -> 
     return event_store.insert_many(entries)
 
 
-def pull_review_events(
-    *, since: str | None, event_store: Any
-) -> tuple[list[ReviewEventEntry], str | None]:
+def pull_review_events(*, since: str | None, event_store: Any) -> tuple[list[ReviewEventEntry], str | None]:
     """Return (entries, cursor). ``cursor`` is the max ingestion timestamp of the
     returned batch, to be sent back as ``since`` on the next pull. An empty batch
-    leaves the caller's cursor unchanged (echoes ``since``)."""
-    if since is not None:
-        parsed_since = _parse_iso8601_timestamp(since)
+    leaves the caller's cursor unchanged as the same canonical UTC instant."""
+    parsed_since = _parse_iso8601_timestamp(since) if since is not None else None
+    if parsed_since is not None:
         events = event_store.get_since(parsed_since)
     else:
         events = event_store.all()
     entries = [_entry_from_event(event) for event in events]
-    cursor = _format_timestamp(max(event.ingested_at for event in events)) if events else since
+    if events:
+        cursor = _format_timestamp(max(_as_utc(event.ingested_at) for event in events))
+    elif parsed_since is not None:
+        cursor = _format_timestamp(parsed_since)
+    else:
+        cursor = None
     return entries, cursor
 
 

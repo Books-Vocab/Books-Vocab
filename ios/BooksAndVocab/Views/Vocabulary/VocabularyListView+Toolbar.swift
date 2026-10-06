@@ -16,6 +16,7 @@ struct VocabularyListToolbar: ViewModifier {
     let onExportJSON: () -> Void
     let onExportAnki: () -> Void
     let hasSyncedEntries: Bool
+    let notebookId: String
 
     func body(content: Content) -> some View {
         content
@@ -70,6 +71,17 @@ struct VocabularyListToolbar: ViewModifier {
                             VocabToolbarGlyph(systemImage: "square.and.arrow.up")
                         }
                     }
+                }
+
+                ToolbarItem(placement: .primaryAction) {
+                    NavigationLink {
+                        NotebookSettingsView(notebookId: notebookId)
+                    } label: {
+                        VocabToolbarGlyph(systemImage: "gearshape")
+                    }
+                    .accessibilityLabel(L10n.string("notebookSettings.title"))
+                    .accessibilityIdentifier("notebook.settingsButton")
+                    .help(L10n.string("notebookSettings.title"))
                 }
             }
     }

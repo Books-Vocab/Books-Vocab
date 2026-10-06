@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
@@ -17,9 +18,7 @@ def test_free_dictionary_provider_normalizes_without_quotes_and_stable_ids():
 
     provider = FreeDictionaryProvider(
         client=httpx.Client(
-            transport=httpx.MockTransport(
-                lambda _request: httpx.Response(200, json=_provider_payload())
-            )
+            transport=httpx.MockTransport(lambda _request: httpx.Response(200, json=_provider_payload()))
         )
     )
     first = provider.search("invoke", source_language="en", target_language="zh-Hant")
@@ -47,11 +46,7 @@ def test_provider_malformed_or_empty_entry_fails_closed(payload):
     from kg.lexical import FreeDictionaryProvider
 
     provider = FreeDictionaryProvider(
-        client=httpx.Client(
-            transport=httpx.MockTransport(
-                lambda _request: httpx.Response(200, json=payload)
-            )
-        )
+        client=httpx.Client(transport=httpx.MockTransport(lambda _request: httpx.Response(200, json=payload)))
     )
     with pytest.raises(ExternalServiceError):
         provider.search("invoke", source_language="en", target_language="zh-Hant")
@@ -71,9 +66,7 @@ def test_dictionary_cache_uses_fresh_hit_and_stale_on_provider_failure(tmp_path)
 
     cache = LexicalCache(tmp_path / "lexical_cache.db", positive_ttl=timedelta(days=30))
     service = LexicalService(
-        provider=FreeDictionaryProvider(
-            client=httpx.Client(transport=httpx.MockTransport(responder))
-        ),
+        provider=FreeDictionaryProvider(client=httpx.Client(transport=httpx.MockTransport(responder))),
         cache=cache,
     )
 
@@ -81,7 +74,7 @@ def test_dictionary_cache_uses_fresh_hit_and_stale_on_provider_failure(tmp_path)
     assert service.search("invoke", source_language="en", target_language="zh-Hant").cache_status == "fresh"
     assert calls == 1
 
-    with sqlite3.connect(cache.path) as conn:
+    with closing(sqlite3.connect(cache.path)) as conn, conn:
         conn.execute(
             "UPDATE lexical_cache SET expires_at = ?",
             ((datetime.now(UTC) - timedelta(seconds=1)).isoformat(),),
@@ -105,9 +98,7 @@ def test_negative_lookup_is_cached_for_24_hours(tmp_path):
         return httpx.Response(404)
 
     service = LexicalService(
-        provider=FreeDictionaryProvider(
-            client=httpx.Client(transport=httpx.MockTransport(responder))
-        ),
+        provider=FreeDictionaryProvider(client=httpx.Client(transport=httpx.MockTransport(responder))),
         cache=LexicalCache(tmp_path / "lexical_cache.db"),
     )
     first = service.search("missing", source_language="en", target_language="zh-Hant")
@@ -115,13 +106,9 @@ def test_negative_lookup_is_cached_for_24_hours(tmp_path):
     assert first.cache_status == "negative"
     assert second.cache_status == "negative"
     assert calls == 1
-    with sqlite3.connect(service.cache.path) as conn:
-        fetched_at, expires_at = conn.execute(
-            "SELECT fetched_at, expires_at FROM lexical_cache"
-        ).fetchone()
-    assert datetime.fromisoformat(expires_at) - datetime.fromisoformat(fetched_at) == timedelta(
-        hours=24
-    )
+    with closing(sqlite3.connect(service.cache.path)) as conn, conn:
+        fetched_at, expires_at = conn.execute("SELECT fetched_at, expires_at FROM lexical_cache").fetchone()
+    assert datetime.fromisoformat(expires_at) - datetime.fromisoformat(fetched_at) == timedelta(hours=24)
 
 
 def test_provider_traversal_is_bounded_and_truncation_is_truthful():
@@ -130,20 +117,15 @@ def test_provider_traversal_is_bounded_and_truncation_is_truthful():
     payload = _provider_payload()
     base = payload["entries"][0]["senses"][0]
     payload["entries"][0]["senses"] = [
-        {**base, "definition": f"definition {index}", "examples": [f"example {index}"]}
-        for index in range(MAX_SENSES)
+        {**base, "definition": f"definition {index}", "examples": [f"example {index}"]} for index in range(MAX_SENSES)
     ]
     provider = FreeDictionaryProvider(
-        client=httpx.Client(
-            transport=httpx.MockTransport(lambda _request: httpx.Response(200, json=payload))
-        )
+        client=httpx.Client(transport=httpx.MockTransport(lambda _request: httpx.Response(200, json=payload)))
     )
     exact = provider.search("invoke", source_language="en", target_language="zh-Hant")
     assert exact.truncated is False
 
-    payload["entries"][0]["senses"].append(
-        {**base, "definition": "one too many", "examples": ["extra"]}
-    )
+    payload["entries"][0]["senses"].append({**base, "definition": "one too many", "examples": ["extra"]})
     capped = provider.search("invoke", source_language="en", target_language="zh-Hant")
     assert len(capped.senses) == MAX_SENSES
     assert capped.truncated is True
@@ -173,16 +155,10 @@ def test_persistent_provider_hourly_budget_is_shared_across_services(tmp_path):
         word = request.url.path.rsplit("/", 1)[-1]
         return httpx.Response(200, json=_provider_payload(word))
 
-    provider = FreeDictionaryProvider(
-        client=httpx.Client(transport=httpx.MockTransport(responder))
-    )
+    provider = FreeDictionaryProvider(client=httpx.Client(transport=httpx.MockTransport(responder)))
     cache_path = tmp_path / "lexical_cache.db"
-    first = LexicalService(
-        provider=provider, cache=LexicalCache(cache_path), provider_hourly_limit=1
-    )
-    second = LexicalService(
-        provider=provider, cache=LexicalCache(cache_path), provider_hourly_limit=1
-    )
+    first = LexicalService(provider=provider, cache=LexicalCache(cache_path), provider_hourly_limit=1)
+    second = LexicalService(provider=provider, cache=LexicalCache(cache_path), provider_hourly_limit=1)
     assert first.search("one", source_language="en", target_language="zh-Hant").entry
     with pytest.raises(ExternalServiceError):
         second.search("two", source_language="en", target_language="zh-Hant")
@@ -218,13 +194,11 @@ def test_stale_cache_survives_provider_429_and_timeout(tmp_path, failure):
 
     cache = LexicalCache(tmp_path / "lexical_cache.db")
     service = LexicalService(
-        provider=FreeDictionaryProvider(
-            client=httpx.Client(transport=httpx.MockTransport(responder))
-        ),
+        provider=FreeDictionaryProvider(client=httpx.Client(transport=httpx.MockTransport(responder))),
         cache=cache,
     )
     assert service.search("invoke", source_language="en", target_language="zh-Hant").entry
-    with sqlite3.connect(cache.path) as conn:
+    with closing(sqlite3.connect(cache.path)) as conn, conn:
         conn.execute(
             "UPDATE lexical_cache SET expires_at = ?",
             ((datetime.now(UTC) - timedelta(seconds=1)).isoformat(),),
@@ -241,9 +215,7 @@ def test_timeout_without_stale_cache_and_malformed_json_fail_closed(tmp_path):
     timeout_service = LexicalService(
         provider=FreeDictionaryProvider(
             client=httpx.Client(
-                transport=httpx.MockTransport(
-                    lambda _request: (_ for _ in ()).throw(httpx.ReadTimeout("timed out"))
-                )
+                transport=httpx.MockTransport(lambda _request: (_ for _ in ()).throw(httpx.ReadTimeout("timed out")))
             )
         ),
         cache=LexicalCache(tmp_path / "timeout.db"),
@@ -285,9 +257,7 @@ def test_normalized_payload_is_actually_capped_at_256_kib():
         for index in range(20)
     ]
     provider = FreeDictionaryProvider(
-        client=httpx.Client(
-            transport=httpx.MockTransport(lambda _request: httpx.Response(200, json=payload))
-        )
+        client=httpx.Client(transport=httpx.MockTransport(lambda _request: httpx.Response(200, json=payload)))
     )
     entry = provider.search("invoke", source_language="en", target_language="zh-Hant")
     assert entry.truncated is True
@@ -311,14 +281,12 @@ def test_provider_budget_is_rolling_and_exhaustion_still_returns_stale(tmp_path,
 
     cache = LexicalCache(tmp_path / "lexical_cache.db")
     service = LexicalService(
-        provider=FreeDictionaryProvider(
-            client=httpx.Client(transport=httpx.MockTransport(responder))
-        ),
+        provider=FreeDictionaryProvider(client=httpx.Client(transport=httpx.MockTransport(responder))),
         cache=cache,
         provider_hourly_limit=1,
     )
     assert service.search("invoke", source_language="en", target_language="zh-Hant").entry
-    with sqlite3.connect(cache.path) as conn:
+    with closing(sqlite3.connect(cache.path)) as conn, conn:
         conn.execute(
             "UPDATE lexical_cache SET expires_at = ?",
             ((datetime.now(UTC) - timedelta(seconds=1)).isoformat(),),
@@ -342,9 +310,7 @@ def _enable_lookup(isolated_api, monkeypatch, *, cache_name="lexical_cache.db"):
     service = LexicalService(
         provider=FreeDictionaryProvider(
             client=httpx.Client(
-                transport=httpx.MockTransport(
-                    lambda _request: httpx.Response(200, json=_provider_payload())
-                )
+                transport=httpx.MockTransport(lambda _request: httpx.Response(200, json=_provider_payload()))
             )
         ),
         cache=LexicalCache(isolated_api.data_dir / cache_name),
@@ -358,9 +324,7 @@ def _enable_lookup(isolated_api, monkeypatch, *, cache_name="lexical_cache.db"):
     return dictionary_router, service
 
 
-def test_dictionary_search_endpoint_requires_flag_and_returns_provider_neutral_payload(
-    isolated_api, monkeypatch
-):
+def test_dictionary_search_endpoint_requires_flag_and_returns_provider_neutral_payload(isolated_api, monkeypatch):
     import kg.routers.dictionary as dictionary_router
 
     disabled = isolated_api.client.get(
@@ -382,9 +346,7 @@ def test_dictionary_search_endpoint_requires_flag_and_returns_provider_neutral_p
     assert all(route.methods == {"GET"} for route in dictionary_router.router.routes)
 
 
-def test_dictionary_detail_is_rate_limited_and_v1_languages_are_locked(
-    isolated_api, monkeypatch
-):
+def test_dictionary_detail_is_rate_limited_and_v1_languages_are_locked(isolated_api, monkeypatch):
     from kg.lexical import dictionary_rate_limiter
 
     dictionary_router, _service = _enable_lookup(isolated_api, monkeypatch)
@@ -431,14 +393,10 @@ def test_dictionary_detail_is_rate_limited_and_v1_languages_are_locked(
     dictionary_router.dictionary_lookup_leases.reset()
 
 
-def test_explicit_dictionary_search_and_its_first_detail_share_one_admission(
-    isolated_api, monkeypatch
-):
+def test_explicit_dictionary_search_and_its_first_detail_share_one_admission(isolated_api, monkeypatch):
     from kg.lexical import dictionary_rate_limiter
 
-    dictionary_router, _service = _enable_lookup(
-        isolated_api, monkeypatch, cache_name="lexical_cache-admission.db"
-    )
+    dictionary_router, _service = _enable_lookup(isolated_api, monkeypatch, cache_name="lexical_cache-admission.db")
     monkeypatch.setattr(dictionary_rate_limiter, "limit", 1)
     dictionary_rate_limiter.reset()
 
@@ -462,17 +420,13 @@ def test_explicit_dictionary_search_and_its_first_detail_share_one_admission(
     dictionary_router.dictionary_lookup_leases.reset()
 
 
-def test_dictionary_entry_endpoint_returns_404_for_cached_negative_lookup(
-    isolated_api, monkeypatch
-):
+def test_dictionary_entry_endpoint_returns_404_for_cached_negative_lookup(isolated_api, monkeypatch):
     import kg.routers.dictionary as dictionary_router
     from kg.lexical import FreeDictionaryProvider, LexicalCache, LexicalService
 
     service = LexicalService(
         provider=FreeDictionaryProvider(
-            client=httpx.Client(
-                transport=httpx.MockTransport(lambda _request: httpx.Response(404))
-            )
+            client=httpx.Client(transport=httpx.MockTransport(lambda _request: httpx.Response(404)))
         ),
         cache=LexicalCache(isolated_api.data_dir / "lexical-cache-negative-entry.db"),
     )

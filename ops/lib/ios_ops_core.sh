@@ -61,7 +61,10 @@ read_organizer_latest() {
   else
     output="$(ios_ops_stream_capture workflow-organizer-latest "$SCRIPT_DIR/ios_archive.sh" latest)" || output=""
   fi
-  tail -1 <<<"$output"
+  # `ios_archive.sh latest` keeps its human-facing column header even when no
+  # archive exists. Only a six-column row whose final field is an xcarchive is
+  # an Organizer observation; never turn the header into fake archive data.
+  awk -F $'\t' 'NF == 6 && $6 ~ /\.xcarchive$/ { latest = $0 } END { if (latest != "") print latest }' <<<"$output"
 }
 
 read_testflight_latest_build() {

@@ -17,6 +17,12 @@ import Testing
 ///   必須整個 key 不出現（不是 null），否則 flag 誤開時無法用 wire 證據區分。
 struct KGVocabPayloadTests {
 
+    init() {
+        // The hosted app suspends account-bound preferences before tests run.
+        // These tests exercise the guest-compatible nil-account namespace.
+        TranslationLanguage.activateAccount(nil)
+    }
+
     private func makeEntry(
         word: String = "ephemeral",
         bookTitle: String = "Moby Dick",

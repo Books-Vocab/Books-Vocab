@@ -152,6 +152,28 @@ struct KGServiceSyncReportingTests {
             == .finished(.podcast, status: .error, detail: L10n.string("目錄讀取失敗")))
     }
 
+    @Test("podcast background progress exposes running and list-fetch warning")
+    func podcastBackgroundProgressMapsToUserVisibleStatus() {
+        let store = PodcastBackgroundSyncStatusStore()
+
+        store.apply(.started(.podcast))
+        #expect(store.status == .running)
+
+        store.apply(.finished(.podcast, status: .error, detail: L10n.string("目錄讀取失敗")))
+        #expect(store.status == .warning(L10n.string("目錄讀取失敗")))
+    }
+
+    @Test("a new background sync round clears the previous podcast warning")
+    func newBackgroundSyncRoundClearsPreviousPodcastWarning() {
+        let store = PodcastBackgroundSyncStatusStore()
+
+        store.apply(.started(.podcast))
+        store.apply(.finished(.podcast, status: .error, detail: L10n.string("目錄讀取失敗")))
+        store.apply(.started(.push))
+
+        #expect(store.status == .idle)
+    }
+
     // MARK: - processSyncPhase：401 / 取消 / 部分失敗
 
     @Test("401 回 nil 通知 caller 直接 return，並把訊息換成「登入已過期」")

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from kg.notebook import DEFAULT_NOTEBOOK_ID, DEFAULT_NOTEBOOK_NAME, NotebookStore
@@ -27,6 +29,32 @@ def test_ensure_default_idempotent(store):
     nb1 = store.ensure_default()
     nb2 = store.ensure_default()
     assert nb1.id == nb2.id
+
+
+def test_ensure_default_handles_first_use_race(store, monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from sqlmodel import Session
+
+    barrier = threading.Barrier(2)
+    original_exec = Session.exec
+
+    def synchronise_first_reads(self, statement, *args, **kwargs):
+        result = original_exec(self, statement, *args, **kwargs)
+        barrier.wait(timeout=10)
+        return result
+
+    monkeypatch.setattr(Session, "exec", synchronise_first_reads)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [executor.submit(store.ensure_default) for _ in range(2)]
+            results = [future.result() for future in futures]
+    finally:
+        Session.exec = original_exec
+
+    assert [notebook.id for notebook in results] == [DEFAULT_NOTEBOOK_ID] * 2
+    assert [notebook.id for notebook in store.all(include_deleted=True, include_staged=True)] == [DEFAULT_NOTEBOOK_ID]
 
 
 def test_create_notebook(store):
@@ -68,11 +96,90 @@ def test_cannot_delete_default(store):
 
 def test_get_modified_since(store):
     from datetime import UTC, datetime, timedelta
+
     before = datetime.now(UTC) - timedelta(seconds=1)
     store.create(name="New")
     modified = store.get_modified_since(before)
     assert len(modified) == 1
     assert modified[0].name == "New"
+
+
+def test_get_modified_since_orders_equal_updated_at_by_id(store):
+    from datetime import UTC, datetime, timedelta
+
+    from sqlmodel import Session
+
+    from kg.notebook import Notebook
+
+    updated_at = datetime(2026, 1, 1, tzinfo=UTC)
+    with Session(store.engine) as session:
+        session.add_all(
+            [
+                Notebook(
+                    id="nb-z",
+                    name="Z",
+                    created_at=updated_at,
+                    updated_at=updated_at,
+                ),
+                Notebook(
+                    id="nb-a",
+                    name="A",
+                    created_at=updated_at,
+                    updated_at=updated_at,
+                ),
+            ]
+        )
+        session.commit()
+
+    modified = store.get_modified_since(updated_at - timedelta(seconds=1))
+
+    assert [notebook.id for notebook in modified] == ["nb-a", "nb-z"]
+
+
+def test_get_modified_since_compares_mixed_offsets_by_utc_instant(store):
+    notebook = store.create(name="Offset clock")
+
+    # SQLite stores DATETIME as text. A legacy client can leave an offset-bearing
+    # value whose local clock sorts before the UTC cursor despite being later.
+    with store.engine.begin() as connection:
+        connection.exec_driver_sql(
+            "UPDATE notebook SET updated_at = ? WHERE id = ?",
+            ("2026-01-01 01:00:00-04:00", notebook.id),
+        )
+
+    modified = store.get_modified_since(datetime(2026, 1, 1, 4, 30, tzinfo=UTC))
+
+    assert [item.id for item in modified] == [notebook.id]
+
+
+def test_all_orders_equal_sort_order_and_created_at_by_id(store):
+    from datetime import UTC, datetime
+
+    from sqlmodel import Session
+
+    from kg.notebook import Notebook
+
+    created_at = datetime(2026, 1, 1, tzinfo=UTC)
+    with Session(store.engine) as session:
+        session.add_all(
+            [
+                Notebook(
+                    id="nb-z",
+                    name="Z",
+                    sort_order=1,
+                    created_at=created_at,
+                ),
+                Notebook(
+                    id="nb-a",
+                    name="A",
+                    sort_order=1,
+                    created_at=created_at,
+                ),
+            ]
+        )
+        session.commit()
+
+    assert [notebook.id for notebook in store.all()] == ["nb-a", "nb-z"]
 
 
 def test_cards_notebook_id_filter(tmp_path):

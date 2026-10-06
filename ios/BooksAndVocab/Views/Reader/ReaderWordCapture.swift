@@ -25,6 +25,9 @@ enum ReaderWordCapture {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         let stripped = trimmed.trimmingCharacters(in: boundaryCharacters)
         guard stripped.count >= minWordLength else { return nil }
+        // Keep sentence punctuation for normalizeWord, but reject selections
+        // that normalizeWord would collapse to an empty capture.
+        guard stripped.contains(where: { $0.isLetter || $0.isNumber }) else { return nil }
         return stripped
     }
 

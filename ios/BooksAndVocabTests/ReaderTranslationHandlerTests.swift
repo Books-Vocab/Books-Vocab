@@ -24,6 +24,7 @@ struct ReaderTranslationHandlerTests {
         var triggerQuickRetry = false
         var beforeQuickRetry: (() async -> Void)?
         var afterQuickRetry: (() async -> Void)?
+        var beforeExplanation: (() async -> Void)?
 
         func translateQuick(word: String, context: String, onRetry: (@Sendable (Int, Int) async -> Void)?) async throws -> TranslationResult {
             quickCalls += 1
@@ -40,6 +41,7 @@ struct ReaderTranslationHandlerTests {
         }
         func fetchExplanation(word: String, context: String, onRetry: (@Sendable (Int, Int) async -> Void)?) async throws -> (explanation: String, latency: TimeInterval) {
             explanationCalls += 1
+            await beforeExplanation?()
             return try explanationResult.get()
         }
     }
@@ -316,6 +318,35 @@ struct ReaderTranslationHandlerTests {
         #expect(ctx.savedTranslations.first == "rendered", "fresh translate path must auto-save through the protocol")
         #expect(handler.isSaved == true, "autoSave must flip isSaved so the panel renders the saved state")
         #expect(handler.lookedUpWords.contains("zeta"), "fresh save must also track looked-up state for reader underlining")
+    }
+
+    @Test func handleWordSelected_clearsPreviousExplanationLoadingState() async {
+        let service = MockTranslating()
+        service.explanationResult = .success(("explanation", 0.1))
+        service.quickResult = .success(TranslationResult(translation: "translation", partOfSpeech: nil, explanation: nil))
+        var releaseExplanation: CheckedContinuation<Void, Never>?
+        service.beforeExplanation = {
+            await withCheckedContinuation { continuation in
+                releaseExplanation = continuation
+            }
+        }
+        let handler = makeHandler(service: service)
+        let ctx = MockVocabContext()
+
+        handler.handleExplainSelected(text: "a sentence", context: "ctx")
+        #expect(await waitUntil { releaseExplanation != nil })
+
+        handler.handleWordSelected(word: "fresh", context: "ctx", vocabularyContext: ctx)
+
+        #expect(handler.isLoadingExplanation == false,
+                "switching selection must not leave the new word blocked by the previous explanation request")
+        #expect(handler.isTranslating == true)
+
+        releaseExplanation?.resume()
+        await drain(handler)
+
+        #expect(handler.translationResult?.translation == "translation")
+        #expect(handler.isLoadingExplanation == false)
     }
 
     @Test func handleWordSelected_retryStatus_surfacesWhileTaskIsActive() async {

@@ -131,9 +131,7 @@ class _PersistenceMixin:
     def _links_to_serializable(self) -> list[dict]:
         sequence = getattr(self, "_links_snapshot_sequence", 0) + 1
         self._links_snapshot_sequence = sequence
-        return _LinkSnapshot(
-            [lk.model_dump(mode="json") for lk in self._links.values()], sequence
-        )
+        return _LinkSnapshot([lk.model_dump(mode="json") for lk in self._links.values()], sequence)
 
     def _candidates_to_serializable(self) -> list[dict]:
         return [c.model_dump(mode="json") for c in self._candidates]
@@ -160,13 +158,13 @@ class _PersistenceMixin:
         """
         with self._links_write_lock, path_write_lock(self.links_path):
             sequence = getattr(snapshot, "sequence", None)
-            if sequence is not None and sequence < getattr(
-                self, "_last_flushed_links_snapshot_sequence", 0
-            ):
+            if sequence is not None and sequence < getattr(self, "_last_flushed_links_snapshot_sequence", 0):
                 return
             snapshot_ids = {row["id"] for row in snapshot}
             merged = list(snapshot)
             for row in self._read_json_list(self.links_path):
+                if not isinstance(row, dict):
+                    continue
                 rid = row.get("id")
                 if rid is None or rid in snapshot_ids:
                     continue
@@ -207,9 +205,7 @@ class _PersistenceMixin:
                 # NOT register it as managed by us -- otherwise our next flush
                 # (whose snapshot lacks it) would treat it as an unblock.
                 merged.add(pair)
-            self._atomic_json_write(
-                self.blocked_path, [list(p) for p in merged], indent=None
-            )
+            self._atomic_json_write(self.blocked_path, [list(p) for p in merged], indent=None)
 
     def _flush_candidates(self, snapshot: list[dict]) -> None:
         """Persist candidate pairs, merging with the current on-disk file.
@@ -221,10 +217,7 @@ class _PersistenceMixin:
         popped or removed -- follow the snapshot.
         """
         with self._candidates_write_lock, path_write_lock(self.candidates_path):
-            snapshot_pairs = {
-                self._normalize_pair(row["from_id"], row["to_id"])
-                for row in snapshot
-            }
+            snapshot_pairs = {self._normalize_pair(row["from_id"], row["to_id"]) for row in snapshot}
             merged = list(snapshot)
             for row in self._read_json_list(self.candidates_path):
                 from_id, to_id = row.get("from_id"), row.get("to_id")
@@ -264,9 +257,7 @@ class _PersistenceMixin:
                 # Foreign id queued by another instance: preserve it, but do
                 # NOT register it as managed by us.
                 merged.add(rid)
-            self._atomic_json_write(
-                self.pending_judge_path, sorted(merged), indent=None
-            )
+            self._atomic_json_write(self.pending_judge_path, sorted(merged), indent=None)
 
     # These internal _save_* are still used from _load (dirty migration path)
     # where we are NOT inside a concurrent context yet.

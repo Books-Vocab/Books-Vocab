@@ -26,8 +26,11 @@ struct ReaderSettingsPanel: View {
         .init(
             fontSizeText: settings.fontSizeText,
             fontScale: settings.fontSize,
-            canDecreaseFontSize: settings.fontSize > 0.75,
-            canIncreaseFontSize: settings.fontSize < 2.0,
+            canDecreaseFontSize: settings.fontSize > ReaderTypographyMetrics.fontSizeRange.lowerBound,
+            canIncreaseFontSize: settings.fontSize < ReaderTypographyMetrics.fontSizeRange.upperBound,
+            letterSpacingText: settings.letterSpacingText,
+            canDecreaseLetterSpacing: settings.letterSpacing > ReaderTypographyMetrics.letterSpacingRange.lowerBound,
+            canIncreaseLetterSpacing: settings.letterSpacing < ReaderTypographyMetrics.letterSpacingRange.upperBound,
             previewTheme: appearanceStore.resolvedReaderTheme(systemColorScheme: colorScheme)
         )
     }
@@ -51,6 +54,8 @@ struct ReaderSettingsPanel: View {
             bindings: presenterBindings,
             onDecreaseFontSize: decreaseFontSize,
             onIncreaseFontSize: increaseFontSize,
+            onDecreaseLetterSpacing: decreaseLetterSpacing,
+            onIncreaseLetterSpacing: increaseLetterSpacing,
             onSelectTheme: selectTheme,
             onSelectUnderlineOpacity: selectUnderlineOpacity,
             onResetToDefaults: resetToDefaults
@@ -60,21 +65,51 @@ struct ReaderSettingsPanel: View {
     private var presenterBindings: ReaderSettingsPresenter.Bindings {
         .init(
             lineHeight: $settings.lineHeight,
+            letterSpacing: $settings.letterSpacing,
             font: $settings.font,
             theme: themeBinding,
             underlineOpacity: $settings.underlineOpacity,
             vocabHighlightColorPreset: $settings.vocabHighlightColorPreset,
+            vocabHighlightCustomSRGB: $settings.vocabHighlightCustomSRGB,
             showHitTestingDebug: $settings.showHitTestingDebug,
             scrollMode: $settings.scrollMode
         )
     }
 
     private func decreaseFontSize() {
-        settings.fontSize = max(0.75, settings.fontSize - 0.125)
+        settings.fontSize = ReaderTypographyMetrics.steppedValue(
+            from: settings.fontSize,
+            by: -1,
+            in: ReaderTypographyMetrics.fontSizeRange,
+            step: ReaderTypographyMetrics.fontSizeStep
+        )
     }
 
     private func increaseFontSize() {
-        settings.fontSize = min(2.0, settings.fontSize + 0.125)
+        settings.fontSize = ReaderTypographyMetrics.steppedValue(
+            from: settings.fontSize,
+            by: 1,
+            in: ReaderTypographyMetrics.fontSizeRange,
+            step: ReaderTypographyMetrics.fontSizeStep
+        )
+    }
+
+    private func decreaseLetterSpacing() {
+        settings.letterSpacing = ReaderTypographyMetrics.steppedValue(
+            from: settings.letterSpacing,
+            by: -1,
+            in: ReaderTypographyMetrics.letterSpacingRange,
+            step: ReaderTypographyMetrics.letterSpacingStep
+        )
+    }
+
+    private func increaseLetterSpacing() {
+        settings.letterSpacing = ReaderTypographyMetrics.steppedValue(
+            from: settings.letterSpacing,
+            by: 1,
+            in: ReaderTypographyMetrics.letterSpacingRange,
+            step: ReaderTypographyMetrics.letterSpacingStep
+        )
     }
 
     private func selectTheme(_ theme: ReaderTheme) {
@@ -134,10 +169,12 @@ struct ReaderSettingsPanelPreviewHarness: View {
 
     @State private var fontScale: Double?
     @State private var lineHeight: Double = 1.5
+    @State private var letterSpacing: Double = 0
     @State private var font: ReaderFont = .serif
     @State private var theme: ReaderTheme = .sepia
     @State private var underlineOpacity: Double = 0.35
     @State private var vocabHighlightColorPreset: VocabHighlightColorPreset = .paper
+    @State private var vocabHighlightCustomSRGB: VocabHighlightSRGB = .default
     @State private var showHitTestingDebug = false
     @State private var scrollMode = false
 
@@ -148,8 +185,13 @@ struct ReaderSettingsPanelPreviewHarness: View {
         .init(
             fontSizeText: ReaderSettings.fontSizeText(for: resolvedFontScale),
             fontScale: resolvedFontScale,
-            canDecreaseFontSize: canDecreaseFontSize,
-            canIncreaseFontSize: canIncreaseFontSize,
+            canDecreaseFontSize: canDecreaseFontSize
+                && resolvedFontScale > ReaderTypographyMetrics.fontSizeRange.lowerBound,
+            canIncreaseFontSize: canIncreaseFontSize
+                && resolvedFontScale < ReaderTypographyMetrics.fontSizeRange.upperBound,
+            letterSpacingText: ReaderSettings.letterSpacingText(for: letterSpacing),
+            canDecreaseLetterSpacing: letterSpacing > ReaderTypographyMetrics.letterSpacingRange.lowerBound,
+            canIncreaseLetterSpacing: letterSpacing < ReaderTypographyMetrics.letterSpacingRange.upperBound,
             // harness 的 theme 是直接的三選一，沒有 `.system` 要解析。
             previewTheme: theme
         )
@@ -158,10 +200,12 @@ struct ReaderSettingsPanelPreviewHarness: View {
     private var bindings: ReaderSettingsPresenter.Bindings {
         .init(
             lineHeight: $lineHeight,
+            letterSpacing: $letterSpacing,
             font: $font,
             theme: $theme,
             underlineOpacity: $underlineOpacity,
             vocabHighlightColorPreset: $vocabHighlightColorPreset,
+            vocabHighlightCustomSRGB: $vocabHighlightCustomSRGB,
             showHitTestingDebug: $showHitTestingDebug,
             scrollMode: $scrollMode
         )
@@ -177,8 +221,38 @@ struct ReaderSettingsPanelPreviewHarness: View {
                 bindings: bindings,
                 // Catalog / #Preview 也走真的加減，否則預覽卡在 harness 裡是死的，
                 // 而「改設定會不會即時反映」正是這個 scenario 要看的事。
-                onDecreaseFontSize: { fontScale = max(0.75, resolvedFontScale - 0.125) },
-                onIncreaseFontSize: { fontScale = min(2.0, resolvedFontScale + 0.125) },
+                onDecreaseFontSize: {
+                    fontScale = ReaderTypographyMetrics.steppedValue(
+                        from: resolvedFontScale,
+                        by: -1,
+                        in: ReaderTypographyMetrics.fontSizeRange,
+                        step: ReaderTypographyMetrics.fontSizeStep
+                    )
+                },
+                onIncreaseFontSize: {
+                    fontScale = ReaderTypographyMetrics.steppedValue(
+                        from: resolvedFontScale,
+                        by: 1,
+                        in: ReaderTypographyMetrics.fontSizeRange,
+                        step: ReaderTypographyMetrics.fontSizeStep
+                    )
+                },
+                onDecreaseLetterSpacing: {
+                    letterSpacing = ReaderTypographyMetrics.steppedValue(
+                        from: letterSpacing,
+                        by: -1,
+                        in: ReaderTypographyMetrics.letterSpacingRange,
+                        step: ReaderTypographyMetrics.letterSpacingStep
+                    )
+                },
+                onIncreaseLetterSpacing: {
+                    letterSpacing = ReaderTypographyMetrics.steppedValue(
+                        from: letterSpacing,
+                        by: 1,
+                        in: ReaderTypographyMetrics.letterSpacingRange,
+                        step: ReaderTypographyMetrics.letterSpacingStep
+                    )
+                },
                 onSelectTheme: { theme = $0 },
                 onSelectUnderlineOpacity: { underlineOpacity = $0 },
                 onResetToDefaults: resetHarnessToDefaults
@@ -193,9 +267,11 @@ struct ReaderSettingsPanelPreviewHarness: View {
         withAnimation(AppMotion.panelState) {
             fontScale = ReaderSettings.defaultFontSize
             lineHeight = ReaderSettings.defaultLineHeight
+            letterSpacing = ReaderSettings.defaultLetterSpacing
             font = ReaderSettings.defaultFont
             scrollMode = ReaderSettings.defaultScrollMode
             vocabHighlightColorPreset = VocabHighlightPreferences.default.colorPreset
+            vocabHighlightCustomSRGB = VocabHighlightPreferences.default.customSRGB
             underlineOpacity = VocabHighlightPreferences.default.opacity
             showHitTestingDebug = ReaderSettings.defaultShowHitTestingDebug
         }

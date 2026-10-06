@@ -2,7 +2,7 @@ import json
 import os
 
 import kg.graph.persistence as persistence
-from kg.graph import GraphStore
+from kg.graph import GraphStore, LinkKind
 
 
 def test_atomic_json_write_fsyncs_before_rename(tmp_path, monkeypatch):
@@ -52,3 +52,16 @@ def test_atomic_json_write_creates_parent_dirs(tmp_path):
     path = tmp_path / "sub" / "dir" / "data.json"
     GraphStore._atomic_json_write(path, {"key": "value"})
     assert json.loads(path.read_text()) == {"key": "value"}
+
+
+def test_flush_links_skips_malformed_rows_after_load(tmp_path):
+    """A malformed persisted row must not block the next graph write."""
+    links_path = tmp_path / "links.json"
+    candidates_path = tmp_path / "candidates.json"
+    links_path.write_text(json.dumps([None]), encoding="utf-8")
+
+    store = GraphStore(links_path, candidates_path)
+
+    link = store.add_link("from", "to", LinkKind.SHARES_USAGE, 0.8, "related")
+
+    assert [row["id"] for row in json.loads(links_path.read_text())] == [link.id]

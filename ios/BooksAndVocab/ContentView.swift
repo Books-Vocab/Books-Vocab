@@ -189,5 +189,8 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: [Book.self, VocabularyEntry.self, Notebook.self, ReviewRecord.self, SharedDeck.self], inMemory: true)
+        .modelContainer(for: [
+            Book.self, VocabularyEntry.self, Notebook.self, NotebookSettingsProjection.self,
+            ReviewRecord.self, SharedDeck.self
+        ], inMemory: true)
 }

@@ -12,6 +12,7 @@ exercised in test_translate_cache_integration.py):
 These are *endpoint* tests using FastAPI's TestClient + the shared
 `isolated_api` fixture. The LLM client is stubbed via `create_async_client`.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -33,12 +34,16 @@ def _token_tracker_is_closed_after_module():
     assert token_tracker._conn is None, "token_tracker connection leaked past test module"
 
 
-def _stub_quick_llm(content: str = '{"t":"喚起","p":"v.","r":"evoke"}') -> MagicMock:
+def _stub_quick_llm(
+    content: str = '{"t":"喚起","p":"v.","r":"evoke"}',
+    *,
+    usage=None,
+) -> MagicMock:
     client = MagicMock()
     client.chat.completions.create = AsyncMock(
         return_value=SimpleNamespace(
             choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
-            usage=None,
+            usage=usage,
         )
     )
     return client
@@ -69,6 +74,27 @@ def test_translate_quick_basic_request_returns_expected_shape(isolated_api):
     assert body["r"] == "evoke"
     # No leakage of unexpected keys (response_model strips them)
     assert set(body.keys()) <= {"t", "p", "r"}
+
+
+def test_translate_quick_success_header_reports_post_use_quota_snapshot(isolated_api):
+    """A successful response reports quota remaining after its LLM usage."""
+    client = isolated_api.client
+    headers = isolated_api.headers
+    usage = SimpleNamespace(prompt_tokens=1_000_000, completion_tokens=0)
+
+    fake = _stub_quick_llm(usage=usage)
+    with patch("kg.translate_handlers.create_async_client", return_value=fake):
+        r = client.post(
+            "/api/translate/quick",
+            json={"word": "evoke-quota-snapshot", "context": "The story can evoke deep memories."},
+            headers=headers,
+        )
+
+    assert r.status_code == 200, r.text
+    # The Pro test user has a $0.30 limit; 1M Gemini input tokens consume
+    # $0.10, leaving 2/3 of the quota. The old route emitted the pre-use 1.0.
+    assert r.headers["X-Quota-Fraction"] == "0.6667"
+    assert r.headers["X-Quota-Reset"] == "86400"
 
 
 def test_translate_quick_invalid_request_returns_422(isolated_api):
@@ -115,6 +141,30 @@ def test_translate_quick_invalid_request_returns_422(isolated_api):
     )
     assert r_bad_lang.status_code == 422, r_bad_lang.text
     assert "detail" in r_bad_lang.json()
+
+
+def test_translate_quick_all_whitespace_word_returns_422_before_quota_or_provider(
+    isolated_api,
+):
+    """Whitespace-only words are rejected before any billable work begins."""
+    client = isolated_api.client
+    headers = isolated_api.headers
+
+    with (
+        patch("kg.routers.translate._check_quota") as quota_check,
+        patch("kg.translate_handlers.create_async_client") as create_async_client,
+    ):
+        responses = [
+            client.post("/api/translate/quick", json={"word": word}, headers=headers)
+            for word in ("   ", "\t\t", "\n \t\n")
+        ]
+
+    for response in responses:
+        assert response.status_code == 422, response.text
+        assert "detail" in response.json()
+
+    quota_check.assert_not_called()
+    create_async_client.assert_not_called()
 
 
 def test_translate_quick_unauthenticated_returns_401(isolated_api):

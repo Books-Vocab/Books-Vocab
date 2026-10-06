@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
-from pydantic import BaseModel, Field, RootModel
+from fastapi import HTTPException
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, RootModel, model_validator
 
 
 class PodcastSeriesSummary(RootModel[dict[str, Any]]):
@@ -19,16 +21,31 @@ class PodcastSeriesDetail(RootModel[dict[str, Any]]):
 
 
 class PodcastProgressRequest(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
     position_sec: float = Field(ge=0.0)
     duration_sec: float = Field(ge=0.0)
     updated_at: str = Field(min_length=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_non_finite_progress(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            for field_name in ("position_sec", "duration_sec"):
+                field_value = value.get(field_name)
+                if isinstance(field_value, float) and not math.isfinite(field_value):
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"{field_name} must be finite",
+                    )
+        return value
 
 
 class PodcastProgressResponse(BaseModel):
     series_id: str = Field(min_length=1)
     ep_num: int = Field(ge=1)
-    position_sec: float = Field(ge=0.0)
-    duration_sec: float = Field(ge=0.0)
+    position_sec: FiniteFloat = Field(ge=0.0)
+    duration_sec: FiniteFloat = Field(ge=0.0)
     updated_at: str = Field(min_length=1)
 
 

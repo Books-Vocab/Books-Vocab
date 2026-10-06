@@ -30,6 +30,8 @@ X-KG-API-Key: kg_<key-id>.<secret>
 
 建立與使用都即時檢查 Pro entitlement。Pro 到期後既有 key 也不能使用；`DELETE /api/v1/api-keys/{key_id}` 仍允許用 JWT 撤銷 key。
 
+`GET /api/v1/api-keys` 只列出目前使用者的 keys，包含已撤銷項目以保留 `revokedAt` 狀態；結果依 `createdAt` 對應的 UTC instant 由新到舊排序。`createdAt` 的 ISO 8601 offset 會先正規化後再比較；若多筆 key 對應同一 instant，則以 `keyId` descending 作 deterministic tie-break。回應仍保留 `label`、`keyId`、`createdAt`、`revokedAt`，不回傳 secret 或 `apiKey`。
+
 ## Reader queue and upload
 
 閱讀器選字先建立本地 `pending + add` card，不會因此出現在外部 API 或伺服器。推薦 client 行為：
@@ -40,6 +42,10 @@ X-KG-API-Key: kg_<key-id>.<secret>
 4. 重試依 `(content, notebookId)` 去重；同一張卡已存在時回 `created: false` 與既有 `card.id`，不靠文字比對收斂。
 
 `POST /api/v1/cards` 是單筆上傳；`POST /api/v1/cards/batch` 一次最多 100 筆。`meaning` 可以是空字串，代表先捕捉、之後再 enrich。欄位是 plain text，不需要 template，也不解析 Markdown。
+
+### Batch atomicity and duplicate safety
+
+`POST /api/v1/cards/batch` 以單一 transaction 處理本次 request；每筆 entry 使用 nested savepoint。任一 entry 驗證或寫入失敗時，整批新增的資料都 rollback，不會留下部分成功的 cards。並發的相同內容 request 仍遵守既有 idempotency：兩個 request 都回正常成功結果（只有一個 `created: true`），最後只保留一張 card。SQLite 的短暫 lock 只在 bounded retry 內處理；失敗仍回既有錯誤語義。單筆 endpoint 的行為不受此批次 transaction contract 影響。
 
 ## Endpoints
 

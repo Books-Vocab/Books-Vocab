@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import math
+from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from .cards import CardResponse
 from .common import VocabSource
@@ -73,6 +75,13 @@ class ExternalCardUpdateRequest(BaseModel):
     collocations: list[str] | None = Field(default=None, max_length=20)
     mode: Literal["recognition", "production"] | None = None
 
+    @field_validator("meaning")
+    @classmethod
+    def validate_meaning_not_blank(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("meaning must contain at least one non-whitespace character")
+        return value
+
 
 class ExternalCardArchiveRequest(BaseModel):
     archived: bool
@@ -84,13 +93,37 @@ class ExternalCardDeleteResponse(BaseModel):
 
 
 class ExternalCardReviewRequest(BaseModel):
-    reviewIntervalHours: float = Field(ge=0)
+    reviewIntervalHours: float = Field(ge=0, allow_inf_nan=False)
     nextReviewAt: str
     lastReviewedAt: str
     reviewCount: int = Field(ge=0)
     lapseCount: int = Field(ge=0)
     reviewStreak: int = Field(ge=0)
     lastReviewFeedback: int = Field(ge=-1, le=1)
+
+    @field_validator("nextReviewAt", "lastReviewedAt")
+    @classmethod
+    def validate_iso_timestamp(cls, value: str) -> str:
+        try:
+            datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("must be an ISO 8601 timestamp") from exc
+        return value
+
+    @field_validator("reviewCount", "lapseCount", "reviewStreak", mode="before")
+    @classmethod
+    def _reject_boolean_counter_values(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError("review counters must be integers")
+        return value
+
+    @field_validator("reviewIntervalHours", mode="before")
+    @classmethod
+    def _replace_non_finite_interval_for_validation(cls, value: object) -> object:
+        # Keep the validation error JSON-safe so the API can return its normal 422.
+        if isinstance(value, float) and not math.isfinite(value):
+            return -1.0
+        return value
 
 
 class ExternalEnrichRequest(BaseModel):

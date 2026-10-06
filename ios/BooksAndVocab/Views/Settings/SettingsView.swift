@@ -40,6 +40,28 @@ struct SettingsView: View {
         "\(authManager.isLoggedIn ? "logged-in" : "logged-out"):\(authManager.userId ?? "none"):\(authManager.isDemoMode)"
     }
 
+    /// The clean Settings UI fixture is applied after the process-wide store can
+    /// be initialized by AuthManager. Re-activating the guest namespace here
+    /// makes the fixture's real LWW write observable before the coordinator
+    /// performs its normal account-boundary load. This is simulator-only test
+    /// plumbing; production launches never rewrite a user's preferences.
+    private var shouldNormalizeCleanSettingsFixture: Bool {
+#if DEBUG && targetEnvironment(simulator)
+        AppRuntimeOptions.isUITesting()
+            && ProcessInfo.processInfo.arguments.contains("-seedFixture:settings:cleanPreferences")
+#else
+        false
+#endif
+    }
+
+    private func normalizeCleanSettingsFixtureIfNeeded() {
+        guard shouldNormalizeCleanSettingsFixture else { return }
+#if DEBUG && targetEnvironment(simulator)
+        reviewSettingsStore.activateAccount(nil)
+        reviewSettingsStore.update(.default)
+#endif
+    }
+
     var body: some View {
 #if DEBUG
         let _ = RenderStormProbe.shared.tick("SettingsView")
@@ -88,6 +110,7 @@ struct SettingsView: View {
         .environment(\.syncProgressStore, coordinator.syncProgress)
         .task(id: settingsAccountTaskID) {
             coordinator.resetForAccountBoundary()
+            normalizeCleanSettingsFixtureIfNeeded()
             await coordinator.loadData(authManager: authManager, kgService: kgService)
             if authManager.isLoggedIn {
                 await subscriptionManager.loadProducts()

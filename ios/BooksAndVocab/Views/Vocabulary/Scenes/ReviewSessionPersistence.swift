@@ -158,7 +158,7 @@ enum ReviewSessionPersistence {
         queueBaselines: [TodayReviewSessionSnapshotStore.ReviewBaseline],
         submittedAnswers: [Int: TodayReviewState.SubmittedAnswer],
         container: ModelContainer,
-        reviewSettings: ReviewSettings,
+        notebookSettingsSnapshot: NotebookSettingsSnapshot,
         onFlushed: (@MainActor @Sendable (_ indices: [Int]) -> Void)? = nil,
         onFailure: (@MainActor @Sendable () -> Void)? = nil
     ) {
@@ -179,7 +179,13 @@ enum ReviewSessionPersistence {
                     AppLog.data.error("flushPendingAnswers: entry not found for \(queuePersistenceIDs[index]), result not saved")
                     continue
                 }
-                stageAnswer(answer, baseline: queueBaselines[index], entry: entry, reviewSettings: reviewSettings, in: ctx)
+                stageAnswer(
+                    answer,
+                    baseline: queueBaselines[index],
+                    entry: entry,
+                    notebookSettingsSnapshot: notebookSettingsSnapshot,
+                    in: ctx
+                )
                 staged.append(index)
             }
             let saved = PerfLog.review.measure("flush.dbSaveBatch", "n=\(staged.count)") { ctx.safeSave() }.value
@@ -193,15 +199,43 @@ enum ReviewSessionPersistence {
         }
     }
 
+    /// Compatibility seam for callers that only have the user-global policy.
+    /// Production review sessions use the snapshot overload above so a mixed
+    /// notebook queue resolves each card independently.
+    static func flushPendingAnswers(
+        queuePersistenceIDs: [String],
+        queueBaselines: [TodayReviewSessionSnapshotStore.ReviewBaseline],
+        submittedAnswers: [Int: TodayReviewState.SubmittedAnswer],
+        container: ModelContainer,
+        reviewSettings: ReviewSettings,
+        onFlushed: (@MainActor @Sendable (_ indices: [Int]) -> Void)? = nil,
+        onFailure: (@MainActor @Sendable () -> Void)? = nil
+    ) {
+        let snapshot = NotebookSettingsResolver(
+            globalReviewSettings: reviewSettings,
+            globalCardLayout: .default
+        ).snapshot(for: [])
+        flushPendingAnswers(
+            queuePersistenceIDs: queuePersistenceIDs,
+            queueBaselines: queueBaselines,
+            submittedAnswers: submittedAnswers,
+            container: container,
+            notebookSettingsSnapshot: snapshot,
+            onFlushed: onFlushed,
+            onFailure: onFailure
+        )
+    }
+
     /// Apply one answer's SRS mutation to `entry` and insert its `ReviewRecord`
     /// (idempotent on record existence) into `ctx`. Caller owns the single save.
     private static func stageAnswer(
         _ answer: TodayReviewState.SubmittedAnswer,
         baseline: TodayReviewSessionSnapshotStore.ReviewBaseline,
         entry: VocabularyEntry,
-        reviewSettings: ReviewSettings,
+        notebookSettingsSnapshot: NotebookSettingsSnapshot,
         in ctx: ModelContext
     ) {
+        let reviewSettings = notebookSettingsSnapshot.reviewSettings(for: entry.notebookId)
         applySubmittedAnswer(answer, baseline: baseline, to: entry, reviewSettings: reviewSettings)
 
         if (try? fetchReviewRecord(id: answer.reviewRecordID, in: ctx)) == nil {

@@ -25,6 +25,20 @@ ok() { echo "  ✓ $*"; pass=$((pass+1)); }
 fail_t() { echo "  ✗ $*"; fail=$((fail+1)); }
 section() { echo ""; echo "── $* ──"; }
 
+sentry_gate_fixture() {
+  KG_IOS_OPS_FIXTURE=1 \
+  KG_IOS_OPS_SENTRY_BUILD_CAN_IMPORT_FIXTURE=true \
+  KG_IOS_OPS_SENTRY_API_AUTHENTICATED_FIXTURE=true \
+  KG_IOS_OPS_SENTRY_PROJECT_REACHABLE_FIXTURE=true \
+  KG_IOS_OPS_SENTRY_RUNTIME_EVENT_FIXTURE=true \
+  KG_IOS_OPS_SENTRY_SYMBOLICATION_FIXTURE=true \
+  SENTRY_API_URL=https://sentry.example.test \
+  SENTRY_AUTH_TOKEN=fixture-token \
+  SENTRY_ORG=kg-org \
+  SENTRY_PROJECT_IOS=ios \
+  bash "$IOS_OPS" "$@"
+}
+
 usage() {
   cat <<'EOF'
 Usage: ops/test_ios_ops.sh [--list | --section <name>]
@@ -565,14 +579,18 @@ grep -qE 'xcodebuild (archive|build|test)|altool --upload-app' "$IOS_OPS_RELEASE
   || ok "workflow stays orchestration/read-only"
 
 section "Release gate surface"
-gate_pass_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" gate release --json)"
+gate_pass_json="$(sentry_gate_fixture gate release --json)"
 echo "$gate_pass_json" | jq -e '.schema=="kg.ios.gate.v1" and .name=="release" and .verdict=="pass" and .exitCode==0 and .summary.blocks==0 and (.todos|length >= 1) and (.manual|length == 1)' >/dev/null \
   && ok "gate release --json emits pass verdict" || fail_t "gate release pass invalid: $gate_pass_json"
-gate_text="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" gate release)"
+sentry_fixture_json="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" sentry --json)"
+echo "$sentry_fixture_json" | jq -e '.readiness.build_can_import == true and .build_evidence.source == "fixture"' >/dev/null \
+  && ok "fixture Sentry readiness supplies deterministic build evidence" \
+  || fail_t "fixture Sentry readiness lacks deterministic build evidence: $sentry_fixture_json"
+gate_text="$(sentry_gate_fixture gate release)"
 echo "$gate_text" | grep -q 'verdict=pass' \
   && ok "gate release text emits verdict" || fail_t "gate release text missing verdict: $gate_text"
 gate_warn_tmp="$(mktemp -d)"
-if KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_FIXTURE_TF_LATEST=unknown bash "$IOS_OPS" gate release --json >"$gate_warn_tmp/out" 2>"$gate_warn_tmp/err"; then
+if KG_IOS_OPS_FIXTURE_TF_LATEST=unknown sentry_gate_fixture gate release --json >"$gate_warn_tmp/out" 2>"$gate_warn_tmp/err"; then
   fail_t "gate release warns on unknown TestFlight build"
 else
   rc=$?
@@ -582,7 +600,7 @@ else
 fi
 rm -rf "$gate_warn_tmp"
 gate_block_tmp="$(mktemp -d)"
-if KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_FIXTURE_TF_LATEST=4 bash "$IOS_OPS" gate release --json >"$gate_block_tmp/out" 2>"$gate_block_tmp/err"; then
+if KG_IOS_OPS_FIXTURE_TF_LATEST=4 sentry_gate_fixture gate release --json >"$gate_block_tmp/out" 2>"$gate_block_tmp/err"; then
   fail_t "gate release blocks duplicate TestFlight build"
 else
   rc=$?
@@ -855,7 +873,7 @@ echo "$workflow_review_invalid_json" | jq -e '.summary.verdict=="block" and .app
 workflow_text="$(KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" workflow release)"
 echo "$workflow_text" | grep -Eq '^\[ios\]\[workflow\] summary verdict=(pass|warn|block) ready=' \
   && ok "workflow text reports aggregate summary" || fail_t "workflow text missing summary: $workflow_text"
-snapshot_json="$(TMPDIR="$runs_tmp" KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" snapshot --json)"
+snapshot_json="$(TMPDIR="$runs_tmp" sentry_gate_fixture snapshot --json)"
 echo "$snapshot_json" | jq -e '.schema=="kg.ios.snapshot.v1" and (.readiness|length >= 7) and (.workflow.steps|length == 8) and .gate.schema=="kg.ios.gate.v1" and .gate.verdict=="pass" and .gate.exitCode==0 and .summary.verdict=="warn" and .summary.counts.readinessOk==([.readiness[] | select(.status=="ok")] | length) and .summary.counts.readinessWarns==([.readiness[] | select(.status=="warn")] | length) and .summary.counts.readinessBlocks==([.readiness[] | select(.status=="block")] | length) and .summary.counts.workflowReady==.workflow.summary.counts.ready and .summary.counts.workflowTodos==.workflow.summary.counts.todo and .summary.counts.workflowWarns==.workflow.summary.counts.warn and .summary.counts.workflowBlocks==.workflow.summary.counts.block and .summary.counts.workflowManual==.workflow.summary.counts.manual and .summary.counts.buildWarnings==1 and .summary.counts.archiveWarnings==1 and .summary.counts.sentryWarnings==0 and .summary.timings.build.totalMs==3120 and .summary.timings.build.lockWaitMs==90 and .summary.timings.build.probeMs==777 and .summary.timings.test.lockWaitMs==140 and .summary.timings.test.cacheStatus=="hit" and .summary.timings.test.appLaunchAverageMs==1450 and .summary.timings.test.appLaunchSamples==5 and .summary.timings.archive.totalMs==13510 and .summary.timings.archive.archiveMs==12000 and (.summary.timings.simulator.totalMs|type)=="number" and (.summary.timings.simulator.simctlDevicesMs|type)=="number" and (.summary.timings.simulator.appContainerMs|type)=="number" and (.summary.timings.simulator.appProcessMs|type)=="number" and any(.summary.nextActions[]; .source=="runs.build.diagnostics" and .severity=="warn" and .category=="storekit" and (.message|contains("StoreKit Configuration"))) and any(.summary.nextActions[]; .source=="runs.archive.diagnostics" and .severity=="warn" and .category=="storekit" and (.message|contains("StoreKit Configuration"))) and any(.summary.nextActions[]; .source=="gate" and .severity=="manual" and .key=="submit") and .sentry.schema=="kg.ios.sentry.v1" and .sentry.source.exists==true and .sentry.wiring.canImportGuard==true and .sentry.wiring.dsnKeyReference==true and .xcode.schema=="kg.ios.xcode.v1" and .xcode.simulators.summary.booted==1 and .simulator.schema=="kg.ios.simulator.v1" and .simulator.app.process.status=="running" and .project.version=="1.6" and .runs.test.executed=="12" and .runs.archive.result=="ok" and .runs.archive.diagnostics.counts.warnings==1 and .logs==null' >/dev/null \
   && ok "snapshot --json combines readiness and workflow" || fail_t "snapshot --json invalid: $snapshot_json"
 
@@ -872,22 +890,22 @@ echo "$workflow_json" | jq -e "$verdict_rule"' .summary.verdict == rule(.summary
   && ok "workflow verdict follows canonical three-tier rule" || fail_t "workflow verdict drifted: $workflow_json"
 echo "$snapshot_json" | jq -e "$verdict_rule"' .gate.verdict == rule(.gate.summary.blocks; .gate.summary.warnings)' >/dev/null \
   && ok "gate verdict follows canonical three-tier rule" || fail_t "gate verdict drifted: $snapshot_json"
-snapshot_skip_xcode_json="$(TMPDIR="$runs_tmp" KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" snapshot --json --skip-xcode)"
+snapshot_skip_xcode_json="$(TMPDIR="$runs_tmp" sentry_gate_fixture snapshot --json --skip-xcode)"
 echo "$snapshot_skip_xcode_json" | jq -e '.schema=="kg.ios.snapshot.v1" and .summary.verdict=="warn" and .sentry.schema=="kg.ios.sentry.v1" and .xcode==null and .simulator.schema=="kg.ios.simulator.v1" and .runs.test.executed=="12"' >/dev/null \
   && ok "snapshot --json can skip xcode inventory" || fail_t "snapshot --json --skip-xcode invalid: $snapshot_skip_xcode_json"
-snapshot_skip_simulator_json="$(TMPDIR="$runs_tmp" KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" snapshot --json --skip-simulator)"
+snapshot_skip_simulator_json="$(TMPDIR="$runs_tmp" sentry_gate_fixture snapshot --json --skip-simulator)"
 echo "$snapshot_skip_simulator_json" | jq -e '.schema=="kg.ios.snapshot.v1" and .summary.verdict=="warn" and .sentry.schema=="kg.ios.sentry.v1" and .xcode.schema=="kg.ios.xcode.v1" and .simulator==null and .runs.test.executed=="12"' >/dev/null \
   && ok "snapshot --json can skip simulator status" || fail_t "snapshot --json --skip-simulator invalid: $snapshot_skip_simulator_json"
-snapshot_no_booted_json="$(TMPDIR="$runs_tmp" KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_SIM_NO_BOOTED_FIXTURE=1 bash "$IOS_OPS" snapshot --json)"
+snapshot_no_booted_json="$(TMPDIR="$runs_tmp" KG_IOS_OPS_SIM_NO_BOOTED_FIXTURE=1 sentry_gate_fixture snapshot --json)"
 echo "$snapshot_no_booted_json" | jq -e '.schema=="kg.ios.snapshot.v1" and .summary.verdict=="warn" and .sentry.schema=="kg.ios.sentry.v1" and any(.summary.nextActions[]; .source=="simulator" and .severity=="warn" and .key=="booted-device") and .simulator.schema=="kg.ios.simulator.v1" and .simulator.status=="error" and any(.simulator.errors[]; .key=="booted-device") and .runs.test.executed=="12"' >/dev/null \
   && ok "snapshot --json embeds simulator error without failing" || fail_t "snapshot no-booted simulator invalid: $snapshot_no_booted_json"
 snapshot_sentry_warn_json="$(TMPDIR="$runs_tmp" KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_SENTRY_SOURCE_FIXTURE=/tmp/kg-missing-sentry.swift KG_IOS_OPS_SENTRY_SOURCE_EXISTS_FIXTURE=0 KG_IOS_OPS_SENTRY_CAN_IMPORT_FIXTURE=0 KG_IOS_OPS_SENTRY_DSN_FIXTURE=0 bash "$IOS_OPS" snapshot --json --skip-xcode --skip-simulator)"
 echo "$snapshot_sentry_warn_json" | jq -e '.schema=="kg.ios.snapshot.v1" and .summary.verdict=="warn" and .summary.counts.sentryWarnings==3 and .summary.counts.sentryWarnings==(.sentry.issues|length) and (.sentry.issues|map(.key)|sort)==["canImportGuard","dsnKeyReference","source"] and any(.summary.nextActions[]; .source=="sentry" and .key=="source" and .severity=="warn") and any(.summary.nextActions[]; .source=="sentry" and .key=="canImportGuard" and .severity=="warn") and any(.summary.nextActions[]; .source=="sentry" and .key=="dsnKeyReference" and .severity=="warn") and .sentry.source.exists==false and .sentry.wiring.canImportGuard==false and .sentry.wiring.dsnKeyReference==false' >/dev/null \
   && ok "snapshot --json surfaces sentry wiring drift as warnings" || fail_t "snapshot sentry warning invalid: $snapshot_sentry_warn_json"
-snapshot_logs_json="$(TMPDIR="$runs_tmp" KG_IOS_OPS_FIXTURE=1 KG_IOS_OPS_LOG_FIXTURE=1 bash "$IOS_OPS" snapshot --json --include-logs --log-since 1m --log-limit 1)"
+snapshot_logs_json="$(TMPDIR="$runs_tmp" KG_IOS_OPS_LOG_FIXTURE=1 sentry_gate_fixture snapshot --json --include-logs --log-since 1m --log-limit 1)"
 echo "$snapshot_logs_json" | jq -e '.schema=="kg.ios.snapshot.v1" and .summary.counts.runtimeLogs==1 and .sentry.schema=="kg.ios.sentry.v1" and .simulator.schema=="kg.ios.simulator.v1" and .logs.schema=="kg.ios.logs.v1" and .logs.since=="1m" and .logs.limit==1 and .logs.summary.filteredCount==1 and (.logs.entries|length)==1' >/dev/null \
   && ok "snapshot --json can include runtime logs" || fail_t "snapshot --json logs invalid: $snapshot_logs_json"
-snapshot_text="$(TMPDIR="$runs_tmp" KG_IOS_OPS_FIXTURE=1 bash "$IOS_OPS" snapshot --skip-xcode --skip-simulator)"
+snapshot_text="$(TMPDIR="$runs_tmp" sentry_gate_fixture snapshot --skip-xcode --skip-simulator)"
 printf '%s\n' "$snapshot_text" | sed -n '1p' | grep -q '^\[ios\]\[summary\].*verdict=warn.*readinessWarns=.*workflowManual=1.*buildWarnings=1.*sentryWarnings=0' \
   && ok "snapshot text starts with summary verdict" || fail_t "snapshot text first line missing summary: $snapshot_text"
 printf '%s\n' "$snapshot_text" | sed -n '2p' | grep -q '^\[ios\]\[timing\] build cacheStatus=n/a totalMs=3120 bootMs=120 xcodebuildMs=3000' \
@@ -1120,6 +1138,11 @@ grep -q 'emit_ui_runner_lifecycle' "$WORKSPACE/ops/ios_test.sh" \
 grep -q 'KG_UI_TEST_SCREENSHOT_DIR' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'uitest_contact_sheet.py' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test captures UI step screenshots into a contact sheet" || fail_t "ios_test missing UI step contact sheet capture"
+grep -q '^stage_ui_runner_process_environment()' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'EnvironmentVariables' "$WORKSPACE/ops/ios_test.sh" \
+  && grep -q 'KG_UI_TEST_SCREENSHOT_DIR' "$WORKSPACE/ops/ios_test.sh" \
+  && ok "ios_test stages P9 screenshot context into the runner process environment" \
+  || fail_t "ios_test does not stage P9 screenshot context into the runner process environment"
 [[ "$(grep -c '^stage_ui_evidence_runner_environment()' "$WORKSPACE/ops/ios_test.sh")" -eq 1 ]] \
   && grep -q 'verdict_file="\${KG_IOS_VERDICT_FILE:-\${VERDICT_FILE:-}}"' "$WORKSPACE/ops/ios_test.sh" \
   && grep -q 'KG_IOS_VERDICT_FILE "\$verdict_file"' "$WORKSPACE/ops/ios_test.sh" \
@@ -1138,6 +1161,84 @@ grep -q 'test-without-building' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test supports cache-first xctestrun reuse path" || fail_t "ios_test missing reuse-build path"
 grep -q 'ensure_xctestrun_ready_or_fail' "$WORKSPACE/ops/ios_test.sh" \
   && ok "ios_test guards missing xctestrun artifacts before test-without-building" || fail_t "ios_test missing xctestrun readiness guard"
+# App-written P9/Reader evidence needs a run-scoped screenshot directory even
+# when the caller did not request visual review artifacts.  Keep this executable
+# regression fixture so the runner contract cannot regress to visual-only setup.
+nonvisual_evidence_tmp="$(mktemp -d)"
+if bash -c '
+  set -euo pipefail
+  SCRIPT_DIR="'"$WORKSPACE"'/ops"
+  TEST_SCOPE="ui"
+  VISUAL_CAPTURE_ENABLED=0
+  UI_TEST_SCREENSHOT_DIR=""
+  UI_TEST_CONTACT_SHEET=""
+  UI_TEST_QUICK4_SHEET=""
+  UI_TEST_SCREENSHOT_MANIFEST=""
+  UI_TEST_VIDEO=""
+  UI_TEST_VIDEO_FILE=""
+  UI_TEST_VIDEO_SHA256=""
+  artifact_temp_dir() {
+    mkdir -p "'"$nonvisual_evidence_tmp"'/artifact"
+    printf "%s\n" "'"$nonvisual_evidence_tmp"'/artifact"
+  }
+  eval "$(sed -n "/^prepare_ui_step_screenshot_dir()/,/^}/p" "$SCRIPT_DIR/ios_test.sh")"
+  prepare_ui_step_screenshot_dir
+  [[ -n "$UI_TEST_SCREENSHOT_DIR" && -d "$UI_TEST_SCREENSHOT_DIR" ]]
+'; then
+  ok "ios_test allocates UI evidence directory without visual capture"
+else
+  fail_t "ios_test does not allocate UI evidence directory for nonvisual UI runs"
+fi
+
+nonvisual_stage_log="$nonvisual_evidence_tmp/stage.log"
+if bash -c '
+  set -euo pipefail
+  SCRIPT_DIR="'"$WORKSPACE"'/ops"
+  PROJECT_ROOT="'"$nonvisual_evidence_tmp"'/project"
+  TEST_SCOPE="ui"
+  VISUAL_CAPTURE_ENABLED=0
+  UI_TEST_SCREENSHOT_DIR="'"$nonvisual_evidence_tmp"'/artifact"
+  KG_IOS_VERDICT_FILE="'"$nonvisual_evidence_tmp"'/verdict.json"
+  VERDICT_FILE="$KG_IOS_VERDICT_FILE"
+  EVIDENCE_DATASET_ID="fixture-dataset"
+  EVIDENCE_DATASET_SHA256="0000000000000000000000000000000000000000000000000000000000000000"
+  mkdir -p "$PROJECT_ROOT" "$UI_TEST_SCREENSHOT_DIR"
+  : > "'"$nonvisual_evidence_tmp"'/staged.xctestrun"
+  git() { printf "%s\n" "fixture-source-commit"; }
+  resolve_run_device_udid() { printf "%s\n" "fixture-device-udid"; }
+  ios_xctestrun_cache_upsert_env_all_targets() {
+    printf "%s=%s\n" "$2" "$3" >> "'"$nonvisual_stage_log"'"
+  }
+  stage_ui_runner_process_environment() { :; }
+  eval "$(sed -n "/^stage_ui_evidence_runner_environment()/,/^}/p" "$SCRIPT_DIR/ios_test.sh")"
+  stage_ui_evidence_runner_environment "'"$nonvisual_evidence_tmp"'/staged.xctestrun"
+  grep -q '^KG_UI_TEST_SCREENSHOT_DIR=' "'"$nonvisual_stage_log"'"
+'; then
+  ok "ios_test stages nonvisual UI screenshot context into xctestrun"
+else
+  fail_t "ios_test does not stage nonvisual UI screenshot context"
+fi
+nonvisual_review_tmp="$nonvisual_evidence_tmp/review"
+mkdir -p "$nonvisual_review_tmp"
+printf 'fixture' >"$nonvisual_review_tmp/01-step.png"
+if bash -c '
+  set -euo pipefail
+  SCRIPT_DIR="'"$WORKSPACE"'/ops"
+  TEST_SCOPE="ui"
+  VISUAL_CAPTURE_ENABLED=0
+  UI_TEST_SCREENSHOT_DIR="'"$nonvisual_review_tmp"'"
+  UI_TEST_CONTACT_SHEET=""
+  UI_TEST_QUICK4_SHEET=""
+  UI_TEST_SCREENSHOT_MANIFEST=""
+  eval "$(sed -n "/^build_ui_step_contact_sheet()/,/^}/p" "$SCRIPT_DIR/ios_test.sh")"
+  build_ui_step_contact_sheet
+  [[ ! -e "'"$nonvisual_review_tmp"'/contact_sheet.png" ]]
+'; then
+  ok "ios_test keeps contact-sheet generation visual-only"
+else
+  fail_t "ios_test generated visual review output for a nonvisual UI run"
+fi
+rm -rf "$nonvisual_evidence_tmp"
 # Functional regression: fake UI step screenshots must yield the full visual
 # review trio — full contact sheet + quick4 sheet + selection manifest — and
 # generated sheets must never re-enter the manifest as fake steps.
@@ -1352,6 +1453,66 @@ variant_profile="$(
 [[ "$variant_profile" == "profile:ui-smoke" ]] \
   && ok "ios_test variant id records launch profile state" \
   || fail_t "ios_test profile variant id wrong: $variant_profile"
+
+section "ios_test carries resolved simulator UDID into evidence"
+ios_udid_tmp="$(mktemp -d)"
+cat >"$ios_udid_tmp/fake-ios-ops.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+cat <<'JSON'
+{"schema":"kg.ios.simulator.v1","action":"ensure-booted","status":"ok","selector":"iPhone 17 Pro Max","device":{"udid":"fixture-iphone-17-pro-max","state":"Booted"},"boot":{"status":"ok","exitCode":0,"wasAlreadyBooted":false,"waitedForBootstatus":true},"timings":{"totalMs":1,"resolveMs":1,"bootMs":0,"bootstatusMs":0},"errors":[]}
+JSON
+EOF
+chmod +x "$ios_udid_tmp/fake-ios-ops.sh"
+ios_udid_log="$ios_udid_tmp/snippet.log"
+if bash -c '
+  set -euo pipefail
+  script="$1"
+  IOS_OPS="$2"
+  SIMULATOR_BOOT_SELECTOR="iPhone 17 Pro Max"
+  JSON_MODE=0
+  BOOT_MS=0
+  RESOLVED_DEVICE_UDID=""
+  ios_test_now_ms() { printf "100\n"; }
+  eval "$(sed -n "/^boot_simulator_if_needed()/,/^}/p" "$script")"
+  eval "$(sed -n "/^resolve_run_device_udid()/,/^}/p" "$script")"
+  boot_simulator_if_needed
+  [[ "$RESOLVED_DEVICE_UDID" == "fixture-iphone-17-pro-max" ]]
+  [[ "$(resolve_run_device_udid)" == "fixture-iphone-17-pro-max" ]]
+' _ "$WORKSPACE/ops/ios_test.sh" "$ios_udid_tmp/fake-ios-ops.sh" >"$ios_udid_log" 2>&1; then
+  ok "ios_test carries ensure-booted UDID into UI evidence resolution"
+else
+  fail_t "ios_test lost ensure-booted UDID before evidence stage: $(tail -5 "$ios_udid_log" | tr "\n" " ")"
+fi
+cat >"$ios_udid_tmp/fake-ios-ops-missing-udid.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+cat <<'JSON'
+{"schema":"kg.ios.simulator.v1","action":"ensure-booted","status":"ok","selector":"iPhone 17 Pro Max","device":{"udid":null,"state":"Booted"},"boot":{"status":"ok","exitCode":0,"wasAlreadyBooted":true,"waitedForBootstatus":true},"timings":{"totalMs":1,"resolveMs":1,"bootMs":0,"bootstatusMs":0},"errors":[]}
+JSON
+EOF
+chmod +x "$ios_udid_tmp/fake-ios-ops-missing-udid.sh"
+ios_udid_invalid_log="$ios_udid_tmp/invalid-snippet.log"
+if bash -c '
+  set -euo pipefail
+  script="$1"
+  IOS_OPS="$2"
+  SIMULATOR_BOOT_SELECTOR="iPhone 17 Pro Max"
+  JSON_MODE=0
+  BOOT_MS=0
+  RESOLVED_DEVICE_UDID=""
+  ios_test_now_ms() { printf "100\n"; }
+  eval "$(sed -n "/^boot_simulator_if_needed()/,/^}/p" "$script")"
+  if boot_simulator_if_needed; then
+    exit 1
+  fi
+  [[ -z "$RESOLVED_DEVICE_UDID" ]]
+' _ "$WORKSPACE/ops/ios_test.sh" "$ios_udid_tmp/fake-ios-ops-missing-udid.sh" >"$ios_udid_invalid_log" 2>&1; then
+  ok "ios_test rejects an ensure-booted payload without a usable UDID"
+  rm -rf "$ios_udid_tmp"
+else
+  fail_t "ios_test accepted an unusable ensure-booted payload: $(tail -5 "$ios_udid_invalid_log" | tr "\n" " ")"
+fi
 
 section "ios_test fixture dataset flag (--dataset/--dataset-file)"
 ds_out="$("$WORKSPACE/ops/ios_test.sh" --dataset marketing_demo -g Foo 2>&1 || true)"
@@ -1680,6 +1841,33 @@ missing_diag_json="$("$IOS_DIAG" --kind test --xcresult "$ios_test_retry_tmp/Mis
 echo "$missing_diag_json" | jq -e --arg log "$ios_test_retry_tmp/never-created.log" '.schema=="kg.ios.diagnostics.v1" and .source=="raw-log-missing" and .result=="fail" and .counts.errors==0 and .logError=="log file not found: \($log)" and (.xcresultError|length > 0) and .artifacts.log==$log' >/dev/null \
   && ok "ios_diagnostics reports missing fallback log as machine-readable error" || fail_t "ios_diagnostics missing-log fallback invalid: $missing_diag_json"
 rm -rf "$ios_test_retry_tmp"
+
+section "ios_test lease failure is a structured verdict"
+# A lease refusal happens before xcodebuild starts, so it must still publish a
+# per-invocation verdict.  Without that evidence the outer gate can only report
+# a misleading missing-artifacts/unknown result.
+lease_failure_tmp="$(mktemp -d "${TMPDIR:-/tmp}/kg-ios-lease-failure.XXXXXX")"
+lease_failure_out="$lease_failure_tmp/stdout"
+lease_failure_err="$lease_failure_tmp/stderr"
+lease_failure_rc=0
+KG_IOS_SIM_POOL_SIZE=0 \
+KG_IOS_SIM_LEASE_ROOT="$lease_failure_tmp/leases" \
+KG_IOS_VERDICT_FILE="$lease_failure_tmp/verdict" \
+  "$IOS_OPS" test --unit --lease --json >"$lease_failure_out" 2>"$lease_failure_err" || lease_failure_rc=$?
+[[ "$lease_failure_rc" -eq 1 ]] \
+  && ok "ios_test returns non-zero for an exhausted simulator pool" \
+  || fail_t "ios_test lease refusal exit changed: $lease_failure_rc"
+if [[ -s "$lease_failure_tmp/verdict.json" ]] \
+  && jq -e '.result == "inconclusive" and .reason == "simulator-pool-exhausted" and .exit == "1"' \
+      "$lease_failure_tmp/verdict.json" >/dev/null; then
+  ok "ios_test publishes a pool-exhaustion verdict before xcodebuild"
+else
+  fail_t "ios_test did not publish the expected pool-exhaustion verdict"
+fi
+grep -q "pool is exhausted" "$lease_failure_err" \
+  && ok "ios_test preserves the operator-facing pool exhaustion reason" \
+  || fail_t "ios_test lost the operator-facing pool exhaustion reason"
+rm -rf "$lease_failure_tmp"
 
 section "ios_test generic device compile is unsigned and cache-isolated"
 # The live-only Release gate uses generic/platform=iOS only to prove that the

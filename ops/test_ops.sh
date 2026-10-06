@@ -33,6 +33,7 @@ DEFAULT_TESTS=(
   branch-audit
   exit-code-contract
   worktree
+  delivery-control
   capability-matrix
   context-routing
   ui-deadcode
@@ -120,11 +121,26 @@ run_one() {
         ops/tests/test_exit_code_contract.py
       ;;
     worktree)
-      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+      "$UV_BIN" run --no-project --python 3.13 \
+        "$ROOT/ops/run_serial_test_group.py" \
+        --repo-root "$ROOT" --lock-name worktree -- \
+        "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_worktree_registry.py \
+        ops/tests/test_worktree_registry_admission.py \
+        ops/tests/test_worktree_registry_handback.py \
+        ops/tests/test_worktree_registry_lifecycle.py \
+        ops/tests/test_worktree_registry_maintenance.py \
         ops/tests/test_worktree_orchestrate.py \
+        ops/tests/test_worktree_recovery_lifecycle.py \
         ops/tests/test_task_registry.py \
-        ops/tests/test_lock_wait.py
+        ops/tests/test_lock_wait.py \
+        ops/tests/test_test_execution_lock.py
+      ;;
+    delivery-control)
+      delivery_tests=(ops/tests/test_delivery_*.py)
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        "${delivery_tests[@]}" &&
+      ./ops/tests/test_pr_readiness_workflow.sh
       ;;
     capability-matrix)
       "$UV_BIN" run --python 3.13 --with pytest --with 'cryptography>=48,<49' pytest -q \

@@ -6,7 +6,7 @@ import Testing
 /// Pins `SelectionModeState` — the multi-select state machine shared by the
 /// vocab list scenes (enter on long-press, toggle, select-all, exit). Pure
 /// in-memory logic with no SwiftUI/`@Query` coupling, so it is exercised
-/// directly. Locks the `isAllSelected` visible-count contract and the exit
+/// directly. Locks the `isAllSelected` visible-ID contract and the exit
 /// reset that several scenes rely on for toolbar correctness.
 @MainActor
 struct SelectionModeStateTests {
@@ -43,13 +43,13 @@ struct SelectionModeStateTests {
         #expect(s.selectedIDs.isEmpty)
     }
 
-    @Test func isAllSelected_requiresVisibleCountMatch() {
+    @Test func isAllSelected_requiresVisibleIDMatch() {
         let s = SelectionModeState()
-        // visibleCount defaults to 0 → never "all selected", even with picks.
+        // Visible IDs default to empty → never "all selected", even with picks.
         s.enter(with: a)
         #expect(!s.isAllSelected)
 
-        s.updateVisibleCount(3)
+        s.updateVisibleIDs([a, b, c])
         s.selectAll([a, b, c])
         #expect(s.isAllSelected)
 
@@ -59,21 +59,36 @@ struct SelectionModeStateTests {
 
     @Test func isAllSelected_falseWhenNoVisibleRows() {
         let s = SelectionModeState()
-        s.updateVisibleCount(0)
+        s.updateVisibleIDs([])
         s.selectAll([])
-        // count == visibleCount == 0, but the guard requires visibleCount > 0.
+        // An empty visible set can never be treated as "all selected".
         #expect(!s.isAllSelected)
+    }
+
+    @Test func visibleRowsReconcileSelectionByIdentity() {
+        let s = SelectionModeState()
+        s.updateVisibleIDs([a, b])
+        s.selectAll([a, b])
+        #expect(s.isAllSelected)
+
+        // A pull can replace one row without changing the visible count. The
+        // toolbar must not keep treating the old selection as "all selected".
+        s.updateVisibleIDs([a, c])
+        #expect(s.selectedIDs == [a])
+        #expect(!s.isAllSelected)
+
+        s.selectAll([a, c])
+        #expect(s.isAllSelected)
     }
 
     @Test func exit_resetsEverything() {
         let s = SelectionModeState()
         s.enter(with: a)
         s.selectAll([a, b, c])
-        s.updateVisibleCount(3)
         s.exit()
         #expect(!s.isSelecting)
         #expect(s.selectedIDs.isEmpty)
-        #expect(!s.isAllSelected)   // visibleCount also reset to 0
+        #expect(!s.isAllSelected)   // selected IDs are empty after exit
     }
 }
 #endif

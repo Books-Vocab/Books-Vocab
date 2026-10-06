@@ -13,6 +13,7 @@ The load-bearing guardrails (all asserted here):
 * copied count == source snapshot (fail-loud on NOCASE/NFC collapse).
 * download_count atomic increment.
 """
+
 from __future__ import annotations
 
 import json
@@ -25,25 +26,37 @@ from kg.cards import CardStore
 from kg.exceptions import ConflictError, NotFoundError
 from kg.notebook import NotebookStore
 from kg.shared_decks.copy import copy_shared_deck
-from kg.shared_decks.store import SharedDeck, SharedDeckStore
+from kg.shared_decks.store import SharedDeck, SharedDeckCopyLog, SharedDeckStore
 from ops_helpers import run_ops_cli as _cli
 
 _DECK_CARDS = [
-    {"content": "meticulous", "pos": "adj.", "meaning": "一絲不苟的",
-     "examples": ["Her **meticulous** notes."], "collocations": ["meticulous planning"],
-     "note": "teacher note", "difficulty": 4.5, "mode": "recognition",
-     "root_form": None, "inflections": []},
+    {
+        "content": "meticulous",
+        "pos": "adj.",
+        "meaning": "一絲不苟的",
+        "examples": ["Her **meticulous** notes."],
+        "collocations": ["meticulous planning"],
+        "note": "teacher note",
+        "difficulty": 4.5,
+        "mode": "recognition",
+        "root_form": None,
+        "inflections": [],
+    },
     {"content": "wince", "pos": "v.", "meaning": "畏縮", "mode": "recognition"},
     {"content": "ubiquitous", "pos": "adj.", "meaning": "無所不在的", "mode": "recognition"},
 ]
 
 
-def _publish_deck(shared_store, *, deck_id="deck_a", title="Official Starter",
-                  cards=None):
+def _publish_deck(shared_store, *, deck_id="deck_a", title="Official Starter", cards=None):
     return shared_store.publish_official(
-        deck_id=deck_id, title=title, cards=cards if cards is not None else _DECK_CARDS,
-        color="#112233", cover_pattern="waves", language_pair="en-zh",
-        category="language", publisher_display_name="KG Team",
+        deck_id=deck_id,
+        title=title,
+        cards=cards if cards is not None else _DECK_CARDS,
+        color="#112233",
+        cover_pattern="waves",
+        language_pair="en-zh",
+        category="language",
+        publisher_display_name="KG Team",
     )
 
 
@@ -59,21 +72,34 @@ def _stores(tmp_path, uid="u1"):
 def _dictionary_sidecar_count(cards_db) -> int:
     """Transitional assertion helper: retired schemas omit the table entirely."""
     with sqlite3.connect(cards_db) as conn:
-        exists = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='dictionary_entry'"
-        ).fetchone()
+        exists = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='dictionary_entry'").fetchone()
         if exists is None:
             return 0
         return conn.execute("SELECT COUNT(*) FROM dictionary_entry").fetchone()[0]
 
 
-def _copy(shared_store, card_store, notebook_store, user_dir, *, deck_id="deck_a",
-          copier_id="u1", key="k1", notebook_name=None, on_card=None):
+def _copy(
+    shared_store,
+    card_store,
+    notebook_store,
+    user_dir,
+    *,
+    deck_id="deck_a",
+    copier_id="u1",
+    key="k1",
+    notebook_name=None,
+    on_card=None,
+):
     return copy_shared_deck(
-        shared_store=shared_store, card_store=card_store,
-        notebook_store=notebook_store, user_dir=user_dir,
-        deck_id=deck_id, copier_id=copier_id, idempotency_key=key,
-        notebook_name=notebook_name, _on_card=on_card,
+        shared_store=shared_store,
+        card_store=card_store,
+        notebook_store=notebook_store,
+        user_dir=user_dir,
+        deck_id=deck_id,
+        copier_id=copier_id,
+        idempotency_key=key,
+        notebook_name=notebook_name,
+        _on_card=on_card,
     )
 
 
@@ -215,6 +241,72 @@ def test_copy_idempotent_retry(tmp_path):
     assert shared.get("deck_a").download_count == 1
 
 
+def test_replay_repairs_download_count_after_counter_finalizer_crash(tmp_path, monkeypatch):
+    """A retry must finish the counter after materialize already succeeded."""
+    user_dir, shared, cards, nbs = _stores(tmp_path)
+    _publish_deck(shared)
+
+    real_finalize = shared.finalize_copy_download
+    calls = {"count": 0}
+
+    def fail_once(copier_id, idempotency_key, deck_id):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise RuntimeError("injected counter finalizer crash")
+        return real_finalize(copier_id, idempotency_key, deck_id)
+
+    monkeypatch.setattr(shared, "finalize_copy_download", fail_once)
+    with pytest.raises(RuntimeError, match="counter finalizer"):
+        _copy(shared, cards, nbs, user_dir, key="counter-retry")
+
+    log = shared.get_copy_log("u1", "counter-retry")
+    assert log is not None
+    assert nbs.get(log.result_notebook_id).is_staged is False
+    assert shared.get("deck_a").download_count == 0
+
+    replay = _copy(shared, cards, nbs, user_dir, key="counter-retry")
+
+    assert replay.already_copied is True
+    assert replay.notebook_id == log.result_notebook_id
+    assert shared.get("deck_a").download_count == 1
+
+
+def test_existing_copy_log_is_marked_counted_during_migration(tmp_path):
+    """Legacy rows must not be counted again when replay support is deployed."""
+    db_path = tmp_path / "shared_decks.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE shared_deck_copy_log (
+                copier_id TEXT NOT NULL,
+                idempotency_key TEXT NOT NULL,
+                source_shared_deck_id TEXT NOT NULL,
+                source_version INTEGER NOT NULL DEFAULT 0,
+                result_notebook_id TEXT NOT NULL DEFAULT '',
+                created_at DATETIME,
+                PRIMARY KEY (copier_id, idempotency_key)
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO shared_deck_copy_log
+                (copier_id, idempotency_key, source_shared_deck_id, result_notebook_id)
+            VALUES (?, ?, ?, ?)
+            """,
+            ("u1", "legacy-key", "deck_a", "notebook-a"),
+        )
+        conn.commit()
+
+    shared = SharedDeckStore(db_path)
+    try:
+        log = shared.get_copy_log("u1", "legacy-key")
+        assert isinstance(log, SharedDeckCopyLog)
+        assert log.download_counted is True
+    finally:
+        shared.close()
+
+
 def test_copy_rejects_cross_deck_idempotency_reuse(tmp_path):
     user_dir, shared, cards, nbs = _stores(tmp_path)
     _publish_deck(shared, deck_id="deck_a")
@@ -301,6 +393,7 @@ def test_replay_self_heals_staged_notebook(tmp_path, monkeypatch):
     assert nb.is_staged is False
     assert nb.is_deleted is False
     assert len([n for n in nbs.all() if not n.is_default]) == 1
+    assert shared.get("deck_a").download_count == 1
 
 
 def test_replay_does_not_resurrect_user_deleted_notebook(tmp_path):
@@ -340,8 +433,8 @@ def test_concurrent_same_user_copies_no_duplicate_active_name(tmp_path):
     user_dir, shared, cards, nbs = _stores(tmp_path)
     _publish_deck(shared)
 
-    a_mid = threading.Event()   # A: inside its critical section (holds the lock)
-    a_go = threading.Event()    # main → A: you may finish
+    a_mid = threading.Event()  # A: inside its critical section (holds the lock)
+    a_go = threading.Event()  # main → A: you may finish
     results: dict[str, object] = {}
     errors: dict[str, BaseException] = {}
 
@@ -452,8 +545,7 @@ def test_world_export_tolerates_db_without_is_staged_column(tmp_path):
         "is_deleted INTEGER DEFAULT 0)"  # NOTE: no is_staged column
     )
     conn.execute(
-        "INSERT INTO notebook (id, name, sort_order, is_default, is_deleted) "
-        "VALUES ('n1', 'Legacy Book', 0, 0, 0)"
+        "INSERT INTO notebook (id, name, sort_order, is_default, is_deleted) VALUES ('n1', 'Legacy Book', 0, 0, 0)"
     )
     conn.commit()
     conn.close()
@@ -472,10 +564,13 @@ def test_homograph_collapse_fails_loud(tmp_path):
     # Two homographs distinct by (pos, meaning) → two distinct shared cards, but
     # they collapse under the card table's (content COLLATE NOCASE, notebook_id)
     # uniqueness. Count-equality must catch that, not silently drop a card.
-    _publish_deck(shared, cards=[
-        {"content": "Lead", "pos": "n.", "meaning": "鉛", "mode": "recognition"},
-        {"content": "lead", "pos": "v.", "meaning": "帶領", "mode": "recognition"},
-    ])
+    _publish_deck(
+        shared,
+        cards=[
+            {"content": "Lead", "pos": "n.", "meaning": "鉛", "mode": "recognition"},
+            {"content": "lead", "pos": "v.", "meaning": "帶領", "mode": "recognition"},
+        ],
+    )
     assert len(shared.all_cards("deck_a", version=1)) == 2
 
     with pytest.raises(ConflictError):
@@ -579,14 +674,10 @@ def test_copy_endpoint_end_to_end(isolated_api):
     # The regular vocab projection is the copied deck's only card surface.
     # iOS targeted pull must see every copied card immediately, with no
     # dictionary projection or review opt-in required.
-    vocab = env.client.get(
-        "/api/vocab", params={"notebook_id": nb_id}, headers=env.headers
-    )
+    vocab = env.client.get("/api/vocab", params={"notebook_id": nb_id}, headers=env.headers)
     assert vocab.status_code == 200, vocab.text
     copied_cards = vocab.json()
-    assert {card["content"] for card in copied_cards} == {
-        card["content"] for card in _DECK_CARDS
-    }
+    assert {card["content"] for card in copied_cards} == {card["content"] for card in _DECK_CARDS}
     assert all("cardRole" not in card for card in copied_cards)
     assert all("reviewEligible" not in card for card in copied_cards)
 

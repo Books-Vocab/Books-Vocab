@@ -29,15 +29,15 @@ async def _safe_translate(
     label: str,
     logger: Logger | None = None,
 ):
-    provider = provider_for(call_type)
-    llm = TrackedLLM(
-        create_async_client(provider),
-        user["id"],
-        provider=provider,
-        enforce_quota=True,
-        is_pro=_is_pro(user),
-    )
     try:
+        provider = provider_for(call_type)
+        llm = TrackedLLM(
+            create_async_client(provider),
+            user["id"],
+            provider=provider,
+            enforce_quota=True,
+            is_pro=_is_pro(user),
+        )
         kw: dict[str, Any] = {"llm": llm, "model": provider.chat_model}
         if logger:
             kw["logger"] = logger
@@ -69,8 +69,12 @@ async def translate_quick_response(
     logger: Logger,
 ) -> QuickTranslateResponse:
     return await _safe_translate(
-        run_quick_translate, req, user,
-        call_type="translate_quick", label="translate/quick", logger=logger,
+        run_quick_translate,
+        req,
+        user,
+        call_type="translate_quick",
+        label="translate/quick",
+        logger=logger,
     )
 
 
@@ -81,8 +85,12 @@ async def translate_phrase_response(
     logger: Logger | None = None,
 ) -> dict[str, str]:
     return await _safe_translate(
-        run_phrase_translate, req, user,
-        call_type="translate_phrase", label="translate/phrase", logger=logger,
+        run_phrase_translate,
+        req,
+        user,
+        call_type="translate_phrase",
+        label="translate/phrase",
+        logger=logger,
     )
 
 
@@ -93,6 +101,10 @@ async def translate_explain_response(
     logger: Logger | None = None,
 ) -> ExplainResponse:
     return await _safe_translate(
-        run_explain_translate, req, user,
-        call_type="translate_explain", label="translate/explain", logger=logger,
+        run_explain_translate,
+        req,
+        user,
+        call_type="translate_explain",
+        label="translate/explain",
+        logger=logger,
     )

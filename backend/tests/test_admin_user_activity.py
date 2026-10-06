@@ -1,7 +1,8 @@
 """Tests for admin_user_activity — unified recent-activity timeline."""
+
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -42,8 +43,7 @@ def _record_translate(user_id: str, *, word: str, when: datetime) -> None:
             "INSERT INTO translate_log (user_id, operation, word, context, context_hash,"
             " source_lang, target_lang, response_raw, latency_ms, created_at)"
             " VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (user_id, "translate_quick", word, "", "h_" + word, "en", "zh-Hant",
-             '{"t":"x"}', 5, when.isoformat()),
+            (user_id, "translate_quick", word, "", "h_" + word, "en", "zh-Hant", '{"t":"x"}', 5, when.isoformat()),
         )
         conn.commit()
 
@@ -56,8 +56,7 @@ def _record_pipeline(user_id: str, *, run_id: str, when: datetime, status: str =
         conn.execute(
             "INSERT INTO pipeline_runs (run_id, user_id, notebook_id, trigger,"
             " started_at, ended_at, status, steps) VALUES (?,?,?,?,?,?,?, '[]')",
-            (run_id, user_id, "default", "manual", when.isoformat(),
-             (when + timedelta(seconds=2)).isoformat(), status),
+            (run_id, user_id, "default", "manual", when.isoformat(), (when + timedelta(seconds=2)).isoformat(), status),
         )
         conn.commit()
 
@@ -71,8 +70,7 @@ def _record_judge(user_id: str, *, when: datetime, accepted: bool = True) -> Non
             "INSERT INTO judge_log (user_id, notebook_id, from_id, to_id, similarity,"
             " verdict, confidence, accepted, reject_reason, reason, source, created_at)"
             " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-            (user_id, "default", "c1", "c2", 0.8, "accept", 0.9,
-             int(accepted), None, "", "auto", when.isoformat()),
+            (user_id, "default", "c1", "c2", 0.8, "accept", 0.9, int(accepted), None, "", "auto", when.isoformat()),
         )
         conn.commit()
 
@@ -80,6 +78,7 @@ def _record_judge(user_id: str, *, when: datetime, accepted: bool = True) -> Non
 # ---------------------------------------------------------------------------
 # get_user_activity unit tests
 # ---------------------------------------------------------------------------
+
 
 def test_empty_returns_empty_events(activity_env):
     from kg.admin_user_activity import get_user_activity
@@ -171,6 +170,27 @@ def test_judge_event_shape(activity_env):
     assert ev["type"] == "judge"
     assert ev["accepted"] is False
     assert "created_at" in ev
+
+
+@pytest.mark.parametrize(
+    ("stored_value", "expected"),
+    [(0, False), (1, True), ("false", False), ("true", True)],
+)
+def test_judge_event_normalizes_legacy_text_booleans(activity_env, stored_value, expected):
+    """Admin activity must not treat legacy SQLite text ``"false"`` as truthy."""
+    import kg.judge_log as jl
+    from kg.admin_user_activity import get_user_activity
+
+    now = datetime.now(UTC)
+    _record_judge("u1", when=now - timedelta(minutes=1), accepted=True)
+    with jl._lock:
+        conn = jl._get_conn()
+        conn.execute("UPDATE judge_log SET accepted = ? WHERE user_id = ?", (stored_value, "u1"))
+        conn.commit()
+
+    result = get_user_activity("u1", hours=24)
+
+    assert result["events"][0]["accepted"] is expected
 
 
 def test_hours_clamp_to_max(activity_env):
@@ -298,6 +318,103 @@ def test_user_activity_mixes_pipeline_judge_translate_events_in_order(activity_e
     assert [e["word"] for e in translates] == ["t1", "t2"]
     pipelines = [e for e in result["events"] if e["type"] == "pipeline"]
     assert [e["run_id"] for e in pipelines] == ["p1", "p2"]
+
+
+def test_user_activity_equal_timestamps_use_source_precedence_and_native_id_desc(activity_env):
+    """Equal timestamps use source precedence, then each source's native id."""
+    from kg.admin_user_activity import get_user_activity
+
+    when = datetime.now(UTC)
+    _record_translate("u1", word="translate-old", when=when)
+    _record_translate("u1", word="translate-new", when=when)
+    _record_pipeline("u1", run_id="pipeline-old", when=when)
+    _record_pipeline("u1", run_id="pipeline-new", when=when)
+    _record_judge("u1", when=when)
+    _record_judge("u1", when=when)
+
+    result = get_user_activity("u1", hours=24)
+
+    assert [event["type"] for event in result["events"]] == [
+        "translate",
+        "translate",
+        "pipeline",
+        "pipeline",
+        "judge",
+        "judge",
+    ]
+    assert [event["word"] for event in result["events"] if event["type"] == "translate"] == [
+        "translate-new",
+        "translate-old",
+    ]
+    assert [event["run_id"] for event in result["events"] if event["type"] == "pipeline"] == [
+        "pipeline-new",
+        "pipeline-old",
+    ]
+    assert [event["id"] for event in result["events"] if event["type"] == "judge"] == [2, 1]
+    assert all("_source_id" not in event for event in result["events"])
+
+
+def test_user_activity_uses_utc_instants_for_mixed_offset_cutoff_and_order(activity_env, monkeypatch):
+    """Legacy offset-bearing rows must use UTC instants for window and merge order."""
+    import kg.admin_user_activity as activity
+
+    frozen_now = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen_now if tz is not None else frozen_now.replace(tzinfo=None)
+
+    monkeypatch.setattr(activity, "datetime", FrozenDateTime)
+
+    # 11:30Z is outside the 24h window but lexically newer than the UTC cutoff.
+    _record_pipeline(
+        "u1",
+        run_id="outside-utc",
+        when=datetime(2026, 9, 16, 13, 30, tzinfo=timezone(timedelta(hours=2))),
+    )
+    # The local spelling is lexically before the cutoff, but -02:00 makes
+    # this a newer UTC instant. The indexed date bound must retain it.
+    _record_translate(
+        "u1",
+        word="newer-utc",
+        when=datetime(2026, 9, 16, 11, 45, tzinfo=timezone(-timedelta(hours=2))),
+    )
+    # 12:00Z is exactly on the inclusive boundary, despite its +02:00 spelling.
+    _record_translate(
+        "u1",
+        word="boundary-utc",
+        when=datetime(2026, 9, 16, 14, 0, tzinfo=timezone(timedelta(hours=2))),
+    )
+    _record_judge("u1", when=datetime(2026, 9, 16, 13, 30, tzinfo=UTC))
+
+    result = activity.get_user_activity("u1", hours=24)
+
+    assert result["counts"] == {"translate": 2, "pipeline": 0, "judge": 1}
+    assert [event["type"] for event in result["events"]] == ["translate", "judge", "translate"]
+    assert [event["word"] for event in result["events"] if event["type"] == "translate"] == [
+        "newer-utc",
+        "boundary-utc",
+    ]
+
+
+def test_user_activity_cap_keeps_newest_pipeline_ties(activity_env):
+    """Stable tie ordering must be applied before the MAX_TOTAL_EVENTS slice."""
+    from kg.admin_user_activity import MAX_PER_SOURCE, MAX_TOTAL_EVENTS, get_user_activity
+
+    when = datetime.now(UTC)
+    _record_translate("u1", word="translate", when=when)
+    for i in range(MAX_PER_SOURCE):
+        _record_pipeline("u1", run_id=f"pipeline-{i:03d}", when=when)
+
+    result = get_user_activity("u1", hours=24)
+
+    assert len(result["events"]) == MAX_TOTAL_EVENTS
+    assert result["events"][0]["type"] == "translate"
+    pipelines = [event["run_id"] for event in result["events"] if event["type"] == "pipeline"]
+    assert pipelines[0] == "pipeline-499"
+    assert pipelines[-1] == "pipeline-001"
+    assert "pipeline-000" not in pipelines
 
 
 def test_user_activity_paginates_correctly(activity_env):

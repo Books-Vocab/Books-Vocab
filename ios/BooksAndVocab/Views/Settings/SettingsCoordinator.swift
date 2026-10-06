@@ -99,6 +99,10 @@ final class SettingsCoordinator: SettingsCoordinating {
     /// 進行中狀態與終態不另外漂移成兩份真相。
     private var reviewClockMutation = SettingsMutationGeneration()
     private var reviewModeMutation = SettingsMutationGeneration()
+    /// Translation uses the same optimistic-write rollback contract as the
+    /// review groups; this generation also invalidates a delayed failure when
+    /// the Settings surface crosses an account boundary.
+    private var translationMutation = SettingsMutationGeneration()
     let syncProgress = SyncProgressStore()
     private let resetStateStore: any SettingsResetStorePort
     private var settingsSyncService: SettingsSyncService?
@@ -163,6 +167,15 @@ final class SettingsCoordinator: SettingsCoordinating {
         activeResyncTaskID &+= 1
         accountGeneration &+= 1
         resyncRequestID &+= 1
+        _ = reviewClockMutation.begin()
+        _ = reviewModeMutation.begin()
+        _ = translationMutation.begin()
+        ReviewSettingsStore.shared.suspendForAccountBoundary()
+        ActiveNotebookStore.shared.suspendForAccountBoundary()
+        TranslationLanguage.suspendForAccountBoundary()
+        translationSourceLang = TranslationLanguage.currentSource
+        translationTargetLang = TranslationLanguage.currentTarget
+        configurationIssue = nil
         // The generation/request tokens make any old async round stale; the
         // presentation state must be reset as well, otherwise a stale
         // `.syncing` lifecycle blocks the newly authenticated account at the
@@ -190,13 +203,21 @@ final class SettingsCoordinator: SettingsCoordinating {
         authManager: any AuthManaging,
         kgService: any HealthChecking & UserConfigFetching
     ) async {
+        let requestGeneration = accountGeneration
+        let requestedUserId = authManager.userId
+        activateAccountPreferences(for: authenticatedAccountID(authManager))
         refreshObservationPreview()
         await kgService.healthCheck()
+        guard acceptsAccountRequest(
+            generation: requestGeneration,
+            requestedUserID: requestedUserId,
+            authManager: authManager
+        ) else { return }
         connectionPulse.toggle()
 
         guard authManager.isLoggedIn,
               !authManager.isDemoMode,
-              let requestedUserId = authManager.userId
+              let requestedUserId
         else {
             configurationIssue = nil
             return
@@ -206,7 +227,11 @@ final class SettingsCoordinator: SettingsCoordinating {
             let config = try await kgService.fetchUserConfig()
             // A request started for account A may finish after the UI has
             // crossed to account B. Never project that response into B.
-            guard SettingsRemoteConfigPolicy.fetchDisposition(
+            guard acceptsAccountRequest(
+                generation: requestGeneration,
+                requestedUserID: requestedUserId,
+                authManager: authManager
+            ), SettingsRemoteConfigPolicy.fetchDisposition(
                 outcome: .success,
                 isCancelled: Task.isCancelled,
                 isLoggedIn: authManager.isLoggedIn,
@@ -224,7 +249,11 @@ final class SettingsCoordinator: SettingsCoordinating {
             applyServerActiveNotebook(config.vocab_ui, authManager: authManager)
             configurationIssue = nil
         } catch {
-            guard SettingsRemoteConfigPolicy.fetchDisposition(
+            guard acceptsAccountRequest(
+                generation: requestGeneration,
+                requestedUserID: requestedUserId,
+                authManager: authManager
+            ), SettingsRemoteConfigPolicy.fetchDisposition(
                 outcome: .failure,
                 isCancelled: Task.isCancelled,
                 isLoggedIn: authManager.isLoggedIn,
@@ -393,6 +422,8 @@ final class SettingsCoordinator: SettingsCoordinating {
         kgService: any KGServing,
         toastCoordinator: AppToastCoordinator
     ) async -> Bool {
+        let requestGeneration = accountGeneration
+        let requestedUserID = authenticatedUserID(authManager)
         let mutation = reviewClockMutation.begin()
         let snapshot = previousSnapshot ?? reviewSettingsStore.pauseClockSnapshot
 
@@ -419,7 +450,11 @@ final class SettingsCoordinator: SettingsCoordinating {
             )
             return true
         } catch {
-            guard SettingsRemoteConfigPolicy.acceptsMutationFailure(
+            guard acceptsAccountRequest(
+                generation: requestGeneration,
+                requestedUserID: requestedUserID,
+                authManager: authManager
+            ), SettingsRemoteConfigPolicy.acceptsMutationFailure(
                 token: mutation,
                 currentGeneration: reviewClockMutation.current
             ) else {
@@ -449,6 +484,8 @@ final class SettingsCoordinator: SettingsCoordinating {
         kgService: any KGServing,
         toastCoordinator: AppToastCoordinator
     ) async -> Bool {
+        let requestGeneration = accountGeneration
+        let requestedUserID = authenticatedUserID(authManager)
         let mutation = reviewModeMutation.begin()
         let snapshot = previousSnapshot ?? reviewSettingsStore.reviewModeSnapshot
         if previousSnapshot == nil {
@@ -473,7 +510,11 @@ final class SettingsCoordinator: SettingsCoordinating {
             )
             return true
         } catch {
-            guard SettingsRemoteConfigPolicy.acceptsMutationFailure(
+            guard acceptsAccountRequest(
+                generation: requestGeneration,
+                requestedUserID: requestedUserID,
+                authManager: authManager
+            ), SettingsRemoteConfigPolicy.acceptsMutationFailure(
                 token: mutation,
                 currentGeneration: reviewModeMutation.current
             ) else {
@@ -623,6 +664,9 @@ final class SettingsCoordinator: SettingsCoordinating {
         kgService: any KGServing,
         toastCoordinator: AppToastCoordinator
     ) async -> Bool {
+        let requestGeneration = accountGeneration
+        let requestedUserID = authenticatedUserID(authManager)
+        let mutation = translationMutation.begin()
         // Snapshot previous values + their timestamps for rollback on remote failure.
         let prevSource = TranslationLanguage.currentSource
         let prevTarget = TranslationLanguage.currentTarget
@@ -651,6 +695,17 @@ final class SettingsCoordinator: SettingsCoordinating {
             // Rollback: restore values WITH their original timestamps so that
             // iCloud KV's LWW doesn't treat the rollback as "newer" than a
             // concurrent write from another device.
+            guard acceptsAccountRequest(
+                generation: requestGeneration,
+                requestedUserID: requestedUserID,
+                authManager: authManager
+            ), SettingsRemoteConfigPolicy.acceptsMutationFailure(
+                token: mutation,
+                currentGeneration: translationMutation.current
+            ) else {
+                AppLog.kg.debug("Ignoring stale translation failure")
+                return true
+            }
             TranslationLanguage.restore(
                 source: prevSource,
                 sourceUpdatedAt: prevSourceUpdatedAt,
@@ -898,6 +953,35 @@ final class SettingsCoordinator: SettingsCoordinating {
             isDemoMode: authManager.isDemoMode,
             currentUserID: authManager.userId
         )
+    }
+
+    private func authenticatedUserID(_ authManager: any AuthManaging) -> String? {
+        guard authManager.isLoggedIn, !authManager.isDemoMode else { return nil }
+        return authManager.userId
+    }
+
+    private func authenticatedAccountID(_ authManager: any AuthManaging) -> String? {
+        AccountPreferenceNamespace.normalizedAccountID(authenticatedUserID(authManager))
+    }
+
+    private func activateAccountPreferences(for accountID: String?) {
+        ReviewSettingsStore.shared.activateAccount(accountID)
+        ActiveNotebookStore.shared.activateAccount(accountID)
+        TranslationLanguage.activateAccount(accountID)
+        translationSourceLang = TranslationLanguage.currentSource
+        translationTargetLang = TranslationLanguage.currentTarget
+    }
+
+    private func acceptsAccountRequest(
+        generation: Int,
+        requestedUserID: String?,
+        authManager: any AuthManaging
+    ) -> Bool {
+        guard generation == accountGeneration, !Task.isCancelled else { return false }
+        let currentUserID = authManager.isLoggedIn && !authManager.isDemoMode
+            ? authManager.userId
+            : nil
+        return currentUserID == requestedUserID
     }
 
     private func markSync(_ label: StaticString, _ detail: String) {

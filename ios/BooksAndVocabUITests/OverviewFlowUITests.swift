@@ -69,6 +69,8 @@ private struct OverviewFixtureProjection {
     let activityIsEmpty: Bool
     let clockNow: Date
     let forecastDayKey: String
+    let forecastDayKeys: [String]
+    private let forecastCounts: [String: Int]
     private let languageCode: String
     private let systemLocaleIdentifier: String
     private let formatLocaleIdentifier: String
@@ -90,6 +92,10 @@ private struct OverviewFixtureProjection {
         formatter.numberStyle = .decimal
         formatter.locale = Locale(identifier: formatLocaleIdentifier)
         return formatter.string(from: NSNumber(value: value)) ?? String(value)
+    }
+
+    func forecastCount(for dayKey: String) -> Int {
+        forecastCounts[dayKey] ?? 0
     }
 
     static func fromRunner(fixtureID: String) throws -> Self {
@@ -181,6 +187,21 @@ private struct OverviewFixtureProjection {
         let nextReviewAtOverrides = Dictionary(
             uniqueKeysWithValues: (seed.entryOverrides ?? []).map { ($0.word, $0.nextReviewAt) }
         )
+        var forecastCounts: [String: Int] = [:]
+        for entry in visibleEntries {
+            guard let nextReviewAt = nextReviewAtOverrides[entry.word] ?? entry.nextReviewAt else {
+                continue
+            }
+            let key = dayKey(nextReviewAt)
+            let projectedKey = key <= todayKey ? todayKey : key
+            forecastCounts[projectedKey, default: 0] += 1
+        }
+        let forecastDayKeys = (0..<30).compactMap { offset -> String? in
+            guard let date = calendar.date(byAdding: .day, value: offset, to: clockNow) else {
+                return nil
+            }
+            return dayKey(date)
+        }
         let dueToday = visibleEntries.filter {
             guard let nextReviewAt = nextReviewAtOverrides[$0.word] ?? $0.nextReviewAt else {
                 return false
@@ -196,6 +217,8 @@ private struct OverviewFixtureProjection {
             activityIsEmpty: seed.reviewHistory.isEmpty,
             clockNow: clockNow,
             forecastDayKey: todayKey,
+            forecastDayKeys: forecastDayKeys,
+            forecastCounts: forecastCounts,
             languageCode: localeContract.languageCode,
             systemLocaleIdentifier: localeContract.systemLocaleIdentifier,
             formatLocaleIdentifier: localeContract.formatLocaleIdentifier
@@ -209,9 +232,8 @@ final class OverviewFlowUITests: UITestCase {
         try super.setUpWithError()
         // This suite launches both the populated and large-text counterexample
         // worlds and captures ten evidence steps. Keep the allowance explicit;
-        // XCTest's 60-second default otherwise kills a test that has already
-        // reached its final passing assertion.
-        executionTimeAllowance = 180
+        // XCTest's default is too short for the complete bounded projection.
+        executionTimeAllowance = 420
     }
 
     @MainActor
@@ -244,11 +266,11 @@ final class OverviewFlowUITests: UITestCase {
         }
 
         try step("forecast-zero", app: app) {
+            overview.scrollToForecastRange(14)
+            overview.selectForecastRange(14)
             overview.scrollToForecastBucket(expected.forecastDayKey)
             overview.assertUniqueForecastContract()
-            let bucket = overview.forecastBucket(expected.forecastDayKey)
-            bucket.assertExists(timeout: 10)
-            XCTAssertTrue((bucket.value as? String)?.contains(expected.formattedCount(expected.dueToday)) == true)
+            assertForecastProjection(expected, days: 14, on: overview)
         }
 
         try step("notebook-detour", app: app) {
@@ -302,10 +324,10 @@ final class OverviewFlowUITests: UITestCase {
             )
             counterexampleOverview.assertMetricCardsHaveUniformGeometry()
             counterexampleOverview.calendar.assertExists(timeout: 10)
+            counterexampleOverview.scrollToForecastRange(14)
+            counterexampleOverview.selectForecastRange(14)
             counterexampleOverview.assertUniqueForecastContract()
-            counterexampleOverview.assertForecastContainsCount(
-                counterexampleExpected.formattedCount(counterexampleExpected.dueToday)
-            )
+            assertForecastProjection(counterexampleExpected, days: 14, on: counterexampleOverview)
         }
     }
 
@@ -326,18 +348,26 @@ final class OverviewFlowUITests: UITestCase {
         try step("forecast-range-14", app: app) {
             overview.scrollToForecastRange(14)
             overview.selectForecastRange(14)
+            overview.assertUniqueForecastContract()
+            assertForecastProjection(expected, days: 14, on: overview)
         }
 
         try step("forecast-range-7", app: app) {
             overview.selectForecastRange(7)
+            overview.assertUniqueForecastContract()
+            assertForecastProjection(expected, days: 7, on: overview)
         }
 
         try step("forecast-range-30", app: app) {
             overview.selectForecastRange(30)
+            overview.assertUniqueForecastContract()
+            assertForecastProjection(expected, days: 30, on: overview)
         }
 
         try step("forecast-range-7-reentry", app: app) {
             overview.selectForecastRange(7)
+            overview.assertUniqueForecastContract()
+            assertForecastProjection(expected, days: 7, on: overview)
         }
     }
 
@@ -361,11 +391,11 @@ final class OverviewFlowUITests: UITestCase {
             overview.assertMetric("reviewedToday", value: expected.formattedCount(0))
             overview.assertMetric("dueToday", value: expected.formattedCount(0))
             overview.calendar.assertExists(timeout: 10)
+            overview.scrollToForecastRange(14)
+            overview.selectForecastRange(14)
             overview.scrollToForecastBucket(expected.forecastDayKey)
             overview.assertUniqueForecastContract()
-            let bucket = overview.forecastBucket(expected.forecastDayKey)
-            bucket.assertExists(timeout: 10)
-            XCTAssertTrue((bucket.value as? String)?.contains(expected.formattedCount(0)) == true)
+            assertForecastProjection(expected, days: 14, on: overview)
 
             let zeroCounterexample = app.descendants(matching: .any)
                 .matching(identifier: "forecast-zero-counterexample")
@@ -384,6 +414,39 @@ final class OverviewFlowUITests: UITestCase {
 
     private static func p11ReviewMixProjection() throws -> OverviewFixtureProjection {
         try OverviewFixtureProjection.fromRunner(fixtureID: "p11.644.reviewMix")
+    }
+
+    private func assertForecastProjection(
+        _ expected: OverviewFixtureProjection,
+        days: Int,
+        on overview: OverviewPage,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) {
+        XCTAssertEqual(
+            expected.forecastDayKeys.count,
+            30,
+            "fixture projection must expose the complete 30-day forecast horizon",
+            file: file,
+            line: line
+        )
+        // The production forecast is one fixed-height chart, not a vertical
+        // list of rows. Scroll the chart into view once; repeatedly swiping
+        // for each bucket can move the entire chart out of the viewport and
+        // makes a valid accessibility projection appear to disappear.
+        overview.scrollToForecastBucket(expected.forecastDayKey, file: file, line: line)
+        for dayKey in expected.forecastDayKeys.prefix(days) {
+            let bucket = overview.forecastBucket(dayKey, file: file, line: line)
+            bucket.assertExists(timeout: 10, file: file, line: line)
+            XCTAssertTrue(
+                (bucket.value as? String)?.contains(
+                    expected.formattedCount(expected.forecastCount(for: dayKey))
+                ) == true,
+                "forecast.bucket.\(dayKey) must expose its deterministic projected count",
+                file: file,
+                line: line
+            )
+        }
     }
 
 }

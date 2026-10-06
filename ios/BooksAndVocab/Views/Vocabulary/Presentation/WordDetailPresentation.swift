@@ -4,10 +4,12 @@ enum WordDetailPresentation {
     static func state(
         for entry: VocabularyEntry,
         in allEntries: [VocabularyEntry],
-        lookup: [String: VocabularyEntry]? = nil
+        lookup: [String: VocabularyEntry]? = nil,
+        now: Date? = nil
     ) -> WordDetailPresenter.State {
         let card = entry.cardPresentation
         let effectiveLookup = lookup ?? VocabularyEntry.buildCardIdLookup(from: allEntries)
+        let reviewReferenceDate = now ?? ReviewSettingsStore.shared.settings.reviewReferenceDate()
 
         return WordDetailPresenter.State(
             title: card.word,
@@ -22,7 +24,9 @@ enum WordDetailPresentation {
                         effectiveLookup[link.cardId] == nil ? nil : link.cardId
                     }
             ),
-            reviewProgress: entry.shouldAppearInReview ? reviewProgress(for: entry) : nil
+            reviewProgress: entry.shouldAppearInReview
+                ? reviewProgress(for: entry, now: reviewReferenceDate)
+                : nil
         )
     }
 
@@ -44,9 +48,9 @@ enum WordDetailPresentation {
 
     private static func reviewProgress(
         for entry: VocabularyEntry,
-        now: Date = Date()
+        now: Date
     ) -> VocabReviewProgress {
-        let state = entry.reviewState
+        let state = entry.reviewState(at: now)
 
         switch state {
         case .unlearned:

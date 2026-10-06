@@ -3032,7 +3032,7 @@
           "isArchived": false
         },
         {
-          "explanation": "A newly revealed fact or insight, often surprising.",
+          "explanation": "kg.dictionary.detail.v1:{\"provider\":\"free_dictionary\",\"senses\":[}",
           "partOfSpeech": "n.",
           "chapterTitle": "Linked Cards",
           "kgCardId": "vocab-linked-revelation",
@@ -3041,8 +3041,11 @@
             "The archive produced one quiet revelation after another."
           ],
           "collocations": null,
-          "rootForm": null,
-          "inflections": null,
+          "rootForm": "revelation",
+          "inflections": [
+            "reveal",
+            "revealed"
+          ],
           "reviewIntervalHours": null,
           "nextReviewAt": null,
           "lastReviewedAt": null,
@@ -3060,17 +3063,21 @@
           "isArchived": false
         },
         {
-          "explanation": "Happening by chance, usually with a favorable result.",
+          "explanation": "kg.dictionary.detail.v1:{\"provider\":\"free_dictionary\",\"senses\":[{\"definition\":\"Happening by chance, usually with a favorable result. The complete definition remains available when the candidate row wraps across several lines.\",\"partOfSpeech\":\"adj.\",\"translation\":\"偶然發生而幸運的\",\"examples\":[\"The fortuitous meeting changed the project’s direction, and the complete example remains available after the row grows taller.\"]},{\"definition\":\"Occurring unexpectedly in a way that brings an advantage, with the second sense preserved as a separate hierarchy node.\",\"partOfSpeech\":\"adj.\",\"translation\":\"意外而有利的\",\"examples\":[\"A fortuitous delay gave the researcher enough time to notice the pattern.\"]}]}",
           "partOfSpeech": "adj.",
           "chapterTitle": "Linked Cards",
           "kgCardId": "vocab-linked-fortuitous",
           "difficultyTier": "advanced",
           "reviewExamples": [
-            "The fortuitous meeting changed the project’s direction."
+            "The fortuitous meeting changed the project’s direction, and the complete example remains available after the row grows taller.",
+            "A fortuitous delay gave the researcher enough time to notice the pattern."
           ],
           "collocations": null,
-          "rootForm": null,
-          "inflections": null,
+          "rootForm": "fortuitous",
+          "inflections": [
+            "fortuitously",
+            "fortuitousness"
+          ],
           "reviewIntervalHours": null,
           "nextReviewAt": null,
           "lastReviewedAt": null,
@@ -3093,12 +3100,12 @@
           "chapterTitle": "Linked Cards",
           "kgCardId": "vocab-linked-fortunate",
           "difficultyTier": "core",
-          "reviewExamples": [
-            "They were fortunate to find the source before publication."
-          ],
+          "reviewExamples": [],
           "collocations": null,
-          "rootForm": null,
-          "inflections": null,
+          "rootForm": "fortunate",
+          "inflections": [
+            "fortunately"
+          ],
           "reviewIntervalHours": null,
           "nextReviewAt": null,
           "lastReviewedAt": null,

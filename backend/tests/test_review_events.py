@@ -4,6 +4,7 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlmodel import Session
 
 from kg.api_models import ReviewEventEntry
 from kg.exceptions import BadRequestError
@@ -69,6 +70,87 @@ def test_push_and_pull_review_events_round_trip(tmp_path):
     # ingestion order: both arrive in the same insert_many call; ordering is by ingested_at
     assert {event.event_id for event in pulled} == {"evt-1", "evt-2"}
     assert cursor is not None
+
+
+def test_equal_ingested_at_events_are_ordered_by_event_id(tmp_path):
+    store = ReviewEventStore(tmp_path / "review_events.db")
+    push_review_events(
+        [_event("event-z"), _event("event-a")],
+        event_store=store,
+    )
+
+    tied_ingested_at = datetime(2026, 6, 3, 12, 0, tzinfo=UTC)
+    with Session(store.engine) as session:
+        for event_id in ("event-z", "event-a"):
+            event = session.get(ReviewEvent, event_id)
+            assert event is not None
+            event.ingested_at = tied_ingested_at
+        session.commit()
+
+    expected_ids = ["event-a", "event-z"]
+    assert [event.event_id for event in store.all()] == expected_ids
+    assert [event.event_id for event in store.get_since(tied_ingested_at - timedelta(microseconds=1))] == expected_ids
+
+
+def test_unique_ingested_at_keeps_ingestion_order_ahead_of_event_id(tmp_path):
+    store = ReviewEventStore(tmp_path / "review_events.db")
+    push_review_events(
+        [_event("event-z"), _event("event-a")],
+        event_store=store,
+    )
+
+    events = store.all()
+    assert [event.event_id for event in events] == ["event-z", "event-a"]
+    assert events[0].ingested_at < events[1].ingested_at
+
+    since = events[0].ingested_at - timedelta(microseconds=1)
+    assert [event.event_id for event in store.get_since(since)] == [
+        "event-z",
+        "event-a",
+    ]
+
+
+def test_full_pull_orders_legacy_offset_timestamps_by_utc_instant(tmp_path):
+    """Legacy offset-bearing watermarks must be ordered by their UTC instant."""
+    store = ReviewEventStore(tmp_path / "review_events.db")
+    push_review_events([_event("early"), _event("late")], event_store=store)
+
+    # 09:00 +02:00 is 07:00Z; 04:00 -04:00 is 08:00Z. SQLite's textual
+    # ordering would incorrectly put the later event first.
+    with sqlite3.connect(store.path) as conn:
+        conn.executemany(
+            "UPDATE reviewevent SET ingested_at = ? WHERE event_id = ?",
+            [
+                ("2026-06-01 09:00:00.000000+02:00", "early"),
+                ("2026-06-01 04:00:00.000000-04:00", "late"),
+            ],
+        )
+        conn.commit()
+
+    pulled, _cursor = pull_review_events(since=None, event_store=store)
+
+    assert [event.event_id for event in pulled] == ["early", "late"]
+
+
+def test_full_pull_cursor_normalizes_mixed_legacy_timestamp_forms(tmp_path):
+    """A full pull must compare naive and offset-aware legacy timestamps safely."""
+    store = ReviewEventStore(tmp_path / "review_events.db")
+    push_review_events([_event("offset"), _event("naive")], event_store=store)
+
+    with sqlite3.connect(store.path) as conn:
+        conn.executemany(
+            "UPDATE reviewevent SET ingested_at = ? WHERE event_id = ?",
+            [
+                ("2026-06-01 04:00:00.000000-04:00", "offset"),
+                ("2026-06-01 10:00:00.000000", "naive"),
+            ],
+        )
+        conn.commit()
+
+    pulled, cursor = pull_review_events(since=None, event_store=store)
+
+    assert [event.event_id for event in pulled] == ["offset", "naive"]
+    assert cursor == "2026-06-01T10:00:00Z"
 
 
 def test_duplicate_event_id_is_skipped(tmp_path):
@@ -278,8 +360,7 @@ def test_legacy_store_without_ingested_at_is_migrated(tmp_path):
     )
     conn.execute(
         f"INSERT INTO {table} VALUES (?, ?, ?, ?, ?, ?, ?)",
-        ("legacy-1", "card-x", "legacyword", "default", 1,
-         "2026-05-01 09:00:00.000000", "2026-05-01 09:00:05.000000"),
+        ("legacy-1", "card-x", "legacyword", "default", 1, "2026-05-01 09:00:00.000000", "2026-05-01 09:00:05.000000"),
     )
     conn.commit()
     conn.close()

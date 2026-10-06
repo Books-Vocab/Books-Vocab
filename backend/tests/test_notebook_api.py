@@ -3,10 +3,16 @@
 Covers: GET /api/notebooks, POST /api/notebooks, PATCH /api/notebooks/{nb_id},
 DELETE /api/notebooks/{nb_id}.
 """
+
 from __future__ import annotations
 
 import json
+import os
+import threading
+import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -146,6 +152,21 @@ def _nb_ids(body: list[dict]) -> set[str]:
     return {nb["id"] for nb in body}
 
 
+def _review_policy(mode: str = "custom", initial: float = 12) -> dict:
+    return {
+        "mode": mode,
+        "customInitialIntervalHours": initial,
+        "customRememberedMultiplier": 1.9,
+        "customForgotMultiplier": 0.45,
+        "customMinimumIntervalHours": 6,
+        "customMaximumIntervalHours": 1440,
+    }
+
+
+def _card_layout(recognition: str = "compact", production: str = "standard") -> dict:
+    return {"recognition": recognition, "production": production}
+
+
 # ---------------------------------------------------------------------------
 # GET /api/notebooks
 # ---------------------------------------------------------------------------
@@ -160,6 +181,10 @@ def test_list_notebooks_empty_state(isolated_api):
     assert len(body) >= 1
     defaults = [nb for nb in body if nb["isDefault"]]
     assert len(defaults) == 1
+    assert defaults[0]["settings"] == {
+        "reviewPolicy": {"value": None, "updatedAt": None},
+        "cardLayout": {"value": None, "updatedAt": None},
+    }
 
 
 def test_list_notebooks_after_create(isolated_api):
@@ -174,6 +199,64 @@ def test_list_notebooks_after_create(isolated_api):
     assert r.status_code == 200, r.text
     names = {nb["name"] for nb in r.json()}
     assert {"Alpha", "Beta"}.issubset(names)
+
+
+def test_list_notebooks_since_naive_timestamp_is_utc(isolated_api, monkeypatch):
+    """A naive ISO ``since`` value is a UTC wall-clock timestamp."""
+    previous_tz = os.environ.get("TZ")
+    monkeypatch.setenv("TZ", "Pacific/Honolulu")
+    time.tzset()
+    try:
+        client = isolated_api.client
+        h = isolated_api.headers
+        created = client.post("/api/notebooks", json={"name": "UTC Since", "color": "#123456"}, headers=h).json()
+        updated_at = datetime.fromisoformat(created["updatedAt"].replace("Z", "+00:00"))
+        since = (updated_at - timedelta(seconds=1)).replace(tzinfo=None).isoformat()
+
+        r = client.get("/api/notebooks", params={"since": since}, headers=h)
+
+        assert r.status_code == 200, r.text
+        assert created["id"] in _nb_ids(r.json())
+    finally:
+        if previous_tz is None:
+            monkeypatch.delenv("TZ", raising=False)
+        else:
+            monkeypatch.setenv("TZ", previous_tz)
+        time.tzset()
+
+
+def test_list_notebooks_since_preserves_aware_and_invalid_semantics(isolated_api):
+    client = isolated_api.client
+    h = isolated_api.headers
+    created = client.post("/api/notebooks", json={"name": "Aware Since", "color": "#654321"}, headers=h).json()
+    updated_at = datetime.fromisoformat(created["updatedAt"].replace("Z", "+00:00"))
+
+    equal_z = client.get("/api/notebooks", params={"since": created["updatedAt"]}, headers=h)
+    before_offset = client.get(
+        "/api/notebooks",
+        params={"since": (updated_at - timedelta(seconds=1)).astimezone(timezone(timedelta(hours=8))).isoformat()},
+        headers=h,
+    )
+    invalid = client.get("/api/notebooks", params={"since": "not-a-timestamp"}, headers=h)
+
+    assert equal_z.status_code == 200, equal_z.text
+    assert created["id"] not in _nb_ids(equal_z.json())
+    assert before_offset.status_code == 200, before_offset.text
+    assert created["id"] in _nb_ids(before_offset.json())
+    assert invalid.status_code == 400, invalid.text
+    assert invalid.json()["detail"] == "Invalid since timestamp"
+
+
+def test_list_notebooks_rejects_explicit_empty_since(isolated_api):
+    """An explicit empty incremental cursor must not restart full sync."""
+    response = isolated_api.client.get(
+        "/api/notebooks",
+        params={"since": ""},
+        headers=isolated_api.headers,
+    )
+
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"] == "Invalid since timestamp"
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +306,27 @@ def test_patch_notebook_name(isolated_api):
     assert r.json()["name"] == "New Name"
 
 
+def test_patch_notebook_refuses_staged_notebook_and_preserves_metadata(isolated_api):
+    from kg.notebook import NotebookStore
+
+    store = NotebookStore(isolated_api.data_dir / "users" / isolated_api.user_id / "notebooks.db")
+    staged = store.create("Staged metadata", is_staged=True)
+    try:
+        response = isolated_api.client.patch(
+            f"/api/notebooks/{staged.id}",
+            json={"name": "Should remain hidden"},
+            headers=isolated_api.headers,
+        )
+
+        assert response.status_code == 404, response.text
+        current = store.get(staged.id)
+        assert current is not None
+        assert current.name == "Staged metadata"
+        assert current.is_staged is True
+    finally:
+        store.close()
+
+
 def test_patch_notebook_color(isolated_api):
     client = isolated_api.client
     h = isolated_api.headers
@@ -232,6 +336,22 @@ def test_patch_notebook_color(isolated_api):
     r = client.patch(f"/api/notebooks/{nb_id}", json={"color": "#ffffff"}, headers=h)
     assert r.status_code == 200, r.text
     assert r.json()["color"] == "#ffffff"
+
+
+def test_patch_notebook_color_null_clears_existing_color(isolated_api):
+    client = isolated_api.client
+    h = isolated_api.headers
+
+    nb_id = client.post(
+        "/api/notebooks",
+        json={"name": "ClearColor", "color": "#112233"},
+        headers=h,
+    ).json()["id"]
+
+    r = client.patch(f"/api/notebooks/{nb_id}", json={"color": None}, headers=h)
+
+    assert r.status_code == 200, r.text
+    assert r.json()["color"] is None
 
 
 def test_patch_nonexistent_notebook_returns_404(isolated_api):
@@ -253,6 +373,291 @@ def test_patch_no_fields_returns_400(isolated_api):
     assert r.status_code == 400, r.text
 
 
+def test_patch_notebook_settings_returns_updated_notebook(isolated_api):
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Settings"}, headers=h).json()["id"]
+
+    r = client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        json={
+            "reviewPolicy": {
+                "value": {
+                    **_review_policy(),
+                },
+                "updatedAt": 100.0,
+            }
+        },
+        headers=h,
+    )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["settings"]["reviewPolicy"] == {
+        "value": _review_policy(),
+        "updatedAt": 100.0,
+    }
+    assert body["settings"]["cardLayout"] == {"value": None, "updatedAt": None}
+
+
+def test_patch_notebook_settings_rejects_inverted_review_interval(isolated_api):
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Review bounds"}, headers=h).json()["id"]
+
+    valid = _review_policy()
+    seeded = client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        json={"reviewPolicy": {"value": valid, "updatedAt": 100.0}},
+        headers=h,
+    )
+    assert seeded.status_code == 200, seeded.text
+
+    invalid = {**valid, "customMinimumIntervalHours": 24, "customMaximumIntervalHours": 12}
+    rejected = client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        json={"reviewPolicy": {"value": invalid, "updatedAt": 200.0}},
+        headers=h,
+    )
+    assert rejected.status_code == 422, rejected.text
+
+    listed = client.get("/api/notebooks", headers=h)
+    assert listed.status_code == 200, listed.text
+    notebook = next(item for item in listed.json() if item["id"] == nb_id)
+    assert notebook["settings"]["reviewPolicy"] == {"value": valid, "updatedAt": 100.0}
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "customInitialIntervalHours",
+        "customRememberedMultiplier",
+        "customForgotMultiplier",
+        "customMinimumIntervalHours",
+        "customMaximumIntervalHours",
+    ],
+)
+@pytest.mark.parametrize("non_finite", ["NaN", "Infinity", "-Infinity"])
+def test_patch_notebook_settings_rejects_non_finite_review_policy_values(isolated_api, field, non_finite):
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Finite review policy"}, headers=h).json()["id"]
+
+    value = _review_policy()
+    body = json.dumps({"reviewPolicy": {"value": value, "updatedAt": 100.0}})
+    marker = f'"{field}": {json.dumps(value[field])}'
+    body = body.replace(marker, f'"{field}": {non_finite}', 1)
+    rejected = client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        content=body,
+        headers={**h, "Content-Type": "application/json"},
+    )
+
+    assert rejected.status_code == 422, rejected.text
+    assert any(error["type"] == "finite_number" for error in rejected.json()["detail"])
+
+    listed = client.get("/api/notebooks", headers=h)
+    assert listed.status_code == 200, listed.text
+    notebook = next(item for item in listed.json() if item["id"] == nb_id)
+    assert notebook["settings"]["reviewPolicy"] == {"value": None, "updatedAt": None}
+
+
+def test_patch_notebook_settings_groups_are_independent_and_listed(isolated_api):
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Group isolation"}, headers=h).json()["id"]
+
+    both = client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        json={
+            "reviewPolicy": {"value": _review_policy(), "updatedAt": 10.0},
+            "cardLayout": {"value": _card_layout(), "updatedAt": 20.0},
+        },
+        headers=h,
+    )
+    assert both.status_code == 200, both.text
+
+    review_only = client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        json={"reviewPolicy": {"value": _review_policy(initial=24), "updatedAt": 30.0}},
+        headers=h,
+    )
+    assert review_only.status_code == 200, review_only.text
+    assert review_only.json()["settings"]["reviewPolicy"]["value"]["customInitialIntervalHours"] == 24
+    assert review_only.json()["settings"]["cardLayout"]["value"] == _card_layout()
+
+    listed = client.get("/api/notebooks", headers=h)
+    assert listed.status_code == 200, listed.text
+    listed_nb = next(item for item in listed.json() if item["id"] == nb_id)
+    assert listed_nb["settings"] == review_only.json()["settings"]
+
+
+def test_patch_notebook_settings_reset_is_timestamped_and_rejects_older_value(isolated_api):
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Reset"}, headers=h).json()["id"]
+
+    client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        json={"reviewPolicy": {"value": _review_policy(), "updatedAt": 100.0}},
+        headers=h,
+    )
+    reset = client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        json={"reviewPolicy": {"value": None, "updatedAt": 110.0}},
+        headers=h,
+    )
+    assert reset.status_code == 200, reset.text
+    assert reset.json()["settings"]["reviewPolicy"] == {"value": None, "updatedAt": 110.0}
+
+    stale = client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        json={"reviewPolicy": {"value": _review_policy(initial=48), "updatedAt": 105.0}},
+        headers=h,
+    )
+    assert stale.status_code == 200, stale.text
+    assert stale.json()["settings"]["reviewPolicy"] == {"value": None, "updatedAt": 110.0}
+
+
+def test_patch_notebook_settings_persists_when_store_reopens(isolated_api):
+    from kg.notebook import NotebookStore
+
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Persistent"}, headers=h).json()["id"]
+    expected = _card_layout("compact", "compact")
+    r = client.patch(
+        f"/api/notebooks/{nb_id}/settings",
+        json={"cardLayout": {"value": expected, "updatedAt": 77.0}},
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+
+    store = NotebookStore(isolated_api.data_dir / "users" / isolated_api.user_id / "notebooks.db")
+    try:
+        row = store.get_settings(nb_id)
+        assert row is not None
+        assert row.card_layout_updated_at == 77.0
+        assert json.loads(row.card_layout) == expected
+    finally:
+        store.close()
+
+
+def test_patch_notebook_settings_preserves_auth_and_notebook_errors(isolated_api):
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Errors"}, headers=h).json()["id"]
+
+    assert client.patch(f"/api/notebooks/{nb_id}/settings", json={}).status_code == 401
+    assert (
+        client.patch(
+            "/api/notebooks/missing/settings", json={"cardLayout": {"value": None, "updatedAt": 1}}, headers=h
+        ).status_code
+        == 404
+    )
+
+    deleted_id = client.post("/api/notebooks", json={"name": "Deleted"}, headers=h).json()["id"]
+    assert client.delete(f"/api/notebooks/{deleted_id}", headers=h).status_code == 200
+    deleted = client.patch(
+        f"/api/notebooks/{deleted_id}/settings",
+        json={"cardLayout": {"value": None, "updatedAt": 1}},
+        headers=h,
+    )
+    assert deleted.status_code == 404, deleted.text
+
+    empty = client.patch(f"/api/notebooks/{nb_id}/settings", json={}, headers=h)
+    assert empty.status_code == 422, empty.text
+
+
+def test_notebook_settings_concurrent_lww_never_allows_older_write_to_win(tmp_path):
+    from kg.notebook import NotebookStore
+
+    db_path = tmp_path / "users" / "u1" / "notebooks.db"
+    seed = NotebookStore(db_path)
+    nb = seed.create("Concurrent")
+    seed.update_settings(nb.id, review_policy=(_review_policy(initial=12), 100.0))
+
+    older = NotebookStore(db_path)
+    newer = NotebookStore(db_path)
+    barrier = threading.Barrier(2)
+
+    def write(store, updated_at, initial):
+        barrier.wait()
+        return store.update_settings(
+            nb.id,
+            review_policy=(_review_policy(initial=initial), updated_at),
+        )
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            old_result = executor.submit(write, older, 150.0, 24)
+            new_result = executor.submit(write, newer, 200.0, 48)
+            old_result.result()
+            new_result.result()
+
+        final = seed.get_settings(nb.id)
+        assert final is not None
+        assert final.review_policy_updated_at == 200.0
+        assert json.loads(final.review_policy)["customInitialIntervalHours"] == 48
+    finally:
+        older.close()
+        newer.close()
+        seed.close()
+
+
+@pytest.mark.parametrize("updated_at", ["NaN", "Infinity", "-Infinity"])
+def test_patch_notebook_settings_rejects_non_finite_updated_at(isolated_api, updated_at):
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Finite"}, headers=h).json()["id"]
+
+    body = f'{{"cardLayout": {{"value": {{"recognition": "compact", "production": "standard"}}, "updatedAt": {updated_at}}}}}'
+    r = client.patch(
+        f"/api/notebooks/{nb_id}/settings", content=body, headers={**h, "Content-Type": "application/json"}
+    )
+
+    assert r.status_code == 422, r.text
+    assert any(error["type"] == "finite_number" for error in r.json()["detail"])
+
+
+def test_patch_notebook_settings_refuses_staged_notebook_and_get_hides_it(isolated_api):
+    from kg.notebook import NotebookStore
+
+    store = NotebookStore(isolated_api.data_dir / "users" / isolated_api.user_id / "notebooks.db")
+    staged = store.create("Staged", is_staged=True)
+    try:
+        patch = isolated_api.client.patch(
+            f"/api/notebooks/{staged.id}/settings",
+            json={"cardLayout": {"value": _card_layout(), "updatedAt": 1.0}},
+            headers=isolated_api.headers,
+        )
+        assert patch.status_code == 404, patch.text
+
+        listed = isolated_api.client.get("/api/notebooks", headers=isolated_api.headers)
+        assert listed.status_code == 200, listed.text
+        assert staged.id not in _nb_ids(listed.json())
+    finally:
+        store.close()
+
+
+def test_vocab_api_rejects_staged_notebook_access(isolated_api):
+    from kg.notebook import NotebookStore
+
+    store = NotebookStore(isolated_api.data_dir / "users" / isolated_api.user_id / "notebooks.db")
+    staged = store.create("Staged", is_staged=True)
+    try:
+        response = isolated_api.client.get(
+            "/api/vocab",
+            params={"notebook_id": staged.id},
+            headers=isolated_api.headers,
+        )
+
+        assert response.status_code == 403, response.text
+        assert response.json()["detail"] == "Notebook access denied"
+    finally:
+        store.close()
+
+
 # ---------------------------------------------------------------------------
 # DELETE /api/notebooks/{nb_id}
 # ---------------------------------------------------------------------------
@@ -267,7 +672,9 @@ def test_delete_non_default_notebook(isolated_api):
 
     # Add vocab cards to this notebook
     client.post("/api/vocab", json=[{"word": "apple", "translation": "蘋果"}], params={"notebook_id": nb_id}, headers=h)
-    client.post("/api/vocab", json=[{"word": "banana", "translation": "香蕉"}], params={"notebook_id": nb_id}, headers=h)
+    client.post(
+        "/api/vocab", json=[{"word": "banana", "translation": "香蕉"}], params={"notebook_id": nb_id}, headers=h
+    )
 
     r = client.delete(f"/api/notebooks/{nb_id}", headers=h)
     assert r.status_code == 200, r.text
@@ -408,17 +815,19 @@ def test_delete_notebook_with_cards(isolated_api):
     client = isolated_api.client
     h = isolated_api.headers
 
-    nb_id = client.post(
-        "/api/notebooks", json={"name": "HasCards", "color": "#abcdef"}, headers=h
-    ).json()["id"]
+    nb_id = client.post("/api/notebooks", json={"name": "HasCards", "color": "#abcdef"}, headers=h).json()["id"]
 
     client.post(
-        "/api/vocab", json=[{"word": "cat", "translation": "貓"}],
-        params={"notebook_id": nb_id}, headers=h,
+        "/api/vocab",
+        json=[{"word": "cat", "translation": "貓"}],
+        params={"notebook_id": nb_id},
+        headers=h,
     )
     client.post(
-        "/api/vocab", json=[{"word": "dog", "translation": "狗"}],
-        params={"notebook_id": nb_id}, headers=h,
+        "/api/vocab",
+        json=[{"word": "dog", "translation": "狗"}],
+        params={"notebook_id": nb_id},
+        headers=h,
     )
 
     r_before = client.get("/api/vocab", params={"notebook_id": nb_id}, headers=h)
@@ -445,9 +854,7 @@ def test_rename_notebook_keeps_id_stable(isolated_api):
     client = isolated_api.client
     h = isolated_api.headers
 
-    r_create = client.post(
-        "/api/notebooks", json={"name": "Before", "color": "#0a0a0a"}, headers=h
-    )
+    r_create = client.post("/api/notebooks", json={"name": "Before", "color": "#0a0a0a"}, headers=h)
     nb_id = r_create.json()["id"]
 
     r_patch = client.patch(f"/api/notebooks/{nb_id}", json={"name": "After"}, headers=h)

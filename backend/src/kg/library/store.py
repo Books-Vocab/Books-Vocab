@@ -13,6 +13,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
+from sqlalchemy import update
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, select
 
@@ -24,6 +25,14 @@ from ..api_models.library import (
 )
 from ..sqlite_utils import make_sqlite_engine
 from ..vocab_shared import _dt_to_iso
+
+
+def _parse_utc_instant(value: str) -> datetime:
+    """Parse an ISO timestamp as an absolute UTC instant."""
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 class LibraryBook(SQLModel, table=True):
@@ -57,9 +66,7 @@ class LibraryStore:
     def __init__(self, path: Path) -> None:
         self.path = path
         self.engine = make_sqlite_engine(path)
-        LibraryBook.metadata.create_all(
-            self.engine, tables=[LibraryBook.__table__], checkfirst=True
-        )
+        LibraryBook.metadata.create_all(self.engine, tables=[LibraryBook.__table__], checkfirst=True)
 
     def close(self) -> None:
         """Dispose the SQLAlchemy engine and release connections.
@@ -107,6 +114,10 @@ class LibraryStore:
 
     def create(self, req: BookCreateRequest) -> BookMetadataResponse:
         with Session(self.engine) as session:
+            # Serialize the idempotency check with the insert across workers.
+            # SQLite's default deferred transaction lets concurrent callers all
+            # observe the same missing client_book_id before either commits.
+            session.connection().exec_driver_sql("BEGIN IMMEDIATE")
             # Idempotency: if client_book_id exists, return existing
             if req.client_book_id:
                 existing = session.exec(
@@ -133,7 +144,7 @@ class LibraryStore:
     def update(self, book_id: str, req: BookUpdateRequest) -> LibraryBook | None:
         with Session(self.engine) as session:
             book = session.get(LibraryBook, book_id)
-            if book is None:
+            if book is None or book.is_deleted:
                 return None
             if req.title is not None:
                 book.title = req.title
@@ -154,17 +165,48 @@ class LibraryStore:
     def update_position(self, book_id: str, req: BookPositionRequest) -> LibraryBook | None:
         with Session(self.engine) as session:
             book = session.get(LibraryBook, book_id)
-            if book is None:
+            if book is None or book.is_deleted:
                 return None
-            if book.position_updated_at is None or req.updated_at > book.position_updated_at:
-                book.locator = req.locator
-                book.progression = req.progression
-                book.position_updated_at = req.updated_at
-                book.updated_at = datetime.now(UTC)
-                session.add(book)
+            incoming_updated_at = _parse_utc_instant(req.updated_at)
+            while True:
+                expected_position_updated_at = book.position_updated_at
+                current_updated_at = (
+                    None if expected_position_updated_at is None else _parse_utc_instant(expected_position_updated_at)
+                )
+                if current_updated_at is not None and incoming_updated_at <= current_updated_at:
+                    return book
+
+                # End the read transaction before the compare-and-swap write so
+                # a concurrent writer can commit without this session holding a
+                # stale SQLite snapshot.
+                session.rollback()
+                stmt = (
+                    update(LibraryBook)
+                    .where(LibraryBook.id == book_id)
+                    .where(LibraryBook.is_deleted == False)  # noqa: E712
+                    .where(
+                        LibraryBook.position_updated_at.is_(None)
+                        if expected_position_updated_at is None
+                        else LibraryBook.position_updated_at == expected_position_updated_at
+                    )
+                    .values(
+                        locator=req.locator,
+                        progression=req.progression,
+                        position_updated_at=req.updated_at,
+                        updated_at=datetime.now(UTC),
+                    )
+                )
+                result = session.exec(stmt)
                 session.commit()
-                session.refresh(book)
-            return book
+                if result.rowcount:
+                    return session.get(LibraryBook, book_id)
+
+                # Another writer won the CAS. Reload its position and compare
+                # again rather than allowing request arrival order to win.
+                session.rollback()
+                book = session.get(LibraryBook, book_id)
+                if book is None or book.is_deleted:
+                    return None
 
     def soft_delete(self, book_id: str) -> LibraryBook | None:
         """Soft-delete a book by flipping ``is_deleted`` and bumping

@@ -30,7 +30,7 @@ struct TodayReviewSessionPersistenceController {
     func flushPendingAnswers(
         submittedAnswers: [Int: TodayReviewState.SubmittedAnswer],
         container: ModelContainer,
-        reviewSettings: ReviewSettings,
+        notebookSettingsSnapshot: NotebookSettingsSnapshot,
         onFinalize: @escaping @MainActor () -> Void = {},
         onFailure: (@MainActor @Sendable () -> Void)? = nil,
         onFlushed: @escaping @MainActor ([Int]) -> Void
@@ -40,12 +40,34 @@ struct TodayReviewSessionPersistenceController {
             queueBaselines: queueBaselines,
             submittedAnswers: submittedAnswers,
             container: container,
-            reviewSettings: reviewSettings,
+            notebookSettingsSnapshot: notebookSettingsSnapshot,
             onFlushed: { indices in
                 onFlushed(indices)
                 onFinalize()
             },
             onFailure: onFailure
+        )
+    }
+
+    func flushPendingAnswers(
+        submittedAnswers: [Int: TodayReviewState.SubmittedAnswer],
+        container: ModelContainer,
+        reviewSettings: ReviewSettings,
+        onFinalize: @escaping @MainActor () -> Void = {},
+        onFailure: (@MainActor @Sendable () -> Void)? = nil,
+        onFlushed: @escaping @MainActor ([Int]) -> Void
+    ) {
+        let snapshot = NotebookSettingsResolver(
+            globalReviewSettings: reviewSettings,
+            globalCardLayout: .default
+        ).snapshot(for: [])
+        flushPendingAnswers(
+            submittedAnswers: submittedAnswers,
+            container: container,
+            notebookSettingsSnapshot: snapshot,
+            onFinalize: onFinalize,
+            onFailure: onFailure,
+            onFlushed: onFlushed
         )
     }
 

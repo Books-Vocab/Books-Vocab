@@ -24,6 +24,7 @@ enum AppBootstrap {
     /// 避免 6 處重複的型別清單彼此 drift。
     static let fullModelTypes: [any PersistentModel.Type] = [
         Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+        NotebookSettingsProjection.self,
         PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self,
         SharedDeck.self
     ]
@@ -53,6 +54,7 @@ enum AppBootstrap {
 
         let localSchema = Schema([
             VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+            NotebookSettingsProjection.self,
             PodcastSeries.self, PodcastEpisode.self, SharedDeck.self,
         ])
         let cloudSchema = Schema([Book.self, PodcastProgress.self])
@@ -172,7 +174,7 @@ enum AppBootstrap {
             // Fail-soft: 最小 schema in-memory container 讓 AppStartupRecoveryView 仍可顯示而不直接 crash。
             AppLog.app.critical("Fallback ModelContainer init failed: \(error.localizedDescription); attempting minimal schema")
             if let minimal = try? ModelContainer(
-                for: Notebook.self,
+                for: Notebook.self, NotebookSettingsProjection.self,
                 configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
             ) {
                 return minimal

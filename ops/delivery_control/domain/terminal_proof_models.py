@@ -1,0 +1,29 @@
+"""Exact terminal proof value objects for merged delivery lanes."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from .errors import InvalidReceipt
+from .validation_models import _require_sha, _require_text
+
+
+@dataclass(frozen=True)
+class MergedPullRequestProof:
+    """Exact GitHub observation authorizing a terminal merged disposition."""
+
+    lane_id: str
+    pr_number: int
+    branch: str
+    head_sha: str
+    base_branch: str = "main"
+    pr_state: str = "MERGED"
+
+    def __post_init__(self) -> None:
+        _require_text("lane_id", self.lane_id)
+        _require_text("branch", self.branch)
+        _require_sha("head_sha", self.head_sha)
+        if type(self.pr_number) is not int or self.pr_number <= 0:
+            raise InvalidReceipt("pr_number must be a positive integer")
+        if self.base_branch != "main" or self.pr_state != "MERGED":
+            raise InvalidReceipt("merged PR proof must target main and be MERGED")

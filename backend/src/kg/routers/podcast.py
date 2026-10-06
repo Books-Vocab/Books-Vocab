@@ -44,7 +44,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Annotated  # noqa: F401
 
-from fastapi import APIRouter, Header, HTTPException, Request  # noqa: F401
+from fastapi import APIRouter, Header, HTTPException, Request, Response  # noqa: F401
 from fastapi import Path as PathParam  # noqa: F401
 from fastapi.responses import StreamingResponse  # noqa: F401
 
@@ -81,9 +81,7 @@ def _validate_series_id(series_id: str) -> None:
 
 # Register the literal /progress paths before the dynamic /{series_id} detail
 # route so FastAPI doesn't greedy-match "progress" as a series id.
-router.include_router(
-    build_podcast_progress_router(validate_series_id=_validate_series_id)
-)
+router.include_router(build_podcast_progress_router(validate_series_id=_validate_series_id))
 
 
 def _podcasts_dir(request: Request | None = None) -> Path:

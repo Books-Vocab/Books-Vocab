@@ -17,6 +17,24 @@ struct PodcastPlayerLoadPlanTests {
         #expect(plan.usesLocalAudio)
     }
 
+    @Test func previewPlaybackUsesRemoteAudioInsteadOfCachedFullAudio() throws {
+        let episode = makeEpisode()
+        episode.localAudioPath = "/tmp/local-full-audio.m4a"
+        episode.audioURL = "https://example.com/preview.m4a"
+        episode.previewAvailable = true
+        episode.previewDurationSec = 180
+
+        let plan = try #require(PodcastPlayerLoadPlan.make(
+            episode: episode,
+            isPreviewPlayback: true,
+            fileExists: { $0 == "/tmp/local-full-audio.m4a" }
+        ))
+
+        #expect(plan.audioURL == URL(string: "https://example.com/preview.m4a"))
+        #expect(plan.usesLocalAudio == false)
+        #expect(plan.durationSec == 180)
+    }
+
     @Test func missingLocalAudioFallsBackToRemoteAudio() throws {
         let episode = makeEpisode()
         episode.localAudioPath = "/tmp/missing.m4a"
@@ -63,6 +81,47 @@ struct PodcastPlayerLoadPlanTests {
         let plan = try #require(PodcastPlayerLoadPlan.make(episode: episode))
 
         #expect(plan.subtitleSource == .unavailable)
+    }
+
+    @Test func previewPlaybackUsesPreviewDuration() throws {
+        let episode = makeEpisode()
+        episode.audioURL = "https://example.com/audio.m4a"
+        episode.previewAvailable = true
+        episode.previewDurationSec = 180
+
+        let plan = try #require(PodcastPlayerLoadPlan.make(
+            episode: episode,
+            isPreviewPlayback: true
+        ))
+
+        #expect(plan.durationSec == 180)
+    }
+
+    @Test func fullPlaybackIgnoresPreviewDuration() throws {
+        let episode = makeEpisode()
+        episode.audioURL = "https://example.com/audio.m4a"
+        episode.previewAvailable = true
+        episode.previewDurationSec = 180
+
+        let plan = try #require(PodcastPlayerLoadPlan.make(
+            episode: episode,
+            isPreviewPlayback: false
+        ))
+
+        #expect(plan.durationSec == 42)
+    }
+
+    @Test func previewPlaybackWithoutMetadataLetsAudioResolveItsDuration() throws {
+        let episode = makeEpisode()
+        episode.audioURL = "https://example.com/audio.m4a"
+        episode.previewAvailable = true
+
+        let plan = try #require(PodcastPlayerLoadPlan.make(
+            episode: episode,
+            isPreviewPlayback: true
+        ))
+
+        #expect(plan.durationSec == 0)
     }
 
     private func makeEpisode() -> PodcastEpisode {

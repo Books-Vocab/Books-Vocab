@@ -23,6 +23,38 @@ struct VocabularySurfaceStateTests {
         #expect(result.map(\.word) == ["kept"])
     }
 
+    @Test func reviewCalendar_recordsUseDeterministicIDOrderWhenReviewedAtTies() throws {
+        let clock = ReviewCalendarClock(
+            now: try fixedDate("2026-01-02T12:00:00Z"),
+            timeZone: try #require(TimeZone(identifier: "UTC"))
+        )
+        let reviewedAt = try fixedDate("2026-01-02T10:00:00Z")
+        let lowID = try #require(UUID(uuidString: "00000000-0000-0000-0000-000000000001"))
+        let highID = try #require(UUID(uuidString: "00000000-0000-0000-0000-000000000002"))
+        let lowIDRecord = ReviewRecord(
+            word: "low-id",
+            entryID: nil,
+            feedback: 1,
+            reviewedAt: reviewedAt
+        )
+        lowIDRecord.id = lowID
+        let highIDRecord = ReviewRecord(
+            word: "high-id",
+            entryID: nil,
+            feedback: 1,
+            reviewedAt: reviewedAt
+        )
+        highIDRecord.id = highID
+
+        let result = ReviewCalendarPresentation.records(
+            for: "2026-01-02",
+            from: [highIDRecord, lowIDRecord],
+            clock: clock
+        )
+
+        #expect(result.map(\.id.uuidString) == [lowID.uuidString, highID.uuidString])
+    }
+
     @Test func reviewCalendar_dayStateSeparatesEmptyFromPopulatedStatus() {
         #expect(ReviewCalendarPresentation.dayState(for: []) == .empty)
 

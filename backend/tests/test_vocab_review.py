@@ -255,14 +255,18 @@ class TestPushReviewStatesFakes:
         server_time = datetime.now(UTC)
         client_time = server_time - timedelta(hours=1)
         c1 = _ReviewCard(
-            id="c1", content="cat", last_reviewed_at=server_time,
-            review_count=3, lapse_count=1,
+            id="c1",
+            content="cat",
+            last_reviewed_at=server_time,
+            review_count=3,
+            lapse_count=1,
         )
         store = _FakeCardsStore([c1])
         entry = _entry(
             word="cat",
             last_reviewed_at=_iso(client_time),
-            review_count=5, lapse_count=0,  # only review_count is higher than server
+            review_count=5,
+            lapse_count=0,  # only review_count is higher than server
         )
 
         result = push_review_states([entry], cards_store=store, logger=logging.getLogger())
@@ -277,14 +281,18 @@ class TestPushReviewStatesFakes:
         server_time = datetime.now(UTC)
         client_time = server_time - timedelta(hours=1)
         c1 = _ReviewCard(
-            id="c1", content="cat", last_reviewed_at=server_time,
-            review_count=10, lapse_count=2,
+            id="c1",
+            content="cat",
+            last_reviewed_at=server_time,
+            review_count=10,
+            lapse_count=2,
         )
         store = _FakeCardsStore([c1])
         entry = _entry(
             word="cat",
             last_reviewed_at=_iso(client_time),
-            review_count=5, lapse_count=1,
+            review_count=5,
+            lapse_count=1,
         )
 
         result = push_review_states([entry], cards_store=store, logger=logging.getLogger())
@@ -307,9 +315,7 @@ class TestPushReviewStatesFakes:
         store = _FakeCardsStore([_ReviewCard(id="c1", content="cat")])
         entry = _entry(word="cat", last_reviewed_at=_iso(datetime.now(UTC)))
 
-        push_review_states(
-            [entry], cards_store=store, logger=logging.getLogger(), notebook_id="nb_x"
-        )
+        push_review_states([entry], cards_store=store, logger=logging.getLogger(), notebook_id="nb_x")
         assert store.all_calls == ["nb_x"]
 
     def test_empty_entries_returns_zero(self):
@@ -319,3 +325,42 @@ class TestPushReviewStatesFakes:
         assert store.get_batch_calls == []
         assert store.batch_update_calls == []
 
+    def test_duplicate_word_fallback_coalesces_to_newest_schedule(self):
+        """Legacy word-only retries must not roll a card back by input order."""
+        older_last = datetime(2026, 9, 1, 9, 0, tzinfo=UTC)
+        newer_last = older_last + timedelta(hours=1)
+        store = _FakeCardsStore([_ReviewCard(id="c1", content="review")])
+        older_entry = _entry(
+            word="review",
+            last_reviewed_at=_iso(older_last),
+            review_interval_hours=12.0,
+            next_review_at=_iso(older_last + timedelta(hours=12)),
+            review_count=1,
+            review_streak=1,
+            last_review_feedback=0,
+        )
+        newer_entry = _entry(
+            word="review",
+            last_reviewed_at=_iso(newer_last),
+            review_interval_hours=48.0,
+            next_review_at=_iso(newer_last + timedelta(hours=48)),
+            review_count=2,
+            review_streak=4,
+            last_review_feedback=1,
+        )
+
+        result = push_review_states(
+            [newer_entry, older_entry],
+            cards_store=store,
+            logger=logging.getLogger(),
+        )
+
+        assert result == {"updated": 1, "skipped": 1}
+        assert len(store.batch_update_calls) == 1
+        assert len(store.batch_update_calls[0]) == 1
+        updated = store._cards[0]
+        assert updated.review_interval_hours == 48.0
+        assert updated.next_review_at == newer_last + timedelta(hours=48)
+        assert updated.review_streak == 4
+        assert updated.last_review_feedback == 1
+        assert updated.last_reviewed_at == newer_last

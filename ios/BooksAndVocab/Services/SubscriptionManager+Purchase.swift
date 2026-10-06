@@ -1,7 +1,29 @@
 import StoreKit
 
+enum SubscriptionProductLoadState: Equatable {
+    case loading
+    case ready
+    case retry
+}
+
 extension SubscriptionManager {
+    static func productLoadState(
+        isLoading: Bool,
+        hasProduct: Bool,
+        hasError: Bool
+    ) -> SubscriptionProductLoadState {
+        if hasProduct {
+            return .ready
+        }
+        if isLoading || !hasError {
+            return .loading
+        }
+        return .retry
+    }
+
     func loadProducts() async {
+        isLoading = true
+        defer { isLoading = false }
         lastError = nil
         for attempt in 1...Self.productRetryAttempts {
             do {
@@ -31,9 +53,11 @@ extension SubscriptionManager {
     }
 
     func purchasePro(using kgService: any KGServing, authManager: any AuthManaging) async {
+        if proProduct == nil {
+            await loadProducts()
+        }
         guard let product = proProduct else {
             purchaseStatusMessage = L10n.string("尚未取得產品價格，請稍後再試。")
-            await loadProducts()
             return
         }
         guard authManager.isLoggedIn else {

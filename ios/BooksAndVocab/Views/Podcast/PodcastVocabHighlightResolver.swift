@@ -1,9 +1,23 @@
 import Foundation
+import SwiftUI
 
 /// 決定 podcast 字幕中哪些詞要上「詞庫螢光筆」底色。詞庫驅動、與 Reader 一致：凡屬於
 /// 詞庫（含 rootForm / inflections，由 `ReaderVocabularyContext.lookedUpWords` 展開、
 /// 全小寫）的詞，字幕對應的詞就上色。純函式、無狀態，供 cell 渲染與單元測試共用。
 enum PodcastVocabHighlightResolver {
+    /// Podcast keeps its established light/dark preset palette, while custom
+    /// Reader colours are shared as sRGB data. The caller still owns opacity
+    /// because it is applied to each transcript band independently.
+    static func highlightColor(
+        for preferences: VocabHighlightPreferences,
+        colorScheme: ColorScheme
+    ) -> Color {
+        if preferences.colorPreset == .custom {
+            return preferences.customSRGB.color
+        }
+        return preferences.colorPreset.swiftUIColor(for: colorScheme)
+    }
+
     /// 回傳 `words` 中命中詞庫的 word index 集合。`normalizedLookedUp` 須為**已用
     /// `normalize` 正規化過**的詞集合（呼叫端每次 render 算一次即可，避免 per-cell 重算）;
     /// 來源是 `translationHandler.lookedUpWords`（已小寫、含變形）。比對對稱:兩側都過

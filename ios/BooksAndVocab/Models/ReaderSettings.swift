@@ -144,6 +144,7 @@ struct ReaderSettingsBridgeState: Equatable {
     let font: ReaderFont
     let fontScale: Double
     let lineHeight: Double
+    let letterSpacing: Double
     let scrollMode: Bool
     let theme: ReaderTheme
 
@@ -151,12 +152,14 @@ struct ReaderSettingsBridgeState: Equatable {
         font: ReaderFont,
         fontScale: Double,
         lineHeight: Double,
+        letterSpacing: Double = 0,
         scrollMode: Bool,
         theme: ReaderTheme
     ) {
         self.font = font
         self.fontScale = fontScale
         self.lineHeight = lineHeight
+        self.letterSpacing = letterSpacing
         self.scrollMode = scrollMode
         self.theme = theme
     }
@@ -182,6 +185,7 @@ struct ReaderSettingsBridgeState: Equatable {
             font: font,
             fontScale: navigatorSettings.fontSize,
             lineHeight: lineHeight,
+            letterSpacing: navigatorSettings.letterSpacing ?? ReaderSettings.defaultLetterSpacing,
             scrollMode: navigatorSettings.scroll,
             theme: theme
         )
@@ -195,6 +199,7 @@ struct ReaderSettingsBridgeState: Equatable {
             "font=\(font.rawValue)",
             "fontSize=\(Self.decimal(fontScale))",
             "lineHeight=\(Self.decimal(lineHeight))",
+            "letterSpacing=\(Self.decimal(letterSpacing))",
             "readingMode=\(readingMode)",
             "theme=\(theme.rawValue.lowercased())"
         ].joined(separator: ";")
@@ -238,6 +243,44 @@ struct ReaderViewConfiguration: Equatable {
     }
 }
 
+/// Canonical discrete controls for Reader typography.
+///
+/// The settings panel, its preview harness, and the Readium-facing typography
+/// controls all use this value source. Keeping the ranges here also lets stored
+/// values from older builds be clamped without making the view layer own model
+/// policy.
+enum ReaderTypographyMetrics {
+    static let fontSizeRange: ClosedRange<Double> = 0.75...2.0
+    static let fontSizeStep: Double = 0.125
+    static let lineHeightRange: ClosedRange<Double> = 1.0...2.5
+    static let lineHeightStep: Double = 0.1
+    static let letterSpacingRange: ClosedRange<Double> = 0.0...1.0
+    static let letterSpacingStep: Double = 0.1
+
+    static func steppedValue(
+        from value: Double,
+        by tickDelta: Int,
+        in range: ClosedRange<Double>,
+        step: Double
+    ) -> Double {
+        guard value.isFinite, step > 0, step.isFinite else { return range.lowerBound }
+        let currentTick = ((value - range.lowerBound) / step).rounded()
+        let nextTick = currentTick + Double(tickDelta)
+        let candidate = range.lowerBound + (nextTick * step)
+        let clamped = min(max(candidate, range.lowerBound), range.upperBound)
+        return (clamped * 1_000).rounded() / 1_000
+    }
+
+    static func quantizedValue(
+        _ value: Double,
+        in range: ClosedRange<Double>,
+        step: Double
+    ) -> Double {
+        steppedValue(from: value, by: 0, in: range, step: step)
+    }
+
+}
+
 /// 閱讀器偏好設定模型 — 全域單例，直接讀寫 UserDefaults 並同步至 iCloud KVS
 @Observable
 final class ReaderSettings {
@@ -248,9 +291,13 @@ final class ReaderSettings {
     private let kFont = "reader_settings_font"
     private let kFontSize = "reader_settings_fontSize"
     private let kLineHeight = "reader_settings_lineHeight"
+    private let kLetterSpacing = "reader_settings_letterSpacing"
     private let kUnderlineOpacity = "reader_settings_underlineOpacity"
     private let kVocabHighlightColorPreset = "vocab_highlight_colorPreset"
     private let kVocabHighlightOpacity = "vocab_highlight_opacity"
+    private let kVocabHighlightCustomRed = "vocab_highlight_custom_red"
+    private let kVocabHighlightCustomGreen = "vocab_highlight_custom_green"
+    private let kVocabHighlightCustomBlue = "vocab_highlight_custom_blue"
     private let kShowHitTestingDebug = "reader_settings_showHitTestingDebug"
     private let kScrollMode = "reader_settings_scrollMode"
     private var cloudObserver: NSObjectProtocol? = nil
@@ -264,6 +311,7 @@ final class ReaderSettings {
     static let defaultFont: ReaderFont = .serif
     static let defaultFontSize: Double = 1.0
     static let defaultLineHeight: Double = 1.4
+    static let defaultLetterSpacing: Double = 0.0
     static let defaultScrollMode = false
     static let defaultShowHitTestingDebug = false
 
@@ -288,6 +336,16 @@ final class ReaderSettings {
             guard !isLoadingPersistedValues else { return }
             defaults.set(lineHeight, forKey: kLineHeight)
             cloud.set(lineHeight, forKey: kLineHeight)
+        }
+    }
+
+    /// Readium's bounded letter-spacing preference. The persisted scalar uses
+    /// the same 0...1 / 0.1 contract as `EPUBPreferencesEditor`.
+    var letterSpacing: Double = ReaderSettings.defaultLetterSpacing {
+        didSet {
+            guard !isLoadingPersistedValues else { return }
+            defaults.set(letterSpacing, forKey: kLetterSpacing)
+            cloud.set(letterSpacing, forKey: kLetterSpacing)
         }
     }
 
@@ -325,21 +383,37 @@ final class ReaderSettings {
         }
     }
 
-    /// 字級倍率的顯示字串。閱讀設定頁的 Stepper、設定▸偏好 的摘要列、以及
+    var vocabHighlightCustomSRGB: VocabHighlightSRGB = VocabHighlightPreferences.default.customSRGB {
+        didSet {
+            guard !isLoadingPersistedValues else { return }
+            persist(customSRGB: vocabHighlightCustomSRGB)
+        }
+    }
+
+    /// 字級倍率的顯示字串。閱讀設定頁的 adjustment row、設定▸偏好 的摘要列、以及
     /// Catalog harness 共用，免得同一個數字在不同入口 format 成不同樣子。
     /// static 版本給沒有 `ReaderSettings` 實例的呼叫端（harness）。
     static func fontSizeText(for scale: Double) -> String {
         String(format: "%.2gx", scale)
     }
 
+    static func letterSpacingText(for value: Double) -> String {
+        String(format: "%.1f", locale: Locale(identifier: "en_US_POSIX"), value)
+    }
+
     var fontSizeText: String {
         Self.fontSizeText(for: fontSize)
+    }
+
+    var letterSpacingText: String {
+        Self.letterSpacingText(for: letterSpacing)
     }
 
     var vocabHighlightPreferences: VocabHighlightPreferences {
         VocabHighlightPreferences(
             colorPreset: vocabHighlightColorPreset,
-            opacity: underlineOpacity
+            opacity: underlineOpacity,
+            customSRGB: vocabHighlightCustomSRGB
         )
     }
 
@@ -398,6 +472,20 @@ final class ReaderSettings {
             if saved > 0 { self.lineHeight = saved }
         }
 
+        if let cloudLetterSpacing = cloud.double(forKey: kLetterSpacing) {
+            self.letterSpacing = ReaderTypographyMetrics.quantizedValue(
+                cloudLetterSpacing,
+                in: ReaderTypographyMetrics.letterSpacingRange,
+                step: ReaderTypographyMetrics.letterSpacingStep
+            )
+        } else if let savedLetterSpacing = persistedDouble(forKey: kLetterSpacing) {
+            self.letterSpacing = ReaderTypographyMetrics.quantizedValue(
+                savedLetterSpacing,
+                in: ReaderTypographyMetrics.letterSpacingRange,
+                step: ReaderTypographyMetrics.letterSpacingStep
+            )
+        }
+
         if let cloudScroll = cloud.double(forKey: kScrollMode) {
             self.scrollMode = cloudScroll > 0.5
         } else {
@@ -417,10 +505,17 @@ final class ReaderSettings {
         let resolvedHighlight = VocabHighlightPreferences.resolve(
             storedPresetRaw: cloudPreset ?? savedPreset,
             storedOpacity: cloudOpacity ?? savedOpacity,
-            legacyOpacity: legacyCloudOpacity ?? legacySavedOpacity
+            legacyOpacity: legacyCloudOpacity ?? legacySavedOpacity,
+            storedCustomRed: cloud.double(forKey: kVocabHighlightCustomRed)
+                ?? persistedDouble(forKey: kVocabHighlightCustomRed),
+            storedCustomGreen: cloud.double(forKey: kVocabHighlightCustomGreen)
+                ?? persistedDouble(forKey: kVocabHighlightCustomGreen),
+            storedCustomBlue: cloud.double(forKey: kVocabHighlightCustomBlue)
+                ?? persistedDouble(forKey: kVocabHighlightCustomBlue)
         )
         self.vocabHighlightColorPreset = resolvedHighlight.colorPreset
         self.underlineOpacity = resolvedHighlight.opacity
+        self.vocabHighlightCustomSRGB = resolvedHighlight.customSRGB
 
         if cloudOpacity == nil && savedOpacity == nil {
             defaults.set(resolvedHighlight.opacity, forKey: kVocabHighlightOpacity)
@@ -429,6 +524,16 @@ final class ReaderSettings {
         if cloudPreset == nil && savedPreset == nil {
             defaults.set(resolvedHighlight.colorPreset.rawValue, forKey: kVocabHighlightColorPreset)
             cloud.set(resolvedHighlight.colorPreset.rawValue, forKey: kVocabHighlightColorPreset)
+        }
+        let customKeys = [
+            kVocabHighlightCustomRed,
+            kVocabHighlightCustomGreen,
+            kVocabHighlightCustomBlue,
+        ]
+        if customKeys.contains(where: {
+            cloud.double(forKey: $0) == nil && persistedDouble(forKey: $0) == nil
+        }) {
+            persist(customSRGB: resolvedHighlight.customSRGB)
         }
 
         self.showHitTestingDebug = defaults.bool(forKey: kShowHitTestingDebug)
@@ -454,6 +559,15 @@ final class ReaderSettings {
                 if let value = cloud.double(forKey: key), value != fontSize { fontSize = value }
             case kLineHeight:
                 if let value = cloud.double(forKey: key), value != lineHeight { lineHeight = value }
+            case kLetterSpacing:
+                if let value = cloud.double(forKey: key) {
+                    let normalized = ReaderTypographyMetrics.quantizedValue(
+                        value,
+                        in: ReaderTypographyMetrics.letterSpacingRange,
+                        step: ReaderTypographyMetrics.letterSpacingStep
+                    )
+                    if normalized != letterSpacing { letterSpacing = normalized }
+                }
             case kScrollMode:
                 if let value = cloud.double(forKey: key) { let v = value > 0.5; if v != scrollMode { scrollMode = v } }
             case kUnderlineOpacity where !hasNewHighlightOpacity:
@@ -466,6 +580,12 @@ final class ReaderSettings {
                    value != vocabHighlightColorPreset {
                     vocabHighlightColorPreset = value
                 }
+            case kVocabHighlightCustomRed:
+                updateCustomSRGBComponent(cloud.double(forKey: key), component: .red)
+            case kVocabHighlightCustomGreen:
+                updateCustomSRGBComponent(cloud.double(forKey: key), component: .green)
+            case kVocabHighlightCustomBlue:
+                updateCustomSRGBComponent(cloud.double(forKey: key), component: .blue)
             default:
                 break
             }
@@ -489,9 +609,11 @@ final class ReaderSettings {
         font = Self.defaultFont
         fontSize = Self.defaultFontSize
         lineHeight = Self.defaultLineHeight
+        letterSpacing = Self.defaultLetterSpacing
         scrollMode = Self.defaultScrollMode
         vocabHighlightColorPreset = VocabHighlightPreferences.default.colorPreset
         underlineOpacity = VocabHighlightPreferences.default.opacity
+        vocabHighlightCustomSRGB = VocabHighlightPreferences.default.customSRGB
         showHitTestingDebug = Self.defaultShowHitTestingDebug
     }
 
@@ -506,6 +628,11 @@ final class ReaderSettings {
                 backgroundColor: ReadiumNavigator.Color(color: paper),
                 fontFamily: font.family,
                 fontSize: fontSize,
+                letterSpacing: ReaderTypographyMetrics.quantizedValue(
+                    letterSpacing,
+                    in: ReaderTypographyMetrics.letterSpacingRange,
+                    step: ReaderTypographyMetrics.letterSpacingStep
+                ),
                 lineHeight: lineHeight,
                 publisherStyles: false,
                 scroll: scrollMode,
@@ -516,6 +643,46 @@ final class ReaderSettings {
             showHitTestingDebug: ReaderDebugTools.isAvailable && showHitTestingDebug,
             swiftUIColorScheme: theme == .dark ? .dark : .light
         )
+    }
+
+    private enum CustomSRGBComponent {
+        case red, green, blue
+    }
+
+    private func persistedDouble(forKey key: String) -> Double? {
+        defaults.object(forKey: key) == nil ? nil : defaults.double(forKey: key)
+    }
+
+    private func persist(customSRGB: VocabHighlightSRGB) {
+        let values: [(String, Double)] = [
+            (kVocabHighlightCustomRed, customSRGB.red),
+            (kVocabHighlightCustomGreen, customSRGB.green),
+            (kVocabHighlightCustomBlue, customSRGB.blue),
+        ]
+        for (key, value) in values {
+            defaults.set(value, forKey: key)
+            cloud.set(value, forKey: key)
+        }
+    }
+
+    private func updateCustomSRGBComponent(
+        _ value: Double?,
+        component: CustomSRGBComponent
+    ) {
+        guard let value else { return }
+        let current = vocabHighlightCustomSRGB
+        let updated: VocabHighlightSRGB
+        switch component {
+        case .red:
+            updated = .init(red: value, green: current.green, blue: current.blue)
+        case .green:
+            updated = .init(red: current.red, green: value, blue: current.blue)
+        case .blue:
+            updated = .init(red: current.red, green: current.green, blue: value)
+        }
+        if updated != current {
+            vocabHighlightCustomSRGB = updated
+        }
     }
 }
 #endif

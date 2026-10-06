@@ -15,6 +15,10 @@ struct NotebookFilterChip: View {
 
     @State private var showPicker = false
 
+    private var liveNotebookIDs: Set<String> {
+        Set(notebooks.filter { !$0.isSoftDeleted }.map(\.remoteId))
+    }
+
     var body: some View {
         Button {
             showPicker = true
@@ -39,6 +43,9 @@ struct NotebookFilterChip: View {
                 : L10n.string("全部單字本")
         )
         .accessibilityIdentifier("vocab.notebookFilter")
+        .onChange(of: liveNotebookIDs, initial: true) { _, ids in
+            filter.reconcile(with: ids)
+        }
         .toastSheet(isPresented: $showPicker) {
             NotebookFilterPickerSheet(
                 filter: $filter,

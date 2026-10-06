@@ -3,6 +3,7 @@
 Color regex coverage lives in test_model_validation.py; this file covers
 the cover_pattern whitelist + name max_length contract.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -15,6 +16,7 @@ from kg.api_models.notebook import (
 )
 
 # --- cover_pattern whitelist ---
+
 
 @pytest.mark.parametrize("pattern", sorted(VALID_COVER_PATTERNS))
 def test_create_accepts_valid_patterns(pattern):
@@ -55,6 +57,7 @@ def test_update_rejects_invalid_pattern():
 
 # --- name max_length=100 ---
 
+
 def test_create_name_at_max_length_accepted():
     r = NotebookCreateRequest(name="x" * 100)
     assert len(r.name) == 100
@@ -70,7 +73,21 @@ def test_update_name_over_max_length_rejected():
         NotebookUpdateRequest(name="x" * 101)
 
 
+@pytest.mark.parametrize("model", [NotebookCreateRequest, NotebookUpdateRequest])
+@pytest.mark.parametrize("name", [" ", "\t", "\n"])
+def test_name_rejects_whitespace_only(model, name):
+    with pytest.raises(ValidationError):
+        model(name=name)
+
+
+@pytest.mark.parametrize("model", [NotebookCreateRequest, NotebookUpdateRequest])
+def test_name_with_content_is_preserved(model):
+    name = "  notebook  "
+    assert model(name=name).name == name
+
+
 # --- cover_pattern max_length=30 guards before whitelist ---
+
 
 def test_create_cover_pattern_over_max_length_rejected():
     with pytest.raises(ValidationError):

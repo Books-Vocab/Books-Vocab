@@ -95,6 +95,8 @@ source "$SCRIPT_DIR/lib/ios_build_progress.sh"
 source "$SCRIPT_DIR/lib/ios_install_provenance.sh"
 # shellcheck source=lib/ios_swiftpm_cache.sh
 source "$SCRIPT_DIR/lib/ios_swiftpm_cache.sh"
+# shellcheck source=lib/ios_disk_budget.sh
+source "$SCRIPT_DIR/lib/ios_disk_budget.sh"
 XCODEPROJ="$PROJECT_ROOT/ios/BooksAndVocab.xcodeproj"
 IOS_OPS="$SCRIPT_DIR/ios_ops.sh"
 # DerivedData remains one shared, bounded cache anchored at the MAIN repo;
@@ -198,6 +200,11 @@ if [[ "$CATALYST" == "1" ]]; then
     rm -rf "$IOS_DERIVED_DATA_ROOT" 2>/dev/null ||
       echo "[ios_build] warning: sibling iOS cache cleanup failed root=$IOS_DERIVED_DATA_ROOT" >&2
   fi
+fi
+
+if ! kg_ios_disk_budget_preflight "$PROJECT_ROOT" "build"; then
+  echo "[ios_build] blocked by disk budget; clean rebuildable cache before retry" >&2
+  exit "$KG_IOS_DISK_BUDGET_EXIT"
 fi
 
 echo "[ios_build] lock acquired by $CALLER (pid=$$) lockWaitMs=$LOCK_WAIT_MS — building..."

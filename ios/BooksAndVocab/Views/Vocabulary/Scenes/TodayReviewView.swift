@@ -60,6 +60,8 @@ struct TodayReviewView: View {
     @ObserveInjection private var inject
     @Environment(\.modelContext) private var modelContext
     @Environment(\.reviewSettingsStore) private var reviewSettingsStore
+    @Environment(\.reviewCardLayoutStore) private var reviewCardLayoutStore
+    @Query private var notebookSettings: [NotebookSettingsProjection]
     @Environment(\.toastCoordinator) private var toastCoordinator
 
     @State private var state: TodayReviewState
@@ -99,8 +101,17 @@ struct TodayReviewView: View {
 
     var body: some View {
         let _ = PerfLog.review.mark("treview.held", "inst=#\(state.instanceSeq) viewBody")
+        let notebookSettingsResolver = NotebookSettingsResolver(
+            globalReviewStore: reviewSettingsStore,
+            globalCardLayoutStore: reviewCardLayoutStore,
+            projections: notebookSettings
+        )
+        let notebookSettingsSnapshot = notebookSettingsResolver.snapshot(
+            for: allEntries.map(\.notebookId)
+        )
         return TodayReviewPresenter(
             state: state.presenterState,
+            notebookSettingsResolver: notebookSettingsResolver,
             isHelpPresented: isHelpPresented,
             showFirstRunHint: shouldShowFirstRunHint,
             onClose: { perform(.close) },
@@ -162,7 +173,7 @@ struct TodayReviewView: View {
             let toast = toastCoordinator
             state.reflushUnflushedRestoredAnswers(
                 container: modelContext.container,
-                reviewSettings: reviewSettingsStore.settings,
+                notebookSettingsSnapshot: notebookSettingsSnapshot,
                 onSaveFailure: { toast.error(L10n.string("todayReview.saveFailure")) }
             )
         }
@@ -270,7 +281,7 @@ struct TodayReviewView: View {
             let toast = toastCoordinator
             state.flushPendingAnswers(
                 container: container,
-                reviewSettings: reviewSettingsStore.settings,
+                notebookSettingsSnapshot: notebookSettingsSnapshot,
                 onFinalize: {
                     if completed { state.clearSnapshot() } else { state.persistSnapshot() }
                     guard loggedIn else { return }
@@ -378,7 +389,10 @@ struct TodayReviewView: View {
             currentUserID: "preview-user",
             onClose: {}
         )
-        .modelContainer(for: [VocabularyEntry.self, ReviewRecord.self, Notebook.self], inMemory: true)
+        .modelContainer(for: [
+            VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+            NotebookSettingsProjection.self
+        ], inMemory: true)
     }
     .environmentObject(AppAppearanceStore.preview)
 }

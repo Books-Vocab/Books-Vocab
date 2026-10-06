@@ -13,6 +13,7 @@ from typing import Any, Protocol
 from fastapi import HTTPException
 from filelock import FileLock
 
+from . import podcast_progress
 from .account_erasure import ObjectStorageClient, delete_account_assets
 from .api_models import (
     AutoLinkConfig,
@@ -34,27 +35,21 @@ _logger = logging.getLogger(__name__)
 
 
 class CardStore(Protocol):
-    def count(self) -> int:
-        ...
+    def count(self) -> int: ...
 
 
 class GraphStore(Protocol):
-    def link_count(self) -> int:
-        ...
+    def link_count(self) -> int: ...
 
-    def candidate_count(self) -> int:
-        ...
+    def candidate_count(self) -> int: ...
 
 
 class CardStoreFactory(Protocol):
-    def __call__(self, user_dir: Path) -> CardStore:
-        ...
+    def __call__(self, user_dir: Path) -> CardStore: ...
 
 
 class GraphStoreFactory(Protocol):
-    def __call__(self, user_dir: Path) -> GraphStore:
-        ...
-
+    def __call__(self, user_dir: Path) -> GraphStore: ...
 
 
 def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
@@ -119,11 +114,30 @@ def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
     )
 
 
+def _should_apply_user_config_group(config: dict[str, Any], group: str, incoming_updated_at: float | None) -> bool:
+    """Apply timestamped group writes only when they move the group forward.
+
+    Requests without a timestamp retain the legacy overwrite behavior for
+    backwards compatibility with clients that predate the LWW field.
+    """
+    if incoming_updated_at is None:
+        return True
+    existing = config.get(group)
+    if not isinstance(existing, dict):
+        return True
+    existing_updated_at = existing.get("updated_at")
+    if not isinstance(existing_updated_at, (int, float)) or isinstance(existing_updated_at, bool):
+        return True
+    return incoming_updated_at > existing_updated_at
+
+
 def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
     # Translation config（source+target 偏好 + 單一 group updated_at 整組 LWW）。
     # 用 `is not None` 對齊其他 group（有送=更新, None=不動既有）；統一語意並消除
     # 「未來 model 變得可 falsy 就誤略過」的隱患（現 model 全 default 不會 falsy）。
-    if req.translation is not None:
+    if req.translation is not None and _should_apply_user_config_group(
+        config, "translation", req.translation.updated_at
+    ):
         config["translation"] = {
             "source_lang": req.translation.source_lang,
             "target_lang": req.translation.target_lang,
@@ -131,7 +145,9 @@ def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
         }
     # Review clock (pause state). 複合原子;resume 時 paused_at 已由 ReviewClockConfig
     # validator 正規化為 None。只在 client 有送 review_clock 時更新(None = 不動既有)。
-    if req.review_clock is not None:
+    if req.review_clock is not None and _should_apply_user_config_group(
+        config, "review_clock", req.review_clock.updated_at
+    ):
         rc = req.review_clock
         config["review_clock"] = {
             "is_paused": rc.is_paused,
@@ -140,7 +156,9 @@ def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
         }
     # Review mode + 自訂 SRS 參數。複合原子(mode + 5 custom_* 共用單一 updated_at);
     # 非法 mode 已由 ReviewModeConfig validator 正規化。只在 client 有送時更新(None = 不動既有)。
-    if req.review_mode is not None:
+    if req.review_mode is not None and _should_apply_user_config_group(
+        config, "review_mode", req.review_mode.updated_at
+    ):
         rm = req.review_mode
         config["review_mode"] = {
             "mode": rm.mode,
@@ -154,7 +172,7 @@ def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
     # Vocab UI(目前僅全域 active notebook 游標)。決定新選詞歸屬;單一 updated_at 驅動
     # 整組跨裝置 LWW。只在 client 有送時更新(None = 不動既有);stale id 由各 client
     # reconcile(後端此階段 passthrough,不驗 notebook 存在性,與其他 group 一致)。
-    if req.vocab_ui is not None:
+    if req.vocab_ui is not None and _should_apply_user_config_group(config, "vocab_ui", req.vocab_ui.updated_at):
         vu = req.vocab_ui
         config["vocab_ui"] = {
             "active_notebook_id": vu.active_notebook_id,
@@ -162,7 +180,7 @@ def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
         }
     # Auto-link(judge pipeline 自動連結)開關。單一 updated_at 驅動整組 LWW。
     # 只在 client 有送時更新(None = 不動既有);缺省讀取端 fallback enabled=True。
-    if req.auto_link is not None:
+    if req.auto_link is not None and _should_apply_user_config_group(config, "auto_link", req.auto_link.updated_at):
         config["auto_link"] = {
             "enabled": req.auto_link.enabled,
             "updated_at": req.auto_link.updated_at,
@@ -218,6 +236,13 @@ def update_user_config_response(
         user_id = user["id"]
 
         if user_id not in users:
+            terminated = users.get("_terminated")
+            if isinstance(terminated, list) and user_id in terminated:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Account was deleted. Please sign in again.",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
             users[user_id] = {}
 
         if "config" not in users[user_id]:
@@ -255,6 +280,7 @@ def delete_user_account_response(
             library_bucket=library_bucket,
             library_s3_client=library_s3_client,
         )
+        podcast_progress.delete_for_users(ids_to_delete)
 
         revoked_before = users.get("_revoked_before")
         if not isinstance(revoked_before, dict):
@@ -332,8 +358,9 @@ def health_response(
         last_mod = datetime.fromtimestamp(ts, tz=UTC).isoformat()
 
     db_ok = True
+    card_count = 0
     try:
-        cards.count()
+        card_count = cards.count()
     except (OSError, sqlite3.DatabaseError) as exc:
         _logger.warning("Health check failed for user %s: %s", user.get("uid"), exc)
         db_ok = False
@@ -345,8 +372,8 @@ def health_response(
         disk_free_mb = shutil.disk_usage(user_dir).free // (1024 * 1024)
 
     return HealthResponse(
-        status="ok",
-        cards=cards.count(),
+        status="ok" if db_ok else "degraded",
+        cards=card_count,
         links=graph.link_count(),
         pendingCandidates=graph.candidate_count(),
         lastModified=last_mod,

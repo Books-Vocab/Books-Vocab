@@ -5,7 +5,7 @@ update_trigger: manual
 scope:
   - ios/BooksAndVocab/
   - backend/src/kg/
-verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
+verified_against: 24f2120d7118af81b6812a50a4c489aff3b466ec
 -->
 # iOS Smoke Test Checklist
 
@@ -14,8 +14,8 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 ## 0. Release readiness
 
 - [ ] iOS 新 marketing version：`./ops/release.sh release ios <new>` dry-run 通過。guard 直接讀 repo 的上架 tag / build tag 自行檢查，**沒有 attestation flag 可帶**（`--new-version-after-ready` 已移除，傳了會 hard-error）；被擋就代表真的有版本狀態未確認，先跑 `./ops/release.sh shipped ios`
-- [ ] iOS 未上架／被拒重送：marketing version 不動，走 `./ops/release.sh resubmit ios`（先查 `./ops/asc.sh builds`，取 `max(local build, ASC latest)+1`，candidate commit/push 後才 upload，再由 `finalize` 做 exact ASC proof 與封 build tag），不走 `release`
-- [ ] release / resubmit dry-run 的 iOS 順序為（resubmit 先 ASC 對帳）candidate commit→push `origin/main`→upload→`finalize` 的 exact `(version, build)` ASC proof→封 `ios/<x.y.z>+<build>`；failure 保留 candidate、不得重跑流程產生新 build；先查 exact ASC，已接受就 `finalize`，只有確認未接受才可用同一 candidate 重試 primitive upload；沒有當下 proof 不宣稱 ASC/TestFlight 已完成
+- [ ] iOS 未上架／被拒重送：marketing version 不動，走 `./ops/release.sh resubmit ios`（先查 `./ops/asc.sh builds`，取 `max(local build, ASC latest)+1`，在獨立 dedicated lane 建 candidate，再 hand-back → PR/native queue → CM sync；之後 `resume ios <version> <build> --pr <n> --merged-source <sha> --yes` 才做 exact ASC probe/upload），不走 `release`
+- [ ] release / resubmit dry-run 的 iOS 順序為（resubmit 先 ASC 對帳）**live `origin/main` materialize 獨立 release lane**→candidate commit→supported hand-back→IM PR→required/native merge queue→CM sync→exact PR/source readback→ASC probe（缺少 exact build 才 upload）→`finalize` 的 exact `(version, build)` ASC proof→只推 `ios/<x.y.z>+<build>` tag；**不得 push `origin/main`、不得在 canonical main 建 candidate**。failure 保留 candidate／merged source，先查 exact ASC；不得重跑流程產生新 build；沒有當下 proof 不宣稱 ASC/TestFlight 已完成
 - [ ] `./ops/release.sh status` 的 ios 段沒有「目前的 (version, build) 沒有 build tag」警告（有＝這顆 build 出去了卻沒留 build→commit 紀錄，事後不可重建）
 - [ ] 上架後補跑 `./ops/release.sh shipped ios --yes`，依 ASC 物化 `ios/<x.y.z>`（版號事實 owner 表見 `docs/sop/release.md`）
 

@@ -45,8 +45,14 @@ from kg.api_models.library import (
 )
 from kg.api_models.notebook import (
     VALID_COVER_PATTERNS,
+    NotebookCardLayout,
     NotebookCreateRequest,
     NotebookResponse,
+    NotebookReviewPolicy,
+    NotebookSettingsGroup,
+    NotebookSettingsPatchGroup,
+    NotebookSettingsPatchRequest,
+    NotebookSettingsResponse,
     NotebookUpdateRequest,
     VocabUIConfig,
 )
@@ -93,12 +99,20 @@ from kg.api_models.vocab import (
     VocabContentUpdateRequest,
     VocabEntry,
 )
+from kg.api_models.vocab_add_link import (
+    AddLinkOperationRequest,
+    AddLinkOperationResponse,
+    AddLinkOperationStep,
+)
 
 __all__ = [
     "VALID_COVER_PATTERNS",
     "AdminGrantRequest",
     "AdminGrantStatusResponse",
     "AdminTestRunRequest",
+    "AddLinkOperationRequest",
+    "AddLinkOperationResponse",
+    "AddLinkOperationStep",
     "AdminUserEntitlementResponse",
     "AppStoreNotificationRequest",
     "AppStoreNotificationResponse",
@@ -134,7 +148,13 @@ __all__ = [
     "HealthResponse",
     "ManualLinkRequest",
     "NotebookCreateRequest",
+    "NotebookCardLayout",
+    "NotebookReviewPolicy",
     "NotebookResponse",
+    "NotebookSettingsGroup",
+    "NotebookSettingsPatchGroup",
+    "NotebookSettingsPatchRequest",
+    "NotebookSettingsResponse",
     "NotebookUpdateRequest",
     "PhraseTranslateResponse",
     "PipelineQueueResponse",

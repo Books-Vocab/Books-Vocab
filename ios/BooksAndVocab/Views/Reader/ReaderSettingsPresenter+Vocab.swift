@@ -1,6 +1,5 @@
 #if os(iOS)
 import SwiftUI
-import UIKit
 
 // MARK: - Native Settings Form
 
@@ -11,7 +10,7 @@ import UIKit
 ///          detents 與 drag indicator，不再自繪 panel 卡片與 handle）
 ///   分組  `Section` + `SettingsSectionHeader` / `SettingsSectionFooter`
 ///   選擇  `Picker` —— 行內單值用 `.menu`，選項本身值得一列（帶 icon / 色票）用 `.inline`
-///   數值  `Stepper`（上下界＝傳 nil 的 increment/decrement closure）與 `Slider`
+///   數值  離散值共用的 +/- adjustment row；連續值才使用原生 `Slider`
 ///   開關  `Toggle`
 ///
 /// 具名承認的代價：自繪的 selection tile、label chip、control surface、群組
@@ -84,10 +83,12 @@ extension ReaderSettingsPresenter {
                 font: bindings.font.wrappedValue,
                 fontScale: state.fontScale,
                 lineHeight: bindings.lineHeight.wrappedValue,
+                letterSpacing: bindings.letterSpacing.wrappedValue,
                 theme: state.previewTheme,
                 vocabHighlightPreferences: VocabHighlightPreferences(
                     colorPreset: bindings.vocabHighlightColorPreset.wrappedValue,
-                    opacity: bindings.underlineOpacity.wrappedValue
+                    opacity: bindings.underlineOpacity.wrappedValue,
+                    customSRGB: bindings.vocabHighlightCustomSRGB.wrappedValue
                 )
             )
         } header: {
@@ -102,41 +103,45 @@ extension ReaderSettingsPresenter {
 
     var vocabTypographySection: some View {
         Section {
-            Stepper(
-                onIncrement: state.canIncreaseFontSize ? onIncreaseFontSize : nil,
-                onDecrement: state.canDecreaseFontSize ? onDecreaseFontSize : nil
-            ) {
-                LabeledContent(L10n.string("reader.settings.fontSize")) {
-                    Text(state.fontSizeText).monospacedDigit()
-                }
-            }
-            .accessibilityIdentifier("reader.settings.fontSizeStepper")
+            ReaderTypographyAdjustmentRow(
+                title: L10n.string("reader.settings.fontSize"),
+                value: state.fontSizeText,
+                rowIdentifier: "reader.settings.fontSize",
+                decrementIdentifier: "reader.settings.fontSize.decrement",
+                incrementIdentifier: "reader.settings.fontSize.increment",
+                canDecrement: state.canDecreaseFontSize,
+                canIncrement: state.canIncreaseFontSize,
+                onDecrement: onDecreaseFontSize,
+                onIncrement: onIncreaseFontSize
+            )
 
-            HStack(spacing: AppSpacing.s2) {
-                LabeledContent(L10n.string("reader.settings.lineHeight")) {
-                    Text(String(format: "%.1f", bindings.lineHeight.wrappedValue))
-                        .monospacedDigit()
-                }
-                Spacer(minLength: AppSpacing.s2)
-                lineHeightTickButton(
-                    systemName: "minus",
-                    identifier: "reader.settings.lineHeight.decrement",
-                    disabled: bindings.lineHeight.wrappedValue <= ReaderPresentationMetrics.SettingsPreview.lineHeightRange.lowerBound
-                ) {
-                    changeLineHeight(by: -ReaderPresentationMetrics.SettingsPreview.lineHeightStep)
-                }
-                lineHeightTickButton(
-                    systemName: "plus",
-                    identifier: "reader.settings.lineHeight.increment",
-                    disabled: bindings.lineHeight.wrappedValue >= ReaderPresentationMetrics.SettingsPreview.lineHeightRange.upperBound
-                ) {
-                    changeLineHeight(by: ReaderPresentationMetrics.SettingsPreview.lineHeightStep)
-                }
-            }
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("reader.settings.lineHeightTicks")
+            ReaderTypographyAdjustmentRow(
+                title: L10n.string("reader.settings.lineHeight"),
+                value: String(
+                    format: "%.1f",
+                    locale: Locale(identifier: "en_US_POSIX"),
+                    bindings.lineHeight.wrappedValue
+                ),
+                rowIdentifier: "reader.settings.lineHeight",
+                decrementIdentifier: "reader.settings.lineHeight.decrement",
+                incrementIdentifier: "reader.settings.lineHeight.increment",
+                canDecrement: bindings.lineHeight.wrappedValue > ReaderTypographyMetrics.lineHeightRange.lowerBound,
+                canIncrement: bindings.lineHeight.wrappedValue < ReaderTypographyMetrics.lineHeightRange.upperBound,
+                onDecrement: { changeLineHeight(by: -1) },
+                onIncrement: { changeLineHeight(by: 1) }
+            )
 
-            ReaderSettingsLineHeightSlider(value: bindings.lineHeight)
+            ReaderTypographyAdjustmentRow(
+                title: L10n.string("reader.settings.letterSpacing"),
+                value: state.letterSpacingText,
+                rowIdentifier: "reader.settings.letterSpacing",
+                decrementIdentifier: "reader.settings.letterSpacing.decrement",
+                incrementIdentifier: "reader.settings.letterSpacing.increment",
+                canDecrement: state.canDecreaseLetterSpacing,
+                canIncrement: state.canIncreaseLetterSpacing,
+                onDecrement: { changeLetterSpacing(by: -1) },
+                onIncrement: { changeLetterSpacing(by: 1) }
+            )
 
             Picker(selection: bindings.scrollMode) {
                 Text(L10n.string("reader.settings.readingMode.paged")).tag(false)
@@ -151,28 +156,21 @@ extension ReaderSettingsPresenter {
         }
     }
 
-    private func lineHeightTickButton(
-        systemName: String,
-        identifier: String,
-        disabled: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-        }
-        .buttonStyle(.appCompactAction(.neutral))
-        .disabled(disabled)
-        .accessibilityIdentifier(identifier)
+    private func changeLineHeight(by tickDelta: Int) {
+        bindings.lineHeight.wrappedValue = ReaderTypographyMetrics.steppedValue(
+            from: bindings.lineHeight.wrappedValue,
+            by: tickDelta,
+            in: ReaderTypographyMetrics.lineHeightRange,
+            step: ReaderTypographyMetrics.lineHeightStep
+        )
     }
 
-    private func changeLineHeight(by delta: Double) {
-        let metrics = ReaderPresentationMetrics.SettingsPreview.self
-        let rawValue = bindings.lineHeight.wrappedValue + delta
-        let ticks = ((rawValue - metrics.lineHeightRange.lowerBound) / metrics.lineHeightStep).rounded()
-        let quantized = metrics.lineHeightRange.lowerBound + (ticks * metrics.lineHeightStep)
-        bindings.lineHeight.wrappedValue = min(
-            max(quantized, metrics.lineHeightRange.lowerBound),
-            metrics.lineHeightRange.upperBound
+    private func changeLetterSpacing(by tickDelta: Int) {
+        bindings.letterSpacing.wrappedValue = ReaderTypographyMetrics.steppedValue(
+            from: bindings.letterSpacing.wrappedValue,
+            by: tickDelta,
+            in: ReaderTypographyMetrics.letterSpacingRange,
+            step: ReaderTypographyMetrics.letterSpacingStep
         )
     }
 
@@ -196,52 +194,18 @@ extension ReaderSettingsPresenter {
         }
     }
 
-    private func themeOptionLabel(_ theme: ReaderTheme) -> some View {
-        HStack(spacing: AppSpacing.s2) {
-            Label(theme.displayName, systemImage: theme.icon)
-            AppRoundedRect(roundness: AppRoundness.pill)
-                .fill(appSkin.readerThemeSwatchColor(theme))
-                .frame(
-                    width: ReaderMetrics.vocabThemeSwatchWidth,
-                    height: ReaderMetrics.vocabThemeSwatchHeight
-                )
-        }
-    }
-
-    /// An explicit button list keeps each theme choice addressable in UI tests.
-    /// SwiftUI's inline Picker does not preserve child accessibility identifiers
-    /// in the XCTest hierarchy, making theme counterexamples flaky by construction.
+    /// An explicit glass tile grid keeps each theme choice addressable in UI
+    /// tests. SwiftUI's inline Picker does not preserve child accessibility
+    /// identifiers in the XCTest hierarchy, making theme counterexamples flaky
+    /// by construction.
     private var themeOptions: some View {
-        VStack(spacing: 0) {
-            ForEach(ReaderTheme.allCases) { theme in
-                Button {
-                    onSelectTheme(theme)
-                } label: {
-                    HStack(spacing: AppSpacing.s2) {
-                        themeOptionLabel(theme)
-                        Spacer(minLength: AppSpacing.s2)
-                        if bindings.theme.wrappedValue == theme {
-                            Image(systemName: "checkmark")
-                                .foregroundStyle(.tint)
-                                .accessibilityHidden(true)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("reader.settings.theme.\(theme.rawValue.lowercased())")
-                .accessibilityAddTraits(bindings.theme.wrappedValue == theme ? .isSelected : [])
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("reader.settings.theme")
+        ReaderThemeGlassPicker(selection: bindings.theme, onSelect: onSelectTheme)
     }
 
     private var underlineOpacitySelection: Binding<Double> {
         Binding(
             get: { bindings.underlineOpacity.wrappedValue },
-            set: { onSelectUnderlineOpacity($0) }
+            set: { onSelectUnderlineOpacity(VocabHighlightPreferences.quantizedOpacity($0)) }
         )
     }
 
@@ -251,19 +215,32 @@ extension ReaderSettingsPresenter {
         Section {
             VocabHighlightColorPresetPicker(
                 selection: bindings.vocabHighlightColorPreset,
+                customSRGB: bindings.vocabHighlightCustomSRGB,
                 title: L10n.string("vocab.highlight.color.label"),
                 accessibilityIdentifier: "reader.settings.highlightColor"
             )
 
-            Picker(selection: underlineOpacitySelection) {
-                ForEach(opacityOptions, id: \.label) { option in
-                    Text(L10n.string(option.label)).tag(option.value)
+            VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+                HStack {
+                    Text(L10n.string("vocab.highlight.opacity.label"))
+                    Spacer(minLength: AppSpacing.s2)
+                    Text(
+                        String(
+                            format: "%.0f%%",
+                            locale: Locale(identifier: "en_US_POSIX"),
+                            underlineOpacitySelection.wrappedValue * 100
+                        )
+                    )
+                    .monospacedDigit()
                 }
-            } label: {
-                Text(L10n.string("vocab.highlight.opacity.label"))
+                Slider(
+                    value: underlineOpacitySelection,
+                    in: VocabHighlightPreferences.opacityRange,
+                    step: VocabHighlightPreferences.opacityStep
+                )
+                .accessibilityLabel(L10n.string("vocab.highlight.opacity.label"))
+                .accessibilityIdentifier("reader.settings.highlightOpacity")
             }
-            .pickerStyle(.menu)
-            .accessibilityIdentifier("reader.settings.highlightOpacity")
         } header: {
             SettingsSectionHeader(title: L10n.string("reader.settings.section.highlight"), icon: "highlighter")
         }
@@ -287,174 +264,59 @@ extension ReaderSettingsPresenter {
     #endif
 }
 
-private struct ReaderSettingsLineHeightSlider: View {
-    @Binding var value: Double
-
-    private typealias Metrics = ReaderPresentationMetrics.SettingsPreview
+private struct ReaderTypographyAdjustmentRow: View {
+    let title: String
+    let value: String
+    let rowIdentifier: String
+    let decrementIdentifier: String
+    let incrementIdentifier: String
+    let canDecrement: Bool
+    let canIncrement: Bool
+    let onDecrement: () -> Void
+    let onIncrement: () -> Void
 
     var body: some View {
-        VStack(spacing: AppSpacing.microGap) {
-            NativeReaderLineHeightSlider(value: $value)
-
-            HStack(spacing: 0) {
-                ForEach(Metrics.lineHeightTickValues.indices, id: \.self) { index in
-                    Rectangle()
-                        .fill(.secondary.opacity(index.isMultiple(of: 5) ? 0.55 : 0.3))
-                        .frame(width: 1, height: index.isMultiple(of: 5) ? 6 : 4)
-
-                    if index < Metrics.lineHeightTickCount - 1 {
-                        Spacer(minLength: 0)
-                    }
-                }
+        HStack(spacing: AppSpacing.s2) {
+            LabeledContent(title) {
+                Text(value).monospacedDigit()
             }
-            .padding(.horizontal, AppSpacing.s2)
-            .accessibilityHidden(true)
+            Spacer(minLength: AppSpacing.s2)
+            adjustmentButton(
+                systemName: "minus",
+                identifier: decrementIdentifier,
+                disabled: !canDecrement,
+                action: onDecrement
+            )
+            adjustmentButton(
+                systemName: "plus",
+                identifier: incrementIdentifier,
+                disabled: !canIncrement,
+                action: onIncrement
+            )
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(title)
+        .accessibilityValue(value)
+        .accessibilityIdentifier(rowIdentifier)
+    }
+
+    private func adjustmentButton(
+        systemName: String,
+        identifier: String,
+        disabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .frame(
+                    width: AppFloatingChromeMetrics.hitTarget,
+                    height: AppFloatingChromeMetrics.hitTarget
+                )
+        }
+        .buttonStyle(.appCompactAction(.neutral))
+        .disabled(disabled)
+        .accessibilityIdentifier(identifier)
     }
 }
 
-private struct NativeReaderLineHeightSlider: UIViewRepresentable {
-    @Binding var value: Double
-
-    private typealias Metrics = ReaderPresentationMetrics.SettingsPreview
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
-    }
-
-    func makeUIView(context: Context) -> UISlider {
-        let slider = UISlider(
-            frame: .zero
-        )
-        slider.minimumValue = Float(Metrics.lineHeightRange.lowerBound)
-        slider.maximumValue = Float(Metrics.lineHeightRange.upperBound)
-        // Keep the native control continuous for UIKit/XCTest interaction.
-        // Real drags commit only on release/cancel; a non-tracking XCTest
-        // value injection is committed immediately because it has no later
-        // touch-up event to close the interaction.
-        slider.isContinuous = true
-        slider.accessibilityLabel = L10n.string("reader.settings.lineHeight")
-        slider.accessibilityIdentifier = "reader.settings.lineHeight"
-        slider.accessibilityValue = Self.accessibilityValue(for: value)
-        slider.addTarget(
-            context.coordinator,
-            action: #selector(Coordinator.valueChanged(_:)),
-            for: .valueChanged
-        )
-        slider.addTarget(
-            context.coordinator,
-            action: #selector(Coordinator.beginInteraction(_:)),
-            for: .touchDown
-        )
-        for event in [UIControl.Event.touchUpInside, .touchUpOutside, .touchCancel] {
-            slider.addTarget(
-                context.coordinator,
-                action: #selector(Coordinator.commitValue(_:)),
-                for: event
-            )
-        }
-        slider.value = Float(Self.quantized(value))
-        return slider
-    }
-
-    func updateUIView(_ slider: UISlider, context: Context) {
-        context.coordinator.parent = self
-        // SwiftUI may redraw the representable while UIKit is still tracking
-        // a drag. Do not let the last committed Binding value overwrite the
-        // native control or its pending release value mid-interaction.
-        guard !context.coordinator.isInteracting,
-              context.coordinator.pendingValue == nil else { return }
-        let nextValue = Float(Self.quantized(value))
-        if abs(slider.value - nextValue) > 0.0001 {
-            slider.setValue(nextValue, animated: false)
-        }
-        slider.accessibilityValue = Self.accessibilityValue(for: value)
-    }
-
-    private static func quantized(_ rawValue: Double) -> Double {
-        let clamped = min(
-            max(rawValue, Metrics.lineHeightRange.lowerBound),
-            Metrics.lineHeightRange.upperBound
-        )
-        let ticks = ((clamped - Metrics.lineHeightRange.lowerBound) / Metrics.lineHeightStep).rounded()
-        return Metrics.lineHeightRange.lowerBound + (ticks * Metrics.lineHeightStep)
-    }
-
-    private static func accessibilityValue(for rawValue: Double) -> String {
-        String(
-            format: "%.1f",
-            locale: Locale(identifier: "en_US_POSIX"),
-            quantized(rawValue)
-        )
-    }
-
-    final class Coordinator: NSObject {
-        var parent: NativeReaderLineHeightSlider
-        private(set) var isInteracting = false
-        private(set) var pendingValue: Double?
-
-        init(parent: NativeReaderLineHeightSlider) {
-            self.parent = parent
-        }
-
-        @objc
-        func beginInteraction(_ slider: UISlider) {
-            isInteracting = true
-        }
-
-        @objc
-        func valueChanged(_ slider: UISlider) {
-            let nextValue = Self.quantized(
-                Double(slider.value),
-                range: Metrics.lineHeightRange,
-                step: Metrics.lineHeightStep
-            )
-            slider.setValue(Float(nextValue), animated: false)
-            slider.accessibilityValue = Self.accessibilityValue(for: nextValue)
-            pendingValue = nextValue
-            // XCTest's `adjust(toNormalizedSliderPosition:)` can deliver a
-            // valueChanged event after tracking has ended without delivering a
-            // matching touch-up event. `isTracking` is the UIKit source of
-            // truth for that boundary; do not let a stale touchDown flag
-            // strand the endpoint value in `pendingValue`.
-            if !slider.isTracking {
-                commitPendingValue(slider)
-            }
-        }
-
-        @objc
-        func commitValue(_ slider: UISlider) {
-            valueChanged(slider)
-            commitPendingValue(slider)
-        }
-
-        private func commitPendingValue(_ slider: UISlider) {
-            parent.value = pendingValue ?? Self.quantized(
-                Double(slider.value),
-                range: Metrics.lineHeightRange,
-                step: Metrics.lineHeightStep
-            )
-            pendingValue = nil
-            isInteracting = false
-        }
-
-        private static func accessibilityValue(for value: Double) -> String {
-            String(
-                format: "%.1f",
-                locale: Locale(identifier: "en_US_POSIX"),
-                value
-            )
-        }
-
-        private static func quantized(
-            _ rawValue: Double,
-            range: ClosedRange<Double>,
-            step: Double
-        ) -> Double {
-            let clamped = min(max(rawValue, range.lowerBound), range.upperBound)
-            let ticks = ((clamped - range.lowerBound) / step).rounded()
-            return range.lowerBound + (ticks * step)
-        }
-    }
-}
 #endif

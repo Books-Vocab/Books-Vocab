@@ -28,6 +28,7 @@ protocol PodcastEpisodeSessionLoading: AnyObject {
 
     func load(
         episode: PodcastEpisode,
+        isPreviewPlayback: Bool,
         kgService: any AuthTokenProviding
     ) async -> PodcastEpisodeSessionLoadOutcome
 
@@ -87,9 +88,13 @@ final class PodcastEpisodeSessionLoader: PodcastEpisodeSessionLoading {
 
     func load(
         episode: PodcastEpisode,
+        isPreviewPlayback: Bool = false,
         kgService: any AuthTokenProviding
     ) async -> PodcastEpisodeSessionLoadOutcome {
-        guard let plan = PodcastPlayerLoadPlan.make(episode: episode) else {
+        guard let plan = PodcastPlayerLoadPlan.make(
+            episode: episode,
+            isPreviewPlayback: isPreviewPlayback
+        ) else {
             return .missingAudio
         }
 
@@ -266,12 +271,14 @@ final class PodcastEpisodeSessionController {
     func load(
         episode: PodcastEpisode,
         modelContext: ModelContext,
-        kgService: any KGServing
+        kgService: any KGServing,
+        isPreviewPlayback: Bool = false
     ) {
         load(
             episode: episode,
             modelContext: modelContext,
             kgService: kgService,
+            isPreviewPlayback: isPreviewPlayback,
             force: false
         )
     }
@@ -279,12 +286,14 @@ final class PodcastEpisodeSessionController {
     func reloadEpisode(
         episode: PodcastEpisode,
         modelContext: ModelContext,
-        kgService: any KGServing
+        kgService: any KGServing,
+        isPreviewPlayback: Bool = false
     ) {
         load(
             episode: episode,
             modelContext: modelContext,
             kgService: kgService,
+            isPreviewPlayback: isPreviewPlayback,
             force: true
         )
     }
@@ -294,12 +303,14 @@ final class PodcastEpisodeSessionController {
         episode: PodcastEpisode,
         modelContext: ModelContext,
         kgService: any KGServing,
-        catalogPreview: PodcastPlayerCatalogPreview?
+        catalogPreview: PodcastPlayerCatalogPreview?,
+        isPreviewPlayback: Bool = false
     ) {
         load(
             episode: episode,
             modelContext: modelContext,
             kgService: kgService,
+            isPreviewPlayback: isPreviewPlayback,
             force: false,
             catalogPreview: catalogPreview
         )
@@ -310,6 +321,7 @@ final class PodcastEpisodeSessionController {
         episode: PodcastEpisode,
         modelContext: ModelContext,
         kgService: any KGServing,
+        isPreviewPlayback: Bool,
         force: Bool,
         catalogPreview: PodcastPlayerCatalogPreview? = nil
     ) {
@@ -346,7 +358,10 @@ final class PodcastEpisodeSessionController {
             modelContext: modelContext
         )
 
-        if let plan = PodcastPlayerLoadPlan.make(episode: episode),
+        if let plan = PodcastPlayerLoadPlan.make(
+            episode: episode,
+            isPreviewPlayback: isPreviewPlayback
+        ),
            case .remote = plan.subtitleSource {
             viewModel.setSubtitleLoading()
         }
@@ -367,7 +382,11 @@ final class PodcastEpisodeSessionController {
                 return
             }
 #endif
-            let outcome = await self.loader.load(episode: episode, kgService: kgService)
+            let outcome = await self.loader.load(
+                episode: episode,
+                isPreviewPlayback: isPreviewPlayback,
+                kgService: kgService
+            )
             guard !Task.isCancelled,
                   self.isCurrent(
                     generation: generation,

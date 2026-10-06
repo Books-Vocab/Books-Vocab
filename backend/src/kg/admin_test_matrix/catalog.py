@@ -110,7 +110,17 @@ TEST_MATRIX_ITEMS: list[dict[str, Any]] = [
 TEST_MATRIX_ITEM_MAP = {item["id"]: item for item in TEST_MATRIX_ITEMS}
 
 
+class UnknownTestMatrixItemError(ValueError):
+    """Raised when a requested test-matrix item ID is not in the catalog."""
+
+
 def selected_nodeids(item_ids: list[str]) -> list[str]:
+    unknown_ids = [item_id for item_id in dict.fromkeys(item_ids) if item_id not in TEST_MATRIX_ITEM_MAP]
+    if unknown_ids:
+        raise UnknownTestMatrixItemError(
+            f"unknown test matrix item id(s): {', '.join(unknown_ids)}"
+        )
+
     nodeids: list[str] = []
     seen: set[str] = set()
     for item_id in item_ids:

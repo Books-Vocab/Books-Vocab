@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPT = Path(__file__).resolve().parents[2] / "ops" / "data_inspect.py"
 
 
@@ -46,22 +48,48 @@ def test_sql_is_read_only(tmp_path):
     conn.close()
 
 
-def test_graph_reads_default_json(tmp_path):
-    """graph 子命令讀 graph_default.json(非已失效的 graph.json)。"""
+@pytest.mark.parametrize(
+    "payload",
+    [
+        [
+            {"id": "l1", "from_id": "c1", "to_id": "c2", "kind": "synonym",
+             "confidence": 0.9, "created_at": "2026-01-01"},
+        ],
+        {
+            "links": [
+                {"id": "l1", "from_id": "c1", "to_id": "c2", "kind": "synonym",
+                 "confidence": 0.9, "created_at": "2026-01-01"},
+            ],
+        },
+    ],
+    ids=["bare-list", "links-mapping"],
+)
+def test_graph_reads_default_json(tmp_path, payload):
+    """graph 子命令保留 graph_default.json 的兩種合法形狀。"""
     udir = tmp_path / "users" / "user1"
     udir.mkdir(parents=True)
     _mk_cards_db(udir / "cards.db", [
         ("c1", "hello", "你好", 0), ("c2", "world", "世界", 0),
     ])
-    (udir / "graph_default.json").write_text(json.dumps([
-        {"id": "l1", "from_id": "c1", "to_id": "c2", "kind": "synonym",
-         "confidence": 0.9, "created_at": "2026-01-01"},
-    ]))
+    (udir / "graph_default.json").write_text(json.dumps(payload))
 
     r = _run(str(tmp_path), "-u", "user1", "graph")
-    assert r.returncode == 0
+    assert r.returncode == 0, r.stderr
     assert "synonym" in r.stdout
     assert "hello" in r.stdout
+
+
+def test_graph_non_list_links_fail_closed(tmp_path):
+    """Malformed non-list links do not raise a TypeError traceback."""
+    udir = tmp_path / "users" / "user1"
+    udir.mkdir(parents=True)
+    _mk_cards_db(udir / "cards.db", [("c1", "hello", "你好", 0)])
+    (udir / "graph_default.json").write_text(json.dumps({"links": None}))
+
+    r = _run(str(tmp_path), "-u", "user1", "graph")
+    assert r.returncode == 0, r.stderr
+    assert "Total: 0" in r.stdout
+    assert "Traceback" not in r.stderr
 
 
 def test_overview_respects_kg_data_dir(tmp_path):

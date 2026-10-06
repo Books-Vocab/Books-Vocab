@@ -24,9 +24,19 @@ struct ReviewCardLayoutEditor: View {
     /// 從複習畫面工具列進來時是「當前那張卡」；從設定頁進來沒有當前卡，
     /// 走 `ReviewCardLayoutPreviewCard.sampleCard(for:)` 的內建範例卡。
     var previewCard: TodayReviewPresenterState.CurrentCard?
+    /// Notebook settings injects a scoped binding. When nil, the existing
+    /// global store remains the source of truth.
+    private let scopedProfile: Binding<ReviewCardLayoutProfile>?
+    private let onScopedReset: (() -> Void)?
 
-    init(previewCard: TodayReviewPresenterState.CurrentCard? = nil) {
+    init(
+        previewCard: TodayReviewPresenterState.CurrentCard? = nil,
+        profile: Binding<ReviewCardLayoutProfile>? = nil,
+        onReset: (() -> Void)? = nil
+    ) {
         self.previewCard = previewCard
+        self.scopedProfile = profile
+        self.onScopedReset = onReset
     }
 
     var body: some View {
@@ -69,7 +79,17 @@ struct ReviewCardLayoutEditor: View {
     }
 
     private func presetBinding(_ mode: VocabularyCardMode) -> Binding<ReviewCardLayoutPreset> {
-        Binding(
+        if let scopedProfile {
+            return Binding(
+                get: { scopedProfile.wrappedValue.preset(for: mode) },
+                set: { preset in
+                    var profile = scopedProfile.wrappedValue
+                    profile.setPreset(preset, for: mode)
+                    scopedProfile.wrappedValue = profile
+                }
+            )
+        }
+        return Binding(
             get: { store.profile.preset(for: mode) },
             set: { store.setPreset($0, for: mode) }
         )
@@ -84,7 +104,7 @@ struct ReviewCardLayoutEditor: View {
     private func previewCardView(_ mode: VocabularyCardMode) -> some View {
         let card = ReviewCardLayoutPreviewCard(
             currentCard: previewContent(for: mode),
-            profile: store.profile
+            profile: currentProfile
         )
         if mode == .recognition {
             card.accessibilityIdentifier("reviewCardLayout.preview")
@@ -108,7 +128,11 @@ struct ReviewCardLayoutEditor: View {
     private var resetMenu: some View {
         Menu {
             Button(L10n.string("reviewCardLayout.reset.all"), role: .destructive) {
-                store.resetAll()
+                if let onScopedReset {
+                    onScopedReset()
+                } else {
+                    store.resetAll()
+                }
             }
             .accessibilityIdentifier("reviewCardLayout.reset.all")
         } label: {
@@ -116,6 +140,10 @@ struct ReviewCardLayoutEditor: View {
         }
         .accessibilityLabel(L10n.string("reviewCardLayout.reset"))
         .accessibilityIdentifier("reviewCardLayout.resetMenu")
+    }
+
+    private var currentProfile: ReviewCardLayoutProfile {
+        scopedProfile?.wrappedValue ?? store.profile
     }
 }
 
@@ -126,11 +154,27 @@ struct ReviewCardLayoutEditorSheet: View {
 
     /// 工具列入口帶著「當前那張卡」進來，設定頁入口不帶。
     let previewCard: TodayReviewPresenterState.CurrentCard?
+    /// Notebook settings supplies a scoped profile; the review toolbar leaves
+    /// both scoped values nil and continues to use the global store.
+    let profile: Binding<ReviewCardLayoutProfile>?
+    let onReset: (() -> Void)?
     let onDone: () -> Void
+
+    init(
+        previewCard: TodayReviewPresenterState.CurrentCard? = nil,
+        profile: Binding<ReviewCardLayoutProfile>? = nil,
+        onReset: (() -> Void)? = nil,
+        onDone: @escaping () -> Void
+    ) {
+        self.previewCard = previewCard
+        self.profile = profile
+        self.onReset = onReset
+        self.onDone = onDone
+    }
 
     var body: some View {
         NavigationStack {
-            ReviewCardLayoutEditor(previewCard: previewCard)
+            ReviewCardLayoutEditor(previewCard: previewCard, profile: profile, onReset: onReset)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {
                         Button(L10n.string("完成"), action: onDone)

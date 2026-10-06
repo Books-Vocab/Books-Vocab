@@ -19,6 +19,7 @@ struct NotebookReconcilerTests {
             VocabularyEntry.self,
             ReviewRecord.self,
             Notebook.self,
+            NotebookSettingsProjection.self,
             Book.self
         ])
         let config = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
@@ -255,5 +256,72 @@ struct NotebookReconcilerTests {
         try ctx.save()
 
         #expect(entry.syncAction == .delete, "tombstone 真本下 entry 應 cascade queueDelete")
+    }
+
+    @Test func reconcile_tombstone_removes_notebook_settings_projection() throws {
+        let ctx = try makeContext()
+        let notebook = localNB("nb-deleted", syncStatus: 1)
+        let projection = NotebookSettingsProjection(notebookId: notebook.remoteId)
+        ctx.insert(notebook)
+        ctx.insert(projection)
+        try ctx.save()
+
+        _ = NotebookReconciler.reconcile(
+            remote: [],
+            local: [notebook],
+            allEntries: [],
+            modelContext: ctx
+        )
+        try ctx.save()
+
+        #expect(try ctx.fetch(FetchDescriptor<NotebookSettingsProjection>()).isEmpty)
+    }
+
+    @Test func reconcile_deleted_remote_with_settings_removes_projection() throws {
+        let ctx = try makeContext()
+        let notebook = localNB("nb-deleted", syncStatus: 1)
+        let projection = NotebookSettingsProjection(notebookId: notebook.remoteId)
+        projection.applyRemote(KGNotebookSettings(
+            reviewPolicy: KGNotebookSettingsGroup(
+                value: KGNotebookReviewPolicy(.default), updatedAt: 10
+            ),
+            cardLayout: KGNotebookSettingsGroup<KGNotebookCardLayout>(
+                value: nil, updatedAt: nil
+            )
+        ))
+        ctx.insert(notebook)
+        ctx.insert(projection)
+        try ctx.save()
+
+        let deleted = KGNotebook(
+            id: notebook.remoteId,
+            name: notebook.name,
+            color: nil,
+            coverPattern: nil,
+            sortOrder: 0,
+            isDefault: false,
+            isDeleted: true,
+            cardCount: 0,
+            updatedAt: nil,
+            sourceSharedDeckId: nil,
+            sourceVersion: nil,
+            settings: KGNotebookSettings(
+                reviewPolicy: KGNotebookSettingsGroup(
+                    value: KGNotebookReviewPolicy(.default), updatedAt: 10
+                ),
+                cardLayout: KGNotebookSettingsGroup<KGNotebookCardLayout>(
+                    value: nil, updatedAt: nil
+                )
+            )
+        )
+        _ = NotebookReconciler.reconcile(
+            remote: [deleted],
+            local: [notebook],
+            allEntries: [],
+            modelContext: ctx
+        )
+        try ctx.save()
+
+        #expect(try ctx.fetch(FetchDescriptor<NotebookSettingsProjection>()).isEmpty)
     }
 }

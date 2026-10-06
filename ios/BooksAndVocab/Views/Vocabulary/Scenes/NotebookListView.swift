@@ -81,7 +81,7 @@ struct NotebookListContent: View {
     init(detailState: DetailRouter) {
         self.detailState = detailState
         _allEntries = Query(filter: VocabularyEntry.knowledgeListPredicate(), sort: \.dateAdded, order: .reverse)
-        _pendingEntries = Query(filter: #Predicate<VocabularyEntry> { $0.syncStatus != 1 && $0.actionType != "delete" })
+        _pendingEntries = Query(filter: #Predicate<VocabularyEntry> { $0.syncStatus != 1 })
     }
 
     @State private var showCreateSheet = false
@@ -104,6 +104,10 @@ struct NotebookListContent: View {
 
     private var sortOption: NotebookSortOption {
         NotebookSortOption(rawValue: sortOptionRaw) ?? .manual
+    }
+
+    private var liveNotebookIDs: Set<String> {
+        Set(notebooks.filter { !$0.isSoftDeleted }.map(\.remoteId))
     }
 
     /// 列表 body 所需的衍生資料（每本 notebook 統計 + 篩選後到期/未學集合 + 排序）。
@@ -372,6 +376,12 @@ struct NotebookListContent: View {
             }
             .toastSheet(item: $coordinator.exportURL) { url in
                 PlatformShareView(url: url)
+            }
+            .onChange(of: accountTaskID) { _, _ in
+                reviewFilter = NotebookFilter()
+            }
+            .onChange(of: liveNotebookIDs, initial: true) { _, ids in
+                reviewFilter.reconcile(with: ids)
             }
             .task(id: accountTaskID) {
                 guard catalogTaskPolicy.runsTasks else { return }

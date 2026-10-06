@@ -32,6 +32,16 @@ struct PodcastTranscriptViewport: View {
 
     private var currentId: Int? { renderState?.sentenceId }
 
+    static func makeWordSelectionHandler(
+        clearSelection: @escaping () -> Void,
+        onWordTap: @escaping (String, String) -> Void
+    ) -> (String, String) -> Void {
+        { word, context in
+            clearSelection()
+            onWordTap(word, context)
+        }
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -113,7 +123,10 @@ struct PodcastTranscriptViewport: View {
                 }
                 onSentenceTap(sentence)
             },
-            onWordTap: onWordTap,
+            onWordTap: Self.makeWordSelectionHandler(
+                clearSelection: { selectionState = nil },
+                onWordTap: onWordTap
+            ),
             onPhraseTap: { phrase, context in
                 selectionState = nil
                 onPhraseTap(phrase, context)

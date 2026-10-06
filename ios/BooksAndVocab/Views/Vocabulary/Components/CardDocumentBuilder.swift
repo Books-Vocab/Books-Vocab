@@ -34,7 +34,8 @@ enum CardDocumentBuilder {
             translation: translation,
             explanation: explanation
         )
-        if !meaningParagraphs.isEmpty {
+        let hasTranslation = !translation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if hasTranslation || !meaningParagraphs.isEmpty {
             blocks.append(.divider)
             blocks.append(
                 .meaning(
@@ -89,4 +90,3 @@ enum CardDocumentBuilder {
         return parts.map(CardMarkdownInlineParser.parseParagraph)
     }
 }
-

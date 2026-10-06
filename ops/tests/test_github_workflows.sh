@@ -40,8 +40,29 @@ grep -Fqx "      - '.claude/skills/devops/SKILL.md'" .github/workflows/backend-q
 
 PR_GATE=".github/workflows/pr-gate.yml"
 grep -q '^  pull_request:' "$PR_GATE" || fail "pr-gate has no pull_request trigger"
+grep -Fq 'if: ${{ github.event_name == '\''workflow_dispatch'\'' }}' "$PR_GATE" \
+  || fail "pr-gate does not guard manual dispatches"
+grep -Fq 'if [[ "$EVENT_SHA" != "$HEAD_SHA" ]]' "$PR_GATE" \
+  || fail "pr-gate does not bind manual dispatches to the event SHA"
 if grep -Eq '^[[:space:]]*merge_group:' "$PR_GATE"; then
   fail "pr-gate still owns a merge_group trigger; merge queue requires the short dedicated workflow"
+fi
+
+PR_READINESS=".github/workflows/pr-readiness.yml"
+grep -Eq 'types: \[[^]]*edited' "$PR_READINESS" \
+  || fail "pr-readiness does not rerun after PR body metadata repair"
+grep -q '^  workflow_dispatch:' "$PR_READINESS" \
+  || fail "pr-readiness has no explicit metadata-race dispatch path"
+grep -q 'pr_number:' "$PR_READINESS" \
+  || fail "pr-readiness dispatch has no exact PR number input"
+grep -q 'head_sha:' "$PR_READINESS" \
+  || fail "pr-readiness dispatch has no exact HEAD input"
+grep -Fq 'gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER"' "$PR_READINESS" \
+  || fail "pr-readiness does not read the live PR body"
+grep -Fq './ops/delivery.py validate-pr-body --head-sha "$HEAD_SHA"' "$PR_READINESS" \
+  || fail "pr-readiness does not use the typed delivery receipt validator"
+if grep -Eq 'grep .*Base SHA|perl -ne.*Digest' "$PR_READINESS"; then
+  fail "pr-readiness duplicates typed receipt parsing in workflow shell"
 fi
 # A draft-to-ready transition changes review metadata, not source. The latest
 # `opened`/`synchronize` run already carries the relevant candidate evidence;
@@ -89,6 +110,35 @@ repo_gate_block="$(awk '
 ' "$PR_GATE")"
 grep -q 'timeout-minutes: 3' <<<"$repo_gate_block" \
   || fail "repo-gate is not hard-bounded to the short merge-gate budget"
+grep -Fq './ops/test_ops.sh docs-lint worktree context-routing github-workflows delivery-control' <<<"$repo_gate_block" \
+  || fail "repo-gate does not execute the delivery-control regression group"
+grep -Fq '      - name: Check changed Python formatting' <<<"$repo_gate_block" \
+  || fail "repo-gate has no bounded changed-Python format step"
+grep -Fq 'for sha_name in BASE_SHA HEAD_SHA; do' <<<"$repo_gate_block" \
+  || fail "changed-Python format step does not validate both exact refs"
+grep -Fq 'git rev-parse --verify "$sha^{commit}"' <<<"$repo_gate_block" \
+  || fail "changed-Python format step does not fail closed on an unresolved base/head"
+grep -Fq 'actual_sha="$(git rev-parse HEAD)"' <<<"$repo_gate_block" \
+  || fail "changed-Python format step does not bind the checkout to HEAD_SHA"
+grep -Fq 'while IFS= read -r path; do' <<<"$repo_gate_block" \
+  || fail "changed-Python format step is not Bash 3.2-compatible"
+grep -Fq '[[ -n "$path" ]] && changed_python+=("$path")' <<<"$repo_gate_block" \
+  || fail "changed-Python format step does not collect non-empty paths safely"
+grep -Fq 'done < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- '\''*.py'\'')' <<<"$repo_gate_block" \
+  || fail "changed-Python format step is not bound to the exact base/head diff"
+grep -Fq 'if ((${#changed_python[@]} == 0)); then' <<<"$repo_gate_block" \
+  || fail "changed-Python format step has no empty-set pass path"
+grep -Fq 'uv run --no-project --python 3.13 --with '\''ruff==0.16.3'\'' ruff format --check "${changed_python[@]}"' <<<"$repo_gate_block" \
+  || fail "changed-Python format step does not invoke the pinned ruff formatter"
+delivery_control_group="$(awk '
+  /delivery-control\)/ { in_group=1 }
+  in_group { print }
+  in_group && /^[[:space:]]*;;$/ { exit }
+' ops/test_ops.sh)"
+grep -Fq 'delivery_tests=(ops/tests/test_delivery_*.py)' <<<"$delivery_control_group" \
+  || fail "delivery-control group does not declare the complete delivery-test glob"
+grep -Fq '"${delivery_tests[@]}"' <<<"$delivery_control_group" \
+  || fail "delivery-control group does not execute the discovered delivery-test array"
 for workflow in "${component_workflows[@]}"; do
   grep -q "uses: ./.github/workflows/${workflow}.yml" "$PR_GATE" \
     || fail "pr-gate does not call ${workflow}"
@@ -131,6 +181,8 @@ if [[ -f "$MERGE_GROUP_REQUIRED" ]]; then
     || fail "merge-group required gate does not use the merge-group base SHA"
   grep -q 'github.event.merge_group.head_sha' "$MERGE_GROUP_REQUIRED" \
     || fail "merge-group required gate does not use the merge-group head SHA"
+  grep -Fq './ops/test_ops.sh docs-lint worktree context-routing github-workflows delivery-control' <<<"$merge_group_required_block" \
+    || fail "merge-group required gate does not execute the delivery-control regression group"
   if grep -Eq 'backend-quality|ops-suite|ios-quality|llm-eval|ui-quality-gate|confidence' <<<"$merge_group_required_block"; then
     fail "merge-group required gate imports slow confidence jobs"
   fi

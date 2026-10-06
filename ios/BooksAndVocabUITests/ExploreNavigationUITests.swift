@@ -19,6 +19,19 @@ final class ExploreNavigationUITests: UITestCase {
         executionTimeAllowance = 300
     }
 
+    @MainActor
+    private func openExplore(in app: XCUIApplication) -> AppPage {
+        let page = AppPage(app: app)
+        // The production tab item publishes this identifier on the action
+        // owning button in the UI-test build. Wait for that exact target so
+        // a broad descendant query cannot select an adjacent tab.
+        app.tabBars.buttons
+            .matching(identifier: "tab.explore.button")
+            .firstMatch
+            .tapWhenReady(timeout: 10)
+        return page
+    }
+
 
     @MainActor
     func testExploreTabIsReachableAndRendersSection() throws {
@@ -33,7 +46,7 @@ final class ExploreNavigationUITests: UITestCase {
             )
         }
 
-        shell.goToExplore()
+        _ = openExplore(in: app)
         try step("explore-section", app: app) {
             XCTAssertTrue(shell.exploreTab.isSelected, "探索 tab did not become selected after tap")
             shell.assertNavigationChrome(on: "explore")
@@ -47,13 +60,17 @@ final class ExploreNavigationUITests: UITestCase {
     @MainActor
     private func runExploreRequiredStateFlow() throws {
         let loadingApp = launchIsolatedApp(fixtures: [.explore("loading")], perfLog: "explore-loading")
-        let loading = AppPage(app: loadingApp).goToExplore()
+        let loading = openExplore(in: loadingApp)
         XCTAssertTrue(loading.exploreLoadingState.waitUntilExists(timeout: 5))
         loading.assertExploreElementIsUnique(identifier: "explore.loadingState")
+        XCTAssertTrue(
+            loading.exploreAsset(assetID: "images.explore_required").waitUntilExists(timeout: 5)
+        )
+        loading.assertExploreAssetIsUnique(identifier: "explore.asset.images.explore_required")
         captureStep("explore-loading", app: loadingApp)
 
         let loadedApp = launchIsolatedApp(fixtures: [.explore("loaded")], perfLog: "explore-loaded")
-        let loaded = AppPage(app: loadedApp).goToExplore()
+        let loaded = openExplore(in: loadedApp)
         XCTAssertTrue(loaded.exploreLoadedState.waitUntilExists(timeout: 5))
         XCTAssertTrue(loaded.exploreDeck(id: "deck_official_gre_high_freq").waitUntilExists(timeout: 5))
         loaded.assertExploreElementIsUnique(identifier: "explore.loadedState")
@@ -65,13 +82,13 @@ final class ExploreNavigationUITests: UITestCase {
         captureStep("explore-loaded", app: loadedApp)
 
         let emptyApp = launchIsolatedApp(fixtures: [.explore("empty")], perfLog: "explore-empty")
-        let empty = AppPage(app: emptyApp).goToExplore()
+        let empty = openExplore(in: emptyApp)
         XCTAssertTrue(empty.exploreEmptyState.waitUntilExists(timeout: 5))
         empty.assertExploreElementIsUnique(identifier: "explore.emptyState")
         captureStep("explore-empty", app: emptyApp)
 
         let retryApp = launchIsolatedApp(fixtures: [.explore("retry")], perfLog: "explore-retry")
-        let retry = AppPage(app: retryApp).goToExplore()
+        let retry = openExplore(in: retryApp)
         XCTAssertTrue(retry.exploreErrorState.waitUntilExists(timeout: 5))
         XCTAssertTrue(retry.exploreRetryButton.waitUntilExists(timeout: 5))
         retry.assertExploreElementIsUnique(identifier: "explore.errorState")
@@ -89,7 +106,7 @@ final class ExploreNavigationUITests: UITestCase {
     @MainActor
     func testExplorePartialStateUsesCachedProjectionAfterRealFailure() throws {
         let app = launchIsolatedApp(fixtures: [.explore("partial")], perfLog: "explore-partial")
-        let partial = AppPage(app: app).goToExplore()
+        let partial = openExplore(in: app)
 
         XCTAssertTrue(partial.explorePartialState.waitUntilExists(timeout: 5))
         partial.assertExploreElementIsUnique(identifier: "explore.partialState")
@@ -106,7 +123,7 @@ final class ExploreNavigationUITests: UITestCase {
             fixtures: [.explore("empty-counterexample")],
             perfLog: "explore-empty-counterexample"
         )
-        let empty = AppPage(app: emptyApp).goToExplore()
+        let empty = openExplore(in: emptyApp)
         XCTAssertTrue(empty.exploreEmptyState.waitUntilExists(timeout: 5))
         XCTAssertTrue(
             empty.exploreAsset(assetID: "images.explore_counterexample_empty").waitUntilExists(timeout: 5)
@@ -119,7 +136,7 @@ final class ExploreNavigationUITests: UITestCase {
             fixtures: [.explore("retry-counterexample")],
             perfLog: "explore-retry-counterexample"
         )
-        let retry = AppPage(app: retryApp).goToExplore()
+        let retry = openExplore(in: retryApp)
         XCTAssertTrue(retry.exploreErrorState.waitUntilExists(timeout: 5))
         retry.assertExploreElementIsUnique(identifier: "explore.errorState")
         retry.exploreRetryButton.tapWhenReady()
@@ -152,7 +169,7 @@ final class ExploreNavigationUITests: UITestCase {
     @MainActor
     func testExploreLoadedCardExposesLongEmojiAndRTLTitleAndAssetProof() throws {
         let app = launchIsolatedApp(fixtures: [.explore("loaded")], perfLog: "explore-a11y-content")
-        let loaded = AppPage(app: app).goToExplore()
+        let loaded = openExplore(in: app)
         let card = loaded.exploreDeck(id: "deck_official_gre_high_freq")
 
         XCTAssertTrue(card.waitUntilExists(timeout: 5))
@@ -183,7 +200,7 @@ final class ExploreNavigationUITests: UITestCase {
     @MainActor
     func testExploreDetailUsesProductionCoverAssetProjection() throws {
         let app = launchIsolatedApp(fixtures: [.explore("loaded")], perfLog: "explore-detail")
-        let loaded = AppPage(app: app).goToExplore()
+        let loaded = openExplore(in: app)
         let deckID = "deck_official_gre_high_freq"
 
         let card = loaded.exploreDeck(id: deckID)

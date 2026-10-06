@@ -92,9 +92,58 @@ struct ReaderPreviewStyleSourceTests {
         #expect(maximum > next)
     }
 
+    @Test func previewLetterSpacingUsesTheBoundedReadiumScale() {
+        #expect(ReaderTypographyMetrics.letterSpacingRange == 0...1)
+        #expect(ReaderTypographyMetrics.letterSpacingStep == 0.1)
+        #expect(ReaderTypographyMetrics.steppedValue(
+            from: ReaderTypographyMetrics.letterSpacingRange.lowerBound,
+            by: -1,
+            in: ReaderTypographyMetrics.letterSpacingRange,
+            step: ReaderTypographyMetrics.letterSpacingStep
+        ) == ReaderTypographyMetrics.letterSpacingRange.lowerBound)
+        #expect(ReaderTypographyMetrics.steppedValue(
+            from: ReaderTypographyMetrics.letterSpacingRange.upperBound,
+            by: 1,
+            in: ReaderTypographyMetrics.letterSpacingRange,
+            step: ReaderTypographyMetrics.letterSpacingStep
+        ) == ReaderTypographyMetrics.letterSpacingRange.upperBound)
+        #expect(ReaderTypographyMetrics.steppedValue(
+            from: 0.2,
+            by: 1,
+            in: ReaderTypographyMetrics.letterSpacingRange,
+            step: ReaderTypographyMetrics.letterSpacingStep
+        ) == 0.3)
+
+        #expect(ReaderSettingsPreviewCard.letterSpacingPoints(fontSize: 20, letterSpacing: 0) == 0)
+        #expect(ReaderSettingsPreviewCard.letterSpacingPoints(fontSize: 20, letterSpacing: 0.4) == 4)
+        #expect(ReaderSettingsPreviewCard.letterSpacingPoints(fontSize: 20, letterSpacing: 1) == 10)
+    }
+
     @Test func readerSettingsPreviewUsesOneGeometryAndRoundTripContract() {
         typealias Metrics = ReaderPresentationMetrics.SettingsPreview
 
+        #expect(ReaderTypographyMetrics.fontSizeRange == 0.75...2.0)
+        #expect(ReaderTypographyMetrics.fontSizeStep == 0.125)
+        #expect(Metrics.fontSizeRange == ReaderTypographyMetrics.fontSizeRange)
+        #expect(Metrics.fontSizeStep == ReaderTypographyMetrics.fontSizeStep)
+        #expect(ReaderTypographyMetrics.steppedValue(
+            from: ReaderTypographyMetrics.fontSizeRange.lowerBound,
+            by: -1,
+            in: ReaderTypographyMetrics.fontSizeRange,
+            step: ReaderTypographyMetrics.fontSizeStep
+        ) == ReaderTypographyMetrics.fontSizeRange.lowerBound)
+        #expect(ReaderTypographyMetrics.steppedValue(
+            from: ReaderTypographyMetrics.fontSizeRange.upperBound,
+            by: 1,
+            in: ReaderTypographyMetrics.fontSizeRange,
+            step: ReaderTypographyMetrics.fontSizeStep
+        ) == ReaderTypographyMetrics.fontSizeRange.upperBound)
+        #expect(ReaderTypographyMetrics.steppedValue(
+            from: 1.0,
+            by: 1,
+            in: ReaderTypographyMetrics.fontSizeRange,
+            step: ReaderTypographyMetrics.fontSizeStep
+        ) == 1.125)
         #expect(Metrics.lineHeightRange.lowerBound == 1.0)
         #expect(Metrics.lineHeightRange.upperBound == 2.5)
         #expect(Metrics.lineHeightStep == 0.1)

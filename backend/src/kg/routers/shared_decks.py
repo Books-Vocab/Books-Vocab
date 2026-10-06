@@ -12,6 +12,7 @@ which fails loud on expiry.
 
 Write paths (copy/publish/rate/report) arrive in later phases.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -83,10 +84,16 @@ def _clamp(value: int, lo: int, hi: int) -> int:
     return max(lo, min(hi, value))
 
 
-def _deck_after(payload: dict, sort: str) -> tuple[object, str]:
+def _deck_after(payload: dict, sort: str, filters: dict[str, object]) -> tuple[object, str]:
     """Rebuild the keyset boundary from a decoded list cursor, sort-typed."""
     if payload.get("s") != sort:
         raise BadRequestError("Cursor sort mismatch")
+    encoded_filters = payload.get("f")
+    if encoded_filters is None:
+        if any(value is not None for value in filters.values()):
+            raise BadRequestError("Cursor filter mismatch")
+    elif encoded_filters != filters:
+        raise BadRequestError("Cursor filter mismatch")
     raw, deck_id = payload.get("v"), payload.get("id")
     if not isinstance(deck_id, str) or raw is None:
         raise BadRequestError("Invalid cursor")
@@ -98,9 +105,14 @@ def _deck_after(payload: dict, sort: str) -> tuple[object, str]:
     return str(raw), deck_id
 
 
-def _deck_cursor(deck: SharedDeck, sort: str, secret: str) -> str | None:
+def _deck_cursor(
+    deck: SharedDeck,
+    sort: str,
+    secret: str,
+    filters: dict[str, object],
+) -> str | None:
     value = deck.updated_at.isoformat() if sort == "recency" else deck.title_nfc_lower
-    return encode_cursor({"s": sort, "v": value, "id": deck.id}, secret)
+    return encode_cursor({"s": sort, "f": filters, "v": value, "id": deck.id}, secret)
 
 
 @router.get("/api/decks", response_model=DeckListResponse)
@@ -118,17 +130,30 @@ def list_decks(
         raise BadRequestError(f"sort must be one of {sorted(_SORTS)}")
     settings = request.app.state.kg_settings
     store = _shared_deck_store(settings)
+    filters = {
+        "q": q,
+        "category": category,
+        "languagePair": languagePair,
+        "official": official,
+    }
     after = None
-    if cursor:
-        after = _deck_after(decode_cursor(cursor, settings.jwt_secret), sort)
+    if cursor is not None:
+        if not cursor:
+            raise BadRequestError("Invalid cursor")
+        after = _deck_after(decode_cursor(cursor, settings.jwt_secret), sort, filters)
     limit = _clamp(limit, 1, _MAX_LIMIT)
     rows = store.browse(
-        limit=limit + 1, sort=sort, after=after, q=q,
-        category=category, language_pair=languagePair, official=official,
+        limit=limit + 1,
+        sort=sort,
+        after=after,
+        q=q,
+        category=category,
+        language_pair=languagePair,
+        official=official,
     )
     has_more = len(rows) > limit
     rows = rows[:limit]
-    next_cursor = _deck_cursor(rows[-1], sort, settings.jwt_secret) if has_more and rows else None
+    next_cursor = _deck_cursor(rows[-1], sort, settings.jwt_secret, filters) if has_more and rows else None
     return DeckListResponse(decks=[_summary(d) for d in rows], nextCursor=next_cursor)
 
 
@@ -138,10 +163,8 @@ def get_deck(request: Request, deck_id: str):
     store = _shared_deck_store(settings)
     deck = store.get(deck_id)
     if deck is None:
-        raise NotFoundError("Deck not found")
-    cards = store.page_cards(
-        deck.id, version=deck.current_version, limit=_SAMPLE_CARDS + 1
-    )
+        raise NotFoundError("Deck")
+    cards = store.page_cards(deck.id, version=deck.current_version, limit=_SAMPLE_CARDS + 1)
     has_more = len(cards) > _SAMPLE_CARDS
     cards = cards[:_SAMPLE_CARDS]
     cards_cursor = (
@@ -149,7 +172,8 @@ def get_deck(request: Request, deck_id: str):
             {"k": "cards", "d": deck.id, "v": deck.current_version, "id": cards[-1].id},
             settings.jwt_secret,
         )
-        if has_more and cards else None
+        if has_more and cards
+        else None
     )
     return DeckDetailResponse(
         **_summary(deck).model_dump(),
@@ -169,9 +193,11 @@ def get_deck_cards(
     store = _shared_deck_store(settings)
     deck = store.get(deck_id)
     if deck is None:
-        raise NotFoundError("Deck not found")
+        raise NotFoundError("Deck")
     after = None
-    if cursor:
+    if cursor is not None:
+        if not cursor:
+            raise BadRequestError("Invalid cursor")
         payload = decode_cursor(cursor, settings.jwt_secret)
         # Bind the cursor to this endpoint (k) and deck (d): a list cursor or
         # another deck's cards cursor is a 400, not a silently-accepted boundary.
@@ -183,9 +209,7 @@ def get_deck_cards(
         if not isinstance(after, str):
             raise BadRequestError("Invalid cursor")
     limit = _clamp(limit, 1, _MAX_CARD_LIMIT)
-    cards = store.page_cards(
-        deck.id, version=deck.current_version, limit=limit + 1, after=after
-    )
+    cards = store.page_cards(deck.id, version=deck.current_version, limit=limit + 1, after=after)
     has_more = len(cards) > limit
     cards = cards[:limit]
     next_cursor = (
@@ -193,7 +217,8 @@ def get_deck_cards(
             {"k": "cards", "d": deck.id, "v": deck.current_version, "id": cards[-1].id},
             settings.jwt_secret,
         )
-        if has_more and cards else None
+        if has_more and cards
+        else None
     )
     return DeckCardsResponse(cards=[_card(c) for c in cards], nextCursor=next_cursor)
 
@@ -206,9 +231,7 @@ def copy_deck(request: Request, deck_id: str, req: DeckCopyRequest, user: Curren
     :func:`copy_shared_deck`; this handler only wires stores + validates input."""
     key = (req.idempotencyKey or "").strip()
     if not key or len(key) > _MAX_IDEMPOTENCY_KEY:
-        raise BadRequestError(
-            f"idempotencyKey required (1-{_MAX_IDEMPOTENCY_KEY} chars)"
-        )
+        raise BadRequestError(f"idempotencyKey required (1-{_MAX_IDEMPOTENCY_KEY} chars)")
     settings = request.app.state.kg_settings
     outcome = copy_shared_deck(
         shared_store=_shared_deck_store(settings),

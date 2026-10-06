@@ -13,6 +13,7 @@ Levels:
     6  異常偵測（7 種問題類型）
     all  全部（預設）
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,6 +40,7 @@ def _bar(n: int, max_width: int = 40) -> str:
 
 
 # ── Level 1: 快速健檢 ────────────────────────────────────────
+
 
 def level_1(uid: str, udir: Path) -> None:
     _section("Level 1: 快速健檢")
@@ -88,6 +90,7 @@ def level_1(uid: str, udir: Path) -> None:
 
 # ── Level 2: 額度消耗分析 ────────────────────────────────────
 
+
 def level_2(uid: str, udir: Path) -> None:
     _section("Level 2: 額度消耗分析 (72h)")
 
@@ -128,7 +131,7 @@ def level_2(uid: str, udir: Path) -> None:
     judge_calls = 0
     judge_cost = 0.0
     print(f"\n  {'type':<22} {'calls':>6} {'avg_in':>8} {'avg_out':>8} {'cost':>10}")
-    print(f"  {'-'*22} {'-'*6} {'-'*8} {'-'*8} {'-'*10}")
+    print(f"  {'-' * 22} {'-' * 6} {'-' * 8} {'-' * 8} {'-' * 10}")
     for ct, b in ordered:
         total_cost += b["cost"]
         avg_i = b["inp"] / b["calls"] if b["calls"] else 0
@@ -150,7 +153,7 @@ def level_2(uid: str, udir: Path) -> None:
     graph_path = notebook_files(udir)["graph"]
     if graph_path.exists() and judge_calls:
         links = json.loads(graph_path.read_text())
-        recent_links = len([l for l in links if l.get("created_at", "") >= cutoff[:10]])
+        recent_links = len([link for link in links if link.get("created_at", "") >= cutoff[:10]])
         rejection = (judge_calls - recent_links) / judge_calls * 100
         print(f"  拒絕率: {rejection:.0f}% ({judge_calls} judge → {recent_links} links)", end="")
         if rejection > 60:
@@ -162,6 +165,7 @@ def level_2(uid: str, udir: Path) -> None:
 
 
 # ── Level 3: 圖譜拓撲 ───────────────────────────────────────
+
 
 def _load_graph_and_cards(udir: Path):
     graph_path = notebook_files(udir)["graph"]
@@ -189,8 +193,8 @@ def level_3(uid: str, udir: Path) -> dict:
 
     # Adjacency
     adj = defaultdict(set)
-    for l in links:
-        f, t = l["from_id"], l["to_id"]
+    for link in links:
+        f, t = link["from_id"], link["to_id"]
         if f in cards and t in cards:
             adj[f].add(t)
             adj[t].add(f)
@@ -201,7 +205,7 @@ def level_3(uid: str, udir: Path) -> dict:
     n_linked = len(adj)
     n_edges = len(links)
 
-    print(f"  節點: {n_nodes} (有連結: {n_linked}, 孤立: {len(isolated)} = {len(isolated)/n_nodes*100:.0f}%)")
+    print(f"  節點: {n_nodes} (有連結: {n_linked}, 孤立: {len(isolated)} = {len(isolated) / n_nodes * 100:.0f}%)")
     print(f"  邊數: {n_edges}")
     if n_linked > 1:
         density = 2 * n_edges / (n_linked * (n_linked - 1)) * 100
@@ -211,7 +215,10 @@ def level_3(uid: str, udir: Path) -> dict:
     if degrees:
         vals = list(degrees.values())
         import statistics
-        print(f"  度數: min={min(vals)} max={max(vals)} mean={statistics.mean(vals):.1f} median={statistics.median(vals):.0f}")
+
+        print(
+            f"  度數: min={min(vals)} max={max(vals)} mean={statistics.mean(vals):.1f} median={statistics.median(vals):.0f}"
+        )
         deg_hist = Counter(vals)
         print("  度數分布:")
         for d in sorted(deg_hist):
@@ -237,14 +244,14 @@ def level_3(uid: str, udir: Path) -> dict:
 
     print(f"\n  連通分量: {len(components)}")
     if components:
-        print(f"  最大分量: {len(components[0])} 節點 ({len(components[0])/n_linked*100:.0f}%)")
+        print(f"  最大分量: {len(components[0])} 節點 ({len(components[0]) / n_linked * 100:.0f}%)")
         if len(components) > 1:
             sizes = [len(c) for c in components[:10]]
             print(f"  前 10 分量: {sizes}")
 
     # Clustering coefficient
     cc_list = []
-    for node, neighbors in adj.items():
+    for _node, neighbors in adj.items():
         k = len(neighbors)
         if k < 2:
             cc_list.append(0.0)
@@ -259,7 +266,11 @@ def level_3(uid: str, udir: Path) -> dict:
     avg_cc = sum(cc_list) / len(cc_list) if cc_list else 0
     random_cc = 2 * n_edges / (n_linked * (n_linked - 1)) if n_linked > 1 else 0
 
-    print(f"\n  聚類係數: {avg_cc:.3f} (隨機圖: {random_cc:.4f}, 倍數: {avg_cc/random_cc:.0f}x)" if random_cc else f"\n  聚類係數: {avg_cc:.3f}")
+    print(
+        f"\n  聚類係數: {avg_cc:.3f} (隨機圖: {random_cc:.4f}, 倍數: {avg_cc / random_cc:.0f}x)"
+        if random_cc
+        else f"\n  聚類係數: {avg_cc:.3f}"
+    )
 
     # Top hubs
     top = sorted(degrees.items(), key=lambda x: -x[1])[:5]
@@ -273,6 +284,7 @@ def level_3(uid: str, udir: Path) -> dict:
 
 # ── Level 4: 連結品質 ───────────────────────────────────────
 
+
 def level_4(uid: str, udir: Path) -> None:
     _section("Level 4: 連結品質")
 
@@ -282,12 +294,15 @@ def level_4(uid: str, udir: Path) -> None:
         return
 
     # Confidence
-    confs = [l["confidence"] for l in links]
+    confs = [link["confidence"] for link in links]
     import statistics
-    print(f"  Confidence: mean={statistics.mean(confs):.2f} std={statistics.stdev(confs):.2f} min={min(confs):.2f} max={max(confs):.2f}")
+
+    print(
+        f"  Confidence: mean={statistics.mean(confs):.2f} std={statistics.stdev(confs):.2f} min={min(confs):.2f} max={max(confs):.2f}"
+    )
 
     # Kind distribution
-    kinds = Counter(l["kind"] for l in links)
+    kinds = Counter(link["kind"] for link in links)
     print("  Kind 分布:")
     for k, c in kinds.most_common():
         pct = c / len(links) * 100
@@ -295,11 +310,11 @@ def level_4(uid: str, udir: Path) -> None:
 
     # Confidence by kind
     for kind in kinds:
-        kc = [l["confidence"] for l in links if l["kind"] == kind]
+        kc = [link["confidence"] for link in links if link["kind"] == kind]
         print(f"    {kind} confidence: mean={statistics.mean(kc):.2f}")
 
     # Recent link creation velocity
-    dates = Counter(l["created_at"][:10] for l in links)
+    dates = Counter(link["created_at"][:10] for link in links)
     recent = sorted(dates.items())[-7:]
     if recent:
         print("\n  近 7 天連結建立:")
@@ -308,6 +323,7 @@ def level_4(uid: str, udir: Path) -> None:
 
 
 # ── Level 5: 嵌入分析 + 閾值掃描 ────────────────────────────
+
 
 def level_5(uid: str, udir: Path) -> None:
     _section("Level 5: 嵌入分析 + 閾值掃描")
@@ -338,7 +354,7 @@ def level_5(uid: str, udir: Path) -> None:
         conn.close()
 
     print(f"  嵌入: {n} vectors, dim={embeddings.shape[1]}")
-    print(f"  覆蓋: {n}/{n_active} active cards ({n/n_active*100:.0f}%)" if n_active else f"  覆蓋: {n} vectors")
+    print(f"  覆蓋: {n}/{n_active} active cards ({n / n_active * 100:.0f}%)" if n_active else f"  覆蓋: {n} vectors")
 
     # Cosine similarity matrix
     norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
@@ -356,7 +372,7 @@ def level_5(uid: str, udir: Path) -> None:
 
     # Threshold sweep
     print(f"\n  {'閾值':>6}  {'候選對':>8}  {'每卡平均':>8}  {'佔比':>8}")
-    print(f"  {'-'*6}  {'-'*8}  {'-'*8}  {'-'*8}")
+    print(f"  {'-' * 6}  {'-' * 8}  {'-' * 8}  {'-' * 8}")
     for t in [0.70, 0.75, 0.78, 0.80, 0.82, 0.85, 0.90]:
         count = int((upper > t).sum())
         avg = 2 * count / n
@@ -366,6 +382,7 @@ def level_5(uid: str, udir: Path) -> None:
 
 
 # ── Level 6: 異常偵測 ───────────────────────────────────────
+
 
 def level_6(uid: str, udir: Path) -> None:
     _section("Level 6: 異常偵測")
@@ -383,13 +400,13 @@ def level_6(uid: str, udir: Path) -> None:
 
         deleted_links = []
         missing_links = []
-        for l in links:
-            for side, cid in [("from", l["from_id"]), ("to", l["to_id"])]:
+        for link in links:
+            for side, cid in [("from", link["from_id"]), ("to", link["to_id"])]:
                 if cid not in all_card_ids:
-                    missing_links.append(f"    {l['id'][:12]}: {side}_id={cid[:12]} 不存在於 DB")
+                    missing_links.append(f"    {link['id'][:12]}: {side}_id={cid[:12]} 不存在於 DB")
                 elif all_card_ids[cid]["is_deleted"]:
                     name = all_card_ids[cid]["content"]
-                    deleted_links.append(f"    {l['id'][:12]}: {side} '{name}' 已刪除但連結仍 active")
+                    deleted_links.append(f"    {link['id'][:12]}: {side} '{name}' 已刪除但連結仍 active")
 
         if missing_links:
             issues.append(f"  ⚠ {len(missing_links)} 條連結指向不存在的卡片")
@@ -402,8 +419,8 @@ def level_6(uid: str, udir: Path) -> None:
     if links:
         seen = set()
         dupes = 0
-        for l in links:
-            pair = tuple(sorted([l["from_id"], l["to_id"]]))
+        for link in links:
+            pair = tuple(sorted([link["from_id"], link["to_id"]]))
             if pair in seen:
                 dupes += 1
             seen.add(pair)
@@ -412,7 +429,7 @@ def level_6(uid: str, udir: Path) -> None:
 
     # 3. 自連結
     if links:
-        self_links = [l for l in links if l["from_id"] == l["to_id"]]
+        self_links = [link for link in links if link["from_id"] == link["to_id"]]
         if self_links:
             issues.append(f"  ⚠ {len(self_links)} 條自連結")
 
@@ -448,6 +465,7 @@ def level_6(uid: str, udir: Path) -> None:
 
 
 # ── Main ─────────────────────────────────────────────────────
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(

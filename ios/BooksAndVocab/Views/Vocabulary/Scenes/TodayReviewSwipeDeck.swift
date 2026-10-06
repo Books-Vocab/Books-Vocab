@@ -73,7 +73,9 @@ extension TodayReviewPresenter {
             // 卡片內部不判 dismiss 相位。
             ReviewCardView(
                 content: content,
-                profile: reviewCardLayoutStore.profile,
+                profile: notebookSettingsResolver.resolve(
+                    notebookId: content.card.notebookId
+                ).cardLayout,
                 viewport: viewport,
                 showsAnswer: slotShowsAnswer,
                 mountsBack: isActive && backContentMounted,

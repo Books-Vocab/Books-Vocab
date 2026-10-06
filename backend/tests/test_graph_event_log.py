@@ -8,7 +8,9 @@ is_synthetic 區分合成過去 / 真實未來。本帳本補上圖譜「怎麼�
 from __future__ import annotations
 
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+
+from sqlmodel import Session
 
 from kg.graph_event_log import (
     GraphEvent,
@@ -16,6 +18,7 @@ from kg.graph_event_log import (
     GraphEventSource,
     GraphEventStore,
     GraphEventType,
+    GraphSnapshot,
     GraphSnapshotStore,
 )
 
@@ -140,10 +143,7 @@ def test_query_by_source_and_notebook(tmp_path):
     )
     assert {e.event_id for e in store.query(source=GraphEventSource.MANUAL)} == {"e1", "e3"}
     assert {e.event_id for e in store.query(notebook_id="work")} == {"e3"}
-    assert {
-        e.event_id
-        for e in store.query(source=GraphEventSource.MANUAL, notebook_id="default")
-    } == {"e1"}
+    assert {e.event_id for e in store.query(source=GraphEventSource.MANUAL, notebook_id="default")} == {"e1"}
 
 
 def test_ingested_at_fallback_when_clock_does_not_advance(tmp_path, monkeypatch):
@@ -154,12 +154,9 @@ def test_ingested_at_fallback_when_clock_does_not_advance(tmp_path, monkeypatch)
     monkeypatch.setattr(mod, "_now", lambda: frozen)
     store = GraphEventStore(tmp_path / "g.db")
     store.insert_many([_draft(f"e{i}") for i in range(4)])
-    ts = [
-        (t.replace(tzinfo=UTC) if t.tzinfo is None else t)
-        for t in (e.ingested_at for e in store.all())
-    ]
+    ts = [(t.replace(tzinfo=UTC) if t.tzinfo is None else t) for t in (e.ingested_at for e in store.all())]
     assert all(ts[i] < ts[i + 1] for i in range(len(ts) - 1))  # 嚴格遞增
-    assert len(set(ts)) == 4                                    # 全唯一
+    assert len(set(ts)) == 4  # 全唯一
 
 
 def test_append_single_convenience(tmp_path):
@@ -203,10 +200,7 @@ def test_persistence_across_reopen(tmp_path):
     assert {e.event_id for e in reopened.all()} == {"e1", "e2"}
     # 重開後續寫,ingested_at 仍續接單調。
     reopened.insert_many([_draft("e3")])
-    ts = [
-        (t.replace(tzinfo=UTC) if t.tzinfo is None else t)
-        for t in (e.ingested_at for e in reopened.all())
-    ]
+    ts = [(t.replace(tzinfo=UTC) if t.tzinfo is None else t) for t in (e.ingested_at for e in reopened.all())]
     assert ts[-1] > ts[-2]
 
 
@@ -286,6 +280,76 @@ def test_corrupt_snapshot_json_is_skipped_on_read(tmp_path):
     assert latest is not None
     assert latest.snapshot_id == valid_id
     assert latest.links == [{"id": "valid", "from": "a", "to": "b"}]
+    assert [snapshot.snapshot_id for snapshot in store.all(notebook_id="default")] == [valid_id]
+
+
+def test_periodic_snapshot_uses_older_valid_snapshot_when_newest_is_corrupt(tmp_path, monkeypatch):
+    """Periodic checkpointing must not use an unreadable snapshot as its watermark."""
+    import kg.graph_event_log as mod
+
+    path = tmp_path / "graph_events.db"
+    events = GraphEventStore(path)
+    snapshots = GraphSnapshotStore(path)
+    event_at = datetime(2026, 2, 1, tzinfo=UTC)
+    monkeypatch.setattr(mod, "_now", lambda: event_at)
+    events.insert_many([_draft("e1")])
+
+    valid_id = snapshots.save(
+        "default",
+        [{"id": "valid"}],
+        is_synthetic=True,
+        taken_at=event_at - timedelta(days=1),
+    )
+    corrupt_id = snapshots.save(
+        "default",
+        [{"id": "corrupt"}],
+        is_synthetic=False,
+        taken_at=event_at + timedelta(days=1),
+    )
+
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "UPDATE graphsnapshot SET links_json=? WHERE snapshot_id=?",
+            ("not-json", corrupt_id),
+        )
+
+    result = snapshots.maybe_save_periodic("default", [{"id": "fresh"}], min_events_since_snapshot=1)
+
+    assert result["saved"] is True
+    assert result["reason"] == "event-threshold"
+    assert result["events_since_snapshot"] == 1
+    assert snapshots.latest("default").snapshot_id != valid_id
+
+
+def test_all_snapshots_breaks_taken_at_ties_by_snapshot_id(tmp_path):
+    """同一 taken_at 的 snapshots 必須以 id 穩定排序,不可依賴 SQLite 插入順序。"""
+    store = GraphSnapshotStore(tmp_path / "graph_events.db")
+    taken_at = datetime(2026, 2, 1, tzinfo=UTC)
+
+    with Session(store.engine) as session:
+        session.add(
+            GraphSnapshot(
+                snapshot_id="snapshot-z",
+                notebook_id="default",
+                taken_at=taken_at,
+                link_count=0,
+                links_json="[]",
+                is_synthetic=False,
+            )
+        )
+        session.add(
+            GraphSnapshot(
+                snapshot_id="snapshot-a",
+                notebook_id="default",
+                taken_at=taken_at,
+                link_count=0,
+                links_json="[]",
+                is_synthetic=False,
+            )
+        )
+        session.commit()
+
     assert [snapshot.snapshot_id for snapshot in store.all(notebook_id="default")] == [
-        valid_id
+        "snapshot-a",
+        "snapshot-z",
     ]

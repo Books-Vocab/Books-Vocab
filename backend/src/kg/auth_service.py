@@ -55,11 +55,7 @@ def resolve_and_link_user(
         canonical_id = None
         now = datetime.now(tz=UTC).isoformat()
         existing_user = users.get(provider_user_id)
-        linked_canonical_id = (
-            existing_user.get("_linked_to")
-            if isinstance(existing_user, dict)
-            else None
-        )
+        linked_canonical_id = existing_user.get("_linked_to") if isinstance(existing_user, dict) else None
 
         if (
             email is None
@@ -91,11 +87,12 @@ def resolve_and_link_user(
         if canonical_id not in users:
             users[canonical_id] = {}
 
-        users[canonical_id].update({
-            "provider": provider,
-            "email": email,
-            "last_login": now,
-        })
+        users[canonical_id]["provider"] = provider
+        # Apple omits email on follow-up sign-ins. Preserve the verified
+        # canonical email instead of erasing it with that expected omission.
+        if email is not None or "email" not in users[canonical_id]:
+            users[canonical_id]["email"] = email
+        users[canonical_id]["last_login"] = now
 
         # Clear stale revocation watermarks on a fresh login so the dict does
         # not grow unbounded. But account-deletion watermarks are PERMANENT:

@@ -29,11 +29,34 @@ struct ReaderPage {
     var settingsButton: XCUIElement { app.buttons["reader.header.settingsButton"] }
     var settingsDoneButton: XCUIElement { app.buttons["reader.settings.done"] }
     var settingsPreview: XCUIElement { app.otherElements["reader.settings.preview"] }
-    var fontSizeStepper: XCUIElement { app.steppers["reader.settings.fontSizeStepper"] }
+    var fontSizeStepper: XCUIElement { app.otherElements["reader.settings.fontSize"] }
+    var fontSizeDecrementButton: XCUIElement {
+        app.buttons["reader.settings.fontSize.decrement"]
+    }
+    var fontSizeIncrementButton: XCUIElement {
+        app.buttons["reader.settings.fontSize.increment"]
+    }
     var lineHeightIncrementButton: XCUIElement {
         app.buttons["reader.settings.lineHeight.increment"]
     }
-    var lineHeightSlider: XCUIElement { app.sliders["reader.settings.lineHeight"] }
+    var lineHeightDecrementButton: XCUIElement {
+        app.buttons["reader.settings.lineHeight.decrement"]
+    }
+    var lineHeightAdjustmentRow: XCUIElement {
+        app.otherElements["reader.settings.lineHeight"]
+    }
+    var lineHeightAdjustmentRowCount: Int { lineHeightRowQuery.count }
+    var lineHeightNativeSliderCount: Int { lineHeightNativeSliderQuery.count }
+    var letterSpacingAdjustmentRow: XCUIElement {
+        app.otherElements["reader.settings.letterSpacing"]
+    }
+    var letterSpacingAdjustmentRowCount: Int { letterSpacingRowQuery.count }
+    var letterSpacingDecrementButton: XCUIElement {
+        app.buttons["reader.settings.letterSpacing.decrement"]
+    }
+    var letterSpacingIncrementButton: XCUIElement {
+        app.buttons["reader.settings.letterSpacing.increment"]
+    }
     var readingModePicker: XCUIElement { app.buttons["reader.settings.readingMode"] }
     var fontPicker: XCUIElement { app.buttons["reader.settings.font"] }
     var themePicker: XCUIElement { app.otherElements["reader.settings.theme"] }
@@ -44,7 +67,10 @@ struct ReaderPage {
         let predicate = NSPredicate(format: "identifier == %@", "reader.settings.highlightColor")
         return app.descendants(matching: .any).element(matching: predicate)
     }
-    var highlightOpacityPicker: XCUIElement { app.buttons["reader.settings.highlightOpacity"] }
+    var highlightOpacityPicker: XCUIElement { app.sliders["reader.settings.highlightOpacity"] }
+    var highlightCustomColorPicker: XCUIElement {
+        app.descendants(matching: .any)["reader.settings.highlightColor.custom"]
+    }
     var resetMenu: XCUIElement { app.buttons["reader.settings.resetMenu"] }
     var resetAllButton: XCUIElement { app.buttons["reader.settings.reset.all"] }
     var progressBadge: XCUIElement { app.staticTexts["reader.header.progressBadge"] }
@@ -85,12 +111,16 @@ struct ReaderPage {
         app.otherElements.matching(identifier: "reader.settings.preview")
     }
 
-    private var fontSizeStepperQuery: XCUIElementQuery {
-        app.steppers.matching(identifier: "reader.settings.fontSizeStepper")
+    private var fontSizeRowQuery: XCUIElementQuery {
+        app.descendants(matching: .any).matching(identifier: "reader.settings.fontSize")
     }
 
     private var fontSizeIncrementQuery: XCUIElementQuery {
-        fontSizeStepperQuery.buttons.matching(identifier: "Increment")
+        app.buttons.matching(identifier: "reader.settings.fontSize.increment")
+    }
+
+    private var fontSizeDecrementQuery: XCUIElementQuery {
+        app.buttons.matching(identifier: "reader.settings.fontSize.decrement")
     }
 
     private var lineHeightIncrementQuery: XCUIElementQuery {
@@ -101,8 +131,27 @@ struct ReaderPage {
         app.buttons.matching(identifier: "reader.settings.lineHeight.decrement")
     }
 
-    private var lineHeightSliderQuery: XCUIElementQuery {
+    private var lineHeightRowQuery: XCUIElementQuery {
+        app.descendants(matching: .any).matching(identifier: "reader.settings.lineHeight")
+    }
+
+    /// The shared adjustment row owns the line-height identifier. A native
+    /// slider using that identifier would be the obsolete control and must
+    /// stay absent from the Reader settings accessibility tree.
+    private var lineHeightNativeSliderQuery: XCUIElementQuery {
         app.sliders.matching(identifier: "reader.settings.lineHeight")
+    }
+
+    private var letterSpacingIncrementQuery: XCUIElementQuery {
+        app.buttons.matching(identifier: "reader.settings.letterSpacing.increment")
+    }
+
+    private var letterSpacingDecrementQuery: XCUIElementQuery {
+        app.buttons.matching(identifier: "reader.settings.letterSpacing.decrement")
+    }
+
+    private var letterSpacingRowQuery: XCUIElementQuery {
+        app.descendants(matching: .any).matching(identifier: "reader.settings.letterSpacing")
     }
 
     private var themeOptionQuery: (String) -> XCUIElementQuery {
@@ -481,12 +530,157 @@ struct ReaderPage {
         exactlyOne(settingsDoneButtonQuery, named: "Reader settings done button", timeout: timeout, file: file, line: line)
     }
 
-    func lineHeightSliderElement(
+    func lineHeightAdjustmentRowElement(
         timeout: TimeInterval = 5,
         file: StaticString = #filePath,
         line: UInt = UInt(#line)
     ) -> XCUIElement? {
-        exactlyOne(lineHeightSliderQuery, named: "Reader line-height slider", timeout: timeout, file: file, line: line)
+        exactlyOne(
+            lineHeightRowQuery,
+            named: "Reader line-height adjustment row",
+            timeout: timeout,
+            file: file,
+            line: line
+        )
+    }
+
+    func lineHeightDecrementButtonElement(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        exactlyOne(
+            lineHeightDecrementQuery,
+            named: "Reader line-height decrement button",
+            timeout: timeout,
+            file: file,
+            line: line
+        )
+    }
+
+    func lineHeightIncrementButtonElement(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        exactlyOne(
+            lineHeightIncrementQuery,
+            named: "Reader line-height increment button",
+            timeout: timeout,
+            file: file,
+            line: line
+        )
+    }
+
+    func letterSpacingAdjustmentRowElement(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        guard revealLetterSpacingAdjustmentRow(timeout: timeout, file: file, line: line) else {
+            return nil
+        }
+        return exactlyOne(
+            letterSpacingRowQuery,
+            named: "Reader letter-spacing adjustment row",
+            timeout: timeout,
+            file: file,
+            line: line
+        )
+    }
+
+    func letterSpacingDecrementButtonElement(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        exactlyOne(
+            letterSpacingDecrementQuery,
+            named: "Reader letter-spacing decrement button",
+            timeout: timeout,
+            file: file,
+            line: line
+        )
+    }
+
+    func letterSpacingIncrementButtonElement(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        exactlyOne(
+            letterSpacingIncrementQuery,
+            named: "Reader letter-spacing increment button",
+            timeout: timeout,
+            file: file,
+            line: line
+        )
+    }
+
+    func fontSizeAdjustmentRowElement(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        exactlyOne(fontSizeRowQuery, named: "Reader font-size adjustment row", timeout: timeout, file: file, line: line)
+    }
+
+    func highlightOpacitySliderElement(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        exactlyOne(
+            app.sliders.matching(identifier: "reader.settings.highlightOpacity"),
+            named: "Reader highlight opacity slider",
+            timeout: timeout,
+            file: file,
+            line: line
+        )
+    }
+
+    func highlightCustomColorPickerElement(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> XCUIElement? {
+        exactlyOne(
+            app.descendants(matching: .any).matching(identifier: "reader.settings.highlightColor.custom"),
+            named: "Reader custom highlight color picker",
+            timeout: timeout,
+            file: file,
+            line: line
+        )
+    }
+
+    @discardableResult
+    func revealHighlightControls(
+        timeout: TimeInterval = 8,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let opacity = exactlyOneIfPresent(
+                app.sliders.matching(identifier: "reader.settings.highlightOpacity"),
+                named: "Reader highlight opacity slider",
+                timeout: 0.25,
+                file: file,
+                line: line
+            ), opacity.isHittable,
+               let custom = exactlyOneIfPresent(
+                   app.descendants(matching: .any).matching(identifier: "reader.settings.highlightColor.custom"),
+                   named: "Reader custom highlight color picker",
+                   timeout: 0.25,
+                   file: file,
+                   line: line
+               ), custom.isHittable {
+                return true
+            }
+            scrollSettingsPanel(towardTop: true)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        return false
     }
 
     func webViewElement(
@@ -850,8 +1044,8 @@ struct ReaderPage {
     @discardableResult
     func incrementFontSize(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Bool {
         guard exactlyOne(
-            fontSizeStepperQuery,
-            named: "Reader font-size stepper",
+            fontSizeRowQuery,
+            named: "Reader font-size adjustment row",
             file: file,
             line: line
         ) != nil else { return false }
@@ -866,61 +1060,21 @@ struct ReaderPage {
     }
 
     @discardableResult
-    func adjustLineHeight(
-        toNormalizedSliderPosition position: CGFloat,
-        file: StaticString = #filePath,
-        line: UInt = UInt(#line)
-    ) -> Bool {
-        guard revealLineHeightSlider(timeout: 8, file: file, line: line) else { return false }
-        guard let slider = exactlyOne(
-            lineHeightSliderQuery,
-            named: "Reader line-height slider",
-            timeout: 2,
+    func decrementFontSize(file: StaticString = #filePath, line: UInt = UInt(#line)) -> Bool {
+        guard exactlyOne(
+            fontSizeRowQuery,
+            named: "Reader font-size adjustment row",
+            file: file,
+            line: line
+        ) != nil else { return false }
+        guard let decrement = exactlyOne(
+            fontSizeDecrementQuery,
+            named: "Reader font-size decrement button",
             file: file,
             line: line
         ) else { return false }
-
-        let expected: String?
-        if position <= 0.01 {
-            expected = "1.0"
-        } else if position >= 0.99 {
-            expected = "2.5"
-        } else {
-            expected = nil
-        }
-        let adjustmentPlans: [[CGFloat]]
-        if position <= 0.01 {
-            // iOS 26.4 can accept a direct endpoint event without committing
-            // the SwiftUI binding. Move through a semantic interior value and
-            // retry the endpoint a bounded number of times; never drag by AX
-            // coordinates, which can hang XCTest on a clipped Form row.
-            adjustmentPlans = [[0.05, 0], [0.15, 0], [0.25, 0]]
-        } else if position >= 0.99 {
-            adjustmentPlans = [[0.95, 1], [0.85, 1], [0.75, 1]]
-        } else {
-            adjustmentPlans = [[position]]
-        }
-
-        for plan in adjustmentPlans {
-            for target in plan {
-                let previousValue = String(describing: slider.value ?? "")
-                slider.adjust(toNormalizedSliderPosition: target)
-                if let expected, target == plan.last {
-                    if waitForSliderValueEquals(expected, timeout: 3) {
-                        return true
-                    }
-                } else if target == plan.last {
-                    return waitForSliderValueChange(from: previousValue, timeout: 3)
-                } else {
-                    _ = waitForSliderValueChange(from: previousValue, timeout: 3)
-                }
-            }
-        }
-
-        if let expected {
-            return waitForSliderValueEquals(expected, timeout: 2)
-        }
-        return false
+        decrement.tapWhenReady(file: file, line: line)
+        return true
     }
 
     @discardableResult
@@ -934,39 +1088,91 @@ struct ReaderPage {
 
         let delta = Int(((numericValue - currentValue) / 0.1).rounded())
         guard delta != 0 else { return true }
+        guard revealLineHeightAdjustmentRow(timeout: 8, file: file, line: line) else { return false }
         let buttonQuery = delta > 0 ? lineHeightIncrementQuery : lineHeightDecrementQuery
-        guard let button = exactlyOne(
-            buttonQuery,
-            named: delta > 0 ? "Reader line-height increment" : "Reader line-height decrement",
-            timeout: 5,
-            file: file,
-            line: line
-        ) else { return false }
+        let buttonName = delta > 0 ? "Reader line-height increment" : "Reader line-height decrement"
 
         for _ in 0..<abs(delta) {
+            guard let button = exactlyOne(
+                buttonQuery,
+                named: buttonName,
+                timeout: 5,
+                file: file,
+                line: line
+            ) else { return false }
             button.tapWhenReady(timeout: 5, file: file, line: line)
         }
         return waitForLineHeightValue(expectedValue, timeout: 5)
     }
 
-    private func revealLineHeightSlider(
+    @discardableResult
+    func adjustLetterSpacing(
+        toValue expectedValue: String,
+        file: StaticString = #filePath,
+        line: UInt = UInt(#line)
+    ) -> Bool {
+        guard let numericValue = Double(expectedValue) else { return false }
+        guard let currentValue = letterSpacingValue(timeout: 5) else { return false }
+
+        let delta = Int(((numericValue - currentValue) / 0.1).rounded())
+        guard delta != 0 else { return true }
+        guard revealLetterSpacingAdjustmentRow(timeout: 8, file: file, line: line) else { return false }
+        let buttonQuery = delta > 0 ? letterSpacingIncrementQuery : letterSpacingDecrementQuery
+        let buttonName = delta > 0 ? "Reader letter-spacing increment" : "Reader letter-spacing decrement"
+
+        for _ in 0..<abs(delta) {
+            guard let button = exactlyOne(
+                buttonQuery,
+                named: buttonName,
+                timeout: 5,
+                file: file,
+                line: line
+            ) else { return false }
+            button.tapWhenReady(timeout: 5, file: file, line: line)
+        }
+        return waitForLetterSpacingValue(expectedValue, timeout: 5)
+    }
+
+    private func revealLineHeightAdjustmentRow(
         timeout: TimeInterval,
         file: StaticString,
         line: UInt
     ) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if let slider = exactlyOneIfPresent(
-                lineHeightSliderQuery,
-                named: "Reader line-height slider",
+            if let row = exactlyOneIfPresent(
+                lineHeightRowQuery,
+                named: "Reader line-height adjustment row",
                 timeout: 0.25,
                 file: file,
                 line: line
-            ), slider.isHittable, !slider.frame.isEmpty {
+            ), row.isHittable, !row.frame.isEmpty, row.frame.intersects(app.frame) {
                 return true
             }
-            // The line-height row is below the preview; swipe the panel
-            // toward its lower rows until the native slider is hittable.
+            // The typography rows are below the preview; swipe the panel
+            // toward its lower rows until the line-height row is hittable.
+            scrollSettingsPanel(towardTop: true)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+        return false
+    }
+
+    private func revealLetterSpacingAdjustmentRow(
+        timeout: TimeInterval,
+        file: StaticString,
+        line: UInt
+    ) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let row = exactlyOneIfPresent(
+                letterSpacingRowQuery,
+                named: "Reader letter-spacing adjustment row",
+                timeout: 0.25,
+                file: file,
+                line: line
+            ), row.isHittable, !row.frame.isEmpty, row.frame.intersects(app.frame) {
+                return true
+            }
             scrollSettingsPanel(towardTop: true)
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
@@ -995,62 +1201,30 @@ struct ReaderPage {
         }
     }
 
-    private func waitForSliderValueChange(
-        from previousValue: String,
-        timeout: TimeInterval
-    ) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if let currentValue = currentLineHeightSliderValue(), currentValue != previousValue {
-                return true
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-        }
-        return currentLineHeightSliderValue().map { $0 != previousValue } ?? false
-    }
-
-    private func waitForSliderValueEquals(
-        _ expectedValue: String,
-        timeout: TimeInterval
-    ) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if let value = currentLineHeightSliderValue(),
-               sliderValue(value, equals: expectedValue) {
-                return true
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-        }
-        guard let value = currentLineHeightSliderValue() else { return false }
-        return sliderValue(value, equals: expectedValue)
-    }
-
-    private func currentLineHeightSliderValue() -> String? {
-        guard let slider = exactlyOneIfPresent(
-            lineHeightSliderQuery,
-            named: "Reader line-height slider",
-            timeout: 0.25
-        ), let value = slider.value else {
-            return nil
-        }
-        return String(describing: value)
-    }
-
-    private func sliderValue(_ value: Any, equals expected: String) -> Bool {
-        let rendered = String(describing: value)
-        if rendered == expected { return true }
-        guard let actualNumber = Double(rendered),
-              let expectedNumber = Double(expected) else {
-            return false
-        }
-        return abs(actualNumber - expectedNumber) < 0.001
-    }
-
     func lineHeightValue(timeout: TimeInterval = 5) -> Double? {
-        guard let slider = exactlyOne(lineHeightSliderQuery, named: "Reader line-height slider", timeout: timeout) else {
+        guard let row = exactlyOne(
+            lineHeightRowQuery,
+            named: "Reader line-height adjustment row",
+            timeout: timeout
+        ) else {
             return nil
         }
-        guard let raw = slider.value else { return nil }
+        guard let raw = row.value else { return nil }
+        return Double(String(describing: raw))
+    }
+
+    func letterSpacingValue(timeout: TimeInterval = 5) -> Double? {
+        guard revealLetterSpacingAdjustmentRow(timeout: timeout, file: #filePath, line: UInt(#line)) else {
+            return nil
+        }
+        guard let row = exactlyOne(
+            letterSpacingRowQuery,
+            named: "Reader letter-spacing adjustment row",
+            timeout: timeout
+        ) else {
+            return nil
+        }
+        guard let raw = row.value else { return nil }
         return Double(String(describing: raw))
     }
 
@@ -1058,16 +1232,59 @@ struct ReaderPage {
     func waitForLineHeightValue(_ value: String, timeout: TimeInterval = 5) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if let slider = exactlyOneIfPresent(
-                lineHeightSliderQuery,
-                named: "Reader line-height slider",
+            if let row = exactlyOneIfPresent(
+                lineHeightRowQuery,
+                named: "Reader line-height adjustment row",
                 timeout: 0.25
-            ), let current = slider.value, sliderValue(current, equals: value) {
+            ), let current = row.value,
+               let currentNumber = Double(String(describing: current)),
+               let expectedNumber = Double(value),
+               abs(currentNumber - expectedNumber) < 0.001 {
                 return true
             }
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         }
-        return false
+        guard let row = exactlyOneIfPresent(
+            lineHeightRowQuery,
+            named: "Reader line-height adjustment row",
+            timeout: 0.25
+        ), let current = row.value,
+              let currentNumber = Double(String(describing: current)),
+              let expectedNumber = Double(value) else {
+            return false
+        }
+        return abs(currentNumber - expectedNumber) < 0.001
+    }
+
+    @discardableResult
+    func waitForLetterSpacingValue(_ value: String, timeout: TimeInterval = 5) -> Bool {
+        guard revealLetterSpacingAdjustmentRow(timeout: timeout, file: #filePath, line: UInt(#line)) else {
+            return false
+        }
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let row = exactlyOneIfPresent(
+                letterSpacingRowQuery,
+                named: "Reader letter-spacing adjustment row",
+                timeout: 0.25
+            ), let current = row.value,
+               let currentNumber = Double(String(describing: current)),
+               let expectedNumber = Double(value),
+               abs(currentNumber - expectedNumber) < 0.001 {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        guard let row = exactlyOneIfPresent(
+            letterSpacingRowQuery,
+            named: "Reader letter-spacing adjustment row",
+            timeout: 0.25
+        ), let current = row.value,
+              let currentNumber = Double(String(describing: current)),
+              let expectedNumber = Double(value) else {
+            return false
+        }
+        return abs(currentNumber - expectedNumber) < 0.001
     }
 
     @discardableResult

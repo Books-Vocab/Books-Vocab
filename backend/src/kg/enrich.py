@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 
 from .cards import Card
@@ -35,16 +35,35 @@ USER_TEMPLATE = """分析以下單字（含現有翻譯和例句上下文）：
 
 回傳 JSON array。"""
 
+PRIVATE_CONTEXT_TEMPLATE = """分析以下單字。每個單字的 disambiguation_context 只供本次
+翻譯與教學判斷使用，不要把它當成該單字的例句，也不要在 note 或 collocations 中
+重述來源句子或來源單字：
+{words_json}
 
-def _build_prompt(cards: list[Card]) -> str:
+回傳 JSON array。"""
+
+
+def _build_prompt(
+    cards: list[Card],
+    *,
+    disambiguation_context_by_card_id: Mapping[str, str] | None = None,
+) -> str:
     """Build the user prompt from a batch of cards."""
     items = []
     for c in cards:
         item = {"word": c.content, "meaning": c.meaning}
-        if c.examples:
+        private_context = (disambiguation_context_by_card_id or {}).get(c.id, "")
+        if private_context.strip():
+            item["disambiguation_context"] = private_context[:1000]
+        elif c.examples:
             item["context"] = c.examples[0][:200]
         items.append(item)
-    return USER_TEMPLATE.format(
+    template = (
+        PRIVATE_CONTEXT_TEMPLATE
+        if disambiguation_context_by_card_id
+        else USER_TEMPLATE
+    )
+    return template.format(
         words_json=json.dumps(items, ensure_ascii=False, indent=2),
     )
 
@@ -67,14 +86,25 @@ def _parse_enrich_response(raw_content: str) -> list[dict]:
     return []
 
 
-def _call_enrich_llm(llm, batch: list[Card], model: str | None = None):
+def _call_enrich_llm(
+    llm,
+    batch: list[Card],
+    model: str | None = None,
+    disambiguation_context_by_card_id: Mapping[str, str] | None = None,
+):
     """Single LLM call for enrichment. Returns the raw response object."""
     return llm.chat(
         "enrich",
         model=model,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": _build_prompt(batch)},
+            {
+                "role": "user",
+                "content": _build_prompt(
+                    batch,
+                    disambiguation_context_by_card_id=disambiguation_context_by_card_id,
+                ),
+            },
         ],
         temperature=0.3,
         response_format={"type": "json_object"},
@@ -95,6 +125,7 @@ async def enrich_cards_stream(
     batch_size: int = 20,
     max_workers: int = 5,
     model: str | None = None,
+    disambiguation_context_by_card_id: Mapping[str, str] | None = None,
 ) -> AsyncIterator[dict]:
     """Enrich cards concurrently and yield real-time progress updates.
 
@@ -156,7 +187,11 @@ async def enrich_cards_stream(
             # Retry only explicit transient provider failures; non-retryable
             # 4xx errors fail this batch on the first call.
             response = sync_retry(
-                _call_enrich_llm, llm, batch, model,
+                _call_enrich_llm,
+                llm,
+                batch,
+                model,
+                disambiguation_context_by_card_id,
                 max_attempts=4,
                 base_delay=2.0,
                 retryable_exceptions=llm_retryable_exceptions(),

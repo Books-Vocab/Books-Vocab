@@ -37,6 +37,13 @@ enum NotebookReconciler {
             local.map { ($0.remoteId, $0) },
             uniquingKeysWith: { first, _ in first }
         )
+        let localSettings = (try? modelContext.fetch(
+            FetchDescriptor<NotebookSettingsProjection>()
+        )) ?? []
+        let settingsByNotebookId = Dictionary(
+            localSettings.map { ($0.notebookId, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         let remoteIds = Set(remote.map(\.id))
         var tombstoned: Set<String> = []
 
@@ -54,6 +61,16 @@ enum NotebookReconciler {
                 // Explore copy provenance（v1 inert；跨裝置 round-trip）。
                 l.sourceSharedDeckId = r.sourceSharedDeckId
                 l.sourceVersion = r.sourceVersion
+                if r.isDeleted, let projection = settingsByNotebookId[r.id] {
+                    modelContext.delete(projection)
+                } else if let settings = r.settings {
+                    let projection = settingsByNotebookId[r.id] ?? {
+                        let created = NotebookSettingsProjection(notebookId: r.id)
+                        modelContext.insert(created)
+                        return created
+                    }()
+                    projection.applyRemote(settings)
+                }
                 if wasAlive && r.isDeleted { tombstoned.insert(l.remoteId) }
             } else if !r.isDeleted {
                 let nb = Notebook(
@@ -68,6 +85,15 @@ enum NotebookReconciler {
                 nb.sourceSharedDeckId = r.sourceSharedDeckId
                 nb.sourceVersion = r.sourceVersion
                 modelContext.insert(nb)
+                if let settings = r.settings {
+                    let projection = NotebookSettingsProjection(notebookId: r.id)
+                    projection.applyRemote(settings)
+                    modelContext.insert(projection)
+                }
+            } else if let projection = settingsByNotebookId[r.id] {
+                // A deleted notebook's settings mirror must not outlive the
+                // notebook tombstone and become a cross-notebook fallback.
+                modelContext.delete(projection)
             }
         }
 
@@ -76,6 +102,9 @@ enum NotebookReconciler {
             l.isSoftDeleted = true
             l.updatedAt = Date()
             tombstoned.insert(l.remoteId)
+            if let projection = settingsByNotebookId[l.remoteId] {
+                modelContext.delete(projection)
+            }
         }
 
         // Reap 遺留 local-* 孤兒（僅在已有可用真本時，否則離線只有孤兒當預設會被清光）
