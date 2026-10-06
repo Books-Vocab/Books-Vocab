@@ -199,10 +199,18 @@ final class ReaderFlowUITests: UITestCase {
         XCTAssertTrue(ReaderTOCEvidenceHref.isSafeRelative(practice.value as? String ?? ""))
 
         practice.tapWhenReady()
-        let successState =
-            "phase=success;selected=Chapter Two — Practice;expected=OEBPS/chapter2.xhtml;destination=OEBPS/chapter2.xhtml"
-        XCTAssertTrue(reader.tocNavigationStateReceipt.waitUntilValueEquals(successState, timeout: 15))
-        XCTAssertTrue(reader.tocReaderOverlaySuccess.waitUntilExists(timeout: 10))
+        // The navigation-state receipt lives inside the TOC sheet and disappears
+        // with it as soon as navigation succeeds, so it cannot be polled for a
+        // transient success value.  Success is proven outside the sheet: the
+        // reader overlay, the destination locator, and the sheet dismissing.
+        XCTAssertTrue(reader.tocReaderOverlaySuccess.waitUntilExists(timeout: 15))
+        guard reader.tocDestination.waitUntilExists(timeout: 10),
+              let destinationHref = reader.tocDestination.value as? String
+        else {
+            XCTFail("valid Reader TOC navigation must expose a destination locator")
+            return
+        }
+        XCTAssertEqual(destinationHref, "OEBPS/chapter2.xhtml")
         XCTAssertTrue(reader.waitUntilTableOfContentsSheetGone(timeout: 10))
     }
 
