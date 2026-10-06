@@ -1,0 +1,6 @@
+2026-10-06T12:19:36.357Z {"type":"thread.started","thread_id":"01a11127-afe3-7d40-996a-96fabae0ea7d"}
+2026-10-06T12:19:36.367Z {"type":"turn.started"}
+2026-10-06T12:19:44.875Z {"type":"item.started","item":{"id":"item_0","type":"command_execution","command":"/bin/zsh -lc 'echo heartbeat-1; sleep 4; echo heartbeat-2'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+2026-10-06T12:19:48.768Z {"type":"item.completed","item":{"id":"item_0","type":"command_execution","command":"/bin/zsh -lc 'echo heartbeat-1; sleep 4; echo heartbeat-2'","aggregated_output":"heartbeat-2\n","exit_code":0,"status":"completed"}}
+2026-10-06T12:19:50.672Z {"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"DONE"}}
+2026-10-06T12:19:51.163Z {"type":"turn.completed","usage":{"input_tokens":43789,"cached_input_tokens":31232,"cache_write_input_tokens":0,"output_tokens":175,"reasoning_output_tokens":63}}

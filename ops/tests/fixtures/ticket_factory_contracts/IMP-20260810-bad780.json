@@ -1,6 +1,39 @@
 {
   "ticket_id": "IMP-20260810-bad780",
-  "status": "pending",
-  "target_id": "",
-  "steps": []
+  "status": "verified",
+  "target_id": "01a11127-afe3-7d40-996a-96fabae0ea7d",
+  "agent": {
+    "kind": "codex-cli",
+    "version": "0.151.0",
+    "model": "gpt-5.6-luna",
+    "account": "connector account owner (ChatGPT login of the project owner)"
+  },
+  "observed_via": "codex exec --json (caller-visible API events only; no local PID or task-registry state)",
+  "observed_at": "2026-10-06",
+  "steps": [
+    {
+      "transition": "start_refused",
+      "fail_closed": true,
+      "observation": "a first run with the configured default model was refused by the API (turn.failed, 400 model not supported); the caller treated the target as unavailable and did not continue",
+      "evidence_path": "ops/tests/fixtures/ticket_factory_contracts/evidence/IMP-20260810-bad780.codex-exec.start-refused.jsonl"
+    },
+    {
+      "transition": "initial_handshake",
+      "fail_closed": true,
+      "observation": "thread.started followed by turn.started; without this pair the target stays pending_init and the caller blocks",
+      "evidence_path": "ops/tests/fixtures/ticket_factory_contracts/evidence/IMP-20260810-bad780.codex-exec.events.log"
+    },
+    {
+      "transition": "heartbeat",
+      "fail_closed": true,
+      "observation": "item.started then item.completed for a bounded command about 3.9s apart; no heartbeat within the bound would mean timeout and block",
+      "evidence_path": "ops/tests/fixtures/ticket_factory_contracts/evidence/IMP-20260810-bad780.codex-exec.events.log"
+    },
+    {
+      "transition": "terminal_status",
+      "fail_closed": true,
+      "observation": "agent_message DONE then turn.completed; any other terminal event (turn.failed, missing turn.completed) is treated as failure",
+      "evidence_path": "ops/tests/fixtures/ticket_factory_contracts/evidence/IMP-20260810-bad780.codex-exec.events.log"
+    }
+  ]
 }
