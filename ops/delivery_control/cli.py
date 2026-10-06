@@ -40,6 +40,8 @@ MAIN_PRESERVATION_COMMANDS = frozenset(
         "reconcile-main-divergence",
     }
 )
+# Dry-run by default; only an explicit --apply writes (and takes the lock).
+APPLY_COMMANDS = frozenset({"dispose-ownerless-claim", "close-terminal-issues"})
 MUTATING_COMMANDS = frozenset(
     {
         "admit-candidate",
@@ -424,6 +426,45 @@ def _parser() -> argparse.ArgumentParser:
     preserve_main.add_argument("--external-id", required=True)
     preserve_main.add_argument("--operator", required=True)
     preserve_main.add_argument("--reason", required=True)
+    dispose_claim = commands.add_parser(
+        "dispose-ownerless-claim",
+        help=(
+            "dry-run by default: terminalize one ownerless active claim that has "
+            "no worktree, PR history, handback, remote drift, or hold"
+        ),
+    )
+    dispose_claim.add_argument("--branch", required=True)
+    dispose_claim.add_argument(
+        "--apply",
+        action="store_true",
+        help="write; requires the pins from a prior dry-run plus operator/reason",
+    )
+    dispose_claim.add_argument("--expected-claim-generation", type=int)
+    dispose_claim.add_argument("--expected-head-sha")
+    dispose_claim.add_argument("--operator")
+    dispose_claim.add_argument("--reason")
+    close_issues = commands.add_parser(
+        "close-terminal-issues",
+        help=(
+            "dry-run by default: close open Issues whose terminal_history has "
+            "merged/duplicate/terminal evidence (IM only)"
+        ),
+    )
+    close_issues.add_argument(
+        "--apply",
+        action="store_true",
+        help="close with --reason completed, an evidence comment, and readback",
+    )
+    close_issues.add_argument("--operator")
+    close_issues.add_argument(
+        "--issue",
+        action="append",
+        type=int,
+        default=[],
+        dest="issues",
+        metavar="N",
+        help="limit to this Issue number; repeatable",
+    )
     commands.add_parser("sync-main", help="ff-only synchronize canonical main")
     return parser
 
@@ -719,6 +760,23 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
             reason=args.reason,
             confirm_unmerged=args.confirm_unmerged,
         )
+    if args.command == "dispose-ownerless-claim":
+        return application.dispose_ownerless_claim(
+            branch=args.branch,
+            apply=args.apply,
+            expected_claim_generation=args.expected_claim_generation,
+            expected_head_sha=args.expected_head_sha,
+            operator=args.operator,
+            reason=args.reason,
+            progress=_progress,
+        )
+    if args.command == "close-terminal-issues":
+        return application.close_terminal_issues(
+            apply=args.apply,
+            issue_numbers=tuple(sorted(set(args.issues))),
+            operator=args.operator,
+            progress=_progress,
+        )
     if args.command == "sync-main":
         return application.sync_main()
     if args.command in MAIN_PRESERVATION_COMMANDS:
@@ -733,6 +791,12 @@ def run_command(args: argparse.Namespace, application: DeliveryApplication) -> o
             reason=args.reason,
         )
     raise AssertionError(f"unhandled command: {args.command}")
+
+
+def _progress(message: str) -> None:
+    """Operator progress belongs on stderr; stdout stays one JSON document."""
+
+    print(message, file=sys.stderr, flush=True)
 
 
 def _runtime_timestamp(value: str | None, name: str) -> datetime | None:
@@ -753,6 +817,11 @@ def _result_exit_code(command: str, result: object) -> int:
         return 2
     if command == "watchdog-claim":
         return 0 if _watchdog_dispatch_authorized(result) else 2
+    if command in APPLY_COMMANDS:
+        verdict = _result_field(result, "verdict")
+        if verdict == "partial-failure":
+            return 1
+        return 2 if verdict in {"refused", "blocked"} else 0
     # These commands are read-only evidence surfaces.  An incomplete audit
     # is a valid observation of unresolved source/owner content, not a
     # command transport failure or dispatch authorization.  Callers must use
@@ -766,6 +835,12 @@ def _result_exit_code(command: str, result: object) -> int:
         else getattr(result, "ready", None)
     )
     return 0 if ready is True else 2
+
+
+def _result_field(result: object, name: str) -> object:
+    if isinstance(result, Mapping):
+        return result.get(name)
+    return getattr(result, name, None)
 
 
 def _watchdog_dispatch_authorized(result: object) -> bool:
@@ -785,7 +860,10 @@ def _watchdog_dispatch_authorized(result: object) -> bool:
 def _run_command_serialized(
     args: argparse.Namespace, application: DeliveryApplication
 ) -> object:
-    if args.command not in MUTATING_COMMANDS:
+    writes = args.command in MUTATING_COMMANDS or (
+        args.command in APPLY_COMMANDS and getattr(args, "apply", False)
+    )
+    if not writes:
         return run_command(args, application)
     repo = getattr(application, "repo", None)
     if repo is None:
@@ -880,6 +958,9 @@ def _command_verdict(command: str, result: object) -> str:
             else getattr(result, "ready", None)
         )
         return "ready" if ready is True else "blocked"
+    if command in APPLY_COMMANDS:
+        verdict = _result_field(result, "verdict")
+        return verdict if isinstance(verdict, str) else "success"
     if command == "abandon-pr":
         malformed = (
             result.get("malformed_published_lane")

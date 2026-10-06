@@ -229,6 +229,59 @@ class IssueDisposition(StrEnum):
     TRIAGE_REQUIRED = "triage_required"
 
 
+class TerminalEvidenceKind(StrEnum):
+    """Why an open Issue's delivery history is terminal."""
+
+    LABEL = "label"
+    REGISTRY_MERGED = "registry-merged"
+    REGISTRY_ABANDONED = "registry-abandoned"
+    PULL_REQUEST_MERGED = "pr-merged"
+    PULL_REQUEST_CLOSED = "pr-closed"
+
+
+# Only these prove the Issue's work landed or is a duplicate/terminal record.
+# An abandoned lane or a PR closed without merging is history, not completion.
+COMPLETION_EVIDENCE_KINDS = frozenset(
+    {
+        TerminalEvidenceKind.LABEL,
+        TerminalEvidenceKind.REGISTRY_MERGED,
+        TerminalEvidenceKind.PULL_REQUEST_MERGED,
+    }
+)
+
+
+@dataclass(frozen=True)
+class TerminalEvidence:
+    """One verifiable fact behind a ``terminal_history`` disposition."""
+
+    kind: TerminalEvidenceKind
+    ref: str
+    url: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "kind", TerminalEvidenceKind(self.kind))
+        if type(self.ref) is not str or not self.ref.strip():
+            raise TypeError("terminal evidence ref must be text")
+        if self.url is not None and (
+            type(self.url) is not str or not self.url.strip()
+        ):
+            raise TypeError("terminal evidence url must be text")
+
+    @property
+    def completes_issue(self) -> bool:
+        return self.kind in COMPLETION_EVIDENCE_KINDS
+
+
+@dataclass(frozen=True)
+class IssueCloseReceipt:
+    """Exact readback of one terminal Issue close."""
+
+    number: int
+    state: str
+    state_reason: str | None
+    already_closed: bool = False
+
+
 @dataclass(frozen=True)
 class DemandIssue:
     """One raw open Issue plus its read-only delivery projection."""
@@ -250,6 +303,9 @@ class DemandIssue:
     # external ID for audit. This is intentionally separate from valid lane
     # mappings and never authorizes owner recovery or dispatch.
     malformed_active_registry_external_ids: tuple[str, ...] = ()
+    # Populated only for ``terminal_history``: the exact facts the projection
+    # used, so a closer never re-derives (and can never disagree with) it.
+    terminal_evidence: tuple[TerminalEvidence, ...] = ()
 
     def __post_init__(self) -> None:
         if type(self.number) is not int or self.number <= 0:
@@ -295,7 +351,21 @@ class DemandIssue:
             or self.updated_at.utcoffset() is None
         ):
             raise ValueError("Issue updated_at must be timezone-aware")
+        if type(self.terminal_evidence) is not tuple or any(
+            not isinstance(item, TerminalEvidence) for item in self.terminal_evidence
+        ):
+            raise TypeError("terminal evidence must be TerminalEvidence values")
         object.__setattr__(self, "disposition", IssueDisposition(self.disposition))
+        object.__setattr__(
+            self,
+            "terminal_evidence",
+            tuple(
+                sorted(
+                    set(self.terminal_evidence),
+                    key=lambda item: (item.kind.value, item.ref),
+                )
+            ),
+        )
         object.__setattr__(self, "labels", tuple(sorted(set(self.labels))))
         object.__setattr__(
             self,

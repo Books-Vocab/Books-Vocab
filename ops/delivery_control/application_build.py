@@ -6,6 +6,7 @@ from pathlib import Path
 
 import worktree_registry
 
+from .adapters.disposition_receipts import DispositionReceiptNdjsonAdapter
 from .adapters.errors import AdapterError
 from .adapters.git_cli import GitCliAdapter
 from .adapters.github_cli import GitHubCliAdapter
@@ -62,6 +63,9 @@ def build_application(
         runtime=RuntimeStatusMap.from_file(runtime_status_file),
         telemetry=TelemetryNdjsonAdapter(
             canonical_repo / ".cache" / "delivery_telemetry.ndjson"
+        ),
+        dispositions=DispositionReceiptNdjsonAdapter(
+            canonical_repo / ".cache" / "delivery_dispositions.ndjson"
         ),
     )
 

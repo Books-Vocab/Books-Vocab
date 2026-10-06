@@ -11,6 +11,7 @@ from ..domain.candidate_issues import CandidateIssue, CandidateIssueInventory
 from ..domain.demand_issues import (
     DemandIssue,
     DemandIssueInventory,
+    IssueCloseReceipt,
     IssueIntakeReceipt,
 )
 from ..domain.observations import (
@@ -128,6 +129,9 @@ class GitHubCliAdapter:
 
     def create_issue(self, **kwargs: Any) -> IssueIntakeReceipt:
         return self._issue_commands.create_issue(**kwargs)
+
+    def close_issue(self, **kwargs: Any) -> IssueCloseReceipt:
+        return self._issue_commands.close_issue(**kwargs)
 
     def list_open_pull_requests(self) -> PullRequestInventory:
         self.queue.clear_observed_snapshots()

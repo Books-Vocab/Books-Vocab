@@ -156,3 +156,55 @@ def test_abandoned_handback_discard_requires_exact_head_and_is_idempotent(
     assert persisted["status"] == "abandoned"
     assert persisted["discard_proof"]["schema"] == "kg.worktree.discard-proof.v1"
     assert persisted["discard_proof"]["head_sha"] == record["handed_back_sha"]
+
+
+def test_branchless_active_claim_is_abandoned_against_its_exact_base(
+    tmp_path: Path,
+) -> None:
+    """A claim with no handback and no local branch has its base as its head.
+
+    Fresh claims store the commit under ``base`` (not ``base_sha``); without
+    that fallback no exact head exists and an ownerless ghost claim could never
+    be terminalized.
+    """
+
+    base = "a" * 40
+    record = {
+        "branch": "feat/no-such-local-branch-for-ghost-claim",
+        "path": str(tmp_path / "ghost"),
+        "status": "active",
+        "external_ids": ["DIRECT-GHOST"],
+        "base": base,
+        "scope": {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"operation": "modify", "path": "ops/a.py"}],
+        },
+        "claim_generation": 2,
+    }
+    state_path = tmp_path / "registry.json"
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+
+    def resolve(head: str) -> int:
+        return registry.main(
+            [
+                "resolve",
+                "--state",
+                str(state_path),
+                "--branch",
+                record["branch"],
+                "--path",
+                record["path"],
+                "--status",
+                "abandoned",
+                "--expected-generation",
+                "2",
+                "--expected-head-sha",
+                head,
+                "--json",
+            ]
+        )
+
+    assert resolve("b" * 40) == registry.EXIT_CLAIMED
+    assert registry.load_state(state_path)["records"][0]["status"] == "active"
+    assert resolve(base) == registry.EXIT_OK
+    assert registry.load_state(state_path)["records"][0]["status"] == "abandoned"

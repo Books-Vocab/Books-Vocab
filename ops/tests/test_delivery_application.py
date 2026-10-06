@@ -656,6 +656,7 @@ def test_application_public_facade_preserves_constructor_contract() -> None:
         "runtime",
         "telemetry",
         "clock",
+        "dispositions",
     )
     assert DeliveryApplication.__dataclass_params__.frozen is True
     assert callable(DeliveryApplication.trigger_required)
@@ -674,6 +675,10 @@ def test_application_uses_co_versioned_registry_executable(tmp_path: Path) -> No
     assert isinstance(application.telemetry, TelemetryNdjsonAdapter)
     assert (
         application.telemetry.path == tmp_path / ".cache" / "delivery_telemetry.ndjson"
+    )
+    assert (
+        application.dispositions.path
+        == tmp_path / ".cache" / "delivery_dispositions.ndjson"
     )
     assert application.registry.runner.target_repo == tmp_path.resolve()
     assert application.registry.runner.source_root == OPS.parent.resolve()

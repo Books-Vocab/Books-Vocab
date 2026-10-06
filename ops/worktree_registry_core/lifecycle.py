@@ -291,6 +291,10 @@ def transition_record(
                 expected_head = branch_head(branch)
         if not is_commit_sha(expected_head):
             expected_head = record.get("base_sha")
+        if not is_commit_sha(expected_head):
+            # A fresh claim stores its commit under ``base``.  With no
+            # handback and no local branch, that base is its exact head.
+            expected_head = record.get("base")
         if expected_head == request.expected_head_sha:
             exact_matches.append(record)
     if not exact_matches:
