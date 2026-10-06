@@ -41,6 +41,7 @@ from lib.compute_contract import (
     load_profile_registry,
     resolve_profile,
 )
+from lib.compute_hosts import host_role
 from lib.compute_receipt import OscarAckAuthority, ReceiptSigner
 from lib.compute_router import choose_route, remote_failure
 
@@ -116,9 +117,10 @@ def _available_capabilities() -> set[str]:
 
 def _parameters(args: argparse.Namespace) -> dict[str, str]:
     params: dict[str, str] = {}
-    if args.test_path is not None:
+    # ``selftest`` has no typed flags: its closed profile declares no parameters.
+    if getattr(args, "test_path", None) is not None:
         params["test_path"] = args.test_path
-    for item in args.param:
+    for item in getattr(args, "param", []):
         if "=" not in item:
             raise CliError("parameter", "expected NAME=VALUE")
         name, value = item.split("=", 1)
@@ -209,12 +211,26 @@ _PROBE_KEYS = (
 )
 
 
-def _probe_felix(args: argparse.Namespace) -> dict[str, Any] | None:
-    """Live admission probe; any failure is ``None`` (unknown), never raised."""
+def _caller_identity() -> dict[str, str | None]:
+    """Who is calling: hostname plus its role from the closed host table."""
+
+    node = platform.node()
+    return {"host_id": node, "host_role": host_role(node)}
+
+
+def _probe_felix(
+    args: argparse.Namespace, profile: str | None = None
+) -> dict[str, Any] | None:
+    """Live admission probe; any failure is ``None`` (unknown), never raised.
+
+    ``profile`` lets Felix report the sandbox policy of that closed profile.
+    """
 
     job_id = transport_lib.new_job_id()
     try:
-        raw = _transport(args, job_id).probe(job_id)
+        raw = _transport(args, job_id).probe(
+            job_id, fields={"profile": profile} if profile else None
+        )
     except transport_lib.TransportError:
         return None
     probe = {key: raw.get(key) for key in _PROBE_KEYS}
@@ -295,7 +311,7 @@ def _route(
     probe = None
     # Probe only when a remote answer is possible; local never touches transport.
     if args.mode != "local" and spec["remote_eligible"] is True:
-        probe = _probe_felix(args)
+        probe = _probe_felix(args, profile)
     load = _local_load()
     local_cost, felix_cost = _costs(probe, load, profile)
     return choose_route(
@@ -467,22 +483,24 @@ def _felix_failure(
     }, ERROR_EXIT
 
 
-def _run_felix(
+def _felix_roundtrip(
     args: argparse.Namespace,
     *,
     resolved: dict[str, Any],
-    registry: dict[str, Any],
     git: dict[str, Any],
-    route: dict[str, Any],
-) -> tuple[dict[str, Any], int]:
-    """Remote execution.  Once submit starts, failure is reported, never retried locally."""
+    signer: ReceiptSigner,
+    job_id: str,
+    transport: transport_lib.XmachineTransport,
+) -> dict[str, Any]:
+    """capsule -> submit -> fetch -> verified accept (+ one-time ACK).
 
-    signer = _receipt_signer(registry)
-    if signer is None:  # unreachable via routing; defence in depth
-        raise CliError("felix-refused-receipt-key-unpinned")
+    Returns the accepted result plus the Oscar-side source identity that was
+    requested.  Raises ``TransportError`` (named) on any verification failure;
+    the capsule is always discarded.
+    """
+
     spec = resolved["spec"]
     cache = _cache_root(args)
-    job_id = transport_lib.new_job_id()
     nonce = transport_lib.new_nonce()
     try:
         capsule = materialize_tracked_capsule(
@@ -498,7 +516,6 @@ def _run_felix(
         commit=capsule.commit,
         tree_digest=capsule.tree_sha256,
     )
-    transport = _transport(args, job_id)
     try:
         transport.submit(
             job_id,
@@ -534,10 +551,40 @@ def _run_felix(
             cache_root=cache,
             now=_now(),
         )
-    except transport_lib.TransportError as error:
-        return _felix_failure(resolved, job_id=job_id, code=error.code)
     finally:
         _discard_capsule(capsule.materialized_root)
+    return {
+        "accepted": accepted,
+        "source": {"commit_sha": capsule.commit, "tree_sha256": capsule.tree_sha256},
+    }
+
+
+def _run_felix(
+    args: argparse.Namespace,
+    *,
+    resolved: dict[str, Any],
+    registry: dict[str, Any],
+    git: dict[str, Any],
+    route: dict[str, Any],
+) -> tuple[dict[str, Any], int]:
+    """Remote execution.  Once submit starts, failure is reported, never retried locally."""
+
+    signer = _receipt_signer(registry)
+    if signer is None:  # unreachable via routing; defence in depth
+        raise CliError("felix-refused-receipt-key-unpinned")
+    spec = resolved["spec"]
+    job_id = transport_lib.new_job_id()
+    try:
+        accepted = _felix_roundtrip(
+            args,
+            resolved=resolved,
+            git=git,
+            signer=signer,
+            job_id=job_id,
+            transport=_transport(args, job_id),
+        )["accepted"]
+    except transport_lib.TransportError as error:
+        return _felix_failure(resolved, job_id=job_id, code=error.code)
     body = accepted["receipt"]
     returncode = body["returncode"]
     return {
@@ -612,13 +659,15 @@ def _status(args: argparse.Namespace) -> dict[str, Any]:
     )
     felix_available = False
     if args.mode != "local" and remote:
-        probe = _probe_felix(args)
         signer = _receipt_signer(registry)
         felix_available = any(
             choose_route(
                 "felix",
                 **_route_facts(
-                    probe, spec=registry["profiles"][name], git=git, signer=signer
+                    _probe_felix(args, name),
+                    spec=registry["profiles"][name],
+                    git=git,
+                    signer=signer,
                 ),
                 local_busy=None,
                 local_cost_ms=None,
@@ -649,6 +698,143 @@ def _status(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+SELFTEST_SCHEMA = "kg.compute.selftest.v1"
+SELFTEST_PROFILES = ("source-identity",)
+
+
+def _selftest_failure(code: str, **evidence: Any) -> tuple[dict[str, Any], int]:
+    return {
+        "schema": SELFTEST_SCHEMA,
+        "command": "selftest",
+        "ok": False,
+        "verdict": "failed",
+        "verified": False,
+        "failure_code": code,
+        **evidence,
+    }, ERROR_EXIT
+
+
+def _health(probe: dict[str, Any] | None) -> str:
+    if not isinstance(probe, dict):
+        return "unknown"
+    return "healthy" if probe.get("production_healthy") is True else "unhealthy"
+
+
+def _selftest(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    """Live cross-host proof; fails closed with a named code, never a false green.
+
+    Only the closed ``source-identity`` profile may be proven.  The profile's
+    ``remote_eligible`` flag is the only fact waived (selftest is how a pinned
+    key and a launcher earn eligibility); every other route gate still applies.
+    """
+
+    if args.profile not in SELFTEST_PROFILES:
+        return _selftest_failure("selftest-profile")
+    caller = _caller_identity()
+    evidence: dict[str, Any] = {"caller": caller}
+    if caller.get("host_role") != "oscar":
+        return _selftest_failure("selftest-caller-not-oscar", **evidence)
+    try:
+        resolved, git, _capabilities = _resolve(args, require_clean=True)
+        registry = _registry(args)
+    except (CliError, ContractError) as error:
+        return _selftest_failure(_error_code(error), **evidence)
+    spec = resolved["spec"]
+    signer = _receipt_signer(registry)
+    probe_before = _probe_felix(args, resolved["profile"])
+    facts = _route_facts(probe_before, spec=spec, git=git, signer=signer)
+    facts["remote_eligible"] = True
+    route = choose_route(
+        "felix", **facts, local_busy=None, local_cost_ms=None, felix_cost_ms=None
+    )
+    if route["selected"] != "felix" or signer is None:
+        return _selftest_failure(route["reason_code"], **evidence)
+    job_id = transport_lib.new_job_id()
+    transport = _transport(args, job_id)
+    evidence["job_id"] = job_id
+    try:
+        trip = _felix_roundtrip(
+            args,
+            resolved=resolved,
+            git=git,
+            signer=signer,
+            job_id=job_id,
+            transport=transport,
+        )
+    except transport_lib.TransportError as error:
+        return _selftest_failure(error.code, **evidence)
+    except CliError as error:
+        return _selftest_failure(error.code, **evidence)
+    accepted = trip["accepted"]
+    body = accepted["receipt"]
+    try:
+        transport.fetch(job_id)
+        residual = True  # Felix still serves the job after the one-time ACK
+    except transport_lib.TransportError:
+        residual = False
+    probe_after = _probe_felix(args, resolved["profile"])
+    try:
+        sandbox_tree = json.loads(accepted["log"]).get("tree_sha256")
+    except (TypeError, ValueError, AttributeError):
+        sandbox_tree = None
+    source = trip["source"]
+    payload = {
+        "schema": SELFTEST_SCHEMA,
+        "command": "selftest",
+        "caller": caller,
+        "remote": {**body["host"], "source": body["source"]},
+        "transport": {"kind": transport_lib.TRANSPORT_KIND},
+        "source": source,
+        "receipt": {
+            "verifier": "oscar-independent",
+            "signature_verified": accepted["signature_verified"],
+            "nonce_verified": accepted["nonce_verified"],
+            "replay_checked": accepted["replay_checked"],
+            "ack_verified": accepted["ack_verified"],
+            "receipt_digest": body["receipt_digest"],
+            "returncode": body["returncode"],
+        },
+        "runner": {
+            "verified": facts["runner_verified"],
+            "image_digest": body["runner_image_digest"],
+        },
+        "sandbox": {"tree_sha256_matches": sandbox_tree == source["tree_sha256"]},
+        "production": {"before": _health(probe_before), "after": _health(probe_after)},
+        "cleanup": {
+            "state": accepted["cleanup"]["state"],
+            "fetch_after_ack_refused": not residual,
+        },
+        "job_id": job_id,
+    }
+    failure = next(
+        (
+            code
+            for failed, code in (
+                (body["returncode"] != 0, "remote-child-failed"),
+                (body["host"]["host_id"] == caller["host_id"], "same-host"),
+                (body["source"] != source, "receipt-source"),
+                (
+                    not payload["sandbox"]["tree_sha256_matches"],
+                    "sandbox-tree-mismatch",
+                ),
+                (residual, "cleanup-residual"),
+                (
+                    payload["production"] != {"before": "healthy", "after": "healthy"},
+                    "production-unhealthy",
+                ),
+            )
+            if failed
+        ),
+        None,
+    )
+    payload["verified"] = failure is None
+    payload["ok"] = failure is None
+    payload["verdict"] = "verified" if failure is None else "failed"
+    if failure is not None:
+        payload["failure_code"] = failure
+    return payload, 0 if failure is None else ERROR_EXIT
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="plan or run a bounded local compute profile"
@@ -669,6 +855,12 @@ def _parser() -> argparse.ArgumentParser:
         )
     status = commands.add_parser("status", help="observe registry and runner state")
     status.add_argument("--mode", choices=("local", "auto", "felix"), default="local")
+    selftest = commands.add_parser(
+        "selftest", help="prove a real cross-host Felix round trip (fails closed)"
+    )
+    selftest.add_argument("--target", choices=("felix",), required=True)
+    selftest.add_argument("--profile", required=True)
+    selftest.add_argument("--json", action="store_true")
     return parser
 
 
@@ -689,6 +881,10 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if payload["ok"] else ERROR_EXIT
         if args.command == "run":
             payload, returncode = _run(args)
+            _emit(payload)
+            return returncode
+        if args.command == "selftest":
+            payload, returncode = _selftest(args)
             _emit(payload)
             return returncode
         payload = _status(args)

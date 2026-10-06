@@ -59,6 +59,27 @@
       "runner_image_digest": "sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a",
       "artifact_contract": "stdout-stderr-only"
     },
+    "source-identity": {
+      "command": {
+        "argv": ["python", "ops/source_identity.py"],
+        "shell": false
+      },
+      "parameters": {},
+      "source_kind": "clean-committed-tree",
+      "required_capabilities": ["python-3.13"],
+      "runner_capabilities": ["python-3.13"],
+      "bootstrap": [],
+      "resource_class": "compute-remote",
+      "minimum_tier": "observer",
+      "timeout_seconds": 60,
+      "remote_eligible": false,
+      "git_metadata_required": false,
+      "side_effects": ["repo-read"],
+      "network_policy": "none",
+      "sandbox_policy": "repo-readonly",
+      "runner_image_digest": "sha256:47965cdc9d53a515f68f78241161c901e70051ce428f12e791bd7fe19f6a631a",
+      "artifact_contract": "stdout-stderr-only"
+    },
     "ops.compute-contract-tests": {
       "command": {
         "argv": [
