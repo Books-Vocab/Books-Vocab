@@ -18,6 +18,12 @@ verified_against: 5b5ac2fa158ec2f9508c0befa835720009a60fe5
 
 ## Entry paths
 
+### Backlog grooming
+
+當請求是整理既有 backlog、供後續派工時，Backlog Scout／派遣 IM 負責讀取 Issue 並補齊可執行的 `brief`、`scope`、`plan`、`acceptance`、`fix_site` 與必要 grooming 紀錄。保留原意、owner、Scope 與狀態；資訊不足就標 blocker，不自行編造驗收條件。只跑驗證這些欄位所需的 backlog schema／grooming checks。
+
+Grooming 本身不代表 Issue admission 或 implementation authorization；不因此做 batch acceptance audit、build、full test、deploy、修票、candidate label、owner assignment 或其他實作。需要 admission 或 delivery 時，另走 [`delivery_model.md`](../reference/delivery_model.md) 定義的流程。這是 backlog 準備，不是第二套 Issue lifecycle。
+
 ### Direct assignment → Worker
 
 適用於 User 或 IM 已經給出明確目標、範圍與驗收的工作；不需要先建立 Issue。
@@ -87,7 +93,7 @@ Runtime receipt 的時間一致性也是 liveness evidence：若 `last_progress_
 
 - `inspect` 分類每條 known／unmapped lane，並分開回傳 lane problems 與 source problems。
 - `metrics` 量測 GitHub open exact-label candidate Issues（排除 nonterminal registry occupancy）、REANCHOR、active、publishable、durable PR、required-running／green／failed、native queue depth、cleanup、blocked 與 physical worktree reservoirs；candidate query／parsing failure 進 source problem。另把 live facts 與 canonical checkout `.cache/delivery_telemetry.ndjson` 的 append-only duration evidence 合併，計算最近一小時 hand-back→PR、PR→required-start、required duration、required-success→native enqueue、merge→main sync、merge→terminal cleanup 的 sample count／p95，並輸出 collision／required failure rate 與 idle worktree。telemetry 不是 lifecycle ledger；寫入失敗只回傳 machine warning，不回滾已完成的 publish／queue／cleanup／sync。malformed journal、CAS conflict 或跨來源時間倒流仍是 source problem，不被當成快速交付。
-- `plan` 加上最近一小時 merge cadence，依 [delivery model](../reference/delivery_model.md#deterministic-feedback-controller) 的 policy 回傳可同時處理的 actions 與 `desired_new_solvers`；candidate 低於 20 時建議 `replenish_candidates`，REANCHOR 大於 0 時建議 `reanchor_front`。在 CI／PR／cleanup／source facts 健康且 durable PR 未達 ceiling 時，active Solver 即使在 cadence 尚健康時也補向 8、最多 12，每 cycle 最多 4 且不超過既有未占用 candidates；PR reservoir 與 active Solver reservoir 不合併計數。live-lane collision pressure 高於 20% 時輸出 `improve_scope_partition` 並停止新 solver birth。輸出只供 Scout／PI／CM 決策，不會 dispatch、enqueue、建立 Issue 或 cleanup。
+- `plan` 加上最近一小時 merge cadence，依 [delivery model](../reference/delivery_model.md#deterministic-feedback-controller) 的 policy 回傳可同時處理的 actions 與 `desired_new_solvers`；candidate 低於 20 時建議 `replenish_candidates`，REANCHOR 大於 0 時建議 `reanchor_front`。在 source／owner／Scope／registry／main／CI 與磁碟配額健康時，`desired_new_solvers` 可涵蓋目前所有已驗證候選，不再受固定的 active Solver、PR 或每 cycle 上限限制；required runner、collision、global source uncertainty 與 per-lane 磁碟預算仍是實際背壓。PR reservoir 與 active Solver reservoir 不合併計數；輸出只供 Scout／PI／CM 決策，不會 dispatch、enqueue、建立 Issue 或 cleanup。
 
 Candidate Issue body 先由 deterministic contract 產生並重驗：
 

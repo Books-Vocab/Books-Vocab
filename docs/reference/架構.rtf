@@ -177,4 +177,6 @@ steady: report one-hour throughput and SLO; it is never a launch prerequisite.\
 backlog_classified means the raw inventory is complete and every raw Issue or source entry has one disposition. It does not mean backlog_drained, and it never grants admission, wake, merge, or release authority.\
 \
 The maintained project Mermaid and RTF artifacts are derived human-facing views. The delivery model remains the source of truth; neither artifact stores lifecycle state.\
+
+Production-mode concurrency policy: there is no artificial five-, eight-, or twelve-lane ceiling. Dispatch every candidate that passes exact owner, Scope, registry, main, CI, collision, security, and per-lane disk-budget checks. Required-runner capacity, disk measurement failure, global source uncertainty, and collision pressure remain real backpressure; unbounded dispatch never means unbounded worktree or cache accumulation.\
 }

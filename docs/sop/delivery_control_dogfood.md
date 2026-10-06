@@ -76,7 +76,7 @@ quarantine 是可驗證的隔離投影，不是 cleanup 成功、owner 恢復、
 
 | Task | 唯一責任 | 可用 mutation | 禁止事項 |
 |---|---|---|---|
-| Backlog Scout（BS） | 先完整 inventory 所有 open Issues、逐條產生 disposition／triage plan；再把已核准且無 hold／collision 的 Issue admission 成 typed candidate，維持 20–30 個 dispatchable candidates，依 `desired_new_solvers` fan-out | 單一 Issue 的明確 admission、Issue Solver 的正常 admission | 批量重寫 Issue；push／PR／merge；自己實作 product code；保存第二套 backlog |
+| Backlog Scout（BS） | 先完整 inventory 所有 open Issues、逐條產生 disposition／triage plan；再把已核准且無 hold／collision 的 Issue admission 成 typed candidate，將 20–30 視為供給觀測目標而非硬上限，依 `desired_new_solvers` fan-out | 單一 Issue 的明確 admission、Issue Solver 的正常 admission | 批量重寫 Issue；push／PR／merge；自己實作 product code；保存第二套 backlog |
 | PR Integrator（PI） | 事件式消費 typed handback；建立／更新唯一 PR；readback；publication 後立即釋放 local assets；metadata／required repair | `publish`、`release-published`、`repair-pr-metadata`、exact terminal cleanup | 修改 product code；接管 owner branch；merge／enqueue |
 | Codebase Manager（CM） | 只處理 merge-front；exact admission；native enqueue；landing 後 ff-only sync；把 merged receipt 交給 PI cleanup | `queue`、`sync-main`、明確 hold reconcile | 修 PR body／product code；等待 routine advisory；手動 merge |
 | Supervisor | 以約 300 秒 watchdog tick 讀取 deterministic facts 與四個 task 活動；控制 freeze／ramp；升級事故 | task-level freeze／resume 與明確事故升級 | 成為產品 owner；替 BS／PI／CM 執行 mutation；把 agent 自述當 facts |
@@ -145,7 +145,7 @@ quarantine 是可驗證的隔離投影，不是 cleanup 成功、owner 恢復、
 ./ops/worktree_registry.py hand-back --branch '<branch>' --outcomes '<validation.json>' [--hold security]
 ```
 
-pilot 先限制為一條完整 lane；pilot terminal proof 後才進入 3-lane promotion，不能直接為追求數量啟動 8–12 lanes。`ramp_ready=false` 只表示不能升級並行度，不表示 pilot 不可開始。
+pilot 先限制為一條完整 lane；pilot terminal proof 後才進入多 lane promotion，不能直接為追求數量忽略 owner／Scope／registry／磁碟背壓。`ramp_ready=false` 只表示不能升級並行度，不表示 pilot 不可開始；不存在人工的 5、8 或 12 lane 上限。
 
 ### PI：handback 到 PR
 
@@ -263,8 +263,8 @@ Supervisor 的 watchdog tick 只用來避免 supervisor 睡死，不代表每 30
 1. **Canary 1 lane**：只允許一個 Solver，走完整 handback → PR → required → native queue → merge → sync → terminal cleanup。
 2. **Promotion proof**：15 分鐘觀測窗內完成至少 3 個 exact merges；沒有 local residue、unmapped PR、source problem 或 hard-hold bypass。
 3. **Ramp 4 lanes**：確認 required 並行、PR body repair、stale merge-front reanchor 與一條 blocked lane 不會停止其他 lane。
-4. **Ramp 8 lanes**：維持 10–15 open PR、active Solver target 8／ceiling 12、至少 3 個 merge-ready／native-queue candidates；required 同時至少 3–4。green candidate 必須立即 enqueue，不為了做出數字而停在 PI；active 與 durable PR 是兩個不同 reservoir，不能相加後只補到 10。
-5. **Steady state**：候選 20–30、active Solver 8–12、handback→PR p95 ≤60 秒、required p95 ≤240 秒、required-success→enqueue p95 ≤30 秒、每小時 ≥12 merges、inter-merge p95 ≤300 秒。
+4. **Ramp**：持續派送所有通過 exact owner／Scope／registry／main／CI／磁碟條件的候選；10–15 open PR、active Solver 8–12、candidate 20–30 與至少 3 個 merge-ready 只作觀測水位，不是停止條件。required 同時容量、collision、global source uncertainty 與每 lane 磁碟預算才是背壓；active 與 durable PR 是兩個不同 reservoir。
+5. **Steady state**：持續量測候選、active Solver、PR、handback→PR p95 ≤60 秒、required p95 ≤240 秒、required-success→enqueue p95 ≤30 秒、每小時 ≥12 merges、inter-merge p95 ≤300 秒；未達目標時找出瓶頸，不以固定 lane 數字停止。
 
 只有真實 candidate、GitHub、runner 與 merge queue 健康時才評估 merge SLO；供應或平台失效時，輸出 exact capacity blocker，不偽造工作。
 
