@@ -9,6 +9,7 @@ dispatch or embedding a second Python program in it.
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -40,7 +41,16 @@ def _read_local(path: Path) -> dict[str, str]:
 def _read_remote(path: str, server: str) -> dict[str, str]:
     ssh_bin = os.environ.get("KG_SSH_BIN", "ssh")
     proc = subprocess.run(
-        [ssh_bin, "-T", "-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes", server, f"cat {path}"],
+        [
+            ssh_bin,
+            "-T",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            "-o",
+            "BatchMode=yes",
+            server,
+            f"cat -- {shlex.quote(path)}",
+        ],
         capture_output=True,
         text=True,
         check=False,
@@ -78,14 +88,22 @@ def compare_envs(
 
 def main(argv: list[str]) -> int:
     if len(argv) != 6:
-        print("usage: env_drift.py LOCAL_ENV REMOTE_ENV LOCAL_DIR CONTAINER_ROOT SERVER", file=sys.stderr)
+        print(
+            "usage: env_drift.py LOCAL_ENV REMOTE_ENV LOCAL_DIR CONTAINER_ROOT SERVER",
+            file=sys.stderr,
+        )
         return 64
     local_path, remote_path, local_dir, container_root, server = argv[1:]
     local = _read_local(Path(local_path))
     remote = _read_remote(remote_path, server)
     missing_remote = sorted(set(local) - set(remote))
     missing_local = sorted(set(remote) - set(local))
-    mismatches = compare_envs(local, remote, local_dir=Path(local_dir).resolve(), container_root=container_root)
+    mismatches = compare_envs(
+        local,
+        remote,
+        local_dir=Path(local_dir).resolve(),
+        container_root=container_root,
+    )
     if missing_remote or missing_local or mismatches:
         if missing_remote:
             print("✗ 遠端缺少以下 key:")
