@@ -305,7 +305,9 @@ def test_apply_uses_the_exact_local_tip_as_cas_head() -> None:
         ),
         (
             "no_valid_handback",
-            _record(handed_back_sha=LOCAL, handback_valid=True, handback_digest="d" * 64),
+            _record(
+                handed_back_sha=LOCAL, handback_valid=True, handback_digest="d" * 64
+            ),
             None,
             None,
         ),

@@ -1089,9 +1089,7 @@ class DeliveryApplication:
 
         close_issue = getattr(self.github, "close_issue", None)
         if not callable(close_issue):
-            raise errors.DeliverySourceError(
-                "GitHub adapter cannot close Issues"
-            )
+            raise errors.DeliverySourceError("GitHub adapter cannot close Issues")
         return issue_terminal_close.IssueTerminalCloseService(
             inventory=lambda: self.inspect().demand_issues,
             issues=self.github,  # type: ignore[arg-type]

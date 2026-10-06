@@ -361,7 +361,9 @@ def test_adapter_closes_as_completed_with_comment_and_reads_back() -> None:
     receipt = GitHubCliAdapter(runner=runner).close_issue(**_close_kwargs())
 
     assert receipt == IssueCloseReceipt(1, "CLOSED", "COMPLETED")
-    close_call = next(call for call in runner.calls if call[:3] == ("gh", "issue", "close"))
+    close_call = next(
+        call for call in runner.calls if call[:3] == ("gh", "issue", "close")
+    )
     assert close_call[3] == "1"
     assert close_call[close_call.index("--reason") + 1] == "completed"
     assert TERMINAL_CLOSE_MARKER in close_call[close_call.index("--comment") + 1]
@@ -441,9 +443,7 @@ class _CliApplication:
 def test_cli_defaults_to_dry_run_with_progress_on_stderr(capsys: object) -> None:
     application = _CliApplication("dry-run")
 
-    code = main(
-        ["close-terminal-issues"], application_factory=lambda **_: application
-    )
+    code = main(["close-terminal-issues"], application_factory=lambda **_: application)
 
     captured = capsys.readouterr()  # type: ignore[attr-defined]
     assert code == 0

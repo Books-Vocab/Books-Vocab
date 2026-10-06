@@ -79,7 +79,9 @@ class OwnerlessClaimDisposalService:
         self, branch: str
     ) -> tuple[RegistrySnapshot | None, list[DisposalCheck]]:
         records = tuple(
-            item for item in self.registry.list_records().records if item.branch == branch
+            item
+            for item in self.registry.list_records().records
+            if item.branch == branch
         )
         active = [item for item in records if item.status == "active"]
         checks = [
@@ -132,7 +134,9 @@ class OwnerlessClaimDisposalService:
             DisposalCheck(
                 "owner_absent",
                 not owner,
-                "claim has no owner thread" if not owner else f"owner {owner!r} is bound",
+                "claim has no owner thread"
+                if not owner
+                else f"owner {owner!r} is bound",
             )
         )
 

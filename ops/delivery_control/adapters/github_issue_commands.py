@@ -469,7 +469,9 @@ class GitHubIssueCommands:
                 issue_number, state, state_reason, already_closed=True
             )
         if state != "OPEN":
-            raise AdapterPayloadError(f"Issue #{issue_number} has unknown state {state!r}")
+            raise AdapterPayloadError(
+                f"Issue #{issue_number} has unknown state {state!r}"
+            )
         if (
             current.updated_at != expected_updated_at
             or current.body_sha256 != expected_body_sha256

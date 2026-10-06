@@ -262,9 +262,7 @@ class TerminalEvidence:
         object.__setattr__(self, "kind", TerminalEvidenceKind(self.kind))
         if type(self.ref) is not str or not self.ref.strip():
             raise TypeError("terminal evidence ref must be text")
-        if self.url is not None and (
-            type(self.url) is not str or not self.url.strip()
-        ):
+        if self.url is not None and (type(self.url) is not str or not self.url.strip()):
             raise TypeError("terminal evidence url must be text")
 
     @property

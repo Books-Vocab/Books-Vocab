@@ -143,9 +143,7 @@ class IssueTerminalCloseService:
         for number in selected:
             issue = by_number.get(number)
             if issue is None:
-                items.append(
-                    TerminalCloseItem(number, "skipped", "not an open Issue")
-                )
+                items.append(TerminalCloseItem(number, "skipped", "not an open Issue"))
                 continue
             if issue.disposition is not IssueDisposition.TERMINAL_HISTORY:
                 items.append(
@@ -182,7 +180,10 @@ class IssueTerminalCloseService:
             if not apply:
                 items.append(
                     TerminalCloseItem(
-                        number, "would-close", issue.reason, **base  # type: ignore[arg-type]
+                        number,
+                        "would-close",
+                        issue.reason,
+                        **base,  # type: ignore[arg-type]
                     )
                 )
                 continue

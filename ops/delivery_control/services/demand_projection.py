@@ -259,9 +259,7 @@ def project_demand_inventory(
         mapped_pull_request_numbers = tuple(
             pull_request.number for pull_request in mapped_prs
         )
-        terminal_evidence = terminal_history_evidence(
-            issue, mapped_records, mapped_prs
-        )
+        terminal_evidence = terminal_history_evidence(issue, mapped_records, mapped_prs)
         malformed_active_registry_external_ids = (
             _malformed_active_registry_external_ids(issue, registry_problems)
         )
