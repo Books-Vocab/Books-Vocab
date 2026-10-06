@@ -159,6 +159,12 @@ ASC live state 必須由 `./ops/asc_reviewer_mirror.py audit ... --commit --bund
 
 修復後立刻重跑 Step 1。反覆「編譯 → 讀上下文 → 修改」直到 Exit Code 歸零。
 
+## CloudKit 環境與本機資料隔離
+
+本 app 的 CloudKit 環境設定以 `ios/BooksAndVocab/BooksAndVocab.entitlements` 為準；目前 entitlement 明確固定為 `Production`，所以不可只憑「Xcode Debug」推定它連到 Development。變更 entitlement 或簽章設定前，先核對 build 的 resolved entitlement。曾發生環境切換造成書列 purge/reimport，再被 reconciler 的去重 export 放大成刪除；不要在正式使用中的 iPhone 上測試環境切換。需要隔離驗證時使用 disposable simulator 或獨立測試裝置，並避免刪除正式 app 資料來排除同步問題。
+
+新增 CloudKit-backed `@Model` 後，Development schema 成功不代表 Production 已就緒；發布前須確認 schema 已部署到 app 實際使用的 Production CloudKit container。遇到 mirroring 失敗時，保留原始 `CKErrorDomain` 與 nested partial errors，逐層定位子錯誤，不要只依外層錯誤碼重置本機資料。
+
 ## iOS 測試入口（`ops/ios_ops.sh test` / `ops/ios_test.sh`）
 
 `ops/ios_test.sh` 與 `ios_build.sh` 共用 `/tmp/kg-ios-build.lock`。**鎖是細粒度的**：只在 `build-for-testing`（共享 DerivedData 的唯一寫者）期間持有，`test-without-building` 執行階段**不持鎖**。test 產物為 content-keyed 且寫入完成後加 `.kg-test-cache-complete` sentinel（hit 偵測與 double-check 都要求 sentinel，擋住中斷留下的 half-written cache），故並行 agent 可各自在獨立模擬器上同時跑測試而不互相排隊。build 走 `<主repo>/.cache/ios-build-derived-data`（`git-common-dir` 錨定，所有 worktree 同一路徑，禁止改用 Xcode 全域預設位置否則洩漏路徑雜湊孤兒）；test 走 `.cache/ios-test-derived-data`（platform/arch keyed，pool 各 sim 共享暖快取）。政策與根因詳見 [`docs/reference/ios_deriveddata_policy.md`](../reference/ios_deriveddata_policy.md)。
