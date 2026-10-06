@@ -27,7 +27,7 @@ verified_against: afe016c4ea2fcbd7306f9c4f40b4556e77865100
 | Local coordinator | `ops/worktree_registry.py`、`ops/worktree_registry_core/`、`ops/worktree_orchestrate.py` | `./ops/test_ops.sh worktree` |
 | Docs control | `docs/registry.yml`、`ops/docs_impact.py`、`ops/docs_lint.sh` | `./ops/test_ops.sh docs-lint` |
 | GitHub intake/review | `.github/ISSUE_TEMPLATE/`、`.github/PULL_REQUEST_TEMPLATE.md` | GitHub Issue／PR |
-| CI | `.github/workflows/pr-readiness.yml`、`.github/workflows/pr-gate.yml`、`.github/workflows/merge-group-required.yml`、`ops/ci_scope_router.sh`、`ops/ci_confidence_verdict.sh` | typed receipt／exact HEAD readiness；PR 與 merge-group blocking `required`；diff-scoped nonblocking advisory `confidence` |
+| CI | `.github/workflows/pr-readiness.yml`、`.github/workflows/pr-gate.yml`、`.github/workflows/merge-group-required.yml`、`ops/ci_scope_router.sh`（亦輸出 fail-closed 的 `ios_mode`／`ios_selectors`，targeted 只限單一頂層 `*UITests.swift` 且經 `ops/ios_test.sh --ui --list --file` 探得 `Target/Suite/Method`，其餘全回 `full`）、`ops/ci_confidence_verdict.sh` | typed receipt／exact HEAD readiness；PR 與 merge-group blocking `required`；diff-scoped nonblocking advisory `confidence` |
 
 ## Backend routes and data
 
