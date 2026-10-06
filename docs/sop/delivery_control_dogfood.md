@@ -258,6 +258,50 @@ quarantined source／lane／PR／terminal residue 與 `recoverable_quarantine` c
 
 Supervisor 的 watchdog tick 只用來避免 supervisor 睡死，不代表每 300 秒執行一次完整 pipeline，也不代表自動喚醒被 freeze／archived 的角色。Supervisor 在 turn 開始、每個 bounded progress checkpoint 與正常結束時，以 `runtime-receipt` atomic replace 更新同一份 `kg.delivery.runtime.v1` receipt；新 cycle 必須清除上一個 wake action。唯讀觀測使用 `watchdog`；外部 scheduler 要喚醒時必須改用 `watchdog-claim`，並且只有 exact JSON 結果 `action=wake` 且 `wake_claimed=true` 才能建立一次 turn。`watchdog-claim` 在 dispatch 前以 cycle／last-action CAS 原子保留 wake；同一 stale receipt 的競爭呼叫會得到 `escalate`，不得建立第二個 session，也不得自行 retry。缺 receipt 只能 `escalate`；`frozen`／`archived` 永遠 `noop`；`RUNNING` 但 lease／progress 過期只能 `escalate` 並要求查詢真實 Codex thread 狀態，絕不建立第二個 turn；只有 thread 已非 active 且 receipt 是 stale `IDLE` 或到期 `WAITING` 時，才可發出一次 `wake_id`。Supervisor 的 deterministic plan 會把低水位轉成具體 action：`replenish_candidates`、`fill_required_capacity`、`restore_merge_buffer`、`reanchor_front`、`trigger_required`、`reconcile_idle_worktrees` 或 `recover_merge_cadence`。它只發出可驗證的 bounded action，不替角色寫 code、推 branch 或手動修 registry；任何 unknown／dirty／remote drift 轉成 exact blocker 並 freeze 相關 birth。
 
+## 壞帳終態處置（IM 專屬，預設 dry-run）
+
+供給枯竭常因兩類壞帳：無 owner 的 active claim 佔住 Scope，以及已有 terminal 證據卻仍開著的 Issue 佔住 backlog。兩個指令都預設 dry-run，只有 `--apply` 才寫入；進度走 stderr、結果 JSON 走 stdout。Worker／Issue Solver 不可執行；只有已被使用者授權終態處置的 IM 可用，且必須先看過同一對象的 dry-run 輸出才可 `--apply`。
+
+```bash
+# 1) ownerless active claim：先 dry-run 取得 pins，再以 pins 寫入
+./ops/delivery.py --repo /Users/chenliangyu/project/kg dispose-ownerless-claim --branch '<branch>'
+./ops/delivery.py --repo /Users/chenliangyu/project/kg dispose-ownerless-claim --branch '<branch>' --apply \
+  --expected-claim-generation '<generation>' --expected-head-sha '<head>' \
+  --operator '<identity>' --reason '<bounded reason>'
+
+# 2) terminal_history Issue：dry-run 列出將關閉清單與每筆證據
+./ops/delivery.py --repo /Users/chenliangyu/project/kg close-terminal-issues [--issue '<number>' ...]
+./ops/delivery.py --repo /Users/chenliangyu/project/kg close-terminal-issues --apply --operator '<identity>' [--issue '<number>' ...]
+```
+
+`dispose-ownerless-claim` 只在下列條件**全部**成立時才轉為 `eligible`，任一不成立就 `refused`（exit 2）並逐條列出 `checks`：canonical checkout 為 clean `main`；該 branch 恰有一個 `active` claim；無 owner thread；無 physical worktree 且路徑不在磁碟上；branch 無任何 PR 歷史（open／closed／merged，inventory 不完整也算不成立）；無有效 handback；remote branch 不存在或等於 claim 的 base／local tip；無 hold。`--apply` 另要求 `--expected-claim-generation`／`--expected-head-sha` 與觀測值逐字相符，並以 write-ahead receipt（`.cache/delivery_dispositions.ndjson`，每列自帶 SHA-256，只增不改）夾住 registry 既有 exact CAS：`intent` → `resolve abandoned` → registry readback → `committed`；失敗會留下 `failed` 列。claim 終態後若殘留 branch ref，再走既有 `cleanup-abandoned`。
+
+`close-terminal-issues` 的資格完全沿用 `issue-inventory` 的 `terminal_history` disposition，並使用同一份 `terminal_evidence`，不另寫判定。額外只接受完成級證據（merged PR、merged lane、duplicate／terminal／merged label）才以 `--reason completed` 關閉；只有 abandoned lane 或未 merge 就關閉的 PR 屬歷史、不是完成，會列為 `skipped` 且不關閉。inventory 不完整時 `--apply` 直接拒絕。逐筆以 updatedAt／body SHA-256 做 CAS、加註解（含證據連結）、再讀回 `CLOSED/COMPLETED`；單筆失敗不中斷其他筆，最後 `verdict=partial-failure` 且 exit 1。
+
+## 無可執行動作與 no-progress 規則
+
+當 `plan` 的 `actions` 全為 `audit_*`、`recover_*`、`inspect_sources` 或 `throttle_solvers`，`desired_new_solvers=0`，且本輪沒有任何本角色可對 exact subject 執行的 mutation，agent 不得再空轉。固定行為：
+
+1. **輸出一次 typed blocked report 後停止**。格式：
+
+   ```json
+   {
+     "schema": "kg.delivery.blocked-report.v1",
+     "blocker_class": "ownerless-claim | terminal-backlog | idle-worktree | source-problem | capacity | unknown",
+     "fingerprint": "<sha256 of sorted (action, exact subject ids)>",
+     "plan_actions": ["audit_ownerless_lanes"],
+     "human_decision_needed": "<需要人類或 IM 決定的一件事>",
+     "suggested_commands": ["./ops/delivery.py ... dispose-ownerless-claim --branch '<branch>'"],
+     "observed_at": "<ISO-8601>",
+     "consecutive_observations": 1
+   }
+   ```
+
+   `blocker_class` 對應處置指令：`ownerless-claim` → `dispose-ownerless-claim`；`terminal-backlog` → `close-terminal-issues`；`idle-worktree` → `reconcile_idle_worktrees` 的 exact worktree；其餘（`source-problem`、`capacity`、`unknown`）只回報 exact blocker，不猜測修法。`suggested_commands` 必須是 dry-run 形式，不得內含 `--apply`。
+2. **禁止以 <20 分鐘間隔重複完整 preflight**（`dogfood-preflight`＋`inspect`＋`metrics`＋`plan`）。blocked 後只有兩種事件可提前喚醒：人類／IM 明確回覆已處置，或 GitHub／registry 出現新的 durable fact。
+3. **fingerprint 連續三次相同＝no-progress**：同一 `fingerprint` 在三次獨立觀測（相隔 ≥20 分鐘）都不變，第三次改輸出 `escalate` 並**終止**該 agent loop，不再排程下一輪；`consecutive_observations` 必須如實遞增，不得因文字微調重置。fingerprint 任何一個 subject 改變（新 claim、新 Issue、不同 PR）才視為有進展並歸零。
+4. blocked report、escalate 與終止都只是觀測輸出：不授權任何 mutation，也不得拿來降低 hard gate；處置仍須由 IM 以 dry-run → `--apply` 明確執行。
+
 ## Canary 與容量升級
 
 1. **Canary 1 lane**：只允許一個 Solver，走完整 handback → PR → required → native queue → merge → sync → terminal cleanup。

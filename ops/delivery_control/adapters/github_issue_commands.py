@@ -11,6 +11,7 @@ from typing import Any
 from ..domain.candidate_issues import CANDIDATE_ISSUE_LABEL, CandidateSpec
 from ..domain.demand_issues import (
     DemandIssue,
+    IssueCloseReceipt,
     IssueIntakeReceipt,
     IssueIntakeRequest,
     issue_body_sha256,
@@ -72,6 +73,20 @@ query DeliveryReadIssue($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     issue(number: $number) {
       id number url title body state updatedAt
+      labels(first: 100) {
+        nodes { name }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}
+""".strip()
+
+_READ_ISSUE_STATE_QUERY = """
+query DeliveryReadIssueState($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      id number url title body state stateReason updatedAt
       labels(first: 100) {
         nodes { name }
         pageInfo { hasNextPage endCursor }
@@ -407,3 +422,79 @@ class GitHubIssueCommands:
             source_fingerprint=request.source_fingerprint,
             client_mutation_id=request.client_mutation_id,
         )
+
+    def _read_issue_state(self, number: int) -> tuple[str, str | None, DemandIssue]:
+        payload = self._graphql(
+            _READ_ISSUE_STATE_QUERY,
+            variables=(("number", str(number)),),
+        )
+        data = payload.get("data")
+        repository = data.get("repository") if isinstance(data, Mapping) else None
+        issue = repository.get("issue") if isinstance(repository, Mapping) else None
+        if (
+            not isinstance(issue, Mapping)
+            or type(issue.get("state")) is not str
+            or (
+                issue.get("stateReason") is not None
+                and type(issue.get("stateReason")) is not str
+            )
+        ):
+            raise AdapterPayloadError("GitHub Issue state readback is malformed")
+        return (
+            issue["state"],
+            issue.get("stateReason"),
+            parse_demand_issue(self._issue_payload(issue)),
+        )
+
+    def close_issue(
+        self,
+        *,
+        issue_number: int,
+        expected_updated_at: datetime | None,
+        expected_body_sha256: str,
+        comment: str,
+    ) -> IssueCloseReceipt:
+        """Close one Issue as completed only if it is unchanged since triage.
+
+        The close is issued at most once; a failed command is never retried
+        because GitHub may have applied it before the transport failed.  Every
+        success is proven by a fresh state readback.
+        """
+
+        if type(comment) is not str or not comment.strip():
+            raise PolicyViolation("Issue close requires an evidence comment")
+        state, state_reason, current = self._read_issue_state(issue_number)
+        if state == "CLOSED":
+            return IssueCloseReceipt(
+                issue_number, state, state_reason, already_closed=True
+            )
+        if state != "OPEN":
+            raise AdapterPayloadError(
+                f"Issue #{issue_number} has unknown state {state!r}"
+            )
+        if (
+            current.updated_at != expected_updated_at
+            or current.body_sha256 != expected_body_sha256
+        ):
+            raise CompareAndSwapConflict(
+                f"Issue #{issue_number} changed after terminal-history triage"
+            )
+        self.client.run(
+            (
+                "gh",
+                "issue",
+                "close",
+                str(issue_number),
+                "--reason",
+                "completed",
+                "--comment",
+                comment,
+            )
+        )
+        final_state, final_reason, _ = self._read_issue_state(issue_number)
+        if final_state != "CLOSED" or final_reason != "COMPLETED":
+            raise CompareAndSwapConflict(
+                f"Issue #{issue_number} close did not read back as CLOSED/COMPLETED "
+                f"(state={final_state}, reason={final_reason})"
+            )
+        return IssueCloseReceipt(issue_number, final_state, final_reason)

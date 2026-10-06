@@ -39,6 +39,7 @@ from .domain.unreachable_commits import (
     UnreachableCommitInventory,
     validate_unreachable_commit_path_limit,
 )
+from .ports.dispositions import DispositionReceiptPort
 from .ports.github import GitHubIssueCommandPort, GitHubIssueIntakePort
 from .ports.registry import RegistryPublishedClaimQueryPort
 from .ports.runtime import (
@@ -54,9 +55,11 @@ from .services import (
     branch_content,
     cleanup,
     inspect,
+    issue_terminal_close,
     legacy_cleanup,
     metadata,
     orphan_branch,
+    ownerless_claim,
     queue,
     required_repair,
     superseded_handback,
@@ -199,6 +202,7 @@ class DeliveryApplication:
     runtime: AgentRuntimePort
     telemetry: TelemetryStorePort
     clock: Callable[[], datetime] = _utc_now
+    dispositions: DispositionReceiptPort | None = None
 
     def inspect(self, *, supervision_worktree_paths: tuple[Path, ...] = ()) -> object:
         return inspect.InspectService(
@@ -1034,6 +1038,66 @@ class DeliveryApplication:
             expected_head_sha=expected_head_sha,
             operator=operator,
             reason=reason,
+        )
+
+    def dispose_ownerless_claim(
+        self,
+        *,
+        branch: str,
+        apply: bool,
+        expected_claim_generation: int | None = None,
+        expected_head_sha: str | None = None,
+        operator: str | None = None,
+        reason: str | None = None,
+        progress: Callable[[str], None] | None = None,
+    ) -> object:
+        """Dry-run by default; terminalize one ownerless active claim on apply."""
+
+        if self.dispositions is None:
+            raise errors.DeliverySourceError(
+                "application has no disposition receipt journal configured"
+            )
+        return ownerless_claim.OwnerlessClaimDisposalService(
+            registry=self.registry,
+            registry_command=self.registry,
+            git_query=self.git,
+            github=self.github,
+            receipts=self.dispositions,
+            clock=self.clock,
+        ).dispose(
+            branch=branch,
+            apply=apply,
+            expected_claim_generation=expected_claim_generation,
+            expected_head_sha=expected_head_sha,
+            operator=operator,
+            reason=reason,
+            progress=progress,
+        )
+
+    def close_terminal_issues(
+        self,
+        *,
+        apply: bool,
+        issue_numbers: tuple[int, ...] = (),
+        operator: str | None = None,
+        progress: Callable[[str], None] | None = None,
+    ) -> object:
+        """Dry-run by default; close verifiably terminal open Issues on apply.
+
+        This is an IM-side control-plane action, never a Worker action.
+        """
+
+        close_issue = getattr(self.github, "close_issue", None)
+        if not callable(close_issue):
+            raise errors.DeliverySourceError("GitHub adapter cannot close Issues")
+        return issue_terminal_close.IssueTerminalCloseService(
+            inventory=lambda: self.inspect().demand_issues,
+            issues=self.github,  # type: ignore[arg-type]
+        ).run(
+            apply=apply,
+            issue_numbers=issue_numbers,
+            operator=operator,
+            progress=progress,
         )
 
     def sync_main(self) -> object:

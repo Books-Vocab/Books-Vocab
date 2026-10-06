@@ -10,6 +10,8 @@ from ..domain.demand_issues import (
     DemandIssue,
     DemandIssueInventory,
     IssueDisposition,
+    TerminalEvidence,
+    TerminalEvidenceKind,
 )
 from ..domain.observations import (
     InventoryProblem,
@@ -85,18 +87,57 @@ def _issue_is_held(issue: DemandIssue) -> bool:
     )
 
 
-def _issue_has_terminal_history(issue: DemandIssue) -> bool:
-    labels = {label.casefold() for label in issue.labels}
-    return bool(
-        labels
-        & {
-            "duplicate",
-            "duplicate-of",
-            "delivery:terminal",
-            "terminal",
-            "merged",
-        }
-    )
+_TERMINAL_LABELS = frozenset(
+    {
+        "duplicate",
+        "duplicate-of",
+        "delivery:terminal",
+        "terminal",
+        "merged",
+    }
+)
+
+
+def terminal_history_evidence(
+    issue: DemandIssue,
+    mapped_records: Iterable[RegistrySnapshot],
+    mapped_prs: Iterable[PullRequestSnapshot],
+) -> tuple[TerminalEvidence, ...]:
+    """Return the exact facts that make an Issue's history terminal.
+
+    This is the single definition of terminal history: the disposition is
+    ``terminal_history`` precisely when this is non-empty, and any consumer
+    (for example the Issue closer) reads the same facts instead of re-deriving.
+    """
+
+    evidence = [
+        TerminalEvidence(TerminalEvidenceKind.LABEL, label)
+        for label in issue.labels
+        if label.casefold() in _TERMINAL_LABELS
+    ]
+    for record in mapped_records:
+        if record.status == "merged":
+            kind = TerminalEvidenceKind.REGISTRY_MERGED
+        elif record.status == "abandoned":
+            kind = TerminalEvidenceKind.REGISTRY_ABANDONED
+        else:
+            continue
+        evidence.append(TerminalEvidence(kind, record.lane_id))
+    for pull_request in mapped_prs:
+        if pull_request.state == "MERGED":
+            kind = TerminalEvidenceKind.PULL_REQUEST_MERGED
+        elif pull_request.state == "CLOSED":
+            kind = (
+                TerminalEvidenceKind.PULL_REQUEST_MERGED
+                if pull_request.merged_at is not None
+                else TerminalEvidenceKind.PULL_REQUEST_CLOSED
+            )
+        else:
+            continue
+        evidence.append(
+            TerminalEvidence(kind, f"#{pull_request.number}", pull_request.url or None)
+        )
+    return tuple(evidence)
 
 
 def _mapped_records(
@@ -218,6 +259,7 @@ def project_demand_inventory(
         mapped_pull_request_numbers = tuple(
             pull_request.number for pull_request in mapped_prs
         )
+        terminal_evidence = terminal_history_evidence(issue, mapped_records, mapped_prs)
         malformed_active_registry_external_ids = (
             _malformed_active_registry_external_ids(issue, registry_problems)
         )
@@ -238,16 +280,7 @@ def project_demand_inventory(
         ) or any(pull_request.state == "OPEN" for pull_request in mapped_prs):
             disposition = IssueDisposition.OWNER_BOUND
             reason = "Issue is already mapped to an owner-bound registry or PR lane"
-        elif (
-            _issue_has_terminal_history(issue)
-            or any(
-                record.status in {"merged", "abandoned"} for record in mapped_records
-            )
-            or any(
-                pull_request.state in {"MERGED", "CLOSED"}
-                for pull_request in mapped_prs
-            )
-        ):
+        elif terminal_evidence:
             disposition = IssueDisposition.TERMINAL_HISTORY
             reason = "Issue has verifiable duplicate, merged, or terminal history"
         elif issue.candidate_spec is not None and CANDIDATE_ISSUE_LABEL in issue.labels:
@@ -281,6 +314,11 @@ def project_demand_inventory(
                 mapped_pull_request_numbers=mapped_pull_request_numbers,
                 malformed_active_registry_external_ids=(
                     malformed_active_registry_external_ids
+                ),
+                terminal_evidence=(
+                    terminal_evidence
+                    if disposition is IssueDisposition.TERMINAL_HISTORY
+                    else ()
                 ),
             )
         )
