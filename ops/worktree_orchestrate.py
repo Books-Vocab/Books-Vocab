@@ -887,6 +887,7 @@ def _plan_checks(
     *,
     worktree: Path | None = None,
     scope_files: list[str] | None = None,
+    remote_checks: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = [
         {
@@ -1004,7 +1005,27 @@ def _plan_checks(
                 "level": "block",
             }
         )
+    for check in remote_checks or []:
+        if not isinstance(check, dict) or check.get("kind") != "remote":
+            raise ValueError("remote checks must use kind=remote")
+        checks.append(dict(check))
     return checks
+
+
+def _public_check(check: dict[str, Any]) -> dict[str, Any]:
+    """Keep runtime-only remote adapters and receipts out of gate records."""
+    if check.get("kind") != "remote":
+        return check
+    public: dict[str, Any] = {
+        key: check[key] for key in ("name", "kind", "cwd", "level") if key in check
+    }
+    request = check.get("remote_request")
+    if isinstance(check.get("remote_profile"), str):
+        public["profile"] = check["remote_profile"]
+    if isinstance(request, dict):
+        public.setdefault("profile", request.get("profile"))
+        public["request_digest"] = request.get("request_digest")
+    return public
 
 
 def _json_objects(output: str) -> list[dict[str, Any]]:
@@ -1176,7 +1197,105 @@ def _classify_ios_failure(
     return result
 
 
+def _remote_rejected_result(check: dict[str, Any], reason: str) -> dict[str, Any]:
+    return {
+        "schema": "kg.compute.gate-result.v1",
+        "name": check.get("name", "remote-check"),
+        "kind": "remote",
+        "cwd": str(check.get("cwd") or "."),
+        "level": "block",
+        "status": "block",
+        "rc": 125,
+        "duration_s": 0.0,
+        "output_tail": f"remote gate rejected: {reason}",
+        "executed": False,
+        "remote_validation": {
+            "schema": "kg.compute.remote-validation.v1",
+            "status": "rejected",
+            "verdict": "not-executed",
+            "reason": reason,
+        },
+    }
+
+
+def _run_remote_check(check: dict[str, Any], worktree: Path) -> dict[str, Any]:
+    adapter = check.get("remote_adapter")
+    adapt = getattr(adapter, "adapt", None)
+    route = getattr(adapter, "run", None)
+
+    def read_head() -> str:
+        rc, output = _git(["rev-parse", "HEAD"], worktree)
+        if rc != EXIT_OK or not output:
+            raise RuntimeError("head-read")
+        return output
+
+    current_head = check.get("remote_current_head")
+    if current_head is None:
+        try:
+            current_head = read_head()
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            return _remote_rejected_result(check, f"head-read:{type(exc).__name__}")
+    head_reader = check.get("remote_head_reader") or read_head
+    remote_profile = check.get("remote_profile")
+    if remote_profile is not None:
+        local_check = check.get("remote_local_check")
+        if not callable(route) or not callable(local_check):
+            return _remote_rejected_result(check, "remote-route-contract")
+        try:
+            result = route(
+                remote_profile,
+                source_commit=check.get("remote_source_commit"),
+                tree_sha256=check.get("remote_tree_sha256"),
+                spec_digest=check.get("remote_spec_digest"),
+                admission_snapshot=check.get("remote_admission_snapshot"),
+                local_check=local_check,
+                transport=check.get("remote_transport"),
+                current_head=current_head,
+                head_reader=head_reader,
+            )
+            if not isinstance(result, dict):
+                return _remote_rejected_result(check, "remote-result-schema")
+            return result
+        except (
+            AttributeError,
+            KeyError,
+            OSError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            return _remote_rejected_result(check, f"remote-route:{type(exc).__name__}")
+    if not callable(adapt):
+        return _remote_rejected_result(check, "remote-adapter-missing")
+    try:
+        result = adapt(
+            check.get("remote_request"),
+            check.get("remote_receipt"),
+            name=str(check.get("name") or "remote-check"),
+            level=str(check.get("level") or "block"),
+            cwd=str(check.get("cwd") or "."),
+            log_bytes=check.get("remote_log"),
+            artifact_bytes=check.get("remote_artifact"),
+            current_head=current_head,
+            head_reader=head_reader,
+        )
+        if not isinstance(result, dict):
+            return _remote_rejected_result(check, "remote-result-schema")
+        return result
+    except (
+        AttributeError,
+        KeyError,
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        return _remote_rejected_result(check, f"remote-adapter:{type(exc).__name__}")
+
+
 def _run_check(check: dict[str, Any], worktree: Path) -> dict[str, Any]:
+    if check.get("kind") == "remote":
+        return _run_remote_check(check, worktree)
     cwd = worktree / str(check.get("cwd") or ".")
     started = time.monotonic()
     with tempfile.NamedTemporaryFile(
@@ -1277,13 +1396,18 @@ def cmd_gate(args: argparse.Namespace) -> int:
         )
         return EXIT_USAGE
     files = _changed_files(worktree, args.base)
-    checks = _plan_checks(files, worktree=worktree, scope_files=files)
+    checks = _plan_checks(
+        files,
+        worktree=worktree,
+        scope_files=files,
+        remote_checks=getattr(args, "remote_checks", None),
+    )
     payload: dict[str, Any] = {
         "schema": GATE_SCHEMA,
         "worktree": str(worktree),
         "base": args.base,
         "files": files,
-        "checks": checks,
+        "checks": [_public_check(check) for check in checks],
     }
     if args.plan_only:
         _emit(
@@ -1292,7 +1416,44 @@ def cmd_gate(args: argparse.Namespace) -> int:
             human=json.dumps(payload, indent=2, ensure_ascii=False),
         )
         return EXIT_OK
+    remote_route = any(check.get("kind") == "remote" for check in checks)
+    initial_head: str | None = None
+    if remote_route:
+        head_rc, initial_head = _git(["rev-parse", "HEAD"], worktree)
+        if head_rc != EXIT_OK or not initial_head:
+            payload.update(
+                {
+                    "verdict": "block",
+                    "reason": "head-read-before-remote-gate",
+                    "results": [],
+                    "head": initial_head or "",
+                }
+            )
+            _emit(
+                payload,
+                as_json=args.json,
+                human=f"✗ gate block: {worktree}",
+            )
+            return EXIT_BLOCK
     results = [_run_check(check, worktree) for check in checks]
+    final_head_rc, final_head = _git(["rev-parse", "HEAD"], worktree)
+    if remote_route and (
+        final_head_rc != EXIT_OK or not final_head or final_head != initial_head
+    ):
+        payload.update(
+            {
+                "verdict": "block",
+                "reason": "head-moved-before-gate-record",
+                "results": [],
+                "head": final_head or "",
+            }
+        )
+        _emit(
+            payload,
+            as_json=args.json,
+            human=f"✗ gate block: {worktree}",
+        )
+        return EXIT_BLOCK
     verdict = (
         "block"
         if any(
@@ -1305,7 +1466,7 @@ def cmd_gate(args: argparse.Namespace) -> int:
         {
             "verdict": verdict,
             "results": results,
-            "head": _git(["rev-parse", "HEAD"], worktree)[1],
+            "head": final_head,
         }
     )
     record_path = _gate_record_path(args.state, worktree)

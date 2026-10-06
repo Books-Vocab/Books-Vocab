@@ -149,6 +149,7 @@ run_one() {
         ops/tests/test_compute_contract.py \
         ops/tests/test_compute_dogfood.py \
         ops/tests/test_compute_executor.py \
+        ops/tests/test_compute_gate_adapter.py \
         ops/tests/test_compute_router.py \
         ops/tests/test_xmachine_transport.py
       ;;
