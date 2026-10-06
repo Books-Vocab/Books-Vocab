@@ -97,6 +97,7 @@ ROUTED_TESTS=(
   "capability-matrix:ops/tests/test_felix_compute_launcher.py"
   "capability-matrix:ops/tests/test_xmachine_transport.py"
   "capability-matrix:ops/tests/test_compute_gate_adapter.py"
+  "capability-matrix:ops/tests/test_compute_hosts.py"
 )
 
 # Print one group's case arm from a test_ops.sh-shaped file.
