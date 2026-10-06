@@ -13,6 +13,13 @@ Usage: ops/ci_scope_router.sh (--base <commit> --head <commit> | --paths-stdin |
 Classify changed paths into the non-blocking backend, ops, and iOS confidence
 suites. Unknown paths select every suite so a new runtime surface cannot
 silently lose validation.
+
+The iOS suite additionally carries ios_mode=full|targeted. Targeted is admitted
+only for exactly one changed top-level ios/BooksAndVocabUITests/*UITests.swift
+file whose `ios_test.sh --ui --list --file` discovery returns fully qualified
+Target/Suite/Method selectors; every other input stays ios_mode=full with an
+empty ios_selectors. KG_CI_IOS_SELECTOR_DISCOVERY overrides the discovery
+command for contract tests only.
 EOF
 }
 
@@ -74,9 +81,16 @@ if [[ -n "$source" && ( -n "$base" || -n "$head" ) ]]; then
   exit 2
 fi
 
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+DISCOVERY="${KG_CI_IOS_SELECTOR_DISCOVERY:-$ROOT/ops/ios_test.sh}"
+
 backend=false
 ops=false
 ios=false
+path_count=0
+single_path=''
+ios_mode=full
+ios_selectors=''
 
 select_all() {
   backend=true
@@ -87,6 +101,8 @@ select_all() {
 classify_path() {
   local path="$1"
   [[ -n "$path" ]] || return
+  path_count=$((path_count + 1))
+  single_path="$path"
 
   # Router, verdict, and contract-test changes alter either test selection or
   # the meaning of a confidence result. They must receive a complete fan-out.
@@ -173,6 +189,44 @@ classify_path() {
   select_all
 }
 
+# Targeted iOS admission. Every failure path returns non-zero and leaves the
+# default ios_mode=full / empty selectors untouched (fail-closed).
+discover_targeted_selectors() {
+  local path="$1" base out line suite_method selectors='' count=0 header_count=''
+  base="${path##*/}"
+
+  [[ "$path" =~ ^ios/BooksAndVocabUITests/[A-Za-z0-9_+.-]+UITests\.swift$ ]] || return 1
+  case "$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')" in
+    *fixture*|*helper*|*page*|*support*) return 1 ;;
+  esac
+  [[ -f "$ROOT/$path" && ! -L "$ROOT/$path" ]] || return 1
+
+  out="$(cd "$ROOT" && "$DISCOVERY" --ui --list --file "$path" 2>/dev/null)" || return 1
+  [[ -n "$out" ]] || return 1
+
+  while IFS= read -r line; do
+    # Only fully qualified method selectors (plus ios_test.sh's own single
+    # "matched N tests" header); anything else (suite-only, unknown target,
+    # blank/noise line) rejects the whole discovery.
+    if [[ "$line" =~ ^-only-testing:BooksAndVocabUITests/([A-Za-z0-9_]+/[A-Za-z0-9_]+)$ ]]; then
+      suite_method="${BASH_REMATCH[1]}"
+      selectors="${selectors:+$selectors }$suite_method"
+      count=$((count + 1))
+    elif [[ "$line" =~ ^\[ios_test\]\ matched\ ([0-9]+)\ tests?\ in\ file\  && -z "$header_count" ]]; then
+      header_count="${BASH_REMATCH[1]}"
+    else
+      return 1
+    fi
+  done <<<"$out"
+
+  [[ -n "$selectors" ]] || return 1
+  # A header that disagrees with the selector lines means discovery is not
+  # self-consistent; do not trust either side.
+  [[ -z "$header_count" || "$header_count" -eq "$count" ]] || return 1
+  ios_selectors="$selectors"
+  ios_mode=targeted
+}
+
 case "$source" in
   all)
     select_all
@@ -196,11 +250,18 @@ case "$source" in
     ;;
 esac
 
+if [[ "$source" != all && "$ios" == true && "$backend" == false && "$ops" == false && "$path_count" -eq 1 ]]; then
+  discover_targeted_selectors "$single_path" || { ios_mode=full; ios_selectors=''; }
+fi
+
 case "$format" in
   json)
-    printf '{"backend":%s,"ops":%s,"ios":%s}\n' "$backend" "$ops" "$ios"
+    jq -cn --argjson backend "$backend" --argjson ops "$ops" --argjson ios "$ios" \
+      --arg mode "$ios_mode" --arg selectors "$ios_selectors" \
+      '{backend:$backend,ops:$ops,ios:$ios,ios_mode:$mode,ios_selectors:$selectors}'
     ;;
   github-output)
-    printf 'backend=%s\nops=%s\nios=%s\n' "$backend" "$ops" "$ios"
+    printf 'backend=%s\nops=%s\nios=%s\nios_mode=%s\nios_selectors=%s\n' \
+      "$backend" "$ops" "$ios" "$ios_mode" "$ios_selectors"
     ;;
 esac

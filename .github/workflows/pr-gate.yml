@@ -136,6 +136,8 @@ jobs:
       backend: ${{ steps.plan.outputs.backend }}
       ops: ${{ steps.plan.outputs.ops }}
       ios: ${{ steps.plan.outputs.ios }}
+      ios_mode: ${{ steps.plan.outputs.ios_mode }}
+      ios_selectors: ${{ steps.plan.outputs.ios_selectors }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -189,6 +191,10 @@ jobs:
     needs: changed-paths
     if: ${{ needs.changed-paths.outputs.ios == 'true' }}
     uses: ./.github/workflows/ios-quality.yml
+    # Empty/unknown values are resolved to the full path by ios-quality's plan job.
+    with:
+      ios_mode: ${{ needs.changed-paths.outputs.ios_mode }}
+      ios_selectors: ${{ needs.changed-paths.outputs.ios_selectors }}
 
   required:
     name: required
