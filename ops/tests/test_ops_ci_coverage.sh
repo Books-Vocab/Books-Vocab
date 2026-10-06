@@ -92,6 +92,9 @@ done
 # mention the file.  Not a full reachability scan; extend as files are routed.
 ROUTED_TESTS=(
   "ui-graph:ops/tests/test_ui_graph_contract.py"
+  "capability-matrix:ops/tests/test_compute_cli.py"
+  "capability-matrix:ops/tests/test_compute_router.py"
+  "capability-matrix:ops/tests/test_xmachine_transport.py"
 )
 
 # Print one group's case arm from a test_ops.sh-shaped file.
