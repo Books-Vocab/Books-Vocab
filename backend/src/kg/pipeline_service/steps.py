@@ -13,27 +13,26 @@ from ..vocab_graph import CANDIDATE_K, MAX_DEGREE, SIMILARITY_THRESHOLD
 
 
 class CardStoreFactory(Protocol):
-    def __call__(self, user_dir: Any) -> Any:
-        ...
+    def __call__(self, user_dir: Any) -> Any: ...
 
 
 class GraphStoreFactory(Protocol):
-    def __call__(self, user_dir: Any, notebook_id: str = "default") -> Any:
-        ...
+    def __call__(self, user_dir: Any, notebook_id: str = "default") -> Any: ...
 
 
 class EmbeddingStoreFactory(Protocol):
-    def __call__(self, user_dir: Any, llm: Any, notebook_id: str = "default") -> Any:
-        ...
+    def __call__(self, user_dir: Any, llm: Any, notebook_id: str = "default") -> Any: ...
 
 
 class ClientFactory(Protocol):
-    def __call__(self, provider: Any) -> Any:
-        ...
+    def __call__(self, provider: Any) -> Any: ...
 
 
 def _touch_linked_cards(
-    cards: Any, all_links: list[tuple], *, notebook_id: str | None = None,
+    cards: Any,
+    all_links: list[tuple],
+    *,
+    notebook_id: str | None = None,
 ) -> None:
     """Bump updated_at for all cards involved in newly created links.
 
@@ -59,9 +58,7 @@ async def _step_enrich(
 ) -> int:
     logger.info("[%s] Step 1: Enrich (force=%s, notebook=%s)", uid, force, notebook_id)
     cards = card_store_factory(user["dir"])
-    eligible_cards = list(
-        cards.all(include_deleted=False, notebook_id=notebook_id)
-    )
+    eligible_cards = list(cards.all(include_deleted=False, notebook_id=notebook_id))
     if force:
         targets = eligible_cards
     else:
@@ -102,6 +99,7 @@ async def _step_enrich(
                 if enrichment.get("pos"):
                     if force or not card.pos:
                         from ..vocab_shared import _normalize_pos
+
                         kwargs["pos"] = _normalize_pos(enrichment["pos"])
                 if enrichment.get("note"):
                     if force or not card.note:
@@ -136,6 +134,7 @@ async def _step_embed_and_judge(
     from ..judge import Judge
     from ..llm.providers import provider_for
     from ..tracked_llm import TrackedLLM
+
     is_pro = _is_pro(user)
 
     cards = card_store_factory(user["dir"])
@@ -154,9 +153,7 @@ async def _step_embed_and_judge(
 
     # ── Phase 1: Embed missing cards ──
     missing = [
-        card for card in cards.all(notebook_id=notebook_id)
-        if not embeddings.has(card.id)
-        and not card.is_archived
+        card for card in cards.all(notebook_id=notebook_id) if not embeddings.has(card.id) and not card.is_archived
     ]
     newly_embedded: list[str] = []
     if missing:
@@ -182,7 +179,8 @@ async def _step_embed_and_judge(
     user_config = user.get("config")
     auto_link_cfg = user_config.get("auto_link") if isinstance(user_config, dict) else None
     if isinstance(auto_link_cfg, dict) and not _normalize_persisted_bool(
-        auto_link_cfg.get("enabled"), default=True,
+        auto_link_cfg.get("enabled"),
+        default=True,
     ):
         logger.info("[%s] Auto-link disabled by user config; judge skipped", uid)
         return 0
@@ -202,9 +200,12 @@ async def _step_embed_and_judge(
         is_pro=is_pro,
     )
     from ..settings import load_settings
+
     judge = Judge(
-        judge_llm, model=judge_provider.chat_model,
-        user_id=uid, notebook_id=notebook_id,
+        judge_llm,
+        model=judge_provider.chat_model,
+        user_id=uid,
+        notebook_id=notebook_id,
         confidence_threshold=load_settings().judge_confidence_threshold,
     )
 
@@ -229,11 +230,7 @@ async def _step_embed_and_judge(
     eligible: list[tuple[str, Any, int]] = []
     for card_id in pending:
         card = cards_cache.get(card_id)
-        if (
-            not card
-            or card.is_deleted
-            or card.is_archived
-        ):
+        if not card or card.is_deleted or card.is_archived:
             continue
         current_degree = _active_degree(card_id)
         if current_degree >= MAX_DEGREE:
@@ -244,9 +241,7 @@ async def _step_embed_and_judge(
     failed_similarity_ids: list[str] = []
     if hasattr(embeddings, "find_similar_batch"):
         try:
-            similar_by_id = embeddings.find_similar_batch(
-                [cid for cid, _, _ in eligible], k=CANDIDATE_K
-            )
+            similar_by_id = embeddings.find_similar_batch([cid for cid, _, _ in eligible], k=CANDIDATE_K)
         except (OSError, ValueError) as exc:
             logger.warning("[%s] find_similar_batch failed: %s", uid, exc)
             failed_similarity_ids = list(dict.fromkeys(cid for cid, _, _ in eligible))
@@ -297,11 +292,7 @@ async def _step_embed_and_judge(
         filtered: list[tuple[str, str, str, float]] = []
         for other_id, score in candidates:
             other = others_cache.get(other_id)
-            if (
-                not other
-                or other.is_deleted
-                or other.is_archived
-            ):
+            if not other or other.is_deleted or other.is_archived:
                 continue
             if _active_degree(other_id) >= MAX_DEGREE:
                 continue
@@ -325,16 +316,22 @@ async def _step_embed_and_judge(
 
     futures: list[tuple[str, asyncio.Future]] = []
     for card_id, card, batch_cands, sims, max_links, _deg in judge_tasks:
-        futures.append((
-            card_id,
-            loop.run_in_executor(
-                executor,
-                lambda c=card, bc=batch_cands, s=sims, ml=max_links, fid=card_id: judge.evaluate_batch(
-                    c.content, c.meaning, bc,
-                    from_id=fid, similarities=s, max_links=ml,
+        futures.append(
+            (
+                card_id,
+                loop.run_in_executor(
+                    executor,
+                    lambda c=card, bc=batch_cands, s=sims, ml=max_links, fid=card_id: judge.evaluate_batch(
+                        c.content,
+                        c.meaning,
+                        bc,
+                        from_id=fid,
+                        similarities=s,
+                        max_links=ml,
+                    ),
                 ),
-            ),
-        ))
+            )
+        )
 
     # Track per-card link count to enforce MAX_DEGREE on both sides.
     # from_link_counts: from-side — seeded from current_degree computed in
@@ -342,16 +339,12 @@ async def _step_embed_and_judge(
     # to_link_counts: to-side (the other_id being linked TO) — tracks
     #   in-flight links so multiple pending cards don't exceed MAX_DEGREE
     #   on a shared target (C1 fix).
-    from_link_counts: dict[str, int] = {
-        cid: deg for cid, _, _, _, _, deg in judge_tasks
-    }
+    from_link_counts: dict[str, int] = {cid: deg for cid, _, _, _, _, deg in judge_tasks}
     to_link_counts: dict[str, int] = {}
 
     # Per-card similarity map for audit logging when degree cap forces a
     # reject — built lazily so we only pay if a cap actually fires.
-    sims_by_card: dict[str, dict[str, float]] = {
-        cid: s for cid, _, _, s, _, _ in judge_tasks
-    }
+    sims_by_card: dict[str, dict[str, float]] = {cid: s for cid, _, _, s, _, _ in judge_tasks}
 
     def _log_degree_cap(from_id: str, to_id: str, judgement) -> None:
         """Mark an LLM-accepted candidate as cap-evicted in judge_log.
@@ -367,20 +360,28 @@ async def _step_embed_and_judge(
             return
         try:
             from .. import judge_log
+
             updated = judge_log.update_to_rejected(
-                from_id, to_id, reason="degree_cap",
+                from_id,
+                to_id,
+                reason="degree_cap",
             )
             if not updated:
                 # Fallback: no prior accepted row (e.g. judge bypassed
                 # logging). Insert a fresh degree_cap row so the eviction
                 # is still observable.
                 judge_log.record(
-                    user_id=uid, notebook_id=notebook_id,
-                    from_id=from_id, to_id=to_id,
+                    user_id=uid,
+                    notebook_id=notebook_id,
+                    from_id=from_id,
+                    to_id=to_id,
                     similarity=sims_by_card.get(from_id, {}).get(to_id),
-                    verdict=judgement.link, confidence=judgement.confidence,
-                    accepted=False, reject_reason="degree_cap",
-                    reason=judgement.reason, source="auto",
+                    verdict=judgement.link,
+                    confidence=judgement.confidence,
+                    accepted=False,
+                    reject_reason="degree_cap",
+                    reason=judgement.reason,
+                    source="auto",
                 )
         except Exception:
             logger.warning("[%s] Failed to write degree_cap judge_log", uid, exc_info=True)
@@ -404,12 +405,15 @@ async def _step_embed_and_judge(
                 if to_link_counts[other_id] >= MAX_DEGREE:
                     _log_degree_cap(card_id, other_id, judgement)
                     continue
-                all_links.append((
-                    card_id, other_id,
-                    link_kind_enum(judgement.link),
-                    judgement.confidence,
-                    judgement.reason,
-                ))
+                all_links.append(
+                    (
+                        card_id,
+                        other_id,
+                        link_kind_enum(judgement.link),
+                        judgement.confidence,
+                        judgement.reason,
+                    )
+                )
                 from_link_counts[card_id] += 1
                 to_link_counts[other_id] += 1
             # Increment ONLY after a card's results are FULLY consumed.
@@ -429,8 +433,9 @@ async def _step_embed_and_judge(
         unprocessed_ids = [cid for cid, _ in futures[processed:]]
         if unprocessed_ids:
             graph.add_pending_judge(unprocessed_ids)
-        logger.warning("[%s] Judge interrupted at %d/%d, requeued %d",
-                      uid, processed, len(futures), len(unprocessed_ids))
+        logger.warning(
+            "[%s] Judge interrupted at %d/%d, requeued %d", uid, processed, len(futures), len(unprocessed_ids)
+        )
         if all_links:
             # Wrap both calls: a failure here must NOT mask the original
             # judge-loop exception that we're about to re-raise.
