@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+LibraryFormat = Literal["epub", "pdf", "txt", "md"]
 
 
 class BookMetadataResponse(BaseModel):
@@ -28,7 +32,7 @@ class BookCreateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     author: str | None = Field(default=None, max_length=200)
     language: str | None = Field(default=None, max_length=10)
-    format: str | None = Field(default=None, max_length=10)
+    format: LibraryFormat | None = None
 
 
 class BookUpdateRequest(BaseModel):
@@ -37,7 +41,7 @@ class BookUpdateRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     author: str | None = Field(default=None, max_length=200)
     language: str | None = Field(default=None, max_length=10)
-    format: str | None = Field(default=None, max_length=10)
+    format: LibraryFormat | None = None
     notebook_id: str | None = Field(default=None, max_length=64)
 
 
@@ -61,7 +65,7 @@ class AssetUploadRequest(BaseModel):
     Architecture PR #7: book asset (EPUB/PDF/TXT/MD) upload entitlement.
     """
 
-    format: str = Field(min_length=1, max_length=10)  # epub | pdf | txt | md
+    format: LibraryFormat
     byte_size: int = Field(ge=0)
     sha256: str | None = Field(default=None, max_length=64)
     local_only: bool = False
