@@ -33,6 +33,51 @@ def _digest(files: list[tuple[str, bytes]]) -> str:
     return digest.hexdigest()
 
 
+def _read_blobs(root: Path, pending: list[tuple[str, str]]) -> list[tuple[str, bytes]]:
+    """Read every blob with one ``git cat-file --batch`` process.
+
+    One ``git show`` per file cost ~80 s for this repository's 2400 files; a single
+    batch process takes a few seconds.
+    """
+
+    request = b"".join(
+        object_id.encode("ascii") + b"\n" for _relative, object_id in pending
+    )
+    result = subprocess.run(
+        ["git", "-C", str(root), "cat-file", "--batch"],
+        input=request,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode:
+        raise CapsuleError("tracked-read: cat-file")
+    out = result.stdout
+    position = 0
+    files: list[tuple[str, bytes]] = []
+    for relative, object_id in pending:
+        newline = out.find(b"\n", position)
+        if newline < 0:
+            raise CapsuleError(f"tracked-read: {relative}")
+        header = out[position:newline].split(b" ")
+        if (
+            len(header) != 3
+            or header[0].decode("ascii", "replace") != object_id
+            or header[1] != b"blob"
+        ):
+            raise CapsuleError(f"tracked-read: {relative}")
+        try:
+            size = int(header[2])
+        except ValueError:
+            raise CapsuleError(f"tracked-read: {relative}") from None
+        start = newline + 1
+        end = start + size
+        if end >= len(out) + 1 or out[end : end + 1] != b"\n":
+            raise CapsuleError(f"tracked-read: {relative}")
+        files.append((relative, out[start:end]))
+        position = end + 1
+    return files
+
+
 def _symlink_stays_in_tree(root: Path, commit: str, relative: str) -> bool:
     """True when a tracked symlink's target is a relative path inside the tree."""
 
@@ -97,11 +142,11 @@ def materialize_tracked_capsule(
         )
         if entry
     ]
-    files: list[tuple[str, bytes]] = []
+    pending: list[tuple[str, str]] = []
     excluded_symlinks: list[str] = []
     for entry in entries:
         meta, relative = entry.split("\t", 1)
-        mode, kind, _object = meta.split(" ", 2)
+        mode, kind, object_id = meta.split(" ", 2)
         if kind == "blob" and mode == "120000":
             # Tracked symlinks (e.g. AGENTS.md -> CLAUDE.md) are repository
             # conventions whose real targets are regular tracked files already in
@@ -116,14 +161,8 @@ def materialize_tracked_capsule(
             raise CapsuleError(f"special-file: {relative}")
         if relative.startswith(".git/") or relative == ".git":
             raise CapsuleError("git-metadata")
-        data = subprocess.run(
-            ["git", "-C", str(root), "show", f"{commit}:{relative}"],
-            capture_output=True,
-            check=False,
-        )
-        if data.returncode:
-            raise CapsuleError(f"tracked-read: {relative}")
-        files.append((relative, data.stdout))
+        pending.append((relative, object_id))
+    files = _read_blobs(root, pending)
     files.sort()
     if dest.exists():
         if any(dest.iterdir()):

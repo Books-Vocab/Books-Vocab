@@ -289,3 +289,37 @@ def test_tracked_capsule_handles_non_ascii_and_spaced_paths(tmp_path: Path):
         assert (capsule.materialized_root / name).read_text(
             encoding="utf-8"
         ) == f"content of {name}\n"
+
+
+def test_tracked_capsule_batch_read_preserves_binary_empty_and_large_blobs(
+    tmp_path: Path,
+):
+    repo = tmp_path / "repo-blobs"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    payloads = {
+        "empty.txt": b"",
+        "binary.bin": bytes(range(256)) * 4 + b"\n\n\r\n\x00end",
+        "ends-with-newline.txt": b"line\n",
+        "large.dat": (b"0123456789abcdef" * 70000) + b"\n",
+        "same-a.txt": b"identical\n",
+        "same-b.txt": b"identical\n",
+    }
+    for name, data in payloads.items():
+        (repo / name).write_bytes(data)
+    _git(repo, "add", ".")
+    _git(
+        repo,
+        "-c",
+        "user.name=fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-qm",
+        "fixture",
+    )
+    commit = _git(repo, "rev-parse", "HEAD")
+    capsule = materialize_tracked_capsule(repo, commit, tmp_path / "capsule")
+    assert sorted(capsule.files) == sorted(payloads)
+    for name, data in payloads.items():
+        assert (capsule.materialized_root / name).read_bytes() == data, name
