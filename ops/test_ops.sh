@@ -151,6 +151,7 @@ run_one() {
         ops/tests/test_compute_executor.py \
         ops/tests/test_compute_gate_adapter.py \
         ops/tests/test_compute_router.py \
+        ops/tests/test_felix_compute_launcher.py \
         ops/tests/test_xmachine_transport.py
       ;;
     context-routing)
