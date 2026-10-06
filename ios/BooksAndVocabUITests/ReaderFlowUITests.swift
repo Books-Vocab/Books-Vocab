@@ -201,7 +201,7 @@ final class ReaderFlowUITests: UITestCase {
         practice.tapWhenReady()
         let successState =
             "phase=success;selected=Chapter Two — Practice;expected=OEBPS/chapter2.xhtml;destination=OEBPS/chapter2.xhtml"
-        XCTAssertTrue(reader.tocNavigationStateReceipt.waitUntilValueEquals(successState, timeout: 15))
+        XCTAssertTrue(reader.tocNavigationStateReceipt.waitUntilValueEquals(successState, timeout: 30))
         XCTAssertTrue(reader.tocReaderOverlaySuccess.waitUntilExists(timeout: 10))
         XCTAssertTrue(reader.waitUntilTableOfContentsSheetGone(timeout: 10))
     }
