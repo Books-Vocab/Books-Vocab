@@ -1,166 +1,405 @@
-"""Bounded xmachine transport and Oscar-side Felix result verification."""
+"""Oscar-side adapter for the fixed Felix compute launcher.
+
+Boundary rules (the agent never sees any of this):
+
+* Exactly one launcher executable is ever invoked, as a literal ``list[str]``
+  argv with ``shell=False``.  Verbs and option names are a closed set; every
+  dynamic value (CSPRNG job id, hex digest, closed profile key, typed profile
+  parameter) becomes its own argv element and is never interpolated, evaluated
+  or echoed into heartbeats/logs.
+* The launcher owns ssh/xmachine, source transfer, remote paths, PIDs and
+  cleanup.  This module only builds argv, parses one JSON object from stdout,
+  and verifies what comes back.
+* A Felix result is trusted only after Oscar verifies the pinned-key
+  signature, nonce, request digest, source/spec/runner identity, freshness,
+  log digest and replay ledger, has persisted the result atomically, and has
+  returned a one-time HMAC ACK.
+"""
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import hashlib
-import hmac
 import json
+import os
 import re
-from typing import Any, Sequence
+import secrets
+import subprocess
+import tempfile
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
 
-SCHEMA = "kg.compute.transport.v1"
-REQUEST_SCHEMA = "kg.compute.request.v1"
-RESULT_SCHEMA = "kg.compute.result.v1"
-_SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
-_FORBIDDEN_TRANSPORT_TOKENS = frozenset(
-    {"--identity-file", "--private-key", "SSH_AUTH_SOCK", "Authorization"}
+from lib.compute_receipt import (
+    AckReplayError,
+    OscarAckAuthority,
+    ReceiptError,
+    ReceiptSigner,
 )
+
+OPS_DIR = Path(__file__).resolve().parents[1]
+LAUNCHER = OPS_DIR / "felix_compute_launcher.py"
+RECEIPT_SCHEMA = "kg.compute.receipt.v1"
+VERBS = ("probe", "submit", "fetch", "ack")
+RECEIPT_MAX_AGE_SECONDS = 600.0
+
+_HEX32 = re.compile(r"^[0-9a-f]{32}$")
+_HEX40 = re.compile(r"^[0-9a-f]{40}$")
+_HEX64 = re.compile(r"^[0-9a-f]{64}$")
+_PROFILE_KEY = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
+_PARAM_NAME = re.compile(r"^[a-z][a-z0-9_]*$")
+# option -> value validator; the only dynamic fields a launcher call may carry
+_LOCAL_PATH = re.compile(r"^/[^\x00-\x1f]+$")
+_FIELDS: dict[str, re.Pattern[str]] = {
+    "nonce": _HEX32,
+    "request-digest": _HEX64,
+    "commit": _HEX40,
+    "tree-digest": _HEX64,
+    "spec-digest": _HEX64,
+    "receipt-digest": _HEX64,
+    "ack-token": _HEX32,
+    "ack-mac": _HEX64,
+    "profile": _PROFILE_KEY,
+    "capsule": _LOCAL_PATH,  # Oscar-local capsule root; the launcher owns the remote side
+}
 
 
 class TransportError(ValueError):
-    """Named fail-closed transport or verification refusal."""
+    """Named transport/verification refusal; ``code`` is stable."""
+
+    def __init__(self, code: str, detail: str = "") -> None:
+        self.code = code
+        super().__init__(f"{code}: {detail}" if detail else code)
 
 
-def _canonical(payload: dict[str, Any]) -> bytes:
+Runner = Callable[[list[str]], "subprocess.CompletedProcess[str]"]
+
+
+def new_job_id() -> str:
+    return secrets.token_hex(16)
+
+
+def new_nonce() -> str:
+    return secrets.token_hex(16)
+
+
+def canonical(value: Any) -> bytes:
     return json.dumps(
-        {key: value for key, value in payload.items() if key != "signature"},
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode()
 
 
-def sign_request(payload: dict[str, Any], signing_key: str) -> str:
-    if not isinstance(signing_key, str) or not signing_key:
-        raise TransportError("verification: signing key is required")
-    return hmac.new(
-        signing_key.encode("utf-8"), _canonical(payload), hashlib.sha256
+def request_digest(
+    *,
+    job_id: str,
+    nonce: str,
+    profile: str,
+    spec_digest: str,
+    commit: str,
+    tree_digest: str,
+) -> str:
+    return hashlib.sha256(
+        canonical(
+            {
+                "commit": commit,
+                "job_id": job_id,
+                "nonce": nonce,
+                "profile": profile,
+                "spec_digest": spec_digest,
+                "tree_digest": tree_digest,
+            }
+        )
     ).hexdigest()
 
 
-def build_xmachine_argv(child_argv: Sequence[str]) -> list[str]:
-    """Build the only permitted remote launcher argv; no shell or SSH secret."""
-
-    if not child_argv or not all(
-        isinstance(token, str) and token for token in child_argv
-    ):
-        raise TransportError("launcher: child argv must be non-empty literal strings")
-    if any(token in _FORBIDDEN_TRANSPORT_TOKENS for token in child_argv):
-        raise TransportError("launcher: raw transport secret or credential flag")
-    return ["xmachine", "felix", "--", *child_argv]
-
-
-def make_request(
+def build_argv(
+    verb: str,
     *,
-    request_id: str,
-    nonce: str,
-    profile: str,
-    argv: Sequence[str],
-    source_head: str,
-    profile_digest: str,
-    runner_image_digest: str,
-    sandbox_policy: str,
-    issued_at: int,
-    expires_at: int,
-    signing_key: str,
-    source_root: str = "",
-    source_clean: bool = True,
-) -> dict[str, Any]:
-    request: dict[str, Any] = {
-        "schema": REQUEST_SCHEMA,
-        "request_id": request_id,
-        "nonce": nonce,
-        "profile": profile,
-        "argv": list(argv),
-        "source_head": source_head,
-        "profile_digest": profile_digest,
-        "runner_image_digest": runner_image_digest,
-        "sandbox_policy": sandbox_policy,
-        "source_root": source_root,
-        "source_clean": source_clean,
-        "issued_at": issued_at,
-        "expires_at": expires_at,
-    }
-    request["signature"] = sign_request(request, signing_key)
-    return request
+    job_id: str,
+    fields: dict[str, str] | None = None,
+    params: dict[str, str] | None = None,
+    launcher: Path | str = LAUNCHER,
+) -> list[str]:
+    """Return the literal launcher argv; every dynamic value is its own element."""
+
+    if verb not in VERBS:
+        raise TransportError("verb", verb)
+    if not isinstance(job_id, str) or not _HEX32.fullmatch(job_id):
+        raise TransportError("job-id")
+    argv: list[str] = [str(launcher), verb, "--job-id", job_id]
+    for key in sorted(fields or {}):
+        pattern = _FIELDS.get(key)
+        value = (fields or {})[key]
+        if pattern is None:
+            raise TransportError("field", key)
+        if not isinstance(value, str) or not pattern.fullmatch(value):
+            raise TransportError("field-value", key)
+        argv.extend([f"--{key}", value])
+    for name in sorted(params or {}):
+        value = (params or {})[name]
+        if not _PARAM_NAME.fullmatch(name) or not isinstance(value, str) or not value:
+            raise TransportError("param", name)
+        if "\x00" in value:
+            raise TransportError("param", name)
+        argv.extend(["--param", name, value])
+    return argv
 
 
-def _fail(detail: str) -> None:
-    raise TransportError(f"verification: {detail}")
+def streamed_runner(job_id: str, cwd: Path) -> Runner:
+    """Default runner: secret-safe heartbeat on stderr, stdout kept for JSON."""
+
+    from lib.streaming_command import run_streamed_command
+
+    def run(argv: list[str]) -> "subprocess.CompletedProcess[str]":
+        return run_streamed_command(
+            argv,
+            cwd=cwd,
+            label_key="job",
+            label=job_id,
+            progress_prefix="[compute][felix]",
+            timeout_seconds=900.0,
+        )
+
+    return run
 
 
-def verify_remote_result(
-    request: dict[str, Any],
-    result: dict[str, Any],
+class XmachineTransport:
+    def __init__(self, *, runner: Runner, launcher: Path | str = LAUNCHER) -> None:
+        self._runner = runner
+        self._launcher = Path(launcher)
+
+    def _call(self, verb: str, job_id: str, **kwargs: Any) -> dict[str, Any]:
+        if not self._launcher.is_file():
+            raise TransportError("launcher-missing")
+        argv = build_argv(verb, job_id=job_id, launcher=self._launcher, **kwargs)
+        assert all(isinstance(item, str) for item in argv)
+        try:
+            completed = self._runner(argv)
+        except OSError as error:
+            raise TransportError("launcher-exec", type(error).__name__) from error
+        if completed.returncode != 0:
+            raise TransportError("launcher-exit", str(completed.returncode))
+        try:
+            payload = json.loads(completed.stdout)
+        except (TypeError, json.JSONDecodeError) as error:
+            raise TransportError("launcher-output") from error
+        if not isinstance(payload, dict):
+            raise TransportError("launcher-output")
+        return payload
+
+    def probe(self, job_id: str) -> dict[str, Any]:
+        return self._call("probe", job_id)
+
+    def submit(
+        self, job_id: str, *, fields: dict[str, str], params: dict[str, str]
+    ) -> dict[str, Any]:
+        return self._call("submit", job_id, fields=fields, params=params)
+
+    def fetch(self, job_id: str) -> dict[str, Any]:
+        return self._call("fetch", job_id)
+
+    def ack(self, job_id: str, *, fields: dict[str, str]) -> dict[str, Any]:
+        return self._call("ack", job_id, fields=fields)
+
+
+def verify_receipt(
+    receipt: Any,
+    log: Any,
     *,
-    signing_key: str,
-    now: int,
+    signer: ReceiptSigner,
+    expected: dict[str, Any],
+    caller_host_id: str,
+    now: float,
+    max_age: float = RECEIPT_MAX_AGE_SECONDS,
 ) -> dict[str, Any]:
-    """Verify every Oscar/Felix binding before accepting a remote artifact."""
+    """Verify a Felix receipt against what Oscar requested; raise on any doubt."""
 
-    if request.get("schema") != REQUEST_SCHEMA or result.get("schema") != RESULT_SCHEMA:
-        _fail("schema")
+    try:
+        body = signer.verify(receipt)
+    except ReceiptError as error:
+        raise TransportError("receipt-signature") from error
+    if body.get("schema") != RECEIPT_SCHEMA:
+        raise TransportError("receipt-schema")
+    for key, code in (
+        ("job_id", "receipt-job"),
+        ("nonce", "receipt-nonce"),
+        ("request_digest", "receipt-request-digest"),
+        ("profile", "receipt-profile"),
+        ("spec_digest", "receipt-spec"),
+        ("runner_image_digest", "receipt-runner"),
+    ):
+        if body.get(key) != expected.get(key):
+            raise TransportError(code)
+    source = body.get("source")
+    if not isinstance(source, dict) or source != {
+        "commit_sha": expected["commit_sha"],
+        "tree_sha256": expected["tree_sha256"],
+    }:
+        raise TransportError("receipt-source")
+    host = body.get("host")
     if (
-        not isinstance(now, int)
-        or not isinstance(request.get("issued_at"), int)
-        or not isinstance(request.get("expires_at"), int)
+        not isinstance(host, dict)
+        or host.get("host_role") != "felix"
+        or not isinstance(host.get("host_id"), str)
+        or host["host_id"] == caller_host_id
     ):
-        _fail("freshness")
-    if not request["issued_at"] <= now <= request["expires_at"]:
-        raise TransportError("freshness: request is outside its validity window")
+        raise TransportError("receipt-host")
+    issued = body.get("issued_at")
     if (
-        not isinstance(result.get("finished_at"), int)
-        or not request["issued_at"] <= result["finished_at"] <= request["expires_at"]
+        not isinstance(issued, (int, float))
+        or isinstance(issued, bool)
+        or now - issued > max_age
+        or issued > now + 5
     ):
-        raise TransportError("freshness: result is outside request validity window")
-
-    for field in (
-        "request_id",
-        "nonce",
-        "profile",
-        "source_head",
-        "runner_image_digest",
-        "sandbox_policy",
-    ):
-        if result.get(field) != request.get(field):
-            _fail(field)
-    for field in ("profile_digest", "source_root", "source_clean"):
-        if field in request and result.get(field) != request.get(field):
-            _fail(field)
-    if result.get("signature") != sign_request(result, signing_key):
-        _fail("signature")
-
-    if request.get("signature") != sign_request(request, signing_key):
-        _fail("request signature")
-
-    artifact = result.get("artifact")
-    if not isinstance(artifact, dict):
-        raise TransportError("artifact: missing artifact object")
-    path = artifact.get("path")
+        raise TransportError("receipt-stale")
     if (
-        not isinstance(path, str)
-        or not path.startswith(".cache/compute/")
-        or "/../" in f"/{path}"
+        not isinstance(log, str)
+        or body.get("log_digest") != hashlib.sha256(log.encode()).hexdigest()
     ):
-        raise TransportError("artifact: path must remain in current worktree cache")
-    if not isinstance(artifact.get("sha256"), str) or not _SHA256.fullmatch(
-        artifact["sha256"]
+        raise TransportError("receipt-log-digest")
+    if not isinstance(body.get("returncode"), int) or isinstance(
+        body.get("returncode"), bool
     ):
-        raise TransportError("artifact: invalid sha256")
-    if not isinstance(artifact.get("bytes"), int) or artifact["bytes"] < 0:
-        raise TransportError("artifact: invalid byte count")
+        raise TransportError("receipt-schema")
+    if not isinstance(body.get("artifact_digests"), dict):
+        raise TransportError("receipt-schema")
+    return body
 
-    ack = result.get("ack")
-    if (
-        not isinstance(ack, dict)
-        or ack.get("request_id") != request["request_id"]
-        or ack.get("nonce") != request["nonce"]
-        or ack.get("status") != "ok"
-    ):
-        raise TransportError("ack: request was not acknowledged")
-    return {
-        "schema": SCHEMA,
-        "verdict": "accepted",
-        "reason_code": "remote-result-accepted",
-    }
+
+@contextlib.contextmanager
+def _locked(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.with_name(f".{path.name}.lock").open("a+") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+
+def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(payload, stream, sort_keys=True, ensure_ascii=False, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def _replay_key(body: dict[str, Any]) -> str:
+    return f"{body['job_id']}:{body['nonce']}"
+
+
+def _ledger_read(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise TransportError("replay-ledger") from error
+    if not isinstance(value, dict):
+        raise TransportError("replay-ledger")
+    return value
+
+
+def accept_receipt(
+    receipt: Any,
+    log: Any,
+    *,
+    transport: XmachineTransport,
+    signer: ReceiptSigner,
+    authority: OscarAckAuthority,
+    expected: dict[str, Any],
+    caller_host_id: str,
+    cache_root: Path,
+    now: float,
+) -> dict[str, Any]:
+    """verify -> replay check -> atomic persist -> record -> one-time ACK.
+
+    Nothing trusted is produced unless every step succeeds in that order, and a
+    result is never written for a receipt that failed verification.
+    """
+
+    body = verify_receipt(
+        receipt,
+        log,
+        signer=signer,
+        expected=expected,
+        caller_host_id=caller_host_id,
+        now=now,
+    )
+    job_id = body["job_id"]
+    ledger_path = cache_root / "replay-ledger.json"
+    result_path = cache_root / job_id / "result.json"
+    with _locked(ledger_path):
+        ledger = _ledger_read(ledger_path)
+        if _replay_key(body) in ledger:
+            raise TransportError("receipt-replay")
+        result = {
+            "schema": RECEIPT_SCHEMA,
+            "job_id": job_id,
+            "receipt": body,
+            "receipt_digest": body["receipt_digest"],
+            "signature_verified": True,
+            "nonce_verified": True,
+            "replay_checked": True,
+            "log": log,
+        }
+        atomic_write_json(result_path, result)
+        ledger[_replay_key(body)] = {
+            "receipt_digest": body["receipt_digest"],
+            "at": now,
+        }
+        atomic_write_json(ledger_path, ledger)
+    ack = authority.issue(job_id, body["receipt_digest"])
+    try:
+        outcome = transport.ack(
+            job_id,
+            fields={
+                "ack-token": ack["token"],
+                "ack-mac": ack["mac"],
+                "receipt-digest": ack["receipt_digest"],
+            },
+        )
+    except TransportError as error:
+        raise TransportError("ack-failed", error.code) from error
+    if outcome.get("cleanup") != "acked":
+        raise TransportError("ack-failed", "cleanup")
+    echoed = outcome.get("ack")
+    try:
+        if not isinstance(echoed, dict) or not authority.verify(echoed):
+            raise TransportError("ack-failed", "mac")
+    except AckReplayError as error:
+        raise TransportError("ack-failed", "mac") from error
+    result.update(
+        {
+            "ack_verified": True,
+            "cleanup": {"state": "acked"},
+            "result_path": str(result_path),
+        }
+    )
+    atomic_write_json(result_path, result)
+    return result
+
+
+__all__ = [
+    "AckReplayError",
+    "LAUNCHER",
+    "RECEIPT_SCHEMA",
+    "TransportError",
+    "XmachineTransport",
+    "accept_receipt",
+    "atomic_write_json",
+    "build_argv",
+    "new_job_id",
+    "new_nonce",
+    "request_digest",
+    "streamed_runner",
+    "verify_receipt",
+]
