@@ -50,7 +50,9 @@ from lib.compute_router import TARGETS, RouterError, decide
 class CliError(ValueError):
     """A named refusal at the CLI boundary."""
 
-    def __init__(self, code: str, detail: str = "", reasons: list[str] | None = None) -> None:
+    def __init__(
+        self, code: str, detail: str = "", reasons: list[str] | None = None
+    ) -> None:
         self.code = code
         self.reasons = reasons or []
         super().__init__(f"{code}: {detail}" if detail else code)
@@ -194,7 +196,9 @@ def _receipt_signer(registry: dict[str, Any]) -> ReceiptSigner | None:
         return None
 
 
-def _transport(args: argparse.Namespace, job_id: str) -> transport_lib.XmachineTransport:
+def _transport(
+    args: argparse.Namespace, job_id: str
+) -> transport_lib.XmachineTransport:
     return transport_lib.XmachineTransport(
         runner=transport_lib.streamed_runner(job_id, args.repo.resolve())
     )
@@ -209,7 +213,9 @@ def _ack_authority(cache: Path) -> OscarAckAuthority:
         fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, "wb") as stream:
             stream.write(os.urandom(32))
-    return OscarAckAuthority(cache / "controller" / "ack-ledger.json", key=key_path.read_bytes())
+    return OscarAckAuthority(
+        cache / "controller" / "ack-ledger.json", key=key_path.read_bytes()
+    )
 
 
 def _probe_felix(
@@ -225,8 +231,15 @@ def _probe_felix(
     probe = {
         key: raw.get(key)
         for key in (
-            "reachable", "host_id", "host_role", "admitted", "runner_verified",
-            "sandbox_ok", "production_healthy", "warmup_seconds", "transfer_seconds",
+            "reachable",
+            "host_id",
+            "host_role",
+            "admitted",
+            "runner_verified",
+            "sandbox_ok",
+            "production_healthy",
+            "warmup_seconds",
+            "transfer_seconds",
         )
     }
     probe["observed_at"] = _now()
@@ -244,7 +257,11 @@ def _route(
 ) -> dict[str, Any]:
     profile = registry["profiles"][resolved["profile"]]
     remote_eligible = profile["remote_eligible"] is True
-    local = {"clean": repo_state["clean"], "missing_capabilities": missing, **_local_load()}
+    local = {
+        "clean": repo_state["clean"],
+        "missing_capabilities": missing,
+        **_local_load(),
+    }
     felix = None
     # Probe only when a remote answer is possible; local never touches transport.
     if args.target != "local" and remote_eligible:
@@ -297,7 +314,9 @@ def _run_felix(
 
     signer = _receipt_signer(registry)
     if signer is None:
-        raise CliError("router-refused", "receipt-key-unpinned", ["receipt-key-unpinned"])
+        raise CliError(
+            "router-refused", "receipt-key-unpinned", ["receipt-key-unpinned"]
+        )
     cache = _cache_root(args)
     job_id = transport_lib.new_job_id()
     nonce = transport_lib.new_nonce()
@@ -309,8 +328,11 @@ def _run_felix(
         raise CliError("source-capsule", str(error)) from error
     spec = resolved["spec"]
     digest = transport_lib.request_digest(
-        job_id=job_id, nonce=nonce, profile=resolved["profile"],
-        spec_digest=resolved["spec_digest"], commit=capsule.commit,
+        job_id=job_id,
+        nonce=nonce,
+        profile=resolved["profile"],
+        spec_digest=resolved["spec_digest"],
+        commit=capsule.commit,
         tree_digest=capsule.tree_sha256,
     )
     transport = _transport(args, job_id)
@@ -318,8 +340,11 @@ def _run_felix(
         transport.submit(
             job_id,
             fields={
-                "nonce": nonce, "request-digest": digest, "commit": capsule.commit,
-                "tree-digest": capsule.tree_sha256, "profile": resolved["profile"],
+                "nonce": nonce,
+                "request-digest": digest,
+                "commit": capsule.commit,
+                "tree-digest": capsule.tree_sha256,
+                "profile": resolved["profile"],
                 "spec-digest": resolved["spec_digest"],
                 "capsule": str(capsule.materialized_root),
             },
@@ -327,15 +352,24 @@ def _run_felix(
         )
         fetched = transport.fetch(job_id)
         accepted = transport_lib.accept_receipt(
-            fetched.get("receipt"), fetched.get("log"),
-            transport=transport, signer=signer, authority=_ack_authority(cache),
+            fetched.get("receipt"),
+            fetched.get("log"),
+            transport=transport,
+            signer=signer,
+            authority=_ack_authority(cache),
             expected={
-                "job_id": job_id, "nonce": nonce, "request_digest": digest,
-                "profile": resolved["profile"], "spec_digest": resolved["spec_digest"],
+                "job_id": job_id,
+                "nonce": nonce,
+                "request_digest": digest,
+                "profile": resolved["profile"],
+                "spec_digest": resolved["spec_digest"],
                 "runner_image_digest": spec["runner_image_digest"],
-                "commit_sha": capsule.commit, "tree_sha256": capsule.tree_sha256,
+                "commit_sha": capsule.commit,
+                "tree_sha256": capsule.tree_sha256,
             },
-            caller_host_id=platform.node(), cache_root=cache, now=_now(),
+            caller_host_id=platform.node(),
+            cache_root=cache,
+            now=_now(),
         )
     except transport_lib.TransportError as error:
         raise CliError("felix-run", error.code) from error
@@ -412,10 +446,16 @@ def _run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if missing:
         raise CliError("missing-capability", ",".join(missing))
     registry = load_profile_registry(args.registry)
-    decision = _route(args, resolved=resolved, registry=registry, repo_state=git, missing=missing)
+    decision = _route(
+        args, resolved=resolved, registry=registry, repo_state=git, missing=missing
+    )
     if decision["target"] == "felix":
         return _run_felix(
-            args, resolved=resolved, registry=registry, repo_state=git, decision=decision
+            args,
+            resolved=resolved,
+            registry=registry,
+            repo_state=git,
+            decision=decision,
         )
     argv = list(resolved["argv"])
     started = time.monotonic()
@@ -476,7 +516,9 @@ def _status(args: argparse.Namespace) -> dict[str, Any]:
     git = _git_state(args.repo.resolve())
     capabilities = sorted(_available_capabilities())
     remote_profiles = sorted(
-        name for name, profile in registry["profiles"].items() if profile["remote_eligible"]
+        name
+        for name, profile in registry["profiles"].items()
+        if profile["remote_eligible"]
     )
     felix = None
     if args.target != "local" and remote_profiles:
@@ -521,7 +563,9 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("--param", action="append", default=[])
         command.add_argument("--test-path")
         command.add_argument("--target", choices=TARGETS, default="auto")
-    status = commands.add_parser("status", help="observe registry, runner and routing state")
+    status = commands.add_parser(
+        "status", help="observe registry, runner and routing state"
+    )
     status.add_argument("--target", choices=TARGETS, default="auto")
     return parser
 

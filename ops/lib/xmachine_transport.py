@@ -31,7 +31,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from lib.compute_receipt import AckReplayError, OscarAckAuthority, ReceiptError, ReceiptSigner
+from lib.compute_receipt import (
+    AckReplayError,
+    OscarAckAuthority,
+    ReceiptError,
+    ReceiptSigner,
+)
 
 OPS_DIR = Path(__file__).resolve().parents[1]
 LAUNCHER = OPS_DIR / "felix_compute_launcher.py"
@@ -80,11 +85,19 @@ def new_nonce() -> str:
 
 
 def canonical(value: Any) -> bytes:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    return json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode()
 
 
 def request_digest(
-    *, job_id: str, nonce: str, profile: str, spec_digest: str, commit: str, tree_digest: str
+    *,
+    job_id: str,
+    nonce: str,
+    profile: str,
+    spec_digest: str,
+    commit: str,
+    tree_digest: str,
 ) -> str:
     return hashlib.sha256(
         canonical(
@@ -240,9 +253,14 @@ def verify_receipt(
         or issued > now + 5
     ):
         raise TransportError("receipt-stale")
-    if not isinstance(log, str) or body.get("log_digest") != hashlib.sha256(log.encode()).hexdigest():
+    if (
+        not isinstance(log, str)
+        or body.get("log_digest") != hashlib.sha256(log.encode()).hexdigest()
+    ):
         raise TransportError("receipt-log-digest")
-    if not isinstance(body.get("returncode"), int) or isinstance(body.get("returncode"), bool):
+    if not isinstance(body.get("returncode"), int) or isinstance(
+        body.get("returncode"), bool
+    ):
         raise TransportError("receipt-schema")
     if not isinstance(body.get("artifact_digests"), dict):
         raise TransportError("receipt-schema")
@@ -309,7 +327,12 @@ def accept_receipt(
     """
 
     body = verify_receipt(
-        receipt, log, signer=signer, expected=expected, caller_host_id=caller_host_id, now=now
+        receipt,
+        log,
+        signer=signer,
+        expected=expected,
+        caller_host_id=caller_host_id,
+        now=now,
     )
     job_id = body["job_id"]
     ledger_path = cache_root / "replay-ledger.json"
@@ -329,7 +352,10 @@ def accept_receipt(
             "log": log,
         }
         atomic_write_json(result_path, result)
-        ledger[_replay_key(body)] = {"receipt_digest": body["receipt_digest"], "at": now}
+        ledger[_replay_key(body)] = {
+            "receipt_digest": body["receipt_digest"],
+            "at": now,
+        }
         atomic_write_json(ledger_path, ledger)
     ack = authority.issue(job_id, body["receipt_digest"])
     try:
@@ -351,7 +377,13 @@ def accept_receipt(
             raise TransportError("ack-failed", "mac")
     except AckReplayError as error:
         raise TransportError("ack-failed", "mac") from error
-    result.update({"ack_verified": True, "cleanup": {"state": "acked"}, "result_path": str(result_path)})
+    result.update(
+        {
+            "ack_verified": True,
+            "cleanup": {"state": "acked"},
+            "result_path": str(result_path),
+        }
+    )
     atomic_write_json(result_path, result)
     return result
 

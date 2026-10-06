@@ -27,7 +27,12 @@ PROFILE = "ops.docs-lint-registry"
 def _ids():
     job, nonce = xt.new_job_id(), xt.new_nonce()
     digest = xt.request_digest(
-        job_id=job, nonce=nonce, profile=PROFILE, spec_digest=SPEC, commit=COMMIT, tree_digest=TREE
+        job_id=job,
+        nonce=nonce,
+        profile=PROFILE,
+        spec_digest=SPEC,
+        commit=COMMIT,
+        tree_digest=TREE,
     )
     expected = {
         "job_id": job,
@@ -137,7 +142,11 @@ def test_call_uses_runner_with_list_argv_and_parses_single_json(tmp_path):
 
 @pytest.mark.parametrize(
     ("stdout", "returncode", "code"),
-    [("not json", 0, "launcher-output"), ("[1]", 0, "launcher-output"), ("{}", 3, "launcher-exit")],
+    [
+        ("not json", 0, "launcher-output"),
+        ("[1]", 0, "launcher-output"),
+        ("{}", 3, "launcher-exit"),
+    ],
 )
 def test_call_fails_closed_on_bad_launcher_output(tmp_path, stdout, returncode, code):
     transport = xt.XmachineTransport(
@@ -252,7 +261,9 @@ class FakeTransport:
         return {"cleanup": self.cleanup, **({"ack": ack} if self.echo else {})}
 
 
-def _accept(tmp_path, signer, pinned, expected, receipt, *, transport=None, authority=None):
+def _accept(
+    tmp_path, signer, pinned, expected, receipt, *, transport=None, authority=None
+):
     authority = authority or OscarAckAuthority(tmp_path / "ack.json", key=b"k" * 32)
     transport = transport or FakeTransport(authority)
     return xt.accept_receipt(
@@ -270,15 +281,23 @@ def _accept(tmp_path, signer, pinned, expected, receipt, *, transport=None, auth
 
 def test_accept_persists_before_ack_and_reports_acked(tmp_path, signer, pinned):
     expected = _ids()
-    result, transport = _accept(tmp_path, signer, pinned, expected, _receipt(signer, expected))
+    result, transport = _accept(
+        tmp_path, signer, pinned, expected, _receipt(signer, expected)
+    )
     path = Path(result["result_path"])
     assert path == tmp_path / "cache" / expected["job_id"] / "result.json"
     stored = json.loads(path.read_text())
     assert stored["ack_verified"] is True and stored["cleanup"] == {"state": "acked"}
-    assert stored["signature_verified"] and stored["nonce_verified"] and stored["replay_checked"]
+    assert (
+        stored["signature_verified"]
+        and stored["nonce_verified"]
+        and stored["replay_checked"]
+    )
     assert len(transport.acks) == 1
     assert not list((tmp_path / "cache").rglob(".*.tmp")) and not [
-        p for p in (tmp_path / "cache" / expected["job_id"]).iterdir() if p.name != "result.json"
+        p
+        for p in (tmp_path / "cache" / expected["job_id"]).iterdir()
+        if p.name != "result.json"
     ]
 
 
@@ -298,7 +317,11 @@ def test_invalid_receipt_writes_no_result_and_no_ack(tmp_path, signer, pinned):
     transport = FakeTransport(OscarAckAuthority(tmp_path / "ack.json", key=b"k" * 32))
     with pytest.raises(xt.TransportError):
         _accept(
-            tmp_path, signer, pinned, expected, _receipt(signer, expected, nonce="e" * 32),
+            tmp_path,
+            signer,
+            pinned,
+            expected,
+            _receipt(signer, expected, nonce="e" * 32),
             transport=transport,
         )
     assert transport.acks == [] and not (tmp_path / "cache").exists()
@@ -309,13 +332,24 @@ def test_ack_must_be_verified_end_to_end(tmp_path, signer, pinned, kind):
     expected = _ids()
     authority = OscarAckAuthority(tmp_path / "ack.json", key=b"k" * 32)
     transport = FakeTransport(
-        authority, cleanup="pending" if kind == "no-cleanup" else "acked", echo=kind != "no-echo"
+        authority,
+        cleanup="pending" if kind == "no-cleanup" else "acked",
+        echo=kind != "no-echo",
     )
     with pytest.raises(xt.TransportError) as caught:
-        _accept(tmp_path, signer, pinned, expected, _receipt(signer, expected),
-                transport=transport, authority=authority)
+        _accept(
+            tmp_path,
+            signer,
+            pinned,
+            expected,
+            _receipt(signer, expected),
+            transport=transport,
+            authority=authority,
+        )
     assert caught.value.code == "ack-failed"
-    stored = json.loads((tmp_path / "cache" / expected["job_id"] / "result.json").read_text())
+    stored = json.loads(
+        (tmp_path / "cache" / expected["job_id"] / "result.json").read_text()
+    )
     assert "ack_verified" not in stored  # persisted, but never reported as acked
 
 

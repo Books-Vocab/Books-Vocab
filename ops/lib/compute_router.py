@@ -23,7 +23,9 @@ class RouterError(ValueError):
 
 
 def _number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0
+    return (
+        isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0
+    )
 
 
 def _safety_reasons(

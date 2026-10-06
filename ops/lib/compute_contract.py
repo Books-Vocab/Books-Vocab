@@ -18,11 +18,28 @@ VERSION = 1
 _DEFAULT_REGISTRY = Path(__file__).resolve().parents[1] / "compute_profiles.yml"
 _SAFE_SIDE_EFFECTS = {"repo-read", "artifact-write"}
 _FORBIDDEN_SIDE_EFFECTS = {
-    "production-write", "credential-read", "docker-socket", "production-network",
-    "localhost-production", "deploy", "migration", "ops-edit", "release",
+    "production-write",
+    "credential-read",
+    "docker-socket",
+    "production-network",
+    "localhost-production",
+    "deploy",
+    "migration",
+    "ops-edit",
+    "release",
 }
 _SAFE_SANDBOX_POLICIES = {"uv-no-project", "repo-readonly"}
-_SHELL_INTERPRETERS = {"sh", "bash", "dash", "zsh", "ksh", "fish", "pwsh", "powershell", "cmd"}
+_SHELL_INTERPRETERS = {
+    "sh",
+    "bash",
+    "dash",
+    "zsh",
+    "ksh",
+    "fish",
+    "pwsh",
+    "powershell",
+    "cmd",
+}
 _PLACEHOLDER = re.compile(r"^\{([a-z][a-z0-9_]*)\}$")
 _PATH_VALUE = re.compile(r"^[A-Za-z0-9_./ -]+$")
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -70,7 +87,9 @@ def _validate_runner_image_digest(value: Any, *, code: str, detail: str) -> str:
 def _validate_runner_image_provenance(registry: dict[str, Any]) -> tuple[str, set[str]]:
     provenance = registry.get("runner_image_provenance")
     if not isinstance(provenance, dict) or set(provenance) != {
-        "source", "digest", "provided_capabilities",
+        "source",
+        "digest",
+        "provided_capabilities",
     }:
         _fail("runner-image-provenance", "registry")
     source = provenance.get("source")
@@ -82,7 +101,12 @@ def _validate_runner_image_provenance(registry: dict[str, Any]) -> tuple[str, se
         detail="digest",
     )
     source_name, separator, source_digest = source.rpartition("@")
-    if not separator or not source_name or source_digest != digest or "@" in source_name:
+    if (
+        not separator
+        or not source_name
+        or source_digest != digest
+        or "@" in source_name
+    ):
         _fail("runner-image-provenance", "source")
     provided_capabilities = _validate_capabilities(
         provenance.get("provided_capabilities"),
@@ -109,7 +133,9 @@ def load_profile_registry(path: Path | str = _DEFAULT_REGISTRY) -> dict[str, Any
     profiles = registry.get("profiles")
     if not isinstance(profiles, dict) or not profiles:
         _fail("registry-profiles", "profiles must be a non-empty object")
-    provenance_digest, provided_capabilities = _validate_runner_image_provenance(registry)
+    provenance_digest, provided_capabilities = _validate_runner_image_provenance(
+        registry
+    )
     for name, profile in profiles.items():
         validate_profile(profile, name=name, image_capabilities=provided_capabilities)
         if profile["runner_image_digest"] != provenance_digest:
@@ -133,12 +159,23 @@ def validate_profile(
     if not isinstance(profile, dict):
         _fail("profile-schema", name)
     allowed = {
-        "command", "parameters", "source_kind", "required_capabilities",
-        "runner_capabilities", "bootstrap",
-        "resource_class", "timeout_seconds", "remote_eligible",
-        "minimum_tier", "minimum_remote_seconds",
-        "git_metadata_required", "side_effects", "network_policy",
-        "sandbox_policy", "runner_image_digest", "artifact_contract",
+        "command",
+        "parameters",
+        "source_kind",
+        "required_capabilities",
+        "runner_capabilities",
+        "bootstrap",
+        "resource_class",
+        "timeout_seconds",
+        "remote_eligible",
+        "minimum_tier",
+        "minimum_remote_seconds",
+        "git_metadata_required",
+        "side_effects",
+        "network_policy",
+        "sandbox_policy",
+        "runner_image_digest",
+        "artifact_contract",
     }
     unknown = sorted(set(profile) - allowed)
     if unknown:
@@ -147,11 +184,17 @@ def validate_profile(
     if not isinstance(command, dict) or set(command) != {"argv", "shell"}:
         _fail("forbidden-field", "command-shape")
     argv = command.get("argv")
-    if not isinstance(argv, list) or not argv or not all(isinstance(x, str) and x for x in argv):
+    if (
+        not isinstance(argv, list)
+        or not argv
+        or not all(isinstance(x, str) and x for x in argv)
+    ):
         _fail("literal-argv", name)
     if command.get("shell") is not False:
         _fail("shell-disabled", name)
-    command_tokens = {Path(token).name for token in argv if token and not token.startswith("-")}
+    command_tokens = {
+        Path(token).name for token in argv if token and not token.startswith("-")
+    }
     if (
         command_tokens & _SHELL_INTERPRETERS
         or "env" in command_tokens
@@ -171,7 +214,10 @@ def validate_profile(
     if placeholders != set(params):
         _fail("parameter-contract", name)
     for key, definition in params.items():
-        if not isinstance(definition, dict) or definition.get("type") != "relative-path":
+        if (
+            not isinstance(definition, dict)
+            or definition.get("type") != "relative-path"
+        ):
             _fail("parameter-schema", key)
         prefix = _require_string(definition, "prefix")
         parts = [part for part in prefix.split("/") if part]
@@ -182,13 +228,20 @@ def validate_profile(
         ):
             _fail("parameter-schema", key)
         _require_string(definition, "suffix")
-        if not isinstance(definition.get("max_length"), int) or definition["max_length"] <= 0:
+        if (
+            not isinstance(definition.get("max_length"), int)
+            or definition["max_length"] <= 0
+        ):
             _fail("parameter-schema", key)
     source_kind = _require_string(profile, "source_kind")
     if source_kind != "clean-committed-tree":
         _fail("source-kind", source_kind)
     caps = profile.get("required_capabilities")
-    if not isinstance(caps, list) or not caps or not all(isinstance(x, str) and x for x in caps):
+    if (
+        not isinstance(caps, list)
+        or not caps
+        or not all(isinstance(x, str) and x for x in caps)
+    ):
         _fail("capability-contract", name)
     required_capabilities = set(caps)
     runner_capabilities = _validate_capabilities(
@@ -205,11 +258,17 @@ def validate_profile(
     bootstrap = profile.get("bootstrap")
     if not isinstance(bootstrap, list) or bootstrap:
         _fail("bootstrap-policy", name)
-    if not isinstance(profile.get("resource_class"), str) or not profile["resource_class"]:
+    if (
+        not isinstance(profile.get("resource_class"), str)
+        or not profile["resource_class"]
+    ):
         _fail("invalid-field", "resource_class")
     if profile.get("minimum_tier") not in {"observer", "operator"}:
         _fail("invalid-field", "minimum_tier")
-    if not isinstance(profile.get("timeout_seconds"), int) or profile["timeout_seconds"] <= 0:
+    if (
+        not isinstance(profile.get("timeout_seconds"), int)
+        or profile["timeout_seconds"] <= 0
+    ):
         _fail("invalid-field", "timeout_seconds")
     remote_eligible = profile.get("remote_eligible")
     minimum_remote = profile.get("minimum_remote_seconds")
@@ -223,15 +282,24 @@ def validate_profile(
         ):
             _fail("remote-contract", f"{name}: minimum_remote_seconds")
     elif minimum_remote is not None:
-        _fail("remote-contract", f"{name}: minimum_remote_seconds without remote_eligible")
+        _fail(
+            "remote-contract", f"{name}: minimum_remote_seconds without remote_eligible"
+        )
     if profile.get("git_metadata_required") is not False:
         _fail("git-metadata", name)
     effects = profile.get("side_effects")
-    if not isinstance(effects, list) or not effects or not all(isinstance(x, str) for x in effects):
+    if (
+        not isinstance(effects, list)
+        or not effects
+        or not all(isinstance(x, str) for x in effects)
+    ):
         _fail("side-effects", name)
     forbidden = sorted(set(effects) & _FORBIDDEN_SIDE_EFFECTS)
     if forbidden or not set(effects) <= _SAFE_SIDE_EFFECTS:
-        _fail("forbidden-side-effect", ",".join(forbidden or sorted(set(effects) - _SAFE_SIDE_EFFECTS)))
+        _fail(
+            "forbidden-side-effect",
+            ",".join(forbidden or sorted(set(effects) - _SAFE_SIDE_EFFECTS)),
+        )
     if profile.get("network_policy") != "none":
         _fail("network-policy", name)
     sandbox = _require_string(profile, "sandbox_policy")
@@ -253,7 +321,9 @@ def _resolve_parameter(name: str, value: Any, definition: dict[str, Any]) -> str
         _fail("too-long", name)
     if value.startswith("-"):
         _fail("leading-dash", name)
-    if not _PATH_VALUE.fullmatch(value) or any(token in value for token in ("..", "//")):
+    if not _PATH_VALUE.fullmatch(value) or any(
+        token in value for token in ("..", "//")
+    ):
         if ".." in value:
             _fail("path-traversal", name)
         if any(c in value for c in ("\n", "\r", "\t")):
@@ -295,11 +365,23 @@ def resolve_profile(
     if source_dirty:
         _fail("dirty-source", name)
     required = set(profile["required_capabilities"])
-    if available_capabilities is not None and not required <= set(available_capabilities):
-        _fail("missing-capability", ",".join(sorted(required - set(available_capabilities))))
-    resolved = {key: _resolve_parameter(key, params[key], definition) for key, definition in profile["parameters"].items()}
-    argv = [resolved.get(match.group(1), token) if (match := _PLACEHOLDER.match(token)) else token
-            for token in profile["command"]["argv"]]
+    if available_capabilities is not None and not required <= set(
+        available_capabilities
+    ):
+        _fail(
+            "missing-capability",
+            ",".join(sorted(required - set(available_capabilities))),
+        )
+    resolved = {
+        key: _resolve_parameter(key, params[key], definition)
+        for key, definition in profile["parameters"].items()
+    }
+    argv = [
+        resolved.get(match.group(1), token)
+        if (match := _PLACEHOLDER.match(token))
+        else token
+        for token in profile["command"]["argv"]
+    ]
     spec = {
         "profile": name,
         "version": VERSION,
