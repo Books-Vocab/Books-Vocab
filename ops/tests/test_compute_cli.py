@@ -679,3 +679,19 @@ def test_status_supports_modes_and_probes_only_when_remote_requested(
         assert result["remote_profiles"] == ["fake.echo"]
         assert (result["felix_available"] is True) is probed
         assert "felix-host" not in json.dumps(result)
+
+
+def test_entrypoint_shebang_provides_cryptography_for_receipt_verification():
+    # Without cryptography the receipt module falls back to a host OpenSSL path
+    # that rejects valid Ed25519 receipts, so the documented ./ops/compute.py
+    # entry would fail every Felix run with receipt-signature.
+    first_line = (
+        (Path(__file__).resolve().parents[1] / "compute.py")
+        .read_text(encoding="utf-8")
+        .splitlines()[0]
+    )
+    assert first_line.startswith("#!/usr/bin/env -S uv run")
+    # env -S does not unquote on every platform, so the requirement must be a
+    # single unquoted token.
+    assert "--with cryptography>=48,<49" in first_line
+    assert "'" not in first_line and '"' not in first_line
