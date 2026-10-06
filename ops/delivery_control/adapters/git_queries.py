@@ -178,7 +178,11 @@ class GitQueries:
             "--find-renames=100%",
             "--find-copies=100%",
             "--find-copies-harder",
-            f"{base_sha}..{head_sha}",
+            # Three-dot: only what this checkout adds past the merge-base.  A
+            # two-dot diff against an advancing main reports every file main
+            # changed since a stale idle checkout, which fabricates Scope
+            # collisions for work the checkout never touched.
+            f"{base_sha}...{head_sha}",
             cwd=path,
         )
         return WorktreeSnapshot(
