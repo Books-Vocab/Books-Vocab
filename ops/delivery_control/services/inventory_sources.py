@@ -76,9 +76,11 @@ def collect_inventory_sources(
     registry_inventory = registry.list_records()
     physical = git.list_worktrees()
     pr_mapping_problems: list[InventoryProblem] = []
+    open_pr_inventory_available = True
     try:
         github_inventory = github.list_open_pull_requests()
     except DeliverySourceError as error:
+        open_pr_inventory_available = False
         problem = InventoryProblem("github", "open-prs", str(error))
         github_inventory = PullRequestInventory(records=(), problems=(problem,))
     github_problems = list(github_inventory.problems)
@@ -220,7 +222,7 @@ def collect_inventory_sources(
             for external_id in (item.external_ids or (item.lane_id,))
         ),
     )
-    if pr_mapping_problems:
+    if not open_pr_inventory_available:
         dispatchable_candidate_issues = ()
 
     path_sets: dict[str, set[str]] = {}

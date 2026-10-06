@@ -590,6 +590,43 @@ def test_raw_issues_remain_visible_when_open_pr_inventory_fails(
     assert inventory.dispatchable_candidate_issues == ()
 
 
+def test_single_open_pr_observation_problem_does_not_block_unrelated_candidate(
+    tmp_path: Path,
+) -> None:
+    candidate = _candidate(7)
+    issue = parse_demand_issue(
+        {
+            "id": "I_7",
+            "number": 7,
+            "url": "https://github.com/owner/repo/issues/7",
+            "title": "Issue 7",
+            "body": render_candidate_body(candidate.spec),
+            "updatedAt": "2026-08-22T01:00:00Z",
+            "labels": [{"name": CANDIDATE_ISSUE_LABEL}],
+        }
+    )
+
+    class MalformedPullRequestGitHub(FakeGitHub):
+        def list_open_issues(self) -> DemandIssueInventory:
+            return DemandIssueInventory(records=(issue,), raw_count=1)
+
+    inventory = InspectService(
+        registry=FakeRegistry(()),
+        git=FakeGit((), {}),
+        github=MalformedPullRequestGitHub(
+            (),
+            problems=(InventoryProblem("github", "PR#99", "malformed PR payload"),),
+        ),
+        runtime=FakeRuntime(),
+    ).inspect()
+
+    assert [item.number for item in inventory.candidate_issues] == [7]
+    assert [item.number for item in inventory.dispatchable_candidate_issues] == [7]
+    assert InventoryProblem("github", "PR#99", "malformed PR payload") in (
+        inventory.source_problems
+    )
+
+
 def test_inspect_service_never_marks_dirty_or_head_drift_ready(tmp_path: Path) -> None:
     path = tmp_path / "lane"
     physical = PhysicalWorktree(path=path, head_sha="c" * 40, branch="feat/one")
