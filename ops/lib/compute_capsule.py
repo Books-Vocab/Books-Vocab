@@ -88,7 +88,15 @@ def materialize_tracked_capsule(
     status = _git(root, "status", "--porcelain", "--untracked-files=all")
     if status:
         raise CapsuleError("source-git-dirty")
-    entries = _git(root, "ls-tree", "-r", "--full-tree", commit).splitlines()
+    # -z keeps paths raw: without it git C-quotes non-ASCII names
+    # ("docs/reference/\\346\\236..."), which `git show` then cannot resolve.
+    entries = [
+        entry
+        for entry in _git(root, "ls-tree", "-r", "-z", "--full-tree", commit).split(
+            "\0"
+        )
+        if entry
+    ]
     files: list[tuple[str, bytes]] = []
     excluded_symlinks: list[str] = []
     for entry in entries:

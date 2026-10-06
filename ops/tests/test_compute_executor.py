@@ -259,3 +259,33 @@ def test_tracked_capsule_rejects_symlinks_that_leave_the_tree(
     repo, commit = _repo_with_symlinks(tmp_path, {link: target})
     with pytest.raises(CapsuleError, match="symlink"):
         materialize_tracked_capsule(repo, commit, tmp_path / "capsule")
+
+
+def test_tracked_capsule_handles_non_ascii_and_spaced_paths(tmp_path: Path):
+    # git quotes non-ASCII paths in `ls-tree` output unless -z is used; the
+    # repository tracks docs/reference/架構.rtf, which broke every capsule.
+    repo = tmp_path / "repo-names"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    (repo / "docs").mkdir()
+    names = ["docs/架構.rtf", "docs/with space.md", "docs/émoji-é.txt"]
+    for name in names:
+        (repo / name).write_text(f"content of {name}\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(
+        repo,
+        "-c",
+        "user.name=fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-qm",
+        "fixture",
+    )
+    commit = _git(repo, "rev-parse", "HEAD")
+    capsule = materialize_tracked_capsule(repo, commit, tmp_path / "capsule")
+    for name in names:
+        assert name in capsule.files
+        assert (capsule.materialized_root / name).read_text(
+            encoding="utf-8"
+        ) == f"content of {name}\n"
