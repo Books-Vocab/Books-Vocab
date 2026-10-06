@@ -166,7 +166,8 @@ run_one() {
       ./ops/tests/test_ui_deadcode.sh
       ;;
     ui-graph)
-      "$UV_BIN" run --python 3.13 --with pytest pytest -q ops/tests/test_ui_graph.py &&
+      "$UV_BIN" run --python 3.13 --with pytest pytest -q \
+        ops/tests/test_ui_graph.py ops/tests/test_ui_graph_contract.py &&
       ./ops/tests/test_ui_graph.sh
       ;;
     log-assert)
