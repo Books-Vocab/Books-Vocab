@@ -311,7 +311,7 @@ def routed(monkeypatch, tmp_path):
         "_local_load",
         lambda: {"busy": True, "slowdown": 4.0, "host_id": "oscar-host"},
     )
-    monkeypatch.setattr(compute, "_gate_history", lambda profile: [100.0, 110.0])
+    monkeypatch.setattr(compute, "_gate_history", lambda profile, cache: [100.0, 110.0])
     monkeypatch.setattr(compute.platform, "node", lambda: "oscar-host")
     return tmp_path
 
@@ -439,7 +439,7 @@ def test_plan_reports_felix_route_without_running(routed, monkeypatch, capsys):
 
 def test_auto_without_gate_history_stays_local(routed, monkeypatch, capsys):
     registry = _remote_registry(routed, signer=ReceiptSigner.generate())
-    monkeypatch.setattr(compute, "_gate_history", lambda profile: None)
+    monkeypatch.setattr(compute, "_gate_history", lambda profile, cache: None)
     monkeypatch.setattr(compute, "_probe_felix", lambda *a, **k: _felix_probe())
     assert compute.main(_cmd(routed, registry, "plan", "--mode", "auto")) == 0
     assert _out(capsys)["result"]["route"]["reason_code"] == "auto-local-cost-unknown"
