@@ -145,8 +145,10 @@ def _route(
 ) -> dict[str, Any]:
     return choose_route(
         args.mode,
-        live_admission=admission.get("live") is True and admission.get("host") == "felix",
-        remote_eligible=spec["remote_eligible"] is True and admission.get("remote_eligible") is True,
+        live_admission=admission.get("live") is True
+        and admission.get("host") == "felix",
+        remote_eligible=spec["remote_eligible"] is True
+        and admission.get("remote_eligible") is True,
         source_clean=git["clean"] and admission.get("source_clean") is True,
         runner_verified=(
             admission.get("runner_clean") is True
@@ -343,7 +345,9 @@ def _run_felix(
     cache_dir = repo / ".cache" / "compute"
     cache_dir.mkdir(parents=True, exist_ok=True)
     artifact_path = cache_dir / f"{request_id}.json"
-    artifact_path.write_text(json.dumps(result, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+    artifact_path.write_text(
+        json.dumps(result, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8"
+    )
     return {
         "schema": SCHEMA,
         "command": "run",
@@ -368,8 +372,12 @@ def _run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if route["selected"] is None:
         raise CliError(route["reason_code"])
     if route["selected"] == "felix":
-        return _run_felix(args, resolved=resolved, git=git, route=route, admission=admission)
-    return _run_local(args, resolved=resolved, git=git, capabilities=capabilities, route=route)
+        return _run_felix(
+            args, resolved=resolved, git=git, route=route, admission=admission
+        )
+    return _run_local(
+        args, resolved=resolved, git=git, capabilities=capabilities, route=route
+    )
 
 
 def _status(args: argparse.Namespace) -> dict[str, Any]:
@@ -414,7 +422,9 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument("profile")
         command.add_argument("--param", action="append", default=[])
         command.add_argument("--test-path")
-        command.add_argument("--mode", choices=("local", "auto", "felix"), default="local")
+        command.add_argument(
+            "--mode", choices=("local", "auto", "felix"), default="local"
+        )
         command.add_argument("--admission-file", type=Path)
     commands.add_parser("status", help="observe registry and local runner state")
     return parser
@@ -429,7 +439,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "plan":
             payload = _plan(args)
-            payload["ok"] = payload["ok"] and payload["result"]["route"]["selected"] is not None
+            payload["ok"] = (
+                payload["ok"] and payload["result"]["route"]["selected"] is not None
+            )
             payload["verdict"] = "planned" if payload["ok"] else "blocked"
             _emit(payload)
             return 0 if payload["ok"] else ERROR_EXIT
