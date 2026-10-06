@@ -42,8 +42,7 @@ def test_profiles_share_one_immutable_runner_image_provenance() -> None:
         "provided_capabilities": ["bash", "git", "python-3.13", "uv"],
     }
     assert {
-        profile["runner_image_digest"]
-        for profile in registry["profiles"].values()
+        profile["runner_image_digest"] for profile in registry["profiles"].values()
     } == {provenance["digest"]}
 
 
@@ -67,14 +66,18 @@ def test_profiles_declare_runtime_tool_capabilities() -> None:
 
 def test_pinned_runner_image_supplies_runner_tools_without_bootstrap() -> None:
     registry = load_profile_registry(REGISTRY)
-    image_capabilities = set(registry["runner_image_provenance"]["provided_capabilities"])
+    image_capabilities = set(
+        registry["runner_image_provenance"]["provided_capabilities"]
+    )
     assert {"bash", "git", "python-3.13", "uv"} <= image_capabilities
     for profile in registry["profiles"].values():
         assert set(profile["runner_capabilities"]) <= image_capabilities
         assert profile["bootstrap"] == []
 
 
-def test_registry_rejects_profile_runner_capability_missing_from_image(tmp_path: Path) -> None:
+def test_registry_rejects_profile_runner_capability_missing_from_image(
+    tmp_path: Path,
+) -> None:
     registry = copy.deepcopy(load_profile_registry(REGISTRY))
     registry["runner_image_provenance"]["provided_capabilities"].remove("uv")
     candidate = tmp_path / "compute_profiles.yml"
@@ -156,7 +159,9 @@ def test_raw_top_level_execution_controls_are_rejected(field: str) -> None:
     ("field", "value", "code"),
     [("argv", ["sh", "-c", "id"], "shell-disabled"), ("shell", True, "shell-disabled")],
 )
-def test_nested_command_controls_are_rejected(field: str, value: object, code: str) -> None:
+def test_nested_command_controls_are_rejected(
+    field: str, value: object, code: str
+) -> None:
     registry = load_profile_registry(REGISTRY)
     profile = copy.deepcopy(registry["profiles"]["backend.targeted-pytest"])
     profile["command"][field] = value
@@ -180,7 +185,9 @@ def test_shell_interpreter_chain_cannot_consume_typed_placeholder() -> None:
         ["env", "sh", "{test_path}"],
     ],
 )
-def test_shell_interpreter_wrappers_cannot_consume_typed_placeholder(argv: list[str]) -> None:
+def test_shell_interpreter_wrappers_cannot_consume_typed_placeholder(
+    argv: list[str],
+) -> None:
     registry = load_profile_registry(REGISTRY)
     profile = copy.deepcopy(registry["profiles"]["backend.targeted-pytest"])
     profile["command"]["argv"] = argv
@@ -252,8 +259,14 @@ def test_profile_registry_rejects_production_and_unsafe_contracts() -> None:
         validate_profile(profile, name="backend.targeted-pytest")
 
     for effect in [
-        "credential-read", "docker-socket", "production-network", "localhost-production",
-        "deploy", "migration", "ops-edit", "release",
+        "credential-read",
+        "docker-socket",
+        "production-network",
+        "localhost-production",
+        "deploy",
+        "migration",
+        "ops-edit",
+        "release",
     ]:
         profile = copy.deepcopy(registry["profiles"]["backend.targeted-pytest"])
         profile["side_effects"] = [effect]
@@ -297,7 +310,9 @@ def test_remote_profile_is_explicit_and_resolves_remote_eligibility() -> None:
 
 
 @pytest.mark.parametrize("placeholder", ["a", "b"])
-def test_repeated_character_runner_image_placeholders_are_rejected(placeholder: str) -> None:
+def test_repeated_character_runner_image_placeholders_are_rejected(
+    placeholder: str,
+) -> None:
     registry = load_profile_registry(REGISTRY)
     profile = copy.deepcopy(registry["profiles"]["backend.targeted-pytest"])
     profile["runner_image_digest"] = "sha256:" + placeholder * 64

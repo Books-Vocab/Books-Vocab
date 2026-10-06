@@ -78,7 +78,9 @@ def choose_route(
         "schema": SCHEMA,
         "mode": mode,
         "selected": "felix",
-        "reason_code": "felix-selected-positive-savings" if mode == "auto" else "felix-requested-safe",
+        "reason_code": "felix-selected-positive-savings"
+        if mode == "auto"
+        else "felix-requested-safe",
         "remote_started": False,
         "local_retry_allowed": False,
     }

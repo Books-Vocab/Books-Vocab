@@ -34,13 +34,17 @@ def _canonical(payload: dict[str, Any]) -> bytes:
 def sign_request(payload: dict[str, Any], signing_key: str) -> str:
     if not isinstance(signing_key, str) or not signing_key:
         raise TransportError("verification: signing key is required")
-    return hmac.new(signing_key.encode("utf-8"), _canonical(payload), hashlib.sha256).hexdigest()
+    return hmac.new(
+        signing_key.encode("utf-8"), _canonical(payload), hashlib.sha256
+    ).hexdigest()
 
 
 def build_xmachine_argv(child_argv: Sequence[str]) -> list[str]:
     """Build the only permitted remote launcher argv; no shell or SSH secret."""
 
-    if not child_argv or not all(isinstance(token, str) and token for token in child_argv):
+    if not child_argv or not all(
+        isinstance(token, str) and token for token in child_argv
+    ):
         raise TransportError("launcher: child argv must be non-empty literal strings")
     if any(token in _FORBIDDEN_TRANSPORT_TOKENS for token in child_argv):
         raise TransportError("launcher: raw transport secret or credential flag")
@@ -97,14 +101,28 @@ def verify_remote_result(
 
     if request.get("schema") != REQUEST_SCHEMA or result.get("schema") != RESULT_SCHEMA:
         _fail("schema")
-    if not isinstance(now, int) or not isinstance(request.get("issued_at"), int) or not isinstance(request.get("expires_at"), int):
+    if (
+        not isinstance(now, int)
+        or not isinstance(request.get("issued_at"), int)
+        or not isinstance(request.get("expires_at"), int)
+    ):
         _fail("freshness")
     if not request["issued_at"] <= now <= request["expires_at"]:
         raise TransportError("freshness: request is outside its validity window")
-    if not isinstance(result.get("finished_at"), int) or not request["issued_at"] <= result["finished_at"] <= request["expires_at"]:
+    if (
+        not isinstance(result.get("finished_at"), int)
+        or not request["issued_at"] <= result["finished_at"] <= request["expires_at"]
+    ):
         raise TransportError("freshness: result is outside request validity window")
 
-    for field in ("request_id", "nonce", "profile", "source_head", "runner_image_digest", "sandbox_policy"):
+    for field in (
+        "request_id",
+        "nonce",
+        "profile",
+        "source_head",
+        "runner_image_digest",
+        "sandbox_policy",
+    ):
         if result.get(field) != request.get(field):
             _fail(field)
     for field in ("profile_digest", "source_root", "source_clean"):
@@ -120,14 +138,29 @@ def verify_remote_result(
     if not isinstance(artifact, dict):
         raise TransportError("artifact: missing artifact object")
     path = artifact.get("path")
-    if not isinstance(path, str) or not path.startswith(".cache/compute/") or "/../" in f"/{path}":
+    if (
+        not isinstance(path, str)
+        or not path.startswith(".cache/compute/")
+        or "/../" in f"/{path}"
+    ):
         raise TransportError("artifact: path must remain in current worktree cache")
-    if not isinstance(artifact.get("sha256"), str) or not _SHA256.fullmatch(artifact["sha256"]):
+    if not isinstance(artifact.get("sha256"), str) or not _SHA256.fullmatch(
+        artifact["sha256"]
+    ):
         raise TransportError("artifact: invalid sha256")
     if not isinstance(artifact.get("bytes"), int) or artifact["bytes"] < 0:
         raise TransportError("artifact: invalid byte count")
 
     ack = result.get("ack")
-    if not isinstance(ack, dict) or ack.get("request_id") != request["request_id"] or ack.get("nonce") != request["nonce"] or ack.get("status") != "ok":
+    if (
+        not isinstance(ack, dict)
+        or ack.get("request_id") != request["request_id"]
+        or ack.get("nonce") != request["nonce"]
+        or ack.get("status") != "ok"
+    ):
         raise TransportError("ack: request was not acknowledged")
-    return {"schema": SCHEMA, "verdict": "accepted", "reason_code": "remote-result-accepted"}
+    return {
+        "schema": SCHEMA,
+        "verdict": "accepted",
+        "reason_code": "remote-result-accepted",
+    }
