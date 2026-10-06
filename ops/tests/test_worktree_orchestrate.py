@@ -617,6 +617,167 @@ def test_gate_plan_uses_a_leased_simulator_for_ios_checks() -> None:
     ]
 
 
+def test_run_check_remote_adapter_does_not_execute_arbitrary_command(
+    tmp_path: Path,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    class FakeRemoteAdapter:
+        def adapt(
+            self, request: object, receipt: object, **kwargs: object
+        ) -> dict[str, object]:
+            calls.append({"request": request, "receipt": receipt, **kwargs})
+            return {
+                "name": "remote-child",
+                "kind": "remote",
+                "cwd": ".",
+                "level": "block",
+                "status": "pass",
+                "rc": 0,
+                "duration_s": 0.1,
+                "output_tail": "validated",
+                "executed": True,
+                "remote_validation": {"status": "validated"},
+            }
+
+    result = coordinator._run_check(
+        {
+            "name": "remote-child",
+            "kind": "remote",
+            "cwd": ".",
+            "cmd": ["false"],
+            "level": "block",
+            "remote_adapter": FakeRemoteAdapter(),
+            "remote_request": {"profile": "remote.echo"},
+            "remote_receipt": {"signed": True},
+            "remote_log": b"validated",
+            "remote_artifact": b"artifact",
+            "remote_current_head": "a" * 40,
+        },
+        tmp_path,
+    )
+
+    assert result["status"] == "pass"
+    assert result["executed"] is True
+    assert calls[0]["request"] == {"profile": "remote.echo"}
+    assert calls[0]["current_head"] == "a" * 40
+
+
+def test_run_check_remote_route_uses_named_adapter_route(
+    tmp_path: Path,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    class FakeRemoteAdapter:
+        def run(self, profile: object, **kwargs: object) -> dict[str, object]:
+            calls.append({"profile": profile, **kwargs})
+            return {
+                "name": "remote.echo",
+                "kind": "remote",
+                "level": "block",
+                "status": "pass",
+                "rc": 0,
+                "executed": True,
+                "remote_validation": {
+                    "status": "fallback-local",
+                    "reason": "transport-unavailable",
+                },
+            }
+
+    local_check = lambda: {"status": "pass"}
+    result = coordinator._run_check(
+        {
+            "name": "remote.echo",
+            "kind": "remote",
+            "cwd": ".",
+            "cmd": ["false"],
+            "level": "block",
+            "remote_adapter": FakeRemoteAdapter(),
+            "remote_profile": "remote.echo",
+            "remote_source_commit": "a" * 40,
+            "remote_tree_sha256": "b" * 64,
+            "remote_spec_digest": "c" * 64,
+            "remote_admission_snapshot": {"host": "felix"},
+            "remote_local_check": local_check,
+            "remote_transport": lambda _request: None,
+            "remote_current_head": "a" * 40,
+        },
+        tmp_path,
+    )
+
+    assert result["status"] == "pass"
+    assert calls[0]["profile"] == "remote.echo"
+    assert calls[0]["current_head"] == "a" * 40
+
+
+def test_gate_discards_remote_results_when_head_moves_before_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    remote_check = {
+        "name": "remote-child",
+        "kind": "remote",
+        "cwd": ".",
+        "level": "block",
+        "remote_adapter": object(),
+        "remote_request": {"profile": "remote.echo", "request_digest": "d" * 64},
+    }
+    monkeypatch.setattr(
+        coordinator,
+        "_changed_files",
+        lambda worktree, base: ["ops/worktree_orchestrate.py"],
+    )
+    monkeypatch.setattr(
+        coordinator,
+        "_plan_checks",
+        lambda files, **kwargs: [remote_check],
+    )
+    monkeypatch.setattr(
+        coordinator,
+        "_run_check",
+        lambda check, worktree: {
+            "name": "remote-child",
+            "kind": "remote",
+            "level": "block",
+            "status": "pass",
+            "rc": 0,
+            "executed": True,
+        },
+    )
+    heads = iter(("a" * 40, "b" * 40))
+    monkeypatch.setattr(
+        coordinator,
+        "_git",
+        lambda argv, cwd=coordinator.ROOT: (
+            (0, next(heads)) if argv == ["rev-parse", "HEAD"] else (0, "")
+        ),
+    )
+    gate_path = tmp_path / "state" / "gate.json"
+    monkeypatch.setattr(
+        coordinator,
+        "_gate_record_path",
+        lambda state, worktree: gate_path,
+    )
+
+    rc = coordinator.cmd_gate(
+        Namespace(
+            worktree=str(tmp_path),
+            base="test-base",
+            plan_only=False,
+            state=None,
+            json=True,
+        )
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert rc == coordinator.EXIT_BLOCK
+    assert payload["verdict"] == "block"
+    assert payload["reason"] == "head-moved-before-gate-record"
+    assert payload["results"] == []
+    assert not gate_path.exists()
+
+
 def _ios_failure_output(*, file: Path | None) -> str:
     diagnostic = {
         "severity": "error",

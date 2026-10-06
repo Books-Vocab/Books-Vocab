@@ -147,7 +147,8 @@ run_one() {
         ops/tests/test_capability_matrix.py \
         ops/tests/test_compute_contract.py \
         ops/tests/test_compute_dogfood.py \
-        ops/tests/test_compute_executor.py
+        ops/tests/test_compute_executor.py \
+        ops/tests/test_compute_gate_adapter.py
       ;;
     context-routing)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
