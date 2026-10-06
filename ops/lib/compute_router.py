@@ -35,34 +35,51 @@ def _refused(mode: str, reason_code: str) -> dict[str, Any]:
     }
 
 
+def _cost_ok(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
 def choose_route(
     mode: str,
     *,
     live_admission: bool,
+    probe_fresh: bool,
+    cross_host: bool,
+    production_healthy: bool,
+    receipt_key_pinned: bool,
     remote_eligible: bool,
     source_clean: bool,
     runner_verified: bool,
     sandbox_verified: bool,
-    local_cost_ms: int,
-    felix_cost_ms: int,
+    local_busy: bool | None,
+    local_cost_ms: int | None,
+    felix_cost_ms: int | None,
 ) -> dict[str, Any]:
-    """Return a stable route decision from explicit, already-read facts."""
+    """Return a stable route decision from explicit, already-read facts.
+
+    Only the literal ``True`` satisfies a safety fact, so unknown or malformed
+    observations fail closed.  Explicit ``felix`` shares every safety gate with
+    ``auto``; only the busy/cost economics are auto-only.
+    """
 
     if mode not in MODES:
         raise ValueError(f"unsupported compute mode: {mode}")
-    if not isinstance(local_cost_ms, int) or not isinstance(felix_cost_ms, int):
-        raise ValueError("cost estimates must be integers")
-    if local_cost_ms < 0 or felix_cost_ms < 0:
-        raise ValueError("cost estimates must be non-negative")
+    for cost in (local_cost_ms, felix_cost_ms):
+        if cost is not None and not _cost_ok(cost):
+            raise ValueError("cost estimates must be non-negative integers or None")
     if mode == "local":
         return _local(mode, "local-requested")
 
     gates = (
-        (not live_admission, "no-live-admission"),
-        (not remote_eligible, "remote-ineligible"),
-        (not source_clean, "dirty-source"),
-        (not runner_verified, "runner-unverified"),
-        (not sandbox_verified, "sandbox-unverified"),
+        (live_admission is not True, "no-live-admission"),
+        (probe_fresh is not True, "probe-stale"),
+        (cross_host is not True, "same-host"),
+        (production_healthy is not True, "production-unhealthy"),
+        (receipt_key_pinned is not True, "receipt-key-unpinned"),
+        (remote_eligible is not True, "remote-ineligible"),
+        (source_clean is not True, "dirty-source"),
+        (runner_verified is not True, "runner-unverified"),
+        (sandbox_verified is not True, "sandbox-unverified"),
     )
     for failed, suffix in gates:
         if failed:
@@ -72,8 +89,15 @@ def choose_route(
                 else _refused("felix", f"felix-refused-{suffix}")
             )
 
-    if mode == "auto" and felix_cost_ms >= local_cost_ms:
-        return _local(mode, "auto-local-no-positive-savings")
+    if mode == "auto":
+        if local_busy is False:
+            return _local(mode, "auto-local-local-not-busy")
+        if local_busy is not True:
+            return _local(mode, "auto-local-local-load-unknown")
+        if local_cost_ms is None or felix_cost_ms is None:
+            return _local(mode, "auto-local-cost-unknown")
+        if felix_cost_ms >= local_cost_ms:
+            return _local(mode, "auto-local-no-positive-savings")
     return {
         "schema": SCHEMA,
         "mode": mode,

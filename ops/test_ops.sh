@@ -145,9 +145,12 @@ run_one() {
     capability-matrix)
       "$UV_BIN" run --python 3.13 --with pytest --with 'cryptography>=48,<49' pytest -q \
         ops/tests/test_capability_matrix.py \
+        ops/tests/test_compute_cli.py \
         ops/tests/test_compute_contract.py \
         ops/tests/test_compute_dogfood.py \
-        ops/tests/test_compute_executor.py
+        ops/tests/test_compute_executor.py \
+        ops/tests/test_compute_router.py \
+        ops/tests/test_xmachine_transport.py
       ;;
     context-routing)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
