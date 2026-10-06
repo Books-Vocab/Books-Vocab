@@ -23,11 +23,7 @@ def _fake_async_client(content: str):
         usage=None,
     )
     mock_create = AsyncMock(return_value=response)
-    return SimpleNamespace(
-        chat=SimpleNamespace(
-            completions=SimpleNamespace(create=mock_create)
-        )
-    )
+    return SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=mock_create)))
 
 
 def test_parse_json_payload_supports_list_and_dict():
@@ -43,6 +39,7 @@ def test_parse_json_payload_malformed_returns_empty():
 
 def test_parse_json_payload_malformed_logs_warning(caplog):
     import logging
+
     with caplog.at_level(logging.WARNING, logger="kg"):
         result = parse_json_payload("{INVALID-JSON")
     assert result == {}
@@ -95,6 +92,7 @@ async def test_run_phrase_and_explain_translate_return_expected_shapes():
 def test_explain_prompt_concise():
     """Verify the explain prompt requests 1-2 sentences, not 3-5."""
     from kg.translate_service import _context_around_word, explain_translate_prompt
+
     req = TranslateRequest(word="progenitor", context="their progenitor")
     prompt = explain_translate_prompt(req, "en", "zh-Hant", _context_around_word(req.context, req.word))
     assert "1-2 sentence" in prompt.lower() or "1–2 sentence" in prompt.lower()
@@ -108,29 +106,38 @@ import hashlib
 def _compute_context_hash(context: str) -> str:
     return hashlib.sha256((context or "").encode()).hexdigest()[:16]
 
+
 @pytest.mark.asyncio
 async def test_cache_hit_skips_llm(tmp_path, monkeypatch):
     """When translate_log has a cached result, LLM should not be called."""
     import kg.translate_log as tl
+
     monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
     tl._reset()
 
     from kg.translate_service import _context_around_word
+
     ctx = _context_around_word("The story evokes memories.", "evoke")
     ctx_hash = _compute_context_hash(ctx)
 
     tl.record(
-        user_id="u_other", operation="translate_quick", word="evoke",
-        context=ctx, context_hash=ctx_hash,
-        source_lang="en", target_lang="zh-Hant",
-        response_raw='{"t":"喚起","p":"v.","r":"evoke"}', latency_ms=100,
+        user_id="u_other",
+        operation="translate_quick",
+        word="evoke",
+        context=ctx,
+        context_hash=ctx_hash,
+        source_lang="en",
+        target_lang="zh-Hant",
+        response_raw='{"t":"喚起","p":"v.","r":"evoke"}',
+        latency_ms=100,
         model="gemini-2.5-flash-lite",
     )
 
     client = _fake_async_client('{"t":"SHOULD NOT BE CALLED"}')
     req = TranslateRequest(word="evoke", context="The story evokes memories.")
     result = await run_quick_translate(
-        req, {"id": "u_test"},
+        req,
+        {"id": "u_test"},
         llm=TrackedLLM(client, "u_test"),
         logger=SimpleNamespace(error=lambda *a, **kw: None),
     )
@@ -139,17 +146,20 @@ async def test_cache_hit_skips_llm(tmp_path, monkeypatch):
 
     tl._reset()
 
+
 @pytest.mark.asyncio
 async def test_cache_miss_calls_llm_and_records(tmp_path, monkeypatch):
     """On cache miss, LLM is called and result is recorded to translate_log."""
     import kg.translate_log as tl
+
     monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
     tl._reset()
 
     client = _fake_async_client('{"t":"喚起","p":"v.","r":"evoke"}')
     req = TranslateRequest(word="evoke", context="The story evokes memories.")
     result = await run_quick_translate(
-        req, {"id": "u_test"},
+        req,
+        {"id": "u_test"},
         llm=TrackedLLM(client, "u_test"),
         logger=SimpleNamespace(error=lambda *a, **kw: None),
     )
@@ -166,23 +176,32 @@ async def test_cache_miss_calls_llm_and_records(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_empty_llm_response_not_cached(tmp_path, monkeypatch):
-    """Empty or malformed LLM response should not be cached."""
+@pytest.mark.parametrize("content", ["", "{}", '{"t":""}', "{not valid json"])
+async def test_empty_llm_response_not_cached(content, tmp_path, monkeypatch):
+    """Empty or malformed provider payloads fail closed with one stable contract."""
     import kg.translate_log as tl
+    from kg.exceptions import ExternalServiceError
+
     monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
     tl._reset()
 
-    client = _fake_async_client('{}')
+    client = _fake_async_client(content)
     req = TranslateRequest(word="hollow", context="A hollow victory.")
-    result = await run_quick_translate(
-        req, {"id": "u_test"},
-        llm=TrackedLLM(client, "u_test"),
-        logger=SimpleNamespace(error=lambda *a, **kw: None),
-    )
-    assert result.t == ""  # parsed but empty
+    with pytest.raises(ExternalServiceError) as exc_info:
+        await run_quick_translate(
+            req,
+            {"id": "u_test"},
+            llm=TrackedLLM(client, "u_test"),
+            logger=SimpleNamespace(error=lambda *a, **kw: None),
+        )
+    assert exc_info.value.to_detail() == {
+        "code": "EXTERNAL_SERVICE_ERROR",
+        "label": "translate_quick/invalid_response",
+    }
 
     # Should NOT be cached
     from kg.translate_service import _context_around_word
+
     ctx = _context_around_word("A hollow victory.", "hollow")
     ctx_hash = _compute_context_hash(ctx)
     assert tl.lookup("hollow", ctx_hash, "en", "zh-Hant", "translate_quick") is None
