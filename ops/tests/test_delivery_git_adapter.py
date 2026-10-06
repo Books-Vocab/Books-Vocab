@@ -41,6 +41,32 @@ def _git(repo: Path, *args: str) -> str:
     return result.stdout.strip()
 
 
+def test_git_adapter_stale_idle_checkout_reports_no_phantom_changes(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "config", "user.name", "Test")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-qm", "base")
+    stale_head = _git(repo, "rev-parse", "HEAD")
+    (repo / "landed.txt").write_text("landed on main\n", encoding="utf-8")
+    _git(repo, "add", "landed.txt")
+    _git(repo, "commit", "-qm", "main advances")
+    live_main = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "switch", "-q", "--detach", stale_head)
+
+    snapshot = GitCliAdapter(repo=repo).inspect_worktree(repo, live_main)
+
+    # The checkout added nothing; files main changed after it must not be
+    # attributed to it, or an idle checkout fabricates Scope collisions.
+    assert snapshot.changes == ()
+    assert snapshot.changed_paths == ()
+
+
 def test_git_adapter_computes_operation_aware_exact_base_diff(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
