@@ -8,7 +8,9 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SPEC = importlib.util.spec_from_file_location("env_drift", ROOT / "ops" / "env_drift.py")
+SPEC = importlib.util.spec_from_file_location(
+    "env_drift", ROOT / "ops" / "env_drift.py"
+)
 assert SPEC and SPEC.loader
 env_drift = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(env_drift)
@@ -19,10 +21,14 @@ def test_read_remote_quotes_untrusted_path_and_preserves_parsing(
 ) -> None:
     calls: dict[str, object] = {}
 
-    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(
+        command: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
         calls["command"] = command
         calls["kwargs"] = kwargs
-        return subprocess.CompletedProcess(command, 0, stdout="TOKEN=stable\n", stderr="")
+        return subprocess.CompletedProcess(
+            command, 0, stdout="TOKEN=stable\n", stderr=""
+        )
 
     monkeypatch.setattr(env_drift.subprocess, "run", fake_run)
 
@@ -45,22 +51,34 @@ def test_read_remote_quotes_untrusted_path_and_preserves_parsing(
     }
 
 
-def test_read_remote_preserves_paths_with_spaces(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_read_remote_preserves_paths_with_spaces(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls: dict[str, object] = {}
 
-    def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(
+        command: list[str], **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
         calls["command"] = command
-        return subprocess.CompletedProcess(command, 0, stdout="TOKEN=stable\n", stderr="")
+        return subprocess.CompletedProcess(
+            command, 0, stdout="TOKEN=stable\n", stderr=""
+        )
 
     monkeypatch.setattr(env_drift.subprocess, "run", fake_run)
 
-    assert env_drift._read_remote("/srv/remote env/.env", "standby") == {"TOKEN": "stable"}
+    assert env_drift._read_remote("/srv/remote env/.env", "standby") == {
+        "TOKEN": "stable"
+    }
     assert calls["command"][-1] == "cat -- '/srv/remote env/.env'"
 
 
 def test_read_remote_preserves_remote_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
-        return subprocess.CompletedProcess(command, 255, stdout="", stderr="permission denied\n")
+    def fake_run(
+        command: list[str], **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            command, 255, stdout="", stderr="permission denied\n"
+        )
 
     monkeypatch.setattr(env_drift.subprocess, "run", fake_run)
 
