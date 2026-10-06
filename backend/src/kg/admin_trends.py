@@ -11,6 +11,7 @@ All series are length-aligned to ``len(days) == window_days`` (default 30,
 oldest first) so the UI can zip them without bounds checks. Empty days are
 filled with zeros / empty dicts so charts don't sag.
 """
+
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
@@ -73,7 +74,10 @@ def _pipeline_failures_by_day(cutoff_iso: str) -> dict[str, int]:
     from . import pipeline_log as pl
 
     return _count_by_day(
-        pl, cutoff_iso, table="pipeline_runs", ts_col="started_at",
+        pl,
+        cutoff_iso,
+        table="pipeline_runs",
+        ts_col="started_at",
         extra_where=f" AND {_PIPELINE_FAILURE_WHERE}",
     )
 
@@ -85,7 +89,10 @@ def _judge_rejects_by_day(cutoff_iso: str) -> dict[str, int]:
     if not jl.DB_PATH.exists():
         return {}
     return _count_by_day(
-        jl, cutoff_iso, table="judge_log", ts_col="created_at",
+        jl,
+        cutoff_iso,
+        table="judge_log",
+        ts_col="created_at",
         extra_where=f" AND {_JUDGE_REJECT_WHERE}",
     )
 
@@ -105,7 +112,7 @@ def _tokens_by_day_and_type(cutoff_iso: str) -> dict[str, dict[str, int]]:
             "SELECT substr(created_at, 1, 10) AS d, call_type, "
             "       SUM(input_tokens) AS ti, SUM(output_tokens) AS to_ "
             "FROM token_usage "
-            "WHERE created_at >= ? "
+            "WHERE julianday(created_at) >= julianday(?) "
             "GROUP BY d, call_type",
             (cutoff_iso,),
         ).fetchall()
@@ -123,7 +130,10 @@ def _active_users_by_day(cutoff_iso: str) -> dict[str, int]:
     from . import token_tracker as tt
 
     return _count_by_day(
-        tt, cutoff_iso, table="token_usage", ts_col="created_at",
+        tt,
+        cutoff_iso,
+        table="token_usage",
+        ts_col="created_at",
         count_expr="COUNT(DISTINCT user_id)",
     )
 
