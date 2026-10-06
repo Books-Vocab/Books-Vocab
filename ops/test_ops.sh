@@ -36,6 +36,7 @@ DEFAULT_TESTS=(
   delivery-control
   capability-matrix
   context-routing
+  doctor
   ui-deadcode
   ui-graph
   log-assert
@@ -155,6 +156,9 @@ run_one() {
         ops/tests/test_compute_router.py \
         ops/tests/test_felix_compute_launcher.py \
         ops/tests/test_xmachine_transport.py
+      ;;
+    doctor)
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_doctor.py
       ;;
     context-routing)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
