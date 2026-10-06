@@ -13,6 +13,7 @@ declared local-only and download returns 409 (not server-hosted).
 All write/read paths run through the SAME per-user LibraryStore (library.db)
 that create/list/patch/position/delete use — no bypass store.
 """
+
 from __future__ import annotations
 
 import json
@@ -177,16 +178,12 @@ def test_asset_download_local_only_returns_409(isolated_api):
         json={"format": "epub", "byte_size": 10, "local_only": True},
         headers=isolated_api.headers,
     )
-    r = isolated_api.client.get(
-        f"/api/library/books/{book_id}/asset", headers=isolated_api.headers
-    )
+    r = isolated_api.client.get(f"/api/library/books/{book_id}/asset", headers=isolated_api.headers)
     assert r.status_code == 409, r.text
 
 
 def test_asset_download_unknown_book_returns_404(isolated_api):
-    r = isolated_api.client.get(
-        "/api/library/books/nope/asset", headers=isolated_api.headers
-    )
+    r = isolated_api.client.get("/api/library/books/nope/asset", headers=isolated_api.headers)
     assert r.status_code == 404, r.text
 
 
@@ -266,9 +263,7 @@ def test_asset_upload_rejects_unsupported_format_without_metadata(isolated_api, 
         headers=isolated_api.headers,
     )
     assert r.status_code == 422, r.text
-    dl = isolated_api.client.get(
-        f"/api/library/books/{book_id}/asset", headers=isolated_api.headers
-    )
+    dl = isolated_api.client.get(f"/api/library/books/{book_id}/asset", headers=isolated_api.headers)
     assert dl.status_code == 409, dl.text  # no asset metadata was recorded
 
 
