@@ -13,6 +13,7 @@ declared local-only and download returns 409 (not server-hosted).
 All write/read paths run through the SAME per-user LibraryStore (library.db)
 that create/list/patch/position/delete use — no bypass store.
 """
+
 from __future__ import annotations
 
 import json
@@ -177,16 +178,12 @@ def test_asset_download_local_only_returns_409(isolated_api):
         json={"format": "epub", "byte_size": 10, "local_only": True},
         headers=isolated_api.headers,
     )
-    r = isolated_api.client.get(
-        f"/api/library/books/{book_id}/asset", headers=isolated_api.headers
-    )
+    r = isolated_api.client.get(f"/api/library/books/{book_id}/asset", headers=isolated_api.headers)
     assert r.status_code == 409, r.text
 
 
 def test_asset_download_unknown_book_returns_404(isolated_api):
-    r = isolated_api.client.get(
-        "/api/library/books/nope/asset", headers=isolated_api.headers
-    )
+    r = isolated_api.client.get("/api/library/books/nope/asset", headers=isolated_api.headers)
     assert r.status_code == 404, r.text
 
 
@@ -221,3 +218,73 @@ def test_asset_download_redirects_to_presigned_url_when_object_stored(isolated_a
     )
     assert r.status_code == 307, r.text
     assert r.headers["location"]
+
+
+# ---------------------------------------------------------------------------
+# format allow-list at the request boundary (Issue #1187)
+# ---------------------------------------------------------------------------
+
+_LEGAL_FORMATS = ["epub", "pdf", "txt", "md"]
+_ILLEGAL_FORMATS = ["exe", "EPUB", "docx", ""]
+
+
+@pytest.mark.parametrize("fmt", _ILLEGAL_FORMATS)
+def test_book_create_rejects_unsupported_format(isolated_api, fmt):
+    r = isolated_api.client.post(
+        "/api/library/books",
+        json={"client_book_id": "bad-1", "title": "Bad", "format": fmt},
+        headers=isolated_api.headers,
+    )
+    assert r.status_code == 422, r.text
+    listing = isolated_api.client.get("/api/library/books", headers=isolated_api.headers)
+    assert listing.status_code == 200, listing.text
+    assert "bad-1" not in json.dumps(listing.json())
+
+
+@pytest.mark.parametrize("fmt", _ILLEGAL_FORMATS)
+def test_book_update_rejects_unsupported_format(isolated_api, fmt):
+    book_id = _seed_book(isolated_api)
+    r = isolated_api.client.patch(
+        f"/api/library/books/{book_id}",
+        json={"format": fmt},
+        headers=isolated_api.headers,
+    )
+    assert r.status_code == 422, r.text
+    listing = isolated_api.client.get("/api/library/books", headers=isolated_api.headers)
+    assert [b["format"] for b in listing.json()] == ["epub"]
+
+
+@pytest.mark.parametrize("fmt", _ILLEGAL_FORMATS)
+def test_asset_upload_rejects_unsupported_format_without_metadata(isolated_api, fmt):
+    book_id = _seed_book(isolated_api)
+    r = isolated_api.client.post(
+        f"/api/library/books/{book_id}/asset-upload",
+        json={"format": fmt, "byte_size": 10},
+        headers=isolated_api.headers,
+    )
+    assert r.status_code == 422, r.text
+    dl = isolated_api.client.get(f"/api/library/books/{book_id}/asset", headers=isolated_api.headers)
+    assert dl.status_code == 409, dl.text  # no asset metadata was recorded
+
+
+@pytest.mark.parametrize("fmt", _LEGAL_FORMATS)
+def test_legal_formats_succeed_on_all_three_models(isolated_api, fmt):
+    created = isolated_api.client.post(
+        "/api/library/books",
+        json={"client_book_id": f"ok-{fmt}", "title": "Ok", "format": fmt},
+        headers=isolated_api.headers,
+    )
+    assert created.status_code == 201, created.text
+    book_id = created.json()["id"]
+    patched = isolated_api.client.patch(
+        f"/api/library/books/{book_id}",
+        json={"format": fmt},
+        headers=isolated_api.headers,
+    )
+    assert patched.status_code == 200, patched.text
+    up = isolated_api.client.post(
+        f"/api/library/books/{book_id}/asset-upload",
+        json={"format": fmt, "byte_size": 10},
+        headers=isolated_api.headers,
+    )
+    assert up.status_code == 200, up.text
