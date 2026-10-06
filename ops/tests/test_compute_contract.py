@@ -277,7 +277,15 @@ def test_profile_registry_rejects_production_and_unsafe_contracts() -> None:
 
     profile = copy.deepcopy(registry["profiles"]["backend.targeted-pytest"])
     profile["remote_eligible"] = True
+    with pytest.raises(ContractError, match="remote-contract"):
+        validate_profile(profile, name="backend.targeted-pytest")
+    profile["minimum_remote_seconds"] = 60
+    assert validate_profile(profile, name="backend.targeted-pytest")["remote_eligible"] is True
+    profile["remote_eligible"] = "yes"
     with pytest.raises(ContractError, match="remote-ineligible"):
+        validate_profile(profile, name="backend.targeted-pytest")
+    profile["remote_eligible"] = False
+    with pytest.raises(ContractError, match="remote-contract"):
         validate_profile(profile, name="backend.targeted-pytest")
     profile = copy.deepcopy(registry["profiles"]["backend.targeted-pytest"])
     profile["git_metadata_required"] = True

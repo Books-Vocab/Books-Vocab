@@ -136,7 +136,7 @@ def validate_profile(
         "command", "parameters", "source_kind", "required_capabilities",
         "runner_capabilities", "bootstrap",
         "resource_class", "timeout_seconds", "remote_eligible",
-        "minimum_tier",
+        "minimum_tier", "minimum_remote_seconds",
         "git_metadata_required", "side_effects", "network_policy",
         "sandbox_policy", "runner_image_digest", "artifact_contract",
     }
@@ -211,8 +211,19 @@ def validate_profile(
         _fail("invalid-field", "minimum_tier")
     if not isinstance(profile.get("timeout_seconds"), int) or profile["timeout_seconds"] <= 0:
         _fail("invalid-field", "timeout_seconds")
-    if profile.get("remote_eligible") is not False:
+    remote_eligible = profile.get("remote_eligible")
+    minimum_remote = profile.get("minimum_remote_seconds")
+    if not isinstance(remote_eligible, bool):
         _fail("remote-ineligible", name)
+    if remote_eligible:
+        if (
+            not isinstance(minimum_remote, int)
+            or isinstance(minimum_remote, bool)
+            or minimum_remote <= 0
+        ):
+            _fail("remote-contract", f"{name}: minimum_remote_seconds")
+    elif minimum_remote is not None:
+        _fail("remote-contract", f"{name}: minimum_remote_seconds without remote_eligible")
     if profile.get("git_metadata_required") is not False:
         _fail("git-metadata", name)
     effects = profile.get("side_effects")
@@ -301,7 +312,7 @@ def resolve_profile(
         "resource_class": profile["resource_class"],
         "minimum_tier": profile["minimum_tier"],
         "timeout_seconds": profile["timeout_seconds"],
-        "remote_eligible": False,
+        "remote_eligible": profile["remote_eligible"],
         "git_metadata_required": False,
         "side_effects": list(profile["side_effects"]),
         "network_policy": profile["network_policy"],

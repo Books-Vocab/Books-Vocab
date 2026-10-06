@@ -83,6 +83,11 @@ def test_json_schema_exposes_tiers_and_surfaces(capsys):
     assert profiles["backend.targeted-pytest"]["networkPolicy"] == "none"
     assert profiles["ops.docs-lint-registry"]["minimumTier"] == "observer"
     assert all(profile["runnerImageDigest"].startswith("sha256:") for profile in profiles.values())
+    assert all(profile["minimumRemoteSeconds"] is None for profile in profiles.values())
+    compute = {s["key"]: s for s in payload["surfaces"] if s["key"].startswith("compute.cli.")}
+    assert set(compute) == {"compute.cli.plan", "compute.cli.run", "compute.cli.status"}
+    assert all("--target auto|local|felix" in s["command"] for s in compute.values())
+    assert all(s["scope"] != "production" for s in compute.values())
 
 
 def test_tier_filter_only_returns_requested_tier(capsys):

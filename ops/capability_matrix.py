@@ -77,6 +77,9 @@ SURFACES = [
     Surface("devops.safe.run-exception", "./ops/devops_kg_safe.sh", "./ops/devops_kg_safe.sh run \"<cmd>\"", "production-capable", "prod-escape-hatch", "production", "exception path for raw remote commands"),
     Surface("devops.safe.container-run-exception", "./ops/devops_kg_safe.sh", "./ops/devops_kg_safe.sh container-run \"<cmd>\"", "production-capable", "prod-escape-hatch", "production", "exception path for raw container commands"),
     Surface("ios.ops.archive-upload", "./ops/ios_ops.sh", "./ops/ios_ops.sh archive --upload --json", "production-capable", "external-upload local-build", "external", "archive/export/upload build artifact"),
+    Surface("compute.cli.plan", "./ops/compute.py", "./ops/compute.py plan <profile> [--target auto|local|felix]", "observer", "repo-read", "repo", "resolve a typed compute profile and its routing decision; probes Felix only for remote-eligible profiles"),
+    Surface("compute.cli.run", "./ops/compute.py", "./ops/compute.py run <profile> [--target auto|local|felix]", "operator", "local-test", "local", "run a typed profile locally or via the fixed Felix launcher; Oscar-verified signed receipt, results only in the worktree .cache/compute"),
+    Surface("compute.cli.status", "./ops/compute.py", "./ops/compute.py status [--target auto|local|felix]", "observer", "repo-read", "repo", "observe registry, runner and routing readiness; no raw host, path or shell surface"),
     Surface("compute.profile.backend-targeted-pytest", "ops/compute_profiles.yml", "profile:backend.targeted-pytest", "operator", "local-test", "local", "controlled backend targeted pytest plan; no raw shell or remote host"),
     Surface("compute.profile.docs-lint-registry", "ops/compute_profiles.yml", "profile:ops.docs-lint-registry", "observer", "repo-read", "repo", "controlled docs registry lint plan"),
 ]
@@ -91,6 +94,7 @@ def _compute_profiles() -> list[dict[str, object]]:
             "resourceClass": profile["resource_class"],
             "minimumTier": profile["minimum_tier"],
             "remoteEligible": profile["remote_eligible"],
+            "minimumRemoteSeconds": profile.get("minimum_remote_seconds"),
             "networkPolicy": profile["network_policy"],
             "sandboxPolicy": profile["sandbox_policy"],
             "runnerImageDigest": profile["runner_image_digest"],
