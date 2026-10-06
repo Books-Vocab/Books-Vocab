@@ -767,6 +767,8 @@ def test_selftest_green_matches_the_live_acceptance_conditions(
     assert out["cleanup"]["fetch_after_ack_refused"] is True
     assert not any((rig.state / "jobs").glob("*"))
     assert SECRET_MARKER not in json.dumps(out)
+    # selftest is a proof, not a run: it must never feed the auto cost model
+    assert not (rig.repo / ".cache" / "compute" / "history.ndjson").exists()
 
 
 def test_selftest_without_a_reachable_felix_fails_closed_with_named_reason(

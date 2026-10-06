@@ -34,6 +34,7 @@ TIMEOUT_EXIT = 124
 if str(OPS_DIR) not in sys.path:
     sys.path.insert(0, str(OPS_DIR))
 
+from lib import compute_history as history_lib
 from lib import xmachine_transport as transport_lib
 from lib.compute_capsule import CapsuleError, materialize_tracked_capsule
 from lib.compute_contract import (
@@ -153,15 +154,38 @@ def _local_load() -> dict[str, Any]:
     return {"busy": ratio >= BUSY_LOAD_RATIO, "slowdown": 1.0 + ratio}
 
 
-def _gate_history(profile: str) -> list[float] | None:
-    """Duration samples (seconds) from existing gate history.
+def _gate_history(profile: str, cache: Path) -> list[float] | None:
+    """Fresh local run durations (seconds) for ``profile``; ``None`` if sparse.
 
-    No gate-history source exists in this tree yet (IMP-20260808-4bd1ef); a
-    second time source of truth must not be invented here, so unknown history
-    keeps ``auto`` on local.
+    Source: the append-only ``.cache/compute/history.ndjson`` written after
+    verified successful runs.  Malformed, stale (>14 days) or too few (<3)
+    samples yield ``None`` so ``auto`` stays on local.
     """
 
-    return None
+    return history_lib.local_durations(cache, profile, _now())
+
+
+def _record_history(
+    cache: Path,
+    *,
+    profile: str,
+    mode: str,
+    duration_seconds: float,
+    transfer_seconds: float | None,
+) -> None:
+    """Best-effort: a history failure must never change a run's result."""
+
+    try:
+        history_lib.record(
+            cache,
+            profile=profile,
+            mode=mode,
+            duration_seconds=duration_seconds,
+            transfer_seconds=transfer_seconds,
+            now=_now(),
+        )
+    except Exception as error:  # noqa: BLE001 - recording is non-fatal by contract
+        print(f"compute: history not recorded: {error}", file=sys.stderr)
 
 
 def _receipt_signer(registry: dict[str, Any]) -> ReceiptSigner | None:
@@ -279,24 +303,31 @@ def _route_facts(
 
 
 def _costs(
-    probe: dict[str, Any] | None, load: dict[str, Any], profile: str
+    probe: dict[str, Any] | None, load: dict[str, Any], profile: str, cache: Path
 ) -> tuple[int | None, int | None]:
-    """Predicted (local, felix) milliseconds from existing gate history only."""
+    """Predicted (local, felix) milliseconds from recorded run history only.
 
-    samples = [s for s in (_gate_history(profile) or []) if _is_seconds(s)]
+    Transfer time comes from the probe when it reports one, else from the
+    median of recorded felix runs; any missing input yields ``(None, None)``.
+    """
+
+    samples = [s for s in (_gate_history(profile, cache) or []) if _is_seconds(s)]
     probe = probe if isinstance(probe, dict) else {}
+    transfer = probe.get("transfer_seconds")
+    if not _is_seconds(transfer):
+        transfer = history_lib.felix_transfer_seconds(cache, profile, _now())
     slowdown = load.get("slowdown")
     if (
         not samples
         or not _is_seconds(slowdown)
         or not _is_seconds(probe.get("warmup_seconds"))
-        or not _is_seconds(probe.get("transfer_seconds"))
+        or not _is_seconds(transfer)
     ):
         return None, None
     estimate = statistics.median(samples)
     return (
         int(estimate * slowdown * 1000),
-        int((estimate + probe["warmup_seconds"] + probe["transfer_seconds"]) * 1000),
+        int((estimate + probe["warmup_seconds"] + transfer) * 1000),
     )
 
 
@@ -313,7 +344,7 @@ def _route(
     if args.mode != "local" and spec["remote_eligible"] is True:
         probe = _probe_felix(args, profile)
     load = _local_load()
-    local_cost, felix_cost = _costs(probe, load, profile)
+    local_cost, felix_cost = _costs(probe, load, profile, _cache_root(args))
     return choose_route(
         args.mode,
         **_route_facts(probe, spec=spec, git=git, signer=_receipt_signer(registry)),
@@ -424,7 +455,16 @@ def _run_local(
         stderr = (error.stderr or "") + "\nexecution timed out"
     except OSError as error:
         raise CliError("execution", str(error)) from error
-    duration_ms = round((time.monotonic() - started) * 1000, 3)
+    elapsed = time.monotonic() - started
+    duration_ms = round(elapsed * 1000, 3)
+    if returncode == 0:
+        _record_history(
+            _cache_root(args),
+            profile=resolved["profile"],
+            mode="local",
+            duration_seconds=elapsed,
+            transfer_seconds=None,
+        )
     payload = {
         "schema": SCHEMA,
         "command": "run",
@@ -502,6 +542,7 @@ def _felix_roundtrip(
     spec = resolved["spec"]
     cache = _cache_root(args)
     nonce = transport_lib.new_nonce()
+    transfer_started = time.monotonic()
     try:
         capsule = materialize_tracked_capsule(
             args.repo.resolve(), git["head"], cache / job_id / "capsule"
@@ -516,6 +557,7 @@ def _felix_roundtrip(
         commit=capsule.commit,
         tree_digest=capsule.tree_sha256,
     )
+    transfer_seconds: float | None = None
     try:
         transport.submit(
             job_id,
@@ -530,6 +572,7 @@ def _felix_roundtrip(
             },
             params=spec["parameters"],
         )
+        transfer_seconds = time.monotonic() - transfer_started
         fetched = transport.fetch(job_id)
         accepted = transport_lib.accept_receipt(
             fetched.get("receipt"),
@@ -556,6 +599,7 @@ def _felix_roundtrip(
     return {
         "accepted": accepted,
         "source": {"commit_sha": capsule.commit, "tree_sha256": capsule.tree_sha256},
+        "transfer_seconds": transfer_seconds,
     }
 
 
@@ -574,19 +618,29 @@ def _run_felix(
         raise CliError("felix-refused-receipt-key-unpinned")
     spec = resolved["spec"]
     job_id = transport_lib.new_job_id()
+    started = time.monotonic()
     try:
-        accepted = _felix_roundtrip(
+        trip = _felix_roundtrip(
             args,
             resolved=resolved,
             git=git,
             signer=signer,
             job_id=job_id,
             transport=_transport(args, job_id),
-        )["accepted"]
+        )
     except transport_lib.TransportError as error:
         return _felix_failure(resolved, job_id=job_id, code=error.code)
+    accepted = trip["accepted"]
     body = accepted["receipt"]
     returncode = body["returncode"]
+    if returncode == 0:  # verified receipt + success only
+        _record_history(
+            _cache_root(args),
+            profile=resolved["profile"],
+            mode="felix",
+            duration_seconds=time.monotonic() - started,
+            transfer_seconds=trip["transfer_seconds"],
+        )
     return {
         "schema": SCHEMA,
         "command": "run",
