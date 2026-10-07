@@ -35,9 +35,15 @@ import sys
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
-from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    PlainTextResponse,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 
 # Make `monitor/` importable when launched as a script via `uv run monitor/server.py`.
@@ -51,15 +57,26 @@ import saga  # noqa: E402  — parse series.md for the workspace summary
 import archetypes  # noqa: E402  — validate spoiler_mode for a saga upload
 from agent_profiles import AGENT_PROFILES  # noqa: E402  — shared pipeline/monitor profile registry
 from tts_config import ALLOWED_TTS_MODELS  # noqa: E402  — server-side TTS model allowlist
+import rights_gate  # noqa: E402  — copyright line shared with pipeline.py (#2094)
+
 # Disk-derived status primitives live in workspace_status.py (FastAPI-free) so
 # headless tooling (ops/podcast_ops.py) can reuse the exact same logic — single
 # source of truth, existing tests unchanged. Only the names server.py references
 # directly are imported; the rest (e.g. _scan_pipeline_log_status, the _EP_* regexes)
 # are now reached transitively through disk_status / _episode_status.
 from workspace_status import (  # noqa: E402
-    _WS_NAME_RE, _STAGES_ORDERED, _STAGE_NAMES, _STAGE_COUNT,
-    _stages_done, _milestones, _gate_states, _episode_status, _ensure_created,
-    reconcile_workspaces, disk_status, audio_episode_numbers,
+    _WS_NAME_RE,
+    _STAGES_ORDERED,
+    _STAGE_NAMES,
+    _STAGE_COUNT,
+    _stages_done,
+    _milestones,
+    _gate_states,
+    _episode_status,
+    _ensure_created,
+    reconcile_workspaces,
+    disk_status,
+    audio_episode_numbers,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -67,6 +84,9 @@ LOGGER = logging.getLogger(__name__)
 # Keep the public server name for existing callers while sourcing values from
 # the side-effect-free registry shared with pipeline.py.
 ALLOWED_AGENT_PROFILES = AGENT_PROFILES
+# Rights are chosen once in the NEW PODCAST modal and frozen into <ws>/.rights by
+# pipeline.py; the server always passes an explicit value (fail-closed default).
+ALLOWED_RIGHTS = rights_gate.RIGHTS_VALUES
 
 # Cap pipeline upload at 200MB — typical EPUB is <10MB; anything 200MB+ is
 # almost certainly someone uploading the wrong file by accident. Protects
@@ -89,7 +109,9 @@ def _pipeline_env(agent_profile: str = "", agent_model: str = "") -> dict[str, s
     return env
 
 
-def _append_agent_args(cmd: list[str], agent_profile: str = "", agent_model: str = "") -> None:
+def _append_agent_args(
+    cmd: list[str], agent_profile: str = "", agent_model: str = ""
+) -> None:
     if agent_profile:
         cmd += ["--agent-profile", agent_profile]
     if agent_model:
@@ -101,6 +123,13 @@ def _validate_agent_profile(agent_profile: str) -> None:
         raise HTTPException(
             422,
             f"unknown agent_profile {agent_profile!r}; allowed: {', '.join(ALLOWED_AGENT_PROFILES)}",
+        )
+
+
+def _validate_rights(rights: str) -> None:
+    if rights not in ALLOWED_RIGHTS:
+        raise HTTPException(
+            422, f"unknown rights {rights!r}; allowed: {', '.join(ALLOWED_RIGHTS)}"
         )
 
 
@@ -205,6 +234,7 @@ def sweep_orphan_staging() -> list[Path]:
         UPLOAD_STAGING, _active_staging_paths(), max_age_s=STAGING_MAX_AGE_S
     )
 
+
 # Workspace-name regex, stage order/names, and the disk-derived status helpers
 # below are imported from workspace_status (see top-of-file import).
 
@@ -283,6 +313,69 @@ async def _no_cache_static(request, call_next):
     return response
 
 
+# ─── Same-origin guard (CSRF + DNS rebinding, #2097) ────────────────────────
+# The dashboard has no auth: binding to 127.0.0.1 keeps other machines out but
+# not the user's own browser, which any web page can aim at it. Registered
+# last, so it is the outermost middleware and a rejected request never reaches
+# a handler (no gate marker written, no subprocess spawned, no S3 delete):
+#   1. Host allowlist → 400. Defeats DNS rebinding: a rebound attacker name is
+#      *same-origin* with us, so only the Host header still exposes it. Allowed
+#      = loopback aliases + the literal IP of the socket the request landed on
+#      (ASGI scope["server"]; an IP literal cannot be rebound), which keeps a
+#      non-loopback `--host` bind working. The port is not pinned, so
+#      `ssh -L <port>:127.0.0.1:8765` tunnels keep working.
+#   2. Non-GET/HEAD → the browser-stamped Origin (Referer fallback) must equal
+#      this request's own scheme://host:port, else 403. Origin is a forbidden
+#      header (page JS cannot forge it) and fetch() always sends it on
+#      POST/DELETE; both missing, or `Origin: null`, fails closed. Non-browser
+#      callers add e.g. `-H 'Origin: http://127.0.0.1:8765'`.
+# Chosen over a per-start random token header: the token's secrecy rests on
+# the same Host allowlist + same-origin policy (a rebound page could read it
+# from whatever GET hands it out), so it adds no independent layer, while it
+# goes stale on every start.sh restart (open tabs' buttons 403 until reload)
+# and must be threaded through every current and future mutating fetch.
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+_SAFE_METHODS = frozenset({"GET", "HEAD"})
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+_CROSS_ORIGIN_DETAIL = "cross-origin request blocked: Origin must match the dashboard"
+
+
+def _parse_origin(url: str) -> tuple[str, str, int] | None:
+    """`scheme://host[:port][/...]` → (scheme, lowercase host, port), or None
+    when unusable (opaque `null`, non-http(s) scheme, userinfo, bad port)."""
+    try:
+        parts = urlsplit(url)
+        host, port = parts.hostname, parts.port
+    except ValueError:
+        return None
+    if parts.scheme not in _DEFAULT_PORTS or not host or parts.username is not None:
+        return None
+    return parts.scheme, host, _DEFAULT_PORTS[parts.scheme] if port is None else port
+
+
+def _parse_host(value: str, scheme: str) -> tuple[str, str, int] | None:
+    """A Host header (`h`, `h:p`, `[v6]:p`) → the origin tuple it names."""
+    if not value or any(c in value for c in "/?#@\\ "):
+        return None
+    return _parse_origin(f"{scheme}://{value}")
+
+
+@app.middleware("http")
+async def _same_origin_guard(request, call_next):
+    scheme = request.scope.get("scheme", "http")
+    target = _parse_host(request.headers.get("host", ""), scheme)
+    server = request.scope.get("server")
+    allowed = _LOOPBACK_HOSTS | ({str(server[0]).lower()} if server else frozenset())
+    if target is None or target[1] not in allowed:
+        return JSONResponse({"detail": "invalid Host header"}, status_code=400)
+    if request.method not in _SAFE_METHODS:
+        origin = request.headers.get("origin")
+        source = origin if origin is not None else request.headers.get("referer")
+        if source is None or _parse_origin(source) != target:
+            return JSONResponse({"detail": _CROSS_ORIGIN_DETAIL}, status_code=403)
+    return await call_next(request)
+
+
 @app.get("/")
 def index():
     return FileResponse(STATIC_DIR / "index.html")
@@ -292,19 +385,27 @@ def _active_job_for_ws(ws_name: str, running: dict | None = None) -> dict | None
     """Return `{job_id,label,kind}` for a running job bound to this workspace,
     or None.
 
-    Pairs jobs to workspaces via two routes (same logic the sidebar list uses):
+    Pairs jobs to workspaces via three routes (same logic the sidebar list uses):
       1. `metadata.workspace` — upload / rerun / approve / resume jobs know the
          workspace at spawn time (caller passed it in).
       2. `<ws>/.pipeline_job_id` sidecar — written by pipeline.py once it
          resolves EPUB→workspace, used by full-pipeline jobs whose spawn-time
          metadata only knows the EPUB filename.
+      3. `<ws>/.pipeline.lock` — the flock every pipeline.py holds for its whole
+         run. Routes 1-2 only know this server's in-memory jobs; this one also
+         sees a CLI run and a job spawned before a server restart (jobs run in
+         their own session and outlive the server). Reported as
+         `{job_id: "pid <N>", label, kind: "pipeline", pid}`.
 
     `running` may be passed in to amortize `jobs.list()` across many lookups
     (list_workspaces calls this once per ws); if omitted we fetch ourselves.
     Used both for the sidebar's `active_job` field and as the per-workspace
     concurrency guard on every spawn endpoint — two pipeline.py on the same
-    workspace would race on markers/scripts/mp3s with no mutual exclusion.
+    workspace would race on markers/scripts/mp3s.
     """
+    # Local import keeps this lock-probe change inside this function.
+    from pipeline_plan import WorkspaceState
+
     if running is None:
         running = {j.id: j for j in jobs.list(limit=200) if j.status == "running"}
     # Route 1: explicit metadata.workspace.
@@ -315,15 +416,22 @@ def _active_job_for_ws(ws_name: str, running: dict | None = None) -> dict | None
     try:
         jid = (WORKSPACES_DIR / ws_name / ".pipeline_job_id").read_text().strip()
     except OSError as exc:
-        __import__("logging").getLogger(__name__).debug(
-            "workspace=%s missing/invalid sidecar marker: %s",
-            ws_name,
-            exc,
-        )
-        LOGGER.warning("Silently handled exception; using fallback response", exc_info=True)
+        LOGGER.debug("workspace=%s has no readable .pipeline_job_id: %s", ws_name, exc)
+    else:
+        j = running.get(jid)
+        if j:
+            return {"job_id": j.id, "label": j.label, "kind": j.kind}
+    # Route 3: the pipeline's own run lock.
+    holder = WorkspaceState(WORKSPACES_DIR / ws_name).run_lock_holder()
+    if holder is None:
         return None
-    j = running.get(jid)
-    return {"job_id": j.id, "label": j.label, "kind": j.kind} if j else None
+    pid = "?" if holder.pid is None else holder.pid
+    return {
+        "job_id": f"pid {pid}",
+        "label": f"pipeline.py run (pid {pid})",
+        "kind": "pipeline",
+        "pid": holder.pid,
+    }
 
 
 @app.get("/api/workspaces")
@@ -387,8 +495,9 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
     n_audio = int(_ms.get("audio", {}).get("done", 0))
     target = int(_ms.get("script", {}).get("total", 0))
     try:
-        gates = _gate_states(ws, has_plan=has_plan, n_script=n_script,
-                             n_audio=n_audio, target=target)
+        gates = _gate_states(
+            ws, has_plan=has_plan, n_script=n_script, n_audio=n_audio, target=target
+        )
     except Exception:
         gates = []
     _gate_state = {g["key"]: g["state"] for g in gates}
@@ -406,10 +515,14 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
         ridx = _STAGES_ORDERED.index(resume_stage)
         n_srt = int(_ms.get("subtitle", {}).get("done", 0))
         frontier = -1
-        if has_plan:     frontier = max(frontier, _STAGES_ORDERED.index("architect"))
-        if n_script > 0: frontier = max(frontier, _STAGES_ORDERED.index("scriptwrite"))
-        if n_audio > 0:  frontier = max(frontier, _STAGES_ORDERED.index("synthesize"))
-        if n_srt > 0:    frontier = max(frontier, _STAGES_ORDERED.index("subtitle"))
+        if has_plan:
+            frontier = max(frontier, _STAGES_ORDERED.index("architect"))
+        if n_script > 0:
+            frontier = max(frontier, _STAGES_ORDERED.index("scriptwrite"))
+        if n_audio > 0:
+            frontier = max(frontier, _STAGES_ORDERED.index("synthesize"))
+        if n_srt > 0:
+            frontier = max(frontier, _STAGES_ORDERED.index("subtitle"))
         resume_drift = frontier > ridx
 
     # ─── Status (running > done > failed > awaiting > idle > fresh) ───
@@ -417,8 +530,11 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
     # headless tooling); active_job layers the runtime-only "running" state on
     # top. n_done==0 ≡ not stages_done, so "fresh" classification is preserved.
     status = disk_status(
-        ws, stages_done=stages_done, has_episodes=bool(episodes),
-        gate_state=_gate_state, active_job=active_job,
+        ws,
+        stages_done=stages_done,
+        has_episodes=bool(episodes),
+        gate_state=_gate_state,
+        active_job=active_job,
     )
 
     # ─── last_updated (max mtime among activity-indicating files) ───
@@ -512,7 +628,9 @@ def _workspace_summary(ws: Path, active_job: dict | None) -> dict:
         book_count = 0
         display = name
         try:
-            books = saga.parse_series_manifest((ws / "series.md").read_text(encoding="utf-8"))
+            books = saga.parse_series_manifest(
+                (ws / "series.md").read_text(encoding="utf-8")
+            )
             book_count = len(books)
         except Exception:
             __import__("logging").getLogger(__name__).info(
@@ -626,7 +744,9 @@ async def _tail(path: Path, last_size: int) -> tuple[str, int]:
     try:
         return data.decode("utf-8"), size
     except UnicodeDecodeError:
-        LOGGER.warning("Silently handled exception; using fallback response", exc_info=True)
+        LOGGER.warning(
+            "Silently handled exception; using fallback response", exc_info=True
+        )
         return data.decode("utf-8", errors="replace"), size
 
 
@@ -711,7 +831,9 @@ def episode_audio(ws_name: str, ep: int):
     ws = _resolve_ws(ws_name)
     if not 1 <= ep <= 999:
         raise HTTPException(400, "ep out of range")
-    f = _ep_file(ws, ep, (("pro", "mp3"), ("flash", "mp3"), ("pro", "m4a"), ("flash", "m4a")))
+    f = _ep_file(
+        ws, ep, (("pro", "mp3"), ("flash", "mp3"), ("pro", "m4a"), ("flash", "m4a"))
+    )
     if not f:
         raise HTTPException(404, f"no audio for ep {ep}")
     # FileResponse handles Range requests, content-type, length headers, and
@@ -819,10 +941,14 @@ def upload_workspace(ws_name: str):
         raise HTTPException(422, "plan/overview.md missing — run pipeline first")
     scripts = ws / "scripts"
     if not scripts.is_dir() or not any(
-        f for ext in ("mp3", "m4a") for pat in (f"ep_*_pro.{ext}", f"ep_*_flash.{ext}")
+        f
+        for ext in ("mp3", "m4a")
+        for pat in (f"ep_*_pro.{ext}", f"ep_*_flash.{ext}")
         for f in scripts.glob(pat)
     ):
-        raise HTTPException(422, "no ep_*_pro/flash .mp3/.m4a — synthesize stage incomplete")
+        raise HTTPException(
+            422, "no ep_*_pro/flash .mp3/.m4a — synthesize stage incomplete"
+        )
 
     upload_sh = (ROOT.parent.parent / "ops" / "podcast_upload.sh").resolve()
     if not upload_sh.exists():
@@ -833,7 +959,27 @@ def upload_workspace(ws_name: str):
     # concurrent-POST race this pre-check can't.
     busy = _active_job_for_ws(ws_name)
     if busy:
-        raise HTTPException(409, f"a job is already running for {ws_name} (job {busy['job_id']})")
+        raise HTTPException(
+            409, f"a job is already running for {ws_name} (job {busy['job_id']})"
+        )
+
+    # Same publish verbatim gate as pipeline.stage_publish (#2094): the manual
+    # upload is a repair path, not a way around the copyright line. Runs after
+    # the busy check so it never measures files a running job is still writing.
+    gate = rights_gate.evaluate_gate(
+        ws,
+        stage="publish",
+        load_thresholds=lambda: rights_gate.load_workspace_thresholds(
+            ws, ROOT / "workflow_versions"
+        ),
+    )
+    rights_gate.write_report(ws / rights_gate.REPORT_FILE, gate)
+    if gate.blocked:
+        raise HTTPException(
+            422,
+            f"verbatim gate blocked publish (rights={gate.rights}): {gate.summary()} "
+            f"— see {rights_gate.REPORT_FILE}",
+        )
 
     try:
         job = jobs.spawn(
@@ -885,7 +1031,9 @@ def rerun_stage(
     # stage_done marker and think the stage isn't complete.
     busy = _active_job_for_ws(ws_name)
     if busy:
-        raise HTTPException(409, f"a job is already running for {ws_name} (job {busy['job_id']})")
+        raise HTTPException(
+            409, f"a job is already running for {ws_name} (job {busy['job_id']})"
+        )
 
     if drop_marker:
         # Per-stage marker → re-execute. Some stages (parallel scriptwrite/
@@ -953,7 +1101,9 @@ def approve_gate(ws_name: str, gate: str = Query(...)):
 
     busy = _active_job_for_ws(ws_name)
     if busy:
-        raise HTTPException(409, f"a job is already running for {ws_name} (job {busy['job_id']})")
+        raise HTTPException(
+            409, f"a job is already running for {ws_name} (job {busy['job_id']})"
+        )
 
     (ws / marker).write_text(time.strftime("approved %Y-%m-%dT%H:%M:%S\n"))
 
@@ -971,7 +1121,12 @@ def approve_gate(ws_name: str, gate: str = Query(...)):
         raise HTTPException(409, str(e)) from e
     except JobLimitReached as e:
         raise HTTPException(429, str(e)) from e
-    return {"job_id": job.id, "status": job.status, "label": job.label, "approved": gate}
+    return {
+        "job_id": job.id,
+        "status": job.status,
+        "label": job.label,
+        "approved": gate,
+    }
 
 
 @app.post("/api/workspace/{ws_name}/resume")
@@ -987,7 +1142,9 @@ def resume_workspace(ws_name: str):
     ws = _resolve_ws(ws_name)
     busy = _active_job_for_ws(ws_name)
     if busy:
-        raise HTTPException(409, f"a job is already running for {ws_name} (job {busy['job_id']})")
+        raise HTTPException(
+            409, f"a job is already running for {ws_name} (job {busy['job_id']})"
+        )
     try:
         job = jobs.spawn(
             ["uv", "run", "pipeline.py", str(ws)],
@@ -1012,6 +1169,7 @@ async def start_pipeline(
     tts_model: str = Form(""),
     agent_profile: str = Form(""),
     agent_model: str = Form(""),
+    rights: str = Form(rights_gate.DEFAULT_RIGHTS),
 ):
     """Receive an EPUB upload, save to staging, spawn pipeline.py.
     Returns job_id immediately; the new workspace name appears in the
@@ -1023,10 +1181,16 @@ async def start_pipeline(
     if not epub.filename or not epub.filename.lower().endswith(".epub"):
         raise HTTPException(415, "expected .epub file")
     if tts_model and tts_model not in ALLOWED_TTS_MODELS:
-        raise HTTPException(422, f"unknown tts_model {tts_model!r}; allowed: {', '.join(ALLOWED_TTS_MODELS)}")
+        raise HTTPException(
+            422,
+            f"unknown tts_model {tts_model!r}; allowed: {', '.join(ALLOWED_TTS_MODELS)}",
+        )
     _validate_agent_profile(agent_profile)
+    _validate_rights(rights)
     # Strip leading dots/hyphens so `....epub` doesn't land as a hidden file.
-    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", epub.filename).lstrip(".-") or "upload.epub"
+    safe_name = (
+        re.sub(r"[^A-Za-z0-9._-]+", "_", epub.filename).lstrip(".-") or "upload.epub"
+    )
     # Per-call uuid token (not just a timestamp) so concurrent uploads of the
     # same filename in the same second stage to PHYSICALLY distinct paths —
     # otherwise the dedup loser's cleanup unlinks the winner's in-place input.
@@ -1058,7 +1222,16 @@ async def start_pipeline(
         dest.unlink(missing_ok=True)
         raise
 
-    cmd = ["uv", "run", "pipeline.py", str(dest), "--parallel", str(parallel)]
+    cmd = [
+        "uv",
+        "run",
+        "pipeline.py",
+        str(dest),
+        "--parallel",
+        str(parallel),
+        "--rights",
+        rights,
+    ]
     if tts_model:
         cmd += ["--tts-model", tts_model]
     _append_agent_args(cmd, agent_profile, agent_model)
@@ -1073,6 +1246,7 @@ async def start_pipeline(
                 "epub": safe_name,
                 "parallel": parallel,
                 "bytes": written,
+                "rights": rights,
                 "tts_model": tts_model or None,
                 "agent_profile": agent_profile or None,
                 "agent_model": agent_model or None,
@@ -1089,7 +1263,12 @@ async def start_pipeline(
     except JobLimitReached as e:
         dest.unlink(missing_ok=True)
         raise HTTPException(429, str(e)) from e
-    return {"job_id": job.id, "status": job.status, "label": job.label, "epub": safe_name}
+    return {
+        "job_id": job.id,
+        "status": job.status,
+        "label": job.label,
+        "epub": safe_name,
+    }
 
 
 @app.post("/api/pipeline/start-saga")
@@ -1101,6 +1280,7 @@ async def start_saga(
     tts_model: str = Form(""),
     agent_profile: str = Form(""),
     agent_model: str = Form(""),
+    rights: str = Form(rights_gate.DEFAULT_RIGHTS),
 ):
     """Receive >=2 EPUB uploads + a saga title + spoiler policy, stage every
     file, then spawn `pipeline.py <epub>... --saga <title> --spoiler-mode <m>
@@ -1124,8 +1304,12 @@ async def start_saga(
     if err:
         raise HTTPException(400, err)
     if tts_model and tts_model not in ALLOWED_TTS_MODELS:
-        raise HTTPException(422, f"unknown tts_model {tts_model!r}; allowed: {', '.join(ALLOWED_TTS_MODELS)}")
+        raise HTTPException(
+            422,
+            f"unknown tts_model {tts_model!r}; allowed: {', '.join(ALLOWED_TTS_MODELS)}",
+        )
     _validate_agent_profile(agent_profile)
+    _validate_rights(rights)
     for up in epubs:
         if not up.filename or not up.filename.lower().endswith(".epub"):
             raise HTTPException(400, "all saga files must be .epub")
@@ -1144,7 +1328,10 @@ async def start_saga(
         for up in epubs:
             # Same sanitize as start_pipeline; strip leading dots/hyphens so a
             # crafted name can't land as a hidden file.
-            safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", up.filename).lstrip(".-") or "upload.epub"
+            safe_name = (
+                re.sub(r"[^A-Za-z0-9._-]+", "_", up.filename).lstrip(".-")
+                or "upload.epub"
+            )
             dest = _staging_dest(safe_name)
             staged.append(dest)
             written = 0
@@ -1167,11 +1354,18 @@ async def start_saga(
         raise
 
     cmd = [
-        "uv", "run", "pipeline.py",
+        "uv",
+        "run",
+        "pipeline.py",
         *[str(p) for p in staged],
-        "--saga", title,
-        "--spoiler-mode", spoiler_mode,
-        "--parallel", str(parallel),
+        "--saga",
+        title,
+        "--spoiler-mode",
+        spoiler_mode,
+        "--parallel",
+        str(parallel),
+        "--rights",
+        rights,
     ]
     if tts_model:
         cmd += ["--tts-model", tts_model]
@@ -1187,6 +1381,7 @@ async def start_saga(
                 "saga": title,
                 "books": len(staged),
                 "parallel": parallel,
+                "rights": rights,
                 "tts_model": tts_model or None,
                 "agent_profile": agent_profile or None,
                 "agent_model": agent_model or None,
@@ -1243,7 +1438,9 @@ def kill_job(job_id: str):
 
 def _remote_502(e: remote_ops.RemoteError) -> HTTPException:
     """Translate a RemoteError into a bounded 502 (remote.py is an S3 client)."""
-    return HTTPException(502, f"remote storage op failed (code {e.code}): {e.stderr[:200]}")
+    return HTTPException(
+        502, f"remote storage op failed (code {e.code}): {e.stderr[:200]}"
+    )
 
 
 @app.get("/api/remote/series")
@@ -1310,6 +1507,7 @@ def main():
         print(f"→ http://{args.host}:{args.port}")
 
     import uvicorn
+
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 

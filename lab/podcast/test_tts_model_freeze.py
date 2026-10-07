@@ -52,6 +52,9 @@ def captured_env(monkeypatch):
 def _ws(tmp_path):
     ws = tmp_path / "ws"
     (ws / "scripts").mkdir(parents=True)
+    # TTS env restore, not the copyright line (#2094): public_domain is exempt
+    # from the verbatim gate, so stage_synthesize reaches the tool runner.
+    (ws / ".rights").write_text("public_domain")
     return ws
 
 

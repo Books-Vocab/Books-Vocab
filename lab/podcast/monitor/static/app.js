@@ -911,6 +911,10 @@ function openNewPodcastModal() {
   $("#saga-title").value = "";
   const ra = $("#new-podcast-form").querySelector('input[name="spoiler-mode"][value="readalong"]');
   if (ra) ra.checked = true;
+  // Rights are per-book and frozen at creation — always restart at the
+  // fail-closed default rather than remembering the last book's choice.
+  const rc = $("#new-podcast-form").querySelector('input[name="rights"][value="copyrighted"]');
+  if (rc) rc.checked = true;
   renderFileList();
   // PARALLEL / TTS model live in the SETTINGS modal (single home each) and
   // persist via localStorage — nothing to reset here.
@@ -1088,7 +1092,10 @@ async function submitNewPodcast(e) {
   const ttsModel = getSettings().ttsModel;  // "" → server omits --tts-model
   const agentProfile = getSettings().agentProfile || "claude";
   const agentModel = getSettings().agentModel || "";
+  const rightsRadio = $("#new-podcast-form").querySelector('input[name="rights"]:checked');
+  const rights = rightsRadio ? rightsRadio.value : "copyrighted";
   const fd = new FormData();
+  fd.append("rights", rights);
   let url;
   if (isSaga) {
     const title = $("#saga-title").value.trim();

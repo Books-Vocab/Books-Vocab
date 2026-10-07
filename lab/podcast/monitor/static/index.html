@@ -73,6 +73,32 @@
           </label>
         </fieldset>
       </div>
+      <!-- Rights: frozen into <ws>/.rights at creation; cannot change on resume.
+           Only public_domain may get full_text / verbatim audio (#2094). -->
+      <fieldset class="rights-fields" id="rights-fields">
+        <legend class="field-label">RIGHTS</legend>
+        <label class="radio-row">
+          <input type="radio" name="rights" value="copyrighted" checked>
+          <span class="radio-body">
+            <span class="radio-title">copyrighted</span>
+            <span class="radio-desc">commentary only — short quotes, verbatim gate before audio + publish (default)</span>
+          </span>
+        </label>
+        <label class="radio-row">
+          <input type="radio" name="rights" value="licensed">
+          <span class="radio-body">
+            <span class="radio-title">licensed</span>
+            <span class="radio-desc">rights cleared, but still gated like copyrighted (no full_text)</span>
+          </span>
+        </label>
+        <label class="radio-row">
+          <input type="radio" name="rights" value="public_domain">
+          <span class="radio-body">
+            <span class="radio-title">public domain</span>
+            <span class="radio-desc">verified public domain — full_text reading allowed, gate exempt</span>
+          </span>
+        </label>
+      </fieldset>
       <div class="modal-foot">
         <button type="button" id="modal-cancel" class="action-btn">CANCEL</button>
         <button type="submit" id="modal-submit" class="action-btn primary" disabled>↑ START PIPELINE</button>

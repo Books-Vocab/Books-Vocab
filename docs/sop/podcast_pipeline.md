@@ -6,7 +6,7 @@ scope:
   - lab/podcast/
   - ops/podcast_upload.sh
   - .claude/skills/podcast-*/
-verified_against: 2d9f6fdbebca9fe0f2aa9a790f1498dded80050d
+verified_against: ba2522326bd5db671956a9ca5b9b913e71d05d30
 -->
 <!--
   tier 慣例:tier=sop 用 update_trigger=sop-change(對齊其他 sop)。
@@ -89,21 +89,59 @@ Fresh workspace 預設 `v1`。`--workflow-version v1|v2` 只在建立或 legacy 
 | `--skip-to S` | 從 stage S 起跑;前置 stage marker 缺失會 abort 並列出缺項 |
 | `--stop-after S` | 跑到 S 為止 |
 | `--only-stage S` | 只跑 S(等價 skip-to=stop-after,同樣驗證前置 marker) |
-| `--only-episode N` | 過濾單集(影響 scriptwrite / script-review / synthesize / audio-qa / subtitle) |
-| `--parallel N` | scriptwrite + script-review 並發度(預設 3) |
+| `--only-episode N` | 過濾單集(影響 scriptwrite / script-review / synthesize / audio-qa / subtitle)。N ≥ 1,且 workspace 須有 `plan/episodes/ep_NN.md` 或 `scripts/ep_N_script.md`,否則在任何 stage 前 exit 2 並列出既有集數(舊碼 `0` 會被 stage 當成「整季」、不存在的集數會直接開付費 agent) |
+| `--parallel N` | scriptwrite + script-review 並發度(預設 3),N 須在 1–10(同 dashboard `/api/pipeline/start` 上限),否則 exit 2 |
 | `--workflow-version V` | 指定版本化 workflow contract(`v1`/`v2`)。新 workspace 預設 `v1`;resume 讀 `workflow_manifest.json`,衝突版本報錯 |
 | `--tts-model M` | 凍結該 workspace 的 TTS model(`gemini-3.1-flash-tts-preview` / `gemini-2.5-pro-tts` / `gemini-2.5-flash-tts`),寫入 `.tts_model` sidecar,synthesize stage 讀回。resume 以 sidecar 為準;衝突的 `--tts-model` 報錯。省略 = 用 `synthesize.py` 的 env 預設。詳見 §3 |
-| `--force` | 繞過前置 marker 檢查(僅在手動驗證 artifacts 完整時使用) |
-| `--ignore-gates` | 無視兩道人工核准 gate,一路跑到底(還原舊全自動) |
+| `--rights R` | 書的版權狀態 `public_domain` / `licensed` / `copyrighted`,建立 workspace 時凍結進 `.rights` sidecar;省略 = `copyrighted`。resume 不可改(衝突報錯)。詳見 §1「版權線」 |
+| `--force` | 繞過前置 marker 檢查(僅在手動驗證 artifacts 完整時使用);**不繞過**版權 verbatim gate |
+| `--ignore-gates` | 無視兩道人工核准 gate,一路跑到底(還原舊全自動);**不繞過**版權 verbatim gate |
 
-### 四個 QA gate
+### QA gate
 
 | stage | gate 條件 | 判讀檔 |
 |---|---|---|
-| plan-review | 含 `REWRITE_NEEDED` 或 `FAIL` 計數 >2 → 失敗 | `plan/review.md` |
+| plan-review | 含 `REWRITE_NEEDED` 或 `FAIL` 計數 >2 → 失敗;**非 `public_domain` 的書任一集 `**Strategy**` 為 full text → 失敗**(code validator,在 reviewer 之後跑,檢查最終 plan 檔) | `plan/review.md` + `plan/episodes/ep_*.md` |
 | script-review | 任一集 `ep_N_review.md` 含 `REWRITE_NEEDED` → 失敗 | `scripts/ep_N_review.md` |
 | series-polish | 含 `STRUCTURAL_ISSUES_NEED_RESCRIPT` → 失敗;guard 每個 script 仍以 `END_OF_SCRIPT` 結尾(polish 不可剝 sentinel) | `plan/series_polish.md` |
 | tts-prep | `plan/tts_prep.md` 含 `READY_FOR_TTS` 且不含 `BLOCKED` | `plan/tts_prep.md` |
+| synthesize / publish | 版權 verbatim gate(見下節):非 `public_domain` 且超過門檻 → 失敗,不啟動任何 subprocess | `verbatim_qa.json` |
+
+### 版權線(rights sidecar + verbatim gate,#2094)
+
+立場:轉化/評論型內容可以;**硬線是非公版書絕不產生 full_text / 有聲書式逐字朗讀**。唯一 code owner = `lab/podcast/rights_gate.py`(stdlib-only,pipeline、monitor、報告共用同一份實作)。
+
+**Rights sidecar `<ws>/.rights`** ∈ `public_domain | licensed | copyrighted`:
+- 只在**建立 workspace 的那次執行**寫入:CLI `--rights`,或 dashboard NEW PODCAST 的 RIGHTS 單選(預設 `copyrighted`,server 一律帶顯式 `--rights`)。
+- **缺 sidecar = `copyrighted`(fail closed)**;內容不是三值之一 → 報錯,絕不猜成較寬鬆的類別。
+- resume 不可改:已有 sidecar 而 `--rights` 不同 → 報錯;rights 欄位之前就存在的舊 workspace(無 sidecar)釘死為 `copyrighted` 並補寫 sidecar,`--rights public_domain` 會被拒。確認是公版書後要改類,只能**人工**改檔(`echo public_domain > <ws>/.rights`),這是刻意留下的人為、可稽核動作。
+- `licensed` 與 `copyrighted` 同樣受限(不給 full_text、同一組門檻);只有 `public_domain` 豁免。
+
+**Prompt**:`{rights_policy}`(analyst / architect / plan_review / scriptwriter / script_review)與 `{strategy_options}`(architect / plan_review)由 `pipeline.inject_rights_policy` 在 `run_claude` / `run_scriptwriter` / `run_script_reviewer` 注入。非公版書的渲染結果完全不含 `full_text`,策略只剩 `key_passages / summary_plus_quotes`,並寫明 gate 的實際門檻;公版書才提供 `full_text`。`prompts/` 與 `workflow_versions/v1|v2/prompts/` 三份保持一致(改 prompt 會改 prompt fingerprint → 有 provenance 的 workspace 下次 resume 會從該 stage 重跑,這是 provenance 設計本意)。
+
+**Verbatim gate(synthesize 與 publish 之前)**:放在 `stage_synthesize` / `stage_publish` 函式內第一步,所以 auto-resume、`--skip-to`、`--only-stage`、`--force`、`--ignore-gates` 全部都會經過;dashboard `POST /upload` 也跑同一個 `rights_gate.evaluate_gate`(擋下回 **422**)。
+- synthesize:量要被合成的 `scripts/ep_N_script.md`(`--only-episode` 只量該集)。
+- publish:量**所有**會被上傳的 script **與** SRT(SRT 是音檔的轉寫 → 事後改 script.md 洗不掉已合成的逐字音檔);有音檔卻沒有任何 script/SRT 可量的集數 → 擋。
+- fail closed:缺 `source/chapters/ch_*.md`、沒有可量的文本、sidecar 損壞、門檻設定非法 → 一律擋。
+- 量法:兩邊都正規化(大小寫、重音、標點、撇號;CJK 一字一 token)。**script 端只移除 `synthesize.parse_script` 不會唸出來的東西**(`tokenize_script` 與其逐行鏡像,`_SKIP_LINE_RE` / `_DIALOGUE_RE` 與 `tts_config` 由測試鎖定一致):整行結構行(`#` 標題、`>` 引用、`---`、整行 HTML 註解)、行首 `**Name:**` speaker label、`tts_tags` palette 內的 audio tag(`[slow]` 等)。其餘都會被唸出來所以都要量:非 palette 的 `[任意文字]`、label 後的行內 `<!-- -->`、行中的 `**x:**`。SRT 只去掉 cue 開頭的 `[Speaker]`;書本端(source)較寬鬆地去掉腳註 `[12]`/註解/粗體 label(只會更容易比對到抄錄)。→ 6-word shingle 找完全相同的連續片段 → 同一段原文、間隔 ≤ `gap_words` 的片段串成一個 run(吸收 OCR 黏字、插話、兩位主持人接力念)。`longest_run` = 最長 run 字數;`copied_share` = 落在 ≥ `min_run_words` 的 run 內的字數 / 該文本總字數;`shingle_share` = 被**任何** 6-word 完全相同片段覆蓋的字數 / 總字數(不論 run 多短,抓「拼貼大量 6–11 字短抄錄、每段都低於 `min_run_words`」)。**逐集**判定。
+- 結果寫 `<ws>/verbatim_qa.json`(每個文本的 words / longest_run / copied_words / share / violations / 最長片段開頭摘錄),stage provenance 的 `validator_result` 也記錄 gate 結果。被擋時把標出的段落改寫成評論/轉述,再 `--skip-to synthesize`(或 publish)。
+
+**門檻**:`workflow_versions/<v>/workflow.json` → `qa_thresholds.verbatim`(缺此段時用 `rights_gate.VerbatimThresholds` 預設,兩者由測試鎖定一致)。預設刻意保守,製作人可調:
+
+| key | 預設 | 意義 / 理由 |
+|---|---|---|
+| `min_run_words` | 12 | 短於此的相同片段不算抄錄(擋掉成語、書名、巧合短語);與 #2094 稽核口徑(≥12 個連續相同字)一致 |
+| `max_run_words` | 30 | 單一逐字 run 上限。一兩句的評論引用 ≈ 15–30 字;issue 驗收的 40 字抄錄必擋 |
+| `max_copied_share` | 0.03 | 每集落在逐字 run 內的字數比例上限(3,500 字的集 ≈ 105 字 ≈ 5–6 句短引用) |
+| `gap_words` | 2 | run 可容忍的插入/黏字數,防止用一個 tag 或一句插話把長段朗讀切成兩段規避 |
+| `max_shingle_share` | 0.10 | 每集被任何 ≥6 字完全相同片段覆蓋的字數比例上限。實測 7 個既有 workspace 的 81 份文本:中位數 7.5%、p90 14.6%,且沒有任何一份**只**被此項擋(都已被 run / copied_share 擋)——所以它是補洞,不是新的誤殺來源;嫌嚴就調高 |
+
+**既有 workspace 報告(唯讀)**:`uv run rights_gate.py report workspaces/ --json out.json --md out.md` —— 列出每個 workspace 的 rights(sidecar 或預設)、是否已 publish、音檔數、full_text plan、每集 longest run / share、publish gate 判定;不寫入任何 workspace。
+
+**已知缺口**:
+- 偵測是「完全相同的連續字」:每約 5 個字就換掉一個字的改寫(最長連續相同片段 < 6)任何門檻都抓不到;這是精確比對的固有極限,要抓得動需要模糊/語意比對(屬後續工作,且誤殺風險高)。縮短 `min_run_words` / shingle 寬度能縮小但不能消除。
+- dashboard NEW PODCAST 一律帶顯式 `--rights`(預設 `copyrighted`):同一本書若 workspace 已凍結為 `public_domain`,從 dashboard 重新上傳同一 EPUB 會被 `pipeline.py` 以「frozen at creation」拒絕(刻意 fail closed;server 在 workspace 名稱產生前無從得知它是否已存在)。要續跑請用 Resume(不帶 `--rights`)。
+- 直接在 shell 跑 `ops/podcast_upload.sh <ws>` 不經過此 gate(pipeline publish stage 與 dashboard upload 都已擋);在該腳本加同一個檢查屬 ops 範圍的後續工作。
 
 ---
 
@@ -199,10 +237,17 @@ Vertex `gemini-2.5-pro-tts` 已知 bug(finishReason=OTHER，Google WONTFIX #922)
 |---|---|---|
 | `PODCAST_STAGE_RETRIES` | 3 | 單一 agent stage 的總嘗試次數(含首次) |
 | `PODCAST_STAGE_RETRY_BASE` | 5 | 退避基數(秒);backoff = `min(90, base*2^(n-1)) + jitter`,429 強制 ≥60s |
+| `PODCAST_STAGE_MAX_BUDGET_USD` | *unset* | 覆寫**每一個** agent 呼叫的 `--max-budget-usd`;`0` = 不帶此 flag;非數字 / 負值 → CLI 啟動即 exit 2 |
 
-`pipeline.py:_run_claude_with_retry`(`:549`)包住所有 agent stage(prep/analyst/architect/plan-review/enricher*/scriptwriter/script-review/tts-prep)。**每次重試都是全新 `claude -p`(不 --resume)** —— transient 失敗最常見的是 `400 ... thinking/redacted_thinking blocks ... cannot be modified`(CLI agent loop 在 extended thinking + tool use 下汙染了對話歷史的 thinking 區塊簽章;壞區塊存在 transcript 裡,`--resume`/`--continue`/`--fork-session` 都會重送 → 重現同一個 400,**只有全新對話能繞過**)。
+`pipeline.py:_run_claude_with_retry` 包住所有 agent stage(prep/analyst/architect/plan-review/enricher*/scriptwriter/script-review/tts-prep/series-polish/cover)。**每次重試都是全新 `claude -p`(不 --resume)** —— transient 失敗最常見的是 `400 ... thinking/redacted_thinking blocks ... cannot be modified`(CLI agent loop 在 extended thinking + tool use 下汙染了對話歷史的 thinking 區塊簽章;壞區塊存在 transcript 裡,`--resume`/`--continue`/`--fork-session` 都會重送 → 重現同一個 400,**只有全新對話能繞過**)。
 
-成敗判定看 stream-json **terminal `result` event 的 `is_error`**,不是 exit code(CLI 可能 `subtype:"success"` 但 `is_error:true` 且 exit 1)。retryable 分類(`_is_retryable_claude_failure` `:455`):thinking-block 400 / 429 / 5xx / overload / connection → 重試;auth / 一般 400 / **subprocess timeout** → fatal 不重試(逾時重試 3× 純燒錢,要調 stage timeout 而非靠重試)。
+成敗判定看 stream-json **terminal `result` event 的 `is_error`**,不是 exit code(CLI 可能 `subtype:"success"` 但 `is_error:true` 且 exit 1)。retryable 分類(`_is_retryable_claude_failure`):thinking-block 400 / 429 / 5xx / overload / connection → 重試;auth / 一般 400 / **subprocess timeout** / **花費上限** → fatal 不重試(逾時重試 3× 純燒錢,要調 stage timeout 而非靠重試)。
+
+#### Agent stage 的 wall-clock 與花費上限
+
+- **timeout**:`_STAGE_TIMEOUTS`(Enricher 2700s、Scriptwriter 1800s/集、Script Review 1200s/集、TTS Prep 1200s,其餘 `_DEFAULT_TIMEOUT` 1500s)從 spawn 起算,stream-json 與 `PODCAST_VERBOSE=0` 兩種模式都真的生效:`_run_claude_subprocess` 用三條 thread 分別餵 stdin、持續讀 stderr(只留最後 64 KB 給 log)、tee stdout 事件,主 thread 只 `wait(timeout)`,所以 agent 卡住、或 stderr 灌爆 pipe buffer 都不會讓 pipeline 跟著卡死。逾時寫 `<label> TIMEOUT after <n>s` error,回 `_ClaudeFailure("timeout")`。
+- **整個 process group 一起停**:每個 `claude -p` 以 `start_new_session=True` 起在自己的 group,逾時/Ctrl-C/例外/正常結束後一律 `killpg` SIGTERM,`_AGENT_TERM_GRACE`(3s)後 SIGKILL 殘留(claude 的 tool 子程序會繼承 stdout,只殺 claude 會留下孤兒並讓 reader 卡住)。代價是 dashboard 對 pipeline group 的 `killpg`(`monitor/jobs.py`)與終端的 SIGHUP 不再直接打到 agent,所以 pipeline(含 ProcessPoolExecutor worker)收到 SIGTERM/SIGHUP 會先轉送 SIGTERM 給自己的 agent group,再照預設行為死掉。起跑窗口也守住:`Popen` 回傳到 agent group 登記完成之間收到的 SIGTERM/SIGHUP/SIGINT 先被攔住、登記後才重送(`_signals_deferred_while_spawning`),否則該窗口內的停止訊號會漏掉 agent(它在自己的 session,只有 runner 停得了它)。
+- **花費上限**:每次 agent 呼叫帶 `--max-budget-usd`(claude 2.1.226 起有,只在 `-p` 生效)。預設 `_STAGE_BUDGETS_USD`:Analyst $25、Enricher $10、Series Polish $10、Scriptwriter $6/集、Script Review $4/集,其餘 `_DEFAULT_BUDGET_USD` $5;約為 2026-10 七個 series `events.jsonl` 中各 label 最高 `total_cost_usd` 的 4 倍(Analyst 讀整本書、saga 讀多本,故留最大餘裕)。撞上限時 CLI 回 `subtype:"error_max_budget_usd"`、`errors:["Reached maximum budget ($N)"]`、exit 1(無 `result` 欄位、stderr 空)→ 記成 `_ClaudeFailure("budget")`,fatal 不重試。`claude invocation` log 事件帶 `budget_usd`。
 
 重試要便宜的前提是 **prompt resume-aware**:`architect.md` Step 0 會先列既有 `overview.md` + `ep_*.md`、跳過已完成集數,只補缺的。新增 agent stage 或讓既有 stage 可重試時,prompt 必須遵守同一條 idempotency 契約(讀既有產物 → 只補缺口),否則重試會整批重做。
 
@@ -218,9 +263,17 @@ Vertex `gemini-2.5-pro-tts` 已知 bug(finishReason=OTHER，Google WONTFIX #922)
 
 **ffmpeg 必裝**:`brew install ffmpeg`。
 
-### Batch 快取
+### Batch 快取與 episode SKIP(內容定址,#2096)
 
-`<cache>/batch_NN.wav` 存單 batch 中間結果。Phase 1 載入既有 wav(跳過 API)，Phase 2 只跑缺的。synthesize **中斷續跑** = 直接重跑同指令，已成功的 batch 自動 skip。
+`scripts/.cache/ep_N/batch_<key>.wav` 存單 batch 中間結果,`key = sha256(送進 API 的完整 prompt(system prompt + 該 batch 對白) + 兩個 voice + TTS_MODEL + cache schema)`(`synthesize.py:_batch_cache_key`)。Phase 1 只載入 key 完全相同的 wav(跳過 API),Phase 2 只跑 miss 的 batch;寫入走同目錄 `.part` + `os.replace`,中斷不會留下會被重用的截斷 wav。整集全部 batch 成功後,目錄內沒被當前 batch 引用的檔(舊 key、舊版序號命名 `batch_NN.wav`、`.part` 殘檔)會被 prune。
+
+- 改一個 turn → 只有該 batch 重打 API(若改動字數讓切 batch 邊界移動,邊界後的 batch 也會 miss);改 voice(overview.md Voice Mapping)或 TTS_MODEL → 全部 batch 重打;host profile(system prompt)變 → 全部重打。
+- **episode 層 SKIP 必須被證明**:`main()` 先讀 overview.md、parse + chunk 每份腳本算 `synthesis_fingerprint`(有序 batch keys + 渲染設定 `TTS_SILENCE_MS`/輸出格式/bitrate/mastering),只有輸出音檔存在**且** `ep_N_<tag>.meta.json` 的 `synthesis_fingerprint` 相同才 `SKIP … up to date`;否則印 `TODO ep_N_script: <原因>` 並重新生成(未變的 batch 走快取,只付變動部分的 API 費)。原因字串:`no audio yet` / `… missing|unreadable — cannot verify audio` / `has no synthesis fingerprint (pre-#2096 audio)` / `inputs changed: script_sha256, tts_model, voices` 或 `host profiles / batching / render settings`。
+- 只改非對白行(標題、`<!-- -->` 註解、`---`)不改 fingerprint → 正確 SKIP(音訊不會變)。
+- 重新生成成功後會刪掉同 tag 的 `ep_N_<tag>.srt`(它是對齊被取代音訊的;`subtitle.py` 見 `.srt` 存在就 skip,不刪會永遠錯位),需再跑 subtitle stage。
+- **舊 workspace(#2096 前)一次性代價**:舊 sidecar 只有 `tts_model`、舊 `batch_NN.wav` 內容不可驗證,下次對該集跑 synthesize 會整集重打 API 一次。只想重做單集時用 `--only-episode N`(dashboard rerun 帶 `episode`)限縮範圍。
+
+synthesize **中斷續跑** = 直接重跑同指令,已成功的 batch 自動走快取。
 
 ---
 
@@ -246,12 +299,15 @@ Vertex `gemini-2.5-pro-tts` 已知 bug(finishReason=OTHER，Google WONTFIX #922)
 
 ```
 lab/podcast/workspaces/<slug>_<hash>/
+  .rights                               ← public_domain|licensed|copyrighted,建立時凍結;缺 = copyrighted(§1 版權線)
+  verbatim_qa.json                      ← 最近一次 synthesize/publish verbatim gate 判定
   workflow_manifest.json                ← workflow 版本 / prompt fingerprints / model / validators / stage contracts
   stage_provenance/<stage>.json         ← 每階段 input/output artifact hash + prompt/model/validator provenance
   plan/overview.md                  ← Voice Mapping(host SoT)
   scripts/ep_N_{pro,flash}.mp3      ← TTS 產出
   scripts/ep_N_{pro,flash}.srt      ← Whisper 對齊
-  scripts/ep_N_{pro,flash}.meta.json ← {"tts_model": "<full TTS model id>"} sidecar(monitor 顯示用;檔名仍維持 pro/flash 短 tag 以維持下游 podcast_upload.sh / regex 相容)
+  scripts/ep_N_{pro,flash}.meta.json ← {"tts_model", "voices", "script_sha256", "synthesis_fingerprint"} sidecar(`tts_model` 給 monitor 顯示完整 id,檔名仍維持 pro/flash 短 tag 以維持下游 podcast_upload.sh / regex 相容;`synthesis_fingerprint` 是 synthesize 判斷 SKIP 的唯一依據,見 §3 Batch 快取)
+  scripts/.cache/ep_N/batch_<key>.wav ← 內容定址 batch 快取(可重生;整集成功後 prune 未引用檔)
   scripts/ep_N_script.md            ← 原稿
   scripts/ep_N_lineage.json         ← 腳本 before/after hash 與 stage edit lineage
        │
@@ -398,8 +454,16 @@ uv run --no-project --with boto3 python ops/podcast_ops.py series               
 排查:
 1. `rm .stage_synthesize_done`(若存在)。
 2. `uv run synthesize.py workspaces/<name>/scripts/` 直接重跑——已成功的 batch 走 cache，缺的補。
-3. 若混用 pro/flash 想統一回 pro:`rm scripts/ep_N_flash.{mp3,srt}` + `rm -rf scripts/.cache/*` 後重跑。
+3. 若混用 pro/flash 想統一回 pro:`rm scripts/ep_N_flash.{mp3,m4a,srt,meta.json}` 後以 pro 重跑;batch key 含 TTS_MODEL,不必清 `scripts/.cache/`。
 4. 若連續 429:檢查 `TTS_MAX_CONCURRENT`(降到 3-5)、確認金鑰專案配額(`gcloud --project <pid> ai-platform quotas list`)。
+
+### 改稿／換聲線後重新生成音訊
+
+QA 後改了 `scripts/ep_N_script.md` 對白、overview.md Voice Mapping / host profile,或換 TTS model:
+
+1. 重跑 synthesize:dashboard rerun `stage=synthesize`(可帶 `episode=N`),或 CLI `uv run pipeline.py <ws> --only-stage synthesize [--only-episode N]`/`uv run synthesize.py <ws>/scripts/ep_N_script.md`。fingerprint 不符的集數印 `TODO … inputs changed: …` 並重新生成,只有變動的 batch 打 API;印 `SKIP … up to date` 代表輸入確實沒變(不是誤判)。**不需要手動刪 m4a 或 `.cache/`。**
+2. 重新生成會刪掉該集舊 `.srt` → 接著跑 `--only-stage subtitle [--only-episode N]`(或 audio-qa → subtitle),再 publish / dashboard upload。
+3. 驗證:`ep_N_<tag>.meta.json` 的 `script_sha256` = `shasum -a 256 scripts/ep_N_script.md`,且 `synthesis_fingerprint` 已更新。
 
 ### scriptwrite/script-review 失敗看不到 log
 
@@ -462,6 +526,8 @@ uv run --no-project --with boto3 python ops/podcast_ops.py series               
 
 本機 FastAPI + uvicorn dashboard，預設 `127.0.0.1:8765`。
 
+**同源守衛**(`server.py:_same_origin_guard`,最外層 middleware,在 routing 前):① `Host` 必須是 loopback(`127.0.0.1`/`localhost`/`[::1]`,不鎖 port,`ssh -L` 轉埠可用)或連線落地的 socket IP 字面值,否則一律 **400**(擋 DNS rebinding);② 非 GET/HEAD 的 `Origin`(缺則 `Referer`)必須等於該請求自己的 `scheme://host:port`,兩者皆缺或 `Origin: null` → **403**,handler 不執行(不寫 gate marker、不 spawn、不刪 S3)。前端 `fetch()` 走相對路徑 + 預設 cors mode,瀏覽器自動帶 Origin,無需額外 header;curl 手打 action endpoint 須加 `-H 'Origin: http://127.0.0.1:8765'`。
+
 **單命令流程**(預設):跑 `uv run pipeline.py <epub>` 時,`pipeline.py:_ensure_dashboard_running()` 會自動 idempotent 起 dashboard + open 瀏覽器到 `?ws=<workspace>`。`PODCAST_VERBOSE` 預設 `"1"`(設 `"0"` 才關),events.jsonl 一定產生。
 
 Env opt-out:
@@ -479,7 +545,7 @@ Endpoints:
   - **`milestones[]`(進度真相層)** — 四個產物關卡 `{key,label,done,total,ratio}`,順序 `plan→script→audio→subtitle`。`target` 集數 = `max(plan/episodes/ep_*.md, scripts/ep_*_script.md, ep_*_{pro,flash}.mp3, ep_*_{pro,flash}.srt)`;plan 關卡 binary(`plan/overview.md` 存在 → ratio 1.0),其餘三關 `ratio = min(1, done/target)`。`progress` = 四 ratio 均值(整體進度標量;前端 sidebar 改以四條 per-gate ratio bar 各自渲染,此值目前不直接渲染,保留供排序/未來用)。**刻意不用 stage marker**:marker 是 pipeline 自我記帳,rerun 砍 marker / 部分還原 / 手動清都會與實際產物脫鉤,實測 marker 數與「離成品多遠」近乎反相關(`flow` 0 markers 卻有 8 集音訊 vs 他者 9/13 markers 零音訊)。`n_stages_*` 保留僅供 status cascade + 向後相容。
   - **`created`** — workspace 加入時間 epoch。SoT 為 `<ws>/.created` sidecar(epoch float);不存在時灌目錄 birthtime(macOS `st_birthtime`,Linux 退 `st_mtime`)並寫回 `.created`,防後續 rsync/還原重設 inode birth time。sidebar 按此分組。
   - **`gates[]`(兩道核准 gate 三態)** — `[{key:"plan",state},{key:"script",state}]`,`state ∈ passed|awaiting|pending`。`passed` ⇔ 下一相已有產物(`n_script>0` / `n_audio>0`)或 `.*_approved` 標記存在;`awaiting` ⇔ 本相完成、下一相空、未核准;`pending` ⇔ 本相未完成。前端側欄三相雙閘軌 + `awaiting` 狀態由此渲染。
-  - status ∈ `running|done|failed|awaiting|idle|fresh`,cascade 優先序如左所列(`awaiting` 介於 failed 與 idle:任一 gate `awaiting` → 工作區 `awaiting`);cost 按 model family 切(`tts` substring → tts_usd,其餘 → claude_usd);`active_job` 為 `{job_id,label,kind}` 或 null。pipeline kind 的 job 透過 `<ws>/.pipeline_job_id` sidecar(由 pipeline.py 在 PODCAST_JOB_ID env 存在時寫入)反查 workspace
+  - status ∈ `running|done|failed|awaiting|idle|fresh`,cascade 優先序如左所列(`awaiting` 介於 failed 與 idle:任一 gate `awaiting` → 工作區 `awaiting`);cost 按 model family 切(`tts` substring → tts_usd,其餘 → claude_usd);`active_job` 為 `{job_id,label,kind}` 或 null(不在本 server job 表、但持有 `<ws>/.pipeline.lock` 的 run 則為 `{job_id:"pid <N>",label,kind:"pipeline",pid}`)。pipeline kind 的 job 透過 `<ws>/.pipeline_job_id` sidecar(由 pipeline.py 在 PODCAST_JOB_ID env 存在時寫入)反查 workspace
 - `GET /api/workspace/{ws}/snapshot` — `pipeline_log.jsonl` + `events.jsonl` + stage marker 摘要
 - `GET /api/workspace/{ws}/stream` — SSE,每 0.5s tail jsonl,15s heartbeat
 - `GET /api/workspace/{ws}/cost` — 成本聚合(前端每 4 秒 poll;見 §8.1)
@@ -489,14 +555,15 @@ Endpoints:
 - `GET /api/workspace/{ws}/episode/{ep}/subtitle` — SRT 純文字
 
 **Action**(製作:spawn 子程序回 job_id):
-- `POST /api/workspace/{ws}/upload` — `bash ops/podcast_upload.sh <ws>`;422 if 無 ep_*.mp3
+- `POST /api/workspace/{ws}/upload` — `bash ops/podcast_upload.sh <ws>`;422 if 無 ep_*.mp3,或版權 verbatim gate 擋下(與 publish stage 同一判定,寫 `verbatim_qa.json`;busy 檢查在 gate 之前)
 - `DELETE /api/workspace/{ws}?confirm=<ws>` — 本地砍 workspace,confirm 字串必須等於 ws_name
-- `POST /api/workspace/{ws}/rerun?stage=<S>&episode=<N>&drop_marker=true` — `uv run pipeline.py --only-stage`,預設先砍 `.stage_<S>_done`
+- `POST /api/workspace/{ws}/rerun?stage=<S>&episode=<N>&drop_marker=true` — `uv run pipeline.py --only-stage`,預設先砍 `.stage_<S>_done`(`stage=synthesize` 只重做 sidecar fingerprint 不符的集數,見 §3 Batch 快取)
 - `POST /api/workspace/{ws}/approve?gate=plan|script` — 寫 `.plan_approved`/`.script_approved` + spawn `pipeline.py <ws>` 續跑下一相;gate `pending`(前一相未完成)回 409,`bogus` 回 400
 - `POST /api/workspace/{ws}/resume` — spawn `pipeline.py <ws>`(flagless auto-resume,從第一個沒 marker 的階段往後跑到下一道 gate / 完成);前端情境式推進鈕在「非 gate、有未完工」時呼叫(rerun=單階、approve=寫標記再續、resume=純續跑)
-- **per-workspace 併發守衛**:`approve` / `resume` / `upload` / `rerun` 四個 spawn endpoint 在開子行程前皆檢查 `_active_job_for_ws(ws_name)`(配對 route 同 sidebar:`metadata.workspace` 或 `<ws>/.pipeline_job_id` sidecar)。同一 workspace 已有 running job → 一律回 **409**,不 spawn、不寫 gate marker、不砍 stage marker。global 上限 `MAX_ACTIVE_JOBS`(預設 4)獨立守不同 workspace 的合計上限
-- `POST /api/pipeline/start` (multipart `epub` + `parallel` 1-10 + 選填 `tts_model`) — 存到 `monitor/.uploads/`(預設 cap 200MB)+ spawn 全流程(預設停在計畫 gate 等核准)。`tts_model` 經 server 端 `ALLOWED_TTS_MODELS`(`tts_config.py`)白名單驗證,非法值回 **422**;合法值 append `--tts-model`(寫 `.tts_model` sidecar)
-- `POST /api/pipeline/start-saga` (multipart `epubs[]` ≥2 + `title` + `spoiler_mode` + `parallel` + 選填 `tts_model`) — saga(多書連續 feed);`tts_model` 同上驗證/凍結。注意 `approve`/`resume` 續跑無需再帶 `tts_model`——synth 階段一律從 `.tts_model` sidecar 還原
+- **per-workspace 併發守衛**:`approve` / `resume` / `upload` / `rerun` 四個 spawn endpoint 在開子行程前皆檢查 `_active_job_for_ws(ws_name)`(配對 route 同 sidebar:`metadata.workspace`、`<ws>/.pipeline_job_id` sidecar、`<ws>/.pipeline.lock` flock)。同一 workspace 已有 running job → 一律回 **409**,不 spawn、不寫 gate marker、不砍 stage marker。global 上限 `MAX_ACTIVE_JOBS`(預設 4)獨立守不同 workspace 的合計上限
+- **workspace run lock(真正的互斥在 pipeline 自己)**:dashboard 的 job 表只在記憶體,job 以 `start_new_session` 起、server 重啟後仍在跑,CLI run 更從不經過 dashboard。所以 `pipeline.py` 在寫任何 workspace 狀態前(EPUB 新建時在 `setup_workspace` 之前)對 `<ws>/.pipeline.lock` 取 exclusive non-blocking `flock`,檔內寫自己的 PID,行程結束(含 crash)由 kernel 釋放。第二個 run 印 `ERROR: <ws> is already being processed by PID <N>` 並 **exit 75**(EX_TEMPFAIL),不寫任何狀態;`--status` 唯讀不取鎖。`_active_job_for_ws` 以 shared-lock probe 讀同一個檔 → 鎖被持有時回 `{job_id:"pid <N>", kind:"pipeline", pid}`,所以 server 重啟後 `/resume` 等仍 409。殘留的 `.pipeline.lock`(沒人持有)不算 busy。原子寫入的 temp 名也改為每個 writer 唯一:`WorkspaceState` 的 `.<name>.<pid>.<rand>.tmp`、`synthesize.py` 的 `.<ep_stem>.<pid>.<rand>.part.<ext>`(保留真副檔名,ffmpeg 才選得到 muxer;舊 `<out>.part` 讓 loudnorm pass 2 一律 exit 234、成品全是未 mastering 的 fallback)
+- `POST /api/pipeline/start` (multipart `epub` + `parallel` 1-10 + 選填 `tts_model` + `rights`) — 存到 `monitor/.uploads/`(預設 cap 200MB)+ spawn 全流程(預設停在計畫 gate 等核准)。`tts_model` 經 server 端 `ALLOWED_TTS_MODELS`(`tts_config.py`)白名單驗證,非法值回 **422**;合法值 append `--tts-model`(寫 `.tts_model` sidecar)。`rights` ∈ `ALLOWED_RIGHTS`(= `rights_gate.RIGHTS_VALUES`),預設 `copyrighted`,一律 append `--rights`;非法值 **422**
+- `POST /api/pipeline/start-saga` (multipart `epubs[]` ≥2 + `title` + `spoiler_mode` + `parallel` + 選填 `tts_model` + `rights`) — saga(多書連續 feed);`tts_model` / `rights` 同上驗證/凍結(整個 saga 一個 rights 值)。注意 `approve`/`resume` 續跑無需再帶 `tts_model` / `rights`——synth 階段一律從 sidecar 還原
 
 **Jobs**:
 - `GET /api/jobs?limit=N`、`GET /api/jobs/{id}?log_bytes=N`、`POST /api/jobs/{id}/kill`
@@ -553,6 +620,6 @@ Endpoints:
 - **TTS MODEL**:下拉(空=env 預設 `gemini-2.5-flash-tts` / 三個白名單 model);選定後腳本即依該 family 的 palette 生成(family-parametric,見 §3)。submit 時隨 `tts_model` 送出
 - **AGENT PROFILE / AGENT MODEL**:profile 下拉(目前只有 `claude`)+ 可空 model override。submit 時隨 `agent_profile`/`agent_model` 送出;pipeline 寫 `.agent_*` sidecar,後續 approval/resume job 讀回。
 
-(spoiler mode 仍只在 NEW PODCAST modal 設定,不鏡射進此面板——避免同一旋鈕兩處可調。)
+(spoiler mode 仍只在 NEW PODCAST modal 設定,不鏡射進此面板——避免同一旋鈕兩處可調。RIGHTS 單選同理只在 NEW PODCAST modal:它是 per-book 且建立時凍結,每次開 modal 都重設為 `copyrighted`,不記住上一本書的選擇。)
 
 KPI 之外的數字會即時更新;cost 表用 polling(events.jsonl tail 完一輪後 server 端重算,前端每 4s fetch)。**pipeline 未開 `PODCAST_VERBOSE=1` 時**,events.jsonl 不存在 → cost 表顯示「No cost data yet」+ warning bar 提示開 flag。

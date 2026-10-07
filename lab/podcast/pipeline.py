@@ -50,13 +50,17 @@ Stages (v1 baseline; runtime order comes from workflow_versions/<v>/workflow.jso
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import logging
 import json
+import math
 import os
 import re
+import signal
 import subprocess
 import sys
+import threading
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures.process import BrokenProcessPool
@@ -72,6 +76,7 @@ from ebooklib import epub
 sys.stdout.reconfigure(line_buffering=True)
 
 import archetypes
+import rights_gate
 import saga
 import tts_tags
 from agent_profiles import AGENT_PROFILES, PROFILE_DEFAULT_MODEL
@@ -84,6 +89,7 @@ from tts_config import (
 from pipeline_plan import (
     PipelineConfig,
     STAGE_SPECS,
+    WorkspaceLocked,
     WorkspaceState,
     render_stage_help,
     resolve_run_plan,
@@ -253,7 +259,7 @@ def _should_skip_for_only_episode(stage_name: str, args) -> bool:
     producer's deliberate full-series drive → never skipped.
     """
     return (
-        bool(args.only_episode)
+        args.only_episode is not None
         and stage_spec(stage_name).series_wide
         and args.only_stage != stage_name
     )
@@ -520,6 +526,66 @@ def inject_tts_palette(prompt: str, workspace: Path) -> str:
         .replace("{tts_engine}", tts_tags.engine_name(fam))
         .replace("{tts_palette}", tts_tags.render_palette_md(fam))
     )
+
+
+def _verbatim_thresholds(workspace: Path) -> rights_gate.VerbatimThresholds:
+    """Verbatim-gate thresholds from the workspace's workflow ``qa_thresholds``."""
+    workflow = load_workflow_definition(resolve_workspace_workflow(workspace, None))
+    return rights_gate.verbatim_thresholds(workflow)
+
+
+def inject_rights_policy(prompt: str, workspace: Path) -> str:
+    """Fill {rights_policy}/{strategy_options} from the frozen rights sidecar.
+
+    Only a public-domain book is ever offered the full_text strategy; every
+    other class (including a missing sidecar → copyrighted) gets the commentary
+    policy with the gate's real thresholds. A corrupt sidecar raises — never
+    guessed into a weaker class.
+    """
+    return rights_gate.render_prompt(
+        prompt, rights_gate.read_rights(workspace), _verbatim_thresholds(workspace)
+    )
+
+
+def _verbatim_gate(
+    workspace: Path,
+    log: "PipelineLog",
+    *,
+    stage: str,
+    only_episode: int | None = None,
+) -> bool:
+    """Code gate before synthesize and publish (#2094). True = may proceed.
+
+    Lives inside the stage functions, so every entry — auto-resume, --skip-to,
+    --only-stage, --force, --ignore-gates — passes through it. Public-domain
+    books are exempt; everything else is measured against source/chapters and
+    fails closed on missing source/text, a corrupt sidecar or bad thresholds.
+    The verdict is written to verbatim_qa.json for the producer.
+    """
+    report = rights_gate.evaluate_gate(
+        workspace,
+        stage=stage,
+        only_episode=only_episode,
+        load_thresholds=lambda: _verbatim_thresholds(workspace),
+    )
+    rights_gate.write_report(workspace / rights_gate.REPORT_FILE, report)
+    if report.blocked:
+        log.error(
+            f"{stage}: verbatim gate BLOCKED (rights={report.rights}) — "
+            f"{report.summary()}. Rewrite the flagged passages as commentary/"
+            f"paraphrase (see {rights_gate.REPORT_FILE}); this book is not public "
+            f"domain."
+        )
+        return False
+    if report.rights == rights_gate.PUBLIC_DOMAIN:
+        log.event(f"{stage}: rights=public_domain — verbatim gate exempt")
+        return True
+    longest = max((t.longest_run for t in report.texts), default=0)
+    log.event(
+        f"{stage}: verbatim gate passed (rights={report.rights}, "
+        f"{len(report.texts)} text(s), longest run {longest} words)"
+    )
+    return True
 
 
 def is_saga(workspace: Path) -> bool:
@@ -963,6 +1029,63 @@ _STAGE_TIMEOUTS = {
 }
 _DEFAULT_TIMEOUT = 1500
 
+# Per-invocation spend cap, passed as `claude --max-budget-usd` (claude 2.1.226
+# --help: "Maximum dollar amount to spend on API calls (only works with --print)").
+# Without it a runaway agent loop is bounded only by the wall-clock timeout, which
+# on opus[1m] is tens of dollars. Sized ~4x the worst `result.total_cost_usd` per
+# stage label across workspace events.jsonl (7 series, 2026-10-07): Analyst 6.06,
+# Series Polish 2.51, Enricher 1.93, Scriptwriter EP 1.42, Enricher Gap 1.24,
+# Plan Review 1.23, Architect 1.17, TTS Prep 0.82, Script Review EP 0.75, Prep
+# 0.43. Analyst reads the whole book (a saga reads several), hence the headroom.
+# Hitting the cap is fatal, never retried — a fresh conversation spends it again.
+# PODCAST_STAGE_MAX_BUDGET_USD overrides every stage; 0 drops the flag.
+_STAGE_BUDGETS_USD = {
+    "Analyst": 25.0,
+    "Enricher": 10.0,
+    "Series Polish": 10.0,
+    "Scriptwriter": 6.0,  # per episode
+    "Script Review": 4.0,  # per episode
+}
+_DEFAULT_BUDGET_USD = 5.0
+_BUDGET_ENV = "PODCAST_STAGE_MAX_BUDGET_USD"
+
+
+def _stage_budget_usd(stage_key: str) -> float | None:
+    """Spend cap (USD) for one agent invocation of ``stage_key``; None = no cap."""
+    raw = os.getenv(_BUDGET_ENV, "").strip()
+    if not raw:
+        return _STAGE_BUDGETS_USD.get(stage_key, _DEFAULT_BUDGET_USD)
+    try:
+        value = float(raw)
+    except ValueError:
+        value = math.nan
+    if not (math.isfinite(value) and value >= 0):
+        raise ValueError(
+            f"{_BUDGET_ENV} must be a dollar amount >= 0 (0 disables the cap); "
+            f"got {raw!r}"
+        )
+    return value or None
+
+
+def _agent_cmd(allowed_tools: str, stage_key: str) -> list[str]:
+    # The prompt goes in via stdin (not argv) so book content / workspace paths
+    # never show up in ps listings.
+    cmd = [
+        "claude",
+        "-p",
+        "-",
+        *_VERBOSE_FLAGS,
+        "--model",
+        MODEL,
+        "--allowedTools",
+        allowed_tools,
+    ]
+    budget = _stage_budget_usd(stage_key)
+    if budget is not None:
+        cmd += ["--max-budget-usd", f"{budget:g}"]
+    return cmd
+
+
 # ─── Transient-failure retry ───
 # Agent stages shell out to `claude -p`. Its agent loop occasionally dies on a
 # transient API error — most notably `400 ... thinking/redacted_thinking blocks
@@ -1025,14 +1148,15 @@ def _is_retryable_claude_failure(status: str | None, reason: str) -> bool:
     Retryable: transient API statuses (429/5xx), overload/rate-limit/connection
     phrases, AND the 400 thinking-block corruption (a CLI-loop bug a new
     conversation escapes). Fatal: auth/permission/config errors, generic 400
-    bad-requests, and subprocess timeouts (retrying a 25-min timeout 3× is pure
-    waste — raise PODCAST_STAGE_TIMEOUT instead).
+    bad-requests, subprocess timeouts (retrying a 25-min timeout 3× is pure
+    waste — raise the stage's _STAGE_TIMEOUTS entry instead) and spend-cap hits
+    (a fresh conversation would spend the same again).
     """
     text = (reason or "").lower()
     code = str(status).strip().lower() if status is not None else ""
 
-    # Subprocess timeout: deterministic-enough that retrying is too costly.
-    if code == "timeout" or "timeout after" in text:
+    # Timeout / spend cap: deterministic-enough that retrying is too costly.
+    if code in {"timeout", "budget"} or "timeout after" in text:
         return False
     # Fatal config/auth errors — fail fast.
     if any(p in text for p in _FATAL_PHRASES):
@@ -1099,6 +1223,187 @@ def _fmt_tool_event(event: dict) -> str | None:
     return None
 
 
+# ─── Agent subprocess lifecycle ───
+# Every `claude -p` runs in its OWN session / process group so a timeout can stop
+# the whole agent tree: claude's tool subprocesses inherit its stdout/stderr, so
+# killing only claude would leave the pipe readers blocked and the tools running.
+# The price is that the dashboard's killpg on the pipeline's group
+# (monitor/jobs.py) and a terminal's SIGINT/SIGHUP no longer reach the agent by
+# themselves. So the runner kills the group on every exit path (timeout, Ctrl-C,
+# any exception, even a clean exit that left tool processes behind), and
+# SIGTERM/SIGHUP are forwarded to live agent groups before the process dies of
+# the signal exactly as it did before.
+_AGENT_TERM_GRACE = 3  # s from SIGTERM to SIGKILL; claude needs no long cleanup
+_AGENT_READER_JOIN = 5  # s to let the pipe readers drain once the group is gone
+_STDERR_TAIL_BYTES = 64 * 1024  # stderr kept for logs; the rest is read and dropped
+_FORWARDED_SIGNALS = (signal.SIGTERM, signal.SIGHUP)
+_LIVE_AGENT_GROUPS: dict[int, int] = {}  # agent pgid -> pid of the owning process
+_PREVIOUS_SIGNAL_HANDLERS: dict[int, object] = {}
+_signal_forwarding_pid: int | None = None
+
+
+def _forward_signal_to_agents(signum, frame) -> None:
+    me = os.getpid()
+    for pgid, owner in list(_LIVE_AGENT_GROUPS.items()):
+        if owner == me:  # a forked worker inherits the map; stop only its own agents
+            with contextlib.suppress(OSError):
+                os.killpg(pgid, signal.SIGTERM)
+    previous = _PREVIOUS_SIGNAL_HANDLERS.get(signum, signal.SIG_DFL)
+    if callable(previous):
+        previous(signum, frame)
+    elif previous != signal.SIG_IGN:
+        signal.signal(signum, signal.SIG_DFL)
+        os.kill(me, signum)  # die of the signal, as the process did before
+
+
+def _install_agent_signal_forwarding() -> None:
+    """Idempotent per process. Handlers can only be installed from the main
+    thread, which is where every stage and every ProcessPoolExecutor task runs."""
+    global _signal_forwarding_pid
+    if _signal_forwarding_pid == os.getpid():
+        return
+    if threading.current_thread() is not threading.main_thread():
+        return
+    for sig in _FORWARDED_SIGNALS:
+        previous = signal.getsignal(sig)
+        if previous is not _forward_signal_to_agents:
+            _PREVIOUS_SIGNAL_HANDLERS[sig] = (
+                signal.SIG_DFL if previous is None else previous
+            )
+            signal.signal(sig, _forward_signal_to_agents)
+    _signal_forwarding_pid = os.getpid()
+
+
+@contextlib.contextmanager
+def _signals_deferred_while_spawning():
+    """Hold stop signals (TERM/HUP/INT) until the agent's group is registered.
+
+    The agent lives in its own session, so the runner is the only thing that can
+    stop it. Between ``Popen()`` returning and ``_LIVE_AGENT_GROUPS`` being filled
+    a signal would find nothing to forward to (TERM/HUP) or raise outside the
+    ``try`` that kills the group (INT) — and the agent would run on, unowned, burning
+    spend. Recorded signals are re-delivered on exit, to the restored handlers, once
+    the group is registered. Only the main thread can own handlers; elsewhere this
+    is a no-op, as is the forwarding itself."""
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    caught: list[int] = []
+    previous = {
+        sig: signal.signal(sig, lambda signum, _frame: caught.append(signum))
+        for sig in (*_FORWARDED_SIGNALS, signal.SIGINT)
+    }
+    try:
+        yield
+    finally:
+        for sig, handler in previous.items():
+            if handler is not None:  # None: installed from C, cannot be restored
+                signal.signal(sig, handler)
+        if caught:
+            signal.raise_signal(caught[0])
+
+
+def _agent_group_alive(proc: subprocess.Popen) -> bool:
+    proc.poll()  # reap the leader, or its zombie keeps the group "alive"
+    try:
+        os.killpg(proc.pid, 0)
+    except (ProcessLookupError, PermissionError):
+        return False
+    return True
+
+
+def _kill_agent_group(proc: subprocess.Popen) -> None:
+    """SIGTERM the agent's whole process group (pgid == its pid, from
+    start_new_session), SIGKILL whatever is left after _AGENT_TERM_GRACE.
+    No-op once the group is empty."""
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(proc.pid, sig)
+        except (ProcessLookupError, PermissionError):
+            break
+        deadline = time.monotonic() + _AGENT_TERM_GRACE
+        while _agent_group_alive(proc) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if not _agent_group_alive(proc):
+            break
+    proc.poll()
+
+
+def _feed_stdin(pipe, data: bytes) -> None:
+    try:
+        pipe.write(data)
+    except OSError as exc:  # BrokenPipe: the agent exited or was killed first
+        _LOGGER.debug("agent closed stdin before the whole prompt was written: %s", exc)
+    with contextlib.suppress(OSError):
+        pipe.close()
+
+
+def _drain_stderr_tail(pipe, tail: bytearray) -> None:
+    """Read stderr continuously so the agent can never block on a full pipe;
+    keep only the last _STDERR_TAIL_BYTES for the failure log."""
+    while chunk := pipe.read1(65536):
+        tail += chunk
+        if len(tail) > _STDERR_TAIL_BYTES:
+            del tail[: len(tail) - _STDERR_TAIL_BYTES]
+
+
+def _tee_stream_events(pipe, events_path: Path, label: str, sink: dict) -> None:
+    """Render each stream-json event live and append it, wrapped with the stage
+    label + timestamp, to events.jsonl (the dashboard's tool feed and cost source)."""
+    try:
+        with events_path.open("a", encoding="utf-8") as ev_f:
+            for raw_line in pipe:
+                line = raw_line.decode("utf-8", errors="replace").strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    _LOGGER.debug(
+                        "Skipping malformed pipeline child event line: %r", line
+                    )
+                    continue
+                if not isinstance(event, dict):
+                    continue
+                # The terminal `result` event carries is_error / api_error_status
+                # even when the agent printed an error and the CLI still exits 0
+                # — capture it as the authoritative success signal.
+                if event.get("type") == "result":
+                    sink["result"] = event
+                wrapped = {
+                    "ts": datetime.now().isoformat(timespec="seconds"),
+                    "stage_label": label,
+                    "event": event,
+                }
+                ev_f.write(json.dumps(wrapped, ensure_ascii=False) + "\n")
+                ev_f.flush()
+                rendered = _fmt_tool_event(event)
+                if rendered:
+                    print(rendered, flush=True)
+    except OSError:
+        _LOGGER.warning(
+            "%s: events.jsonl tee failed; draining stdout", label, exc_info=True
+        )
+        for _ in pipe:  # keep the pipe empty so the agent never blocks on stdout
+            pass
+
+
+def _result_failure(result_event: dict | None) -> tuple[str | None, str]:
+    """(status, reason) of a failed stream-json terminal result event."""
+    if not result_event:
+        return None, ""
+    reason = str(result_event.get("result") or "").strip()
+    errors = result_event.get("errors")
+    if not reason and isinstance(errors, list):
+        # Error subtypes (error_max_budget_usd, error_max_turns, ...) carry no
+        # "result"; the reason is in "errors" (verified on claude 2.1.226).
+        reason = "; ".join(str(e) for e in errors).strip()
+    if result_event.get("subtype") == "error_max_budget_usd":
+        return "budget", reason or "spend cap (--max-budget-usd) reached"
+    status = str(result_event.get("api_error_status") or "").strip() or None
+    return status, reason
+
+
 def _run_claude_subprocess(
     cmd: list[str],
     workspace: Path,
@@ -1106,19 +1411,18 @@ def _run_claude_subprocess(
     log: PipelineLog | None,
     timeout: int,
     prompt: str | None = None,
-) -> tuple[bool, float]:
-    """Shared subprocess runner with timeout + stderr tail capture.
+) -> tuple[bool, float, _ClaudeFailure | None]:
+    """Run one `claude -p` attempt under a real wall-clock cap.
 
-    If PODCAST_VERBOSE=1 (stream-json), stdout is piped through a line-reader
-    that pretty-prints tool-use events live. Otherwise stdout is inherited
-    (claude's natural-language summary goes straight to TTY).
-
-    ``prompt`` is delivered via stdin to avoid exposing book content / workspace
-    paths in argv (visible to any local user via ps/proc listings).
+    stdin (the prompt, kept out of argv so ps can't see book content), stderr (a
+    bounded tail) and — with PODCAST_VERBOSE=1 / stream-json — stdout (live
+    render + events.jsonl tee) each get their own thread while this thread waits
+    on the process. So ``timeout`` counts from spawn whatever the agent does with
+    its pipes, and no pipe can fill up and deadlock both sides. Without
+    stream-json, stdout is inherited (claude's summary goes straight to the TTY).
     """
     t0 = time.time()
     stderr_log = workspace / f"claude_{label.lower().replace(' ', '_')}.stderr.log"
-    stdin_bytes = prompt.encode() if prompt else b""
     try:
         proc_env = _agent_subprocess_env()
     except RuntimeError as e:
@@ -1130,151 +1434,98 @@ def _run_claude_subprocess(
             )
         return False, 0.0, _ClaudeFailure("auth", str(e))
 
-    if _STREAM_JSON:
-        # Live tool-use rendering via stream-json NDJSON. Also tees each event
-        # (wrapped with current stage label + timestamp) to workspace/events.jsonl
-        # so the monitor dashboard can stream tool-use + token usage live.
-        events_path = workspace / "events.jsonl"
-        proc = subprocess.Popen(
-            cmd,
-            cwd=str(workspace),
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=False,
-            env=proc_env,
-            bufsize=0,
-        )
-        try:
-            proc.stdin.write(stdin_bytes)
-            proc.stdin.close()
-        except BrokenPipeError:
-            print(
-                f"[pipeline] stdin closed/closed by child before full input: events_path={events_path}",
-                file=sys.stderr,
+    _install_agent_signal_forwarding()
+    proc: subprocess.Popen | None = None
+    stderr_tail = bytearray()
+    sink: dict = {}
+    readers: list[threading.Thread] = []
+    timed_out = False
+    try:
+        with _signals_deferred_while_spawning():
+            proc = subprocess.Popen(
+                cmd,
+                cwd=str(workspace),
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE if _STREAM_JSON else None,
+                stderr=subprocess.PIPE,
+                env=proc_env,
+                start_new_session=True,  # own group: see "Agent subprocess lifecycle"
             )
-        result_event: dict | None = None
-        try:
-            with events_path.open("a", encoding="utf-8") as ev_f:
-                for raw_line in proc.stdout:  # type: ignore[union-attr]
-                    line = raw_line.decode("utf-8", errors="replace").strip()
-                    if not line:
-                        continue
-                    try:
-                        event = json.loads(line)
-                    except json.JSONDecodeError:
-                        _LOGGER.debug(
-                            "Skipping malformed pipeline child event line: %r", line
-                        )
-                        continue
-                # The terminal `result` event carries is_error / api_error_status
-                # even when the agent printed an error and the CLI still exits 0
-                # — capture it as the authoritative success signal.
-                if event.get("type") == "result":
-                    result_event = event
-                # Wrap with stage/label/ts for the monitor to correlate
-                wrapped = {
-                    "ts": datetime.now().isoformat(timespec="seconds"),
-                    "stage_label": label,
-                    "event": event,
-                }
-                ev_f.write(json.dumps(wrapped, ensure_ascii=False) + "\n")
-                ev_f.flush()
-                rendered = _fmt_tool_event(event)
-                if rendered:
-                    print(rendered, flush=True)
-            proc.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            elapsed = time.time() - t0
-            raw = (proc.stderr.read() if proc.stderr else b"").decode(
-                "utf-8", errors="replace"
-            )
-            if raw:
-                stderr_log.write_text(raw[-2000:])
-            if log:
-                log.error(
-                    f"{label} TIMEOUT after {timeout}s",
-                    timeout=True,
-                    elapsed_s=round(elapsed, 1),
-                    stderr_tail=raw[-500:],
+            _LIVE_AGENT_GROUPS[proc.pid] = os.getpid()
+        readers = [
+            threading.Thread(
+                target=_feed_stdin,
+                args=(proc.stdin, prompt.encode() if prompt else b""),
+                daemon=True,
+            ),
+            threading.Thread(
+                target=_drain_stderr_tail, args=(proc.stderr, stderr_tail), daemon=True
+            ),
+        ]
+        if _STREAM_JSON:
+            readers.append(
+                threading.Thread(
+                    target=_tee_stream_events,
+                    args=(proc.stdout, workspace / "events.jsonl", label, sink),
+                    daemon=True,
                 )
-            return (
-                False,
-                elapsed,
-                _ClaudeFailure("timeout", f"TIMEOUT after {timeout}s"),
             )
-        elapsed = time.time() - t0
-        stderr_text = (proc.stderr.read() if proc.stderr else b"").decode(
-            "utf-8", errors="replace"
-        )
-        # An is_error result event means the agent loop failed (e.g. API 400)
-        # even if subtype=="success" and the CLI exit code is 0 — trust is_error.
-        api_error = bool(result_event and result_event.get("is_error"))
-        success = proc.returncode == 0 and not api_error
-        if success:
-            return True, elapsed, None
-        status = None
-        reason = ""
-        if result_event:
-            status = str(result_event.get("api_error_status") or "").strip() or None
-            reason = str(result_event.get("result") or "").strip()
-        if not reason:
-            reason = stderr_text[-500:].strip() or f"exit code {proc.returncode}"
+        for reader in readers:
+            reader.start()
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+    finally:
+        # Timeout, Ctrl-C, or a clean exit that left tool processes behind: the
+        # agent's group never outlives this call.
+        if proc is not None:
+            _kill_agent_group(proc)
+            _LIVE_AGENT_GROUPS.pop(proc.pid, None)
+    for reader in readers:
+        # Bounded: a process that escaped the group (its own setsid) could hold a
+        # pipe open forever; its daemon reader is then abandoned, not waited on.
+        reader.join(_AGENT_READER_JOIN)
+    elapsed = time.time() - t0
+    stderr_text = bytes(stderr_tail).decode("utf-8", errors="replace")
+
+    if timed_out:
         if stderr_text:
-            stderr_log.write_text(stderr_text)
+            stderr_log.write_text(stderr_text[-2000:])
         if log:
+            log.error(
+                f"{label} TIMEOUT after {timeout}s",
+                timeout=True,
+                elapsed_s=round(elapsed, 1),
+                stderr_tail=stderr_text[-500:],
+            )
+        return False, elapsed, _ClaudeFailure("timeout", f"TIMEOUT after {timeout}s")
+
+    result_event = sink.get("result")
+    # An is_error result event means the agent loop failed (e.g. API 400) even if
+    # subtype=="success" and the CLI exit code is 0 — trust is_error. Plain mode
+    # has no result event and is classified from stderr alone.
+    api_error = bool(result_event and result_event.get("is_error"))
+    if proc.returncode == 0 and not api_error:
+        return True, elapsed, None
+    status, reason = _result_failure(result_event)
+    if not reason:
+        reason = stderr_text[-500:].strip() or f"exit code {proc.returncode}"
+    if stderr_text:
+        stderr_log.write_text(stderr_text)
+    if log:
+        if _STREAM_JSON:
             log.error(
                 f"{label} failed (exit={proc.returncode}, api_error={api_error})",
                 api_error_status=status,
                 stderr_tail=stderr_text[-500:],
                 reason=reason[:300],
             )
-        return False, elapsed, _ClaudeFailure(status, reason)
-
-    # Non-verbose mode: inherit stdout
-    try:
-        proc = subprocess.run(
-            cmd,
-            cwd=str(workspace),
-            input=stdin_bytes,
-            stdout=None,
-            stderr=subprocess.PIPE,
-            env=proc_env,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired as e:
-        elapsed = time.time() - t0
-        raw = e.stderr
-        if isinstance(raw, bytes):
-            raw = raw.decode("utf-8", errors="replace")
-        tail = (raw or "")[-2000:]
-        if tail:
-            stderr_log.write_text(tail)
-        if log:
+        else:
             log.error(
-                f"{label} TIMEOUT after {timeout}s",
-                timeout=True,
-                elapsed_s=round(elapsed, 1),
-                stderr_tail=tail[-500:],
+                f"{label} exited with code {proc.returncode}",
+                stderr_tail=stderr_text[-500:],
             )
-        return False, elapsed, _ClaudeFailure("timeout", f"TIMEOUT after {timeout}s")
-
-    elapsed = time.time() - t0
-    success = proc.returncode == 0
-    if success:
-        return True, elapsed, None
-    # Non-stream mode has no result event — classify from stderr text alone.
-    stderr_text = (proc.stderr or b"").decode("utf-8", errors="replace")
-    if stderr_text:
-        stderr_log.write_text(stderr_text)
-    reason = stderr_text[-500:].strip() or f"exit code {proc.returncode}"
-    if log:
-        log.error(
-            f"{label} exited with code {proc.returncode}",
-            stderr_tail=stderr_text[-500:],
-        )
-    return False, elapsed, _ClaudeFailure(None, reason)
+    return False, elapsed, _ClaudeFailure(status, reason)
 
 
 def _run_claude_with_retry(
@@ -1290,7 +1541,8 @@ def _run_claude_with_retry(
     Each attempt is a FRESH `claude -p` invocation (no --resume): a new
     conversation escapes the poisoned thinking-block history that makes the 400
     reproduce. Idempotent stages re-read on-disk artifacts, so a retry resumes
-    work. Fatal failures (auth/config/timeout) fail fast — no wasted retries.
+    work. Fatal failures (auth/config/timeout/spend cap) fail fast — no wasted
+    retries.
     """
     import random
 
@@ -1351,6 +1603,7 @@ def run_claude(
     inject_tts: bool = False,
 ) -> bool:
     prompt = prompt.replace("{saga_context}", build_saga_context(workspace))
+    prompt = inject_rights_policy(prompt, workspace)
     prompt = prompt.replace("{workspace}", str(workspace))
     prompt = prompt.replace(
         "{podcast_root}", str(ROOT)
@@ -1361,17 +1614,7 @@ def run_claude(
     if extra_tools:
         tools.extend(extra_tools)
 
-    # Prompt is passed via stdin (not argv) to avoid exposing content in ps listings.
-    cmd = [
-        "claude",
-        "-p",
-        "-",
-        *_VERBOSE_FLAGS,
-        "--model",
-        MODEL,
-        "--allowedTools",
-        ",".join(tools),
-    ]
+    cmd = _agent_cmd(",".join(tools), label)
     timeout = _STAGE_TIMEOUTS.get(label, _DEFAULT_TIMEOUT)
 
     log.event(
@@ -1381,6 +1624,7 @@ def run_claude(
         model=MODEL,
         prompt_len=len(prompt),
         timeout_s=timeout,
+        budget_usd=_stage_budget_usd(label),
     )
 
     success, _ = _run_claude_with_retry(cmd, workspace, label, log, timeout, prompt)
@@ -1390,22 +1634,13 @@ def run_claude(
 def run_scriptwriter(workspace: Path, ep_num: int) -> tuple[int, bool]:
     prompt_template = _prompt("scriptwriter", read_mode(workspace))
     prompt = prompt_template.replace("{saga_context}", build_saga_context(workspace))
+    prompt = inject_rights_policy(prompt, workspace)
     prompt = prompt.replace("{workspace}", str(workspace))
     prompt = prompt.replace("{N}", str(ep_num))
     prompt = inject_tts_palette(prompt, workspace)
     prompt += f"\n\nYou are writing Episode {ep_num}. Read the overview, then your episode plan at plan/episodes/ep_{ep_num:02d}.md, then the source chapters listed in it."
 
-    # Prompt is passed via stdin (not argv) to avoid exposing content in ps listings.
-    cmd = [
-        "claude",
-        "-p",
-        "-",
-        *_VERBOSE_FLAGS,
-        "--model",
-        MODEL,
-        "--allowedTools",
-        "Read,Write,Edit,Bash,Glob,Grep",
-    ]
+    cmd = _agent_cmd("Read,Write,Edit,Bash,Glob,Grep", "Scriptwriter")
     label = f"Scriptwriter EP{ep_num}"
     timeout = _STAGE_TIMEOUTS["Scriptwriter"]
 
@@ -1430,22 +1665,13 @@ def run_scriptwriter(workspace: Path, ep_num: int) -> tuple[int, bool]:
 def run_script_reviewer(workspace: Path, ep_num: int) -> tuple[int, bool]:
     prompt_template = _prompt("script_review", read_mode(workspace))
     prompt = prompt_template.replace("{saga_context}", build_saga_context(workspace))
+    prompt = inject_rights_policy(prompt, workspace)
     prompt = prompt.replace("{workspace}", str(workspace))
     prompt = prompt.replace("{N}", str(ep_num))
     prompt = inject_tts_palette(prompt, workspace)
     prompt += f"\n\nReview Episode {ep_num}. Read overview.md, then ep_{ep_num:02d}.md plan, then ep_{ep_num}_script.md."
 
-    # Prompt is passed via stdin (not argv) to avoid exposing content in ps listings.
-    cmd = [
-        "claude",
-        "-p",
-        "-",
-        *_VERBOSE_FLAGS,
-        "--model",
-        MODEL,
-        "--allowedTools",
-        "Read,Write,Edit,Bash,Glob,Grep",
-    ]
+    cmd = _agent_cmd("Read,Write,Edit,Bash,Glob,Grep", "Script Review")
     label = f"Script Review EP{ep_num}"
     timeout = _STAGE_TIMEOUTS["Script Review"]
 
@@ -1668,14 +1894,42 @@ def _validator_result(workspace: Path, stage: str) -> dict[str, object] | None:
         rewrite_marker = stage_thresholds.get("rewrite_marker", "REWRITE_NEEDED")
         max_fail_count = int(stage_thresholds.get("max_fail_count", 2))
         fail_count = text.count("FAIL")
+        try:
+            rights = rights_gate.read_rights(workspace)
+        except rights_gate.RightsError:
+            rights = "unreadable"
+        full_text = (
+            []
+            if rights == rights_gate.PUBLIC_DOMAIN
+            else rights_gate.full_text_strategy_plans(workspace)
+        )
         return {
             "status": "pass"
-            if rewrite_marker not in text and fail_count <= max_fail_count
+            if rewrite_marker not in text
+            and fail_count <= max_fail_count
+            and not full_text
+            and rights != "unreadable"
             else "fail",
             "rewrite_marker": rewrite_marker,
             "rewrite_needed": rewrite_marker in text,
             "fail_count": fail_count,
             "max_fail_count": max_fail_count,
+            "rights": rights,
+            "full_text_strategy": full_text,
+        }
+    if stage in ("synthesize", "publish"):
+        f = workspace / rights_gate.REPORT_FILE
+        try:
+            report = json.loads(f.read_text())
+        except (OSError, json.JSONDecodeError):
+            return {"status": "missing", "artifact": rights_gate.REPORT_FILE}
+        if report.get("stage") != stage:
+            return {"status": "missing", "artifact": rights_gate.REPORT_FILE}
+        return {
+            "status": "fail" if report.get("blocked") else "pass",
+            "artifact": rights_gate.REPORT_FILE,
+            "rights": report.get("rights"),
+            "checked_at": report.get("checked_at"),
         }
     if stage == "series-polish":
         f = workspace / "plan" / "series_polish.md"
@@ -1971,6 +2225,24 @@ def stage_plan_review(workspace: Path, log: PipelineLog) -> bool:
         )
         return False
 
+    # Deterministic copyright check on the FINAL plan files (after any reviewer
+    # auto-fix): only a public-domain book may plan a full-text reading.
+    try:
+        rights = rights_gate.read_rights(workspace)
+    except rights_gate.RightsError as e:
+        log.error(f"Plan review: {e}")
+        return False
+    if rights != rights_gate.PUBLIC_DOMAIN:
+        full_text = rights_gate.full_text_strategy_plans(workspace)
+        if full_text:
+            log.error(
+                f"Plan review: Strategy full_text is forbidden for a {rights} book "
+                f"({', '.join(full_text)}) — re-plan those episodes as "
+                f"{rights_gate.strategy_options(rights)}, then resume with "
+                f"--skip-to plan-review"
+            )
+            return False
+
     log.event("Plan review passed")
     return True
 
@@ -1997,7 +2269,7 @@ def stage_scriptwriters(
     max_parallel: int = 3,
     only_episode: int | None = None,
 ) -> bool:
-    if only_episode:
+    if only_episode is not None:
         _, ok = run_scriptwriter(workspace, only_episode)
         if ok:
             # Record the authored TTS family even on the single-episode path, or a
@@ -2091,7 +2363,7 @@ def stage_script_review(
     max_parallel: int = 3,
     only_episode: int | None = None,
 ) -> bool:
-    if only_episode:
+    if only_episode is not None:
         _, ok = run_script_reviewer(workspace, only_episode)
         return ok
 
@@ -2301,7 +2573,9 @@ def _run_tool_stage(
 ) -> int | None:
     per_episode = _TOOL_STAGE_TIMEOUTS[stage]
     episodes = (
-        1 if only_episode else len(list((workspace / "scripts").glob("ep_*_script.md")))
+        1
+        if only_episode is not None
+        else len(list((workspace / "scripts").glob("ep_*_script.md")))
     )
     return _run_bounded(
         cmd,
@@ -2318,8 +2592,17 @@ def stage_synthesize(
 ) -> bool:
     scripts_dir = workspace / "scripts"
     target = (
-        scripts_dir / f"ep_{only_episode}_script.md" if only_episode else scripts_dir
+        scripts_dir / f"ep_{only_episode}_script.md"
+        if only_episode is not None
+        else scripts_dir
     )
+
+    # Copyright line (#2094): never voice an over-threshold verbatim script of a
+    # non-public-domain book. Before any TTS subprocess spends money.
+    if not _verbatim_gate(
+        workspace, log, stage="synthesize", only_episode=only_episode
+    ):
+        return False
 
     # Restore the frozen TTS model here — the single point every spawn path
     # funnels through, mirroring how every stage reads .mode via read_mode().
@@ -2358,7 +2641,7 @@ def stage_audio_qa(
     workspace: Path, log: PipelineLog, only_episode: int | None = None
 ) -> bool:
     scripts_dir = workspace / "scripts"
-    if only_episode:
+    if only_episode is not None:
         # Exact-match episode number: ep_1_pro.{mp3,m4a} must NOT catch ep_10_pro.
         # m4a is the post-Track-B default; mp3 stays for legacy series.
         pattern = re.compile(rf"^ep_{only_episode}_[A-Za-z]+\.(?:mp3|m4a)$")
@@ -2403,7 +2686,9 @@ def stage_subtitle(
 ) -> bool:
     scripts_dir = workspace / "scripts"
     target = (
-        scripts_dir / f"ep_{only_episode}_script.md" if only_episode else scripts_dir
+        scripts_dir / f"ep_{only_episode}_script.md"
+        if only_episode is not None
+        else scripts_dir
     )
 
     rc = _run_tool_stage(
@@ -2510,7 +2795,14 @@ def stage_publish(workspace: Path, log: PipelineLog, *, max_retries: int = 3) ->
     Loud-fails (returns False, never crashes) when PODCAST_BUCKET / AWS creds
     are absent from the environment, or when the series can't be confirmed in
     the index after max_retries upload+verify attempts.
+
+    The verbatim gate re-runs here over every script AND subtitle that would be
+    uploaded, so ``--skip-to publish`` cannot ship audio that synthesize would
+    have refused (or that was synthesized before the gate existed).
     """
+    if not _verbatim_gate(workspace, log, stage="publish"):
+        return False
+
     if not os.getenv("PODCAST_BUCKET"):
         log.error(
             "publish: PODCAST_BUCKET not set — export it + AWS creds before "
@@ -2586,6 +2878,14 @@ def show_status(workspace: Path) -> None:
     if meta_file.exists():
         for line in meta_file.read_text().splitlines()[:5]:
             print(f"  {line}")
+    try:
+        rights = rights_gate.read_rights(workspace)
+    except rights_gate.RightsError as exc:
+        rights = f"UNREADABLE ({exc})"
+    sidecar = (workspace / rights_gate.RIGHTS_SIDECAR).is_file()
+    print(
+        f"  Rights: {rights}{'' if sidecar else ' (no sidecar — fail-closed default)'}"
+    )
 
     # Stage markers
     print(f"\n  Stage Progress:")
@@ -2721,10 +3021,99 @@ def resolve_target(target_str: str) -> tuple[Path | None, Path | None]:
     sys.exit(1)
 
 
+# ─── Workspace run lock ───
+# One pipeline per workspace, enforced here rather than only in the dashboard's
+# in-memory job map: dashboard jobs run in their own session and outlive a server
+# restart, and CLI runs never go through the dashboard at all. Two runs on one
+# workspace collide on stage markers, scripts/.cache/ep_N, events.jsonl and the
+# audio temp files. The lock is <ws>/.pipeline.lock (flock + holder PID), taken
+# before the run writes anything and held until the process exits;
+# monitor/server.py:_active_job_for_ws probes the same file.
+_EXIT_WORKSPACE_LOCKED = 75  # EX_TEMPFAIL: busy, not broken — retry after it ends
+_run_lock_fd: int | None = None
+
+
+def _lock_workspace(workspace: Path) -> None:
+    global _run_lock_fd
+    if _run_lock_fd is not None:
+        return
+    workspace.mkdir(parents=True, exist_ok=True)
+    try:
+        _run_lock_fd = WorkspaceState(workspace).acquire_run_lock()
+    except WorkspaceLocked as e:
+        holder = (
+            f"PID {e.holder_pid}"
+            if e.holder_pid is not None
+            else "another process (PID not recorded)"
+        )
+        print(
+            f"ERROR: {workspace} is already being processed by {holder}.\n"
+            "  One pipeline per workspace: wait for that run to finish (or stop it),"
+            " then re-run.",
+            file=sys.stderr,
+        )
+        sys.exit(_EXIT_WORKSPACE_LOCKED)
+
+
+def _release_workspace_lock() -> None:
+    global _run_lock_fd
+    if _run_lock_fd is not None:
+        os.close(_run_lock_fd)
+        _run_lock_fd = None
+
+
+# ─── CLI argument types ───
+# Each scriptwrite / script-review worker is a paid agent; 10 matches the
+# dashboard's /api/pipeline/start `parallel` bound.
+_MAX_PARALLEL = 10
+_PLAN_EPISODE_RE = re.compile(r"^ep_(\d+)\.md$")
+_SCRIPT_EPISODE_RE = re.compile(r"^ep_(\d+)_script\.md$")
+
+
+def _int_arg(lo: int, hi: int | None = None):
+    """argparse type: an int in [lo, hi] — out of range is a usage error (exit 2)
+    instead of a value a stage misreads (0 is falsy) or a pool rejects mid-run."""
+
+    def parse(value: str) -> int:
+        try:
+            n = int(value)
+        except ValueError:
+            raise argparse.ArgumentTypeError(
+                f"expected an integer, got {value!r}"
+            ) from None
+        if n < lo or (hi is not None and n > hi):
+            bound = f">= {lo}" if hi is None else f"between {lo} and {hi}"
+            raise argparse.ArgumentTypeError(f"must be {bound}, got {n}")
+        return n
+
+    return parse
+
+
+def known_episodes(workspace: Path) -> set[int]:
+    """Episode numbers with a plan (plan/episodes/ep_NN.md) or a script."""
+    found: set[int] = set()
+    for directory, pattern in (
+        (workspace / "plan" / "episodes", _PLAN_EPISODE_RE),
+        (workspace / "scripts", _SCRIPT_EPISODE_RE),
+    ):
+        if directory.is_dir():
+            for f in directory.iterdir():
+                if m := pattern.match(f.name):
+                    found.add(int(m.group(1)))
+    return found
+
+
 # ─── Main ───
 
 
 def main():
+    try:
+        _main()
+    finally:
+        _release_workspace_lock()
+
+
+def _main():
     stage_help = render_stage_help(STAGE_SPECS)
     approval_help = "\n".join(
         f"  ┃ {spec.approval_marker}  ── approval before {spec.name} ──"
@@ -2775,10 +3164,16 @@ examples:
         "saga workspace titled TITLE. Implies --mode saga; requires --spoiler-mode.",
     )
     parser.add_argument(
-        "--parallel", type=int, default=3, help="Max parallel workers (default: 3)"
+        "--parallel",
+        type=_int_arg(1, _MAX_PARALLEL),
+        default=3,
+        help=f"Max parallel scriptwrite / script-review agents, 1-{_MAX_PARALLEL} "
+        "(default: 3)",
     )
     parser.add_argument(
-        "--only-episode", type=int, help="Only process this episode number"
+        "--only-episode",
+        type=_int_arg(1),
+        help="Only process this episode number (must have a plan or a script)",
     )
     stage_choices = all_workflow_stage_names()
     parser.add_argument(
@@ -2809,6 +3204,14 @@ examples:
         "(written to .tts_model, read back by the synthesize stage). On resume the "
         "saved sidecar wins; a conflicting --tts-model errors. Omit to use the "
         "synthesize.py env default.",
+    )
+    parser.add_argument(
+        "--rights",
+        choices=list(rights_gate.RIGHTS_VALUES),
+        help="Copyright status of the book, frozen at workspace creation (written "
+        "to .rights). Default and missing sidecar = copyrighted (fail closed). "
+        "Only public_domain may use the full_text strategy or skip the verbatim "
+        "gate before synthesize/publish. Resume cannot change it.",
     )
     parser.add_argument(
         "--agent-profile",
@@ -2851,6 +3254,7 @@ examples:
 
     try:
         configure_agent(args.agent_profile, args.agent_model)
+        _stage_budget_usd("")  # fail before any stage on a malformed spend-cap env
     except ValueError as e:
         parser.error(str(e))
 
@@ -2864,6 +3268,9 @@ examples:
     # multiple targets; everything else takes exactly one (EPUB or workspace dir).
     saga_epubs: list[Path] | None = None
     epub_path = workspace = None
+    # True only when THIS invocation creates the workspace — the one moment the
+    # rights sidecar may be written from --rights.
+    created_now = False
     if args.saga is not None:
         if args.mode and args.mode != "saga":
             parser.error(f"--saga implies --mode saga; got --mode {args.mode}")
@@ -2896,7 +3303,13 @@ examples:
                     f"  {i}. {meta['title']} — {meta['total_raw_chapters']} ch, {meta['total_raw_chars']:,} chars"
                 )
                 books.append((meta, chapters))
-            workspace = setup_saga_workspace(args.saga, books)
+            workspace = WORKSPACES_DIR / saga.saga_dirname(
+                args.saga, [m["title"] for m, _ in books]
+            )
+            _lock_workspace(workspace)  # before setup writes into it
+            if setup_saga_workspace(args.saga, books) != workspace:
+                raise RuntimeError("saga workspace path rule diverged from setup")
+            created_now = True
             print(f"  Workspace: {workspace}")
         else:
             print(f"Resuming saga: {args.saga} → {workspace}")
@@ -2912,8 +3325,11 @@ examples:
                 print("No workspace found for this EPUB.")
         return
 
-    # Resolve workspace
+    # Resolve workspace. Everything from here on writes workspace state, so the
+    # run lock is taken as soon as the workspace path is known (--status above
+    # stays read-only and lock-free).
     if workspace:
+        _lock_workspace(workspace)
         print(f"Workspace: {workspace}")
     elif epub_path:
         if args.skip_to:
@@ -2923,6 +3339,7 @@ examples:
                     "ERROR: No existing workspace found. Run without --skip-to first."
                 )
                 sys.exit(1)
+            _lock_workspace(workspace)
             print(f"Resuming: {workspace}")
         else:
             print(f"Extracting: {epub_path.name}")
@@ -2931,8 +3348,48 @@ examples:
             print(f"  Author:   {metadata['author']}")
             print(f"  Chapters: {metadata['total_raw_chapters']}")
             print(f"  Chars:    {metadata['total_raw_chars']:,}")
-            workspace = setup_workspace(metadata, chapters)
+            workspace = WORKSPACES_DIR / book_workspace_dirname(
+                metadata["title"], metadata["author"]
+            )
+            # Decide "created by this run" BEFORE the lock: taking it creates the
+            # workspace dir (it holds .pipeline.lock), so exists() after would
+            # always be True and the rights sidecar would never be written. A dir
+            # holding only a lock file (a run died between lock and setup) is
+            # still "not yet created".
+            created_now = not workspace.exists() or all(
+                p.name == ".pipeline.lock" for p in workspace.iterdir()
+            )
+            _lock_workspace(workspace)  # before setup writes into it
+            if setup_workspace(metadata, chapters) != workspace:
+                raise RuntimeError("workspace path rule diverged from setup")
             print(f"  Workspace: {workspace}")
+
+    # --only-episode must name a real episode before any stage (or a paid
+    # scriptwriter agent for a plan that doesn't exist) runs. Read-only, so it
+    # goes before the rights resolve below, which may write the .rights sidecar.
+    if args.only_episode is not None:
+        episodes = known_episodes(workspace)
+        if args.only_episode not in episodes:
+            have = (
+                f"its episodes are {', '.join(map(str, sorted(episodes)))}"
+                if episodes
+                else "it has no episodes yet (run the plan phase first)"
+            )
+            parser.error(
+                f"--only-episode {args.only_episode}: {workspace.name} has no "
+                f"plan/episodes/ep_{args.only_episode:02d}.md or "
+                f"scripts/ep_{args.only_episode}_script.md; {have}"
+            )
+
+    # Rights are frozen at creation; a resume can never change them, and a
+    # pre-rights workspace is pinned to copyrighted (fail closed).
+    try:
+        rights = rights_gate.resolve_workspace_rights(
+            workspace, args.rights, created=created_now
+        )
+    except rights_gate.RightsError as e:
+        parser.error(str(e))
+    print(f"Rights: {rights}")
 
     saved_agent_profile, saved_agent_model = read_agent_sidecars(workspace)
     if not args.agent_profile and not args.agent_model and saved_agent_profile:
@@ -3140,7 +3597,7 @@ examples:
     total_stages = len(stages_to_run)
 
     print(f"\nPlan: {' → '.join(stages_to_run)}")
-    if args.only_episode:
+    if args.only_episode is not None:
         print(f"Episode filter: {args.only_episode}")
     print()
 
@@ -3194,7 +3651,7 @@ examples:
                 stage_name,
                 success=False,
                 elapsed=stage_elapsed,
-                only_episode=bool(args.only_episode),
+                only_episode=args.only_episode is not None,
             )
             print(f"\n{'=' * 60}")
             print(f"  PIPELINE FAILED at: {stage_name} ({elapsed:.0f}s total)")
@@ -3208,7 +3665,7 @@ examples:
             stage_name,
             success=True,
             elapsed=stage_elapsed,
-            only_episode=bool(args.only_episode),
+            only_episode=args.only_episode is not None,
         )
 
     elapsed = time.time() - t0

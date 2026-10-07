@@ -24,6 +24,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
 import json
 import os
@@ -36,6 +37,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from concurrent.futures import TimeoutError as FuturesTimeoutError
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from tts_config import (
@@ -75,6 +77,7 @@ def _emit_event(stage_label: str, event_payload: dict) -> None:
         with (_EVENTS_WORKSPACE / "events.jsonl").open("a", encoding="utf-8") as f:
             f.write(line)
             f.flush()
+
 
 from dotenv import load_dotenv
 
@@ -129,9 +132,9 @@ TTS_BATCH_TIMEOUT = int(os.getenv("TTS_BATCH_TIMEOUT", "600"))  # 10 min / batch
 
 # Mastering: EBU R128 loudness normalization. Disable with TTS_MASTER=0.
 MASTER_ENABLED = os.getenv("TTS_MASTER", "1").strip() != "0"
-MASTER_LUFS = float(os.getenv("TTS_MASTER_LUFS", "-16"))     # Apple Podcasts target
-MASTER_TP = float(os.getenv("TTS_MASTER_TP", "-1.5"))        # true peak ceiling
-MASTER_LRA = float(os.getenv("TTS_MASTER_LRA", "11"))        # loudness range
+MASTER_LUFS = float(os.getenv("TTS_MASTER_LUFS", "-16"))  # Apple Podcasts target
+MASTER_TP = float(os.getenv("TTS_MASTER_TP", "-1.5"))  # true peak ceiling
+MASTER_LRA = float(os.getenv("TTS_MASTER_LRA", "11"))  # loudness range
 
 # ─── Dynamic Host Config ───
 
@@ -250,7 +253,9 @@ def _parse_overview_hosts(overview_path: Path) -> tuple[dict[str, str], str]:
     global VOICE_SPEAKER1, VOICE_SPEAKER2
 
     if not overview_path.exists():
-        raise RuntimeError(f"{overview_path} missing — run pipeline tts-prep stage first")
+        raise RuntimeError(
+            f"{overview_path} missing — run pipeline tts-prep stage first"
+        )
 
     text = overview_path.read_text(encoding="utf-8")
 
@@ -265,6 +270,7 @@ def _parse_overview_hosts(overview_path: Path) -> tuple[dict[str, str], str]:
 
 
 # ─── Parse ───
+
 
 def _sanitize_dialogue(text: str) -> str:
     """Strip inline markdown emphasis + make audio tags safe for TTS_FAMILY."""
@@ -397,6 +403,63 @@ def format_prompt(system_instructions: str, turns: list[dict[str, str]]) -> str:
     return f"{system_instructions}\n\n{dialogue}".strip()
 
 
+# ─── Cache identity ───
+#
+# Audio is a pure function of (prompt sent to the API, both voices, model) per
+# batch, plus render settings per episode. Every cache decision keys on exactly
+# those inputs — never on a batch index or on "the output file exists" — so an
+# edited turn, a re-cast voice or a model switch can't be voiced with stale
+# audio. Bump the schema when batch post-processing (e.g. silence trim)
+# changes, which invalidates every cached batch and episode once.
+_SYNTH_CACHE_SCHEMA = 1
+
+
+def _sha256_json(payload: dict) -> str:
+    blob = json.dumps(
+        payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")
+    )
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def _voices() -> dict[str, str]:
+    return {"Speaker1": VOICE_SPEAKER1, "Speaker2": VOICE_SPEAKER2}
+
+
+def _batch_cache_key(prompt: str) -> str:
+    """Content key for one batch: the full prompt (system prompt + dialogue),
+    both voices and the TTS model."""
+    return _sha256_json(
+        {
+            "schema": _SYNTH_CACHE_SCHEMA,
+            "model": TTS_MODEL,
+            "voices": _voices(),
+            "prompt": prompt,
+        }
+    )
+
+
+def _batch_cache_path(cache_dir: Path, key: str) -> Path:
+    return cache_dir / f"batch_{key}.wav"
+
+
+def _episode_fingerprint(batch_keys: list[str]) -> str:
+    """Identity of a finished episode file: its ordered batch keys (which also
+    capture chunking) plus the settings combine_and_export renders with."""
+    return _sha256_json(
+        {
+            "schema": _SYNTH_CACHE_SCHEMA,
+            "batches": batch_keys,
+            "render": {
+                "silence_ms": SILENCE_MS,
+                "output_format": OUTPUT_FORMAT,
+                "mp3_bitrate": MP3_BITRATE,
+                "aac_bitrate": AAC_BITRATE,
+                "master": [MASTER_ENABLED, MASTER_LUFS, MASTER_TP, MASTER_LRA],
+            },
+        }
+    )
+
+
 # ─── Synthesize ───
 
 
@@ -439,9 +502,7 @@ def build_speech_config() -> genai_types.SpeechConfig:
 def audio_bytes_to_segment(audio_bytes: bytes, mime_type: str) -> AudioSegment:
     if "wav" in mime_type:
         return AudioSegment.from_file(io.BytesIO(audio_bytes), format="wav")
-    return AudioSegment(
-        data=audio_bytes, sample_width=2, frame_rate=24000, channels=1
-    )
+    return AudioSegment(data=audio_bytes, sample_width=2, frame_rate=24000, channels=1)
 
 
 # Trim trailing silence defense: Vertex gemini-2.5-pro-tts frequently pads
@@ -456,6 +517,7 @@ _TRAIL_KEEP_MS = 400
 def _trim_trailing_silence(segment: AudioSegment) -> AudioSegment:
     """Cut trailing near-silence, preserving a short natural tail."""
     from pydub.silence import detect_leading_silence
+
     reversed_ = segment.reverse()
     trail_ms = detect_leading_silence(
         reversed_, silence_threshold=_TRAIL_SILENCE_THRESH_DBFS, chunk_size=50
@@ -473,6 +535,7 @@ def _generate_with_retry(client, prompt, speech_config, index):
     not enough under burst; this adds outer-level retry to handle 429/503/504.
     """
     import random
+
     attempts = max(1, TTS_RETRY_ATTEMPTS)
     last_exc = None
     for attempt in range(attempts):
@@ -489,12 +552,15 @@ def _generate_with_retry(client, prompt, speech_config, index):
             last_exc = e
             name = type(e).__name__
             code = getattr(e, "code", None) or getattr(e, "status_code", None)
-            transient = (
-                code in {408, 429, 500, 502, 503, 504}
-                or name in {"ResourceExhausted", "ServiceUnavailable",
-                            "DeadlineExceeded", "InternalServerError",
-                            "APIError", "ClientError", "ServerError"}
-            )
+            transient = code in {408, 429, 500, 502, 503, 504} or name in {
+                "ResourceExhausted",
+                "ServiceUnavailable",
+                "DeadlineExceeded",
+                "InternalServerError",
+                "APIError",
+                "ClientError",
+                "ServerError",
+            }
             if not transient or attempt == attempts - 1:
                 raise
             # 429 = per-minute quota exhausted; must wait ≥60s for quota reset.
@@ -502,8 +568,10 @@ def _generate_with_retry(client, prompt, speech_config, index):
             if code == 429:
                 backoff = 60 + 15 * attempt + random.random() * 5
             else:
-                backoff = (2 ** attempt) + random.random()
-            print(f"  batch {index}: {name} code={code} — retry {attempt + 1}/{attempts} after {backoff:.1f}s")
+                backoff = (2**attempt) + random.random()
+            print(
+                f"  batch {index}: {name} code={code} — retry {attempt + 1}/{attempts} after {backoff:.1f}s"
+            )
             time.sleep(backoff)
     raise last_exc  # pragma: no cover — loop always returns or raises
 
@@ -553,9 +621,16 @@ def _synthesize_one(
     trimmed_ms = int(raw_duration_s * 1000 - trimmed_duration_s * 1000)
 
     # Persist to disk immediately — survives subsequent stuck batches / crashes.
+    # Same-dir temp + os.replace: a truncated wav at cache_path would be
+    # reused as this batch's audio on every later run.
     if cache_path:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
-        segment.export(str(cache_path), format="wav")
+        part_path = cache_path.with_name(f"{cache_path.name}.{index}.part")
+        try:
+            segment.export(str(part_path), format="wav")
+            os.replace(part_path, cache_path)
+        finally:
+            part_path.unlink(missing_ok=True)
 
     # ─── Emit usage event for cost dashboard ───
     # Prefer Vertex's real token counts; fallback to estimates if absent.
@@ -570,25 +645,32 @@ def _synthesize_one(
     if output_tokens is None:
         # Google official: 25 audio tokens per second
         output_tokens = int(round(trimmed_duration_s * 25))
-    _emit_event(episode_label, {
-        "type": "tts_usage",
-        "model": TTS_MODEL,
-        "batch_index": index,
-        "batch_total": total,
-        "turns": turns_count,
-        "words": batch_words,
-        "input_chars": input_chars,
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "total_tokens": total_tokens,
-        "audio_seconds": round(trimmed_duration_s, 2),
-        "elapsed_s": round(elapsed, 2),
-        "trimmed_ms": trimmed_ms,
-        "usage_source": "vertex_api" if um else "estimated",
-    })
+    _emit_event(
+        episode_label,
+        {
+            "type": "tts_usage",
+            "model": TTS_MODEL,
+            "batch_index": index,
+            "batch_total": total,
+            "turns": turns_count,
+            "words": batch_words,
+            "input_chars": input_chars,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": total_tokens,
+            "audio_seconds": round(trimmed_duration_s, 2),
+            "elapsed_s": round(elapsed, 2),
+            "trimmed_ms": trimmed_ms,
+            "usage_source": "vertex_api" if um else "estimated",
+        },
+    )
 
-    trim_note = f" (trimmed {trimmed_ms/1000:.1f}s silence)" if trimmed_ms > 1000 else ""
-    print(f"  batch {index}/{total}: {turns_count} turns, {batch_words} words → {trimmed_duration_s:.1f}s audio in {elapsed:.1f}s{trim_note}")
+    trim_note = (
+        f" (trimmed {trimmed_ms / 1000:.1f}s silence)" if trimmed_ms > 1000 else ""
+    )
+    print(
+        f"  batch {index}/{total}: {turns_count} turns, {batch_words} words → {trimmed_duration_s:.1f}s audio in {elapsed:.1f}s{trim_note}"
+    )
     return index, segment
 
 
@@ -600,37 +682,48 @@ def synthesize_batches(
     cache_dir: Path | None = None,
     episode_label: str = "Synthesize",
 ) -> list[AudioSegment]:
-    """Synthesize batches with per-batch disk caching + wall-clock timeout.
+    """Synthesize batches with content-keyed disk caching + wall-clock timeout.
 
-    - Each successful batch writes `<cache_dir>/batch_N.wav` immediately.
-    - On re-run, batches whose cache file exists are loaded from disk (no API call).
+    - Each successful batch writes `<cache_dir>/batch_<key>.wav` immediately,
+      where key = `_batch_cache_key` (prompt + both voices + model).
+    - On re-run, a batch is loaded from disk only when a file with its exact
+      key exists; an edited turn, voice or model misses and hits the API.
+    - After every batch succeeded, cache files no current batch references
+      (old keys, legacy index-named `batch_NN.wav`, `.part` leftovers) are
+      pruned so the dir holds exactly this episode's audio.
     - Each in-flight batch has a `TTS_BATCH_TIMEOUT` wall-clock cap — a stuck
       batch raises TimeoutError, its siblings keep running, and the next run
       only retries the missing one.
     """
     total = len(batches)
     results: dict[int, AudioSegment] = {}
+    prompts = [format_prompt(system_instructions, batch) for batch in batches]
+    keys = [_batch_cache_key(prompt) for prompt in prompts]
 
     # Phase 1 — load cached batches
-    pending: list[tuple[int, list[dict[str, str]]]] = []
+    pending: list[int] = []
     if cache_dir:
         cache_dir.mkdir(parents=True, exist_ok=True)
-        for i, batch in enumerate(batches, 1):
-            cf = cache_dir / f"batch_{i:02d}.wav"
-            if cf.exists() and cf.stat().st_size > 0:
+        for i, key in enumerate(keys, 1):
+            cf = _batch_cache_path(cache_dir, key)
+            if cf.is_file() and cf.stat().st_size > 0:
                 results[i] = AudioSegment.from_file(str(cf))
-                print(f"  batch {i}/{total}: loaded from cache ({len(results[i])/1000:.1f}s audio)")
+                print(
+                    f"  batch {i}/{total}: loaded from cache ({len(results[i]) / 1000:.1f}s audio)"
+                )
             else:
-                pending.append((i, batch))
+                pending.append(i)
     else:
-        pending = list(enumerate(batches, 1))
+        pending = list(range(1, total + 1))
 
     if not pending:
         print(f"  All {total} batches cached — skipping API calls")
-        return [results[i] for i in range(1, total + 1)]
+        return _collect_batches(results, total, cache_dir, keys)
 
     workers = max(1, min(len(pending), TTS_MAX_CONCURRENT))
-    print(f"  Synthesizing {len(pending)}/{total} batches ({workers} concurrent, {TTS_BATCH_TIMEOUT}s per-batch timeout)...")
+    print(
+        f"  Synthesizing {len(pending)}/{total} batches ({workers} concurrent, {TTS_BATCH_TIMEOUT}s per-batch timeout)..."
+    )
 
     # Phase 2 — synthesize pending batches, isolate stuck ones via a wall-clock
     # cap. Pool is managed manually (not via `with`) so that on timeout we can
@@ -638,13 +731,21 @@ def synthesize_batches(
     # which would re-block on the very batch we just declared stuck.
     pool = ThreadPoolExecutor(max_workers=workers)
     futures = {}
-    for i, batch in pending:
-        prompt = format_prompt(system_instructions, batch)
+    for i in pending:
+        batch = batches[i - 1]
         batch_words = sum(_word_count(t["text"]) for t in batch)
-        cache_path = (cache_dir / f"batch_{i:02d}.wav") if cache_dir else None
+        cache_path = _batch_cache_path(cache_dir, keys[i - 1]) if cache_dir else None
         fut = pool.submit(
-            _synthesize_one, client, speech_config, prompt,
-            i, total, batch_words, len(batch), cache_path, episode_label,
+            _synthesize_one,
+            client,
+            speech_config,
+            prompts[i - 1],
+            i,
+            total,
+            batch_words,
+            len(batch),
+            cache_path,
+            episode_label,
         )
         futures[fut] = i
 
@@ -669,7 +770,9 @@ def synthesize_batches(
         # the next run only retries the missing batches.
         for fut, i in futures.items():
             if not fut.done():
-                print(f"  batch {i}/{total}: FAILED — TimeoutError: exceeded {TTS_BATCH_TIMEOUT}s wall-clock")
+                print(
+                    f"  batch {i}/{total}: FAILED — TimeoutError: exceeded {TTS_BATCH_TIMEOUT}s wall-clock"
+                )
                 stuck.append(i)
     finally:
         # wait=False when something is stuck: don't freeze the episode on a hung
@@ -683,6 +786,25 @@ def synthesize_batches(
             f"Successful batches are cached — re-run synthesize.py to resume."
         )
 
+    return _collect_batches(results, total, cache_dir, keys)
+
+
+def _collect_batches(
+    results: dict[int, AudioSegment],
+    total: int,
+    cache_dir: Path | None,
+    keys: list[str],
+) -> list[AudioSegment]:
+    """Ordered segments for a fully-successful run; prunes unreferenced cache."""
+    if cache_dir:
+        keep = {_batch_cache_path(cache_dir, key).name for key in keys}
+        stale = [
+            f for f in cache_dir.glob("batch_*") if f.is_file() and f.name not in keep
+        ]
+        for f in stale:
+            f.unlink(missing_ok=True)
+        if stale:
+            print(f"  pruned {len(stale)} stale batch cache file(s)")
     return [results[i] for i in range(1, total + 1)]
 
 
@@ -719,14 +841,28 @@ def _master_with_loudnorm(src_wav: Path, dst: Path) -> bool:
     try:
         # Pass 1 — measure
         measure = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-nostats", "-i", str(src_wav),
-             "-af", af_measure, "-f", "null", "-"],
-            capture_output=True, text=True, timeout=180,
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-nostats",
+                "-i",
+                str(src_wav),
+                "-af",
+                af_measure,
+                "-f",
+                "null",
+                "-",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=180,
         )
         # ffmpeg writes the loudnorm JSON block to stderr.
         params = _parse_loudnorm_json(measure.stderr)
         if params is None:
-            print(f"  [master] pass1 produced no usable JSON — stderr tail: {measure.stderr[-200:]!r}")
+            print(
+                f"  [master] pass1 produced no usable JSON — stderr tail: {measure.stderr[-200:]!r}"
+            )
             return False
 
         af_apply = (
@@ -740,21 +876,63 @@ def _master_with_loudnorm(src_wav: Path, dst: Path) -> bool:
         )
 
         if OUTPUT_FORMAT == "mp3":
-            apply_cmd = ["ffmpeg", "-y", "-hide_banner", "-nostats", "-i", str(src_wav),
-                         "-af", af_apply, "-ar", "48000",
-                         "-codec:a", "libmp3lame", "-b:a", MP3_BITRATE, str(dst)]
+            apply_cmd = [
+                "ffmpeg",
+                "-y",
+                "-hide_banner",
+                "-nostats",
+                "-i",
+                str(src_wav),
+                "-af",
+                af_apply,
+                "-ar",
+                "48000",
+                "-codec:a",
+                "libmp3lame",
+                "-b:a",
+                MP3_BITRATE,
+                str(dst),
+            ]
         elif OUTPUT_FORMAT == "m4a":
-            apply_cmd = ["ffmpeg", "-y", "-hide_banner", "-nostats", "-i", str(src_wav),
-                         "-af", af_apply, "-ar", "48000",
-                         "-codec:a", "aac", "-b:a", AAC_BITRATE,
-                         "-movflags", "+faststart", str(dst)]
+            apply_cmd = [
+                "ffmpeg",
+                "-y",
+                "-hide_banner",
+                "-nostats",
+                "-i",
+                str(src_wav),
+                "-af",
+                af_apply,
+                "-ar",
+                "48000",
+                "-codec:a",
+                "aac",
+                "-b:a",
+                AAC_BITRATE,
+                "-movflags",
+                "+faststart",
+                str(dst),
+            ]
         else:
-            apply_cmd = ["ffmpeg", "-y", "-hide_banner", "-nostats", "-i", str(src_wav),
-                         "-af", af_apply, "-ar", "48000", str(dst)]
+            apply_cmd = [
+                "ffmpeg",
+                "-y",
+                "-hide_banner",
+                "-nostats",
+                "-i",
+                str(src_wav),
+                "-af",
+                af_apply,
+                "-ar",
+                "48000",
+                str(dst),
+            ]
 
         result = subprocess.run(apply_cmd, capture_output=True, text=True, timeout=180)
         if result.returncode != 0:
-            print(f"  [master] pass2 failed (exit {result.returncode}): {result.stderr[-200:]!r}")
+            print(
+                f"  [master] pass2 failed (exit {result.returncode}): {result.stderr[-200:]!r}"
+            )
             return False
         return True
     except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError, OSError) as e:
@@ -772,11 +950,19 @@ def combine_and_export(segments: list[AudioSegment], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     duration_s = len(combined) / 1000
 
-    # Write to a same-dir .part temp, then os.replace() atomically into place.
+    # Write to a same-dir temp, then os.replace() atomically into place.
     # A truncated/0-byte file at output_path makes main()'s resume (out.exists())
     # treat the episode as complete and ship the broken audio to publish. The
     # atomic rename guarantees output_path either is absent or is the full file.
-    part_path = output_path.with_name(output_path.name + ".part")
+    # The temp name is per writer (a fixed `<out>.part` let a concurrent run of the
+    # same episode move it away mid-export) and ends in the real extension: ffmpeg
+    # picks its muxer from it, so `.mp3.part` made loudnorm pass 2 exit 234 and
+    # every episode silently ship unmastered. Hidden (`.ep_…`) so the `ep_*` /
+    # `*_pro.mp3` audio globs never pick up a leftover.
+    part_path = output_path.with_name(
+        f".{output_path.stem}.{os.getpid()}.{os.urandom(6).hex()}.part"
+        f"{output_path.suffix}"
+    )
     try:
         mastered = False
         if MASTER_ENABLED:
@@ -786,7 +972,9 @@ def combine_and_export(segments: list[AudioSegment], output_path: Path) -> None:
                 combined.export(str(tmp_wav), format="wav")
                 mastered = _master_with_loudnorm(tmp_wav, part_path)
                 if mastered:
-                    print(f"  [master] loudnorm I={MASTER_LUFS} TP={MASTER_TP} LRA={MASTER_LRA} applied")
+                    print(
+                        f"  [master] loudnorm I={MASTER_LUFS} TP={MASTER_TP} LRA={MASTER_LRA} applied"
+                    )
             finally:
                 tmp_wav.unlink(missing_ok=True)
 
@@ -797,9 +985,16 @@ def combine_and_export(segments: list[AudioSegment], output_path: Path) -> None:
                 # pydub passes format="mp4" to ffmpeg for the container; the codec is
                 # selected via parameters. +faststart matches the mastering path.
                 combined.export(
-                    str(part_path), format="mp4",
-                    parameters=["-codec:a", "aac", "-b:a", AAC_BITRATE,
-                                "-movflags", "+faststart"],
+                    str(part_path),
+                    format="mp4",
+                    parameters=[
+                        "-codec:a",
+                        "aac",
+                        "-b:a",
+                        AAC_BITRATE,
+                        "-movflags",
+                        "+faststart",
+                    ],
                 )
             else:
                 combined.export(str(part_path), format="wav")
@@ -832,63 +1027,148 @@ def _model_tag(model: str) -> str:
     return model.split("-")[1] if "-" in model else model
 
 
-def process_file(
-    script_path: Path,
-    client: genai.Client,
-    speech_config: genai_types.SpeechConfig,
-    speaker_map: dict[str, str],
-    system_prompt: str,
-) -> Path:
-    print(f"\n{'─'*50}")
-    print(f"Processing: {script_path.name}")
+@dataclass(frozen=True)
+class EpisodePlan:
+    """Everything decided about one episode before any API call."""
 
+    script_path: Path
+    output_path: Path
+    turns: list[dict[str, str]]
+    batches: list[list[dict[str, str]]]
+    script_sha256: str
+    fingerprint: str
+    tag_sanitize: dict[str, int]
+
+
+def plan_episode(
+    script_path: Path, speaker_map: dict[str, str], system_prompt: str
+) -> EpisodePlan:
+    """Parse + chunk a script and derive its synthesis fingerprint (no I/O
+    beyond reading the script)."""
     turns = parse_script(script_path, speaker_map)
-    total_words = sum(_word_count(t["text"]) for t in turns)
-    print(f"  {len(turns)} turns, {total_words} words")
-    if _TAG_SANITIZE_LOG:
-        n = sum(_TAG_SANITIZE_LOG.values())
-        detail = ", ".join(f"{k}×{v}" for k, v in sorted(_TAG_SANITIZE_LOG.items()))
-        print(f"  tag-sanitize (family {TTS_FAMILY}): {n} cross-family tag(s) made safe — {detail}")
-
     if not turns:
         raise RuntimeError(
             f"No dialogue turns found in {script_path.name}. "
             f"Expected speaker names: {list(speaker_map.keys())}. "
             f"Check that script uses **Name:** format matching overview.md host names."
         )
-
     batches = chunk_turns(turns, MAX_WORDS_PER_BATCH)
-    print(f"  {len(batches)} batches (max {MAX_WORDS_PER_BATCH} words/batch)")
+    keys = [_batch_cache_key(format_prompt(system_prompt, batch)) for batch in batches]
+    return EpisodePlan(
+        script_path=script_path,
+        output_path=_output_path_for(script_path),
+        turns=turns,
+        batches=batches,
+        script_sha256=hashlib.sha256(script_path.read_bytes()).hexdigest(),
+        fingerprint=_episode_fingerprint(keys),
+        tag_sanitize=dict(_TAG_SANITIZE_LOG),
+    )
 
-    # Per-episode batch cache: scripts/.cache/ep_N/batch_MM.wav
+
+def _stale_reason(plan: EpisodePlan) -> str | None:
+    """None when the audio on disk was rendered from exactly this plan's
+    inputs (sidecar fingerprint matches); otherwise why it must regenerate.
+
+    Unverifiable audio (no sidecar, unreadable sidecar, pre-fingerprint
+    sidecar) regenerates — a SKIP must be proven, never assumed.
+    """
+    if not plan.output_path.exists():
+        return "no audio yet"
+    meta_path = plan.output_path.with_suffix(".meta.json")
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return f"{meta_path.name} missing — cannot verify audio"
+    except (OSError, ValueError):
+        return f"{meta_path.name} unreadable — cannot verify audio"
+    if not isinstance(meta, dict) or not meta.get("synthesis_fingerprint"):
+        return f"{meta_path.name} has no synthesis fingerprint (pre-#2096 audio)"
+    if meta["synthesis_fingerprint"] == plan.fingerprint:
+        return None
+    current = {
+        "script_sha256": plan.script_sha256,
+        "tts_model": TTS_MODEL,
+        "voices": _voices(),
+    }
+    changed = [k for k, v in current.items() if meta.get(k) != v]
+    return "inputs changed: " + ", ".join(
+        changed or ["host profiles / batching / render settings"]
+    )
+
+
+def process_file(
+    plan: EpisodePlan,
+    client: genai.Client,
+    speech_config: genai_types.SpeechConfig,
+    system_prompt: str,
+) -> Path:
+    script_path = plan.script_path
+    print(f"\n{'─' * 50}")
+    print(f"Processing: {script_path.name}")
+
+    total_words = sum(_word_count(t["text"]) for t in plan.turns)
+    print(f"  {len(plan.turns)} turns, {total_words} words")
+    if plan.tag_sanitize:
+        n = sum(plan.tag_sanitize.values())
+        detail = ", ".join(f"{k}×{v}" for k, v in sorted(plan.tag_sanitize.items()))
+        print(
+            f"  tag-sanitize (family {TTS_FAMILY}): {n} cross-family tag(s) made safe — {detail}"
+        )
+    print(f"  {len(plan.batches)} batches (max {MAX_WORDS_PER_BATCH} words/batch)")
+
+    # Per-episode batch cache: scripts/.cache/ep_N/batch_<key>.wav
     stem = script_path.stem.replace("_script", "")
     cache_dir = script_path.parent / ".cache" / stem
     # Tag this episode's TTS events so the dashboard can attribute cost per-EP.
     # Stem looks like "ep_1" / "ep_12" → label "Synthesize EP1" / "Synthesize EP12".
     ep_match = re.match(r"ep_?(\d+)", stem)
-    episode_label = f"Synthesize EP{int(ep_match.group(1))}" if ep_match else f"Synthesize {stem}"
+    episode_label = (
+        f"Synthesize EP{int(ep_match.group(1))}" if ep_match else f"Synthesize {stem}"
+    )
     segments = synthesize_batches(
-        client, speech_config, system_prompt, batches,
-        cache_dir=cache_dir, episode_label=episode_label,
+        client,
+        speech_config,
+        system_prompt,
+        plan.batches,
+        cache_dir=cache_dir,
+        episode_label=episode_label,
     )
 
     # Tag output with model name: ep_1_flash.mp3 / ep_1_pro.mp3
-    output_path = _output_path_for(script_path)
+    output_path = plan.output_path
     combine_and_export(segments, output_path)
+
+    # The subtitle is forced-aligned to the audio just replaced; subtitle.py
+    # skips any existing .srt, so a stale one would ship misaligned forever.
+    srt_path = output_path.with_suffix(".srt")
+    if srt_path.exists():
+        srt_path.unlink()
+        print(
+            f"  removed stale {srt_path.name} (aligned to the replaced audio) — rerun subtitle"
+        )
 
     # Sidecar metadata: filename keeps the legacy `_pro` / `_flash` short tag
     # for backward compat with podcast_upload.sh / monitor regexes, but the
     # short tag drops the generation (gemini-2.5-pro vs 3.1-pro both collapse
     # to "pro"). Write the full TTS model id beside the audio so the monitor
     # UI can display the real name. Same dir, same stem, `.meta.json` suffix.
+    # `synthesis_fingerprint` is what main() compares to decide SKIP; the
+    # other fields only explain a mismatch.
     meta_path = output_path.with_suffix(".meta.json")
+    meta = {
+        "tts_model": TTS_MODEL,
+        "voices": _voices(),
+        "script_sha256": plan.script_sha256,
+        "synthesis_fingerprint": plan.fingerprint,
+    }
     try:
         meta_path.write_text(
-            json.dumps({"tts_model": TTS_MODEL}, ensure_ascii=False) + "\n",
-            encoding="utf-8",
+            json.dumps(meta, ensure_ascii=False) + "\n", encoding="utf-8"
         )
     except OSError as e:
-        print(f"  warn: could not write sidecar {meta_path.name}: {e}")
+        print(
+            f"  warn: could not write sidecar {meta_path.name}: {e} — next run re-renders"
+        )
 
     return output_path
 
@@ -923,37 +1203,22 @@ def main():
         description="Podcast script (.md) → audio via Vertex AI Gemini TTS"
     )
     parser.add_argument("target", help="Path to script .md file or directory")
-    parser.add_argument("--dry-run", action="store_true", help="Parse and chunk only, no API calls")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Parse and chunk only, no API calls"
+    )
     args = parser.parse_args()
 
-    scripts = resolve_scripts(Path(args.target))
-
-    # Partition into skip/todo
-    skipped: list[Path] = []
-    todo: list[Path] = []
-    for f in scripts:
-        out = _output_path_for(f)
-        if out.exists():
-            skipped.append(f)
-        else:
-            todo.append(f)
-
-    print(f"[Synthesize] {len(scripts)} script(s) found, {len(todo)} to process, {len(skipped)} skipped")
-    for f in skipped:
-        out = _output_path_for(f)
-        size_mb = out.stat().st_size / (1024 * 1024)
-        print(f"  SKIP {f.stem}: {out.name} exists ({size_mb:.1f} MB)")
-
-    if not todo:
-        print("[Synthesize] Nothing to do")
-        return
-
-    # Detect workspace and load host config from overview.md
     target_path = Path(args.target)
+    scripts = resolve_scripts(target_path)
+
+    # Detect workspace and load host config from overview.md. Needed before the
+    # skip decision: voices + host profiles are synthesis inputs.
     if target_path.is_file():
         workspace_dir = target_path.parent.parent  # scripts/ → workspace/
     else:
-        workspace_dir = target_path.parent if target_path.name == "scripts" else target_path
+        workspace_dir = (
+            target_path.parent if target_path.name == "scripts" else target_path
+        )
 
     # Wire workspace for events.jsonl emission (cost dashboard)
     _set_events_workspace(workspace_dir)
@@ -961,13 +1226,42 @@ def main():
     overview_path = workspace_dir / "plan" / "overview.md"
     speaker_map, system_prompt = _parse_overview_hosts(overview_path)
 
+    # Partition into skip/todo. SKIP only when the sidecar fingerprint proves
+    # the audio on disk matches the current script, voices, model and render
+    # settings; anything else regenerates (unchanged batches come from cache).
+    skipped: list[EpisodePlan] = []
+    todo: list[tuple[EpisodePlan, str]] = []
+    for f in scripts:
+        plan = plan_episode(f, speaker_map, system_prompt)
+        reason = _stale_reason(plan)
+        if reason is None:
+            skipped.append(plan)
+        else:
+            todo.append((plan, reason))
+
+    print(
+        f"[Synthesize] {len(scripts)} script(s) found, {len(todo)} to process, {len(skipped)} skipped"
+    )
+    for plan in skipped:
+        size_mb = plan.output_path.stat().st_size / (1024 * 1024)
+        print(
+            f"  SKIP {plan.script_path.stem}: {plan.output_path.name} up to date ({size_mb:.1f} MB)"
+        )
+    for plan, reason in todo:
+        print(f"  TODO {plan.script_path.stem}: {reason}")
+
+    if not todo:
+        print("[Synthesize] Nothing to do")
+        return
+
     if args.dry_run:
-        for f in todo:
-            turns = parse_script(f, speaker_map)
-            batches = chunk_turns(turns, MAX_WORDS_PER_BATCH)
-            total_words = sum(_word_count(t["text"]) for t in turns)
-            batch_sizes = [sum(_word_count(t["text"]) for t in b) for b in batches]
-            print(f"  {f.name}: {len(turns)} turns, {total_words} words, {len(batches)} batches {batch_sizes}")
+        for plan, _ in todo:
+            total_words = sum(_word_count(t["text"]) for t in plan.turns)
+            batch_sizes = [sum(_word_count(t["text"]) for t in b) for b in plan.batches]
+            print(
+                f"  {plan.script_path.name}: {len(plan.turns)} turns, {total_words} words, "
+                f"{len(plan.batches)} batches {batch_sizes}"
+            )
         print("\n[Synthesize] Dry run complete.")
         return
 
@@ -977,15 +1271,17 @@ def main():
 
     t0 = time.time()
     outputs = []
-    for i, f in enumerate(todo, 1):
-        print(f"\n[Synthesize] ({i}/{len(todo)}) {f.stem}")
-        out = process_file(f, client, speech_config, speaker_map, system_prompt)
+    for i, (plan, _) in enumerate(todo, 1):
+        print(f"\n[Synthesize] ({i}/{len(todo)}) {plan.script_path.stem}")
+        out = process_file(plan, client, speech_config, system_prompt)
         outputs.append(out)
 
     elapsed = time.time() - t0
     total_mb = sum(p.stat().st_size for p in outputs) / (1024 * 1024)
-    print(f"\n{'='*50}")
-    print(f"[Synthesize] Done: {len(outputs)} file(s) in {elapsed:.0f}s, {total_mb:.1f} MB total")
+    print(f"\n{'=' * 50}")
+    print(
+        f"[Synthesize] Done: {len(outputs)} file(s) in {elapsed:.0f}s, {total_mb:.1f} MB total"
+    )
     for p in outputs:
         size_mb = p.stat().st_size / (1024 * 1024)
         print(f"  {p.name} ({size_mb:.1f} MB)")

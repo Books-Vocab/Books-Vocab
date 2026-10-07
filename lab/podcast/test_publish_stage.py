@@ -36,6 +36,17 @@ class _FakeLog:
         self.msgs.append(("event", m))
 
 
+def _ws(tmp_path):
+    """These tests cover upload/verify/retry, not the copyright line (#2094):
+    mark the series public_domain so the verbatim gate is exempt and each test
+    fails or passes for the reason it names. The gate has its own tests in
+    test_copyright_stage_gates.py."""
+    ws = tmp_path / "flow_x"
+    ws.mkdir()
+    (ws / ".rights").write_text("public_domain")
+    return ws
+
+
 # --- stage ordering / gate contract ----------------------------------------
 
 
@@ -65,24 +76,21 @@ def _patch_upload(monkeypatch, rc=0):
 
 
 def test_publish_succeeds_when_verify_hits(monkeypatch, tmp_path):
-    ws = tmp_path / "flow_x"
-    ws.mkdir()
+    ws = _ws(tmp_path)
     _patch_upload(monkeypatch, rc=0)
     monkeypatch.setattr(pipeline, "_verify_published", lambda sid: True)
     assert pipeline.stage_publish(ws, _FakeLog()) is True
 
 
 def test_publish_fails_when_verify_never_hits(monkeypatch, tmp_path):
-    ws = tmp_path / "flow_x"
-    ws.mkdir()
+    ws = _ws(tmp_path)
     _patch_upload(monkeypatch, rc=0)
     monkeypatch.setattr(pipeline, "_verify_published", lambda sid: False)
     assert pipeline.stage_publish(ws, _FakeLog(), max_retries=2) is False
 
 
 def test_publish_retries_then_succeeds(monkeypatch, tmp_path):
-    ws = tmp_path / "flow_x"
-    ws.mkdir()
+    ws = _ws(tmp_path)
     _patch_upload(monkeypatch, rc=0)
     calls = {"n": 0}
 
@@ -96,8 +104,7 @@ def test_publish_retries_then_succeeds(monkeypatch, tmp_path):
 
 
 def test_publish_loud_fails_without_bucket(monkeypatch, tmp_path):
-    ws = tmp_path / "flow_x"
-    ws.mkdir()
+    ws = _ws(tmp_path)
     monkeypatch.delenv("PODCAST_BUCKET", raising=False)
     log = _FakeLog()
     assert pipeline.stage_publish(ws, log) is False
@@ -106,8 +113,7 @@ def test_publish_loud_fails_without_bucket(monkeypatch, tmp_path):
 
 def test_publish_upload_failure_short_circuits_verify(monkeypatch, tmp_path):
     """upload rc != 0 must NOT call verify (short-circuit) and must retry."""
-    ws = tmp_path / "flow_x"
-    ws.mkdir()
+    ws = _ws(tmp_path)
     _patch_upload(monkeypatch, rc=1)
     verify_calls = {"n": 0}
     monkeypatch.setattr(
@@ -120,8 +126,7 @@ def test_publish_upload_failure_short_circuits_verify(monkeypatch, tmp_path):
 
 
 def test_publish_loud_fails_when_upload_script_missing(monkeypatch, tmp_path):
-    ws = tmp_path / "flow_x"
-    ws.mkdir()
+    ws = _ws(tmp_path)
     monkeypatch.setenv("PODCAST_BUCKET", "kg-podcasts-prod")
     monkeypatch.setattr(pipeline.Path, "is_file", lambda self: False)
     log = _FakeLog()
@@ -130,8 +135,7 @@ def test_publish_loud_fails_when_upload_script_missing(monkeypatch, tmp_path):
 
 
 def test_publish_timeout_is_retried(monkeypatch, tmp_path):
-    ws = tmp_path / "flow_x"
-    ws.mkdir()
+    ws = _ws(tmp_path)
     monkeypatch.setenv("PODCAST_BUCKET", "kg-podcasts-prod")
     monkeypatch.setattr(pipeline.Path, "is_file", lambda self: True)
     monkeypatch.setattr(pipeline.time, "sleep", lambda *_: None)
