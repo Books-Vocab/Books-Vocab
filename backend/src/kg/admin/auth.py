@@ -19,6 +19,20 @@ ADMIN_COOKIE_NAME = "admin_session"
 ADMIN_COOKIE_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
 
 
+def _secrets_equal(provided: str, expected: str) -> bool:
+    """Constant-time equality for admin credentials.
+
+    ``hmac.compare_digest(str, str)`` raises ``TypeError`` on any non-ASCII
+    character, which turned a wrong non-ASCII token/password/cookie into a 500
+    instead of a 403 (#2062). Compare UTF-8 bytes instead; ``surrogatepass``
+    keeps the encoding total and injective for every ``str``.
+    """
+    return hmac.compare_digest(
+        provided.encode("utf-8", "surrogatepass"),
+        expected.encode("utf-8", "surrogatepass"),
+    )
+
+
 def _sign_payload(admin_token: str, payload: str) -> str:
     return hmac.new(admin_token.encode(), payload.encode(), "sha256").hexdigest()
 
@@ -51,7 +65,7 @@ def _verify_cookie(cookie_value: str, admin_token: str) -> bool:
     if not expires_at_str.isdigit() or not nonce or not sig:
         return False
     expected_sig = _sign_payload(admin_token, f"{expires_at_str}.{nonce}")
-    if not hmac.compare_digest(sig, expected_sig):
+    if not _secrets_equal(sig, expected_sig):
         return False
     return time.time() <= int(expires_at_str)
 
@@ -76,7 +90,7 @@ def require_admin(
         raise HTTPException(status_code=403, detail="ADMIN_TOKEN not configured")
     resolved = _resolve_admin_token(token, authorization)
     if resolved is not None:
-        if not hmac.compare_digest(resolved, admin_token):
+        if not _secrets_equal(resolved, admin_token):
             raise HTTPException(status_code=403, detail="Forbidden")
         return
     if cookie_token and _verify_cookie(cookie_token, admin_token):
@@ -123,13 +137,14 @@ def admin_login_page(error: str = "", password_enabled: bool = True) -> HTMLResp
         content = '<p class="info">密碼登入未啟用，請使用 token 認證。</p>'
     else:
         import html as _html
+
         error_html = f'<p class="error">{_html.escape(error)}</p>' if error else ""
         content = (
             '<form method="post" action="/admin/login">'
             '<label for="password">管理員密碼</label>'
             '<input type="password" id="password" name="password" autofocus required>'
             '<button type="submit">登入</button>'
-            f'{error_html}</form>'
+            f"{error_html}</form>"
         )
     return HTMLResponse(ADMIN_LOGIN_HTML.format(content=content))
 
@@ -141,7 +156,7 @@ def admin_login_post(password: str, *, admin_password: str, admin_token: str) ->
             ADMIN_LOGIN_HTML.format(content='<p class="error">密碼登入未啟用。</p>'),
             status_code=403,
         )
-    if not hmac.compare_digest(password, admin_password):
+    if not _secrets_equal(password, admin_password):
         return admin_login_page(error="密碼錯誤，請重試。")
     resp = RedirectResponse("/admin", status_code=302)
     _set_admin_cookie(resp, admin_token)
@@ -177,9 +192,7 @@ def admin_actor_fingerprint(
         source = "cookie"
     if not material:
         return "admin"
-    digest = hashlib.sha256(
-        f"{source}|{admin_token}|{material}".encode()
-    ).hexdigest()
+    digest = hashlib.sha256(f"{source}|{admin_token}|{material}".encode()).hexdigest()
     return digest[:8]
 
 
@@ -195,7 +208,7 @@ def check_admin_auth(
         return False
     resolved = _resolve_admin_token(token, authorization)
     if resolved is not None:
-        return hmac.compare_digest(resolved, admin_token)
+        return _secrets_equal(resolved, admin_token)
     if cookie_token and _verify_cookie(cookie_token, admin_token):
         return True
     return False
