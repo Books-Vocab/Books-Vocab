@@ -1,13 +1,49 @@
 """Unified LLM wrapper with automatic token usage tracking + quota reservation."""
+
 from __future__ import annotations
 
 import logging
+
+import httpx
 
 from .llm.providers import LLMProvider
 from .quota_service import estimate_call_cost, reserve
 from .token_tracker import record
 
 logger = logging.getLogger(__name__)
+
+# HTTP failure bound for LLM calls (#2059). SDK defaults (read=600s,
+# max_retries=2) let a provider that accepts the connection but never answers
+# hold the request -- and the quota reservation TrackedLLM keeps across the
+# whole SDK call, retries included -- for ~3 x 600s.
+#
+# LLM_HTTP_TIMEOUT is the client default (service_factories), sized for the
+# request path. read/write/pool 60s is a stall detector, not a latency SLO:
+# calls are non-streaming, so read covers the whole generation. Translate p99
+# is ~2-10s (translate_service); judge batches and single-card enrich emit a
+# few hundred tokens. 60s matches the iOS sharedURLSession resource timeout
+# (NetworkUtils.swift), past which the client has already given up, so a longer
+# server-side wait only pins the reservation and the translate singleflight
+# leader. connect 5s is the SDK default: a slower TCP/TLS handshake is an
+# outage.
+#
+# max_retries=1 keeps one transparent retry for 429/5xx/connection blips
+# (translate has no app-level retry) without stacking a third attempt on the
+# app-level retries in enrich/judge (sync_retry) and embeddings (_embed).
+# Request-path worst case for one stalled call: 2 x 60s + backoff.
+LLM_HTTP_TIMEOUT = httpx.Timeout(60.0, connect=5.0)
+LLM_MAX_RETRIES = 1
+
+# Call types whose single response is a long batch generation get a longer
+# per-request read timeout. Pipeline enrich sends 20 cards per call (~200
+# output tokens each, ~4k total) and DeepSeek's max_tokens_default=8192 caps
+# any chat call; 120s still covers 8k tokens at an assumed ~70 tok/s. Enrich
+# never runs on a synchronous request path (pipeline step, add-link background
+# operation), so the longer hold costs no client wait. Erring tight still costs
+# more than erring loose here: the provider bills a generation the client
+# abandoned and sync_retry re-runs it.
+_LONG_GENERATION_TIMEOUT = httpx.Timeout(120.0, connect=5.0)
+_CALL_TYPE_TIMEOUTS: dict[str, httpx.Timeout] = {"enrich": _LONG_GENERATION_TIMEOUT}
 
 
 class TrackedLLM:
@@ -50,10 +86,13 @@ class TrackedLLM:
         self._is_pro = is_pro
         self._reserve_quota = reserve_quota
 
-    def _chat_kwargs(self, kwargs: dict) -> dict:
-        """Merge provider-level chat defaults into kwargs and return it (caller
-        wins on conflict). Mutates `kwargs` in place — safe because chat() /
-        chat_async() always hand in a fresh **kwargs dict."""
+    def _chat_kwargs(self, call_type: str, kwargs: dict) -> dict:
+        """Merge call-type and provider-level chat defaults into kwargs and
+        return it (caller wins on conflict). Mutates `kwargs` in place — safe
+        because chat() / chat_async() always hand in a fresh **kwargs dict."""
+        timeout = _CALL_TYPE_TIMEOUTS.get(call_type)
+        if timeout is not None and "timeout" not in kwargs:
+            kwargs["timeout"] = timeout
         p = self._provider
         if p is None:
             return kwargs
@@ -67,7 +106,7 @@ class TrackedLLM:
         return kwargs
 
     def chat(self, call_type: str, **kwargs):
-        kwargs = self._chat_kwargs(kwargs)
+        kwargs = self._chat_kwargs(call_type, kwargs)
         reservation = estimate_call_cost(call_type) if self._reserve_quota else 0.0
         with reserve(self.user_id, reservation, enforce=self._enforce_quota, is_pro=self._is_pro):
             try:
@@ -79,7 +118,7 @@ class TrackedLLM:
         return resp
 
     async def chat_async(self, call_type: str, **kwargs):
-        kwargs = self._chat_kwargs(kwargs)
+        kwargs = self._chat_kwargs(call_type, kwargs)
         reservation = estimate_call_cost(call_type) if self._reserve_quota else 0.0
         with reserve(self.user_id, reservation, enforce=self._enforce_quota, is_pro=self._is_pro):
             try:
@@ -115,6 +154,7 @@ class TrackedLLM:
         try:
             from .llm_error_log import record as record_error
             from .llm_error_log import redact_message
+
             if model is None and self._provider is not None:
                 model = self._provider.chat_model
             record_error(
@@ -130,9 +170,7 @@ class TrackedLLM:
             logger.warning(
                 "Failed to record LLM error (provider=%s model=%s user_id=%s call_type=%s)",
                 self._provider_name(),
-                model if model is not None else (
-                    self._provider.chat_model if self._provider is not None else None
-                ),
+                model if model is not None else (self._provider.chat_model if self._provider is not None else None),
                 self.user_id,
                 call_type,
                 exc_info=True,
@@ -145,12 +183,9 @@ class TrackedLLM:
         leak is at least visible (we deliberately do NOT fabricate a token
         count — estimating would corrupt billing with guesswork)."""
         logger.warning(
-            "LLM response missing usage; token not recorded "
-            "(provider=%s model=%s user_id=%s call_type=%s)",
+            "LLM response missing usage; token not recorded (provider=%s model=%s user_id=%s call_type=%s)",
             self._provider_name(),
-            model if model is not None else (
-                self._provider.chat_model if self._provider is not None else None
-            ),
+            model if model is not None else (self._provider.chat_model if self._provider is not None else None),
             self.user_id,
             call_type,
         )

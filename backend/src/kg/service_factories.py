@@ -8,8 +8,6 @@ import threading
 from collections import OrderedDict
 from pathlib import Path
 
-import httpx
-
 from .cards import CardStore
 from .embeddings import BoundEmbeddingStore, EmbeddingStore
 from .graph import GraphStore
@@ -20,6 +18,7 @@ from .notebook import NotebookStore
 from .ops_shared import NOTEBOOK_FILE_SPECS
 from .review_events import ReviewEventStore
 from .shared_decks.store import SharedDeckStore
+from .tracked_llm import LLM_HTTP_TIMEOUT, LLM_MAX_RETRIES
 
 logger = logging.getLogger(__name__)
 
@@ -246,27 +245,9 @@ _clients: dict[str, object] = {}
 _async_clients: dict[str, object] = {}
 _clients_lock = threading.Lock()
 
-# HTTP failure bound for every LLM client (#2059). SDK defaults (read=600s,
-# max_retries=2) let a provider that accepts the connection but never answers
-# hold the request -- and the caller's quota reservation, which TrackedLLM
-# keeps across the whole SDK call including its retries -- for ~3 x 600s.
-#
-# read/write/pool 120s is a stall detector, not a latency SLO. Calls are
-# non-streaming, so read covers the whole generation. The longest legit one is
-# an enrich batch (20 cards x ~200 output tokens ~= 4k tokens), and DeepSeek's
-# max_tokens_default=8192 caps any chat call: 120s still covers 8k tokens at
-# an assumed ~70 tok/s, far below flash-class throughput (translate p99 is
-# ~2-10s, see translate_service). Erring tight costs more than erring loose:
-# the provider bills a generation the client abandoned, and enrich/judge/embed
-# re-run timeouts at the app layer. Same value as translate's follower wait.
-# connect 5s is the SDK default: a slower TCP/TLS handshake is an outage.
-#
-# max_retries=1 keeps one transparent retry for 429/5xx/connection blips
-# (translate has no app-level retry) without stacking a third attempt on the
-# app-level retries in enrich/judge (sync_retry) and embeddings (_embed).
-# Worst case for one stalled call: 2 x 120s + backoff (<=60s Retry-After).
-_LLM_HTTP_TIMEOUT = httpx.Timeout(120.0, connect=5.0)
-_LLM_MAX_RETRIES = 1
+# Every LLM client gets the #2059 failure bound (request-path read timeout,
+# one SDK retry); rationale and the per-call-type long-generation override
+# live next to the values in tracked_llm.
 
 
 def _require_api_key(provider: LLMProvider) -> str:
@@ -288,8 +269,8 @@ def create_client(provider: LLMProvider):
             client = OpenAI(
                 api_key=_require_api_key(provider),
                 base_url=provider.base_url,
-                timeout=_LLM_HTTP_TIMEOUT,
-                max_retries=_LLM_MAX_RETRIES,
+                timeout=LLM_HTTP_TIMEOUT,
+                max_retries=LLM_MAX_RETRIES,
             )
             _clients[provider.name] = client
         return client
@@ -305,8 +286,8 @@ def create_async_client(provider: LLMProvider):
             client = AsyncOpenAI(
                 api_key=_require_api_key(provider),
                 base_url=provider.base_url,
-                timeout=_LLM_HTTP_TIMEOUT,
-                max_retries=_LLM_MAX_RETRIES,
+                timeout=LLM_HTTP_TIMEOUT,
+                max_retries=LLM_MAX_RETRIES,
             )
             _async_clients[provider.name] = client
         return client
