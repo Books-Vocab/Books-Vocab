@@ -123,7 +123,7 @@ Fresh workspace 預設 `v1`。`--workflow-version v1|v2` 只在建立或 legacy 
 - synthesize:量要被合成的 `scripts/ep_N_script.md`(`--only-episode` 只量該集)。
 - publish:量**所有**會被上傳的 script **與** SRT(SRT 是音檔的轉寫 → 事後改 script.md 洗不掉已合成的逐字音檔);有音檔卻沒有任何 script/SRT 可量的集數 → 擋。
 - fail closed:缺 `source/chapters/ch_*.md`、沒有可量的文本、sidecar 損壞、門檻設定非法 → 一律擋。
-- 量法:兩邊都正規化(大小寫、重音、標點、撇號;CJK 一字一 token)。**script 端只移除 `synthesize.parse_script` 不會唸出來的東西**(`tokenize_script` 與其逐行鏡像,`_SKIP_LINE_RE` / `_DIALOGUE_RE` 與 `tts_config` 由測試鎖定一致):整行結構行(`#` 標題、`>` 引用、`---`、整行 HTML 註解)、行首 `**Name:**` speaker label、`tts_tags` palette 內的 audio tag(`[slow]` 等)。其餘都會被唸出來所以都要量:非 palette 的 `[任意文字]`、label 後的行內 `<!-- -->`、行中的 `**x:**`。SRT 只去掉 cue 開頭的 `[Speaker]`;書本端(source)較寬鬆地去掉腳註 `[12]`/註解/粗體 label(只會更容易比對到抄錄)。→ 6-word shingle 找完全相同的連續片段 → 同一段原文、間隔 ≤ `gap_words` 的片段串成一個 run(吸收 OCR 黏字、插話、兩位主持人接力念)。`longest_run` = 最長 run 字數;`copied_share` = 落在 ≥ `min_run_words` 的 run 內的字數 / 該文本總字數。**逐集**判定。
+- 量法:兩邊都正規化(大小寫、重音、標點、撇號;CJK 一字一 token)。**script 端只移除 `synthesize.parse_script` 不會唸出來的東西**(`tokenize_script` 與其逐行鏡像,`_SKIP_LINE_RE` / `_DIALOGUE_RE` 與 `tts_config` 由測試鎖定一致):整行結構行(`#` 標題、`>` 引用、`---`、整行 HTML 註解)、行首 `**Name:**` speaker label、`tts_tags` palette 內的 audio tag(`[slow]` 等)。其餘都會被唸出來所以都要量:非 palette 的 `[任意文字]`、label 後的行內 `<!-- -->`、行中的 `**x:**`。SRT 只去掉 cue 開頭的 `[Speaker]`;書本端(source)較寬鬆地去掉腳註 `[12]`/註解/粗體 label(只會更容易比對到抄錄)。→ 6-word shingle 找完全相同的連續片段 → 同一段原文、間隔 ≤ `gap_words` 的片段串成一個 run(吸收 OCR 黏字、插話、兩位主持人接力念)。`longest_run` = 最長 run 字數;`copied_share` = 落在 ≥ `min_run_words` 的 run 內的字數 / 該文本總字數;`shingle_share` = 被**任何** 6-word 完全相同片段覆蓋的字數 / 總字數(不論 run 多短,抓「拼貼大量 6–11 字短抄錄、每段都低於 `min_run_words`」)。**逐集**判定。
 - 結果寫 `<ws>/verbatim_qa.json`(每個文本的 words / longest_run / copied_words / share / violations / 最長片段開頭摘錄),stage provenance 的 `validator_result` 也記錄 gate 結果。被擋時把標出的段落改寫成評論/轉述,再 `--skip-to synthesize`(或 publish)。
 
 **門檻**:`workflow_versions/<v>/workflow.json` → `qa_thresholds.verbatim`(缺此段時用 `rights_gate.VerbatimThresholds` 預設,兩者由測試鎖定一致)。預設刻意保守,製作人可調:
@@ -134,10 +134,14 @@ Fresh workspace 預設 `v1`。`--workflow-version v1|v2` 只在建立或 legacy 
 | `max_run_words` | 30 | 單一逐字 run 上限。一兩句的評論引用 ≈ 15–30 字;issue 驗收的 40 字抄錄必擋 |
 | `max_copied_share` | 0.03 | 每集落在逐字 run 內的字數比例上限(3,500 字的集 ≈ 105 字 ≈ 5–6 句短引用) |
 | `gap_words` | 2 | run 可容忍的插入/黏字數,防止用一個 tag 或一句插話把長段朗讀切成兩段規避 |
+| `max_shingle_share` | 0.10 | 每集被任何 ≥6 字完全相同片段覆蓋的字數比例上限。實測 7 個既有 workspace 的 81 份文本:中位數 7.5%、p90 14.6%,且沒有任何一份**只**被此項擋(都已被 run / copied_share 擋)——所以它是補洞,不是新的誤殺來源;嫌嚴就調高 |
 
 **既有 workspace 報告(唯讀)**:`uv run rights_gate.py report workspaces/ --json out.json --md out.md` —— 列出每個 workspace 的 rights(sidecar 或預設)、是否已 publish、音檔數、full_text plan、每集 longest run / share、publish gate 判定;不寫入任何 workspace。
 
-**已知缺口**:直接在 shell 跑 `ops/podcast_upload.sh <ws>` 不經過此 gate(pipeline publish stage 與 dashboard upload 都已擋);在該腳本加同一個檢查屬 ops 範圍的後續工作。
+**已知缺口**:
+- 偵測是「完全相同的連續字」:每約 5 個字就換掉一個字的改寫(最長連續相同片段 < 6)任何門檻都抓不到;這是精確比對的固有極限,要抓得動需要模糊/語意比對(屬後續工作,且誤殺風險高)。縮短 `min_run_words` / shingle 寬度能縮小但不能消除。
+- dashboard NEW PODCAST 一律帶顯式 `--rights`(預設 `copyrighted`):同一本書若 workspace 已凍結為 `public_domain`,從 dashboard 重新上傳同一 EPUB 會被 `pipeline.py` 以「frozen at creation」拒絕(刻意 fail closed;server 在 workspace 名稱產生前無從得知它是否已存在)。要續跑請用 Resume(不帶 `--rights`)。
+- 直接在 shell 跑 `ops/podcast_upload.sh <ws>` 不經過此 gate(pipeline publish stage 與 dashboard upload 都已擋);在該腳本加同一個檢查屬 ops 範圍的後續工作。
 
 ---
 

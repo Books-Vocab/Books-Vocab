@@ -129,13 +129,19 @@ class VerbatimThresholds:
     * ``max_run_words`` — longest single near-verbatim run allowed per text;
     * ``max_copied_share`` — max fraction of a text's words inside counted runs;
     * ``gap_words`` — a run tolerates this many inserted/merged words (OCR word
-      merges, an interjection, a host hand-off) and still counts as one run.
+      merges, an interjection, a host hand-off) and still counts as one run;
+    * ``max_shingle_share`` — max fraction of a text's words covered by ANY exact
+      6-word match with the book, however short the run. Catches a script stitched
+      from many 6-11 word verbatim pieces that each stay below ``min_run_words``.
+      Known limit: replacing roughly every 5th word defeats every exact-match
+      measure here (see the SOP).
     """
 
     min_run_words: int = 12
     max_run_words: int = 30
     max_copied_share: float = 0.03
     gap_words: int = 2
+    max_shingle_share: float = 0.10
 
     def __post_init__(self) -> None:
         for name in ("min_run_words", "max_run_words", "gap_words"):
@@ -148,13 +154,12 @@ class VerbatimThresholds:
             raise ValueError("verbatim min_run_words must be <= max_run_words")
         if not 0 <= self.gap_words <= 10:
             raise ValueError("verbatim gap_words must be within 0..10")
-        share = self.max_copied_share
-        if isinstance(share, bool) or not isinstance(share, (int, float)):
-            raise ValueError(
-                f"verbatim max_copied_share must be a number, got {share!r}"
-            )
-        if not 0 <= share <= 1:
-            raise ValueError("verbatim max_copied_share must be within 0..1")
+        for name in ("max_copied_share", "max_shingle_share"):
+            share = getattr(self, name)
+            if isinstance(share, bool) or not isinstance(share, (int, float)):
+                raise ValueError(f"verbatim {name} must be a number, got {share!r}")
+            if not 0 <= share <= 1:
+                raise ValueError(f"verbatim {name} must be within 0..1")
 
 
 DEFAULT_THRESHOLDS = VerbatimThresholds()
@@ -209,6 +214,7 @@ def render_rights_policy(rights: str, thresholds: VerbatimThresholds) -> str:
             "public-domain books.\n"
         )
     share_pct = f"{thresholds.max_copied_share * 100:g}"
+    shrink_pct = f"{thresholds.max_shingle_share * 100:g}"
     return (
         f"\n## RIGHTS POLICY (enforced in code) — this book is `{rights}`, "
         "NOT public domain\n\n"
@@ -226,7 +232,8 @@ def render_rights_policy(rights: str, thresholds: VerbatimThresholds) -> str:
         "compares every script and subtitle with `source/chapters/`. A verbatim run "
         f"longer than {thresholds.max_run_words} words, or more than {share_pct}% of "
         f"an episode's words inside copied runs of {thresholds.min_run_words}+ words, "
-        "blocks the pipeline.\n"
+        f"or more than {shrink_pct}% of its words inside ANY verbatim match of "
+        "6+ words (many short quotations add up), blocks the pipeline.\n"
     )
 
 
@@ -391,6 +398,7 @@ class OverlapResult:
     longest_run: int
     copied_words: int
     copied_share: float
+    shingle_share: float
     excerpt: str
 
 
@@ -440,7 +448,12 @@ def _merge_runs(
 def measure_overlap(
     tokens: list[str], source: SourceIndex, thresholds: VerbatimThresholds
 ) -> OverlapResult:
-    runs = _merge_runs(_exact_segments(tokens, source), thresholds.gap_words, source.k)
+    segments = _exact_segments(tokens, source)
+    any_match = [False] * len(tokens)
+    for s0, s1, _, _ in segments:
+        any_match[s0:s1] = [True] * (s1 - s0)
+    shingle_words = sum(any_match)
+    runs = _merge_runs(segments, thresholds.gap_words, source.k)
     longest = max(runs, key=lambda r: r[1] - r[0], default=(0, 0))
     covered = [False] * len(tokens)
     for s0, s1 in runs:
@@ -454,6 +467,7 @@ def measure_overlap(
         longest_run=longest[1] - longest[0],
         copied_words=copied,
         copied_share=round(copied / len(tokens), 4) if tokens else 0.0,
+        shingle_share=round(shingle_words / len(tokens), 4) if tokens else 0.0,
         excerpt=excerpt,
     )
 
@@ -473,6 +487,7 @@ class TextResult:
     longest_run: int
     copied_words: int
     copied_share: float
+    shingle_share: float
     excerpt: str
     violations: list[str] = field(default_factory=list)
 
@@ -591,6 +606,11 @@ def check_workspace(
                     f"copied share {r.copied_share:.1%} > max_copied_share "
                     f"{thresholds.max_copied_share:.1%}"
                 )
+            if r.shingle_share > thresholds.max_shingle_share:
+                violations.append(
+                    f"shingle coverage {r.shingle_share:.1%} > max_shingle_share "
+                    f"{thresholds.max_shingle_share:.1%}"
+                )
             results.append(
                 TextResult(
                     artifact=path.relative_to(workspace).as_posix(),
@@ -600,6 +620,7 @@ def check_workspace(
                     longest_run=r.longest_run,
                     copied_words=r.copied_words,
                     copied_share=r.copied_share,
+                    shingle_share=r.shingle_share,
                     excerpt=r.excerpt,
                     violations=violations,
                 )
@@ -702,6 +723,9 @@ def _workspace_report(ws: Path, versions_dir: Path) -> dict:
         "copied_words_script": sum(t.copied_words for t in scripts),
         "words_script": sum(t.words for t in scripts),
         "max_share_script": max((t.copied_share for t in scripts), default=0.0),
+        "max_shingle_share_script": max(
+            (t.shingle_share for t in scripts), default=0.0
+        ),
         "would_block_publish": gate.blocked,
         "gate": gate.to_dict(),
     }
@@ -731,9 +755,9 @@ def render_markdown(report: dict) -> str:
         (
             "| workspace | rights | published | audio | full_text plans "
             "| max run (script) | copied words / words (script) | max ep share "
-            "| publish gate |"
+            "| max shingle share | publish gate |"
         ),
-        "|---|---|---|---|---|---|---|---|---|",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in report["workspaces"]:
         share_total = (
@@ -745,6 +769,7 @@ def render_markdown(report: dict) -> str:
             f"| {len(r['full_text_plans'])} | {r['max_run_script']} "
             f"| {r['copied_words_script']:,} / {r['words_script']:,} ({share_total:.1%}) "
             f"| {r['max_share_script']:.1%} "
+            f"| {r['max_shingle_share_script']:.1%} "
             f"| {'BLOCK' if r['would_block_publish'] else 'pass'} |"
         )
     lines.append("")
@@ -756,12 +781,16 @@ def render_markdown(report: dict) -> str:
         for reason in r["gate"]["reasons"]:
             lines.append(f"- gate reason: {reason}")
         lines.append("")
-        lines.append("| artifact | words | longest run | copied | share | violations |")
-        lines.append("|---|---|---|---|---|---|")
+        lines.append(
+            "| artifact | words | longest run | copied | share | shingle share "
+            "| violations |"
+        )
+        lines.append("|---|---|---|---|---|---|---|")
         for t in r["gate"]["texts"]:
             lines.append(
                 f"| {t['artifact']} | {t['words']:,} | {t['longest_run']} "
                 f"| {t['copied_words']} | {t['copied_share']:.1%} "
+                f"| {t['shingle_share']:.1%} "
                 f"| {'; '.join(t['violations']) or '—'} |"
             )
         lines.append("")

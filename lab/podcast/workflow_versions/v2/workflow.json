@@ -50,7 +50,8 @@
       "min_run_words": 12,
       "max_run_words": 30,
       "max_copied_share": 0.03,
-      "gap_words": 2
+      "gap_words": 2,
+      "max_shingle_share": 0.1
     }
   },
   "tts_policy": {

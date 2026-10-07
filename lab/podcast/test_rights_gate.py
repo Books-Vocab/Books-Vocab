@@ -188,6 +188,55 @@ def test_every_palette_form_is_stripped_and_nothing_else():
     assert rg.tokenize_script("**Ava:** [not a tag] x") == ["not", "a", "tag", "x"]
 
 
+# ─── aggregate shingle coverage (#2094 review: many short verbatim chunks) ──
+
+
+def _chunked_copy_script(chunk: int, own: int, count: int) -> str:
+    """``count`` verbatim ``chunk``-word pieces, each followed by ``own`` fresh words."""
+    parts = []
+    for n in range(count):
+        parts.append(" ".join(PASSAGE[n * chunk : (n + 1) * chunk]))
+        parts.append(" ".join(f"own{n}x{j}" for j in range(own)))
+    return "**Ava:** " + " ".join(parts) + "\n"
+
+
+def test_many_sub_threshold_chunks_are_blocked_by_aggregate_coverage(tmp_path):
+    """10 verbatim 11-word pieces (110 of 140 words) — each below min_run_words."""
+    ws = _gate_workspace(tmp_path, _chunked_copy_script(chunk=11, own=3, count=10))
+    report = rg.check_workspace(
+        ws, stage="synthesize", thresholds=rg.DEFAULT_THRESHOLDS
+    )
+    (text,) = report.texts
+    assert text.longest_run < rg.DEFAULT_THRESHOLDS.min_run_words
+    assert text.copied_words == 0, "no run reaches min_run_words"
+    assert text.shingle_share > rg.DEFAULT_THRESHOLDS.max_shingle_share
+    assert report.blocked
+    assert "shingle" in report.summary()
+
+
+def test_a_few_short_quotes_stay_under_the_aggregate_limit(tmp_path):
+    script = (
+        "**Ava:** "
+        + " ".join(PASSAGE[0:8])
+        + " "
+        + " ".join(f"own{j}" for j in range(300))
+    )
+    report = rg.check_workspace(
+        _gate_workspace(tmp_path, script),
+        stage="synthesize",
+        thresholds=rg.DEFAULT_THRESHOLDS,
+    )
+    assert not report.blocked
+
+
+@pytest.mark.parametrize("bad", [-0.1, 1.5, "0.1", True])
+def test_invalid_shingle_share_threshold_raises(bad):
+    with pytest.raises(ValueError):
+        rg.verbatim_thresholds(
+            {"qa_thresholds": {"verbatim": {"max_shingle_share": bad}}}
+        )
+
+
 # ─── thresholds ─────────────────────────────────────────────────────────────
 
 
@@ -207,6 +256,7 @@ def test_default_thresholds_are_conservative():
     # The issue's acceptance fixture is a 40-word copy — it must be blocked.
     assert t.max_run_words < 40
     assert t.max_copied_share <= 0.05
+    assert t.max_shingle_share <= 0.15
     assert t.min_run_words <= t.max_run_words
 
 
@@ -327,9 +377,15 @@ def test_public_domain_architect_offers_full_text():
 
 
 def test_policy_states_the_real_thresholds():
-    t = rg.VerbatimThresholds(min_run_words=10, max_run_words=25, max_copied_share=0.02)
+    t = rg.VerbatimThresholds(
+        min_run_words=10,
+        max_run_words=25,
+        max_copied_share=0.02,
+        max_shingle_share=0.07,
+    )
     policy = rg.render_rights_policy(rg.COPYRIGHTED, t)
     assert "25 words" in policy and "2%" in policy and "10+ words" in policy
+    assert "7%" in policy
 
 
 def test_policy_text_has_no_bracket_tags():
