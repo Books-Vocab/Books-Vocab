@@ -290,8 +290,8 @@ def _isolate_rate_limiters():
 
     `api_limiter` / `translate_limiter` are module-level instances driven by
     `rate_limit_middleware` on every TestClient request. Their sliding-window
-    state is keyed on the last 16 chars of the Authorization header (or client
-    host for unauthenticated calls), so a full pytest session accumulates
+    state is keyed on the verified JWT `sub` (or client IP for every other
+    call), so a full pytest session accumulates
     admissions across unrelated tests fast enough to trip the 60-req window —
     surfacing as spurious `429` in podcast endpoint tests. Clearing both
     limiters per test makes the suite order-independent."""
