@@ -263,9 +263,17 @@ Vertex `gemini-2.5-pro-tts` 已知 bug(finishReason=OTHER，Google WONTFIX #922)
 
 **ffmpeg 必裝**:`brew install ffmpeg`。
 
-### Batch 快取
+### Batch 快取與 episode SKIP(內容定址,#2096)
 
-`<cache>/batch_NN.wav` 存單 batch 中間結果。Phase 1 載入既有 wav(跳過 API)，Phase 2 只跑缺的。synthesize **中斷續跑** = 直接重跑同指令，已成功的 batch 自動 skip。
+`scripts/.cache/ep_N/batch_<key>.wav` 存單 batch 中間結果,`key = sha256(送進 API 的完整 prompt(system prompt + 該 batch 對白) + 兩個 voice + TTS_MODEL + cache schema)`(`synthesize.py:_batch_cache_key`)。Phase 1 只載入 key 完全相同的 wav(跳過 API),Phase 2 只跑 miss 的 batch;寫入走同目錄 `.part` + `os.replace`,中斷不會留下會被重用的截斷 wav。整集全部 batch 成功後,目錄內沒被當前 batch 引用的檔(舊 key、舊版序號命名 `batch_NN.wav`、`.part` 殘檔)會被 prune。
+
+- 改一個 turn → 只有該 batch 重打 API(若改動字數讓切 batch 邊界移動,邊界後的 batch 也會 miss);改 voice(overview.md Voice Mapping)或 TTS_MODEL → 全部 batch 重打;host profile(system prompt)變 → 全部重打。
+- **episode 層 SKIP 必須被證明**:`main()` 先讀 overview.md、parse + chunk 每份腳本算 `synthesis_fingerprint`(有序 batch keys + 渲染設定 `TTS_SILENCE_MS`/輸出格式/bitrate/mastering),只有輸出音檔存在**且** `ep_N_<tag>.meta.json` 的 `synthesis_fingerprint` 相同才 `SKIP … up to date`;否則印 `TODO ep_N_script: <原因>` 並重新生成(未變的 batch 走快取,只付變動部分的 API 費)。原因字串:`no audio yet` / `… missing|unreadable — cannot verify audio` / `has no synthesis fingerprint (pre-#2096 audio)` / `inputs changed: script_sha256, tts_model, voices` 或 `host profiles / batching / render settings`。
+- 只改非對白行(標題、`<!-- -->` 註解、`---`)不改 fingerprint → 正確 SKIP(音訊不會變)。
+- 重新生成成功後會刪掉同 tag 的 `ep_N_<tag>.srt`(它是對齊被取代音訊的;`subtitle.py` 見 `.srt` 存在就 skip,不刪會永遠錯位),需再跑 subtitle stage。
+- **舊 workspace(#2096 前)一次性代價**:舊 sidecar 只有 `tts_model`、舊 `batch_NN.wav` 內容不可驗證,下次對該集跑 synthesize 會整集重打 API 一次。只想重做單集時用 `--only-episode N`(dashboard rerun 帶 `episode`)限縮範圍。
+
+synthesize **中斷續跑** = 直接重跑同指令,已成功的 batch 自動走快取。
 
 ---
 
@@ -298,7 +306,8 @@ lab/podcast/workspaces/<slug>_<hash>/
   plan/overview.md                  ← Voice Mapping(host SoT)
   scripts/ep_N_{pro,flash}.mp3      ← TTS 產出
   scripts/ep_N_{pro,flash}.srt      ← Whisper 對齊
-  scripts/ep_N_{pro,flash}.meta.json ← {"tts_model": "<full TTS model id>"} sidecar(monitor 顯示用;檔名仍維持 pro/flash 短 tag 以維持下游 podcast_upload.sh / regex 相容)
+  scripts/ep_N_{pro,flash}.meta.json ← {"tts_model", "voices", "script_sha256", "synthesis_fingerprint"} sidecar(`tts_model` 給 monitor 顯示完整 id,檔名仍維持 pro/flash 短 tag 以維持下游 podcast_upload.sh / regex 相容;`synthesis_fingerprint` 是 synthesize 判斷 SKIP 的唯一依據,見 §3 Batch 快取)
+  scripts/.cache/ep_N/batch_<key>.wav ← 內容定址 batch 快取(可重生;整集成功後 prune 未引用檔)
   scripts/ep_N_script.md            ← 原稿
   scripts/ep_N_lineage.json         ← 腳本 before/after hash 與 stage edit lineage
        │
@@ -445,8 +454,16 @@ uv run --no-project --with boto3 python ops/podcast_ops.py series               
 排查:
 1. `rm .stage_synthesize_done`(若存在)。
 2. `uv run synthesize.py workspaces/<name>/scripts/` 直接重跑——已成功的 batch 走 cache，缺的補。
-3. 若混用 pro/flash 想統一回 pro:`rm scripts/ep_N_flash.{mp3,srt}` + `rm -rf scripts/.cache/*` 後重跑。
+3. 若混用 pro/flash 想統一回 pro:`rm scripts/ep_N_flash.{mp3,m4a,srt,meta.json}` 後以 pro 重跑;batch key 含 TTS_MODEL,不必清 `scripts/.cache/`。
 4. 若連續 429:檢查 `TTS_MAX_CONCURRENT`(降到 3-5)、確認金鑰專案配額(`gcloud --project <pid> ai-platform quotas list`)。
+
+### 改稿／換聲線後重新生成音訊
+
+QA 後改了 `scripts/ep_N_script.md` 對白、overview.md Voice Mapping / host profile,或換 TTS model:
+
+1. 重跑 synthesize:dashboard rerun `stage=synthesize`(可帶 `episode=N`),或 CLI `uv run pipeline.py <ws> --only-stage synthesize [--only-episode N]`/`uv run synthesize.py <ws>/scripts/ep_N_script.md`。fingerprint 不符的集數印 `TODO … inputs changed: …` 並重新生成,只有變動的 batch 打 API;印 `SKIP … up to date` 代表輸入確實沒變(不是誤判)。**不需要手動刪 m4a 或 `.cache/`。**
+2. 重新生成會刪掉該集舊 `.srt` → 接著跑 `--only-stage subtitle [--only-episode N]`(或 audio-qa → subtitle),再 publish / dashboard upload。
+3. 驗證:`ep_N_<tag>.meta.json` 的 `script_sha256` = `shasum -a 256 scripts/ep_N_script.md`,且 `synthesis_fingerprint` 已更新。
 
 ### scriptwrite/script-review 失敗看不到 log
 
@@ -538,7 +555,7 @@ Endpoints:
 **Action**(製作:spawn 子程序回 job_id):
 - `POST /api/workspace/{ws}/upload` — `bash ops/podcast_upload.sh <ws>`;422 if 無 ep_*.mp3,或版權 verbatim gate 擋下(與 publish stage 同一判定,寫 `verbatim_qa.json`;busy 檢查在 gate 之前)
 - `DELETE /api/workspace/{ws}?confirm=<ws>` — 本地砍 workspace,confirm 字串必須等於 ws_name
-- `POST /api/workspace/{ws}/rerun?stage=<S>&episode=<N>&drop_marker=true` — `uv run pipeline.py --only-stage`,預設先砍 `.stage_<S>_done`
+- `POST /api/workspace/{ws}/rerun?stage=<S>&episode=<N>&drop_marker=true` — `uv run pipeline.py --only-stage`,預設先砍 `.stage_<S>_done`(`stage=synthesize` 只重做 sidecar fingerprint 不符的集數,見 §3 Batch 快取)
 - `POST /api/workspace/{ws}/approve?gate=plan|script` — 寫 `.plan_approved`/`.script_approved` + spawn `pipeline.py <ws>` 續跑下一相;gate `pending`(前一相未完成)回 409,`bogus` 回 400
 - `POST /api/workspace/{ws}/resume` — spawn `pipeline.py <ws>`(flagless auto-resume,從第一個沒 marker 的階段往後跑到下一道 gate / 完成);前端情境式推進鈕在「非 gate、有未完工」時呼叫(rerun=單階、approve=寫標記再續、resume=純續跑)
 - **per-workspace 併發守衛**:`approve` / `resume` / `upload` / `rerun` 四個 spawn endpoint 在開子行程前皆檢查 `_active_job_for_ws(ws_name)`(配對 route 同 sidebar:`metadata.workspace`、`<ws>/.pipeline_job_id` sidecar、`<ws>/.pipeline.lock` flock)。同一 workspace 已有 running job → 一律回 **409**,不 spawn、不寫 gate marker、不砍 stage marker。global 上限 `MAX_ACTIVE_JOBS`(預設 4)獨立守不同 workspace 的合計上限
