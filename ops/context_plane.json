@@ -117,10 +117,10 @@
         "backend": {"direct-assignment": "implementation"},
         "ios": {"direct-assignment": "implementation-ios"}
       },
-      "owns": "直接指派工作的 local branch/worktree、程式碼、測試、local commit 與 hand-back evidence",
+      "owns": "直接指派工作的 local branch/worktree、程式碼、測試、local commit 與 hand-back evidence；GitHub read（gh issue view、gh pr view、gh api GET）只用於讀取 assignment 引用的 Issue/PR/review comments",
       "not_owns": "GitHub Issue/PR/branch mutation、push、review、merge、enqueue、Issue lifecycle、Project priority、release/deploy",
-      "allowed_surfaces": ["local:assigned-worktree", "local:code-edit", "local:test", "local:git-commit", "local:hand-back"],
-      "forbidden_surfaces": ["github:any-mutation", "github:issue-read-write", "github:pr-read-write", "github:push", "github:review", "github:merge", "local:other-worktree"],
+      "allowed_surfaces": ["github:read", "local:assigned-worktree", "local:code-edit", "local:test", "local:git-commit", "local:hand-back"],
+      "forbidden_surfaces": ["github:any-mutation", "github:issue-write", "github:pr-write", "github:push", "github:review", "github:merge", "local:other-worktree"],
       "handoff_contract": {
         "input": ["User/IM assignment", "dedicated branch/worktree and structured Scope"],
         "output": ["clean local commit with exact HEAD and validation evidence", "no GitHub mutation"],
@@ -161,10 +161,10 @@
         "backend": {"issue": "implementation"},
         "ios": {"issue": "implementation-ios"}
       },
-      "owns": "由 IM 傳入 Issue assignment 的 local branch/worktree、程式碼、測試、local commit 與 hand-back evidence",
-      "not_owns": "直接 GitHub access、Issue/PR/branch mutation、push、review、merge、enqueue、建立第二套 backlog、release/deploy",
-      "allowed_surfaces": ["local:assigned-worktree", "local:code-edit", "local:test", "local:git-commit", "local:hand-back"],
-      "forbidden_surfaces": ["github:any-mutation", "github:issue-read-write", "github:pr-read-write", "github:push", "github:review", "github:merge", "local:other-worktree"],
+      "owns": "由 IM 傳入 Issue assignment 的 local branch/worktree、程式碼、測試、local commit 與 hand-back evidence；GitHub read（gh issue view、gh pr view、gh api GET）只用於讀取 assignment 引用的 Issue/PR/review comments",
+      "not_owns": "GitHub write、Issue/PR/branch mutation、push、review、merge、enqueue、建立第二套 backlog、release/deploy",
+      "allowed_surfaces": ["github:read", "local:assigned-worktree", "local:code-edit", "local:test", "local:git-commit", "local:hand-back"],
+      "forbidden_surfaces": ["github:any-mutation", "github:issue-write", "github:pr-write", "github:push", "github:review", "github:merge", "local:other-worktree"],
       "handoff_contract": {
         "input": ["IM-provided Issue assignment packet", "dedicated branch/worktree and structured Scope"],
         "output": ["clean local commit with exact HEAD and validation evidence", "no GitHub mutation"],
@@ -189,18 +189,19 @@
       "aliases": ["cr", "code reviewer", "code-reviewer"],
       "machine_role": "reviewer",
       "allowed_intents": ["review"],
-      "entry_modes": ["pr-review"],
-      "route_classes": {"review": {"pr-review": "review"}},
-      "owns": "PR diff 的 correctness、tests、regression、architecture 與 security review",
+      "entry_modes": ["pr-review", "lane-review"],
+      "route_classes": {"review": {"pr-review": "review", "lane-review": "review"}},
+      "owns": "PR diff（pr-review）或 PR 發布前 local lane base..HEAD diff（lane-review）的 correctness、tests、regression、architecture 與 security review",
       "not_owns": "修改 caller worktree、建立本地 review cycle、merge permission",
       "assignment_requirements": {
-        "pr-review": ["GitHub PR", "exact HEAD", "required checks"]
+        "pr-review": ["GitHub PR", "exact HEAD", "required checks"],
+        "lane-review": ["review branch", "exact HEAD", "base SHA"]
       },
       "skill_routes": {
-        "review": {"pr-review": "code-review"}
+        "review": {"pr-review": "code-review", "lane-review": "code-review"}
       },
       "specialist_routes": {
-        "review": {"pr-review": []}
+        "review": {"pr-review": [], "lane-review": []}
       }
     },
     "ds": {
@@ -256,7 +257,11 @@
     "reviewer": {
       "identity_ids": ["cr"],
       "sources": ["docs/reference/delivery_model.md", "docs/reference/agent_context.md", "docs/sop/review_discipline.md"],
-      "next_action": "review the current PR diff and fresh required checks"
+      "next_action": "review the diff named by the assignment",
+      "entry_next_action": {
+        "pr-review": "review the current PR diff and fresh required checks",
+        "lane-review": "review git diff base SHA..exact HEAD of the local lane; your own verification is the evidence"
+      }
     },
     "docs-steward": {
       "identity_ids": ["ds"],

@@ -25,7 +25,7 @@ verified_against: 2d9f6fdbebca9fe0f2aa9a790f1498dded80050d
 測試 harness 不預先告知 role、intent、SoT 或 skill 名稱；只提供 repo path、任務與不可變更限制。agent 必須先從 assignment 選出 canonical identity、intent、entry，執行：
 
 ```bash
-./ops/agent_onboard.py --identity '<identity>' --intent '<intent>' --entry '<entry>' [--specialist-intent '<identity-scoped specialist>'] --evidence '<JSON object containing the required assignment evidence>' --json
+./ops/agent_onboard.py --identity '<identity>' --intent '<intent>' --entry '<entry>' [--specialist-intent '<identity-scoped specialist>'] --evidence-file '<own worktree>/.cache/agent-scratch/evidence.json' --json
 ```
 
 只有 `status=ready` 才能讀 `load_order` 後續的 skill／domain 文件。必須觀察 project → identity → assignment → skill → domain 五個 phase；缺少 evidence 時先停在 `awaiting-assignment`；若 identity、入口、PR／Issue、Scope 或 fresh evidence 不足，agent 應停止並回報，不得以預設 `delivery` 繞過。
@@ -50,7 +50,7 @@ dogfood agent 只跑 onboarding，並依 `status=ready` 的 `load_order` 載入�
 docs gates；兩者分開，避免把診斷命令誤當成 agent loader：
 
 ```bash
-./ops/agent_onboard.py --identity DS --intent docs --entry pr-review --evidence '<JSON object containing GitHub PR diff and changed paths>' --json
+./ops/agent_onboard.py --identity DS --intent docs --entry pr-review --evidence-file '<own worktree>/.cache/agent-scratch/evidence.json' --json
 # maintainer / harness only
 ./ops/context_route.py validate --json
 ./ops/skill_route.py validate --json

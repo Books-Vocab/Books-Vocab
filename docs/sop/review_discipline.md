@@ -105,7 +105,7 @@ cat <evidence.json> | ./ops/review_preflight.py --json
 
 命令永遠只讀 input、永遠輸出 JSON；exit code 是 `PASS=0`、`BLOCK=1`、`review_service_timeout=2`、`source_failure=3`。輸出中的 `authority` 會明示 GitHub review、required checks 與 CM merge authority 未被取代，caller 仍必須回到 PR 的 exact HEAD／required／review／branch rules 流程。
 
-CR 進場先執行 `./ops/agent_onboard.py --identity CR --intent review --entry pr-review --evidence '<JSON object with GitHub PR, exact HEAD, required checks>' --json`。只有 `status=ready` 才能載入 `code-review` skill 與本 SOP；這一步確認的是上下文，不是 merge 權限。
+CR 進場先執行 `./ops/agent_onboard.py --identity CR --intent review --entry pr-review --evidence-file '<own worktree>/.cache/agent-scratch/evidence.json' --json`（PR 發布前的 lane 改用 `--entry lane-review`，evidence 為 review branch、exact HEAD、base SHA；兩個入口的 evidence 與驗證規則見 [`project_onboarding.md`](../reference/project_onboarding.md)）。只有 `status=ready` 才能載入 `code-review` skill 與本 SOP；這一步確認的是上下文，不是 merge 權限。
 
 ## PR 必須回答
 

@@ -82,8 +82,8 @@ Onboarding 的成功只代表上下文 contract 完整，不代表 GitHub、merg
 |---|---|---|
 | **CM — Codebase Manager** | 協調整體交付；驗證 exact Ready tuple；控制 merge queue／merge；每次 landing 後讓本地 `main` 與 `origin/main` 精確同步 | 修改產品 code、修改 Worker／Issue Solver worktree、修 PR body／registry、代替 IM 發 PR |
 | **IM — Issues Manager** | 管理 GitHub Issue／Project；排序與派工；控制本地 worktree lifecycle；接收 Worker／Issue Solver 的 local hand-back；push 已提交的 exact branch、建立／更新 PR、維護 PR metadata／readiness；收到 CM terminal receipt 後清理三項 Git 資產 | 修改產品 code、替 Worker commit／解 code conflict、merge／enqueue、代替 CM 決定 merge |
-| **Worker** | 接受 User／IM 的直接指派；依 `dispatch_channel` 與派遣者討論，只在指定 local branch/worktree 修改 code／test、驗證、建立 local commit，交回乾淨 exact HEAD | 不使用 GitHub／`gh`；不建立或修改 Issue／PR、不 push、不 review、不 merge／enqueue、不碰其他 worktree |
-| **Issue Solver** | 只消除已進入 GitHub Issue 的工作；接受 IM 傳入的 Issue assignment packet，只在指定 local branch/worktree 修改 code／test、驗證、建立 local commit，交回乾淨 exact HEAD | 不使用 GitHub／`gh`；不接手未進 Issue 的直接指派，不 claim／修改 Issue、不建立或修改 PR、不 push、不 review、不 merge／enqueue |
+| **Worker** | 接受 User／IM 的直接指派；依 `dispatch_channel` 與派遣者討論，只在指定 local branch/worktree 修改 code／test、驗證、建立 local commit，交回乾淨 exact HEAD | 不寫 GitHub（`gh` 只限唯讀，見嚴格責任邊界）；不建立或修改 Issue／PR、不 push、不 review、不 merge／enqueue、不碰其他 worktree |
+| **Issue Solver** | 只消除已進入 GitHub Issue 的工作；接受 IM 傳入的 Issue assignment packet，只在指定 local branch/worktree 修改 code／test、驗證、建立 local commit，交回乾淨 exact HEAD | 不寫 GitHub（`gh` 只限唯讀）；不接手未進 Issue 的直接指派，不 claim／修改 Issue、不建立或修改 PR、不 push、不 review、不 merge／enqueue |
 | **CR — Code Reviewer** | 對所有 PR 做獨立的正確性、測試、回歸、架構與安全審查；把結論留在 PR | 管理 Issue；擁有 merge 權限；建立本地 review cycle |
 | **DS — Docs Steward** | 對所有 PR 判斷文件 impact；維護 registry、metadata、SoT domain SOP／reference，執行 docs lint | 建立本地工作項目資料庫；複製 PR lifecycle |
 
@@ -102,7 +102,7 @@ Backlog Scout 與 PI 是交付控制迴圈中的職能，不是新的 canonical 
 
 本模型明確分離「本地實作面」與「GitHub 控制面」：
 
-- Worker／Issue Solver 的輸入是 assignment packet，不是 GitHub session。IM 將 Issue URL／acceptance／structured Scope／base SHA 傳入；實作者不需要也不得直接呼叫 GitHub API。
+- Worker／Issue Solver 的輸入是 assignment packet，不是 GitHub session。IM 將 Issue URL／acceptance／structured Scope／base SHA 傳入；實作者可唯讀 GitHub（`gh issue view`、`gh pr view`、`gh api` GET 讀 review comments，surface `github:read`）以讀全 assignment 引用的 Issue／PR，讓每條 lane 從同一份輸入起跑；任何 GitHub 寫入（含 comment、label、review、push）仍只屬 IM。
 - Worker／Issue Solver 可以在本地建立 commit；這是 code hand-back 的一部分，不是 GitHub 交付。hand-back 必須是乾淨 worktree、local branch、exact HEAD、Scope 與驗證證據。
 - Worker direct assignment 必須明確記錄 `dispatch_channel=im|user`：IM 派遣時 Worker 和同一個 IM 討論並 hand-back 給同一個 IM；User 派遣時 Worker 和 User 討論，hand-back 給 User 指定的 IM，未指定時由 Worker 在 hand-back 前選定一個 IM。
 - IM 只處理 Issue、Project、worktree ledger 與 Git transport／PR metadata。它可以 push Worker 已存在的 commit、開／更新 PR、觸發 checks，但不能改檔案、staging、commit 內容或解 code conflict。

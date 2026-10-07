@@ -51,9 +51,9 @@ GitHub 是交付控制面：Issue／Project 管規劃與排序，branch／worktr
 |---|---|---|
 | CM | 交付協調、Ready admission、merge queue／merge、local main 同步、release/deploy 邊界 | 修改 code／worktree／PR body／registry；代替 IM 發 PR |
 | IM | GitHub Issue／Project、派工、worktree lifecycle、push exact commit、PR metadata／readiness、terminal cleanup | 修改 code、替 Worker commit／解 conflict、merge／enqueue |
-| Worker | 接受 User／IM 直接指派，依 `dispatch_channel` 討論並完成 branch/worktree、程式碼、測試、local commit 與 hand-back | 任何 GitHub／Issue／PR mutation、push、review、merge、release/deploy |
-| Issue Solver | 只消除已進入 GitHub Issue 的工作；接受 IM 傳入的 Issue assignment packet，完成 branch/worktree、程式碼、測試、local commit 與 hand-back | 接受未進 Issue 的直接指派；任何 GitHub／Issue／PR mutation、push、review、merge、release/deploy |
-| CR | 審查 PR diff 的正確性、測試、回歸、架構與安全 | 修改 caller worktree、merge、release |
+| Worker | 接受 User／IM 直接指派，依 `dispatch_channel` 討論並完成 branch/worktree、程式碼、測試、local commit 與 hand-back；可唯讀 GitHub（`github:read`） | 任何 GitHub／Issue／PR mutation、push、review、merge、release/deploy |
+| Issue Solver | 只消除已進入 GitHub Issue 的工作；接受 IM 傳入的 Issue assignment packet，完成 branch/worktree、程式碼、測試、local commit 與 hand-back；可唯讀 GitHub（`github:read`） | 接受未進 Issue 的直接指派；任何 GitHub／Issue／PR mutation、push、review、merge、release/deploy |
+| CR | 審查 PR diff（`pr-review`）或 PR 發布前 lane 的 `base..HEAD` diff（`lane-review`）的正確性、測試、回歸、架構與安全 | 修改 caller worktree、merge、release |
 | DS | 判斷文件影響、維護 registry／SoT、執行 docs lint | 建立文件狀態庫、PR lifecycle、merge |
 | Release operator | 依批准與 SOP 執行 release、deploy、health gate、rollback | 自行批准 production、繞過 safety wrapper |
 
@@ -77,13 +77,15 @@ GitHub 是交付控制面：Issue／Project 管規劃與排序，branch／worktr
 ./ops/agent_onboard.py \
   --identity '<CM|IM|Worker|Issue Solver|CR|DS|Release operator>' \
   --intent '<delivery|review|docs|release|backend|ios>' \
-  --entry '<coordination|merge|direct-assignment|issue|pr-review|release>' \
+  --entry '<coordination|merge|direct-assignment|issue|pr-review|lane-review|release>' \
   --specialist-intent '<optional identity-scoped specialist intent>' \
-  --evidence '<JSON object containing the required assignment evidence>' \
+  --evidence-file '<own worktree>/.cache/agent-scratch/evidence.json' \
   --json
 ```
 
-`--evidence` 必須逐項提供該 identity／entry 要求的外部證據；缺少時回傳 `status=awaiting-assignment` 並停在 assignment，不會載入 skill 或 domain 文件。只有 `status=ready` 才能繼續；不可自行猜測身份、Scope 或授權。
+Evidence 優先用 `--evidence-file`：先以 Write 把 JSON object 寫進 `<own worktree>/.cache/agent-scratch/`（[shell 規則](#isolated-worktree-shell-rules)第 6 項），再傳路徑；inline `--evidence '<JSON>'` 仍可用但與前者互斥，且易被 harness 以引號拒絕。用檔案時 awaiting 的 `retry_command` 沿用同一個 `--evidence-file`，把 `evidence_template` 補完寫回該檔即可重跑。
+
+Evidence 必須逐項提供該 identity／entry 要求的外部證據；缺少時回傳 `status=awaiting-assignment` 並停在 assignment，不會載入 skill 或 domain 文件。只有 `status=ready` 才能繼續；不可自行猜測身份、Scope 或授權。不確定 key 時先加 `--print-evidence-template`（只讀，exit 0）取得該 identity／entry 的全部 required／conditional（如 `dispatch_channel=im` 時的 `dispatch_owner`）／optional key 與可直接複製的命令；awaiting 輸出（exit 3）一次列出全部 `missing`（缺 key／空值）、`unfilled`（仍是範本原樣輸出的 placeholder；自己寫的 `<https://...>` 不算）與 `invalid`，`assignment.retry_command` 保留已填值、待修值換回 placeholder；只剩無效值時改 exit 2，錯誤訊息同樣列出全部無效值。CR 的值另受 `evidence_spec.value_rules` 約束：`pr-review` 的 `GitHub PR` 必須是真 PR（`#N`、`N` 或 `https://github.com/OWNER/REPO/pull/N`，`none`／自由文字一律 invalid），`exact HEAD` 必須是 40-hex；PR 尚未發布的審查改走 `lane-review`（`review branch`、`exact HEAD`、`base SHA`），兩個 SHA 都要 40-hex 且 `git cat-file -e <sha>^{commit}` 在本機成立。
 
 `--specialist-intent` 是可選但受限的精準路由，例如 bug、docs-impact、production-status 或某個 domain pipeline；可用值由 `ops/context_plane.json` 綁定到 identity／intent／entry，並由 skill catalog 驗證。Simulator 只是其中一個 `ios` specialist 範例，不是 onboarding 的特殊中心。
 
@@ -98,6 +100,20 @@ GitHub 是交付控制面：Issue／Project 管規劃與排序，branch／worktr
 - production 只走 `ops/release.sh`、`ops/devops_kg_safe.sh` 與對應批准／rollback SOP。
 - docs 記錄技術細節與操作真相；skill 規範代理如何載入、協調與交接；兩者不互相複製。
 
+<a id="isolated-worktree-shell-rules"></a>
+
+## 隔離 worktree shell 規則
+
+所有 `.claude/agents/*.md` 角色在隔離 worktree 內共用本節，角色檔只引用、不複製。harness 拒絕無法靜態證明留在本 worktree 的命令；被拒不是 gate 結果，改寫命令即可。
+
+1. **一個 Bash 呼叫只下一條 git 命令**，後面不接任何東西：不加 `;`、`&&`、`|`、重導、`echo $?`。
+2. **不用 `git -C`**；cwd 就是自己的 worktree。路徑寫字面絕對路徑，命令與參數不含 `$VAR`／`$(...)`（含 `env`、`uv run` 等包裝命令）。
+3. **不用 heredoc**；檔案一律以 Write／Edit 建立。commit 訊息寫成 scratch 檔後 `git commit -F <path>`。
+4. **不用 `source`、`eval`、`bash -c`，不在 git／sed／gh 外包 for-loop**；多步驟邏輯寫成 scratch 內的 script 檔再執行。
+5. **zsh glob 加引號**（`'*.md'`、`'ops/tests/test_*.py'`），否則 no-match 直接失敗。
+6. **Scratch 只用 `<own worktree>/.cache/agent-scratch/`**（`.gitignore` 的 `.cache/` 已涵蓋）：evidence 檔、commit 訊息、log、script 都放這裡。session 共用 scratchpad 不寫不刪，其他 agent 會覆寫或刪掉同名檔。
+7. **長命令給足 timeout、不 sleep 輪詢**：有 hooks 的 `git commit`、i18n／docs lint、iOS build/test 的 Bash timeout 設 `600000`；要等背景工作用 `run_in_background` 加 Monitor（先 ToolSearch `select:Monitor` 載入）。
+
 ## 實作與審查角色的共同交付契約
 
 所有 `.claude/agents/*.md` 的角色共用本節；角色檔只寫自己的 domain 差異，不重複本節。
@@ -107,8 +123,12 @@ GitHub 是交付控制面：Issue／Project 管規劃與排序，branch／worktr
 3. **gate 跑不起來 = BLOCKED，不是 done**：測試 harness、guard、權限、timeout、磁碟預算（如 `ios_*` exit 75）或缺少工具導致必要 gate 無法執行時，停止宣稱完成，成果狀態寫 `BLOCKED`，附完整命令、exit code、guard 輸出的原因。可以 commit 已完成的 code，但成果狀態不得寫 DONE。不得繞過 guard、改用底層命令（裸 `xcodebuild`）或自行改 registry 取代；能獨立跑的 static check 可附上並標明「不取代被擋的 gate」。
 4. **lane 登記由 IM 負責**：`ops/ios_ops.sh` 的 writer 類 command（build／test）其 disk guard 與 hand-back 都以 registry 判斷 worktree 是否為受管 lane，須由 IM 以 `ops/worktree_orchestrate.py` 先登記。開工先 `./ops/worktree_registry.py list --json` 確認本 worktree path 在列；若不在或 guard 以「unregistered／disk budget」fail-closed，這是 BLOCKED：不自行 `register`、不改 registry、不等排程碰運氣，回報給 IM 登記後重派。
 5. **outcomes 不可預寫**：hand-back 的 validation／outcomes 只能在命令跑完後依實際結果填入；不得先寫「PASS」再補跑，WARN、timeout、stale evidence 一律如實報告，不寫成 PASS。
-6. **交回物（實作角色，有 local commit 時）**：乾淨 worktree 加 handoff footer（放在回報最後，不是回報段落），欄位足以讓 IM 對回已登記的 lane 並驗 Scope：branch、worktree path、tip SHA（`git rev-parse HEAD`，commit 後現量）、declared Scope、assignment 參照（Issue／PR external ID，或 direct assignment 摘要）、變更檔案清單（`git diff --name-only <base>..HEAD`，須為 Scope 子集）；assignment 若帶 lane id、claim generation、owner thread，原樣回填。不 push、不開 PR、不碰 GitHub；PR 由 IM 發布。沒有 commit 的執行（例如已批准的 release execution）不附 footer，改在證據段列 target、exit status 與 health gate 結果。
-7. **固定回報骨架**：與根 `CLAUDE.md`「回報格式」一致，最終訊息一律以下列四段、依序、每段不可省略（無內容寫「無」）：
+6. **交回物（實作角色，有 local commit 時）**：乾淨 worktree 加 handoff footer（放在回報最後，不是回報段落），欄位足以讓 IM 對回已登記的 lane 並驗 Scope：branch、worktree path、tip SHA（`git rev-parse HEAD`，commit 後現量）、declared Scope、assignment 參照（Issue／PR external ID，或 direct assignment 摘要）、變更檔案清單（`git diff --name-only <base>..HEAD`，須為 Scope 子集）；assignment 若帶 lane id、claim generation、owner thread，原樣回填。不 push、不開 PR、不寫 GitHub（唯讀可）；PR 由 IM 發布。沒有 commit 的執行（例如已批准的 release execution）不附 footer，改在證據段列 target、exit status 與 health gate 結果。
+7. **隔離 worktree 內只下可靜態驗證的命令**：依[隔離 worktree shell 規則](#isolated-worktree-shell-rules)第 1–5 項。
+8. **只動自己的範圍**：暫存只放自己的 scratch（同節第 6 項）；`rm`／覆寫只限自己的 worktree 與自己建立的 scratch 檔，session 共用 scratchpad、其他 worktree、主 checkout 一律不寫不刪。
+9. **追修從既有 branch 起跑**：publish 會移除原 worktree，原 agent 也無法 resume；follow-up／fix agent 以 `git switch -c <new> origin/<branch>`（未 push 則用 local branch）接續，不從 `main` 重做。
+10. **被擋約 10 分鐘內回報**：lock、guard、權限擋住必要 gate 時只做有上限的等待；約 10 分鐘仍未解即依第 3 項回報 BLOCKED 並附完整輸出，不輪詢一小時。
+11. **固定回報骨架**：與根 `CLAUDE.md`「回報格式」一致，最終訊息一律以下列四段、依序、每段不可省略（無內容寫「無」）：
 
 ```text
 成果: 狀態 <依角色，見下> — 一句話結論（BLOCKED 要寫被擋的 gate）
@@ -122,7 +142,7 @@ GitHub 是交付控制面：Issue／Project 管規劃與排序，branch／worktr
 | 角色 | 狀態 | BLOCKED 條件 |
 |---|---|---|
 | 實作角色 | DONE／PARTIAL／BLOCKED | 必要 gate 無法執行（第 3 項） |
-| CR | approve／request changes／comment／BLOCKED | required checks 缺失、非目前 exact HEAD、gate 無法執行或 PR 無法讀取；不得 approve |
+| CR | approve／request changes／comment／BLOCKED | required checks 缺失（`pr-review`）、非目前 exact HEAD、gate 無法執行或 PR／lane commit 無法讀取；不得 approve |
 | DS | synced／gap／BLOCKED | docs lint／registry／coverage 無法執行或紅燈未解；不得 synced |
 
 CR 與 DS 不 commit、不改 caller worktree，沒有 handoff footer；證據段列所跑命令與 exit status。審查對象依各自 assignment 證據標示於證據段：CR 一行「審查對象 exact HEAD: <SHA>」與 required checks 來源；DS 一行「審查對象: PR diff 範圍」與 changed docs（PR 已改動的文件）。DS 只審查並指出需同步的 SoT，修改由 PR 作者或 IM 在同一 PR 套用。

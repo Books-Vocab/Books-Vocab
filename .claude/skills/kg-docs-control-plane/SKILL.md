@@ -18,7 +18,7 @@ description: "新增、修改或退役 KG 文件的閉環 workflow：判定 SoT�
 ## Standard flow
 
 ```bash
-./ops/agent_onboard.py --identity DS --intent docs --entry pr-review --evidence '<JSON object with GitHub PR diff, changed paths>' --json
+./ops/agent_onboard.py --identity DS --intent docs --entry pr-review --evidence-file '<own worktree>/.cache/agent-scratch/evidence.json' --json
 ./ops/docs_impact.py --files <path...> --explain
 ./ops/docs_lint.sh
 ./ops/docs_lint.sh --registry
