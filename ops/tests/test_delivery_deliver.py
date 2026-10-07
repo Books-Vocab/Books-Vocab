@@ -52,6 +52,7 @@ class FakeWorld:
         self.fork = state.get("fork", "f" * 40)
         self.changed_py = state.get("changed_py", ["ops/a.py", "ops/b.py"])
         self.format_rc = state.get("format_rc", 0)
+        self.unformatted = state.get("unformatted", ["ops/a.py"])
         self.fail_commands: set[str] = set(state.get("fail_commands", set()))
         self.stderr_for: dict[str, str] = state.get("stderr_for", {})
         self.lock_busy: dict[str, int] = dict(state.get("lock_busy", {}))
@@ -123,7 +124,11 @@ class FakeWorld:
                 if sub[1] == "--abort":
                     return ok()
                 return deliver.Proc(
-                    0 if self.rebase_ok else 1, "", "" if self.rebase_ok else "conflict"
+                    0 if self.rebase_ok else 1,
+                    ""
+                    if self.rebase_ok
+                    else "CONFLICT (content): Merge conflict in ops/a.py\n",
+                    "" if self.rebase_ok else "error: could not apply c0ffee0\n",
                 )
             if sub[0] == "worktree":
                 return ok(f"worktree {self.canon}\nHEAD abc\n")
@@ -145,11 +150,8 @@ class FakeWorld:
                 self.remote_heads.pop(sub[-1], None)
                 return ok()
         if head == "uv":
-            return deliver.Proc(
-                self.format_rc,
-                "Would reformat: ops/a.py\n" if self.format_rc else "",
-                "",
-            )
+            listed = "".join(f"Would reformat: {n}\n" for n in self.unformatted)
+            return deliver.Proc(self.format_rc, listed if self.format_rc else "", "")
         if head == "gh":
             if cmd[1:3] == ["repo", "view"]:
                 return ok("o/r")
@@ -254,10 +256,12 @@ def ship(world: FakeWorld, *flags: str) -> tuple[int, dict[str, Any]]:
     argv = ["--timeout", "5", "--poll", "1"]
     if "--worktree" not in flags:
         argv += ["--worktree", str(world.work)]
+    command = ["redeliver"] if flags[:1] == ("redeliver",) else []
+    argv = [*command, *argv, *flags[len(command) :]]  # options follow redeliver
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
         code = deliver.main(
-            [*argv, *flags], runner=world, sleep=world.sleep, clock=lambda: world.now
+            argv, runner=world, sleep=world.sleep, clock=lambda: world.now
         )
     return code, json.loads(buf.getvalue().strip().splitlines()[-1])
 
@@ -417,6 +421,7 @@ def test_a_branch_that_cannot_rebase_is_aborted_and_not_claimed() -> None:
     code, result = ship(world, "--check", "u=good")
     assert code == 1
     assert "rebase" in result["error"]
+    assert "CONFLICT (content): Merge conflict in ops/a.py" in result["error"]
     assert ["git", "rebase", "--abort"] in world.calls
     assert world.names() == []
 
@@ -951,6 +956,14 @@ def test_the_pin_is_read_from_the_workflow_not_restated() -> None:
     assert "ruff==9.9.9" in bumped and "3.14" in bumped
 
 
+def test_a_long_format_failure_names_every_file() -> None:
+    names = [f"ops/module_{i:03d}.py" for i in range(60)]
+    world = FakeWorld(format_rc=1, unformatted=names)
+    code, result = ship(world, "--check", "unit=good")
+    assert code == 1
+    assert all(f"Would reformat: {n}" in result["error"] for n in names)
+
+
 def test_an_unreadable_pin_fails_closed() -> None:
     with pytest.raises(deliver.DeliverError, match="cannot read the pinned ruff"):
         deliver.ruff_format_command("run: ruff format --check x")
@@ -1145,6 +1158,22 @@ def test_redeliver_rereads_the_old_pr_before_closing_it() -> None:
     assert "PR #50 carries a hard hold (p0)" in result["error"]
     assert _call(world, "gh", "pr", "close") is None
     assert _call(world, "git", "push") is None
+
+
+def test_delivery_options_before_redeliver_are_refused_not_dropped() -> None:
+    argv = ["--worktree", "/fixed", "--merge", "redeliver", "--branch", OLD]
+    with (
+        contextlib.redirect_stderr(io.StringIO()) as err,
+        pytest.raises(SystemExit) as stop,
+    ):
+        deliver.main(argv, runner=FakeWorld())
+    assert stop.value.code == 2
+    assert "--worktree, --merge" in err.getvalue()
+    assert "after `redeliver`" in err.getvalue()
+    parsed = deliver.build_parser().parse_args(
+        ["redeliver", "--branch", OLD, "--worktree", "/fixed", "--merge"]
+    )
+    assert (parsed.worktree, parsed.merge) == ("/fixed", True)
 
 
 def test_a_redeliver_rerun_skips_what_is_already_retired() -> None:
