@@ -1199,6 +1199,13 @@ handle_cache_action() {
   fi
 
   if [[ "$(jq -r '.status' <<<"$payload")" == "error" ]]; then
+    # The in-lock disk preflight inside rebuild_test_cache returns its own rc:
+    # 75 (temporary) / 77 (structural, retryable=no). Keep that classification
+    # instead of flattening it to a generic tool error; any other build failure
+    # (xcodebuild's own rc) stays exit 1.
+    if (( ${build_exit:-0} == KG_IOS_DISK_BUDGET_EXIT || ${build_exit:-0} == KG_IOS_DISK_STRUCTURAL_EXIT )); then
+      exit "$build_exit"
+    fi
     exit 1
   fi
   exit 0

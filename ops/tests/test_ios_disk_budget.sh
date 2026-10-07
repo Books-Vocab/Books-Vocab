@@ -308,6 +308,27 @@ space_output="$(KG_IOS_DISK_GUARD_STATE="$space_state" KG_IOS_DISK_GUARD_AUTO_RE
 [[ "$space_rc" -eq 75 ]] && ok "disk-space guard block exits 75" || bad "space block exit=$space_rc: $space_output"
 [[ ! -e "$early_leases" ]] && ok "space block also stops before the lease" || bad "lease root created on space block"
 
+echo "── ios_ops.sh build --json: an early guard block is a verdict, not a missing run ──"
+# The early return happens before the build writes its verdict; without one the
+# wrapper reports result=missing/exit=null, indistinguishable from a run that
+# never happened. The payload must carry the real exit and the guard reason.
+early_build_json_case() {  # $1=label $2=guard state $3=expected exit $4=expected reason
+  local label="$1" state="$2" want_rc="$3" want_reason="$4" payload rc=0
+  payload="$(TMPDIR="$TMP" KG_IOS_DISK_GUARD_STATE="$state" KG_IOS_DISK_LANE_USAGE_STATE="$lane_state" \
+    KG_IOS_DISK_GUARD_AUTO_REFRESH=0 KG_IOS_BUILD_LOCK_FILE="$early_lock" \
+    "$ROOT/ops/ios_ops.sh" build --json 2>/dev/null)" || rc=$?
+  [[ "$rc" -eq "$want_rc" ]] && ok "build --json $label: wrapper exits $want_rc" || bad "build --json $label exit=$rc"
+  [[ "$(jq -r '.kind' <<<"$payload" 2>/dev/null)" == "build" \
+    && "$(jq -r '.result' <<<"$payload" 2>/dev/null)" == "inconclusive" ]] \
+    && ok "build --json $label: result=inconclusive, not missing" || bad "build --json $label payload: $payload"
+  [[ "$(jq -r '.exit' <<<"$payload" 2>/dev/null)" == "$want_rc" ]] \
+    && ok "build --json $label: payload carries exit $want_rc" || bad "build --json $label exit field: $payload"
+  [[ "$(jq -r '.reason' <<<"$payload" 2>/dev/null)" == "$want_reason" ]] \
+    && ok "build --json $label: payload carries reason $want_reason" || bad "build --json $label reason field: $payload"
+}
+early_build_json_case structural "$lane_block_state" 77 disk-guard-structural-block
+early_build_json_case temporary "$space_state" 75 disk-guard-blocked
+
 echo "── ios_ops.sh early path never tells the tick the build lock is held ──"
 record_tick="$TMP/record_tick.sh"
 cat > "$record_tick" <<'EOF'
@@ -425,7 +446,9 @@ run_build_in_lock_case() {  # $1=label $2=state written during the lock wait
     wait "$holder" 2>/dev/null
     return 1
   fi
-  KG_IOS_BUILD_LOCK_FILE="$lock" KG_IOS_BUILD_DERIVED_DATA_ROOT="$TMP/inlock-$label-dd" \
+  INLOCK_VERDICT="$TMP/inlock-$label-verdict"
+  TMPDIR="$TMP" KG_IOS_VERDICT_FILE="$INLOCK_VERDICT" \
+    KG_IOS_BUILD_LOCK_FILE="$lock" KG_IOS_BUILD_DERIVED_DATA_ROOT="$TMP/inlock-$label-dd" \
     KG_IOS_DISK_GUARD_STATE="$state" KG_IOS_DISK_GUARD_MAX_AGE_SECONDS=1 KG_IOS_DISK_GUARD_AUTO_REFRESH=0 \
     KG_IOS_DISK_CACHE_ROOTS="$cache_root/ios-test-derived-data" KG_IOS_DISK_CACHE_BUDGET_GIB=1 \
     KG_IOS_DISK_CACHE_HEADROOM_GIB=0 KG_IOS_DISK_MIN_FREE_GIB=20 \
@@ -445,7 +468,7 @@ run_build_in_lock_case() {  # $1=label $2=state written during the lock wait
 }
 late_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 if ! command -v shlock >/dev/null 2>&1; then
-  skip "ios_build.sh in-lock real run (6 assertions): host has no macOS shlock, the only lock ops/lib/ios_lock_wait.sh implements"
+  skip "ios_build.sh in-lock real run (8 assertions): host has no macOS shlock, the only lock ops/lib/ios_lock_wait.sh implements"
 else
   if run_build_in_lock_case structural \
     "{\"schema\":\"kg.disk.guard.v1\",\"verdict\":\"ok\",\"xctest_devices_verdict\":\"block\",\"xctest_devices_manual_review\":1,\"at\":\"$late_at\"}"; then
@@ -453,6 +476,9 @@ else
     grep -q 'retryable=no' <<<"$INLOCK_OUT" \
       && ok "ios_build.sh: in-lock structural block says retryable=no" \
       || bad "ios_build.sh in-lock structural block lacks retryable=no: $INLOCK_OUT"
+    [[ "$(jq -r '[.result,.exit,.reason]|join(",")' "$INLOCK_VERDICT.json" 2>/dev/null)" == "inconclusive,77,disk-guard-structural-block" ]] \
+      && ok "ios_build.sh: in-lock structural block writes an inconclusive verdict with exit 77" \
+      || bad "ios_build.sh in-lock structural verdict: $(cat "$INLOCK_VERDICT.json" 2>/dev/null || echo none)"
     ! grep -q 'clean rebuildable cache before retry' <<<"$INLOCK_OUT" \
       && ok "ios_build.sh: structural block does not advise cleaning cache" \
       || bad "ios_build.sh structural block still advises cleaning cache: $INLOCK_OUT"
@@ -463,6 +489,9 @@ else
     grep -q 'clean rebuildable cache before retry' <<<"$INLOCK_OUT" \
       && ok "ios_build.sh: temporary block keeps the clean-cache hint" \
       || bad "ios_build.sh temporary block lost the clean-cache hint: $INLOCK_OUT"
+    [[ "$(jq -r '[.result,.exit]|join(",")' "$INLOCK_VERDICT.json" 2>/dev/null)" == "inconclusive,75" ]] \
+      && ok "ios_build.sh: in-lock temporary block writes an inconclusive verdict with exit 75" \
+      || bad "ios_build.sh in-lock temporary verdict: $(cat "$INLOCK_VERDICT.json" 2>/dev/null || echo none)"
   fi
 fi
 
@@ -495,6 +524,47 @@ grep -q '^FN_RC=75$' <<<"$FN_OUT" && ok "ios_test.sh: in-lock temporary prefligh
 grep -q 'clean rebuildable cache before retry' <<<"$FN_OUT" \
   && ok "ios_test.sh: temporary block keeps the clean-cache hint" \
   || bad "ios_test.sh temporary block lost the hint: $FN_OUT"
+
+echo "── --prepare-cache propagates the in-lock structural/temporary exit ──"
+# handle_cache_action captures rebuild_test_cache's rc as build_exit, but used to
+# exit 1 for every error payload, flattening a non-retryable 77 into a plain
+# tool error. Real print_cache_payload + handle_cache_action are extracted; only
+# the environment-touching helpers are stubbed.
+extract_ios_test_fn() {  # $1=function name; prints it up to the closing brace at column 0
+  awk -v fn="$1" '$0 == fn "() {" { c=1 } c { print } c && /^}$/ { exit }' "$ROOT/ops/ios_test.sh"
+}
+cache_fn="$(extract_ios_test_fn print_cache_payload; extract_ios_test_fn ios_test_prepare_status; extract_ios_test_fn handle_cache_action)"
+[[ -n "$cache_fn" ]] || bad "cannot extract print_cache_payload/handle_cache_action from ios_test.sh"
+run_prepare_cache_case() {  # $1=stub rebuild_test_cache rc
+  local runner="$TMP/prepare-cache-runner.sh"
+  {
+    printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' "source '$LIB'"
+    printf '%s\n' 'JSON_MODE=1' 'BOOT_MS=0' 'BUILD_FOR_TESTING_MS=0' 'CONFIGURATION=Debug' \
+      'TEST_SCOPE=unit' 'TEST_SCHEME=BooksAndVocab' 'UI_LAUNCH_PROFILE=' 'DESTINATION=stub' \
+      "TEST_CACHE_ROOT='$TMP/pc-cache'" "IOS_ARTIFACT_ROOT='$TMP/pc-artifacts'" \
+      'ios_test_build_cache_key() { echo stub-key; }' \
+      "ios_test_derived_data_root() { echo '$TMP/pc-dd'; }" \
+      'ios_test_find_xctestrun() { return 1; }' 'ios_test_cache_is_complete() { return 1; }' \
+      'boot_simulator_if_needed() { :; }' 'ios_test_sdk_suffix() { echo stub; }' \
+      "rebuild_test_cache() { return $1; }"
+    printf '%s\n' "$cache_fn"
+    printf '%s\n' 'artifact_temp_file() { mktemp "${TMPDIR:-/tmp}/pc-file.XXXXXX"; }' \
+      'artifact_temp_dir() { mktemp -d "${TMPDIR:-/tmp}/pc-dir.XXXXXX"; }' \
+      'handle_cache_action prepare'
+  } > "$runner"
+  PC_RC=0
+  PC_OUT="$(TMPDIR="$TMP" /bin/bash "$runner" 2>/dev/null)" || PC_RC=$?
+}
+if [[ -n "$cache_fn" ]]; then
+  run_prepare_cache_case 77
+  [[ "$PC_RC" -eq 77 ]] && ok "ios_test.sh --prepare-cache: in-lock structural block exits 77" || bad "prepare-cache structural exit=$PC_RC"
+  [[ "$(jq -r '.status' <<<"$PC_OUT" 2>/dev/null)" == "error" ]] \
+    && ok "ios_test.sh --prepare-cache: error payload still emitted on a structural block" || bad "prepare-cache payload: $PC_OUT"
+  run_prepare_cache_case 75
+  [[ "$PC_RC" -eq 75 ]] && ok "ios_test.sh --prepare-cache: in-lock temporary block exits 75" || bad "prepare-cache temporary exit=$PC_RC"
+  run_prepare_cache_case 65
+  [[ "$PC_RC" -eq 1 ]] && ok "ios_test.sh --prepare-cache: ordinary build failure still exits 1" || bad "prepare-cache build failure exit=$PC_RC"
+fi
 
 release_block="$(awk '/^(preflight_rc=0|if ! kg_ios_disk_budget_preflight "\$ROOT" "release")/ { c=1 } c { print } c && /^fi$/ { exit }' "$ROOT/ops/ios_release.sh")"
 [[ -n "$release_block" ]] || bad "cannot extract the in-lock preflight block from ios_release.sh"

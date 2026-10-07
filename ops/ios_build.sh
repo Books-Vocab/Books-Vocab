@@ -175,10 +175,56 @@ fi
 # A structural block (exit 77, retryable=no) or a temporary one (exit 75) costs
 # seconds here instead of a lock-queue wait; the in-lock preflight below then
 # measures real disk space only.
+# Per-invocation verdict paths (see ops/lib/ios_run_verdict.sh). Initialized
+# before the first exit that can happen so a refusal still leaves evidence:
+# without it `ios_ops.sh build --json` reads back result=missing/exit=null for a
+# run that was in fact blocked, indistinguishable from a run that never started.
+# shellcheck source=lib/ios_run_verdict.sh
+source "$SCRIPT_DIR/lib/ios_run_verdict.sh"
+kg_ios_verdict_init build "$PROJECT_ROOT"
+
+# Publish an `inconclusive` verdict (no build ran) carrying the real exit code
+# and the guard reason. Same kg.ios.run-verdict.v1 shape as write_json_verdict
+# below and as ios_test.sh's write_early_failure_verdict.
+write_early_failure_verdict() {
+  local reason="$1" exit_code="$2"
+  echo "RESULT=inconclusive EXIT=$exit_code reason=$reason caller=$CALLER elapsed=0s $(kg_ios_verdict_identity_kv)" > "$VERDICT_FILE"
+  jq -nc \
+    --arg schema "kg.ios.run-verdict.v1" \
+    --arg kind "build" \
+    --arg result "inconclusive" \
+    --arg exit "$exit_code" \
+    --arg reason "$reason" \
+    --arg caller "$CALLER" \
+    --arg cwd "$PROJECT_ROOT" \
+    --arg verdictFile "$VERDICT_FILE" \
+    --argjson ts "$(date +%s)" \
+    --argjson pid "$$" \
+    '{
+      schema:$schema,
+      kind:$kind,
+      status:$result,
+      result:$result,
+      exit:$exit,
+      reason:$reason,
+      caller:$caller,
+      invocation:{ts:$ts,pid:$pid,cwd:$cwd,verdictFile:$verdictFile},
+      elapsed:"0s",
+      executed:null,
+      artifacts:{log:null,xcresult:null}
+    }' >"$VERDICT_JSON_FILE" || true
+  kg_ios_verdict_publish
+}
+
 early_guard_rc=0
 kg_ios_disk_guard_early_verdict "build" || early_guard_rc=$?
 if (( early_guard_rc != 0 )); then
   echo "[ios_build] not started: shared disk guard blocked (exit $early_guard_rc); './ops/ios_ops.sh guard' shows the verdict" >&2
+  if (( early_guard_rc == KG_IOS_DISK_STRUCTURAL_EXIT )); then
+    write_early_failure_verdict "disk-guard-structural-block" "$early_guard_rc"
+  else
+    write_early_failure_verdict "disk-guard-blocked" "$early_guard_rc"
+  fi
   exit "$early_guard_rc"
 fi
 kg_ios_disk_guard_mark_checked
@@ -218,6 +264,12 @@ preflight_rc=0
 kg_ios_disk_budget_preflight "$PROJECT_ROOT" "build" || preflight_rc=$?
 if (( preflight_rc != 0 )); then
   kg_ios_disk_budget_blocked_hint "[ios_build]" "$preflight_rc"
+  # Same evidence as the early block: the in-lock re-read can also be 75/77.
+  if (( preflight_rc == KG_IOS_DISK_STRUCTURAL_EXIT )); then
+    write_early_failure_verdict "disk-guard-structural-block" "$preflight_rc"
+  else
+    write_early_failure_verdict "disk-budget-blocked" "$preflight_rc"
+  fi
   exit "$preflight_rc"
 fi
 
@@ -288,9 +340,6 @@ fi
 # `kg_ios_build_verdict.<epochTs>-<pid>` (or KG_IOS_VERDICT_FILE when a wrapper
 # pins it); the historical fixed path stays as a last-writer-wins LATEST
 # pointer for `ios_ops runs`. See ops/lib/ios_run_verdict.sh.
-# shellcheck source=lib/ios_run_verdict.sh
-source "$SCRIPT_DIR/lib/ios_run_verdict.sh"
-kg_ios_verdict_init build "$PROJECT_ROOT"
 write_json_verdict() {
   local result="$1" exit_code="$2"
   jq -nc \
