@@ -237,10 +237,17 @@ Vertex `gemini-2.5-pro-tts` 已知 bug(finishReason=OTHER，Google WONTFIX #922)
 |---|---|---|
 | `PODCAST_STAGE_RETRIES` | 3 | 單一 agent stage 的總嘗試次數(含首次) |
 | `PODCAST_STAGE_RETRY_BASE` | 5 | 退避基數(秒);backoff = `min(90, base*2^(n-1)) + jitter`,429 強制 ≥60s |
+| `PODCAST_STAGE_MAX_BUDGET_USD` | *unset* | 覆寫**每一個** agent 呼叫的 `--max-budget-usd`;`0` = 不帶此 flag;非數字 / 負值 → CLI 啟動即 exit 2 |
 
-`pipeline.py:_run_claude_with_retry`(`:549`)包住所有 agent stage(prep/analyst/architect/plan-review/enricher*/scriptwriter/script-review/tts-prep)。**每次重試都是全新 `claude -p`(不 --resume)** —— transient 失敗最常見的是 `400 ... thinking/redacted_thinking blocks ... cannot be modified`(CLI agent loop 在 extended thinking + tool use 下汙染了對話歷史的 thinking 區塊簽章;壞區塊存在 transcript 裡,`--resume`/`--continue`/`--fork-session` 都會重送 → 重現同一個 400,**只有全新對話能繞過**)。
+`pipeline.py:_run_claude_with_retry` 包住所有 agent stage(prep/analyst/architect/plan-review/enricher*/scriptwriter/script-review/tts-prep/series-polish/cover)。**每次重試都是全新 `claude -p`(不 --resume)** —— transient 失敗最常見的是 `400 ... thinking/redacted_thinking blocks ... cannot be modified`(CLI agent loop 在 extended thinking + tool use 下汙染了對話歷史的 thinking 區塊簽章;壞區塊存在 transcript 裡,`--resume`/`--continue`/`--fork-session` 都會重送 → 重現同一個 400,**只有全新對話能繞過**)。
 
-成敗判定看 stream-json **terminal `result` event 的 `is_error`**,不是 exit code(CLI 可能 `subtype:"success"` 但 `is_error:true` 且 exit 1)。retryable 分類(`_is_retryable_claude_failure` `:455`):thinking-block 400 / 429 / 5xx / overload / connection → 重試;auth / 一般 400 / **subprocess timeout** → fatal 不重試(逾時重試 3× 純燒錢,要調 stage timeout 而非靠重試)。
+成敗判定看 stream-json **terminal `result` event 的 `is_error`**,不是 exit code(CLI 可能 `subtype:"success"` 但 `is_error:true` 且 exit 1)。retryable 分類(`_is_retryable_claude_failure`):thinking-block 400 / 429 / 5xx / overload / connection → 重試;auth / 一般 400 / **subprocess timeout** / **花費上限** → fatal 不重試(逾時重試 3× 純燒錢,要調 stage timeout 而非靠重試)。
+
+#### Agent stage 的 wall-clock 與花費上限
+
+- **timeout**:`_STAGE_TIMEOUTS`(Enricher 2700s、Scriptwriter 1800s/集、Script Review 1200s/集、TTS Prep 1200s,其餘 `_DEFAULT_TIMEOUT` 1500s)從 spawn 起算,stream-json 與 `PODCAST_VERBOSE=0` 兩種模式都真的生效:`_run_claude_subprocess` 用三條 thread 分別餵 stdin、持續讀 stderr(只留最後 64 KB 給 log)、tee stdout 事件,主 thread 只 `wait(timeout)`,所以 agent 卡住、或 stderr 灌爆 pipe buffer 都不會讓 pipeline 跟著卡死。逾時寫 `<label> TIMEOUT after <n>s` error,回 `_ClaudeFailure("timeout")`。
+- **整個 process group 一起停**:每個 `claude -p` 以 `start_new_session=True` 起在自己的 group,逾時/Ctrl-C/例外/正常結束後一律 `killpg` SIGTERM,`_AGENT_TERM_GRACE`(3s)後 SIGKILL 殘留(claude 的 tool 子程序會繼承 stdout,只殺 claude 會留下孤兒並讓 reader 卡住)。代價是 dashboard 對 pipeline group 的 `killpg`(`monitor/jobs.py`)與終端的 SIGHUP 不再直接打到 agent,所以 pipeline(含 ProcessPoolExecutor worker)收到 SIGTERM/SIGHUP 會先轉送 SIGTERM 給自己的 agent group,再照預設行為死掉。
+- **花費上限**:每次 agent 呼叫帶 `--max-budget-usd`(claude 2.1.226 起有,只在 `-p` 生效)。預設 `_STAGE_BUDGETS_USD`:Analyst $25、Enricher $10、Series Polish $10、Scriptwriter $6/集、Script Review $4/集,其餘 `_DEFAULT_BUDGET_USD` $5;約為 2026-10 七個 series `events.jsonl` 中各 label 最高 `total_cost_usd` 的 4 倍(Analyst 讀整本書、saga 讀多本,故留最大餘裕)。撞上限時 CLI 回 `subtype:"error_max_budget_usd"`、`errors:["Reached maximum budget ($N)"]`、exit 1(無 `result` 欄位、stderr 空)→ 記成 `_ClaudeFailure("budget")`,fatal 不重試。`claude invocation` log 事件帶 `budget_usd`。
 
 重試要便宜的前提是 **prompt resume-aware**:`architect.md` Step 0 會先列既有 `overview.md` + `ep_*.md`、跳過已完成集數,只補缺的。新增 agent stage 或讓既有 stage 可重試時,prompt 必須遵守同一條 idempotency 契約(讀既有產物 → 只補缺口),否則重試會整批重做。
 
