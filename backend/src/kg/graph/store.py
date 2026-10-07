@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, ClassVar
 from .candidates import _CandidatesMixin, claimed_pending_judge
 from .links import _LinksMixin
 from .models import CandidatePair, GraphLink
-from .persistence import _PersistenceMixin
+from .persistence import _PersistenceMixin, _split_pending_rows
 
 if TYPE_CHECKING:
     from ..graph_event_log import GraphEventDraft, GraphEventStore, GraphSnapshotStore
@@ -114,6 +114,12 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         # _known_link_ids: _flush_pending_judge uses it to tell "acked/removed
         # by me" (drop) from "added by another instance" (preserve) on merge.
         self._known_pending_judge: set[str] = set()
+        # Enqueue generation of every id this instance currently holds (queued
+        # or claimed): the token of the durable row it loaded or wrote. None =
+        # a row from before generations existed. An ack drops the row only if
+        # it still carries this token (see _flush_pending_judge), so another
+        # instance's later enqueue of the same id is not erased.
+        self._judge_gen: dict[str, str | None] = {}
         self._from_index: dict[str, set[str]] = {}  # card_id -> set of link_ids
         self._to_index: dict[str, set[str]] = {}  # card_id -> set of link_ids
         self._load()
@@ -328,8 +334,10 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
                 # in THIS process still holds. Those are left unknown to this
                 # instance so its flushes preserve them as foreign.
                 live_claims = claimed_pending_judge(self._claims_key)
-                self._pending_judge = {x for x in pj_data if isinstance(x, str)} - live_claims
+                pj_ids, pj_gens = _split_pending_rows(pj_data)
+                self._pending_judge = set(pj_ids) - live_claims
                 self._known_pending_judge |= self._pending_judge
+                self._judge_gen.update({rid: pj_gens.get(rid) for rid in self._pending_judge})
             else:
                 logger.warning("Invalid pending_judge format, resetting: %s", type(pj_data).__name__)
                 self._pending_judge = set()

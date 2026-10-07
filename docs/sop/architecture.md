@@ -276,7 +276,7 @@ Graph link 操作採用 bilateral optimistic 策略：
 ### One-Shot Judge 子系統
 
 Pipeline 的 Link 階段現由 one-shot judge 取代舊的 candidate queue：
-- **pending_judge**：待 embed 的卡在 embed 前即寫入 `pending_judge_<nb>.json`（而非直接建 link）；judge 以 `pop_pending_judge` *claim*（不刪檔），links 落盤後才 `ack_pending_judge` 移出。任何例外／取消都把未結清的 id 交回佇列；行程被 SIGKILL 時 claim 仍在檔內，下一個行程的新 `GraphStore` 直接視為待判（#2084）
+- **pending_judge**：待 embed 的卡在 embed 前即寫入 `pending_judge_<nb>.json`（而非直接建 link）；judge 以 `pop_pending_judge` *claim*（不刪檔），links 落盤後才 `ack_pending_judge` 移出。任何例外／取消都把未結清的 id 交回佇列；行程被 SIGKILL 時 claim 仍在檔內，下一個行程的新 `GraphStore` 直接視為待判（#2084）。ack 只移除「自己 claim 到的那一代」：每次 enqueue 在檔尾 `{"gen": {id: token}}` 列記 generation（id 列仍是純字串，舊程式碼忽略該列；無 gen 的舊檔視為 claim 之前的最舊一代），別的 store 在 claim 後重新 enqueue 同一 id（cache 淘汰＋intake 重試）會換新 token，A 的 ack 因 token 不符而保留該列
 - **Selective Prompt**：LLM 一次性判斷 pending pairs 是否值得連結，batch 模式節省 86% input tokens
 - **Degree Cap**：`MAX_DEGREE` 限制每個 node 的 to-side 連結數，hidden links 不計入
 - **judge_log**：完整記錄每次判斷的 accept/reject 決策，供 admin dashboard 顯示 acceptance rate

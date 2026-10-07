@@ -70,7 +70,7 @@ class TestAddPendingJudgeFlushFailure:
             store.add_pending_judge(["card_b"])
 
         mem = set(store._pending_judge)
-        disk = set(json.loads(pj_path.read_text()))
+        disk = {r for r in json.loads(pj_path.read_text()) if isinstance(r, str)}
         assert mem == disk == {"card_a"}
 
         reloaded = self._make_store(tmp_path, pj_path)
@@ -126,7 +126,7 @@ class TestRemovePendingJudgeFor:
             store.remove_pending_judge_for("card_a")
 
         assert store._pending_judge == {"card_a", "card_b"}
-        assert set(json.loads(pj_path.read_text())) == {"card_a", "card_b"}
+        assert {r for r in json.loads(pj_path.read_text()) if isinstance(r, str)} == {"card_a", "card_b"}
         reloaded = GraphStore(
             links_path=tmp_path / "links.json",
             candidates_path=tmp_path / "candidates.json",
@@ -146,7 +146,7 @@ class TestRemovePendingJudgeFor:
         store.add_pending_judge(["card_a", "card_b", "card_c"])
 
         assert store.remove_pending_judge_for("card_b") == 1
-        assert set(json.loads(pj_path.read_text())) == {"card_a", "card_c"}
+        assert {r for r in json.loads(pj_path.read_text()) if isinstance(r, str)} == {"card_a", "card_c"}
 
         reloaded = GraphStore(
             links_path=tmp_path / "links.json",
@@ -251,7 +251,8 @@ class TestPendingJudgeClaim:
 
     @staticmethod
     def _disk(tmp_path):
-        return set(json.loads((tmp_path / "pending_judge.json").read_text()))
+        rows = json.loads((tmp_path / "pending_judge.json").read_text())
+        return {row for row in rows if isinstance(row, str)}
 
     def test_pop_keeps_ids_on_disk_until_ack(self, tmp_path):
         store = self._make_store(tmp_path)
@@ -347,6 +348,98 @@ class TestPendingJudgeClaim:
 
         assert self._disk(tmp_path) == {"card_a", "card_b"}
         store.ack_pending_judge(["card_a", "card_b"])
+        assert self._disk(tmp_path) == set()
+
+
+class TestAckOwnership:
+    """#2084 follow-up: an ack removes only what its own claim covers.
+
+    The durable record distinguishes "claimed under generation G" from
+    "enqueued after G", so a second store on the same file (cache eviction
+    while a judge run is live) that enqueues a claimed id again is not erased
+    by the first store's ack.
+    """
+
+    @staticmethod
+    def _make_store(tmp_path):
+        return GraphStore(
+            links_path=tmp_path / "links.json",
+            candidates_path=tmp_path / "candidates.json",
+            blocked_path=tmp_path / "blocked.json",
+            pending_judge_path=tmp_path / "pending_judge.json",
+        )
+
+    @staticmethod
+    def _disk(tmp_path):
+        rows = json.loads((tmp_path / "pending_judge.json").read_text())
+        return {row for row in rows if isinstance(row, str)}
+
+    def test_ack_does_not_erase_a_later_enqueue_by_another_store(self, tmp_path):
+        a = self._make_store(tmp_path)
+        a.add_pending_judge(["c1"])
+        assert a.pop_pending_judge() == ["c1"]
+
+        b = self._make_store(tmp_path)  # e.g. store-cache eviction created it
+        assert b._pending_judge == set()  # c1 is A's live claim
+        b.add_pending_judge("c1")  # intake / embedding retry enqueues it again
+
+        a.ack_pending_judge(["c1"])
+
+        assert self._disk(tmp_path) == {"c1"}
+        assert self._make_store(tmp_path)._pending_judge == {"c1"}
+        # A's later, unrelated flushes must not take it either.
+        a.add_pending_judge(["c9"])
+        assert self._disk(tmp_path) == {"c1", "c9"}
+        # ...and B can still settle its own enqueue.
+        assert b.pop_pending_judge() == ["c1"]
+        b.ack_pending_judge(["c1"])
+        assert self._disk(tmp_path) == {"c9"}
+
+    def test_ack_still_removes_ids_only_its_own_claim_covers(self, tmp_path):
+        a = self._make_store(tmp_path)
+        a.add_pending_judge(["c1", "c2"])
+        a.pop_pending_judge()
+        b = self._make_store(tmp_path)
+        b.add_pending_judge("c1")
+
+        a.ack_pending_judge(["c1", "c2"])
+
+        assert self._disk(tmp_path) == {"c1"}
+
+    def test_legacy_file_without_generations_is_claimed_at_generation_zero(self, tmp_path):
+        (tmp_path / "pending_judge.json").write_text(json.dumps(["c1", "c2"]))
+        a = self._make_store(tmp_path)
+        assert a.pop_pending_judge() == ["c1", "c2"]
+        b = self._make_store(tmp_path)
+        b.add_pending_judge("c1")
+
+        a.ack_pending_judge(["c1", "c2"])
+
+        assert self._disk(tmp_path) == {"c1"}
+        solo = self._make_store(tmp_path)
+        solo.pop_pending_judge()
+        solo.ack_pending_judge(["c1"])
+        assert self._disk(tmp_path) == set()
+
+    def test_ids_stay_a_plain_string_list_for_old_readers(self, tmp_path):
+        store = self._make_store(tmp_path)
+        store.add_pending_judge(["c1", "c2"])
+
+        rows = json.loads((tmp_path / "pending_judge.json").read_text())
+
+        # Old code keeps only str rows; generation metadata must not hide ids.
+        assert [row for row in rows if isinstance(row, str)] == ["c1", "c2"]
+
+    def test_explicit_removal_still_wins_over_a_later_enqueue(self, tmp_path):
+        a = self._make_store(tmp_path)
+        a.add_pending_judge(["c1"])
+        a.pop_pending_judge()
+        b = self._make_store(tmp_path)
+        b.add_pending_judge("c1")
+
+        # Deleting the card is not an ack: the id must go regardless.
+        assert a.remove_pending_judge_for("c1") == 1
+
         assert self._disk(tmp_path) == set()
 
 

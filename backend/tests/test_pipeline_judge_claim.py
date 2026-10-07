@@ -139,7 +139,9 @@ def _graph(tmp_path: Path) -> GraphStore:
 
 def _disk_pending(tmp_path: Path) -> set[str]:
     path = tmp_path / "pending_judge_default.json"
-    return set(json.loads(path.read_text())) if path.exists() else set()
+    if not path.exists():
+        return set()
+    return {row for row in json.loads(path.read_text()) if isinstance(row, str)}
 
 
 def _child_env() -> dict[str, str]:

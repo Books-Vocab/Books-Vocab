@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import threading
+import uuid
 from collections import Counter
 from collections.abc import Iterable
 from pathlib import Path
 
 from .models import CandidatePair
+from .persistence import _PendingSnapshot
 
 # Process-local registry of pending-judge ids claimed by ``pop_pending_judge``
 # and not yet settled (acked or handed back), keyed by the resolved pending
@@ -68,6 +70,7 @@ class _CandidatesMixin:
     _pending_judge: set[str]
     _inflight_judge: set[str]
     _known_pending_judge: set[str]
+    _judge_gen: dict[str, str | None]
     _pending_judge_pop_lock: threading.Lock
 
     # Helpers supplied by other mixins / GraphStore.
@@ -191,8 +194,12 @@ class _CandidatesMixin:
                 if not new_ids:
                     return
                 handed_back = new_ids & self._inflight_judge
-                needs_flush = bool(new_ids - handed_back)
-                snapshot = sorted(self._pending_judge | self._inflight_judge | new_ids)
+                fresh_gens = {rid: uuid.uuid4().hex for rid in new_ids - handed_back}
+                needs_flush = bool(fresh_gens)
+                snapshot = _PendingSnapshot(
+                    sorted(self._pending_judge | self._inflight_judge | new_ids),
+                    fresh_gens,
+                )
             if needs_flush:
                 self._flush_pending_judge(snapshot)
             with self._lock:
@@ -202,6 +209,7 @@ class _CandidatesMixin:
                 # later merge honours an ack/removal instead of resurrecting
                 # it from disk.
                 self._known_pending_judge.update(new_ids)
+                self._judge_gen.update(fresh_gens)
                 _release_claims(self._claims_key, handed_back)
 
     def pop_pending_judge(self) -> list[str]:
@@ -235,8 +243,11 @@ class _CandidatesMixin:
         Removes them from the durable pending file. IDs this store has not
         claimed (never popped, handed back, or re-queued since the pop) are
         ignored, so a card re-added while its old judgement was in flight
-        stays queued for a fresh judgement. If the flush fails the claim stays
-        in memory and on disk.
+        stays queued for a fresh judgement. The same holds across instances:
+        the ack removes a durable row only if it still carries the generation
+        this store claimed, so an id another store enqueued again after the
+        claim (cache eviction + intake retry) stays pending. If the flush
+        fails the claim stays in memory and on disk.
         """
         if isinstance(card_ids, str):
             card_ids = [card_ids]
@@ -245,10 +256,12 @@ class _CandidatesMixin:
                 done = set(card_ids) & self._inflight_judge
                 if not done:
                     return
-                snapshot = sorted(self._pending_judge | (self._inflight_judge - done))
+                snapshot = _PendingSnapshot(sorted(self._pending_judge | (self._inflight_judge - done)), acked=done)
             self._flush_pending_judge(snapshot)
             with self._lock:
                 self._inflight_judge.difference_update(done)
+                for rid in done:
+                    self._judge_gen.pop(rid, None)
                 _release_claims(self._claims_key, done)
 
     def remove_pending_judge_for(self, card_id: str) -> int:
@@ -261,6 +274,7 @@ class _CandidatesMixin:
             self._flush_pending_judge(snapshot)
             with self._lock:
                 self._pending_judge.discard(card_id)
+                self._judge_gen.pop(card_id, None)
                 if card_id in self._inflight_judge:
                     self._inflight_judge.discard(card_id)
                     _release_claims(self._claims_key, [card_id])
