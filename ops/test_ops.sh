@@ -158,7 +158,9 @@ run_one() {
         ops/tests/test_xmachine_transport.py
       ;;
     doctor)
-      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q ops/tests/test_doctor.py
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_doctor.py \
+        ops/tests/test_release_train.py
       ;;
     context-routing)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
