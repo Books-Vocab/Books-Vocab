@@ -24,7 +24,9 @@ defaults:
 
 jobs:
   backend-quality:
-    runs-on: ubuntu-latest
+    # Pinned image, not the moving `ubuntu-latest` label: the apt archive the
+    # ffmpeg step installs from (and so its ffmpeg series) follows the image.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -46,6 +48,23 @@ jobs:
         continue-on-error: true
         run: uv sync --locked
 
+      - name: Install ffmpeg and ffprobe
+        id: media_tools
+        continue-on-error: true
+        timeout-minutes: 5
+        shell: bash
+        # tests/test_podcast_preview_backfill.py skips without both binaries;
+        # the skip allowlist turns such a skip into a red run (#2115). Debian's
+        # `ffmpeg` package ships ffmpeg and ffprobe.
+        run: |
+          set -euo pipefail
+          sudo DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=3 install -y --no-install-recommends ffmpeg
+          for tool in ffmpeg ffprobe; do
+            version="$("$tool" -hide_banner -version)"
+            printf '%s: %s\n' "$tool" "${version%%$'\n'*}"
+          done
+
       - name: Capture backend quality provenance
         id: provenance
         if: always()
@@ -60,6 +79,7 @@ jobs:
           uv_version="$(uv --version 2>&1 || true)"
           python_version="$(uv run python --version 2>&1)"
           python_executable="$(uv run python -c 'import sys; print(sys.executable)')"
+          ffmpeg_version="$( (ffmpeg -hide_banner -version 2>&1 || true) | sed -n '1p')"
           {
             printf 'HEAD_SHA=%s\n' "$head_sha"
             printf 'GITHUB_SHA=%s\n' "$GITHUB_SHA"
@@ -68,6 +88,7 @@ jobs:
             printf 'UV_VERSION=%s\n' "$uv_version"
             printf 'PYTHON_VERSION=%s\n' "$python_version"
             printf 'PYTHON_EXECUTABLE=%s\n' "$python_executable"
+            printf 'FFMPEG_VERSION=%s\n' "$ffmpeg_version"
             printf 'RUN_ID=%s\n' "$GITHUB_RUN_ID"
             printf 'RUN_ATTEMPT=%s\n' "$GITHUB_RUN_ATTEMPT"
           } | tee ci-artifacts/backend-quality-provenance.txt
@@ -79,17 +100,19 @@ jobs:
 
       - name: Run backend tests and collect coverage
         id: tests
-        if: steps.sync.outcome == 'success' && steps.provenance.outcome == 'success'
+        if: steps.sync.outcome == 'success' && steps.media_tools.outcome == 'success' && steps.provenance.outcome == 'success'
         continue-on-error: true
         shell: bash
         env:
           COVERAGE_FILE: ${{ runner.temp }}/backend-quality/.coverage
         # One suite for every trigger: the nightly schedule is a drift detector
         # over the same tests push and pull_request run, not a narrower lane.
+        # -rs prints every skip reason; --skip-allowlist fails the run on any
+        # skip without an issue-linked entry in tests/skip_allowlist.json.
         run: |
           set -euo pipefail
           mkdir -p "$(dirname "$COVERAGE_FILE")"
-          uv run python -m pytest -q --cov=src/kg --cov-report=term-missing --cov-report=xml:coverage.xml
+          uv run python -m pytest -q -rs --skip-allowlist=tests/skip_allowlist.json --cov=src/kg --cov-report=term-missing --cov-report=xml:coverage.xml
 
       - name: Enforce coverage threshold
         id: coverage
@@ -118,6 +141,7 @@ jobs:
           SETUP_UV_OUTCOME: ${{ steps.setup_uv.outcome }}
           PROVENANCE_OUTCOME: ${{ steps.provenance.outcome }}
           SYNC_OUTCOME: ${{ steps.sync.outcome }}
+          MEDIA_TOOLS_OUTCOME: ${{ steps.media_tools.outcome }}
           TEST_OUTCOME: ${{ steps.tests.outcome }}
           COVERAGE_OUTCOME: ${{ steps.coverage.outcome }}
           RUFF_OUTCOME: ${{ steps.ruff.outcome }}
@@ -127,9 +151,9 @@ jobs:
           status="pass"
           detail="tests, coverage, and Ruff passed"
 
-          if [[ "$CHECKOUT_OUTCOME" != "success" || "$SETUP_UV_OUTCOME" != "success" || "$PROVENANCE_OUTCOME" != "success" || "$SYNC_OUTCOME" != "success" ]]; then
+          if [[ "$CHECKOUT_OUTCOME" != "success" || "$SETUP_UV_OUTCOME" != "success" || "$PROVENANCE_OUTCOME" != "success" || "$SYNC_OUTCOME" != "success" || "$MEDIA_TOOLS_OUTCOME" != "success" ]]; then
             status="infrastructure-inconclusive"
-            detail="checkout, uv setup, provenance, or locked sync was inconclusive"
+            detail="checkout, uv setup, provenance, locked sync, or ffmpeg install was inconclusive"
           elif [[ "$TEST_OUTCOME" == "failure" ]]; then
             status="test-failure"
             detail="backend test command failed; existing full-suite failures remain failures"

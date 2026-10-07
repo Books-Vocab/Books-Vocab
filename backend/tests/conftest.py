@@ -12,6 +12,18 @@ import jwt as pyjwt
 import pytest
 from fastapi.testclient import TestClient
 
+import _skip_allowlist_gate
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    # CI skip budget (#2115): `--skip-allowlist=tests/skip_allowlist.json`.
+    _skip_allowlist_gate.pytest_addoption(parser)
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    _skip_allowlist_gate.pytest_configure(config)
+
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_DIR = PROJECT_ROOT / "src"
 

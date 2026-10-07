@@ -84,10 +84,19 @@ confidence。文件或 iOS-only 變更本身不會選到 backend lane；`require
 的總體語義以 [`delivery_model.md`](../delivery_model.md#required-merge-gate-confidence-fan-out)
 為準。job `backend-quality` 在乾淨 runner 執行：
 
-1. checkout full history，固定 uv 版本後執行 `uv sync --locked`。
+1. checkout full history，固定 uv 版本後執行 `uv sync --locked`；再以 apt 安裝 `ffmpeg`
+   （Debian 套件同時提供 `ffmpeg`／`ffprobe`，`tests/test_podcast_preview_backfill.py`
+   缺任一就 skip）並探測兩者版本。job 固定 `runs-on: ubuntu-24.04` 而非會移動的
+   `ubuntu-latest`，apt archive 與 ffmpeg 系列隨 image 固定；實際版本寫入 provenance
+   的 `FFMPEG_VERSION`。安裝失敗歸類為 `infrastructure-inconclusive`，不執行測試。
 2. 以 module form 執行測試與 coverage data；push、pull request 與 nightly schedule
    都執行同一個完整 suite，不依 event 分支或以 `-k`／`-m` 取子集：
-   `uv run python -m pytest -q --cov=src/kg --cov-report=term-missing --cov-report=xml:coverage.xml`。
+   `uv run python -m pytest -q -rs --skip-allowlist=tests/skip_allowlist.json --cov=src/kg --cov-report=term-missing --cov-report=xml:coverage.xml`。
+   `-rs` 列出每個 skip 原因；`--skip-allowlist`（`backend/tests/_skip_allowlist_gate.py`，
+   由 `tests/conftest.py` 載入）讓任何未列入 `tests/skip_allowlist.json` 的 skip、以及
+   已列入卻實際執行的過期條目都使 pytest 以非零結束。每個條目必須是
+   `{"nodeid", "issue", "reason"}`，`issue` 必須連到 Books-Vocab Issue；未帶此參數的
+   本機執行不受影響。CI 的預期是 0 skipped。
    nightly 是對同一 suite 的 drift 偵測，不是較窄的 lane。contract test 以假 `uv`
    逐 event 實際執行該 step，比對各 event 的 pytest argv 相同且不含選取參數。
    coverage data 透過 `COVERAGE_FILE=${{ runner.temp }}/backend-quality/.coverage`
@@ -102,7 +111,7 @@ confidence。文件或 iOS-only 變更本身不會選到 backend lane；`require
 
 pytest 的既有 full-suite failure 保持為 `test-failure`，不以 `continue-on-error`
 偽造成功；coverage threshold failure 標為 `coverage-failure`，Ruff failure 標為
-`ruff-failure`。checkout、uv setup、provenance、locked sync 或未產生明確 step
+`ruff-failure`。checkout、uv setup、provenance、locked sync、ffmpeg 安裝或未產生明確 step
 結果時標為 `infrastructure-inconclusive`。所有非 `pass` 分類都以非零結束，讓
 GitHub job 維持紅燈而不是把不可判定狀態當綠燈。
 
@@ -112,7 +121,7 @@ GitHub job 維持紅燈而不是把不可判定狀態當綠燈。
 `backend/ci-artifacts/backend-quality-verdict.txt`，不包含 `.coverage`；也就是
 coverage XML + provenance + verdict。provenance 包含 `HEAD_SHA` / `GITHUB_SHA`、
 `LOCK_BLOB_SHA`、`LOCK_SHA256`、uv 版本、`PYTHON_VERSION`、`PYTHON_EXECUTABLE`、
-run id 與 attempt，並將 Python interpreter 寫入 job summary。這使 coverage 證據不能
+`FFMPEG_VERSION`、run id 與 attempt，並將 Python interpreter 寫入 job summary。這使 coverage 證據不能
 脫離被驗證的 HEAD、interpreter 或 `backend/uv.lock`。
 
 同一 workflow 的 job `image-lock` 驗證 production image 與 lock 一致（#2088）：以
