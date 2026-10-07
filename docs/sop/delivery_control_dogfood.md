@@ -67,6 +67,15 @@ test-execution lock。這只序列化會共用 registry fixture／mutation lock 
 不要平行直接啟動 registry mutation 測試；使用 `./ops/test_ops.sh worktree`，讓 wrapper
 在不同 linked worktree 之間共用同一把鎖。程序中止時由作業系統釋放鎖，不建立第二套 registry 狀態。
 
+`./ops/test_ops.sh` 對 `worktree`、`delivery-control`、`docs-lint`、`disk-guard`、`doctor` 這五個 heavy
+group 另有 host-wide slot limiter（`ops/lib/heavy_slots.sh`，名單為 `test_ops.sh` 的 `HEAVY_TESTS`）：
+同一台機器上同時最多 `KG_HEAVY_SLOTS`（預設 3）個 heavy group 在跑，其餘等待並印出目前持有者
+（slot、pid、group、起始時間）。slot 目錄在 `$HOME/Library/Caches/kg/heavy-slots`
+（`KG_HEAVY_SLOTS_DIR` 可覆寫）；持有者 pid 已死或啟動時間不符（pid 被重用）即視為 stale 並原子回收。
+等待上限 `KG_HEAVY_SLOTS_WAIT`（預設 1800 秒），逾時回 rc=75（inconclusive，不是 pass）並列出持有者，
+不會死鎖；`KG_HEAVY_SLOTS=0` 停用。非 heavy group 不受影響。多代理併發把 load 推到 60–110
+（10 核）會造成 timing 測試假紅，這是它存在的原因；契約測試為 `test_ops.sh heavy-slots`。
+
 這些條件任一失敗都只修該 blocker；不得以人工改 registry、刪 dirty worktree、跳過 branch rule 或降低 hard gate 讓 preflight 變綠。
 quarantine 是可驗證的隔離投影，不是 cleanup 成功、owner 恢復、PR mapping 或 security clearance 的替代品。
 
