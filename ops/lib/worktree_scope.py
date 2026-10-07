@@ -10,6 +10,7 @@ from __future__ import annotations
 import difflib
 import json
 import posixpath
+from collections.abc import Iterable
 from pathlib import PurePosixPath
 
 SCOPE_SCHEMA = "kg.worktree.scope.v1"
@@ -27,6 +28,21 @@ SHARED_SCOPE_FILES = frozenset(
 )
 # Spellings agents reach for naturally; canonicalised on input, never stored.
 SCOPE_OPERATION_ALIASES = {"create": "add", "new": "add"}
+
+
+def exclusive_paths(paths: Iterable[str]) -> set[str]:
+    """Return the paths that stay exclusive, i.e. not in SHARED_SCOPE_FILES."""
+    return set(paths) - SHARED_SCOPE_FILES
+
+
+def overlap_paths(left: Iterable[str], right: Iterable[str]) -> set[str]:
+    """The one overlap rule: contested paths between two claims or change sets.
+
+    Every gate that decides "do these two lanes collide" (registry admission,
+    Issue admission, publish preflight, delivery inspect, reanchor) must go
+    through this so the SHARED_SCOPE_FILES exemption applies uniformly.
+    """
+    return exclusive_paths(set(left) & set(right))
 
 
 def _normalise_path(value: object) -> tuple[str | None, str | None]:

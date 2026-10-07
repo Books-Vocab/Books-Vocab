@@ -22,7 +22,7 @@ from delivery_control.domain.superseded_handback import (
 from delivery_control.domain.superseded_handback import (
     superseded_proof_with_digest as _superseded_proof_with_digest,
 )
-from lib.worktree_scope import SCOPE_SCHEMA, scope_files, scope_problems
+from lib.worktree_scope import SCOPE_SCHEMA, overlap_paths, scope_files, scope_problems
 
 SCHEMA = "kg.worktree.registry.v2"
 STATUS_ACTIVE = "active"
@@ -563,7 +563,7 @@ def _problem_overlaps_target(
         record_scope = _scope_paths(record.get("scope"))
         if wanted_scope is None or record_scope is None:
             return True
-        if wanted_scope.intersection(record_scope):
+        if overlap_paths(wanted_scope, record_scope):
             return True
     return False
 

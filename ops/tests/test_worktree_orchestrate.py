@@ -2954,3 +2954,121 @@ def test_adopt_scope_from_diff_refuses_an_empty_diff(
     )
     assert rc == coordinator.EXIT_USAGE
     assert "no changes" in capsys.readouterr().out
+
+
+def _share(monkeypatch: pytest.MonkeyPatch, *paths: str) -> None:
+    from lib import worktree_scope
+
+    monkeypatch.setattr(worktree_scope, "SHARED_SCOPE_FILES", frozenset(paths))
+
+
+def test_rebase_preflight_ignores_incoming_change_to_shared_scope_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _synthetic_rebase_refs(tmp_path)
+    scope = _scope_for("ops/incoming_main.py")
+    _share(monkeypatch, "ops/incoming_main.py")
+
+    result = coordinator._rebase_preflight(
+        repo, base="base", incoming_main="incoming-main", scope=scope
+    )
+
+    assert result["verdict"] == "pass"
+    assert result["collisions"] == []
+    # The shared file is still reported as declared Scope, never dropped.
+    assert result["scope_files"] == ["ops/incoming_main.py"]
+    assert result["incoming_main_files"] == ["ops/incoming_main.py"]
+
+
+def test_reanchor_handback_leaves_shared_scope_file_overlap_to_rebase(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(coordinator, "_branch_pull_requests", lambda *_args: ())
+    repo, state_path, target, expected = _prepare_reanchor_handback(tmp_path)
+    _commit(repo, "ops/reanchor_change.py", "main\n", "main changes declared scope")
+    _git(repo, "push", "-q", "origin", "main")
+    expected["live_main"] = _git(repo, "rev-parse", "HEAD")
+    _share(monkeypatch, "ops/reanchor_change.py")
+
+    rc = coordinator.main(_reanchor_handback_argv(repo, state_path, target, expected))
+
+    payload = json.loads(capsys.readouterr().out)
+    # Not refused up front as a Scope collision: the real textual conflict
+    # (both sides add the file) surfaces from git rebase, which is aborted.
+    assert rc == coordinator.EXIT_BLOCK
+    assert "collisions" not in payload
+    assert payload["reason"].startswith("active handback rebase failed")
+    assert _git(target, "rev-parse", "HEAD") == expected["remote_head"]
+
+
+def test_adopt_accepts_scope_sharing_only_an_allowlisted_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = _synthetic_rebase_refs(tmp_path)
+    state_path = tmp_path / "worktree_registry.json"
+    coordinator.registry.save_state(
+        state_path,
+        {
+            "schema": coordinator.registry.SCHEMA,
+            "records": [
+                {
+                    "branch": "feat/other",
+                    "path": str(tmp_path / "other"),
+                    "status": "active",
+                    "external_ids": ["ISSUE-1"],
+                    "scope": {
+                        "schema": "kg.worktree.scope.v1",
+                        "files": [
+                            {
+                                "path": "ops/complexity_budget.json",
+                                "operation": "modify",
+                            },
+                            {"path": "ops/other.py", "operation": "modify"},
+                        ],
+                    },
+                    "claim_generation": 1,
+                }
+            ],
+        },
+    )
+
+    def adopt(*paths: str) -> int:
+        scope = {
+            "schema": "kg.worktree.scope.v1",
+            "files": [{"path": item, "operation": "modify"} for item in paths],
+        }
+        rc = coordinator.main(
+            [
+                "adopt",
+                "--state",
+                str(state_path),
+                "--worktree",
+                str(repo),
+                "--intent",
+                "agent worktree",
+                "--base",
+                "base",
+                "--external-id",
+                "ISSUE-9",
+                "--codex-thread-id",
+                "worker-thread",
+                "--delegated",
+                "--scope",
+                json.dumps(scope),
+                "--json",
+            ]
+        )
+        capsys.readouterr()
+        return rc
+
+    assert (
+        adopt("ops/complexity_budget.json", "ops/other.py")
+        == coordinator.registry.EXIT_CLAIMED
+    )
+    assert (
+        adopt("ops/complexity_budget.json", "ios/issue_1033.py") == coordinator.EXIT_OK
+    )
+    [_, adopted] = coordinator.registry.load_state(state_path)["records"]
+    assert adopted["scope"]["files"][0]["path"] == "ops/complexity_budget.json"

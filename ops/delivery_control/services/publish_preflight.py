@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from lib.worktree_scope import overlap_paths
+
 from ..domain.errors import DeliverySourceError, PolicyViolation
 from ..domain.models import HandbackReceipt
 from ..domain.observations import (
@@ -64,12 +66,12 @@ class PublishPreflightService:
         for other in inventory.records:
             if other.lane_id == registry.lane_id or other.branch == receipt.branch:
                 continue
-            if paths.intersection(other.scope.paths):
+            if overlap_paths(paths, other.scope.paths):
                 return True
         for pull_request in pull_requests:
             if pull_request.branch == receipt.branch:
                 continue
-            if paths.intersection(self.github.changed_paths(pull_request.number)):
+            if overlap_paths(paths, self.github.changed_paths(pull_request.number)):
                 return True
         return False
 
