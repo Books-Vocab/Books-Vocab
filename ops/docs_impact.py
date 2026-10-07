@@ -8,7 +8,8 @@ Path-hint detector: maps changed paths to docs/registry.yml `sources` entries
 and emits candidate docs that may need sync. `match_type` indicates whether a
 candidate came from an exact source, a broad directory/glob hint, or a
 partially/fully suppressed broad match. `--explain` shows which broad matches
-were suppressed by registry `!path` / `!glob` exclusions.
+were suppressed by registry `!path` / `!glob` exclusions. `--check-sources`
+reports registry sources that no path can match, i.e. hints impact can never fire.
 """
 
 from __future__ import annotations
@@ -228,10 +229,73 @@ def source_matches(source: str, changed_path: str) -> bool:
     source = normalize_path(source)
     changed_path = normalize_path(changed_path)
     if any(mark in source for mark in "*?["):
-        return fnmatch.fnmatch(changed_path, source)
+        # A trailing "/" keeps its directory meaning on a glob: `skills/podcast-*/`
+        # names every file under each matching directory. Bare fnmatch would demand
+        # the changed path itself end in "/", which no file path ever does.
+        pattern = f"{source}*" if source.endswith("/") else source
+        return fnmatch.fnmatch(changed_path, pattern)
     if source.endswith("/"):
         return changed_path.startswith(source)
     return changed_path == source
+
+
+def live_paths(root: Path) -> list[str]:
+    """Every path a change could touch: tracked or new-but-not-ignored, minus deletions.
+
+    Same path kinds `changed_paths_since` reports (tracked edits plus new untracked
+    files), so a source is live here exactly when some real change could make impact
+    hit it. New files count because
+    registering a source in the same change that adds it is the normal flow; ignored
+    artifacts and files already deleted from the worktree do not, because a fresh
+    checkout (CI) would not have them.
+    """
+    listed = run_git(
+        [
+            "-C",
+            str(root),
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+        ]
+    )
+    deleted = set(run_git(["-C", str(root), "ls-files", "-z", "--deleted"]).split("\0"))
+    return sorted({path for path in listed.split("\0") if path and path not in deleted})
+
+
+def dead_sources(
+    documents: list[Document], paths: list[str]
+) -> tuple[int, list[tuple[str, str]]]:
+    """Return (checked source count, [(doc id, source)]) for sources no path can hit.
+
+    `!` exclusions are not checked: excluding a path that does not exist is harmless.
+    Matching reuses `source_matches`, so this cannot disagree with impact itself.
+    """
+    verdicts: dict[str, bool] = {}
+    checked = 0
+    dead: list[tuple[str, str]] = []
+    for doc in documents:
+        for source in doc.sources:
+            if source.startswith("!"):
+                continue
+            checked += 1
+            if source not in verdicts:
+                verdicts[source] = any(source_matches(source, path) for path in paths)
+            if not verdicts[source]:
+                dead.append((doc.id, source))
+    return checked, dead
+
+
+def check_sources(root: Path, registry_path: Path) -> int:
+    documents = parse_registry(registry_path)
+    checked, dead = dead_sources(documents, live_paths(root))
+    for doc_id, source in dead:
+        print(f"DEAD_SOURCE\t{doc_id}\t{source}")
+    print(
+        f"source_check: documents={len(documents)} sources={checked} dead={len(dead)}"
+    )
+    return 2 if dead else 0
 
 
 def is_broad_source(source: str) -> bool:
@@ -423,21 +487,27 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Also emit candidates suppressed by registry !path/!glob exclusions.",
     )
-    surface_group = parser.add_mutually_exclusive_group()
-    surface_group.add_argument(
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
         "--surface-paths",
         action="store_true",
         help="Print the agent-facing surface paths from docs/registry.yml agent_facing_surface.paths.",
     )
-    surface_group.add_argument(
+    mode_group.add_argument(
         "--surface-scan",
         metavar="PATTERN",
         help="Regex-scan the registry-owned agent-facing surface, including dot-directories.",
     )
+    mode_group.add_argument(
+        "--check-sources",
+        action="store_true",
+        help="List every non-! registry source that no tracked or new, non-ignored path "
+        "matches (DEAD_SOURCE<TAB>id<TAB>source); exit 2 when any is dead.",
+    )
     parser.add_argument(
         "--root",
         metavar="DIR",
-        help="Repository root for --surface-paths/--surface-scan (default: git root).",
+        help="Repository root for --surface-paths/--surface-scan/--check-sources (default: git root).",
     )
     args = parser.parse_args(argv)
 
@@ -453,6 +523,9 @@ def main(argv: list[str] | None = None) -> int:
             print("\n".join(surface_paths))
             return 0
         return scan_surface(root, surface_paths, args.surface_scan)
+
+    if args.check_sources:
+        return check_sources(root, registry_path)
 
     documents = parse_registry(registry_path)
     if args.files:

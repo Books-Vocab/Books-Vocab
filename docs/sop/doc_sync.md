@@ -83,4 +83,6 @@ Generated output 必須在 registry 宣告 generator 與等值 check，產物不
 
 ## Failure policy
 
-registry path 不存在、active document 未註冊、metadata 缺欄位或 verified anchor 不可達時，docs gate 應回報 ERROR。impact hint 的 WARN 需要人工判斷，不得當成已同步證據。
+registry path 不存在、非 `!` source 未命中任何 path、active document 未註冊、metadata 缺欄位或 verified anchor 不可達時，docs gate 應回報 ERROR。impact hint 的 WARN 需要人工判斷，不得當成已同步證據。
+
+source 存在性由 `./ops/docs_impact.py --check-sources` 判定，與 impact 共用同一個 matcher：問的是「有沒有 path 能讓 impact 命中」，不是「磁碟上有沒有這個名字」。path 宇宙是 tracked 加未被 ignore 的新檔、扣掉工作樹已刪的檔，所以同一變更新增檔案並登錄 source 不會誤判，ignored 產物與已刪檔也不能讓死 source 假活。結尾 `/` 一律表示目錄（含 glob，例如 `.claude/skills/podcast-*/`）。檔案改名或刪除時，同一 PR 修正指向它的 source。
