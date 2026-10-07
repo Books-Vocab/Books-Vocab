@@ -12,6 +12,7 @@ quota; the accounting section makes the shared/unassigned part explicit.
 from __future__ import annotations
 
 import argparse
+import calendar
 import errno
 import hashlib
 import json
@@ -1336,8 +1337,13 @@ def _pid_alive(pid: int) -> bool:
 
 
 def _parse_lstart(text: str) -> float | None:
+    """Epoch seconds of an lstart string read as UTC (the harness records its
+    lock start in UTC; ``_ps_lstart`` asks ``ps`` for UTC to match)."""
+
     try:
-        return time.mktime(time.strptime(" ".join(text.split()), LSTART_FORMAT))
+        return float(
+            calendar.timegm(time.strptime(" ".join(text.split()), LSTART_FORMAT))
+        )
     except (ValueError, OverflowError):
         return None
 
@@ -1348,7 +1354,7 @@ def _ps_lstart(pid: int) -> str | None:
             ["ps", "-o", "lstart=", "-p", str(pid)],
             capture_output=True,
             text=True,
-            env={**os.environ, "LC_ALL": "C"},
+            env={**os.environ, "LC_ALL": "C", "TZ": "UTC"},
             timeout=5,
             check=False,
         )
@@ -1357,18 +1363,28 @@ def _ps_lstart(pid: int) -> str | None:
     return completed.stdout if completed.returncode == 0 else None
 
 
-def _harness_pid_state(pid: int, recorded_start: str | None) -> str:
+def _harness_pid_state(
+    pid: int,
+    recorded_start: str | None,
+    start_cache: dict[int, str | None] | None = None,
+) -> str:
     """``live`` only if ``pid`` exists and, when the lock recorded a start
     time, that pid's start matches it (else an unrelated process reused the
     pid: ``reused-pid``).  Missing or unreadable start info on either side
-    falls back to the pid-only check."""
+    falls back to the pid-only check.  ``start_cache`` shares one ``ps`` probe
+    per pid across the lanes of one report (a session's lanes share its pid)."""
 
     if not _pid_alive(pid):
         return "dead-pid"
     recorded = _parse_lstart(recorded_start) if recorded_start else None
     if recorded is None:
         return "live"
-    probed = _ps_lstart(pid)
+    if start_cache is None:
+        probed = _ps_lstart(pid)
+    else:
+        if pid not in start_cache:
+            start_cache[pid] = _ps_lstart(pid)
+        probed = start_cache[pid]
     actual = _parse_lstart(probed) if probed else None
     if actual is None or abs(actual - recorded) <= PID_START_TOLERANCE_SECONDS:
         return "live"
@@ -1376,7 +1392,10 @@ def _harness_pid_state(pid: int, recorded_start: str | None) -> str:
 
 
 def _agent_lane_lock(
-    path: Path, physical: dict[str, Any], workspace: Path
+    path: Path,
+    physical: dict[str, Any],
+    workspace: Path,
+    start_cache: dict[int, str | None] | None = None,
 ) -> dict[str, Any] | None:
     """Identify a Claude Code harness lane under ``<workspace>/.claude/worktrees``.
 
@@ -1401,16 +1420,22 @@ def _agent_lane_lock(
     if match is None or match.group("name") != path.name:
         return None
     pid = int(match.group("pid"))
-    return {"state": _harness_pid_state(pid, match.group("start")), "pid": pid}
+    state = _harness_pid_state(pid, match.group("start"), start_cache)
+    return {"state": state, "pid": pid}
 
 
 def _stale_agent_cleanup_hint(path: Path, lock: dict[str, Any], branch: str) -> str:
     quoted = shlex.quote(str(path))
     unlock = f"git worktree unlock {quoted} && " if lock["state"] != "unlocked" else ""
     kept = f"; branch {branch} is kept, delete it only once merged"
+    why = (
+        "pid alive but its start time differs from the lock's"
+        if lock["state"] == "reused-pid"
+        else lock["state"]
+    )
     return (
         f"{unlock}git worktree remove {quoted}  # harness no longer holds this lane "
-        f"({lock['state']}); remove refuses uncommitted work, so salvage it first"
+        f"({why}); remove refuses uncommitted work, so salvage it first"
         + ("" if branch == "(detached)" else kept)
     )
 
@@ -1811,6 +1836,7 @@ def build_report(
         )
         registry_entries.append(entry)
 
+    start_cache: dict[int, str | None] = {}
     for physical in physical_records:
         physical_path = physical["path"]
         if physical_path in registry_by_path:
@@ -1827,7 +1853,7 @@ def build_report(
         )
         is_excluded = physical_path in applied_exclusions
         agent_lock = (
-            _agent_lane_lock(physical_path, physical, workspace)
+            _agent_lane_lock(physical_path, physical, workspace, start_cache)
             if lane_kind == "lane" and not is_excluded
             else None
         )

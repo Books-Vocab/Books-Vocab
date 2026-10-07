@@ -6,6 +6,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -1838,13 +1839,16 @@ _FOREIGN_START = "Mon Jan  1 00:00:00 2001"
 
 
 def _ps_lstart(pid: int) -> str | None:
-    """Independent of the module under test: what ``ps`` reports for ``pid``."""
+    """Independent of the module under test: what ``ps`` reports for ``pid``,
+    in UTC, the zone the harness writes into its lock reason (verified on a
+    real lock: ``start Wed Oct  7 11:50:17 2026`` for a process ``ps`` shows
+    as 19:50:17 on a UTC+8 host)."""
 
     completed = subprocess.run(
         ["ps", "-o", "lstart=", "-p", str(pid)],
         capture_output=True,
         text=True,
-        env={**os.environ, "LC_ALL": "C"},
+        env={**os.environ, "LC_ALL": "C", "TZ": "UTC"},
         check=False,
     )
     return completed.stdout.strip() or None
@@ -1852,7 +1856,7 @@ def _ps_lstart(pid: int) -> str | None:
 
 def _harness_lock_reason(name: str, pid: int, start: str | None = None) -> str:
     """The exact reason Claude Code writes when it locks an agent worktree:
-    the pid plus that process's start time (``ps`` lstart format)."""
+    the pid plus that process's start time (``ps`` lstart format, UTC)."""
 
     start = start or _ps_lstart(pid) or _FOREIGN_START
     return f"claude agent {name} (pid {pid} start {start})"
@@ -2049,8 +2053,28 @@ def test_agent_lock_liveness_checks_recorded_start_time(
     assert probed == ([pid] if reason_tail.startswith(" start Wed") else [])
 
 
-def test_real_ps_start_of_live_pid_matches_its_lock() -> None:
-    """Positive control against the real ``ps`` (macOS here, procps on CI)."""
+@pytest.fixture
+def host_timezone(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[str]:
+    """Run the test as if the host clock zone were ``request.param``."""
+
+    monkeypatch.setenv("TZ", request.param)
+    time.tzset()
+    yield request.param
+    monkeypatch.undo()
+    time.tzset()
+
+
+@pytest.mark.parametrize(
+    "host_timezone",
+    ["UTC", "Asia/Taipei", "America/Los_Angeles"],
+    indirect=True,
+)
+def test_real_ps_start_of_live_pid_matches_its_lock(host_timezone: str) -> None:
+    """Positive control against the real ``ps`` (macOS here, procps on CI) in
+    every host zone: the lock records UTC, so a non-UTC host (UTC+8 here)
+    must still see its own live pid as ``live``, not ``reused-pid``."""
 
     workspace = Path("/nonexistent-ws")
     lane = workspace / ".claude" / "worktrees" / "agent-a1b2c3d4e5f6"
@@ -2062,6 +2086,53 @@ def test_real_ps_start_of_live_pid_matches_its_lock() -> None:
         "state": "live",
         "pid": os.getpid(),
     }
+
+
+@pytest.mark.parametrize("host_timezone", ["UTC", "Asia/Taipei"], indirect=True)
+def test_ps_probe_is_pinned_to_utc_and_compared_as_utc(
+    monkeypatch: pytest.MonkeyPatch, host_timezone: str
+) -> None:
+    """The recorded start is UTC, so the probe must ask ``ps`` for UTC whatever
+    the host zone, and both strings are compared as UTC (no local mktime)."""
+
+    recorded = _ps_lstart(os.getpid())
+    seen_env: list[dict[str, str]] = []
+    real_run = subprocess.run
+
+    def spy(*args: object, **kwargs: object) -> object:
+        seen_env.append(dict(kwargs.get("env") or {}))  # type: ignore[call-overload]
+        return real_run(*args, **kwargs)  # type: ignore[call-overload]
+
+    monkeypatch.setattr(disk_usage.subprocess, "run", spy)
+    assert disk_usage._harness_pid_state(os.getpid(), recorded) == "live"
+    assert [env.get("TZ") for env in seen_env] == ["UTC"]
+    # Same wall-clock text read as UTC on both sides: an hour-offset text is a
+    # different instant, however the host zone interprets it.
+    assert disk_usage._parse_lstart("Wed Oct  7 11:50:17 2026") == 1791373817.0
+    assert (
+        disk_usage._parse_lstart("Wed Oct  7 19:50:17 2026") == 1791373817.0 + 8 * 3600
+    )
+
+
+def test_ps_probe_runs_once_per_pid_per_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """All lanes of one harness session share a pid; one probe serves them."""
+
+    calls: list[int] = []
+
+    def counting(pid: int) -> str | None:
+        calls.append(pid)
+        return _ps_lstart(pid)
+
+    recorded = _ps_lstart(os.getpid())
+    cache: dict[int, str | None] = {}
+    monkeypatch.setattr(disk_usage, "_ps_lstart", counting)
+    states = [
+        disk_usage._harness_pid_state(os.getpid(), recorded, cache) for _ in range(3)
+    ]
+    assert states == ["live"] * 3
+    assert calls == [os.getpid()]
 
 
 @pytest.mark.parametrize("lock", [_LIVE, None])
