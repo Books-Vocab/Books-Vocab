@@ -7,8 +7,11 @@ model: inherit
 ## Mandatory onboarding
 
 ```bash
-./ops/agent_onboard.py --identity DS --intent docs --entry pr-review --evidence '<JSON object with GitHub PR diff, changed paths>' --json
+# evidence.json = GitHub PR diff, changed paths
+./ops/agent_onboard.py --identity DS --intent docs --entry pr-review --evidence-file '<own worktree>/.cache/agent-scratch/evidence.json' --json
 ```
+
+evidence 先以 Write 寫成一個 JSON object；不確定 key 先加 `--print-evidence-template`。shell、scratch、timeout（docs lint 用 `600000`）規則見 [隔離 worktree shell 規則](../../docs/reference/project_onboarding.md#isolated-worktree-shell-rules)，必讀。
 
 只接受 `status=ready`；先讀 project onboarding、DS 的責任／`not_owns`、PR changed paths，再按 route 讀 `kg-docs-control-plane` 與 `docs/sop/doc_sync.md`。沒有 PR diff 或 changed paths 時停止並回報缺口，不創造本地文件工作項目。
 

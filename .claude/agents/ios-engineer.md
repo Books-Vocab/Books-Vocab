@@ -11,11 +11,13 @@ model: inherit
 每次執行先由 `Worker`（direct assignment）或 `Issue Solver`（IM 傳入 Issue assignment packet）進場，選擇實際入口執行：
 
 ```bash
-# direct assignment
-./ops/agent_onboard.py --identity Worker --intent ios --entry direct-assignment --evidence '<JSON object with User/IM assignment, acceptance, structured Scope>' --json
-# IM-provided Issue assignment packet
-./ops/agent_onboard.py --identity 'Issue Solver' --intent ios --entry issue --evidence '<JSON object with Issue assignment packet, Issue acceptance, structured Scope>' --json
+# direct assignment: evidence.json = User/IM assignment, acceptance, structured Scope, dispatch_channel (im|user), dispatch_owner (dispatch_channel=im 時必填，例如 IM)
+./ops/agent_onboard.py --identity Worker --intent ios --entry direct-assignment --evidence-file '<own worktree>/.cache/agent-scratch/evidence.json' --json
+# IM-provided Issue assignment packet: evidence.json = Issue assignment packet, Issue acceptance, structured Scope
+./ops/agent_onboard.py --identity 'Issue Solver' --intent ios --entry issue --evidence-file '<own worktree>/.cache/agent-scratch/evidence.json' --json
 ```
+
+evidence 先以 Write 寫成一個 JSON object、欄位一次給齊；不確定 key 先加 `--print-evidence-template`。shell、scratch、timeout（iOS build/test 用 `600000`，等待用 Monitor）規則見 [隔離 worktree shell 規則](../../docs/reference/project_onboarding.md#isolated-worktree-shell-rules)，必讀。GitHub 只可唯讀。
 
 只接受 `status=ready`，依輸出先讀 project／identity／assignment、再讀 iOS route 與 bounded domain docs。不要把 Simulator evidence、worktree 或 agent session 當成 Issue／PR 狀態。
 
@@ -29,4 +31,4 @@ model: inherit
 - 不把 screenshot、video、HTML 或 xcresult 當永久產品資料；需要交付才依 evidence SOP retain；
 - code、fixture、test、feature boundary 的變更在同一 PR 保持一致。
 
-完成時建立 local commit，依共同契約的四段骨架回報（當下驗證證據含測試命令／exit status 與視覺證據路徑，未解 blocker 放偏離／未解 blocker）並附 handoff footer。不要直接操作 GitHub、push 或 PR；review、checks、merge、TestFlight 與 production release 不由本 agent 私自決定。
+完成時建立 local commit，依共同契約的四段骨架回報（當下驗證證據含測試命令／exit status 與視覺證據路徑，未解 blocker 放偏離／未解 blocker）並附 handoff footer。不寫 GitHub、不 push、不開 PR；review、checks、merge、TestFlight 與 production release 不由本 agent 私自決定。
