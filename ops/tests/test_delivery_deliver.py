@@ -39,6 +39,9 @@ class FakeWorld:
         self.format_rc = state.get("format_rc", 0)
         self.fail_commands: set[str] = set(state.get("fail_commands", set()))
         self.stderr_for: dict[str, str] = state.get("stderr_for", {})
+        self.lock_busy: dict[str, int] = dict(state.get("lock_busy", {}))
+        self.now = 0.0
+        self.sleeps: list[float] = []
         self.published_pr: dict[str, Any] | None = state.get(
             "published_pr", {"number": 77, "state": "OPEN", "url": "u"}
         )
@@ -46,6 +49,10 @@ class FakeWorld:
         self.cwds: list[Path | None] = []
         self.work = Path(tempfile.mkdtemp())
         self.canon = Path(tempfile.mkdtemp())
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now += seconds
 
     def names(self) -> list[str]:
         out = []
@@ -137,6 +144,12 @@ class FakeWorld:
             return ok(json.dumps({"records": [self.record] if self.record else []}))
         if head.endswith(("worktree_orchestrate.py", "delivery.py")):
             verb = cmd[1] if head.endswith("worktree_orchestrate.py") else cmd[3]
+            if self.lock_busy.get(verb, 0) > 0:  # the lock is taken before any change
+                self.lock_busy[verb] -= 1
+                if head.endswith("delivery.py"):  # its CLI reports one JSON error
+                    doc = {"command": verb, "error": _LOCKED, "ok": False}
+                    return deliver.Proc(1, "", json.dumps(doc))
+                return deliver.Proc(1, "", f"Traceback\nDeliverySourceError: {_LOCKED}")
             if verb == "publish":
                 shutil.rmtree(
                     self.work, ignore_errors=True
@@ -148,13 +161,21 @@ class FakeWorld:
         raise AssertionError(f"unscripted call: {cmd}")
 
 
+_LOCKED = (
+    "delivery mutation already in progress; command=sync-main; "
+    "retry after the active operation exits"
+)
+
+
 def ship(world: FakeWorld, *flags: str) -> tuple[int, dict[str, Any]]:
-    argv = ["--timeout", "5", "--poll", "0"]
+    argv = ["--timeout", "5", "--poll", "1"]
     if "--worktree" not in flags:
         argv += ["--worktree", str(world.work)]
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
-        code = deliver.main([*argv, *flags], runner=world, sleep=lambda _s: None)
+        code = deliver.main(
+            [*argv, *flags], runner=world, sleep=world.sleep, clock=lambda: world.now
+        )
     return code, json.loads(buf.getvalue().strip().splitlines()[-1])
 
 
@@ -372,6 +393,34 @@ def test_a_failed_stage_surfaces_the_whole_underlying_error(
     code, result = ship(world, "--check", "u=good", "--merge")
     assert code == 1
     assert result["error"] == f"{verb} failed (rc=1): {detail}"
+
+
+# ---- the delivery mutation lock -------------------------------------------
+
+
+def test_a_busy_mutation_lock_is_waited_out_instead_of_failing() -> None:
+    world = FakeWorld(lock_busy={"adopt": 1, "queue": 2})  # traceback / JSON shapes
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 0, result
+    assert world.names().count("adopt") == 2
+    assert world.names().count("queue") == 3
+    waits = [line for line in result["log"] if "operation lock" in line]
+    assert len(waits) == 3 and all("command=sync-main" in line for line in waits)
+
+
+def test_the_lock_wait_is_bounded_and_names_the_holder() -> None:
+    world = FakeWorld(lock_busy={"publish": 99})
+    code, result = ship(world, "--check", "u=good", "--lock-timeout", "12")
+    assert code == 1
+    assert world.names().count("publish") == 4
+    assert world.sleeps == [5, 5, 2]
+    assert "lock is still held after 12s" in result["error"]
+    assert _LOCKED in result["error"]
+
+
+def test_the_lock_marker_is_the_lock_adapters_own_message() -> None:
+    adapter = OPS / "delivery_control" / "adapters" / "operation_lock.py"
+    assert deliver.LOCK_BUSY in adapter.read_text()
 
 
 # ---- gc -------------------------------------------------------------------
