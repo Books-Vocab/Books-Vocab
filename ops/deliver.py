@@ -48,8 +48,14 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
+from delivery_control.domain.errors import PolicyViolation
+from delivery_control.services.pr_contract import (
+    parse_body_holds,
+    pull_request_label_holds,
+)
 from lib import worktree_scope
 
 SCHEMA = "kg.deliver.v1"
@@ -68,6 +74,13 @@ REVIEW_FAILED = frozenset(
     {"failure", "timed_out", "action_required", "startup_failure"}
 )
 SHA = re.compile(r"[0-9a-f]{40}")
+# What delivery.py abandon-pr refuses on, read for the PR redeliver replaces.
+PR_GUARD_QUERY = (
+    "query($owner: String!, $name: String!, $number: Int!) {"
+    " repository(owner: $owner, name: $name) { pullRequest(number: $number) {"
+    " number state body labels(first: 100) { nodes { name } }"
+    " autoMergeRequest { enabledAt } mergeQueueEntry { id } } } }"
+)
 
 
 class DeliverError(Exception):
@@ -863,13 +876,53 @@ class Replacement:
     while it is still the published head.  Every step re-reads its facts, so a
     rerun resumes where the last one stopped.  (``delivery.py abandon-pr`` does
     not fit: it refuses a PR whose head moved, and closes before the
-    replacement exists.)
+    replacement exists.  Its other refusals are kept: see ``guard``.)
     """
 
     def __init__(self, delivery: Delivery, old_branch: str) -> None:
         self.d = delivery
         self.old = old_branch
         self.new_branch = ""
+        self.old_number = 0
+
+    def guard(self, repo: str) -> dict[str, Any]:
+        """Refuse to retire an old PR that is held or already scheduled to merge.
+
+        A hard hold lives on the PR (label or typed body block) and is cleared
+        only by ``delivery.py reconcile-holds``; closing the PR would drop it.
+        A PR with auto-merge or a merge-queue entry may merge under us.  Read
+        fresh before each step that retires something, as ``abandon-pr`` does.
+        """
+        owner, _, name = repo.partition("/")
+        out = must(
+            self.d.runner,
+            ["gh", "api", "graphql", "-f", f"query={PR_GUARD_QUERY}"]
+            + ["-f", f"owner={owner}", "-f", f"name={name}"]
+            + ["-F", f"number={self.old_number}"],
+            self.d.home,
+            "read the replaced PR",
+        ).stdout
+        node = json.loads(out)["data"]["repository"]["pullRequest"]
+        labels = tuple(str(n.get("name")) for n in node["labels"]["nodes"])
+        try:
+            holds = parse_body_holds(str(node.get("body") or ""))
+            holds |= pull_request_label_holds(SimpleNamespace(labels=labels))
+        except PolicyViolation as exc:
+            raise DeliverError(f"PR #{self.old_number}: {exc}") from exc
+        if holds and node.get("state") == "OPEN":
+            raise DeliverError(
+                f"PR #{self.old_number} carries a hard hold "
+                f"({', '.join(sorted(h.value for h in holds))}); replacing it would "
+                "drop the hold: clear it with `delivery.py reconcile-holds` first"
+            )
+        if node.get("autoMergeRequest") or node.get("mergeQueueEntry"):
+            raise DeliverError(
+                f"PR #{self.old_number} is scheduled to merge (auto-merge or merge "
+                "queue); dequeue it before replacing it"
+            )
+        if node.get("state") == "MERGED":
+            raise DeliverError(f"PR #{self.old_number} merged; nothing to replace")
+        return node
 
     def lane(self) -> dict[str, Any]:
         records = self.d.registry_records(self.old)
@@ -909,15 +962,18 @@ class Replacement:
             raise DeliverError(
                 f"PR #{pr['number']} is already merged; nothing to replace"
             )
-        d.before_claim = self.retire
+        self.old_number = int(pr["number"])
+        self.guard(repo)
+        d.before_claim = lambda: self.retire(repo)
         d.after_publish = lambda new: self.supersede(repo, new)
         return d.deliver()
 
-    def retire(self) -> dict[str, Any]:
+    def retire(self, repo: str) -> dict[str, Any]:
         """Abandon the replaced lane with the registry's own CAS facts."""
         record = self.lane()
         if record.get("status") == "abandoned":
             return record
+        self.guard(repo)  # the checks ran meanwhile; the PR may have moved on
         generation = record.get("claim_generation", 0)
         head = str(record.get("handed_back_sha") or "")
         if type(generation) is not int or generation < 0 or not SHA.fullmatch(head):
@@ -932,9 +988,10 @@ class Replacement:
 
     def supersede(self, repo: str, new: dict[str, Any]) -> None:
         """Close the replaced PR with a link to ``new``; drop its published branch."""
-        record = self.retire()  # a resumed run can start past the claim
+        record = self.retire(repo)  # a resumed run can start past the claim
         old = self.d.pull_request(repo, self.old)
         if old is not None and old.get("state") == "OPEN":
+            self.guard(repo)
             note = (
                 f"Superseded by #{new['number']} ({new.get('url')}): the review "
                 f"fixes were redelivered from `{self.new_branch}`; this PR's lane "

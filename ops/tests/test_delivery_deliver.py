@@ -70,6 +70,8 @@ class FakeWorld:
             "prs_by_branch", {}
         )
         self.remote_heads: dict[str, str] = state.get("remote_heads", {})
+        # Hold/queue facts of the replaced PR, one dict per read (last repeats).
+        self.pr_guard: list[dict[str, Any]] = list(state.get("pr_guard", []))
         self.published_pr: dict[str, Any] | None = state.get(
             "published_pr", {"number": 77, "state": "OPEN", "url": "u"}
         )
@@ -180,6 +182,25 @@ class FakeWorld:
             if cmd[1:3] == ["pr", "checks"]:
                 batch = self.checks.pop(0) if len(self.checks) > 1 else self.checks[0]
                 return ok(json.dumps(batch))
+            if cmd[1:3] == ["api", "graphql"]:
+                number = int(_value(cmd, "number=", prefix=True))
+                pr = next(
+                    p
+                    for p in sum(self.prs_by_branch.values(), [])
+                    if p["number"] == number
+                )
+                guard = self.pr_guard
+                extra = guard.pop(0) if len(guard) > 1 else (guard or [{}])[0]
+                node = {
+                    "number": number,
+                    "state": pr["state"],
+                    "body": "",
+                    "labels": {"nodes": []},
+                    "autoMergeRequest": None,
+                    "mergeQueueEntry": None,
+                    **extra,
+                }
+                return ok(json.dumps({"data": {"repository": {"pullRequest": node}}}))
             if cmd[1] == "api" and "/check-runs?" in cmd[-1]:
                 runs = self.review_runs
                 batch = runs.pop(0) if len(runs) > 1 else runs[0]
@@ -957,6 +978,10 @@ def test_a_branch_without_python_changes_skips_the_format_gate() -> None:
 
 OLD = "feat/old"
 PUBLISHED = "a" * 40
+_HOLDS_BLOCK = (
+    'body\n<!-- kg.delivery.holds.v1\n{"schema": "kg.delivery.holds.v1", '
+    '"holds": ["security"]}\n-->\n'
+)
 
 
 def _replacement_world(
@@ -997,7 +1022,9 @@ def _call(world: FakeWorld, *prefix: str) -> list[str] | None:
     return next((c for c in world.calls if c[: len(prefix)] == list(prefix)), None)
 
 
-def _value(call: list[str], flag: str) -> str:
+def _value(call: list[str], flag: str, prefix: bool = False) -> str:
+    if prefix:  # a `-F name=value` field
+        return next(a for a in call if a.startswith(flag)).removeprefix(flag)
     return call[call.index(flag) + 1]
 
 
@@ -1063,6 +1090,26 @@ def test_redeliver_keeps_an_old_remote_branch_that_moved_off_the_published_head(
         ({"old_records": []}, [], f"no registry lane for {OLD}"),
         ({"old_prs": []}, [], f"no PR for {OLD}"),
         ({}, ["--lane", "LANE-OLD"], "is the replaced lane's id"),
+        (
+            {"pr_guard": [{"labels": {"nodes": [{"name": "delivery-hold:p1"}]}}]},
+            [],
+            "PR #50 carries a hard hold (p1)",
+        ),
+        (
+            {"pr_guard": [{"body": _HOLDS_BLOCK}]},
+            [],
+            "PR #50 carries a hard hold (security)",
+        ),
+        (
+            {"pr_guard": [{"autoMergeRequest": {"enabledAt": "t"}}]},
+            [],
+            "PR #50 is scheduled to merge",
+        ),
+        (
+            {"pr_guard": [{"mergeQueueEntry": {"id": "q"}}]},
+            [],
+            "PR #50 is scheduled to merge",
+        ),
     ],
 )
 def test_redeliver_refuses_before_touching_anything(
@@ -1073,6 +1120,29 @@ def test_redeliver_refuses_before_touching_anything(
     assert code == 1
     assert message in result["error"]
     assert world.names() == []
+    assert _call(world, "gh", "pr", "close") is None
+    assert _call(world, "git", "push") is None
+
+
+def test_redeliver_rereads_the_old_pr_before_abandoning_its_lane() -> None:
+    """The checks can run for minutes; the old PR may get queued meanwhile."""
+    world = _replacement_world(pr_guard=[{}, {"mergeQueueEntry": {"id": "q"}}])
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 1, result
+    assert "PR #50 is scheduled to merge" in result["error"]
+    assert "resolve" not in world.names()
+    assert _call(world, "gh", "pr", "close") is None
+    graphql = [c for c in world.calls if c[1:3] == ["api", "graphql"]]
+    assert len(graphql) == 2
+
+
+def test_redeliver_rereads_the_old_pr_before_closing_it() -> None:
+    world = _replacement_world(
+        pr_guard=[{}, {}, {"labels": {"nodes": [{"name": "delivery-hold:p0"}]}}]
+    )
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 1, result
+    assert "PR #50 carries a hard hold (p0)" in result["error"]
     assert _call(world, "gh", "pr", "close") is None
     assert _call(world, "git", "push") is None
 
