@@ -10,6 +10,7 @@ from kg.admin_handlers import _resolve_admin_token, _sign_cookie, require_admin
 
 # ── _resolve_admin_token ───────────────────────────────────────────────────────
 
+
 def test_header_takes_priority_over_query_param():
     result = _resolve_admin_token(token="query-token", authorization="Bearer header-token")
     assert result == "header-token"
@@ -22,6 +23,7 @@ def test_query_param_used_when_no_header():
 
 def test_query_param_logs_deprecation_warning(caplog):
     import logging
+
     with caplog.at_level(logging.WARNING, logger="kg.admin_handlers"):
         _resolve_admin_token(token="query-token", authorization=None)
     assert "deprecated" in caplog.text.lower()
@@ -38,10 +40,91 @@ def test_invalid_bearer_prefix_falls_through_to_query_param():
 
 # ── require_admin ──────────────────────────────────────────────────────────────
 
-def test_require_admin_uses_hmac_compare_digest():
+
+def test_require_admin_uses_hmac_compare_digest_on_bytes():
+    # compare_digest(str, str) raises TypeError for non-ASCII input, so the
+    # constant-time comparison must run on UTF-8 bytes (#2062).
     with patch("kg.admin_handlers.hmac.compare_digest", wraps=hmac.compare_digest) as mock_cd:
         require_admin(None, admin_token="secret", authorization="Bearer secret")
-        mock_cd.assert_called_once_with("secret", "secret")
+        mock_cd.assert_called_once_with(b"secret", b"secret")
+
+
+# ── non-ASCII credentials fail as 403 / login error, never 500 (#2062) ────────
+
+_NON_ASCII = "pässwörd-密碼"
+
+
+def test_require_admin_non_ascii_bearer_raises_403():
+    with pytest.raises(HTTPException) as exc_info:
+        require_admin(None, admin_token="secret", authorization=f"Bearer {_NON_ASCII}")
+    assert exc_info.value.status_code == 403
+
+
+def test_require_admin_non_ascii_query_token_raises_403():
+    with pytest.raises(HTTPException) as exc_info:
+        require_admin(_NON_ASCII, admin_token="secret", authorization=None)
+    assert exc_info.value.status_code == 403
+
+
+def test_require_admin_non_ascii_cookie_signature_raises_403():
+    signed = _sign_cookie("secret")
+    expires_at, nonce, _sig = signed.split(".")
+    with pytest.raises(HTTPException) as exc_info:
+        require_admin(
+            None,
+            admin_token="secret",
+            authorization=None,
+            cookie_token=f"{expires_at}.{nonce}.{_NON_ASCII}",
+        )
+    assert exc_info.value.status_code == 403
+
+
+def test_require_admin_accepts_matching_non_ascii_admin_token():
+    assert require_admin(None, admin_token=_NON_ASCII, authorization=f"Bearer {_NON_ASCII}") is None
+
+
+def test_check_admin_auth_non_ascii_credentials_return_false():
+    from kg.admin_handlers import check_admin_auth
+
+    signed = _sign_cookie("secret")
+    expires_at, nonce, _sig = signed.split(".")
+
+    assert (
+        check_admin_auth(
+            token=None,
+            authorization=f"Bearer {_NON_ASCII}",
+            cookie_token=None,
+            admin_token="secret",
+        )
+        is False
+    )
+    assert (
+        check_admin_auth(
+            token=None,
+            authorization=None,
+            cookie_token=f"{expires_at}.{nonce}.{_NON_ASCII}",
+            admin_token="secret",
+        )
+        is False
+    )
+
+
+def test_admin_login_post_non_ascii_wrong_password_shows_error_page():
+    from kg.admin_handlers import admin_login_post
+
+    resp = admin_login_post(_NON_ASCII, admin_password="ascii-password", admin_token="secret")
+
+    assert resp.status_code == 200
+    assert "密碼錯誤" in resp.body.decode()
+
+
+def test_admin_login_post_accepts_matching_non_ascii_password():
+    from kg.admin_handlers import admin_login_post
+
+    resp = admin_login_post(_NON_ASCII, admin_password=_NON_ASCII, admin_token="secret")
+
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/admin"
 
 
 def test_require_admin_valid_header_passes():
@@ -79,6 +162,7 @@ def test_require_admin_resolved_none_does_not_crash():
 
 # ── cookie-based admin session ────────────────────────────────────────────────
 
+
 def test_resolve_admin_token_no_cookie_param_returns_none():
     """_resolve_admin_token no longer handles cookies; it should return None."""
     assert _resolve_admin_token(token=None, authorization=None) is None
@@ -114,6 +198,7 @@ def test_admin_ui_response_sets_signed_cookie():
     # Cookie value uses expiry-bound payload + signature; verify structure
     # by extracting the value and confirming require_admin accepts it.
     import re
+
     m = re.search(r"admin_session=([^;]+)", cookie_header)
     assert m is not None
     cookie_value = m.group(1)
