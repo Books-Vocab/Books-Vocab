@@ -287,6 +287,7 @@ def _snapshot_key(snapshot: PullRequestSnapshot) -> tuple[object, ...]:
         snapshot.state,
         snapshot.draft,
         snapshot.mergeable,
+        snapshot.conflicting,
         snapshot.base_branch,
         snapshot.title,
         snapshot.body,

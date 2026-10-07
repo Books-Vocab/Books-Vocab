@@ -302,6 +302,15 @@ def verify_abandoned_pr_lifecycle(
     )
 
 
+def _reanchorable(pull_request: PullRequestSnapshot) -> bool:
+    """MERGEABLE, or CONFLICTING (the state the controller routes to reanchor).
+
+    GitHub's UNKNOWN verdict is neither and stays refused.
+    """
+
+    return pull_request.mergeable or pull_request.conflicting
+
+
 def _eligible_merge_front(
     github: RecoveryGitHubPort,
     pull_request: PullRequestSnapshot,
@@ -312,7 +321,7 @@ def _eligible_merge_front(
         pull_request.state != "OPEN"
         or pull_request.base_branch != "main"
         or pull_request.draft
-        or not pull_request.mergeable
+        or not _reanchorable(pull_request)
     ):
         return False
     try:
@@ -381,8 +390,10 @@ def verify_reanchor_lifecycle(
         raise ReanchorRefused("reanchor requires a stale PR base")
     if candidate.draft:
         raise ReanchorRefused("reanchor refuses a draft PR")
-    if not candidate.mergeable:
-        raise ReanchorRefused("reanchor requires the PR to be mergeable")
+    if not _reanchorable(candidate):
+        raise ReanchorRefused(
+            "reanchor requires the PR to be mergeable or GitHub-conflicting"
+        )
     if pull_request_holds(candidate):
         raise ReanchorRefused("reanchor refuses a PR with an explicit hard hold")
     candidate_check = _required(github, candidate)
