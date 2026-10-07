@@ -53,6 +53,18 @@ expect "strict at watermark" 0 "ok strict: 0 findings, localized_calls 1 <= base
 lint "$FIX/watermark" --strict 0
 expect "strict over watermark" 1 "REGRESSION: localized_calls 1 > baseline 0"
 
+echo "── an extractor crash fails --strict closed (invalid UTF-8 in a .swift file), never reads as clean ──"
+mkdir -p "$TMP/crash"; cp -R "$FIX/clean/en.lproj" "$TMP/crash/en.lproj"
+printf '\xff\xfe\x00bad' >"$TMP/crash/Bad.swift"
+lint "$TMP/crash" --strict
+expect "extractor crash" 1 "key extractor failed; coverage unverified" \
+  "missing_key: <key extractor failed" "plural_missing: <key extractor failed"
+
+echo "── --strict fails with exit 2 when the baseline has no localized_calls= line ──"
+printf 'findings=0\n' >"$TMP/nowm.txt"
+rc=0; out="$(KG_I18N_SRC="$FIX/watermark" KG_I18N_BASELINE="$TMP/nowm.txt" ./ops/i18n_lint.sh --strict 2>&1)" || rc=$?
+expect "strict without watermark" 2 "no localized_calls= watermark"
+
 echo "── CI contract: every PR runs i18n_lint --strict, and .lproj diffs select it ──"
 grep -qF 'ui_quality_gate.sh --tier fast --execute --all-mechanisms' .github/workflows/ui-quality-gate.yml \
   && ok "ui-quality-gate workflow runs the fast tier on all mechanisms" \
@@ -61,6 +73,8 @@ rc=0; out="$(./ops/ui_quality_gate.sh --tier fast --all-mechanisms --dry-run 2>&
 expect "CI plan" 0 "ops/i18n_lint.sh --strict"
 rc=0; out="$(./ops/ui_quality_gate.sh --tier fast --dry-run --files ios/BooksAndVocab/en.lproj/Localizable.strings 2>&1)" || rc=$?
 expect ".lproj-only diff" 0 "static.i18n"
+rc=0; out="$(./ops/ui_quality_gate.sh --tier fast --dry-run --files ios/BooksAndVocab/en.lproj/Localizable.stringsdict 2>&1)" || rc=$?
+expect ".stringsdict-only diff" 0 "static.i18n"
 
 echo ""
 echo "i18n-lint: $pass passed, $fail failed"
