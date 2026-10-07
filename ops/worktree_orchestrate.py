@@ -1914,7 +1914,10 @@ def _cleanup_pending_retire_evidence(
 
     try:
         state = registry.load_state(registry._state_path(args))
-    except (OSError, ValueError):  # unreadable state is reported by the transition itself
+    except (
+        OSError,
+        ValueError,
+    ):  # unreadable state is reported by the transition itself
         return None, None
     records = [
         record
