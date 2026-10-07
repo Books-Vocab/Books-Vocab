@@ -206,9 +206,12 @@ def test_reconcile_propagates_real_fault_not_false_drift(tmp_path):
 
 
 def test_key_exists_reraises_real_fault(tmp_path):
+    """The original S3 fault must surface unchanged. `raises(Exception)` would
+    also accept a TypeError/AttributeError from a broken `_is_not_found`."""
     s3 = _stub_s3(fault_keys={"k"})
-    with pytest.raises(Exception):
+    with pytest.raises(_S3Fault) as excinfo:
         backfill._key_exists(s3, "b", "k")
+    assert excinfo.value.response["Error"]["Code"] == "AccessDenied"
 
 
 def test_audioformat_m4a_path(tmp_path):
