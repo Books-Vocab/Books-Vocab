@@ -8,7 +8,7 @@ import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from .candidates import _CandidatesMixin, claimed_pending_judge
 from .filelock import path_write_lock
@@ -397,23 +397,37 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         another process (#2086). Costs one ``stat`` per file when nothing
         changed. Local changes not yet flushed are kept. Returns True when
         anything was re-read.
+
+        Never raises: this runs on every request, so a file that is unreadable
+        (corrupt, no usable ``.bak``) or a failure while adopting it keeps the
+        cached view being served, with a warning, instead of failing the request.
         """
         refreshed = False
         if self._disk_signature(self.links_path) != self._links_disk_sig:
-            with self._links_write_lock, path_write_lock(self.links_path):
-                sig = self._disk_signature(self.links_path)
-                if sig != self._links_disk_sig:
-                    rows = self._read_json_list(self.links_path) if sig is not None else []
-                    self._adopt_link_rows(rows, sig)
-                    refreshed = True
+            refreshed |= self._refresh_file(
+                self.links_path, self._links_write_lock, self._adopt_link_rows, "_links_disk_sig"
+            )
         if self.blocked_path is not None and self._disk_signature(self.blocked_path) != self._blocked_disk_sig:
-            with self._blocked_write_lock, path_write_lock(self.blocked_path):
-                sig = self._disk_signature(self.blocked_path)
-                if sig != self._blocked_disk_sig:
-                    rows = self._read_json_list(self.blocked_path) if sig is not None else []
-                    self._adopt_blocked_rows(rows, sig)
-                    refreshed = True
+            refreshed |= self._refresh_file(
+                self.blocked_path, self._blocked_write_lock, self._adopt_blocked_rows, "_blocked_disk_sig"
+            )
         return refreshed
+
+    def _refresh_file(self, path: Path, write_lock: threading.Lock, adopt: Any, sig_attr: str) -> bool:
+        try:
+            with write_lock, path_write_lock(path):
+                sig = self._disk_signature(path)
+                if sig == getattr(self, sig_attr):
+                    return False
+                rows = self._try_read_json_list(path) if sig is not None else []
+                if rows is None:
+                    logger.warning("graph: %s is unreadable; keeping the cached view", path)
+                    return False
+                adopt(rows, sig)
+                return True
+        except Exception:  # noqa: BLE001 -- a refresh must never fail the request
+            logger.warning("graph: refresh of %s failed; keeping the cached view", path, exc_info=True)
+            return False
 
     # ------------------------------------------------------------------
     # Cleanup
@@ -422,6 +436,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
     def deprecate_links_for(self, card_id: str, *, source: str = "auto") -> int:
         """Deprecate all active links involving a card. Returns count of deprecated links."""
         affected: list[GraphLink] = []
+        self.refresh_if_stale()
         with self._lock:
             link_ids = self._from_index.get(card_id, set()) | self._to_index.get(card_id, set())
             for lid in list(link_ids):
@@ -456,6 +471,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
     def restore_links_for(self, card_id: str, cards_store, *, source: str = "auto") -> int:
         """Restore deprecated links for a card, only if the other end is alive."""
         affected: list[GraphLink] = []
+        self.refresh_if_stale()
         with self._lock:
             link_ids = self._from_index.get(card_id, set()) | self._to_index.get(card_id, set())
             for lid in list(link_ids):

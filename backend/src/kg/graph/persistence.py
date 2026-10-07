@@ -53,7 +53,15 @@ signature -- or carries a snapshot taken before this instance re-synced -- it
 replays only its own pending changes onto the current file, and the result is
 adopted back into memory. A link deleted by another writer stays deleted, even
 when this instance edited it concurrently. ``GraphStore.refresh_if_stale``
-applies the same adoption on read so a foreign write also becomes visible.
+applies the same adoption on read so a foreign write also becomes visible, and
+the single-link mutators call it first so they edit the other writer's row.
+Adoption keeps the "was persisted before" fact of every pending link, so an
+in-flight edit of a link the other writer deleted is never mistaken for a link
+created here.
+
+Known limit: replay is row-level last-writer-wins. If another process changes
+the *same* link between a mutator's re-sync and its flush (a millisecond
+window), this instance's whole row replaces the foreign one.
 """
 
 from __future__ import annotations
@@ -212,10 +220,26 @@ class _PersistenceMixin:
 
     # Adoption of another writer's state -- caller holds the file's write
     # locks; pending (not yet persisted) local changes are kept.
+    def _usable_link_rows(self, rows: list[Any]) -> list[Any]:
+        """Rows that parse; a malformed foreign row is skipped (it stays on disk)."""
+        usable: list[Any] = []
+        for row in rows:
+            try:
+                self._parse_link_rows([row])
+            except (ValueError, KeyError, TypeError):
+                logger.warning("graph: skipping unparseable link row in %s: %r", self.links_path, row)
+                continue
+            usable.append(row)
+        return usable
+
     def _adopt_link_rows(self, rows: list[Any], sig: DiskSignature | None) -> None:
-        disk_links = self._parse_link_rows(rows)[0]
+        disk_links = self._parse_link_rows(self._usable_link_rows(rows))[0]
         with self._lock:
             pending = self._pending_link_ids
+            # A pending link that was persisted before keeps that fact: if the
+            # other writer deleted it, an in-flight flush of our edit must not
+            # mistake it for a link created here and write it back.
+            previously_synced = self._synced_link_ids & pending.keys()
             for link_id in [lid for lid in self._links if lid not in pending and lid not in disk_links]:
                 del self._links[link_id]
             for link_id, link in disk_links.items():
@@ -230,7 +254,7 @@ class _PersistenceMixin:
             # Snapshots taken before this point carry the pre-adoption view.
             self._links_adopted_sequence = getattr(self, "_links_snapshot_sequence", 0)
         self._links_disk_sig = sig
-        self._synced_link_ids = {row["id"] for row in rows if isinstance(row, dict) and "id" in row}
+        self._synced_link_ids = {row["id"] for row in rows if isinstance(row, dict) and "id" in row} | previously_synced
 
     def _adopt_blocked_rows(self, rows: list[Any], sig: DiskSignature | None) -> None:
         disk_pairs = self._parse_blocked_rows(rows)
@@ -266,23 +290,37 @@ class _PersistenceMixin:
         _fsync_dir(path.parent)
 
     @staticmethod
-    def _read_json_list(path: Path) -> list:
-        """Read a JSON array from disk, tolerating absence / corruption.
+    def _try_read_json_list(path: Path) -> list | None:
+        """Read a JSON array; ``[]`` when absent, ``None`` when present but unusable.
 
-        Returns ``[]`` for a missing file. A corrupt file falls back to its
-        ``.bak`` sibling; if that also fails, returns ``[]`` rather than
-        raising, so a single bad write cannot wedge every future flush.
+        A corrupt file falls back to its ``.bak`` sibling. ``None`` (the file and
+        its backup both exist but neither parses) lets callers tell "unreadable"
+        from "empty" -- adopting an unreadable file as an empty graph would
+        silently drop every cached link (#2086).
         """
+        found = False
         for candidate in (path, path.with_suffix(".json.bak")):
             if not candidate.exists():
                 continue
+            found = True
             try:
                 data = json.loads(candidate.read_text())
                 if isinstance(data, list):
                     return data
             except (json.JSONDecodeError, OSError, UnicodeDecodeError):
                 logger.warning("graph: corrupt JSON at %s, trying fallback", candidate)
-        return []
+        return None if found else []
+
+    @classmethod
+    def _read_json_list(cls, path: Path) -> list:
+        """Read a JSON array from disk, tolerating absence / corruption.
+
+        Returns ``[]`` for a missing file. A corrupt file falls back to its
+        ``.bak`` sibling; if that also fails, returns ``[]`` rather than
+        raising, so a single bad write cannot wedge every future flush.
+        """
+        rows = cls._try_read_json_list(path)
+        return [] if rows is None else rows
 
     # Snapshot helpers -- call inside lock, return serialisable data
     def _links_to_serializable(self) -> list[dict]:
@@ -323,9 +361,12 @@ class _PersistenceMixin:
             if sequence is not None and sequence < getattr(self, "_last_flushed_links_snapshot_sequence", 0):
                 return
             disk_sig = self._disk_signature(self.links_path)
-            disk_rows = self._read_json_list(self.links_path)
-            stale = disk_sig != self._links_disk_sig or (
-                sequence is not None and sequence <= self._links_adopted_sequence
+            read_rows = self._try_read_json_list(self.links_path)
+            # An unreadable file has no foreign state to protect: regenerate it
+            # from this instance's full view rather than replaying onto nothing.
+            disk_rows = read_rows or []
+            stale = read_rows is not None and (
+                disk_sig != self._links_disk_sig or (sequence is not None and sequence <= self._links_adopted_sequence)
             )
             with self._lock:
                 covered = _covered_pending(self._pending_link_ids, sequence)
@@ -408,10 +449,13 @@ class _PersistenceMixin:
         with self._blocked_write_lock, path_write_lock(self.blocked_path):
             sequence = getattr(snapshot, "sequence", None)
             disk_sig = self._disk_signature(self.blocked_path)
-            disk_pairs = self._parse_blocked_rows(self._read_json_list(self.blocked_path))
+            read_rows = self._try_read_json_list(self.blocked_path)
+            disk_pairs = self._parse_blocked_rows(read_rows or [])
             snapshot_pairs: set[tuple[str, str]] = {tuple(p) for p in snapshot}  # type: ignore[misc]
-            stale = disk_sig != self._blocked_disk_sig or (
-                sequence is not None and sequence <= self._blocked_adopted_sequence
+            # Unreadable file: regenerate from our full view (see _flush_links).
+            stale = read_rows is not None and (
+                disk_sig != self._blocked_disk_sig
+                or (sequence is not None and sequence <= self._blocked_adopted_sequence)
             )
             with self._lock:
                 covered = _covered_pending(self._pending_blocked_pairs, sequence)

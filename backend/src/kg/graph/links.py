@@ -40,6 +40,7 @@ class _LinksMixin:
     # Helpers supplied by other mixins / GraphStore.
     @staticmethod
     def _disk_signature(path: Path | None) -> tuple[int, int, int] | None: ...  # noqa: D102
+    def refresh_if_stale(self) -> bool: ...  # noqa: D102
     def _touch_links(self, link_ids: Any) -> None: ...  # noqa: D102
     def _touch_blocked(self, pairs: Any) -> None: ...  # noqa: D102
     def _index_link(self, link: GraphLink) -> None: ...  # noqa: D102
@@ -452,6 +453,7 @@ class _LinksMixin:
     def update_link(self, link_id: str, *, source: str = "auto", **attrs: Any) -> GraphLink:
         """Update attributes of an existing link and persist."""
         ALLOWED = {"status", "kind", "confidence", "reason"}
+        self.refresh_if_stale()  # edit the other writer's row, not a stale copy (#2086)
         with self._lock:
             lk = self._links.get(link_id)
             if lk is None:
@@ -485,6 +487,7 @@ class _LinksMixin:
 
     def hide_link(self, link_id: str, *, source: str = "auto") -> None:
         """Set link status to hidden. Raises KeyError if not found."""
+        self.refresh_if_stale()
         with self._lock:
             lk = self._links.get(link_id)
             if lk is None:
@@ -511,6 +514,7 @@ class _LinksMixin:
 
     def unhide_link(self, link_id: str, *, source: str = "auto") -> None:
         """Set link status back to active. Raises KeyError if not found."""
+        self.refresh_if_stale()
         with self._lock:
             lk = self._links.get(link_id)
             if lk is None:
@@ -537,6 +541,7 @@ class _LinksMixin:
 
     def hard_delete_link(self, link_id: str, *, source: str = "auto") -> tuple[str, str]:
         """Delete a link and add the pair to blocked list. Returns (from_id, to_id)."""
+        self.refresh_if_stale()
         with self._lock:
             lk = self._links.get(link_id)
             if lk is None:
