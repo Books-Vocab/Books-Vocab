@@ -23,6 +23,80 @@ enum AddLinkLocalTargetState: Equatable {
     case source
 }
 
+/// Injectable time and identity sources for the creation flow.
+///
+/// Production uses `.live`; tests inject a recording sleeper (no real 500 ms
+/// waits) and a deterministic key factory so idempotency-key policy is
+/// observable.
+struct AddLinkCreationEnvironment: Sendable {
+    var pollIntervalNanoseconds: UInt64 = 500_000_000
+    var sleep: @Sendable (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) }
+    var makeIdempotencyKey: @Sendable () -> String = { UUID().uuidString.lowercased() }
+
+    static let live = AddLinkCreationEnvironment()
+}
+
+/// What a retry of a failed/interrupted creation must send.
+///
+/// The backend dedupes on `(user_id, idempotency_key)` and a failed operation
+/// is terminal, so reusing a key after a terminal failure would only replay the
+/// old failure. The key is reused only when the POST never got an answer
+/// (network-layer resend); an operation whose polling merely lost transport is
+/// resumed by id instead of being re-created.
+enum AddLinkCreationRetryPlan: Equatable {
+    /// POST again with a brand-new key (business retry after terminal failure).
+    case fresh
+    /// POST again with the same key (the first POST was never acknowledged).
+    case resendWithSameKey(String)
+    /// Keep polling the existing operation (it is not known to be terminal).
+    case resumePolling(operationId: String)
+
+    static func make(
+        operationId: String?,
+        operationTerminal: Bool,
+        idempotencyKey: String
+    ) -> AddLinkCreationRetryPlan {
+        guard let operationId else { return .resendWithSameKey(idempotencyKey) }
+        return operationTerminal ? .fresh : .resumePolling(operationId: operationId)
+    }
+}
+
+/// Collaborators needed to (re)launch a creation outside the sheet that began it.
+struct AddLinkCreationServices {
+    let operationService: any AddLinkOperationServing
+    let syncService: any VocabularySyncServing
+    let container: ModelContainer
+}
+
+/// Everything a long-lived owner needs to retry or resume a job.
+struct AddLinkCreationContext {
+    let services: AddLinkCreationServices
+    let sourceEntry: VocabularyEntry
+}
+
+/// Immutable snapshot of a coordinator's durable-relevant state.
+struct AddLinkCreationJobState: Equatable {
+    var jobKey: String
+    var word: String
+    var sourceCardID: String
+    var notebookId: String
+    var idempotencyKey: String
+    var operationId: String?
+    var operationTerminal: Bool
+    var phase: AddLinkCreationPhase
+    var message: String?
+}
+
+@MainActor
+protocol AddLinkCreationObserving: AnyObject {
+    /// Called when phase, operation identity, or message changes (not per
+    /// progress tick; observers read `steps`/`fraction` from the coordinator).
+    func creationDidChange(_ coordinator: AddLinkCreationCoordinator)
+    /// True when another coordinator already runs this job; a second start would
+    /// race the first one for the same card.
+    func creationIsActive(jobKey: String, excluding coordinator: AddLinkCreationCoordinator) -> Bool
+}
+
 /// Coordinates the client half of missing-target Add Link.
 ///
 /// It never creates a local VocabularyEntry. The server operation is
@@ -35,10 +109,45 @@ final class AddLinkCreationCoordinator {
     private(set) var fraction: Double = 0
     private(set) var operationId: String?
     private(set) var message: String?
+    private(set) var idempotencyKey: String = ""
+    private(set) var operationTerminal = false
+    private(set) var context: AddLinkCreationContext?
+    private(set) var jobKey: String?
+    private(set) var targetWord: String = ""
 
+    @ObservationIgnored weak var observer: (any AddLinkCreationObserving)?
+    private let environment: AddLinkCreationEnvironment
     private var generation = 0
     private var lastSequence = -1
     private var pollingTask: Task<Void, Never>?
+
+    init(
+        environment: AddLinkCreationEnvironment = .live,
+        observer: (any AddLinkCreationObserving)? = nil
+    ) {
+        self.environment = environment
+        self.observer = observer
+    }
+
+    var jobState: AddLinkCreationJobState? {
+        guard let jobKey, let context, let sourceCardID = context.sourceEntry.kgCardId else { return nil }
+        return AddLinkCreationJobState(
+            jobKey: jobKey,
+            word: targetWord,
+            sourceCardID: sourceCardID,
+            notebookId: context.sourceEntry.notebookId,
+            idempotencyKey: idempotencyKey,
+            operationId: operationId,
+            operationTerminal: operationTerminal,
+            phase: phase,
+            message: message
+        )
+    }
+
+    /// Stable identity of "this source card gains a link to this word".
+    nonisolated static func jobKey(sourceCardID: String, word: String) -> String {
+        "\(sourceCardID)|\(normalizeWord(word))"
+    }
 
     nonisolated static func localTargetState(
         query: String,
@@ -62,7 +171,7 @@ final class AddLinkCreationCoordinator {
         return .active
     }
 
-    nonisolated private static func normalizeWord(_ word: String) -> String {
+    nonisolated static func normalizeWord(_ word: String) -> String {
         word.trimmingCharacters(in: .whitespacesAndNewlines)
             .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
     }
@@ -75,11 +184,13 @@ final class AddLinkCreationCoordinator {
         syncService: any VocabularySyncServing,
         container: ModelContainer
     ) {
+        // Capture the retry plan of the attempt being replaced before cancel()
+        // can touch its state.
+        let previousPlan = pendingRetryPlan(for: sourceEntry, word: word)
         cancel()
         let trimmedWord = word.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedWord.isEmpty else {
-            phase = .blocked
-            message = L10n.string("找不到符合的單字")
+            block(message: L10n.string("找不到符合的單字"))
             return
         }
 
@@ -87,62 +198,50 @@ final class AddLinkCreationCoordinator {
         case .missing:
             break
         case .pending, .failed:
-            phase = .blocked
-            message = L10n.string("此單字尚未同步，無法建立連結")
+            block(message: L10n.string("此單字尚未同步，無法建立連結"))
             return
         case .archived:
-            phase = .blocked
-            message = L10n.string("封存")
+            block(message: L10n.string("封存"))
             return
         case .active:
-            phase = .blocked
-            message = L10n.string("已建立")
+            block(message: L10n.string("已建立"))
             return
         case .source:
-            phase = .blocked
-            message = L10n.string("新增連結失敗")
+            block(message: L10n.string("新增連結失敗"))
             return
         }
 
-        guard let sourceCardID = sourceEntry.kgCardId, !sourceCardID.isEmpty else {
-            phase = .blocked
-            message = L10n.string("此單字尚未同步，無法建立連結")
-            return
-        }
-
-        generation += 1
-        let currentGeneration = generation
-        operationId = nil
-        lastSequence = -1
-        message = nil
-        steps = Self.initialSteps()
-        fraction = 0
-        phase = .running
-
-        let request = KGAddLinkOperationRequest(
-            fromId: sourceCardID,
-            targetWord: trimmedWord,
-            translation: nil,
-            context: sourceEntry.context,
-            source: Self.source(for: sourceEntry),
-            sourceLang: sourceEntry.sourceLang,
-            targetLang: sourceEntry.targetLang
-        )
-        let idempotencyKey = UUID().uuidString.lowercased()
-
-        pollingTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            await self.run(
-                request: request,
-                notebookId: sourceEntry.notebookId,
-                idempotencyKey: idempotencyKey,
+        launch(
+            word: trimmedWord,
+            sourceEntry: sourceEntry,
+            services: AddLinkCreationServices(
                 operationService: operationService,
                 syncService: syncService,
-                container: container,
-                generation: currentGeneration
-            )
-            if self.generation == currentGeneration { self.pollingTask = nil }
-        }
+                container: container
+            ),
+            plan: previousPlan
+        )
+    }
+
+    /// Relaunches a job outside the sheet that began it (retry from the card, or
+    /// resume after an app kill). Skips the local-target guard: the caller
+    /// already knows this word is a known job, and the server resolves an
+    /// already-existing card idempotently.
+    func relaunch(
+        word: String,
+        sourceEntry: VocabularyEntry,
+        services: AddLinkCreationServices,
+        plan: AddLinkCreationRetryPlan,
+        idempotencyKey: String? = nil
+    ) {
+        cancel()
+        launch(
+            word: word.trimmingCharacters(in: .whitespacesAndNewlines),
+            sourceEntry: sourceEntry,
+            services: services,
+            plan: plan,
+            forcedKey: idempotencyKey
+        )
     }
 
     func cancel() {
@@ -150,31 +249,130 @@ final class AddLinkCreationCoordinator {
         pollingTask?.cancel()
         pollingTask = nil
         if phase == .running {
-            phase = .cancelled
-            message = nil
+            transition(.cancelled, message: nil)
         }
+    }
+
+    private func block(message: String) {
+        transition(.blocked, message: message)
+    }
+
+    /// Plan for a retry of the attempt this coordinator last ran for the same
+    /// job. Anything else (first attempt, different word, previous attempt
+    /// succeeded) starts clean with a new key.
+    private func pendingRetryPlan(for sourceEntry: VocabularyEntry, word: String) -> AddLinkCreationRetryPlan {
+        guard phase == .failed,
+              let sourceCardID = sourceEntry.kgCardId,
+              jobKey == Self.jobKey(sourceCardID: sourceCardID, word: word)
+        else { return .fresh }
+        return AddLinkCreationRetryPlan.make(
+            operationId: operationId,
+            operationTerminal: operationTerminal,
+            idempotencyKey: idempotencyKey
+        )
+    }
+
+    private func launch(
+        word: String,
+        sourceEntry: VocabularyEntry,
+        services: AddLinkCreationServices,
+        plan: AddLinkCreationRetryPlan,
+        forcedKey: String? = nil
+    ) {
+        guard let sourceCardID = sourceEntry.kgCardId, !sourceCardID.isEmpty else {
+            block(message: L10n.string("此單字尚未同步，無法建立連結"))
+            return
+        }
+        let key = Self.jobKey(sourceCardID: sourceCardID, word: word)
+        if observer?.creationIsActive(jobKey: key, excluding: self) == true {
+            block(message: L10n.string("addLink.creation.alreadyRunning"))
+            return
+        }
+
+        generation += 1
+        let currentGeneration = generation
+        jobKey = key
+        targetWord = word
+        context = AddLinkCreationContext(services: services, sourceEntry: sourceEntry)
+        lastSequence = -1
+        steps = Self.initialSteps()
+        fraction = 0
+        operationTerminal = false
+
+        let sendPlan: SendPlan
+        switch plan {
+        case .fresh:
+            let fresh = environment.makeIdempotencyKey()
+            idempotencyKey = fresh
+            operationId = nil
+            sendPlan = .post(key: fresh)
+        case .resendWithSameKey(let sameKey):
+            idempotencyKey = sameKey
+            operationId = nil
+            sendPlan = .post(key: sameKey)
+        case .resumePolling(let existingOperationId):
+            idempotencyKey = forcedKey ?? idempotencyKey
+            operationId = existingOperationId
+            sendPlan = .poll(operationId: existingOperationId)
+        }
+        transition(.running, message: nil)
+
+        let request = KGAddLinkOperationRequest(
+            fromId: sourceCardID,
+            targetWord: word,
+            translation: nil,
+            context: sourceEntry.context,
+            source: Self.source(for: sourceEntry),
+            sourceLang: sourceEntry.sourceLang,
+            targetLang: sourceEntry.targetLang
+        )
+
+        pollingTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.run(
+                request: request,
+                notebookId: sourceEntry.notebookId,
+                sendPlan: sendPlan,
+                services: services,
+                generation: currentGeneration
+            )
+            if self.generation == currentGeneration { self.pollingTask = nil }
+        }
+    }
+
+    private enum SendPlan {
+        case post(key: String)
+        case poll(operationId: String)
     }
 
     private func run(
         request: KGAddLinkOperationRequest,
         notebookId: String,
-        idempotencyKey: String,
-        operationService: any AddLinkOperationServing,
-        syncService: any VocabularySyncServing,
-        container: ModelContainer,
+        sendPlan: SendPlan,
+        services: AddLinkCreationServices,
         generation: Int
     ) async {
+        let operationService = services.operationService
         do {
-            let first = try await operationService.startAddLinkOperation(
-                request: request, notebookId: notebookId, idempotencyKey: idempotencyKey
-            )
+            let first: KGAddLinkOperationStatus
+            switch sendPlan {
+            case .post(let key):
+                first = try await operationService.startAddLinkOperation(
+                    request: request, notebookId: notebookId, idempotencyKey: key
+                )
+            case .poll(let existingOperationId):
+                first = try await operationService.fetchAddLinkOperation(operationId: existingOperationId)
+            }
             guard isCurrent(generation) else { return }
+            // The server acknowledged: from here on `operationId` identifies the
+            // job, and the key must never be reused for a business retry.
             operationId = first.operationId
+            publish()
             apply(first, generation: generation)
 
             var current = first
             while !current.isTerminal {
-                try await Task.sleep(nanoseconds: 500_000_000)
+                try await environment.sleep(environment.pollIntervalNanoseconds)
                 try Task.checkCancellation()
                 current = try await operationService.fetchAddLinkOperation(operationId: first.operationId)
                 guard isCurrent(generation) else { return }
@@ -185,21 +383,34 @@ final class AddLinkCreationCoordinator {
             switch current.status {
             case "succeeded", "succeeded_with_warnings":
                 await projectLocally(
-                    status: current, syncService: syncService, container: container,
+                    status: current, syncService: services.syncService, container: services.container,
                     notebookId: notebookId, generation: generation
                 )
             case "failed", "interrupted":
+                operationTerminal = true
                 finishBackendFailure(current, generation: generation)
             default:
+                operationTerminal = true
                 fail(generation: generation, message: L10n.string("建立失敗"))
             }
         } catch is CancellationError {
             guard self.generation == generation else { return }
-            phase = .cancelled
-            message = nil
+            transition(.cancelled, message: nil)
         } catch {
             fail(generation: generation, message: Self.userMessage(for: error))
         }
+    }
+
+    /// Single place that moves the phase, so observers (the durable hub) never
+    /// miss a transition.
+    private func transition(_ newPhase: AddLinkCreationPhase, message newMessage: String?) {
+        phase = newPhase
+        message = newMessage
+        publish()
+    }
+
+    private func publish() {
+        observer?.creationDidChange(self)
     }
 
     private func projectLocally(
@@ -242,24 +453,24 @@ final class AddLinkCreationCoordinator {
                     ? L10n.format("同步 %@ 筆", String(outcome.changedEntryCount))
                     : L10n.string("已是最新")
             }
-            phase = status.completedWithWarnings ? .succeededWithWarnings : .succeeded
-            message = status.completedWithWarnings
-                ? L10n.string("部分項目未成功同步，可直接再次重試。")
-                : L10n.string("同步完成")
             recomputeFraction(forceTerminal: true)
+            transition(
+                status.completedWithWarnings ? .succeededWithWarnings : .succeeded,
+                message: status.completedWithWarnings
+                    ? L10n.string("部分項目未成功同步，可直接再次重試。")
+                    : L10n.string("同步完成")
+            )
         } catch is CancellationError {
             guard self.generation == generation else { return }
-            phase = .cancelled
-            message = nil
+            transition(.cancelled, message: nil)
         } catch {
             guard isCurrent(generation) else { return }
             mutateStep("local_projection") { step in
                 step.status = .error
                 step.detail = L10n.string("同步失敗")
             }
-            phase = .succeededWithWarnings
-            message = L10n.string("部分項目未成功同步，可直接再次重試。")
             recomputeFraction(forceTerminal: true)
+            transition(.succeededWithWarnings, message: L10n.string("部分項目未成功同步，可直接再次重試。"))
         }
     }
 
@@ -290,8 +501,7 @@ final class AddLinkCreationCoordinator {
 
     private func fail(generation: Int, message: String) {
         guard isCurrent(generation) else { return }
-        phase = .failed
-        self.message = message
+        transition(.failed, message: message)
     }
 
     private func mutateStep(_ id: String, _ mutation: (inout PipelineStep) -> Void) {

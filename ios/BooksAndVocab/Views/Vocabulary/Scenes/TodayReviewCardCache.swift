@@ -80,7 +80,7 @@ struct TodayReviewCardCache {
             CardPresentation(entry: entry)
         }
         let compactGroups = card.activeLinkGroups.map { fullGroup in
-            let shuffled = fullGroup.shuffled()
+            let shuffled = fullGroup.shuffled().pendingFirst()
             let limited = shuffled.limited(to: 2)
             return TodayReviewPresenterState.LinkGroup(
                 id: fullGroup.id,

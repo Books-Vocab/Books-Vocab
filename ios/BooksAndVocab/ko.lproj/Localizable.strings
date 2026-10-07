@@ -1295,3 +1295,9 @@
 "notebookSettings.serverUnsupported" = "서버가 아직 단어장 설정을 지원하지 않습니다";
 "notebookSettings.retry" = "재시도";
 "kgVocab.row.selectMultipleAction" = "여러 개 선택";
+
+"addLink.creation.alreadyRunning" = "이 단어는 이미 생성 중입니다.";
+"addLink.sourceWord" = "원본 단어: %@";
+"todayReview.link.pending.creating" = "생성 중…";
+"todayReview.link.pending.hint" = "이 단어 카드를 백그라운드에서 만들고 있습니다. 완료되면 자동으로 일반 링크로 바뀌므로 닫고 복습을 계속해도 됩니다.";
+"todayReview.link.pending.failed" = "이 링크를 만들지 못했습니다. 다시 시도하거나 삭제할 수 있습니다.";

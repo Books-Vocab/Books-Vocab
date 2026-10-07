@@ -72,7 +72,10 @@ struct TodayReviewView: View {
     @Environment(\.reviewProbeDriver) private var reviewProbeDriver
 
     @State private var isHelpPresented = false
-    @State private var showAddLink = false
+    // Frozen at tap time: the sheet keeps linking the card it was opened on even
+    // if the queue moves underneath it.
+    @State private var addLinkRequest: AddLinkSheetRequest?
+    @State private var pendingLinkDetail: PendingLinkDetailRequest?
     @State private var showLayoutEditor = false
     @State private var explainSheetItem: CollocationExplainItem? = nil
     #if targetEnvironment(macCatalyst)
@@ -82,6 +85,9 @@ struct TodayReviewView: View {
     #endif
 
     private let allEntries: [VocabularyEntry]
+    // Long-lived owner of link creations; read here so pending items re-render
+    // and cached cards rebuild when a job changes state.
+    private let creationHub: AddLinkCreationHub
     let onClose: () -> Void
 
     init(
@@ -90,6 +96,9 @@ struct TodayReviewView: View {
         currentUserID: String?,
         onClose: @escaping () -> Void
     ) {
+        // Touch the hub before the state prewarms cards so restored pending
+        // creations are already in the projection when the first card is built.
+        creationHub = AddLinkCreationHub.shared
         _state = State(initialValue: TodayReviewState(
             entries: entries,
             allEntries: allEntries,
@@ -130,8 +139,24 @@ struct TodayReviewView: View {
             onRemembered: {
                 perform(.remembered)
             },
-            onLinkTap: state.handleLinkTap,
-            onAddLink: { showAddLink = true },
+            onLinkTap: { link in
+                if link.isPendingCreation {
+                    pendingLinkDetail = PendingLinkDetailRequest(link: link)
+                } else {
+                    state.handleLinkTap(link)
+                }
+            },
+            onAddLink: {
+                guard let entry = state.currentEntry else { return }
+                // Autoplay would advance the card under the sheet; pause first
+                // and leave it paused afterwards (same contract as the layout editor).
+                state.pauseAutoPlayForModalInterruption()
+                addLinkRequest = ReviewLinkEntryResolver.addLinkRequest(
+                    sourceEntry: entry,
+                    sessionEntries: allEntries,
+                    context: modelContext
+                )
+            },
             onToggleAutoPlay: { perform(.toggleAutoplay) },
             onToggleAutoPlayPause: { perform(.toggleAutoplayPause) },
             onChangeAutoPlaySpeed: { perform(.changeAutoplaySpeed) },
@@ -178,6 +203,26 @@ struct TodayReviewView: View {
             )
         }
         .task {
+            // Links being created when the app last died are re-attached here:
+            // polled by operation id (or re-sent with the same key), then
+            // projected locally. Idempotent for jobs that already have a coordinator.
+            guard let operationService = kgService as? any AddLinkOperationServing else { return }
+            creationHub.resume(services: AddLinkCreationServices(
+                operationService: operationService,
+                syncService: kgService,
+                container: modelContext.container
+            ))
+        }
+        .onChange(of: creationHub.revision) { _, _ in
+            // A pending link appeared, failed, or turned into a real one (sheet
+            // open or not): rebuild only the affected source cards.
+            let dirty = creationHub.takeDirtySourceCardIDs()
+            guard !dirty.isEmpty else { return }
+            for entry in state.queue where entry.kgCardId.map(dirty.contains) == true {
+                state.rebuildCacheForEntry(entry)
+            }
+        }
+        .task {
             // probe 迴圈讀 reference 型 state（永遠新鮮）；fling 由 presenter
             // 註冊的 handler 走真實評分路徑。driver.run 對重複觸發 idempotent。
             guard let reviewProbeDriver else { return }
@@ -189,11 +234,15 @@ struct TodayReviewView: View {
         .toastSheet(item: $state.tappedLink) { link in
             LinkReasonSheet(
                 link: link,
-                onNavigate: { state.navigateToLinkedCard(link: link) },
+                onNavigate: { navigateToLinkedCard(link) },
                 onHide: {
                     guard let entry = state.currentEntry else { return }
                     let notebookId = entry.notebookId
-                    let peer = state.linkedEntryLookup[link.cardId]
+                    let peer = ReviewLinkEntryResolver.entry(
+                        forCardID: link.cardId,
+                        snapshot: state.linkedEntryLookup,
+                        context: modelContext
+                    )
                     state.hideLink(link)
                     Task {
                         do {
@@ -210,14 +259,16 @@ struct TodayReviewView: View {
             )
             .appSheet(.medium)
         }
-        .toastSheet(isPresented: $showAddLink) {
-            if let entry = state.currentEntry {
-                AddLinkSheet(
-                    sourceEntry: entry,
-                    allEntries: allEntries,
-                    onLinked: { state.rebuildCacheForEntry(entry) }
-                )
-            }
+        .toastSheet(item: $addLinkRequest) { request in
+            AddLinkSheet(
+                sourceEntry: request.sourceEntry,
+                allEntries: request.allEntries,
+                onLinked: { state.rebuildCacheForEntry(request.sourceEntry) }
+            )
+        }
+        .toastSheet(item: $pendingLinkDetail) { request in
+            PendingLinkDetailSheet(link: request.link)
+                .appSheet(.medium)
         }
         .toastSheet(isPresented: $showLayoutEditor) {
             // Writes straight through to the shared store, so the card behind the
@@ -313,6 +364,22 @@ struct TodayReviewView: View {
         .focusedSceneValue(\.showReviewHelp, ShowReviewHelpAction { isHelpPresented = true })
         #endif
         .enableInjection()
+    }
+
+    /// Resolves the target against the live store (the session's lookup is a
+    /// start-of-session snapshot) and tells the user when it cannot be found
+    /// instead of silently doing nothing.
+    private func navigateToLinkedCard(_ link: KGCardLinkSummary) {
+        state.tappedLink = nil
+        guard let target = ReviewLinkEntryResolver.entry(
+            forCardID: link.cardId,
+            snapshot: state.linkedEntryLookup,
+            context: modelContext
+        ) else {
+            toastCoordinator.error(L10n.string("找不到符合的單字"))
+            return
+        }
+        state.linkedCardStack.append(target)
     }
 
     private var shouldShowFirstRunHint: Bool {

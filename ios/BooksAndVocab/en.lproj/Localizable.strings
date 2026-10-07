@@ -1314,3 +1314,9 @@
 "notebookSettings.serverUnsupported" = "Server does not support notebook settings yet";
 "notebookSettings.retry" = "Retry";
 "kgVocab.row.selectMultipleAction" = "Select multiple";
+
+"addLink.creation.alreadyRunning" = "This word is already being created.";
+"addLink.sourceWord" = "Link from %@";
+"todayReview.link.pending.creating" = "Creating…";
+"todayReview.link.pending.hint" = "This word card is being created in the background. It becomes a normal link here when it is ready, so you can close this and keep reviewing.";
+"todayReview.link.pending.failed" = "Couldn't create this link. You can retry or remove it.";

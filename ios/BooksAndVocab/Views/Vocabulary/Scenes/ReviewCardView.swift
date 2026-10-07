@@ -734,13 +734,17 @@ struct ReviewCardView: View {
                             }
                         }()
                         ForEach(Array(shownItems.enumerated()), id: \.element.id) { index, item in
-                            Button { actions.linkTap?(item) } label: {
-                                Text(item.word)
-                                    .font(appSkin.typography.monoEmphasis)
-                                    .foregroundStyle(appSkin.palette.primaryText)
+                            if let creationState = item.pendingCreationState {
+                                pendingCreationLinkButton(item, state: creationState)
+                            } else {
+                                Button { actions.linkTap?(item) } label: {
+                                    Text(item.word)
+                                        .font(appSkin.typography.monoEmphasis)
+                                        .foregroundStyle(appSkin.palette.primaryText)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("todayReview.card.link.\(item.cardId)")
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityIdentifier("todayReview.card.link.\(item.cardId)")
 
                             if index < shownItems.count - 1 {
                                 Text("|")
@@ -771,6 +775,39 @@ struct ReviewCardView: View {
             .accessibilityIdentifier("todayReview.card.addLink")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// A link whose target card is still being created. It is a real, tappable
+    /// strip item (the tap explains what is happening) rather than a spinner
+    /// overlay, so it keeps the strip's single-line height.
+    private func pendingCreationLinkButton(
+        _ item: KGCardLinkSummary,
+        state: KGCardLinkSummary.CreationState
+    ) -> some View {
+        Button { actions.linkTap?(item) } label: {
+            HStack(spacing: AppSpacing.s1) {
+                Text(item.word)
+                    .font(appSkin.typography.monoEmphasis)
+                    .foregroundStyle(appSkin.palette.primaryText)
+                    .lineLimit(1)
+                switch state {
+                case .creating:
+                    ProgressView()
+                        .controlSize(.mini)
+                    Text(L10n.string("todayReview.link.pending.creating"))
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.tertiaryText)
+                        .lineLimit(1)
+                case .failed:
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(appSkin.typography.iconTiny)
+                        .foregroundStyle(appSkin.palette.destructive)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("todayReview.card.link.pending.\(item.word)")
+        .accessibilityValue(state.rawValue)
     }
 
     /// Shown by the graph-links section when the card has no links yet. It is the

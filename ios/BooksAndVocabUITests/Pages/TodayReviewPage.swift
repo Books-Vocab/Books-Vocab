@@ -317,6 +317,24 @@ struct TodayReviewPage {
         )
     }
 
+    // MARK: Pending (still being created) link
+
+    /// Strip item for a link whose target card is still being created. Its
+    /// accessibility value is the creation state: `creating` or `failed`.
+    func pendingLink(word: String) -> XCUIElement {
+        queryElement("todayReview.card.link.pending.\(word)")
+    }
+
+    /// Detail sheet opened by tapping a pending item.
+    var pendingLinkDetail: XCUIElement { queryElement("todayReview.card.link.pending.detail") }
+
+    /// Status block inside the detail sheet; value is `creating` or `failed`.
+    var pendingLinkDetailStatus: XCUIElement { queryElement("todayReview.card.link.pending.status") }
+
+    var pendingLinkRetryButton: XCUIElement { queryElement("todayReview.card.link.pending.retry") }
+
+    var pendingLinkDismissButton: XCUIElement { queryElement("todayReview.card.link.pending.dismiss") }
+
     func link(id: String) -> XCUIElement {
         // Materialization dismisses the sheet and rebuilds the card cache in
         // the same main-actor turn. Keep this query pure so the assertion can

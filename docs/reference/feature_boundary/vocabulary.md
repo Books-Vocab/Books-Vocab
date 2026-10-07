@@ -33,7 +33,11 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 | `Scenes/KGVocabCoordinator.swift` | `@Observable @MainActor final class KGVocabCoordinator`，batch delete / archive 收斂集中於 coordinator；archive 的本地可收斂集合為 `updated_words ∪ not_found`，`failed` 才保留重試 |
 | `Scenes/SyncCoordinator.swift` | `@Observable @MainActor final class SyncCoordinator`，含 `SyncFailureKind`；`PipelineStep` / `SyncPhase` 已移至 `Services/SyncProgress.swift`（設定頁的逐步同步進度共用同一組型別）；所有 Card 經同一個 vocab projection 收斂 |
 | `Scenes/AddLinkCoordinator.swift` | `@Observable @MainActor final class AddLinkCoordinator`，集中既有詞庫候選搜尋與 manual-link begin/create/commit 的流程狀態 |
-| `Scenes/AddLinkCreationCoordinator.swift` | `@Observable @MainActor final class AddLinkCreationCoordinator`，守衛本地 pending／failed／archived target，提交單一 idempotent missing-target operation、輪詢 durable steps，完成後交給既有 serialized vocabulary pull 做 canonical projection；A 的 context 只作 B 的義項判斷線索，不在本地建立帶有 A 內容的 B 卡片 |
+| `Scenes/AddLinkCreationCoordinator.swift` | `@Observable @MainActor final class AddLinkCreationCoordinator`，守衛本地 pending／failed／archived target，提交單一 idempotent missing-target operation、輪詢 durable steps，完成後交給既有 serialized vocabulary pull 做 canonical projection；A 的 context 只作 B 的義項判斷線索，不在本地建立帶有 A 內容的 B 卡片。時間與 key 來源經 `AddLinkCreationEnvironment` 注入（測試 seam：pollInterval／sleep／idempotency key）；重試 key 策略由純值 `AddLinkCreationRetryPlan` 決定——POST 未收到回應沿用同 key、輪詢斷線續輪詢同一 operation、operation 已終態失敗才換新 key |
+| `Scenes/AddLinkCreationHub.swift` | `@Observable @MainActor final class AddLinkCreationHub`（`.shared`），missing-target 建立流程的**長壽命 owner**：sheet 關閉不取消，hub 持有 coordinator 直到成功／使用者移除失敗項；把每個 job 鏡射到 durable record 與 `PendingLinkProjection`，`resume(services:)` 於下次進入複習時補查（依 operation id 續輪詢，或以同 key 重送未回應的 POST），source 卡已不存在者丟棄 |
+| `Scenes/PendingLinkCreationStore.swift` | `PendingLinkCreationRecord`（持久化 operationId／idempotencyKey／terminal 旗標）、`PendingLinkCreationStoring`（UserDefaults；`-isolatedAuthSession` 走 ephemeral）、`PendingLinkProjection`（lock 保護的 sourceCardID → 「建立中」placeholder 值，供非 main-actor 的 `CardPresentation` 讀取）、`KGCardLinkSummary.pendingCreation`（`pending-create:<jobKey>` id、無 cardId，狀態編碼於 `reason`） |
+| `Scenes/PendingLinkDetailSheet.swift` | 點「建立中」連結項目的詳情：顯示單字、狀態文字與逐步進度（觀察 hub／coordinator，隨進度補上），完成自動關閉並轉為一般連結；失敗顯示訊息、重試與移除 |
+| `Scenes/ReviewLinkEntryResolver.swift` | 複習 session 的連結目標／候選池改以 live store 解析（session `linkedEntryLookup`／`allEntries` 只是開場快照，session 內新建的卡不在其中）；`AddLinkSheetRequest` 於點 + 當下凍結來源卡與候選池 |
 
 ### Presenter Layer（純 UI 呈現）
 
@@ -180,7 +184,8 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 - `WordDetailSceneState`：Word Detail scene owner，持有 presenterState / link error 與 link mutation orchestration
 - `VocabularyGraphLinkMutation`：Vocabulary feature-local pure domain helper，供多個 scene 共用 graph-link optimistic mutation / rollback 規則
 - `SyncCoordinator`：同步流程狀態，僅 `SyncView` 持有
-- `AddLinkCreationCoordinator`：missing-target Add Link 的 server operation／polling／canonical pull projection 狀態，僅 `AddLinkSheet` 持有；dismiss 只停止 client polling，不取消 server operation
+- `AddLinkCreationCoordinator`：missing-target Add Link 的 server operation／polling／canonical pull projection 狀態；由 `AddLinkCreationHub.makeCoordinator()` 產生，`AddLinkSheet` 只是顯示者。**sheet 關閉不取消建立**：hub 持有執行中的 coordinator 並完成本地 pull，來源卡以 `PendingLinkProjection` 顯示「建立中」項目
+- `AddLinkCreationHub`：建立中／失敗 job 的唯一 owner 與持久化邊界（record 存 UserDefaults，app 被殺後由 `resume` 補查）；`PendingLinkProjection` 只有 hub 寫入
 - `KGVocabCoordinator`：Books & Vocab 詞彙列表狀態，僅 `KGVocabView` 持有
 - `VocabularyListCoordinator`：詞彙列表主導航狀態，由 `VocabularyListView` 持有
 - Presentation models（`Presentation/`）：純值類型，可跨 layer 傳遞，但不持有 mutable state

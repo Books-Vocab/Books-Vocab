@@ -14,7 +14,8 @@ struct AddLinkSheet: View {
 
     @State private var searchText = ""
     @State private var coordinator = AddLinkCoordinator()
-    @State private var creationCoordinator = AddLinkCreationCoordinator()
+    // Made by the hub, which keeps a running creation alive after this sheet closes.
+    @State private var creationCoordinator: AddLinkCreationCoordinator
     @State private var creationAttempt = 0
     @State private var didCompleteCreation = false
     @State private var recoveredProviderErrors: Set<UUID> = []
@@ -22,11 +23,13 @@ struct AddLinkSheet: View {
     init(
         sourceEntry: VocabularyEntry,
         allEntries: [VocabularyEntry],
+        creationHub: AddLinkCreationHub = .shared,
         onLinked: @escaping () -> Void = {}
     ) {
         self.sourceEntry = sourceEntry
         self.allEntries = allEntries
         self.onLinked = onLinked
+        _creationCoordinator = State(initialValue: creationHub.makeCoordinator())
     }
 
     private var filteredEntries: [VocabularyEntry] {
@@ -55,6 +58,14 @@ struct AddLinkSheet: View {
                     .frame(width: 1, height: 1)
                     .accessibilityIdentifier("addLink.lookup.state")
                     .accessibilityValue(lookupState.accessibilityValue)
+
+                Text(L10n.format("addLink.sourceWord", sourceEntry.word))
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, appSkin.metrics.cardBlockPadding)
+                    .accessibilityIdentifier("addLink.sourceWord")
 
                 if coordinator.actionPhase == .failed {
                     AppBanner(
@@ -114,8 +125,9 @@ struct AddLinkSheet: View {
         }
         .onDisappear {
             coordinator.cancel()
-            // Cancelling the client poll does not cancel the durable operation.
-            creationCoordinator.cancel()
+            // A running creation is deliberately NOT cancelled: the hub owns it,
+            // finishes the local projection, and the source card shows it as a
+            // pending link meanwhile.
         }
         .enableInjection()
     }

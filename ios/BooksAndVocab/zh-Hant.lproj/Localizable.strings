@@ -1303,3 +1303,9 @@
 "notebookSettings.serverUnsupported" = "伺服器尚未支援單字本設定";
 "notebookSettings.retry" = "重試";
 "kgVocab.row.selectMultipleAction" = "多選";
+
+"addLink.creation.alreadyRunning" = "這個單字已在建立中。";
+"addLink.sourceWord" = "來源：%@";
+"todayReview.link.pending.creating" = "正在建立…";
+"todayReview.link.pending.hint" = "正在背景建立這張單字卡。完成後會自動變成一般連結，你可以先關閉並繼續複習。";
+"todayReview.link.pending.failed" = "無法建立這個連結，可重試或移除。";

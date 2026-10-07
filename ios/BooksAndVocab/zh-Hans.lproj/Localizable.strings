@@ -1295,3 +1295,9 @@
 "notebookSettings.serverUnsupported" = "服务器尚未支持单字本设置";
 "notebookSettings.retry" = "重试";
 "kgVocab.row.selectMultipleAction" = "多选";
+
+"addLink.creation.alreadyRunning" = "这个单词已在创建中。";
+"addLink.sourceWord" = "来源：%@";
+"todayReview.link.pending.creating" = "正在创建…";
+"todayReview.link.pending.hint" = "正在后台创建这张单词卡。完成后会自动变成普通链接，你可以先关闭并继续复习。";
+"todayReview.link.pending.failed" = "无法创建这个链接，可重试或移除。";

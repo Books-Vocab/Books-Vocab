@@ -155,6 +155,11 @@ Scope: `ios/BooksAndVocab`
 | 卡片版面：正面／反面預算 | 正面階段常駐 reveal zone | 正面預算＝contentHeight − revealZoneReserve 且不隨 reveal 階段變動；反面拿正面實佔後的餘額 | 已覆蓋 |
 | 版面編輯器入口不可用 | `!isCardInteractive`（fling / 推進中） | toolbar 鈕點擊 no-op（與 shuffle / prev / next 同一把鎖） | 已覆蓋 |
 | 開編輯器時 autoplay 正在播 | tap 入口 | `pauseForInterruption()` 暫停；**關閉後不自動恢復**（`todayReview.autoplay.paused` identifier 可判讀） | 已覆蓋 |
+| 開新增連結時 autoplay 正在播 | tap `todayReview.card.addLink` | 先 `pauseAutoPlayForModalInterruption()`；`AddLinkSheetRequest` 於點擊當下凍結來源卡與候選池，sheet 全程綁定該卡（`addLink.sourceWord` 顯示來源字）；關閉後維持暫停 | 已覆蓋 |
+| 連結目標在 session 開始後才建立 | 點連結 →「查看詳情」，`linkedEntryLookup` 查無 | 改查 live store；仍查無才 `toast.error`（`找不到符合的單字`），不再靜默無反應 | 已覆蓋 |
+| 連結建立中（關閉 sheet 後） | `AddLinkCreationHub` 有該 source 卡的 running job | 來源卡連結區立即出現 `todayReview.card.link.pending.<word>`（單字 + 迷你進度 +「正在建立…」，accessibilityValue=`creating`）；點入開 `todayReview.card.link.pending.detail`（單字、狀態文字、逐步進度；`...pending.status` value=`creating`）；完成後 pending 項消失、sheet 自動關閉、該處出現一般連結 | 已覆蓋（UITest 僅覆蓋失敗路徑；creating→完成見 `AddLinkCreationHubTests`） |
+| 連結建立失敗（關閉 sheet 後） | job `failed`（terminal 失敗或輪詢斷線） | 項目改顯示警示圖示（value=`failed`），**不會自行消失**；詳情顯示失敗文案＋`...pending.retry`（terminal 失敗換新 idempotency key；輪詢斷線續輪詢同一 operation；POST 未回應沿用同 key）＋`...pending.dismiss`（唯一移除途徑） | 已覆蓋 |
+| 建立中 app 被殺 | 下次進入複習，`resume` 發現 durable record | hub init 即還原 pending 項（projection 載入）；`resume` 依 operationId 續輪詢並完成本地 pull，或以同 key 重送未回應的 POST；source 卡已不存在則丟棄 | 已覆蓋（單元） |
 
 ### Review Card Layout Editor State（`ReviewCardLayoutEditor`）
 

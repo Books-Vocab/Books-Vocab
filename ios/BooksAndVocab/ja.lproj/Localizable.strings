@@ -1295,3 +1295,9 @@
 "notebookSettings.serverUnsupported" = "サーバーはまだ単語帳設定に対応していません";
 "notebookSettings.retry" = "再試行";
 "kgVocab.row.selectMultipleAction" = "複数選択";
+
+"addLink.creation.alreadyRunning" = "この単語はすでに作成中です。";
+"addLink.sourceWord" = "元の単語：%@";
+"todayReview.link.pending.creating" = "作成中…";
+"todayReview.link.pending.hint" = "この単語カードをバックグラウンドで作成しています。完了すると自動的に通常のリンクになるので、閉じて復習を続けられます。";
+"todayReview.link.pending.failed" = "このリンクを作成できませんでした。再試行または削除できます。";
