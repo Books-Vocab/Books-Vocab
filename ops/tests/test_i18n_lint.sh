@@ -14,8 +14,8 @@ TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 pass=0; fail=0
 ok() { echo "  ✓ $*"; pass=$((pass+1)); }
 fail_t() { echo "  ✗ $*"; fail=$((fail+1)); }
-lint() {  # $1 = fixture root, $2 = mode. A watermark this loose must still not absorb a duplicate.
-  printf 'findings=999\nlocalized_calls=999\n' >"$TMP/baseline.txt"
+lint() {  # $1 = fixture root, $2 = mode, $3 = localized_calls watermark (default: loose 999)
+  printf 'findings=999\nlocalized_calls=%s\n' "${3:-999}" >"$TMP/baseline.txt"
   rc=0; out="$(KG_I18N_SRC="$1" KG_I18N_BASELINE="$TMP/baseline.txt" ./ops/i18n_lint.sh "$2" 2>&1)" || rc=$?
 }
 expect() {  # $1 = label, $2 = wanted exit, $3.. = fixed strings the output must contain
@@ -46,6 +46,21 @@ lint "$FIX/broken" --baseline-check
 expect "broken" 1 "$FIX/broken/en.lproj/Localizable.strings:2: unparseable:"
 lint "$TMP" --baseline-check
 expect "no localization files" 1 "no .strings files under"
+
+echo "── --strict also enforces the localized_calls watermark ──"
+lint "$FIX/watermark" --strict 1
+expect "strict at watermark" 0 "ok strict: 0 findings, localized_calls 1 <= baseline 1"
+lint "$FIX/watermark" --strict 0
+expect "strict over watermark" 1 "REGRESSION: localized_calls 1 > baseline 0"
+
+echo "── CI contract: every PR runs i18n_lint --strict, and .lproj diffs select it ──"
+grep -qF 'ui_quality_gate.sh --tier fast --execute --all-mechanisms' .github/workflows/ui-quality-gate.yml \
+  && ok "ui-quality-gate workflow runs the fast tier on all mechanisms" \
+  || fail_t "ui-quality-gate workflow no longer runs --tier fast --execute --all-mechanisms"
+rc=0; out="$(./ops/ui_quality_gate.sh --tier fast --all-mechanisms --dry-run 2>&1)" || rc=$?
+expect "CI plan" 0 "ops/i18n_lint.sh --strict"
+rc=0; out="$(./ops/ui_quality_gate.sh --tier fast --dry-run --files ios/BooksAndVocab/en.lproj/Localizable.strings 2>&1)" || rc=$?
+expect ".lproj-only diff" 0 "static.i18n"
 
 echo ""
 echo "i18n-lint: $pass passed, $fail failed"
