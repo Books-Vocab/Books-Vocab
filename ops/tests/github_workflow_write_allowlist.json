@@ -1,0 +1,18 @@
+{
+  "schema": "kg.workflow-write-allowlist.v1",
+  "note": "Every GITHUB_TOKEN write grant in .github/workflows/*.yml, keyed by workflow basename, job (null = workflow-level) and scope. ops/tests/test_github_workflows.sh fails on any write or write-all not listed here, on an entry without a reason, and on an entry that no longer matches a grant.",
+  "entries": [
+    {
+      "workflow": "agent-review.yml",
+      "job": null,
+      "scope": "checks",
+      "reason": "POSTs the agent-review check run on the exact PR head; runs from the trusted base via pull_request_target and never checks out PR code."
+    },
+    {
+      "workflow": "health.yml",
+      "job": null,
+      "scope": "issues",
+      "reason": "ops/doctor_issue.py creates the health-report label and opens, edits or closes the single self-updating health-report issue."
+    }
+  ]
+}
