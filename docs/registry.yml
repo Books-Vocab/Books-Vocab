@@ -54,7 +54,7 @@ documents:
     sources:
       - ops/devops_kg_safe.sh
       - ops/kg_reconcile.sh
-      - backend/deploy/
+      - backend/docker-compose.yml
 
   - id: policy.safety
     path: docs/policy/safety.md
@@ -212,7 +212,7 @@ documents:
     triggers:
       - catalog-surface-changed
     sources:
-      - ops/catalog*
+      - ops/lib/ios_ops_catalog.sh
       - ios/BooksAndVocab/
 
   - id: reference.cost_baseline
@@ -296,7 +296,7 @@ documents:
     triggers:
       - ui-component-changed
     sources:
-      - ios/BooksAndVocab/Components/
+      - ios/BooksAndVocab/UIComponents/
 
   - id: reference.ui_review_checklist
     path: docs/reference/ui/review_checklist.md
@@ -316,7 +316,8 @@ documents:
       - ui-state-changed
     sources:
       - ios/BooksAndVocab/Views/
-      - ios/BooksAndVocab/Tests/
+      - ios/BooksAndVocabTests/
+      - ios/BooksAndVocabUITests/
 
   - id: reference.feature_boundary.bookshelf
     path: docs/reference/feature_boundary/bookshelf.md
@@ -335,7 +336,7 @@ documents:
       - discover-changed
     sources:
       - ios/BooksAndVocab/Views/Explore/
-      - backend/src/kg/routers/decks.py
+      - backend/src/kg/routers/shared_decks.py
 
   - id: reference.feature_boundary.notebook
     path: docs/reference/feature_boundary/notebook.md
@@ -344,7 +345,8 @@ documents:
     triggers:
       - notebook-changed
     sources:
-      - ios/BooksAndVocab/Views/Notebook/
+      - ios/BooksAndVocab/Views/Vocabulary/Scenes/Notebook*.swift
+      - ios/BooksAndVocab/Views/Vocabulary/Components/Notebook*.swift
 
   - id: reference.feature_boundary.podcast
     path: docs/reference/feature_boundary/podcast.md
@@ -490,7 +492,8 @@ documents:
     sources:
       - ops/devops_kg_safe.sh
       - ops/kg_reconcile.sh
-      - backend/deploy/
+      - backend/Dockerfile
+      - backend/docker-compose.yml
 
   - id: sop.doc_sync
     path: docs/sop/doc_sync.md
@@ -552,7 +555,7 @@ documents:
       - i18n-lint-changed
     sources:
       - ops/i18n_lint.sh
-      - ops/i18n_*.py
+      - ops/_i18n_*.py
 
   - id: sop.i18n_plural_keys
     path: docs/sop/i18n_plural_keys.md
@@ -562,7 +565,7 @@ documents:
       - i18n-keys-changed
     sources:
       - ios/BooksAndVocab/Localization/
-      - ops/i18n_*.py
+      - ops/_i18n_*.py
 
   - id: sop.ios
     path: docs/sop/ios.md
@@ -634,7 +637,7 @@ documents:
     triggers:
       - ui-design-changed
     sources:
-      - ios/BooksAndVocab/Components/
+      - ios/BooksAndVocab/UIComponents/
       - design-system/
 
   - id: sop.ui_flow_evidence
