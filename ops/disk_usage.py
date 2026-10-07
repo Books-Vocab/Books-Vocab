@@ -1314,6 +1314,8 @@ def _is_codex_supervision_checkout(path: Path, roots: list[Path]) -> bool:
 AGENT_LOCK_REASON_RE = re.compile(
     r"^claude agent (?P<name>\S+) \(pid (?P<pid>[1-9][0-9]{0,9})(?: [^)]*)?\)$"
 )
+# Dirnames the harness generates (subagent, Workflow): provenance once unlocked.
+AGENT_DIRNAME_RE = re.compile(r"agent-[0-9a-f]{17}|wf_[0-9a-f]{8}-[0-9a-f]{3}-[0-9]+")
 
 
 def _pid_alive(pid: int) -> bool:
@@ -1331,24 +1333,21 @@ def _pid_alive(pid: int) -> bool:
 def _agent_lane_lock(
     path: Path, physical: dict[str, Any], workspace: Path
 ) -> dict[str, Any] | None:
-    """Identify a Claude Code harness lane by the lock git holds for it.
+    """Identify a Claude Code harness lane under ``<workspace>/.claude/worktrees``.
 
-    The harness (subagent ``isolation: worktree`` and Workflow agents alike)
-    creates ``<workspace>/.claude/worktrees/<dirname>`` and locks it with the
-    reason ``claude agent <dirname> (pid <N> start <date>)``.  Branch and
-    dirname are not identity: agents switch branches and the harness uses more
-    than one naming scheme.  Returns ``{"state": "live", "pid": N}`` when that
-    lock names this dir and the pid is alive; ``dead-pid`` or ``unlocked`` for
-    a lane its harness no longer holds; ``None`` (not attributable, so the
-    caller fails closed) for anything else: not a direct child of the root,
-    lock state not observed, or a lock held for some other reason.
+    The harness locks each lane with ``claude agent <dirname> (pid <N> ...)``;
+    branch is not identity (agents switch branches).  ``live``: that lock with
+    a live pid.  ``dead-pid``: that lock, pid gone.  ``unlocked``: no lock but
+    a harness-generated dirname.  ``None`` (caller fails closed): no such
+    provenance, not a direct child of the root, or lock state not observed.
     """
 
     if path.parent != workspace / ".claude" / "worktrees":
         return None
     locked = physical.get("locked")
     if locked is False:
-        return {"state": "unlocked"}
+        named = AGENT_DIRNAME_RE.fullmatch(path.name)
+        return {"state": "unlocked"} if named else None
     if locked is not True:
         return None
     match = AGENT_LOCK_REASON_RE.match(str(physical.get("lock_reason") or ""))
@@ -1360,16 +1359,13 @@ def _agent_lane_lock(
 
 def _stale_agent_cleanup_hint(path: Path, lock: dict[str, Any], branch: str) -> str:
     quoted = shlex.quote(str(path))
-    remove = f"git worktree remove {quoted}"
-    if lock["state"] == "dead-pid":
-        remove = f"git worktree unlock {quoted} && {remove}"
-    hint = (
-        f"{remove}  # harness no longer holds this lane ({lock['state']}); "
-        "remove refuses uncommitted work, so salvage it first"
+    unlock = f"git worktree unlock {quoted} && " if lock["state"] == "dead-pid" else ""
+    kept = f"; branch {branch} is kept, delete it only once merged"
+    return (
+        f"{unlock}git worktree remove {quoted}  # harness no longer holds this lane "
+        f"({lock['state']}); remove refuses uncommitted work, so salvage it first"
+        + ("" if branch == "(detached)" else kept)
     )
-    if branch != "(detached)":
-        hint += f"; branch {branch} is kept, delete it only once merged"
-    return hint
 
 
 def _load_registry(state_path: Path) -> tuple[list[dict[str, Any]], str | None]:
@@ -1812,9 +1808,8 @@ def build_report(
             entry["lane_state"] = "ephemeral"
             entry["agent_lock"] = agent_lock
         elif agent_lock is not None:
-            # No live writer holds this lane and its bytes stay quota-counted,
-            # so it is cleanup debt to report, not a reason to stop every
-            # other lane's iOS writer (one crashed session must not do that).
+            # No live writer and its bytes stay quota-counted: cleanup debt to
+            # report, not a reason for one crashed session to stop every lane.
             entry["ownership"] = "stale-agent"
             entry["lane_state"] = "stale"
             entry["agent_lock"] = agent_lock
