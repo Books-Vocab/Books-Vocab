@@ -59,13 +59,18 @@ async def system_info(response: Response) -> SystemInfoResponse:
 
     migration_version = MIGRATION_NAMES[-1] if MIGRATION_NAMES else "none"
 
-    # Piggyback threshold alerts on this frequently-polled endpoint.
+    # Piggyback threshold alerts on this probe endpoint, throttled per process
+    # (issue #2087): it is unauthenticated and rate-limit exempt, and every
+    # check holds a log-DB lock the event loop also takes. The gate is entered
+    # here on the event loop, so throttled requests never touch the threadpool.
     # `run_all_checks` itself swallows exceptions; the outer guard is belt-and-
     # suspenders to ensure /api/system/info never 500s for an observability bug.
-    try:
-        await run_in_threadpool(observability_alerts.run_all_checks)
-    except Exception:  # pragma: no cover — defensive
-        _logger.warning("observability alerts run_all_checks failed", exc_info=True)
+    with observability_alerts.throttled_run_slot() as granted:
+        if granted:
+            try:
+                await run_in_threadpool(observability_alerts.run_all_checks)
+            except Exception:  # pragma: no cover — defensive
+                _logger.warning("observability alerts run_all_checks failed", exc_info=True)
 
     return SystemInfoResponse(
         version=version,
