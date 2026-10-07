@@ -44,7 +44,6 @@ def test_client_fixture_closes_owned_client(monkeypatch):
 
 
 class TestSecurityHeaders:
-
     @pytest.mark.parametrize(
         ("header_name", "expected_value"),
         [
@@ -77,11 +76,11 @@ class TestSecurityHeaders:
         import collections
         import time
 
+        from kg.app_middleware import anonymous_rate_limit_key
         from kg.rate_limit import api_limiter
 
-        token = "SECSEC1SECSEC123"
-        auth_header = f"Bearer {token}"
-        rate_key = auth_header[-16:]
+        client_ip = "203.0.113.42"
+        rate_key = anonymous_rate_limit_key(client_ip)
 
         async def exhaust():
             dq = api_limiter._requests.setdefault(rate_key, collections.deque())
@@ -91,7 +90,7 @@ class TestSecurityHeaders:
 
         asyncio.run(exhaust())
 
-        r = client.get("/api/health", headers={"Authorization": auth_header})
+        r = client.get("/api/health", headers={"X-Forwarded-For": client_ip})
         assert r.status_code == 429
         assert r.headers.get("X-Content-Type-Options") == "nosniff"
         assert r.headers.get("X-Frame-Options") == "DENY"

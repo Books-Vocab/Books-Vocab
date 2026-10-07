@@ -15,9 +15,16 @@ class RateLimiter:
     Memory hygiene:
     - Every `gc_interval` admissions, sweep `_requests` and drop keys whose
       deques are empty or fully expired.
-    - Hard cap at `max_keys`: reclaim expired keys before admitting a new key;
-      if all slots are active, reject the new key rather than evicting an
-      active window.
+    - Hard cap at `max_keys`: a new key evicts the least-recently-seen key
+      (O(1), `_requests` is kept in recency order). The table never rejects a
+      new key just because it is full: that would let anyone able to mint
+      `max_keys` keys 429 every new client (#2056). Eviction cannot be used
+      to reset an abuser's window, because every lookup — admitted or
+      rejected — moves the key to the most-recent end; only a key that has
+      stopped hitting can age to the front. Keys must therefore come from a
+      source the client cannot mint for free (client IP or a verified user
+      id, see `app_middleware`), so owning `max_keys` keys already costs as
+      much as the budget an eviction could hand back.
     """
 
     def __init__(
@@ -27,13 +34,14 @@ class RateLimiter:
         max_keys: int = 10000,
         gc_interval: int = 100,
     ):
+        if max_keys < 1:
+            # Eviction-at-cap needs room for the key being admitted.
+            raise ValueError("max_keys must be positive")
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.max_keys = max_keys
         self.gc_interval = max(1, gc_interval)
-        self._requests: collections.OrderedDict[
-            str, collections.deque[float]
-        ] = collections.OrderedDict()
+        self._requests: collections.OrderedDict[str, collections.deque[float]] = collections.OrderedDict()
         self._tick = 0
         self._lock = asyncio.Lock()
 
@@ -43,16 +51,11 @@ class RateLimiter:
         async with self._lock:
             dq = self._requests.get(key)
             if dq is None:
-                if len(self._requests) >= self.max_keys:
-                    # A full table may contain entries that have expired since
-                    # the last scheduled sweep. Reclaim them before deciding
-                    # whether this new key can be tracked.
-                    self._gc(cutoff)
-                if len(self._requests) >= self.max_keys:
-                    # Never reset an active key's window just to admit a new
-                    # key. Failing closed preserves the bounded-table
-                    # invariant and the existing keys' rate-limit history.
-                    return False
+                while len(self._requests) >= self.max_keys:
+                    # Evict from the least-recently-seen end. Popping is O(1);
+                    # a full-table sweep here would cost O(max_keys) per new
+                    # key exactly when someone is flooding new keys.
+                    self._requests.popitem(last=False)
                 dq = collections.deque()
                 self._requests[key] = dq
             else:

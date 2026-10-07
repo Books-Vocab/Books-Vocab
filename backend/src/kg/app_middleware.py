@@ -6,6 +6,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
+import jwt
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -51,6 +52,39 @@ def _anon_rate_limit_key(xff: str, client_host: str | None, hops: int) -> str:
     return client_host if client_host else "unknown"
 
 
+# Generic api/translate limiter buckets are namespaced by trust class so a
+# client-influenced value (e.g. an X-Forwarded-For segment when the app is
+# reached without the trusted proxy) can never alias a verified user's bucket.
+def anonymous_rate_limit_key(client_ip: str) -> str:
+    return f"ip:{client_ip}"
+
+
+def verified_user_rate_limit_key(user_id: str) -> str:
+    return f"user:{user_id}"
+
+
+def _verified_jwt_subject(authorization: str, settings: Any) -> str | None:
+    """Return the JWT ``sub`` only when the bearer token's signature and expiry
+    verify against the app's own JWT secret; otherwise ``None``.
+
+    This is the rate-limit identity, not authentication: it deliberately skips
+    the user-store revocation lookup (disk I/O on every request). A revoked
+    but correctly signed token still maps to one bounded per-user bucket and is
+    rejected with 401 by the auth dependency; it cannot be minted, so it cannot
+    multiply buckets the way the old raw-header tail could (#2056).
+    """
+    scheme, _, token = authorization.partition(" ")
+    token = token.strip()
+    if scheme.lower() != "bearer" or not token or settings is None:
+        return None
+    try:
+        decoded = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    except jwt.InvalidTokenError:
+        return None
+    subject = decoded.get("sub")
+    return subject if isinstance(subject, str) and subject else None
+
+
 def install_app_middlewares_from_dependencies(
     *,
     dependencies: AppMiddlewareDependencies,
@@ -93,13 +127,9 @@ def install_app_middlewares_from_dependencies(
             try:
                 declared = int(content_length)
             except ValueError:
-                return JSONResponse(
-                    {"detail": "Invalid Content-Length header"}, status_code=400
-                )
+                return JSONResponse({"detail": "Invalid Content-Length header"}, status_code=400)
             if declared > max_body_bytes:
-                return JSONResponse(
-                    {"detail": "Request body too large"}, status_code=413
-                )
+                return JSONResponse({"detail": "Request body too large"}, status_code=413)
             return await call_next(request)
         # No Content-Length (e.g. Transfer-Encoding: chunked): the declared-size
         # check above can be bypassed, so stream-count the body and abort once it
@@ -109,9 +139,7 @@ def install_app_middlewares_from_dependencies(
         async for chunk in request.stream():
             body.extend(chunk)
             if len(body) > max_body_bytes:
-                return JSONResponse(
-                    {"detail": "Request body too large"}, status_code=413
-                )
+                return JSONResponse({"detail": "Request body too large"}, status_code=413)
         request._body = bytes(body)
         return await call_next(request)
 
@@ -156,13 +184,21 @@ def install_app_middlewares_from_dependencies(
             return await call_next(request)
         if any(path.startswith(prefix) for prefix in rate_limit_exempt_prefixes):
             return await call_next(request)
-        auth = request.headers.get("authorization", "")
-        if len(auth) > 16:
-            key = auth[-16:]
+        # Only a server-signed JWT earns a per-user bucket. Anything else —
+        # no header, a non-JWT bearer (admin token), a forged/expired JWT —
+        # shares the client-IP bucket, so rotating the header buys nothing.
+        # Settings are read per request, like the routers do, so a swapped
+        # `app.state.kg_settings` (secret rotation, tests) is honoured.
+        subject = _verified_jwt_subject(
+            request.headers.get("authorization", ""),
+            getattr(request.app.state, "kg_settings", None),
+        )
+        if subject is not None:
+            key = verified_user_rate_limit_key(subject)
         else:
             xff = request.headers.get("x-forwarded-for", "")
             client_host = request.client.host if request.client else None
-            key = _anon_rate_limit_key(xff, client_host, rate_limit_trusted_hops)
+            key = anonymous_rate_limit_key(_anon_rate_limit_key(xff, client_host, rate_limit_trusted_hops))
         limiter = translate_limiter if "/api/translate" in path else api_limiter
         if not await limiter.is_allowed(key):
             return JSONResponse(

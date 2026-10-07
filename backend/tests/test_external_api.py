@@ -620,11 +620,12 @@ def test_external_rate_limiter_rejects_non_positive_max_keys():
 
 def test_external_api_is_not_double_limited_by_generic_ip_limiter(external_api):
     api_key = _create_key(external_api)
+    from kg.app_middleware import anonymous_rate_limit_key
     from kg.rate_limit import api_limiter
 
     client_ip = "198.51.100.77"
     now = time.monotonic()
-    api_limiter._requests[client_ip] = collections.deque([now] * api_limiter.max_requests)
+    api_limiter._requests[anonymous_rate_limit_key(client_ip)] = collections.deque([now] * api_limiter.max_requests)
 
     response = external_api.client.get(
         "/api/v1/cards",
@@ -632,6 +633,10 @@ def test_external_api_is_not_double_limited_by_generic_ip_limiter(external_api):
     )
 
     assert response.status_code == 200, response.text
+    # Positive control: the seeded bucket is the one the generic limiter reads,
+    # so a non-exempt path from the same IP is limited.
+    limited = external_api.client.get("/api/health", headers={"X-Forwarded-For": client_ip})
+    assert limited.status_code == 429
 
 
 def test_external_card_delete_treats_embedding_eviction_as_best_effort(external_api, monkeypatch):
