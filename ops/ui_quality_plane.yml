@@ -79,13 +79,16 @@ mechanisms:
     entrypoint: ops/i18n_lint.sh
     gate: manual
     run:
-      - --baseline-check
+      - --strict
     triggers:
       - "ios/BooksAndVocab/*.swift"
       - "ios/BooksAndVocab/**/*.swift"
+      - "ios/BooksAndVocab/**/*.strings"
+      - "ios/BooksAndVocab/**/*.stringsdict"
     verdict: >
-      Exit code; raw user-facing Chinese string findings on stdout. Inline
-      escape `// i18n-allow: <reason>`. Formatter checks run in baseline mode.
+      Exit code; --strict = zero raw-Chinese / formatter / duplicate-key /
+      missing-key / en-CJK / plural findings plus the localized_calls
+      watermark. Inline escape `// i18n-allow: <reason>`.
     docs:
       - docs/sop/i18n_lint.md
 

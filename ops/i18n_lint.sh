@@ -6,7 +6,7 @@
 #   --baseline Write current findings count to ops/i18n_baseline.txt. Use to lock in a watermark.
 #   --baseline-check
 #              Compare current findings to baseline; fail if regressed (count > baseline).
-#   --strict   Any finding fails. Use in CI / Xcode Run Script Phase after sweep done.
+#   --strict   Any finding fails, plus the localized_calls watermark. CI gate (ui-quality-gate).
 #              Adds three coverage checks on top of the legacy finding count:
 #                A. Key Coverage — every static key referenced from .swift must exist
 #                   in en.lproj/Localizable.strings or .stringsdict.
@@ -210,6 +210,7 @@ try:
     payload = json.loads(subprocess.check_output([sys.executable, extractor], text=True))
 except Exception as e:
     sys.stderr.write(f"[i18n_lint] key extractor failed: {e}\n")
+    print("missing_key: <key extractor failed; coverage unverified>")  # fail closed
     sys.exit(0)
 # Parse en.lproj/Localizable.strings — simple "key" = "value"; entries; ignore
 # // and /* */ comments. Tolerant rather than strict — we want every defined key.
@@ -293,6 +294,7 @@ try:
     payload = json.loads(subprocess.check_output([sys.executable, extractor], text=True))
 except Exception as e:
     sys.stderr.write(f"[i18n_lint] key extractor failed: {e}\n")
+    print("missing_key: <key extractor failed; coverage unverified>")  # fail closed
     sys.exit(0)
 src = ""
 try:
@@ -398,6 +400,19 @@ reject_duplicates() {
   exit 1
 }
 
+# .localized debt only ratchets down; --strict (CI) requires the watermark to exist.
+check_localized_watermark() {
+  localized_baseline=$(awk -F= '/^localized_calls=/{print $2}' "$BASELINE_FILE" 2>/dev/null || true)
+  if [ -z "$localized_baseline" ]; then
+    echo "[i18n_lint] error: no localized_calls= watermark in $BASELINE_FILE" >&2
+    exit 2
+  fi
+  if [ "$localized_count" -gt "$localized_baseline" ]; then
+    echo "[i18n_lint] REGRESSION: localized_calls $localized_count > baseline $localized_baseline" >&2
+    exit 1
+  fi
+}
+
 case "$MODE" in
   --baseline)
     print_findings
@@ -425,10 +440,7 @@ EOF
       echo "[i18n_lint] REGRESSION: $total > baseline $baseline" >&2
       exit 1
     fi
-    if [ -n "$localized_baseline" ] && [ "$localized_count" -gt "$localized_baseline" ]; then
-      echo "[i18n_lint] REGRESSION: localized_calls $localized_count > baseline $localized_baseline" >&2
-      exit 1
-    fi
+    [ -n "$localized_baseline" ] && check_localized_watermark
     echo "[i18n_lint] ok: $total <= baseline $baseline"
     exit 0
     ;;
@@ -448,6 +460,8 @@ EOF
       echo "[i18n_lint] FAIL strict: $strict_total findings (legacy=$total, coverage=$missing_key_count, en_cjk=$en_cjk_count, plural=$plural_missing_count)" >&2
       exit 1
     fi
+    check_localized_watermark
+    echo "[i18n_lint] ok strict: 0 findings, localized_calls $localized_count <= baseline $localized_baseline"
     exit 0
     ;;
   --report|*)

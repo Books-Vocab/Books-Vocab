@@ -17,8 +17,8 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 |------|------|
 | `--report`(預設) | 印出 findings,exit 0。本機 ad-hoc 查看用 |
 | `--baseline` | 把當前命中數寫入 `ops/i18n_baseline.txt`,當 watermark |
-| `--baseline-check` | 對照 baseline,findings 或 `localized_calls` 超過即 fail;有任何 duplicate key 即 fail(CI 用) |
-| `--strict` | 任何 finding 即 fail。除基礎三項外,額外跑「英文模式漏中文」覆蓋檢查 — 見下方「Strict 覆蓋檢查」 |
+| `--baseline-check` | 對照 baseline,findings 或 `localized_calls` 超過即 fail;有任何 duplicate key 即 fail |
+| `--strict` | 任何 finding 即 fail,並檢查 `localized_calls` watermark(baseline 缺此行 exit 2)。除基礎項外,額外跑「英文模式漏中文」覆蓋檢查 — 見下方「Strict 覆蓋檢查」(CI 用) |
 
 ## 掃描範圍
 
@@ -136,5 +136,6 @@ raw-Chinese scan 在比對前會先把以下兩種區塊 blank 掉(行號保留,
 
 ## CI 接線
 
-- Phase 7.1 前:`--baseline-check`(防掃描範圍 1–3 與 5 回歸;PR 經 `ui-quality-gate` 每次執行)
-- Phase 7.1 後:Xcode Run Script Phase `--strict`(零容忍,含上述三項覆蓋檢查)
+- `ops/ui_quality_plane.yml` 的 `static.i18n` 跑 `--strict`;`ui-quality-gate`(`--tier fast --execute --all-mechanisms`)每個 PR 都執行,所以新 key 缺 en、duplicate key、`.localized` 增加都會擋 PR。trigger 含 `*.swift`、`*.strings`、`*.stringsdict`;pre-commit 對 `.lproj` 變動也會跑。
+- key extractor 失敗時 coverage 記一筆 finding(fail closed),不再當成乾淨。
+- 契約測試:`ops/tests/test_i18n_lint.sh`(`lint-baselines` 群組)斷言 CI plan 為 `ops/i18n_lint.sh --strict`、`.lproj` diff 會選到 `static.i18n`。
