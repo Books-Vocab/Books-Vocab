@@ -368,6 +368,32 @@ def test_every_canonical_identity_has_a_real_onboarding_route(
     ]
 
 
+@pytest.mark.parametrize(
+    ("identity", "entry", "evidence_key"),
+    [
+        ("Worker", "direct-assignment", "direct-assignment"),
+        ("Issue Solver", "issue", "issue"),
+    ],
+)
+def test_implementers_may_read_github_but_never_write(
+    identity, entry, evidence_key
+) -> None:
+    payload = mod.build_onboarding(
+        ROOT,
+        identity=identity,
+        intent="delivery",
+        entry=entry,
+        evidence=EVIDENCE[evidence_key],
+    )
+
+    surfaces = payload["identity"]
+    assert "github:read" in surfaces["allowed_surfaces"]
+    # No forbidden surface may also cover reads; writes stay forbidden.
+    assert not [s for s in surfaces["forbidden_surfaces"] if "read" in s]
+    assert "github:any-mutation" in surfaces["forbidden_surfaces"]
+    assert "GitHub read" in surfaces["owns"]
+
+
 def test_lane_review_onboards_a_pre_pr_review_of_a_local_commit() -> None:
     payload = mod.build_onboarding(
         ROOT,

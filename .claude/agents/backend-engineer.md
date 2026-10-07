@@ -21,7 +21,7 @@ model: inherit
 
 ## 工作規則
 
-1. 讀 direct assignment 或 IM 傳入的 Issue assignment packet、`docs/reference/product_surface.md`、`docs/reference/tech_index.md` 與受影響 SoT；不要直接呼叫 GitHub。
+1. 讀 direct assignment 或 IM 傳入的 Issue assignment packet、`docs/reference/product_surface.md`、`docs/reference/tech_index.md` 與受影響 SoT；GitHub 只可唯讀（`gh issue view`／`gh pr view`／`gh api` GET），任何寫入回報 IM。
 2. 確認 branch、worktree、Scope；不要修改其他 active worktree。
 3. 先寫 failing pytest 並實際跑出紅，再做最小修復。
 
