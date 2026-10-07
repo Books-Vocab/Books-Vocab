@@ -119,10 +119,7 @@ final class SharedDeckCopyController {
     /// 可跨版本比對）。共用同一組判別條件。
     static func failureReason(for error: Error) -> String {
         if let kg = error as? KGError, case .unauthorized = kg { return "unauthorized" }
-        if let urlError = error as? URLError,
-           [.notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotConnectToHost].contains(urlError.code) {
-            return "offline"
-        }
+        if isOffline(error) { return "offline" }
         return "generic"
     }
 
@@ -132,10 +129,31 @@ final class SharedDeckCopyController {
         if let kg = error as? KGError, case .unauthorized = kg {
             return L10n.string("explore.copy.error.unauthorized")
         }
-        if let urlError = error as? URLError,
-           [.notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotConnectToHost].contains(urlError.code) {
+        if isOffline(error) {
             return L10n.string("explore.copy.error.offline")
         }
         return L10n.string("explore.copy.error.generic")
+    }
+
+    private static let offlineURLErrorCodes: Set<URLError.Code> = [
+        .notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotConnectToHost
+    ]
+
+    /// 連線類失敗的唯一判別（`message` / `failureReason` 共用）。`KGService.copyDeck`
+    /// 走 `authenticatedDecode`：connectivity gate 關閉時丟 `KGError.offline`，transport
+    /// `URLError` 一律被包成 `KGError.networkError(underlying:)`，**不會**丟出裸 `URLError`
+    /// （#2108）。裸 `URLError` 仍接受，供其他 `DeckCopying` 實作。
+    private static func isOffline(_ error: Error) -> Bool {
+        if let kg = error as? KGError {
+            switch kg {
+            case .offline: return true
+            case .networkError(let underlying): return isOffline(underlying)
+            default: return false
+            }
+        }
+        if let urlError = error as? URLError {
+            return offlineURLErrorCodes.contains(urlError.code)
+        }
+        return false
     }
 }
