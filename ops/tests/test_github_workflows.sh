@@ -44,6 +44,13 @@ grep -Fq 'if: ${{ github.event_name == '\''workflow_dispatch'\'' }}' "$PR_GATE" 
   || fail "pr-gate does not guard manual dispatches"
 grep -Fq 'if [[ "$EVENT_SHA" != "$HEAD_SHA" ]]' "$PR_GATE" \
   || fail "pr-gate does not bind manual dispatches to the event SHA"
+# A deleted file cannot be format-checked (ruff errors on the missing path), so every
+# changed-file listing feeding the format step must exclude deletions or any PR that
+# removes a Python file fails repo-gate.
+listings="$(grep -c 'git diff --name-only' "$PR_GATE" || true)"
+filtered="$(grep -c 'git diff --name-only --diff-filter=d' "$PR_GATE" || true)"
+{ [[ "$listings" -ge 1 ]] && [[ "$listings" == "$filtered" ]]; } \
+  || fail "pr-gate lists deleted files for the format check (${filtered}/${listings} listings filter deletions)"
 if grep -Eq '^[[:space:]]*merge_group:' "$PR_GATE"; then
   fail "pr-gate still owns a merge_group trigger; merge queue requires the short dedicated workflow"
 fi
@@ -124,7 +131,7 @@ grep -Fq 'while IFS= read -r path; do' <<<"$repo_gate_block" \
   || fail "changed-Python format step is not Bash 3.2-compatible"
 grep -Fq '[[ -n "$path" ]] && changed_python+=("$path")' <<<"$repo_gate_block" \
   || fail "changed-Python format step does not collect non-empty paths safely"
-grep -Fq 'done < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- '\''*.py'\'')' <<<"$repo_gate_block" \
+grep -Fq 'done < <(git diff --name-only --diff-filter=d "$BASE_SHA" "$HEAD_SHA" -- '\''*.py'\'')' <<<"$repo_gate_block" \
   || fail "changed-Python format step is not bound to the exact base/head diff"
 grep -Fq 'if ((${#changed_python[@]} == 0)); then' <<<"$repo_gate_block" \
   || fail "changed-Python format step has no empty-set pass path"
