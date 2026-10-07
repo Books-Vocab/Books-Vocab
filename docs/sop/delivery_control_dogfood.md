@@ -71,7 +71,7 @@ test-execution lock。這只序列化會共用 registry fixture／mutation lock 
 group 另有 host-wide slot limiter（`ops/lib/heavy_slots.sh`，名單為 `test_ops.sh` 的 `HEAVY_TESTS`）：
 同一台機器上同時最多 `KG_HEAVY_SLOTS`（預設 3）個 heavy group 在跑，其餘等待並印出目前持有者
 （slot、pid、group、起始時間）。slot 目錄在 `$HOME/Library/Caches/kg/heavy-slots`
-（`KG_HEAVY_SLOTS_DIR` 可覆寫）；持有者 pid 已死或啟動時間不符（pid 被重用）即視為 stale 並原子回收。
+（`KG_HEAVY_SLOTS_DIR` 可覆寫）；持有者 pid 已死或啟動時間不符（pid 被重用）即視為 stale，回收時以 per-slot mutex 序列化並在 mutex 內重驗（防止晚到的等待者踢掉剛重新佔位的活 holder）。
 等待上限 `KG_HEAVY_SLOTS_WAIT`（預設 1800 秒），逾時回 rc=75（inconclusive，不是 pass）並列出持有者，
 不會死鎖；`KG_HEAVY_SLOTS=0` 停用。非 heavy group 不受影響。多代理併發把 load 推到 60–110
 （10 核）會造成 timing 測試假紅，這是它存在的原因；契約測試為 `test_ops.sh heavy-slots`。
