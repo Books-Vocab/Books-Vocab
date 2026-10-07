@@ -36,8 +36,31 @@ fi
 UV_BIN="$(command -v uv || echo "$HOME/.local/bin/uv")"
 [[ -x "$UV_BIN" ]] || { echo "✗ uv not found: $UV_BIN" >&2; exit 1; }
 
-# Clean up temp files on ANY exit (incl. set -e abort mid-metadata/index build).
-trap 'rm -f "${EXISTING_META_TMP:-}" "${INDEX_TMP:-}"' EXIT
+# Clean up temp files and the staging dir on exit: normal end, set -e abort
+# mid-staging/metadata/index build, and SIGTERM (pipeline publish timeout) — not
+# SIGKILL, which runs no trap. A SIGTERM aimed at this shell alone is not passed
+# on to the foreground child it was waiting on, so stop our children first
+# (`uv run` forwards SIGTERM to its python) and remove staging only once none is
+# left: an orphaned reconcile step walking a vanished tree would prune the live
+# series (the reconcile step also refuses to prune without a complete staging
+# tree). If a child outlives the grace, leave staging behind rather than pull it
+# from under that child.
+_CHILD_STOP_TICKS=150  # x 0.1 s = 15 s, inside pipeline.py's 30 s SIGTERM grace
+cleanup() {
+  local tick=0
+  pkill -TERM -P $$ 2>/dev/null || true
+  while pgrep -P $$ >/dev/null 2>&1; do
+    if (( ++tick > _CHILD_STOP_TICKS )); then
+      echo "⚠ child processes still running; leaving staging ${STAGING:-<none>}" >&2
+      rm -f "${EXISTING_META_TMP:-}" "${INDEX_TMP:-}"
+      return
+    fi
+    sleep 0.1
+  done
+  rm -f "${EXISTING_META_TMP:-}" "${INDEX_TMP:-}"
+  if [[ -n "${STAGING:-}" ]]; then rm -rf "$STAGING"; fi
+}
+trap cleanup EXIT
 
 # ── Config ───────────────────────────────────────────────────────────────────
 BUCKET="${PODCAST_BUCKET:?PODCAST_BUCKET not set (e.g. kg-podcasts-prod)}"
@@ -103,9 +126,12 @@ info "Series: $SERIES_ID"
 info "Bucket: $S3_PREFIX (region $REGION)"
 
 # ── Create staging dir ───────────────────────────────────────────────────────
-STAGING="/tmp/podcast_upload_${SERIES_ID}"
-rm -rf "$STAGING"
-mkdir -p "$STAGING"
+# Unique per run, removed by the EXIT trap. A fixed /tmp/podcast_upload_<sid>
+# let two uploads of one series (publish retry vs. a still-running attempt,
+# dashboard + CLI) rm -rf each other's tree mid-upload — and the reconcile step
+# below prunes every remote key missing from staging.
+_TMP_ROOT="${TMPDIR:-/tmp}"
+STAGING="$(mktemp -d "${_TMP_ROOT%/}/podcast_upload_${SERIES_ID}.XXXXXX")"
 
 # ── Reorganize files into ep_NN/ dirs ────────────────────────────────────────
 # Post-Track-B default is .m4a (AAC). .mp3 still accepted for legacy series.
@@ -324,7 +350,6 @@ if [[ $DRY_RUN -eq 1 ]]; then
     echo "  $(echo "$f" | sed "s|$STAGING/||")  ($size bytes)"
   done
   info "Would: per-file 'aws s3 cp --content-type' each file into $S3_PREFIX/$SERIES_ID/ (metadata.json last), then prune remote orphans"
-  rm -rf "$STAGING"
   exit 0
 fi
 
@@ -389,12 +414,23 @@ if endpoint:
     kwargs["endpoint_url"] = endpoint
 s3 = boto3.client("s3", **kwargs)
 
-# Relative keys present locally (what we just uploaded).
+# Relative keys present locally (what we just uploaded). Every remote key absent
+# from this set is deleted, so a staging tree that is missing, unreadable or
+# emptied (e.g. removed under an orphaned reconcile) would prune the live series:
+# fail the upload instead.
+def _refuse(why):
+    sys.exit(f"✗ reconcile: refusing to prune — staging {staging} {why}")
+
+def _walk_error(exc):
+    _refuse(f"unreadable ({exc})")
+
 local = set()
-for root, _dirs, files in os.walk(staging):
+for root, _dirs, files in os.walk(staging, onerror=_walk_error):
     for fn in files:
         rel = os.path.relpath(os.path.join(root, fn), staging)
         local.add(rel.replace(os.sep, "/"))
+if "metadata.json" not in local:
+    _refuse("is incomplete (no metadata.json)")
 
 prefix = f"{series_id}/"
 paginator = s3.get_paginator("list_objects_v2")
@@ -466,6 +502,4 @@ run_aws s3 cp \
 rm -f "$INDEX_TMP"
 ok "index.json rebuilt"
 
-# ── Cleanup ──────────────────────────────────────────────────────────────────
-rm -rf "$STAGING"
 ok "Done — $SERIES_ID uploaded with $EP_COUNT episodes"

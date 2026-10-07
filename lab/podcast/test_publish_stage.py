@@ -22,7 +22,6 @@ verify the series is live in the catalog index — no manual dashboard step.
   6. PODCAST_BUCKET 未設 → loud-fail 回 False(非 crash)。
 """
 
-
 import pipeline
 
 
@@ -38,6 +37,7 @@ class _FakeLog:
 
 
 # --- stage ordering / gate contract ----------------------------------------
+
 
 def test_publish_is_last_stage_after_subtitle():
     assert pipeline.STAGES[-1] == "publish"
@@ -55,11 +55,9 @@ def test_stage_publish_callable():
 
 # --- stage_publish behaviour ------------------------------------------------
 
-def _patch_upload(monkeypatch, rc=0):
-    class _Proc:
-        returncode = rc
 
-    monkeypatch.setattr(pipeline.subprocess, "run", lambda *a, **k: _Proc())
+def _patch_upload(monkeypatch, rc=0):
+    monkeypatch.setattr(pipeline, "_run_bounded", lambda *a, **k: rc)
     # upload_sh existence + bucket env
     monkeypatch.setattr(pipeline.Path, "is_file", lambda self: True)
     monkeypatch.setenv("PODCAST_BUCKET", "kg-podcasts-prod")
@@ -112,8 +110,11 @@ def test_publish_upload_failure_short_circuits_verify(monkeypatch, tmp_path):
     ws.mkdir()
     _patch_upload(monkeypatch, rc=1)
     verify_calls = {"n": 0}
-    monkeypatch.setattr(pipeline, "_verify_published",
-                        lambda sid: verify_calls.__setitem__("n", verify_calls["n"] + 1) or True)
+    monkeypatch.setattr(
+        pipeline,
+        "_verify_published",
+        lambda sid: verify_calls.__setitem__("n", verify_calls["n"] + 1) or True,
+    )
     assert pipeline.stage_publish(ws, _FakeLog(), max_retries=2) is False
     assert verify_calls["n"] == 0  # never reached verify on rc!=0
 
@@ -135,12 +136,16 @@ def test_publish_timeout_is_retried(monkeypatch, tmp_path):
     monkeypatch.setattr(pipeline.Path, "is_file", lambda self: True)
     monkeypatch.setattr(pipeline.time, "sleep", lambda *_: None)
 
-    def _boom(*a, **k):
-        raise pipeline.subprocess.TimeoutExpired(cmd="bash", timeout=1)
+    attempts = {"n": 0}
 
-    monkeypatch.setattr(pipeline.subprocess, "run", _boom)
+    def _timed_out(*a, **k):  # _run_bounded reports a timeout as None
+        attempts["n"] += 1
+        return None
+
+    monkeypatch.setattr(pipeline, "_run_bounded", _timed_out)
     monkeypatch.setattr(pipeline, "_verify_published", lambda sid: True)
     assert pipeline.stage_publish(ws, _FakeLog(), max_retries=2) is False
+    assert attempts["n"] == 2
 
 
 def test_verify_published_matches_series_in_index(monkeypatch):
@@ -149,16 +154,24 @@ def test_verify_published_matches_series_in_index(monkeypatch):
     import json as _json
 
     class _Body:
-        def __init__(self, b): self._b = b
-        def read(self): return self._b
+        def __init__(self, b):
+            self._b = b
+
+        def read(self):
+            return self._b
 
     class _S3:
-        def __init__(self, idx): self._idx = idx
+        def __init__(self, idx):
+            self._idx = idx
+
         def get_object(self, Bucket, Key):
             return {"Body": _Body(_json.dumps(self._idx).encode())}
 
     import boto3
-    monkeypatch.setattr(boto3, "client", lambda *a, **k: _S3([{"id": "flow_x"}, {"id": "other"}]))
+
+    monkeypatch.setattr(
+        boto3, "client", lambda *a, **k: _S3([{"id": "flow_x"}, {"id": "other"}])
+    )
     assert pipeline._verify_published("flow_x") is True
     assert pipeline._verify_published("missing") is False
 
@@ -171,5 +184,6 @@ def test_verify_published_false_when_index_unreadable(monkeypatch):
             raise RuntimeError("NoSuchKey")
 
     import boto3
+
     monkeypatch.setattr(boto3, "client", lambda *a, **k: _S3())
     assert pipeline._verify_published("flow_x") is False

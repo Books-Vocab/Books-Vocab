@@ -107,7 +107,9 @@ _PROFILE_DEFAULT_MODEL = PROFILE_DEFAULT_MODEL
 def _normalize_agent_profile(profile: str | None) -> str:
     value = (profile or os.getenv("PODCAST_AGENT_PROFILE") or "claude").strip().lower()
     if value not in AGENT_PROFILES:
-        raise ValueError(f"unknown agent profile {value!r}; allowed: {', '.join(AGENT_PROFILES)}")
+        raise ValueError(
+            f"unknown agent profile {value!r}; allowed: {', '.join(AGENT_PROFILES)}"
+        )
     return value
 
 
@@ -186,7 +188,9 @@ def _ensure_dashboard_running(workspace: Path | None = None) -> str | None:
                 s.connect(("127.0.0.1", _DASHBOARD_PORT))
                 return True
             except OSError as exc:
-                _LOGGER.debug("dashboard port probe failed for %s: %s", _DASHBOARD_PORT, exc)
+                _LOGGER.debug(
+                    "dashboard port probe failed for %s: %s", _DASHBOARD_PORT, exc
+                )
                 return False
 
     if not _port_alive():
@@ -201,7 +205,9 @@ def _ensure_dashboard_running(workspace: Path | None = None) -> str | None:
         try:
             subprocess.run(
                 ["bash", str(start_sh), "--bg", str(_DASHBOARD_PORT)],
-                cwd=str(ROOT), check=False, timeout=15,
+                cwd=str(ROOT),
+                check=False,
+                timeout=15,
             )
         except subprocess.TimeoutExpired:
             print("[dashboard] start.sh timed out — check monitor.log")
@@ -216,8 +222,12 @@ def _ensure_dashboard_running(workspace: Path | None = None) -> str | None:
         webbrowser.open(url)
     except Exception as exc:
         # Keep URL as fallback path for manual open, but record reason.
-        print(f"[pipeline] failed to open dashboard URL automatically: {exc}", file=sys.stderr)
+        print(
+            f"[pipeline] failed to open dashboard URL automatically: {exc}",
+            file=sys.stderr,
+        )
     return url
+
 
 # Compatibility export: stage names and metadata now come from the typed
 # registry.  Existing integrations import ``STAGES`` and expect a list.
@@ -248,6 +258,7 @@ def _should_skip_for_only_episode(stage_name: str, args) -> bool:
         and args.only_stage != stage_name
     )
 
+
 # ─── Archetype prompt resolution + mode sidecars ────────────────────────────
 # An archetype selects a prompt SET via filename suffix. `_prompt` returns the
 # variant `<name>_<suffix>.md` when it exists, else the base `<name>.md`. So an
@@ -269,7 +280,8 @@ def available_workflow_versions() -> list[str]:
     if not WORKFLOW_VERSIONS_DIR.exists():
         return []
     return sorted(
-        p.name for p in WORKFLOW_VERSIONS_DIR.iterdir()
+        p.name
+        for p in WORKFLOW_VERSIONS_DIR.iterdir()
         if p.is_dir() and (p / "workflow.json").is_file()
     )
 
@@ -285,7 +297,11 @@ def load_workflow_definition(workflow_version: str) -> dict:
 
 
 def workflow_stage_order(workflow_version: str) -> list[str]:
-    return list(stage_names(stage_specs_from_workflow(load_workflow_definition(workflow_version))))
+    return list(
+        stage_names(
+            stage_specs_from_workflow(load_workflow_definition(workflow_version))
+        )
+    )
 
 
 def all_workflow_stage_names() -> list[str]:
@@ -297,7 +313,9 @@ def all_workflow_stage_names() -> list[str]:
 
 def _workflow_prompt_dir(workflow_version: str) -> Path:
     workflow = load_workflow_definition(workflow_version)
-    return WORKFLOW_VERSIONS_DIR / workflow_version / workflow.get("prompt_dir", "prompts")
+    return (
+        WORKFLOW_VERSIONS_DIR / workflow_version / workflow.get("prompt_dir", "prompts")
+    )
 
 
 def prompt_path(name: str, archetype: str, workflow_version: str) -> Path:
@@ -307,7 +325,11 @@ def prompt_path(name: str, archetype: str, workflow_version: str) -> Path:
     # archetype resolution without materializing workflow_versions. Preserve
     # that override; production keeps PROMPTS_DIR at ROOT/prompts and uses the
     # versioned snapshot.
-    prompt_dir = PROMPTS_DIR if PROMPTS_DIR != ROOT / "prompts" else _workflow_prompt_dir(workflow_version)
+    prompt_dir = (
+        PROMPTS_DIR
+        if PROMPTS_DIR != ROOT / "prompts"
+        else _workflow_prompt_dir(workflow_version)
+    )
     if suffix:
         variant = prompt_dir / f"{name}_{suffix}.md"
         if variant.exists():
@@ -393,14 +415,20 @@ def write_workflow_manifest(
 ) -> dict:
     workflow = load_workflow_definition(workflow_version)
     existing = read_workflow_manifest(workspace) or {}
-    if existing.get("workflow_version") and existing.get("pipeline_commit") and existing.get("prompt_fingerprints"):
+    if (
+        existing.get("workflow_version")
+        and existing.get("pipeline_commit")
+        and existing.get("prompt_fingerprints")
+    ):
         if existing["workflow_version"] != workflow_version:
             raise ValueError(
                 f"workspace was created with workflow_version {existing['workflow_version']}; "
                 f"cannot rewrite manifest as {workflow_version}"
             )
         return existing
-    created_at = existing.get("created_at") or datetime.now().isoformat(timespec="seconds")
+    created_at = existing.get("created_at") or datetime.now().isoformat(
+        timespec="seconds"
+    )
     manifest = {
         "workflow_version": workflow_version,
         "pipeline_commit": _pipeline_commit(),
@@ -421,7 +449,9 @@ def write_workflow_manifest(
     return WorkspaceState(workspace).write_manifest(manifest)
 
 
-def write_mode_sidecar(workspace: Path, archetype: str, spoiler_mode: str | None) -> None:
+def write_mode_sidecar(
+    workspace: Path, archetype: str, spoiler_mode: str | None
+) -> None:
     """Persist the production mode so resume re-reads it (never trusts argv)."""
     (workspace / _MODE_SIDECAR).write_text(archetype)
     sp = workspace / _SPOILER_SIDECAR
@@ -579,9 +609,7 @@ def check_saga_marker_coverage(workspace: Path) -> list[str]:
 #                         ┃.script_approved┃ AUDIO(tts-prep→subtitle)
 # Each gate keys on the FIRST stage of the phase it guards.
 _APPROVAL_GATES = {
-    spec.name: spec.approval_marker
-    for spec in STAGE_SPECS
-    if spec.approval_marker
+    spec.name: spec.approval_marker for spec in STAGE_SPECS if spec.approval_marker
 }
 
 
@@ -641,15 +669,30 @@ class PipelineLog:
 
     def stage_start(self, stage: str, **extra: object) -> None:
         self._write({"event": "stage_start", "stage": stage, **extra})
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"  STAGE: {stage}")
         for k, v in extra.items():
             print(f"  {k}: {v}")
         print(f"  started: {datetime.now().strftime('%H:%M:%S')}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
-    def stage_end(self, stage: str, success: bool, elapsed: float, only_episode: bool = False, **extra: object) -> None:
-        self._write({"event": "stage_end", "stage": stage, "success": success, "elapsed_s": round(elapsed, 1), **extra})
+    def stage_end(
+        self,
+        stage: str,
+        success: bool,
+        elapsed: float,
+        only_episode: bool = False,
+        **extra: object,
+    ) -> None:
+        self._write(
+            {
+                "event": "stage_end",
+                "stage": stage,
+                "success": success,
+                "elapsed_s": round(elapsed, 1),
+                **extra,
+            }
+        )
         status = "OK" if success else "FAILED"
         print(f"\n  [{stage}] {status} in {elapsed:.0f}s")
         # Write the whole-stage completion marker — but NOT for a single-episode
@@ -665,7 +708,9 @@ class PipelineLog:
         """Pipeline paused at an approval gate — NOT a failure (exit 0). The
         dashboard derives AWAITING_*_APPROVAL from disk state; this event also
         drives the live activity feed."""
-        self._write({"event": "gate_wait", "stage": stage, "marker": marker, "phase": phase})
+        self._write(
+            {"event": "gate_wait", "stage": stage, "marker": marker, "phase": phase}
+        )
         print(f"\n  ⏸ awaiting {phase} approval — paused before {stage}")
 
     def event(self, msg: str, **extra: object) -> None:
@@ -739,7 +784,9 @@ def extract_epub(epub_path: str) -> tuple[dict, list[tuple[str, str]]]:
             chapters.append((item.get_name(), text))
 
     return {
-        "title": title, "author": author, "language": lang,
+        "title": title,
+        "author": author,
+        "language": lang,
         "total_raw_chapters": len(chapters),
         "total_raw_chars": sum(len(t) for _, t in chapters),
     }, chapters
@@ -777,7 +824,9 @@ def setup_workspace(metadata: dict, chapters: list[tuple[str, str]]) -> Path:
     return workspace
 
 
-def _write_book_dir(book_dir: Path, metadata: dict, chapters: list[tuple[str, str]]) -> None:
+def _write_book_dir(
+    book_dir: Path, metadata: dict, chapters: list[tuple[str, str]]
+) -> None:
     """Materialize one book's source layout under ``book_dir`` (shared by the
     single-book and saga paths)."""
     for d in ["source/chapters", "raw_chapters"]:
@@ -855,8 +904,7 @@ def setup_saga_workspace(
     (workspace / "source" / "metadata.md").write_text("\n".join(saga_meta))
 
     (workspace / "series.md").write_text(
-        saga.render_series_manifest(saga_title, entries)
-        + saga.render_chapter_map(flat)
+        saga.render_series_manifest(saga_title, entries) + saga.render_chapter_map(flat)
     )
     (workspace / "log.md").write_text(
         f"# Podcast Pipeline Log (Saga)\n\n"
@@ -926,21 +974,38 @@ _DEFAULT_TIMEOUT = 1500
 # resumes work rather than redoing it — disk is the durable checkpoint, the
 # conversation is disposable.
 _STAGE_RETRY_ATTEMPTS = int(os.getenv("PODCAST_STAGE_RETRIES", "3"))  # total tries
-_STAGE_RETRY_BASE = float(os.getenv("PODCAST_STAGE_RETRY_BASE", "5"))  # backoff base (s)
+_STAGE_RETRY_BASE = float(
+    os.getenv("PODCAST_STAGE_RETRY_BASE", "5")
+)  # backoff base (s)
 
 # HTTP statuses worth retrying with a fresh conversation.
 _RETRYABLE_HTTP = {"408", "409", "425", "429", "500", "502", "503", "504", "529"}
 # Phrases that mark a transient/recoverable failure regardless of status code.
 _RETRYABLE_PHRASES = (
-    "overloaded", "rate limit", "rate_limit", "service unavailable",
-    "internal server error", "bad gateway", "gateway timeout",
-    "connection reset", "connection error", "econnreset", "etimedout",
-    "temporarily unavailable", "please try again",
+    "overloaded",
+    "rate limit",
+    "rate_limit",
+    "service unavailable",
+    "internal server error",
+    "bad gateway",
+    "gateway timeout",
+    "connection reset",
+    "connection error",
+    "econnreset",
+    "etimedout",
+    "temporarily unavailable",
+    "please try again",
 )
 # Phrases that mark a deterministic/fatal failure — never retry (fail fast).
 _FATAL_PHRASES = (
-    "authentication", "unauthorized", "invalid x-api-key", "invalid api key",
-    "permission denied", "permission_error", "invalid model", "not_found_error",
+    "authentication",
+    "unauthorized",
+    "invalid x-api-key",
+    "invalid api key",
+    "permission denied",
+    "permission_error",
+    "invalid model",
+    "not_found_error",
 )
 
 
@@ -948,6 +1013,7 @@ class _ClaudeFailure(NamedTuple):
     """Why a `claude -p` invocation failed. `status` is the API HTTP status
     coerced to str (the wire `api_error_status` is an int, e.g. 400 → "400")
     when known, else a tag like "timeout". May be None (status-less stderr)."""
+
     status: str | None
     reason: str
 
@@ -963,7 +1029,7 @@ def _is_retryable_claude_failure(status: str | None, reason: str) -> bool:
     waste — raise PODCAST_STAGE_TIMEOUT instead).
     """
     text = (reason or "").lower()
-    code = (str(status).strip().lower() if status is not None else "")
+    code = str(status).strip().lower() if status is not None else ""
 
     # Subprocess timeout: deterministic-enough that retrying is too costly.
     if code == "timeout" or "timeout after" in text:
@@ -1009,11 +1075,15 @@ def _fmt_tool_event(event: dict) -> str | None:
                     cmd = inp.get("command", "")[:100]
                     lines.append(f"  → Bash: {cmd}")
                 elif name == "Grep":
-                    lines.append(f"  → Grep '{inp.get('pattern', '')}' in {inp.get('path', '.')}")
+                    lines.append(
+                        f"  → Grep '{inp.get('pattern', '')}' in {inp.get('path', '.')}"
+                    )
                 elif name == "Glob":
                     lines.append(f"  → Glob '{inp.get('pattern', '')}'")
                 elif name in {"WebFetch", "WebSearch"}:
-                    lines.append(f"  → {name}: {inp.get('url') or inp.get('query', '')[:80]}")
+                    lines.append(
+                        f"  → {name}: {inp.get('url') or inp.get('query', '')[:80]}"
+                    )
                 else:
                     lines.append(f"  → {name}")
             elif ptype == "text":
@@ -1053,7 +1123,11 @@ def _run_claude_subprocess(
         proc_env = _agent_subprocess_env()
     except RuntimeError as e:
         if log:
-            log.error(f"{label} agent configuration error", profile=AGENT_PROFILE, reason=str(e))
+            log.error(
+                f"{label} agent configuration error",
+                profile=AGENT_PROFILE,
+                reason=str(e),
+            )
         return False, 0.0, _ClaudeFailure("auth", str(e))
 
     if _STREAM_JSON:
@@ -1089,7 +1163,9 @@ def _run_claude_subprocess(
                     try:
                         event = json.loads(line)
                     except json.JSONDecodeError:
-                        _LOGGER.debug("Skipping malformed pipeline child event line: %r", line)
+                        _LOGGER.debug(
+                            "Skipping malformed pipeline child event line: %r", line
+                        )
                         continue
                 # The terminal `result` event carries is_error / api_error_status
                 # even when the agent printed an error and the CLI still exits 0
@@ -1111,16 +1187,27 @@ def _run_claude_subprocess(
         except subprocess.TimeoutExpired:
             proc.kill()
             elapsed = time.time() - t0
-            raw = (proc.stderr.read() if proc.stderr else b"").decode("utf-8", errors="replace")
+            raw = (proc.stderr.read() if proc.stderr else b"").decode(
+                "utf-8", errors="replace"
+            )
             if raw:
                 stderr_log.write_text(raw[-2000:])
             if log:
-                log.error(f"{label} TIMEOUT after {timeout}s",
-                          timeout=True, elapsed_s=round(elapsed, 1),
-                          stderr_tail=raw[-500:])
-            return False, elapsed, _ClaudeFailure("timeout", f"TIMEOUT after {timeout}s")
+                log.error(
+                    f"{label} TIMEOUT after {timeout}s",
+                    timeout=True,
+                    elapsed_s=round(elapsed, 1),
+                    stderr_tail=raw[-500:],
+                )
+            return (
+                False,
+                elapsed,
+                _ClaudeFailure("timeout", f"TIMEOUT after {timeout}s"),
+            )
         elapsed = time.time() - t0
-        stderr_text = (proc.stderr.read() if proc.stderr else b"").decode("utf-8", errors="replace")
+        stderr_text = (proc.stderr.read() if proc.stderr else b"").decode(
+            "utf-8", errors="replace"
+        )
         # An is_error result event means the agent loop failed (e.g. API 400)
         # even if subtype=="success" and the CLI exit code is 0 — trust is_error.
         api_error = bool(result_event and result_event.get("is_error"))
@@ -1137,9 +1224,12 @@ def _run_claude_subprocess(
         if stderr_text:
             stderr_log.write_text(stderr_text)
         if log:
-            log.error(f"{label} failed (exit={proc.returncode}, api_error={api_error})",
-                      api_error_status=status, stderr_tail=stderr_text[-500:],
-                      reason=reason[:300])
+            log.error(
+                f"{label} failed (exit={proc.returncode}, api_error={api_error})",
+                api_error_status=status,
+                stderr_tail=stderr_text[-500:],
+                reason=reason[:300],
+            )
         return False, elapsed, _ClaudeFailure(status, reason)
 
     # Non-verbose mode: inherit stdout
@@ -1164,7 +1254,8 @@ def _run_claude_subprocess(
         if log:
             log.error(
                 f"{label} TIMEOUT after {timeout}s",
-                timeout=True, elapsed_s=round(elapsed, 1),
+                timeout=True,
+                elapsed_s=round(elapsed, 1),
                 stderr_tail=tail[-500:],
             )
         return False, elapsed, _ClaudeFailure("timeout", f"TIMEOUT after {timeout}s")
@@ -1202,33 +1293,51 @@ def _run_claude_with_retry(
     work. Fatal failures (auth/config/timeout) fail fast — no wasted retries.
     """
     import random
+
     attempts = max(1, _STAGE_RETRY_ATTEMPTS)
     last_elapsed = 0.0
     for attempt in range(1, attempts + 1):
-        success, elapsed, failure = _run_claude_subprocess(cmd, workspace, label, log, timeout, prompt)
+        success, elapsed, failure = _run_claude_subprocess(
+            cmd, workspace, label, log, timeout, prompt
+        )
         last_elapsed = elapsed
         if success:
             if attempt > 1 and log:
                 log.event(f"{label} recovered on attempt {attempt}/{attempts}")
             return True, elapsed
-        retryable = failure is not None and _is_retryable_claude_failure(failure.status, failure.reason)
+        retryable = failure is not None and _is_retryable_claude_failure(
+            failure.status, failure.reason
+        )
         reason = (failure.reason if failure else "unknown")[:160]
         if not retryable or attempt >= attempts:
             if log:
-                log.error(f"{label} failed permanently",
-                          attempt=attempt, attempts=attempts, retryable=retryable,
-                          status=(failure.status if failure else None), reason=reason)
+                log.error(
+                    f"{label} failed permanently",
+                    attempt=attempt,
+                    attempts=attempts,
+                    retryable=retryable,
+                    status=(failure.status if failure else None),
+                    reason=reason,
+                )
             return False, elapsed
-        backoff = min(90.0, _STAGE_RETRY_BASE * (2 ** (attempt - 1))) + random.random() * 2
+        backoff = (
+            min(90.0, _STAGE_RETRY_BASE * (2 ** (attempt - 1))) + random.random() * 2
+        )
         # 429 = per-minute quota exhausted; needs ≥60s for the window to reset.
         if failure and str(failure.status) == "429":
             backoff = max(backoff, 60.0)
         if log:
-            log.event(f"{label} transient failure — retry {attempt + 1}/{attempts}",
-                      status=(failure.status if failure else None),
-                      reason=reason, backoff_s=round(backoff, 1))
-        print(f"  [{label}] transient failure (attempt {attempt}/{attempts}) — "
-              f"retry in {backoff:.0f}s: {reason}", flush=True)
+            log.event(
+                f"{label} transient failure — retry {attempt + 1}/{attempts}",
+                status=(failure.status if failure else None),
+                reason=reason,
+                backoff_s=round(backoff, 1),
+            )
+        print(
+            f"  [{label}] transient failure (attempt {attempt}/{attempts}) — "
+            f"retry in {backoff:.0f}s: {reason}",
+            flush=True,
+        )
         time.sleep(backoff)
     return False, last_elapsed
 
@@ -1243,7 +1352,9 @@ def run_claude(
 ) -> bool:
     prompt = prompt.replace("{saga_context}", build_saga_context(workspace))
     prompt = prompt.replace("{workspace}", str(workspace))
-    prompt = prompt.replace("{podcast_root}", str(ROOT))  # cover stage drives cover_tool.py by abs path
+    prompt = prompt.replace(
+        "{podcast_root}", str(ROOT)
+    )  # cover stage drives cover_tool.py by abs path
     if inject_tts:
         prompt = inject_tts_palette(prompt, workspace)
     tools = ["Read", "Write", "Edit", "Bash", "Glob", "Grep"]
@@ -1251,11 +1362,26 @@ def run_claude(
         tools.extend(extra_tools)
 
     # Prompt is passed via stdin (not argv) to avoid exposing content in ps listings.
-    cmd = ["claude", "-p", "-", *_VERBOSE_FLAGS, "--model", MODEL, "--allowedTools", ",".join(tools)]
+    cmd = [
+        "claude",
+        "-p",
+        "-",
+        *_VERBOSE_FLAGS,
+        "--model",
+        MODEL,
+        "--allowedTools",
+        ",".join(tools),
+    ]
     timeout = _STAGE_TIMEOUTS.get(label, _DEFAULT_TIMEOUT)
 
-    log.event("claude invocation", tools=tools, profile=AGENT_PROFILE, model=MODEL,
-              prompt_len=len(prompt), timeout_s=timeout)
+    log.event(
+        "claude invocation",
+        tools=tools,
+        profile=AGENT_PROFILE,
+        model=MODEL,
+        prompt_len=len(prompt),
+        timeout_s=timeout,
+    )
 
     success, _ = _run_claude_with_retry(cmd, workspace, label, log, timeout, prompt)
     return success
@@ -1270,7 +1396,16 @@ def run_scriptwriter(workspace: Path, ep_num: int) -> tuple[int, bool]:
     prompt += f"\n\nYou are writing Episode {ep_num}. Read the overview, then your episode plan at plan/episodes/ep_{ep_num:02d}.md, then the source chapters listed in it."
 
     # Prompt is passed via stdin (not argv) to avoid exposing content in ps listings.
-    cmd = ["claude", "-p", "-", *_VERBOSE_FLAGS, "--model", MODEL, "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep"]
+    cmd = [
+        "claude",
+        "-p",
+        "-",
+        *_VERBOSE_FLAGS,
+        "--model",
+        MODEL,
+        "--allowedTools",
+        "Read,Write,Edit,Bash,Glob,Grep",
+    ]
     label = f"Scriptwriter EP{ep_num}"
     timeout = _STAGE_TIMEOUTS["Scriptwriter"]
 
@@ -1284,7 +1419,9 @@ def run_scriptwriter(workspace: Path, ep_num: int) -> tuple[int, bool]:
     # dashboard's `grep '"error"'` saw nothing for parallel-stage failures.
     log = PipelineLog(workspace)
     print(f"\n  [{label}] Starting (timeout {timeout}s)...")
-    success, elapsed = _run_claude_with_retry(cmd, workspace, label, log, timeout, prompt)
+    success, elapsed = _run_claude_with_retry(
+        cmd, workspace, label, log, timeout, prompt
+    )
     status = "OK" if success else "FAILED"
     print(f"  [{label}] {status} in {elapsed:.1f}s")
     return ep_num, success
@@ -1299,7 +1436,16 @@ def run_script_reviewer(workspace: Path, ep_num: int) -> tuple[int, bool]:
     prompt += f"\n\nReview Episode {ep_num}. Read overview.md, then ep_{ep_num:02d}.md plan, then ep_{ep_num}_script.md."
 
     # Prompt is passed via stdin (not argv) to avoid exposing content in ps listings.
-    cmd = ["claude", "-p", "-", *_VERBOSE_FLAGS, "--model", MODEL, "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep"]
+    cmd = [
+        "claude",
+        "-p",
+        "-",
+        *_VERBOSE_FLAGS,
+        "--model",
+        MODEL,
+        "--allowedTools",
+        "Read,Write,Edit,Bash,Glob,Grep",
+    ]
     label = f"Script Review EP{ep_num}"
     timeout = _STAGE_TIMEOUTS["Script Review"]
 
@@ -1307,7 +1453,9 @@ def run_script_reviewer(workspace: Path, ep_num: int) -> tuple[int, bool]:
     # safety rationale). Replaces the former log=None that swallowed failures.
     log = PipelineLog(workspace)
     print(f"\n  [{label}] Starting (timeout {timeout}s)...")
-    success, elapsed = _run_claude_with_retry(cmd, workspace, label, log, timeout, prompt)
+    success, elapsed = _run_claude_with_retry(
+        cmd, workspace, label, log, timeout, prompt
+    )
     status = "OK" if success else "FAILED"
     print(f"  [{label}] {status} in {elapsed:.1f}s")
     return ep_num, success
@@ -1387,11 +1535,19 @@ _STAGE_ARTIFACT_GLOBS = {
         "output": ["scripts/ep_*_review.md"],
     },
     "tts-prep": {
-        "input": ["plan/overview.md", "scripts/ep_*_script.md", "scripts/ep_*_review.md"],
+        "input": [
+            "plan/overview.md",
+            "scripts/ep_*_script.md",
+            "scripts/ep_*_review.md",
+        ],
         "output": ["plan/overview.md", "plan/tts_prep.md", "scripts/ep_*_script.md"],
     },
     "synthesize": {
-        "input": ["scripts/ep_*_script.md", _TTS_MODEL_SIDECAR, _SCRIPT_TTS_FAMILY_SIDECAR],
+        "input": [
+            "scripts/ep_*_script.md",
+            _TTS_MODEL_SIDECAR,
+            _SCRIPT_TTS_FAMILY_SIDECAR,
+        ],
         "output": ["scripts/ep_*.mp3", "scripts/ep_*.m4a", "scripts/ep_*.meta.json"],
     },
     "audio-qa": {
@@ -1407,12 +1563,23 @@ _STAGE_ARTIFACT_GLOBS = {
         "output": ["plan/cover.png", "plan/cover_meta.json"],
     },
     "publish": {
-        "input": ["plan/cover.png", "scripts/ep_*.mp3", "scripts/ep_*.m4a", "scripts/ep_*.srt"],
+        "input": [
+            "plan/cover.png",
+            "scripts/ep_*.mp3",
+            "scripts/ep_*.m4a",
+            "scripts/ep_*.srt",
+        ],
         "output": [],
     },
 }
 
-_LINEAGE_STAGES = {"scriptwrite", "series-polish", "script-review", "producer-cut", "tts-prep"}
+_LINEAGE_STAGES = {
+    "scriptwrite",
+    "series-polish",
+    "script-review",
+    "producer-cut",
+    "tts-prep",
+}
 
 
 def _artifact_matches_episode(rel: str, only_episode: int | None) -> bool:
@@ -1430,7 +1597,11 @@ def _collect_artifacts(
 ) -> dict[str, dict[str, object]]:
     artifacts: dict[str, dict[str, object]] = {}
     for pattern in patterns:
-        matches = [workspace / pattern] if not any(ch in pattern for ch in "*?[") else list(workspace.glob(pattern))
+        matches = (
+            [workspace / pattern]
+            if not any(ch in pattern for ch in "*?[")
+            else list(workspace.glob(pattern))
+        )
         for p in sorted(matches):
             if not p.is_file():
                 continue
@@ -1441,7 +1612,9 @@ def _collect_artifacts(
             artifacts[rel] = {
                 "sha256": _sha256_file(p),
                 "bytes": stat.st_size,
-                "mtime": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
+                "mtime": datetime.fromtimestamp(stat.st_mtime).isoformat(
+                    timespec="seconds"
+                ),
             }
     return artifacts
 
@@ -1452,7 +1625,9 @@ def capture_stage_inputs(
     only_episode: int | None,
 ) -> dict[str, dict[str, object]]:
     spec = _STAGE_ARTIFACT_GLOBS.get(stage, {})
-    return _collect_artifacts(workspace, spec.get("input", []), only_episode=only_episode)
+    return _collect_artifacts(
+        workspace, spec.get("input", []), only_episode=only_episode
+    )
 
 
 def _capture_stage_outputs(
@@ -1461,7 +1636,9 @@ def _capture_stage_outputs(
     only_episode: int | None,
 ) -> dict[str, dict[str, object]]:
     spec = _STAGE_ARTIFACT_GLOBS.get(stage, {})
-    return _collect_artifacts(workspace, spec.get("output", []), only_episode=only_episode)
+    return _collect_artifacts(
+        workspace, spec.get("output", []), only_episode=only_episode
+    )
 
 
 def _stage_prompt_metadata(workspace: Path, stage: str) -> dict[str, object] | None:
@@ -1492,7 +1669,9 @@ def _validator_result(workspace: Path, stage: str) -> dict[str, object] | None:
         max_fail_count = int(stage_thresholds.get("max_fail_count", 2))
         fail_count = text.count("FAIL")
         return {
-            "status": "pass" if rewrite_marker not in text and fail_count <= max_fail_count else "fail",
+            "status": "pass"
+            if rewrite_marker not in text and fail_count <= max_fail_count
+            else "fail",
             "rewrite_marker": rewrite_marker,
             "rewrite_needed": rewrite_marker in text,
             "fail_count": fail_count,
@@ -1503,7 +1682,9 @@ def _validator_result(workspace: Path, stage: str) -> dict[str, object] | None:
         if not f.exists():
             return {"status": "missing", "artifact": "plan/series_polish.md"}
         text = f.read_text()
-        block_marker = stage_thresholds.get("block_marker", "STRUCTURAL_ISSUES_NEED_RESCRIPT")
+        block_marker = stage_thresholds.get(
+            "block_marker", "STRUCTURAL_ISSUES_NEED_RESCRIPT"
+        )
         return {
             "status": "fail" if block_marker in text else "pass",
             "block_marker": block_marker,
@@ -1516,7 +1697,11 @@ def _validator_result(workspace: Path, stage: str) -> dict[str, object] | None:
             if rewrite_marker in f.read_text():
                 m = re.search(r"ep_(\d+)", f.stem)
                 rewrite.append(int(m.group(1)) if m else f.name)
-        return {"status": "fail" if rewrite else "pass", "rewrite_marker": rewrite_marker, "rewrite_needed": rewrite}
+        return {
+            "status": "fail" if rewrite else "pass",
+            "rewrite_marker": rewrite_marker,
+            "rewrite_needed": rewrite,
+        }
     if stage == "tts-prep":
         f = workspace / "plan" / "tts_prep.md"
         if not f.exists():
@@ -1525,7 +1710,9 @@ def _validator_result(workspace: Path, stage: str) -> dict[str, object] | None:
         ready_marker = stage_thresholds.get("ready_marker", "READY_FOR_TTS")
         block_marker = stage_thresholds.get("block_marker", "BLOCKED")
         return {
-            "status": "pass" if ready_marker in text and block_marker not in text else "fail",
+            "status": "pass"
+            if ready_marker in text and block_marker not in text
+            else "fail",
             "ready_marker": ready_marker,
             "block_marker": block_marker,
             "ready": ready_marker in text,
@@ -1670,12 +1857,16 @@ def _update_episode_lineage(
             "after_hash": after_hash,
             "changed": before_hash != after_hash,
             "edit_summary": "recorded deterministic before/after script hash",
-            "human_approved": (workspace / ".script_approved").exists() if stage == "tts-prep" else None,
+            "human_approved": (workspace / ".script_approved").exists()
+            if stage == "tts-prep"
+            else None,
             "ts": datetime.now().isoformat(timespec="seconds"),
         }
         lineage.setdefault(bucket, []).append(event)
         lineage.setdefault("events", []).append(event)
-        lineage_path.write_text(json.dumps(lineage, ensure_ascii=False, indent=2) + "\n")
+        lineage_path.write_text(
+            json.dumps(lineage, ensure_ascii=False, indent=2) + "\n"
+        )
 
 
 def write_stage_provenance(
@@ -1748,15 +1939,21 @@ def stage_prep(workspace: Path, log: PipelineLog) -> bool:
 
 
 def stage_analyst(workspace: Path, log: PipelineLog) -> bool:
-    return run_claude(_prompt("analyst", read_mode(workspace)), workspace, "Analyst", log)
+    return run_claude(
+        _prompt("analyst", read_mode(workspace)), workspace, "Analyst", log
+    )
 
 
 def stage_architect(workspace: Path, log: PipelineLog) -> bool:
-    return run_claude(_prompt("architect", read_mode(workspace)), workspace, "Architect", log)
+    return run_claude(
+        _prompt("architect", read_mode(workspace)), workspace, "Architect", log
+    )
 
 
 def stage_plan_review(workspace: Path, log: PipelineLog) -> bool:
-    ok = run_claude(_prompt("plan_review", read_mode(workspace)), workspace, "Plan Review", log)
+    ok = run_claude(
+        _prompt("plan_review", read_mode(workspace)), workspace, "Plan Review", log
+    )
     if not ok:
         return False
 
@@ -1769,7 +1966,9 @@ def stage_plan_review(workspace: Path, log: PipelineLog) -> bool:
     content = review_file.read_text()
     if "REWRITE_NEEDED" in content or content.count("FAIL") > 2:
         log.error("Plan review found critical issues — manual intervention needed")
-        log.event("Review saved to plan/review.md — read it, fix issues, then resume with --skip-to plan-review")
+        log.event(
+            "Review saved to plan/review.md — read it, fix issues, then resume with --skip-to plan-review"
+        )
         return False
 
     log.event("Plan review passed")
@@ -1777,17 +1976,27 @@ def stage_plan_review(workspace: Path, log: PipelineLog) -> bool:
 
 
 def stage_enricher_gap(workspace: Path, log: PipelineLog) -> bool:
-    return run_claude(_prompt("enricher_gap", read_mode(workspace)), workspace, "Enricher Gap", log)
+    return run_claude(
+        _prompt("enricher_gap", read_mode(workspace)), workspace, "Enricher Gap", log
+    )
 
 
 def stage_enricher(workspace: Path, log: PipelineLog) -> bool:
     return run_claude(
-        _prompt("enricher", read_mode(workspace)), workspace, "Enricher", log,
+        _prompt("enricher", read_mode(workspace)),
+        workspace,
+        "Enricher",
+        log,
         extra_tools=["WebSearch", "WebFetch"],
     )
 
 
-def stage_scriptwriters(workspace: Path, log: PipelineLog, max_parallel: int = 3, only_episode: int | None = None) -> bool:
+def stage_scriptwriters(
+    workspace: Path,
+    log: PipelineLog,
+    max_parallel: int = 3,
+    only_episode: int | None = None,
+) -> bool:
     if only_episode:
         _, ok = run_scriptwriter(workspace, only_episode)
         if ok:
@@ -1796,7 +2005,9 @@ def stage_scriptwriters(workspace: Path, log: PipelineLog, max_parallel: int = 3
             # stage_synthesize defaults to "3.1" → spurious cross-family mismatch
             # notices (backstop still safe; this just kills the noise). Mirrors the
             # full-run write below.
-            (workspace / _SCRIPT_TTS_FAMILY_SIDECAR).write_text(resolve_tts_family(workspace))
+            (workspace / _SCRIPT_TTS_FAMILY_SIDECAR).write_text(
+                resolve_tts_family(workspace)
+            )
         return ok
 
     ep_files = sorted((workspace / "plan" / "episodes").glob("ep_*.md"))
@@ -1821,7 +2032,9 @@ def stage_scriptwriters(workspace: Path, log: PipelineLog, max_parallel: int = 3
             f.unlink(missing_ok=True)  # remove partial so re-run starts clean
 
     if incomplete:
-        log.event(f"Discarded {len(incomplete)} partial scripts (missing END_OF_SCRIPT): {sorted(incomplete)}")
+        log.event(
+            f"Discarded {len(incomplete)} partial scripts (missing END_OF_SCRIPT): {sorted(incomplete)}"
+        )
 
     todo = [n for n in ep_nums if n not in existing]
 
@@ -1846,10 +2059,14 @@ def stage_scriptwriters(workspace: Path, log: PipelineLog, max_parallel: int = 3
             try:
                 ep_num, success = future.result()
             except BrokenProcessPool as e:
-                log.error(f"Scriptwriter EP{ep_num} worker crashed (BrokenProcessPool: {e})")
+                log.error(
+                    f"Scriptwriter EP{ep_num} worker crashed (BrokenProcessPool: {e})"
+                )
                 success = False
             except Exception as e:  # noqa: BLE001 — worker death must not abort the stage
-                log.error(f"Scriptwriter EP{ep_num} worker raised {type(e).__name__}: {e}")
+                log.error(
+                    f"Scriptwriter EP{ep_num} worker raised {type(e).__name__}: {e}"
+                )
                 success = False
             results[ep_num] = success
 
@@ -1868,7 +2085,12 @@ def stage_scriptwriters(workspace: Path, log: PipelineLog, max_parallel: int = 3
     return True
 
 
-def stage_script_review(workspace: Path, log: PipelineLog, max_parallel: int = 3, only_episode: int | None = None) -> bool:
+def stage_script_review(
+    workspace: Path,
+    log: PipelineLog,
+    max_parallel: int = 3,
+    only_episode: int | None = None,
+) -> bool:
     if only_episode:
         _, ok = run_script_reviewer(workspace, only_episode)
         return ok
@@ -1880,7 +2102,11 @@ def stage_script_review(workspace: Path, log: PipelineLog, max_parallel: int = 3
 
     ep_nums = [int(f.stem.split("_")[1]) for f in script_files]
     # Skip episodes that already have reviews
-    existing = {int(m.group(1)) for f in (workspace / "scripts").glob("ep_*_review.md") if (m := re.search(r"ep_(\d+)", f.stem))}
+    existing = {
+        int(m.group(1))
+        for f in (workspace / "scripts").glob("ep_*_review.md")
+        if (m := re.search(r"ep_(\d+)", f.stem))
+    }
     todo = [n for n in ep_nums if n not in existing]
 
     if not todo:
@@ -1901,10 +2127,14 @@ def stage_script_review(workspace: Path, log: PipelineLog, max_parallel: int = 3
             try:
                 ep_num, success = future.result()
             except BrokenProcessPool as e:
-                log.error(f"Script Review EP{ep_num} worker crashed (BrokenProcessPool: {e})")
+                log.error(
+                    f"Script Review EP{ep_num} worker crashed (BrokenProcessPool: {e})"
+                )
                 success = False
             except Exception as e:  # noqa: BLE001 — worker death must not abort the stage
-                log.error(f"Script Review EP{ep_num} worker raised {type(e).__name__}: {e}")
+                log.error(
+                    f"Script Review EP{ep_num} worker raised {type(e).__name__}: {e}"
+                )
                 success = False
             results[ep_num] = success
 
@@ -1921,7 +2151,9 @@ def stage_script_review(workspace: Path, log: PipelineLog, max_parallel: int = 3
             rewrite_needed.append(n)
 
     if rewrite_needed:
-        log.error(f"Episodes needing rewrite: {rewrite_needed} — check scripts/ep_N_review.md for details")
+        log.error(
+            f"Episodes needing rewrite: {rewrite_needed} — check scripts/ep_N_review.md for details"
+        )
         return False
 
     log.event(f"All {len(todo)} scripts passed review")
@@ -1930,7 +2162,9 @@ def stage_script_review(workspace: Path, log: PipelineLog, max_parallel: int = 3
 
 def stage_series_polish(workspace: Path, log: PipelineLog) -> bool:
     """Cross-episode polish pass: callbacks, running bits, character drift, series arc."""
-    ok = run_claude(_prompt("series_polish", read_mode(workspace)), workspace, "Series Polish", log)
+    ok = run_claude(
+        _prompt("series_polish", read_mode(workspace)), workspace, "Series Polish", log
+    )
     if not ok:
         return False
 
@@ -1941,13 +2175,17 @@ def stage_series_polish(workspace: Path, log: PipelineLog) -> bool:
 
     content = report.read_text()
     if "STRUCTURAL_ISSUES_NEED_RESCRIPT" in content:
-        log.error("Series polish flagged structural drift — read plan/series_polish.md and re-scriptwrite flagged episodes")
+        log.error(
+            "Series polish flagged structural drift — read plan/series_polish.md and re-scriptwrite flagged episodes"
+        )
         return False
 
     # Guard: every script must still end with the sentinel (polish mustn't have stripped it)
     for f in (workspace / "scripts").glob("ep_*_script.md"):
         if "END_OF_SCRIPT" not in f.read_text()[-200:]:
-            log.error(f"Series polish removed END_OF_SCRIPT marker from {f.name} — manual fix required")
+            log.error(
+                f"Series polish removed END_OF_SCRIPT marker from {f.name} — manual fix required"
+            )
             return False
 
     log.event("Series polish complete — cross-episode coherence strengthened")
@@ -1955,7 +2193,13 @@ def stage_series_polish(workspace: Path, log: PipelineLog) -> bool:
 
 
 def stage_tts_prep(workspace: Path, log: PipelineLog) -> bool:
-    ok = run_claude(_prompt("tts_prep", read_mode(workspace)), workspace, "TTS Prep", log, inject_tts=True)
+    ok = run_claude(
+        _prompt("tts_prep", read_mode(workspace)),
+        workspace,
+        "TTS Prep",
+        log,
+        inject_tts=True,
+    )
     if not ok:
         return False
 
@@ -1966,7 +2210,9 @@ def stage_tts_prep(workspace: Path, log: PipelineLog) -> bool:
 
     content = report.read_text()
     if "BLOCKED" in content:
-        log.error("TTS prep reported BLOCKED — read plan/tts_prep.md, fix issues, then resume with --skip-to tts-prep")
+        log.error(
+            "TTS prep reported BLOCKED — read plan/tts_prep.md, fix issues, then resume with --skip-to tts-prep"
+        )
         return False
 
     if "READY_FOR_TTS" not in content:
@@ -1977,9 +2223,103 @@ def stage_tts_prep(workspace: Path, log: PipelineLog) -> bool:
     return True
 
 
-def stage_synthesize(workspace: Path, log: PipelineLog, only_episode: int | None = None) -> bool:
+# ─── Bounded subprocess stages ───
+# synthesize / audio-qa / subtitle shell out to `uv run <tool>.py` (no LLM agent,
+# so _STAGE_TIMEOUTS does not apply), yet a stuck tool — a TTS call that never
+# returns, a whisper model download stall — must not block the pipeline and the
+# dashboard forever. Budgets are PER EPISODE because all three tools loop over the
+# series; sized from stage_end elapsed_s in workspace pipeline_log.jsonl
+# (7–12 episode series):
+#   synthesize  75–200 s/ep (worst 1737 s for 8 eps). synthesize.py already caps
+#               one episode's TTS batches at TTS_BATCH_TIMEOUT (600 s) plus two
+#               180 s loudnorm passes, so ~1000 s/ep is the legitimate ceiling.
+#   subtitle    180–245 s/ep (worst 2920 s for 12 eps): CPU-bound whisper
+#               `medium` forced alignment, model reloaded per episode.
+#   audio-qa    <= 31 s for a whole 12-episode series.
+# A timeout fails the stage without retry (a hang is not transient — same rule as
+# agent-stage timeouts); resume with --skip-to once the cause is fixed.
+_TOOL_STAGE_TIMEOUTS = {  # seconds per episode
+    "synthesize": 1200,
+    "audio-qa": 120,
+    "subtitle": 900,
+}
+# On timeout the child gets SIGTERM first: `uv run` forwards SIGTERM to the real
+# tool but cannot forward SIGKILL (subprocess.run(timeout=)'s bare kill() would
+# orphan a still-running synthesize), and only a SIGTERMed bash runs its EXIT
+# trap. bash does not pass SIGTERM on to the child it is waiting on, so
+# podcast_upload.sh's trap stops its own children before removing staging. SIGKILL
+# only if the child ignores SIGTERM this long. The child stays in the pipeline's
+# process group so the dashboard's killpg (monitor/jobs.py) still reaches it.
+_TOOL_TERM_GRACE = 30  # seconds
+
+
+def _stop_child(proc: subprocess.Popen) -> None:
+    proc.terminate()
+    try:
+        proc.wait(timeout=_TOOL_TERM_GRACE)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+
+
+def _run_bounded(
+    cmd: list[str],
+    *,
+    label: str,
+    timeout: int,
+    log: PipelineLog,
+    env: dict[str, str],
+    cwd: Path,
+) -> int | None:
+    """Run ``cmd`` under a wall-clock cap. Returns its exit code, or None after a
+    timeout (logged as ``<label> TIMEOUT after <timeout>s``)."""
+    t0 = time.time()
+    proc = subprocess.Popen(cmd, cwd=str(cwd), env=env)
+    try:
+        return proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _stop_child(proc)
+        log.error(
+            f"{label} TIMEOUT after {timeout}s",
+            timeout=True,
+            elapsed_s=round(time.time() - t0, 1),
+        )
+        return None
+    except BaseException:
+        _stop_child(proc)  # Ctrl-C / SystemExit: never leave the child unowned
+        raise
+
+
+def _run_tool_stage(
+    stage: str,
+    cmd: list[str],
+    *,
+    workspace: Path,
+    only_episode: int | None,
+    log: PipelineLog,
+    env: dict[str, str],
+) -> int | None:
+    per_episode = _TOOL_STAGE_TIMEOUTS[stage]
+    episodes = (
+        1 if only_episode else len(list((workspace / "scripts").glob("ep_*_script.md")))
+    )
+    return _run_bounded(
+        cmd,
+        label=stage,
+        timeout=per_episode * max(1, episodes),
+        log=log,
+        env=env,
+        cwd=ROOT,
+    )
+
+
+def stage_synthesize(
+    workspace: Path, log: PipelineLog, only_episode: int | None = None
+) -> bool:
     scripts_dir = workspace / "scripts"
-    target = scripts_dir / f"ep_{only_episode}_script.md" if only_episode else scripts_dir
+    target = (
+        scripts_dir / f"ep_{only_episode}_script.md" if only_episode else scripts_dir
+    )
 
     # Restore the frozen TTS model here — the single point every spawn path
     # funnels through, mirroring how every stage reads .mode via read_mode().
@@ -2003,24 +2343,32 @@ def stage_synthesize(workspace: Path, log: PipelineLog, only_episode: int | None
                 f"rewrite/strip {sf}-only audio tags so they are never voiced"
             )
 
-    proc = subprocess.run(
+    rc = _run_tool_stage(
+        "synthesize",
         ["uv", "run", str(ROOT / "synthesize.py"), str(target)],
-        cwd=str(ROOT), capture_output=False, text=True, env=env,
+        workspace=workspace,
+        only_episode=only_episode,
+        log=log,
+        env=env,
     )
-    return proc.returncode == 0
+    return rc == 0
 
 
-def stage_audio_qa(workspace: Path, log: PipelineLog, only_episode: int | None = None) -> bool:
+def stage_audio_qa(
+    workspace: Path, log: PipelineLog, only_episode: int | None = None
+) -> bool:
     scripts_dir = workspace / "scripts"
     if only_episode:
         # Exact-match episode number: ep_1_pro.{mp3,m4a} must NOT catch ep_10_pro.
         # m4a is the post-Track-B default; mp3 stays for legacy series.
         pattern = re.compile(rf"^ep_{only_episode}_[A-Za-z]+\.(?:mp3|m4a)$")
         candidates = sorted(
-            f for f in (
+            f
+            for f in (
                 *scripts_dir.glob("ep_*.mp3"),
                 *scripts_dir.glob("ep_*.m4a"),
-            ) if pattern.match(f.name)
+            )
+            if pattern.match(f.name)
         )
         if not candidates:
             log.error(f"No audio for episode {only_episode}")
@@ -2033,26 +2381,40 @@ def stage_audio_qa(workspace: Path, log: PipelineLog, only_episode: int | None =
     cmd = ["uv", "run", str(ROOT / "audio_qa.py"), str(target), "--report", str(report)]
     if _audio_qa_strict(workspace):
         cmd.append("--strict")
-    proc = subprocess.run(
+    rc = _run_tool_stage(
+        "audio-qa",
         cmd,
-        cwd=str(ROOT), capture_output=False, text=True, env=_UNBUF_ENV,
+        workspace=workspace,
+        only_episode=only_episode,
+        log=log,
+        env=_UNBUF_ENV,
     )
-    if proc.returncode != 0:
+    if rc is None:
+        return False
+    if rc != 0:
         log.error(f"audio_qa found FAIL findings — see {report}")
         return False
     log.event(f"audio_qa passed — report at {report.relative_to(workspace)}")
     return True
 
 
-def stage_subtitle(workspace: Path, log: PipelineLog, only_episode: int | None = None) -> bool:
+def stage_subtitle(
+    workspace: Path, log: PipelineLog, only_episode: int | None = None
+) -> bool:
     scripts_dir = workspace / "scripts"
-    target = scripts_dir / f"ep_{only_episode}_script.md" if only_episode else scripts_dir
-
-    proc = subprocess.run(
-        ["uv", "run", str(ROOT / "subtitle.py"), str(target)],
-        cwd=str(ROOT), capture_output=False, text=True, env=_UNBUF_ENV,
+    target = (
+        scripts_dir / f"ep_{only_episode}_script.md" if only_episode else scripts_dir
     )
-    return proc.returncode == 0
+
+    rc = _run_tool_stage(
+        "subtitle",
+        ["uv", "run", str(ROOT / "subtitle.py"), str(target)],
+        workspace=workspace,
+        only_episode=only_episode,
+        log=log,
+        env=_UNBUF_ENV,
+    )
+    return rc == 0
 
 
 def _emit_cover_usage(workspace: Path) -> None:
@@ -2100,7 +2462,9 @@ def stage_cover(workspace: Path, log: PipelineLog) -> bool:
     if not run_claude(_prompt("cover", read_mode(workspace)), workspace, "Cover", log):
         return False
     if not cover_png.exists():
-        log.error("cover: agent finished but plan/cover.png missing — no cover produced")
+        log.error(
+            "cover: agent finished but plan/cover.png missing — no cover produced"
+        )
         return False
     _emit_cover_usage(workspace)
     log.event("cover: plan/cover.png produced")
@@ -2120,6 +2484,7 @@ def _verify_published(series_id: str) -> bool:
     if not bucket:
         return False
     import boto3  # local import: keeps non-publish runs off boto3
+
     kwargs = {"region_name": os.getenv("PODCAST_BUCKET_REGION", "ap-northeast-1")}
     endpoint = os.getenv("PODCAST_BUCKET_ENDPOINT_URL") or None
     if endpoint:
@@ -2147,8 +2512,10 @@ def stage_publish(workspace: Path, log: PipelineLog, *, max_retries: int = 3) ->
     the index after max_retries upload+verify attempts.
     """
     if not os.getenv("PODCAST_BUCKET"):
-        log.error("publish: PODCAST_BUCKET not set — export it + AWS creds before "
-                  "running the pipeline so the finished series uploads to S3.")
+        log.error(
+            "publish: PODCAST_BUCKET not set — export it + AWS creds before "
+            "running the pipeline so the finished series uploads to S3."
+        )
         return False
 
     upload_sh = (ROOT.parent.parent / "ops" / "podcast_upload.sh").resolve()
@@ -2159,31 +2526,35 @@ def stage_publish(workspace: Path, log: PipelineLog, *, max_retries: int = 3) ->
     series_id = workspace.name
     backoff = 2.0
     for attempt in range(1, max_retries + 1):
-        try:
-            proc = subprocess.run(
-                ["bash", str(upload_sh), str(workspace.resolve())],
-                cwd=str(ROOT.parent.parent), capture_output=False, text=True,
-                env=os.environ.copy(), timeout=_PUBLISH_TIMEOUT,
-            )
-        except subprocess.TimeoutExpired:
-            # A hung upload (network stall / half-dead creds) must not block the
-            # pipeline forever — treat as a failed attempt and retry.
-            log.error(f"publish attempt {attempt}/{max_retries} timed out after "
-                      f"{_PUBLISH_TIMEOUT}s")
+        # A hung upload (network stall / half-dead creds) must not block the
+        # pipeline forever — a timeout is a failed attempt and is retried.
+        rc = _run_bounded(
+            ["bash", str(upload_sh), str(workspace.resolve())],
+            label=f"publish attempt {attempt}/{max_retries}",
+            timeout=_PUBLISH_TIMEOUT,
+            log=log,
+            env=os.environ.copy(),
+            cwd=ROOT.parent.parent,
+        )
+        if rc is None:
             if attempt < max_retries:
                 time.sleep(backoff)
                 backoff *= 2
             continue
-        if proc.returncode == 0 and _verify_published(series_id):
+        if rc == 0 and _verify_published(series_id):
             log.event(f"publish: {series_id} live in S3 catalog (attempt {attempt})")
             return True
-        log.error(f"publish attempt {attempt}/{max_retries} failed "
-                  f"(upload rc={proc.returncode}, verified={proc.returncode == 0})")
+        log.error(
+            f"publish attempt {attempt}/{max_retries} failed "
+            f"(upload rc={rc}, verified={rc == 0})"
+        )
         if attempt < max_retries:
             time.sleep(backoff)
             backoff *= 2
 
-    log.error(f"publish: {series_id} not confirmed in S3 index after {max_retries} attempts")
+    log.error(
+        f"publish: {series_id} not confirmed in S3 index after {max_retries} attempts"
+    )
     return False
 
 
@@ -2202,11 +2573,13 @@ def show_status(workspace: Path) -> None:
     try:
         stages = workflow_stage_order(resolve_workspace_workflow(workspace, None))
     except ValueError as exc:
-        _LOGGER.warning("Using legacy stage list for %s (workflow parse failed: %s)", workspace, exc)
+        _LOGGER.warning(
+            "Using legacy stage list for %s (workflow parse failed: %s)", workspace, exc
+        )
         stages = STAGES
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  WORKSPACE: {workspace.name}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # Metadata
     meta_file = workspace / "source" / "metadata.md"
@@ -2246,7 +2619,7 @@ def show_status(workspace: Path) -> None:
     if ep_plans:
         ep_nums = sorted(int(f.stem.split("_")[1]) for f in ep_plans)
         print(f"\n  {'EP':<4} {'script':<8} {'review':<10} {'mp3':<22} {'srt':<12}")
-        print(f"  {'─'*4} {'─'*7} {'─'*9} {'─'*21} {'─'*11}")
+        print(f"  {'─' * 4} {'─' * 7} {'─' * 9} {'─' * 21} {'─' * 11}")
 
         for n in ep_nums:
             script_f = workspace / "scripts" / f"ep_{n}_script.md"
@@ -2264,8 +2637,9 @@ def show_status(workspace: Path) -> None:
             else:
                 rev = "·"
 
-            audio_files = list((workspace / "scripts").glob(f"ep_{n}_*.mp3")) \
-                        + list((workspace / "scripts").glob(f"ep_{n}_*.m4a"))
+            audio_files = list((workspace / "scripts").glob(f"ep_{n}_*.mp3")) + list(
+                (workspace / "scripts").glob(f"ep_{n}_*.m4a")
+            )
             if audio_files:
                 f = audio_files[0]
                 size_mb = f.stat().st_size / (1024 * 1024)
@@ -2274,7 +2648,9 @@ def show_status(workspace: Path) -> None:
                 mp3 = "·"
 
             srt_files = list((workspace / "scripts").glob(f"ep_{n}_*.srt"))
-            srt = f"✓ ({srt_files[0].stat().st_size / 1024:.0f}KB)" if srt_files else "·"
+            srt = (
+                f"✓ ({srt_files[0].stat().st_size / 1024:.0f}KB)" if srt_files else "·"
+            )
 
             print(f"  {n:<4} {script:<8} {rev:<10} {mp3:<22} {srt:<12}")
 
@@ -2282,7 +2658,9 @@ def show_status(workspace: Path) -> None:
     log_file = workspace / "pipeline_log.jsonl"
     if log_file.exists():
         lines = log_file.read_text().strip().splitlines()
-        errors = [obj for l in lines if '"error"' in l for obj in [_try_parse_json(l)] if obj]
+        errors = [
+            obj for l in lines if '"error"' in l for obj in [_try_parse_json(l)] if obj
+        ]
         if errors:
             print(f"\n  Recent Errors ({len(errors)}):")
             for e in errors[-5:]:
@@ -2303,7 +2681,9 @@ def show_status(workspace: Path) -> None:
     print(f"  Run one stage:   uv run pipeline.py {ws} --only-stage <stage>")
     print(f"  Run until:       uv run pipeline.py {ws} --stop-after <stage>")
     print(f"  Run from:        uv run pipeline.py {ws} --skip-to <stage>")
-    print(f"  Single episode:  uv run pipeline.py {ws} --only-stage scriptwrite --only-episode 3")
+    print(
+        f"  Single episode:  uv run pipeline.py {ws} --only-stage scriptwrite --only-episode 3"
+    )
     print(f"  Parallel:        uv run pipeline.py {ws} --parallel 5")
 
     print(f"\n  ── Stages ──")
@@ -2319,7 +2699,7 @@ def show_status(workspace: Path) -> None:
     if review_files:
         print(f"  Script reviews:  ls {ws}/scripts/ep_*_review.md")
 
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 # ─── Target Resolution ───
@@ -2383,40 +2763,56 @@ examples:
   uv run preview.py ws/scripts/ep_1_pro.mp3              # play audio""",
     )
     parser.add_argument(
-        "target", nargs="+",
+        "target",
+        nargs="+",
         help="One EPUB / workspace dir for a single book; OR multiple EPUBs (in "
         "reading order) with --saga to build one continuous multi-book feed.",
     )
     parser.add_argument(
-        "--saga", metavar="TITLE",
+        "--saga",
+        metavar="TITLE",
         help="Group the given EPUBs (reading order = argument order) into one "
         "saga workspace titled TITLE. Implies --mode saga; requires --spoiler-mode.",
     )
-    parser.add_argument("--parallel", type=int, default=3, help="Max parallel workers (default: 3)")
-    parser.add_argument("--only-episode", type=int, help="Only process this episode number")
-    stage_choices = all_workflow_stage_names()
-    parser.add_argument("--skip-to", choices=stage_choices, help="Start from this stage")
-    parser.add_argument("--stop-after", choices=stage_choices, help="Stop after this stage")
-    parser.add_argument("--only-stage", choices=stage_choices, help="Run exactly one stage")
     parser.add_argument(
-        "--mode", choices=list(archetypes.ARCHETYPES),
+        "--parallel", type=int, default=3, help="Max parallel workers (default: 3)"
+    )
+    parser.add_argument(
+        "--only-episode", type=int, help="Only process this episode number"
+    )
+    stage_choices = all_workflow_stage_names()
+    parser.add_argument(
+        "--skip-to", choices=stage_choices, help="Start from this stage"
+    )
+    parser.add_argument(
+        "--stop-after", choices=stage_choices, help="Stop after this stage"
+    )
+    parser.add_argument(
+        "--only-stage", choices=stage_choices, help="Run exactly one stage"
+    )
+    parser.add_argument(
+        "--mode",
+        choices=list(archetypes.ARCHETYPES),
         help="Production archetype (default: nonfiction). Selects the prompt set. "
         "On resume the workspace's saved .mode wins; a conflicting --mode errors.",
     )
     parser.add_argument(
-        "--spoiler-mode", choices=["readalong", "retrospective"],
+        "--spoiler-mode",
+        choices=["readalong", "retrospective"],
         help="Spoiler policy for narrative archetypes (required for fiction/saga, "
         "forbidden otherwise).",
     )
     parser.add_argument(
-        "--tts-model", choices=list(ALLOWED_TTS_MODELS),
+        "--tts-model",
+        choices=list(ALLOWED_TTS_MODELS),
         help="TTS model to synthesize with, frozen for the workspace at creation "
         "(written to .tts_model, read back by the synthesize stage). On resume the "
         "saved sidecar wins; a conflicting --tts-model errors. Omit to use the "
         "synthesize.py env default.",
     )
     parser.add_argument(
-        "--agent-profile", choices=list(AGENT_PROFILES),
+        "--agent-profile",
+        choices=list(AGENT_PROFILES),
         help="Stage 1-10 coding-agent billing/profile. claude uses the normal "
         "Claude Code account. Can also be set with PODCAST_AGENT_PROFILE.",
     )
@@ -2445,8 +2841,12 @@ examples:
         help="Run straight through the plan/script approval gates without "
         "pausing (restores the old fully-autonomous end-to-end run).",
     )
-    parser.add_argument("--status", action="store_true", help="Show workspace status and exit")
-    parser.add_argument("--dry-run", action="store_true", help="Extract EPUB and setup workspace only")
+    parser.add_argument(
+        "--status", action="store_true", help="Show workspace status and exit"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Extract EPUB and setup workspace only"
+    )
     args = parser.parse_args()
 
     try:
@@ -2456,7 +2856,9 @@ examples:
 
     if args.only_stage:
         if args.skip_to or args.stop_after:
-            parser.error("--only-stage cannot be combined with --skip-to or --stop-after")
+            parser.error(
+                "--only-stage cannot be combined with --skip-to or --stop-after"
+            )
 
     # Saga vs single-book input resolution. A saga is the ONLY case that takes
     # multiple targets; everything else takes exactly one (EPUB or workspace dir).
@@ -2467,7 +2869,9 @@ examples:
             parser.error(f"--saga implies --mode saga; got --mode {args.mode}")
         args.mode = "saga"
         if len(args.target) < 2:
-            parser.error("--saga needs at least 2 EPUBs (reading order = argument order)")
+            parser.error(
+                "--saga needs at least 2 EPUBs (reading order = argument order)"
+            )
         saga_epubs = []
         for t in args.target:
             p = Path(t)
@@ -2488,7 +2892,9 @@ examples:
             books = []
             for i, p in enumerate(saga_epubs, 1):
                 meta, chapters = extract_epub(str(p))
-                print(f"  {i}. {meta['title']} — {meta['total_raw_chapters']} ch, {meta['total_raw_chars']:,} chars")
+                print(
+                    f"  {i}. {meta['title']} — {meta['total_raw_chapters']} ch, {meta['total_raw_chars']:,} chars"
+                )
                 books.append((meta, chapters))
             workspace = setup_saga_workspace(args.saga, books)
             print(f"  Workspace: {workspace}")
@@ -2513,7 +2919,9 @@ examples:
         if args.skip_to:
             workspace = find_workspace(epub_path)
             if not workspace:
-                print("ERROR: No existing workspace found. Run without --skip-to first.")
+                print(
+                    "ERROR: No existing workspace found. Run without --skip-to first."
+                )
                 sys.exit(1)
             print(f"Resuming: {workspace}")
         else:
@@ -2561,8 +2969,10 @@ examples:
     write_mode_sidecar(workspace, effective_mode, effective_spoiler)
     if effective_mode != archetypes.DEFAULT_ARCHETYPE:
         label = archetypes.get(effective_mode)["label"]
-        print(f"Mode: {effective_mode} ({label})"
-              + (f" · spoiler={effective_spoiler}" if effective_spoiler else ""))
+        print(
+            f"Mode: {effective_mode} ({label})"
+            + (f" · spoiler={effective_spoiler}" if effective_spoiler else "")
+        )
     write_agent_sidecars(workspace)
     print(f"Agent: {AGENT_PROFILE} ({MODEL})")
 
@@ -2597,7 +3007,9 @@ examples:
     stop_idx = run_plan.stop_index
     explicit_skip_idx = run_plan.explicit_skip_index
     if resume > 0 and start_idx < len(stages):
-        print(f"Auto-resume: {stages[start_idx]} (stages 0-{resume-1} have completion markers)")
+        print(
+            f"Auto-resume: {stages[start_idx]} (stages 0-{resume - 1} have completion markers)"
+        )
 
     # Freeze the TTS model the same way as .mode: fresh setup takes it from argv,
     # resume reads the saved sidecar and a conflicting --tts-model is an error.
@@ -2630,7 +3042,9 @@ examples:
         except (OSError, ValueError) as e:
             print(f"\nERROR: saga manifest is unreadable — {e}")
             print(f"  Workspace: {workspace}")
-            print(f"  Fix {workspace}/series.md (it needs a valid READING_ORDER block), then re-run.")
+            print(
+                f"  Fix {workspace}/series.md (it needs a valid READING_ORDER block), then re-run."
+            )
             sys.exit(1)
 
     if args.dry_run:
@@ -2647,7 +3061,10 @@ examples:
             (workspace / ".pipeline_job_id").write_text(_job_id)
         except OSError as err:
             # sidecar is best-effort; never block the actual pipeline
-            print(f"[pipeline] unable to write .pipeline_job_id={_job_id}: {err}", file=sys.stderr)
+            print(
+                f"[pipeline] unable to write .pipeline_job_id={_job_id}: {err}",
+                file=sys.stderr,
+            )
 
     # Auto-start dashboard + open browser — single-command UX.
     # Idempotent: no-op if already running. Skip with PODCAST_NO_DASHBOARD=1.
@@ -2664,11 +3081,15 @@ examples:
         missing = [s for s in stages[:start_idx] if not stage_done(workspace, s)]
         if missing:
             selector = "--only-stage" if args.only_stage else "--skip-to"
-            print(f"ERROR: {selector} {requested_stage} requires earlier stages completed.")
+            print(
+                f"ERROR: {selector} {requested_stage} requires earlier stages completed."
+            )
             print(f"  Missing markers: {', '.join(missing)}")
             print(f"  Either resume from the earliest missing stage:")
             print(f"    uv run pipeline.py {workspace} --skip-to {missing[0]}")
-            print(f"  Or pass --force to override (downstream may fail on absent artifacts).")
+            print(
+                f"  Or pass --force to override (downstream may fail on absent artifacts)."
+            )
             print(f"  See .claude/skills/podcast/SKILL.md §階段控制 for details.")
             sys.exit(1)
 
@@ -2683,9 +3104,13 @@ examples:
         "plan-review": lambda: stage_plan_review(workspace, log),
         "enricher-gap": lambda: stage_enricher_gap(workspace, log),
         "enricher": lambda: stage_enricher(workspace, log),
-        "scriptwrite": lambda: stage_scriptwriters(workspace, log, args.parallel, args.only_episode),
+        "scriptwrite": lambda: stage_scriptwriters(
+            workspace, log, args.parallel, args.only_episode
+        ),
         "series-polish": lambda: stage_series_polish(workspace, log),
-        "script-review": lambda: stage_script_review(workspace, log, args.parallel, args.only_episode),
+        "script-review": lambda: stage_script_review(
+            workspace, log, args.parallel, args.only_episode
+        ),
         "tts-prep": lambda: stage_tts_prep(workspace, log),
         "synthesize": lambda: stage_synthesize(workspace, log, args.only_episode),
         "audio-qa": lambda: stage_audio_qa(workspace, log, args.only_episode),
@@ -2723,7 +3148,8 @@ examples:
         # Human-in-the-loop approval gate: pause (exit 0) before entering an
         # expensive phase until the producer approves the prior one.
         blocked_by = approval_gate_block(
-            stage_name, workspace,
+            stage_name,
+            workspace,
             explicit_skip_idx=explicit_skip_idx,
             ignore_gates=args.ignore_gates,
             stages=stages,
@@ -2733,14 +3159,18 @@ examples:
             next_phase = "scripts" if phase == "plan" else "audio"
             elapsed = time.time() - t0
             log.gate_wait(stage_name, blocked_by, phase)
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"  ⏸ AWAITING {phase.upper()} APPROVAL ({elapsed:.0f}s so far)")
-            print(f"  {phase.capitalize()} phase complete — review it, then approve to produce {next_phase}:")
+            print(
+                f"  {phase.capitalize()} phase complete — review it, then approve to produce {next_phase}:"
+            )
             print(f"    Dashboard: click ▶ APPROVE in the episode panel")
-            print(f"    CLI:       touch {workspace}/{blocked_by} && uv run pipeline.py {workspace}")
+            print(
+                f"    CLI:       touch {workspace}/{blocked_by} && uv run pipeline.py {workspace}"
+            )
             print(f"    Bypass:    uv run pipeline.py {workspace} --ignore-gates")
             print(f"  Workspace: {workspace}")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
             return  # paused, not failed
 
         stage_t0 = time.time()
@@ -2760,16 +3190,26 @@ examples:
 
         if not success:
             elapsed = time.time() - t0
-            log.stage_end(stage_name, success=False, elapsed=stage_elapsed, only_episode=bool(args.only_episode))
-            print(f"\n{'='*60}")
+            log.stage_end(
+                stage_name,
+                success=False,
+                elapsed=stage_elapsed,
+                only_episode=bool(args.only_episode),
+            )
+            print(f"\n{'=' * 60}")
             print(f"  PIPELINE FAILED at: {stage_name} ({elapsed:.0f}s total)")
             print(f"  Workspace: {workspace}")
             print(f"  Resume: uv run pipeline.py {workspace} --skip-to {stage_name}")
             print(f"  Debug: cat {workspace}/pipeline_log.jsonl | python -m json.tool")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
             sys.exit(1)
 
-        log.stage_end(stage_name, success=True, elapsed=stage_elapsed, only_episode=bool(args.only_episode))
+        log.stage_end(
+            stage_name,
+            success=True,
+            elapsed=stage_elapsed,
+            only_episode=bool(args.only_episode),
+        )
 
     elapsed = time.time() - t0
 
@@ -2781,7 +3221,7 @@ examples:
     srts = sorted((workspace / "scripts").glob("*.srt"))
     total_audio_mb = sum(f.stat().st_size for f in audio_files) / (1024 * 1024)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  PIPELINE COMPLETE — {elapsed:.0f}s")
     print(f"  Stages: {' → '.join(stages_to_run)}")
     print(f"  Workspace: {workspace}")
@@ -2793,9 +3233,11 @@ examples:
         print(f"  Subtitles: {len(srts)} files")
 
     if stop_idx < len(stages) - 1:
-        print(f"\n  Next: uv run pipeline.py {workspace} --skip-to {stages[stop_idx + 1]}")
+        print(
+            f"\n  Next: uv run pipeline.py {workspace} --skip-to {stages[stop_idx + 1]}"
+        )
 
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
 
 if __name__ == "__main__":

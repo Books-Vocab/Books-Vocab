@@ -16,9 +16,8 @@ endpoint env injection to drift out of sync).
 Run:
     cd lab/podcast && uv run test_tts_model_freeze.py
 """
-from __future__ import annotations
 
-import types
+from __future__ import annotations
 
 import pytest
 
@@ -38,15 +37,15 @@ class _FakeLog:
 
 @pytest.fixture
 def captured_env(monkeypatch):
-    """Replace subprocess.run inside pipeline with a recorder returning rc=0."""
+    """Replace the bounded tool runner inside pipeline with a recorder returning rc=0."""
     box = {}
 
-    def fake_run(cmd, **kwargs):
+    def fake_run_tool_stage(stage, cmd, **kwargs):
         box["cmd"] = cmd
         box["env"] = kwargs.get("env")
-        return types.SimpleNamespace(returncode=0)
+        return 0
 
-    monkeypatch.setattr(pipeline.subprocess, "run", fake_run)
+    monkeypatch.setattr(pipeline, "_run_tool_stage", fake_run_tool_stage)
     return box
 
 
