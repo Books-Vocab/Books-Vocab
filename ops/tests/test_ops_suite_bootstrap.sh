@@ -40,14 +40,15 @@ done
 require_bootstrap_literal 'missing=()' "tool-bootstrap does not collect missing packages"
 require_bootstrap_literal 'command -v "$command_name" >/dev/null 2>&1 || missing+=("${packages[$command_name]}")' "tool-bootstrap does not map missing commands to explicit packages"
 
-if grep -Eq '(^|[[:space:]])apt(-get)?[[:space:]]+update' <<<"$bootstrap"; then
-  fail "tool-bootstrap adds an unbounded apt update"
+if grep -Eq '(^|[[:space:]])apt(-get)?[[:space:]]' <<<"$bootstrap"; then
+  fail "tool-bootstrap calls apt directly instead of the bounded retrying installer"
 fi
 
-bounded_install='timeout --signal=KILL 180s sudo apt-get install -y --no-install-recommends "${missing[@]}"'
-require_bootstrap_literal "$bounded_install" "missing-tool provisioning is not hard-bounded to 180 seconds"
+# The installer owns timeout, retry and update bounds (ops/tests/test_ci_apt_install.sh).
+bounded_install='./ops/ci_apt_install.sh "${missing[@]}"'
+require_bootstrap_literal "$bounded_install" "missing-tool provisioning does not go through ops/ci_apt_install.sh"
 
-install_count="$(grep -Ec 'apt-get[[:space:]]+install' <<<"$bootstrap" || true)"
+install_count="$(grep -Fc 'ci_apt_install.sh' <<<"$bootstrap" || true)"
 if [[ "$install_count" != 1 ]]; then
   fail "tool-bootstrap has broad or duplicate apt package installation"
 fi
