@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --python 3.13 python
 """Complexity budget: the delivery tooling may not quietly outgrow the product.
 
-Tracked-line ceilings for the areas that only ever grow by accretion (`ops/`,
+Line ceilings (authored code and docs only, never data files) for the areas that only ever grow by accretion (`ops/`,
 `docs/`, `.github/workflows/`) live in ``ops/complexity_budget.json``.
 
     ./ops/complexity.py check      # exit 1 when an area is over its ceiling
@@ -34,6 +34,9 @@ AREAS = {
 }
 # The product the tooling serves; reported as a ratio, never budgeted.
 REFERENCE_AREA = "ios/"
+# Only authored text counts.  Fixtures, plists and recordings are data: regenerating
+# one is not a change in complexity and must not be able to turn the gate red.
+COUNTED_SUFFIXES = (".py", ".sh", ".md", ".yml", ".yaml", ".swift")
 
 
 class BudgetError(Exception):
@@ -52,7 +55,7 @@ def count_lines(repo: Path, prefix: str) -> int:
         if not raw:
             continue
         path = repo / raw.decode()
-        if path.is_file() and not path.is_symlink():
+        if path.suffix in COUNTED_SUFFIXES and path.is_file() and not path.is_symlink():
             total += path.read_bytes().count(b"\n")
     return total
 

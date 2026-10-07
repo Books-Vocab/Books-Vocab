@@ -56,7 +56,7 @@ def test_the_repository_is_within_its_complexity_budget() -> None:
 # ---- measuring -----------------------------------------------------------------
 
 
-def test_measure_counts_tracked_lines_per_area_and_ignores_untracked_files(
+def test_measure_counts_authored_lines_per_area_and_ignores_untracked_and_data_files(
     tmp_path: Path,
 ) -> None:
     repo = _git_repo(
@@ -68,6 +68,8 @@ def test_measure_counts_tracked_lines_per_area_and_ignores_untracked_files(
             ".github/workflows/w.yml": "1\n",
             "ios/App.swift": "1\n2\n3\n4\n",
             "backend/ignored.py": "1\n" * 50,
+            "ops/fixtures/world.json": "1\n" * 500,
+            "ops/ui.plist": "1\n" * 40,
         },
     )
     (repo / "ops" / "untracked.py").write_text("1\n" * 99)
