@@ -38,6 +38,7 @@ class FakeWorld:
         self.changed_py = state.get("changed_py", ["ops/a.py", "ops/b.py"])
         self.format_rc = state.get("format_rc", 0)
         self.fail_commands: set[str] = set(state.get("fail_commands", set()))
+        self.stderr_for: dict[str, str] = state.get("stderr_for", {})
         self.published_pr: dict[str, Any] | None = state.get(
             "published_pr", {"number": 77, "state": "OPEN", "url": "u"}
         )
@@ -140,11 +141,10 @@ class FakeWorld:
                 shutil.rmtree(
                     self.work, ignore_errors=True
                 )  # publish retires the lane worktree
-            return deliver.Proc(
-                1 if verb in self.fail_commands else 0,
-                "{}",
-                "boom" if verb in self.fail_commands else "",
-            )
+            failing = verb in self.fail_commands
+            if failing:
+                return deliver.Proc(1, "", self.stderr_for.get(verb, "boom"))
+            return ok("{}")
         raise AssertionError(f"unscripted call: {cmd}")
 
 
@@ -339,6 +339,39 @@ def test_a_stage_failure_names_the_stage() -> None:
     code, result = ship(world, "--check", "u=good")
     assert code == 1
     assert result["error"].startswith("hand-back failed")
+    assert world.names().count("hand-back") == 1  # a real failure is not retried
+
+
+_GITHUB = "GraphQL: Pull request is in unstable status (enqueuePullRequest)"
+_ADAPTER = (
+    "command failed with exit 1: gh api graphql -f query=mutation {"
+    + "x" * 2000
+    + "} -F pullRequestId=PR_1: "
+    + _GITHUB
+)
+_TRACE = "Traceback (most recent call last):\n" + "  frame\n" * 100 + "Boom: cause"
+
+
+@pytest.mark.parametrize(
+    ("verb", "stderr", "detail"),
+    [
+        (  # delivery.py: progress lines, then one JSON error document
+            "queue",
+            "reading PR\n"
+            + json.dumps({"command": "queue", "error": _ADAPTER, "ok": False}),
+            _ADAPTER,
+        ),
+        ("adopt", _TRACE, _TRACE),  # anything else: the whole stream
+    ],
+    ids=["delivery-json-error", "traceback"],
+)
+def test_a_failed_stage_surfaces_the_whole_underlying_error(
+    verb: str, stderr: str, detail: str
+) -> None:
+    world = FakeWorld(fail_commands={verb}, stderr_for={verb: stderr})
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 1
+    assert result["error"] == f"{verb} failed (rc=1): {detail}"
 
 
 # ---- gc -------------------------------------------------------------------
