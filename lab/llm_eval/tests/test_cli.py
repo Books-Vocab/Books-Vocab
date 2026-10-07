@@ -430,6 +430,40 @@ def test_eval_missing_baseline_fails_before_spending(tmp_path, capsys):
     assert calls == []
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        [],
+        {"prompt": {}},
+        {"models": []},
+        {"models": {_MODEL: []}},
+        {"models": {_MODEL: {"format_score_avg": "high"}}},
+        {"models": {_MODEL: {"quality_score_avg": [1.0]}}},
+    ],
+)
+def test_eval_malformed_baseline_shape_fails_before_spending(tmp_path, capsys, payload):
+    path = tmp_path / "baseline.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    patcher, calls = _patch_client([_GOOD])
+    with patcher:
+        code = main(_eval_args("--baseline", str(path)))
+    assert code == 1
+    assert "baseline" in capsys.readouterr().err
+    assert calls == []
+
+
+def test_eval_baseline_with_null_scores_is_accepted(tmp_path, capsys):
+    path = tmp_path / "baseline.json"
+    path.write_text(
+        json.dumps({"models": {_MODEL: {"quality_score_avg": None}, "other": {}}}),
+        encoding="utf-8",
+    )
+    patcher, _ = _patch_client([_GOOD])
+    with patcher:
+        code = main(_eval_args("--baseline", str(path)))
+    assert code == 0
+
+
 def test_eval_missing_key_keeps_other_models_and_writes_report(
     tmp_path, monkeypatch, capsys
 ):
