@@ -11,7 +11,7 @@ enum PodcastPlayerLoader {
     static func resolveSubtitle(
         from source: PodcastPlayerLoadPlan.SubtitleSource,
         kgService: any AuthTokenProviding,
-        fetchRemote: @escaping (String, any AuthTokenProviding) async -> String? = fetchSubtitle
+        fetchRemote: @escaping (String, any AuthTokenProviding) async -> String? = fetchSubtitle(urlString:kgService:)
     ) async -> PodcastPlayerResolvedSubtitle {
         switch source {
         case .inline(let inline):
@@ -39,8 +39,19 @@ enum PodcastPlayerLoader {
     }
 
     static func fetchSubtitle(urlString: String, kgService: any AuthTokenProviding) async -> String? {
+        await fetchSubtitle(urlString: urlString, kgService: kgService, session: sharedURLSession)
+    }
+
+    /// `nil` = fetch failed (transport error or non-2xx status, which
+    /// `authedData` rejects) → `.failed` with retry, never `.content` of an
+    /// error body that would parse to zero cues and read as "no subtitles".
+    static func fetchSubtitle(
+        urlString: String,
+        kgService: any AuthTokenProviding,
+        session: URLSession
+    ) async -> String? {
         guard let data = try? await PodcastSyncService.authedData(
-            from: urlString, kgService: kgService
+            from: urlString, kgService: kgService, session: session
         ) else { return nil }
         return String(data: data, encoding: .utf8)
     }

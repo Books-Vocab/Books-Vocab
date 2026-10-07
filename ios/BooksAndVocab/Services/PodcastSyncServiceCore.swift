@@ -154,13 +154,29 @@ final class PodcastSyncService {
     }
 
     /// Shared helper so `PodcastPlayerView` 的 subtitle / audio metadata fetch 也能重用。
-    static func authedData(from urlString: String, kgService: any AuthTokenProviding) async throws -> Data {
-        let (data, _) = try await authedResponseData(from: urlString, kgService: kgService)
+    ///
+    /// Non-2xx throws `URLError(.badServerResponse)`: an error body (503 / 404
+    /// JSON) must never reach callers as if it were the resource — a subtitle
+    /// error body parsed to zero cues and surfaced as "no subtitles" with no
+    /// retry (#2106).
+    static func authedData(
+        from urlString: String,
+        kgService: any AuthTokenProviding,
+        session: URLSession = sharedURLSession
+    ) async throws -> Data {
+        let (data, response) = try await authedResponseData(
+            from: urlString, kgService: kgService, session: session
+        )
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            throw URLError(.badServerResponse)
+        }
         return data
     }
 
     static func authedResponseData(
-        from urlString: String, kgService: any AuthTokenProviding
+        from urlString: String,
+        kgService: any AuthTokenProviding,
+        session: URLSession = sharedURLSession
     ) async throws -> (Data, URLResponse) {
         guard let url = URL(string: urlString) else {
             throw URLError(.badURL)
@@ -169,7 +185,7 @@ final class PodcastSyncService {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        return try await sharedURLSession.data(for: request)
+        return try await session.data(for: request)
     }
 
     /// Browse fetch that tolerates an anonymous (guest) caller. The backend
