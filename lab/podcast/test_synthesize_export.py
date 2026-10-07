@@ -20,10 +20,13 @@ publish。修法:全部寫到同目錄 .part temp,最後 os.replace 原子搬入
 (C):_generate_with_retry backoff 分類 + usage 事件 emit 兩路覆蓋。
 """
 
+import shutil
+
 import pytest
 
 import synthesize
 from pydub import AudioSegment
+from pydub.generators import Sine
 
 
 def _seg(ms: int = 100) -> AudioSegment:
@@ -57,6 +60,7 @@ def test_export_interrupt_leaves_no_truncated_final(monkeypatch, tmp_path):
     assert not output_path.exists(), (
         "中斷的 export 留下了終檔 — resume 會誤判已完成並 publish 截斷音檔"
     )
+    assert list(tmp_path.iterdir()) == [], "中斷的 export 留下了 temp 殘檔"
 
 
 def test_export_success_produces_final(monkeypatch, tmp_path):
@@ -68,8 +72,56 @@ def test_export_success_produces_final(monkeypatch, tmp_path):
 
     assert output_path.exists()
     assert output_path.stat().st_size > 0
-    # 不留 .part 殘檔
-    assert not output_path.with_name(output_path.name + ".part").exists()
+    # 不留 temp 殘檔
+    assert [p.name for p in tmp_path.iterdir()] == [output_path.name]
+
+
+def test_concurrent_exports_of_one_episode_do_not_collide(monkeypatch, tmp_path):
+    """#2099:兩個 synthesize 同時 export 同一集。writer B 在 writer A 寫完 temp、
+    還沒 os.replace 之間整段跑完。固定的 `<out>.part` 會被 B 搬走 → A 的 replace
+    FileNotFoundError。每個 writer 必須有自己的 temp。"""
+    monkeypatch.setattr(synthesize, "MASTER_ENABLED", False)
+    monkeypatch.setattr(synthesize, "OUTPUT_FORMAT", "wav")
+    output_path = tmp_path / "ep_4_flash.wav"
+    real_replace = synthesize.os.replace
+    calls = {"n": 0}
+
+    def interleaved_replace(src, dst):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            synthesize.combine_and_export([_seg(50)], output_path)  # writer B
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(synthesize.os, "replace", interleaved_replace)
+    synthesize.combine_and_export([_seg(120)], output_path)  # writer A
+
+    assert output_path.exists()
+    assert [p.name for p in tmp_path.iterdir()] == [output_path.name]
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg")
+@pytest.mark.parametrize("fmt", ["mp3", "m4a"])
+def test_real_loudnorm_mastering_succeeds_on_the_temp_name(monkeypatch, tmp_path, fmt):
+    """真 ffmpeg 兩遍 loudnorm 必須成功。ffmpeg 依副檔名選 muxer:temp 叫
+    `ep_1_pro.mp3.part` 時 pass2 直接 exit 234(Unable to choose an output
+    format),mastering 靜默失敗 → 退回未正規化的 export。temp 名必須保留真副檔名。"""
+    monkeypatch.setattr(synthesize, "MASTER_ENABLED", True)
+    monkeypatch.setattr(synthesize, "OUTPUT_FORMAT", fmt)
+    results: list[bool] = []
+    real_master = synthesize._master_with_loudnorm
+
+    def spy(src_wav, dst):
+        results.append(real_master(src_wav, dst))
+        return results[-1]
+
+    monkeypatch.setattr(synthesize, "_master_with_loudnorm", spy)
+    output_path = tmp_path / f"ep_1_pro.{fmt}"
+    synthesize.combine_and_export(
+        [Sine(440).to_audio_segment(duration=2000).apply_gain(-20)], output_path
+    )
+
+    assert results == [True], "loudnorm mastering failed on the temp output name"
+    assert [p.name for p in tmp_path.iterdir()] == [output_path.name]
 
 
 def test_export_master_path_atomic(monkeypatch, tmp_path):
@@ -87,7 +139,7 @@ def test_export_master_path_atomic(monkeypatch, tmp_path):
     output_path = tmp_path / "ep_3_pro.wav"
     synthesize.combine_and_export([_seg()], output_path)
     assert output_path.exists()
-    assert not output_path.with_name(output_path.name + ".part").exists()
+    assert [p.name for p in tmp_path.iterdir()] == [output_path.name]
 
 
 # ─── B. _model_tag helper ───

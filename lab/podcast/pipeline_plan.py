@@ -10,7 +10,10 @@ new callers should use these typed objects.
 
 from __future__ import annotations
 
+import fcntl
 import json
+import os
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +23,35 @@ from typing import Any, Mapping, Sequence
 _STAGE_MARKER = ".stage_{name}_done"
 _WORKFLOW_MANIFEST = "workflow_manifest.json"
 _STAGE_PROVENANCE_DIR = "stage_provenance"
+_RUN_LOCK = ".pipeline.lock"
+
+
+class WorkspaceLocked(RuntimeError):
+    """Another process holds the workspace's run lock."""
+
+    def __init__(self, workspace: Path, holder_pid: int | None):
+        self.workspace = workspace
+        self.holder_pid = holder_pid
+        holder = (
+            f"PID {holder_pid}"
+            if holder_pid is not None
+            else "a process (PID not recorded)"
+        )
+        super().__init__(f"{workspace} is locked by {holder}")
+
+
+@dataclass(frozen=True)
+class RunLockHolder:
+    """A live holder of a workspace run lock; ``pid`` is None when unrecorded."""
+
+    pid: int | None
+
+
+def _read_lock_pid(path: Path) -> int | None:
+    try:
+        return int(path.read_text().split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
 
 
 @dataclass(frozen=True)
@@ -226,6 +258,56 @@ class WorkspaceState:
         )
         return path
 
+    def run_lock_path(self) -> Path:
+        return self.workspace / _RUN_LOCK
+
+    def acquire_run_lock(self, *, attempts: int = 5, retry_s: float = 0.1) -> int:
+        """Take the exclusive one-run-per-workspace lock and record our PID in it.
+
+        Returns the fd to keep open: the kernel drops a flock when its holder
+        exits, however it exits, so a crash never leaves the workspace locked.
+        The few short retries only ride out a dashboard probe
+        (:meth:`run_lock_holder`), which holds a shared lock for microseconds;
+        a real run holding it raises :class:`WorkspaceLocked` naming its PID.
+        """
+        path = self.run_lock_path()
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+        try:
+            for attempt in range(1, attempts + 1):
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if attempt == attempts:
+                        raise WorkspaceLocked(
+                            self.workspace, _read_lock_pid(path)
+                        ) from None
+                    time.sleep(retry_s)
+            os.ftruncate(fd, 0)
+            os.write(fd, f"{os.getpid()}\n".encode())
+        except BaseException:
+            os.close(fd)
+            raise
+        return fd
+
+    def run_lock_holder(self) -> RunLockHolder | None:
+        """Who holds the run lock right now, or None. Read-only: a missing lock
+        file is not created, and a file left by a finished run is free."""
+        path = self.run_lock_path()
+        try:
+            fd = os.open(path, os.O_RDONLY)
+        except FileNotFoundError:
+            return None
+        try:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return RunLockHolder(_read_lock_pid(path))
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            return None
+        finally:
+            os.close(fd)
+
     def manifest_path(self) -> Path:
         return self.workspace / _WORKFLOW_MANIFEST
 
@@ -335,6 +417,15 @@ class WorkspaceState:
 
     @staticmethod
     def _write_text_atomic(path: Path, content: str) -> None:
-        temporary = path.with_name(f".{path.name}.tmp")
-        temporary.write_text(content)
-        temporary.replace(path)
+        # Per-writer temp name: with one fixed name, a second writer of the same
+        # file moved the first one's temp away and its replace() failed. Not
+        # mkstemp, whose 0600 mode would end up on the state file itself.
+        temporary = path.with_name(
+            f".{path.name}.{os.getpid()}.{os.urandom(6).hex()}.tmp"
+        )
+        try:
+            temporary.write_text(content)
+            temporary.replace(path)
+        except BaseException:
+            temporary.unlink(missing_ok=True)
+            raise

@@ -316,19 +316,27 @@ def _active_job_for_ws(ws_name: str, running: dict | None = None) -> dict | None
     """Return `{job_id,label,kind}` for a running job bound to this workspace,
     or None.
 
-    Pairs jobs to workspaces via two routes (same logic the sidebar list uses):
+    Pairs jobs to workspaces via three routes (same logic the sidebar list uses):
       1. `metadata.workspace` — upload / rerun / approve / resume jobs know the
          workspace at spawn time (caller passed it in).
       2. `<ws>/.pipeline_job_id` sidecar — written by pipeline.py once it
          resolves EPUB→workspace, used by full-pipeline jobs whose spawn-time
          metadata only knows the EPUB filename.
+      3. `<ws>/.pipeline.lock` — the flock every pipeline.py holds for its whole
+         run. Routes 1-2 only know this server's in-memory jobs; this one also
+         sees a CLI run and a job spawned before a server restart (jobs run in
+         their own session and outlive the server). Reported as
+         `{job_id: "pid <N>", label, kind: "pipeline", pid}`.
 
     `running` may be passed in to amortize `jobs.list()` across many lookups
     (list_workspaces calls this once per ws); if omitted we fetch ourselves.
     Used both for the sidebar's `active_job` field and as the per-workspace
     concurrency guard on every spawn endpoint — two pipeline.py on the same
-    workspace would race on markers/scripts/mp3s with no mutual exclusion.
+    workspace would race on markers/scripts/mp3s.
     """
+    # Local import keeps this lock-probe change inside this function.
+    from pipeline_plan import WorkspaceState
+
     if running is None:
         running = {j.id: j for j in jobs.list(limit=200) if j.status == "running"}
     # Route 1: explicit metadata.workspace.
@@ -339,17 +347,22 @@ def _active_job_for_ws(ws_name: str, running: dict | None = None) -> dict | None
     try:
         jid = (WORKSPACES_DIR / ws_name / ".pipeline_job_id").read_text().strip()
     except OSError as exc:
-        __import__("logging").getLogger(__name__).debug(
-            "workspace=%s missing/invalid sidecar marker: %s",
-            ws_name,
-            exc,
-        )
-        LOGGER.warning(
-            "Silently handled exception; using fallback response", exc_info=True
-        )
+        LOGGER.debug("workspace=%s has no readable .pipeline_job_id: %s", ws_name, exc)
+    else:
+        j = running.get(jid)
+        if j:
+            return {"job_id": j.id, "label": j.label, "kind": j.kind}
+    # Route 3: the pipeline's own run lock.
+    holder = WorkspaceState(WORKSPACES_DIR / ws_name).run_lock_holder()
+    if holder is None:
         return None
-    j = running.get(jid)
-    return {"job_id": j.id, "label": j.label, "kind": j.kind} if j else None
+    pid = "?" if holder.pid is None else holder.pid
+    return {
+        "job_id": f"pid {pid}",
+        "label": f"pipeline.py run (pid {pid})",
+        "kind": "pipeline",
+        "pid": holder.pid,
+    }
 
 
 @app.get("/api/workspaces")

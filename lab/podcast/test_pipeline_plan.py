@@ -149,6 +149,43 @@ def test_workspace_state_missing_or_failed_provenance_is_safe(tmp_path) -> None:
         raise AssertionError("malformed provenance must fail closed")
 
 
+def test_concurrent_atomic_writes_use_their_own_temp_files(
+    tmp_path, monkeypatch
+) -> None:
+    """Two writers of one state file (two pipeline runs, #2099): writer B runs
+    start-to-finish between writer A's temp write and A's replace. With one fixed
+    `.<name>.tmp`, B moves A's temp away and A's replace raises FileNotFoundError."""
+    target = tmp_path / ".stage_prep_done"
+    real_replace = Path.replace
+    calls = {"n": 0}
+
+    def interleaved_replace(self, dst):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            pipeline_plan.WorkspaceState._write_text_atomic(target, "B")
+        return real_replace(self, dst)
+
+    monkeypatch.setattr(Path, "replace", interleaved_replace)
+    pipeline_plan.WorkspaceState._write_text_atomic(target, "A")
+
+    assert target.read_text() == "A"  # both replaces succeeded; last one wins
+    assert [p.name for p in tmp_path.iterdir()] == [target.name], "temp file left"
+
+
+def test_failed_atomic_write_leaves_no_temp_file(tmp_path, monkeypatch) -> None:
+    def boom(self, dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "replace", boom)
+    try:
+        pipeline_plan.WorkspaceState._write_text_atomic(tmp_path / "m.json", "{}")
+    except OSError:
+        pass
+    else:
+        raise AssertionError("the replace failure must propagate")
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_pipeline_resume_rewinds_on_provenance_drift(tmp_path, monkeypatch) -> None:
     import pipeline
 

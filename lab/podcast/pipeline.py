@@ -89,6 +89,7 @@ from tts_config import (
 from pipeline_plan import (
     PipelineConfig,
     STAGE_SPECS,
+    WorkspaceLocked,
     WorkspaceState,
     render_stage_help,
     resolve_run_plan,
@@ -2981,10 +2982,58 @@ def resolve_target(target_str: str) -> tuple[Path | None, Path | None]:
     sys.exit(1)
 
 
+# ─── Workspace run lock ───
+# One pipeline per workspace, enforced here rather than only in the dashboard's
+# in-memory job map: dashboard jobs run in their own session and outlive a server
+# restart, and CLI runs never go through the dashboard at all. Two runs on one
+# workspace collide on stage markers, scripts/.cache/ep_N, events.jsonl and the
+# audio temp files. The lock is <ws>/.pipeline.lock (flock + holder PID), taken
+# before the run writes anything and held until the process exits;
+# monitor/server.py:_active_job_for_ws probes the same file.
+_EXIT_WORKSPACE_LOCKED = 75  # EX_TEMPFAIL: busy, not broken — retry after it ends
+_run_lock_fd: int | None = None
+
+
+def _lock_workspace(workspace: Path) -> None:
+    global _run_lock_fd
+    if _run_lock_fd is not None:
+        return
+    workspace.mkdir(parents=True, exist_ok=True)
+    try:
+        _run_lock_fd = WorkspaceState(workspace).acquire_run_lock()
+    except WorkspaceLocked as e:
+        holder = (
+            f"PID {e.holder_pid}"
+            if e.holder_pid is not None
+            else "another process (PID not recorded)"
+        )
+        print(
+            f"ERROR: {workspace} is already being processed by {holder}.\n"
+            "  One pipeline per workspace: wait for that run to finish (or stop it),"
+            " then re-run.",
+            file=sys.stderr,
+        )
+        sys.exit(_EXIT_WORKSPACE_LOCKED)
+
+
+def _release_workspace_lock() -> None:
+    global _run_lock_fd
+    if _run_lock_fd is not None:
+        os.close(_run_lock_fd)
+        _run_lock_fd = None
+
+
 # ─── Main ───
 
 
 def main():
+    try:
+        _main()
+    finally:
+        _release_workspace_lock()
+
+
+def _main():
     stage_help = render_stage_help(STAGE_SPECS)
     approval_help = "\n".join(
         f"  ┃ {spec.approval_marker}  ── approval before {spec.name} ──"
@@ -3168,7 +3217,12 @@ examples:
                     f"  {i}. {meta['title']} — {meta['total_raw_chapters']} ch, {meta['total_raw_chars']:,} chars"
                 )
                 books.append((meta, chapters))
-            workspace = setup_saga_workspace(args.saga, books)
+            workspace = WORKSPACES_DIR / saga.saga_dirname(
+                args.saga, [m["title"] for m, _ in books]
+            )
+            _lock_workspace(workspace)  # before setup writes into it
+            if setup_saga_workspace(args.saga, books) != workspace:
+                raise RuntimeError("saga workspace path rule diverged from setup")
             created_now = True
             print(f"  Workspace: {workspace}")
         else:
@@ -3185,8 +3239,11 @@ examples:
                 print("No workspace found for this EPUB.")
         return
 
-    # Resolve workspace
+    # Resolve workspace. Everything from here on writes workspace state, so the
+    # run lock is taken as soon as the workspace path is known (--status above
+    # stays read-only and lock-free).
     if workspace:
+        _lock_workspace(workspace)
         print(f"Workspace: {workspace}")
     elif epub_path:
         if args.skip_to:
@@ -3196,6 +3253,7 @@ examples:
                     "ERROR: No existing workspace found. Run without --skip-to first."
                 )
                 sys.exit(1)
+            _lock_workspace(workspace)
             print(f"Resuming: {workspace}")
         else:
             print(f"Extracting: {epub_path.name}")
@@ -3204,11 +3262,13 @@ examples:
             print(f"  Author:   {metadata['author']}")
             print(f"  Chapters: {metadata['total_raw_chapters']}")
             print(f"  Chars:    {metadata['total_raw_chars']:,}")
-            created_now = not (
-                WORKSPACES_DIR
-                / book_workspace_dirname(metadata["title"], metadata["author"])
-            ).exists()
-            workspace = setup_workspace(metadata, chapters)
+            workspace = WORKSPACES_DIR / book_workspace_dirname(
+                metadata["title"], metadata["author"]
+            )
+            _lock_workspace(workspace)  # before setup writes into it
+            created_now = not workspace.exists()
+            if setup_workspace(metadata, chapters) != workspace:
+                raise RuntimeError("workspace path rule diverged from setup")
             print(f"  Workspace: {workspace}")
 
     # Rights are frozen at creation; a resume can never change them, and a

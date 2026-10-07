@@ -858,11 +858,19 @@ def combine_and_export(segments: list[AudioSegment], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     duration_s = len(combined) / 1000
 
-    # Write to a same-dir .part temp, then os.replace() atomically into place.
+    # Write to a same-dir temp, then os.replace() atomically into place.
     # A truncated/0-byte file at output_path makes main()'s resume (out.exists())
     # treat the episode as complete and ship the broken audio to publish. The
     # atomic rename guarantees output_path either is absent or is the full file.
-    part_path = output_path.with_name(output_path.name + ".part")
+    # The temp name is per writer (a fixed `<out>.part` let a concurrent run of the
+    # same episode move it away mid-export) and ends in the real extension: ffmpeg
+    # picks its muxer from it, so `.mp3.part` made loudnorm pass 2 exit 234 and
+    # every episode silently ship unmastered. Hidden (`.ep_…`) so the `ep_*` /
+    # `*_pro.mp3` audio globs never pick up a leftover.
+    part_path = output_path.with_name(
+        f".{output_path.stem}.{os.getpid()}.{os.urandom(6).hex()}.part"
+        f"{output_path.suffix}"
+    )
     try:
         mastered = False
         if MASTER_ENABLED:
