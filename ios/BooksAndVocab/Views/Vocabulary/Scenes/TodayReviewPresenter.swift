@@ -37,6 +37,12 @@ struct TodayReviewPresenterState {
     var temporaryDetailCardKey: String? = nil
 }
 
+/// reference box：可被 onGeometryChange 逐幀寫入而不觸發 SwiftUI 失效。
+/// 只在主執行緒讀寫（onGeometryChange action / completeFling 皆在 main）。
+final class DeckHeightProbe: @unchecked Sendable {
+    var layoutHeight: CGFloat = 0
+}
+
 // MARK: - Presenter
 
 struct TodayReviewPresenter: View {
@@ -90,7 +96,21 @@ struct TodayReviewPresenter: View {
     )
     // 三階量測快取已隨卡片渲染搬進 `ReviewCardView` 自己的 @State（IMP-20260808-ee7ca4）。
 
-    /// 目前 active slot 的實測 front 高度（非 active slot cap 到此值）。
+    // #2026 卡片區高度過渡 —— 規則見 TodayReviewDeckHeight.swift。
+    // `deckShellHeight`：獨立的單一 CGFloat，role 翻面時以 reviewNavigationSpring
+    // 過渡一次（nil ↔ 固定值無法插值，所以不再讓 active slot 的 nil 直接定義高度）。
+    // 0 = 尚未建立（啟動量測前），此時改用量測目標。
+    @State var deckShellHeight: CGFloat = 0
+    /// 過渡動畫進行中：model 值立刻等於目標，但畫面還在飛 —— active 需持續釘高，
+    /// 否則 layout 會立刻跳到自然高度。完成回呼放下。
+    @State var deckHeightInFlight = false
+    /// 重新指向時作廢舊動畫的完成回呼。
+    @State var deckHeightGeneration = 0
+    /// 卡片區 ZStack 的最新 layout 高度（含背面展開後的總高）。reference box：
+    /// 逐幀寫入不觸發 body；只在 completeFling 的 settle 縫讀一次當過渡起點。
+    @State var deckHeightProbe = DeckHeightProbe()
+
+    /// 目前 active slot 的實測 front 高度 = 過渡目標（非 active slot cap 到此值）。
     var activeCardHeight: CGFloat {
         guard let activeSlot = state.slots.firstIndex(where: { $0.assignment.role == .active }),
               slotFrontHeights.indices.contains(activeSlot) else {
@@ -126,6 +146,64 @@ struct TodayReviewPresenter: View {
     // Spring settle budget for reviewRevealSpring (response 0.42, damping 0.88).
     // Mirrors the 0.8s safety window the swipe deck uses for settle.frames.
     private static let revealSettleSeconds: Double = 0.85
+
+    /// 角色翻面 / 目標高度改變的觸發鍵。active slot 換了、但新舊卡高度相同時
+    /// `target` 不變，仍須重新規劃（否則 settle 時釘住的起點永不放開）。
+    struct DeckHeightKey: Equatable {
+        let activeSlot: Int?
+        let target: CGFloat
+        let revealed: Bool
+    }
+
+    var deckHeightKey: DeckHeightKey {
+        DeckHeightKey(
+            activeSlot: state.slots.firstIndex(where: { $0.assignment.role == .active }),
+            target: activeCardHeight,
+            revealed: state.revealStage.showsAnswer
+        )
+    }
+
+    /// slot 的 layout 高度（nil = 自然高度）。cardSlotView 與 deckDepthShell 共用。
+    func deckSlotHeight(isActive: Bool) -> CGFloat? {
+        TodayReviewDeckHeight.slotHeight(
+            isActive: isActive,
+            shell: deckShellHeight,
+            target: activeCardHeight,
+            inFlight: deckHeightInFlight,
+            revealed: state.revealStage.showsAnswer
+        )
+    }
+
+    /// 依規劃把 `deckShellHeight` 帶向目標。由 `.onChange(of: deckHeightKey)` 觸發 ——
+    /// 涵蓋 fling / 按鈕 / autoplay / previous / shuffle 全部 role 翻面路徑，
+    /// 不依賴 dismissProgress（它只在 fling 時變動且 200pt 飽和）。
+    func retargetDeckHeight() {
+        switch TodayReviewDeckHeight.plan(
+            displayed: deckShellHeight,
+            target: activeCardHeight,
+            revealed: state.revealStage.showsAnswer
+        ) {
+        case .hold:
+            return
+        case .snap(let height):
+            deckHeightGeneration += 1
+            var noAnim = Transaction(animation: nil)
+            noAnim.disablesAnimations = true
+            withTransaction(noAnim) {
+                deckShellHeight = height
+                deckHeightInFlight = false
+            }
+        case .animate(let height):
+            deckHeightGeneration += 1
+            let generation = deckHeightGeneration
+            deckHeightInFlight = true
+            withAnimation(AppMotion.reviewNavigationSpring, completionCriteria: .logicallyComplete) {
+                deckShellHeight = height
+            } completion: {
+                if generation == deckHeightGeneration { deckHeightInFlight = false }
+            }
+        }
+    }
 
     enum DismissPhase {
         case idle
@@ -371,7 +449,7 @@ struct TodayReviewPresenter: View {
         // promote / 連續堆疊機制見 TodayReviewCardSlot.swift。
         return ZStack(alignment: .top) {
             // depth-2 殼層 — 純裝飾常駐節點（卡不足以 opacity 隱藏，不結構移除）。
-            deckDepthShell(height: activeCardHeight)
+            deckDepthShell(height: deckSlotHeight(isActive: false) ?? 0)
 
             cardSlotView(slot: 0, viewport: viewport)
             cardSlotView(slot: 1, viewport: viewport)
@@ -381,17 +459,19 @@ struct TodayReviewPresenter: View {
             guard introProgress < 1 else { return }
             withAnimation(AppMotion.reviewRevealSpring) { introProgress = 1 }
         }
-        #if DEBUG
-        // #2026 量測：整個卡片區（ZStack）的 layout 高度 —— 使用者看到的「卡片區
-        // 高度」本身，不必由逐 slot 線推導。onGeometryChange 對動畫中的 layout 逐幀
-        // 觸發，相鄰事件的 |Δh| 即單幀跳變量。與 gap.geom slot 線同格式、同 grep。
+        .onChange(of: deckHeightKey) { _, _ in retargetDeckHeight() }
+        // 卡片區 ZStack 的 layout 高度：使用者看到的「卡片區高度」本身。
+        // box 寫入不觸發 body（見 deckHeightProbe）；DEBUG 另發 gap.geom（#2026 量測，
+        // onGeometryChange 對動畫中的 layout 逐幀觸發，相鄰事件 |Δh| = 單幀跳變量）。
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
+            deckHeightProbe.layoutHeight = h
+            #if DEBUG
             PerfLog.review.mark(
                 "gap.geom",
                 "slot=-1 role=deck kind=deck w=\(card.word) h=\(String(format: "%.1f", h)) reveal=\(state.revealStage.rawValue) dismiss=\(dismissPhase == .idle ? 0 : 1) off=\(Int(swipeOffset)) idx=\(state.progressText)"
             )
+            #endif
         }
-        #endif
     }
 
     // MARK: - Completion / Expand Zone

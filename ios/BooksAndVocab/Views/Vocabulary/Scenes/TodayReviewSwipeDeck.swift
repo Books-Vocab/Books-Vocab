@@ -102,16 +102,22 @@ extension TodayReviewPresenter {
                 // 供非 active slot cap（見下方的 .frame）。量測只有卡片自己做得到，
                 // 所以由它回吐；deck 這邊不再重覆量一次。
                 onFrontHeightChange: { h in
+                    // 比對 slot 自己上次記的值（不是卡片量測快取）：slot 回收成別張卡後
+                    // 存的是舊卡高度，必須被新量測覆寫（#2026 第三種跳法）。
                     guard slotFrontHeights.indices.contains(slot),
-                          abs(slotFrontHeights[slot] - h) > 0.5 else { return }
-                    slotFrontHeights[slot] = h
+                          let updated = TodayReviewDeckHeight.slotHeightUpdate(
+                              stored: slotFrontHeights[slot], measured: h
+                          ) else { return }
+                    slotFrontHeights[slot] = updated
                 }
             )
             // FIX(review-flip-gap)：非 active slot 的 layout 高度 cap 到 active 卡
             // 高度，讓 ZStack(alignment:.top) 只由 active 卡決定高度、不被較高的背景
-            // 卡撐大。active slot 傳 nil（自然高度，反而定義 activeCardHeight）。
-            // 這一步就修好 layout 縫隙（fixed frame 對 parent 恆報 activeCardHeight）。
-            .frame(height: isActive ? nil : activeCardHeight, alignment: .top)
+            // 卡撐大。active slot 穩態傳 nil（自然高度，反而定義 activeCardHeight）。
+            // #2026：role 翻面 / 高度過渡期間 active 改釘成過渡值（`deckShellHeight`，
+            // spring 驅動），nil ↔ 固定值的硬切因此只發生在「兩者相等」的瞬間。
+            // 規則（含「為何這樣取」）與單元測試見 TodayReviewDeckHeight。
+            .frame(height: deckSlotHeight(isActive: isActive), alignment: .top)
             // 內容溢出收斂：多數較高背景卡（如 production 長例句）會被 ReviewFoldSurface
             // 內部 .clipShape + cap frame 自然截斷、不溢出；但 fixedSize 內容（多行
             // recognition 長單字）會堅持自然高度而溢出 frame 往下渲染。統一 clip 掉
@@ -161,6 +167,71 @@ extension TodayReviewPresenter {
         )
     }
     #endif
+
+
+    // MARK: Settle seam（fling 完成時刻的 role 輪替）
+
+    /// fling 完成、**在 no-anim transaction 內**把牌堆推進一格。
+    /// 共用 settle 縫 —— #2026（卡片區高度過渡）與 #2027（progress / 按鈕回饋）
+    /// 都只能改這裡的「單一職責步驟」，不得在 `completeFling` 內另開分支：
+    ///
+    /// 1. `releaseSwipePose`：swipe / intensity 歸零、輪替被回收 slot 的隨機旋轉。
+    /// 2. `gateBackContent`：背面樹放閘（必須在推進「前」）。
+    /// 3. `pinDeckHeight`：把卡片區高度釘在畫面上當下的 layout 高度 —— 新 active
+    ///    當幀取舊高度（零跳變），隨後由 `.onChange(of: deckHeightKey)` 觸發 spring
+    ///    過渡到新卡高度。高度過渡**不**走 dismissProgress（見 #2026）。
+    /// 4. `advance`：`callback()` 推進 currentIndex，role 三向輪替，隨後 dismissPhase=idle。
+    ///
+    /// 呼叫端負責包 `disablesAnimations` 的 Transaction 與 settle 後的 suppress.reset。
+    func settleDeckAfterFling(callback: () -> Void) {
+        releaseSwipePose()
+        gateBackContent()
+        pinDeckHeight()
+        // promote（Phase 4）：callback() 推進 currentIndex → slot role
+        // 在本 no-anim transaction 內三向輪替。preview→active 與
+        // underPreview→preview 兩個存活 slot 的 transform 已被 fling
+        // 動畫推到目標值、內容 index 不變 → settle 幀零內容 diff；
+        // 唯一內容 diff 落在被回收、沉到 depth-2 的舊 active slot
+        // （被殼層位置遮蔽）。模型推進時序與舊雙軌完全相同
+        // （submit 仍在 fling 完成時刻，非樂觀預推）。
+        callback()
+        dismissPhase = .idle
+    }
+
+    private func releaseSwipePose() {
+        frozenSwipeIntensity = 0
+        swipeOffset = 0
+        // 只重隨機被回收的舊 active slot（settle 後換內容、沉到
+        // depth-2）—— 存活的 preview/underPreview slot rotation 持久，
+        // 角色輪替跨 settle 連續不跳動。
+        if let recycled = state.slots.firstIndex(where: { $0.assignment.role == .active }),
+           recycled < stackRotations.count {
+            stackRotations[recycled] = .random(in: -1...1)
+        }
+    }
+
+    /// 幽靈背面樹（device trace 證據：settle burst 內
+    /// CardDocumentExampleBlock/CardRichTextRenderer 樣本）：
+    /// 從背面送出時 backContentMounted 仍 true，callback() 推進
+    /// currentIndex 後 settle 幀會替「新卡」完整建出背面樹，下一幀
+    /// 又被 onChange(currentCardKey) 放閘拆毀——同幀建、次幀拆的
+    /// 純白工。閘必須在推進「前」放下；onChange 仍在（冪等，收
+    /// previous/shuffle 等其他推進路徑）。
+    private func gateBackContent() {
+        backMountGeneration += 1
+        backContentMounted = false
+        suppressFoldAnimation = true
+    }
+
+    /// 起點 = 畫面上當下的卡片區 layout 高度（含背面展開後的總高；動畫尚未收尾時
+    /// 也是畫面當下值）。`layoutHeight == 0`（尚未 layout）時不動，退回啟動規則。
+    private func pinDeckHeight() {
+        let height = deckHeightProbe.layoutHeight
+        guard height > 0 else { return }
+        deckHeightGeneration += 1
+        deckHeightInFlight = false
+        deckShellHeight = height
+    }
 
     // MARK: Swipe Gesture + Fling Animation
 
@@ -239,34 +310,7 @@ extension TodayReviewPresenter {
             TodayReviewState.flingClock = .now()
             PerfLog.review.measure("fling.transaction") {
                 withTransaction(noAnim) {
-                    frozenSwipeIntensity = 0
-                    swipeOffset = 0
-                    // 只重隨機被回收的舊 active slot（settle 後換內容、沉到
-                    // depth-2）—— 存活的 preview/underPreview slot rotation 持久，
-                    // 角色輪替跨 settle 連續不跳動。
-                    if let recycled = state.slots.firstIndex(where: { $0.assignment.role == .active }),
-                       recycled < stackRotations.count {
-                        stackRotations[recycled] = .random(in: -1...1)
-                    }
-                    // 幽靈背面樹（device trace 證據：settle burst 內
-                    // CardDocumentExampleBlock/CardRichTextRenderer 樣本）：
-                    // 從背面送出時 backContentMounted 仍 true，callback() 推進
-                    // currentIndex 後 settle 幀會替「新卡」完整建出背面樹，下一幀
-                    // 又被 onChange(currentCardKey) 放閘拆毀——同幀建、次幀拆的
-                    // 純白工。閘必須在推進「前」放下；onChange 仍在（冪等，收
-                    // previous/shuffle 等其他推進路徑）。
-                    backMountGeneration += 1
-                    backContentMounted = false
-                    suppressFoldAnimation = true
-                    // promote（Phase 4）：callback() 推進 currentIndex → slot role
-                    // 在本 no-anim transaction 內三向輪替。preview→active 與
-                    // underPreview→preview 兩個存活 slot 的 transform 已被 fling
-                    // 動畫推到目標值、內容 index 不變 → settle 幀零內容 diff；
-                    // 唯一內容 diff 落在被回收、沉到 depth-2 的舊 active slot
-                    // （被殼層位置遮蔽）。模型推進時序與舊雙軌完全相同
-                    // （submit 仍在 fling 完成時刻，非樂觀預推）。
-                    callback()
-                    dismissPhase = .idle
+                    settleDeckAfterFling(callback: callback)
                 }
             }
             DispatchQueue.main.async {

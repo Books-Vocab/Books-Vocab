@@ -226,9 +226,11 @@ struct ReviewCardView: View {
                 // Update the identity even when two adjacent cards happen to have
                 // the same height; otherwise the old key would keep this valid
                 // measurement quarantined forever.
-                if reviewMeasurementCache.recordFront(measurement) {
-                    onFrontHeightChange?(height)
-                }
+                reviewMeasurementCache.recordFront(measurement)
+                // 一律回報、由牌堆對「slot 自己的上次值」去重：卡片量測快取只記這張卡
+                // 的高度，卡回收進別的 slot 時快取值不變 → 舊寫法不回報，slot 殘留
+                // 前一張卡的高度（#2026 stale 來源）。
+                onFrontHeightChange?(height)
             }
 
             // 永遠存在於 view tree — PaperFoldModifier(Animatable) 直接驅動摺疊動畫。
