@@ -541,11 +541,14 @@ Apple/Google SSO
 **iOS env / Info.plist key / 取樣率（SoT）**：`docs/sop/deploy.md §Sentry 錯誤追蹤 → iOS env / Info.plist`。本段僅寫 iOS-side 程式碼層 wiring。
 
 實作要點（`Services/AppCrashReporting.swift` 與同目錄 seams）：
-- SPM dep `sentry-cocoa` 固定為 `9.24.0`，並且同時存在於 `Package.resolved`、app target 的 package product dependencies 與 Frameworks build phase；`canImport(Sentry)` 仍保留為 SDK 缺失時的 no-op fallback，但 source guard 本身不再被視為「SDK 已啟用」的證明
+- SPM dep `sentry-cocoa` 在 pbxproj 宣告 `upToNextMajorVersion` 最低 `9.24.0`（9.x 內可升級），實際版本由 `Package.resolved` 鎖定（目前 `9.24.0`）；升級＝更新 `Package.resolved` 並跑 Sentry 單元測試。依賴同時存在於 `Package.resolved`、app target 的 package product dependencies 與 Frameworks build phase；`canImport(Sentry)` 仍保留為 SDK 缺失時的 no-op fallback，但 source guard 本身不再被視為「SDK 已啟用」的證明
 - `AppCrashReporting.swift` 是產品 call site 唯一依賴的 facade；`SentryReporter.swift` 是唯一接觸 `SentrySDK` 的 adapter；`SentryConfiguration.swift`、`SentryPrivacyPolicy.swift`、`AppDiagnosticContext.swift` 分別承擔組態、隱私與 bounded local diagnostics
 - Bootstrap 順序：`AppCrashReporting.bootstrap()` 在 `BooksAndVocabApp.init()` 第一步執行（早於 `ModelContainer` init，捕捉儲存初始化失敗）
 - User 追蹤：`AppCrashReporting.setUser(id:)` 連動 `authManager.isLoggedIn` onChange — 登出時清除，避免多帳戶污染
 - `beforeSend` 過濾：丟棄 `CancellationError` / `NSURLErrorCancelled` 噪音；HTTP breadcrumb 只保留 allowlisted API resource root，不保留 dynamic ID/path、query、host 或 userinfo
+- `beforeSend` exception 規則全在 `SentryPrivacyPolicy.redactException`（純函式，`SentryPrivacyPolicyTests` 覆蓋）：SDK 產生的 crash／hang／watchdog（mechanism `mach`/`signal`/`nsexception`/`cpp_exception`/`AppHang`/`watchdog_termination`）保留 exception type、`mechanism.type`、`mechanism.handled`；value 只留非 PII 形式（`Exception N, Code N, Subcode N`、`Signal N, Code N`、App hanging 時長文字、watchdog 固定句、Swift runtime trap 固定片語），NSException／C++ reason 一律丟棄；其他 `handled == false` 只保留 flag 與 mechanism type；captured（handled）Swift error 維持 type allowlist、fallback `ReportedError`、無 value／mechanism。`mechanism.data`/`meta`/`desc`、`event.error`、NSError userInfo 永不外送；event message 只放行 `SentryPrivacyPolicy.verificationMessage`（`-sentryTest`）
+- environment：Info.plist `SentryEnvironment` 優先；否則 Debug＝`debug`，Release 以 runtime receipt 判斷（`appStoreReceiptURL` 檔名 `sandboxReceipt`＝`testflight`，其餘＝`production`），因 TestFlight 與 App Store 是同一 binary
+- 背景同步回報：`kg.sync.*` 與 `pushReviewQuietly`（`kg.sync.push_review_states|events`）經 `KGService.shouldRecordSyncFailure` 過濾，offline／`KGError.networkError`／cancel／401 不送，server／decoding／未知錯誤送出
 - agent 不需要 Sentry GUI：`./ops/sentry_tool.py health|issues|issue|events|releases|regressions|route --json` 透過 read-only Web API 取得 normalized contract；API secret 只用 `SENTRY_API_URL`、`SENTRY_AUTH_TOKEN`、`SENTRY_ORG`、`SENTRY_PROJECT_IOS`、`SENTRY_PROJECT_BACKEND`
 - `sentry_tool.py` 僅能 GET，沒有 resolve、assign、comment、create 或 GitHub write path；`route` 只給 IM routing 建議，且 stacktrace/release 不足時回報 `evidence_incomplete`，不猜根因
 - `sentry_tool.py` 的 invalid usage、HTTP/network、pagination truncation、malformed collection 與 redirect/origin failure 都輸出 `kg.sentry.error.v1`；Bearer token 只送往同一個 HTTPS origin，collection 不完整時 fail closed

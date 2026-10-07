@@ -54,6 +54,166 @@ struct SentryPrivacyPolicyTests {
         #expect(!SentryPrivacyPolicy.isSensitiveField("status_code"))
     }
 
+    // MARK: - beforeSend exception redaction
+
+    @Test func machCrashKeepsIdentityMechanismAndOnlyTheCodePrefix() {
+        let redacted = SentryPrivacyPolicy.redactException(
+            type: "EXC_BAD_ACCESS",
+            value: "Exception 1, Code 1, Subcode 8 >\nAttempted to dereference garbage pointer 0x8.",
+            mechanismType: "mach",
+            handled: false
+        )
+
+        #expect(redacted == SentryPrivacyPolicy.RedactedException(
+            type: "EXC_BAD_ACCESS",
+            value: "Exception 1, Code 1, Subcode 8",
+            mechanismType: "mach",
+            handled: false
+        ))
+    }
+
+    @Test func signalCrashKeepsSignalCodesAndUnhandledFlag() {
+        let redacted = SentryPrivacyPolicy.redactException(
+            type: "SIGABRT",
+            value: "Signal 6, Code 0",
+            mechanismType: "signal",
+            handled: false
+        )
+
+        #expect(redacted.type == "SIGABRT")
+        #expect(redacted.value == "Signal 6, Code 0")
+        #expect(redacted.mechanismType == "signal")
+        #expect(redacted.handled == false)
+    }
+
+    @Test func swiftRuntimeTrapKeepsOnlyTheStaticRuntimePhrase() {
+        let redacted = SentryPrivacyPolicy.redactException(
+            type: "EXC_BREAKPOINT",
+            value: "BooksAndVocab/DeckView.swift:42: Fatal error: Unexpectedly found nil while unwrapping an Optional value",
+            mechanismType: "mach",
+            handled: false
+        )
+        let custom = SentryPrivacyPolicy.redactException(
+            type: "EXC_BREAKPOINT",
+            value: "Fatal error: could not load deck for person@example.com",
+            mechanismType: "mach",
+            handled: false
+        )
+
+        #expect(redacted.value == "Fatal error: Unexpectedly found nil while unwrapping an Optional value")
+        #expect(custom.type == "EXC_BREAKPOINT")
+        #expect(custom.value == nil)
+    }
+
+    @Test func nsexceptionCrashKeepsNameButNeverTheReason() {
+        let redacted = SentryPrivacyPolicy.redactException(
+            type: "NSInvalidArgumentException",
+            value: "-[Deck title]: unrecognized selector for the user's book title",
+            mechanismType: "nsexception",
+            handled: false
+        )
+
+        #expect(redacted.type == "NSInvalidArgumentException")
+        #expect(redacted.value == nil)
+        #expect(redacted.mechanismType == "nsexception")
+        #expect(redacted.handled == false)
+    }
+
+    @Test func appHangKeepsHangTypeAndStaticDurationText() {
+        let fresh = SentryPrivacyPolicy.redactException(
+            type: "App Hang Fully Blocked",
+            value: "App hanging for at least 2000 ms.",
+            mechanismType: "AppHang",
+            handled: nil
+        )
+        let stopped = SentryPrivacyPolicy.redactException(
+            type: "Fatal App Hang Non Fully Blocked",
+            value: "App hanging between 2.0 and 3.5 seconds.",
+            mechanismType: "AppHang",
+            handled: nil
+        )
+        let legacy = SentryPrivacyPolicy.redactException(
+            type: "App Hanging",
+            value: "App hanging for at least 2000 ms.",
+            mechanismType: "AppHang",
+            handled: nil
+        )
+
+        #expect(fresh == SentryPrivacyPolicy.RedactedException(
+            type: "App Hang Fully Blocked",
+            value: "App hanging for at least 2000 ms.",
+            mechanismType: "AppHang",
+            handled: nil
+        ))
+        #expect(stopped.type == "Fatal App Hang Non Fully Blocked")
+        #expect(stopped.value == "App hanging between 2.0 and 3.5 seconds.")
+        #expect(legacy.type == "App Hanging")
+    }
+
+    @Test func unknownUnhandledMechanismKeepsFlagButUsesStrictTypeRules() {
+        let redacted = SentryPrivacyPolicy.redactException(
+            type: "Jane Doe wrote this",
+            value: "free-form reason with user text",
+            mechanismType: "user",
+            handled: false
+        )
+
+        #expect(redacted == SentryPrivacyPolicy.RedactedException(
+            type: "ReportedError",
+            value: nil,
+            mechanismType: "user",
+            handled: false
+        ))
+    }
+
+    @Test func handledCapturedErrorKeepsTodaysRedaction() {
+        let redacted = SentryPrivacyPolicy.redactException(
+            type: "BooksAndVocab.KGError",
+            value: "httpError(statusCode: 500, detail: \"the user's book title\")",
+            mechanismType: "NSError",
+            handled: true
+        )
+        let opaque = SentryPrivacyPolicy.redactException(
+            type: "the user's book title",
+            value: "Code: 5",
+            mechanismType: nil,
+            handled: nil
+        )
+
+        #expect(redacted == SentryPrivacyPolicy.RedactedException(
+            type: "BooksAndVocab.KGError",
+            value: nil,
+            mechanismType: nil,
+            handled: nil
+        ))
+        #expect(opaque == SentryPrivacyPolicy.RedactedException(
+            type: "ReportedError",
+            value: nil,
+            mechanismType: nil,
+            handled: nil
+        ))
+    }
+
+    @Test func crashTypeThatLooksLikeFreeTextFallsBackToGenericCrash() {
+        let redacted = SentryPrivacyPolicy.redactException(
+            type: "reason: the user's book title, please contact person@example.com now",
+            value: "Signal 6, Code 0",
+            mechanismType: "signal",
+            handled: false
+        )
+
+        #expect(redacted.type == "ReportedCrash")
+        #expect(redacted.value == "Signal 6, Code 0")
+    }
+
+    @Test func onlyAllowlistedStaticVerificationMessageSurvives() {
+        #expect(SentryPrivacyPolicy.redactEventMessage(SentryPrivacyPolicy.verificationMessage)
+            == "Sentry verification: iOS launch-arg test event")
+        #expect(SentryPrivacyPolicy.redactEventMessage("Sentry verification: the user's book title") == nil)
+        #expect(SentryPrivacyPolicy.redactEventMessage("sync failed for person@example.com") == nil)
+        #expect(SentryPrivacyPolicy.redactEventMessage(nil) == nil)
+    }
+
     @Test func diagnosticContextIsBoundedAndKeepsOnlyRedactedCorrelation() {
         let context = AppDiagnosticContext(maxObservations: 2, maxRequestIDs: 2)
         context.recordObservation(message: "sync.start", requestID: "req-1")

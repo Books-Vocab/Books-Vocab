@@ -57,17 +57,32 @@ enum SentryReporter {
                 }
                 // capture(error:) asks the SDK to bridge Swift Error/NSError.
                 // That bridge may place descriptions, associated values and
-                // NSError userInfo into exception.value/mechanism. Keep the
-                // exception type for grouping, retain the SDK-generated stack,
-                // and remove every human/error payload before processors run.
+                // NSError userInfo into exception.value/mechanism. SDK crash,
+                // hang and watchdog events keep their identity and handled
+                // flag for triage; every human/error payload (mechanism
+                // data/meta/desc, NSException reasons, free-form values) is
+                // removed before processors run. Rules: SentryPrivacyPolicy.
                 for exception in event.exceptions ?? [] {
-                    exception.type = SentryPrivacyPolicy.redactExceptionType(exception.type) ?? "ReportedError"
-                    exception.value = nil
+                    let redacted = SentryPrivacyPolicy.redactException(
+                        type: exception.type,
+                        value: exception.value,
+                        mechanismType: exception.mechanism?.type,
+                        handled: exception.mechanism?.handled?.boolValue
+                    )
+                    exception.type = redacted.type
+                    exception.value = redacted.value
                     exception.module = nil
-                    exception.mechanism = nil
+                    if let mechanismType = redacted.mechanismType {
+                        let mechanism = Mechanism(type: mechanismType)
+                        mechanism.handled = redacted.handled.map { NSNumber(value: $0) }
+                        exception.mechanism = mechanism
+                    } else {
+                        exception.mechanism = nil
+                    }
                 }
                 event.error = nil
-                event.message = nil
+                event.message = SentryPrivacyPolicy.redactEventMessage(event.message?.formatted)
+                    .map { SentryMessage(formatted: $0) }
                 if let request = event.request {
                     request.url = request.url.flatMap(SentryPrivacyPolicy.redactBreadcrumbURL)
                     request.queryString = nil
@@ -88,7 +103,7 @@ enum SentryReporter {
         }
 
         if configuration.testEventRequested {
-            let eventID = SentrySDK.capture(message: "Sentry verification: iOS launch-arg test event")
+            let eventID = SentrySDK.capture(message: SentryPrivacyPolicy.verificationMessage)
             AppDiagnosticContext.shared.recordEventID(eventIDString(eventID))
         }
         #else

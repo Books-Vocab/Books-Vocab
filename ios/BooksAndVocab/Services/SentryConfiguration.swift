@@ -31,7 +31,8 @@ struct SentryConfiguration: Equatable {
             bundleIdentifier: Bundle.main.bundleIdentifier,
             environment: ProcessInfo.processInfo.environment,
             arguments: ProcessInfo.processInfo.arguments,
-            debugBuild: debugBuild
+            debugBuild: debugBuild,
+            appStoreReceiptFileName: Bundle.main.appStoreReceiptURL?.lastPathComponent
         )
     }
 
@@ -40,12 +41,16 @@ struct SentryConfiguration: Equatable {
         bundleIdentifier: String?,
         environment: [String: String],
         arguments: [String],
-        debugBuild: Bool
+        debugBuild: Bool,
+        appStoreReceiptFileName: String? = nil
     ) -> SentryConfiguration {
         let dsn = nonEmptyString(infoDictionary["SentryDSN"])
         let testEventRequested = arguments.contains("-sentryTest")
-        let environmentName = nonEmptyString(infoDictionary["SentryEnvironment"])
-            ?? (debugBuild ? "debug" : "production")
+        let environmentName = resolveEnvironment(
+            override: nonEmptyString(infoDictionary["SentryEnvironment"]),
+            debugBuild: debugBuild,
+            appStoreReceiptFileName: appStoreReceiptFileName
+        )
         let marketingVersion = nonEmptyString(infoDictionary["CFBundleShortVersionString"])
         let build = nonEmptyString(infoDictionary["CFBundleVersion"])
         let releaseName: String?
@@ -74,6 +79,20 @@ struct SentryConfiguration: Equatable {
             debugBuild: debugBuild,
             testEventRequested: testEventRequested
         )
+    }
+
+    /// TestFlight and App Store ship the same Release binary, so the channel
+    /// is detected at runtime: TestFlight installs carry a `sandboxReceipt`
+    /// (the same signal SentryCrash uses). An explicit `SentryEnvironment`
+    /// Info.plist value always wins.
+    static func resolveEnvironment(
+        override: String?,
+        debugBuild: Bool,
+        appStoreReceiptFileName: String?
+    ) -> String {
+        if let override { return override }
+        if debugBuild { return "debug" }
+        return appStoreReceiptFileName == "sandboxReceipt" ? "testflight" : "production"
     }
 
     static func resolveTracesSampleRate(rawOverride: String?, debugBuild: Bool) -> Double {

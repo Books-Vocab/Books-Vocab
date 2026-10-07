@@ -454,7 +454,9 @@ extension KGService {
                 return nil
             }
             AppLog.kg.warning("backgroundSync \(label) failed: \(error.localizedDescription)")
-            AppCrashReporting.record(error, context: "kg.sync.\(label)")
+            if Self.shouldRecordSyncFailure(error) {
+                AppCrashReporting.record(error, context: "kg.sync.\(label)")
+            }
             outcome.failures.append(SyncPhaseFailure(
                 label: label,
                 message: SyncFailurePresentation.message(label: label, error: error)
@@ -738,11 +740,38 @@ extension KGService {
             _ = try await pushReviewStates(container: container)
         } catch {
             AppLog.kg.warning("pushReviewQuietly failed: \(error.localizedDescription)")
+            if Self.shouldRecordSyncFailure(error) {
+                AppCrashReporting.record(error, context: "kg.sync.push_review_states")
+            }
         }
         do {
             _ = try await pushReviewEvents(container: container)
         } catch {
             AppLog.kg.warning("pushReviewQuietly pushReviewEvents failed: \(error.localizedDescription)")
+            if Self.shouldRecordSyncFailure(error) {
+                AppCrashReporting.record(error, context: "kg.sync.push_review_events")
+            }
         }
+    }
+
+    /// Sentry filter for background sync failures, mirroring
+    /// `TranslationService.recordTranslationFailureIfNeeded`: offline/network
+    /// blips, cancellation and auth expiry are user-recoverable noise; server,
+    /// decoding and unexpected failures are actionable and get recorded.
+    nonisolated static func shouldRecordSyncFailure(_ error: Error) -> Bool {
+        if error is CancellationError { return false }
+        if let kgError = error as? KGError {
+            switch kgError {
+            case .offline, .networkError, .unauthorized, .notAuthenticated:
+                return false
+            case .httpError, .decodingError, .serverError:
+                return true
+            }
+        }
+        if let urlError = error as? URLError,
+           urlError.code == .cancelled || urlError.code == .notConnectedToInternet {
+            return false
+        }
+        return true
     }
 }

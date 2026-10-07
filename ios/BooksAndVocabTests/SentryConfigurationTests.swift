@@ -76,4 +76,26 @@ struct SentryConfigurationTests {
         #expect(configuration.releaseName == nil)
         #expect(configuration.dist == nil)
     }
+
+    @Test func environmentMapsBuildChannelFromReceiptAndKeepsPlistOverride() {
+        var withoutOverride = info
+        withoutOverride.removeValue(forKey: "SentryEnvironment")
+
+        func environment(_ info: [String: Any], receipt: String?, debugBuild: Bool) -> String {
+            SentryConfiguration.make(
+                infoDictionary: info,
+                bundleIdentifier: "com.example.books",
+                environment: [:],
+                arguments: [],
+                debugBuild: debugBuild,
+                appStoreReceiptFileName: receipt
+            ).environment
+        }
+
+        #expect(environment(withoutOverride, receipt: "sandboxReceipt", debugBuild: false) == "testflight")
+        #expect(environment(withoutOverride, receipt: "receipt", debugBuild: false) == "production")
+        #expect(environment(withoutOverride, receipt: nil, debugBuild: false) == "production")
+        #expect(environment(withoutOverride, receipt: "sandboxReceipt", debugBuild: true) == "debug")
+        #expect(environment(info, receipt: "sandboxReceipt", debugBuild: false) == "qa")
+    }
 }
