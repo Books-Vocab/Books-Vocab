@@ -1,4 +1,5 @@
 """Translate/explain LLM call log + cross-user cache (SQLite singleton)."""
+
 from __future__ import annotations
 
 import os
@@ -40,12 +41,15 @@ def _cache_ttl_days() -> int:
         return CACHE_TTL_DAYS_DEFAULT
     return val if val >= 0 else CACHE_TTL_DAYS_DEFAULT
 
+
 def _db_path() -> Path:
     return data_dir() / "translate_log.db"
 
+
 def _initialize_schema(conn: sqlite3.Connection) -> None:
-        from .sqlite_utils import ensure_columns
-        conn.execute("""
+    from .sqlite_utils import ensure_columns
+
+    conn.execute("""
             CREATE TABLE IF NOT EXISTS translate_log (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id     TEXT NOT NULL,
@@ -60,10 +64,10 @@ def _initialize_schema(conn: sqlite3.Connection) -> None:
                 created_at  TEXT NOT NULL
             )
         """)
-        # Precise cache-hit counter: every short-circuited cache hit gets one row.
-        # Separate table so the existing translate_log (= misses / LLM calls) stays
-        # canonical and we can compute hit rate = hits / (hits + misses).
-        conn.execute("""
+    # Precise cache-hit counter: every short-circuited cache hit gets one row.
+    # Separate table so the existing translate_log (= misses / LLM calls) stays
+    # canonical and we can compute hit rate = hits / (hits + misses).
+    conn.execute("""
             CREATE TABLE IF NOT EXISTS translate_cache_hits (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id     TEXT,
@@ -75,25 +79,27 @@ def _initialize_schema(conn: sqlite3.Connection) -> None:
                 created_at  TEXT NOT NULL
             )
         """)
-        # Migration: add `model` column to both tables for cache-key inclusion.
-        # Translation output is model-dependent (prompt format, instruction
-        # following, style), so switching model must invalidate prior cache rows.
-        # Pre-migration rows default to model='' — they only match requests that
-        # also pass model='' (none in current code paths), so legacy entries
-        # expire naturally via TTL without being served to mismatched callers.
-        for table in ("translate_log", "translate_cache_hits"):
-            ensure_columns(conn, table, {"model": "TEXT NOT NULL DEFAULT ''"})
-        # Rebuild cache lookup index to include model. Old name retained for
-        # any external observers; content now covers the new key shape.
-        conn.execute("DROP INDEX IF EXISTS idx_tl_cache")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_cache ON translate_log(word, context_hash, source_lang, target_lang, operation, model)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_user ON translate_log(user_id, created_at)")
-        # Bare created_at index for the retention pruner's
-        # `DELETE ... WHERE created_at < ?`; idx_tl_user leads with user_id so
-        # SQLite can't use it for a bare-created_at predicate (idx_tch_created
-        # already covers translate_cache_hits the same way).
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_created ON translate_log(created_at)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_tch_created ON translate_cache_hits(created_at)")
+    # Migration: add `model` column to both tables for cache-key inclusion.
+    # Translation output is model-dependent (prompt format, instruction
+    # following, style), so switching model must invalidate prior cache rows.
+    # Pre-migration rows default to model='' — they only match requests that
+    # also pass model='' (none in current code paths), so legacy entries
+    # expire naturally via TTL without being served to mismatched callers.
+    for table in ("translate_log", "translate_cache_hits"):
+        ensure_columns(conn, table, {"model": "TEXT NOT NULL DEFAULT ''"})
+    # Rebuild cache lookup index to include model. Old name retained for
+    # any external observers; content now covers the new key shape.
+    conn.execute("DROP INDEX IF EXISTS idx_tl_cache")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tl_cache ON translate_log(word, context_hash, source_lang, target_lang, operation, model)"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_user ON translate_log(user_id, created_at)")
+    # Bare created_at index for the retention pruner's
+    # `DELETE ... WHERE created_at < ?`; idx_tl_user leads with user_id so
+    # SQLite can't use it for a bare-created_at predicate (idx_tch_created
+    # already covers translate_cache_hits the same way).
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_created ON translate_log(created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_tch_created ON translate_cache_hits(created_at)")
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -103,13 +109,16 @@ def _get_conn() -> sqlite3.Connection:
     _conn = _lifecycle.get_connection(_db_path(), _initialize_schema)
     return _conn
 
+
 def reset() -> None:
     global _conn
     _lifecycle.reset()
     _conn = None
 
+
 def _reset() -> None:
     reset()
+
 
 def lookup(
     word: str,
@@ -136,7 +145,20 @@ def lookup(
         ).fetchone()
     return row[0] if row else None
 
-def record(*, user_id, operation, word, context, context_hash, source_lang, target_lang, response_raw, latency_ms, model: str = "") -> None:
+
+def record(
+    *,
+    user_id,
+    operation,
+    word,
+    context,
+    context_hash,
+    source_lang,
+    target_lang,
+    response_raw,
+    latency_ms,
+    model: str = "",
+) -> None:
     if not user_id:
         return
     now = datetime.now(UTC).isoformat()
@@ -144,9 +166,22 @@ def record(*, user_id, operation, word, context, context_hash, source_lang, targ
         conn = _get_conn()
         conn.execute(
             "INSERT INTO translate_log (user_id, operation, word, context, context_hash, source_lang, target_lang, response_raw, latency_ms, created_at, model) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (user_id, operation, word, context, context_hash, source_lang, target_lang, response_raw, int(latency_ms or 0), now, model),
+            (
+                user_id,
+                operation,
+                word,
+                context,
+                context_hash,
+                source_lang,
+                target_lang,
+                response_raw,
+                int(latency_ms or 0),
+                now,
+                model,
+            ),
         )
         conn.commit()
+
 
 def record_cache_hit(
     *,
@@ -175,17 +210,6 @@ def record_cache_hit(
         conn.commit()
 
 
-def count_cache_hits_since(cutoff_iso: str) -> int:
-    """Count cache hits recorded since ``cutoff_iso`` (ISO-8601 UTC string)."""
-    with _lock:
-        conn = _get_conn()
-        row = conn.execute(
-            "SELECT COUNT(*) FROM translate_cache_hits WHERE created_at >= ?",
-            (cutoff_iso,),
-        ).fetchone()
-    return int(row[0] or 0) if row else 0
-
-
 def get_log(
     user_id: str,
     *,
@@ -211,11 +235,7 @@ def get_log(
 
     q_clean = (q or "").strip()
     if q_clean:
-        escaped = (
-            q_clean.replace("\\", "\\\\")
-            .replace("%", "\\%")
-            .replace("_", "\\_")
-        )
+        escaped = q_clean.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         like = f"%{escaped}%"
         where.append("(LOWER(word) LIKE LOWER(?) ESCAPE '\\' OR LOWER(IFNULL(context,'')) LIKE LOWER(?) ESCAPE '\\')")
         params.extend([like, like])
@@ -225,12 +245,21 @@ def get_log(
     # silently truncating the row and dropping a field — which `SELECT *` paired
     # with a hand-maintained column list would hide. `model` is appended via
     # ALTER TABLE after the 11 CREATE-TABLE columns.
-    cols = ["id","user_id","operation","word","context","context_hash","source_lang","target_lang","response_raw","latency_ms","created_at","model"]
-    sql = (
-        f"SELECT {', '.join(cols)} FROM translate_log WHERE "
-        + " AND ".join(where)
-        + " ORDER BY id DESC LIMIT ?"
-    )
+    cols = [
+        "id",
+        "user_id",
+        "operation",
+        "word",
+        "context",
+        "context_hash",
+        "source_lang",
+        "target_lang",
+        "response_raw",
+        "latency_ms",
+        "created_at",
+        "model",
+    ]
+    sql = f"SELECT {', '.join(cols)} FROM translate_log WHERE " + " AND ".join(where) + " ORDER BY id DESC LIMIT ?"
     params.append(limit)
 
     with _lock:
