@@ -10,12 +10,48 @@ from __future__ import annotations
 import difflib
 import json
 import posixpath
+from collections.abc import Iterable
 from pathlib import PurePosixPath
 
 SCOPE_SCHEMA = "kg.worktree.scope.v1"
 SCOPE_OPERATIONS = ("add", "modify", "delete")
+# Exact repo paths every lane tends to touch and whose concurrent edits are
+# trivially resolved at rebase.  They are recorded in Scope like any other file
+# but never make two lanes conflict at admission.  Everything not listed here
+# stays exclusive; no globs.  Each entry needs a justification in
+# docs/reference/delivery_model.md (enforced by test_worktree_shared_scope.py):
+#   docs/reference/tech_index.md, docs/registry.yml - append-only indexes.
+#   ops/complexity_budget.json                      - numeric ratchet ceilings.
+#   ops/test_ops.sh, ops/tests/test_ops_ci_coverage.sh - test-group
+#     registration: each lane adds or drops one group line in its own case arm
+#     or list entry; a true textual conflict is resolved at rebase and the
+#     merge queue re-tests the combined tree.
+SHARED_SCOPE_FILES = frozenset(
+    {
+        "docs/reference/tech_index.md",
+        "docs/registry.yml",
+        "ops/complexity_budget.json",
+        "ops/test_ops.sh",
+        "ops/tests/test_ops_ci_coverage.sh",
+    }
+)
 # Spellings agents reach for naturally; canonicalised on input, never stored.
 SCOPE_OPERATION_ALIASES = {"create": "add", "new": "add"}
+
+
+def exclusive_paths(paths: Iterable[str]) -> set[str]:
+    """Return the paths that stay exclusive, i.e. not in SHARED_SCOPE_FILES."""
+    return set(paths) - SHARED_SCOPE_FILES
+
+
+def overlap_paths(left: Iterable[str], right: Iterable[str]) -> set[str]:
+    """The one overlap rule: contested paths between two claims or change sets.
+
+    Every gate that decides "do these two lanes collide" (registry admission,
+    Issue admission, publish preflight, delivery inspect, reanchor) must go
+    through this so the SHARED_SCOPE_FILES exemption applies uniformly.
+    """
+    return exclusive_paths(set(left) & set(right))
 
 
 def _normalise_path(value: object) -> tuple[str | None, str | None]:

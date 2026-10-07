@@ -40,7 +40,12 @@ import worktree_reanchor_core.published_remote_recovery as worktree_published_re
 import worktree_registry as registry
 import worktree_resume
 from delivery_control.adapters.operation_lock import OperationLock
-from lib.worktree_scope import scope_files, scope_from_name_status, scope_status
+from lib.worktree_scope import (
+    overlap_paths,
+    scope_files,
+    scope_from_name_status,
+    scope_status,
+)
 from worktree_reanchor_core import git_ops as reanchor_git_ops
 from worktree_reanchor_core import registry_ops as reanchor_registry_ops
 from worktree_reanchor_core.domain import commit_sha as reanchor_commit_sha
@@ -676,7 +681,9 @@ def cmd_reanchor_handback(args: argparse.Namespace) -> int:
         incoming_files = _reanchor_handback_diff_names(
             worktree, start=base_sha, end=live_main
         )
-        collisions = tuple(sorted(set(scope_paths).intersection(incoming_files)))
+        # Shared files are left to git rebase: a real textual conflict aborts
+        # below with the registry untouched.
+        collisions = tuple(sorted(overlap_paths(scope_paths, incoming_files)))
         if collisions:
             raise ReanchorRefused(
                 "incoming main changes collide with the declared Scope",
@@ -897,7 +904,7 @@ def _rebase_preflight(
     if branch_files is None:
         payload["reason"] = "branch diff could not be computed"
         return payload
-    collisions = sorted(set(scope_paths).intersection(incoming_main_files))
+    collisions = sorted(overlap_paths(scope_paths, incoming_main_files))
     payload.update(
         {
             "incoming_main_files": incoming_main_files,
