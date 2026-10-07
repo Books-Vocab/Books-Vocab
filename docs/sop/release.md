@@ -31,6 +31,7 @@ verified_against: 24f2120d7118af81b6812a50a4c489aff3b466ec
 
 1. CM confirms the PR is merged to the intended `main` and the merged SHA is known.
 2. Run release status and inspect changed surfaces, migrations, configuration and compatibility risks.
+   Run `./ops/release_train.py` for backend: it must report no `block` (prod fast-forward, formatted release files, an `origin/prod`-exact felix clone, healthy reconciler, fresh backup, production env) and lists hot-path files that need the owner's explicit go.
 3. Select backend, iOS, or both. Do not publish a surface that was not explicitly selected.
 4. Run the release entrypoint in dry-run mode first. Confirm target, version, approval and rollback candidate.
 5. Execute only the approved release command. Production writes must pass the safety wrapper and health gate.

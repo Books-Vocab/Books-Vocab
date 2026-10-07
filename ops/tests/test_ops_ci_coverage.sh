@@ -93,6 +93,7 @@ done
 ROUTED_TESTS=(
   "ui-graph:ops/tests/test_ui_graph_contract.py"
   "doctor:ops/tests/test_doctor.py"
+  "doctor:ops/tests/test_release_train.py"
   "capability-matrix:ops/tests/test_compute_cli.py"
   "capability-matrix:ops/tests/test_compute_router.py"
   "capability-matrix:ops/tests/test_felix_compute_launcher.py"
