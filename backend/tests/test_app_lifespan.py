@@ -46,6 +46,10 @@ def _dependencies(tmp_path, events: list[object]) -> AppLifespanDependencies:
         events.append("reap_orphaned_runs")
         return 2
 
+    def _reap_add_link_operations() -> int:
+        events.append("reap_add_link_operations")
+        return 3
+
     def _release_worker_lock() -> None:
         events.append("release_worker_lock")
 
@@ -57,6 +61,7 @@ def _dependencies(tmp_path, events: list[object]) -> AppLifespanDependencies:
         logger=_SpyLogger(events),
         assert_single_worker_fn=_assert_single_worker,
         reap_orphaned_runs_fn=_reap_orphaned_runs,
+        reap_interrupted_add_link_operations_fn=_reap_add_link_operations,
         release_worker_lock_fn=_release_worker_lock,
         reset_clients_fn=_reset_clients,
         reset_async_clients_fn=_reset_async_clients,
@@ -65,9 +70,7 @@ def _dependencies(tmp_path, events: list[object]) -> AppLifespanDependencies:
 
 def test_build_app_lifespan_from_dependencies_runs_expected_flow(tmp_path):
     events: list[object] = []
-    lifespan = build_app_lifespan_from_dependencies(
-        dependencies=_dependencies(tmp_path, events)
-    )
+    lifespan = build_app_lifespan_from_dependencies(dependencies=_dependencies(tmp_path, events))
     app = FastAPI(lifespan=lifespan)
 
     with TestClient(app):
@@ -77,7 +80,9 @@ def test_build_app_lifespan_from_dependencies_runs_expected_flow(tmp_path):
         ("log", "KG API starting up"),
         ("assert_single_worker", tmp_path / ".worker.lock"),
         "reap_orphaned_runs",
+        "reap_add_link_operations",
         ("log", "Reaped 2 orphaned pipeline run(s) → interrupted"),
+        ("log", "Reaped 3 orphaned add-link operation(s) → interrupted"),
         ("log", "KG API shutting down"),
         "release_worker_lock",
         "reset_clients",
@@ -100,12 +105,39 @@ def test_lifespan_releases_worker_lock_when_reaping_fails(tmp_path):
         reap_orphaned_runs_fn=_reap_orphaned_runs,
         release_worker_lock_fn=worker_guard.release_worker_lock,
     )
-    app = FastAPI(
-        lifespan=build_app_lifespan_from_dependencies(dependencies=deps)
-    )
+    app = FastAPI(lifespan=build_app_lifespan_from_dependencies(dependencies=deps))
 
     try:
         with pytest.raises(RuntimeError, match="reap failed"):
+            with TestClient(app):
+                pass
+
+        assert worker_guard._lock_fd is None
+        assert not lock_path.exists()
+    finally:
+        worker_guard.release_worker_lock()
+        lock_path.unlink(missing_ok=True)
+
+
+def test_lifespan_releases_worker_lock_when_add_link_reaping_fails(tmp_path):
+    lock_path = tmp_path / ".worker.lock"
+    worker_guard.release_worker_lock()
+    events: list[object] = []
+
+    def _reap_add_link_operations() -> int:
+        events.append("reap_add_link_operations")
+        raise RuntimeError("add-link reap failed")
+
+    deps = replace(
+        _dependencies(tmp_path, events),
+        assert_single_worker_fn=worker_guard.assert_single_worker,
+        reap_interrupted_add_link_operations_fn=_reap_add_link_operations,
+        release_worker_lock_fn=worker_guard.release_worker_lock,
+    )
+    app = FastAPI(lifespan=build_app_lifespan_from_dependencies(dependencies=deps))
+
+    try:
+        with pytest.raises(RuntimeError, match="add-link reap failed"):
             with TestClient(app):
                 pass
 
@@ -127,11 +159,7 @@ def _run_lifespan_with_settings(tmp_path, settings: KGSettings) -> list[object]:
 
 
 def _warnings(events: list[object]) -> list[str]:
-    return [
-        e[1]
-        for e in events
-        if isinstance(e, tuple) and len(e) == 2 and e[0] == "warning"
-    ]
+    return [e[1] for e in events if isinstance(e, tuple) and len(e) == 2 and e[0] == "warning"]
 
 
 def test_empty_admin_token_logs_startup_warning(tmp_path):
