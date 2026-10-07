@@ -10,6 +10,7 @@ import asyncio
 import dataclasses
 import hashlib
 import json
+import math
 import os
 import sys
 from pathlib import Path
@@ -226,6 +227,20 @@ def cmd_eval(args: argparse.Namespace) -> int:
     return 1 if failures else 0
 
 
+def _is_finite_number(value: Any) -> bool:
+    """A real, finite score ``compare_to_baseline`` can subtract.
+
+    JSON accepts ``NaN``/``Infinity`` and arbitrarily large integers; the
+    first poison every comparison, the last overflows ``float()``.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except OverflowError:
+        return False
+
+
 def _baseline_shape_problem(baseline: Any) -> str | None:
     """Why ``baseline`` cannot feed ``compare_to_baseline``, or ``None``.
 
@@ -242,10 +257,8 @@ def _baseline_shape_problem(baseline: Any) -> str | None:
             return f"models[{model!r}] must be an object"
         for key in ("format_score_avg", "quality_score_avg"):
             score = entry.get(key)
-            if score is not None and (
-                isinstance(score, bool) or not isinstance(score, (int, float))
-            ):
-                return f"models[{model!r}].{key} must be a number or null"
+            if score is not None and not _is_finite_number(score):
+                return f"models[{model!r}].{key} must be a finite number or null"
     return None
 
 
