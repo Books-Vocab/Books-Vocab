@@ -96,6 +96,7 @@ ROUTED_TESTS=(
   "doctor:ops/tests/test_release_train.py"
   "doctor:ops/tests/test_complexity.py"
   "doctor:ops/tests/test_doctor_issue.py"
+  "doctor:ops/tests/test_delivery_metrics.py"
   "capability-matrix:ops/tests/test_compute_cli.py"
   "capability-matrix:ops/tests/test_compute_router.py"
   "capability-matrix:ops/tests/test_felix_compute_launcher.py"

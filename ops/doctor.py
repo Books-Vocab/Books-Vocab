@@ -198,6 +198,20 @@ def evaluate_complexity(
     )
 
 
+def evaluate_delivery(data: dict[str, Any] | None, now: datetime) -> Finding:
+    import delivery_metrics
+
+    if data is None:
+        return Finding(
+            "delivery", "warn", "delivery metrics unavailable (gh/git read failed)"
+        )
+    summary = delivery_metrics.summarize(
+        data["prs"], data["releases"], now, data["issues"]
+    )
+    level, problems = delivery_metrics.judge(summary)
+    return Finding("delivery", level, delivery_metrics.describe(summary), problems)
+
+
 def parse_acceptance(body: str | None) -> list[str]:
     """Shell commands in fenced blocks under the issue's ``## Acceptance`` heading."""
 
@@ -415,6 +429,12 @@ def collect_complexity(repo: Path) -> tuple[list[dict[str, Any]] | None, float |
     return complexity.evaluate(measured, budget), complexity.ratio(measured)
 
 
+def collect_delivery(repo: Path) -> dict[str, Any] | None:
+    import delivery_metrics
+
+    return delivery_metrics.collect(repo)
+
+
 def collect_disk() -> dict[str, Any] | None:
     try:
         return json.loads(DISK_GUARD_FILE.read_text())
@@ -499,15 +519,17 @@ def main(argv: list[str] | None = None) -> int:
     ci = evaluate_ci(collect_ci(repo), now)
     gap = evaluate_release_gap(*collect_release_gap(repo, now))
     complexity_finding = evaluate_complexity(*collect_complexity(repo))
+    delivery = evaluate_delivery(collect_delivery(repo), now)
     issues_finding = evaluate_issues(issues, results)
     if args.ci:
-        findings = [*ci, gap, complexity_finding, issues_finding]
+        findings = [*ci, gap, delivery, complexity_finding, issues_finding]
     else:
         findings = [
             evaluate_git(git),
             evaluate_registry(collect_registry(repo)),
             *ci,
             gap,
+            delivery,
             evaluate_disk(collect_disk()),
             complexity_finding,
             issues_finding,
