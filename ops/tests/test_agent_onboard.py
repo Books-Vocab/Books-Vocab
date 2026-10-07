@@ -29,11 +29,19 @@ def _local_commit(rev: str) -> str:
 
 LANE_HEAD = _local_commit("HEAD")
 LANE_BASE = _local_commit("HEAD~1")
+# The review branch must resolve to exact HEAD; "HEAD" does even when detached.
+LANE_BRANCH = subprocess.run(
+    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+    cwd=ROOT,
+    check=True,
+    capture_output=True,
+    text=True,
+).stdout.strip()
 ABSENT_SHA = "0123456789abcdef0123456789abcdef01234567"
 
 EVIDENCE = {
     "lane-review": {
-        "review branch": "lane-onboarding-v2",
+        "review branch": LANE_BRANCH,
         "exact HEAD": LANE_HEAD,
         "base SHA": LANE_BASE,
     },
@@ -435,6 +443,77 @@ def test_lane_review_requires_full_shas_that_exist_locally(key, value, reason) -
     assert key in str(excinfo.value)
 
 
+def _lane_review(**overrides):
+    return mod.build_onboarding(
+        ROOT,
+        identity="CR",
+        intent="review",
+        entry="lane-review",
+        evidence={**EVIDENCE["lane-review"], **overrides},
+    )
+
+
+def test_lane_review_branch_must_resolve_to_exact_head() -> None:
+    # HEAD~1 is a real ref, but not the commit under review.
+    with pytest.raises(mod.EvidenceError, match="review branch") as excinfo:
+        _lane_review(**{"review branch": "HEAD~1"})
+    assert "exact HEAD" in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    "branch", ["no-such-branch-xyz", "-HEAD", "origin/no-such-xyz"]
+)
+def test_lane_review_branch_must_exist_locally(branch) -> None:
+    with pytest.raises(mod.EvidenceError, match="review branch"):
+        _lane_review(**{"review branch": branch})
+
+
+def test_lane_review_base_must_be_an_ancestor_of_exact_head() -> None:
+    # HEAD is not an ancestor of HEAD~1, so base=HEAD against head=HEAD~1 is a wrong base.
+    with pytest.raises(mod.EvidenceError, match="base SHA") as excinfo:
+        _lane_review(
+            **{
+                "review branch": "HEAD~1",
+                "exact HEAD": LANE_BASE,
+                "base SHA": LANE_HEAD,
+            }
+        )
+    assert "ancestor" in str(excinfo.value)
+
+
+def test_lane_review_next_action_has_no_pr_or_checks_wording() -> None:
+    payload = _lane_review()
+    assert "PR" not in payload["next_action"]
+    assert "checks" not in payload["next_action"]
+    assert "base" in payload["next_action"]
+
+
+def test_pr_review_next_action_names_pr_diff_and_checks() -> None:
+    payload = mod.build_onboarding(
+        ROOT,
+        identity="CR",
+        intent="review",
+        entry="pr-review",
+        evidence=EVIDENCE["pr-review"],
+    )
+    assert "PR diff" in payload["next_action"]
+    assert "required checks" in payload["next_action"]
+
+
+@pytest.mark.parametrize(
+    "pr", ["<5", "5>", "<#5", "<https://github.com/Books-Vocab/Books-Vocab/pull/5"]
+)
+def test_pr_review_rejects_unbalanced_angle_brackets(pr) -> None:
+    with pytest.raises(mod.EvidenceError, match="GitHub PR"):
+        mod.build_onboarding(
+            ROOT,
+            identity="CR",
+            intent="review",
+            entry="pr-review",
+            evidence={**EVIDENCE["pr-review"], "GitHub PR": pr},
+        )
+
+
 @pytest.mark.parametrize(
     "pr",
     [
@@ -550,6 +629,7 @@ def _fill_placeholders(value, key: str = ""):
             "GitHub PR": "#123",
             "exact HEAD": LANE_HEAD,
             "base SHA": LANE_BASE,
+            "review branch": LANE_BRANCH,
         }.get(key, f"filled {key}")
     return value
 
@@ -998,20 +1078,44 @@ def test_cli_evidence_file_retry_command_reuses_the_file(
 
 @pytest.mark.parametrize(
     ("content", "message"),
-    [(None, "無法讀取"), ("{not json", "不是合法 JSON"), ("[]", "JSON object")],
+    [("{not json", "不是合法 JSON"), ("[]", "JSON object")],
 )
 def test_cli_bad_evidence_file_fails_closed(
     tmp_path: Path, capsys, content, message
 ) -> None:
     evidence_file = tmp_path / "evidence.json"
-    if content is not None:
-        evidence_file.write_text(content, encoding="utf-8")
+    evidence_file.write_text(content, encoding="utf-8")
 
     code = mod.main(_worker_argv("--evidence-file", str(evidence_file)))
 
     assert code == 2
     err = capsys.readouterr().err
     assert "--evidence-file" in err and message in err
+
+
+def test_cli_unreadable_evidence_file_fails_closed(tmp_path: Path, capsys) -> None:
+    # A directory is not a file the agent can still go and write.
+    code = mod.main(_worker_argv("--evidence-file", str(tmp_path)))
+
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "--evidence-file" in err and "無法讀取" in err
+
+
+def test_cli_missing_evidence_file_prints_template_instead_of_failing(
+    tmp_path: Path, capsys
+) -> None:
+    evidence_file = tmp_path / "not-written-yet.json"
+
+    code = mod.main(_worker_argv("--evidence-file", str(evidence_file), "--json"))
+
+    assert code == 3
+    captured = capsys.readouterr()
+    assignment = json.loads(captured.out)["assignment"]
+    assert assignment["evidence_file"] == str(evidence_file)
+    assert "User/IM assignment" in assignment["evidence_template"]
+    assert f"--evidence-file {evidence_file}" in assignment["retry_command"]
+    assert not evidence_file.exists()
 
 
 def test_cli_rejects_inline_and_file_evidence_together(tmp_path: Path) -> None:
@@ -1067,3 +1171,47 @@ def test_missing_assignment_blocks_before_invalid_specialist_resolution() -> Non
     assert payload["status"] == "awaiting-assignment"
     assert payload["blocked_at"] == "assignment"
     assert "skills" not in payload
+
+
+ONBOARDING_DOCS = [
+    ".claude/skills/code-review/SKILL.md",
+    ".claude/skills/kg-docs-control-plane/SKILL.md",
+    "docs/sop/review_discipline.md",
+    "docs/sop/docs_dogfood.md",
+    "docs/reference/agent_context.md",
+]
+
+
+@pytest.mark.parametrize("doc", ONBOARDING_DOCS)
+def test_docs_show_evidence_file_not_inline_json_for_onboarding(doc) -> None:
+    text = (ROOT / doc).read_text(encoding="utf-8")
+    commands = [
+        line
+        for line in text.splitlines()
+        if "ops/agent_onboard.py" in line and "--identity" in line
+    ]
+    assert commands or doc.endswith("agent_context.md")
+    for line in commands:
+        assert "--evidence '" not in line, f"{doc}: inline --evidence: {line}"
+
+
+def test_code_review_skill_covers_both_entries_and_scopes_the_stop_rule() -> None:
+    text = (ROOT / ".claude/skills/code-review/SKILL.md").read_text(encoding="utf-8")
+    assert "--entry lane-review" in text and "--entry pr-review" in text
+    assert "base..HEAD" in text or "<base SHA>..<exact HEAD>" in text
+    stop_rule = next(line for line in text.splitlines() if "停止並回報缺口" in line)
+    assert "pr-review" in stop_rule and "lane-review" in stop_rule
+
+
+@pytest.mark.parametrize(
+    "doc", ["docs/sop/review_discipline.md", "docs/reference/agent_context.md"]
+)
+def test_cr_onboarding_docs_list_both_review_entries(doc) -> None:
+    text = (ROOT / doc).read_text(encoding="utf-8")
+    assert "lane-review" in text
+
+
+def test_root_claude_md_allows_worker_github_reads() -> None:
+    text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "不操作 GitHub" not in text
+    assert "唯讀 gh" in text or "read-only gh" in text

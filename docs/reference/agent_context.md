@@ -28,9 +28,9 @@ verified_against: 2d9f6fdbebca9fe0f2aa9a790f1498dded80050d
 ./ops/agent_onboard.py \
   --identity '<canonical identity or alias>' \
   --intent '<delivery|review|docs|release|backend|ios>' \
-  --entry '<coordination|merge|direct-assignment|issue|pr-review|release>' \
+  --entry '<coordination|merge|direct-assignment|issue|pr-review|lane-review|release>' \
   --specialist-intent '<optional identity-scoped specialist intent>' \
-  --evidence '<JSON object containing the required assignment evidence>' \
+  --evidence-file '<own worktree>/.cache/agent-scratch/evidence.json' \
   --json
 ```
 

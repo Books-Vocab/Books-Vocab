@@ -53,10 +53,9 @@ _PLACEHOLDERS: dict[str, Any] = {
     "review branch": "<local branch under review>",
 }
 _FULL_SHA = re.compile(r"[0-9a-f]{40}")
-# A PR reference, optionally wrapped as a Markdown autolink.
-_PR_REFERENCE = re.compile(
-    r"<?(?:#?[1-9]\d*|https://github\.com/[\w.-]+/[\w.-]+/pull/[1-9]\d*/?)>?"
-)
+# A PR reference, optionally wrapped as a Markdown autolink (brackets balanced).
+_PR_CORE = r"(?:#?[1-9]\d*|https://github\.com/[\w.-]+/[\w.-]+/pull/[1-9]\d*/?)"
+_PR_REFERENCE = re.compile(rf"{_PR_CORE}|<{_PR_CORE}>")
 _SHA_RULE = "full 40-char lowercase hex commit SHA"
 _LOCAL_SHA_RULE = f"{_SHA_RULE} that exists locally (git cat-file -e <sha>^{{commit}})"
 _PR_RULE = "real PR number (#N or N) or https://github.com/OWNER/REPO/pull/N; a pre-PR review uses entry lane-review"
@@ -119,6 +118,11 @@ def _non_empty(value: Any) -> bool:
 
 def _evidence_value_present(key: str, value: Any) -> bool:
     return _non_empty(value) and not _is_unfilled(key, value)
+
+
+def _next_action(role_def: dict[str, Any], entry: str) -> str:
+    """Entry-specific guidance when the role defines it, else the role default."""
+    return role_def.get("entry_next_action", {}).get(entry, role_def["next_action"])
 
 
 def _root(root: Path | None) -> Path:
@@ -341,6 +345,81 @@ def _local_commit_exists(root: Path, sha: str) -> bool:
     return result.returncode == 0
 
 
+def _rev_commit(root: Path, rev: str) -> str | None:
+    """Full SHA the local ref resolves to, or None; a leading '-' is never a ref."""
+    if rev.startswith("-"):
+        return None
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", f"{rev}^{{commit}}"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def _is_ancestor(root: Path, ancestor: str, descendant: str) -> bool:
+    try:
+        result = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+            cwd=root,
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+def _lane_review_problems(
+    root: Path, evidence: dict[str, Any], already_invalid: set[str]
+) -> list[dict[str, str]]:
+    """review branch must resolve to exact HEAD and base SHA must be its ancestor.
+
+    Skipped for any key already reported (absent, placeholder or malformed), so
+    each defect is reported once.
+    """
+    branch = evidence.get("review branch")
+    head = evidence.get("exact HEAD")
+    base = evidence.get("base SHA")
+    problems: list[dict[str, str]] = []
+    head_ok = (
+        "exact HEAD" not in already_invalid
+        and _evidence_value_present("exact HEAD", head)
+        and isinstance(head, str)
+    )
+    if _evidence_value_present("review branch", branch) and head_ok:
+        branch_text = branch.strip() if isinstance(branch, str) else ""
+        if _rev_commit(root, branch_text) != head.strip():
+            problems.append(
+                {
+                    "key": "review branch",
+                    "reason": f"review branch {branch_text!r} 必須是本機 ref 且指向 exact HEAD {head.strip()}；"
+                    "branch 已前進或名稱錯誤時重新取得 HEAD 再重跑",
+                }
+            )
+    if (
+        head_ok
+        and "base SHA" not in already_invalid
+        and _evidence_value_present("base SHA", base)
+        and isinstance(base, str)
+        and not _is_ancestor(root, base.strip(), head.strip())
+    ):
+        problems.append(
+            {
+                "key": "base SHA",
+                "reason": "base SHA 必須是 exact HEAD 的 ancestor（git merge-base --is-ancestor）",
+            }
+        )
+    return problems
+
+
 def _value_rule_problems(
     root: Path, identity_id: str, entry: str, evidence: dict[str, Any]
 ) -> list[dict[str, str]]:
@@ -361,6 +440,10 @@ def _value_rule_problems(
                     "reason": f"{key} {text} 不是本機 commit（git cat-file -e 失敗）；先 fetch 該 branch 再重跑",
                 }
             )
+    if (identity_id, entry) == ("cr", "lane-review"):
+        problems += _lane_review_problems(
+            root, evidence, {problem["key"] for problem in problems}
+        )
     return problems
 
 
@@ -604,7 +687,7 @@ def build_onboarding(
                     evidence, ensure_ascii=False, sort_keys=True, separators=(",", ":")
                 ).encode("utf-8")
             ).hexdigest(),
-            "next_action": role_def["next_action"],
+            "next_action": _next_action(role_def, entry),
         },
         "load_order": base_load_order,
         "authority": {
@@ -695,7 +778,7 @@ def build_onboarding(
         "missing": [],
         "evidence": evidence,
         "evidence_digest": base_payload["assignment"]["evidence_digest"],
-        "next_action": role_def["next_action"],
+        "next_action": _next_action(role_def, entry),
     }
     if dispatch_resolution is not None:
         ready_assignment["dispatch"] = dispatch_resolution
@@ -715,7 +798,7 @@ def build_onboarding(
             {"phase": "skill", "required": True, "sources": skill_sources},
             {"phase": "domain", "required": True, "sources": domain_sources},
         ],
-        "next_action": role_def["next_action"],
+        "next_action": _next_action(role_def, entry),
         "authority": {
             "granted": False,
             "note": "onboarding 只建立上下文，不授予 GitHub、merge 或 production 權限",
@@ -793,6 +876,10 @@ def _load_evidence(args: argparse.Namespace) -> dict[str, Any] | None:
     source = f"--evidence-file {args.evidence_file}"
     try:
         raw = Path(args.evidence_file).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        # Not written yet: same as an empty assignment, so the template is printed
+        # and the retry command points at the file the agent is about to write.
+        return None
     except (OSError, UnicodeDecodeError) as exc:
         raise EvidenceError(f"{source} 無法讀取: {exc}") from exc
     # An empty file is an absent assignment, reported as missing keys.

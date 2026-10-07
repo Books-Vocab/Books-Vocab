@@ -257,7 +257,11 @@
     "reviewer": {
       "identity_ids": ["cr"],
       "sources": ["docs/reference/delivery_model.md", "docs/reference/agent_context.md", "docs/sop/review_discipline.md"],
-      "next_action": "review the current PR diff and fresh required checks"
+      "next_action": "review the diff named by the assignment",
+      "entry_next_action": {
+        "pr-review": "review the current PR diff and fresh required checks",
+        "lane-review": "review git diff base SHA..exact HEAD of the local lane; your own verification is the evidence"
+      }
     },
     "docs-steward": {
       "identity_ids": ["ds"],
