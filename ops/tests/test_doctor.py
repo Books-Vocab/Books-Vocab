@@ -10,7 +10,7 @@ import pytest
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
-import doctor  # noqa: E402
+import doctor
 
 NOW = datetime(2026, 10, 7, 12, 0, tzinfo=timezone.utc)
 
@@ -362,3 +362,23 @@ def test_production_probe_sends_a_user_agent_the_edge_accepts() -> None:
     request = doctor.prod_request()
     assert request.full_url.startswith("https://")
     assert request.get_header("User-agent") == "kg-doctor/1"
+
+
+def test_known_red_names_the_runs_that_prove_it() -> None:
+    runs = [
+        {**_run("failure", 0.2), "url": "https://example/run/9"},
+        {**_run("failure", 1.0), "url": "https://example/run/8"},
+        {**_run("failure", 4.0), "url": "https://example/run/7"},
+        _run("success", 6.0),
+    ]
+    [finding] = doctor.evaluate_ci(runs, NOW)
+    assert finding.level == "block"
+    assert any("https://example/run/9" in line for line in finding.detail)
+    assert any("https://example/run/7" in line for line in finding.detail)
+
+
+def test_known_red_evidence_tolerates_runs_without_a_url() -> None:
+    runs = [_run("failure", 0.2), _run("failure", 1.0), _run("failure", 4.0)]
+    [finding] = doctor.evaluate_ci(runs, NOW)
+    assert finding.level == "block"
+    assert any("(no url)" in line for line in finding.detail)

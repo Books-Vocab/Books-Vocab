@@ -122,7 +122,9 @@ def evaluate_ci(runs: list[dict[str, Any]], now: datetime) -> list[Finding]:
                         "block",
                         f"{name} known-red: {len(streak)} consecutive failures on main over {age:.0f} days",
                         [
-                            "fix it or demote it; a check nobody acts on trains everyone to ignore red"
+                            "fix it or demote it; a check nobody acts on trains everyone to ignore red",
+                            f"newest failure: {streak[0]['createdAt']} {streak[0].get('url', '(no url)')}",
+                            f"oldest in streak: {streak[-1]['createdAt']} {streak[-1].get('url', '(no url)')}",
                         ],
                     )
                 )
@@ -370,7 +372,7 @@ def collect_ci(repo: Path, run: Any = _run) -> list[dict[str, Any]]:
                 "--limit",
                 "40",
                 "--json",
-                "workflowName,conclusion,status,createdAt",
+                "workflowName,conclusion,status,createdAt,url",
             ],
             repo,
         )
