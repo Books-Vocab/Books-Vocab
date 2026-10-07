@@ -23,6 +23,9 @@ export KG_DISK_GUARD_WARN_FREE_GIB=20
 export KG_DISK_GUARD_CRIT_FREE_GIB=10
 ok(){ echo "  ✓ $*"; PASS=$((PASS+1)); }
 bad(){ echo "  ✗ $*"; FAIL=$((FAIL+1)); }
+# A failed state assertion must say what the guard actually recorded; CI is the
+# only place some of these diverge and its log is all we get.
+bad_state(){ bad "$1"; printf '      state: %s\n' "$(tr -d '\n' < "$2" 2>/dev/null | head -c 1600)"; }
 
 # Linux runners do not provide macOS's shlock.  Keep production behavior
 # fail-closed when it is unavailable, but give lock-acquisition fixtures the
@@ -373,7 +376,7 @@ KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
   KG_DISK_GUARD_CACHE_KEEP=1 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0 \
   KG_DISK_GUARD_CACHE_READER_WINDOW_HOURS=0 KG_DISK_GUARD_BUILD_LOCK_FILE="$TMP/budget.lock" \
   "$SCRIPT" >/dev/null 2>&1
-grep -q '"reason":"cache-budget-exceeded"' "$state" && ok "cache budget breach recorded" || bad "cache budget reason missing"
+grep -q '"reason":"cache-budget-exceeded"' "$state" && ok "cache budget breach recorded" || bad_state "cache budget reason missing" "$state"
 grep -q '"cache_budget_overflow_kb":[1-9]' "$state" && ok "cache budget overflow recorded" || bad "cache budget overflow missing"
 grep -q '"action":"enforce-cache-budget"' "$state" && ok "cache budget enforcement recorded" || bad "cache budget action missing"
 [[ ! -d "$cache/old-a" && ! -d "$cache/old-b" && ! -d "$root/.cache/ios-release-derived-data" \
@@ -393,7 +396,7 @@ KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
 [[ ! -d "$cache/old" && ! -d "$cache/warm" ]] \
   && ok "headroom repair releases reader-window cache" || bad "headroom repair left writer headroom short"
 grep -q '"cache_repair_status":"repaired"' "$state" \
-  && ok "headroom repair converges to writer budget" || bad "headroom repair did not converge"
+  && ok "headroom repair converges to writer budget" || bad_state "headroom repair did not converge" "$state"
 grep -q '"action":"enforce-cache-headroom"' "$state" \
   && ok "headroom repair action recorded" || bad "headroom repair action missing"
 grep -q '"cache_budget_overflow_kb":0' "$state" \
@@ -420,7 +423,7 @@ key_count="$(find "$cache" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
   && ok "recent reader-window keys yield to writer headroom repair" \
   || bad "recent reader-window keys still block repair: $key_count"
 grep -q '"cache_repair_status":"repaired"' "$state" \
-  && ok "recent-key headroom repair is recorded" || bad "recent-key repair status missing"
+  && ok "recent-key headroom repair is recorded" || bad_state "recent-key repair status missing" "$state"
 grep -q '"cache_repair_remaining_kb":0' "$state" \
   && ok "recent-key headroom repair has no shortfall" || bad "recent-key repair shortfall"
 
@@ -434,7 +437,7 @@ KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
   "$SCRIPT" >/dev/null 2>&1
 [[ ! -d "$cache/old" ]] && ok "headroom repair reaches writer limit" || bad "headroom repair left stale cache"
 grep -q '"cache_repair_status":"repaired"' "$state" \
-  && ok "completed headroom repair is recorded" || bad "completed headroom repair missing"
+  && ok "completed headroom repair is recorded" || bad_state "completed headroom repair missing" "$state"
 grep -q '"cache_repair_remaining_kb":0' "$state" \
   && ok "completed headroom repair has no shortfall" || bad "completed headroom repair shortfall"
 
