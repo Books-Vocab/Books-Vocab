@@ -3003,8 +3003,16 @@ def test_reanchor_handback_leaves_shared_scope_file_overlap_to_rebase(
     assert _git(target, "rev-parse", "HEAD") == expected["remote_head"]
 
 
+@pytest.mark.parametrize(
+    "shared",
+    [
+        "ops/complexity_budget.json",
+        "ops/test_ops.sh",
+        "ops/tests/test_ops_ci_coverage.sh",
+    ],
+)
 def test_adopt_accepts_scope_sharing_only_an_allowlisted_file(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], shared: str
 ) -> None:
     repo = _synthetic_rebase_refs(tmp_path)
     state_path = tmp_path / "worktree_registry.json"
@@ -3022,7 +3030,7 @@ def test_adopt_accepts_scope_sharing_only_an_allowlisted_file(
                         "schema": "kg.worktree.scope.v1",
                         "files": [
                             {
-                                "path": "ops/complexity_budget.json",
+                                "path": shared,
                                 "operation": "modify",
                             },
                             {"path": "ops/other.py", "operation": "modify"},
@@ -3063,12 +3071,7 @@ def test_adopt_accepts_scope_sharing_only_an_allowlisted_file(
         capsys.readouterr()
         return rc
 
-    assert (
-        adopt("ops/complexity_budget.json", "ops/other.py")
-        == coordinator.registry.EXIT_CLAIMED
-    )
-    assert (
-        adopt("ops/complexity_budget.json", "ios/issue_1033.py") == coordinator.EXIT_OK
-    )
+    assert adopt(shared, "ops/other.py") == coordinator.registry.EXIT_CLAIMED
+    assert adopt(shared, "ios/issue_1033.py") == coordinator.EXIT_OK
     [_, adopted] = coordinator.registry.load_state(state_path)["records"]
-    assert adopted["scope"]["files"][0]["path"] == "ops/complexity_budget.json"
+    assert adopted["scope"]["files"][0]["path"] == shared

@@ -16,14 +16,23 @@ from pathlib import PurePosixPath
 SCOPE_SCHEMA = "kg.worktree.scope.v1"
 SCOPE_OPERATIONS = ("add", "modify", "delete")
 # Exact repo paths every lane tends to touch and whose concurrent edits are
-# trivially resolved at rebase (append-only indexes, numeric ratchet ceilings).
-# They are recorded in Scope like any other file but never make two lanes
-# conflict at admission.  Everything not listed here stays exclusive; no globs.
+# trivially resolved at rebase.  They are recorded in Scope like any other file
+# but never make two lanes conflict at admission.  Everything not listed here
+# stays exclusive; no globs.  Each entry needs a justification in
+# docs/reference/delivery_model.md (enforced by test_worktree_shared_scope.py):
+#   docs/reference/tech_index.md, docs/registry.yml - append-only indexes.
+#   ops/complexity_budget.json                      - numeric ratchet ceilings.
+#   ops/test_ops.sh, ops/tests/test_ops_ci_coverage.sh - test-group
+#     registration: each lane adds or drops one group line in its own case arm
+#     or list entry; a true textual conflict is resolved at rebase and the
+#     merge queue re-tests the combined tree.
 SHARED_SCOPE_FILES = frozenset(
     {
         "docs/reference/tech_index.md",
         "docs/registry.yml",
         "ops/complexity_budget.json",
+        "ops/test_ops.sh",
+        "ops/tests/test_ops_ci_coverage.sh",
     }
 )
 # Spellings agents reach for naturally; canonicalised on input, never stored.
