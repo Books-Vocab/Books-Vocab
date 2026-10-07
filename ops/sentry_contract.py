@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import ipaddress
+import math
 import re
 from pathlib import PurePosixPath
 from typing import Any
@@ -14,6 +15,7 @@ ISSUE_SCHEMA = "kg.sentry.issue.v1"
 EVENT_SCHEMA = "kg.sentry.event.v1"
 RELEASES_SCHEMA = "kg.sentry.releases.v1"
 REGRESSIONS_SCHEMA = "kg.sentry.regressions.v1"
+RELEASE_HEALTH_SCHEMA = "kg.sentry.release_health.v1"
 ERROR_SCHEMA = "kg.sentry.error.v1"
 
 VERDICTS = {"ready", "partial", "blocked", "unchecked"}
@@ -21,7 +23,9 @@ _ID = re.compile(r"^[A-Za-z0-9._:/+@-]{1,256}$")
 _SPACED_ID = re.compile(r"^[A-Za-z0-9._:/+@ -]{1,256}$")
 _OPAQUE_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _EMAIL = re.compile(r"\b[^\s@]+@[^\s@]+\.[A-Za-z]{2,63}\b")
-_SAFE_EVENT_MESSAGE = re.compile(r"^[a-z0-9][a-z0-9._/-]*(?: [a-z0-9][a-z0-9._/-]*){0,7}$")
+_SAFE_EVENT_MESSAGE = re.compile(
+    r"^[a-z0-9][a-z0-9._/-]*(?: [a-z0-9][a-z0-9._/-]*){0,7}$"
+)
 _HTTP_MESSAGE = re.compile(r"^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(.+)$")
 _SAFE_API_ROOTS = {
     "auth",
@@ -63,7 +67,16 @@ _SAFE_BREADCRUMB_KEYS = {
 }
 _SAFE_LEVELS = {"debug", "info", "warning", "error", "fatal"}
 _SAFE_STATUS = {"unresolved", "resolved", "ignored", "reprocessing", "unknown"}
-_CONTENT_TOKENS = {"book", "card", "content", "input", "text", "title", "translation", "user"}
+_CONTENT_TOKENS = {
+    "book",
+    "card",
+    "content",
+    "input",
+    "text",
+    "title",
+    "translation",
+    "user",
+}
 
 
 class _Redaction:
@@ -71,7 +84,11 @@ class _Redaction:
         self.dropped: set[str] = set()
 
     def drop(self, field: str) -> None:
-        safe_field = field if re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", field) else "redacted_field"
+        safe_field = (
+            field
+            if re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", field)
+            else "redacted_field"
+        )
         self.dropped.add(safe_field)
 
     def result(self) -> dict[str, Any]:
@@ -89,11 +106,18 @@ def safe_opaque_id(value: Any) -> str | None:
     return value if _OPAQUE_ID.fullmatch(value) else None
 
 
-def safe_label(value: Any, *, max_length: int = 256, allow_spaces: bool = False) -> str | None:
+def safe_label(
+    value: Any, *, max_length: int = 256, allow_spaces: bool = False
+) -> str | None:
     if not isinstance(value, str):
         return None
     value = strip_query(value).strip()
-    if not value or len(value) > max_length or _EMAIL.search(value) or _SENSITIVE_TEXT.search(value):
+    if (
+        not value
+        or len(value) > max_length
+        or _EMAIL.search(value)
+        or _SENSITIVE_TEXT.search(value)
+    ):
         return None
     try:
         ipaddress.ip_address(value)
@@ -110,7 +134,12 @@ def safe_message(value: Any, *, max_length: int = 200) -> str | None:
     if not isinstance(value, str):
         return None
     value = strip_query(value).replace("\n", " ").strip()
-    if not value or len(value) > max_length or _EMAIL.search(value) or _SENSITIVE_TEXT.search(value):
+    if (
+        not value
+        or len(value) > max_length
+        or _EMAIL.search(value)
+        or _SENSITIVE_TEXT.search(value)
+    ):
         return None
     http_match = _HTTP_MESSAGE.fullmatch(value)
     if http_match:
@@ -140,7 +169,11 @@ def safe_endpoint(value: Any) -> str | None:
         return None
     if parsed.username is not None or parsed.password is not None:
         return None
-    path = unquote(parsed.path if parsed.scheme or parsed.netloc else raw.split("?", 1)[0].split("#", 1)[0])
+    path = unquote(
+        parsed.path
+        if parsed.scheme or parsed.netloc
+        else raw.split("?", 1)[0].split("#", 1)[0]
+    )
     components = [component for component in path.split("/") if component]
     if len(components) < 2 or components[0].lower() != "api":
         return None
@@ -159,7 +192,9 @@ def normalize_issue(
 ) -> dict[str, Any]:
     redaction = _Redaction()
     event = event or {}
-    issue_id = safe_opaque_id(raw.get("id")) or safe_opaque_id(raw.get("groupID")) or "unknown"
+    issue_id = (
+        safe_opaque_id(raw.get("id")) or safe_opaque_id(raw.get("groupID")) or "unknown"
+    )
     short_id = safe_label(raw.get("shortId"), max_length=128) or issue_id
     project = _project_slug(raw, project_hint, redaction)
     platform = _platform(raw, event, redaction)
@@ -170,7 +205,11 @@ def normalize_issue(
     if status == "unknown" and raw.get("status") is not None:
         redaction.drop("issue.status")
     level = raw.get("level") if raw.get("level") in _SAFE_LEVELS else "error"
-    if raw.get("level") is not None and level == "error" and raw.get("level") not in _SAFE_LEVELS:
+    if (
+        raw.get("level") is not None
+        and level == "error"
+        and raw.get("level") not in _SAFE_LEVELS
+    ):
         redaction.drop("issue.level")
     exception_type = _exception_type(event, redaction)
     title = _safe_issue_title(raw, exception_type, redaction)
@@ -178,7 +217,9 @@ def normalize_issue(
     breadcrumbs = _breadcrumbs(event, redaction)
     request_ids = _request_ids(raw, event, breadcrumbs, redaction)
     evidence = {
-        "latest_event_id": safe_opaque_id(event.get("eventID") or event.get("event_id") or event.get("id")),
+        "latest_event_id": safe_opaque_id(
+            event.get("eventID") or event.get("event_id") or event.get("id")
+        ),
         "exception_type": exception_type,
         "stacktrace": stacktrace,
         "breadcrumbs": breadcrumbs,
@@ -208,9 +249,15 @@ def normalize_issue(
             "release": release,
             "dist": dist,
             "count": _non_negative_int(raw.get("count"), redaction, "issue.count"),
-            "user_count": _non_negative_int(raw.get("userCount"), redaction, "issue.user_count"),
-            "first_seen": _safe_timestamp(raw.get("firstSeen"), redaction, "issue.first_seen"),
-            "last_seen": _safe_timestamp(raw.get("lastSeen"), redaction, "issue.last_seen"),
+            "user_count": _non_negative_int(
+                raw.get("userCount"), redaction, "issue.user_count"
+            ),
+            "first_seen": _safe_timestamp(
+                raw.get("firstSeen"), redaction, "issue.first_seen"
+            ),
+            "last_seen": _safe_timestamp(
+                raw.get("lastSeen"), redaction, "issue.last_seen"
+            ),
         },
         "evidence": evidence,
         "routing": routing,
@@ -226,7 +273,10 @@ def normalize_event(
     environment_hint: str | None = None,
 ) -> dict[str, Any]:
     issue = normalize_issue(
-        {"id": issue_id or raw.get("groupID") or raw.get("issueID"), "project": project_hint},
+        {
+            "id": issue_id or raw.get("groupID") or raw.get("issueID"),
+            "project": project_hint,
+        },
         event=raw,
         project_hint=project_hint,
         environment_hint=environment_hint,
@@ -236,14 +286,20 @@ def normalize_event(
         "event": {
             "id": issue["evidence"]["latest_event_id"] or "unknown",
             "issue_id": safe_opaque_id(issue_id) if issue_id else None,
-            "created_at": _safe_timestamp(raw.get("dateCreated") or raw.get("timestamp"), _Redaction(), "event.created_at"),
+            "created_at": _safe_timestamp(
+                raw.get("dateCreated") or raw.get("timestamp"),
+                _Redaction(),
+                "event.created_at",
+            ),
         },
         "evidence": issue["evidence"],
         "redaction": issue["redaction"],
     }
 
 
-def normalize_release(raw: dict[str, Any], *, project_hint: str | None = None) -> dict[str, Any]:
+def normalize_release(
+    raw: dict[str, Any], *, project_hint: str | None = None
+) -> dict[str, Any]:
     redaction = _Redaction()
     projects: list[str] = []
     for project in raw.get("projects") or []:
@@ -264,14 +320,51 @@ def normalize_release(raw: dict[str, Any], *, project_hint: str | None = None) -
         "version": safe_label(raw.get("version"), max_length=256),
         "short_version": safe_label(raw.get("shortVersion"), max_length=256),
         "status": safe_label(raw.get("status"), max_length=32),
-        "date_created": _safe_timestamp(raw.get("dateCreated"), redaction, "release.date_created"),
-        "date_released": _safe_timestamp(raw.get("dateReleased"), redaction, "release.date_released"),
-        "first_event": _safe_timestamp(raw.get("firstEvent"), redaction, "release.first_event"),
-        "last_event": _safe_timestamp(raw.get("lastEvent"), redaction, "release.last_event"),
-        "new_groups": _non_negative_int(raw.get("newGroups"), redaction, "release.new_groups"),
+        "date_created": _safe_timestamp(
+            raw.get("dateCreated"), redaction, "release.date_created"
+        ),
+        "date_released": _safe_timestamp(
+            raw.get("dateReleased"), redaction, "release.date_released"
+        ),
+        "first_event": _safe_timestamp(
+            raw.get("firstEvent"), redaction, "release.first_event"
+        ),
+        "last_event": _safe_timestamp(
+            raw.get("lastEvent"), redaction, "release.last_event"
+        ),
+        "new_groups": _non_negative_int(
+            raw.get("newGroups"), redaction, "release.new_groups"
+        ),
         "projects": projects,
         "redaction": redaction.result(),
     }
+
+
+def normalize_release_health(group: dict[str, Any]) -> dict[str, Any]:
+    """Normalize one ``/organizations/{org}/sessions/`` group (release x environment)."""
+    by = group.get("by") if isinstance(group.get("by"), dict) else {}
+    totals = group.get("totals") if isinstance(group.get("totals"), dict) else {}
+    return {
+        "release": safe_label(by.get("release"), max_length=256),
+        "environment": safe_label(by.get("environment"), max_length=64),
+        "crash_free_sessions": _rate(totals.get("crash_free_rate(session)")),
+        "crash_free_users": _rate(totals.get("crash_free_rate(user)")),
+        "sessions": _count(totals.get("sum(session)")),
+        "users": _count(totals.get("count_unique(user)")),
+    }
+
+
+def _rate(value: Any) -> float | None:
+    """A crash-free rate is a finite fraction in [0, 1]; anything else is unknown."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) and 0.0 <= number <= 1.0 else None
+
+
+def _count(value: Any) -> int | None:
+    number = _int_or_none(value)
+    return number if number is not None and number >= 0 else None
 
 
 def normalize_health(
@@ -296,7 +389,9 @@ def normalize_health(
         )
     }
     if api_checks:
-        checks.update({key: value for key, value in api_checks.items() if key in checks})
+        checks.update(
+            {key: value for key, value in api_checks.items() if key in checks}
+        )
     static_keys = ("source_present", "package_present", "target_linked")
     if any(value is False for value in (checks[key] for key in static_keys)):
         verdict = "blocked"
@@ -330,17 +425,36 @@ def route_for_issue(
     elif project == "backend":
         surface, worker, reason = "backend", "backend-worker", "project/platform"
     else:
-        surface, worker, reason = "unknown", "unassigned", "project/platform unavailable"
+        surface, worker, reason = (
+            "unknown",
+            "unassigned",
+            "project/platform unavailable",
+        )
     evidence_incomplete = not stacktrace or not release
     suggestions: list[dict[str, Any]] = [
         {"worker": worker, "reason": reason},
     ]
     if status == "unresolved" and release:
-        suggestions.append({"worker": worker, "reason": "unresolved release evidence; prioritize regression check"})
+        suggestions.append(
+            {
+                "worker": worker,
+                "reason": "unresolved release evidence; prioritize regression check",
+            }
+        )
     if request_ids:
-        suggestions.append({"worker": "backend-correlation-worker", "reason": "request_id correlation evidence present"})
+        suggestions.append(
+            {
+                "worker": "backend-correlation-worker",
+                "reason": "request_id correlation evidence present",
+            }
+        )
     if evidence_incomplete:
-        suggestions.append({"worker": "evidence-collector", "reason": "evidence_incomplete; do not guess root cause"})
+        suggestions.append(
+            {
+                "worker": "evidence-collector",
+                "reason": "evidence_incomplete; do not guess root cause",
+            }
+        )
     return {
         "surface": surface,
         "worker": worker,
@@ -353,11 +467,21 @@ def route_for_issue(
 
 
 def error_payload(error: Exception) -> dict[str, Any]:
-    public = error.public() if hasattr(error, "public") else {"kind": "tool", "status": None, "retryable": False}
-    return {"schema": ERROR_SCHEMA, "error": public, "redaction": {"applied": True, "dropped_fields": []}}
+    public = (
+        error.public()
+        if hasattr(error, "public")
+        else {"kind": "tool", "status": None, "retryable": False}
+    )
+    return {
+        "schema": ERROR_SCHEMA,
+        "error": public,
+        "redaction": {"applied": True, "dropped_fields": []},
+    }
 
 
-def _project_slug(raw: dict[str, Any], hint: str | None, redaction: _Redaction) -> str | None:
+def _project_slug(
+    raw: dict[str, Any], hint: str | None, redaction: _Redaction
+) -> str | None:
     project = raw.get("project")
     if isinstance(project, dict):
         project = project.get("slug") or project.get("name")
@@ -367,7 +491,9 @@ def _project_slug(raw: dict[str, Any], hint: str | None, redaction: _Redaction) 
     return result
 
 
-def _platform(raw: dict[str, Any], event: dict[str, Any], redaction: _Redaction) -> str | None:
+def _platform(
+    raw: dict[str, Any], event: dict[str, Any], redaction: _Redaction
+) -> str | None:
     value = raw.get("platform")
     if not value and isinstance(raw.get("project"), dict):
         value = raw["project"].get("platform")
@@ -402,7 +528,9 @@ def _environments(
     return result
 
 
-def _release(raw: dict[str, Any], event: dict[str, Any], redaction: _Redaction) -> str | None:
+def _release(
+    raw: dict[str, Any], event: dict[str, Any], redaction: _Redaction
+) -> str | None:
     value = raw.get("release")
     if isinstance(value, dict):
         value = value.get("version")
@@ -422,13 +550,17 @@ def _exception_type(event: dict[str, Any], redaction: _Redaction) -> str | None:
     return result
 
 
-def _safe_issue_title(raw: dict[str, Any], exception_type: str | None, redaction: _Redaction) -> str:
+def _safe_issue_title(
+    raw: dict[str, Any], exception_type: str | None, redaction: _Redaction
+) -> str:
     value = raw.get("title") or (raw.get("metadata") or {}).get("title")
     if not isinstance(value, str):
         return exception_type or "unknown"
     value = strip_query(value).strip()
     prefix = value.split(":", 1)[0].strip()
-    if _looks_like_type(prefix) or prefix.startswith(("HTTP ", "GET ", "POST ", "PUT ", "DELETE ")):
+    if _looks_like_type(prefix) or prefix.startswith(
+        ("HTTP ", "GET ", "POST ", "PUT ", "DELETE ")
+    ):
         safe = safe_message(prefix) or _safe_exception_type(prefix)
         if safe:
             return safe
@@ -449,7 +581,9 @@ def _stacktrace(event: dict[str, Any], redaction: _Redaction) -> list[dict[str, 
         if not isinstance(frame, dict):
             redaction.drop("evidence.stacktrace")
             continue
-        filename = frame.get("filename") or frame.get("absPath") or frame.get("function")
+        filename = (
+            frame.get("filename") or frame.get("absPath") or frame.get("function")
+        )
         if isinstance(filename, str):
             basename = PurePosixPath(filename.split("?", 1)[0]).name or None
             filename = safe_label(basename, max_length=256)
@@ -476,7 +610,11 @@ def _stacktrace(event: dict[str, Any], redaction: _Redaction) -> list[dict[str, 
 
 
 def _breadcrumbs(event: dict[str, Any], redaction: _Redaction) -> list[dict[str, Any]]:
-    values: Any = (event.get("breadcrumbs") or {}).get("values") if isinstance(event.get("breadcrumbs"), dict) else None
+    values: Any = (
+        (event.get("breadcrumbs") or {}).get("values")
+        if isinstance(event.get("breadcrumbs"), dict)
+        else None
+    )
     if values is None:
         for entry in event.get("entries") or []:
             if isinstance(entry, dict) and entry.get("type") == "breadcrumbs":
@@ -501,7 +639,9 @@ def _breadcrumbs(event: dict[str, Any], redaction: _Redaction) -> list[dict[str,
         data = _breadcrumb_data(crumb.get("data"), redaction)
         if data:
             row["data"] = data
-        timestamp = _safe_timestamp(crumb.get("timestamp"), redaction, "breadcrumb.timestamp")
+        timestamp = _safe_timestamp(
+            crumb.get("timestamp"), redaction, "breadcrumb.timestamp"
+        )
         if timestamp:
             row["timestamp"] = timestamp
         if row:
@@ -522,7 +662,11 @@ def _breadcrumb_data(value: Any, redaction: _Redaction) -> dict[str, Any]:
             safe = safe_opaque_id(raw)
         elif normalized == "url":
             safe = safe_endpoint(raw)
-        elif isinstance(raw, bool) or isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        elif (
+            isinstance(raw, bool)
+            or isinstance(raw, (int, float))
+            and not isinstance(raw, bool)
+        ):
             safe = raw
         else:
             safe = _safe_diagnostic_label(raw)
@@ -534,7 +678,10 @@ def _breadcrumb_data(value: Any, redaction: _Redaction) -> dict[str, Any]:
 
 
 def _request_ids(
-    raw: dict[str, Any], event: dict[str, Any], breadcrumbs: list[dict[str, Any]], redaction: _Redaction
+    raw: dict[str, Any],
+    event: dict[str, Any],
+    breadcrumbs: list[dict[str, Any]],
+    redaction: _Redaction,
 ) -> list[str]:
     values: list[Any] = []
     tags = _tags(event)
@@ -557,7 +704,9 @@ def _request_ids(
     return result[:20]
 
 
-def _device_context(event: dict[str, Any], name: str, redaction: _Redaction) -> dict[str, str]:
+def _device_context(
+    event: dict[str, Any], name: str, redaction: _Redaction
+) -> dict[str, str]:
     contexts = event.get("contexts") if isinstance(event.get("contexts"), dict) else {}
     value = contexts.get(name) or event.get(name)
     if not isinstance(value, dict):
@@ -595,12 +744,22 @@ def _exception_values(event: dict[str, Any]) -> list[dict[str, Any]]:
             if isinstance(values, list):
                 return [item for item in values if isinstance(item, dict)]
     values = event.get("exceptionValues")
-    return [item for item in values if isinstance(item, dict)] if isinstance(values, list) else []
+    return (
+        [item for item in values if isinstance(item, dict)]
+        if isinstance(values, list)
+        else []
+    )
 
 
 def _looks_like_type(value: str) -> bool:
-    return bool(re.fullmatch(r"(?:[A-Za-z_$][A-Za-z0-9_$.]*)(?:Error|Exception|Failure|Crash|Fault)?", value)) and (
-        value.endswith(("Error", "Exception", "Failure", "Crash", "Fault")) or value in {"Crash", "Exception"}
+    return bool(
+        re.fullmatch(
+            r"(?:[A-Za-z_$][A-Za-z0-9_$.]*)(?:Error|Exception|Failure|Crash|Fault)?",
+            value,
+        )
+    ) and (
+        value.endswith(("Error", "Exception", "Failure", "Crash", "Fault"))
+        or value in {"Crash", "Exception"}
     )
 
 
@@ -654,10 +813,12 @@ __all__ = [
     "ISSUE_SCHEMA",
     "REGRESSIONS_SCHEMA",
     "RELEASES_SCHEMA",
+    "RELEASE_HEALTH_SCHEMA",
     "normalize_event",
     "normalize_health",
     "normalize_issue",
     "normalize_release",
+    "normalize_release_health",
     "route_for_issue",
     "safe_endpoint",
     "safe_label",

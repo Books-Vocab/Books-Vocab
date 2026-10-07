@@ -14,7 +14,8 @@ description: "KG bug、test failure、unexpected behavior 的根因調查與量�
 
 1. 保存 exact failure：錯誤、reproducer、environment、current HEAD 與影響面。
 2. 先靜態追溯 source／call path、test、fixture、log 或 health；可由現有證據判定時不
-   先加猜測性 patch。
+   先加猜測性 patch。線上 crash／error、crash-free rate 或新版回歸：pull crashes/errors →
+   `./ops/sentry_tool.py`（先 `health --json`；read-only，用法見 debug SOP）。
 3. 若是 behavior／performance／UI／timing，先寫可證偽預測：一個成功簽名、至少兩個
    失敗簽名及其下一步；先 instrument／capture，再改行為。兩次預測未命中即停止推理，
    轉 measurement loop。

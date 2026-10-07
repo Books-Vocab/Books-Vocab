@@ -8,9 +8,11 @@ Examples:
   ./ops/sentry_tool.py events --issue 123 --json
   ./ops/sentry_tool.py releases --project ios --json
   ./ops/sentry_tool.py regressions --release 'com.example.app@1.0+2' --json
+  ./ops/sentry_tool.py release-health --project ios --environment production --json
   ./ops/sentry_tool.py route 123 --json
 
-Every operation is GET-only.  The tool never resolves, assigns, comments on,
+Settings come from the environment, falling back to ``~/.secrets/sentry.env``
+(override the path with ``SENTRY_ENV_FILE``).  Every operation is GET-only.  The tool never resolves, assigns, comments on,
 creates, or deletes Sentry/GitHub resources.
 """
 
@@ -23,16 +25,24 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from sentry_api import SentryAPIClient, SentryAPIError, SentryConfig
+from sentry_api import (
+    SentryAPIClient,
+    SentryAPIError,
+    SentryConfig,
+    config_fix_hint,
+    sentry_env_file,
+)
 from sentry_contract import (
     ERROR_SCHEMA,
     REGRESSIONS_SCHEMA,
+    RELEASE_HEALTH_SCHEMA,
     RELEASES_SCHEMA,
     error_payload,
     normalize_event,
     normalize_health,
     normalize_issue,
     normalize_release,
+    normalize_release_health,
     safe_label,
     safe_opaque_id,
 )
@@ -56,7 +66,11 @@ class _JSONArgumentParser(argparse.ArgumentParser):
 
 def repo_root() -> Path:
     override = os.environ.get("KG_SENTRY_REPO_ROOT")
-    return Path(override).expanduser().resolve() if override else Path(__file__).resolve().parents[1]
+    return (
+        Path(override).expanduser().resolve()
+        if override
+        else Path(__file__).resolve().parents[1]
+    )
 
 
 def load_local_ios_summary(root: Path | None = None) -> dict[str, Any]:
@@ -81,11 +95,31 @@ def load_local_ios_summary(root: Path | None = None) -> dict[str, Any]:
         "schema": "kg.ios.sentry.v1",
         "verdict": "unchecked",
         "readiness": {},
-        "issues": [{"key": "local_summary", "message": "local iOS Sentry summary unavailable"}],
+        "issues": [
+            {"key": "local_summary", "message": "local iOS Sentry summary unavailable"}
+        ],
     }
 
 
-def health(config: SentryConfig, *, root: Path | None = None) -> tuple[dict[str, Any], int]:
+def config_status(
+    config: SentryConfig, environ: dict[str, str] | None = None
+) -> dict[str, Any]:
+    """Which settings are missing and where they belong; never includes values."""
+    env_file = sentry_env_file(environ)
+    missing = config.missing_settings()
+    status: dict[str, Any] = {
+        "missing": missing,
+        "env_file": str(env_file),
+        "env_file_present": env_file.is_file(),
+    }
+    if missing:
+        status["fix"] = config_fix_hint(missing, env_file)
+    return status
+
+
+def health(
+    config: SentryConfig, *, root: Path | None = None
+) -> tuple[dict[str, Any], int]:
     local = load_local_ios_summary(root)
     local_readiness = dict(local.get("readiness") or {})
     api_checks: dict[str, Any] = {
@@ -113,9 +147,13 @@ def health(config: SentryConfig, *, root: Path | None = None) -> tuple[dict[str,
             if rows:
                 issue_id = str(rows[0].get("id", ""))
                 try:
-                    event = client.issue_event(issue_id, "latest", environment="production")
+                    event = client.issue_event(
+                        issue_id, "latest", environment="production"
+                    )
                 except SentryAPIError:
-                    events = client.list_issue_events(issue_id, environment="production", full=True, max_pages=1)
+                    events = client.list_issue_events(
+                        issue_id, environment="production", full=True, max_pages=1
+                    )
                     event = events[0] if events else None
                 if event:
                     normalized = normalize_issue(
@@ -124,8 +162,12 @@ def health(config: SentryConfig, *, root: Path | None = None) -> tuple[dict[str,
                         project_hint="ios",
                         environment_hint="production",
                     )
-                    api_checks["symbolication_ready"] = bool(normalized["evidence"]["stacktrace"])
-                    api_evidence["latest_event_id"] = normalized["evidence"]["latest_event_id"]
+                    api_checks["symbolication_ready"] = bool(
+                        normalized["evidence"]["stacktrace"]
+                    )
+                    api_evidence["latest_event_id"] = normalized["evidence"][
+                        "latest_event_id"
+                    ]
         except SentryAPIError as error:
             if error.status == 401:
                 api_checks["api_authenticated"] = False
@@ -141,9 +183,14 @@ def health(config: SentryConfig, *, root: Path | None = None) -> tuple[dict[str,
     )
     payload["local"] = {
         "verdict": local.get("verdict", "unchecked"),
-        "issues": [item.get("key") for item in local.get("issues", []) if isinstance(item, dict) and item.get("key")],
+        "issues": [
+            item.get("key")
+            for item in local.get("issues", [])
+            if isinstance(item, dict) and item.get("key")
+        ],
     }
     payload["api"] = api_evidence
+    payload["config"] = config_status(config)
     if local.get("verdict") == "blocked":
         payload["verdict"] = "blocked"
     exit_code = {
@@ -155,7 +202,9 @@ def health(config: SentryConfig, *, root: Path | None = None) -> tuple[dict[str,
     return payload, exit_code
 
 
-def command_issues(client: SentryAPIClient, args: argparse.Namespace, config: SentryConfig) -> dict[str, Any]:
+def command_issues(
+    client: SentryAPIClient, args: argparse.Namespace, config: SentryConfig
+) -> dict[str, Any]:
     project = _project(config, args.project)
     environment = _environment(args.environment)
     rows = client.list_issues(
@@ -176,7 +225,9 @@ def command_issues(client: SentryAPIClient, args: argparse.Namespace, config: Se
     }
 
 
-def command_issue(client: SentryAPIClient, args: argparse.Namespace, config: SentryConfig) -> dict[str, Any]:
+def command_issue(
+    client: SentryAPIClient, args: argparse.Namespace, config: SentryConfig
+) -> dict[str, Any]:
     issue_id = _issue_id(args.issue_id)
     environment = _environment(args.environment)
     raw = client.issue(issue_id, environment=environment)
@@ -187,7 +238,9 @@ def command_issue(client: SentryAPIClient, args: argparse.Namespace, config: Sen
         except SentryAPIError as error:
             if error.status not in {400, 404}:
                 raise
-            events = client.list_issue_events(issue_id, environment=environment, full=True, max_pages=1)
+            events = client.list_issue_events(
+                issue_id, environment=environment, full=True, max_pages=1
+            )
             event = events[0] if events else None
     return normalize_issue(
         raw,
@@ -197,7 +250,9 @@ def command_issue(client: SentryAPIClient, args: argparse.Namespace, config: Sen
     )
 
 
-def command_events(client: SentryAPIClient, args: argparse.Namespace, config: SentryConfig) -> dict[str, Any]:
+def command_events(
+    client: SentryAPIClient, args: argparse.Namespace, config: SentryConfig
+) -> dict[str, Any]:
     issue_id = _issue_id(args.issue_id)
     environment = _environment(args.environment)
     events = client.list_issue_events(
@@ -222,7 +277,9 @@ def command_events(client: SentryAPIClient, args: argparse.Namespace, config: Se
     }
 
 
-def command_releases(client: SentryAPIClient, args: argparse.Namespace, config: SentryConfig) -> dict[str, Any]:
+def command_releases(
+    client: SentryAPIClient, args: argparse.Namespace, config: SentryConfig
+) -> dict[str, Any]:
     project = _project(config, args.project) if args.project else None
     environment = _environment(args.environment)
     rows = client.releases(project=project, environment=environment)
@@ -234,7 +291,9 @@ def command_releases(client: SentryAPIClient, args: argparse.Namespace, config: 
     }
 
 
-def command_regressions(client: SentryAPIClient, args: argparse.Namespace, config: SentryConfig) -> dict[str, Any]:
+def command_regressions(
+    client: SentryAPIClient, args: argparse.Namespace, config: SentryConfig
+) -> dict[str, Any]:
     project = _project(config, args.project)
     release = _release_arg(args.release)
     rows = client.regressions(project, release)
@@ -247,7 +306,35 @@ def command_regressions(client: SentryAPIClient, args: argparse.Namespace, confi
     }
 
 
-def command_route(client: SentryAPIClient, args: argparse.Namespace, config: SentryConfig) -> dict[str, Any]:
+def command_release_health(
+    client: SentryAPIClient, args: argparse.Namespace, config: SentryConfig
+) -> dict[str, Any]:
+    project = _project(config, args.project)
+    environment = _environment(args.environment)
+    release = _release_arg(args.release) if args.release else None
+    project_id = safe_opaque_id(str(client.project(project).get("id", "")))
+    if not project_id:
+        raise SentryAPIError("release_health", kind="invalid_project_id")
+    groups = client.release_health(
+        project_id,
+        environment=environment,
+        release=release,
+        stats_period=args.stats_period,
+    )
+    return {
+        "schema": RELEASE_HEALTH_SCHEMA,
+        "project": project,
+        "environment": environment,
+        "release": release,
+        "stats_period": args.stats_period,
+        "releases": [normalize_release_health(group) for group in groups],
+        "redaction": {"applied": True, "dropped_fields": []},
+    }
+
+
+def command_route(
+    client: SentryAPIClient, args: argparse.Namespace, config: SentryConfig
+) -> dict[str, Any]:
     issue_args = argparse.Namespace(issue_id=args.issue_id, full=True, environment=None)
     payload = command_issue(client, issue_args, config)
     return payload
@@ -261,13 +348,19 @@ def build_parser() -> argparse.ArgumentParser:
         parser_class=_JSONArgumentParser,
     )
 
-    health_parser = subparsers.add_parser("health", help="local wiring plus optional API/runtime readiness")
+    health_parser = subparsers.add_parser(
+        "health", help="local wiring plus optional API/runtime readiness"
+    )
     _json_flag(health_parser)
 
-    issues_parser = subparsers.add_parser("issues", help="list normalized project issues")
+    issues_parser = subparsers.add_parser(
+        "issues", help="list normalized project issues"
+    )
     issues_parser.add_argument("--project", choices=PROJECT_CHOICES, required=True)
     issues_parser.add_argument("--environment", default=None)
-    issues_parser.add_argument("--status", choices=("unresolved", "resolved", "all"), default="unresolved")
+    issues_parser.add_argument(
+        "--status", choices=("unresolved", "resolved", "all"), default="unresolved"
+    )
     _json_flag(issues_parser)
 
     issue_parser = subparsers.add_parser("issue", help="retrieve one issue")
@@ -281,17 +374,34 @@ def build_parser() -> argparse.ArgumentParser:
     events_parser.add_argument("--environment", default=None)
     _json_flag(events_parser)
 
-    releases_parser = subparsers.add_parser("releases", help="list organization releases")
+    releases_parser = subparsers.add_parser(
+        "releases", help="list organization releases"
+    )
     releases_parser.add_argument("--project", choices=PROJECT_CHOICES, default=None)
     releases_parser.add_argument("--environment", default=None)
     _json_flag(releases_parser)
 
-    regressions_parser = subparsers.add_parser("regressions", help="list unresolved issues for a release")
+    regressions_parser = subparsers.add_parser(
+        "regressions", help="list unresolved issues for a release"
+    )
     regressions_parser.add_argument("--project", choices=PROJECT_CHOICES, default="ios")
     regressions_parser.add_argument("--release", required=True)
     _json_flag(regressions_parser)
 
-    route_parser = subparsers.add_parser("route", help="produce routing recommendation only")
+    health_rel_parser = subparsers.add_parser(
+        "release-health", help="crash-free sessions/users per release and environment"
+    )
+    health_rel_parser.add_argument("--project", choices=PROJECT_CHOICES, default="ios")
+    health_rel_parser.add_argument("--environment", default=None)
+    health_rel_parser.add_argument("--release", default=None)
+    health_rel_parser.add_argument(
+        "--stats-period", default="14d", help="e.g. 24h, 14d, 90d (Sentry max 90d)"
+    )
+    _json_flag(health_rel_parser)
+
+    route_parser = subparsers.add_parser(
+        "route", help="produce routing recommendation only"
+    )
     route_parser.add_argument("issue_id")
     _json_flag(route_parser)
     return parser
@@ -304,7 +414,7 @@ def main(argv: list[str] | None = None) -> int:
     except _UsageError:
         _emit(error_payload(SentryAPIError("arguments", kind="invalid_usage")))
         return EXIT_USAGE
-    config = SentryConfig.from_env()
+    config = SentryConfig.load()
     try:
         if args.command == "health":
             payload, exit_code = health(config)
@@ -320,13 +430,24 @@ def main(argv: list[str] | None = None) -> int:
                 payload, exit_code = command_releases(client, args, config), EXIT_OK
             elif args.command == "regressions":
                 payload, exit_code = command_regressions(client, args, config), EXIT_OK
+            elif args.command == "release-health":
+                payload, exit_code = (
+                    command_release_health(client, args, config),
+                    EXIT_OK,
+                )
             elif args.command == "route":
                 payload, exit_code = command_route(client, args, config), EXIT_OK
             else:  # pragma: no cover - argparse enforces the choices
                 raise SentryAPIError("dispatch", kind="unsupported_command")
     except SentryAPIError as error:
         payload = error_payload(error)
-        exit_code = EXIT_WARN if error.kind.startswith("missing_") or error.kind == "network" else EXIT_BLOCK
+        if error.kind.startswith("missing_") or error.kind == "invalid_api_url":
+            payload["config"] = config_status(config)
+        exit_code = (
+            EXIT_WARN
+            if error.kind.startswith("missing_") or error.kind == "network"
+            else EXIT_BLOCK
+        )
     except (OSError, ValueError, TypeError) as error:
         payload = {
             "schema": ERROR_SCHEMA,
@@ -340,11 +461,17 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _json_flag(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--json", action="store_true", help="emit stable JSON (default output is also JSON)")
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="emit stable JSON (default output is also JSON)",
+    )
 
 
 def _emit(payload: dict[str, Any]) -> None:
-    print(json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+    print(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    )
 
 
 def _project(config: SentryConfig, name: str) -> str:
