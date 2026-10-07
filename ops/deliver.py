@@ -49,6 +49,14 @@ PR_GATE = OPS.parent / ".github" / "workflows" / "pr-gate.yml"
 # Raised by delivery_control/adapters/operation_lock.py (a test pins the text).
 LOCK_BUSY = "delivery mutation already in progress"
 LOCK_RETRY_SECONDS = 5.0
+AGENT_REVIEW = OPS.parent / ".github" / "workflows" / "agent-review.yml"
+REVIEW_CHECK = "agent-review"
+# The workflow posts its verdicts as extra check runs carrying this external_id
+# prefix; a run cancelled by a newer event leaves its in_progress one behind.
+REVIEW_MARKER = "kg.agent-review.v1:"
+REVIEW_FAILED = frozenset(
+    {"failure", "timed_out", "action_required", "startup_failure"}
+)
 
 
 class DeliverError(Exception):
@@ -244,6 +252,66 @@ def next_stage(record: dict[str, Any] | None, pr: dict[str, Any] | None) -> str:
     raise DeliverError(f"lane is {status!r}; resolve it before delivering again")
 
 
+def review_bots(workflow: str) -> tuple[str, ...]:
+    """The reviewer logins agent-review.yml trusts; read there, never restated."""
+    bots = re.findall(r"^\s*REVIEW_BOT(?:_CURRENT)?:\s*(\S+)\s*$", workflow, re.M)
+    if not bots:
+        raise DeliverError(
+            f"cannot read the review bot from {AGENT_REVIEW.name}; "
+            "update deliver.review_bots with the workflow"
+        )
+    return tuple(bots)
+
+
+def review_verdict(runs: list[dict[str, Any]]) -> str | None:
+    """The settled `agent-review` verdict of one head, or None while pending.
+
+    Pending while an Actions job run is unfinished or nothing has concluded
+    (orphaned in_progress verdict markers are ignored); failure if any run
+    failed; otherwise the best posted verdict, or the job's own conclusion
+    when it posted none.
+    """
+    runs = [r for r in runs if r.get("name") == REVIEW_CHECK]
+
+    def marker(run: dict[str, Any]) -> bool:
+        return str(run.get("external_id") or "").startswith(REVIEW_MARKER)
+
+    if any(r.get("status") != "completed" and not marker(r) for r in runs):
+        return None
+    done = [r for r in runs if r.get("status") == "completed"]
+    if any(r.get("conclusion") in REVIEW_FAILED for r in done):
+        return "failure"
+    verdicts = {r.get("conclusion") for r in done if marker(r)} or {
+        r.get("conclusion") for r in done
+    }
+    return next((v for v in ("success", "neutral") if v in verdicts), None)
+
+
+def review_findings(
+    comments: list[dict[str, Any]], head: str, bots: tuple[str, ...]
+) -> list[dict[str, str]]:
+    """The inline comments the review bot left on this exact head."""
+    found = []
+    for comment in comments:
+        if (comment.get("user") or {}).get("login") not in bots or head not in (
+            comment.get("commit_id"),
+            comment.get("original_commit_id"),
+        ):
+            continue
+        line = comment.get("line") or comment.get("original_line")
+        body = [s.strip() for s in str(comment.get("body") or "").splitlines()]
+        found.append(
+            {
+                "where": f"{comment.get('path')}:{line}"
+                if line
+                else f"{comment.get('path')}",
+                "summary": next((s for s in body if s), ""),
+                "url": str(comment.get("html_url") or ""),
+            }
+        )
+    return found
+
+
 def required_state(checks: list[dict[str, Any]]) -> str:
     states = [c.get("state") for c in checks if c.get("name") == "required"]
     if not states:
@@ -269,6 +337,7 @@ class Delivery:
         self.work = Path(args.worktree).resolve()
         self.canon: Path | None = None
         self.log: list[str] = []
+        self.extra: dict[str, Any] = {}
         self.lock = LockWait(args.lock_timeout, sleep, clock, self.say)
 
     def mutate(self, cmd: list[str], cwd: Path | None, stage: str) -> Proc:
@@ -602,6 +671,7 @@ class Delivery:
             self.say(f"required passed on #{number}")
             if not self.args.merge:
                 return self.summary(branch, lane, number, "ready-to-merge")
+            self.extra["review"] = self.review_gate(repo, number)
             self.mutate(
                 [*delivery, "queue", "--pr", str(number)],
                 self.home,
@@ -659,6 +729,74 @@ class Delivery:
             raise DeliverError(f"#{number} was closed without merging")
         return None
 
+    def gh_pages(self, endpoint: str, key: str | None = None) -> list[dict[str, Any]]:
+        """Every item of a paginated REST list (``key``: the list inside a page)."""
+        out = must(
+            self.runner,
+            ["gh", "api", "--paginate", "--slurp", endpoint],
+            self.home,
+            f"read {endpoint}",
+        ).stdout
+        return [
+            item
+            for page in json.loads(out or "[]")
+            for item in (page.get(key, []) if key else page)
+        ]
+
+    def review_gate(self, repo: str, number: int) -> dict[str, Any]:
+        """Settle `agent-review` on the PR's exact head before it may be queued."""
+        head = must(
+            self.runner,
+            ["gh", "pr", "view", str(number), "--repo", repo]
+            + ["--json", "headRefOid", "-q", ".headRefOid"],
+            self.home,
+            "read PR head",
+        ).stdout.strip()
+        try:
+            bots = review_bots(AGENT_REVIEW.read_text())
+        except OSError as exc:
+            raise DeliverError(f"cannot read {AGENT_REVIEW}: {exc}") from exc
+        runs = f"repos/{repo}/commits/{head}/check-runs?check_name={REVIEW_CHECK}"
+        verdict = self.wait_for(
+            f"{REVIEW_CHECK} on {head}",
+            lambda: review_verdict(
+                self.gh_pages(f"{runs}&filter=all&per_page=100", "check_runs")
+            ),
+        )
+        findings = review_findings(
+            self.gh_pages(f"repos/{repo}/pulls/{number}/comments?per_page=100"),
+            head,
+            bots,
+        )
+        advisory = " (no exact-head review observed; advisory)"
+        self.say(
+            f"{REVIEW_CHECK} {verdict} on #{number} at {head}"
+            + (advisory if verdict == "neutral" else "")
+        )
+        problems = [f"{REVIEW_CHECK} failed on {head}"] if verdict == "failure" else []
+        if findings:
+            listed = "".join(
+                f"\n  {f['where']}: {f['summary']} {f['url']}" for f in findings
+            )
+            problems.append(
+                f"{len(findings)} inline review comment(s) on {head}:{listed}"
+            )
+        reason = (self.args.accept_review_findings or "").strip()
+        if problems and not reason:
+            raise DeliverError(
+                f"refusing to queue #{number}: "
+                + "; ".join(problems)
+                + "\nfix and redeliver, or pass --accept-review-findings '<reason>'"
+            )
+        if problems:
+            self.say(f"accepted for #{number} ({reason}): " + "; ".join(problems))
+        return {
+            "head": head,
+            "verdict": verdict,
+            "findings": findings,
+            "accepted": reason if problems else None,
+        }
+
     def summary(
         self, branch: str, lane: str, number: int, result: str
     ) -> dict[str, Any]:
@@ -669,6 +807,7 @@ class Delivery:
             "pr": number,
             "result": result,
             "log": self.log,
+            **self.extra,
         }
 
 
@@ -791,7 +930,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--merge",
         action="store_true",
-        help="queue, wait for the merge, clean up and sync",
+        help=(
+            f"wait for {REVIEW_CHECK} on the exact head, then queue, wait for "
+            "the merge, clean up and sync"
+        ),
+    )
+    parser.add_argument(
+        "--accept-review-findings",
+        metavar="REASON",
+        help=(
+            f"with --merge: queue although {REVIEW_CHECK} failed or the review "
+            "bot left inline comments on the head; the reason is logged"
+        ),
     )
     parser.add_argument(
         "--timeout", type=int, default=1500, help="seconds per wait (default 1500)"
