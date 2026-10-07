@@ -25,7 +25,11 @@ def test_build_translate_quick_gold_review_queue_excludes_high_risk(tmp_path):
                 "gold_status": "unverified",
                 "pii_risk": "low",
                 "gold_queue_eligible": True,
-                "weak_reference": {"translation": "輝煌的", "pos": "adj.", "root": "resplendent"},
+                "weak_reference": {
+                    "translation": "輝煌的",
+                    "pos": "adj.",
+                    "root": "resplendent",
+                },
                 "source_trace": {"ordinal": 1},
             },
             {
@@ -38,7 +42,11 @@ def test_build_translate_quick_gold_review_queue_excludes_high_risk(tmp_path):
                 "gold_status": "unverified",
                 "pii_risk": "high",
                 "gold_queue_eligible": False,
-                "weak_reference": {"translation": "[EMAIL]", "pos": "n.", "root": "[EMAIL]"},
+                "weak_reference": {
+                    "translation": "[EMAIL]",
+                    "pos": "n.",
+                    "root": "[EMAIL]",
+                },
                 "source_trace": {"ordinal": 2},
             },
         ],
@@ -203,6 +211,46 @@ def test_sample_gold_queue_cli_rejects_non_positive_limit(tmp_path):
     )
 
     assert exit_code == 2
+
+
+def test_sample_gold_queue_cli_refuses_a_committable_output_unless_allowed(
+    tmp_path, capsys
+):
+    """Queue rows carry private user words/contexts, same as corpus-build."""
+    candidates = tmp_path / "translate_quick_candidates.jsonl"
+    _write_jsonl(
+        candidates,
+        [
+            {
+                "id": "candidate_0001",
+                "word": "resplendent",
+                "gold_status": "unverified",
+                "pii_risk": "low",
+                "gold_queue_eligible": True,
+            }
+        ],
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    output = repo / "review.jsonl"
+    args = [
+        "--prompt",
+        "translate_quick",
+        "--candidates",
+        str(candidates),
+        "--output",
+        str(output),
+    ]
+
+    refused = main(args)
+    err = capsys.readouterr().err
+
+    assert refused == 2
+    assert "not git-ignored" in err
+    assert not output.exists()
+    assert main([*args, "--allow-unignored"]) == 0
+    assert output.exists()
 
 
 def test_sample_gold_queue_script_wrapper_can_show_help():

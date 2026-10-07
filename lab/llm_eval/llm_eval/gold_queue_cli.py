@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from llm_eval.gold_queue import SUPPORTED_PROMPTS, build_gold_review_queue
+from llm_eval.paths import add_allow_unignored_flag, refuse_committable_outputs
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -16,10 +17,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--prompt", choices=sorted(SUPPORTED_PROMPTS), required=True)
     parser.add_argument("--candidates", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    add_allow_unignored_flag(parser)
     parser.add_argument("--limit", type=_positive_int, default=50)
     parser.add_argument("--seed", type=int, default=None)
     try:
         args = parser.parse_args(argv)
+        refuse_committable_outputs(parser, [args.output], allow=args.allow_unignored)
     except SystemExit as exc:
         return int(exc.code)
 

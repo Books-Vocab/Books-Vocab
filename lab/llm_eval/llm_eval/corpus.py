@@ -20,6 +20,13 @@ _UID_RE = re.compile(r"\b\d{6}\.[A-Fa-f0-9]{32}\.[A-Za-z0-9_-]+\b")
 _CARD_ID_RE = re.compile(r"\b[A-Fa-f0-9]{12}\b")
 _EMAIL_RE = re.compile(r"\b[^@\s]+@[^@\s]+\.[^@\s]+\b")
 
+# Files build_private_corpus writes into its output dir, keyed by prompt.
+OUTPUT_FILES = {
+    "translate_quick": "translate_quick_candidates.jsonl",
+    "translate_phrase": "translate_phrase_candidates.jsonl",
+    "translate_explain": "translate_explain_candidates.jsonl",
+}
+
 
 def sanitize_context(text: str, *, max_chars: int = 320) -> str:
     """Redact stable identifiers and truncate context for private eval use."""
@@ -47,21 +54,22 @@ def build_private_corpus(
         rows = rows[:limit]
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    outputs = {
-        "translate_quick": output_dir / "translate_quick_candidates.jsonl",
-        "translate_phrase": output_dir / "translate_phrase_candidates.jsonl",
-        "translate_explain": output_dir / "translate_explain_candidates.jsonl",
-    }
+    outputs = {name: output_dir / filename for name, filename in OUTPUT_FILES.items()}
     _write_jsonl(outputs["translate_quick"], rows)
     _write_jsonl(
         outputs["translate_phrase"],
-        [r for r in rows if r.get("pos") == "phr." and r.get("gold_queue_eligible") is True],
+        [
+            r
+            for r in rows
+            if r.get("pos") == "phr." and r.get("gold_queue_eligible") is True
+        ],
     )
     _write_jsonl(
         outputs["translate_explain"],
         sorted(
             [
-                r for r in rows
+                r
+                for r in rows
                 if r.get("review", {}).get("review_count", 0) > 0
                 and r.get("gold_queue_eligible") is True
             ],
@@ -74,19 +82,25 @@ def build_private_corpus(
     return outputs
 
 
-def _iter_cards(cards: Iterable[dict[str, Any]], *, context_chars: int) -> Iterable[dict[str, Any]]:
+def _iter_cards(
+    cards: Iterable[dict[str, Any]], *, context_chars: int
+) -> Iterable[dict[str, Any]]:
     for idx, card in enumerate(cards, start=1):
         raw_word = str(card.get("content") or "").strip()
         if not raw_word:
             continue
         context = _first_example(card.get("examples"))
-        pii_risk = _pii_risk(" ".join([
-            raw_word,
-            context,
-            str(card.get("meaning") or ""),
-            str(card.get("note") or ""),
-            str(card.get("root_form") or ""),
-        ]))
+        pii_risk = _pii_risk(
+            " ".join(
+                [
+                    raw_word,
+                    context,
+                    str(card.get("meaning") or ""),
+                    str(card.get("note") or ""),
+                    str(card.get("root_form") or ""),
+                ]
+            )
+        )
         yield {
             "id": f"candidate_{idx:04d}",
             "word": sanitize_context(raw_word, max_chars=80),
@@ -99,14 +113,20 @@ def _iter_cards(cards: Iterable[dict[str, Any]], *, context_chars: int) -> Itera
             "gold_queue_eligible": pii_risk != "high",
             "pos": card.get("pos"),
             "weak_reference": {
-                "translation": sanitize_context(str(card.get("meaning") or ""), max_chars=120),
+                "translation": sanitize_context(
+                    str(card.get("meaning") or ""), max_chars=120
+                ),
                 "pos": card.get("pos"),
-                "root": sanitize_context(str(card.get("root_form") or ""), max_chars=80),
+                "root": sanitize_context(
+                    str(card.get("root_form") or ""), max_chars=80
+                ),
                 "note": sanitize_context(str(card.get("note") or ""), max_chars=200),
             },
             "review": {
                 "review_count": int(card.get("review_count") or 0),
-                "last_review_feedback": _int_or_default(card.get("last_review_feedback"), -1),
+                "last_review_feedback": _int_or_default(
+                    card.get("last_review_feedback"), -1
+                ),
             },
             "source_trace": {
                 "ordinal": idx,
@@ -142,7 +162,9 @@ def _int_or_default(value: Any, default: int) -> int:
     try:
         return int(value)
     except (TypeError, ValueError):
-        logger.warning("Invalid integer value %r in corpus; using default %s", value, default)
+        logger.warning(
+            "Invalid integer value %r in corpus; using default %s", value, default
+        )
         return default
 
 

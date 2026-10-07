@@ -6,7 +6,12 @@ import argparse
 import json
 from pathlib import Path
 
-from llm_eval.corpus import build_private_corpus
+from llm_eval.corpus import OUTPUT_FILES, build_private_corpus
+from llm_eval.paths import (
+    PRIVATE_CORPUS_DIR,
+    add_allow_unignored_flag,
+    refuse_committable_outputs,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -17,10 +22,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=Path("private_corpus"),
-        help="Directory for ignored private JSONL outputs.",
+        default=PRIVATE_CORPUS_DIR,
+        help=f"Directory for private JSONL outputs (default: {PRIVATE_CORPUS_DIR}).",
     )
-    parser.add_argument("--limit", type=_non_negative_int, default=None, help="Optional max source cards.")
+    add_allow_unignored_flag(parser)
+    parser.add_argument(
+        "--limit",
+        type=_non_negative_int,
+        default=None,
+        help="Optional max source cards.",
+    )
     parser.add_argument(
         "--context-chars",
         type=_positive_int,
@@ -29,6 +40,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     try:
         args = parser.parse_args(argv)
+        refuse_committable_outputs(
+            parser,
+            [args.output_dir / name for name in OUTPUT_FILES.values()],
+            allow=args.allow_unignored,
+        )
     except SystemExit as exc:
         return int(exc.code)
 
@@ -55,7 +71,9 @@ def main(argv: list[str] | None = None) -> int:
 def _count_jsonl_rows(path: Path) -> int:
     if not path.exists():
         return 0
-    return sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
+    return sum(
+        1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    )
 
 
 def _non_negative_int(value: str) -> int:

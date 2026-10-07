@@ -1,4 +1,11 @@
-"""Async execution engine for eval: parallel model calls, retry, result aggregation."""
+"""Async execution engine for eval: parallel model calls, retry, result aggregation.
+
+Retry is owned by the OpenAI SDK client built in ``providers`` (bounded by
+``EVAL_MAX_RETRIES``: 408/409/429/5xx and connection errors, exponential
+backoff with jitter, honours Retry-After).  Every per-call failure (timeout,
+missing provider key, unreachable Ollama, exhausted retries) is recorded on
+the ``EvalResult`` so one model never aborts the others.
+"""
 
 from __future__ import annotations
 
@@ -6,17 +13,40 @@ import asyncio
 import json
 import logging
 import time
+import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from kg.llm.providers import LLMProvider
+
 from .config import EvalConfig
-from .providers import create_eval_async_client, resolve_provider
+from .providers import (
+    MissingProviderApiKeyError,
+    create_eval_async_client,
+    resolve_provider,
+)
 from .registry import RenderedPrompt
 from .scoring import score_result
 
 logger = logging.getLogger("llm_eval")
 _FORMAT_SCORE_KEYS = {"json_valid", "schema_conform"}
+_OLLAMA_PROBE_TIMEOUT_S = 2.0
+
+# Model names accepted besides provider names and registry chat_models.
+_MODEL_MAP: dict[str, str] = {
+    "gemma3:4b": "ollama",
+    "gemini-2.5-flash-lite": "gemini",
+    "gemini-2.5-flash": "gemini",
+    "deepseek-v4-flash": "deepseek",
+}
+
+# USD per 1M (input, output) tokens for cloud models that are not their
+# provider's registry chat_model: the registry price belongs to chat_model
+# only.  Source: ai.google.dev/gemini-api/docs/pricing (paid tier, 2026-10-07).
+_MODEL_PRICES: dict[str, tuple[float, float]] = {
+    "gemini-2.5-flash": (0.30, 2.50),
+}
 
 
 @dataclass(frozen=True)
@@ -47,7 +77,7 @@ class EvalSummary:
     avg_latency_ms: float
     total_input_tokens: int
     total_output_tokens: int
-    total_cost_usd: float
+    total_cost_usd: float | None  # None: no known price for this model
     format_score_avg: float | None = None
     quality_score_avg: float | None = None
     score_breakdown: dict[str, float] = field(default_factory=dict)
@@ -55,30 +85,48 @@ class EvalSummary:
     samples: list[EvalResult] = field(default_factory=list)
 
 
-def _model_to_provider_name(model: str) -> str:
-    """Map a model name to its provider."""
+def resolve_model_provider(model: str) -> str:
+    """Map a model name to its provider name; ``ValueError`` if unknown."""
     # Direct provider name
     try:
         resolve_provider(model)
         return model
     except ValueError:
-        logger.debug("provider resolution failed for model=%s; trying fallback map", model)
-    # Known model → provider mapping
-    _MODEL_MAP: dict[str, str] = {
-        "gemma3:4b": "ollama",
-        "gemini-2.5-flash-lite": "gemini",
-        "gemini-2.5-flash": "gemini",
-        "deepseek-v4-flash": "deepseek",
-    }
+        logger.debug(
+            "provider resolution failed for model=%s; trying fallback map", model
+        )
     provider = _MODEL_MAP.get(model)
     if provider:
         return provider
     # Fallback: try each provider's chat_model
     from kg.llm.providers import REGISTRY
+
     for name, p in REGISTRY.items():
         if p.chat_model == model:
             return name
     raise ValueError(f"Cannot resolve provider for model {model!r}")
+
+
+def _api_model(model: str, provider: LLMProvider) -> str:
+    """The model name to request: a provider alias means its chat_model."""
+    return provider.chat_model if model.strip().lower() == provider.name else model
+
+
+def _model_cost(
+    model: str, provider: LLMProvider, input_tokens: int, output_tokens: int
+) -> float | None:
+    """USD cost at ``model``'s own price; ``None`` when that price is unknown."""
+    if provider.name == "ollama":
+        return 0.0  # local inference
+    api_model = _api_model(model, provider)
+    if api_model in _MODEL_PRICES:
+        input_price, output_price = _MODEL_PRICES[api_model]
+    elif api_model == provider.chat_model:
+        input_price = provider.input_price_per_m
+        output_price = provider.output_price_per_m
+    else:
+        return None
+    return (input_tokens * input_price + output_tokens * output_price) / 1_000_000
 
 
 def _mean(values: list[float]) -> float | None:
@@ -89,8 +137,7 @@ def _format_score(result: EvalResult) -> float | None:
     if result.error is not None:
         return None
     values = [
-        value for key, value in result.scores.items()
-        if key in _FORMAT_SCORE_KEYS
+        value for key, value in result.scores.items() if key in _FORMAT_SCORE_KEYS
     ]
     return _mean(values)
 
@@ -102,27 +149,49 @@ def _score_breakdown(results: list[EvalResult]) -> dict[str, float]:
             continue
         for key, value in result.scores.items():
             buckets.setdefault(key, []).append(value)
-    return {
-        key: sum(vals) / len(vals)
-        for key, vals in sorted(buckets.items())
-        if vals
-    }
+    return {key: sum(vals) / len(vals) for key, vals in sorted(buckets.items()) if vals}
 
 
-def _failure_examples(results: list[EvalResult], *, limit: int = 5) -> list[dict[str, Any]]:
+def _failure_examples(
+    results: list[EvalResult], *, limit: int = 5
+) -> list[dict[str, Any]]:
     examples: list[dict[str, Any]] = []
     for result in results:
         if result.error is None and not any(v < 1.0 for v in result.scores.values()):
             continue
-        examples.append({
-            "sample_id": result.sample_id,
-            "error": result.error,
-            "scores": result.scores,
-            "raw_output": result.raw_output[:500],
-        })
+        examples.append(
+            {
+                "sample_id": result.sample_id,
+                "error": result.error,
+                "scores": result.scores,
+                "raw_output": result.raw_output[:500],
+            }
+        )
         if len(examples) >= limit:
             break
     return examples
+
+
+def _probe_ollama(url: str) -> None:
+    """Blocking reachability probe; callers run it via ``asyncio.to_thread``."""
+    with urllib.request.urlopen(url, timeout=_OLLAMA_PROBE_TIMEOUT_S):
+        pass
+
+
+def _error_result(
+    sample_id: str, model: str, provider: str, error: str, *, latency_ms: int = 0
+) -> EvalResult:
+    return EvalResult(
+        sample_id=sample_id,
+        model=model,
+        provider=provider,
+        latency_ms=latency_ms,
+        input_tokens=0,
+        output_tokens=0,
+        raw_output="",
+        parsed_output=None,
+        error=error,
+    )
 
 
 async def _call_one(
@@ -133,39 +202,39 @@ async def _call_one(
     config: EvalConfig,
     render_fn: Callable[[dict[str, object]], RenderedPrompt] | None = None,
 ) -> EvalResult:
-    """Call one LLM for one sample."""
+    """Call one LLM for one sample; per-call failures become ``EvalResult.error``."""
     if render_fn is not None:
         prompt = render_fn(sample)
     provider = resolve_provider(provider_name)
     sample_id = str(sample.get("id", sample.get("word", "unknown")))
 
-    # Check Ollama reachability
+    # Check Ollama reachability off the event loop (urlopen blocks).
     if provider.name == "ollama":
-        import urllib.request
         try:
-            urllib.request.urlopen(provider.base_url.replace("/v1", ""), timeout=2)
+            await asyncio.to_thread(_probe_ollama, provider.base_url.replace("/v1", ""))
         except Exception:
-            logger.warning("ollama unavailable for sample=%s provider=%s", sample_id, provider.name, exc_info=True)
-            return EvalResult(
-                sample_id=sample_id,
-                model=model,
-                provider=provider.name,
-                latency_ms=0,
-                input_tokens=0,
-                output_tokens=0,
-                raw_output="",
-                parsed_output=None,
-                error="ollama_unavailable",
+            logger.warning(
+                "ollama unavailable for sample=%s provider=%s",
+                sample_id,
+                provider.name,
+                exc_info=True,
             )
+            return _error_result(sample_id, model, provider.name, "ollama_unavailable")
 
-    client = create_eval_async_client(provider)
+    try:
+        client = create_eval_async_client(provider)
+    except MissingProviderApiKeyError as exc:
+        logger.warning("model=%s sample_id=%s not run: %s", model, sample_id, exc)
+        return _error_result(
+            sample_id, model, provider.name, f"missing_api_key: {exc.api_key_env}"
+        )
     messages: list[dict[str, str]] = []
     if prompt.system:
         messages.append({"role": "system", "content": prompt.system})
     messages.append({"role": "user", "content": prompt.user})
 
     kwargs: dict[str, Any] = dict(
-        model=model,
+        model=_api_model(model, provider),
         messages=messages,
         temperature=config.temperature,
     )
@@ -176,7 +245,9 @@ async def _call_one(
     if provider.max_tokens_default is not None:
         kwargs["max_tokens"] = provider.max_tokens_default
 
-    timeout = config.ollama_timeout_s if provider.name == "ollama" else config.cloud_timeout_s
+    timeout = (
+        config.ollama_timeout_s if provider.name == "ollama" else config.cloud_timeout_s
+    )
 
     t0 = time.time()
     try:
@@ -196,7 +267,12 @@ async def _call_one(
                 if isinstance(data, (dict, list)):
                     parsed = data
             except json.JSONDecodeError:
-                logger.debug("model=%s sample_id=%s returned non-json output: preview=%r", model, sample_id, content[:200])
+                logger.debug(
+                    "model=%s sample_id=%s returned non-json output: preview=%r",
+                    model,
+                    sample_id,
+                    content[:200],
+                )
         scores = score_result(config.prompt_name or prompt.name, parsed, sample)
 
         return EvalResult(
@@ -212,20 +288,30 @@ async def _call_one(
             error=None,
         )
     except asyncio.TimeoutError:
-        logger.warning("Silently handled exception; using fallback response", exc_info=True)
-        return EvalResult(
-            sample_id=sample_id, model=model, provider=provider.name,
+        logger.warning(
+            "Silently handled exception; using fallback response", exc_info=True
+        )
+        return _error_result(
+            sample_id,
+            model,
+            provider.name,
+            "timeout",
             latency_ms=int((time.time() - t0) * 1000),
-            input_tokens=0, output_tokens=0, raw_output="", parsed_output=None,
-            error="timeout",
         )
     except Exception as exc:
-        logger.error("eval failed sample_id=%s provider=%s model=%s", sample_id, provider.name, model, exc_info=True)
-        return EvalResult(
-            sample_id=sample_id, model=model, provider=provider.name,
+        logger.error(
+            "eval failed sample_id=%s provider=%s model=%s",
+            sample_id,
+            provider.name,
+            model,
+            exc_info=True,
+        )
+        return _error_result(
+            sample_id,
+            model,
+            provider.name,
+            f"{type(exc).__name__}: {exc}",
             latency_ms=int((time.time() - t0) * 1000),
-            input_tokens=0, output_tokens=0, raw_output="", parsed_output=None,
-            error=f"{type(exc).__name__}: {exc}",
         )
 
 
@@ -249,14 +335,14 @@ async def run_eval(
     # Filter samples
     if config.sample_ids:
         samples = [s for s in samples if s.get("id") in config.sample_ids]
-    if config.limit:
-        samples = samples[:config.limit]
+    if config.limit is not None:
+        samples = samples[: config.limit]
 
     # Resolve providers
     provider_map: dict[str, str] = {}
     for m in models:
         try:
-            provider_map[m] = _model_to_provider_name(m)
+            provider_map[m] = resolve_model_provider(m)
         except ValueError as exc:
             logger.warning("Skipping model %s: %s", m, exc)
 
@@ -271,11 +357,7 @@ async def run_eval(
         async with semaphores[pname]:
             return await _call_one(pname, model, prompt, sample, config, render_fn)
 
-    tasks = [
-        _run_with_sem(m, s)
-        for m in models if m in provider_map
-        for s in samples
-    ]
+    tasks = [_run_with_sem(m, s) for m in models if m in provider_map for s in samples]
     results = await asyncio.gather(*tasks)
 
     # Aggregate by model
@@ -292,16 +374,10 @@ async def run_eval(
         in_toks = sum(r.input_tokens for r in model_results)
         out_toks = sum(r.output_tokens for r in model_results)
 
-        # Cost
-        provider = resolve_provider(pname)
-        cost = (
-            in_toks * provider.input_price_per_m / 1_000_000
-            + out_toks * provider.output_price_per_m / 1_000_000
+        cost = _model_cost(m, resolve_provider(pname), in_toks, out_toks)
+        format_score_avg = _mean(
+            [score for r in model_results if (score := _format_score(r)) is not None]
         )
-        format_score_avg = _mean([
-            score for r in model_results
-            if (score := _format_score(r)) is not None
-        ])
         # Translation/semantic quality is judged by agent review of the report,
         # not auto-scored here — kept as None so the report honestly shows n/a.
         quality_score_avg = None

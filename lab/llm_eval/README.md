@@ -34,13 +34,15 @@ results = run_eval(prompt, dataset, models=["gemma3:4b", "gemini-2.5-flash-lite"
 `scoring.py` **只做客觀的機械格式檢查**（JSON 合法 / schema keys / 繁簡偵測 OpenCC / POS 後綴 / link kind / confidence 範圍）。
 **翻譯與語意品質不在此自動評分** —— 同義詞、語感、nuance 的判斷由 **agent 讀 eval report 人工審核**，不靠脆弱的 gold exact-match。
 
-工作流：
+工作流（任何 cwd 皆可；預設路徑以 `lab/llm_eval/` 解析）：
 ```
 # 1. 跑 eval（產生 report JSON，含 raw/parsed 輸出 + 格式分數）
+#    --output-dir 不帶值 = lab/llm_eval/results/（git-ignored，review 的預設搜尋處）
 cli.py eval --prompt translate_quick --dataset translate_quick_gold \
-    --models deepseek-v4-flash --output-dir results
+    --models deepseek-v4-flash --output-dir
 
 # 2. 產生 reviewable 格式（模型輸出 vs gold join），交給 agent 審核
+#    以 report JSON 的 prompt.name / dataset_name 精確比對，取最新
 cli.py review --prompt translate_quick                # 最新 report
 cli.py review --prompt translate_quick --range 0:20   # 分塊給平行 reviewer
 cli.py review --prompt translate_quick --json         # 機器交接給 subagent

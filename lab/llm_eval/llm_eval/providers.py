@@ -7,6 +7,11 @@ import os
 
 from kg.llm.providers import LLMProvider, REGISTRY as CLOUD_REGISTRY
 
+# Retries after the first attempt.  The OpenAI SDK owns the retry loop
+# (408/409/429/5xx + connection errors, exponential backoff with jitter,
+# honours Retry-After); the eval runner deliberately adds no second layer.
+EVAL_MAX_RETRIES = 2
+
 OLLAMA_PROVIDER = LLMProvider(
     name="ollama",
     base_url="",
@@ -80,11 +85,19 @@ def create_eval_client(provider: LLMProvider):
     """Create an OpenAI-compatible client for eval. Bypasses TrackedLLM and service_factories."""
     from openai import OpenAI
 
-    return OpenAI(api_key=_eval_api_key(provider), base_url=provider.base_url or None)
+    return OpenAI(
+        api_key=_eval_api_key(provider),
+        base_url=provider.base_url or None,
+        max_retries=EVAL_MAX_RETRIES,
+    )
 
 
 def create_eval_async_client(provider: LLMProvider):
     """Create an async OpenAI-compatible client for eval. Bypasses TrackedLLM."""
     from openai import AsyncOpenAI
 
-    return AsyncOpenAI(api_key=_eval_api_key(provider), base_url=provider.base_url or None)
+    return AsyncOpenAI(
+        api_key=_eval_api_key(provider),
+        base_url=provider.base_url or None,
+        max_retries=EVAL_MAX_RETRIES,
+    )

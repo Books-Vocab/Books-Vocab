@@ -13,7 +13,12 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from llm_eval.paths import RESULTS_DIR
+
+if TYPE_CHECKING:
+    from llm_eval.runner import EvalSummary
 
 
 def _emit_json(obj: Any) -> None:
@@ -25,7 +30,9 @@ def _print_table(headers: list[str], rows: list[list]) -> None:
         print("(no data)")
         return
     str_rows = [[str(v) for v in row] for row in rows]
-    widths = [max(len(h), *(len(r[i]) for r in str_rows)) for i, h in enumerate(headers)]
+    widths = [
+        max(len(h), *(len(r[i]) for r in str_rows)) for i, h in enumerate(headers)
+    ]
     fmt = "  ".join(f"{{:<{w}}}" for w in widths)
     print(fmt.format(*headers))
     print(fmt.format(*["-" * w for w in widths]))
@@ -45,6 +52,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
         report_timestamp,
         write_report,
     )
+    from llm_eval.runner import resolve_model_provider
 
     registry = PromptRegistry()
     prompt_name = args.prompt
@@ -70,6 +78,35 @@ def cmd_eval(args: argparse.Namespace) -> int:
     if not models:
         print("Error: no models specified", file=sys.stderr)
         return 1
+
+    # Validate every input before the first paid call: an unknown model or an
+    # unreadable baseline would otherwise silently shrink what the run checks.
+    unknown = []
+    for model in models:
+        try:
+            resolve_model_provider(model)
+        except ValueError as exc:
+            unknown.append(str(exc))
+    if unknown:
+        for message in unknown:
+            print(f"Error: {message}", file=sys.stderr)
+        return 1
+
+    baseline_data: dict[str, Any] | None = None
+    if args.baseline:
+        try:
+            baseline_data = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            print(
+                f"Error: cannot read baseline {args.baseline}: {exc}", file=sys.stderr
+            )
+            return 1
+        if not isinstance(baseline_data, dict):
+            print(
+                f"Error: baseline {args.baseline} is not a report JSON object",
+                file=sys.stderr,
+            )
+            return 1
 
     config = EvalConfig(
         prompt_name=prompt_name,
@@ -101,7 +138,9 @@ def cmd_eval(args: argparse.Namespace) -> int:
             "format_score": summary.format_score_avg,
             "quality_score": summary.quality_score_avg,
             "avg_latency_ms": round(summary.avg_latency_ms),
-            "cost_usd": round(summary.total_cost_usd, 6),
+            "cost_usd": None
+            if summary.total_cost_usd is None
+            else round(summary.total_cost_usd, 6),
             "score_breakdown": summary.score_breakdown,
         }
 
@@ -122,14 +161,11 @@ def cmd_eval(args: argparse.Namespace) -> int:
         result["report_json"] = str(paths.json_path)
         result["report_markdown"] = str(paths.markdown_path)
 
-    if args.baseline:
-        baseline_path = Path(args.baseline)
-        if not baseline_path.exists():
-            print(f"Warning: baseline not found: {baseline_path}", file=sys.stderr)
-        else:
-            baseline_data = json.loads(baseline_path.read_text(encoding="utf-8"))
-            deltas = compare_to_baseline(summaries, baseline_data)
-            result["baseline_comparison"] = deltas
+    if baseline_data is not None:
+        result["baseline_comparison"] = compare_to_baseline(summaries, baseline_data)
+
+    failures = _eval_failures(summaries, result.get("baseline_comparison", {}))
+    result["failures"] = failures
 
     if args.json:
         _emit_json(result)
@@ -138,18 +174,29 @@ def cmd_eval(args: argparse.Namespace) -> int:
         print()
         rows = []
         for model, info in result["models"].items():
-            rows.append([
-                model,
-                info["provider"],
-                str(info["samples"]),
-                str(info["errors"]),
-                _fmt_score(info["format_score"]),
-                _fmt_score(info["quality_score"]),
-                str(info["avg_latency_ms"]),
-                f"${info['cost_usd']:.6f}",
-            ])
+            rows.append(
+                [
+                    model,
+                    info["provider"],
+                    str(info["samples"]),
+                    str(info["errors"]),
+                    _fmt_score(info["format_score"]),
+                    _fmt_score(info["quality_score"]),
+                    str(info["avg_latency_ms"]),
+                    "n/a" if info["cost_usd"] is None else f"${info['cost_usd']:.6f}",
+                ]
+            )
         _print_table(
-            ["model", "provider", "samples", "errors", "format", "quality", "latency_ms", "cost"],
+            [
+                "model",
+                "provider",
+                "samples",
+                "errors",
+                "format",
+                "quality",
+                "latency_ms",
+                "cost",
+            ],
             rows,
         )
         if "baseline_comparison" in result:
@@ -161,13 +208,44 @@ def cmd_eval(args: argparse.Namespace) -> int:
                     parts.append(f"format {delta['format_delta']:+.3f}")
                 if delta.get("quality_delta") is not None:
                     parts.append(f"quality {delta['quality_delta']:+.3f}")
-                regression = " ⚠ REGRESSION" if delta.get("format_regression") or delta.get("quality_regression") else ""
+                regression = (
+                    " ⚠ REGRESSION"
+                    if delta.get("format_regression") or delta.get("quality_regression")
+                    else ""
+                )
                 print(f"  {model}: {', '.join(parts) or 'n/a'}{regression}")
         if "report_json" in result:
             print()
             print(f"Report: {result['report_json']}")
 
-    return 0
+    # Results and report are already emitted; the exit status only says
+    # whether the run did what was asked.
+    for failure in failures:
+        print(f"Error: {failure}", file=sys.stderr)
+    return 1 if failures else 0
+
+
+def _eval_failures(
+    summaries: dict[str, EvalSummary], deltas: dict[str, dict[str, Any]]
+) -> list[str]:
+    """Reasons the eval run must exit non-zero.
+
+    A model with no successful sample produced no evaluation at all; a
+    baseline regression is the gate ``--baseline`` exists for.  Partial sample
+    errors are recorded results, not run failures.
+    """
+    failures = [
+        f"{model}: all {summary.sample_count} samples errored"
+        for model, summary in summaries.items()
+        if summary.sample_count and summary.error_count == summary.sample_count
+    ]
+    for model, delta in deltas.items():
+        regressed = [
+            name for name in ("format", "quality") if delta.get(f"{name}_regression")
+        ]
+        if regressed:
+            failures.append(f"{model}: baseline regression ({', '.join(regressed)})")
+    return failures
 
 
 def cmd_prompts(args: argparse.Namespace) -> int:
@@ -204,11 +282,13 @@ def cmd_prompts(args: argparse.Namespace) -> int:
         for name in prompts:
             versions = registry.list_versions(name)
             meta = registry.get_meta(name)
-            items.append({
-                "name": name,
-                "versions": versions,
-                "tags": meta.tags,
-            })
+            items.append(
+                {
+                    "name": name,
+                    "versions": versions,
+                    "tags": meta.tags,
+                }
+            )
         _emit_json(items)
     else:
         rows = []
@@ -274,25 +354,31 @@ def cmd_providers(args: argparse.Namespace) -> int:
     if args.json:
         items = []
         for p in providers:
-            items.append({
-                "name": p.name,
-                "chat_model": p.chat_model,
-                "input_price_per_m": p.input_price_per_m,
-                "output_price_per_m": p.output_price_per_m,
-                "key_configured": bool(os.getenv(p.api_key_env)) if p.name != "ollama" else True,
-            })
+            items.append(
+                {
+                    "name": p.name,
+                    "chat_model": p.chat_model,
+                    "input_price_per_m": p.input_price_per_m,
+                    "output_price_per_m": p.output_price_per_m,
+                    "key_configured": bool(os.getenv(p.api_key_env))
+                    if p.name != "ollama"
+                    else True,
+                }
+            )
         _emit_json(items)
     else:
         rows = []
         for p in providers:
             key_ok = "yes" if (p.name == "ollama" or os.getenv(p.api_key_env)) else "no"
-            rows.append([
-                p.name,
-                p.chat_model,
-                f"${p.input_price_per_m:.2f}",
-                f"${p.output_price_per_m:.2f}",
-                key_ok,
-            ])
+            rows.append(
+                [
+                    p.name,
+                    p.chat_model,
+                    f"${p.input_price_per_m:.2f}",
+                    f"${p.output_price_per_m:.2f}",
+                    key_ok,
+                ]
+            )
         _print_table(["name", "chat_model", "in_$/M", "out_$/M", "key"], rows)
 
     return 0
@@ -303,47 +389,71 @@ def _fmt_score(value: float | None) -> str:
 
 
 def _resolve_report(args: argparse.Namespace) -> Path | None:
-    """Pick the report JSON: explicit --results, else newest in results-dir
-    matching --prompt (and --dataset if given)."""
-    import glob
+    """Pick the report JSON: explicit --results, else the newest report in
+    --results-dir (default: the package results dir) whose JSON
+    ``prompt.name`` / ``dataset_name`` equal --prompt / --dataset.
 
+    Filenames are not parsed: ``<ts>_<prompt>_<dataset>`` is ambiguous when
+    names contain underscores (``judge_batch`` is a substring of
+    ``…_judge_selective_judge_batch_gold.json``).
+    """
     if args.results:
         p = Path(args.results)
         return p if p.exists() else None
-    results_dir = args.results_dir or "lab/llm_eval/results"
-    paths = sorted(glob.glob(str(Path(results_dir) / "*.json")))
-    if args.prompt:
-        paths = [p for p in paths if f"_{args.prompt}_" in Path(p).name]
-    if args.dataset:
-        paths = [p for p in paths if Path(p).name.endswith(f"_{args.dataset}.json")]
-    return Path(paths[-1]) if paths else None
+    results_dir = Path(args.results_dir) if args.results_dir else RESULTS_DIR
+    matches: list[tuple[str, str, Path]] = []
+    for path in results_dir.glob("*.json"):
+        report = _read_report(path)
+        if report is None:
+            continue
+        if args.prompt and report["prompt"].get("name") != args.prompt:
+            continue
+        if args.dataset and report.get("dataset_name") != args.dataset:
+            continue
+        matches.append((str(report.get("timestamp", "")), path.name, path))
+    return max(matches)[2] if matches else None
+
+
+def _read_report(path: Path) -> dict[str, Any] | None:
+    """A report JSON object, or ``None`` for anything else in the dir."""
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(report, dict) or not isinstance(report.get("prompt"), dict):
+        return None
+    return report
 
 
 def _gold_fields(sample: dict[str, Any]) -> dict[str, Any]:
     """All human-gold reference fields on a sample (gold_* keys), minus status."""
     return {
-        k[len("gold_"):]: v
+        k[len("gold_") :]: v
         for k, v in sample.items()
         if k.startswith("gold_") and k != "gold_status"
     }
 
 
-def _review_records(report: dict[str, Any], model: str, samples_by_id: dict[str, dict]) -> list[dict]:
+def _review_records(
+    report: dict[str, Any], model: str, samples_by_id: dict[str, dict]
+) -> list[dict]:
     """Join one model's raw outputs with dataset word/context/gold + format scores."""
     records = []
     for r in report["models"][model]["samples"]:
         sid = r["sample_id"]
         s = samples_by_id.get(sid, {})
-        records.append({
-            "id": sid,
-            "subject": s.get("word") or s.get("target_word") or "",
-            "context": s.get("context", ""),
-            "llm": r.get("parsed_output"),
-            "raw": r.get("raw_output", ""),
-            "gold": _gold_fields(s),
-            "format": r.get("scores", {}),
-            "error": r.get("error"),
-        })
+        records.append(
+            {
+                "id": sid,
+                "subject": s.get("word") or s.get("target_word") or "",
+                "context": s.get("context", ""),
+                "llm": r.get("parsed_output"),
+                "raw": r.get("raw_output", ""),
+                "gold": _gold_fields(s),
+                "format": r.get("scores", {}),
+                "error": r.get("error"),
+            }
+        )
     return records
 
 
@@ -367,7 +477,10 @@ def cmd_review(args: argparse.Namespace) -> int:
         return 1
     model = args.model or next(iter(models))
     if model not in models:
-        print(f"Error: model {model!r} not in report (have: {list(models)})", file=sys.stderr)
+        print(
+            f"Error: model {model!r} not in report (have: {list(models)})",
+            file=sys.stderr,
+        )
         return 1
 
     dataset_name = report.get("dataset_name", "")
@@ -401,7 +514,9 @@ def cmd_review(args: argparse.Namespace) -> int:
         _emit_json({"header": header, "records": records})
         return 0
 
-    print(f"# Review: {header['prompt']}  |  {model}  |  {dataset_name}  ({len(records)} samples)")
+    print(
+        f"# Review: {header['prompt']}  |  {model}  |  {dataset_name}  ({len(records)} samples)"
+    )
     print(f"# source: {report_path}")
     print(f"# quality is YOUR judgement — format scores below are mechanical only\n")
     for i, rec in enumerate(records):
@@ -426,6 +541,13 @@ def _compact_num(v: Any) -> str:
     return str(v)
 
 
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be >= 1")
+    return parsed
+
+
 # -- main --
 
 
@@ -435,10 +557,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if argv and argv[0] == "corpus-build":
         from llm_eval.corpus_cli import main as corpus_main
+
         return corpus_main(argv[1:] or ["--help"])
 
     if argv and argv[0] == "gold-queue":
         from llm_eval.gold_queue_cli import main as gq_main
+
         return gq_main(argv[1:] or ["--help"])
 
     parser = argparse.ArgumentParser(
@@ -446,8 +570,8 @@ def main(argv: list[str] | None = None) -> int:
         description="KG LLM eval workbench CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="Delegated subcommands (own --help):\n"
-               "  corpus-build    Build private candidate corpora from user dump\n"
-               "  gold-queue      Sample candidates into human gold review queue\n",
+        "  corpus-build    Build private candidate corpora from user dump\n"
+        "  gold-queue      Sample candidates into human gold review queue\n",
     )
     sub = parser.add_subparsers(dest="command")
 
@@ -456,42 +580,91 @@ def main(argv: list[str] | None = None) -> int:
 
     # eval
     p_eval = sub.add_parser("eval", parents=[jp], help="Run LLM evaluation")
-    p_eval.add_argument("--prompt", required=True, help="Prompt name (e.g. translate_quick)")
-    p_eval.add_argument("--dataset", required=True, help="Dataset name (e.g. translate_quick_gold)")
+    p_eval.add_argument(
+        "--prompt", required=True, help="Prompt name (e.g. translate_quick)"
+    )
+    p_eval.add_argument(
+        "--dataset", required=True, help="Dataset name (e.g. translate_quick_gold)"
+    )
     p_eval.add_argument("--models", required=True, help="Comma-separated model list")
-    p_eval.add_argument("--version", default=None, help="Prompt version (default: latest)")
-    p_eval.add_argument("--limit", type=int, default=None, help="Max samples to evaluate")
-    p_eval.add_argument("--concurrency", type=int, default=5, help="Per-provider concurrency")
-    p_eval.add_argument("--temperature", type=float, default=0.3, help="LLM temperature")
-    p_eval.add_argument("--output-dir", default=None, help="Write report to directory")
-    p_eval.add_argument("--baseline", default=None, help="Path to baseline JSON for comparison")
+    p_eval.add_argument(
+        "--version", default=None, help="Prompt version (default: latest)"
+    )
+    p_eval.add_argument(
+        "--limit", type=_positive_int, default=None, help="Max samples to evaluate"
+    )
+    p_eval.add_argument(
+        "--concurrency",
+        type=_positive_int,
+        default=5,
+        help="Per-provider concurrency",
+    )
+    p_eval.add_argument(
+        "--temperature", type=float, default=0.3, help="LLM temperature"
+    )
+    p_eval.add_argument(
+        "--output-dir",
+        nargs="?",
+        const=RESULTS_DIR,
+        default=None,
+        help=f"Write report to directory (bare flag: {RESULTS_DIR}, "
+        "where `review` looks by default)",
+    )
+    p_eval.add_argument(
+        "--baseline", default=None, help="Path to baseline JSON for comparison"
+    )
     p_eval.set_defaults(func=cmd_eval)
 
     # prompts
-    p_prompts = sub.add_parser("prompts", parents=[jp], help="List / show prompt metadata")
-    p_prompts.add_argument("--name", default=None, help="Show detail for a specific prompt")
+    p_prompts = sub.add_parser(
+        "prompts", parents=[jp], help="List / show prompt metadata"
+    )
+    p_prompts.add_argument(
+        "--name", default=None, help="Show detail for a specific prompt"
+    )
     p_prompts.set_defaults(func=cmd_prompts)
 
     # datasets
-    p_datasets = sub.add_parser("datasets", parents=[jp], help="List / preview datasets")
-    p_datasets.add_argument("--name", default=None, help="Show detail for a specific dataset")
+    p_datasets = sub.add_parser(
+        "datasets", parents=[jp], help="List / preview datasets"
+    )
+    p_datasets.add_argument(
+        "--name", default=None, help="Show detail for a specific dataset"
+    )
     p_datasets.set_defaults(func=cmd_datasets)
 
     # providers
-    p_providers = sub.add_parser("providers", parents=[jp], help="List available LLM providers")
+    p_providers = sub.add_parser(
+        "providers", parents=[jp], help="List available LLM providers"
+    )
     p_providers.set_defaults(func=cmd_providers)
 
     # review — agent-readable join of model output + gold for manual quality judging
     p_review = sub.add_parser(
-        "review", parents=[jp],
+        "review",
+        parents=[jp],
         help="Emit reviewable model-output vs gold join for agent quality review",
     )
-    p_review.add_argument("--results", default=None, help="Report JSON path (default: newest match)")
-    p_review.add_argument("--prompt", default=None, help="Filter newest report by prompt name")
-    p_review.add_argument("--dataset", default=None, help="Filter newest report by dataset name")
-    p_review.add_argument("--results-dir", default=None, help="Dir to search (default: lab/llm_eval/results)")
-    p_review.add_argument("--model", default=None, help="Model in report (default: first)")
-    p_review.add_argument("--range", default=None, help="Slice samples START:END (for chunked review)")
+    p_review.add_argument(
+        "--results", default=None, help="Report JSON path (default: newest match)"
+    )
+    p_review.add_argument(
+        "--prompt", default=None, help="Filter newest report by prompt name"
+    )
+    p_review.add_argument(
+        "--dataset", default=None, help="Filter newest report by dataset name"
+    )
+    p_review.add_argument(
+        "--results-dir",
+        default=None,
+        help=f"Dir to search (default: {RESULTS_DIR})",
+    )
+    p_review.add_argument(
+        "--model", default=None, help="Model in report (default: first)"
+    )
+    p_review.add_argument(
+        "--range", default=None, help="Slice samples START:END (for chunked review)"
+    )
     p_review.set_defaults(func=cmd_review)
 
     args = parser.parse_args(argv)
