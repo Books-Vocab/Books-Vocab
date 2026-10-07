@@ -83,6 +83,9 @@ def _workspace(tmp_path: Path, episodes: int) -> Path:
     (ws / "scripts").mkdir(parents=True)
     for n in range(1, episodes + 1):
         (ws / "scripts" / f"ep_{n}_script.md").write_text("Speaker1: hi\n")
+    # Timeouts, not the copyright line (#2094): public_domain is gate-exempt,
+    # so the launcher under test is actually reached.
+    (ws / ".rights").write_text("public_domain")
     return ws
 
 
@@ -206,6 +209,7 @@ def test_publish_timeout_lets_upload_script_clean_up(tmp_path, monkeypatch):
     monkeypatch.setenv("PODCAST_BUCKET", "kg-test-bucket")
     ws = tmp_path / "series_x"
     ws.mkdir()
+    (ws / ".rights").write_text("public_domain")  # gate-exempt; see _workspace
     log = _FakeLog()
 
     t0 = time.monotonic()

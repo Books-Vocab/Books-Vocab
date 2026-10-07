@@ -1306,6 +1306,14 @@ body.sidebar-open .sidebar-backdrop {
 .radio-title { font-size: 12px; color: var(--ink); font-family: var(--mono); }
 .radio-desc { font-size: 10px; color: var(--sub); }
 
+/* ── Rights (copyright status; frozen into <ws>/.rights at creation — #2094) ── */
+.rights-fields {
+  border: 1px solid var(--borderBase); border-radius: 4px;
+  margin: 0; padding: 12px; background: var(--surface);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.rights-fields legend { padding: 0 4px; }
+
 /* ── Saga badge on sidebar workspace cards ── */
 .ws-saga-badge {
   flex: none; font-size: 9px; font-family: var(--mono);

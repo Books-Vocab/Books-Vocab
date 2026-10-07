@@ -72,6 +72,7 @@ from ebooklib import epub
 sys.stdout.reconfigure(line_buffering=True)
 
 import archetypes
+import rights_gate
 import saga
 import tts_tags
 from agent_profiles import AGENT_PROFILES, PROFILE_DEFAULT_MODEL
@@ -520,6 +521,66 @@ def inject_tts_palette(prompt: str, workspace: Path) -> str:
         .replace("{tts_engine}", tts_tags.engine_name(fam))
         .replace("{tts_palette}", tts_tags.render_palette_md(fam))
     )
+
+
+def _verbatim_thresholds(workspace: Path) -> rights_gate.VerbatimThresholds:
+    """Verbatim-gate thresholds from the workspace's workflow ``qa_thresholds``."""
+    workflow = load_workflow_definition(resolve_workspace_workflow(workspace, None))
+    return rights_gate.verbatim_thresholds(workflow)
+
+
+def inject_rights_policy(prompt: str, workspace: Path) -> str:
+    """Fill {rights_policy}/{strategy_options} from the frozen rights sidecar.
+
+    Only a public-domain book is ever offered the full_text strategy; every
+    other class (including a missing sidecar → copyrighted) gets the commentary
+    policy with the gate's real thresholds. A corrupt sidecar raises — never
+    guessed into a weaker class.
+    """
+    return rights_gate.render_prompt(
+        prompt, rights_gate.read_rights(workspace), _verbatim_thresholds(workspace)
+    )
+
+
+def _verbatim_gate(
+    workspace: Path,
+    log: "PipelineLog",
+    *,
+    stage: str,
+    only_episode: int | None = None,
+) -> bool:
+    """Code gate before synthesize and publish (#2094). True = may proceed.
+
+    Lives inside the stage functions, so every entry — auto-resume, --skip-to,
+    --only-stage, --force, --ignore-gates — passes through it. Public-domain
+    books are exempt; everything else is measured against source/chapters and
+    fails closed on missing source/text, a corrupt sidecar or bad thresholds.
+    The verdict is written to verbatim_qa.json for the producer.
+    """
+    report = rights_gate.evaluate_gate(
+        workspace,
+        stage=stage,
+        only_episode=only_episode,
+        load_thresholds=lambda: _verbatim_thresholds(workspace),
+    )
+    rights_gate.write_report(workspace / rights_gate.REPORT_FILE, report)
+    if report.blocked:
+        log.error(
+            f"{stage}: verbatim gate BLOCKED (rights={report.rights}) — "
+            f"{report.summary()}. Rewrite the flagged passages as commentary/"
+            f"paraphrase (see {rights_gate.REPORT_FILE}); this book is not public "
+            f"domain."
+        )
+        return False
+    if report.rights == rights_gate.PUBLIC_DOMAIN:
+        log.event(f"{stage}: rights=public_domain — verbatim gate exempt")
+        return True
+    longest = max((t.longest_run for t in report.texts), default=0)
+    log.event(
+        f"{stage}: verbatim gate passed (rights={report.rights}, "
+        f"{len(report.texts)} text(s), longest run {longest} words)"
+    )
+    return True
 
 
 def is_saga(workspace: Path) -> bool:
@@ -1351,6 +1412,7 @@ def run_claude(
     inject_tts: bool = False,
 ) -> bool:
     prompt = prompt.replace("{saga_context}", build_saga_context(workspace))
+    prompt = inject_rights_policy(prompt, workspace)
     prompt = prompt.replace("{workspace}", str(workspace))
     prompt = prompt.replace(
         "{podcast_root}", str(ROOT)
@@ -1390,6 +1452,7 @@ def run_claude(
 def run_scriptwriter(workspace: Path, ep_num: int) -> tuple[int, bool]:
     prompt_template = _prompt("scriptwriter", read_mode(workspace))
     prompt = prompt_template.replace("{saga_context}", build_saga_context(workspace))
+    prompt = inject_rights_policy(prompt, workspace)
     prompt = prompt.replace("{workspace}", str(workspace))
     prompt = prompt.replace("{N}", str(ep_num))
     prompt = inject_tts_palette(prompt, workspace)
@@ -1430,6 +1493,7 @@ def run_scriptwriter(workspace: Path, ep_num: int) -> tuple[int, bool]:
 def run_script_reviewer(workspace: Path, ep_num: int) -> tuple[int, bool]:
     prompt_template = _prompt("script_review", read_mode(workspace))
     prompt = prompt_template.replace("{saga_context}", build_saga_context(workspace))
+    prompt = inject_rights_policy(prompt, workspace)
     prompt = prompt.replace("{workspace}", str(workspace))
     prompt = prompt.replace("{N}", str(ep_num))
     prompt = inject_tts_palette(prompt, workspace)
@@ -1668,14 +1732,42 @@ def _validator_result(workspace: Path, stage: str) -> dict[str, object] | None:
         rewrite_marker = stage_thresholds.get("rewrite_marker", "REWRITE_NEEDED")
         max_fail_count = int(stage_thresholds.get("max_fail_count", 2))
         fail_count = text.count("FAIL")
+        try:
+            rights = rights_gate.read_rights(workspace)
+        except rights_gate.RightsError:
+            rights = "unreadable"
+        full_text = (
+            []
+            if rights == rights_gate.PUBLIC_DOMAIN
+            else rights_gate.full_text_strategy_plans(workspace)
+        )
         return {
             "status": "pass"
-            if rewrite_marker not in text and fail_count <= max_fail_count
+            if rewrite_marker not in text
+            and fail_count <= max_fail_count
+            and not full_text
+            and rights != "unreadable"
             else "fail",
             "rewrite_marker": rewrite_marker,
             "rewrite_needed": rewrite_marker in text,
             "fail_count": fail_count,
             "max_fail_count": max_fail_count,
+            "rights": rights,
+            "full_text_strategy": full_text,
+        }
+    if stage in ("synthesize", "publish"):
+        f = workspace / rights_gate.REPORT_FILE
+        try:
+            report = json.loads(f.read_text())
+        except (OSError, json.JSONDecodeError):
+            return {"status": "missing", "artifact": rights_gate.REPORT_FILE}
+        if report.get("stage") != stage:
+            return {"status": "missing", "artifact": rights_gate.REPORT_FILE}
+        return {
+            "status": "fail" if report.get("blocked") else "pass",
+            "artifact": rights_gate.REPORT_FILE,
+            "rights": report.get("rights"),
+            "checked_at": report.get("checked_at"),
         }
     if stage == "series-polish":
         f = workspace / "plan" / "series_polish.md"
@@ -1970,6 +2062,24 @@ def stage_plan_review(workspace: Path, log: PipelineLog) -> bool:
             "Review saved to plan/review.md — read it, fix issues, then resume with --skip-to plan-review"
         )
         return False
+
+    # Deterministic copyright check on the FINAL plan files (after any reviewer
+    # auto-fix): only a public-domain book may plan a full-text reading.
+    try:
+        rights = rights_gate.read_rights(workspace)
+    except rights_gate.RightsError as e:
+        log.error(f"Plan review: {e}")
+        return False
+    if rights != rights_gate.PUBLIC_DOMAIN:
+        full_text = rights_gate.full_text_strategy_plans(workspace)
+        if full_text:
+            log.error(
+                f"Plan review: Strategy full_text is forbidden for a {rights} book "
+                f"({', '.join(full_text)}) — re-plan those episodes as "
+                f"{rights_gate.strategy_options(rights)}, then resume with "
+                f"--skip-to plan-review"
+            )
+            return False
 
     log.event("Plan review passed")
     return True
@@ -2321,6 +2431,13 @@ def stage_synthesize(
         scripts_dir / f"ep_{only_episode}_script.md" if only_episode else scripts_dir
     )
 
+    # Copyright line (#2094): never voice an over-threshold verbatim script of a
+    # non-public-domain book. Before any TTS subprocess spends money.
+    if not _verbatim_gate(
+        workspace, log, stage="synthesize", only_episode=only_episode
+    ):
+        return False
+
     # Restore the frozen TTS model here — the single point every spawn path
     # funnels through, mirroring how every stage reads .mode via read_mode().
     env = _UNBUF_ENV
@@ -2510,7 +2627,14 @@ def stage_publish(workspace: Path, log: PipelineLog, *, max_retries: int = 3) ->
     Loud-fails (returns False, never crashes) when PODCAST_BUCKET / AWS creds
     are absent from the environment, or when the series can't be confirmed in
     the index after max_retries upload+verify attempts.
+
+    The verbatim gate re-runs here over every script AND subtitle that would be
+    uploaded, so ``--skip-to publish`` cannot ship audio that synthesize would
+    have refused (or that was synthesized before the gate existed).
     """
+    if not _verbatim_gate(workspace, log, stage="publish"):
+        return False
+
     if not os.getenv("PODCAST_BUCKET"):
         log.error(
             "publish: PODCAST_BUCKET not set — export it + AWS creds before "
@@ -2586,6 +2710,14 @@ def show_status(workspace: Path) -> None:
     if meta_file.exists():
         for line in meta_file.read_text().splitlines()[:5]:
             print(f"  {line}")
+    try:
+        rights = rights_gate.read_rights(workspace)
+    except rights_gate.RightsError as exc:
+        rights = f"UNREADABLE ({exc})"
+    sidecar = (workspace / rights_gate.RIGHTS_SIDECAR).is_file()
+    print(
+        f"  Rights: {rights}{'' if sidecar else ' (no sidecar — fail-closed default)'}"
+    )
 
     # Stage markers
     print(f"\n  Stage Progress:")
@@ -2811,6 +2943,14 @@ examples:
         "synthesize.py env default.",
     )
     parser.add_argument(
+        "--rights",
+        choices=list(rights_gate.RIGHTS_VALUES),
+        help="Copyright status of the book, frozen at workspace creation (written "
+        "to .rights). Default and missing sidecar = copyrighted (fail closed). "
+        "Only public_domain may use the full_text strategy or skip the verbatim "
+        "gate before synthesize/publish. Resume cannot change it.",
+    )
+    parser.add_argument(
         "--agent-profile",
         choices=list(AGENT_PROFILES),
         help="Stage 1-10 coding-agent billing/profile. claude uses the normal "
@@ -2864,6 +3004,9 @@ examples:
     # multiple targets; everything else takes exactly one (EPUB or workspace dir).
     saga_epubs: list[Path] | None = None
     epub_path = workspace = None
+    # True only when THIS invocation creates the workspace — the one moment the
+    # rights sidecar may be written from --rights.
+    created_now = False
     if args.saga is not None:
         if args.mode and args.mode != "saga":
             parser.error(f"--saga implies --mode saga; got --mode {args.mode}")
@@ -2897,6 +3040,7 @@ examples:
                 )
                 books.append((meta, chapters))
             workspace = setup_saga_workspace(args.saga, books)
+            created_now = True
             print(f"  Workspace: {workspace}")
         else:
             print(f"Resuming saga: {args.saga} → {workspace}")
@@ -2931,8 +3075,22 @@ examples:
             print(f"  Author:   {metadata['author']}")
             print(f"  Chapters: {metadata['total_raw_chapters']}")
             print(f"  Chars:    {metadata['total_raw_chars']:,}")
+            created_now = not (
+                WORKSPACES_DIR
+                / book_workspace_dirname(metadata["title"], metadata["author"])
+            ).exists()
             workspace = setup_workspace(metadata, chapters)
             print(f"  Workspace: {workspace}")
+
+    # Rights are frozen at creation; a resume can never change them, and a
+    # pre-rights workspace is pinned to copyrighted (fail closed).
+    try:
+        rights = rights_gate.resolve_workspace_rights(
+            workspace, args.rights, created=created_now
+        )
+    except rights_gate.RightsError as e:
+        parser.error(str(e))
+    print(f"Rights: {rights}")
 
     saved_agent_profile, saved_agent_model = read_agent_sidecars(workspace)
     if not args.agent_profile and not args.agent_model and saved_agent_profile:

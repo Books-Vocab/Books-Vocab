@@ -25,7 +25,8 @@
     "series-polish": "v1",
     "script-review": "v1",
     "tts-prep": "v1",
-    "audio-qa": "v1"
+    "audio-qa": "v1",
+    "verbatim": "v1"
   },
   "qa_thresholds": {
     "plan-review": {
@@ -44,6 +45,12 @@
     },
     "audio-qa": {
       "strict": false
+    },
+    "verbatim": {
+      "min_run_words": 12,
+      "max_run_words": 30,
+      "max_copied_share": 0.03,
+      "gap_words": 2
     }
   },
   "tts_policy": {

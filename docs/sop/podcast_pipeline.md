@@ -6,7 +6,7 @@ scope:
   - lab/podcast/
   - ops/podcast_upload.sh
   - .claude/skills/podcast-*/
-verified_against: 2d9f6fdbebca9fe0f2aa9a790f1498dded80050d
+verified_against: 5e537e46b39965405fff603711aa5f26d94021c6
 -->
 <!--
   tier 慣例:tier=sop 用 update_trigger=sop-change(對齊其他 sop)。
@@ -93,17 +93,51 @@ Fresh workspace 預設 `v1`。`--workflow-version v1|v2` 只在建立或 legacy 
 | `--parallel N` | scriptwrite + script-review 並發度(預設 3) |
 | `--workflow-version V` | 指定版本化 workflow contract(`v1`/`v2`)。新 workspace 預設 `v1`;resume 讀 `workflow_manifest.json`,衝突版本報錯 |
 | `--tts-model M` | 凍結該 workspace 的 TTS model(`gemini-3.1-flash-tts-preview` / `gemini-2.5-pro-tts` / `gemini-2.5-flash-tts`),寫入 `.tts_model` sidecar,synthesize stage 讀回。resume 以 sidecar 為準;衝突的 `--tts-model` 報錯。省略 = 用 `synthesize.py` 的 env 預設。詳見 §3 |
-| `--force` | 繞過前置 marker 檢查(僅在手動驗證 artifacts 完整時使用) |
-| `--ignore-gates` | 無視兩道人工核准 gate,一路跑到底(還原舊全自動) |
+| `--rights R` | 書的版權狀態 `public_domain` / `licensed` / `copyrighted`,建立 workspace 時凍結進 `.rights` sidecar;省略 = `copyrighted`。resume 不可改(衝突報錯)。詳見 §1「版權線」 |
+| `--force` | 繞過前置 marker 檢查(僅在手動驗證 artifacts 完整時使用);**不繞過**版權 verbatim gate |
+| `--ignore-gates` | 無視兩道人工核准 gate,一路跑到底(還原舊全自動);**不繞過**版權 verbatim gate |
 
-### 四個 QA gate
+### QA gate
 
 | stage | gate 條件 | 判讀檔 |
 |---|---|---|
-| plan-review | 含 `REWRITE_NEEDED` 或 `FAIL` 計數 >2 → 失敗 | `plan/review.md` |
+| plan-review | 含 `REWRITE_NEEDED` 或 `FAIL` 計數 >2 → 失敗;**非 `public_domain` 的書任一集 `**Strategy**` 為 full text → 失敗**(code validator,在 reviewer 之後跑,檢查最終 plan 檔) | `plan/review.md` + `plan/episodes/ep_*.md` |
 | script-review | 任一集 `ep_N_review.md` 含 `REWRITE_NEEDED` → 失敗 | `scripts/ep_N_review.md` |
 | series-polish | 含 `STRUCTURAL_ISSUES_NEED_RESCRIPT` → 失敗;guard 每個 script 仍以 `END_OF_SCRIPT` 結尾(polish 不可剝 sentinel) | `plan/series_polish.md` |
 | tts-prep | `plan/tts_prep.md` 含 `READY_FOR_TTS` 且不含 `BLOCKED` | `plan/tts_prep.md` |
+| synthesize / publish | 版權 verbatim gate(見下節):非 `public_domain` 且超過門檻 → 失敗,不啟動任何 subprocess | `verbatim_qa.json` |
+
+### 版權線(rights sidecar + verbatim gate,#2094)
+
+立場:轉化/評論型內容可以;**硬線是非公版書絕不產生 full_text / 有聲書式逐字朗讀**。唯一 code owner = `lab/podcast/rights_gate.py`(stdlib-only,pipeline、monitor、報告共用同一份實作)。
+
+**Rights sidecar `<ws>/.rights`** ∈ `public_domain | licensed | copyrighted`:
+- 只在**建立 workspace 的那次執行**寫入:CLI `--rights`,或 dashboard NEW PODCAST 的 RIGHTS 單選(預設 `copyrighted`,server 一律帶顯式 `--rights`)。
+- **缺 sidecar = `copyrighted`(fail closed)**;內容不是三值之一 → 報錯,絕不猜成較寬鬆的類別。
+- resume 不可改:已有 sidecar 而 `--rights` 不同 → 報錯;rights 欄位之前就存在的舊 workspace(無 sidecar)釘死為 `copyrighted` 並補寫 sidecar,`--rights public_domain` 會被拒。確認是公版書後要改類,只能**人工**改檔(`echo public_domain > <ws>/.rights`),這是刻意留下的人為、可稽核動作。
+- `licensed` 與 `copyrighted` 同樣受限(不給 full_text、同一組門檻);只有 `public_domain` 豁免。
+
+**Prompt**:`{rights_policy}`(analyst / architect / plan_review / scriptwriter / script_review)與 `{strategy_options}`(architect / plan_review)由 `pipeline.inject_rights_policy` 在 `run_claude` / `run_scriptwriter` / `run_script_reviewer` 注入。非公版書的渲染結果完全不含 `full_text`,策略只剩 `key_passages / summary_plus_quotes`,並寫明 gate 的實際門檻;公版書才提供 `full_text`。`prompts/` 與 `workflow_versions/v1|v2/prompts/` 三份保持一致(改 prompt 會改 prompt fingerprint → 有 provenance 的 workspace 下次 resume 會從該 stage 重跑,這是 provenance 設計本意)。
+
+**Verbatim gate(synthesize 與 publish 之前)**:放在 `stage_synthesize` / `stage_publish` 函式內第一步,所以 auto-resume、`--skip-to`、`--only-stage`、`--force`、`--ignore-gates` 全部都會經過;dashboard `POST /upload` 也跑同一個 `rights_gate.evaluate_gate`(擋下回 **422**)。
+- synthesize:量要被合成的 `scripts/ep_N_script.md`(`--only-episode` 只量該集)。
+- publish:量**所有**會被上傳的 script **與** SRT(SRT 是音檔的轉寫 → 事後改 script.md 洗不掉已合成的逐字音檔);有音檔卻沒有任何 script/SRT 可量的集數 → 擋。
+- fail closed:缺 `source/chapters/ch_*.md`、沒有可量的文本、sidecar 損壞、門檻設定非法 → 一律擋。
+- 量法:兩邊都正規化(大小寫、重音、標點、撇號;移除 `**Name:**` speaker label、`[...]` audio tag / SRT speaker tag、HTML 註解;CJK 一字一 token)→ 6-word shingle 找完全相同的連續片段 → 同一段原文、間隔 ≤ `gap_words` 的片段串成一個 run(吸收 OCR 黏字、插話、兩位主持人接力念)。`longest_run` = 最長 run 字數;`copied_share` = 落在 ≥ `min_run_words` 的 run 內的字數 / 該文本總字數。**逐集**判定。
+- 結果寫 `<ws>/verbatim_qa.json`(每個文本的 words / longest_run / copied_words / share / violations / 最長片段開頭摘錄),stage provenance 的 `validator_result` 也記錄 gate 結果。被擋時把標出的段落改寫成評論/轉述,再 `--skip-to synthesize`(或 publish)。
+
+**門檻**:`workflow_versions/<v>/workflow.json` → `qa_thresholds.verbatim`(缺此段時用 `rights_gate.VerbatimThresholds` 預設,兩者由測試鎖定一致)。預設刻意保守,製作人可調:
+
+| key | 預設 | 意義 / 理由 |
+|---|---|---|
+| `min_run_words` | 12 | 短於此的相同片段不算抄錄(擋掉成語、書名、巧合短語);與 #2094 稽核口徑(≥12 個連續相同字)一致 |
+| `max_run_words` | 30 | 單一逐字 run 上限。一兩句的評論引用 ≈ 15–30 字;issue 驗收的 40 字抄錄必擋 |
+| `max_copied_share` | 0.03 | 每集落在逐字 run 內的字數比例上限(3,500 字的集 ≈ 105 字 ≈ 5–6 句短引用) |
+| `gap_words` | 2 | run 可容忍的插入/黏字數,防止用一個 tag 或一句插話把長段朗讀切成兩段規避 |
+
+**既有 workspace 報告(唯讀)**:`uv run rights_gate.py report workspaces/ --json out.json --md out.md` —— 列出每個 workspace 的 rights(sidecar 或預設)、是否已 publish、音檔數、full_text plan、每集 longest run / share、publish gate 判定;不寫入任何 workspace。
+
+**已知缺口**:直接在 shell 跑 `ops/podcast_upload.sh <ws>` 不經過此 gate(pipeline publish stage 與 dashboard upload 都已擋);在該腳本加同一個檢查屬 ops 範圍的後續工作。
 
 ---
 
@@ -246,6 +280,8 @@ Vertex `gemini-2.5-pro-tts` 已知 bug(finishReason=OTHER，Google WONTFIX #922)
 
 ```
 lab/podcast/workspaces/<slug>_<hash>/
+  .rights                               ← public_domain|licensed|copyrighted,建立時凍結;缺 = copyrighted(§1 版權線)
+  verbatim_qa.json                      ← 最近一次 synthesize/publish verbatim gate 判定
   workflow_manifest.json                ← workflow 版本 / prompt fingerprints / model / validators / stage contracts
   stage_provenance/<stage>.json         ← 每階段 input/output artifact hash + prompt/model/validator provenance
   plan/overview.md                  ← Voice Mapping(host SoT)
@@ -489,14 +525,14 @@ Endpoints:
 - `GET /api/workspace/{ws}/episode/{ep}/subtitle` — SRT 純文字
 
 **Action**(製作:spawn 子程序回 job_id):
-- `POST /api/workspace/{ws}/upload` — `bash ops/podcast_upload.sh <ws>`;422 if 無 ep_*.mp3
+- `POST /api/workspace/{ws}/upload` — `bash ops/podcast_upload.sh <ws>`;422 if 無 ep_*.mp3,或版權 verbatim gate 擋下(與 publish stage 同一判定,寫 `verbatim_qa.json`;busy 檢查在 gate 之前)
 - `DELETE /api/workspace/{ws}?confirm=<ws>` — 本地砍 workspace,confirm 字串必須等於 ws_name
 - `POST /api/workspace/{ws}/rerun?stage=<S>&episode=<N>&drop_marker=true` — `uv run pipeline.py --only-stage`,預設先砍 `.stage_<S>_done`
 - `POST /api/workspace/{ws}/approve?gate=plan|script` — 寫 `.plan_approved`/`.script_approved` + spawn `pipeline.py <ws>` 續跑下一相;gate `pending`(前一相未完成)回 409,`bogus` 回 400
 - `POST /api/workspace/{ws}/resume` — spawn `pipeline.py <ws>`(flagless auto-resume,從第一個沒 marker 的階段往後跑到下一道 gate / 完成);前端情境式推進鈕在「非 gate、有未完工」時呼叫(rerun=單階、approve=寫標記再續、resume=純續跑)
 - **per-workspace 併發守衛**:`approve` / `resume` / `upload` / `rerun` 四個 spawn endpoint 在開子行程前皆檢查 `_active_job_for_ws(ws_name)`(配對 route 同 sidebar:`metadata.workspace` 或 `<ws>/.pipeline_job_id` sidecar)。同一 workspace 已有 running job → 一律回 **409**,不 spawn、不寫 gate marker、不砍 stage marker。global 上限 `MAX_ACTIVE_JOBS`(預設 4)獨立守不同 workspace 的合計上限
-- `POST /api/pipeline/start` (multipart `epub` + `parallel` 1-10 + 選填 `tts_model`) — 存到 `monitor/.uploads/`(預設 cap 200MB)+ spawn 全流程(預設停在計畫 gate 等核准)。`tts_model` 經 server 端 `ALLOWED_TTS_MODELS`(`tts_config.py`)白名單驗證,非法值回 **422**;合法值 append `--tts-model`(寫 `.tts_model` sidecar)
-- `POST /api/pipeline/start-saga` (multipart `epubs[]` ≥2 + `title` + `spoiler_mode` + `parallel` + 選填 `tts_model`) — saga(多書連續 feed);`tts_model` 同上驗證/凍結。注意 `approve`/`resume` 續跑無需再帶 `tts_model`——synth 階段一律從 `.tts_model` sidecar 還原
+- `POST /api/pipeline/start` (multipart `epub` + `parallel` 1-10 + 選填 `tts_model` + `rights`) — 存到 `monitor/.uploads/`(預設 cap 200MB)+ spawn 全流程(預設停在計畫 gate 等核准)。`tts_model` 經 server 端 `ALLOWED_TTS_MODELS`(`tts_config.py`)白名單驗證,非法值回 **422**;合法值 append `--tts-model`(寫 `.tts_model` sidecar)。`rights` ∈ `ALLOWED_RIGHTS`(= `rights_gate.RIGHTS_VALUES`),預設 `copyrighted`,一律 append `--rights`;非法值 **422**
+- `POST /api/pipeline/start-saga` (multipart `epubs[]` ≥2 + `title` + `spoiler_mode` + `parallel` + 選填 `tts_model` + `rights`) — saga(多書連續 feed);`tts_model` / `rights` 同上驗證/凍結(整個 saga 一個 rights 值)。注意 `approve`/`resume` 續跑無需再帶 `tts_model` / `rights`——synth 階段一律從 sidecar 還原
 
 **Jobs**:
 - `GET /api/jobs?limit=N`、`GET /api/jobs/{id}?log_bytes=N`、`POST /api/jobs/{id}/kill`
@@ -553,6 +589,6 @@ Endpoints:
 - **TTS MODEL**:下拉(空=env 預設 `gemini-2.5-flash-tts` / 三個白名單 model);選定後腳本即依該 family 的 palette 生成(family-parametric,見 §3)。submit 時隨 `tts_model` 送出
 - **AGENT PROFILE / AGENT MODEL**:profile 下拉(目前只有 `claude`)+ 可空 model override。submit 時隨 `agent_profile`/`agent_model` 送出;pipeline 寫 `.agent_*` sidecar,後續 approval/resume job 讀回。
 
-(spoiler mode 仍只在 NEW PODCAST modal 設定,不鏡射進此面板——避免同一旋鈕兩處可調。)
+(spoiler mode 仍只在 NEW PODCAST modal 設定,不鏡射進此面板——避免同一旋鈕兩處可調。RIGHTS 單選同理只在 NEW PODCAST modal:它是 per-book 且建立時凍結,每次開 modal 都重設為 `copyrighted`,不記住上一本書的選擇。)
 
 KPI 之外的數字會即時更新;cost 表用 polling(events.jsonl tail 完一輪後 server 端重算,前端每 4s fetch)。**pipeline 未開 `PODCAST_VERBOSE=1` 時**,events.jsonl 不存在 → cost 表顯示「No cost data yet」+ warning bar 提示開 flag。

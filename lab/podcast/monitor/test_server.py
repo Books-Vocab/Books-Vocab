@@ -86,9 +86,14 @@ def test_start_saga_happy_path_argv_in_order(client, spawn):
     assert argv[3].endswith("_a.epub")
     assert argv[4].endswith("_b.epub")
     assert argv[5:] == [
-        "--saga", "My Saga",
-        "--spoiler-mode", "readalong",
-        "--parallel", "5",
+        "--saga",
+        "My Saga",
+        "--spoiler-mode",
+        "readalong",
+        "--parallel",
+        "5",
+        "--rights",
+        "copyrighted",  # #2094: fail-closed default is explicit
     ]
     # --saga implies saga mode; --mode must NOT be passed
     assert "--mode" not in argv
@@ -214,8 +219,10 @@ def test_start_pipeline_agent_profile_metadata_and_env(client, spawn):
     )
     assert resp.status_code == 200, resp.text
     assert spawn.argv[-4:] == [
-        "--agent-profile", "claude",
-        "--agent-model", "sonnet",
+        "--agent-profile",
+        "claude",
+        "--agent-model",
+        "sonnet",
     ]
     assert spawn.kwargs["metadata"]["agent_profile"] == "claude"
     assert spawn.kwargs["metadata"]["agent_model"] == "sonnet"
@@ -237,7 +244,11 @@ def test_start_pipeline_rejects_unknown_agent_profile(client, spawn):
 def test_start_saga_valid_tts_model_appends_flag(client, spawn):
     resp = client.post(
         "/api/pipeline/start-saga",
-        data={"title": "Saga", "spoiler_mode": "readalong", "tts_model": "gemini-2.5-flash-tts"},
+        data={
+            "title": "Saga",
+            "spoiler_mode": "readalong",
+            "tts_model": "gemini-2.5-flash-tts",
+        },
         files=[("epubs", _epub("a.epub")), ("epubs", _epub("b.epub"))],
     )
     assert resp.status_code == 200, resp.text
@@ -256,6 +267,148 @@ def test_start_saga_rejects_unknown_tts_model(client, spawn):
     assert list(server.UPLOAD_STAGING.glob("*")) == []
 
 
+# ── rights field (start + start-saga) — #2094 ──────────────────────────────
+
+
+def _rights_flag(argv: list[str]) -> str:
+    i = argv.index("--rights")
+    return argv[i + 1]
+
+
+def test_start_pipeline_rights_default_is_explicit_copyrighted(client, spawn):
+    resp = client.post(
+        "/api/pipeline/start",
+        data={"parallel": "3"},
+        files={"epub": _epub("book.epub")},
+    )
+    assert resp.status_code == 200, resp.text
+    assert _rights_flag(spawn.argv) == "copyrighted"
+    assert spawn.kwargs["metadata"]["rights"] == "copyrighted"
+
+
+def test_start_pipeline_public_domain_rights_flag(client, spawn):
+    resp = client.post(
+        "/api/pipeline/start",
+        data={"parallel": "3", "rights": "public_domain"},
+        files={"epub": _epub("book.epub")},
+    )
+    assert resp.status_code == 200, resp.text
+    assert _rights_flag(spawn.argv) == "public_domain"
+    assert spawn.kwargs["metadata"]["rights"] == "public_domain"
+
+
+def test_start_pipeline_rejects_unknown_rights(client, spawn):
+    resp = client.post(
+        "/api/pipeline/start",
+        data={"parallel": "3", "rights": "probably_fine"},
+        files={"epub": _epub("book.epub")},
+    )
+    assert resp.status_code == 422
+    assert spawn.argv is None
+    assert list(server.UPLOAD_STAGING.glob("*")) == []
+
+
+def test_start_saga_rights_flag(client, spawn):
+    resp = client.post(
+        "/api/pipeline/start-saga",
+        data={"title": "Saga", "spoiler_mode": "readalong", "rights": "licensed"},
+        files=[("epubs", _epub("a.epub")), ("epubs", _epub("b.epub"))],
+    )
+    assert resp.status_code == 200, resp.text
+    assert _rights_flag(spawn.argv) == "licensed"
+    assert spawn.kwargs["metadata"]["rights"] == "licensed"
+
+
+def test_start_saga_rejects_unknown_rights(client, spawn):
+    resp = client.post(
+        "/api/pipeline/start-saga",
+        data={"title": "Saga", "spoiler_mode": "readalong", "rights": "mine"},
+        files=[("epubs", _epub("a.epub")), ("epubs", _epub("b.epub"))],
+    )
+    assert resp.status_code == 422
+    assert spawn.argv is None
+    assert list(server.UPLOAD_STAGING.glob("*")) == []
+
+
+def test_rights_allowlist_parity_frontend_backend():
+    """Every rights value is selectable in the NEW PODCAST modal, the modal's
+    default is the fail-closed one, and the server mirrors the gate module."""
+    import rights_gate
+
+    assert tuple(server.ALLOWED_RIGHTS) == rights_gate.RIGHTS_VALUES
+    static = Path(__file__).parent / "static"
+    index_html = re.sub(
+        r"<!--.*?-->", "", (static / "index.html").read_text(), flags=re.S
+    )
+    radios = re.findall(r'<input\b[^>]*\bname="rights"[^>]*>', index_html)
+    values = {re.search(r'value="([^"]+)"', r).group(1) for r in radios}
+    assert values == set(rights_gate.RIGHTS_VALUES)
+    (checked,) = [r for r in radios if "checked" in r]
+    assert 'value="copyrighted"' in checked
+    assert 'fd.append("rights"' in (static / "app.js").read_text()
+
+
+# ── dashboard upload honours the publish verbatim gate — #2094 ─────────────
+
+_BOOK = (
+    "The lighthouse keeper rose before dawn on every morning of his long working "
+    "life and he kept a ledger in which he recorded the colour of the sea the "
+    "direction of the wind and the name of every vessel that slipped through the "
+    "narrow channel beneath the cliffs while nobody had asked him to keep it at all"
+)
+
+
+@pytest.fixture
+def upload_ws(tmp_path, monkeypatch):
+    root = tmp_path / "workspaces"
+    monkeypatch.setattr(server, "WORKSPACES_DIR", root)
+
+    def make(rights: str, *, copy: bool) -> Path:
+        ws = root / "ledger_book_0123abcd"
+        (ws / "plan").mkdir(parents=True)
+        (ws / "scripts").mkdir()
+        (ws / "source" / "chapters").mkdir(parents=True)
+        (ws / "plan" / "overview.md").write_text("# Ledger\n")
+        (ws / "source" / "chapters" / "ch_01.md").write_text(_BOOK)
+        words = _BOOK.split()
+        body = " ".join(words[:45]) if copy else "He kept notes about ships, basically."
+        filler = " ".join(f"riff{i}" for i in range(600))
+        (ws / "scripts" / "ep_1_script.md").write_text(f"**Ava:** {body} {filler}\n")
+        (ws / "scripts" / "ep_1_flash.mp3").write_bytes(b"ID3")
+        (ws / ".rights").write_text(rights)
+        return ws
+
+    return make
+
+
+def test_upload_blocks_copyrighted_verbatim_series(client, spawn, upload_ws):
+    ws = upload_ws("copyrighted", copy=True)
+
+    resp = client.post(f"/api/workspace/{ws.name}/upload")
+
+    assert resp.status_code == 422, resp.text
+    assert "verbatim" in resp.json()["detail"].lower()
+    assert spawn.argv is None, "upload script must not be spawned"
+
+
+def test_upload_allows_copyrighted_commentary(client, spawn, upload_ws):
+    ws = upload_ws("copyrighted", copy=False)
+
+    resp = client.post(f"/api/workspace/{ws.name}/upload")
+
+    assert resp.status_code == 200, resp.text
+    assert spawn.argv[0] == "bash"
+
+
+def test_upload_allows_public_domain_reading(client, spawn, upload_ws):
+    ws = upload_ws("public_domain", copy=True)
+
+    resp = client.post(f"/api/workspace/{ws.name}/upload")
+
+    assert resp.status_code == 200, resp.text
+    assert spawn.argv[0] == "bash"
+
+
 def test_start_saga_agent_profile_metadata_and_env(client, spawn):
     resp = client.post(
         "/api/pipeline/start-saga",
@@ -269,8 +422,10 @@ def test_start_saga_agent_profile_metadata_and_env(client, spawn):
     )
     assert resp.status_code == 200, resp.text
     assert spawn.argv[-4:] == [
-        "--agent-profile", "claude",
-        "--agent-model", "sonnet",
+        "--agent-profile",
+        "claude",
+        "--agent-model",
+        "sonnet",
     ]
     assert spawn.kwargs["metadata"]["agent_profile"] == "claude"
     assert spawn.kwargs["metadata"]["agent_model"] == "sonnet"
@@ -302,14 +457,20 @@ def test_start_pipeline_passes_content_hash_dedup_key(client, spawn):
 def test_start_pipeline_same_bytes_same_key_distinct_bytes_differ(client, spawn):
     """Hash is content-derived: identical bytes → identical key; one differing
     byte → different key. Filename is irrelevant to dedup."""
-    client.post("/api/pipeline/start",
-                files={"epub": ("x.epub", io.BytesIO(b"AAAA"), "application/epub+zip")})
+    client.post(
+        "/api/pipeline/start",
+        files={"epub": ("x.epub", io.BytesIO(b"AAAA"), "application/epub+zip")},
+    )
     k1 = spawn.kwargs["dedup_key"]
-    client.post("/api/pipeline/start",
-                files={"epub": ("y.epub", io.BytesIO(b"AAAA"), "application/epub+zip")})
+    client.post(
+        "/api/pipeline/start",
+        files={"epub": ("y.epub", io.BytesIO(b"AAAA"), "application/epub+zip")},
+    )
     k2 = spawn.kwargs["dedup_key"]
-    client.post("/api/pipeline/start",
-                files={"epub": ("z.epub", io.BytesIO(b"AAAB"), "application/epub+zip")})
+    client.post(
+        "/api/pipeline/start",
+        files={"epub": ("z.epub", io.BytesIO(b"AAAB"), "application/epub+zip")},
+    )
     k3 = spawn.kwargs["dedup_key"]
     assert k1 == k2
     assert k1 != k3
@@ -318,8 +479,10 @@ def test_start_pipeline_same_bytes_same_key_distinct_bytes_differ(client, spawn)
 def test_start_pipeline_busy_returns_409_and_cleans_up(client, monkeypatch):
     """When the atomic guard rejects (same EPUB already processing), the endpoint
     returns 409 and unlinks the just-staged file — no orphan in staging."""
+
     def boom(cmd, **kwargs):
         raise server.WorkspaceBusyError(kwargs.get("dedup_key", "epub:x"), "job-x")
+
     monkeypatch.setattr(server.jobs, "spawn", boom)
     resp = client.post(
         "/api/pipeline/start",
@@ -351,10 +514,12 @@ def test_loser_cleanup_does_not_delete_winners_staged_input(client, monkeypatch)
     monkeypatch.setattr(server.time, "time", lambda: 1_700_000_000.0)
     winner = server._staging_dest("dup.epub")
     winner.write_bytes(b"PKwinner-input")
+
     # The loser hits the content-hash guard and 409s; assert the winner's file,
     # staged at a distinct path, survives the whole request.
     def boom(cmd, **kwargs):
         raise server.WorkspaceBusyError(kwargs.get("dedup_key", "epub:x"), "job-x")
+
     monkeypatch.setattr(server.jobs, "spawn", boom)
     resp = client.post("/api/pipeline/start", files={"epub": _epub("dup.epub")})
     assert resp.status_code == 409
@@ -396,8 +561,10 @@ def test_start_saga_book_order_changes_dedup_key(client, spawn):
         return client.post(
             "/api/pipeline/start-saga",
             data={"title": "S", "spoiler_mode": "readalong"},
-            files=[("epubs", (first[0], io.BytesIO(first[1]), first[2])),
-                   ("epubs", (second[0], io.BytesIO(second[1]), second[2]))],
+            files=[
+                ("epubs", (first[0], io.BytesIO(first[1]), first[2])),
+                ("epubs", (second[0], io.BytesIO(second[1]), second[2])),
+            ],
         )
 
     post(a, b)
@@ -410,6 +577,7 @@ def test_start_saga_book_order_changes_dedup_key(client, spawn):
 def test_start_saga_busy_returns_409_and_cleans_up(client, monkeypatch):
     def boom(cmd, **kwargs):
         raise server.WorkspaceBusyError(kwargs.get("dedup_key", "epub:x"), "job-x")
+
     monkeypatch.setattr(server.jobs, "spawn", boom)
     resp = client.post(
         "/api/pipeline/start-saga",
@@ -433,7 +601,9 @@ def test_tts_allowlist_parity_frontend_backend():
     index_html = (static / "index.html").read_text()
     for model in ALLOWED_TTS_MODELS:
         assert f'"{model}"' in app_js, f"{model} missing from app.js ALLOWED_TTS_MODELS"
-        assert f'value="{model}"' in index_html, f"{model} missing from index.html <option>"
+        assert f'value="{model}"' in index_html, (
+            f"{model} missing from index.html <option>"
+        )
 
 
 def test_agent_profile_allowlist_parity_frontend_backend():
@@ -487,7 +657,9 @@ def _strip_js_comments(source: str) -> str:
 
 def _parse_agent_profile_app_js(source: str) -> set[str]:
     source = _strip_js_comments(source)
-    match = re.search(r"const\s+ALLOWED_AGENT_PROFILES\s*=\s*\[(.*?)\]\s*;", source, re.DOTALL)
+    match = re.search(
+        r"const\s+ALLOWED_AGENT_PROFILES\s*=\s*\[(.*?)\]\s*;", source, re.DOTALL
+    )
     assert match, "app.js must declare ALLOWED_AGENT_PROFILES as an array"
     return set(re.findall(r'"([^"\\]*(?:\\.[^"\\]*)*)"', match.group(1)))
 
@@ -519,7 +691,9 @@ def _assert_agent_profile_contract(
 
 
 def _profile_fixture(profiles: tuple[str, ...]) -> tuple[str, str]:
-    app_js = f'const ALLOWED_AGENT_PROFILES = [{", ".join(f"{p!r}" for p in profiles)}];'
+    app_js = (
+        f"const ALLOWED_AGENT_PROFILES = [{', '.join(f'{p!r}' for p in profiles)}];"
+    )
     # The parser deliberately requires the real HTML surface and ignores other selects.
     index_html = (
         '<select id="unrelated"><option value="retired">retired</option></select>'
@@ -604,11 +778,13 @@ def test_workspace_summary_single_book_is_not_saga(tmp_path):
 def test_workspace_summary_saga_fields(tmp_path):
     ws = tmp_path / "saga_ws"
     ws.mkdir()
-    books = saga.plan_books([
-        {"title": "Book One", "author": "A"},
-        {"title": "Book Two", "author": "B"},
-        {"title": "Book Three", "author": "C"},
-    ])
+    books = saga.plan_books(
+        [
+            {"title": "Book One", "author": "A"},
+            {"title": "Book Two", "author": "B"},
+            {"title": "Book Three", "author": "C"},
+        ]
+    )
     (ws / "series.md").write_text(
         saga.render_series_manifest("The Trilogy", books), encoding="utf-8"
     )
@@ -656,7 +832,10 @@ def test_start_saga_records_all_staging_paths_in_metadata(client, spawn):
     )
     assert resp.status_code == 200, resp.text
     staged = spawn.kwargs["metadata"]["_staging_paths"]
-    assert [Path(s).name.endswith(suffix) for s, suffix in zip(staged, ("_a.epub", "_b.epub"))] == [True, True]
+    assert [
+        Path(s).name.endswith(suffix)
+        for s, suffix in zip(staged, ("_a.epub", "_b.epub"))
+    ] == [True, True]
     assert all(Path(s).parent == server.UPLOAD_STAGING for s in staged)
 
 
@@ -664,6 +843,7 @@ def _touch_old(p: Path, age_s: float, now: float):
     """Create a staged-file stand-in and backdate its mtime by age_s seconds."""
     p.write_bytes(b"PKepub")
     import os
+
     os.utime(p, (now - age_s, now - age_s))
 
 
@@ -742,16 +922,17 @@ def test_active_staging_paths_collects_running_and_pending(monkeypatch):
     ]
     monkeypatch.setattr(server.jobs, "list", lambda limit=...: jobs_list)
     active = server._active_staging_paths()
-    assert active == {
-        Path("/u/r1.epub"), Path("/u/p1.epub"), Path("/u/p2.epub")
-    }
+    assert active == {Path("/u/r1.epub"), Path("/u/p1.epub"), Path("/u/p2.epub")}
 
 
 def test_sweep_missing_dir_is_noop(tmp_path):
     """Sweeping a non-existent staging dir must not raise."""
-    assert server._sweep_staging(
-        tmp_path / "nope", active_paths=set(), max_age_s=1, now=0.0
-    ) == []
+    assert (
+        server._sweep_staging(
+            tmp_path / "nope", active_paths=set(), max_age_s=1, now=0.0
+        )
+        == []
+    )
 
 
 def test_startup_lifespan_sweeps_orphan_but_keeps_active(monkeypatch, tmp_path):
