@@ -29,6 +29,7 @@ from .api_models import (
     VocabUIConfig,
 )
 from .ops_cli_shared import _normalize_persisted_bool
+from .service_factories import evict_user_store_cache
 from .types import StoredUserRecord, UserRecord, UsersPayload
 
 _logger = logging.getLogger(__name__)
@@ -317,14 +318,18 @@ def delete_user_account_response(
     deleted_dirs: list[str] = []
     for uid in ids_to_delete:
         user_dir = data_dir / "users" / uid
-        if not user_dir.exists():
-            continue
         try:
-            shutil.rmtree(user_dir)
-            deleted_dirs.append(uid)
+            if user_dir.exists():
+                shutil.rmtree(user_dir)
+                deleted_dirs.append(uid)
         except OSError as exc:
             logger.exception("Failed to delete user directory %s: %s", user_dir, exc)
             raise HTTPException(status_code=500, detail=f"Failed to remove user data for {uid}") from exc
+        finally:
+            # Evict after the files are gone: a same-sub re-login resolves the
+            # same user_dir and must reopen fresh stores, not the cached
+            # pre-deletion GraphStore / SQLite handles on unlinked inodes.
+            evict_user_store_cache(user_dir)
 
     logger.warning(
         "Account deletion: uid=%s canonical=%s ids=%s dirs=%s",
