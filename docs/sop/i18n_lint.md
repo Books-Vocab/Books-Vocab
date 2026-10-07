@@ -17,7 +17,7 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 |------|------|
 | `--report`(預設) | 印出 findings,exit 0。本機 ad-hoc 查看用 |
 | `--baseline` | 把當前命中數寫入 `ops/i18n_baseline.txt`,當 watermark |
-| `--baseline-check` | 對照 baseline,findings 或 `localized_calls` 超過即 fail(CI 用) |
+| `--baseline-check` | 對照 baseline,findings 或 `localized_calls` 超過即 fail;有任何 duplicate key 即 fail(CI 用) |
 | `--strict` | 任何 finding 即 fail。除基礎三項外,額外跑「英文模式漏中文」覆蓋檢查 — 見下方「Strict 覆蓋檢查」 |
 
 ## 掃描範圍
@@ -35,6 +35,9 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 
 4. **`.localized` usage 計數**(`localized_calls`,debt watermark):
    掃 Swift 檔內 `.localized` 呼叫數,**不計入 `total`**,而是獨立 watermark。用來追蹤 `.localized`-style 在地化欠債在 review-flip 等 surface 不再增長(只能持平或下降)。
+
+5. **Duplicate localization key**(`*.strings` / `*.stringsdict`,`ops/_i18n_duplicate_keys.py`,輸出欄位 `dup=`):**不是債務、不可 baseline** — 不計入 `total`,`--baseline` 拒寫、`--baseline-check` 與 `--strict` 不論 watermark 一律 fail,只有 `--report` 列出後 exit 0。每筆 finding 帶兩處 `file:line`。
+   同一檔內同一 key 定義兩次,`plutil -lint` 照樣 OK,但 CFPropertyList 只保留**最後一個**值,前面的定義是死碼、它服務的 call site 拿到另一個意思(2026-10-07 實例:en `"關閉"` 先 `Close` 後 `Off`,所有關閉按鈕顯示 "Off")。key 以檔案為範圍(`.stringsdict` 以所在 `<dict>` 為範圍),不同 locale 的同一 key 不算。無法解析的檔案、或掃描根下沒有任何 `.strings`,也各算一筆 finding(fail closed)。修法:值相同 → 刪掉被遮蔽的前一行(runtime 不變);意思不同 → 拆成不同 key(例:`podcast.sleepTimer.off`)。規則測試:`./ops/test_ops.sh lint-baselines`(`ops/tests/test_i18n_lint.sh`;`KG_I18N_SRC` 指向 `ops/tests/fixtures/i18n_lint/`,`KG_I18N_BASELINE` 指向暫存 baseline,不碰 `ops/i18n_baseline.txt`)。
 
 ## Baseline 檔格式
 
@@ -133,5 +136,5 @@ raw-Chinese scan 在比對前會先把以下兩種區塊 blank 掉(行號保留,
 
 ## CI 接線
 
-- Phase 7.1 前:`--baseline-check`(防基礎三項回歸)
+- Phase 7.1 前:`--baseline-check`(防掃描範圍 1–3 與 5 回歸;PR 經 `ui-quality-gate` 每次執行)
 - Phase 7.1 後:Xcode Run Script Phase `--strict`(零容忍,含上述三項覆蓋檢查)

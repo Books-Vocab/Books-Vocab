@@ -7,7 +7,6 @@
 
 "(無法讀取)" = "(unreadable)";
 "AI 翻譯・知識圖譜・雲端同步" = "AI translation, knowledge graph, and cloud sync";
-"English" = "English";
 "app.section.bookshelf" = "Library";
 "app.section.notebooks" = "Notebooks";
 "app.section.overview" = "Overview";
@@ -27,9 +26,7 @@
 "Books & Vocab 單字庫" = "Books & Vocab Vocabulary";
 "上傳新單字" = "Upload New Words";
 "下載單字至本地" = "Download vocabulary";
-"中" = "Medium";
 "付費功能" = "Premium";
-"偏好設定" = "Preferences";
 "今天沒有到期卡片。" = "No cards are due today.";
 "今天沒有到期卡片" = "No cards are due today";
 "今天複習完成" = "Today's review is complete";
@@ -90,7 +87,6 @@
 "前往設定登入" = "Go to Settings to Sign In";
 "力" = "Forces";
 "字庫卡片" = "Cards";
-"字體" = "Font";
 "帳號" = "Account";
 "帳號 ID（手動）" = "Account ID (Manual)";
 "開始同步" = "Start Sync";
@@ -109,7 +105,6 @@
 "已登入" = "Signed In";
 "已複習" = "Reviewed";
 "尚無書籍" = "No Books Yet";
-"書庫" = "Library";
 "正在儲存..." = "Saving...";
 "正在匯入書籍..." = "Importing book...";
 "正在向伺服器拉取知識連結與節點資訊。" = "Fetching graph links and node data from the server.";
@@ -121,7 +116,6 @@
 "開發者帳號 ID" = "Developer Account ID";
 "強制同步到雲端" = "Force Sync to Cloud";
 "很抱歉" = "Sorry";
-"外觀" = "Appearance";
 "後端伺服器錯誤 (%@)" = "Backend server error (%@)";
 "排斥力" = "Repel Force";
 "搜尋待收錄單字" = "Search inbox";
@@ -155,8 +149,6 @@
 "已收錄" = "Collected";
 "此功能需 Pro" = "This Feature Requires Pro";
 "尚無已收錄單字，或尚未與伺服器同步。" = "No collected words yet, or sync has not completed.";
-"此功能需要登入帳號後才能存取您的雲端資料。" = "Sign in to access your cloud data.";
-"總覽功能需要登入帳號後才能存取您的雲端資料。" = "Sign in to access your cloud data in the overview.";
 "尚無已收錄單字" = "No collected words yet";
 "知識連結" = "Knowledge Links";
 "確定" = "OK";
@@ -177,7 +169,6 @@
 "載入失敗" = "Failed to Load";
 "載入失敗：%@" = "Failed to load: %@";
 "載入單字..." = "Loading vocabulary...";
-"載入解釋..." = "Loading explanation...";
 "設定" = "Settings";
 "設為開發者帳號" = "Set as Developer Account";
 "清除開發者帳號" = "Clear Developer Account";
@@ -194,7 +185,6 @@
 "連結粗細" = "Link Thickness";
 "連結距離" = "Link Distance";
 "閱讀介面" = "Reading Interface";
-"閱讀介面風格" = "Reader Interface Style";
 "這一輪 session 的卡片都處理完了。" = "You finished all cards in this session.";
 "這次會把待新增與待刪除的變更同步到雲端。" = "This sync will upload pending additions and deletions to the cloud.";
 "請保持網路連線，系統會自動更新本地單字。" = "Keep the network connected while the app updates local vocabulary automatically.";
@@ -206,7 +196,6 @@
 "已收錄 %d 個單字，其中 %d 個待複習。" = "You have %d collected words, %d due for review.";
 "已收錄 %d 個單字，去複習鞏固記憶吧。" = "You have %d collected words. Review to reinforce your memory.";
 "前往已收錄" = "Go to Collected";
-"閱讀設定" = "Reading Settings";
 "關聯圖需 Pro" = "Graph Requires Pro";
 "關於" = "About";
 "關閉" = "Close";
@@ -216,7 +205,6 @@
 "離線模式，同步失敗。請確認網路連線後重試" = "Offline mode. Sync failed. Check your connection and try again.";
 "需登入帳號" = "Sign In Required";
 "顯示" = "Display";
-"顯示點擊熱區" = "Show Tap Targets";
 "點一下展開" = "Tap to expand";
 "點一下查看細節" = "Tap to view details";
 "洗牌" = "Shuffle";
@@ -247,7 +235,6 @@
 "目前沒有已複習中的卡片。" = "There are currently no cards in the reviewed state.";
 "沒有符合的單字" = "No Matching Words";
 "清理無效卡片..." = "Cleaning up invalid cards...";
-"淡" = "Light";
 "深" = "Strong";
 "淡" = "Light";
 "正在下載單字..." = "Downloading vocabulary...";
@@ -318,7 +305,6 @@
 "已取消購買。" = "Purchase cancelled.";
 "English" = "English";
 "書庫" = "Library";
-"單字本" = "Notebooks";
 "加入 Books & Vocab 生字庫" = "Add to Books & Vocab Vocabulary";
 "將選取的單字或片語直接加入 Books & Vocab 進行離線學習與翻譯。" = "Add the selected word or phrase to Books & Vocab for offline learning and translation.";
 "單字或片語" = "Word or Phrase";
@@ -579,7 +565,7 @@
 "查詞時自動暫停" = "Auto-pause on lookup";
 "點字幕查單字時暫停播放，關閉後恢復" = "Pauses playback when looking up a word; resumes on dismiss";
 "睡眠定時" = "Sleep Timer";
-"關閉" = "Off";
+"podcast.sleepTimer.off" = "Off";
 "5 分鐘" = "5 min";
 "15 分鐘" = "15 min";
 "30 分鐘" = "30 min";

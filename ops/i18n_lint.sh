@@ -35,15 +35,21 @@
 #   - ProgressView("中") / vocabLabelChip(title: "中") / .accessibilityLabel("中")
 #   - static let \w+ = (DateFormatter|RelativeDateTimeFormatter|NumberFormatter)
 #
+# Localization files (every mode): a key defined twice in one .strings/.stringsdict
+# (the runtime keeps the last value; ops/_i18n_duplicate_keys.py). Never debt:
+# kept out of `total`, and --baseline / --baseline-check / --strict all fail on it.
+# KG_I18N_SRC / KG_I18N_BASELINE redirect root / baseline for ops/tests/test_i18n_lint.sh.
+#
 # Exclusions: *Preview*.swift, *Tests*.swift, *PreviewData*, .localized / L10n. usage on same line.
 
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-IOS_SRC="$ROOT_DIR/ios/BooksAndVocab"
-BASELINE_FILE="$ROOT_DIR/ops/i18n_baseline.txt"
+IOS_SRC="${KG_I18N_SRC:-$ROOT_DIR/ios/BooksAndVocab}"
+BASELINE_FILE="${KG_I18N_BASELINE:-$ROOT_DIR/ops/i18n_baseline.txt}"
 STRIP_PREVIEWS="$ROOT_DIR/ops/_i18n_strip_previews.py"
 KEY_EXTRACTOR="$ROOT_DIR/ops/_i18n_extract_keys.py"
+DUPLICATE_KEYS="$ROOT_DIR/ops/_i18n_duplicate_keys.py"
 EN_STRINGS="$IOS_SRC/en.lproj/Localizable.strings"
 EN_STRINGSDICT="$IOS_SRC/en.lproj/Localizable.stringsdict"
 
@@ -179,6 +185,11 @@ scan_static_formatter() {
 scan_localized_usage() {
   rg --no-heading -n --pcre2 --type swift "${EXCLUDE_GLOBS[@]}" \
     "$LOCALIZED_USAGE_PATTERN" "$IOS_SRC" 2>/dev/null || true
+}
+
+# A helper crash is itself a finding: the gate must not read "could not scan" as clean.
+scan_duplicate_keys() {
+  "${PY_CMD[@]}" "$DUPLICATE_KEYS" "$IOS_SRC" || echo "duplicate-key scan failed: $DUPLICATE_KEYS"
 }
 
 # ---- strict-only coverage checks --------------------------------------------
@@ -324,11 +335,13 @@ raw_hits="$(scan_raw_chinese)"
 ret_hits="$(scan_raw_return_chinese)"
 fmt_hits="$(scan_static_formatter)"
 localized_hits="$(scan_localized_usage)"
+dup_hits="$(scan_duplicate_keys)"
 
 raw_count=$(count_lines "$raw_hits")
 ret_count=$(count_lines "$ret_hits")
 fmt_count=$(count_lines "$fmt_hits")
 localized_count=$(count_lines "$localized_hits")
+dup_count=$(count_lines "$dup_hits")
 total=$((raw_count + ret_count + fmt_count))
 
 # Strict-only extras — computed lazily; counts default to 0 in non-strict modes.
@@ -355,6 +368,11 @@ print_findings() {
     printf '%s\n' "$fmt_hits"
     echo
   fi
+  if [ -n "$dup_hits" ]; then
+    echo "=== Duplicate localization keys ($dup_count) ==="
+    printf '%s\n' "$dup_hits"
+    echo
+  fi
   if [ -n "$missing_key_hits" ]; then
     echo "=== Missing en.lproj keys ($missing_key_count) ==="
     printf '%s\n' "$missing_key_hits"
@@ -370,12 +388,20 @@ print_findings() {
     printf '%s\n' "$plural_missing_hits"
     echo
   fi
-  echo "[i18n_lint] total: $total (raw=$raw_count return=$ret_count fmt=$fmt_count missing_keys=$missing_key_count en_cjk=$en_cjk_count plural=$plural_missing_count localized_calls=$localized_count)"
+  echo "[i18n_lint] total: $total (raw=$raw_count return=$ret_count fmt=$fmt_count missing_keys=$missing_key_count en_cjk=$en_cjk_count plural=$plural_missing_count dup=$dup_count localized_calls=$localized_count)"
+}
+
+# Duplicate keys are never debt: no gating mode may fold them into a watermark.
+reject_duplicates() {
+  [ "$dup_count" -eq 0 ] && return 0
+  echo "[i18n_lint] FAIL: $dup_count duplicate-key finding(s); fix them, they cannot be baselined" >&2
+  exit 1
 }
 
 case "$MODE" in
   --baseline)
     print_findings
+    reject_duplicates
     cat > "$BASELINE_FILE" <<EOF
 findings=$total
 localized_calls=$localized_count
@@ -385,6 +411,7 @@ EOF
     ;;
   --baseline-check)
     print_findings
+    reject_duplicates
     if [ ! -f "$BASELINE_FILE" ]; then
       echo "[i18n_lint] error: $BASELINE_FILE missing; run --baseline first" >&2
       exit 2
@@ -416,6 +443,7 @@ EOF
     plural_missing_count=$(count_lines "$plural_missing_hits")
     strict_total=$((total + missing_key_count + en_cjk_count + plural_missing_count))
     print_findings
+    reject_duplicates
     if [ "$strict_total" -gt 0 ]; then
       echo "[i18n_lint] FAIL strict: $strict_total findings (legacy=$total, coverage=$missing_key_count, en_cjk=$en_cjk_count, plural=$plural_missing_count)" >&2
       exit 1

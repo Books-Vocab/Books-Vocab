@@ -1,0 +1,9 @@
+// "關閉" = "a line comment is not a definition";
+/* A block comment is not a definition either:
+"關閉" = "commented out";
+*/
+"關閉" = "Close";
+"url" = "https://example.com/a;b"; // a trailing comment
+"quote" = "He said \"關閉\" = \"x\";";
+"multi" = "line one
+line two";
