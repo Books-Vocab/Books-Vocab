@@ -89,8 +89,8 @@ Fresh workspace 預設 `v1`。`--workflow-version v1|v2` 只在建立或 legacy 
 | `--skip-to S` | 從 stage S 起跑;前置 stage marker 缺失會 abort 並列出缺項 |
 | `--stop-after S` | 跑到 S 為止 |
 | `--only-stage S` | 只跑 S(等價 skip-to=stop-after,同樣驗證前置 marker) |
-| `--only-episode N` | 過濾單集(影響 scriptwrite / script-review / synthesize / audio-qa / subtitle) |
-| `--parallel N` | scriptwrite + script-review 並發度(預設 3) |
+| `--only-episode N` | 過濾單集(影響 scriptwrite / script-review / synthesize / audio-qa / subtitle)。N ≥ 1,且 workspace 須有 `plan/episodes/ep_NN.md` 或 `scripts/ep_N_script.md`,否則在任何 stage 前 exit 2 並列出既有集數(舊碼 `0` 會被 stage 當成「整季」、不存在的集數會直接開付費 agent) |
+| `--parallel N` | scriptwrite + script-review 並發度(預設 3),N 須在 1–10(同 dashboard `/api/pipeline/start` 上限),否則 exit 2 |
 | `--workflow-version V` | 指定版本化 workflow contract(`v1`/`v2`)。新 workspace 預設 `v1`;resume 讀 `workflow_manifest.json`,衝突版本報錯 |
 | `--tts-model M` | 凍結該 workspace 的 TTS model(`gemini-3.1-flash-tts-preview` / `gemini-2.5-pro-tts` / `gemini-2.5-flash-tts`),寫入 `.tts_model` sidecar,synthesize stage 讀回。resume 以 sidecar 為準;衝突的 `--tts-model` 報錯。省略 = 用 `synthesize.py` 的 env 預設。詳見 §3 |
 | `--rights R` | 書的版權狀態 `public_domain` / `licensed` / `copyrighted`,建立 workspace 時凍結進 `.rights` sidecar;省略 = `copyrighted`。resume 不可改(衝突報錯)。詳見 §1「版權線」 |

@@ -259,7 +259,7 @@ def _should_skip_for_only_episode(stage_name: str, args) -> bool:
     producer's deliberate full-series drive → never skipped.
     """
     return (
-        bool(args.only_episode)
+        args.only_episode is not None
         and stage_spec(stage_name).series_wide
         and args.only_stage != stage_name
     )
@@ -2236,7 +2236,7 @@ def stage_scriptwriters(
     max_parallel: int = 3,
     only_episode: int | None = None,
 ) -> bool:
-    if only_episode:
+    if only_episode is not None:
         _, ok = run_scriptwriter(workspace, only_episode)
         if ok:
             # Record the authored TTS family even on the single-episode path, or a
@@ -2330,7 +2330,7 @@ def stage_script_review(
     max_parallel: int = 3,
     only_episode: int | None = None,
 ) -> bool:
-    if only_episode:
+    if only_episode is not None:
         _, ok = run_script_reviewer(workspace, only_episode)
         return ok
 
@@ -2540,7 +2540,9 @@ def _run_tool_stage(
 ) -> int | None:
     per_episode = _TOOL_STAGE_TIMEOUTS[stage]
     episodes = (
-        1 if only_episode else len(list((workspace / "scripts").glob("ep_*_script.md")))
+        1
+        if only_episode is not None
+        else len(list((workspace / "scripts").glob("ep_*_script.md")))
     )
     return _run_bounded(
         cmd,
@@ -2557,7 +2559,9 @@ def stage_synthesize(
 ) -> bool:
     scripts_dir = workspace / "scripts"
     target = (
-        scripts_dir / f"ep_{only_episode}_script.md" if only_episode else scripts_dir
+        scripts_dir / f"ep_{only_episode}_script.md"
+        if only_episode is not None
+        else scripts_dir
     )
 
     # Copyright line (#2094): never voice an over-threshold verbatim script of a
@@ -2604,7 +2608,7 @@ def stage_audio_qa(
     workspace: Path, log: PipelineLog, only_episode: int | None = None
 ) -> bool:
     scripts_dir = workspace / "scripts"
-    if only_episode:
+    if only_episode is not None:
         # Exact-match episode number: ep_1_pro.{mp3,m4a} must NOT catch ep_10_pro.
         # m4a is the post-Track-B default; mp3 stays for legacy series.
         pattern = re.compile(rf"^ep_{only_episode}_[A-Za-z]+\.(?:mp3|m4a)$")
@@ -2649,7 +2653,9 @@ def stage_subtitle(
 ) -> bool:
     scripts_dir = workspace / "scripts"
     target = (
-        scripts_dir / f"ep_{only_episode}_script.md" if only_episode else scripts_dir
+        scripts_dir / f"ep_{only_episode}_script.md"
+        if only_episode is not None
+        else scripts_dir
     )
 
     rc = _run_tool_stage(
@@ -3023,6 +3029,47 @@ def _release_workspace_lock() -> None:
         _run_lock_fd = None
 
 
+# ─── CLI argument types ───
+# Each scriptwrite / script-review worker is a paid agent; 10 matches the
+# dashboard's /api/pipeline/start `parallel` bound.
+_MAX_PARALLEL = 10
+_PLAN_EPISODE_RE = re.compile(r"^ep_(\d+)\.md$")
+_SCRIPT_EPISODE_RE = re.compile(r"^ep_(\d+)_script\.md$")
+
+
+def _int_arg(lo: int, hi: int | None = None):
+    """argparse type: an int in [lo, hi] — out of range is a usage error (exit 2)
+    instead of a value a stage misreads (0 is falsy) or a pool rejects mid-run."""
+
+    def parse(value: str) -> int:
+        try:
+            n = int(value)
+        except ValueError:
+            raise argparse.ArgumentTypeError(
+                f"expected an integer, got {value!r}"
+            ) from None
+        if n < lo or (hi is not None and n > hi):
+            bound = f">= {lo}" if hi is None else f"between {lo} and {hi}"
+            raise argparse.ArgumentTypeError(f"must be {bound}, got {n}")
+        return n
+
+    return parse
+
+
+def known_episodes(workspace: Path) -> set[int]:
+    """Episode numbers with a plan (plan/episodes/ep_NN.md) or a script."""
+    found: set[int] = set()
+    for directory, pattern in (
+        (workspace / "plan" / "episodes", _PLAN_EPISODE_RE),
+        (workspace / "scripts", _SCRIPT_EPISODE_RE),
+    ):
+        if directory.is_dir():
+            for f in directory.iterdir():
+                if m := pattern.match(f.name):
+                    found.add(int(m.group(1)))
+    return found
+
+
 # ─── Main ───
 
 
@@ -3084,10 +3131,16 @@ examples:
         "saga workspace titled TITLE. Implies --mode saga; requires --spoiler-mode.",
     )
     parser.add_argument(
-        "--parallel", type=int, default=3, help="Max parallel workers (default: 3)"
+        "--parallel",
+        type=_int_arg(1, _MAX_PARALLEL),
+        default=3,
+        help=f"Max parallel scriptwrite / script-review agents, 1-{_MAX_PARALLEL} "
+        "(default: 3)",
     )
     parser.add_argument(
-        "--only-episode", type=int, help="Only process this episode number"
+        "--only-episode",
+        type=_int_arg(1),
+        help="Only process this episode number (must have a plan or a script)",
     )
     stage_choices = all_workflow_stage_names()
     parser.add_argument(
@@ -3280,6 +3333,22 @@ examples:
     except rights_gate.RightsError as e:
         parser.error(str(e))
     print(f"Rights: {rights}")
+
+    # --only-episode must name a real episode before any stage (or a paid
+    # scriptwriter agent for a plan that doesn't exist) runs.
+    if args.only_episode is not None:
+        episodes = known_episodes(workspace)
+        if args.only_episode not in episodes:
+            have = (
+                f"its episodes are {', '.join(map(str, sorted(episodes)))}"
+                if episodes
+                else "it has no episodes yet (run the plan phase first)"
+            )
+            parser.error(
+                f"--only-episode {args.only_episode}: {workspace.name} has no "
+                f"plan/episodes/ep_{args.only_episode:02d}.md or "
+                f"scripts/ep_{args.only_episode}_script.md; {have}"
+            )
 
     saved_agent_profile, saved_agent_model = read_agent_sidecars(workspace)
     if not args.agent_profile and not args.agent_model and saved_agent_profile:
@@ -3487,7 +3556,7 @@ examples:
     total_stages = len(stages_to_run)
 
     print(f"\nPlan: {' → '.join(stages_to_run)}")
-    if args.only_episode:
+    if args.only_episode is not None:
         print(f"Episode filter: {args.only_episode}")
     print()
 
@@ -3541,7 +3610,7 @@ examples:
                 stage_name,
                 success=False,
                 elapsed=stage_elapsed,
-                only_episode=bool(args.only_episode),
+                only_episode=args.only_episode is not None,
             )
             print(f"\n{'=' * 60}")
             print(f"  PIPELINE FAILED at: {stage_name} ({elapsed:.0f}s total)")
@@ -3555,7 +3624,7 @@ examples:
             stage_name,
             success=True,
             elapsed=stage_elapsed,
-            only_episode=bool(args.only_episode),
+            only_episode=args.only_episode is not None,
         )
 
     elapsed = time.time() - t0
