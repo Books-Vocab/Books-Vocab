@@ -22,6 +22,7 @@ workspace 有 scripts/audio 卻無標記 —— 不可被誤判成 awaiting。�
   gate2 passed  ⇔ n_audio>0 或 .script_approved 存在
   gate2 awaiting⇔ scripts 完成(n_script==target>0)且 n_audio==0 且未 passed
 """
+
 import sys
 from pathlib import Path
 
@@ -122,7 +123,9 @@ def test_summary_legacy_with_audio_not_awaiting(tmp_path):
 def test_summary_running_beats_awaiting(tmp_path):
     ws = tmp_path / "runaw_abcd1234"
     _plan(ws, 8)
-    s = server._workspace_summary(ws, {"job_id": "j1", "label": "x", "kind": "pipeline"})
+    s = server._workspace_summary(
+        ws, {"job_id": "j1", "label": "x", "kind": "pipeline"}
+    )
     assert s["status"] == "running"
 
 
@@ -159,7 +162,9 @@ class _FakeJob:
 def test_active_job_via_metadata(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "WORKSPACES_DIR", tmp_path)
     (tmp_path / "w_abcd1234").mkdir()
-    monkeypatch.setattr(server.jobs, "list", lambda limit=200: [_FakeJob("j1", ws="w_abcd1234")])
+    monkeypatch.setattr(
+        server.jobs, "list", lambda limit=200: [_FakeJob("j1", ws="w_abcd1234")]
+    )
     j = server._active_job_for_ws("w_abcd1234")
     assert j and j["job_id"] == "j1"
 
@@ -188,11 +193,16 @@ def test_approve_rejected_when_job_running(tmp_path, monkeypatch):
     ws = tmp_path / "busy_abcd1234"
     _plan(ws, 3)
     for i in (1, 2, 3):
-        _mk(ws, f"scripts/ep_{i}_script.md")  # scripts 完成 → gate script awaiting(過 readiness)
-    monkeypatch.setattr(server.jobs, "list", lambda limit=200: [_FakeJob("jR", ws="busy_abcd1234")])
+        _mk(
+            ws, f"scripts/ep_{i}_script.md"
+        )  # scripts 完成 → gate script awaiting(過 readiness)
+    monkeypatch.setattr(
+        server.jobs, "list", lambda limit=200: [_FakeJob("jR", ws="busy_abcd1234")]
+    )
 
     def _no_spawn(*a, **k):
         raise AssertionError("must not spawn while a job is running for this ws")
+
     monkeypatch.setattr(server.jobs, "spawn", _no_spawn)
 
     with pytest.raises(server.HTTPException) as e:
@@ -205,8 +215,14 @@ def test_resume_rejected_when_job_running(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "WORKSPACES_DIR", tmp_path)
     ws = tmp_path / "busy2_abcd1234"
     _plan(ws, 3)
-    monkeypatch.setattr(server.jobs, "list", lambda limit=200: [_FakeJob("jR", ws="busy2_abcd1234")])
-    monkeypatch.setattr(server.jobs, "spawn", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no spawn")))
+    monkeypatch.setattr(
+        server.jobs, "list", lambda limit=200: [_FakeJob("jR", ws="busy2_abcd1234")]
+    )
+    monkeypatch.setattr(
+        server.jobs,
+        "spawn",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("no spawn")),
+    )
     with pytest.raises(server.HTTPException) as e:
         server.resume_workspace("busy2_abcd1234")
     assert e.value.status_code == 409
@@ -221,10 +237,18 @@ def test_rerun_rejected_when_job_running(tmp_path, monkeypatch):
     _plan(ws, 3)
     marker = ws / ".stage_synthesize_done"
     marker.write_text("done")
-    monkeypatch.setattr(server.jobs, "list", lambda limit=200: [_FakeJob("jR", ws="busy3_abcd1234")])
-    monkeypatch.setattr(server.jobs, "spawn", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no spawn")))
+    monkeypatch.setattr(
+        server.jobs, "list", lambda limit=200: [_FakeJob("jR", ws="busy3_abcd1234")]
+    )
+    monkeypatch.setattr(
+        server.jobs,
+        "spawn",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("no spawn")),
+    )
     with pytest.raises(server.HTTPException) as e:
-        server.rerun_stage("busy3_abcd1234", stage="synthesize", episode=1, drop_marker=True)
+        server.rerun_stage(
+            "busy3_abcd1234", stage="synthesize", episode=1, drop_marker=True
+        )
     assert e.value.status_code == 409
     assert marker.exists(), "guard must precede marker deletion"
 
@@ -235,7 +259,9 @@ def test_active_job_other_ws_does_not_block(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "WORKSPACES_DIR", tmp_path)
     (tmp_path / "free_abcd1234").mkdir()
     (tmp_path / "other_abcd1234").mkdir()
-    monkeypatch.setattr(server.jobs, "list", lambda limit=200: [_FakeJob("jO", ws="other_abcd1234")])
+    monkeypatch.setattr(
+        server.jobs, "list", lambda limit=200: [_FakeJob("jO", ws="other_abcd1234")]
+    )
     assert server._active_job_for_ws("free_abcd1234") is None
     assert server._active_job_for_ws("other_abcd1234")["job_id"] == "jO"
 
@@ -246,8 +272,14 @@ def test_upload_rejected_when_job_running(tmp_path, monkeypatch):
     ws = tmp_path / "busy4_abcd1234"
     _plan(ws, 3)
     _mk(ws, "scripts/ep_1_pro.mp3", "AA")  # 過 upload 的 422 守衛
-    monkeypatch.setattr(server.jobs, "list", lambda limit=200: [_FakeJob("jR", ws="busy4_abcd1234")])
-    monkeypatch.setattr(server.jobs, "spawn", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no spawn")))
+    monkeypatch.setattr(
+        server.jobs, "list", lambda limit=200: [_FakeJob("jR", ws="busy4_abcd1234")]
+    )
+    monkeypatch.setattr(
+        server.jobs,
+        "spawn",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("no spawn")),
+    )
     with pytest.raises(server.HTTPException) as e:
         server.upload_workspace("busy4_abcd1234")
     assert e.value.status_code == 409

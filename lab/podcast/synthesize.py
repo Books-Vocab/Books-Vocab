@@ -76,6 +76,7 @@ def _emit_event(stage_label: str, event_payload: dict) -> None:
             f.write(line)
             f.flush()
 
+
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).parent
@@ -129,9 +130,9 @@ TTS_BATCH_TIMEOUT = int(os.getenv("TTS_BATCH_TIMEOUT", "600"))  # 10 min / batch
 
 # Mastering: EBU R128 loudness normalization. Disable with TTS_MASTER=0.
 MASTER_ENABLED = os.getenv("TTS_MASTER", "1").strip() != "0"
-MASTER_LUFS = float(os.getenv("TTS_MASTER_LUFS", "-16"))     # Apple Podcasts target
-MASTER_TP = float(os.getenv("TTS_MASTER_TP", "-1.5"))        # true peak ceiling
-MASTER_LRA = float(os.getenv("TTS_MASTER_LRA", "11"))        # loudness range
+MASTER_LUFS = float(os.getenv("TTS_MASTER_LUFS", "-16"))  # Apple Podcasts target
+MASTER_TP = float(os.getenv("TTS_MASTER_TP", "-1.5"))  # true peak ceiling
+MASTER_LRA = float(os.getenv("TTS_MASTER_LRA", "11"))  # loudness range
 
 # ─── Dynamic Host Config ───
 
@@ -250,7 +251,9 @@ def _parse_overview_hosts(overview_path: Path) -> tuple[dict[str, str], str]:
     global VOICE_SPEAKER1, VOICE_SPEAKER2
 
     if not overview_path.exists():
-        raise RuntimeError(f"{overview_path} missing — run pipeline tts-prep stage first")
+        raise RuntimeError(
+            f"{overview_path} missing — run pipeline tts-prep stage first"
+        )
 
     text = overview_path.read_text(encoding="utf-8")
 
@@ -265,6 +268,7 @@ def _parse_overview_hosts(overview_path: Path) -> tuple[dict[str, str], str]:
 
 
 # ─── Parse ───
+
 
 def _sanitize_dialogue(text: str) -> str:
     """Strip inline markdown emphasis + make audio tags safe for TTS_FAMILY."""
@@ -439,9 +443,7 @@ def build_speech_config() -> genai_types.SpeechConfig:
 def audio_bytes_to_segment(audio_bytes: bytes, mime_type: str) -> AudioSegment:
     if "wav" in mime_type:
         return AudioSegment.from_file(io.BytesIO(audio_bytes), format="wav")
-    return AudioSegment(
-        data=audio_bytes, sample_width=2, frame_rate=24000, channels=1
-    )
+    return AudioSegment(data=audio_bytes, sample_width=2, frame_rate=24000, channels=1)
 
 
 # Trim trailing silence defense: Vertex gemini-2.5-pro-tts frequently pads
@@ -456,6 +458,7 @@ _TRAIL_KEEP_MS = 400
 def _trim_trailing_silence(segment: AudioSegment) -> AudioSegment:
     """Cut trailing near-silence, preserving a short natural tail."""
     from pydub.silence import detect_leading_silence
+
     reversed_ = segment.reverse()
     trail_ms = detect_leading_silence(
         reversed_, silence_threshold=_TRAIL_SILENCE_THRESH_DBFS, chunk_size=50
@@ -473,6 +476,7 @@ def _generate_with_retry(client, prompt, speech_config, index):
     not enough under burst; this adds outer-level retry to handle 429/503/504.
     """
     import random
+
     attempts = max(1, TTS_RETRY_ATTEMPTS)
     last_exc = None
     for attempt in range(attempts):
@@ -489,12 +493,15 @@ def _generate_with_retry(client, prompt, speech_config, index):
             last_exc = e
             name = type(e).__name__
             code = getattr(e, "code", None) or getattr(e, "status_code", None)
-            transient = (
-                code in {408, 429, 500, 502, 503, 504}
-                or name in {"ResourceExhausted", "ServiceUnavailable",
-                            "DeadlineExceeded", "InternalServerError",
-                            "APIError", "ClientError", "ServerError"}
-            )
+            transient = code in {408, 429, 500, 502, 503, 504} or name in {
+                "ResourceExhausted",
+                "ServiceUnavailable",
+                "DeadlineExceeded",
+                "InternalServerError",
+                "APIError",
+                "ClientError",
+                "ServerError",
+            }
             if not transient or attempt == attempts - 1:
                 raise
             # 429 = per-minute quota exhausted; must wait ≥60s for quota reset.
@@ -502,8 +509,10 @@ def _generate_with_retry(client, prompt, speech_config, index):
             if code == 429:
                 backoff = 60 + 15 * attempt + random.random() * 5
             else:
-                backoff = (2 ** attempt) + random.random()
-            print(f"  batch {index}: {name} code={code} — retry {attempt + 1}/{attempts} after {backoff:.1f}s")
+                backoff = (2**attempt) + random.random()
+            print(
+                f"  batch {index}: {name} code={code} — retry {attempt + 1}/{attempts} after {backoff:.1f}s"
+            )
             time.sleep(backoff)
     raise last_exc  # pragma: no cover — loop always returns or raises
 
@@ -570,25 +579,32 @@ def _synthesize_one(
     if output_tokens is None:
         # Google official: 25 audio tokens per second
         output_tokens = int(round(trimmed_duration_s * 25))
-    _emit_event(episode_label, {
-        "type": "tts_usage",
-        "model": TTS_MODEL,
-        "batch_index": index,
-        "batch_total": total,
-        "turns": turns_count,
-        "words": batch_words,
-        "input_chars": input_chars,
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "total_tokens": total_tokens,
-        "audio_seconds": round(trimmed_duration_s, 2),
-        "elapsed_s": round(elapsed, 2),
-        "trimmed_ms": trimmed_ms,
-        "usage_source": "vertex_api" if um else "estimated",
-    })
+    _emit_event(
+        episode_label,
+        {
+            "type": "tts_usage",
+            "model": TTS_MODEL,
+            "batch_index": index,
+            "batch_total": total,
+            "turns": turns_count,
+            "words": batch_words,
+            "input_chars": input_chars,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": total_tokens,
+            "audio_seconds": round(trimmed_duration_s, 2),
+            "elapsed_s": round(elapsed, 2),
+            "trimmed_ms": trimmed_ms,
+            "usage_source": "vertex_api" if um else "estimated",
+        },
+    )
 
-    trim_note = f" (trimmed {trimmed_ms/1000:.1f}s silence)" if trimmed_ms > 1000 else ""
-    print(f"  batch {index}/{total}: {turns_count} turns, {batch_words} words → {trimmed_duration_s:.1f}s audio in {elapsed:.1f}s{trim_note}")
+    trim_note = (
+        f" (trimmed {trimmed_ms / 1000:.1f}s silence)" if trimmed_ms > 1000 else ""
+    )
+    print(
+        f"  batch {index}/{total}: {turns_count} turns, {batch_words} words → {trimmed_duration_s:.1f}s audio in {elapsed:.1f}s{trim_note}"
+    )
     return index, segment
 
 
@@ -619,7 +635,9 @@ def synthesize_batches(
             cf = cache_dir / f"batch_{i:02d}.wav"
             if cf.exists() and cf.stat().st_size > 0:
                 results[i] = AudioSegment.from_file(str(cf))
-                print(f"  batch {i}/{total}: loaded from cache ({len(results[i])/1000:.1f}s audio)")
+                print(
+                    f"  batch {i}/{total}: loaded from cache ({len(results[i]) / 1000:.1f}s audio)"
+                )
             else:
                 pending.append((i, batch))
     else:
@@ -630,7 +648,9 @@ def synthesize_batches(
         return [results[i] for i in range(1, total + 1)]
 
     workers = max(1, min(len(pending), TTS_MAX_CONCURRENT))
-    print(f"  Synthesizing {len(pending)}/{total} batches ({workers} concurrent, {TTS_BATCH_TIMEOUT}s per-batch timeout)...")
+    print(
+        f"  Synthesizing {len(pending)}/{total} batches ({workers} concurrent, {TTS_BATCH_TIMEOUT}s per-batch timeout)..."
+    )
 
     # Phase 2 — synthesize pending batches, isolate stuck ones via a wall-clock
     # cap. Pool is managed manually (not via `with`) so that on timeout we can
@@ -643,8 +663,16 @@ def synthesize_batches(
         batch_words = sum(_word_count(t["text"]) for t in batch)
         cache_path = (cache_dir / f"batch_{i:02d}.wav") if cache_dir else None
         fut = pool.submit(
-            _synthesize_one, client, speech_config, prompt,
-            i, total, batch_words, len(batch), cache_path, episode_label,
+            _synthesize_one,
+            client,
+            speech_config,
+            prompt,
+            i,
+            total,
+            batch_words,
+            len(batch),
+            cache_path,
+            episode_label,
         )
         futures[fut] = i
 
@@ -669,7 +697,9 @@ def synthesize_batches(
         # the next run only retries the missing batches.
         for fut, i in futures.items():
             if not fut.done():
-                print(f"  batch {i}/{total}: FAILED — TimeoutError: exceeded {TTS_BATCH_TIMEOUT}s wall-clock")
+                print(
+                    f"  batch {i}/{total}: FAILED — TimeoutError: exceeded {TTS_BATCH_TIMEOUT}s wall-clock"
+                )
                 stuck.append(i)
     finally:
         # wait=False when something is stuck: don't freeze the episode on a hung
@@ -719,14 +749,28 @@ def _master_with_loudnorm(src_wav: Path, dst: Path) -> bool:
     try:
         # Pass 1 — measure
         measure = subprocess.run(
-            ["ffmpeg", "-hide_banner", "-nostats", "-i", str(src_wav),
-             "-af", af_measure, "-f", "null", "-"],
-            capture_output=True, text=True, timeout=180,
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-nostats",
+                "-i",
+                str(src_wav),
+                "-af",
+                af_measure,
+                "-f",
+                "null",
+                "-",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=180,
         )
         # ffmpeg writes the loudnorm JSON block to stderr.
         params = _parse_loudnorm_json(measure.stderr)
         if params is None:
-            print(f"  [master] pass1 produced no usable JSON — stderr tail: {measure.stderr[-200:]!r}")
+            print(
+                f"  [master] pass1 produced no usable JSON — stderr tail: {measure.stderr[-200:]!r}"
+            )
             return False
 
         af_apply = (
@@ -740,21 +784,63 @@ def _master_with_loudnorm(src_wav: Path, dst: Path) -> bool:
         )
 
         if OUTPUT_FORMAT == "mp3":
-            apply_cmd = ["ffmpeg", "-y", "-hide_banner", "-nostats", "-i", str(src_wav),
-                         "-af", af_apply, "-ar", "48000",
-                         "-codec:a", "libmp3lame", "-b:a", MP3_BITRATE, str(dst)]
+            apply_cmd = [
+                "ffmpeg",
+                "-y",
+                "-hide_banner",
+                "-nostats",
+                "-i",
+                str(src_wav),
+                "-af",
+                af_apply,
+                "-ar",
+                "48000",
+                "-codec:a",
+                "libmp3lame",
+                "-b:a",
+                MP3_BITRATE,
+                str(dst),
+            ]
         elif OUTPUT_FORMAT == "m4a":
-            apply_cmd = ["ffmpeg", "-y", "-hide_banner", "-nostats", "-i", str(src_wav),
-                         "-af", af_apply, "-ar", "48000",
-                         "-codec:a", "aac", "-b:a", AAC_BITRATE,
-                         "-movflags", "+faststart", str(dst)]
+            apply_cmd = [
+                "ffmpeg",
+                "-y",
+                "-hide_banner",
+                "-nostats",
+                "-i",
+                str(src_wav),
+                "-af",
+                af_apply,
+                "-ar",
+                "48000",
+                "-codec:a",
+                "aac",
+                "-b:a",
+                AAC_BITRATE,
+                "-movflags",
+                "+faststart",
+                str(dst),
+            ]
         else:
-            apply_cmd = ["ffmpeg", "-y", "-hide_banner", "-nostats", "-i", str(src_wav),
-                         "-af", af_apply, "-ar", "48000", str(dst)]
+            apply_cmd = [
+                "ffmpeg",
+                "-y",
+                "-hide_banner",
+                "-nostats",
+                "-i",
+                str(src_wav),
+                "-af",
+                af_apply,
+                "-ar",
+                "48000",
+                str(dst),
+            ]
 
         result = subprocess.run(apply_cmd, capture_output=True, text=True, timeout=180)
         if result.returncode != 0:
-            print(f"  [master] pass2 failed (exit {result.returncode}): {result.stderr[-200:]!r}")
+            print(
+                f"  [master] pass2 failed (exit {result.returncode}): {result.stderr[-200:]!r}"
+            )
             return False
         return True
     except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError, OSError) as e:
@@ -786,7 +872,9 @@ def combine_and_export(segments: list[AudioSegment], output_path: Path) -> None:
                 combined.export(str(tmp_wav), format="wav")
                 mastered = _master_with_loudnorm(tmp_wav, part_path)
                 if mastered:
-                    print(f"  [master] loudnorm I={MASTER_LUFS} TP={MASTER_TP} LRA={MASTER_LRA} applied")
+                    print(
+                        f"  [master] loudnorm I={MASTER_LUFS} TP={MASTER_TP} LRA={MASTER_LRA} applied"
+                    )
             finally:
                 tmp_wav.unlink(missing_ok=True)
 
@@ -797,9 +885,16 @@ def combine_and_export(segments: list[AudioSegment], output_path: Path) -> None:
                 # pydub passes format="mp4" to ffmpeg for the container; the codec is
                 # selected via parameters. +faststart matches the mastering path.
                 combined.export(
-                    str(part_path), format="mp4",
-                    parameters=["-codec:a", "aac", "-b:a", AAC_BITRATE,
-                                "-movflags", "+faststart"],
+                    str(part_path),
+                    format="mp4",
+                    parameters=[
+                        "-codec:a",
+                        "aac",
+                        "-b:a",
+                        AAC_BITRATE,
+                        "-movflags",
+                        "+faststart",
+                    ],
                 )
             else:
                 combined.export(str(part_path), format="wav")
@@ -839,7 +934,7 @@ def process_file(
     speaker_map: dict[str, str],
     system_prompt: str,
 ) -> Path:
-    print(f"\n{'─'*50}")
+    print(f"\n{'─' * 50}")
     print(f"Processing: {script_path.name}")
 
     turns = parse_script(script_path, speaker_map)
@@ -848,7 +943,9 @@ def process_file(
     if _TAG_SANITIZE_LOG:
         n = sum(_TAG_SANITIZE_LOG.values())
         detail = ", ".join(f"{k}×{v}" for k, v in sorted(_TAG_SANITIZE_LOG.items()))
-        print(f"  tag-sanitize (family {TTS_FAMILY}): {n} cross-family tag(s) made safe — {detail}")
+        print(
+            f"  tag-sanitize (family {TTS_FAMILY}): {n} cross-family tag(s) made safe — {detail}"
+        )
 
     if not turns:
         raise RuntimeError(
@@ -866,10 +963,16 @@ def process_file(
     # Tag this episode's TTS events so the dashboard can attribute cost per-EP.
     # Stem looks like "ep_1" / "ep_12" → label "Synthesize EP1" / "Synthesize EP12".
     ep_match = re.match(r"ep_?(\d+)", stem)
-    episode_label = f"Synthesize EP{int(ep_match.group(1))}" if ep_match else f"Synthesize {stem}"
+    episode_label = (
+        f"Synthesize EP{int(ep_match.group(1))}" if ep_match else f"Synthesize {stem}"
+    )
     segments = synthesize_batches(
-        client, speech_config, system_prompt, batches,
-        cache_dir=cache_dir, episode_label=episode_label,
+        client,
+        speech_config,
+        system_prompt,
+        batches,
+        cache_dir=cache_dir,
+        episode_label=episode_label,
     )
 
     # Tag output with model name: ep_1_flash.mp3 / ep_1_pro.mp3
@@ -923,7 +1026,9 @@ def main():
         description="Podcast script (.md) → audio via Vertex AI Gemini TTS"
     )
     parser.add_argument("target", help="Path to script .md file or directory")
-    parser.add_argument("--dry-run", action="store_true", help="Parse and chunk only, no API calls")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Parse and chunk only, no API calls"
+    )
     args = parser.parse_args()
 
     scripts = resolve_scripts(Path(args.target))
@@ -938,7 +1043,9 @@ def main():
         else:
             todo.append(f)
 
-    print(f"[Synthesize] {len(scripts)} script(s) found, {len(todo)} to process, {len(skipped)} skipped")
+    print(
+        f"[Synthesize] {len(scripts)} script(s) found, {len(todo)} to process, {len(skipped)} skipped"
+    )
     for f in skipped:
         out = _output_path_for(f)
         size_mb = out.stat().st_size / (1024 * 1024)
@@ -953,7 +1060,9 @@ def main():
     if target_path.is_file():
         workspace_dir = target_path.parent.parent  # scripts/ → workspace/
     else:
-        workspace_dir = target_path.parent if target_path.name == "scripts" else target_path
+        workspace_dir = (
+            target_path.parent if target_path.name == "scripts" else target_path
+        )
 
     # Wire workspace for events.jsonl emission (cost dashboard)
     _set_events_workspace(workspace_dir)
@@ -967,7 +1076,9 @@ def main():
             batches = chunk_turns(turns, MAX_WORDS_PER_BATCH)
             total_words = sum(_word_count(t["text"]) for t in turns)
             batch_sizes = [sum(_word_count(t["text"]) for t in b) for b in batches]
-            print(f"  {f.name}: {len(turns)} turns, {total_words} words, {len(batches)} batches {batch_sizes}")
+            print(
+                f"  {f.name}: {len(turns)} turns, {total_words} words, {len(batches)} batches {batch_sizes}"
+            )
         print("\n[Synthesize] Dry run complete.")
         return
 
@@ -984,8 +1095,10 @@ def main():
 
     elapsed = time.time() - t0
     total_mb = sum(p.stat().st_size for p in outputs) / (1024 * 1024)
-    print(f"\n{'='*50}")
-    print(f"[Synthesize] Done: {len(outputs)} file(s) in {elapsed:.0f}s, {total_mb:.1f} MB total")
+    print(f"\n{'=' * 50}")
+    print(
+        f"[Synthesize] Done: {len(outputs)} file(s) in {elapsed:.0f}s, {total_mb:.1f} MB total"
+    )
     for p in outputs:
         size_mb = p.stat().st_size / (1024 * 1024)
         print(f"  {p.name} ({size_mb:.1f} MB)")

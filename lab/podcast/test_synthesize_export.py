@@ -19,6 +19,7 @@ publish。修法:全部寫到同目錄 .part temp,最後 os.replace 原子搬入
 (B):_model_tag helper — process_file 與 _output_path_for 原本逐字複製推導。
 (C):_generate_with_retry backoff 分類 + usage 事件 emit 兩路覆蓋。
 """
+
 import pytest
 
 import synthesize
@@ -92,13 +93,16 @@ def test_export_master_path_atomic(monkeypatch, tmp_path):
 # ─── B. _model_tag helper ───
 
 
-@pytest.mark.parametrize("model,expected", [
-    ("gemini-2.5-pro-preview-tts", "pro"),
-    ("gemini-2.5-flash-preview-tts", "flash"),
-    ("gemini-3.1-pro", "pro"),
-    ("weird-model", "model"),  # split("-")[1]
-    ("nodash", "nodash"),
-])
+@pytest.mark.parametrize(
+    "model,expected",
+    [
+        ("gemini-2.5-pro-preview-tts", "pro"),
+        ("gemini-2.5-flash-preview-tts", "flash"),
+        ("gemini-3.1-pro", "pro"),
+        ("weird-model", "model"),  # split("-")[1]
+        ("nodash", "nodash"),
+    ],
+)
 def test_model_tag(monkeypatch, model, expected):
     assert synthesize._model_tag(model) == expected
 
@@ -225,7 +229,8 @@ def _pcm_silence_bytes(ms=200):
 def _capture_events(monkeypatch):
     events = []
     monkeypatch.setattr(
-        synthesize, "_emit_event",
+        synthesize,
+        "_emit_event",
         lambda label, payload: events.append((label, payload)),
     )
     return events
@@ -233,19 +238,28 @@ def _capture_events(monkeypatch):
 
 def test_usage_event_uses_vertex_tokens_when_present(monkeypatch):
     events = _capture_events(monkeypatch)
-    um = type("UM", (), {
-        "prompt_token_count": 123,
-        "candidates_token_count": 456,
-        "total_token_count": 579,
-    })()
+    um = type(
+        "UM",
+        (),
+        {
+            "prompt_token_count": 123,
+            "candidates_token_count": 456,
+            "total_token_count": 579,
+        },
+    )()
     resp = _make_response(_pcm_silence_bytes(), "audio/L16;rate=24000", um)
-    monkeypatch.setattr(synthesize, "_generate_with_retry",
-                        lambda *a, **k: resp)
+    monkeypatch.setattr(synthesize, "_generate_with_retry", lambda *a, **k: resp)
 
     synthesize._synthesize_one(
-        client=None, speech_config=None, prompt="hello prompt",
-        index=1, total=1, batch_words=2, turns_count=1,
-        cache_path=None, episode_label="EP1",
+        client=None,
+        speech_config=None,
+        prompt="hello prompt",
+        index=1,
+        total=1,
+        batch_words=2,
+        turns_count=1,
+        cache_path=None,
+        episode_label="EP1",
     )
     assert events, "no usage event emitted"
     _, payload = events[0]
@@ -258,16 +272,22 @@ def test_usage_event_uses_vertex_tokens_when_present(monkeypatch):
 
 def test_usage_event_falls_back_to_estimate_without_metadata(monkeypatch):
     events = _capture_events(monkeypatch)
-    resp = _make_response(_pcm_silence_bytes(400), "audio/L16;rate=24000",
-                          usage_metadata=None)
-    monkeypatch.setattr(synthesize, "_generate_with_retry",
-                        lambda *a, **k: resp)
+    resp = _make_response(
+        _pcm_silence_bytes(400), "audio/L16;rate=24000", usage_metadata=None
+    )
+    monkeypatch.setattr(synthesize, "_generate_with_retry", lambda *a, **k: resp)
 
     prompt = "x" * 40
     synthesize._synthesize_one(
-        client=None, speech_config=None, prompt=prompt,
-        index=1, total=1, batch_words=2, turns_count=1,
-        cache_path=None, episode_label="EP1",
+        client=None,
+        speech_config=None,
+        prompt=prompt,
+        index=1,
+        total=1,
+        batch_words=2,
+        turns_count=1,
+        cache_path=None,
+        episode_label="EP1",
     )
     _, payload = events[0]
     assert payload["usage_source"] == "estimated"

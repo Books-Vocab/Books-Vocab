@@ -44,7 +44,9 @@ _STAGE_DEFINITIONS: tuple[StageSpec, ...] = (
     StageSpec("plan-review", prompt_name="plan_review"),
     StageSpec("enricher-gap", prompt_name="enricher_gap"),
     StageSpec("enricher", prompt_name="enricher"),
-    StageSpec("scriptwrite", approval_marker=".plan_approved", prompt_name="scriptwriter"),
+    StageSpec(
+        "scriptwrite", approval_marker=".plan_approved", prompt_name="scriptwriter"
+    ),
     StageSpec("series-polish", series_wide=True, prompt_name="series_polish"),
     StageSpec("script-review", prompt_name="script_review"),
     StageSpec("tts-prep", approval_marker=".script_approved", prompt_name="tts_prep"),
@@ -151,7 +153,9 @@ def resolve_run_plan(config: PipelineConfig, *, resume_index: int = 0) -> RunPla
     try:
         start_idx = names.index(start_name) if start_name else 0
     except ValueError as exc:
-        raise ValueError(f"stage {start_name!r} is not in workflow stage_order") from exc
+        raise ValueError(
+            f"stage {start_name!r} is not in workflow stage_order"
+        ) from exc
     try:
         stop_idx = names.index(stop_name) if stop_name else len(specs) - 1
     except ValueError as exc:
@@ -165,7 +169,7 @@ def resolve_run_plan(config: PipelineConfig, *, resume_index: int = 0) -> RunPla
             raise ValueError(f"resume_index out of range: {resume_index}")
         start_idx = max(start_idx, resume_index)
 
-    selected = list(specs[start_idx:stop_idx + 1])
+    selected = list(specs[start_idx : stop_idx + 1])
     skipped: list[str] = []
     if config.only_episode is not None:
         for spec in selected:
@@ -217,7 +221,9 @@ class WorkspaceState:
     def mark_stage_done(self, stage: str, *, timestamp: str | None = None) -> Path:
         self.workspace.mkdir(parents=True, exist_ok=True)
         path = self.marker_path(stage)
-        self._write_text_atomic(path, timestamp or datetime.now().isoformat(timespec="seconds"))
+        self._write_text_atomic(
+            path, timestamp or datetime.now().isoformat(timespec="seconds")
+        )
         return path
 
     def manifest_path(self) -> Path:
@@ -269,7 +275,9 @@ class WorkspaceState:
         only_episode: int | None = None,
     ) -> dict[str, Any]:
         value = dict(payload)
-        self.provenance_path(stage, only_episode).parent.mkdir(parents=True, exist_ok=True)
+        self.provenance_path(stage, only_episode).parent.mkdir(
+            parents=True, exist_ok=True
+        )
         self._write_json(self.provenance_path(stage, only_episode), value)
         return value
 
@@ -299,11 +307,10 @@ class WorkspaceState:
             return True
         recorded_inputs = provenance.get("input_artifacts", {})
         recorded_prompt = provenance.get("prompt")
-        return (
-            self._stable_identity(recorded_inputs)
-            != self._stable_identity(current_inputs)
-            or self._stable_identity(recorded_prompt)
-            != self._stable_identity(current_prompt)
+        return self._stable_identity(recorded_inputs) != self._stable_identity(
+            current_inputs
+        ) or self._stable_identity(recorded_prompt) != self._stable_identity(
+            current_prompt
         )
 
     @classmethod
