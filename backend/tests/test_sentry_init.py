@@ -77,7 +77,8 @@ def test_scrub_event_tolerates_non_dict_subfields():
 
 
 # ---------------------------------------------------------------------------
-# Release resolution: env override → KG_VERSION → /app/VERSION file
+# Release resolution: SENTRY_RELEASE (verbatim) → KG_VERSION → /app/VERSION,
+# the latter two qualified as ``kg-backend@<value>`` unless already qualified.
 # ---------------------------------------------------------------------------
 
 def test_resolve_release_prefers_sentry_release_env(monkeypatch, tmp_path):
@@ -93,7 +94,7 @@ def test_resolve_release_falls_back_to_kg_version(monkeypatch, tmp_path):
     monkeypatch.setenv("KG_VERSION", "deadbeef")
     version_file = tmp_path / "VERSION"
     version_file.write_text("file-shadowed")
-    assert _resolve_release(version_file=version_file) == "deadbeef"
+    assert _resolve_release(version_file=version_file) == "kg-backend@deadbeef"
 
 
 def test_resolve_release_falls_back_to_version_file(monkeypatch, tmp_path):
@@ -101,7 +102,25 @@ def test_resolve_release_falls_back_to_version_file(monkeypatch, tmp_path):
     monkeypatch.delenv("KG_VERSION", raising=False)
     version_file = tmp_path / "VERSION"
     version_file.write_text("  cafef00d\n")
-    assert _resolve_release(version_file=version_file) == "cafef00d"
+    assert _resolve_release(version_file=version_file) == "kg-backend@cafef00d"
+
+
+def test_resolve_release_keeps_sentry_release_verbatim(monkeypatch, tmp_path):
+    # Explicit override is the operator's exact string — never prefixed.
+    monkeypatch.setenv("SENTRY_RELEASE", "kg-backend@abc")
+    assert _resolve_release(version_file=tmp_path / "VERSION") == "kg-backend@abc"
+    monkeypatch.setenv("SENTRY_RELEASE", "rawsha")
+    assert _resolve_release(version_file=tmp_path / "VERSION") == "rawsha"
+
+
+def test_resolve_release_does_not_double_prefix_qualified_values(monkeypatch, tmp_path):
+    monkeypatch.delenv("SENTRY_RELEASE", raising=False)
+    monkeypatch.setenv("KG_VERSION", "kg-backend@deadbeef")
+    assert _resolve_release(version_file=tmp_path / "VERSION") == "kg-backend@deadbeef"
+    monkeypatch.delenv("KG_VERSION")
+    version_file = tmp_path / "VERSION"
+    version_file.write_text("other@1.2.3\n")
+    assert _resolve_release(version_file=version_file) == "other@1.2.3"
 
 
 def test_resolve_release_returns_none_when_nothing_available(monkeypatch, tmp_path):

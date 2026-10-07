@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from ._fsutil import fsync_dir as _fsync_dir
+from .sentry_init import init_sentry
 
 logger = logging.getLogger(__name__)
 
@@ -553,6 +554,7 @@ def _resolve_data_dir() -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
+    init_sentry(job="orphan_scan")
     parser = argparse.ArgumentParser(
         prog="kg.orphan_scan",
         description="Scan KG data for orphan rows; optionally clean them up.",

@@ -22,6 +22,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 
 from . import judge_log, llm_error_log, pipeline_log, token_tracker, translate_log
+from .sentry_init import init_sentry
 
 _logger = logging.getLogger(__name__)
 
@@ -310,6 +311,7 @@ def _run_from_args(args: argparse.Namespace) -> dict[str, dict[str, int]]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    init_sentry(job="log_retention")
     parser = _build_parser()
     args = parser.parse_args(argv)
 

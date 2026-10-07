@@ -9,6 +9,7 @@ from openai import OpenAIError
 
 from ..exceptions import KGError
 from ..retry import async_retry
+from ..sentry_init import capture_handled
 from ..types import UserRecord
 from .runstate import _PIPELINE_RUNNING, _PIPELINE_RUNNING_LOCK
 from .steps import _step_difficulty, _step_embed_and_judge, _step_enrich
@@ -100,6 +101,7 @@ async def _run_step(
         return "quota_exhausted"
     except _STEP_ERRORS as exc:
         logger.error("[%s] %s failed: %s", uid, name, exc, exc_info=True)
+        capture_handled(exc, context="pipeline.step", tags={"step": name})
         if run_id:
             _telemetry(logger, "end_step", run_id, name, status="failed", error=str(exc))
         return "failed"
