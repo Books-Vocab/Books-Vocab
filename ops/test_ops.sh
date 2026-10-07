@@ -225,6 +225,7 @@ run_one() {
       ./ops/tests/test_docs_lint.sh &&
       ./ops/tests/test_docs_lint_generated_check.sh &&
       ./ops/tests/test_docs_lint_generated_diff.sh &&
+      ./ops/tests/test_docs_lint_source_existence.sh &&
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_context_route.py
       ;;

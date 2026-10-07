@@ -49,6 +49,11 @@ if grep -qE "policy.safety|reference.product_surface|sop.deploy" "$TMP/backend";
   exit 1
 fi
 
+# A glob source with a trailing "/" names every file under each matching directory,
+# exactly like a literal "dir/" source (registry: `.claude/skills/podcast-*/`).
+./ops/docs_impact.py --files .claude/skills/podcast-pipeline/SKILL.md >"$TMP/glob-dir"
+require "sop.podcast_pipeline" "$TMP/glob-dir"
+
 ./ops/docs_impact.py --files ops/ios_release.sh >"$TMP/ios"
 require "sop.ios" "$TMP/ios"
 if grep -qE "policy.safety|sop.backend|sop.deploy" "$TMP/ios"; then
