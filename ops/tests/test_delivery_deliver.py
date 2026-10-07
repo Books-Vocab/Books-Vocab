@@ -434,6 +434,78 @@ def test_a_failing_check_stops_before_anything_is_claimed() -> None:
     assert world.names() == []
 
 
+def _noisy_runner(rc: int) -> Any:
+    def runner(cmd: list[str], cwd: Path | None) -> deliver.Proc:
+        out = "".join(f"stdout line {n}\n" for n in range(1, 101))
+        return deliver.Proc(rc, out, "FAILED test_x - boom\n\n" if rc else "")
+
+    return runner
+
+
+def test_a_failed_check_shows_its_tail_on_stderr_and_keeps_the_full_log(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (outcome,) = deliver.run_checks(
+        ["unit=pytest"],
+        tmp_path,
+        _noisy_runner(1),
+        log_dir=tmp_path / "logs",
+        tag="b/x",
+    )
+    err = capsys.readouterr().err
+    assert "stdout line 100" in err and "FAILED test_x - boom" in err
+    assert "stdout line 50\n" not in err  # only the tail, not the whole run
+    assert outcome["detail"] == "FAILED test_x - boom"
+    log = Path(outcome["log"])
+    assert log.parent == tmp_path / "logs" and log.name.startswith("b-x-unit-")
+    text = log.read_text()
+    assert "stdout line 1\n" in text and "stdout line 100" in text and "boom" in text
+
+
+def test_a_passed_check_is_logged_but_stays_quiet(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (outcome,) = deliver.run_checks(
+        ["unit=pytest"], tmp_path, _noisy_runner(0), log_dir=tmp_path / "logs"
+    )
+    assert capsys.readouterr().err == ""
+    assert "stdout line 1\n" in Path(outcome["log"]).read_text()
+
+
+def test_checks_without_a_log_dir_keep_the_old_shape() -> None:
+    (outcome,) = deliver.run_checks(["unit=x"], Path("."), _noisy_runner(0))
+    assert "log" not in outcome
+
+
+def test_a_failed_deliver_check_reports_its_log_in_json_and_never_seals_it() -> None:
+    world = FakeWorld(fail_commands={"bad"})
+    code, result = ship(world, "--check", "ok=good", "--check", "broken=bad")
+    assert code == 1
+    by_label = {c["check"]: c for c in result["checks"]}
+    log = Path(by_label["broken"]["log"])
+    assert world.canon / ".cache" / "deliver-checks" in log.parents
+    assert "out of bad" in log.read_text()
+    passed = Path(by_label["ok"]["log"])
+    assert passed.is_file()
+    ok_world = FakeWorld()
+    sealed: list[Any] = []
+
+    def spy(cmd: list[str], cwd: Path | None) -> deliver.Proc:
+        if "--outcomes" in cmd:  # the temp file is gone after the run
+            sealed.extend(
+                json.loads(Path(cmd[cmd.index("--outcomes") + 1]).read_text())
+            )
+        return ok_world(cmd, cwd)
+
+    argv = ["--timeout", "5", "--poll", "0", "--worktree", str(ok_world.work)]
+    with (
+        contextlib.redirect_stdout(io.StringIO()),
+        contextlib.redirect_stderr(io.StringIO()),
+    ):
+        assert deliver.main([*argv, "--check", "ok=good"], runner=spy) == 0
+    assert sealed and all("log" not in o for o in sealed)
+
+
 def test_a_new_lane_without_any_check_is_refused() -> None:
     code, result = ship(FakeWorld())
     assert code == 1

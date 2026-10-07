@@ -24,7 +24,10 @@ rewrite after the author committed would hand back code nobody ran the checks on
 
 Outcomes written into the hand-back receipt come only from the ``--check``
 commands this run executed: status from the exit code, detail from the last
-line of output.  There is no way to pass an outcome in by hand.
+non-empty line of output.  Each check's full output is also kept under the
+canonical checkout's ``.cache/deliver-checks/`` (gitignored) and a failed check
+prints its last lines to stderr; the failure JSON lists the checks with their
+``log`` paths.  Logs hold raw test output, never the environment.  There is no way to pass an outcome in by hand.
 
 ``deliver.py gc`` retires lanes whose PR is already merged (the ghost claims
 `doctor.py` reports) via `delivery.py cleanup-merged`.
@@ -84,7 +87,14 @@ PR_GUARD_QUERY = (
 
 
 class DeliverError(Exception):
-    """A stage failed; the message says which and why."""
+    """A stage failed; the message says which and why.
+
+    ``extra`` is merged into the failure JSON (additive fields only).
+    """
+
+    def __init__(self, message: str, extra: dict[str, Any] | None = None):
+        super().__init__(message)
+        self.extra = extra or {}
 
 
 @dataclass(frozen=True)
@@ -219,20 +229,57 @@ def parse_check(spec: str) -> tuple[str, str]:
     return label.strip(), command.strip()
 
 
-def run_checks(specs: list[str], cwd: Path, runner: Runner) -> list[dict[str, str]]:
-    """Run every check (no early exit) and report what actually happened."""
+TAIL_LINES = 40
+
+
+def _slug(text: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._]+", "-", text).strip("-")[:60] or "x"
+
+
+def run_checks(
+    specs: list[str],
+    cwd: Path,
+    runner: Runner,
+    log_dir: Path | None = None,
+    tag: str = "",
+) -> list[dict[str, str]]:
+    """Run every check (no early exit) and report what actually happened.
+
+    With ``log_dir`` each check's full output goes to a file named in the
+    outcome's ``log``; a failed check also prints its last ``TAIL_LINES`` lines
+    to stderr so the progress stream says why it failed.
+    """
     outcomes = []
+    stamp = time.strftime("%Y%m%dT%H%M%S", time.gmtime())
     for spec in specs:
         label, command = parse_check(spec)
         done = runner(["bash", "-c", command], cwd)
-        lines = (done.stdout.strip() or done.stderr.strip()).splitlines()
-        outcomes.append(
-            {
-                "check": label,
-                "status": "passed" if done.returncode == 0 else "failed",
-                "detail": (lines[-1] if lines else f"rc={done.returncode}")[:120],
-            }
-        )
+        ok = done.returncode == 0
+        text = "\n".join(p for p in (done.stdout, done.stderr) if p.strip())
+        lines = [ln for ln in text.splitlines() if ln.strip()]
+        outcome = {
+            "check": label,
+            "status": "passed" if ok else "failed",
+            "detail": (lines[-1].strip() if lines else f"rc={done.returncode}")[:120],
+        }
+        if log_dir is not None:
+            log = log_dir / f"{_slug(tag)}-{_slug(label)}-{stamp}.log"
+            try:
+                log_dir.mkdir(parents=True, exist_ok=True)
+                log.write_text(f"$ {command}\n# rc={done.returncode}\n{text}\n")
+                outcome["log"] = str(log)
+            except OSError as exc:
+                print(f"deliver: cannot write check log: {exc}", file=sys.stderr)
+        if not ok:
+            print(
+                f"deliver: check {label!r} output (last {TAIL_LINES} lines):",
+                file=sys.stderr,
+            )
+            for line in text.splitlines()[-TAIL_LINES:]:
+                print(f"deliver:   | {line}", file=sys.stderr)
+            if "log" in outcome:
+                print(f"deliver: full output: {outcome['log']}", file=sys.stderr)
+        outcomes.append(outcome)
     return outcomes
 
 
@@ -643,14 +690,23 @@ class Delivery:
                     "pass at least one --check: an outcome has to come from a command that ran"
                 )
             self.check_format()
-            outcomes = run_checks(self.args.check, self.work, self.runner)
+            outcomes = run_checks(
+                self.args.check,
+                self.work,
+                self.runner,
+                log_dir=canon / ".cache" / "deliver-checks",
+                tag=branch,
+            )
             failed = [o for o in outcomes if o["status"] != "passed"]
             for o in outcomes:
                 self.say(f"check {o['status']}: {o['check']}")
             if failed:
                 raise DeliverError(
-                    "check(s) failed: " + ", ".join(o["check"] for o in failed)
+                    "check(s) failed: " + ", ".join(o["check"] for o in failed),
+                    {"checks": outcomes},
                 )
+            # Local log paths stay out of the sealed outcomes (they reach the PR body).
+            outcomes = [{k: v for k, v in o.items() if k != "log"} for o in outcomes]
             self.before_claim()
             with tempfile.TemporaryDirectory() as tmp:
                 scope = scope_from_name_status(
@@ -1440,7 +1496,10 @@ def main(
             result = Delivery(args, runner, sleep, clock).deliver()
     except DeliverError as exc:
         print(
-            json.dumps({"schema": SCHEMA, "ok": False, "error": str(exc)}),
+            json.dumps(
+                {"schema": SCHEMA, "ok": False, "error": str(exc), **exc.extra},
+                ensure_ascii=False,
+            ),
             file=sys.stdout,
         )
         print(f"deliver: {exc}", file=sys.stderr)
