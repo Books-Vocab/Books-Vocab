@@ -35,13 +35,15 @@ def cmd_resolve(args: argparse.Namespace, *, resolve_statuses: tuple[str, ...]) 
             file=sys.stderr,
         )
         return EXIT_USAGE
+    # In-process capability supplied only by the orchestrator after it has
+    # verified the PR/remote proof; the CLI parser exposes no such flag.
     retire_evidence = getattr(args, "cleanup_pending_evidence", None)
     if retire_evidence is not None and (
         args.status != "abandoned" or not retire_evidence.strip()
     ):
         print(
-            "✗ --cleanup-pending-evidence is only valid, and must be non-empty, "
-            "with --status abandoned",
+            "✗ cleanup_pending retirement evidence is only valid, and must be "
+            "non-empty, with --status abandoned",
             file=sys.stderr,
         )
         return EXIT_USAGE

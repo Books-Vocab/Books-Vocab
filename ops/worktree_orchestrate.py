@@ -1909,7 +1909,7 @@ def _cleanup_pending_retire_evidence(
     Returns ``(evidence, refusal)``; both None when the selected record is not
     a cleanup_pending lease (the normal transition rules apply).  Evidence is
     either a MERGED PR whose head is the expected HEAD, or an absent remote
-    branch with no open PR; anything else keeps the lease.
+    branch with no PR history at all; anything else keeps the lease.
     """
 
     try:
@@ -1948,11 +1948,20 @@ def _cleanup_pending_retire_evidence(
             f"PR #{open_pulls[0].number} for {branch} is still OPEN; "
             "keeping the cleanup_pending lease"
         )
+    if pulls:
+        # CLOSED-unmerged (or MERGED for another HEAD) history cannot be
+        # discarded by this shortcut; abandoning would strand the handback in
+        # an unsupported abandoned_with_handback state.
+        return None, (
+            f"PR #{pulls[0].number} for {branch} is {pulls[0].state} without "
+            f"merging HEAD {args.expected_head_sha}; use the closed-PR "
+            "disposition flow"
+        )
     remote, problem = worktree_cleanup._remote_branch_head(branch, root=ROOT, git=_git)
     if problem:
         return None, problem
     if remote is None:
-        return f"remote branch {branch} is gone and no PR is open", None
+        return f"remote branch {branch} is gone and no PR ever existed", None
     return None, (
         f"remote branch {branch} still exists at {remote} and no PR for exact HEAD "
         f"{args.expected_head_sha} is MERGED"
@@ -2001,9 +2010,9 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         argv += ["--expected-generation", str(args.expected_generation)]
     if args.expected_head_sha:
         argv += ["--expected-head-sha", args.expected_head_sha]
-    if retire_evidence:
-        argv += ["--cleanup-pending-evidence", retire_evidence]
-    rc = registry.main(argv, acquire_lock=False)
+    rc = registry.main(
+        argv, acquire_lock=False, cleanup_pending_evidence=retire_evidence
+    )
     if rc != EXIT_OK or not args.remove:
         return rc
     return worktree_cleanup.cleanup_resolved_local_assets(

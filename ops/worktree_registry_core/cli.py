@@ -85,13 +85,6 @@ def build_parser(
     resolve.add_argument("--expected-generation", type=int)
     resolve.add_argument("--expected-head-sha")
     resolve.add_argument("--terminal-proof")
-    resolve.add_argument(
-        "--cleanup-pending-evidence",
-        help=(
-            "allow abandoning a cleanup_pending lease; text naming the proof "
-            "that its PR is merged or its remote branch is gone"
-        ),
-    )
     resolve.set_defaults(func=handlers["resolve"])
 
     discard = sub.add_parser(

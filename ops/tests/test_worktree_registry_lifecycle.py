@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 import worktree_registry as registry
@@ -236,6 +238,23 @@ def _abandon_args(
     ]
 
 
+def test_cleanup_pending_evidence_is_not_a_command_line_capability(
+    tmp_path: Path, capsys
+) -> None:
+    record = _cleanup_pending_record(tmp_path)
+    state_path = tmp_path / "registry.json"
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+
+    with pytest.raises(SystemExit) as raised:
+        registry.main(
+            _abandon_args(state_path, record, "--cleanup-pending-evidence", "anything")
+        )
+
+    assert raised.value.code == 2
+    assert "--cleanup-pending-evidence" in capsys.readouterr().err
+    assert registry.load_state(state_path)["records"][0]["status"] == "cleanup_pending"
+
+
 def test_cleanup_pending_lease_is_abandoned_only_with_cleanup_evidence(
     tmp_path: Path, capsys
 ) -> None:
@@ -246,16 +265,11 @@ def test_cleanup_pending_lease_is_abandoned_only_with_cleanup_evidence(
     bare = registry.main(_abandon_args(state_path, record))
     refusal = capsys.readouterr().err
     blank = registry.main(
-        _abandon_args(state_path, record, "--cleanup-pending-evidence", " ")
+        _abandon_args(state_path, record), cleanup_pending_evidence=" "
     )
     wrong_target = registry.main(
-        _abandon_args(
-            state_path,
-            record,
-            "--cleanup-pending-evidence",
-            "PR #7 MERGED",
-            status="published",
-        )
+        _abandon_args(state_path, record, status="published"),
+        cleanup_pending_evidence="PR #7 MERGED",
     )
 
     assert bare == registry.EXIT_CLAIMED
@@ -265,7 +279,7 @@ def test_cleanup_pending_lease_is_abandoned_only_with_cleanup_evidence(
     assert registry.load_state(state_path)["records"][0]["status"] == "cleanup_pending"
 
     ok = registry.main(
-        _abandon_args(state_path, record, "--cleanup-pending-evidence", "PR #7 MERGED")
+        _abandon_args(state_path, record), cleanup_pending_evidence="PR #7 MERGED"
     )
 
     assert ok == registry.EXIT_OK

@@ -104,7 +104,7 @@ def test_resolve_remove_deletes_exact_local_branch_after_remote_absence(
     monkeypatch.setattr(
         coordinator.registry,
         "main",
-        lambda argv, acquire_lock=False: registry_calls.append(argv) or 0,
+        lambda argv, acquire_lock=False, **_kw: registry_calls.append(argv) or 0,
     )
 
     args = Namespace(
@@ -148,7 +148,7 @@ def test_resolve_remove_preserves_assets_when_remote_branch_exists(
     monkeypatch.setattr(
         coordinator.registry,
         "main",
-        lambda argv, acquire_lock=False: registry_calls.append(argv) or 0,
+        lambda argv, acquire_lock=False, **_kw: registry_calls.append(argv) or 0,
     )
 
     args = Namespace(
@@ -193,7 +193,7 @@ def test_resolve_remove_preserves_branch_when_head_drifts_after_transition(
     monkeypatch.setattr(
         coordinator.registry,
         "main",
-        lambda argv, acquire_lock=False: registry_calls.append(argv) or 0,
+        lambda argv, acquire_lock=False, **_kw: registry_calls.append(argv) or 0,
     )
 
     args = Namespace(
@@ -2816,6 +2816,11 @@ def _pr(number: int, branch: str, head: str, state: str) -> Namespace:
         ([("OPEN", "a" * 40)], "", coordinator.EXIT_BLOCK, None),
         # MERGED PR for a different HEAD proves nothing about this lane
         ([("MERGED", "9" * 40)], "f" * 40, coordinator.EXIT_BLOCK, None),
+        # CLOSED-unmerged PR with the remote deleted still needs the
+        # closed-PR disposition flow, never the missing-remote shortcut
+        ([("CLOSED", "a" * 40)], "", coordinator.EXIT_BLOCK, None),
+        # MERGED PR for another HEAD plus a deleted remote is PR history too
+        ([("MERGED", "9" * 40)], "", coordinator.EXIT_BLOCK, None),
     ],
 )
 def test_resolve_abandoned_retires_cleanup_pending_only_with_proof(
@@ -2848,7 +2853,9 @@ def test_resolve_abandoned_retires_cleanup_pending_only_with_proof(
     monkeypatch.setattr(
         coordinator.registry,
         "main",
-        lambda argv, acquire_lock=False: registry_calls.append(argv) or 0,
+        lambda argv, acquire_lock=False, cleanup_pending_evidence=None: (
+            registry_calls.append((argv, cleanup_pending_evidence)) or 0
+        ),
     )
 
     rc = coordinator.cmd_resolve(_retire_args(state_path, branch, head))
@@ -2857,8 +2864,9 @@ def test_resolve_abandoned_retires_cleanup_pending_only_with_proof(
     if evidence_part is None:
         assert not registry_calls
     else:
-        argv = registry_calls[0]
-        assert evidence_part in argv[argv.index("--cleanup-pending-evidence") + 1]
+        argv, evidence = registry_calls[0]
+        assert "--cleanup-pending-evidence" not in argv
+        assert evidence_part in evidence
 
 
 def test_resolve_abandoned_leaves_non_cleanup_pending_records_untouched(
@@ -2877,13 +2885,15 @@ def test_resolve_abandoned_leaves_non_cleanup_pending_records_untouched(
     monkeypatch.setattr(
         coordinator.registry,
         "main",
-        lambda argv, acquire_lock=False: registry_calls.append(argv) or 0,
+        lambda argv, acquire_lock=False, cleanup_pending_evidence=None: (
+            registry_calls.append((argv, cleanup_pending_evidence)) or 0
+        ),
     )
 
     rc = coordinator.cmd_resolve(_retire_args(state_path, "debug/x", "a" * 40))
 
     assert rc == 0
-    assert "--cleanup-pending-evidence" not in registry_calls[0]
+    assert registry_calls[0][1] is None
 
 
 def test_adopt_scope_from_diff_derives_scope_from_the_branch_diff(
