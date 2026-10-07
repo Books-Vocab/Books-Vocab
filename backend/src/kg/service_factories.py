@@ -9,7 +9,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 from .cards import CardStore
-from .embeddings import EmbeddingStore
+from .embeddings import BoundEmbeddingStore, EmbeddingStore
 from .graph import GraphStore
 from .graph_event_log import GraphEventStore, GraphSnapshotStore
 from .library import LibraryStore
@@ -18,6 +18,7 @@ from .notebook import NotebookStore
 from .ops_shared import NOTEBOOK_FILE_SPECS
 from .review_events import ReviewEventStore
 from .shared_decks.store import SharedDeckStore
+from .tracked_llm import LLM_HTTP_TIMEOUT, LLM_MAX_RETRIES
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +245,10 @@ _clients: dict[str, object] = {}
 _async_clients: dict[str, object] = {}
 _clients_lock = threading.Lock()
 
+# Every LLM client gets the #2059 failure bound (request-path read timeout,
+# one SDK retry); rationale and the per-call-type long-generation override
+# live next to the values in tracked_llm.
+
 
 def _require_api_key(provider: LLMProvider) -> str:
     api_key = os.getenv(provider.api_key_env)
@@ -261,7 +266,12 @@ def create_client(provider: LLMProvider):
     with _clients_lock:
         client = _clients.get(provider.name)
         if client is None:
-            client = OpenAI(api_key=_require_api_key(provider), base_url=provider.base_url)
+            client = OpenAI(
+                api_key=_require_api_key(provider),
+                base_url=provider.base_url,
+                timeout=LLM_HTTP_TIMEOUT,
+                max_retries=LLM_MAX_RETRIES,
+            )
             _clients[provider.name] = client
         return client
 
@@ -273,7 +283,12 @@ def create_async_client(provider: LLMProvider):
     with _clients_lock:
         client = _async_clients.get(provider.name)
         if client is None:
-            client = AsyncOpenAI(api_key=_require_api_key(provider), base_url=provider.base_url)
+            client = AsyncOpenAI(
+                api_key=_require_api_key(provider),
+                base_url=provider.base_url,
+                timeout=LLM_HTTP_TIMEOUT,
+                max_retries=LLM_MAX_RETRIES,
+            )
             _async_clients[provider.name] = client
         return client
 
@@ -314,7 +329,14 @@ def create_embedding_store(
     notebook_id: str = "default",
     model: str | None = None,
     dim: int | None = None,
-) -> EmbeddingStore:
+) -> BoundEmbeddingStore:
+    """Shared per-notebook vectors, bound to *this* caller's ``llm``.
+
+    The cached store is built without an llm: callers bind different user
+    identities / quota policies (``enforce_quota``, ``is_pro``,
+    ``reserve_quota``) and caching the first one froze it for every later
+    caller (#2058). ``llm=None`` is valid for callers that only read/evict.
+    """
     if model is None or dim is None:
         from .settings import load_settings
 
@@ -330,4 +352,5 @@ def create_embedding_store(
             NOTEBOOK_FILE_SPECS["card_ids"],
         ],
     )
-    return _get_cached(key, lambda: EmbeddingStore(emb_path, ids_path, llm, model=model, dim=dim))
+    store = _get_cached(key, lambda: EmbeddingStore(emb_path, ids_path, None, model=model, dim=dim))
+    return store.bind(llm)

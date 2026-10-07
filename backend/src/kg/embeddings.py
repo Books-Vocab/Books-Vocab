@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import os
+import threading
 import time
+import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import BinaryIO
 
 import numpy as np
 from openai import OpenAIError
@@ -17,18 +22,45 @@ from ._fsutil import fsync_dir as _fsync_dir
 logger = logging.getLogger(__name__)
 
 
-def _fsync_path(path: Path) -> None:
-    """fsync a closed file by path so its bytes are durable before a rename.
+def _write_durable_tmp(target: Path, write: Callable[[BinaryIO], object]) -> Path:
+    """Write ``target``'s next content to a fresh temp file beside it, fsynced.
 
-    ``np.save`` writes and closes the .npy itself (no fd to reach), so we
-    reopen read-only purely to fsync. Mirrors the durability guarantee of
-    ``kg.graph.persistence._atomic_json_write`` (flush + fsync before replace).
+    Every call gets its own name (``.<target>.<random>.tmp``, created with
+    ``O_EXCL``), so two writers of the same notebook -- a second store instance
+    after a cache eviction, or another process -- can never truncate or
+    ``replace()`` each other's half-written temp (#2061). The leading dot keeps
+    temps out of ``embeddings_*`` / ``card_ids_*`` prefix scans. Mode follows
+    the umask exactly like ``open(path, "w")``. Mirrors the durability contract
+    of ``kg.graph.persistence._atomic_json_write`` (fsync before replace).
+    Returns the temp path; the caller swaps it in with ``os.replace``.
     """
-    fd = os.open(path, os.O_RDONLY)
+    while True:
+        tmp = target.with_name(f".{target.name}.{uuid.uuid4().hex[:16]}.tmp")
+        try:
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+            break
+        except FileExistsError:
+            continue
     try:
-        os.fsync(fd)
-    finally:
-        os.close(fd)
+        with os.fdopen(fd, "wb") as f:
+            write(f)
+            f.flush()
+            os.fsync(f.fileno())
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+    return tmp
+
+
+def _synchronized[F: Callable](method: F) -> F:
+    """Run an ``EmbeddingStore`` method under the instance's ``_lock``."""
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper  # type: ignore[return-value]
 
 
 EMBEDDING_MODEL = "gemini-embedding-2-preview"
@@ -50,6 +82,14 @@ class EmbeddingStore:
     different model or dim. When ``EMBEDDING_MODEL`` / ``EMBEDDING_DIM`` change
     in env, the old files are renamed ``*.legacy_{model}_{dim}`` and the
     store starts empty; pipeline backfill will re-embed on next run.
+
+    Thread safety (#2061): one cached instance per notebook is shared by
+    request threads and the pipeline executor. ``_lock`` serialises every
+    read-modify-write of the matrix/ids and each ``_save``, so rows and ids
+    stay aligned in memory and on disk. The embedding API call itself runs
+    *outside* the lock (a slow provider must not stall other writers or
+    readers); ``add_batch`` / ``update`` re-check membership after it.
+    ``has`` / ``count`` are single GIL-atomic reads and stay lock-free.
     """
 
     def __init__(
@@ -72,6 +112,7 @@ class EmbeddingStore:
         self._id_pos: dict[str, int] = {}  # card_id -> row index (O(1) lookup)
         self._norms: np.ndarray | None = None  # cached L2 norms
         self._dirty: bool = False
+        self._lock = threading.RLock()
         self._load()
 
     # ------------------------------------------------------------------
@@ -109,15 +150,15 @@ class EmbeddingStore:
             "dim": self.dim,
             "created_at": datetime.now(UTC).isoformat(),
         }
-        tmp = self._meta_path.with_suffix(".json.tmp")
         # Fsync the temp before replace + the dir after, mirroring _save's
         # durability contract — otherwise an OS/power crash can persist a torn
         # or zero-length sidecar that misattributes the store's model/dim.
-        with open(tmp, "w", encoding="utf-8") as f:
-            f.write(json.dumps(payload))
-            f.flush()
-            os.fsync(f.fileno())
-        tmp.replace(self._meta_path)
+        tmp = _write_durable_tmp(self._meta_path, lambda f: f.write(json.dumps(payload).encode("utf-8")))
+        try:
+            os.replace(tmp, self._meta_path)
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
         _fsync_dir(self._meta_path.parent)
 
     def _quarantine_stale(self, stale_model: str, stale_dim: int) -> None:
@@ -325,6 +366,7 @@ class EmbeddingStore:
             self._norms = np.linalg.norm(self._embeddings, axis=1)
         return self._norms
 
+    @_synchronized
     def _save(self) -> None:
         """Persist matrix + ids to disk.
 
@@ -342,26 +384,33 @@ class EmbeddingStore:
         ahead of the data on an OS/power crash — otherwise next boot sees a
         zero-length / torn primary file. This mirrors the graph persistence
         standard ``kg.graph.persistence._atomic_json_write``.
+
+        Temps are uniquely named per save (see ``_write_durable_tmp``) and are
+        removed if the save fails before swapping them in. Runs under
+        ``_lock`` so the snapshot written is the one in memory and two saves
+        of this instance can never interleave their swaps (npy from one, ids
+        from the other).
         """
         self.embeddings_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Phase 1: write + fsync both temp files before touching live files.
-        tmp_emb: Path | None = None
-        if self._embeddings is not None:
-            # np.save() auto-appends .npy if missing, so tmp must already end in .npy
-            tmp_emb = self.embeddings_path.with_name(self.embeddings_path.stem + "_tmp.npy")
-            np.save(tmp_emb, self._embeddings)
-            _fsync_path(tmp_emb)
-        tmp_ids = self.ids_path.with_suffix(".json.tmp")
-        with open(tmp_ids, "w", encoding="utf-8") as f:
-            f.write(json.dumps(self._ids))
-            f.flush()
-            os.fsync(f.fileno())
+        swaps: list[tuple[Path, Path]] = []
+        try:
+            if self._embeddings is not None:
+                matrix = self._embeddings
+                # A file object (not a path) so np.save never appends ".npy".
+                tmp_emb = _write_durable_tmp(self.embeddings_path, lambda f: np.save(f, matrix))
+                swaps.append((tmp_emb, self.embeddings_path))
+            ids_payload = json.dumps(self._ids).encode("utf-8")
+            swaps.append((_write_durable_tmp(self.ids_path, lambda f: f.write(ids_payload)), self.ids_path))
 
-        # Phase 2: swap into place back-to-back to minimise the desync window.
-        if tmp_emb is not None:
-            tmp_emb.replace(self.embeddings_path)
-        tmp_ids.replace(self.ids_path)
+            # Phase 2: swap into place back-to-back to minimise the desync window.
+            for tmp, target in swaps:
+                os.replace(tmp, target)
+        except BaseException:
+            for tmp, _ in swaps:
+                tmp.unlink(missing_ok=True)
+            raise
         # Persist the renames (directory entries) too, so the swap survives a
         # crash. Best-effort: a filesystem that rejects dir fsync is tolerated.
         _fsync_dir(self.embeddings_path.parent)
@@ -371,14 +420,30 @@ class EmbeddingStore:
         if not self._meta_path.exists():
             self._write_meta()
 
-    def _embed(self, texts: list[str]) -> np.ndarray:
+    def bind(self, llm) -> BoundEmbeddingStore:
+        """Return a caller-scoped handle that embeds through ``llm``.
+
+        Use this when one store instance is shared between callers (the
+        service-factory cache): the vectors are shared, but each caller's
+        identity and quota policy live on its own ``llm`` binding.
+        """
+        return BoundEmbeddingStore(self, llm)
+
+    def _embed(self, texts: list[str], *, llm=None) -> np.ndarray:
         """Get embeddings for one or more texts via a single API call.
 
+        ``llm`` overrides the construction-time binding (see :meth:`bind`).
         Returns an (N, self.dim) float32 array.
         """
+        client = self.llm if llm is None else llm
+        if client is None:
+            raise RuntimeError(
+                f"EmbeddingStore at {self.embeddings_path} has no LLM bound; "
+                "embedding writes need a caller-supplied llm (see EmbeddingStore.bind)"
+            )
         for attempt in range(_EMBED_MAX_RETRIES):
             try:
-                response = self.llm.embed("embed", input=texts, model=self.model)
+                response = client.embed("embed", input=texts, model=self.model)
                 # response.data may not be sorted by index; sort to match input order.
                 # Gemini's OpenAI-compat layer sometimes returns index=None for
                 # the first element — coerce to 0 so sorting doesn't crash.
@@ -413,18 +478,19 @@ class EmbeddingStore:
                 raise e
         raise RuntimeError("unreachable: _embed exhausted retries")
 
-    def add(self, card_id: str, text: str) -> None:
+    def add(self, card_id: str, text: str, *, llm=None) -> None:
         """Add embedding for a single card (delegates to add_batch)."""
-        self.add_batch([(card_id, text)])
+        self.add_batch([(card_id, text)], llm=llm)
 
-    def add_batch(self, items: list[tuple[str, str]]) -> None:
+    def add_batch(self, items: list[tuple[str, str]], *, llm=None) -> None:
         """Add embeddings for multiple cards in a single API call.
 
         Items already present are silently skipped. Performs one API call,
         one np.vstack, and one disk save for the entire batch.
         """
         # Filter out already-embedded cards and duplicate IDs in this batch.
-        seen_ids = set(self._id_set)
+        with self._lock:
+            seen_ids = set(self._id_set)
         new_items = []
         for cid, text in items:
             if cid in seen_ids:
@@ -434,22 +500,31 @@ class EmbeddingStore:
         if not new_items:
             return
 
-        new_ids = [cid for cid, _ in new_items]
-        new_texts = [text for _, text in new_items]
+        # Single API call, outside the lock: a slow provider must not block
+        # other writers or similarity reads on this notebook.
+        vecs = self._embed([text for _, text in new_items], llm=llm)
 
-        vecs = self._embed(new_texts)  # single API call
+        with self._lock:
+            # A concurrent add may have landed some of these ids while we were
+            # embedding; appending them again would duplicate rows.
+            keep = [i for i, (cid, _) in enumerate(new_items) if cid not in self._id_set]
+            if not keep:
+                return
+            if len(keep) != len(new_items):
+                vecs = vecs[keep]
+            new_ids = [new_items[i][0] for i in keep]
 
-        if self._embeddings is None:
-            self._embeddings = vecs
-        else:
-            self._embeddings = np.vstack([self._embeddings, vecs])
+            if self._embeddings is None:
+                self._embeddings = vecs
+            else:
+                self._embeddings = np.vstack([self._embeddings, vecs])
 
-        base = len(self._ids)
-        self._ids.extend(new_ids)
-        self._id_set.update(new_ids)
-        self._id_pos.update({cid: base + i for i, cid in enumerate(new_ids)})
-        self._invalidate_norms()
-        self._save()
+            base = len(self._ids)
+            self._ids.extend(new_ids)
+            self._id_set.update(new_ids)
+            self._id_pos.update({cid: base + i for i, cid in enumerate(new_ids)})
+            self._invalidate_norms()
+            self._save()
 
     def remove(self, card_id: str) -> bool:
         """Evict a single card's vector (delegates to remove_batch).
@@ -458,6 +533,7 @@ class EmbeddingStore:
         """
         return self.remove_batch([card_id]) > 0
 
+    @_synchronized
     def remove_batch(self, card_ids: list[str]) -> int:
         """Evict multiple cards' vectors in one pass.
 
@@ -484,22 +560,28 @@ class EmbeddingStore:
         self._save()
         return len(to_drop)
 
-    def update(self, card_id: str, text: str) -> None:
+    def update(self, card_id: str, text: str, *, llm=None) -> None:
         """Update existing embedding.
 
         Only updates the in-memory vector and marks the store dirty.
         Call flush() to persist to disk (e.g. at end of request).
         """
         if card_id not in self._id_set:
-            self.add(card_id, text)
+            self.add(card_id, text, llm=llm)
             return
 
-        idx = self._id_pos[card_id]
-        vecs = self._embed([text])
-        self._embeddings[idx] = vecs[0]
-        self._invalidate_norms()
-        self._dirty = True
+        vecs = self._embed([text], llm=llm)  # outside the lock, like add_batch
+        with self._lock:
+            # Re-resolve the row: a concurrent remove_batch reindexes rows, and
+            # a card removed meanwhile must stay removed (no resurrection).
+            idx = self._id_pos.get(card_id)
+            if idx is None:
+                return
+            self._embeddings[idx] = vecs[0]
+            self._invalidate_norms()
+            self._dirty = True
 
+    @_synchronized
     def flush(self) -> None:
         """Persist any dirty (deferred) writes to disk.
 
@@ -510,6 +592,7 @@ class EmbeddingStore:
         self._save()
         self._dirty = False
 
+    @_synchronized
     def find_similar(self, card_id: str, k: int = 10) -> list[tuple[str, float]]:
         """Find k most similar cards (excluding self).
 
@@ -558,6 +641,7 @@ class EmbeddingStore:
                 results.append((self._ids[i], float(similarities[i])))
         return results[:k]
 
+    @_synchronized
     def find_similar_batch(self, card_ids: list[str], k: int = 10) -> dict[str, list[tuple[str, float]]]:
         """Top-k neighbours for many query cards in one matrix product.
 
@@ -614,3 +698,68 @@ class EmbeddingStore:
 
     def count(self) -> int:
         return len(self._ids)
+
+
+class BoundEmbeddingStore:
+    """Caller-scoped handle over a shared :class:`EmbeddingStore`.
+
+    The service-factory cache shares one store per notebook (vectors, ids,
+    on-disk files), but the ``llm`` each caller passes carries that caller's
+    user identity and quota policy (``enforce_quota`` / ``is_pro`` /
+    ``reserve_quota``). Caching the llm with the store froze the *first*
+    caller's binding for every later caller (#2058). The handle keeps the two
+    apart: reads and evictions go straight to the shared store, embedding
+    writes go through this handle's own ``llm``.
+    """
+
+    __slots__ = ("llm", "store")
+
+    def __init__(self, store: EmbeddingStore, llm) -> None:
+        self.store = store
+        self.llm = llm
+
+    @property
+    def model(self) -> str:
+        return self.store.model
+
+    @property
+    def dim(self) -> int:
+        return self.store.dim
+
+    @property
+    def embeddings_path(self) -> Path:
+        return self.store.embeddings_path
+
+    @property
+    def ids_path(self) -> Path:
+        return self.store.ids_path
+
+    def add(self, card_id: str, text: str) -> None:
+        self.store.add(card_id, text, llm=self.llm)
+
+    def add_batch(self, items: list[tuple[str, str]]) -> None:
+        self.store.add_batch(items, llm=self.llm)
+
+    def update(self, card_id: str, text: str) -> None:
+        self.store.update(card_id, text, llm=self.llm)
+
+    def remove(self, card_id: str) -> bool:
+        return self.store.remove(card_id)
+
+    def remove_batch(self, card_ids: list[str]) -> int:
+        return self.store.remove_batch(card_ids)
+
+    def flush(self) -> None:
+        self.store.flush()
+
+    def find_similar(self, card_id: str, k: int = 10) -> list[tuple[str, float]]:
+        return self.store.find_similar(card_id, k)
+
+    def find_similar_batch(self, card_ids: list[str], k: int = 10) -> dict[str, list[tuple[str, float]]]:
+        return self.store.find_similar_batch(card_ids, k)
+
+    def has(self, card_id: str) -> bool:
+        return self.store.has(card_id)
+
+    def count(self) -> int:
+        return self.store.count()

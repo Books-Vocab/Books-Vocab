@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from openai import OpenAIError
+
 from .api_models import GraphLinkResponse
 from .vocab_shared import _clean_content
 
@@ -41,10 +43,12 @@ def embed_and_link_new_cards(
     if not batch_items:
         return
 
-    # Single API call for all embeddings
+    # Single API call for all embeddings. Cards are already durable here, so a
+    # provider failure (incl. the bounded client timeout) degrades exactly like
+    # the pipeline embed step: warn and let the next pipeline run backfill.
     try:
         embeddings.add_batch(batch_items)
-    except (OSError, ValueError) as exc:
+    except (OpenAIError, OSError, ValueError) as exc:
         logger.warning("Batch embedding failed: %s", exc)
         return
 

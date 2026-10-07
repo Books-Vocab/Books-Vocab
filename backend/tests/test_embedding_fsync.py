@@ -15,6 +15,7 @@ from __future__ import annotations
 import fcntl
 import json
 import os
+import re
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -39,6 +40,19 @@ def _fd_to_path(fd: int) -> str:
         return os.readlink(f"/dev/fd/{fd}")
     except OSError:
         return repr(fd)
+
+
+def _synced_tmp_for(target: Path, synced_paths: list[str]) -> list[str]:
+    """Synced paths that are a per-save temp of ``target``.
+
+    Temps are uniquely named per save (``.<target>.<16 hex>.tmp`` beside the
+    target, #2061). An fd resolves to the temp's name only while the temp has
+    not been renamed yet, so a match also proves fsync happened *before* the
+    replace() swapped it in.
+    """
+    pattern = re.compile(rf"\.{re.escape(target.name)}\.[0-9a-f]{{16}}\.tmp")
+    parent = target.parent.resolve()
+    return [p for p in synced_paths if pattern.fullmatch(Path(p).name) and Path(p).parent.resolve() == parent]
 
 
 def _make_store(tmp_path: Path):
@@ -88,14 +102,8 @@ def test_save_fsyncs_both_tmp_files_before_replace(tmp_path: Path, monkeypatch):
     store.add_batch([("c1", "alpha"), ("c2", "beta")])
 
     # Both temp files must have been fsynced before the replace().
-    emb_tmp = str(emb_path.with_name(emb_path.stem + "_tmp.npy"))
-    ids_tmp = str(ids_path.with_suffix(".json.tmp"))
-    assert emb_tmp in synced_paths, (
-        f"matrix tmp {emb_tmp!r} was not fsynced; synced={synced_paths}"
-    )
-    assert ids_tmp in synced_paths, (
-        f"ids tmp {ids_tmp!r} was not fsynced; synced={synced_paths}"
-    )
+    assert _synced_tmp_for(emb_path, synced_paths), f"matrix tmp was not fsynced; synced={synced_paths}"
+    assert _synced_tmp_for(ids_path, synced_paths), f"ids tmp was not fsynced; synced={synced_paths}"
 
     # And the data actually landed correctly.
     assert json.loads(ids_path.read_text()) == ["c1", "c2"]
@@ -122,10 +130,8 @@ def test_save_without_embeddings_still_fsyncs_ids(tmp_path: Path, monkeypatch):
     # remove the only card -> empty store -> _save still runs.
     store.remove_batch(["only"])
 
-    ids_tmp = str(ids_path.with_suffix(".json.tmp"))
-    assert ids_tmp in synced_paths, (
-        f"ids tmp {ids_tmp!r} was not fsynced on empty-store save; "
-        f"synced={synced_paths}"
+    assert _synced_tmp_for(ids_path, synced_paths), (
+        f"ids tmp was not fsynced on empty-store save; synced={synced_paths}"
     )
     assert json.loads(ids_path.read_text()) == []
 
@@ -136,7 +142,6 @@ def test_write_meta_fsyncs_tmp_before_replace(tmp_path: Path, monkeypatch):
     meta that misattributes the store's model on next boot. _write_meta runs on
     a fresh store's first save (no sidecar yet)."""
     store, client, emb_path, ids_path = _make_store(tmp_path)
-    meta_tmp = str(store._meta_path.with_suffix(".json.tmp"))
 
     synced_paths: list[str] = []
     real_fsync = os.fsync
@@ -151,8 +156,6 @@ def test_write_meta_fsyncs_tmp_before_replace(tmp_path: Path, monkeypatch):
     # Fresh store → first _save writes the sidecar via _write_meta.
     store.add_batch([("c1", "alpha")])
 
-    assert meta_tmp in synced_paths, (
-        f"meta tmp {meta_tmp!r} was not fsynced; synced={synced_paths}"
-    )
+    assert _synced_tmp_for(store._meta_path, synced_paths), f"meta tmp was not fsynced; synced={synced_paths}"
     # And the sidecar landed intact.
     assert json.loads(store._meta_path.read_text())["dim"] == EMBEDDING_DIM

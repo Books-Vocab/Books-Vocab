@@ -662,6 +662,62 @@ def test_external_card_delete_treats_embedding_eviction_as_best_effort(external_
     assert external_api.client.get(f"/api/v1/cards/{card_id}", headers=headers).status_code == 404
 
 
+def test_add_word_after_external_card_delete_embeds_new_card(external_api, monkeypatch):
+    """#2058: the external delete binds llm=None to the shared store; a later
+    POST /api/vocab must still embed its new card instead of 500ing."""
+    from unittest.mock import MagicMock
+
+    import numpy as np
+
+    import kg.routers.vocab as vocab_router
+    from kg.deps import _embedding_store
+    from kg.embeddings import EMBEDDING_DIM
+    from kg.service_factories import clear_store_cache
+
+    clear_store_cache()
+    try:
+        api_key = _create_key(external_api)
+        created = external_api.client.post(
+            "/api/v1/cards",
+            json={"content": "ephemeral", "meaning": "短暫"},
+            headers={"X-KG-API-Key": api_key},
+        )
+        assert created.status_code == 201, created.text
+        doomed_id = created.json()["card"]["id"]
+        deleted = external_api.client.delete(f"/api/v1/cards/{doomed_id}", headers={"X-KG-API-Key": api_key})
+        assert deleted.status_code == 200, deleted.text
+
+        def fake_embeddings_create(*, input, **_kwargs):
+            resp = MagicMock()
+            resp.usage = MagicMock(prompt_tokens=10, total_tokens=10)
+            resp.data = []
+            for i in range(len(input)):
+                item = MagicMock()
+                item.index = i
+                item.embedding = np.random.rand(EMBEDDING_DIM).tolist()
+                resp.data.append(item)
+            return resp
+
+        client = MagicMock()
+        client.embeddings.create.side_effect = fake_embeddings_create
+        monkeypatch.setattr(vocab_router, "create_client", lambda _provider: client)
+
+        added = external_api.client.post(
+            "/api/vocab",
+            json=[{"word": "lucid", "translation": "清晰的"}],
+            headers=external_api.jwt_headers,
+        )
+
+        assert added.status_code == 200, added.text
+        assert added.json()["created"] == 1
+        new_id = added.json()["cardIds"]["lucid"]
+        client.embeddings.create.assert_called()
+        user_dir = external_api.data_dir / "users" / external_api.user_id
+        assert _embedding_store(user_dir, llm=None).has(new_id)
+    finally:
+        clear_store_cache()
+
+
 def test_external_enrich_operation_survives_process_memory_reset(external_api, monkeypatch):
     from kg import pipeline_log
 
