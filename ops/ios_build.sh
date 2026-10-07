@@ -181,7 +181,7 @@ if (( early_guard_rc != 0 )); then
   echo "[ios_build] not started: shared disk guard blocked (exit $early_guard_rc); './ops/ios_ops.sh guard' shows the verdict" >&2
   exit "$early_guard_rc"
 fi
-export KG_IOS_DISK_GUARD_ALREADY_CHECKED=1
+kg_ios_disk_guard_mark_checked
 
 # --- Lock acquire (shlock spin-wait) ---
 MONITOR_PID=""
