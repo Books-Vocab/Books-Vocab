@@ -12,18 +12,33 @@ from __future__ import annotations
 
 import errno
 import fcntl
+import hashlib
+import os
 from pathlib import Path
 from types import TracebackType
 from typing import IO, Self
 
 from ..domain.errors import DeliverySourceError
 
-
 # The delivery CLI owns the process-wide lease while the registry adapter can
 # invoke the registry CLI in-process during that same mutation.  Re-entering
 # here must share the existing kernel handle; other processes still contend on
 # the flock.
 _HELD_LOCKS: dict[Path, tuple[IO[str], int]] = {}
+
+# Test isolation hook: when set, the lease lives in this directory (one file
+# per canonical repo) instead of ``<repo>/.cache``.  ops/tests/conftest.py points
+# it at a per-test tmp dir so a real delivery holding the shared lock cannot
+# redden the suite.  Production invocations never set it.
+LOCK_DIR_ENV = "KG_DELIVERY_LOCK_DIR"
+
+
+def _lock_path(repo: Path) -> Path:
+    override = os.environ.get(LOCK_DIR_ENV)
+    if override:
+        digest = hashlib.sha256(str(repo).encode()).hexdigest()[:16]
+        return Path(override).expanduser() / f"delivery-control.{digest}.lock"
+    return repo / ".cache" / "delivery-control.operation.lock"
 
 
 class OperationLock:
@@ -32,7 +47,7 @@ class OperationLock:
     def __init__(self, repo: Path, *, command: str) -> None:
         self.repo = repo.expanduser().resolve()
         self.command = command
-        self.path = self.repo / ".cache" / "delivery-control.operation.lock"
+        self.path = _lock_path(self.repo)
         self._handle: IO[str] | None = None
 
     def __enter__(self) -> Self:

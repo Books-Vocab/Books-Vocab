@@ -64,6 +64,10 @@ verified_against: afe016c4ea2fcbd7306f9c4f40b4556e77865100
 本地 `worktree` 測試群組會先取得 repository common Git directory 下的 blocking
 test-execution lock。這只序列化會共用 registry fixture／mutation lock 的測試程序；production
 `OperationLock` 仍維持 non-blocking、fail-closed 語義，不會因測試互斥而改變實際交付命令。
+ops pytest 另由 `ops/tests/conftest.py` 的 autouse fixture 設定 `KG_DELIVERY_LOCK_DIR` 到 per-test tmp 目錄，
+讓 `OperationLock` 在測試中使用隔離的 lock 檔（依 canonical repo 雜湊命名），因此真實 delivery 正持有
+`.cache/delivery-control.operation.lock` 時，測試不會因 `delivery mutation already in progress` 變紅。
+production 不設定該環境變數，路徑不變。
 不要平行直接啟動 registry mutation 測試；使用 `./ops/test_ops.sh worktree`，讓 wrapper
 在不同 linked worktree 之間共用同一把鎖。程序中止時由作業系統釋放鎖，不建立第二套 registry 狀態。
 

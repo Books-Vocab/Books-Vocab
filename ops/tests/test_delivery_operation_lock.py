@@ -85,3 +85,36 @@ def test_cli_reuses_the_outer_lease_for_nested_registry_mutation(
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is True
     assert application.calls == [41]
+
+
+def test_suite_lock_is_isolated_from_the_real_delivery_lock() -> None:
+    """A real delivery holding the shared lock must not redden this suite."""
+    import fcntl
+
+    real_repo = OPS.parent
+    real_lock = real_repo / ".cache" / "delivery-control.operation.lock"
+    real_lock.parent.mkdir(parents=True, exist_ok=True)
+    with real_lock.open("a+") as held:
+        try:
+            fcntl.flock(held.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            pytest.skip("a real delivery already holds the real lock")
+        with OperationLock(real_repo, command="suite-under-real-delivery"):
+            pass
+
+
+def test_lock_dir_env_override_is_keyed_per_repo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("KG_DELIVERY_LOCK_DIR", str(tmp_path / "locks"))
+    repo_a, repo_b = tmp_path / "a", tmp_path / "b"
+    repo_a.mkdir()
+    repo_b.mkdir()
+    with OperationLock(repo_a, command="a"):
+        assert OperationLock(repo_a, command="a").path.parent == tmp_path / "locks"
+        with OperationLock(repo_b, command="b"):
+            pass
+    assert (
+        OperationLock(repo_a, command="a").path
+        != OperationLock(repo_b, command="b").path
+    )
