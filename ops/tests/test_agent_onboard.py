@@ -55,7 +55,13 @@ EVIDENCE = {
 
 
 def test_worker_direct_assignment_loads_project_identity_skill_then_domain() -> None:
-    payload = mod.build_onboarding(ROOT, identity="Worker", intent="delivery", entry="direct-assignment", evidence=EVIDENCE["direct-assignment"])
+    payload = mod.build_onboarding(
+        ROOT,
+        identity="Worker",
+        intent="delivery",
+        entry="direct-assignment",
+        evidence=EVIDENCE["direct-assignment"],
+    )
 
     assert payload["schema"] == "kg.agent_onboarding.v2"
     assert payload["status"] == "ready"
@@ -70,9 +76,15 @@ def test_worker_direct_assignment_loads_project_identity_skill_then_domain() -> 
         "sources": ["docs/reference/project_onboarding.md"],
     }
     assert [step["phase"] for step in payload["load_order"]] == [
-        "project", "identity", "assignment", "skill", "domain"
+        "project",
+        "identity",
+        "assignment",
+        "skill",
+        "domain",
     ]
-    assert payload["assignment"]["evidence"]["acceptance"] == "route and tests are green"
+    assert (
+        payload["assignment"]["evidence"]["acceptance"] == "route and tests are green"
+    )
     assert len(payload["assignment"]["evidence_digest"]) == 64
     assert payload["authority"]["granted"] is False
     assert payload["assignment"]["dispatch"] == {
@@ -113,7 +125,9 @@ def test_worker_user_dispatch_discusses_with_user_and_hands_back_to_named_im() -
     }
 
 
-def test_worker_user_dispatch_requires_im_selection_before_hand_back_when_unspecified() -> None:
+def test_worker_user_dispatch_requires_im_selection_before_hand_back_when_unspecified() -> (
+    None
+):
     evidence = {
         **EVIDENCE["direct-assignment"],
         "dispatch_channel": "user",
@@ -187,23 +201,39 @@ def test_worker_dispatch_contract_rejects_invalid_channel_or_mismatched_im() -> 
 
 
 def test_issue_solver_requires_issue_entry_and_domain_sources():
-    payload = mod.build_onboarding(ROOT, identity="issue-solver", intent="backend", entry="issue", evidence=EVIDENCE["issue"])
+    payload = mod.build_onboarding(
+        ROOT,
+        identity="issue-solver",
+        intent="backend",
+        entry="issue",
+        evidence=EVIDENCE["issue"],
+    )
 
     assert payload["identity"]["id"] == "issue-solver"
     assert payload["task"]["intent"] == "backend"
     assert payload["task"]["skill_intent"] == "delivery-worktree"
     assert payload["assignment"]["required_external"] == [
-        "Issue assignment packet", "Issue acceptance", "structured Scope"
+        "Issue assignment packet",
+        "Issue acceptance",
+        "structured Scope",
     ]
     assert "docs/sop/backend.md" in payload["domain_sources"]
 
 
 def test_ios_worker_loads_delivery_dependency_and_ios_specialist():
-    payload = mod.build_onboarding(ROOT, identity="Worker", intent="ios", entry="direct-assignment", evidence=EVIDENCE["direct-assignment"])
+    payload = mod.build_onboarding(
+        ROOT,
+        identity="Worker",
+        intent="ios",
+        entry="direct-assignment",
+        evidence=EVIDENCE["direct-assignment"],
+    )
 
     assert payload["skills"]["primary"] == "ios-simulator-verification"
     assert payload["skills"]["selected"] == [
-        "kg-router", "worktree-flow", "ios-simulator-verification"
+        "kg-router",
+        "worktree-flow",
+        "ios-simulator-verification",
     ]
 
 
@@ -274,10 +304,14 @@ def test_specialist_route_is_identity_scoped():
 
 def test_identity_intent_entry_mismatch_fails_closed():
     with pytest.raises(mod.OnboardingError, match="identity 不允許 intent"):
-        mod.build_onboarding(ROOT, identity="Worker", intent="review", entry="pr-review")
+        mod.build_onboarding(
+            ROOT, identity="Worker", intent="review", entry="pr-review"
+        )
 
     with pytest.raises(mod.OnboardingError, match="entry 不符合 identity"):
-        mod.build_onboarding(ROOT, identity="Issue Solver", intent="backend", entry="direct-assignment")
+        mod.build_onboarding(
+            ROOT, identity="Issue Solver", intent="backend", entry="direct-assignment"
+        )
 
 
 @pytest.mark.parametrize(
@@ -290,13 +324,25 @@ def test_identity_intent_entry_mismatch_fails_closed():
         ("CM", "release", "merge", "source-command-release"),
     ],
 )
-def test_every_canonical_identity_has_a_real_onboarding_route(identity, intent, entry, primary):
+def test_every_canonical_identity_has_a_real_onboarding_route(
+    identity, intent, entry, primary
+):
     evidence_key = "ds-pr-review" if identity == "DS" else entry
-    payload = mod.build_onboarding(ROOT, identity=identity, intent=intent, entry=entry, evidence=EVIDENCE[evidence_key])
+    payload = mod.build_onboarding(
+        ROOT,
+        identity=identity,
+        intent=intent,
+        entry=entry,
+        evidence=EVIDENCE[evidence_key],
+    )
     assert payload["status"] == "ready"
     assert payload["skills"]["primary"] == primary
     assert [step["phase"] for step in payload["load_order"]] == [
-        "project", "identity", "assignment", "skill", "domain"
+        "project",
+        "identity",
+        "assignment",
+        "skill",
+        "domain",
     ]
 
 
@@ -305,17 +351,28 @@ def test_missing_project_onboarding_source_fails_closed(tmp_path: Path):
     (tmp_path / "ops").mkdir()
     (tmp_path / "ops" / "context_plane.json").write_text(manifest, encoding="utf-8")
     with pytest.raises(mod.OnboardingError, match="onboarding source"):
-        mod.build_onboarding(tmp_path, identity="Worker", intent="delivery", entry="direct-assignment")
+        mod.build_onboarding(
+            tmp_path, identity="Worker", intent="delivery", entry="direct-assignment"
+        )
 
 
 def test_missing_assignment_evidence_blocks_before_skill_loading() -> None:
-    payload = mod.build_onboarding(ROOT, identity="Worker", intent="delivery", entry="direct-assignment")
+    payload = mod.build_onboarding(
+        ROOT, identity="Worker", intent="delivery", entry="direct-assignment"
+    )
     assert payload["status"] == "awaiting-assignment"
     assert payload["blocked_at"] == "assignment"
     assert payload["assignment"]["missing"] == [
-        "User/IM assignment", "acceptance", "structured Scope", "dispatch_channel"
+        "User/IM assignment",
+        "acceptance",
+        "structured Scope",
+        "dispatch_channel",
     ]
-    assert [step["phase"] for step in payload["load_order"]] == ["project", "identity", "assignment"]
+    assert [step["phase"] for step in payload["load_order"]] == [
+        "project",
+        "identity",
+        "assignment",
+    ]
     assert "skills" not in payload
 
 
