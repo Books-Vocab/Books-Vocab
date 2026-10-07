@@ -294,7 +294,7 @@ try:
     payload = json.loads(subprocess.check_output([sys.executable, extractor], text=True))
 except Exception as e:
     sys.stderr.write(f"[i18n_lint] key extractor failed: {e}\n")
-    print("missing_key: <key extractor failed; coverage unverified>")  # fail closed
+    print("plural_missing: <key extractor failed; coverage unverified>")  # fail closed
     sys.exit(0)
 src = ""
 try:

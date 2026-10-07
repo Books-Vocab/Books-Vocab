@@ -103,6 +103,32 @@ after="$(commit_count "$B")"
 [[ "$after" -eq "$before" ]] && ok "被擋下時 commit 數未增加" \
   || fail_t "被擋下卻多了一個 commit（${before} → ${after}）"
 
+section "安裝後：本地化檔（.strings/.stringsdict）的 staged 改動會觸發 UI quality gate"
+D="$TMP/repo_d"; make_fixture "$D"
+printf '#!/bin/sh\necho "STUB_UQ_GATE_FIRED" >&2\nexit 1\n' >"$D/ops/ui_quality_gate.sh"
+chmod +x "$D/ops/ui_quality_gate.sh"
+mkdir -p "$D/ios/BooksAndVocab/en.lproj" "$D/ios/BooksAndVocab/ja.lproj"
+printf 'seed\n' >"$D/ios/BooksAndVocab/README.md"
+git -C "$D" add -A; git -C "$D" commit -qm "seed ios"
+( cd "$D" && "$WORKTREE/ops/install_hooks.sh" --yes ) >/dev/null 2>&1
+printf 'change\n' >>"$D/ios/BooksAndVocab/README.md"
+git -C "$D" add ios/BooksAndVocab/README.md
+rc=0; PATH="$STUB_PATH" git -C "$D" commit -m "unrelated ios file" >"$TMP/d0.log" 2>&1 || rc=$?
+[[ $rc -eq 0 ]] && ok "反控：不相關的 ios 檔不觸發 UI quality gate" \
+  || { fail_t "反控失敗：不相關檔案 commit rc=$rc"; sed 's/^/      /' "$TMP/d0.log" >&2; }
+for f in en.lproj/Localizable.strings en.lproj/Localizable.stringsdict ja.lproj/InfoPlist.strings; do
+  printf '"k" = "v";\n' >"$D/ios/BooksAndVocab/$f"
+  git -C "$D" add "ios/BooksAndVocab/$f"
+  before="$(commit_count "$D")"; rc=0
+  PATH="$STUB_PATH" git -C "$D" commit -m "l10n $f" >"$TMP/d1.log" 2>&1 || rc=$?
+  if [[ $rc -ne 0 ]] && grep -q 'STUB_UQ_GATE_FIRED' "$TMP/d1.log" && [[ "$(commit_count "$D")" -eq "$before" ]]; then
+    ok "$f 被 stage → pre-commit 觸發 UI quality gate 並擋下"
+  else
+    fail_t "$f 被 stage 卻沒有觸發 UI quality gate（rc=$rc）"; sed 's/^/      /' "$TMP/d1.log" >&2
+  fi
+  git -C "$D" reset -q HEAD -- "ios/BooksAndVocab/$f"; rm -f "$D/ios/BooksAndVocab/$f"
+done
+
 section "--check 未安裝時 rc=1；--uninstall 是有效逃生口"
 C="$TMP/repo_c"; make_fixture "$C"
 ( cd "$C" && "$WORKTREE/ops/install_hooks.sh" --check ) >"$TMP/c_check0.log" 2>&1; rc=$?
