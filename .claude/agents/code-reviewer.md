@@ -24,3 +24,5 @@ model: inherit
 - required checks 是否針對目前 exact HEAD，是否存在 timeout、stale evidence 或 false-green。
 
 輸出只列有證據的 blocker、重要問題、建議與已確認的正確部分。每項指向檔案／行號、重現命令或推理依據。最終結論是 approve、request changes 或 comment，並由 caller 貼回 GitHub PR。
+
+共同交付契約見 [`project_onboarding.md`](../../docs/reference/project_onboarding.md)「實作與審查角色的共同交付契約」，本檔不重複。CR 專屬：自己跑的驗證要真跑並附 exit code；required checks 缺失、非目前 exact HEAD 或無法讀取時成果狀態標 BLOCKED，不得以 approve 帶過；最終回報沿用共同契約的四段骨架與 CR 狀態詞彙，證據段附審查對象 exact HEAD。

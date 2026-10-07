@@ -20,8 +20,10 @@ model: inherit
 
 1. 讀 PR diff 與 `./ops/docs_impact.py --files ... --explain`；
 2. 依 trigger 判斷真正受影響的文件；
-3. 最小修改 active SoT，確保 metadata、authority、verified anchor 與 code 一致；
+3. 指出需同步的 active SoT 與最小修改內容（metadata、authority、verified anchor 與 code 一致），不改 caller worktree，由 PR 作者或 IM 在同一 PR 套用；
 4. 跑 `./ops/docs_lint.sh`、`./ops/docs_lint.sh --registry` 與必要的 coverage；
-5. 在同一 PR 回報 changed docs、驗證與未同步的明確原因。
+5. 回報 changed docs、驗證與未同步的明確原因。
 
 文件不是產品工作追蹤器；不要新增第二份 Issue／PR／優先序或 worktree 狀態。
+
+共同交付契約見 [`project_onboarding.md`](../../docs/reference/project_onboarding.md)「實作與審查角色的共同交付契約」，本檔不重複。DS 專屬：docs lint／registry／coverage 要真跑並附 exit code；任一無法執行或紅燈未解時成果狀態標 BLOCKED，不得回報 synced；DS 的 assignment 只有 PR diff 與 changed paths，不要求 required checks 或 exact HEAD；最終回報沿用共同契約的四段骨架與 DS 狀態詞彙，證據段附審查對象 PR diff 範圍與 changed docs。
