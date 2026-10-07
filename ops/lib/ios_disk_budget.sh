@@ -122,26 +122,52 @@ kg_ios_disk_guard_diagnose() {
   echo "schema=kg.ios.disk-budget.v1 operation=$operation detail=guard-block guardReason=$(kg_ios_disk_guard_json_string "$state" reason) guardAction=$(kg_ios_disk_guard_json_string "$state" action) laneUsageVerdict=$(kg_ios_disk_guard_json_string "$state" lane_usage_verdict) blockingReasons=${reasons:-none} unregisteredWorktrees=${unregistered:-none} dirtyWorktrees=${dirty:-none} unknownWorktrees=${unknown:-none} laneUsage=$lane_state refresh=\"./ops/ios_ops.sh guard --refresh\"" >&2
 }
 
-# A guard block that no amount of waiting or cache cleaning clears: the lane
-# attribution report names worktrees to register/clean up, or the guard itself
-# asks for manual review.
-kg_ios_disk_guard_block_is_structural() {
-  local reason
-  reason="$(kg_ios_disk_guard_json_string "$1" reason)"
-  case "$reason" in
-    lane-usage-report-blocked|xctest-devices-manual-review-required|simulator-runtime-manual-review-required) return 0 ;;
+# A guard block that no amount of waiting or cache cleaning clears.  Two sources:
+# the guard itself asks for manual review (XCTestDevices / simulator runtime), or
+# a FRESH lane-attribution report names a worktree problem (unregistered, dirty,
+# unknown, duplicate, identity mismatch, invalid registry).  The guard reason
+# "lane-usage-report-blocked" alone is NOT enough: it is also emitted for lane
+# quota overruns, incomplete measurement and a timed-out/crashed report, all of
+# which clear on the next tick or after eviction (temporary, exit 75).
+kg_ios_disk_structural_lane_reason() {
+  case "$1" in
+    unregistered-physical-worktree|dirty-*|unknown-*|duplicate-*|physical-identity-mismatch|registry-records-invalid|supervision-path-registered|*-manual-review-required) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+kg_ios_disk_guard_block_is_structural() {
+  local state="$1" reason lane_rc lane_state reasons item
+  reason="$(kg_ios_disk_guard_json_string "$state" reason)"
+  case "$reason" in
+    xctest-devices-manual-review-required|simulator-runtime-manual-review-required) return 0 ;;
+    lane-usage-report-blocked) ;;
+    *) return 1 ;;
+  esac
+  # disk_usage.py exits 0 or 75 when it wrote a complete report; anything else
+  # (timeout, crash) leaves a possibly stale file, so it is never evidence.
+  lane_rc="$(sed -nE 's/.*"lane_usage_rc"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$state" | head -1)"
+  case "${lane_rc:-0}" in 0|75) ;; *) return 1 ;; esac
+  lane_state="$(kg_ios_disk_lane_usage_state "$state")"
+  reasons="$(kg_ios_disk_json_array "$lane_state" blocking_reasons)"
+  while IFS= read -r item; do
+    [[ -n "$item" ]] && kg_ios_disk_structural_lane_reason "$item" && return 0
+  done < <(printf '%s
+' "$reasons" | tr ';' '
+')
+  return 1
 }
 
 kg_ios_disk_guard_structural_notice() {
   local operation="$1" state="$2"
   echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block exit=$KG_IOS_DISK_STRUCTURAL_EXIT retryable=no reason=$(kg_ios_disk_guard_json_string "$state" reason) guardAction=$(kg_ios_disk_guard_json_string "$state" action)" >&2
-  echo "[ios] BLOCKED (structural, exit $KG_IOS_DISK_STRUCTURAL_EXIT, retryable=no): waiting or cleaning cache will not clear this. Fix the worktrees named above (register or remove them), then run './ops/ios_ops.sh guard --refresh'. Do not poll." >&2
+  echo "[ios] BLOCKED (structural, exit $KG_IOS_DISK_STRUCTURAL_EXIT, retryable=no): waiting or cleaning cache will not clear this. Resolve the blockingReasons / worktrees named above (register, clean up or remove them), then run './ops/ios_ops.sh guard --refresh'. Do not poll." >&2
 }
 
 # Re-evaluate the shared guard now instead of waiting for the 5-minute tick.
-# $2=1 only when the caller already owns the iOS build lock (inline preflight).
+# $2=1 only when the caller already owns the iOS build lock (in-lock preflight);
+# the lock-free early verdict passes 0 so the tick takes the real lock itself
+# (or defers eviction) instead of deleting caches under a running build.
 # The host-global state has one writer identity: the canonical checkout's tick,
 # i.e. the same code and root the launchd job runs (the product registry lives
 # there, not in an agent lane).  A lane's own copy, possibly on an older or
@@ -163,8 +189,11 @@ kg_ios_disk_guard_refresh() {
     KG_DISK_GUARD_BUILD_LOCK_HELD="${2:-0}" "$tick" >/dev/null 2>&1
 }
 
+# $2=1 only from the in-lock preflight (caller owns the iOS build lock); the
+# default 0 keeps an inline refresh from claiming a lock nobody holds.
 kg_ios_disk_budget_guard_state() {
   local operation="${1:-ios-write}"
+  local lock_held="${2:-0}"
   local state="${KG_IOS_DISK_GUARD_STATE:-$KG_IOS_DISK_GUARD_STATE_DEFAULT}"
   local enforce="${KG_IOS_DISK_GUARD_ENFORCE_XCTEST:-0}"
   local max_age="${KG_IOS_DISK_GUARD_MAX_AGE_SECONDS:-900}"
@@ -208,8 +237,8 @@ kg_ios_disk_budget_guard_state() {
     if [[ "${KG_IOS_DISK_GUARD_REFRESHED:-0}" != "1" && "${KG_IOS_DISK_GUARD_AUTO_REFRESH:-1}" == "1" \
       && "$(kg_ios_disk_guard_json_string "$state" reason)" == lane-usage-report-* ]]; then
       echo "schema=kg.ios.disk-budget.v1 operation=$operation detail=guard-block-refreshing state=$state" >&2
-      if kg_ios_disk_guard_refresh "$state" 1; then
-        KG_IOS_DISK_GUARD_REFRESHED=1 kg_ios_disk_budget_guard_state "$operation"
+      if kg_ios_disk_guard_refresh "$state" "$lock_held"; then
+        KG_IOS_DISK_GUARD_REFRESHED=1 kg_ios_disk_budget_guard_state "$operation" "$lock_held"
         return $?
       fi
     fi
@@ -292,17 +321,36 @@ kg_ios_disk_budget_preflight() {
     fi
     return "$KG_IOS_DISK_BUDGET_EXIT"
   fi
-  if [[ "${KG_IOS_DISK_GUARD_ALREADY_CHECKED:-0}" != "1" ]]; then
-    kg_ios_disk_budget_guard_state "$operation" || return $?
+  if ! kg_ios_disk_guard_early_check_is_fresh; then
+    kg_ios_disk_budget_guard_state "$operation" 1 || return $?
   fi
   echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=pass freeBytes=$free_bytes cacheKB=$cache_kb budgetKB=$budget_kb headroomKB=$headroom_kb" >&2
   return 0
 }
 
-# Early, side-effect-free verdict for entry points: read the shared guard BEFORE
-# leasing a simulator or taking the build lock, so a block costs seconds, not a
-# queue slot.  Real disk space is still measured by the in-lock preflight.
-# Returns 0 (go on), 75 (temporary), or 77 (structural, not retryable).
+# Early verdict for entry points: read the shared guard BEFORE leasing a
+# simulator or taking the build lock, so a block costs seconds, not a queue
+# slot.  Lock-free by construction (an inline refresh runs the tick with
+# BUILD_LOCK_HELD=0).  Real disk space is still measured by the in-lock
+# preflight.  Returns 0 (go on), 75 (temporary), or 77 (structural, not retryable).
 kg_ios_disk_guard_early_verdict() {
-  kg_ios_disk_budget_guard_state "${1:-ios-write}"
+  kg_ios_disk_budget_guard_state "${1:-ios-write}" 0
+}
+
+# Record a passed early verdict so the in-lock preflight need not re-read it.
+# Both variables are set together by this function only: a caller-preset
+# ALREADY_CHECKED=1 without a timestamp is ignored, and a verdict older than
+# the guard state's max age (a long queue wait) is re-read in-lock.
+kg_ios_disk_guard_mark_checked() {
+  export KG_IOS_DISK_GUARD_ALREADY_CHECKED=1
+  export KG_IOS_DISK_GUARD_CHECKED_AT
+  KG_IOS_DISK_GUARD_CHECKED_AT="$(date +%s)"
+}
+
+kg_ios_disk_guard_early_check_is_fresh() {
+  local max_age="${KG_IOS_DISK_GUARD_MAX_AGE_SECONDS:-900}" checked_at="${KG_IOS_DISK_GUARD_CHECKED_AT:-}" now
+  [[ "${KG_IOS_DISK_GUARD_ALREADY_CHECKED:-0}" == "1" ]] || return 1
+  [[ "$checked_at" =~ ^[0-9]+$ && "$max_age" =~ ^[0-9]+$ ]] || return 1
+  now="$(date +%s)"
+  (( checked_at <= now && now - checked_at <= max_age ))
 }

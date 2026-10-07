@@ -156,13 +156,25 @@ printf '{"schema":"kg.disk.guard.v1","verdict":"ok","xctest_devices_verdict":"pa
 echo "$KG_DISK_GUARD_BUILD_LOCK_HELD" > "$KG_DISK_GUARD_STATE.lockheld"
 EOF
 chmod +x "$fake_tick"
+fake_tick_ok="$TMP/fake_tick_ok.sh"
+cp "$fake_tick" "$fake_tick_ok"
 cp "$lane_block_state" "$TMP/lane-refresh-guard.json"
 refresh_rc=0
 refresh_output="$(KG_IOS_DISK_GUARD_STATE="$TMP/lane-refresh-guard.json" KG_IOS_DISK_GUARD_TICK="$fake_tick" \
-  /bin/bash -c "source '$LIB'; kg_ios_disk_budget_guard_state test" 2>&1)" || refresh_rc=$?
+  /bin/bash -c "source '$LIB'; kg_ios_disk_budget_guard_state test 1" 2>&1)" || refresh_rc=$?
 [[ "$refresh_rc" -eq 0 ]] && ok "stale lane block is cleared by inline refresh" || bad "inline refresh exit=$refresh_rc: $refresh_output"
 [[ "$(cat "$TMP/lane-refresh-guard.json.lockheld" 2>/dev/null)" == "1" ]] \
-  && ok "inline refresh tells the tick the build lock is held" || bad "inline refresh lock flag wrong"
+  && ok "in-lock inline refresh tells the tick the build lock is held" || bad "inline refresh lock flag wrong"
+
+echo "── lock-free (early) refresh never claims the build lock ──"
+rm -f "$TMP/lane-refresh-guard.json.lockheld"
+cp "$lane_block_state" "$TMP/lane-refresh-guard.json"
+nolock_rc=0
+KG_IOS_DISK_GUARD_STATE="$TMP/lane-refresh-guard.json" KG_IOS_DISK_GUARD_TICK="$fake_tick_ok" \
+  /bin/bash -c "source '$LIB'; kg_ios_disk_guard_early_verdict test" >/dev/null 2>&1 || nolock_rc=$?
+[[ "$nolock_rc" -eq 0 ]] && ok "early verdict still clears a stale lane block" || bad "early verdict exit=$nolock_rc"
+[[ "$(cat "$TMP/lane-refresh-guard.json.lockheld" 2>/dev/null)" == "0" ]] \
+  && ok "early refresh runs the tick with BUILD_LOCK_HELD=0" || bad "early refresh lock flag: $(cat "$TMP/lane-refresh-guard.json.lockheld" 2>/dev/null || echo none)"
 
 echo "── refresh that still blocks keeps exit 77 with diagnostics ──"
 cat > "$fake_tick" <<'EOF'
@@ -293,6 +305,93 @@ space_output="$(KG_IOS_DISK_GUARD_STATE="$space_state" KG_IOS_DISK_GUARD_AUTO_RE
   KG_IOS_VERDICT_FILE="$early_verdict" "$ROOT/ops/ios_ops.sh" test --lease 2>&1)" || space_rc=$?
 [[ "$space_rc" -eq 75 ]] && ok "disk-space guard block exits 75" || bad "space block exit=$space_rc: $space_output"
 [[ ! -e "$early_leases" ]] && ok "space block also stops before the lease" || bad "lease root created on space block"
+
+echo "── ios_ops.sh early path never tells the tick the build lock is held ──"
+record_tick="$TMP/record_tick.sh"
+cat > "$record_tick" <<'EOF'
+#!/usr/bin/env bash
+# Records the lock flag it was given; leaves the guard state untouched (still blocked).
+echo "LOCKHELD=${KG_DISK_GUARD_BUILD_LOCK_HELD:-unset}" >> "$KG_TEST_TICK_RECORD"
+EOF
+chmod +x "$record_tick"
+for early_cmd in "test --lease" "build"; do
+  tick_record="$TMP/tick-record-${early_cmd%% *}"
+  rm -f "$tick_record"
+  cp "$lane_block_state" "$TMP/early-refresh-guard.json"
+  tick_rc=0
+  # shellcheck disable=SC2086
+  KG_IOS_DISK_GUARD_STATE="$TMP/early-refresh-guard.json" KG_IOS_DISK_LANE_USAGE_STATE="$lane_state" \
+    KG_IOS_DISK_GUARD_TICK="$record_tick" KG_TEST_TICK_RECORD="$tick_record" \
+    KG_IOS_BUILD_LOCK_FILE="$early_lock" KG_IOS_SIM_LEASE_ROOT="$early_leases" \
+    KG_IOS_VERDICT_FILE="$early_verdict" "$ROOT/ops/ios_ops.sh" $early_cmd >/dev/null 2>&1 || tick_rc=$?
+  [[ "$tick_rc" -eq 77 ]] && ok "ios_ops.sh $early_cmd still exits 77 after the lock-free refresh" || bad "$early_cmd exit=$tick_rc"
+  [[ "$(cat "$tick_record" 2>/dev/null)" == "LOCKHELD=0" ]] \
+    && ok "ios_ops.sh $early_cmd refreshes with BUILD_LOCK_HELD=0" || bad "$early_cmd tick saw: $(cat "$tick_record" 2>/dev/null || echo no-tick)"
+done
+
+echo "── lane-usage-report-blocked: only structural blocking reasons exit 77 ──"
+lane_guard_with_rc() {  # $1=lane_usage_rc (or empty to omit)
+  local rc_field=""
+  [[ -n "$1" ]] && rc_field="\"lane_usage_rc\":$1,"
+  printf '{"schema":"kg.disk.guard.v1","verdict":"block","reason":"lane-usage-report-blocked","action":"manual-review-lane-attribution","lane_usage_verdict":"block",%s"xctest_devices_verdict":"pass","at":"%s"}\n' \
+    "$rc_field" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+lane_usage_with_reasons() {  # $@=blocking reasons
+  local first=1 r
+  printf '{\n  "policy": {\n    "blocking_reasons": ['
+  if (( $# > 0 )); then
+    printf '\n'
+    for r in "$@"; do
+      (( first )) || printf ',\n'
+      printf '      "%s"' "$r"; first=0
+    done
+    printf '\n    '
+  fi
+  printf '],\n    "unregistered_physical_worktrees": []\n  }\n}\n'
+}
+classify() {  # $1=label $2=expected rc $3=lane_usage_rc-or-empty, then reasons
+  local label="$1" want="$2" lrc="$3" got=0 out
+  shift 3
+  lane_guard_with_rc "$lrc" > "$TMP/classify-guard.json"
+  lane_usage_with_reasons "$@" > "$TMP/classify-usage.json"
+  out="$(KG_IOS_DISK_GUARD_STATE="$TMP/classify-guard.json" KG_IOS_DISK_LANE_USAGE_STATE="$TMP/classify-usage.json" \
+    KG_IOS_DISK_GUARD_AUTO_REFRESH=0 \
+    /bin/bash -c "source '$LIB'; kg_ios_disk_budget_guard_state test" 2>&1)" || got=$?
+  [[ "$got" -eq "$want" ]] && ok "$label exits $want" || bad "$label exit=$got (want $want): $out"
+  if [[ "$want" == 77 ]]; then
+    grep -q 'retryable=no' <<<"$out" && ok "$label says retryable=no" || bad "$label lacks retryable=no"
+  else
+    grep -q 'retryable=no' <<<"$out" && bad "$label wrongly says retryable=no" || ok "$label does not claim retryable=no"
+  fi
+}
+classify "lane-total-budget-exceeded alone" 75 "" lane-total-budget-exceeded
+classify "lane-budget-exceeded:<path> alone" 75 "" "lane-budget-exceeded:/x/lane"
+classify "measurement-incomplete reasons" 75 "" workspace-measurement-incomplete lane-measurement-incomplete
+classify "empty blocking_reasons" 75 ""
+classify "tick crash (lane_usage_rc=124) even with stale structural reasons" 75 124 unregistered-physical-worktree
+classify "structural reason mixed with a quota reason" 77 75 lane-total-budget-exceeded dirty-physical-worktree
+classify "unregistered-physical-worktree (fresh report rc=75)" 77 75 unregistered-physical-worktree
+classify "unknown-physical-worktree" 77 "" unknown-physical-worktree
+classify "duplicate-physical-worktree" 77 "" duplicate-physical-worktree
+classify "physical-identity-mismatch" 77 "" physical-identity-mismatch
+classify "registry-records-invalid" 77 "" registry-records-invalid
+
+echo "── in-lock preflight skips the guard only for a fresh early verdict ──"
+pf_env=(KG_IOS_DISK_CACHE_ROOTS="$cache_root/ios-build-derived-data" KG_IOS_DISK_CACHE_BUDGET_GIB=1
+  KG_IOS_DISK_CACHE_HEADROOM_GIB=0 KG_IOS_DISK_MIN_FREE_GIB=20 KG_IOS_DISK_FREE_BYTES=$((40 * 1073741824))
+  KG_IOS_DISK_GUARD_STATE="$lane_block_state" KG_IOS_DISK_LANE_USAGE_STATE="$lane_state" KG_IOS_DISK_GUARD_AUTO_REFRESH=0)
+pf_rc=0
+env "${pf_env[@]}" KG_IOS_DISK_GUARD_ALREADY_CHECKED=1 KG_IOS_DISK_GUARD_CHECKED_AT="$(date +%s)" \
+  /bin/bash -c "source '$LIB'; kg_ios_disk_budget_preflight '$cache_root' build" >/dev/null 2>&1 || pf_rc=$?
+[[ "$pf_rc" -eq 0 ]] && ok "fresh early verdict: in-lock preflight measures disk space only" || bad "fresh-check preflight exit=$pf_rc"
+pf_rc=0
+env "${pf_env[@]}" KG_IOS_DISK_GUARD_ALREADY_CHECKED=1 \
+  /bin/bash -c "source '$LIB'; kg_ios_disk_budget_preflight '$cache_root' build" >/dev/null 2>&1 || pf_rc=$?
+[[ "$pf_rc" -eq 77 ]] && ok "caller-preset ALREADY_CHECKED without a timestamp does not bypass the guard" || bad "preset bypass exit=$pf_rc"
+pf_rc=0
+env "${pf_env[@]}" KG_IOS_DISK_GUARD_ALREADY_CHECKED=1 KG_IOS_DISK_GUARD_CHECKED_AT=$(( $(date +%s) - 3600 )) \
+  /bin/bash -c "source '$LIB'; kg_ios_disk_budget_preflight '$cache_root' build" >/dev/null 2>&1 || pf_rc=$?
+[[ "$pf_rc" -eq 77 ]] && ok "early verdict older than the state max age is re-read in-lock" || bad "stale early verdict exit=$pf_rc"
 
 echo "passed=$PASS failed=$FAIL"
 [[ "$FAIL" -eq 0 ]]

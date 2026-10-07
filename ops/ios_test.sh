@@ -1002,7 +1002,7 @@ if [[ "$TEST_CACHE_ACTION" != "status" && "$TEST_CACHE_ACTION" != "clean" ]]; th
   fi
   # The guard verdict was just read; the in-lock preflight now measures real
   # disk space only (cache budget, free-space floor) and does not re-read it.
-  export KG_IOS_DISK_GUARD_ALREADY_CHECKED=1
+  kg_ios_disk_guard_mark_checked
 fi
 
 # Auto-lease a pool simulator for this run (parallel agents). Engaged by --lease

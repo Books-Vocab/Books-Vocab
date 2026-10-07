@@ -306,7 +306,7 @@ source "$SCRIPT_DIR/lib/ios_ops_catalog.sh"
 source "$SCRIPT_DIR/lib/ios_disk_budget.sh"
 
 # guard [--refresh]: show the shared disk guard verdict that gates build/test
-# (exit 75 = blocked), naming the blocking worktrees; --refresh re-evaluates now.
+# (exit 75 = temporary block, 77 = structural block / retryable=no), naming the blocking worktrees; --refresh re-evaluates now.
 cmd_guard() {
   local refresh=0 arg state rc=0
   for arg in "$@"; do
