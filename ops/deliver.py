@@ -67,11 +67,31 @@ def run(cmd: list[str], cwd: Path | None = None) -> Proc:
     return Proc(done.returncode, done.stdout, done.stderr)
 
 
+def failure_detail(done: Proc) -> str:
+    """Everything a failed command said, never a tail.
+
+    ``delivery.py`` reports a failure as one JSON document (``ok: false``) after
+    its progress lines; its ``error`` is the underlying cause, often a GitHub
+    message that follows a long GraphQL query, so it is returned whole.  Any
+    other command's streams are returned whole.
+    """
+    for stream in (done.stderr, done.stdout):
+        for line in reversed(stream.strip().splitlines()):
+            try:
+                doc = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(doc, dict) and doc.get("ok") is False:
+                if isinstance(doc.get("error"), str):
+                    return doc["error"]
+    return "\n".join(s.strip() for s in (done.stderr, done.stdout) if s.strip())
+
+
 def must(runner: Runner, cmd: list[str], cwd: Path | None, stage: str) -> Proc:
     done = runner(cmd, cwd)
     if done.returncode != 0:
-        tail = (done.stderr.strip() or done.stdout.strip())[-400:]
-        raise DeliverError(f"{stage} failed (rc={done.returncode}): {tail}")
+        detail = failure_detail(done) or "no output"
+        raise DeliverError(f"{stage} failed (rc={done.returncode}): {detail}")
     return done
 
 
