@@ -550,6 +550,7 @@ Apple/Google SSO
 - environment：Info.plist `SentryEnvironment` 優先；否則 Debug＝`debug`，Release 以 runtime receipt 判斷（`appStoreReceiptURL` 檔名 `sandboxReceipt`＝`testflight`，其餘＝`production`），因 TestFlight 與 App Store 是同一 binary
 - 背景同步回報：`kg.sync.*` 與 `pushReviewQuietly`（`kg.sync.push_review_states|events`）經 `KGService.shouldRecordSyncFailure` 過濾，offline／`KGError.networkError`／cancel／401 不送，server／decoding／未知錯誤送出
 - agent 不需要 Sentry GUI：`./ops/sentry_tool.py health|issues|issue|events|releases|regressions|route --json` 透過 read-only Web API 取得 normalized contract；API secret 只用 `SENTRY_API_URL`、`SENTRY_AUTH_TOKEN`、`SENTRY_ORG`、`SENTRY_PROJECT_IOS`、`SENTRY_PROJECT_BACKEND`
+- `./ops/sentry_tool.py release-health --json`（read-only，#2076）經 `/organizations/{org}/sessions/` 取每個 release 的 crash-free sessions／users；憑證讀 `~/.secrets/sentry.env`，同名 env var 覆寫檔案值
 - `sentry_tool.py` 僅能 GET，沒有 resolve、assign、comment、create 或 GitHub write path；`route` 只給 IM routing 建議，且 stacktrace/release 不足時回報 `evidence_incomplete`，不猜根因
 - `sentry_tool.py` 的 invalid usage、HTTP/network、pagination truncation、malformed collection 與 redirect/origin failure 都輸出 `kg.sentry.error.v1`；Bearer token 只送往同一個 HTTPS origin，collection 不完整時 fail closed
 - `./ops/ios_ops.sh sentry --json` 會回 `kg.ios.sentry.v1`，除了 source/guard/DSN contract，也獨立檢查 `packagePresent`、`targetLinked`，並回報 `readiness.source_present|package_present|target_linked|build_can_import|api_configured|api_authenticated|project_reachable|runtime_event_seen|symbolication_ready`
