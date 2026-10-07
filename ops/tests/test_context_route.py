@@ -18,7 +18,11 @@ SPEC.loader.exec_module(mod)
 def test_manifest_is_valid_and_has_bounded_roles() -> None:
     manifest = mod.load_manifest(ROOT)
     assert set(manifest["roles"]) == {
-        "manager", "contributor", "reviewer", "docs-steward", "release-operator"
+        "manager",
+        "contributor",
+        "reviewer",
+        "docs-steward",
+        "release-operator",
     }
     assert mod.canonical_role("Manager") == "manager"
     assert mod.canonical_role("CM") == "manager"
@@ -43,20 +47,33 @@ def test_manifest_has_project_onboarding_and_canonical_identity_boundaries() -> 
         "required": True,
     }
     assert set(manifest["identities"]) == {
-        "cm", "im", "worker", "issue-solver", "cr", "ds", "release-operator"
+        "cm",
+        "im",
+        "worker",
+        "issue-solver",
+        "cr",
+        "ds",
+        "release-operator",
     }
     assert manifest["roles"]["manager"]["identity_ids"] == ["cm", "im"]
-    assert manifest["roles"]["contributor"]["identity_ids"] == ["worker", "issue-solver"]
+    assert manifest["roles"]["contributor"]["identity_ids"] == [
+        "worker",
+        "issue-solver",
+    ]
     for identity in ("cm", "im", "worker", "issue-solver"):
         definition = manifest["identities"][identity]
         assert definition["allowed_surfaces"]
         assert definition["forbidden_surfaces"]
-        assert not set(definition["allowed_surfaces"]) & set(definition["forbidden_surfaces"])
+        assert not set(definition["allowed_surfaces"]) & set(
+            definition["forbidden_surfaces"]
+        )
         assert definition["handoff_contract"]["input"]
         assert definition["handoff_contract"]["output"]
 
 
-def test_worker_manifest_declares_both_dispatch_channels_and_hand_back_policies() -> None:
+def test_worker_manifest_declares_both_dispatch_channels_and_hand_back_policies() -> (
+    None
+):
     worker = mod.load_manifest(ROOT)["identities"]["worker"]
     assert "dispatch_channel" in worker["assignment_requirements"]["direct-assignment"]
     assert worker["handoff_contract"]["dispatch_channels"] == {
@@ -73,14 +90,18 @@ def test_worker_manifest_declares_both_dispatch_channels_and_hand_back_policies(
 
 def test_worker_dispatch_contract_fails_closed_when_a_channel_drifts() -> None:
     manifest = copy.deepcopy(mod.load_manifest(ROOT))
-    del manifest["identities"]["worker"]["handoff_contract"]["dispatch_channels"]["user"]
+    del manifest["identities"]["worker"]["handoff_contract"]["dispatch_channels"][
+        "user"
+    ]
 
     with pytest.raises(mod.ContextRouteError, match="dispatch_channels"):
         mod.validate_manifest(manifest, ROOT)
 
 
 def test_route_is_github_native_and_does_not_grant_authority() -> None:
-    payload = mod.resolve_route(mod.load_manifest(ROOT), "manager", intent="delivery", root=ROOT)
+    payload = mod.resolve_route(
+        mod.load_manifest(ROOT), "manager", intent="delivery", root=ROOT
+    )
     assert payload["schema"] == "kg.context.route.v3"
     assert payload["status"] == "confirmed"
     assert payload["skill"] == "github-coordination"
@@ -89,7 +110,12 @@ def test_route_is_github_native_and_does_not_grant_authority() -> None:
     assert payload["onboarding"]["required"] is True
     assert payload["authority"]["granted"] is False
     assert "docs/runbook/system.md" in payload["sources"]
-    assert [step["phase"] for step in payload["load_order"]] == ["project", "identity", "skill", "domain"]
+    assert [step["phase"] for step in payload["load_order"]] == [
+        "project",
+        "identity",
+        "skill",
+        "domain",
+    ]
     assert payload["skill_route"]["primary"] == "github-coordination"
     assert payload["route_selection"]["identity"] is None
 
@@ -113,7 +139,9 @@ def test_ambiguous_role_route_fails_closed_and_exact_identity_entry_resolves() -
 
 
 def test_surface_aliases_are_bounded() -> None:
-    payload = mod.resolve_route(mod.load_manifest(ROOT), "contributor", surface="backend", root=ROOT)
+    payload = mod.resolve_route(
+        mod.load_manifest(ROOT), "contributor", surface="backend", root=ROOT
+    )
     assert payload["intent"] == "backend"
     assert "docs/reference/tech_index.md" in payload["sources"]
 
@@ -145,18 +173,28 @@ def test_every_context_intent_cross_validates_to_a_real_primary_skill() -> None:
         assert payload["sources"][0] == "docs/reference/project_onboarding.md"
     ios_route = mod.resolve_route(manifest, "contributor", intent="ios", root=ROOT)
     assert ios_route["skill_route"]["selected"] == [
-        "kg-router", "worktree-flow", "ios-simulator-verification"
+        "kg-router",
+        "worktree-flow",
+        "ios-simulator-verification",
     ]
 
 
 def test_skill_override_and_work_mode_cannot_bypass_context_contract() -> None:
     manifest = mod.load_manifest(ROOT)
     with pytest.raises(mod.ContextRouteError, match="skill 與 intent route"):
-        mod.resolve_route(manifest, "reviewer", intent="review", skill="devops", root=ROOT)
+        mod.resolve_route(
+            manifest, "reviewer", intent="review", skill="devops", root=ROOT
+        )
     with pytest.raises(mod.ContextRouteError, match="role 不允許 intent"):
         mod.resolve_route(manifest, "reviewer", intent="docs", root=ROOT)
     with pytest.raises(mod.ContextRouteError, match="work_mode"):
-        mod.resolve_route(manifest, "reviewer", intent="review", work_mode="production-write", root=ROOT)
+        mod.resolve_route(
+            manifest,
+            "reviewer",
+            intent="review",
+            work_mode="production-write",
+            root=ROOT,
+        )
 
 
 def test_all_canonical_identities_and_aliases_resolve() -> None:
@@ -176,7 +214,9 @@ def test_all_canonical_identities_and_aliases_resolve() -> None:
 
 def test_identity_skill_route_cannot_drift_from_route_policy() -> None:
     manifest = copy.deepcopy(mod.load_manifest(ROOT))
-    manifest["identities"]["cr"]["skill_routes"]["review"]["pr-review"] = "release-command"
+    manifest["identities"]["cr"]["skill_routes"]["review"]["pr-review"] = (
+        "release-command"
+    )
     with pytest.raises(mod.ContextRouteError, match="route_policy"):
         mod.validate_manifest(manifest, ROOT)
 
@@ -191,7 +231,20 @@ def test_unknown_role_and_work_mode_fail_closed() -> None:
 def test_cli_routes_are_maintainer_diagnostics_only(capsys) -> None:
     assert mod.main(["route", "--role", "manager", "--intent", "delivery"]) == 2
     assert "agent_onboard.py" in capsys.readouterr().err
-    assert mod.main(["route", "--diagnostic", "--role", "manager", "--intent", "delivery", "--json"]) == 0
+    assert (
+        mod.main(
+            [
+                "route",
+                "--diagnostic",
+                "--role",
+                "manager",
+                "--intent",
+                "delivery",
+                "--json",
+            ]
+        )
+        == 0
+    )
     assert '"skill": "github-coordination"' in capsys.readouterr().out
     assert mod.main(["identify", "--role", "manager"]) == 2
     assert "agent_onboard.py" in capsys.readouterr().err
