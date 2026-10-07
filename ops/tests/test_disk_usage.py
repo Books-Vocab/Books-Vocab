@@ -1916,7 +1916,13 @@ def test_agent_named_checkout_outside_claude_root_still_blocks(tmp_path: Path) -
     repo, worktree = _repo_with_worktree(tmp_path)
     orphan = tmp_path / "agent-a1b2c3d4e5f6"
     _run_git(
-        repo, "worktree", "add", "-b", "worktree-agent-a1b2c3d4e5f6", str(orphan), "main"
+        repo,
+        "worktree",
+        "add",
+        "-b",
+        "worktree-agent-a1b2c3d4e5f6",
+        str(orphan),
+        "main",
     )
     state = _one_registered_lane_state(tmp_path, worktree)
     output = tmp_path / "lane-usage.json"
