@@ -45,6 +45,8 @@ struct ReviewCardActions {
     var explainCollocation: ((String) -> Void)? = nil
     var viewCollocationExplanation: ((String) -> Void)? = nil
     var deleteCollocationExplanation: ((String) -> Void)? = nil
+    /// #2041：精簡卡的「暫時看詳細／恢復精簡」。nil（設定頁預覽 / catalog）＝不畫按鈕。
+    var toggleTemporaryDetail: (() -> Void)? = nil
 
     static let none = ReviewCardActions()
 }
@@ -147,6 +149,9 @@ struct ReviewCardView: View {
     let profile: ReviewCardLayoutProfile
     let viewport: ReviewCardViewport
     let showsAnswer: Bool
+    /// #2041：這張精簡卡此刻暫時以詳細版面呈現。`profile` 仍是設定值（evidence 與
+    /// 按鈕判斷讀它）；畫面讀 `renderProfile`。
+    var temporarilyDetailed: Bool = false
     var mountsBack: Bool = true
     var interactive: Bool = true
     var borderOpacity: Double = TodayReviewMetrics.cardBorderActiveOpacity
@@ -243,9 +248,66 @@ struct ReviewCardView: View {
     var reviewCardPadding: CGFloat { TodayReviewMetrics.foldPadding }
     var answerCardHeight: CGFloat { TodayReviewMetrics.answerMinHeight }
 
-    /// 右上角 chrome（喇叭 + 詳情）兩顆 44pt HIG 觸控框 + 中間 inlineGap 的總寬，
-    /// 供單字列保留 trailing 空間，避免長詞被圖示擋住。與 frontCardChrome 佈局同源。
-    var frontChromeReserveWidth: CGFloat { 44 * 2 + appSkin.spacing.inlineGap }
+    /// 右上角 chrome（[暫時詳細] + 喇叭 + 詳情）每顆 44pt HIG 觸控框 + 間距 inlineGap
+    /// 的總寬，供單字列保留 trailing 空間，避免長詞被圖示擋住。與 frontCardChrome
+    /// 佈局同源：按鈕數由同一個 `temporaryDetailToggle` 決定。
+    var frontChromeReserveWidth: CGFloat {
+        let buttons: CGFloat = temporaryDetailToggle == .unavailable ? 2 : 3
+        return 44 * buttons + appSkin.spacing.inlineGap * (buttons - 1)
+    }
+
+    // MARK: Temporary Detail (#2041)
+
+    /// The profile this card renders with: the persisted `profile`, with this
+    /// card's direction lifted to `.standard` while temporarily detailed.
+    private var renderProfile: ReviewCardLayoutProfile {
+        ReviewCardTemporaryDetail.renderProfile(
+            profile,
+            mode: content.card.reviewMode,
+            isDetailed: temporarilyDetailed
+        )
+    }
+
+    /// Button state, read from the persisted profile. Hidden where no one can act
+    /// on it (settings preview / catalog pass no callback).
+    private var temporaryDetailToggle: ReviewCardTemporaryDetail.ToggleState {
+        guard actions.toggleTemporaryDetail != nil else { return .unavailable }
+        return ReviewCardTemporaryDetail.toggleState(
+            profile: profile,
+            mode: content.card.reviewMode,
+            isDetailed: temporarilyDetailed
+        )
+    }
+
+    /// Fields the detailed face would add, pre-measured by hidden probes while the
+    /// card is still compact so the expansion animates to real heights.
+    private func prospectiveDetailFields(face: ReviewCardFace) -> [ReviewCardField] {
+        guard temporaryDetailToggle == .showDetail else { return [] }
+        return ReviewCardTemporaryDetail.prospectiveBlockFields(
+            profile: profile,
+            mode: content.card.reviewMode,
+            face: face,
+            availability: reviewCardAvailability(for: content)
+        )
+    }
+
+    @ViewBuilder
+    private func prospectiveDetailProbes(
+        _ currentCard: ReviewCardContent,
+        face: ReviewCardFace
+    ) -> some View {
+        let fields = prospectiveDetailFields(face: face)
+        if !fields.isEmpty {
+            ZStack(alignment: .topLeading) {
+                ForEach(fields, id: \.self) { field in
+                    reviewMeasurementProbes(field, currentCard: currentCard, face: face)
+                }
+            }
+            .hidden()
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+    }
 
     // MARK: Front Surface
 
@@ -361,6 +423,23 @@ struct ReviewCardView: View {
     @ViewBuilder
     func frontCardChrome(_ card: CardPresentation, interactive: Bool) -> some View {
         HStack(spacing: appSkin.spacing.inlineGap) {
+            // #2041：只在精簡卡上出現，同一顆按鈕來回切換。放最左，喇叭 / 詳情的
+            // 位置不因它出現與否而移動。
+            switch temporaryDetailToggle {
+            case .unavailable:
+                EmptyView()
+            case .showDetail, .restoreCompact:
+                let showing = temporaryDetailToggle == .showDetail
+                VocabChromeIconButton(
+                    systemImage: showing ? "rectangle.expand.vertical" : "rectangle.compress.vertical",
+                    label: showing
+                        ? L10n.string("todayReview.card.temporaryDetail.show")
+                        : L10n.string("todayReview.card.temporaryDetail.restore"),
+                    identifier: interactive ? "todayReview.card.temporaryDetail" : nil,
+                    action: { if interactive { actions.toggleTemporaryDetail?() } }
+                )
+                .accessibilityValue(temporaryDetailToggle.rawValue)
+            }
             VocabChromeIconButton(
                 systemImage: "speaker.wave.2.fill",
                 label: "播放發音".localized,
@@ -492,6 +571,11 @@ struct ReviewCardView: View {
                     }
             }
         }
+        .background(alignment: .topLeading) {
+            if measuresSections {
+                prospectiveDetailProbes(currentCard, face: .front)
+            }
+        }
         .reviewCardFaceChrome(.front)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .frame(minHeight: layout.cardHeight, alignment: .topLeading)
@@ -553,7 +637,10 @@ struct ReviewCardView: View {
     private func evidenceIdentityValue(for card: CardPresentation) -> String {
         let preset = profile.preset(for: card.reviewMode)
         let layoutProfile = "recognition:\(profile.recognition.rawValue),production:\(profile.production.rawValue)"
-        return "cardID=\(card.kgCardId ?? "missing");frontWord=\(card.word);mode=\(card.reviewMode.rawValue);preset=\(preset.rawValue);layoutProfile=\(layoutProfile);translationLength=\(card.translation.count);translationPrefix=\(card.translation.prefix(24))"
+        // `preset` / `layoutProfile` stay the PERSISTED values; the transient
+        // override is its own key (#2041) so evidence never mistakes it for a setting.
+        // translationPrefix stays last: it is free text and may contain ';'.
+        return "cardID=\(card.kgCardId ?? "missing");frontWord=\(card.word);mode=\(card.reviewMode.rawValue);preset=\(preset.rawValue);layoutProfile=\(layoutProfile);temporaryDetail=\(temporarilyDetailed ? 1 : 0);translationLength=\(card.translation.count);translationPrefix=\(card.translation.prefix(24))"
     }
 
     /// Stable machine-readable marker for the selected natural/scroll branch.
@@ -687,6 +774,9 @@ struct ReviewCardView: View {
                 currentCard: currentCard,
                 layout: layout
             )
+        }
+        .background(alignment: .topLeading) {
+            prospectiveDetailProbes(currentCard, face: .back)
         }
         .reviewCardFaceChrome(.back)
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -876,17 +966,21 @@ struct ReviewCardView: View {
     // MARK: - Render Plan / Adaptive Layout
 
     private func reviewCardRenderPlan(for currentCard: ReviewCardContent) -> ReviewCardRenderPlan {
+        .make(
+            profile: renderProfile,
+            mode: currentCard.card.reviewMode,
+            availability: reviewCardAvailability(for: currentCard)
+        )
+    }
+
+    private func reviewCardAvailability(for currentCard: ReviewCardContent) -> ReviewCardContentAvailability {
         let card = currentCard.card
-        return .make(
-            profile: profile,
-            mode: card.reviewMode,
-            availability: .forReviewCard(
-                partOfSpeech: card.partOfSpeech,
-                difficultyTier: card.difficultyTier,
-                exampleCount: card.examples.count,
-                explanationParagraphCount: currentCard.backDocument.meaningParagraphs().count,
-                collocationCount: card.collocations.count
-            )
+        return .forReviewCard(
+            partOfSpeech: card.partOfSpeech,
+            difficultyTier: card.difficultyTier,
+            exampleCount: card.examples.count,
+            explanationParagraphCount: currentCard.backDocument.meaningParagraphs().count,
+            collocationCount: card.collocations.count
         )
     }
 
@@ -929,7 +1023,7 @@ struct ReviewCardView: View {
             measurements: measurements,
             viewportHeight: availableHeight,
             minimumHeight: face == .front ? 0 : answerCardHeight,
-            preset: profile.preset(for: currentCard.card.reviewMode),
+            preset: renderProfile.preset(for: currentCard.card.reviewMode),
             columns: columns
         ))
     }
@@ -949,7 +1043,7 @@ struct ReviewCardView: View {
     }
 
     private var currentCardKey: String {
-        "\(content.card.dateAdded.timeIntervalSinceReferenceDate)-\(content.card.word)"
+        content.card.reviewCardKey
     }
 
     private func recordReviewSectionHeight(

@@ -147,6 +147,13 @@ struct CardPresentation {
     }
 
     static let defaultLinkOrdering = ["contrasts_with", "shares_usage"]
+
+    /// Review-session identity of a card (dateAdded + word). The one formula the
+    /// review card, the deck presenter and session-transient UI state share, so a
+    /// recycled resident slot can never be mistaken for the card it showed before.
+    var reviewCardKey: String {
+        "\(dateAdded.timeIntervalSinceReferenceDate)-\(word)"
+    }
 }
 
 extension VocabularyEntry {

@@ -1313,3 +1313,6 @@
 "addLink.step.enrich" = "意味と例文を追加";
 "addLink.step.createLink" = "2枚のカードをリンク";
 "addLink.step.localProjection" = "この端末にダウンロード";
+
+"todayReview.card.temporaryDetail.show" = "このカードの詳細を一時的に表示";
+"todayReview.card.temporaryDetail.restore" = "コンパクト表示に戻す";

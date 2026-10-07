@@ -197,7 +197,8 @@ struct TodayReviewView: View {
                 state.updateCollocationExplanation(nil, for: collocation, modelContext: modelContext)
             },
             collocationExplanations: state.currentCollocationExplanations,
-            notebookBadges: notebookBadges
+            notebookBadges: notebookBadges,
+            onToggleTemporaryDetail: { state.toggleTemporaryDetail() }
         )
         .toastOverlay()
         .task {

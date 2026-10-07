@@ -1332,3 +1332,6 @@
 "addLink.step.enrich" = "Add definitions and examples";
 "addLink.step.createLink" = "Link the two cards";
 "addLink.step.localProjection" = "Download to this device";
+
+"todayReview.card.temporaryDetail.show" = "Show details for this card";
+"todayReview.card.temporaryDetail.restore" = "Back to compact";

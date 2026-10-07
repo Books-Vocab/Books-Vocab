@@ -20,6 +20,9 @@ final class TodayReviewState {
     private var cardCache = TodayReviewCardCache()
     private let autoplay = TodayReviewAutoplayController()
     private var collocationState = TodayReviewCollocationState()
+    /// #2041: session-memory only. Cleared on every card change by
+    /// `syncCurrentEntryDerivedState`; never written to a persisted store.
+    private var temporaryDetail = ReviewCardTemporaryDetail()
     var linkedCardStack: [VocabularyEntry] = []
     var tappedLink: KGCardLinkSummary?
     static let cacheLookaheadLimit = 3
@@ -160,7 +163,8 @@ final class TodayReviewState {
             isAutoPlayPaused: isAutoPlayPaused,
             autoplayProgress: queue.isEmpty ? 0 : Double(currentIndex) / Double(queue.count),
             autoplaySpeed: autoplaySpeed,
-            autoplaySoundEnabled: autoplaySoundEnabled
+            autoplaySoundEnabled: autoplaySoundEnabled,
+            temporaryDetailCardKey: temporaryDetail.detailedCardKey
         )
     }
 
@@ -263,6 +267,16 @@ final class TodayReviewState {
     func handleDetailTap() {
         guard let current = currentEntry else { return }
         linkedCardStack.append(current)
+    }
+
+    /// #2041: the compact card's "show detailed for now" button (same button
+    /// restores compact). Action path only — never called from a body.
+    /// Animated with the reveal spring so the card's height change is continuous.
+    func toggleTemporaryDetail() {
+        guard let key = currentCardState?.card.reviewCardKey else { return }
+        withAnimation(AppMotion.reviewRevealSpring) {
+            temporaryDetail.toggle(cardKey: key)
+        }
     }
 
     func advanceReveal() {
@@ -648,5 +662,10 @@ final class TodayReviewState {
 
     private func syncCurrentEntryDerivedState() {
         collocationState.sync(from: currentEntry)
+        // Every card change (next / previous / shuffle / submit / autoplay) funnels
+        // here: leaving the card forgets its temporary detail, and coming back to
+        // it later starts compact again. Idle resets write nothing.
+        var detail = temporaryDetail
+        if detail.reset() { temporaryDetail = detail }
     }
 }

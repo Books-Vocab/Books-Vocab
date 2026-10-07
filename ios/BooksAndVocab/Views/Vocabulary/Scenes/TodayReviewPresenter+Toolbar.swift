@@ -314,12 +314,14 @@ struct ReviewToolbarControls: View, Equatable {
             }
             .disabled(!model.canGoPrevious)
             .accessibilityLabel(L10n.string("todayReview.nav.previous"))
+            .accessibilityIdentifier("todayReview.nav.previous")
 
             Button { guard model.isCardInteractive else { return }; onNext() } label: {
                 Image(systemName: "chevron.right").font(appSkin.typography.iconNavigation)
             }
             .disabled(!model.canGoNext)
             .accessibilityLabel(L10n.string("todayReview.nav.next"))
+            .accessibilityIdentifier("todayReview.nav.next")
         }
         .foregroundStyle(appSkin.palette.secondaryText)
     }

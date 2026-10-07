@@ -32,6 +32,9 @@ struct TodayReviewPresenterState {
     let autoplayProgress: Double
     let autoplaySpeed: AutoplaySpeed
     let autoplaySoundEnabled: Bool
+    /// #2041：目前「暫時看詳細」的那張卡（`CardPresentation.reviewCardKey`），nil ＝
+    /// 全部依設定。session 記憶體，換卡即清。
+    var temporaryDetailCardKey: String? = nil
 }
 
 // MARK: - Presenter
@@ -161,6 +164,8 @@ struct TodayReviewPresenter: View {
     var collocationExplanations: [String: String] = [:]
     /// notebookId → 卡上標示。只有多單字本 session 才有內容；空表 ＝ 不畫（#2040）。
     var notebookBadges: [String: ReviewCardNotebookBadge] = [:]
+    /// #2041：精簡卡 chrome 的「暫時看詳細／恢復精簡」。預設 no-op（fixture / catalog）。
+    var onToggleTemporaryDetail: () -> Void = {}
 
     /// 給 extension 判斷能否互動
     var isCardInteractive: Bool {
@@ -292,8 +297,7 @@ struct TodayReviewPresenter: View {
     /// back-mount gate reset and reveal-spring suppression on every card advance;
     /// independent of any view `.id`, so the reused subtree still resets per card.
     private var currentCardKey: String {
-        guard let card = state.currentCard?.card else { return "" }
-        return "\(card.dateAdded.timeIntervalSinceReferenceDate)-\(card.word)"
+        state.currentCard?.card.reviewCardKey ?? ""
     }
 
     /// Drive `backContentMounted` with a lagged falling edge so the collapse fold

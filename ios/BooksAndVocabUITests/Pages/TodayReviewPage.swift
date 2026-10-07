@@ -276,7 +276,34 @@ struct TodayReviewPage {
         element("todayReview.expandZone")
     }
 
+    /// #2041 compact-card chrome toggle on the ACTIVE card. Its accessibility
+    /// value is the button state: `showDetail` (compact now) or `restoreCompact`.
+    /// Query-only: a standard-preset card legitimately has none.
+    var temporaryDetailButton: XCUIElement {
+        queryElement("todayReview.card.temporaryDetail")
+    }
+
+    func waitForTemporaryDetail(_ value: String, timeout: TimeInterval = 8) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let matches = elements(for: "todayReview.card.temporaryDetail").allElementsBoundByIndex
+            if matches.count == 1, matches[0].exists, (matches[0].value as? String) == value { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        let matches = elements(for: "todayReview.card.temporaryDetail").allElementsBoundByIndex
+        return matches.count == 1 && (matches[0].value as? String) == value
+    }
+
     // MARK: - Toolbar
+
+    /// Previous / next chevrons (hidden while autoplay runs).
+    var previousButton: XCUIElement {
+        element("todayReview.nav.previous")
+    }
+
+    var nextButton: XCUIElement {
+        element("todayReview.nav.next")
+    }
 
     var rememberedButton: XCUIElement {
         element("todayReview.feedback.remembered")

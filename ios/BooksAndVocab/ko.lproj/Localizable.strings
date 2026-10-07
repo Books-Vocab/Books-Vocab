@@ -1313,3 +1313,6 @@
 "addLink.step.enrich" = "뜻과 예문 추가";
 "addLink.step.createLink" = "두 카드 연결";
 "addLink.step.localProjection" = "이 기기에 다운로드";
+
+"todayReview.card.temporaryDetail.show" = "이 카드 자세히 잠시 보기";
+"todayReview.card.temporaryDetail.restore" = "간단히 보기로 돌아가기";

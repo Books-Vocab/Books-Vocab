@@ -153,6 +153,7 @@ Scope: `ios/BooksAndVocab`
 | 卡片版面：minimal 仍溢出 | `requiresScrollFallback`（多見於 Accessibility Dynamic Type） | 該面改垂直捲動；**不隱藏使用者勾選的欄位** | 已覆蓋 |
 | 卡片版面：欄位資料缺席 | `ReviewCardContentAvailability` 該欄為 false | 本次不畫，**profile 不變**（下張卡有資料就回來）；`graphLinks` 恆可用——無連結時畫加連結入口 | 已覆蓋 |
 | 卡片版面：正面／反面預算 | 正面階段常駐 reveal zone | 正面預算＝contentHeight − revealZoneReserve 且不隨 reveal 階段變動；反面拿正面實佔後的餘額 | 已覆蓋 |
+| 精簡卡暫時看詳細（#2041） | 該卡方向 preset 為 `.compact`，tap chrome `todayReview.card.temporaryDetail`（value=`showDetail`／`restoreCompact`） | 只有這張卡改以 `.standard` 版面畫（例句／詳解／搭配詞，production 正面例句一併還原），以 `reviewRevealSpring` 過渡；同一顆按鈕恢復精簡。狀態只在 `TodayReviewState` 記憶體，任何換卡（next / previous / shuffle / submit / autoplay）即清，回到該卡仍為精簡；不寫 `ReviewCardLayoutStore`／`NotebookSettings`／iCloud。evidence value 的 `preset` 仍是設定值，另帶 `temporaryDetail=0/1`；已是正常版面的卡不顯示按鈕 | 已覆蓋（`ReviewCardTemporaryDetailTests`、`ReviewCardLayoutEditorUITests`） |
 | 版面編輯器入口不可用 | `!isCardInteractive`（fling / 推進中） | toolbar 鈕點擊 no-op（與 shuffle / prev / next 同一把鎖） | 已覆蓋 |
 | 開編輯器時 autoplay 正在播 | tap 入口 | `pauseForInterruption()` 暫停；**關閉後不自動恢復**（`todayReview.autoplay.paused` identifier 可判讀） | 已覆蓋 |
 | 開新增連結時 autoplay 正在播 | tap `todayReview.card.addLink` | 先 `pauseAutoPlayForModalInterruption()`；`AddLinkSheetRequest` 於點擊當下凍結來源卡與候選池，sheet 全程綁定該卡（`addLink.sourceWord` 顯示來源字）；關閉後維持暫停 | 已覆蓋 |

@@ -1321,3 +1321,6 @@
 "addLink.step.enrich" = "補充解釋與例句";
 "addLink.step.createLink" = "連結兩張單字卡";
 "addLink.step.localProjection" = "下載到這台裝置";
+
+"todayReview.card.temporaryDetail.show" = "暫時顯示詳細內容";
+"todayReview.card.temporaryDetail.restore" = "恢復精簡";

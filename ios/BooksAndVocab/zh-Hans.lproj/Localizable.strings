@@ -1313,3 +1313,6 @@
 "addLink.step.enrich" = "补充释义与例句";
 "addLink.step.createLink" = "链接两张单词卡";
 "addLink.step.localProjection" = "下载到这台设备";
+
+"todayReview.card.temporaryDetail.show" = "暂时显示详细内容";
+"todayReview.card.temporaryDetail.restore" = "恢复精简";
