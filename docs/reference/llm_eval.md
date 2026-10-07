@@ -63,7 +63,10 @@ Production prompt（`backend/src/kg/` inline f-string）與 eval registry 為**�
 
 `corpus-build` 與 `gold-queue` 寫入前以 `git check-ignore` 檢查每個輸出檔：
 落在任一 git work tree 內且未被 ignore（含已 tracked、git 不可用）時以 exit 2
-拒寫，除非帶 `--allow-unignored`；不在任何 work tree 內的路徑直接放行。
+拒寫，除非帶 `--allow-unignored`。只有 git 明確回報 `not a git repository`、
+且路徑往上沒有任何 `.git`、未設 `GIT_DIR`／`GIT_WORK_TREE` 時才視為不在 work
+tree 而放行；其他 git 失敗（dubious ownership、權限、repo 損毀）一律 fail
+closed 當作可 commit。
 `corpus-build --output-dir` 預設為 `lab/llm_eval/private_corpus/`（以 package
 root 解析，與 cwd 無關）。
 
@@ -181,7 +184,7 @@ root、`lab/llm_eval` 或任何 cwd 執行結果相同；使用者明確給的�
 | 情況 | exit | 時機 |
 |---|---|---|
 | 任一 `--models` 無法解析 provider | 1 | 發出任何請求前 |
-| `--baseline` 讀不到、不是 JSON object | 1 | 發出任何請求前 |
+| `--baseline` 讀不到、不是 report 形狀（`models` 為 object、各 model 為 object、`*_score_avg` 為數字或 null） | 1 | 發出任何請求前 |
 | 任一 model 全部 sample 都 error（例如缺 key、Ollama 不可達） | 1 | run 結束後 |
 | 任一 model `format_regression` 或 `quality_regression` | 1 | run 結束後 |
 | 其餘（含部分 sample error） | 0 | — |
