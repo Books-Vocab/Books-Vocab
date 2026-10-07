@@ -64,6 +64,10 @@ verified_against: afe016c4ea2fcbd7306f9c4f40b4556e77865100
 本地 `worktree` 測試群組會先取得 repository common Git directory 下的 blocking
 test-execution lock。這只序列化會共用 registry fixture／mutation lock 的測試程序；production
 `OperationLock` 仍維持 non-blocking、fail-closed 語義，不會因測試互斥而改變實際交付命令。
+ops pytest 另由 `ops/tests/conftest.py` 的 autouse fixture 設定 `KG_DELIVERY_LOCK_DIR` 到 per-test tmp 目錄，
+讓 `OperationLock` 在測試中使用隔離的 lock 檔（依 canonical repo 雜湊命名），因此真實 delivery 正持有
+`.cache/delivery-control.operation.lock` 時，測試不會因 `delivery mutation already in progress` 變紅。
+該變數僅供測試：任何 operator、launchd 或 CI 的真實 delivery 環境都不得設定，否則使用不同值的程序彼此不再互斥，會削弱 fail-closed lease；production 不設定時路徑不變。
 不要平行直接啟動 registry mutation 測試；使用 `./ops/test_ops.sh worktree`，讓 wrapper
 在不同 linked worktree 之間共用同一把鎖。程序中止時由作業系統釋放鎖，不建立第二套 registry 狀態。
 
@@ -125,7 +129,7 @@ quarantine 是可驗證的隔離投影，不是 cleanup 成功、owner 恢復、
 | readiness／required | typed PR receipt validator、short `required`、exact manual retrigger | PI 修 metadata／trigger transient retry |
 | required code failure | `resume-published` same-owner generation+1 transaction | 原 owner 修 code、fresh handback；PI 更新同一 PR |
 | full confidence／CR／DS | GitHub check／review facts；typed／label hold | PI 分類 follow-up；嚴重者先 durable hold |
-| merge-front freshness | `reanchor` same-owner CAS、fresh handback／PR required | CM 只選隊首，不批次重建後方 PR |
+| merge-front conflict | `reanchor` same-owner CAS、fresh handback／PR required；只落後 main 而 mergeable 的 PR 不需 reanchor | CM 只選隊首，不批次重建後方 PR |
 | admission／merge | exact queue gate、native merge queue、merge-group `required` | CM enqueue，不手動 merge、不等 routine advisory |
 | landing／main sync／cleanup | `sync-main` ff-only CAS、`cleanup-merged` terminal proof | CM sync；PI 刪 exact remote residue並 terminalize |
 | release／deploy | 獨立 release／deploy SOP、approval／health／rollback | 不因一般 merge 自動觸發 |
@@ -230,7 +234,7 @@ fresh typed handback 更新同一 PR 並重跑 required 後，CM 執行：
 ./ops/delivery.py --repo /Users/chenliangyu/project/kg queue --pr '<number>'
 ```
 
-`queue` 必須 final-read exact current base／head／Scope／receipt、non-draft、mergeable、required SUCCESS、native merge queue 與無 durable P0／P1／security hold。只有 GitHub exact readback 已證明 PR landed，才執行：
+`queue` 必須 final-read exact PR／published registry base、head／Scope／receipt、non-draft、mergeable、required SUCCESS、native merge queue 與無 durable P0／P1／security hold。main 有 native merge queue 且 required contexts 含 `required` 時，merge group 會在合併結果上重跑 required，因此 PR base 只落後 live main 不是拒絕理由，enqueue CAS 綁 PR 已記錄的 base；GitHub `CONFLICTING` 以 `reanchor_required` 拒絕並投影為 `LaneState.REANCHOR`；沒有 `required` context 時仍要求 base == live main（此組態不受支援，`dogfood-preflight` 會擋；lane projection 不讀 queue 設定，落後 PR 仍顯示 READY_TO_QUEUE 而由 `queue` 以 stale 拒絕）。只有 GitHub exact readback 已證明 PR landed，才執行：
 
 ```bash
 ./ops/delivery.py --repo /Users/chenliangyu/project/kg sync-main
@@ -315,7 +319,7 @@ Supervisor 的 watchdog tick 只用來避免 supervisor 睡死，不代表每 30
 
 1. **Canary 1 lane**：只允許一個 Solver，走完整 handback → PR → required → native queue → merge → sync → terminal cleanup。
 2. **Promotion proof**：15 分鐘觀測窗內完成至少 3 個 exact merges；沒有 local residue、unmapped PR、source problem 或 hard-hold bypass。
-3. **Ramp 4 lanes**：確認 required 並行、PR body repair、stale merge-front reanchor 與一條 blocked lane 不會停止其他 lane。
+3. **Ramp 4 lanes**：確認 required 並行、PR body repair、conflicting merge-front reanchor 與一條 blocked lane 不會停止其他 lane。
 4. **Ramp**：持續派送所有通過 exact owner／Scope／registry／main／CI／磁碟條件的候選；10–15 open PR、active Solver 8–12、candidate 20–30 與至少 3 個 merge-ready 只作觀測水位，不是停止條件。required 同時容量、collision、global source uncertainty 與每 lane 磁碟預算才是背壓；active 與 durable PR 是兩個不同 reservoir。
 5. **Steady state**：持續量測候選、active Solver、PR、handback→PR p95 ≤60 秒、required p95 ≤240 秒、required-success→enqueue p95 ≤30 秒、每小時 ≥12 merges、inter-merge p95 ≤300 秒；未達目標時找出瓶頸，不以固定 lane 數字停止。
 

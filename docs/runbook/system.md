@@ -125,7 +125,7 @@ Candidate Issue body 先由 deterministic contract 產生並重驗：
 
 `trigger-required` 只在同一 exact published PR 的 required 為 `ABSENT`／`FAILURE` 時 dispatch 帶 PR number／base／HEAD 的 workflow；`PENDING`／`SUCCESS` 拒絕重複觸發，hold 原樣保留且 dispatch 不代表 Ready。若 exact `pull_request` `pr-gate` run 的狀態是 `queued` 且建立已超過 15 分鐘，command 可用同一 exact run ID 執行 supported force-cancel，之後重新讀取同一 branch／HEAD／event／run identity；只有確認已進入 terminal non-success 狀態才可 rerun。若 cancel 回覆表示 run 已完成、但同一 exact readback 暫時仍為 active，command 會再對同一 run ID 讀取完整 `gh run view` identity／status；只有 view 明確確認相同 branch／HEAD／`pull_request` event 的 terminal non-success 才可 rerun。仍 active、近期 queued run、identity 不一致、其他 active status 或其他 cancel/readback 不一致都維持 fail closed，不以 cancel 回傳碼推測已取消，也不建立另一個 workflow run。
 
-若 required 是 code failure，published PR 已取代 local assets，使用 original owner 的 exact tuple 恢復修復環境；若只是 merge-front base stale，才使用 JIT reanchor。若 required failure 已由 exact evidence 證明是 current main 已包含的基線問題，原 owner 才可對同一 PR 使用明確的 `--allow-required-failure` local recovery；此模式只重建本地 worktree，不是 required／review／merge bypass：
+若 required 是 code failure，published PR 已取代 local assets，使用 original owner 的 exact tuple 恢復修復環境；若 merge-front 與 live main 衝突（GitHub `CONFLICTING`），才使用 JIT reanchor；只是 base 落後 live main 而 `MERGEABLE` 的 PR 不需 reanchor，native merge queue 會在合併結果上重跑 `required`。若 required failure 已由 exact evidence 證明是 current main 已包含的基線問題，原 owner 才可對同一 PR 使用明確的 `--allow-required-failure` local recovery；此模式只重建本地 worktree，不是 required／review／merge bypass：
 
 ```bash
 ./ops/worktree_orchestrate.py resume-published --lane <lane> --branch <branch> --owner-thread-id <thread> --claim-generation <generation> --expected-remote-head <sha> --path <new-path>
@@ -205,7 +205,7 @@ PR readiness workflow 的 parser 入口是：
 
 GitHub Issue、Project、PR、CR／DS review、merge 與 release approval 不在本機 ledger 再存一份，也沒有本地 backlog、merge queue 或批次整合狀態。`published` 只表示 durable PR 已可取代 local assets，不是 PR lifecycle mirror。當本機與 GitHub 顯示不同，以 GitHub ref、PR 與 Actions 為準；local evidence 只能說明本機曾經驗證過什麼。
 
-typed `kg.worktree.handback.v1` 交接會在 clean worktree 上讀取 live `origin/main`，把 SHA 記入 `origin_main_sha`，並分別要求 declared base 是 live main 與 physical tip 的 ancestor；它刻意不要求 live main 已是 tip 的 ancestor，因此 main 前進不會阻止歷史-base handback durable publish。remote/main 不可讀、base 不在 main history 或 base 不在 tip history時才 fail closed。PI 只把它正規化成 PR 內的 `kg.delivery.handback.v1`，不變更 provenance。這個 local receipt 只代表交接當下的執行證據，不是 current-main Ready；只有 merge-front 由 CM 重新查 live `origin/main`、exact PR／registry tuple 與 required checks，必要時要求同 owner JIT reanchor。
+typed `kg.worktree.handback.v1` 交接會在 clean worktree 上讀取 live `origin/main`，把 SHA 記入 `origin_main_sha`，並分別要求 declared base 是 live main 與 physical tip 的 ancestor；它刻意不要求 live main 已是 tip 的 ancestor，因此 main 前進不會阻止歷史-base handback durable publish。remote/main 不可讀、base 不在 main history 或 base 不在 tip history時才 fail closed。PI 只把它正規化成 PR 內的 `kg.delivery.handback.v1`，不變更 provenance。這個 local receipt 只代表交接當下的執行證據，不是 current-main Ready；只有 merge-front 由 CM 重新查 live `origin/main`、exact PR／registry tuple 與 required checks，merge-front 與 live main 衝突（`CONFLICTING`）時才要求同 owner JIT reanchor。
 
 恢復 active branch/path 的工作前，先重新 register 或 adopt；先前 hand-back receipt 僅保留為 audit evidence，不能替 resumed claim 釋放 admission。完整 admission rule 以 [delivery model](../reference/delivery_model.md) 為準；完成新一輪工作後重新 hand-back。
 

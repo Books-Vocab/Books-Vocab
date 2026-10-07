@@ -6,6 +6,8 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
@@ -659,15 +661,23 @@ def test_published_lane_is_remote_queue_not_orphaned_local_work(tmp_path: Path) 
     assert lane.physical is None
 
 
-def test_exact_stale_required_green_pr_is_the_only_reanchor_classification(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    ("mergeable", "conflicting", "state"),
+    [
+        (True, False, LaneState.READY_TO_QUEUE),
+        (False, True, LaneState.REANCHOR),
+        (False, False, LaneState.PR_WAITING_REQUIRED),
+    ],
+)
+def test_lagging_required_green_pr_reanchors_only_on_conflict(
+    tmp_path: Path, mergeable: bool, conflicting: bool, state: LaneState
 ) -> None:
     path = tmp_path / "lane"
-    published = _record(path, status="published")
+    lagging = replace(_pull_request(path), mergeable=mergeable, conflicting=conflicting)
     service = InspectService(
-        registry=FakeRegistry((published,)),
+        registry=FakeRegistry((_record(path, status="published"),)),
         git=FakeGit((), {}, main_sha="d" * 40),
-        github=FakeGitHub((_pull_request(path),)),
+        github=FakeGitHub((lagging,)),
         runtime=FakeRuntime(),
     )
 
@@ -675,7 +685,7 @@ def test_exact_stale_required_green_pr_is_the_only_reanchor_classification(
         item for item in service.inspect().lanes if item.key.startswith("published:")
     )
 
-    assert lane.decision.state is LaneState.REANCHOR
+    assert lane.decision.state is state
     assert not lane.problems
 
 
@@ -726,7 +736,7 @@ def test_published_lane_uses_observed_pr_base_without_rewriting_handback_base(
     assert lane.registry is not None
     assert lane.registry.base_sha == "a" * 40
     assert lane.registry.published_base_sha == "d" * 40
-    assert lane.decision.state is LaneState.REANCHOR
+    assert lane.decision.state is LaneState.READY_TO_QUEUE
     assert not lane.problems
 
 

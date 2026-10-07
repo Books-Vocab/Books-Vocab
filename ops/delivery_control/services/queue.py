@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from ..domain.errors import PolicyViolation
 from ..domain.models import HandbackReceipt
 from ..domain.observations import CheckSnapshot, PullRequestSnapshot, RegistrySnapshot
-from ..domain.policies import evaluate_merge_gate
+from ..domain.policies import REQUIRED_CONTEXT, evaluate_merge_gate
 from ..domain.states import HoldKind
 from ..ports.git import GitQueryPort
 from ..ports.github import GitHubCommandPort, GitHubQueryPort
@@ -51,6 +51,11 @@ class QueueService:
         record = self._record(receipt)
         if not self.github_query.merge_queue_enabled("main"):
             raise PolicyViolation("main does not require GitHub merge queue admission")
+        # The `required` context gates every merge group, so the queue validates
+        # the merged result and a merely lagging PR needs no reanchor.
+        validates = REQUIRED_CONTEXT in self.github_query.required_status_contexts(
+            "main"
+        )
         pull_request = self.github_query.get_pull_request(pull_request_number)
         durable_holds = pull_request_holds(pull_request)
         expected_body = render_pull_request_body(receipt, holds=durable_holds)
@@ -67,17 +72,17 @@ class QueueService:
             registry=record,
             required=required,
             holds=holds | durable_holds,
+            merge_queue_validates=validates,
         )
         if not decision.allowed:
             raise PolicyViolation("; ".join(decision.reasons))
-        latest_live_main_sha = self.git.origin_main_sha()
-        if latest_live_main_sha != live_main_sha:
+        if not validates and self.git.origin_main_sha() != live_main_sha:
             raise PolicyViolation(
                 "origin/main changed during queue admission; re-read the exact merge front"
             )
         self.github_command.enqueue(
             number=pull_request_number,
-            expected_base_sha=live_main_sha,
+            expected_base_sha=pull_request.base_sha,
             expected_head_sha=receipt.head_sha,
             expected_body=expected_body,
         )

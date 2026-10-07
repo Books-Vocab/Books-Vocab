@@ -123,7 +123,7 @@ def decide_capacity(
                 f"{cadence_reason}; delivery supply is available",
             )
     if metrics.reanchor_required:
-        add(ControlAction.REANCHOR_FRONT, "exact stale-base PRs await reanchor")
+        add(ControlAction.REANCHOR_FRONT, "exact conflicting PRs await reanchor")
     if metrics.review_gate_unresolved:
         add(
             ControlAction.AUDIT_PR_REVIEW_GATE,

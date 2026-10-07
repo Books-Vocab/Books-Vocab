@@ -40,6 +40,19 @@ def test_duplicate_pull_request_number_is_source_problem() -> None:
     )
 
 
+def test_mergeability_keeps_conflict_distinct_from_unknown() -> None:
+    states = enumerate(("MERGEABLE", "CONFLICTING", "UNKNOWN"), 1)
+    inventory = parse_pull_request_inventory(
+        [{**_pull_request(n, f"f/{n}"), "mergeable": s} for n, s in states]
+    )
+
+    assert [(item.mergeable, item.conflicting) for item in inventory.records] == [
+        (True, False),
+        (False, True),
+        (False, False),
+    ]
+
+
 def test_distinct_pull_request_numbers_remain_dispatchable() -> None:
     inventory = parse_pull_request_inventory(
         [_pull_request(42, "feat/one"), _pull_request(43, "feat/two")]

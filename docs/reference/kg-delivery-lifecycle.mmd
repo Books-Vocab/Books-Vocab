@@ -95,8 +95,8 @@ flowchart TB
 
     subgraph Merge["6. CM：只消費 merge-front"]
         CMGATE{"Final hard gate<br/>non-draft、mergeable<br/>exact owner／base／HEAD／Scope／handback<br/>required SUCCESS、無 P0/P1/security hold"}
-        BASE{"是否 merge-front<br/>且由 live main 可驗證？"}
-        REANCHOR["只對 merge-front JIT reanchor<br/>同 owner、重跑 required；不 rebase 全佇列"]
+        BASE{"是否與 live main 衝突？<br/>（只落後 main 但 MERGEABLE 不算）"}
+        REANCHOR["只對 CONFLICTING merge-front JIT reanchor<br/>同 owner、重跑 required；不 rebase 全佇列"]
         QUEUE["Native GitHub merge queue<br/>exact-head admission"]
         MERGE["Merge 到 origin/main"]
         SYNC["CM supported sync-main<br/>canonical local main == origin/main"]
@@ -108,8 +108,8 @@ flowchart TB
 
         CMGATE -->|"失敗：hold／conflict／tuple 不完整"| RESUME
         CMGATE -->|"通過"| BASE
-        BASE -->|"stale 且為 merge-front"| REANCHOR --> REQUIRED
-        BASE -->|"current／merge-group 可驗證"| QUEUE --> MERGE --> SYNC --> RECEIPT --> PI_CLEAN --> RELEASE
+        BASE -->|"CONFLICTING 且為 merge-front"| REANCHOR --> REQUIRED
+        BASE -->|"MERGEABLE：current 或僅落後，merge group 可驗證"| QUEUE --> MERGE --> SYNC --> RECEIPT --> PI_CLEAN --> RELEASE
         RELEASE -->|"否"| DONE
         RELEASE -->|"是"| PROD --> DONE
     end

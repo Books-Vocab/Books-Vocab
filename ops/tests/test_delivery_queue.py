@@ -140,13 +140,19 @@ class FakeGitHub:
         required: CheckStatus = CheckStatus.SUCCESS,
         paths: tuple[str, ...] | None = None,
         merge_queue: bool = True,
+        required_contexts: tuple[str, ...] = ("required",),
     ) -> None:
         self.receipt = receipt
         self.pull_request = pull_request or _pull_request(receipt)
         self.required = required
         self.paths = receipt.scope.paths if paths is None else paths
         self.merge_queue = merge_queue
+        self.required_contexts = required_contexts
         self.enqueue_calls: list[tuple[int, str, str, str]] = []
+
+    def required_status_contexts(self, branch: str) -> tuple[str, ...]:
+        assert branch == "main"
+        return self.required_contexts
 
     def get_pull_request(self, number: int) -> PullRequestSnapshot:
         assert number == self.pull_request.number
@@ -228,9 +234,98 @@ def test_exact_claim_isolated_from_unrelated_inventory_problems() -> None:
     assert github.enqueue_calls
 
 
-def test_queue_rechecks_live_main_before_mutation() -> None:
+def test_queue_admits_lagging_pr_at_its_recorded_base_when_queue_validates() -> None:
     receipt = _receipt()
-    github = FakeGitHub(receipt)
+    service, github = _service(receipt, live_main="d" * 40)
+
+    result = service.enqueue(receipt=receipt, pull_request_number=11)
+
+    assert result.live_main_sha == "d" * 40
+    assert github.enqueue_calls == [(11, BASE, HEAD, render_pull_request_body(receipt))]
+
+
+@pytest.mark.parametrize(
+    ("changes", "contexts", "message"),
+    [
+        ({"mergeable": False, "conflicting": True}, ("required",), "reanchor_required"),
+        ({"head_sha": "e" * 40}, ("required",), "PR head differs"),
+        ({}, (), "stale"),
+        # A required context other than the gate `required` validates nothing
+        # the dogfood relies on, so lag is still refused.
+        ({}, ("lint",), "stale"),
+    ],
+)
+def test_queue_refuses_conflict_moved_head_or_unvalidated_lag(
+    changes: dict[str, object], contexts: tuple[str, ...], message: str
+) -> None:
+    receipt = _receipt()
+    pull_request = replace(_pull_request(receipt), **changes)
+    github = FakeGitHub(receipt, pull_request=pull_request, required_contexts=contexts)
+    service, github = _service(receipt, live_main="d" * 40, github=github)
+
+    with pytest.raises(PolicyViolation, match=message):
+        service.enqueue(receipt=receipt, pull_request_number=11)
+    assert not github.enqueue_calls
+
+
+PUBLISHED_BASE = "9" * 40
+
+
+def test_queue_admits_pr_whose_published_registry_base_lags_main() -> None:
+    # Production refusal "registry base is stale": the registry's
+    # published_base_sha (the PR target at publish time) is behind live main,
+    # and so is the hand-back base; the PR is still MERGEABLE and unmoved.
+    receipt = _receipt()
+    pull_request = replace(_pull_request(receipt), base_sha=PUBLISHED_BASE)
+    github = FakeGitHub(receipt, pull_request=pull_request)
+    service, github = _service(
+        receipt,
+        live_main="d" * 40,
+        record=_registry(receipt, published_base_sha=PUBLISHED_BASE),
+        github=github,
+    )
+
+    result = service.enqueue(receipt=receipt, pull_request_number=11)
+
+    assert result.live_main_sha == "d" * 40
+    assert github.enqueue_calls == [
+        (11, PUBLISHED_BASE, HEAD, render_pull_request_body(receipt))
+    ]
+
+
+@pytest.mark.parametrize(
+    ("changes", "contexts", "message"),
+    [
+        ({"mergeable": False, "conflicting": True}, ("required",), "reanchor_required"),
+        ({"head_sha": "e" * 40}, ("required",), "PR head differs"),
+        ({}, (), "stale"),
+        # The PR target moved away from the registry's published base.
+        ({"base_sha": "f" * 40}, ("required",), "published registry base"),
+    ],
+)
+def test_queue_refuses_lagging_registry_base_unless_exact_and_unconflicted(
+    changes: dict[str, object], contexts: tuple[str, ...], message: str
+) -> None:
+    receipt = _receipt()
+    pull_request = replace(
+        _pull_request(receipt), **{"base_sha": PUBLISHED_BASE, **changes}
+    )
+    github = FakeGitHub(receipt, pull_request=pull_request, required_contexts=contexts)
+    service, github = _service(
+        receipt,
+        live_main="d" * 40,
+        record=_registry(receipt, published_base_sha=PUBLISHED_BASE),
+        github=github,
+    )
+
+    with pytest.raises(PolicyViolation, match=message):
+        service.enqueue(receipt=receipt, pull_request_number=11)
+    assert not github.enqueue_calls
+
+
+def test_unvalidated_queue_rechecks_live_main_before_mutation() -> None:
+    receipt = _receipt()
+    github = FakeGitHub(receipt, required_contexts=())
     service = QueueService(
         registry=FakeRegistry(_registry(receipt)),
         git=DriftingGit(BASE, "d" * 40),
@@ -246,7 +341,6 @@ def test_queue_rechecks_live_main_before_mutation() -> None:
 @pytest.mark.parametrize(
     ("live_main", "required", "holds", "message"),
     [
-        ("d" * 40, CheckStatus.SUCCESS, frozenset(), "stale"),
         (BASE, CheckStatus.FAILURE, frozenset(), "not successful"),
         (
             BASE,
@@ -256,7 +350,7 @@ def test_queue_rechecks_live_main_before_mutation() -> None:
         ),
     ],
 )
-def test_queue_blocks_stale_failed_or_held_candidate(
+def test_queue_blocks_failed_or_held_candidate(
     live_main: str,
     required: CheckStatus,
     holds: frozenset[HoldKind],
@@ -346,7 +440,7 @@ def test_queue_requires_exact_published_registry_receipt(
 def test_queue_refuses_repository_without_native_merge_queue() -> None:
     receipt = _receipt()
     github = FakeGitHub(receipt, merge_queue=False)
-    service, github = _service(receipt, github=github)
+    service, github = _service(receipt, live_main="d" * 40, github=github)
 
     with pytest.raises(PolicyViolation, match="merge queue"):
         service.enqueue(receipt=receipt, pull_request_number=11)

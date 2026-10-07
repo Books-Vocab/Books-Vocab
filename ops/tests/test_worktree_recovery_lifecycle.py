@@ -396,6 +396,7 @@ def _pr(
     state: str = "OPEN",
     draft: bool = False,
     mergeable: bool = True,
+    conflicting: bool = False,
     body: str | None = None,
 ) -> PullRequestSnapshot:
     actual_branch = branch or f"feat/pr-{number}"
@@ -410,6 +411,7 @@ def _pr(
         state=state,
         draft=draft,
         mergeable=mergeable,
+        conflicting=conflicting,
         node_id=f"PR_{number}",
         body=(
             _receipt_body(
@@ -792,6 +794,58 @@ def test_reanchor_lifecycle_accepts_oldest_required_green_unheld_pr() -> None:
 
     assert proof.pull_request_number == 42
     assert proof.merge_front_policy == "lowest-required-green-unheld-pr-number"
+
+
+def test_reanchor_lifecycle_accepts_conflicting_pr_as_merge_front() -> None:
+    # The controller routes only GitHub-CONFLICTING PRs to REANCHOR, so the
+    # supported command must accept exactly that state (and not UNKNOWN).
+    candidate = _pr(42, branch="feat/exact-pr", mergeable=False, conflicting=True)
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        open_prs=(candidate,),
+        checks={42: _check(CheckStatus.SUCCESS)},
+    )
+
+    proof = verify_reanchor_lifecycle(
+        github,
+        pull_request_number=42,
+        branch="feat/exact-pr",
+        expected_base_sha=BASE,
+        expected_remote_head=HEAD,
+        live_main_sha=LIVE,
+    )
+
+    assert proof.pull_request_number == 42
+    assert proof.merge_front_policy == "lowest-required-green-unheld-pr-number"
+
+
+def test_reanchor_lifecycle_conflicting_older_pr_keeps_merge_front() -> None:
+    older = _pr(
+        41,
+        branch="feat/older",
+        head=OTHER_HEAD,
+        mergeable=False,
+        conflicting=True,
+    )
+    candidate = _pr(42, branch="feat/exact-pr", mergeable=False, conflicting=True)
+    github = FakeGitHub(
+        all_for_branch=(candidate,),
+        open_prs=(older, candidate),
+        checks={
+            41: _check(CheckStatus.SUCCESS, head=OTHER_HEAD),
+            42: _check(CheckStatus.SUCCESS),
+        },
+    )
+
+    with pytest.raises(ReanchorRefused, match="not the deterministic merge-front"):
+        verify_reanchor_lifecycle(
+            github,
+            pull_request_number=42,
+            branch="feat/exact-pr",
+            expected_base_sha=BASE,
+            expected_remote_head=HEAD,
+            live_main_sha=LIVE,
+        )
 
 
 def test_reanchor_lifecycle_ignores_unrelated_pr_without_required_checks() -> None:

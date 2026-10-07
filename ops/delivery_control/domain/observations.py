@@ -161,6 +161,8 @@ class PullRequestSnapshot:
     draft: bool
     mergeable: bool
     base_branch: str = "main"
+    # Only GitHub's CONFLICTING verdict; not-mergeable alone may be UNKNOWN.
+    conflicting: bool = False
     title: str = ""
     body: str = ""
     auto_merge_enabled: bool = False
@@ -179,6 +181,8 @@ class PullRequestSnapshot:
             for label in self.labels
         ):
             raise InvalidReceipt("PR labels must be canonical text")
+        if self.mergeable and self.conflicting:
+            raise InvalidReceipt("PR cannot be both mergeable and conflicting")
         for name in ("created_at", "merged_at"):
             value = getattr(self, name)
             if value is not None and (
