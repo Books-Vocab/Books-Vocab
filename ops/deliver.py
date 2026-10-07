@@ -458,7 +458,8 @@ class Delivery:
         if done.returncode != 0:
             self.runner(["git", "rebase", "--abort"], self.work)
             raise DeliverError(
-                f"branch is {behind} commit(s) behind {TRUNK} and does not rebase cleanly"
+                f"branch is {behind} commit(s) behind {TRUNK} and does not rebase "
+                f"cleanly (rebase aborted):\n{failure_detail(done) or 'no output'}"
             )
         self.say(f"rebased onto {TRUNK} ({behind} commit(s))")
 
@@ -479,7 +480,7 @@ class Delivery:
         if done.returncode == 0:
             self.say(f"format ok: {len(files)} changed Python file(s)")
             return
-        listed = (done.stdout + done.stderr).strip()[-600:]
+        listed = failure_detail(done)
         fix = " ".join([*base, *files])
         raise DeliverError(
             "changed Python files are not formatted with the pr-gate's pinned ruff "
@@ -1235,7 +1236,23 @@ def main(
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
 ) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.command == "redeliver":
+        # The subcommand re-declares every delivery option and its defaults
+        # overwrite anything given before it; refuse instead of dropping it.
+        raw = list(sys.argv[1:] if argv is None else argv)
+        flags = {s for a in parser._actions for s in a.option_strings} - {
+            "-h",
+            "--help",
+        }
+        early = [t.split("=", 1)[0] for t in raw[: raw.index("redeliver")]]
+        early = list(dict.fromkeys(t for t in early if t in flags))
+        if early:
+            parser.error(
+                f"{', '.join(early)} must go after `redeliver`; "
+                "options before it would be ignored"
+            )
     try:
         if args.command == "gc":
             lock = LockWait(args.lock_timeout, sleep, clock, progress)
