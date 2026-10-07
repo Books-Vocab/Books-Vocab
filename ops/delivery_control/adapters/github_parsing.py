@@ -75,6 +75,7 @@ def parse_pull_request(payload: Mapping[str, Any]) -> PullRequestSnapshot:
         state=payload["state"],
         draft=payload["isDraft"],
         mergeable=payload["mergeable"].upper() == "MERGEABLE",
+        conflicting=payload["mergeable"].upper() == "CONFLICTING",
         title=payload["title"],
         body=payload["body"],
         auto_merge_enabled=auto_merge_request is not None,

@@ -15,6 +15,8 @@ from .observations import (
 )
 from .states import HoldKind
 
+REANCHOR_CONFLICT_REASON = "reanchor_required: PR conflicts with live main"
+
 
 @dataclass(frozen=True)
 class PolicyDecision:
@@ -83,21 +85,27 @@ def evaluate_merge_gate(
     registry: RegistrySnapshot,
     required: CheckSnapshot,
     holds: frozenset[HoldKind] = frozenset(),
+    merge_queue_validates: bool = False,
 ) -> PolicyDecision:
     reasons: list[str] = []
     if pull_request.state != "OPEN":
         reasons.append("PR is not open")
     if pull_request.draft:
         reasons.append("PR is draft")
-    if not pull_request.mergeable:
+    if pull_request.conflicting:
+        reasons.append(REANCHOR_CONFLICT_REASON)
+    elif not pull_request.mergeable:
         reasons.append("PR is not mergeable")
-    if pull_request.base_sha != live_main_sha:
-        reasons.append("PR or handback base is stale")
     if registry.base_sha != receipt.base_sha:
         reasons.append("registry base differs from handback")
     published_base_sha = registry.published_base_sha or registry.base_sha
-    if published_base_sha != live_main_sha:
-        reasons.append("registry base is stale")
+    if pull_request.base_sha != published_base_sha:
+        reasons.append("PR base differs from published registry base")
+    # A native queue whose required checks run on the merge group validates
+    # the merged result, so lagging main is not a refusal; without it the PR
+    # head must already be the merged result.
+    if not merge_queue_validates and published_base_sha != live_main_sha:
+        reasons.append("PR or handback base is stale")
     if pull_request.head_sha != receipt.head_sha:
         reasons.append("PR head differs from handback")
     if pull_request.branch != receipt.branch:

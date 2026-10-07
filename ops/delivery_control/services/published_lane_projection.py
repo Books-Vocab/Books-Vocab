@@ -70,8 +70,10 @@ def project_published_lane(
     remote_assets_present = record.branch in sources.branch_inventory.remote_by_name
     collision_key = f"published:{record.lane_id}:{record.claim_generation}"
     lane_collision = collision_key in sources.collisions
-    published_base_sha = record.published_base_sha or record.base_sha
-    merge_exact = (
+    # The native merge queue revalidates the merged result, so an exact
+    # required-green PR that merely lags live main is queue-ready; only a
+    # GitHub CONFLICTING verdict needs the owner's reanchor.
+    exact_green = (
         not problems
         and not lane_collision
         and len(branch_prs) == 1
@@ -79,28 +81,7 @@ def project_published_lane(
         and pull_request.state == "OPEN"
         and not queued
         and not pull_request.draft
-        and pull_request.mergeable
-        and pull_request.base_sha == sources.live_main_sha == published_base_sha
-        and pull_request.head_sha == record.handed_back_sha
-        and body_exact
-        and record.handback_valid
-        and record.handback_claim_generation == record.claim_generation
-        and check is not None
-        and check.head_sha == pull_request.head_sha
-        and check.status is CheckStatus.SUCCESS
-        and not pull_request_holds(pull_request)
-    )
-    reanchor_exact = (
-        not problems
-        and not lane_collision
-        and len(branch_prs) == 1
-        and pull_request is not None
-        and pull_request.state == "OPEN"
-        and not queued
-        and not pull_request.draft
-        and pull_request.mergeable
-        and pull_request.base_sha == published_base_sha
-        and published_base_sha != sources.live_main_sha
+        and pull_request.base_sha == (record.published_base_sha or record.base_sha)
         and pull_request.head_sha == record.handed_back_sha
         and body_exact
         and record.handback_valid
@@ -144,8 +125,8 @@ def project_published_lane(
                 required_status=(check.status if check else CheckStatus.ABSENT),
                 mergeable=pull_request.mergeable if pull_request else False,
                 queued=queued,
-                merge_policy_passed=merge_exact,
-                reanchor_policy_passed=reanchor_exact,
+                merge_policy_passed=exact_green and pull_request.mergeable,
+                reanchor_policy_passed=exact_green and pull_request.conflicting,
                 cleanup_policy_passed=cleanup_exact,
                 merged=pull_request is not None and pull_request.state == "MERGED",
                 cleanup_complete=(

@@ -200,7 +200,7 @@ def derive_lane_decision(facts: LaneFacts) -> LaneDecision:
         return LaneDecision(
             LaneState.REANCHOR,
             NextAction.REANCHOR,
-            "exact required-green PR is stale against live main",
+            "exact required-green PR conflicts with live main",
         )
     if facts.pr_open and facts.merge_policy_passed:
         return LaneDecision(

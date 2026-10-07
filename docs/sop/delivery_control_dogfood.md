@@ -125,7 +125,7 @@ quarantine 是可驗證的隔離投影，不是 cleanup 成功、owner 恢復、
 | readiness／required | typed PR receipt validator、short `required`、exact manual retrigger | PI 修 metadata／trigger transient retry |
 | required code failure | `resume-published` same-owner generation+1 transaction | 原 owner 修 code、fresh handback；PI 更新同一 PR |
 | full confidence／CR／DS | GitHub check／review facts；typed／label hold | PI 分類 follow-up；嚴重者先 durable hold |
-| merge-front freshness | `reanchor` same-owner CAS、fresh handback／PR required | CM 只選隊首，不批次重建後方 PR |
+| merge-front conflict | `reanchor` same-owner CAS、fresh handback／PR required；只落後 main 而 mergeable 的 PR 不需 reanchor | CM 只選隊首，不批次重建後方 PR |
 | admission／merge | exact queue gate、native merge queue、merge-group `required` | CM enqueue，不手動 merge、不等 routine advisory |
 | landing／main sync／cleanup | `sync-main` ff-only CAS、`cleanup-merged` terminal proof | CM sync；PI 刪 exact remote residue並 terminalize |
 | release／deploy | 獨立 release／deploy SOP、approval／health／rollback | 不因一般 merge 自動觸發 |
@@ -230,7 +230,7 @@ fresh typed handback 更新同一 PR 並重跑 required 後，CM 執行：
 ./ops/delivery.py --repo /Users/chenliangyu/project/kg queue --pr '<number>'
 ```
 
-`queue` 必須 final-read exact current base／head／Scope／receipt、non-draft、mergeable、required SUCCESS、native merge queue 與無 durable P0／P1／security hold。只有 GitHub exact readback 已證明 PR landed，才執行：
+`queue` 必須 final-read exact PR／published registry base、head／Scope／receipt、non-draft、mergeable、required SUCCESS、native merge queue 與無 durable P0／P1／security hold。main 有 native merge queue 且有 required contexts 時，merge group 會在合併結果上重跑 required，因此 PR base 只落後 live main 不是拒絕理由，enqueue CAS 綁 PR 已記錄的 base；GitHub `CONFLICTING` 以 `reanchor_required` 拒絕並投影為 `LaneState.REANCHOR`；沒有 required contexts 時仍要求 base == live main。只有 GitHub exact readback 已證明 PR landed，才執行：
 
 ```bash
 ./ops/delivery.py --repo /Users/chenliangyu/project/kg sync-main
