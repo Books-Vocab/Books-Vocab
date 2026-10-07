@@ -531,6 +531,7 @@ def test_merge_waits_for_agent_review_to_complete_on_the_exact_head() -> None:
         "verdict": "success",
         "findings": [],
         "accepted": None,
+        "accepted_no_review": None,
     }
 
 
@@ -574,11 +575,59 @@ def test_an_explicit_reason_accepts_the_review_findings_and_queues() -> None:
     assert any(reason in line for line in result["log"])
 
 
-def test_a_neutral_review_is_advisory_and_does_not_block() -> None:
-    world = FakeWorld(review_runs=[[_review(job=True), _review(conclusion="neutral")]])
+_NEUTRAL = [_review(job=True), _review(conclusion="neutral")]
+
+
+def test_a_neutral_review_is_not_a_verdict_and_refuses_to_queue() -> None:
+    """`neutral` only means the workflow stopped waiting for the bot (5 min)."""
+    world = FakeWorld(review_runs=[_NEUTRAL])
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 1, result
+    assert len(_calls_at(world, _is_review_read)) > 1  # kept polling to --timeout
+    assert "never settled" in result["error"]
+    assert "--accept-no-review" in result["error"]
+    assert not _calls_at(world, _is_queue)
+
+
+def test_a_neutral_review_followed_by_a_blocker_is_not_queued() -> None:
+    """PR #2082: neutral at 13:15, the bot's P1 failure verdict at 13:17."""
+    later = [*_NEUTRAL, _review(conclusion="failure")]
+    world = FakeWorld(review_runs=[_NEUTRAL, later])
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 1, result
+    assert f"agent-review failed on {HEAD}" in result["error"]
+    assert not _calls_at(world, _is_queue)
+
+
+def test_a_neutral_review_followed_by_a_review_is_queued() -> None:
+    world = FakeWorld(review_runs=[_NEUTRAL, [*_NEUTRAL, _review()]])
     code, result = ship(world, "--check", "u=good", "--merge")
     assert code == 0, result
+    assert result["review"]["verdict"] == "success"
+    assert result["review"]["accepted_no_review"] is None
+
+
+def test_an_explicit_reason_queues_without_a_review_and_records_it() -> None:
+    world = FakeWorld(review_runs=[_NEUTRAL])
+    reason = "codex quota exhausted; reviewed by hand"
+    code, result = ship(
+        world, "--check", "u=good", "--merge", "--accept-no-review", reason
+    )
+    assert code == 0, result
+    assert _calls_at(world, _is_queue)
     assert result["review"]["verdict"] == "neutral"
+    assert result["review"]["accepted_no_review"] == reason
+    assert any(reason in line for line in result["log"])
+
+
+def test_accepting_no_review_never_queues_while_the_review_is_still_running() -> None:
+    world = FakeWorld(review_runs=[[_review("in_progress", job=True)]])
+    code, result = ship(
+        world, "--check", "u=good", "--merge", "--accept-no-review", "no bot"
+    )
+    assert code == 1, result
+    assert "timed out" in result["error"]
+    assert not _calls_at(world, _is_queue)
 
 
 def test_without_merge_the_review_is_not_awaited() -> None:
