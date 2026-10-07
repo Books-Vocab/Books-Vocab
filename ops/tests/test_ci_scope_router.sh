@@ -49,6 +49,12 @@ assert_plan 'ordinary ops source stays off macOS' \
 assert_plan 'iOS shared helper selects ops plus iOS' \
   'ops/lib/project_python.sh' \
   '{"backend":false,"ops":true,"ios":true}'
+assert_plan 'lab/podcast source selects only ops confidence (Issue #2064)' \
+  'lab/podcast/pipeline.py' \
+  '{"backend":false,"ops":true,"ios":false}'
+assert_plan 'lab/podcast monitor test selects only ops confidence (Issue #2064)' \
+  'lab/podcast/monitor/test_server.py' \
+  '{"backend":false,"ops":true,"ios":false}'
 assert_plan 'docs-only change avoids unrelated confidence suites' \
   'docs/reference/testing/smoke_checklist.md' \
   '{"backend":false,"ops":false,"ios":false}'

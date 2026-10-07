@@ -87,6 +87,8 @@ DEFAULT_TESTS=(
   worktree-extended
   ios-ui-review
   review-preflight
+  # Issue #2064：lab/podcast 單元測試（pipeline／publish／synthesize／saga／monitor）。
+  lab-podcast
 )
 
 OPTIONAL_TESTS=(
@@ -385,6 +387,21 @@ run_one() {
     review-preflight)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_review_preflight.py
+      ;;
+    # lab/podcast has no venv or conftest (PEP 723 per-file deps), so the union of
+    # those deps is pinned here.  Two pytest runs: monitor/ and the top level both
+    # put their own directory on sys.path and share module names.  The live
+    # smoke scripts (smoke_tts.py, voices_ab.py, ab_perf_frame.py) are not
+    # test_-prefixed, hence never collected; nothing here needs an API key,
+    # network or ffmpeg (all 37 files green on first run, none excluded).
+    lab-podcast)
+      "$UV_BIN" run --no-project --python 3.13 --with pytest \
+        --with google-genai --with python-dotenv --with pydub --with audioop-lts \
+        --with pillow --with ebooklib --with beautifulsoup4 --with lxml --with boto3 \
+        pytest -q -p no:cacheprovider lab/podcast/test_*.py &&
+      "$UV_BIN" run --no-project --python 3.13 --with pytest \
+        --with fastapi --with 'uvicorn[standard]' --with python-multipart --with httpx \
+        pytest -q -p no:cacheprovider lab/podcast/monitor/test_*.py
       ;;
     asc)
       ./ops/test_asc.sh

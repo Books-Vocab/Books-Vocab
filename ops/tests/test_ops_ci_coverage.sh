@@ -23,7 +23,7 @@ LINUX_GROUPS=(
   streaming-command app-review demo-data catalog-agent uitest-contact-sheet
   ios-release sim-pool-disposable review-probe
   sentry-tool
-  worktree-extended ios-ui-review review-preflight
+  worktree-extended ios-ui-review review-preflight lab-podcast
 )
 
 # These groups are intentionally executed by ci_expected_fail_exclusions.sh on
@@ -151,6 +151,7 @@ REACHABILITY_PATHSPECS=(
   ':(glob)ops/test_*.py' ':(glob)ops/test_*.sh'
   ':(glob)ops/tests/test_*.py' ':(glob)ops/tests/test_*.sh'
   ':(glob).claude/skills/**/test_*.py' ':(glob).claude/skills/**/test_*.sh'
+  ':(glob)lab/podcast/test_*.py' ':(glob)lab/podcast/monitor/test_*.py'
 )
 # "<test file>|<why it is not executed>".  An entry is tracked debt with a
 # follow-up, not an exemption: one that is routed, untracked or has no reason
