@@ -194,7 +194,7 @@ done
 1. **從 snapshot 還原 instance** — **已不適用**（snapshot 隨 instance 一併 terminate）。如需雲端重建，改走下一步全新建置。
 2. **完全空白 instance** → 重跑 `KG_ALLOW_LIGHTSAIL=1 devops.sh deploy`(會 build image, scp `.env`, certs, compose, `VERSION`)→ 拉 S3 backup → 同 §2.5–2.7。RTO 1–2 小時(主要卡 Docker build)。
 
-> 已知陷阱:`compose.yml` 中 `./VERSION:/app/VERSION:ro` 是 bind mount file,如果 `VERSION` 不存在會被 Docker 當成目錄掛,容器秒退 exit 127。`deploy` 流程會寫 `VERSION`,手動還原時 `echo "$(git rev-parse --short HEAD)" > VERSION` 不要漏。
+> 已知陷阱:`compose.yml` 中 `./VERSION:/app/VERSION:ro` 是 bind mount file,如果 `VERSION` 不存在會被 Docker 當成目錄掛,容器秒退 exit 127。`deploy` 流程會寫 `VERSION`,手動還原時 `git rev-parse HEAD > VERSION`(寫**完整 sha**,不是 `--short`:它同時是 Sentry release `kg-backend@<VERSION>` 與 reconciler 游標)不要漏。
 
 ---
 
