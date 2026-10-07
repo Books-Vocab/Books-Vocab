@@ -526,6 +526,8 @@ QA 後改了 `scripts/ep_N_script.md` 對白、overview.md Voice Mapping / host 
 
 本機 FastAPI + uvicorn dashboard，預設 `127.0.0.1:8765`。
 
+**同源守衛**(`server.py:_same_origin_guard`,最外層 middleware,在 routing 前):① `Host` 必須是 loopback(`127.0.0.1`/`localhost`/`[::1]`,不鎖 port,`ssh -L` 轉埠可用)或連線落地的 socket IP 字面值,否則一律 **400**(擋 DNS rebinding);② 非 GET/HEAD 的 `Origin`(缺則 `Referer`)必須等於該請求自己的 `scheme://host:port`,兩者皆缺或 `Origin: null` → **403**,handler 不執行(不寫 gate marker、不 spawn、不刪 S3)。前端 `fetch()` 走相對路徑 + 預設 cors mode,瀏覽器自動帶 Origin,無需額外 header;curl 手打 action endpoint 須加 `-H 'Origin: http://127.0.0.1:8765'`。
+
 **單命令流程**(預設):跑 `uv run pipeline.py <epub>` 時,`pipeline.py:_ensure_dashboard_running()` 會自動 idempotent 起 dashboard + open 瀏覽器到 `?ws=<workspace>`。`PODCAST_VERBOSE` 預設 `"1"`(設 `"0"` 才關),events.jsonl 一定產生。
 
 Env opt-out:

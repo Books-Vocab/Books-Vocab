@@ -35,9 +35,15 @@ import sys
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
-from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    PlainTextResponse,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 
 # Make `monitor/` importable when launched as a script via `uv run monitor/server.py`.
@@ -305,6 +311,69 @@ async def _no_cache_static(request, call_next):
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
     return response
+
+
+# ─── Same-origin guard (CSRF + DNS rebinding, #2097) ────────────────────────
+# The dashboard has no auth: binding to 127.0.0.1 keeps other machines out but
+# not the user's own browser, which any web page can aim at it. Registered
+# last, so it is the outermost middleware and a rejected request never reaches
+# a handler (no gate marker written, no subprocess spawned, no S3 delete):
+#   1. Host allowlist → 400. Defeats DNS rebinding: a rebound attacker name is
+#      *same-origin* with us, so only the Host header still exposes it. Allowed
+#      = loopback aliases + the literal IP of the socket the request landed on
+#      (ASGI scope["server"]; an IP literal cannot be rebound), which keeps a
+#      non-loopback `--host` bind working. The port is not pinned, so
+#      `ssh -L <port>:127.0.0.1:8765` tunnels keep working.
+#   2. Non-GET/HEAD → the browser-stamped Origin (Referer fallback) must equal
+#      this request's own scheme://host:port, else 403. Origin is a forbidden
+#      header (page JS cannot forge it) and fetch() always sends it on
+#      POST/DELETE; both missing, or `Origin: null`, fails closed. Non-browser
+#      callers add e.g. `-H 'Origin: http://127.0.0.1:8765'`.
+# Chosen over a per-start random token header: the token's secrecy rests on
+# the same Host allowlist + same-origin policy (a rebound page could read it
+# from whatever GET hands it out), so it adds no independent layer, while it
+# goes stale on every start.sh restart (open tabs' buttons 403 until reload)
+# and must be threaded through every current and future mutating fetch.
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+_SAFE_METHODS = frozenset({"GET", "HEAD"})
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+_CROSS_ORIGIN_DETAIL = "cross-origin request blocked: Origin must match the dashboard"
+
+
+def _parse_origin(url: str) -> tuple[str, str, int] | None:
+    """`scheme://host[:port][/...]` → (scheme, lowercase host, port), or None
+    when unusable (opaque `null`, non-http(s) scheme, userinfo, bad port)."""
+    try:
+        parts = urlsplit(url)
+        host, port = parts.hostname, parts.port
+    except ValueError:
+        return None
+    if parts.scheme not in _DEFAULT_PORTS or not host or parts.username is not None:
+        return None
+    return parts.scheme, host, _DEFAULT_PORTS[parts.scheme] if port is None else port
+
+
+def _parse_host(value: str, scheme: str) -> tuple[str, str, int] | None:
+    """A Host header (`h`, `h:p`, `[v6]:p`) → the origin tuple it names."""
+    if not value or any(c in value for c in "/?#@\\ "):
+        return None
+    return _parse_origin(f"{scheme}://{value}")
+
+
+@app.middleware("http")
+async def _same_origin_guard(request, call_next):
+    scheme = request.scope.get("scheme", "http")
+    target = _parse_host(request.headers.get("host", ""), scheme)
+    server = request.scope.get("server")
+    allowed = _LOOPBACK_HOSTS | ({str(server[0]).lower()} if server else frozenset())
+    if target is None or target[1] not in allowed:
+        return JSONResponse({"detail": "invalid Host header"}, status_code=400)
+    if request.method not in _SAFE_METHODS:
+        origin = request.headers.get("origin")
+        source = origin if origin is not None else request.headers.get("referer")
+        if source is None or _parse_origin(source) != target:
+            return JSONResponse({"detail": _CROSS_ORIGIN_DETAIL}, status_code=403)
+    return await call_next(request)
 
 
 @app.get("/")

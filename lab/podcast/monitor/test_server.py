@@ -30,7 +30,9 @@ def client(monkeypatch, tmp_path):
     staging = tmp_path / "uploads"
     staging.mkdir()
     monkeypatch.setattr(server, "UPLOAD_STAGING", staging)
-    return TestClient(server.app)
+    # Act as the dashboard page itself: a browser stamps its own origin on
+    # every POST/DELETE, which the same-origin guard requires (#2097).
+    return TestClient(server.app, headers={"Origin": "http://testserver"})
 
 
 def _epub(name: str, data: bytes = b"PKfake-epub-bytes") -> tuple:
