@@ -25,8 +25,10 @@ from lib.worktree_scope import SCOPE_OPERATIONS, SCOPE_SCHEMA  # noqa: E402
 SCHEMA = "kg.agent_onboarding.v2"
 TEMPLATE_SCHEMA = "kg.agent_onboarding.evidence_template.v1"
 TEMPLATE_HINT = "加 --print-evidence-template 取得此 identity/entry 的全部 evidence key 與可直接複製的範本"
-PLACEHOLDER_RULE = "replace every <...> placeholder; a value that is still a placeholder counts as missing"
-_PLACEHOLDER = re.compile(r"<[^<>]+>")
+PLACEHOLDER_RULE = (
+    "replace every <...> placeholder the template emits; a key still holding one is "
+    "reported as unfilled and blocks ready"
+)
 _SCOPE_PLACEHOLDER = {
     "schema": SCOPE_SCHEMA,
     "files": [
@@ -56,26 +58,44 @@ class EvidenceError(OnboardingError):
     """The supplied assignment evidence is malformed or carries an invalid value."""
 
 
-def _is_placeholder(value: Any) -> bool:
-    return isinstance(value, str) and bool(_PLACEHOLDER.fullmatch(value.strip()))
+def _template_value(key: str) -> Any:
+    return _PLACEHOLDERS.get(key, f"<{key}>")
 
 
-def _has_placeholder(value: Any) -> bool:
+def _leaves(value: Any) -> list[Any]:
     if isinstance(value, dict):
-        return any(_has_placeholder(item) for item in value.values())
+        return [leaf for item in value.values() for leaf in _leaves(item)]
     if isinstance(value, list):
-        return any(_has_placeholder(item) for item in value)
-    return _is_placeholder(value)
+        return [leaf for item in value for leaf in _leaves(item)]
+    return [value]
 
 
-def _evidence_value_present(value: Any) -> bool:
-    if _has_placeholder(value):
-        return False
+def _is_unfilled(key: str, value: Any) -> bool:
+    """Whether value still holds a placeholder the template emits for key.
+
+    Only the exact emitted placeholders count, so angle-bracketed evidence the
+    caller wrote (a Markdown autolink, "<none>") stays evidence.
+    """
+    emitted = {
+        leaf
+        for leaf in _leaves(_template_value(key))
+        if isinstance(leaf, str) and leaf.startswith("<") and leaf.endswith(">")
+    }
+    return any(
+        isinstance(leaf, str) and leaf.strip() in emitted for leaf in _leaves(value)
+    )
+
+
+def _non_empty(value: Any) -> bool:
     if isinstance(value, str):
         return bool(value.strip())
     if isinstance(value, (dict, list)):
         return bool(value)
     return value is not None
+
+
+def _evidence_value_present(key: str, value: Any) -> bool:
+    return _non_empty(value) and not _is_unfilled(key, value)
 
 
 def _root(root: Path | None) -> Path:
@@ -107,7 +127,7 @@ def _is_worker_dispatch(identity_id: str, entry: str) -> bool:
 
 def _dispatch_channel(evidence: dict[str, Any]) -> str | None:
     value = evidence.get("dispatch_channel")
-    if not _evidence_value_present(value):
+    if not _evidence_value_present("dispatch_channel", value):
         return None
     # A non-string value is present but can never name a channel; keep it
     # visible so it is reported as invalid rather than silently ignored.
@@ -148,6 +168,9 @@ def _applicable_keys(spec: dict[str, Any], evidence: dict[str, Any]) -> list[str
     """Required keys plus the conditional keys whose condition the evidence does not rule out."""
     keys = list(spec["required"])
     channel = _dispatch_channel(evidence)
+    if channel not in context_route.WORKER_DISPATCH_CHANNELS:
+        # An invalid channel decides nothing; keep its conditional keys visible.
+        channel = None
     for conditional in spec["conditional"]:
         expected = conditional["required_when"]["dispatch_channel"]
         if channel is None or channel == expected:
@@ -156,32 +179,45 @@ def _applicable_keys(spec: dict[str, Any], evidence: dict[str, Any]) -> list[str
 
 
 def _missing_evidence(spec: dict[str, Any], evidence: dict[str, Any]) -> list[str]:
+    """Required (and triggered conditional) keys that are absent or empty.
+
+    A key that is present but still holds a template placeholder is reported
+    as unfilled instead.
+    """
     channel = _dispatch_channel(evidence)
-    missing = [
-        key
-        for key in spec["required"]
-        if not _evidence_value_present(evidence.get(key))
+    keys = list(spec["required"])
+    # An undecided channel is already reported; the conditional key is then
+    # shown in the template instead of guessed as required.
+    keys += [
+        conditional["key"]
+        for conditional in spec["conditional"]
+        if channel == conditional["required_when"]["dispatch_channel"]
     ]
-    for conditional in spec["conditional"]:
-        # An undecided channel is already reported as missing; the conditional
-        # key is then shown in the template instead of guessed as required.
-        if channel == conditional["required_when"]["dispatch_channel"]:
-            if not _evidence_value_present(evidence.get(conditional["key"])):
-                missing.append(conditional["key"])
-    return missing
+    return [key for key in keys if not _non_empty(evidence.get(key))]
+
+
+def _unfilled_evidence(evidence: dict[str, Any]) -> list[str]:
+    return [key for key, value in evidence.items() if _is_unfilled(key, value)]
 
 
 def _evidence_template(
-    spec: dict[str, Any], evidence: dict[str, Any]
+    spec: dict[str, Any],
+    evidence: dict[str, Any],
+    invalid_keys: frozenset[str] = frozenset(),
 ) -> dict[str, Any]:
+    """Supplied values kept as written; every value the caller still has to fix is a placeholder."""
     template = {
         key: evidence[key]
-        if _evidence_value_present(evidence.get(key))
-        else _PLACEHOLDERS.get(key, f"<{key}>")
+        if _non_empty(evidence.get(key)) and key not in invalid_keys
+        else _template_value(key)
         for key in _applicable_keys(spec, evidence)
     }
     for key, value in evidence.items():
-        if key not in template and _evidence_value_present(value):
+        if key in template:
+            continue
+        if key in invalid_keys:
+            template[key] = _template_value(key)
+        elif _evidence_value_present(key, value):
             template[key] = value
     return template
 
@@ -215,7 +251,7 @@ def _onboard_command(
 def _worker_dispatch_problems(
     identity_id: str, entry: str, evidence: dict[str, Any]
 ) -> list[dict[str, str]]:
-    """Invalid supplied dispatch values; absent or placeholder values are reported as missing instead."""
+    """Every invalid supplied dispatch value; absent values are missing and placeholders unfilled instead."""
     if not _is_worker_dispatch(identity_id, entry):
         return []
     problems: list[dict[str, str]] = []
@@ -227,17 +263,20 @@ def _worker_dispatch_problems(
                 "reason": "worker direct assignment 的 dispatch_channel 必須是 im 或 user",
             }
         )
-        return problems
     owner = evidence.get("dispatch_owner")
     target = evidence.get("handback_target")
-    if channel == "im" and _evidence_value_present(owner) and not _is_im_target(owner):
+    if (
+        channel == "im"
+        and _evidence_value_present("dispatch_owner", owner)
+        and not _is_im_target(owner)
+    ):
         problems.append(
             {
                 "key": "dispatch_owner",
                 "reason": "IM dispatch 必須提供有效的 dispatch_owner",
             }
         )
-    if target is not None and not _has_placeholder(target):
+    if target is not None and not _is_unfilled("handback_target", target):
         if not _is_im_target(target):
             problems.append(
                 {"key": "handback_target", "reason": "handback_target 必須是 IM"}
@@ -323,6 +362,31 @@ def _route_context(
     return manifest, catalog, identity_id, canonical_intent
 
 
+def _resolve_specialist(
+    catalog: dict,
+    identity_def: dict[str, Any],
+    identity_id: str,
+    canonical_intent: str,
+    entry: str,
+    specialist_intent: str,
+) -> dict[str, Any]:
+    """Resolve a specialist route and fail closed unless identity/intent/entry allows it."""
+    try:
+        route = skill_route.resolve_route(catalog, specialist_intent)
+    except skill_route.SkillCatalogError as exc:
+        raise OnboardingError(
+            f"specialist skill route 無法解析: {specialist_intent}: {exc}"
+        ) from exc
+    allowed_specialists = identity_def["specialist_routes"][canonical_intent][entry]
+    if route["intent"] not in allowed_specialists:
+        allowed = ", ".join(allowed_specialists) or "(none)"
+        raise OnboardingError(
+            f"identity/intent/entry 不允許 specialist: {identity_id}/{canonical_intent}/{entry} "
+            f"-> {route['intent']}; allowed={allowed}"
+        )
+    return route
+
+
 def _require_evidence_object(evidence: Any) -> dict[str, Any]:
     evidence = {} if evidence is None else evidence
     if not isinstance(evidence, dict):
@@ -340,27 +404,49 @@ def build_evidence_template(
     specialist_intent: str | None = None,
 ) -> dict[str, Any]:
     """Every evidence key for identity/entry and a ready-to-copy --evidence template."""
-    manifest, _catalog, identity_id, canonical_intent = _route_context(
+    manifest, catalog, identity_id, canonical_intent = _route_context(
         _root(root), identity, intent, entry
     )
     evidence = _require_evidence_object(evidence)
     identity_def = manifest["identities"][identity_id]
+    # The template's command must be one that can reach ready, so an unknown or
+    # disallowed specialist fails here instead of after the evidence is filled.
+    canonical_specialist_intent = (
+        _resolve_specialist(
+            catalog,
+            identity_def,
+            identity_id,
+            canonical_intent,
+            entry,
+            specialist_intent,
+        )["intent"]
+        if specialist_intent is not None
+        else None
+    )
     spec = _evidence_spec(
         identity_id, entry, identity_def["assignment_requirements"][entry]
     )
-    template = _evidence_template(spec, evidence)
+    invalid_keys = frozenset(
+        problem["key"]
+        for problem in _worker_dispatch_problems(identity_id, entry, evidence)
+    )
+    template = _evidence_template(spec, evidence, invalid_keys)
     return {
         "schema": TEMPLATE_SCHEMA,
         "identity": {"id": identity_id, "label": identity_def["label"]},
         "task": {
             "intent": canonical_intent,
             "entry": entry,
-            "specialist_intent": specialist_intent,
+            "specialist_intent": canonical_specialist_intent,
         },
         "evidence_spec": spec,
         "evidence_template": template,
         "command": _onboard_command(
-            identity_def["label"], canonical_intent, entry, specialist_intent, template
+            identity_def["label"],
+            canonical_intent,
+            entry,
+            canonical_specialist_intent,
+            template,
         ),
     }
 
@@ -380,7 +466,6 @@ def build_onboarding(
     identity_def = manifest["identities"][identity_id]
     intent_def = manifest["intents"][canonical_intent]
     skill_intent = identity_def["skill_routes"][canonical_intent][entry]
-    allowed_specialists = identity_def["specialist_routes"][canonical_intent][entry]
     specialist_route_payload: dict[str, Any] | None = None
     canonical_specialist_intent: str | None = None
     domain_sources: list[str] = []
@@ -393,11 +478,7 @@ def build_onboarding(
     evidence = _require_evidence_object(evidence)
     spec = _evidence_spec(identity_id, entry, required_external)
     missing_external = _missing_evidence(spec, evidence)
-    unfilled = [
-        key
-        for key, value in evidence.items()
-        if key not in missing_external and _has_placeholder(value)
-    ]
+    unfilled = _unfilled_evidence(evidence)
     invalid = _worker_dispatch_problems(identity_id, entry, evidence)
     dispatch_resolution = None
     if not missing_external and not unfilled:
@@ -434,7 +515,7 @@ def build_onboarding(
             "provided": sorted(
                 key
                 for key in _applicable_keys(spec, evidence)
-                if _evidence_value_present(evidence.get(key))
+                if _evidence_value_present(key, evidence.get(key))
             ),
             "missing": missing_external,
             "evidence": evidence,
@@ -454,7 +535,9 @@ def build_onboarding(
     if dispatch_resolution is not None:
         base_payload["assignment"]["dispatch"] = dispatch_resolution
     if missing_external or unfilled:
-        template = _evidence_template(spec, evidence)
+        template = _evidence_template(
+            spec, evidence, frozenset(problem["key"] for problem in invalid)
+        )
         base_payload["assignment"].update(
             {
                 "unfilled": unfilled,
@@ -481,21 +564,15 @@ def build_onboarding(
     # Assignment is the hard boundary. A cold agent with no assignment must
     # stop here even if it also supplied an invalid specialist string.
     if specialist_intent is not None:
-        try:
-            specialist_route_payload = skill_route.resolve_route(
-                catalog, specialist_intent
-            )
-        except skill_route.SkillCatalogError as exc:
-            raise OnboardingError(
-                f"specialist skill route 無法解析: {specialist_intent}: {exc}"
-            ) from exc
+        specialist_route_payload = _resolve_specialist(
+            catalog,
+            identity_def,
+            identity_id,
+            canonical_intent,
+            entry,
+            specialist_intent,
+        )
         canonical_specialist_intent = specialist_route_payload["intent"]
-        if canonical_specialist_intent not in allowed_specialists:
-            allowed = ", ".join(allowed_specialists) or "(none)"
-            raise OnboardingError(
-                f"identity/intent/entry 不允許 specialist: {identity_id}/{canonical_intent}/{entry} "
-                f"-> {canonical_specialist_intent}; allowed={allowed}"
-            )
         for source in manifest["specialist_sources"].get(
             canonical_specialist_intent, []
         ):
