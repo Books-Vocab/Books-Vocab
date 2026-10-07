@@ -19,7 +19,7 @@ model: inherit
 
 只接受 `status=ready`，依輸出先讀 project／identity／assignment、再讀 iOS route 與 bounded domain docs。不要把 Simulator evidence、worktree 或 agent session 當成 Issue／PR 狀態。
 
-共同交付契約（真跑驗證、紅必須是真失敗、gate 跑不起來標 BLOCKED、outcomes 不預寫、交回 branch／tip SHA／變更檔案、固定四段回報骨架與 handoff footer）見 [`project_onboarding.md`](../../docs/reference/project_onboarding.md)「實作與審查角色的共同交付契約」，開工前必讀，本檔不重複。
+共同交付契約（真跑驗證、紅必須是真失敗、gate 跑不起來標 BLOCKED、outcomes 不預寫、固定四段回報骨架、handoff footer 欄位）見 [`project_onboarding.md`](../../docs/reference/project_onboarding.md)「實作與審查角色的共同交付契約」，開工前必讀，本檔不重複。
 
 規則：
 

@@ -104,24 +104,25 @@ GitHub 是交付控制面：Issue／Project 管規劃與排序，branch／worktr
 
 1. **驗證必須真跑**：只有實際執行過、取得 exit status 的命令才算證據。不得以讀碼推演、舊 log、別人的結果或預期值代替；命令與 exit code 原樣記錄，不得用管線（`| tail`）或合併 stderr 後再讀 `$?`。
 2. **TDD 的紅必須是真失敗（僅實作角色）**：實作角色先寫測試並實際跑出紅（失敗原因要對應待修行為，不是 import／語法／環境錯誤），記下紅的命令與 exit code，再最小修復跑綠。無法先紅（純文件、重構等）要在偏離／未解 blocker 說明。CR 與 DS 不寫測試、不修復，只審查與回報。
-3. **gate 跑不起來 = BLOCKED，不是 done**：測試 harness、guard、權限、timeout、磁碟預算（如 `ios_*` exit 75）或缺少工具導致必要 gate 無法執行時，停止宣稱完成，Result 寫 `BLOCKED`，附完整命令、exit code、guard 輸出的原因。可以 commit 已完成的 code，但 Result 不得寫 implemented／done。不得繞過 guard、改用底層命令（裸 `xcodebuild`）或自行改 registry 取代；能獨立跑的 static check 可附上並標明「不取代被擋的 gate」。
+3. **gate 跑不起來 = BLOCKED，不是 done**：測試 harness、guard、權限、timeout、磁碟預算（如 `ios_*` exit 75）或缺少工具導致必要 gate 無法執行時，停止宣稱完成，成果狀態寫 `BLOCKED`，附完整命令、exit code、guard 輸出的原因。可以 commit 已完成的 code，但成果狀態不得寫 DONE。不得繞過 guard、改用底層命令（裸 `xcodebuild`）或自行改 registry 取代；能獨立跑的 static check 可附上並標明「不取代被擋的 gate」。
 4. **lane 登記由 IM 負責**：`ops/ios_ops.sh` 的 writer 類 command（build／test）其 disk guard 與 hand-back 都以 registry 判斷 worktree 是否為受管 lane，須由 IM 以 `ops/worktree_orchestrate.py` 先登記。開工先 `./ops/worktree_registry.py list --json` 確認本 worktree path 在列；若不在或 guard 以「unregistered／disk budget」fail-closed，這是 BLOCKED：不自行 `register`、不改 registry、不等排程碰運氣，回報給 IM 登記後重派。
 5. **outcomes 不可預寫**：hand-back 的 validation／outcomes 只能在命令跑完後依實際結果填入；不得先寫「PASS」再補跑，WARN、timeout、stale evidence 一律如實報告，不寫成 PASS。
-6. **交回物（實作角色）**：local commit 後，乾淨 worktree 加以下三項，放在回報最後的 handoff footer（不是回報段落）：branch、tip SHA（`git rev-parse HEAD`，commit 後現量）、變更檔案清單（`git diff --name-only <base>..HEAD`，須為 Scope 子集）。不 push、不開 PR、不碰 GitHub；PR 由 IM 發布。
+6. **交回物（實作角色，有 local commit 時）**：乾淨 worktree 加 handoff footer（放在回報最後，不是回報段落），欄位足以讓 IM 對回已登記的 lane 並驗 Scope：branch、worktree path、tip SHA（`git rev-parse HEAD`，commit 後現量）、declared Scope、assignment 參照（Issue／PR external ID，或 direct assignment 摘要）、變更檔案清單（`git diff --name-only <base>..HEAD`，須為 Scope 子集）；assignment 若帶 lane id、claim generation、owner thread，原樣回填。不 push、不開 PR、不碰 GitHub；PR 由 IM 發布。沒有 commit 的執行（例如已批准的 release execution）不附 footer，改在證據段列 target、exit status 與 health gate 結果。
 7. **固定回報骨架**：與根 `CLAUDE.md`「回報格式」一致，最終訊息一律以下列四段、依序、每段不可省略（無內容寫「無」）：
 
 ```text
-成果: 狀態 DONE | BLOCKED | PARTIAL — 一句話結論（BLOCKED 要寫被擋的 gate）
+成果: 狀態 <依角色，見下> — 一句話結論（BLOCKED 要寫被擋的 gate）
 當下驗證證據: 每條命令一行「命令 → exit N」；紅／綠分開列；未跑的 gate 明列為 NOT RUN 與原因
-偏離／未解 blocker: 與指派／計畫不同處、edge case、未解 blocker；無則寫「無」
-  Friction: 工具、文件、guard 的摩擦與可重現步驟；無則寫「無」
+偏離／未解 blocker: 與指派／計畫不同處、edge case、未解 blocker、工具／文件／guard 摩擦與可重現步驟；無則寫「無」
 已替使用者做的決定: 替使用者／IM 做的決定，每項一句理由
 ```
 
-實作角色在四段之後另附 handoff footer：
+成果狀態詞彙依角色：
 
-```text
-Branch / tip SHA / changed files: <branch> / <40 位 SHA> / 檔案清單
-```
+| 角色 | 狀態 | BLOCKED 條件 |
+|---|---|---|
+| 實作角色 | DONE／PARTIAL／BLOCKED | 必要 gate 無法執行（第 3 項） |
+| CR | approve／request changes／comment／BLOCKED | required checks 缺失、非目前 exact HEAD、gate 無法執行或 PR 無法讀取；不得 approve |
+| DS | synced／gap／BLOCKED | docs lint／registry／coverage 無法執行或紅燈未解；不得 synced |
 
-CR 與 DS 不 commit、不改 caller worktree，沒有 handoff footer：成果狀態改為 approve／request changes／comment／BLOCKED（DS 為 synced／gap／BLOCKED；required checks 缺失、非目前 exact HEAD、gate 無法執行或無法讀取時必為 BLOCKED，不得 approve／synced），當下驗證證據列所跑命令與 exit status，並另附一行「審查對象 exact HEAD: <SHA>」（DS 加 changed docs）。
+CR 與 DS 不 commit、不改 caller worktree，沒有 handoff footer；證據段列所跑命令與 exit status。審查對象依各自 assignment 證據標示於證據段：CR 一行「審查對象 exact HEAD: <SHA>」與 required checks 來源；DS 一行「審查對象: PR diff 範圍」與 changed docs（PR 已改動的文件）。DS 只審查並指出需同步的 SoT，修改由 PR 作者或 IM 在同一 PR 套用。

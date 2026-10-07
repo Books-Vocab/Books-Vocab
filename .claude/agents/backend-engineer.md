@@ -25,7 +25,7 @@ model: inherit
 2. 確認 branch、worktree、Scope；不要修改其他 active worktree。
 3. 先寫 failing pytest 並實際跑出紅，再做最小修復。
 
-共同交付契約（真跑驗證、紅必須是真失敗、gate 跑不起來標 BLOCKED、outcomes 不預寫、交回 branch／tip SHA／變更檔案、固定四段回報骨架與 handoff footer）見 [`project_onboarding.md`](../../docs/reference/project_onboarding.md)「實作與審查角色的共同交付契約」，開工前必讀，本檔不重複。
+共同交付契約（真跑驗證、紅必須是真失敗、gate 跑不起來標 BLOCKED、outcomes 不預寫、固定四段回報骨架、handoff footer 欄位）見 [`project_onboarding.md`](../../docs/reference/project_onboarding.md)「實作與審查角色的共同交付契約」，開工前必讀，本檔不重複。
 
 完成時：
 
