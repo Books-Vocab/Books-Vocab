@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
@@ -10,7 +11,6 @@ from typing import Any, Protocol
 
 import httpx
 from fastapi import HTTPException
-from filelock import FileLock
 
 logger = logging.getLogger(__name__)
 
@@ -22,14 +22,19 @@ from .api_models import (
 )
 from .app_store import AppStoreConfigurationError, AppStoreVerificationError
 from .types import StoredUserRecord, SubscriptionRecord, UsersPayload
+from .users_lock import users_file_lock
 
 type UsersLoader = Callable[[], UsersPayload]
 type UsersSaver = Callable[[UsersPayload], None]
 type EntitlementsBuilder = Callable[[StoredUserRecord | None], EntitlementsResponse]
 
+
 class FetchTransactionInfo(Protocol):
-    def __call__(self, transaction_id: str, *, bundle_id: str, environment: str | None = None) -> Awaitable[dict[str, Any]]:
-        ...
+    def __call__(
+        self, transaction_id: str, *, bundle_id: str, environment: str | None = None
+    ) -> Awaitable[dict[str, Any]]: ...
+
+
 type AppendAppStoreEvent = Callable[[dict[str, object]], None]
 
 
@@ -51,8 +56,7 @@ class SubscriptionSnapshotWriter(Protocol):
         price_display: str | None = None,
         signed_date: str | None = None,
         notification_uuid: str | None = None,
-    ) -> StoredUserRecord:
-        ...
+    ) -> StoredUserRecord: ...
 
 
 type DecodeNotificationPayload = Callable[
@@ -60,16 +64,20 @@ type DecodeNotificationPayload = Callable[
     tuple[SubscriptionRecord, dict[str, Any] | None],
 ]
 
-type ResolveUserIdFromSubscriptionIndex = Callable[
-    [UsersPayload, str | None, str | None], str | None
-]
+type ResolveUserIdFromSubscriptionIndex = Callable[[UsersPayload, str | None, str | None], str | None]
 
 # Snapshot keys that map 1:1 onto write_subscription_snapshot kwargs across all
 # three ingest paths (sync / notification / reconcile). `source` and
 # `price_display` differ per path and stay explicit at the call site.
 _SNAPSHOT_FIELDS = (
-    "product_id", "status", "is_trial", "expires_at", "will_renew",
-    "environment", "transaction_id", "original_transaction_id",
+    "product_id",
+    "status",
+    "is_trial",
+    "expires_at",
+    "will_renew",
+    "environment",
+    "transaction_id",
+    "original_transaction_id",
 )
 _ORDERING_FIELDS = ("signed_date", "notification_uuid")
 
@@ -131,16 +139,23 @@ def sync_app_store_subscription_response(
             snapshot = decode_signed_transaction_info(req.signed_transaction_info)
             if req.transaction_id and snapshot["transaction_id"] and req.transaction_id != snapshot["transaction_id"]:
                 raise HTTPException(status_code=400, detail="transaction_id does not match signed_transaction_info")
-            if req.original_transaction_id and snapshot["original_transaction_id"] and req.original_transaction_id != snapshot["original_transaction_id"]:
-                raise HTTPException(status_code=400, detail="original_transaction_id does not match signed_transaction_info")
+            if (
+                req.original_transaction_id
+                and snapshot["original_transaction_id"]
+                and req.original_transaction_id != snapshot["original_transaction_id"]
+            ):
+                raise HTTPException(
+                    status_code=400, detail="original_transaction_id does not match signed_transaction_info"
+                )
         elif not allow_unsigned_sync:
             if req.environment.lower() == "xcode":
                 logger.warning(
-                    "Rejected unsigned xcode sync for user %s — "
-                    "enable APP_STORE_ALLOW_UNSIGNED_SYNC for dev/test",
+                    "Rejected unsigned xcode sync for user %s — enable APP_STORE_ALLOW_UNSIGNED_SYNC for dev/test",
                     user.get("id"),
                 )
-            raise HTTPException(status_code=400, detail="signed_transaction_info is required for production App Store sync")
+            raise HTTPException(
+                status_code=400, detail="signed_transaction_info is required for production App Store sync"
+            )
         else:
             snapshot = {
                 "product_id": req.product_id,
@@ -154,11 +169,15 @@ def sync_app_store_subscription_response(
                 "price_display": req.price_display,
             }
 
-    with FileLock(str(users_lock_file)):
+    with users_file_lock(users_lock_file):
         users = load_users()
         record = _write_snapshot(
-            write_subscription_snapshot, users, user["id"], snapshot,
-            source="app_store", price_display=snapshot["price_display"],
+            write_subscription_snapshot,
+            users,
+            user["id"],
+            snapshot,
+            source="app_store",
+            price_display=snapshot["price_display"],
         )
         save_users(users)
 
@@ -201,7 +220,7 @@ def app_store_notifications_response(
         "notification_uuid": snapshot.get("notification_uuid"),
     }
 
-    with FileLock(str(users_lock_file)):
+    with users_file_lock(users_lock_file):
         users = load_users()
         # The append-only audit event is recorded under the same user lock and
         # before any ordering decision, so stale/duplicate deliveries remain
@@ -214,8 +233,7 @@ def app_store_notifications_response(
         # fail-open to "active".
         if not snapshot.get("status"):
             logger.warning(
-                "App Store notification type %r produced no determinate status; "
-                "skipping snapshot update (fail-safe)",
+                "App Store notification type %r produced no determinate status; skipping snapshot update (fail-safe)",
                 req.notification_type,
             )
             return {"status": "accepted", "updated": False, "reason": "indeterminate_status"}
@@ -229,7 +247,10 @@ def app_store_notifications_response(
             return {"status": "accepted", "updated": False, "reason": "unmapped_transaction"}
         previous_subscription = deepcopy(users.get(user_id, {}).get("subscription"))
         record = _write_snapshot(
-            write_subscription_snapshot, users, user_id, snapshot,
+            write_subscription_snapshot,
+            users,
+            user_id,
+            snapshot,
             source="app_store_notification",
         )
         updated = record.get("subscription") != previous_subscription
@@ -273,25 +294,39 @@ async def reconcile_app_store_subscription_response(
             )
             signed_transaction_info = server_response.get("signedTransactionInfo")
             if not isinstance(signed_transaction_info, str) or not signed_transaction_info:
-                raise HTTPException(status_code=502, detail="App Store transaction lookup did not return signedTransactionInfo")
+                raise HTTPException(
+                    status_code=502, detail="App Store transaction lookup did not return signedTransactionInfo"
+                )
             snapshot = decode_signed_transaction_info(signed_transaction_info)
     except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=f"App Store API lookup failed: HTTP {exc.response.status_code}") from exc
+        raise HTTPException(
+            status_code=502, detail=f"App Store API lookup failed: HTTP {exc.response.status_code}"
+        ) from exc
     except httpx.HTTPError as exc:
         logger.warning("App Store API network error: %s", exc)
         raise HTTPException(status_code=502, detail="App Store service unavailable") from exc
 
-    with FileLock(str(users_lock_file)):
-        users = load_users()
-        resolved_user_id = resolve_user_id_from_subscription_index(
-            users,
-            snapshot["original_transaction_id"],
-            snapshot["transaction_id"],
-        ) or user["id"]
-        record = _write_snapshot(
-            write_subscription_snapshot, users, resolved_user_id, snapshot,
-            source="app_store_server_api",
-        )
-        save_users(users)
+    def _persist_snapshot() -> StoredUserRecord:
+        with users_file_lock(users_lock_file):
+            users = load_users()
+            resolved_user_id = (
+                resolve_user_id_from_subscription_index(
+                    users,
+                    snapshot["original_transaction_id"],
+                    snapshot["transaction_id"],
+                )
+                or user["id"]
+            )
+            record = _write_snapshot(
+                write_subscription_snapshot,
+                users,
+                resolved_user_id,
+                snapshot,
+                source="app_store_server_api",
+            )
+            save_users(users)
+            return record
 
+    # The users.json FileLock wait + file IO must not run on the event loop.
+    record = await asyncio.to_thread(_persist_snapshot)
     return build_entitlements_response(record)

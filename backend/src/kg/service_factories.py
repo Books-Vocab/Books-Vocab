@@ -106,6 +106,27 @@ def evict_notebook_cache(user_dir: Path, notebook_id: str) -> None:
                 _close_store(store)
 
 
+def _is_user_store_key(key: str, user_dir: str) -> bool:
+    # Per-user keys are `<kind>:<user_dir>` or `<kind>:<user_dir>:<suffix>`; the
+    # trailing `:` guard keeps `users/abc` from matching `users/abcd`.
+    _, _, rest = key.partition(":")
+    return rest == user_dir or rest.startswith(user_dir + ":")
+
+
+def evict_user_store_cache(user_dir: Path) -> None:
+    """Close and drop every cached store rooted at ``user_dir`` (account deletion).
+
+    In-flight builds for those keys are invalidated so they are closed instead
+    of being published after the user's files are gone.
+    """
+    target = str(user_dir)
+    with _STORE_CACHE_LOCK:
+        _STORE_CACHE_INVALIDATED_KEYS.update(key for key in _STORE_INIT_EVENTS if _is_user_store_key(key, target))
+        evicted = [_STORE_CACHE.pop(key) for key in list(_STORE_CACHE) if _is_user_store_key(key, target)]
+    for store in evicted:
+        _close_store(store)
+
+
 def clear_store_cache() -> None:
     global _STORE_CACHE_GENERATION
     with _STORE_CACHE_LOCK:
@@ -160,7 +181,7 @@ def _resolve_notebook_paths(
     Specs come from ops_shared.NOTEBOOK_FILE_SPECS; only specs with a non-None
     legacy_name are passed here, so the migration loop never sees None.
     """
-    if not re.match(r'^[a-zA-Z0-9_-]+$', notebook_id):
+    if not re.match(r"^[a-zA-Z0-9_-]+$", notebook_id):
         raise ValueError(f"Invalid notebook_id: {notebook_id!r}")
     paths = [user_dir / tmpl.format(nb=notebook_id) for tmpl, _ in file_specs]
     if notebook_id == "default":
@@ -171,11 +192,15 @@ def _resolve_notebook_paths(
 
 def create_graph_store(user_dir: Path, notebook_id: str = "default") -> GraphStore:
     key = f"graph:{user_dir}:{notebook_id}"
-    links_path, candidates_path, blocked_path = _resolve_notebook_paths(user_dir, notebook_id, [
-        NOTEBOOK_FILE_SPECS["graph"],
-        NOTEBOOK_FILE_SPECS["candidates"],
-        NOTEBOOK_FILE_SPECS["blocked"],
-    ])
+    links_path, candidates_path, blocked_path = _resolve_notebook_paths(
+        user_dir,
+        notebook_id,
+        [
+            NOTEBOOK_FILE_SPECS["graph"],
+            NOTEBOOK_FILE_SPECS["candidates"],
+            NOTEBOOK_FILE_SPECS["blocked"],
+        ],
+    )
     pj_path = user_dir / f"pending_judge_{notebook_id}.json"
     # 注入 per-user 變動帳本,讓 Store 層每筆 mutation emit 真實事件(Phase 6)。
     # 用 provider 而非直接注入:GraphStore 可能被長期持有(pipeline 跨秒 hold),而
@@ -184,7 +209,10 @@ def create_graph_store(user_dir: Path, notebook_id: str = "default") -> GraphSto
     return _get_cached(
         key,
         lambda: GraphStore(
-            links_path, candidates_path, blocked_path, pending_judge_path=pj_path,
+            links_path,
+            candidates_path,
+            blocked_path,
+            pending_judge_path=pj_path,
             event_store_provider=lambda: create_graph_event_store(user_dir),
             snapshot_store_provider=lambda: create_graph_snapshot_store(user_dir),
             event_notebook_id=notebook_id,
@@ -221,8 +249,7 @@ def _require_api_key(provider: LLMProvider) -> str:
     api_key = os.getenv(provider.api_key_env)
     if not api_key:
         raise RuntimeError(
-            f"{provider.api_key_env} not configured on server "
-            f"(required for LLM provider {provider.name!r})"
+            f"{provider.api_key_env} not configured on server (required for LLM provider {provider.name!r})"
         )
     return api_key
 
@@ -290,12 +317,17 @@ def create_embedding_store(
 ) -> EmbeddingStore:
     if model is None or dim is None:
         from .settings import load_settings
+
         s = load_settings()
         model = model or s.embedding_model
         dim = dim or s.embedding_dim
     key = f"embedding:{user_dir}:{notebook_id}:{model}:{dim}"
-    emb_path, ids_path = _resolve_notebook_paths(user_dir, notebook_id, [
-        NOTEBOOK_FILE_SPECS["embeddings"],
-        NOTEBOOK_FILE_SPECS["card_ids"],
-    ])
+    emb_path, ids_path = _resolve_notebook_paths(
+        user_dir,
+        notebook_id,
+        [
+            NOTEBOOK_FILE_SPECS["embeddings"],
+            NOTEBOOK_FILE_SPECS["card_ids"],
+        ],
+    )
     return _get_cached(key, lambda: EmbeddingStore(emb_path, ids_path, llm, model=model, dim=dim))

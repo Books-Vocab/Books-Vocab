@@ -115,11 +115,16 @@ def _settings(request: Request) -> KGSettings:
 
 def _library_s3_client(settings: KGSettings):
     import boto3
+    from botocore.config import Config
 
+    # botocore defaults (60s connect + 60s read, legacy retries) let one slow
+    # object store stall a request for minutes; account deletion issues one
+    # delete per book.
     return boto3.client(
         "s3",
         region_name=settings.library_bucket_region,
         endpoint_url=settings.library_bucket_endpoint_url,
+        config=Config(connect_timeout=5, read_timeout=10, retries={"total_max_attempts": 3, "mode": "standard"}),
     )
 
 

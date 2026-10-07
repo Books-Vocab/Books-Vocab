@@ -4,9 +4,9 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 import jwt
-from filelock import FileLock
 
 from .types import UsersPayload
+from .users_lock import users_file_lock
 
 
 def create_jwt_token(
@@ -46,7 +46,7 @@ def resolve_and_link_user(
     save_users_fn: Callable[[UsersPayload], None],
     email: str | None = None,
 ) -> str:
-    with FileLock(users_lock_file):
+    with users_file_lock(users_lock_file):
         users = load_users_fn()
 
         if "_email_index" not in users:

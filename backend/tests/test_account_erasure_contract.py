@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from fastapi import HTTPException
+from filelock import FileLock, Timeout
 from sqlmodel import Session
 
 from kg import podcast_progress
@@ -271,3 +272,71 @@ def test_local_or_unknown_asset_keys_are_not_deleted_remotely(tmp_path):
 
     assert keys == ()
     assert client.calls == []
+
+
+# ── #2060: remote deletes must not run under the shared users lock ───────────
+
+
+class _LockProbingObjectClient(_FakeObjectClient):
+    """Records every remote delete issued while the users lock was held."""
+
+    def __init__(self, *, lock_path: Path, on_first_delete=None, **kwargs):
+        super().__init__(**kwargs)
+        self.lock_path = lock_path
+        self.on_first_delete = on_first_delete
+        self.deleted_under_lock: list[str] = []
+
+    def delete_object(self, *, Bucket: str, Key: str):  # noqa: N803
+        probe = FileLock(str(self.lock_path), timeout=0)
+        try:
+            probe.acquire()
+        except Timeout:
+            self.deleted_under_lock.append(Key)
+        else:
+            probe.release()
+        if self.on_first_delete is not None:
+            hook, self.on_first_delete = self.on_first_delete, None
+            hook()
+        return super().delete_object(Bucket=Bucket, Key=Key)
+
+
+def test_remote_asset_deletes_run_without_holding_the_users_lock(tmp_path):
+    _seed_library_asset(tmp_path, "canonical", "library/canonical/book/asset.epub")
+    _seed_library_asset(tmp_path, "linked1", "library/linked1/book/asset.epub")
+    client = _LockProbingObjectClient(lock_path=tmp_path / "users.json.lock", data_dir=tmp_path)
+
+    _call_delete(tmp_path, _linked_users(), client)
+
+    assert len(client.calls) == 2
+    assert client.deleted_under_lock == []
+
+
+def test_identity_linked_during_remote_phase_is_erased_too(tmp_path):
+    """Leaving the lock for the remote phase must not let a concurrent link escape."""
+    _seed_library_asset(tmp_path, "canonical", "library/canonical/book/asset.epub")
+    users_file = tmp_path / "users.json"
+
+    def link_late_identity():
+        users = json.loads(users_file.read_text())
+        users["canonical"]["linked_ids"].append("late")
+        users["late"] = {"_linked_to": "canonical", "config": {}}
+        users_file.write_text(json.dumps(users))
+        _seed_library_asset(tmp_path, "late", "library/late/book/asset.epub")
+
+    client = _LockProbingObjectClient(
+        lock_path=tmp_path / "users.json.lock",
+        on_first_delete=link_late_identity,
+        data_dir=tmp_path,
+    )
+    users_data = {"canonical": {"linked_ids": [], "config": {}}}
+
+    response = _call_delete(tmp_path, users_data, client, user_id="canonical")
+
+    assert set(client.calls) == {"library/canonical/book/asset.epub", "library/late/book/asset.epub"}
+    assert client.deleted_under_lock == []
+    assert response.linked_ids == ["late"]
+    saved = json.loads(users_file.read_text())
+    assert "canonical" not in saved
+    assert "late" not in saved
+    assert {"canonical", "late"} <= set(saved["_terminated"])
+    assert not (tmp_path / "users" / "late").exists()

@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from fastapi import HTTPException
-from filelock import FileLock
 
 from . import podcast_progress
 from .account_erasure import ObjectStorageClient, delete_account_assets
@@ -29,7 +28,9 @@ from .api_models import (
     VocabUIConfig,
 )
 from .ops_cli_shared import _normalize_persisted_bool
+from .service_factories import evict_user_store_cache
 from .types import StoredUserRecord, UserRecord, UsersPayload
+from .users_lock import users_file_lock
 
 _logger = logging.getLogger(__name__)
 
@@ -231,7 +232,7 @@ def update_user_config_response(
     load_users: Callable[[], UsersPayload],
     save_users: Callable[[UsersPayload], None],
 ) -> UserConfigResponse:
-    with FileLock(str(users_lock_file)):
+    with users_file_lock(users_lock_file):
         users = load_users()
         user_id = user["id"]
 
@@ -255,6 +256,52 @@ def update_user_config_response(
     return _build_user_config_response(users[user_id]["config"])
 
 
+# Remote assets are deleted outside the users lock, so a concurrent sign-in may
+# link one more identity meanwhile; each pass erases what it found and re-checks.
+_MAX_ERASURE_PASSES = 3
+
+
+def _tombstone_accounts(
+    users: UsersPayload,
+    ids_to_delete: list[str],
+    *,
+    purge_external_api_keys: Callable[[UsersPayload, list[str]], None] | None,
+) -> None:
+    """Revoke, permanently terminate and remove ``ids_to_delete`` in place."""
+    # Stamped at commit time (under the lock) so tokens issued while remote
+    # assets were being deleted are revoked too.
+    now_iso = datetime.now(tz=UTC).isoformat()
+    revoked_before = users.get("_revoked_before")
+    if not isinstance(revoked_before, dict):
+        revoked_before = {}
+    for uid in ids_to_delete:
+        revoked_before[uid] = now_iso
+    users["_revoked_before"] = revoked_before
+
+    # Mark every purged id as permanently terminated. This makes the
+    # revocation watermark irreversible: a later login (even with the
+    # same sub, or the same email via another provider) must NOT be able
+    # to clear `_revoked_before` for these ids — see resolve_and_link_user.
+    terminated = users.get("_terminated")
+    terminated_ids = set(terminated) if isinstance(terminated, list) else set()
+    terminated_ids.update(ids_to_delete)
+    users["_terminated"] = sorted(terminated_ids)
+
+    email_index = users.get("_email_index")
+    if isinstance(email_index, dict):
+        stale_emails = [email for email, mapped_uid in email_index.items() if mapped_uid in ids_to_delete]
+        for email in stale_emails:
+            email_index.pop(email, None)
+        if not email_index:
+            users.pop("_email_index", None)
+
+    for uid in ids_to_delete:
+        users.pop(uid, None)
+
+    if purge_external_api_keys is not None:
+        purge_external_api_keys(users, ids_to_delete)
+
+
 def delete_user_account_response(
     user: UserRecord,
     *,
@@ -268,63 +315,61 @@ def delete_user_account_response(
     library_s3_client: ObjectStorageClient | None = None,
     purge_external_api_keys: Callable[[UsersPayload, list[str]], None] | None = None,
 ) -> DeleteAccountResponse:
-    now_iso = datetime.now(tz=UTC).isoformat()
     user_id = user["id"]
+    erased: set[str] = set()
 
-    with FileLock(str(users_lock_file)):
-        users = load_users()
-        canonical_id, ids_to_delete = collect_account_ids_for_deletion(users, user_id)
+    for _ in range(_MAX_ERASURE_PASSES):
+        with users_file_lock(users_lock_file):
+            users = load_users()
+            canonical_id, ids_to_delete = collect_account_ids_for_deletion(users, user_id)
+            pending = [uid for uid in ids_to_delete if uid not in erased]
+            if not pending:
+                podcast_progress.delete_for_users(ids_to_delete)
+                _tombstone_accounts(users, ids_to_delete, purge_external_api_keys=purge_external_api_keys)
+                save_users(users)
+                # users.json is now tombstoned: drop the cached stores at once
+                # so a same-sub re-login during the rmtree below cannot be
+                # handed the pre-deletion GraphStore / SQLite handles.
+                for uid in ids_to_delete:
+                    evict_user_store_cache(data_dir / "users" / uid)
+                break
+        # One network round trip per remote asset: never hold the shared users
+        # lock (every login / config / billing write) across them (#2060). A
+        # failure here leaves users.json and the directories untouched, so the
+        # request stays retryable; the next pass re-reads the linked ids.
         delete_account_assets(
             data_dir,
-            ids_to_delete,
+            pending,
             library_bucket=library_bucket,
             library_s3_client=library_s3_client,
         )
-        podcast_progress.delete_for_users(ids_to_delete)
-
-        revoked_before = users.get("_revoked_before")
-        if not isinstance(revoked_before, dict):
-            revoked_before = {}
-        for uid in ids_to_delete:
-            revoked_before[uid] = now_iso
-        users["_revoked_before"] = revoked_before
-
-        # Mark every purged id as permanently terminated. This makes the
-        # revocation watermark irreversible: a later login (even with the
-        # same sub, or the same email via another provider) must NOT be able
-        # to clear `_revoked_before` for these ids — see resolve_and_link_user.
-        terminated = users.get("_terminated")
-        terminated_ids = set(terminated) if isinstance(terminated, list) else set()
-        terminated_ids.update(ids_to_delete)
-        users["_terminated"] = sorted(terminated_ids)
-
-        email_index = users.get("_email_index")
-        if isinstance(email_index, dict):
-            stale_emails = [email for email, mapped_uid in email_index.items() if mapped_uid in ids_to_delete]
-            for email in stale_emails:
-                email_index.pop(email, None)
-            if not email_index:
-                users.pop("_email_index", None)
-
-        for uid in ids_to_delete:
-            users.pop(uid, None)
-
-        if purge_external_api_keys is not None:
-            purge_external_api_keys(users, ids_to_delete)
-
-        save_users(users)
+        erased.update(pending)
+    else:
+        raise HTTPException(status_code=409, detail="Account changed during deletion; please retry")
 
     deleted_dirs: list[str] = []
-    for uid in ids_to_delete:
-        user_dir = data_dir / "users" / uid
-        if not user_dir.exists():
-            continue
-        try:
-            shutil.rmtree(user_dir)
-            deleted_dirs.append(uid)
-        except OSError as exc:
-            logger.exception("Failed to delete user directory %s: %s", user_dir, exc)
-            raise HTTPException(status_code=500, detail=f"Failed to remove user data for {uid}") from exc
+    failed_uids: list[str] = []
+    try:
+        # users.json is already tombstoned, so a failure on one directory must
+        # not strand the remaining linked ids: remove what can be removed, then
+        # report the failures.
+        for uid in ids_to_delete:
+            user_dir = data_dir / "users" / uid
+            try:
+                if user_dir.exists():
+                    shutil.rmtree(user_dir)
+                    deleted_dirs.append(uid)
+            except OSError:
+                logger.exception("Failed to delete user directory %s", user_dir)
+                failed_uids.append(uid)
+    finally:
+        # Evict again after the files are gone (a store reopened during the
+        # rmtree window would otherwise outlive its unlinked files), for every
+        # linked id even if a failure interrupted the loop.
+        for uid in ids_to_delete:
+            evict_user_store_cache(data_dir / "users" / uid)
+    if failed_uids:
+        raise HTTPException(status_code=500, detail=f"Failed to remove user data for {', '.join(failed_uids)}")
 
     logger.warning(
         "Account deletion: uid=%s canonical=%s ids=%s dirs=%s",

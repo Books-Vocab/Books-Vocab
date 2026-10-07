@@ -16,9 +16,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from filelock import FileLock
-
 from .types import UsersPayload
+from .users_lock import users_file_lock
 
 EXTERNAL_API_KEY_INDEX = "_external_api_keys"
 EXTERNAL_API_KEY_PREFIX = "kg_"
@@ -92,7 +91,7 @@ def issue_api_key(
     """Create a key and return its plaintext exactly once."""
 
     now = _now_iso()
-    with FileLock(str(users_lock_file)):
+    with users_file_lock(users_lock_file):
         users = load_users()
         user_record = users.get(user_id)
         if not isinstance(user_record, dict):
@@ -152,7 +151,7 @@ def revoke_api_key(
     save_users: UsersSaver,
 ) -> dict[str, Any] | None:
     now = _now_iso()
-    with FileLock(str(users_lock_file)):
+    with users_file_lock(users_lock_file):
         users = load_users()
         key_index = _index(users)
         record = key_index.get(key_id)

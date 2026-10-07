@@ -8,9 +8,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
 
-from filelock import FileLock
-
 from .types import UsersPayload
+from .users_lock import bounded_users_filelock
 
 
 class NormalizeUsersPayload(Protocol):
@@ -101,7 +100,7 @@ def migrate_users_file(
     """Persist normalization changes atomically under the shared users lock."""
     if not users_file.exists():
         return False
-    with FileLock(str(users_lock_file)):
+    with bounded_users_filelock(users_lock_file):
         if not users_file.exists():
             return False
         users = json.loads(users_file.read_text())
