@@ -381,6 +381,17 @@ struct TodayReviewPresenter: View {
             guard introProgress < 1 else { return }
             withAnimation(AppMotion.reviewRevealSpring) { introProgress = 1 }
         }
+        #if DEBUG
+        // #2026 量測：整個卡片區（ZStack）的 layout 高度 —— 使用者看到的「卡片區
+        // 高度」本身，不必由逐 slot 線推導。onGeometryChange 對動畫中的 layout 逐幀
+        // 觸發，相鄰事件的 |Δh| 即單幀跳變量。與 gap.geom slot 線同格式、同 grep。
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
+            PerfLog.review.mark(
+                "gap.geom",
+                "slot=-1 role=deck kind=deck w=\(card.word) h=\(String(format: "%.1f", h)) reveal=\(state.revealStage.rawValue) dismiss=\(dismissPhase == .idle ? 0 : 1) off=\(Int(swipeOffset)) idx=\(state.progressText)"
+            )
+        }
+        #endif
     }
 
     // MARK: - Completion / Expand Zone
