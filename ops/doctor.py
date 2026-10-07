@@ -431,11 +431,24 @@ def collect_issues(repo: Path) -> list[dict[str, Any]]:
             "--limit",
             "200",
             "--json",
-            "number,title,body,authorAssociation",
+            "number,title,body,authorAssociation,labels",
         ],
         repo,
     )
-    return json.loads(done.stdout) if done.returncode == 0 and done.stdout else []
+    issues = json.loads(done.stdout) if done.returncode == 0 and done.stdout else []
+    return exclude_health_report(issues)
+
+
+HEALTH_LABEL = "health-report"
+
+
+def exclude_health_report(issues: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The weekly report is this tool's own output; counting it would make it self-referential."""
+    return [
+        issue
+        for issue in issues
+        if HEALTH_LABEL not in {label.get("name") for label in issue.get("labels", [])}
+    ]
 
 
 # --------------------------------------------------------------------------
@@ -443,6 +456,11 @@ def collect_issues(repo: Path) -> list[dict[str, Any]]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Read-only project health report.")
+    parser.add_argument(
+        "--ci",
+        action="store_true",
+        help="skip checks that only exist on a developer machine (checkout state, claims, disk guard)",
+    )
     parser.add_argument(
         "--repo", type=Path, default=Path(__file__).resolve().parents[1]
     )
@@ -461,7 +479,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     repo = args.repo.resolve()
     now = datetime.now(timezone.utc)
-    git = collect_git(repo)
+    git = None if args.ci and not args.run_acceptance else collect_git(repo)
     issues = collect_issues(repo)
     results = None
     if args.run_acceptance:
@@ -476,15 +494,22 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         results = run_acceptance(issues, cwd=repo)
-    findings = [
-        evaluate_git(git),
-        evaluate_registry(collect_registry(repo)),
-        *evaluate_ci(collect_ci(repo), now),
-        evaluate_release_gap(*collect_release_gap(repo, now)),
-        evaluate_disk(collect_disk()),
-        evaluate_complexity(*collect_complexity(repo)),
-        evaluate_issues(issues, results),
-    ]
+    ci = evaluate_ci(collect_ci(repo), now)
+    gap = evaluate_release_gap(*collect_release_gap(repo, now))
+    complexity_finding = evaluate_complexity(*collect_complexity(repo))
+    issues_finding = evaluate_issues(issues, results)
+    if args.ci:
+        findings = [*ci, gap, complexity_finding, issues_finding]
+    else:
+        findings = [
+            evaluate_git(git),
+            evaluate_registry(collect_registry(repo)),
+            *ci,
+            gap,
+            evaluate_disk(collect_disk()),
+            complexity_finding,
+            issues_finding,
+        ]
     print(render_json(findings, now=now) if args.json else render_text(findings))
     return exit_code(findings)
 
