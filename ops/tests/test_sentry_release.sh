@@ -68,6 +68,13 @@ SENTRY_ORG='kg-org'
 SENTRY_PROJECT_BACKEND=kg-backend-proj
 SENTRY_PROJECT_IOS = kg-ios-proj
 EOF
+COMMENTED_ENV="$TMP/sentry-commented.env"
+cat >"$COMMENTED_ENV" <<EOF
+SENTRY_AUTH_TOKEN="$TOKEN" # rotated quarterly
+SENTRY_ORG=kg-org # prod org
+SENTRY_PROJECT_BACKEND='kg-backend-proj'  # backend
+SENTRY_PROJECT_IOS=kg-ios-proj	# ios (tab before the comment)
+EOF
 
 # run_helper <case-name> [VAR=value ...] -- <args...>
 # Clean environment: only what the case passes plus the fakes. stdout/stderr and
@@ -105,6 +112,97 @@ help_out="$(bash "$HELPER" --help 2>&1)"; help_rc=$?
 [[ $help_rc -eq 0 ]] && ok "--help exit 0" || bad "--help exit $help_rc"
 grep -q 'record-backend' <<<"$help_out" && grep -q 'upload-dsyms' <<<"$help_out" \
   && ok "--help names both subcommands" || bad "--help missing subcommands"
+
+section "env-file parsing: shell file_value == ops/sentry_api.py (one input table, both parsers)"
+# The shell helper and the Python read tool share one secrets file, so a line
+# must mean the same thing to both. Every entry is a whole file line; @K@ is
+# replaced by a distinct SENTRY_Cnn key. The Python side is the reference
+# (load_sentry_settings); a key it ignores reads as "" on both sides.
+TAB=$'\t'; CR=$'\r'
+PARSE_CASES=(
+  '@K@=kg-org'
+  '@K@=kg-org # prod org'
+  '@K@=kg-org   #  prod'
+  "@K@=kg-org${TAB}# tab comment"
+  '@K@=kg-org#nospace'
+  '@K@="kg#org"'
+  "@K@='kg#org'"
+  '@K@="kg org" # c'
+  "@K@='kg-org' # c"
+  '@K@="unterminated # c'
+  "@K@='unterminated"
+  '@K@="abc"def'
+  "@K@=\"a'b\" # c"
+  '@K@='
+  '@K@=    '
+  '@K@= #c'
+  '@K@=# whole'
+  'export @K@=kg-org'
+  'export   @K@="q # x"  # c'
+  '  @K@  =  spaced  '
+  '@K@=a=b=c'
+  '@K@=a #b #c'
+  '@K@=""'
+  '@K@=  "" # c'
+  '@K@="a" "b"'
+  "@K@=kg-org # c${CR}"
+  "export${TAB}@K@=tabbed"
+  '#@K@=commented'
+  '@K@ x=1'
+  'exported @K@=1'
+  '@K@=tok#en'
+  '@K@=kg-org # no trailing newline'
+)
+PARSE_DIR="$TMP/parse"; mkdir -p "$PARSE_DIR/py" "$PARSE_DIR/sh"
+PARSE_ENV="$PARSE_DIR/cases.env"; : > "$PARSE_ENV"
+parse_n=${#PARSE_CASES[@]}
+for (( i = 1; i <= parse_n; i++ )); do
+  entry="${PARSE_CASES[$((i-1))]}"
+  key="$(printf 'SENTRY_C%02d' "$i")"
+  if (( i == parse_n )); then printf '%s' "${entry//@K@/$key}" >> "$PARSE_ENV"
+  else printf '%s\n' "${entry//@K@/$key}" >> "$PARSE_ENV"; fi
+done
+PARSE_PY='import pathlib, sys
+sys.path.insert(0, sys.argv[1])
+import sentry_api
+values = sentry_api.load_sentry_settings({"SENTRY_ENV_FILE": sys.argv[2]})
+for n in range(1, int(sys.argv[4]) + 1):
+    key = "SENTRY_C%02d" % n
+    (pathlib.Path(sys.argv[3]) / key).write_text(values.get(key, ""), encoding="utf-8")'
+if uv run --no-project --python 3.13 python -c "$PARSE_PY" "$ROOT/ops" "$PARSE_ENV" "$PARSE_DIR/py" "$parse_n" 2>"$PARSE_DIR/py.err"; then
+  ok "Python reference parser ran over $parse_n cases"
+else
+  bad "Python reference parser failed: $(cat "$PARSE_DIR/py.err")"
+fi
+(
+  source "$HELPER"
+  ENV_FILE="$PARSE_ENV"
+  for (( i = 1; i <= parse_n; i++ )); do
+    key="$(printf 'SENTRY_C%02d' "$i")"
+    file_value "$key" > "$PARSE_DIR/sh/$key"
+  done
+)
+mismatch=""
+for (( i = 1; i <= parse_n; i++ )); do
+  key="$(printf 'SENTRY_C%02d' "$i")"
+  py_val="$(cat "$PARSE_DIR/py/$key" 2>/dev/null)"; sh_val="$(cat "$PARSE_DIR/sh/$key" 2>/dev/null)"
+  [[ "$py_val" == "$sh_val" ]] || mismatch="$mismatch
+    case $i [${PARSE_CASES[$((i-1))]}] python=[$py_val] shell=[$sh_val]"
+done
+[[ -z "$mismatch" ]] && ok "shell file_value == Python parser on all $parse_n cases" \
+  || bad "shell/Python parsers disagree:$mismatch"
+# Anchors, so two parsers that are wrong the same way cannot pass the table.
+[[ "$(cat "$PARSE_DIR/sh/SENTRY_C02" 2>/dev/null)" == "kg-org" ]] \
+  && ok "anchor: unquoted inline comment is stripped" || bad "anchor C02: $(cat "$PARSE_DIR/sh/SENTRY_C02" 2>/dev/null)"
+[[ "$(cat "$PARSE_DIR/sh/SENTRY_C06" 2>/dev/null)" == "kg#org" ]] \
+  && ok "anchor: # inside a quoted value is kept" || bad "anchor C06: $(cat "$PARSE_DIR/sh/SENTRY_C06" 2>/dev/null)"
+[[ "$(cat "$PARSE_DIR/sh/SENTRY_C10" 2>/dev/null)" == '"unterminated' ]] \
+  && ok "anchor: an unterminated quote is treated as unquoted" || bad "anchor C10: $(cat "$PARSE_DIR/sh/SENTRY_C10" 2>/dev/null)"
+printf 'SENTRY_DUP=first\nSENTRY_DUP=second # last wins\n' > "$PARSE_DIR/dup.env"
+uv run --no-project --python 3.13 python -c 'import sys; sys.path.insert(0, sys.argv[1]); import sentry_api; sys.stdout.write(sentry_api.load_sentry_settings({"SENTRY_ENV_FILE": sys.argv[2]}).get("SENTRY_DUP", ""))' "$ROOT/ops" "$PARSE_DIR/dup.env" > "$PARSE_DIR/dup.py" 2>/dev/null
+dup_sh="$( source "$HELPER"; ENV_FILE="$PARSE_DIR/dup.env"; file_value SENTRY_DUP )"
+[[ "$dup_sh" == second && "$(cat "$PARSE_DIR/dup.py")" == second ]] \
+  && ok "duplicate key: the last assignment wins in both parsers" || bad "duplicate key: shell=[$dup_sh] python=[$(cat "$PARSE_DIR/dup.py")]"
 
 section "record-backend: preconditions SKIP (exit 3) without touching the network"
 run_helper short "${FULLCFG[@]}" -- record-backend --sha 0123456
@@ -159,6 +257,17 @@ no_token_leak envfile
 run_helper envwins SENTRY_ENV_FILE="$ENVFILE" SENTRY_ORG=env-org -- record-backend --sha "$SHA"
 grep -q '/organizations/env-org/' "$CLOG" && ! grep -q '/organizations/kg-org/' "$CLOG" \
   && ok "process env wins over the env file" || bad "env precedence wrong: $(head -1 "$CLOG")"
+
+run_helper commented SENTRY_ENV_FILE="$COMMENTED_ENV" -- record-backend --sha "$SHA"
+[[ $RC -eq 0 && "$(calls)" == 3 ]] && ok "inline comments in the env file do not break the config (record-backend)" \
+  || bad "inline-comment env file rc=$RC calls=$(calls) ($(cat "$ERR"))"
+grep -q '/organizations/kg-org/' "$CLOG" && grep -q '"projects":\["kg-backend-proj"\]' "$CLOG" \
+  && ok "commented org/project values are used without the comment" || bad "commented values: $(head -1 "$CLOG")"
+no_token_leak commented
+DSYMS_C="$TMP/commented-archive/dSYMs"; mkdir -p "$DSYMS_C/BooksAndVocab.app.dSYM/Contents"
+run_helper commented_dsym SENTRY_ENV_FILE="$COMMENTED_ENV" KG_SENTRY_CLI="$FAKE_CLI" -- upload-dsyms "$DSYMS_C"
+grep -q "ARGV:debug-files upload --org kg-org --project kg-ios-proj --type dsym $DSYMS_C" "$TMP/commented_dsym.cli.log" 2>/dev/null \
+  && ok "inline comments in the env file do not break upload-dsyms" || bad "commented dsym rc=$RC ($(cat "$ERR"))"
 
 run_helper selfhost "${FULLCFG[@]}" SENTRY_API_URL=https://sentry.example.com/ -- record-backend --sha "$SHA"
 grep -q 'https://sentry.example.com/api/0/organizations/' "$CLOG" \
@@ -254,6 +363,9 @@ grep -q 'ok: kg-backend@' "$TMP/xt_env.err" && grep -q '^+ say ' "$TMP/xt_env.er
 xtrace_case xt_file SENTRY_ENV_FILE="$ENVFILE"
 [[ $RC -eq 0 ]] && ok "xtrace[file]: exit 0" || bad "xtrace[file]: exit $RC"
 no_token_leak xt_file
+xtrace_case xt_comment SENTRY_ENV_FILE="$COMMENTED_ENV"
+[[ $RC -eq 0 ]] && ok "xtrace[commented file]: exit 0" || bad "xtrace[commented file]: exit $RC"
+no_token_leak xt_comment
 CLOG="$TMP/xt_dsym.curl.log"; OUT="$TMP/xt_dsym.out"; ERR="$TMP/xt_dsym.err"
 env -i HOME="$TMP/home" PATH="/usr/bin:/bin" SENTRY_ENV_FILE="$NO_FILE" "${FULLCFG[@]}" \
   KG_SENTRY_CLI="$FAKE_CLI" FAKE_CLI_LOG="$TMP/xt_dsym.cli.log" \
@@ -266,7 +378,7 @@ grep -q "$TOKEN" "$TMP/xt_check.err" "$TMP/xt_check.out" \
 
 section "a killed run leaves no kg_sentry_release.* temp file"
 HANG_CURL="$TMP/hang_curl.sh"
-printf '#!/usr/bin/env bash\necho "$$" > "$HANG_PIDFILE"\ncat >/dev/null\nsleep 30\n' >"$HANG_CURL"
+printf '#!/usr/bin/env bash\necho "$$" > "$HANG_PIDFILE"\ncat >/dev/null\nexec sleep 30\n' >"$HANG_CURL"
 chmod +x "$HANG_CURL"
 TD="$TMP/tmpdir"; mkdir -p "$TD"
 env -i HOME="$TMP/home" PATH="/usr/bin:/bin" TMPDIR="$TD" SENTRY_ENV_FILE="$NO_FILE" \
@@ -276,11 +388,15 @@ helper_pid=$!
 for _ in $(seq 1 50); do [[ -s "$TMP/hang.pid" ]] && break; sleep 0.1; done
 [[ -n "$(ls "$TD" 2>/dev/null)" ]] && ok "temp file exists while the request is in flight (positive control)" \
   || bad "no temp file in flight: control invalid"
+kill_start=$(date +%s)
 kill -TERM "$helper_pid" 2>/dev/null
 kill -TERM "$(cat "$TMP/hang.pid" 2>/dev/null)" 2>/dev/null
 wait "$helper_pid" 2>/dev/null
+kill_elapsed=$(( $(date +%s) - kill_start ))
 left="$(ls "$TD" 2>/dev/null)"
 [[ -z "$left" ]] && ok "TERM leaves no temp file behind" || bad "leftover temp file(s): $left"
+[[ $kill_elapsed -lt 10 ]] && ok "TERM ends the run promptly (${kill_elapsed}s; the fixture leaves no orphan holding the pipe)" \
+  || bad "run took ${kill_elapsed}s to end after TERM: an orphaned fixture child kept the pipe open"
 
 echo ""
 echo "══════════════════════════════"

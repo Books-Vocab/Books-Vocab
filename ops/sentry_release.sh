@@ -84,22 +84,41 @@ quiet() {
   return $rc
 }
 
-# Last `KEY=VALUE` (optionally `export KEY=VALUE`, optionally quoted) in the file.
+# Dotenv-style value, identical to ops/sentry_api.py `_env_value` (the two
+# parsers read one file; ops/tests/test_sentry_release.sh runs one input table
+# through both): a quoted value ends at its first closing quote and keeps any
+# `#` inside; an unquoted one (an unterminated quote counts as unquoted) loses
+# everything from the first `#` that follows whitespace. Prints the value.
+env_value() {
+  set +x
+  local value rest quote
+  value="$(trim "$1")"
+  quote="${value:0:1}"
+  if [[ "$quote" == \" || "$quote" == \' ]]; then
+    rest="${value:1}"
+    if [[ "$rest" == *"$quote"* ]]; then
+      printf '%s' "${rest%%"$quote"*}"
+      return 0
+    fi
+  fi
+  trim "${value%%[[:space:]]#*}"
+}
+
+# Last `KEY=VALUE` (optionally `export KEY=VALUE`) for $1 in the file, parsed
+# like ops/sentry_api.py `_read_env_file`: only a literal `export ` prefix, `#`
+# lines skipped, split at the first `=`.
 file_value() {
   set +x
-  local key="$1" line rest val found=""
+  local key="$1" line name found=""
   [[ -r "$ENV_FILE" ]] || return 0
   while IFS= read -r line || [[ -n "$line" ]]; do
-    line="$(trim "${line%$'\r'}")"
-    case "$line" in export[[:space:]]*) line="$(trim "${line#export}")" ;; esac
-    [[ "$line" == "$key"* ]] || continue
-    rest="$(trim "${line#"$key"}")"
-    [[ "$rest" == =* ]] || continue
-    val="$(trim "${rest#=}")"
-    if [[ ${#val} -ge 2 && ( "$val" == \"*\" || "$val" == \'*\' ) ]]; then
-      val="${val:1:${#val}-2}"
-    fi
-    found="$val"
+    line="$(trim "$line")"
+    [[ -n "$line" && "$line" != '#'* ]] || continue
+    case "$line" in 'export '*) line="$(trim "${line#export }")" ;; esac
+    [[ "$line" == *=* ]] || continue
+    name="$(trim "${line%%=*}")"
+    [[ "$name" == "$key" ]] || continue
+    found="$(env_value "${line#*=}")"
   done < "$ENV_FILE"
   printf '%s' "$found"
 }
@@ -306,10 +325,18 @@ cmd_check() {
   printf 'api url: %s\nuploader: %s (sentry-cli %s)\n' "$api" "$uploader" "$SENTRY_CLI_VERSION"
 }
 
-case "${1:-}" in
-  check) shift; quiet cmd_check "$@" ;;
-  record-backend) shift; cmd_record_backend "$@" ;;
-  upload-dsyms) shift; cmd_upload_dsyms "$@" ;;
-  -h|--help|help) usage ;;
-  *) usage >&2; exit 2 ;;
-esac
+main() {
+  case "${1:-}" in
+    check) shift; quiet cmd_check "$@" ;;
+    record-backend) shift; cmd_record_backend "$@" ;;
+    upload-dsyms) shift; cmd_upload_dsyms "$@" ;;
+    -h|--help|help) usage ;;
+    *) usage >&2; exit 2 ;;
+  esac
+}
+
+# Sourced (by ops/tests/test_sentry_release.sh) only to reach the parsers; run
+# normally the script dispatches as before.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
