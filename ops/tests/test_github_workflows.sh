@@ -480,14 +480,22 @@ fi
 # default (read today, but a settings change would silently widen it), and every
 # job that runs steps carries its own timeout. A `uses:` job delegates the
 # timeout to the called workflow, but its own permissions are still checked.
-# Writes, at workflow or job level, must match an allowlist entry with a reason;
+# Writes, at workflow or job level, must match an allowlist entry with exactly the
+# keys workflow, job (null = workflow-level, else a job name), scope and reason;
 # write-all is never allowlistable, and a stale entry is itself a violation.
 WRITE_ALLOWLIST="ops/tests/github_workflow_write_allowlist.json"
 ! compgen -G '.github/workflows/*.yaml' >/dev/null || fail "a .yaml workflow escapes every *.yml guard in this file; rename it to .yml"
 workflow_hardening_violations() {
   ruby -e 'require "yaml"; require "json"
+    keys = %w[workflow job scope reason]
     allow = JSON.parse(File.read(ARGV.shift))["entries"].each_with_index.select do |e, i|
-      %w[workflow scope reason].all? { |k| e[k].is_a?(String) && !e[k].strip.empty? } || puts("allowlist entry #{i} needs workflow, scope and a reason")
+      e = {} unless e.is_a?(Hash)
+      errs = [("missing key(s) #{(keys - e.keys).join(", ")}" if (keys - e.keys).any?),
+        ("unknown key(s) #{(e.keys - keys).join(", ")}" if (e.keys - keys).any?)].compact
+      errs << "workflow, scope and reason must be non-empty strings" unless errs.any? || %w[workflow scope reason].all? { |k| e[k].is_a?(String) && !e[k].strip.empty? }
+      errs << "job must be null (workflow-level) or a non-empty string" unless errs.any? || e["job"].nil? || (e["job"].is_a?(String) && !e["job"].strip.empty?)
+      puts("allowlist entry #{i}: #{errs.join("; ")}") if errs.any?
+      errs.empty?
     end.map(&:first)
     used = []
     check = lambda do |path, job, perms|
@@ -535,7 +543,7 @@ cat >"$hardening_tmp/write-all.yml" <<'YAML'
 YAML
 cat >"$hardening_tmp/mixed.yml" <<'YAML'
 on: push
-permissions: {contents: write, statuses: write}
+permissions: {contents: write, statuses: write, deployments: write}
 jobs:
   job-write-all: {timeout-minutes: 1, permissions: write-all}
   job-unlisted: {timeout-minutes: 1, permissions: {pull-requests: write}}
@@ -544,20 +552,28 @@ jobs:
   job-read-all: {timeout-minutes: 1, permissions: read-all}
   job-none: {timeout-minutes: 1, permissions: {}}
 YAML
-# Entries 0-1 are valid grants; 2-5 must not authorize (stale, wrong job, wrong workflow, no reason).
+# Entries 0-1 are valid grants; 2-8 must not authorize (stale, wrong job, wrong workflow, no reason,
+# missing job key, misspelled job key, empty job). 6-7 would otherwise read as job nil = top-level.
 cat >"$hardening_tmp/allow.json" <<'JSON'
 {"entries": [{"workflow": "mixed.yml", "job": null, "scope": "statuses", "reason": "r"},
   {"workflow": "mixed.yml", "job": "job-listed", "scope": "issues", "reason": "r"},
   {"workflow": "mixed.yml", "job": "job-read-only", "scope": "contents", "reason": "r"},
   {"workflow": "mixed.yml", "job": "job-write-all", "scope": "contents", "reason": "r"},
   {"workflow": "write-all.yml", "job": "job-unlisted", "scope": "pull-requests", "reason": "r"},
-  {"workflow": "mixed.yml", "job": "job-unlisted", "scope": "pull-requests", "reason": " "}]}
+  {"workflow": "mixed.yml", "job": "job-unlisted", "scope": "pull-requests", "reason": " "},
+  {"workflow": "mixed.yml", "scope": "contents", "reason": "r"},
+  {"workflow": "mixed.yml", "jobs": null, "scope": "deployments", "reason": "r"},
+  {"workflow": "mixed.yml", "job": "", "scope": "pull-requests", "reason": "r"}]}
 JSON
-expected_fixture_report="allowlist entry 5 needs workflow, scope and a reason
+expected_fixture_report="allowlist entry 5: workflow, scope and reason must be non-empty strings
+allowlist entry 6: missing key(s) job
+allowlist entry 7: missing key(s) job; unknown key(s) jobs
+allowlist entry 8: job must be null (workflow-level) or a non-empty string
 $hardening_tmp/bare.yml: no top-level permissions
 $hardening_tmp/bare.yml: job steps-job has no timeout-minutes
 $hardening_tmp/write-all.yml: top-level permissions is \"write-all\"
 $hardening_tmp/mixed.yml: top-level permissions contents: \"write\" is not read/none or an allowlisted write
+$hardening_tmp/mixed.yml: top-level permissions deployments: \"write\" is not read/none or an allowlisted write
 $hardening_tmp/mixed.yml: job job-write-all permissions is \"write-all\"
 $hardening_tmp/mixed.yml: job job-unlisted permissions pull-requests: \"write\" is not read/none or an allowlisted write
 allowlist: mixed.yml job job-read-only contents matches no write grant

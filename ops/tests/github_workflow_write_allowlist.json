@@ -1,6 +1,6 @@
 {
   "schema": "kg.workflow-write-allowlist.v1",
-  "note": "Every GITHUB_TOKEN write grant in .github/workflows/*.yml, keyed by workflow basename, job (null = workflow-level) and scope. ops/tests/test_github_workflows.sh fails on any write or write-all not listed here, on an entry without a reason, and on an entry that no longer matches a grant.",
+  "note": "Every GITHUB_TOKEN write grant in .github/workflows/*.yml, keyed by workflow basename, job (null = workflow-level) and scope. ops/tests/test_github_workflows.sh fails on any write or write-all not listed here, on an entry whose keys are not exactly workflow/job/scope/reason or whose job is neither null nor a non-empty string, on an entry without a reason, and on an entry that no longer matches a grant.",
   "entries": [
     {
       "workflow": "agent-review.yml",
