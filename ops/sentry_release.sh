@@ -55,6 +55,15 @@ say()   { printf '[sentry-release] %s\n' "$*" >&2; }
 skip()  { printf '[sentry-release] SKIP: %s\n' "$*" >&2; exit 3; }
 die()   { printf '[sentry-release] FAILED: %s\n' "$*" >&2; exit 1; }
 
+# The in-flight response temp file (see `request`) is removed on every exit
+# path, including a TERM/INT/HUP that lands while curl is running.
+REQUEST_TMP=""
+cleanup() { [[ -z "$REQUEST_TMP" ]] || rm -f "$REQUEST_TMP"; }
+trap cleanup EXIT
+trap 'exit 143' TERM
+trap 'exit 130' INT
+trap 'exit 129' HUP
+
 trim() {
   local s="$1"
   s="${s#"${s%%[![:space:]]*}"}"
@@ -62,8 +71,22 @@ trim() {
   printf '%s' "$s"
 }
 
+# Secrets must not reach a `bash -x` trace. file_value and cfg only ever run
+# inside $( ) subshells, so their `set +x` cannot leak out; code that holds the
+# token in the main shell goes through `quiet`, which restores the caller's
+# xtrace state afterwards.
+quiet() {
+  local xt=0 rc
+  case $- in *x*) xt=1 ;; esac
+  set +x
+  "$@"; rc=$?
+  (( xt )) && set -x
+  return $rc
+}
+
 # Last `KEY=VALUE` (optionally `export KEY=VALUE`, optionally quoted) in the file.
 file_value() {
+  set +x
   local key="$1" line rest val found=""
   [[ -r "$ENV_FILE" ]] || return 0
   while IFS= read -r line || [[ -n "$line" ]]; do
@@ -82,6 +105,7 @@ file_value() {
 }
 
 cfg() {
+  set +x
   local key="$1" value="${!1:-}"
   [[ -n "$value" ]] || value="$(file_value "$key")"
   printf '%s' "$value"
@@ -144,15 +168,20 @@ load_config() {
 # request <label> <method> <url> <json body> <accepted codes...>
 request() {
   local label="$1" method="$2" url="$3" body="$4"; shift 4
-  local tmp code rc=0 detail accepted
+  local tmp code rc=0 detail accepted xt=0
   tmp="$(mktemp "${TMPDIR:-/tmp}/kg_sentry_release.XXXXXX")" || return 1
+  REQUEST_TMP="$tmp"
+  case $- in *x*) xt=1 ;; esac
+  set +x   # the token is in this pipeline; keep it out of any bash -x trace
   code="$(printf 'header = "Authorization: Bearer %s"\n' "$TOKEN" \
     | "$CURL" -K - -sS -o "$tmp" -w '%{http_code}' \
         --connect-timeout "$CONNECT_TIMEOUT" --max-time "$MAX_TIME" \
         -X "$method" -H 'Content-Type: application/json' \
         --data-binary "$body" "$url" 2>/dev/null)" || rc=$?
+  (( xt )) && set -x
   detail="$(head -c 300 "$tmp" 2>/dev/null | tr -d '\r\n')"
   rm -f "$tmp"
+  REQUEST_TMP=""
   if (( rc != 0 )); then
     say "$label: curl exit $rc (network or ${MAX_TIME}s time bound) on $method $url"
     return 1
@@ -179,7 +208,7 @@ cmd_record_backend() {
   valid_label "$environment" || skip "invalid --environment"
   [[ -n "$name" ]] || name="$(hostname -s 2>/dev/null || echo deploy)"
   valid_label "$name" || name="deploy"
-  load_config SENTRY_PROJECT_BACKEND
+  quiet load_config SENTRY_PROJECT_BACKEND
 
   local version="kg-backend@$sha" encoded="kg-backend%40$sha" now releases
   now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -210,16 +239,20 @@ bounded() {
   while kill -0 "$pid" 2>/dev/null; do
     if (( ticks >= limit )); then
       say "uploader exceeded the ${secs}s time bound; terminating process group $pid"
-      kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null
-      sleep 1
-      kill -KILL -- "-$pid" 2>/dev/null || true
-      wait "$pid" 2>/dev/null
+      # One stderr-silenced group: the shell reports a signalled job
+      # ("Terminated: 15") wherever it first reaps it, not only at `wait`.
+      {
+        kill -TERM -- "-$pid" || kill -TERM "$pid"
+        sleep 1
+        kill -KILL -- "-$pid" || true
+        wait "$pid"
+      } 2>/dev/null
       return 124
     fi
     sleep 0.2
     ticks=$(( ticks + 1 ))
   done
-  wait "$pid"
+  { wait "$pid"; } 2>/dev/null
 }
 
 cmd_upload_dsyms() {
@@ -227,7 +260,7 @@ cmd_upload_dsyms() {
   [[ -n "$dir" && -d "$dir" ]] || skip "dSYM directory not found: ${dir:-<none>}"
   find "$dir" -maxdepth 2 -type d -name '*.dSYM' 2>/dev/null | grep -q . \
     || skip "no .dSYM bundles under $dir (check DEBUG_INFORMATION_FORMAT=dwarf-with-dsym)"
-  load_config SENTRY_PROJECT_IOS
+  quiet load_config SENTRY_PROJECT_IOS
   if [[ -n "${KG_SENTRY_CLI:-}" ]]; then
     cli=("$KG_SENTRY_CLI")
   elif command -v uvx >/dev/null 2>&1; then
@@ -237,6 +270,7 @@ cmd_upload_dsyms() {
   fi
   say "uploading dSYMs from $dir → $ORG/$PROJECT (sentry-cli $SENTRY_CLI_VERSION, bound ${DSYM_TIMEOUT}s)"
   (
+    set +x
     export SENTRY_AUTH_TOKEN="$TOKEN" SENTRY_URL="${BASE%/api/0}"
     bounded "$DSYM_TIMEOUT" "${cli[@]}" debug-files upload \
       --org "$ORG" --project "$PROJECT" --type dsym "$dir" >&2
@@ -273,7 +307,7 @@ cmd_check() {
 }
 
 case "${1:-}" in
-  check) shift; cmd_check "$@" ;;
+  check) shift; quiet cmd_check "$@" ;;
   record-backend) shift; cmd_record_backend "$@" ;;
   upload-dsyms) shift; cmd_upload_dsyms "$@" ;;
   -h|--help|help) usage ;;

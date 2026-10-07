@@ -17,6 +17,7 @@ import json
 import math
 import os
 import re
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -53,14 +54,36 @@ def sentry_env_file(environ: dict[str, str] | None = None) -> Path:
     return Path(override).expanduser() if override else DEFAULT_ENV_FILE.expanduser()
 
 
+def _env_value(raw: str) -> str:
+    """Dotenv-style value: a quoted value keeps its ``#``; an unquoted one loses `` # comment``."""
+    value = raw.strip()
+    if value[:1] in {"'", '"'}:
+        close = value.find(value[0], 1)
+        if close != -1:
+            return value[1:close]
+    return re.sub(r"\s+#.*$", "", value).strip()
+
+
 def _read_env_file(path: Path) -> dict[str, str]:
-    """Parse ``KEY=VALUE`` lines; only ``SENTRY_*`` keys are kept, values are never logged."""
+    """Parse ``KEY=VALUE`` lines; only ``SENTRY_*`` keys are kept, values are never logged.
+
+    Decoding is per line so one invalid UTF-8 byte only drops that line; the
+    warning names the line number, never its content.
+    """
     try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
+        raw_lines = path.read_bytes().splitlines()
+    except OSError:
         return {}
     values: dict[str, str] = {}
-    for line in text.splitlines():
+    for number, raw_line in enumerate(raw_lines, start=1):
+        try:
+            line = raw_line.decode("utf-8")
+        except UnicodeDecodeError:
+            print(
+                f"sentry env file {path}: line {number} is not valid UTF-8; ignored",
+                file=sys.stderr,
+            )
+            continue
         line = line.strip()
         if not line or line.startswith("#"):
             continue
@@ -70,10 +93,7 @@ def _read_env_file(path: Path) -> dict[str, str]:
         key = key.strip()
         if not sep or not _SETTING_KEY.fullmatch(key):
             continue
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-            value = value[1:-1]
-        values[key] = value
+        values[key] = _env_value(value)
     return values
 
 
@@ -334,7 +354,8 @@ class SentryAPIClient:
         query: str | None = None,
         max_pages: int = 10,
     ) -> list[dict[str, Any]]:
-        params: list[tuple[str, str]] = [("per_page", "100")]
+        # health=1 makes Sentry include healthData, which fills the *_pct fields.
+        params: list[tuple[str, str]] = [("per_page", "100"), ("health", "1")]
         if project:
             params.append(("project", project))
         if environment:

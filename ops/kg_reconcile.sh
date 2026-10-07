@@ -122,11 +122,33 @@ paths_need_deploy() {
 }
 
 # ── poison 游標（單行 latest poison：`poison <sha> <epoch>`）──────────────────
+# poison 鍵比對：short 與 full sha 視為同一個 commit。升級前寫下的 short-sha poison
+# 必須仍擋得住對應的 full sha（鍵現已統一為 full），否則升級當下 active 的回滾 poison 會
+# 被重試一次。規則：兩邊皆 >=7 字元小寫 hex → 取較短者長度做前綴比對；否則（非 hex／
+# 太短／空）退回逐字相等且非空，永不讓空鍵或 1–6 字元前綴命中。
+# poison_lines <sha> <match|other>：state 檔中 poison 鍵（不）命中 sha 的行；
+# other 同時保留非 poison 行（tick 等）。純 awk，bash 3.2 / BSD awk 可用。
+poison_lines() {
+  [[ -f "$KG_STATE_FILE" ]] || return 0
+  awk -v sha="$1" -v want="$2" '
+    function same(k, s,    n) {
+      if (k == "" || s == "") return 0
+      if (k ~ /^[0-9a-f]+$/ && s ~ /^[0-9a-f]+$/ && length(k) >= 7 && length(s) >= 7) {
+        n = (length(k) < length(s)) ? length(k) : length(s)
+        return substr(k, 1, n) == substr(s, 1, n)
+      }
+      return k == s
+    }
+    $1 == "poison" { if ((want == "match") == same($2, sha)) print; next }
+    want == "other" { print }
+  ' "$KG_STATE_FILE"
+}
+
 is_poisoned() {
   local sha="$1"
   [[ -f "$KG_STATE_FILE" ]] || return 1
   local line ts now cooldown
-  line="$(grep "^poison $sha " "$KG_STATE_FILE" 2>/dev/null | tail -1 || true)"
+  line="$(poison_lines "$sha" match 2>/dev/null | tail -1 || true)"
   [[ -n "$line" ]] || return 1
   ts="$(printf '%s\n' "$line" | awk '{print $3}')"
   [[ "$ts" =~ ^[0-9]+$ ]] || {
@@ -149,7 +171,7 @@ write_poison() {
   local sha="$1" tmp
   mkdir -p "$(dirname "$KG_STATE_FILE")"
   tmp="$(mktemp)"
-  { grep -v "^poison $sha " "$KG_STATE_FILE" 2>/dev/null || true; printf 'poison %s %s\n' "$sha" "$(date +%s)"; } > "$tmp"
+  { poison_lines "$sha" other 2>/dev/null || true; printf 'poison %s %s\n' "$sha" "$(date +%s)"; } > "$tmp"
   mv "$tmp" "$KG_STATE_FILE"
 }
 
@@ -173,7 +195,7 @@ clear_poison() {
   local sha="$1" tmp
   [[ -f "$KG_STATE_FILE" ]] || return 0
   tmp="$(mktemp)"
-  grep -v "^poison $sha " "$KG_STATE_FILE" 2>/dev/null > "$tmp" || true
+  poison_lines "$sha" other 2>/dev/null > "$tmp" || true
   mv "$tmp" "$KG_STATE_FILE"
 }
 
