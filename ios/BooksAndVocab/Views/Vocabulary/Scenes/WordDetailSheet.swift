@@ -88,16 +88,6 @@ struct WordDetailSheet: View {
                     },
                     onPendingLinkTapped: { pendingLinkDetail = PendingLinkDetailRequest(link: $0) }
                 )
-                .overlay(alignment: .top) {
-                    if let actionError = state.actionError {
-                        AppBanner(
-                            message: actionError,
-                            systemImage: "exclamationmark.triangle",
-                            onDismiss: { state.dismissActionError() }
-                        )
-                        .padding(.top, AppSpacing.s1)
-                    }
-                }
             } else {
                 VocabStateMessageCard(
                     title: "載入中".localized,
@@ -110,6 +100,13 @@ struct WordDetailSheet: View {
             }
         }
         .animation(AppMotion.contentFade, value: state.presenterState != nil)
+        // 卡片動作失敗（封存／偏好／連結回捲）是一次性通知：轉成頂端 pill 後即消化，
+        // 下一次同類失敗才會再觸發。重做動作的入口本來就在卡片上，不需要面板。
+        .onChange(of: state.actionError) { _, message in
+            guard let message else { return }
+            toastCoordinator.error(message)
+            state.dismissActionError()
+        }
         .task(id: "\(entry.id)|\(entry.graphLinksJSON.hashValue)") {
             // Yield once so SwiftUI can render the loading placeholder before
             // we run the (lightweight but synchronous) presentation computation.
@@ -188,8 +185,8 @@ struct WordDetailSheet: View {
     }
 
     /// 封存後**刻意不關 sheet**：圖示翻成 `archivebox.fill`，再按一次就是解除封存。
-    /// toggle 自己就是 undo，所以不需要帶動作按鈕的 undo toast（`AppToastCoordinator`
-    /// 也只吃 message/style/duration，沒有 action）。失敗訊息走既有的 `actionError` banner。
+    /// toggle 自己就是 undo，所以不需要帶動作按鈕的 undo toast（pill 依規範不放按鈕）。
+    /// 失敗訊息由 `actionError` 轉成頂端 error pill（見 body 的 `onChange`）。
     private func handleToggleArchive() {
         // 重入防護在 `WordDetailSceneState.isSettingArchived`，不在這裡：放狀態物件才
         // 涵蓋所有呼叫端，view 端再複製一份只會變成兩個要一起推理的旗標。

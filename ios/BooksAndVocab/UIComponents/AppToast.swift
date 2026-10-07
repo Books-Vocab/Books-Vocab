@@ -1,5 +1,7 @@
 import SwiftUI
 
+/// 頂端滑出的通知 pill（#2047）：只負責通知，沒有動作按鈕；單行，過長時先縮小再
+/// 尾端截斷，不換行。何時用 pill、何時用畫面內面板見 docs/sop/ui-design.md「暫時性提示」。
 struct AppToast: View {
     @Environment(\.appTheme) private var appTheme
     let item: AppToastItem
@@ -12,12 +14,16 @@ struct AppToast: View {
             Image(systemName: item.systemImage)
                 .font(AppFonts.caption())
                 .foregroundStyle(tintColor)
+                .accessibilityHidden(true)
 
             Text(item.message.localized)
                 .font(AppFonts.caption(weight: .semibold))
                 .foregroundStyle(tintColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
+                .truncationMode(.tail)
+                // 同一事件就地取代時只換字，不重播整個進出場。
+                .contentTransition(.opacity)
         }
         .padding(.horizontal, AppSpacing.cardPadding)
         .padding(.vertical, AppSkin.baseSpacing.compactRowVerticalPadding)
@@ -47,6 +53,10 @@ struct AppToast: View {
                 }
         )
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("app.toast")
+        .accessibilityValue(item.style.accessibilityValue)
+        // 長文案在 pill 內截斷，而不是讓 pill 貼齊螢幕邊緣。
+        .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
         .padding(.top, AppSpacing.s2)
     }
 
@@ -60,16 +70,31 @@ struct AppToast: View {
     }
 }
 
+private extension AppToastItem.Style {
+    /// UITest 可讀的語氣標記（非使用者文案）。
+    var accessibilityValue: String {
+        switch self {
+        case .success: "success"
+        case .info: "info"
+        case .warning: "warning"
+        case .error: "error"
+        }
+    }
+}
+
 // MARK: - Toast Overlay Modifier
 
 private struct ToastOverlayModifier: ViewModifier {
     @Environment(\.toastCoordinator) private var toastCoordinator
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         content.overlay(alignment: .top) {
             if let toast = toastCoordinator.current {
                 AppToast(item: toast, onDismiss: { toastCoordinator.dismiss() })
-                    .transition(.bannerReveal)
+                    // 進出場都由 coordinator 以 `AppMotion.panelState` 驅動；Reduce Motion
+                    // 時只淡入淡出、不位移。
+                    .transition(reduceMotion ? .overlayFade : .bannerReveal)
                     .zIndex(999)
             }
         }

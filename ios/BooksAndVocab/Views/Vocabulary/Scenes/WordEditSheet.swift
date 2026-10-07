@@ -5,27 +5,18 @@ struct WordEditSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(\.appSkin) private var appSkin
+    @Environment(\.toastCoordinator) private var toastCoordinator
     @Bindable var entry: VocabularyEntry
     var onSaved: (() -> Void)? = nil
 
     @State private var draftTranslation = ""
     @State private var draftExplanation = ""
     @State private var isSaving = false
-    @State private var saveError: String?
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
-                    if let saveError {
-                        AppBanner(
-                            message: saveError,
-                            systemImage: "exclamationmark.triangle",
-                            onRetry: { save() },
-                            onDismiss: { self.saveError = nil }
-                        )
-                    }
-
                     editSection(
                         title: "翻譯結果".localized,
                         text: $draftTranslation,
@@ -97,7 +88,6 @@ struct WordEditSheet: View {
 
     private func save() {
         isSaving = true
-        saveError = nil
 
         let trimmedExplanation = draftExplanation.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -114,7 +104,9 @@ struct WordEditSheet: View {
             onSaved?()
             dismiss()
         } catch {
-            saveError = "儲存失敗，請再試一次".localized
+            // 一次性失敗通知走頂端 pill；重試入口就是工具列上的「儲存」，草稿仍保留在表單裡，
+            // 不需要另開面板。
+            toastCoordinator.error(L10n.string("儲存失敗，請再試一次"))
             isSaving = false
         }
     }

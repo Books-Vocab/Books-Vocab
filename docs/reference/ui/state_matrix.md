@@ -103,12 +103,13 @@ Scope: `ios/BooksAndVocab`
 |------|----------|--------|------|
 | Signed out | `!authManager.isLoggedIn` | empty state card | 已覆蓋 |
 | Initial loading | `coordinator.isLoading && syncedEntries.isEmpty` | shared state message card | 已覆蓋 |
-| Sync error banner | `errorMessage != nil` | `ErrorBannerView` | 已覆蓋 |
+| Sync error（可重試） | `bannerError = .refresh(isRetryable: true)` | 清單頂端面板 `vocab.statusPanel`（重試／關閉）；使用者主動刷新時另彈 warning pill | 已覆蓋 |
+| Sync error（不可重試） / 部分失敗 | `.refresh(isRetryable: false)`、`.pendingDeletesFailure`、`.archivePartial` | warning pill（`KGVocabBanner.pill`）；清單為空時仍是全頁 error state | 已覆蓋 |
 | Review status filter | 使用者切換複習狀態 | 單列 filter + 排序 | 已覆蓋 |
 | Empty by search / review state | `rows.isEmpty` | empty state content | 已覆蓋 |
 | Populated list | `rows.count > 0` | list card + rows | 已覆蓋 |
-| Pending delete retry | pending deletes + error | banner retry action | 已覆蓋 |
-| Background refresh success | `loadInitialData` 成功 | 無明確 success UI | 缺口 |
+| Pending delete retry | pending deletes | 清單頂端面板 `vocab.statusPanel`（重試，不可關閉）；重試結果以 pill 回報 | 已覆蓋 |
+| Refresh success | 有變化，或使用者主動刷新 | success pill（單字庫已更新／已是最新）；自動刷新且無變化時靜默 | 已覆蓋 |
 
 ### Sync State
 
@@ -215,7 +216,7 @@ Scope: `ios/BooksAndVocab`
 | Loading | sync 中且本機 live deck 數為 0 | loading state message + progress | 已覆蓋 |
 | Empty | sync 成功且 catalog 為空 | empty state | 已覆蓋 |
 | Error | list 或 SwiftData fetch/reconcile/save failure 且沒有 cache | error state + retry | 已覆蓋 |
-| Partial | list 或 SwiftData failure 但保有 cache | cached content + stale/failure banner | 已覆蓋 |
+| Partial | list 或 SwiftData failure 但保有 cache | cached content + 頂端失敗面板 `explore.partialState`（`AppStateMessageCard` + 具名「重試」）；手動重新整理失敗另彈 warning pill | 已覆蓋 |
 | No results | 有 catalog 但搜尋/篩選結果為 0 | no-results state + clear filters | 已覆蓋 |
 | Content | 有 live deck 且篩選結果非空 | deck grid/list | 已覆蓋 |
 
@@ -484,7 +485,7 @@ Preview matrix 已補齊：
 | Navigation lock | `navigationLocked == true`（tap 後 1s） | 所有 push CTA disabled，避免雙 push freeze | 已覆蓋 |
 | Follow toggle 儲存失敗 | `PodcastFollowToggle.perform` 回 `.rolledBack` | toast error `追蹤狀態儲存失敗` + 自動回滾 star | 已覆蓋 |
 | Sort 切換 | `sort` 變更 | menu pick + 動畫排序 | 已覆蓋 |
-| Refresh after load error | `loadError != nil` 但 `rawEpisodes` 非空（殘留） | content 仍顯示 + 上方插入 `AppBanner`（`載入失敗，顯示快取資料` + retry CTA → `reloadFromStore()`；`podcast.episodeList.staleBanner`） | 已覆蓋 |
+| Refresh after load error | `loadError != nil` 但 `rawEpisodes` 非空（殘留） | content 仍顯示 + 上方插入畫面內面板 `VocabStateMessageCard`（`載入失敗，顯示快取資料` + 具名「重試」→ `reloadFromStore()`；`podcast.episodeList.staleBanner`） | 已覆蓋 |
 
 ### Player Container State（`PodcastPlayerView` × `PodcastPlayerState`）
 
@@ -567,7 +568,7 @@ Preview matrix 已補齊：
 - Bookshelf background podcast sync 失敗 toast / status row
 - ~~iCloud 書籍下載失敗 vs notDownloaded 的徽章區分~~ — 已完成（`BookCard.swift:134` `case .failed: retryBadge`）
 
-> Episode list 「load error 但有殘留資料」的 stale banner 已完成（`AppBanner` + `podcast.episodeList.staleBanner`）。
+> Episode list 「load error 但有殘留資料」的 stale 面板已完成（`VocabStateMessageCard` + `podcast.episodeList.staleBanner`；#2047 由 `AppBanner` 遷入面板）。
 
 #### Priority 3
 - Bookshelf podcast sync running 的微 indicator（pull-to-refresh 期間 OK，自動 sync 期間缺）

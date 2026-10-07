@@ -300,18 +300,20 @@ struct VocabPullChangeDetectionTests {
 
     // MARK: - localization
 
-    /// These four banner strings shipped with no entry in ANY .lproj. `L10n`'s
+    /// These success strings (originally banner copy, now top-pill copy since
+    /// #2047) shipped with no entry in ANY .lproj. `L10n`'s
     /// three-tier lookup then fell through to "the key itself" — so an
     /// English-locale device rendered the raw Chinese key inside an otherwise
     /// English screen, which is exactly what the original bug report screenshot
     /// shows. Asserting against the **en** bundle directly is the only check
     /// that fails for the shipped state: a zh-Hant test device would have been
-    /// happy either way.
+    /// happy either way. (「封存已同步」was retired in #2047: batch archive now
+    /// reports through its single「已封存 N 個」pill.)
     @Test func bannerSuccessStrings_haveEnglishTranslations() throws {
         let path = try #require(Bundle.main.path(forResource: "en", ofType: "lproj"))
         let enBundle = try #require(Bundle(path: path))
 
-        for key in ["單字庫已更新", "單字庫已是最新", "待刪除項目已同步", "封存已同步"] {
+        for key in ["單字庫已更新", "單字庫已是最新", "待刪除項目已同步"] {
             let english = enBundle.localizedString(
                 forKey: key, value: "**missing**", table: "Localizable"
             )

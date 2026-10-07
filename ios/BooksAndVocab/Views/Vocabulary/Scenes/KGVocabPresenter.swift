@@ -16,12 +16,12 @@ struct KGVocabPresenter: View {
     @Environment(\.appSkin) private var appSkin
 
     struct State {
-        struct Banner {
+        /// 清單頂端的畫面內面板：只承載需要使用者操作（重試）的持續狀態。
+        /// 一次性通知不進這裡，走頂端 pill（見 `KGVocabBanner.pill`）。
+        struct StatusPanel {
             let message: String
             let systemImage: String
-            let tone: AppBanner.Tone
             let canDismiss: Bool
-            let canRetry: Bool
         }
 
         struct EmptyState {
@@ -53,7 +53,7 @@ struct KGVocabPresenter: View {
             let onStartMixed: () -> Void
         }
 
-        let banner: Banner?
+        let statusPanel: StatusPanel?
         let reviewStateOptions: [VocabTabOption<VocabularyReviewState>]
         let rows: [RowItem]
         let emptyState: EmptyState
@@ -61,14 +61,14 @@ struct KGVocabPresenter: View {
         let selectedRowID: UUID?
 
         init(
-            banner: Banner?,
+            statusPanel: StatusPanel?,
             reviewStateOptions: [VocabTabOption<VocabularyReviewState>],
             rows: [RowItem],
             emptyState: EmptyState,
             reviewCTA: ReviewCTA? = nil,
             selectedRowID: UUID? = nil
         ) {
-            self.banner = banner
+            self.statusPanel = statusPanel
             self.reviewStateOptions = reviewStateOptions
             self.rows = rows
             self.emptyState = emptyState
@@ -79,8 +79,8 @@ struct KGVocabPresenter: View {
 
     let state: State
     @Binding var query: VocabularyLibraryQuery
-    let onDismissBanner: (() -> Void)?
-    let onRetryBanner: (() -> Void)?
+    let onDismissStatusPanel: (() -> Void)?
+    let onRetryStatusPanel: (() -> Void)?
     let onRowTapped: (UUID) -> Void
     let selectionState: SelectionModeState
     let onLongPress: (UUID) -> Void
@@ -122,16 +122,10 @@ struct KGVocabPresenter: View {
 
             ScrollView {
             VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
-                if let banner = state.banner {
-                    AppBanner(
-                        message: banner.message,
-                        systemImage: banner.systemImage,
-                        tone: banner.tone,
-                        onRetry: banner.canRetry ? onRetryBanner : nil,
-                        onDismiss: banner.canDismiss ? onDismissBanner : nil
-                    )
+                if let panel = state.statusPanel {
+                    statusPanelView(panel)
+                        .transition(.statusRowReveal)
                 }
-
 
                 VocabListCard {
                     EmptyView()
@@ -196,10 +190,33 @@ struct KGVocabPresenter: View {
         .platformRefreshable { [onRefresh] in
             await onRefresh?()
         }
-        .animateSpring(state.banner == nil)
+        .animateSpring(state.statusPanel == nil)
         .accessibilityIdentifier("vocab.list.scroll")
         } // end outer VStack
         .enableInjection()
+    }
+
+    /// 畫面內面板：文案 + 具名動作按鈕（不是橫幅上的裸 glyph）。
+    private func statusPanelView(_ panel: State.StatusPanel) -> some View {
+        VocabStateMessageCard(
+            title: panel.message,
+            systemImage: panel.systemImage
+        ) {
+            HStack(spacing: appSkin.spacing.inlineGap) {
+                if let onRetryStatusPanel {
+                    Button(L10n.string("banner.action.retry"), action: onRetryStatusPanel)
+                        .buttonStyle(.appCompactAction(.primary))
+                        .accessibilityIdentifier("vocab.statusPanel.retry")
+                }
+                if panel.canDismiss, let onDismissStatusPanel {
+                    Button(L10n.string("banner.action.dismiss"), action: onDismissStatusPanel)
+                        .buttonStyle(.appCompactAction(.outline))
+                        .accessibilityIdentifier("vocab.statusPanel.dismiss")
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("vocab.statusPanel")
     }
 }
 
@@ -306,12 +323,10 @@ private enum KGVocabPresenterPreviewData {
     }()
 
     static let populatedState = KGVocabPresenter.State(
-        banner: .init(
+        statusPanel: .init(
             message: "2 個單字刪除待同步",
             systemImage: "exclamationmark.triangle.fill",
-            tone: .warning,
-            canDismiss: false,
-            canRetry: true
+            canDismiss: false
         ),
         reviewStateOptions: options,
         rows: rows,
@@ -323,7 +338,7 @@ private enum KGVocabPresenterPreviewData {
     )
 
     static let emptyState = KGVocabPresenter.State(
-        banner: nil,
+        statusPanel: nil,
         reviewStateOptions: options,
         rows: [],
         emptyState: .init(
@@ -350,8 +365,8 @@ private enum KGVocabPresenterPreviewData {
         KGVocabPresenter(
             state: KGVocabPresenterPreviewData.populatedState,
             query: .constant(VocabularyLibraryQuery()),
-            onDismissBanner: {},
-            onRetryBanner: {},
+            onDismissStatusPanel: {},
+            onRetryStatusPanel: {},
             onRowTapped: { _ in },
             selectionState: SelectionModeState(),
             onLongPress: { _ in },
@@ -366,8 +381,8 @@ private enum KGVocabPresenterPreviewData {
         KGVocabPresenter(
             state: KGVocabPresenterPreviewData.emptyState,
             query: .constant(VocabularyLibraryQuery(reviewStates: [.reviewed], sort: .alphabetical)),
-            onDismissBanner: nil,
-            onRetryBanner: nil,
+            onDismissStatusPanel: nil,
+            onRetryStatusPanel: nil,
             onRowTapped: { _ in },
             selectionState: SelectionModeState(),
             onLongPress: { _ in },

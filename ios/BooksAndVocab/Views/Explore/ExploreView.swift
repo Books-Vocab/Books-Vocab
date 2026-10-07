@@ -206,13 +206,16 @@ struct ExploreView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppSpacing.s3) {
                 if syncFailed {
-                    syncFailureBanner
-                    .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                    syncFailurePanel
+                        .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                        .transition(.statusRowReveal)
                 }
                 filterBar
                 deckGrid
             }
             .padding(.top, AppSpacing.s2)
+            // 失敗面板進出要順滑，不得跳變。
+            .animation(AppMotion.phaseChange, value: syncFailed)
             .animateContentFade(filteredDecks.count)
         }
         #if !targetEnvironment(macCatalyst)
@@ -324,7 +327,8 @@ struct ExploreView: View {
         stateScroll {
             VStack(spacing: AppSpacing.s2) {
                 if syncFailed {
-                    syncFailureBanner
+                    syncFailurePanel
+                        .transition(.statusRowReveal)
                 }
                 AppEmptyStateContent(
                     title: L10n.string("explore.noResults.title"),
@@ -338,15 +342,25 @@ struct ExploreView: View {
                     style: .bookshelf(appTheme)
                 )
             }
+            .animation(AppMotion.phaseChange, value: syncFailed)
         }
     }
 
-    private var syncFailureBanner: some View {
-        AppBanner(
-            message: L10n.string("explore.error.description"),
+    /// 目錄有快取但最新同步失敗：持續狀態且需要使用者操作（重試），所以是畫面內
+    /// 面板而非 pill（docs/sop/ui-design.md「暫時性提示」）。手動重新整理失敗時另由
+    /// `syncCatalog(showToastOnFailure: true)` 彈一則 pill。
+    private var syncFailurePanel: some View {
+        AppStateMessageCard(
+            title: L10n.string("explore.error.title"),
             systemImage: "exclamationmark.icloud",
-            onRetry: { Task { await refreshCatalog() } }
-        )
+            description: L10n.string("explore.error.description")
+        ) {
+            Button(L10n.string("explore.retry")) {
+                Task { await refreshCatalog() }
+            }
+            .buttonStyle(.appCompactAction(.primary))
+            .accessibilityIdentifier("explore.partialState.retry")
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("explore.partialState")
     }

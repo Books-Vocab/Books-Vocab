@@ -93,6 +93,12 @@ struct KGVocabView: View {
         }
         .animatePhaseChange(coordinator.isLoading)
         .animatePhaseChange(coordinator.errorMessage == nil)
+        // 每個終態結果通知一次（同結果重複發生也要再通知，所以看序號不看內容）。
+        .onChange(of: coordinator.noticeRevision) { _, _ in
+            if let pill = pendingPill {
+                toastCoordinator.show(pill)
+            }
+        }
         .onChange(of: coordinator.selectedEntry) { _, entry in
             if let entry, let callback = onEntrySelected {
                 callback(entry)
@@ -153,7 +159,7 @@ struct KGVocabView: View {
         )
 
         let state = KGVocabPresenter.State(
-            banner: bannerState,
+            statusPanel: statusPanelState,
             reviewStateOptions: tabOptions,
             rows: projection.visibleEntries.map {
                 KGVocabPresenter.State.RowItem(id: $0.id, entry: $0)
@@ -166,10 +172,10 @@ struct KGVocabView: View {
         return KGVocabPresenter(
             state: state,
             query: $query,
-            onDismissBanner: { coordinator.dismissBanner() },
-            // 待刪除 banner → 重試刪除；refresh 錯誤 banner → 重試 forceRefresh。
-            // 兩者互斥（banner factory 優先序：待刪除 > 錯誤），可否重試由 banner.canRetry 決定顯示。
-            onRetryBanner: {
+            onDismissStatusPanel: { coordinator.dismissBanner() },
+            // 待刪除面板 → 重試刪除；可重試的 refresh 錯誤面板 → 重試 forceRefresh。
+            // 兩者互斥（面板優先序：待刪除 > 錯誤）。
+            onRetryStatusPanel: {
                 Task {
                     if pendingDeletes.isEmpty {
                         await coordinator.forceRefresh(
@@ -272,11 +278,21 @@ struct KGVocabView: View {
         }
     }
 
-    private var bannerState: KGVocabPresenter.State.Banner? {
-        return KGVocabBanner.make(
+    private var statusPanelState: KGVocabPresenter.State.StatusPanel? {
+        KGVocabBanner.panel(
             pendingDeleteCount: pendingDeletes.count,
+            error: coordinator.bannerError
+        )
+    }
+
+    /// 一次性通知的 pill。只在 `coordinator.noticeRevision` 前進時發送（見 body），
+    /// 所以 body 重算不會重複彈出；coordinator 狀態保持原樣（`errorMessage` 仍驅動
+    /// 空清單的錯誤畫面），pill 只是它的通知出口。
+    private var pendingPill: AppToastItem? {
+        KGVocabBanner.pill(
             error: coordinator.bannerError,
-            refreshSuccessMessage: coordinator.refreshSuccessMessage
+            refreshSuccessMessage: coordinator.refreshSuccessMessage,
+            refreshWasExplicit: coordinator.lastRefreshTrigger == .explicit
         )
     }
 

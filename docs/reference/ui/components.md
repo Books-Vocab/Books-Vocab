@@ -60,7 +60,7 @@ Scope: `ios/BooksAndVocab`
 - `AppActionButtonStyle`
 - `AppCard`
 - `AppTag`
-- `AppBanner` — 內嵌狀態橫幅（網路/同步/錯誤），支援 retry + dismiss 按鈕；跨場景持久展示，與 AppStateMessage* 的差異在於 AppBanner 掛在**內容流頂端**（清單/表單上方，隨內容捲動）而非 panel 內 transient 訊息。**視覺契約（2026-08 重新設計）**：連續圓角（`AppRoundness.control` —— banner 被 `minHeight` 釘在 44pt，是控制項尺度而非卡片尺度）+ 語意背景 token（`successBg` / `warningBg`）+ `primaryText` 文字（tone 色只染 icon，沿用 `AppOfflineBanner` 的 AAA 對比結論）+ `.appElevation(.z0)`，**無 border、無底部 hairline**；action glyph 維持 caption 大小但 hit target 為 44pt。舊版是方角滿版色塊 + 底部 hairline，那是 chrome 語彙、夾在圓角卡片之間割裂（違反 Mochi 北極星 1/2 —— 北極星 #1 2026-08-06 改寫後，此處適用的是「內容層單色、不用自繪背景在內容區做分區」那半條；banner 是 in-content 元件，不是系統 bar）。屬 App Shell 層，只吃 `AppTheme`/`AppFonts`/`AppMetrics`，不碰 `appSkin`
+- `AppBanner` — **遷移中、不再新增呼叫點**（#2047：暫時性用途改頂端 pill，承載操作的狀態改 `AppStateMessageCard`／`VocabStateMessageCard` 面板，規範見 `docs/sop/ui-design.md`「暫時性提示」）。原定位：內嵌狀態橫幅（網路/同步/錯誤），支援 retry + dismiss 按鈕；跨場景持久展示，與 AppStateMessage* 的差異在於 AppBanner 掛在**內容流頂端**（清單/表單上方，隨內容捲動）而非 panel 內 transient 訊息。**視覺契約（2026-08 重新設計）**：連續圓角（`AppRoundness.control` —— banner 被 `minHeight` 釘在 44pt，是控制項尺度而非卡片尺度）+ 語意背景 token（`successBg` / `warningBg`）+ `primaryText` 文字（tone 色只染 icon，沿用 `AppOfflineBanner` 的 AAA 對比結論）+ `.appElevation(.z0)`，**無 border、無底部 hairline**；action glyph 維持 caption 大小但 hit target 為 44pt。舊版是方角滿版色塊 + 底部 hairline，那是 chrome 語彙、夾在圓角卡片之間割裂（違反 Mochi 北極星 1/2 —— 北極星 #1 2026-08-06 改寫後，此處適用的是「內容層單色、不用自繪背景在內容區做分區」那半條；banner 是 in-content 元件，不是系統 bar）。屬 App Shell 層，只吃 `AppTheme`/`AppFonts`/`AppMetrics`，不碰 `appSkin`
 - `AppFloatingChrome` / `AppFloatingChromeButton` — 浮在內容上的**玻璃 chrome** 原語，給「沒有系統 bar 可繼承」的畫面用（Reader 把 navigationBar/tabBar 都關掉，拿不到平台白給的玻璃）。`AppFloatingChrome { }` 包 `GlassEffectContainer`；`.appFloatingChromeItem(union:in:interactive:)` 只上材質（`glassEffect` + `glassEffectUnion`，同 union id 合成一塊共享膠囊）；`.appFloatingChromeMorph(id:in:)` 走 `glassEffectID`，讓 compact ↔ expanded 由 matchedGeometry 形變。**命中區由 `AppFloatingChromeButton` 在 Button 的 label 內自撐 44pt**（`.plain` Button 的手勢掛在 label 上，祖先 `contentShape` 無法讓後代手勢認領自己 frame 以外的點——同 `VocabChromeIconButton` 與 `PodcastControlsView` 的作法）。`accessibilityLabel` 為必填。首個消費者是 Reader top chrome；同族待收編：`PodcastPlayerScene` / `PodcastTranscriptViewport` / `PodcastShelf` / `KGVocabView` / `ReviewFoldSurface` / `ArchivedVocabSheet`。材質視覺用 `ios_ops.sh catalog open` 開真實 simulator window，再以 `catalog capture` 走系統 compositor 驗證；iOS 26 Liquid Glass 的 backdrop sampling 不可用 `layer.render(in:)` 判讀。
 - `AppSheetModifier` — `.appSheet(.large/.medium/.adaptive)` 統一 sheet presentation，取代各畫面散落的 `.sheet` / `.halfSheet` 呼叫
 - `AppCompactActionButtonStyle` — inline 小尺寸主行動按鈕（capsule，不撐滿寬度），透過 `.buttonStyle(.appCompactAction(.primary/.neutral/.outline/.destructive))` 套用；取代 4 處 `.borderedProminent.controlSize(.small)`；與 `AppActionButtonStyle`（全寬主按鈕）分工 — banner / card / toolbar 內 inline CTA 用此
@@ -80,9 +80,9 @@ Scope: `ios/BooksAndVocab`
 - `ios/BooksAndVocab/UIComponents/View+ToastSheet.swift`
 - `ios/BooksAndVocab/Services/ModelContext+SafeSave.swift`
 
-核心元件：
-- `AppToast` — capsule 形狀 toast UI，支援 swipe dismiss
-- `AppToastCoordinator` — toast 管理器 + `AppToastItem` 資料模型（style: success/info/warning/error）
+核心元件（行為契約見 `docs/sop/ui-design.md`「暫時性提示」）：
+- `AppToast` — 頂端 glass pill，單行（縮小後尾端截斷、不換行），支援上滑關閉，**無動作按鈕**；選取器 `app.toast`
+- `AppToastCoordinator` — toast 計時／動畫／VoiceOver 外殼；`AppToastQueue` 是純狀態機（同 key 就地取代、不同 key 排隊、最多 2 則、滿了留較嚴重者、退場後才換下一則）；`AppToastItem`（style: success/info/warning/error，`key` 為事件身分）
 - `toastSheet` — 自動在 sheet 內注入 `toastOverlay()` 的 view modifier
 - `toastFullScreenCover` — 同上，用於 fullScreenCover
 - `safeSaveWithToast()` — `ModelContext` 安全存檔 + toast 回饋

@@ -4,10 +4,12 @@ import Testing
 import SwiftUI
 @testable import BooksAndVocab
 
-/// Pins the vocab-list banner presentation contract: the banner must reflect the
+/// Pins the vocab-list notice presentation contract: it must reflect the
 /// *actual* error, never hard-code "離線模式". Regression guard for the bug where any
 /// `errorMessage != nil` was rendered as an offline banner regardless of the real error
 /// (violating the `KGError.isNetworkRelated` contract pinned in `KGServiceErrorTests`).
+/// Since #2047 the same state splits into an actionable in-screen panel (retryable)
+/// and one-off top pills (everything else).
 @MainActor
 @Suite("KGVocabBanner presentation")
 struct KGVocabBannerTests {
@@ -38,73 +40,125 @@ struct KGVocabBannerTests {
         #expect(c.isRetryable)
     }
 
-    // MARK: - factory: message must pass through, never hard-coded offline
+    // MARK: - panel: message must pass through, never hard-coded offline
 
-    @Test func make_nonNetworkError_showsRealMessage_notOffline() {
+    @Test func panel_nonNetworkRetryableError_showsRealMessage_notOffline() {
         let realMessage = KGError.httpError(statusCode: 500, detail: "boom").localizedDescription
-        let banner = KGVocabBanner.make(
+        let panel = KGVocabBanner.panel(
             pendingDeleteCount: 0,
-            error: KGVocabBannerErrorClassifier.refreshError(from: KGError.httpError(statusCode: 500, detail: "boom")),
-            refreshSuccessMessage: nil
+            error: KGVocabBannerErrorClassifier.refreshError(from: KGError.httpError(statusCode: 500, detail: "boom"))
         )
-        #expect(banner?.message == realMessage)
+        // 5xx is retryable → it is an actionable state, so it lives in the panel.
+        #expect(panel?.message == realMessage)
         // The old hard-coded offline copy must NOT appear for a non-network error.
-        #expect(banner?.message != L10n.string("離線模式，同步失敗。請確認網路連線後重試"))
+        #expect(panel?.message != L10n.string("離線模式，同步失敗。請確認網路連線後重試"))
         // Non-network error uses the generic warning glyph, not the wifi.slash offline glyph.
-        #expect(banner?.systemImage != "wifi.slash")
-        // 5xx is retryable.
-        #expect(banner?.canRetry == true)
+        #expect(panel?.systemImage != "wifi.slash")
+        #expect(panel?.canDismiss == true)
     }
 
-    @Test func make_unauthorized_isNotRetryable() {
-        let banner = KGVocabBanner.make(
+    @Test func panel_offlineError_usesOfflineGlyph() {
+        let panel = KGVocabBanner.panel(
             pendingDeleteCount: 0,
+            error: KGVocabBannerErrorClassifier.refreshError(from: KGError.offline)
+        )
+        #expect(panel?.message == KGError.offline.localizedDescription)
+        #expect(panel?.systemImage == "wifi.slash")
+    }
+
+    @Test func panel_pendingDeletes_takesPriorityOverError() {
+        let panel = KGVocabBanner.panel(
+            pendingDeleteCount: 3,
+            error: KGVocabBannerErrorClassifier.refreshError(from: KGError.offline)
+        )
+        #expect(panel?.canDismiss == false)
+        #expect(panel?.message == L10n.format("%@ 個單字刪除待同步", "3"))
+    }
+
+    @Test func panel_notShownForOneOffNotices() {
+        // Not retryable / partial failures / success are notifications, not states.
+        #expect(KGVocabBanner.panel(
+            pendingDeleteCount: 0,
+            error: KGVocabBannerErrorClassifier.refreshError(from: KGError.unauthorized)
+        ) == nil)
+        #expect(KGVocabBanner.panel(
+            pendingDeleteCount: 0,
+            error: .pendingDeletesFailure(message: "x")
+        ) == nil)
+        #expect(KGVocabBanner.panel(
+            pendingDeleteCount: 0,
+            error: .archivePartial(message: "x")
+        ) == nil)
+        #expect(KGVocabBanner.panel(pendingDeleteCount: 0, error: nil) == nil)
+    }
+
+    // MARK: - pill: one-off notices
+
+    @Test func pill_unauthorized_isOneOffWarning_notOffline() {
+        let pill = KGVocabBanner.pill(
             error: KGVocabBannerErrorClassifier.refreshError(from: KGError.unauthorized),
             refreshSuccessMessage: nil
         )
-        #expect(banner?.message == KGError.unauthorized.localizedDescription)
-        #expect(banner?.canRetry == false)
-        #expect(banner?.systemImage != "wifi.slash")
+        #expect(pill?.message == KGError.unauthorized.localizedDescription)
+        #expect(pill?.style == .warning)
+        #expect(pill?.key == KGVocabBanner.PillKey.refresh)
     }
 
-    @Test func make_offlineError_usesOfflineGlyphAndRetry() {
-        let banner = KGVocabBanner.make(
-            pendingDeleteCount: 0,
+    @Test func pill_retryableErrorFromAutomaticLoad_isCarriedByPanelOnly() {
+        let pill = KGVocabBanner.pill(
             error: KGVocabBannerErrorClassifier.refreshError(from: KGError.offline),
-            refreshSuccessMessage: nil
+            refreshSuccessMessage: nil,
+            refreshWasExplicit: false
         )
-        #expect(banner?.message == KGError.offline.localizedDescription)
-        #expect(banner?.systemImage == "wifi.slash")
-        #expect(banner?.canRetry == true)
-        #expect(banner?.tone == .warning)
+        #expect(pill == nil)
     }
 
-    // MARK: - factory: priority ordering preserved
-
-    @Test func make_pendingDeletes_takesPriorityOverError() {
-        let banner = KGVocabBanner.make(
-            pendingDeleteCount: 3,
+    @Test func pill_retryableErrorFromUserRefresh_alsoNotifies() {
+        // The panel appears as the result of a user action → announce it with a pill too.
+        let pill = KGVocabBanner.pill(
             error: KGVocabBannerErrorClassifier.refreshError(from: KGError.offline),
-            refreshSuccessMessage: nil
+            refreshSuccessMessage: nil,
+            refreshWasExplicit: true
         )
-        #expect(banner?.canRetry == true)
-        #expect(banner?.canDismiss == false)
-        #expect(banner?.message == L10n.format("%@ 個單字刪除待同步", "3"))
+        #expect(pill?.message == KGError.offline.localizedDescription)
+        #expect(pill?.style == .warning)
+        #expect(pill?.key == KGVocabBanner.PillKey.refresh)
     }
 
-    @Test func make_successMessage_whenNoErrorOrDeletes() {
-        let banner = KGVocabBanner.make(
-            pendingDeleteCount: 0,
-            error: nil,
+    @Test func pill_pendingDeleteFailure_isShownEvenWhilePanelIsUp() {
+        // Previously the pending-delete banner's priority hid this result.
+        let message = L10n.format("刪除失敗 %@ 筆，稍後將自動重試", "2")
+        let pill = KGVocabBanner.pill(error: .pendingDeletesFailure(message: message), refreshSuccessMessage: nil)
+        #expect(pill?.message == message)
+        #expect(pill?.style == .warning)
+        #expect(pill?.key == KGVocabBanner.PillKey.pendingDeletes)
+        #expect(KGVocabBanner.panel(pendingDeleteCount: 2, error: .pendingDeletesFailure(message: message)) != nil)
+    }
+
+    @Test func pill_archivePartial_isWarning() {
+        let pill = KGVocabBanner.pill(error: .archivePartial(message: "1/3"), refreshSuccessMessage: nil)
+        #expect(pill?.style == .warning)
+        #expect(pill?.key == KGVocabBanner.PillKey.archive)
+    }
+
+    @Test func pill_successMessage_whenNoError() {
+        let pill = KGVocabBanner.pill(error: nil, refreshSuccessMessage: L10n.string("單字庫已更新"))
+        #expect(pill?.style == .success)
+        #expect(pill?.message == L10n.string("單字庫已更新"))
+        // Same event key as refresh errors: a newer refresh result replaces the older pill.
+        #expect(pill?.key == KGVocabBanner.PillKey.refresh)
+    }
+
+    @Test func pill_errorWinsOverStaleSuccess() {
+        let pill = KGVocabBanner.pill(
+            error: .archivePartial(message: "1/3"),
             refreshSuccessMessage: L10n.string("單字庫已更新")
         )
-        #expect(banner?.tone == .success)
-        #expect(banner?.systemImage == "checkmark.circle.fill")
+        #expect(pill?.message == "1/3")
     }
 
-    @Test func make_returnsNil_whenNothingToShow() {
-        let banner = KGVocabBanner.make(pendingDeleteCount: 0, error: nil, refreshSuccessMessage: nil)
-        #expect(banner == nil)
+    @Test func pill_returnsNil_whenNothingToShow() {
+        #expect(KGVocabBanner.pill(error: nil, refreshSuccessMessage: nil) == nil)
     }
 }
 #endif
