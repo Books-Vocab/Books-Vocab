@@ -35,7 +35,7 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 
 | 檔案 | 說明 |
 |------|------|
-| `BookshelfCoordinator.swift` | `@MainActor protocol BookshelfCoordinating` + `@Observable @MainActor` 實作，含匯入、刪除、批次選擇、open reader / podcast 導航狀態、顯式同步 `sync(...)`（吃窄協定 `any BackgroundSyncing`，`isSyncing` 重入守衛，委派 `ExplicitSync.run`） |
+| `BookshelfCoordinator.swift` | `@MainActor protocol BookshelfCoordinating` + `@Observable @MainActor` 實作，含匯入、刪除、批次選擇、open reader / podcast 導航狀態、顯式同步 `sync(...)`（吃窄協定 `any BackgroundSyncing`，`isSyncing` 重入守衛，委派 `ExplicitSync.run`）。**刪除順序**：先沖掉既有 pending 變更 → 暫存 row 刪除 + 單字 `bookId` 清除 → `BookFileManaging.deleteBookFile`（throws；缺檔不算失敗）→ 成功才 save 並刪 manifest、toast「已刪除」；刪檔失敗 `rollback()` + 錯誤 toast，不可吞錯（否則 row 已消失、檔案仍在，`AppOrphanBookRecovery` 讓書復活） |
 
 ### Components Layer（row UI）
 

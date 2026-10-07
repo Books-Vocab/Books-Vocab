@@ -182,8 +182,17 @@ struct BookManifestStore {
             }
     }
 
+    /// 只在書籍檔案已刪除後呼叫；manifest 單獨殘留不會讓書復活（reconcile 以磁碟上的書檔為起點），
+    /// 故失敗只記 log、不打斷刪除流程。
     func delete(bookId: UUID) {
-        try? FileManager.default.removeItem(at: url(for: bookId))
+        let target = url(for: bookId)
+        do {
+            try FileManager.default.removeItem(at: target)
+        } catch where LocalBookFileManager.isFileAbsent(error) {
+            return
+        } catch {
+            AppLog.book.warning("Book manifest delete failed (\(target.lastPathComponent, privacy: .public)): \(error.localizedDescription)")
+        }
     }
 
     private static let encoder: JSONEncoder = {

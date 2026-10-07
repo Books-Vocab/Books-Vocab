@@ -979,6 +979,7 @@
 "匯出失敗" = "Export failed";
 "設定儲存失敗" = "Failed to save settings";
 "已刪除" = "Deleted";
+"刪除失敗，書籍檔案無法移除" = "Couldn't delete: the book file could not be removed";
 "已複製" = "Copied";
 "已取消封存" = "Unarchived";
 "已建立" = "Created";
