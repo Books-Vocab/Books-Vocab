@@ -12,7 +12,7 @@ cd "$ROOT"
 
 LINUX_GROUPS=(
   backup-verify devops deploy-smoke infra-health disk-guard reconcile branch-audit
-  exit-code-contract worktree delivery-control capability-matrix context-routing ui-token plain-deadzone
+  exit-code-contract worktree delivery-control capability-matrix context-routing doctor ui-token plain-deadzone
   ui-deadcode ui-graph log-assert python-entrypoints
   lint-baselines injection-lint ui-fixture-lint ops-ci-coverage
   ui-quality-plane ui-quality-gate review-card-golden docs-lint gen-ios-baseline
@@ -92,6 +92,7 @@ done
 # mention the file.  Not a full reachability scan; extend as files are routed.
 ROUTED_TESTS=(
   "ui-graph:ops/tests/test_ui_graph_contract.py"
+  "doctor:ops/tests/test_doctor.py"
   "capability-matrix:ops/tests/test_compute_cli.py"
   "capability-matrix:ops/tests/test_compute_router.py"
   "capability-matrix:ops/tests/test_felix_compute_launcher.py"
