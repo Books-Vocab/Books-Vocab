@@ -33,7 +33,7 @@ verified_against: afe016c4ea2fcbd7306f9c4f40b4556e77865100
 
 - API routers：`backend/src/kg/routers/`；schemas／response models：`backend/src/kg/api_models/`。
 - Vocabulary intake／CRUD／sync：`backend/src/kg/vocab_*.py`、`backend/src/kg/vocab_handlers/`；missing-target Add Link 的 durable composite operation 在 `backend/src/kg/vocab_add_link_operation.py`，request／status schemas 在 `backend/src/kg/api_models/vocab_add_link.py`。A 的原始 context 只作 B 的 sense-disambiguation 參照，不落地成 B 的例句或關係文案。
-- Graph links：`backend/src/kg/graph_*.py` 與 vocabulary router；`POST /api/graph/links/ensure-target` 只 enqueue、`GET /api/operations/{operation_id}` 讀取狀態，詳情以 `docs/reference/sync_lifecycle.md` 為準。
+- Graph links：`backend/src/kg/graph_*.py` 與 vocabulary router；`POST /api/graph/links/ensure-target` 只 enqueue、`GET /api/operations/{operation_id}` 讀取狀態，詳情以 `docs/reference/sync_lifecycle.md` 為準。 operation 終態 `interrupted`（`errorCode=interrupted`，取代舊 `cancelled`）涵蓋 shutdown 取消與重啟孤兒：app lifespan 在 worker 鎖後把所有非終態 operation 標為 `interrupted`，client 以新 Idempotency-Key 重試；`failed` 的 `errorCode` 另有 `target_archived`、`target_is_source`、`source_unavailable`（不再併入 `target_unavailable`），`enrichment_failed` 只出現在 `warnings`。
 - Podcast：`backend/src/kg/podcast_*.py`；生成與音訊工作流在 `lab/podcast/`。
 - Provider registry／費率：`backend/src/kg/llm/providers.py`；變動同步 `docs/reference/cost_baseline.md`。
 - Database／migration：backend migration entry 與 deployment SOP；不要從本文件猜資料表或直接拼 SQL。

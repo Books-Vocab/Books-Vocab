@@ -1,4 +1,5 @@
 """Tests for FastAPI lifespan and global exception handler."""
+
 from __future__ import annotations
 
 from fastapi import HTTPException
@@ -71,3 +72,24 @@ def test_http_exception_not_intercepted(tmp_path):
 
     assert resp.status_code == 403
     assert resp.json()["detail"] == "Forbidden by test"
+
+
+def test_startup_marks_orphaned_add_link_operations_interrupted(tmp_path, monkeypatch):
+    """A restart must not leave queued/running add-link operations pollable forever."""
+    import kg.vocab_add_link_operation as operations
+
+    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+    operations.reset()
+    try:
+        orphan, _ = operations.create_operation(
+            user_id="u1", notebook_id="default", idempotency_key="k1", payload={"target_word": "x"}
+        )
+        operations.start_operation(orphan["operation_id"])
+        operations.reset()  # previous process died; only SQLite survives
+
+        with TestClient(create_app(_make_test_settings(tmp_path))):
+            record = operations.get_operation("u1", orphan["operation_id"])
+            assert record["status"] == "interrupted"
+            assert record["error_code"] == "interrupted"
+    finally:
+        operations.reset()
