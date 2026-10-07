@@ -87,6 +87,10 @@ Swift 端應優先透過 `VocabularyEntry` 的 typed helper 使用這些狀態�
 - **複習狀態刻意不算變動**（`lastReviewedAt` / `reviewCount` / `nextReviewAt` / `streak` / `lapse`）。它每次複習都由本機推上去、下一輪 incremental pull 再原樣拉回；若計入，任何一次複習後的同步都會被判為「單字庫有變化」——這正是要避免的假陽性。
 - SwiftData 對屬性是「指派即髒」，所以判準必須在覆寫欄位**之前**取樣，事後問 `hasChanges` 得不到答案。
 
+**分頁（`X-Next-Cursor`）**：`GET /api/vocab` 每頁最多 `limit`（預設 5,000）列，依 `(updated_at, id)` 升冪；還有下一頁時回 `X-Next-Cursor`。cursor 是 opaque token，綁定請求 scope（`notebook_id` + `since`），換 scope 重用會被 400 拒絕。iOS 一律經 `KGService.fetchAllVocabPages` 讀取：每頁原樣重送同一組 `notebook_id`／`since` 再加 `cursor`，直到 header 缺席；`X-Pipeline-Pending` 取最後一頁。
+
+- **不變式**：整批 drain 完才 merge；orphan cleanup、`SyncKeys.incrementalBoundary` 與 `payloadVersion` 只在全部頁成功後才寫。任一頁 HTTP 失敗、無法解碼或 cursor 不前進即整輪 throw，什麼都不提交——截斷的讀取與「server 已沒有這些卡」無法區分。只讀第一頁時，超過 5,000 列的庫在 full sync 會把最新的卡當 orphan 刪掉，boundary 再越過沒讀到的列，那些卡就永遠拉不回來（#2101）。
+
 ### 批次刪除 / 封存回應的三個 bucket：`*_words` / `not_found` / `failed`
 
 batch-delete（`POST /api/vocab/batch-delete`）與 batch-archive（`PATCH /api/vocab/batch-archive`）回傳**三個互斥清單**（後端 `kg/vocab_crud.py`）：

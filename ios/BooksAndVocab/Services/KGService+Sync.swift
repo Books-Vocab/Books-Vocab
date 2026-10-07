@@ -138,13 +138,15 @@ extension KGService {
     /// `pullCardsToLocal` 加上逐步進度回報。
     ///
     /// `reporter` 沒有預設值：它與上面那支三參數版構成 overload，給了預設值會讓
-    /// 兩者在只傳 container 時互相打架。
+    /// 兩者在只傳 container 時互相打架。`defaults` 是 sync cursor 的存放處，只有
+    /// 測試會換掉它（隔離 `.standard`）。
     @discardableResult
     func pullCardsToLocal(
         container: ModelContainer,
         progress: ((String, Int, Int) -> Void)?,
         notebookId: String?,
-        reporter: SyncProgressReporting?
+        reporter: SyncProgressReporting?,
+        defaults: UserDefaults = .standard
     ) async throws -> KGPullOutcome {
         let task = enqueuePull { predecessor, pullID in
             Task {
@@ -155,7 +157,7 @@ extension KGService {
                 _ = await predecessor?.result
                 return try await self.performPullCardsToLocal(
                     container: container, progress: progress,
-                    notebookId: notebookId, reporter: reporter
+                    notebookId: notebookId, reporter: reporter, defaults: defaults
                 )
             }
         }
@@ -166,11 +168,11 @@ extension KGService {
         container: ModelContainer,
         progress: ((String, Int, Int) -> Void)?,
         notebookId: String?,
-        reporter: SyncProgressReporting?
+        reporter: SyncProgressReporting?,
+        defaults: UserDefaults
     ) async throws -> KGPullOutcome {
         progress?(L10n.string("正在下載單字..."), 0, 0)
 
-        let defaults = UserDefaults.standard
         let storedPayloadVersion = defaults.integer(forKey: SyncKeys.payloadVersion)
         if storedPayloadVersion < SyncKeys.currentPayloadVersion {
             defaults.removeObject(forKey: SyncKeys.incrementalBoundary)
@@ -207,27 +209,15 @@ extension KGService {
         // Bug A fix: 記錄邊界在發起請求前，避免 pull 期間新增的卡片被跳過
         let pullBoundary = Date().timeIntervalSince1970
 
-        let (data, httpResponse) = try await authenticatedRequest(
-            path: "api/vocab",
-            queryItems: queryItems.isEmpty ? nil : queryItems
-        )
-
-        guard httpResponse.statusCode == 200 else {
-            throw KGError.httpError(statusCode: httpResponse.statusCode, detail: "GET api/vocab failed")
-        }
+        // Drain every page before touching the store: the merge's orphan
+        // cleanup and the boundary below are only sound against the server's
+        // complete set (#2101).
+        let pages = try await fetchAllVocabPages(query: queryItems)
 
         progress?(L10n.string("解析資料..."), 0, 0)
-        let fetchedCards: [KGCard]
-        do {
-            fetchedCards = try JSONDecoder().decode([KGCard].self, from: data)
-        } catch {
-            AppLog.kg.error("Failed to decode KG cards: \(error.localizedDescription)")
-            throw KGError.serverError("Parse error: \(error.localizedDescription)")
-        }
-
         let actor = BackgroundSyncActor(modelContainer: container)
         let pullResult = try await actor.pullCardsToLocal(
-            fetchedCards: fetchedCards,
+            fetchedCards: pages.cards,
             isIncremental: isIncremental,
             progress: { detail, current, total in
                 progress?(detail, current, total)
@@ -254,11 +244,62 @@ extension KGService {
         defaults.set(SyncKeys.currentPayloadVersion, forKey: SyncKeys.payloadVersion)
 
         return KGPullOutcome(
-            pipelinePending: httpResponse.value(forHTTPHeaderField: "X-Pipeline-Pending") == "true",
+            pipelinePending: pages.pipelinePending,
             inserted: pullResult.inserted,
             updated: pullResult.updated,
             deleted: pullResult.deleted
         )
+    }
+
+    /// Every card one `GET /api/vocab` scope holds, in server order.
+    struct VocabPages {
+        var cards: [KGCard] = []
+        /// `X-Pipeline-Pending` of the last page — the freshest observation.
+        var pipelinePending = false
+    }
+
+    /// Read `GET /api/vocab` to the end by following `X-Next-Cursor`.
+    ///
+    /// The server returns at most `limit` (default 5,000) rows per page,
+    /// ordered by `(updated_at, id)`, and puts the next keyset position in
+    /// `X-Next-Cursor`; a page without it is the last. The cursor is bound to
+    /// the request scope (`notebook_id` + `since`), so every page re-sends
+    /// `query` verbatim plus the cursor.
+    ///
+    /// Throws on any failed, undecodable, or non-advancing page. A caller must
+    /// commit nothing it derives from completeness — orphan cleanup, the
+    /// incremental boundary — unless this returns: a truncated read is
+    /// indistinguishable from "the server no longer has these cards".
+    func fetchAllVocabPages(query: [URLQueryItem]) async throws -> VocabPages {
+        var pages = VocabPages()
+        var cursor: String?
+        var seenCursors = Set<String>()
+        repeat {
+            var pageQuery = query
+            if let cursor { pageQuery.append(URLQueryItem(name: "cursor", value: cursor)) }
+            let (data, httpResponse) = try await authenticatedRequest(
+                path: "api/vocab",
+                queryItems: pageQuery.isEmpty ? nil : pageQuery
+            )
+            guard httpResponse.statusCode == 200 else {
+                throw KGError.httpError(statusCode: httpResponse.statusCode, detail: "GET api/vocab failed")
+            }
+            do {
+                pages.cards.append(contentsOf: try JSONDecoder().decode([KGCard].self, from: data))
+            } catch {
+                AppLog.kg.error("Failed to decode KG cards: \(error.localizedDescription)")
+                throw KGError.serverError("Parse error: \(error.localizedDescription)")
+            }
+            pages.pipelinePending = httpResponse.value(forHTTPHeaderField: "X-Pipeline-Pending") == "true"
+            cursor = httpResponse.value(forHTTPHeaderField: "X-Next-Cursor").flatMap { $0.isEmpty ? nil : $0 }
+            if let cursor, !seenCursors.insert(cursor).inserted {
+                throw KGError.serverError("GET api/vocab returned a non-advancing cursor")
+            }
+        } while cursor != nil
+        if !seenCursors.isEmpty {
+            AppLog.kg.info("GET api/vocab drained \(seenCursors.count + 1) pages, \(pages.cards.count) cards")
+        }
+        return pages
     }
 
     func clearLocalData(container: ModelContainer, reason: String = "unspecified") async throws {

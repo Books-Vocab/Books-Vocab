@@ -81,18 +81,11 @@ extension KGService {
         }
     }
 
-    /// Notebook-scoped FULL fetch (no `since`): the copied notebook is brand new and
-    /// small, so fetch every card in one page. Deliberately notebook-scoped and
-    /// boundary-free — see `mergeNotebookScopedCards`.
+    /// Notebook-scoped FULL fetch (no `since`), drained across every page so a
+    /// copied deck larger than one server page lands whole. Deliberately
+    /// notebook-scoped and boundary-free — see `mergeNotebookScopedCards`.
     private func fetchNotebookCards(notebookId: String) async throws -> [KGCard] {
-        let (data, http) = try await authenticatedRequest(
-            path: "api/vocab",
-            queryItems: [URLQueryItem(name: "notebook_id", value: notebookId)]
-        )
-        guard http.statusCode == 200 else {
-            throw KGError.httpError(statusCode: http.statusCode, detail: "GET api/vocab (copied notebook) failed")
-        }
-        return try JSONDecoder().decode([KGCard].self, from: data)
+        try await fetchAllVocabPages(query: [URLQueryItem(name: "notebook_id", value: notebookId)]).cards
     }
 
     /// Merge notebook-scoped copied cards into local SwiftData as SYNCED rows.
