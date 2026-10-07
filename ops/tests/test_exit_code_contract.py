@@ -127,7 +127,7 @@ def test_in_lock_preflight_callers_propagate_the_preflight_exit():
     for script in ("ops/ios_build.sh", "ops/ios_test.sh", "ops/ios_release.sh"):
         text = (ROOT / script).read_text(encoding="utf-8")
         assert "|| preflight_rc=$?" in text, script
-        assert 'kg_ios_disk_budget_blocked_hint' in text, script
+        assert "kg_ios_disk_budget_blocked_hint" in text, script
         assert '"$KG_IOS_DISK_BUDGET_EXIT"' not in text, script
 
 
