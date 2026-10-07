@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from .cards import Card
 from .exceptions import QuotaExceededError
 from .retry import llm_retryable_exceptions, sync_retry
+from .sentry_init import capture_handled
 
 SYSTEM_PROMPT = """針對每個英文詞彙，回傳 JSON array，每個元素含：
 - word: 原詞
@@ -210,6 +211,7 @@ async def enrich_cards_stream(
             # Any escaped exception (known or future) becomes an error terminal
             # so tasks_remaining is always decremented. Without this, a new
             # uncaught exception type would silently re-introduce the deadlock.
+            capture_handled(e, context="enrich.batch")
             try:
                 _put_terminal({"type": "error", "error": str(e)})
             except BaseException:  # noqa: BLE001

@@ -60,6 +60,7 @@ from ..external_api_rate_limit import enrich_limiter, read_limiter, write_limite
 from ..graph import LinkKind
 from ..notebook import validate_notebook_access
 from ..pipeline_service import run_pipeline_background as _run_pipeline_bg
+from ..sentry_init import capture_handled
 from ..service_factories import create_client
 from ..types import UserRecord
 from ..vocab_handlers import (
@@ -375,15 +376,17 @@ async def _run_external_pipeline(
             run_id=operation_id,
             telemetry_started=True,
         )
-    except Exception:
+    except Exception as exc:
         logger.exception("External enrich operation failed before pipeline telemetry: %s", operation_id)
+        capture_handled(exc, context="external_api.enrich_operation")
         _mark_operation_failed(operation_id)
         try:
             from .. import pipeline_log
 
             pipeline_log.end_run(operation_id, "failed")
-        except Exception:
+        except Exception as close_exc:
             logger.warning("Failed to close external operation telemetry: %s", operation_id, exc_info=True)
+            capture_handled(close_exc, context="external_api.operation_telemetry_close")
 
 
 @router.post("/api/v1/api-keys", response_model=ExternalApiKeyResponse, status_code=201)
@@ -581,7 +584,7 @@ async def delete_external_card(
         raise
     try:
         _embedding_store(user["dir"], llm=None, notebook_id=notebook_id).remove(card.id)
-    except Exception:
+    except Exception as exc:
         # Card/graph deletion is already durable. A stale embedding is
         # recoverable on the next pipeline pass, so it must not turn a
         # successful delete into a retry-prone 5xx.
@@ -591,6 +594,7 @@ async def delete_external_card(
             card.id,
             exc_info=True,
         )
+        capture_handled(exc, context="external_api.embedding_evict")
     return ExternalCardDeleteResponse(cardId=card.id, deleted=True)
 
 

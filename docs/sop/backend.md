@@ -107,6 +107,13 @@ cd backend && uv run python -m pytest -q
 - `docs/sop/deploy.md`（env keys + opt-in 模式）
 - `backend/src/kg/sentry_init.py`（scrubbing / integrations 實作）
 
+規則：
+- 未處理例外由 Starlette integration 自動上報（含 5xx `HTTPException`／`KGError`，`failed_request_status_codes` 預設 500–599）；`LoggingIntegration` 維持 `event_level=None`，`logger.error` 只是 breadcrumb，**不要**改成 ERROR（會重複上報）。
+- 「catch 後吞掉、不 re-raise」的失敗必須呼叫 `capture_handled(exc, context="<area>.<site>", tags=...)`；`context` 是穩定的 dotted id（現役：`pipeline.step`、`enrich.batch`、`external_api.enrich_operation`、`external_api.operation_telemetry_close`、`external_api.embedding_evict`），可在 Sentry 以 `context:` 篩選。helper 無 DSN 時 no-op、永不 raise，並自動略過 4xx `KGError` 與 cancellation／`SystemExit` 等非 `Exception`。會 re-raise 或轉成 5xx 回應的路徑不要再呼叫（會重複）。
+- CLI／cron entrypoint（`ops_cli_app.main`、`log_retention.main`、`orphan_scan.main`）呼叫 `init_sentry(job="<name>")`，事件帶 global `job` tag；新增 entrypoint 照做。
+- Release：`SENTRY_RELEASE` 原樣使用；否則取 `KG_VERSION`／`/app/VERSION`，以 `kg-backend@<value>` 回報（值已含 `@` 則不加前綴）。
+- 測試：`backend/tests/conftest.py` 預設 `SENTRY_DSN=""` 遮蔽 dev `.env`；需要 SDK 的測試用 stub module（見 `tests/test_sentry_capture.py`），不得連網。
+
 ### 查 LLM provider / 換模型 / A/B
 
 - Provider registry：`backend/src/kg/llm/providers.py` —— Gemini / DeepSeek（未來 Qwen·GLM）皆 OpenAI-compatible，加 provider = 加一列 `REGISTRY`。

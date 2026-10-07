@@ -3,11 +3,17 @@
 No-op when SENTRY_DSN is unset, so dev/test runs without Sentry account.
 Idempotent: safe to call multiple times (e.g. from create_app in tests).
 
+Handled failures (caught + logged, never re-raised) do not become events on
+their own — ``LoggingIntegration`` runs with ``event_level=None`` so unhandled
+errors are not double-reported. Report them explicitly via
+``capture_handled(exc, context=...)``.
+
 Env vars:
     SENTRY_DSN                  Required for activation. Leave empty to disable.
     SENTRY_ENVIRONMENT          "production" / "staging" / "dev" (default: "production")
-    SENTRY_RELEASE              Git SHA or version tag; falls back to KG_VERSION,
-                                then to the contents of /app/VERSION (rsync'd by deploy).
+    SENTRY_RELEASE              Exact release string, used verbatim. When unset, the
+                                release is ``kg-backend@<value>`` from KG_VERSION, then
+                                from /app/VERSION (written by deploy, bind-mounted).
     SENTRY_TRACES_SAMPLE_RATE   APM sampling 0.0–1.0 (default: 0.0 = error-only)
     SENTRY_PROFILES_SAMPLE_RATE Profiling sampling 0.0–1.0 (default: 0.0)
 """
@@ -15,8 +21,11 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Final
+
+from .exceptions import KGError
 
 _logger = logging.getLogger(__name__)
 _initialized = False
@@ -30,6 +39,11 @@ _sentry_module: Any | None = None
 # to standby). Acts as the last-resort release identifier when no env override
 # is present.
 _DEFAULT_VERSION_FILE = Path("/app/VERSION")
+
+# Sentry release namespace for this service. Bare deploy identifiers (git SHA)
+# are qualified as ``kg-backend@<sha>`` so backend and iOS releases never
+# collide in the same Sentry organization.
+_RELEASE_PREFIX: Final[str] = "kg-backend@"
 
 # Query/header/cookie keys whose values must never reach Sentry.
 _SCRUB_HEADER_KEYS: Final[frozenset[str]] = frozenset({"authorization", "cookie", "x-admin-token"})
@@ -113,31 +127,48 @@ def _resolve_release(version_file: Path | None = None) -> str | None:
     """Pick the Sentry release identifier.
 
     Resolution order:
-      1. ``SENTRY_RELEASE`` env (explicit override; deploy script sets this)
+      1. ``SENTRY_RELEASE`` env — explicit override, returned verbatim
       2. ``KG_VERSION`` env (legacy fallback)
-      3. ``/app/VERSION`` file contents (rsync'd by ``devops.sh cmd_deploy``)
+      3. ``/app/VERSION`` file contents (deploy writes the SHA, bind-mounted)
 
-    Returns ``None`` when none of the sources yield a non-empty value, letting
-    ``sentry_sdk.init(release=None)`` default to its own SHA detection.
+    Values from 2 and 3 are qualified as ``kg-backend@<value>`` unless they
+    already contain ``@``. Returns ``None`` when no source yields a non-empty
+    value, letting ``sentry_sdk.init(release=None)`` use its own detection.
     """
-    for env_key in ("SENTRY_RELEASE", "KG_VERSION"):
-        raw = os.getenv(env_key, "").strip()
-        if raw:
-            return raw
+    explicit = os.getenv("SENTRY_RELEASE", "").strip()
+    if explicit:
+        return explicit
 
-    path = version_file if version_file is not None else _DEFAULT_VERSION_FILE
-    try:
-        if path.exists():
-            contents = path.read_text().strip()
-            if contents:
-                return contents
-    except OSError:  # pragma: no cover — defensive against unreadable mounts
-        _logger.warning("Failed to read release from %s", path)
-    return None
+    raw = os.getenv("KG_VERSION", "").strip()
+    if not raw:
+        path = version_file if version_file is not None else _DEFAULT_VERSION_FILE
+        try:
+            if path.exists():
+                raw = path.read_text().strip()
+        except OSError:  # pragma: no cover — defensive against unreadable mounts
+            _logger.warning("Failed to read release from %s", path)
+    if not raw:
+        return None
+    return raw if "@" in raw else f"{_RELEASE_PREFIX}{raw}"
 
 
-def init_sentry() -> bool:
-    """Initialize Sentry if SENTRY_DSN is set. Returns True when active."""
+def init_sentry(*, job: str | None = None) -> bool:
+    """Initialize Sentry if SENTRY_DSN is set. Returns True when active.
+
+    ``job`` names a CLI / cron entrypoint; it is attached as a global ``job``
+    tag so its events are separable from API-server events in the same
+    environment. No-op (returns False) without a DSN.
+    """
+    active = _init_sdk()
+    if active and job and _sentry_module is not None:
+        try:
+            _sentry_module.get_global_scope().set_tag("job", job)
+        except Exception:  # pragma: no cover — tagging must never break the job
+            _logger.exception("Failed to tag Sentry job=%s", job)
+    return active
+
+
+def _init_sdk() -> bool:
     global _initialized
     if _initialized:
         return True
@@ -219,6 +250,43 @@ def init_sentry() -> bool:
 
 def is_active() -> bool:
     return _initialized
+
+
+def _is_reportable(exc: BaseException) -> bool:
+    """Whether a handled failure is worth a Sentry event.
+
+    Cancellation / interpreter exit (non-``Exception`` BaseExceptions) and
+    client-caused ``KGError`` (4xx: not found, quota, validation...) are
+    expected outcomes, not defects.
+    """
+    if not isinstance(exc, Exception):
+        return False
+    if isinstance(exc, KGError) and 400 <= exc.status_code < 500:
+        return False
+    return True
+
+
+def capture_handled(
+    exc: BaseException,
+    *,
+    context: str,
+    tags: Mapping[str, str] | None = None,
+) -> bool:
+    """Report a caught-and-swallowed failure to Sentry.
+
+    ``context`` is a stable dotted identifier of the call site (e.g.
+    ``pipeline.step``) and is always the ``context`` tag; ``tags`` adds
+    low-cardinality extras and cannot override it. Returns True when an event
+    was handed to the SDK. No-op without a DSN; never raises.
+    """
+    if not _initialized or _sentry_module is None or not _is_reportable(exc):
+        return False
+    try:
+        _sentry_module.capture_exception(exc, tags={**(tags or {}), "context": context})
+    except Exception:
+        _logger.warning("capture_handled failed for context=%s", context, exc_info=True)
+        return False
+    return True
 
 
 def tag_request_id(request_id: str | None) -> None:

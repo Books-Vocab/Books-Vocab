@@ -31,6 +31,11 @@ os.environ["GEMINI_API_KEY"] = "fake-key"
 for _k in [k for k in os.environ if k.startswith("LLM_PROVIDER_")]:
     del os.environ[_k]
 os.environ["LLM_PROVIDER_DEFAULT"] = "gemini"
+# Same pre-set trick for Sentry: an empty SENTRY_DSN shadows any dev `.env`
+# DSN (load_dotenv skips keys already present), so init_sentry() stays a no-op
+# and tests never ship events tagged "production". Tests exercising init use
+# monkeypatch + a stubbed sentry_sdk module.
+os.environ["SENTRY_DSN"] = ""
 
 
 TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"

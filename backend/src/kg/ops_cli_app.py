@@ -4,7 +4,8 @@
 from .ops_cli_costs import cmd_cost, cmd_cost_overview, cmd_fleet_overview
 from .ops_cli_dictionary import cmd_dictionary_health
 from .ops_cli_observability import cmd_llm_errors, cmd_timeseries, cmd_trends
-from .ops_cli_parser import build_parser, main
+from .ops_cli_parser import build_parser
+from .ops_cli_parser import main as _parser_main
 from .ops_cli_queries import (
     cmd_active_users,
     cmd_analyze,
@@ -28,6 +29,7 @@ from .ops_cli_shared import (
     _ops_passthrough_normalize,
     _parse_day,
 )
+from .sentry_init import init_sentry
 
 __all__ = [
     "_bucket_key",
@@ -59,3 +61,9 @@ __all__ = [
     "cmd_world_state",
     "main",
 ]
+
+
+def main() -> None:
+    """CLI entrypoint: tag Sentry events with ``job=ops_cli``, then dispatch."""
+    init_sentry(job="ops_cli")
+    _parser_main()
