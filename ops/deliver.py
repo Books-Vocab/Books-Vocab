@@ -8,7 +8,11 @@ It only sequences the existing tools (`worktree_orchestrate.py`, `delivery.py`,
 and GitHub on every run, so a run that died halfway is simply run again.
 
 Stages: checks -> adopt -> hand-back -> receipt -> publish -> wait-required ->
-(with --merge) queue -> wait-merged -> cleanup -> sync-main.
+(with --merge) wait agent-review -> queue -> wait-merged -> cleanup -> sync-main.
+--merge refuses to queue while agent-review on the exact head failed or the
+review bot left inline comments on it, unless --accept-review-findings gives a
+reason.  A mutation that meets a busy delivery lock retries (--lock-timeout).
+A failed stage reports the underlying error whole.
 
 Before the hand-back seals HEAD, the changed ``*.py`` files must pass the very
 ``ruff format --check`` the pr-gate runs (version read from pr-gate.yml, never
@@ -22,6 +26,10 @@ line of output.  There is no way to pass an outcome in by hand.
 
 ``deliver.py gc`` retires lanes whose PR is already merged (the ghost claims
 `doctor.py` reports) via `delivery.py cleanup-merged`.
+
+``deliver.py redeliver --branch <published-lane-branch> --worktree <fixed-tip>
+[--lane <new-lane>] --check ... [--merge]`` replaces a published PR after review
+fixes (see ``Replacement``); delivery options go after ``redeliver``.
 
 Exit code: 0 delivered (or stopped where asked), 1 a stage failed, 2 usage.
 """
@@ -57,6 +65,7 @@ REVIEW_MARKER = "kg.agent-review.v1:"
 REVIEW_FAILED = frozenset(
     {"failure", "timed_out", "action_required", "startup_failure"}
 )
+SHA = re.compile(r"[0-9a-f]{40}")
 
 
 class DeliverError(Exception):
@@ -291,25 +300,23 @@ def review_findings(
     comments: list[dict[str, Any]], head: str, bots: tuple[str, ...]
 ) -> list[dict[str, str]]:
     """The inline comments the review bot left on this exact head."""
-    found = []
-    for comment in comments:
-        if (comment.get("user") or {}).get("login") not in bots or head not in (
-            comment.get("commit_id"),
-            comment.get("original_commit_id"),
-        ):
-            continue
-        line = comment.get("line") or comment.get("original_line")
-        body = [s.strip() for s in str(comment.get("body") or "").splitlines()]
-        found.append(
-            {
-                "where": f"{comment.get('path')}:{line}"
-                if line
-                else f"{comment.get('path')}",
-                "summary": next((s for s in body if s), ""),
-                "url": str(comment.get("html_url") or ""),
-            }
-        )
-    return found
+    return [
+        {
+            "where": ":".join(
+                str(part)
+                for part in (c.get("path"), c.get("line") or c.get("original_line"))
+                if part
+            ),
+            "summary": next(
+                (s.strip() for s in str(c.get("body") or "").splitlines() if s.strip()),
+                "",
+            ),
+            "url": str(c.get("html_url") or ""),
+        }
+        for c in comments
+        if (c.get("user") or {}).get("login") in bots
+        and head in (c.get("commit_id"), c.get("original_commit_id"))
+    ]
 
 
 def required_state(checks: list[dict[str, Any]]) -> str:
@@ -339,6 +346,10 @@ class Delivery:
         self.log: list[str] = []
         self.extra: dict[str, Any] = {}
         self.lock = LockWait(args.lock_timeout, sleep, clock, self.say)
+        # redeliver's hooks: retire the replaced lane before this one claims
+        # its Scope, and supersede the replaced PR once this one exists.
+        self.before_claim: Callable[[], object] = lambda: None
+        self.after_publish: Callable[[dict[str, Any]], object] = lambda _pr: None
 
     def mutate(self, cmd: list[str], cwd: Path | None, stage: str) -> Proc:
         """Run a delivery/registry/worktree mutation, waiting out a busy lock."""
@@ -370,7 +381,7 @@ class Delivery:
             "resolve repository",
         ).stdout.strip()
 
-    def registry_record(self, branch: str) -> dict[str, Any] | None:
+    def registry_records(self, branch: str) -> list[dict[str, Any]]:
         out = must(
             self.runner,
             [str(OPS / "worktree_registry.py"), "list", "--json", "--branch", branch],
@@ -379,10 +390,11 @@ class Delivery:
         ).stdout
         data = json.loads(out)
         records = data["records"] if isinstance(data, dict) else data
+        return [r for r in records if r.get("branch") == branch]
+
+    def registry_record(self, branch: str) -> dict[str, Any] | None:
         live = [
-            r
-            for r in records
-            if r.get("branch") == branch and r.get("status") != "abandoned"
+            r for r in self.registry_records(branch) if r.get("status") != "abandoned"
         ]
         return live[-1] if live else None
 
@@ -459,6 +471,19 @@ class Delivery:
             f"(rc={done.returncode}):\n{listed}\nrun, commit, then re-run deliver:\n  {fix}"
         )
 
+    def abandon(
+        self, branch: str, path: str | None, generation: object, head: str, stage: str
+    ) -> None:
+        """Retire one exact claim through the registry's compare-and-swap."""
+        self.mutate(
+            [str(OPS / "worktree_orchestrate.py"), "resolve", "--branch", branch]
+            + (["--path", path] if path else [])
+            + ["--status", "abandoned", "--expected-generation", str(generation)]
+            + ["--expected-head-sha", head, "--json"],
+            self.home,
+            stage,
+        )
+
     def reclaim_if_base_stale(self, record: dict[str, Any], branch: str) -> bool:
         """Abandon an active claim whose base is not the branch's fork point.
 
@@ -473,23 +498,11 @@ class Delivery:
             return False
         head = self.git("rev-parse", "HEAD", stage="preflight")
         sealed = record.get("handed_back_sha")
-        self.mutate(
-            [
-                str(OPS / "worktree_orchestrate.py"),
-                "resolve",
-                "--branch",
-                branch,
-                "--path",
-                str(self.work),
-                "--status",
-                "abandoned",
-                "--expected-generation",
-                str(record.get("claim_generation", 0)),
-                "--expected-head-sha",
-                str(sealed or head),
-                "--json",
-            ],
-            self.work,
+        self.abandon(
+            branch,
+            str(self.work),
+            record.get("claim_generation", 0),
+            str(sealed or head),
             "retire stale-base claim",
         )
         self.say(
@@ -570,6 +583,7 @@ class Delivery:
                 raise DeliverError(
                     "check(s) failed: " + ", ".join(o["check"] for o in failed)
                 )
+            self.before_claim()
             with tempfile.TemporaryDirectory() as tmp:
                 scope = scope_from_name_status(
                     self.git("diff", "--name-status", f"{TRUNK}...HEAD")
@@ -644,6 +658,8 @@ class Delivery:
                 )
                 self.say("handed back")
             stage = "receipt"
+        elif stage == "receipt":
+            self.before_claim()
         if stage == "receipt":
             self.mutate(
                 [*delivery, "receipt", "--lane", lane],
@@ -666,6 +682,7 @@ class Delivery:
         if pr is None:
             raise DeliverError("no PR to wait on")
         number = int(pr["number"])
+        self.after_publish(pr)
         if stage == "wait-required":
             self.wait_for("required check", lambda: self._required(repo, number))
             self.say(f"required passed on #{number}")
@@ -811,6 +828,151 @@ class Delivery:
         }
 
 
+# --- redeliver --------------------------------------------------------------
+
+
+class Replacement:
+    """Replace a published PR with a new lane built from a fixed worktree.
+
+    Pushing review fixes onto a published PR makes its head differ from the
+    sealed hand-back, which ``delivery.py queue`` refuses.  The fixes go on a
+    new branch and are delivered as a new lane instead.  The published lane
+    still owns its Scope, so it is abandoned before the new lane claims, with
+    the generation and head read from the registry; once the new PR exists the
+    old one is closed with a link to it, and its remote branch is deleted only
+    while it is still the published head.  Every step re-reads its facts, so a
+    rerun resumes where the last one stopped.  (``delivery.py abandon-pr`` does
+    not fit: it refuses a PR whose head moved, and closes before the
+    replacement exists.)
+    """
+
+    def __init__(self, delivery: Delivery, old_branch: str) -> None:
+        self.d = delivery
+        self.old = old_branch
+        self.new_branch = ""
+
+    def lane(self) -> dict[str, Any]:
+        records = self.d.registry_records(self.old)
+        if not records:
+            raise DeliverError(f"no registry lane for {self.old}")
+        record = records[-1]
+        if record.get("status") not in ("published", "abandoned"):
+            raise DeliverError(
+                f"lane {self.old} is {record.get('status')!r}; "
+                "redeliver replaces a published lane"
+            )
+        return record
+
+    def run(self) -> dict[str, Any]:
+        d = self.d
+        if d.work.exists():
+            self.new_branch = d.git("rev-parse", "--abbrev-ref", "HEAD")
+        elif d.args.branch:
+            self.new_branch = d.args.branch
+        else:
+            raise DeliverError(
+                f"worktree {d.work} is gone; pass --new-branch to resume the replacement"
+            )
+        if self.new_branch == self.old:
+            raise DeliverError(
+                f"{self.old} is the published lane being replaced; commit the fix "
+                "on a new branch (git switch -c <name>) and redeliver from there"
+            )
+        repo = d.gh_repo()
+        record = self.lane()
+        if d.args.lane and d.args.lane in (record.get("external_ids") or []):
+            raise DeliverError(f"--lane {d.args.lane} is the replaced lane's id")
+        pr = d.pull_request(repo, self.old)
+        if pr is None:
+            raise DeliverError(f"no PR for {self.old}; nothing to replace")
+        if pr.get("state") == "MERGED":
+            raise DeliverError(
+                f"PR #{pr['number']} is already merged; nothing to replace"
+            )
+        d.before_claim = self.retire
+        d.after_publish = lambda new: self.supersede(repo, new)
+        return d.deliver()
+
+    def retire(self) -> dict[str, Any]:
+        """Abandon the replaced lane with the registry's own CAS facts."""
+        record = self.lane()
+        if record.get("status") == "abandoned":
+            return record
+        generation = record.get("claim_generation", 0)
+        head = str(record.get("handed_back_sha") or "")
+        if type(generation) is not int or generation < 0 or not SHA.fullmatch(head):
+            raise DeliverError(
+                f"lane {self.old} has no exact claim_generation/handed_back_sha "
+                f"to abandon it with ({generation!r}, {head!r})"
+            )
+        path = str(record["path"]) if record.get("path") else None
+        self.d.abandon(self.old, path, generation, head, "abandon the replaced lane")
+        self.d.say(f"abandoned lane {self.old} (generation {generation}, head {head})")
+        return record
+
+    def supersede(self, repo: str, new: dict[str, Any]) -> None:
+        """Close the replaced PR with a link to ``new``; drop its published branch."""
+        record = self.retire()  # a resumed run can start past the claim
+        old = self.d.pull_request(repo, self.old)
+        if old is not None and old.get("state") == "OPEN":
+            note = (
+                f"Superseded by #{new['number']} ({new.get('url')}): the review "
+                f"fixes were redelivered from `{self.new_branch}`; this PR's lane "
+                "was abandoned by `ops/deliver.py redeliver`."
+            )
+            must(
+                self.d.runner,
+                ["gh", "pr", "close", str(old["number"]), "--repo", repo]
+                + ["--comment", note],
+                self.d.home,
+                "close the replaced PR",
+            )
+            self.d.say(f"closed #{old['number']}, superseded by #{new['number']}")
+        head = str(record.get("handed_back_sha") or "")
+        self.d.extra["replaced"] = {
+            "branch": self.old,
+            "pr": old["number"] if old else None,
+            "claim_generation": record.get("claim_generation", 0),
+            "published_head": head,
+            "remote_branch": self.drop_remote_branch(head),
+        }
+
+    def drop_remote_branch(self, head: str) -> str:
+        """Delete the replaced branch on origin only while it is the published head."""
+        out = self.d.git("ls-remote", "origin", f"refs/heads/{self.old}")
+        remote = out.split()[0] if out else None
+        if remote is None:
+            return "absent"
+        if remote != head or not SHA.fullmatch(head):
+            kept = f"kept: at {remote}, not the published head {head}"
+            self.d.say(f"remote {self.old} {kept}")
+            return kept
+        self.delete_remote_branch(head)
+        self.d.say(f"deleted remote {self.old} at {head}")
+        return "deleted"
+
+    def delete_remote_branch(self, head: str) -> None:
+        """The lease makes the delete a compare-and-swap on the remote ref."""
+        self.d.git(
+            "push",
+            f"--force-with-lease=refs/heads/{self.old}:{head}",
+            "origin",
+            "--delete",
+            self.old,
+            stage="delete the replaced remote branch",
+        )
+
+
+def redeliver(
+    args: argparse.Namespace,
+    runner: Runner,
+    sleep: Callable[[float], None],
+    clock: Callable[[], float],
+) -> dict[str, Any]:
+    lane_args = argparse.Namespace(**{**vars(args), "branch": args.new_branch})
+    return Replacement(Delivery(lane_args, runner, sleep, clock), args.old_branch).run()
+
+
 # --- gc ---------------------------------------------------------------------
 
 
@@ -894,21 +1056,16 @@ def gc(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    parser.add_argument("--worktree", default=".", help="lane worktree (default: cwd)")
-    parser.add_argument(
+    options = argparse.ArgumentParser(add_help=False)
+    options.add_argument("--worktree", default=".", help="lane worktree (default: cwd)")
+    options.add_argument(
         "--check",
         action="append",
         default=[],
         metavar="LABEL=CMD",
         help="verification to run and record; repeatable",
     )
-    parser.add_argument(
-        "--branch", help="resume a published lane whose worktree is already gone"
-    )
-    parser.add_argument(
+    options.add_argument(
         "--scope-from-diff",
         action="store_true",
         help=(
@@ -917,17 +1074,17 @@ def build_parser() -> argparse.ArgumentParser:
             "an already-adopted lane (e.g. an agent worktree) before hand-back"
         ),
     )
-    parser.add_argument("--lane", help="external id; derived from the branch when new")
-    parser.add_argument("--title", help="PR title; default is the last commit subject")
-    parser.add_argument(
+    options.add_argument("--lane", help="external id; derived from the branch when new")
+    options.add_argument("--title", help="PR title; default is the last commit subject")
+    options.add_argument(
         "--intent", help="lane intent; default is the last commit subject"
     )
-    parser.add_argument(
+    options.add_argument(
         "--thread-id",
         default="deliver-cli",
         help="owner thread id recorded on the claim",
     )
-    parser.add_argument(
+    options.add_argument(
         "--merge",
         action="store_true",
         help=(
@@ -935,7 +1092,7 @@ def build_parser() -> argparse.ArgumentParser:
             "the merge, clean up and sync"
         ),
     )
-    parser.add_argument(
+    options.add_argument(
         "--accept-review-findings",
         metavar="REASON",
         help=(
@@ -943,13 +1100,13 @@ def build_parser() -> argparse.ArgumentParser:
             "bot left inline comments on the head; the reason is logged"
         ),
     )
-    parser.add_argument(
+    options.add_argument(
         "--timeout", type=int, default=1500, help="seconds per wait (default 1500)"
     )
-    parser.add_argument(
+    options.add_argument(
         "--poll", type=int, default=30, help="seconds between polls (default 30)"
     )
-    parser.add_argument(
+    options.add_argument(
         "--lock-timeout",
         type=int,
         default=600,
@@ -958,9 +1115,32 @@ def build_parser() -> argparse.ArgumentParser:
             "holds the operation lock (default 600)"
         ),
     )
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        parents=[options],
+    )
+    parser.add_argument(
+        "--branch", help="resume a published lane whose worktree is already gone"
+    )
     sub = parser.add_subparsers(dest="command")
     clean = sub.add_parser("gc", help="retire published lanes whose PR already merged")
     clean.add_argument("--dry-run", action="store_true")
+    again = sub.add_parser(
+        "redeliver",
+        parents=[options],
+        help="replace a published PR with a new lane from a fixed worktree",
+        description="Delivery options go after `redeliver`.",
+    )
+    again.add_argument(
+        "--branch",
+        dest="old_branch",
+        required=True,
+        help="branch of the published lane whose PR is replaced",
+    )
+    again.add_argument(
+        "--new-branch", help="resume a replacement whose worktree is already gone"
+    )
     return parser
 
 
@@ -975,6 +1155,8 @@ def main(
         if args.command == "gc":
             lock = LockWait(args.lock_timeout, sleep, clock, progress)
             result = gc(args, runner, lock)
+        elif args.command == "redeliver":
+            result = redeliver(args, runner, sleep, clock)
         else:
             result = Delivery(args, runner, sleep, clock).deliver()
     except DeliverError as exc:

@@ -62,6 +62,14 @@ class FakeWorld:
             state.get("review_runs", [[_review(job=True), _review()]])
         )
         self.review_comments: list[dict[str, Any]] = state.get("review_comments", [])
+        # Per-branch registry/PR/remote facts that react to the mutations.
+        self.records_by_branch: dict[str, list[dict[str, Any]]] = state.get(
+            "records_by_branch", {}
+        )
+        self.prs_by_branch: dict[str, list[dict[str, Any]]] = state.get(
+            "prs_by_branch", {}
+        )
+        self.remote_heads: dict[str, str] = state.get("remote_heads", {})
         self.published_pr: dict[str, Any] | None = state.get(
             "published_pr", {"number": 77, "state": "OPEN", "url": "u"}
         )
@@ -127,6 +135,13 @@ class FakeWorld:
                 return ok("feat: the thing")
             if sub[0] == "rev-parse":
                 return ok(str(self.canon))
+            if sub[0] == "ls-remote":
+                name = sub[2].removeprefix("refs/heads/")
+                sha = self.remote_heads.get(name)
+                return ok(f"{sha}\trefs/heads/{name}\n" if sha else "")
+            if sub[0] == "push" and sub[-2] == "--delete":
+                self.remote_heads.pop(sub[-1], None)
+                return ok()
         if head == "uv":
             return deliver.Proc(
                 self.format_rc,
@@ -136,6 +151,15 @@ class FakeWorld:
         if head == "gh":
             if cmd[1:3] == ["repo", "view"]:
                 return ok("o/r")
+            if cmd[1:3] == ["pr", "close"]:
+                for pr in sum(self.prs_by_branch.values(), []):
+                    if str(pr["number"]) == cmd[3]:
+                        pr["state"] = "CLOSED"
+                return ok()
+            if cmd[1:3] == ["pr", "list"] and "--head" in cmd:
+                listed = self.prs_by_branch.get(cmd[cmd.index("--head") + 1])
+                if listed is not None:
+                    return ok(json.dumps(listed))
             if cmd[1:3] == ["pr", "list"]:
                 if "merged" in cmd:
                     return ok(
@@ -171,6 +195,9 @@ class FakeWorld:
                     self.pr_state.pop(0) if len(self.pr_state) > 1 else self.pr_state[0]
                 )
         if head.endswith("worktree_registry.py"):
+            branch = cmd[cmd.index("--branch") + 1] if "--branch" in cmd else None
+            if branch in self.records_by_branch:
+                return ok(json.dumps({"records": self.records_by_branch[branch]}))
             return ok(json.dumps({"records": [self.record] if self.record else []}))
         if head.endswith(("worktree_orchestrate.py", "delivery.py")):
             verb = cmd[1] if head.endswith("worktree_orchestrate.py") else cmd[3]
@@ -180,6 +207,11 @@ class FakeWorld:
                     doc = {"command": verb, "error": _LOCKED, "ok": False}
                     return deliver.Proc(1, "", json.dumps(doc))
                 return deliver.Proc(1, "", f"Traceback\nDeliverySourceError: {_LOCKED}")
+            if verb == "resolve" and "--branch" in cmd:
+                for record in self.records_by_branch.get(
+                    cmd[cmd.index("--branch") + 1], []
+                ):
+                    record["status"] = cmd[cmd.index("--status") + 1]
             if verb == "publish":
                 shutil.rmtree(
                     self.work, ignore_errors=True
@@ -870,3 +902,196 @@ def test_a_branch_without_python_changes_skips_the_format_gate() -> None:
     world = FakeWorld(changed_py=[])
     assert ship(world, "--check", "unit=good")[0] == 0
     assert _format_calls(world) == []
+
+
+# ---- redeliver: replace a published PR with a fixed lane ------------------
+
+OLD = "feat/old"
+PUBLISHED = "a" * 40
+
+
+def _replacement_world(
+    *,
+    generation: int = 0,
+    old_status: str = "published",
+    old_pr_state: str = "OPEN",
+    remote: str | None = PUBLISHED,
+    **state: Any,
+) -> FakeWorld:
+    lane = {
+        "branch": OLD,
+        "status": old_status,
+        "claim_generation": generation,
+        "handed_back_sha": PUBLISHED,
+        "path": "/gone/old-lane",
+        "external_ids": ["LANE-OLD"],
+    }
+    pr = {"number": 50, "state": old_pr_state, "url": "https://x/pull/50"}
+    return FakeWorld(
+        records_by_branch={
+            OLD: state.pop("old_records", [lane]),
+            **state.pop("new_records", {}),
+        },
+        prs_by_branch={OLD: state.pop("old_prs", [pr]), **state.pop("new_prs", {})},
+        remote_heads={OLD: remote} if remote else {},
+        **state,
+    )
+
+
+def redeliver(world: FakeWorld, *flags: str) -> tuple[int, dict[str, Any]]:
+    worktree = [] if "--worktree" in flags else ["--worktree", str(world.work)]
+    common = ["--timeout", "5", "--poll", "1", *worktree]
+    return ship(world, "redeliver", "--branch", OLD, *common, *flags)
+
+
+def _call(world: FakeWorld, *prefix: str) -> list[str] | None:
+    return next((c for c in world.calls if c[: len(prefix)] == list(prefix)), None)
+
+
+def _value(call: list[str], flag: str) -> str:
+    return call[call.index(flag) + 1]
+
+
+@pytest.mark.parametrize("generation", [0, 1])
+def test_redeliver_abandons_the_old_lane_with_the_registrys_generation_and_head(
+    generation: int,
+) -> None:
+    world = _replacement_world(generation=generation)
+    code, result = redeliver(world, "--check", "u=good", "--lane", "LANE-NEW")
+    assert code == 0, result
+    assert world.names() == ["resolve", "adopt", "hand-back", "receipt", "publish"]
+    resolve = next(c for c in world.calls if c[1:2] == ["resolve"])
+    assert _value(resolve, "--branch") == OLD
+    assert _value(resolve, "--path") == "/gone/old-lane"
+    assert _value(resolve, "--status") == "abandoned"
+    assert _value(resolve, "--expected-generation") == str(generation)
+    assert _value(resolve, "--expected-head-sha") == PUBLISHED
+    close = _call(world, "gh", "pr", "close")
+    assert close is not None and close[3] == "50"
+    assert _value(close, "--comment").startswith("Superseded by #77 (u)")
+    publish = next(
+        i
+        for i, c in enumerate(world.calls)
+        if c[0].endswith("delivery.py") and c[3] == "publish"
+    )
+    assert world.calls.index(close) > publish  # the link exists before the close
+    assert _call(world, "git", "push") == [
+        "git",
+        "push",
+        f"--force-with-lease=refs/heads/{OLD}:{PUBLISHED}",
+        "origin",
+        "--delete",
+        OLD,
+    ]
+    assert result["replaced"] == {
+        "branch": OLD,
+        "pr": 50,
+        "claim_generation": generation,
+        "published_head": PUBLISHED,
+        "remote_branch": "deleted",
+    }
+
+
+def test_redeliver_keeps_an_old_remote_branch_that_moved_off_the_published_head() -> (
+    None
+):
+    moved = "b" * 40
+    world = _replacement_world(remote=moved)
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 0, result
+    assert _call(world, "git", "push") is None
+    assert result["replaced"]["remote_branch"] == (
+        f"kept: at {moved}, not the published head {PUBLISHED}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("state", "flags", "message"),
+    [
+        ({"branch": OLD}, [], "commit the fix on a new branch"),
+        ({"old_pr_state": "MERGED"}, [], "PR #50 is already merged"),
+        ({"old_status": "active"}, [], "redeliver replaces a published lane"),
+        ({"old_records": []}, [], f"no registry lane for {OLD}"),
+        ({"old_prs": []}, [], f"no PR for {OLD}"),
+        ({}, ["--lane", "LANE-OLD"], "is the replaced lane's id"),
+    ],
+)
+def test_redeliver_refuses_before_touching_anything(
+    state: dict[str, Any], flags: list[str], message: str
+) -> None:
+    world = _replacement_world(**state)
+    code, result = redeliver(world, "--check", "u=good", *flags)
+    assert code == 1
+    assert message in result["error"]
+    assert world.names() == []
+    assert _call(world, "gh", "pr", "close") is None
+    assert _call(world, "git", "push") is None
+
+
+def test_a_redeliver_rerun_skips_what_is_already_retired() -> None:
+    world = _replacement_world(
+        old_status="abandoned", old_pr_state="CLOSED", remote=None
+    )
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 0, result
+    assert world.names() == ["adopt", "hand-back", "receipt", "publish"]
+    assert _call(world, "gh", "pr", "close") is None
+    assert result["replaced"]["remote_branch"] == "absent"
+
+
+def test_redeliver_resumes_from_the_new_branch_once_its_worktree_is_gone() -> None:
+    world = _replacement_world(
+        old_status="abandoned",
+        new_records={"feat/new": [{"branch": "feat/new", "status": "published"}]},
+        new_prs={"feat/new": [{"number": 77, "state": "OPEN", "url": "u"}]},
+    )
+    gone = str(world.work / "gone")
+    code, result = redeliver(world, "--worktree", gone)
+    assert code == 1 and "--new-branch" in result["error"]
+    code, result = redeliver(world, "--worktree", gone, "--new-branch", "feat/new")
+    assert code == 0, result
+    assert world.names() == []  # already published: nothing re-claimed
+    assert _call(world, "gh", "pr", "close") is not None
+    assert result["pr"] == 77 and result["replaced"]["remote_branch"] == "deleted"
+
+
+def test_the_old_remote_branch_is_deleted_only_at_the_published_head(
+    tmp_path: Path,
+) -> None:
+    """Real git: the lease makes the delete a compare-and-swap on the remote."""
+    import subprocess
+
+    def sh(*argv: str, cwd: Path) -> str:
+        done = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, check=True)
+        return done.stdout.strip()
+
+    remote, repo = tmp_path / "remote.git", tmp_path / "repo"
+    sh("git", "init", "-q", "--bare", str(remote), cwd=tmp_path)
+    sh("git", "init", "-q", "-b", "main", str(repo), cwd=tmp_path)
+    sh("git", "config", "user.email", "t@example.com", cwd=repo)
+    sh("git", "config", "user.name", "T", cwd=repo)
+    sh("git", "remote", "add", "origin", str(remote), cwd=repo)
+    (repo / "a.txt").write_text("1")
+    sh("git", "add", ".", cwd=repo)
+    sh("git", "commit", "-qm", "published", cwd=repo)
+    published = sh("git", "rev-parse", "HEAD", cwd=repo)
+    sh("git", "push", "-q", "origin", f"HEAD:refs/heads/{OLD}", cwd=repo)
+
+    args = deliver.build_parser().parse_args(["--worktree", str(repo)])
+    replacement = deliver.Replacement(
+        deliver.Delivery(args, deliver.run, lambda _s: None), OLD
+    )
+    (repo / "a.txt").write_text("2")
+    sh("git", "commit", "-qam", "pushed onto the PR", cwd=repo)
+    moved = sh("git", "rev-parse", "HEAD", cwd=repo)
+    sh("git", "push", "-q", "origin", f"HEAD:refs/heads/{OLD}", cwd=repo)
+    assert replacement.drop_remote_branch(published) == (
+        f"kept: at {moved}, not the published head {published}"
+    )
+    with pytest.raises(deliver.DeliverError, match="stale info|rejected"):
+        replacement.delete_remote_branch(published)  # the lease refuses a moved ref
+    assert sh("git", "ls-remote", "origin", f"refs/heads/{OLD}", cwd=repo)
+
+    assert replacement.drop_remote_branch(moved) == "deleted"
+    assert sh("git", "ls-remote", "origin", f"refs/heads/{OLD}", cwd=repo) == ""
+    assert replacement.drop_remote_branch(moved) == "absent"
