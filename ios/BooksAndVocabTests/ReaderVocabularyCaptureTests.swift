@@ -254,6 +254,82 @@ struct ReaderVocabularyCaptureTests {
         #expect(restored.rootForm == "ghost")
     }
 
+    /// Issue #2105: ReaderView / PDFReaderView feed `vocabulary` from a
+    /// `@Query` that filters out `actionType == "delete"`, so a word queued for
+    /// delete is invisible to the snapshot. Re-saving it must still find and
+    /// restore that row (keeping its `kgCardId`) instead of inserting a fresh
+    /// entry — otherwise the next sync deletes the server card's history.
+    @Test func saveEntry_restoresQueuedDeleteMissingFromDeleteFilteredSnapshot() throws {
+        let ctx = try makeContext()
+        let synced = makeEntry(word: "harbor", notebookId: "default", syncStatus: 1)
+        synced.kgCardId = "card_harbor"
+        ctx.insert(synced)
+        try ctx.save()
+        let originalId = synced.persistentModelID
+
+        let deleteFiltered = FetchDescriptor<VocabularyEntry>(
+            predicate: #Predicate { $0.actionType != "delete" }
+        )
+        let beforeDelete = makeCapture(ctx: ctx, vocabulary: try ctx.fetch(deleteFiltered))
+        beforeDelete.deleteEntry(matching: "harbor")
+        #expect(synced.syncAction == .delete, "arrange: synced entry must be queued for delete")
+
+        let snapshot = try ctx.fetch(deleteFiltered)
+        #expect(snapshot.isEmpty, "arrange: the reader's delete-filtered snapshot must hide the queued delete")
+        let afterDelete = makeCapture(ctx: ctx, vocabulary: snapshot)
+        let saved = afterDelete.saveEntry(
+            selection: WordSelection(word: "Harbor", context: "ctx", position: .zero),
+            translation: "港口",
+            rootForm: "harbor"
+        )
+
+        #expect(saved == true)
+        let all = try ctx.fetch(FetchDescriptor<VocabularyEntry>())
+        #expect(all.count == 1, "re-capture must restore the queued-delete row, not insert a second entry")
+        let restored = try #require(all.first)
+        #expect(restored.persistentModelID == originalId)
+        #expect(restored.syncAction == .add)
+        #expect(restored.kgCardId == "card_harbor", "the server card id must survive so its history is kept")
+        #expect(restored.translation == "港口")
+        #expect(!all.contains { $0.syncAction == .delete }, "no delete may remain queued for upload")
+    }
+
+    // MARK: - sanitizeOutbox delete+add collapse
+
+    /// Defence in depth for #2105: a pending delete and a pending add for the
+    /// same word in the same notebook collapse into a restore of the delete row.
+    @Test func sanitizeOutbox_collapsesDeleteAndAddForSameWord() throws {
+        let ctx = try makeContext()
+        let queuedDelete = makeEntry(word: "harbor", notebookId: "default", syncStatus: 1)
+        queuedDelete.kgCardId = "card_harbor"
+        queuedDelete.queueDelete()
+        let freshAdd = makeEntry(word: "Harbor", notebookId: "default")
+        freshAdd.translation = "港口"
+        freshAdd.rootForm = "harbor"
+        let otherNotebookAdd = makeEntry(word: "harbor", notebookId: "other")
+        ctx.insert(queuedDelete)
+        ctx.insert(freshAdd)
+        ctx.insert(otherNotebookAdd)
+        try ctx.save()
+        let freshAddId = freshAdd.id
+        let otherId = otherNotebookAdd.id
+
+        let excluded = SyncCoordinator.sanitizeOutbox(
+            pendingEntries: [queuedDelete, freshAdd, otherNotebookAdd],
+            modelContext: ctx
+        )
+
+        #expect(excluded.contains(freshAddId), "the collapsed add must be excluded from the upload batches")
+        #expect(queuedDelete.syncAction == .add, "the delete row is restored instead of deleting the server card")
+        #expect(queuedDelete.isPending)
+        #expect(queuedDelete.kgCardId == "card_harbor")
+        #expect(queuedDelete.translation == "港口", "the latest capture's translation wins")
+        let all = try ctx.fetch(FetchDescriptor<VocabularyEntry>())
+        #expect(all.count == 2)
+        #expect(!all.contains { $0.id == freshAddId }, "the duplicate add row is removed locally")
+        #expect(all.contains { $0.id == otherId }, "a same-word entry in another notebook is independent")
+    }
+
     // MARK: - deleteEntry sync/unsync fork
 
     @Test func deleteEntry_queuesDeleteForSyncedEntry() throws {

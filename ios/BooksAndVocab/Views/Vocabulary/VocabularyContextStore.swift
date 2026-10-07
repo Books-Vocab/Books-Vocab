@@ -71,7 +71,13 @@ extension VocabularyContextStore {
         translation: String,
         rootForm: String?
     ) -> Bool? {
-        guard let existing = existingEntry(matching: word) else { return nil }
+        // The reader snapshots (ReaderView / PDFReaderView) come from a @Query that
+        // filters out queued deletes, so the restore target is only reachable
+        // through the context (#2105). Missing it would insert a second entry and
+        // the next sync would delete the server card and its history.
+        guard let existing = existingEntry(matching: word) ?? fetchEntryFromContext(matching: word) else {
+            return nil
+        }
         if existing.syncAction == .delete {
             existing.restorePendingEntry()
             existing.translation = translation
@@ -119,7 +125,9 @@ extension VocabularyContextStore {
             return nil
         }
         let wordLower = word.lowercased()
-        return candidates.first { Self.entryMatches($0, wordLower: wordLower) }
+        let matches = candidates.filter { Self.entryMatches($0, wordLower: wordLower) }
+        // A live entry outranks a queued delete for the same word.
+        return matches.first { $0.syncAction != .delete } ?? matches.first
     }
 }
 #endif

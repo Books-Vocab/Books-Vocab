@@ -204,6 +204,42 @@ struct VocabularySyncEngineTests {
         #expect(try context.fetch(FetchDescriptor<VocabularyEntry>()).isEmpty)
     }
 
+    @Test("a queued delete and a re-capture of the same word send no delete (#2105)")
+    func deleteThenRecaptureSendsNoDelete() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let synced = makeEntry(word: "harbor")
+        synced.kgCardId = "card-harbor"
+        synced.markSynced()
+        synced.queueDelete()
+        let recaptured = makeEntry(word: "harbor")
+        context.insert(synced)
+        context.insert(recaptured)
+        try context.save()
+
+        let service = FakeVocabularySyncService()
+        service.addResponse = KGAddResponse(
+            created: 0,
+            skipped: 1,
+            duplicates: ["harbor"],
+            cardIds: ["harbor": "card-harbor"]
+        )
+        let result = await VocabularySyncEngine().execute(
+            pendingEntries: [synced, recaptured],
+            modelContext: context,
+            service: service,
+            emit: { _ in }
+        )
+
+        #expect(result.terminalOutcome == .completed)
+        #expect(!service.calls.contains("batchDelete"), "the server card must not be deleted")
+        #expect(!service.calls.contains("delete"))
+        let all = try context.fetch(FetchDescriptor<VocabularyEntry>())
+        #expect(all.count == 1)
+        #expect(all.first?.kgCardId == "card-harbor")
+        #expect(all.first?.syncAction == .add)
+    }
+
     @Test("cancellation keeps the user-cancelled terminal outcome")
     func cancellationWins() async throws {
         let container = try makeContainer()
