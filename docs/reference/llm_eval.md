@@ -67,6 +67,12 @@ Production prompt（`backend/src/kg/` inline f-string）與 eval registry 為**�
 且路徑往上沒有任何 `.git`、未設 `GIT_DIR`／`GIT_WORK_TREE` 時才視為不在 work
 tree 而放行；其他 git 失敗（dubious ownership、權限、repo 損毀）一律 fail
 closed 當作可 commit。
+判斷在 hermetic git 環境下進行：清掉所有 `GIT_*`，並停用 global／system
+config 與 `core.excludesFile`，因此只有 repo 自己的 `.gitignore`、
+`.git/info/exclude` 能證明「已 ignore」（它們優先於任何 config 提供的 exclude，
+不論 caller 以 `GIT_CONFIG_GLOBAL`、`GIT_CONFIG_COUNT`／`KEY_n`／`VALUE_n`、
+`GIT_CONFIG_PARAMETERS` 如何選 config 都不會被推翻）；只靠 global ignore 的路徑
+視為可 commit，需改用 repo 內 ignore 或 `--allow-unignored`。
 `corpus-build --output-dir` 預設為 `lab/llm_eval/private_corpus/`（以 package
 root 解析，與 cwd 無關）。
 

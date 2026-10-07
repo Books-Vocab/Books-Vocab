@@ -17,6 +17,9 @@ PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 RESULTS_DIR = PACKAGE_ROOT / "results"
 PRIVATE_CORPUS_DIR = PACKAGE_ROOT / "private_corpus"
 
+# A HOME that holds no git config, so no ~/.gitconfig or XDG config is read.
+_NO_HOME = os.path.join(os.devnull, "no-home")
+
 
 def add_allow_unignored_flag(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
@@ -46,10 +49,22 @@ def refuse_committable_outputs(
 def committable_paths(paths: Iterable[Path]) -> list[Path]:
     """Paths that some git work tree would let you ``git add``.
 
-    A path is safe when no work tree contains it, or when git ignores it.
+    A path is safe when no work tree contains it, or when the repository's own
+    ignore rules (``.gitignore`` files, ``.git/info/exclude``) ignore it.
     Anything git cannot vouch for (tracked, not ignored, git unavailable,
     unexpected git error) counts as committable — private user data fails
     closed.
+
+    Why only repository-local ignore sources: git's exclude precedence is
+    ``.gitignore`` > ``info/exclude`` > ``core.excludesFile``, and a
+    lower-precedence source can never un-ignore what a higher one ignores.  So
+    "ignored by ``.gitignore``/``info/exclude``" holds under *every* config a
+    later ``git add`` might run with (``GIT_CONFIG_GLOBAL``, ``GIT_CONFIG_COUNT``
+    / ``KEY_n`` / ``VALUE_n``, ``GIT_CONFIG_PARAMETERS``, ``-c``, a different
+    ``HOME``).  An ignore that exists only through config
+    (``core.excludesFile`` in a global, system or ``.git/config``) is a
+    per-machine, per-invocation fact, so it never vouches: asking git under
+    two config views and intersecting them would still miss a third.
     """
     return [path for path in paths if _committable(Path(path).resolve())]
 
@@ -69,7 +84,20 @@ def _committable(path: Path) -> bool:
                 # discovery, odd config) must still fail closed.
                 return _has_repo_marker(anchor)
             # Exit 0 = ignored, 1 = not ignored; a tracked path is never ignored.
-            return _git(anchor, "check-ignore", "-q", "--", str(path)).returncode != 0
+            return (
+                _git(
+                    anchor,
+                    # Neutralise repo-local ``core.excludesFile`` too (the -c
+                    # layer outranks .git/config); see committable_paths().
+                    "-c",
+                    f"core.excludesFile={os.devnull}",
+                    "check-ignore",
+                    "-q",
+                    "--",
+                    str(path),
+                ).returncode
+                != 0
+            )
         # rev-parse also fails for a work tree git cannot read (dubious
         # ownership, permissions, corruption).  Only an explicit "not a git
         # repository" with no repo marker anywhere above is proof of safety.
@@ -96,11 +124,21 @@ def _has_repo_marker(anchor: Path) -> bool:
 
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    # Every ambient GIT_* variable is dropped (GIT_DIR, GIT_WORK_TREE,
-    # GIT_CEILING_DIRECTORIES, GIT_COMMON_DIR, GIT_CONFIG_*, ...): they
-    # redirect repository discovery, so with one set git answers about the
-    # override instead of the destination's real repo (GIT_DIR=<bare repo>
-    # makes rev-parse print "false" inside an ordinary work tree).
+    # Hermetic environment, in two halves:
+    # * Every ambient GIT_* variable is dropped (GIT_DIR, GIT_WORK_TREE,
+    #   GIT_INDEX_FILE, GIT_COMMON_DIR, GIT_CEILING_DIRECTORIES,
+    #   GIT_NAMESPACE, GIT_OBJECT_DIRECTORY, ...): they redirect repository
+    #   discovery, so with one set git answers about the override instead of
+    #   the destination's real repo (GIT_DIR=<bare repo> makes rev-parse print
+    #   "false" inside an ordinary work tree).
+    # * Config is then pinned to "none" rather than "whatever the caller
+    #   selected": dropping GIT_CONFIG_* alone would fall back to the default
+    #   ~/.gitconfig, a view the caller may have deliberately replaced
+    #   (GIT_CONFIG_GLOBAL=<empty>) so that their own ``git add`` behaves
+    #   differently.  No global/system config, no HOME/XDG lookup (HOME for
+    #   git < 2.32, which lacks GIT_CONFIG_GLOBAL).  Consequence: settings
+    #   that only live in global config, e.g. safe.directory, are absent, so
+    #   such repos fail closed.
     # LC_ALL=C pins git's message language: the "not a git repository" check
     # above matches on it.
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
@@ -110,5 +148,13 @@ def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
         check=False,
-        env={**env, "LC_ALL": "C"},
+        env={
+            **env,
+            "LC_ALL": "C",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_SYSTEM": os.devnull,
+            "HOME": _NO_HOME,
+            "XDG_CONFIG_HOME": _NO_HOME,
+        },
     )

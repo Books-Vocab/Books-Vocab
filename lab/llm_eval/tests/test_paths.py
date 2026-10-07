@@ -152,3 +152,139 @@ def test_false_work_tree_claim_is_trusted_without_a_marker(tmp_path, monkeypatch
     monkeypatch.delenv("GIT_DIR", raising=False)
     monkeypatch.delenv("GIT_WORK_TREE", raising=False)
     assert committable_paths([bare / "out.jsonl"]) == []
+
+
+# --- config selection: the guard must not trust a verdict that depends on it ---
+
+
+@pytest.fixture
+def isolated_git_config(tmp_path, monkeypatch):
+    """Temp HOME whose global config ignores ``secret.jsonl`` everywhere.
+
+    The real ``~/.gitconfig`` is never read: HOME and XDG point at the temp
+    dir and the system config is disabled.  Returns ``(repo, caller_empty)``
+    where ``repo`` has no repo-local ignore rule and ``caller_empty`` is an
+    empty config file a caller can select via ``GIT_CONFIG_GLOBAL``.
+    """
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "global_ignore").write_text("secret.jsonl\n", encoding="utf-8")
+    (home / ".gitconfig").write_text(
+        f"[core]\n\texcludesFile = {home / 'global_ignore'}\n", encoding="utf-8"
+    )
+    caller_empty = tmp_path / "empty.gitconfig"
+    caller_empty.write_text("", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    for name in ("GIT_CONFIG_GLOBAL", "GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS"):
+        monkeypatch.delenv(name, raising=False)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    assert _run_git(repo, "init", "-q").returncode == 0
+    return repo, caller_empty
+
+
+def _caller_check_ignore(repo, target):
+    """What ``git check-ignore`` says in the caller's own environment."""
+    return subprocess.run(
+        ["git", "check-ignore", "-q", "--", str(target)],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    ).returncode
+
+
+def test_caller_selected_global_config_cannot_make_a_global_ignore_trusted(
+    isolated_git_config, monkeypatch
+):
+    """Reviewer P1: ``~/.gitconfig`` ignores the file, but the caller selects an
+    empty ``GIT_CONFIG_GLOBAL``.  The caller's ``git add`` would stage it, so
+    the guard must not call it safe on the strength of the default config."""
+    repo, caller_empty = isolated_git_config
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(caller_empty))
+    target = repo / "secret.jsonl"
+    assert _caller_check_ignore(repo, target) == 1  # caller: not ignored
+    assert committable_paths([target]) == [target.resolve()]
+
+
+def test_config_count_override_cannot_make_a_global_ignore_trusted(
+    isolated_git_config, monkeypatch
+):
+    """``GIT_CONFIG_COUNT``/``KEY_n``/``VALUE_n`` repoints ``core.excludesFile``
+    away from the default global ignore; same hole as GIT_CONFIG_GLOBAL."""
+    repo, caller_empty = isolated_git_config
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.excludesFile")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", str(caller_empty))
+    target = repo / "secret.jsonl"
+    assert _caller_check_ignore(repo, target) == 1
+    assert committable_paths([target]) == [target.resolve()]
+
+
+def test_config_parameters_override_cannot_make_a_global_ignore_trusted(
+    isolated_git_config, monkeypatch
+):
+    repo, caller_empty = isolated_git_config
+    monkeypatch.setenv("GIT_CONFIG_PARAMETERS", f"'core.excludesfile={caller_empty}'")
+    target = repo / "secret.jsonl"
+    assert _caller_check_ignore(repo, target) == 1
+    assert committable_paths([target]) == [target.resolve()]
+
+
+def test_injected_excludes_do_not_vouch_for_a_path(isolated_git_config, monkeypatch):
+    """The mirror image: the caller's config adds an ignore rule that no other
+    environment shares.  Not durable, so not a reason to write private data."""
+    repo, _ = isolated_git_config
+    injected = repo.parent / "injected_ignore"
+    injected.write_text("other.jsonl\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.excludesFile")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", str(injected))
+    target = repo / "other.jsonl"
+    assert _caller_check_ignore(repo, target) == 0  # caller view: ignored
+    assert committable_paths([target]) == [target.resolve()]
+
+
+def test_repo_local_ignore_is_trusted_regardless_of_config_env(
+    isolated_git_config, monkeypatch
+):
+    """Positive control: ``.gitignore`` and ``.git/info/exclude`` outrank any
+    config-provided excludes, so hostile config selection cannot un-ignore."""
+    repo, caller_empty = isolated_git_config
+    (repo / ".gitignore").write_text("tracked_rule.jsonl\n", encoding="utf-8")
+    (repo / ".git" / "info").mkdir(exist_ok=True)
+    (repo / ".git" / "info" / "exclude").write_text(
+        "info_rule.jsonl\n", encoding="utf-8"
+    )
+    negate = repo.parent / "negate_ignore"
+    negate.write_text("!tracked_rule.jsonl\n!info_rule.jsonl\n", encoding="utf-8")
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.excludesFile")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", str(negate))
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(caller_empty))
+    targets = [repo / "tracked_rule.jsonl", repo / "info_rule.jsonl"]
+    assert [_caller_check_ignore(repo, t) for t in targets] == [0, 0]
+    assert committable_paths(targets) == []
+
+
+def test_repo_local_config_excludes_file_does_not_vouch(isolated_git_config):
+    """``core.excludesFile`` in ``.git/config`` is as private as the global one."""
+    repo, _ = isolated_git_config
+    local_ignore = repo.parent / "local_ignore"
+    local_ignore.write_text("secret.jsonl\n", encoding="utf-8")
+    assert (
+        _run_git(repo, "config", "core.excludesFile", str(local_ignore)).returncode == 0
+    )
+    target = repo / "secret.jsonl"
+    assert _caller_check_ignore(repo, target) == 0
+    assert committable_paths([target]) == [target.resolve()]
+
+
+def test_default_global_ignore_alone_no_longer_vouches(isolated_git_config):
+    """Even with no env override, a global-only ignore is a per-machine fact."""
+    repo, _ = isolated_git_config
+    target = repo / "secret.jsonl"
+    assert _caller_check_ignore(repo, target) == 0
+    assert committable_paths([target]) == [target.resolve()]
