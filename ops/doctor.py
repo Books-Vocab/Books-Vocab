@@ -209,7 +209,10 @@ def evaluate_delivery(data: dict[str, Any] | None, now: datetime) -> Finding:
         data["prs"], data["releases"], now, data["issues"]
     )
     level, problems = delivery_metrics.judge(summary)
-    return Finding("delivery", level, delivery_metrics.describe(summary), problems)
+    text = delivery_metrics.describe(summary)
+    if data.get("truncated"):
+        text += f" (WARNING: fetch hit the {delivery_metrics.FETCH_LIMIT}-item cap; counts are a lower bound)"
+    return Finding("delivery", level, text, problems)
 
 
 def parse_acceptance(body: str | None) -> list[str]:
