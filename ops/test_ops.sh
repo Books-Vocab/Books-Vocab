@@ -236,7 +236,7 @@ run_one() {
       ;;
     ui-token)           ./ops/test_ui_token_lint.sh ;;
     plain-deadzone)     ./ops/test_plain_deadzone_lint.sh ;;
-    lint-baselines)     ./ops/tests/test_lint_baselines.sh ;;
+    lint-baselines)     ./ops/tests/test_lint_baselines.sh && ./ops/tests/test_i18n_lint.sh ;;
     injection-lint)     ./ops/tests/test_injection_lint.sh ;;
     ui-fixture-lint)    ./ops/tests/test_ui_fixture_lint.sh ;;
     ops-ci-coverage)

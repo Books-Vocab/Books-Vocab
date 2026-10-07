@@ -108,7 +108,7 @@ struct PodcastSettingsPopover: View {
 
             VStack(alignment: .leading, spacing: skin.spacing.rowMicroGap) {
                 Picker(L10n.string("睡眠定時"), selection: $sleepTimerMode) {
-                    Text(L10n.string("關閉")).tag(SleepTimerMode.off)
+                    Text(L10n.string("podcast.sleepTimer.off")).tag(SleepTimerMode.off)
                     Text(L10n.string("5 分鐘")).tag(SleepTimerMode.minutes(5))
                     Text(L10n.string("15 分鐘")).tag(SleepTimerMode.minutes(15))
                     Text(L10n.string("30 分鐘")).tag(SleepTimerMode.minutes(30))
