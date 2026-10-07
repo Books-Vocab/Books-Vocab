@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 import worktree_registry as registry
@@ -208,3 +210,96 @@ def test_branchless_active_claim_is_abandoned_against_its_exact_base(
     assert registry.load_state(state_path)["records"][0]["status"] == "active"
     assert resolve(base) == registry.EXIT_OK
     assert registry.load_state(state_path)["records"][0]["status"] == "abandoned"
+
+
+def _cleanup_pending_record(tmp_path: Path) -> dict:
+    record = _published_record(tmp_path)
+    record["status"] = "cleanup_pending"
+    record["claim_generation"] = 0
+    return record
+
+
+def _abandon_args(
+    state_path: Path, record: dict, *extra: str, status: str = "abandoned"
+) -> list[str]:
+    return [
+        "resolve",
+        "--state",
+        str(state_path),
+        "--branch",
+        record["branch"],
+        "--status",
+        status,
+        "--expected-generation",
+        "0",
+        "--expected-head-sha",
+        record["handed_back_sha"],
+        *extra,
+    ]
+
+
+def test_cleanup_pending_evidence_is_not_a_command_line_capability(
+    tmp_path: Path, capsys
+) -> None:
+    record = _cleanup_pending_record(tmp_path)
+    state_path = tmp_path / "registry.json"
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+
+    with pytest.raises(SystemExit) as raised:
+        registry.main(
+            _abandon_args(state_path, record, "--cleanup-pending-evidence", "anything")
+        )
+
+    assert raised.value.code == 2
+    assert "--cleanup-pending-evidence" in capsys.readouterr().err
+    assert registry.load_state(state_path)["records"][0]["status"] == "cleanup_pending"
+
+
+def test_cleanup_pending_lease_is_abandoned_only_with_cleanup_evidence(
+    tmp_path: Path, capsys
+) -> None:
+    record = _cleanup_pending_record(tmp_path)
+    state_path = tmp_path / "registry.json"
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+
+    bare = registry.main(_abandon_args(state_path, record))
+    refusal = capsys.readouterr().err
+    blank = registry.main(
+        _abandon_args(state_path, record), cleanup_pending_evidence=" "
+    )
+    wrong_target = registry.main(
+        _abandon_args(state_path, record, status="published"),
+        cleanup_pending_evidence="PR #7 MERGED",
+    )
+
+    assert bare == registry.EXIT_CLAIMED
+    assert "status: actual 'cleanup_pending'" in refusal
+    assert blank == registry.EXIT_USAGE
+    assert wrong_target == registry.EXIT_USAGE
+    assert registry.load_state(state_path)["records"][0]["status"] == "cleanup_pending"
+
+    ok = registry.main(
+        _abandon_args(state_path, record), cleanup_pending_evidence="PR #7 MERGED"
+    )
+
+    assert ok == registry.EXIT_OK
+    assert registry.load_state(state_path)["records"][0]["status"] == "abandoned"
+
+
+def test_transition_refusal_names_each_mismatched_field(tmp_path: Path, capsys) -> None:
+    record = _cleanup_pending_record(tmp_path)
+    state_path = tmp_path / "registry.json"
+    registry.save_state(state_path, {"schema": registry.SCHEMA, "records": [record]})
+    args = _abandon_args(state_path, record)
+    args[args.index("--expected-head-sha") + 1] = "c" * 40
+
+    assert registry.main(args) == registry.EXIT_CLAIMED
+    err = capsys.readouterr().err
+    assert f"head: expected {'c' * 40}, actual {'b' * 40}" in err
+    assert "status: actual 'cleanup_pending'" in err
+
+    args[args.index("--branch") + 1] = "no/such-branch"
+    assert registry.main(args) == registry.EXIT_CLAIMED
+    assert "no registry record for branch/path 'no/such-branch'" in (
+        capsys.readouterr().err
+    )

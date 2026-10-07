@@ -386,8 +386,23 @@ def _parser() -> argparse.ArgumentParser:
     )
 
 
-def main(argv: list[str] | None = None, *, acquire_lock: bool = True) -> int:
+def main(
+    argv: list[str] | None = None,
+    *,
+    acquire_lock: bool = True,
+    cleanup_pending_evidence: str | None = None,
+) -> int:
+    """Run one registry command.
+
+    ``cleanup_pending_evidence`` is an in-process capability for the
+    orchestrator, which verifies the PR/remote proof before passing it; it is
+    deliberately absent from the command line so a direct caller cannot
+    abandon a cleanup_pending lease by asserting evidence text.
+    """
+
     args = _parser().parse_args(argv)
+    if cleanup_pending_evidence is not None:
+        args.cleanup_pending_evidence = cleanup_pending_evidence
     if acquire_lock and _requires_operation_lock(args):
         with OperationLock(common_anchor(), command=f"registry:{args.command}"):
             return int(args.func(args))

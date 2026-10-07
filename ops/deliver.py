@@ -10,6 +10,12 @@ and GitHub on every run, so a run that died halfway is simply run again.
 Stages: checks -> adopt -> hand-back -> receipt -> publish -> wait-required ->
 (with --merge) queue -> wait-merged -> cleanup -> sync-main.
 
+Before the hand-back seals HEAD, the changed ``*.py`` files must pass the very
+``ruff format --check`` the pr-gate runs (version read from pr-gate.yml, never
+restated here).  A failure stops the run and names the files and the exact
+format command; deliver never rewrites the branch itself, because a silent
+rewrite after the author committed would hand back code nobody ran the checks on.
+
 Outcomes written into the hand-back receipt come only from the ``--check``
 commands this run executed: status from the exit code, detail from the last
 line of output.  There is no way to pass an outcome in by hand.
@@ -34,10 +40,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from lib import worktree_scope
+
 SCHEMA = "kg.deliver.v1"
 TRUNK = "origin/main"
 OPS = Path(__file__).resolve().parent
-_OPERATIONS = {"A": "add", "M": "modify", "D": "delete", "T": "modify"}
+PR_GATE = OPS.parent / ".github" / "workflows" / "pr-gate.yml"
 
 
 class DeliverError(Exception):
@@ -76,23 +84,19 @@ def scope_from_name_status(text: str) -> dict[str, Any]:
     A rename is a delete of the old path plus an add of the new one, which is
     how Scope overlap has to see it.
     """
-    files: list[dict[str, str]] = []
-    for line in text.splitlines():
-        if not line.strip():
-            continue
-        parts = line.split("\t")
-        code = parts[0][0]
-        if code in "RC":
-            if code == "R":
-                files.append({"operation": "delete", "path": parts[1]})
-            files.append({"operation": "add", "path": parts[2]})
-        elif code in _OPERATIONS:
-            files.append({"operation": _OPERATIONS[code], "path": parts[1]})
-        else:
-            raise DeliverError(
-                f"unrecognised git status {parts[0]!r} for {parts[-1]!r}"
-            )
-    return {"schema": "kg.worktree.scope.v1", "files": files}
+    try:
+        return worktree_scope.scope_from_name_status(text)
+    except ValueError as exc:
+        raise DeliverError(str(exc)) from exc
+
+
+def _scope_key(scope: object) -> list[tuple[str, str]]:
+    files = scope.get("files") if isinstance(scope, dict) else None
+    return sorted(
+        (str(item.get("path")), str(item.get("operation")))
+        for item in files or []
+        if isinstance(item, dict)
+    )
 
 
 def lane_from_branch(branch: str, stamp: str) -> str:
@@ -126,6 +130,35 @@ def run_checks(specs: list[str], cwd: Path, runner: Runner) -> list[dict[str, st
             }
         )
     return outcomes
+
+
+def ruff_format_command(workflow: str) -> list[str]:
+    """The pr-gate's pinned format invocation, minus the files and the mode flag.
+
+    The workflow is the single source of the pin; if its shape changes so this
+    can no longer find it, fail closed instead of guessing a version.
+    """
+    found = re.search(
+        r"uv run --no-project --python (\S+) --with 'ruff==([0-9][^']*)' ruff format",
+        workflow,
+    )
+    if not found:
+        raise DeliverError(
+            f"cannot read the pinned ruff from {PR_GATE.name}; "
+            "update deliver.ruff_format_command with the workflow"
+        )
+    python, version = found.groups()
+    return [
+        "uv",
+        "run",
+        "--no-project",
+        "--python",
+        python,
+        "--with",
+        f"ruff=={version}",
+        "ruff",
+        "format",
+    ]
 
 
 def next_stage(record: dict[str, Any] | None, pr: dict[str, Any] | None) -> str:
@@ -260,6 +293,70 @@ class Delivery:
             )
         self.say(f"rebased onto {TRUNK} ({behind} commit(s))")
 
+    def check_format(self) -> None:
+        """Run the pr-gate's pinned `ruff format --check` on the changed Python files."""
+        names = self.git(
+            "diff", "--name-only", "--diff-filter=d", f"{TRUNK}...HEAD", "--", "*.py"
+        )
+        files = [line for line in names.splitlines() if line.strip()]
+        if not files:
+            self.say("format: no changed Python files")
+            return
+        try:
+            base = ruff_format_command(PR_GATE.read_text())
+        except OSError as exc:
+            raise DeliverError(f"cannot read {PR_GATE}: {exc}") from exc
+        done = self.runner([*base, "--check", *files], self.work)
+        if done.returncode == 0:
+            self.say(f"format ok: {len(files)} changed Python file(s)")
+            return
+        listed = (done.stdout + done.stderr).strip()[-600:]
+        fix = " ".join([*base, *files])
+        raise DeliverError(
+            "changed Python files are not formatted with the pr-gate's pinned ruff "
+            f"(rc={done.returncode}):\n{listed}\nrun, commit, then re-run deliver:\n  {fix}"
+        )
+
+    def reclaim_if_base_stale(self, record: dict[str, Any], branch: str) -> bool:
+        """Abandon an active claim whose base is not the branch's fork point.
+
+        A claim adopted against a stale local ``main`` records that old base;
+        once the branch sits on a newer ``origin/main`` the three-dot diff then
+        includes merged main commits and the receipt refuses.  The registry's
+        own ``resolve --status abandoned`` retires the claim; the caller then
+        re-adopts against ``origin/main``.
+        """
+        fork = self.git("merge-base", "HEAD", TRUNK, stage="preflight")
+        if record.get("base_sha") == fork:
+            return False
+        head = self.git("rev-parse", "HEAD", stage="preflight")
+        sealed = record.get("handed_back_sha")
+        must(
+            self.runner,
+            [
+                str(OPS / "worktree_orchestrate.py"),
+                "resolve",
+                "--branch",
+                branch,
+                "--path",
+                str(self.work),
+                "--status",
+                "abandoned",
+                "--expected-generation",
+                str(record.get("claim_generation", 0)),
+                "--expected-head-sha",
+                str(sealed or head),
+                "--json",
+            ],
+            self.work,
+            "retire stale-base claim",
+        )
+        self.say(
+            f"claim base {record.get('base_sha')} is not the fork point {fork}; "
+            "claim retired, re-adopting"
+        )
+        return True
+
     def wait_for(self, what: str, probe: Callable[[], str | None]) -> str:
         deadline = time.monotonic() + self.args.timeout
         while True:
@@ -290,6 +387,15 @@ class Delivery:
         delivery = [str(canon / "ops" / "delivery.py"), "--repo", str(canon)]
         record = self.registry_record(branch)
         pr = self.pull_request(repo, branch)
+        if (
+            self.args.branch
+            and pr is not None
+            and pr.get("state") == "MERGED"
+            and (record is None or record.get("status") in ("merged", "abandoned"))
+        ):
+            raise DeliverError(
+                f"PR #{pr.get('number')} already merged; start a new lane from {TRUNK}"
+            )
         stage = next_stage(record, pr)
         lane = self.args.lane or (
             record["external_ids"][0] if record and record.get("external_ids") else None
@@ -303,11 +409,18 @@ class Delivery:
 
         if stage in ("adopt", "hand-back", "receipt"):
             self.rebase_if_behind()
+        if (
+            stage in ("hand-back", "receipt")
+            and record is not None
+            and self.reclaim_if_base_stale(record, branch)
+        ):
+            record, stage = None, "adopt"
         if stage in ("adopt", "hand-back"):
             if not self.args.check:
                 raise DeliverError(
                     "pass at least one --check: an outcome has to come from a command that ran"
                 )
+            self.check_format()
             outcomes = run_checks(self.args.check, self.work, self.runner)
             failed = [o for o in outcomes if o["status"] != "passed"]
             for o in outcomes:
@@ -327,6 +440,28 @@ class Delivery:
                 scope_file.write_text(json.dumps(scope))
                 outcome_file.write_text(json.dumps(outcomes))
                 orchestrate = str(OPS / "worktree_orchestrate.py")
+                if (
+                    stage == "hand-back"
+                    and self.args.scope_from_diff
+                    and _scope_key(record and record.get("scope")) != _scope_key(scope)
+                ):
+                    # The lane grew past the Scope it was adopted with.
+                    must(
+                        self.runner,
+                        [
+                            str(OPS / "worktree_registry.py"),
+                            "scope-set",
+                            "--branch",
+                            branch,
+                            "--path",
+                            str(self.work),
+                            "--scope-file",
+                            str(scope_file),
+                        ],
+                        self.work,
+                        "scope-set",
+                    )
+                    self.say("scope refreshed from the diff")
                 if stage == "adopt":
                     intent = self.args.intent or self.git("log", "-1", "--format=%s")
                     must(
@@ -336,6 +471,8 @@ class Delivery:
                             "adopt",
                             "--worktree",
                             str(self.work),
+                            "--base",
+                            TRUNK,
                             "--intent",
                             intent,
                             "--external-id",
@@ -563,6 +700,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--branch", help="resume a published lane whose worktree is already gone"
+    )
+    parser.add_argument(
+        "--scope-from-diff",
+        action="store_true",
+        help=(
+            "derive Scope (add/modify/delete) from the worktree's diff against "
+            f"{TRUNK}; a new lane always does, this also refreshes the Scope of "
+            "an already-adopted lane (e.g. an agent worktree) before hand-back"
+        ),
     )
     parser.add_argument("--lane", help="external id; derived from the branch when new")
     parser.add_argument("--title", help="PR title; default is the last commit subject")

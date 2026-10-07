@@ -40,7 +40,7 @@ import worktree_reanchor_core.published_remote_recovery as worktree_published_re
 import worktree_registry as registry
 import worktree_resume
 from delivery_control.adapters.operation_lock import OperationLock
-from lib.worktree_scope import scope_files, scope_status
+from lib.worktree_scope import scope_files, scope_from_name_status, scope_status
 from worktree_reanchor_core import git_ops as reanchor_git_ops
 from worktree_reanchor_core import registry_ops as reanchor_registry_ops
 from worktree_reanchor_core.domain import commit_sha as reanchor_commit_sha
@@ -401,6 +401,32 @@ def cmd_adopt(args: argparse.Namespace) -> int:
             human="✗ adopt refused: base ref cannot be resolved",
         )
         return EXIT_BLOCK
+    if getattr(args, "scope_from_diff", False):
+        reason = None
+        if args.scope is not None or args.scope_file is not None:
+            reason = "--scope-from-diff conflicts with --scope/--scope-file"
+        else:
+            rc, names = _git(["diff", "--name-status", f"{args.base}...HEAD"], worktree)
+            if rc != 0:
+                reason = f"cannot diff against {args.base}: {names}"
+            else:
+                try:
+                    derived = scope_from_name_status(names)
+                except ValueError as exc:
+                    reason = str(exc)
+                else:
+                    if not derived["files"]:
+                        reason = (
+                            f"no changes against {args.base} to derive a Scope from"
+                        )
+                    args.scope = json.dumps(derived)
+        if reason:
+            _emit(
+                {"schema": SCHEMA, "action": "refused", "reason": reason},
+                as_json=args.json,
+                human=f"✗ adopt refused: {reason}",
+            )
+            return EXIT_USAGE
     rc, record = _registry_register(
         branch=branch,
         path=worktree,
@@ -438,6 +464,10 @@ REANCHOR_HANDBACK_SCHEMA = "kg.worktree.reanchor-handback.v1"
 def _branch_pull_requests(repo: Path, branch: str) -> tuple[int, ...]:
     """Read every PR for a branch before an owner-local handback reanchor."""
 
+    return tuple(item.number for item in _branch_pull_request_snapshots(repo, branch))
+
+
+def _branch_pull_request_snapshots(repo: Path, branch: str) -> tuple[Any, ...]:
     from delivery_control.adapters.github_cli import GitHubCliAdapter
 
     try:
@@ -452,7 +482,7 @@ def _branch_pull_requests(repo: Path, branch: str) -> tuple[int, ...]:
             "branch PR inventory contains malformed GitHub facts",
             problems=[problem.reason for problem in inventory.problems],
         )
-    return tuple(item.number for item in inventory.records)
+    return tuple(inventory.records)
 
 
 def _remote_main_sha(repo: Path) -> str:
@@ -1871,9 +1901,82 @@ def cmd_freeze(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _cleanup_pending_retire_evidence(
+    args: argparse.Namespace,
+) -> tuple[str | None, str | None]:
+    """Prove a cleanup_pending lease is safe to abandon.
+
+    Returns ``(evidence, refusal)``; both None when the selected record is not
+    a cleanup_pending lease (the normal transition rules apply).  Evidence is
+    either a MERGED PR whose head is the expected HEAD, or an absent remote
+    branch with no PR history at all; anything else keeps the lease.
+    """
+
+    try:
+        state = registry.load_state(registry._state_path(args))
+    except (
+        OSError,
+        ValueError,
+    ):  # unreadable state is reported by the transition itself
+        return None, None
+    records = [
+        record
+        for record in state.get("records", [])
+        if isinstance(record, dict)
+        and record.get("status") == "cleanup_pending"
+        and registry._record_matches(record, branch=args.branch, path=args.path)
+    ]
+    if not records:
+        return None, None
+    branch = records[0].get("branch")
+    if not isinstance(branch, str) or not branch:
+        return None, "cleanup_pending record has no branch to verify"
+    try:
+        pulls = _branch_pull_request_snapshots(ROOT, branch)
+    except ReanchorRefused as exc:
+        return None, f"cannot prove PR state for {branch}: {exc}"
+    merged = [
+        pr
+        for pr in pulls
+        if pr.state == "MERGED" and pr.head_sha == args.expected_head_sha
+    ]
+    if merged:
+        return f"PR #{merged[0].number} MERGED at head {args.expected_head_sha}", None
+    open_pulls = [pr for pr in pulls if pr.state == "OPEN"]
+    if open_pulls:
+        return None, (
+            f"PR #{open_pulls[0].number} for {branch} is still OPEN; "
+            "keeping the cleanup_pending lease"
+        )
+    if pulls:
+        # CLOSED-unmerged (or MERGED for another HEAD) history cannot be
+        # discarded by this shortcut; abandoning would strand the handback in
+        # an unsupported abandoned_with_handback state.
+        return None, (
+            f"PR #{pulls[0].number} for {branch} is {pulls[0].state} without "
+            f"merging HEAD {args.expected_head_sha}; use the closed-PR "
+            "disposition flow"
+        )
+    remote, problem = worktree_cleanup._remote_branch_head(branch, root=ROOT, git=_git)
+    if problem:
+        return None, problem
+    if remote is None:
+        return f"remote branch {branch} is gone and no PR ever existed", None
+    return None, (
+        f"remote branch {branch} still exists at {remote} and no PR for exact HEAD "
+        f"{args.expected_head_sha} is MERGED"
+    )
+
+
 def cmd_resolve(args: argparse.Namespace) -> int:
     branch = None
     worktree = None
+    retire_evidence = None
+    if args.status == "abandoned" and (args.branch or args.path):
+        retire_evidence, refusal = _cleanup_pending_retire_evidence(args)
+        if refusal:
+            print(f"✗ resolve blocked: {refusal}", file=sys.stderr)
+            return EXIT_BLOCK
     if args.remove:
         branch, worktree, refusal = worktree_cleanup.resolve_remove_target(
             args,
@@ -1907,7 +2010,9 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         argv += ["--expected-generation", str(args.expected_generation)]
     if args.expected_head_sha:
         argv += ["--expected-head-sha", args.expected_head_sha]
-    rc = registry.main(argv, acquire_lock=False)
+    rc = registry.main(
+        argv, acquire_lock=False, cleanup_pending_evidence=retire_evidence
+    )
     if rc != EXIT_OK or not args.remove:
         return rc
     return worktree_cleanup.cleanup_resolved_local_assets(
@@ -1978,6 +2083,11 @@ def _parser() -> argparse.ArgumentParser:
     ad.add_argument("--external-id", action="append", default=[])
     ad.add_argument("--scope")
     ad.add_argument("--scope-file")
+    ad.add_argument(
+        "--scope-from-diff",
+        action="store_true",
+        help="derive Scope from the worktree's diff against --base",
+    )
     ad.add_argument("--codex-thread-id")
     ad.add_argument("--delegated", action=argparse.BooleanOptionalAction, default=None)
     ad.set_defaults(func=cmd_adopt)

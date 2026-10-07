@@ -92,6 +92,7 @@ done
 # mention the file.  Not a full reachability scan; extend as files are routed.
 ROUTED_TESTS=(
   "ui-graph:ops/tests/test_ui_graph_contract.py"
+  "worktree:ops/tests/test_worktree_scope.py"
   "doctor:ops/tests/test_doctor.py"
   "doctor:ops/tests/test_release_train.py"
   "doctor:ops/tests/test_complexity.py"

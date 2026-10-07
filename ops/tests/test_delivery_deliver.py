@@ -34,6 +34,9 @@ class FakeWorld:
         self.pr_state = list(state.get("pr_state", ["MERGED"]))
         self.merged_prs = state.get("merged_prs", {})
         self.diff = state.get("diff", "M\tops/a.py\nA\tops/b.py\n")
+        self.fork = state.get("fork", "f" * 40)
+        self.changed_py = state.get("changed_py", ["ops/a.py", "ops/b.py"])
+        self.format_rc = state.get("format_rc", 0)
         self.fail_commands: set[str] = set(state.get("fail_commands", set()))
         self.published_pr: dict[str, Any] | None = state.get(
             "published_pr", {"number": 77, "state": "OPEN", "url": "u"}
@@ -86,12 +89,22 @@ class FakeWorld:
                 )
             if sub[0] == "worktree":
                 return ok(f"worktree {self.canon}\nHEAD abc\n")
+            if sub[0] == "diff" and "--name-only" in sub:
+                return ok("".join(f"{name}\n" for name in self.changed_py))
             if sub[0] == "diff":
                 return ok(self.diff)
+            if sub[0] == "merge-base":
+                return ok(self.fork)
             if sub[0] == "log":
                 return ok("feat: the thing")
             if sub[0] == "rev-parse":
                 return ok(str(self.canon))
+        if head == "uv":
+            return deliver.Proc(
+                self.format_rc,
+                "Would reformat: ops/a.py\n" if self.format_rc else "",
+                "",
+            )
         if head == "gh":
             if cmd[1:3] == ["repo", "view"]:
                 return ok("o/r")
@@ -436,3 +449,184 @@ def test_a_branch_that_already_carries_the_date_does_not_repeat_it() -> None:
         deliver.lane_from_branch("feat/x-20261007", "20261007")
         == "DIRECT-DELIVERY-FEAT-X-20261007"
     )
+
+
+def _agent_record(**extra: Any) -> dict[str, Any]:
+    return {
+        "branch": "worktree-agent-abc123",
+        "status": "active",
+        "external_ids": ["LANE-A"],
+        "claim_generation": 0,
+        "handed_back_sha": "e" * 40,
+        "base_sha": "1" * 40,  # adopted against a stale local main
+        **extra,
+    }
+
+
+def test_an_agent_claim_with_a_stale_base_is_retired_and_readopted_on_trunk() -> None:
+    world = FakeWorld(branch="worktree-agent-abc123", record=_agent_record())
+    code, result = ship(world, "--check", "docs=good")
+    assert code == 0, result
+    assert world.names() == ["resolve", "adopt", "hand-back", "receipt", "publish"]
+    resolve = next(c for c in world.calls if c[1:2] == ["resolve"])
+    assert resolve[resolve.index("--status") + 1] == "abandoned"
+    assert resolve[resolve.index("--expected-head-sha") + 1] == "e" * 40
+    adopt = next(c for c in world.calls if c[1:2] == ["adopt"])
+    assert adopt[adopt.index("--base") + 1] == deliver.TRUNK
+
+
+def test_a_claim_whose_base_is_the_fork_point_is_kept() -> None:
+    world = FakeWorld(
+        branch="worktree-agent-abc123", record=_agent_record(base_sha="f" * 40)
+    )
+    code, _ = ship(world, "--check", "docs=good")
+    assert code == 0
+    assert "resolve" not in world.names()
+    assert "adopt" not in world.names()
+
+
+def test_scope_from_diff_refreshes_a_drifted_active_claim_scope() -> None:
+    record = _agent_record(
+        base_sha="f" * 40,
+        scope={"files": [{"path": "ops/a.py", "operation": "modify"}]},
+    )
+    world = FakeWorld(branch="worktree-agent-abc123", record=record)
+    code, _ = ship(world, "--check", "docs=good", "--scope-from-diff")
+    assert code == 0
+    refresh = [
+        c
+        for c in world.calls
+        if c[0].endswith("worktree_registry.py") and "scope-set" in c
+    ]
+    assert len(refresh) == 1
+
+    same = FakeWorld(
+        branch="worktree-agent-abc123",
+        record=_agent_record(
+            base_sha="f" * 40,
+            scope=deliver.scope_from_name_status("M\tops/a.py\nA\tops/b.py\n"),
+        ),
+    )
+    assert ship(same, "--check", "docs=good", "--scope-from-diff")[0] == 0
+    assert not [c for c in same.calls if "scope-set" in c]
+    plain = FakeWorld(branch="worktree-agent-abc123", record=record)
+    ship(plain, "--check", "docs=good")
+    assert not [c for c in plain.calls if "scope-set" in c]
+
+
+def test_branch_resume_of_an_already_merged_lane_stops_with_a_clear_message() -> None:
+    world = FakeWorld(prs=[{"number": 41, "state": "MERGED"}])
+    code, result = ship(world, "--branch", "feat/thing", "--check", "u=good")
+    assert code == 1
+    assert result["error"] == "PR #41 already merged; start a new lane from origin/main"
+    assert world.names() == []
+
+
+def test_branch_resume_still_cleans_a_merged_lane_that_is_not_yet_retired() -> None:
+    world = FakeWorld(
+        prs=[{"number": 41, "state": "MERGED"}],
+        record={"branch": "feat/thing", "status": "cleanup_pending"},
+    )
+    code, _ = ship(world, "--branch", "feat/thing")
+    assert code == 0
+    assert world.names() == ["cleanup-merged", "sync-main"]
+
+
+def test_stale_local_main_base_is_detected_in_a_real_agent_style_checkout(
+    tmp_path: Path,
+) -> None:
+    """Agent worktrees fork from a newer origin/main than the local main the
+    claim was adopted against; the claim base is then not the fork point."""
+    import subprocess
+
+    def sh(*argv: str, cwd: Path = tmp_path) -> str:
+        done = subprocess.run(
+            list(argv), cwd=cwd, capture_output=True, text=True, check=True
+        )
+        return done.stdout.strip()
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    sh("git", "init", "-q", "-b", "main", cwd=repo)
+    sh("git", "config", "user.email", "t@example.com", cwd=repo)
+    sh("git", "config", "user.name", "T", cwd=repo)
+    (repo / "a.txt").write_text("1")
+    sh("git", "add", ".", cwd=repo)
+    sh("git", "commit", "-qm", "one", cwd=repo)
+    stale = sh("git", "rev-parse", "HEAD", cwd=repo)
+    (repo / "merged_later.txt").write_text("2")
+    sh("git", "add", ".", cwd=repo)
+    sh("git", "commit", "-qm", "two", cwd=repo)
+    sh("git", "update-ref", "refs/remotes/origin/main", "HEAD", cwd=repo)
+    sh("git", "checkout", "-q", "-b", "worktree-agent-x", cwd=repo)
+    (repo / "mine.txt").write_text("3")
+    sh("git", "add", ".", cwd=repo)
+    sh("git", "commit", "-qm", "mine", cwd=repo)
+    sh("git", "update-ref", "refs/heads/main", stale, cwd=repo)  # stale local main
+
+    args = deliver.build_parser().parse_args(["--worktree", str(repo)])
+    delivery = deliver.Delivery(args, deliver.run, lambda _s: None)
+    retired: list[list[str]] = []
+
+    def spy(cmd: list[str], cwd: Path | None) -> deliver.Proc:
+        if cmd[0].endswith("worktree_orchestrate.py"):
+            retired.append(cmd)
+            return deliver.Proc(0, "{}", "")
+        return deliver.run(cmd, cwd)
+
+    delivery.runner = spy
+    assert delivery.reclaim_if_base_stale(
+        {"base_sha": stale, "handed_back_sha": "e" * 40}, "worktree-agent-x"
+    )
+    assert retired and "abandoned" in retired[0]
+    fork = sh("git", "merge-base", "HEAD", "origin/main", cwd=repo)
+    assert not delivery.reclaim_if_base_stale(
+        {"base_sha": fork, "handed_back_sha": "e" * 40}, "worktree-agent-x"
+    )
+
+
+def _format_calls(world: FakeWorld) -> list[list[str]]:
+    return [c for c in world.calls if c[0] == "uv"]
+
+
+def test_the_format_gate_runs_the_pr_gate_pinned_ruff_on_changed_python() -> None:
+    world = FakeWorld()
+    assert ship(world, "--check", "unit=good")[0] == 0
+    (call,) = _format_calls(world)
+    assert (
+        "ruff==0.16.3" in deliver.PR_GATE.read_text()
+    )  # the pin lives in the workflow
+    assert call[call.index("--with") + 1] == "ruff==0.16.3"
+    assert call[call.index("--python") + 1] == "3.13"
+    assert "--no-project" in call and "format" in call
+    assert call[call.index("--check") :] == ["--check", "ops/a.py", "ops/b.py"]
+
+
+def test_the_pin_is_read_from_the_workflow_not_restated() -> None:
+    bumped = deliver.ruff_format_command(
+        "run: uv run --no-project --python 3.14 --with 'ruff==9.9.9' ruff format --check x"
+    )
+    assert "ruff==9.9.9" in bumped and "3.14" in bumped
+
+
+def test_an_unreadable_pin_fails_closed() -> None:
+    with pytest.raises(deliver.DeliverError, match="cannot read the pinned ruff"):
+        deliver.ruff_format_command("run: ruff format --check x")
+
+
+def test_unformatted_python_stops_before_checks_and_names_the_fix() -> None:
+    world = FakeWorld(format_rc=1)
+    code, result = ship(world, "--check", "unit=good")
+    assert code == 1
+    error = result["error"]
+    assert "pinned ruff" in error and "Would reformat: ops/a.py" in error
+    assert "ruff==0.16.3 ruff format ops/a.py ops/b.py" in error
+    assert not [c for c in world.calls if c[0] == "bash"]  # no check ran
+    assert world.names() == []  # nothing claimed, nothing handed back
+    assert not [c for c in world.calls if c[:2] == ["git", "commit"]]  # never rewrites
+
+
+def test_a_branch_without_python_changes_skips_the_format_gate() -> None:
+    world = FakeWorld(changed_py=[])
+    assert ship(world, "--check", "unit=good")[0] == 0
+    assert _format_calls(world) == []

@@ -1958,3 +1958,30 @@ def test_final_readback_rejects_concurrently_closed_pr() -> None:
 
     with pytest.raises(PolicyViolation, match="readback"):
         service.publish(receipt=receipt, title="fix: delivery")
+
+
+def test_active_handback_refusal_names_each_mismatching_field() -> None:
+    receipt = _receipt()
+    record = _registry(
+        receipt,
+        handback_digest=receipt.content_digest,
+        handback_origin_main_sha=receipt.origin_main_sha,
+    )
+    stale = _worktree(
+        receipt,
+        base_sha="9" * 40,
+        head_sha="8" * 40,
+        changes=(
+            FileChange(FileOperation.MODIFY, "ops/a.py"),
+            FileChange(FileOperation.MODIFY, "ops/merged_on_main.py"),
+        ),
+    )
+
+    with pytest.raises(PolicyViolation) as caught:
+        receipt_from_active_claim(record, stale)
+
+    message = str(caught.value)
+    assert f"base_sha: expected {receipt.base_sha}, actual {'9' * 40}" in message
+    assert f"head_sha: expected {receipt.head_sha}, actual {'8' * 40}" in message
+    assert "modify ops/merged_on_main.py" in message
+    assert "clean:" not in message and "branch:" not in message
