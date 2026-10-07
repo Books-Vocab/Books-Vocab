@@ -65,6 +65,32 @@ printf 'findings=0\n' >"$TMP/nowm.txt"
 rc=0; out="$(KG_I18N_SRC="$FIX/watermark" KG_I18N_BASELINE="$TMP/nowm.txt" ./ops/i18n_lint.sh --strict 2>&1)" || rc=$?
 expect "strict without watermark" 2 "no localized_calls= watermark"
 
+echo "── a malformed watermark fails closed with exit 2 (a non-numeric one made [ -gt ] error, read false, and pass) ──"
+wm_lint() {  # $1 = mode, $2 = raw baseline body
+  printf '%b' "$2" >"$TMP/badwm.txt"
+  rc=0; out="$(KG_I18N_SRC="$FIX/watermark" KG_I18N_BASELINE="$TMP/badwm.txt" ./ops/i18n_lint.sh "$1" 2>&1)" || rc=$?
+}
+for mode in --strict --baseline-check; do
+  wm_lint "$mode" 'findings=999\nlocalized_calls=abc\n'
+  expect "$mode non-numeric watermark" 2 "malformed localized_calls watermark"
+  wm_lint "$mode" 'findings=999\nlocalized_calls=\n'
+  expect "$mode empty watermark" 2 "malformed localized_calls watermark"
+  wm_lint "$mode" 'findings=999\nlocalized_calls=-1\n'
+  expect "$mode negative watermark" 2 "malformed localized_calls watermark"
+  wm_lint "$mode" 'findings=999\nlocalized_calls=1 \n'
+  expect "$mode padded watermark" 2 "malformed localized_calls watermark"
+  wm_lint "$mode" 'findings=999\nlocalized_calls=5\nlocalized_calls=6\n'
+  expect "$mode duplicated watermark" 2 "duplicate localized_calls watermark"
+  wm_lint "$mode" 'findings=999\nlocalized_calls=1\n'
+  expect "$mode valid watermark (positive control)" 0 "ok"
+done
+wm_lint --baseline-check 'findings=abc\nlocalized_calls=1\n'
+expect "--baseline-check non-numeric findings baseline" 2 "malformed findings baseline"
+wm_lint --baseline-check 'findings=9\nfindings=9\nlocalized_calls=1\n'
+expect "--baseline-check duplicated findings baseline" 2 "malformed findings baseline"
+wm_lint --baseline-check 'findings=999\n'
+expect "--baseline-check legacy baseline without watermark still passes" 0 "ok"
+
 echo "── CI contract: every PR runs i18n_lint --strict, and .lproj diffs select it ──"
 grep -qF 'ui_quality_gate.sh --tier fast --execute --all-mechanisms' .github/workflows/ui-quality-gate.yml \
   && ok "ui-quality-gate workflow runs the fast tier on all mechanisms" \

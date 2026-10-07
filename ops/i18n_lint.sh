@@ -400,13 +400,33 @@ reject_duplicates() {
   exit 1
 }
 
+# True when the baseline carries any localized_calls= line, even a malformed one.
+has_localized_watermark() {
+  grep -q '^localized_calls=' "$BASELINE_FILE" 2>/dev/null
+}
+
 # .localized debt only ratchets down; --strict (CI) requires the watermark to exist.
+# Fail closed (exit 2, tool error) unless it is exactly one non-negative integer:
+# a malformed value would make `[ -gt ]` error, read false inside `if`, and pass.
 check_localized_watermark() {
-  localized_baseline=$(awk -F= '/^localized_calls=/{print $2}' "$BASELINE_FILE" 2>/dev/null || true)
-  if [ -z "$localized_baseline" ]; then
+  local lines n
+  lines=$(grep '^localized_calls=' "$BASELINE_FILE" 2>/dev/null || true)
+  if [ -z "$lines" ]; then
     echo "[i18n_lint] error: no localized_calls= watermark in $BASELINE_FILE" >&2
     exit 2
   fi
+  n=$(printf '%s\n' "$lines" | grep -c .)
+  if [ "$n" -ne 1 ]; then
+    echo "[i18n_lint] error: duplicate localized_calls watermark ($n lines) in $BASELINE_FILE" >&2
+    exit 2
+  fi
+  localized_baseline=${lines#localized_calls=}
+  case "$localized_baseline" in
+    ''|*[!0-9]*)
+      echo "[i18n_lint] error: malformed localized_calls watermark '$localized_baseline' in $BASELINE_FILE (want a non-negative integer)" >&2
+      exit 2
+      ;;
+  esac
   if [ "$localized_count" -gt "$localized_baseline" ]; then
     echo "[i18n_lint] REGRESSION: localized_calls $localized_count > baseline $localized_baseline" >&2
     exit 1
@@ -432,15 +452,20 @@ EOF
       exit 2
     fi
     baseline=$(awk -F= '/^findings=/{print $2}' "$BASELINE_FILE")
-    localized_baseline=$(awk -F= '/^localized_calls=/{print $2}' "$BASELINE_FILE")
     if [ -z "$baseline" ]; then
       baseline=$(tr -d '[:space:]' < "$BASELINE_FILE")
     fi
+    case "$baseline" in
+      ''|*[!0-9]*)  # empty, non-numeric or multi-line: `[ -gt ]` would error and read false
+        echo "[i18n_lint] error: malformed findings baseline '$baseline' in $BASELINE_FILE (want one non-negative integer)" >&2
+        exit 2
+        ;;
+    esac
     if [ "$total" -gt "$baseline" ]; then
       echo "[i18n_lint] REGRESSION: $total > baseline $baseline" >&2
       exit 1
     fi
-    [ -n "$localized_baseline" ] && check_localized_watermark
+    ! has_localized_watermark || check_localized_watermark
     echo "[i18n_lint] ok: $total <= baseline $baseline"
     exit 0
     ;;
