@@ -9,9 +9,11 @@ and GitHub on every run, so a run that died halfway is simply run again.
 
 Stages: checks -> adopt -> hand-back -> receipt -> publish -> wait-required ->
 (with --merge) wait agent-review -> queue -> wait-merged -> cleanup -> sync-main.
---merge refuses to queue while agent-review on the exact head failed or the
-review bot left inline comments on it, unless --accept-review-findings gives a
-reason.  A mutation that meets a busy delivery lock retries (--lock-timeout).
+--merge waits until agent-review on the exact head settles to success or
+failure (`neutral` is the workflow giving up on the bot, not a verdict; only
+--accept-no-review '<reason>' queues on it), and refuses to queue while it
+failed or the review bot left inline comments on the head, unless
+--accept-review-findings gives a reason.  A mutation that meets a busy delivery lock retries (--lock-timeout).
 A failed stage reports the underlying error whole.
 
 Before the hand-back seals HEAD, the changed ``*.py`` files must pass the very
@@ -774,22 +776,39 @@ class Delivery:
         except OSError as exc:
             raise DeliverError(f"cannot read {AGENT_REVIEW}: {exc}") from exc
         runs = f"repos/{repo}/commits/{head}/check-runs?check_name={REVIEW_CHECK}"
-        verdict = self.wait_for(
-            f"{REVIEW_CHECK} on {head}",
-            lambda: review_verdict(
+        seen: list[str | None] = [None]
+
+        def settled() -> str | None:
+            # `neutral` only says the workflow stopped waiting (20 x 15s) for
+            # the bot; the bot often reviews later and a new run posts the
+            # real verdict, so only success/failure ends the wait.
+            seen[0] = review_verdict(
                 self.gh_pages(f"{runs}&filter=all&per_page=100", "check_runs")
-            ),
-        )
+            )
+            return seen[0] if seen[0] in ("success", "failure") else None
+
+        no_review = (self.args.accept_no_review or "").strip()
+        try:
+            verdict = self.wait_for(f"{REVIEW_CHECK} on {head}", settled)
+        except DeliverError as exc:
+            if seen[0] != "neutral":
+                raise
+            if not no_review:
+                raise DeliverError(
+                    f"refusing to queue #{number}: {REVIEW_CHECK} on {head} never "
+                    f"settled to success/failure within {self.args.timeout}s; "
+                    f"'neutral' only means the workflow stopped waiting for "
+                    f"{bots[0]}, not that it reviewed the head\nwait and re-run, "
+                    "or pass --accept-no-review '<reason>'"
+                ) from exc
+            verdict = "neutral"
+            self.say(f"accepted #{number} without an exact-head review ({no_review})")
         findings = review_findings(
             self.gh_pages(f"repos/{repo}/pulls/{number}/comments?per_page=100"),
             head,
             bots,
         )
-        advisory = " (no exact-head review observed; advisory)"
-        self.say(
-            f"{REVIEW_CHECK} {verdict} on #{number} at {head}"
-            + (advisory if verdict == "neutral" else "")
-        )
+        self.say(f"{REVIEW_CHECK} {verdict} on #{number} at {head}")
         problems = [f"{REVIEW_CHECK} failed on {head}"] if verdict == "failure" else []
         if findings:
             listed = "".join(
@@ -812,6 +831,7 @@ class Delivery:
             "verdict": verdict,
             "findings": findings,
             "accepted": reason if problems else None,
+            "accepted_no_review": no_review if verdict == "neutral" else None,
         }
 
     def summary(
@@ -1098,6 +1118,14 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             f"with --merge: queue although {REVIEW_CHECK} failed or the review "
             "bot left inline comments on the head; the reason is logged"
+        ),
+    )
+    options.add_argument(
+        "--accept-no-review",
+        metavar="REASON",
+        help=(
+            f"with --merge: queue although {REVIEW_CHECK} only reached neutral "
+            "(the bot never reviewed the head) by --timeout; the reason is logged"
         ),
     )
     options.add_argument(
