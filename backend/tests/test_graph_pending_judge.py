@@ -232,60 +232,122 @@ class TestPendingJudgeLoadValidation:
         assert store.pending_judge_count() == 2
 
 
-class TestPopPendingJudgeFlushFailure:
-    """Bug B: pop_pending_judge must keep memory and disk consistent.
+class TestPendingJudgeClaim:
+    """#2084: ``pop_pending_judge`` claims ids instead of deleting them.
 
-    `pop_pending_judge` clears `_pending_judge` inside the lock but flushes
-    the empty snapshot to disk OUTSIDE the lock. If the flush raises (disk
-    full, atomic-write failure), the in-memory set is already empty while
-    the disk file still holds the old IDs → memory/disk divergence. On the
-    next reload the stale disk data resurrects the cards (re-judged →
-    double work), and within the same process the caller may have lost
-    the cards entirely.
+    A claimed id stays in the durable pending file until
+    ``ack_pending_judge`` (its links are persisted) or ``add_pending_judge``
+    (handed back), so a process killed mid-judge leaves it for the next
+    process. Durable view == queued ∪ claimed; memory and disk never diverge.
     """
 
-    def _make_store(self, tmp_path, pj_path):
+    def _make_store(self, tmp_path):
         return GraphStore(
             links_path=tmp_path / "links.json",
             candidates_path=tmp_path / "candidates.json",
             blocked_path=tmp_path / "blocked.json",
-            pending_judge_path=pj_path,
+            pending_judge_path=tmp_path / "pending_judge.json",
         )
 
-    def test_flush_failure_keeps_memory_and_disk_consistent(self, tmp_path):
-        pj_path = tmp_path / "pending_judge.json"
-        store = self._make_store(tmp_path, pj_path)
+    @staticmethod
+    def _disk(tmp_path):
+        return set(json.loads((tmp_path / "pending_judge.json").read_text()))
+
+    def test_pop_keeps_ids_on_disk_until_ack(self, tmp_path):
+        store = self._make_store(tmp_path)
         store.add_pending_judge(["card_a", "card_b"])
 
-        # Disk now holds the two IDs.
-        assert set(json.loads(pj_path.read_text())) == {"card_a", "card_b"}
+        assert store.pop_pending_judge() == ["card_a", "card_b"]
+        assert store.pending_judge_count() == 0
+        assert self._disk(tmp_path) == {"card_a", "card_b"}
 
-        # Make the disk flush fail.
-        original_flush = store._flush_pending_judge
+        store.ack_pending_judge(["card_a"])
+        assert self._disk(tmp_path) == {"card_b"}
+        store.ack_pending_judge(["card_b"])
+        assert self._disk(tmp_path) == set()
+        assert self._make_store(tmp_path)._pending_judge == set()
+
+    def test_pop_performs_no_disk_write(self, tmp_path):
+        store = self._make_store(tmp_path)
+        store.add_pending_judge(["card_a", "card_b"])
 
         def boom(snapshot):
             raise OSError("disk full")
 
         store._flush_pending_judge = boom
 
-        with pytest.raises(OSError):
-            store.pop_pending_judge()
+        assert store.pop_pending_judge() == ["card_a", "card_b"]
+        assert self._disk(tmp_path) == {"card_a", "card_b"}
 
-        # Restore so we can inspect cleanly.
+    def test_requeue_of_claimed_id_makes_it_poppable_again(self, tmp_path):
+        store = self._make_store(tmp_path)
+        store.add_pending_judge(["card_a"])
+        assert store.pop_pending_judge() == ["card_a"]
+
+        store.add_pending_judge(["card_a"])
+
+        assert store.pending_judge_count() == 1
+        assert store.pop_pending_judge() == ["card_a"]
+        assert self._disk(tmp_path) == {"card_a"}
+
+    def test_add_while_claim_in_flight_keeps_claimed_ids_on_disk(self, tmp_path):
+        store = self._make_store(tmp_path)
+        store.add_pending_judge(["card_a"])
+        store.pop_pending_judge()
+
+        store.add_pending_judge(["card_b"])
+
+        assert self._disk(tmp_path) == {"card_a", "card_b"}
+        assert store.pop_pending_judge() == ["card_b"]
+
+    def test_remove_claimed_card_drops_it_durably(self, tmp_path):
+        store = self._make_store(tmp_path)
+        store.add_pending_judge(["card_a", "card_b"])
+        store.pop_pending_judge()
+
+        assert store.remove_pending_judge_for("card_a") == 1
+
+        assert self._disk(tmp_path) == {"card_b"}
+        store.ack_pending_judge(["card_a", "card_b"])
+        assert self._disk(tmp_path) == set()
+
+    def test_ack_ignores_ids_that_are_not_claimed(self, tmp_path):
+        store = self._make_store(tmp_path)
+        store.add_pending_judge(["card_a"])
+
+        store.ack_pending_judge(["card_a", "card_z"])
+
+        assert store.pending_judge_count() == 1
+        assert self._disk(tmp_path) == {"card_a"}
+
+    def test_same_process_fresh_store_does_not_take_a_live_claim(self, tmp_path):
+        owner = self._make_store(tmp_path)
+        owner.add_pending_judge(["card_a"])
+        owner.pop_pending_judge()
+
+        # e.g. the store cache evicted `owner` while its judge run continues.
+        assert self._make_store(tmp_path)._pending_judge == set()
+
+        owner.add_pending_judge(["card_a"])  # owner hands the claim back
+        assert self._make_store(tmp_path)._pending_judge == {"card_a"}
+
+    def test_ack_flush_failure_keeps_claim_durable(self, tmp_path):
+        store = self._make_store(tmp_path)
+        store.add_pending_judge(["card_a", "card_b"])
+        store.pop_pending_judge()
+        original_flush = store._flush_pending_judge
+
+        def boom(snapshot):
+            raise OSError("disk full")
+
+        store._flush_pending_judge = boom
+        with pytest.raises(OSError):
+            store.ack_pending_judge(["card_a"])
         store._flush_pending_judge = original_flush
 
-        # Invariant: flush failed → the pop must NOT have silently dropped
-        # the in-memory IDs. Memory and disk must still AGREE: either both
-        # still hold the IDs (rollback) or both are empty (atomic). They
-        # must never diverge.
-        mem = set(store._pending_judge)
-        disk = set(json.loads(pj_path.read_text()))
-        assert mem == disk, f"memory/disk diverged after flush failure: mem={mem}, disk={disk}"
-        # The IDs must not be lost — disk still has the old data, so memory
-        # must too (otherwise a reload resurrects orphans).
-        assert mem == {"card_a", "card_b"}, (
-            f"flush failed but in-memory pending_judge was cleared anyway → IDs lost until next reload: mem={mem}"
-        )
+        assert self._disk(tmp_path) == {"card_a", "card_b"}
+        store.ack_pending_judge(["card_a", "card_b"])
+        assert self._disk(tmp_path) == set()
 
 
 class TestMigrateCandidatesToPending:
