@@ -235,3 +235,4 @@ def test_hitting_the_fetch_cap_is_flagged_not_hidden(
     assert data is not None and data["truncated"] is True
     finding = doctor.evaluate_delivery({**data, "prs": [], "releases": []}, NOW)
     assert "lower bound" in finding.summary
+    assert finding.level == "warn"

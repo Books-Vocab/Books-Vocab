@@ -212,6 +212,11 @@ def evaluate_delivery(data: dict[str, Any] | None, now: datetime) -> Finding:
     text = delivery_metrics.describe(summary)
     if data.get("truncated"):
         text += f" (WARNING: fetch hit the {delivery_metrics.FETCH_LIMIT}-item cap; counts are a lower bound)"
+        level = "warn"
+        problems = [
+            *problems,
+            "metrics truncated at the fetch cap; numbers are a lower bound",
+        ]
     return Finding("delivery", level, text, problems)
 
 
