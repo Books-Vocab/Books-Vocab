@@ -16,6 +16,9 @@ from .observations import (
 from .states import HoldKind
 
 REANCHOR_CONFLICT_REASON = "reanchor_required: PR conflicts with live main"
+# The short blocking status context that main's rules require; the merge queue
+# only validates the merged result when this exact context gates the group.
+REQUIRED_CONTEXT = "required"
 
 
 @dataclass(frozen=True)

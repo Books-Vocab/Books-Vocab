@@ -250,6 +250,9 @@ def test_queue_admits_lagging_pr_at_its_recorded_base_when_queue_validates() -> 
         ({"mergeable": False, "conflicting": True}, ("required",), "reanchor_required"),
         ({"head_sha": "e" * 40}, ("required",), "PR head differs"),
         ({}, (), "stale"),
+        # A required context other than the gate `required` validates nothing
+        # the dogfood relies on, so lag is still refused.
+        ({}, ("lint",), "stale"),
     ],
 )
 def test_queue_refuses_conflict_moved_head_or_unvalidated_lag(

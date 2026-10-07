@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ..domain.policies import REQUIRED_CONTEXT
 from .metrics import MergeCadence, PipelineMetrics
 
 
@@ -69,7 +70,7 @@ def assess_dogfood_readiness(
     block(local_main_sha != origin_main_sha, "local main differs from origin/main")
     block(not main_protected, "main is not protected")
     block(
-        "required" not in required_status_contexts,
+        REQUIRED_CONTEXT not in required_status_contexts,
         "main does not require the short required context",
     )
     block(not merge_queue_enabled, "main has no native merge queue rule")

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from ..domain.errors import PolicyViolation
 from ..domain.models import HandbackReceipt
 from ..domain.observations import CheckSnapshot, PullRequestSnapshot, RegistrySnapshot
-from ..domain.policies import evaluate_merge_gate
+from ..domain.policies import REQUIRED_CONTEXT, evaluate_merge_gate
 from ..domain.states import HoldKind
 from ..ports.git import GitQueryPort
 from ..ports.github import GitHubCommandPort, GitHubQueryPort
@@ -51,9 +51,11 @@ class QueueService:
         record = self._record(receipt)
         if not self.github_query.merge_queue_enabled("main"):
             raise PolicyViolation("main does not require GitHub merge queue admission")
-        # Required contexts gate every merge group, so the queue validates the
-        # merged result and a merely lagging PR needs no reanchor.
-        validates = bool(self.github_query.required_status_contexts("main"))
+        # The `required` context gates every merge group, so the queue validates
+        # the merged result and a merely lagging PR needs no reanchor.
+        validates = REQUIRED_CONTEXT in self.github_query.required_status_contexts(
+            "main"
+        )
         pull_request = self.github_query.get_pull_request(pull_request_number)
         durable_holds = pull_request_holds(pull_request)
         expected_body = render_pull_request_body(receipt, holds=durable_holds)

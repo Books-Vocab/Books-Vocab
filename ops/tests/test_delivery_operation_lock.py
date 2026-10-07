@@ -87,19 +87,29 @@ def test_cli_reuses_the_outer_lease_for_nested_registry_mutation(
     assert application.calls == [41]
 
 
-def test_suite_lock_is_isolated_from_the_real_delivery_lock() -> None:
+def test_suite_lock_is_isolated_from_the_real_delivery_lock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A real delivery holding the shared lock must not redden this suite."""
     import fcntl
 
-    real_repo = OPS.parent
-    real_lock = real_repo / ".cache" / "delivery-control.operation.lock"
+    from worktree_registry_core.environment import common_anchor
+
+    # The lock registry/orchestrate actually contend on lives at the canonical
+    # anchor (common dir parent), not at a linked worktree's own .cache.
+    anchor = common_anchor(OPS.parent)
+    with monkeypatch.context() as real:
+        real.delenv("KG_DELIVERY_LOCK_DIR", raising=False)
+        real_lock = OperationLock(anchor, command="probe").path
     real_lock.parent.mkdir(parents=True, exist_ok=True)
     with real_lock.open("a+") as held:
         try:
             fcntl.flock(held.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
-            pytest.skip("a real delivery already holds the real lock")
-        with OperationLock(real_repo, command="suite-under-real-delivery"):
+            # A real delivery already holds it: exactly the contended scenario.
+            pass
+        assert OperationLock(anchor, command="suite").path != real_lock
+        with OperationLock(anchor, command="suite-under-real-delivery"):
             pass
 
 

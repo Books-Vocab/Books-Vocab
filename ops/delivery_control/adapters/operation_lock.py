@@ -29,7 +29,9 @@ _HELD_LOCKS: dict[Path, tuple[IO[str], int]] = {}
 # Test isolation hook: when set, the lease lives in this directory (one file
 # per canonical repo) instead of ``<repo>/.cache``.  ops/tests/conftest.py points
 # it at a per-test tmp dir so a real delivery holding the shared lock cannot
-# redden the suite.  Production invocations never set it.
+# redden the suite.  TEST-ONLY: processes that disagree on this value stop
+# excluding each other, which silently weakens the fail-closed lease, so never
+# set it in an operator, launchd, or CI delivery environment.
 LOCK_DIR_ENV = "KG_DELIVERY_LOCK_DIR"
 
 
