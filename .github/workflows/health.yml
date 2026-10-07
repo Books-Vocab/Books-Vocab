@@ -1,0 +1,44 @@
+name: health
+
+# Weekly `doctor --ci` run.  Findings that are not ok become one self-updating
+# GitHub issue (label health-report); it closes itself when everything is ok.
+# Checks that only exist on a developer machine (claims, disk guard, checkout
+# state) are skipped by --ci and still run at the start of every local session.
+
+on:
+  schedule:
+    - cron: '23 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - name: Run doctor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          ./ops/doctor.py --ci --json > doctor-report.json
+          code=$?
+          set -e
+          # exit 1/2 mean "findings", not "the tool broke"; anything else is a failure.
+          if (( code > 2 )) || [[ ! -s doctor-report.json ]]; then
+            echo "doctor failed to produce a report (exit $code)" >&2
+            exit 1
+          fi
+      - name: Sync the report issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./ops/doctor_issue.py doctor-report.json
