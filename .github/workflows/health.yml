@@ -38,6 +38,12 @@ jobs:
             echo "doctor failed to produce a report (exit $code)" >&2
             exit 1
           fi
+      - name: Publish the full report to the run summary
+        run: |
+          {
+            echo "## Project health"
+            jq -r '.findings[] | "- **\(.level)** \(.section): \(.summary)"' doctor-report.json
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Sync the report issue
         env:
           GH_TOKEN: ${{ github.token }}
