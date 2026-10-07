@@ -290,7 +290,8 @@ run_one() {
         ops/test_podcast_ops.py \
         ops/tests/test_podcast_backfill_disk.py \
         ops/tests/test_podcast_cover_publish.py \
-        ops/tests/test_podcast_preview_backfill.py
+        ops/tests/test_podcast_preview_backfill.py \
+        ops/tests/test_podcast_upload.py
       ;;
     # ── shared offline ops groups ───────────────────────────────────────────
     streaming-command)

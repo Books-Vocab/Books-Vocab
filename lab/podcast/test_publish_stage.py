@@ -57,10 +57,7 @@ def test_stage_publish_callable():
 
 
 def _patch_upload(monkeypatch, rc=0):
-    class _Proc:
-        returncode = rc
-
-    monkeypatch.setattr(pipeline.subprocess, "run", lambda *a, **k: _Proc())
+    monkeypatch.setattr(pipeline, "_run_bounded", lambda *a, **k: rc)
     # upload_sh existence + bucket env
     monkeypatch.setattr(pipeline.Path, "is_file", lambda self: True)
     monkeypatch.setenv("PODCAST_BUCKET", "kg-podcasts-prod")
@@ -139,12 +136,16 @@ def test_publish_timeout_is_retried(monkeypatch, tmp_path):
     monkeypatch.setattr(pipeline.Path, "is_file", lambda self: True)
     monkeypatch.setattr(pipeline.time, "sleep", lambda *_: None)
 
-    def _boom(*a, **k):
-        raise pipeline.subprocess.TimeoutExpired(cmd="bash", timeout=1)
+    attempts = {"n": 0}
 
-    monkeypatch.setattr(pipeline.subprocess, "run", _boom)
+    def _timed_out(*a, **k):  # _run_bounded reports a timeout as None
+        attempts["n"] += 1
+        return None
+
+    monkeypatch.setattr(pipeline, "_run_bounded", _timed_out)
     monkeypatch.setattr(pipeline, "_verify_published", lambda sid: True)
     assert pipeline.stage_publish(ws, _FakeLog(), max_retries=2) is False
+    assert attempts["n"] == 2
 
 
 def test_verify_published_matches_series_in_index(monkeypatch):

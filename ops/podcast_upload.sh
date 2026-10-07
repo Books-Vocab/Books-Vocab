@@ -36,8 +36,13 @@ fi
 UV_BIN="$(command -v uv || echo "$HOME/.local/bin/uv")"
 [[ -x "$UV_BIN" ]] || { echo "✗ uv not found: $UV_BIN" >&2; exit 1; }
 
-# Clean up temp files on ANY exit (incl. set -e abort mid-metadata/index build).
-trap 'rm -f "${EXISTING_META_TMP:-}" "${INDEX_TMP:-}"' EXIT
+# Clean up temp files and the staging dir on ANY exit (incl. set -e abort
+# mid-staging/metadata/index build, and SIGTERM from a pipeline publish timeout).
+cleanup() {
+  rm -f "${EXISTING_META_TMP:-}" "${INDEX_TMP:-}"
+  if [[ -n "${STAGING:-}" ]]; then rm -rf "$STAGING"; fi
+}
+trap cleanup EXIT
 
 # ── Config ───────────────────────────────────────────────────────────────────
 BUCKET="${PODCAST_BUCKET:?PODCAST_BUCKET not set (e.g. kg-podcasts-prod)}"
@@ -103,9 +108,12 @@ info "Series: $SERIES_ID"
 info "Bucket: $S3_PREFIX (region $REGION)"
 
 # ── Create staging dir ───────────────────────────────────────────────────────
-STAGING="/tmp/podcast_upload_${SERIES_ID}"
-rm -rf "$STAGING"
-mkdir -p "$STAGING"
+# Unique per run, removed by the EXIT trap. A fixed /tmp/podcast_upload_<sid>
+# let two uploads of one series (publish retry vs. a still-running attempt,
+# dashboard + CLI) rm -rf each other's tree mid-upload — and the reconcile step
+# below prunes every remote key missing from staging.
+_TMP_ROOT="${TMPDIR:-/tmp}"
+STAGING="$(mktemp -d "${_TMP_ROOT%/}/podcast_upload_${SERIES_ID}.XXXXXX")"
 
 # ── Reorganize files into ep_NN/ dirs ────────────────────────────────────────
 # Post-Track-B default is .m4a (AAC). .mp3 still accepted for legacy series.
@@ -324,7 +332,6 @@ if [[ $DRY_RUN -eq 1 ]]; then
     echo "  $(echo "$f" | sed "s|$STAGING/||")  ($size bytes)"
   done
   info "Would: per-file 'aws s3 cp --content-type' each file into $S3_PREFIX/$SERIES_ID/ (metadata.json last), then prune remote orphans"
-  rm -rf "$STAGING"
   exit 0
 fi
 
@@ -466,6 +473,4 @@ run_aws s3 cp \
 rm -f "$INDEX_TMP"
 ok "index.json rebuilt"
 
-# ── Cleanup ──────────────────────────────────────────────────────────────────
-rm -rf "$STAGING"
 ok "Done — $SERIES_ID uploaded with $EP_COUNT episodes"
