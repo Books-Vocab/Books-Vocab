@@ -62,6 +62,8 @@ struct TodayReviewView: View {
     @Environment(\.reviewSettingsStore) private var reviewSettingsStore
     @Environment(\.reviewCardLayoutStore) private var reviewCardLayoutStore
     @Query private var notebookSettings: [NotebookSettingsProjection]
+    // 卡上單字本標示的名稱／顏色來源（#2040）。單字本數量小，查全部即可。
+    @Query private var notebooks: [Notebook]
     @Environment(\.toastCoordinator) private var toastCoordinator
 
     @State private var state: TodayReviewState
@@ -117,6 +119,12 @@ struct TodayReviewView: View {
         )
         let notebookSettingsSnapshot = notebookSettingsResolver.snapshot(
             for: allEntries.map(\.notebookId)
+        )
+        // 判斷看的是 session 自己的卡（queue），不是 allEntries：後者是連結查詢用的
+        // 候選池，單一單字本入口也可能混進其他本，拿它判會在單本入口誤畫標示。
+        let notebookBadges = ReviewCardNotebookBadgeResolver.badges(
+            sessionNotebookIDs: state.queue.map(\.notebookId),
+            notebooks: notebooks
         )
         return TodayReviewPresenter(
             state: state.presenterState,
@@ -188,7 +196,8 @@ struct TodayReviewView: View {
             onDeleteCollocationExplanation: { collocation in
                 state.updateCollocationExplanation(nil, for: collocation, modelContext: modelContext)
             },
-            collocationExplanations: state.currentCollocationExplanations
+            collocationExplanations: state.currentCollocationExplanations,
+            notebookBadges: notebookBadges
         )
         .toastOverlay()
         .task {
@@ -263,6 +272,9 @@ struct TodayReviewView: View {
             AddLinkSheet(
                 sourceEntry: request.sourceEntry,
                 allEntries: request.allEntries,
+                // 連結目標只能在來源同一本（`AddLinkCoordinator.isEligibleTarget`）；
+                // 多單字本入口要明講，免得使用者以為能搜所有單字本。
+                notebookScopeName: notebookBadges[request.sourceEntry.notebookId]?.name,
                 onLinked: { state.rebuildCacheForEntry(request.sourceEntry) }
             )
         }

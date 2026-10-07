@@ -962,6 +962,9 @@
 "a11y.toggle.on" = "開";
 "a11y.toggle.off" = "關";
 "todayReview.fold.collapse" = "收合";
+"todayReview.card.notebook.a11y" = "單字本：%@";
+"todayReview.card.notebook.default" = "預設單字本";
+"todayReview.card.notebook.unnamed" = "未命名單字本";
 "todayReview.saveFailure" = "複習結果未存檔，請稍後再試";
 
 /* i18n: toast / status messages (closing the toastCoordinator/reportError lint blindspot) */
@@ -1306,6 +1309,7 @@
 
 "addLink.creation.alreadyRunning" = "這個單字已在建立中。";
 "addLink.sourceWord" = "來源：%@";
+"addLink.notebookScope" = "只會搜尋「%@」內的單字";
 "todayReview.link.pending.creating" = "正在建立…";
 "todayReview.link.pending.hint" = "正在背景建立這張單字卡。完成後會自動變成一般連結，你可以先關閉並繼續複習。";
 "todayReview.link.pending.failed" = "無法建立這個連結，可重試或移除。";

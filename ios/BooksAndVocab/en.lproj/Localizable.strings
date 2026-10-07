@@ -973,6 +973,9 @@
 "a11y.toggle.on" = "On";
 "a11y.toggle.off" = "Off";
 "todayReview.fold.collapse" = "Collapse";
+"todayReview.card.notebook.a11y" = "Notebook: %@";
+"todayReview.card.notebook.default" = "Default notebook";
+"todayReview.card.notebook.unnamed" = "Untitled notebook";
 "todayReview.saveFailure" = "Review result wasn't saved. Please try again later.";
 
 /* i18n: toast / status messages (closing the toastCoordinator/reportError lint blindspot) */
@@ -1317,6 +1320,7 @@
 
 "addLink.creation.alreadyRunning" = "This word is already being created.";
 "addLink.sourceWord" = "Link from %@";
+"addLink.notebookScope" = "Searches only words in “%@”";
 "todayReview.link.pending.creating" = "Creating…";
 "todayReview.link.pending.hint" = "This word card is being created in the background. It becomes a normal link here when it is ready, so you can close this and keep reviewing.";
 "todayReview.link.pending.failed" = "Couldn't create this link. You can retry or remove it.";

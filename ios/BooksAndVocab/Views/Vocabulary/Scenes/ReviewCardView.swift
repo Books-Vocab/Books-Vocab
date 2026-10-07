@@ -152,6 +152,8 @@ struct ReviewCardView: View {
     var borderOpacity: Double = TodayReviewMetrics.cardBorderActiveOpacity
     var measuresSections: Bool = true
     var collocationExplanations: [String: String] = [:]
+    /// 多單字本入口才有值（`ReviewCardNotebookBadgeResolver`）；nil ＝ 不畫標示。
+    var notebookBadge: ReviewCardNotebookBadge? = nil
     var actions: ReviewCardActions = .none
     var onFrontHeightChange: ((CGFloat) -> Void)? = nil
 
@@ -184,6 +186,14 @@ struct ReviewCardView: View {
                 borderOpacity: borderOpacity,
                 viewport: viewport
             )
+            .overlay(alignment: .topLeading) {
+                // 單字本標示是 overlay，坐在正面既有的頂部留白裡：不進 layout，
+                // 正面／背面高度與 solver 預算都不因它出現而變（#2040）。背面展開時
+                // 正面仍在上方，所以兩面都看得到。
+                if let notebookBadge {
+                    notebookBadgeView(notebookBadge)
+                }
+            }
             .overlay(alignment: .topTrailing) {
                 // chrome 常駐於每張卡（裝飾），只有互動中的那張可點 —— promote 時
                 // chrome 不換樹、無「裸卡 pop」。
@@ -364,6 +374,36 @@ struct ReviewCardView: View {
         }
         .padding(reviewCardPadding)
         .allowsHitTesting(interactive)
+    }
+
+    /// 卡片所屬單字本（色點 ＋ 名稱）。純標示、不可點：點擊照常落到正面的翻卡手勢。
+    /// 寬度讓出右上角 chrome；字級上限鎖住，確保在 Accessibility Dynamic Type 下仍
+    /// 收在單字列上方的留白內、不壓到單字。
+    func notebookBadgeView(_ badge: ReviewCardNotebookBadge) -> some View {
+        HStack(spacing: AppSpacing.s1) {
+            if badge.colorHex != nil {
+                AppRoundedRect(roundness: AppRoundness.pill)
+                    .fill(NotebookPalette.color(for: badge.colorHex))
+                    .frame(
+                        width: TodayReviewMetrics.notebookBadgeDotSize,
+                        height: TodayReviewMetrics.notebookBadgeDotSize
+                    )
+            }
+            Text(badge.name)
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.tertiaryText)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .dynamicTypeSize(...DynamicTypeSize.xLarge)
+        .padding(.top, TodayReviewMetrics.notebookBadgeTopInset)
+        .padding(.leading, reviewCardPadding)
+        .padding(.trailing, reviewCardPadding + frontChromeReserveWidth)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L10n.format("todayReview.card.notebook.a11y", badge.name))
+        .accessibilityIdentifier("todayReview.card.notebook")
+        .accessibilityValue(badge.notebookId)
     }
 
     func reviewCardFront(

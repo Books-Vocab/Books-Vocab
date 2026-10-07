@@ -217,6 +217,16 @@ struct TodayReviewPage {
         queryElement("todayReview.card.back")
     }
 
+    /// Notebook badge on the active card (#2040). Present only when the session
+    /// spans ≥2 notebooks; `value` is the notebookId, `label` carries the name.
+    var notebookBadge: XCUIElement {
+        queryElement("todayReview.card.notebook")
+    }
+
+    var notebookBadgeCount: Int {
+        elements(for: "todayReview.card.notebook").count
+    }
+
     var frontNaturalContent: XCUIElement {
         scopedElement(
             "todayReview.card.front",

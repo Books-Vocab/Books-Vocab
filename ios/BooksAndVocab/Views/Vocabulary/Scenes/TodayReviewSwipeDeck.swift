@@ -82,6 +82,7 @@ extension TodayReviewPresenter {
                 interactive: isActive && isCardInteractive,
                 borderOpacity: borderOpacity,
                 collocationExplanations: collocationExplanations,
+                notebookBadge: notebookBadges[content.card.notebookId],
                 actions: ReviewCardActions(
                     advanceReveal: onAdvanceReveal,
                     collapseReveal: onCollapseReveal,

@@ -954,6 +954,9 @@
 "a11y.toggle.on" = "켜짐";
 "a11y.toggle.off" = "꺼짐";
 "todayReview.fold.collapse" = "접기";
+"todayReview.card.notebook.a11y" = "단어장: %@";
+"todayReview.card.notebook.default" = "기본 단어장";
+"todayReview.card.notebook.unnamed" = "이름 없는 단어장";
 "todayReview.saveFailure" = "복습 결과가 저장되지 않았습니다. 잠시 후 다시 시도해 주세요.";
 
 /* i18n: toast / status messages (closing the toastCoordinator/reportError lint blindspot) */
@@ -1298,6 +1301,7 @@
 
 "addLink.creation.alreadyRunning" = "이 단어는 이미 생성 중입니다.";
 "addLink.sourceWord" = "원본 단어: %@";
+"addLink.notebookScope" = "'%@' 안의 단어만 검색합니다";
 "todayReview.link.pending.creating" = "생성 중…";
 "todayReview.link.pending.hint" = "이 단어 카드를 백그라운드에서 만들고 있습니다. 완료되면 자동으로 일반 링크로 바뀌므로 닫고 복습을 계속해도 됩니다.";
 "todayReview.link.pending.failed" = "이 링크를 만들지 못했습니다. 다시 시도하거나 삭제할 수 있습니다.";

@@ -159,6 +159,8 @@ struct TodayReviewPresenter: View {
     let onViewCollocationExplanation: (String) -> Void
     let onDeleteCollocationExplanation: (String) -> Void
     var collocationExplanations: [String: String] = [:]
+    /// notebookId → 卡上標示。只有多單字本 session 才有內容；空表 ＝ 不畫（#2040）。
+    var notebookBadges: [String: ReviewCardNotebookBadge] = [:]
 
     /// 給 extension 判斷能否互動
     var isCardInteractive: Bool {

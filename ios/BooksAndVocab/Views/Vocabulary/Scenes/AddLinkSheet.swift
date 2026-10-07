@@ -10,6 +10,8 @@ struct AddLinkSheet: View {
 
     let sourceEntry: VocabularyEntry
     let allEntries: [VocabularyEntry]
+    /// 多單字本入口才傳：候選只限來源同一本，sheet 要明講搜尋範圍（#2040）。
+    var notebookScopeName: String? = nil
     var onLinked: () -> Void = {}
 
     @State private var searchText = ""
@@ -25,10 +27,12 @@ struct AddLinkSheet: View {
         sourceEntry: VocabularyEntry,
         allEntries: [VocabularyEntry],
         creationHub: AddLinkCreationHub = .shared,
+        notebookScopeName: String? = nil,
         onLinked: @escaping () -> Void = {}
     ) {
         self.sourceEntry = sourceEntry
         self.allEntries = allEntries
+        self.notebookScopeName = notebookScopeName
         self.onLinked = onLinked
         _creationCoordinator = State(initialValue: creationHub.makeCoordinator())
     }
@@ -66,6 +70,17 @@ struct AddLinkSheet: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, appSkin.metrics.cardBlockPadding)
                     .accessibilityIdentifier("addLink.sourceWord")
+
+                if let notebookScopeName {
+                    Text(L10n.format("addLink.notebookScope", notebookScopeName))
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.tertiaryText)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, appSkin.metrics.cardBlockPadding)
+                        .accessibilityIdentifier("addLink.notebookScope")
+                }
 
                 if coordinator.actionPhase == .failed {
                     AppBanner(
