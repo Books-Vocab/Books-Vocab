@@ -148,7 +148,14 @@ def must(
     cwd: Path | None,
     stage: str,
     lock: LockWait | None = None,
+    before_retry: Callable[[], object] | None = None,
 ) -> Proc:
+    """Run ``cmd``; on a busy lock wait and retry, up to the lock timeout.
+
+    ``before_retry`` runs after every lock wait, before the next attempt: a
+    caller whose precondition can lapse while it waits re-checks it there (and
+    raises to stop the retry).
+    """
     started = lock.clock() if lock else 0.0
     while True:
         done = runner(cmd, cwd)
@@ -168,6 +175,8 @@ def must(
             f"({detail}); retrying for up to {left:g}s more"
         )
         lock.sleep(min(LOCK_RETRY_SECONDS, left))
+        if before_retry is not None:
+            before_retry()
 
 
 # --- pure helpers -----------------------------------------------------------
@@ -396,9 +405,15 @@ class Delivery:
         self.before_claim: Callable[[], object] = lambda: None
         self.after_publish: Callable[[dict[str, Any]], object] = lambda _pr: None
 
-    def mutate(self, cmd: list[str], cwd: Path | None, stage: str) -> Proc:
+    def mutate(
+        self,
+        cmd: list[str],
+        cwd: Path | None,
+        stage: str,
+        before_retry: Callable[[], object] | None = None,
+    ) -> Proc:
         """Run a delivery/registry/worktree mutation, waiting out a busy lock."""
-        return must(self.runner, cmd, cwd, stage, self.lock)
+        return must(self.runner, cmd, cwd, stage, self.lock, before_retry)
 
     @property
     def home(self) -> Path:
@@ -518,7 +533,13 @@ class Delivery:
         )
 
     def abandon(
-        self, branch: str, path: str | None, generation: object, head: str, stage: str
+        self,
+        branch: str,
+        path: str | None,
+        generation: object,
+        head: str,
+        stage: str,
+        before_retry: Callable[[], object] | None = None,
     ) -> None:
         """Retire one exact claim through the registry's compare-and-swap."""
         self.mutate(
@@ -528,6 +549,7 @@ class Delivery:
             + ["--expected-head-sha", head, "--json"],
             self.home,
             stage,
+            before_retry,
         )
 
     def reclaim_if_base_stale(self, record: dict[str, Any], branch: str) -> bool:
@@ -1042,9 +1064,69 @@ class Replacement:
             )
         self.old_number = int(pr["number"])
         self.guard(repo)
+        self.check_lineage(record)  # before any hook can retire or close anything
         d.before_claim = lambda: self.retire(repo)
         d.after_publish = lambda new: self.supersede(repo, new)
         return d.deliver()
+
+    def new_tip(self) -> str:
+        """The commit being delivered: the worktree's HEAD, else the pushed branch."""
+        d = self.d
+        revs = (
+            ["HEAD"]
+            if d.work.exists()
+            else [self.new_branch, f"origin/{self.new_branch}"]
+        )
+        for rev in revs:
+            done = d.runner(
+                ["git", "rev-parse", "--verify", f"{rev}^{{commit}}"], d.home
+            )
+            if done.returncode == 0 and done.stdout.strip():
+                return done.stdout.strip()
+        raise DeliverError(f"cannot resolve the new lane's tip ({', '.join(revs)})")
+
+    def check_lineage(self, record: dict[str, Any]) -> None:
+        """Refuse a new tip that is not the replaced lane's work plus its fixes.
+
+        Redeliver abandons the old lane, closes its PR and may delete its
+        branch, so it must not do that for an unrelated branch.  The tip has to
+        contain the lane's recorded hand-back commit, or carry a patch-equivalent
+        of every commit it added (a rebase), as ``git cherry`` judges.
+        """
+        d = self.d
+        old = str(record.get("handed_back_sha") or "")
+        if not SHA.fullmatch(old):
+            raise DeliverError(
+                f"lane {self.old} records no hand-back commit ({old!r}) to compare "
+                f"{self.new_branch} against; redeliver cannot tell it replaces that lane"
+            )
+        if d.runner(["git", "cat-file", "-e", f"{old}^{{commit}}"], d.home).returncode:
+            raise DeliverError(
+                f"the replaced lane's hand-back {old} is not in this repository; "
+                "fetch it, then redeliver"
+            )
+        tip = self.new_tip()
+        contained = d.runner(["git", "merge-base", "--is-ancestor", old, tip], d.home)
+        if contained.returncode == 0:
+            return
+        if contained.returncode != 1:
+            raise DeliverError(
+                f"compare with the replaced lane failed (rc={contained.returncode}): "
+                f"{failure_detail(contained) or 'no output'}"
+            )
+        cherry = must(d.runner, ["git", "cherry", tip, old], d.home, "compare commits")
+        lost = [
+            line[1:].strip()[:12]
+            for line in cherry.stdout.splitlines()
+            if line.startswith("+")
+        ]
+        if lost:
+            raise DeliverError(
+                f"{self.new_branch} ({tip}) does not carry the replaced lane's "
+                f"hand-back {old}: not an ancestor, and no patch-equivalent commit "
+                f"for {', '.join(lost)}. Redeliver only a branch built on the "
+                "published lane (its commits kept or rebased unchanged, fixes added)"
+            )
 
     def retire(self, repo: str) -> dict[str, Any]:
         """Abandon the replaced lane with the registry's own CAS facts."""
@@ -1060,7 +1142,16 @@ class Replacement:
                 f"to abandon it with ({generation!r}, {head!r})"
             )
         path = str(record["path"]) if record.get("path") else None
-        self.d.abandon(self.old, path, generation, head, "abandon the replaced lane")
+        # A busy lock makes abandon wait; the PR may be queued or held meanwhile,
+        # so it is read again before every retry, not only before the first try.
+        self.d.abandon(
+            self.old,
+            path,
+            generation,
+            head,
+            "abandon the replaced lane",
+            lambda: self.guard(repo),
+        )
         self.d.say(f"abandoned lane {self.old} (generation {generation}, head {head})")
         return record
 

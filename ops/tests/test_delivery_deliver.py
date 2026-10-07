@@ -19,6 +19,7 @@ import deliver
 
 
 HEAD = "c" * 40
+NEW_TIP = "d" * 40
 BOT = "chatgpt-codex-connector[bot]"
 
 
@@ -96,6 +97,10 @@ class FakeWorld:
         self.published_pr: dict[str, Any] | None = state.get(
             "published_pr", {"number": 77, "state": "OPEN", "url": "u"}
         )
+        # How the new tip relates to the replaced lane's hand-back commit.
+        self.old_is_ancestor: bool = state.get("old_is_ancestor", True)
+        self.cherry: str = state.get("cherry", "")
+        self.old_object_present: bool = state.get("old_object_present", True)
         self.calls: list[list[str]] = []
         self.cwds: list[Path | None] = []
         self.work = Path(tempfile.mkdtemp())
@@ -156,8 +161,16 @@ class FakeWorld:
                 return ok("".join(f"{name}\n" for name in self.changed_py))
             if sub[0] == "diff":
                 return ok(self.diff)
+            if sub[:2] == ["merge-base", "--is-ancestor"]:
+                return deliver.Proc(0 if self.old_is_ancestor else 1, "", "")
             if sub[0] == "merge-base":
                 return ok(self.fork)
+            if sub[:2] == ["cat-file", "-e"]:
+                return deliver.Proc(0 if self.old_object_present else 128, "", "")
+            if sub[0] == "cherry":
+                return ok(self.cherry)
+            if sub[:2] == ["rev-parse", "--verify"]:
+                return ok(NEW_TIP)
             if sub[0] == "log":
                 return ok("feat: the thing")
             if sub[0] == "rev-parse":
@@ -1372,3 +1385,168 @@ def test_the_old_remote_branch_is_deleted_only_at_the_published_head(
     assert replacement.drop_remote_branch(moved) == "deleted"
     assert sh("git", "ls-remote", "origin", f"refs/heads/{OLD}", cwd=repo) == ""
     assert replacement.drop_remote_branch(moved) == "absent"
+
+
+# ---- redeliver: the new tip has to carry the replaced lane's work ---------
+
+
+def _lineage_refusal(**state: Any) -> tuple[FakeWorld, dict[str, Any]]:
+    world = _replacement_world(**state)
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 1, result
+    return world, result
+
+
+@pytest.mark.parametrize(
+    "state",
+    [
+        {"old_is_ancestor": False, "cherry": f"+ {'b' * 40}\n"},
+        {"old_is_ancestor": False, "cherry": f"- {'b' * 40}\n+ {'e' * 40}\n"},
+    ],
+)
+def test_redeliver_refuses_a_branch_that_does_not_carry_the_replaced_lane(
+    state: dict[str, Any],
+) -> None:
+    """Any clean branch ahead of trunk used to retire an unrelated lane."""
+    world, result = _lineage_refusal(**state)
+    assert (
+        f"does not carry the replaced lane's hand-back {PUBLISHED}" in result["error"]
+    )
+    assert world.names() == []  # nothing abandoned, adopted or published
+    assert world.records_by_branch[OLD][0]["status"] == "published"
+    assert _call(world, "gh", "pr", "close") is None
+    assert _call(world, "git", "push") is None
+
+
+def test_redeliver_names_the_unmatched_commits_of_the_replaced_lane() -> None:
+    world, result = _lineage_refusal(
+        old_is_ancestor=False, cherry=f"- {'b' * 40}\n+ {'e' * 40}\n"
+    )
+    assert ("e" * 12) in result["error"] and ("b" * 12) not in result["error"]
+
+
+def test_redeliver_refuses_when_the_replaced_hand_back_is_not_in_the_repository() -> (
+    None
+):
+    world, result = _lineage_refusal(old_object_present=False)
+    assert f"hand-back {PUBLISHED} is not in this repository" in result["error"]
+    assert world.names() == []
+
+
+def test_redeliver_accepts_a_tip_that_contains_the_replaced_hand_back() -> None:
+    world = _replacement_world(old_is_ancestor=True)
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 0, result
+    assert world.names()[0] == "resolve"
+
+
+def test_redeliver_accepts_a_tip_that_is_patch_equivalent_to_the_hand_back() -> None:
+    world = _replacement_world(old_is_ancestor=False, cherry=f"- {'b' * 40}\n")
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 0, result
+    assert world.names()[0] == "resolve"
+
+
+def test_redeliver_compares_against_the_branch_when_the_worktree_is_gone() -> None:
+    world = _replacement_world(
+        old_status="abandoned",
+        old_is_ancestor=False,
+        cherry=f"+ {'b' * 40}\n",
+        new_records={"feat/new": [{"branch": "feat/new", "status": "published"}]},
+        new_prs={"feat/new": [{"number": 77, "state": "OPEN", "url": "u"}]},
+    )
+    gone = str(world.work / "gone")
+    code, result = redeliver(world, "--worktree", gone, "--new-branch", "feat/new")
+    assert code == 1 and "does not carry" in result["error"]
+    assert _call(world, "gh", "pr", "close") is None
+    assert _call(world, "git", "push") is None
+
+
+def test_the_lineage_check_on_real_git(tmp_path: Path) -> None:
+    """Ancestor and rebased tips pass; an unrelated or reworded one is refused."""
+    import subprocess
+
+    def sh(*argv: str) -> str:
+        done = subprocess.run(
+            argv, cwd=tmp_path, capture_output=True, text=True, check=True
+        )
+        return done.stdout.strip()
+
+    def commit(name: str, text: str) -> None:
+        (tmp_path / name).write_text(text)
+        sh("git", "add", name)
+        sh("git", "commit", "-qm", f"{name}: {text}")
+
+    sh("git", "init", "-q", "-b", "main")
+    sh("git", "config", "user.email", "t@example.com")
+    sh("git", "config", "user.name", "T")
+    commit("base.txt", "base")
+    sh("git", "switch", "-q", "-c", "old")
+    commit("one.txt", "1")
+    commit("two.txt", "2")
+    published = sh("git", "rev-parse", "HEAD")
+    sh("git", "switch", "-q", "-c", "ancestor")  # old + a review fix
+    commit("fix.txt", "fix")
+    sh("git", "switch", "-q", "main")
+    commit("main-moved.txt", "m")  # trunk moves on; old is now stale
+    sh("git", "switch", "-q", "-c", "rebased")
+    sh("git", "cherry-pick", "old~1", "old")
+    commit("fix.txt", "fix")
+    sh("git", "switch", "-q", "main")
+    sh("git", "switch", "-q", "-c", "unrelated")
+    commit("other.txt", "elsewhere")
+    sh("git", "switch", "-q", "-c", "reworded", "main")
+    sh("git", "cherry-pick", "old~1")
+    commit("two.txt", "2 but different")  # the second commit's patch changed
+
+    args = deliver.build_parser().parse_args(["--worktree", str(tmp_path)])
+    replacement = deliver.Replacement(
+        deliver.Delivery(args, deliver.run, lambda _s: None), "old"
+    )
+    record = {"handed_back_sha": published}
+    for tip in ("ancestor", "rebased"):
+        sh("git", "switch", "-q", tip)
+        replacement.check_lineage(record)  # no raise
+    for tip in ("unrelated", "reworded"):
+        sh("git", "switch", "-q", tip)
+        with pytest.raises(deliver.DeliverError, match="does not carry"):
+            replacement.check_lineage(record)
+
+
+# ---- redeliver: the guard holds across every lock-wait retry --------------
+
+
+def test_redeliver_rechecks_the_old_pr_after_waiting_on_the_lock() -> None:
+    """abandon waits out a busy lock; the PR may be queued during that wait."""
+    world = _replacement_world(
+        lock_busy={"resolve": 1},
+        pr_guard=[{}, {}, {"mergeQueueEntry": {"id": "q"}}],
+    )
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 1, result
+    assert "PR #50 is scheduled to merge" in result["error"]
+    assert world.names() == ["resolve"]  # the one refused attempt, no retry
+    assert world.records_by_branch[OLD][0]["status"] == "published"
+    assert _call(world, "gh", "pr", "close") is None
+    assert _call(world, "git", "push") is None
+
+
+def test_redeliver_rechecks_for_a_hold_added_during_the_lock_wait() -> None:
+    world = _replacement_world(
+        lock_busy={"resolve": 2},
+        pr_guard=[{}, {}, {}, {"labels": {"nodes": [{"name": "delivery-hold:p0"}]}}],
+    )
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 1, result
+    assert "PR #50 carries a hard hold (p0)" in result["error"]
+    assert world.names() == ["resolve", "resolve"]
+    assert world.records_by_branch[OLD][0]["status"] == "published"
+
+
+def test_redeliver_still_abandons_when_the_pr_stays_clean_across_the_wait() -> None:
+    world = _replacement_world(lock_busy={"resolve": 1})
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 0, result
+    assert world.names()[:2] == ["resolve", "resolve"]
+    graphql = [c for c in world.calls if c[1:3] == ["api", "graphql"]]
+    assert len(graphql) >= 3  # run, retire, and once more before the retry
