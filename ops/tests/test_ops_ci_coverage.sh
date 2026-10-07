@@ -19,7 +19,7 @@ LINUX_GROUPS=(
   github-workflows
   ios-signal-traps ios-install-provenance ios-run-verdict ios-device-lock
   ios-cache-evict review-flip-probe ios-device-files ios-device-logs ios-test-discovery
-  userland-portability script-help install-hooks lib-sourcing podcast-ops
+  userland-portability script-help install-hooks lib-sourcing heavy-slots podcast-ops
   streaming-command app-review demo-data catalog-agent uitest-contact-sheet
   ios-release sim-pool-disposable review-probe
   sentry-tool

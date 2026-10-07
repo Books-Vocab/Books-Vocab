@@ -73,6 +73,7 @@ DEFAULT_TESTS=(
   script-help
   install-hooks
   lib-sourcing
+  heavy-slots
   podcast-ops
   # ── IMP-20260805-947062：以下 4 個 group 收編原本對每個 group 都不可達的 19 支
   #    測試檔。反向覆蓋由 ops/tests/test_ops_ci_coverage.sh 的
@@ -90,6 +91,18 @@ DEFAULT_TESTS=(
   # Issue #2064：lab/podcast 單元測試（pipeline／publish／synthesize／saga／monitor）。
   lab-podcast
 )
+
+# Host-wide slot limiter (ops/lib/heavy_slots.sh): only these groups claim a slot
+# (KG_HEAVY_SLOTS, default 3). Everything else runs unthrottled.
+HEAVY_TESTS=(
+  worktree
+  delivery-control
+  docs-lint
+  disk-guard
+  doctor
+)
+# shellcheck source=lib/heavy_slots.sh
+source "$ROOT/ops/lib/heavy_slots.sh"
 
 OPTIONAL_TESTS=(
   asc
@@ -311,6 +324,7 @@ run_one() {
     script-help)        ./ops/tests/test_script_help.sh ;;
     install-hooks)      ./ops/tests/test_install_hooks.sh ;;
     lib-sourcing)       ./ops/tests/test_lib_sourcing.sh ;;
+    heavy-slots)        ./ops/tests/test_heavy_slots.sh ;;
     podcast-ops)
       "$UV_BIN" run --python 3.13 --with pytest pytest -q \
         ops/test_podcast_ops.py \
@@ -459,7 +473,7 @@ for name in "${selected[@]}"; do
   echo "════════ $name ════════"
   start=$SECONDS
   set +e
-  run_one "$name"
+  heavy_slots_run "$name" run_one "$name"
   rc=$?
   set -e
   elapsed=$((SECONDS - start))
