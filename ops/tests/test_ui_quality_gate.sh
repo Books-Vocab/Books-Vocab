@@ -189,6 +189,28 @@ if grep -qF "$I18N_SRC/Views/Hit.swift:3:    Text(\"中文\")" <<<"$I18N_OUT" \
 else
   fail_t "i18n_lint findings drifted: $I18N_OUT"
 fi
+
+# A failed mirror build (disk full, batch-mode runtime error) leaves a partial
+# or empty mirror. Scanning it would report zero findings, and --baseline-check
+# (0 <= baseline) and --strict would then succeed on input that was never
+# linted. The build must fail closed: diagnostics on stderr, exit 2 (the
+# script's tool-error code), no scan. Same fixture, but the stripper's --mirror
+# mode dies mid-run after writing nothing useful.
+printf '#!/bin/sh\nif [ "$2" = "%s" ]; then echo "[strip_previews] OSError: [Errno 28] No space left on device" >&2; exit 1; fi\nexec "%s" "$@"\n' '--mirror' "$REAL_PY" >"$I18N_TMP/bin/py_fail"
+printf '#!/bin/sh\n[ "$1 $2" = "python find" ] && { echo "%s/bin/py_fail"; exit 0; }\nexit 1\n' "$I18N_TMP" >"$I18N_TMP/bin/uv_fail"
+chmod +x "$I18N_TMP/bin/py_fail" "$I18N_TMP/bin/uv_fail"
+for mode in --strict --baseline-check; do
+  FAIL_OUT="$(UV_BIN="$I18N_TMP/bin/uv_fail" "$I18N_TMP/ops/i18n_lint.sh" "$mode" 2>&1)"
+  FAIL_RC=$?
+  if [[ "$FAIL_RC" -eq 2 ]] \
+      && grep -qF 'No space left on device' <<<"$FAIL_OUT" \
+      && grep -qF '[i18n_lint] error: preview-stripped mirror build failed' <<<"$FAIL_OUT" \
+      && ! grep -qF '[i18n_lint] ok:' <<<"$FAIL_OUT"; then
+    ok "i18n_lint $mode fails closed (exit 2) and prints the stripper's diagnostics when the mirror build fails"
+  else
+    fail_t "i18n_lint $mode on a failed mirror build: rc=$FAIL_RC (want 2), output: $FAIL_OUT"
+  fi
+done
 rm -rf "$I18N_TMP"
 
 section "Dry-run fast tier lists the static gates"
