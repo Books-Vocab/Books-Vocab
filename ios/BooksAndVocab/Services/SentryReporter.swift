@@ -105,12 +105,11 @@ enum SentryReporter {
         if configuration.refinesEnvironmentAtRuntime {
             let bootstrapEnvironment = configuration.environment
             Task.detached(priority: .background) {
-                let resolved = SentryConfiguration.runtimeEnvironment(
-                    current: bootstrapEnvironment,
-                    appTransactionEnvironment: await SentryConfiguration.fetchAppTransactionEnvironment()
-                )
-                guard resolved != bootstrapEnvironment else { return }
-                SentrySDK.configureScope { $0.setEnvironment(resolved) }
+                let environment = await SentryConfiguration.fetchAppTransactionEnvironment()
+                guard let channel = SentryConfiguration.verifiedChannel(for: environment) else { return }
+                SentryConfiguration.storeVerifiedChannel(channel)
+                guard channel != bootstrapEnvironment else { return }
+                SentrySDK.configureScope { $0.setEnvironment(channel) }
             }
         }
 

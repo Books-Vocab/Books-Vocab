@@ -35,7 +35,8 @@ struct SentryConfiguration: Equatable {
             bundleIdentifier: Bundle.main.bundleIdentifier,
             environment: ProcessInfo.processInfo.environment,
             arguments: ProcessInfo.processInfo.arguments,
-            debugBuild: debugBuild
+            debugBuild: debugBuild,
+            cachedVerifiedChannel: UserDefaults.standard.string(forKey: verifiedChannelDefaultsKey)
         )
     }
 
@@ -44,12 +45,17 @@ struct SentryConfiguration: Equatable {
         bundleIdentifier: String?,
         environment: [String: String],
         arguments: [String],
-        debugBuild: Bool
+        debugBuild: Bool,
+        cachedVerifiedChannel: String? = nil
     ) -> SentryConfiguration {
         let dsn = nonEmptyString(infoDictionary["SentryDSN"])
         let testEventRequested = arguments.contains("-sentryTest")
         let environmentOverride = nonEmptyString(infoDictionary["SentryEnvironment"])
-        let environmentName = environmentOverride ?? (debugBuild ? "debug" : "production")
+        let environmentName = bootstrapEnvironment(
+            override: environmentOverride,
+            debugBuild: debugBuild,
+            cachedVerifiedChannel: cachedVerifiedChannel
+        )
         let marketingVersion = nonEmptyString(infoDictionary["CFBundleShortVersionString"])
         let build = nonEmptyString(infoDictionary["CFBundleVersion"])
         let releaseName: String?
@@ -81,15 +87,42 @@ struct SentryConfiguration: Equatable {
         )
     }
 
-    /// TestFlight and App Store ship the same Release binary, so the channel
-    /// is only knowable at runtime. A verified StoreKit 2 AppTransaction in
-    /// the sandbox environment means TestFlight; anything else (production,
-    /// Xcode, unverified or failed lookup = nil) keeps the bootstrap value.
-    static func runtimeEnvironment(
-        current: String,
-        appTransactionEnvironment: AppStore.Environment?
+    /// Persisted result of the last *verified* AppTransaction lookup.
+    static let verifiedChannelDefaultsKey = "kg.sentry.verifiedDistributionChannel"
+    private static let distributionChannels: Set<String> = ["testflight", "production"]
+
+    /// Synchronous environment used at SDK start, so even startup crashes are
+    /// tagged. TestFlight and App Store ship the same Release binary; the
+    /// channel comes from the last verified AppTransaction persisted by the
+    /// previous launch. Known gap: the first launch after install reports
+    /// `production` until the async lookup resolves.
+    static func bootstrapEnvironment(
+        override: String?,
+        debugBuild: Bool,
+        cachedVerifiedChannel: String?
     ) -> String {
-        appTransactionEnvironment == .sandbox ? "testflight" : current
+        if let override { return override }
+        if debugBuild { return "debug" }
+        if let cachedVerifiedChannel, distributionChannels.contains(cachedVerifiedChannel) {
+            return cachedVerifiedChannel
+        }
+        return "production"
+    }
+
+    /// Channel implied by a verified StoreKit 2 AppTransaction environment:
+    /// sandbox = TestFlight, production = App Store. Xcode StoreKit testing,
+    /// unverified results and lookup errors (nil) yield no channel, so
+    /// neither the cache nor the live scope is touched.
+    static func verifiedChannel(for environment: AppStore.Environment?) -> String? {
+        switch environment {
+        case .sandbox?: return "testflight"
+        case .production?: return "production"
+        default: return nil
+        }
+    }
+
+    static func storeVerifiedChannel(_ channel: String) {
+        UserDefaults.standard.set(channel, forKey: verifiedChannelDefaultsKey)
     }
 
     /// Verified AppTransaction environment, or nil on error/unverified.
