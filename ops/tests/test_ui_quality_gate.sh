@@ -46,6 +46,173 @@ else
   fail_t "ui_quality_gate.py missing"
 fi
 
+section "pre-commit scopes the fast tier to the staged files"
+# The hook used to call the gate with no file list, so the gate fell back to
+# `--since origin/main` — every file the branch touched plus unstaged and
+# untracked edits — and selected its lints from that, not from the commit being
+# made (process audit #7: five iOS commits timed out). Exercised through a real
+# `git commit` in a throwaway repo, with a stub gate that only records argv:
+# the branch already carries a committed Swift change past origin/main, and the
+# worktree has an unstaged one, so a hook that does not pass the staged set
+# cannot produce the expected argv by accident.
+HOOK_TMP="$(mktemp -d "${TMPDIR:-/tmp}/kg_precommit_scope_XXXXXX")"
+mkdir -p "$HOOK_TMP/bin"
+for b in uv rg node; do
+  printf '#!/bin/sh\nexit 0\n' >"$HOOK_TMP/bin/$b"
+  chmod +x "$HOOK_TMP/bin/$b"
+done
+_hook_fixture() { # <dir> — repo with the real hook, a recording stub gate, origin/main one commit behind
+  local d="$1"
+  mkdir -p "$d/.githooks" "$d/ops" "$d/ios/BooksAndVocab/Views"
+  cp "$ROOT/.githooks/pre-commit" "$d/.githooks/pre-commit"
+  chmod +x "$d/.githooks/pre-commit"
+  printf '#!/bin/sh\nprintf "%%s\\n" "$@" >"%s/argv"\n' "$d" >"$d/ops/ui_quality_gate.sh"
+  printf '#!/bin/sh\nexit 0\n' >"$d/ops/verify_design_system.sh"
+  printf '#!/bin/sh\nexit 0\n' >"$d/ops/i18n_lint.sh"
+  chmod +x "$d/ops/ui_quality_gate.sh" "$d/ops/verify_design_system.sh" "$d/ops/i18n_lint.sh"
+  for f in A B C; do printf 'struct %s {}\n' "$f" >"$d/ios/BooksAndVocab/Views/$f.swift"; done
+  printf 'struct S {}\n' >"$d/ios/BooksAndVocab/Views/Has Space.swift"
+  (
+    cd "$d" || exit 1
+    export GIT_CONFIG_GLOBAL="$HOOK_TMP/gitconfig" GIT_CONFIG_SYSTEM="$HOOK_TMP/gitconfig"
+    git init -q .
+    git config user.email kg-test@example.com
+    git config user.name kg-test
+    git add -A
+    git commit -qm seed
+    git update-ref refs/remotes/origin/main HEAD
+    printf '// branch change\n' >>ios/BooksAndVocab/Views/B.swift
+    git commit -qam "branch change"
+    git config core.hooksPath .githooks
+    printf '// unstaged\n' >>ios/BooksAndVocab/Views/C.swift
+  )
+}
+_hook_commit() { # <dir> <path>... — stage the paths and commit through the hook
+  local d="$1"; shift
+  (
+    cd "$d" || exit 1
+    export GIT_CONFIG_GLOBAL="$HOOK_TMP/gitconfig" GIT_CONFIG_SYSTEM="$HOOK_TMP/gitconfig"
+    for p in "$@"; do printf '// staged\n' >>"$p"; done
+    git add -- "$@"
+    PATH="$HOOK_TMP/bin:$PATH" git commit -qm staged
+  ) >"$d/commit.log" 2>&1
+}
+: >"$HOOK_TMP/gitconfig"
+
+H1="$HOOK_TMP/one_swift"; _hook_fixture "$H1"
+if _hook_commit "$H1" ios/BooksAndVocab/Views/A.swift; then
+  ok "one-Swift-file commit goes through the hook"
+else
+  fail_t "one-Swift-file commit failed: $(cat "$H1/commit.log")"
+fi
+EXPECTED_ARGV="$(printf '%s\n' --tier fast --execute --files ios/BooksAndVocab/Views/A.swift)"
+if [[ -f "$H1/argv" && "$(cat "$H1/argv")" == "$EXPECTED_ARGV" ]]; then
+  ok "the gate is called with --files <the one staged file> only (not the branch diff, not unstaged edits)"
+else
+  fail_t "gate argv was [$(tr '\n' ' ' <"$H1/argv" 2>/dev/null || echo '<gate not called>')], expected [$(tr '\n' ' ' <<<"$EXPECTED_ARGV")]"
+fi
+
+H2="$HOOK_TMP/space"; _hook_fixture "$H2"
+_hook_commit "$H2" "ios/BooksAndVocab/Views/Has Space.swift" ios/BooksAndVocab/Views/A.swift
+if grep -qx 'ios/BooksAndVocab/Views/Has Space.swift' "$H2/argv" 2>/dev/null \
+    && grep -qx 'ios/BooksAndVocab/Views/A.swift' "$H2/argv" 2>/dev/null; then
+  ok "a staged path with a space reaches the gate as one argument"
+else
+  fail_t "staged path with a space was split or dropped: [$(tr '\n' '|' <"$H2/argv" 2>/dev/null)]"
+fi
+
+H3="$HOOK_TMP/tooling"; _hook_fixture "$H3"
+_hook_commit "$H3" ops/i18n_lint.sh
+# A lint-tooling change matches no plane trigger, so `--files ops/i18n_lint.sh`
+# would select zero mechanisms and pass — a silent green on exactly the change
+# that can break every lint. The tool itself changed, so run all of them.
+if [[ -f "$H3/argv" ]] && grep -qx -- '--all-mechanisms' "$H3/argv" && ! grep -qx -- '--files' "$H3/argv"; then
+  ok "a staged lint-tooling change runs every fast mechanism (--all-mechanisms)"
+else
+  fail_t "lint-tooling commit argv was [$(tr '\n' ' ' <"$H3/argv" 2>/dev/null || echo '<gate not called>')]"
+fi
+rm -rf "$HOOK_TMP"
+
+section "One Swift file selects only the Swift-triggered fast mechanisms"
+SCOPE_JSON="$($GATE --files "$SAMPLE_FILE" --tier fast --dry-run --json 2>/dev/null)"
+if jq -e '[.results[] | select(.status != "skipped") | .id] | sort
+          == ["static.catalyst","static.i18n","static.injection","static.plain_deadzone","static.ui_token"]' \
+     <<<"$SCOPE_JSON" >/dev/null 2>&1; then
+  ok "--files <one Swift file> plans exactly the five Swift lints"
+else
+  fail_t "unexpected fast-tier plan for one Swift file: $(jq -c '[.results[] | {id,status}]' <<<"$SCOPE_JSON" 2>/dev/null)"
+fi
+
+section "i18n_lint strips previews in one process, not one per file"
+# static.i18n was ~100s of the ~2min fast tier: _scan_pattern started a Python
+# interpreter per Swift file per pattern. Scoping the hook to the staged files
+# does not shrink that (the lint is a whole-tree baseline count), so the
+# per-file spawn is what has to go. Run the real script in a throwaway root
+# whose `uv python find` returns a wrapper that counts interpreter starts, and
+# pin the findings so the batch path cannot drift from the per-file one.
+I18N_TMP="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/kg_i18n_batch_XXXXXX")" && pwd)"
+mkdir -p "$I18N_TMP/ops" "$I18N_TMP/bin" "$I18N_TMP/ios/BooksAndVocab/Views/Sub"
+cp ops/i18n_lint.sh ops/_i18n_strip_previews.py "$I18N_TMP/ops/"
+printf 'findings=99\nlocalized_calls=99\n' >"$I18N_TMP/ops/i18n_baseline.txt"
+REAL_PY="$("$UV_BIN" python find 3.13)"
+printf '#!/bin/sh\necho call >>"%s/pycalls"\nexec "%s" "$@"\n' "$I18N_TMP" "$REAL_PY" >"$I18N_TMP/bin/py"
+printf '#!/bin/sh\n[ "$1 $2" = "python find" ] && { echo "%s/bin/py"; exit 0; }\nexit 1\n' "$I18N_TMP" >"$I18N_TMP/bin/uv"
+chmod +x "$I18N_TMP/bin/py" "$I18N_TMP/bin/uv"
+cat >"$I18N_TMP/ios/BooksAndVocab/Views/Hit.swift" <<'SWIFT'
+struct Hit: View {
+  var body: some View {
+    Text("中文")
+  }
+  var label: String { return "標籤" }
+}
+
+#Preview {
+  Text("預覽")
+}
+SWIFT
+printf 'struct Other {\n  let b = Button("按鈕") {}\n}\n' >"$I18N_TMP/ios/BooksAndVocab/Views/Sub/Other.swift"
+for i in $(seq 1 20); do printf 'struct Filler%s {}\n' "$i" >"$I18N_TMP/ios/BooksAndVocab/Views/Filler$i.swift"; done
+I18N_OUT="$(UV_BIN="$I18N_TMP/bin/uv" "$I18N_TMP/ops/i18n_lint.sh" --report 2>&1)"
+I18N_CALLS="$(grep -c call "$I18N_TMP/pycalls" 2>/dev/null || echo 0)"
+if [[ "$I18N_CALLS" -le 2 ]]; then
+  ok "i18n_lint started $I18N_CALLS interpreter(s) for 22 Swift files"
+else
+  fail_t "i18n_lint started $I18N_CALLS interpreters for 22 Swift files — one per file per pattern is the 100s fast-tier cost"
+fi
+I18N_SRC="$I18N_TMP/ios/BooksAndVocab"
+if grep -qF "$I18N_SRC/Views/Hit.swift:3:    Text(\"中文\")" <<<"$I18N_OUT" \
+    && grep -qF "$I18N_SRC/Views/Hit.swift:5:  var label: String { return \"標籤\" }" <<<"$I18N_OUT" \
+    && grep -qF "$I18N_SRC/Views/Sub/Other.swift:2:  let b = Button(\"按鈕\") {}" <<<"$I18N_OUT" \
+    && ! grep -qF '預覽' <<<"$I18N_OUT" \
+    && grep -qF '[i18n_lint] total: 3 (raw=2 return=1 fmt=0' <<<"$I18N_OUT"; then
+  ok "findings keep on-disk paths and line numbers, and #Preview bodies stay stripped"
+else
+  fail_t "i18n_lint findings drifted: $I18N_OUT"
+fi
+
+# A failed mirror build (disk full, batch-mode runtime error) leaves a partial
+# or empty mirror. Scanning it would report zero findings, and --baseline-check
+# (0 <= baseline) and --strict would then succeed on input that was never
+# linted. The build must fail closed: diagnostics on stderr, exit 2 (the
+# script's tool-error code), no scan. Same fixture, but the stripper's --mirror
+# mode dies mid-run after writing nothing useful.
+printf '#!/bin/sh\nif [ "$2" = "%s" ]; then echo "[strip_previews] OSError: [Errno 28] No space left on device" >&2; exit 1; fi\nexec "%s" "$@"\n' '--mirror' "$REAL_PY" >"$I18N_TMP/bin/py_fail"
+printf '#!/bin/sh\n[ "$1 $2" = "python find" ] && { echo "%s/bin/py_fail"; exit 0; }\nexit 1\n' "$I18N_TMP" >"$I18N_TMP/bin/uv_fail"
+chmod +x "$I18N_TMP/bin/py_fail" "$I18N_TMP/bin/uv_fail"
+for mode in --strict --baseline-check; do
+  FAIL_OUT="$(UV_BIN="$I18N_TMP/bin/uv_fail" "$I18N_TMP/ops/i18n_lint.sh" "$mode" 2>&1)"
+  FAIL_RC=$?
+  if [[ "$FAIL_RC" -eq 2 ]] \
+      && grep -qF 'No space left on device' <<<"$FAIL_OUT" \
+      && grep -qF '[i18n_lint] error: preview-stripped mirror build failed' <<<"$FAIL_OUT" \
+      && ! grep -qF '[i18n_lint] ok:' <<<"$FAIL_OUT"; then
+    ok "i18n_lint $mode fails closed (exit 2) and prints the stripper's diagnostics when the mirror build fails"
+  else
+    fail_t "i18n_lint $mode on a failed mirror build: rc=$FAIL_RC (want 2), output: $FAIL_OUT"
+  fi
+done
+rm -rf "$I18N_TMP"
+
 section "Dry-run fast tier lists the static gates"
 OUT="$($GATE --files "$SAMPLE_FILE" --tier fast --dry-run 2>&1)"
 RC=$?
