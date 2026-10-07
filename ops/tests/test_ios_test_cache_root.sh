@@ -17,11 +17,24 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # short-circuit the resolver under test.
 for var in $(git rev-parse --local-env-vars); do unset "$var"; done
 unset KG_IOS_TEST_CACHE_ROOT
+# Not in --local-env-vars but still shape a fixture: GIT_TEMPLATE_DIR outranks
+# init.templateDir and copies the caller's hooks into the new repository;
+# GIT_AUTHOR_* / GIT_COMMITTER_* outrank the -c identity; GIT_DEFAULT_* change
+# the new repository's hash / ref format.
+unset GIT_TEMPLATE_DIR \
+  GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_AUTHOR_DATE \
+  GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_COMMITTER_DATE \
+  GIT_DEFAULT_HASH GIT_DEFAULT_REF_FORMAT
 
 FIXTURE_ROOT="$(mktemp -d -t kg_ios_cache_worktree_XXXXXX)"
 trap 'rm -rf "$FIXTURE_ROOT"' EXIT
 # git reports physical paths; macOS TMPDIR sits behind /var -> /private/var.
 FIXTURE_ROOT="$(cd "$FIXTURE_ROOT" && pwd -P)"
+
+# A known-empty template: even with the env unset, an `init.templateDir` that
+# somehow survives must not copy hooks into the fixture.
+EMPTY_TEMPLATE="$FIXTURE_ROOT/empty-template"
+mkdir "$EMPTY_TEMPLATE"
 
 # The developer's global/system config (hooksPath, gpgsign, templateDir) must
 # not shape the fixture.
@@ -43,7 +56,7 @@ source "$ROOT/ops/lib/ios_test_cache_root.sh"
 run_fixture() {
   local before after
   before="$(real_worktree_paths)"
-  fixture_git init -q -b main "$MAIN"
+  fixture_git init -q --template="$EMPTY_TEMPLATE" -b main "$MAIN"
   fixture_git -C "$MAIN" commit -q --allow-empty -m fixture
   fixture_git -C "$MAIN" worktree add -q --detach "$WORKTREE" HEAD
   main_root="$(kg_ios_test_cache_root "$MAIN")"
