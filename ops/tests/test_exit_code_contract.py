@@ -147,7 +147,11 @@ def test_in_lock_preflight_callers_propagate_the_preflight_exit():
             "disk-guard-structural-block",
         ),
         (
-            {"verdict": "critical", "reason": "free-below-critical", "action": "evict-old-ios-cache"},
+            {
+                "verdict": "critical",
+                "reason": "free-below-critical",
+                "action": "evict-old-ios-cache",
+            },
             [],
             75,
             "disk-guard-blocked",
@@ -169,7 +173,9 @@ def test_early_guard_block_in_build_json_is_a_verdict_with_the_real_exit(
             {
                 "schema": "kg.disk.guard.v1",
                 "xctest_devices_verdict": "pass",
-                "at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "at": datetime.datetime.now(datetime.timezone.utc).strftime(
+                    "%Y-%m-%dT%H:%M:%SZ"
+                ),
                 **guard,
             }
         ),
@@ -183,7 +189,9 @@ def test_early_guard_block_in_build_json_is_a_verdict_with_the_real_exit(
                     "blocking_reasons": lane_reasons,
                     "blocking_dirty_physical_worktrees": [],
                     "unknown_physical_worktrees": [],
-                    "unregistered_physical_worktrees": ["/x/orphan"] if lane_reasons else [],
+                    "unregistered_physical_worktrees": ["/x/orphan"]
+                    if lane_reasons
+                    else [],
                 }
             },
             # The guard library reads these arrays line by line (awk), so the
@@ -192,7 +200,7 @@ def test_early_guard_block_in_build_json_is_a_verdict_with_the_real_exit(
         ),
         encoding="utf-8",
     )
-    tmpdir =tmp_path / "tmp"
+    tmpdir = tmp_path / "tmp"
     tmpdir.mkdir()
     result = subprocess.run(
         ["bash", "ops/ios_ops.sh", "build", "--json"],
