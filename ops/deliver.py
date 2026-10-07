@@ -311,6 +311,36 @@ def review_verdict(runs: list[dict[str, Any]]) -> str | None:
     return next((v for v in ("success", "neutral") if v in verdicts), None)
 
 
+def review_run_id(run: dict[str, Any]) -> int | None:
+    """The Actions workflow run behind one `agent-review` check run, if it names one.
+
+    The verdict marker is ``kg.agent-review.v1:<run id>:<sha>``; the Actions
+    job's own check run links ``.../actions/runs/<run id>/job/<job id>``.
+    """
+    marker = str(run.get("external_id") or "")
+    if marker.startswith(REVIEW_MARKER):
+        found = re.match(r"(\d+):", marker.removeprefix(REVIEW_MARKER))
+    else:
+        found = re.search(r"/actions/runs/(\d+)", str(run.get("details_url") or ""))
+    return int(found.group(1)) if found else None
+
+
+def workflow_run_is_of(run: dict[str, Any], number: int, head_ref: str) -> bool:
+    """Whether a workflow run was triggered by PR ``number``.
+
+    A head sha is not enough: redeliver's replacement PR shares the replaced
+    PR's sha, and the commit-level check list holds both PRs' runs.  The run's
+    ``pull_requests`` names its PR; a run that names none (GitHub leaves it
+    empty at times) is owned only by its ``head_branch`` being this PR's head
+    ref.  Comment-triggered runs carry the default branch, so they match
+    neither and are never attributed.
+    """
+    numbers = [p.get("number") for p in run.get("pull_requests") or []]
+    if numbers:
+        return number in numbers
+    return bool(head_ref) and run.get("head_branch") == head_ref
+
+
 def review_findings(
     comments: list[dict[str, Any]], head: str, bots: tuple[str, ...]
 ) -> list[dict[str, str]]:
@@ -776,35 +806,82 @@ class Delivery:
             for item in (page.get(key, []) if key else page)
         ]
 
+    def runs_of_pr(
+        self,
+        repo: str,
+        number: int,
+        head_ref: str,
+        runs: list[dict[str, Any]],
+        owners: dict[int, bool],
+    ) -> list[dict[str, Any]]:
+        """The `agent-review` check runs triggered by PR ``number``.
+
+        Fail closed: a run whose workflow run cannot be read, or that names no
+        PR of this one, is dropped.  ``owners`` caches decided runs only, so a
+        failed read is retried on the next poll.
+        """
+        mine = []
+        for run in runs:
+            run_id = review_run_id(run) if run.get("name") == REVIEW_CHECK else None
+            if run_id is None:
+                continue
+            if run_id not in owners:
+                done = self.runner(
+                    ["gh", "api", f"repos/{repo}/actions/runs/{run_id}"], self.home
+                )
+                try:
+                    doc = json.loads(done.stdout) if done.returncode == 0 else None
+                except ValueError:
+                    doc = None
+                if not isinstance(doc, dict):
+                    continue
+                owners[run_id] = workflow_run_is_of(doc, number, head_ref)
+            if owners[run_id]:
+                mine.append(run)
+        return mine
+
     def review_gate(self, repo: str, number: int) -> dict[str, Any]:
         """Settle `agent-review` on the PR's exact head before it may be queued."""
-        head = must(
-            self.runner,
-            ["gh", "pr", "view", str(number), "--repo", repo]
-            + ["--json", "headRefOid", "-q", ".headRefOid"],
-            self.home,
-            "read PR head",
-        ).stdout.strip()
+        view = json.loads(
+            must(
+                self.runner,
+                ["gh", "pr", "view", str(number), "--repo", repo]
+                + ["--json", "headRefOid,headRefName"],
+                self.home,
+                "read PR head",
+            ).stdout
+        )
+        head, head_ref = str(view["headRefOid"]), str(view["headRefName"])
         try:
             bots = review_bots(AGENT_REVIEW.read_text())
         except OSError as exc:
             raise DeliverError(f"cannot read {AGENT_REVIEW}: {exc}") from exc
         runs = f"repos/{repo}/commits/{head}/check-runs?check_name={REVIEW_CHECK}"
         seen: list[str | None] = [None]
+        owners: dict[int, bool] = {}
+        foreign = [0]
 
         def settled() -> str | None:
             # `neutral` only says the workflow stopped waiting (20 x 15s) for
             # the bot; the bot often reviews later and a new run posts the
             # real verdict, so only success/failure ends the wait.
-            seen[0] = review_verdict(
-                self.gh_pages(f"{runs}&filter=all&per_page=100", "check_runs")
-            )
+            listed = self.gh_pages(f"{runs}&filter=all&per_page=100", "check_runs")
+            mine = self.runs_of_pr(repo, number, head_ref, listed, owners)
+            foreign[0] = sum(r.get("name") == REVIEW_CHECK for r in listed) - len(mine)
+            seen[0] = review_verdict(mine)
             return seen[0] if seen[0] in ("success", "failure") else None
 
         no_review = (self.args.accept_no_review or "").strip()
         try:
             verdict = self.wait_for(f"{REVIEW_CHECK} on {head}", settled)
         except DeliverError as exc:
+            if seen[0] is None and foreign[0]:
+                raise DeliverError(
+                    f"refusing to queue #{number}: {foreign[0]} {REVIEW_CHECK} "
+                    f"run(s) on {head} belong to other PRs or could not be "
+                    f"attributed to #{number} (a PR sharing this head), and none "
+                    f"of #{number}'s own settled within {self.args.timeout}s"
+                ) from exc
             if seen[0] != "neutral":
                 raise
             if not no_review:
@@ -991,6 +1068,15 @@ class Replacement:
         """Close the replaced PR with a link to ``new``; drop its published branch."""
         record = self.retire(repo)  # a resumed run can start past the claim
         old = self.d.pull_request(repo, self.old)
+        if old is not None and old.get("state") == "MERGED":
+            # guard() only reads an OPEN PR; a merge during the redelivery
+            # must stop here, before anything is closed or deleted.
+            raise DeliverError(
+                f"PR #{old['number']} merged while #{new['number']} was replacing "
+                f"it; the old remote branch {self.old} was not deleted and "
+                f"#{new['number']} is published: close it if the merged PR "
+                "already carries the change"
+            )
         if old is not None and old.get("state") == "OPEN":
             self.guard(repo)
             note = (

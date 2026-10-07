@@ -22,13 +22,24 @@ HEAD = "c" * 40
 BOT = "chatgpt-codex-connector[bot]"
 
 
-def _review(status: str = "completed", conclusion: str = "success", job: bool = False):
-    """One `agent-review` check run: the Actions job, or a verdict it posted."""
+def _review(
+    status: str = "completed",
+    conclusion: str = "success",
+    job: bool = False,
+    run: int = 1,
+):
+    """One `agent-review` check run: the Actions job, or a verdict it posted.
+
+    Both name the workflow run that made them: the job by its details_url, the
+    posted verdict by its external_id marker (as agent-review.yml writes them).
+    """
+    url = f"https://github.com/o/r/actions/runs/{run}"
     return {
         "name": "agent-review",
         "status": status,
         "conclusion": conclusion if status == "completed" else None,
-        "external_id": "" if job else f"kg.agent-review.v1:1:{HEAD}",
+        "external_id": "" if job else f"kg.agent-review.v1:{run}:{HEAD}",
+        "details_url": f"{url}/job/9" if job else url,
     }
 
 
@@ -63,6 +74,15 @@ class FakeWorld:
             state.get("review_runs", [[_review(job=True), _review()]])
         )
         self.review_comments: list[dict[str, Any]] = state.get("review_comments", [])
+        # Workflow runs by id (None: GitHub answers 404); a run not listed here
+        # belongs to the PR whose head was last read, as the real ones do.
+        self.actions_runs: dict[int, dict[str, Any] | None] = state.get(
+            "actions_runs", {}
+        )
+        self.head_ref = state.get("head_ref", self.branch)
+        self.viewed_pr = 0
+        # Mid-redelivery change: the replaced PR is MERGED once this verb ran.
+        self.merge_old_after = state.get("merge_old_after")
         # Per-branch registry/PR/remote facts that react to the mutations.
         self.records_by_branch: dict[str, list[dict[str, Any]]] = state.get(
             "records_by_branch", {}
@@ -209,10 +229,27 @@ class FakeWorld:
                 return ok(
                     json.dumps([{"total_count": len(batch), "check_runs": batch}])
                 )
+            if cmd[1] == "api" and "/actions/runs/" in cmd[-1]:
+                run_id = int(cmd[-1].rsplit("/", 1)[1])
+                found = self.actions_runs.get(
+                    run_id,
+                    {
+                        "event": "pull_request_target",
+                        "head_branch": self.head_ref,
+                        "pull_requests": [{"number": self.viewed_pr}],
+                    },
+                )
+                if found is None:
+                    return deliver.Proc(1, "", "gh: Not Found (HTTP 404)")
+                return ok(json.dumps({"id": run_id, **found}))
             if cmd[1] == "api" and cmd[-1].endswith("/comments?per_page=100"):
                 return ok(json.dumps([self.review_comments]))
-            if cmd[1:3] == ["pr", "view"] and "headRefOid" in cmd:
-                return ok(self.head)
+            if cmd[1:3] == ["pr", "view"]:
+                self.viewed_pr = int(cmd[3])
+            if cmd[1:3] == ["pr", "view"] and "headRefOid,headRefName" in cmd:
+                return ok(
+                    json.dumps({"headRefOid": self.head, "headRefName": self.head_ref})
+                )
             if cmd[1:3] == ["pr", "view"]:
                 return ok(
                     self.pr_state.pop(0) if len(self.pr_state) > 1 else self.pr_state[0]
@@ -239,6 +276,9 @@ class FakeWorld:
                 shutil.rmtree(
                     self.work, ignore_errors=True
                 )  # publish retires the lane worktree
+            if verb == self.merge_old_after:
+                for old in self.prs_by_branch.get(OLD, []):
+                    old["state"] = "MERGED"
             failing = verb in self.fail_commands
             if failing:
                 return deliver.Proc(1, "", self.stderr_for.get(verb, "boom"))
@@ -660,6 +700,82 @@ def test_without_merge_the_review_is_not_awaited() -> None:
     world = FakeWorld(review_runs=[[]])
     assert ship(world, "--check", "u=good")[0] == 0
     assert not _calls_at(world, _is_review_read)
+
+
+_OF_PR_50 = {
+    "event": "pull_request_target",
+    "head_branch": "feat/old",
+    "pull_requests": [{"number": 50}],
+}
+
+
+def test_a_review_run_of_another_pr_on_the_same_head_is_not_accepted() -> None:
+    """redeliver's PR shares the replaced PR's head sha, so the commit-level
+    check list also holds the replaced PR's runs: its success says nothing about
+    this PR, and this PR was never reviewed."""
+    world = FakeWorld(
+        review_runs=[[_review(job=True), _review()]], actions_runs={1: _OF_PR_50}
+    )
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 1, result
+    assert "belong to other PRs" in result["error"]
+    assert "#77" in result["error"]
+    assert not _calls_at(world, _is_queue)
+
+
+def test_only_the_runs_of_this_pr_decide_among_runs_on_a_shared_head() -> None:
+    """Positive control: the replaced PR's runs (here a failure) are ignored and
+    this PR's own success is accepted."""
+    old = [_review(job=True, run=1), _review(conclusion="failure", run=1)]
+    own = [_review(job=True, run=2), _review(run=2)]
+    world = FakeWorld(review_runs=[[*old, *own]], actions_runs={1: _OF_PR_50})
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 0, result
+    assert result["review"]["verdict"] == "success"
+    assert _calls_at(world, _is_queue)
+    runs_read = [c[-1] for c in world.calls if "/actions/runs/" in c[-1]]
+    assert sorted(set(runs_read)) == [
+        "repos/o/r/actions/runs/1",
+        "repos/o/r/actions/runs/2",
+    ]
+
+
+def test_a_run_without_pull_requests_is_owned_by_its_head_branch() -> None:
+    world = FakeWorld(
+        actions_runs={
+            1: {"event": "pull_request_target", "head_branch": "feat/thing"},
+        }
+    )
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 0, result
+
+
+@pytest.mark.parametrize(
+    "unattributed",
+    [
+        None,  # GitHub no longer has the run (404)
+        {"event": "issue_comment", "head_branch": "main", "pull_requests": []},
+        {"event": "pull_request_target", "head_branch": "feat/old"},
+    ],
+    ids=["run-not-found", "comment-run-names-no-pr", "head-branch-of-another-pr"],
+)
+def test_a_review_whose_owner_cannot_be_determined_is_not_accepted(
+    unattributed: dict[str, Any] | None,
+) -> None:
+    world = FakeWorld(actions_runs={1: unattributed})
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 1, result
+    assert "belong to other PRs or could not be attributed" in result["error"]
+    assert not _calls_at(world, _is_queue)
+
+
+def test_a_review_run_naming_no_workflow_run_is_not_accepted() -> None:
+    bare = {**_review(job=True), "details_url": None}
+    marker_only = {**_review(), "external_id": "", "details_url": ""}
+    world = FakeWorld(review_runs=[[bare, marker_only]])
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 1, result
+    assert not _calls_at(world, _is_queue)
 
 
 @pytest.mark.parametrize(
@@ -1147,6 +1263,19 @@ def test_redeliver_rereads_the_old_pr_before_abandoning_its_lane() -> None:
     assert _call(world, "gh", "pr", "close") is None
     graphql = [c for c in world.calls if c[1:3] == ["api", "graphql"]]
     assert len(graphql) == 2
+
+
+def test_redeliver_aborts_when_the_replaced_pr_merges_during_redelivery() -> None:
+    """Checked at the lookup, not by the OPEN-only guard: a merged PR must not
+    be reported as superseded, nor have its branch deleted."""
+    world = _replacement_world(merge_old_after="publish")
+    code, result = redeliver(world, "--check", "u=good")
+    assert code == 1, result
+    assert "PR #50 merged while #77 was replacing it" in result["error"]
+    assert "not deleted" in result["error"]
+    assert _call(world, "gh", "pr", "close") is None
+    assert _call(world, "git", "push") is None
+    assert world.remote_heads == {OLD: PUBLISHED}
 
 
 def test_redeliver_rereads_the_old_pr_before_closing_it() -> None:
