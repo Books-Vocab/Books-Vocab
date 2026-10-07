@@ -113,6 +113,16 @@ coverage XML + provenance + verdict。provenance 包含 `HEAD_SHA` / `GITHUB_SHA
 run id 與 attempt，並將 Python interpreter 寫入 job summary。這使 coverage 證據不能
 脫離被驗證的 HEAD、interpreter 或 `backend/uv.lock`。
 
+同一 workflow 的 job `image-lock` 驗證 production image 與 lock 一致（#2088）：以
+`backend/Dockerfile` build image，再執行
+`uv run --locked python scripts/check_image_lock.py --image kg-api:image-lock --allow-group dev`。
+腳本在容器內讀 `importlib.metadata` 與 PEP 508 marker 環境，從 `backend/uv.lock` 的 root
+project 依該環境展開 runtime closure；缺少 runtime 依賴、版本與 lock 不同、lock 未涵蓋的
+distribution（base image 的 `pip` 除外）或重複安裝都以 exit 1 失敗。`--allow-group dev`
+是因為 Visual Test Matrix 在容器內跑 pytest：image 保留 lock 版本的 pytest／pytest-asyncio，
+其餘 dev 工具（Ruff、pytest-cov）不進 image。本地等價：在 `backend/` 先
+`docker build -t <tag> .`，再以同一命令帶 `--image <tag>`。
+
 ## Gaps & Next Iteration
 - 壓力/負載：高併發 `POST /api/vocab`、pipeline 排隊行為（非功能測試）
 - 真實整合環境 smoke：staging 的 Google/Apple token flow

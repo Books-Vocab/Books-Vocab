@@ -39,7 +39,7 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
   這是 fail-loud 不變量：誤把 worker 數調大於 1，第二個就**不會默默跑壞資料**，
   而是直接開不起來。由 `app_lifespan` 在 startup 呼叫
   （`backend/src/kg/app_lifespan.py:34`）。
-- **Dockerfile `--workers 1`**（`backend/Dockerfile:48`，含警示註解 `:46`）：
+- **Dockerfile `--workers 1`**（`backend/Dockerfile:57`，含警示註解 `:55`）：
   容器層硬性 single-worker。註解明文「`--workers 1` 是硬性不變式，勿改」。
 
 > 兩道防線**互補非冗餘**：Dockerfile 是宣告意圖，`worker_guard` 是執行期保險——
