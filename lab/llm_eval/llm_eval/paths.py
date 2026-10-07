@@ -8,6 +8,7 @@ capability matrix runs from there, and agents run from the repo root.
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 from collections.abc import Iterable
 from pathlib import Path
@@ -36,7 +37,8 @@ def refuse_committable_outputs(
     if exposed:
         parser.error(
             "refusing to write private user data to a path that is not "
-            f"git-ignored (could be committed): {', '.join(map(str, exposed))}. "
+            "git-ignored or that git could not confirm is outside a work tree "
+            f"(could be committed): {', '.join(map(str, exposed))}. "
             "Use a git-ignored directory or pass --allow-unignored."
         )
 
@@ -58,15 +60,37 @@ def _committable(path: Path) -> bool:
         anchor = anchor.parent
     try:
         inside = _git(anchor, "rev-parse", "--is-inside-work-tree")
-        if inside.returncode != 0 or inside.stdout.strip() != "true":
-            return False
-        # Exit 0 = ignored, 1 = not ignored; a tracked path is never ignored.
-        return _git(anchor, "check-ignore", "-q", "--", str(path)).returncode != 0
+        if inside.returncode == 0:
+            if inside.stdout.strip() != "true":
+                return False  # git itself says: inside a git dir / bare repo
+            # Exit 0 = ignored, 1 = not ignored; a tracked path is never ignored.
+            return _git(anchor, "check-ignore", "-q", "--", str(path)).returncode != 0
+        # rev-parse also fails for a work tree git cannot read (dubious
+        # ownership, permissions, corruption).  Only an explicit "not a git
+        # repository" with no repo marker anywhere above is proof of safety.
+        return not _provably_outside_any_repo(anchor, inside.stderr)
     except OSError:
         return True
 
 
+def _provably_outside_any_repo(anchor: Path, stderr: str) -> bool:
+    if "not a git repository" not in stderr:
+        return False
+    if os.environ.get("GIT_DIR") or os.environ.get("GIT_WORK_TREE"):
+        return False
+    return not any(
+        (directory / ".git").exists() for directory in (anchor, *anchor.parents)
+    )
+
+
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    # LC_ALL=C pins git's message language: the "not a git repository" check
+    # above matches on it.
     return subprocess.run(
-        ["git", *args], cwd=cwd, capture_output=True, text=True, check=False
+        ["git", *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "LC_ALL": "C"},
     )
