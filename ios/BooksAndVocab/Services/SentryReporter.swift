@@ -102,6 +102,18 @@ enum SentryReporter {
             #endif
         }
 
+        if configuration.refinesEnvironmentAtRuntime {
+            let bootstrapEnvironment = configuration.environment
+            Task.detached(priority: .background) {
+                let resolved = SentryConfiguration.runtimeEnvironment(
+                    current: bootstrapEnvironment,
+                    appTransactionEnvironment: await SentryConfiguration.fetchAppTransactionEnvironment()
+                )
+                guard resolved != bootstrapEnvironment else { return }
+                SentrySDK.configureScope { $0.setEnvironment(resolved) }
+            }
+        }
+
         if configuration.testEventRequested {
             let eventID = SentrySDK.capture(message: SentryPrivacyPolicy.verificationMessage)
             AppDiagnosticContext.shared.recordEventID(eventIDString(eventID))
