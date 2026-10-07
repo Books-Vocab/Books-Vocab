@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 
+from lib.worktree_scope import overlap_paths
+
 from ..domain.demand_issues import (
     DemandIssue,
     IssueDisposition,
@@ -37,7 +39,7 @@ def assert_candidate_scope_available(
         )
     paths = set(scope.paths)
     for claim in registry.records:
-        overlap = paths.intersection(claim.scope.paths)
+        overlap = overlap_paths(paths, claim.scope.paths)
         if overlap:
             raise PolicyViolation(
                 "candidate Scope overlaps active registry lane "
@@ -49,7 +51,7 @@ def assert_candidate_scope_available(
             or issue.disposition is IssueDisposition.TERMINAL_HISTORY
         ):
             continue
-        overlap = paths.intersection(issue.candidate_spec.scope.paths)
+        overlap = overlap_paths(paths, issue.candidate_spec.scope.paths)
         if overlap:
             raise PolicyViolation(
                 f"candidate Scope overlaps typed candidate Issue #{issue.number}: "
@@ -62,7 +64,7 @@ def assert_candidate_scope_available(
             raise DeliverySourceError(
                 f"cannot read changed paths for PR #{pull_request.number}"
             ) from error
-        overlap = paths.intersection(observed_paths)
+        overlap = overlap_paths(paths, observed_paths)
         if overlap:
             raise PolicyViolation(
                 f"candidate Scope overlaps open PR #{pull_request.number}: "
@@ -108,7 +110,7 @@ def assert_issue_intake_available(
                 "raw Issue intake provenance collides with active registry lane "
                 f"{claim.lane_id}"
             )
-        overlap = paths.intersection(claim.scope.paths)
+        overlap = overlap_paths(paths, claim.scope.paths)
         if overlap:
             raise PolicyViolation(
                 "raw Issue intake Scope overlaps active registry lane "
@@ -118,7 +120,7 @@ def assert_issue_intake_available(
     for issue in demand_issues:
         if issue.candidate_spec is None:
             continue
-        overlap = paths.intersection(issue.candidate_spec.scope.paths)
+        overlap = overlap_paths(paths, issue.candidate_spec.scope.paths)
         if overlap:
             raise PolicyViolation(
                 f"raw Issue intake Scope overlaps typed candidate Issue #{issue.number}: "
@@ -137,7 +139,7 @@ def assert_issue_intake_available(
             raise DeliverySourceError(
                 f"cannot read changed paths for PR #{pull_request.number} during Issue intake"
             ) from error
-        overlap = paths.intersection(observed_paths)
+        overlap = overlap_paths(paths, observed_paths)
         if overlap:
             raise PolicyViolation(
                 f"raw Issue intake Scope overlaps open PR #{pull_request.number}: "

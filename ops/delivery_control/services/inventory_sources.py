@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from lib.worktree_scope import overlap_paths
+
 from ..domain.branch_refs import BranchInventory
 from ..domain.candidate_issues import (
     CANDIDATE_ISSUE_LABEL,
@@ -276,7 +278,7 @@ def collect_inventory_sources(
             sorted(
                 key
                 for key, observed_paths in path_sets.items()
-                if candidate_paths.intersection(observed_paths)
+                if overlap_paths(candidate_paths, observed_paths)
             )
         )
         if collision_keys_for_candidate:

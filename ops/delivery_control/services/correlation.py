@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from lib.worktree_scope import overlap_paths
+
 from ..domain.errors import DeliverySourceError
 from ..domain.observations import (
     FileOperation,
@@ -79,7 +81,7 @@ def collision_keys(path_sets: dict[str, set[str]]) -> set[str]:
     collisions: set[str] = set()
     for index, left in enumerate(keys):
         for right in keys[index + 1 :]:
-            if path_sets[left].intersection(path_sets[right]):
+            if overlap_paths(path_sets[left], path_sets[right]):
                 collisions.update((left, right))
     return collisions
 

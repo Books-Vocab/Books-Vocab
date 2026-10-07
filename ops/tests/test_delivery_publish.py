@@ -1985,3 +1985,71 @@ def test_active_handback_refusal_names_each_mismatching_field() -> None:
     assert f"head_sha: expected {receipt.head_sha}, actual {'8' * 40}" in message
     assert "modify ops/merged_on_main.py" in message
     assert "clean:" not in message and "branch:" not in message
+
+
+SHARED_FILE = "ops/complexity_budget.json"
+
+
+def _other_claim(receipt: HandbackReceipt, *paths: str) -> RegistrySnapshot:
+    return _registry(
+        receipt,
+        lane_id="DIRECT-2",
+        branch="feat/other",
+        path=Path("/tmp/other"),
+        owner_thread_id="thread-2",
+        scope=Scope.from_paths(modify=paths),
+    )
+
+
+def test_publish_ignores_shared_file_overlap_with_other_registry_claim() -> None:
+    receipt = _receipt(scope=Scope.from_paths(modify=(SHARED_FILE, "ops/a.py")))
+    other = _other_claim(receipt, SHARED_FILE, "ops/z.py")
+    service, git, _ = _service(
+        receipt,
+        registry=FakeRegistry(_registry(receipt), (other,)),
+        git=FakeGit(receipt, snapshot=_worktree(receipt)),
+    )
+
+    result = service.publish(receipt=receipt, title="fix: delivery")
+
+    assert result.outcome is PublicationOutcome.CREATED
+    assert git.push_calls == [(None, receipt.head_sha)]
+
+
+def test_publish_still_rejects_exclusive_overlap_next_to_shared_file() -> None:
+    receipt = _receipt(scope=Scope.from_paths(modify=(SHARED_FILE, "ops/a.py")))
+    other = _other_claim(receipt, SHARED_FILE, "ops/a.py")
+    service, git, _ = _service(
+        receipt,
+        registry=FakeRegistry(_registry(receipt), (other,)),
+        git=FakeGit(receipt, snapshot=_worktree(receipt)),
+    )
+
+    with pytest.raises(PolicyViolation, match="collision"):
+        service.publish(receipt=receipt, title="fix: delivery")
+    assert not git.push_calls
+
+
+@pytest.mark.parametrize(
+    ("other_pr_paths", "expected"),
+    [
+        ((SHARED_FILE, "ops/z.py"), False),
+        ((SHARED_FILE, "ops/a.py"), True),
+    ],
+)
+def test_scope_collision_against_open_pr_ignores_shared_files_only(
+    other_pr_paths: tuple[str, ...], expected: bool
+) -> None:
+    receipt = _receipt(scope=Scope.from_paths(modify=(SHARED_FILE, "ops/a.py")))
+    other_pr = replace(_pull_request(receipt), number=8, branch="feat/other")
+    preflight = PublishPreflightService(
+        registry=FakeRegistry(_registry(receipt)),
+        git=FakeGit(receipt),
+        github=FakeGitHub(receipt, changed_paths=other_pr_paths),
+    )
+
+    collided = preflight._scope_collision(
+        receipt=receipt, registry=_registry(receipt), pull_requests=(other_pr,)
+    )
+
+    assert collided is expected
