@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import types
 
 import pytest
 
@@ -187,11 +186,11 @@ def test_audio_qa_strict_policy_drives_stage_command(tmp_path, monkeypatch) -> N
     )
     box = {}
 
-    def fake_run(cmd, **kwargs):
+    def fake_run_tool_stage(stage, cmd, **kwargs):
         box["cmd"] = cmd
-        return types.SimpleNamespace(returncode=0)
+        return 0
 
-    monkeypatch.setattr(pipeline.subprocess, "run", fake_run)
+    monkeypatch.setattr(pipeline, "_run_tool_stage", fake_run_tool_stage)
 
     assert pipeline.stage_audio_qa(ws, _FakeLog()) is True
     assert "--strict" in box["cmd"]

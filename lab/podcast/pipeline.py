@@ -2223,6 +2223,95 @@ def stage_tts_prep(workspace: Path, log: PipelineLog) -> bool:
     return True
 
 
+# ─── Bounded subprocess stages ───
+# synthesize / audio-qa / subtitle shell out to `uv run <tool>.py` (no LLM agent,
+# so _STAGE_TIMEOUTS does not apply), yet a stuck tool — a TTS call that never
+# returns, a whisper model download stall — must not block the pipeline and the
+# dashboard forever. Budgets are PER EPISODE because all three tools loop over the
+# series; sized from stage_end elapsed_s in workspace pipeline_log.jsonl
+# (7–12 episode series):
+#   synthesize  75–200 s/ep (worst 1737 s for 8 eps). synthesize.py already caps
+#               one episode's TTS batches at TTS_BATCH_TIMEOUT (600 s) plus two
+#               180 s loudnorm passes, so ~1000 s/ep is the legitimate ceiling.
+#   subtitle    180–245 s/ep (worst 2920 s for 12 eps): CPU-bound whisper
+#               `medium` forced alignment, model reloaded per episode.
+#   audio-qa    <= 31 s for a whole 12-episode series.
+# A timeout fails the stage without retry (a hang is not transient — same rule as
+# agent-stage timeouts); resume with --skip-to once the cause is fixed.
+_TOOL_STAGE_TIMEOUTS = {  # seconds per episode
+    "synthesize": 1200,
+    "audio-qa": 120,
+    "subtitle": 900,
+}
+# On timeout the child gets SIGTERM first: `uv run` forwards SIGTERM to the real
+# tool but cannot forward SIGKILL (subprocess.run(timeout=)'s bare kill() would
+# orphan a still-running synthesize), and only a SIGTERMed bash runs its EXIT
+# trap (podcast_upload.sh removes its staging dir there). SIGKILL only if the
+# child ignores SIGTERM this long. The child stays in the pipeline's process
+# group so the dashboard's killpg (monitor/jobs.py) still reaches it.
+_TOOL_TERM_GRACE = 30  # seconds
+
+
+def _stop_child(proc: subprocess.Popen) -> None:
+    proc.terminate()
+    try:
+        proc.wait(timeout=_TOOL_TERM_GRACE)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+
+
+def _run_bounded(
+    cmd: list[str],
+    *,
+    label: str,
+    timeout: int,
+    log: PipelineLog,
+    env: dict[str, str],
+    cwd: Path,
+) -> int | None:
+    """Run ``cmd`` under a wall-clock cap. Returns its exit code, or None after a
+    timeout (logged as ``<label> TIMEOUT after <timeout>s``)."""
+    t0 = time.time()
+    proc = subprocess.Popen(cmd, cwd=str(cwd), env=env)
+    try:
+        return proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _stop_child(proc)
+        log.error(
+            f"{label} TIMEOUT after {timeout}s",
+            timeout=True,
+            elapsed_s=round(time.time() - t0, 1),
+        )
+        return None
+    except BaseException:
+        _stop_child(proc)  # Ctrl-C / SystemExit: never leave the child unowned
+        raise
+
+
+def _run_tool_stage(
+    stage: str,
+    cmd: list[str],
+    *,
+    workspace: Path,
+    only_episode: int | None,
+    log: PipelineLog,
+    env: dict[str, str],
+) -> int | None:
+    per_episode = _TOOL_STAGE_TIMEOUTS[stage]
+    episodes = (
+        1 if only_episode else len(list((workspace / "scripts").glob("ep_*_script.md")))
+    )
+    return _run_bounded(
+        cmd,
+        label=stage,
+        timeout=per_episode * max(1, episodes),
+        log=log,
+        env=env,
+        cwd=ROOT,
+    )
+
+
 def stage_synthesize(
     workspace: Path, log: PipelineLog, only_episode: int | None = None
 ) -> bool:
@@ -2253,14 +2342,15 @@ def stage_synthesize(
                 f"rewrite/strip {sf}-only audio tags so they are never voiced"
             )
 
-    proc = subprocess.run(
+    rc = _run_tool_stage(
+        "synthesize",
         ["uv", "run", str(ROOT / "synthesize.py"), str(target)],
-        cwd=str(ROOT),
-        capture_output=False,
-        text=True,
+        workspace=workspace,
+        only_episode=only_episode,
+        log=log,
         env=env,
     )
-    return proc.returncode == 0
+    return rc == 0
 
 
 def stage_audio_qa(
@@ -2290,14 +2380,17 @@ def stage_audio_qa(
     cmd = ["uv", "run", str(ROOT / "audio_qa.py"), str(target), "--report", str(report)]
     if _audio_qa_strict(workspace):
         cmd.append("--strict")
-    proc = subprocess.run(
+    rc = _run_tool_stage(
+        "audio-qa",
         cmd,
-        cwd=str(ROOT),
-        capture_output=False,
-        text=True,
+        workspace=workspace,
+        only_episode=only_episode,
+        log=log,
         env=_UNBUF_ENV,
     )
-    if proc.returncode != 0:
+    if rc is None:
+        return False
+    if rc != 0:
         log.error(f"audio_qa found FAIL findings — see {report}")
         return False
     log.event(f"audio_qa passed — report at {report.relative_to(workspace)}")
@@ -2312,14 +2405,15 @@ def stage_subtitle(
         scripts_dir / f"ep_{only_episode}_script.md" if only_episode else scripts_dir
     )
 
-    proc = subprocess.run(
+    rc = _run_tool_stage(
+        "subtitle",
         ["uv", "run", str(ROOT / "subtitle.py"), str(target)],
-        cwd=str(ROOT),
-        capture_output=False,
-        text=True,
+        workspace=workspace,
+        only_episode=only_episode,
+        log=log,
         env=_UNBUF_ENV,
     )
-    return proc.returncode == 0
+    return rc == 0
 
 
 def _emit_cover_usage(workspace: Path) -> None:
@@ -2431,32 +2525,27 @@ def stage_publish(workspace: Path, log: PipelineLog, *, max_retries: int = 3) ->
     series_id = workspace.name
     backoff = 2.0
     for attempt in range(1, max_retries + 1):
-        try:
-            proc = subprocess.run(
-                ["bash", str(upload_sh), str(workspace.resolve())],
-                cwd=str(ROOT.parent.parent),
-                capture_output=False,
-                text=True,
-                env=os.environ.copy(),
-                timeout=_PUBLISH_TIMEOUT,
-            )
-        except subprocess.TimeoutExpired:
-            # A hung upload (network stall / half-dead creds) must not block the
-            # pipeline forever — treat as a failed attempt and retry.
-            log.error(
-                f"publish attempt {attempt}/{max_retries} timed out after "
-                f"{_PUBLISH_TIMEOUT}s"
-            )
+        # A hung upload (network stall / half-dead creds) must not block the
+        # pipeline forever — a timeout is a failed attempt and is retried.
+        rc = _run_bounded(
+            ["bash", str(upload_sh), str(workspace.resolve())],
+            label=f"publish attempt {attempt}/{max_retries}",
+            timeout=_PUBLISH_TIMEOUT,
+            log=log,
+            env=os.environ.copy(),
+            cwd=ROOT.parent.parent,
+        )
+        if rc is None:
             if attempt < max_retries:
                 time.sleep(backoff)
                 backoff *= 2
             continue
-        if proc.returncode == 0 and _verify_published(series_id):
+        if rc == 0 and _verify_published(series_id):
             log.event(f"publish: {series_id} live in S3 catalog (attempt {attempt})")
             return True
         log.error(
             f"publish attempt {attempt}/{max_retries} failed "
-            f"(upload rc={proc.returncode}, verified={proc.returncode == 0})"
+            f"(upload rc={rc}, verified={rc == 0})"
         )
         if attempt < max_retries:
             time.sleep(backoff)
