@@ -6,12 +6,23 @@ inside checks must never disturb the caller (typically /api/system/info).
 
 Design notes
 ------------
-* No background scheduler. Triggered piggyback-style from /api/system/info,
-  which is hit by health probes, iOS, and the admin dashboard frequently
-  enough to provide minute-resolution alerting. Trade-off: `/api/system/info`
+* No background scheduler. Triggered piggyback-style from /api/system/info.
+  Its steady caller is the felix reconciler (`ops/kg_reconcile.sh`, a launchd
+  tick every 90 s that cross-checks the live container's version); deploy
+  smoke (`devops.sh`, the reconciler's health gate, `ops/infra_health.sh`) and
+  release/doctor tooling hit it on demand. No iOS code calls it. That cadence
+  gives roughly 90 s alerting resolution. Trade-off: `/api/system/info`
   becomes the single point of failure for alerting — if probes stop hitting
   it (e.g. probe outage, route regression) alerts silently halt. Acceptable
   because the same endpoint is the canary used externally to detect outages.
+* Per-process run throttle (issue #2087). The endpoint is unauthenticated and
+  rate-limit exempt, while every check holds its log module's lock — the same
+  lock async translate code takes on the event-loop thread. The route
+  therefore enters `throttled_run_slot()` on the event loop and only the
+  request that wins the slot dispatches `run_all_checks()` to the threadpool:
+  at most one run starts per `CHECK_INTERVAL_S` on the monotonic clock, and
+  never while a previous run is still in flight. `run_all_checks()` itself
+  stays unthrottled for direct callers and tests.
 * Per-alert in-memory cooldown (default 30 min) suppresses duplicate
   notifications within the same process. Multi-worker deployments will get
   one alert per worker per cooldown window — acceptable since Sentry
@@ -31,10 +42,17 @@ check_judge_rejection_rate(window_min, min_total, threshold)
 check_translate_latency_p95(window_min, threshold_ms)
 check_llm_error_rate(window_min, threshold, min_total)
 run_all_checks()  — calls all four with module defaults.
+throttled_run_slot(interval_s=None)  — non-blocking per-process gate for
+    request-path callers; yields whether this caller may run the checks now.
 """
+
 from __future__ import annotations
 
 import logging
+import threading
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -187,9 +205,7 @@ def check_pipeline_failures(
     `include_interrupted=True` to fold them in (useful when operators want
     visibility into cancellations alongside hard failures).
     """
-    statuses = _FAILURE_STATUSES + (
-        _INTERRUPTED_STATUSES if include_interrupted else ()
-    )
+    statuses = _FAILURE_STATUSES + (_INTERRUPTED_STATUSES if include_interrupted else ())
     cutoff = (_now() - timedelta(minutes=window_min)).isoformat()
     placeholders = ",".join("?" for _ in statuses)
     # Window by failure-occurrence time, not run start. A long-running
@@ -201,9 +217,7 @@ def check_pipeline_failures(
     # (event-occurrence time).
     row = _query_log(
         pipeline_log,
-        f"SELECT COUNT(*) FROM pipeline_runs "
-        f"WHERE status IN ({placeholders}) "
-        f"AND COALESCE(ended_at, started_at) >= ?",
+        f"SELECT COUNT(*) FROM pipeline_runs WHERE status IN ({placeholders}) AND COALESCE(ended_at, started_at) >= ?",
         (*statuses, cutoff),
         error_label="pipeline failure",
     )
@@ -215,10 +229,7 @@ def check_pipeline_failures(
     _emit(
         alert_key="pipeline_failures",
         level="error",
-        message=(
-            f"Pipeline failures spiked: {count} failed runs in last "
-            f"{window_min}m (threshold {threshold})"
-        ),
+        message=f"Pipeline failures spiked: {count} failed runs in last {window_min}m (threshold {threshold})",
         tags={
             "pipeline_failures": count,
             "window_min": window_min,
@@ -285,9 +296,7 @@ def check_translate_latency_p95(
     cutoff = (_now() - timedelta(minutes=window_min)).isoformat()
     rows = _query_log(
         translate_log,
-        "SELECT latency_ms FROM translate_log "
-        "WHERE created_at >= ? AND latency_ms IS NOT NULL "
-        "ORDER BY latency_ms ASC",
+        "SELECT latency_ms FROM translate_log WHERE created_at >= ? AND latency_ms IS NOT NULL ORDER BY latency_ms ASC",
         (cutoff,),
         fetch_all=True,
         error_label="translate latency",
@@ -308,10 +317,7 @@ def check_translate_latency_p95(
     _emit(
         alert_key="translate_latency_p95",
         level="warning",
-        message=(
-            f"Translate latency p95 spiked: {p95}ms in last "
-            f"{window_min}m (threshold {threshold_ms}ms, n={n})"
-        ),
+        message=f"Translate latency p95 spiked: {p95}ms in last {window_min}m (threshold {threshold_ms}ms, n={n})",
         tags={
             "p95_ms": p95,
             "samples": n,
@@ -349,8 +355,7 @@ def check_llm_error_rate(
         alert_key="llm_error_rate",
         level="error",
         message=(
-            f"LLM infrastructure failures spiked: {count} terminal errors in "
-            f"last {window_min}m (threshold {threshold})"
+            f"LLM infrastructure failures spiked: {count} terminal errors in last {window_min}m (threshold {threshold})"
         ),
         tags={
             "llm_errors": count,
@@ -368,8 +373,8 @@ def check_llm_error_rate(
 def run_all_checks() -> None:
     """Run every threshold check, swallowing per-check exceptions.
 
-    Designed for fire-and-forget invocation from /api/system/info. Never
-    raises; the only side effect is a Sentry event (or a logger.warning).
+    Unthrottled: request-path callers must gate it with `throttled_run_slot()`.
+    Never raises; the only side effect is a Sentry event (or a logger.warning).
     """
     for fn in (
         check_pipeline_failures,
@@ -381,3 +386,80 @@ def run_all_checks() -> None:
             fn()
         except Exception:
             _logger.warning("observability check %s failed", fn.__name__, exc_info=True)
+
+
+# ---------------------------------------------------------------------------
+# Request-path run throttle (issue #2087).
+# ---------------------------------------------------------------------------
+
+# Minimum seconds between two granted `throttled_run_slot()` entries in this
+# process (the backend runs a single worker, so per process == per backend).
+# Resolved at call time: rebind it here or pass `interval_s` per call.
+CHECK_INTERVAL_S: float = 60.0
+
+
+def _monotonic() -> float:
+    """Indirection so tests can drive the throttle clock.
+
+    Monotonic, not `_now()`: a wall-clock step must neither open the gate to a
+    flood nor stall alerting.
+    """
+    return time.monotonic()
+
+
+class _RunThrottle:
+    """Process-wide state behind `throttled_run_slot()`."""
+
+    def __init__(self) -> None:
+        # Held only for a compare-and-set, never across a run, so entering the
+        # gate on the event-loop thread never waits on a check's query.
+        self._lock = threading.Lock()
+        self._last_started: float | None = None
+        self._in_flight = False
+
+    def try_acquire(self, interval_s: float) -> bool:
+        with self._lock:
+            if self._in_flight:
+                return False
+            now = _monotonic()
+            if self._last_started is not None and now - self._last_started < interval_s:
+                return False
+            self._last_started = now
+            self._in_flight = True
+            return True
+
+    def release(self) -> None:
+        with self._lock:
+            self._in_flight = False
+
+    def reset(self) -> None:
+        with self._lock:
+            self._last_started = None
+            self._in_flight = False
+
+
+_run_throttle = _RunThrottle()
+
+
+def _reset_run_throttle() -> None:
+    """Forget the last granted run. Test isolation only."""
+    _run_throttle.reset()
+
+
+@contextmanager
+def throttled_run_slot(interval_s: float | None = None) -> Iterator[bool]:
+    """Yield True when the caller may run `run_all_checks()` now, else False.
+
+    Grants at most one slot per `interval_s` seconds (default
+    `CHECK_INTERVAL_S`) and never while a granted slot is still open, so a slow
+    run cannot overlap the next one. The interval is stamped when the slot is
+    granted, so a run that fails is not retried before the interval elapses.
+    A refusal returns immediately and costs no threadpool slot or log-DB lock.
+    """
+    interval = CHECK_INTERVAL_S if interval_s is None else interval_s
+    granted = _run_throttle.try_acquire(interval)
+    try:
+        yield granted
+    finally:
+        if granted:
+            _run_throttle.release()

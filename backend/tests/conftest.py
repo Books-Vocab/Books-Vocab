@@ -326,19 +326,24 @@ def _isolate_user_locks():
 
 @pytest.fixture(autouse=True)
 def _isolate_observability_cooldown():
-    """Clear observability_alerts in-memory alert cooldown between tests.
+    """Clear observability_alerts in-memory alert state between tests.
 
     `_cooldown_state` is a module-level dict that suppresses duplicate Sentry
     alerts for 30 minutes. `/api/system/info` triggers `run_all_checks()`
     piggyback-style, so any test hitting that endpoint stamps cooldowns that
-    leak into later cooldown-sensitive assertions. Resetting per test keeps
-    the suite order-independent (test_observability_alerts.py keeps its own
-    module-scoped fixture; this guards every other file)."""
+    leak into later cooldown-sensitive assertions. The endpoint's per-process
+    run throttle (issue #2087) is reset too, otherwise whichever earlier test
+    hit the endpoint would suppress the checks for every test in the next 60 s.
+    Resetting per test keeps the suite order-independent
+    (test_observability_alerts.py keeps its own module-scoped fixture; this
+    guards every other file)."""
     from kg import observability_alerts
 
     observability_alerts._cooldown_state.clear()
+    observability_alerts._reset_run_throttle()
     yield
     observability_alerts._cooldown_state.clear()
+    observability_alerts._reset_run_throttle()
 
 
 ADMIN_TOKEN = "test-admin-token-value"
