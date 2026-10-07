@@ -56,8 +56,7 @@ def mock_db(tmp_path, monkeypatch):
     )
     conn.commit()
     lock = threading.Lock()
-    with patch("kg.quota_service._get_conn", return_value=conn), \
-         patch("kg.quota_service._lock", lock):
+    with patch("kg.quota_service._get_conn", return_value=conn), patch("kg.quota_service._lock", lock):
         yield conn
 
     token_tracker.reset()
