@@ -124,7 +124,7 @@ for f in en.lproj/Localizable.strings en.lproj/Localizable.stringsdict ja.lproj/
   if [[ $rc -ne 0 ]] && grep -q 'STUB_UQ_GATE_FIRED' "$TMP/d1.log" && [[ "$(commit_count "$D")" -eq "$before" ]]; then
     ok "$f 被 stage → pre-commit 觸發 UI quality gate 並擋下"
   else
-    fail_t "$f 被 stage 卻沒有觸發 UI quality gate（rc=$rc）"; sed 's/^/      /' "$TMP/d1.log" >&2
+    fail_t "${f} 被 stage 卻沒有觸發 UI quality gate（rc=${rc}）"; sed 's/^/      /' "$TMP/d1.log" >&2
   fi
   git -C "$D" reset -q HEAD -- "ios/BooksAndVocab/$f"; rm -f "$D/ios/BooksAndVocab/$f"
 done
