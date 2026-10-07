@@ -1274,6 +1274,35 @@ def _install_agent_signal_forwarding() -> None:
     _signal_forwarding_pid = os.getpid()
 
 
+@contextlib.contextmanager
+def _signals_deferred_while_spawning():
+    """Hold stop signals (TERM/HUP/INT) until the agent's group is registered.
+
+    The agent lives in its own session, so the runner is the only thing that can
+    stop it. Between ``Popen()`` returning and ``_LIVE_AGENT_GROUPS`` being filled
+    a signal would find nothing to forward to (TERM/HUP) or raise outside the
+    ``try`` that kills the group (INT) — and the agent would run on, unowned, burning
+    spend. Recorded signals are re-delivered on exit, to the restored handlers, once
+    the group is registered. Only the main thread can own handlers; elsewhere this
+    is a no-op, as is the forwarding itself."""
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    caught: list[int] = []
+    previous = {
+        sig: signal.signal(sig, lambda signum, _frame: caught.append(signum))
+        for sig in (*_FORWARDED_SIGNALS, signal.SIGINT)
+    }
+    try:
+        yield
+    finally:
+        for sig, handler in previous.items():
+            if handler is not None:  # None: installed from C, cannot be restored
+                signal.signal(sig, handler)
+        if caught:
+            signal.raise_signal(caught[0])
+
+
 def _agent_group_alive(proc: subprocess.Popen) -> bool:
     proc.poll()  # reap the leader, or its zombie keeps the group "alive"
     try:
@@ -1406,48 +1435,52 @@ def _run_claude_subprocess(
         return False, 0.0, _ClaudeFailure("auth", str(e))
 
     _install_agent_signal_forwarding()
-    proc = subprocess.Popen(
-        cmd,
-        cwd=str(workspace),
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE if _STREAM_JSON else None,
-        stderr=subprocess.PIPE,
-        env=proc_env,
-        start_new_session=True,  # own group: see "Agent subprocess lifecycle"
-    )
-    _LIVE_AGENT_GROUPS[proc.pid] = os.getpid()
+    proc: subprocess.Popen | None = None
     stderr_tail = bytearray()
     sink: dict = {}
-    readers = [
-        threading.Thread(
-            target=_feed_stdin,
-            args=(proc.stdin, prompt.encode() if prompt else b""),
-            daemon=True,
-        ),
-        threading.Thread(
-            target=_drain_stderr_tail, args=(proc.stderr, stderr_tail), daemon=True
-        ),
-    ]
-    if _STREAM_JSON:
-        readers.append(
-            threading.Thread(
-                target=_tee_stream_events,
-                args=(proc.stdout, workspace / "events.jsonl", label, sink),
-                daemon=True,
-            )
-        )
-    for reader in readers:
-        reader.start()
+    readers: list[threading.Thread] = []
     timed_out = False
     try:
+        with _signals_deferred_while_spawning():
+            proc = subprocess.Popen(
+                cmd,
+                cwd=str(workspace),
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE if _STREAM_JSON else None,
+                stderr=subprocess.PIPE,
+                env=proc_env,
+                start_new_session=True,  # own group: see "Agent subprocess lifecycle"
+            )
+            _LIVE_AGENT_GROUPS[proc.pid] = os.getpid()
+        readers = [
+            threading.Thread(
+                target=_feed_stdin,
+                args=(proc.stdin, prompt.encode() if prompt else b""),
+                daemon=True,
+            ),
+            threading.Thread(
+                target=_drain_stderr_tail, args=(proc.stderr, stderr_tail), daemon=True
+            ),
+        ]
+        if _STREAM_JSON:
+            readers.append(
+                threading.Thread(
+                    target=_tee_stream_events,
+                    args=(proc.stdout, workspace / "events.jsonl", label, sink),
+                    daemon=True,
+                )
+            )
+        for reader in readers:
+            reader.start()
         proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         timed_out = True
     finally:
         # Timeout, Ctrl-C, or a clean exit that left tool processes behind: the
         # agent's group never outlives this call.
-        _kill_agent_group(proc)
-        _LIVE_AGENT_GROUPS.pop(proc.pid, None)
+        if proc is not None:
+            _kill_agent_group(proc)
+            _LIVE_AGENT_GROUPS.pop(proc.pid, None)
     for reader in readers:
         # Bounded: a process that escaped the group (its own setsid) could hold a
         # pipe open forever; its daemon reader is then abandoned, not waited on.

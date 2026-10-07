@@ -235,7 +235,21 @@ def test_every_stream_event_is_teed(tmp_path, monkeypatch, child):
     assert teed == (_EVENTS if child == _EVENTS_CHILD else [])
 
 
-_FORWARD_HELPER = """
+# A process started as a background job (`cmd &` in a non-interactive shell, nohup,
+# most CI/orchestrators) inherits SIGINT/SIGHUP as SIG_IGN, and Python then never
+# installs its default Ctrl-C handler. These helpers model the pipeline as a
+# terminal/dashboard launches it, so they must not depend on how pytest was started
+# (a background-launched suite failed the INT cases every time, load or not).
+_DEFAULT_SIGNALS = """
+import signal
+signal.signal(signal.SIGINT, signal.default_int_handler)
+signal.signal(signal.SIGTERM, signal.SIG_DFL)
+signal.signal(signal.SIGHUP, signal.SIG_DFL)
+"""
+
+_FORWARD_HELPER = (
+    _DEFAULT_SIGNALS
+    + """
 import sys
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
@@ -251,6 +265,7 @@ pipeline._run_claude_subprocess(
     [sys.executable, "-c", sys.argv[3], str(ws / "hang.pids")], ws, "Analyst", _Log(), 120
 )
 """
+)
 
 
 @pytest.mark.parametrize(
@@ -277,6 +292,75 @@ def test_signal_to_pipeline_group_still_stops_agent(tmp_path, reap, sig):
 
     assert _wait_dead(child, 5), f"agent survived {sig.name} to the pipeline group"
     assert _wait_dead(grandchild, 5), "agent's subprocess survived"
+
+
+# The test above sends its signal once the *agent* has written its pidfile, which
+# on a loaded host can happen before the runner (a different process) has returned
+# from Popen() and registered the agent's group — the signal then lands in a window
+# where nothing knows about the agent, and it leaks (seen once under 3 concurrent
+# suites + 40 busy loops; the sleeping agent then outlived its pipeline).
+# The window is pinned deterministically: the helper delivers the signal to itself
+# at the exact moment the agent's group is being registered, i.e. right after
+# Popen() returned and before the runner has any bookkeeping for it.
+_SPAWN_WINDOW_HELPER = (
+    _DEFAULT_SIGNALS
+    + """
+import os, signal, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import pipeline
+
+class _Log:
+    def event(self, *a, **k): pass
+    def error(self, *a, **k): pass
+
+ws = Path(sys.argv[2])
+sig = getattr(signal, sys.argv[3])
+
+class _SignalOnRegister(dict):
+    def __setitem__(self, pgid, owner):
+        (ws / "agent.pid").write_text(str(pgid))  # before the signal can end us
+        os.kill(os.getpid(), sig)
+        super().__setitem__(pgid, owner)
+
+pipeline._LIVE_AGENT_GROUPS = _SignalOnRegister()
+pipeline._STREAM_JSON = True
+pipeline._run_claude_subprocess(
+    [sys.executable, "-c", "import time; time.sleep(%d)" % int(sys.argv[4])],
+    ws, "Analyst", _Log(), 120,
+)
+"""
+)
+
+
+@pytest.mark.parametrize(
+    "sig", [signal.SIGTERM, signal.SIGHUP, signal.SIGINT], ids=["TERM", "HUP", "INT"]
+)
+def test_signal_while_agent_is_being_registered_still_stops_agent(tmp_path, reap, sig):
+    """A stop signal that arrives between Popen() returning and the agent's group
+    being registered must not leak the agent (it runs in its own session, so
+    nothing else can reach it)."""
+    pidfile = tmp_path / "agent.pid"
+    reap(pidfile)
+    helper = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            _SPAWN_WINDOW_HELPER,
+            str(_HERE),
+            str(tmp_path),
+            sig.name,
+            str(_CHILD_SLEEP_S),
+        ],
+        capture_output=True,
+        timeout=60,
+    )
+
+    agent = int(pidfile.read_text())
+    # SIGINT surfaces as KeyboardInterrupt (exit 1 + traceback), the others kill
+    # the helper by signal; either way the helper must be gone and so must the agent.
+    assert helper.returncode != 0, helper.stderr.decode()
+    assert _wait_dead(agent, 10), f"agent survived {sig.name} sent during registration"
 
 
 def test_budget_exhausted_is_a_fatal_failure(tmp_path, monkeypatch):
