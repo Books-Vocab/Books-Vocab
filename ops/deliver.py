@@ -10,6 +10,12 @@ and GitHub on every run, so a run that died halfway is simply run again.
 Stages: checks -> adopt -> hand-back -> receipt -> publish -> wait-required ->
 (with --merge) queue -> wait-merged -> cleanup -> sync-main.
 
+Before the hand-back seals HEAD, the changed ``*.py`` files must pass the very
+``ruff format --check`` the pr-gate runs (version read from pr-gate.yml, never
+restated here).  A failure stops the run and names the files and the exact
+format command; deliver never rewrites the branch itself, because a silent
+rewrite after the author committed would hand back code nobody ran the checks on.
+
 Outcomes written into the hand-back receipt come only from the ``--check``
 commands this run executed: status from the exit code, detail from the last
 line of output.  There is no way to pass an outcome in by hand.
@@ -39,6 +45,7 @@ from lib import worktree_scope
 SCHEMA = "kg.deliver.v1"
 TRUNK = "origin/main"
 OPS = Path(__file__).resolve().parent
+PR_GATE = OPS.parent / ".github" / "workflows" / "pr-gate.yml"
 
 
 class DeliverError(Exception):
@@ -123,6 +130,35 @@ def run_checks(specs: list[str], cwd: Path, runner: Runner) -> list[dict[str, st
             }
         )
     return outcomes
+
+
+def ruff_format_command(workflow: str) -> list[str]:
+    """The pr-gate's pinned format invocation, minus the files and the mode flag.
+
+    The workflow is the single source of the pin; if its shape changes so this
+    can no longer find it, fail closed instead of guessing a version.
+    """
+    found = re.search(
+        r"uv run --no-project --python (\S+) --with 'ruff==([0-9][^']*)' ruff format",
+        workflow,
+    )
+    if not found:
+        raise DeliverError(
+            f"cannot read the pinned ruff from {PR_GATE.name}; "
+            "update deliver.ruff_format_command with the workflow"
+        )
+    python, version = found.groups()
+    return [
+        "uv",
+        "run",
+        "--no-project",
+        "--python",
+        python,
+        "--with",
+        f"ruff=={version}",
+        "ruff",
+        "format",
+    ]
 
 
 def next_stage(record: dict[str, Any] | None, pr: dict[str, Any] | None) -> str:
@@ -257,6 +293,30 @@ class Delivery:
             )
         self.say(f"rebased onto {TRUNK} ({behind} commit(s))")
 
+    def check_format(self) -> None:
+        """Run the pr-gate's pinned `ruff format --check` on the changed Python files."""
+        names = self.git(
+            "diff", "--name-only", "--diff-filter=d", f"{TRUNK}...HEAD", "--", "*.py"
+        )
+        files = [line for line in names.splitlines() if line.strip()]
+        if not files:
+            self.say("format: no changed Python files")
+            return
+        try:
+            base = ruff_format_command(PR_GATE.read_text())
+        except OSError as exc:
+            raise DeliverError(f"cannot read {PR_GATE}: {exc}") from exc
+        done = self.runner([*base, "--check", *files], self.work)
+        if done.returncode == 0:
+            self.say(f"format ok: {len(files)} changed Python file(s)")
+            return
+        listed = (done.stdout + done.stderr).strip()[-600:]
+        fix = " ".join([*base, *files])
+        raise DeliverError(
+            "changed Python files are not formatted with the pr-gate's pinned ruff "
+            f"(rc={done.returncode}):\n{listed}\nrun, commit, then re-run deliver:\n  {fix}"
+        )
+
     def reclaim_if_base_stale(self, record: dict[str, Any], branch: str) -> bool:
         """Abandon an active claim whose base is not the branch's fork point.
 
@@ -360,6 +420,7 @@ class Delivery:
                 raise DeliverError(
                     "pass at least one --check: an outcome has to come from a command that ran"
                 )
+            self.check_format()
             outcomes = run_checks(self.args.check, self.work, self.runner)
             failed = [o for o in outcomes if o["status"] != "passed"]
             for o in outcomes:

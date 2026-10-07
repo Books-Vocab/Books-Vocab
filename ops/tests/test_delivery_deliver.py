@@ -35,6 +35,8 @@ class FakeWorld:
         self.merged_prs = state.get("merged_prs", {})
         self.diff = state.get("diff", "M\tops/a.py\nA\tops/b.py\n")
         self.fork = state.get("fork", "f" * 40)
+        self.changed_py = state.get("changed_py", ["ops/a.py", "ops/b.py"])
+        self.format_rc = state.get("format_rc", 0)
         self.fail_commands: set[str] = set(state.get("fail_commands", set()))
         self.published_pr: dict[str, Any] | None = state.get(
             "published_pr", {"number": 77, "state": "OPEN", "url": "u"}
@@ -87,6 +89,8 @@ class FakeWorld:
                 )
             if sub[0] == "worktree":
                 return ok(f"worktree {self.canon}\nHEAD abc\n")
+            if sub[0] == "diff" and "--name-only" in sub:
+                return ok("".join(f"{name}\n" for name in self.changed_py))
             if sub[0] == "diff":
                 return ok(self.diff)
             if sub[0] == "merge-base":
@@ -95,6 +99,12 @@ class FakeWorld:
                 return ok("feat: the thing")
             if sub[0] == "rev-parse":
                 return ok(str(self.canon))
+        if head == "uv":
+            return deliver.Proc(
+                self.format_rc,
+                "Would reformat: ops/a.py\n" if self.format_rc else "",
+                "",
+            )
         if head == "gh":
             if cmd[1:3] == ["repo", "view"]:
                 return ok("o/r")
@@ -573,3 +583,50 @@ def test_stale_local_main_base_is_detected_in_a_real_agent_style_checkout(
     assert not delivery.reclaim_if_base_stale(
         {"base_sha": fork, "handed_back_sha": "e" * 40}, "worktree-agent-x"
     )
+
+
+def _format_calls(world: FakeWorld) -> list[list[str]]:
+    return [c for c in world.calls if c[0] == "uv"]
+
+
+def test_the_format_gate_runs_the_pr_gate_pinned_ruff_on_changed_python() -> None:
+    world = FakeWorld()
+    assert ship(world, "--check", "unit=good")[0] == 0
+    (call,) = _format_calls(world)
+    assert (
+        "ruff==0.16.3" in deliver.PR_GATE.read_text()
+    )  # the pin lives in the workflow
+    assert call[call.index("--with") + 1] == "ruff==0.16.3"
+    assert call[call.index("--python") + 1] == "3.13"
+    assert "--no-project" in call and "format" in call
+    assert call[call.index("--check") :] == ["--check", "ops/a.py", "ops/b.py"]
+
+
+def test_the_pin_is_read_from_the_workflow_not_restated() -> None:
+    bumped = deliver.ruff_format_command(
+        "run: uv run --no-project --python 3.14 --with 'ruff==9.9.9' ruff format --check x"
+    )
+    assert "ruff==9.9.9" in bumped and "3.14" in bumped
+
+
+def test_an_unreadable_pin_fails_closed() -> None:
+    with pytest.raises(deliver.DeliverError, match="cannot read the pinned ruff"):
+        deliver.ruff_format_command("run: ruff format --check x")
+
+
+def test_unformatted_python_stops_before_checks_and_names_the_fix() -> None:
+    world = FakeWorld(format_rc=1)
+    code, result = ship(world, "--check", "unit=good")
+    assert code == 1
+    error = result["error"]
+    assert "pinned ruff" in error and "Would reformat: ops/a.py" in error
+    assert "ruff==0.16.3 ruff format ops/a.py ops/b.py" in error
+    assert not [c for c in world.calls if c[0] == "bash"]  # no check ran
+    assert world.names() == []  # nothing claimed, nothing handed back
+    assert not [c for c in world.calls if c[:2] == ["git", "commit"]]  # never rewrites
+
+
+def test_a_branch_without_python_changes_skips_the_format_gate() -> None:
+    world = FakeWorld(changed_py=[])
+    assert ship(world, "--check", "unit=good")[0] == 0
+    assert _format_calls(world) == []
