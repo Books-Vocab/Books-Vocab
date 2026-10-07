@@ -30,7 +30,11 @@ is never judged. These two flushes therefore merge under the file lock just
 like ``_flush_links``:
 
 - ``_known_pending_judge`` / ``_known_candidate_pairs`` make ids/pairs this
-  instance has ever held authoritative, so a pop/removal still takes effect.
+  instance has ever held authoritative, so an ack/pop/removal still takes
+  effect. A pending-judge pop is only a claim: claimed ids stay in the file
+  until acked (``candidates.pop_pending_judge``). An ack only removes a
+  row still carrying the enqueue generation it claimed (see
+  ``_flush_pending_judge``), so a later enqueue by another instance survives.
 - An id/pair present on disk but unknown to the instance (queued by another
   instance) is preserved instead of being clobbered.
 """
@@ -41,6 +45,7 @@ import json
 import logging
 import os
 import threading
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +64,41 @@ class _LinkSnapshot(list[dict]):
         self.sequence = sequence
 
 
+_GEN_ROW_KEY = "gen"
+
+
+class _PendingSnapshot(list[str]):
+    """Pending-judge snapshot carrying the generation bookkeeping of one transaction.
+
+    ``gens`` holds the generations of ids this transaction enqueues (not yet
+    committed to ``_judge_gen``, because memory is mutated only after the
+    flush succeeds). ``acked`` names ids dropped by an ack, whose on-disk row
+    is removed only if it is still the generation this instance claimed.
+    """
+
+    def __init__(
+        self,
+        ids: Iterable[str],
+        gens: dict[str, str] | None = None,
+        acked: Iterable[str] = (),
+    ) -> None:
+        super().__init__(ids)
+        self.gens = dict(gens or {})
+        self.acked = frozenset(acked)
+
+
+def _split_pending_rows(rows: list) -> tuple[list[str], dict[str, str]]:
+    """Split a pending-judge file into its id rows and ``{id: generation}`` row."""
+    ids: list[str] = []
+    gens: dict[str, str] = {}
+    for row in rows:
+        if isinstance(row, str):
+            ids.append(row)
+        elif isinstance(row, dict) and isinstance(row.get(_GEN_ROW_KEY), dict):
+            gens.update({k: v for k, v in row[_GEN_ROW_KEY].items() if isinstance(k, str) and isinstance(v, str)})
+    return ids, gens
+
+
 class _PersistenceMixin:
     """Atomic write + snapshot + flush helpers for :class:`GraphStore`."""
 
@@ -71,9 +111,11 @@ class _PersistenceMixin:
     _candidates: list[CandidatePair]
     _blocked_pairs: set[tuple[str, str]]
     _pending_judge: set[str]
+    _inflight_judge: set[str]
     _known_link_ids: set[str]
     _known_blocked_pairs: set[tuple[str, str]]
     _known_pending_judge: set[str]
+    _judge_gen: dict[str, str | None]
     _known_candidate_pairs: set[tuple[str, str]]
     _links_snapshot_sequence: int
     _last_flushed_links_snapshot_sequence: int
@@ -239,25 +281,57 @@ class _PersistenceMixin:
     def _flush_pending_judge(self, snapshot: list[str]) -> None:
         """Persist pending-judge ids, merging with the current on-disk file.
 
-        ``snapshot`` is this instance's full ``_pending_judge`` view. Under the
-        file lock the on-disk file is re-read; any id unknown to this instance
-        (not in ``_known_pending_judge``) is preserved, while ids the instance
-        manages -- including ones it popped or removed -- follow the snapshot.
+        ``snapshot`` is this instance's full durable view: queued
+        (``_pending_judge``) plus claimed-but-unsettled (``_inflight_judge``)
+        ids. Under the file lock the on-disk file is re-read; any id unknown to
+        this instance (not in ``_known_pending_judge``) is preserved, while ids
+        the instance manages -- including ones it acked or removed -- follow
+        the snapshot.
+
+        Enqueue generations make an ack ownership-aware. Every enqueue stamps
+        its id with a fresh token (``_judge_gen``); a claim is "this id under
+        the generation I hold". A snapshot built by an ack
+        (:class:`_PendingSnapshot` with ``acked``) drops an on-disk id only if
+        its generation is still the one this instance claimed. A different
+        generation means another instance enqueued the id again after the
+        claim -- a fresh judgement request this ack knows nothing about -- so
+        the row is kept and handed back to the "foreign" side (forgotten in
+        ``_known_pending_judge``) so no later flush of ours drops it either.
+
+        On disk the ids stay a plain list of strings (old readers and the
+        pre-generation code keep working); the generations ride in one trailing
+        ``{"gen": {id: token}}`` row that old code ignores. An id without a
+        generation (a file from before this field existed, or rewritten by old
+        code) is generation ``None``: "claimed before any later enqueue".
         """
         if self.pending_judge_path is None:
             return
         with self._pending_judge_write_lock, path_write_lock(self.pending_judge_path):
+            fresh = getattr(snapshot, "gens", {})
+            acked = getattr(snapshot, "acked", frozenset())
+            disk_ids, disk_gens = _split_pending_rows(self._read_json_list(self.pending_judge_path))
             merged = set(snapshot)
-            for rid in self._read_json_list(self.pending_judge_path):
-                if not isinstance(rid, str) or rid in merged:
+            gens = {rid: g for rid in merged if (g := fresh.get(rid, self._judge_gen.get(rid))) is not None}
+            forgotten: set[str] = set()
+            for rid in disk_ids:
+                if rid in merged:
                     continue
                 if rid in self._known_pending_judge:
-                    # This instance knew this id and dropped it -> honour it.
-                    continue
+                    if rid not in acked or disk_gens.get(rid) == self._judge_gen.get(rid):
+                        # This instance knew this id and dropped it -> honour it.
+                        continue
+                    # Enqueued again by someone else after our claim: keep it.
+                    forgotten.add(rid)
                 # Foreign id queued by another instance: preserve it, but do
                 # NOT register it as managed by us.
                 merged.add(rid)
-            self._atomic_json_write(self.pending_judge_path, sorted(merged), indent=None)
+                if (g := disk_gens.get(rid)) is not None:
+                    gens[rid] = g
+            rows: list[Any] = sorted(merged)
+            if gens:
+                rows.append({_GEN_ROW_KEY: gens})
+            self._atomic_json_write(self.pending_judge_path, rows, indent=None)
+            self._known_pending_judge -= forgotten
 
     # These internal _save_* are still used from _load (dirty migration path)
     # where we are NOT inside a concurrent context yet.
@@ -275,4 +349,4 @@ class _PersistenceMixin:
     def _save_pending_judge(self) -> None:
         if self.pending_judge_path is None:
             return
-        self._flush_pending_judge(sorted(self._pending_judge))
+        self._flush_pending_judge(sorted(self._pending_judge | self._inflight_judge))

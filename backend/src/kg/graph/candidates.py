@@ -3,8 +3,58 @@
 from __future__ import annotations
 
 import threading
+import uuid
+from collections import Counter
+from collections.abc import Iterable
+from pathlib import Path
 
 from .models import CandidatePair
+from .persistence import _PendingSnapshot
+
+# Process-local registry of pending-judge ids claimed by ``pop_pending_judge``
+# and not yet settled (acked or handed back), keyed by the resolved pending
+# file path (``GraphStore._claims_key``).
+#
+# A claim never leaves the durable file, so a process that dies mid-judge just
+# leaves its claims as queued work for the next process. Within one process,
+# though, a second ``GraphStore`` on the same file (store-cache eviction while
+# a judge run still holds the first instance) must not load a live claim as
+# queued work and judge it twice, so ``GraphStore._load`` subtracts this
+# registry. Counted so two instances claiming the same id cannot release each
+# other's claim. ``_CLAIMS_LOCK`` is always the innermost lock taken.
+_CLAIMS_LOCK = threading.Lock()
+_CLAIMS: dict[Path, Counter[str]] = {}
+
+
+def claimed_pending_judge(key: Path | None) -> set[str]:
+    """Ids of the pending file ``key`` claimed by a live judge run in this process."""
+    if key is None:
+        return set()
+    with _CLAIMS_LOCK:
+        return set(_CLAIMS.get(key, ()))
+
+
+def _register_claims(key: Path | None, card_ids: Iterable[str]) -> None:
+    if key is None:
+        return
+    with _CLAIMS_LOCK:
+        _CLAIMS.setdefault(key, Counter()).update(card_ids)
+
+
+def _release_claims(key: Path | None, card_ids: Iterable[str]) -> None:
+    if key is None:
+        return
+    with _CLAIMS_LOCK:
+        claims = _CLAIMS.get(key)
+        if claims is None:
+            return
+        for card_id in card_ids:
+            if claims[card_id] <= 1:
+                claims.pop(card_id, None)
+            else:
+                claims[card_id] -= 1
+        if not claims:
+            del _CLAIMS[key]
 
 
 class _CandidatesMixin:
@@ -16,8 +66,11 @@ class _CandidatesMixin:
     _candidate_set: set[tuple[str, str]]
     _known_candidate_pairs: set[tuple[str, str]]
     _candidates_pop_lock: threading.Lock
+    _claims_key: Path | None
     _pending_judge: set[str]
+    _inflight_judge: set[str]
     _known_pending_judge: set[str]
+    _judge_gen: dict[str, str | None]
     _pending_judge_pop_lock: threading.Lock
 
     # Helpers supplied by other mixins / GraphStore.
@@ -119,13 +172,19 @@ class _CandidatesMixin:
     # Pending Judge
     # ------------------------------------------------------------------
 
-    def add_pending_judge(self, card_ids: list[str] | str) -> None:
-        """Add card ID(s) to the pending judge set. Dedup by set semantics.
+    # The durable pending file holds queued ∪ claimed ids. Every flush below
+    # persists that union (computed under ``_lock``, flushed outside it) and
+    # mutates memory only after the flush succeeds, so memory and disk never
+    # diverge. ``_pending_judge_pop_lock`` serialises these transactions.
 
-        Persist the prospective state before committing new IDs to memory. If
-        the flush fails, the in-memory queue remains at its last durable state.
-        The pop lock serializes this transaction with pops, which also flush
-        outside ``_lock`` before committing their own state changes.
+    def add_pending_judge(self, card_ids: list[str] | str) -> None:
+        """Queue card ID(s) for judging. Dedup by set semantics.
+
+        Also the hand-back for claimed ids: a claimed id passed here leaves
+        the claim and is queued again for the next pop. A claimed id is
+        already durable, so a pure hand-back needs no disk write and cannot
+        fail on I/O. Genuinely new ids are persisted before they enter memory;
+        if that flush fails, memory stays at its last durable state.
         """
         if isinstance(card_ids, str):
             card_ids = [card_ids]
@@ -134,61 +193,95 @@ class _CandidatesMixin:
                 new_ids = set(card_ids) - self._pending_judge
                 if not new_ids:
                     return
-                snapshot = sorted(self._pending_judge | new_ids)
-            self._flush_pending_judge(snapshot)
+                handed_back = new_ids & self._inflight_judge
+                fresh_gens = {rid: uuid.uuid4().hex for rid in new_ids - handed_back}
+                needs_flush = bool(fresh_gens)
+                snapshot = _PendingSnapshot(
+                    sorted(self._pending_judge | self._inflight_judge | new_ids),
+                    fresh_gens,
+                )
+            if needs_flush:
+                self._flush_pending_judge(snapshot)
             with self._lock:
+                self._inflight_judge.difference_update(handed_back)
                 self._pending_judge.update(new_ids)
-                # Register every successfully persisted id as managed by this
-                # instance so a later merge honours a pop/removal instead of
-                # resurrecting it from disk.
+                # Register every durable id as managed by this instance so a
+                # later merge honours an ack/removal instead of resurrecting
+                # it from disk.
                 self._known_pending_judge.update(new_ids)
+                self._judge_gen.update(fresh_gens)
+                _release_claims(self._claims_key, handed_back)
 
     def pop_pending_judge(self) -> list[str]:
-        """Get and clear all pending judge card IDs. Returns sorted list.
+        """Claim every queued pending-judge ID. Returns sorted list.
 
-        Flush-before-clear: the post-pop snapshot is persisted to disk FIRST,
-        and the in-memory set is mutated only if that flush succeeds. A flush
-        failure (disk full, atomic-write error) propagates with memory and
-        disk both still holding the old IDs — they never diverge, so a later
-        reload cannot resurrect orphaned cards.
+        A claim, not a delete (#2084): the IDs move from the queued set to
+        ``_inflight_judge`` in memory only and stay in the durable pending
+        file until the caller settles each one — ``ack_pending_judge`` once
+        its links are persisted, or ``add_pending_judge`` to hand it back. A
+        process killed mid-judge (deploy SIGKILL, OOM) therefore leaves them
+        as queued work for the next process's fresh store. No disk I/O
+        happens here, so a pop cannot fail half-way.
 
-        Disk I/O runs *outside* ``_lock`` (the fcntl file lock would otherwise
-        amplify cross-instance contention into the in-memory lock and stall
-        readers). ``_pending_judge_pop_lock`` is held for the whole pop so two
-        concurrent pops on the same instance cannot both observe the
-        not-yet-removed IDs and return them twice (exactly-once). The popped
-        set is captured under ``_lock``; the snapshot is ``_pending_judge``
-        minus that set, so an ``add_pending_judge`` racing before the flush is
-        preserved, not clobbered. After a successful flush the lock is re-taken
-        and only the popped IDs are discarded — never a blanket ``clear()``.
+        ``_lock`` makes concurrent pops hand each ID to exactly one caller;
+        the claim is registered process-wide before ``_lock`` is released so
+        a store constructed meanwhile cannot load it as queued work.
         """
         with self._pending_judge_pop_lock:
             with self._lock:
                 result = sorted(self._pending_judge)
                 if not result:
                     return result
-                popped = set(result)
-                # Snapshot = state after this pop; includes any concurrent add.
-                snapshot = sorted(self._pending_judge - popped)
-            # Persist outside _lock. If this raises, memory is untouched → no loss.
-            self._flush_pending_judge(snapshot)
-            with self._lock:
-                self._pending_judge.difference_update(popped)
+                self._pending_judge.difference_update(result)
+                self._inflight_judge.update(result)
+                _register_claims(self._claims_key, result)
         return result
 
-    def remove_pending_judge_for(self, card_id: str) -> int:
-        """Remove a specific card ID from pending judge. Returns 1 if removed, 0 otherwise."""
+    def ack_pending_judge(self, card_ids: list[str] | str) -> None:
+        """Settle claimed IDs whose judge work is durable (links persisted).
+
+        Removes them from the durable pending file. IDs this store has not
+        claimed (never popped, handed back, or re-queued since the pop) are
+        ignored, so a card re-added while its old judgement was in flight
+        stays queued for a fresh judgement. The same holds across instances:
+        the ack removes a durable row only if it still carries the generation
+        this store claimed, so an id another store enqueued again after the
+        claim (cache eviction + intake retry) stays pending. If the flush
+        fails the claim stays in memory and on disk.
+        """
+        if isinstance(card_ids, str):
+            card_ids = [card_ids]
         with self._pending_judge_pop_lock:
             with self._lock:
-                if card_id not in self._pending_judge:
+                done = set(card_ids) & self._inflight_judge
+                if not done:
+                    return
+                snapshot = _PendingSnapshot(sorted(self._pending_judge | (self._inflight_judge - done)), acked=done)
+            self._flush_pending_judge(snapshot)
+            with self._lock:
+                self._inflight_judge.difference_update(done)
+                for rid in done:
+                    self._judge_gen.pop(rid, None)
+                _release_claims(self._claims_key, done)
+
+    def remove_pending_judge_for(self, card_id: str) -> int:
+        """Remove a card ID from pending judge, queued or claimed. Returns 1 if removed, 0 otherwise."""
+        with self._pending_judge_pop_lock:
+            with self._lock:
+                if card_id not in self._pending_judge and card_id not in self._inflight_judge:
                     return 0
-                snapshot = sorted(self._pending_judge - {card_id})
+                snapshot = sorted((self._pending_judge | self._inflight_judge) - {card_id})
             self._flush_pending_judge(snapshot)
             with self._lock:
                 self._pending_judge.discard(card_id)
+                self._judge_gen.pop(card_id, None)
+                if card_id in self._inflight_judge:
+                    self._inflight_judge.discard(card_id)
+                    _release_claims(self._claims_key, [card_id])
         return 1
 
     def pending_judge_count(self) -> int:
+        """Queued IDs only; claimed IDs belong to the judge run holding them."""
         return len(self._pending_judge)
 
     # ------------------------------------------------------------------

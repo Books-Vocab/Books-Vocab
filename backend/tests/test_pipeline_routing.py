@@ -4,6 +4,7 @@ The critical invariant: `embed` resolves independently of the chat default,
 so flipping LLM_PROVIDER_DEFAULT to a provider with no embeddings endpoint
 (DeepSeek) never breaks the graph-link pipeline.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -16,12 +17,8 @@ import pytest
 
 from kg.pipeline_service.steps import _step_embed_and_judge, _step_enrich
 
-_JUDGE_JSON = json.dumps(
-    [{"word": "candidate", "link": "shares_usage", "confidence": 0.9, "reason": "ok"}]
-)
-_ENRICH_JSON = json.dumps(
-    [{"word": "evoke", "pos": "v.", "note": "n", "collocations": [], "meaning_fix": None}]
-)
+_JUDGE_JSON = json.dumps([{"word": "candidate", "link": "shares_usage", "confidence": 0.9, "reason": "ok"}])
+_ENRICH_JSON = json.dumps([{"word": "evoke", "pos": "v.", "note": "n", "collocations": [], "meaning_fix": None}])
 
 
 @pytest.fixture(autouse=True)
@@ -36,9 +33,14 @@ def _clean_routing_env(clean_routing_env):
 
 
 class _Logger:
-    def info(self, *a, **k): pass
-    def warning(self, *a, **k): pass
-    def error(self, *a, **k): pass
+    def info(self, *a, **k):
+        pass
+
+    def warning(self, *a, **k):
+        pass
+
+    def error(self, *a, **k):
+        pass
 
 
 def _mock_client(content: str) -> MagicMock:
@@ -64,14 +66,22 @@ def _recorder(content: str):
 
 def _card(cid, content, *, pos="v.", note="note"):
     return SimpleNamespace(
-        id=cid, content=content, meaning=f"meaning-{content}",
-        pos=pos, note=note, difficulty=None, examples=[],
-        is_deleted=False, is_archived=False, notebook_id="default",
+        id=cid,
+        content=content,
+        meaning=f"meaning-{content}",
+        pos=pos,
+        note=note,
+        difficulty=None,
+        examples=[],
+        is_deleted=False,
+        is_archived=False,
+        notebook_id="default",
         embed_text=lambda: content,
     )
 
 
 # ── enrich routing ───────────────────────────────────────────────
+
 
 class _EnrichCards:
     def __init__(self, cards):
@@ -87,12 +97,15 @@ class _EnrichCards:
 def _run_enrich(client_factory):
     cards = _EnrichCards([_card("c1", "evoke", pos=None)])  # pos=None → needs enrich
     user = {"id": "u_enrich", "dir": Path("/tmp/u_enrich"), "config": {}}
-    asyncio.run(_step_enrich(
-        "u_enrich", user,
-        card_store_factory=lambda d: cards,
-        client_factory=client_factory,
-        logger=_Logger(),
-    ))
+    asyncio.run(
+        _step_enrich(
+            "u_enrich",
+            user,
+            card_store_factory=lambda d: cards,
+            client_factory=client_factory,
+            logger=_Logger(),
+        )
+    )
 
 
 def test_step_enrich_routes_to_gemini_by_default():
@@ -109,6 +122,7 @@ def test_step_enrich_routes_to_deepseek_via_env(monkeypatch):
 
 
 # ── embed + judge routing ────────────────────────────────────────
+
 
 class _EJCards:
     def __init__(self, cards):
@@ -132,6 +146,9 @@ class _EJGraph:
     def pop_pending_judge(self):
         p, self._pending = self._pending, []
         return p
+
+    def ack_pending_judge(self, ids):
+        pass
 
     def add_pending_judge(self, ids):
         self._pending.extend(ids)
@@ -166,15 +183,18 @@ def _run_embed_and_judge(client_factory):
     graph = _EJGraph(pending=["c1"])
     embeddings = _EJEmbeddings({"c1": [("c2", 0.9)]})
     user = {"id": "u_ej", "dir": Path("/tmp/u_ej"), "config": {}}
-    asyncio.run(_step_embed_and_judge(
-        "u_ej", user,
-        card_store_factory=lambda d: cards,
-        graph_store_factory=lambda d, notebook_id="default": graph,
-        embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
-        client_factory=client_factory,
-        logger=_Logger(),
-        link_kind_enum=lambda v: v,
-    ))
+    asyncio.run(
+        _step_embed_and_judge(
+            "u_ej",
+            user,
+            card_store_factory=lambda d: cards,
+            graph_store_factory=lambda d, notebook_id="default": graph,
+            embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
+            client_factory=client_factory,
+            logger=_Logger(),
+            link_kind_enum=lambda v: v,
+        )
+    )
 
 
 def test_embed_and_judge_routes_to_gemini_by_default():
