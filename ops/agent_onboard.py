@@ -8,6 +8,7 @@ import hashlib
 import json
 import re
 import shlex
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,28 @@ _PLACEHOLDERS: dict[str, Any] = {
     "dispatch_owner": "<dispatching IM, e.g. IM-1>",
     "Issue assignment packet": "<Issue #N or URL, base SHA>",
     "exact HEAD": "<40-char commit SHA>",
+    "base SHA": "<40-char base commit SHA>",
+    "GitHub PR": "<PR number #N or https://github.com/OWNER/REPO/pull/N>",
+    "review branch": "<local branch under review>",
+}
+_FULL_SHA = re.compile(r"[0-9a-f]{40}")
+# A PR reference, optionally wrapped as a Markdown autolink.
+_PR_REFERENCE = re.compile(
+    r"<?(?:#?[1-9]\d*|https://github\.com/[\w.-]+/[\w.-]+/pull/[1-9]\d*/?)>?"
+)
+_SHA_RULE = "full 40-char lowercase hex commit SHA"
+_LOCAL_SHA_RULE = f"{_SHA_RULE} that exists locally (git cat-file -e <sha>^{{commit}})"
+_PR_RULE = "real PR number (#N or N) or https://github.com/OWNER/REPO/pull/N; a pre-PR review uses entry lane-review"
+# (identity, entry) -> evidence key -> (rule, must exist as a local commit).
+_VALUE_RULES: dict[tuple[str, str], dict[str, tuple[str, bool]]] = {
+    ("cr", "pr-review"): {
+        "GitHub PR": (_PR_RULE, False),
+        "exact HEAD": (_SHA_RULE, False),
+    },
+    ("cr", "lane-review"): {
+        "exact HEAD": (_LOCAL_SHA_RULE, True),
+        "base SHA": (_LOCAL_SHA_RULE, True),
+    },
 }
 
 
@@ -141,6 +164,10 @@ def _evidence_spec(identity_id: str, entry: str, required: list[str]) -> dict[st
         "conditional": [],
         "optional": [],
         "allowed_values": {},
+        "value_rules": {
+            key: rule
+            for key, (rule, _) in _VALUE_RULES.get((identity_id, entry), {}).items()
+        },
         "placeholder_rule": PLACEHOLDER_RULE,
     }
     if _is_worker_dispatch(identity_id, entry):
@@ -300,6 +327,51 @@ def _worker_dispatch_problems(
     return problems
 
 
+def _local_commit_exists(root: Path, sha: str) -> bool:
+    try:
+        result = subprocess.run(
+            ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
+            cwd=root,
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+def _value_rule_problems(
+    root: Path, identity_id: str, entry: str, evidence: dict[str, Any]
+) -> list[dict[str, str]]:
+    """Supplied values that break the route's format rule; absent and placeholder values are reported elsewhere."""
+    problems: list[dict[str, str]] = []
+    for key, (rule, must_exist) in _VALUE_RULES.get((identity_id, entry), {}).items():
+        value = evidence.get(key)
+        if not _evidence_value_present(key, value):
+            continue
+        text = value.strip() if isinstance(value, str) else ""
+        pattern = _PR_REFERENCE if key == "GitHub PR" else _FULL_SHA
+        if not pattern.fullmatch(text):
+            problems.append({"key": key, "reason": f"{key} 必須是 {rule}"})
+        elif must_exist and not _local_commit_exists(root, text):
+            problems.append(
+                {
+                    "key": key,
+                    "reason": f"{key} {text} 不是本機 commit（git cat-file -e 失敗）；先 fetch 該 branch 再重跑",
+                }
+            )
+    return problems
+
+
+def _evidence_problems(
+    root: Path, identity_id: str, entry: str, evidence: dict[str, Any]
+) -> list[dict[str, str]]:
+    return _worker_dispatch_problems(
+        identity_id, entry, evidence
+    ) + _value_rule_problems(root, identity_id, entry, evidence)
+
+
 def _resolve_worker_dispatch(
     identity_id: str, entry: str, evidence: dict[str, Any]
 ) -> dict[str, Any] | None:
@@ -434,7 +506,7 @@ def build_evidence_template(
     )
     invalid_keys = frozenset(
         problem["key"]
-        for problem in _worker_dispatch_problems(identity_id, entry, evidence)
+        for problem in _evidence_problems(_root(root), identity_id, entry, evidence)
     )
     template = _evidence_template(spec, evidence, invalid_keys)
     return {
@@ -487,7 +559,7 @@ def build_onboarding(
     spec = _evidence_spec(identity_id, entry, required_external)
     missing_external = _missing_evidence(spec, evidence)
     unfilled = _unfilled_evidence(evidence)
-    invalid = _worker_dispatch_problems(identity_id, entry, evidence)
+    invalid = _evidence_problems(_root(root), identity_id, entry, evidence)
     dispatch_resolution = None
     if not missing_external and not unfilled:
         if invalid:
