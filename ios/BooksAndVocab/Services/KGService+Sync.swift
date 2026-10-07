@@ -128,6 +128,13 @@ extension KGService {
     /// The caller's own cancellation is honoured at the boundary instead: callers
     /// that go away stop waiting (see the `Task.checkCancellation` in
     /// `KGVocabCoordinator`), while the sync itself runs to completion.
+    ///
+    /// `notebookId` picks one of two different operations:
+    /// - `nil` — the global sync: owns `SyncKeys.incrementalBoundary` and the
+    ///   payload-version upgrade, and a full sync reaps orphans.
+    /// - non-nil — a notebook-scoped projection (AddLink): a drained read of that
+    ///   notebook merged without orphan cleanup, never reading or writing the
+    ///   global cursor. See `performNotebookScopedPull` (#2102).
     @discardableResult
     func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)? = nil, notebookId: String? = nil) async throws -> KGPullOutcome {
         try await pullCardsToLocal(
@@ -155,19 +162,63 @@ extension KGService {
                 // or cancelled earlier pull must not fail this one. `result`
                 // swallows both outcomes by construction.
                 _ = await predecessor?.result
+                if let notebookId {
+                    return try await self.performNotebookScopedPull(
+                        container: container, progress: progress,
+                        notebookId: notebookId, reporter: reporter
+                    )
+                }
                 return try await self.performPullCardsToLocal(
                     container: container, progress: progress,
-                    notebookId: notebookId, reporter: reporter, defaults: defaults
+                    reporter: reporter, defaults: defaults
                 )
             }
         }
         return try await task.value
     }
 
+    /// Notebook-scoped projection (#2102): a drained full read of one notebook,
+    /// merged through `mergeNotebookScopedCards`, so orphan cleanup never runs —
+    /// one notebook's cards are not authoritative for the whole store.
+    ///
+    /// It touches no global sync state. The incremental boundary is the global
+    /// pull's cursor: borrowing it as `since` and writing it back left other
+    /// notebooks' newer server changes unreachable. The payload version stays
+    /// too — marking it current here would cancel the full re-sync a pending
+    /// upgrade owes every notebook.
+    private func performNotebookScopedPull(
+        container: ModelContainer,
+        progress: ((String, Int, Int) -> Void)?,
+        notebookId: String,
+        reporter: SyncProgressReporting?
+    ) async throws -> KGPullOutcome {
+        progress?(L10n.string("正在下載單字..."), 0, 0)
+        let pages = try await fetchAllVocabPages(query: [URLQueryItem(name: "notebook_id", value: notebookId)])
+
+        progress?(L10n.string("解析資料..."), 0, 0)
+        let result = try await Self.mergeNotebookScopedCards(
+            pages.cards,
+            notebookId: notebookId,
+            container: container,
+            progress: { detail, current, total in
+                progress?(detail, current, total)
+            }
+        )
+
+        reporter?(.finished(.pull, status: .done, detail: Self.pullDetail(
+            inserted: result.inserted, updated: result.updated, deleted: result.deleted
+        )))
+        return KGPullOutcome(
+            pipelinePending: pages.pipelinePending,
+            inserted: result.inserted,
+            updated: result.updated,
+            deleted: result.deleted
+        )
+    }
+
     private func performPullCardsToLocal(
         container: ModelContainer,
         progress: ((String, Int, Int) -> Void)?,
-        notebookId: String?,
         reporter: SyncProgressReporting?,
         defaults: UserDefaults
     ) async throws -> KGPullOutcome {
@@ -195,9 +246,6 @@ extension KGService {
         let isIncremental = lastSyncMillis > 0
 
         var queryItems: [URLQueryItem] = []
-        if let notebookId {
-            queryItems.append(URLQueryItem(name: "notebook_id", value: notebookId))
-        }
         if isIncremental {
             let dateString = AppDateFormatters.iso8601.string(from: Date(timeIntervalSince1970: lastSyncMillis))
             queryItems.append(URLQueryItem(name: "since", value: dateString))
@@ -222,7 +270,7 @@ extension KGService {
             progress: { detail, current, total in
                 progress?(detail, current, total)
             },
-            notebookId: notebookId ?? "default"
+            notebookId: "default"
         )
 
         reporter?(.finished(.pull, status: .done, detail: Self.pullDetail(

@@ -98,22 +98,23 @@ extension KGService {
     /// - **Never touches `SyncKeys.incrementalBoundary`.** A notebook-scoped pull
     ///   must never advance the GLOBAL boundary, or the next full incremental sync
     ///   would skip other notebooks' server-side changes made since the old
-    ///   boundary. (This is exactly why we do NOT reuse `KGService.pullCardsToLocal`,
-    ///   which reads and advances that global boundary.)
+    ///   boundary. `KGService.pullCardsToLocal(notebookId:)` routes every
+    ///   notebook-scoped pull (AddLink's projection) here for the same reason (#2102).
     ///
-    /// Static + card-injected so the merge is unit-testable without a network stack
-    /// (`KGService` has no `URLSession` injection seam).
+    /// Static + card-injected so the merge is unit-testable without a network stack.
     @discardableResult
     static func mergeNotebookScopedCards(
-        _ fetchedCards: [KGCard], notebookId: String, container: ModelContainer
-    ) async throws -> Int {
+        _ fetchedCards: [KGCard],
+        notebookId: String,
+        container: ModelContainer,
+        progress: @Sendable @escaping (String, Int, Int) -> Void = { _, _, _ in }
+    ) async throws -> BackgroundSyncActor.PullResult {
         let actor = BackgroundSyncActor(modelContainer: container)
-        _ = try await actor.pullCardsToLocal(
+        return try await actor.pullCardsToLocal(
             fetchedCards: fetchedCards,
             isIncremental: true,
-            progress: { _, _, _ in },
+            progress: progress,
             notebookId: notebookId
         )
-        return fetchedCards.count
     }
 }

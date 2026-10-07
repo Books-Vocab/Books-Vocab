@@ -7,8 +7,8 @@
 //  (2) notebook-scoped merge 不觸 orphan cleanup（不刪其他 notebook 的卡）、
 //      不動全域 incremental boundary（否則下次全量增量 sync 會漏其他 notebook 的變更）。
 //
-//  註：KGService 無 URLSession 注入 seam（見 KGServiceTests 說明），故 pullCopiedDeck
-//  端到端無法單測；此處測 card-injected 的 `mergeNotebookScopedCards` 純 seam。
+//  此處測 card-injected 的 `mergeNotebookScopedCards` 純 seam；經 transport 的
+//  `pullCopiedDeck` 端到端（含分頁）見 VocabPullPaginationTests。
 //
 
 #if os(iOS)

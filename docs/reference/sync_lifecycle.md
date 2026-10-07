@@ -123,7 +123,8 @@ batch-delete（`POST /api/vocab/batch-delete`）與 batch-archive（`PATCH /api/
 
 vocab pull 有五個呼叫點：`KGVocabView.task`（進頁自動）、pull-to-refresh、錯誤 banner 的重試、`SyncCoordinator` 的 pipeline 輪詢、以及 `backgroundSync`。過去只有 `backgroundSync` 有 claim 鎖，其餘各跑各的——生產日誌可見同一個 `?since=` cursor 被兩個請求同時帶出去（兩輪在對方寫回 boundary 前各自讀了同一個值）。現在 `KGService.pullCardsToLocal` 是一層 single-flight wrapper：
 
-- **同 `notebookId` 的併發呼叫合流**到同一輪 pull，只發一次 `GET /api/vocab`；合流者拿到結果，但 progress 回呼只給發起者。
+- **序列化、不合流**：後到的呼叫排在前一輪之後（`KGService.enqueuePull`），各自發自己的 `GET /api/vocab`，所以不會有兩個請求帶同一個 `?since=`。不共用前一輪的回應：pipeline 輪詢要的是「自己上傳之後」的 `X-Pipeline-Pending`。
+- **`notebookId` 決定是哪一種 pull**：`nil` 是全域 sync，擁有 `SyncKeys.incrementalBoundary` 與 payload-version 升級，full sync 才做 orphan cleanup。非 `nil`（AddLink 的 local projection）是 notebook-scoped projection：對該 notebook 做 drain 完的全量讀取，經 `KGService.mergeNotebookScopedCards` 以 `isIncremental: true` 合併——**不做 orphan cleanup、不讀也不寫 boundary 與 `payloadVersion`**。舊行為拿全域 boundary 當 `since` 又寫回去，其他 notebook 在舊 boundary 之後的伺服器變更從此拉不到；boundary 清空時更會以單一 notebook 的卡跑 full-sync cleanup，把其他 notebook 的卡當 orphan 刪掉（#2102）。Explore 複製後的 `pullCopiedDeck` 走同一條 merge。
 - 實際工作跑在 **unstructured `Task`** 裡，因此**不繼承呼叫端的取消**。從 `.task` / `.refreshable` 發起的 pull 不會因為 view 重繪或離場而被砍掉——那正是舊行為把 `URLError.cancelled`(-999) 一路包成 `KGError.networkError`、在使用者面前顯示「網路錯誤：已取消」的成因。
 - 取消不是失敗：`authenticatedRequest` 把 -999 轉成 `CancellationError`，`backgroundSync` 的 phase 回報略過它，單字本 banner 也不因它改變畫面。
 
