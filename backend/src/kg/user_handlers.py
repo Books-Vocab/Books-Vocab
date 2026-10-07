@@ -327,6 +327,11 @@ def delete_user_account_response(
                 podcast_progress.delete_for_users(ids_to_delete)
                 _tombstone_accounts(users, ids_to_delete, purge_external_api_keys=purge_external_api_keys)
                 save_users(users)
+                # users.json is now tombstoned: drop the cached stores at once
+                # so a same-sub re-login during the rmtree below cannot be
+                # handed the pre-deletion GraphStore / SQLite handles.
+                for uid in ids_to_delete:
+                    evict_user_store_cache(data_dir / "users" / uid)
                 break
         # One network round trip per remote asset: never hold the shared users
         # lock (every login / config / billing write) across them (#2060). A
@@ -343,20 +348,28 @@ def delete_user_account_response(
         raise HTTPException(status_code=409, detail="Account changed during deletion; please retry")
 
     deleted_dirs: list[str] = []
-    for uid in ids_to_delete:
-        user_dir = data_dir / "users" / uid
-        try:
-            if user_dir.exists():
-                shutil.rmtree(user_dir)
-                deleted_dirs.append(uid)
-        except OSError as exc:
-            logger.exception("Failed to delete user directory %s: %s", user_dir, exc)
-            raise HTTPException(status_code=500, detail=f"Failed to remove user data for {uid}") from exc
-        finally:
-            # Evict after the files are gone: a same-sub re-login resolves the
-            # same user_dir and must reopen fresh stores, not the cached
-            # pre-deletion GraphStore / SQLite handles on unlinked inodes.
-            evict_user_store_cache(user_dir)
+    failed_uids: list[str] = []
+    try:
+        # users.json is already tombstoned, so a failure on one directory must
+        # not strand the remaining linked ids: remove what can be removed, then
+        # report the failures.
+        for uid in ids_to_delete:
+            user_dir = data_dir / "users" / uid
+            try:
+                if user_dir.exists():
+                    shutil.rmtree(user_dir)
+                    deleted_dirs.append(uid)
+            except OSError:
+                logger.exception("Failed to delete user directory %s", user_dir)
+                failed_uids.append(uid)
+    finally:
+        # Evict again after the files are gone (a store reopened during the
+        # rmtree window would otherwise outlive its unlinked files), for every
+        # linked id even if a failure interrupted the loop.
+        for uid in ids_to_delete:
+            evict_user_store_cache(data_dir / "users" / uid)
+    if failed_uids:
+        raise HTTPException(status_code=500, detail=f"Failed to remove user data for {', '.join(failed_uids)}")
 
     logger.warning(
         "Account deletion: uid=%s canonical=%s ids=%s dirs=%s",

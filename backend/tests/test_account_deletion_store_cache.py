@@ -162,3 +162,82 @@ def test_evict_user_store_cache_invalidates_in_flight_build(tmp_path):
         release.set()
         worker.join(timeout=5)
         sf.clear_store_cache()
+
+
+# ── eviction ordering / partial rmtree failure (review follow-up) ─────────────
+
+
+def _delete_linked_pair(tmp_path, monkeypatch, *, failing_uid: str | None):
+    """Delete canonical ``a`` + linked ``b``; record save / evict / rmtree order."""
+    import shutil
+    from unittest.mock import MagicMock
+
+    import pytest
+    from fastapi import HTTPException
+
+    import kg.user_handlers as handlers
+    from kg.user_store import collect_account_ids_for_deletion
+
+    for uid in ("a", "b"):
+        (tmp_path / "users" / uid).mkdir(parents=True)
+        (tmp_path / "users" / uid / "cards.db").write_text("x")
+    users: dict = {"a": {"id": "a", "linked_ids": ["b"]}, "b": {"id": "b", "_linked_to": "a"}}
+    events: list[tuple[str, str]] = []
+    real_rmtree = shutil.rmtree
+
+    def fake_evict(user_dir: Path) -> None:
+        events.append(("evict", user_dir.name))
+
+    def fake_rmtree(path, *args, **kwargs):
+        events.append(("rmtree", Path(path).name))
+        if Path(path).name == failing_uid:
+            raise OSError("disk says no")
+        real_rmtree(path, *args, **kwargs)
+
+    def save_users(payload) -> None:
+        events.append(("save", ""))
+
+    monkeypatch.setattr(handlers, "evict_user_store_cache", fake_evict)
+    monkeypatch.setattr(handlers.shutil, "rmtree", fake_rmtree)
+
+    def call():
+        return handlers.delete_user_account_response(
+            {"id": "a"},
+            users_lock_file=tmp_path / "users.json.lock",
+            load_users=lambda: users,
+            save_users=save_users,
+            collect_account_ids_for_deletion=collect_account_ids_for_deletion,
+            data_dir=tmp_path,
+            logger=MagicMock(),
+        )
+
+    if failing_uid is None:
+        return call(), events
+    with pytest.raises(HTTPException) as exc_info:
+        call()
+    return exc_info.value, events
+
+
+def test_delete_evicts_stores_right_after_the_tombstone_save_and_again_after_rmtree(tmp_path, monkeypatch):
+    _, events = _delete_linked_pair(tmp_path, monkeypatch, failing_uid=None)
+
+    first_rmtree = next(i for i, event in enumerate(events) if event[0] == "rmtree")
+    last_rmtree = max(i for i, event in enumerate(events) if event[0] == "rmtree")
+    save_at = events.index(("save", ""))
+    for uid in ("a", "b"):
+        before = [i for i, event in enumerate(events) if event == ("evict", uid) and save_at < i < first_rmtree]
+        after = [i for i, event in enumerate(events) if event == ("evict", uid) and i > last_rmtree]
+        assert before, f"{uid}: no eviction between the tombstone save and rmtree: {events}"
+        assert after, f"{uid}: no eviction after rmtree: {events}"
+
+
+def test_delete_keeps_removing_and_evicting_linked_ids_when_one_rmtree_fails(tmp_path, monkeypatch):
+    error, events = _delete_linked_pair(tmp_path, monkeypatch, failing_uid="a")
+
+    assert error.status_code == 500
+    assert not (tmp_path / "users" / "b").exists(), "later linked id was left on disk after an earlier failure"
+    last_rmtree = max(i for i, event in enumerate(events) if event[0] == "rmtree")
+    for uid in ("a", "b"):
+        assert any(event == ("evict", uid) and i > last_rmtree for i, event in enumerate(events)), (
+            f"{uid} not evicted after the failed deletion: {events}"
+        )
