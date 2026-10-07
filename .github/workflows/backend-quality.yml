@@ -175,9 +175,9 @@ jobs:
           retention-days: 14
 
   # The production image must install exactly backend/uv.lock (#2088): build it
-  # from this commit and compare its importlib.metadata view with the lock. The
-  # dev group is allowed because /admin/tests runs pytest inside the container;
-  # its packages must still be at the locked versions.
+  # from this commit and compare its importlib.metadata view with the lock. Only
+  # the image-test group is allowed (pytest for /admin/tests inside the container),
+  # at locked versions; anything else in `dev` is reported as unexpected.
   image-lock:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -194,4 +194,4 @@ jobs:
         run: docker build --tag kg-api:image-lock .
 
       - name: Assert image installs exactly uv.lock
-        run: uv run --locked python scripts/check_image_lock.py --image kg-api:image-lock --allow-group dev
+        run: uv run --locked python scripts/check_image_lock.py --image kg-api:image-lock --allow-group image-test

@@ -2,8 +2,9 @@
 # test_kg_reconcile.sh — offline TDD tests for ops/kg_reconcile.sh
 #
 # 覆蓋（對齊 ops/tests/ 既有 bash 測試風格）：
-#   - paths_need_deploy 觸發正則（backend/src、pyproject、Dockerfile、static、
-#     index.html → need；uv.lock、ios、docs、.env、data/ → NOT need）
+#   - paths_need_deploy 觸發正則（backend/src、pyproject、uv.lock、Dockerfile、static、
+#     index.html → need；ios、docs、.env、data/ → NOT need）
+#   - lock-only 依賴更新（backend/uv.lock）→ 走 build 路徑並 deployed（#2088）
 #   - no-change → noop（git 不 pull、compose 不 build）
 #   - non-backend change（docs）→ ff-only（compose 不 build、repo ff 到新 sha）
 #   - backend change + smoke 全綠 → deployed（compose up、deploy.log 有新行、VERSION 更新）
@@ -166,6 +167,8 @@ new_scratch() {
   echo "print(1)" > "$REPO/backend/src/app.py"
   # 命中 BACKEND_TRIGGER_RE 但**不進 image** 的檔案，用來造出 backend-noimage 情境
   printf 'services:\n  api:\n    build: .\n' > "$REPO/backend/docker-compose.yml"
+  # backend/uv.lock：image 依它安裝（#2088），backend-locked 情境只改這個檔
+  printf 'version = 1\n' > "$REPO/backend/uv.lock"
   echo "root" > "$REPO/README.md"
   "$REALGIT" -C "$REPO" add -A
   "$REALGIT" -C "$REPO" commit -qm base
@@ -182,6 +185,8 @@ new_scratch() {
   if [[ "$kind" != "none" ]]; then
     case "$kind" in
       backend) echo "print(2)" >> "$REPO/backend/src/app.py"; : > "$IMAGECHANGED" ;;
+      # lock-only 依賴更新（#2088）：Dockerfile 依 uv.lock 安裝，所以這會改 image
+      backend-lockonly) printf '[[package]]\nname = "x"\nversion = "2"\n' >> "$REPO/backend/uv.lock"; : > "$IMAGECHANGED" ;;
       # 命中 trigger、但改的是不進 image 的檔案的註解：`docker compose config --hash`
       # 不變、Dockerfile 沒有 COPY 到它 → image digest 不變 → compose 不 recreate。
       # 這是 IMP-0056 實際踩到的形狀，**刻意不設 IMAGECHANGED**。
@@ -323,7 +328,7 @@ need   "backend/pyproject.toml"
 need   "backend/Dockerfile"
 need   "backend/static/a.css"
 need   "backend/index.html"
-noneed "backend/uv.lock"
+need   "backend/uv.lock"
 noneed "ios/x.swift"
 noneed "docs/x.md"
 noneed "backend/.env"
@@ -571,6 +576,23 @@ ver_now="$(cat "$VERSIONFILE")"
 [[ "$ver_now" == "$SHA_NEW" ]] && ok "no-image change: VERSION == new sha" || bad "no-image change: VERSION=$ver_now != $SHA_NEW"
 served_now="$(cat "$SERVEDFILE")"
 [[ "$served_now" == "$SHA_NEW" ]] && ok "no-image change: 容器實際 serving 新 sha" || bad "no-image change: serving=$served_now != ${SHA_NEW}（容器沒被 recreate）"
+
+section "lock-only 依賴更新（backend/uv.lock）→ 走 build 路徑並 deployed"
+# #2088：image 依 backend/uv.lock 安裝。若 trigger 漏掉它，lock-only commit 讓 origin/prod
+# 前進卻走 no-build 路徑，生產永遠跑舊依賴版本。
+new_scratch backend-lockonly
+MOCK_CURL="$(make_mock_curl "$(cat <<EOF
+wordnexus.lol/api/system/info|200|{"version":"$SHA_NEW"}
+wordnexus.lol/api/health|401|{"detail":"x"}
+EOF
+)" "$SC" "$SERVEDFILE")"
+out="$(run_recon --once 2>/dev/null)"; rc=$?
+v="$(get_verdict "$out")"
+[[ "$v" == "deployed" ]] && ok "lock-only: verdict deployed" || bad "lock-only: expected deployed, got '$v' (out=$out)"
+[[ "$rc" -eq 0 ]] && ok "lock-only: exit 0" || bad "lock-only: exit $rc"
+grep -q 'up -d --build' "$COMPOSELOG" 2>/dev/null && ok "lock-only: compose build 路徑被執行" || bad "lock-only: 沒有 compose up --build（走了 no-build 路徑，生產仍跑舊依賴）"
+served_now="$(cat "$SERVEDFILE")"
+[[ "$served_now" == "$SHA_NEW" ]] && ok "lock-only: 容器實際 serving 新 sha" || bad "lock-only: serving=$served_now != $SHA_NEW"
 
 section "backend change + smoke 失敗 → rolled-back"
 new_scratch backend

@@ -73,12 +73,13 @@ KG_RECON_POISON_COOLDOWN="${KG_RECON_POISON_COOLDOWN-3600}"  # poison 冷卻秒�
 KG_RECON_DRY_RUN="${KG_RECON_DRY_RUN:-0}"
 
 # backend 觸發正則（錨定 backend/）——命中才 rebuild image。
-# 刻意排除 backend/uv.lock：Dockerfile 走 `pip install .` 只讀 pyproject.toml、不消費
-# uv.lock，故「只改 uv.lock」不改 image；真正 dep 變更一定同時動 pyproject.toml（會觸發）。
-# 亦刻意排除（皆不進 image）：backend/.env*、backend/VERSION、backend/data/**、
+# 含 backend/uv.lock 與 pyproject.toml（#2088）：Dockerfile 依 uv.lock
+# （`uv export --locked`）安裝依賴，lock-only 的依賴更新會改 image；漏掉它會讓 origin/prod
+# 前進卻走 no-build 路徑，生產永遠停在舊依賴版本。
+# 刻意排除（皆不進 image）：backend/.env*、backend/VERSION、backend/data/**、
 # backend/certs/**、backend/scripts/**、backend/docs/**、ios/**、lab/**、docs/**、
 # ops/**、design-system/**。
-BACKEND_TRIGGER_RE='^backend/(src/|tests/|static/|pyproject\.toml|pytest\.ini|Dockerfile|docker-compose\.yml|ops_(cli|analyze|edit)\.py|(index|privacy|support|terms|guide)\.html$)'
+BACKEND_TRIGGER_RE='^backend/(src/|tests/|static/|pyproject\.toml|uv\.lock|pytest\.ini|Dockerfile|docker-compose\.yml|ops_(cli|analyze|edit)\.py|(index|privacy|support|terms|guide)\.html$)'
 
 # ── 小工具 ──────────────────────────────────────────────────────────────────
 log()     { printf '%s\n' "$*" >&2; }                                  # 人讀進度 → stderr

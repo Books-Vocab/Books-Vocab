@@ -56,9 +56,16 @@ kg-server = "uvicorn:main"
 # Equivalent explicit form:
 #   backend/.venv/bin/python -m pytest -q
 [dependency-groups]
-dev = [
+# The only packages the production image installs beyond runtime dependencies:
+# /admin/tests runs pytest inside the container (src/kg/admin_test_matrix/runner.py).
+# Dockerfile exports exactly this group (--no-default-groups --group image-test) and
+# CI's image-lock job allows only it, so a tool added to `dev` never reaches the image.
+image-test = [
     "pytest>=8.0,<10.0",
     "pytest-asyncio>=0.26,<2.0",
+]
+dev = [
+    {include-group = "image-test"},
     "pytest-cov>=6.0,<8.0",
     "ruff==0.16.3",
 ]
