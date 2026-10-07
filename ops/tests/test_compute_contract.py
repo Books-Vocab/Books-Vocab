@@ -55,12 +55,16 @@ def test_profiles_declare_runtime_tool_capabilities() -> None:
         "pytest",
         "uv",
     }
+    # docs_lint --registry checks source liveness through `ops/docs_impact.py`,
+    # a `uv run --script` (requires-python >=3.13) entrypoint.
     assert set(docs["required_capabilities"]) == {
         "bash",
         "git",
+        "python-3.13",
+        "uv",
     }
     assert set(backend["runner_capabilities"]) == {"python-3.13", "uv"}
-    assert set(docs["runner_capabilities"]) == {"bash", "git"}
+    assert set(docs["runner_capabilities"]) == {"bash", "git", "python-3.13", "uv"}
     assert backend["bootstrap"] == docs["bootstrap"] == []
 
 
