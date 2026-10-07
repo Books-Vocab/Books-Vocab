@@ -62,6 +62,8 @@ protocol PodcastAudioPlaying: AnyObject {
     var onBufferedEndChanged: ((TimeInterval) -> Void)? { get set }
     var onSystemPause: (() -> Void)? { get set }
     var onSystemResume: (() -> Void)? { get set }
+    var onRemotePlay: (() -> Void)? { get set }
+    var onRemotePause: (() -> Void)? { get set }
 
     func loadAudio(
         url: URL,
@@ -171,6 +173,12 @@ final class PodcastPlayerViewModel {
     private let subtitleEngine: any PodcastSubtitling
     @ObservationIgnored
     private var sleepTimerSource: DispatchSourceTimer?
+    /// True only when a system pause (interruption began / route lost) hit
+    /// while the user was actually playing. Consumed by `onSystemResume`; any
+    /// explicit play/pause/teardown clears it, so `.shouldResume` never
+    /// restarts audio the user had paused.
+    @ObservationIgnored
+    private var resumeAfterSystemPause = false
 
     deinit {
         sleepTimerSource?.cancel()
@@ -234,6 +242,7 @@ final class PodcastPlayerViewModel {
                 // load would otherwise leave VM stuck in .loading forever
                 // because no natural .ready transition happens post-interrupt.
                 guard let self else { return }
+                self.resumeAfterSystemPause = self.state == .playing
                 if self.state == .playing || self.state == .loading {
                     self.state = .paused
                 }
@@ -241,8 +250,24 @@ final class PodcastPlayerViewModel {
         }
         audioEngine.onSystemResume = { [weak self] in
             MainActor.assumeIsolated {
-                guard let self else { return }
-                if self.state == .paused { self.state = .playing }
+                // The engine only reports that resuming is allowed; resume
+                // through play() iff we were playing when the system paused us.
+                guard let self, self.resumeAfterSystemPause else { return }
+                self.resumeAfterSystemPause = false
+                if self.state == .paused { self.play() }
+            }
+        }
+        // Lock-screen / Control Center commands go through the same path as
+        // the in-app button so `state` (progress ticks, pause saves, icon)
+        // never desyncs from the engine.
+        audioEngine.onRemotePlay = { [weak self] in
+            MainActor.assumeIsolated {
+                self?.play()
+            }
+        }
+        audioEngine.onRemotePause = { [weak self] in
+            MainActor.assumeIsolated {
+                self?.pause()
             }
         }
     }
@@ -364,6 +389,7 @@ final class PodcastPlayerViewModel {
     // MARK: - Playback Controls
 
     func play() {
+        resumeAfterSystemPause = false
         audioEngine.play()
         state = .playing
         playbackAnchor = PodcastPlaybackClock.makeAnchor(
@@ -376,6 +402,7 @@ final class PodcastPlayerViewModel {
     }
 
     func pause() {
+        resumeAfterSystemPause = false
         audioEngine.pause()
         state = .paused
         playbackAnchor = PodcastPlaybackClock.makeAnchor(
@@ -390,6 +417,7 @@ final class PodcastPlayerViewModel {
     /// Mid-session teardown — releases the current player/item so a new load
     /// can take over without a session-deactivation pulse. Use on retry / swap.
     func stop() {
+        resumeAfterSystemPause = false
         audioEngine.stop()
         state = .idle
     }
@@ -397,6 +425,7 @@ final class PodcastPlayerViewModel {
     /// Terminal teardown — use on view dismiss to also release the audio
     /// session + lock-screen metadata so other apps regain focus.
     func shutdown() {
+        resumeAfterSystemPause = false
         audioEngine.shutdown()
         sleepTimerSource?.cancel()
         sleepTimerSource = nil

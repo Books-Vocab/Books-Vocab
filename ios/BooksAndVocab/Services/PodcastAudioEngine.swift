@@ -52,8 +52,15 @@ final class PodcastAudioEngine: NSObject {
     var onBufferedEndChanged: ((TimeInterval) -> Void)?
     /// System forced playback to pause (interruption began, headphones unplugged).
     var onSystemPause: (() -> Void)?
-    /// System hinted we should resume after interruption ended.
+    /// Interruption ended with `.shouldResume`. The engine does NOT restart
+    /// audio itself: only the owner knows whether the user was playing when
+    /// the interruption began, so it decides and calls `play()`.
     var onSystemResume: (() -> Void)?
+    /// Lock-screen / Control Center play / pause. When set, the owner routes
+    /// the command through its own state machine (which calls back into
+    /// `play()` / `pause()`); when nil the engine handles it directly.
+    var onRemotePlay: (() -> Void)?
+    var onRemotePause: (() -> Void)?
 
     static let rateSteps: [Float] = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
 
@@ -417,8 +424,6 @@ final class PodcastAudioEngine: NSObject {
                     AVAudioSession.InterruptionOptions(rawValue: $0)
                 } ?? []
                 if opts.contains(.shouldResume) {
-                    self?.player?.play()
-                    self?.player?.rate = self?.playbackRate ?? 1.0
                     self?.onSystemResume?()
                 }
             @unknown default:
@@ -519,11 +524,15 @@ final class PodcastAudioEngine: NSObject {
         // explicitly so the lock-screen scrubber is draggable.
         center.changePlaybackPositionCommand.isEnabled = true
         let play = center.playCommand.addTarget { [weak self] _ in
-            self?.play(); return .success
+            guard let self else { return .commandFailed }
+            if let onRemotePlay = self.onRemotePlay { onRemotePlay() } else { self.play() }
+            return .success
         }
         remoteCommandTargets.append((center.playCommand, play))
         let pause = center.pauseCommand.addTarget { [weak self] _ in
-            self?.pause(); return .success
+            guard let self else { return .commandFailed }
+            if let onRemotePause = self.onRemotePause { onRemotePause() } else { self.pause() }
+            return .success
         }
         remoteCommandTargets.append((center.pauseCommand, pause))
         center.skipForwardCommand.preferredIntervals = [15]

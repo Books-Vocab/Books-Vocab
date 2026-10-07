@@ -322,6 +322,8 @@ private final class FakeAudioEngine: PodcastAudioPlaying {
     var onBufferedEndChanged: ((TimeInterval) -> Void)?
     var onSystemPause: (() -> Void)?
     var onSystemResume: (() -> Void)?
+    var onRemotePlay: (() -> Void)?
+    var onRemotePause: (() -> Void)?
 
     func loadAudio(
         url: URL,
