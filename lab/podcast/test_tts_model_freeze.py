@@ -16,6 +16,7 @@ endpoint env injection to drift out of sync).
 Run:
     cd lab/podcast && uv run test_tts_model_freeze.py
 """
+
 from __future__ import annotations
 
 import types
