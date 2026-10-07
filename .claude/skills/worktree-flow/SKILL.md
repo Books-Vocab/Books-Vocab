@@ -59,6 +59,23 @@ pending and do not synthesize a verified target or heartbeat.
 - `dispatch_channel=user`：Worker 和 User 討論；若 assignment 指定 `handback_target` 就交給該 IM，否則 Worker 必須在 hand-back 前選定一個 IM。
 - `Issue Solver` 不走 Worker 的 User channel；它只消除 IM 傳入的 Issue assignment packet，並 hand-back 給派遣 IM。
 
+## Continuation packet
+
+派工方要讓新 agent 接續另一個 agent 的工作時，只交 continuation packet：
+
+1. base ref：branch 名或 exact tip SHA（`git rev-parse <branch>`）。
+2. 可選未完成進度：派工方先在自己的 worktree 把進度 commit 到 local WIP branch（不 push；所有 worktree 共用同一 git object store），再把 1 的 base ref 指向該 branch 或 tip SHA。接手者用 `git switch -c <new> <wip-tip>` 接續，或 `git cherry-pick <base>..<wip-tip>` 只取該段 commit。不交 patch 檔：派工方 scratch 在派工方 worktree 內，接手者的 isolation guard 不允許讀取，且 `allowed_surfaces` 只含 `local:assigned-worktree`，沒有共享 scratch 可用。
+3. 全新 branch 名；接手者在自己的 worktree 跑 `git switch -c <new> <base>`。
+
+禁止：
+
+- 把另一個 worktree 的 path 交給 isolated agent。isolation guard 拒絕 `local:other-worktree`，接手者一開始就無法工作。
+- 用 SendMessage 喚醒執行中的 Workflow subagent 續做。這會 fork 出第二個 writer instance，兩者同時寫同一 lane。
+
+continuation packet 用於原 owner 無法繼續的 lane；已 publish 的 PR 仍由原 owner 以 `resume-published` 修正（落後 main 但 `MERGEABLE` 者直接 queue，只有 `CONFLICTING` 才 `reanchor`），不為對齊 main 而重發。
+
+被取代的舊 lane 要結束：未 publish 用 `./ops/worktree_orchestrate.py resolve --branch <old> --status abandoned --json`（確認無殘留後才加 `--remove`）；新 lane 交付用 `./ops/deliver.py --worktree <new-path> --scope-from-diff --check "<label>=<cmd>"`。
+
 ## Gate routing
 
 Coordinator 依 changed paths 選最小充分檢查：
