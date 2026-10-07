@@ -238,7 +238,25 @@ enum ReviewSessionPersistence {
         let reviewSettings = notebookSettingsSnapshot.reviewSettings(for: entry.notebookId)
         applySubmittedAnswer(answer, baseline: baseline, to: entry, reviewSettings: reviewSettings)
 
-        if (try? fetchReviewRecord(id: answer.reviewRecordID, in: ctx)) == nil {
+        if let existing = try? fetchReviewRecord(id: answer.reviewRecordID, in: ctx) {
+            // Record already exists: either an idempotent re-flush (restore) or the
+            // user went back and REPLACED the answer after it had been flushed (#2025).
+            // `applySubmittedAnswer` above re-derived the entry from the baseline, so
+            // bring the record in line in place (same id → still ONE review event).
+            // `pushedAt` resets when the answer actually changed so an already-uploaded record is owed to the server
+            // again; the server de-dups by event_id, so whether it adopts the new
+            // value is server policy, not something the client can force.
+            let changed = existing.feedback != answer.feedback.rawValue
+            existing.feedback = answer.feedback.rawValue
+            existing.reviewedAt = answer.answeredAt
+            existing.dayKey = ReviewRecord.makeDayKey(from: answer.answeredAt)
+            existing.intervalAfter = entry.reviewIntervalHours
+            existing.nextReviewAfter = entry.nextReviewAt
+            existing.reviewCountAfter = entry.reviewCount
+            existing.streakAfter = entry.reviewStreak
+            existing.lapseAfter = entry.lapseCount
+            if changed { existing.pushedAt = nil }
+        } else {
             // 固化 kgCardId + SRS 前後快照(此刻 entry 還在手上,值全可得):
             // baseline=複習前,applySubmittedAnswer 後 entry=複習後。事件自包含,
             // 上報不再靠卡離場即退化的三段反查,研究也能逐筆還原學習曲線。

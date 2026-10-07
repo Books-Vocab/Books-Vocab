@@ -26,6 +26,8 @@ enum AnalyticsEvent {
     // — Review —
     case reviewSessionStarted(cardCount: Int)
     case reviewCardSubmitted(feedback: String, cardIndex: Int, totalCards: Int)
+    /// User went back and changed an already-scored card's answer (#2025).
+    case reviewAnswerCorrected(from: String, to: String, cardIndex: Int, totalCards: Int)
     case reviewSessionEnded(remembered: Int, forgot: Int, completed: Bool, durationMs: Int)
 
     // — Auth —
@@ -163,6 +165,13 @@ enum AppAnalytics {
                 message: "event=review_card_submitted feedback=\(feedback) index=\(cardIndex) total=\(totalCards)"
             )
             logger.info("event=review_card_submitted feedback=\(feedback, privacy: .public) index=\(cardIndex) total=\(totalCards)")
+
+        case .reviewAnswerCorrected(let from, let to, let cardIndex, let totalCards):
+            recordObservation(
+                level: .info,
+                message: "event=review_answer_corrected from=\(from) to=\(to) index=\(cardIndex) total=\(totalCards)"
+            )
+            logger.info("event=review_answer_corrected from=\(from, privacy: .public) to=\(to, privacy: .public) index=\(cardIndex) total=\(totalCards)")
 
         case .reviewSessionEnded(let remembered, let forgot, let completed, let durationMs):
             recordObservation(
@@ -319,6 +328,11 @@ final class SessionMetrics: @unchecked Sendable {
             _reviewCardsTotal += 1
             if feedback == "remembered" { _reviewRemembered += 1 }
             else { _reviewForgot += 1 }
+        case .reviewAnswerCorrected(let from, let to, _, _):
+            // Total stays (same card); move the tally from the old answer to the new one.
+            guard from != to else { break }
+            if from == "remembered" { _reviewRemembered -= 1 } else { _reviewForgot -= 1 }
+            if to == "remembered" { _reviewRemembered += 1 } else { _reviewForgot += 1 }
         case .reviewSessionEnded(_, _, let completed, _):
             if completed { _reviewSessionsCompleted += 1 }
             else { _reviewSessionsAbandoned += 1 }

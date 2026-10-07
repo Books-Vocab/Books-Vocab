@@ -45,6 +45,7 @@ final class TodayReviewState {
     // MARK: - Analytics
 
     let sessionStartTime: Date
+    private var sessionEndReported = false
 
     // MARK: - Immutable Lookup
 
@@ -485,19 +486,30 @@ final class TodayReviewState {
         reviewSettings: ReviewSettings
     ) {
         guard currentEntry != nil else { return }
-        if scoring.hasAnswer(at: currentIndex) {
+        PerfLog.review.mark("submit.enter", "idx=\(currentIndex) fb=\(feedback == .remembered ? "R" : "F")")
+        // Replace semantics (#2025): a different feedback on an already-scored card
+        // (user went back) replaces the old answer; the same feedback is an
+        // idempotent advance (also what lets a repeated tap on the last card finish).
+        switch scoring.score(feedback, at: currentIndex) {
+        case .unchanged:
             advancePastAlreadyScoredCard()
             return
+        case .recorded:
+            AppAnalytics.track(.reviewCardSubmitted(
+                feedback: feedback == .remembered ? "remembered" : "forgot",
+                cardIndex: currentIndex,
+                totalCards: queue.count
+            ))
+        case .replaced(let previous):
+            // Not a new submission: keep `reviewCardSubmitted` 1:1 with cards and
+            // report the change as its own event so aggregates move, not inflate.
+            AppAnalytics.track(.reviewAnswerCorrected(
+                from: previous == .remembered ? "remembered" : "forgot",
+                to: feedback == .remembered ? "remembered" : "forgot",
+                cardIndex: currentIndex,
+                totalCards: queue.count
+            ))
         }
-
-        PerfLog.review.mark("submit.enter", "idx=\(currentIndex) fb=\(feedback == .remembered ? "R" : "F")")
-        scoring.record(feedback, at: currentIndex)
-
-        AppAnalytics.track(.reviewCardSubmitted(
-            feedback: feedback == .remembered ? "remembered" : "forgot",
-            cardIndex: currentIndex,
-            totalCards: queue.count
-        ))
 
         let didComplete = session.advanceAfterSubmission()
         syncCurrentEntryDerivedState()
@@ -574,6 +586,10 @@ final class TodayReviewState {
     /// funnel through here so the completion contract stays single-sourced.
     private func finishSessionIfComplete(completed: Bool? = nil) {
         guard completed ?? session.isComplete else { return }
+        // Re-completing after back + replace must not re-report the session
+        // (the correction already travelled as `reviewAnswerCorrected`).
+        guard !sessionEndReported else { return }
+        sessionEndReported = true
         ReviewSessionStore.clear(userID: currentUserID)
         // NOTE: the crash-recovery snapshot is deliberately NOT cleared here. With
         // persistence deferred to dismiss, the snapshot is the only record of the
