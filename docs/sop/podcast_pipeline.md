@@ -210,7 +210,7 @@ Vertex `gemini-2.5-pro-tts` 已知 bug(finishReason=OTHER，Google WONTFIX #922)
 
 `pipeline.py` 以 `_run_bounded` 執行這四個 subprocess stage。synthesize / audio-qa / subtitle 的上限是 **每集** `_TOOL_STAGE_TIMEOUTS`(synthesize 1200s、audio-qa 120s、subtitle 900s)× 集數(`scripts/ep_*_script.md` 數;`--only-episode` 只給一集額度),依實測 `pipeline_log.jsonl` 的 `stage_end` 定:synthesize 75–200 s/集(synthesize.py 自己對單集 batch 有 `TTS_BATCH_TIMEOUT` 600s + 兩次 180s loudnorm,合法上限約 1000 s/集)、subtitle 180–245 s/集、audio-qa 整季 ≤31s。publish 每次嘗試上限 `_PUBLISH_TIMEOUT` 1800s。逾時寫 `<stage> TIMEOUT after <n>s` error 並讓 stage 回 False(publish 視為失敗嘗試照常重試;其他三個不重試,修好原因後 `--skip-to`)。
 
-逾時先送 **SIGTERM**,`_TOOL_TERM_GRACE`(30s)內未結束才 SIGKILL:`uv run` 只會把 SIGTERM 轉給真正的工具、SIGKILL 轉不過去(工具會變孤兒繼續燒 TTS 額度),而 bash 只有收到 SIGTERM 才會執行 `podcast_upload.sh` 的 EXIT trap 清 staging。子程序留在 pipeline 的 process group,dashboard 的 `killpg`(`monitor/jobs.py`)仍能一併停掉。
+逾時先送 **SIGTERM**,`_TOOL_TERM_GRACE`(30s)內未結束才 SIGKILL:`uv run` 只會把 SIGTERM 轉給真正的工具、SIGKILL 轉不過去(工具會變孤兒繼續燒 TTS 額度),而 bash 只有收到 SIGTERM 才會執行 `podcast_upload.sh` 的 EXIT trap 清 staging(SIGKILL 不跑 trap)。bash 不會把 SIGTERM 轉給它正在等的前景子程序,所以 trap 先 `pkill -TERM -P $$` 停掉自己的子程序、等它們全結束(上限 15s)才刪 staging;逾時仍有子程序就保留 staging 不刪。否則孤兒 reconcile 會掃到已刪的 staging、把整個 series 當 orphan 從 bucket 刪光。子程序留在 pipeline 的 process group,dashboard 的 `killpg`(`monitor/jobs.py`)仍能一併停掉。
 
 ### ffmpeg loudnorm mastering
 
@@ -257,8 +257,8 @@ lab/podcast/workspaces/<slug>_<hash>/
        │
        │  ./ops/podcast_upload.sh <workspace>   (config gap-filled from lab/podcast/.env)
        ▼
-staging $TMPDIR/podcast_upload_<sid>.XXXXXX/   ← 重組成 ep_NN/ 結構;mktemp -d 每次獨立,EXIT trap 任何結束都刪
-       │  aws s3 sync --delete  (Lightsail Object Storage, AWS_PROFILE=kg-podcast)
+staging $TMPDIR/podcast_upload_<sid>.XXXXXX/   ← 重組成 ep_NN/ 結構;mktemp -d 每次獨立,EXIT trap 在正常結束 / set -e 中止 / SIGTERM 時刪(SIGKILL 不刪)
+       │  逐檔 aws s3 cp --content-type(metadata.json 最後)+ boto3 reconcile 刪 orphan  (Lightsail Object Storage, AWS_PROFILE=kg-podcast)
        ▼
 s3://kg-podcasts-prod/<sid>/
   metadata.json                     ← upload.sh 從 overview.md 解析生成(內嵌逐集字幕 + coverImageURL)
@@ -289,7 +289,8 @@ bucket `kg-podcasts-prod` 是 **Lightsail Object Storage,獨立 AWS 帳號 `5796
 - 抓 S3 上既有 `metadata.json` 保留 `createdAt`(避免 re-upload 重設創建時間)
 - pro/flash 同集去重(pro 優先)
 - m4a 與 mp3 同檔名時 m4a 優先(post-Track-B 預設)
-- `aws s3 sync --delete` = 原子換檔(S3 GetObject 永遠對 object 整版,無「半傳輸」概念)
+- 逐檔 `aws s3 cp` = 原子換檔(S3 GetObject 永遠對 object 整版,無「半傳輸」概念);`metadata.json` 最後上傳當 ready 訊號
+- reconcile(取代 `sync --delete`)刪掉 series prefix 下 staging 沒有的 key;staging 不存在、掃描中出錯或缺 `metadata.json` 時**拒絕 prune 並讓 upload 失敗**(空 staging 會讓整個 series 都算 orphan)
 - index 重建本機跑 boto3 → `put_object`,**不需 flock**(S3 last-writer-wins;比舊 SSH+flock 弱,但 race window 只有秒級,影響限於 dashboard 暫時看到舊 index)
 - Content-Type 逐檔覆寫(`.m4a`→`audio/mp4`, `.srt`→`text/plain`, `.json`→`application/json`),預防 AVPlayer 拒收 `binary/octet-stream`
 
