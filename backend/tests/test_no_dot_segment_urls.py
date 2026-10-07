@@ -38,14 +38,14 @@ def _literal_text(node: ast.expr) -> str | None:
 def _url_argument(call: ast.Call) -> ast.expr | None:
     if not isinstance(call.func, ast.Attribute):
         return None
+    method = call.func.attr
+    if method not in _HTTP_METHODS and method not in _METHOD_FIRST:
+        return None  # e.g. ``normalizer.clean(url=...)`` makes no HTTP request
     for keyword in call.keywords:
         if keyword.arg == "url":
             return keyword.value
-    method = call.func.attr
-    index = 0 if method in _HTTP_METHODS else 1 if method in _METHOD_FIRST else None
-    if index is None or len(call.args) <= index:
-        return None
-    return call.args[index]
+    index = 1 if method in _METHOD_FIRST else 0
+    return call.args[index] if len(call.args) > index else None
 
 
 def find_dot_segment_urls(source: str, filename: str = "<string>") -> list[tuple[int, str]]:
@@ -79,9 +79,21 @@ def test_detector_flags_dot_segment_urls():
             'client.request("GET", "/a/./b")',
             'client.get(url="/a/..")',
             'client.get("http://testserver/a/../b?x=1")',
+            'client.request("GET", url="/a/../b")',
         ]
     )
-    assert [line for line, _ in find_dot_segment_urls(source)] == [1, 2, 3, 4, 5]
+    assert [line for line, _ in find_dot_segment_urls(source)] == [1, 2, 3, 4, 5, 6]
+
+
+def test_detector_ignores_url_keyword_on_non_request_calls():
+    source = "\n".join(
+        [
+            'normalizer.clean(url="/a/../b")',
+            'mock_fetch.assert_called_once_with(url="/a/../b")',
+            'build(url="/a/./b")',
+        ]
+    )
+    assert find_dot_segment_urls(source) == []
 
 
 def test_detector_ignores_encoded_interpolated_and_non_url_literals():
