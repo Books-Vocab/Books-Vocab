@@ -348,17 +348,27 @@ struct AddLinkCoordinatorTests {
         let coordinator = AddLinkCoordinator()
         #expect(coordinator.actionPhase == .idle)
 
-        coordinator.startLinkExisting(target: target, sourceEntry: source, using: service)
+        let task = coordinator.startLinkExisting(target: target, sourceEntry: source, using: service)
         #expect(coordinator.actionPhase == .linking)
         while !service.hasStarted {
             await Task.yield()
         }
 
+        // Precondition (#2196): the optimistic placeholder IS projected while linking, so the
+        // post-cancel emptiness assertions below cannot pass vacuously.
+        let pendingLinks = source.graphLinksByKind.values.flatMap { $0 }
+        #expect(pendingLinks.map(\.cardId) == ["target"])
+        #expect(pendingLinks.allSatisfy { $0.id.hasPrefix("pending-") })
+
         coordinator.cancel()
         #expect(coordinator.actionPhase == .cancelled)
+        // The projection must be clean the moment `.cancelled` is observable: cancel() must not
+        // leave the placeholder to a cancelled task that may wake up arbitrarily late (#2196).
+        #expect(source.graphLinksByKind.isEmpty)
+
         service.resume()
-        await Task.yield()
-        await Task.yield()
+        // Await the cancelled task's teardown instead of guessing a number of Task.yield() hops.
+        await task.value
 
         #expect(coordinator.actionPhase == .cancelled)
         #expect(source.graphLinksByKind.isEmpty)
