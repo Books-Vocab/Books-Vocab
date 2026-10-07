@@ -96,16 +96,24 @@ Judge/enrich 的 JSON list 會保留為 list;translate 類 prompt 回 list 會�
 Ollama **不進** `backend/src/kg/llm/providers.py`（production 不能誤路由到 local）。
 `lab/llm_eval/llm_eval/providers.py` 統一解析 cloud registry + ollama。
 
-Cloud provider 建 client 前必須有對應 API key env；缺 key 直接拋
+Cloud provider 建 client 前必須有對應 API key env；缺 key 時 client factory 拋
 `MissingProviderApiKeyError`，不帶假 key 打遠端。Ollama 維持 local dummy
 key 行為，不需要 `OLLAMA_DUMMY_KEY`。
+
+Retry 由 OpenAI SDK client 負責，次數由 `providers.EVAL_MAX_RETRIES`（2，即最多 3 次請求）
+顯式固定：408/409/429/5xx 與連線錯誤以 exponential backoff + jitter 重試，並遵守
+`Retry-After`／`retry-after-ms`。runner 不再疊第二層 retry；整個重試鏈仍受單次
+call timeout 約束。
 
 ## 執行引擎
 
 - Bypass TrackedLLM（不寫 token_usage、不扣額度）
 - async parallel + per-provider semaphore（預設 5 concurrent）
-- Timeout：cloud 60s, Ollama 300s
-- Ollama 未啟動時自動標記 `ollama_unavailable`
+- Timeout：cloud 60s, Ollama 300s（含 SDK retry 的整條呼叫）
+- 每筆失敗都記在該 `EvalResult.error`，不中止其他 model：`timeout`、
+  `missing_api_key: <ENV>`（不送任何請求）、`ollama_unavailable`、重試耗盡後的
+  `<ExceptionType>: <message>`
+- Ollama 可達性探測以 `asyncio.to_thread` 執行，不阻塞 event loop
 - 每筆 `EvalResult` 帶 `scores`
 - 每個 `EvalSummary` 帶 `format_score_avg` / `quality_score_avg` / `score_breakdown` / `failure_examples`
 
@@ -137,6 +145,19 @@ PYTHONPATH=../../backend/src uv run --extra dev pytest -q tests/
 cd lab/llm_eval
 uv run python scripts/cli.py --help
 ```
+
+`eval` 的 exit status 只表示這次 run 是否完成所要求的評估；結果表／JSON／report
+一律先輸出，再回傳：
+
+| 情況 | exit | 時機 |
+|---|---|---|
+| 任一 `--models` 無法解析 provider | 1 | 發出任何請求前 |
+| `--baseline` 讀不到、不是 JSON object | 1 | 發出任何請求前 |
+| 任一 model 全部 sample 都 error（例如缺 key、Ollama 不可達） | 1 | run 結束後 |
+| 任一 model `format_regression` 或 `quality_regression` | 1 | run 結束後 |
+| 其餘（含部分 sample error） | 0 | — |
+
+失敗原因逐條寫到 stderr；`--json` 另帶 `failures` 陣列（成功時為 `[]`）。
 
 ## 如何新增 eval
 

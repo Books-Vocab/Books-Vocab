@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -20,7 +22,14 @@ def test_help_shows_subcommands(capsys):
         main(["--help"])
     assert exc_info.value.code == 0
     out = capsys.readouterr().out
-    for cmd in ("eval", "prompts", "datasets", "providers", "corpus-build", "gold-queue"):
+    for cmd in (
+        "eval",
+        "prompts",
+        "datasets",
+        "providers",
+        "corpus-build",
+        "gold-queue",
+    ):
         assert cmd in out
 
 
@@ -168,6 +177,185 @@ def test_review_markdown_default(tmp_path, capsys):
     assert "# Review" in out
     assert "s1" in out
     assert "llm:" in out
+
+
+_GOOD = '{"t":"輝煌的","p":"adj.","r":"resplendent"}'
+# list-shaped output fails translate_quick's dict schema → format 0.5
+_SCHEMA_FAIL = '[{"t":"輝煌的","p":"adj.","r":"resplendent"}]'
+_MODEL = "gemini-2.5-flash-lite"
+
+
+def _response(content: str) -> MagicMock:
+    resp = MagicMock()
+    resp.choices = [MagicMock(message=MagicMock(content=content))]
+    resp.usage = MagicMock(prompt_tokens=10, completion_tokens=5)
+    return resp
+
+
+def _patch_client(outcomes):
+    """Fake async client: each create() call consumes the next outcome
+    (a response content string, or an exception instance to raise)."""
+    queue = list(outcomes)
+    calls: list[str] = []
+
+    async def _create(**kwargs):
+        calls.append(kwargs["model"])
+        outcome = queue.pop(0) if len(queue) > 1 else queue[0]
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return _response(outcome)
+
+    def _factory(provider):
+        client = MagicMock()
+        client.chat.completions.create = _create
+        return client
+
+    return patch(
+        "llm_eval.runner.create_eval_async_client", side_effect=_factory
+    ), calls
+
+
+def _eval_args(*extra: str, models: str = _MODEL) -> list[str]:
+    return [
+        "eval",
+        "--prompt",
+        "translate_quick",
+        "--dataset",
+        "translate_quick",
+        "--models",
+        models,
+        "--limit",
+        "2",
+        "--concurrency",
+        "1",
+        "--json",
+        *extra,
+    ]
+
+
+def test_eval_success_exits_zero(capsys):
+    patcher, calls = _patch_client([_GOOD])
+    with patcher:
+        code = main(_eval_args())
+    assert code == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["models"][_MODEL]["errors"] == 0
+    assert data["failures"] == []
+    assert len(calls) == 2
+
+
+def test_eval_partial_sample_errors_still_exit_zero(capsys):
+    """Some failed samples are a recorded result, not a failed run."""
+    patcher, _ = _patch_client([RuntimeError("boom"), _GOOD])
+    with patcher:
+        code = main(_eval_args())
+    assert code == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["models"][_MODEL]["errors"] == 1
+
+
+def test_eval_all_samples_errored_exits_nonzero(capsys):
+    patcher, _ = _patch_client([RuntimeError("boom")])
+    with patcher:
+        code = main(_eval_args())
+    captured = capsys.readouterr()
+    assert code == 1
+    data = json.loads(captured.out)
+    assert data["models"][_MODEL]["errors"] == 2
+    assert "all 2 samples errored" in captured.err
+
+
+def test_eval_all_models_unknown_exits_nonzero_without_calls(capsys):
+    patcher, calls = _patch_client([_GOOD])
+    with patcher:
+        code = main(_eval_args(models="no-such-model"))
+    assert code == 1
+    assert "no-such-model" in capsys.readouterr().err
+    assert calls == []
+
+
+def test_eval_one_unknown_model_fails_fast_before_spending(capsys):
+    patcher, calls = _patch_client([_GOOD])
+    with patcher:
+        code = main(_eval_args(models=f"{_MODEL},no-such-model"))
+    assert code == 1
+    assert "no-such-model" in capsys.readouterr().err
+    assert calls == []
+
+
+def _write_baseline(tmp_path, format_score: float):
+    path = tmp_path / "baseline.json"
+    path.write_text(
+        json.dumps({"models": {_MODEL: {"format_score_avg": format_score}}}),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_eval_baseline_regression_exits_nonzero(tmp_path, capsys):
+    baseline = _write_baseline(tmp_path, 1.0)
+    patcher, _ = _patch_client([_SCHEMA_FAIL])
+    with patcher:
+        code = main(_eval_args("--baseline", str(baseline)))
+    captured = capsys.readouterr()
+    assert code == 1
+    data = json.loads(captured.out)
+    assert data["baseline_comparison"][_MODEL]["format_regression"] is True
+    assert "regression" in captured.err
+
+
+def test_eval_baseline_without_regression_exits_zero(tmp_path, capsys):
+    baseline = _write_baseline(tmp_path, 1.0)
+    patcher, _ = _patch_client([_GOOD])
+    with patcher:
+        code = main(_eval_args("--baseline", str(baseline)))
+    assert code == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data["baseline_comparison"][_MODEL]["format_regression"] is False
+
+
+def test_eval_missing_baseline_fails_before_spending(tmp_path, capsys):
+    patcher, calls = _patch_client([_GOOD])
+    with patcher:
+        code = main(_eval_args("--baseline", str(tmp_path / "missing.json")))
+    assert code == 1
+    assert "baseline" in capsys.readouterr().err
+    assert calls == []
+
+
+def test_eval_missing_key_keeps_other_models_and_writes_report(
+    tmp_path, monkeypatch, capsys
+):
+    from llm_eval import providers
+
+    monkeypatch.delenv(providers.resolve_provider("gemini").api_key_env, raising=False)
+    monkeypatch.setenv(providers.resolve_provider("deepseek").api_key_env, "test-key")
+    real_factory = providers.create_eval_async_client
+
+    async def _create(**kwargs):
+        return _response(_GOOD)
+
+    def _factory(provider):
+        real_factory(provider)
+        client = MagicMock()
+        client.chat.completions.create = _create
+        return client
+
+    with patch("llm_eval.runner.create_eval_async_client", side_effect=_factory):
+        code = main(
+            _eval_args(
+                "--output-dir", str(tmp_path), models=f"{_MODEL},deepseek-v4-flash"
+            )
+        )
+
+    captured = capsys.readouterr()
+    assert code == 1
+    data = json.loads(captured.out)
+    assert data["models"][_MODEL]["errors"] == 2
+    assert data["models"]["deepseek-v4-flash"]["errors"] == 0
+    report = json.loads(Path(data["report_json"]).read_text(encoding="utf-8"))
+    assert set(report["models"]) == {_MODEL, "deepseek-v4-flash"}
+    assert f"{_MODEL}: all 2 samples errored" in captured.err
 
 
 def test_corpus_build_shows_help(capsys):
