@@ -182,11 +182,11 @@ checkout 仍然 fail-closed。
 Claude Code harness（subagent `isolation: worktree` 的 `agent-<17 hex>`、Workflow agent 的
 `wf_<8 hex>-<3 hex>-<n>`）在 `<workspace>/.claude/worktrees/<dirname>` 建 lane，從不進 product registry。
 身分看 harness provenance，不看分支（agent 會自行 `git switch -c`）：直屬該 root、`git worktree list --porcelain`
-顯示 `locked claude agent <dirname> (pid <N> …)` 且該 pid 存活 → `ownership=ephemeral-agent`
+顯示 `locked claude agent <dirname> (pid <N> start <lstart>)` 且該 pid 存活、其 `ps -o lstart=` 與記錄的 start 相差 ≤2 秒（lock 未記 start 或讀不到時退回只看 pid）→ `ownership=ephemeral-agent`
 （`agent_lock.state=live`），dirty 屬正常工作狀態，只產生 `ephemeral-agent-lane` warning、列於
 `policy.ephemeral_agent_worktrees`；因此並行的 sibling agent worktree 不會互相擋 iOS 測試。
-同 root 下該 lock 的 pid 已死（前一個 session 的殘留），或未上鎖（harness 已釋放）但目錄名符合上述
-harness 產生的形狀 → `ownership=stale-agent`（`agent_lock.state=dead-pid|unlocked`），只產生 `stale-agent-worktree` warning、列於
+同 root 下該 lock 的 pid 已死（前一個 session 的殘留）、pid 被無關程序重用（存活但 start 不符），或未上鎖（harness 已釋放）但目錄名符合上述
+harness 產生的形狀 → `ownership=stale-agent`（`agent_lock.state=dead-pid|reused-pid|unlocked`），只產生 `stale-agent-worktree` warning、列於
 `policy.stale_agent_worktrees`，lane 附 `cleanup_hint`（`git worktree [unlock … &&] remove …`）。
 它不擋：沒有活著的 writer、bytes 照樣計入 quota，擋下只會讓任一崩潰的 session 癱瘓所有 iOS lane。
 兩者都完整計入 per-lane／aggregate bytes 與 quota。lock 理由不符（他人持有、無理由、名稱指向別的目錄）、

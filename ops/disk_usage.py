@@ -1312,8 +1312,13 @@ def _is_codex_supervision_checkout(path: Path, roots: list[Path]) -> bool:
 
 
 AGENT_LOCK_REASON_RE = re.compile(
-    r"^claude agent (?P<name>\S+) \(pid (?P<pid>[1-9][0-9]{0,9})(?: [^)]*)?\)$"
+    r"^claude agent (?P<name>\S+) \(pid (?P<pid>[1-9][0-9]{0,9})"
+    r"(?: start (?P<start>[^)]+)| [^)]*)?\)$"
 )
+# ``ps -o lstart=`` prints ctime layout under LC_ALL=C on macOS and procps alike.
+LSTART_FORMAT = "%a %b %d %H:%M:%S %Y"
+# lstart has 1 s resolution; the harness and ps may round across a boundary.
+PID_START_TOLERANCE_SECONDS = 2
 # Dirnames the harness generates (subagent, Workflow): provenance once unlocked.
 AGENT_DIRNAME_RE = re.compile(r"agent-[0-9a-f]{17}|wf_[0-9a-f]{8}-[0-9a-f]{3}-[0-9]+")
 
@@ -1330,6 +1335,46 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
+def _parse_lstart(text: str) -> float | None:
+    try:
+        return time.mktime(time.strptime(" ".join(text.split()), LSTART_FORMAT))
+    except (ValueError, OverflowError):
+        return None
+
+
+def _ps_lstart(pid: int) -> str | None:
+    try:
+        completed = subprocess.run(
+            ["ps", "-o", "lstart=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "LC_ALL": "C"},
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return completed.stdout if completed.returncode == 0 else None
+
+
+def _harness_pid_state(pid: int, recorded_start: str | None) -> str:
+    """``live`` only if ``pid`` exists and, when the lock recorded a start
+    time, that pid's start matches it (else an unrelated process reused the
+    pid: ``reused-pid``).  Missing or unreadable start info on either side
+    falls back to the pid-only check."""
+
+    if not _pid_alive(pid):
+        return "dead-pid"
+    recorded = _parse_lstart(recorded_start) if recorded_start else None
+    if recorded is None:
+        return "live"
+    probed = _ps_lstart(pid)
+    actual = _parse_lstart(probed) if probed else None
+    if actual is None or abs(actual - recorded) <= PID_START_TOLERANCE_SECONDS:
+        return "live"
+    return "reused-pid"
+
+
 def _agent_lane_lock(
     path: Path, physical: dict[str, Any], workspace: Path
 ) -> dict[str, Any] | None:
@@ -1337,7 +1382,9 @@ def _agent_lane_lock(
 
     The harness locks each lane with ``claude agent <dirname> (pid <N> ...)``;
     branch is not identity (agents switch branches).  ``live``: that lock with
-    a live pid.  ``dead-pid``: that lock, pid gone.  ``unlocked``: no lock but
+    a live pid whose start matches the recorded one.  ``dead-pid``: that lock,
+    pid gone.  ``reused-pid``: pid alive but started at another time (the
+    harness crashed and the pid was recycled).  ``unlocked``: no lock but
     a harness-generated dirname.  ``None`` (caller fails closed): no such
     provenance, not a direct child of the root, or lock state not observed.
     """
@@ -1354,12 +1401,12 @@ def _agent_lane_lock(
     if match is None or match.group("name") != path.name:
         return None
     pid = int(match.group("pid"))
-    return {"state": "live" if _pid_alive(pid) else "dead-pid", "pid": pid}
+    return {"state": _harness_pid_state(pid, match.group("start")), "pid": pid}
 
 
 def _stale_agent_cleanup_hint(path: Path, lock: dict[str, Any], branch: str) -> str:
     quoted = shlex.quote(str(path))
-    unlock = f"git worktree unlock {quoted} && " if lock["state"] == "dead-pid" else ""
+    unlock = f"git worktree unlock {quoted} && " if lock["state"] != "unlocked" else ""
     kept = f"; branch {branch} is kept, delete it only once merged"
     return (
         f"{unlock}git worktree remove {quoted}  # harness no longer holds this lane "
