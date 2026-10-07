@@ -248,3 +248,19 @@ def test_cli_routes_are_maintainer_diagnostics_only(capsys) -> None:
     assert '"skill": "github-coordination"' in capsys.readouterr().out
     assert mod.main(["identify", "--role", "manager"]) == 2
     assert "agent_onboard.py" in capsys.readouterr().err
+
+
+def test_reviewer_role_defines_entry_specific_next_action() -> None:
+    reviewer = mod.load_manifest(ROOT)["roles"]["reviewer"]
+    assert set(reviewer["entry_next_action"]) == {"pr-review", "lane-review"}
+
+
+@pytest.mark.parametrize(
+    ("entry", "action"),
+    [("no-such-entry", "do something"), ("lane-review", "  "), ("lane-review", 3)],
+)
+def test_entry_next_action_rejects_unknown_entry_or_empty_text(entry, action) -> None:
+    manifest = copy.deepcopy(mod.load_manifest(ROOT))
+    manifest["roles"]["reviewer"]["entry_next_action"][entry] = action
+    with pytest.raises(mod.ContextRouteError, match="entry_next_action"):
+        mod.validate_manifest(manifest, ROOT)

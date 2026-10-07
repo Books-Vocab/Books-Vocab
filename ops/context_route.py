@@ -480,9 +480,9 @@ def validate_manifest(payload: dict[str, Any], root: Path | None = None) -> None
     for role, definition in roles.items():
         definition = _require_mapping(definition, f"roles.{role}")
         required = {"identity_ids", "sources", "next_action"}
-        if set(definition) != required:
+        if not required <= set(definition) <= required | {"entry_next_action"}:
             raise ContextRouteError(
-                f"roles.{role} 欄位必須是 identity_ids、sources、next_action"
+                f"roles.{role} 欄位必須是 identity_ids、sources、next_action，可選 entry_next_action"
             )
         identity_ids = _require_nonempty_strings(
             definition["identity_ids"], f"roles.{role}.identity_ids"
@@ -505,6 +505,23 @@ def validate_manifest(payload: dict[str, Any], root: Path | None = None) -> None
             or not definition["next_action"].strip()
         ):
             raise ContextRouteError(f"roles.{role}.next_action 必須是非空字串")
+        entry_actions = _require_mapping(
+            definition.get("entry_next_action", {}), f"roles.{role}.entry_next_action"
+        )
+        role_entries = {
+            entry
+            for identity_id in identity_ids
+            for entry in identities[identity_id]["entry_modes"]
+        }
+        for entry, action in entry_actions.items():
+            if entry not in role_entries:
+                raise ContextRouteError(
+                    f"roles.{role}.entry_next_action 未知 entry: {entry}"
+                )
+            if not isinstance(action, str) or not action.strip():
+                raise ContextRouteError(
+                    f"roles.{role}.entry_next_action.{entry} 必須是非空字串"
+                )
 
 
 def _normalize(value: str) -> str:
