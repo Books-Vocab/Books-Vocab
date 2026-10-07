@@ -83,7 +83,7 @@ GitHub 是交付控制面：Issue／Project 管規劃與排序，branch／worktr
   --json
 ```
 
-`--evidence` 必須逐項提供該 identity／entry 要求的外部證據；缺少時回傳 `status=awaiting-assignment` 並停在 assignment，不會載入 skill 或 domain 文件。只有 `status=ready` 才能繼續；不可自行猜測身份、Scope 或授權。
+`--evidence` 必須逐項提供該 identity／entry 要求的外部證據；缺少時回傳 `status=awaiting-assignment` 並停在 assignment，不會載入 skill 或 domain 文件。只有 `status=ready` 才能繼續；不可自行猜測身份、Scope 或授權。不確定 key 時先加 `--print-evidence-template`（只讀，exit 0）取得該 identity／entry 的全部 required／conditional（如 `dispatch_channel=im` 時的 `dispatch_owner`）／optional key 與可直接複製的命令；awaiting 輸出同樣一次列出全部缺漏與無效值，並給 `assignment.retry_command`。範本的 `<...>` placeholder 未替換即視為缺漏。
 
 `--specialist-intent` 是可選但受限的精準路由，例如 bug、docs-impact、production-status 或某個 domain pipeline；可用值由 `ops/context_plane.json` 綁定到 identity／intent／entry，並由 skill catalog 驗證。Simulator 只是其中一個 `ios` specialist 範例，不是 onboarding 的特殊中心。
 
@@ -108,7 +108,11 @@ GitHub 是交付控制面：Issue／Project 管規劃與排序，branch／worktr
 4. **lane 登記由 IM 負責**：`ops/ios_ops.sh` 的 writer 類 command（build／test）其 disk guard 與 hand-back 都以 registry 判斷 worktree 是否為受管 lane，須由 IM 以 `ops/worktree_orchestrate.py` 先登記。開工先 `./ops/worktree_registry.py list --json` 確認本 worktree path 在列；若不在或 guard 以「unregistered／disk budget」fail-closed，這是 BLOCKED：不自行 `register`、不改 registry、不等排程碰運氣，回報給 IM 登記後重派。
 5. **outcomes 不可預寫**：hand-back 的 validation／outcomes 只能在命令跑完後依實際結果填入；不得先寫「PASS」再補跑，WARN、timeout、stale evidence 一律如實報告，不寫成 PASS。
 6. **交回物（實作角色，有 local commit 時）**：乾淨 worktree 加 handoff footer（放在回報最後，不是回報段落），欄位足以讓 IM 對回已登記的 lane 並驗 Scope：branch、worktree path、tip SHA（`git rev-parse HEAD`，commit 後現量）、declared Scope、assignment 參照（Issue／PR external ID，或 direct assignment 摘要）、變更檔案清單（`git diff --name-only <base>..HEAD`，須為 Scope 子集）；assignment 若帶 lane id、claim generation、owner thread，原樣回填。不 push、不開 PR、不碰 GitHub；PR 由 IM 發布。沒有 commit 的執行（例如已批准的 release execution）不附 footer，改在證據段列 target、exit status 與 health gate 結果。
-7. **固定回報骨架**：與根 `CLAUDE.md`「回報格式」一致，最終訊息一律以下列四段、依序、每段不可省略（無內容寫「無」）：
+7. **隔離 worktree 內 git 一次一條**：harness 拒絕複合（`&&`、`;`、管線）與 heredoc 的 git 命令；每個 Bash 呼叫只跑一條簡單 git 命令，commit 訊息先寫檔再 `git commit -F <file>`。
+8. **只動自己的範圍**：`rm`／清理只限自己的 worktree 與 session scratchpad；共用 scratch 根目錄、其他 worktree 與主 checkout 一律不刪不改。
+9. **追修從既有 branch 起跑**：publish 會移除原 worktree，原 agent 也無法 resume；follow-up／fix agent 以 `git switch -c <new> origin/<branch>`（未 push 則用 local branch）接續，不從 `main` 重做。
+10. **被擋約 10 分鐘內回報**：lock、guard、權限擋住必要 gate 時只做有上限的等待；約 10 分鐘仍未解即依第 3 項回報 BLOCKED 並附完整輸出，不輪詢一小時。
+11. **固定回報骨架**：與根 `CLAUDE.md`「回報格式」一致，最終訊息一律以下列四段、依序、每段不可省略（無內容寫「無」）：
 
 ```text
 成果: 狀態 <依角色，見下> — 一句話結論（BLOCKED 要寫被擋的 gate）
