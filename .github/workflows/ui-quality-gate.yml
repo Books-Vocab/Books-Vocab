@@ -31,6 +31,10 @@ on:
       - 'ops/ui_fixture_lint.sh'
       - '.github/workflows/ui-quality-gate.yml'
       - '.githooks/pre-commit'
+# checkout 讀 repo 即足；lint 步驟不呼叫 GitHub API。
+permissions:
+  contents: read
+
 jobs:
   gate:
     runs-on: ubuntu-latest
