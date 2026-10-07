@@ -212,29 +212,39 @@ def run_all(
     report: dict[str, dict[str, int]] = {}
 
     deleted, remaining = prune_pipeline_log(pipeline_days)
-    report["pipeline_log"] = {"deleted": deleted, "remaining": remaining,
-                              "days": _effective_days("pipeline", pipeline_days)}
+    report["pipeline_log"] = {
+        "deleted": deleted,
+        "remaining": remaining,
+        "days": _effective_days("pipeline", pipeline_days),
+    }
 
     deleted, remaining = prune_judge_log(judge_days)
-    report["judge_log"] = {"deleted": deleted, "remaining": remaining,
-                           "days": _effective_days("judge", judge_days)}
+    report["judge_log"] = {"deleted": deleted, "remaining": remaining, "days": _effective_days("judge", judge_days)}
 
     deleted, remaining = prune_translate_log(translate_days)
-    report["translate_log"] = {"deleted": deleted, "remaining": remaining,
-                               "days": _effective_days("translate", translate_days)}
+    report["translate_log"] = {
+        "deleted": deleted,
+        "remaining": remaining,
+        "days": _effective_days("translate", translate_days),
+    }
 
     # Shares the translate-log retention window (TRANSLATE_LOG_RETENTION_DAYS).
     deleted, remaining = prune_translate_cache_hits(translate_days)
-    report["translate_cache_hits"] = {"deleted": deleted, "remaining": remaining,
-                                      "days": _effective_days("translate", translate_days)}
+    report["translate_cache_hits"] = {
+        "deleted": deleted,
+        "remaining": remaining,
+        "days": _effective_days("translate", translate_days),
+    }
 
     deleted, remaining = prune_token_usage(token_days)
-    report["token_usage"] = {"deleted": deleted, "remaining": remaining,
-                             "days": _effective_days("token", token_days)}
+    report["token_usage"] = {"deleted": deleted, "remaining": remaining, "days": _effective_days("token", token_days)}
 
     deleted, remaining = prune_llm_errors(llm_error_days)
-    report["llm_errors"] = {"deleted": deleted, "remaining": remaining,
-                            "days": _effective_days("llm_error", llm_error_days)}
+    report["llm_errors"] = {
+        "deleted": deleted,
+        "remaining": remaining,
+        "days": _effective_days("llm_error", llm_error_days),
+    }
 
     return report
 
@@ -249,8 +259,9 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="kg.log_retention",
         description="Prune old rows from KG log SQLite databases.",
     )
-    parser.add_argument("--all", action="store_true",
-                        help="Prune every log DB (honours *_RETENTION_DAYS env, else built-in defaults).")
+    parser.add_argument(
+        "--all", action="store_true", help="Prune every log DB (honours *_RETENTION_DAYS env, else built-in defaults)."
+    )
     parser.add_argument("--pipeline", action="store_true", help="Prune pipeline_runs.db.")
     parser.add_argument("--judge", action="store_true", help="Prune judge_log.db.")
     parser.add_argument("--translate", action="store_true", help="Prune translate_log.db.")
@@ -260,8 +271,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--days",
         type=int,
         default=None,
-        help="Override retention window (days), bypassing *_RETENTION_DAYS env. "
-             "Applies to every selected target.",
+        help="Override retention window (days), bypassing *_RETENTION_DAYS env. Applies to every selected target.",
     )
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON to stdout.")
     return parser
@@ -284,28 +294,22 @@ def _run_from_args(args: argparse.Namespace) -> dict[str, dict[str, int]]:
 
     if args.pipeline:
         d, r = prune_pipeline_log(args.days)
-        report["pipeline_log"] = {"deleted": d, "remaining": r,
-                                  "days": _effective_days("pipeline", args.days)}
+        report["pipeline_log"] = {"deleted": d, "remaining": r, "days": _effective_days("pipeline", args.days)}
     if args.judge:
         d, r = prune_judge_log(args.days)
-        report["judge_log"] = {"deleted": d, "remaining": r,
-                               "days": _effective_days("judge", args.days)}
+        report["judge_log"] = {"deleted": d, "remaining": r, "days": _effective_days("judge", args.days)}
     if args.translate:
         d, r = prune_translate_log(args.days)
-        report["translate_log"] = {"deleted": d, "remaining": r,
-                                   "days": _effective_days("translate", args.days)}
+        report["translate_log"] = {"deleted": d, "remaining": r, "days": _effective_days("translate", args.days)}
         # translate_cache_hits shares the translate window — prune it alongside.
         d, r = prune_translate_cache_hits(args.days)
-        report["translate_cache_hits"] = {"deleted": d, "remaining": r,
-                                          "days": _effective_days("translate", args.days)}
+        report["translate_cache_hits"] = {"deleted": d, "remaining": r, "days": _effective_days("translate", args.days)}
     if args.token:
         d, r = prune_token_usage(args.days)
-        report["token_usage"] = {"deleted": d, "remaining": r,
-                                 "days": _effective_days("token", args.days)}
+        report["token_usage"] = {"deleted": d, "remaining": r, "days": _effective_days("token", args.days)}
     if getattr(args, "llm_error", False):
         d, r = prune_llm_errors(args.days)
-        report["llm_errors"] = {"deleted": d, "remaining": r,
-                                "days": _effective_days("llm_error", args.days)}
+        report["llm_errors"] = {"deleted": d, "remaining": r, "days": _effective_days("llm_error", args.days)}
 
     return report
 

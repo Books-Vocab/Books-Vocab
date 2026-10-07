@@ -17,6 +17,7 @@ Env vars:
     SENTRY_TRACES_SAMPLE_RATE   APM sampling 0.0–1.0 (default: 0.0 = error-only)
     SENTRY_PROFILES_SAMPLE_RATE Profiling sampling 0.0–1.0 (default: 0.0)
 """
+
 from __future__ import annotations
 
 import logging
@@ -233,9 +234,7 @@ def _init_sdk() -> bool:
         traces_strategy = f"flat={flat_override}"
     else:
         init_kwargs["traces_sampler"] = _traces_sampler
-        traces_strategy = (
-            f"sampler(hot={_TRACES_HOT_RATE},base={_TRACES_BASELINE_RATE},drop=health)"
-        )
+        traces_strategy = f"sampler(hot={_TRACES_HOT_RATE},base={_TRACES_BASELINE_RATE},drop=health)"
 
     sentry_sdk.init(**init_kwargs)
     global _sentry_module
@@ -243,7 +242,10 @@ def _init_sdk() -> bool:
     _initialized = True
     _logger.info(
         "Sentry initialized env=%s release=%s traces=%s profiles=%s",
-        environment, release or "-", traces_strategy, profiles_rate,
+        environment,
+        release or "-",
+        traces_strategy,
+        profiles_rate,
     )
     return True
 

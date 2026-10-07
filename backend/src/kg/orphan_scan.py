@@ -20,6 +20,7 @@ Fix policy:
   - Orphan graph link → strip entry from JSON via atomic write.
   - Orphan translate_log / judge_log / token_usage rows → hard DELETE.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _load_user_ids(data_dir: Path) -> set[str]:
     """Read users.json and return the set of real user ids (skip ``_meta``)."""
@@ -76,9 +78,7 @@ def _all_cards_with_state(cards_db: Path) -> list[tuple[str, str, int]]:
     if not cards_db.exists():
         return []
     with sqlite3.connect(str(cards_db)) as conn:
-        return conn.execute(
-            "SELECT id, notebook_id, is_deleted FROM card"
-        ).fetchall()
+        return conn.execute("SELECT id, notebook_id, is_deleted FROM card").fetchall()
 
 
 def _live_notebook_ids(nb_db: Path) -> set[str]:
@@ -97,7 +97,7 @@ def _list_graph_files(user_dir: Path) -> list[tuple[str, Path]]:
     """Return ``[(notebook_id, graph_path), ...]``."""
     out: list[tuple[str, Path]] = []
     for path in user_dir.glob("graph_*.json"):
-        nb_id = path.stem[len("graph_"):]
+        nb_id = path.stem[len("graph_") :]
         if not nb_id:
             continue
         out.append((nb_id, path))
@@ -162,6 +162,7 @@ def _atomic_write_json(path: Path, data: Any) -> None:
 # Scan
 # ---------------------------------------------------------------------------
 
+
 def _scan_user_orphans(db_path: Path, table: str, user_ids: set[str]) -> list[dict[str, Any]]:
     """Rows in ``table`` whose ``user_id`` has no live user.
 
@@ -174,9 +175,7 @@ def _scan_user_orphans(db_path: Path, table: str, user_ids: set[str]) -> list[di
     orphans: list[dict[str, Any]] = []
     with sqlite3.connect(str(db_path)) as conn:
         try:
-            rows = conn.execute(
-                f"SELECT user_id, COUNT(*) FROM {table} GROUP BY user_id"
-            ).fetchall()
+            rows = conn.execute(f"SELECT user_id, COUNT(*) FROM {table} GROUP BY user_id").fetchall()
         except sqlite3.OperationalError as exc:
             logger.warning("Failed to query orphan user rows from %s (%s)", table, exc)
             rows = []
@@ -222,11 +221,13 @@ def _scan_cards_and_graph_orphans(
             if is_deleted:
                 continue
             if nb_id not in nb_ids:
-                cards_orphan.append({
-                    "user_id": uid,
-                    "card_id": cid,
-                    "notebook_id": nb_id,
-                })
+                cards_orphan.append(
+                    {
+                        "user_id": uid,
+                        "card_id": cid,
+                        "notebook_id": nb_id,
+                    }
+                )
 
         # 2. graph_links → cards (per notebook)
         for nb_id, graph_path in _list_graph_files(udir):
@@ -248,14 +249,16 @@ def _scan_cards_and_graph_orphans(
                 if to_id and to_id not in live_card_ids:
                     missing.append(to_id)
                 if missing:
-                    graph_orphan.append({
-                        "user_id": uid,
-                        "notebook_id": nb_id,
-                        "link_id": lk.get("id"),
-                        "from_id": from_id,
-                        "to_id": to_id,
-                        "missing": missing,
-                    })
+                    graph_orphan.append(
+                        {
+                            "user_id": uid,
+                            "notebook_id": nb_id,
+                            "link_id": lk.get("id"),
+                            "from_id": from_id,
+                            "to_id": to_id,
+                            "missing": missing,
+                        }
+                    )
 
     return cards_orphan, graph_orphan, user_live_cards
 
@@ -276,10 +279,7 @@ def _scan_judge_log_orphans(
         return judge_orphan
     with sqlite3.connect(str(judge_db)) as conn:
         try:
-            rows = conn.execute(
-                "SELECT id, user_id, notebook_id, from_id, to_id "
-                "FROM judge_log"
-            ).fetchall()
+            rows = conn.execute("SELECT id, user_id, notebook_id, from_id, to_id FROM judge_log").fetchall()
         except sqlite3.OperationalError as exc:
             logger.warning("Failed to query orphan judge_log rows: %s", exc)
             rows = []
@@ -288,25 +288,29 @@ def _scan_judge_log_orphans(
         if live is None:
             # judge_log row for a user we don't know — covered by the
             # user-orphan category indirectly; flag both endpoints.
-            judge_orphan.append({
-                "id": row_id,
-                "user_id": uid,
-                "notebook_id": nb_id,
-                "from_id": from_id,
-                "to_id": to_id,
-                "missing": [from_id, to_id],
-            })
+            judge_orphan.append(
+                {
+                    "id": row_id,
+                    "user_id": uid,
+                    "notebook_id": nb_id,
+                    "from_id": from_id,
+                    "to_id": to_id,
+                    "missing": [from_id, to_id],
+                }
+            )
             continue
         missing = [c for c in (from_id, to_id) if c and c not in live]
         if missing:
-            judge_orphan.append({
-                "id": row_id,
-                "user_id": uid,
-                "notebook_id": nb_id,
-                "from_id": from_id,
-                "to_id": to_id,
-                "missing": missing,
-            })
+            judge_orphan.append(
+                {
+                    "id": row_id,
+                    "user_id": uid,
+                    "notebook_id": nb_id,
+                    "from_id": from_id,
+                    "to_id": to_id,
+                    "missing": missing,
+                }
+            )
     return judge_orphan
 
 
@@ -345,7 +349,8 @@ def scan(*, data_dir: Path) -> dict[str, Any]:
         "cards_orphan_notebook": {"count": len(cards_orphan), "items": cards_orphan},
         "graph_links_orphan_card": {"count": len(graph_orphan), "items": graph_orphan},
         "translate_log_orphan_user": {
-            "count": len(translate_orphan), "items": translate_orphan,
+            "count": len(translate_orphan),
+            "items": translate_orphan,
         },
         "judge_log_orphan_card": {"count": len(judge_orphan), "items": judge_orphan},
         "token_usage_orphan_user": {"count": len(token_orphan), "items": token_orphan},
@@ -357,6 +362,7 @@ def scan(*, data_dir: Path) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Fix
 # ---------------------------------------------------------------------------
+
 
 class OrphanFixAborted(RuntimeError):
     """Raised when ``fix()`` detects a graph file mutated mid-run.
@@ -420,9 +426,7 @@ def fix(
         with the mtime guard, prefer to quiesce the API before calling.
     """
     if not confirm:
-        raise ValueError(
-            "orphan_scan.fix(): refusing to run without explicit confirm=True"
-        )
+        raise ValueError("orphan_scan.fix(): refusing to run without explicit confirm=True")
 
     report = scan(data_dir=data_dir)
     summary: dict[str, Any] = {
@@ -434,19 +438,15 @@ def fix(
             "would_delete": report["graph_links_orphan_card"]["count"],
         },
         "translate_log_orphan_user": {
-            "would_delete": sum(
-                it.get("rows", 0)
-                for it in report["translate_log_orphan_user"]["items"]
-            ) or report["translate_log_orphan_user"]["count"],
+            "would_delete": sum(it.get("rows", 0) for it in report["translate_log_orphan_user"]["items"])
+            or report["translate_log_orphan_user"]["count"],
         },
         "judge_log_orphan_card": {
             "would_delete": report["judge_log_orphan_card"]["count"],
         },
         "token_usage_orphan_user": {
-            "would_delete": sum(
-                it.get("rows", 0)
-                for it in report["token_usage_orphan_user"]["items"]
-            ) or report["token_usage_orphan_user"]["count"],
+            "would_delete": sum(it.get("rows", 0) for it in report["token_usage_orphan_user"]["items"])
+            or report["token_usage_orphan_user"]["count"],
         },
     }
     summary["total_deleted"] = report["total"]
@@ -517,8 +517,10 @@ def fix(
 
     # 3. delete translate_log rows for ghost users
     from . import translate_log as tl
+
     _delete_rows_by_user(
-        tl, "translate_log",
+        tl,
+        "translate_log",
         [it["user_id"] for it in report["translate_log_orphan_user"]["items"]],
     )
 
@@ -526,6 +528,7 @@ def fix(
     judge_ids = [it["id"] for it in report["judge_log_orphan_card"]["items"]]
     if judge_ids:
         from . import judge_log as jl
+
         with jl._lock:
             conn = jl._get_conn()
             conn.executemany(
@@ -536,8 +539,10 @@ def fix(
 
     # 5. delete token_usage rows
     from . import token_tracker as tt
+
     _delete_rows_by_user(
-        tt, "token_usage",
+        tt,
+        "token_usage",
         [it["user_id"] for it in report["token_usage_orphan_user"]["items"]],
     )
 
@@ -548,8 +553,10 @@ def fix(
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def _resolve_data_dir() -> Path:
     from .settings import load_settings
+
     return load_settings().data_dir
 
 
@@ -565,25 +572,28 @@ def main(argv: list[str] | None = None) -> int:
     # running a scan.
     action = parser.add_mutually_exclusive_group()
     action.add_argument(
-        "--report", action="store_true",
+        "--report",
+        action="store_true",
         help="Print the orphan scan report and exit.",
     )
     action.add_argument(
-        "--fix", action="store_true",
-        help="Run the fixer.  Requires --confirm to actually mutate; "
-             "without --confirm, runs in dry-run mode.",
+        "--fix",
+        action="store_true",
+        help="Run the fixer.  Requires --confirm to actually mutate; without --confirm, runs in dry-run mode.",
     )
     parser.add_argument(
-        "--confirm", action="store_true",
-        help="Acknowledge that --fix will mutate data.  Without this flag, "
-             "--fix is forced into dry-run mode.",
+        "--confirm",
+        action="store_true",
+        help="Acknowledge that --fix will mutate data.  Without this flag, --fix is forced into dry-run mode.",
     )
     parser.add_argument(
-        "--dry-run", action="store_true",
+        "--dry-run",
+        action="store_true",
         help="With --fix, show what would be deleted without changing anything.",
     )
     parser.add_argument(
-        "--data-dir", default=None,
+        "--data-dir",
+        default=None,
         help="Override data directory (defaults to KGSettings.data_dir).",
     )
     args = parser.parse_args(argv)
@@ -602,10 +612,7 @@ def main(argv: list[str] | None = None) -> int:
         # Without --confirm we force dry-run + warn loudly.
         dry_run = args.dry_run or not args.confirm
         if not args.confirm:
-            print(
-                "WARN: --fix without --confirm — running in dry-run mode. "
-                "Re-run with --confirm to actually mutate."
-            )
+            print("WARN: --fix without --confirm — running in dry-run mode. Re-run with --confirm to actually mutate.")
         summary = fix(data_dir=data_dir, confirm=True, dry_run=dry_run)
         print(json.dumps(summary, indent=2, ensure_ascii=False))
         return 0
