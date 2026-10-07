@@ -1195,6 +1195,39 @@
 "reader.pdf.loading.description" = "Loading the document and your reading position.";
 "reader.pdf.loading.title" = "Opening PDF";
 
+/* i18n strict coverage: API keys / subscription loading / podcast sync / word preferences */
+"外部 API 金鑰" = "External API Keys";
+"連接閱讀器與自動化工具" = "Connect readers and automation tools";
+"API 金鑰" = "API Keys";
+"你的 API 金鑰" = "Your API Keys";
+"API 金鑰只會在建立時顯示一次。請立即複製並保存；離開此頁後無法再次查看完整金鑰。" = "An API key is shown only once, when it is created. Copy it and store it somewhere safe now; after you leave this page, the full key can't be viewed again.";
+"建立 API 金鑰" = "Create API Key";
+"用途標籤" = "Label";
+"例如：閱讀器自動上傳" = "e.g. Reader auto-upload";
+"複製金鑰" = "Copy Key";
+"API 金鑰已複製" = "API key copied";
+"新金鑰只顯示這一次" = "This new key is shown only once";
+"若現在不複製，之後只能撤銷並建立新的金鑰。" = "If you don't copy it now, you'll have to revoke it and create a new key later.";
+"已撤銷" = "Revoked";
+"撤銷" = "Revoke";
+"撤銷這組 API 金鑰？" = "Revoke this API key?";
+"撤銷後，使用這組金鑰的外部工具將無法再存取你的資料。" = "Once revoked, external tools using this key can no longer access your data.";
+"尚未建立 API 金鑰" = "No API Keys Yet";
+"建立一組金鑰，讓外部閱讀器或自動化工具連接你的 Pro 帳號。" = "Create a key to connect an external reader or automation tool to your Pro account.";
+"API 金鑰管理需要有效的 Pro 權限。" = "Managing API keys requires active Pro access.";
+"目前離線，無法管理 API 金鑰。" = "You're offline. API keys can't be managed right now.";
+"請稍候再試，API 金鑰管理目前受到限速保護。" = "API key management is rate-limited right now. Please wait a moment and try again.";
+"API 金鑰管理暫時失敗，請稍後再試。" = "API key management failed. Please try again later.";
+"建立於 %@" = "Created %@";
+"登入已過期，請重新登入後再試。" = "Session expired. Please sign in again and retry.";
+"正在載入 API 金鑰" = "Loading API keys";
+"正在載入訂閱方案" = "Loading subscription plans";
+"訂閱方案載入失敗" = "Failed to load subscription plans";
+"正在從 App Store 取得訂閱資訊。" = "Fetching subscription info from the App Store.";
+"播客同步提醒" = "Podcast sync notice";
+"背景同步正在更新播客節目清單" = "Background sync is updating the podcast list";
+"更新單字偏好失敗" = "Failed to update word preferences";
+
 /* i18n strict coverage: integrated UI review surfaces */
 "互動回饋" = "Interaction Feedback";
 "今日到期" = "Due Today";
