@@ -131,6 +131,52 @@ check_routed() {
 
 check_routed ops/test_ops.sh || failed=1
 
+# Static-contract reachability (Issue #2114). Files under ios/StaticTests belong
+# to no Xcode target, so nothing executes them unless a runner names them; an
+# unnamed file is a contract that rots while readers assume it is enforced. A
+# runner is ops/test_ops.sh or a GitHub workflow, and only non-comment lines
+# count: a path that appears in a comment is not executed.
+STATIC_TESTS_DIR=ios/StaticTests
+
+check_static_tests_run() {
+  local root="$1" file rel runner_text workflow status=0
+  [[ -d "$root/$STATIC_TESTS_DIR" ]] || return 0
+  local runners=("$root/ops/test_ops.sh")
+  for workflow in "$root"/.github/workflows/*.yml; do
+    [[ -f "$workflow" ]] && runners+=("$workflow")
+  done
+  # No pipe into `grep -q`: under pipefail an early exit there can SIGPIPE the
+  # producer and report a referenced file as missing.
+  runner_text="$(grep -hv '^[[:space:]]*#' "${runners[@]}" 2>/dev/null || true)"
+  while IFS= read -r -d '' file; do
+    rel="${file#"$root"/}"
+    if [[ "$runner_text" != *"$rel"* ]]; then
+      echo "✗ $rel is not executed by ops/test_ops.sh or any .github/workflows/*.yml" >&2
+      status=1
+    fi
+  done < <(find "$root/$STATIC_TESTS_DIR" -type f ! -name '.DS_Store' -print0)
+  return "$status"
+}
+
+check_static_tests_run "$ROOT" || failed=1
+
+# Falsification: a file named only in a comment is unrun (must be red); naming
+# it on an executable runner line must turn the check green.
+static_fixture="$(mktemp -d)"
+mkdir -p "$static_fixture/$STATIC_TESTS_DIR" "$static_fixture/ops" "$static_fixture/.github/workflows"
+printf 'print("orphan")\n' >"$static_fixture/$STATIC_TESTS_DIR/orphan.swift"
+printf '# swift %s/orphan.swift\n' "$STATIC_TESTS_DIR" >"$static_fixture/ops/test_ops.sh"
+if check_static_tests_run "$static_fixture" 2>/dev/null; then
+  echo "✗ falsification failed: an unrun static test stayed green" >&2
+  failed=1
+fi
+printf '    static) swift %s/orphan.swift ;;\n' "$STATIC_TESTS_DIR" >>"$static_fixture/ops/test_ops.sh"
+if ! check_static_tests_run "$static_fixture" 2>/dev/null; then
+  echo "✗ positive control failed: a static test named by a runner was reported as unrun" >&2
+  failed=1
+fi
+rm -rf "$static_fixture"
+
 # Falsification: dropping the routing must turn the check red.
 mutant="$(mktemp)"
 trap 'rm -f "$mutant"' EXIT
