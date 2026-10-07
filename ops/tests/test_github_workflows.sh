@@ -475,6 +475,69 @@ if grep -q 'Run platform-independent ops groups' "$OPS"; then
   fail "ops-suite still runs all Linux groups serially"
 fi
 
+# --- Token scope and liveness ceilings (Issue #2070) -------------------------
+# Every workflow pins its own GITHUB_TOKEN scope instead of inheriting the repo
+# default (read today, but a settings change would silently widen it), and every
+# job that runs steps carries its own timeout. A `uses:` job delegates both to
+# the called workflow, so it is exempt from the job-level timeout.
+workflow_hardening_violations() {
+  ruby -e 'require "yaml"
+    ARGV.each do |path|
+      y = YAML.load_file(path)
+      if !y.key?("permissions")
+        puts "#{path}: no top-level permissions"
+      elsif y["permissions"] == "write-all"
+        puts "#{path}: top-level permissions is write-all"
+      end
+      (y["jobs"] || {}).each do |name, job|
+        next if job.key?("uses")
+        puts "#{path}: job #{name} has no timeout-minutes" unless job.key?("timeout-minutes")
+      end
+    end' "$@"
+}
+if hardening_report="$(workflow_hardening_violations .github/workflows/*.yml)"; then
+  while IFS= read -r violation; do
+    if [[ -n "$violation" ]]; then
+      fail "$violation"
+    fi
+  done <<<"$hardening_report"
+else
+  fail "workflow hardening checker could not read .github/workflows/*.yml"
+fi
+
+# Positive control: the checker must name each defect in a fixture that has
+# them, and must not demand a timeout from a `uses:` job.
+hardening_tmp="$wf_tmp/hardening"
+mkdir -p "$hardening_tmp"
+cat >"$hardening_tmp/bare.yml" <<'YAML'
+name: bare
+on: push
+jobs:
+  steps-job:
+    runs-on: ubuntu-latest
+    steps:
+      - run: 'true'
+  reusable-job:
+    uses: ./.github/workflows/llm-eval.yml
+YAML
+cat > "$hardening_tmp/write-all.yml" <<'YAML'
+name: write-all
+on: push
+permissions: write-all
+jobs:
+  bounded:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: 'true'
+YAML
+expected_fixture_report="$hardening_tmp/bare.yml: no top-level permissions
+$hardening_tmp/bare.yml: job steps-job has no timeout-minutes
+$hardening_tmp/write-all.yml: top-level permissions is write-all"
+actual_fixture_report="$(workflow_hardening_violations "$hardening_tmp/bare.yml" "$hardening_tmp/write-all.yml" 2>&1 || true)"
+[[ "$actual_fixture_report" == "$expected_fixture_report" ]] \
+  || fail "workflow hardening checker positive control: expected [$expected_fixture_report], got [$actual_fixture_report]"
+
 # Parse all workflow YAML with the runner's ubiquitous Ruby runtime. This
 # catches indentation/anchor errors before GitHub has to schedule a runner.
 # macOS ships Ruby 2.6, whose Psych does not accept the newer `aliases:`

@@ -22,6 +22,10 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/design-system.yml'
+# checkout 讀 repo 即足；setup-uv／setup-node 只讀公開 release，不需額外 scope。
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
