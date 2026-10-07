@@ -1301,3 +1301,11 @@
 "todayReview.link.pending.creating" = "正在创建…";
 "todayReview.link.pending.hint" = "正在后台创建这张单词卡。完成后会自动变成普通链接，你可以先关闭并继续复习。";
 "todayReview.link.pending.failed" = "无法创建这个链接，可重试或移除。";
+
+/* Add Link creation step labels (#2031) */
+"addLink.step.resolveTarget" = "查找已有单词";
+"addLink.step.translate" = "翻译";
+"addLink.step.createCard" = "创建单词卡";
+"addLink.step.enrich" = "补充释义与例句";
+"addLink.step.createLink" = "链接两张单词卡";
+"addLink.step.localProjection" = "下载到这台设备";

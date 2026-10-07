@@ -19,6 +19,7 @@ struct AddLinkSheet: View {
     @State private var creationAttempt = 0
     @State private var didCompleteCreation = false
     @State private var recoveredProviderErrors: Set<UUID> = []
+    @FocusState private var isSearchFocused: Bool
 
     init(
         sourceEntry: VocabularyEntry,
@@ -32,32 +33,31 @@ struct AddLinkSheet: View {
         _creationCoordinator = State(initialValue: creationHub.makeCoordinator())
     }
 
-    private var filteredEntries: [VocabularyEntry] {
-        AddLinkCoordinator.localCandidates(
-            query: searchText,
-            sourceEntry: sourceEntry,
-            allEntries: allEntries
-        )
-    }
-
-    private var lookupState: AddLinkLookupState {
+    private func lookupState(_ snapshot: AddLinkSearchSnapshot) -> AddLinkLookupState {
         AddLinkCoordinator.lookupState(
             query: searchText,
-            candidateCount: filteredEntries.count,
+            candidateCount: snapshot.candidates.count,
             creationPhase: creationCoordinator.phase,
             creationAttempt: creationAttempt
         )
     }
 
     var body: some View {
+        // One candidate computation per render; every reader below gets this value.
+        let snapshot = AddLinkSearchSnapshot.make(
+            query: searchText,
+            sourceEntry: sourceEntry,
+            allEntries: allEntries
+        )
+        let lookup = lookupState(snapshot)
         NavigationStack {
             VStack(spacing: 0) {
-                Text(lookupState.accessibilityValue)
+                Text(lookup.accessibilityValue)
                     .font(.caption2)
                     .foregroundStyle(.clear)
                     .frame(width: 1, height: 1)
                     .accessibilityIdentifier("addLink.lookup.state")
-                    .accessibilityValue(lookupState.accessibilityValue)
+                    .accessibilityValue(lookup.accessibilityValue)
 
                 Text(L10n.format("addLink.sourceWord", sourceEntry.word))
                     .font(appSkin.typography.caption)
@@ -94,7 +94,7 @@ struct AddLinkSheet: View {
                         .padding(appSkin.metrics.cardBlockPadding)
 
                     List {
-                        localSection
+                        localSection(snapshot)
                     }
                     .listStyle(.insetGrouped)
                     .scrollContentBackground(.hidden)
@@ -132,22 +132,22 @@ struct AddLinkSheet: View {
         .enableInjection()
     }
 
-    private var localSection: some View {
+    private func localSection(_ snapshot: AddLinkSearchSnapshot) -> some View {
         Section(L10n.string("addLink.localSection")) {
-            if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if snapshot.isEmptyQuery {
                 Text(L10n.string("輸入單字名稱來建立連結"))
                     .foregroundStyle(appSkin.palette.tertiaryText)
                     .accessibilityIdentifier("addLink.local.empty")
-            } else if filteredEntries.isEmpty {
-                missingTargetSection
+            } else if let missingTargetState = snapshot.missingTargetState {
+                missingTargetSection(missingTargetState)
             } else {
-                ForEach(filteredEntries) { entry in
+                ForEach(snapshot.candidates) { entry in
                     let projection = AddLinkCoordinator.dictionaryDetailProjection(
                         for: entry,
                         recoveringProviderError: recoveredProviderErrors.contains(entry.id)
                     )
                     VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
-                        Button { selectEntry(entry) } label: {
+                        Button { selectEntry(entry, in: snapshot) } label: {
                             VStack(alignment: .leading, spacing: AppSpacing.microGap) {
                                 Text(entry.word)
                                     .font(appSkin.typography.rowWord)
@@ -292,12 +292,8 @@ struct AddLinkSheet: View {
     }
 
     @ViewBuilder
-    private var missingTargetSection: some View {
-        switch AddLinkCreationCoordinator.localTargetState(
-            query: searchText,
-            sourceEntry: sourceEntry,
-            allEntries: allEntries
-        ) {
+    private func missingTargetSection(_ targetState: AddLinkLocalTargetState) -> some View {
+        switch targetState {
         case .missing:
             if kgService is any AddLinkOperationServing {
                 Button(action: startCreation) {
@@ -336,8 +332,8 @@ struct AddLinkSheet: View {
         }
     }
 
-    private func selectEntry(_ entry: VocabularyEntry) {
-        guard filteredEntries.contains(where: { $0.id == entry.id }) else { return }
+    private func selectEntry(_ entry: VocabularyEntry, in snapshot: AddLinkSearchSnapshot) {
+        guard snapshot.containsCandidate(entry) else { return }
         coordinator.startLinkExisting(
             target: entry,
             sourceEntry: sourceEntry,
@@ -365,6 +361,9 @@ struct AddLinkSheet: View {
             TextField(L10n.string("搜尋單字…"), text: $searchText)
                 .platformTextInputConfig()
                 .submitLabel(.done)
+                .focused($isSearchFocused)
+                // Opening the sheet is the intent to search: no extra tap.
+                .onAppear { isSearchFocused = true }
                 .accessibilityIdentifier("addLink.searchField")
         }
         .padding(appSkin.metrics.cardBlockInnerGap * 1.5)

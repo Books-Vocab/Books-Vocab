@@ -1301,3 +1301,11 @@
 "todayReview.link.pending.creating" = "作成中…";
 "todayReview.link.pending.hint" = "この単語カードをバックグラウンドで作成しています。完了すると自動的に通常のリンクになるので、閉じて復習を続けられます。";
 "todayReview.link.pending.failed" = "このリンクを作成できませんでした。再試行または削除できます。";
+
+/* Add Link creation step labels (#2031) */
+"addLink.step.resolveTarget" = "既存の単語を探す";
+"addLink.step.translate" = "翻訳";
+"addLink.step.createCard" = "単語カードを作成";
+"addLink.step.enrich" = "意味と例文を追加";
+"addLink.step.createLink" = "2枚のカードをリンク";
+"addLink.step.localProjection" = "この端末にダウンロード";

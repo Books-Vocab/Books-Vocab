@@ -1309,3 +1309,11 @@
 "todayReview.link.pending.creating" = "正在建立…";
 "todayReview.link.pending.hint" = "正在背景建立這張單字卡。完成後會自動變成一般連結，你可以先關閉並繼續複習。";
 "todayReview.link.pending.failed" = "無法建立這個連結，可重試或移除。";
+
+/* Add Link creation step labels (#2031) */
+"addLink.step.resolveTarget" = "尋找既有單字";
+"addLink.step.translate" = "翻譯";
+"addLink.step.createCard" = "建立單字卡";
+"addLink.step.enrich" = "補充解釋與例句";
+"addLink.step.createLink" = "連結兩張單字卡";
+"addLink.step.localProjection" = "下載到這台裝置";

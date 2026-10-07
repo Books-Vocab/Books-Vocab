@@ -1301,3 +1301,11 @@
 "todayReview.link.pending.creating" = "생성 중…";
 "todayReview.link.pending.hint" = "이 단어 카드를 백그라운드에서 만들고 있습니다. 완료되면 자동으로 일반 링크로 바뀌므로 닫고 복습을 계속해도 됩니다.";
 "todayReview.link.pending.failed" = "이 링크를 만들지 못했습니다. 다시 시도하거나 삭제할 수 있습니다.";
+
+/* Add Link creation step labels (#2031) */
+"addLink.step.resolveTarget" = "기존 단어 찾기";
+"addLink.step.translate" = "번역";
+"addLink.step.createCard" = "단어 카드 만들기";
+"addLink.step.enrich" = "뜻과 예문 추가";
+"addLink.step.createLink" = "두 카드 연결";
+"addLink.step.localProjection" = "이 기기에 다운로드";

@@ -110,7 +110,9 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 | `Scenes/ReviewSessionPersistence.swift` | 複習 session 落地/恢復邏輯 |
 | `Scenes/SelectionModeState.swift` | 列表多選模式狀態 |
 | `Scenes/OverviewTab.swift` | `struct OverviewTab: View`，Vocab 入口 overview tab |
-| `Scenes/AddLinkSheet.swift` | `struct AddLinkSheet: View`，KG 手動加連線 sheet；搜尋同 Notebook 的既有詞條並把流程狀態委派 `AddLinkCoordinator`，查無 target 時提供建立並連結入口；送出的 context 是 A 的 sense clue，不是 B 的例句 |
+| `Scenes/AddLinkSheet.swift` | `struct AddLinkSheet: View`，KG 手動加連線 sheet；搜尋同 Notebook 的既有詞條並把流程狀態委派 `AddLinkCoordinator`，查無 target 時提供建立並連結入口；送出的 context 是 A 的 sense clue，不是 B 的例句。開啟即 focus 搜尋框；每次 render 只算一次候選（`AddLinkSearchSnapshot`），lookup marker／列表／選列共用 |
+| `Scenes/AddLinkSearchSnapshot.swift` | 一次 query 的衍生值：trimmed query、`localCandidates`、無候選時才算的 `localTargetState`；純值，與逐處重算結果相同 |
+| `Scenes/AddLinkStepCopy.swift` | `enum AddLinkStep`：後端六個 step id（順序即後端回報順序）→ 描述該步實際動作的 `addLink.step.*` 文案；`AddLinkCreationCoordinator.initialSteps()` 只從這裡取標籤 |
 | `Scenes/AddLinkCoordinator.swift` | `@Observable` 加連線流程狀態機；本地候選搜尋與 manual link 的 begin/create/commit 在此收斂 |
 | `Scenes/AddLinkCreationProgressView.swift` | missing-target operation 的進度外殼；直接使用 Settings 的 `SettingsSyncProgressPanel` 與 `PipelineStep`，保持同一套進度視覺語言 |
 | `Scenes/WordDetailSheet.swift` | `struct WordDetailSheet: View`，負責 scene 組裝、routing 與 sheet chrome；link / archive orchestration 委派 `WordDetailSceneState`。封存後**刻意不 dismiss**（圖示翻轉即回饋兼 undo）；刪除走 `confirmationDialog` 並**指名損失**（連結數取自 presenterState），確認後 `queueDelete` + dismiss。`offersLifecycleActions` 由 `showsInlineChrome` 推導：唯一為 false 的宿主 `LinkedCardOverlayStack` 自繪 header，封存鈕本就不渲染，若不一併關掉刪除，該疊層會變成「只能刪不能封存」 |

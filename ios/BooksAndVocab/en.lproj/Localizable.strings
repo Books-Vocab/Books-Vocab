@@ -1320,3 +1320,11 @@
 "todayReview.link.pending.creating" = "Creating…";
 "todayReview.link.pending.hint" = "This word card is being created in the background. It becomes a normal link here when it is ready, so you can close this and keep reviewing.";
 "todayReview.link.pending.failed" = "Couldn't create this link. You can retry or remove it.";
+
+/* Add Link creation step labels (#2031) */
+"addLink.step.resolveTarget" = "Look for an existing word";
+"addLink.step.translate" = "Translate";
+"addLink.step.createCard" = "Create the word card";
+"addLink.step.enrich" = "Add definitions and examples";
+"addLink.step.createLink" = "Link the two cards";
+"addLink.step.localProjection" = "Download to this device";

@@ -530,12 +530,12 @@ final class AddLinkCreationCoordinator {
 
     private static func initialSteps() -> [PipelineStep] {
         [
-            PipelineStep(id: "resolve_target", label: L10n.string("找不到符合的單字"), weight: 1),
-            PipelineStep(id: "translate", label: L10n.string("翻譯"), weight: 1),
-            PipelineStep(id: "create_card", label: L10n.string("建立"), weight: 2),
-            PipelineStep(id: "enrich", label: L10n.string("同步"), weight: 3),
-            PipelineStep(id: "create_link", label: L10n.string("新增連結"), weight: 1),
-            PipelineStep(id: "local_projection", label: L10n.string("下載單字卡"), weight: 2),
+            PipelineStep(id: AddLinkStep.resolveTarget.rawValue, label: AddLinkStep.resolveTarget.label, weight: 1),
+            PipelineStep(id: AddLinkStep.translate.rawValue, label: AddLinkStep.translate.label, weight: 1),
+            PipelineStep(id: AddLinkStep.createCard.rawValue, label: AddLinkStep.createCard.label, weight: 2),
+            PipelineStep(id: AddLinkStep.enrich.rawValue, label: AddLinkStep.enrich.label, weight: 3),
+            PipelineStep(id: AddLinkStep.createLink.rawValue, label: AddLinkStep.createLink.label, weight: 1),
+            PipelineStep(id: AddLinkStep.localProjection.rawValue, label: AddLinkStep.localProjection.label, weight: 2),
         ]
     }
 
