@@ -177,6 +177,65 @@ def test_google_callback_missing_id_token_returns_401(web_auth_env):
     assert resp.status_code == 401, resp.text
 
 
+# ── Success page must not be cached (#2092) ─────────────────────────────────
+# login_success.html embeds a 7-day bearer JWT. A cacheable copy can be
+# replayed via back/forward or the browser cache on a shared machine.
+
+
+def _assert_success_page_not_cacheable(resp: httpx.Response) -> None:
+    assert resp.status_code == 200, resp.text
+    assert 'id="token-display"' in resp.text, "expected the JWT-bearing success page"
+    cache_directives = [d.strip().lower() for d in resp.headers.get("cache-control", "").split(",")]
+    assert "no-store" in cache_directives, resp.headers.get("cache-control")
+    assert resp.headers.get("pragma") == "no-cache"
+
+
+def test_google_callback_success_page_is_not_cacheable(web_auth_env):
+    client = web_auth_env.client
+    state = _bootstrap_google_state(client)
+    fake_resp = httpx.Response(
+        200,
+        json={"id_token": "fake-id-token"},
+        request=httpx.Request("POST", "https://oauth2.googleapis.com/token"),
+    )
+
+    async def fake_post(self, url, data=None, **kwargs):
+        return fake_resp
+
+    async def fake_verify(token, client_id):
+        return "google-user-123", "google@example.com", True
+
+    with (
+        patch("httpx.AsyncClient.post", new=fake_post),
+        patch("kg.routers.web_auth.verify_google_token", new=fake_verify),
+    ):
+        resp = client.get(
+            f"/auth/web/google/callback?code=fake-code&state={state}",
+            follow_redirects=False,
+        )
+
+    _assert_success_page_not_cacheable(resp)
+
+
+def test_apple_callback_success_page_is_not_cacheable(web_auth_env):
+    client = web_auth_env.client
+    login_resp = client.get("/auth/web/apple/login", follow_redirects=False)
+    assert login_resp.status_code == 307
+    state = parse_qs(urlparse(login_resp.headers["location"]).query)["state"][0]
+
+    with patch(
+        "kg.routers.web_auth.verify_apple_token",
+        return_value=("apple-user-123", "apple@example.com", True),
+    ):
+        resp = client.post(
+            "/auth/web/apple/callback",
+            data={"id_token": "fake-apple-id-token", "state": state},
+            follow_redirects=False,
+        )
+
+    _assert_success_page_not_cacheable(resp)
+
+
 # ── Provider error redaction (B1) ────────────────────────────────────────────
 # OAuth callbacks must NOT echo the upstream provider's ``error`` string back to
 # the client (it can carry provider-internal hints). The client receives a
