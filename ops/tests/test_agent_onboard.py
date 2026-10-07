@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -1021,6 +1022,38 @@ def test_cli_rejects_inline_and_file_evidence_together(tmp_path: Path) -> None:
             _worker_argv("--evidence", "{}", "--evidence-file", str(evidence_file))
         )
     assert excinfo.value.code == 2
+
+
+AGENT_TEMPLATES = sorted((ROOT / ".claude" / "agents").glob("*.md"))
+SHELL_RULES_ANCHOR = "isolated-worktree-shell-rules"
+
+
+def test_shell_rules_block_exists_in_project_onboarding() -> None:
+    onboarding = (ROOT / "docs" / "reference" / "project_onboarding.md").read_text(
+        encoding="utf-8"
+    )
+    assert f'<a id="{SHELL_RULES_ANCHOR}"></a>' in onboarding
+    assert len(AGENT_TEMPLATES) >= 5
+
+
+@pytest.mark.parametrize("template", AGENT_TEMPLATES, ids=lambda path: path.name)
+def test_agent_template_onboards_via_evidence_file_and_shell_rules(template) -> None:
+    text = template.read_text(encoding="utf-8")
+    assert f"project_onboarding.md#{SHELL_RULES_ANCHOR}" in text
+
+    commands = [
+        line for line in text.splitlines() if line.startswith("./ops/agent_onboard.py")
+    ]
+    assert commands
+    for command in commands:
+        args = mod._parser().parse_args(shlex.split(command)[1:])
+        assert args.evidence_file and args.evidence is None
+        # Every listed route must be a real identity/intent/entry.
+        mod.build_evidence_template(
+            ROOT, identity=args.identity, intent=args.intent, entry=args.entry
+        )
+        if args.identity == "Worker":
+            assert "dispatch_channel" in text and "dispatch_owner" in text
 
 
 def test_missing_assignment_blocks_before_invalid_specialist_resolution() -> None:

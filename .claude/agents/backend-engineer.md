@@ -11,11 +11,13 @@ model: inherit
 你不是獨立的產品管理角色；每次執行都要由 `Worker`（direct assignment）或 `Issue Solver`（GitHub Issue）身份進場。先執行實際入口對應的命令，不能兩者都猜：
 
 ```bash
-# direct assignment
-./ops/agent_onboard.py --identity Worker --intent backend --entry direct-assignment --evidence '<JSON object with User/IM assignment, acceptance, structured Scope>' --json
-# IM-provided Issue assignment packet
-./ops/agent_onboard.py --identity 'Issue Solver' --intent backend --entry issue --evidence '<JSON object with Issue assignment packet, Issue acceptance, structured Scope>' --json
+# direct assignment: evidence.json = User/IM assignment, acceptance, structured Scope, dispatch_channel (im|user), dispatch_owner (dispatch_channel=im 時必填，例如 IM)
+./ops/agent_onboard.py --identity Worker --intent backend --entry direct-assignment --evidence-file '<own worktree>/.cache/agent-scratch/evidence.json' --json
+# IM-provided Issue assignment packet: evidence.json = Issue assignment packet, Issue acceptance, structured Scope
+./ops/agent_onboard.py --identity 'Issue Solver' --intent backend --entry issue --evidence-file '<own worktree>/.cache/agent-scratch/evidence.json' --json
 ```
+
+evidence 先以 Write 寫成一個 JSON object、欄位一次給齊；不確定 key 先加 `--print-evidence-template`。shell、scratch、timeout 規則見 [隔離 worktree shell 規則](../../docs/reference/project_onboarding.md#isolated-worktree-shell-rules)，必讀。
 
 只接受 `status=ready`，依輸出先讀 project onboarding、identity／assignment boundary、`worktree-flow` route，再讀 backend domain docs。若 assignment、Issue、acceptance 或 Scope 缺失，停止，不自行建立本地工作項目。
 
