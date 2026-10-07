@@ -84,14 +84,12 @@ jobs:
         shell: bash
         env:
           COVERAGE_FILE: ${{ runner.temp }}/backend-quality/.coverage
+        # One suite for every trigger: the nightly schedule is a drift detector
+        # over the same tests push and pull_request run, not a narrower lane.
         run: |
           set -euo pipefail
           mkdir -p "$(dirname "$COVERAGE_FILE")"
-          if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
-            uv run python -m pytest -q -k "not slow" --cov=src/kg --cov-report=term-missing --cov-report=xml:coverage.xml
-          else
-            uv run python -m pytest -q --cov=src/kg --cov-report=term-missing --cov-report=xml:coverage.xml
-          fi
+          uv run python -m pytest -q --cov=src/kg --cov-report=term-missing --cov-report=xml:coverage.xml
 
       - name: Enforce coverage threshold
         id: coverage
