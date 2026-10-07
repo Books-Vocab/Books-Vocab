@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 @testable import BooksAndVocab
 
@@ -111,6 +112,45 @@ struct PodcastPlayerViewModelTests {
 
         #expect(audio.playCount == 1)
         #expect(viewModel.state == .paused)
+    }
+
+    // #2109: VoiceOver swipe up/down on the seek bar (adjustable trait) must
+    // seek ±15 s through viewModel.seek, clamped to the episode bounds.
+    @Test
+    func seekBarAccessibilityAdjustmentSeeksFifteenSecondSteps() {
+        let (audio, viewModel) = makeReadyViewModel()
+        audio.onDurationLoaded?(100)
+        audio.emitTimeUpdate(50)
+
+        PodcastSeekBarAccessibility.adjust(.increment, viewModel: viewModel)
+        #expect(viewModel.currentTime == 65)
+        #expect(audio.currentTime == 65)
+
+        PodcastSeekBarAccessibility.adjust(.decrement, viewModel: viewModel)
+        PodcastSeekBarAccessibility.adjust(.decrement, viewModel: viewModel)
+        #expect(viewModel.currentTime == 35)
+        #expect(audio.currentTime == 35)
+    }
+
+    @Test
+    func seekBarAccessibilityAdjustmentClampsToEpisodeBounds() {
+        let (audio, viewModel) = makeReadyViewModel()
+        audio.onDurationLoaded?(100)
+        audio.emitTimeUpdate(95)
+
+        PodcastSeekBarAccessibility.adjust(.increment, viewModel: viewModel)
+        #expect(viewModel.currentTime == 100)
+
+        audio.emitTimeUpdate(5)
+        PodcastSeekBarAccessibility.adjust(.decrement, viewModel: viewModel)
+        #expect(viewModel.currentTime == 0)
+    }
+
+    @Test
+    func seekBarAccessibilityStepIsFifteenSeconds() {
+        #expect(PodcastSeekBarAccessibility.step == 15)
+        #expect(PodcastSeekBarAccessibility.skipDelta(for: .increment) == 15)
+        #expect(PodcastSeekBarAccessibility.skipDelta(for: .decrement) == -15)
     }
 
     @Test

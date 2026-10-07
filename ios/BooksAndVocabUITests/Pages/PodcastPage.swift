@@ -61,8 +61,10 @@ struct PodcastPage {
         app.staticTexts["podcast.player.durationTime"]
     }
 
+    /// Type-agnostic: the adjustable trait (#2109) can surface the seek bar as
+    /// a slider rather than an "other" element.
     var seekBar: XCUIElement {
-        app.otherElements["podcast.player.seekBar"]
+        app.descendants(matching: .any).matching(identifier: "podcast.player.seekBar").firstMatch
     }
 
     var loginSheet: XCUIElement {
