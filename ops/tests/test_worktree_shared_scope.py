@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 import worktree_registry as registry
@@ -62,6 +64,62 @@ def test_non_allowlisted_file_stays_exclusive(tmp_path: Path) -> None:
     assert rc == registry.EXIT_CLAIMED
 
 
+@pytest.mark.parametrize(
+    "neighbour",
+    ["ops/test_ops.sh.orig", "ops/tests/test_doctor.py", "ops/tests/test_ops.sh"],
+)
+def test_neighbours_of_registration_files_stay_exclusive(
+    tmp_path: Path, neighbour: str
+) -> None:
+    assert neighbour not in SHARED_SCOPE_FILES
+    state = {"schema": registry.SCHEMA, "records": []}
+    _register(state, "one", tmp_path, neighbour)
+    rc, _ = _register(state, "two", tmp_path, neighbour)
+    assert rc == registry.EXIT_CLAIMED
+
+
+REGISTRATION_FILES = ("ops/test_ops.sh", "ops/tests/test_ops_ci_coverage.sh")
+
+
+@pytest.mark.parametrize("shared", REGISTRATION_FILES)
+def test_group_registration_files_do_not_serialize_lanes(
+    tmp_path: Path, shared: str
+) -> None:
+    # Many queued lanes each add or remove a group-registration line here, in
+    # different arms; exclusive Scope would force them into serial cycles.
+    assert shared in SHARED_SCOPE_FILES
+    state = {"schema": registry.SCHEMA, "records": []}
+    first_rc, _ = _register(state, "one", tmp_path, shared, "ops/a.py")
+    second_rc, refusal = _register(state, "two", tmp_path, shared, "ops/b.py")
+    third_rc, refusal3 = _register(state, "three", tmp_path, shared)
+
+    assert (first_rc, second_rc, third_rc) == (registry.EXIT_OK,) * 3, (
+        refusal,
+        refusal3,
+    )
+    for record, other in zip(state["records"], ("ops/a.py", "ops/b.py", None)):
+        paths = [item["path"] for item in record["scope"]["files"]]
+        assert shared in paths and (other is None or other in paths)
+
+
+@pytest.mark.parametrize("shared", REGISTRATION_FILES)
+def test_group_registration_file_does_not_hide_real_overlap(
+    tmp_path: Path, shared: str
+) -> None:
+    state = {"schema": registry.SCHEMA, "records": []}
+    _register(state, "one", tmp_path, shared, "ops/a.py")
+    rc, refusal = _register(state, "two", tmp_path, shared, "ops/a.py")
+
+    assert rc == registry.EXIT_CLAIMED
+    assert refusal["owners"][0]["scope_paths"] == ["ops/a.py"]
+
+
+def test_every_shared_file_is_justified_in_the_delivery_model() -> None:
+    doc = (OPS.parent / "docs/reference/delivery_model.md").read_text()
+    undocumented = sorted(p for p in SHARED_SCOPE_FILES if f"`{p}`" not in doc)
+    assert undocumented == []
+
+
 def test_allowlist_is_exact_existing_canonical_paths() -> None:
     root = OPS.parent
     for path in SHARED_SCOPE_FILES:
@@ -72,6 +130,8 @@ def test_allowlist_is_exact_existing_canonical_paths() -> None:
         "docs/reference/tech_index.md",
         "docs/registry.yml",
         "ops/complexity_budget.json",
+        "ops/test_ops.sh",
+        "ops/tests/test_ops_ci_coverage.sh",
     }
 
 
