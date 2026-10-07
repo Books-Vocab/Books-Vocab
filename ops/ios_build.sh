@@ -214,9 +214,11 @@ if [[ "$CATALYST" == "1" ]]; then
   fi
 fi
 
-if ! kg_ios_disk_budget_preflight "$PROJECT_ROOT" "build"; then
-  echo "[ios_build] blocked by disk budget; clean rebuildable cache before retry" >&2
-  exit "$KG_IOS_DISK_BUDGET_EXIT"
+preflight_rc=0
+kg_ios_disk_budget_preflight "$PROJECT_ROOT" "build" || preflight_rc=$?
+if (( preflight_rc != 0 )); then
+  kg_ios_disk_budget_blocked_hint "[ios_build]" "$preflight_rc"
+  exit "$preflight_rc"
 fi
 
 echo "[ios_build] lock acquired by $CALLER (pid=$$) lockWaitMs=$LOCK_WAIT_MS — building..."

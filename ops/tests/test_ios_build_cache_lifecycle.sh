@@ -106,7 +106,7 @@ rebuild_end="$(awk 'NR > start && /^ensure_xctestrun_ready_or_fail\(\) \{/ { pri
 rebuild_body="$(sed -n "${rebuild_start},$((rebuild_end - 1))p" "$TEST")"
 lock_line="$(awk '/^[[:space:]]*acquire_build_lock$/ { print NR; exit }' <<<"$rebuild_body")"
 eviction_line="$(awk '/^[[:space:]]*kg_ios_cache_evict / { print NR; exit }' <<<"$rebuild_body")"
-preflight_line="$(awk '/^[[:space:]]*if ! kg_ios_disk_budget_preflight / { print NR; exit }' <<<"$rebuild_body")"
+preflight_line="$(awk '/^[[:space:]]*kg_ios_disk_budget_preflight .*preflight_rc=\$\?/ { print NR; exit }' <<<"$rebuild_body")"
 xcodebuild_line="$(awk '/^[[:space:]]*xcodebuild build-for-testing/ { print NR; exit }' <<<"$rebuild_body")"
 [[ -n "$lock_line" && -n "$eviction_line" && -n "$preflight_line" && -n "$xcodebuild_line" ]] \
   || fail "ios_test build writer is missing lock, eviction, disk preflight, or xcodebuild"
@@ -118,7 +118,7 @@ grep -F 'kg_ios_disk_budget_preflight "$disk_budget_project_root" "test"' <<<"$r
   || fail "ios_test disk preflight does not identify the test writer"
 grep -F 'release_build_lock' <<<"$rebuild_body" >/dev/null \
   || fail "ios_test disk-budget block does not release the shared build lock"
-grep -F 'return "$KG_IOS_DISK_BUDGET_EXIT"' <<<"$rebuild_body" >/dev/null \
-  || fail "ios_test disk-budget block does not preserve exit=75"
+grep -F 'return "$preflight_rc"' <<<"$rebuild_body" >/dev/null \
+  || fail "ios_test disk-budget block does not propagate the preflight exit (75 temporary / 77 structural)"
 
 echo "PASS: ios build cache lifecycle"

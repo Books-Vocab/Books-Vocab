@@ -328,6 +328,22 @@ kg_ios_disk_budget_preflight() {
   return 0
 }
 
+# One-line epilogue for a failed in-lock preflight.  Callers MUST propagate the
+# preflight's own rc (75 temporary / 77 structural) as their exit code and call
+# this with the same rc: "clean the cache and retry" is only true for 75, and
+# printing it for 77 sends agents back into the retry loop the 77 exists to stop.
+# The structural reason/action lines were already printed by the guard read.
+kg_ios_disk_budget_blocked_hint() {
+  local prefix="${1:?caller prefix is required}" rc="${2:-$KG_IOS_DISK_BUDGET_EXIT}"
+  if (( rc == KG_IOS_DISK_STRUCTURAL_EXIT )); then
+    echo "$prefix blocked by the shared disk guard (exit $rc, structural, retryable=no): see the guard reason and action above; do not poll" >&2
+  elif (( rc == KG_IOS_DISK_BUDGET_EXIT )); then
+    echo "$prefix blocked by disk budget; clean rebuildable cache before retry" >&2
+  else
+    echo "$prefix disk budget preflight failed (exit $rc)" >&2
+  fi
+}
+
 # Early verdict for entry points: read the shared guard BEFORE leasing a
 # simulator or taking the build lock, so a block costs seconds, not a queue
 # slot.  Lock-free by construction (an inline refresh runs the tick with
