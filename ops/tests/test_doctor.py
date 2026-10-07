@@ -382,3 +382,163 @@ def test_known_red_evidence_tolerates_runs_without_a_url() -> None:
     [finding] = doctor.evaluate_ci(runs, NOW)
     assert finding.level == "block"
     assert any("(no url)" in line for line in finding.detail)
+
+
+# ---- Sentry release integration (#2078) ------------------------------------
+
+FULL = "0123456789abcdef0123456789abcdef01234567"
+ALL_KEYS = {
+    "SENTRY_AUTH_TOKEN": True,
+    "SENTRY_ORG": True,
+    "SENTRY_PROJECT_BACKEND": True,
+    "SENTRY_PROJECT_IOS": True,
+    "SENTRY_API_URL": False,
+}
+
+
+def _local(**overrides: object) -> dict:
+    keys = dict(ALL_KEYS)
+    keys.update({k: v for k, v in overrides.items() if k.startswith("SENTRY_")})
+    return {
+        "schema": "kg.sentry.release.check.v1",
+        "env_file": "present",
+        "keys": keys,
+        "api_url": overrides.get("api_url", "valid"),
+        "uploader": overrides.get("uploader", "uvx"),
+        "sentry_cli": "3.8.0",
+    }
+
+
+def test_production_sentry_off_is_flagged_with_the_concrete_fix() -> None:
+    finding = doctor.evaluate_sentry({"version": FULL, "sentry": False}, _local())
+    assert finding.section == "sentry"
+    assert finding.level == "warn"
+    text = " ".join(finding.detail)
+    assert "SENTRY_DSN" in text
+    assert "~/kg-prod/backend/.env" in text
+    assert "--force-recreate" in text
+
+
+def test_sentry_unknown_when_offline_is_a_warning_not_a_crash_or_a_pass() -> None:
+    finding = doctor.evaluate_sentry(None, _local())
+    assert finding.level == "warn"
+    assert "unknown" in " ".join(finding.detail)
+
+
+def test_short_production_version_is_a_release_name_gap() -> None:
+    finding = doctor.evaluate_sentry({"version": "33e98c429", "sentry": True}, _local())
+    assert finding.level == "warn"
+    text = " ".join(finding.detail)
+    assert "kg-backend@" in text
+    assert "full sha" in text
+
+
+def test_fully_wired_sentry_is_ok() -> None:
+    finding = doctor.evaluate_sentry({"version": FULL, "sentry": True}, _local())
+    assert finding.level == "ok"
+    assert f"kg-backend@{FULL[:9]}" in finding.summary
+
+
+def test_ci_mode_judges_production_only() -> None:
+    finding = doctor.evaluate_sentry(
+        {"version": FULL, "sentry": True}, None, check_local=False
+    )
+    assert finding.level == "ok"
+
+
+@pytest.mark.parametrize(
+    ("missing", "consequence"),
+    [
+        ("SENTRY_PROJECT_BACKEND", "Sentry release"),
+        ("SENTRY_PROJECT_IOS", "dSYM"),
+    ],
+)
+def test_missing_local_release_config_names_key_consequence_and_file(
+    missing: str, consequence: str
+) -> None:
+    finding = doctor.evaluate_sentry(
+        {"version": FULL, "sentry": True}, _local(**{missing: False})
+    )
+    assert finding.level == "warn"
+    text = " ".join(finding.detail)
+    assert missing in text
+    assert consequence in text
+    assert "~/.secrets/sentry.env" in text
+
+
+def test_missing_uploader_and_bad_api_url_are_gaps() -> None:
+    finding = doctor.evaluate_sentry(
+        {"version": FULL, "sentry": True}, _local(uploader="missing", api_url="invalid")
+    )
+    text = " ".join(finding.detail)
+    assert "uvx" in text
+    assert "SENTRY_API_URL" in text
+
+
+def test_unreadable_local_check_is_a_gap_not_a_pass() -> None:
+    finding = doctor.evaluate_sentry({"version": FULL, "sentry": True}, None)
+    assert finding.level == "warn"
+    assert "sentry_release.sh check" in " ".join(finding.detail)
+
+
+def test_prod_info_collector_degrades_to_none_offline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def offline(*_a: object, **_k: object) -> None:
+        raise OSError("network unreachable")
+
+    monkeypatch.setattr(doctor.urllib.request, "urlopen", offline)
+    assert doctor.collect_prod_info() is None
+
+
+def test_release_gap_reuses_the_single_production_probe(tmp_path: Path) -> None:
+    # No version in the probe → unknown, without a second network round-trip.
+    assert doctor.collect_release_gap(tmp_path, NOW, None) == (None, None, None)
+    assert doctor.collect_release_gap(tmp_path, NOW, {"sentry": True}) == (
+        None,
+        None,
+        None,
+    )
+
+
+def test_local_sentry_check_runs_the_helper_without_leaking_values(
+    tmp_path: Path,
+) -> None:
+    secret = "sntrys_DOCTORfakeTOKEN123456"
+    env_file = tmp_path / "sentry.env"
+    env_file.write_text(f"SENTRY_AUTH_TOKEN={secret}\nSENTRY_ORG=kg\n")
+    env = {
+        "PATH": "/usr/bin:/bin",
+        "HOME": str(tmp_path),
+        "SENTRY_ENV_FILE": str(env_file),
+    }
+    local = doctor.collect_sentry_local(OPS.parent, env=env)
+    assert local is not None
+    assert local["keys"]["SENTRY_AUTH_TOKEN"] is True
+    assert local["keys"]["SENTRY_PROJECT_IOS"] is False
+    assert secret not in json.dumps(local)
+
+
+def test_main_reports_the_sentry_section(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    git = {"branch": "main", "dirty": 0, "local": "a", "origin": "a"}
+    monkeypatch.setattr(doctor, "collect_git", lambda repo: git)
+    monkeypatch.setattr(doctor, "collect_issues", lambda repo: [])
+    monkeypatch.setattr(doctor, "collect_ci", lambda repo: [])
+    monkeypatch.setattr(doctor, "collect_registry", lambda repo: [])
+    monkeypatch.setattr(doctor, "collect_disk", lambda: None)
+    monkeypatch.setattr(doctor, "collect_complexity", lambda repo: (None, None))
+    monkeypatch.setattr(doctor, "collect_delivery", lambda repo: None)
+    monkeypatch.setattr(
+        doctor, "collect_prod_info", lambda: {"version": FULL, "sentry": False}
+    )
+    monkeypatch.setattr(
+        doctor, "collect_release_gap", lambda repo, now, info: (FULL, 1, 1.0)
+    )
+    monkeypatch.setattr(doctor, "collect_sentry_local", lambda repo: _local())
+    for argv in (["--json"], ["--json", "--ci"]):
+        doctor.main(argv)
+        report = json.loads(capsys.readouterr().out)
+        sentry = [f for f in report["findings"] if f["section"] == "sentry"]
+        assert len(sentry) == 1 and sentry[0]["level"] == "warn", argv

@@ -16,7 +16,12 @@
 #     --force-recreate（旗標不可省：健康 gate 比對容器自報版本，而容器自報的是 import
 #     時快取的 bind-mount VERSION，只隨行程重啟改變；見 deploy 區塊註解與 IMP-0056）+
 #     健康 gate（localhost + 外部 smoke + infra_health）；失敗自動 ROLLBACK 到部署前
-#     的 sha 並把該 origin sha 標 poison（cooldown 內不重試）。
+#     的 sha 並把該 origin sha 標 poison（cooldown 內不重試）。健康落地後 best-effort
+#     記 Sentry release kg-backend@<完整 sha> + production deploy（ops/sentry_release.sh，
+#     有時間上限，失敗/缺設定只告警，永不改變 verdict）。
+#   - VERSION 一律寫**完整 40 字元 sha**：它就是 SDK 自報的 Sentry release 名來源
+#     （kg-backend@<VERSION>），短 sha 長度隨 repo 成長而變、無法與紀錄端對齊。舊部署留下的
+#     短 sha 游標仍可解析，下一次部署即收斂成完整 sha。
 #   - 變更不含 backend → 只 git pull --ff-only（讓 felix repo HEAD 追上 origin/prod，含
 #     自我更新本腳本），不 rebuild（容器仍舊 image，但無 backend 差異，正確）。
 #   - 無差異 → no-op。
@@ -54,6 +59,8 @@ KG_PUBLIC_URL="${KG_PUBLIC_URL:-https://wordnexus.lol}"
 KG_LOCAL_HEALTH_URL="${KG_LOCAL_HEALTH_URL:-http://localhost:8000/api/system/info}"
 KG_LOCK_DIR="${KG_LOCK_DIR:-/tmp/kg-deploy.lock}"          # 與 devops.sh acquire_deploy_lock 同一把鎖
 KG_GH_TOKEN_ENV="${KG_GH_TOKEN_ENV:-$HOME/.secrets/gh-token.env}"           # GH_TOKEN（私有 repo fetch）
+KG_SENTRY_RELEASE="${KG_SENTRY_RELEASE:-$KG_RECON_REPO/ops/sentry_release.sh}"  # Sentry release recorder
+KG_RECON_SENTRY_TIMEOUT="${KG_RECON_SENTRY_TIMEOUT:-45}"   # recorder 總時間上限（秒；持鎖中，故有界）
 # 下面兩個 knob **兩個探針共用**（localhost 與 external）。刻意不分成兩組：多一組旋鈕
 # 就多一個會漂的地方。但要知道兩者等的不是同一件事——
 #   localhost：uvicorn 起來（實測 1.2s，秒級，與網路無關）
@@ -168,6 +175,42 @@ clear_poison() {
   tmp="$(mktemp)"
   grep -v "^poison $sha " "$KG_STATE_FILE" 2>/dev/null > "$tmp" || true
   mv "$tmp" "$KG_STATE_FILE"
+}
+
+# 健康部署落地後記 Sentry release + deploy。**best-effort 的三層意思**：
+#   ① 永遠 return 0：Sentry 掛了／token 缺／helper 不在（生產 clone 尚未帶到它）都只告警，
+#      verdict 與 exit code 只由部署本身決定；
+#   ② 有界：helper 自己的每個 HTTP 呼叫已有 timeout，這裡再加一層總上限
+#      KG_RECON_SENTRY_TIMEOUT——我們持著 deploy 鎖，不能把鎖交給一個外部 API；
+#   ③ stdout 契約：recorder 的任何輸出都導去 stderr，stdout 只留那一行 JSON verdict。
+# 輪詢用 bash 內建（kill -0 + sleep 0.2）而非 timeout(1)/perl：本腳本的依賴契約是
+# bash/git/curl，且 launchd 的 PATH 不含 coreutils。
+record_sentry_release() {
+  local sha="$1" pid rc=0 ticks=0 limit=$(( KG_RECON_SENTRY_TIMEOUT * 5 ))
+  if [[ ! -x "$KG_SENTRY_RELEASE" ]]; then
+    log "  SKIP Sentry release 紀錄：找不到 ${KG_SENTRY_RELEASE}（kg-backend@${sha} 未記錄）"
+    return 0
+  fi
+  "$KG_SENTRY_RELEASE" record-backend --sha "$sha" --environment production --name reconciler \
+    </dev/null >&2 &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null; do
+    if (( ticks >= limit )); then
+      kill -TERM "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+      log "  Sentry release 紀錄超過 ${KG_RECON_SENTRY_TIMEOUT}s 上限，已放棄（部署不受影響）"
+      return 0
+    fi
+    sleep 0.2
+    ticks=$(( ticks + 1 ))
+  done
+  wait "$pid" || rc=$?
+  case "$rc" in
+    0) log "  Sentry release kg-backend@${sha} 已記錄（production deploy）" ;;
+    3) log "  SKIP Sentry release 紀錄（原因見上方 [sentry-release] 行；部署不受影響）" ;;
+    *) log "  Sentry release 紀錄失敗 (exit ${rc})，部署不受影響" ;;
+  esac
+  return 0
 }
 
 append_deploy_log() {
@@ -429,7 +472,7 @@ deploy_and_gate() {
     exit 3
   fi
   local new_sha
-  new_sha="$("$KG_GIT" -C "$KG_RECON_REPO" rev-parse --short HEAD)"
+  new_sha="$("$KG_GIT" -C "$KG_RECON_REPO" rev-parse HEAD)"   # 完整 sha（= Sentry release 名）
   printf '%s\n' "$new_sha" > "$KG_RECON_REPO/backend/VERSION"
   log "→ DEPLOY: $rollback_sha → ${new_sha}，重建容器…"
 
@@ -468,6 +511,7 @@ deploy_and_gate() {
     fi
     clear_poison "$ORIGIN_SHA"   # 部署確實落地了，解除 poison
     log "✓ DEPLOY 成功：version=$new_sha"
+    record_sentry_release "$new_sha"
     emit_verdict "deployed"
     exit 0
   fi
@@ -582,7 +626,8 @@ main() {
   #    傳播使賦值觸 errexit，下一行 `|| unknown` fallback 反成死碼（首次啟用/VERSION 遺失即崩）。
   DEPLOYED_SHA="$(cat "$KG_RECON_REPO/backend/VERSION" 2>/dev/null | head -1 | tr -d '[:space:]' || true)"
   [[ -n "$DEPLOYED_SHA" ]] || DEPLOYED_SHA="unknown"
-  ORIGIN_SHA="$("$KG_GIT" -C "$KG_RECON_REPO" rev-parse --short origin/prod 2>/dev/null || echo unknown)"
+  # 完整 sha：與 deploy 寫進 VERSION 的形式一致（poison 鍵、verdict 欄位同一口徑）。
+  ORIGIN_SHA="$("$KG_GIT" -C "$KG_RECON_REPO" rev-parse origin/prod 2>/dev/null || echo unknown)"
 
   if [[ "$ORIGIN_SHA" == "unknown" ]]; then
     alert "無法解析 origin/prod（fetch 失敗或 ref 缺失；首次啟用需 seed origin/prod），本輪 no-op。"
@@ -666,6 +711,7 @@ main() {
     log "[dry-run] would: acquire lock $KG_LOCK_DIR"
     log "[dry-run] would: git pull --ff-only origin prod → 寫 backend/VERSION=$ORIGIN_SHA"
     log "[dry-run] would: (cd backend && $KG_COMPOSE up -d --build --force-recreate)"
+    log "[dry-run] would: 健康落地後 best-effort 記 Sentry release kg-backend@${ORIGIN_SHA}（${KG_SENTRY_RELEASE}，上限 ${KG_RECON_SENTRY_TIMEOUT}s）"
     # 三分類要在 dry-run 這一面也看得見：操作者在這裡預覽「會發生什麼」，而「量不到會
     # 落地並記 unverified」是本腳本最反直覺的一條行為，藏起來等於沒有（review D5）。
     log "[dry-run] would: 健康 gate（localhost → 外部 smoke 三分類 → infra_health）"

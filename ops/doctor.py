@@ -3,8 +3,9 @@
 
 It aggregates what other tools already know and adds only the judgements none of
 them make: a CI check that has stayed red on main (known-red), how far production
-trails main, claims whose worktree is gone, and whether open issues can be
-verified by their own acceptance commands.
+trails main, claims whose worktree is gone, whether production crash reporting
+and Sentry release integration are actually wired, and whether open issues can
+be verified by their own acceptance commands.
 
 Nothing here writes to the repository, the registry or GitHub.  Issue acceptance
 commands are *reported* by default; ``--run-acceptance`` executes them, and only
@@ -41,6 +42,13 @@ RELEASE_GAP_BLOCK_DAYS = 45
 PROD_INFO_URL = "https://wordnexus.lol/api/system/info"
 DISK_GUARD_FILE = (
     Path.home() / "Library" / "Application Support" / "KG" / "disk_guard.json"
+)
+FULL_SHA = re.compile(r"[0-9a-f]{40}")
+SENTRY_ENV_FILE_HINT = "~/.secrets/sentry.env"
+SENTRY_DSN_FIX = (
+    "fix: add SENTRY_DSN=<backend project DSN> to felix ~/kg-prod/backend/.env, then on felix "
+    "`cd ~/kg-prod/backend && docker compose up -d --build --force-recreate` "
+    "(docs/sop/deploy.md §Sentry)"
 )
 _REAL_CONCLUSIONS = {"success", "failure", "timed_out", "startup_failure"}
 _LIVE_CLAIM_STATUSES = {"active", "published", "cleanup_pending"}
@@ -159,6 +167,83 @@ def evaluate_release_gap(
     if behind >= RELEASE_GAP_WARN_COMMITS or age_days >= RELEASE_GAP_WARN_DAYS:
         return Finding("release", "warn", summary)
     return Finding("release", "ok", summary)
+
+
+def evaluate_sentry(
+    prod: dict[str, Any] | None,
+    local: dict[str, Any] | None,
+    *,
+    check_local: bool = True,
+) -> Finding:
+    """Is production crash reporting on, and can deploys/releases feed Sentry?
+
+    ``prod`` is the /api/system/info payload (None when unreachable); ``local``
+    is ``ops/sentry_release.sh check --json`` (key presence only, never values).
+    """
+
+    detail: list[str] = []
+    version = prod.get("version") if prod else None
+    if prod is None:
+        detail.append(
+            "production /api/system/info unreachable: Sentry state unknown (offline?)"
+        )
+    else:
+        if prod.get("sentry") is not True:
+            detail.append(
+                f"production backend Sentry is off (sentry={json.dumps(prod.get('sentry'))}): "
+                f"backend crashes are invisible. {SENTRY_DSN_FIX}"
+            )
+        if not (isinstance(version, str) and FULL_SHA.fullmatch(version)):
+            detail.append(
+                f"production reports version {version!r}, not a full sha: its Sentry release "
+                "cannot match the recorded kg-backend@<full sha>. fix: the next deploy "
+                "(reconciler or devops.sh deploy) writes the full sha to backend/VERSION"
+            )
+    if check_local:
+        if local is None:
+            detail.append(
+                "could not run `ops/sentry_release.sh check --json`: release integration unverified"
+            )
+        else:
+            keys = local.get("keys", {})
+
+            def missing(*names: str) -> list[str]:
+                return [name for name in names if not keys.get(name)]
+
+            gap = missing("SENTRY_AUTH_TOKEN", "SENTRY_ORG", "SENTRY_PROJECT_BACKEND")
+            if gap:
+                detail.append(
+                    f"backend deploys SKIP recording the Sentry release/deploy: {', '.join(gap)} "
+                    f"missing. fix: add to {SENTRY_ENV_FILE_HINT} (token scope project:releases)"
+                )
+            gap = missing("SENTRY_AUTH_TOKEN", "SENTRY_ORG", "SENTRY_PROJECT_IOS")
+            if gap:
+                detail.append(
+                    f"ios_release.sh --upload SKIPs the dSYM upload: {', '.join(gap)} missing. "
+                    f"fix: add to {SENTRY_ENV_FILE_HINT} (token scope project:releases)"
+                )
+            if local.get("api_url") == "invalid":
+                detail.append(
+                    f"SENTRY_API_URL is not https (or loopback http). fix: correct it in {SENTRY_ENV_FILE_HINT}"
+                )
+            if local.get("uploader") == "missing":
+                detail.append(
+                    "uvx not on PATH: dSYM upload SKIPs (pinned sentry-cli runs via uvx). fix: install uv"
+                )
+    if detail:
+        return Finding(
+            "sentry", "warn", f"{len(detail)} Sentry release-integration gap(s)", detail
+        )
+    scope = (
+        "deploy/dSYM recording configured"
+        if check_local
+        else "local config not checked"
+    )
+    return Finding(
+        "sentry",
+        "ok",
+        f"production Sentry on, release kg-backend@{str(version)[:9]}…; {scope}",
+    )
 
 
 def evaluate_disk(guard: dict[str, Any] | None) -> Finding:
@@ -408,14 +493,21 @@ def prod_request() -> urllib.request.Request:
     return urllib.request.Request(PROD_INFO_URL, headers={"User-Agent": "kg-doctor/1"})
 
 
-def collect_release_gap(
-    repo: Path, now: datetime
-) -> tuple[str | None, int | None, float | None]:
+def collect_prod_info() -> dict[str, Any] | None:
+    """One read-only probe of production, shared by the release and Sentry checks."""
+
     try:
         with urllib.request.urlopen(prod_request(), timeout=10) as response:
-            sha = json.load(response).get("version")
+            payload = json.load(response)
     except (OSError, ValueError):
-        return None, None, None
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def collect_release_gap(
+    repo: Path, now: datetime, info: dict[str, Any] | None
+) -> tuple[str | None, int | None, float | None]:
+    sha = info.get("version") if info else None
     if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{7,40}", sha):
         return None, None, None
     behind = _run(["git", "rev-list", "--count", f"{sha}..origin/main"], repo)
@@ -424,6 +516,25 @@ def collect_release_gap(
         return sha, None, None
     age = (now.timestamp() - int(stamp.stdout.strip())) / 86400
     return sha, int(behind.stdout.strip()), age
+
+
+def collect_sentry_local(
+    repo: Path, env: dict[str, str] | None = None
+) -> dict[str, Any] | None:
+    try:
+        done = subprocess.run(
+            [str(repo / "ops" / "sentry_release.sh"), "check", "--json"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+            env=env,
+        )
+        payload = json.loads(done.stdout) if done.returncode == 0 else None
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def collect_complexity(repo: Path) -> tuple[list[dict[str, Any]] | None, float | None]:
@@ -525,18 +636,25 @@ def main(argv: list[str] | None = None) -> int:
         )
         results = run_acceptance(issues, cwd=repo)
     ci = evaluate_ci(collect_ci(repo), now)
-    gap = evaluate_release_gap(*collect_release_gap(repo, now))
+    prod_info = collect_prod_info()
+    gap = evaluate_release_gap(*collect_release_gap(repo, now, prod_info))
+    sentry = evaluate_sentry(
+        prod_info,
+        None if args.ci else collect_sentry_local(repo),
+        check_local=not args.ci,
+    )
     complexity_finding = evaluate_complexity(*collect_complexity(repo))
     delivery = evaluate_delivery(collect_delivery(repo), now)
     issues_finding = evaluate_issues(issues, results)
     if args.ci:
-        findings = [*ci, gap, delivery, complexity_finding, issues_finding]
+        findings = [*ci, gap, sentry, delivery, complexity_finding, issues_finding]
     else:
         findings = [
             evaluate_git(git),
             evaluate_registry(collect_registry(repo)),
             *ci,
             gap,
+            sentry,
             delivery,
             evaluate_disk(collect_disk()),
             complexity_finding,

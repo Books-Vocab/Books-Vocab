@@ -229,7 +229,14 @@ sentry_summary_json() {
     fi
   fi
 
-  if [[ -n "${SENTRY_API_URL:-}" && -n "${SENTRY_AUTH_TOKEN:-}" && -n "${SENTRY_ORG:-}" && -n "${SENTRY_PROJECT_IOS:-}" ]]; then
+  # Same config contract as ops/sentry_api.py: process env wins, then SENTRY_ENV_FILE
+  # (default ~/.secrets/sentry.env); SENTRY_API_URL defaults to https://sentry.io/api/0
+  # but an explicit non-https value disqualifies. The resolution lives in one shell
+  # place, ops/sentry_release.sh, which reports key presence only (never values).
+  local sentry_check
+  sentry_check="$("$ROOT/ops/sentry_release.sh" check --json 2>/dev/null || true)"
+  if jq -e '.keys.SENTRY_AUTH_TOKEN and .keys.SENTRY_ORG and .keys.SENTRY_PROJECT_IOS and .api_url == "valid"' \
+      <<<"$sentry_check" >/dev/null 2>&1; then
     api_configured=1
   else
     api_configured=0

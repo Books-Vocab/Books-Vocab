@@ -11,7 +11,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
 LINUX_GROUPS=(
-  backup-verify devops deploy-smoke infra-health disk-guard reconcile branch-audit
+  backup-verify devops deploy-smoke infra-health disk-guard reconcile sentry-release branch-audit
   exit-code-contract worktree delivery-control capability-matrix context-routing doctor ui-token plain-deadzone
   ui-deadcode ui-graph log-assert python-entrypoints
   lint-baselines injection-lint ui-fixture-lint ops-ci-coverage

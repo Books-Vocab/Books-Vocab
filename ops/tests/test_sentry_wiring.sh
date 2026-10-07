@@ -85,5 +85,25 @@ else
   fail "build evidence ignored the shared build lock: $locked"
 fi
 
+# api_configured reads the same config contract as ops/sentry_api.py and
+# ops/sentry_release.sh: process env wins, then SENTRY_ENV_FILE
+# (default ~/.secrets/sentry.env). #2078: it used to read env only.
+cfg_dir="$(mktemp -d)"
+printf 'SENTRY_AUTH_TOKEN=sntrys_fileTOKEN0123456789\nSENTRY_ORG=kg-org\nSENTRY_PROJECT_IOS=ios\n' >"$cfg_dir/sentry.env"
+api_from() {  # extra env assignments → readiness.api_configured
+  env -u SENTRY_API_URL -u SENTRY_AUTH_TOKEN -u SENTRY_ORG -u SENTRY_PROJECT_IOS -u SENTRY_PROJECT_BACKEND \
+    KG_IOS_SENTRY_BUILD_LOCK_TIMEOUT=0 "$@" bash "$OPS" sentry --json | jq -r '.readiness.api_configured'
+}
+from_file="$(api_from SENTRY_ENV_FILE="$cfg_dir/sentry.env")"
+[[ "$from_file" == "true" ]] && ok "api_configured reads SENTRY_ENV_FILE when env is empty" \
+  || fail "api_configured ignored the env file (got $from_file)"
+no_file="$(api_from SENTRY_ENV_FILE="$cfg_dir/missing.env")"
+[[ "$no_file" == "false" ]] && ok "api_configured false without env or file" \
+  || fail "api_configured true with no config (got $no_file)"
+env_wins="$(api_from SENTRY_ENV_FILE="$cfg_dir/sentry.env" SENTRY_API_URL=http://sentry.example.test)"
+[[ "$env_wins" == "false" ]] && ok "process env wins over the file (insecure env URL rejected)" \
+  || fail "env did not win over the file (got $env_wins)"
+rm -rf "$cfg_dir"
+
 echo "passed=$PASS failed=$FAIL"
 [[ "$FAIL" -eq 0 ]]

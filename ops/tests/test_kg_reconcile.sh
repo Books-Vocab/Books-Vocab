@@ -155,6 +155,7 @@ new_scratch() {
   RECREATELOG="$SC/recreate.log"    # 每次真的 recreate 記一行（與「版本變了」分開觀測）
   CONTAINER_DEAD="$SC/container_dead"  # 存在 = recreate 後容器起不來（用來測雙壞告警）
   INFRALOG="$SC/infra.log"          # infra_health 替身每次被呼叫記一行（含它自己探到的 code）
+  SENTRYLOG="$SC/sentry.log"        # Sentry release 替身（KG_SENTRY_RELEASE）每次被呼叫記一行 argv
   LOCK="$SC/deploy.lock"
   mkdir -p "$BIN" "$SC/backups"
 
@@ -197,7 +198,11 @@ new_scratch() {
     "$REALGIT" -C "$REPO" commit -qm change
     # the change lands on origin/prod (the release-plane ref); reconciler converges to it
     "$REALGIT" -C "$REPO" push -q origin prod 2>/dev/null
-    SHA_NEW="$("$REALGIT" -C "$REPO" rev-parse --short HEAD)"
+    # SHA_NEW is the **full** sha: deploy writes `git rev-parse HEAD` to VERSION so the
+    # Sentry release kg-backend@<VERSION> is unambiguous (#2078). SHA_OLD above stays
+    # short on purpose — it is the legacy cursor every pre-#2078 deploy left on felix,
+    # so each flow also proves the short→full transition converges.
+    SHA_NEW="$("$REALGIT" -C "$REPO" rev-parse HEAD)"
     "$REALGIT" -C "$REPO" reset --hard -q "$SHA_OLD"
   else
     SHA_NEW="$SHA_OLD"
@@ -288,7 +293,20 @@ if (( json == 1 )); then
 fi
 case "\$overall" in ok) exit 0;; warn) exit 1;; crit) exit 2;; esac
 EOF
-  chmod +x "$BIN/git_mock.sh" "$BIN/compose_mock.sh" "$BIN/infra_mock.sh"
+  # Sentry release recorder 替身：記 argv，並**故意往 stdout 吐垃圾**——reconciler 的
+  # stdout 只准有那一行 JSON verdict，recorder 的任何輸出都必須被導去 stderr。
+  # MOCK_SENTRY_MODE=fail|hang 覆蓋「Sentry 掛了／卡住也不得影響部署」。
+  cat >"$BIN/sentry_mock.sh" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$SENTRYLOG"
+echo "sentry-mock noise on stdout"
+case "\${MOCK_SENTRY_MODE:-ok}" in
+  fail) exit 1 ;;
+  hang) sleep 30 ;;
+esac
+exit 0
+EOF
+  chmod +x "$BIN/git_mock.sh" "$BIN/compose_mock.sh" "$BIN/infra_mock.sh" "$BIN/sentry_mock.sh"
 }
 
 run_recon() {
@@ -306,6 +324,9 @@ run_recon() {
     export KG_GH_TOKEN_ENV="$SC/no-such-token.env"
     export KG_RECON_HEALTH_DELAY=0
     export KG_RECON_HEALTH_ATTEMPTS=2
+    # 預設指向 scratch repo 裡不存在的 helper（= 生產 clone 尚未帶到 helper 的情形）；
+    # 要觀測 recorder 的 flow 自己覆寫成 $BIN/sentry_mock.sh。
+    export KG_SENTRY_RELEASE="${KG_SENTRY_RELEASE_OVERRIDE:-$REPO/ops/sentry_release.sh}"
     "$RECON" "$@"
   )
 }
@@ -362,7 +383,7 @@ v="$(get_verdict "$out")"
 [[ "$rc" -eq 0 ]] && ok "ff-only exit 0" || bad "ff-only exit $rc"
 [[ ! -s "$COMPOSELOG" ]] && ok "ff-only: compose not called" || bad "ff-only: compose called"
 grep -q "pull --ff-only" "$GITLOG" && ok "ff-only: git pull --ff-only called" || bad "ff-only: pull not called"
-head_now="$("$REALGIT" -C "$REPO" rev-parse --short HEAD)"
+head_now="$("$REALGIT" -C "$REPO" rev-parse HEAD)"
 [[ "$head_now" == "$SHA_NEW" ]] && ok "ff-only: repo ff'd to origin sha" || bad "ff-only: HEAD=$head_now != $SHA_NEW"
 
 section "backend change + smoke 全綠 → deployed"
@@ -388,6 +409,41 @@ grep -q "overall=ok" "$INFRALOG" && ok "deployed: infra_health 真的跑了且�
 # 條件會構成迴圈——release 後到收斂完成之間必然 drift，於是它會回滾一次本來健康的部署。
 # 故這一關必須以 KG_HEALTH_DEPLOY_DRIFT=0 呼叫。
 grep -q "deploy_drift=0" "$INFRALOG" && ok "deployed: infra_health 以 KG_HEALTH_DEPLOY_DRIFT=0 呼叫" || bad "deployed: infra_health 未關掉 deploy_drift，有自噬迴圈風險（$(cat "$INFRALOG" 2>/dev/null)）"
+[[ ${#SHA_NEW} -eq 40 && "$ver_now" == "$SHA_NEW" ]] && ok "deployed: VERSION 是完整 40 字元 sha（Sentry release 名的唯一來源）" || bad "deployed: VERSION=$ver_now 不是完整 sha"
+
+section "deployed → Sentry release 紀錄（best-effort，永不影響 verdict）"
+sentry_fixture() {
+  MOCK_CURL="$(make_mock_curl "$(cat <<EOF
+wordnexus.lol/api/system/info|200|{"version":"$SHA_NEW"}
+wordnexus.lol/api/health|401|{"detail":"x"}
+EOF
+)" "$SC" "$SERVEDFILE")"
+}
+sentry_flow() {  # $1=mode → 設 out/rc/err/elapsed
+  new_scratch backend
+  sentry_fixture
+  local t0; t0=$(date +%s)
+  out="$(KG_SENTRY_RELEASE_OVERRIDE="$BIN/sentry_mock.sh" MOCK_SENTRY_MODE="$1" KG_RECON_SENTRY_TIMEOUT=2 \
+    run_recon --once 2>"$SC/sentry.err")"; rc=$?
+  elapsed=$(( $(date +%s) - t0 )); err="$(cat "$SC/sentry.err")"
+}
+sentry_flow ok
+[[ "$(get_verdict "$out")" == "deployed" && "$rc" -eq 0 ]] && ok "sentry ok: verdict deployed exit 0" || bad "sentry ok: verdict=$(get_verdict "$out") rc=$rc"
+[[ "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" == 1 && "$out" == '{"schema":"kg.deploy.reconcile.v1"'* ]] \
+  && ok "sentry ok: stdout 仍只有一行 JSON（recorder 輸出被導去 stderr）" || bad "sentry ok: stdout 被污染: $out"
+[[ "$(cat "$SENTRYLOG" 2>/dev/null)" == "record-backend --sha $SHA_NEW --environment production --name reconciler" ]] \
+  && ok "sentry ok: recorder 收到完整 sha + production + reconciler" || bad "sentry ok: recorder argv=$(cat "$SENTRYLOG" 2>/dev/null)"
+sentry_flow fail
+[[ "$(get_verdict "$out")" == "deployed" && "$rc" -eq 0 ]] && ok "sentry fail: 部署照樣 deployed exit 0" || bad "sentry fail: verdict=$(get_verdict "$out") rc=$rc"
+grep -q "Sentry" <<<"$err" && ok "sentry fail: stderr 告知 Sentry 紀錄失敗" || bad "sentry fail: stderr 沒提 Sentry ($err)"
+sentry_flow hang
+[[ "$(get_verdict "$out")" == "deployed" && "$rc" -eq 0 && "$elapsed" -lt 10 ]] \
+  && ok "sentry hang: time bound 內放手，部署照樣 deployed（${elapsed}s）" || bad "sentry hang: verdict=$(get_verdict "$out") rc=$rc elapsed=${elapsed}s"
+new_scratch backend
+sentry_fixture
+out="$(run_recon --once 2>"$SC/sentry.err")"; rc=$?
+[[ "$(get_verdict "$out")" == "deployed" && "$rc" -eq 0 ]] && grep -q "SKIP" "$SC/sentry.err" \
+  && ok "sentry helper 不存在：deployed + 大聲 SKIP" || bad "sentry missing: verdict=$(get_verdict "$out") rc=$rc err=$(grep -i sentry "$SC/sentry.err")"
 
 section "外部 smoke 前兩次連不上 → 重試後仍 deployed（不得假回滾）"
 # IMP-0060，這是**生產實際發生過的事故**（2026-08-04 12:40Z）：容器 recreate 後
@@ -601,9 +657,10 @@ wordnexus.lol/api/system/info|500|internal error
 wordnexus.lol/api/health|401|{"detail":"x"}
 EOF
 )" "$SC" "$SERVEDFILE")"
-out="$(run_recon --once 2>/dev/null)"; rc=$?
+out="$(KG_SENTRY_RELEASE_OVERRIDE="$BIN/sentry_mock.sh" run_recon --once 2>/dev/null)"; rc=$?
 v="$(get_verdict "$out")"
 [[ "$v" == "rolled-back" ]] && ok "verdict rolled-back" || bad "expected rolled-back, got '$v' (out=$out)"
+[[ ! -s "$SENTRYLOG" ]] && ok "rolled-back: 不記 Sentry release（只有健康部署才記）" || bad "rolled-back: recorder 被呼叫 ($(cat "$SENTRYLOG"))"
 [[ "$rc" -ne 0 ]] && ok "rolled-back exit non-zero ($rc)" || bad "rolled-back expected non-zero exit"
 grep -q "reset --hard $SHA_OLD" "$GITLOG" && ok "rolled-back: git reset --hard ROLLBACK_SHA" || bad "rolled-back: reset missing"
 compose_ups="$(grep -c 'up -d --build' "$COMPOSELOG" 2>/dev/null || echo 0)"

@@ -218,9 +218,48 @@ awk '/^require_local_files\(\)/,/^}/' "$KG" | grep -q 'docker-compose.yml' \
 
 # ── 7. 部署版本追蹤 ──────────────────────────────────────────────────────
 section "Deploy version tracking"
-grep -q 'git rev-parse --short HEAD' "$KG" \
-  && ok "KG deploy stamps git SHA" \
-  || fail_t "KG deploy missing git SHA stamp"
+# 完整 sha（#2078）：VERSION 是 SDK 自報 Sentry release（kg-backend@<VERSION>）的唯一來源，
+# 與 deploy 後記錄的 release 名必須逐字相同；短 sha 長度隨 repo 成長漂移。函式範圍 + 剝註解。
+deploy_body="$(awk '/^cmd_deploy\(\)/,/^}$/' "$KG" | grep -v '^[[:space:]]*#')"
+grep -q 'git rev-parse HEAD > VERSION' <<<"$deploy_body" \
+  && ok "KG deploy stamps the full git SHA into VERSION" \
+  || fail_t "KG deploy must write the full sha (git rev-parse HEAD > VERSION)"
+grep -q 'rev-parse --short HEAD > VERSION' <<<"$deploy_body" \
+  && fail_t "KG deploy still writes a short sha to VERSION" \
+  || ok "KG deploy no longer writes a short sha to VERSION"
+grep -q 'deploy_sha=$(run_remote "cd $REMOTE_DIR && git rev-parse HEAD"' <<<"$deploy_body" \
+  && ok "KG deploy compares against the full sha" \
+  || fail_t "KG deploy_sha is not the full sha"
+
+# Sentry release 紀錄：只在 smoke verify 通過後、best-effort（#2078）。
+verify_line="$(grep -n '^  verify_post_deploy "\$deploy_sha"' "$KG" | head -1 | cut -d: -f1 || true)"
+record_line="$(grep -n '^  record_sentry_release "\$deploy_sha"' "$KG" | head -1 | cut -d: -f1 || true)"
+[[ -n "$record_line" && -n "$verify_line" && "$record_line" -gt "$verify_line" ]] \
+  && ok "KG deploy records the Sentry release after a healthy smoke verify" \
+  || fail_t "KG deploy Sentry recording missing or before smoke verify (verify=$verify_line record=$record_line)"
+grep -q '"sentry"' <<<"$deploy_body" \
+  && ok "KG deploy reads the sentry flag from /api/system/info" \
+  || fail_t "KG deploy ignores the sentry flag"
+rs_tmp="$(mktemp -d)"
+cat >"$rs_tmp/helper.sh" <<'FAKE'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$RS_LOG"
+exit "${RS_EXIT:-0}"
+FAKE
+chmod +x "$rs_tmp/helper.sh"
+_rs() {  # RS_EXIT → output + rc of the real record_sentry_release body
+  RS_LOG="$rs_tmp/log" RS_EXIT="$1" bash -c 'set -euo pipefail
+    ok() { echo "OK $*"; }; info() { echo "INFO $*"; }
+    eval "$(awk "/^record_sentry_release\(\)/,/^}$/" "$1")"
+    KG_SENTRY_RELEASE="$2" record_sentry_release 0123456789abcdef0123456789abcdef01234567
+    echo "RC=0"' _ "$KG" "$rs_tmp/helper.sh" 2>&1
+}
+out="$(_rs 0 || true)"
+grep -q 'RC=0' <<<"$out" && grep -q 'record-backend --sha 0123456789abcdef0123456789abcdef01234567 --environment production --name devops.sh' "$rs_tmp/log" \
+  && ok "record_sentry_release passes full sha/production/devops.sh" || fail_t "record_sentry_release ok path: $out / $(cat "$rs_tmp/log" 2>/dev/null)"
+out="$(_rs 1 || true)"; grep -q 'RC=0' <<<"$out" && ok "record_sentry_release failure never fails deploy" || fail_t "failure propagated: $out"
+out="$(_rs 3 || true)"; grep -q 'RC=0' <<<"$out" && grep -q 'SKIP' <<<"$out" && ok "record_sentry_release SKIP is loud and non-fatal" || fail_t "skip path: $out"
+rm -rf "$rs_tmp"
 grep -q 'VERSION' "$KG" \
   && ok "KG writes VERSION file" \
   || fail_t "KG missing VERSION file write"
