@@ -2762,3 +2762,185 @@ def test_resume_published_rejects_duplicate_and_unknown_registry_truth(
         or "unknown" in unknown_payload["reason"]
     )
     assert not target.exists()
+
+
+def _cleanup_pending_state(tmp_path: Path, *, branch: str, head: str) -> Path:
+    state_path = tmp_path / "registry.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "schema": "kg.worktree.registry.v1",
+                "records": [
+                    {
+                        "branch": branch,
+                        "path": str(tmp_path / "gone"),
+                        "status": "cleanup_pending",
+                        "external_ids": [branch],
+                        "claim_generation": 0,
+                        "handed_back_sha": head,
+                    }
+                ],
+            }
+        )
+    )
+    return state_path
+
+
+def _retire_args(state_path: Path, branch: str, head: str) -> Namespace:
+    return Namespace(
+        status="abandoned",
+        branch=branch,
+        path=None,
+        state=str(state_path),
+        json=True,
+        expected_generation=0,
+        expected_head_sha=head,
+        remove=False,
+    )
+
+
+def _pr(number: int, branch: str, head: str, state: str) -> Namespace:
+    return Namespace(number=number, branch=branch, head_sha=head, state=state)
+
+
+@pytest.mark.parametrize(
+    ("pulls", "remote", "expected_rc", "evidence_part"),
+    [
+        # force-moved remote, but the exact HEAD is a MERGED PR
+        ([("MERGED", "a" * 40)], "f" * 40, 0, "MERGED"),
+        # remote branch deleted and no PR is open
+        ([], "", 0, "is gone"),
+        # remote branch alive and nothing merged: keep the lease
+        ([], "a" * 40, coordinator.EXIT_BLOCK, None),
+        # an OPEN PR always keeps the lease, even if the remote is gone
+        ([("OPEN", "a" * 40)], "", coordinator.EXIT_BLOCK, None),
+        # MERGED PR for a different HEAD proves nothing about this lane
+        ([("MERGED", "9" * 40)], "f" * 40, coordinator.EXIT_BLOCK, None),
+    ],
+)
+def test_resolve_abandoned_retires_cleanup_pending_only_with_proof(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pulls: list[tuple[str, str]],
+    remote: str,
+    expected_rc: int,
+    evidence_part: str | None,
+) -> None:
+    branch = "fix/retire-me"
+    head = "a" * 40
+    state_path = _cleanup_pending_state(tmp_path, branch=branch, head=head)
+
+    def fake_git(args: list[str], cwd: Path = coordinator.ROOT) -> tuple[int, str]:
+        if args[:2] == ["ls-remote", "origin"]:
+            return 0, f"{remote}\trefs/heads/{branch}" if remote else ""
+        return 0, ""
+
+    registry_calls: list[list[str]] = []
+    monkeypatch.setattr(coordinator, "_git", fake_git)
+    monkeypatch.setattr(
+        coordinator,
+        "_branch_pull_request_snapshots",
+        lambda repo, name: tuple(
+            _pr(index + 1, name, pr_head, state)
+            for index, (state, pr_head) in enumerate(pulls)
+        ),
+    )
+    monkeypatch.setattr(
+        coordinator.registry,
+        "main",
+        lambda argv, acquire_lock=False: registry_calls.append(argv) or 0,
+    )
+
+    rc = coordinator.cmd_resolve(_retire_args(state_path, branch, head))
+
+    assert rc == expected_rc
+    if evidence_part is None:
+        assert not registry_calls
+    else:
+        argv = registry_calls[0]
+        assert evidence_part in argv[argv.index("--cleanup-pending-evidence") + 1]
+
+
+def test_resolve_abandoned_leaves_non_cleanup_pending_records_untouched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state_path = tmp_path / "registry.json"
+    state_path.write_text(
+        json.dumps({"schema": "kg.worktree.registry.v1", "records": []})
+    )
+    registry_calls: list[list[str]] = []
+    monkeypatch.setattr(
+        coordinator,
+        "_branch_pull_request_snapshots",
+        lambda repo, name: pytest.fail("no PR lookup for non-cleanup_pending"),
+    )
+    monkeypatch.setattr(
+        coordinator.registry,
+        "main",
+        lambda argv, acquire_lock=False: registry_calls.append(argv) or 0,
+    )
+
+    rc = coordinator.cmd_resolve(_retire_args(state_path, "debug/x", "a" * 40))
+
+    assert rc == 0
+    assert "--cleanup-pending-evidence" not in registry_calls[0]
+
+
+def test_adopt_scope_from_diff_derives_scope_from_the_branch_diff(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = _synthetic_rebase_refs(tmp_path)
+    state_path = tmp_path / "worktree_registry.json"
+    argv = [
+        "adopt",
+        "--state",
+        str(state_path),
+        "--worktree",
+        str(repo),
+        "--intent",
+        "agent worktree",
+        "--base",
+        "base",
+        "--external-id",
+        "ISSUE-9",
+        "--codex-thread-id",
+        "worker-thread",
+        "--delegated",
+        "--json",
+    ]
+
+    rc = coordinator.main([*argv, "--scope-from-diff"])
+    capsys.readouterr()
+
+    assert rc == coordinator.EXIT_OK
+    [record] = coordinator.registry.load_state(state_path)["records"]
+    assert record["scope"]["files"] == [
+        {"path": "ios/issue_1033.py", "operation": "add"}
+    ]
+
+    conflict = coordinator.main([*argv, "--scope-from-diff", "--scope", '{"files":[]}'])
+    assert conflict == coordinator.EXIT_USAGE
+    assert "conflicts" in capsys.readouterr().out
+
+
+def test_adopt_scope_from_diff_refuses_an_empty_diff(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = _synthetic_rebase_refs(tmp_path)
+    rc = coordinator.main(
+        [
+            "adopt",
+            "--state",
+            str(tmp_path / "r.json"),
+            "--worktree",
+            str(repo),
+            "--intent",
+            "x",
+            "--base",
+            "solver",
+            "--scope-from-diff",
+            "--json",
+        ]
+    )
+    assert rc == coordinator.EXIT_USAGE
+    assert "no changes" in capsys.readouterr().out

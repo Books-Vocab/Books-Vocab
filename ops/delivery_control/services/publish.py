@@ -63,15 +63,33 @@ def receipt_from_active_claim(
         or record.handback_origin_main_sha is None
     ):
         raise PolicyViolation("active claim lacks an exact registry-backed handback")
-    if (
-        not snapshot.clean
-        or snapshot.path.resolve() != record.path.resolve()
-        or snapshot.branch != record.branch
-        or snapshot.base_sha != record.base_sha
-        or snapshot.head_sha != record.handed_back_sha
-        or not scope_matches_snapshot(record, snapshot)
+    mismatches = []
+    if not snapshot.clean:
+        mismatches.append("clean: expected True, actual False")
+    for name, expected, actual in (
+        ("path", record.path.resolve(), snapshot.path.resolve()),
+        ("branch", record.branch, snapshot.branch),
+        ("base_sha", record.base_sha, snapshot.base_sha),
+        ("head_sha", record.handed_back_sha, snapshot.head_sha),
     ):
-        raise PolicyViolation("physical worktree differs from the sealed active claim")
+        if expected != actual:
+            mismatches.append(f"{name}: expected {expected}, actual {actual}")
+    if not scope_matches_snapshot(record, snapshot):
+        claimed = {(i.operation.value, i.path) for i in record.scope.files}
+        extra = sorted(
+            f"{i.operation.value} {i.path}"
+            for i in snapshot.changes
+            if (i.operation.value, i.path) not in claimed
+        )
+        mismatches.append(
+            "scope: changes outside the claimed Scope (a stale base_sha makes the "
+            f"diff include merged main commits): {extra}"
+        )
+    if mismatches:
+        raise PolicyViolation(
+            "physical worktree differs from the sealed active claim: "
+            + "; ".join(mismatches)
+        )
     return HandbackReceipt(
         lane_id=record.lane_id,
         owner_thread_id=record.owner_thread_id,
