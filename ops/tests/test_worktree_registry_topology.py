@@ -49,9 +49,10 @@ def test_campaign_projection_regressions_are_collected_once():
         assert sum(marker in node for node in nodes) >= 1, sorted(nodes)
 
 
-def test_campaign_projection_surface_is_pure_and_runner_unchanged():
+def test_campaign_projection_surface_is_pure():
+    # The runner used to be asserted free of "worktree_campaign", which kept
+    # these tests out of every group (Issue #2065).  Runner wiring is now owned
+    # by the full reachability scan in ops/tests/test_ops_ci_coverage.sh.
     source = (ROOT / "ops/lib/worktree_campaign.py").read_text(encoding="utf-8")
-    runner = (ROOT / "ops/test_ops.sh").read_text(encoding="utf-8")
 
     assert "worktree_registry" not in source
-    assert "worktree_campaign" not in runner

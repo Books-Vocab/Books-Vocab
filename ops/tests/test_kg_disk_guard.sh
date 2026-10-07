@@ -10,9 +10,10 @@ PASS=0; FAIL=0
 # the test suite does not depend on launchd/shlock state from another run.
 export KG_DISK_GUARD_GUARD_LOCK_HELD=1
 export KG_DISK_GUARD_BUILD_LOCK_HELD=1
-# Hermetic: a runner's real docker build cache must never decide the verdict.
-# Cases that exercise the docker rule pin their own value inline.
-export KG_DISK_GUARD_DOCKER_CACHE_BYTES=0
+# Hermetic: a runner's real docker build cache, or a `docker build` some other
+# process on the host is running (it turns repairs into deferred-active-build),
+# must never decide the verdict.  Docker cases pin their own values inline.
+export KG_DISK_GUARD_DOCKER_CACHE_BYTES=0 KG_DISK_GUARD_DOCKER_ACTIVE=0
 export KG_DISK_GUARD_LANE_USAGE_STATE="$TMP/lane-disk-usage.json"
 export KG_DISK_GUARD_DERIVED_DATA_GLOBAL="$TMP/derived-data"
 export KG_DISK_GUARD_XCTEST_DEVICES_ROOT="$TMP/xctest-devices"
