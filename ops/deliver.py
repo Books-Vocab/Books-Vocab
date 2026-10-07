@@ -46,6 +46,9 @@ SCHEMA = "kg.deliver.v1"
 TRUNK = "origin/main"
 OPS = Path(__file__).resolve().parent
 PR_GATE = OPS.parent / ".github" / "workflows" / "pr-gate.yml"
+# Raised by delivery_control/adapters/operation_lock.py (a test pins the text).
+LOCK_BUSY = "delivery mutation already in progress"
+LOCK_RETRY_SECONDS = 5.0
 
 
 class DeliverError(Exception):
@@ -65,6 +68,11 @@ Runner = Callable[[list[str], Path | None], Proc]
 def run(cmd: list[str], cwd: Path | None = None) -> Proc:
     done = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False)
     return Proc(done.returncode, done.stdout, done.stderr)
+
+
+def progress(message: str) -> None:
+    """Progress goes to stderr; stdout stays one JSON document."""
+    print(f"deliver: {message}", file=sys.stderr, flush=True)
 
 
 def failure_detail(done: Proc) -> str:
@@ -87,12 +95,47 @@ def failure_detail(done: Proc) -> str:
     return "\n".join(s.strip() for s in (done.stderr, done.stdout) if s.strip())
 
 
-def must(runner: Runner, cmd: list[str], cwd: Path | None, stage: str) -> Proc:
-    done = runner(cmd, cwd)
-    if done.returncode != 0:
+@dataclass(frozen=True)
+class LockWait:
+    """Bounded wait while another delivery mutation holds the operation lock.
+
+    Every delivery/registry/worktree mutation takes the lock before it changes
+    anything, so an attempt refused with ``LOCK_BUSY`` did nothing and is safe
+    to repeat.
+    """
+
+    timeout: float
+    sleep: Callable[[float], None]
+    clock: Callable[[], float]
+    say: Callable[[str], None]
+
+
+def must(
+    runner: Runner,
+    cmd: list[str],
+    cwd: Path | None,
+    stage: str,
+    lock: LockWait | None = None,
+) -> Proc:
+    started = lock.clock() if lock else 0.0
+    while True:
+        done = runner(cmd, cwd)
+        if done.returncode == 0:
+            return done
         detail = failure_detail(done) or "no output"
-        raise DeliverError(f"{stage} failed (rc={done.returncode}): {detail}")
-    return done
+        if lock is None or LOCK_BUSY not in detail:
+            raise DeliverError(f"{stage} failed (rc={done.returncode}): {detail}")
+        left = started + lock.timeout - lock.clock()
+        if left <= 0:
+            raise DeliverError(
+                f"{stage}: the delivery mutation lock is still held after "
+                f"{lock.timeout:g}s: {detail}"
+            )
+        lock.say(
+            f"{stage}: another delivery mutation holds the operation lock "
+            f"({detail}); retrying for up to {left:g}s more"
+        )
+        lock.sleep(min(LOCK_RETRY_SECONDS, left))
 
 
 # --- pure helpers -----------------------------------------------------------
@@ -213,14 +256,24 @@ def required_state(checks: list[dict[str, Any]]) -> str:
 
 class Delivery:
     def __init__(
-        self, args: argparse.Namespace, runner: Runner, sleep: Callable[[float], None]
+        self,
+        args: argparse.Namespace,
+        runner: Runner,
+        sleep: Callable[[float], None],
+        clock: Callable[[], float] = time.monotonic,
     ):
         self.args = args
         self.runner = runner
         self.sleep = sleep
+        self.clock = clock
         self.work = Path(args.worktree).resolve()
         self.canon: Path | None = None
         self.log: list[str] = []
+        self.lock = LockWait(args.lock_timeout, sleep, clock, self.say)
+
+    def mutate(self, cmd: list[str], cwd: Path | None, stage: str) -> Proc:
+        """Run a delivery/registry/worktree mutation, waiting out a busy lock."""
+        return must(self.runner, cmd, cwd, stage, self.lock)
 
     @property
     def home(self) -> Path:
@@ -232,7 +285,7 @@ class Delivery:
 
     def say(self, message: str) -> None:
         self.log.append(message)
-        print(f"deliver: {message}", file=sys.stderr, flush=True)
+        progress(message)
 
     def canonical(self) -> Path:
         out = self.git(
@@ -351,8 +404,7 @@ class Delivery:
             return False
         head = self.git("rev-parse", "HEAD", stage="preflight")
         sealed = record.get("handed_back_sha")
-        must(
-            self.runner,
+        self.mutate(
             [
                 str(OPS / "worktree_orchestrate.py"),
                 "resolve",
@@ -378,12 +430,12 @@ class Delivery:
         return True
 
     def wait_for(self, what: str, probe: Callable[[], str | None]) -> str:
-        deadline = time.monotonic() + self.args.timeout
+        deadline = self.clock() + self.args.timeout
         while True:
             result = probe()
             if result is not None:
                 return result
-            if time.monotonic() >= deadline:
+            if self.clock() >= deadline:
                 raise DeliverError(
                     f"timed out after {self.args.timeout}s waiting for {what}"
                 )
@@ -466,8 +518,7 @@ class Delivery:
                     and _scope_key(record and record.get("scope")) != _scope_key(scope)
                 ):
                     # The lane grew past the Scope it was adopted with.
-                    must(
-                        self.runner,
+                    self.mutate(
                         [
                             str(OPS / "worktree_registry.py"),
                             "scope-set",
@@ -484,8 +535,7 @@ class Delivery:
                     self.say("scope refreshed from the diff")
                 if stage == "adopt":
                     intent = self.args.intent or self.git("log", "-1", "--format=%s")
-                    must(
-                        self.runner,
+                    self.mutate(
                         [
                             orchestrate,
                             "adopt",
@@ -508,8 +558,7 @@ class Delivery:
                         "adopt",
                     )
                     self.say("adopted")
-                must(
-                    self.runner,
+                self.mutate(
                     [
                         orchestrate,
                         "hand-back",
@@ -527,15 +576,13 @@ class Delivery:
                 self.say("handed back")
             stage = "receipt"
         if stage == "receipt":
-            must(
-                self.runner,
+            self.mutate(
                 [*delivery, "receipt", "--lane", lane],
                 self.home,
                 "receipt",
             )
             title = self.args.title or self.git("log", "-1", "--format=%s")
-            must(
-                self.runner,
+            self.mutate(
                 [*delivery, "publish", "--lane", lane, "--title", title],
                 self.home,
                 "publish",
@@ -555,8 +602,7 @@ class Delivery:
             self.say(f"required passed on #{number}")
             if not self.args.merge:
                 return self.summary(branch, lane, number, "ready-to-merge")
-            must(
-                self.runner,
+            self.mutate(
                 [*delivery, "queue", "--pr", str(number)],
                 self.home,
                 "queue",
@@ -566,13 +612,12 @@ class Delivery:
             stage = "cleanup"
         if stage == "cleanup":
             # The worktree may be the very directory being retired; run from the canonical checkout.
-            must(
-                self.runner,
+            self.mutate(
                 [*delivery, "cleanup-merged", "--pr", str(number)],
                 canon,
                 "cleanup-merged",
             )
-            must(self.runner, [*delivery, "sync-main"], canon, "sync-main")
+            self.mutate([*delivery, "sync-main"], canon, "sync-main")
             self.say(f"merged #{number}; lane cleaned and main synced")
         return self.summary(branch, lane, number, "merged")
 
@@ -630,7 +675,9 @@ class Delivery:
 # --- gc ---------------------------------------------------------------------
 
 
-def gc(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
+def gc(
+    args: argparse.Namespace, runner: Runner, lock: LockWait | None = None
+) -> dict[str, Any]:
     canon = Path(
         must(
             runner, ["git", "rev-parse", "--show-toplevel"], None, "locate repo"
@@ -698,6 +745,7 @@ def gc(args: argparse.Namespace, runner: Runner) -> dict[str, Any]:
             ],
             canon,
             "cleanup-merged",
+            lock,
         )
         retired.append({"branch": rec["branch"], "pr": int(found), "applied": True})
     return {"schema": SCHEMA, "retired": retired, "kept": kept}
@@ -751,6 +799,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--poll", type=int, default=30, help="seconds between polls (default 30)"
     )
+    parser.add_argument(
+        "--lock-timeout",
+        type=int,
+        default=600,
+        help=(
+            "seconds a mutation keeps retrying while another delivery mutation "
+            "holds the operation lock (default 600)"
+        ),
+    )
     sub = parser.add_subparsers(dest="command")
     clean = sub.add_parser("gc", help="retire published lanes whose PR already merged")
     clean.add_argument("--dry-run", action="store_true")
@@ -761,13 +818,15 @@ def main(
     argv: list[str] | None = None,
     runner: Runner = run,
     sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
 ) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.command == "gc":
-            result = gc(args, runner)
+            lock = LockWait(args.lock_timeout, sleep, clock, progress)
+            result = gc(args, runner, lock)
         else:
-            result = Delivery(args, runner, sleep).deliver()
+            result = Delivery(args, runner, sleep, clock).deliver()
     except DeliverError as exc:
         print(
             json.dumps({"schema": SCHEMA, "ok": False, "error": str(exc)}),
