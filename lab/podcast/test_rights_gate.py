@@ -39,27 +39,25 @@ def _index(text: str = BOOK, thresholds=rg.DEFAULT_THRESHOLDS) -> rg.SourceIndex
 
 def _measure(script: str, *, source: str = BOOK, thresholds=rg.DEFAULT_THRESHOLDS):
     return rg.measure_overlap(
-        rg.tokenize(script), _index(source, thresholds), thresholds
+        rg.tokenize_script(script), _index(source, thresholds), thresholds
     )
 
 
 # ─── tokenizer ──────────────────────────────────────────────────────────────
 
 
-def test_tokenize_drops_speaker_labels_tags_and_comments():
-    text = (
-        "**Ava:** [slow] Don't—stop. **Ben**: Molière’s café!\n<!-- END_OF_SCRIPT -->"
-    )
-    assert rg.tokenize(text) == ["dont", "stop", "molieres", "cafe"]
+def test_tokenize_source_is_lenient_about_footnotes_comments_and_labels():
+    text = "Don't stop[12] <!-- x --> **Note:** Molière’s café!"
+    assert rg.tokenize_source(text) == ["dont", "stop", "molieres", "cafe"]
 
 
 def test_tokenize_srt_speaker_tags():
     srt = "1\n00:00:00,000 --> 00:00:00,500\n[Marcus] Welcome\n\n2\n00:00:00,500 --> 00:00:01,000\n[Marcus] home.\n"
-    assert rg.tokenize(rg.srt_text(srt)) == ["welcome", "home"]
+    assert rg.tokenize_subtitle(srt) == ["welcome", "home"]
 
 
 def test_tokenize_cjk_one_token_per_character():
-    assert rg.tokenize("書本 is good") == ["書", "本", "is", "good"]
+    assert rg.tokenize_script("**Ava:** 書本 is good") == ["書", "本", "is", "good"]
 
 
 # ─── overlap measurement ────────────────────────────────────────────────────
@@ -110,6 +108,84 @@ def test_copied_share_counts_only_runs_of_min_length():
     assert r.longest_run == 14
     assert r.copied_words == 14
     assert r.copied_share == pytest.approx(14 / 200, abs=1e-4)
+
+
+# ─── what synthesize voices must be what the gate measures (#2094 review) ───
+
+# 120 distinct words: a passage nobody could produce by chance.
+PASSAGE = [f"w{i:03d}" for i in range(120)]
+
+
+def _gate_workspace(tmp_path: Path, script: str) -> Path:
+    ws = tmp_path / "ws"
+    (ws / "source" / "chapters").mkdir(parents=True)
+    (ws / "scripts").mkdir()
+    (ws / "source" / "chapters" / "ch_01.md").write_text(" ".join(PASSAGE))
+    (ws / "scripts" / "ep_1_script.md").write_text(script)
+    return ws
+
+
+def _chunks(words: list[str], size: int) -> list[list[str]]:
+    return [words[i : i + size] for i in range(0, len(words), size)]
+
+
+def _blocked(ws: Path) -> bool:
+    return rg.check_workspace(
+        ws, stage="synthesize", thresholds=rg.DEFAULT_THRESHOLDS
+    ).blocked
+
+
+def test_passage_wrapped_in_non_palette_brackets_is_still_blocked(tmp_path):
+    """tts_tags keeps non-palette ``[text]`` as spoken content, so it is voiced."""
+    body = " ".join("[" + " ".join(c) + "]" for c in _chunks(PASSAGE, 6))
+    assert _blocked(_gate_workspace(tmp_path, f"**Ava:** {body}\n"))
+
+
+def test_passage_inside_an_inline_comment_after_a_label_is_blocked(tmp_path):
+    """parse_script only skips WHOLE-line comments; an inline one is voiced."""
+    script = f"**Ava:** intro <!-- {' '.join(PASSAGE)} --> outro\n"
+    assert _blocked(_gate_workspace(tmp_path, script))
+
+
+def test_passage_in_a_mid_line_bold_colon_label_is_blocked(tmp_path):
+    """Only a line-start ``**Name:**`` is a label; elsewhere it is spoken text."""
+    body = " ".join("**" + " ".join(c) + ":**" for c in _chunks(PASSAGE, 10))
+    assert _blocked(_gate_workspace(tmp_path, f"**Ava:** {body}\n"))
+
+
+def test_whole_line_comment_and_structural_lines_are_not_voiced(tmp_path):
+    """The same copy on lines synthesize skips never reaches audio."""
+    passage = " ".join(PASSAGE)
+    script = (
+        f"<!-- {passage} -->\n## {passage}\n> {passage}\n"
+        "**Ava:** nothing copied here at all.\n"
+    )
+    assert not _blocked(_gate_workspace(tmp_path, script))
+
+
+def test_palette_tags_and_leading_labels_are_still_transparent():
+    tokens = rg.tokenize_script(
+        "**Ava:** [slow] Don't—stop. **Ben**: Molière’s café!\n<!-- END_OF_SCRIPT -->"
+    )
+    assert tokens == ["dont", "stop", "ben", "molieres", "cafe"]
+
+
+def test_skip_and_dialogue_patterns_mirror_synthesize():
+    """The gate re-states these two regexes (stdlib-only); they must not drift."""
+    import tts_config
+
+    assert rg._SKIP_LINE_RE.pattern == tts_config.SKIP_LINE_RE.pattern
+    assert rg._DIALOGUE_RE.pattern == tts_config.DIALOGUE_RE.pattern
+
+
+def test_every_palette_form_is_stripped_and_nothing_else():
+    from tts_tags import TAG_CONCEPTS
+
+    forms = {f for c in TAG_CONCEPTS for f in c.forms.values()}
+    assert forms and all(
+        rg.tokenize_script(f"**Ava:** [{f}] x") == ["x"] for f in forms
+    )
+    assert rg.tokenize_script("**Ava:** [not a tag] x") == ["not", "a", "tag", "x"]
 
 
 # ─── thresholds ─────────────────────────────────────────────────────────────

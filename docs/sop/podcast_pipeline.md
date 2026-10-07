@@ -123,7 +123,7 @@ Fresh workspace 預設 `v1`。`--workflow-version v1|v2` 只在建立或 legacy 
 - synthesize:量要被合成的 `scripts/ep_N_script.md`(`--only-episode` 只量該集)。
 - publish:量**所有**會被上傳的 script **與** SRT(SRT 是音檔的轉寫 → 事後改 script.md 洗不掉已合成的逐字音檔);有音檔卻沒有任何 script/SRT 可量的集數 → 擋。
 - fail closed:缺 `source/chapters/ch_*.md`、沒有可量的文本、sidecar 損壞、門檻設定非法 → 一律擋。
-- 量法:兩邊都正規化(大小寫、重音、標點、撇號;移除 `**Name:**` speaker label、`[...]` audio tag / SRT speaker tag、HTML 註解;CJK 一字一 token)→ 6-word shingle 找完全相同的連續片段 → 同一段原文、間隔 ≤ `gap_words` 的片段串成一個 run(吸收 OCR 黏字、插話、兩位主持人接力念)。`longest_run` = 最長 run 字數;`copied_share` = 落在 ≥ `min_run_words` 的 run 內的字數 / 該文本總字數。**逐集**判定。
+- 量法:兩邊都正規化(大小寫、重音、標點、撇號;CJK 一字一 token)。**script 端只移除 `synthesize.parse_script` 不會唸出來的東西**(`tokenize_script` 與其逐行鏡像,`_SKIP_LINE_RE` / `_DIALOGUE_RE` 與 `tts_config` 由測試鎖定一致):整行結構行(`#` 標題、`>` 引用、`---`、整行 HTML 註解)、行首 `**Name:**` speaker label、`tts_tags` palette 內的 audio tag(`[slow]` 等)。其餘都會被唸出來所以都要量:非 palette 的 `[任意文字]`、label 後的行內 `<!-- -->`、行中的 `**x:**`。SRT 只去掉 cue 開頭的 `[Speaker]`;書本端(source)較寬鬆地去掉腳註 `[12]`/註解/粗體 label(只會更容易比對到抄錄)。→ 6-word shingle 找完全相同的連續片段 → 同一段原文、間隔 ≤ `gap_words` 的片段串成一個 run(吸收 OCR 黏字、插話、兩位主持人接力念)。`longest_run` = 最長 run 字數;`copied_share` = 落在 ≥ `min_run_words` 的 run 內的字數 / 該文本總字數。**逐集**判定。
 - 結果寫 `<ws>/verbatim_qa.json`(每個文本的 words / longest_run / copied_words / share / violations / 最長片段開頭摘錄),stage provenance 的 `validator_result` 也記錄 gate 結果。被擋時把標出的段落改寫成評論/轉述,再 `--skip-to synthesize`(或 publish)。
 
 **門檻**:`workflow_versions/<v>/workflow.json` → `qa_thresholds.verbatim`(缺此段時用 `rights_gate.VerbatimThresholds` 預設,兩者由測試鎖定一致)。預設刻意保守,製作人可調:

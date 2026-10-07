@@ -260,39 +260,95 @@ def full_text_strategy_plans(workspace: Path) -> list[str]:
 # ─── Text normalisation ─────────────────────────────────────────────────────
 
 _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
-_SPEAKER_RE = re.compile(r"\*\*[^*\n]{1,80}?(?::\*\*|\*\*\s*:)")
-_TAG_RE = re.compile(r"\[[^\]\n]{0,80}\]")
+_SOURCE_LABEL_RE = re.compile(r"\*\*[^*\n]{1,80}?(?::\*\*|\*\*\s*:)")
+_SOURCE_TAG_RE = re.compile(r"\[[^\]\n]{0,80}\]")
 _APOSTROPHE_RE = re.compile(r"['‘’`ʼ]")
 _CJK = "぀-ヿ㐀-䶿一-鿿豈-﫿"
 _TOKEN_RE = re.compile(rf"[{_CJK}]|[^\W_{_CJK}]+")
 
 
-def tokenize(text: str) -> list[str]:
-    """Words for overlap matching.
+# What synthesize.parse_script does NOT voice, restated (the gate stays
+# stdlib-only; test_skip_and_dialogue_patterns_mirror_synthesize pins parity with
+# tts_config): structural lines are skipped whole; only a line-start ``**Name:**``
+# is a speaker label; everything else on the line is spoken.
+_SKIP_LINE_RE = re.compile(r"^(#{1,6}\s|>\s|---\s*$|<!--.*-->\s*$)")
+_DIALOGUE_RE = re.compile(r"\*\*([^:*]+):\*\*\s*(.*)")
+_BRACKET_RE = re.compile(r"\[([^\[\]]+)\]")
+_SRT_SPEAKER_RE = re.compile(r"^\[[^\]\n]{1,40}\]\s*")
 
-    Case, accents, punctuation and apostrophes are folded; speaker labels
-    (``**Name:**``), bracket tags (audio tags, SRT ``[Speaker]``) and HTML
-    comments are dropped so a passage split between hosts or broken by a tag is
-    still one run. CJK characters are one token each.
+
+def _palette_forms() -> frozenset[str]:
+    """Every audio-tag surface form tts_tags knows (any family).
+
+    ``tts_tags.sanitize_tags_for_family`` rewrites or strips exactly these and keeps
+    every other ``[bracket]`` as spoken content, so only these are inaudible.
     """
+    from tts_tags import TAG_CONCEPTS
+
+    return frozenset(f for c in TAG_CONCEPTS for f in c.forms.values())
+
+
+_PALETTE = _palette_forms()
+
+
+def _fold(text: str) -> list[str]:
     text = unicodedata.normalize("NFKD", text)
     text = "".join(ch for ch in text if not unicodedata.combining(ch)).lower()
+    return _TOKEN_RE.findall(_APOSTROPHE_RE.sub("", text))
+
+
+def _drop_palette_tags(text: str) -> str:
+    return _BRACKET_RE.sub(
+        lambda m: " " if m.group(1).strip().lower() in _PALETTE else m.group(0), text
+    )
+
+
+def tokenize_source(text: str) -> list[str]:
+    """Words of the BOOK. Lenient on purpose: footnote markers (``[12]``), HTML
+    comments and bold labels are never part of a quote, and dropping them can only
+    make a copied passage easier to match."""
     text = _COMMENT_RE.sub(" ", text)
-    text = _SPEAKER_RE.sub(" ", text)
-    text = _TAG_RE.sub(" ", text)
-    text = _APOSTROPHE_RE.sub("", text)
-    return _TOKEN_RE.findall(text)
+    text = _SOURCE_LABEL_RE.sub(" ", text)
+    text = _SOURCE_TAG_RE.sub(" ", text)
+    return _fold(text)
+
+
+def tokenize_script(text: str) -> list[str]:
+    """Words a listener would hear from a markdown script — the mirror of
+    ``synthesize.parse_script``, never more lenient than it.
+
+    Dropped: whole structural lines (headings, blockquotes, rules, whole-line HTML
+    comments), a line-start ``**Name:**`` label, and palette audio tags
+    (``[slow]`` ...), so a passage split between hosts or broken by a tag is still
+    one run. Everything else is voiced and therefore measured: a non-palette
+    ``[bracket]``, an inline comment after the label, a mid-line ``**x:**``.
+    Case, accents, punctuation and apostrophes are folded; CJK is one token per
+    character.
+    """
+    spoken: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or _SKIP_LINE_RE.match(stripped):
+            continue
+        m = _DIALOGUE_RE.match(stripped)
+        spoken.append(_drop_palette_tags(m.group(2) if m else stripped))
+    return _fold(" ".join(spoken))
 
 
 def srt_text(raw: str) -> str:
-    """Spoken text of an SRT (cue numbers and timestamps removed)."""
+    """Spoken text of an SRT: cue numbers, timestamps and the ``[Speaker]`` prefix
+    subtitle.py puts at the start of a cue are removed."""
     lines = []
     for line in raw.splitlines():
         s = line.strip()
         if not s or s.isdigit() or "-->" in s:
             continue
-        lines.append(s)
+        lines.append(_SRT_SPEAKER_RE.sub("", s))
     return " ".join(lines)
+
+
+def tokenize_subtitle(raw: str) -> list[str]:
+    return _fold(srt_text(raw))
 
 
 # ─── Overlap measurement ────────────────────────────────────────────────────
@@ -325,7 +381,7 @@ class SourceIndex:
     ) -> SourceIndex:
         tokens: list[str] = []
         for text in texts:
-            tokens.extend(tokenize(text))
+            tokens.extend(tokenize_source(text))
         return cls(tokens, min(_SHINGLE_WORDS, thresholds.min_run_words))
 
 
@@ -520,8 +576,10 @@ def check_workspace(
     if source.tokens:
         for path, kind in texts:
             raw = path.read_text(encoding="utf-8", errors="replace")
-            body = srt_text(raw) if kind == "subtitle" else raw
-            r = measure_overlap(tokenize(body), source, thresholds)
+            tokens = (
+                tokenize_subtitle(raw) if kind == "subtitle" else tokenize_script(raw)
+            )
+            r = measure_overlap(tokens, source, thresholds)
             violations = []
             if r.longest_run > thresholds.max_run_words:
                 violations.append(
