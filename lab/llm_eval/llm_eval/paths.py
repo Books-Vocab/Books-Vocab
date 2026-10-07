@@ -62,7 +62,12 @@ def _committable(path: Path) -> bool:
         inside = _git(anchor, "rev-parse", "--is-inside-work-tree")
         if inside.returncode == 0:
             if inside.stdout.strip() != "true":
-                return False  # git itself says: inside a git dir / bare repo
+                # Inside a git dir / bare repo, which has no work tree to
+                # ``git add`` from.  Trust that only when no ancestor carries
+                # a ``.git`` marker: a repo that owns this directory but
+                # that git declined to treat as a work tree (broken
+                # discovery, odd config) must still fail closed.
+                return _has_repo_marker(anchor)
             # Exit 0 = ignored, 1 = not ignored; a tracked path is never ignored.
             return _git(anchor, "check-ignore", "-q", "--", str(path)).returncode != 0
         # rev-parse also fails for a work tree git cannot read (dubious
@@ -78,7 +83,11 @@ def _provably_outside_any_repo(anchor: Path, stderr: str) -> bool:
         return False
     if os.environ.get("GIT_DIR") or os.environ.get("GIT_WORK_TREE"):
         return False
-    return not any(
+    return not _has_repo_marker(anchor)
+
+
+def _has_repo_marker(anchor: Path) -> bool:
+    return any(
         # lexists: a dangling ``.git`` symlink is a repo marker git trips on,
         # yet Path.exists() follows it and reports False.
         os.path.lexists(directory / ".git")
@@ -87,13 +96,19 @@ def _provably_outside_any_repo(anchor: Path, stderr: str) -> bool:
 
 
 def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    # Every ambient GIT_* variable is dropped (GIT_DIR, GIT_WORK_TREE,
+    # GIT_CEILING_DIRECTORIES, GIT_COMMON_DIR, GIT_CONFIG_*, ...): they
+    # redirect repository discovery, so with one set git answers about the
+    # override instead of the destination's real repo (GIT_DIR=<bare repo>
+    # makes rev-parse print "false" inside an ordinary work tree).
     # LC_ALL=C pins git's message language: the "not a git repository" check
     # above matches on it.
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     return subprocess.run(
         ["git", *args],
         cwd=cwd,
         capture_output=True,
         text=True,
         check=False,
-        env={**os.environ, "LC_ALL": "C"},
+        env={**env, "LC_ALL": "C"},
     )
