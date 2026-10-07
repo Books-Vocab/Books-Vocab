@@ -32,6 +32,19 @@ def test_broken_git_dir_env_is_unsafe(tmp_path, monkeypatch):
     assert committable_paths([target]) == [target.resolve()]
 
 
+def test_dangling_git_symlink_in_ancestor_is_unsafe(tmp_path, monkeypatch):
+    """git reports "not a git repository" for a dangling ``.git`` symlink, but
+    ``Path.exists()`` is False for it: the marker must still count."""
+    monkeypatch.delenv("GIT_DIR", raising=False)
+    monkeypatch.delenv("GIT_WORK_TREE", raising=False)
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.parent))
+    repo = tmp_path / "repo"
+    (repo / "nested").mkdir(parents=True)
+    (repo / ".git").symlink_to(tmp_path / "nowhere")
+    target = repo / "nested" / "out.jsonl"
+    assert committable_paths([target]) == [target.resolve()]
+
+
 @pytest.mark.parametrize(
     "stderr",
     [
