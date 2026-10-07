@@ -167,7 +167,8 @@ run_one() {
         ops/tests/test_release_train.py \
         ops/tests/test_complexity.py \
         ops/tests/test_doctor_issue.py \
-        ops/tests/test_delivery_metrics.py
+        ops/tests/test_delivery_metrics.py \
+        ops/tests/test_launchd_manifests.py
       ;;
     context-routing)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
