@@ -1,0 +1,14 @@
+{
+  "schema": "kg.complexity-budget.v1",
+  "note": "Tracked-line ceilings. Raise one only in a PR that says why; ops/complexity.py ratchet lowers them after deletions.",
+  "slack": {
+    "ops": 2000,
+    "docs": 1000,
+    "workflows": 250
+  },
+  "ceilings": {
+    "ops": 346176,
+    "docs": 75294,
+    "workflows": 1997
+  }
+}

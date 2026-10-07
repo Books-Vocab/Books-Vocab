@@ -167,18 +167,49 @@ def evaluate_disk(guard: dict[str, Any] | None) -> Finding:
     return Finding("disk", level, f"disk guard {verdict}: {guard.get('reason')}")
 
 
+def evaluate_complexity(
+    rows: list[dict[str, Any]] | None, ops_to_ios: float | None
+) -> Finding:
+    if rows is None:
+        return Finding(
+            "complexity",
+            "warn",
+            "complexity budget unreadable (ops/complexity_budget.json)",
+        )
+    over = [r for r in rows if r["over"]]
+    ratio = f", ops:ios {ops_to_ios}" if ops_to_ios is not None else ""
+    if over:
+        return Finding(
+            "complexity",
+            "warn",
+            f"{len(over)} area(s) over their line budget{ratio}",
+            [
+                f"{r['area']}: {r['lines']:,} lines > ceiling {r['ceiling']:,}"
+                for r in over
+            ],
+        )
+    tight = min(rows, key=lambda r: r["headroom"])
+    return Finding(
+        "complexity",
+        "ok",
+        f"within budget; tightest is {tight['area']} ({tight['headroom']:,} lines headroom){ratio}",
+    )
+
+
 def parse_acceptance(body: str | None) -> list[str]:
     """Shell commands in fenced blocks under the issue's ``## Acceptance`` heading."""
 
     if not body:
         return []
-    section = re.search(r"^##\s+Acceptance\s*$(.*?)(?=^##\s|\Z)", body, re.M | re.S)
+    section = re.search(
+        r"^##\s+Acceptance\s*$(.*?)(?=^##\s|\Z)", body, re.MULTILINE | re.DOTALL
+    )
     if not section:
         return []
     return [
         block.strip()
         for block in re.findall(
-            r"```(?:sh|bash|shell)\n(.*?)```", section.group(1), re.S
+            r"```(?:sh|bash|shell)\n(.*?)```", section.group(1), re.DOTALL
         )
         if block.strip()
     ]
@@ -357,7 +388,7 @@ def collect_release_gap(
     repo: Path, now: datetime
 ) -> tuple[str | None, int | None, float | None]:
     try:
-        with urllib.request.urlopen(prod_request(), timeout=10) as response:  # noqa: S310 - fixed https URL
+        with urllib.request.urlopen(prod_request(), timeout=10) as response:
             sha = json.load(response).get("version")
     except (OSError, ValueError):
         return None, None, None
@@ -369,6 +400,17 @@ def collect_release_gap(
         return sha, None, None
     age = (now.timestamp() - int(stamp.stdout.strip())) / 86400
     return sha, int(behind.stdout.strip()), age
+
+
+def collect_complexity(repo: Path) -> tuple[list[dict[str, Any]] | None, float | None]:
+    import complexity
+
+    try:
+        measured = complexity.measure(repo)
+        budget = complexity.load_budget(repo / complexity.BUDGET_FILE)
+    except (complexity.BudgetError, subprocess.CalledProcessError):
+        return None, None
+    return complexity.evaluate(measured, budget), complexity.ratio(measured)
 
 
 def collect_disk() -> dict[str, Any] | None:
@@ -440,6 +482,7 @@ def main(argv: list[str] | None = None) -> int:
         *evaluate_ci(collect_ci(repo), now),
         evaluate_release_gap(*collect_release_gap(repo, now)),
         evaluate_disk(collect_disk()),
+        evaluate_complexity(*collect_complexity(repo)),
         evaluate_issues(issues, results),
     ]
     print(render_json(findings, now=now) if args.json else render_text(findings))
