@@ -12,19 +12,29 @@ from .settings import RateLimitSettingsSnapshot, load_rate_limit_settings
 class RateLimiter:
     """In-memory per-key sliding window rate limiter.
 
-    Memory hygiene:
-    - Every `gc_interval` admissions, sweep `_requests` and drop keys whose
-      deques are empty or fully expired.
-    - Hard cap at `max_keys`: a new key evicts the least-recently-seen key
-      (O(1), `_requests` is kept in recency order). The table never rejects a
-      new key just because it is full: that would let anyone able to mint
-      `max_keys` keys 429 every new client (#2056). Eviction cannot be used
-      to reset an abuser's window, because every lookup — admitted or
-      rejected — moves the key to the most-recent end; only a key that has
-      stopped hitting can age to the front. Keys must therefore come from a
-      source the client cannot mint for free (client IP or a verified user
-      id, see `app_middleware`), so owning `max_keys` keys already costs as
-      much as the budget an eviction could hand back.
+    Memory hygiene and overflow policy (#2056):
+    - `_requests` is kept ordered by each key's newest *admitted* timestamp
+      (a key moves to the end only when it is admitted). Expired keys are
+      therefore always a prefix, so reclaiming them is exact and amortized
+      O(1): every pop permanently removes a dead key.
+    - An active window is never evicted. Evicting one hands the key its full
+      allowance back, so cycling `max_keys + 1` identities would bypass the
+      limiter indefinitely.
+    - A new key arriving at the cap first reclaims expired keys from the front.
+      If the table is still full, the key is charged to a single shared
+      overflow bucket with its own limit (`overflow_max_requests`, default
+      `max_requests`) instead of being tracked. Unseen keys therefore fail
+      closed under a key flood, while already-tracked keys are never denied
+      because of other keys, and memory stays bounded (`max_keys` windows plus
+      one overflow window of at most `overflow_max_requests` entries).
+    - Trade-off: during such a flood, genuinely new clients share one budget
+      and may get 429 until older windows expire. That is the price of not
+      letting a flood buy fresh allowance; owning `max_keys` live keys already
+      costs the attacker `max_keys * max_requests` admitted requests per
+      window. Keys must still come from a source the client cannot mint for
+      free (client IP or verified user id, see `app_middleware`).
+    - Every `gc_interval` admissions a full sweep drops keys whose deques are
+      empty or fully expired.
     """
 
     def __init__(
@@ -33,15 +43,17 @@ class RateLimiter:
         window_seconds: int,
         max_keys: int = 10000,
         gc_interval: int = 100,
+        overflow_max_requests: int | None = None,
     ):
         if max_keys < 1:
-            # Eviction-at-cap needs room for the key being admitted.
             raise ValueError("max_keys must be positive")
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         self.max_keys = max_keys
         self.gc_interval = max(1, gc_interval)
+        self.overflow_max_requests = max_requests if overflow_max_requests is None else overflow_max_requests
         self._requests: collections.OrderedDict[str, collections.deque[float]] = collections.OrderedDict()
+        self._overflow: collections.deque[float] = collections.deque()
         self._tick = 0
         self._lock = asyncio.Lock()
 
@@ -51,20 +63,22 @@ class RateLimiter:
         async with self._lock:
             dq = self._requests.get(key)
             if dq is None:
-                while len(self._requests) >= self.max_keys:
-                    # Evict from the least-recently-seen end. Popping is O(1);
-                    # a full-table sweep here would cost O(max_keys) per new
-                    # key exactly when someone is flooding new keys.
-                    self._requests.popitem(last=False)
-                dq = collections.deque()
-                self._requests[key] = dq
+                self._reclaim_expired_prefix(cutoff)
+                if len(self._requests) >= self.max_keys:
+                    allowed = self._charge_overflow(now, cutoff)
+                else:
+                    # Only track a key once it holds an admitted request, so
+                    # the table stays ordered by newest admission.
+                    allowed = self.max_requests > 0
+                    if allowed:
+                        self._requests[key] = collections.deque((now,))
             else:
-                self._requests.move_to_end(key)
-            while dq and dq[0] < cutoff:
-                dq.popleft()
-            allowed = len(dq) < self.max_requests
-            if allowed:
-                dq.append(now)
+                while dq and dq[0] < cutoff:
+                    dq.popleft()
+                allowed = len(dq) < self.max_requests
+                if allowed:
+                    dq.append(now)
+                    self._requests.move_to_end(key)
 
             self._tick += 1
             if self._tick >= self.gc_interval:
@@ -72,6 +86,25 @@ class RateLimiter:
                 self._gc(cutoff)
 
             return allowed
+
+    def _reclaim_expired_prefix(self, cutoff: float) -> None:
+        """Pop expired keys off the front (table is ordered by newest admission)."""
+        requests = self._requests
+        while requests:
+            oldest = next(iter(requests.values()))
+            if oldest and oldest[-1] >= cutoff:
+                return
+            requests.popitem(last=False)
+
+    def _charge_overflow(self, now: float, cutoff: float) -> bool:
+        """Charge an unseen key to the shared overflow window (fail closed when spent)."""
+        overflow = self._overflow
+        while overflow and overflow[0] < cutoff:
+            overflow.popleft()
+        if len(overflow) >= self.overflow_max_requests:
+            return False
+        overflow.append(now)
+        return True
 
     def _gc(self, cutoff: float) -> None:
         """Sweep keys whose deques are empty or fully expired."""
@@ -92,6 +125,7 @@ class RateLimiter:
         (and would require an event loop).
         """
         self._requests.clear()
+        self._overflow.clear()
         self._tick = 0
 
 

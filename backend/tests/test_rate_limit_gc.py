@@ -2,8 +2,9 @@
 Tests for RateLimiter GC + size cap (memory leak prevention).
 
 Goal: `_requests` dict must not grow unbounded. Expired keys are
-periodically swept (lazy GC), and a hard size cap evicts the
-least-recently-used keys.
+periodically swept (lazy GC); at the size cap only expired keys are
+reclaimed and unseen keys share a bounded overflow bucket (live windows are
+never evicted).
 """
 
 from __future__ import annotations
@@ -23,9 +24,9 @@ class TestRateLimiterGC:
             RateLimiter(max_requests=1, window_seconds=60, max_keys=max_keys)
 
     def test_hammering_key_window_survives_full_cap(self):
-        """At the cap a new key evicts the least-recently-seen key, never one
-        that is still hitting: every lookup (admitted or rejected) refreshes
-        recency, so flooding new keys cannot reset an abuser's window."""
+        """At the cap an unseen key is charged to the overflow bucket and no
+        live window is evicted, so flooding new keys cannot reset an abuser's
+        window."""
 
         async def run():
             limiter = RateLimiter(
@@ -40,9 +41,85 @@ class TestRateLimiterGC:
         results, keys = asyncio.run(run())
 
         assert results == [True, True, False, True, False]
-        # noise-a (least recently seen) was evicted; the rejected final lookup
-        # still moved the abuser to the most-recent end.
-        assert keys == ["noise-b", "abuser"]
+        # Neither live window was evicted; noise-b went to the overflow bucket.
+        assert keys == ["abuser", "noise-a"]
+
+    def test_key_rotation_cannot_reset_active_window(self):
+        """#2056 review P2: cycling more than `max_keys` identities inside one
+        window must not evict a live window and hand its allowance back."""
+
+        async def run():
+            limiter = RateLimiter(max_requests=1, window_seconds=60, max_keys=2, gc_interval=10_000)
+            return [await limiter.is_allowed(key) for key in ("abuser", "noise-a", "noise-b", "abuser")]
+
+        results = asyncio.run(run())
+        assert results[0] is True
+        assert results[3] is False, "abuser's 2nd request must stay 429 after key rotation"
+
+    def test_rotation_flood_never_resets_any_tracked_window(self):
+        async def run():
+            limiter = RateLimiter(max_requests=1, window_seconds=60, max_keys=3, gc_interval=10_000)
+            tracked = ["a", "b", "c"]
+            first = [await limiter.is_allowed(k) for k in tracked]
+            for i in range(200):
+                await limiter.is_allowed(f"flood-{i}")
+            second = [await limiter.is_allowed(k) for k in tracked]
+            return first, second, list(limiter._requests)
+
+        first, second, keys = asyncio.run(run())
+        assert first == [True] * 3
+        assert second == [False] * 3
+        assert keys == ["a", "b", "c"]
+
+    def test_tracked_key_never_denied_by_overflow_exhaustion(self):
+        """Overflow exhaustion fails closed for *unseen* keys only; a tracked
+        key keeps its own budget regardless of what other keys do."""
+
+        async def run():
+            limiter = RateLimiter(max_requests=3, window_seconds=60, max_keys=2, gc_interval=10_000)
+            assert await limiter.is_allowed("tracked-a")
+            assert await limiter.is_allowed("tracked-b")
+            flood = [await limiter.is_allowed(f"unseen-{i}") for i in range(50)]
+            # tracked keys still have 2 of 3 each, untouched by the flood.
+            a = [await limiter.is_allowed("tracked-a") for _ in range(3)]
+            b = [await limiter.is_allowed("tracked-b") for _ in range(3)]
+            return flood, a, b
+
+        flood, a, b = asyncio.run(run())
+        assert not all(flood), "overflow must fail closed for unseen keys under flood"
+        assert a == [True, True, False]
+        assert b == [True, True, False]
+
+    def test_overflow_bucket_is_bounded(self):
+        async def run():
+            limiter = RateLimiter(max_requests=5, window_seconds=60, max_keys=2, gc_interval=10_000)
+            await limiter.is_allowed("a")
+            await limiter.is_allowed("b")
+            results = [await limiter.is_allowed(f"unseen-{i}") for i in range(10_000)]
+            return results, len(limiter._requests), len(limiter._overflow)
+
+        results, table_size, overflow_size = asyncio.run(run())
+        assert table_size == 2
+        assert overflow_size <= 5
+        assert sum(results) == 5, "unseen keys share exactly one overflow budget"
+
+    def test_overflow_bucket_recovers_after_window(self):
+        async def run():
+            limiter = RateLimiter(max_requests=1, window_seconds=60, max_keys=1, gc_interval=10_000)
+            await limiter.is_allowed("a")
+            assert await limiter.is_allowed("x") is True
+            assert await limiter.is_allowed("y") is False
+            aged = time.monotonic() - 120
+            for dq in (*limiter._requests.values(), limiter._overflow):
+                for j in range(len(dq)):
+                    dq[j] = aged
+            # Expired tracked key is reclaimed (not evicted while active) and
+            # the new key is tracked normally again.
+            return await limiter.is_allowed("y"), list(limiter._requests)
+
+        allowed, keys = asyncio.run(run())
+        assert allowed is True
+        assert keys == ["y"]
 
     def test_expired_keys_are_swept_under_size_cap(self):
         """Adding many unique expired keys should not blow the dict past
@@ -98,10 +175,9 @@ class TestRateLimiterGC:
         assert present, "Active key must not be evicted by GC"
         assert count > 0, "Active key deque should still have entries"
 
-    def test_size_cap_admits_new_key_when_no_expired(self):
-        """When all slots are active, a new key is still admitted (#2056):
-        rejecting it would let anyone who fills the table 429 every new
-        client. The table stays bounded by evicting the LRU key."""
+    def test_size_cap_charges_overflow_when_no_expired(self):
+        """When all slots are active, unseen keys share the overflow budget
+        (#2056): the table stays bounded and no live window is evicted."""
 
         async def run():
             limiter = RateLimiter(
@@ -115,8 +191,8 @@ class TestRateLimiterGC:
 
         results, size, keys = asyncio.run(run())
         assert size <= 10, f"Dict must respect max_keys, got {size}"
-        assert results == [True] * 20
-        assert keys == {f"k-{i}" for i in range(10, 20)}
+        assert results == [True] * 15 + [False] * 5
+        assert keys == {f"k-{i}" for i in range(10)}
 
     def test_rate_limiter_gc_evicts_expired_entries(self):
         """Loading 100 distinct user entries and advancing time past the
@@ -151,24 +227,32 @@ class TestRateLimiterGC:
         assert trigger_present, "Trigger key must remain after GC"
         assert remaining == 1, f"GC must evict all 100 expired entries, only trigger should remain, got {remaining}"
 
-    def test_rate_limiter_size_cap_evicts_least_recently_seen_windows(self):
-        """With max_keys=10, later keys are admitted and the least recently
-        seen windows are evicted, in recency order."""
+    def test_rate_limiter_size_cap_reclaims_only_expired_keys(self):
+        """At the cap only expired windows are reclaimed (from the front);
+        live windows stay tracked and later keys go to the overflow bucket."""
 
         async def run():
             limiter = RateLimiter(
                 max_requests=5,
-                window_seconds=60,  # keep all keys "active" so only LRU cap fires
+                window_seconds=60,
                 max_keys=10,
-                gc_interval=10_000,  # disable GC for clarity
+                gc_interval=10_000,  # disable the periodic sweep for clarity
             )
-            results = [await limiter.is_allowed(f"user-{i}") for i in range(15)]
+            for i in range(10):
+                await limiter.is_allowed(f"user-{i}")
+            # Age the first 4 keys past the window; the rest stay live.
+            aged = time.monotonic() - 120
+            for i in range(4):
+                dq = limiter._requests[f"user-{i}"]
+                for j in range(len(dq)):
+                    dq[j] = aged
+            results = [await limiter.is_allowed(f"new-{i}") for i in range(6)]
             return results, len(limiter._requests), list(limiter._requests.keys())
 
         results, size, keys = asyncio.run(run())
-        assert size == 10, f"Dict must hold exactly max_keys=10, got {size}"
-        assert results == [True] * 15
-        assert keys == [f"user-{i}" for i in range(5, 15)]
+        assert results == [True] * 6  # 4 reclaimed slots + 2 overflow admissions
+        assert size == 10
+        assert keys == [f"user-{i}" for i in range(4, 10)] + [f"new-{i}" for i in range(4)]
 
     def test_rate_limiter_concurrent_increment_no_lost_count(self):
         """Concurrent coroutines incrementing the same key must not lose
