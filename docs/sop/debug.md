@@ -47,6 +47,13 @@ backend 與 infra 的具體 capture 命令分別以各 domain SOP／safe wrapper
 timeout。多個獨立假說可平行驗證，但每個 agent 必須有不重疊 Scope、自己的 evidence
 與結論，不共享未驗證的推測。
 
+**拉 crash／error 證據 → `./ops/sentry_tool.py`**（read-only，不需 Sentry GUI）。先跑
+`./ops/sentry_tool.py health --json`：`config.missing` 非空時照 `config.fix` 回報缺哪些鍵
+（token 由帳號持有人建立，agent 不代建）；就緒後用 `issues`／`issue <id> --full`／`events`
+取 stack 與 breadcrumbs，`release-health` 取每個 release × environment 的 crash-free
+sessions／users，`regressions --release` 看新版回歸。設定檔與輸出契約見
+[`docs/reference/ios_observability.md`](../reference/ios_observability.md)。
+
 資料會跨 entry、domain、environment 或 external boundary 時，在每個安全關卡做必要
 驗證，並以測試證明 bypass 會 fail closed。debug receipt 只交付 reproducer、exact
 HEAD、commands／exit status、evidence identity、root cause、regression result、
