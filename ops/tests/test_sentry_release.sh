@@ -221,6 +221,8 @@ elapsed=$(( $(date +%s) - start ))
 [[ $RC -ne 0 && $RC -ne 3 && $elapsed -lt 10 ]] && ok "hung uploader killed by the time bound (${elapsed}s, exit $RC)" \
   || bad "hung uploader rc=$RC elapsed=${elapsed}s"
 grep -qi 'time' "$ERR" && ok "time-bound kill is reported" || bad "hang message: $(cat "$ERR")"
+grep -q 'Terminated' "$ERR" && bad "bounded leaks the job-control 'Terminated: 15' message: $(grep Terminated "$ERR")" \
+  || ok "bounded stays silent about job-control termination"
 child="$(cat "$TMP/dsym_hang.cli.log.child" 2>/dev/null)"
 sleep 0.5
 [[ -n "$child" ]] && ! kill -0 "$child" 2>/dev/null \
@@ -232,6 +234,53 @@ run_helper dsym_uvx "${FULLCFG[@]}" PATH="$TMP/uvxbin:/usr/bin:/bin" -- upload-d
 
 run_helper dsym_nouvx "${FULLCFG[@]}" -- upload-dsyms "$DSYMS"
 [[ $RC -eq 3 ]] && grep -q 'uvx' "$ERR" && ok "no uvx on PATH → SKIP naming uvx" || bad "no uvx rc=$RC ($(cat "$ERR"))"
+
+section "bash -x never traces the token; tracing itself stays on"
+# xtrace_case <name> <sub-args...> -- runs the helper under bash -x with the fake curl.
+xtrace_case() {
+  local name="$1"; shift
+  CLOG="$TMP/$name.curl.log"; OUT="$TMP/$name.out"; ERR="$TMP/$name.err"
+  : > "$CLOG"
+  env -i HOME="$TMP/home" PATH="/usr/bin:/bin" \
+    KG_SENTRY_CURL="$FAKE_CURL" FAKE_CURL_LOG="$CLOG" FAKE_CLI_LOG="$TMP/$name.cli.log" \
+    "$@" bash -x "$HELPER" record-backend --sha "$SHA" >"$OUT" 2>"$ERR"
+  RC=$?
+}
+xtrace_case xt_env SENTRY_ENV_FILE="$NO_FILE" "${FULLCFG[@]}"
+[[ $RC -eq 0 ]] && ok "xtrace[env]: exit 0" || bad "xtrace[env]: exit $RC"
+no_token_leak xt_env
+grep -q 'ok: kg-backend@' "$TMP/xt_env.err" && grep -q '^+ say ' "$TMP/xt_env.err" \
+  && ok "xtrace[env]: tracing restored after the secret-bearing steps" || bad "xtrace[env]: trace missing/never restored"
+xtrace_case xt_file SENTRY_ENV_FILE="$ENVFILE"
+[[ $RC -eq 0 ]] && ok "xtrace[file]: exit 0" || bad "xtrace[file]: exit $RC"
+no_token_leak xt_file
+CLOG="$TMP/xt_dsym.curl.log"; OUT="$TMP/xt_dsym.out"; ERR="$TMP/xt_dsym.err"
+env -i HOME="$TMP/home" PATH="/usr/bin:/bin" SENTRY_ENV_FILE="$NO_FILE" "${FULLCFG[@]}" \
+  KG_SENTRY_CLI="$FAKE_CLI" FAKE_CLI_LOG="$TMP/xt_dsym.cli.log" \
+  bash -x "$HELPER" upload-dsyms "$DSYMS" >"$TMP/xt_dsym.out" 2>"$ERR"
+no_token_leak xt_dsym
+env -i HOME="$TMP/home" PATH="/usr/bin:/bin" SENTRY_ENV_FILE="$ENVFILE" \
+  bash -x "$HELPER" check >"$TMP/xt_check.out" 2>"$TMP/xt_check.err"
+grep -q "$TOKEN" "$TMP/xt_check.err" "$TMP/xt_check.out" \
+  && bad "xtrace[check]: token traced" || ok "xtrace[check]: token absent"
+
+section "a killed run leaves no kg_sentry_release.* temp file"
+HANG_CURL="$TMP/hang_curl.sh"
+printf '#!/usr/bin/env bash\necho "$$" > "$HANG_PIDFILE"\ncat >/dev/null\nsleep 30\n' >"$HANG_CURL"
+chmod +x "$HANG_CURL"
+TD="$TMP/tmpdir"; mkdir -p "$TD"
+env -i HOME="$TMP/home" PATH="/usr/bin:/bin" TMPDIR="$TD" SENTRY_ENV_FILE="$NO_FILE" \
+  KG_SENTRY_CURL="$HANG_CURL" HANG_PIDFILE="$TMP/hang.pid" "${FULLCFG[@]}" \
+  bash "$HELPER" record-backend --sha "$SHA" >/dev/null 2>&1 &
+helper_pid=$!
+for _ in $(seq 1 50); do [[ -s "$TMP/hang.pid" ]] && break; sleep 0.1; done
+[[ -n "$(ls "$TD" 2>/dev/null)" ]] && ok "temp file exists while the request is in flight (positive control)" \
+  || bad "no temp file in flight: control invalid"
+kill -TERM "$helper_pid" 2>/dev/null
+kill -TERM "$(cat "$TMP/hang.pid" 2>/dev/null)" 2>/dev/null
+wait "$helper_pid" 2>/dev/null
+left="$(ls "$TD" 2>/dev/null)"
+[[ -z "$left" ]] && ok "TERM leaves no temp file behind" || bad "leftover temp file(s): $left"
 
 echo ""
 echo "══════════════════════════════"

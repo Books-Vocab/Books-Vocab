@@ -933,6 +933,41 @@ else
   bad "poison cooldown[invalid timestamp]: expected poisoned-skip without compose, got verdict=$v rc=$rc"
 fi
 
+section "poison 鍵 short/full SHA 前綴比對（升級前寫入的 short poison 仍擋對應 full sha）"
+
+# poison_key_case <label> <key: prefix length of the new sha, or a literal> <expect: skip|run>
+# (SHA_NEW is per-scratch, so a numeric key is cut after new_scratch.)
+poison_key_case() {
+  local label="$1" key="$2" expect="$3"
+  new_scratch backend
+  [[ "$key" =~ ^[0-9]+$ ]] && key="${SHA_NEW:0:$key}"
+  printf 'poison %s %s\n' "$key" "$(date +%s)" > "$STATE"
+  MOCK_CURL="$(make_mock_curl "" "$SC")"
+  set +e
+  out="$(run_recon --once 2>"$SC/prefix.err")"
+  rc=$?
+  set -e
+  v="$(get_verdict "$out")"
+  if [[ "$expect" == skip ]]; then
+    if [[ "$v" == "poisoned-skip" && "$rc" -eq 0 && ! -s "$COMPOSELOG" ]]; then
+      ok "poison prefix[$label]: blocks the matching full sha"
+    else
+      bad "poison prefix[$label]: expected poisoned-skip without compose, got verdict=$v rc=$rc"
+    fi
+  else
+    if [[ "$v" != "poisoned-skip" ]]; then
+      ok "poison prefix[$label]: does not block (verdict=$v)"
+    else
+      bad "poison prefix[$label]: wrongly blocked the sha"
+    fi
+  fi
+}
+
+poison_key_case "7-char short sha" 7 skip
+poison_key_case "12-char short sha" 12 skip
+poison_key_case "other 7-char sha (control)" "deadbee" run
+poison_key_case "6-char prefix is too short" 6 run
+
 echo ""
 echo "══════════════════════════════"
 echo "  passed: $pass  failed: $fail"

@@ -590,3 +590,53 @@ def test_cli_release_health_reports_percent_per_release_and_environment(
         },
     ]
     assert "secret-token" not in output
+
+
+def test_releases_requests_health_data_so_pct_fields_are_populated() -> None:
+    calls: list[str] = []
+
+    def opener(request: Any, timeout: float) -> FakeResponse:
+        calls.append(request.full_url)
+        return FakeResponse([{"version": "kg-backend@abc", "healthData": {}}])
+
+    SentryAPIClient(_config(), opener=opener).releases(project="ios")
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(calls[0]).query)
+    assert query["health"] == ["1"]
+
+
+def test_env_file_with_invalid_utf8_line_keeps_other_lines_and_reports_line_number(
+    tmp_path: Any, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "bad.env"
+    path.write_bytes(
+        b"SENTRY_ORG=file-org\n"
+        b"SENTRY_AUTH_TOKEN=bad-\xff-secretvalue\n"
+        b"SENTRY_PROJECT_IOS=kg-ios\n"
+    )
+    settings = sentry_api.load_sentry_settings({"SENTRY_ENV_FILE": str(path)})
+    assert settings["SENTRY_ORG"] == "file-org"
+    assert settings["SENTRY_PROJECT_IOS"] == "kg-ios"
+    assert "SENTRY_AUTH_TOKEN" not in settings
+    err = capsys.readouterr().err
+    assert "line 2" in err
+    assert "secretvalue" not in err and "bad-" not in err
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("SENTRY_ORG=kg-org # prod org", "kg-org"),
+        ("SENTRY_ORG=kg-org\t# tab comment", "kg-org"),
+        ('SENTRY_ORG="kg # org" # trailing', "kg # org"),
+        ("SENTRY_ORG='kg # org'  # trailing", "kg # org"),
+        ("SENTRY_ORG=kg#org", "kg#org"),
+        ('export SENTRY_ORG="plain"', "plain"),
+    ],
+)
+def test_env_file_inline_comment_stripped_only_when_unquoted(
+    tmp_path: Any, raw: str, expected: str
+) -> None:
+    path = tmp_path / "c.env"
+    path.write_text(raw + "\n", encoding="utf-8")
+    settings = sentry_api.load_sentry_settings({"SENTRY_ENV_FILE": str(path)})
+    assert settings["SENTRY_ORG"] == expected
