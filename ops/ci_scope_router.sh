@@ -122,6 +122,15 @@ classify_path() {
       ;;
   esac
 
+  # lab/podcast tests run in the Linux ops suite (lab-podcast group, Issue #2064);
+  # the rest of lab/ keeps routing fail-closed.
+  case "$path" in
+    lab/podcast/*)
+      ops=true
+      return
+      ;;
+  esac
+
   # These scripts are covered by the Linux ops suite but live outside ops/.
   case "$path" in
     devops.sh|start.sh|backend/restart_kg.sh|backend/view_logs.sh|lab/podcast/start.sh|scripts/ios_token_lint.sh|.claude/skills/app-debug/find-polluter.sh|.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh|.claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh)

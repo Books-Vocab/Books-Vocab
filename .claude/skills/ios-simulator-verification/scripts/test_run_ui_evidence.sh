@@ -51,7 +51,7 @@ case "${1:-}" in
     mkdir -p "$ui_root/uitest-videos" "$fake_artifacts/Test.xcresult"
     printf '%s\n' '<html>KG UITest Run Review</html>' >"$ui_root/UIreview.html"
     printf '%s\n' 'log' >"$ui_root/missing.log"
-    printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' | base64 -D >"$ui_root/step-1.png"
+    printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' | base64 -d >"$ui_root/step-1.png"
     cp "$ui_root/step-1.png" "$ui_root/contact_sheet.png"
     cp "$ui_root/step-1.png" "$ui_root/quick4_contact_sheet.png"
     png_size="$(wc -c <"$ui_root/step-1.png" | tr -d ' ')"
@@ -119,13 +119,17 @@ set -e
 [[ "$missing_tool_rc" -eq 70 ]]
 grep -Fq -- 'missing canonical evidence validator' "$tmp_root/missing-tool.out"
 test ! -e "$repo/ops/uitest_evidence_contract.py"
-jq -e --arg source "$repo" --arg helper "$feature_helper" '
+# This copy of the helper lives in the fixture, so the fixture is the repository
+# that owns it: toolRoot is the fixture's physical path (pwd -P), which has no
+# validator.  Comparing against the logical "$repo" only differed where TMPDIR
+# sits behind a symlink (macOS /var/folders), and was red everywhere else.
+jq -e --arg ownerRepo "$(cd "$repo" && pwd -P)" '
   .status == "inconclusive"
   and .exit == "70"
   and .helper.contractStatus == "tool-missing"
   and (.reason | contains("missing canonical evidence validator"))
-  and (.helper.validator | endswith("/ops/uitest_evidence_contract.py"))
-  and .helper.toolRoot != $source
+  and .helper.validator == ($ownerRepo + "/ops/uitest_evidence_contract.py")
+  and .helper.toolRoot == $ownerRepo
   and .helper.commandLog != null
 ' "$missing_tool_json" >/dev/null
 

@@ -236,7 +236,9 @@ started_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 if [[ "$retention_mode" == "retained" ]]; then
   expires_at=""
 else
-  expires_at="$(date -u -v+${retention_ttl_seconds}S '+%Y-%m-%dT%H:%M:%SZ')"
+  # BSD date (macOS) first; GNU date keeps the contract test runnable on Linux CI.
+  expires_at="$(date -u -v+"${retention_ttl_seconds}"S '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
+    || date -u -d "+${retention_ttl_seconds} seconds" '+%Y-%m-%dT%H:%M:%SZ')"
 fi
 run_manifest="$bundle_root/run-manifest.json"
 

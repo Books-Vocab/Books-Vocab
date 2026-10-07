@@ -83,6 +83,12 @@ DEFAULT_TESTS=(
   demo-data
   catalog-agent
   uitest-contact-sheet
+  # Issue #2065：以下 group 收編 full reachability scan 找到的未路由測試檔。
+  worktree-extended
+  ios-ui-review
+  review-preflight
+  # Issue #2064：lab/podcast 單元測試（pipeline／publish／synthesize／saga／monitor）。
+  lab-podcast
 )
 
 OPTIONAL_TESTS=(
@@ -102,7 +108,11 @@ list_tests() {
 run_one() {
   case "$1" in
     release)            ./ops/test_release.sh ;;
-    ios-release)        ./ops/test_ios_release.sh ;;
+    ios-release)
+      ./ops/test_ios_release.sh &&
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_asc_shipped.py
+      ;;
     backup-verify)      ./ops/tests/test_backup_verify.sh ;;
     devops)
       ./ops/test_devops.sh &&
@@ -111,11 +121,18 @@ run_one() {
       # IMP-20260805-947062：devops_kg_safe.sh 的 transport retarget 契約測試，
       # 主體與 test_devops.sh 同源（都測 wrapper），先前不屬於任何 group。
       ./ops/tests/test_devops_safe_lightsail_guard.sh &&
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_env_drift.py &&
       "$UV_BIN" run --project backend python -m pytest -q ops/tests/test_ops_edit_batch.py
       ;;
     deploy-smoke)       ./ops/tests/test_deploy_smoke.sh ;;
     infra-health)       ./ops/test_infra_health.sh ;;
-    disk-guard)         ./ops/tests/test_kg_disk_guard.sh ;;
+    disk-guard)
+      ./ops/tests/test_kg_disk_guard.sh &&
+      ./ops/tests/test_ios_disk_budget.sh &&
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_disk_usage.py
+      ;;
     reconcile)          ./ops/tests/test_kg_reconcile.sh ;;
     sentry-release)     ./ops/tests/test_sentry_release.sh ;;
     branch-audit)       ./ops/tests/test_branch_audit.sh ;;
@@ -144,6 +161,7 @@ run_one() {
     delivery-control)
       delivery_tests=(ops/tests/test_delivery_*.py)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_canonical_json.py \
         "${delivery_tests[@]}" &&
       ./ops/tests/test_pr_readiness_workflow.sh
       ;;
@@ -157,6 +175,7 @@ run_one() {
         ops/tests/test_compute_gate_adapter.py \
         ops/tests/test_compute_history.py \
         ops/tests/test_compute_hosts.py \
+        ops/tests/test_compute_receipt.py \
         ops/tests/test_compute_router.py \
         ops/tests/test_felix_compute_launcher.py \
         ops/tests/test_xmachine_transport.py
@@ -164,6 +183,8 @@ run_one() {
     doctor)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_doctor.py \
+        ops/tests/test_pr_timeline.py \
+        ops/tests/test_release_report.py \
         ops/tests/test_release_train.py \
         ops/tests/test_complexity.py \
         ops/tests/test_doctor_issue.py \
@@ -196,6 +217,7 @@ run_one() {
     python-entrypoints)
       ./ops/tests/test_python_entrypoints.sh &&
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_venv_health.py \
         ops/tests/test_python_scan.py
       ;;
     ui-token)           ./ops/test_ui_token_lint.sh ;;
@@ -210,7 +232,10 @@ run_one() {
         ops/tests/test_ops_group_chain.py
       ;;
     github-workflows)
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_agent_review_contract.py &&
       ./ops/tests/test_github_workflows.sh &&
+      ./ops/tests/test_ops_suite_bootstrap.sh &&
       ./ops/tests/test_ci_scope_router.sh &&
       ./ops/tests/test_ci_confidence_verdict.sh &&
       ./ops/tests/test_ops_suite_bootstrap.sh &&
@@ -310,14 +335,21 @@ run_one() {
       ;;
     demo-data)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_demo_backend_emitter.py \
         ops/tests/test_demo_ios_emitter.py \
         ops/tests/test_demo_ios_spec_emitter.py \
         ops/tests/test_shape_history.py \
         ops/tests/test_apply_curation.py \
         ops/tests/test_ui_world_manifest.py \
+        ops/tests/test_ui_world_test_topology.py \
+        ops/tests/test_settings_sync_fixture_contract.py \
+        ops/tests/test_p9_review_calendar_contract.py \
+        ops/tests/test_p9_review_calendar_evidence.py \
         ops/tests/test_uitest_flow_matrix.py \
         ops/tests/test_uitest_review_page.py \
         ops/tests/test_uitest_evidence_contract.py \
+        ops/tests/test_uitest_manifest_normalize.py \
+        ops/tests/test_png_integrity.py \
         ops/tests/test_uitest_review_attest.py
       ;;
     catalog-agent)
@@ -327,6 +359,49 @@ run_one() {
     uitest-contact-sheet)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_uitest_contact_sheet.py
+      ;;
+    # Coordinator recovery/reanchor contracts.  Kept out of `worktree` because
+    # that group runs inside the 3-minute required repo gate (pr-gate.yml) and
+    # these add over a minute; same serial lock, so the two never interleave.
+    worktree-extended)
+      "$UV_BIN" run --no-project --python 3.13 \
+        "$ROOT/ops/run_serial_test_group.py" \
+        --repo-root "$ROOT" --lock-name worktree -- \
+        "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_worktree_abandoned_recovery.py \
+        ops/tests/test_worktree_published_remote_recovery.py \
+        ops/tests/test_worktree_reanchor_same_path.py \
+        ops/tests/test_worktree_registry_operation_lock.py \
+        ops/tests/test_worktree_resume_cleanup_pending.py \
+        ops/tests/test_worktree_resume_maintenance.py \
+        ops/tests/test_task_registry_process_identity.py
+      ;;
+    ios-ui-review)
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_ios_ui_review_clusters.py \
+        ops/tests/test_ios_ui_review_matrix.py \
+        ops/tests/test_ios_ui_review_matrix_batch.py \
+        ops/tests/test_ios_ui_run_many.py &&
+      ./.claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh
+      ;;
+    review-preflight)
+      "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
+        ops/tests/test_review_preflight.py
+      ;;
+    # lab/podcast has no venv or conftest (PEP 723 per-file deps), so the union of
+    # those deps is pinned here.  Two pytest runs: monitor/ and the top level both
+    # put their own directory on sys.path and share module names.  The live
+    # smoke scripts (smoke_tts.py, voices_ab.py, ab_perf_frame.py) are not
+    # test_-prefixed, hence never collected; nothing here needs an API key,
+    # network or ffmpeg (all 37 files green on first run, none excluded).
+    lab-podcast)
+      "$UV_BIN" run --no-project --python 3.13 --with pytest \
+        --with google-genai --with python-dotenv --with pydub --with audioop-lts \
+        --with pillow --with ebooklib --with beautifulsoup4 --with lxml --with boto3 \
+        pytest -q -p no:cacheprovider lab/podcast/test_*.py &&
+      "$UV_BIN" run --no-project --python 3.13 --with pytest \
+        --with fastapi --with 'uvicorn[standard]' --with python-multipart --with httpx \
+        pytest -q -p no:cacheprovider lab/podcast/monitor/test_*.py
       ;;
     asc)
       ./ops/test_asc.sh

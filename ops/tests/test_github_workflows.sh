@@ -474,6 +474,10 @@ grep -q 'SHARD_COUNT' "$OPS" || fail "ops-suite does not pin the shard partition
 if grep -q 'Run platform-independent ops groups' "$OPS"; then
   fail "ops-suite still runs all Linux groups serially"
 fi
+# Issue #2064: lab/podcast tests run in the lab-podcast group, so a push that
+# only touches lab/podcast must still trigger ops-suite (the PR path is the router).
+grep -Fq "      - 'lab/podcast/**'" "$OPS" \
+  || fail "ops-suite push paths do not cover lab/podcast/** (lab-podcast group)"
 
 # --- Token scope and liveness ceilings (Issue #2070) -------------------------
 # Every workflow pins its own GITHUB_TOKEN scope instead of inheriting the repo
