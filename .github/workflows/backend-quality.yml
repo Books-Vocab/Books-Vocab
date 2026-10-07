@@ -173,3 +173,25 @@ jobs:
             backend/ci-artifacts/
           if-no-files-found: error
           retention-days: 14
+
+  # The production image must install exactly backend/uv.lock (#2088): build it
+  # from this commit and compare its importlib.metadata view with the lock. The
+  # dev group is allowed because /admin/tests runs pytest inside the container;
+  # its packages must still be at the locked versions.
+  image-lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout image source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv for the image check
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.8.23'
+
+      - name: Build production image
+        run: docker build --tag kg-api:image-lock .
+
+      - name: Assert image installs exactly uv.lock
+        run: uv run --locked python scripts/check_image_lock.py --image kg-api:image-lock --allow-group dev

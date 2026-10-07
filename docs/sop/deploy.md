@@ -73,7 +73,7 @@ curl -s --resolve wordnexus.lol:443:104.21.85.113 https://wordnexus.lol/api/syst
 
 ### path-filter 判準（哪些變更才 rebuild）
 只有變更命中 backend 觸發正則才 `compose up --build`；否則只 `git pull --ff-only origin prod`（追 felix repo HEAD、含 release 時自我更新本腳本），**不動容器**、**且刻意不寫 `backend/VERSION` 游標**（VERSION 只在真正 build 健康後才寫，代表容器 serving 版本；非 backend 變更沒重建容器，寫 VERSION 會謊報部署狀態）。觸發集（錨定 `backend/`）：`src/`、`tests/`、`static/`、`pyproject.toml`、`pytest.ini`、`Dockerfile`、`docker-compose.yml`、`ops_{cli,analyze,edit}.py`、`{index,privacy,support,terms,guide}.html`。
-- **刻意排除 `backend/uv.lock`**：Dockerfile 走 `pip install .` 只讀 `pyproject.toml`、不消費 `uv.lock`，故「只改 uv.lock」不改 image；真正 dep 變更一定同時動 `pyproject.toml`（會觸發）。
+- **`backend/uv.lock` 尚未納入觸發集（已知缺口，#2088 待改 `BACKEND_TRIGGER_RE`）**：image 依 `uv.lock` 安裝（`uv export --locked` → `pip install --no-deps --require-hashes`，見 `backend/Dockerfile`；backend-quality 的 `image-lock` job 以 `backend/scripts/check_image_lock.py` 驗證已安裝版本 == lock），故「只改 uv.lock」**會**改變 image，但目前不觸發 rebuild——lock-only 變更（例如 `uv lock --upgrade-package`）要等下一個命中觸發集的 commit 才一起上線。
 - **刻意排除**（皆不進 image）：`backend/.env*`、`backend/VERSION`、`backend/data/**`、`backend/certs/**`、`backend/scripts/**`、`backend/docs/**`、`ios/**`、`lab/**`、`docs/**`、`ops/**`、`design-system/**`。判準正本在 `ops/kg_reconcile.sh` 的 `BACKEND_TRIGGER_RE`。
 
 ### rollback + poison 行為
