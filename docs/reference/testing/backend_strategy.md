@@ -85,11 +85,13 @@ confidence。文件或 iOS-only 變更本身不會選到 backend lane；`require
 為準。job `backend-quality` 在乾淨 runner 執行：
 
 1. checkout full history，固定 uv 版本後執行 `uv sync --locked`。
-2. 以 module form 執行測試與 coverage data；push / pull request 執行完整 suite：
-   `uv run python -m pytest -q --cov=src/kg --cov-report=term-missing --cov-report=xml:coverage.xml`；
-   nightly schedule 使用同一命令加 `-k "not slow"` 的 non-slow lane。coverage data
-   透過 `COVERAGE_FILE=${{ runner.temp }}/backend-quality/.coverage` 寫入 runner temp，
-   不改寫 repo 內既有的 `backend/.coverage`。
+2. 以 module form 執行測試與 coverage data；push、pull request 與 nightly schedule
+   都執行同一個完整 suite，不依 event 分支或以 `-k`／`-m` 取子集：
+   `uv run python -m pytest -q --cov=src/kg --cov-report=term-missing --cov-report=xml:coverage.xml`。
+   nightly 是對同一 suite 的 drift 偵測，不是較窄的 lane。contract test 以假 `uv`
+   逐 event 實際執行該 step，比對各 event 的 pytest argv 相同且不含選取參數。
+   coverage data 透過 `COVERAGE_FILE=${{ runner.temp }}/backend-quality/.coverage`
+   寫入 runner temp，不改寫 repo 內既有的 `backend/.coverage`。
 3. 以 `uv run python -m coverage report --fail-under=85` 執行 coverage threshold，並
    明確拒絕缺少或空白的 `coverage.xml`。
 4. 以 `uv run ruff check src tests` 執行 static quality check；`backend/pyproject.toml`
