@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import re
+import shlex
 import sys
 from pathlib import Path
 from typing import Any
@@ -18,16 +19,58 @@ if str(OPS_DIR) not in sys.path:
 
 import context_route  # noqa: E402
 import skill_route  # noqa: E402
+from lib.worktree_scope import SCOPE_OPERATIONS, SCOPE_SCHEMA  # noqa: E402
 
 
 SCHEMA = "kg.agent_onboarding.v2"
+TEMPLATE_SCHEMA = "kg.agent_onboarding.evidence_template.v1"
+TEMPLATE_HINT = "加 --print-evidence-template 取得此 identity/entry 的全部 evidence key 與可直接複製的範本"
+PLACEHOLDER_RULE = "replace every <...> placeholder; a value that is still a placeholder counts as missing"
+_PLACEHOLDER = re.compile(r"<[^<>]+>")
+_SCOPE_PLACEHOLDER = {
+    "schema": SCOPE_SCHEMA,
+    "files": [
+        {
+            "path": "<repo-relative file path>",
+            "operation": f"<{'|'.join(SCOPE_OPERATIONS)}>",
+        }
+    ],
+}
+# Keys whose shape or choices are not obvious from the name; every other key
+# falls back to "<key>".
+_PLACEHOLDERS: dict[str, Any] = {
+    "structured Scope": _SCOPE_PLACEHOLDER,
+    "Scope": _SCOPE_PLACEHOLDER,
+    "dispatch_channel": f"<{'|'.join(context_route.WORKER_DISPATCH_CHANNELS)}>",
+    "dispatch_owner": "<dispatching IM, e.g. IM-1>",
+    "Issue assignment packet": "<Issue #N or URL, base SHA>",
+    "exact HEAD": "<40-char commit SHA>",
+}
 
 
 class OnboardingError(ValueError):
     """The agent cannot safely enter the requested task route."""
 
 
+class EvidenceError(OnboardingError):
+    """The supplied assignment evidence is malformed or carries an invalid value."""
+
+
+def _is_placeholder(value: Any) -> bool:
+    return isinstance(value, str) and bool(_PLACEHOLDER.fullmatch(value.strip()))
+
+
+def _has_placeholder(value: Any) -> bool:
+    if isinstance(value, dict):
+        return any(_has_placeholder(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_has_placeholder(item) for item in value)
+    return _is_placeholder(value)
+
+
 def _evidence_value_present(value: Any) -> bool:
+    if _has_placeholder(value):
+        return False
     if isinstance(value, str):
         return bool(value.strip())
     if isinstance(value, (dict, list)):
@@ -58,34 +101,173 @@ def _is_im_target(value: Any) -> bool:
     )
 
 
+def _is_worker_dispatch(identity_id: str, entry: str) -> bool:
+    return identity_id == "worker" and entry == "direct-assignment"
+
+
+def _dispatch_channel(evidence: dict[str, Any]) -> str | None:
+    value = evidence.get("dispatch_channel")
+    if not _evidence_value_present(value):
+        return None
+    # A non-string value is present but can never name a channel; keep it
+    # visible so it is reported as invalid rather than silently ignored.
+    return value.strip().casefold() if isinstance(value, str) else json.dumps(value)
+
+
+def _evidence_spec(identity_id: str, entry: str, required: list[str]) -> dict[str, Any]:
+    """Every evidence key the route reads: manifest keys plus the coded dispatch contract."""
+    spec: dict[str, Any] = {
+        "required": list(required),
+        "conditional": [],
+        "optional": [],
+        "allowed_values": {},
+        "placeholder_rule": PLACEHOLDER_RULE,
+    }
+    if _is_worker_dispatch(identity_id, entry):
+        spec["allowed_values"]["dispatch_channel"] = list(
+            context_route.WORKER_DISPATCH_CHANNELS
+        )
+        spec["conditional"].append(
+            {
+                "key": "dispatch_owner",
+                "required_when": {"dispatch_channel": "im"},
+                "rule": "dispatching IM name (im, IM-<name>); hand-back returns to this IM; omit when dispatch_channel=user",
+            }
+        )
+        spec["optional"].append(
+            {
+                "key": "handback_target",
+                "rule": "IM name; must equal dispatch_owner when dispatch_channel=im; "
+                "when dispatch_channel=user it names the hand-back IM, otherwise the Worker selects one before hand-back",
+            }
+        )
+    return spec
+
+
+def _applicable_keys(spec: dict[str, Any], evidence: dict[str, Any]) -> list[str]:
+    """Required keys plus the conditional keys whose condition the evidence does not rule out."""
+    keys = list(spec["required"])
+    channel = _dispatch_channel(evidence)
+    for conditional in spec["conditional"]:
+        expected = conditional["required_when"]["dispatch_channel"]
+        if channel is None or channel == expected:
+            keys.append(conditional["key"])
+    return keys
+
+
+def _missing_evidence(spec: dict[str, Any], evidence: dict[str, Any]) -> list[str]:
+    channel = _dispatch_channel(evidence)
+    missing = [
+        key
+        for key in spec["required"]
+        if not _evidence_value_present(evidence.get(key))
+    ]
+    for conditional in spec["conditional"]:
+        # An undecided channel is already reported as missing; the conditional
+        # key is then shown in the template instead of guessed as required.
+        if channel == conditional["required_when"]["dispatch_channel"]:
+            if not _evidence_value_present(evidence.get(conditional["key"])):
+                missing.append(conditional["key"])
+    return missing
+
+
+def _evidence_template(
+    spec: dict[str, Any], evidence: dict[str, Any]
+) -> dict[str, Any]:
+    template = {
+        key: evidence[key]
+        if _evidence_value_present(evidence.get(key))
+        else _PLACEHOLDERS.get(key, f"<{key}>")
+        for key in _applicable_keys(spec, evidence)
+    }
+    for key, value in evidence.items():
+        if key not in template and _evidence_value_present(value):
+            template[key] = value
+    return template
+
+
+def _onboard_command(
+    identity_label: str,
+    intent: str,
+    entry: str,
+    specialist_intent: str | None,
+    evidence: dict[str, Any],
+) -> str:
+    argv = [
+        "./ops/agent_onboard.py",
+        "--identity",
+        identity_label,
+        "--intent",
+        intent,
+        "--entry",
+        entry,
+    ]
+    if specialist_intent:
+        argv += ["--specialist-intent", specialist_intent]
+    argv += [
+        "--evidence",
+        json.dumps(evidence, ensure_ascii=False, separators=(",", ":")),
+        "--json",
+    ]
+    return shlex.join(argv)
+
+
+def _worker_dispatch_problems(
+    identity_id: str, entry: str, evidence: dict[str, Any]
+) -> list[dict[str, str]]:
+    """Invalid supplied dispatch values; absent or placeholder values are reported as missing instead."""
+    if not _is_worker_dispatch(identity_id, entry):
+        return []
+    problems: list[dict[str, str]] = []
+    channel = _dispatch_channel(evidence)
+    if channel is not None and channel not in context_route.WORKER_DISPATCH_CHANNELS:
+        problems.append(
+            {
+                "key": "dispatch_channel",
+                "reason": "worker direct assignment 的 dispatch_channel 必須是 im 或 user",
+            }
+        )
+        return problems
+    owner = evidence.get("dispatch_owner")
+    target = evidence.get("handback_target")
+    if channel == "im" and _evidence_value_present(owner) and not _is_im_target(owner):
+        problems.append(
+            {
+                "key": "dispatch_owner",
+                "reason": "IM dispatch 必須提供有效的 dispatch_owner",
+            }
+        )
+    if target is not None and not _has_placeholder(target):
+        if not _is_im_target(target):
+            problems.append(
+                {"key": "handback_target", "reason": "handback_target 必須是 IM"}
+            )
+        elif (
+            channel == "im"
+            and _is_im_target(owner)
+            and target.strip().casefold() != owner.strip().casefold()
+        ):
+            problems.append(
+                {
+                    "key": "handback_target",
+                    "reason": "IM dispatch 的 handback_target 必須等於 same dispatching IM",
+                }
+            )
+    return problems
+
+
 def _resolve_worker_dispatch(
     identity_id: str, entry: str, evidence: dict[str, Any]
 ) -> dict[str, Any] | None:
-    if identity_id != "worker" or entry != "direct-assignment":
+    """Resolve discussion/hand-back recipients from evidence already checked by _worker_dispatch_problems."""
+    if not _is_worker_dispatch(identity_id, entry):
         return None
 
-    channel_value = evidence.get("dispatch_channel")
-    if not isinstance(channel_value, str) or channel_value.strip().casefold() not in {
-        "im",
-        "user",
-    }:
-        raise OnboardingError(
-            "worker direct assignment 的 dispatch_channel 必須是 im 或 user"
-        )
-    channel = channel_value.strip().casefold()
+    channel = _dispatch_channel(evidence)
     requested_target = evidence.get("handback_target")
 
     if channel == "im":
-        dispatch_owner = evidence.get("dispatch_owner")
-        if not _is_im_target(dispatch_owner):
-            raise OnboardingError("IM dispatch 必須提供有效的 dispatch_owner")
-        if requested_target is not None:
-            if not _is_im_target(requested_target):
-                raise OnboardingError("handback_target 必須是 IM")
-            if requested_target.strip().casefold() != dispatch_owner.strip().casefold():
-                raise OnboardingError(
-                    "IM dispatch 的 handback_target 必須等於 same dispatching IM"
-                )
+        dispatch_owner = evidence["dispatch_owner"]
         requested_im_target = (
             requested_target.strip() if isinstance(requested_target, str) else None
         )
@@ -102,8 +284,6 @@ def _resolve_worker_dispatch(
             },
         }
 
-    if requested_target is not None and not _is_im_target(requested_target):
-        raise OnboardingError("handback_target 必須是 IM")
     target = requested_target.strip() if isinstance(requested_target, str) else None
     return {
         "channel": channel,
@@ -121,16 +301,10 @@ def _resolve_worker_dispatch(
     }
 
 
-def build_onboarding(
-    root: Path | None = None,
-    *,
-    identity: str,
-    intent: str,
-    entry: str,
-    evidence: dict[str, Any] | None = None,
-    specialist_intent: str | None = None,
-) -> dict[str, Any]:
-    root = _root(root)
+def _route_context(
+    root: Path, identity: str, intent: str, entry: str
+) -> tuple[dict, dict, str, str]:
+    """Load the manifest/catalog and fail closed on an identity/intent/entry mismatch."""
     try:
         manifest = context_route.load_manifest(root)
         catalog = skill_route.load_catalog(root)
@@ -146,7 +320,64 @@ def build_onboarding(
         )
     if entry not in identity_def["entry_modes"]:
         raise OnboardingError(f"entry 不符合 identity: {identity_id} -> {entry}")
+    return manifest, catalog, identity_id, canonical_intent
 
+
+def _require_evidence_object(evidence: Any) -> dict[str, Any]:
+    evidence = {} if evidence is None else evidence
+    if not isinstance(evidence, dict):
+        raise EvidenceError("assignment evidence 必須是 object")
+    return evidence
+
+
+def build_evidence_template(
+    root: Path | None = None,
+    *,
+    identity: str,
+    intent: str,
+    entry: str,
+    evidence: dict[str, Any] | None = None,
+    specialist_intent: str | None = None,
+) -> dict[str, Any]:
+    """Every evidence key for identity/entry and a ready-to-copy --evidence template."""
+    manifest, _catalog, identity_id, canonical_intent = _route_context(
+        _root(root), identity, intent, entry
+    )
+    evidence = _require_evidence_object(evidence)
+    identity_def = manifest["identities"][identity_id]
+    spec = _evidence_spec(
+        identity_id, entry, identity_def["assignment_requirements"][entry]
+    )
+    template = _evidence_template(spec, evidence)
+    return {
+        "schema": TEMPLATE_SCHEMA,
+        "identity": {"id": identity_id, "label": identity_def["label"]},
+        "task": {
+            "intent": canonical_intent,
+            "entry": entry,
+            "specialist_intent": specialist_intent,
+        },
+        "evidence_spec": spec,
+        "evidence_template": template,
+        "command": _onboard_command(
+            identity_def["label"], canonical_intent, entry, specialist_intent, template
+        ),
+    }
+
+
+def build_onboarding(
+    root: Path | None = None,
+    *,
+    identity: str,
+    intent: str,
+    entry: str,
+    evidence: dict[str, Any] | None = None,
+    specialist_intent: str | None = None,
+) -> dict[str, Any]:
+    manifest, catalog, identity_id, canonical_intent = _route_context(
+        _root(root), identity, intent, entry
+    )
+    identity_def = manifest["identities"][identity_id]
     intent_def = manifest["intents"][canonical_intent]
     skill_intent = identity_def["skill_routes"][canonical_intent][entry]
     allowed_specialists = identity_def["specialist_routes"][canonical_intent][entry]
@@ -159,16 +390,19 @@ def build_onboarding(
     onboarding_source = manifest["onboarding"]["source"]
     role_def = manifest["roles"][identity_def["machine_role"]]
     required_external = identity_def["assignment_requirements"][entry]
-    evidence = {} if evidence is None else evidence
-    if not isinstance(evidence, dict):
-        raise OnboardingError("assignment evidence 必須是 object")
-    missing_external = [
-        requirement
-        for requirement in required_external
-        if not _evidence_value_present(evidence.get(requirement))
+    evidence = _require_evidence_object(evidence)
+    spec = _evidence_spec(identity_id, entry, required_external)
+    missing_external = _missing_evidence(spec, evidence)
+    unfilled = [
+        key
+        for key, value in evidence.items()
+        if key not in missing_external and _has_placeholder(value)
     ]
+    invalid = _worker_dispatch_problems(identity_id, entry, evidence)
     dispatch_resolution = None
-    if not missing_external:
+    if not missing_external and not unfilled:
+        if invalid:
+            raise EvidenceError("; ".join(problem["reason"] for problem in invalid))
         dispatch_resolution = _resolve_worker_dispatch(identity_id, entry, evidence)
     base_load_order = [
         {"phase": "project", "required": True, "sources": [onboarding_source]},
@@ -198,9 +432,9 @@ def build_onboarding(
         "assignment": {
             "required_external": required_external,
             "provided": sorted(
-                requirement
-                for requirement in required_external
-                if requirement not in missing_external
+                key
+                for key in _applicable_keys(spec, evidence)
+                if _evidence_value_present(evidence.get(key))
             ),
             "missing": missing_external,
             "evidence": evidence,
@@ -219,12 +453,29 @@ def build_onboarding(
     }
     if dispatch_resolution is not None:
         base_payload["assignment"]["dispatch"] = dispatch_resolution
-    if missing_external:
+    if missing_external or unfilled:
+        template = _evidence_template(spec, evidence)
+        base_payload["assignment"].update(
+            {
+                "unfilled": unfilled,
+                "invalid": invalid,
+                "evidence_spec": spec,
+                "evidence_template": template,
+                "retry_command": _onboard_command(
+                    identity_def["label"],
+                    canonical_intent,
+                    entry,
+                    specialist_intent,
+                    template,
+                ),
+            }
+        )
         return {
             **base_payload,
             "status": "awaiting-assignment",
             "blocked_at": "assignment",
-            "next_action": "complete the required assignment evidence before loading skills or domain docs",
+            "next_action": "fill every placeholder in assignment.evidence_template and rerun assignment.retry_command "
+            "before loading skills or domain docs",
         }
 
     # Assignment is the hard boundary. A cold agent with no assignment must
@@ -275,7 +526,7 @@ def build_onboarding(
         }
     ready_assignment = {
         "required_external": required_external,
-        "provided": sorted(required_external),
+        "provided": base_payload["assignment"]["provided"],
         "missing": [],
         "evidence": evidence,
         "evidence_digest": base_payload["assignment"]["evidence_digest"],
@@ -322,33 +573,100 @@ def _parser() -> argparse.ArgumentParser:
         "--evidence",
         help="JSON object containing every required assignment evidence field",
     )
+    parser.add_argument(
+        "--print-evidence-template",
+        action="store_true",
+        help="print every required/conditional/optional evidence key for identity/intent/entry "
+        "and a ready-to-copy onboarding command, then exit 0 (loads no skill or domain docs)",
+    )
     parser.add_argument("--root", type=Path)
     parser.add_argument("--json", action="store_true")
     return parser
 
 
+def _template_text(template: dict[str, Any]) -> str:
+    """Plain-text template view whose last line is the unescaped, ready-to-copy command."""
+    spec = template["evidence_spec"]
+    lines = [f"required: {', '.join(spec['required'])}"]
+    for item in spec["conditional"]:
+        condition = ", ".join(
+            f"{key}={value}" for key, value in item["required_when"].items()
+        )
+        lines.append(f"conditional: {item['key']} (when {condition}) - {item['rule']}")
+    lines += [f"optional: {item['key']} - {item['rule']}" for item in spec["optional"]]
+    lines += [
+        f"allowed {key}: {', '.join(values)}"
+        for key, values in spec["allowed_values"].items()
+    ]
+    lines += [f"rule: {spec['placeholder_rule']}", template["command"]]
+    return "\n".join(lines)
+
+
+def _parse_evidence(raw: str | None) -> dict[str, Any] | None:
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise EvidenceError(f"--evidence 不是合法 JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise EvidenceError("--evidence 必須是 JSON object")
+    return parsed
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(sys.argv[1:] if argv is None else argv)
+    route = {"identity": args.identity, "intent": args.intent, "entry": args.entry}
     try:
-        evidence = None
-        if args.evidence:
-            parsed = json.loads(args.evidence)
-            if not isinstance(parsed, dict):
-                raise OnboardingError("--evidence 必須是 JSON object")
-            evidence = parsed
+        evidence = _parse_evidence(args.evidence)
+        if args.print_evidence_template:
+            template = build_evidence_template(
+                args.root,
+                **route,
+                evidence=evidence,
+                specialist_intent=args.specialist_intent,
+            )
+            print(
+                json.dumps(template, ensure_ascii=False, indent=2)
+                if args.json
+                else _template_text(template)
+            )
+            return 0
         payload = build_onboarding(
             args.root,
-            identity=args.identity,
-            intent=args.intent,
-            entry=args.entry,
+            **route,
             evidence=evidence,
             specialist_intent=args.specialist_intent,
         )
+    except EvidenceError as exc:
+        print(f"agent_onboard: ERROR: {exc}", file=sys.stderr)
+        print(f"agent_onboard: hint: {TEMPLATE_HINT}", file=sys.stderr)
+        return 2
     except OnboardingError as exc:
         print(f"agent_onboard: ERROR: {exc}", file=sys.stderr)
         return 2
     print(json.dumps(payload, ensure_ascii=False, indent=2 if args.json else None))
-    return 0 if payload["status"] == "ready" else 3
+    if payload["status"] == "ready":
+        return 0
+    assignment = payload["assignment"]
+    problems = (
+        [f"missing: {', '.join(assignment['missing'])}"]
+        if assignment["missing"]
+        else []
+    )
+    if assignment["unfilled"]:
+        problems.append(f"unfilled placeholder: {', '.join(assignment['unfilled'])}")
+    problems += [
+        f"invalid {problem['key']}: {problem['reason']}"
+        for problem in assignment["invalid"]
+    ]
+    print(f"agent_onboard: awaiting-assignment; {'; '.join(problems)}", file=sys.stderr)
+    print(
+        "agent_onboard: replace every <...> placeholder (assignment.retry_command), then rerun:",
+        file=sys.stderr,
+    )
+    print(assignment["retry_command"], file=sys.stderr)
+    return 3
 
 
 if __name__ == "__main__":

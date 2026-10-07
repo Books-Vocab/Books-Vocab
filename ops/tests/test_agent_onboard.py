@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -168,7 +169,7 @@ def test_worker_dispatch_contract_rejects_invalid_channel_or_mismatched_im() -> 
             evidence={
                 **EVIDENCE["direct-assignment"],
                 "dispatch_channel": "im",
-                "dispatch_owner": None,
+                "dispatch_owner": "CM",
             },
         )
 
@@ -374,6 +375,257 @@ def test_missing_assignment_evidence_blocks_before_skill_loading() -> None:
         "assignment",
     ]
     assert "skills" not in payload
+
+
+def _fill_placeholders(value, key: str = ""):
+    """Replace every template placeholder with a value a real assignment would carry."""
+    if isinstance(value, dict):
+        return {name: _fill_placeholders(item, name) for name, item in value.items()}
+    if isinstance(value, list):
+        return [_fill_placeholders(item, key) for item in value]
+    if isinstance(value, str) and value.startswith("<") and value.endswith(">"):
+        return {
+            "dispatch_channel": "im",
+            "dispatch_owner": "IM-1",
+            "operation": "modify",
+            "path": "ops/agent_onboard.py",
+        }.get(key, f"filled {key}")
+    return value
+
+
+def _route_matrix() -> list[tuple[str, str, str]]:
+    manifest = json.loads(
+        (ROOT / "ops" / "context_plane.json").read_text(encoding="utf-8")
+    )
+    return [
+        (definition["label"], definition["allowed_intents"][0], entry)
+        for definition in manifest["identities"].values()
+        for entry in definition["entry_modes"]
+    ]
+
+
+def test_missing_evidence_reports_every_key_and_a_ready_to_copy_template_at_once() -> (
+    None
+):
+    payload = mod.build_onboarding(
+        ROOT,
+        identity="Worker",
+        intent="delivery",
+        entry="direct-assignment",
+        evidence={"dispatch_channel": "im"},
+    )
+
+    assignment = payload["assignment"]
+    assert payload["status"] == "awaiting-assignment"
+    # The conditional dispatch_owner is reported in the same round as the
+    # manifest keys instead of surfacing as a later, separate error.
+    assert assignment["missing"] == [
+        "User/IM assignment",
+        "acceptance",
+        "structured Scope",
+        "dispatch_owner",
+    ]
+    assert assignment["invalid"] == []
+    assert assignment["evidence_spec"]["conditional"][0]["key"] == "dispatch_owner"
+    assert assignment["evidence_spec"]["allowed_values"]["dispatch_channel"] == [
+        "im",
+        "user",
+    ]
+    template = assignment["evidence_template"]
+    assert list(template) == [
+        "User/IM assignment",
+        "acceptance",
+        "structured Scope",
+        "dispatch_channel",
+        "dispatch_owner",
+    ]
+    assert template["dispatch_channel"] == "im"
+    assert template["structured Scope"]["schema"] == "kg.worktree.scope.v1"
+    command = assignment["retry_command"]
+    assert command.startswith(
+        "./ops/agent_onboard.py --identity Worker --intent delivery --entry direct-assignment --evidence '"
+    )
+    assert command.endswith(" --json")
+
+
+def test_invalid_values_are_reported_together_with_missing_keys() -> None:
+    payload = mod.build_onboarding(
+        ROOT,
+        identity="Worker",
+        intent="delivery",
+        entry="direct-assignment",
+        evidence={"dispatch_channel": "cm"},
+    )
+
+    assert payload["status"] == "awaiting-assignment"
+    assert payload["assignment"]["missing"] == [
+        "User/IM assignment",
+        "acceptance",
+        "structured Scope",
+    ]
+    assert [problem["key"] for problem in payload["assignment"]["invalid"]] == [
+        "dispatch_channel"
+    ]
+
+
+def test_non_string_dispatch_channel_is_invalid_not_ignored() -> None:
+    with pytest.raises(mod.EvidenceError, match="dispatch_channel"):
+        mod.build_onboarding(
+            ROOT,
+            identity="Worker",
+            intent="delivery",
+            entry="direct-assignment",
+            evidence={**EVIDENCE["direct-assignment"], "dispatch_channel": 1},
+        )
+
+
+@pytest.mark.parametrize(("identity", "intent", "entry"), _route_matrix())
+def test_unedited_template_fails_closed_and_filled_template_is_ready(
+    identity, intent, entry
+) -> None:
+    template_payload = mod.build_evidence_template(
+        ROOT, identity=identity, intent=intent, entry=entry
+    )
+    template = template_payload["evidence_template"]
+    assert template_payload["schema"] == "kg.agent_onboarding.evidence_template.v1"
+    assert set(template_payload["evidence_spec"]["required"]) <= set(template)
+
+    # Copying the template verbatim must never satisfy the assignment boundary.
+    unedited = mod.build_onboarding(
+        ROOT, identity=identity, intent=intent, entry=entry, evidence=template
+    )
+    assert unedited["status"] == "awaiting-assignment"
+    assert set(unedited["assignment"]["required_external"]) <= set(
+        unedited["assignment"]["missing"]
+    )
+
+    filled = mod.build_onboarding(
+        ROOT,
+        identity=identity,
+        intent=intent,
+        entry=entry,
+        evidence=_fill_placeholders(template),
+    )
+    assert filled["status"] == "ready"
+
+
+def test_placeholder_left_in_an_optional_key_blocks_ready() -> None:
+    payload = mod.build_onboarding(
+        ROOT,
+        identity="Worker",
+        intent="delivery",
+        entry="direct-assignment",
+        evidence={
+            **EVIDENCE["direct-assignment"],
+            "dispatch_channel": "user",
+            "dispatch_owner": "<dispatching IM>",
+        },
+    )
+
+    assert payload["status"] == "awaiting-assignment"
+    assert payload["assignment"]["missing"] == []
+    assert payload["assignment"]["unfilled"] == ["dispatch_owner"]
+    assert "dispatch_owner" not in payload["assignment"]["evidence_template"]
+
+
+def test_cli_prints_evidence_template_without_assignment(capsys) -> None:
+    code = mod.main(
+        [
+            "--identity",
+            "Issue Solver",
+            "--intent",
+            "backend",
+            "--entry",
+            "issue",
+            "--print-evidence-template",
+            "--json",
+        ]
+    )
+
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["evidence_spec"]["required"] == [
+        "Issue assignment packet",
+        "Issue acceptance",
+        "structured Scope",
+    ]
+    assert payload["command"].startswith(
+        "./ops/agent_onboard.py --identity 'Issue Solver' --intent backend --entry issue --evidence '"
+    )
+
+
+def test_cli_awaiting_assignment_names_every_missing_key_on_stderr(capsys) -> None:
+    code = mod.main(
+        [
+            "--identity",
+            "Worker",
+            "--intent",
+            "delivery",
+            "--entry",
+            "direct-assignment",
+            "--json",
+        ]
+    )
+
+    assert code == 3
+    err = capsys.readouterr().err
+    assert (
+        "missing: User/IM assignment, acceptance, structured Scope, dispatch_channel"
+        in err
+    )
+    # The last stderr line is the raw, unescaped command an agent can copy.
+    assert err.splitlines()[-1].startswith(
+        "./ops/agent_onboard.py --identity Worker --intent delivery --entry direct-assignment "
+        '--evidence \'{"User/IM assignment":'
+    )
+
+
+def test_cli_plain_template_ends_with_unescaped_command(capsys) -> None:
+    code = mod.main(
+        [
+            "--identity",
+            "Worker",
+            "--intent",
+            "ios",
+            "--entry",
+            "direct-assignment",
+            "--print-evidence-template",
+        ]
+    )
+
+    assert code == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert (
+        lines[0]
+        == "required: User/IM assignment, acceptance, structured Scope, dispatch_channel"
+    )
+    assert any(
+        line.startswith("conditional: dispatch_owner (when dispatch_channel=im)")
+        for line in lines
+    )
+    assert lines[-1].startswith(
+        "./ops/agent_onboard.py --identity Worker --intent ios --entry direct-assignment --evidence '{"
+    )
+
+
+def test_cli_invalid_evidence_json_fails_closed_with_template_hint(capsys) -> None:
+    code = mod.main(
+        [
+            "--identity",
+            "Worker",
+            "--intent",
+            "delivery",
+            "--entry",
+            "direct-assignment",
+            "--evidence",
+            "{not json",
+        ]
+    )
+
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "--evidence" in err and "JSON" in err
+    assert "--print-evidence-template" in err
 
 
 def test_missing_assignment_blocks_before_invalid_specialist_resolution() -> None:
