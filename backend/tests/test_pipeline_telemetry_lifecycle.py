@@ -37,7 +37,7 @@ def test_pipeline_log_run_without_end_marked_running_until_timeout(tmp_path):
     # Simulate a process restart: reopen the connection, then run the explicit
     # startup sweep the lifespan performs.
     pipeline_log._reset()
-    pipeline_log.reap_orphaned_runs()
+    pipeline_log.reap_orphaned_runs(tmp_path)
 
     runs_after = pipeline_log.get_runs("u1")
     assert len(runs_after) == 1
@@ -175,9 +175,7 @@ def test_pipeline_background_cancellation_closes_run_and_propagates(monkeypatch)
     assert is_pipeline_running(uid) is False
 
 
-def test_pipeline_background_cancellation_keeps_cancelled_error_when_telemetry_warns(
-    monkeypatch, caplog
-):
+def test_pipeline_background_cancellation_keeps_cancelled_error_when_telemetry_warns(monkeypatch, caplog):
     """A telemetry failure is warning-visible without swallowing cancellation."""
     uid = "cancelled_warning_pipeline"
     run_id = "cancelled_warning_run"

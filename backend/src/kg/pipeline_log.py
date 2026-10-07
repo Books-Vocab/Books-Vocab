@@ -6,12 +6,14 @@ import json
 import logging
 import sqlite3
 from datetime import UTC, datetime
+from pathlib import Path
 
 from .ops_shared import data_dir
 from .sqlite_lifecycle import SQLiteLifecycle
 
+_DB_FILENAME = "pipeline_runs.db"
 DATA_DIR = data_dir()
-DB_PATH = DATA_DIR / "pipeline_runs.db"
+DB_PATH = DATA_DIR / _DB_FILENAME
 
 _lifecycle = SQLiteLifecycle()
 _lock = _lifecycle.lock
@@ -39,17 +41,20 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_pr_started ON pipeline_runs(started_at)")
 
 
+def _connect(db_path: Path) -> sqlite3.Connection:
+    global _conn
+    if _conn is None and _lifecycle.connection is not None:
+        _lifecycle.reset()
+    _conn = _lifecycle.get_connection(db_path, _ensure_schema)
+    return _conn
+
+
 def _get_conn() -> sqlite3.Connection:
     """Acquire the singleton connection + ensure schema. **Read-safe**: opening
     the connection mutates no rows. Orphaned-run recovery is a *separate*,
     explicit step (:func:`reap_orphaned_runs`) wired into API startup — so a
     pure read (admin dashboard, telemetry query) can never trigger a write."""
-    global _conn
-    if _conn is None and _lifecycle.connection is not None:
-        _lifecycle.reset()
-    db_path = DB_PATH if DB_PATH != _INITIAL_DB_PATH else data_dir() / "pipeline_runs.db"
-    _conn = _lifecycle.get_connection(db_path, _ensure_schema)
-    return _conn
+    return _connect(DB_PATH if DB_PATH != _INITIAL_DB_PATH else data_dir() / _DB_FILENAME)
 
 
 def reset() -> None:
@@ -58,8 +63,8 @@ def reset() -> None:
     _conn = None
 
 
-def reap_orphaned_runs() -> int:
-    """Mark crashed ``running`` rows ``interrupted`` and return the count reaped.
+def reap_orphaned_runs(data_root: Path) -> int:
+    """Mark crashed ``running`` rows under ``data_root`` ``interrupted`` and return the count reaped.
 
     Single source of the crash-recovery semantic. Invoked **once at API
     startup** (lifespan, after the single-worker lock — see worker_guard),
@@ -67,10 +72,12 @@ def reap_orphaned_runs() -> int:
     the root-cause fix for the read-causes-write coupling that forced ops to
     re-implement a read-only path: connection acquisition is now provably
     side-effect-free, and the ``running→interrupted`` predicate lives in
-    exactly one place.
+    exactly one place. ``data_root`` is explicit (the locked
+    ``settings.data_dir``), never re-read from ``KG_DATA_DIR``: the sweep is
+    only safe for the directory whose worker lock this process holds.
     """
     with _lock:
-        conn = _get_conn()
+        conn = _connect(data_root / _DB_FILENAME)
         cur = conn.execute(
             "UPDATE pipeline_runs SET status='interrupted', ended_at=? WHERE status='running'",
             (datetime.now(UTC).isoformat(),),

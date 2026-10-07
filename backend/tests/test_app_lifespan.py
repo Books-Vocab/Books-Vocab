@@ -42,12 +42,12 @@ def _dependencies(tmp_path, events: list[object]) -> AppLifespanDependencies:
     def _assert_single_worker(lock_path) -> None:
         events.append(("assert_single_worker", lock_path))
 
-    def _reap_orphaned_runs() -> int:
-        events.append("reap_orphaned_runs")
+    def _reap_orphaned_runs(data_root) -> int:
+        events.append(("reap_orphaned_runs", data_root))
         return 2
 
-    def _reap_add_link_operations() -> int:
-        events.append("reap_add_link_operations")
+    def _reap_add_link_operations(data_root) -> int:
+        events.append(("reap_add_link_operations", data_root))
         return 3
 
     def _release_worker_lock() -> None:
@@ -79,8 +79,9 @@ def test_build_app_lifespan_from_dependencies_runs_expected_flow(tmp_path):
     assert events == [
         ("log", "KG API starting up"),
         ("assert_single_worker", tmp_path / ".worker.lock"),
-        "reap_orphaned_runs",
-        "reap_add_link_operations",
+        # Reapers get the exact directory whose worker lock was just taken.
+        ("reap_orphaned_runs", tmp_path),
+        ("reap_add_link_operations", tmp_path),
         ("log", "Reaped 2 orphaned pipeline run(s) → interrupted"),
         ("log", "Reaped 3 orphaned add-link operation(s) → interrupted"),
         ("log", "KG API shutting down"),
@@ -95,8 +96,8 @@ def test_lifespan_releases_worker_lock_when_reaping_fails(tmp_path):
     worker_guard.release_worker_lock()
     events: list[object] = []
 
-    def _reap_orphaned_runs() -> int:
-        events.append("reap_orphaned_runs")
+    def _reap_orphaned_runs(data_root) -> int:
+        events.append(("reap_orphaned_runs", data_root))
         raise RuntimeError("reap failed")
 
     deps = replace(
@@ -124,8 +125,8 @@ def test_lifespan_releases_worker_lock_when_add_link_reaping_fails(tmp_path):
     worker_guard.release_worker_lock()
     events: list[object] = []
 
-    def _reap_add_link_operations() -> int:
-        events.append("reap_add_link_operations")
+    def _reap_add_link_operations(data_root) -> int:
+        events.append(("reap_add_link_operations", data_root))
         raise RuntimeError("add-link reap failed")
 
     deps = replace(

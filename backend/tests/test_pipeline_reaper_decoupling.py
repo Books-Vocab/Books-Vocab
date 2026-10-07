@@ -31,12 +31,12 @@ def test_get_conn_does_not_reap():
     assert runs[0]["ended_at"] is None
 
 
-def test_reap_orphaned_runs_marks_interrupted_and_counts():
+def test_reap_orphaned_runs_marks_interrupted_and_counts(tmp_path):
     pipeline_log.start_run("orphan_a", "u1", "nb1", "manual")
     pipeline_log.start_run("orphan_b", "u1", "nb2", "background")
     pipeline_log.end_run("orphan_b", "completed")  # 已完成者不該被回收
 
-    reaped = pipeline_log.reap_orphaned_runs()
+    reaped = pipeline_log.reap_orphaned_runs(tmp_path)
     assert reaped == 1, "只有 1 個 running 孤兒應被回收"
 
     by_id = {r["run_id"]: r for r in pipeline_log.get_runs("u1")}
@@ -45,10 +45,10 @@ def test_reap_orphaned_runs_marks_interrupted_and_counts():
     assert by_id["orphan_b"]["status"] == "completed"
 
 
-def test_reap_is_idempotent():
+def test_reap_is_idempotent(tmp_path):
     pipeline_log.start_run("orphan", "u1", "nb1", "manual")
-    assert pipeline_log.reap_orphaned_runs() == 1
-    assert pipeline_log.reap_orphaned_runs() == 0, "二次回收應為 no-op(0 列)"
+    assert pipeline_log.reap_orphaned_runs(tmp_path) == 1
+    assert pipeline_log.reap_orphaned_runs(tmp_path) == 0, "二次回收應為 no-op(0 列)"
 
 
 def test_lifespan_wires_explicit_reaper():
