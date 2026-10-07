@@ -119,6 +119,41 @@ struct SentryPrivacyPolicyTests {
         #expect(redacted.handled == false)
     }
 
+    @Test func cppExceptionDropsTheWhatReasonButKeepsMechanism() {
+        let redacted = SentryPrivacyPolicy.redactException(
+            type: "std::runtime_error",
+            value: "failed to open /Users/jane/Books/Private Title.epub",
+            mechanismType: "cpp_exception",
+            handled: false
+        )
+
+        #expect(redacted.type == "C++ Exception")
+        #expect(redacted.value == nil)
+        #expect(redacted.mechanismType == "cpp_exception")
+        #expect(redacted.handled == false)
+    }
+
+    @Test func watchdogTerminationKeepsOnlyTheStaticOSValue() {
+        let staticValue = "The OS watchdog terminated your app, possibly because it overused RAM."
+        let kept = SentryPrivacyPolicy.redactException(
+            type: "WatchdogTermination",
+            value: staticValue,
+            mechanismType: "watchdog_termination",
+            handled: false
+        )
+        let dropped = SentryPrivacyPolicy.redactException(
+            type: "WatchdogTermination",
+            value: "\(staticValue) Jane Doe's book",
+            mechanismType: "watchdog_termination",
+            handled: false
+        )
+
+        #expect(kept.value == staticValue)
+        #expect(kept.type == "WatchdogTermination")
+        #expect(kept.mechanismType == "watchdog_termination")
+        #expect(dropped.value == nil)
+    }
+
     @Test func appHangKeepsHangTypeAndStaticDurationText() {
         let fresh = SentryPrivacyPolicy.redactException(
             type: "App Hang Fully Blocked",

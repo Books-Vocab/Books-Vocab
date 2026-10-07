@@ -32,6 +32,8 @@ release = bundleId@MARKETING_VERSION+CURRENT_PROJECT_VERSION
 dist = CURRENT_PROJECT_VERSION
 ```
 
+Release build 的 `environment` 由最近一次 verified StoreKit 2 AppTransaction 決定：`.sandbox` → `testflight`、`.production` → `production`（首次安裝啟動在查詢完成前為 `production`）。已知限制：從 Xcode／裝置直接安裝的 Release build 同樣回報 `.sandbox`，會被標成 `testflight`，無法以此 tag 與真正的 TestFlight build 區分（`SentryConfiguration.verifiedChannel(for:)`；行為刻意不變）。
+
 `request_id` 必須由該次 call site 明確傳入，不能依賴全域 mutable context 代替 async correlation。user context 只接受 opaque internal ID，`sendDefaultPii` 固定為 false。
 
 ## Readiness
