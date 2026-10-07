@@ -22,10 +22,17 @@ on:
       - '.claude/skills/ios-simulator-verification/scripts/run_ui_evidence.sh'
       - '.claude/skills/ios-simulator-verification/scripts/test_run_ui_evidence.sh'
       - '.github/workflows/ops-suite.yml'
+# 三個 job 都只 checkout（含 fetch-depth: 0）後跑本地 script；token 不進 step env，
+# 不需要 contents 以外的 scope。
+permissions:
+  contents: read
+
 jobs:
   discover:
     name: discover Linux ops groups
     runs-on: ubuntu-latest
+    # 實測約 55 秒（checkout 全歷史 + 分類檢查）；5 分鐘留給 jq 缺席時的 apt 安裝。
+    timeout-minutes: 5
     outputs:
       linux-groups: ${{ steps.groups.outputs.linux-groups }}
       shards: ${{ steps.groups.outputs.shards }}
