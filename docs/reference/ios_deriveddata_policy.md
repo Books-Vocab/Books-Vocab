@@ -179,12 +179,19 @@ GitHub-hosted macOS runner 每次都是新的 VM；本機長存的 DerivedData �
 其他 `.codex/worktrees/<session>/<name>`、任意未知路徑、dirty／unknown supervision
 checkout 仍然 fail-closed。
 
-Claude Code subagent（`isolation: worktree`）的 `<workspace>/.claude/worktrees/agent-<hex>`
-（分支必為 `worktree-agent-<hex>`，兩者須一致）是 harness 管理的 ephemeral lane，從不進
-product registry。它們 `ownership=ephemeral-agent`、完整計入 per-lane／aggregate bytes 與 quota，
-dirty 屬正常工作狀態，只產生 `ephemeral-agent-lane` warning 並列於 `policy.ephemeral_agent_worktrees`，
-不算 `unregistered_physical_worktree`；因此並行的 sibling agent worktree 不會互相擋 iOS 測試。
-shape 不符（非 hex id、分支與目錄不一致、不在該 root 直屬）的 checkout 仍是 unregistered hard block。
+Claude Code harness（subagent `isolation: worktree` 的 `agent-<17 hex>`、Workflow agent 的
+`wf_<8 hex>-<3 hex>-<n>`）在 `<workspace>/.claude/worktrees/<dirname>` 建 lane，從不進 product registry。
+身分看 harness provenance，不看分支（agent 會自行 `git switch -c`）：直屬該 root、`git worktree list --porcelain`
+顯示 `locked claude agent <dirname> (pid <N> start <lstart>)` 且該 pid 存活、其 `ps -o lstart=` 與記錄的 start（harness 寫 UTC，故 guard 以 `TZ=UTC` 探測並以 UTC 比對，與主機時區無關）相差 ≤2 秒（lock 未記 start 或讀不到時退回只看 pid）→ `ownership=ephemeral-agent`
+（`agent_lock.state=live`），dirty 屬正常工作狀態，只產生 `ephemeral-agent-lane` warning、列於
+`policy.ephemeral_agent_worktrees`；因此並行的 sibling agent worktree 不會互相擋 iOS 測試。
+同 root 下該 lock 的 pid 已死（前一個 session 的殘留）、pid 被無關程序重用（存活但 start 不符），或未上鎖（harness 已釋放）但目錄名符合上述
+harness 產生的形狀 → `ownership=stale-agent`（`agent_lock.state=dead-pid|reused-pid|unlocked`），只產生 `stale-agent-worktree` warning、列於
+`policy.stale_agent_worktrees`，lane 附 `cleanup_hint`（`git worktree [unlock … &&] remove …`）。
+它不擋：沒有活著的 writer、bytes 照樣計入 quota，擋下只會讓任一崩潰的 session 癱瘓所有 iOS lane。
+兩者都完整計入 per-lane／aggregate bytes 與 quota。lock 理由不符（他人持有、無理由、名稱指向別的目錄）、
+未上鎖且目錄名非 harness 形狀（例如手建的 `scratch`；dirty 時另觸發 dirty blocker）、
+lock 狀態未觀測到、或不在該 root 直屬的 checkout 無法歸屬，仍是 unregistered hard block。
 被 guard 擋下（exit 75）時，`kg.ios.disk-budget.v1` 輸出會附 `blockingReasons=`／`unregisteredWorktrees=`／
 `dirtyWorktrees=`；`lane-usage-report-*` 的擋下會先 inline 重跑一次 guard tick（`KG_IOS_DISK_GUARD_AUTO_REFRESH=0` 可關），
 也可手動 `./ops/ios_ops.sh guard [--refresh]` 立即重新評估。非標準的 supervision checkout 只能由 caller 重複傳入 exact path：

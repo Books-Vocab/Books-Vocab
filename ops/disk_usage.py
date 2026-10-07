@@ -12,6 +12,7 @@ quota; the accounting section makes the shared/unassigned part explicit.
 from __future__ import annotations
 
 import argparse
+import calendar
 import errno
 import hashlib
 import json
@@ -19,6 +20,7 @@ import math
 import os
 import plistlib
 import re
+import shlex
 import shutil
 import struct
 import subprocess
@@ -1042,9 +1044,17 @@ def _parse_worktrees(
         if line.startswith("worktree "):
             if current is not None:
                 records.append(current)
-            current = {"path": _path(line.removeprefix("worktree ").strip())}
+            # Lock state is observed only through this listing; records found
+            # by the topology scan never carry the key (unknown, not unlocked).
+            current = {
+                "path": _path(line.removeprefix("worktree ").strip()),
+                "locked": False,
+            }
         elif current is None:
             continue
+        elif line == "locked" or line.startswith("locked "):
+            current["locked"] = True
+            current["lock_reason"] = line.removeprefix("locked").strip()
         elif line.startswith("HEAD "):
             current["head"] = line.removeprefix("HEAD ").strip()
         elif line.startswith("branch "):
@@ -1302,28 +1312,152 @@ def _is_codex_supervision_checkout(path: Path, roots: list[Path]) -> bool:
     return False
 
 
-AGENT_WORKTREE_DIR_RE = re.compile(r"^agent-[0-9a-f]+$")
+AGENT_LOCK_REASON_RE = re.compile(
+    r"^claude agent (?P<name>\S+) \(pid (?P<pid>[1-9][0-9]{0,9})"
+    r"(?: start (?P<start>[^)]+)| [^)]*)?\)$"
+)
+# ``ps -o lstart=`` prints ctime layout under LC_ALL=C on macOS and procps alike.
+LSTART_FORMAT = "%a %b %d %H:%M:%S %Y"
+# lstart has 1 s resolution; the harness and ps may round across a boundary.
+PID_START_TOLERANCE_SECONDS = 2
+# One ``ps`` probe is capped by this and by the time the report has left.
+PS_PROBE_TIMEOUT_SECONDS = 5.0
+# Dirnames the harness generates (subagent, Workflow): provenance once unlocked.
+AGENT_DIRNAME_RE = re.compile(r"agent-[0-9a-f]{17}|wf_[0-9a-f]{8}-[0-9a-f]{3}-[0-9]+")
 
 
-def _is_ephemeral_agent_worktree(
-    path: Path, branch: str | None, workspace: Path
-) -> bool:
-    """Recognise a Claude Code subagent worktree by its exact harness shape.
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # exists, owned by another user
+    except (OSError, OverflowError):
+        return False
+    return True
 
-    ``isolation: worktree`` subagents get ``<workspace>/.claude/worktrees/
-    agent-<hex>`` on branch ``worktree-agent-<hex>`` and never pass through the
-    product registry.  Such a lane stays fully measured and quota-counted, but
-    its absence from the registry is its normal state, not an orphan.  The
-    shape is deliberately exact (direct child, name and branch must agree) so
-    any other unregistered checkout, including a detached or renamed one under
-    the same root, still fails closed.
+
+def _parse_lstart(text: str) -> float | None:
+    """Epoch seconds of an lstart string read as UTC (the harness records its
+    lock start in UTC; ``_ps_lstart`` asks ``ps`` for UTC to match)."""
+
+    try:
+        return float(
+            calendar.timegm(time.strptime(" ".join(text.split()), LSTART_FORMAT))
+        )
+    except (ValueError, OverflowError):
+        return None
+
+
+def _ps_lstart(pid: int, timeout: float = PS_PROBE_TIMEOUT_SECONDS) -> str | None:
+    try:
+        completed = subprocess.run(
+            ["ps", "-o", "lstart=", "-p", str(pid)],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "LC_ALL": "C", "TZ": "UTC"},
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return completed.stdout if completed.returncode == 0 else None
+
+
+def _harness_pid_state(
+    pid: int,
+    recorded_start: str | None,
+    start_cache: dict[int, str | None] | None = None,
+    deadline: float | None = None,
+) -> tuple[str, bool]:
+    """``(state, start_unchecked)``.  ``live`` only if ``pid`` exists and, when
+    the lock recorded a start time, that pid's start matches it (else an
+    unrelated process reused the pid: ``reused-pid``).  Missing or unreadable
+    start info on either side falls back to the pid-only check, and so does a
+    report ``deadline`` that has already passed: no further ``ps`` probe runs
+    (``start_unchecked`` is then true) and each probe that does run is capped by
+    the time left.  ``start_cache`` shares one ``ps`` probe per pid across the
+    lanes of one report (a session's lanes share its pid)."""
+
+    if not _pid_alive(pid):
+        return "dead-pid", False
+    recorded = _parse_lstart(recorded_start) if recorded_start else None
+    if recorded is None:
+        return "live", False
+    if start_cache is not None and pid in start_cache:
+        probed = start_cache[pid]
+    else:
+        timeout = PS_PROBE_TIMEOUT_SECONDS
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return "live", True
+            timeout = min(timeout, remaining)
+        probed = _ps_lstart(pid, timeout=timeout)
+        if start_cache is not None:
+            start_cache[pid] = probed
+    actual = _parse_lstart(probed) if probed else None
+    if actual is None or abs(actual - recorded) <= PID_START_TOLERANCE_SECONDS:
+        return "live", False
+    return "reused-pid", False
+
+
+def _agent_lane_lock(
+    path: Path,
+    physical: dict[str, Any],
+    workspace: Path,
+    start_cache: dict[int, str | None] | None = None,
+    deadline: float | None = None,
+) -> dict[str, Any] | None:
+    """Identify a Claude Code harness lane under ``<workspace>/.claude/worktrees``.
+
+    The harness locks each lane with ``claude agent <dirname> (pid <N> ...)``;
+    branch is not identity (agents switch branches).  ``live``: that lock with
+    a live pid whose start matches the recorded one.  ``dead-pid``: that lock,
+    pid gone.  ``reused-pid``: pid alive but started at another time (the
+    harness crashed and the pid was recycled).  ``unlocked``: no lock but
+    a harness-generated dirname.  ``None`` (caller fails closed): no such
+    provenance, not a direct child of the root, or lock state not observed.
     """
 
     if path.parent != workspace / ".claude" / "worktrees":
-        return False
-    if not AGENT_WORKTREE_DIR_RE.match(path.name):
-        return False
-    return branch == f"worktree-{path.name}"
+        return None
+    locked = physical.get("locked")
+    if locked is False:
+        named = AGENT_DIRNAME_RE.fullmatch(path.name)
+        return {"state": "unlocked"} if named else None
+    if locked is not True:
+        return None
+    match = AGENT_LOCK_REASON_RE.match(str(physical.get("lock_reason") or ""))
+    if match is None or match.group("name") != path.name:
+        return None
+    pid = int(match.group("pid"))
+    state, start_unchecked = _harness_pid_state(
+        pid, match.group("start"), start_cache, deadline
+    )
+    lock: dict[str, Any] = {"state": state, "pid": pid}
+    if start_unchecked:
+        # The report deadline passed before this pid's start could be probed:
+        # ``live`` is the pid-only answer, not a verified start match.
+        lock["start_check"] = "skipped-deadline"
+    return lock
+
+
+def _stale_agent_cleanup_hint(path: Path, lock: dict[str, Any], branch: str) -> str:
+    quoted = shlex.quote(str(path))
+    unlock = f"git worktree unlock {quoted} && " if lock["state"] != "unlocked" else ""
+    kept = f"; branch {branch} is kept, delete it only once merged"
+    why = (
+        "pid alive but its start time differs from the lock's"
+        if lock["state"] == "reused-pid"
+        else lock["state"]
+    )
+    return (
+        f"{unlock}git worktree remove {quoted}  # harness no longer holds this lane "
+        f"({why}); remove refuses uncommitted work, so salvage it first"
+        + ("" if branch == "(detached)" else kept)
+    )
 
 
 def _load_registry(state_path: Path) -> tuple[list[dict[str, Any]], str | None]:
@@ -1722,6 +1856,7 @@ def build_report(
         )
         registry_entries.append(entry)
 
+    start_cache: dict[int, str | None] = {}
     for physical in physical_records:
         physical_path = physical["path"]
         if physical_path in registry_by_path:
@@ -1737,6 +1872,11 @@ def build_report(
             else "lane"
         )
         is_excluded = physical_path in applied_exclusions
+        agent_lock = (
+            _agent_lane_lock(physical_path, physical, workspace, start_cache, deadline)
+            if lane_kind == "lane" and not is_excluded
+            else None
+        )
         entry = _lane_entry(
             branch=branch,
             path=physical_path,
@@ -1756,11 +1896,19 @@ def build_report(
         elif lane_kind == "supervision":
             entry["ownership"] = "supervision"
             entry["lane_state"] = "supervision"
-        elif _is_ephemeral_agent_worktree(
-            physical_path, physical.get("branch"), workspace
-        ):
+        elif agent_lock is not None and agent_lock["state"] == "live":
             entry["ownership"] = "ephemeral-agent"
             entry["lane_state"] = "ephemeral"
+            entry["agent_lock"] = agent_lock
+        elif agent_lock is not None:
+            # No live writer and its bytes stay quota-counted: cleanup debt to
+            # report, not a reason for one crashed session to stop every lane.
+            entry["ownership"] = "stale-agent"
+            entry["lane_state"] = "stale"
+            entry["agent_lock"] = agent_lock
+            entry["cleanup_hint"] = _stale_agent_cleanup_hint(
+                physical_path, agent_lock, branch
+            )
         elif not is_excluded and entry["exists"]:
             # Keep the ownership state explicit while exposing dirty/unknown in
             # the separate worktree_state fields populated above.
@@ -1871,6 +2019,11 @@ def build_report(
         for item in physical_lanes
         if item["ownership"] == "ephemeral-agent"
     )
+    stale_agent = sorted(
+        str(item["path"])
+        for item in physical_lanes
+        if item["ownership"] == "stale-agent"
+    )
     dirty_physical = sorted(
         str(item["path"])
         for item in physical_lanes
@@ -1889,7 +2042,7 @@ def build_report(
         for item in physical_lanes
         if item.get("worktree_state") == "dirty"
         and not item.get("excluded")
-        and item.get("ownership") != "ephemeral-agent"
+        and item.get("ownership") not in {"ephemeral-agent", "stale-agent"}
         and not (
             item.get("ownership") == "registered"
             and item.get("registry_status") == "active"
@@ -2021,6 +2174,8 @@ def build_report(
             blocking_reasons.append("supervision-path-registered")
     if ephemeral_agent:
         warning_reasons.append("ephemeral-agent-lane")
+    if stale_agent:
+        warning_reasons.append("stale-agent-worktree")
     if unregistered:
         blocking_reasons.append("unregistered-physical-worktree")
     if dirty_supervision:
@@ -2117,6 +2272,7 @@ def build_report(
         "active_but_missing": [],
         "physical_but_unregistered": [],
         "ephemeral_agent": [],
+        "stale_agent": [],
         "terminal_residue": [],
         "unknown": [],
     }
@@ -2129,6 +2285,8 @@ def build_report(
             classification = "physical_but_unregistered"
         elif item["ownership"] == "ephemeral-agent":
             classification = "ephemeral_agent"
+        elif item["ownership"] == "stale-agent":
+            classification = "stale_agent"
         else:
             classification = "unknown"
         classification_items[classification].append(item)
@@ -2267,6 +2425,7 @@ def build_report(
             "missing_terminal_lanes": missing_terminal,
             "unregistered_physical_worktrees": unregistered,
             "ephemeral_agent_worktrees": ephemeral_agent,
+            "stale_agent_worktrees": stale_agent,
             "dirty_physical_worktrees": dirty_physical,
             "unknown_physical_worktrees": unknown_physical,
             "unknown_registry_paths": unknown_registry_paths,

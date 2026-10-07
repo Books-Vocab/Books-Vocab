@@ -6,6 +6,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -1830,148 +1831,466 @@ def test_xctest_devices_physical_open_fallback_is_explicit_and_conservative(
     assert observed["physical_measurement_warnings"]
 
 
+_LIVE = object()
+
+
+# A start time no live process in the test run can have.
+_FOREIGN_START = "Mon Jan  1 00:00:00 2001"
+
+
+def _ps_lstart(pid: int) -> str | None:
+    """Independent of the module under test: what ``ps`` reports for ``pid``,
+    in UTC, the zone the harness writes into its lock reason (verified on a
+    real lock: ``start Wed Oct  7 11:50:17 2026`` for a process ``ps`` shows
+    as 19:50:17 on a UTC+8 host)."""
+
+    completed = subprocess.run(
+        ["ps", "-o", "lstart=", "-p", str(pid)],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "LC_ALL": "C", "TZ": "UTC"},
+        check=False,
+    )
+    return completed.stdout.strip() or None
+
+
+def _harness_lock_reason(name: str, pid: int, start: str | None = None) -> str:
+    """The exact reason Claude Code writes when it locks an agent worktree:
+    the pid plus that process's start time (``ps`` lstart format, UTC)."""
+
+    start = start or _ps_lstart(pid) or _FOREIGN_START
+    return f"claude agent {name} (pid {pid} start {start})"
+
+
+def _dead_pid() -> int:
+    """A pid that existed moments ago and is now reaped (not alive)."""
+
+    for _ in range(5):
+        child = subprocess.Popen([sys.executable, "-c", "pass"])
+        child.wait()
+        try:
+            os.kill(child.pid, 0)
+        except ProcessLookupError:
+            return child.pid
+    pytest.fail("could not obtain a dead pid")
+
+
 def _agent_worktree(
-    repo: Path, name: str = "agent-a1b2c3d4e5f6", branch: str | None = None
+    repo: Path,
+    name: str = "agent-a1b2c3d4e5f6",
+    branch: str | None = None,
+    *,
+    lock: object = _LIVE,
+    root: Path | None = None,
 ) -> Path:
-    path = repo / ".claude" / "worktrees" / name
+    """Create a worktree the way the harness does; ``lock`` is ``_LIVE``, a
+    pid for a harness lock naming this dir, any other reason (``""`` = none),
+    or ``None`` for unlocked."""
+
+    path = (root or repo / ".claude" / "worktrees") / name
     path.parent.mkdir(parents=True, exist_ok=True)
     _run_git(
         repo, "worktree", "add", "-b", branch or f"worktree-{name}", str(path), "main"
     )
+    if lock is _LIVE:
+        lock = os.getpid()
+    if isinstance(lock, int):
+        lock = _harness_lock_reason(name, lock)
+    if lock == "":
+        _run_git(repo, "worktree", "lock", str(path))
+    elif isinstance(lock, str):
+        _run_git(repo, "worktree", "lock", "--reason", lock, str(path))
     return path
 
 
-def _one_registered_lane_state(tmp_path: Path, worktree: Path) -> Path:
+def _agent_root_report(tmp_path: Path, repo: Path, worktree: Path) -> tuple[int, dict]:
     state = tmp_path / "registry.json"
     _write_registry(
         state,
-        [
-            {
-                "branch": "lane-one",
-                "path": str(worktree),
-                "status": "active",
-                "claim_generation": 0,
-                "external_ids": ["DIRECT-DELIVERY-TEST"],
-            }
-        ],
+        [{"branch": "lane-one", "path": str(worktree), "status": "active"}],
     )
-    return state
-
-
-def test_ephemeral_agent_worktree_is_counted_but_not_a_block(tmp_path: Path) -> None:
-    repo, worktree = _repo_with_worktree(tmp_path)
-    agent = _agent_worktree(repo)
-    # A working subagent is normally dirty; that must not block either.
-    (agent / "wip.txt").write_bytes(b"wip\n" * 128)
-    state = _one_registered_lane_state(tmp_path, worktree)
     output = tmp_path / "lane-usage.json"
-
-    assert (
-        main(["--workspace", str(repo), "--state", str(state), "--output", str(output)])
-        == 0
+    code = main(
+        ["--workspace", str(repo), "--state", str(state), "--output", str(output)]
     )
+    return code, json.loads(output.read_text(encoding="utf-8"))
 
-    report = json.loads(output.read_text(encoding="utf-8"))
-    entry = next(item for item in report["lanes"] if item["path"] == str(agent))
-    assert entry["ownership"] == "ephemeral-agent"
-    assert entry["lane_state"] == "ephemeral"
-    assert entry["allocated_bytes"] > 0
-    assert entry["accounted_in_aggregate"] is True
-    assert report["policy"]["verdict"] != "block"
-    assert report["policy"]["unregistered_physical_worktrees"] == []
-    assert report["policy"]["ephemeral_agent_worktrees"] == [str(agent)]
-    assert "ephemeral-agent-lane" in report["policy"]["reasons"]
-    assert "unregistered-physical-worktree" not in report["policy"]["reasons"]
-    assert "dirty-physical-worktree" not in report["policy"]["reasons"]
+
+# ownership -> (policy list, lane_attribution classification, policy reason)
+_AGENT_ROOT_IDENTITY = {
+    "ephemeral-agent": (
+        "ephemeral_agent_worktrees",
+        "ephemeral_agent",
+        "ephemeral-agent-lane",
+    ),
+    "stale-agent": ("stale_agent_worktrees", "stale_agent", "stale-agent-worktree"),
+    "unregistered": (
+        "unregistered_physical_worktrees",
+        "physical_but_unregistered",
+        "unregistered-physical-worktree",
+    ),
+}
 
 
 @pytest.mark.parametrize(
-    "name,branch",
+    "name,branch,lock,ownership",
     [
-        ("agent-a1b2c3d4e5f6", "not-the-harness-branch"),  # branch/name disagree
-        ("agent-xyz", None),  # non-hex id
-        ("scratch", None),  # not agent-*
+        # A live harness lock is identity whatever the branch or naming scheme.
+        ("agent-a1b2c3d4e5f6", None, _LIVE, "ephemeral-agent"),
+        ("agent-a1831cf3132224ea6", "verify-2025", _LIVE, "ephemeral-agent"),
+        ("wf_e7e67718-c0d-3", None, _LIVE, "ephemeral-agent"),
+        ("wf_e7e67718-c0d-4", "fix-p1-review", _LIVE, "ephemeral-agent"),
+        # The harness no longer holds it: its own lock names a dead pid, or the
+        # lock is gone and the dir carries a harness-generated name.
+        ("agent-a1b2c3d4e5f6", None, "dead-pid", "stale-agent"),
+        # The recorded pid was reused: it is alive but started at another time.
+        ("agent-a1b2c3d4e5f6", None, "reused-pid", "stale-agent"),
+        ("agent-a528d0e76f72e9dd3", None, None, "stale-agent"),
+        ("wf_e7e67718-c0d-10", "fix-p1-review", None, "stale-agent"),
+        # No provenance: an unlocked hand-made checkout (the review repro is
+        # scratch), a near-miss name, or a lock this lane's harness did not hold.
+        ("scratch", None, None, "unregistered"),
+        ("lane-foo", None, None, "unregistered"),
+        ("agent-a1b2c3d4e5f6", None, None, "unregistered"),  # 12 hex, not 17
+        ("wf_scratch-1", None, None, "unregistered"),
+        ("agent-a1b2c3d4e5f6", None, "kept by operator", "unregistered"),
+        ("agent-a1b2c3d4e5f6", None, "", "unregistered"),
+        (
+            "agent-a1b2c3d4e5f6",
+            None,
+            _harness_lock_reason("agent-ffffffffffff", os.getpid()),
+            "unregistered",
+        ),
     ],
 )
-def test_non_agent_shaped_checkout_under_claude_root_still_blocks(
-    tmp_path: Path, name: str, branch: str | None
+def test_claude_root_lane_identity_needs_harness_provenance(
+    tmp_path: Path, name: str, branch: str | None, lock: object, ownership: str
 ) -> None:
     repo, worktree = _repo_with_worktree(tmp_path)
-    orphan = _agent_worktree(repo, name=name, branch=branch)
-    state = _one_registered_lane_state(tmp_path, worktree)
-    output = tmp_path / "lane-usage.json"
+    dead = _dead_pid() if lock == "dead-pid" else None
+    if lock == "reused-pid":
+        recorded: object = _harness_lock_reason(name, os.getpid(), _FOREIGN_START)
+    else:
+        recorded = dead or lock
+    lane = _agent_worktree(repo, name=name, branch=branch, lock=recorded)
+    # Agent lanes are normally dirty, so dirt must not decide identity.
+    (lane / "wip.txt").write_bytes(b"wip\n" * 128)
 
-    assert (
-        main(["--workspace", str(repo), "--state", str(state), "--output", str(output)])
-        == BLOCKED_EXIT
-    )
-    report = json.loads(output.read_text(encoding="utf-8"))
-    entry = next(item for item in report["lanes"] if item["path"] == str(orphan))
-    assert entry["ownership"] == "unregistered"
-    assert report["policy"]["unregistered_physical_worktrees"] == [str(orphan)]
-    assert report["policy"]["ephemeral_agent_worktrees"] == []
+    code, report = _agent_root_report(tmp_path, repo, worktree)
+
+    policy = report["policy"]
+    entry = next(item for item in report["lanes"] if item["path"] == str(lane))
+    assert entry["ownership"] == ownership
+    assert entry["allocated_bytes"] > 0
+    assert entry["accounted_in_aggregate"] is True
+    listed, classified, reason = _AGENT_ROOT_IDENTITY[ownership]
+    for key, _, _ in _AGENT_ROOT_IDENTITY.values():
+        assert policy[key] == ([str(lane)] if key == listed else [])
+    classifications = report["lane_attribution"]["classifications"]
+    assert classifications[classified]["paths"] == [str(lane)]
+    assert reason in policy["reasons"]
+    if ownership == "unregistered":
+        assert code == BLOCKED_EXIT
+        assert "dirty-physical-worktree" in policy["blocking_reasons"]
+        assert "agent_lock" not in entry
+        return
+    assert code == 0
+    assert policy["blocking_reasons"] == []
+    if lock is _LIVE:
+        assert entry["lane_state"] == "ephemeral"
+        assert entry["agent_lock"] == {"state": "live", "pid": os.getpid()}
+        return
+    assert entry["lane_state"] == "stale"
+    if lock == "reused-pid":
+        expected = {"state": "reused-pid", "pid": os.getpid()}
+    elif dead:
+        expected = {"state": "dead-pid", "pid": dead}
+    else:
+        expected = {"state": "unlocked"}
+    assert entry["agent_lock"] == expected
+    hint = entry["cleanup_hint"]
+    assert f"git worktree remove {lane}" in hint
+    assert (f"git worktree unlock {lane}" in hint) is (lock is not None)
 
 
-def test_agent_named_checkout_outside_claude_root_still_blocks(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "reason_tail,probe,state",
+    [
+        # Matching start (within lstart's 1 s resolution plus skew) -> live.
+        (" start Wed Oct  7 11:50:17 2026", "Wed Oct  7 11:50:18 2026", "live"),
+        # Same pid, other start: an unrelated process reused it.
+        (" start Wed Oct  7 11:50:17 2026", "Wed Oct  7 11:59:17 2026", "reused-pid"),
+        # Missing / unparseable start info -> pid-only fallback.
+        ("", "Wed Oct  7 11:59:17 2026", "live"),
+        (" start yesterday", "Wed Oct  7 11:59:17 2026", "live"),
+        (" start Wed Oct  7 11:50:17 2026", None, "live"),
+    ],
+)
+def test_agent_lock_liveness_checks_recorded_start_time(
+    monkeypatch: pytest.MonkeyPatch, reason_tail: str, probe: str | None, state: str
+) -> None:
+    """Live = pid exists AND its start matches the lock's recorded start.  The
+    probe is injected as raw ``ps -o lstart=`` text (padded like macOS and
+    procps print it) so the real parser is exercised on any CI host."""
+
+    probed: list[int] = []
+
+    def fake_lstart(pid: int, timeout: float = 5.0) -> str | None:
+        probed.append(pid)
+        return None if probe is None else f"{probe}    \n"
+
+    monkeypatch.setattr(disk_usage, "_ps_lstart", fake_lstart)
+    workspace = Path("/nonexistent-ws")
+    lane = workspace / ".claude" / "worktrees" / "agent-a1b2c3d4e5f6"
+    pid = os.getpid()
+    reason = f"claude agent {lane.name} (pid {pid}{reason_tail})"
+    physical = {"locked": True, "lock_reason": reason}
+
+    assert disk_usage._agent_lane_lock(lane, physical, workspace) == {
+        "state": state,
+        "pid": pid,
+    }
+    assert probed == ([pid] if reason_tail.startswith(" start Wed") else [])
+
+
+def test_ps_probes_stop_at_the_report_deadline(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A stalled ``ps`` must not stretch the report past ``--time-budget-seconds``:
+    each probe is capped by the time left, and once the deadline passed the
+    remaining lanes fall back to the pid-only check, marked in their record.
+    The clock is faked so the stalls cost no wall time."""
+
     repo, worktree = _repo_with_worktree(tmp_path)
-    orphan = tmp_path / "agent-a1b2c3d4e5f6"
-    _run_git(
-        repo,
-        "worktree",
-        "add",
-        "-b",
-        "worktree-agent-a1b2c3d4e5f6",
-        str(orphan),
-        "main",
+    lanes = [
+        _agent_worktree(
+            repo,
+            name=f"agent-{index:017x}",
+            lock=_harness_lock_reason(
+                f"agent-{index:017x}", 900001 + index, _FOREIGN_START
+            ),
+        )
+        for index in range(6)
+    ]
+    elapsed = [0.0]
+    real_monotonic = time.monotonic
+    monkeypatch.setattr(time, "monotonic", lambda: real_monotonic() + elapsed[0])
+    monkeypatch.setattr(disk_usage, "_pid_alive", lambda pid: True)
+    timeouts: list[float] = []
+
+    def stalled_ps(pid: int, timeout: float = 5.0) -> str | None:
+        timeouts.append(timeout)
+        elapsed[0] += timeout  # ps hangs until its timeout kills it
+        return None
+
+    monkeypatch.setattr(disk_usage, "_ps_lstart", stalled_ps)
+    state = tmp_path / "registry.json"
+    _write_registry(
+        state, [{"branch": "lane-one", "path": str(worktree), "status": "active"}]
     )
-    state = _one_registered_lane_state(tmp_path, worktree)
     output = tmp_path / "lane-usage.json"
+    budget = 12
 
-    assert (
-        main(["--workspace", str(repo), "--state", str(state), "--output", str(output)])
-        == BLOCKED_EXIT
+    main(
+        [
+            "--workspace",
+            str(repo),
+            "--state",
+            str(state),
+            "--output",
+            str(output),
+            "--time-budget-seconds",
+            str(budget),
+        ]
     )
+
+    assert sum(timeouts) <= budget + 0.5, timeouts
+    assert timeouts and all(0 < timeout <= 5 for timeout in timeouts)
+    assert len(timeouts) < len(lanes)
     report = json.loads(output.read_text(encoding="utf-8"))
-    assert report["policy"]["unregistered_physical_worktrees"] == [str(orphan)]
+    by_path = {item["path"]: item for item in report["lanes"]}
+    locks = [by_path[str(lane)]["agent_lock"] for lane in lanes]
+    assert [lock["state"] for lock in locks] == ["live"] * len(lanes)
+    skipped = [lock for lock in locks if lock.get("start_check") == "skipped-deadline"]
+    assert len(skipped) == len(lanes) - len(timeouts)
+    assert all("start_check" not in lock for lock in locks[: len(timeouts)])
 
 
-def test_concurrent_sibling_agent_worktrees_do_not_block_each_other(
+@pytest.fixture
+def host_timezone(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[str]:
+    """Run the test as if the host clock zone were ``request.param``."""
+
+    monkeypatch.setenv("TZ", request.param)
+    time.tzset()
+    yield request.param
+    monkeypatch.undo()
+    time.tzset()
+
+
+@pytest.mark.parametrize(
+    "host_timezone",
+    ["UTC", "Asia/Taipei", "America/Los_Angeles"],
+    indirect=True,
+)
+def test_real_ps_start_of_live_pid_matches_its_lock(host_timezone: str) -> None:
+    """Positive control against the real ``ps`` (macOS here, procps on CI) in
+    every host zone: the lock records UTC, so a non-UTC host (UTC+8 here)
+    must still see its own live pid as ``live``, not ``reused-pid``."""
+
+    workspace = Path("/nonexistent-ws")
+    lane = workspace / ".claude" / "worktrees" / "agent-a1b2c3d4e5f6"
+    reason = _harness_lock_reason(lane.name, os.getpid())
+    assert _FOREIGN_START not in reason, "ps lstart unavailable for a live pid"
+    physical = {"locked": True, "lock_reason": reason}
+
+    assert disk_usage._agent_lane_lock(lane, physical, workspace) == {
+        "state": "live",
+        "pid": os.getpid(),
+    }
+
+
+@pytest.mark.parametrize("host_timezone", ["UTC", "Asia/Taipei"], indirect=True)
+def test_ps_probe_is_pinned_to_utc_and_compared_as_utc(
+    monkeypatch: pytest.MonkeyPatch, host_timezone: str
+) -> None:
+    """The recorded start is UTC, so the probe must ask ``ps`` for UTC whatever
+    the host zone, and both strings are compared as UTC (no local mktime)."""
+
+    recorded = _ps_lstart(os.getpid())
+    seen_env: list[dict[str, str]] = []
+    real_run = subprocess.run
+
+    def spy(*args: object, **kwargs: object) -> object:
+        seen_env.append(dict(kwargs.get("env") or {}))  # type: ignore[call-overload]
+        return real_run(*args, **kwargs)  # type: ignore[call-overload]
+
+    monkeypatch.setattr(disk_usage.subprocess, "run", spy)
+    assert disk_usage._harness_pid_state(os.getpid(), recorded) == ("live", False)
+    assert [env.get("TZ") for env in seen_env] == ["UTC"]
+    # Same wall-clock text read as UTC on both sides: an hour-offset text is a
+    # different instant, however the host zone interprets it.
+    assert disk_usage._parse_lstart("Wed Oct  7 11:50:17 2026") == 1791373817.0
+    assert (
+        disk_usage._parse_lstart("Wed Oct  7 19:50:17 2026") == 1791373817.0 + 8 * 3600
+    )
+
+
+def test_ps_probe_runs_once_per_pid_per_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """All lanes of one harness session share a pid; one probe serves them."""
+
+    calls: list[int] = []
+
+    def counting(pid: int, timeout: float = 5.0) -> str | None:
+        calls.append(pid)
+        return _ps_lstart(pid)
+
+    recorded = _ps_lstart(os.getpid())
+    cache: dict[int, str | None] = {}
+    monkeypatch.setattr(disk_usage, "_ps_lstart", counting)
+    states = [
+        disk_usage._harness_pid_state(os.getpid(), recorded, cache) for _ in range(3)
+    ]
+    assert states == [("live", False)] * 3
+    assert calls == [os.getpid()]
+
+
+def test_ps_probe_timeout_is_capped_by_the_time_left(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No deadline keeps the 5 s probe cap; a nearer deadline shrinks it, and a
+    passed one skips the probe (pid-only ``live``, flagged unchecked) while a
+    cached answer is still used."""
+
+    now = [100.0]
+    monkeypatch.setattr(time, "monotonic", lambda: now[0])
+    timeouts: list[float] = []
+
+    def fake(pid: int, timeout: float = 5.0) -> str | None:
+        timeouts.append(timeout)
+        return None
+
+    monkeypatch.setattr(disk_usage, "_ps_lstart", fake)
+    monkeypatch.setattr(disk_usage, "_pid_alive", lambda pid: True)
+    start = "Wed Oct  7 11:50:17 2026"
+
+    def state(pid: int, deadline: float | None, cache: dict | None = None) -> tuple:
+        return disk_usage._harness_pid_state(pid, start, cache, deadline)
+
+    assert state(1, None) == ("live", False)
+    assert state(2, 160.0) == ("live", False)  # 60 s left: the 5 s cap holds
+    assert state(3, 102.5) == ("live", False)  # 2.5 s left
+    assert timeouts == [5.0, 5.0, 2.5]
+    assert state(4, 100.0) == ("live", True)  # deadline reached: no probe
+    assert state(5, 99.0) == ("live", True)
+    assert timeouts == [5.0, 5.0, 2.5]
+    cache: dict[int, str | None] = {6: "Wed Oct  7 11:59:17 2026"}
+    assert state(6, 99.0, cache) == ("reused-pid", False)  # cached evidence wins
+
+
+@pytest.mark.parametrize("lock", [_LIVE, None])
+def test_harness_lane_outside_claude_root_still_blocks(
+    tmp_path: Path, lock: object
+) -> None:
+    """Positive control: identity is only granted directly under the root (the
+    names are harness-shaped so the unlocked case fails on location alone)."""
+
+    repo, worktree = _repo_with_worktree(tmp_path)
+    elsewhere = _agent_worktree(
+        repo, name="agent-a528d0e76f72e9dd3", lock=lock, root=tmp_path
+    )
+    nested = _agent_worktree(
+        repo,
+        name="agent-0123456789abcdef0",
+        lock=lock,
+        root=repo / ".claude" / "worktrees" / "nested",
+    )
+
+    code, report = _agent_root_report(tmp_path, repo, worktree)
+
+    assert code == BLOCKED_EXIT
+    assert report["policy"]["unregistered_physical_worktrees"] == sorted(
+        [str(elsewhere), str(nested)]
+    )
+    assert report["policy"]["ephemeral_agent_worktrees"] == []
+    assert report["policy"]["stale_agent_worktrees"] == []
+    assert "unregistered-physical-worktree" in report["policy"]["blocking_reasons"]
+
+
+def test_agent_lanes_live_and_stale_still_count_toward_lane_quota(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    live = _agent_worktree(repo, name="agent-aaaaaaaaaaaa")
+    stale = _agent_worktree(repo, name="agent-bbbbbbbbbbbb", lock=_dead_pid())
+    monkeypatch.setenv("KG_DISK_GUARD_LANE_BUDGET_GIB", "0")
+
+    code, report = _agent_root_report(tmp_path, repo, worktree)
+
+    assert code == BLOCKED_EXIT
+    blocking = report["policy"]["blocking_reasons"]
+    assert f"lane-budget-exceeded:{live}" in blocking
+    assert f"lane-budget-exceeded:{stale}" in blocking
+    assert "unregistered-physical-worktree" not in blocking
+
+
+def test_sibling_agent_lanes_neither_block_each_other_nor_mask_an_orphan(
     tmp_path: Path,
 ) -> None:
     repo, worktree = _repo_with_worktree(tmp_path)
     agents = [_agent_worktree(repo, name=f"agent-{i:012x}") for i in (1, 2, 3)]
     (agents[1] / "wip.txt").write_bytes(b"wip\n" * 64)
-    state = _one_registered_lane_state(tmp_path, worktree)
-    output = tmp_path / "lane-usage.json"
-
-    assert (
-        main(["--workspace", str(repo), "--state", str(state), "--output", str(output)])
-        == 0
-    )
-    report = json.loads(output.read_text(encoding="utf-8"))
-    assert report["policy"]["ephemeral_agent_worktrees"] == sorted(
-        str(a) for a in agents
-    )
-    assert report["policy"]["blocking_reasons"] == []
-
-
-def test_genuine_orphan_blocks_even_beside_a_live_agent_worktree(
-    tmp_path: Path,
-) -> None:
-    """Positive control: an agent lane must not mask a real orphan."""
-
-    repo, worktree = _repo_with_worktree(tmp_path)
-    agent = _agent_worktree(repo)
     orphan = tmp_path / "orphan"
     _run_git(repo, "worktree", "add", "-b", "orphan", str(orphan), "main")
-    state = _one_registered_lane_state(tmp_path, worktree)
-    output = tmp_path / "lane-usage.json"
 
-    assert (
-        main(["--workspace", str(repo), "--state", str(state), "--output", str(output)])
-        == BLOCKED_EXIT
-    )
-    report = json.loads(output.read_text(encoding="utf-8"))
-    assert report["policy"]["unregistered_physical_worktrees"] == [str(orphan)]
-    assert report["policy"]["ephemeral_agent_worktrees"] == [str(agent)]
-    assert "unregistered-physical-worktree" in report["policy"]["reasons"]
+    code, report = _agent_root_report(tmp_path, repo, worktree)
+
+    assert code == BLOCKED_EXIT
+    policy = report["policy"]
+    assert policy["ephemeral_agent_worktrees"] == sorted(str(a) for a in agents)
+    assert policy["unregistered_physical_worktrees"] == [str(orphan)]
+    # The clean orphan is the only blocker: the dirty sibling adds none.
+    assert policy["blocking_reasons"] == ["unregistered-physical-worktree"]
