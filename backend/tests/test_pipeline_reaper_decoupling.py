@@ -7,6 +7,7 @@
 * `reap_orphaned_runs()` 是唯一、具名、顯式的回收入口(crash recovery 語意 SoT);
 * API lifespan 在單-worker 鎖之後顯式呼叫它(對齊 worker_guard 宣稱的 on-startup)。
 """
+
 from __future__ import annotations
 
 import inspect
@@ -26,18 +27,16 @@ def test_get_conn_does_not_reap():
     # 模擬 process restart:close & reopen。解耦後 _get_conn 不再 reap。
     pipeline_log._reset()
     runs = pipeline_log.get_runs("u1")
-    assert runs[0]["status"] == "running", (
-        "_get_conn 不應 reap —— 回收必須走顯式 reap_orphaned_runs()"
-    )
+    assert runs[0]["status"] == "running", "_get_conn 不應 reap —— 回收必須走顯式 reap_orphaned_runs()"
     assert runs[0]["ended_at"] is None
 
 
-def test_reap_orphaned_runs_marks_interrupted_and_counts():
+def test_reap_orphaned_runs_marks_interrupted_and_counts(tmp_path):
     pipeline_log.start_run("orphan_a", "u1", "nb1", "manual")
     pipeline_log.start_run("orphan_b", "u1", "nb2", "background")
     pipeline_log.end_run("orphan_b", "completed")  # 已完成者不該被回收
 
-    reaped = pipeline_log.reap_orphaned_runs()
+    reaped = pipeline_log.reap_orphaned_runs(tmp_path)
     assert reaped == 1, "只有 1 個 running 孤兒應被回收"
 
     by_id = {r["run_id"]: r for r in pipeline_log.get_runs("u1")}
@@ -46,10 +45,10 @@ def test_reap_orphaned_runs_marks_interrupted_and_counts():
     assert by_id["orphan_b"]["status"] == "completed"
 
 
-def test_reap_is_idempotent():
+def test_reap_is_idempotent(tmp_path):
     pipeline_log.start_run("orphan", "u1", "nb1", "manual")
-    assert pipeline_log.reap_orphaned_runs() == 1
-    assert pipeline_log.reap_orphaned_runs() == 0, "二次回收應為 no-op(0 列)"
+    assert pipeline_log.reap_orphaned_runs(tmp_path) == 1
+    assert pipeline_log.reap_orphaned_runs(tmp_path) == 0, "二次回收應為 no-op(0 列)"
 
 
 def test_lifespan_wires_explicit_reaper():
@@ -58,11 +57,19 @@ def test_lifespan_wires_explicit_reaper():
 
     src = inspect.getsource(app_lifespan.build_app_lifespan_from_dependencies)
     assert "reap_orphaned_runs_fn" in src, (
-        "lifespan builder 未呼叫 reap_orphaned_runs_fn;reaper 已從 _get_conn 移除,"
-        "startup 必須顯式回收"
+        "lifespan builder 未呼叫 reap_orphaned_runs_fn;reaper 已從 _get_conn 移除,startup 必須顯式回收"
     )
     # 時序紅線:全表回收只在單 worker 存活時安全,reap 必須在 worker 鎖之後。
     assert src.index("assert_single_worker_fn") < src.index("reap_orphaned_runs_fn"), (
         "reap_orphaned_runs_fn 必須在 assert_single_worker_fn 之後 —— 否則多 worker "
         "競態窗口內會 cross-mark 彼此正在跑的 run"
     )
+
+
+def test_lifespan_wires_add_link_operation_reaper_after_worker_lock():
+    """孤兒 add-link operation 永遠非終態 → iOS 無限輪詢；必須在 worker 鎖之後顯式回收。"""
+    from kg import app_lifespan
+
+    src = inspect.getsource(app_lifespan.build_app_lifespan_from_dependencies)
+    assert "reap_interrupted_add_link_operations_fn" in src
+    assert src.index("assert_single_worker_fn") < src.index("reap_interrupted_add_link_operations_fn")

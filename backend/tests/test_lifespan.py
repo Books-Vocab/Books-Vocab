@@ -1,5 +1,8 @@
 """Tests for FastAPI lifespan and global exception handler."""
+
 from __future__ import annotations
+
+from pathlib import Path
 
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -71,3 +74,69 @@ def test_http_exception_not_intercepted(tmp_path):
 
     assert resp.status_code == 403
     assert resp.json()["detail"] == "Forbidden by test"
+
+
+def test_startup_marks_orphaned_add_link_operations_interrupted(tmp_path, monkeypatch):
+    """A restart must not leave queued/running add-link operations pollable forever."""
+    import kg.vocab_add_link_operation as operations
+
+    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+    operations.reset()
+    try:
+        orphan, _ = operations.create_operation(
+            user_id="u1", notebook_id="default", idempotency_key="k1", payload={"target_word": "x"}
+        )
+        operations.start_operation(orphan["operation_id"])
+        operations.reset()  # previous process died; only SQLite survives
+
+        with TestClient(create_app(_make_test_settings(tmp_path))):
+            record = operations.get_operation("u1", orphan["operation_id"])
+            assert record["status"] == "interrupted"
+            assert record["error_code"] == "interrupted"
+    finally:
+        operations.reset()
+
+
+def test_startup_reapers_only_touch_the_worker_locked_data_dir(tmp_path, monkeypatch):
+    """The worker lock guards ``settings.data_dir``; startup recovery may only
+    reap that directory's SQLite state.  A ``KG_DATA_DIR`` pointing elsewhere can
+    belong to another live app whose lock this process does not hold."""
+    import kg.pipeline_log as pipeline_log
+    import kg.vocab_add_link_operation as operations
+
+    locked_dir = tmp_path / "locked"
+    foreign_dir = tmp_path / "foreign"
+    operation_ids: dict[Path, str] = {}
+
+    def _open(root: Path) -> None:
+        monkeypatch.setenv("KG_DATA_DIR", str(root))
+        operations.reset()
+        pipeline_log.reset()
+
+    try:
+        for root in (locked_dir, foreign_dir):
+            root.mkdir()
+            _open(root)
+            operation, _ = operations.create_operation(
+                user_id="u1", notebook_id="default", idempotency_key="k1", payload={"target_word": "x"}
+            )
+            operations.start_operation(operation["operation_id"])
+            pipeline_log.start_run(f"run-{root.name}", "u1", "nb1", "manual")
+            operation_ids[root] = operation["operation_id"]
+        operations.reset()
+        pipeline_log.reset()  # both previous processes died; KG_DATA_DIR stays on foreign_dir
+
+        with TestClient(create_app(_make_test_settings(locked_dir))):
+            pass
+
+        def _statuses(root: Path) -> tuple[str, str]:
+            _open(root)
+            operation = operations.get_operation("u1", operation_ids[root])
+            (run,) = pipeline_log.get_runs("u1")
+            return operation["status"], run["status"]
+
+        assert _statuses(locked_dir) == ("interrupted", "interrupted")
+        assert _statuses(foreign_dir) == ("running", "running")
+    finally:
+        operations.reset()
+        pipeline_log.reset()

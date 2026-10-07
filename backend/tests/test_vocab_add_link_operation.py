@@ -11,6 +11,7 @@ from kg.vocab_add_link_operation import (
     IdempotencyConflict,
     create_operation,
     get_operation,
+    operation_response,
     run_add_link_operation,
 )
 
@@ -299,8 +300,142 @@ def test_cancellation_interrupts_running_operation_and_current_step():
     result = get_operation("user-1", operation["operation_id"])
     assert result["status"] == "interrupted"
     assert result["ended_at"] is not None
-    assert result["error_code"] == "cancelled"
+    assert result["error_code"] == "interrupted"
     translate_step = next(step for step in result["steps"] if step["id"] == "translate")
-    assert translate_step["status"] == "interrupted"
-    assert translate_step["detail_code"] == "cancelled"
+    assert translate_step["status"] == "error"
+    assert translate_step["detail_code"] == "interrupted"
     assert get_operation("user-1", operation["operation_id"])["status"] != "running"
+    # The interrupted record must stay serializable on the poll surface.
+    wire = operation_response(result)
+    assert wire.status == "interrupted"
+    assert wire.errorCode == "interrupted"
+
+
+def _card(card_id, content, **overrides):
+    return SimpleNamespace(
+        **{
+            "id": card_id,
+            "content": content,
+            "meaning": f"{content}-meaning",
+            "notebook_id": "default",
+            "is_deleted": False,
+            "is_archived": False,
+            **overrides,
+        }
+    )
+
+
+def _failed_operation(cards, *, key, word="luminous", **kwargs):
+    operation, _ = create_operation(user_id="user-1", notebook_id="default", idempotency_key=key, payload=payload(word))
+    run(operation["operation_id"], cards, Graph(), **kwargs)
+    result = get_operation("user-1", operation["operation_id"])
+    assert result["status"] == "failed"
+    return result
+
+
+def test_archived_target_reports_distinct_error_code():
+    cards = Cards(_card("source-card", "source"), _card("target-card", "luminous", is_archived=True))
+
+    result = _failed_operation(cards, key="tap-archived")
+
+    assert result["error_code"] == "target_archived"
+    assert operation_response(result).errorCode == "target_archived"
+
+
+def test_target_equal_to_source_reports_distinct_error_code():
+    cards = Cards(_card("source-card", "luminous"))
+
+    result = _failed_operation(cards, key="tap-self")
+
+    assert result["error_code"] == "target_is_source"
+
+
+def test_unavailable_source_is_not_reported_as_target_unavailable():
+    cards = Cards(_card("source-card", "source", is_archived=True))
+
+    result = _failed_operation(cards, key="tap-source-gone")
+
+    assert result["error_code"] == "source_unavailable"
+
+
+def test_unexpected_target_resolution_failure_stays_target_unavailable():
+    class BrokenCards(Cards):
+        def find_by_content(self, *_args, **_kwargs):
+            raise RuntimeError("store down")
+
+    result = _failed_operation(BrokenCards(_card("source-card", "source")), key="tap-broken")
+
+    assert result["error_code"] == "target_unavailable"
+
+
+def test_enrichment_is_never_an_operation_error_code():
+    # Enrichment failures are non-fatal warnings; even an unexpected exception
+    # attributed to the enrich step must not surface as the terminal errorCode
+    # (iOS reads enrichment_failed as "partially synced", not as a failure).
+    from kg.vocab_add_link_operation import _error_code
+
+    assert _error_code("enrich", RuntimeError("boom")) != "enrichment_failed"
+
+
+def _seed_operation(key, *, status, user_id="user-1", running_step=None):
+    import kg.vocab_add_link_operation as operations
+
+    operation, _ = create_operation(user_id=user_id, notebook_id="default", idempotency_key=key, payload=payload())
+    operation_id = operation["operation_id"]
+    if running_step:
+        operations.update_step(operation_id, running_step, status="running")
+    if status == "running":
+        operations.start_operation(operation_id)
+    elif status != "queued":
+        operations.finish_operation(operation_id, status=status)
+    return operation_id
+
+
+def test_restart_marks_non_terminal_operations_interrupted(tmp_path):
+    import kg.vocab_add_link_operation as operations
+
+    queued = _seed_operation("restart-queued", status="queued")
+    running = _seed_operation("restart-running", status="running", running_step="translate")
+    other_user = _seed_operation("restart-other-user", status="running", user_id="user-2")
+    done = _seed_operation("restart-done", status="succeeded")
+    failed = _seed_operation("restart-failed", status="failed")
+    before_running = get_operation("user-1", running)
+    operations.reset()  # simulate process restart: only SQLite survives
+
+    assert operations.reap_interrupted_operations(tmp_path) == 3
+
+    for operation_id, user_id in ((queued, "user-1"), (running, "user-1"), (other_user, "user-2")):
+        record = get_operation(user_id, operation_id)
+        assert record["status"] == "interrupted"
+        assert record["error_code"] == "interrupted"
+        assert record["ended_at"] is not None
+        assert operation_response(record).errorCode == "interrupted"
+    after_running = get_operation("user-1", running)
+    assert after_running["sequence"] > before_running["sequence"]
+    translate_step = next(step for step in after_running["steps"] if step["id"] == "translate")
+    assert (translate_step["status"], translate_step["detail_code"]) == ("error", "interrupted")
+    assert get_operation("user-1", done)["status"] == "succeeded"
+    assert get_operation("user-1", failed)["status"] == "failed"
+    assert get_operation("user-1", failed)["error_code"] is None
+
+
+def test_restart_reaping_is_idempotent_and_a_noop_when_clean(tmp_path):
+    import kg.vocab_add_link_operation as operations
+
+    assert operations.reap_interrupted_operations(tmp_path) == 0
+    _seed_operation("idem-running", status="running")
+    assert operations.reap_interrupted_operations(tmp_path) == 1
+    assert operations.reap_interrupted_operations(tmp_path) == 0
+
+
+def test_interrupted_operation_is_not_resumed_by_late_runner(tmp_path):
+    import kg.vocab_add_link_operation as operations
+
+    operation_id = _seed_operation("late-runner", status="queued")
+    operations.reap_interrupted_operations(tmp_path)
+    cards = Cards(_card("source-card", "source"))
+
+    run(operation_id, cards, Graph(), translate_fn=lambda **_k: pytest.fail("must not run"))
+
+    assert get_operation("user-1", operation_id)["status"] == "interrupted"
+    assert cards.added == []

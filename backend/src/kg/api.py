@@ -66,8 +66,10 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     from .quota_service import configure_limits
 
     configure_limits(pro=settings.pro_daily_limit_usd, free=settings.free_daily_limit_usd)
+    from . import runtime_data_root
     from .pipeline_log import reap_orphaned_runs
     from .service_factories import reset_async_clients, reset_clients
+    from .vocab_add_link_operation import reap_interrupted_operations
     from .worker_guard import assert_single_worker, release_worker_lock
 
     app = FastAPI(
@@ -79,6 +81,9 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
                 logger=logger,
                 assert_single_worker_fn=assert_single_worker,
                 reap_orphaned_runs_fn=reap_orphaned_runs,
+                reap_interrupted_add_link_operations_fn=reap_interrupted_operations,
+                bind_runtime_data_root_fn=runtime_data_root.bind,
+                release_runtime_data_root_fn=runtime_data_root.release,
                 release_worker_lock_fn=release_worker_lock,
                 reset_clients_fn=reset_clients,
                 reset_async_clients_fn=reset_async_clients,

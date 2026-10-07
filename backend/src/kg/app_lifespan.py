@@ -17,7 +17,14 @@ class AppLifespanDependencies:
     settings: KGSettings
     logger: logging.Logger | Any
     assert_single_worker_fn: Callable[[Path], None]
-    reap_orphaned_runs_fn: Callable[[], int]
+    # Reapers take the data root explicitly: they may only touch the directory
+    # whose worker lock this process holds (never an independently read env).
+    reap_orphaned_runs_fn: Callable[[Path], int]
+    reap_interrupted_add_link_operations_fn: Callable[[Path], int]
+    # Runtime stores resolve the locked root for exactly as long as the lock is
+    # held (see kg.runtime_data_root).
+    bind_runtime_data_root_fn: Callable[[Path], None]
+    release_runtime_data_root_fn: Callable[[Path], None]
     release_worker_lock_fn: Callable[[], None]
     reset_clients_fn: Callable[[], None]
     reset_async_clients_fn: Callable[[], Awaitable[None]]
@@ -36,19 +43,17 @@ def build_app_lifespan_from_dependencies(
         # which is easy to miss in production. Empty values stay valid for
         # test/dev flows by design.
         if not dependencies.settings.admin_token:
-            dependencies.logger.warning(
-                "admin_token is empty → admin API is disabled "
-                "(set ADMIN_TOKEN to enable)"
-            )
+            dependencies.logger.warning("admin_token is empty → admin API is disabled (set ADMIN_TOKEN to enable)")
         if not dependencies.settings.admin_password:
             dependencies.logger.warning(
-                "admin_password is empty → admin password login is disabled "
-                "(set ADMIN_PASSWORD to enable)"
+                "admin_password is empty → admin password login is disabled (set ADMIN_PASSWORD to enable)"
             )
-        worker_lock_path = dependencies.settings.data_dir / ".worker.lock"
+        data_root = dependencies.settings.data_dir
+        worker_lock_path = data_root / ".worker.lock"
         dependencies.assert_single_worker_fn(worker_lock_path)
         try:
-            reaped = dependencies.reap_orphaned_runs_fn()
+            reaped = dependencies.reap_orphaned_runs_fn(data_root)
+            reaped_operations = dependencies.reap_interrupted_add_link_operations_fn(data_root)
         except BaseException:
             dependencies.release_worker_lock_fn()
             worker_lock_path.unlink(missing_ok=True)
@@ -58,8 +63,15 @@ def build_app_lifespan_from_dependencies(
                 "Reaped %d orphaned pipeline run(s) → interrupted",
                 reaped,
             )
+        if reaped_operations:
+            dependencies.logger.info(
+                "Reaped %d orphaned add-link operation(s) → interrupted",
+                reaped_operations,
+            )
+        dependencies.bind_runtime_data_root_fn(data_root)
         yield
         dependencies.logger.info("KG API shutting down")
+        dependencies.release_runtime_data_root_fn(data_root)
         dependencies.release_worker_lock_fn()
         dependencies.reset_clients_fn()
         await dependencies.reset_async_clients_fn()
