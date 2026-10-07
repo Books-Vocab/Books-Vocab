@@ -53,7 +53,7 @@ GitHub 是交付控制面：Issue／Project 管規劃與排序，branch／worktr
 | IM | GitHub Issue／Project、派工、worktree lifecycle、push exact commit、PR metadata／readiness、terminal cleanup | 修改 code、替 Worker commit／解 conflict、merge／enqueue |
 | Worker | 接受 User／IM 直接指派，依 `dispatch_channel` 討論並完成 branch/worktree、程式碼、測試、local commit 與 hand-back | 任何 GitHub／Issue／PR mutation、push、review、merge、release/deploy |
 | Issue Solver | 只消除已進入 GitHub Issue 的工作；接受 IM 傳入的 Issue assignment packet，完成 branch/worktree、程式碼、測試、local commit 與 hand-back | 接受未進 Issue 的直接指派；任何 GitHub／Issue／PR mutation、push、review、merge、release/deploy |
-| CR | 審查 PR diff 的正確性、測試、回歸、架構與安全 | 修改 caller worktree、merge、release |
+| CR | 審查 PR diff（`pr-review`）或 PR 發布前 lane 的 `base..HEAD` diff（`lane-review`）的正確性、測試、回歸、架構與安全 | 修改 caller worktree、merge、release |
 | DS | 判斷文件影響、維護 registry／SoT、執行 docs lint | 建立文件狀態庫、PR lifecycle、merge |
 | Release operator | 依批准與 SOP 執行 release、deploy、health gate、rollback | 自行批准 production、繞過 safety wrapper |
 
@@ -77,7 +77,7 @@ GitHub 是交付控制面：Issue／Project 管規劃與排序，branch／worktr
 ./ops/agent_onboard.py \
   --identity '<CM|IM|Worker|Issue Solver|CR|DS|Release operator>' \
   --intent '<delivery|review|docs|release|backend|ios>' \
-  --entry '<coordination|merge|direct-assignment|issue|pr-review|release>' \
+  --entry '<coordination|merge|direct-assignment|issue|pr-review|lane-review|release>' \
   --specialist-intent '<optional identity-scoped specialist intent>' \
   --evidence-file '<own worktree>/.cache/agent-scratch/evidence.json' \
   --json
@@ -85,7 +85,7 @@ GitHub 是交付控制面：Issue／Project 管規劃與排序，branch／worktr
 
 Evidence 優先用 `--evidence-file`：先以 Write 把 JSON object 寫進 `<own worktree>/.cache/agent-scratch/`，再傳路徑；inline `--evidence '<JSON>'` 仍可用但與前者互斥，且易被 harness 以引號拒絕。用檔案時 awaiting 的 `retry_command` 沿用同一個 `--evidence-file`，把 `evidence_template` 補完寫回該檔即可重跑。
 
-Evidence 必須逐項提供該 identity／entry 要求的外部證據；缺少時回傳 `status=awaiting-assignment` 並停在 assignment，不會載入 skill 或 domain 文件。只有 `status=ready` 才能繼續；不可自行猜測身份、Scope 或授權。不確定 key 時先加 `--print-evidence-template`（只讀，exit 0）取得該 identity／entry 的全部 required／conditional（如 `dispatch_channel=im` 時的 `dispatch_owner`）／optional key 與可直接複製的命令；awaiting 輸出（exit 3）一次列出全部 `missing`（缺 key／空值）、`unfilled`（仍是範本原樣輸出的 placeholder；自己寫的 `<https://...>` 不算）與 `invalid`，`assignment.retry_command` 保留已填值、待修值換回 placeholder；只剩無效值時改 exit 2，錯誤訊息同樣列出全部無效值。
+Evidence 必須逐項提供該 identity／entry 要求的外部證據；缺少時回傳 `status=awaiting-assignment` 並停在 assignment，不會載入 skill 或 domain 文件。只有 `status=ready` 才能繼續；不可自行猜測身份、Scope 或授權。不確定 key 時先加 `--print-evidence-template`（只讀，exit 0）取得該 identity／entry 的全部 required／conditional（如 `dispatch_channel=im` 時的 `dispatch_owner`）／optional key 與可直接複製的命令；awaiting 輸出（exit 3）一次列出全部 `missing`（缺 key／空值）、`unfilled`（仍是範本原樣輸出的 placeholder；自己寫的 `<https://...>` 不算）與 `invalid`，`assignment.retry_command` 保留已填值、待修值換回 placeholder；只剩無效值時改 exit 2，錯誤訊息同樣列出全部無效值。CR 的值另受 `evidence_spec.value_rules` 約束：`pr-review` 的 `GitHub PR` 必須是真 PR（`#N`、`N` 或 `https://github.com/OWNER/REPO/pull/N`，`none`／自由文字一律 invalid），`exact HEAD` 必須是 40-hex；PR 尚未發布的審查改走 `lane-review`（`review branch`、`exact HEAD`、`base SHA`），兩個 SHA 都要 40-hex 且 `git cat-file -e <sha>^{commit}` 在本機成立。
 
 `--specialist-intent` 是可選但受限的精準路由，例如 bug、docs-impact、production-status 或某個 domain pipeline；可用值由 `ops/context_plane.json` 綁定到 identity／intent／entry，並由 skill catalog 驗證。Simulator 只是其中一個 `ios` specialist 範例，不是 onboarding 的特殊中心。
 
@@ -128,7 +128,7 @@ Evidence 必須逐項提供該 identity／entry 要求的外部證據；缺少�
 | 角色 | 狀態 | BLOCKED 條件 |
 |---|---|---|
 | 實作角色 | DONE／PARTIAL／BLOCKED | 必要 gate 無法執行（第 3 項） |
-| CR | approve／request changes／comment／BLOCKED | required checks 缺失、非目前 exact HEAD、gate 無法執行或 PR 無法讀取；不得 approve |
+| CR | approve／request changes／comment／BLOCKED | required checks 缺失（`pr-review`）、非目前 exact HEAD、gate 無法執行或 PR／lane commit 無法讀取；不得 approve |
 | DS | synced／gap／BLOCKED | docs lint／registry／coverage 無法執行或紅燈未解；不得 synced |
 
 CR 與 DS 不 commit、不改 caller worktree，沒有 handoff footer；證據段列所跑命令與 exit status。審查對象依各自 assignment 證據標示於證據段：CR 一行「審查對象 exact HEAD: <SHA>」與 required checks 來源；DS 一行「審查對象: PR diff 範圍」與 changed docs（PR 已改動的文件）。DS 只審查並指出需同步的 SoT，修改由 PR 作者或 IM 在同一 PR 套用。

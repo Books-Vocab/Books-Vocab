@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -15,7 +16,26 @@ mod = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(mod)
 
 
+def _local_commit(rev: str) -> str:
+    return subprocess.run(
+        ["git", "rev-parse", f"{rev}^{{commit}}"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+LANE_HEAD = _local_commit("HEAD")
+LANE_BASE = _local_commit("HEAD~1")
+ABSENT_SHA = "0123456789abcdef0123456789abcdef01234567"
+
 EVIDENCE = {
+    "lane-review": {
+        "review branch": "lane-onboarding-v2",
+        "exact HEAD": LANE_HEAD,
+        "base SHA": LANE_BASE,
+    },
     "direct-assignment": {
         "User/IM assignment": "audit the onboarding route",
         "acceptance": "route and tests are green",
@@ -319,6 +339,7 @@ def test_identity_intent_entry_mismatch_fails_closed():
     ("identity", "intent", "entry", "primary"),
     [
         ("CR", "review", "pr-review", "code-review"),
+        ("CR", "review", "lane-review", "code-review"),
         ("DS", "docs", "pr-review", "kg-docs-control-plane"),
         ("Release operator", "release", "release", "source-command-release"),
         ("IM", "delivery", "issue-planning", "github-coordination"),
@@ -345,6 +366,116 @@ def test_every_canonical_identity_has_a_real_onboarding_route(
         "skill",
         "domain",
     ]
+
+
+def test_lane_review_onboards_a_pre_pr_review_of_a_local_commit() -> None:
+    payload = mod.build_onboarding(
+        ROOT,
+        identity="CR",
+        intent="review",
+        entry="lane-review",
+        evidence=EVIDENCE["lane-review"],
+    )
+
+    assert payload["status"] == "ready"
+    assert payload["assignment"]["required_external"] == [
+        "review branch",
+        "exact HEAD",
+        "base SHA",
+    ]
+    assert payload["skills"]["primary"] == "code-review"
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "reason"),
+    [
+        ("exact HEAD", "tip of lane-onboarding-v2", "40"),
+        ("exact HEAD", LANE_HEAD[:12], "40"),
+        ("exact HEAD", ABSENT_SHA, "git cat-file"),
+        ("base SHA", "main", "40"),
+        ("base SHA", ABSENT_SHA, "git cat-file"),
+    ],
+)
+def test_lane_review_requires_full_shas_that_exist_locally(key, value, reason) -> None:
+    with pytest.raises(mod.EvidenceError, match=reason) as excinfo:
+        mod.build_onboarding(
+            ROOT,
+            identity="CR",
+            intent="review",
+            entry="lane-review",
+            evidence={**EVIDENCE["lane-review"], key: value},
+        )
+    assert key in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    "pr",
+    [
+        "none",
+        "N/A (pre-PR lane review)",
+        "lane-onboarding-v2",
+        "PR pending",
+        "https://github.com/Books-Vocab/Books-Vocab/tree/main",
+    ],
+)
+def test_pr_review_rejects_a_github_pr_that_is_not_a_pr_reference(pr) -> None:
+    with pytest.raises(mod.EvidenceError, match="GitHub PR"):
+        mod.build_onboarding(
+            ROOT,
+            identity="CR",
+            intent="review",
+            entry="pr-review",
+            evidence={**EVIDENCE["pr-review"], "GitHub PR": pr},
+        )
+
+
+@pytest.mark.parametrize(
+    "pr",
+    [
+        "#2123",
+        "2123",
+        "https://github.com/Books-Vocab/Books-Vocab/pull/2123",
+        "<https://github.com/Books-Vocab/Books-Vocab/pull/2123>",
+    ],
+)
+def test_pr_review_accepts_pr_number_or_url(pr) -> None:
+    payload = mod.build_onboarding(
+        ROOT,
+        identity="CR",
+        intent="review",
+        entry="pr-review",
+        evidence={**EVIDENCE["pr-review"], "GitHub PR": pr},
+    )
+    assert payload["status"] == "ready"
+
+
+def test_pr_review_requires_a_full_exact_head() -> None:
+    with pytest.raises(mod.EvidenceError, match="exact HEAD"):
+        mod.build_onboarding(
+            ROOT,
+            identity="CR",
+            intent="review",
+            entry="pr-review",
+            evidence={**EVIDENCE["pr-review"], "exact HEAD": "latest"},
+        )
+
+
+def test_invalid_review_value_is_reported_with_missing_keys() -> None:
+    payload = mod.build_onboarding(
+        ROOT,
+        identity="CR",
+        intent="review",
+        entry="pr-review",
+        evidence={"GitHub PR": "none"},
+    )
+
+    assert payload["status"] == "awaiting-assignment"
+    assert payload["assignment"]["missing"] == ["exact HEAD", "required checks"]
+    assert [problem["key"] for problem in payload["assignment"]["invalid"]] == [
+        "GitHub PR"
+    ]
+    assert payload["assignment"]["evidence_template"]["GitHub PR"].startswith("<")
+    assert "GitHub PR" in payload["assignment"]["evidence_spec"]["value_rules"]
 
 
 def test_missing_project_onboarding_source_fails_closed(tmp_path: Path):
@@ -389,6 +520,9 @@ def _fill_placeholders(value, key: str = ""):
             "dispatch_owner": "IM-1",
             "operation": "modify",
             "path": "ops/agent_onboard.py",
+            "GitHub PR": "#123",
+            "exact HEAD": LANE_HEAD,
+            "base SHA": LANE_BASE,
         }.get(key, f"filled {key}")
     return value
 

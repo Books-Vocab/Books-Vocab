@@ -189,18 +189,19 @@
       "aliases": ["cr", "code reviewer", "code-reviewer"],
       "machine_role": "reviewer",
       "allowed_intents": ["review"],
-      "entry_modes": ["pr-review"],
-      "route_classes": {"review": {"pr-review": "review"}},
-      "owns": "PR diff 的 correctness、tests、regression、architecture 與 security review",
+      "entry_modes": ["pr-review", "lane-review"],
+      "route_classes": {"review": {"pr-review": "review", "lane-review": "review"}},
+      "owns": "PR diff（pr-review）或 PR 發布前 local lane base..HEAD diff（lane-review）的 correctness、tests、regression、architecture 與 security review",
       "not_owns": "修改 caller worktree、建立本地 review cycle、merge permission",
       "assignment_requirements": {
-        "pr-review": ["GitHub PR", "exact HEAD", "required checks"]
+        "pr-review": ["GitHub PR", "exact HEAD", "required checks"],
+        "lane-review": ["review branch", "exact HEAD", "base SHA"]
       },
       "skill_routes": {
-        "review": {"pr-review": "code-review"}
+        "review": {"pr-review": "code-review", "lane-review": "code-review"}
       },
       "specialist_routes": {
-        "review": {"pr-review": []}
+        "review": {"pr-review": [], "lane-review": []}
       }
     },
     "ds": {
