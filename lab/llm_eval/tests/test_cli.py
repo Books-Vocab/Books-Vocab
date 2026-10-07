@@ -452,6 +452,27 @@ def test_eval_malformed_baseline_shape_fails_before_spending(tmp_path, capsys, p
     assert calls == []
 
 
+@pytest.mark.parametrize(
+    "raw_score",
+    ["NaN", "Infinity", "-Infinity", "1" + "0" * 400],
+    ids=["nan", "inf", "neg-inf", "int-overflows-float"],
+)
+def test_eval_baseline_with_unusable_score_fails_before_spending(
+    tmp_path, capsys, raw_score
+):
+    path = tmp_path / "baseline.json"
+    path.write_text(
+        '{"models": {"%s": {"format_score_avg": %s}}}' % (_MODEL, raw_score),
+        encoding="utf-8",
+    )
+    patcher, calls = _patch_client([_GOOD])
+    with patcher:
+        code = main(_eval_args("--baseline", str(path)))
+    assert code == 1
+    assert "baseline" in capsys.readouterr().err
+    assert calls == []
+
+
 def test_eval_baseline_with_null_scores_is_accepted(tmp_path, capsys):
     path = tmp_path / "baseline.json"
     path.write_text(
