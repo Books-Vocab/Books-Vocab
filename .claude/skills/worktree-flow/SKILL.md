@@ -72,6 +72,8 @@ pending and do not synthesize a verified target or heartbeat.
 - 把另一個 worktree 的 path 交給 isolated agent。isolation guard 拒絕 `local:other-worktree`，接手者一開始就無法工作。
 - 用 SendMessage 喚醒執行中的 Workflow subagent 續做。這會 fork 出第二個 writer instance，兩者同時寫同一 lane。
 
+continuation packet 用於原 owner 無法繼續的 lane；已 publish 的 PR 仍由原 owner 以 `resume-published` 修正（落後 main 但 `MERGEABLE` 者直接 queue，只有 `CONFLICTING` 才 `reanchor`），不為對齊 main 而重發。
+
 被取代的舊 lane 要結束：未 publish 用 `./ops/worktree_orchestrate.py resolve --branch <old> --status abandoned --json`（確認無殘留後才加 `--remove`）；新 lane 交付用 `./ops/deliver.py --worktree <new-path> --scope-from-diff --check "<label>=<cmd>"`。
 
 ## Gate routing
