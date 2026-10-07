@@ -37,6 +37,7 @@ verified_against: afe016c4ea2fcbd7306f9c4f40b4556e77865100
 - Podcast：`backend/src/kg/podcast_*.py`；生成與音訊工作流在 `lab/podcast/`。
 - Provider registry／費率：`backend/src/kg/llm/providers.py`；變動同步 `docs/reference/cost_baseline.md`。
 - Database／migration：backend migration entry 與 deployment SOP；不要從本文件猜資料表或直接拼 SQL。
+- Runtime SQLite data root：`backend/src/kg/runtime_data_root.py`。app lifespan 取得 worker 鎖並跑完 startup reaper 後 bind `settings.data_dir`，shutdown 在釋放鎖前 release；store 以 `runtime_data_root.current()` 組路徑，未 bind（CLI／ops 工具）才回落 `KG_DATA_DIR`。已接入 `pipeline_log`、`vocab_add_link_operation`。
 - Admin／資料操作：`backend/ops_cli.py`、`backend/ops_edit.py`；依 repo guide 的 CLI contract 執行。
 
 ## iOS modules

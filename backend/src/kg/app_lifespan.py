@@ -21,6 +21,10 @@ class AppLifespanDependencies:
     # whose worker lock this process holds (never an independently read env).
     reap_orphaned_runs_fn: Callable[[Path], int]
     reap_interrupted_add_link_operations_fn: Callable[[Path], int]
+    # Runtime stores resolve the locked root for exactly as long as the lock is
+    # held (see kg.runtime_data_root).
+    bind_runtime_data_root_fn: Callable[[Path], None]
+    release_runtime_data_root_fn: Callable[[Path], None]
     release_worker_lock_fn: Callable[[], None]
     reset_clients_fn: Callable[[], None]
     reset_async_clients_fn: Callable[[], Awaitable[None]]
@@ -64,8 +68,10 @@ def build_app_lifespan_from_dependencies(
                 "Reaped %d orphaned add-link operation(s) → interrupted",
                 reaped_operations,
             )
+        dependencies.bind_runtime_data_root_fn(data_root)
         yield
         dependencies.logger.info("KG API shutting down")
+        dependencies.release_runtime_data_root_fn(data_root)
         dependencies.release_worker_lock_fn()
         dependencies.reset_clients_fn()
         await dependencies.reset_async_clients_fn()

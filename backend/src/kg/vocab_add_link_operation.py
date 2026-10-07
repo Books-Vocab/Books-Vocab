@@ -19,8 +19,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from . import runtime_data_root
 from .api_models import AddLinkOperationResponse
-from .ops_shared import data_dir
 from .sqlite_lifecycle import SQLiteLifecycle
 from .vocab_shared import _clean_content
 
@@ -66,7 +66,9 @@ _DB_FILENAME = "vocab_add_link_operations.db"
 
 
 def _db_path(data_root: Path | None = None) -> Path:
-    return (data_dir() if data_root is None else data_root) / _DB_FILENAME
+    # Runtime calls follow the root the running app holds the worker lock on,
+    # i.e. the directory the startup reaper sweeps.
+    return (runtime_data_root.current() if data_root is None else data_root) / _DB_FILENAME
 
 
 def _now() -> str:

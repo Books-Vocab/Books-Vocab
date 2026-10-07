@@ -8,6 +8,7 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
+from . import runtime_data_root
 from .ops_shared import data_dir
 from .sqlite_lifecycle import SQLiteLifecycle
 
@@ -53,8 +54,12 @@ def _get_conn() -> sqlite3.Connection:
     """Acquire the singleton connection + ensure schema. **Read-safe**: opening
     the connection mutates no rows. Orphaned-run recovery is a *separate*,
     explicit step (:func:`reap_orphaned_runs`) wired into API startup — so a
-    pure read (admin dashboard, telemetry query) can never trigger a write."""
-    return _connect(DB_PATH if DB_PATH != _INITIAL_DB_PATH else data_dir() / _DB_FILENAME)
+    pure read (admin dashboard, telemetry query) can never trigger a write.
+
+    The path follows :func:`runtime_data_root.current` — the root the running
+    app holds the worker lock on — so runtime rows land where the startup
+    sweep looks. A reassigned ``DB_PATH`` (test hook) still wins."""
+    return _connect(DB_PATH if DB_PATH != _INITIAL_DB_PATH else runtime_data_root.current() / _DB_FILENAME)
 
 
 def reset() -> None:

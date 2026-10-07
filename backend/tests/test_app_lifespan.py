@@ -50,6 +50,12 @@ def _dependencies(tmp_path, events: list[object]) -> AppLifespanDependencies:
         events.append(("reap_add_link_operations", data_root))
         return 3
 
+    def _bind_runtime_data_root(data_root) -> None:
+        events.append(("bind_runtime_data_root", data_root))
+
+    def _release_runtime_data_root(data_root) -> None:
+        events.append(("release_runtime_data_root", data_root))
+
     def _release_worker_lock() -> None:
         events.append("release_worker_lock")
 
@@ -62,6 +68,8 @@ def _dependencies(tmp_path, events: list[object]) -> AppLifespanDependencies:
         assert_single_worker_fn=_assert_single_worker,
         reap_orphaned_runs_fn=_reap_orphaned_runs,
         reap_interrupted_add_link_operations_fn=_reap_add_link_operations,
+        bind_runtime_data_root_fn=_bind_runtime_data_root,
+        release_runtime_data_root_fn=_release_runtime_data_root,
         release_worker_lock_fn=_release_worker_lock,
         reset_clients_fn=_reset_clients,
         reset_async_clients_fn=_reset_async_clients,
@@ -84,7 +92,10 @@ def test_build_app_lifespan_from_dependencies_runs_expected_flow(tmp_path):
         ("reap_add_link_operations", tmp_path),
         ("log", "Reaped 2 orphaned pipeline run(s) → interrupted"),
         ("log", "Reaped 3 orphaned add-link operation(s) → interrupted"),
+        # Runtime stores use the locked root only while the lock is held.
+        ("bind_runtime_data_root", tmp_path),
         ("log", "KG API shutting down"),
+        ("release_runtime_data_root", tmp_path),
         "release_worker_lock",
         "reset_clients",
         "reset_async_clients",
@@ -115,6 +126,7 @@ def test_lifespan_releases_worker_lock_when_reaping_fails(tmp_path):
 
         assert worker_guard._lock_fd is None
         assert not lock_path.exists()
+        assert not any(isinstance(event, tuple) and event[0] == "bind_runtime_data_root" for event in events)
     finally:
         worker_guard.release_worker_lock()
         lock_path.unlink(missing_ok=True)
@@ -144,6 +156,8 @@ def test_lifespan_releases_worker_lock_when_add_link_reaping_fails(tmp_path):
 
         assert worker_guard._lock_fd is None
         assert not lock_path.exists()
+        # A failed startup never binds the runtime root it no longer holds the lock on.
+        assert not any(isinstance(event, tuple) and event[0] == "bind_runtime_data_root" for event in events)
     finally:
         worker_guard.release_worker_lock()
         lock_path.unlink(missing_ok=True)
