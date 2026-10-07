@@ -30,6 +30,7 @@ DEFAULT_TESTS=(
   infra-health
   disk-guard
   reconcile
+  sentry-release
   branch-audit
   exit-code-contract
   worktree
@@ -116,6 +117,7 @@ run_one() {
     infra-health)       ./ops/test_infra_health.sh ;;
     disk-guard)         ./ops/tests/test_kg_disk_guard.sh ;;
     reconcile)          ./ops/tests/test_kg_reconcile.sh ;;
+    sentry-release)     ./ops/tests/test_sentry_release.sh ;;
     branch-audit)       ./ops/tests/test_branch_audit.sh ;;
     exit-code-contract)
       "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \

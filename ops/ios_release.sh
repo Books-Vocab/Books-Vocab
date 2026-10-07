@@ -13,6 +13,8 @@
 #
 # 前置：~/.secrets/apple/AuthKey_<KEY_ID>.p8 存在（金鑰清單見該目錄 README.md）。
 # 上傳前會擋「build number 已存在於 TestFlight」——需先 bump CURRENT_PROJECT_VERSION。
+# --upload 時另把 archive 的 dSYMs 上傳 Sentry（best-effort，ops/sentry_release.sh；
+# 缺 ~/.secrets/sentry.env 設定 → 大聲 SKIP，失敗/逾時只警告，永不讓 release 失敗）。
 
 set -euo pipefail
 
@@ -35,6 +37,7 @@ ARCHIVE_MS=0
 EXPORT_MS=0
 UPLOAD_MS=0
 TOTAL_MS=0
+SENTRY_DSYMS_STATUS="not-requested"  # not-requested | ok | skipped | fail（不影響頂層 status）
 
 # 只印開頭連續註解區（停在第一個非 # 行）作為 help。
 usage() { awk 'NR==1{next} /^#/{sub(/^# ?/,"");print;next} {exit}' "$0"; }
@@ -165,6 +168,7 @@ write_json_verdict() {
     --arg ipa "${IPA:-}" \
     --arg exportStatus "$export_status" \
     --arg uploadStatus "$upload_status" \
+    --arg sentryDsyms "$SENTRY_DSYMS_STATUS" \
     --argjson uploadRequested "$DO_UPLOAD" \
     --argjson lockWaitMs "$LOCK_WAIT_MS" \
     --argjson archiveMs "$ARCHIVE_MS" \
@@ -198,6 +202,7 @@ write_json_verdict() {
         requested:($uploadRequested == 1),
         completed:($uploadStatus == "ok")
       },
+      sentry:{dsyms:$sentryDsyms},
       timings:{
         lockWaitMs:$lockWaitMs,
         archiveMs:$archiveMs,
@@ -234,6 +239,29 @@ guard_build_number() {
       exit 1
     fi
   fi
+}
+
+# ---- Sentry dSYM upload（best-effort）----
+# 只在 --upload：唯有要出貨的 archive 才需要讓 Sentry 能符號化它的 native crash；預設的
+# archive+export 維持「無對外副作用」。uploader 選型（pinned sentry-cli via uvx）與時間上限
+# 見 ops/sentry_release.sh。這一步**永遠 return 0**：dSYM 缺席的代價是之後的 crash 未符號化，
+# 不值得擋住一次 TestFlight 上傳；狀態寫進 JSON verdict 的 sentry.dsyms，不參與頂層 status。
+upload_sentry_dsyms() {
+  local archive="$1" helper="${KG_SENTRY_RELEASE:-$SCRIPT_DIR/sentry_release.sh}" rc=0
+  if [[ ! -x "$helper" ]]; then
+    SENTRY_DSYMS_STATUS="skipped"
+    echo "[release] ⚠ SKIP Sentry dSYM upload: $helper not found" >&2
+    return 0
+  fi
+  "$helper" upload-dsyms "$archive/dSYMs" || rc=$?
+  case "$rc" in
+    0) SENTRY_DSYMS_STATUS="ok"; echo "[release] ✓ dSYMs uploaded to Sentry" ;;
+    3) SENTRY_DSYMS_STATUS="skipped"
+       echo "[release] ⚠⚠ SKIP Sentry dSYM upload — native crashes from this build will arrive UNSYMBOLICATED (reason above; docs/sop/deploy.md §Sentry)" >&2 ;;
+    *) SENTRY_DSYMS_STATUS="fail"
+       echo "[release] ⚠ Sentry dSYM upload failed (exit $rc); release continues" >&2 ;;
+  esac
+  return 0
 }
 
 # ---- lock acquire（shlock spin-wait，對齊 ios_build.sh）----
@@ -307,6 +335,9 @@ if [[ $ARCHIVE_EXIT -ne 0 ]]; then
 fi
 echo "RESULT=ok EXIT=0 caller=$CALLER archive=$ARCHIVE log=$ARCHIVE_LOG xcresult=$RESULT_BUNDLE $(kg_ios_verdict_identity_kv)" > "$VERDICT_FILE"
 echo "[release] ✓ archive succeeded (${ARCHIVE_ELAPSED}s) log=$ARCHIVE_LOG xcresult=$RESULT_BUNDLE"
+if [[ $DO_UPLOAD -eq 1 ]]; then
+  upload_sentry_dsyms "$ARCHIVE"
+fi
 
 # ---- export ipa ----
 # manual signing（ExportOptions 指定 Apple Distribution + "KG App Store" profile，均已本機就緒）。

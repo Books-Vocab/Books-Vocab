@@ -121,6 +121,57 @@ else
   ok "no call site records exit 0 alongside a failing stage"
 fi
 
+# ── Sentry dSYM upload：best-effort，只在 --upload，永不讓 release 失敗（#2078） ──
+# 行為測試：抽出真函式 + 真 ops/sentry_release.sh，只把最底層 uploader 換成 fake。
+section "Sentry dSYM upload (fake uploader)"
+grep -qE '^upload_sentry_dsyms\(\)' "$IR" \
+  && ok "has upload_sentry_dsyms()" || fail_t "no upload_sentry_dsyms() seam"
+DS_TMP="$(mktemp -d)"
+mkdir -p "$DS_TMP/BooksAndVocab.xcarchive/dSYMs/BooksAndVocab.app.dSYM/Contents"
+cat >"$DS_TMP/fake_cli.sh" <<'FAKE'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FAKE_LOG"
+[[ "${FAKE_MODE:-ok}" == ok ]]
+FAKE
+chmod +x "$DS_TMP/fake_cli.sh"
+_dsym() {  # $1 = case name, rest = env assignments
+  local name="$1"; shift
+  env -i HOME="$DS_TMP" PATH="/usr/bin:/bin" SENTRY_ENV_FILE="$DS_TMP/none.env" \
+    KG_SENTRY_CLI="$DS_TMP/fake_cli.sh" FAKE_LOG="$DS_TMP/$name.log" "$@" \
+    bash -c 'set -euo pipefail
+      SCRIPT_DIR="$1"
+      eval "$(sed -n "/^upload_sentry_dsyms()/,/^}/p" "$2")"
+      upload_sentry_dsyms "$3"
+      echo "STATUS=$SENTRY_DSYMS_STATUS"' _ "$WORKSPACE/ops" "$IR" "$DS_TMP/BooksAndVocab.xcarchive" \
+    >"$DS_TMP/$name.out" 2>"$DS_TMP/$name.err"
+}
+CFG=(SENTRY_AUTH_TOKEN=sntrys_fakeTOKEN0123456789 SENTRY_ORG=kg SENTRY_PROJECT_IOS=kg-ios)
+if _dsym ok "${CFG[@]}"; then ok "uploaded path returns 0"; else fail_t "uploaded path non-zero"; fi
+grep -q 'STATUS=ok' "$DS_TMP/ok.out" && ok "status ok recorded" || fail_t "status: $(cat "$DS_TMP/ok.out")"
+grep -q -- "debug-files upload --org kg --project kg-ios --type dsym $DS_TMP/BooksAndVocab.xcarchive/dSYMs" "$DS_TMP/ok.log" \
+  && ok "fake uploader received the archive's dSYMs/" || fail_t "uploader argv: $(cat "$DS_TMP/ok.log" 2>/dev/null)"
+if _dsym notoken SENTRY_ORG=kg SENTRY_PROJECT_IOS=kg-ios; then ok "missing token does not fail the release"; else fail_t "missing token returned non-zero"; fi
+grep -q 'STATUS=skipped' "$DS_TMP/notoken.out" && grep -q 'SKIP' "$DS_TMP/notoken.err" \
+  && grep -q 'SENTRY_AUTH_TOKEN' "$DS_TMP/notoken.err" \
+  && ok "missing token → loud SKIP naming SENTRY_AUTH_TOKEN" || fail_t "notoken: $(cat "$DS_TMP/notoken.out" "$DS_TMP/notoken.err")"
+[[ ! -s "$DS_TMP/notoken.log" ]] && ok "missing token → uploader never runs" || fail_t "uploader ran without a token"
+if _dsym fails "${CFG[@]}" FAKE_MODE=fail; then ok "uploader failure does not fail the release"; else fail_t "uploader failure returned non-zero"; fi
+grep -q 'STATUS=fail' "$DS_TMP/fails.out" && ok "uploader failure recorded as status fail" || fail_t "fails: $(cat "$DS_TMP/fails.out")"
+rm -rf "$DS_TMP"
+
+# 呼叫點：只有 --upload（要出貨的 archive）才上傳，且在 archive 成功之後、export 之前。
+archive_ok_line="$(grep -n 'archive succeeded' "$IR" | head -1 | cut -d: -f1 || true)"
+call_line="$(grep -nE '^[[:space:]]*upload_sentry_dsyms "\$ARCHIVE"' "$IR" | head -1 | cut -d: -f1 || true)"
+export_line="$(grep -n '▶ export ipa' "$IR" | head -1 | cut -d: -f1 || true)"
+[[ -n "$call_line" && "$call_line" -gt "$archive_ok_line" && "$call_line" -lt "$export_line" ]] \
+  && ok "dSYM upload runs after a successful archive, before export" || fail_t "call site order archive=$archive_ok_line call=$call_line export=$export_line"
+sed -n "$((call_line-2)),${call_line}p" "$IR" | grep -q 'DO_UPLOAD' \
+  && ok "dSYM upload is gated by --upload" || fail_t "dSYM upload not gated by DO_UPLOAD"
+grep -q 'sentry:{dsyms:\$sentryDsyms}' "$IR" \
+  && ok "JSON verdict records sentry.dsyms" || fail_t "verdict missing sentry.dsyms"
+grep -q 'SENTRY_DSYMS_STATUS="not-requested"' "$IR" \
+  && ok "default dSYM status is not-requested" || fail_t "missing not-requested default"
+
 # ── 結果 ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"

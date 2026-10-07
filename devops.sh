@@ -330,10 +330,12 @@ cmd_deploy() {
 
   # ── Step 1: standby git pull + 寫 VERSION ──
   section "standby git pull + 更新 VERSION"
-  run_remote "cd $REMOTE_DIR && git pull --ff-only && git rev-parse --short HEAD > VERSION && cat VERSION"
+  # 完整 sha（#2078）：VERSION 是 SDK 自報 Sentry release（kg-backend@<VERSION>）的唯一來源，
+  # 必須與下方記錄的 release 名逐字相同；短 sha 的長度隨 repo 成長漂移。
+  run_remote "cd $REMOTE_DIR && git pull --ff-only && git rev-parse HEAD > VERSION && cat VERSION"
 
   local deploy_sha
-  deploy_sha=$(run_remote "cd $REMOTE_DIR && git rev-parse --short HEAD" 2>/dev/null || echo "unknown")
+  deploy_sha=$(run_remote "cd $REMOTE_DIR && git rev-parse HEAD" 2>/dev/null || echo "unknown")
 
   # ── Step 2: 重建並啟動容器 ──
   # src/ COPY 進 image（非 volume），改碼必 rebuild 才生效。data/ = ~/kg-data volume，不動。
@@ -375,14 +377,18 @@ cmd_deploy() {
 
   # ── Sentry release 對齊驗證 ──
   section "Sentry release 驗證"
-  local reported_version
-  reported_version=$(run_remote "curl -s $url" 2>/dev/null \
-    | python3 -c "import json,sys; print(json.load(sys.stdin).get('version','unknown'))" 2>/dev/null \
-    || echo "unknown")
+  local info_json reported_version sentry_on
+  info_json=$(run_remote "curl -s $url" 2>/dev/null || true)
+  reported_version=$(printf '%s' "$info_json" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+  sentry_on=$(printf '%s' "$info_json" | sed -nE 's/.*"sentry"[[:space:]]*:[[:space:]]*(true|false).*/\1/p' | head -1)
   if [[ "$reported_version" == "$deploy_sha" ]]; then
-    ok "Sentry release = $deploy_sha (api/system/info 對齊)"
+    ok "Sentry release = kg-backend@${deploy_sha} (api/system/info 對齊)"
   else
-    echo "⚠ /api/system/info 回報 version=${reported_version} 但部署 sha=${deploy_sha}" >&2
+    echo "⚠ /api/system/info 回報 version=${reported_version:-unknown} 但部署 sha=${deploy_sha}" >&2
+  fi
+  if [[ "$sentry_on" != "true" ]]; then
+    echo "⚠⚠ 生產 backend Sentry 未啟用（sentry=${sentry_on:-unknown}）：backend crash 不會被看到。" >&2
+    echo "   修法：felix ~/kg-prod/backend/.env 加 SENTRY_DSN=<backend project DSN>，再 docker compose up -d --build --force-recreate（docs/sop/deploy.md §Sentry）" >&2
   fi
 
   # ── 記錄部署日誌 ──
@@ -393,7 +399,29 @@ cmd_deploy() {
   # ── 部署後 smoke verify（外部視角，確認 CF→tunnel→standby 全鏈路 + 版本對齊）──
   verify_post_deploy "$deploy_sha"
 
+  # ── Sentry release + deploy 紀錄（best-effort；smoke 通過才走到這裡）──
+  section "Sentry release 紀錄"
+  record_sentry_release "$deploy_sha"
+
   ok "部署完成 (version: $deploy_sha)。"
+}
+
+# 在本機（操作者機器，讀 ~/.secrets/sentry.env）記 kg-backend@<sha> release + production deploy。
+# 永遠 return 0：Sentry 缺設定/掛掉不得讓已健康落地的部署被報成失敗。時間上限由 helper 的
+# 每呼叫 curl timeout 與「首次失敗即停」保證（最壞約 3×10s）。
+record_sentry_release() {
+  local sha="$1" helper="${KG_SENTRY_RELEASE:-$DEVOPS_SCRIPT_DIR/ops/sentry_release.sh}" rc=0
+  if [[ ! -x "$helper" ]]; then
+    echo "⚠ SKIP Sentry release 紀錄：找不到 $helper" >&2
+    return 0
+  fi
+  "$helper" record-backend --sha "$sha" --environment production --name devops.sh </dev/null || rc=$?
+  case "$rc" in
+    0) ok "Sentry release kg-backend@${sha} 已記錄（production deploy）" ;;
+    3) echo "⚠ SKIP Sentry release 紀錄（原因見上方 [sentry-release] 行；部署不受影響）" >&2 ;;
+    *) echo "⚠ Sentry release 紀錄失敗 (exit ${rc})，部署不受影響" >&2 ;;
+  esac
+  return 0
 }
 
 # ── 指令：migrate ─────────────────────────────────────────────────────────────

@@ -35,7 +35,7 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 ssh chenliangyu@100.118.39.104
 cd ~/kg-prod/backend
 git pull --ff-only                         # 生產專用 clone；不碰 ~/project/kg dev/resume tree
-git rev-parse --short HEAD > VERSION       # 更新 version 標記（/api/system/info 讀此檔）
+git rev-parse HEAD > VERSION               # 完整 sha（= Sentry release kg-backend@<sha>；/api/system/info 讀此檔）
 docker compose up -d --build --force-recreate  # 重建+起；確保 VERSION bind mount 重新讀取
 curl -s http://localhost:8000/api/system/info   # 驗 version 對上
 ```
@@ -48,7 +48,7 @@ curl -s http://localhost:8000/api/system/info   # 驗 version 對上
 
 ```bash
 # 經公網（CF→tunnel→standby）
-curl -s https://wordnexus.lol/api/system/info        # 期望 200 + version == git rev-parse --short HEAD
+curl -s https://wordnexus.lol/api/system/info        # 期望 200 + version == git rev-parse HEAD（完整 sha）
 curl -s -o /dev/null -w '%{http_code}\n' https://wordnexus.lol/api/health   # 期望 401（CurrentUser 端點，無 JWT 本就擋）
 
 # DNS 卡舊 IP 時繞過快取直打 CF 邊緣驗服務本身
@@ -164,7 +164,7 @@ launchctl bootout gui/$(id -u)/com.kg.reconcile
 
 容器健康檢查只走 `localhost:8000/docs`，無法保證 Caddy/TLS/公網路徑完好。`cmd_deploy` 末段會從本地透過公網打三層 verify：
 
-1. `GET https://wordnexus.lol/api/system/info` — 預期 HTTP 200，**且** body 內 `version` 欄位必須等於本次 `git rev-parse --short HEAD`。版本不對齊 = rsync/build 未生效，立刻失敗。
+1. `GET https://wordnexus.lol/api/system/info` — 預期 HTTP 200，**且** body 內 `version` 欄位必須等於本次 `git rev-parse HEAD`（完整 40 字元 sha）。版本不對齊 = rsync/build 未生效，立刻失敗。
 2. `GET https://wordnexus.lol/api/health` — unauth 預期 401/403（受 `Depends(get_current_user)` 保護，代表 endpoint 存在 + auth 系統 wire 正常）。HTTP 404 = endpoint 從 router 消失，**視為跳過**而非失敗（保留向後相容空間）；HTTP 000/500 = 真的壞，失敗。
 3. `SENTRY_VERIFY=1` 時：`GET /api/system/sentry-test` — endpoint 是 admin-only，unauth 預期 401/403；若 endpoint 已被移除（404）則 fallback 檢查 `/api/system/info` body 是否含 `sentry` 欄位作為「DSN 已讀取」的存在性證據。
 
@@ -323,7 +323,7 @@ Sentry 為 **opt-in** — `SENTRY_DSN` 留空時 SDK 完全 no-op，整層免費
 |-----|---------|------|
 | `SENTRY_DSN` | （空）| 主開關；填入 DSN 才會啟動 |
 | `SENTRY_ENVIRONMENT` | `production` | release/staging/dev 環境標籤 |
-| `SENTRY_RELEASE` | fallback：`KG_VERSION` → `/app/VERSION` | deploy 寫的 git SHA，通常無需手動設 |
+| `SENTRY_RELEASE` | `kg-backend@<`/app/VERSION` 內容>` | 顯式覆寫才設；deploy（reconciler／`devops.sh deploy`）把**完整 git sha** 寫進 `backend/VERSION`，SDK 回報的 release 與 deploy 後記錄的 release 逐字相同 |
 | `SENTRY_TRACES_SAMPLE_RATE` | `0.0`（哨兵）| **非 0** 時整層 flat 取樣（debug override）；**0** 時走 per-path `_traces_sampler`：LLM hot paths（pipeline/translate/explain）0.05、health/info 0.0、其他 baseline 0.01 |
 | `SENTRY_PROFILES_SAMPLE_RATE` | `0.0` | profile 取樣率（保留，目前生產不開）|
 
@@ -335,6 +335,14 @@ Sentry 為 **opt-in** — `SENTRY_DSN` 留空時 SDK 完全 no-op，整層免費
 - 狀態暴露於 `/api/system/info`
 
 Smoke test: `POST /api/admin/sentry/ping` after deploy to verify DSN wired — endpoint is admin-only, dispatches a `capture_message` + caught `capture_exception` via the SDK and returns `{sent, is_active, event_id}` JSON (never raises). 也可從 `/admin` dashboard 右上「Sentry Ping」按鈕直接觸發，按鈕旁顯示 event_id 前 8 碼或 `inactive (no DSN)`。
+
+#### Release 整合（deploy 紀錄／iOS dSYM）
+
+- **一次性使用者步驟**（`/api/system/info` 回 `"sentry":false` 時；`ops/doctor.py` 的 `sentry` 區塊會提示）：在 Sentry 建 backend project 取 DSN，寫進 felix `~/kg-prod/backend/.env` 的 `SENTRY_DSN=`，再於 felix `cd ~/kg-prod/backend && docker compose up -d --build --force-recreate`（只 restart 讀不到新 env）。接著建 scope `project:releases` 的 auth token，與 `SENTRY_ORG`、`SENTRY_PROJECT_BACKEND`、`SENTRY_PROJECT_IOS`（選填 `SENTRY_API_URL`，預設 `https://sentry.io/api/0`）寫入 `~/.secrets/sentry.env`（Syncthing 兩機同步）。
+- **設定解析**：process env 優先，其次 `SENTRY_ENV_FILE`（預設 `~/.secrets/sentry.env`，只解析 `KEY=VALUE`、不 source）。`ops/sentry_api.py`、`ops/sentry_release.sh`、`ops/ios_ops.sh sentry` 的 `api_configured` 同一口徑；`./ops/sentry_release.sh check --json` 只回報 key 是否存在，不印值。
+- **backend release 名稱**：backend SDK 回報的 release 是 `kg-backend@<VERSION>`（`VERSION` 取 `KG_VERSION`，其次 `/app/VERSION`＝deploy 寫入的完整 sha）；`SENTRY_RELEASE` 設了就**逐字**覆寫、不加前綴。deploy 記錄的名稱與預設值相同，所以設了 `SENTRY_RELEASE` 會讓 SDK 事件與 deploy 記錄的 release 對不上，除非刻意否則別設。
+- **backend release 紀錄**：健康部署落地後（reconciler 的 `deployed`、`devops.sh deploy` 的 smoke 通過後），`ops/sentry_release.sh record-backend` 建立並 finalize `kg-backend@<完整 sha>`，再為 `production` 記一筆 deploy。best-effort：每個 HTTP 呼叫有 timeout、首次失敗即停，reconciler 另有總上限 `KG_RECON_SENTRY_TIMEOUT`（預設 45s）；缺設定印 SKIP、失敗只告警，**永不改變部署結果或 verdict**。回滾不記。
+- **iOS dSYM**：`ops/ios_release.sh --upload` 在 archive 成功後把 `<archive>/dSYMs` 交給 `sentry-cli debug-files upload`（pinned `sentry-cli==3.8.0`，經 `uvx` 從 PyPI 官方 wheel 安裝；上限 `KG_SENTRY_DSYM_TIMEOUT`，預設 300s）。缺 token／org／project 時大聲 SKIP，失敗只告警，不讓 release 失敗；結果寫進 archive verdict 的 `sentry.dsyms`（`not-requested`／`ok`／`skipped`／`fail`）。不帶 `--upload` 的 archive 維持無對外副作用。
 
 #### LLM Provider env vars **(SoT)**
 
@@ -360,7 +368,7 @@ LLM 走可插拔 provider registry（`backend/src/kg/llm/providers.py`）。所�
 
 iOS 端（`ios/BooksAndVocab/Services/AppCrashReporting.swift`）：
 - `Info.plist` `SentryDSN` 鍵為主開關（空 → 全 no-op）
-- `Info.plist` `SentryEnvironment` 可覆寫；無覆寫時 `#if DEBUG` → `"debug"`，release → `"production"`
+- environment：`Info.plist` `SentryEnvironment` 有值即用；否則 Debug build → `debug`，TestFlight → `testflight`（啟動後立即以 StoreKit `AppTransaction` 的 sandbox 環境判定），App Store → `production`
 - `releaseName = <bundleId>@<CFBundleShortVersionString>+<CFBundleVersion>`、`dist = CFBundleVersion`（區分共用版號的 TestFlight build）
 - `tracesSampleRate`：release 預設 `0.05`、DEBUG 預設 `0.0`；env `SENTRY_TRACES_SAMPLE_RATE`（launch arg / scheme env）可覆寫
 - DEBUG build 預設 `enabled=false`；`SENTRY_ENABLED_IN_DEBUG=1` 或 `-sentryTest` launch arg 啟用
