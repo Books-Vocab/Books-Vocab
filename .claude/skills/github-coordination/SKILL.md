@@ -25,5 +25,17 @@ description: "CM／IM 的 GitHub-native 協調 workflow：管理 Issue、Project
 ## Delivery control commands
 
 - PI：`delivery.py publish`／`release-published`／`repair-pr-metadata`／`trigger-required`／`abandon-pr`；code failure 用 `worktree_orchestrate.py resume-published` 交還同一 owner，與 live main 衝突（`CONFLICTING`）的 merge-front 用 `reanchor`；只落後 main 的 mergeable PR 直接 queue。`abandon-pr` 只處理 exact closed/registry/remote lifecycle proof，不可當 dirty 或 unknown worktree 的清除捷徑。不得建立 duplicate PR、接管 owner 或 force-push未知 remote state。
-- CM：`delivery.py queue`／`sync-main`；merged receipt 交 PI 執行 `cleanup-merged`。只等待 required 與 explicit hold，routine confidence／CR／DS 不形成隱性 gate。
+- CM：`delivery.py queue`／`sync-main`；merged receipt 交 PI 執行 `cleanup-merged`。只等待 required 與 explicit hold，pending 中的 routine confidence／CR／DS 不形成隱性 gate；已出現的紅燈與 finding 依下方 Merge readiness 處理。
+## Fan-out and republish
+
+- 每台 host 同時跑的 heavy implementer（backend／iOS build、全量 ops test）上限約 6–8；只有 host 另備 heavy test slot（例如 iOS simulator pool）才可往上加。超過時 lock contention 會讓 gate 假紅。
+- Published PR 不可變：不得對已 publish 的 lane 再推 commit。要修正就 republish：
+  1. `./ops/delivery.py abandon-pr --pr <old-pr>`（關 PR、registry 標 `abandoned`、刪 remote branch；任一步缺 proof 即 fail closed）；
+  2. 尚未 publish 的殘留 claim 用 `./ops/worktree_orchestrate.py resolve --branch <old> --status abandoned --json`；
+  3. 從修好的 tip 開新 lane：`git switch -c <new> <fixed-tip>`，再 `./ops/deliver.py --worktree <new-path> --scope-from-diff --check "<label>=<cmd>"`。
+- 派接續工作照 `worktree-flow` 的 continuation packet：只交 base ref、可選 patch 與新 branch 名。
+
+## Merge readiness
+
+- Merge 前 CM 必讀 `gh pr checks <pr>` 的 confidence fan-out 與 agent-review inline comments（`gh api repos/Books-Vocab/Books-Vocab/pulls/<pr>/comments`）。`required` 只是短 gate：confidence 紅燈或 P0／P1 inline finding 先轉成 durable hold，不可只看 required 綠就 queue。
 - P0／P1／security 必須先以 typed body／durable label 呈現；clearance 只能明確 `reconcile-holds`，不能被 reanchor、metadata repair 或新 hand-back 洗掉。

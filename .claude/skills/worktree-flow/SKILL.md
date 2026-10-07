@@ -59,6 +59,21 @@ pending and do not synthesize a verified target or heartbeat.
 - `dispatch_channel=user`：Worker 和 User 討論；若 assignment 指定 `handback_target` 就交給該 IM，否則 Worker 必須在 hand-back 前選定一個 IM。
 - `Issue Solver` 不走 Worker 的 User channel；它只消除 IM 傳入的 Issue assignment packet，並 hand-back 給派遣 IM。
 
+## Continuation packet
+
+派工方要讓新 agent 接續另一個 agent 的工作時，只交 continuation packet：
+
+1. base ref：branch 名或 exact tip SHA（`git rev-parse <branch>`）。
+2. 可選 patch：派工方自己 scratch 內的路徑（例如 `git diff <base> <tip>` 存成檔）；接手者用 `git apply <patch>` 套用。
+3. 全新 branch 名；接手者在自己的 worktree 跑 `git switch -c <new> <base>`。
+
+禁止：
+
+- 把另一個 worktree 的 path 交給 isolated agent。isolation guard 拒絕 `local:other-worktree`，接手者一開始就無法工作。
+- 用 SendMessage 喚醒執行中的 Workflow subagent 續做。這會 fork 出第二個 writer instance，兩者同時寫同一 lane。
+
+被取代的舊 lane 要結束：未 publish 用 `./ops/worktree_orchestrate.py resolve --branch <old> --status abandoned --json`（確認無殘留後才加 `--remove`）；新 lane 交付用 `./ops/deliver.py --worktree <new-path> --scope-from-diff --check "<label>=<cmd>"`。
+
 ## Gate routing
 
 Coordinator 依 changed paths 選最小充分檢查：
