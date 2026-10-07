@@ -79,7 +79,10 @@ def _provably_outside_any_repo(anchor: Path, stderr: str) -> bool:
     if os.environ.get("GIT_DIR") or os.environ.get("GIT_WORK_TREE"):
         return False
     return not any(
-        (directory / ".git").exists() for directory in (anchor, *anchor.parents)
+        # lexists: a dangling ``.git`` symlink is a repo marker git trips on,
+        # yet Path.exists() follows it and reports False.
+        os.path.lexists(directory / ".git")
+        for directory in (anchor, *anchor.parents)
     )
 
 
