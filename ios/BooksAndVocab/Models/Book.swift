@@ -71,6 +71,11 @@ final class Book {
     private static let _iCloudDirLock = OSAllocatedUnfairLock<URL?>(initialState: nil)
 
     /// iCloud Books 目錄（nil 表示 iCloud 不可用，不快取 nil 以便下次重試）
+    ///
+    /// 快取未命中時的 slow path 會跑 `url(forUbiquityContainerIdentifier:)`，
+    /// 可能阻塞（#2107）。啟動與帳號切換路徑（`ICloudEPUBMigration`、
+    /// `ICloudDownloadManager.startMonitoring`）一律在 detached task 讀它並順便暖快取；
+    /// 之後 main-actor 呼叫端多半走 fast path。
     static var iCloudBooksDirectory: URL? {
         // Fast path: cached value, no I/O.
         if let cached = _iCloudDirLock.withLock({ $0 }) { return cached }

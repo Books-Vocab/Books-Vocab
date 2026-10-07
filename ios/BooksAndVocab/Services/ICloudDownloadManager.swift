@@ -88,12 +88,23 @@ final class ICloudDownloadManager {
     nonisolated(unsafe) private var userDataClearObserver: Any?
     private var triggeredFiles: Set<String> = []
 
-    init() {
+    /// 解析 iCloud Books 目錄的 seam（ubiquity lookup + 目錄列舉）。永遠在 detached task 呼叫，
+    /// 不在 main thread 執行（#2107）。
+    private let booksDirectoryLookup: @Sendable () -> URL?
+    /// startMonitoring 背景解析中的 task；stopMonitoring 以 generation 作廢它，避免
+    /// reset() 後舊的解析結果開出第二個 query。
+    private var pendingStart: Task<Void, Never>?
+    private var startGeneration = 0
+
+    init(booksDirectoryLookup: @escaping @Sendable () -> URL? = ICloudDownloadManager.liveBooksDirectoryLookup) {
+        self.booksDirectoryLookup = booksDirectoryLookup
         identityObserver = NotificationCenter.default.addObserver(
             forName: .NSUbiquityIdentityDidChange,
             object: nil,
             queue: .main
         ) { [weak self] _ in
+            // Apple ID 換了：快取的容器路徑可能已失效，讓重啟監控時重新解析。
+            Book.clearICloudDirectoryCache()
             MainActor.assumeIsolated { self?.reset() }
         }
         userDataClearObserver = NotificationCenter.default.addObserver(
@@ -116,29 +127,43 @@ final class ICloudDownloadManager {
         fileStates[fileName]
     }
 
-    /// 開始監控 iCloud EPUB 檔案
-    func startMonitoring() {
-        guard metadataQuery == nil else { return }
-
-        // 診斷：檢查 iCloud 身分與容器
+    /// 預設 lookup：iCloud 身分診斷 + 容器解析（順便暖 `Book.iCloudBooksDirectory` 快取）
+    /// + 目錄列舉。會阻塞，只能在背景執行緒呼叫。
+    nonisolated static func liveBooksDirectoryLookup() -> URL? {
         let fm = FileManager.default
-        let token = fm.ubiquityIdentityToken
-        AppLog.book.info("iCloud identity token: \(token != nil ? "present" : "nil")")
-
-        guard let containerURL = fm.url(forUbiquityContainerIdentifier: nil) else {
+        AppLog.book.info("iCloud identity token: \(fm.ubiquityIdentityToken != nil ? "present" : "nil")")
+        guard let booksDir = Book.iCloudBooksDirectory else {
             AppLog.book.error("ICloudDownloadManager: ubiquity container URL is nil — iCloud not available")
-            return
+            return nil
         }
-        AppLog.book.info("ICloudDownloadManager: container = \(containerURL.path)")
-
-        let booksDir = containerURL.appendingPathComponent("Documents/Books")
         // 列出目錄中已知的檔案（含 .icloud placeholder）
         if let contents = try? fm.contentsOfDirectory(atPath: booksDir.path) {
             AppLog.book.info("ICloudDownloadManager: Books directory has \(contents.count) entries: \(contents.joined(separator: ", "))")
         } else {
             AppLog.book.info("ICloudDownloadManager: Books directory is empty or not accessible")
         }
+        return booksDir
+    }
 
+    /// 開始監控 iCloud EPUB 檔案。容器解析在背景執行，本方法立即返回；
+    /// 解析成功後才在 main actor 開 NSMetadataQuery。
+    func startMonitoring() {
+        guard metadataQuery == nil, pendingStart == nil else { return }
+        startGeneration += 1
+        let generation = startGeneration
+        let lookup = booksDirectoryLookup
+        pendingStart = Task { [weak self] in
+            let booksDir = await Task.detached(priority: .utility) { lookup() }.value
+            guard let self, self.startGeneration == generation else { return }
+            self.pendingStart = nil
+            guard let booksDir else { return }
+            AppLog.book.info("ICloudDownloadManager: books directory = \(booksDir.path)")
+            self.beginQuery()
+        }
+    }
+
+    private func beginQuery() {
+        guard metadataQuery == nil else { return }
         let query = NSMetadataQuery()
         query.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
         query.predicate = NSPredicate(
@@ -172,6 +197,10 @@ final class ICloudDownloadManager {
 
     /// 停止監控（只停 NSMetadataQuery；帳號切換 observers 不受影響）
     func stopMonitoring() {
+        // 作廢尚在背景解析的 startMonitoring，避免它稍後開出 query。
+        startGeneration += 1
+        pendingStart?.cancel()
+        pendingStart = nil
         metadataQuery?.stop()
         metadataQuery = nil
         if let o = gatherObserver { NotificationCenter.default.removeObserver(o) }
@@ -281,5 +310,13 @@ final class ICloudDownloadManager {
     func setFileStateForTesting(_ state: ICloudFileState, for fileName: String) {
         fileStates[fileName] = state
     }
+
+    /// 測試用：等待 startMonitoring 的背景容器解析與 query 啟動完成。
+    func waitForPendingStartForTesting() async {
+        await pendingStart?.value
+    }
+
+    /// 測試用：NSMetadataQuery 是否已啟動。
+    var isMonitoringForTesting: Bool { metadataQuery != nil }
     #endif
 }
