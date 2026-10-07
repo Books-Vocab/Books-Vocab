@@ -180,7 +180,9 @@ extension TodayReviewPresenter {
     /// 共用 settle 縫 —— #2026（卡片區高度過渡）與 #2027（progress / 按鈕回饋）
     /// 都只能改這裡的「單一職責步驟」，不得在 `completeFling` 內另開分支：
     ///
-    /// 1. `releaseSwipePose`：swipe / intensity 歸零、輪替被回收 slot 的隨機旋轉。
+    /// 1. `releaseSwipePose`：swipeOffset 歸零、輪替被回收 slot 的隨機旋轉。凍結的
+    ///    toolbar intensity **不在此歸零**（#2027）：由 `completeFling` 下一個 runloop
+    ///    以 spring 放鬆，否則 no-anim transaction 會讓按鈕放大 / 發光硬切回原狀。
     /// 2. `gateBackContent`：背面樹放閘（必須在推進「前」）。
     /// 3. `pinDeckHeight`：把卡片區高度釘在畫面上當下的 layout 高度 —— 新 active
     ///    當幀取舊高度（零跳變），隨後由 `.onChange(of: deckHeightKey)` 觸發 spring
@@ -204,7 +206,6 @@ extension TodayReviewPresenter {
     }
 
     private func releaseSwipePose() {
-        frozenSwipeIntensity = 0
         swipeOffset = 0
         // 只重隨機被回收的舊 active slot（settle 後換內容、沉到
         // depth-2）—— 存活的 preview/underPreview slot rotation 持久，
@@ -242,9 +243,9 @@ extension TodayReviewPresenter {
 
     var screenWidth: CGFloat { containerWidth }
 
-    /// 甩出進度 (0=靜止, 1=完全離開) — 驅動牌堆同步升頂
+    /// 甩出進度 (0=靜止, 1=完全離開) — 驅動牌堆同步升頂（規則見 TodayReviewFling）
     var dismissProgress: CGFloat {
-        min(abs(swipeOffset) / 200, 1.0)
+        TodayReviewFling.dismissProgress(swipeOffset: swipeOffset)
     }
 
     var swipeEnabled: Bool {
@@ -275,14 +276,28 @@ extension TodayReviewPresenter {
             }
     }
 
-    /// 統一的甩出動畫 — swipe 和按鈕共用
-    func flingCard(direction: CGFloat, velocity: CGFloat = 1200, source: String = "swipe", callback: @escaping () -> Void) {
+    /// 統一的甩出動畫 — swipe 放手、按鈕、ReviewProbe 共用**同一條過渡**（#2027）：
+    /// 終點 / 凍結 intensity / spring 時長全由 `TodayReviewFling.plan` 算出，
+    /// 入口之間只差起點 offset 與手指速度（按鈕 / probe 為 nil → 名目速度）。
+    func flingCard(direction: CGFloat, velocity: CGFloat? = nil, source: String = "swipe", callback: @escaping () -> Void) {
         guard dismissPhase == .idle else { return }
+        let plan = TodayReviewFling.plan(
+            direction: direction,
+            startOffset: swipeOffset,
+            releaseVelocity: velocity,
+            screenWidth: screenWidth,
+            threshold: TodayReviewMetrics.swipeThreshold,
+            baseDuration: Double(DesignTokens.Motion.Spring.SwipeFling.response)
+        )
         dismissPhase = .animatingOut
-        frozenSwipeIntensity = swipeIntensity
+        frozenSwipeIntensity = plan.frozenIntensity
         flingHapticTrigger += 1
         let _flingStart = DispatchTime.now()
-        PerfLog.review.mark("fling.start", "source=\(source) dir=\(direction) vel=\(velocity)")
+        let velocityText = velocity.map { "\(Int($0))" } ?? "nil"
+        PerfLog.review.mark(
+            "fling.start",
+            "source=\(source) dir=\(direction) vel=\(velocityText) start=\(Int(swipeOffset)) target=\(Int(plan.targetOffset)) dur=\(String(format: "%.3f", plan.duration))"
+        )
         // Record the real per-frame cadence across the fly-off window. Distinguishes
         // "animation ran smoothly to completion" from "main thread idle, advance gated
         // by the 0.8s safety net" — body-eval marks can't see this (CA interpolates the
@@ -295,8 +310,6 @@ extension TodayReviewPresenter {
         // capture whether that storm actually drops frames — the link the earlier
         // measurement window structurally missed.
         PerfLog.review.startFrameSampler("settle.frames")
-
-        let distance = screenWidth * 1.3 + min(velocity / 2000, 0.5) * screenWidth * 0.4
 
         // Completion block — shared between animation callback and safety fallback.
         // `caller` tags WHICH path fired it: `animation` = withAnimation completion
@@ -321,11 +334,19 @@ extension TodayReviewPresenter {
             DispatchQueue.main.async {
                 suppressFoldAnimation = false
                 PerfLog.review.mark("suppress.reset", "at=\(PerfChannel.ms(since: _flingStart))ms (fling.start->suppressOff)")
+                // toolbar 回饋放鬆（#2027）：凍結值撐過 settle 幀後才以 spring 歸零；
+                // 期間 swipeIntensity 讀凍結值（TodayReviewFling.toolbarIntensity）。
+                // 守門：下一次 fling 若已開始，不覆寫它的凍結值。
+                if dismissPhase == .idle {
+                    withAnimation(AppMotion.swipeSnapBackSpring) {
+                        frozenSwipeIntensity = 0
+                    }
+                }
             }
         }
 
-        withAnimation(AppMotion.swipeFlingSpring, completionCriteria: .logicallyComplete) {
-            swipeOffset = direction * distance
+        withAnimation(AppMotion.swipeFling(duration: plan.duration), completionCriteria: .logicallyComplete) {
+            swipeOffset = plan.targetOffset
         } completion: {
             completeFling("animation")
         }
