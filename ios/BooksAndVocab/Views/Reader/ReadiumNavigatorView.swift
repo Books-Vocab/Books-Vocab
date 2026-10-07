@@ -477,8 +477,10 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
                 userContentController.add(self, name: name)
             }
 
-            // ── 自訂字體：從 App Bundle 讀取 TTF → base64 → @font-face ──
-            let fontFaceCSS = Self.buildFontFaceCSS()
+            // ── 自訂字體 @font-face：主執行緒只讀快取（#2052）──
+            // TTF → base64 由 `ReaderFontFaceCSSCache.prewarm()` 在背景 `.utility` 建好；
+            // 這裡不做任何檔案 IO（極端 cold 時才走有 log 的單次同步 fallback）。
+            let fontFaceCSS = ReaderFontFaceCSSCache.shared.css()
 
             // ★ 傳遞除錯模式開關
             let isDebugMode = (

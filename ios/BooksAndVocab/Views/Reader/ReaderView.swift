@@ -85,6 +85,9 @@ struct ReaderView: View {
     }
 
     init(book: Book, readerRuntimeClock: ReaderRuntimeClock = .live) {
+        // 字體 CSS（~6 MB base64）在背景預熱；navigator delegate 只讀快取（#2052）。
+        // 書架可更早呼叫同一個 idempotent `prewarm()`。
+        ReaderFontFaceCSSCache.shared.prewarm()
         self._book = Bindable(book)
         let runtimeSelection = ReaderRuntimeFixtureAdapter.selection(
             arguments: ProcessInfo.processInfo.arguments,

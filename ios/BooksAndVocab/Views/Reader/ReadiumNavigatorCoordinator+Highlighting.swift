@@ -93,53 +93,6 @@ extension ReadiumNavigatorView.Coordinator {
         }
     }
 
-    /// Cached font-face CSS — fonts are bundled resources that never change at runtime,
-    /// so we build the ~6 MB base64 CSS string once and reuse it across all page turns.
-    private static let _fontFaceCSS: String = {
-        let fontDefs: [(file: String, family: String, weight: String, style: String)] = [
-            ("CormorantGaramond-Regular", "Cormorant Garamond", "normal", "normal"),
-            ("CormorantGaramond-Bold", "Cormorant Garamond", "bold", "normal"),
-            ("CormorantGaramond-Italic", "Cormorant Garamond", "normal", "italic"),
-            ("CormorantGaramond-BoldItalic", "Cormorant Garamond", "bold", "italic"),
-            ("CrimsonPro-Regular", "Crimson Pro", "normal", "normal"),
-            ("CrimsonPro-Bold", "Crimson Pro", "bold", "normal"),
-            ("CrimsonPro-Italic", "Crimson Pro", "normal", "italic"),
-            ("CrimsonPro-BoldItalic", "Crimson Pro", "bold", "italic"),
-            ("ElmsSans-Regular", "Elms Sans", "normal", "normal"),
-            ("ElmsSans-Bold", "Elms Sans", "bold", "normal"),
-            ("ElmsSans-Italic", "Elms Sans", "normal", "italic"),
-            ("ElmsSans-BoldItalic", "Elms Sans", "bold", "italic"),
-            ("SpaceMono-Regular", "Space Mono", "normal", "normal"),
-            ("SpaceMono-Bold", "Space Mono", "bold", "normal"),
-            ("SpaceMono-Italic", "Space Mono", "normal", "italic"),
-            ("SpaceMono-BoldItalic", "Space Mono", "bold", "italic"),
-        ]
-
-        var css = ""
-        for def in fontDefs {
-            guard let url = Bundle.main.url(forResource: def.file, withExtension: "ttf"),
-                  let data = try? Data(contentsOf: url) else {
-                AppLog.reader.warning("Font not found in bundle: \(def.file).ttf")
-                continue
-            }
-            let b64 = data.base64EncodedString()
-            css += """
-            @font-face {
-                font-family: '\(def.family)';
-                font-weight: \(def.weight);
-                font-style: \(def.style);
-                src: url('data:font/truetype;base64,\(b64)') format('truetype');
-            }
-
-            """
-        }
-        return css
-    }()
-
-    static func buildFontFaceCSS() -> String {
-        _fontFaceCSS
-    }
-
     /// Escapes a string for safe embedding inside a double-quoted JS string literal:
     /// backslashes first, then double quotes.
     private static func jsEscaped(_ s: String) -> String {
