@@ -74,6 +74,23 @@ def _clear_state_cookie(response: Response) -> None:
     )
 
 
+def _login_success_response(request: Request, *, jwt_token: str, user_id: str) -> Response:
+    # The page embeds a long-lived bearer JWT: forbid any cached copy so
+    # back/forward or the browser cache on a shared machine can't replay it.
+    response = templates.TemplateResponse(
+        request,
+        "login_success.html",
+        {
+            "token": jwt_token,
+            "user_id": user_id,
+        },
+    )
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    _clear_state_cookie(response)
+    return response
+
+
 def _verify_state(request: Request, provided: str | None) -> None:
     expected = request.cookies.get(_OAUTH_STATE_COOKIE)
     if not expected or not provided or not secrets.compare_digest(expected.encode("utf-8"), provided.encode("utf-8")):
@@ -236,17 +253,7 @@ async def google_callback(
         save_users_fn=save_users_fn,
     )
     jwt_token = _create_jwt_token(canonical_user_id, "google", settings=settings)
-
-    response = templates.TemplateResponse(
-        request,
-        "login_success.html",
-        {
-            "token": jwt_token,
-            "user_id": canonical_user_id,
-        },
-    )
-    _clear_state_cookie(response)
-    return response
+    return _login_success_response(request, jwt_token=jwt_token, user_id=canonical_user_id)
 
 
 @router.post("/auth/web/apple/callback", response_class=HTMLResponse)
@@ -284,14 +291,4 @@ async def apple_callback(
         save_users_fn=save_users_fn,
     )
     jwt_token = _create_jwt_token(canonical_user_id, "apple", settings=settings)
-
-    response = templates.TemplateResponse(
-        request,
-        "login_success.html",
-        {
-            "token": jwt_token,
-            "user_id": canonical_user_id,
-        },
-    )
-    _clear_state_cookie(response)
-    return response
+    return _login_success_response(request, jwt_token=jwt_token, user_id=canonical_user_id)
