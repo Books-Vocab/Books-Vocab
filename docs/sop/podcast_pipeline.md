@@ -6,7 +6,7 @@ scope:
   - lab/podcast/
   - ops/podcast_upload.sh
   - .claude/skills/podcast-*/
-verified_against: 5e537e46b39965405fff603711aa5f26d94021c6
+verified_against: 224ca789cbc86c03e1b5c6ac3f2412cc072ca9c7
 -->
 <!--
   tier 慣例:tier=sop 用 update_trigger=sop-change(對齊其他 sop)。
