@@ -146,22 +146,55 @@ def strip_previews(text: str) -> str:
     return "\n".join(out) + suffix
 
 
-def main() -> int:
-    if len(sys.argv) != 2:
-        sys.stderr.write("usage: _i18n_strip_previews.py <swift-file>\n")
-        return 2
-    path = Path(sys.argv[1])
+def _stripped(path: Path) -> str | None:
+    """Stripped content, the original on a strip error, None if unreadable."""
     try:
         original = path.read_text(encoding="utf-8")
     except Exception as e:  # pragma: no cover
         sys.stderr.write(f"[strip_previews] cannot read {path}: {e}\n")
-        return 0
+        return None
     try:
-        sys.stdout.write(strip_previews(original))
+        return strip_previews(original)
     except Exception as e:  # pragma: no cover
         # On any error, emit original so lint stays correct.
         sys.stderr.write(f"[strip_previews] error on {path}: {e}\n")
-        sys.stdout.write(original)
+        return original
+
+
+def mirror(src_root: Path, dest_root: Path, files: list[str]) -> int:
+    """Write each file's stripped copy to dest_root/<path relative to src_root>.
+
+    i18n_lint.sh used to start one interpreter per Swift file per pattern
+    (~2x the tree, ~100s), which is what made the pre-commit fast tier time
+    out. One process now strips the whole list and rg scans the mirror once.
+    An unreadable file is left out of the mirror — the same "no hits" the
+    single-file mode gives it by printing nothing.
+    """
+    for name in files:
+        path = Path(name)
+        rel = path.relative_to(src_root)
+        content = _stripped(path)
+        if content is None:
+            continue
+        out = dest_root / rel
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(content, encoding="utf-8")
+    return 0
+
+
+def main() -> int:
+    if len(sys.argv) == 4 and sys.argv[1] == "--mirror":
+        files = [line for line in sys.stdin.read().splitlines() if line]
+        return mirror(Path(sys.argv[2]), Path(sys.argv[3]), files)
+    if len(sys.argv) != 2:
+        sys.stderr.write(
+            "usage: _i18n_strip_previews.py <swift-file>\n"
+            "       _i18n_strip_previews.py --mirror <src-root> <dest-root> < file-list\n"
+        )
+        return 2
+    content = _stripped(Path(sys.argv[1]))
+    if content is not None:
+        sys.stdout.write(content)
     return 0
 
 

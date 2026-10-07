@@ -99,38 +99,27 @@ filter_results() {
   rg --invert-match --line-buffered 'i18n-allow|L10n\.|\.localized' || true
 }
 
-# Scan candidate .swift files for a raw-CJK PCRE2 pattern:
+# Preview-stripped mirror of the candidate .swift files, built once per run:
 #   1. Enumerate candidate .swift files (excluding *Preview*.swift / tests).
-#   2. For each, pipe through ops/_i18n_strip_previews.py to blank out
-#      #Preview {} blocks and `private struct *Preview` containers
-#      (line numbers preserved).
-#   3. Run rg with --line-number on the stripped stream, prefix the file path.
-#   4. Drop allowlisted / L10n-routed lines via filter_results.
+#   2. One ops/_i18n_strip_previews.py --mirror process blanks out #Preview {}
+#      blocks and `private struct *Preview` containers (line numbers
+#      preserved) into $STRIPPED_DIR/<path relative to $IOS_SRC>.
+# It used to start one interpreter per file per pattern (~100s on the real
+# tree), which is what timed the pre-commit fast tier out.
+STRIPPED_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_i18n_stripped_XXXXXX")"
+trap 'rm -rf "$STRIPPED_DIR"' EXIT
+rg --files --type swift "${EXCLUDE_GLOBS[@]}" "$IOS_SRC" 2>/dev/null \
+  | "${PY_CMD[@]}" "$STRIP_PREVIEWS" --mirror "$IOS_SRC" "$STRIPPED_DIR" 2>/dev/null || true
+
+# Scan the stripped mirror for a raw-CJK PCRE2 pattern, map hits back to the
+# on-disk path (`$IOS_SRC/<rel>:<line>:<content>`), and drop allowlisted /
+# L10n-routed lines via filter_results. The mirror holds exactly the filtered
+# candidate list, so rg is told not to apply ignore/hidden rules a second time.
 _scan_pattern() {
   local pattern="$1"
-  local files file stripped hits
-  files=$(rg --files --type swift "${EXCLUDE_GLOBS[@]}" "$IOS_SRC" 2>/dev/null || true)
-  if [ -z "$files" ]; then
-    return 0
-  fi
-  hits=""
-  while IFS= read -r file; do
-    [ -z "$file" ] && continue
-    stripped=$("${PY_CMD[@]}" "$STRIP_PREVIEWS" "$file" 2>/dev/null) || continue
-    local file_hits
-    file_hits=$(printf '%s\n' "$stripped" \
-      | rg --no-heading -n --pcre2 "$pattern" 2>/dev/null \
-      | sed "s|^|$file:|" || true)
-    if [ -n "$file_hits" ]; then
-      if [ -z "$hits" ]; then
-        hits="$file_hits"
-      else
-        hits="$hits
-$file_hits"
-      fi
-    fi
-  done <<< "$files"
-  printf '%s' "$hits" | filter_results || true
+  rg --no-heading -n --pcre2 --no-ignore --hidden --sort path "$pattern" "$STRIPPED_DIR" 2>/dev/null \
+    | sed "s|^$STRIPPED_DIR/|$IOS_SRC/|" \
+    | filter_results || true
 }
 
 scan_raw_chinese() {
