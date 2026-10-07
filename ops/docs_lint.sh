@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # docs_lint.sh — docs gate / audit / registry checks
 #
-# This script validates document contracts only: registry paths, metadata,
-# reachable anchors, conflict markers, generated equality and freshness warnings.
+# This script validates document contracts only: registry paths, live registry
+# source hints, metadata, reachable anchors, conflict markers, generated equality
+# and freshness warnings. Source liveness comes from `ops/docs_impact.py
+# --check-sources` (KG_DOCS_IMPACT_BIN overrides that path for tests).
 # GitHub owns Issues, Projects, PRs and merge state; this script owns no workflow data.
 #
 # Usage:
@@ -32,6 +34,8 @@ EXIT_BLOCK=2
 EXIT_WARN=3
 EXIT_USAGE=64
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DOCS_IMPACT="${KG_DOCS_IMPACT_BIN:-$SCRIPT_DIR/docs_impact.py}"
 cd "$(git rev-parse --show-toplevel)"
 STALE_THRESHOLD="${STALE_THRESHOLD:-30}"
 MODE="gate"
@@ -119,6 +123,41 @@ emit_generated_diff() {
   rm -f "$expected_tmp" "$actual_tmp" "$diff_tmp"
 }
 
+# Every non-! source must be hittable by some path, judged by docs_impact's own
+# matcher; a source nothing matches is an impact hint that can never fire. Fails
+# closed: a tool error, or a run whose output disagrees with its exit status
+# (including exit 0 with no summary), is a tool failure, never a silent pass.
+validate_registry_sources() {
+  reg="$1"
+  src_out="/tmp/kg_docs_sources.$$"
+  src_err="/tmp/kg_docs_sources_err.$$"
+  set +e
+  "$DOCS_IMPACT" --check-sources --registry "$reg" </dev/null >"$src_out" 2>"$src_err"
+  src_rc=$?
+  set -e
+  src_summary="$(grep '^source_check: ' "$src_out" | tail -n 1 || true)"
+  src_dead="$(printf '%s' "$src_summary" | sed -n 's/.* dead=\([0-9][0-9]*\)$/\1/p')"
+  src_checked="$(printf '%s' "$src_summary" | sed -n 's/.* sources=\([0-9][0-9]*\) .*/\1/p')"
+  dead_lines="$(grep -c "^DEAD_SOURCE$(printf '\t')" "$src_out" || true)"
+  consistent=0
+  if [ -n "$src_dead" ] && [ -n "$src_checked" ] && [ "$src_dead" = "$dead_lines" ]; then
+    if [ "$src_rc" -eq 0 ] && [ "$src_dead" -eq 0 ]; then consistent=1; fi
+    if [ "$src_rc" -eq 2 ] && [ "$src_dead" -gt 0 ]; then consistent=1; fi
+  fi
+  if [ "$consistent" -ne 1 ]; then
+    echo "ERROR registry — source 存在性檢查無法執行 (rc=$src_rc, summary='${src_summary:-none}'): $DOCS_IMPACT"
+    sed 's/^/    /' "$src_err"
+    rm -f "$src_out" "$src_err"
+    exit "$EXIT_TOOL_ERROR"
+  fi
+  while IFS="$(printf '\t')" read -r tag id source; do
+    [ "$tag" = "DEAD_SOURCE" ] || continue
+    echo "ERROR registry — $id source 未命中任何 path: $source"
+    bad=$((bad+1))
+  done <"$src_out"
+  rm -f "$src_out" "$src_err"
+}
+
 validate_registry() {
   reg="docs/registry.yml"
   if [ ! -f "$reg" ]; then
@@ -192,12 +231,13 @@ validate_registry() {
     errors=$((errors+1))
     return
   fi
+  validate_registry_sources "$reg"
   if [ "$bad" -gt 0 ]; then
-    echo "ERROR registry — $bad invalid entries"
+    echo "ERROR registry — $bad invalid entries/sources"
     errors=$((errors+1))
     return
   fi
-  echo "REGISTRY OK: $count documents"
+  echo "REGISTRY OK: $count documents, $src_checked sources live"
   ok=$((ok+1))
 }
 
