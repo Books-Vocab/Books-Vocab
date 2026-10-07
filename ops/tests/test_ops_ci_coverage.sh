@@ -105,6 +105,7 @@ ROUTED_TESTS=(
   "capability-matrix:ops/tests/test_compute_gate_adapter.py"
   "capability-matrix:ops/tests/test_compute_history.py"
   "capability-matrix:ops/tests/test_compute_hosts.py"
+  "github-workflows:ops/tests/test_ops_suite_bootstrap.sh"
 )
 
 # Print one group's case arm from a test_ops.sh-shaped file.
