@@ -228,7 +228,9 @@ def _onboard_command(
     entry: str,
     specialist_intent: str | None,
     evidence: dict[str, Any],
+    evidence_file: str | None = None,
 ) -> str:
+    """Copyable rerun command; with evidence_file the caller rewrites that file instead of inlining JSON."""
     argv = [
         "./ops/agent_onboard.py",
         "--identity",
@@ -240,11 +242,14 @@ def _onboard_command(
     ]
     if specialist_intent:
         argv += ["--specialist-intent", specialist_intent]
-    argv += [
-        "--evidence",
-        json.dumps(evidence, ensure_ascii=False, separators=(",", ":")),
-        "--json",
-    ]
+    if evidence_file is not None:
+        argv += ["--evidence-file", evidence_file]
+    else:
+        argv += [
+            "--evidence",
+            json.dumps(evidence, ensure_ascii=False, separators=(",", ":")),
+        ]
+    argv.append("--json")
     return shlex.join(argv)
 
 
@@ -402,6 +407,7 @@ def build_evidence_template(
     entry: str,
     evidence: dict[str, Any] | None = None,
     specialist_intent: str | None = None,
+    evidence_file: str | None = None,
 ) -> dict[str, Any]:
     """Every evidence key for identity/entry and a ready-to-copy --evidence template."""
     manifest, catalog, identity_id, canonical_intent = _route_context(
@@ -447,6 +453,7 @@ def build_evidence_template(
             entry,
             canonical_specialist_intent,
             template,
+            evidence_file,
         ),
     }
 
@@ -459,6 +466,7 @@ def build_onboarding(
     entry: str,
     evidence: dict[str, Any] | None = None,
     specialist_intent: str | None = None,
+    evidence_file: str | None = None,
 ) -> dict[str, Any]:
     manifest, catalog, identity_id, canonical_intent = _route_context(
         _root(root), identity, intent, entry
@@ -550,14 +558,22 @@ def build_onboarding(
                     entry,
                     specialist_intent,
                     template,
+                    evidence_file,
                 ),
             }
+        )
+        if evidence_file is not None:
+            base_payload["assignment"]["evidence_file"] = evidence_file
+        rerun = (
+            "write assignment.evidence_template to assignment.evidence_file with every placeholder filled"
+            if evidence_file is not None
+            else "fill every placeholder in assignment.evidence_template"
         )
         return {
             **base_payload,
             "status": "awaiting-assignment",
             "blocked_at": "assignment",
-            "next_action": "fill every placeholder in assignment.evidence_template and rerun assignment.retry_command "
+            "next_action": f"{rerun} and rerun assignment.retry_command "
             "before loading skills or domain docs",
         }
 
@@ -646,9 +662,15 @@ def _parser() -> argparse.ArgumentParser:
         "--specialist-intent",
         help="optional canonical specialist route allowed by identity/intent/entry",
     )
-    parser.add_argument(
+    evidence = parser.add_mutually_exclusive_group()
+    evidence.add_argument(
         "--evidence",
         help="JSON object containing every required assignment evidence field",
+    )
+    evidence.add_argument(
+        "--evidence-file",
+        help="path to a UTF-8 file holding the --evidence JSON object "
+        "(preferred: avoids shell quoting of inline JSON)",
     )
     parser.add_argument(
         "--print-evidence-template",
@@ -679,23 +701,42 @@ def _template_text(template: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _parse_evidence(raw: str | None) -> dict[str, Any] | None:
+def _parse_evidence(
+    raw: str | None, source: str = "--evidence"
+) -> dict[str, Any] | None:
     if not raw:
         return None
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise EvidenceError(f"--evidence 不是合法 JSON: {exc}") from exc
+        raise EvidenceError(f"{source} 不是合法 JSON: {exc}") from exc
     if not isinstance(parsed, dict):
-        raise EvidenceError("--evidence 必須是 JSON object")
+        raise EvidenceError(f"{source} 必須是 JSON object")
     return parsed
+
+
+def _load_evidence(args: argparse.Namespace) -> dict[str, Any] | None:
+    if args.evidence_file is None:
+        return _parse_evidence(args.evidence)
+    source = f"--evidence-file {args.evidence_file}"
+    try:
+        raw = Path(args.evidence_file).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise EvidenceError(f"{source} 無法讀取: {exc}") from exc
+    # An empty file is an absent assignment, reported as missing keys.
+    return _parse_evidence(raw.strip(), source)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(sys.argv[1:] if argv is None else argv)
-    route = {"identity": args.identity, "intent": args.intent, "entry": args.entry}
+    route = {
+        "identity": args.identity,
+        "intent": args.intent,
+        "entry": args.entry,
+        "evidence_file": args.evidence_file,
+    }
     try:
-        evidence = _parse_evidence(args.evidence)
+        evidence = _load_evidence(args)
         if args.print_evidence_template:
             template = build_evidence_template(
                 args.root,
@@ -738,8 +779,13 @@ def main(argv: list[str] | None = None) -> int:
         for problem in assignment["invalid"]
     ]
     print(f"agent_onboard: awaiting-assignment; {'; '.join(problems)}", file=sys.stderr)
+    where = (
+        f"in assignment.evidence_template and write it to {assignment['evidence_file']}"
+        if "evidence_file" in assignment
+        else "(assignment.retry_command)"
+    )
     print(
-        "agent_onboard: replace every <...> placeholder (assignment.retry_command), then rerun:",
+        f"agent_onboard: replace every <...> placeholder {where}, then rerun:",
         file=sys.stderr,
     )
     print(assignment["retry_command"], file=sys.stderr)
