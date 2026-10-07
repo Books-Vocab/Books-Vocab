@@ -6,7 +6,7 @@ scope:
   - lab/podcast/
   - ops/podcast_upload.sh
   - .claude/skills/podcast-*/
-verified_against: 224ca789cbc86c03e1b5c6ac3f2412cc072ca9c7
+verified_against: ba2522326bd5db671956a9ca5b9b913e71d05d30
 -->
 <!--
   tier 慣例:tier=sop 用 update_trigger=sop-change(對齊其他 sop)。
@@ -246,7 +246,7 @@ Vertex `gemini-2.5-pro-tts` 已知 bug(finishReason=OTHER，Google WONTFIX #922)
 #### Agent stage 的 wall-clock 與花費上限
 
 - **timeout**:`_STAGE_TIMEOUTS`(Enricher 2700s、Scriptwriter 1800s/集、Script Review 1200s/集、TTS Prep 1200s,其餘 `_DEFAULT_TIMEOUT` 1500s)從 spawn 起算,stream-json 與 `PODCAST_VERBOSE=0` 兩種模式都真的生效:`_run_claude_subprocess` 用三條 thread 分別餵 stdin、持續讀 stderr(只留最後 64 KB 給 log)、tee stdout 事件,主 thread 只 `wait(timeout)`,所以 agent 卡住、或 stderr 灌爆 pipe buffer 都不會讓 pipeline 跟著卡死。逾時寫 `<label> TIMEOUT after <n>s` error,回 `_ClaudeFailure("timeout")`。
-- **整個 process group 一起停**:每個 `claude -p` 以 `start_new_session=True` 起在自己的 group,逾時/Ctrl-C/例外/正常結束後一律 `killpg` SIGTERM,`_AGENT_TERM_GRACE`(3s)後 SIGKILL 殘留(claude 的 tool 子程序會繼承 stdout,只殺 claude 會留下孤兒並讓 reader 卡住)。代價是 dashboard 對 pipeline group 的 `killpg`(`monitor/jobs.py`)與終端的 SIGHUP 不再直接打到 agent,所以 pipeline(含 ProcessPoolExecutor worker)收到 SIGTERM/SIGHUP 會先轉送 SIGTERM 給自己的 agent group,再照預設行為死掉。
+- **整個 process group 一起停**:每個 `claude -p` 以 `start_new_session=True` 起在自己的 group,逾時/Ctrl-C/例外/正常結束後一律 `killpg` SIGTERM,`_AGENT_TERM_GRACE`(3s)後 SIGKILL 殘留(claude 的 tool 子程序會繼承 stdout,只殺 claude 會留下孤兒並讓 reader 卡住)。代價是 dashboard 對 pipeline group 的 `killpg`(`monitor/jobs.py`)與終端的 SIGHUP 不再直接打到 agent,所以 pipeline(含 ProcessPoolExecutor worker)收到 SIGTERM/SIGHUP 會先轉送 SIGTERM 給自己的 agent group,再照預設行為死掉。起跑窗口也守住:`Popen` 回傳到 agent group 登記完成之間收到的 SIGTERM/SIGHUP/SIGINT 先被攔住、登記後才重送(`_signals_deferred_while_spawning`),否則該窗口內的停止訊號會漏掉 agent(它在自己的 session,只有 runner 停得了它)。
 - **花費上限**:每次 agent 呼叫帶 `--max-budget-usd`(claude 2.1.226 起有,只在 `-p` 生效)。預設 `_STAGE_BUDGETS_USD`:Analyst $25、Enricher $10、Series Polish $10、Scriptwriter $6/集、Script Review $4/集,其餘 `_DEFAULT_BUDGET_USD` $5;約為 2026-10 七個 series `events.jsonl` 中各 label 最高 `total_cost_usd` 的 4 倍(Analyst 讀整本書、saga 讀多本,故留最大餘裕)。撞上限時 CLI 回 `subtype:"error_max_budget_usd"`、`errors:["Reached maximum budget ($N)"]`、exit 1(無 `result` 欄位、stderr 空)→ 記成 `_ClaudeFailure("budget")`,fatal 不重試。`claude invocation` log 事件帶 `budget_usd`。
 
 重試要便宜的前提是 **prompt resume-aware**:`architect.md` Step 0 會先列既有 `overview.md` + `ep_*.md`、跳過已完成集數,只補缺的。新增 agent stage 或讓既有 stage 可重試時,prompt 必須遵守同一條 idempotency 契約(讀既有產物 → 只補缺口),否則重試會整批重做。
