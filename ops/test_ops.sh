@@ -133,6 +133,7 @@ run_one() {
         ops/tests/test_worktree_registry_maintenance.py \
         ops/tests/test_worktree_orchestrate.py \
         ops/tests/test_worktree_recovery_lifecycle.py \
+        ops/tests/test_worktree_scope.py \
         ops/tests/test_task_registry.py \
         ops/tests/test_lock_wait.py \
         ops/tests/test_test_execution_lock.py

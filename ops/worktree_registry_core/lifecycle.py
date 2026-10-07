@@ -49,8 +49,15 @@ __all__ = [
 ]
 
 
-def source_statuses(target: str) -> set[str]:
-    return {
+def source_statuses(target: str, *, retire_cleanup_pending: bool = False) -> set[str]:
+    """Statuses a record may leave when moving to ``target``.
+
+    ``cleanup_pending`` is a publication lease, so abandoning it is only
+    legal when the caller has proven the PR is merged or its remote branch is
+    gone (``retire_cleanup_pending``); the registry itself cannot see GitHub.
+    """
+
+    sources = {
         STATUS_CLEANUP_PENDING: {STATUS_ACTIVE, STATUS_PUBLISHED},
         STATUS_PUBLISHED: {STATUS_CLEANUP_PENDING},
         STATUS_ABANDONED: {STATUS_ACTIVE, STATUS_PUBLISHED},
@@ -60,6 +67,9 @@ def source_statuses(target: str) -> set[str]:
             STATUS_CLEANUP_PENDING,
         },
     }[target]
+    if retire_cleanup_pending and target == STATUS_ABANDONED:
+        sources = sources | {STATUS_CLEANUP_PENDING}
+    return sources
 
 
 def requires_stored_handback(target: str, source: object) -> bool:
@@ -246,6 +256,60 @@ def validate_terminal_proof(
     )
 
 
+def _mismatch_reason(
+    state: dict[str, Any],
+    request: TransitionRequest,
+    *,
+    claim_generation: Callable[[dict[str, Any], str], int | None],
+    record_matches: Callable[..., bool],
+    stored_head: Callable[[dict[str, Any]], object],
+    allowed_sources: set[str],
+) -> str:
+    """Say which selector field differs instead of a bare 'no match'."""
+
+    base = "no exact registry record matches transition"
+    candidates = [
+        record
+        for record in state.get("records", [])
+        if isinstance(record, dict)
+        and record_matches(record, branch=request.branch, path=request.path)
+    ]
+    if not candidates:
+        selector = request.branch or request.path
+        return f"{base}: no registry record for branch/path {selector!r}"
+    lines: list[str] = []
+    for record in candidates:
+        problems: list[str] = []
+        status = record.get("status")
+        if status not in allowed_sources:
+            hint = (
+                "; a cleanup_pending lease may only be abandoned with proof that "
+                "its PR is merged or its remote branch is gone "
+                "(worktree_orchestrate.py resolve collects that proof)"
+                if status == STATUS_CLEANUP_PENDING
+                and request.target == STATUS_ABANDONED
+                else ""
+            )
+            problems.append(
+                f"status: actual {status!r}, {request.target!r} accepts "
+                f"{sorted(allowed_sources)}{hint}"
+            )
+        generation = claim_generation(record, "claim_generation")
+        if generation != request.expected_generation:
+            problems.append(
+                f"claim_generation: expected {request.expected_generation}, "
+                f"actual {generation}"
+            )
+        head = stored_head(record)
+        if head != request.expected_head_sha:
+            problems.append(
+                f"head: expected {request.expected_head_sha}, actual {head}"
+            )
+        if problems:
+            lines.append(f"[{record.get('branch')}] " + "; ".join(problems))
+    return base + ": " + " | ".join(lines) if lines else base
+
+
 def transition_record(
     state: dict[str, Any],
     request: TransitionRequest,
@@ -256,6 +320,7 @@ def transition_record(
     branch_head: Callable[[str], str | None],
     has_valid_handback: Callable[[dict[str, Any]], bool],
     has_valid_stored_handback: Callable[[dict[str, Any]], bool],
+    retire_cleanup_pending: bool = False,
 ) -> TransitionResult:
     newer_live_claims = [
         record
@@ -278,27 +343,46 @@ def transition_record(
         record
         for record in state.get("records", [])
         if isinstance(record, dict)
-        and record.get("status") in source_statuses(request.target)
+        and record.get("status")
+        in source_statuses(
+            request.target, retire_cleanup_pending=retire_cleanup_pending
+        )
         and record_matches(record, branch=request.branch, path=request.path)
         and claim_generation(record, "claim_generation") == request.expected_generation
     ]
     exact_matches: list[dict[str, Any]] = []
-    for record in matches:
-        expected_head = record.get("handed_back_sha")
-        if not is_commit_sha(expected_head):
+
+    def stored_head(record: dict[str, Any]) -> object:
+        head = record.get("handed_back_sha")
+        if not is_commit_sha(head):
             branch = record.get("branch")
             if isinstance(branch, str) and branch:
-                expected_head = branch_head(branch)
-        if not is_commit_sha(expected_head):
-            expected_head = record.get("base_sha")
-        if not is_commit_sha(expected_head):
+                head = branch_head(branch)
+        if not is_commit_sha(head):
+            head = record.get("base_sha")
+        if not is_commit_sha(head):
             # A fresh claim stores its commit under ``base``.  With no
             # handback and no local branch, that base is its exact head.
-            expected_head = record.get("base")
-        if expected_head == request.expected_head_sha:
+            head = record.get("base")
+        return head
+
+    for record in matches:
+        if stored_head(record) == request.expected_head_sha:
             exact_matches.append(record)
     if not exact_matches:
-        return TransitionResult(None, "no exact registry record matches transition")
+        return TransitionResult(
+            None,
+            _mismatch_reason(
+                state,
+                request,
+                claim_generation=claim_generation,
+                record_matches=record_matches,
+                stored_head=stored_head,
+                allowed_sources=source_statuses(
+                    request.target, retire_cleanup_pending=retire_cleanup_pending
+                ),
+            ),
+        )
     if len(exact_matches) != 1:
         return TransitionResult(None, "registry transition selector is ambiguous")
 
