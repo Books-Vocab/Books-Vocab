@@ -97,3 +97,26 @@ GitHub 是交付控制面：Issue／Project 管規劃與排序，branch／worktr
 - 不把 stale seal、WARN、timeout、baseline failure 或缺少 evidence 報成 PASS。
 - production 只走 `ops/release.sh`、`ops/devops_kg_safe.sh` 與對應批准／rollback SOP。
 - docs 記錄技術細節與操作真相；skill 規範代理如何載入、協調與交接；兩者不互相複製。
+
+## 實作與審查角色的共同交付契約
+
+所有 `.claude/agents/*.md` 的角色共用本節；角色檔只寫自己的 domain 差異，不重複本節。
+
+1. **驗證必須真跑**：只有實際執行過、取得 exit status 的命令才算證據。不得以讀碼推演、舊 log、別人的結果或預期值代替；命令與 exit code 原樣記錄，不得用管線（`| tail`）或合併 stderr 後再讀 `$?`。
+2. **TDD 的紅必須是真失敗**：先寫測試並實際跑出紅（失敗原因要對應待修行為，不是 import／語法／環境錯誤），記下紅的命令與 exit code，再最小修復跑綠。無法先紅（純文件、重構等）要在 Deviations 說明。
+3. **gate 跑不起來 = BLOCKED，不是 done**：測試 harness、guard、權限、timeout、磁碟預算（如 `ios_*` exit 75）或缺少工具導致必要 gate 無法執行時，停止宣稱完成，Result 寫 `BLOCKED`，附完整命令、exit code、guard 輸出的原因。可以 commit 已完成的 code，但 Result 不得寫 implemented／done。不得繞過 guard、改用底層命令（裸 `xcodebuild`）或自行改 registry 取代；能獨立跑的 static check 可附上並標明「不取代被擋的 gate」。
+4. **lane 登記由 IM 負責**：`ops/ios_ops.sh` 的 writer 類 command（build／test）其 disk guard 與 hand-back 都以 registry 判斷 worktree 是否為受管 lane，須由 IM 以 `ops/worktree_orchestrate.py` 先登記。開工先 `./ops/worktree_registry.py list --json` 確認本 worktree path 在列；若不在或 guard 以「unregistered／disk budget」fail-closed，這是 BLOCKED：不自行 `register`、不改 registry、不等排程碰運氣，回報給 IM 登記後重派。
+5. **outcomes 不可預寫**：hand-back 的 validation／outcomes 只能在命令跑完後依實際結果填入；不得先寫「PASS」再補跑，WARN、timeout、stale evidence 一律如實報告，不寫成 PASS。
+6. **交回物**：local commit 後，乾淨 worktree 加以下三項：branch、tip SHA（`git rev-parse HEAD`，commit 後現量）、變更檔案清單（`git diff --name-only <base>..HEAD`，須為 Scope 子集）。不 push、不開 PR、不碰 GitHub；PR 由 IM 發布。
+7. **固定回報骨架**：最終訊息一律以下列六段、依序、每段不可省略（無內容寫「無」）：
+
+```text
+Result: DONE | BLOCKED | PARTIAL — 一句話結論（BLOCKED 要寫被擋的 gate）
+Evidence: 每條命令一行「命令 → exit N」；紅／綠分開列；未跑的 gate 明列為 NOT RUN 與原因
+Deviations: 與指派／計畫不同處與 edge case；無則寫「無」
+Decisions made: 替使用者／IM 做的決定，每項一句理由
+Friction: 工具、文件、guard 的摩擦與可重現步驟；無則寫「無」
+Branch / tip SHA / changed files: <branch> / <40 位 SHA> / 檔案清單
+```
+
+CR 與 DS 不 commit、不改 caller worktree：Result 改為 approve／request changes／comment（DS 為 synced／gap），Evidence 列所跑命令與 exit status、所審 exact HEAD，最後一段改寫「審查對象 exact HEAD」，其餘段落照舊。
