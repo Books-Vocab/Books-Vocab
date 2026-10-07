@@ -6,6 +6,7 @@ import json
 import shutil
 import sys
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,20 @@ OPS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(OPS))
 
 import deliver
+
+
+HEAD = "c" * 40
+BOT = "chatgpt-codex-connector[bot]"
+
+
+def _review(status: str = "completed", conclusion: str = "success", job: bool = False):
+    """One `agent-review` check run: the Actions job, or a verdict it posted."""
+    return {
+        "name": "agent-review",
+        "status": status,
+        "conclusion": conclusion if status == "completed" else None,
+        "external_id": "" if job else f"kg.agent-review.v1:1:{HEAD}",
+    }
 
 
 class FakeWorld:
@@ -42,6 +57,11 @@ class FakeWorld:
         self.lock_busy: dict[str, int] = dict(state.get("lock_busy", {}))
         self.now = 0.0
         self.sleeps: list[float] = []
+        self.head = state.get("head", HEAD)
+        self.review_runs = list(
+            state.get("review_runs", [[_review(job=True), _review()]])
+        )
+        self.review_comments: list[dict[str, Any]] = state.get("review_comments", [])
         self.published_pr: dict[str, Any] | None = state.get(
             "published_pr", {"number": 77, "state": "OPEN", "url": "u"}
         )
@@ -136,6 +156,16 @@ class FakeWorld:
             if cmd[1:3] == ["pr", "checks"]:
                 batch = self.checks.pop(0) if len(self.checks) > 1 else self.checks[0]
                 return ok(json.dumps(batch))
+            if cmd[1] == "api" and "/check-runs?" in cmd[-1]:
+                runs = self.review_runs
+                batch = runs.pop(0) if len(runs) > 1 else runs[0]
+                return ok(
+                    json.dumps([{"total_count": len(batch), "check_runs": batch}])
+                )
+            if cmd[1] == "api" and cmd[-1].endswith("/comments?per_page=100"):
+                return ok(json.dumps([self.review_comments]))
+            if cmd[1:3] == ["pr", "view"] and "headRefOid" in cmd:
+                return ok(self.head)
             if cmd[1:3] == ["pr", "view"]:
                 return ok(
                     self.pr_state.pop(0) if len(self.pr_state) > 1 else self.pr_state[0]
@@ -421,6 +451,134 @@ def test_the_lock_wait_is_bounded_and_names_the_holder() -> None:
 def test_the_lock_marker_is_the_lock_adapters_own_message() -> None:
     adapter = OPS / "delivery_control" / "adapters" / "operation_lock.py"
     assert deliver.LOCK_BUSY in adapter.read_text()
+
+
+# ---- the agent-review gate on --merge -------------------------------------
+
+
+def _calls_at(world: FakeWorld, wanted: Callable[[list[str]], bool]) -> list[int]:
+    return [i for i, call in enumerate(world.calls) if wanted(call)]
+
+
+def _is_review_read(call: list[str]) -> bool:
+    return call[:2] == ["gh", "api"] and "/check-runs?" in call[-1]
+
+
+def _is_queue(call: list[str]) -> bool:
+    return call[0].endswith("delivery.py") and call[3] == "queue"
+
+
+_FINDING = {
+    "user": {"login": BOT},
+    "commit_id": HEAD,
+    "original_commit_id": HEAD,
+    "path": "ops/a.py",
+    "line": 12,
+    "body": "**P2 Handle the empty case**\n\nWhy it breaks.",
+    "html_url": "https://github.com/o/r/pull/77#discussion_r1",
+}
+
+
+def test_merge_waits_for_agent_review_to_complete_on_the_exact_head() -> None:
+    orphan = _review("in_progress")  # the marker of a run that was cancelled
+    world = FakeWorld(
+        review_runs=[
+            [],
+            [_review("in_progress", job=True), orphan],
+            [_review(job=True), orphan, _review()],
+        ]
+    )
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 0, result
+    reads = _calls_at(world, _is_review_read)
+    assert len(reads) == 3
+    assert all(f"/commits/{HEAD}/check-runs?" in world.calls[i][-1] for i in reads)
+    assert reads[-1] < _calls_at(world, _is_queue)[0]
+    assert result["review"] == {
+        "head": HEAD,
+        "verdict": "success",
+        "findings": [],
+        "accepted": None,
+    }
+
+
+def test_merge_refuses_to_queue_when_agent_review_failed() -> None:
+    failed = [_review(conclusion="failure", job=True), _review(conclusion="failure")]
+    world = FakeWorld(review_runs=[failed])
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 1
+    assert f"agent-review failed on {HEAD}" in result["error"]
+    assert "--accept-review-findings" in result["error"]
+    assert not _calls_at(world, _is_queue)
+
+
+def test_merge_refuses_on_inline_review_comments_on_the_head_and_lists_them() -> None:
+    ignored = [
+        {**_FINDING, "user": {"login": "someone"}},  # not the review bot
+        {**_FINDING, "commit_id": "d" * 40, "original_commit_id": "d" * 40},
+    ]
+    world = FakeWorld(review_comments=[_FINDING, *ignored])
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 1
+    assert f"1 inline review comment(s) on {HEAD}" in result["error"]
+    assert (
+        "ops/a.py:12: **P2 Handle the empty case** "
+        "https://github.com/o/r/pull/77#discussion_r1"
+    ) in result["error"]
+    assert result["error"].count("ops/a.py:12") == 1
+    assert not _calls_at(world, _is_queue)
+
+
+def test_an_explicit_reason_accepts_the_review_findings_and_queues() -> None:
+    world = FakeWorld(review_comments=[_FINDING])
+    reason = "P2 tracked in #123"
+    code, result = ship(
+        world, "--check", "u=good", "--merge", "--accept-review-findings", reason
+    )
+    assert code == 0, result
+    assert _calls_at(world, _is_queue)
+    assert result["review"]["accepted"] == reason
+    assert result["review"]["findings"][0]["where"] == "ops/a.py:12"
+    assert any(reason in line for line in result["log"])
+
+
+def test_a_neutral_review_is_advisory_and_does_not_block() -> None:
+    world = FakeWorld(review_runs=[[_review(job=True), _review(conclusion="neutral")]])
+    code, result = ship(world, "--check", "u=good", "--merge")
+    assert code == 0, result
+    assert result["review"]["verdict"] == "neutral"
+
+
+def test_without_merge_the_review_is_not_awaited() -> None:
+    world = FakeWorld(review_runs=[[]])
+    assert ship(world, "--check", "u=good")[0] == 0
+    assert not _calls_at(world, _is_review_read)
+
+
+@pytest.mark.parametrize(
+    ("runs", "verdict"),
+    [
+        ([], None),
+        ([_review("in_progress")], None),  # only an orphaned verdict marker
+        ([_review(conclusion="cancelled", job=True)], None),
+        ([_review("in_progress", job=True), _review()], None),  # still evaluating
+        ([_review(job=True), _review(conclusion="neutral"), _review()], "success"),
+        ([_review(job=True), _review(conclusion="neutral")], "neutral"),
+        ([_review(job=True)], "success"),
+        ([_review(job=True), _review(conclusion="failure"), _review()], "failure"),
+    ],
+)
+def test_the_review_verdict_reads_every_run_on_the_head(
+    runs: list[dict[str, Any]], verdict: str | None
+) -> None:
+    assert deliver.review_verdict(runs) == verdict
+
+
+def test_the_review_bots_are_read_from_the_workflow() -> None:
+    workflow = deliver.AGENT_REVIEW.read_text()
+    assert deliver.review_bots(workflow) == (BOT, "chatgpt-codex-connector")
+    with pytest.raises(deliver.DeliverError, match="cannot read the review bot"):
+        deliver.review_bots("env: {}")
 
 
 # ---- gc -------------------------------------------------------------------
