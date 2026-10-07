@@ -7,8 +7,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from filelock import FileLock
-
 from ..api_models import (
     AdminGrantRequest,
     AdminGrantStatusResponse,
@@ -18,6 +16,7 @@ from ..api_models import (
 from ..exceptions import NotFoundError
 from ..types import AdminGrantRecord, StoredUserRecord, UsersPayload
 from ..user_store import is_real_user
+from ..users_lock import users_file_lock
 
 
 def admin_user_entitlement_response(
@@ -49,7 +48,7 @@ def _mutate_admin_grant(
     grant_updates: AdminGrantRecord | None = None,
 ) -> AdminUserEntitlementResponse:
     """Shared logic for granting/revoking admin Pro access."""
-    with FileLock(str(users_lock_file)):
+    with users_file_lock(users_lock_file):
         users = load_users()
         record = users.get(user_id)
         if not is_real_user(user_id, record):
@@ -90,7 +89,8 @@ def admin_grant_pro_access_response(
     resp = _mutate_admin_grant(
         user_id,
         users_lock_file=users_lock_file,
-        load_users=load_users, save_users=save_users,
+        load_users=load_users,
+        save_users=save_users,
         current_admin_grant_record=current_admin_grant_record,
         build_entitlements_response=build_entitlements_response,
         grant_updates={
@@ -130,7 +130,8 @@ def admin_revoke_pro_access_response(
     resp = _mutate_admin_grant(
         user_id,
         users_lock_file=users_lock_file,
-        load_users=load_users, save_users=save_users,
+        load_users=load_users,
+        save_users=save_users,
         current_admin_grant_record=current_admin_grant_record,
         build_entitlements_response=build_entitlements_response,
         grant_updates={

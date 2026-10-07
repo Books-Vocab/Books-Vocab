@@ -32,8 +32,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from filelock import FileLock
-
 from kg.api_models.common import VocabSource
 from kg.api_models.graph import AutoLinkConfig  # noqa: F401 - re-exported for ops_edit_* command modules
 from kg.api_models.notebook import VocabUIConfig  # noqa: F401 - re-exported for ops_edit_* command modules
@@ -63,6 +61,7 @@ from kg.ops_shared import data_dir  # noqa: F401 - re-exported for ops_edit_* co
 from kg.ops_world_projection import project_user_world  # noqa: F401 - re-exported for ops_edit_* command modules
 from kg.review_events import ReviewEventStore
 from kg.user_store import load_users_from, parse_datetime, save_users_to
+from kg.users_lock import bounded_users_filelock
 
 _VALID_REVIEW_STATES = ("new", "due", "reviewed")
 _USER_BACKUP_META_DIR = ".ops_meta"
@@ -335,7 +334,7 @@ def _link_on_disk(graph: Any, link_id: str) -> bool:
 def _mutate_users(data_dir_path: Path, mutate) -> dict[str, Any]:
     """在 app 的 users.json 寫鎖下 load→mutate→save。回傳 mutate 的結果。"""
     uf = users_file(data_dir_path)
-    with FileLock(str(users_lock_file(data_dir_path))):
+    with bounded_users_filelock(users_lock_file(data_dir_path)):
         users = load_users_from(uf, _passthrough_normalize) if uf.exists() else {}
         result = mutate(users)
         save_users_to(uf, users, _passthrough_normalize)

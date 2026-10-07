@@ -23,10 +23,20 @@ logger = logging.getLogger(__name__)
 USERS_LOCK_TIMEOUT_SECONDS = 10.0
 
 
+def bounded_users_filelock(lock_file: str | Path) -> FileLock:
+    """The users lock with a bounded wait; ``acquire`` raises ``filelock.Timeout``.
+
+    For callers outside a request (startup migration, the ops CLI) that have no
+    HTTP response to turn the timeout into: a stuck holder must fail them loudly
+    rather than hang them forever. Request paths use ``users_file_lock``.
+    """
+    return FileLock(str(lock_file), timeout=USERS_LOCK_TIMEOUT_SECONDS)
+
+
 @contextmanager
 def users_file_lock(lock_file: str | Path) -> Iterator[None]:
     """Hold the users lock, or raise HTTP 503 after ``USERS_LOCK_TIMEOUT_SECONDS``."""
-    lock = FileLock(str(lock_file), timeout=USERS_LOCK_TIMEOUT_SECONDS)
+    lock = bounded_users_filelock(lock_file)
     try:
         lock.acquire()
     except Timeout as exc:

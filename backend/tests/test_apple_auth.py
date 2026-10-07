@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 from unittest.mock import MagicMock, patch
@@ -526,6 +527,54 @@ class TestJwksRefetchBackoff:
 
         assert len(fetches) == 1
         assert statuses == [503] * callers
+
+    @pytest.mark.parametrize("ttl_expired", [False, True], ids=["forged_kid_refetch", "ttl_refetch"])
+    def test_cached_kid_is_not_queued_behind_a_slow_refetch(self, ttl_expired):
+        """A forged-kid (or TTL) refetch holds ``_fetch_lock`` for up to the 10s
+        network timeout; a legitimate verify for an already cached kid must not wait."""
+        apple_auth._apple_public_keys[FAKE_KID] = FAKE_JWK
+        apple_auth._keys_last_fetched = time.time() - (apple_auth._CACHE_DURATION_SECONDS + 1 if ttl_expired else 0)
+        refetch_trigger_kid = FAKE_KID if ttl_expired else "forged-kid"
+        fetch_started = threading.Event()
+        release_fetch = threading.Event()
+
+        def slow_get(url):
+            fetch_started.set()
+            release_fetch.wait(timeout=10)
+            raise httpx.HTTPError("apple slow")
+
+        client_instance = MagicMock()
+        client_instance.get.side_effect = slow_get
+        cm = MagicMock()
+        cm.__enter__ = MagicMock(return_value=client_instance)
+        cm.__exit__ = MagicMock(return_value=False)
+        legit_done = threading.Event()
+        rsa = _patched_pem()
+
+        def forged():
+            with contextlib.suppress(HTTPException):
+                apple_auth._get_rsa_public_key(refetch_trigger_kid)
+
+        def legit():
+            apple_auth._get_rsa_public_key(FAKE_KID)
+            legit_done.set()
+
+        try:
+            with patch("kg.apple_auth.httpx.Client", return_value=cm):
+                forger = threading.Thread(target=forged)
+                forger.start()
+                assert fetch_started.wait(timeout=5)
+                verifier = threading.Thread(target=legit)
+                verifier.start()
+                served_while_fetching = legit_done.wait(timeout=2)
+                release_fetch.set()
+                forger.join(timeout=10)
+                verifier.join(timeout=10)
+        finally:
+            release_fetch.set()
+            rsa.stop()
+
+        assert served_while_fetching, "cached-kid verification queued behind a JWKS refetch"
 
 
 # ----------------------------------------------------------------------

@@ -59,11 +59,19 @@ def _refresh_keys_if_needed(kid: str) -> None:
     """Refetch the JWKS when ``kid`` is unknown or the TTL expired, rate-limited.
 
     Verification runs in worker threads, so concurrent callers serialise on
-    ``_fetch_lock`` and reuse a fetch that finished while they waited.
+    ``_fetch_lock`` and reuse a fetch that finished while they waited. A cached
+    ``kid`` never queues behind someone else's refetch (up to the 10s network
+    timeout): fresh keys are served at once, expired ones are served stale
+    while the thread that holds the lock refreshes them.
     """
     global _last_fetch_finished
     requested_at = time.monotonic()
-    with _fetch_lock:
+    cached = kid in _apple_public_keys
+    if cached and time.time() - _keys_last_fetched <= _CACHE_DURATION_SECONDS:
+        return
+    if not _fetch_lock.acquire(blocking=not cached):
+        return  # stale-but-cached kid and a refresh is already in flight
+    try:
         expired = time.time() - _keys_last_fetched > _CACHE_DURATION_SECONDS
         if kid in _apple_public_keys and not expired:
             return
@@ -75,6 +83,8 @@ def _refresh_keys_if_needed(kid: str) -> None:
             _fetch_apple_public_keys()
         finally:
             _last_fetch_finished = time.monotonic()
+    finally:
+        _fetch_lock.release()
 
 
 def _get_rsa_public_key(kid: str) -> str | bytes:

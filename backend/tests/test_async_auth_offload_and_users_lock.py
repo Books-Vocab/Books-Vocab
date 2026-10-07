@@ -17,13 +17,15 @@ from unittest.mock import MagicMock
 import httpx
 import pytest
 from fastapi import HTTPException
-from filelock import FileLock
+from filelock import FileLock, Timeout
 
 import kg.routers.web_auth as web_auth
 from conftest import TEST_GOOGLE_REDIRECT_URI, TEST_JWT_SECRET, _swap_settings
 from kg import users_lock
+from kg.admin.entitlements import admin_grant_pro_access_response, admin_revoke_pro_access_response
 from kg.api import app
 from kg.api_models import (
+    AdminGrantRequest,
     AppStoreNotificationRequest,
     AppStoreReconcileRequest,
     AppStoreSyncRequest,
@@ -40,10 +42,13 @@ from kg.billing_handlers import (
     reconcile_app_store_subscription_response,
     sync_app_store_subscription_response,
 )
+from kg.external_api_keys import issue_api_key, revoke_api_key
+from kg.ops_edit_shared import users_lock_file
+from kg.ops_edit_support import _mutate_users
 from kg.routers.library import _library_s3_client
 from kg.settings import KGSettings
 from kg.user_handlers import delete_user_account_response, update_user_config_response
-from kg.user_store import collect_account_ids_for_deletion
+from kg.user_store import collect_account_ids_for_deletion, migrate_users_file
 
 
 def _assert_event_loop_free(loop: asyncio.AbstractEventLoop) -> None:
@@ -288,7 +293,30 @@ def _acquirers(tmp_path, lock_path) -> dict[str, Callable[[], object]]:
     def ignore(users):
         return None
 
+    def one_user():
+        return {"u1": {"id": "u1", "config": {}}}
+
+    def admin_grant_kwargs() -> dict[str, object]:
+        return {
+            "users_lock_file": lock_path,
+            "load_users": one_user,
+            "save_users": ignore,
+            "current_admin_grant_record": lambda record: {},
+            "build_entitlements_response": _entitlements,
+            "admin_uid": "admin",
+        }
+
     return {
+        "issue_api_key": lambda: issue_api_key(
+            "u1", label="ci", users_lock_file=lock_path, load_users=one_user, save_users=ignore
+        ),
+        "revoke_api_key": lambda: revoke_api_key(
+            "u1", "key-1", users_lock_file=lock_path, load_users=one_user, save_users=ignore
+        ),
+        "admin_grant_pro": lambda: admin_grant_pro_access_response(
+            "u1", AdminGrantRequest(reason="r"), **admin_grant_kwargs()
+        ),
+        "admin_revoke_pro": lambda: admin_revoke_pro_access_response("u1", **admin_grant_kwargs()),
         "resolve_and_link_user": lambda: resolve_and_link_user(
             "apple-sub", "apple", users_lock_file=str(lock_path), load_users_fn=no_users, save_users_fn=ignore
         ),
@@ -347,6 +375,10 @@ def _acquirers(tmp_path, lock_path) -> dict[str, Callable[[], object]]:
 @pytest.mark.parametrize(
     "acquirer",
     [
+        "issue_api_key",
+        "revoke_api_key",
+        "admin_grant_pro",
+        "admin_revoke_pro",
         "resolve_and_link_user",
         "update_user_config",
         "delete_user_account",
@@ -382,6 +414,55 @@ def test_users_lock_acquirers_give_up_with_503_while_lock_is_held(tmp_path, monk
     error = outcome.get("error")
     assert isinstance(error, HTTPException), outcome
     assert error.status_code == 503
+
+
+def _call_while_lock_is_held(lock_path, call) -> tuple[bool, BaseException | None]:
+    """Run ``call`` in a thread while another holder owns ``lock_path``."""
+    outcome: dict[str, BaseException] = {}
+
+    def run():
+        try:
+            call()
+        except BaseException as exc:  # noqa: BLE001 - surfaced to the assertion below
+            outcome["error"] = exc
+
+    holder = FileLock(str(lock_path))
+    holder.acquire()
+    worker = threading.Thread(target=run, daemon=True)
+    try:
+        worker.start()
+        worker.join(_GAVE_UP_WITHIN)
+        still_waiting = worker.is_alive()
+    finally:
+        holder.release()
+        worker.join(_GAVE_UP_WITHIN)
+    return still_waiting, outcome.get("error")
+
+
+def test_startup_users_migration_gives_up_on_a_held_lock(tmp_path, monkeypatch):
+    """A stuck holder must fail startup loudly, not hang the boot forever."""
+    monkeypatch.setattr(users_lock, "USERS_LOCK_TIMEOUT_SECONDS", _LOCK_TIMEOUT)
+    users_file = tmp_path / "users.json"
+    users_file.write_text("{}")
+    lock_path = tmp_path / "users.json.lock"
+
+    still_waiting, error = _call_while_lock_is_held(
+        lock_path, lambda: migrate_users_file(users_file, lock_path, lambda users: (users, False))
+    )
+
+    assert not still_waiting, "migrate_users_file waited on the users lock without a timeout"
+    assert isinstance(error, Timeout), error
+
+
+def test_ops_cli_users_edit_gives_up_on_a_held_lock(tmp_path, monkeypatch):
+    monkeypatch.setattr(users_lock, "USERS_LOCK_TIMEOUT_SECONDS", _LOCK_TIMEOUT)
+    lock_path = users_lock_file(tmp_path)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+
+    still_waiting, error = _call_while_lock_is_held(lock_path, lambda: _mutate_users(tmp_path, lambda users: None))
+
+    assert not still_waiting, "ops _mutate_users waited on the users lock without a timeout"
+    assert isinstance(error, Timeout), error
 
 
 # ── library object storage client ─────────────────────────────────────────────
