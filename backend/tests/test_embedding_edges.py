@@ -187,9 +187,7 @@ class TestEmbeddingEmptyResponseRaises:
         with pytest.raises(ValueError) as exc_info:
             store.add("c1", "hello")
         msg = str(exc_info.value).lower()
-        assert "empty" in msg or "malformed" in msg, (
-            f"error must flag empty/malformed embedding response, got: {msg!r}"
-        )
+        assert "empty" in msg or "malformed" in msg, f"error must flag empty/malformed embedding response, got: {msg!r}"
 
     def test_empty_response_leaves_state_clean(self, tmp_path: Path):
         """After the raise, the store stays pristine: no ids leaked into
@@ -300,9 +298,7 @@ class TestFactoryPicksUpEnvChanges:
             monkeypatch.setenv("EMBEDDING_MODEL", "bar")
             store_bar = create_embedding_store(tmp_path, llm=llm, notebook_id="default")
             assert store_bar.model == "bar"
-            assert store_bar is not store_foo, (
-                "stale instance leak — cache key must namespace by model"
-            )
+            assert store_bar is not store_foo, "stale instance leak — cache key must namespace by model"
         finally:
             clear_store_cache()
 

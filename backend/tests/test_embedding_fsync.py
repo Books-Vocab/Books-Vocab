@@ -90,12 +90,8 @@ def test_save_fsyncs_both_tmp_files_before_replace(tmp_path: Path, monkeypatch):
     # Both temp files must have been fsynced before the replace().
     emb_tmp = str(emb_path.with_name(emb_path.stem + "_tmp.npy"))
     ids_tmp = str(ids_path.with_suffix(".json.tmp"))
-    assert emb_tmp in synced_paths, (
-        f"matrix tmp {emb_tmp!r} was not fsynced; synced={synced_paths}"
-    )
-    assert ids_tmp in synced_paths, (
-        f"ids tmp {ids_tmp!r} was not fsynced; synced={synced_paths}"
-    )
+    assert emb_tmp in synced_paths, f"matrix tmp {emb_tmp!r} was not fsynced; synced={synced_paths}"
+    assert ids_tmp in synced_paths, f"ids tmp {ids_tmp!r} was not fsynced; synced={synced_paths}"
 
     # And the data actually landed correctly.
     assert json.loads(ids_path.read_text()) == ["c1", "c2"]
@@ -123,10 +119,7 @@ def test_save_without_embeddings_still_fsyncs_ids(tmp_path: Path, monkeypatch):
     store.remove_batch(["only"])
 
     ids_tmp = str(ids_path.with_suffix(".json.tmp"))
-    assert ids_tmp in synced_paths, (
-        f"ids tmp {ids_tmp!r} was not fsynced on empty-store save; "
-        f"synced={synced_paths}"
-    )
+    assert ids_tmp in synced_paths, f"ids tmp {ids_tmp!r} was not fsynced on empty-store save; synced={synced_paths}"
     assert json.loads(ids_path.read_text()) == []
 
 
@@ -151,8 +144,6 @@ def test_write_meta_fsyncs_tmp_before_replace(tmp_path: Path, monkeypatch):
     # Fresh store → first _save writes the sidecar via _write_meta.
     store.add_batch([("c1", "alpha")])
 
-    assert meta_tmp in synced_paths, (
-        f"meta tmp {meta_tmp!r} was not fsynced; synced={synced_paths}"
-    )
+    assert meta_tmp in synced_paths, f"meta tmp {meta_tmp!r} was not fsynced; synced={synced_paths}"
     # And the sidecar landed intact.
     assert json.loads(store._meta_path.read_text())["dim"] == EMBEDDING_DIM

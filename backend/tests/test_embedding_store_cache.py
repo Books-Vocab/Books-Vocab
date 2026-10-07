@@ -44,6 +44,7 @@ def _make_tracked_llm(n: int = 1):
 # 1. create_embedding_store 快取行為
 # ---------------------------------------------------------------------------
 
+
 class TestEmbeddingStoreCache:
     def test_eviction_discards_inflight_store(self, tmp_path: Path):
         """Notebook eviction must not let a blocked builder repopulate cache."""
@@ -152,6 +153,7 @@ class TestEmbeddingStoreCache:
 # 2. update() dirty-write 延遲：不應在 update 時立即重寫全矩陣
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateDirtyWrite:
     def _make_store_with_data(self, tmp_path: Path):
         """建一個有 3 筆資料的 store，並重載以確保從磁碟讀取。"""
@@ -228,6 +230,7 @@ class TestUpdateDirtyWrite:
 # 3. settings wiring — model/dim must flow from KGSettings into EmbeddingStore
 # ---------------------------------------------------------------------------
 
+
 class TestEmbeddingSettingsWiring:
     def test_factory_reads_model_and_dim_from_settings(self, tmp_path: Path, monkeypatch):
         """Regression: factory previously never passed settings.embedding_model /
@@ -248,8 +251,11 @@ class TestEmbeddingSettingsWiring:
         try:
             llm, _ = _make_tracked_llm()
             store = create_embedding_store(
-                tmp_path, llm=llm, notebook_id="default",
-                model="explicit-model", dim=512,
+                tmp_path,
+                llm=llm,
+                notebook_id="default",
+                model="explicit-model",
+                dim=512,
             )
             assert store.model == "explicit-model"
             assert store.dim == 512
@@ -348,9 +354,7 @@ class TestEmbeddingModelDimSidecar:
         (the old vectors were still loaded). After invalidation, add must
         proceed normally and write the new model/dim sidecar."""
         emb_path, ids_path = self._seed_disk(tmp_path, n=2, dim=512)
-        (tmp_path / "embeddings_meta_default.json").write_text(
-            json.dumps({"model": "m-old", "dim": 512})
-        )
+        (tmp_path / "embeddings_meta_default.json").write_text(json.dumps({"model": "m-old", "dim": 512}))
 
         client = MagicMock()
         resp = MagicMock()
