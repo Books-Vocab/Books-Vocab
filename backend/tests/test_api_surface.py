@@ -200,6 +200,69 @@ def test_vocab_preferences_patch_round_trips_independent_fields_and_scope(isolat
     assert wrong_scope.status_code == 404, wrong_scope.text
 
 
+def test_vocab_preferences_patch_sets_mode_and_syncs_it(isolated_api):
+    # #2042: the per-card review direction rides the same partial PATCH as the
+    # reader/review preferences and reaches other clients as card.mode.
+    client = isolated_api.client
+    headers = isolated_api.headers
+    word = "mode-route"
+
+    with patch.object(vocab_router_mod, "_embedding_store", return_value=_DummyEmbeddingStore()):
+        created = client.post(
+            "/api/vocab",
+            json=[{"word": word, "translation": "方向路由", "context": "A mode route."}],
+            headers=headers,
+        )
+    assert created.status_code == 200, created.text
+
+    before = client.get(f"/api/vocab/{word}", headers=headers)
+    assert before.status_code == 200, before.text
+    assert before.json()["mode"] == "recognition"
+    since = before.json()["updatedAt"]
+    assert since is not None
+
+    produced = client.patch(f"/api/vocab/{word}/preferences", json={"mode": "production"}, headers=headers)
+    assert produced.status_code == 200, produced.text
+    assert produced.json()["mode"] == "production"
+    assert produced.json()["isReaderHidden"] is False
+    assert produced.json()["isReviewExcluded"] is False
+    for srs_field in ("reviewCount", "reviewStreak", "lapseCount", "reviewIntervalHours", "nextReviewAt"):
+        assert produced.json()[srs_field] == before.json()[srs_field], srs_field
+
+    lookup = client.get(f"/api/vocab/{word}", headers=headers)
+    assert lookup.status_code == 200, lookup.text
+    assert lookup.json()["mode"] == "production"
+
+    sync = client.get("/api/vocab", params={"since": since}, headers=headers)
+    assert sync.status_code == 200, sync.text
+    synced = next(card for card in sync.json() if card["content"] == word)
+    assert synced["mode"] == "production"
+
+    # A preference-only PATCH must not reset the direction (partial update).
+    hidden = client.patch(f"/api/vocab/{word}/preferences", json={"reader_hidden": True}, headers=headers)
+    assert hidden.status_code == 200, hidden.text
+    assert hidden.json()["mode"] == "production"
+    assert hidden.json()["isReaderHidden"] is True
+
+    combined = client.patch(
+        f"/api/vocab/{word}/preferences",
+        json={"mode": "recognition", "review_excluded": True},
+        headers=headers,
+    )
+    assert combined.status_code == 200, combined.text
+    assert combined.json()["mode"] == "recognition"
+    assert combined.json()["isReaderHidden"] is True
+    assert combined.json()["isReviewExcluded"] is True
+
+    for invalid_body in ({"mode": "cloze"}, {"mode": "PRODUCTION"}, {"mode": None}, {"mode": 1}):
+        rejected = client.patch(f"/api/vocab/{word}/preferences", json=invalid_body, headers=headers)
+        assert rejected.status_code == 422, (invalid_body, rejected.text)
+
+    after_rejections = client.get(f"/api/vocab/{word}", headers=headers)
+    assert after_rejections.status_code == 200, after_rejections.text
+    assert after_rejections.json()["mode"] == "recognition"
+
+
 def test_vocab_full_sync_includes_deleted_cards_with_scope_and_paging(isolated_api):
     client = isolated_api.client
     headers = isolated_api.headers

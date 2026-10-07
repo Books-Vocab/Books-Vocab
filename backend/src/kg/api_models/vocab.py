@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from kg.api_models.common import VocabSource, _normalize_context
@@ -41,19 +43,21 @@ class ArchiveWordRequest(BaseModel):
 
 
 class CardPreferencesUpdateRequest(BaseModel):
-    """Per-card reader/review visibility preferences.
+    """Per-card reader/review preferences.
 
     ``None`` means leave that preference unchanged, which lets the client
-    update one checkbox without accidentally overwriting the other. An empty
-    request is rejected rather than becoming a silent no-op.
+    update one control without accidentally overwriting the others. An empty
+    request is rejected rather than becoming a silent no-op. ``mode`` is the
+    review direction stored on the card and synced back as ``card.mode``.
     """
 
     reader_hidden: bool | None = None
     review_excluded: bool | None = None
+    mode: Literal["recognition", "production"] | None = None
 
     @model_validator(mode="after")
     def require_preference(self) -> CardPreferencesUpdateRequest:
-        if self.reader_hidden is None and self.review_excluded is None:
+        if self.reader_hidden is None and self.review_excluded is None and self.mode is None:
             raise ValueError("At least one card preference is required")
         return self
 

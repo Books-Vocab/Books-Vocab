@@ -28,6 +28,8 @@ Card 只有一種產品語意：加入詞庫後即是一般可複習卡片，走
 | `recognition` | 英→中 | 難詞，只需看懂 |
 | `production` | 中→英 (cloze) | 需要會用 |
 
+建立後改方向走 `PATCH /api/vocab/{word}/preferences`（`?notebook_id=` 決定 scope）：body 為 partial update，`reader_hidden`／`review_excluded`／`mode` 皆可省略或 `null`（＝不變），但至少要有一個非 `null` 欄位；`mode` 只接受上表兩個小寫值，其他值、空字串或只送 `{"mode": null}` 一律 422。成功時寫回同一個 `cards.mode` 欄位（值有變才更新 `updated_at`），回應 `CardResponse.mode` 即新值，其他 client 經既有 `/api/vocab?since=` 增量 pull 收到；改方向不重設 SRS 狀態。
+
 ## Word capture normalization（capture 契約）
 
 選詞存入詞庫時，`content` 會經 **capture-normalize**。**共有契約（兩端必須同步）僅步驟 1–2**；步驟 0 與 3 是各端獨有、刻意不對齊：
