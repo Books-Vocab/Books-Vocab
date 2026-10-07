@@ -490,13 +490,15 @@ def test_unedited_template_fails_closed_and_filled_template_is_ready(
     assert template_payload["schema"] == "kg.agent_onboarding.evidence_template.v1"
     assert set(template_payload["evidence_spec"]["required"]) <= set(template)
 
-    # Copying the template verbatim must never satisfy the assignment boundary.
+    # Copying the template verbatim must never satisfy the assignment boundary;
+    # the keys are present, so they are reported as unfilled, not missing.
     unedited = mod.build_onboarding(
         ROOT, identity=identity, intent=intent, entry=entry, evidence=template
     )
     assert unedited["status"] == "awaiting-assignment"
+    assert unedited["assignment"]["missing"] == []
     assert set(unedited["assignment"]["required_external"]) <= set(
-        unedited["assignment"]["missing"]
+        unedited["assignment"]["unfilled"]
     )
 
     filled = mod.build_onboarding(
@@ -509,7 +511,16 @@ def test_unedited_template_fails_closed_and_filled_template_is_ready(
     assert filled["status"] == "ready"
 
 
+def _emitted_placeholder(identity: str, intent: str, entry: str, key: str):
+    return mod.build_evidence_template(
+        ROOT, identity=identity, intent=intent, entry=entry
+    )["evidence_template"][key]
+
+
 def test_placeholder_left_in_an_optional_key_blocks_ready() -> None:
+    placeholder = _emitted_placeholder(
+        "Worker", "delivery", "direct-assignment", "dispatch_owner"
+    )
     payload = mod.build_onboarding(
         ROOT,
         identity="Worker",
@@ -518,7 +529,7 @@ def test_placeholder_left_in_an_optional_key_blocks_ready() -> None:
         evidence={
             **EVIDENCE["direct-assignment"],
             "dispatch_channel": "user",
-            "dispatch_owner": "<dispatching IM>",
+            "dispatch_owner": placeholder,
         },
     )
 
@@ -526,6 +537,158 @@ def test_placeholder_left_in_an_optional_key_blocks_ready() -> None:
     assert payload["assignment"]["missing"] == []
     assert payload["assignment"]["unfilled"] == ["dispatch_owner"]
     assert "dispatch_owner" not in payload["assignment"]["evidence_template"]
+
+
+def test_angle_bracketed_real_values_are_not_template_placeholders() -> None:
+    # A Markdown autolink or a human "<none>" is evidence the caller wrote,
+    # not a placeholder the template emitted.
+    evidence = {
+        **EVIDENCE["pr-review"],
+        "GitHub PR": "<https://github.com/Books-Vocab/kg/pull/2070>",
+        "note": "<none>",
+    }
+    payload = mod.build_onboarding(
+        ROOT, identity="CR", intent="review", entry="pr-review", evidence=evidence
+    )
+
+    assert payload["status"] == "ready"
+    assert payload["assignment"]["evidence"]["GitHub PR"] == evidence["GitHub PR"]
+
+
+def test_retry_command_keeps_supplied_angle_bracketed_value() -> None:
+    evidence = {
+        "GitHub PR": "<https://github.com/Books-Vocab/kg/pull/2070>",
+        "exact HEAD": EVIDENCE["pr-review"]["exact HEAD"],
+    }
+    payload = mod.build_onboarding(
+        ROOT, identity="CR", intent="review", entry="pr-review", evidence=evidence
+    )
+
+    assignment = payload["assignment"]
+    assert payload["status"] == "awaiting-assignment"
+    assert assignment["missing"] == ["required checks"]
+    assert assignment["unfilled"] == []
+    assert assignment["evidence_template"]["GitHub PR"] == evidence["GitHub PR"]
+    assert json.dumps(evidence["GitHub PR"]) in assignment["retry_command"]
+
+
+def test_present_required_key_still_holding_its_placeholder_is_unfilled() -> None:
+    scope = _emitted_placeholder(
+        "Worker", "delivery", "direct-assignment", "structured Scope"
+    )
+    # Only the path was edited; the operation placeholder is still there.
+    half_filled_scope = {
+        **scope,
+        "files": [{**scope["files"][0], "path": "ops/agent_onboard.py"}],
+    }
+    payload = mod.build_onboarding(
+        ROOT,
+        identity="Worker",
+        intent="delivery",
+        entry="direct-assignment",
+        evidence={
+            **EVIDENCE["direct-assignment"],
+            "acceptance": "<acceptance>",
+            "structured Scope": half_filled_scope,
+        },
+    )
+
+    assignment = payload["assignment"]
+    assert payload["status"] == "awaiting-assignment"
+    assert assignment["missing"] == []
+    assert assignment["unfilled"] == ["acceptance", "structured Scope"]
+    assert "acceptance" not in assignment["provided"]
+
+
+def test_invalid_channel_does_not_hide_other_invalid_dispatch_values() -> None:
+    payload = mod.build_onboarding(
+        ROOT,
+        identity="Worker",
+        intent="delivery",
+        entry="direct-assignment",
+        evidence={"dispatch_channel": "slack", "handback_target": "CM"},
+    )
+
+    assert payload["status"] == "awaiting-assignment"
+    assert [problem["key"] for problem in payload["assignment"]["invalid"]] == [
+        "dispatch_channel",
+        "handback_target",
+    ]
+    # Every value to fix is a placeholder again, and an invalid channel counts
+    # as undecided so dispatch_owner is offered in the same round.
+    template = payload["assignment"]["evidence_template"]
+    assert template["dispatch_channel"] == "<im|user>"
+    assert template["handback_target"] == "<handback_target>"
+    assert "dispatch_owner" in template
+
+
+def test_invalid_only_evidence_names_every_invalid_value_in_one_error() -> None:
+    with pytest.raises(mod.EvidenceError) as excinfo:
+        mod.build_onboarding(
+            ROOT,
+            identity="Worker",
+            intent="delivery",
+            entry="direct-assignment",
+            evidence={
+                **EVIDENCE["direct-assignment"],
+                "dispatch_channel": "slack",
+                "handback_target": "CM",
+            },
+        )
+
+    assert "dispatch_channel" in str(excinfo.value)
+    assert "handback_target" in str(excinfo.value)
+
+
+def test_evidence_template_validates_specialist_intent() -> None:
+    template = mod.build_evidence_template(
+        ROOT,
+        identity="Worker",
+        intent="backend",
+        entry="direct-assignment",
+        specialist_intent="bug",
+    )
+    assert template["task"]["specialist_intent"] == "bug"
+    assert " --specialist-intent bug " in template["command"]
+
+    with pytest.raises(mod.OnboardingError, match="specialist skill route 無法解析"):
+        mod.build_evidence_template(
+            ROOT,
+            identity="Worker",
+            intent="backend",
+            entry="direct-assignment",
+            specialist_intent="nonsense",
+        )
+
+    with pytest.raises(mod.OnboardingError, match="不允許 specialist"):
+        mod.build_evidence_template(
+            ROOT,
+            identity="DS",
+            intent="docs",
+            entry="pr-review",
+            specialist_intent="bug",
+        )
+
+
+def test_cli_template_with_unknown_specialist_fails_closed(capsys) -> None:
+    code = mod.main(
+        [
+            "--identity",
+            "Worker",
+            "--intent",
+            "backend",
+            "--entry",
+            "direct-assignment",
+            "--specialist-intent",
+            "nonsense",
+            "--print-evidence-template",
+        ]
+    )
+
+    assert code == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "nonsense" in captured.err
 
 
 def test_cli_prints_evidence_template_without_assignment(capsys) -> None:
