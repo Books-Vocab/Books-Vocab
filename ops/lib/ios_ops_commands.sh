@@ -13,6 +13,15 @@ cmd_commands_json() {
         jsonSchemas:["kg.ios.status.v1"]
       },
       {
+        key:"guard",
+        aliases:[],
+        sideEffect:"read-only; --refresh runs one disk-guard tick (bounded cache cleanup)",
+        command:"./ops/ios_ops.sh guard [--refresh]",
+        delegate:null,
+        purpose:"shared disk guard verdict that gates build/test (exit 75 = blocked) with the blocking worktrees named; --refresh re-evaluates immediately",
+        jsonSchemas:[]
+      },
+      {
         key:"build",
         aliases:[],
         sideEffect:"local-build",

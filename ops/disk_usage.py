@@ -1302,6 +1302,30 @@ def _is_codex_supervision_checkout(path: Path, roots: list[Path]) -> bool:
     return False
 
 
+AGENT_WORKTREE_DIR_RE = re.compile(r"^agent-[0-9a-f]+$")
+
+
+def _is_ephemeral_agent_worktree(
+    path: Path, branch: str | None, workspace: Path
+) -> bool:
+    """Recognise a Claude Code subagent worktree by its exact harness shape.
+
+    ``isolation: worktree`` subagents get ``<workspace>/.claude/worktrees/
+    agent-<hex>`` on branch ``worktree-agent-<hex>`` and never pass through the
+    product registry.  Such a lane stays fully measured and quota-counted, but
+    its absence from the registry is its normal state, not an orphan.  The
+    shape is deliberately exact (direct child, name and branch must agree) so
+    any other unregistered checkout, including a detached or renamed one under
+    the same root, still fails closed.
+    """
+
+    if path.parent != workspace / ".claude" / "worktrees":
+        return False
+    if not AGENT_WORKTREE_DIR_RE.match(path.name):
+        return False
+    return branch == f"worktree-{path.name}"
+
+
 def _load_registry(state_path: Path) -> tuple[list[dict[str, Any]], str | None]:
     try:
         payload = json.loads(state_path.read_text(encoding="utf-8"))
@@ -1732,6 +1756,11 @@ def build_report(
         elif lane_kind == "supervision":
             entry["ownership"] = "supervision"
             entry["lane_state"] = "supervision"
+        elif _is_ephemeral_agent_worktree(
+            physical_path, physical.get("branch"), workspace
+        ):
+            entry["ownership"] = "ephemeral-agent"
+            entry["lane_state"] = "ephemeral"
         elif not is_excluded and entry["exists"]:
             # Keep the ownership state explicit while exposing dirty/unknown in
             # the separate worktree_state fields populated above.
@@ -1837,6 +1866,11 @@ def build_report(
         for item in physical_lanes
         if item["ownership"] == "unregistered"
     )
+    ephemeral_agent = sorted(
+        str(item["path"])
+        for item in physical_lanes
+        if item["ownership"] == "ephemeral-agent"
+    )
     dirty_physical = sorted(
         str(item["path"])
         for item in physical_lanes
@@ -1855,6 +1889,7 @@ def build_report(
         for item in physical_lanes
         if item.get("worktree_state") == "dirty"
         and not item.get("excluded")
+        and item.get("ownership") != "ephemeral-agent"
         and not (
             item.get("ownership") == "registered"
             and item.get("registry_status") == "active"
@@ -1984,6 +2019,8 @@ def build_report(
             item["reason"] == "registered-worktree" for item in exclusion_rejections
         ):
             blocking_reasons.append("supervision-path-registered")
+    if ephemeral_agent:
+        warning_reasons.append("ephemeral-agent-lane")
     if unregistered:
         blocking_reasons.append("unregistered-physical-worktree")
     if dirty_supervision:
@@ -2079,6 +2116,7 @@ def build_report(
         "active": [],
         "active_but_missing": [],
         "physical_but_unregistered": [],
+        "ephemeral_agent": [],
         "terminal_residue": [],
         "unknown": [],
     }
@@ -2089,6 +2127,8 @@ def build_report(
             classification = "terminal_residue" if item["exists"] else "unknown"
         elif item["ownership"] == "unregistered":
             classification = "physical_but_unregistered"
+        elif item["ownership"] == "ephemeral-agent":
+            classification = "ephemeral_agent"
         else:
             classification = "unknown"
         classification_items[classification].append(item)
@@ -2226,6 +2266,7 @@ def build_report(
             "missing_active_lanes": missing_active,
             "missing_terminal_lanes": missing_terminal,
             "unregistered_physical_worktrees": unregistered,
+            "ephemeral_agent_worktrees": ephemeral_agent,
             "dirty_physical_worktrees": dirty_physical,
             "unknown_physical_worktrees": unknown_physical,
             "unknown_registry_paths": unknown_registry_paths,

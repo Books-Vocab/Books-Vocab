@@ -3,6 +3,7 @@
 #
 # Usage:
 #   ./ops/ios_ops.sh status
+#   ./ops/ios_ops.sh guard [--refresh]                      # shared disk guard verdict (exit 75 = blocked, names the worktrees); --refresh re-evaluates now
 #   ./ops/ios_ops.sh build [ios_build.sh args...]          # app + test-target compile; e.g. --swift6
 #   ./ops/ios_ops.sh test [ios_test.sh args...]
 #   ./ops/ios_ops.sh test --launch-benchmark [--ui-launch-profile <standard|ui-smoke>]
@@ -301,12 +302,36 @@ source "$SCRIPT_DIR/lib/ios_ops_snapshot.sh"
 # shellcheck source=lib/ios_ops_catalog.sh
 source "$SCRIPT_DIR/lib/ios_ops_catalog.sh"
 
+# shellcheck source=lib/ios_disk_budget.sh
+source "$SCRIPT_DIR/lib/ios_disk_budget.sh"
+
+# guard [--refresh]: show the shared disk guard verdict that gates build/test
+# (exit 75 = blocked), naming the blocking worktrees; --refresh re-evaluates now.
+cmd_guard() {
+  local refresh=0 arg state rc=0
+  for arg in "$@"; do
+    case "$arg" in
+      --refresh) refresh=1 ;;
+      *) echo "guard: unknown option $arg" >&2; return 64 ;;
+    esac
+  done
+  state="${KG_IOS_DISK_GUARD_STATE:-$KG_IOS_DISK_GUARD_STATE_DEFAULT}"
+  if (( refresh == 1 )); then
+    kg_ios_disk_guard_refresh "$state" 0 || { echo "guard: refresh failed (tick unavailable or errored)" >&2; return 1; }
+  fi
+  [[ -f "$state" ]] || { echo "schema=kg.ios.guard.v1 verdict=unknown reason=disk-guard-state-missing state=$state"; return 0; }
+  KG_IOS_DISK_GUARD_AUTO_REFRESH=0 kg_ios_disk_budget_guard_state guard || rc=$?
+  echo "schema=kg.ios.guard.v1 verdict=$(kg_ios_disk_guard_json_string "$state" verdict) reason=$(kg_ios_disk_guard_json_string "$state" reason) action=$(kg_ios_disk_guard_json_string "$state" action) at=$(kg_ios_disk_guard_json_string "$state" at) refreshed=$refresh"
+  return "$rc"
+}
+
 cmd="${1:-}"
 [[ -n "$cmd" ]] || { usage; exit 0; }
 shift || true
 
 case "$cmd" in
   status) cmd_status "$@" ;;
+  guard) cmd_guard "$@" ;;
   build) cmd_delegate_with_optional_json build "$IOS_BUILD_DELEGATE" "$@" ;;
   test) cmd_delegate_with_optional_json test "$IOS_TEST_DELEGATE" "$@" ;;
   archive) cmd_archive_with_optional_json "$IOS_RELEASE_DELEGATE" "$@" ;;
