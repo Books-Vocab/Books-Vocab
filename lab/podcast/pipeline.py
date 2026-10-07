@@ -2246,9 +2246,10 @@ _TOOL_STAGE_TIMEOUTS = {  # seconds per episode
 # On timeout the child gets SIGTERM first: `uv run` forwards SIGTERM to the real
 # tool but cannot forward SIGKILL (subprocess.run(timeout=)'s bare kill() would
 # orphan a still-running synthesize), and only a SIGTERMed bash runs its EXIT
-# trap (podcast_upload.sh removes its staging dir there). SIGKILL only if the
-# child ignores SIGTERM this long. The child stays in the pipeline's process
-# group so the dashboard's killpg (monitor/jobs.py) still reaches it.
+# trap. bash does not pass SIGTERM on to the child it is waiting on, so
+# podcast_upload.sh's trap stops its own children before removing staging. SIGKILL
+# only if the child ignores SIGTERM this long. The child stays in the pipeline's
+# process group so the dashboard's killpg (monitor/jobs.py) still reaches it.
 _TOOL_TERM_GRACE = 30  # seconds
 
 

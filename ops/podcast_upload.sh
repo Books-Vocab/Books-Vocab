@@ -36,9 +36,27 @@ fi
 UV_BIN="$(command -v uv || echo "$HOME/.local/bin/uv")"
 [[ -x "$UV_BIN" ]] || { echo "✗ uv not found: $UV_BIN" >&2; exit 1; }
 
-# Clean up temp files and the staging dir on ANY exit (incl. set -e abort
-# mid-staging/metadata/index build, and SIGTERM from a pipeline publish timeout).
+# Clean up temp files and the staging dir on exit: normal end, set -e abort
+# mid-staging/metadata/index build, and SIGTERM (pipeline publish timeout) — not
+# SIGKILL, which runs no trap. A SIGTERM aimed at this shell alone is not passed
+# on to the foreground child it was waiting on, so stop our children first
+# (`uv run` forwards SIGTERM to its python) and remove staging only once none is
+# left: an orphaned reconcile step walking a vanished tree would prune the live
+# series (the reconcile step also refuses to prune without a complete staging
+# tree). If a child outlives the grace, leave staging behind rather than pull it
+# from under that child.
+_CHILD_STOP_TICKS=150  # x 0.1 s = 15 s, inside pipeline.py's 30 s SIGTERM grace
 cleanup() {
+  local tick=0
+  pkill -TERM -P $$ 2>/dev/null || true
+  while pgrep -P $$ >/dev/null 2>&1; do
+    if (( ++tick > _CHILD_STOP_TICKS )); then
+      echo "⚠ child processes still running; leaving staging ${STAGING:-<none>}" >&2
+      rm -f "${EXISTING_META_TMP:-}" "${INDEX_TMP:-}"
+      return
+    fi
+    sleep 0.1
+  done
   rm -f "${EXISTING_META_TMP:-}" "${INDEX_TMP:-}"
   if [[ -n "${STAGING:-}" ]]; then rm -rf "$STAGING"; fi
 }
@@ -396,12 +414,23 @@ if endpoint:
     kwargs["endpoint_url"] = endpoint
 s3 = boto3.client("s3", **kwargs)
 
-# Relative keys present locally (what we just uploaded).
+# Relative keys present locally (what we just uploaded). Every remote key absent
+# from this set is deleted, so a staging tree that is missing, unreadable or
+# emptied (e.g. removed under an orphaned reconcile) would prune the live series:
+# fail the upload instead.
+def _refuse(why):
+    sys.exit(f"✗ reconcile: refusing to prune — staging {staging} {why}")
+
+def _walk_error(exc):
+    _refuse(f"unreadable ({exc})")
+
 local = set()
-for root, _dirs, files in os.walk(staging):
+for root, _dirs, files in os.walk(staging, onerror=_walk_error):
     for fn in files:
         rel = os.path.relpath(os.path.join(root, fn), staging)
         local.add(rel.replace(os.sep, "/"))
+if "metadata.json" not in local:
+    _refuse("is incomplete (no metadata.json)")
 
 prefix = f"{series_id}/"
 paginator = s3.get_paginator("list_objects_v2")
