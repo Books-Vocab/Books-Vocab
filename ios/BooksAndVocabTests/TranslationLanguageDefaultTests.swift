@@ -2,18 +2,21 @@
 //  TranslationLanguageDefaultTests.swift
 //  Books & Vocab Tests
 //
+//  Guest-namespace default inference and persistence tests.
+//
+//  These tests write the `translation_*` keys in `UserDefaults.standard` and
+//  depend on the nil-account namespace, which `TranslationLanguageTests`
+//  switches to `account-a` / `account-b`. They are an extension of that
+//  serialized suite, not a separate one, so the two never run concurrently
+//  (#2117). The suite's `init()` activates the nil-account namespace before
+//  every test.
+//
 
 import Foundation
 import Testing
 @testable import BooksAndVocab
 
-struct TranslationLanguageDefaultTests {
-
-    init() {
-        // The hosted app suspends account-bound preferences before tests run.
-        // These tests exercise the guest-compatible nil-account namespace.
-        TranslationLanguage.activateAccount(nil)
-    }
+extension TranslationLanguageTests {
 
     @Test func test_inferSource_zhHans_returns_zhHans() async throws {
         let result = TranslationLanguage.inferFromPreferredLanguages(

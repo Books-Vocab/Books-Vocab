@@ -11,6 +11,17 @@ import Foundation
 import Testing
 @testable import BooksAndVocab
 
+/// Owner of every test that reads or writes `TranslationLanguage`'s
+/// process-wide persistence: the `translation_*` keys in `UserDefaults.standard`
+/// and the active account namespace (`activateAccount`).
+///
+/// `.serialized` only orders tests inside its own suite; two serialized suites
+/// still run in parallel with each other when parallel testing is enabled
+/// (Xcode / plain `xcodebuild`; `ops/ios_test.sh` disables it). A test here
+/// that switches the namespace to `account-a` would then redirect another
+/// suite's writes into its private defaults domain (#2117). So the
+/// guest-namespace tests in `TranslationLanguageDefaultTests.swift` extend this
+/// suite instead of declaring their own.
 @Suite(.serialized)
 struct TranslationLanguageTests {
 
