@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -256,3 +257,53 @@ def test_malformed_record_sharing_only_an_allowlisted_file_is_not_a_blocker() ->
     assert overlaps(shared, "ops/a.py") is False
     state["records"][0]["scope"] = json.loads(_scope_arg(shared, "ops/a.py"))
     assert overlaps(shared, "ops/a.py") is True
+
+
+# Written-contract guard: every place that states "one file, one active worktree"
+# must name the SHARED_SCOPE_FILES exception, or agents and the registry follow
+# two different rules.
+_EXCLUSIVITY_RULE = re.compile(
+    r"同一檔案不可|同時碰同一檔案|(?:兩個|多個)\s*active worktree"
+    r"|two active worktrees?|claimed by two",
+    re.IGNORECASE,
+)
+_RULE_FILES = ("CLAUDE.md", "AGENTS.md", ".claude/skills/worktree-flow/SKILL.md")
+
+
+def _unqualified_exclusivity_statements(text: str) -> list[str]:
+    return [
+        line.strip()
+        for line in text.splitlines()
+        if _EXCLUSIVITY_RULE.search(line)
+        and not ("SHARED_SCOPE_FILES" in line and "delivery_model.md" in line)
+    ]
+
+
+def test_exclusivity_detector_flags_an_unqualified_rule() -> None:
+    bare = "同一檔案不可被兩個 active worktree 同時認領。"
+    assert _unqualified_exclusivity_statements(bare) == [bare]
+    qualified = (
+        bare + "例外見 `SHARED_SCOPE_FILES`（`docs/reference/delivery_model.md`）。"
+    )
+    assert _unqualified_exclusivity_statements(qualified) == []
+
+
+@pytest.mark.parametrize("name", _RULE_FILES)
+def test_exclusivity_rule_statements_name_the_shared_scope_allowlist(
+    name: str,
+) -> None:
+    root = OPS.parent
+    text = (root / name).read_text()
+    assert _EXCLUSIVITY_RULE.search(text), f"{name} no longer states the rule"
+    assert _unqualified_exclusivity_statements(text) == []
+
+
+def test_no_doc_states_exclusivity_without_the_allowlist() -> None:
+    root = OPS.parent
+    offenders = {}
+    for pattern in ("docs/**/*.md", ".claude/**/*.md"):
+        for path in sorted(root.glob(pattern)):
+            found = _unqualified_exclusivity_statements(path.read_text())
+            if found:
+                offenders[str(path.relative_to(root))] = found
+    assert offenders == {}
