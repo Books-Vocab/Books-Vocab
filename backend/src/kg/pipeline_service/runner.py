@@ -233,6 +233,7 @@ async def run_pipeline_background(
                 # catches via the same tuple) gets logged + telemetry-closed
                 # instead of crashing the background task.
                 logger.error("[%s] Pipeline unexpected error: %s", uid, exc, exc_info=True)
+                capture_handled(exc, context="pipeline.run")
                 _telemetry(logger, "end_run", run_id, "failed")
             except Exception as exc:
                 # Defensive catch-all: when a queued run reaches the body
@@ -249,6 +250,7 @@ async def run_pipeline_background(
                     exc,
                     exc_info=True,
                 )
+                capture_handled(exc, context="pipeline.run_aborted")
                 _telemetry(logger, "end_run", run_id, "failed")
     finally:
         current_task = asyncio.current_task()
