@@ -113,6 +113,9 @@ struct SentryConfiguration: Equatable {
     /// sandbox = TestFlight, production = App Store. Xcode StoreKit testing,
     /// unverified results and lookup errors (nil) yield no channel, so
     /// neither the cache nor the live scope is touched.
+    /// Known caveat: a Release build installed directly from Xcode/devices
+    /// (not App Store) also reports `.sandbox`, so it is tagged `testflight`
+    /// and cannot be told apart from real TestFlight builds by this tag.
     static func verifiedChannel(for environment: AppStore.Environment?) -> String? {
         switch environment {
         case .sandbox?: return "testflight"
