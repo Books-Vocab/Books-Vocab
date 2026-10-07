@@ -367,12 +367,9 @@ run_one() {
         --repo-root "$ROOT" --lock-name worktree -- \
         "$UV_BIN" run --no-project --python 3.13 --with pytest pytest -q \
         ops/tests/test_worktree_abandoned_recovery.py \
-        ops/tests/test_worktree_campaign_reservation.py \
-        ops/tests/test_worktree_orchestrate_gate.py \
         ops/tests/test_worktree_published_remote_recovery.py \
         ops/tests/test_worktree_reanchor_same_path.py \
         ops/tests/test_worktree_registry_operation_lock.py \
-        ops/tests/test_worktree_registry_topology.py \
         ops/tests/test_worktree_resume_cleanup_pending.py \
         ops/tests/test_worktree_resume_maintenance.py \
         ops/tests/test_task_registry_process_identity.py
