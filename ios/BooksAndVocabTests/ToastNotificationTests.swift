@@ -12,9 +12,11 @@ import Testing
 //   AppToastCoordinator and the AppToastItem value type.
 // - AppToastCoordinator has no de-dup: show() unconditionally replaces `current`.
 //   Tests below assert this replace-latest behavior rather than de-dup.
-// - Auto-dismiss timing uses the real (short) production durations. To keep the
-//   suite fast, timing assertions sample BEFORE the deadline (no full wait) and
-//   the post-deadline case uses the success style (2.5s) only.
+// - Auto-dismiss timing runs on an injected `ManualToastScheduler`: tests advance
+//   fake time to exactly the deadline instead of sleeping against real timers,
+//   so they neither pass late nor fail on a stalled main queue (#2118). The
+//   production `AppToastTaskScheduler` is pinned separately on its own
+//   contract (runs after the delay, a cancelled action never runs).
 
 @Suite("ToastNotification")
 @MainActor
@@ -132,49 +134,157 @@ struct ToastNotificationTests {
         #expect(coordinator.current?.message == "dup")
     }
 
-    // MARK: - Auto-dismiss timing
+    // MARK: - Auto-dismiss timing (fake time)
     //
-    // These timing tests assume VoiceOver is OFF (the default state of CI
-    // simulators). When VoiceOver is ON, `AppToastCoordinator.show()` returns
-    // early via `announceIfVoiceOver` and never schedules a `dismissTask`, so
-    // the auto-dismiss and timer-reset assertions below would not hold.
+    // `show()` schedules the auto-dismiss whether or not VoiceOver is on
+    // (the announcement is a side effect only), so these hold on any
+    // simulator configuration.
 
-    @Test func toastPersistsBeforeDeadline() async throws {
-        let coordinator = AppToastCoordinator()
-        coordinator.success("done") // 2.5s duration
-        // Sample well before the deadline — toast must still be visible.
-        try await Task.sleep(for: .milliseconds(300))
-        #expect(coordinator.current != nil)
+    @Test func toastPersistsUntilJustBeforeDeadline() {
+        let clock = ManualToastScheduler()
+        let coordinator = AppToastCoordinator(scheduler: clock)
+        coordinator.success("done") // 2.5s
+        clock.advance(by: .milliseconds(2_499))
+        #expect(coordinator.current?.message == "done")
     }
 
-    @Test func toastAutoDismissesAfterDuration() async throws {
-        let coordinator = AppToastCoordinator()
-        coordinator.success("done") // 2.5s duration
-        // Wait past the deadline plus animation slack.
-        try await Task.sleep(for: .seconds(3))
+    @Test func toastAutoDismissesAtDeadline() {
+        let clock = ManualToastScheduler()
+        let coordinator = AppToastCoordinator(scheduler: clock)
+        coordinator.success("done") // 2.5s
+        clock.advance(by: .milliseconds(2_500))
+        #expect(coordinator.current == nil)
+        #expect(clock.scheduledCount == 0)
+    }
+
+    @Test func autoDismissUsesTheItemStyleDuration() {
+        let clock = ManualToastScheduler()
+        let coordinator = AppToastCoordinator(scheduler: clock)
+        coordinator.error("failed") // 4.0s
+        clock.advance(by: .milliseconds(3_999))
+        #expect(coordinator.current?.message == "failed")
+        clock.advance(by: .milliseconds(1))
         #expect(coordinator.current == nil)
     }
 
-    @Test func newShowResetsAutoDismissTimer() async throws {
-        let coordinator = AppToastCoordinator()
-        coordinator.success("first") // 2.5s
-        try await Task.sleep(for: .seconds(2))
-        // Re-show before the first deadline: cancels prior task, restarts timer.
-        coordinator.success("second")
-        // 1s after the original deadline — the second toast must survive
-        // because its 2.5s timer restarted.
-        try await Task.sleep(for: .milliseconds(800))
+    @Test func newShowResetsAutoDismissTimer() {
+        let clock = ManualToastScheduler()
+        let coordinator = AppToastCoordinator(scheduler: clock)
+        coordinator.success("first") // deadline t=2.5s
+        clock.advance(by: .seconds(2))
+        // Re-show before the first deadline: the first timer is cancelled and a
+        // fresh 2.5s timer replaces it, so only one dismissal is ever pending.
+        coordinator.success("second") // deadline t=4.5s
+        #expect(clock.scheduledCount == 1)
+        // Past the original deadline (t=2.8s) — the second toast survives.
+        clock.advance(by: .milliseconds(800))
         #expect(coordinator.current?.message == "second")
+        // Its own deadline still dismisses it.
+        clock.advance(by: .milliseconds(1_700))
+        #expect(coordinator.current == nil)
     }
 
-    @Test func manualDismissCancelsPendingAutoDismiss() async throws {
-        let coordinator = AppToastCoordinator()
-        coordinator.success("done") // 2.5s
+    @Test func manualDismissCancelsPendingAutoDismiss() {
+        let clock = ManualToastScheduler()
+        let coordinator = AppToastCoordinator(scheduler: clock)
+        coordinator.success("done") // deadline t=2.5s
         coordinator.dismiss()
         #expect(coordinator.current == nil)
-        // Show a fresh toast, then confirm the cancelled timer cannot clear it.
-        coordinator.error("kept") // 4.0s
-        try await Task.sleep(for: .seconds(3))
+        #expect(clock.scheduledCount == 0)
+        // A fresh toast must not be cleared at the cancelled timer's deadline.
+        coordinator.error("kept") // deadline t=4.0s
+        clock.advance(by: .milliseconds(2_500))
         #expect(coordinator.current?.message == "kept")
+        clock.advance(by: .milliseconds(1_500))
+        #expect(coordinator.current == nil)
     }
+
+    // MARK: - Production scheduler contract
+    //
+    // The fake-time tests above assume `AppToastTaskScheduler` runs an action
+    // after its delay and never runs a cancelled one. These tests pin that
+    // contract against real time by awaiting the action itself, with no sleep
+    // in the test.
+
+    @Test(.timeLimit(.minutes(1)))
+    func taskSchedulerRunsActionAfterDelay() async {
+        let scheduler = AppToastTaskScheduler()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            _ = scheduler.schedule(after: .milliseconds(1)) {
+                continuation.resume()
+            }
+        }
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func taskSchedulerNeverRunsCancelledAction() async {
+        let scheduler = AppToastTaskScheduler()
+        let fired = FiredActions()
+        let cancelled = scheduler.schedule(after: .milliseconds(1)) {
+            fired.names.append("cancelled")
+        }
+        cancelled.cancel()
+        // The cancelled action is due first; once the later action has run,
+        // an uncancelled one would already have fired too.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            _ = scheduler.schedule(after: .milliseconds(20)) {
+                fired.names.append("later")
+                continuation.resume()
+            }
+        }
+        #expect(fired.names == ["later"])
+    }
+}
+
+/// Fake time for `AppToastCoordinator`. `advance(by:)` runs every scheduled,
+/// uncancelled action whose deadline falls inside the advanced window, in
+/// deadline order, synchronously on the main actor.
+@MainActor
+private final class ManualToastScheduler: AppToastScheduler {
+    private struct Entry {
+        let id: Int
+        let deadline: Duration
+        let action: @MainActor () -> Void
+    }
+
+    private var now: Duration = .zero
+    private var nextID = 0
+    private var entries: [Entry] = []
+
+    /// Actions scheduled and neither run nor cancelled yet.
+    var scheduledCount: Int { entries.count }
+
+    func schedule(
+        after delay: Duration,
+        _ action: @escaping @MainActor () -> Void
+    ) -> AppToastScheduledAction {
+        let id = nextID
+        nextID += 1
+        entries.append(Entry(id: id, deadline: now + delay, action: action))
+        return AppToastScheduledAction { [weak self] in
+            self?.entries.removeAll { $0.id == id }
+        }
+    }
+
+    func advance(by delta: Duration) {
+        let target = now + delta
+        while let index = nextDueIndex(notAfter: target) {
+            let entry = entries.remove(at: index)
+            now = entry.deadline
+            entry.action()
+        }
+        now = target
+    }
+
+    private func nextDueIndex(notAfter target: Duration) -> Int? {
+        entries.indices
+            .filter { entries[$0].deadline <= target }
+            .min { (entries[$0].deadline, entries[$0].id) < (entries[$1].deadline, entries[$1].id) }
+    }
+}
+
+/// Records which scheduled actions ran, in order.
+@MainActor
+private final class FiredActions {
+    var names: [String] = []
 }
