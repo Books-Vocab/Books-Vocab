@@ -22,6 +22,10 @@ build_sandbox() {
   chmod +x "$sb/ops/fake_gen.sh"
   cp "$ROOT/ops/docs_lint.sh" "$sb/ops/docs_lint.sh"
   chmod +x "$sb/ops/docs_lint.sh"
+  # docs_lint resolves its source-existence checker next to itself and fails closed
+  # (rc=1) without it, so the copied gate needs its dependency beside it.
+  cp "$ROOT/ops/docs_impact.py" "$sb/ops/docs_impact.py"
+  chmod +x "$sb/ops/docs_impact.py"
   {
     echo "documents:"
     echo "  - id: generated.probe"
