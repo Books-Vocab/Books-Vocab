@@ -1562,10 +1562,12 @@ rebuild_test_cache() {
   # worktrees. Pass that same anchor so the aggregate preflight measures the
   # shared test cache instead of reporting the worktree-local .cache as empty.
   disk_budget_project_root="$(dirname "$(dirname "$TEST_CACHE_ROOT")")"
-  if ! kg_ios_disk_budget_preflight "$disk_budget_project_root" "test"; then
-    echo "[ios_test] blocked by disk budget; clean rebuildable cache before retry" >&2
+  local preflight_rc=0
+  kg_ios_disk_budget_preflight "$disk_budget_project_root" "test" || preflight_rc=$?
+  if (( preflight_rc != 0 )); then
+    kg_ios_disk_budget_blocked_hint "[ios_test]" "$preflight_rc"
     release_build_lock
-    return "$KG_IOS_DISK_BUDGET_EXIT"
+    return "$preflight_rc"
   fi
   REBUILD_DID_BUILD=1
   # A previous build may have been interrupted, leaving a partial cache with no

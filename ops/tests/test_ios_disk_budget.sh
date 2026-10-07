@@ -393,5 +393,111 @@ env "${pf_env[@]}" KG_IOS_DISK_GUARD_ALREADY_CHECKED=1 KG_IOS_DISK_GUARD_CHECKED
   /bin/bash -c "source '$LIB'; kg_ios_disk_budget_preflight '$cache_root' build" >/dev/null 2>&1 || pf_rc=$?
 [[ "$pf_rc" -eq 77 ]] && ok "early verdict older than the state max age is re-read in-lock" || bad "stale early verdict exit=$pf_rc"
 
+echo "── in-lock guard re-read propagates the structural exit (ios_build.sh, real run) ──"
+# The early verdict passes, then the state turns blocked while the script waits
+# for the build lock; with MAX_AGE=1 the early verdict is stale by the time the
+# lock is granted, so the in-lock preflight re-reads the guard.  The script's
+# own exit code must be the preflight's (77 structural / 75 temporary), not a
+# hardcoded 75 with "clean rebuildable cache" advice.
+run_build_in_lock_case() {  # $1=label $2=state written during the lock wait
+  local label="$1" late_state="$2" lock state out holder build_pid waited rc
+  lock="$TMP/inlock-$label.lock"
+  state="$TMP/inlock-$label-state.json"
+  out="$TMP/inlock-$label.out"
+  printf '{"schema":"kg.disk.guard.v1","verdict":"ok","xctest_devices_verdict":"pass","at":"%s"}\n' \
+    "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$state"
+  sleep 120 &
+  holder=$!
+  shlock -f "$lock" -p "$holder" || { bad "$label: could not stage the lock holder"; kill "$holder" 2>/dev/null; return; }
+  KG_IOS_BUILD_LOCK_FILE="$lock" KG_IOS_BUILD_DERIVED_DATA_ROOT="$TMP/inlock-$label-dd" \
+    KG_IOS_DISK_GUARD_STATE="$state" KG_IOS_DISK_GUARD_MAX_AGE_SECONDS=1 KG_IOS_DISK_GUARD_AUTO_REFRESH=0 \
+    KG_IOS_DISK_CACHE_ROOTS="$cache_root/ios-test-derived-data" KG_IOS_DISK_CACHE_BUDGET_GIB=1 \
+    KG_IOS_DISK_CACHE_HEADROOM_GIB=0 KG_IOS_DISK_MIN_FREE_GIB=20 \
+    KG_IOS_DISK_FREE_BYTES=$((40 * 1073741824)) \
+    "$ROOT/ops/ios_build.sh" --timeout 60 >"$out" 2>&1 &
+  build_pid=$!
+  waited=0
+  until grep -q 'waiting for lock' "$out" 2>/dev/null || (( waited >= 150 )); do sleep 0.2; waited=$((waited + 1)); done
+  sleep 2
+  printf '%s\n' "$late_state" > "$state"
+  kill "$holder" 2>/dev/null
+  wait "$holder" 2>/dev/null
+  rc=0
+  wait "$build_pid" || rc=$?
+  INLOCK_RC="$rc"
+  INLOCK_OUT="$(cat "$out")"
+}
+late_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+run_build_in_lock_case structural \
+  "{\"schema\":\"kg.disk.guard.v1\",\"verdict\":\"ok\",\"xctest_devices_verdict\":\"block\",\"xctest_devices_manual_review\":1,\"at\":\"$late_at\"}"
+[[ "$INLOCK_RC" -eq 77 ]] && ok "ios_build.sh: in-lock structural block exits 77" || bad "ios_build.sh in-lock structural exit=$INLOCK_RC: $INLOCK_OUT"
+grep -q 'retryable=no' <<<"$INLOCK_OUT" \
+  && ok "ios_build.sh: in-lock structural block says retryable=no" \
+  || bad "ios_build.sh in-lock structural block lacks retryable=no: $INLOCK_OUT"
+! grep -q 'clean rebuildable cache before retry' <<<"$INLOCK_OUT" \
+  && ok "ios_build.sh: structural block does not advise cleaning cache" \
+  || bad "ios_build.sh structural block still advises cleaning cache: $INLOCK_OUT"
+run_build_in_lock_case temporary \
+  "{\"schema\":\"kg.disk.guard.v1\",\"verdict\":\"ok\",\"xctest_devices_verdict\":\"block\",\"xctest_devices_manual_review\":0,\"at\":\"$late_at\"}"
+[[ "$INLOCK_RC" -eq 75 ]] && ok "ios_build.sh: in-lock temporary block still exits 75" || bad "ios_build.sh in-lock temporary exit=$INLOCK_RC: $INLOCK_OUT"
+grep -q 'clean rebuildable cache before retry' <<<"$INLOCK_OUT" \
+  && ok "ios_build.sh: temporary block keeps the clean-cache hint" \
+  || bad "ios_build.sh temporary block lost the clean-cache hint: $INLOCK_OUT"
+
+echo "── in-lock preflight rc propagation: ios_test.sh rebuild_test_cache / ios_release.sh ──"
+fn_runner="$TMP/test-fn-runner.sh"
+build_fn="$(awk '/^rebuild_test_cache\(\) \{/ { c=1 } /^ensure_xctestrun_ready_or_fail\(\) \{/ { exit } c { print }' "$ROOT/ops/ios_test.sh")"
+[[ -n "$build_fn" ]] || bad "cannot extract rebuild_test_cache from ios_test.sh"
+run_test_fn_case() {  # $1=stub preflight rc
+  {
+    printf '%s\n' '#!/usr/bin/env bash' 'set -uo pipefail' "source '$LIB'"
+    printf '%s\n' "DERIVED_DATA_ROOT='$TMP/fn-dd'" "TEST_CACHE_ROOT='$TMP/fn-cache/ios-test'" \
+      'REBUILD_DID_BUILD=0' 'acquire_build_lock() { :; }' 'kg_ios_cache_evict() { :; }' \
+      'ios_test_find_xctestrun() { return 1; }' 'ios_test_cache_is_complete() { return 1; }' \
+      'ios_test_cached_products_ready() { return 1; }' \
+      'release_build_lock() { echo LOCK_RELEASED; }' \
+      "kg_ios_disk_budget_preflight() { return $1; }"
+    printf '%s\n' "$build_fn"
+    printf '%s\n' 'rc=0; rebuild_test_cache x y || rc=$?' 'echo "FN_RC=$rc"'
+  } > "$fn_runner"
+  FN_OUT="$(/bin/bash "$fn_runner" 2>&1)"
+}
+run_test_fn_case 77
+grep -q '^FN_RC=77$' <<<"$FN_OUT" && ok "ios_test.sh: in-lock structural preflight returns 77" || bad "ios_test.sh in-lock structural: $FN_OUT"
+grep -q 'LOCK_RELEASED' <<<"$FN_OUT" && ok "ios_test.sh: structural block releases the build lock" || bad "ios_test.sh structural block kept the lock: $FN_OUT"
+! grep -q 'clean rebuildable cache before retry' <<<"$FN_OUT" \
+  && ok "ios_test.sh: structural block does not advise cleaning cache" \
+  || bad "ios_test.sh structural block still advises cleaning cache: $FN_OUT"
+run_test_fn_case 75
+grep -q '^FN_RC=75$' <<<"$FN_OUT" && ok "ios_test.sh: in-lock temporary preflight returns 75" || bad "ios_test.sh in-lock temporary: $FN_OUT"
+grep -q 'clean rebuildable cache before retry' <<<"$FN_OUT" \
+  && ok "ios_test.sh: temporary block keeps the clean-cache hint" \
+  || bad "ios_test.sh temporary block lost the hint: $FN_OUT"
+
+release_block="$(awk '/^(preflight_rc=0|if ! kg_ios_disk_budget_preflight "\$ROOT" "release")/ { c=1 } c { print } c && /^fi$/ { exit }' "$ROOT/ops/ios_release.sh")"
+[[ -n "$release_block" ]] || bad "cannot extract the in-lock preflight block from ios_release.sh"
+run_release_block_case() {  # $1=stub preflight rc
+  local runner="$TMP/release-block-runner.sh"
+  {
+    printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' "source '$LIB'" "ROOT='$TMP'" \
+      "kg_ios_disk_budget_preflight() { return $1; }"
+    printf '%s\n' "$release_block" 'echo RELEASE_CONTINUED'
+  } > "$runner"
+  REL_RC=0
+  REL_OUT="$(/bin/bash "$runner" 2>&1)" || REL_RC=$?
+}
+run_release_block_case 77
+[[ "$REL_RC" -eq 77 ]] && ok "ios_release.sh: in-lock structural preflight exits 77" || bad "ios_release.sh in-lock structural exit=$REL_RC: $REL_OUT"
+! grep -q 'clean rebuildable cache before retry' <<<"$REL_OUT" \
+  && ok "ios_release.sh: structural block does not advise cleaning cache" \
+  || bad "ios_release.sh structural block still advises cleaning cache: $REL_OUT"
+run_release_block_case 75
+[[ "$REL_RC" -eq 75 ]] && ok "ios_release.sh: in-lock temporary preflight exits 75" || bad "ios_release.sh in-lock temporary exit=$REL_RC: $REL_OUT"
+grep -q 'clean rebuildable cache before retry' <<<"$REL_OUT" \
+  && ok "ios_release.sh: temporary block keeps the clean-cache hint" \
+  || bad "ios_release.sh temporary block lost the hint: $REL_OUT"
+run_release_block_case 0
+[[ "$REL_RC" -eq 0 ]] && grep -q RELEASE_CONTINUED <<<"$REL_OUT" && ok "ios_release.sh: passing preflight continues" || bad "ios_release.sh passing preflight: rc=$REL_RC $REL_OUT"
+
 echo "passed=$PASS failed=$FAIL"
 [[ "$FAIL" -eq 0 ]]

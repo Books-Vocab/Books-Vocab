@@ -120,6 +120,17 @@ def test_structural_guard_exit_is_distinct_from_the_retryable_75():
     assert f"KG_IOS_DISK_BUDGET_EXIT={codes.EXIT_CLAIMED}" in shell
 
 
+def test_in_lock_preflight_callers_propagate_the_preflight_exit():
+    # The in-lock preflight can return 77 (structural); a caller that discards its
+    # rc and exits the hardcoded 75 turns a non-retryable block back into the
+    # temporary code agents poll on.
+    for script in ("ops/ios_build.sh", "ops/ios_test.sh", "ops/ios_release.sh"):
+        text = (ROOT / script).read_text(encoding="utf-8")
+        assert "|| preflight_rc=$?" in text, script
+        assert 'kg_ios_disk_budget_blocked_hint' in text, script
+        assert '"$KG_IOS_DISK_BUDGET_EXIT"' not in text, script
+
+
 def test_contract_test_is_registered_in_default_dispatch_and_ci_coverage():
     dispatcher = (ROOT / "ops/test_ops.sh").read_text(encoding="utf-8")
     coverage = (ROOT / "ops/tests/test_ops_ci_coverage.sh").read_text(encoding="utf-8")
