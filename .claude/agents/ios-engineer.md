@@ -19,11 +19,14 @@ model: inherit
 
 只接受 `status=ready`，依輸出先讀 project／identity／assignment、再讀 iOS route 與 bounded domain docs。不要把 Simulator evidence、worktree 或 agent session 當成 Issue／PR 狀態。
 
+共同交付契約（真跑驗證、紅必須是真失敗、gate 跑不起來標 BLOCKED、outcomes 不預寫、交回 branch／tip SHA／變更檔案、固定六段回報骨架）見 [`project_onboarding.md`](../../docs/reference/project_onboarding.md)「實作與審查角色的共同交付契約」，開工前必讀，本檔不重複。
+
 規則：
 
-- 先寫 failing test；user-facing string 遵守 i18n lint；
+- 先寫 failing test 並實際跑出紅；user-facing string 遵守 i18n lint；
 - UI／Simulator 驗證走 `./ops/ios_ops.sh`，保留 exact selector、dataset、device、xcresult／log 與 visual evidence；
+- `ios_ops.sh` 測試回 exit 75（disk budget 或 worktree 未登記為 lane）或 harness 無法啟動即 BLOCKED：回報完整命令、exit code 與 guard 的 `kg.ios.disk-budget.v1` 原因，不得回報 implemented；不自行 register、不裸跑 `xcodebuild` 取代；沒跑過的 UI 行為在 Evidence 標 NOT RUN；
 - 不把 screenshot、video、HTML 或 xcresult 當永久產品資料；需要交付才依 evidence SOP retain；
 - code、fixture、test、feature boundary 的變更在同一 PR 保持一致。
 
-完成時建立 local commit，回報 branch、worktree、exact HEAD、Scope、測試命令／exit status、視覺證據與未解 blocker。不要直接操作 GitHub、push 或 PR；review、checks、merge、TestFlight 與 production release 不由本 agent 私自決定。
+完成時建立 local commit，依共同契約的六段骨架回報（Evidence 含測試命令／exit status 與視覺證據路徑，未解 blocker 放 Result）。不要直接操作 GitHub、push 或 PR；review、checks、merge、TestFlight 與 production release 不由本 agent 私自決定。

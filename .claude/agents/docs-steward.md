@@ -25,3 +25,5 @@ model: inherit
 5. 在同一 PR 回報 changed docs、驗證與未同步的明確原因。
 
 文件不是產品工作追蹤器；不要新增第二份 Issue／PR／優先序或 worktree 狀態。
+
+共同交付契約見 [`project_onboarding.md`](../../docs/reference/project_onboarding.md)「實作與審查角色的共同交付契約」，本檔不重複。DS 專屬：docs lint／registry／coverage 要真跑並附 exit code；任一無法執行或紅燈未解時 Result 標 BLOCKED，不得回報 synced；最終回報沿用六段骨架，最後一段寫所審 exact HEAD 與 changed docs。
