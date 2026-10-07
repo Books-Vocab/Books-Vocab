@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 from unittest.mock import MagicMock, patch
 
@@ -15,12 +16,14 @@ from kg import apple_auth
 
 @pytest.fixture(autouse=True)
 def _reset_cache():
-    """Reset global JWKS cache before each test."""
+    """Reset global JWKS cache (and refetch backoff) before each test."""
     apple_auth._apple_public_keys.clear()
     apple_auth._keys_last_fetched = 0
+    apple_auth._last_fetch_finished = float("-inf")
     yield
     apple_auth._apple_public_keys.clear()
     apple_auth._keys_last_fetched = 0
+    apple_auth._last_fetch_finished = float("-inf")
 
 
 FAKE_KID = "test-kid-1"
@@ -295,9 +298,7 @@ class TestVerifyAppleToken:
             mock_jwt.InvalidIssuerError = real_jwt.InvalidIssuerError
             mock_jwt.PyJWTError = real_jwt.PyJWTError
             # PyJWT detects exp <= now and raises before we can read claims.
-            mock_jwt.decode.side_effect = real_jwt.ExpiredSignatureError(
-                "Signature has expired"
-            )
+            mock_jwt.decode.side_effect = real_jwt.ExpiredSignatureError("Signature has expired")
 
             with pytest.raises(HTTPException) as exc_info:
                 apple_auth.verify_apple_token("boundary-expired.token", AUDIENCE)
@@ -323,9 +324,7 @@ class TestVerifyAppleToken:
             mock_jwt.PyJWTError = real_jwt.PyJWTError
             mock_jwt.ImmatureSignatureError = real_jwt.ImmatureSignatureError
             # Simulate PyJWT rejecting an iat 60s in the future.
-            mock_jwt.decode.side_effect = real_jwt.ImmatureSignatureError(
-                "The token is not yet valid (iat)"
-            )
+            mock_jwt.decode.side_effect = real_jwt.ImmatureSignatureError("The token is not yet valid (iat)")
 
             with pytest.raises(HTTPException) as exc_info:
                 apple_auth.verify_apple_token("future-iat.token", AUDIENCE)
@@ -402,6 +401,131 @@ class TestFetchApplePublicKeys:
             # Should not raise — silently keeps old cache
             apple_auth._fetch_apple_public_keys()
             assert FAKE_KID in apple_auth._apple_public_keys
+
+
+class _FakeClock:
+    """Stand-in for the ``time`` module as seen by apple_auth only."""
+
+    def __init__(self) -> None:
+        self.wall = 1_800_000_000.0
+        self.mono = 50_000.0
+
+    def time(self) -> float:
+        return self.wall
+
+    def monotonic(self) -> float:
+        return self.mono
+
+    def advance(self, seconds: float) -> None:
+        self.wall += seconds
+        self.mono += seconds
+
+
+def _patched_pem():
+    """Patch the JWK->PEM conversion; these tests are about fetch scheduling."""
+    rsa = patch("kg.apple_auth.RSAPublicNumbers")
+    mock_rsa = rsa.start()
+    mock_rsa.return_value.public_key.return_value.public_bytes.return_value = FAKE_PEM
+    return rsa
+
+
+class TestJwksRefetchBackoff:
+    """#2060: unauthenticated callers control ``kid``; a forged one must not
+    buy a JWKS round trip (up to 10s of blocking) on every request."""
+
+    def test_unknown_kid_refetch_is_limited_to_one_per_minute(self, monkeypatch):
+        clock = _FakeClock()
+        monkeypatch.setattr(apple_auth, "time", clock)
+        apple_auth._apple_public_keys[FAKE_KID] = FAKE_JWK
+        apple_auth._keys_last_fetched = clock.time()
+        cm, client = _mock_httpx_success()
+
+        def forged_kid_status() -> int:
+            with pytest.raises(HTTPException) as exc_info:
+                apple_auth._get_rsa_public_key("forged-kid")
+            return exc_info.value.status_code
+
+        with patch("kg.apple_auth.httpx.Client", return_value=cm):
+            assert [forged_kid_status() for _ in range(3)] == [401, 401, 401]
+            assert client.get.call_count == 1
+
+            clock.advance(59)
+            assert forged_kid_status() == 401
+            assert client.get.call_count == 1
+
+            clock.advance(2)  # 61s after the last refetch
+            assert forged_kid_status() == 401
+            assert client.get.call_count == 2
+
+    def test_rotated_kid_is_still_picked_up_by_the_allowed_refetch(self, monkeypatch):
+        clock = _FakeClock()
+        monkeypatch.setattr(apple_auth, "time", clock)
+        apple_auth._apple_public_keys["old-kid"] = {"kid": "old-kid", "n": "AQAB", "e": "AQAB"}
+        apple_auth._keys_last_fetched = clock.time()
+        cm, client = _mock_httpx_success()
+        rsa = _patched_pem()
+        try:
+            with patch("kg.apple_auth.httpx.Client", return_value=cm):
+                assert apple_auth._get_rsa_public_key(FAKE_KID) == FAKE_PEM
+                assert apple_auth._get_rsa_public_key(FAKE_KID) == FAKE_PEM
+        finally:
+            rsa.stop()
+        assert client.get.call_count == 1
+
+    def test_failed_ttl_refresh_backs_off_and_serves_stale_keys(self, monkeypatch):
+        clock = _FakeClock()
+        monkeypatch.setattr(apple_auth, "time", clock)
+        apple_auth._apple_public_keys[FAKE_KID] = FAKE_JWK
+        apple_auth._keys_last_fetched = clock.time() - apple_auth._CACHE_DURATION_SECONDS - 1
+        cm = _mock_httpx_error()
+        client = cm.__enter__.return_value
+        rsa = _patched_pem()
+        try:
+            with patch("kg.apple_auth.httpx.Client", return_value=cm):
+                assert apple_auth._get_rsa_public_key(FAKE_KID) == FAKE_PEM
+                clock.advance(30)
+                assert apple_auth._get_rsa_public_key(FAKE_KID) == FAKE_PEM
+                assert client.get.call_count == 1
+                clock.advance(31)
+                assert apple_auth._get_rsa_public_key(FAKE_KID) == FAKE_PEM
+                assert client.get.call_count == 2
+        finally:
+            rsa.stop()
+
+    def test_concurrent_cold_start_fetches_are_coalesced(self):
+        """Verification now runs in worker threads; N cold callers must share one fetch."""
+        callers = 5
+        barrier = threading.Barrier(callers)
+        fetches: list[str] = []
+
+        def slow_failing_get(url):
+            fetches.append(url)
+            time.sleep(0.3)
+            raise httpx.HTTPError("apple unavailable")
+
+        client_instance = MagicMock()
+        client_instance.get.side_effect = slow_failing_get
+        cm = MagicMock()
+        cm.__enter__ = MagicMock(return_value=client_instance)
+        cm.__exit__ = MagicMock(return_value=False)
+        statuses: list[int] = []
+
+        def call():
+            barrier.wait()
+            try:
+                apple_auth._get_rsa_public_key(FAKE_KID)
+            except HTTPException as exc:
+                statuses.append(exc.status_code)
+
+        with patch("kg.apple_auth.httpx.Client", return_value=cm):
+            threads = [threading.Thread(target=call) for _ in range(callers)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=10)
+
+        assert len(fetches) == 1
+        assert statuses == [503] * callers
 
 
 # ----------------------------------------------------------------------
@@ -486,6 +610,7 @@ class TestVerifyAppleTokenRealCrypto:
         where attackers strip aud entirely (PyJWT 9.x require_aud=True is
         the runtime guard; this test pins it as a contract)."""
         import time as _t
+
         priv, pub = rsa_keypair
         now = int(_t.time())
         payload_no_aud = {

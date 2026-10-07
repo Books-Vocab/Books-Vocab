@@ -2,6 +2,7 @@
 
 import base64
 import logging
+import threading
 import time
 from typing import Any
 
@@ -22,6 +23,12 @@ APPLE_PUBLIC_KEY_URL = "https://appleid.apple.com/auth/keys"
 _apple_public_keys: dict[str, Any] = {}
 _keys_last_fetched: float = 0
 _CACHE_DURATION_SECONDS = 86400  # Cache keys for 24 hours
+# `kid` comes from an unverified header, so any caller can name an unknown
+# one. While keys are cached, refetch (unknown kid or expired TTL) at most once
+# per interval; an empty cache always retries since it has nothing to serve.
+_MIN_REFETCH_INTERVAL_SECONDS = 60.0
+_last_fetch_finished: float = float("-inf")  # time.monotonic() of last attempt
+_fetch_lock = threading.Lock()
 
 
 def _fetch_apple_public_keys() -> None:
@@ -48,29 +55,51 @@ def _b64url_decode(value: str) -> bytes:
     return base64.urlsafe_b64decode(value + ("=" * ((-len(value)) % 4)))
 
 
+def _refresh_keys_if_needed(kid: str) -> None:
+    """Refetch the JWKS when ``kid`` is unknown or the TTL expired, rate-limited.
+
+    Verification runs in worker threads, so concurrent callers serialise on
+    ``_fetch_lock`` and reuse a fetch that finished while they waited.
+    """
+    global _last_fetch_finished
+    requested_at = time.monotonic()
+    with _fetch_lock:
+        expired = time.time() - _keys_last_fetched > _CACHE_DURATION_SECONDS
+        if kid in _apple_public_keys and not expired:
+            return
+        if _last_fetch_finished >= requested_at:
+            return
+        if _apple_public_keys and time.monotonic() - _last_fetch_finished < _MIN_REFETCH_INTERVAL_SECONDS:
+            return
+        try:
+            _fetch_apple_public_keys()
+        finally:
+            _last_fetch_finished = time.monotonic()
+
+
 def _get_rsa_public_key(kid: str) -> str | bytes:
     """Convert a JWK to a PEM format public key."""
-    # Refresh cache if needed or if kid is not in cache
-    if time.time() - _keys_last_fetched > _CACHE_DURATION_SECONDS or kid not in _apple_public_keys:
-        _fetch_apple_public_keys()
+    _refresh_keys_if_needed(kid)
 
     jwk = _apple_public_keys.get(kid)
     if not jwk:
+        if not _apple_public_keys:
+            # A concurrent cold-start fetch failed and this caller reused it.
+            raise HTTPException(status_code=503, detail="Authentication service unavailable")
         raise HTTPException(status_code=401, detail="Invalid token kid (Key ID)")
 
     # Decode base64url encoded n and e
     n_bytes = _b64url_decode(jwk["n"])
     e_bytes = _b64url_decode(jwk["e"])
 
-    n = int.from_bytes(n_bytes, byteorder='big')
-    e = int.from_bytes(e_bytes, byteorder='big')
+    n = int.from_bytes(n_bytes, byteorder="big")
+    e = int.from_bytes(e_bytes, byteorder="big")
 
     public_numbers = RSAPublicNumbers(e, n)
     public_key = public_numbers.public_key(default_backend())
 
     pem = public_key.public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo
+        encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo
     )
     return pem
 
@@ -99,11 +128,7 @@ def verify_apple_token(token: str, audience: str) -> VerifiedIdentity:
         # 3. Decode and verify the token
         # See https://developer.apple.com/documentation/sign_in_with_apple/sign_in_with_apple_rest_api/verifying_a_user
         decoded = jwt.decode(
-            token,
-            key=public_key,
-            algorithms=["RS256"],
-            audience=audience,
-            issuer="https://appleid.apple.com"
+            token, key=public_key, algorithms=["RS256"], audience=audience, issuer="https://appleid.apple.com"
         )
 
         # 4. Extract subject (user ID)

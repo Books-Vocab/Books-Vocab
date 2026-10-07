@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 
@@ -25,12 +26,11 @@ async def auth_verify_response(
     if req.provider == "google":
         if not google_client_id:
             raise HTTPException(status_code=500, detail="GOOGLE_CLIENT_ID not configured")
-        provider_user_id, token_email, email_verified = await verify_google_token(
-            req.token, google_client_id
-        )
+        provider_user_id, token_email, email_verified = await verify_google_token(req.token, google_client_id)
     elif req.provider == "apple":
-        provider_user_id, token_email, email_verified = verify_apple_token(
-            req.token, apple_bundle_id
+        # Sync JWKS fetch (on unknown kid / TTL expiry): keep it off the event loop.
+        provider_user_id, token_email, email_verified = await asyncio.to_thread(
+            verify_apple_token, req.token, apple_bundle_id
         )
     else:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {req.provider}")
@@ -42,19 +42,15 @@ async def auth_verify_response(
     # Only warn when both sides are present and disagree. A missing
     # token_email is normal for Apple resign-ins, where the client may
     # legitimately still send the cached email — not a takeover signal.
-    if (
-        req.email is not None
-        and token_email is not None
-        and req.email.strip().lower() != token_email
-    ):
+    if req.email is not None and token_email is not None and req.email.strip().lower() != token_email:
         logger.warning(
-            "auth.verify: client-supplied email differs from token email; "
-            "ignoring client value (provider=%s)",
+            "auth.verify: client-supplied email differs from token email; ignoring client value (provider=%s)",
             req.provider,
         )
 
     link_email = token_email if email_verified else None
-    canonical_user_id = resolve_and_link_user(provider_user_id, req.provider, link_email)
+    # Waits on the shared users.json FileLock: must not block the event loop.
+    canonical_user_id = await asyncio.to_thread(resolve_and_link_user, provider_user_id, req.provider, link_email)
     access_token = create_jwt_token(canonical_user_id, req.provider)
 
     return AuthVerifyResponse(

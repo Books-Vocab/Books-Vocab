@@ -242,15 +242,15 @@ async def google_callback(
     # Verify id_token and resolve user (reuse existing infra)
     provider_user_id, token_email, email_verified = await verify_google_token(id_token_str, settings.google_client_id)
 
-    load_users_fn = request.app.state.load_users
-    save_users_fn = request.app.state.save_users
-    canonical_user_id = _resolve_and_link_user(
+    # Waits on the shared users.json FileLock: keep it off the event loop.
+    canonical_user_id = await asyncio.to_thread(
+        _resolve_and_link_user,
         provider_user_id,
         "google",
         email=token_email if email_verified else None,
         settings=settings,
-        load_users_fn=load_users_fn,
-        save_users_fn=save_users_fn,
+        load_users_fn=request.app.state.load_users,
+        save_users_fn=request.app.state.save_users,
     )
     jwt_token = _create_jwt_token(canonical_user_id, "google", settings=settings)
     return _login_success_response(request, jwt_token=jwt_token, user_id=canonical_user_id)
@@ -277,18 +277,19 @@ async def apple_callback(
 
     settings = request.app.state.kg_settings
 
-    # Verify Apple id_token (reuse existing infra)
-    provider_user_id, token_email, email_verified = verify_apple_token(id_token, settings.apple_service_id)
-
-    load_users_fn = request.app.state.load_users
-    save_users_fn = request.app.state.save_users
-    canonical_user_id = _resolve_and_link_user(
+    # Verify Apple id_token (sync JWKS fetch) and link the user (users.json
+    # FileLock) in worker threads so neither blocks the event loop.
+    provider_user_id, token_email, email_verified = await asyncio.to_thread(
+        verify_apple_token, id_token, settings.apple_service_id
+    )
+    canonical_user_id = await asyncio.to_thread(
+        _resolve_and_link_user,
         provider_user_id,
         "apple",
         email=token_email if email_verified else None,
         settings=settings,
-        load_users_fn=load_users_fn,
-        save_users_fn=save_users_fn,
+        load_users_fn=request.app.state.load_users,
+        save_users_fn=request.app.state.save_users,
     )
     jwt_token = _create_jwt_token(canonical_user_id, "apple", settings=settings)
     return _login_success_response(request, jwt_token=jwt_token, user_id=canonical_user_id)
