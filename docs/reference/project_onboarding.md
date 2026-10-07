@@ -79,11 +79,13 @@ GitHub 是交付控制面：Issue／Project 管規劃與排序，branch／worktr
   --intent '<delivery|review|docs|release|backend|ios>' \
   --entry '<coordination|merge|direct-assignment|issue|pr-review|release>' \
   --specialist-intent '<optional identity-scoped specialist intent>' \
-  --evidence '<JSON object containing the required assignment evidence>' \
+  --evidence-file '<own worktree>/.cache/agent-scratch/evidence.json' \
   --json
 ```
 
-`--evidence` 必須逐項提供該 identity／entry 要求的外部證據；缺少時回傳 `status=awaiting-assignment` 並停在 assignment，不會載入 skill 或 domain 文件。只有 `status=ready` 才能繼續；不可自行猜測身份、Scope 或授權。不確定 key 時先加 `--print-evidence-template`（只讀，exit 0）取得該 identity／entry 的全部 required／conditional（如 `dispatch_channel=im` 時的 `dispatch_owner`）／optional key 與可直接複製的命令；awaiting 輸出（exit 3）一次列出全部 `missing`（缺 key／空值）、`unfilled`（仍是範本原樣輸出的 placeholder；自己寫的 `<https://...>` 不算）與 `invalid`，`assignment.retry_command` 保留已填值、待修值換回 placeholder；只剩無效值時改 exit 2，錯誤訊息同樣列出全部無效值。
+Evidence 優先用 `--evidence-file`：先以 Write 把 JSON object 寫進 `<own worktree>/.cache/agent-scratch/`，再傳路徑；inline `--evidence '<JSON>'` 仍可用但與前者互斥，且易被 harness 以引號拒絕。用檔案時 awaiting 的 `retry_command` 沿用同一個 `--evidence-file`，把 `evidence_template` 補完寫回該檔即可重跑。
+
+Evidence 必須逐項提供該 identity／entry 要求的外部證據；缺少時回傳 `status=awaiting-assignment` 並停在 assignment，不會載入 skill 或 domain 文件。只有 `status=ready` 才能繼續；不可自行猜測身份、Scope 或授權。不確定 key 時先加 `--print-evidence-template`（只讀，exit 0）取得該 identity／entry 的全部 required／conditional（如 `dispatch_channel=im` 時的 `dispatch_owner`）／optional key 與可直接複製的命令；awaiting 輸出（exit 3）一次列出全部 `missing`（缺 key／空值）、`unfilled`（仍是範本原樣輸出的 placeholder；自己寫的 `<https://...>` 不算）與 `invalid`，`assignment.retry_command` 保留已填值、待修值換回 placeholder；只剩無效值時改 exit 2，錯誤訊息同樣列出全部無效值。
 
 `--specialist-intent` 是可選但受限的精準路由，例如 bug、docs-impact、production-status 或某個 domain pipeline；可用值由 `ops/context_plane.json` 綁定到 identity／intent／entry，並由 skill catalog 驗證。Simulator 只是其中一個 `ios` specialist 範例，不是 onboarding 的特殊中心。
 

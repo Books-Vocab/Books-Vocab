@@ -791,6 +791,78 @@ def test_cli_invalid_evidence_json_fails_closed_with_template_hint(capsys) -> No
     assert "--print-evidence-template" in err
 
 
+def _worker_argv(*extra: str) -> list[str]:
+    return [
+        "--identity",
+        "Worker",
+        "--intent",
+        "delivery",
+        "--entry",
+        "direct-assignment",
+        *extra,
+    ]
+
+
+def test_cli_evidence_file_reaches_ready(tmp_path: Path, capsys) -> None:
+    evidence_file = tmp_path / "evidence.json"
+    evidence_file.write_text(
+        json.dumps(EVIDENCE["direct-assignment"], ensure_ascii=False), encoding="utf-8"
+    )
+
+    code = mod.main(_worker_argv("--evidence-file", str(evidence_file), "--json"))
+
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "ready"
+    assert payload["assignment"]["evidence"] == EVIDENCE["direct-assignment"]
+
+
+def test_cli_evidence_file_retry_command_reuses_the_file(
+    tmp_path: Path, capsys
+) -> None:
+    evidence_file = tmp_path / "evidence.json"
+    evidence_file.write_text('{"dispatch_channel": "im"}', encoding="utf-8")
+
+    code = mod.main(_worker_argv("--evidence-file", str(evidence_file), "--json"))
+
+    assert code == 3
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    retry = payload["assignment"]["retry_command"]
+    assert f"--evidence-file {evidence_file}" in retry
+    assert "--evidence '" not in retry
+    assert payload["assignment"]["evidence_file"] == str(evidence_file)
+    assert captured.err.splitlines()[-1] == retry
+
+
+@pytest.mark.parametrize(
+    ("content", "message"),
+    [(None, "無法讀取"), ("{not json", "不是合法 JSON"), ("[]", "JSON object")],
+)
+def test_cli_bad_evidence_file_fails_closed(
+    tmp_path: Path, capsys, content, message
+) -> None:
+    evidence_file = tmp_path / "evidence.json"
+    if content is not None:
+        evidence_file.write_text(content, encoding="utf-8")
+
+    code = mod.main(_worker_argv("--evidence-file", str(evidence_file)))
+
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "--evidence-file" in err and message in err
+
+
+def test_cli_rejects_inline_and_file_evidence_together(tmp_path: Path) -> None:
+    evidence_file = tmp_path / "evidence.json"
+    evidence_file.write_text("{}", encoding="utf-8")
+    with pytest.raises(SystemExit) as excinfo:
+        mod.main(
+            _worker_argv("--evidence", "{}", "--evidence-file", str(evidence_file))
+        )
+    assert excinfo.value.code == 2
+
+
 def test_missing_assignment_blocks_before_invalid_specialist_resolution() -> None:
     payload = mod.build_onboarding(
         ROOT,
