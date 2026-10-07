@@ -64,8 +64,13 @@ fail_real_repo_changed() {
 # The real worktree list must be identical before and after the fixture.  Other
 # agents add/remove worktrees concurrently (a fan-out creates one every few
 # seconds), so a change outside the fixture root earns a fresh attempt; a change
-# under the fixture root is this test's own and fails at once.  A mutation the
-# test makes elsewhere recurs on every attempt and still fails.
+# under the fixture root is this test's own and fails at once.  An addition the
+# test makes elsewhere recurs on every attempt and still fails.  Blind spot: a
+# one-shot or idempotent change to the real repository (`worktree remove`,
+# `worktree prune`, a removal of any kind) is indistinguishable from concurrent
+# churn, is retried, and passes once later attempts see no further change.
+# Only strict equality without retries would catch it, and that is flaky while
+# other agents share the repository.
 for attempt in 1 2 3; do
   MAIN="$FIXTURE_ROOT/attempt-$attempt/main"
   WORKTREE="$FIXTURE_ROOT/attempt-$attempt/linked"
