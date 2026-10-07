@@ -71,10 +71,7 @@ def _swap_settings(new_settings):
     _pp.set_data_dir(new_settings.data_dir)
 
     def _normalize(users):
-        from kg.secret_store import encrypt_value
-        jwt_secret = app.state.kg_settings.jwt_secret
-        encrypt_fn = (lambda v: encrypt_value(v, jwt_secret)) if jwt_secret else None
-        return normalize_users_payload(users, default_subscription_payload, encrypt_fn=encrypt_fn)
+        return normalize_users_payload(users, default_subscription_payload)
 
     user_store = CachedUserStore(new_settings.users_file, _normalize)
     app.state.user_store = user_store
@@ -129,6 +126,7 @@ def admin_app_factory(tmp_path, monkeypatch):
 
         if reset_audit:
             from kg import admin_audit
+
             admin_audit._reset()
             cleanups.append(admin_audit._reset)
 
@@ -137,6 +135,7 @@ def admin_app_factory(tmp_path, monkeypatch):
             import kg.pipeline_log as pl
             import kg.token_tracker as tt
             import kg.translate_log as tl
+
             monkeypatch.setattr(pl, "DATA_DIR", data_dir)
             monkeypatch.setattr(pl, "DB_PATH", data_dir / "pipeline_runs.db")
             monkeypatch.setattr(jl, "DATA_DIR", data_dir)
@@ -174,6 +173,7 @@ def admin_app_factory(tmp_path, monkeypatch):
 
         if inject_cookie:
             from kg.admin_handlers import _sign_cookie
+
             cookie = _sign_cookie(admin_token)
             client = TestClient(app, raise_server_exceptions=False, cookies={"admin_session": cookie})
         else:
@@ -259,6 +259,7 @@ def clean_routing_env(monkeypatch):
 def _isolate_translate_log():
     """Clear translate_log between tests to prevent cache cross-contamination."""
     import kg.translate_log as tl
+
     tl._reset()
     conn = tl._get_conn()
     conn.execute("DELETE FROM translate_log")
@@ -272,6 +273,7 @@ def _isolate_podcast_progress():
     """Reset podcast_progress singleton so each test's KG_DATA_DIR fixture
     gets a fresh DB file under its tmp_path."""
     import kg.podcast_progress as pp
+
     pp._reset()
     yield
     pp._reset()
@@ -289,6 +291,7 @@ def _isolate_rate_limiters():
     surfacing as spurious `429` in podcast endpoint tests. Clearing both
     limiters per test makes the suite order-independent."""
     from kg.rate_limit import api_limiter, translate_limiter
+
     api_limiter.reset()
     translate_limiter.reset()
     yield
@@ -327,6 +330,7 @@ def _isolate_observability_cooldown():
     the suite order-independent (test_observability_alerts.py keeps its own
     module-scoped fixture; this guards every other file)."""
     from kg import observability_alerts
+
     observability_alerts._cooldown_state.clear()
     yield
     observability_alerts._cooldown_state.clear()

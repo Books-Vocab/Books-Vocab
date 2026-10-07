@@ -75,16 +75,26 @@ _WORLD_BACKUP_ROOT = "__kg_world__"
 # timestamps),CLI 層必須收斂成明確白名單,否則 operator 可注入主鍵、繞過
 # card-delete 軟刪、把卡移到不存在的筆記本。複習態走 `card-set-review`(語意
 # sugar)、刪除走 `card-delete`,故 review_* 與 is_deleted 刻意不在白名單。
-_CARD_UPDATABLE_FIELDS = frozenset({
-    "content", "meaning", "pos", "examples", "collocations",
-    "note", "difficulty", "mode", "root_form", "inflections",
-})
+_CARD_UPDATABLE_FIELDS = frozenset(
+    {
+        "content",
+        "meaning",
+        "pos",
+        "examples",
+        "collocations",
+        "note",
+        "difficulty",
+        "mode",
+        "root_form",
+        "inflections",
+    }
+)
 
 
 def _passthrough_normalize(users: dict[str, Any]) -> tuple[dict[str, Any], bool]:
-    """users.json 的 identity normalize:原樣讀寫,不碰 subscription/secret 加密。
+    """users.json 的 identity normalize:原樣讀寫,不碰 subscription 正規化。
 
-    app 的 `normalize_users_payload` 需 `default_subscription_payload` + `encrypt_fn`
+    app 的 `normalize_users_payload` 需 `default_subscription_payload`
     (啟動期 wiring 的事);建/改 demo user record 與那些無關。passthrough 讓我們
     複用 `save_users_to` 的 atomic tmp→replace 寫入,同時**完整保留**既有 record
     的任何欄位(subscription / linked_ids / secret …),不破壞。
@@ -162,9 +172,7 @@ def _review_fields(state: str, interval_hours: float | None, now: datetime) -> d
     在此 defense-in-depth 一次根治所有呼叫端(seed / card-add / card-set-review)。
     """
     if state not in _VALID_REVIEW_STATES:
-        raise EditError(
-            f"未知複習態 {state!r}(僅允許 {_VALID_REVIEW_STATES})"
-        )
+        raise EditError(f"未知複習態 {state!r}(僅允許 {_VALID_REVIEW_STATES})")
     # interval 須 > 0:負/零會讓 due 的 last_reviewed 落到未來、reviewed 的 next_review
     # 落到過去,破壞「reviewed→next 在未來」「due→last 在過去」不變量。argparse type=float
     # 不擋負值,在此一次根治所有呼叫端(card-add/card-set-review/card-import/seed)。
@@ -297,9 +305,7 @@ def _resolve_notebook_id(user_dir: Path, ref: str) -> str:
         for nb in store.all():
             if nb.name == ref:
                 return nb.id
-        raise EditError(
-            f"notebook not found: {ref!r}(既非既存 id 也非既存 name;先 notebook-create)"
-        )
+        raise EditError(f"notebook not found: {ref!r}(既非既存 id 也非既存 name;先 notebook-create)")
     finally:
         store.close()
 
@@ -336,8 +342,9 @@ def _mutate_users(data_dir_path: Path, mutate) -> dict[str, Any]:
     return result
 
 
-def _restore_user_record_snapshot(data_dir_path: Path, uid: str, *, record: dict[str, Any] | None,
-                                  email_index: dict[str, Any] | None) -> None:
+def _restore_user_record_snapshot(
+    data_dir_path: Path, uid: str, *, record: dict[str, Any] | None, email_index: dict[str, Any] | None
+) -> None:
     """把 per-user backup 內嵌的 users.json snapshot merge 回目前 users.json。
 
     restore 粒度是「單帳號」，所以不能用備份裡的整份 users.json 覆蓋現況；只回復
@@ -366,7 +373,9 @@ def _restore_user_record_snapshot(data_dir_path: Path, uid: str, *, record: dict
     _mutate_users(data_dir_path, mutate)
 
 
-def _extract_user_backup_members(tar: tarfile.TarFile, uid: str, target_parent: Path) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+def _extract_user_backup_members(
+    tar: tarfile.TarFile, uid: str, target_parent: Path
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     members = tar.getmembers()
     record: dict[str, Any] | None = None
     email_index: dict[str, Any] | None = None
@@ -413,6 +422,7 @@ def _replace_world_from_snapshot(data_dir_path: Path, snapshot_root: Path) -> li
         restored.append(item.name)
     return restored
 
+
 # ── clone-demo ─────────────────────────────────────────────
 #
 # 從一個高品質真帳號 byte-clone 整個 vocab 層(cards/notebooks/graph/embeddings/
@@ -427,8 +437,12 @@ def _replace_world_from_snapshot(data_dir_path: Path, snapshot_root: Path) -> li
 _CLONE_SQLITE = ("cards.db", "notebooks.db", "daily_review_stats.db")
 # vocab 層衍生檔(精確 glob,排除 .bak/.lock/.tmp)。
 _CLONE_GLOBS = (
-    "graph_*.json", "embeddings_*.npy", "embeddings_meta_*.json",
-    "candidates_*.json", "card_ids_*.json", "blocked_*.json",
+    "graph_*.json",
+    "embeddings_*.npy",
+    "embeddings_meta_*.json",
+    "candidates_*.json",
+    "card_ids_*.json",
+    "blocked_*.json",
 )
 # 目標端「屬於 vocab 層」的判定:clone 前清空,避免殘留舊 notebook 的孤兒
 # graph/embeddings 與 -wal/-shm/.lock。review_events.db 一併清(由本次合成重建)。
@@ -509,18 +523,20 @@ def _read_card_review_states(cards_db: Path) -> list[CardReviewState]:
             continue
         created = _parse_db_dt(r["created_at"]) or last
         fb = r["last_review_feedback"]
-        states.append(CardReviewState(
-            card_id=r["id"],
-            content=r["content"],
-            notebook_id=r["notebook_id"] or "default",
-            review_count=int(r["review_count"] or 0),
-            lapse_count=int(r["lapse_count"] or 0),
-            review_streak=int(r["review_streak"] or 0),
-            last_review_feedback=int(fb) if fb is not None else -1,
-            last_reviewed_at=last,
-            created_at=created,
-            review_interval_hours=float(r["review_interval_hours"] or 12.0),
-        ))
+        states.append(
+            CardReviewState(
+                card_id=r["id"],
+                content=r["content"],
+                notebook_id=r["notebook_id"] or "default",
+                review_count=int(r["review_count"] or 0),
+                lapse_count=int(r["lapse_count"] or 0),
+                review_streak=int(r["review_streak"] or 0),
+                last_review_feedback=int(fb) if fb is not None else -1,
+                last_reviewed_at=last,
+                created_at=created,
+                review_interval_hours=float(r["review_interval_hours"] or 12.0),
+            )
+        )
     return states
 
 
@@ -543,8 +559,7 @@ def _count_graph_links(user_dir: Path) -> int:
         except (json.JSONDecodeError, OSError):
             continue
         if isinstance(data, list):
-            total += sum(1 for lk in data if isinstance(lk, dict)
-                         and lk.get("status", "active") == "active")
+            total += sum(1 for lk in data if isinstance(lk, dict) and lk.get("status", "active") == "active")
     return total
 
 
@@ -574,7 +589,6 @@ def _clone_source_fingerprint(src_dir: Path) -> str:
     return digest.hexdigest()
 
 
-
 def _list_world_backups(dd: Path) -> list[dict[str, Any]]:
     root = world_backup_root(dd)
     if not root.exists():
@@ -582,11 +596,13 @@ def _list_world_backups(dd: Path) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for p in sorted(root.glob("*.tar.gz"), reverse=True):
         st = p.stat()
-        out.append({
-            "path": str(p),
-            "size": st.st_size,
-            "mtime": datetime.fromtimestamp(st.st_mtime, tz=UTC).isoformat(),
-        })
+        out.append(
+            {
+                "path": str(p),
+                "size": st.st_size,
+                "mtime": datetime.fromtimestamp(st.st_mtime, tz=UTC).isoformat(),
+            }
+        )
     return out
 
 

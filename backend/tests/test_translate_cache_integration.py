@@ -1,4 +1,5 @@
 """End-to-end: translate_service cache short-circuit invokes record_cache_hit."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -21,31 +22,38 @@ def _llm_stub(content: str, user_id: str = "u1"):
     )
 
 
+def _cache_hit_count() -> int:
+    from kg.translate_log import _get_conn, _lock
+
+    with _lock:
+        conn = _get_conn()
+        return conn.execute("SELECT COUNT(*) FROM translate_cache_hits").fetchone()[0]
+
+
 @pytest.mark.asyncio
 async def test_cache_hit_short_circuit_records_counter():
     """On the 2nd identical call, cache short-circuits AND increments hit counter."""
     from kg.api_models import TranslateRequest
-    from kg.translate_log import count_cache_hits_since
     from kg.translate_service import run_quick_translate
 
     req = TranslateRequest(word="evoke", context="The story evokes memories.")
     user = {"config": {"translation": {"source_lang": "en", "target_lang": "zh-Hant"}}}
     llm = _llm_stub('{"t":"喚起","p":"v.","r":"evoke"}')
     import logging
+
     logger = logging.getLogger("test")
 
     # 1st call → LLM miss, record translate_log row, no cache_hit
     await run_quick_translate(req, user, llm=llm, logger=logger)
-    cutoff = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
-    assert count_cache_hits_since(cutoff) == 0
+    assert _cache_hit_count() == 0
 
     # 2nd identical call → cache short-circuit, increments hit counter
     await run_quick_translate(req, user, llm=llm, logger=logger)
-    assert count_cache_hits_since(cutoff) == 1
+    assert _cache_hit_count() == 1
 
     # 3rd call → another hit
     await run_quick_translate(req, user, llm=llm, logger=logger)
-    assert count_cache_hits_since(cutoff) == 2
+    assert _cache_hit_count() == 2
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +79,7 @@ async def test_translate_cache_ttl_env_respected(monkeypatch):
     user = {"config": {"translation": {"source_lang": "en", "target_lang": "zh-Hant"}}}
     llm = _llm_stub('{"t":"喚起","p":"v.","r":"evoke"}')
     import logging
+
     logger = logging.getLogger("test")
 
     # 1st call — LLM miss → record.
@@ -107,6 +116,7 @@ async def test_translate_cache_cross_user_hit_does_not_leak_user_specific_data()
     req = TranslateRequest(word="evoke", context="The story evokes memories.")
     user = {"config": {"translation": {"source_lang": "en", "target_lang": "zh-Hant"}}}
     import logging
+
     logger = logging.getLogger("test")
 
     # User A: cache miss → LLM call → translate_log row owned by user_a.
@@ -124,12 +134,10 @@ async def test_translate_cache_cross_user_hit_does_not_leak_user_specific_data()
     # translate_cache_hits (hits) is attributed to user B — billing/observability fairness.
     with _lock:
         conn = _get_conn()
-        miss_users = [r[0] for r in conn.execute(
-            "SELECT user_id FROM translate_log WHERE word='evoke'"
-        ).fetchall()]
-        hit_users = [r[0] for r in conn.execute(
-            "SELECT user_id FROM translate_cache_hits WHERE word='evoke'"
-        ).fetchall()]
+        miss_users = [r[0] for r in conn.execute("SELECT user_id FROM translate_log WHERE word='evoke'").fetchall()]
+        hit_users = [
+            r[0] for r in conn.execute("SELECT user_id FROM translate_cache_hits WHERE word='evoke'").fetchall()
+        ]
     assert miss_users == ["user_a"], "LLM-miss row must remain owned by the user who paid for the call"
     assert hit_users == ["user_b"], "Cache-hit row must be attributed to the requesting user, not the cacher"
 
@@ -149,6 +157,7 @@ async def test_translate_cache_invalidation_on_model_change():
     req = TranslateRequest(word="evoke", context="The story evokes memories.")
     user = {"config": {"translation": {"source_lang": "en", "target_lang": "zh-Hant"}}}
     import logging
+
     logger = logging.getLogger("test")
 
     llm_v1 = _llm_stub('{"t":"v1","p":"v.","r":"evoke"}')

@@ -39,14 +39,7 @@ def install_runtime_user_state_from_dependencies(
     default_subscription_payload_fn = dependencies.default_subscription_payload_fn
 
     def _normalize_users_payload_fn(users: UsersPayload) -> tuple[UsersPayload, bool]:
-        from .secret_store import encrypt_value
-
-        encrypt_fn = (lambda v: encrypt_value(v, settings.jwt_secret)) if settings.jwt_secret else None
-        return normalize_users_payload(
-            users,
-            default_subscription_payload_fn,
-            encrypt_fn=encrypt_fn,
-        )
+        return normalize_users_payload(users, default_subscription_payload_fn)
 
     migrate_users_file(
         settings.users_file,

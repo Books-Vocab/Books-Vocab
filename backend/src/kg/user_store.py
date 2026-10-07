@@ -4,7 +4,6 @@ import copy
 import json
 import threading
 import time
-from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -115,7 +114,6 @@ def migrate_users_file(
 def normalize_users_payload(
     users: dict[str, object],
     default_subscription_payload: DefaultSubscriptionPayload,
-    encrypt_fn: Callable[[str], str] | None = None,
 ) -> tuple[dict[str, object], bool]:
     changed = False
     normalized: dict[str, object] = {}

@@ -54,6 +54,8 @@ backend/data/*.lock
 backend/*.png
 backend/test_api.py
 backend/test_option_b.py
+backend/test_data_option_b
+backend/test_links_b.json*
 
 # Python venv
 .venv/
