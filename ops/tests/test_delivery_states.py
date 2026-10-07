@@ -514,6 +514,51 @@ def test_merge_queue_admits_lagging_pr_unless_conflicting_or_moved(
 
 
 @pytest.mark.parametrize(
+    ("changes", "validates", "reason"),
+    [
+        ({}, True, None),
+        ({}, False, "stale"),
+        ({"mergeable": False, "conflicting": True}, True, "reanchor_required"),
+        ({"head_sha": "e" * 40}, True, "PR head differs"),
+        # the PR target no longer matches the registry's published base
+        ({"base_sha": "a" * 40}, True, "differs from published registry base"),
+    ],
+)
+def test_merge_queue_admits_lagging_published_registry_base(
+    changes: dict[str, object], validates: bool, reason: str | None
+) -> None:
+    """The production "registry base is stale" refusal: published base lags main."""
+    receipt = _receipt(base_sha="a" * 40)
+    published = "b" * 40
+    lagging = PullRequestSnapshot(
+        number=1,
+        url="https://example.test/pull/1",
+        branch=receipt.branch,
+        base_sha=published,
+        head_sha=receipt.head_sha,
+        state="OPEN",
+        draft=False,
+        mergeable=True,
+    )
+    decision = evaluate_merge_gate(
+        pull_request=replace(lagging, **changes),
+        receipt=receipt,
+        registry=_registry(receipt, published_base_sha=published),
+        live_main_sha="c" * 40,
+        required=CheckSnapshot(
+            status=CheckStatus.SUCCESS,
+            head_sha=receipt.head_sha,
+            observed_at=datetime(2026, 8, 21, tzinfo=UTC),
+            names=("required",),
+        ),
+        merge_queue_validates=validates,
+    )
+
+    assert decision.allowed is (reason is None)
+    assert reason is None or reason in " ".join(decision.reasons)
+
+
+@pytest.mark.parametrize(
     "facts",
     [
         LaneFacts(

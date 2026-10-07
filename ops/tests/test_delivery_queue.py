@@ -268,6 +268,61 @@ def test_queue_refuses_conflict_moved_head_or_unvalidated_lag(
     assert not github.enqueue_calls
 
 
+PUBLISHED_BASE = "9" * 40
+
+
+def test_queue_admits_pr_whose_published_registry_base_lags_main() -> None:
+    # Production refusal "registry base is stale": the registry's
+    # published_base_sha (the PR target at publish time) is behind live main,
+    # and so is the hand-back base; the PR is still MERGEABLE and unmoved.
+    receipt = _receipt()
+    pull_request = replace(_pull_request(receipt), base_sha=PUBLISHED_BASE)
+    github = FakeGitHub(receipt, pull_request=pull_request)
+    service, github = _service(
+        receipt,
+        live_main="d" * 40,
+        record=_registry(receipt, published_base_sha=PUBLISHED_BASE),
+        github=github,
+    )
+
+    result = service.enqueue(receipt=receipt, pull_request_number=11)
+
+    assert result.live_main_sha == "d" * 40
+    assert github.enqueue_calls == [
+        (11, PUBLISHED_BASE, HEAD, render_pull_request_body(receipt))
+    ]
+
+
+@pytest.mark.parametrize(
+    ("changes", "contexts", "message"),
+    [
+        ({"mergeable": False, "conflicting": True}, ("required",), "reanchor_required"),
+        ({"head_sha": "e" * 40}, ("required",), "PR head differs"),
+        ({}, (), "stale"),
+        # The PR target moved away from the registry's published base.
+        ({"base_sha": "f" * 40}, ("required",), "published registry base"),
+    ],
+)
+def test_queue_refuses_lagging_registry_base_unless_exact_and_unconflicted(
+    changes: dict[str, object], contexts: tuple[str, ...], message: str
+) -> None:
+    receipt = _receipt()
+    pull_request = replace(
+        _pull_request(receipt), **{"base_sha": PUBLISHED_BASE, **changes}
+    )
+    github = FakeGitHub(receipt, pull_request=pull_request, required_contexts=contexts)
+    service, github = _service(
+        receipt,
+        live_main="d" * 40,
+        record=_registry(receipt, published_base_sha=PUBLISHED_BASE),
+        github=github,
+    )
+
+    with pytest.raises(PolicyViolation, match=message):
+        service.enqueue(receipt=receipt, pull_request_number=11)
+    assert not github.enqueue_calls
+
+
 def test_unvalidated_queue_rechecks_live_main_before_mutation() -> None:
     receipt = _receipt()
     github = FakeGitHub(receipt, required_contexts=())
