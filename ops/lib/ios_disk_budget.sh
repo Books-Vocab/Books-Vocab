@@ -118,23 +118,23 @@ kg_ios_disk_guard_diagnose() {
 }
 
 # Re-evaluate the shared guard now instead of waiting for the 5-minute tick.
-# $2=1 only when the caller already owns the iOS build lock (inline preflight);
-# the tick must run against the canonical checkout (the product registry lives
-# there, not in an agent lane).
+# $2=1 only when the caller already owns the iOS build lock (inline preflight).
+# The host-global state has one writer identity: the canonical checkout's tick,
+# i.e. the same code and root the launchd job runs (the product registry lives
+# there, not in an agent lane).  A lane's own copy, possibly on an older or
+# unmerged base, never publishes into it, and an unresolvable canonical
+# checkout fails the refresh instead of falling back to this lane's root.
 kg_ios_disk_guard_refresh() {
   local state="${1:?guard state is required}" lib_dir tick workspace common
   lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  tick="${KG_IOS_DISK_GUARD_TICK:-$lib_dir/../kg_disk_guard.sh}"
-  [[ -x "$tick" ]] || return 1
   workspace="${KG_DISK_GUARD_WORKSPACE:-}"
   if [[ -z "$workspace" ]]; then
     common="$(git -C "$lib_dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
-    if [[ -n "$common" ]]; then
-      workspace="$(dirname "$common")"
-    else
-      workspace="$(cd "$lib_dir/../.." && pwd)"
-    fi
+    [[ -n "$common" && -d "$common" ]] || return 1
+    workspace="$(dirname "$common")"
   fi
+  tick="${KG_IOS_DISK_GUARD_TICK:-$workspace/ops/kg_disk_guard.sh}"
+  [[ -x "$tick" ]] || return 1
   KG_DISK_GUARD_WORKSPACE="$workspace" KG_DISK_GUARD_STATE="$state" \
     KG_DISK_GUARD_LANE_USAGE_STATE="$(kg_ios_disk_lane_usage_state "$state")" \
     KG_DISK_GUARD_BUILD_LOCK_HELD="${2:-0}" "$tick" >/dev/null 2>&1

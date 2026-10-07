@@ -14,6 +14,7 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key><string>/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>KG_DISK_GUARD_WORKSPACE</key><string>/Users/chenliangyu/project/kg</string>
     <key>KG_DISK_GUARD_WARN_FREE_GIB</key><string>50</string>
     <key>KG_DISK_GUARD_CRIT_FREE_GIB</key><string>36</string>
     <key>KG_DISK_GUARD_SIMULATOR_RUNTIME_BUDGET_GIB</key><string>56</string>
