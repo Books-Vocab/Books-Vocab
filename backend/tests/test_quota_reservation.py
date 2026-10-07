@@ -380,10 +380,15 @@ def test_tracked_llm_pipeline_burst_blocks_via_gate(mock_db):
     """Simulated pipeline enrich fan-out: 5 concurrent TrackedLLM calls for
     a Free user. The reservation makes the gate observe in-flight spend, so
     a check during the burst reports the user as quota-exceeded.
+
+    Workers stay inside the call until the gate has been read. The barrier
+    alone releases them together with the main thread, so they could finish
+    and drop their reservations before the read.
     """
     from kg.tracked_llm import TrackedLLM
 
     barrier = threading.Barrier(6)  # 5 workers + main thread
+    gate_read = threading.Event()
     gate_seen_exceeded = []
 
     class _BlockingClient:
@@ -391,7 +396,8 @@ def test_tracked_llm_pipeline_burst_blocks_via_gate(mock_db):
             class completions:  # noqa: N801
                 @staticmethod
                 def create(**_kwargs):
-                    barrier.wait(timeout=5)  # hold all 5 reservations at once
+                    barrier.wait(timeout=5)  # all 5 reservations held at once
+                    assert gate_read.wait(timeout=5), "gate was never read"
                     return _FakeResp(100, 50)
 
     def worker():
@@ -399,10 +405,13 @@ def test_tracked_llm_pipeline_burst_blocks_via_gate(mock_db):
 
     with ThreadPoolExecutor(max_workers=5) as ex:
         futs = [ex.submit(worker) for _ in range(5)]
-        barrier.wait(timeout=5)  # all 5 calls now in flight, reservations held
-        # 5 * $0.012 = $0.06 reserved > Free $0.03 → gate must block now.
-        q = qs.check_quota("u1", "translate", is_pro=False)
-        gate_seen_exceeded.append(q["exceeded"])
+        try:
+            barrier.wait(timeout=5)  # all 5 calls now in flight, reservations held
+            # 5 * $0.012 = $0.06 reserved > Free $0.03 → gate must block now.
+            q = qs.check_quota("u1", "translate", is_pro=False)
+            gate_seen_exceeded.append(q["exceeded"])
+        finally:
+            gate_read.set()
         for f in futs:
             f.result()
 
