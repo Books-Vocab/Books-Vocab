@@ -362,6 +362,8 @@ else
         'acquire_build_lock() { :; }' \
         'kg_ios_cache_evict() { :; }' \
         'ios_test_find_xctestrun() { return 1; }' \
+        'kg_ios_disk_budget_preflight() { return 0; }' \
+        'KG_IOS_DISK_BUDGET_EXIT=0' \
         'ios_test_cache_is_complete() { return 1; }' \
         'ios_test_cached_products_ready() { return 0; }' \
         'ios_test_now_ms() { printf "100\\n"; }' \
@@ -683,12 +685,12 @@ if [[ -f "$WORKSPACE/$ADMIT_FILE" ]]; then
   ADMIT_OUT="$(cd "$WORKSPACE" && "$IOS_TEST" --ui --list --file "$ADMIT_FILE" 2>/dev/null)" && ADMIT_RC=0 || ADMIT_RC=$?
   [[ "$ADMIT_RC" -eq 0 ]] \
     && ok "--ui --list --file 對含測試的 UITests 檔 exit 0" \
-    || fail_t "--ui --list --file exit $ADMIT_RC（應 0）"
+    || fail_t "--ui --list --file exit ${ADMIT_RC}（應 0）"
 
   ADMIT_SEL="$(grep -c '^-only-testing:' <<<"$ADMIT_OUT" || true)"
   ADMIT_BAD="$(grep -vcE '^-only-testing:BooksAndVocabUITests/[A-Za-z0-9_]+/[A-Za-z0-9_]+$|^\[ios_test\] matched [0-9]+ tests? in file ' <<<"$ADMIT_OUT" || true)"
   [[ "$ADMIT_SEL" -ge 1 ]] \
-    && ok "輸出至少一個 selector（$ADMIT_SEL）" \
+    && ok "輸出至少一個 selector（${ADMIT_SEL}）" \
     || fail_t "輸出沒有任何 -only-testing selector: $ADMIT_OUT"
   [[ "$ADMIT_BAD" -eq 0 ]] \
     && ok "每個 selector 都是 Target/Suite/Method，無 suite-only／雜訊行" \
@@ -725,9 +727,9 @@ for ADMIT_NEG in \
   "ios/BooksAndVocabUITests/NoSuchFileUITests.swift"; do
   ADMIT_NEG_OUT="$(cd "$WORKSPACE" && "$IOS_TEST" --ui --list --file "$ADMIT_NEG" 2>/dev/null)" && ADMIT_NEG_RC=0 || ADMIT_NEG_RC=$?
   if [[ "$ADMIT_NEG_RC" -ne 0 ]] && ! grep -q '^-only-testing:' <<<"$ADMIT_NEG_OUT"; then
-    ok "無測試／缺檔 $ADMIT_NEG：exit $ADMIT_NEG_RC 且無 selector"
+    ok "無測試／缺檔 ${ADMIT_NEG}：exit ${ADMIT_NEG_RC} 且無 selector"
   else
-    fail_t "$ADMIT_NEG 應非零退出且無 selector（rc=$ADMIT_NEG_RC out=$ADMIT_NEG_OUT）"
+    fail_t "${ADMIT_NEG} 應非零退出且無 selector（rc=${ADMIT_NEG_RC} out=${ADMIT_NEG_OUT}）"
   fi
 done
 
