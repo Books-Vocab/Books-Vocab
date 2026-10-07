@@ -194,16 +194,28 @@ struct SentryPrivacyPolicyTests {
         ))
     }
 
-    @Test func crashTypeThatLooksLikeFreeTextFallsBackToGenericCrash() {
-        let redacted = SentryPrivacyPolicy.redactException(
-            type: "reason: the user's book title, please contact person@example.com now",
-            value: "Signal 6, Code 0",
-            mechanismType: "signal",
-            handled: false
-        )
+    @Test func crashTypesFollowMechanismSpecificRules() {
+        func type(_ type: String?, _ mechanism: String) -> String {
+            SentryPrivacyPolicy.redactException(
+                type: type, value: nil, mechanismType: mechanism, handled: false
+            ).type
+        }
 
-        #expect(redacted.type == "ReportedCrash")
-        #expect(redacted.value == "Signal 6, Code 0")
+        #expect(type("EXC_BAD_ACCESS", "mach") == "EXC_BAD_ACCESS")
+        #expect(type("Jane Doe", "mach") == "Mach Exception")
+        #expect(type("SIGABRT", "signal") == "SIGABRT")
+        #expect(type("SIGSEGV", "signal") == "SIGSEGV")
+        #expect(type("reason: the user's book title", "signal") == "Signal Exception")
+        #expect(type("NSInvalidArgumentException", "nsexception") == "NSInvalidArgumentException")
+        #expect(type("BooksAndVocab.StoreError", "nsexception") == "BooksAndVocab.StoreError")
+        #expect(type("Jane Doe", "nsexception") == "NSException")
+        #expect(type("JaneDoe", "nsexception") == "NSException")
+        #expect(type(nil, "nsexception") == "NSException")
+        #expect(type("std::runtime_error", "cpp_exception") == "C++ Exception")
+        #expect(type("App Hang Non Fully Blocked", "AppHang") == "App Hang Non Fully Blocked")
+        #expect(type("App Hang by Jane Doe", "AppHang") == "App Hanging")
+        #expect(type("WatchdogTermination", "watchdog_termination") == "WatchdogTermination")
+        #expect(type("Jane Doe", "watchdog_termination") == "WatchdogTermination")
     }
 
     @Test func onlyAllowlistedStaticVerificationMessageSurvives() {

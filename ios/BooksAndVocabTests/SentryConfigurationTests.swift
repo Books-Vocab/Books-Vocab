@@ -82,33 +82,48 @@ struct SentryConfigurationTests {
         var withoutOverride = info
         withoutOverride.removeValue(forKey: "SentryEnvironment")
 
-        func configuration(_ info: [String: Any], debugBuild: Bool) -> SentryConfiguration {
+        func configuration(
+            _ info: [String: Any],
+            debugBuild: Bool,
+            cachedChannel: String? = nil
+        ) -> SentryConfiguration {
             SentryConfiguration.make(
                 infoDictionary: info,
                 bundleIdentifier: "com.example.books",
                 environment: [:],
                 arguments: [],
-                debugBuild: debugBuild
+                debugBuild: debugBuild,
+                cachedVerifiedChannel: cachedChannel
             )
         }
 
-        let release = configuration(withoutOverride, debugBuild: false)
-        let debug = configuration(withoutOverride, debugBuild: true)
-        let overridden = configuration(info, debugBuild: false)
+        let firstLaunchRelease = configuration(withoutOverride, debugBuild: false)
+        let cachedTestFlight = configuration(withoutOverride, debugBuild: false, cachedChannel: "testflight")
+        let cachedProduction = configuration(withoutOverride, debugBuild: false, cachedChannel: "production")
+        let cachedGarbage = configuration(withoutOverride, debugBuild: false, cachedChannel: "qa-tampered")
+        let debug = configuration(withoutOverride, debugBuild: true, cachedChannel: "testflight")
+        let overridden = configuration(info, debugBuild: false, cachedChannel: "testflight")
 
-        #expect(release.environment == "production")
-        #expect(release.refinesEnvironmentAtRuntime)
+        // Known gap: the first launch after install reports production until
+        // the async AppTransaction lookup resolves and persists the channel.
+        #expect(firstLaunchRelease.environment == "production")
+        #expect(firstLaunchRelease.refinesEnvironmentAtRuntime)
+        #expect(cachedTestFlight.environment == "testflight")
+        #expect(cachedTestFlight.refinesEnvironmentAtRuntime)
+        #expect(cachedProduction.environment == "production")
+        #expect(cachedGarbage.environment == "production")
         #expect(debug.environment == "debug")
         #expect(!debug.refinesEnvironmentAtRuntime)
         #expect(overridden.environment == "qa")
         #expect(!overridden.refinesEnvironmentAtRuntime)
     }
 
-    @Test func verifiedSandboxAppTransactionMeansTestFlight() {
-        #expect(SentryConfiguration.runtimeEnvironment(current: "production", appTransactionEnvironment: .sandbox) == "testflight")
-        #expect(SentryConfiguration.runtimeEnvironment(current: "production", appTransactionEnvironment: .production) == "production")
-        #expect(SentryConfiguration.runtimeEnvironment(current: "production", appTransactionEnvironment: .xcode) == "production")
-        // Errors and unverified results arrive as nil and keep the bootstrap value.
-        #expect(SentryConfiguration.runtimeEnvironment(current: "production", appTransactionEnvironment: nil) == "production")
+    @Test func onlyVerifiedStoreEnvironmentsProduceAChannelToPersist() {
+        #expect(SentryConfiguration.verifiedChannel(for: .sandbox) == "testflight")
+        #expect(SentryConfiguration.verifiedChannel(for: .production) == "production")
+        // Xcode StoreKit testing is not a distribution channel; errors and
+        // unverified results arrive as nil. Neither touches the cache.
+        #expect(SentryConfiguration.verifiedChannel(for: .xcode) == nil)
+        #expect(SentryConfiguration.verifiedChannel(for: nil) == nil)
     }
 }

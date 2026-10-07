@@ -195,9 +195,17 @@ enum SentryPrivacyPolicy {
     /// Mechanisms whose exception value is an app-controlled reason string
     /// (NSException reason, C++ what()); the value is always dropped.
     private static let reasonCarryingMechanismTypes: Set<String> = ["nsexception", "cpp_exception"]
-    private static let crashTypePattern = try! NSRegularExpression(
-        pattern: "^[A-Za-z0-9_.:+]+(?: [A-Za-z0-9_.:+]+){0,5}$"
-    )
+    private static let machTypePattern = try! NSRegularExpression(pattern: "^EXC_[A-Z_]+$")
+    private static let signalTypePattern = try! NSRegularExpression(pattern: "^SIG[A-Z0-9]+$")
+    private static let nsexceptionTypePattern = try! NSRegularExpression(pattern: "^[A-Za-z_][A-Za-z0-9_.]{0,63}$")
+    /// Exact exception types emitted by the SDK's hang tracker.
+    private static let appHangTypes: Set<String> = [
+        "App Hanging",
+        "App Hang Fully Blocked",
+        "App Hang Non Fully Blocked",
+        "Fatal App Hang Fully Blocked",
+        "Fatal App Hang Non Fully Blocked"
+    ]
     private static let crashValuePrefixPatterns = [
         try! NSRegularExpression(pattern: "^Exception -?[0-9]+, Code -?[0-9]+, Subcode -?[0-9]+"),
         try! NSRegularExpression(pattern: "^Signal -?[0-9]+, Code -?[0-9]+")
@@ -240,7 +248,7 @@ enum SentryPrivacyPolicy {
                 ? nil
                 : redactCrashExceptionValue(value)
             return RedactedException(
-                type: redactCrashExceptionType(type) ?? "ReportedCrash",
+                type: redactCrashExceptionType(type, mechanismType: normalizedMechanism),
                 value: keptValue,
                 mechanismType: redactContext(mechanismType),
                 handled: handled
@@ -262,11 +270,31 @@ enum SentryPrivacyPolicy {
         )
     }
 
-    static func redactCrashExceptionType(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count <= 128, matches(crashTypePattern, value: trimmed) else { return nil }
-        return trimmed
+    /// Mechanism-specific crash type rules. Anything that does not match
+    /// the SDK's own shape for that mechanism falls back to the SDK's fixed
+    /// generic name, so free text (e.g. a person's name) never passes.
+    static func redactCrashExceptionType(_ value: String?, mechanismType: String) -> String {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        switch mechanismType {
+        case "mach":
+            return matches(machTypePattern, value: trimmed) ? trimmed : "Mach Exception"
+        case "signal":
+            return matches(signalTypePattern, value: trimmed) ? trimmed : "Signal Exception"
+        case "nsexception":
+            guard matches(nsexceptionTypePattern, value: trimmed),
+                  trimmed.hasSuffix("Exception") || trimmed.hasSuffix("Error")
+            else { return "NSException" }
+            return trimmed
+        case "apphang":
+            return appHangTypes.contains(trimmed) ? trimmed : "App Hanging"
+        case "watchdog_termination":
+            return "WatchdogTermination"
+        case "cpp_exception":
+            return "C++ Exception"
+        default:
+            // Unreachable for crashMechanismTypes; fail closed.
+            return "ReportedCrash"
+        }
     }
 
     static func redactCrashExceptionValue(_ value: String?) -> String? {
