@@ -19,6 +19,7 @@ import math
 import os
 import plistlib
 import re
+import shlex
 import shutil
 import struct
 import subprocess
@@ -1042,9 +1043,17 @@ def _parse_worktrees(
         if line.startswith("worktree "):
             if current is not None:
                 records.append(current)
-            current = {"path": _path(line.removeprefix("worktree ").strip())}
+            # Lock state is observed only through this listing; records found
+            # by the topology scan never carry the key (unknown, not unlocked).
+            current = {
+                "path": _path(line.removeprefix("worktree ").strip()),
+                "locked": False,
+            }
         elif current is None:
             continue
+        elif line == "locked" or line.startswith("locked "):
+            current["locked"] = True
+            current["lock_reason"] = line.removeprefix("locked").strip()
         elif line.startswith("HEAD "):
             current["head"] = line.removeprefix("HEAD ").strip()
         elif line.startswith("branch "):
@@ -1302,28 +1311,65 @@ def _is_codex_supervision_checkout(path: Path, roots: list[Path]) -> bool:
     return False
 
 
-AGENT_WORKTREE_DIR_RE = re.compile(r"^agent-[0-9a-f]+$")
+AGENT_LOCK_REASON_RE = re.compile(
+    r"^claude agent (?P<name>\S+) \(pid (?P<pid>[1-9][0-9]{0,9})(?: [^)]*)?\)$"
+)
 
 
-def _is_ephemeral_agent_worktree(
-    path: Path, branch: str | None, workspace: Path
-) -> bool:
-    """Recognise a Claude Code subagent worktree by its exact harness shape.
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # exists, owned by another user
+    except (OSError, OverflowError):
+        return False
+    return True
 
-    ``isolation: worktree`` subagents get ``<workspace>/.claude/worktrees/
-    agent-<hex>`` on branch ``worktree-agent-<hex>`` and never pass through the
-    product registry.  Such a lane stays fully measured and quota-counted, but
-    its absence from the registry is its normal state, not an orphan.  The
-    shape is deliberately exact (direct child, name and branch must agree) so
-    any other unregistered checkout, including a detached or renamed one under
-    the same root, still fails closed.
+
+def _agent_lane_lock(
+    path: Path, physical: dict[str, Any], workspace: Path
+) -> dict[str, Any] | None:
+    """Identify a Claude Code harness lane by the lock git holds for it.
+
+    The harness (subagent ``isolation: worktree`` and Workflow agents alike)
+    creates ``<workspace>/.claude/worktrees/<dirname>`` and locks it with the
+    reason ``claude agent <dirname> (pid <N> start <date>)``.  Branch and
+    dirname are not identity: agents switch branches and the harness uses more
+    than one naming scheme.  Returns ``{"state": "live", "pid": N}`` when that
+    lock names this dir and the pid is alive; ``dead-pid`` or ``unlocked`` for
+    a lane its harness no longer holds; ``None`` (not attributable, so the
+    caller fails closed) for anything else: not a direct child of the root,
+    lock state not observed, or a lock held for some other reason.
     """
 
     if path.parent != workspace / ".claude" / "worktrees":
-        return False
-    if not AGENT_WORKTREE_DIR_RE.match(path.name):
-        return False
-    return branch == f"worktree-{path.name}"
+        return None
+    locked = physical.get("locked")
+    if locked is False:
+        return {"state": "unlocked"}
+    if locked is not True:
+        return None
+    match = AGENT_LOCK_REASON_RE.match(str(physical.get("lock_reason") or ""))
+    if match is None or match.group("name") != path.name:
+        return None
+    pid = int(match.group("pid"))
+    return {"state": "live" if _pid_alive(pid) else "dead-pid", "pid": pid}
+
+
+def _stale_agent_cleanup_hint(path: Path, lock: dict[str, Any], branch: str) -> str:
+    quoted = shlex.quote(str(path))
+    remove = f"git worktree remove {quoted}"
+    if lock["state"] == "dead-pid":
+        remove = f"git worktree unlock {quoted} && {remove}"
+    hint = (
+        f"{remove}  # harness no longer holds this lane ({lock['state']}); "
+        "remove refuses uncommitted work, so salvage it first"
+    )
+    if branch != "(detached)":
+        hint += f"; branch {branch} is kept, delete it only once merged"
+    return hint
 
 
 def _load_registry(state_path: Path) -> tuple[list[dict[str, Any]], str | None]:
@@ -1737,6 +1783,11 @@ def build_report(
             else "lane"
         )
         is_excluded = physical_path in applied_exclusions
+        agent_lock = (
+            _agent_lane_lock(physical_path, physical, workspace)
+            if lane_kind == "lane" and not is_excluded
+            else None
+        )
         entry = _lane_entry(
             branch=branch,
             path=physical_path,
@@ -1756,11 +1807,20 @@ def build_report(
         elif lane_kind == "supervision":
             entry["ownership"] = "supervision"
             entry["lane_state"] = "supervision"
-        elif _is_ephemeral_agent_worktree(
-            physical_path, physical.get("branch"), workspace
-        ):
+        elif agent_lock is not None and agent_lock["state"] == "live":
             entry["ownership"] = "ephemeral-agent"
             entry["lane_state"] = "ephemeral"
+            entry["agent_lock"] = agent_lock
+        elif agent_lock is not None:
+            # No live writer holds this lane and its bytes stay quota-counted,
+            # so it is cleanup debt to report, not a reason to stop every
+            # other lane's iOS writer (one crashed session must not do that).
+            entry["ownership"] = "stale-agent"
+            entry["lane_state"] = "stale"
+            entry["agent_lock"] = agent_lock
+            entry["cleanup_hint"] = _stale_agent_cleanup_hint(
+                physical_path, agent_lock, branch
+            )
         elif not is_excluded and entry["exists"]:
             # Keep the ownership state explicit while exposing dirty/unknown in
             # the separate worktree_state fields populated above.
@@ -1871,6 +1931,11 @@ def build_report(
         for item in physical_lanes
         if item["ownership"] == "ephemeral-agent"
     )
+    stale_agent = sorted(
+        str(item["path"])
+        for item in physical_lanes
+        if item["ownership"] == "stale-agent"
+    )
     dirty_physical = sorted(
         str(item["path"])
         for item in physical_lanes
@@ -1889,7 +1954,7 @@ def build_report(
         for item in physical_lanes
         if item.get("worktree_state") == "dirty"
         and not item.get("excluded")
-        and item.get("ownership") != "ephemeral-agent"
+        and item.get("ownership") not in {"ephemeral-agent", "stale-agent"}
         and not (
             item.get("ownership") == "registered"
             and item.get("registry_status") == "active"
@@ -2021,6 +2086,8 @@ def build_report(
             blocking_reasons.append("supervision-path-registered")
     if ephemeral_agent:
         warning_reasons.append("ephemeral-agent-lane")
+    if stale_agent:
+        warning_reasons.append("stale-agent-worktree")
     if unregistered:
         blocking_reasons.append("unregistered-physical-worktree")
     if dirty_supervision:
@@ -2117,6 +2184,7 @@ def build_report(
         "active_but_missing": [],
         "physical_but_unregistered": [],
         "ephemeral_agent": [],
+        "stale_agent": [],
         "terminal_residue": [],
         "unknown": [],
     }
@@ -2129,6 +2197,8 @@ def build_report(
             classification = "physical_but_unregistered"
         elif item["ownership"] == "ephemeral-agent":
             classification = "ephemeral_agent"
+        elif item["ownership"] == "stale-agent":
+            classification = "stale_agent"
         else:
             classification = "unknown"
         classification_items[classification].append(item)
@@ -2267,6 +2337,7 @@ def build_report(
             "missing_terminal_lanes": missing_terminal,
             "unregistered_physical_worktrees": unregistered,
             "ephemeral_agent_worktrees": ephemeral_agent,
+            "stale_agent_worktrees": stale_agent,
             "dirty_physical_worktrees": dirty_physical,
             "unknown_physical_worktrees": unknown_physical,
             "unknown_registry_paths": unknown_registry_paths,

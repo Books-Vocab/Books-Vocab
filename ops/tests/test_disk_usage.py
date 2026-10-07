@@ -1830,14 +1830,57 @@ def test_xctest_devices_physical_open_fallback_is_explicit_and_conservative(
     assert observed["physical_measurement_warnings"]
 
 
+_LIVE = object()
+
+
+def _harness_lock_reason(name: str, pid: int) -> str:
+    """The exact reason Claude Code writes when it locks an agent worktree."""
+
+    return f"claude agent {name} (pid {pid} start Wed Oct  7 11:50:17 2026)"
+
+
+def _dead_pid() -> int:
+    """A pid that existed moments ago and is now reaped (not alive)."""
+
+    for _ in range(5):
+        child = subprocess.Popen([sys.executable, "-c", "pass"])
+        child.wait()
+        try:
+            os.kill(child.pid, 0)
+        except ProcessLookupError:
+            return child.pid
+    pytest.fail("could not obtain a dead pid")
+
+
 def _agent_worktree(
-    repo: Path, name: str = "agent-a1b2c3d4e5f6", branch: str | None = None
+    repo: Path,
+    name: str = "agent-a1b2c3d4e5f6",
+    branch: str | None = None,
+    *,
+    lock: object = _LIVE,
+    root: Path | None = None,
 ) -> Path:
-    path = repo / ".claude" / "worktrees" / name
+    """Create a worktree the way the harness does.
+
+    ``lock`` is ``_LIVE`` (harness lock naming this dir and a live pid, the
+    default because that is what a working harness lane looks like), an ``int``
+    pid for a harness-shaped lock with that pid, a ``str`` for an arbitrary
+    lock reason, ``""`` for a lock without a reason, or ``None`` for unlocked.
+    """
+
+    path = (root or repo / ".claude" / "worktrees") / name
     path.parent.mkdir(parents=True, exist_ok=True)
     _run_git(
         repo, "worktree", "add", "-b", branch or f"worktree-{name}", str(path), "main"
     )
+    if lock is _LIVE:
+        lock = os.getpid()
+    if isinstance(lock, int):
+        lock = _harness_lock_reason(name, lock)
+    if lock == "":
+        _run_git(repo, "worktree", "lock", str(path))
+    elif isinstance(lock, str):
+        _run_git(repo, "worktree", "lock", "--reason", lock, str(path))
     return path
 
 
@@ -1875,11 +1918,13 @@ def test_ephemeral_agent_worktree_is_counted_but_not_a_block(tmp_path: Path) -> 
     entry = next(item for item in report["lanes"] if item["path"] == str(agent))
     assert entry["ownership"] == "ephemeral-agent"
     assert entry["lane_state"] == "ephemeral"
+    assert entry["agent_lock"] == {"state": "live", "pid": os.getpid()}
     assert entry["allocated_bytes"] > 0
     assert entry["accounted_in_aggregate"] is True
     assert report["policy"]["verdict"] != "block"
     assert report["policy"]["unregistered_physical_worktrees"] == []
     assert report["policy"]["ephemeral_agent_worktrees"] == [str(agent)]
+    assert report["policy"]["stale_agent_worktrees"] == []
     assert "ephemeral-agent-lane" in report["policy"]["reasons"]
     assert "unregistered-physical-worktree" not in report["policy"]["reasons"]
     assert "dirty-physical-worktree" not in report["policy"]["reasons"]
@@ -1888,16 +1933,96 @@ def test_ephemeral_agent_worktree_is_counted_but_not_a_block(tmp_path: Path) -> 
 @pytest.mark.parametrize(
     "name,branch",
     [
-        ("agent-a1b2c3d4e5f6", "not-the-harness-branch"),  # branch/name disagree
-        ("agent-xyz", None),  # non-hex id
-        ("scratch", None),  # not agent-*
+        # A follow-up agent switched to its own branch inside its lane.
+        ("agent-a1831cf3132224ea6", "verify-2025"),
+        # Workflow agents: wf_<runid>-<n> on the harness branch ...
+        ("wf_e7e67718-c0d-3", None),
+        # ... or on a branch of their own.
+        ("wf_e7e67718-c0d-4", "fix-p1-review"),
     ],
 )
-def test_non_agent_shaped_checkout_under_claude_root_still_blocks(
+def test_live_harness_locked_lane_is_ephemeral_whatever_its_branch_or_name(
     tmp_path: Path, name: str, branch: str | None
 ) -> None:
     repo, worktree = _repo_with_worktree(tmp_path)
-    orphan = _agent_worktree(repo, name=name, branch=branch)
+    agent = _agent_worktree(repo, name=name, branch=branch)
+    state = _one_registered_lane_state(tmp_path, worktree)
+    output = tmp_path / "lane-usage.json"
+
+    assert (
+        main(["--workspace", str(repo), "--state", str(state), "--output", str(output)])
+        == 0
+    )
+    report = json.loads(output.read_text(encoding="utf-8"))
+    entry = next(item for item in report["lanes"] if item["path"] == str(agent))
+    assert entry["ownership"] == "ephemeral-agent"
+    assert entry["agent_lock"] == {"state": "live", "pid": os.getpid()}
+    assert entry["accounted_in_aggregate"] is True
+    assert report["policy"]["ephemeral_agent_worktrees"] == [str(agent)]
+    assert report["policy"]["unregistered_physical_worktrees"] == []
+    assert report["policy"]["blocking_reasons"] == []
+
+
+@pytest.mark.parametrize(
+    "lock_kind,expected_lock_state",
+    [("dead-pid", "dead-pid"), ("unlocked", "unlocked")],
+)
+def test_dead_or_unlocked_agent_lane_is_stale_counted_and_reported_not_blocking(
+    tmp_path: Path, lock_kind: str, expected_lock_state: str
+) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    dead = _dead_pid()
+    stale = _agent_worktree(
+        repo,
+        name="agent-a528d0e76f72e9dd3",
+        lock=dead if lock_kind == "dead-pid" else None,
+    )
+    # A crashed agent usually leaves uncommitted work behind.
+    (stale / "wip.txt").write_bytes(b"wip\n" * 128)
+    state = _one_registered_lane_state(tmp_path, worktree)
+    output = tmp_path / "lane-usage.json"
+
+    assert (
+        main(["--workspace", str(repo), "--state", str(state), "--output", str(output)])
+        == 0
+    )
+    report = json.loads(output.read_text(encoding="utf-8"))
+    entry = next(item for item in report["lanes"] if item["path"] == str(stale))
+    assert entry["ownership"] == "stale-agent"
+    assert entry["lane_state"] == "stale"
+    expected_lock = {"state": expected_lock_state}
+    if lock_kind == "dead-pid":
+        expected_lock["pid"] = dead
+    assert entry["agent_lock"] == expected_lock
+    assert entry["allocated_bytes"] > 0
+    assert entry["accounted_in_aggregate"] is True
+    hint = entry["cleanup_hint"]
+    assert f"git worktree remove {stale}" in hint
+    assert (f"git worktree unlock {stale}" in hint) is (lock_kind == "dead-pid")
+    policy = report["policy"]
+    assert policy["stale_agent_worktrees"] == [str(stale)]
+    assert policy["ephemeral_agent_worktrees"] == []
+    assert policy["unregistered_physical_worktrees"] == []
+    assert "stale-agent-worktree" in policy["warning_reasons"]
+    assert policy["blocking_reasons"] == []
+    classifications = report["lane_attribution"]["classifications"]
+    assert classifications["stale_agent"]["paths"] == [str(stale)]
+    assert classifications["stale_agent"]["allocated_bytes"] > 0
+
+
+@pytest.mark.parametrize(
+    "lock",
+    [
+        "kept by operator",  # someone else holds the lock
+        "",  # locked without any reason
+        _harness_lock_reason("agent-ffffffffffff", os.getpid()),  # names another dir
+    ],
+)
+def test_foreign_lock_under_claude_root_is_unattributable_and_blocks(
+    tmp_path: Path, lock: str
+) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    orphan = _agent_worktree(repo, lock=lock)
     state = _one_registered_lane_state(tmp_path, worktree)
     output = tmp_path / "lane-usage.json"
 
@@ -1910,19 +2035,22 @@ def test_non_agent_shaped_checkout_under_claude_root_still_blocks(
     assert entry["ownership"] == "unregistered"
     assert report["policy"]["unregistered_physical_worktrees"] == [str(orphan)]
     assert report["policy"]["ephemeral_agent_worktrees"] == []
+    assert report["policy"]["stale_agent_worktrees"] == []
 
 
-def test_agent_named_checkout_outside_claude_root_still_blocks(tmp_path: Path) -> None:
+@pytest.mark.parametrize("lock", [_LIVE, None])
+def test_harness_locked_checkout_outside_claude_root_still_blocks(
+    tmp_path: Path, lock: object
+) -> None:
+    """Positive control: identity is only granted directly under the root."""
+
     repo, worktree = _repo_with_worktree(tmp_path)
-    orphan = tmp_path / "agent-a1b2c3d4e5f6"
-    _run_git(
+    elsewhere = _agent_worktree(repo, lock=lock, root=tmp_path)
+    nested = _agent_worktree(
         repo,
-        "worktree",
-        "add",
-        "-b",
-        "worktree-agent-a1b2c3d4e5f6",
-        str(orphan),
-        "main",
+        name="agent-0123456789ab",
+        lock=lock,
+        root=repo / ".claude" / "worktrees" / "nested",
     )
     state = _one_registered_lane_state(tmp_path, worktree)
     output = tmp_path / "lane-usage.json"
@@ -1932,7 +2060,33 @@ def test_agent_named_checkout_outside_claude_root_still_blocks(tmp_path: Path) -
         == BLOCKED_EXIT
     )
     report = json.loads(output.read_text(encoding="utf-8"))
-    assert report["policy"]["unregistered_physical_worktrees"] == [str(orphan)]
+    assert report["policy"]["unregistered_physical_worktrees"] == sorted(
+        [str(elsewhere), str(nested)]
+    )
+    assert report["policy"]["ephemeral_agent_worktrees"] == []
+    assert report["policy"]["stale_agent_worktrees"] == []
+    assert "unregistered-physical-worktree" in report["policy"]["blocking_reasons"]
+
+
+def test_agent_lanes_live_and_stale_still_count_toward_lane_quota(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, worktree = _repo_with_worktree(tmp_path)
+    live = _agent_worktree(repo, name="agent-aaaaaaaaaaaa")
+    stale = _agent_worktree(repo, name="agent-bbbbbbbbbbbb", lock=_dead_pid())
+    state = _one_registered_lane_state(tmp_path, worktree)
+    output = tmp_path / "lane-usage.json"
+    monkeypatch.setenv("KG_DISK_GUARD_LANE_BUDGET_GIB", "0")
+
+    assert (
+        main(["--workspace", str(repo), "--state", str(state), "--output", str(output)])
+        == BLOCKED_EXIT
+    )
+    report = json.loads(output.read_text(encoding="utf-8"))
+    blocking = report["policy"]["blocking_reasons"]
+    assert f"lane-budget-exceeded:{live}" in blocking
+    assert f"lane-budget-exceeded:{stale}" in blocking
+    assert "unregistered-physical-worktree" not in blocking
 
 
 def test_concurrent_sibling_agent_worktrees_do_not_block_each_other(
