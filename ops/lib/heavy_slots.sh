@@ -10,7 +10,8 @@
 # (default $HOME/Library/Caches/kg/heavy-slots). `mkdir` is the atomic claim. A slot
 # holds `info` (pid, process start time, group, claim time). A holder is stale when
 # its pid is dead or its start time no longer matches (pid reuse); a stale slot is
-# reclaimed by atomic rename, so exactly one reclaimer wins.
+# reclaimed under a per-slot mutex with the verdict re-validated inside it (see
+# _hs_reclaim), so a late waiter can never evict a live re-claimer.
 #
 # Never deadlocks: the wait is bounded by KG_HEAVY_SLOTS_WAIT seconds (default 1800).
 # On timeout it prints who holds the slots and returns 75 (inconclusive, NOT a pass).
@@ -46,7 +47,9 @@ _hs_stale() {
   if [[ -z "$pid" ]]; then
     # mkdir succeeded but info not written yet: only stale after a grace period.
     now="$(date +%s)"
-    mtime="$(stat -f %m "$slot" 2>/dev/null || stat -c %Y "$slot" 2>/dev/null || echo "$now")"
+    # GNU `stat -f` is filesystem status (junk, exit 0): try `-c %Y` first, BSD `-f %m` second.
+    mtime="$(stat -c %Y "$slot" 2>/dev/null || stat -f %m "$slot" 2>/dev/null || true)"
+    case "$mtime" in ''|*[!0-9]*) mtime="$now" ;; esac
     (( now - mtime > 10 )) && return 0
     return 1
   fi
@@ -56,19 +59,41 @@ _hs_stale() {
   return 1
 }
 
+# reclaim <slotdir>: 0 = this caller removed a stale slot, 1 = nothing removed.
+# Staleness is judged by the caller BEFORE this runs, so by now it may be obsolete:
+# another waiter may already have reclaimed AND re-claimed the slot with a live
+# holder, and a bare `mv` would then evict that live holder (two runners under one
+# slot). So reclaim is serialized by a per-slot mutex (`<slot>.reclaim`, mkdir) and the
+# verdict is re-validated inside it. Only reclaimers remove a dead holder's slot, so
+# under the mutex the re-validated slot cannot change before the mv. A crashed
+# reclaimer's mutex records its pid and is itself broken by the same stale test
+# (residual risk: only if a reclaimer stalls >10s inside a millisecond section).
 _hs_reclaim() {
-  local slot="$1" dead
-  dead="${slot}.dead.$$.$RANDOM"
-  # Atomic rename: concurrent reclaimers race, only one mv succeeds.
-  mv "$slot" "$dead" 2>/dev/null && rm -rf "$dead"
-  return 0
+  local slot="$1" mutex dead rc=1
+  mutex="${slot}.reclaim"
+  if ! mkdir "$mutex" 2>/dev/null; then
+    if [[ -d "$mutex" ]] && _hs_stale "$mutex"; then
+      dead="${mutex}.dead.$$.$RANDOM"
+      mv "$mutex" "$dead" 2>/dev/null && rm -rf "$dead"
+    fi
+    return 1  # another reclaimer is working on it; retry on the next pass
+  fi
+  printf '%s\n%s\n' "$$" "$(_hs_started "$$")" >"$mutex/info"
+  if _hs_stale "$slot"; then
+    echo "heavy-slots: reclaiming stale $(basename "$slot") (holder gone)" >&2
+    dead="${slot}.dead.$$.$RANDOM"
+    mv "$slot" "$dead" 2>/dev/null && rm -rf "$dead"
+    rc=0
+  fi
+  rm -rf "$mutex"
+  return "$rc"
 }
 
 heavy_slots_holders() {
   local dir slot pid group since
   dir="$(_hs_dir)"
   for slot in "$dir"/slot.*; do
-    [[ -d "$slot" && "$slot" != *.dead.* ]] || continue
+    [[ -d "$slot" && "$slot" != *.dead.* && "$slot" != *.reclaim ]] || continue
     pid="$(sed -n '1p' "$slot/info" 2>/dev/null || true)"
     group="$(sed -n '3p' "$slot/info" 2>/dev/null || true)"
     since="$(sed -n '4p' "$slot/info" 2>/dev/null || true)"
@@ -90,9 +115,7 @@ heavy_slots_try() {
       return 0
     fi
     if _hs_stale "$slot"; then
-      echo "heavy-slots: reclaiming stale $(basename "$slot") (holder gone)" >&2
-      _hs_reclaim "$slot"
-      if mkdir "$slot" 2>/dev/null; then
+      if _hs_reclaim "$slot" && mkdir "$slot" 2>/dev/null; then
         printf '%s\n%s\n%s\n%s\n' "$$" "$(_hs_started "$$")" "$group" "$(date '+%Y-%m-%dT%H:%M:%S')" >"$slot/info"
         HEAVY_SLOT_PATH="$slot"
         return 0
