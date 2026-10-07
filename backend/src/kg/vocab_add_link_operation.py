@@ -62,10 +62,11 @@ class TargetIsSourceError(ValueError):
 
 _lifecycle = SQLiteLifecycle()
 _lock = _lifecycle.lock
+_DB_FILENAME = "vocab_add_link_operations.db"
 
 
-def _db_path() -> Path:
-    return data_dir() / "vocab_add_link_operations.db"
+def _db_path(data_root: Path | None = None) -> Path:
+    return (data_dir() if data_root is None else data_root) / _DB_FILENAME
 
 
 def _now() -> str:
@@ -122,8 +123,8 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     )
 
 
-def _get_conn() -> sqlite3.Connection:
-    return _lifecycle.get_connection(_db_path(), _ensure_schema)
+def _get_conn(data_root: Path | None = None) -> sqlite3.Connection:
+    return _lifecycle.get_connection(_db_path(data_root), _ensure_schema)
 
 
 def reset() -> None:
@@ -268,6 +269,7 @@ def _update(
     warnings: list[str] | None = None,
     error_code: str | None = None,
     ended: bool = False,
+    conn: sqlite3.Connection | None = None,
 ) -> None:
     assignments = ["updated_at = ?"]
     values: list[Any] = [_now()]
@@ -297,7 +299,7 @@ def _update(
         values.append(_now())
     values.append(operation_id)
     with _lock:
-        conn = _get_conn()
+        conn = conn if conn is not None else _get_conn()
         conn.execute(
             f"UPDATE vocab_add_link_operations SET {', '.join(assignments)} WHERE operation_id = ?",
             values,
@@ -376,7 +378,7 @@ def finish_operation(operation_id: str, *, status: str, error_code: str | None =
         )
 
 
-def _mark_interrupted(operation_id: str, record: dict[str, Any]) -> None:
+def _mark_interrupted(conn: sqlite3.Connection, operation_id: str, record: dict[str, Any]) -> None:
     steps = record["steps"]
     for step in steps:
         if step.get("status") in _ACTIVE_STEP_STATUSES:
@@ -388,27 +390,30 @@ def _mark_interrupted(operation_id: str, record: dict[str, Any]) -> None:
         sequence=record["sequence"] + 1,
         steps=steps,
         ended=True,
+        conn=conn,
     )
 
 
-def reap_interrupted_operations() -> int:
-    """Mark every non-terminal operation ``interrupted``; return the count.
+def reap_interrupted_operations(data_root: Path) -> int:
+    """Mark every non-terminal operation under ``data_root`` ``interrupted``; return the count.
 
     Operations run as in-process background tasks, so anything still queued or
     running when the process starts was orphaned by the previous one and would
-    otherwise be polled forever.  Only safe once the single-worker lock is held
-    (the app lifespan calls this right after ``assert_single_worker``).
+    otherwise be polled forever.  Only safe for the ``data_root`` whose
+    single-worker lock this process holds (the app lifespan passes the locked
+    ``settings.data_dir`` right after ``assert_single_worker``), so the root is
+    explicit instead of re-read from ``KG_DATA_DIR``.
     """
     terminal = ", ".join("?" for _ in _TERMINAL_STATUSES)
     with _lock:
-        conn = _get_conn()
+        conn = _get_conn(data_root)
         rows = conn.execute(
             f"{_SELECT} WHERE status NOT IN ({terminal})",
             tuple(sorted(_TERMINAL_STATUSES)),
         ).fetchall()
         for row in rows:
             record = _row_to_dict(row)
-            _mark_interrupted(record["operation_id"], record)
+            _mark_interrupted(conn, record["operation_id"], record)
     return len(rows)
 
 

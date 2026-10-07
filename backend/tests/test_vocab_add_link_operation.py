@@ -391,7 +391,7 @@ def _seed_operation(key, *, status, user_id="user-1", running_step=None):
     return operation_id
 
 
-def test_restart_marks_non_terminal_operations_interrupted():
+def test_restart_marks_non_terminal_operations_interrupted(tmp_path):
     import kg.vocab_add_link_operation as operations
 
     queued = _seed_operation("restart-queued", status="queued")
@@ -402,7 +402,7 @@ def test_restart_marks_non_terminal_operations_interrupted():
     before_running = get_operation("user-1", running)
     operations.reset()  # simulate process restart: only SQLite survives
 
-    assert operations.reap_interrupted_operations() == 3
+    assert operations.reap_interrupted_operations(tmp_path) == 3
 
     for operation_id, user_id in ((queued, "user-1"), (running, "user-1"), (other_user, "user-2")):
         record = get_operation(user_id, operation_id)
@@ -419,20 +419,20 @@ def test_restart_marks_non_terminal_operations_interrupted():
     assert get_operation("user-1", failed)["error_code"] is None
 
 
-def test_restart_reaping_is_idempotent_and_a_noop_when_clean():
+def test_restart_reaping_is_idempotent_and_a_noop_when_clean(tmp_path):
     import kg.vocab_add_link_operation as operations
 
-    assert operations.reap_interrupted_operations() == 0
+    assert operations.reap_interrupted_operations(tmp_path) == 0
     _seed_operation("idem-running", status="running")
-    assert operations.reap_interrupted_operations() == 1
-    assert operations.reap_interrupted_operations() == 0
+    assert operations.reap_interrupted_operations(tmp_path) == 1
+    assert operations.reap_interrupted_operations(tmp_path) == 0
 
 
-def test_interrupted_operation_is_not_resumed_by_late_runner():
+def test_interrupted_operation_is_not_resumed_by_late_runner(tmp_path):
     import kg.vocab_add_link_operation as operations
 
     operation_id = _seed_operation("late-runner", status="queued")
-    operations.reap_interrupted_operations()
+    operations.reap_interrupted_operations(tmp_path)
     cards = Cards(_card("source-card", "source"))
 
     run(operation_id, cards, Graph(), translate_fn=lambda **_k: pytest.fail("must not run"))
