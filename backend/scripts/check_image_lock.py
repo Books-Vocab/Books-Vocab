@@ -12,11 +12,12 @@ from the root project for that environment, and reports:
 - duplicated: a distribution installed more than once.
 
 Dependency groups are never required. ``--allow-group`` lets the image carry
-packages from a group (the admin test matrix runs pytest in the container), but
-they must still be at the locked versions.
+packages from one dedicated group (``image-test``: the admin test matrix runs
+pytest in the container), at their locked versions. The broad ``dev`` group is
+deliberately not allowable, so a tool added to it is reported as unexpected.
 
 Usage (from backend/):
-    uv run --locked python scripts/check_image_lock.py --image <tag> --allow-group dev
+    uv run --locked python scripts/check_image_lock.py --image <tag> --allow-group image-test
 
 Exit status: 0 = image matches uv.lock, 1 = drift found, 2 = usage, lock or probe error.
 """
@@ -38,6 +39,10 @@ from packaging.markers import Marker
 from packaging.version import InvalidVersion, Version
 
 DEFAULT_LOCK = Path(__file__).resolve().parent.parent / "uv.lock"
+
+# Dependency groups the production image may carry. Dockerfile exports exactly
+# these with `--no-default-groups --group <name>`; `dev` is intentionally absent.
+ALLOWED_IMAGE_GROUPS = ("image-test",)
 
 # python:3.13-slim ships pip as its only distribution. It is the base image's
 # installer, not an application dependency, so uv.lock does not account for it.
@@ -269,8 +274,10 @@ def main(argv: Sequence[str] | None = None, probe: Callable[[str], Probe] = prob
         "--allow-group",
         action="append",
         default=[],
+        choices=ALLOWED_IMAGE_GROUPS,
         metavar="GROUP",
-        help="dependency group whose packages may be installed, at locked versions (repeatable)",
+        help=f"image dependency group whose packages may be installed, at locked versions "
+        f"(one of: {', '.join(ALLOWED_IMAGE_GROUPS)})",
     )
     parser.add_argument("--json", action="store_true", help="print the report as JSON")
     args = parser.parse_args(argv)

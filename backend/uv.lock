@@ -434,6 +434,10 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
 ]
+image-test = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -465,6 +469,10 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.26,<2.0" },
     { name = "pytest-cov", specifier = ">=6.0,<8.0" },
     { name = "ruff", specifier = "==0.16.3" },
+]
+image-test = [
+    { name = "pytest", specifier = ">=8.0,<10.0" },
+    { name = "pytest-asyncio", specifier = ">=0.26,<2.0" },
 ]
 
 [[package]]

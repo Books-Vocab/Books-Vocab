@@ -38,6 +38,10 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "devtool" },
+    { name = "pytest" },
+]
+image-test = [
     { name = "pytest" },
 ]
 
@@ -86,6 +90,11 @@ dependencies = [
 name = "pluggy"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
+
+[[package]]
+name = "devtool"
+version = "4.0.0"
+source = { registry = "https://pypi.org/simple" }
 """
 )
 
@@ -119,9 +128,11 @@ def test_runtime_closure_follows_extras_and_evaluates_markers_for_the_image() ->
 
 
 def test_dependency_groups_are_only_walked_when_named() -> None:
+    image_test = lockcheck.locked_closure(LOCK, LINUX_X86_64, groups=["image-test"])
     with_dev = lockcheck.locked_closure(LOCK, LINUX_X86_64, groups=["dev"])
 
-    assert with_dev == {**RUNTIME, "pytest": "9.0.3", "pluggy": "1.6.0"}
+    assert image_test == {**RUNTIME, "pytest": "9.0.3", "pluggy": "1.6.0"}
+    assert with_dev == {**image_test, "devtool": "4.0.0"}
     with pytest.raises(lockcheck.LockError, match="no dependency group 'docs'"):
         lockcheck.locked_closure(LOCK, LINUX_X86_64, groups=["docs"])
 
@@ -169,12 +180,19 @@ def test_real_lock_runtime_closure_excludes_dev_tooling() -> None:
 
     runtime = lockcheck.locked_closure(lock, LINUX_X86_64)
     with_dev = lockcheck.locked_closure(lock, LINUX_X86_64, groups=["dev"])
+    image_test = lockcheck.locked_closure(lock, LINUX_X86_64, groups=["image-test"])
 
     for name in ("fastapi", "starlette", "uvicorn", "uvloop", "greenlet", "sentry-sdk", "requests"):
         assert name in runtime
     for name in ("pytest", "pytest-asyncio", "pytest-cov", "ruff", "colorama", "kg"):
         assert name not in runtime
     assert {"pytest", "pytest-asyncio", "pytest-cov", "ruff"} <= with_dev.keys()
+    # The image group is exactly what the container needs to run pytest (#2088 review):
+    # dev tooling (linters, coverage, future additions) must not ride along with it.
+    assert {"pytest", "pytest-asyncio"} <= image_test.keys()
+    for name in ("pytest-cov", "coverage", "ruff"):
+        assert name not in image_test
+    assert lockcheck.ALLOWED_IMAGE_GROUPS == ("image-test",)
 
 
 def _fake_probe(distributions: list[tuple[str, str]]):
@@ -196,7 +214,8 @@ def test_main_exit_status_distinguishes_match_drift_and_probe_errors(capsys: pyt
 
     assert lockcheck.main(args, probe=_fake_probe([*exact, ("pytest", "9.0.3")])) == 1
     assert "unexpected  pytest==9.0.3" in capsys.readouterr().out
-    assert lockcheck.main([*args, "--allow-group", "dev"], probe=_fake_probe([*exact, ("pytest", "9.0.3")])) == 0
+    pytest_only = [*exact, ("pytest", "9.0.3")]
+    assert lockcheck.main([*args, "--allow-group", "image-test"], probe=_fake_probe(pytest_only)) == 0
     capsys.readouterr()
 
     def broken(image: str) -> lockcheck.Probe:
@@ -212,3 +231,42 @@ def test_probe_output_must_be_the_expected_json() -> None:
 
     with pytest.raises(lockcheck.ProbeError):
         lockcheck.parse_probe("Traceback (most recent call last):")
+
+
+def test_package_only_in_dev_group_is_unexpected_in_the_image(capsys: pytest.CaptureFixture[str]) -> None:
+    """A tool added to `dev` must not be tolerated by the image check, even though it is locked."""
+    lock = tomllib.loads(lockcheck.DEFAULT_LOCK.read_text(encoding="utf-8"))
+    image_test = lockcheck.locked_closure(lock, LINUX_X86_64, groups=["image-test"])
+    locked = lockcheck.locked_closure(lock, LINUX_X86_64, groups=["dev"])
+    assert "ruff" in locked.keys() - image_test.keys()
+    args = ["--image", "kg-api:test", "--lock", str(lockcheck.DEFAULT_LOCK), "--allow-group", "image-test"]
+
+    exact = [*image_test.items(), ("pip", "25.2")]
+    assert lockcheck.main(args, probe=_fake_probe(exact)) == 0
+    capsys.readouterr()
+
+    leaked = [*exact, ("ruff", locked["ruff"])]
+    assert lockcheck.main(args, probe=_fake_probe(leaked)) == 1
+    assert f"unexpected  ruff=={locked['ruff']}" in capsys.readouterr().out
+
+
+def test_dev_group_cannot_be_allowed_for_the_image() -> None:
+    args = ["--image", "kg-api:test", "--lock", str(lockcheck.DEFAULT_LOCK), "--allow-group", "dev"]
+
+    with pytest.raises(SystemExit) as exc_info:
+        lockcheck.main(args, probe=_fake_probe([]))
+
+    assert exc_info.value.code == 2
+
+
+def test_dockerfile_and_workflow_install_and_allow_only_the_image_group() -> None:
+    backend = Path(__file__).resolve().parent.parent
+    dockerfile = (backend / "Dockerfile").read_text(encoding="utf-8")
+    workflow = (backend.parent / ".github/workflows/backend-quality.yml").read_text(encoding="utf-8")
+    pyproject = tomllib.loads((backend / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert "--no-default-groups --group image-test" in dockerfile
+    assert "--no-emit-package" not in dockerfile  # exclusion lists let new dev tools in silently
+    assert "--allow-group image-test" in workflow
+    assert "--allow-group dev" not in workflow
+    assert sorted(pyproject["dependency-groups"]["image-test"]) == ["pytest-asyncio>=0.26,<2.0", "pytest>=8.0,<10.0"]
