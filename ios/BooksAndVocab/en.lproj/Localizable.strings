@@ -91,7 +91,6 @@
 "力" = "Forces";
 "字庫卡片" = "Cards";
 "字體" = "Font";
-"字級倍率" = "Font Scale";
 "帳號" = "Account";
 "帳號 ID（手動）" = "Account ID (Manual)";
 "開始同步" = "Start Sync";
@@ -120,12 +119,10 @@
 "正在重試 (%@/%@)..." = "Retrying (%1$@/%2$@)...";
 "開發者" = "Developer";
 "開發者帳號 ID" = "Developer Account ID";
-"開發者與除錯" = "Developer & Debug";
 "強制同步到雲端" = "Force Sync to Cloud";
 "很抱歉" = "Sorry";
 "外觀" = "Appearance";
 "後端伺服器錯誤 (%@)" = "Backend server error (%@)";
-"排版" = "Layout";
 "排斥力" = "Repel Force";
 "搜尋待收錄單字" = "Search inbox";
 "搜尋單字" = "Search vocabulary";
@@ -144,7 +141,6 @@
 "無法觸發: %@" = "Unable to trigger: %@";
 "生字庫" = "Vocabulary";
 "生字底線強度" = "Vocabulary Underline Strength";
-"生字標記" = "Highlights";
 "版本" = "Version";
 "管理訂閱" = "Manage Subscription";
 "偏好設定" = "Preferences";
@@ -333,17 +329,13 @@
 "單字「%@」已經在您的生字庫中了。" = "\"%@\" is already in your vocabulary list.";
 "加入自系統外" = "Added Outside the System";
 "已成功將「%@」加入 Books & Vocab 生字庫。" = "Added \"%@\" to Books & Vocab vocabulary.";
-"生字標記" = "Vocabulary Markers";
-"排版" = "Typography";
 "外觀" = "Appearance";
 "字體" = "Font";
-"字級倍率" = "Text Size";
 "行距" = "Line Spacing";
 "底線強度" = "Underline Strength";
 "隱藏" = "Hidden";
 "中" = "Medium";
 "閱讀設定" = "Reading Settings";
-"開發者與除錯" = "Developer and Debug";
 "單字本" = "Notebooks";
 "已加入單字庫" = "Added to Vocabulary";
 "價格與試用長度會以 App Store 顯示為準" = "Pricing and trial length follow the App Store listing.";
@@ -809,7 +801,7 @@
 "聯絡支援團隊" = "Contact support";
 "背景同步部分失敗：%@" = "Background sync partially failed: %@";
 "自動同步" = "Auto-sync";
-"自動連結" = "Auto-link";
+"settings.autoLink.title" = "Auto-link";
 "關閉自動連結後，新單字不再自動建立知識圖譜連結；重新開啟會繼續處理累積的單字。" = " With auto-link off, new words are no longer linked into the knowledge graph automatically; turning it back on resumes processing the backlog.";
 "自動播放" = "Auto-play";
 "自訂圖片" = "Custom image";
