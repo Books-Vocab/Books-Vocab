@@ -20,7 +20,7 @@
 
 set -euo pipefail
 
-LOCK_FILE="/tmp/kg-ios-build.lock"
+LOCK_FILE="${KG_IOS_BUILD_LOCK_FILE:-/tmp/kg-ios-build.lock}"   # override only for hermetic tests
 # Lock spin-wait budget. `--timeout` still overrides per call; the env var exists
 # for callers that build their own argv and cannot pass flags — notably
 # `worktree_orchestrate.py gate`, which runs several lock-taking gates in
@@ -170,6 +170,18 @@ if [[ "$DRY_RUN" == "1" ]]; then
   xcodebuild_argv "" | sed 's/^/argv=/'
   exit 0
 fi
+
+# --- Early guard verdict: decided BEFORE queueing for the build lock ---
+# A structural block (exit 77, retryable=no) or a temporary one (exit 75) costs
+# seconds here instead of a lock-queue wait; the in-lock preflight below then
+# measures real disk space only.
+early_guard_rc=0
+kg_ios_disk_guard_early_verdict "build" || early_guard_rc=$?
+if (( early_guard_rc != 0 )); then
+  echo "[ios_build] not started: shared disk guard blocked (exit $early_guard_rc); './ops/ios_ops.sh guard' shows the verdict" >&2
+  exit "$early_guard_rc"
+fi
+export KG_IOS_DISK_GUARD_ALREADY_CHECKED=1
 
 # --- Lock acquire (shlock spin-wait) ---
 MONITOR_PID=""

@@ -6,6 +6,11 @@
 # returns a structured fail-closed result when the writer budget is exhausted.
 
 KG_IOS_DISK_BUDGET_EXIT=75
+# Structural guard block (unregistered/dirty/unknown worktree, or a state that
+# needs human review): waiting never clears it, so it must not share the
+# temporary exit 75 that agents poll on.  Mirrors EXIT_STRUCTURAL_BLOCK in
+# ops/lib/exit_codes.py.
+KG_IOS_DISK_STRUCTURAL_EXIT=77
 KG_IOS_DISK_GUARD_STATE_DEFAULT="${HOME}/Library/Application Support/KG/disk_guard.json"
 
 kg_ios_disk_budget_number() {
@@ -117,6 +122,24 @@ kg_ios_disk_guard_diagnose() {
   echo "schema=kg.ios.disk-budget.v1 operation=$operation detail=guard-block guardReason=$(kg_ios_disk_guard_json_string "$state" reason) guardAction=$(kg_ios_disk_guard_json_string "$state" action) laneUsageVerdict=$(kg_ios_disk_guard_json_string "$state" lane_usage_verdict) blockingReasons=${reasons:-none} unregisteredWorktrees=${unregistered:-none} dirtyWorktrees=${dirty:-none} unknownWorktrees=${unknown:-none} laneUsage=$lane_state refresh=\"./ops/ios_ops.sh guard --refresh\"" >&2
 }
 
+# A guard block that no amount of waiting or cache cleaning clears: the lane
+# attribution report names worktrees to register/clean up, or the guard itself
+# asks for manual review.
+kg_ios_disk_guard_block_is_structural() {
+  local reason
+  reason="$(kg_ios_disk_guard_json_string "$1" reason)"
+  case "$reason" in
+    lane-usage-report-blocked|xctest-devices-manual-review-required|simulator-runtime-manual-review-required) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+kg_ios_disk_guard_structural_notice() {
+  local operation="$1" state="$2"
+  echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block exit=$KG_IOS_DISK_STRUCTURAL_EXIT retryable=no reason=$(kg_ios_disk_guard_json_string "$state" reason) guardAction=$(kg_ios_disk_guard_json_string "$state" action)" >&2
+  echo "[ios] BLOCKED (structural, exit $KG_IOS_DISK_STRUCTURAL_EXIT, retryable=no): waiting or cleaning cache will not clear this. Fix the worktrees named above (register or remove them), then run './ops/ios_ops.sh guard --refresh'. Do not poll." >&2
+}
+
 # Re-evaluate the shared guard now instead of waiting for the 5-minute tick.
 # $2=1 only when the caller already owns the iOS build lock (inline preflight).
 # The host-global state has one writer identity: the canonical checkout's tick,
@@ -173,9 +196,10 @@ kg_ios_disk_budget_guard_state() {
   if [[ "$xctest_verdict" == "block" || "$xctest_verdict" == "critical" ]]; then
     if [[ "$manual_review" == "1" ]]; then
       echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block reason=xctest-devices-manual-review-required state=$state" >&2
-    else
-      echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block reason=xctest-devices-budget-exceeded state=$state" >&2
+      echo "[ios] BLOCKED (structural, exit $KG_IOS_DISK_STRUCTURAL_EXIT, retryable=no): XCTestDevices needs manual review; waiting will not clear it. Do not poll." >&2
+      return "$KG_IOS_DISK_STRUCTURAL_EXIT"
     fi
+    echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block reason=xctest-devices-budget-exceeded state=$state" >&2
     return "$KG_IOS_DISK_BUDGET_EXIT"
   fi
   if [[ "$verdict" == "block" || "$verdict" == "critical" ]]; then
@@ -191,6 +215,10 @@ kg_ios_disk_budget_guard_state() {
     fi
     echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block reason=disk-guard-blocked state=$state" >&2
     kg_ios_disk_guard_diagnose "$operation" "$state"
+    if kg_ios_disk_guard_block_is_structural "$state"; then
+      kg_ios_disk_guard_structural_notice "$operation" "$state"
+      return "$KG_IOS_DISK_STRUCTURAL_EXIT"
+    fi
     return "$KG_IOS_DISK_BUDGET_EXIT"
   fi
 
@@ -264,7 +292,17 @@ kg_ios_disk_budget_preflight() {
     fi
     return "$KG_IOS_DISK_BUDGET_EXIT"
   fi
-  kg_ios_disk_budget_guard_state "$operation" || return $?
+  if [[ "${KG_IOS_DISK_GUARD_ALREADY_CHECKED:-0}" != "1" ]]; then
+    kg_ios_disk_budget_guard_state "$operation" || return $?
+  fi
   echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=pass freeBytes=$free_bytes cacheKB=$cache_kb budgetKB=$budget_kb headroomKB=$headroom_kb" >&2
   return 0
+}
+
+# Early, side-effect-free verdict for entry points: read the shared guard BEFORE
+# leasing a simulator or taking the build lock, so a block costs seconds, not a
+# queue slot.  Real disk space is still measured by the in-lock preflight.
+# Returns 0 (go on), 75 (temporary), or 77 (structural, not retryable).
+kg_ios_disk_guard_early_verdict() {
+  kg_ios_disk_budget_guard_state "${1:-ios-write}"
 }

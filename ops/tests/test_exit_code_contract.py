@@ -43,6 +43,7 @@ def test_shared_vocabulary_is_stable_and_distinguishes_outcomes():
     assert codes.EXIT_WARN == 3
     assert codes.EXIT_USAGE == 64
     assert codes.EXIT_CLAIMED == 75
+    assert codes.EXIT_STRUCTURAL_BLOCK == 77
     # Existing registry callers use this name for an operational partial
     # failure; keep it as a compatibility alias for the tool-error class.
     assert codes.EXIT_PARTIAL == codes.EXIT_TOOL_ERROR
@@ -56,7 +57,16 @@ def test_shared_vocabulary_is_stable_and_distinguishes_outcomes():
         ((sys.executable, "ops/app_review_gate.py", "--not-a-real-option"), 64),
         ((sys.executable, "ops/app_review_evidence.py", "--not-a-real-option"), 64),
         ((sys.executable, "ops/app_review_gate.py", "dry-run"), 64),
-        ((sys.executable, "ops/app_review_evidence.py", "status", "--spec", "/tmp/kg-no-such-spec.json"), 1),
+        (
+            (
+                sys.executable,
+                "ops/app_review_evidence.py",
+                "status",
+                "--spec",
+                "/tmp/kg-no-such-spec.json",
+            ),
+            1,
+        ),
         (("bash", "ops/ios_ops.sh", "gate", "--not-a-real-option"), 64),
     ],
 )
@@ -97,6 +107,17 @@ def test_shell_verdicts_use_block_two_and_warning_three():
     assert '[ "$errors" -gt 0 ] && exit "$EXIT_BLOCK"' in docs
     assert '[ "$warnings" -gt 0 ] && exit "$EXIT_WARN"' in docs
     assert 'then 2 elif .verdict=="warn" then 3 else 0 end' in ios_release
+
+
+def test_structural_guard_exit_is_distinct_from_the_retryable_75():
+    codes = _load_exit_codes()
+    shell = (ROOT / "ops/lib/ios_disk_budget.sh").read_text(encoding="utf-8")
+
+    # 75 means "temporary, retry"; a structural guard block never clears by
+    # waiting, so the shell library must use the same 77 as the shared vocabulary.
+    assert codes.EXIT_STRUCTURAL_BLOCK != codes.EXIT_CLAIMED
+    assert f"KG_IOS_DISK_STRUCTURAL_EXIT={codes.EXIT_STRUCTURAL_BLOCK}" in shell
+    assert f"KG_IOS_DISK_BUDGET_EXIT={codes.EXIT_CLAIMED}" in shell
 
 
 def test_contract_test_is_registered_in_default_dispatch_and_ci_coverage():

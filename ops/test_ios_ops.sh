@@ -1851,6 +1851,7 @@ lease_failure_out="$lease_failure_tmp/stdout"
 lease_failure_err="$lease_failure_tmp/stderr"
 lease_failure_rc=0
 KG_IOS_SIM_POOL_SIZE=0 \
+KG_IOS_DISK_GUARD_STATE="$lease_failure_tmp/no-guard-state.json" \
 KG_IOS_SIM_LEASE_ROOT="$lease_failure_tmp/leases" \
 KG_IOS_VERDICT_FILE="$lease_failure_tmp/verdict" \
   "$IOS_OPS" test --unit --lease --json >"$lease_failure_out" 2>"$lease_failure_err" || lease_failure_rc=$?

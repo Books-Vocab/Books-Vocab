@@ -3,7 +3,7 @@
 #
 # Usage:
 #   ./ops/ios_ops.sh status
-#   ./ops/ios_ops.sh guard [--refresh]                      # shared disk guard verdict (exit 75 = blocked, names the worktrees); --refresh re-evaluates now
+#   ./ops/ios_ops.sh guard [--refresh]                      # shared disk guard verdict (exit 75 = temporary block, 77 = structural block / retryable=no; names the worktrees); --refresh re-evaluates now
 #   ./ops/ios_ops.sh build [ios_build.sh args...]          # app + test-target compile; e.g. --swift6
 #   ./ops/ios_ops.sh test [ios_test.sh args...]
 #   ./ops/ios_ops.sh test --launch-benchmark [--ui-launch-profile <standard|ui-smoke>]
