@@ -64,6 +64,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
 
     # Sync quota limits with settings
     from .quota_service import configure_limits
+
     configure_limits(pro=settings.pro_daily_limit_usd, free=settings.free_daily_limit_usd)
     from .pipeline_log import reap_orphaned_runs
     from .service_factories import reset_async_clients, reset_clients
@@ -161,6 +162,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     # read-only public asset mount — unlike the removed podcast-media mount, it
     # serves no user data, only design-system stylesheets and brand fonts.
     from fastapi.staticfiles import StaticFiles
+
     _static_dir = Path(__file__).resolve().parent.parent.parent / "static"
     if _static_dir.is_dir():
         app.mount("/static", StaticFiles(directory=_static_dir), name="static")
@@ -169,6 +171,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     # as the rest of the app state — keeps test isolation honest when
     # conftest swaps the settings without touching env vars.
     from . import podcast_progress as _progress_store
+
     _progress_store.set_data_dir(settings.data_dir)
 
     return app
