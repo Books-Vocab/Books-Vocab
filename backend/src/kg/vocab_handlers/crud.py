@@ -172,6 +172,7 @@ def update_word_preferences_response(
         word,
         reader_hidden=req.reader_hidden,
         review_excluded=req.review_excluded,
+        mode=req.mode,
         cards_store=stores.cards,
         graph=stores.graph,
         card_response_builder=card_response_builder,

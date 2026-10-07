@@ -388,15 +388,18 @@ def update_vocab_word_preferences(
     graph: Any,
     card_response_builder: CardResponseBuilder,
     notebook_id: str | None = None,
+    mode: str | None = None,
 ) -> CardResponse:
-    """Update per-card reader/review preferences without touching SRS state."""
+    """Update per-card reader/review preferences (incl. review direction) without touching SRS state."""
     card = _resolve_card_or_raise(cards_store, word, notebook_id)
 
-    updates: dict[str, bool] = {}
+    updates: dict[str, bool | str] = {}
     if reader_hidden is not None:
         updates["is_reader_hidden"] = reader_hidden
     if review_excluded is not None:
         updates["is_review_excluded"] = review_excluded
+    if mode is not None:
+        updates["mode"] = mode
     if not updates:
         raise BadRequestError("No card preferences to update")
 
