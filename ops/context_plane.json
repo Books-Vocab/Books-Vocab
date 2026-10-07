@@ -117,10 +117,10 @@
         "backend": {"direct-assignment": "implementation"},
         "ios": {"direct-assignment": "implementation-ios"}
       },
-      "owns": "直接指派工作的 local branch/worktree、程式碼、測試、local commit 與 hand-back evidence",
+      "owns": "直接指派工作的 local branch/worktree、程式碼、測試、local commit 與 hand-back evidence；GitHub read（gh issue view、gh pr view、gh api GET）只用於讀取 assignment 引用的 Issue/PR/review comments",
       "not_owns": "GitHub Issue/PR/branch mutation、push、review、merge、enqueue、Issue lifecycle、Project priority、release/deploy",
-      "allowed_surfaces": ["local:assigned-worktree", "local:code-edit", "local:test", "local:git-commit", "local:hand-back"],
-      "forbidden_surfaces": ["github:any-mutation", "github:issue-read-write", "github:pr-read-write", "github:push", "github:review", "github:merge", "local:other-worktree"],
+      "allowed_surfaces": ["github:read", "local:assigned-worktree", "local:code-edit", "local:test", "local:git-commit", "local:hand-back"],
+      "forbidden_surfaces": ["github:any-mutation", "github:issue-write", "github:pr-write", "github:push", "github:review", "github:merge", "local:other-worktree"],
       "handoff_contract": {
         "input": ["User/IM assignment", "dedicated branch/worktree and structured Scope"],
         "output": ["clean local commit with exact HEAD and validation evidence", "no GitHub mutation"],
@@ -161,10 +161,10 @@
         "backend": {"issue": "implementation"},
         "ios": {"issue": "implementation-ios"}
       },
-      "owns": "由 IM 傳入 Issue assignment 的 local branch/worktree、程式碼、測試、local commit 與 hand-back evidence",
-      "not_owns": "直接 GitHub access、Issue/PR/branch mutation、push、review、merge、enqueue、建立第二套 backlog、release/deploy",
-      "allowed_surfaces": ["local:assigned-worktree", "local:code-edit", "local:test", "local:git-commit", "local:hand-back"],
-      "forbidden_surfaces": ["github:any-mutation", "github:issue-read-write", "github:pr-read-write", "github:push", "github:review", "github:merge", "local:other-worktree"],
+      "owns": "由 IM 傳入 Issue assignment 的 local branch/worktree、程式碼、測試、local commit 與 hand-back evidence；GitHub read（gh issue view、gh pr view、gh api GET）只用於讀取 assignment 引用的 Issue/PR/review comments",
+      "not_owns": "GitHub write、Issue/PR/branch mutation、push、review、merge、enqueue、建立第二套 backlog、release/deploy",
+      "allowed_surfaces": ["github:read", "local:assigned-worktree", "local:code-edit", "local:test", "local:git-commit", "local:hand-back"],
+      "forbidden_surfaces": ["github:any-mutation", "github:issue-write", "github:pr-write", "github:push", "github:review", "github:merge", "local:other-worktree"],
       "handoff_contract": {
         "input": ["IM-provided Issue assignment packet", "dedicated branch/worktree and structured Scope"],
         "output": ["clean local commit with exact HEAD and validation evidence", "no GitHub mutation"],

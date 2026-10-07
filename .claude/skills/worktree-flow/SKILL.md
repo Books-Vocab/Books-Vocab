@@ -79,4 +79,4 @@ Scope 只解決檔案 ownership，不代替 Issue acceptance 或 direct assignme
 
 ## Safe stopping
 
-以下情況停止本機動作並回報：Scope 與 diff 不一致、active owner 不明、HEAD 已變、gate block、工作樹不乾淨、dispatch channel／recipient 不明、需要修改另一個 worktree、需要 GitHub／production 權限，或需要不可逆操作。Worker／Issue Solver 遇到任何 GitHub／push／PR 需求，一律 hand-back 給已解析的 IM，不自行繞路。不要用本機檔案新增另一套狀態來掩蓋缺口。
+以下情況停止本機動作並回報：Scope 與 diff 不一致、active owner 不明、HEAD 已變、gate block、工作樹不乾淨、dispatch channel／recipient 不明、需要修改另一個 worktree、需要 GitHub／production 權限，或需要不可逆操作。Worker／Issue Solver 可唯讀 GitHub（`gh issue view`／`gh pr view`／`gh api` GET）；遇到任何 GitHub 寫入／push／PR 需求，一律 hand-back 給已解析的 IM，不自行繞路。不要用本機檔案新增另一套狀態來掩蓋缺口。
