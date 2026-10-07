@@ -11,9 +11,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 from .candidates import _CandidatesMixin, claimed_pending_judge
+from .filelock import path_write_lock
 from .links import _LinksMixin
 from .models import CandidatePair, GraphLink
-from .persistence import _PersistenceMixin, _split_pending_rows
+from .persistence import DiskSignature, _PersistenceMixin, _split_pending_rows
 
 if TYPE_CHECKING:
     from ..graph_event_log import GraphEventDraft, GraphEventStore, GraphSnapshotStore
@@ -122,6 +123,20 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         self._judge_gen: dict[str, str | None] = {}
         self._from_index: dict[str, set[str]] = {}  # card_id -> set of link_ids
         self._to_index: dict[str, set[str]] = {}  # card_id -> set of link_ids
+        self._links_snapshot_sequence = 0
+        self._last_flushed_links_snapshot_sequence = 0
+        self._blocked_snapshot_sequence = 0
+        # Cross-process staleness (#2086, see graph.persistence): signature of
+        # each file as of this instance's last read/write, the link ids on disk
+        # at that point, and the changes made here that no flush has persisted
+        # yet (id/pair -> sequence of the snapshot carrying the change).
+        self._links_disk_sig: DiskSignature | None = None
+        self._blocked_disk_sig: DiskSignature | None = None
+        self._synced_link_ids: set[str] = set()
+        self._pending_link_ids: dict[str, int] = {}
+        self._pending_blocked_pairs: dict[tuple[str, str], int] = {}
+        self._links_adopted_sequence = 0
+        self._blocked_adopted_sequence = 0
         self._load()
 
     # ------------------------------------------------------------------
@@ -276,48 +291,69 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
     def _normalize_pair(a: str, b: str) -> tuple[str, str]:
         return tuple(sorted([a, b]))  # type: ignore[return-value]
 
+    def _parse_link_rows(self, rows: list) -> tuple[dict[str, GraphLink], set[tuple[str, str]], set[str], bool]:
+        """Parse persisted link rows -> (links, rejected pairs, duplicate ids, dirty).
+
+        Shared by ``_load`` and the stale-instance adoption path so both read
+        the file the same way. ``dirty`` means the rows need a rewrite.
+        """
+        links: dict[str, GraphLink] = {}
+        rejected_pairs: set[tuple[str, str]] = set()
+        duplicate_ids: set[str] = set()
+        dirty = False
+        loaded_pairs: set[tuple[str, str]] = set()
+        for lk in rows:
+            if not isinstance(lk, dict):
+                logger.warning(
+                    "graph: skipping malformed link row in %s: %s",
+                    self.links_path,
+                    type(lk).__name__,
+                )
+                continue
+            if lk.get("kind") in self._RETIRED_KINDS:
+                dirty = True
+                continue
+            # Migrate rejected -> blocked
+            if lk.get("status") == "rejected":
+                dirty = True
+                rejected_pairs.add(self._normalize_pair(lk["from_id"], lk["to_id"]))
+                continue
+            link = GraphLink.model_validate(lk)
+            if link.status in ("active", "hidden"):
+                pair = self._normalize_pair(link.from_id, link.to_id)
+                if pair in loaded_pairs:
+                    # A previous TOCTOU race may have left duplicate active
+                    # rows on disk. Keep the first persisted row as the
+                    # deterministic winner and let _save_links remove the
+                    # later row during the normal atomic flush.
+                    dirty = True
+                    duplicate_ids.add(link.id)
+                    continue
+                loaded_pairs.add(pair)
+            links[link.id] = link
+        return links, rejected_pairs, duplicate_ids, dirty
+
     def _load(self) -> None:
+        # Each signature is taken *before* its unlocked read: a write racing
+        # the read then shows up as a mismatch on the next flush, never as a
+        # silently trusted stale view (#2086).
         if self.blocked_path and self.blocked_path.exists():
-            data = self._read_json_list(self.blocked_path)
-            self._blocked_pairs = {tuple(pair) for pair in data}  # type: ignore[misc]
+            self._blocked_disk_sig = self._disk_signature(self.blocked_path)
+            self._blocked_pairs = self._parse_blocked_rows(self._read_json_list(self.blocked_path))
             self._known_blocked_pairs |= self._blocked_pairs
         if self.links_path.exists():
+            self._links_disk_sig = self._disk_signature(self.links_path)
             data = self._read_json_list(self.links_path)
-            dirty = False
-            loaded_pairs: set[tuple[str, str]] = set()
-            for lk in data:
-                if not isinstance(lk, dict):
-                    logger.warning(
-                        "graph: skipping malformed link row in %s: %s",
-                        self.links_path,
-                        type(lk).__name__,
-                    )
-                    continue
-                if lk.get("kind") in self._RETIRED_KINDS:
-                    dirty = True
-                    continue
-                # Migrate rejected -> blocked
-                if lk.get("status") == "rejected":
-                    dirty = True
-                    pair = self._normalize_pair(lk["from_id"], lk["to_id"])
-                    self._blocked_pairs.add(pair)
-                    self._known_blocked_pairs.add(pair)
-                    continue
-                link = GraphLink.model_validate(lk)
-                if link.status in ("active", "hidden"):
-                    pair = self._normalize_pair(link.from_id, link.to_id)
-                    if pair in loaded_pairs:
-                        # A previous TOCTOU race may have left duplicate active
-                        # rows on disk. Keep the first persisted row as the
-                        # deterministic winner and let _save_links remove the
-                        # later row during the normal atomic flush.
-                        dirty = True
-                        self._known_link_ids.add(link.id)
-                        continue
-                    loaded_pairs.add(pair)
-                self._links[link.id] = link
-                self._known_link_ids.add(link.id)
+            self._synced_link_ids = {row["id"] for row in data if isinstance(row, dict) and "id" in row}
+            links, rejected_pairs, duplicate_ids, dirty = self._parse_link_rows(data)
+            self._links.update(links)
+            self._known_link_ids |= links.keys() | duplicate_ids
+            if rejected_pairs:
+                self._blocked_pairs |= rejected_pairs
+                self._known_blocked_pairs |= rejected_pairs
+                self._touch_blocked(rejected_pairs)
             if dirty:
+                self._touch_links(duplicate_ids)
                 self._save_links()
                 self._save_blocked()
         if self.candidates_path.exists():
@@ -353,6 +389,32 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         self._rebuild_index()
         self._rebuild_candidate_set()
 
+    def refresh_if_stale(self) -> bool:
+        """Adopt links / blocked pairs another process wrote since our last sync.
+
+        A long-lived (cached) instance otherwise keeps serving what it loaded
+        in ``__init__`` while ``ops-edit`` or ``restore`` rewrite the files from
+        another process (#2086). Costs one ``stat`` per file when nothing
+        changed. Local changes not yet flushed are kept. Returns True when
+        anything was re-read.
+        """
+        refreshed = False
+        if self._disk_signature(self.links_path) != self._links_disk_sig:
+            with self._links_write_lock, path_write_lock(self.links_path):
+                sig = self._disk_signature(self.links_path)
+                if sig != self._links_disk_sig:
+                    rows = self._read_json_list(self.links_path) if sig is not None else []
+                    self._adopt_link_rows(rows, sig)
+                    refreshed = True
+        if self.blocked_path is not None and self._disk_signature(self.blocked_path) != self._blocked_disk_sig:
+            with self._blocked_write_lock, path_write_lock(self.blocked_path):
+                sig = self._disk_signature(self.blocked_path)
+                if sig != self._blocked_disk_sig:
+                    rows = self._read_json_list(self.blocked_path) if sig is not None else []
+                    self._adopt_blocked_rows(rows, sig)
+                    refreshed = True
+        return refreshed
+
     # ------------------------------------------------------------------
     # Cleanup
     # ------------------------------------------------------------------
@@ -367,6 +429,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
                 if lk and lk.status == "active":
                     lk.status = "deprecated"
                     affected.append(lk.model_copy())
+            self._touch_links(lk.id for lk in affected)
             snapshot = self._links_to_serializable() if affected else None
         if snapshot is not None:
             self._flush_links(snapshot)
@@ -403,6 +466,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
                     if other_card and not other_card.is_deleted and not other_card.is_archived:
                         lk.status = "active"
                         affected.append(lk.model_copy())
+            self._touch_links(lk.id for lk in affected)
             snapshot = self._links_to_serializable() if affected else None
         if snapshot is not None:
             self._flush_links(snapshot)

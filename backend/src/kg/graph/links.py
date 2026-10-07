@@ -33,8 +33,15 @@ class _LinksMixin:
     _links_write_lock: threading.Lock
     _links_snapshot_sequence: int
     _last_flushed_links_snapshot_sequence: int
+    _links_disk_sig: tuple[int, int, int] | None
+    _synced_link_ids: set[str]
+    _pending_link_ids: dict[str, int]
 
     # Helpers supplied by other mixins / GraphStore.
+    @staticmethod
+    def _disk_signature(path: Path | None) -> tuple[int, int, int] | None: ...  # noqa: D102
+    def _touch_links(self, link_ids: Any) -> None: ...  # noqa: D102
+    def _touch_blocked(self, pairs: Any) -> None: ...  # noqa: D102
     def _index_link(self, link: GraphLink) -> None: ...  # noqa: D102
     def _unindex_link(self, link: GraphLink) -> None: ...  # noqa: D102
     def _links_to_serializable(self) -> list[dict]: ...  # noqa: D102
@@ -133,6 +140,7 @@ class _LinksMixin:
         duplicate_ids: set[str] = set()
 
         with self._links_write_lock, path_write_lock(self.links_path):
+            disk_sig = self._disk_signature(self.links_path)
             rows = self._read_json_list(self.links_path)
             retained: list[Any] = []
             changed = False
@@ -167,6 +175,12 @@ class _LinksMixin:
 
             if changed:
                 self._atomic_json_write(self.links_path, retained)
+                # Only claim the new file as our sync point when the one we
+                # rewrote already was; otherwise a foreign change it carried
+                # would be hidden from the next flush (#2086).
+                if disk_sig == self._links_disk_sig:
+                    self._links_disk_sig = self._disk_signature(self.links_path)
+                    self._synced_link_ids -= duplicate_ids
 
             with self._lock:
                 removed_local = False
@@ -181,6 +195,7 @@ class _LinksMixin:
                             continue
                         self._links.pop(link_id, None)
                         self._unindex_link(managed)
+                        self._pending_link_ids.pop(link_id, None)
                         removed_local = True
 
                     cached = self._links.get(canonical.id)
@@ -288,6 +303,7 @@ class _LinksMixin:
                 return existing
             self._links[link.id] = link
             self._index_link(link)
+            self._touch_links((link.id,))
             snapshot = self._links_to_serializable()
         existing = self._persist_new_link(link, snapshot)
         if existing is not None:
@@ -334,6 +350,7 @@ class _LinksMixin:
                 self._links[link.id] = link
                 self._index_link(link)
                 created.append(link)
+            self._touch_links(lk.id for lk in created)
             snapshot = self._links_to_serializable() if created else None
         if snapshot is not None:
             self._flush_links_and_reconcile(
@@ -447,6 +464,7 @@ class _LinksMixin:
             conf_after, status_after = lk.confidence, lk.status
             reason_after = lk.reason
             from_id, to_id, kind = lk.from_id, lk.to_id, str(lk.kind)
+            self._touch_links((link_id,))
             snapshot = self._links_to_serializable()
         self._flush_links_and_reconcile(snapshot)
         self._emit_graph_event(
@@ -474,6 +492,7 @@ class _LinksMixin:
             status_before = lk.status
             lk.status = "hidden"
             from_id, to_id, kind, conf = lk.from_id, lk.to_id, str(lk.kind), lk.confidence
+            self._touch_links((link_id,))
             snapshot = self._links_to_serializable()
         self._flush_links_and_reconcile(snapshot)
         self._emit_graph_event(
@@ -499,6 +518,7 @@ class _LinksMixin:
             status_before = lk.status
             lk.status = "active"
             from_id, to_id, kind, conf = lk.from_id, lk.to_id, str(lk.kind), lk.confidence
+            self._touch_links((link_id,))
             snapshot = self._links_to_serializable()
         self._flush_links_and_reconcile(snapshot)
         self._emit_graph_event(
@@ -530,6 +550,8 @@ class _LinksMixin:
             # Register so a later _flush_blocked merge treats this pair as
             # managed by this instance (a subsequent unblock is honoured).
             self._known_blocked_pairs.add(pair)
+            self._touch_links((link_id,))
+            self._touch_blocked((pair,))
             links_snapshot = self._links_to_serializable()
             blocked_snapshot = self._blocked_to_serializable()
         self._flush_links_and_reconcile(links_snapshot)
@@ -556,14 +578,18 @@ class _LinksMixin:
     def remove_blocked_pairs_for(self, card_id: str) -> None:
         """Remove all blocked pairs involving a card."""
         with self._lock:
-            self._blocked_pairs = {pair for pair in self._blocked_pairs if card_id not in pair}
+            removed = {pair for pair in self._blocked_pairs if card_id in pair}
+            self._blocked_pairs = self._blocked_pairs - removed
+            self._touch_blocked(removed)
             snapshot = self._blocked_to_serializable()
         self._flush_blocked(snapshot)
 
     def unblock_pair(self, from_id: str, to_id: str) -> None:
         """Remove a specific blocked pair."""
         with self._lock:
-            self._blocked_pairs.discard(self._normalize_pair(from_id, to_id))
+            pair = self._normalize_pair(from_id, to_id)
+            self._blocked_pairs.discard(pair)
+            self._touch_blocked((pair,))
             snapshot = self._blocked_to_serializable()
         self._flush_blocked(snapshot)
 

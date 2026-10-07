@@ -207,7 +207,7 @@ def create_graph_store(user_dir: Path, notebook_id: str = "default") -> GraphSto
     # 用 provider 而非直接注入:GraphStore 可能被長期持有(pipeline 跨秒 hold),而
     # event_store 在共享 LRU 快取中可能先被逐出並 close;每次 emit 透過 provider 重解析,
     # 命中快取(逐出則重建)後再寫,杜絕對死引用靜默丟事件。
-    return _get_cached(
+    store = _get_cached(
         key,
         lambda: GraphStore(
             links_path,
@@ -219,6 +219,10 @@ def create_graph_store(user_dir: Path, notebook_id: str = "default") -> GraphSto
             event_notebook_id=notebook_id,
         ),
     )
+    # 快取實例只在 __init__ 讀盤;ops-edit / restore 從別的 process 改檔後,交出前先依
+    # 檔案簽章重新同步,否則持續回傳舊圖譜(#2086)。未變時只多一次 stat。
+    store.refresh_if_stale()
+    return store
 
 
 def create_notebook_store(user_dir: Path) -> NotebookStore:

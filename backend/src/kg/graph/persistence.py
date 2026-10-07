@@ -37,6 +37,23 @@ like ``_flush_links``:
   ``_flush_pending_judge``), so a later enqueue by another instance survives.
 - An id/pair present on disk but unknown to the instance (queued by another
   instance) is preserved instead of being clobbered.
+
+Stale instances (#2086)
+-----------------------
+The rules above trust this instance's snapshot for every link / blocked pair
+it holds. That is only sound while the file still is what this instance last
+read or wrote. The API keeps one long-lived instance per notebook, and
+``ops-edit`` / ``restore`` rewrite the same files from another process, so the
+cached snapshot can hold a link that was since deleted or updated elsewhere.
+
+Each instance therefore records the file signature (inode, mtime, size) of its
+last sync, plus the ids/pairs it changed since then (``_pending_*``, keyed by
+the snapshot sequence that carries the change). When a flush finds a different
+signature -- or carries a snapshot taken before this instance re-synced -- it
+replays only its own pending changes onto the current file, and the result is
+adopted back into memory. A link deleted by another writer stays deleted, even
+when this instance edited it concurrently. ``GraphStore.refresh_if_stale``
+applies the same adoption on read so a foreign write also becomes visible.
 """
 
 from __future__ import annotations
@@ -54,6 +71,10 @@ from .filelock import path_write_lock
 from .models import CandidatePair, GraphLink
 
 logger = logging.getLogger(__name__)
+
+# (st_ino, st_mtime_ns, st_size). Every writer replaces the file via
+# tmp -> rename, so any foreign write yields a different signature.
+DiskSignature = tuple[int, int, int]
 
 
 class _LinkSnapshot(list[dict]):
@@ -99,6 +120,26 @@ def _split_pending_rows(rows: list) -> tuple[list[str], dict[str, str]]:
     return ids, gens
 
 
+class _BlockedSnapshot(list[list[str]]):
+    """Serializable blocked-pair snapshot carrying its in-memory mutation order."""
+
+    def __init__(self, rows: list[list[str]], sequence: int) -> None:
+        super().__init__(rows)
+        self.sequence = sequence
+
+
+def _covered_pending[K](pending: dict[K, int], sequence: int | None) -> dict[K, int]:
+    """Pending changes already reflected in the snapshot taken at ``sequence``."""
+    return {key: seq for key, seq in pending.items() if sequence is None or seq <= sequence}
+
+
+def _clear_pending[K](pending: dict[K, int], covered: dict[K, int]) -> None:
+    """Drop persisted changes, keeping keys re-touched after the snapshot."""
+    for key, seq in covered.items():
+        if pending.get(key) == seq:
+            del pending[key]
+
+
 class _PersistenceMixin:
     """Atomic write + snapshot + flush helpers for :class:`GraphStore`."""
 
@@ -107,6 +148,7 @@ class _PersistenceMixin:
     candidates_path: Path
     blocked_path: Path | None
     pending_judge_path: Path | None
+    _lock: threading.Lock
     _links: dict[str, GraphLink]
     _candidates: list[CandidatePair]
     _blocked_pairs: set[tuple[str, str]]
@@ -119,14 +161,87 @@ class _PersistenceMixin:
     _known_candidate_pairs: set[tuple[str, str]]
     _links_snapshot_sequence: int
     _last_flushed_links_snapshot_sequence: int
+    _blocked_snapshot_sequence: int
+    # Cross-process staleness tracking (#2086); see module docstring.
+    _links_disk_sig: DiskSignature | None
+    _blocked_disk_sig: DiskSignature | None
+    _synced_link_ids: set[str]
+    _pending_link_ids: dict[str, int]
+    _pending_blocked_pairs: dict[tuple[str, str], int]
+    _links_adopted_sequence: int
+    _blocked_adopted_sequence: int
     _links_write_lock: threading.Lock
     _candidates_write_lock: threading.Lock
     _blocked_write_lock: threading.Lock
     _pending_judge_write_lock: threading.Lock
 
-    # Helper supplied by GraphStore.
+    # Helpers supplied by GraphStore.
     @staticmethod
     def _normalize_pair(a: str, b: str) -> tuple[str, str]: ...  # noqa: D102
+    def _parse_link_rows(  # noqa: D102
+        self, rows: list[Any]
+    ) -> tuple[dict[str, GraphLink], set[tuple[str, str]], set[str], bool]: ...
+    def _rebuild_index(self) -> None: ...  # noqa: D102
+
+    @staticmethod
+    def _disk_signature(path: Path | None) -> DiskSignature | None:
+        """Identity of the file now at ``path``; ``None`` when it is absent."""
+        if path is None:
+            return None
+        try:
+            st = path.stat()
+        except OSError:
+            return None
+        return (st.st_ino, st.st_mtime_ns, st.st_size)
+
+    @staticmethod
+    def _parse_blocked_rows(rows: list[Any]) -> set[tuple[str, str]]:
+        return {tuple(row) for row in rows if isinstance(row, list) and len(row) == 2}  # type: ignore[misc]
+
+    # Pending-change bookkeeping -- call inside _lock, right before taking the
+    # snapshot that carries the change.
+    def _touch_links(self, link_ids: Iterable[str]) -> None:
+        sequence = getattr(self, "_links_snapshot_sequence", 0) + 1
+        for link_id in link_ids:
+            self._pending_link_ids[link_id] = sequence
+
+    def _touch_blocked(self, pairs: Iterable[tuple[str, str]]) -> None:
+        sequence = self._blocked_snapshot_sequence + 1
+        for pair in pairs:
+            self._pending_blocked_pairs[pair] = sequence
+
+    # Adoption of another writer's state -- caller holds the file's write
+    # locks; pending (not yet persisted) local changes are kept.
+    def _adopt_link_rows(self, rows: list[Any], sig: DiskSignature | None) -> None:
+        disk_links = self._parse_link_rows(rows)[0]
+        with self._lock:
+            pending = self._pending_link_ids
+            for link_id in [lid for lid in self._links if lid not in pending and lid not in disk_links]:
+                del self._links[link_id]
+            for link_id, link in disk_links.items():
+                if link_id in pending:
+                    continue
+                current = self._links.get(link_id)
+                # Keep object identity for unchanged links: callers compare
+                # ``self._links.get(id) is link`` after their own flush.
+                if current is None or current.model_dump() != link.model_dump():
+                    self._links[link_id] = link
+            self._rebuild_index()
+            # Snapshots taken before this point carry the pre-adoption view.
+            self._links_adopted_sequence = getattr(self, "_links_snapshot_sequence", 0)
+        self._links_disk_sig = sig
+        self._synced_link_ids = {row["id"] for row in rows if isinstance(row, dict) and "id" in row}
+
+    def _adopt_blocked_rows(self, rows: list[Any], sig: DiskSignature | None) -> None:
+        disk_pairs = self._parse_blocked_rows(rows)
+        with self._lock:
+            pending = self._pending_blocked_pairs
+            self._blocked_pairs = {p for p in disk_pairs if p not in pending} | {
+                p for p in self._blocked_pairs if p in pending
+            }
+            self._known_blocked_pairs |= self._blocked_pairs
+            self._blocked_adopted_sequence = self._blocked_snapshot_sequence
+        self._blocked_disk_sig = sig
 
     @staticmethod
     def _atomic_json_write(path: Path, data: Any, *, indent: int | None = 2) -> None:
@@ -179,7 +294,9 @@ class _PersistenceMixin:
         return [c.model_dump(mode="json") for c in self._candidates]
 
     def _blocked_to_serializable(self) -> list[list[str]]:
-        return [list(pair) for pair in self._blocked_pairs]
+        sequence = self._blocked_snapshot_sequence + 1
+        self._blocked_snapshot_sequence = sequence
+        return _BlockedSnapshot([list(pair) for pair in self._blocked_pairs], sequence)
 
     # ------------------------------------------------------------------
     # Per-file serialised write helpers.
@@ -197,29 +314,83 @@ class _PersistenceMixin:
         lock the on-disk file is re-read; any link unknown to this instance
         (``id`` not in ``_known_link_ids``) is preserved, while ids the
         instance manages -- including ones it deleted -- follow the snapshot.
+        If another writer replaced the file since this instance last synced,
+        only this instance's pending changes are replayed onto it instead
+        (see module docstring, #2086).
         """
         with self._links_write_lock, path_write_lock(self.links_path):
             sequence = getattr(snapshot, "sequence", None)
             if sequence is not None and sequence < getattr(self, "_last_flushed_links_snapshot_sequence", 0):
                 return
-            snapshot_ids = {row["id"] for row in snapshot}
-            merged = list(snapshot)
-            for row in self._read_json_list(self.links_path):
-                if not isinstance(row, dict):
-                    continue
-                rid = row.get("id")
-                if rid is None or rid in snapshot_ids:
-                    continue
-                if rid in self._known_link_ids:
-                    # This instance knew this link and dropped it -> honour delete.
-                    continue
-                # Foreign link added by another instance: preserve it, but do
-                # NOT register it as managed by us -- otherwise our next flush
-                # (whose snapshot lacks it) would treat it as a deletion.
-                merged.append(row)
+            disk_sig = self._disk_signature(self.links_path)
+            disk_rows = self._read_json_list(self.links_path)
+            stale = disk_sig != self._links_disk_sig or (
+                sequence is not None and sequence <= self._links_adopted_sequence
+            )
+            with self._lock:
+                covered = _covered_pending(self._pending_link_ids, sequence)
+            if stale:
+                merged = self._replay_links_onto_disk(snapshot, disk_rows, covered)
+            else:
+                merged = self._merge_links_over_disk(snapshot, disk_rows)
             self._atomic_json_write(self.links_path, merged)
             if sequence is not None:
                 self._last_flushed_links_snapshot_sequence = sequence
+            new_sig = self._disk_signature(self.links_path)
+            with self._lock:
+                _clear_pending(self._pending_link_ids, covered)
+            if stale:
+                self._adopt_link_rows(merged, new_sig)
+            else:
+                self._links_disk_sig = new_sig
+                self._synced_link_ids = {row["id"] for row in merged if isinstance(row, dict) and "id" in row}
+
+    def _merge_links_over_disk(self, snapshot: list[dict], disk_rows: list[Any]) -> list[dict]:
+        """File unchanged since our last sync: the snapshot is authoritative."""
+        snapshot_ids = {row["id"] for row in snapshot}
+        merged = list(snapshot)
+        for row in disk_rows:
+            if not isinstance(row, dict):
+                continue
+            rid = row.get("id")
+            if rid is None or rid in snapshot_ids:
+                continue
+            if rid in self._known_link_ids:
+                # This instance knew this link and dropped it -> honour delete.
+                continue
+            # Foreign link added by another instance: preserve it, but do
+            # NOT register it as managed by us -- otherwise our next flush
+            # (whose snapshot lacks it) would treat it as a deletion.
+            merged.append(row)
+        return merged
+
+    def _replay_links_onto_disk(
+        self, snapshot: list[dict], disk_rows: list[Any], covered: dict[str, int]
+    ) -> list[dict]:
+        """File changed under us: the disk is authoritative except for ``covered``."""
+        snapshot_by_id = {row["id"]: row for row in snapshot}
+        merged: list[dict] = []
+        seen: set[str] = set()
+        for row in disk_rows:
+            if not isinstance(row, dict):
+                continue
+            rid = row.get("id")
+            if rid is None or rid in seen:
+                continue
+            seen.add(rid)
+            if rid not in covered:
+                merged.append(row)  # another writer's version wins over our stale copy
+            elif rid in snapshot_by_id:
+                merged.append(snapshot_by_id[rid])  # our own edit
+            # else: deleted by this instance
+        for rid, row in snapshot_by_id.items():
+            if rid in seen:
+                continue
+            if rid in covered and rid not in self._synced_link_ids:
+                merged.append(row)  # created here, not persisted yet
+            # else: deleted by another writer -- that wins over our stale or
+            # concurrently edited copy (the delete also blocked the pair).
+        return merged
 
     def _flush_blocked(self, snapshot: list[list[str]]) -> None:
         """Persist blocked pairs, merging with the current on-disk file.
@@ -228,26 +399,40 @@ class _PersistenceMixin:
         file lock the on-disk file is re-read; any pair unknown to this instance
         (not in ``_known_blocked_pairs``) is preserved, while pairs the instance
         manages -- including ones it unblocked -- follow the snapshot. A naive
-        union would resurrect a pair the user explicitly unblocked.
+        union would resurrect a pair the user explicitly unblocked. If another
+        writer replaced the file since this instance last synced, only this
+        instance's pending changes are replayed onto it (#2086).
         """
         if self.blocked_path is None:
             return
         with self._blocked_write_lock, path_write_lock(self.blocked_path):
-            merged: set[tuple[str, str]] = {tuple(p) for p in snapshot}  # type: ignore[misc]
-            for row in self._read_json_list(self.blocked_path):
-                if not (isinstance(row, list) and len(row) == 2):
-                    continue
-                pair: tuple[str, str] = tuple(row)  # type: ignore[assignment]
-                if pair in merged:
-                    continue
-                if pair in self._known_blocked_pairs:
-                    # This instance knew this pair and dropped it -> honour unblock.
-                    continue
-                # Foreign pair blocked by another instance: preserve it, but do
-                # NOT register it as managed by us -- otherwise our next flush
-                # (whose snapshot lacks it) would treat it as an unblock.
-                merged.add(pair)
-            self._atomic_json_write(self.blocked_path, [list(p) for p in merged], indent=None)
+            sequence = getattr(snapshot, "sequence", None)
+            disk_sig = self._disk_signature(self.blocked_path)
+            disk_pairs = self._parse_blocked_rows(self._read_json_list(self.blocked_path))
+            snapshot_pairs: set[tuple[str, str]] = {tuple(p) for p in snapshot}  # type: ignore[misc]
+            stale = disk_sig != self._blocked_disk_sig or (
+                sequence is not None and sequence <= self._blocked_adopted_sequence
+            )
+            with self._lock:
+                covered = _covered_pending(self._pending_blocked_pairs, sequence)
+            if stale:
+                # Disk wins except for pairs this instance blocked/unblocked.
+                merged = {p for p in disk_pairs if p not in covered} | {p for p in snapshot_pairs if p in covered}
+            else:
+                merged = set(snapshot_pairs)
+                # A pair this instance knew and dropped is an unblock; a pair it
+                # never knew was blocked by another instance and is preserved
+                # (not registered as ours, or our next flush would unblock it).
+                merged |= {p for p in disk_pairs if p not in self._known_blocked_pairs}
+            rows = [list(p) for p in merged]
+            self._atomic_json_write(self.blocked_path, rows, indent=None)
+            new_sig = self._disk_signature(self.blocked_path)
+            with self._lock:
+                _clear_pending(self._pending_blocked_pairs, covered)
+            if stale:
+                self._adopt_blocked_rows(rows, new_sig)
+            else:
+                self._blocked_disk_sig = new_sig
 
     def _flush_candidates(self, snapshot: list[dict]) -> None:
         """Persist candidate pairs, merging with the current on-disk file.
