@@ -116,6 +116,14 @@ grep -q 'CRIT_FREE_GIB="\${KG_DISK_GUARD_CRIT_FREE_GIB:-36}"' "$SCRIPT" \
   && ok "guard default critical floor is 36 GiB" || bad "guard critical floor drifted"
 grep -q 'SIMULATOR_RUNTIME_BUDGET_GIB.*:-56' "$SCRIPT" \
   && ok "guard shared runtime budget is explicit" || bad "guard shared runtime budget missing"
+# The launchd job publishes the host-global state, so its code and its root are
+# pinned to the same canonical checkout instead of depending on resolution.
+plist="$ROOT/ops/launchd/com.kg.disk-guard.plist"
+plist_script="$(sed -n 's:.*<string>\(/[^<]*\)/ops/kg_disk_guard\.sh</string>.*:\1:p' "$plist" | head -1)"
+plist_workspace="$(sed -n 's:.*<key>KG_DISK_GUARD_WORKSPACE</key><string>\([^<]*\)</string>.*:\1:p' "$plist" | head -1)"
+[[ -n "$plist_workspace" && "$plist_workspace" == "$plist_script" ]] \
+  && ok "launchd template pins the workspace to the checkout it runs" \
+  || bad "launchd template workspace '${plist_workspace:-unset}' != script checkout '${plist_script:-unset}'"
 
 echo "── help is read-only ──"
 root="$TMP/help"; state="$root/state.json"; cache="$root/.cache/ios-test-derived-data"
@@ -798,6 +806,74 @@ grep -q '"unregistered-physical-worktree"' "$lane_state" && ok "unregistered che
 grep -q '"verdict": "block"' "$lane_state" && ok "unregistered checkout blocks" || bad "unregistered checkout did not block"
 grep -q '"lane_usage_verdict":"block"' "$state" && ok "guard state carries unregistered block" || bad "guard state missed unregistered block"
 grep -q '"lane_usage_rc":75' "$state" && ok "guard state carries hard-block exit" || bad "guard state missed hard-block exit"
+
+echo "── lane usage: a tick run from a linked worktree copy is rooted at the canonical checkout ──"
+# Regression (2026-10-07): an agent ran ./ops/kg_disk_guard.sh from its own
+# linked worktree.  The tick rooted itself at that worktree, published into the
+# host-global state, and every lane then read registry-missing plus the
+# canonical checkout listed as an unregistered lane.  No KG_DISK_GUARD_WORKSPACE
+# or KG_DISK_GUARD_REGISTRY_STATE here: the default resolution is under test.
+root="$TMP/canonical-root"; state="$TMP/canonical-root-guard.json"; lane_state="$TMP/canonical-root-lane-usage.json"
+lane="$root/.claude/worktrees/registered-lane"; orphan="$TMP/canonical-root-orphan"
+mkdir -p "$root/ops/lib"
+git -C "$root" init -b main >/dev/null 2>&1
+git -C "$root" config user.email disk-test@example.com
+git -C "$root" config user.name "Disk Test"
+cp "$SCRIPT" "$ROOT/ops/disk_usage.py" "$root/ops/"
+cp "$ROOT/ops/lib/userland_compat.sh" "$ROOT/ops/lib/ios_cache_evict.sh" "$root/ops/lib/"
+printf '%s\n' '.cache/' '.claude/' > "$root/.gitignore"
+git -C "$root" add .gitignore ops >/dev/null 2>&1
+git -C "$root" commit -m initial >/dev/null 2>&1
+git -C "$root" worktree add -b registered-lane "$lane" HEAD >/dev/null 2>&1
+git -C "$root" worktree add -b orphan "$orphan" HEAD >/dev/null 2>&1
+canonical_real="$(cd "$root" && pwd -P)"
+lane_real="$(cd "$lane" && pwd -P)"
+orphan_real="$(cd "$orphan" && pwd -P)"
+mkdir -p "$root/.cache"
+printf '%s\n' '{"schema":"kg.worktree.registry.v2","records":[{"branch":"registered-lane","path":"'"$lane_real"'","status":"active","claim_generation":0,"external_ids":["DIRECT-DELIVERY-CANONICAL-ROOT"]}]}' > "$root/.cache/worktree_registry.json"
+(
+  unset KG_DISK_GUARD_WORKSPACE KG_DISK_GUARD_REGISTRY_STATE
+  KG_DISK_GUARD_STATE="$state" KG_DISK_GUARD_LANE_USAGE_STATE="$lane_state" \
+    KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+    "$lane/ops/kg_disk_guard.sh" >/dev/null 2>&1
+)
+if [[ -f "$lane_state" ]] && command -v jq >/dev/null 2>&1; then
+  workspace_seen="$(jq -r '.workspace' "$lane_state")"
+  [[ "$workspace_seen" == "$canonical_real" ]] \
+    && ok "worktree-run tick reports the canonical workspace" \
+    || bad "worktree-run tick rooted at $workspace_seen, expected $canonical_real"
+  [[ "$(jq -r '.registry' "$lane_state")" == "$canonical_real/.cache/worktree_registry.json" ]] \
+    && ok "worktree-run tick reads the canonical registry" \
+    || bad "worktree-run tick read registry $(jq -r '.registry' "$lane_state")"
+  jq -e '.policy.blocking_reasons | index("registry-missing") | not' "$lane_state" >/dev/null \
+    && ok "canonical registry is never reported missing" \
+    || bad "worktree-run tick reported registry-missing: $(jq -c '.policy.blocking_reasons' "$lane_state")"
+  jq -e --arg p "$canonical_real" '.policy.unregistered_physical_worktrees | index($p) | not' "$lane_state" >/dev/null \
+    && ok "canonical checkout is never an unregistered lane" \
+    || bad "canonical checkout listed as unregistered: $(jq -c '.policy.unregistered_physical_worktrees' "$lane_state")"
+  jq -e --arg p "$canonical_real" '[.lanes[] | select(.path == $p)] | length == 1 and .[0].lane_kind == "canonical-main" and .[0].ownership == "canonical"' "$lane_state" >/dev/null \
+    && ok "canonical checkout is classified canonical-main" \
+    || bad "canonical checkout misclassified: $(jq -c --arg p "$canonical_real" '[.lanes[] | select(.path == $p) | {lane_kind, ownership}]' "$lane_state")"
+  jq -e --arg p "$lane_real" '[.lanes[] | select(.path == $p)] | length == 1 and .[0].ownership == "registered"' "$lane_state" >/dev/null \
+    && ok "the lane holding the script copy stays a registered lane" \
+    || bad "script-holding lane misclassified: $(jq -c --arg p "$lane_real" '[.lanes[] | select(.path == $p) | {lane_kind, ownership}]' "$lane_state")"
+  # Positive control: a genuinely orphaned checkout must still hard-block.
+  jq -e --arg p "$orphan_real" '.policy.unregistered_physical_worktrees | index($p)' "$lane_state" >/dev/null \
+    && ok "orphaned checkout is still an unregistered blocker" \
+    || bad "orphaned checkout escaped the unregistered list: $(jq -c '.policy.unregistered_physical_worktrees' "$lane_state")"
+  grep -q '"lane_usage_rc":75' "$state" \
+    && ok "orphaned checkout still blocks the guard" || bad_state "orphaned checkout did not block the guard" "$state"
+else
+  bad "worktree-run tick wrote no lane usage report (or jq unavailable)"
+fi
+explicit_state="$TMP/canonical-root-explicit-guard.json"; explicit_lane_state="$TMP/canonical-root-explicit-lane-usage.json"
+KG_DISK_GUARD_WORKSPACE="$lane" KG_DISK_GUARD_STATE="$explicit_state" \
+  KG_DISK_GUARD_LANE_USAGE_STATE="$explicit_lane_state" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  "$lane/ops/kg_disk_guard.sh" >/dev/null 2>&1
+[[ -f "$explicit_lane_state" && "$(jq -r '.workspace' "$explicit_lane_state" 2>/dev/null)" == "$lane_real" ]] \
+  && ok "an explicit KG_DISK_GUARD_WORKSPACE still wins over resolution" \
+  || bad "explicit workspace override was not honored"
 
 echo "── lane report budget: slow attribution fails closed without hanging ──"
 root="$TMP/time-budget"; state="$root/guard.json"; lane_state="$root/lane-disk-usage.json"

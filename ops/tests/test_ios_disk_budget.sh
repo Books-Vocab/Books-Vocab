@@ -178,5 +178,59 @@ still_output="$(KG_IOS_DISK_GUARD_STATE="$TMP/lane-still-guard.json" KG_IOS_DISK
 grep -q 'unregisteredWorktrees=/x/orphan-one' <<<"$still_output" \
   && ok "unresolved block still names worktrees" || bad "still-block diagnostics missing: $still_output"
 
+echo "── refresh from a linked worktree runs the canonical checkout's tick ──"
+# The host-global guard state has one writer identity (the canonical tick, as
+# the launchd job runs it).  A lane's own copy must never publish into it.
+canon="$TMP/refresh-canonical"; refresh_lane="$TMP/refresh-canonical-lane"; refresh_record="$TMP/refresh-record"
+mkdir -p "$canon/ops/lib"
+cp "$LIB" "$canon/ops/lib/ios_disk_budget.sh"
+cat > "$canon/ops/kg_disk_guard.sh" <<'EOF'
+#!/usr/bin/env bash
+printf 'tick=canonical workspace=%s\n' "${KG_DISK_GUARD_WORKSPACE:-}" > "$KG_TEST_REFRESH_RECORD"
+EOF
+chmod +x "$canon/ops/kg_disk_guard.sh"
+git -C "$canon" init -b main >/dev/null 2>&1
+git -C "$canon" config user.email disk-test@example.com
+git -C "$canon" config user.name "Disk Test"
+git -C "$canon" add ops >/dev/null 2>&1
+git -C "$canon" commit -m initial >/dev/null 2>&1
+git -C "$canon" worktree add -b refresh-lane "$refresh_lane" HEAD >/dev/null 2>&1
+cat > "$refresh_lane/ops/kg_disk_guard.sh" <<'EOF'
+#!/usr/bin/env bash
+printf 'tick=lane workspace=%s\n' "${KG_DISK_GUARD_WORKSPACE:-}" > "$KG_TEST_REFRESH_RECORD"
+EOF
+canon_real="$(cd "$canon" && pwd -P)"
+refresh_rc=0
+(
+  unset KG_DISK_GUARD_WORKSPACE KG_IOS_DISK_GUARD_TICK
+  KG_TEST_REFRESH_RECORD="$refresh_record" \
+    /bin/bash -c "source '$refresh_lane/ops/lib/ios_disk_budget.sh'; kg_ios_disk_guard_refresh '$TMP/refresh-canonical-state.json' 0"
+) || refresh_rc=$?
+recorded="$(cat "$refresh_record" 2>/dev/null || true)"
+[[ "$refresh_rc" -eq 0 ]] && ok "lane refresh succeeds" || bad "lane refresh exit=$refresh_rc"
+[[ "$recorded" == tick=canonical* ]] \
+  && ok "lane refresh runs the canonical tick, not the lane copy" || bad "lane refresh ran: ${recorded:-nothing}"
+[[ "$(cd "${recorded##*workspace=}" 2>/dev/null && pwd -P)" == "$canon_real" ]] \
+  && ok "lane refresh roots the tick at the canonical checkout" || bad "lane refresh workspace: ${recorded:-nothing}"
+
+echo "── refresh without a resolvable canonical checkout fails closed ──"
+loose="$TMP/refresh-no-git"; loose_record="$TMP/refresh-no-git-record"
+mkdir -p "$loose/ops/lib"
+cp "$LIB" "$loose/ops/lib/ios_disk_budget.sh"
+cat > "$loose/ops/kg_disk_guard.sh" <<'EOF'
+#!/usr/bin/env bash
+printf 'ran\n' > "$KG_TEST_REFRESH_RECORD"
+EOF
+chmod +x "$loose/ops/kg_disk_guard.sh"
+loose_rc=0
+(
+  unset KG_DISK_GUARD_WORKSPACE KG_IOS_DISK_GUARD_TICK
+  GIT_CEILING_DIRECTORIES="$TMP" KG_TEST_REFRESH_RECORD="$loose_record" \
+    /bin/bash -c "source '$loose/ops/lib/ios_disk_budget.sh'; kg_ios_disk_guard_refresh '$TMP/refresh-no-git-state.json' 0"
+) || loose_rc=$?
+[[ "$loose_rc" -ne 0 ]] && ok "unresolvable canonical refresh fails" || bad "unresolvable canonical refresh exited 0"
+[[ ! -e "$loose_record" ]] \
+  && ok "no tick publishes from a script-relative fallback root" || bad "a tick ran without a canonical root"
+
 echo "passed=$PASS failed=$FAIL"
 [[ "$FAIL" -eq 0 ]]
