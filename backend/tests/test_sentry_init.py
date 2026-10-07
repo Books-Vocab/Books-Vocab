@@ -5,6 +5,7 @@ and would couple tests to network state. We test the pure-function scrubber
 that protects against the most likely PII leak path (admin token in querystring,
 auth header values in event payload).
 """
+
 from __future__ import annotations
 
 from kg.sentry_init import (
@@ -77,8 +78,10 @@ def test_scrub_event_tolerates_non_dict_subfields():
 
 
 # ---------------------------------------------------------------------------
-# Release resolution: env override → KG_VERSION → /app/VERSION file
+# Release resolution: SENTRY_RELEASE (verbatim) → KG_VERSION → /app/VERSION,
+# the latter two qualified as ``kg-backend@<value>`` unless already qualified.
 # ---------------------------------------------------------------------------
+
 
 def test_resolve_release_prefers_sentry_release_env(monkeypatch, tmp_path):
     monkeypatch.setenv("SENTRY_RELEASE", "abc1234")
@@ -93,7 +96,7 @@ def test_resolve_release_falls_back_to_kg_version(monkeypatch, tmp_path):
     monkeypatch.setenv("KG_VERSION", "deadbeef")
     version_file = tmp_path / "VERSION"
     version_file.write_text("file-shadowed")
-    assert _resolve_release(version_file=version_file) == "deadbeef"
+    assert _resolve_release(version_file=version_file) == "kg-backend@deadbeef"
 
 
 def test_resolve_release_falls_back_to_version_file(monkeypatch, tmp_path):
@@ -101,7 +104,25 @@ def test_resolve_release_falls_back_to_version_file(monkeypatch, tmp_path):
     monkeypatch.delenv("KG_VERSION", raising=False)
     version_file = tmp_path / "VERSION"
     version_file.write_text("  cafef00d\n")
-    assert _resolve_release(version_file=version_file) == "cafef00d"
+    assert _resolve_release(version_file=version_file) == "kg-backend@cafef00d"
+
+
+def test_resolve_release_keeps_sentry_release_verbatim(monkeypatch, tmp_path):
+    # Explicit override is the operator's exact string — never prefixed.
+    monkeypatch.setenv("SENTRY_RELEASE", "kg-backend@abc")
+    assert _resolve_release(version_file=tmp_path / "VERSION") == "kg-backend@abc"
+    monkeypatch.setenv("SENTRY_RELEASE", "rawsha")
+    assert _resolve_release(version_file=tmp_path / "VERSION") == "rawsha"
+
+
+def test_resolve_release_does_not_double_prefix_qualified_values(monkeypatch, tmp_path):
+    monkeypatch.delenv("SENTRY_RELEASE", raising=False)
+    monkeypatch.setenv("KG_VERSION", "kg-backend@deadbeef")
+    assert _resolve_release(version_file=tmp_path / "VERSION") == "kg-backend@deadbeef"
+    monkeypatch.delenv("KG_VERSION")
+    version_file = tmp_path / "VERSION"
+    version_file.write_text("other@1.2.3\n")
+    assert _resolve_release(version_file=version_file) == "other@1.2.3"
 
 
 def test_resolve_release_returns_none_when_nothing_available(monkeypatch, tmp_path):
@@ -115,6 +136,7 @@ def test_resolve_release_returns_none_when_nothing_available(monkeypatch, tmp_pa
 # Traces sampler: per-path rates so APM bill stays bounded while we keep
 # observability on the LLM-call hot paths.
 # ---------------------------------------------------------------------------
+
 
 def _ctx(path: str) -> dict:
     """Minimal traces_sampler context resembling what sentry hands us."""
@@ -149,6 +171,7 @@ def test_traces_sampler_default_baseline_1pct():
 # bind_user: ties uid to the current Sentry scope so error groups are
 # clusterable by user without sending email / IP / username.
 # ---------------------------------------------------------------------------
+
 
 def test_bind_user_no_op_when_sentry_inactive(monkeypatch):
     # SENTRY_DSN unset → init returns False → bind_user must silently do nothing
@@ -192,6 +215,7 @@ def test_bind_user_clears_scope_when_uid_none(monkeypatch):
             captured.append(payload)
 
     import kg.sentry_init as si
+
     monkeypatch.setattr(si, "_initialized", True, raising=False)
     monkeypatch.setattr(si, "_sentry_module", FakeSentry, raising=False)
 
@@ -212,6 +236,7 @@ def test_traces_sampler_handles_missing_path():
 # deps.get_current_user → sentry_init.bind_user wiring
 # ---------------------------------------------------------------------------
 
+
 def test_get_current_user_binds_uid_to_sentry(tmp_path, monkeypatch):
     """Authenticated request must surface uid to Sentry scope."""
     import json
@@ -225,9 +250,7 @@ def test_get_current_user_binds_uid_to_sentry(tmp_path, monkeypatch):
     from kg.settings import KGSettings
 
     captured: list = []
-    monkeypatch.setattr(
-        deps, "bind_user", lambda uid: captured.append(uid), raising=True
-    )
+    monkeypatch.setattr(deps, "bind_user", lambda uid: captured.append(uid), raising=True)
 
     user_id = "uid-binds-to-sentry"
     secret = "test-secret-for-this-test-only-1234567"
@@ -277,6 +300,7 @@ def test_resolve_release_treats_empty_strings_as_missing(monkeypatch, tmp_path):
 # rate from env without re-deploying. Regression guard for review feedback
 # pointing out the flat-override branch had no coverage.
 # ---------------------------------------------------------------------------
+
 
 def _reset_sentry_module_state(monkeypatch):
     """Reset module-level singleton so init_sentry() runs each test fresh."""
@@ -336,9 +360,7 @@ def test_init_sentry_flat_override_uses_traces_sample_rate(monkeypatch):
     assert init_sentry() is True
     kwargs = captured["init_kwargs"]
     assert kwargs.get("traces_sample_rate") == 0.5
-    assert "traces_sampler" not in kwargs, (
-        "flat env override must replace the per-path sampler, not run alongside it"
-    )
+    assert "traces_sampler" not in kwargs, "flat env override must replace the per-path sampler, not run alongside it"
 
 
 def test_init_sentry_default_uses_traces_sampler(monkeypatch):

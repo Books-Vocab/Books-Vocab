@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from .cards import Card
 from .exceptions import QuotaExceededError
 from .retry import llm_retryable_exceptions, sync_retry
+from .sentry_init import capture_handled
 
 SYSTEM_PROMPT = """針對每個英文詞彙，回傳 JSON array，每個元素含：
 - word: 原詞
@@ -58,11 +59,7 @@ def _build_prompt(
         elif c.examples:
             item["context"] = c.examples[0][:200]
         items.append(item)
-    template = (
-        PRIVATE_CONTEXT_TEMPLATE
-        if disambiguation_context_by_card_id
-        else USER_TEMPLATE
-    )
+    template = PRIVATE_CONTEXT_TEMPLATE if disambiguation_context_by_card_id else USER_TEMPLATE
     return template.format(
         words_json=json.dumps(items, ensure_ascii=False, indent=2),
     )
@@ -152,6 +149,7 @@ async def enrich_cards_stream(
         ThreadPoolExecutor never releases. So the whole body is wrapped, and
         terminal delivery is guaranteed (see _put_terminal).
         """
+
         def _put_terminal(msg: dict) -> None:
             """Deliver a terminal message, guaranteeing it is never dropped.
 
@@ -165,6 +163,7 @@ async def enrich_cards_stream(
             cross-thread coroutine-future wait, which would itself deadlock the
             worker against the loop), and a transiently full queue only delays
             the terminal rather than losing it."""
+
             def _try_put() -> None:
                 try:
                     queue.put_nowait(msg)
@@ -177,10 +176,13 @@ async def enrich_cards_stream(
         def _delay_fn(attempt: int, exc: BaseException) -> float | None:
             wait_time = 2 ** (attempt + 1)
             # Non-terminal progress hint: safe to drop if the queue is full.
-            loop.call_soon_threadsafe(queue.put_nowait, {
-                "type": "retry",
-                "detail": _retry_detail(wait_time),
-            })
+            loop.call_soon_threadsafe(
+                queue.put_nowait,
+                {
+                    "type": "retry",
+                    "detail": _retry_detail(wait_time),
+                },
+            )
             return float(wait_time)
 
         try:
@@ -201,15 +203,18 @@ async def enrich_cards_stream(
             results = _parse_enrich_response(response.choices[0].message.content)
             _put_terminal({"type": "success", "results": results, "count": len(batch)})
         except QuotaExceededError as e:
-            _put_terminal({
-                "type": "quota_exhausted",
-                "reset_seconds": e.reset_seconds,
-                "headers": e.headers,
-            })
+            _put_terminal(
+                {
+                    "type": "quota_exhausted",
+                    "reset_seconds": e.reset_seconds,
+                    "headers": e.headers,
+                }
+            )
         except BaseException as e:  # noqa: BLE001 — terminal guarantee trumps catch-specificity
             # Any escaped exception (known or future) becomes an error terminal
             # so tasks_remaining is always decremented. Without this, a new
             # uncaught exception type would silently re-introduce the deadlock.
+            capture_handled(e, context="enrich.batch")
             try:
                 _put_terminal({"type": "error", "error": str(e)})
             except BaseException:  # noqa: BLE001
@@ -226,10 +231,7 @@ async def enrich_cards_stream(
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Submit all batches
-        [
-            loop.run_in_executor(executor, _process_batch_with_retry, batch, loop, queue)
-            for batch in batches
-        ]
+        [loop.run_in_executor(executor, _process_batch_with_retry, batch, loop, queue) for batch in batches]
 
         # Await results as they come in
         tasks_remaining = len(batches)
@@ -245,7 +247,7 @@ async def enrich_cards_stream(
                     "current": completed_cards,
                     "total": total_cards,
                     "detail": f"Enriched {completed_cards}/{total_cards} cards...",
-                    "results": msg["results"]
+                    "results": msg["results"],
                 }
             elif msg["type"] == "retry":
                 yield {
@@ -253,7 +255,7 @@ async def enrich_cards_stream(
                     "current": completed_cards,
                     "total": total_cards,
                     "detail": msg["detail"],
-                    "results": []
+                    "results": [],
                 }
             elif msg["type"] == "error":
                 tasks_remaining -= 1
@@ -262,7 +264,7 @@ async def enrich_cards_stream(
                     "current": completed_cards,
                     "total": total_cards,
                     "detail": f"Batch failed: {msg['error']}",
-                    "results": []
+                    "results": [],
                 }
                 # Optional: We could break here, but allowing other batches to finish is more robust
             elif msg["type"] == "quota_exhausted":
