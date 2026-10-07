@@ -371,14 +371,30 @@ class EmbeddingStore:
         if not self._meta_path.exists():
             self._write_meta()
 
-    def _embed(self, texts: list[str]) -> np.ndarray:
+    def bind(self, llm) -> BoundEmbeddingStore:
+        """Return a caller-scoped handle that embeds through ``llm``.
+
+        Use this when one store instance is shared between callers (the
+        service-factory cache): the vectors are shared, but each caller's
+        identity and quota policy live on its own ``llm`` binding.
+        """
+        return BoundEmbeddingStore(self, llm)
+
+    def _embed(self, texts: list[str], *, llm=None) -> np.ndarray:
         """Get embeddings for one or more texts via a single API call.
 
+        ``llm`` overrides the construction-time binding (see :meth:`bind`).
         Returns an (N, self.dim) float32 array.
         """
+        client = self.llm if llm is None else llm
+        if client is None:
+            raise RuntimeError(
+                f"EmbeddingStore at {self.embeddings_path} has no LLM bound; "
+                "embedding writes need a caller-supplied llm (see EmbeddingStore.bind)"
+            )
         for attempt in range(_EMBED_MAX_RETRIES):
             try:
-                response = self.llm.embed("embed", input=texts, model=self.model)
+                response = client.embed("embed", input=texts, model=self.model)
                 # response.data may not be sorted by index; sort to match input order.
                 # Gemini's OpenAI-compat layer sometimes returns index=None for
                 # the first element — coerce to 0 so sorting doesn't crash.
@@ -413,11 +429,11 @@ class EmbeddingStore:
                 raise e
         raise RuntimeError("unreachable: _embed exhausted retries")
 
-    def add(self, card_id: str, text: str) -> None:
+    def add(self, card_id: str, text: str, *, llm=None) -> None:
         """Add embedding for a single card (delegates to add_batch)."""
-        self.add_batch([(card_id, text)])
+        self.add_batch([(card_id, text)], llm=llm)
 
-    def add_batch(self, items: list[tuple[str, str]]) -> None:
+    def add_batch(self, items: list[tuple[str, str]], *, llm=None) -> None:
         """Add embeddings for multiple cards in a single API call.
 
         Items already present are silently skipped. Performs one API call,
@@ -437,7 +453,7 @@ class EmbeddingStore:
         new_ids = [cid for cid, _ in new_items]
         new_texts = [text for _, text in new_items]
 
-        vecs = self._embed(new_texts)  # single API call
+        vecs = self._embed(new_texts, llm=llm)  # single API call
 
         if self._embeddings is None:
             self._embeddings = vecs
@@ -484,18 +500,18 @@ class EmbeddingStore:
         self._save()
         return len(to_drop)
 
-    def update(self, card_id: str, text: str) -> None:
+    def update(self, card_id: str, text: str, *, llm=None) -> None:
         """Update existing embedding.
 
         Only updates the in-memory vector and marks the store dirty.
         Call flush() to persist to disk (e.g. at end of request).
         """
         if card_id not in self._id_set:
-            self.add(card_id, text)
+            self.add(card_id, text, llm=llm)
             return
 
         idx = self._id_pos[card_id]
-        vecs = self._embed([text])
+        vecs = self._embed([text], llm=llm)
         self._embeddings[idx] = vecs[0]
         self._invalidate_norms()
         self._dirty = True
@@ -614,3 +630,68 @@ class EmbeddingStore:
 
     def count(self) -> int:
         return len(self._ids)
+
+
+class BoundEmbeddingStore:
+    """Caller-scoped handle over a shared :class:`EmbeddingStore`.
+
+    The service-factory cache shares one store per notebook (vectors, ids,
+    on-disk files), but the ``llm`` each caller passes carries that caller's
+    user identity and quota policy (``enforce_quota`` / ``is_pro`` /
+    ``reserve_quota``). Caching the llm with the store froze the *first*
+    caller's binding for every later caller (#2058). The handle keeps the two
+    apart: reads and evictions go straight to the shared store, embedding
+    writes go through this handle's own ``llm``.
+    """
+
+    __slots__ = ("llm", "store")
+
+    def __init__(self, store: EmbeddingStore, llm) -> None:
+        self.store = store
+        self.llm = llm
+
+    @property
+    def model(self) -> str:
+        return self.store.model
+
+    @property
+    def dim(self) -> int:
+        return self.store.dim
+
+    @property
+    def embeddings_path(self) -> Path:
+        return self.store.embeddings_path
+
+    @property
+    def ids_path(self) -> Path:
+        return self.store.ids_path
+
+    def add(self, card_id: str, text: str) -> None:
+        self.store.add(card_id, text, llm=self.llm)
+
+    def add_batch(self, items: list[tuple[str, str]]) -> None:
+        self.store.add_batch(items, llm=self.llm)
+
+    def update(self, card_id: str, text: str) -> None:
+        self.store.update(card_id, text, llm=self.llm)
+
+    def remove(self, card_id: str) -> bool:
+        return self.store.remove(card_id)
+
+    def remove_batch(self, card_ids: list[str]) -> int:
+        return self.store.remove_batch(card_ids)
+
+    def flush(self) -> None:
+        self.store.flush()
+
+    def find_similar(self, card_id: str, k: int = 10) -> list[tuple[str, float]]:
+        return self.store.find_similar(card_id, k)
+
+    def find_similar_batch(self, card_ids: list[str], k: int = 10) -> dict[str, list[tuple[str, float]]]:
+        return self.store.find_similar_batch(card_ids, k)
+
+    def has(self, card_id: str) -> bool:
+        return self.store.has(card_id)
+
+    def count(self) -> int:
+        return self.store.count()

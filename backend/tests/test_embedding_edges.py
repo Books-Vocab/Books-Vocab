@@ -222,7 +222,7 @@ class TestCacheKeyIncludesModelAndDim:
             llm = TrackedLLM(client, "u")
             s1 = create_embedding_store(tmp_path, llm=llm, model="m-A", dim=768)
             s2 = create_embedding_store(tmp_path, llm=llm, model="m-B", dim=768)
-            assert s1 is not s2, "different model must yield different cached instance"
+            assert s1.store is not s2.store, "different model must yield different cached instance"
         finally:
             clear_store_cache()
 
@@ -236,7 +236,7 @@ class TestCacheKeyIncludesModelAndDim:
             llm = TrackedLLM(client, "u")
             s1 = create_embedding_store(tmp_path, llm=llm, model="m-X", dim=768)
             s2 = create_embedding_store(tmp_path, llm=llm, model="m-X", dim=1536)
-            assert s1 is not s2, "different dim must yield different cached instance"
+            assert s1.store is not s2.store, "different dim must yield different cached instance"
             assert s1.dim == 768 and s2.dim == 1536
         finally:
             clear_store_cache()
@@ -249,7 +249,7 @@ class TestCacheKeyIncludesModelAndDim:
             llm = TrackedLLM(client, "u")
             s1 = create_embedding_store(tmp_path, llm=llm, model="m-X", dim=768)
             s2 = create_embedding_store(tmp_path, llm=llm, model="m-X", dim=768)
-            assert s1 is s2
+            assert s1.store is s2.store
         finally:
             clear_store_cache()
 
@@ -278,7 +278,7 @@ class TestFactoryPicksUpEnvChanges:
             store_bar = create_embedding_store(tmp_path, llm=llm, notebook_id="default")
             assert store_bar.model == "bar", "factory must re-read EMBEDDING_MODEL"
             assert store_bar.dim == 768
-            assert store_bar is not store_foo
+            assert store_bar.store is not store_foo.store
         finally:
             clear_store_cache()
 
@@ -298,7 +298,7 @@ class TestFactoryPicksUpEnvChanges:
             monkeypatch.setenv("EMBEDDING_MODEL", "bar")
             store_bar = create_embedding_store(tmp_path, llm=llm, notebook_id="default")
             assert store_bar.model == "bar"
-            assert store_bar is not store_foo, "stale instance leak — cache key must namespace by model"
+            assert store_bar.store is not store_foo.store, "stale instance leak — cache key must namespace by model"
         finally:
             clear_store_cache()
 
@@ -316,6 +316,6 @@ class TestFactoryPicksUpEnvChanges:
             store_1536 = create_embedding_store(tmp_path, llm=llm, notebook_id="default")
             assert store_768.dim == 768
             assert store_1536.dim == 1536
-            assert store_768 is not store_1536
+            assert store_768.store is not store_1536.store
         finally:
             clear_store_cache()

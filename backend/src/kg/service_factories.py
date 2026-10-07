@@ -9,7 +9,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 from .cards import CardStore
-from .embeddings import EmbeddingStore
+from .embeddings import BoundEmbeddingStore, EmbeddingStore
 from .graph import GraphStore
 from .graph_event_log import GraphEventStore, GraphSnapshotStore
 from .library import LibraryStore
@@ -314,7 +314,14 @@ def create_embedding_store(
     notebook_id: str = "default",
     model: str | None = None,
     dim: int | None = None,
-) -> EmbeddingStore:
+) -> BoundEmbeddingStore:
+    """Shared per-notebook vectors, bound to *this* caller's ``llm``.
+
+    The cached store is built without an llm: callers bind different user
+    identities / quota policies (``enforce_quota``, ``is_pro``,
+    ``reserve_quota``) and caching the first one froze it for every later
+    caller (#2058). ``llm=None`` is valid for callers that only read/evict.
+    """
     if model is None or dim is None:
         from .settings import load_settings
 
@@ -330,4 +337,5 @@ def create_embedding_store(
             NOTEBOOK_FILE_SPECS["card_ids"],
         ],
     )
-    return _get_cached(key, lambda: EmbeddingStore(emb_path, ids_path, llm, model=model, dim=dim))
+    store = _get_cached(key, lambda: EmbeddingStore(emb_path, ids_path, None, model=model, dim=dim))
+    return store.bind(llm)

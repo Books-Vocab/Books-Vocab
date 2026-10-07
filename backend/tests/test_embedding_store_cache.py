@@ -98,7 +98,7 @@ class TestEmbeddingStoreCache:
             llm, _ = _make_tracked_llm()
             store1 = create_embedding_store(tmp_path, llm=llm, notebook_id="default")
             store2 = create_embedding_store(tmp_path, llm=llm, notebook_id="default")
-            assert store1 is store2, "Expected cached instance, got two different objects"
+            assert store1.store is store2.store, "Expected cached instance, got two different objects"
         finally:
             clear_store_cache()
 
@@ -109,7 +109,7 @@ class TestEmbeddingStoreCache:
             llm, _ = _make_tracked_llm()
             store1 = create_embedding_store(tmp_path, llm=llm, notebook_id="nb1")
             store2 = create_embedding_store(tmp_path, llm=llm, notebook_id="nb2")
-            assert store1 is not store2
+            assert store1.store is not store2.store
         finally:
             clear_store_cache()
 
@@ -124,7 +124,7 @@ class TestEmbeddingStoreCache:
             dir_b.mkdir()
             store1 = create_embedding_store(dir_a, llm=llm, notebook_id="default")
             store2 = create_embedding_store(dir_b, llm=llm, notebook_id="default")
-            assert store1 is not store2
+            assert store1.store is not store2.store
         finally:
             clear_store_cache()
 
@@ -145,6 +145,88 @@ class TestEmbeddingStoreCache:
                 assert mock_np_load.call_count == 1, (
                     f"np.load called {mock_np_load.call_count} times; expected 1 (cache hit should skip reload)"
                 )
+        finally:
+            clear_store_cache()
+
+
+class TestEmbeddingStoreCallerBinding:
+    """#2058: the cache shares vectors per notebook, never a caller's LLM.
+
+    The cached store used to keep whichever ``llm`` its *first* caller passed.
+    Callers bind different identities and quota policies to that llm (intake:
+    ``reserve_quota=False`` under an outer reservation; pipeline:
+    ``enforce_quota=True`` + per-call reservation; external delete:
+    ``llm=None``), so every later caller silently ran under the first
+    caller's policy — or crashed on ``None``.
+    """
+
+    @pytest.fixture
+    def reservations(self, monkeypatch):
+        import contextlib
+
+        calls: list[dict] = []
+
+        @contextlib.contextmanager
+        def fake_reserve(user_id, estimated_usd, *, enforce=False, is_pro=False):
+            calls.append({"user_id": user_id, "usd": estimated_usd, "enforce": enforce, "is_pro": is_pro})
+            yield
+
+        monkeypatch.setattr("kg.tracked_llm.reserve", fake_reserve)
+        monkeypatch.setattr("kg.tracked_llm.record", lambda *a, **k: None)
+        return calls
+
+    def test_later_caller_quota_flags_are_not_frozen_by_cache(self, tmp_path: Path, reservations):
+        clear_store_cache()
+        try:
+            intake_client = _mock_llm(1)
+            pipeline_client = _mock_llm(1)
+            # First caller: intake-style binding (no per-call reservation).
+            create_embedding_store(
+                tmp_path,
+                llm=TrackedLLM(intake_client, "u1", reserve_quota=False),
+                notebook_id="default",
+            )
+            # Second caller: pipeline-style binding (enforced, reserved, pro).
+            pipeline_store = create_embedding_store(
+                tmp_path,
+                llm=TrackedLLM(pipeline_client, "u1", enforce_quota=True, is_pro=True),
+                notebook_id="default",
+            )
+            pipeline_store.add("c1", "hello")
+
+            pipeline_client.embeddings.create.assert_called_once()
+            intake_client.embeddings.create.assert_not_called()
+            assert len(reservations) == 1
+            assert reservations[0]["enforce"] is True
+            assert reservations[0]["is_pro"] is True
+            assert reservations[0]["usd"] > 0
+        finally:
+            clear_store_cache()
+
+    def test_llm_none_first_caller_does_not_break_later_embeds(self, tmp_path: Path, reservations):
+        clear_store_cache()
+        try:
+            # External-API delete path binds llm=None (it only evicts vectors).
+            create_embedding_store(tmp_path, llm=None, notebook_id="default").remove("missing")
+            client = _mock_llm(1)
+            store = create_embedding_store(tmp_path, llm=TrackedLLM(client, "u1"), notebook_id="default")
+            store.add("c1", "hello")
+            assert store.has("c1")
+            client.embeddings.create.assert_called_once()
+        finally:
+            clear_store_cache()
+
+    def test_bindings_share_cached_vectors(self, tmp_path: Path, reservations):
+        clear_store_cache()
+        try:
+            writer_client = _mock_llm(1)
+            writer = create_embedding_store(tmp_path, llm=TrackedLLM(writer_client, "u1"), notebook_id="default")
+            reader = create_embedding_store(tmp_path, llm=None, notebook_id="default")
+            writer.add("c1", "hello")
+            assert reader.has("c1")
+            assert reader.count() == 1
+            assert reader.remove("c1") is True
+            assert not writer.has("c1")
         finally:
             clear_store_cache()
 
@@ -269,7 +351,7 @@ class TestEmbeddingSettingsWiring:
             llm, _ = _make_tracked_llm()
             s1 = create_embedding_store(tmp_path, llm=llm, model="m1", dim=768)
             s2 = create_embedding_store(tmp_path, llm=llm, model="m2", dim=768)
-            assert s1 is not s2
+            assert s1.store is not s2.store
         finally:
             clear_store_cache()
 
