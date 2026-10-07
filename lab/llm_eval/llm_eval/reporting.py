@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .paths import PACKAGE_ROOT
 from .runner import EvalResult, EvalSummary
 
 
@@ -24,11 +25,12 @@ class ReportPaths:
 
 
 def current_git_sha(cwd: Path | None = None) -> str:
-    """Return the current git sha, or ``unknown`` outside a git checkout."""
+    """Return HEAD of the checkout containing ``cwd`` (default: this package,
+    not the caller's cwd), or ``unknown`` outside a git checkout."""
     try:
         return subprocess.check_output(
             ["git", "rev-parse", "HEAD"],
-            cwd=str(cwd) if cwd else None,
+            cwd=str(cwd or PACKAGE_ROOT),
             stderr=subprocess.DEVNULL,
             text=True,
         ).strip()
@@ -68,11 +70,12 @@ def write_report(
         "dataset_hash": dataset_hash,
         "config": config,
         "models": {
-            model: _summary_to_dict(summary)
-            for model, summary in summaries.items()
+            model: _summary_to_dict(summary) for model, summary in summaries.items()
         },
     }
-    json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    json_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     markdown_path.write_text(_markdown(payload), encoding="utf-8")
     return ReportPaths(json_path=json_path, markdown_path=markdown_path)
 
@@ -88,13 +91,18 @@ def compare_to_baseline(
     result: dict[str, dict[str, Any]] = {}
     for model, summary in current.items():
         previous = previous_models.get(model, {})
-        format_delta = _delta(summary.format_score_avg, previous.get("format_score_avg"))
-        quality_delta = _delta(summary.quality_score_avg, previous.get("quality_score_avg"))
+        format_delta = _delta(
+            summary.format_score_avg, previous.get("format_score_avg")
+        )
+        quality_delta = _delta(
+            summary.quality_score_avg, previous.get("quality_score_avg")
+        )
         result[model] = {
             "format_delta": format_delta,
             "quality_delta": quality_delta,
             "format_regression": format_delta is not None and format_delta < -epsilon,
-            "quality_regression": quality_delta is not None and quality_delta < -epsilon,
+            "quality_regression": quality_delta is not None
+            and quality_delta < -epsilon,
         }
     return result
 
@@ -125,7 +133,7 @@ def _markdown(payload: dict[str, Any]) -> str:
             f"| `{model}` | {summary['provider']} | {summary['sample_count']} | "
             f"{summary['error_count']} | {_fmt_score(summary.get('format_score_avg'))} | "
             f"{_fmt_score(summary.get('quality_score_avg'))} | "
-            f"{summary['avg_latency_ms']:.0f} | {summary['total_cost_usd']:.6f} |"
+            f"{summary['avg_latency_ms']:.0f} | {_fmt_cost(summary['total_cost_usd'])} |"
         )
     return "\n".join(lines) + "\n"
 
@@ -134,8 +142,14 @@ def _fmt_score(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.3f}"
 
 
+def _fmt_cost(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.6f}"
+
+
 def _slug(value: str) -> str:
-    return "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in value).strip("_")
+    return "".join(
+        ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in value
+    ).strip("_")
 
 
 def _delta(current: float | None, previous: float | None) -> float | None:

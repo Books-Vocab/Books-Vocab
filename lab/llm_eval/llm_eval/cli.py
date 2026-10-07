@@ -15,6 +15,8 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from llm_eval.paths import RESULTS_DIR
+
 if TYPE_CHECKING:
     from llm_eval.runner import EvalSummary
 
@@ -136,7 +138,9 @@ def cmd_eval(args: argparse.Namespace) -> int:
             "format_score": summary.format_score_avg,
             "quality_score": summary.quality_score_avg,
             "avg_latency_ms": round(summary.avg_latency_ms),
-            "cost_usd": round(summary.total_cost_usd, 6),
+            "cost_usd": None
+            if summary.total_cost_usd is None
+            else round(summary.total_cost_usd, 6),
             "score_breakdown": summary.score_breakdown,
         }
 
@@ -179,7 +183,7 @@ def cmd_eval(args: argparse.Namespace) -> int:
                     _fmt_score(info["format_score"]),
                     _fmt_score(info["quality_score"]),
                     str(info["avg_latency_ms"]),
-                    f"${info['cost_usd']:.6f}",
+                    "n/a" if info["cost_usd"] is None else f"${info['cost_usd']:.6f}",
                 ]
             )
         _print_table(
@@ -385,20 +389,40 @@ def _fmt_score(value: float | None) -> str:
 
 
 def _resolve_report(args: argparse.Namespace) -> Path | None:
-    """Pick the report JSON: explicit --results, else newest in results-dir
-    matching --prompt (and --dataset if given)."""
-    import glob
+    """Pick the report JSON: explicit --results, else the newest report in
+    --results-dir (default: the package results dir) whose JSON
+    ``prompt.name`` / ``dataset_name`` equal --prompt / --dataset.
 
+    Filenames are not parsed: ``<ts>_<prompt>_<dataset>`` is ambiguous when
+    names contain underscores (``judge_batch`` is a substring of
+    ``…_judge_selective_judge_batch_gold.json``).
+    """
     if args.results:
         p = Path(args.results)
         return p if p.exists() else None
-    results_dir = args.results_dir or "lab/llm_eval/results"
-    paths = sorted(glob.glob(str(Path(results_dir) / "*.json")))
-    if args.prompt:
-        paths = [p for p in paths if f"_{args.prompt}_" in Path(p).name]
-    if args.dataset:
-        paths = [p for p in paths if Path(p).name.endswith(f"_{args.dataset}.json")]
-    return Path(paths[-1]) if paths else None
+    results_dir = Path(args.results_dir) if args.results_dir else RESULTS_DIR
+    matches: list[tuple[str, str, Path]] = []
+    for path in results_dir.glob("*.json"):
+        report = _read_report(path)
+        if report is None:
+            continue
+        if args.prompt and report["prompt"].get("name") != args.prompt:
+            continue
+        if args.dataset and report.get("dataset_name") != args.dataset:
+            continue
+        matches.append((str(report.get("timestamp", "")), path.name, path))
+    return max(matches)[2] if matches else None
+
+
+def _read_report(path: Path) -> dict[str, Any] | None:
+    """A report JSON object, or ``None`` for anything else in the dir."""
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(report, dict) or not isinstance(report.get("prompt"), dict):
+        return None
+    return report
 
 
 def _gold_fields(sample: dict[str, Any]) -> dict[str, Any]:
@@ -517,6 +541,13 @@ def _compact_num(v: Any) -> str:
     return str(v)
 
 
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be >= 1")
+    return parsed
+
+
 # -- main --
 
 
@@ -560,15 +591,25 @@ def main(argv: list[str] | None = None) -> int:
         "--version", default=None, help="Prompt version (default: latest)"
     )
     p_eval.add_argument(
-        "--limit", type=int, default=None, help="Max samples to evaluate"
+        "--limit", type=_positive_int, default=None, help="Max samples to evaluate"
     )
     p_eval.add_argument(
-        "--concurrency", type=int, default=5, help="Per-provider concurrency"
+        "--concurrency",
+        type=_positive_int,
+        default=5,
+        help="Per-provider concurrency",
     )
     p_eval.add_argument(
         "--temperature", type=float, default=0.3, help="LLM temperature"
     )
-    p_eval.add_argument("--output-dir", default=None, help="Write report to directory")
+    p_eval.add_argument(
+        "--output-dir",
+        nargs="?",
+        const=RESULTS_DIR,
+        default=None,
+        help=f"Write report to directory (bare flag: {RESULTS_DIR}, "
+        "where `review` looks by default)",
+    )
     p_eval.add_argument(
         "--baseline", default=None, help="Path to baseline JSON for comparison"
     )
@@ -616,7 +657,7 @@ def main(argv: list[str] | None = None) -> int:
     p_review.add_argument(
         "--results-dir",
         default=None,
-        help="Dir to search (default: lab/llm_eval/results)",
+        help=f"Dir to search (default: {RESULTS_DIR})",
     )
     p_review.add_argument(
         "--model", default=None, help="Model in report (default: first)"

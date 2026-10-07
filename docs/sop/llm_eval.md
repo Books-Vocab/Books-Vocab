@@ -76,7 +76,9 @@ uv run --frozen --extra dev pytest -q tests/test_ci_contract.py
 - `gold_status=unverified` 不計入 `quality_score_avg`
 - `translate_quick` gold 用 `gold_translation` / `gold_pos` / `gold_root`
 - `translate_explain` gold 用 `gold_keywords`
-- private corpus / private baseline / results 預設不 commit
+- private corpus / private baseline / results 預設不 commit;`corpus-build` /
+  `gold-queue` 的輸出若 git 未 ignore 會 exit 2 拒寫,只有確定不會 commit 時才帶
+  `--allow-unignored`
 
 ## 結果保留政策
 

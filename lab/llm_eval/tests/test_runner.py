@@ -586,6 +586,100 @@ async def test_human_gold_schema_failure_lowers_format_score(sample):
     assert summary.quality_score_avg is None
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("concurrency", 0), ("concurrency", -1), ("limit", 0), ("limit", -3)],
+)
+def test_eval_config_rejects_counts_below_one(field, value):
+    """concurrency 0 → Semaphore(0) → every call waits forever; limit 0 is
+    falsy → the whole dataset runs."""
+    with pytest.raises(ValueError, match=field):
+        EvalConfig(prompt_name="test", **{field: value})
+
+
+def _priced_response() -> MagicMock:
+    resp = MagicMock()
+    resp.choices = [MagicMock(message=MagicMock(content='{"t":"你好"}'))]
+    resp.usage = MagicMock(prompt_tokens=1_000_000, completion_tokens=1_000_000)
+    return resp
+
+
+@pytest.mark.asyncio
+async def test_run_eval_cost_uses_the_model_price_not_the_provider_default(
+    mock_prompt,
+):
+    """gemini-2.5-flash routes to the gemini provider, whose registry price is
+    for its chat_model (gemini-2.5-flash-lite)."""
+    gemini = resolve_provider("gemini")
+    assert gemini.chat_model == "gemini-2.5-flash-lite"
+    with patch("llm_eval.runner.create_eval_async_client") as mock_client_factory:
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=_priced_response())
+        mock_client_factory.return_value = mock_client
+
+        results = await run_eval(
+            mock_prompt,
+            [{"id": "s1", "word": "hello"}],
+            ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
+        )
+
+    # 1M input + 1M output tokens at Gemini 2.5 Flash list price ($0.30/$2.50).
+    assert results["gemini-2.5-flash"].total_cost_usd == pytest.approx(2.80)
+    assert results["gemini-2.5-flash-lite"].total_cost_usd == pytest.approx(
+        gemini.input_price_per_m + gemini.output_price_per_m
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_eval_cost_is_unknown_for_a_model_without_a_price(
+    mock_prompt, monkeypatch
+):
+    """If the provider default moves on, the old model must not be billed at
+    the new default's price."""
+    import dataclasses
+
+    from kg.llm.providers import REGISTRY
+
+    monkeypatch.setitem(
+        REGISTRY,
+        "gemini",
+        dataclasses.replace(REGISTRY["gemini"], chat_model="gemini-next-flash"),
+    )
+    with patch("llm_eval.runner.create_eval_async_client") as mock_client_factory:
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=_priced_response())
+        mock_client_factory.return_value = mock_client
+
+        results = await run_eval(
+            mock_prompt, [{"id": "s1", "word": "hello"}], ["gemini-2.5-flash-lite"]
+        )
+
+    assert results["gemini-2.5-flash-lite"].total_cost_usd is None
+
+
+@pytest.mark.asyncio
+async def test_provider_alias_requests_and_prices_the_providers_chat_model(
+    mock_prompt,
+):
+    """`--models gemini` means the gemini provider's model; sending the literal
+    "gemini" as the model name is rejected by the API."""
+    gemini = resolve_provider("gemini")
+    with patch("llm_eval.runner.create_eval_async_client") as mock_client_factory:
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=_priced_response())
+        mock_client_factory.return_value = mock_client
+
+        results = await run_eval(
+            mock_prompt, [{"id": "s1", "word": "hello"}], ["gemini"]
+        )
+
+    sent = mock_client.chat.completions.create.await_args.kwargs["model"]
+    assert sent == gemini.chat_model
+    assert results["gemini"].total_cost_usd == pytest.approx(
+        gemini.input_price_per_m + gemini.output_price_per_m
+    )
+
+
 @pytest.mark.asyncio
 async def test_run_eval_with_limit(mock_prompt):
     mock_resp = MagicMock()

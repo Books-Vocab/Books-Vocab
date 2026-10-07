@@ -18,6 +18,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from kg.llm.providers import LLMProvider
+
 from .config import EvalConfig
 from .providers import (
     MissingProviderApiKeyError,
@@ -30,6 +32,21 @@ from .scoring import score_result
 logger = logging.getLogger("llm_eval")
 _FORMAT_SCORE_KEYS = {"json_valid", "schema_conform"}
 _OLLAMA_PROBE_TIMEOUT_S = 2.0
+
+# Model names accepted besides provider names and registry chat_models.
+_MODEL_MAP: dict[str, str] = {
+    "gemma3:4b": "ollama",
+    "gemini-2.5-flash-lite": "gemini",
+    "gemini-2.5-flash": "gemini",
+    "deepseek-v4-flash": "deepseek",
+}
+
+# USD per 1M (input, output) tokens for cloud models that are not their
+# provider's registry chat_model: the registry price belongs to chat_model
+# only.  Source: ai.google.dev/gemini-api/docs/pricing (paid tier, 2026-10-07).
+_MODEL_PRICES: dict[str, tuple[float, float]] = {
+    "gemini-2.5-flash": (0.30, 2.50),
+}
 
 
 @dataclass(frozen=True)
@@ -60,7 +77,7 @@ class EvalSummary:
     avg_latency_ms: float
     total_input_tokens: int
     total_output_tokens: int
-    total_cost_usd: float
+    total_cost_usd: float | None  # None: no known price for this model
     format_score_avg: float | None = None
     quality_score_avg: float | None = None
     score_breakdown: dict[str, float] = field(default_factory=dict)
@@ -78,13 +95,6 @@ def resolve_model_provider(model: str) -> str:
         logger.debug(
             "provider resolution failed for model=%s; trying fallback map", model
         )
-    # Known model → provider mapping
-    _MODEL_MAP: dict[str, str] = {
-        "gemma3:4b": "ollama",
-        "gemini-2.5-flash-lite": "gemini",
-        "gemini-2.5-flash": "gemini",
-        "deepseek-v4-flash": "deepseek",
-    }
     provider = _MODEL_MAP.get(model)
     if provider:
         return provider
@@ -95,6 +105,28 @@ def resolve_model_provider(model: str) -> str:
         if p.chat_model == model:
             return name
     raise ValueError(f"Cannot resolve provider for model {model!r}")
+
+
+def _api_model(model: str, provider: LLMProvider) -> str:
+    """The model name to request: a provider alias means its chat_model."""
+    return provider.chat_model if model.strip().lower() == provider.name else model
+
+
+def _model_cost(
+    model: str, provider: LLMProvider, input_tokens: int, output_tokens: int
+) -> float | None:
+    """USD cost at ``model``'s own price; ``None`` when that price is unknown."""
+    if provider.name == "ollama":
+        return 0.0  # local inference
+    api_model = _api_model(model, provider)
+    if api_model in _MODEL_PRICES:
+        input_price, output_price = _MODEL_PRICES[api_model]
+    elif api_model == provider.chat_model:
+        input_price = provider.input_price_per_m
+        output_price = provider.output_price_per_m
+    else:
+        return None
+    return (input_tokens * input_price + output_tokens * output_price) / 1_000_000
 
 
 def _mean(values: list[float]) -> float | None:
@@ -202,7 +234,7 @@ async def _call_one(
     messages.append({"role": "user", "content": prompt.user})
 
     kwargs: dict[str, Any] = dict(
-        model=model,
+        model=_api_model(model, provider),
         messages=messages,
         temperature=config.temperature,
     )
@@ -303,7 +335,7 @@ async def run_eval(
     # Filter samples
     if config.sample_ids:
         samples = [s for s in samples if s.get("id") in config.sample_ids]
-    if config.limit:
+    if config.limit is not None:
         samples = samples[: config.limit]
 
     # Resolve providers
@@ -342,12 +374,7 @@ async def run_eval(
         in_toks = sum(r.input_tokens for r in model_results)
         out_toks = sum(r.output_tokens for r in model_results)
 
-        # Cost
-        provider = resolve_provider(pname)
-        cost = (
-            in_toks * provider.input_price_per_m / 1_000_000
-            + out_toks * provider.output_price_per_m / 1_000_000
-        )
+        cost = _model_cost(m, resolve_provider(pname), in_toks, out_toks)
         format_score_avg = _mean(
             [score for r in model_results if (score := _format_score(r)) is not None]
         )
