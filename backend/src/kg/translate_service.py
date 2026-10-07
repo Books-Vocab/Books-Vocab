@@ -233,9 +233,7 @@ async def _run_llm_translate(
         if not response.choices:
             if logger:
                 logger.error("%s: Gemini returned empty choices. Response: %s", operation, repr(response)[:500])
-            err = ExternalServiceError(f"{operation}/empty_response")
-            fut.set_exception(err)
-            raise err
+            raise ExternalServiceError(f"{operation}/empty_response")
 
         raw = response.choices[0].message.content
         parsed = _parse_json_payload(raw)
@@ -261,6 +259,11 @@ async def _run_llm_translate(
     except BaseException as exc:
         if not fut.done():
             fut.set_exception(exc)
+        # Followers still receive the exception via ``await``. Mark it retrieved
+        # so a leader-only failure doesn't make asyncio log "Future exception
+        # was never retrieved" at ERROR when ``fut`` is garbage-collected.
+        if not fut.cancelled():
+            fut.exception()
         raise
     finally:
         # Remove only if it's still our entry (defensive against any

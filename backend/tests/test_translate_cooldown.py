@@ -9,6 +9,7 @@ These tests pin three behaviors that protect the LLM spend budget:
 3. Concurrent identical requests must dedup the LLM call (a "thundering herd"
    on a fresh cache miss must not multiply LLM spend).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -36,6 +37,7 @@ def _llm_stub(content: str, user_id: str = "u_test"):
 def _isolate(tmp_path, monkeypatch):
     monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
     import kg.translate_log as tl
+
     tl._reset()
     yield
     tl._reset()
@@ -56,6 +58,7 @@ async def test_translate_repeat_request_within_cooldown_uses_cache_not_llm():
     user = {"id": "u_test", "config": {"translation": {"source_lang": "en", "target_lang": "zh-Hant"}}}
     llm = _llm_stub('{"t":"喚起","p":"v.","r":"evoke"}', user_id="u_test")
     import logging
+
     logger = logging.getLogger("test")
 
     r1 = await run_quick_translate(req, user, llm=llm, logger=logger)
@@ -123,6 +126,7 @@ async def test_translate_concurrent_same_input_dedup():
 
     llm = SimpleNamespace(chat_async=AsyncMock(side_effect=slow_chat), user_id="u_test")
     import logging
+
     logger = logging.getLogger("test")
 
     t1 = asyncio.create_task(run_quick_translate(req, user, llm=llm, logger=logger))
@@ -170,16 +174,14 @@ async def test_translate_concurrent_dedup_n_callers_only_one_llm():
 
     llm = SimpleNamespace(chat_async=AsyncMock(side_effect=slow_chat), user_id="u_test")
     import logging
+
     logger = logging.getLogger("test")
 
     # Fire leader first so it owns the in-flight entry before followers race.
     leader = asyncio.create_task(run_quick_translate(req, user, llm=llm, logger=logger))
     await call_started.wait()
 
-    followers = [
-        asyncio.create_task(run_quick_translate(req, user, llm=llm, logger=logger))
-        for _ in range(4)
-    ]
+    followers = [asyncio.create_task(run_quick_translate(req, user, llm=llm, logger=logger)) for _ in range(4)]
     # Let followers reach the dedup point before unblocking the LLM.
     await asyncio.sleep(0.05)
     release.set()
@@ -224,6 +226,7 @@ async def test_translate_singleflight_timeout_preserves_shared_future(monkeypatc
 
     llm = SimpleNamespace(chat_async=AsyncMock(side_effect=slow_chat), user_id="u_test")
     import logging
+
     logger = logging.getLogger("test")
 
     leader = asyncio.create_task(run_quick_translate(req, user, llm=llm, logger=logger))
@@ -239,4 +242,95 @@ async def test_translate_singleflight_timeout_preserves_shared_future(monkeypatc
     release.set()
     result = await asyncio.wait_for(leader, timeout=2.0)
     assert result.t == "x"
+    assert llm.chat_async.await_count == 1
+
+
+_UNRETRIEVED_MSG = "Future exception was never retrieved"
+
+
+def _unretrieved_records(caplog) -> list:
+    return [r for r in caplog.records if _UNRETRIEVED_MSG in r.getMessage()]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["chat_raises", "empty_choices"])
+async def test_translate_singleflight_failed_leader_leaves_no_unretrieved_future(failure, caplog):
+    """#2093: a leader-only failure must not log asyncio's "never retrieved" ERROR.
+
+    With no follower awaiting the shared future, nothing reads its exception,
+    so asyncio logs an ERROR traceback when the future is garbage-collected —
+    one per failed translate during a provider outage.
+    """
+    import gc
+    import logging
+
+    from kg import translate_service
+    from kg.api_models import TranslateRequest
+    from kg.exceptions import ExternalServiceError
+    from kg.translate_service import run_quick_translate
+
+    req = TranslateRequest(word="evoke", context="The story evokes memories.")
+    user = {"id": "u_test", "config": {"translation": {"source_lang": "en", "target_lang": "zh-Hant"}}}
+
+    async def provider_down(*args, **kwargs):
+        # Fresh instance per call: a shared side_effect instance would keep its
+        # traceback — and through it the leader's future — alive past gc.collect().
+        raise ExternalServiceError("translate_quick/provider_down")
+
+    if failure == "chat_raises":
+        chat_async = AsyncMock(side_effect=provider_down)
+    else:
+        chat_async = AsyncMock(return_value=SimpleNamespace(choices=[], usage=None))
+    llm = SimpleNamespace(chat_async=chat_async, user_id="u_test")
+
+    with caplog.at_level(logging.ERROR, logger="asyncio"):
+        # Flush garbage left by earlier tests so it can't be attributed here.
+        gc.collect()
+        caplog.clear()
+        # Positive control: this harness does observe the asyncio record.
+        control = asyncio.get_running_loop().create_future()
+        control.set_exception(RuntimeError("control"))
+        del control
+        gc.collect()
+        assert len(_unretrieved_records(caplog)) == 1
+        caplog.clear()
+
+        with pytest.raises(ExternalServiceError):
+            await run_quick_translate(req, user, llm=llm, logger=logging.getLogger("test"))
+        assert translate_service._INFLIGHT == {}
+        gc.collect()
+
+    assert _unretrieved_records(caplog) == []
+
+
+@pytest.mark.asyncio
+async def test_translate_singleflight_follower_still_receives_leader_failure():
+    """Consuming the leader's exception must not hide it from waiting followers."""
+    import logging
+
+    from kg.api_models import TranslateRequest
+    from kg.exceptions import ExternalServiceError
+    from kg.translate_service import run_quick_translate
+
+    req = TranslateRequest(word="evoke", context="The story evokes memories.")
+    user = {"id": "u_test", "config": {"translation": {"source_lang": "en", "target_lang": "zh-Hant"}}}
+    leader_started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def failing_chat(*args, **kwargs):
+        leader_started.set()
+        await release.wait()
+        raise ExternalServiceError("translate_quick/provider_down")
+
+    llm = SimpleNamespace(chat_async=AsyncMock(side_effect=failing_chat), user_id="u_test")
+    logger = logging.getLogger("test")
+
+    leader = asyncio.create_task(run_quick_translate(req, user, llm=llm, logger=logger))
+    await leader_started.wait()
+    follower = asyncio.create_task(run_quick_translate(req, user, llm=llm, logger=logger))
+    await asyncio.sleep(0.05)
+    release.set()
+
+    results = await asyncio.gather(leader, follower, return_exceptions=True)
+    assert [type(r) for r in results] == [ExternalServiceError, ExternalServiceError]
     assert llm.chat_async.await_count == 1
