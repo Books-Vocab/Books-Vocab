@@ -51,7 +51,7 @@
 
 set -euo pipefail
 
-LOCK_FILE="/tmp/kg-ios-build.lock"
+LOCK_FILE="${KG_IOS_BUILD_LOCK_FILE:-/tmp/kg-ios-build.lock}"   # override only for hermetic tests
 # Shares the build lock with `ios_build.sh`, so it shares the same override:
 # `--timeout` per call, `KG_IOS_BUILD_LOCK_TIMEOUT` for callers that cannot pass
 # flags (see the note in ios_build.sh).
@@ -983,6 +983,27 @@ write_early_failure_verdict() {
     }' >"$VERDICT_JSON_FILE"
   kg_ios_verdict_publish
 }
+
+# Read the shared disk guard BEFORE leasing a simulator or taking the build lock.
+# A structural block (exit 77, retryable=no) or a temporary one (exit 75) is
+# decided here in seconds instead of after a lease and a lock-queue wait; the
+# in-lock preflight below keeps measuring real disk space only.
+if [[ "$TEST_CACHE_ACTION" != "status" && "$TEST_CACHE_ACTION" != "clean" ]]; then
+  early_guard_rc=0
+  kg_ios_disk_guard_early_verdict "test" || early_guard_rc=$?
+  if (( early_guard_rc != 0 )); then
+    if (( early_guard_rc == KG_IOS_DISK_STRUCTURAL_EXIT )); then
+      write_early_failure_verdict "disk-guard-structural-block" "$early_guard_rc"
+    else
+      echo "[ios_test] blocked by the shared disk guard (exit $early_guard_rc, temporary): see the guard reason and action above; './ops/ios_ops.sh guard --refresh' re-evaluates now" >&2
+      write_early_failure_verdict "disk-guard-blocked" "$early_guard_rc"
+    fi
+    exit "$early_guard_rc"
+  fi
+  # The guard verdict was just read; the in-lock preflight now measures real
+  # disk space only (cache budget, free-space floor) and does not re-read it.
+  export KG_IOS_DISK_GUARD_ALREADY_CHECKED=1
+fi
 
 # Auto-lease a pool simulator for this run (parallel agents). Engaged by --lease
 # / KG_IOS_TEST_AUTOLEASE only when no explicit device/destination was given —

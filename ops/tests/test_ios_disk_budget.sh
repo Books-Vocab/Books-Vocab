@@ -74,7 +74,7 @@ guard_output="$(KG_IOS_DISK_CACHE_ROOTS="$cache_root/ios-build-derived-data:$cac
   KG_IOS_DISK_CACHE_BUDGET_GIB=1 KG_IOS_DISK_CACHE_HEADROOM_GIB=0 \
   KG_IOS_DISK_MIN_FREE_GIB=20 KG_IOS_DISK_FREE_BYTES=$((40 * 1073741824)) \
   /bin/bash -c "source '$LIB'; kg_ios_disk_budget_preflight '$cache_root' build" 2>&1)" || guard_rc=$?
-[[ "$guard_rc" -eq 75 ]] && ok "shared XCTestDevices block exits 75" || bad "shared XCTestDevices block exit=$guard_rc"
+[[ "$guard_rc" -eq 77 ]] && ok "XCTestDevices manual-review block exits 77 (not retryable)" || bad "shared XCTestDevices block exit=$guard_rc"
 grep -q 'reason=xctest-devices-manual-review-required' <<<"$guard_output" \
   && ok "shared XCTestDevices blocker is structured" \
   || bad "shared XCTestDevices blocker missing: $guard_output"
@@ -138,7 +138,7 @@ lane_rc=0
 lane_output="$(KG_IOS_DISK_GUARD_STATE="$lane_block_state" KG_IOS_DISK_LANE_USAGE_STATE="$lane_state" \
   KG_IOS_DISK_GUARD_AUTO_REFRESH=0 \
   /bin/bash -c "source '$LIB'; kg_ios_disk_budget_guard_state test" 2>&1)" || lane_rc=$?
-[[ "$lane_rc" -eq 75 ]] && ok "lane block exits 75" || bad "lane block exit=$lane_rc"
+[[ "$lane_rc" -eq 77 ]] && ok "lane block exits 77 (structural)" || bad "lane block exit=$lane_rc"
 grep -q 'blockingReasons=unregistered-physical-worktree' <<<"$lane_output" \
   && ok "diagnostic names blocking reason" || bad "diagnostic reason missing: $lane_output"
 grep -q 'unregisteredWorktrees=/x/orphan-one;/x/orphan-two' <<<"$lane_output" \
@@ -164,7 +164,7 @@ refresh_output="$(KG_IOS_DISK_GUARD_STATE="$TMP/lane-refresh-guard.json" KG_IOS_
 [[ "$(cat "$TMP/lane-refresh-guard.json.lockheld" 2>/dev/null)" == "1" ]] \
   && ok "inline refresh tells the tick the build lock is held" || bad "inline refresh lock flag wrong"
 
-echo "── refresh that still blocks keeps exit 75 with diagnostics ──"
+echo "── refresh that still blocks keeps exit 77 with diagnostics ──"
 cat > "$fake_tick" <<'EOF'
 #!/usr/bin/env bash
 exit 0
@@ -174,7 +174,7 @@ still_rc=0
 still_output="$(KG_IOS_DISK_GUARD_STATE="$TMP/lane-still-guard.json" KG_IOS_DISK_GUARD_TICK="$fake_tick" \
   KG_IOS_DISK_LANE_USAGE_STATE="$lane_state" \
   /bin/bash -c "source '$LIB'; kg_ios_disk_budget_guard_state test" 2>&1)" || still_rc=$?
-[[ "$still_rc" -eq 75 ]] && ok "unresolved block still exits 75 after one refresh" || bad "still-block exit=$still_rc"
+[[ "$still_rc" -eq 77 ]] && ok "unresolved block still exits 77 after one refresh" || bad "still-block exit=$still_rc"
 grep -q 'unregisteredWorktrees=/x/orphan-one' <<<"$still_output" \
   && ok "unresolved block still names worktrees" || bad "still-block diagnostics missing: $still_output"
 
@@ -231,6 +231,68 @@ loose_rc=0
 [[ "$loose_rc" -ne 0 ]] && ok "unresolvable canonical refresh fails" || bad "unresolvable canonical refresh exited 0"
 [[ ! -e "$loose_record" ]] \
   && ok "no tick publishes from a script-relative fallback root" || bad "a tick ran without a canonical root"
+
+echo "── structural guard block is a distinct non-retryable exit 77 ──"
+struct_rc=0
+struct_output="$(KG_IOS_DISK_GUARD_STATE="$lane_block_state" KG_IOS_DISK_LANE_USAGE_STATE="$lane_state" \
+  KG_IOS_DISK_GUARD_AUTO_REFRESH=0 \
+  /bin/bash -c "source '$LIB'; kg_ios_disk_budget_guard_state test" 2>&1)" || struct_rc=$?
+[[ "$struct_rc" -eq 77 ]] && ok "unregistered-worktree block exits 77" || bad "structural block exit=$struct_rc"
+grep -q 'retryable=no' <<<"$struct_output" \
+  && ok "structural block says retryable=no" || bad "retryable=no missing: $struct_output"
+grep -q 'guardAction=manual-review-lane-attribution' <<<"$struct_output" \
+  && ok "structural block prints the guard's own action" || bad "guard action missing: $struct_output"
+
+xctest_budget_state="$TMP/guard-xctest-budget.json"
+cat > "$xctest_budget_state" <<'EOF2'
+{"schema":"kg.disk.guard.v1","verdict":"block","xctest_devices_verdict":"block","xctest_devices_manual_review":0,"at":"2099-01-01T00:00:00Z"}
+EOF2
+xctest_rc=0
+KG_IOS_DISK_GUARD_STATE="$xctest_budget_state" KG_IOS_DISK_GUARD_ENFORCE_XCTEST=1 \
+  /bin/bash -c "source '$LIB'; kg_ios_disk_budget_guard_state test" >/dev/null 2>&1 || xctest_rc=$?
+[[ "$xctest_rc" -eq 75 ]] && ok "XCTestDevices budget block keeps 75" || bad "xctest block exit=$xctest_rc"
+
+echo "── ios_ops.sh test reads the guard before the lease and the build lock ──"
+early_lock="$TMP/early-build.lock"
+early_leases="$TMP/early-leases"
+early_verdict="$TMP/early-verdict"
+early_start=$SECONDS
+early_rc=0
+early_output="$(KG_IOS_DISK_GUARD_STATE="$lane_block_state" KG_IOS_DISK_LANE_USAGE_STATE="$lane_state" \
+  KG_IOS_DISK_GUARD_AUTO_REFRESH=0 KG_IOS_BUILD_LOCK_FILE="$early_lock" \
+  KG_IOS_SIM_LEASE_ROOT="$early_leases" KG_IOS_VERDICT_FILE="$early_verdict" \
+  "$ROOT/ops/ios_ops.sh" test --lease 2>&1)" || early_rc=$?
+early_elapsed=$((SECONDS - early_start))
+[[ "$early_rc" -eq 77 ]] && ok "ios_ops.sh test exits 77 on a structural block" || bad "ios_ops.sh test exit=$early_rc: $early_output"
+(( early_elapsed <= 10 )) && ok "verdict arrives within 10s (${early_elapsed}s)" || bad "verdict took ${early_elapsed}s"
+[[ ! -e "$early_leases" ]] && ok "no simulator lease was touched" || bad "lease root was created"
+[[ -z "$(ls "$TMP" | grep '^early-build.lock')" ]] && ok "build lock was never taken" || bad "build lock artifacts exist"
+grep -q 'unregisteredWorktrees=/x/orphan-one;/x/orphan-two' <<<"$early_output" \
+  && ok "early verdict names the blocking worktrees" || bad "early verdict lacks worktrees: $early_output"
+grep -q 'clean rebuildable cache' <<<"$early_output" \
+  && bad "structural block still tells the agent to clean cache" || ok "no misleading clean-cache advice"
+
+echo "── ios_ops.sh build reads the guard before queueing for the build lock ──"
+build_rc=0
+build_start=$SECONDS
+build_output="$(KG_IOS_DISK_GUARD_STATE="$lane_block_state" KG_IOS_DISK_LANE_USAGE_STATE="$lane_state" \
+  KG_IOS_DISK_GUARD_AUTO_REFRESH=0 KG_IOS_BUILD_LOCK_FILE="$early_lock" \
+  "$ROOT/ops/ios_ops.sh" build 2>&1)" || build_rc=$?
+[[ "$build_rc" -eq 77 ]] && ok "ios_ops.sh build exits 77 on a structural block" || bad "build exit=$build_rc: $build_output"
+(( SECONDS - build_start <= 10 )) && ok "build verdict arrives within 10s" || bad "build verdict was slow"
+[[ -z "$(ls "$TMP" | grep '^early-build.lock')" ]] && ok "build never took the lock" || bad "build lock artifacts exist"
+
+echo "── disk-space style guard block keeps 75, also before lease and lock ──"
+space_state="$TMP/guard-space-block.json"
+cat > "$space_state" <<EOF
+{"schema":"kg.disk.guard.v1","verdict":"critical","reason":"free-below-critical","action":"evict-old-ios-cache","lane_usage_verdict":"pass","xctest_devices_verdict":"pass","at":"$(date -u '+%Y-%m-%dT%H:%M:%SZ')"}
+EOF
+space_rc=0
+space_output="$(KG_IOS_DISK_GUARD_STATE="$space_state" KG_IOS_DISK_GUARD_AUTO_REFRESH=0 \
+  KG_IOS_BUILD_LOCK_FILE="$early_lock" KG_IOS_SIM_LEASE_ROOT="$early_leases" \
+  KG_IOS_VERDICT_FILE="$early_verdict" "$ROOT/ops/ios_ops.sh" test --lease 2>&1)" || space_rc=$?
+[[ "$space_rc" -eq 75 ]] && ok "disk-space guard block exits 75" || bad "space block exit=$space_rc: $space_output"
+[[ ! -e "$early_leases" ]] && ok "space block also stops before the lease" || bad "lease root created on space block"
 
 echo "passed=$PASS failed=$FAIL"
 [[ "$FAIL" -eq 0 ]]
