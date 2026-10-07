@@ -101,9 +101,10 @@ def cmd_eval(args: argparse.Namespace) -> int:
                 f"Error: cannot read baseline {args.baseline}: {exc}", file=sys.stderr
             )
             return 1
-        if not isinstance(baseline_data, dict):
+        problem = _baseline_shape_problem(baseline_data)
+        if problem:
             print(
-                f"Error: baseline {args.baseline} is not a report JSON object",
+                f"Error: baseline {args.baseline} is not a report: {problem}",
                 file=sys.stderr,
             )
             return 1
@@ -223,6 +224,29 @@ def cmd_eval(args: argparse.Namespace) -> int:
     for failure in failures:
         print(f"Error: {failure}", file=sys.stderr)
     return 1 if failures else 0
+
+
+def _baseline_shape_problem(baseline: Any) -> str | None:
+    """Why ``baseline`` cannot feed ``compare_to_baseline``, or ``None``.
+
+    Checked before the first paid call, so a readable but malformed file
+    cannot crash the run after the spend.
+    """
+    if not isinstance(baseline, dict):
+        return "expected a JSON object"
+    models = baseline.get("models")
+    if not isinstance(models, dict):
+        return "'models' must be an object keyed by model"
+    for model, entry in models.items():
+        if not isinstance(entry, dict):
+            return f"models[{model!r}] must be an object"
+        for key in ("format_score_avg", "quality_score_avg"):
+            score = entry.get(key)
+            if score is not None and (
+                isinstance(score, bool) or not isinstance(score, (int, float))
+            ):
+                return f"models[{model!r}].{key} must be a number or null"
+    return None
 
 
 def _eval_failures(
