@@ -36,9 +36,28 @@ STEP_IDS = (
 )
 _TERMINAL_STATUSES = {"succeeded", "succeeded_with_warnings", "failed", "interrupted"}
 
+# The server stopped (shutdown cancel or crash/restart) before the operation
+# reached a terminal state.  One code covers both paths: the client-side remedy
+# is identical (retry with a fresh Idempotency-Key) and no user-initiated cancel
+# exists.  Legacy rows may still carry the old ``cancelled`` code.
+INTERRUPTED_ERROR_CODE = "interrupted"
+_ACTIVE_STEP_STATUSES = {"running", "retry"}
+
 
 class IdempotencyConflict(ValueError):
     """The same idempotency key was reused with a different request."""
+
+
+class SourceUnavailableError(ValueError):
+    """The source card vanished, was archived, or left the notebook."""
+
+
+class TargetArchivedError(ValueError):
+    """The word being linked to exists only as an archived card."""
+
+
+class TargetIsSourceError(ValueError):
+    """The normalized target word resolves to the source card itself."""
 
 
 _lifecycle = SQLiteLifecycle()
@@ -357,6 +376,42 @@ def finish_operation(operation_id: str, *, status: str, error_code: str | None =
         )
 
 
+def _mark_interrupted(operation_id: str, record: dict[str, Any]) -> None:
+    steps = record["steps"]
+    for step in steps:
+        if step.get("status") in _ACTIVE_STEP_STATUSES:
+            step.update(status="error", detail_code=INTERRUPTED_ERROR_CODE)
+    _update(
+        operation_id,
+        status="interrupted",
+        error_code=INTERRUPTED_ERROR_CODE,
+        sequence=record["sequence"] + 1,
+        steps=steps,
+        ended=True,
+    )
+
+
+def reap_interrupted_operations() -> int:
+    """Mark every non-terminal operation ``interrupted``; return the count.
+
+    Operations run as in-process background tasks, so anything still queued or
+    running when the process starts was orphaned by the previous one and would
+    otherwise be polled forever.  Only safe once the single-worker lock is held
+    (the app lifespan calls this right after ``assert_single_worker``).
+    """
+    terminal = ", ".join("?" for _ in _TERMINAL_STATUSES)
+    with _lock:
+        conn = _get_conn()
+        rows = conn.execute(
+            f"{_SELECT} WHERE status NOT IN ({terminal})",
+            tuple(sorted(_TERMINAL_STATUSES)),
+        ).fetchall()
+        for row in rows:
+            record = _row_to_dict(row)
+            _mark_interrupted(record["operation_id"], record)
+    return len(rows)
+
+
 def operation_response(record: dict[str, Any]) -> AddLinkOperationResponse:
     return AddLinkOperationResponse.model_validate(
         {
@@ -502,13 +557,18 @@ def _error_code(step_id: str, exc: BaseException) -> str:
 
     if isinstance(exc, QuotaExceededError):
         return "quota_exhausted"
+    if isinstance(exc, SourceUnavailableError):
+        return "source_unavailable"
+    if isinstance(exc, TargetArchivedError):
+        return "target_archived"
+    if isinstance(exc, TargetIsSourceError):
+        return "target_is_source"
     if isinstance(exc, NotFoundError):
         return "source_unavailable" if step_id == "resolve_target" else f"{step_id}_unavailable"
     return {
         "resolve_target": "target_unavailable",
         "translate": "translation_failed",
         "create_card": "card_creation_failed",
-        "enrich": "enrichment_failed",
         "create_link": "link_creation_failed",
     }.get(step_id, "operation_failed")
 
@@ -548,16 +608,16 @@ async def run_add_link_operation(
         try:
             source = cards.get(payload["from_id"])
             if source is None or source.is_deleted or source.is_archived or source.notebook_id != record["notebook_id"]:
-                raise ValueError("source card unavailable")
+                raise SourceUnavailableError("source card unavailable")
 
             target_word = _clean_content(payload["target_word"])
             if not target_word:
                 raise ValueError("target word is empty")
             target = cards.find_by_content(target_word, notebook_id=record["notebook_id"])
             if target is not None and target.is_archived:
-                raise ValueError("target card is archived")
+                raise TargetArchivedError("target card is archived")
             if target is not None and target.id == source.id:
-                raise ValueError("target card is source card")
+                raise TargetIsSourceError("target card is source card")
 
             if target is not None:
                 update_step(operation_id, current_step, status="done", current=1, detail_code="existing_card")
@@ -589,7 +649,7 @@ async def run_add_link_operation(
                 concurrent_target = cards.find_by_content(target_word, notebook_id=record["notebook_id"])
                 if concurrent_target is not None:
                     if concurrent_target.is_archived:
-                        raise ValueError("target card is archived")
+                        raise TargetArchivedError("target card is archived")
                     target = concurrent_target
                     set_target_card(operation_id, target.id)
                     update_step(operation_id, current_step, status="skipped", detail_code="existing_card")
@@ -699,8 +759,8 @@ async def run_add_link_operation(
                 status="succeeded_with_warnings" if warnings else "succeeded",
             )
         except asyncio.CancelledError:
-            update_step(operation_id, current_step, status="interrupted", detail_code="cancelled")
-            finish_operation(operation_id, status="interrupted", error_code="cancelled")
+            update_step(operation_id, current_step, status="error", detail_code=INTERRUPTED_ERROR_CODE)
+            finish_operation(operation_id, status="interrupted", error_code=INTERRUPTED_ERROR_CODE)
             raise
         except Exception as exc:  # background failure becomes typed operation state
             logger.error("Add Link operation %s failed at %s: %s", operation_id, current_step, exc, exc_info=True)

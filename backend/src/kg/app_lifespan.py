@@ -18,6 +18,7 @@ class AppLifespanDependencies:
     logger: logging.Logger | Any
     assert_single_worker_fn: Callable[[Path], None]
     reap_orphaned_runs_fn: Callable[[], int]
+    reap_interrupted_add_link_operations_fn: Callable[[], int]
     release_worker_lock_fn: Callable[[], None]
     reset_clients_fn: Callable[[], None]
     reset_async_clients_fn: Callable[[], Awaitable[None]]
@@ -36,19 +37,16 @@ def build_app_lifespan_from_dependencies(
         # which is easy to miss in production. Empty values stay valid for
         # test/dev flows by design.
         if not dependencies.settings.admin_token:
-            dependencies.logger.warning(
-                "admin_token is empty → admin API is disabled "
-                "(set ADMIN_TOKEN to enable)"
-            )
+            dependencies.logger.warning("admin_token is empty → admin API is disabled (set ADMIN_TOKEN to enable)")
         if not dependencies.settings.admin_password:
             dependencies.logger.warning(
-                "admin_password is empty → admin password login is disabled "
-                "(set ADMIN_PASSWORD to enable)"
+                "admin_password is empty → admin password login is disabled (set ADMIN_PASSWORD to enable)"
             )
         worker_lock_path = dependencies.settings.data_dir / ".worker.lock"
         dependencies.assert_single_worker_fn(worker_lock_path)
         try:
             reaped = dependencies.reap_orphaned_runs_fn()
+            reaped_operations = dependencies.reap_interrupted_add_link_operations_fn()
         except BaseException:
             dependencies.release_worker_lock_fn()
             worker_lock_path.unlink(missing_ok=True)
@@ -57,6 +55,11 @@ def build_app_lifespan_from_dependencies(
             dependencies.logger.info(
                 "Reaped %d orphaned pipeline run(s) → interrupted",
                 reaped,
+            )
+        if reaped_operations:
+            dependencies.logger.info(
+                "Reaped %d orphaned add-link operation(s) → interrupted",
+                reaped_operations,
             )
         yield
         dependencies.logger.info("KG API shutting down")
