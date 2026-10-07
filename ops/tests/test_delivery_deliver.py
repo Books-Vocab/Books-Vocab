@@ -520,3 +520,56 @@ def test_branch_resume_still_cleans_a_merged_lane_that_is_not_yet_retired() -> N
     code, _ = ship(world, "--branch", "feat/thing")
     assert code == 0
     assert world.names() == ["cleanup-merged", "sync-main"]
+
+
+def test_stale_local_main_base_is_detected_in_a_real_agent_style_checkout(
+    tmp_path: Path,
+) -> None:
+    """Agent worktrees fork from a newer origin/main than the local main the
+    claim was adopted against; the claim base is then not the fork point."""
+    import subprocess
+
+    def sh(*argv: str, cwd: Path = tmp_path) -> str:
+        done = subprocess.run(
+            list(argv), cwd=cwd, capture_output=True, text=True, check=True
+        )
+        return done.stdout.strip()
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    sh("git", "init", "-q", "-b", "main", cwd=repo)
+    sh("git", "config", "user.email", "t@example.com", cwd=repo)
+    sh("git", "config", "user.name", "T", cwd=repo)
+    (repo / "a.txt").write_text("1")
+    sh("git", "add", ".", cwd=repo)
+    sh("git", "commit", "-qm", "one", cwd=repo)
+    stale = sh("git", "rev-parse", "HEAD", cwd=repo)
+    (repo / "merged_later.txt").write_text("2")
+    sh("git", "add", ".", cwd=repo)
+    sh("git", "commit", "-qm", "two", cwd=repo)
+    sh("git", "update-ref", "refs/remotes/origin/main", "HEAD", cwd=repo)
+    sh("git", "checkout", "-q", "-b", "worktree-agent-x", cwd=repo)
+    (repo / "mine.txt").write_text("3")
+    sh("git", "add", ".", cwd=repo)
+    sh("git", "commit", "-qm", "mine", cwd=repo)
+    sh("git", "update-ref", "refs/heads/main", stale, cwd=repo)  # stale local main
+
+    args = deliver.build_parser().parse_args(["--worktree", str(repo)])
+    delivery = deliver.Delivery(args, deliver.run, lambda _s: None)
+    retired: list[list[str]] = []
+
+    def spy(cmd: list[str], cwd: Path | None) -> deliver.Proc:
+        if cmd[0].endswith("worktree_orchestrate.py"):
+            retired.append(cmd)
+            return deliver.Proc(0, "{}", "")
+        return deliver.run(cmd, cwd)
+
+    delivery.runner = spy
+    assert delivery.reclaim_if_base_stale(
+        {"base_sha": stale, "handed_back_sha": "e" * 40}, "worktree-agent-x"
+    )
+    assert retired and "abandoned" in retired[0]
+    fork = sh("git", "merge-base", "HEAD", "origin/main", cwd=repo)
+    assert not delivery.reclaim_if_base_stale(
+        {"base_sha": fork, "handed_back_sha": "e" * 40}, "worktree-agent-x"
+    )
