@@ -475,6 +475,123 @@ if grep -q 'Run platform-independent ops groups' "$OPS"; then
   fail "ops-suite still runs all Linux groups serially"
 fi
 
+# --- Token scope and liveness ceilings (Issue #2070) -------------------------
+# Every workflow pins its own GITHUB_TOKEN scope instead of inheriting the repo
+# default (read today, but a settings change would silently widen it), and every
+# job that runs steps carries its own timeout. A `uses:` job delegates the
+# timeout to the called workflow, but its own permissions are still checked.
+# Writes, at workflow or job level, must match an allowlist entry with exactly the
+# keys workflow, job (null = workflow-level, else a job name), scope and reason;
+# write-all is never allowlistable, and a stale entry is itself a violation.
+WRITE_ALLOWLIST="ops/tests/github_workflow_write_allowlist.json"
+! compgen -G '.github/workflows/*.yaml' >/dev/null || fail "a .yaml workflow escapes every *.yml guard in this file; rename it to .yml"
+workflow_hardening_violations() {
+  ruby -e 'require "yaml"; require "json"
+    keys = %w[workflow job scope reason]
+    allow = JSON.parse(File.read(ARGV.shift))["entries"].each_with_index.select do |e, i|
+      e = {} unless e.is_a?(Hash)
+      errs = [("missing key(s) #{(keys - e.keys).join(", ")}" if (keys - e.keys).any?),
+        ("unknown key(s) #{(e.keys - keys).join(", ")}" if (e.keys - keys).any?)].compact
+      errs << "workflow, scope and reason must be non-empty strings" unless errs.any? || %w[workflow scope reason].all? { |k| e[k].is_a?(String) && !e[k].strip.empty? }
+      errs << "job must be null (workflow-level) or a non-empty string" unless errs.any? || e["job"].nil? || (e["job"].is_a?(String) && !e["job"].strip.empty?)
+      puts("allowlist entry #{i}: #{errs.join("; ")}") if errs.any?
+      errs.empty?
+    end.map(&:first)
+    used = []
+    check = lambda do |path, job, perms|
+      where = "#{path}: #{job ? "job #{job}" : "top-level"} permissions"
+      next puts("#{where} is #{perms.inspect}") unless perms.is_a?(Hash) || perms == "read-all"
+      (perms == "read-all" ? {} : perms).each do |scope, value|
+        next if %w[read none].include?(value)
+        hit = allow.find { |e| [e["workflow"], e["job"], e["scope"]] == [File.basename(path), job, scope] }
+        next used << hit if value == "write" && hit
+        puts "#{where} #{scope}: #{value.inspect} is not read/none or an allowlisted write"
+      end
+    end
+    ARGV.each do |path|
+      y = YAML.load_file(path)
+      y.key?("permissions") ? check.(path, nil, y["permissions"]) : puts("#{path}: no top-level permissions")
+      (y["jobs"] || {}).each do |name, job|
+        check.(path, name, job["permissions"]) if job.key?("permissions")
+        next if job.key?("uses")
+        puts "#{path}: job #{name} has no timeout-minutes" unless job.key?("timeout-minutes")
+      end
+    end
+    (allow - used).each { |e| puts "allowlist: #{e["workflow"]} #{e["job"] ? "job #{e["job"]}" : "top-level"} #{e["scope"]} matches no write grant" }' "$@"
+}
+if hardening_report="$(workflow_hardening_violations "$WRITE_ALLOWLIST" .github/workflows/*.yml)"; then
+  while IFS= read -r violation; do
+    if [[ -n "$violation" ]]; then
+      fail "$violation"
+    fi
+  done <<<"$hardening_report"
+else
+  fail "workflow hardening checker could not read .github/workflows/*.yml"
+fi
+
+# Positive control: the checker must name each defect in a fixture that has
+# them (mapped and job-level writes, write-all, invalid or stale allowlist
+# entries), and must pass `uses:` jobs, read-only maps and allowlisted writes.
+hardening_tmp="$wf_tmp/hardening"
+mkdir -p "$hardening_tmp"
+cat >"$hardening_tmp/bare.yml" <<'YAML'
+on: push
+jobs: {steps-job: {steps: [{run: 'true'}]}, reusable-job: {uses: ./.github/workflows/llm-eval.yml}}
+YAML
+cat >"$hardening_tmp/write-all.yml" <<'YAML'
+{on: push, permissions: write-all, jobs: {bounded: {timeout-minutes: 1}}}
+YAML
+cat >"$hardening_tmp/mixed.yml" <<'YAML'
+on: push
+permissions: {contents: write, statuses: write, deployments: write}
+jobs:
+  job-write-all: {timeout-minutes: 1, permissions: write-all}
+  job-unlisted: {timeout-minutes: 1, permissions: {pull-requests: write}}
+  job-listed: {timeout-minutes: 1, permissions: {issues: write, contents: read}}
+  job-read-only: {timeout-minutes: 1, permissions: {contents: read, actions: none}}
+  job-read-all: {timeout-minutes: 1, permissions: read-all}
+  job-none: {timeout-minutes: 1, permissions: {}}
+YAML
+# Entries 0-1 are valid grants; 2-8 must not authorize (stale, wrong job, wrong workflow, no reason,
+# missing job key, misspelled job key, empty job). 6-7 would otherwise read as job nil = top-level.
+cat >"$hardening_tmp/allow.json" <<'JSON'
+{"entries": [{"workflow": "mixed.yml", "job": null, "scope": "statuses", "reason": "r"},
+  {"workflow": "mixed.yml", "job": "job-listed", "scope": "issues", "reason": "r"},
+  {"workflow": "mixed.yml", "job": "job-read-only", "scope": "contents", "reason": "r"},
+  {"workflow": "mixed.yml", "job": "job-write-all", "scope": "contents", "reason": "r"},
+  {"workflow": "write-all.yml", "job": "job-unlisted", "scope": "pull-requests", "reason": "r"},
+  {"workflow": "mixed.yml", "job": "job-unlisted", "scope": "pull-requests", "reason": " "},
+  {"workflow": "mixed.yml", "scope": "contents", "reason": "r"},
+  {"workflow": "mixed.yml", "jobs": null, "scope": "deployments", "reason": "r"},
+  {"workflow": "mixed.yml", "job": "", "scope": "pull-requests", "reason": "r"}]}
+JSON
+expected_fixture_report="allowlist entry 5: workflow, scope and reason must be non-empty strings
+allowlist entry 6: missing key(s) job
+allowlist entry 7: missing key(s) job; unknown key(s) jobs
+allowlist entry 8: job must be null (workflow-level) or a non-empty string
+$hardening_tmp/bare.yml: no top-level permissions
+$hardening_tmp/bare.yml: job steps-job has no timeout-minutes
+$hardening_tmp/write-all.yml: top-level permissions is \"write-all\"
+$hardening_tmp/mixed.yml: top-level permissions contents: \"write\" is not read/none or an allowlisted write
+$hardening_tmp/mixed.yml: top-level permissions deployments: \"write\" is not read/none or an allowlisted write
+$hardening_tmp/mixed.yml: job job-write-all permissions is \"write-all\"
+$hardening_tmp/mixed.yml: job job-unlisted permissions pull-requests: \"write\" is not read/none or an allowlisted write
+allowlist: mixed.yml job job-read-only contents matches no write grant
+allowlist: mixed.yml job job-write-all contents matches no write grant
+allowlist: write-all.yml job job-unlisted pull-requests matches no write grant"
+actual_fixture_report="$(workflow_hardening_violations "$hardening_tmp/allow.json" "$hardening_tmp"/{bare,write-all,mixed}.yml 2>&1 || true)"
+[[ "$actual_fixture_report" == "$expected_fixture_report" ]] \
+  || fail "workflow hardening checker positive control: expected [$expected_fixture_report], got [$actual_fixture_report]"
+
+# Falsification: every real allowlist entry is load-bearing. Dropping any one
+# must turn the live check red with exactly that grant.
+while IFS=$'\t' read -r index workflow where scope; do
+  jq "del(.entries[$index])" "$WRITE_ALLOWLIST" >"$hardening_tmp/drop.json"
+  dropped_report="$(workflow_hardening_violations "$hardening_tmp/drop.json" .github/workflows/*.yml 2>&1 || true)"
+  grep -Fxq ".github/workflows/$workflow: $where permissions $scope: \"write\" is not read/none or an allowlisted write" <<<"$dropped_report" \
+    || fail "dropping allowlist entry $index ($workflow $where $scope) left the live check green: [$dropped_report]"
+done < <(jq -r '.entries | to_entries[] | [.key, .value.workflow, (if .value.job then "job \(.value.job)" else "top-level" end), .value.scope] | @tsv' "$WRITE_ALLOWLIST")
+
 # Parse all workflow YAML with the runner's ubiquitous Ruby runtime. This
 # catches indentation/anchor errors before GitHub has to schedule a runner.
 # macOS ships Ruby 2.6, whose Psych does not accept the newer `aliases:`
