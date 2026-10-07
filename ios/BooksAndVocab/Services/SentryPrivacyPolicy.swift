@@ -170,6 +170,157 @@ enum SentryPrivacyPolicy {
         return safe
     }
 
+    // MARK: - beforeSend event redaction
+
+    /// SDK-independent result of redacting one Sentry exception. A nil
+    /// `mechanismType` means the mechanism is removed entirely; when it is
+    /// kept, only `type` and `handled` survive — `data`, `meta` and `desc`
+    /// never cross this boundary.
+    struct RedactedException: Equatable {
+        let type: String
+        let value: String?
+        let mechanismType: String?
+        let handled: Bool?
+    }
+
+    /// The only event message allowed to leave the app (`-sentryTest`).
+    static let verificationMessage = "Sentry verification: iOS launch-arg test event"
+    private static let allowlistedEventMessages: Set<String> = [verificationMessage]
+
+    /// Mechanisms the SDK itself attaches to crash, hang and watchdog events
+    /// (SentryCrashReportConverter, hang tracking, watchdog tracker).
+    private static let crashMechanismTypes: Set<String> = [
+        "mach", "signal", "nsexception", "cpp_exception", "apphang", "watchdog_termination"
+    ]
+    /// Mechanisms whose exception value is an app-controlled reason string
+    /// (NSException reason, C++ what()); the value is always dropped.
+    private static let reasonCarryingMechanismTypes: Set<String> = ["nsexception", "cpp_exception"]
+    private static let machTypePattern = try! NSRegularExpression(pattern: "^EXC_[A-Z_]+$")
+    private static let signalTypePattern = try! NSRegularExpression(pattern: "^SIG[A-Z0-9]+$")
+    private static let nsexceptionTypePattern = try! NSRegularExpression(pattern: "^[A-Za-z_][A-Za-z0-9_.]{0,63}$")
+    /// Exact exception types emitted by the SDK's hang tracker.
+    private static let appHangTypes: Set<String> = [
+        "App Hanging",
+        "App Hang Fully Blocked",
+        "App Hang Non Fully Blocked",
+        "Fatal App Hang Fully Blocked",
+        "Fatal App Hang Non Fully Blocked"
+    ]
+    private static let crashValuePrefixPatterns = [
+        try! NSRegularExpression(pattern: "^Exception -?[0-9]+, Code -?[0-9]+, Subcode -?[0-9]+"),
+        try! NSRegularExpression(pattern: "^Signal -?[0-9]+, Code -?[0-9]+")
+    ]
+    private static let crashValueExactPatterns = [
+        try! NSRegularExpression(pattern: "^App hanging for at least [0-9]+ ms\\.$"),
+        try! NSRegularExpression(pattern: "^App hanging between [0-9]+\\.[0-9] and [0-9]+\\.[0-9] seconds\\.$")
+    ]
+    private static let staticCrashValues: Set<String> = [
+        "The OS watchdog terminated your app, possibly because it overused RAM."
+    ]
+    /// Fixed Swift runtime trap phrases. The surrounding crash_info text can
+    /// carry file paths or interpolated fatalError() payloads, so only the
+    /// phrase itself is kept.
+    private static let swiftRuntimeTrapPhrases = [
+        "Unexpectedly found nil while implicitly unwrapping an Optional value",
+        "Unexpectedly found nil while unwrapping an Optional value",
+        "Index out of range",
+        "Division by zero",
+        "Range requires lowerBound <= upperBound"
+    ]
+
+    /// Redacts one exception for `beforeSend`.
+    /// - SDK crash/hang/watchdog mechanisms keep a sanitized exception type,
+    ///   `mechanism.type`, `mechanism.handled`, and a value only when it is a
+    ///   known non-PII form (signal/mach codes, hang text, Swift trap phrase).
+    /// - Any other `handled == false` event keeps the unhandled flag but uses
+    ///   the strict captured-error type rules and no value.
+    /// - Handled/captured errors keep the strict redaction: generic type
+    ///   fallback, no value, no mechanism.
+    static func redactException(
+        type: String?,
+        value: String?,
+        mechanismType: String?,
+        handled: Bool?
+    ) -> RedactedException {
+        let normalizedMechanism = mechanismType?.lowercased()
+        if let normalizedMechanism, crashMechanismTypes.contains(normalizedMechanism) {
+            let keptValue = reasonCarryingMechanismTypes.contains(normalizedMechanism)
+                ? nil
+                : redactCrashExceptionValue(value)
+            return RedactedException(
+                type: redactCrashExceptionType(type, mechanismType: normalizedMechanism),
+                value: keptValue,
+                mechanismType: redactContext(mechanismType),
+                handled: handled
+            )
+        }
+        if handled == false {
+            return RedactedException(
+                type: redactExceptionType(type) ?? "ReportedError",
+                value: nil,
+                mechanismType: redactContext(mechanismType),
+                handled: false
+            )
+        }
+        return RedactedException(
+            type: redactExceptionType(type) ?? "ReportedError",
+            value: nil,
+            mechanismType: nil,
+            handled: nil
+        )
+    }
+
+    /// Mechanism-specific crash type rules. Anything that does not match
+    /// the SDK's own shape for that mechanism falls back to the SDK's fixed
+    /// generic name, so free text (e.g. a person's name) never passes.
+    static func redactCrashExceptionType(_ value: String?, mechanismType: String) -> String {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        switch mechanismType {
+        case "mach":
+            return matches(machTypePattern, value: trimmed) ? trimmed : "Mach Exception"
+        case "signal":
+            return matches(signalTypePattern, value: trimmed) ? trimmed : "Signal Exception"
+        case "nsexception":
+            guard matches(nsexceptionTypePattern, value: trimmed),
+                  trimmed.hasSuffix("Exception") || trimmed.hasSuffix("Error")
+            else { return "NSException" }
+            return trimmed
+        case "apphang":
+            return appHangTypes.contains(trimmed) ? trimmed : "App Hanging"
+        case "watchdog_termination":
+            return "WatchdogTermination"
+        case "cpp_exception":
+            return "C++ Exception"
+        default:
+            // Unreachable for crashMechanismTypes; fail closed.
+            return "ReportedCrash"
+        }
+    }
+
+    static func redactCrashExceptionValue(_ value: String?) -> String? {
+        guard let value else { return nil }
+        if staticCrashValues.contains(value) { return value }
+        if crashValueExactPatterns.contains(where: { matches($0, value: value) }) { return value }
+        let range = NSRange(value.startIndex..<value.endIndex, in: value)
+        for pattern in crashValuePrefixPatterns {
+            if let match = pattern.firstMatch(in: value, range: range),
+               let prefix = Range(match.range, in: value) {
+                return String(value[prefix])
+            }
+        }
+        if let phrase = swiftRuntimeTrapPhrases.first(where: { value.contains($0) }) {
+            return "Fatal error: \(phrase)"
+        }
+        return nil
+    }
+
+    /// Event messages are dropped unless they are an allowlisted static
+    /// SDK verification message.
+    static func redactEventMessage(_ formatted: String?) -> String? {
+        guard let formatted, allowlistedEventMessages.contains(formatted) else { return nil }
+        return formatted
+    }
+
     static func isSensitiveField(_ value: String) -> Bool {
         let normalized = value.lowercased()
         return sensitiveKeyFragments.contains(where: { normalized.contains($0) })

@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import StoreKit
 
 struct SentryConfiguration: Equatable {
     let dsn: String?
@@ -18,6 +19,9 @@ struct SentryConfiguration: Equatable {
     let enabled: Bool
     let debugBuild: Bool
     let testEventRequested: Bool
+    /// Release build without a `SentryEnvironment` override: the bootstrap
+    /// value is provisional and refined asynchronously from StoreKit.
+    let refinesEnvironmentAtRuntime: Bool
 
     static func current() -> SentryConfiguration {
         #if DEBUG
@@ -31,7 +35,8 @@ struct SentryConfiguration: Equatable {
             bundleIdentifier: Bundle.main.bundleIdentifier,
             environment: ProcessInfo.processInfo.environment,
             arguments: ProcessInfo.processInfo.arguments,
-            debugBuild: debugBuild
+            debugBuild: debugBuild,
+            cachedVerifiedChannel: UserDefaults.standard.string(forKey: verifiedChannelDefaultsKey)
         )
     }
 
@@ -40,12 +45,17 @@ struct SentryConfiguration: Equatable {
         bundleIdentifier: String?,
         environment: [String: String],
         arguments: [String],
-        debugBuild: Bool
+        debugBuild: Bool,
+        cachedVerifiedChannel: String? = nil
     ) -> SentryConfiguration {
         let dsn = nonEmptyString(infoDictionary["SentryDSN"])
         let testEventRequested = arguments.contains("-sentryTest")
-        let environmentName = nonEmptyString(infoDictionary["SentryEnvironment"])
-            ?? (debugBuild ? "debug" : "production")
+        let environmentOverride = nonEmptyString(infoDictionary["SentryEnvironment"])
+        let environmentName = bootstrapEnvironment(
+            override: environmentOverride,
+            debugBuild: debugBuild,
+            cachedVerifiedChannel: cachedVerifiedChannel
+        )
         let marketingVersion = nonEmptyString(infoDictionary["CFBundleShortVersionString"])
         let build = nonEmptyString(infoDictionary["CFBundleVersion"])
         let releaseName: String?
@@ -72,8 +82,57 @@ struct SentryConfiguration: Equatable {
             tracesSampleRate: tracesSampleRate,
             enabled: enabled,
             debugBuild: debugBuild,
-            testEventRequested: testEventRequested
+            testEventRequested: testEventRequested,
+            refinesEnvironmentAtRuntime: !debugBuild && environmentOverride == nil
         )
+    }
+
+    /// Persisted result of the last *verified* AppTransaction lookup.
+    static let verifiedChannelDefaultsKey = "kg.sentry.verifiedDistributionChannel"
+    private static let distributionChannels: Set<String> = ["testflight", "production"]
+
+    /// Synchronous environment used at SDK start, so even startup crashes are
+    /// tagged. TestFlight and App Store ship the same Release binary; the
+    /// channel comes from the last verified AppTransaction persisted by the
+    /// previous launch. Known gap: the first launch after install reports
+    /// `production` until the async lookup resolves.
+    static func bootstrapEnvironment(
+        override: String?,
+        debugBuild: Bool,
+        cachedVerifiedChannel: String?
+    ) -> String {
+        if let override { return override }
+        if debugBuild { return "debug" }
+        if let cachedVerifiedChannel, distributionChannels.contains(cachedVerifiedChannel) {
+            return cachedVerifiedChannel
+        }
+        return "production"
+    }
+
+    /// Channel implied by a verified StoreKit 2 AppTransaction environment:
+    /// sandbox = TestFlight, production = App Store. Xcode StoreKit testing,
+    /// unverified results and lookup errors (nil) yield no channel, so
+    /// neither the cache nor the live scope is touched.
+    static func verifiedChannel(for environment: AppStore.Environment?) -> String? {
+        switch environment {
+        case .sandbox?: return "testflight"
+        case .production?: return "production"
+        default: return nil
+        }
+    }
+
+    static func storeVerifiedChannel(_ channel: String) {
+        UserDefaults.standard.set(channel, forKey: verifiedChannelDefaultsKey)
+    }
+
+    /// Verified AppTransaction environment, or nil on error/unverified.
+    static func fetchAppTransactionEnvironment() async -> AppStore.Environment? {
+        do {
+            guard case .verified(let transaction) = try await AppTransaction.shared else { return nil }
+            return transaction.environment
+        } catch {
+            return nil
+        }
     }
 
     static func resolveTracesSampleRate(rawOverride: String?, debugBuild: Bool) -> Double {
