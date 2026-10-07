@@ -22,6 +22,7 @@ allowed-tools: Bash, Read, Grep
 | 查服務是否健康、502、container、資源、日誌 | `debug.md` + `host_topology.md` | `./ops/devops_kg_safe.sh health --json` 或 typed read-only command |
 | 查／修某個 user、vocab、graph、quota 或 state projection | `ops_state_plane.md` + backend／backup SOP | 先用 typed read-only `ops-cli`，寫入只走 `ops-edit` dry-run |
 | deploy、migration、backup、rollback | `deploy.md` + `backup_restore.md` + `safety.md` | `./ops/devops_kg_safe.sh preflight`，再依 SOP dry-run |
+| 拉 production crash／error、crash-free rate、release 回歸 | `debug.md` + `docs/reference/ios_observability.md` | `./ops/sentry_tool.py health --json`，再 `issues`／`release-health`（read-only Sentry API） |
 | 只做成本盤點或 bundle 建議 | `.claude/skills/billing/SKILL.md` | 不切入 devops mutation |
 | EPUB→TTS→字幕→S3 podcast | `.claude/skills/podcast-pipeline/`, `.claude/skills/podcast-publish/` + `docs/sop/podcast_pipeline.md` | 不使用 backend devops wrapper 代替 podcast ops |
 | iOS archive／TestFlight／App Store | `source-command-release` + `docs/sop/ios.md` | 不用 devops 取代 release gate |

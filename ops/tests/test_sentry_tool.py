@@ -4,6 +4,7 @@ import io
 import json
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any, Self
 
@@ -109,9 +110,14 @@ def test_list_issues_all_sends_explicit_empty_query_and_follows_pagination() -> 
         assert request.get_header("Authorization") == "Bearer secret-token"
         if len(calls) == 1:
             return FakeResponse(
-                {"results": [{"id": "one"}], "links": {"next": {"url": f"{base}/next", "results": True}}}
+                {
+                    "results": [{"id": "one"}],
+                    "links": {"next": {"url": f"{base}/next", "results": True}},
+                }
             )
-        return FakeResponse({"results": [{"id": "two"}], "links": {"next": {"results": False}}})
+        return FakeResponse(
+            {"results": [{"id": "two"}], "links": {"next": {"results": False}}}
+        )
 
     rows = SentryAPIClient(_config(), opener=opener).list_issues("ios", status="all")
     assert [row["id"] for row in rows] == ["one", "two"]
@@ -120,11 +126,18 @@ def test_list_issues_all_sends_explicit_empty_query_and_follows_pagination() -> 
     assert len(calls) == 2
 
 
-def test_collection_pagination_fails_closed_on_truncation_duplicate_or_malformed_payload() -> None:
+def test_collection_pagination_fails_closed_on_truncation_duplicate_or_malformed_payload() -> (
+    None
+):
     base = "https://sentry.example.test/api/0"
 
     def truncated(request: Any, timeout: float) -> FakeResponse:
-        return FakeResponse({"results": [{"id": "one"}], "links": {"next": {"url": f"{base}/next", "results": True}}})
+        return FakeResponse(
+            {
+                "results": [{"id": "one"}],
+                "links": {"next": {"url": f"{base}/next", "results": True}},
+            }
+        )
 
     with pytest.raises(SentryAPIError) as caught:
         SentryAPIClient(_config(), opener=truncated).list_issues("ios", max_pages=1)
@@ -132,15 +145,24 @@ def test_collection_pagination_fails_closed_on_truncation_duplicate_or_malformed
 
     def duplicate(request: Any, timeout: float) -> FakeResponse:
         if request.full_url.endswith("/next"):
-            return FakeResponse({"results": [{"id": "one"}], "links": {"next": {"results": False}}})
-        return FakeResponse({"results": [{"id": "one"}], "links": {"next": {"url": f"{base}/next", "results": True}}})
+            return FakeResponse(
+                {"results": [{"id": "one"}], "links": {"next": {"results": False}}}
+            )
+        return FakeResponse(
+            {
+                "results": [{"id": "one"}],
+                "links": {"next": {"url": f"{base}/next", "results": True}},
+            }
+        )
 
     with pytest.raises(SentryAPIError) as caught:
         SentryAPIClient(_config(), opener=duplicate).list_issues("ios")
     assert caught.value.kind == "duplicate_page_item"
 
     with pytest.raises(SentryAPIError) as caught:
-        SentryAPIClient(_config(), opener=lambda _request, timeout: FakeResponse({"unexpected": []})).list_issues("ios")
+        SentryAPIClient(
+            _config(), opener=lambda _request, timeout: FakeResponse({"unexpected": []})
+        ).list_issues("ios")
     assert caught.value.kind == "invalid_collection"
 
 
@@ -172,7 +194,9 @@ def test_retry_after_is_bounded_and_retries_429() -> None:
             )
         return FakeResponse({"id": "project"})
 
-    result = SentryAPIClient(_config(retries=1), opener=opener, sleeper=sleeps.append).project("ios")
+    result = SentryAPIClient(
+        _config(retries=1), opener=opener, sleeper=sleeps.append
+    ).project("ios")
     assert result["id"] == "project"
     assert calls == 2
     assert sleeps == [2.0]
@@ -207,7 +231,9 @@ def test_timeout_is_retryable_network_error_without_body() -> None:
     assert "secret-token" not in str(caught.value)
 
 
-def test_cli_health_is_structured_and_warns_when_api_is_unconfigured(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_health_is_structured_and_warns_when_api_is_unconfigured(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.delenv("SENTRY_AUTH_TOKEN", raising=False)
     monkeypatch.delenv("SENTRY_ORG", raising=False)
     monkeypatch.delenv("SENTRY_PROJECT_IOS", raising=False)
@@ -216,7 +242,11 @@ def test_cli_health_is_structured_and_warns_when_api_is_unconfigured(monkeypatch
         "load_local_ios_summary",
         lambda _root=None: {
             "verdict": "partial",
-            "readiness": {"source_present": True, "package_present": True, "target_linked": True},
+            "readiness": {
+                "source_present": True,
+                "package_present": True,
+                "target_linked": True,
+            },
             "issues": [],
         },
     )
@@ -254,7 +284,9 @@ def test_cli_normalizes_issue_and_never_emits_forbidden_fields(
     monkeypatch.setenv("SENTRY_PROJECT_IOS", "ios")
     monkeypatch.setattr(sentry_tool, "SentryAPIClient", FakeClient)
 
-    code = sentry_tool.main(["issues", "--project", "ios", "--environment", "production", "--json"])
+    code = sentry_tool.main(
+        ["issues", "--project", "ios", "--environment", "production", "--json"]
+    )
     output = capsys.readouterr().out
     payload = json.loads(output)
     assert code == 0
@@ -263,18 +295,9 @@ def test_cli_normalizes_issue_and_never_emits_forbidden_fields(
     assert "secret-token" not in output
 
 
-def test_cli_missing_auth_returns_safe_error(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.delenv("SENTRY_AUTH_TOKEN", raising=False)
-    monkeypatch.setenv("SENTRY_ORG", "kg-org")
-    monkeypatch.setenv("SENTRY_PROJECT_IOS", "ios")
-    code = sentry_tool.main(["events", "--issue", "123", "--json"])
-    payload = json.loads(capsys.readouterr().out)
-    assert code == sentry_tool.EXIT_WARN
-    assert payload["schema"] == "kg.sentry.error.v1"
-    assert payload["error"]["kind"] == "missing_auth"
-
-
-def test_cli_invalid_usage_is_json_and_uses_usage_exit_code(capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_invalid_usage_is_json_and_uses_usage_exit_code(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     code = sentry_tool.main(["issue"])
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
@@ -282,3 +305,288 @@ def test_cli_invalid_usage_is_json_and_uses_usage_exit_code(capsys: pytest.Captu
     assert payload["schema"] == "kg.sentry.error.v1"
     assert payload["error"]["kind"] == "invalid_usage"
     assert captured.err == ""
+
+
+# --- secrets file fallback, missing-config hint, release health -------------
+_CONFIG_KEYS = (
+    "SENTRY_AUTH_TOKEN",
+    "SENTRY_ORG",
+    "SENTRY_PROJECT_IOS",
+    "SENTRY_PROJECT_BACKEND",
+)
+_PARTIAL_LOCAL = {"verdict": "partial", "readiness": {}, "issues": []}
+
+
+@pytest.fixture(autouse=True)
+def _isolate_sentry_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """Never let the developer's real ~/.secrets/sentry.env or env leak into tests."""
+    monkeypatch.setenv("SENTRY_ENV_FILE", str(tmp_path / "absent-sentry.env"))
+    for key in _CONFIG_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(
+        sentry_tool, "load_local_ios_summary", lambda _root=None: _PARTIAL_LOCAL
+    )
+
+
+def _env_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Any, body: str) -> str:
+    path = tmp_path / "sentry.env"
+    path.write_text(body, encoding="utf-8")
+    monkeypatch.setenv("SENTRY_ENV_FILE", str(path))
+    return str(path)
+
+
+def _run(
+    argv: list[str], capsys: pytest.CaptureFixture[str]
+) -> tuple[int, dict[str, Any], str]:
+    code = sentry_tool.main(argv)
+    output = capsys.readouterr().out
+    return code, json.loads(output), output
+
+
+def test_settings_fall_back_to_env_file_and_env_wins(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    env_file = _env_file(
+        monkeypatch,
+        tmp_path,
+        "# comment\n\nSENTRY_AUTH_TOKEN=file-token\nexport SENTRY_ORG='file-org'\n"
+        'SENTRY_PROJECT_IOS="kg-ios"\nSENTRY_API_URL=https://us.sentry.io\nNOT_SENTRY=x\nmalformed line\n',
+    )
+    file_only = sentry_api.load_sentry_settings({"SENTRY_ENV_FILE": env_file})
+    assert file_only == {
+        "SENTRY_AUTH_TOKEN": "file-token",
+        "SENTRY_ORG": "file-org",
+        "SENTRY_PROJECT_IOS": "kg-ios",
+        "SENTRY_API_URL": "https://us.sentry.io",
+    }
+    # A non-empty process variable wins; an empty one does not blank out the file value.
+    merged = sentry_api.load_sentry_settings(
+        {"SENTRY_ENV_FILE": env_file, "SENTRY_ORG": "env-org", "SENTRY_PROJECT_IOS": ""}
+    )
+    assert (merged["SENTRY_ORG"], merged["SENTRY_PROJECT_IOS"]) == ("env-org", "kg-ios")
+    config = SentryConfig.load({"SENTRY_ENV_FILE": env_file})
+    assert config.api_configured is True
+    assert config.api_url == "https://us.sentry.io/api/0"
+    assert "file-token" not in repr(config)
+
+
+def test_env_file_path_defaults_to_secrets_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert sentry_api.sentry_env_file({}) == tmp_path / ".secrets" / "sentry.env"
+    assert (
+        sentry_api.sentry_env_file({"SENTRY_ENV_FILE": str(tmp_path / "x.env")})
+        == tmp_path / "x.env"
+    )
+    assert sentry_api.load_sentry_settings({}) == {}
+
+
+def test_cli_health_names_missing_keys_and_one_line_fix(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Any
+) -> None:
+    env_file = _env_file(monkeypatch, tmp_path, "SENTRY_PROJECT_IOS=kg-ios\n")
+    code, payload, _ = _run(["health", "--json"], capsys)
+    assert code == sentry_tool.EXIT_WARN
+    assert payload["config"]["missing"] == ["SENTRY_AUTH_TOKEN", "SENTRY_ORG"]
+    assert (payload["config"]["env_file"], payload["config"]["env_file_present"]) == (
+        env_file,
+        True,
+    )
+    fix = payload["config"]["fix"]
+    assert "\n" not in fix and env_file in fix and "SENTRY_ORG" in fix
+    assert "org:read project:read event:read" in fix
+
+
+def test_cli_health_uses_env_file_token_without_printing_it(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Any
+) -> None:
+    _env_file(
+        monkeypatch,
+        tmp_path,
+        "SENTRY_AUTH_TOKEN=file-secret-token\nSENTRY_ORG=kg-org\nSENTRY_PROJECT_IOS=kg-ios\n",
+    )
+
+    class FakeClient:
+        def __init__(self, config: SentryConfig) -> None:
+            assert config.auth_token == "file-secret-token"
+
+        def project(self, _slug: str) -> dict[str, Any]:
+            return {"id": "1"}
+
+        def list_issues(self, *_args: Any, **_kwargs: Any) -> list[dict[str, Any]]:
+            return []
+
+    monkeypatch.setattr(sentry_tool, "SentryAPIClient", FakeClient)
+    _, payload, output = _run(["health", "--json"], capsys)
+    assert payload["checks"]["api_configured"] is True
+    assert payload["checks"]["api_authenticated"] is True
+    assert payload["config"]["missing"] == [] and "fix" not in payload["config"]
+    assert "file-secret-token" not in output
+
+
+@pytest.mark.parametrize(
+    ("argv", "env", "missing"),
+    [
+        (
+            ["release-health", "--json"],
+            {"SENTRY_ORG": "kg-org", "SENTRY_PROJECT_IOS": "ios"},
+            ["SENTRY_AUTH_TOKEN"],
+        ),
+        (
+            ["release-health", "--project", "backend", "--json"],
+            {
+                "SENTRY_AUTH_TOKEN": "secret-token",
+                "SENTRY_ORG": "kg-org",
+                "SENTRY_PROJECT_IOS": "ios",
+            },
+            ["SENTRY_PROJECT_BACKEND"],
+        ),
+        (
+            ["issues", "--project", "backend", "--json"],
+            {"SENTRY_ORG": "kg-org", "SENTRY_PROJECT_IOS": "ios"},
+            ["SENTRY_AUTH_TOKEN", "SENTRY_PROJECT_BACKEND"],
+        ),
+        (
+            ["events", "--issue", "123", "--json"],
+            {"SENTRY_AUTH_TOKEN": "", "SENTRY_ORG": "kg-org"},
+            ["SENTRY_AUTH_TOKEN"],
+        ),
+    ],
+)
+def test_cli_missing_config_error_is_project_aware(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    argv: list[str],
+    env: dict[str, str],
+    missing: list[str],
+) -> None:
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    code, payload, output = _run(argv, capsys)
+    assert code == sentry_tool.EXIT_WARN
+    assert payload["schema"] == "kg.sentry.error.v1"
+    assert payload["error"]["kind"].startswith("missing_")
+    assert payload["config"]["missing"] == missing
+    assert all(key in payload["config"]["fix"] for key in missing)
+    assert "secret-token" not in output
+
+
+# Realistic /organizations/{org}/sessions/ groups: crash_free_rate(...) is a 0..1
+# fraction there (Sentry derives it as 1 - crash_rate).
+_SESSION_GROUPS = [
+    {
+        "by": {"release": "com.example.app@2.0.1+10", "environment": "production"},
+        "totals": {
+            "crash_free_rate(session)": 0.99978,
+            "crash_free_rate(user)": 0.95,
+            "sum(session)": 800,
+            "count_unique(user)": 40,
+        },
+    },
+    {
+        "by": {"release": "com.example.app@2.0.0+9", "environment": "staging"},
+        "totals": {
+            "crash_free_rate(session)": 0.004,
+            "crash_free_rate(user)": None,
+            "sum(session)": 250,
+            "count_unique(user)": 0,
+        },
+    },
+]
+
+
+def test_release_health_queries_org_sessions_and_rejects_unsafe_inputs() -> None:
+    calls: list[str] = []
+
+    def opener(request: Any, timeout: float) -> FakeResponse:
+        calls.append(request.full_url)
+        assert request.method == "GET"
+        return FakeResponse(
+            {"start": "2026-09-23T00:00:00Z", "groups": _SESSION_GROUPS}
+        )
+
+    client = SentryAPIClient(_config(), opener=opener)
+    groups = client.release_health(
+        "4505", environment="production", release="com.example.app@2.0.1+10"
+    )
+    assert groups == _SESSION_GROUPS
+    assert calls[0].startswith(
+        "https://sentry.example.test/api/0/organizations/kg-org/sessions/?"
+    )
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(calls[0]).query)
+    assert query["project"] == ["4505"]
+    assert set(query["field"]) == set(sentry_api.SESSION_FIELDS)
+    assert set(query["groupBy"]) == {"release", "environment"}
+    assert (query["environment"], query["statsPeriod"]) == (["production"], ["14d"])
+    assert query["query"] == ['release:"com.example.app@2.0.1+10"']
+    for kwargs, kind in (
+        ({"stats_period": "1y; drop"}, "invalid_stats_period"),
+        ({"release": 'x" OR y'}, "invalid_release"),
+    ):
+        with pytest.raises(SentryAPIError) as caught:
+            client.release_health("4505", **kwargs)
+        assert caught.value.kind == kind
+
+
+def test_cli_release_health_reports_percent_per_release_and_environment(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    seen: dict[str, Any] = {}
+
+    class FakeClient:
+        def __init__(self, _config: SentryConfig) -> None:
+            pass
+
+        def project(self, slug: str) -> dict[str, Any]:
+            seen["slug"] = slug
+            return {"id": "4505", "slug": slug}
+
+        def release_health(
+            self, project_id: str, **kwargs: Any
+        ) -> list[dict[str, Any]]:
+            seen.update(kwargs, project_id=project_id)
+            return _SESSION_GROUPS
+
+    for key, value in {
+        "SENTRY_AUTH_TOKEN": "secret-token",
+        "SENTRY_ORG": "kg-org",
+        "SENTRY_PROJECT_IOS": "kg-ios",
+    }.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setattr(sentry_tool, "SentryAPIClient", FakeClient)
+
+    code, payload, output = _run(
+        ["release-health", "--environment", "production", "--json"], capsys
+    )
+    assert code == 0
+    assert (
+        seen["slug"],
+        seen["project_id"],
+        seen["environment"],
+        seen["stats_period"],
+    ) == ("kg-ios", "4505", "production", "14d")
+    assert (payload["schema"], payload["project"], payload["stats_period"]) == (
+        "kg.sentry.release_health.v1",
+        "kg-ios",
+        "14d",
+    )
+    assert payload["releases"] == [
+        {
+            "release": "com.example.app@2.0.1+10",
+            "environment": "production",
+            "crash_free_sessions_pct": 99.978,
+            "crash_free_users_pct": 95.0,
+            "sessions": 800,
+            "users": 40,
+        },
+        {
+            "release": "com.example.app@2.0.0+9",
+            "environment": "staging",
+            "crash_free_sessions_pct": 0.4,
+            "crash_free_users_pct": None,
+            "sessions": 250,
+            "users": 0,
+        },
+    ]
+    assert "secret-token" not in output

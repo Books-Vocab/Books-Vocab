@@ -65,12 +65,31 @@ symbolication_ready
 ./ops/sentry_tool.py events --issue <issue-id> --json
 ./ops/sentry_tool.py releases --project ios --json
 ./ops/sentry_tool.py regressions --release '<bundle-id>@<version>+<build>' --json
+./ops/sentry_tool.py release-health --project ios --environment production [--release '<release>'] [--stats-period 14d] --json
 ./ops/sentry_tool.py route <issue-id> --json
 ```
 
-API adapter 只讀 `SENTRY_API_URL`、`SENTRY_AUTH_TOKEN`、`SENTRY_ORG`、
-`SENTRY_PROJECT_IOS`、`SENTRY_PROJECT_BACKEND`。token 只放 secret/env，CLI
-不提供任何寫入子命令；缺 token、API 不可達或 project 不可讀時，輸出結構化
+`release-health` 走 `/organizations/{org}/sessions/`（先以 project slug 讀出 numeric project id），依 release × environment 回傳 `crash_free_sessions_pct`、`crash_free_users_pct`、`sessions`、`users`。輸出契約的 crash-free 一律是 0–100 百分比（未知或超界為 `null`），依來源欄位明確換算：sessions endpoint 的 `crash_free_rate(...)` 是 0–1 比率（×100），release `healthData.crashFreeSessions／crashFreeUsers` 已是百分比（×1，`releases` 有帶時輸出同名 `*_pct`）。
+
+### 設定與 secrets 檔
+
+設定鍵為 `SENTRY_AUTH_TOKEN`、`SENTRY_ORG`、`SENTRY_PROJECT_IOS`、`SENTRY_PROJECT_BACKEND`、`SENTRY_API_URL`（另有 `SENTRY_API_TIMEOUT_SECONDS`、`SENTRY_API_RETRIES`）。來源優先序：非空的 process env 勝出，否則讀 secrets 檔 `~/.secrets/sentry.env`（`SENTRY_ENV_FILE` 可改路徑）。檔案格式為逐行 `KEY=VALUE`，可加 `export ` 前綴與成對引號，`#` 為註解，只採 `SENTRY_*` 鍵。所有 Sentry consumer 一律透過 `ops/sentry_api.py` 的 `load_sentry_settings()`（或 `SentryConfig.load()`）讀取，不各自解析。
+
+```bash
+# ~/.secrets/sentry.env（chmod 600；~/.secrets 經 Syncthing 同步到 oscar／felix）
+SENTRY_AUTH_TOKEN=<personal token>
+SENTRY_ORG=<org slug>
+SENTRY_PROJECT_IOS=<ios project slug>
+SENTRY_PROJECT_BACKEND=<backend project slug>
+# SENTRY_API_URL=https://us.sentry.io   # 選填
+```
+
+- token 由帳號持有人在 `sentry.io/settings/account/api/auth-tokens/` 建立 Personal Token，只勾 read-only scopes `org:read project:read event:read`；agent 不可建立或輪換 token。
+- slug 取自 Sentry 網址 `sentry.io/organizations/<org>/projects/<project>/`。iOS DSN（`ios/Info.plist`）顯示 org 在 US region（`ingest.us.sentry.io`），對應 org id `4511383207870464`、iOS project id `4511383227990016`，可用來核對 slug 是否指向同一個 project。
+- 預設 API base `https://sentry.io/api/0` 服務 US-region org；需要明確 region host 時設 `SENTRY_API_URL=https://us.sentry.io`（DE region 為 `https://de.sentry.io`），路徑會自動補成 `/api/0`。
+- 缺鍵時 `health` 與其他子命令的輸出帶 `config.missing`（只列鍵名，依該命令的 `--project` 檢查 `SENTRY_PROJECT_IOS` 或 `SENTRY_PROJECT_BACKEND`）、`config.env_file`、`config.env_file_present` 與一行 `config.fix`（檔案路徑 + token scopes），不輸出任何值。
+
+CLI 不提供任何寫入子命令；缺 token、API 不可達或 project 不可讀時，輸出結構化
 `partial`／`unchecked`／安全錯誤，不把 response body、Authorization 或 cookie 帶回 agent：本機 wiring 已有證據但未配置 API 時是 `partial`，完全沒有可判讀證據時才是 `unchecked`。
 
 API transport 僅接受 HTTPS；HTTP 只允許明確的 loopback fake server。redirect 必須留在同一個 origin，跨頁 pagination 若到達上限、遇到 malformed collection 或重複 item 會 fail closed，不會把截斷結果當成完整成功。
@@ -84,6 +103,7 @@ API transport 僅接受 HTTPS；HTTP 只允許明確的 loopback fake server。r
 - `kg.sentry.events.v1`
 - `kg.sentry.releases.v1`
 - `kg.sentry.regressions.v1`
+- `kg.sentry.release_health.v1`
 - `kg.sentry.error.v1`
 
 任何缺少 API secret 的情況都不執行外部請求；若本機 wiring 已有證據則回報 `partial`，否則回報 `unchecked`。不把 token 或 Authorization header 寫入 stdout、stderr、artifact 或測試 fixture。

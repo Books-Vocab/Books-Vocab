@@ -1,6 +1,10 @@
 #!/usr/bin/env -S uv run --python 3.13
 """Read-only Sentry Web API client used by the KG agent tooling.
 
+Settings are read from the process environment, falling back to the
+``KEY=VALUE`` secrets file ``~/.secrets/sentry.env`` (``SENTRY_ENV_FILE``
+overrides the path); see ``load_sentry_settings``.
+
 The client intentionally exposes only GET endpoints.  Authentication tokens
 never appear in exception text, reprs, logs, or returned payloads.  Network
 behavior is injectable so all contract tests can use a fake transport without
@@ -19,6 +23,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 DEFAULT_API_URL = "https://sentry.io/api/0"
@@ -27,12 +32,72 @@ DEFAULT_RETRIES = 2
 MAX_RETRIES = 3
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 _SAFE_PATH_SEGMENT = re.compile(r"^[A-Za-z0-9._:@+-]{1,256}$")
+_STATS_PERIOD = re.compile(r"^[1-9][0-9]{0,2}[mhdw]$")
+_SETTING_KEY = re.compile(r"^SENTRY_[A-Z0-9_]{1,64}$")
+DEFAULT_ENV_FILE = Path("~/.secrets/sentry.env")
+ENV_FILE_VARIABLE = "SENTRY_ENV_FILE"
+# Read-only scopes an agent token needs; never grant write/admin scopes.
+TOKEN_SCOPES = "org:read project:read event:read"
+SESSION_FIELDS = (
+    "crash_free_rate(session)",
+    "crash_free_rate(user)",
+    "sum(session)",
+    "count_unique(user)",
+)
+
+
+def sentry_env_file(environ: dict[str, str] | None = None) -> Path:
+    """Return the secrets file path: ``$SENTRY_ENV_FILE`` or ``~/.secrets/sentry.env``."""
+    env = os.environ if environ is None else environ
+    override = (env.get(ENV_FILE_VARIABLE) or "").strip()
+    return Path(override).expanduser() if override else DEFAULT_ENV_FILE.expanduser()
+
+
+def _read_env_file(path: Path) -> dict[str, str]:
+    """Parse ``KEY=VALUE`` lines; only ``SENTRY_*`` keys are kept, values are never logged."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return {}
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+        key, sep, value = line.partition("=")
+        key = key.strip()
+        if not sep or not _SETTING_KEY.fullmatch(key):
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        values[key] = value
+    return values
+
+
+def load_sentry_settings(environ: dict[str, str] | None = None) -> dict[str, str]:
+    """Merge ``SENTRY_*`` settings from the secrets file with the process environment.
+
+    A non-empty environment variable wins over the file; an empty one does not
+    blank out the file value.  Shared by every KG Sentry consumer so the file
+    location and precedence stay identical.
+    """
+    env = os.environ if environ is None else environ
+    settings = _read_env_file(sentry_env_file(env))
+    for key, value in env.items():
+        if _SETTING_KEY.fullmatch(key) and key != ENV_FILE_VARIABLE and value.strip():
+            settings[key] = value
+    return settings
 
 
 class _SameHostRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Reject redirects that could move the bearer token to another origin."""
 
-    def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> Any:
+    def redirect_request(
+        self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str
+    ) -> Any:
         old = urllib.parse.urlparse(req.full_url)
         new = urllib.parse.urlparse(urllib.parse.urljoin(req.full_url, newurl))
         if (old.scheme, old.netloc) != (new.scheme, new.netloc):
@@ -81,7 +146,13 @@ class SentryConfig:
     retries: int = DEFAULT_RETRIES
 
     @classmethod
+    def load(cls, environ: dict[str, str] | None = None) -> SentryConfig:
+        """Build config from the environment with the secrets-file fallback."""
+        return cls.from_env(load_sentry_settings(environ))
+
+    @classmethod
     def from_env(cls, environ: dict[str, str] | None = None) -> SentryConfig:
+        """Build config from an explicit mapping only (no secrets-file lookup)."""
         env = os.environ if environ is None else environ
         raw_timeout = env.get("SENTRY_API_TIMEOUT_SECONDS", "")
         try:
@@ -125,7 +196,29 @@ class SentryConfig:
 
     @property
     def api_configured(self) -> bool:
-        return bool(self.api_url_valid and self.auth_token and self.organization and self.project_ios)
+        return not self.missing_settings("ios")
+
+    def missing_settings(self, project: str | None = None) -> list[str]:
+        """Setting names that block API access for ``project`` (never values)."""
+        missing = []
+        if not self.api_url_valid:
+            missing.append("SENTRY_API_URL")
+        if not self.auth_token:
+            missing.append("SENTRY_AUTH_TOKEN")
+        if not self.organization:
+            missing.append("SENTRY_ORG")
+        if project and not self.project_for(project):
+            missing.append(f"SENTRY_PROJECT_{project.upper()}")
+        return missing
+
+
+def config_fix_hint(missing: list[str], env_file: Path) -> str:
+    """One-line remediation that names keys and the file, never values."""
+    keys = ", ".join(missing)
+    return (
+        f"Add {keys} as KEY=VALUE lines to {env_file} (or export them); "
+        f"create a Personal Token at sentry.io/settings/account/api/auth-tokens/ with read-only scopes: {TOKEN_SCOPES}"
+    )
 
 
 @dataclass(frozen=True)
@@ -152,7 +245,9 @@ class SentryAPIClient:
         if not config.organization:
             raise SentryAPIError("configure", kind="missing_org", retryable=False)
         self.config = config
-        self._opener = opener or urllib.request.build_opener(_SameHostRedirectHandler()).open
+        self._opener = (
+            opener or urllib.request.build_opener(_SameHostRedirectHandler()).open
+        )
         self._sleeper = sleeper
 
     def project(self, project: str) -> dict[str, Any]:
@@ -187,7 +282,9 @@ class SentryAPIClient:
         if environment:
             params.append(("environment", environment))
         path = f"/organizations/{_segment(self.config.organization)}/issues/"
-        return self._paginate(path, params=params, operation="issues", max_pages=max_pages)
+        return self._paginate(
+            path, params=params, operation="issues", max_pages=max_pages
+        )
 
     def issue(self, issue_id: str, *, environment: str | None = None) -> dict[str, Any]:
         path = f"/organizations/{_segment(self.config.organization)}/issues/{_segment(issue_id)}/"
@@ -202,11 +299,16 @@ class SentryAPIClient:
         full: bool = True,
         max_pages: int = 10,
     ) -> list[dict[str, Any]]:
-        params: list[tuple[str, str]] = [("full", "1" if full else "0"), ("per_page", "100")]
+        params: list[tuple[str, str]] = [
+            ("full", "1" if full else "0"),
+            ("per_page", "100"),
+        ]
         if environment:
             params.append(("environment", environment))
         path = f"/organizations/{_segment(self.config.organization)}/issues/{_segment(issue_id)}/events/"
-        return self._paginate(path, params=params, operation="events", max_pages=max_pages)
+        return self._paginate(
+            path, params=params, operation="events", max_pages=max_pages
+        )
 
     def issue_event(
         self,
@@ -240,7 +342,52 @@ class SentryAPIClient:
         if query:
             params.append(("query", query))
         path = f"/organizations/{_segment(self.config.organization)}/releases/"
-        return self._paginate(path, params=params, operation="releases", max_pages=max_pages)
+        return self._paginate(
+            path, params=params, operation="releases", max_pages=max_pages
+        )
+
+    def release_health(
+        self,
+        project_id: str,
+        *,
+        environment: str | None = None,
+        release: str | None = None,
+        stats_period: str = "14d",
+        max_pages: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Crash-free session/user totals grouped by release and environment.
+
+        ``/organizations/{org}/sessions/`` filters by numeric project id, not slug.
+        """
+        if not _STATS_PERIOD.fullmatch(stats_period):
+            raise SentryAPIError("release_health", kind="invalid_stats_period")
+        if release is not None and not _SAFE_PATH_SEGMENT.fullmatch(release):
+            raise SentryAPIError("release_health", kind="invalid_release")
+        params: list[tuple[str, str]] = [("project", _segment(project_id))]
+        params.extend(("field", name) for name in SESSION_FIELDS)
+        params.extend(
+            [
+                ("groupBy", "release"),
+                ("groupBy", "environment"),
+                ("orderBy", "-sum(session)"),
+                ("statsPeriod", stats_period),
+                ("interval", "1d"),
+                ("includeSeries", "0"),
+                ("per_page", "100"),
+            ]
+        )
+        if environment:
+            params.append(("environment", environment))
+        if release:
+            params.append(("query", f'release:"{release}"'))
+        path = f"/organizations/{_segment(self.config.organization)}/sessions/"
+        return self._paginate(
+            path,
+            params=params,
+            operation="release_health",
+            max_pages=max_pages,
+            collection_key="groups",
+        )
 
     def regressions(self, project: str, release: str) -> list[dict[str, Any]]:
         if not _SAFE_PATH_SEGMENT.fullmatch(release):
@@ -255,6 +402,7 @@ class SentryAPIClient:
         params: Iterable[tuple[str, str]],
         operation: str,
         max_pages: int,
+        collection_key: str = "results",
     ) -> list[dict[str, Any]]:
         if max_pages < 1:
             raise SentryAPIError(operation, kind="invalid_pagination")
@@ -264,7 +412,7 @@ class SentryAPIClient:
         for page_number in range(max_pages):
             response = self._request_url(next_url, operation=operation)
             payload = response.payload
-            page = _page_items(payload)
+            page = _page_items(payload, collection_key)
             if page is None:
                 raise SentryAPIError(operation, kind="invalid_collection")
             for item in page:
@@ -275,11 +423,15 @@ class SentryAPIClient:
                     raise SentryAPIError(operation, kind="duplicate_page_item")
                 seen.add(identity)
                 rows.append(item)
-            following_url = _next_url(payload, response.headers, base_url=self.config.api_url)
+            following_url = _next_url(
+                payload, response.headers, base_url=self.config.api_url
+            )
             if not following_url:
                 break
             if page_number == max_pages - 1:
-                raise SentryAPIError(operation, kind="pagination_incomplete", retryable=True)
+                raise SentryAPIError(
+                    operation, kind="pagination_incomplete", retryable=True
+                )
             next_url = following_url
         return rows
 
@@ -320,15 +472,23 @@ class SentryAPIClient:
         attempts = 0
         while True:
             try:
-                with self._opener(request, timeout=self.config.timeout_seconds) as response:
+                with self._opener(
+                    request, timeout=self.config.timeout_seconds
+                ) as response:
                     raw = response.read(MAX_RESPONSE_BYTES + 1)
                     if len(raw) > MAX_RESPONSE_BYTES:
                         raise SentryAPIError(operation, kind="response_too_large")
                     try:
-                        payload = json.loads(raw.decode("utf-8", "replace")) if raw.strip() else {}
+                        payload = (
+                            json.loads(raw.decode("utf-8", "replace"))
+                            if raw.strip()
+                            else {}
+                        )
                     except json.JSONDecodeError as exc:
                         raise SentryAPIError(operation, kind="invalid_json") from exc
-                    return _HTTPResult(payload=payload, headers=response.headers, url=url)
+                    return _HTTPResult(
+                        payload=payload, headers=response.headers, url=url
+                    )
             except urllib.error.HTTPError as exc:
                 retryable = exc.code == 429 or 500 <= exc.code <= 599
                 if retryable and attempts < self.config.retries:
@@ -356,7 +516,10 @@ class SentryAPIClient:
                 retry_after = float(raw) if raw else None
             except (TypeError, ValueError):
                 retry_after = None
-        delay = min(max(retry_after if retry_after is not None else 0.25 * (2**attempt), 0.0), 2.0)
+        delay = min(
+            max(retry_after if retry_after is not None else 0.25 * (2**attempt), 0.0),
+            2.0,
+        )
         self._sleeper(delay)
 
 
@@ -395,11 +558,11 @@ def _segment(value: str | None) -> str:
     return urllib.parse.quote(value, safe="")
 
 
-def _page_items(payload: Any) -> list[Any] | None:
+def _page_items(payload: Any, collection_key: str = "results") -> list[Any] | None:
     if isinstance(payload, list):
         return payload
-    if isinstance(payload, dict) and isinstance(payload.get("results"), list):
-        return payload["results"]
+    if isinstance(payload, dict) and isinstance(payload.get(collection_key), list):
+        return payload[collection_key]
     return None
 
 
@@ -408,7 +571,9 @@ def _item_identity(item: dict[str, Any]) -> str:
         value = item.get(key)
         if isinstance(value, (str, int)) and str(value):
             return f"{key}:{value}"
-    return "json:" + json.dumps(item, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return "json:" + json.dumps(
+        item, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    )
 
 
 def _next_url(payload: Any, headers: Any, *, base_url: str) -> str | None:
@@ -436,7 +601,7 @@ def _next_url(payload: Any, headers: Any, *, base_url: str) -> str | None:
         match = re.search(r"<([^>]+)>;\s*rel=\"next\"([^>]*)", part)
         if not match:
             continue
-        if re.search(r'results=\"false\"', match.group(2)):
+        if re.search(r"results=\"false\"", match.group(2)):
             return None
         return _same_host_url(match.group(1), base_url)
     return None
@@ -462,4 +627,13 @@ def _validate_transport_url(parsed: urllib.parse.ParseResult, operation: str) ->
     raise SentryAPIError(operation, kind="insecure_api_url")
 
 
-__all__ = ["SentryAPIClient", "SentryAPIError", "SentryConfig"]
+__all__ = [
+    "DEFAULT_ENV_FILE",
+    "TOKEN_SCOPES",
+    "SentryAPIClient",
+    "SentryAPIError",
+    "SentryConfig",
+    "config_fix_hint",
+    "load_sentry_settings",
+    "sentry_env_file",
+]
