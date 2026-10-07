@@ -512,11 +512,18 @@ def test_step_embed_and_judge_no_touch_when_no_links_created():
 
 
 def test_step_embed_and_judge_touches_cards_on_exception_path():
-    """When judge crashes mid-batch, partially created links must still touch cards."""
+    """When judge crashes mid-batch, partially created links must still touch cards.
+
+    Expected contract: the judge exception is re-raised (not swallowed), the
+    link judged before the crash (ok1 → ok2) is persisted and both of its cards
+    are touched, and the crashing card is requeued for the next run.
+    """
     from kg.pipeline_service import _step_embed_and_judge
 
     ids = ["ok1", "ok2", "boom1", "boom2"]
-    # ok1 → ok2 will succeed, boom1 → boom2 will crash
+    # ok1 → ok2 will succeed, boom1 → boom2 will crash. The crash is keyed on
+    # the card, not on call order: judge calls run on a thread pool, so a call
+    # counter would make the outcome depend on scheduling.
     similar_map = {
         "ok1": [("ok2", 0.9)],
         "boom1": [("boom2", 0.9)],
@@ -541,27 +548,23 @@ def test_step_embed_and_judge_touches_cards_on_exception_path():
     tracking_cards = _TrackingCards(ids)
     graph = _GraphWithRequeue(["ok1", "boom1"])
 
-    call_count = 0
-
     async def run():
         import kg.judge as judge_mod
 
         orig = judge_mod.Judge
 
-        class CrashOnSecondJudge:
+        class CrashOnBoomJudge:
             def __init__(self, llm, **kwargs):
                 pass
 
             def evaluate_batch(self, target_word, target_meaning, candidates, **kwargs):
-                nonlocal call_count
-                call_count += 1
-                if call_count >= 2:
+                if kwargs["from_id"] == "boom1":
                     raise RuntimeError("judge crashed")
                 return {
                     cid: SimpleNamespace(link="shares_usage", confidence=0.9, reason="test") for cid, _, _ in candidates
                 }
 
-        judge_mod.Judge = CrashOnSecondJudge
+        judge_mod.Judge = CrashOnBoomJudge
         try:
             user = {"id": "u_exc", "dir": None, "config": {}}
             await _step_embed_and_judge(
@@ -577,16 +580,12 @@ def test_step_embed_and_judge_touches_cards_on_exception_path():
         finally:
             judge_mod.Judge = orig
 
-    try:
+    with pytest.raises(RuntimeError, match="judge crashed"):
         asyncio.run(run())
-    except RuntimeError:
-        pass  # expected
 
-    # If any links were created before the crash, their cards must be touched
-    if graph.created_links:
-        for from_id, to_id, *_ in graph.created_links:
-            assert from_id in tracking_cards.touched_ids, f"Exception path: from_id '{from_id}' not touched"
-            assert to_id in tracking_cards.touched_ids, f"Exception path: to_id '{to_id}' not touched"
+    assert graph.created_links == [("ok1", "ok2", "shares_usage", 0.9, "test")]
+    assert tracking_cards.touched_ids == {"ok1", "ok2"}
+    assert graph.requeued == ["boom1"]
 
 
 def test_step_embed_and_judge_runs_judge_concurrently():

@@ -56,8 +56,7 @@ def mock_db(tmp_path, monkeypatch):
     )
     conn.commit()
     lock = threading.Lock()
-    with patch("kg.quota_service._get_conn", return_value=conn), \
-         patch("kg.quota_service._lock", lock):
+    with patch("kg.quota_service._get_conn", return_value=conn), patch("kg.quota_service._lock", lock):
         yield conn
 
     token_tracker.reset()
@@ -118,11 +117,6 @@ def test_stacked_reservations_block_when_sum_exceeds_limit(mock_db):
 # ── concurrency repro ─────────────────────────────────────────────
 
 
-def _estimate_for(_call_type: str) -> float:
-    """Per-call estimate used by the gate. translate ≈ $0.012 each."""
-    return 0.012
-
-
 def test_concurrent_translate_requests_overspend_without_reservation(mock_db):
     """REPRODUCTION: without reservation, N concurrent same-user requests
     all see used=0 and pass the gate, even though each costs $0.012 and
@@ -147,34 +141,62 @@ def test_concurrent_translate_requests_overspend_without_reservation(mock_db):
 
 
 def test_concurrent_translate_requests_converge_with_reservation(mock_db):
-    """With reservation: the gate counts in-flight reservations, so a
-    burst of 10 concurrent requests converges to ~2 admissions (the
-    real free budget), not 10.
+    """With reservation: a burst of 10 concurrent same-user TrackedLLM calls
+    through the production gate (`reserve(enforce=True)`) admits exactly the
+    Free budget, not 10.
+
+    Each admitted call blocks inside the client until all 10 admission
+    decisions are made, so admitted reservations are held for the whole burst
+    and the count does not depend on thread scheduling.
     """
-    admitted = []
-    lock = threading.Lock()
+    from kg.exceptions import QuotaExceededError
+    from kg.tracked_llm import TrackedLLM
 
-    def request_with_reservation():
-        # New gate: check recorded usage + outstanding reservations.
-        q = qs.check_quota("u1", "translate", is_pro=False)
-        if q["exceeded"]:
-            return
-        # Admitted → hold a reservation for the call's duration.
-        with qs.reserve("u1", _estimate_for("translate")):
-            with lock:
-                admitted.append(True)
-            # Simulate the LLM call taking time while the reservation
-            # is held by all other in-flight requests.
-            threading.Event().wait(0.05)
+    burst = 10
+    # $0.03 / $0.012 = 2.5 → the 3rd in-flight reservation would exceed.
+    assert qs.FREE_DAILY_LIMIT_USD == pytest.approx(0.03)
+    assert qs.estimate_call_cost("translate") == pytest.approx(0.012)
+    expected_admitted = 2
 
-    with ThreadPoolExecutor(max_workers=10) as ex:
-        futs = [ex.submit(request_with_reservation) for _ in range(10)]
+    decided = threading.Condition()
+    release = threading.Event()
+    admitted: list[bool] = []
+    rejected: list[bool] = []
+
+    class _HoldingClient:
+        class chat:  # noqa: N801
+            class completions:  # noqa: N801
+                @staticmethod
+                def create(**_kwargs):
+                    with decided:
+                        admitted.append(True)
+                        decided.notify_all()
+                    assert release.wait(timeout=5), "burst was never released"
+                    return _FakeResp(100, 50)
+
+    def request():
+        llm = TrackedLLM(_HoldingClient(), "u1", enforce_quota=True, is_pro=False)
+        try:
+            llm.chat("translate")
+        except QuotaExceededError:
+            with decided:
+                rejected.append(True)
+                decided.notify_all()
+
+    with ThreadPoolExecutor(max_workers=burst) as ex:
+        futs = [ex.submit(request) for _ in range(burst)]
+        try:
+            with decided:
+                all_decided = decided.wait_for(lambda: len(admitted) + len(rejected) == burst, timeout=5)
+        finally:
+            release.set()
         for f in futs:
             f.result()
 
-    # $0.03 / $0.012 = 2.5 → at most 2 (3rd reservation would exceed).
-    assert 1 <= len(admitted) <= 3, f"expected ~2 admissions, got {len(admitted)}"
-    assert len(admitted) < 10, "reservation must stop the unbounded leak"
+    assert all_decided, f"only {len(admitted) + len(rejected)}/{burst} requests reached a decision"
+    assert len(admitted) == expected_admitted, f"expected {expected_admitted} admissions, got {len(admitted)}"
+    assert len(rejected) == burst - expected_admitted
+    assert qs._reserved_usd("u1") == 0.0
 
 
 # ── TrackedLLM integration ────────────────────────────────────────
@@ -358,10 +380,15 @@ def test_tracked_llm_pipeline_burst_blocks_via_gate(mock_db):
     """Simulated pipeline enrich fan-out: 5 concurrent TrackedLLM calls for
     a Free user. The reservation makes the gate observe in-flight spend, so
     a check during the burst reports the user as quota-exceeded.
+
+    Workers stay inside the call until the gate has been read. The barrier
+    alone releases them together with the main thread, so they could finish
+    and drop their reservations before the read.
     """
     from kg.tracked_llm import TrackedLLM
 
     barrier = threading.Barrier(6)  # 5 workers + main thread
+    gate_read = threading.Event()
     gate_seen_exceeded = []
 
     class _BlockingClient:
@@ -369,7 +396,8 @@ def test_tracked_llm_pipeline_burst_blocks_via_gate(mock_db):
             class completions:  # noqa: N801
                 @staticmethod
                 def create(**_kwargs):
-                    barrier.wait(timeout=5)  # hold all 5 reservations at once
+                    barrier.wait(timeout=5)  # all 5 reservations held at once
+                    assert gate_read.wait(timeout=5), "gate was never read"
                     return _FakeResp(100, 50)
 
     def worker():
@@ -377,10 +405,13 @@ def test_tracked_llm_pipeline_burst_blocks_via_gate(mock_db):
 
     with ThreadPoolExecutor(max_workers=5) as ex:
         futs = [ex.submit(worker) for _ in range(5)]
-        barrier.wait(timeout=5)  # all 5 calls now in flight, reservations held
-        # 5 * $0.012 = $0.06 reserved > Free $0.03 → gate must block now.
-        q = qs.check_quota("u1", "translate", is_pro=False)
-        gate_seen_exceeded.append(q["exceeded"])
+        try:
+            barrier.wait(timeout=5)  # all 5 calls now in flight, reservations held
+            # 5 * $0.012 = $0.06 reserved > Free $0.03 → gate must block now.
+            q = qs.check_quota("u1", "translate", is_pro=False)
+            gate_seen_exceeded.append(q["exceeded"])
+        finally:
+            gate_read.set()
         for f in futs:
             f.result()
 
