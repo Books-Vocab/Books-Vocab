@@ -165,3 +165,73 @@ def test_doctor_reports_the_numbers_for_healthy_delivery() -> None:
     assert finding.section == "delivery"
     assert finding.level == "ok"
     assert "4 PRs/28d" in finding.summary
+
+
+# ---- review findings on the first version -----------------------------------------
+
+
+def test_percentile_uses_the_ceiling_so_one_outlier_in_five_is_the_p90() -> None:
+    assert dm.percentile([1.0, 1.0, 1.0, 1.0, 100.0], 90) == 100.0
+    assert dm.percentile([1.0, 2.0], 50) == 1.0
+
+
+def test_an_outlier_reaches_the_p90_warning() -> None:
+    summary = dm.summarize([pr(1, h) for h in (1, 1, 1, 1, 200)], [], NOW)
+    level, problems = dm.judge(summary)
+    assert level == "warn"
+    assert any("p90" in p for p in problems)
+
+
+def _fake_run(responses: dict[str, tuple[int, str]]):
+    calls: list[list[str]] = []
+
+    def run(cmd: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        key = (
+            "gh-pr"
+            if cmd[:3] == ["gh", "pr", "list"]
+            else "gh-issue"
+            if cmd[:3] == ["gh", "issue", "list"]
+            else "git"
+        )
+        code, out = responses[key]
+        return subprocess.CompletedProcess(cmd, code, out, "")
+
+    return run, calls
+
+
+GOOD = {"gh-pr": (0, "[]"), "gh-issue": (0, "[]"), "git": (0, "")}
+
+
+@pytest.mark.parametrize("broken", ["gh-pr", "gh-issue", "git"])
+def test_any_failed_source_makes_the_whole_collection_unavailable(
+    monkeypatch: pytest.MonkeyPatch, broken: str
+) -> None:
+    run, _ = _fake_run({**GOOD, broken: (1, "")})
+    monkeypatch.setattr(subprocess, "run", run)
+    assert dm.collect(Path("."), NOW) is None
+
+
+def test_collection_asks_github_for_the_whole_window_not_a_fixed_sample(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run, calls = _fake_run(GOOD)
+    monkeypatch.setattr(subprocess, "run", run)
+    data = dm.collect(Path("."), NOW)
+    assert data is not None
+    assert data["truncated"] is False
+    pr_call = next(c for c in calls if c[:3] == ["gh", "pr", "list"])
+    assert pr_call[pr_call.index("--search") + 1] == "merged:>=2026-09-09"
+    assert pr_call[pr_call.index("--limit") + 1] == str(dm.FETCH_LIMIT)
+
+
+def test_hitting_the_fetch_cap_is_flagged_not_hidden(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    full = "[" + ",".join(["{}"] * dm.FETCH_LIMIT) + "]"
+    run, _ = _fake_run({**GOOD, "gh-pr": (0, full)})
+    monkeypatch.setattr(subprocess, "run", run)
+    data = dm.collect(Path("."), NOW)
+    assert data is not None and data["truncated"] is True
+    finding = doctor.evaluate_delivery({**data, "prs": [], "releases": []}, NOW)
+    assert "lower bound" in finding.summary

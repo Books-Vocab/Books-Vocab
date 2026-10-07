@@ -18,10 +18,11 @@ What is measured, and what is not:
 from __future__ import annotations
 
 import json
+import math
 import re
 import statistics
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from itertools import pairwise
 from pathlib import Path
 from typing import Any
@@ -58,7 +59,8 @@ def lead_times(
 
 def percentile(values: list[float], pct: float) -> float:
     ordered = sorted(values)
-    index = max(0, min(len(ordered) - 1, round(pct / 100 * len(ordered)) - 1))
+    # Nearest rank is a ceiling; round() is ties-to-even and under-reports the tail.
+    index = max(0, min(len(ordered) - 1, math.ceil(pct / 100 * len(ordered)) - 1))
     return ordered[index]
 
 
@@ -158,6 +160,9 @@ def judge(summary: dict[str, Any]) -> tuple[str, list[str]]:
 # --- collectors ---------------------------------------------------------------
 
 
+FETCH_LIMIT = 1000
+
+
 def _gh_json(repo: Path, *argv: str) -> list[dict[str, Any]] | None:
     done = subprocess.run(
         ["gh", *argv], cwd=repo, capture_output=True, text=True, check=False
@@ -165,28 +170,34 @@ def _gh_json(repo: Path, *argv: str) -> list[dict[str, Any]] | None:
     return json.loads(done.stdout) if not done.returncode and done.stdout else None
 
 
-def collect(repo: Path) -> dict[str, Any] | None:
+def collect(repo: Path, now: datetime | None = None) -> dict[str, Any] | None:
+    """All three sources or nothing: a failed source must read as 'unavailable', never as zero."""
+    since = (
+        (now or datetime.now(timezone.utc)) - timedelta(days=WINDOW_DAYS)
+    ).strftime("%Y-%m-%d")
     prs = _gh_json(
         repo,
         "pr",
         "list",
         "--state",
         "merged",
+        "--search",
+        f"merged:>={since}",
         "--limit",
-        "200",
+        str(FETCH_LIMIT),
         "--json",
         "createdAt,mergedAt",
     )
-    if prs is None:
-        return None
     issues = _gh_json(
         repo,
         "issue",
         "list",
         "--state",
         "closed",
+        "--search",
+        f"closed:>={since}",
         "--limit",
-        "200",
+        str(FETCH_LIMIT),
         "--json",
         "createdAt,closedAt",
     )
@@ -204,9 +215,16 @@ def collect(repo: Path) -> dict[str, Any] | None:
         text=True,
         check=False,
     )
+    if prs is None or issues is None or log.returncode:
+        return None
     rows = []
-    for line in log.stdout.splitlines() if not log.returncode else []:
+    for line in log.stdout.splitlines():
         epoch, _, subject = line.partition("\t")
         if epoch.isdigit():
             rows.append((int(epoch), subject))
-    return {"prs": prs, "issues": issues or [], "releases": release_events(rows)}
+    return {
+        "prs": prs,
+        "issues": issues,
+        "releases": release_events(rows),
+        "truncated": len(prs) >= FETCH_LIMIT or len(issues) >= FETCH_LIMIT,
+    }
