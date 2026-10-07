@@ -64,7 +64,7 @@ pending and do not synthesize a verified target or heartbeat.
 派工方要讓新 agent 接續另一個 agent 的工作時，只交 continuation packet：
 
 1. base ref：branch 名或 exact tip SHA（`git rev-parse <branch>`）。
-2. 可選 patch：派工方自己 scratch 內的路徑（例如 `git diff <base> <tip>` 存成檔）；接手者用 `git apply <patch>` 套用。
+2. 可選未完成進度：派工方先在自己的 worktree 把進度 commit 到 local WIP branch（不 push；所有 worktree 共用同一 git object store），再把 1 的 base ref 指向該 branch 或 tip SHA。接手者用 `git switch -c <new> <wip-tip>` 接續，或 `git cherry-pick <base>..<wip-tip>` 只取該段 commit。不交 patch 檔：派工方 scratch 在派工方 worktree 內，接手者的 isolation guard 不允許讀取，且 `allowed_surfaces` 只含 `local:assigned-worktree`，沒有共享 scratch 可用。
 3. 全新 branch 名；接手者在自己的 worktree 跑 `git switch -c <new> <base>`。
 
 禁止：

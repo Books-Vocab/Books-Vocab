@@ -35,8 +35,8 @@ description: "CM／IM 的 GitHub-native 協調 workflow：管理 Issue、Project
 - republish 只用於原 owner 無法繼續，且 exact PR／registry／remote proof 完整、local assets 已不存在的 lane（政策正本見 `docs/reference/delivery_model.md`，終止條件見 `docs/sop/delivery_control_dogfood.md`）：
   1. `./ops/delivery.py abandon-pr --pr <old-pr>`（關 PR、registry 標 `abandoned`、刪 remote branch；任一步缺 proof 即 fail closed）。remote branch 刪除後只剩本機物件，所以先在 abandon 前用 `git rev-parse` 記下 `<tip-sha>`；
   2. 尚未 publish 的殘留 claim 用 `./ops/worktree_orchestrate.py resolve --branch <old> --status abandoned --json`；
-  3. 由派工方建立新 worktree 與 branch：`git worktree add -b <new> <new-path> <tip-sha>`（或 `worktree_orchestrate.py open`），再 `./ops/deliver.py --worktree <new-path> --scope-from-diff --check "<label>=<cmd>"`。新 lane 的 base 不必等於 live main；freshness 由 CM 在 merge-front 依 queue admission 判斷。
-- 派接續工作照 `worktree-flow` 的 continuation packet：只交 base ref、可選 patch 與新 branch 名。
+  3. 由派工方建立新 worktree 與 branch：`git worktree add -b <new> <new-path> <tip-sha>`（或 `worktree_orchestrate.py open`），再 `./ops/deliver.py --worktree <new-path> --scope-from-diff --check "<label>=<cmd>"`。`deliver.py` 的 preflight 一律 fetch `origin/main`，publish 前若 branch 落後就 `git rebase origin/main`，衝突則 `rebase --abort` 並 fail closed（`ops/deliver.py` 的 `preflight`／`rebase_if_behind`）；所以舊 tip 若與 live main 衝突，不能原樣 republish。須先由 owner 在 tip 上 rebase 解衝突，或在新 lane 以 `git cherry-pick` 把需要的 commit 套到 `origin/main` 後再 deliver。這條規則只適用於未 publish 的新 lane；「已 publish、落後但 `MERGEABLE`」的 PR 仍照上方規則直接 queue，不 rebase、不 republish。
+- 派接續工作照 `worktree-flow` 的 continuation packet：只交 base ref（含可選的 local WIP branch tip，不交 patch 檔）與新 branch 名。
 
 ## Merge readiness
 
