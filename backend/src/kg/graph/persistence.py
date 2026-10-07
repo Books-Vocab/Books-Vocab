@@ -30,7 +30,9 @@ is never judged. These two flushes therefore merge under the file lock just
 like ``_flush_links``:
 
 - ``_known_pending_judge`` / ``_known_candidate_pairs`` make ids/pairs this
-  instance has ever held authoritative, so a pop/removal still takes effect.
+  instance has ever held authoritative, so an ack/pop/removal still takes
+  effect. A pending-judge pop is only a claim: claimed ids stay in the file
+  until acked (``candidates.pop_pending_judge``).
 - An id/pair present on disk but unknown to the instance (queued by another
   instance) is preserved instead of being clobbered.
 """
@@ -71,6 +73,7 @@ class _PersistenceMixin:
     _candidates: list[CandidatePair]
     _blocked_pairs: set[tuple[str, str]]
     _pending_judge: set[str]
+    _inflight_judge: set[str]
     _known_link_ids: set[str]
     _known_blocked_pairs: set[tuple[str, str]]
     _known_pending_judge: set[str]
@@ -239,10 +242,12 @@ class _PersistenceMixin:
     def _flush_pending_judge(self, snapshot: list[str]) -> None:
         """Persist pending-judge ids, merging with the current on-disk file.
 
-        ``snapshot`` is this instance's full ``_pending_judge`` view. Under the
-        file lock the on-disk file is re-read; any id unknown to this instance
-        (not in ``_known_pending_judge``) is preserved, while ids the instance
-        manages -- including ones it popped or removed -- follow the snapshot.
+        ``snapshot`` is this instance's full durable view: queued
+        (``_pending_judge``) plus claimed-but-unsettled (``_inflight_judge``)
+        ids. Under the file lock the on-disk file is re-read; any id unknown to
+        this instance (not in ``_known_pending_judge``) is preserved, while ids
+        the instance manages -- including ones it acked or removed -- follow
+        the snapshot.
         """
         if self.pending_judge_path is None:
             return
@@ -275,4 +280,4 @@ class _PersistenceMixin:
     def _save_pending_judge(self) -> None:
         if self.pending_judge_path is None:
             return
-        self._flush_pending_judge(sorted(self._pending_judge))
+        self._flush_pending_judge(sorted(self._pending_judge | self._inflight_judge))

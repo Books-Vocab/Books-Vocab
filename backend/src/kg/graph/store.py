@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
-from .candidates import _CandidatesMixin
+from .candidates import _CandidatesMixin, claimed_pending_judge
 from .links import _LinksMixin
 from .models import CandidatePair, GraphLink
 from .persistence import _PersistenceMixin
@@ -32,9 +32,11 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
     - Pattern for every write method:
         1. Acquire lock -> mutate memory -> take snapshot -> release lock
         2. Call _atomic_json_write(snapshot) -- no lock held
-    - pop_* methods release _lock during their flush, so a per-collection
-      pop lock (_pending_judge_pop_lock / _candidates_pop_lock) serialises
-      concurrent pops to keep exactly-once semantics. See __init__.
+    - pop_candidates releases _lock during its flush, so _candidates_pop_lock
+      serialises concurrent pops to keep exactly-once semantics. Pending-judge
+      writes (add / ack / remove) flush outside _lock under
+      _pending_judge_pop_lock; pop_pending_judge only claims in memory -- its
+      ids stay durable until acked (see candidates.py). See __init__.
     - _candidate_set is a canonical set[tuple[str,str]] (normalised: smaller id
       first) kept in sync with _candidates for O(1) duplicate detection.
 
@@ -77,12 +79,12 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         self._candidates_write_lock = threading.Lock()
         self._blocked_write_lock = threading.Lock()
         self._pending_judge_write_lock = threading.Lock()
-        # Pop serialisation locks: pop_* releases _lock during its (slow)
-        # flush, so without this two concurrent pop_* calls on the SAME
-        # instance could each observe the not-yet-removed items and return
-        # them twice. These locks make pop atomic per item-set (exactly-once)
-        # while keeping disk I/O off _lock. Distinct from _*_write_lock,
-        # which _flush_* takes -- reusing it would deadlock (non-reentrant).
+        # Transaction serialisation locks: pop_candidates and the pending-judge
+        # writers release _lock during their (slow) flush, so without these two
+        # concurrent calls on the SAME instance could each act on a stale
+        # snapshot (a pop returning items twice, a write clobbering another).
+        # They keep disk I/O off _lock. Distinct from _*_write_lock, which
+        # _flush_* takes -- reusing it would deadlock (non-reentrant).
         self._pending_judge_pop_lock = threading.Lock()
         self._candidates_pop_lock = threading.Lock()
         self._links: dict[str, GraphLink] = {}
@@ -102,8 +104,14 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         # (drop) from "blocked by another instance" (preserve) when merging.
         self._known_blocked_pairs: set[tuple[str, str]] = set()
         self._pending_judge: set[str] = set()
+        # Ids claimed by pop_pending_judge and not yet acked / handed back.
+        # They stay in the durable pending file (see pop_pending_judge) and are
+        # registered process-wide under _claims_key so another instance on the
+        # same file does not load a live claim as queued work.
+        self._inflight_judge: set[str] = set()
+        self._claims_key: Path | None = pending_judge_path.resolve() if pending_judge_path is not None else None
         # Every pending-judge id this instance has ever held. Mirrors
-        # _known_link_ids: _flush_pending_judge uses it to tell "popped/removed
+        # _known_link_ids: _flush_pending_judge uses it to tell "acked/removed
         # by me" (drop) from "added by another instance" (preserve) on merge.
         self._known_pending_judge: set[str] = set()
         self._from_index: dict[str, set[str]] = {}  # card_id -> set of link_ids
@@ -315,7 +323,12 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         if self.pending_judge_path and self.pending_judge_path.exists():
             pj_data = self._read_json_list(self.pending_judge_path)
             if isinstance(pj_data, list):
-                self._pending_judge = {x for x in pj_data if isinstance(x, str)}
+                # Everything on disk is queued work -- including ids a killed
+                # process had claimed mid-judge -- except ids a live judge run
+                # in THIS process still holds. Those are left unknown to this
+                # instance so its flushes preserve them as foreign.
+                live_claims = claimed_pending_judge(self._claims_key)
+                self._pending_judge = {x for x in pj_data if isinstance(x, str)} - live_claims
                 self._known_pending_judge |= self._pending_judge
             else:
                 logger.warning("Invalid pending_judge format, resetting: %s", type(pj_data).__name__)

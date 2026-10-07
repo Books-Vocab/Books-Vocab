@@ -301,6 +301,7 @@ class _GraphRecording:
     def __init__(self, pending: list[str] | None = None) -> None:
         self._pending: list[str] = list(pending or [])
         self.added_pending: list[list[str]] = []
+        self.acked_pending: list[str] = []
         self.persisted_links: list[tuple] = []
         self._existing_links: set[tuple[str, str]] = set()
 
@@ -313,6 +314,9 @@ class _GraphRecording:
         ids = list(card_ids)
         self.added_pending.append(ids)
         self._pending.extend(ids)
+
+    def ack_pending_judge(self, card_ids):
+        self.acked_pending.extend(card_ids)
 
     def has_link(self, a, b):
         return (a, b) in self._existing_links or (b, a) in self._existing_links
@@ -587,6 +591,8 @@ def test_judge_partial_failure_does_not_corrupt_remaining():
     requeued_flat = [cid for batch in graph.added_pending for cid in batch]
     assert len(requeued_flat) == 6, f"Expected 6 requeued (c4..c9), got {len(requeued_flat)}: {requeued_flat}"
     assert "c4" in requeued_flat, "the failing card must be requeued, not orphaned"
+    # Cards 0..3 had their links persisted, so their claim is acknowledged.
+    assert sorted(graph.acked_pending) == ["c0", "c1", "c2", "c3"]
 
     # 4. batch_touch called for persisted links (incremental-sync wakeup).
     assert cards.batch_touch_calls, "persisted links must trigger batch_touch"

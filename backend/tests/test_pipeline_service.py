@@ -284,10 +284,7 @@ class _GraphWithCandidates:
         self._pending: list[str] = []
 
     def pop_candidates(self):
-        return [
-            SimpleNamespace(from_id=a, to_id=b)
-            for a, b in self._pairs
-        ]
+        return [SimpleNamespace(from_id=a, to_id=b) for a, b in self._pairs]
 
     def pop_pending_judge(self):
         result = list(self._pending)
@@ -296,6 +293,9 @@ class _GraphWithCandidates:
 
     def add_pending_judge(self, card_ids):
         self._pending.extend(card_ids)
+
+    def ack_pending_judge(self, card_ids):
+        pass
 
     def get_links_for(self, card_id):
         return []
@@ -315,9 +315,13 @@ class _CardsForLink:
     def __init__(self, ids: list[str]):
         self._cards = {
             cid: SimpleNamespace(
-                id=cid, content=f"word_{cid}", meaning=f"meaning_{cid}",
-                pos="n.", note="some note",
-                is_deleted=False, is_archived=False,
+                id=cid,
+                content=f"word_{cid}",
+                meaning=f"meaning_{cid}",
+                pos="n.",
+                note="some note",
+                is_deleted=False,
+                is_archived=False,
                 embed_text=lambda: "text",
                 difficulty=None,
                 notebook_id="default",
@@ -367,6 +371,9 @@ class _GraphWithPending:
     def add_pending_judge(self, card_ids):
         self._pending.extend(card_ids)
 
+    def ack_pending_judge(self, card_ids):
+        pass
+
     def get_links_for(self, card_id):
         return []
 
@@ -413,6 +420,7 @@ def test_step_embed_and_judge_touches_cards_after_creating_links():
 
     async def run():
         import kg.judge as judge_mod
+
         orig = judge_mod.Judge
 
         class FakeJudge:
@@ -429,7 +437,8 @@ def test_step_embed_and_judge_touches_cards_after_creating_links():
         try:
             user = {"id": "u_touch", "dir": None, "config": {}}
             await _step_embed_and_judge(
-                "u_touch", user,
+                "u_touch",
+                user,
                 card_store_factory=lambda d: tracking_cards,
                 graph_store_factory=lambda d, notebook_id="default": graph,
                 embedding_store_factory=lambda d, llm=None, notebook_id="default": _EmbeddingsWithSimilar(similar_map),
@@ -445,12 +454,8 @@ def test_step_embed_and_judge_touches_cards_after_creating_links():
     assert graph.batch_links_called, "Expected batch_add_links to be called"
     assert len(graph.created_links) >= 1, f"Expected at least 1 link, got {len(graph.created_links)}"
     # Both from_id and to_id must be touched
-    assert "from1" in tracking_cards.touched_ids, (
-        f"from_id 'from1' not touched. Touched: {tracking_cards.touched_ids}"
-    )
-    assert "to1" in tracking_cards.touched_ids, (
-        f"to_id 'to1' not touched. Touched: {tracking_cards.touched_ids}"
-    )
+    assert "from1" in tracking_cards.touched_ids, f"from_id 'from1' not touched. Touched: {tracking_cards.touched_ids}"
+    assert "to1" in tracking_cards.touched_ids, f"to_id 'to1' not touched. Touched: {tracking_cards.touched_ids}"
 
 
 def test_step_embed_and_judge_no_touch_when_no_links_created():
@@ -473,6 +478,7 @@ def test_step_embed_and_judge_no_touch_when_no_links_created():
 
     async def run():
         import kg.judge as judge_mod
+
         orig = judge_mod.Judge
 
         class RejectAllJudge:
@@ -486,7 +492,8 @@ def test_step_embed_and_judge_no_touch_when_no_links_created():
         try:
             user = {"id": "u_no_touch", "dir": None, "config": {}}
             await _step_embed_and_judge(
-                "u_no_touch", user,
+                "u_no_touch",
+                user,
                 card_store_factory=lambda d: tracking_cards,
                 graph_store_factory=lambda d, notebook_id="default": graph,
                 embedding_store_factory=lambda d, llm=None, notebook_id="default": _EmbeddingsWithSimilar(similar_map),
@@ -538,6 +545,7 @@ def test_step_embed_and_judge_touches_cards_on_exception_path():
 
     async def run():
         import kg.judge as judge_mod
+
         orig = judge_mod.Judge
 
         class CrashOnSecondJudge:
@@ -550,15 +558,15 @@ def test_step_embed_and_judge_touches_cards_on_exception_path():
                 if call_count >= 2:
                     raise RuntimeError("judge crashed")
                 return {
-                    cid: SimpleNamespace(link="shares_usage", confidence=0.9, reason="test")
-                    for cid, _, _ in candidates
+                    cid: SimpleNamespace(link="shares_usage", confidence=0.9, reason="test") for cid, _, _ in candidates
                 }
 
         judge_mod.Judge = CrashOnSecondJudge
         try:
             user = {"id": "u_exc", "dir": None, "config": {}}
             await _step_embed_and_judge(
-                "u_exc", user,
+                "u_exc",
+                user,
                 card_store_factory=lambda d: tracking_cards,
                 graph_store_factory=lambda d, notebook_id="default": graph,
                 embedding_store_factory=lambda d, llm=None, notebook_id="default": _EmbeddingsWithSimilar(similar_map),
@@ -577,12 +585,8 @@ def test_step_embed_and_judge_touches_cards_on_exception_path():
     # If any links were created before the crash, their cards must be touched
     if graph.created_links:
         for from_id, to_id, *_ in graph.created_links:
-            assert from_id in tracking_cards.touched_ids, (
-                f"Exception path: from_id '{from_id}' not touched"
-            )
-            assert to_id in tracking_cards.touched_ids, (
-                f"Exception path: to_id '{to_id}' not touched"
-            )
+            assert from_id in tracking_cards.touched_ids, f"Exception path: from_id '{from_id}' not touched"
+            assert to_id in tracking_cards.touched_ids, f"Exception path: to_id '{to_id}' not touched"
 
 
 def test_step_embed_and_judge_runs_judge_concurrently():
@@ -596,6 +600,7 @@ def test_step_embed_and_judge_runs_judge_concurrently():
 
     async def run():
         import kg.judge as judge_mod
+
         orig = judge_mod.Judge
 
         class FakeJudge:
@@ -613,7 +618,8 @@ def test_step_embed_and_judge_runs_judge_concurrently():
         try:
             user = {"id": "u_par", "dir": None, "config": {}}
             await _step_embed_and_judge(
-                "u_par", user,
+                "u_par",
+                user,
                 card_store_factory=lambda d: _CardsForLink(ids),
                 graph_store_factory=lambda d, notebook_id="default": _GraphWithPending(ids),
                 embedding_store_factory=lambda d, llm=None, notebook_id="default": _EmbeddingsWithSimilar(similar_map),
@@ -650,6 +656,7 @@ def test_step_embed_and_judge_skips_judge_when_auto_link_disabled(enabled):
 
     async def run():
         import kg.judge as judge_mod
+
         orig = judge_mod.Judge
 
         class ExplodingJudge:
@@ -659,11 +666,13 @@ def test_step_embed_and_judge_skips_judge_when_auto_link_disabled(enabled):
         judge_mod.Judge = ExplodingJudge
         try:
             user = {
-                "id": "u_al_off", "dir": None,
+                "id": "u_al_off",
+                "dir": None,
                 "config": {"auto_link": {"enabled": enabled, "updated_at": 1.0}},
             }
             return await _step_embed_and_judge(
-                "u_al_off", user,
+                "u_al_off",
+                user,
                 card_store_factory=lambda d: cards,
                 graph_store_factory=lambda d, notebook_id="default": graph,
                 embedding_store_factory=lambda d, llm=None, notebook_id="default": _EmbeddingsWithSimilar(similar_map),
@@ -677,9 +686,7 @@ def test_step_embed_and_judge_skips_judge_when_auto_link_disabled(enabled):
     created = asyncio.run(run())
 
     assert created == 0
-    assert graph._pending == ["c1"], (
-        f"pending_judge must be preserved when auto_link disabled, got {graph._pending}"
-    )
+    assert graph._pending == ["c1"], f"pending_judge must be preserved when auto_link disabled, got {graph._pending}"
     assert graph.batch_links_called is False
 
 
@@ -708,11 +715,13 @@ def test_step_embed_and_judge_still_embeds_when_auto_link_disabled():
 
     async def run():
         user = {
-            "id": "u_al_embed", "dir": None,
+            "id": "u_al_embed",
+            "dir": None,
             "config": {"auto_link": {"enabled": False, "updated_at": 1.0}},
         }
         return await _step_embed_and_judge(
-            "u_al_embed", user,
+            "u_al_embed",
+            user,
             card_store_factory=lambda d: cards,
             graph_store_factory=lambda d, notebook_id="default": graph,
             embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
@@ -778,6 +787,7 @@ def _run_judge(user, cards, graph, embeddings):
 
     async def run():
         import kg.judge as judge_mod
+
         orig = judge_mod.Judge
 
         class FakeJudge:
@@ -786,14 +796,14 @@ def _run_judge(user, cards, graph, embeddings):
 
             def evaluate_batch(self, target_word, target_meaning, candidates, **kwargs):
                 return {
-                    cid: SimpleNamespace(link="shares_usage", confidence=0.9, reason="t")
-                    for cid, _w, _m in candidates
+                    cid: SimpleNamespace(link="shares_usage", confidence=0.9, reason="t") for cid, _w, _m in candidates
                 }
 
         judge_mod.Judge = FakeJudge
         try:
             await _step_embed_and_judge(
-                user["id"], user,
+                user["id"],
+                user,
                 card_store_factory=lambda d: cards,
                 graph_store_factory=lambda d, notebook_id="default": graph,
                 embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
@@ -841,20 +851,25 @@ def test_step_judge_candidates_unchanged():
         graph_batch.created_links.extend(links)
         graph_batch.batch_links_called = True
         return links
+
     graph_batch.batch_add_links = _capture_batch
-    _run_judge({"id": "u1", "dir": None, "config": {}},
-               _TouchableCards(ids), graph_batch, _BatchEmbeddings(similar_map))
+    _run_judge(
+        {"id": "u1", "dir": None, "config": {}}, _TouchableCards(ids), graph_batch, _BatchEmbeddings(similar_map)
+    )
 
     # Fallback path (only find_similar)
     graph_single = _GraphWithPending(["a", "b", "c"])
     graph_single.created_links = []
+
     def _capture_single(links):
         graph_single.created_links.extend(links)
         graph_single.batch_links_called = True
         return links
+
     graph_single.batch_add_links = _capture_single
-    _run_judge({"id": "u2", "dir": None, "config": {}},
-               _TouchableCards(ids), graph_single, _EmbeddingsWithSimilar(similar_map))
+    _run_judge(
+        {"id": "u2", "dir": None, "config": {}}, _TouchableCards(ids), graph_single, _EmbeddingsWithSimilar(similar_map)
+    )
 
     def _norm(links):
         # Links are (from, to, kind, conf, reason) tuples; compare unordered
@@ -862,6 +877,5 @@ def test_step_judge_candidates_unchanged():
         return sorted((lk[0], lk[1]) for lk in links)
 
     assert _norm(graph_batch.created_links) == _norm(graph_single.created_links), (
-        f"batch links {_norm(graph_batch.created_links)} != "
-        f"fallback links {_norm(graph_single.created_links)}"
+        f"batch links {_norm(graph_batch.created_links)} != fallback links {_norm(graph_single.created_links)}"
     )

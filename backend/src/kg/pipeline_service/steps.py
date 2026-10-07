@@ -46,6 +46,44 @@ def _touch_linked_cards(
     cards.batch_touch(touched_ids, notebook_id=notebook_id)
 
 
+class _JudgeClaim:
+    """Settlement ledger for the ids one judge run claimed (#2084).
+
+    ``pop_pending_judge`` keeps claimed ids in the durable pending file until
+    they are settled, so a killed process leaves them for the next one. In
+    process, every claimed id is settled exactly once before the step returns
+    or propagates: ``ack`` once its links are persisted (or it needs none),
+    ``requeue`` to hand it back to the queue for the next run.
+    """
+
+    def __init__(self, graph: Any, card_ids: list[str]) -> None:
+        self._graph = graph
+        self._ids = list(dict.fromkeys(card_ids))
+        self._settled: set[str] = set()
+
+    def _unsettled(self, card_ids: list[str]) -> list[str]:
+        return [cid for cid in dict.fromkeys(card_ids) if cid not in self._settled]
+
+    def requeue(self, card_ids: list[str]) -> list[str]:
+        ids = self._unsettled(card_ids)
+        if ids:
+            self._graph.add_pending_judge(ids)
+            self._settled.update(ids)
+        return ids
+
+    def ack(self, card_ids: list[str]) -> None:
+        ids = self._unsettled(card_ids)
+        if ids:
+            self._graph.ack_pending_judge(ids)
+            self._settled.update(ids)
+
+    def requeue_rest(self) -> list[str]:
+        return self.requeue(self._ids)
+
+    def ack_rest(self) -> None:
+        self.ack(self._ids)
+
+
 async def _step_enrich(
     uid: str,
     user: UserRecord,
@@ -131,7 +169,6 @@ async def _step_embed_and_judge(
 ) -> int:
     """Combined embed + judge step. Replaces _step_embed + _step_link."""
     from ..deps_quota import _is_pro
-    from ..judge import Judge
     from ..llm.providers import provider_for
     from ..tracked_llm import TrackedLLM
 
@@ -158,6 +195,14 @@ async def _step_embed_and_judge(
     newly_embedded: list[str] = []
     if missing:
         logger.info("[%s] Embedding %d cards", uid, len(missing))
+        # Queue BEFORE embedding (#2084). The embedding persists from an
+        # executor thread that outlives a cancelled step, and a kill can land
+        # between its save and a later queue write; either way the card would
+        # end up embedded but never queued, and Phase 1 never revisits embedded
+        # cards. A queued card whose embedding failed is harmless: Phase 2
+        # finds no neighbours and acks it, and the next run re-queues it while
+        # it is still missing.
+        graph.add_pending_judge([card.id for card in missing])
         items = [(card.id, card.embed_text()) for card in missing]
         loop = asyncio.get_running_loop()
         try:
@@ -166,10 +211,8 @@ async def _step_embed_and_judge(
         except (OpenAIError, OSError, ValueError) as exc:
             logger.warning("[%s] Batch embedding failed: %s", uid, exc)
 
-        # Add newly embedded cards to pending_judge
         if newly_embedded:
-            graph.add_pending_judge(newly_embedded)
-            logger.info("[%s] Embedded %d cards, added to pending judge", uid, len(newly_embedded))
+            logger.info("[%s] Embedded %d cards, queued for judge", uid, len(newly_embedded))
 
     # ── Phase 2: Judge pending cards ──
     # Per-user auto_link 開關(user config 的 auto_link group):關閉時不消費
@@ -189,6 +232,63 @@ async def _step_embed_and_judge(
     if not pending:
         logger.info("[%s] No pending cards to judge", uid)
         return 0
+
+    claim = _JudgeClaim(graph, pending)
+    try:
+        created = await _judge_pending(
+            uid,
+            pending,
+            claim,
+            is_pro=is_pro,
+            cards=cards,
+            graph=graph,
+            embeddings=embeddings,
+            client_factory=client_factory,
+            logger=logger,
+            link_kind_enum=link_kind_enum,
+            notebook_id=notebook_id,
+        )
+        claim.ack_rest()
+    except BaseException:
+        # Any exception *and* cancellation (CancelledError is a BaseException,
+        # so a deploy-time task cancel used to skip every requeue): hand each
+        # unsettled id back before propagating. Handing back a claimed id is
+        # memory-only, so this cannot fail on I/O; if it still fails, the ids
+        # remain durable on disk and the next process requeues them.
+        try:
+            requeued = claim.requeue_rest()
+        except Exception:
+            logger.warning("[%s] Failed to requeue claimed judge cards", uid, exc_info=True)
+        else:
+            if requeued:
+                logger.warning("[%s] Judge aborted; requeued %d claimed cards", uid, len(requeued))
+        raise
+    return created
+
+
+async def _judge_pending(
+    uid: str,
+    pending: list[str],
+    claim: _JudgeClaim,
+    *,
+    is_pro: bool,
+    cards: Any,
+    graph: Any,
+    embeddings: Any,
+    client_factory: ClientFactory,
+    logger: logging.Logger,
+    link_kind_enum: Any,
+    notebook_id: str,
+) -> int:
+    """Phase 2 body: judge the claimed ``pending`` ids and persist their links.
+
+    Settles ids through ``claim`` only where the outcome is known mid-run
+    (failed similarity lookups, partially persisted links); the caller acks
+    the rest on success and requeues them on any failure.
+    """
+    from ..judge import Judge
+    from ..llm.providers import provider_for
+    from ..tracked_llm import TrackedLLM
 
     logger.info("[%s] Judging %d pending cards", uid, len(pending))
     judge_provider = provider_for("judge")
@@ -254,12 +354,12 @@ async def _step_embed_and_judge(
                 logger.warning("[%s] find_similar failed for '%s': %s", uid, card_id, exc)
                 failed_similarity_ids.append(card_id)
 
-    # ``pop_pending_judge`` removes cards before the lookup. Preserve only the
-    # cards whose lookup actually failed; a successful empty result is a normal
-    # completion and must remain consumed. GraphStore deduplicates this durable
-    # requeue, so a concurrent add cannot create duplicate pending work.
+    # Hand back only the cards whose lookup actually failed; a successful empty
+    # result is a normal completion and is acked with the rest of the claim.
+    # GraphStore deduplicates the requeue, so a concurrent add cannot create
+    # duplicate pending work.
     if failed_similarity_ids:
-        graph.add_pending_judge(list(dict.fromkeys(failed_similarity_ids)))
+        claim.requeue(failed_similarity_ids)
 
     per_card_similar: list[tuple[str, Any, int, list[tuple[str, float]]]] = []
     all_other_ids: set[str] = set()
@@ -424,26 +524,27 @@ async def _step_embed_and_judge(
             # check then skips any links this card already persisted, so
             # the re-judge neither double-links nor double-counts.
             processed += 1
-    except Exception:
-        # Requeue unprocessed cards. `processed` is incremented only AFTER
-        # a card's results are fully consumed, so on exception it still
-        # points to the card that failed — whether the failure was in
-        # `await fut` or mid result-consumption — and `futures[processed:]`
-        # correctly includes it.
+    except BaseException:
+        # Exception or cancellation mid-loop. `processed` is incremented only
+        # AFTER a card's results are fully consumed, so on failure it still
+        # points to the card that failed — whether the failure was in `await
+        # fut` or mid result-consumption — and `futures[processed:]` includes
+        # it. Persist the fully consumed cards' links and ack exactly those;
+        # the caller requeues everything else still claimed (including these
+        # cards if their links never reached disk).
         unprocessed_ids = [cid for cid, _ in futures[processed:]]
-        if unprocessed_ids:
-            graph.add_pending_judge(unprocessed_ids)
         logger.warning(
-            "[%s] Judge interrupted at %d/%d, requeued %d", uid, processed, len(futures), len(unprocessed_ids)
+            "[%s] Judge interrupted at %d/%d, requeueing %d", uid, processed, len(futures), len(unprocessed_ids)
         )
-        if all_links:
-            # Wrap both calls: a failure here must NOT mask the original
-            # judge-loop exception that we're about to re-raise.
-            try:
+        # Wrap the persistence: a failure here must NOT mask the original
+        # judge-loop exception that we're about to re-raise.
+        try:
+            if all_links:
                 graph.batch_add_links(all_links)
                 _touch_linked_cards(cards, all_links, notebook_id=notebook_id)
-            except Exception:
-                logger.warning("[%s] Failed to persist partial links/touch", uid, exc_info=True)
+            claim.ack([cid for cid, _ in futures[:processed]])
+        except Exception:
+            logger.warning("[%s] Failed to persist partial links/touch", uid, exc_info=True)
         # Drain in-flight futures: their exceptions are unobserved otherwise,
         # and asyncio logs "Future exception was never retrieved" at ERROR
         # level on GC. We're already aborting; cancel pending and silently

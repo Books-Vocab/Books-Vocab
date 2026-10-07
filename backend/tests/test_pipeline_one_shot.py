@@ -63,7 +63,9 @@ class _FakeCards:
 
 
 class _FakeEmbeddings:
-    def __init__(self, *, has_ids: set[str] | None = None, similar_map: dict[str, list[tuple[str, float]]] | None = None):
+    def __init__(
+        self, *, has_ids: set[str] | None = None, similar_map: dict[str, list[tuple[str, float]]] | None = None
+    ):
         self._has = has_ids or set()
         self._similar = similar_map or {}
         self.added: list[tuple[str, str]] = []
@@ -96,6 +98,9 @@ class _FakeGraph:
         result = list(self._pending)
         self._pending.clear()
         return result
+
+    def ack_pending_judge(self, card_ids: list[str]) -> None:
+        pass
 
     def get_links_for(self, card_id: str) -> list:
         return self._links.get(card_id, [])
@@ -178,6 +183,7 @@ def test_embed_and_judge_creates_links():
 
     # Patch Judge
     import kg.judge as judge_mod
+
     orig_judge = judge_mod.Judge
     fake_judge = _FakeJudge(judge_results)
 
@@ -190,15 +196,18 @@ def test_embed_and_judge_creates_links():
 
     judge_mod.Judge = PatchedJudge
     try:
-        asyncio.run(_step_embed_and_judge(
-            "u1", {"id": "u1", "dir": Path("/tmp/u1"), "config": {}},
-            card_store_factory=lambda d: cards,
-            graph_store_factory=lambda d, notebook_id="default": graph,
-            embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
-            client_factory=lambda provider: None,
-            logger=logger,
-            link_kind_enum=lambda v: v,
-        ))
+        asyncio.run(
+            _step_embed_and_judge(
+                "u1",
+                {"id": "u1", "dir": Path("/tmp/u1"), "config": {}},
+                card_store_factory=lambda d: cards,
+                graph_store_factory=lambda d, notebook_id="default": graph,
+                embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
+                client_factory=lambda provider: None,
+                logger=logger,
+                link_kind_enum=lambda v: v,
+            )
+        )
     finally:
         judge_mod.Judge = orig_judge
 
@@ -232,26 +241,31 @@ def test_embed_and_judge_respects_max_degree():
     logger = _FakeLogger()
 
     import kg.judge as judge_mod
+
     orig_judge = judge_mod.Judge
     fake_judge = _FakeJudge({})
 
     class PatchedJudge:
         def __init__(self, llm, **kwargs):
             pass
+
         def evaluate_batch(self, *args, **kwargs):
             return fake_judge.evaluate_batch(*args, **kwargs)
 
     judge_mod.Judge = PatchedJudge
     try:
-        asyncio.run(_step_embed_and_judge(
-            "u1", {"id": "u1", "dir": Path("/tmp/u1"), "config": {}},
-            card_store_factory=lambda d: cards,
-            graph_store_factory=lambda d, notebook_id="default": graph,
-            embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
-            client_factory=lambda provider: None,
-            logger=logger,
-            link_kind_enum=lambda v: v,
-        ))
+        asyncio.run(
+            _step_embed_and_judge(
+                "u1",
+                {"id": "u1", "dir": Path("/tmp/u1"), "config": {}},
+                card_store_factory=lambda d: cards,
+                graph_store_factory=lambda d, notebook_id="default": graph,
+                embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
+                client_factory=lambda provider: None,
+                logger=logger,
+                link_kind_enum=lambda v: v,
+            )
+        )
     finally:
         judge_mod.Judge = orig_judge
 
@@ -285,6 +299,7 @@ def test_embed_and_judge_error_recovery():
     logger = _FakeLogger()
 
     import kg.judge as judge_mod
+
     orig_judge = judge_mod.Judge
     # Fail after 1 successful judge call
     failing_judge = _FailingJudge(fail_after=1)
@@ -292,21 +307,25 @@ def test_embed_and_judge_error_recovery():
     class PatchedJudge:
         def __init__(self, llm, **kwargs):
             pass
+
         def evaluate_batch(self, *args, **kwargs):
             return failing_judge.evaluate_batch(*args, **kwargs)
 
     judge_mod.Judge = PatchedJudge
     try:
         with pytest.raises(RuntimeError, match="judge exploded"):
-            asyncio.run(_step_embed_and_judge(
-                "u1", {"id": "u1", "dir": Path("/tmp/u1"), "config": {}},
-                card_store_factory=lambda d: cards,
-                graph_store_factory=lambda d, notebook_id="default": graph,
-                embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
-                client_factory=lambda provider: None,
-                logger=logger,
-                link_kind_enum=lambda v: v,
-            ))
+            asyncio.run(
+                _step_embed_and_judge(
+                    "u1",
+                    {"id": "u1", "dir": Path("/tmp/u1"), "config": {}},
+                    card_store_factory=lambda d: cards,
+                    graph_store_factory=lambda d, notebook_id="default": graph,
+                    embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
+                    client_factory=lambda provider: None,
+                    logger=logger,
+                    link_kind_enum=lambda v: v,
+                )
+            )
     finally:
         judge_mod.Judge = orig_judge
 
@@ -352,26 +371,31 @@ def test_to_side_max_degree_tracked_for_inflight_links():
     }
 
     import kg.judge as judge_mod
+
     orig_judge = judge_mod.Judge
     fake_judge = _FakeJudge(judge_results)
 
     class PatchedJudge:
         def __init__(self, llm, **kwargs):
             pass
+
         def evaluate_batch(self, *args, **kwargs):
             return fake_judge.evaluate_batch(*args, **kwargs)
 
     judge_mod.Judge = PatchedJudge
     try:
-        asyncio.run(_step_embed_and_judge(
-            "u1", {"id": "u1", "dir": Path("/tmp/u1"), "config": {}},
-            card_store_factory=lambda d: cards,
-            graph_store_factory=lambda d, notebook_id="default": graph,
-            embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
-            client_factory=lambda provider: None,
-            logger=logger,
-            link_kind_enum=lambda v: v,
-        ))
+        asyncio.run(
+            _step_embed_and_judge(
+                "u1",
+                {"id": "u1", "dir": Path("/tmp/u1"), "config": {}},
+                card_store_factory=lambda d: cards,
+                graph_store_factory=lambda d, notebook_id="default": graph,
+                embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
+                client_factory=lambda provider: None,
+                logger=logger,
+                link_kind_enum=lambda v: v,
+            )
+        )
     finally:
         judge_mod.Judge = orig_judge
 
@@ -379,6 +403,5 @@ def test_to_side_max_degree_tracked_for_inflight_links():
     # The second must be blocked by to-side degree tracking.
     links_to_target = [lnk for lnk in graph.created_links if lnk[1] == "target"]
     assert len(links_to_target) == 1, (
-        f"Expected 1 link to 'target' but got {len(links_to_target)}; "
-        f"to-side MAX_DEGREE was violated"
+        f"Expected 1 link to 'target' but got {len(links_to_target)}; to-side MAX_DEGREE was violated"
     )

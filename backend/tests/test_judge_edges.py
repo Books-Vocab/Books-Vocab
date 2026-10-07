@@ -42,6 +42,7 @@ def _fresh_judge_log(tmp_path, monkeypatch):
     """Point judge_log at a fresh sqlite DB under tmp_path and reload."""
     monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
     from kg import judge_log
+
     importlib.reload(judge_log)
     judge_log._reset()
     return judge_log
@@ -50,9 +51,7 @@ def _fresh_judge_log(tmp_path, monkeypatch):
 # ── Test 1: partial LLM failure ─────────────────────────────────
 
 
-def test_batch_judge_partial_llm_failure_does_not_lose_pending_items(
-    tmp_path, monkeypatch
-):
+def test_batch_judge_partial_llm_failure_does_not_lose_pending_items(tmp_path, monkeypatch):
     """Mixed batch response: 5 well-formed accepted items + 3 malformed
     items (missing required keys) + 2 truncated (missing from array).
     Every candidate must appear in judge_log so the caller can audit /
@@ -67,12 +66,14 @@ def test_batch_judge_partial_llm_failure_does_not_lose_pending_items(
     # 2 truncated (array length only 8 → c8, c9 absent).
     items = []
     for i in range(5):
-        items.append({
-            "word": f"word_{i}",
-            "link": "shares_usage",
-            "confidence": 0.85,
-            "reason": "ok",
-        })
+        items.append(
+            {
+                "word": f"word_{i}",
+                "link": "shares_usage",
+                "confidence": 0.85,
+                "reason": "ok",
+            }
+        )
     # Malformed: keep `word` so positional/word-fallback still finds the slot
     # but drop `link` and `confidence` → parser falls back to defaults and
     # rejects as not_applicable / low_confidence.
@@ -83,6 +84,7 @@ def test_batch_judge_partial_llm_failure_does_not_lose_pending_items(
 
     content = json.dumps(items)
     from kg.tracked_llm import TrackedLLM
+
     judge = Judge(
         llm=TrackedLLM(_mock_client_returning(content), "user_partial"),
         user_id="user_partial",
@@ -90,7 +92,10 @@ def test_batch_judge_partial_llm_failure_does_not_lose_pending_items(
     )
 
     results = judge.evaluate_batch(
-        "target", "target_meaning", candidates, from_id="from_x",
+        "target",
+        "target_meaning",
+        candidates,
+        from_id="from_x",
     )
 
     # 5 well-formed accepted
@@ -199,6 +204,9 @@ class _FakeGraph:
         self._pending.clear()
         return out
 
+    def ack_pending_judge(self, card_ids):
+        pass
+
     def get_links_for(self, cid):
         return self._links.get(cid, [])
 
@@ -241,18 +249,16 @@ def test_batch_judge_degree_cap_respected(tmp_path, monkeypatch):
     from kg.vocab_graph import MAX_DEGREE
 
     available_slots = 2
-    existing = [SimpleNamespace(id=f"existing{i}", status="active")
-                for i in range(MAX_DEGREE - available_slots)]
+    existing = [SimpleNamespace(id=f"existing{i}", status="active") for i in range(MAX_DEGREE - available_slots)]
 
     cand_ids = [f"c{i}" for i in range(2, 7)]  # 5 candidates
-    cards_list = [_make_card("c1", "target", "意義")] + [
-        _make_card(cid, cid, f"m_{cid}") for cid in cand_ids
-    ]
+    cards_list = [_make_card("c1", "target", "意義")] + [_make_card(cid, cid, f"m_{cid}") for cid in cand_ids]
     cards = _FakeCards(cards_list)
 
     similar_map = {"c1": [(cid, 0.9) for cid in cand_ids]}
     embeddings = _FakeEmbeddings(
-        has_ids={"c1", *cand_ids}, similar_map=similar_map,
+        has_ids={"c1", *cand_ids},
+        similar_map=similar_map,
     )
     graph = _FakeGraph(pending=["c1"], links={"c1": existing})
     logger = _FakeLogger()
@@ -260,21 +266,21 @@ def test_batch_judge_degree_cap_respected(tmp_path, monkeypatch):
     # Real Judge with a mocked LLM client returning an "accept all" batch
     # response. evaluate_batch will itself write accepted=1 rows for every
     # candidate — exactly the path that exposed the original double-count bug.
-    accept_items = [
-        {"word": cid, "link": "shares_usage", "confidence": 0.9, "reason": "ok"}
-        for cid in cand_ids
-    ]
+    accept_items = [{"word": cid, "link": "shares_usage", "confidence": 0.9, "reason": "ok"} for cid in cand_ids]
     mock_client = _mock_client_returning(json.dumps(accept_items))
 
-    asyncio.run(_step_embed_and_judge(
-        "user_cap", {"id": "user_cap", "dir": Path("/tmp/user_cap"), "config": {}},
-        card_store_factory=lambda d: cards,
-        graph_store_factory=lambda d, notebook_id="default": graph,
-        embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
-        client_factory=lambda provider: mock_client,
-        logger=logger,
-        link_kind_enum=lambda v: v,
-    ))
+    asyncio.run(
+        _step_embed_and_judge(
+            "user_cap",
+            {"id": "user_cap", "dir": Path("/tmp/user_cap"), "config": {}},
+            card_store_factory=lambda d: cards,
+            graph_store_factory=lambda d, notebook_id="default": graph,
+            embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
+            client_factory=lambda provider: mock_client,
+            logger=logger,
+            link_kind_enum=lambda v: v,
+        )
+    )
 
     # Cap respected on the from-side.
     assert len(graph.created_links) == available_slots
@@ -284,9 +290,7 @@ def test_batch_judge_degree_cap_respected(tmp_path, monkeypatch):
 
     # Every candidate is represented EXACTLY ONCE — no second row from
     # the degree_cap logger.
-    assert set(by_id.keys()) == set(cand_ids), (
-        f"Expected exactly one row per candidate, got rows={rows}"
-    )
+    assert set(by_id.keys()) == set(cand_ids), f"Expected exactly one row per candidate, got rows={rows}"
     assert len(rows) == len(cand_ids)
 
     cap_rejects = [r for r in rows if r["reject_reason"] == "degree_cap"]
@@ -314,7 +318,8 @@ def test_batch_judge_degree_cap_respected(tmp_path, monkeypatch):
 
 
 def test_judge_log_get_acceptance_stats_excludes_degree_cap_rejects(
-    tmp_path, monkeypatch,
+    tmp_path,
+    monkeypatch,
 ):
     """``get_acceptance_stats`` measures **model** decisions. Rows whose
     rejection came from a pipeline cap eviction (``reject_reason='degree_cap'``)
@@ -327,22 +332,44 @@ def test_judge_log_get_acceptance_stats_excludes_degree_cap_rejects(
 
     for i in range(5):
         judge_log.record(
-            user_id="u_stats", notebook_id="nb", from_id="a", to_id=f"acc_{i}",
-            similarity=0.8, verdict="shares_usage", confidence=0.9,
-            accepted=True, reject_reason=None, reason="ok", source="auto",
+            user_id="u_stats",
+            notebook_id="nb",
+            from_id="a",
+            to_id=f"acc_{i}",
+            similarity=0.8,
+            verdict="shares_usage",
+            confidence=0.9,
+            accepted=True,
+            reject_reason=None,
+            reason="ok",
+            source="auto",
         )
     judge_log.record(
-        user_id="u_stats", notebook_id="nb", from_id="a", to_id="rej_model",
-        similarity=0.6, verdict="not_applicable", confidence=0.3,
-        accepted=False, reject_reason="low_confidence",
-        reason="no link", source="auto",
+        user_id="u_stats",
+        notebook_id="nb",
+        from_id="a",
+        to_id="rej_model",
+        similarity=0.6,
+        verdict="not_applicable",
+        confidence=0.3,
+        accepted=False,
+        reject_reason="low_confidence",
+        reason="no link",
+        source="auto",
     )
     for i in range(2):
         judge_log.record(
-            user_id="u_stats", notebook_id="nb", from_id="a", to_id=f"cap_{i}",
-            similarity=0.85, verdict="shares_usage", confidence=0.9,
-            accepted=False, reject_reason="degree_cap",
-            reason="ok", source="auto",
+            user_id="u_stats",
+            notebook_id="nb",
+            from_id="a",
+            to_id=f"cap_{i}",
+            similarity=0.85,
+            verdict="shares_usage",
+            confidence=0.9,
+            accepted=False,
+            reject_reason="degree_cap",
+            reason="ok",
+            source="auto",
         )
 
     stats = judge_log.get_acceptance_stats(user_id="u_stats")
@@ -371,9 +398,17 @@ def test_judge_log_update_to_rejected_flips_existing_row(tmp_path, monkeypatch):
     judge_log = _fresh_judge_log(tmp_path, monkeypatch)
 
     judge_log.record(
-        user_id="u_upd", notebook_id="nb", from_id="x", to_id="y",
-        similarity=0.9, verdict="shares_usage", confidence=0.92,
-        accepted=True, reject_reason=None, reason="ok", source="auto",
+        user_id="u_upd",
+        notebook_id="nb",
+        from_id="x",
+        to_id="y",
+        similarity=0.9,
+        verdict="shares_usage",
+        confidence=0.92,
+        accepted=True,
+        reject_reason=None,
+        reason="ok",
+        source="auto",
     )
 
     updated = judge_log.update_to_rejected("x", "y", reason="degree_cap")
@@ -416,17 +451,17 @@ def test_one_shot_judge_token_savings_vs_individual():
     for _, w, m in candidates:
         cand_lines = f"1. {w} ({m})"
         user_msg = BATCH_USER_TEMPLATE.format(
-            target_word="target", target_meaning="target_meaning",
+            target_word="target",
+            target_meaning="target_meaning",
             candidate_list=cand_lines,
         )
         individual_prompt_chars += len(BATCH_SYSTEM_PROMPT) + len(user_msg)
 
     # ── One-shot batch: single call with all N candidates.
-    batch_cand_lines = "\n".join(
-        f"{i+1}. {w} ({m})" for i, (_, w, m) in enumerate(candidates)
-    )
+    batch_cand_lines = "\n".join(f"{i + 1}. {w} ({m})" for i, (_, w, m) in enumerate(candidates))
     batch_user_msg = BATCH_USER_TEMPLATE.format(
-        target_word="target", target_meaning="target_meaning",
+        target_word="target",
+        target_meaning="target_meaning",
         candidate_list=batch_cand_lines,
     )
     batch_prompt_chars = len(BATCH_SYSTEM_PROMPT) + len(batch_user_msg)
@@ -447,9 +482,9 @@ def test_one_shot_judge_token_savings_vs_individual():
     # And there should be ONE prompt vs N — verify via the actual Judge
     # that batch mode issues a single LLM call regardless of N.
     from kg.tracked_llm import TrackedLLM
+
     mock_client = MagicMock()
-    items = [{"word": w, "link": "shares_usage", "confidence": 0.8, "reason": "r"}
-             for _, w, _ in candidates]
+    items = [{"word": w, "link": "shares_usage", "confidence": 0.8, "reason": "r"} for _, w, _ in candidates]
     mock_resp = MagicMock()
     mock_resp.choices = [MagicMock()]
     mock_resp.choices[0].message.content = json.dumps(items)
