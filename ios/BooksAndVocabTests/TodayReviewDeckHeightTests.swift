@@ -129,4 +129,64 @@ struct TodayReviewDeckHeightTests {
         #expect(H.slotHeightUpdate(stored: 200, measured: 0) == nil)
         #expect(H.slotHeightUpdate(stored: 0, measured: 120) == 120)
     }
+
+    // MARK: 背面離場接手（previous / shuffle / autoplay，#2026 leftover A）
+
+    @Test func latchRejectsInvalidMeasurements() {
+        #expect(H.RevealLatch(cardKey: "a", measured: 0) == nil)
+        #expect(H.RevealLatch(cardKey: "a", measured: -3) == nil)
+        #expect(H.RevealLatch(cardKey: "a", measured: 480)?.height == 480)
+    }
+
+    /// 離開被展開的那張卡（currentCardKey 已換）→ 接手起點 = 背面總高；同一張卡
+    /// （收合）或沒有 latch → nil，不干預既有流程。
+    @Test func handoffAppliesOnlyWhenLeavingTheLatchedCard() {
+        let latch = H.RevealLatch(cardKey: "a", measured: 480)!
+        #expect(latch.handoffHeight(currentCardKey: "b") == 480)
+        #expect(latch.handoffHeight(currentCardKey: "a") == nil)
+    }
+
+    @Test func latchSurvivesOnlyWhileTheSameCardStaysRevealed() {
+        let latch = H.RevealLatch(cardKey: "a", measured: 480)!
+        #expect(latch.survives(currentCardKey: "a", revealed: true))
+        #expect(!latch.survives(currentCardKey: "a", revealed: false))   // 收合
+        #expect(!latch.survives(currentCardKey: "b", revealed: false))   // 離場已被消化
+        #expect(!latch.survives(currentCardKey: "b", revealed: true))
+    }
+
+    @Test func effectiveShellPrefersTheHandoff() {
+        #expect(H.effectiveShell(shell: 200, handoff: nil) == 200)
+        #expect(H.effectiveShell(shell: 200, handoff: 480) == 480)
+    }
+
+    /// 核心：背面（總高 480）→ 較矮的新卡（front 200）。接手當幀新 active 釘 480、
+    /// 背景 slot cap 在 200（不得探出）；之後 plan 從 480 動畫到 200。
+    @Test func leavingARevealedCardKeepsTheBackHeightOnTheFlipFrame() {
+        let latch = H.RevealLatch(cardKey: "a", measured: 480)!
+        let shell = H.effectiveShell(shell: 200, handoff: latch.handoffHeight(currentCardKey: "b"))
+        #expect(H.slotHeight(isActive: true, shell: shell, target: 200, inFlight: false, revealed: false) == 480)
+        #expect(H.slotHeight(isActive: false, shell: shell, target: 200, inFlight: false, revealed: false) == 200)
+        #expect(H.plan(displayed: shell, target: 200, revealed: false) == .animate(to: 200))
+    }
+
+    // MARK: 轉場期間的裁切（leftover B：變高時內容溢出到展開區）
+
+    @Test func nonActiveSlotsAlwaysHardClip() {
+        for pinned in [false, true] {
+            #expect(H.clipBleed(isActive: false, pinned: pinned) == H.ClipBleed(side: 0, bottom: 0))
+        }
+    }
+
+    @Test func settledActiveSlotNeverClipsSoTheShadowSurvives() {
+        let bleed = H.clipBleed(isActive: true, pinned: false)
+        #expect(bleed.side > 0 && bleed.bottom > 0)
+    }
+
+    /// 轉場中 active 被釘高：內容（新卡自然高度 > 釘高）不得越過 frame 底邊蓋住展開區；
+    /// 上/左/右仍保留陰影空間。
+    @Test func pinnedActiveSlotClipsOnlyTheBottomEdge() {
+        let bleed = H.clipBleed(isActive: true, pinned: true)
+        #expect(bleed.bottom == 0)
+        #expect(bleed.side > 0)
+    }
 }

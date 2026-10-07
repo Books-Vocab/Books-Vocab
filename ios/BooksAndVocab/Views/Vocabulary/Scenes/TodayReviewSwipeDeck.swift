@@ -61,6 +61,7 @@ extension TodayReviewPresenter {
             )
             let borderOpacity = TodayReviewCardSlotLayout.borderOpacity(role: role, dismissProgress: dismissProgress)
             let slotShowsAnswer = isActive && state.revealStage.showsAnswer
+            let slotHeight = deckSlotHeight(isActive: isActive)
             let _ = { if role == .preview, dismissProgress > 0 || dismissPhase != .idle {
                 PerfLog.review.mark(
                     "stack.preview",
@@ -117,14 +118,18 @@ extension TodayReviewPresenter {
             // #2026：role 翻面 / 高度過渡期間 active 改釘成過渡值（`deckShellHeight`，
             // spring 驅動），nil ↔ 固定值的硬切因此只發生在「兩者相等」的瞬間。
             // 規則（含「為何這樣取」）與單元測試見 TodayReviewDeckHeight。
-            .frame(height: deckSlotHeight(isActive: isActive), alignment: .top)
+            .frame(height: slotHeight, alignment: .top)
             // 內容溢出收斂：多數較高背景卡（如 production 長例句）會被 ReviewFoldSurface
             // 內部 .clipShape + cap frame 自然截斷、不溢出；但 fixedSize 內容（多行
             // recognition 長單字）會堅持自然高度而溢出 frame 往下渲染。統一 clip 掉
             // 非 active slot 超出 cap 的部分。active slot 給超大負 inset = 不裁切，
             // 保留卡片陰影（appElevation）。value-conditional 單一 modifier → 不破壞
             // Phase 4 常駐 slot 身分。
-            .clipShape(Rectangle().inset(by: isActive ? -3000 : 0))
+            // #2026：active 被釘高（過渡中）時只裁底邊 —— 變高時新卡自然高度 > 釘高，
+            // 內容會越過 frame 底邊蓋住「點一下展開」區（規則見 TodayReviewDeckHeight.clipBleed）。
+            .clipShape(DeckSlotClipShape(
+                bleed: TodayReviewDeckHeight.clipBleed(isActive: isActive, pinned: slotHeight != nil)
+            ))
             .geometryGroup()
             #if DEBUG
             // gap 調查（slot 整體）：量整個 slot VStack 的 layout 高度（transform 前）。
@@ -335,5 +340,22 @@ extension TodayReviewPresenter {
             // reinit storm.
             PerfLog.review.stopFrameSampler("settle.frames")
         }
+    }
+}
+
+// MARK: - Slot clip（#2026）
+
+/// slot 的裁切形狀：`side` 外擴上/左/右、`bottom` 外擴底邊。外擴量為值參數，
+/// modifier 結構固定（不破壞 Phase 4 常駐 slot 身分）；量變只在 role / 過渡邊界發生。
+struct DeckSlotClipShape: Shape {
+    let bleed: TodayReviewDeckHeight.ClipBleed
+
+    func path(in rect: CGRect) -> Path {
+        Path(CGRect(
+            x: rect.minX - bleed.side,
+            y: rect.minY - bleed.side,
+            width: rect.width + 2 * bleed.side,
+            height: rect.height + bleed.side + bleed.bottom
+        ))
     }
 }

@@ -109,6 +109,9 @@ struct TodayReviewPresenter: View {
     /// 卡片區 ZStack 的最新 layout 高度（含背面展開後的總高）。reference box：
     /// 逐幀寫入不觸發 body；只在 completeFling 的 settle 縫讀一次當過渡起點。
     @State var deckHeightProbe = DeckHeightProbe()
+    /// 背面展開 settle 後記下的卡片區總高（previous / shuffle / autoplay 離場的接手起點；
+    /// 規則見 `TodayReviewDeckHeight.RevealLatch`）。離場被 retarget 消化、或同卡收合即丟棄。
+    @State var deckRevealLatch: TodayReviewDeckHeight.RevealLatch?
 
     /// 目前 active slot 的實測 front 高度 = 過渡目標（非 active slot cap 到此值）。
     var activeCardHeight: CGFloat {
@@ -163,11 +166,21 @@ struct TodayReviewPresenter: View {
         )
     }
 
+    /// 離開「已展開且 settle 的卡」時的接手高度（翻面當幀有值，retarget 後 latch 清掉）。
+    var deckHandoffHeight: CGFloat? {
+        deckRevealLatch?.handoffHeight(currentCardKey: currentCardKey)
+    }
+
+    /// 過渡值的有效起點 —— 有接手高度就用它（螢幕上當下是背面總高）。
+    var deckEffectiveShell: CGFloat {
+        TodayReviewDeckHeight.effectiveShell(shell: deckShellHeight, handoff: deckHandoffHeight)
+    }
+
     /// slot 的 layout 高度（nil = 自然高度）。cardSlotView 與 deckDepthShell 共用。
     func deckSlotHeight(isActive: Bool) -> CGFloat? {
         TodayReviewDeckHeight.slotHeight(
             isActive: isActive,
-            shell: deckShellHeight,
+            shell: deckEffectiveShell,
             target: activeCardHeight,
             inFlight: deckHeightInFlight,
             revealed: state.revealStage.showsAnswer
@@ -178,12 +191,29 @@ struct TodayReviewPresenter: View {
     /// 涵蓋 fling / 按鈕 / autoplay / previous / shuffle 全部 role 翻面路徑，
     /// 不依賴 dismissProgress（它只在 fling 時變動且 200pt 飽和）。
     func retargetDeckHeight() {
+        let revealed = state.revealStage.showsAnswer
+        // 起點取接手高度（背面離場）或過渡值；latch 一經消化 / 收合就丟。
+        let displayed = deckEffectiveShell
+        let handedOff = deckHandoffHeight != nil
+        if let latch = deckRevealLatch,
+           !latch.survives(currentCardKey: currentCardKey, revealed: revealed) {
+            deckRevealLatch = nil
+        }
         switch TodayReviewDeckHeight.plan(
-            displayed: deckShellHeight,
+            displayed: displayed,
             target: activeCardHeight,
-            revealed: state.revealStage.showsAnswer
+            revealed: revealed
         ) {
         case .hold:
+            // 接手值與目標同高：model 值仍是正面舊值，必須對齊，否則 active 永遠釘在舊值。
+            if handedOff {
+                var noAnim = Transaction(animation: nil)
+                noAnim.disablesAnimations = true
+                withTransaction(noAnim) {
+                    deckShellHeight = displayed
+                    deckHeightInFlight = false
+                }
+            }
             return
         case .snap(let height):
             deckHeightGeneration += 1
@@ -395,6 +425,7 @@ struct TodayReviewPresenter: View {
         let generation = backMountGeneration
         if showsAnswer {
             backContentMounted = true
+            latchRevealedDeckHeight(generation: generation)
             #if DEBUG
             PerfLog.review.startFrameSampler("reveal.frames")
             Task { @MainActor in
@@ -411,6 +442,20 @@ struct TodayReviewPresenter: View {
                       !state.revealStage.showsAnswer else { return }
                 backContentMounted = false
             }
+        }
+    }
+
+    /// reveal 的摺疊 spring settle 後，把當下卡片區總高記成離場接手起點。
+    /// generation 同 back-mount 閘：再次 reveal / 收合 / 換卡都會 bump → 作廢。
+    /// 注意 Task 捕獲的是 presenter 的舊 snapshot（state 是 let），所以卡片 key 在排程當下
+    /// 取、不在 Task 內讀；settle 前離場者（<0.85s）落回舊行為（已記為 deviation）。
+    private func latchRevealedDeckHeight(generation: Int) {
+        let cardKey = currentCardKey
+        let probe = deckHeightProbe
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(Self.revealSettleSeconds * 1_000_000_000))
+            guard generation == backMountGeneration else { return }
+            deckRevealLatch = TodayReviewDeckHeight.RevealLatch(cardKey: cardKey, measured: probe.layoutHeight)
         }
     }
 

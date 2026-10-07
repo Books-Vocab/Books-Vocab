@@ -78,6 +78,61 @@ enum TodayReviewDeckHeight {
         return transitioning ? resolved : nil
     }
 
+    // MARK: 背面離場接手（previous / shuffle / autoplay 不經 fling 的縫）
+
+    /// 背面展開 settle 後記下的「卡片區總高」。fling 路徑有 `pinDeckHeight` 在推進前
+    /// 釘住當下高度；但 previous / shuffle / next / autoplay 由 owner 的 state 直接推進，
+    /// presenter 在 role 翻面「之前」沒有任何 hook —— 翻面當幀 `shell` 還是正面高度，
+    /// 新 active 取到比螢幕上小得多的值，硬切。latch 把「離開前的畫面高度」預先備好，
+    /// 翻面當幀即可當 `shell` 的接手值（零跳變），之後由 `plan` 從它動畫到新卡高度。
+    ///
+    /// 以 `cardKey`（非 slot index）識別：shuffle 可能讓同一 slot 換內容。
+    struct RevealLatch: Equatable {
+        let cardKey: String
+        let height: CGFloat
+
+        init?(cardKey: String, measured: CGFloat) {
+            guard measured > 0 else { return nil }
+            self.cardKey = cardKey
+            self.height = measured
+        }
+
+        /// 已離開被展開的那張卡 → 接手起點；同一張卡（收合）→ nil，不干預。
+        func handoffHeight(currentCardKey: String) -> CGFloat? {
+            cardKey == currentCardKey ? nil : height
+        }
+
+        /// 只在「同一張卡仍展開」時保留；收合（同卡、已 front）或離場被消化後丟棄。
+        func survives(currentCardKey: String, revealed: Bool) -> Bool {
+            cardKey == currentCardKey && revealed
+        }
+    }
+
+    /// 過渡值的有效起點：有接手高度就用它，否則用 `shell`。
+    static func effectiveShell(shell: CGFloat, handoff: CGFloat?) -> CGFloat {
+        handoff ?? shell
+    }
+
+    // MARK: 轉場期間的裁切
+
+    /// slot 的裁切外擴量：`side` 用於上/左/右（保留陰影空間），`bottom` 用於底邊。
+    struct ClipBleed: Equatable {
+        let side: CGFloat
+        let bottom: CGFloat
+    }
+
+    /// 外擴量夠大 = 實質不裁切（保留 appElevation 陰影）。
+    static let openBleed: CGFloat = 3000
+
+    /// - 非 active：硬裁切（超出 cap 的 fixedSize 內容不得溢出）。
+    /// - active 穩態：不裁切（陰影）。
+    /// - active 被釘高（過渡中）：只裁底邊 —— 變高時新卡自然高度 > 釘高，內容會越過
+    ///   frame 底邊蓋住下方「點一下展開」區；上/左/右維持外擴，陰影不閃。
+    static func clipBleed(isActive: Bool, pinned: Bool) -> ClipBleed {
+        guard isActive else { return ClipBleed(side: 0, bottom: 0) }
+        return ClipBleed(side: openBleed, bottom: pinned ? 0 : openBleed)
+    }
+
     /// slot 實測高度的寫入判定：回傳要寫入的新值，或 nil（無效 / 在雜訊內）。
     /// 比對對象是 **slot 自己上次記的值**，不是卡片的量測快取 —— 同一張卡的快取
     /// 高度不變，但 slot 內容輪替後 slot 存的是別張卡的舊值（stale，第三種跳法）。
