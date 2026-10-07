@@ -289,6 +289,10 @@ worktree_cache_kb() {
 cache_kb() {
   local root total=0 size
   while IFS= read -r root; do
+    # A root with no entries holds nothing; block-charging filesystems (ext4)
+    # still bill its own directory block, which a zero budget would misread as
+    # unreleased cache.
+    [[ -n "$(find "$root" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]] || continue
     size="$(du -sk "$root" 2>/dev/null | awk 'NR==1 {print $1}')"
     [[ "$size" =~ ^[0-9]+$ ]] && total=$((total + size))
   done < <(cache_roots)

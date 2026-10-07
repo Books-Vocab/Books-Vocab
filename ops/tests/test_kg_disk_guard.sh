@@ -441,6 +441,25 @@ grep -q '"cache_repair_status":"repaired"' "$state" \
 grep -q '"cache_repair_remaining_kb":0' "$state" \
   && ok "completed headroom repair has no shortfall" || bad "completed headroom repair shortfall"
 
+echo "── headroom exhausted: an emptied cache root costs nothing on block-charging filesystems ──"
+# ext4 (the CI runner) charges one block for an empty directory; APFS does not.
+# Emulate that with a du shim so the contract is checked on every host.
+root="$TMP/headroom-empty-root"; cache="$root/.cache/ios-test-derived-data"; state="$root/state.json"
+shim="$root/shim"; mkdir -p "$cache/old/Build" "$shim"
+printf x > "$cache/old/Build/blob"; touch -m -t 202001010000.00 "$cache/old"
+real_du="$(command -v du)"
+printf '#!/bin/sh\nout="$(%s "$@")" || exit $?\nprintf "%%s\\n" "$out" | awk -F"\\t" -v OFS="\\t" "{ \\$1 += 4; print }"\n' "$real_du" > "$shim/du"
+chmod +x "$shim/du"
+PATH="$shim:$PATH" KG_DISK_GUARD_WORKSPACE="$root" KG_DISK_GUARD_STATE="$state" \
+  KG_DISK_GUARD_FREE_BYTES=$((30*1073741824)) KG_DISK_GUARD_ACTIVE_BUILD=0 \
+  KG_DISK_GUARD_CACHE_BUDGET_GIB=0 KG_DISK_GUARD_CACHE_HEADROOM_GIB=0 \
+  KG_DISK_GUARD_CACHE_KEEP=0 KG_DISK_GUARD_CACHE_MIN_AGE_HOURS=0 \
+  KG_DISK_GUARD_CACHE_READER_WINDOW_HOURS=0 KG_DISK_GUARD_BUILD_LOCK_FILE="$TMP/headroom-empty-root.lock" \
+  "$SCRIPT" >/dev/null 2>&1
+[[ ! -d "$cache/old" ]] && ok "empty-root case evicts the stale key" || bad "empty-root case left the stale key"
+grep -q '"cache_repair_remaining_kb":0' "$state" \
+  && ok "emptied cache root leaves no shortfall" || bad_state "emptied cache root still counted" "$state"
+
 echo "── aggregate headroom: inactive shared build cache is rebuildable ──"
 root="$TMP/build-cache-repair"; cache="$root/.cache/ios-build-derived-data"; state="$root/state.json"
 mkdir -p "$cache/Build/Products"
