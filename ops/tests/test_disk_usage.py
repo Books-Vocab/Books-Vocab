@@ -1833,10 +1833,29 @@ def test_xctest_devices_physical_open_fallback_is_explicit_and_conservative(
 _LIVE = object()
 
 
-def _harness_lock_reason(name: str, pid: int) -> str:
-    """The exact reason Claude Code writes when it locks an agent worktree."""
+# A start time no live process in the test run can have.
+_FOREIGN_START = "Mon Jan  1 00:00:00 2001"
 
-    return f"claude agent {name} (pid {pid} start Wed Oct  7 11:50:17 2026)"
+
+def _ps_lstart(pid: int) -> str | None:
+    """Independent of the module under test: what ``ps`` reports for ``pid``."""
+
+    completed = subprocess.run(
+        ["ps", "-o", "lstart=", "-p", str(pid)],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "LC_ALL": "C"},
+        check=False,
+    )
+    return completed.stdout.strip() or None
+
+
+def _harness_lock_reason(name: str, pid: int, start: str | None = None) -> str:
+    """The exact reason Claude Code writes when it locks an agent worktree:
+    the pid plus that process's start time (``ps`` lstart format)."""
+
+    start = start or _ps_lstart(pid) or _FOREIGN_START
+    return f"claude agent {name} (pid {pid} start {start})"
 
 
 def _dead_pid() -> int:
@@ -1920,6 +1939,8 @@ _AGENT_ROOT_IDENTITY = {
         # The harness no longer holds it: its own lock names a dead pid, or the
         # lock is gone and the dir carries a harness-generated name.
         ("agent-a1b2c3d4e5f6", None, "dead-pid", "stale-agent"),
+        # The recorded pid was reused: it is alive but started at another time.
+        ("agent-a1b2c3d4e5f6", None, "reused-pid", "stale-agent"),
         ("agent-a528d0e76f72e9dd3", None, None, "stale-agent"),
         ("wf_e7e67718-c0d-10", "fix-p1-review", None, "stale-agent"),
         # No provenance: an unlocked hand-made checkout (the review repro is
@@ -1943,7 +1964,11 @@ def test_claude_root_lane_identity_needs_harness_provenance(
 ) -> None:
     repo, worktree = _repo_with_worktree(tmp_path)
     dead = _dead_pid() if lock == "dead-pid" else None
-    lane = _agent_worktree(repo, name=name, branch=branch, lock=dead or lock)
+    if lock == "reused-pid":
+        recorded: object = _harness_lock_reason(name, os.getpid(), _FOREIGN_START)
+    else:
+        recorded = dead or lock
+    lane = _agent_worktree(repo, name=name, branch=branch, lock=recorded)
     # Agent lanes are normally dirty, so dirt must not decide identity.
     (lane / "wip.txt").write_bytes(b"wip\n" * 128)
 
@@ -1972,11 +1997,71 @@ def test_claude_root_lane_identity_needs_harness_provenance(
         assert entry["agent_lock"] == {"state": "live", "pid": os.getpid()}
         return
     assert entry["lane_state"] == "stale"
-    expected = {"state": "dead-pid", "pid": dead} if dead else {"state": "unlocked"}
+    if lock == "reused-pid":
+        expected = {"state": "reused-pid", "pid": os.getpid()}
+    elif dead:
+        expected = {"state": "dead-pid", "pid": dead}
+    else:
+        expected = {"state": "unlocked"}
     assert entry["agent_lock"] == expected
     hint = entry["cleanup_hint"]
     assert f"git worktree remove {lane}" in hint
-    assert (f"git worktree unlock {lane}" in hint) is bool(dead)
+    assert (f"git worktree unlock {lane}" in hint) is (lock is not None)
+
+
+@pytest.mark.parametrize(
+    "reason_tail,probe,state",
+    [
+        # Matching start (within lstart's 1 s resolution plus skew) -> live.
+        (" start Wed Oct  7 11:50:17 2026", "Wed Oct  7 11:50:18 2026", "live"),
+        # Same pid, other start: an unrelated process reused it.
+        (" start Wed Oct  7 11:50:17 2026", "Wed Oct  7 11:59:17 2026", "reused-pid"),
+        # Missing / unparseable start info -> pid-only fallback.
+        ("", "Wed Oct  7 11:59:17 2026", "live"),
+        (" start yesterday", "Wed Oct  7 11:59:17 2026", "live"),
+        (" start Wed Oct  7 11:50:17 2026", None, "live"),
+    ],
+)
+def test_agent_lock_liveness_checks_recorded_start_time(
+    monkeypatch: pytest.MonkeyPatch, reason_tail: str, probe: str | None, state: str
+) -> None:
+    """Live = pid exists AND its start matches the lock's recorded start.  The
+    probe is injected as raw ``ps -o lstart=`` text (padded like macOS and
+    procps print it) so the real parser is exercised on any CI host."""
+
+    probed: list[int] = []
+
+    def fake_lstart(pid: int) -> str | None:
+        probed.append(pid)
+        return None if probe is None else f"{probe}    \n"
+
+    monkeypatch.setattr(disk_usage, "_ps_lstart", fake_lstart)
+    workspace = Path("/nonexistent-ws")
+    lane = workspace / ".claude" / "worktrees" / "agent-a1b2c3d4e5f6"
+    pid = os.getpid()
+    reason = f"claude agent {lane.name} (pid {pid}{reason_tail})"
+    physical = {"locked": True, "lock_reason": reason}
+
+    assert disk_usage._agent_lane_lock(lane, physical, workspace) == {
+        "state": state,
+        "pid": pid,
+    }
+    assert probed == ([pid] if reason_tail.startswith(" start Wed") else [])
+
+
+def test_real_ps_start_of_live_pid_matches_its_lock() -> None:
+    """Positive control against the real ``ps`` (macOS here, procps on CI)."""
+
+    workspace = Path("/nonexistent-ws")
+    lane = workspace / ".claude" / "worktrees" / "agent-a1b2c3d4e5f6"
+    reason = _harness_lock_reason(lane.name, os.getpid())
+    assert _FOREIGN_START not in reason, "ps lstart unavailable for a live pid"
+    physical = {"locked": True, "lock_reason": reason}
+
+    assert disk_usage._agent_lane_lock(lane, physical, workspace) == {
+        "state": "live",
+        "pid": os.getpid(),
+    }
 
 
 @pytest.mark.parametrize("lock", [_LIVE, None])
