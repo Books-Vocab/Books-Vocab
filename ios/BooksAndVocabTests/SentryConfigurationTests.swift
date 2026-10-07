@@ -1,3 +1,4 @@
+import StoreKit
 import Testing
 @testable import BooksAndVocab
 
@@ -77,25 +78,37 @@ struct SentryConfigurationTests {
         #expect(configuration.dist == nil)
     }
 
-    @Test func environmentMapsBuildChannelFromReceiptAndKeepsPlistOverride() {
+    @Test func bootstrapEnvironmentIsSynchronousAndOnlyUnoverriddenReleaseRefinesAtRuntime() {
         var withoutOverride = info
         withoutOverride.removeValue(forKey: "SentryEnvironment")
 
-        func environment(_ info: [String: Any], receipt: String?, debugBuild: Bool) -> String {
+        func configuration(_ info: [String: Any], debugBuild: Bool) -> SentryConfiguration {
             SentryConfiguration.make(
                 infoDictionary: info,
                 bundleIdentifier: "com.example.books",
                 environment: [:],
                 arguments: [],
-                debugBuild: debugBuild,
-                appStoreReceiptFileName: receipt
-            ).environment
+                debugBuild: debugBuild
+            )
         }
 
-        #expect(environment(withoutOverride, receipt: "sandboxReceipt", debugBuild: false) == "testflight")
-        #expect(environment(withoutOverride, receipt: "receipt", debugBuild: false) == "production")
-        #expect(environment(withoutOverride, receipt: nil, debugBuild: false) == "production")
-        #expect(environment(withoutOverride, receipt: "sandboxReceipt", debugBuild: true) == "debug")
-        #expect(environment(info, receipt: "sandboxReceipt", debugBuild: false) == "qa")
+        let release = configuration(withoutOverride, debugBuild: false)
+        let debug = configuration(withoutOverride, debugBuild: true)
+        let overridden = configuration(info, debugBuild: false)
+
+        #expect(release.environment == "production")
+        #expect(release.refinesEnvironmentAtRuntime)
+        #expect(debug.environment == "debug")
+        #expect(!debug.refinesEnvironmentAtRuntime)
+        #expect(overridden.environment == "qa")
+        #expect(!overridden.refinesEnvironmentAtRuntime)
+    }
+
+    @Test func verifiedSandboxAppTransactionMeansTestFlight() {
+        #expect(SentryConfiguration.runtimeEnvironment(current: "production", appTransactionEnvironment: .sandbox) == "testflight")
+        #expect(SentryConfiguration.runtimeEnvironment(current: "production", appTransactionEnvironment: .production) == "production")
+        #expect(SentryConfiguration.runtimeEnvironment(current: "production", appTransactionEnvironment: .xcode) == "production")
+        // Errors and unverified results arrive as nil and keep the bootstrap value.
+        #expect(SentryConfiguration.runtimeEnvironment(current: "production", appTransactionEnvironment: nil) == "production")
     }
 }

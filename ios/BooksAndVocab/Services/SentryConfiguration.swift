@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import StoreKit
 
 struct SentryConfiguration: Equatable {
     let dsn: String?
@@ -18,6 +19,9 @@ struct SentryConfiguration: Equatable {
     let enabled: Bool
     let debugBuild: Bool
     let testEventRequested: Bool
+    /// Release build without a `SentryEnvironment` override: the bootstrap
+    /// value is provisional and refined asynchronously from StoreKit.
+    let refinesEnvironmentAtRuntime: Bool
 
     static func current() -> SentryConfiguration {
         #if DEBUG
@@ -31,8 +35,7 @@ struct SentryConfiguration: Equatable {
             bundleIdentifier: Bundle.main.bundleIdentifier,
             environment: ProcessInfo.processInfo.environment,
             arguments: ProcessInfo.processInfo.arguments,
-            debugBuild: debugBuild,
-            appStoreReceiptFileName: Bundle.main.appStoreReceiptURL?.lastPathComponent
+            debugBuild: debugBuild
         )
     }
 
@@ -41,16 +44,12 @@ struct SentryConfiguration: Equatable {
         bundleIdentifier: String?,
         environment: [String: String],
         arguments: [String],
-        debugBuild: Bool,
-        appStoreReceiptFileName: String? = nil
+        debugBuild: Bool
     ) -> SentryConfiguration {
         let dsn = nonEmptyString(infoDictionary["SentryDSN"])
         let testEventRequested = arguments.contains("-sentryTest")
-        let environmentName = resolveEnvironment(
-            override: nonEmptyString(infoDictionary["SentryEnvironment"]),
-            debugBuild: debugBuild,
-            appStoreReceiptFileName: appStoreReceiptFileName
-        )
+        let environmentOverride = nonEmptyString(infoDictionary["SentryEnvironment"])
+        let environmentName = environmentOverride ?? (debugBuild ? "debug" : "production")
         let marketingVersion = nonEmptyString(infoDictionary["CFBundleShortVersionString"])
         let build = nonEmptyString(infoDictionary["CFBundleVersion"])
         let releaseName: String?
@@ -77,22 +76,30 @@ struct SentryConfiguration: Equatable {
             tracesSampleRate: tracesSampleRate,
             enabled: enabled,
             debugBuild: debugBuild,
-            testEventRequested: testEventRequested
+            testEventRequested: testEventRequested,
+            refinesEnvironmentAtRuntime: !debugBuild && environmentOverride == nil
         )
     }
 
     /// TestFlight and App Store ship the same Release binary, so the channel
-    /// is detected at runtime: TestFlight installs carry a `sandboxReceipt`
-    /// (the same signal SentryCrash uses). An explicit `SentryEnvironment`
-    /// Info.plist value always wins.
-    static func resolveEnvironment(
-        override: String?,
-        debugBuild: Bool,
-        appStoreReceiptFileName: String?
+    /// is only knowable at runtime. A verified StoreKit 2 AppTransaction in
+    /// the sandbox environment means TestFlight; anything else (production,
+    /// Xcode, unverified or failed lookup = nil) keeps the bootstrap value.
+    static func runtimeEnvironment(
+        current: String,
+        appTransactionEnvironment: AppStore.Environment?
     ) -> String {
-        if let override { return override }
-        if debugBuild { return "debug" }
-        return appStoreReceiptFileName == "sandboxReceipt" ? "testflight" : "production"
+        appTransactionEnvironment == .sandbox ? "testflight" : current
+    }
+
+    /// Verified AppTransaction environment, or nil on error/unverified.
+    static func fetchAppTransactionEnvironment() async -> AppStore.Environment? {
+        do {
+            guard case .verified(let transaction) = try await AppTransaction.shared else { return nil }
+            return transaction.environment
+        } catch {
+            return nil
+        }
     }
 
     static func resolveTracesSampleRate(rawOverride: String?, debugBuild: Bool) -> Double {
