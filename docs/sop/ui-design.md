@@ -326,4 +326,7 @@ PR #402 引入：
 5. **新增高密度 list 元件時，必加對應 `Debug/Scenarios/*Scenarios.swift`**  
    涵蓋 happy / long-content / large-numbers / narrow-width / dynamicTypeSize(.accessibility3) 五種 stress case，作為 visual baseline。範例：`NotebookListScenarios.swift`、`BookCardScenarios.swift`。
 
+6. **可點擊元素用 `Button`，不用 `.onTapGesture`；觸控區 ≥ 44pt**
+   `.onTapGesture` 沒有 button trait、沒有選中狀態、也不保證命中區（#2053：色票 32×32、圖樣選項、row tap 都曾如此）。選擇器／row 一律 `Button { … } label: { … }.buttonStyle(.plain)`，label 內 `.frame(minWidth/minHeight: AppFloatingChromeMetrics.hitTarget)` + `.contentShape(Rectangle())`，選中狀態用 `.accessibilityAddTraits(.isSelected)`（先例：`NotebookEditPickerMetrics`、`ReaderThemeGlassPickerMetrics`）。確實需要手勢（與 `onLongPressGesture` 並存、全頁背景收鍵盤等）時，在 modifier chain **之後**宣告 `.accessibilityAddTraits(.isButton)` / `.accessibilityAction(…)` / `.accessibilityHidden(true)`，或行內標 `// a11y-allow: <語意在哪裡／為何不需要>`。`ops/tap_a11y_lint.sh` 守門（`--baseline-check`，baseline 只收 review mode；epic #2036 已定案 review mode 不要求 VoiceOver，其餘範圍照本條）。
+
 > Phase 2(2026-05) 起 `WordRow` / `VocabReviewProgressBar` 已套用上述規則。新元件 PR Reviewer 看到缺漏直接退件。

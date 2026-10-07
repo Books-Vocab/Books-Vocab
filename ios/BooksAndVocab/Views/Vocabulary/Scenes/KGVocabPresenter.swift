@@ -236,6 +236,9 @@ struct KGVocabRow: View {
                             : appSkin.palette.quaternaryText
                     )
                     .onTapGesture(perform: onToggleSelection)
+                    // 勾選圈只是 row tap 的視覺重複（row tap 在選取模式下同樣 toggle，
+                    // 並帶 isSelected trait），對 AT 隱藏避免同一動作讀兩次。
+                    .accessibilityHidden(true)
                     .transition(.selectionReveal)
             }
 
@@ -248,6 +251,7 @@ struct KGVocabRow: View {
             ))
                 .contentShape(Rectangle())
                 .onTapGesture(perform: onTap)
+                .accessibilityAddTraits(isSelecting && isSelected ? [.isButton, .isSelected] : .isButton)
                 .onLongPressGesture(perform: onLongPress)
         }
         .padding(.horizontal, appSkin.metrics.listRowHorizontalInset)

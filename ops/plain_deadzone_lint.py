@@ -54,129 +54,27 @@ import re
 import sys
 from pathlib import Path
 
+from _swift_scan import (
+    blank_comments_and_strings,
+    match_balanced,
+    normalize,
+    should_skip,
+    skip_ws,
+    walk_modifier_chain,
+)
+
 ROOT = Path(__file__).resolve().parent.parent
 SRC = Path(os.environ.get("KG_DEADZONE_SRC", ROOT / "ios" / "BooksAndVocab"))
 BASELINE_FILE = Path(
     os.environ.get("KG_DEADZONE_BASELINE", ROOT / "ops" / "plain_deadzone_baseline.txt")
 )
 
-SKIP_PATH_FRAGMENTS = ("/Debug/",)
-SKIP_NAME_GLOBS = ("*Preview*.swift", "*Tests*.swift")
-
-PLAIN_STYLE_RX = re.compile(
-    r"\.buttonStyle\(\s*(?:\.plain\b|PlainButtonStyle\(\))"
-)
+PLAIN_STYLE_RX = re.compile(r"\.buttonStyle\(\s*(?:\.plain\b|PlainButtonStyle\(\))")
 GAP_RX = re.compile(r"\bSpacer\([^)]*\)?|maxWidth:\s*\.infinity")
 CONTENT_SHAPE = ".contentShape("
 # Comment-form only, so a string literal merely *containing* the marker text
 # cannot exempt a real dead zone.
 ALLOW_RX = re.compile(r"//\s*deadzone-allow:")
-MULTI_TRAILING_RX = re.compile(r"\w+\s*:")
-
-_WS = re.compile(r"\s+")
-
-
-def normalize(snippet: str) -> str:
-    return _WS.sub(" ", snippet.strip())
-
-
-def should_skip(path: Path) -> bool:
-    s = str(path)
-    if any(frag in s for frag in SKIP_PATH_FRAGMENTS):
-        return True
-    return any(path.match(g) for g in SKIP_NAME_GLOBS)
-
-
-def blank_comments_and_strings(text: str, keep_comments: bool = False) -> str:
-    """Replace comment bodies and string-literal contents with spaces.
-
-    Keeps every newline (so line numbers survive) and keeps the quote
-    characters themselves (so a titled `Button("x")` is still recognizable by
-    its leading `"`). Handles `//`, nested `/* */`, `"` with `\\` escapes,
-    `\"\"\"` multiline strings, and `\\(...)` interpolation (blanked with the
-    rest of the string so stray braces inside can't break brace matching).
-
-    With `keep_comments=True` only strings are blanked (comments are skipped
-    over but left intact) — that variant is what the allow-marker search runs
-    on, so a marker is honored only in a real comment, never in string copy.
-    """
-    out = list(text)
-    i, n = 0, len(text)
-
-    def blank(a: int, b: int) -> None:
-        for j in range(a, b):
-            if out[j] != "\n":
-                out[j] = " "
-
-    while i < n:
-        c = text[i]
-        if c == "/" and i + 1 < n and text[i + 1] == "/":
-            j = text.find("\n", i)
-            j = n if j == -1 else j
-            if not keep_comments:
-                blank(i, j)
-            i = j
-        elif c == "/" and i + 1 < n and text[i + 1] == "*":
-            depth, j = 1, i + 2
-            while j < n and depth:
-                if text.startswith("/*", j):
-                    depth += 1
-                    j += 2
-                elif text.startswith("*/", j):
-                    depth -= 1
-                    j += 2
-                else:
-                    j += 1
-            if not keep_comments:
-                blank(i, j)
-            i = j
-        elif c == '"':
-            triple = text.startswith('"""', i)
-            quote_len = 3 if triple else 1
-            j = i + quote_len
-            while j < n:
-                if text[j] == "\\":
-                    j += 2
-                    continue
-                if triple and text.startswith('"""', j):
-                    j += 3
-                    break
-                if not triple and (text[j] == '"' or text[j] == "\n"):
-                    j += 1
-                    break
-                j += 1
-            blank(i + quote_len, max(i + quote_len, j - quote_len))
-            i = j
-        else:
-            i += 1
-    return "".join(out)
-
-
-def match_balanced(text: str, start: int, open_ch: str, close_ch: str) -> int:
-    """`text[start]` must be `open_ch`; return index just past its match."""
-    depth = 0
-    i = start
-    n = len(text)
-    while i < n:
-        c = text[i]
-        if c == open_ch:
-            depth += 1
-        elif c == close_ch:
-            depth -= 1
-            if depth == 0:
-                return i + 1
-        i += 1
-    return n
-
-
-def skip_ws(text: str, i: int) -> int:
-    n = len(text)
-    while i < n and text[i] in " \t\n\r":
-        i += 1
-    return i
-
-
-CHAIN_STEP_RX = re.compile(r"\.\w+")
 
 
 class ButtonSite:
@@ -232,39 +130,8 @@ def parse_button(stripped: str, pos: int) -> ButtonSite | None:
     else:
         return None  # no in-file label (e.g. `Button("x", action: f)`)
 
-    # Modifier chain: `.name`, optional `(...)`, optional trailing `{...}`.
-    # Only the `.name(...)` segments enter the semantic chain text — trailing
-    # closure BODIES are walked past but excluded, so a `.contentShape` or
-    # `.buttonStyle` buried inside `.overlay {…}` / `.alert {…} message: {…}`
-    # can neither exempt nor plain-mark the button it doesn't apply to.
-    chain_parts: list[str] = []
-    while True:
-        j = skip_ws(stripped, i)
-        m = CHAIN_STEP_RX.match(stripped, j)
-        if not m:
-            break
-        seg_start = j
-        j = m.end()
-        if j < n and stripped[j] == "(":
-            j = match_balanced(stripped, j, "(", ")")
-        chain_parts.append(stripped[seg_start:j])
-        k = skip_ws(stripped, j)
-        if k < n and stripped[k] == "{":
-            j = match_balanced(stripped, k, "{", "}")
-            # Multi-trailing-closure modifiers (`.alert("t", isPresented:) {…}
-            # message: {…}`) continue with `name: {…}` segments; consume them
-            # so the walk still sees a .buttonStyle further down the chain.
-            while True:
-                k = skip_ws(stripped, j)
-                m2 = MULTI_TRAILING_RX.match(stripped, k)
-                if not m2:
-                    break
-                k2 = skip_ws(stripped, m2.end())
-                if k2 < n and stripped[k2] == "{":
-                    j = match_balanced(stripped, k2, "{", "}")
-                else:
-                    break
-        i = j
+    # Modifier chain: see _swift_scan.walk_modifier_chain (closure bodies excluded).
+    chain_parts, i = walk_modifier_chain(stripped, i)
     chain = " ".join(chain_parts)
     return ButtonSite(pos, i, args, label, chain)
 
@@ -320,7 +187,9 @@ def scan_file(path: Path, rel: str) -> list[Finding]:
         # line too.
         lineno = stripped.count("\n", 0, site.start) + 1
         commented_lines = commented.splitlines()
-        if lineno <= len(commented_lines) and ALLOW_RX.search(commented_lines[lineno - 1]):
+        if lineno <= len(commented_lines) and ALLOW_RX.search(
+            commented_lines[lineno - 1]
+        ):
             continue
         lines = text.splitlines()
         style = PLAIN_STYLE_RX.search(site.chain)
@@ -375,7 +244,9 @@ def main() -> int:
             "",
         ]
         BASELINE_FILE.write_text("\n".join(header + keys) + "\n", encoding="utf-8")
-        print(f"[plain_deadzone_lint] wrote baseline: {len(keys)} findings → {BASELINE_FILE}")
+        print(
+            f"[plain_deadzone_lint] wrote baseline: {len(keys)} findings → {BASELINE_FILE}"
+        )
         return 0
 
     if args.baseline_check:

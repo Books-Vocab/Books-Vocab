@@ -289,6 +289,7 @@ struct PodcastBubbleCell: View, Equatable {
                     // bubbleContent，**不**綁含 Spacer(minLength:48) 的外層 HStack，否則整列
                     // （含氣泡旁空白）都會觸發 seek。a11y 仍在 row 層（下方 modifiers）。
                     .contentShape(Rectangle())
+                    // a11y-allow: 語意宣告在外層 row（isButton trait + accessibilityAction(.default)，見下方 modifiers）。
                     .onTapGesture {
                         if !isSelecting { onSentenceTap() }
                     }

@@ -44,6 +44,7 @@ DEFAULT_TESTS=(
   python-entrypoints
   ui-token
   plain-deadzone
+  tap-a11y
   lint-baselines
   injection-lint
   ui-fixture-lint
@@ -235,6 +236,7 @@ run_one() {
       ;;
     ui-token)           ./ops/test_ui_token_lint.sh ;;
     plain-deadzone)     ./ops/test_plain_deadzone_lint.sh ;;
+    tap-a11y)           ./ops/test_tap_a11y_lint.sh ;;
     lint-baselines)     ./ops/tests/test_lint_baselines.sh && ./ops/tests/test_i18n_lint.sh ;;
     injection-lint)     ./ops/tests/test_injection_lint.sh ;;
     ui-fixture-lint)    ./ops/tests/test_ui_fixture_lint.sh ;;

@@ -42,14 +42,19 @@ struct ArchivedVocabSheet: View {
                 } else {
                     List {
                         ForEach(archivedEntries) { entry in
-                            WordRow(viewData: entry.wordRowViewData(
-                                showsReviewState: false,
-                                showsSourceContext: false,
-                                showsDifficultyTier: false,
-                                showsArchiveStyle: true
-                            ))
-                            .contentShape(Rectangle())
-                            .onTapGesture { selectedEntry = entry }
+                            Button {
+                                selectedEntry = entry
+                            } label: {
+                                WordRow(viewData: entry.wordRowViewData(
+                                    showsReviewState: false,
+                                    showsSourceContext: false,
+                                    showsDifficultyTier: false,
+                                    showsArchiveStyle: true
+                                ))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                             .swipeActions(edge: .trailing) {
                                 Button {
                                     handleUnarchive(entry)

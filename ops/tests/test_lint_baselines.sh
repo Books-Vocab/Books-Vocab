@@ -55,6 +55,7 @@ assert_subset() {  # $1 = label, $2 = real baseline, $3 = current-keys file, $4 
 declare -a SET_LINTS=(
   "ui_token_lint.sh|ops/ui_token_baseline.txt|KG_UI_TOKEN_BASELINE"
   "plain_deadzone_lint.sh|ops/plain_deadzone_baseline.txt|KG_DEADZONE_BASELINE"
+  "tap_a11y_lint.sh|ops/tap_a11y_baseline.txt|KG_TAP_A11Y_BASELINE"
   "injection_lint.sh|ops/injection_baseline.txt|KG_INJECTION_BASELINE"
 )
 
