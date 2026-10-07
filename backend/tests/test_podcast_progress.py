@@ -9,9 +9,15 @@ Contract:
 * Cross-user isolation: user A cannot see user B's progress.
 * series_id / ep_num validation matches the existing podcast routes.
 """
+
 from __future__ import annotations
 
+import re
+
 import pytest
+
+from kg import podcast_progress as progress_store
+from kg.routers import podcast as _podcast_mod
 
 _ISO_NOW = "2026-05-14T12:00:00+00:00"
 _ISO_LATER = "2026-05-14T12:05:00+00:00"
@@ -75,8 +81,12 @@ def test_get_progress_single_requires_auth(isolated_api):
 
 def test_post_progress_creates_row(isolated_api):
     resp = _post_progress(
-        isolated_api, "series_a", 1,
-        position=42.5, duration=300.0, updated_at=_ISO_NOW,
+        isolated_api,
+        "series_a",
+        1,
+        position=42.5,
+        duration=300.0,
+        updated_at=_ISO_NOW,
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -89,11 +99,16 @@ def test_post_progress_creates_row(isolated_api):
 
 def test_get_single_after_post(isolated_api):
     _post_progress(
-        isolated_api, "series_a", 1,
-        position=42.5, duration=300.0, updated_at=_ISO_NOW,
+        isolated_api,
+        "series_a",
+        1,
+        position=42.5,
+        duration=300.0,
+        updated_at=_ISO_NOW,
     )
     resp = isolated_api.client.get(
-        "/api/podcasts/series_a/1/progress", headers=isolated_api.headers,
+        "/api/podcasts/series_a/1/progress",
+        headers=isolated_api.headers,
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -104,23 +119,36 @@ def test_get_single_after_post(isolated_api):
 
 def test_get_single_404_when_no_row(isolated_api):
     resp = isolated_api.client.get(
-        "/api/podcasts/series_a/1/progress", headers=isolated_api.headers,
+        "/api/podcasts/series_a/1/progress",
+        headers=isolated_api.headers,
     )
     assert resp.status_code == 404
 
 
 def test_get_list_returns_all_rows(isolated_api):
     _post_progress(
-        isolated_api, "series_a", 1,
-        position=10.0, duration=100.0, updated_at=_ISO_NOW,
+        isolated_api,
+        "series_a",
+        1,
+        position=10.0,
+        duration=100.0,
+        updated_at=_ISO_NOW,
     )
     _post_progress(
-        isolated_api, "series_a", 2,
-        position=20.0, duration=200.0, updated_at=_ISO_NOW,
+        isolated_api,
+        "series_a",
+        2,
+        position=20.0,
+        duration=200.0,
+        updated_at=_ISO_NOW,
     )
     _post_progress(
-        isolated_api, "series_b", 1,
-        position=30.0, duration=300.0, updated_at=_ISO_NOW,
+        isolated_api,
+        "series_b",
+        1,
+        position=30.0,
+        duration=300.0,
+        updated_at=_ISO_NOW,
     )
     resp = isolated_api.client.get("/api/podcasts/progress", headers=isolated_api.headers)
     assert resp.status_code == 200
@@ -208,15 +236,24 @@ def test_get_list_empty_returns_empty_items(isolated_api):
 
 def test_repost_with_newer_updated_at_overwrites(isolated_api):
     _post_progress(
-        isolated_api, "series_a", 1,
-        position=10.0, duration=300.0, updated_at=_ISO_NOW,
+        isolated_api,
+        "series_a",
+        1,
+        position=10.0,
+        duration=300.0,
+        updated_at=_ISO_NOW,
     )
     _post_progress(
-        isolated_api, "series_a", 1,
-        position=120.0, duration=300.0, updated_at=_ISO_LATER,
+        isolated_api,
+        "series_a",
+        1,
+        position=120.0,
+        duration=300.0,
+        updated_at=_ISO_LATER,
     )
     resp = isolated_api.client.get(
-        "/api/podcasts/series_a/1/progress", headers=isolated_api.headers,
+        "/api/podcasts/series_a/1/progress",
+        headers=isolated_api.headers,
     )
     body = resp.json()
     assert body["position_sec"] == 120.0
@@ -225,13 +262,21 @@ def test_repost_with_newer_updated_at_overwrites(isolated_api):
 
 def test_repost_with_older_updated_at_ignored(isolated_api):
     _post_progress(
-        isolated_api, "series_a", 1,
-        position=120.0, duration=300.0, updated_at=_ISO_NOW,
+        isolated_api,
+        "series_a",
+        1,
+        position=120.0,
+        duration=300.0,
+        updated_at=_ISO_NOW,
     )
     # Older payload arrives (e.g. delayed sync from another device) — must not clobber.
     resp = _post_progress(
-        isolated_api, "series_a", 1,
-        position=10.0, duration=300.0, updated_at=_ISO_EARLIER,
+        isolated_api,
+        "series_a",
+        1,
+        position=10.0,
+        duration=300.0,
+        updated_at=_ISO_EARLIER,
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -240,7 +285,8 @@ def test_repost_with_older_updated_at_ignored(isolated_api):
     assert body["updated_at"] == _ISO_NOW
 
     resp_get = isolated_api.client.get(
-        "/api/podcasts/series_a/1/progress", headers=isolated_api.headers,
+        "/api/podcasts/series_a/1/progress",
+        headers=isolated_api.headers,
     )
     assert resp_get.json()["position_sec"] == 120.0
 
@@ -260,12 +306,20 @@ def test_lww_fractional_older_does_not_clobber_integer_newer(isolated_api):
     """An older fractional-second write must not overwrite a newer
     integer-second stored row (string compare would wrongly let it win)."""
     _post_progress(
-        isolated_api, "series_a", 1,
-        position=120.0, duration=300.0, updated_at=_ISO_NOW,  # integer secs
+        isolated_api,
+        "series_a",
+        1,
+        position=120.0,
+        duration=300.0,
+        updated_at=_ISO_NOW,  # integer secs
     )
     resp = _post_progress(
-        isolated_api, "series_a", 1,
-        position=10.0, duration=300.0, updated_at=_ISO_FRAC_EARLIER,  # older, fractional
+        isolated_api,
+        "series_a",
+        1,
+        position=10.0,
+        duration=300.0,
+        updated_at=_ISO_FRAC_EARLIER,  # older, fractional
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -273,7 +327,8 @@ def test_lww_fractional_older_does_not_clobber_integer_newer(isolated_api):
     assert body["updated_at"] == _ISO_NOW
 
     resp_get = isolated_api.client.get(
-        "/api/podcasts/series_a/1/progress", headers=isolated_api.headers,
+        "/api/podcasts/series_a/1/progress",
+        headers=isolated_api.headers,
     )
     assert resp_get.json()["position_sec"] == 120.0
 
@@ -281,16 +336,24 @@ def test_lww_fractional_older_does_not_clobber_integer_newer(isolated_api):
 def test_lww_fractional_newer_overwrites_integer(isolated_api):
     """A newer fractional-second write overwrites an older integer-second row."""
     _post_progress(
-        isolated_api, "series_a", 1,
-        position=10.0, duration=300.0, updated_at=_ISO_EARLIER,  # older, integer
+        isolated_api,
+        "series_a",
+        1,
+        position=10.0,
+        duration=300.0,
+        updated_at=_ISO_EARLIER,  # older, integer
     )
     _post_progress(
-        isolated_api, "series_a", 1,
-        position=120.0, duration=300.0,
+        isolated_api,
+        "series_a",
+        1,
+        position=120.0,
+        duration=300.0,
         updated_at="2026-05-14T12:05:00.500000+00:00",  # newer, fractional
     )
     resp = isolated_api.client.get(
-        "/api/podcasts/series_a/1/progress", headers=isolated_api.headers,
+        "/api/podcasts/series_a/1/progress",
+        headers=isolated_api.headers,
     )
     assert resp.json()["position_sec"] == 120.0
 
@@ -302,13 +365,21 @@ def test_lww_same_instant_mixed_width_no_clobber_by_smaller_position(isolated_ap
     stored larger one (matches iOS `mergeRemoteProgress`:
     `remoteWins = item.positionSec > local.lastPlayedTime`)."""
     _post_progress(
-        isolated_api, "series_a", 1,
-        position=120.0, duration=300.0, updated_at=_ISO_INT_SEC,
+        isolated_api,
+        "series_a",
+        1,
+        position=120.0,
+        duration=300.0,
+        updated_at=_ISO_INT_SEC,
     )
     # Same moment, fractional spelling, SMALLER position — tie lost on position.
     resp = _post_progress(
-        isolated_api, "series_a", 1,
-        position=10.0, duration=300.0, updated_at=_ISO_FRAC_SEC,
+        isolated_api,
+        "series_a",
+        1,
+        position=10.0,
+        duration=300.0,
+        updated_at=_ISO_FRAC_SEC,
     )
     assert resp.status_code == 200
     assert resp.json()["position_sec"] == 120.0
@@ -332,17 +403,26 @@ def test_same_second_larger_position_wins_when_arrives_second(isolated_api):
     """Smaller position stored first, larger position arrives second at the
     SAME instant → larger position wins."""
     _post_progress(
-        isolated_api, "series_a", 1,
-        position=30.0, duration=300.0, updated_at=_ISO_INT_SEC,
+        isolated_api,
+        "series_a",
+        1,
+        position=30.0,
+        duration=300.0,
+        updated_at=_ISO_INT_SEC,
     )
     resp = _post_progress(
-        isolated_api, "series_a", 1,
-        position=200.0, duration=300.0, updated_at=_ISO_INT_SEC,
+        isolated_api,
+        "series_a",
+        1,
+        position=200.0,
+        duration=300.0,
+        updated_at=_ISO_INT_SEC,
     )
     assert resp.status_code == 200
     assert resp.json()["position_sec"] == 200.0
     resp_get = isolated_api.client.get(
-        "/api/podcasts/series_a/1/progress", headers=isolated_api.headers,
+        "/api/podcasts/series_a/1/progress",
+        headers=isolated_api.headers,
     )
     assert resp_get.json()["position_sec"] == 200.0
 
@@ -352,17 +432,26 @@ def test_same_second_larger_position_wins_when_arrives_first(isolated_api):
     SAME instant → larger (stored) position is retained. Symmetric to the
     previous test: arrival order must not change the converged result."""
     _post_progress(
-        isolated_api, "series_a", 1,
-        position=200.0, duration=300.0, updated_at=_ISO_INT_SEC,
+        isolated_api,
+        "series_a",
+        1,
+        position=200.0,
+        duration=300.0,
+        updated_at=_ISO_INT_SEC,
     )
     resp = _post_progress(
-        isolated_api, "series_a", 1,
-        position=30.0, duration=300.0, updated_at=_ISO_INT_SEC,
+        isolated_api,
+        "series_a",
+        1,
+        position=30.0,
+        duration=300.0,
+        updated_at=_ISO_INT_SEC,
     )
     assert resp.status_code == 200
     assert resp.json()["position_sec"] == 200.0
     resp_get = isolated_api.client.get(
-        "/api/podcasts/series_a/1/progress", headers=isolated_api.headers,
+        "/api/podcasts/series_a/1/progress",
+        headers=isolated_api.headers,
     )
     assert resp_get.json()["position_sec"] == 200.0
 
@@ -372,12 +461,20 @@ def test_same_second_position_tiebreak_holds_across_mixed_widths(isolated_api):
     integer-second vs fractional-second — a larger-position fractional write
     overwrites a smaller-position integer row at the same instant."""
     _post_progress(
-        isolated_api, "series_a", 1,
-        position=30.0, duration=300.0, updated_at=_ISO_INT_SEC,
+        isolated_api,
+        "series_a",
+        1,
+        position=30.0,
+        duration=300.0,
+        updated_at=_ISO_INT_SEC,
     )
     resp = _post_progress(
-        isolated_api, "series_a", 1,
-        position=200.0, duration=300.0, updated_at=_ISO_FRAC_SEC,
+        isolated_api,
+        "series_a",
+        1,
+        position=200.0,
+        duration=300.0,
+        updated_at=_ISO_FRAC_SEC,
     )
     assert resp.status_code == 200
     assert resp.json()["position_sec"] == 200.0
@@ -388,12 +485,20 @@ def test_strictly_older_write_still_loses_regardless_of_position(isolated_api):
     position — the position tie-break only applies at the SAME instant, not
     as a general override of the timestamp ordering."""
     _post_progress(
-        isolated_api, "series_a", 1,
-        position=30.0, duration=300.0, updated_at=_ISO_NOW,
+        isolated_api,
+        "series_a",
+        1,
+        position=30.0,
+        duration=300.0,
+        updated_at=_ISO_NOW,
     )
     resp = _post_progress(
-        isolated_api, "series_a", 1,
-        position=999.0, duration=300.0, updated_at=_ISO_EARLIER,
+        isolated_api,
+        "series_a",
+        1,
+        position=999.0,
+        duration=300.0,
+        updated_at=_ISO_EARLIER,
     )
     assert resp.status_code == 200
     assert resp.json()["position_sec"] == 30.0
@@ -409,12 +514,17 @@ def test_cross_user_isolation_single(isolated_api):
     from conftest import make_jwt  # type: ignore
 
     _post_progress(
-        isolated_api, "series_a", 1,
-        position=42.5, duration=300.0, updated_at=_ISO_NOW,
+        isolated_api,
+        "series_a",
+        1,
+        position=42.5,
+        duration=300.0,
+        updated_at=_ISO_NOW,
     )
     other_headers = {"Authorization": f"Bearer {make_jwt('other_user')}"}
     resp = isolated_api.client.get(
-        "/api/podcasts/series_a/1/progress", headers=other_headers,
+        "/api/podcasts/series_a/1/progress",
+        headers=other_headers,
     )
     # Other user has no row → 404, never leaks user A's progress.
     assert resp.status_code == 404
@@ -424,8 +534,12 @@ def test_cross_user_isolation_list(isolated_api):
     from conftest import make_jwt  # type: ignore
 
     _post_progress(
-        isolated_api, "series_a", 1,
-        position=42.5, duration=300.0, updated_at=_ISO_NOW,
+        isolated_api,
+        "series_a",
+        1,
+        position=42.5,
+        duration=300.0,
+        updated_at=_ISO_NOW,
     )
     other_headers = {"Authorization": f"Bearer {make_jwt('other_user')}"}
     resp = isolated_api.client.get("/api/podcasts/progress", headers=other_headers)
@@ -438,18 +552,29 @@ def test_cross_user_independent_writes(isolated_api):
 
     other_headers = {"Authorization": f"Bearer {make_jwt('other_user')}"}
     _post_progress(
-        isolated_api, "series_a", 1,
-        position=10.0, duration=100.0, updated_at=_ISO_NOW,
+        isolated_api,
+        "series_a",
+        1,
+        position=10.0,
+        duration=100.0,
+        updated_at=_ISO_NOW,
     )
     _post_progress(
-        isolated_api, "series_a", 1,
-        position=80.0, duration=100.0, updated_at=_ISO_NOW, headers=other_headers,
+        isolated_api,
+        "series_a",
+        1,
+        position=80.0,
+        duration=100.0,
+        updated_at=_ISO_NOW,
+        headers=other_headers,
     )
     resp_self = isolated_api.client.get(
-        "/api/podcasts/series_a/1/progress", headers=isolated_api.headers,
+        "/api/podcasts/series_a/1/progress",
+        headers=isolated_api.headers,
     )
     resp_other = isolated_api.client.get(
-        "/api/podcasts/series_a/1/progress", headers=other_headers,
+        "/api/podcasts/series_a/1/progress",
+        headers=other_headers,
     )
     assert resp_self.json()["position_sec"] == 10.0
     assert resp_other.json()["position_sec"] == 80.0
@@ -462,28 +587,42 @@ def test_cross_user_independent_writes(isolated_api):
 
 @pytest.mark.parametrize(
     "bad_id",
-    ["..", "../etc", "series.a", "series-a", "Series_A", "%2e%2e"],
+    # "..%2fetc" never matches a route (two segments once decoded); "%2e%2e"
+    # reaches the handler, see test_post_series_id_guard_blocks_encoded_traversal.
+    ["..%2fetc", "series.a", "series-a", "Series_A", "%2e%2e"],
 )
 def test_post_series_id_rejects_bad_inputs(isolated_api, bad_id):
     resp = _post_progress(
-        isolated_api, bad_id, 1,
-        position=10.0, duration=100.0, updated_at=_ISO_NOW,
+        isolated_api,
+        bad_id,
+        1,
+        position=10.0,
+        duration=100.0,
+        updated_at=_ISO_NOW,
     )
     assert resp.status_code in (404, 422)
 
 
 def test_post_ep_num_rejects_zero(isolated_api):
     resp = _post_progress(
-        isolated_api, "series_a", 0,
-        position=10.0, duration=100.0, updated_at=_ISO_NOW,
+        isolated_api,
+        "series_a",
+        0,
+        position=10.0,
+        duration=100.0,
+        updated_at=_ISO_NOW,
     )
     assert resp.status_code == 422
 
 
 def test_post_ep_num_rejects_overflow(isolated_api):
     resp = _post_progress(
-        isolated_api, "series_a", 10000,
-        position=10.0, duration=100.0, updated_at=_ISO_NOW,
+        isolated_api,
+        "series_a",
+        10000,
+        position=10.0,
+        duration=100.0,
+        updated_at=_ISO_NOW,
     )
     assert resp.status_code == 422
 
@@ -499,29 +638,81 @@ def test_post_rejects_malformed_updated_at(isolated_api):
 
 def test_post_rejects_negative_position(isolated_api):
     resp = _post_progress(
-        isolated_api, "series_a", 1,
-        position=-1.0, duration=100.0, updated_at=_ISO_NOW,
+        isolated_api,
+        "series_a",
+        1,
+        position=-1.0,
+        duration=100.0,
+        updated_at=_ISO_NOW,
     )
     assert resp.status_code == 422
 
 
 def test_post_rejects_negative_duration(isolated_api):
     resp = _post_progress(
-        isolated_api, "series_a", 1,
-        position=10.0, duration=-100.0, updated_at=_ISO_NOW,
+        isolated_api,
+        "series_a",
+        1,
+        position=10.0,
+        duration=-100.0,
+        updated_at=_ISO_NOW,
     )
     assert resp.status_code == 422
 
 
-def test_get_single_series_id_rejects_traversal(isolated_api):
-    resp = isolated_api.client.get(
-        "/api/podcasts/../etc/1/progress", headers=isolated_api.headers,
+# A literal "/api/podcasts/../x" is stripped to "/api/x" by httpx and 404s on a
+# route that does not exist (#2113; banned by test_no_dot_segment_urls).
+# "%2e%2e" is sent verbatim and reaches the handler as series_id="..". Each test
+# first proves the request lands on the handler with the guard neutralised, then
+# proves the real guard stops it.
+_TRAVERSAL_URL = "/api/podcasts/%2e%2e/1/progress"
+
+
+def _request_without_series_id_guard(monkeypatch, send):
+    """Positive control: run ``send`` while every series_id passes the guard."""
+    with monkeypatch.context() as patched:
+        patched.setattr(_podcast_mod, "_SERIES_ID_RE", re.compile(r".+", re.DOTALL))
+        return send()
+
+
+def test_get_single_series_id_guard_blocks_encoded_traversal(isolated_api, monkeypatch):
+    progress_store.upsert(
+        user_id=isolated_api.user_id,
+        series_id="..",
+        ep_num=1,
+        position_sec=7.0,
+        duration_sec=70.0,
+        updated_at=_ISO_NOW,
     )
-    assert resp.status_code in (404, 422)
+
+    leaked = _request_without_series_id_guard(
+        monkeypatch, lambda: isolated_api.client.get(_TRAVERSAL_URL, headers=isolated_api.headers)
+    )
+    assert leaked.status_code == 200, "control: the encoded traversal must reach the handler"
+    assert leaked.json()["series_id"] == ".."
+
+    resp = isolated_api.client.get(_TRAVERSAL_URL, headers=isolated_api.headers)
+    assert resp.status_code == 404
+    assert resp.json() == {"detail": "Not Found"}  # the guard's bare 404, not the row
+
+
+def test_post_series_id_guard_blocks_encoded_traversal(isolated_api, monkeypatch):
+    leaked = _request_without_series_id_guard(
+        monkeypatch,
+        lambda: _post_progress(isolated_api, "%2e%2e", 1, position=7.0, duration=70.0, updated_at=_ISO_NOW),
+    )
+    assert leaked.status_code == 200, "control: the encoded traversal must reach the handler"
+    assert leaked.json()["series_id"] == ".."
+
+    resp = _post_progress(isolated_api, "%2e%2e", 1, position=99.0, duration=70.0, updated_at=_ISO_LATER)
+    assert resp.status_code == 404
+    stored = progress_store.get_single(user_id=isolated_api.user_id, series_id="..", ep_num=1)
+    assert stored is not None and stored["position_sec"] == 7.0  # the guarded write never hit the store
 
 
 def test_get_single_ep_num_rejects_zero(isolated_api):
     resp = isolated_api.client.get(
-        "/api/podcasts/series_a/0/progress", headers=isolated_api.headers,
+        "/api/podcasts/series_a/0/progress",
+        headers=isolated_api.headers,
     )
     assert resp.status_code == 422

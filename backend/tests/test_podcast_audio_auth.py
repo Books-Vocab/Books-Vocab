@@ -16,9 +16,14 @@ Covers:
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
+from kg.routers import podcast as _podcast_mod
+
 PAYLOAD = bytes(range(256)) * 8  # 2 KB deterministic payload
+ESCAPED_PAYLOAD = b"audio outside the podcasts dir"
 
 
 @pytest.fixture()
@@ -147,12 +152,11 @@ def test_audio_series_not_found(audio_api):
 @pytest.mark.parametrize(
     "bad_id",
     [
-        "..",
-        "../etc",
+        "..%2fetc",  # encoded slash: two segments once decoded, so no route matches
         "series.a",
         "series-a",
         "Series_A",
-        "%2e%2e",
+        "%2e%2e",  # guard-specific proof: test_audio_series_id_guard_blocks_encoded_traversal
     ],
 )
 def test_audio_series_id_rejects_bad_inputs(audio_api, bad_id):
@@ -160,6 +164,32 @@ def test_audio_series_id_rejects_bad_inputs(audio_api, bad_id):
     api, _ = audio_api
     resp = api.client.get(f"/api/podcasts/{bad_id}/1/audio", headers=api.headers)
     assert resp.status_code in (404, 422)
+
+
+def _request_without_series_id_guard(monkeypatch, send):
+    """Positive control: run ``send`` while every series_id passes the guard."""
+    with monkeypatch.context() as patched:
+        patched.setattr(_podcast_mod, "_SERIES_ID_RE", re.compile(r".+", re.DOTALL))
+        return send()
+
+
+def test_audio_series_id_guard_blocks_encoded_traversal(audio_api, monkeypatch):
+    """`%2e%2e` reaches the handler as series_id=".." (a literal `..` is
+    stripped by httpx, see test_no_dot_segment_urls). The audio file that
+    "<podcasts>/../ep_01" resolves to exists, so only the guard stops it."""
+    api, podcasts = audio_api
+    escaped = podcasts.parent / "ep_01" / "audio.mp3"
+    escaped.parent.mkdir()
+    escaped.write_bytes(ESCAPED_PAYLOAD)
+    url = "/api/podcasts/%2e%2e/1/audio"
+
+    leaked = _request_without_series_id_guard(monkeypatch, lambda: api.client.get(url, headers=api.headers))
+    assert leaked.status_code == 200, "control: the encoded traversal must reach the handler"
+    assert leaked.content == ESCAPED_PAYLOAD
+
+    resp = api.client.get(url, headers=api.headers)
+    assert resp.status_code == 404
+    assert ESCAPED_PAYLOAD not in resp.content
 
 
 @pytest.mark.parametrize(

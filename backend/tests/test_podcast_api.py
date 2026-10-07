@@ -1,7 +1,9 @@
 """Tests for podcast API endpoints."""
+
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta, tzinfo
 
 import pytest
@@ -69,12 +71,6 @@ def test_series_not_found(podcast_api):
     assert resp.status_code == 404
 
 
-def test_series_id_rejects_traversal(podcast_api):
-    api, _ = podcast_api
-    resp = api.client.get("/api/podcasts/../etc", headers=api.headers)
-    assert resp.status_code in (404, 422)
-
-
 def test_series_id_rejects_uppercase(podcast_api):
     api, _ = podcast_api
     resp = api.client.get("/api/podcasts/SeriesA", headers=api.headers)
@@ -112,18 +108,12 @@ def test_subtitle_not_found(podcast_api):
     assert resp.status_code == 404
 
 
-def test_subtitle_rejects_traversal(podcast_api):
-    api, _ = podcast_api
-    resp = api.client.get("/api/podcasts/../evil/1/subtitle", headers=api.headers)
-    assert resp.status_code in (404, 422)
-
-
 @pytest.mark.parametrize(
     "ep_num",
     [
-        "0",       # below ge=1
-        "-1",      # negative
-        "10000",   # above le=999
+        "0",  # below ge=1
+        "-1",  # negative
+        "10000",  # above le=999
     ],
 )
 def test_subtitle_ep_num_rejects_out_of_range(podcast_api, ep_num):
@@ -160,6 +150,7 @@ def test_legacy_podcast_media_mount_removed(isolated_api):
     removal so the mount can't silently reappear in a future refactor.
     """
     from kg.api import app
+
     media_mount = next(
         (r for r in app.routes if getattr(r, "name", None) == "podcast-media"),
         None,
@@ -195,6 +186,7 @@ def test_any_authenticated_user_can_read_any_series(podcast_api):
 
     # A different (mounted) user with their own JWT can read the same payload.
     from conftest import make_jwt  # type: ignore
+
     other_headers = {"Authorization": f"Bearer {make_jwt('other_user')}"}
     resp_other = api.client.get("/api/podcasts/series_pub", headers=other_headers)
     assert resp_other.status_code == 200
@@ -204,24 +196,20 @@ def test_any_authenticated_user_can_read_any_series(podcast_api):
 @pytest.mark.parametrize(
     "bad_id",
     [
-        "..",
-        "../etc",
-        "series.a",       # dot
-        "series-a",       # dash (regex requires underscore)
-        "series a",       # space
-        "series%2Fa",     # encoded slash — FastAPI passes raw "series/a" but
-                          # the path no longer matches the route, hence 404
-        "Series_A",       # uppercase
-        "%2e%2e",         # url-encoded ..
+        "..%2fetc",  # encoded slash: two segments once decoded, so no route matches
+        "series.a",  # dot
+        "series-a",  # dash (regex requires underscore)
+        "series a",  # space
+        "series%2Fa",  # encoded slash: decodes to "series/a", the path no longer matches the route
+        "Series_A",  # uppercase
+        "%2e%2e",  # url-encoded .. (guard-specific proof: test_series_id_guard_blocks_encoded_traversal)
     ],
 )
 def test_series_id_regex_rejects_bad_inputs(podcast_api, bad_id):
     """All non-matching `series_id` values must 404 before any FS lookup."""
     api, _ = podcast_api
     resp = api.client.get(f"/api/podcasts/{bad_id}", headers=api.headers)
-    assert resp.status_code in (404, 422), (
-        f"series_id={bad_id!r} produced status {resp.status_code}"
-    )
+    assert resp.status_code in (404, 422), f"series_id={bad_id!r} produced status {resp.status_code}"
 
 
 def test_subtitle_ep_num_rejects_non_integer(podcast_api):
@@ -229,16 +217,6 @@ def test_subtitle_ep_num_rejects_non_integer(podcast_api):
     api, _ = podcast_api
     resp = api.client.get("/api/podcasts/series_a/abc/subtitle", headers=api.headers)
     assert resp.status_code == 422
-
-
-def test_subtitle_traversal_in_ep_segment_does_not_escape(podcast_api):
-    """A literal `..` placed as ep_num must be rejected by int parsing — it
-    must never be assembled into a path that escapes the series dir."""
-    api, _ = podcast_api
-    resp = api.client.get("/api/podcasts/series_a/../subtitle", headers=api.headers)
-    # FastAPI either 404s the route (no match) or 422s on int parsing; either
-    # is acceptable as long as we don't reach the filesystem with `..`.
-    assert resp.status_code in (404, 422)
 
 
 # ---------------------------------------------------------------------------
@@ -274,7 +252,8 @@ def _clear_audio_fmt_cache():
 def test_audio_format_honoured_from_metadata_s3(monkeypatch, _clear_audio_fmt_cache):
     req = _s3_request()
     monkeypatch.setattr(
-        _podcast_mod, "_read_json_from_s3",
+        _podcast_mod,
+        "_read_json_from_s3",
         lambda request, key, *, context: {"audioFormat": "mp3"},
     )
     assert _podcast_mod._audio_filename(req, "flow_x", 1) == "audio.mp3"
@@ -283,7 +262,8 @@ def test_audio_format_honoured_from_metadata_s3(monkeypatch, _clear_audio_fmt_ca
 def test_audio_format_m4a_from_metadata_s3(monkeypatch, _clear_audio_fmt_cache):
     req = _s3_request()
     monkeypatch.setattr(
-        _podcast_mod, "_read_json_from_s3",
+        _podcast_mod,
+        "_read_json_from_s3",
         lambda request, key, *, context: {"audioFormat": "m4a"},
     )
     assert _podcast_mod._audio_filename(req, "flow_x", 1) == "audio.m4a"
@@ -294,7 +274,8 @@ def test_audio_format_probes_bucket_when_metadata_lacks_field(monkeypatch, _clea
     only mp3 exists (m4a head_object 404s)."""
     req = _s3_request()
     monkeypatch.setattr(
-        _podcast_mod, "_read_json_from_s3",
+        _podcast_mod,
+        "_read_json_from_s3",
         lambda request, key, *, context: {"title": "x"},  # no audioFormat
     )
 
@@ -321,7 +302,8 @@ def test_audio_format_probe_propagates_non_404(monkeypatch, _clear_audio_fmt_cac
 
     req = _s3_request()
     monkeypatch.setattr(
-        _podcast_mod, "_read_json_from_s3",
+        _podcast_mod,
+        "_read_json_from_s3",
         lambda request, key, *, context: {"title": "x"},  # no audioFormat → probe
     )
 
@@ -456,7 +438,52 @@ def test_cover_not_found_when_absent(podcast_api):
     assert resp.status_code == 404
 
 
-def test_cover_rejects_traversal(podcast_api):
-    api, _ = podcast_api
-    resp = api.client.get("/api/podcasts/../evil/cover", headers=api.headers)
+# ── Path traversal: the hostile segment must actually reach the handler ──────
+#
+# httpx strips dot-segments before sending, so a literal "/api/podcasts/../x"
+# requests "/api/x" and 404s on a route that does not exist (#2113; banned by
+# test_no_dot_segment_urls). "%2e%2e" is sent verbatim, matched as one path
+# segment, and decoded to series_id=".." for the handler. Each test plants the
+# file that "<podcasts>/../<rel>" resolves to, proves the request escapes to it
+# once the series_id guard is neutralised, then proves the real guard stops it.
+
+_ESCAPE_MARKER = "outside-the-podcasts-dir"
+
+
+def _request_without_series_id_guard(monkeypatch, send):
+    """Positive control: run ``send`` while every series_id passes the guard."""
+    with monkeypatch.context() as patched:
+        patched.setattr(_podcast_mod, "_SERIES_ID_RE", re.compile(r".+", re.DOTALL))
+        return send()
+
+
+@pytest.mark.parametrize(
+    ("url", "escaped_rel_path"),
+    [
+        ("/api/podcasts/%2e%2e", "metadata.json"),
+        ("/api/podcasts/%2e%2e/cover", "cover.png"),
+        ("/api/podcasts/%2e%2e/1/subtitle", "ep_01/subtitle.srt"),
+    ],
+    ids=["detail", "cover", "subtitle"],
+)
+def test_series_id_guard_blocks_encoded_traversal(podcast_api, monkeypatch, url, escaped_rel_path):
+    api, podcasts = podcast_api
+    escaped = podcasts.parent / escaped_rel_path
+    escaped.parent.mkdir(parents=True, exist_ok=True)
+    escaped.write_text(json.dumps({"marker": _ESCAPE_MARKER}))
+
+    leaked = _request_without_series_id_guard(monkeypatch, lambda: api.client.get(url, headers=api.headers))
+    assert leaked.status_code == 200, "control: the encoded traversal must reach the handler"
+    assert _ESCAPE_MARKER in leaked.text
+
+    resp = api.client.get(url, headers=api.headers)
     assert resp.status_code == 404
+    assert _ESCAPE_MARKER not in resp.text
+
+
+def test_subtitle_encoded_traversal_in_ep_segment_rejected_by_int_parsing(podcast_api):
+    """`..` as ep_num reaches the subtitle route (an unmatched path would 404)
+    and must die in int parsing, never becoming part of a filesystem path."""
+    api, _ = podcast_api
+    resp = api.client.get("/api/podcasts/series_a/%2e%2e/subtitle", headers=api.headers)
+    assert resp.status_code == 422
