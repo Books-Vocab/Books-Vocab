@@ -310,3 +310,44 @@ def test_capture_handled_against_real_sdk_client_without_network(monkeypatch):
 
     assert len(events) == 1
     assert events[0]["tags"] == {"context": "unit.real", "step": "s"}
+
+
+def _run_background_with_step_error(monkeypatch, exc: BaseException):
+    from kg.pipeline_service import runner
+
+    async def raising_step(*_a, **_k):
+        raise exc
+
+    async def get_lock(_uid):
+        return asyncio.Lock()
+
+    monkeypatch.setattr(runner, "_run_step", raising_step)
+    monkeypatch.setattr(runner, "_telemetry", lambda *_a, **_k: None)
+    asyncio.run(
+        runner.run_pipeline_background(
+            {"id": "u-sentry", "dir": None, "config": {}},
+            get_user_lock_fn=get_lock,
+            card_store_factory=lambda _dir: None,
+            graph_store_factory=lambda _dir, notebook_id="default": None,
+            embedding_store_factory=lambda _dir, llm=None, notebook_id="default": None,
+            client_factory=lambda _provider: None,
+            logger=logging.getLogger("t.sentry.bg"),
+            link_kind_enum=lambda value: value,
+            run_id="r-sentry",
+            telemetry_started=True,
+        )
+    )
+
+
+def test_pipeline_unexpected_step_error_leak_reports_with_context(fake_sentry, monkeypatch):
+    exc = RuntimeError("leaked from step")
+    _run_background_with_step_error(monkeypatch, exc)
+    assert [e for e, _ in fake_sentry.captured] == [exc]
+    assert _contexts(fake_sentry) == ["pipeline.run"]
+
+
+def test_pipeline_non_recoverable_error_reports_with_context(fake_sentry, monkeypatch):
+    exc = KeyError("user deleted mid-queue")
+    _run_background_with_step_error(monkeypatch, exc)
+    assert [e for e, _ in fake_sentry.captured] == [exc]
+    assert _contexts(fake_sentry) == ["pipeline.run_aborted"]
