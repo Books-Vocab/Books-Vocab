@@ -34,7 +34,9 @@ def test_workflow_versions_are_discoverable() -> None:
     assert pipeline.load_workflow_definition("v1")["workflow_version"] == "v1"
 
 
-def test_write_workflow_manifest_records_reproducibility_fields(tmp_path, monkeypatch) -> None:
+def test_write_workflow_manifest_records_reproducibility_fields(
+    tmp_path, monkeypatch
+) -> None:
     ws = tmp_path / "ws"
     (ws / "plan" / "episodes").mkdir(parents=True)
     (ws / "scripts").mkdir()
@@ -57,11 +59,15 @@ def test_write_workflow_manifest_records_reproducibility_fields(tmp_path, monkey
     assert manifest["tts_model"] == "gemini-2.5-flash-tts"
     assert manifest["prompt_fingerprints"]
     assert manifest["validator_versions"]
-    assert manifest["stage_contracts"]["stage_order"] == pipeline.workflow_stage_order("v1")
+    assert manifest["stage_contracts"]["stage_order"] == pipeline.workflow_stage_order(
+        "v1"
+    )
     assert "created_at" in manifest
 
 
-def test_write_workflow_manifest_does_not_rewrite_existing_manifest(tmp_path, monkeypatch) -> None:
+def test_write_workflow_manifest_does_not_rewrite_existing_manifest(
+    tmp_path, monkeypatch
+) -> None:
     ws = tmp_path / "ws"
     ws.mkdir()
     original = {
@@ -124,7 +130,10 @@ def test_stage_provenance_records_hashes_and_lineage(tmp_path, monkeypatch) -> N
     assert prov["workflow_version"] == "v1"
     assert prov["input_artifacts"]["scripts/ep_1_script.md"]["sha256"]
     assert prov["output_artifacts"]["scripts/ep_1_script.md"]["sha256"]
-    assert prov["output_artifacts"]["scripts/ep_1_script.md"]["sha256"] != prov["input_artifacts"]["scripts/ep_1_script.md"]["sha256"]
+    assert (
+        prov["output_artifacts"]["scripts/ep_1_script.md"]["sha256"]
+        != prov["input_artifacts"]["scripts/ep_1_script.md"]["sha256"]
+    )
     assert prov["prompt"]["version"] == "v1"
     assert prov["model"]["agent_profile"] == pipeline.AGENT_PROFILE
     assert prov["pipeline_commit"] == "abc123"
@@ -142,10 +151,12 @@ def test_stage_provenance_records_cost_event_refs(tmp_path) -> None:
     ws.mkdir()
     (ws / "workflow_manifest.json").write_text(json.dumps({"workflow_version": "v1"}))
     (ws / "events.jsonl").write_text(
-        json.dumps({
-            "stage_label": "Scriptwriter EP1",
-            "event": {"type": "result", "modelUsage": {"opus": {"costUSD": 0.12}}},
-        })
+        json.dumps(
+            {
+                "stage_label": "Scriptwriter EP1",
+                "event": {"type": "result", "modelUsage": {"opus": {"costUSD": 0.12}}},
+            }
+        )
         + "\n"
     )
 
@@ -190,7 +201,9 @@ def test_audio_qa_strict_policy_marks_warn_report_failed(tmp_path, monkeypatch) 
     ws = tmp_path / "ws"
     ws.mkdir()
     (ws / "workflow_manifest.json").write_text(json.dumps({"workflow_version": "v1"}))
-    (ws / "audio_qa.json").write_text(json.dumps({"summary": {"pass": 0, "warn": 1, "fail": 0}}))
+    (ws / "audio_qa.json").write_text(
+        json.dumps({"summary": {"pass": 0, "warn": 1, "fail": 0}})
+    )
     monkeypatch.setattr(
         pipeline,
         "load_workflow_definition",
