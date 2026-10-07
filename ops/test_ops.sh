@@ -212,7 +212,9 @@ run_one() {
     github-workflows)
       ./ops/tests/test_github_workflows.sh &&
       ./ops/tests/test_ci_scope_router.sh &&
-      ./ops/tests/test_ci_confidence_verdict.sh
+      ./ops/tests/test_ci_confidence_verdict.sh &&
+      ./ops/tests/test_ops_suite_bootstrap.sh &&
+      ./ops/tests/test_ci_apt_install.sh
       ;;
     ui-quality-plane)   ./ops/tests/test_ui_quality_plane.sh ;;
     ui-quality-gate)    ./ops/tests/test_ui_quality_gate.sh ;;
