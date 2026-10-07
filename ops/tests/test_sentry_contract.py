@@ -215,16 +215,21 @@ def test_exception_type_is_not_an_arbitrary_user_string() -> None:
     assert issue["evidence"]["exception_type"] is None
 
 
-def test_normalize_release_health_bounds_rates_and_redacts_unsafe_labels() -> None:
-    from sentry_contract import RELEASE_HEALTH_SCHEMA, normalize_release_health
+def test_crash_free_rates_normalize_per_field_scale_to_percent() -> None:
+    from sentry_contract import (
+        RELEASE_HEALTH_SCHEMA,
+        normalize_release,
+        normalize_release_health,
+    )
 
     assert RELEASE_HEALTH_SCHEMA == "kg.sentry.release_health.v1"
+    # Sessions endpoint: crash_free_rate(...) is a 0..1 fraction.
     row = normalize_release_health(
         {
             "by": {"release": "person@example.com", "environment": "production"},
             "totals": {
-                "crash_free_rate(session)": 1.5,
-                "crash_free_rate(user)": True,
+                "crash_free_rate(session)": 0.0042,
+                "crash_free_rate(user)": 1.5,
                 "sum(session)": -3,
                 "count_unique(user)": "12",
             },
@@ -233,16 +238,40 @@ def test_normalize_release_health_bounds_rates_and_redacts_unsafe_labels() -> No
     assert row == {
         "release": None,
         "environment": "production",
-        "crash_free_sessions": None,
-        "crash_free_users": None,
+        "crash_free_sessions_pct": 0.42,
+        "crash_free_users_pct": None,
         "sessions": None,
         "users": 12,
     }
+    for bad in (True, float("nan"), "0.9", -0.1):
+        assert (
+            normalize_release_health({"totals": {"crash_free_rate(session)": bad}})[
+                "crash_free_sessions_pct"
+            ]
+            is None
+        )
     assert (
-        normalize_release_health({"by": "bad", "totals": None})["crash_free_sessions"]
+        normalize_release_health({"by": "bad", "totals": None})[
+            "crash_free_sessions_pct"
+        ]
         is None
     )
-    nan_row = normalize_release_health(
-        {"by": {}, "totals": {"crash_free_rate(session)": float("nan")}}
+    # Release healthData: crashFreeSessions/Users are already 0..100 percentages.
+    release = normalize_release(
+        {
+            "version": "com.example.app@2.0.1+10",
+            "healthData": {"crashFreeSessions": 99.978, "crashFreeUsers": 0.5},
+        }
     )
-    assert nan_row["crash_free_sessions"] is None
+    assert (release["crash_free_sessions_pct"], release["crash_free_users_pct"]) == (
+        99.978,
+        0.5,
+    )
+    release = normalize_release(
+        {"version": "v", "healthData": {"crashFreeSessions": 100.5}}
+    )
+    assert (release["crash_free_sessions_pct"], release["crash_free_users_pct"]) == (
+        None,
+        None,
+    )
+    assert normalize_release({"version": "v"})["crash_free_sessions_pct"] is None

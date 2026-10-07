@@ -295,19 +295,6 @@ def test_cli_normalizes_issue_and_never_emits_forbidden_fields(
     assert "secret-token" not in output
 
 
-def test_cli_missing_auth_returns_safe_error(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    monkeypatch.delenv("SENTRY_AUTH_TOKEN", raising=False)
-    monkeypatch.setenv("SENTRY_ORG", "kg-org")
-    monkeypatch.setenv("SENTRY_PROJECT_IOS", "ios")
-    code = sentry_tool.main(["events", "--issue", "123", "--json"])
-    payload = json.loads(capsys.readouterr().out)
-    assert code == sentry_tool.EXIT_WARN
-    assert payload["schema"] == "kg.sentry.error.v1"
-    assert payload["error"]["kind"] == "missing_auth"
-
-
 def test_cli_invalid_usage_is_json_and_uses_usage_exit_code(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -321,56 +308,66 @@ def test_cli_invalid_usage_is_json_and_uses_usage_exit_code(
 
 
 # --- secrets file fallback, missing-config hint, release health -------------
+_CONFIG_KEYS = (
+    "SENTRY_AUTH_TOKEN",
+    "SENTRY_ORG",
+    "SENTRY_PROJECT_IOS",
+    "SENTRY_PROJECT_BACKEND",
+)
+_PARTIAL_LOCAL = {"verdict": "partial", "readiness": {}, "issues": []}
 
 
 @pytest.fixture(autouse=True)
-def _isolate_sentry_env_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
-    """Never let the developer's real ~/.secrets/sentry.env leak into tests."""
+def _isolate_sentry_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    """Never let the developer's real ~/.secrets/sentry.env or env leak into tests."""
     monkeypatch.setenv("SENTRY_ENV_FILE", str(tmp_path / "absent-sentry.env"))
+    for key in _CONFIG_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(
+        sentry_tool, "load_local_ios_summary", lambda _root=None: _PARTIAL_LOCAL
+    )
 
 
-def _write_env_file(path: Any, body: str) -> str:
+def _env_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Any, body: str) -> str:
+    path = tmp_path / "sentry.env"
     path.write_text(body, encoding="utf-8")
+    monkeypatch.setenv("SENTRY_ENV_FILE", str(path))
     return str(path)
 
 
-def test_settings_fall_back_to_env_file(tmp_path: Any) -> None:
-    env_file = _write_env_file(
-        tmp_path / "sentry.env",
-        "# comment\n"
-        "\n"
-        "SENTRY_AUTH_TOKEN=file-token\n"
-        "export SENTRY_ORG='kg-org'\n"
-        'SENTRY_PROJECT_IOS="kg-ios"\n'
-        "SENTRY_PROJECT_BACKEND=kg-backend\n"
-        "SENTRY_API_URL=https://us.sentry.io\n"
-        "NOT_SENTRY=ignored\n"
-        "malformed line\n",
+def _run(
+    argv: list[str], capsys: pytest.CaptureFixture[str]
+) -> tuple[int, dict[str, Any], str]:
+    code = sentry_tool.main(argv)
+    output = capsys.readouterr().out
+    return code, json.loads(output), output
+
+
+def test_settings_fall_back_to_env_file_and_env_wins(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    env_file = _env_file(
+        monkeypatch,
+        tmp_path,
+        "# comment\n\nSENTRY_AUTH_TOKEN=file-token\nexport SENTRY_ORG='file-org'\n"
+        'SENTRY_PROJECT_IOS="kg-ios"\nSENTRY_API_URL=https://us.sentry.io\nNOT_SENTRY=x\nmalformed line\n',
     )
-    settings = sentry_api.load_sentry_settings({"SENTRY_ENV_FILE": env_file})
-    assert settings["SENTRY_AUTH_TOKEN"] == "file-token"
-    assert settings["SENTRY_ORG"] == "kg-org"
-    assert settings["SENTRY_PROJECT_IOS"] == "kg-ios"
-    assert settings["SENTRY_PROJECT_BACKEND"] == "kg-backend"
-    assert "NOT_SENTRY" not in settings
+    file_only = sentry_api.load_sentry_settings({"SENTRY_ENV_FILE": env_file})
+    assert file_only == {
+        "SENTRY_AUTH_TOKEN": "file-token",
+        "SENTRY_ORG": "file-org",
+        "SENTRY_PROJECT_IOS": "kg-ios",
+        "SENTRY_API_URL": "https://us.sentry.io",
+    }
+    # A non-empty process variable wins; an empty one does not blank out the file value.
+    merged = sentry_api.load_sentry_settings(
+        {"SENTRY_ENV_FILE": env_file, "SENTRY_ORG": "env-org", "SENTRY_PROJECT_IOS": ""}
+    )
+    assert (merged["SENTRY_ORG"], merged["SENTRY_PROJECT_IOS"]) == ("env-org", "kg-ios")
     config = SentryConfig.load({"SENTRY_ENV_FILE": env_file})
     assert config.api_configured is True
     assert config.api_url == "https://us.sentry.io/api/0"
     assert "file-token" not in repr(config)
-
-
-def test_process_env_wins_over_env_file(tmp_path: Any) -> None:
-    env_file = _write_env_file(
-        tmp_path / "sentry.env",
-        "SENTRY_AUTH_TOKEN=file-token\nSENTRY_ORG=file-org\nSENTRY_PROJECT_IOS=file-ios\n",
-    )
-    settings = sentry_api.load_sentry_settings(
-        {"SENTRY_ENV_FILE": env_file, "SENTRY_ORG": "env-org", "SENTRY_PROJECT_IOS": ""}
-    )
-    assert settings["SENTRY_ORG"] == "env-org"
-    assert settings["SENTRY_AUTH_TOKEN"] == "file-token"
-    # An empty process variable does not blank out the file value.
-    assert settings["SENTRY_PROJECT_IOS"] == "file-ios"
 
 
 def test_env_file_path_defaults_to_secrets_dir(
@@ -385,47 +382,29 @@ def test_env_file_path_defaults_to_secrets_dir(
     assert sentry_api.load_sentry_settings({}) == {}
 
 
-def test_cli_health_names_missing_keys_and_one_line_fix_without_token(
+def test_cli_health_names_missing_keys_and_one_line_fix(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Any
 ) -> None:
-    env_file = _write_env_file(tmp_path / "sentry.env", "SENTRY_PROJECT_IOS=kg-ios\n")
-    monkeypatch.setenv("SENTRY_ENV_FILE", env_file)
-    monkeypatch.delenv("SENTRY_AUTH_TOKEN", raising=False)
-    monkeypatch.delenv("SENTRY_ORG", raising=False)
-    monkeypatch.delenv("SENTRY_PROJECT_IOS", raising=False)
-    monkeypatch.setattr(
-        sentry_tool,
-        "load_local_ios_summary",
-        lambda _root=None: {"verdict": "partial", "readiness": {}, "issues": []},
-    )
-
-    code = sentry_tool.main(["health", "--json"])
-    payload = json.loads(capsys.readouterr().out)
+    env_file = _env_file(monkeypatch, tmp_path, "SENTRY_PROJECT_IOS=kg-ios\n")
+    code, payload, _ = _run(["health", "--json"], capsys)
     assert code == sentry_tool.EXIT_WARN
     assert payload["config"]["missing"] == ["SENTRY_AUTH_TOKEN", "SENTRY_ORG"]
-    assert payload["config"]["env_file"] == env_file
-    assert payload["config"]["env_file_present"] is True
+    assert (payload["config"]["env_file"], payload["config"]["env_file_present"]) == (
+        env_file,
+        True,
+    )
     fix = payload["config"]["fix"]
-    assert "\n" not in fix
-    assert env_file in fix
+    assert "\n" not in fix and env_file in fix and "SENTRY_ORG" in fix
     assert "org:read project:read event:read" in fix
-    assert "SENTRY_AUTH_TOKEN" in fix and "SENTRY_ORG" in fix
 
 
-def test_cli_health_omits_fix_hint_when_configured_and_never_prints_token(
+def test_cli_health_uses_env_file_token_without_printing_it(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Any
 ) -> None:
-    env_file = _write_env_file(
-        tmp_path / "sentry.env",
+    _env_file(
+        monkeypatch,
+        tmp_path,
         "SENTRY_AUTH_TOKEN=file-secret-token\nSENTRY_ORG=kg-org\nSENTRY_PROJECT_IOS=kg-ios\n",
-    )
-    monkeypatch.setenv("SENTRY_ENV_FILE", env_file)
-    for key in ("SENTRY_AUTH_TOKEN", "SENTRY_ORG", "SENTRY_PROJECT_IOS"):
-        monkeypatch.delenv(key, raising=False)
-    monkeypatch.setattr(
-        sentry_tool,
-        "load_local_ios_summary",
-        lambda _root=None: {"verdict": "partial", "readiness": {}, "issues": []},
     )
 
     class FakeClient:
@@ -439,107 +418,118 @@ def test_cli_health_omits_fix_hint_when_configured_and_never_prints_token(
             return []
 
     monkeypatch.setattr(sentry_tool, "SentryAPIClient", FakeClient)
-    sentry_tool.main(["health", "--json"])
-    output = capsys.readouterr().out
-    payload = json.loads(output)
+    _, payload, output = _run(["health", "--json"], capsys)
     assert payload["checks"]["api_configured"] is True
     assert payload["checks"]["api_authenticated"] is True
-    assert payload["config"]["missing"] == []
-    assert "fix" not in payload["config"]
+    assert payload["config"]["missing"] == [] and "fix" not in payload["config"]
     assert "file-secret-token" not in output
 
 
-def test_cli_missing_auth_error_carries_the_same_fix_hint(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize(
+    ("argv", "env", "missing"),
+    [
+        (
+            ["release-health", "--json"],
+            {"SENTRY_ORG": "kg-org", "SENTRY_PROJECT_IOS": "ios"},
+            ["SENTRY_AUTH_TOKEN"],
+        ),
+        (
+            ["release-health", "--project", "backend", "--json"],
+            {
+                "SENTRY_AUTH_TOKEN": "secret-token",
+                "SENTRY_ORG": "kg-org",
+                "SENTRY_PROJECT_IOS": "ios",
+            },
+            ["SENTRY_PROJECT_BACKEND"],
+        ),
+        (
+            ["issues", "--project", "backend", "--json"],
+            {"SENTRY_ORG": "kg-org", "SENTRY_PROJECT_IOS": "ios"},
+            ["SENTRY_AUTH_TOKEN", "SENTRY_PROJECT_BACKEND"],
+        ),
+        (
+            ["events", "--issue", "123", "--json"],
+            {"SENTRY_AUTH_TOKEN": "", "SENTRY_ORG": "kg-org"},
+            ["SENTRY_AUTH_TOKEN"],
+        ),
+    ],
+)
+def test_cli_missing_config_error_is_project_aware(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    argv: list[str],
+    env: dict[str, str],
+    missing: list[str],
 ) -> None:
-    monkeypatch.delenv("SENTRY_AUTH_TOKEN", raising=False)
-    monkeypatch.setenv("SENTRY_ORG", "kg-org")
-    monkeypatch.setenv("SENTRY_PROJECT_IOS", "ios")
-    code = sentry_tool.main(["release-health", "--json"])
-    payload = json.loads(capsys.readouterr().out)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    code, payload, output = _run(argv, capsys)
     assert code == sentry_tool.EXIT_WARN
-    assert payload["error"]["kind"] == "missing_auth"
-    assert payload["config"]["missing"] == ["SENTRY_AUTH_TOKEN"]
-    assert "org:read project:read event:read" in payload["config"]["fix"]
+    assert payload["schema"] == "kg.sentry.error.v1"
+    assert payload["error"]["kind"].startswith("missing_")
+    assert payload["config"]["missing"] == missing
+    assert all(key in payload["config"]["fix"] for key in missing)
+    assert "secret-token" not in output
 
 
-def _sessions_payload() -> dict[str, Any]:
-    return {
-        "start": "2026-09-23T00:00:00Z",
-        "end": "2026-10-07T00:00:00Z",
-        "groups": [
-            {
-                "by": {
-                    "release": "com.example.app@2.0.1+10",
-                    "environment": "production",
-                },
-                "totals": {
-                    "crash_free_rate(session)": 0.9875,
-                    "crash_free_rate(user)": 0.95,
-                    "sum(session)": 800,
-                    "count_unique(user)": 40,
-                },
-            },
-            {
-                "by": {
-                    "release": "com.example.app@2.0.0+9",
-                    "environment": "production",
-                },
-                "totals": {
-                    "crash_free_rate(session)": None,
-                    "crash_free_rate(user)": None,
-                    "sum(session)": 0,
-                    "count_unique(user)": 0,
-                },
-            },
-        ],
-    }
+# Realistic /organizations/{org}/sessions/ groups: crash_free_rate(...) is a 0..1
+# fraction there (Sentry derives it as 1 - crash_rate).
+_SESSION_GROUPS = [
+    {
+        "by": {"release": "com.example.app@2.0.1+10", "environment": "production"},
+        "totals": {
+            "crash_free_rate(session)": 0.99978,
+            "crash_free_rate(user)": 0.95,
+            "sum(session)": 800,
+            "count_unique(user)": 40,
+        },
+    },
+    {
+        "by": {"release": "com.example.app@2.0.0+9", "environment": "staging"},
+        "totals": {
+            "crash_free_rate(session)": 0.004,
+            "crash_free_rate(user)": None,
+            "sum(session)": 250,
+            "count_unique(user)": 0,
+        },
+    },
+]
 
 
-def test_release_health_queries_org_sessions_with_project_id() -> None:
+def test_release_health_queries_org_sessions_and_rejects_unsafe_inputs() -> None:
     calls: list[str] = []
 
     def opener(request: Any, timeout: float) -> FakeResponse:
         calls.append(request.full_url)
         assert request.method == "GET"
-        return FakeResponse(_sessions_payload())
+        return FakeResponse(
+            {"start": "2026-09-23T00:00:00Z", "groups": _SESSION_GROUPS}
+        )
 
-    groups = SentryAPIClient(_config(), opener=opener).release_health(
-        "4505",
-        environment="production",
-        release="com.example.app@2.0.1+10",
-        stats_period="14d",
+    client = SentryAPIClient(_config(), opener=opener)
+    groups = client.release_health(
+        "4505", environment="production", release="com.example.app@2.0.1+10"
     )
-    assert len(groups) == 2
-    url = calls[0]
-    assert url.startswith(
+    assert groups == _SESSION_GROUPS
+    assert calls[0].startswith(
         "https://sentry.example.test/api/0/organizations/kg-org/sessions/?"
     )
-    query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(calls[0]).query)
     assert query["project"] == ["4505"]
-    assert set(query["field"]) == {
-        "crash_free_rate(session)",
-        "crash_free_rate(user)",
-        "sum(session)",
-        "count_unique(user)",
-    }
+    assert set(query["field"]) == set(sentry_api.SESSION_FIELDS)
     assert set(query["groupBy"]) == {"release", "environment"}
-    assert query["environment"] == ["production"]
-    assert query["statsPeriod"] == ["14d"]
+    assert (query["environment"], query["statsPeriod"]) == (["production"], ["14d"])
     assert query["query"] == ['release:"com.example.app@2.0.1+10"']
+    for kwargs, kind in (
+        ({"stats_period": "1y; drop"}, "invalid_stats_period"),
+        ({"release": 'x" OR y'}, "invalid_release"),
+    ):
+        with pytest.raises(SentryAPIError) as caught:
+            client.release_health("4505", **kwargs)
+        assert caught.value.kind == kind
 
 
-def test_release_health_rejects_unsafe_inputs() -> None:
-    client = SentryAPIClient(_config(), opener=lambda *_a, **_k: FakeResponse({}))
-    with pytest.raises(SentryAPIError) as caught:
-        client.release_health("4505", stats_period="1y; drop")
-    assert caught.value.kind == "invalid_stats_period"
-    with pytest.raises(SentryAPIError) as caught:
-        client.release_health("4505", release='x" OR release:"y')
-    assert caught.value.kind == "invalid_release"
-
-
-def test_cli_release_health_resolves_project_and_normalizes_rates(
+def test_cli_release_health_reports_percent_per_release_and_environment(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     seen: dict[str, Any] = {}
@@ -555,37 +545,48 @@ def test_cli_release_health_resolves_project_and_normalizes_rates(
         def release_health(
             self, project_id: str, **kwargs: Any
         ) -> list[dict[str, Any]]:
-            seen["project_id"] = project_id
-            seen.update(kwargs)
-            return _sessions_payload()["groups"]
+            seen.update(kwargs, project_id=project_id)
+            return _SESSION_GROUPS
 
-    monkeypatch.setenv("SENTRY_AUTH_TOKEN", "secret-token")
-    monkeypatch.setenv("SENTRY_ORG", "kg-org")
-    monkeypatch.setenv("SENTRY_PROJECT_IOS", "kg-ios")
+    for key, value in {
+        "SENTRY_AUTH_TOKEN": "secret-token",
+        "SENTRY_ORG": "kg-org",
+        "SENTRY_PROJECT_IOS": "kg-ios",
+    }.items():
+        monkeypatch.setenv(key, value)
     monkeypatch.setattr(sentry_tool, "SentryAPIClient", FakeClient)
 
-    code = sentry_tool.main(
-        ["release-health", "--project", "ios", "--environment", "production", "--json"]
+    code, payload, output = _run(
+        ["release-health", "--environment", "production", "--json"], capsys
     )
-    output = capsys.readouterr().out
-    payload = json.loads(output)
     assert code == 0
-    assert seen["slug"] == "kg-ios"
-    assert seen["project_id"] == "4505"
-    assert seen["environment"] == "production"
-    assert seen["stats_period"] == "14d"
-    assert payload["schema"] == "kg.sentry.release_health.v1"
-    assert payload["project"] == "kg-ios"
-    assert payload["stats_period"] == "14d"
-    first, second = payload["releases"]
-    assert first == {
-        "release": "com.example.app@2.0.1+10",
-        "environment": "production",
-        "crash_free_sessions": 0.9875,
-        "crash_free_users": 0.95,
-        "sessions": 800,
-        "users": 40,
-    }
-    assert second["crash_free_sessions"] is None
-    assert second["sessions"] == 0
+    assert (
+        seen["slug"],
+        seen["project_id"],
+        seen["environment"],
+        seen["stats_period"],
+    ) == ("kg-ios", "4505", "production", "14d")
+    assert (payload["schema"], payload["project"], payload["stats_period"]) == (
+        "kg.sentry.release_health.v1",
+        "kg-ios",
+        "14d",
+    )
+    assert payload["releases"] == [
+        {
+            "release": "com.example.app@2.0.1+10",
+            "environment": "production",
+            "crash_free_sessions_pct": 99.978,
+            "crash_free_users_pct": 95.0,
+            "sessions": 800,
+            "users": 40,
+        },
+        {
+            "release": "com.example.app@2.0.0+9",
+            "environment": "staging",
+            "crash_free_sessions_pct": 0.4,
+            "crash_free_users_pct": None,
+            "sessions": 250,
+            "users": 0,
+        },
+    ]
     assert "secret-token" not in output

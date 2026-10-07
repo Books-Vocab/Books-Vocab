@@ -301,6 +301,7 @@ def normalize_release(
     raw: dict[str, Any], *, project_hint: str | None = None
 ) -> dict[str, Any]:
     redaction = _Redaction()
+    health = raw.get("healthData") if isinstance(raw.get("healthData"), dict) else {}
     projects: list[str] = []
     for project in raw.get("projects") or []:
         if isinstance(project, dict):
@@ -336,30 +337,41 @@ def normalize_release(
             raw.get("newGroups"), redaction, "release.new_groups"
         ),
         "projects": projects,
+        # healthData (when Sentry includes it) is already a 0..100 percentage.
+        "crash_free_sessions_pct": _percent(health.get("crashFreeSessions"), 1.0),
+        "crash_free_users_pct": _percent(health.get("crashFreeUsers"), 1.0),
         "redaction": redaction.result(),
     }
 
 
 def normalize_release_health(group: dict[str, Any]) -> dict[str, Any]:
-    """Normalize one ``/organizations/{org}/sessions/`` group (release x environment)."""
+    """Normalize one ``/organizations/{org}/sessions/`` group (release x environment).
+
+    That endpoint returns ``crash_free_rate(...)`` as a 0..1 fraction; the
+    output contract is always a 0..100 percentage (``*_pct``).
+    """
     by = group.get("by") if isinstance(group.get("by"), dict) else {}
     totals = group.get("totals") if isinstance(group.get("totals"), dict) else {}
     return {
         "release": safe_label(by.get("release"), max_length=256),
         "environment": safe_label(by.get("environment"), max_length=64),
-        "crash_free_sessions": _rate(totals.get("crash_free_rate(session)")),
-        "crash_free_users": _rate(totals.get("crash_free_rate(user)")),
+        "crash_free_sessions_pct": _percent(
+            totals.get("crash_free_rate(session)"), 100.0
+        ),
+        "crash_free_users_pct": _percent(totals.get("crash_free_rate(user)"), 100.0),
         "sessions": _count(totals.get("sum(session)")),
         "users": _count(totals.get("count_unique(user)")),
     }
 
 
-def _rate(value: Any) -> float | None:
-    """A crash-free rate is a finite fraction in [0, 1]; anything else is unknown."""
+def _percent(value: Any, multiplier: float) -> float | None:
+    """Scale a fraction (x100) or percent (x1) to 0..100; out-of-range is unknown."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    number = float(value)
-    return number if math.isfinite(number) and 0.0 <= number <= 1.0 else None
+    number = float(value) * multiplier
+    return (
+        round(number, 4) if math.isfinite(number) and 0.0 <= number <= 100.0 else None
+    )
 
 
 def _count(value: Any) -> int | None:

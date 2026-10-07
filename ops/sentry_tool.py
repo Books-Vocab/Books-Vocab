@@ -101,12 +101,10 @@ def load_local_ios_summary(root: Path | None = None) -> dict[str, Any]:
     }
 
 
-def config_status(
-    config: SentryConfig, environ: dict[str, str] | None = None
-) -> dict[str, Any]:
+def config_status(config: SentryConfig, project: str | None = "ios") -> dict[str, Any]:
     """Which settings are missing and where they belong; never includes values."""
-    env_file = sentry_env_file(environ)
-    missing = config.missing_settings()
+    env_file = sentry_env_file()
+    missing = config.missing_settings(project)
     status: dict[str, Any] = {
         "missing": missing,
         "env_file": str(env_file),
@@ -442,7 +440,7 @@ def main(argv: list[str] | None = None) -> int:
     except SentryAPIError as error:
         payload = error_payload(error)
         if error.kind.startswith("missing_") or error.kind == "invalid_api_url":
-            payload["config"] = config_status(config)
+            payload["config"] = config_status(config, getattr(args, "project", None))
         exit_code = (
             EXIT_WARN
             if error.kind.startswith("missing_") or error.kind == "network"
