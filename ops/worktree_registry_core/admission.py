@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from lib.worktree_scope import scope_files
+from lib.worktree_scope import SHARED_SCOPE_FILES, scope_files
 
 from .records import (
     STATUS_ACTIVE,
@@ -53,6 +53,7 @@ def ownership_conflicts(
             wanted_paths.intersection(
                 {item["path"] for item in scope_files(record.get("scope"))}
             )
+            - SHARED_SCOPE_FILES
         )
         if branch_overlap or local_path_overlap or id_overlap or path_overlap:
             conflict = {

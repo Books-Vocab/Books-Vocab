@@ -14,6 +14,17 @@ from pathlib import PurePosixPath
 
 SCOPE_SCHEMA = "kg.worktree.scope.v1"
 SCOPE_OPERATIONS = ("add", "modify", "delete")
+# Exact repo paths every lane tends to touch and whose concurrent edits are
+# trivially resolved at rebase (append-only indexes, numeric ratchet ceilings).
+# They are recorded in Scope like any other file but never make two lanes
+# conflict at admission.  Everything not listed here stays exclusive; no globs.
+SHARED_SCOPE_FILES = frozenset(
+    {
+        "docs/reference/tech_index.md",
+        "docs/registry.yml",
+        "ops/complexity_budget.json",
+    }
+)
 # Spellings agents reach for naturally; canonicalised on input, never stored.
 SCOPE_OPERATION_ALIASES = {"create": "add", "new": "add"}
 
