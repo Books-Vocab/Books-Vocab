@@ -3318,24 +3318,22 @@ examples:
             workspace = WORKSPACES_DIR / book_workspace_dirname(
                 metadata["title"], metadata["author"]
             )
+            # Decide "created by this run" BEFORE the lock: taking it creates the
+            # workspace dir (it holds .pipeline.lock), so exists() after would
+            # always be True and the rights sidecar would never be written. A dir
+            # holding only a lock file (a run died between lock and setup) is
+            # still "not yet created".
+            created_now = not workspace.exists() or all(
+                p.name == ".pipeline.lock" for p in workspace.iterdir()
+            )
             _lock_workspace(workspace)  # before setup writes into it
-            created_now = not workspace.exists()
             if setup_workspace(metadata, chapters) != workspace:
                 raise RuntimeError("workspace path rule diverged from setup")
             print(f"  Workspace: {workspace}")
 
-    # Rights are frozen at creation; a resume can never change them, and a
-    # pre-rights workspace is pinned to copyrighted (fail closed).
-    try:
-        rights = rights_gate.resolve_workspace_rights(
-            workspace, args.rights, created=created_now
-        )
-    except rights_gate.RightsError as e:
-        parser.error(str(e))
-    print(f"Rights: {rights}")
-
     # --only-episode must name a real episode before any stage (or a paid
-    # scriptwriter agent for a plan that doesn't exist) runs.
+    # scriptwriter agent for a plan that doesn't exist) runs. Read-only, so it
+    # goes before the rights resolve below, which may write the .rights sidecar.
     if args.only_episode is not None:
         episodes = known_episodes(workspace)
         if args.only_episode not in episodes:
@@ -3349,6 +3347,16 @@ examples:
                 f"plan/episodes/ep_{args.only_episode:02d}.md or "
                 f"scripts/ep_{args.only_episode}_script.md; {have}"
             )
+
+    # Rights are frozen at creation; a resume can never change them, and a
+    # pre-rights workspace is pinned to copyrighted (fail closed).
+    try:
+        rights = rights_gate.resolve_workspace_rights(
+            workspace, args.rights, created=created_now
+        )
+    except rights_gate.RightsError as e:
+        parser.error(str(e))
+    print(f"Rights: {rights}")
 
     saved_agent_profile, saved_agent_model = read_agent_sidecars(workspace)
     if not args.agent_profile and not args.agent_model and saved_agent_profile:
