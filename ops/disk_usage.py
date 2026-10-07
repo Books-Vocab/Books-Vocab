@@ -1320,6 +1320,8 @@ AGENT_LOCK_REASON_RE = re.compile(
 LSTART_FORMAT = "%a %b %d %H:%M:%S %Y"
 # lstart has 1 s resolution; the harness and ps may round across a boundary.
 PID_START_TOLERANCE_SECONDS = 2
+# One ``ps`` probe is capped by this and by the time the report has left.
+PS_PROBE_TIMEOUT_SECONDS = 5.0
 # Dirnames the harness generates (subagent, Workflow): provenance once unlocked.
 AGENT_DIRNAME_RE = re.compile(r"agent-[0-9a-f]{17}|wf_[0-9a-f]{8}-[0-9a-f]{3}-[0-9]+")
 
@@ -1348,14 +1350,14 @@ def _parse_lstart(text: str) -> float | None:
         return None
 
 
-def _ps_lstart(pid: int) -> str | None:
+def _ps_lstart(pid: int, timeout: float = PS_PROBE_TIMEOUT_SECONDS) -> str | None:
     try:
         completed = subprocess.run(
             ["ps", "-o", "lstart=", "-p", str(pid)],
             capture_output=True,
             text=True,
             env={**os.environ, "LC_ALL": "C", "TZ": "UTC"},
-            timeout=5,
+            timeout=timeout,
             check=False,
         )
     except (OSError, subprocess.SubprocessError):
@@ -1367,28 +1369,38 @@ def _harness_pid_state(
     pid: int,
     recorded_start: str | None,
     start_cache: dict[int, str | None] | None = None,
-) -> str:
-    """``live`` only if ``pid`` exists and, when the lock recorded a start
-    time, that pid's start matches it (else an unrelated process reused the
-    pid: ``reused-pid``).  Missing or unreadable start info on either side
-    falls back to the pid-only check.  ``start_cache`` shares one ``ps`` probe
-    per pid across the lanes of one report (a session's lanes share its pid)."""
+    deadline: float | None = None,
+) -> tuple[str, bool]:
+    """``(state, start_unchecked)``.  ``live`` only if ``pid`` exists and, when
+    the lock recorded a start time, that pid's start matches it (else an
+    unrelated process reused the pid: ``reused-pid``).  Missing or unreadable
+    start info on either side falls back to the pid-only check, and so does a
+    report ``deadline`` that has already passed: no further ``ps`` probe runs
+    (``start_unchecked`` is then true) and each probe that does run is capped by
+    the time left.  ``start_cache`` shares one ``ps`` probe per pid across the
+    lanes of one report (a session's lanes share its pid)."""
 
     if not _pid_alive(pid):
-        return "dead-pid"
+        return "dead-pid", False
     recorded = _parse_lstart(recorded_start) if recorded_start else None
     if recorded is None:
-        return "live"
-    if start_cache is None:
-        probed = _ps_lstart(pid)
-    else:
-        if pid not in start_cache:
-            start_cache[pid] = _ps_lstart(pid)
+        return "live", False
+    if start_cache is not None and pid in start_cache:
         probed = start_cache[pid]
+    else:
+        timeout = PS_PROBE_TIMEOUT_SECONDS
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return "live", True
+            timeout = min(timeout, remaining)
+        probed = _ps_lstart(pid, timeout=timeout)
+        if start_cache is not None:
+            start_cache[pid] = probed
     actual = _parse_lstart(probed) if probed else None
     if actual is None or abs(actual - recorded) <= PID_START_TOLERANCE_SECONDS:
-        return "live"
-    return "reused-pid"
+        return "live", False
+    return "reused-pid", False
 
 
 def _agent_lane_lock(
@@ -1396,6 +1408,7 @@ def _agent_lane_lock(
     physical: dict[str, Any],
     workspace: Path,
     start_cache: dict[int, str | None] | None = None,
+    deadline: float | None = None,
 ) -> dict[str, Any] | None:
     """Identify a Claude Code harness lane under ``<workspace>/.claude/worktrees``.
 
@@ -1420,8 +1433,15 @@ def _agent_lane_lock(
     if match is None or match.group("name") != path.name:
         return None
     pid = int(match.group("pid"))
-    state = _harness_pid_state(pid, match.group("start"), start_cache)
-    return {"state": state, "pid": pid}
+    state, start_unchecked = _harness_pid_state(
+        pid, match.group("start"), start_cache, deadline
+    )
+    lock: dict[str, Any] = {"state": state, "pid": pid}
+    if start_unchecked:
+        # The report deadline passed before this pid's start could be probed:
+        # ``live`` is the pid-only answer, not a verified start match.
+        lock["start_check"] = "skipped-deadline"
+    return lock
 
 
 def _stale_agent_cleanup_hint(path: Path, lock: dict[str, Any], branch: str) -> str:
@@ -1853,7 +1873,7 @@ def build_report(
         )
         is_excluded = physical_path in applied_exclusions
         agent_lock = (
-            _agent_lane_lock(physical_path, physical, workspace, start_cache)
+            _agent_lane_lock(physical_path, physical, workspace, start_cache, deadline)
             if lane_kind == "lane" and not is_excluded
             else None
         )

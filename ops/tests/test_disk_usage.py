@@ -2035,7 +2035,7 @@ def test_agent_lock_liveness_checks_recorded_start_time(
 
     probed: list[int] = []
 
-    def fake_lstart(pid: int) -> str | None:
+    def fake_lstart(pid: int, timeout: float = 5.0) -> str | None:
         probed.append(pid)
         return None if probe is None else f"{probe}    \n"
 
@@ -2051,6 +2051,69 @@ def test_agent_lock_liveness_checks_recorded_start_time(
         "pid": pid,
     }
     assert probed == ([pid] if reason_tail.startswith(" start Wed") else [])
+
+
+def test_ps_probes_stop_at_the_report_deadline(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A stalled ``ps`` must not stretch the report past ``--time-budget-seconds``:
+    each probe is capped by the time left, and once the deadline passed the
+    remaining lanes fall back to the pid-only check, marked in their record.
+    The clock is faked so the stalls cost no wall time."""
+
+    repo, worktree = _repo_with_worktree(tmp_path)
+    lanes = [
+        _agent_worktree(
+            repo,
+            name=f"agent-{index:017x}",
+            lock=_harness_lock_reason(
+                f"agent-{index:017x}", 900001 + index, _FOREIGN_START
+            ),
+        )
+        for index in range(6)
+    ]
+    elapsed = [0.0]
+    real_monotonic = time.monotonic
+    monkeypatch.setattr(time, "monotonic", lambda: real_monotonic() + elapsed[0])
+    monkeypatch.setattr(disk_usage, "_pid_alive", lambda pid: True)
+    timeouts: list[float] = []
+
+    def stalled_ps(pid: int, timeout: float = 5.0) -> str | None:
+        timeouts.append(timeout)
+        elapsed[0] += timeout  # ps hangs until its timeout kills it
+        return None
+
+    monkeypatch.setattr(disk_usage, "_ps_lstart", stalled_ps)
+    state = tmp_path / "registry.json"
+    _write_registry(
+        state, [{"branch": "lane-one", "path": str(worktree), "status": "active"}]
+    )
+    output = tmp_path / "lane-usage.json"
+    budget = 12
+
+    main(
+        [
+            "--workspace",
+            str(repo),
+            "--state",
+            str(state),
+            "--output",
+            str(output),
+            "--time-budget-seconds",
+            str(budget),
+        ]
+    )
+
+    assert sum(timeouts) <= budget + 0.5, timeouts
+    assert timeouts and all(0 < timeout <= 5 for timeout in timeouts)
+    assert len(timeouts) < len(lanes)
+    report = json.loads(output.read_text(encoding="utf-8"))
+    by_path = {item["path"]: item for item in report["lanes"]}
+    locks = [by_path[str(lane)]["agent_lock"] for lane in lanes]
+    assert [lock["state"] for lock in locks] == ["live"] * len(lanes)
+    skipped = [lock for lock in locks if lock.get("start_check") == "skipped-deadline"]
+    assert len(skipped) == len(lanes) - len(timeouts)
+    assert all("start_check" not in lock for lock in locks[: len(timeouts)])
 
 
 @pytest.fixture
@@ -2104,7 +2167,7 @@ def test_ps_probe_is_pinned_to_utc_and_compared_as_utc(
         return real_run(*args, **kwargs)  # type: ignore[call-overload]
 
     monkeypatch.setattr(disk_usage.subprocess, "run", spy)
-    assert disk_usage._harness_pid_state(os.getpid(), recorded) == "live"
+    assert disk_usage._harness_pid_state(os.getpid(), recorded) == ("live", False)
     assert [env.get("TZ") for env in seen_env] == ["UTC"]
     # Same wall-clock text read as UTC on both sides: an hour-offset text is a
     # different instant, however the host zone interprets it.
@@ -2121,7 +2184,7 @@ def test_ps_probe_runs_once_per_pid_per_cache(
 
     calls: list[int] = []
 
-    def counting(pid: int) -> str | None:
+    def counting(pid: int, timeout: float = 5.0) -> str | None:
         calls.append(pid)
         return _ps_lstart(pid)
 
@@ -2131,8 +2194,41 @@ def test_ps_probe_runs_once_per_pid_per_cache(
     states = [
         disk_usage._harness_pid_state(os.getpid(), recorded, cache) for _ in range(3)
     ]
-    assert states == ["live"] * 3
+    assert states == [("live", False)] * 3
     assert calls == [os.getpid()]
+
+
+def test_ps_probe_timeout_is_capped_by_the_time_left(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No deadline keeps the 5 s probe cap; a nearer deadline shrinks it, and a
+    passed one skips the probe (pid-only ``live``, flagged unchecked) while a
+    cached answer is still used."""
+
+    now = [100.0]
+    monkeypatch.setattr(time, "monotonic", lambda: now[0])
+    timeouts: list[float] = []
+
+    def fake(pid: int, timeout: float = 5.0) -> str | None:
+        timeouts.append(timeout)
+        return None
+
+    monkeypatch.setattr(disk_usage, "_ps_lstart", fake)
+    monkeypatch.setattr(disk_usage, "_pid_alive", lambda pid: True)
+    start = "Wed Oct  7 11:50:17 2026"
+
+    def state(pid: int, deadline: float | None, cache: dict | None = None) -> tuple:
+        return disk_usage._harness_pid_state(pid, start, cache, deadline)
+
+    assert state(1, None) == ("live", False)
+    assert state(2, 160.0) == ("live", False)  # 60 s left: the 5 s cap holds
+    assert state(3, 102.5) == ("live", False)  # 2.5 s left
+    assert timeouts == [5.0, 5.0, 2.5]
+    assert state(4, 100.0) == ("live", True)  # deadline reached: no probe
+    assert state(5, 99.0) == ("live", True)
+    assert timeouts == [5.0, 5.0, 2.5]
+    cache: dict[int, str | None] = {6: "Wed Oct  7 11:59:17 2026"}
+    assert state(6, 99.0, cache) == ("reused-pid", False)  # cached evidence wins
 
 
 @pytest.mark.parametrize("lock", [_LIVE, None])
