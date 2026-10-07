@@ -119,9 +119,19 @@ final class AddLinkCoordinator {
     private(set) var actionPhase: AddLinkActionPhase = .idle
     private(set) var actionError: AddLinkActionError?
 
+    /// The optimistic placeholder of the link currently being created. `cancelAction()` rolls it
+    /// back synchronously so the projection never outlives the `.cancelled` phase (#2196); the
+    /// cancelled task's own rollback later becomes an idempotent no-op.
+    private struct InFlightLink {
+        let pending: VocabularyGraphLinkMutation.PendingManualLink
+        let source: VocabularyEntry
+        let generation: Int
+    }
+
     private var actionGeneration = 0
     private var actionTask: Task<Void, Never>?
     private var actionTaskToken = 0
+    @ObservationIgnored private var inFlightLink: InFlightLink?
 
     nonisolated static func localCandidates(
         query: String,
@@ -442,6 +452,10 @@ final class AddLinkCoordinator {
             failAction(.existingLinkFailed, generation: generation)
             return
         }
+        inFlightLink = InFlightLink(pending: pending, source: sourceEntry, generation: generation)
+        defer {
+            if inFlightLink?.generation == generation { inFlightLink = nil }
+        }
 
         do {
             let link = try await service.createManualLink(
@@ -506,17 +520,20 @@ final class AddLinkCoordinator {
         }
     }
 
+    /// Returns the spawned task so callers (tests) can await its teardown deterministically
+    /// instead of guessing a number of `Task.yield()` hops.
+    @discardableResult
     func startLinkExisting(
         target: VocabularyEntry,
         sourceEntry: VocabularyEntry,
         using service: any GraphServing
-    ) {
+    ) -> Task<Void, Never> {
         cancelAction()
         actionPhase = .linking
         actionError = nil
         actionTaskToken += 1
         let taskToken = actionTaskToken
-        actionTask = Task { @MainActor [weak self] in
+        let task = Task { @MainActor [weak self] in
             guard let self else { return }
             await self.linkExisting(
                 target: target,
@@ -525,6 +542,8 @@ final class AddLinkCoordinator {
             )
             self.clearActionTask(taskToken: taskToken)
         }
+        actionTask = task
+        return task
     }
 
     func cancelAction() {
@@ -533,6 +552,7 @@ final class AddLinkCoordinator {
         actionGeneration += 1
         actionTask?.cancel()
         actionTask = nil
+        rollbackInFlightLink()
         guard wasRunning else { return }
         actionPhase = .cancelled
         actionError = nil
@@ -547,6 +567,12 @@ final class AddLinkCoordinator {
         actionPhase = .linking
         actionError = nil
         return actionGeneration
+    }
+
+    private func rollbackInFlightLink() {
+        guard let inFlight = inFlightLink else { return }
+        inFlightLink = nil
+        VocabularyGraphLinkMutation.rollbackManualLink(inFlight.pending, on: inFlight.source)
     }
 
     private func isCurrentAction(_ generation: Int) -> Bool {
