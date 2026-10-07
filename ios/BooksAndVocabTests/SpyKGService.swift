@@ -16,6 +16,13 @@ import SwiftData
 ///
 /// 關鍵設計：handler 讓替身能**模擬失敗**。若替身只會成功，rollback 這條失效路徑
 /// 就從模型裡消失了，測試會對它永遠綠燈。
+///
+/// **必須是 `@MainActor`（#2166）**：handler 會在 in-flight 期間改動 `@Model` 實體（模擬背景
+/// pull）。非隔離的 `async` 方法從 `@MainActor` 呼叫端呼叫時（Swift 5 mode）會跳到 global
+/// executor，handler 就在 cooperative pool 的執行緒上寫 SwiftData 物件，同時別的測試在 main
+/// thread 建立 `VocabularyEntry`——SwiftData 的 temporary identifier 註冊表因此偶發
+/// `Already have an objectID registered` trap。隔離到 MainActor 後方法直接在呼叫端執行緒內跑完。
+@MainActor
 final class SpyKGService: CardArchiving {
 
     // MARK: - Recorded calls

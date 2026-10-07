@@ -385,6 +385,51 @@ struct WordDetailSceneStateTests {
         #expect(entry.isReaderHidden == false, "a newer pull value must not be overwritten by the stale response")
     }
 
+    // MARK: - In-flight hooks must stay on the main thread (#2166)
+
+    /// 這條家族的 hook 會在 in-flight 期間改 `@Model` 實體（模擬背景 pull）。hook 若跑在
+    /// cooperative pool 執行緒，就是跨執行緒寫 SwiftData 物件，與 main thread 上並行測試的
+    /// `VocabularyEntry` 建立競爭，造成偶發 `Already have an objectID registered` trap。
+    /// 競態本身不可確定性重現，所以釘住它的**前提**：hook 一律在 main thread 執行。
+    @Test func setCardPreferences_inFlightHooksRunOnMainThread() async throws {
+        let context = try makeContext()
+        let entry = makeEntry(cardId: "root-card", word: "abate")
+        entry.markSynced()
+        context.insert(entry)
+
+        var hookThreads: [Bool] = []
+        let spy = PreferenceSpy()
+        spy.beforeFailure = { hookThreads.append(Thread.isMainThread) }
+        spy.beforeResponse = { hookThreads.append(Thread.isMainThread) }
+        let state = WordDetailSceneState()
+
+        await state.setCardPreferences(
+            readerHidden: true,
+            reviewExcluded: nil,
+            for: entry,
+            kgService: spy,
+            modelContext: context
+        )
+
+        #expect(hookThreads == [true, true], "in-flight hook 必須在 main thread 跑，才不會跨執行緒碰 SwiftData 物件")
+    }
+
+    @Test func setArchived_inFlightHandlerRunsOnMainThread() async throws {
+        let context = try makeContext()
+        let entry = makeEntry(cardId: "root-card", word: "abate")
+        entry.notebookId = "nb-1"
+        context.insert(entry)
+
+        var handlerThreads: [Bool] = []
+        let spy = SpyKGService()
+        spy.archiveCardHandler = { _ in handlerThreads.append(Thread.isMainThread) }
+        let state = WordDetailSceneState()
+
+        await state.setArchived(true, for: entry, kgService: spy, modelContext: context)
+
+        #expect(handlerThreads == [true], "in-flight handler 必須在 main thread 跑，才不會跨執行緒碰 SwiftData 物件")
+    }
+
     // MARK: - Helpers
 
     private enum TestFailure: Error {
@@ -418,6 +463,12 @@ struct WordDetailSceneStateTests {
     }
 }
 
+/// `@MainActor` 是載重的（#2166）：`beforeFailure` / `beforeResponse` 會在 in-flight 期間改動
+/// `@Model` 實體以模擬背景 pull。若此類別是非隔離的，`async` 方法會被 hop 到 global executor，
+/// hook 就在 cooperative pool 執行緒上寫 SwiftData 物件，與 main thread 上其他測試建立
+/// `VocabularyEntry` 競爭 temporary identifier 註冊表，偶發
+/// `SwiftData/ModelCoders.swift:723: Fatal error: Already have an objectID registered`（signal trap）。
+@MainActor
 private final class PreferenceSpy: CardPreferenceUpdating {
     struct Call: Equatable {
         let word: String
