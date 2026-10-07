@@ -216,6 +216,89 @@ class TestEmbeddingStoreCallerBinding:
         finally:
             clear_store_cache()
 
+    def test_update_uses_its_own_binding_llm(self, tmp_path: Path, reservations):
+        """update() (not just add) embeds through the calling binding's llm."""
+        clear_store_cache()
+        try:
+            client_a = _mock_llm(1)
+            client_b = _mock_llm(1)
+            writer = create_embedding_store(tmp_path, llm=TrackedLLM(client_a, "u1"), notebook_id="default")
+            writer.add("c1", "hello")
+            client_a.embeddings.create.reset_mock()
+            before = writer.store._embeddings[0].copy()
+
+            updater = create_embedding_store(
+                tmp_path,
+                llm=TrackedLLM(client_b, "u2", enforce_quota=True, is_pro=True),
+                notebook_id="default",
+            )
+            updater.update("c1", "changed")
+
+            client_b.embeddings.create.assert_called_once()
+            client_a.embeddings.create.assert_not_called()
+            assert not np.array_equal(writer.store._embeddings[0], before)
+            assert reservations[-1]["is_pro"] is True
+        finally:
+            clear_store_cache()
+
+    @pytest.mark.parametrize("op", ["add", "add_batch", "update_new", "update_existing"])
+    def test_write_without_llm_raises_before_mutating_state(self, tmp_path: Path, reservations, op):
+        """A llm=None binding that must embed fails loudly and leaves no trace."""
+        clear_store_cache()
+        try:
+            seeded = create_embedding_store(tmp_path, llm=TrackedLLM(_mock_llm(1), "u1"), notebook_id="default")
+            seeded.add("c1", "hello")
+            seeded.flush()
+            emb_path, ids_path = seeded.embeddings_path, seeded.ids_path
+            emb_bytes, ids_bytes = emb_path.read_bytes(), ids_path.read_bytes()
+            vectors_before = seeded.store._embeddings.copy()
+
+            unbound = create_embedding_store(tmp_path, llm=None, notebook_id="default")
+            with pytest.raises(RuntimeError, match="no LLM bound"):
+                if op == "add":
+                    unbound.add("c2", "new")
+                elif op == "add_batch":
+                    unbound.add_batch([("c2", "new"), ("c3", "newer")])
+                elif op == "update_new":
+                    unbound.update("c2", "new")
+                else:
+                    unbound.update("c1", "changed")
+
+            assert unbound.count() == 1
+            assert unbound.store._ids == ["c1"]
+            assert not unbound.has("c2")
+            np.testing.assert_array_equal(unbound.store._embeddings, vectors_before)
+            assert emb_path.read_bytes() == emb_bytes
+            assert ids_path.read_bytes() == ids_bytes
+            assert len(reservations) == 1  # only the seeding call reserved quota
+        finally:
+            clear_store_cache()
+
+    def test_write_without_llm_on_empty_store_writes_nothing(self, tmp_path: Path):
+        clear_store_cache()
+        try:
+            unbound = create_embedding_store(tmp_path, llm=None, notebook_id="default")
+            with pytest.raises(RuntimeError, match="no LLM bound"):
+                unbound.add_batch([("c1", "x")])
+            assert unbound.count() == 0
+            assert unbound.store._embeddings is None
+            assert not unbound.embeddings_path.exists()
+            assert not unbound.ids_path.exists()
+        finally:
+            clear_store_cache()
+
+    def test_unbound_binding_still_serves_reads_and_evictions(self, tmp_path: Path):
+        clear_store_cache()
+        try:
+            seeded = create_embedding_store(tmp_path, llm=TrackedLLM(_mock_llm(1), "u1"), notebook_id="default")
+            seeded.add("c1", "hello")
+            unbound = create_embedding_store(tmp_path, llm=None, notebook_id="default")
+            assert unbound.has("c1")
+            assert unbound.remove("c1") is True
+            assert unbound.count() == 0
+        finally:
+            clear_store_cache()
+
     def test_bindings_share_cached_vectors(self, tmp_path: Path, reservations):
         clear_store_cache()
         try:
