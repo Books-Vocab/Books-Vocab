@@ -106,10 +106,25 @@ filter_results() {
 #      preserved) into $STRIPPED_DIR/<path relative to $IOS_SRC>.
 # It used to start one interpreter per file per pattern (~100s on the real
 # tree), which is what timed the pre-commit fast tier out.
+#
+# The build fails closed: a stripper that dies midway (disk full, runtime error)
+# leaves a partial or empty mirror, and scanning it would report zero findings
+# so --baseline-check / --strict would pass on input that was never linted.
+# Diagnostics are captured and replayed on stderr; exit 2 is the tool-error code.
 STRIPPED_DIR="$(mktemp -d "${TMPDIR:-/tmp}/kg_i18n_stripped_XXXXXX")"
-trap 'rm -rf "$STRIPPED_DIR"' EXIT
-rg --files --type swift "${EXCLUDE_GLOBS[@]}" "$IOS_SRC" 2>/dev/null \
-  | "${PY_CMD[@]}" "$STRIP_PREVIEWS" --mirror "$IOS_SRC" "$STRIPPED_DIR" 2>/dev/null || true
+MIRROR_ERR="$STRIPPED_DIR.err"
+trap 'rm -rf "$STRIPPED_DIR" "$MIRROR_ERR"' EXIT
+set +e
+rg --files --type swift "${EXCLUDE_GLOBS[@]}" "$IOS_SRC" 2>"$MIRROR_ERR" \
+  | "${PY_CMD[@]}" "$STRIP_PREVIEWS" --mirror "$IOS_SRC" "$STRIPPED_DIR" 2>>"$MIRROR_ERR"
+mirror_rcs=("${PIPESTATUS[@]}")
+set -e
+# rg exits 1 when no file matches (an empty candidate list is a valid, empty mirror).
+if [ "${mirror_rcs[0]}" -gt 1 ] || [ "${mirror_rcs[1]}" -ne 0 ]; then
+  echo "[i18n_lint] error: preview-stripped mirror build failed (rg=${mirror_rcs[0]} strip=${mirror_rcs[1]}); refusing to lint a partial mirror" >&2
+  cat "$MIRROR_ERR" >&2
+  exit 2
+fi
 
 # Scan the stripped mirror for a raw-CJK PCRE2 pattern, map hits back to the
 # on-disk path (`$IOS_SRC/<rel>:<line>:<content>`), and drop allowlisted /
