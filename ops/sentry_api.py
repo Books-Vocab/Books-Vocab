@@ -196,10 +196,10 @@ class SentryConfig:
 
     @property
     def api_configured(self) -> bool:
-        return not self.missing_settings()
+        return not self.missing_settings("ios")
 
-    def missing_settings(self) -> list[str]:
-        """Names of the settings that block API access (values are never included)."""
+    def missing_settings(self, project: str | None = None) -> list[str]:
+        """Setting names that block API access for ``project`` (never values)."""
         missing = []
         if not self.api_url_valid:
             missing.append("SENTRY_API_URL")
@@ -207,8 +207,8 @@ class SentryConfig:
             missing.append("SENTRY_AUTH_TOKEN")
         if not self.organization:
             missing.append("SENTRY_ORG")
-        if not self.project_ios:
-            missing.append("SENTRY_PROJECT_IOS")
+        if project and not self.project_for(project):
+            missing.append(f"SENTRY_PROJECT_{project.upper()}")
         return missing
 
 
