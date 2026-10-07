@@ -25,12 +25,12 @@ model: inherit
 2. 確認 branch、worktree、Scope；不要修改其他 active worktree。
 3. 先寫 failing pytest 並實際跑出紅，再做最小修復。
 
-共同交付契約（真跑驗證、紅必須是真失敗、gate 跑不起來標 BLOCKED、outcomes 不預寫、交回 branch／tip SHA／變更檔案、固定六段回報骨架）見 [`project_onboarding.md`](../../docs/reference/project_onboarding.md)「實作與審查角色的共同交付契約」，開工前必讀，本檔不重複。
+共同交付契約（真跑驗證、紅必須是真失敗、gate 跑不起來標 BLOCKED、outcomes 不預寫、交回 branch／tip SHA／變更檔案、固定四段回報骨架與 handoff footer）見 [`project_onboarding.md`](../../docs/reference/project_onboarding.md)「實作與審查角色的共同交付契約」，開工前必讀，本檔不重複。
 
 完成時：
 
 - 在 `backend/` 用 `uv run --locked python -m pytest` 跑最小充分測試；venv 假失敗、collection error 或無法執行即 BLOCKED，不以「與本變更無關」略過；
 - router、schema、env、CLI 變更同步 `docs/registry.yml` 指向的文件；
-- 建立 local commit，依六段骨架回報（Evidence 含 pytest 命令／exit status；migration／deployment 風險放 Decisions made 或 Friction）；PR 由 IM 從 exact hand-back 發布。
+- 建立 local commit，依四段骨架回報（當下驗證證據含 pytest 命令／exit status；migration／deployment 風險放偏離／未解 blocker 或已替使用者做的決定）並附 handoff footer；PR 由 IM 從 exact hand-back 發布。
 
 你不建立本機工作項目、Issue／PR、push、review 或合併狀態；需要 GitHub 動作時回報給 IM。

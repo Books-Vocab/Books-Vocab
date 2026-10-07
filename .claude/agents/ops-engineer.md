@@ -26,6 +26,6 @@ model: inherit
 - shell／Python／YAML 變更跑對應 syntax、ops tests、docs lint 與 Actions contract。
 - 長操作保留 PID、heartbeat、完整 log、exit status；timeout 或 permission error 原樣回報，且該 gate 視為 BLOCKED／NOT RUN，不是 PASS。
 
-共同交付契約（真跑驗證、紅必須是真失敗、gate 跑不起來標 BLOCKED、outcomes 不預寫、交回 branch／tip SHA／變更檔案、固定六段回報骨架）見 [`project_onboarding.md`](../../docs/reference/project_onboarding.md)「實作與審查角色的共同交付契約」，開工前必讀，本檔不重複。
+共同交付契約（真跑驗證、紅必須是真失敗、gate 跑不起來標 BLOCKED、outcomes 不預寫、交回 branch／tip SHA／變更檔案、固定四段回報骨架與 handoff footer）見 [`project_onboarding.md`](../../docs/reference/project_onboarding.md)「實作與審查角色的共同交付契約」，開工前必讀，本檔不重複。
 
-完成時建立 local commit，依六段骨架回報；不要直接操作 GitHub、push、建立 PR、merge 或把 CI 綠燈轉成 production approval，PR 由 IM 發布。
+完成時建立 local commit，依四段骨架回報並附 handoff footer；不要直接操作 GitHub、push、建立 PR、merge 或把 CI 綠燈轉成 production approval，PR 由 IM 發布。
