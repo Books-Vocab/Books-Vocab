@@ -85,6 +85,61 @@ kg_ios_disk_guard_timestamp_epoch() {
   printf '%s' "$epoch"
 }
 
+# Print the items of one JSON string array (as written by json.dump(indent=2))
+# joined by ';'.  Empty or absent arrays print nothing.
+kg_ios_disk_json_array() {
+  local file="$1" key="$2"
+  [[ -f "$file" ]] || return 0
+  awk -v key="\"${key}\":" '
+    !inarr && $1 == key { if ($0 ~ /\[\]/) exit; inarr = 1; next }
+    inarr {
+      if ($0 ~ /^[[:space:]]*\]/) exit
+      sub(/^[[:space:]]*"/, ""); sub(/",?$/, "")
+      printf "%s%s", (n++ ? ";" : ""), $0
+    }
+  ' "$file"
+}
+
+kg_ios_disk_lane_usage_state() {
+  local state="${1:?guard state is required}"
+  printf '%s' "${KG_IOS_DISK_LANE_USAGE_STATE:-$(dirname "$state")/lane_disk_usage.json}"
+}
+
+# Say WHICH worktrees and reasons made the shared guard block, so a blocked
+# agent does not read a lane-attribution verdict as a disk-space problem.
+kg_ios_disk_guard_diagnose() {
+  local operation="$1" state="$2" lane_state reasons unregistered dirty unknown
+  lane_state="$(kg_ios_disk_lane_usage_state "$state")"
+  reasons="$(kg_ios_disk_json_array "$lane_state" blocking_reasons)"
+  unregistered="$(kg_ios_disk_json_array "$lane_state" unregistered_physical_worktrees)"
+  dirty="$(kg_ios_disk_json_array "$lane_state" blocking_dirty_physical_worktrees)"
+  unknown="$(kg_ios_disk_json_array "$lane_state" unknown_physical_worktrees)"
+  echo "schema=kg.ios.disk-budget.v1 operation=$operation detail=guard-block guardReason=$(kg_ios_disk_guard_json_string "$state" reason) guardAction=$(kg_ios_disk_guard_json_string "$state" action) laneUsageVerdict=$(kg_ios_disk_guard_json_string "$state" lane_usage_verdict) blockingReasons=${reasons:-none} unregisteredWorktrees=${unregistered:-none} dirtyWorktrees=${dirty:-none} unknownWorktrees=${unknown:-none} laneUsage=$lane_state refresh=\"./ops/ios_ops.sh guard --refresh\"" >&2
+}
+
+# Re-evaluate the shared guard now instead of waiting for the 5-minute tick.
+# $2=1 only when the caller already owns the iOS build lock (inline preflight);
+# the tick must run against the canonical checkout (the product registry lives
+# there, not in an agent lane).
+kg_ios_disk_guard_refresh() {
+  local state="${1:?guard state is required}" lib_dir tick workspace common
+  lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  tick="${KG_IOS_DISK_GUARD_TICK:-$lib_dir/../kg_disk_guard.sh}"
+  [[ -x "$tick" ]] || return 1
+  workspace="${KG_DISK_GUARD_WORKSPACE:-}"
+  if [[ -z "$workspace" ]]; then
+    common="$(git -C "$lib_dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+    if [[ -n "$common" ]]; then
+      workspace="$(dirname "$common")"
+    else
+      workspace="$(cd "$lib_dir/../.." && pwd)"
+    fi
+  fi
+  KG_DISK_GUARD_WORKSPACE="$workspace" KG_DISK_GUARD_STATE="$state" \
+    KG_DISK_GUARD_LANE_USAGE_STATE="$(kg_ios_disk_lane_usage_state "$state")" \
+    KG_DISK_GUARD_BUILD_LOCK_HELD="${2:-0}" "$tick" >/dev/null 2>&1
+}
+
 kg_ios_disk_budget_guard_state() {
   local operation="${1:-ios-write}"
   local state="${KG_IOS_DISK_GUARD_STATE:-$KG_IOS_DISK_GUARD_STATE_DEFAULT}"
@@ -124,7 +179,18 @@ kg_ios_disk_budget_guard_state() {
     return "$KG_IOS_DISK_BUDGET_EXIT"
   fi
   if [[ "$verdict" == "block" || "$verdict" == "critical" ]]; then
+    # The state can be up to one tick stale (a lane registered a minute ago is
+    # still "unregistered").  Re-evaluate once inline before refusing.
+    if [[ "${KG_IOS_DISK_GUARD_REFRESHED:-0}" != "1" && "${KG_IOS_DISK_GUARD_AUTO_REFRESH:-1}" == "1" \
+      && "$(kg_ios_disk_guard_json_string "$state" reason)" == lane-usage-report-* ]]; then
+      echo "schema=kg.ios.disk-budget.v1 operation=$operation detail=guard-block-refreshing state=$state" >&2
+      if kg_ios_disk_guard_refresh "$state" 1; then
+        KG_IOS_DISK_GUARD_REFRESHED=1 kg_ios_disk_budget_guard_state "$operation"
+        return $?
+      fi
+    fi
     echo "schema=kg.ios.disk-budget.v1 operation=$operation verdict=block reason=disk-guard-blocked state=$state" >&2
+    kg_ios_disk_guard_diagnose "$operation" "$state"
     return "$KG_IOS_DISK_BUDGET_EXIT"
   fi
 

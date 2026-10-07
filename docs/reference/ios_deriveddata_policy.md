@@ -177,7 +177,17 @@ GitHub-hosted macOS runner 每次都是新的 VM；本機長存的 DerivedData �
 `lanes` 與 topology evidence，並以獨立的 supervision bytes 計算，但不會被算成
 `unregistered_physical_worktree` 或產品 lane quota。這個辨識只接受該 exact shape；
 其他 `.codex/worktrees/<session>/<name>`、任意未知路徑、dirty／unknown supervision
-checkout 仍然 fail-closed。非標準的 supervision checkout 只能由 caller 重複傳入 exact path：
+checkout 仍然 fail-closed。
+
+Claude Code subagent（`isolation: worktree`）的 `<workspace>/.claude/worktrees/agent-<hex>`
+（分支必為 `worktree-agent-<hex>`，兩者須一致）是 harness 管理的 ephemeral lane，從不進
+product registry。它們 `ownership=ephemeral-agent`、完整計入 per-lane／aggregate bytes 與 quota，
+dirty 屬正常工作狀態，只產生 `ephemeral-agent-lane` warning 並列於 `policy.ephemeral_agent_worktrees`，
+不算 `unregistered_physical_worktree`；因此並行的 sibling agent worktree 不會互相擋 iOS 測試。
+shape 不符（非 hex id、分支與目錄不一致、不在該 root 直屬）的 checkout 仍是 unregistered hard block。
+被 guard 擋下（exit 75）時，`kg.ios.disk-budget.v1` 輸出會附 `blockingReasons=`／`unregisteredWorktrees=`／
+`dirtyWorktrees=`；`lane-usage-report-*` 的擋下會先 inline 重跑一次 guard tick（`KG_IOS_DISK_GUARD_AUTO_REFRESH=0` 可關），
+也可手動 `./ops/ios_ops.sh guard [--refresh]` 立即重新評估。非標準的 supervision checkout 只能由 caller 重複傳入 exact path：
 
 ```bash
 ./ops/disk_usage.py \
