@@ -107,6 +107,15 @@ struct PodcastSilentFailureTests {
 
     // MARK: - Required-auth download / playback
 
+    @Test func download_failure_message_names_offline_and_auth_causes() {
+        #expect(PodcastEpisodeRow.downloadFailureMessage(for: KGError.offline)
+            == SyncFailurePresentation.reason(for: KGError.offline))
+        #expect(PodcastEpisodeRow.downloadFailureMessage(for: KGError.unauthorized)
+            == SyncFailurePresentation.reason(for: KGError.unauthorized))
+        #expect(PodcastEpisodeRow.downloadFailureMessage(for: KGError.offline)
+            != PodcastEpisodeRow.downloadFailureMessage(for: KGError.unauthorized))
+    }
+
     @Test func required_download_expired_token_keeps_explicit_auth_failure() async {
         let invalidator = PodcastRecordingSessionInvalidator()
         let service = KGService(
