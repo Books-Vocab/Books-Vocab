@@ -210,6 +210,8 @@ metadata 漂移只修同一 PR：
 
 若 controller 回傳 `trigger_required` 或確認 exact required `FAILURE`，PI 只對同一 published tuple 觸發 deterministic repair：
 
+`trigger-required` 讀回 `result.dispatched=false`（`dispatch_action=wait`）代表 exact `pr-gate` run 正在合法等待 runner 或已部分執行，`dispatch_reason` 說明原因；這不是失敗，不得手動 `gh run cancel`／重跑，下一個 tick 再評估。只有 `recover_wedged_run`（零 job 已開始且超過 wedged 門檻）才會 cancel。
+
 ```bash
 ./ops/delivery.py --repo /Users/chenliangyu/project/kg trigger-required --pr '<number>'
 ```
