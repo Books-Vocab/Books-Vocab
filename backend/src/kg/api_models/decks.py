@@ -7,9 +7,10 @@ A shared card physically cannot carry a copier's review schedule, so no route
 under ``/api/decks`` may reuse ``CardResponse``. A contract test asserts the
 zero-SRS property.
 """
+
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class DeckCard(BaseModel):
@@ -73,7 +74,7 @@ class DeckCopyRequest(BaseModel):
     """
 
     idempotencyKey: str
-    notebookName: str | None = None
+    notebookName: str | None = Field(default=None, max_length=100)
 
 
 class DeckCopyResponse(BaseModel):
