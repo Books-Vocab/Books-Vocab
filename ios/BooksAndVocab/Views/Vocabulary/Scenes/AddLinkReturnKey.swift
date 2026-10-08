@@ -21,13 +21,28 @@ enum AddLinkReturnBehavior: Equatable {
     /// highlighted. Never creates.
     case revealCreate
 
+    /// The keyboard key labels this behavior can announce.
+    enum ReturnKeyLabel: Equatable {
+        case join
+        case done
+    }
+
     /// The keyboard key label announces what Return will do. `SubmitLabel` has no
     /// custom text, so "link" maps to `.join` (the system-localized word closest
     /// to "add / link") and everything else to `.done`.
-    var submitLabel: SubmitLabel {
+    var returnKeyLabel: ReturnKeyLabel {
         switch self {
         case .linkExact: .join
         case .alreadyLinked, .dismissKeyboard, .revealCreate: .done
+        }
+    }
+
+    /// The SwiftUI projection of `returnKeyLabel`, which exists because
+    /// `SubmitLabel` is not Equatable.
+    var submitLabel: SubmitLabel {
+        switch returnKeyLabel {
+        case .join: .join
+        case .done: .done
         }
     }
 

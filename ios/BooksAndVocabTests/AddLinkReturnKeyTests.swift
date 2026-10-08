@@ -35,7 +35,7 @@ struct AddLinkReturnKeyTests {
         let result = behavior("run", source: source, entries: [run, running])
         #expect(result == .linkExact(run.id), "the exact word wins over the partial match `running`")
         #expect(result.linksOnReturn)
-        #expect(result.submitLabel == .join)
+        #expect(result.returnKeyLabel == .join)
         #expect(result.accessibilityValue == "linkExact")
     }
 
@@ -77,7 +77,7 @@ struct AddLinkReturnKeyTests {
         let result = behavior("runn", source: source, entries: [running])
         #expect(result == .dismissKeyboard)
         #expect(!result.linksOnReturn)
-        #expect(result.submitLabel == .done)
+        #expect(result.returnKeyLabel == .done)
     }
 
     @Test("several partial matches: keyboard away so the whole list is visible")
@@ -98,7 +98,7 @@ struct AddLinkReturnKeyTests {
         let result = behavior("zzqxv", source: source, entries: entries)
         #expect(result == .revealCreate)
         #expect(!result.linksOnReturn)
-        #expect(result.submitLabel == .done)
+        #expect(result.returnKeyLabel == .done)
     }
 
     @Test("the create entry is only revealed when there is nothing else to show")
@@ -131,7 +131,7 @@ struct AddLinkReturnKeyTests {
         let result = behavior("banana", source: source, entries: [banana])
         #expect(result == .alreadyLinked)
         #expect(!result.linksOnReturn)
-        #expect(result.submitLabel == .done)
+        #expect(result.returnKeyLabel == .done)
     }
 
     @Test("words that cannot be linked never link on Return")
