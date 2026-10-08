@@ -290,6 +290,54 @@ else
   fail 'commit-range hostile filename was narrowed'
 fi
 
+# A PR's scope is its diff from the merge base. `pull_request.base.sha` is the
+# base branch tip, which moves after the PR forks; a two-point base..head diff
+# would add the reverse of those newer commits (here: iOS and backend sources
+# the PR never touched) and select suites the PR cannot affect.
+FORK="$STUBS/fork"
+mkdir -p "$FORK/backend/src" "$FORK/ios" "$FORK/docs"
+(
+  cd "$FORK"
+  git init -q -b trunk
+  git config user.email t@example.invalid
+  git config user.name t
+  printf 'a\n' > backend/src/a.py
+  printf 'a\n' > ios/App.swift
+  git add -A
+  git commit -q -m fork-point
+  git checkout -q -b pr
+  printf 'note\n' > docs/note.md
+  git add -A
+  git commit -q -m docs-only-pr
+  git checkout -q trunk
+  printf 'b\n' >> backend/src/a.py
+  printf 'b\n' >> ios/App.swift
+  git commit -q -am trunk-moves-on
+  git checkout -q --orphan unrelated
+  git rm -rfq .
+  printf 'u\n' > unrelated.txt
+  git add -A
+  git commit -q -m unrelated-history
+)
+fork_plan() {
+  (cd "$FORK" && "$ROUTER" --base "$1" --head "$2" --format json 2>/dev/null | jq -c '{backend, ops, ios}')
+}
+if [[ "$(fork_plan trunk pr)" == '{"backend":false,"ops":false,"ios":false}' ]]; then
+  pass 'commit-range diffs from the merge base, not the moved base tip'
+else
+  fail "commit-range leaked base-branch changes into the PR scope: $(fork_plan trunk pr)"
+fi
+if [[ "$(fork_plan pr trunk)" == '{"backend":true,"ops":false,"ios":true}' ]]; then
+  pass 'commit-range still selects suites for the changes after the merge base'
+else
+  fail "commit-range lost the post-merge-base changes: $(fork_plan pr trunk)"
+fi
+if [[ "$(fork_plan trunk unrelated)" == '{"backend":true,"ops":true,"ios":true}' ]]; then
+  pass 'commit-range without a merge base selects every suite (fail-closed)'
+else
+  fail "commit-range without a merge base was narrowed: $(fork_plan trunk unrelated)"
+fi
+
 if (( failures > 0 )); then
   printf 'ci scope router: %d failure(s)\n' "$failures" >&2
   exit 1
