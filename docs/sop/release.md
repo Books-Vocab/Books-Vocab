@@ -151,12 +151,37 @@ the candidate command refuses to create another build and points to `resume`.
 
 Use `ops/release.sh release backend <version>` only to create the dedicated-lane
 candidate. After PR/queue merge and canonical sync, an approved release operator may
-run the backend deployment path through `ops/devops_kg_safe.sh` and its SOP. The
+run `ops/release.sh promote backend <sha>` (see [felix 生產切換](#felix-生產切換backend-production-promotion)). The
 candidate path never pushes `main` and never deploys. `ops/kg_reconcile.sh` is the
 host-side convergence service when enabled; its health gate and rollback behavior are
 part of the deployment contract. Database migrations, secrets, domain routing,
 container ports and host ownership remain governed by `docs/sop/deploy.md` and
 `docs/reference/host_topology.md`.
+
+### felix 生產切換（backend production promotion）
+
+`origin/prod` is the only production cursor: the felix reconciler (`ops/kg_reconcile.sh`, launchd `com.kg.reconcile`, repo `~/kg-prod`) deploys whatever `origin/prod` points at. `promote` is the one scripted way to advance it. The branch is not GitHub-protected, so the guards live in the script; never push `prod` by hand.
+
+```bash
+./ops/release.sh promote backend <full-40-char-main-sha>                  # dry-run: all guards, prints plan, pushes nothing
+./ops/release.sh promote backend <sha> --yes --wait                       # git push origin <sha>:refs/heads/prod, then poll
+./ops/release.sh promote backend <sha> --same-version "<reason>" --yes    # redeploy without a version bump
+```
+
+Preconditions (each refuses with a message; no `--force` exists):
+
+1. `<sha>` is a full SHA and an ancestor of live `git ls-remote origin refs/heads/main`.
+2. Live `origin/prod` is an ancestor of `<sha>`: fast-forward only.
+3. `backend/pyproject.toml` and `backend/src/kg/api.py` agree at `<sha>` and are greater than the version at `origin/prod` (equal only with `--same-version <reason>`).
+4. `<sha>` has a completed, green `backend-quality` check-run (`gh api repos/Books-Vocab/Books-Vocab/commits/<sha>/check-runs`). No evidence refuses; promote a main commit whose CI ran (a backend-touching merge).
+
+Run `./ops/release_train.py` first and get the owner's explicit go for hot-path files. After the push the script re-reads `origin/prod` and must see `<sha>`.
+
+What happens next (no operator action): within about 90 s the reconciler fast-forwards `~/kg-prod`, rebuilds and force-recreates the container, runs the localhost health and external smoke gates, and on failure rolls back to the previous SHA and poisons the new one (cooldown 3600 s). Details and verdicts: `docs/sop/deploy.md` (reconciler sections).
+
+Verify: `--wait` polls `GET ${KG_PUBLIC_URL:-https://wordnexus.lol}/api/system/info` every 15 s (up to 600 s; `KG_PROMOTE_POLL_SECS`/`KG_PROMOTE_WAIT_SECS`) until `version` is a prefix of the promoted SHA (at least 7 chars). Without it, run the same `curl` plus `./ops/devops_kg_safe.sh run "tail -40 ~/Library/Logs/kg_reconcile.err.log"` and `tail -5 ~/Library/Logs/kg_reconcile.out.log` (verdict `deployed` expected; `rolled-back` or `poisoned-skip` means the gate failed).
+
+Rollback: the reconciler refuses rewinds, and `promote` refuses non-fast-forward, so never move `prod` backwards. Land a forward `git revert` of the bad change on `main` through the normal PR and merge queue (bump the backend version so the guard passes, or use `--same-version`), then `promote` that commit. If a gate already auto-rolled back, the bad SHA is poisoned and production is on the old SHA; fix forward the same way. First-time provisioning (clone `~/kg-prod`, seed `origin/prod`, plist) is a one-off topology migration, recorded in `docs/reference/host_topology.md`.
 
 ## iOS
 

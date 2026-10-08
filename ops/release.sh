@@ -16,6 +16,10 @@
 #   ./ops/release.sh bump-build ios              # 只 +1 pbxproj CURRENT_PROJECT_VERSION（App Review 被拒同版重送；dry-run 預設，--yes 才寫）
 #   ./ops/release.sh tag <api|ios> <x.y.z>       # commit 版號檔 + tag-only push（ios 封的是 ios/<x.y.z>+<build>）
 #   ./ops/release.sh release <backend|ios> <x.y.z>  # dedicated lane candidate；dry-run 預設
+#   ./ops/release.sh promote backend <merged-main-sha> [--same-version <reason>] [--wait]
+#                                                # 唯一推進 origin/prod 的路徑（FF-only，永不 force）；dry-run 預設，--yes 才 push；
+#                                                # 守衛：完整 SHA 在 live origin/main、prod 為其 ancestor、backend 版號提升、backend-quality 全綠；
+#                                                # --wait 輪詢 /api/system/info 至 version==短 SHA（KG_PROMOTE_WAIT_SECS 600 / KG_PROMOTE_POLL_SECS 15）
 #   ./ops/release.sh resume ios <x.y.z> <build> --pr <n> --merged-source <sha>
 #                                                # merged main 後，dry-run 預設；--yes 才 upload
 #   ./ops/release.sh shipped ios                 # 查 ASC 上架版本 → join build tag → 打 ios/<x.y.z>（dry-run 預設）
@@ -38,7 +42,7 @@
 # 其他：-h|--help
 # env knob：KG_RELEASE_WAIT_SECS（預設 480）/ KG_RELEASE_POLL_SECS（10）/ KG_PUBLIC_URL
 #           —— release backend 收斂等待的上限與輪詢間隔。設 0 秒不會關閉等待，只會讓它
-#           立刻逾時；真要跳過請直接用 `orchestrate deploy --commit`（那條路本來就不等）。
+#           立刻逾時。
 #           KG_ASC_BUILDS_CMD（測試注入；預設 ops/asc.sh builds）供 resubmit 查 TestFlight 最新 build。
 #           KG_ASC_BUILD_CMD（測試注入；預設 ops/asc.sh build <version> <build>）供 iOS finalize
 #           查 ASC 精確 build；KG_RELEASE_ASC_WAIT_SECS（預設 120）/KG_RELEASE_ASC_POLL_SECS（5）
@@ -58,6 +62,9 @@ SHIPPED_COMMIT=""
 RELEASE_PR=""
 MERGED_SOURCE=""
 IOS_SAME_VERSION_RESUBMIT=0
+PROMOTE_WAIT=0
+PROMOTE_SAME_VERSION=""
+KG_GH_REPO="${KG_GH_REPO:-Books-Vocab/Books-Vocab}"
 
 # ── 部署收斂 seam（測試注入；預設即生產）──────────────────────────────────
 CURL_BIN="${CURL_BIN:-curl}"
@@ -1289,7 +1296,7 @@ cmd_release() {
   esac
   [[ -n "$v" ]] || err "請提供版本號 x.y.z"
   valid_semver "$v" || err "版本號格式錯誤：${v}（需 x.y.z）"
-  # Historical `deploy --commit` and `ios_release.sh --upload` touches now
+  # Production touches (`promote` push to origin/prod, `ios_release.sh --upload`)
   # live only after exact merged-main evidence; this candidate path contains
   # neither. The post-merge route requires `branch == main` in resume/finalize,
   # while this command requires the inverse dedicated-lane guard.
@@ -1355,6 +1362,76 @@ cmd_release() {
   fi
 }
 
+# ---- promote：唯一推進 origin/prod 的官方路徑（felix reconciler 只認 origin/prod） ----
+# 守衛全為唯讀查詢，dry-run 與 --yes 走同一組；只有最後一個 push 受 --yes 管。永不 force：
+# prod 非 SHA 的 ancestor 即拒絕（reconciler 也拒絕 rewind）。
+promote_version_at() {  # $1=ref → pyproject 與 api.py 的 backend 版號（兩者不一致即 err）
+  local py api
+  py="$(git -C "$ROOT" show "$1:backend/pyproject.toml" 2>/dev/null | sed -nE 's/^version = "([^"]+)".*/\1/p' | head -1)"
+  api="$(git -C "$ROOT" show "$1:backend/src/kg/api.py" 2>/dev/null | sed -nE 's/^[[:space:]]*version="([^"]+)".*/\1/p' | head -1)"
+  valid_semver "$py" || err "$1 的 backend/pyproject.toml 讀不到 x.y.z 版號：'${py}'"
+  [[ "$py" == "$api" ]] || err "$1 的 pyproject(${py}) 與 api.py(${api:-<空>}) 版號不一致；拒絕 promote。"
+  printf '%s\n' "$py"
+}
+
+promote_assert_backend_quality() {  # $1=sha：該 SHA 的 backend-quality check-run 必須存在且全數 success
+  local sha="$1" out rc=0
+  if [[ -n "${KG_CHECKS_CMD:-}" ]]; then out="$($KG_CHECKS_CMD "$sha" 2>&1)" || rc=$?
+  else
+    command -v gh >/dev/null 2>&1 || err "找不到 gh；無法讀 ${sha} 的 CI 證據，拒絕 promote。"
+    out="$(gh api "repos/${KG_GH_REPO}/commits/${sha}/check-runs?per_page=100" 2>&1)" || rc=$?
+  fi
+  (( rc == 0 )) || err "讀取 ${sha} 的 check-runs 失敗（exit ${rc}）：${out:-<empty>}；無證據即拒絕。"
+  jq -e '[.check_runs[]? | select(.name == "backend-quality" or (.name | endswith("/ backend-quality")))]
+         | length > 0 and all(.status == "completed" and .conclusion == "success")' <<<"$out" >/dev/null 2>&1 \
+    || err "${sha} 沒有全綠的 backend-quality check-run（紅、進行中或根本沒跑）；拒絕 promote。選有 backend 變更且 CI 綠的 main commit。"
+}
+
+cmd_promote() {
+  local target="${1:?用法: release.sh promote backend <merged-main-sha> [--same-version <reason>] [--wait] [--yes]}"
+  local sha="${2:-}" live prod_old ver_new ver_old
+  [[ "$target" == backend || "$target" == api ]] || err "promote 只支援 backend（得到 '${target}'）"
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || err "請提供完整 40 字元 SHA（不收縮寫／branch 名）：'${sha}'"
+  live="$(live_origin_main)"
+  prod_old="$(git -C "$ROOT" ls-remote --heads origin prod | awk 'NR==1{print $1}')"
+  [[ "$prod_old" =~ ^[0-9a-f]{40}$ ]] || err "查不到 live origin/prod（首次 seed 屬拓樸遷移，見 docs/sop/release.md）；fail-closed。"
+  git -C "$ROOT" fetch -q origin main prod || err "git fetch origin main prod 失敗；fail-closed。"
+  git -C "$ROOT" merge-base --is-ancestor "$sha" "$live" 2>/dev/null \
+    || err "${sha} 不是 live origin/main=${live} 的 ancestor（或本地無此 object）；只能 promote 已合併的 main commit。"
+  [[ "$sha" != "$prod_old" ]] || err "origin/prod 已在 ${sha}；無事可做。"
+  git -C "$ROOT" merge-base --is-ancestor "$prod_old" "$sha" \
+    || err "origin/prod=${prod_old} 不是 ${sha} 的 ancestor；只允許 fast-forward（永不 force，reconciler 也拒絕 rewind）。回滾請走 forward-revert，見 docs/sop/release.md。"
+  ver_new="$(promote_version_at "$sha")"; ver_old="$(promote_version_at "$prod_old")"
+  if semver_gt "$ver_new" "$ver_old"; then :
+  elif [[ "$ver_new" == "$ver_old" && -n "$PROMOTE_SAME_VERSION" ]]; then
+    echo "  同版本 redeploy（${ver_new}）；理由：${PROMOTE_SAME_VERSION}"
+  else
+    err "backend 版本未提升：${sha} 為 ${ver_new}，origin/prod 為 ${ver_old}。先走 release backend 發 bump；redeploy 需 --same-version <reason>。"
+  fi
+  promote_assert_backend_quality "$sha"
+
+  echo "promote backend ${sha}"
+  echo "  origin/prod ${prod_old:0:12} → ${sha:0:12}（fast-forward；backend ${ver_old} → ${ver_new}；backend-quality 全綠）"
+  if [[ $YES -ne 1 ]]; then
+    echo "  dry-run：未推送。確認後加 --yes（可再加 --wait 等 felix reconciler 收斂）。"
+    return 0
+  fi
+  acquire_release_lock
+  git -C "$ROOT" push origin "${sha}:refs/heads/prod" || err "push origin ${sha}:refs/heads/prod 失敗"
+  [[ "$(git -C "$ROOT" ls-remote --heads origin prod | awk 'NR==1{print $1}')" == "$sha" ]] \
+    || err "push 後 origin/prod 不等於 ${sha}；請人工查證。"
+  echo "✓ origin/prod = ${sha}（felix reconciler 約 90s 內接手 deploy + health/smoke gate，失敗自動回滾）"
+  echo "  驗證："
+  echo "    curl -s ${KG_PUBLIC_URL}/api/system/info   # version 應為 ${sha:0:7}"
+  echo "    ./ops/devops_kg_safe.sh run \"tail -40 ~/Library/Logs/kg_reconcile.err.log\""
+  echo "    ./ops/devops_kg_safe.sh run \"tail -5 ~/Library/Logs/kg_reconcile.out.log\""
+  echo "    docs/sop/deploy.md §標準部署流程（health／deploy.log）；rollback 見 docs/sop/release.md §felix 生產切換"
+  if [[ $PROMOTE_WAIT -eq 1 ]]; then
+    local KG_RELEASE_WAIT_SECS="${KG_PROMOTE_WAIT_SECS:-600}" KG_RELEASE_POLL_SECS="${KG_PROMOTE_POLL_SECS:-15}"
+    wait_for_rollout "$sha"
+  fi
+}
+
 # ---- 全域 flag 解析 + dispatcher ----
 # 整段包在 BASH_SOURCE guard 內（同 ops/kg_reconcile.sh 的慣例）：讓 ops/tests/test_release.sh
 # 能 source 本檔取純函式而不觸發 dispatcher。刻意不重新縮排，保住 git blame。
@@ -1374,6 +1451,10 @@ while [[ $# -gt 0 ]]; do
     --commit)
       [[ $# -ge 2 && -n "${2:-}" ]] || err "--commit 需要一個 commit-ish"
       SHIPPED_COMMIT="$2"; shift 2 ;;
+    --wait)     PROMOTE_WAIT=1; shift ;;
+    --same-version)
+      [[ $# -ge 2 && -n "${2:-}" && "${2:0:1}" != "-" ]] || err "--same-version 需要一段理由文字"
+      PROMOTE_SAME_VERSION="$2"; shift 2 ;;
     --pr)
       [[ $# -ge 2 && "${2:-}" =~ ^[0-9]+$ && "${2:-}" -gt 0 ]] || err "--pr 需要正整數 PR number"
       RELEASE_PR="$2"; shift 2 ;;
@@ -1400,6 +1481,7 @@ case "${SUB:-}" in
   resume)    cmd_resume ${ARGS[@]+"${ARGS[@]}"} ;;
   finalize)  cmd_finalize ${ARGS[@]+"${ARGS[@]}"} ;;
   release)   cmd_release ${ARGS[@]+"${ARGS[@]}"} ;;
+  promote)   cmd_promote ${ARGS[@]+"${ARGS[@]}"} ;;
   ""|help)   usage ;;
   *)         err "unknown subcommand: ${SUB}（release.sh help 看用法）" ;;
 esac

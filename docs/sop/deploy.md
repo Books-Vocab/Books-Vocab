@@ -64,7 +64,7 @@ curl -s --resolve wordnexus.lol:443:104.21.85.113 https://wordnexus.lol/api/syst
 
 ## reconciler：release=deploy 自動收斂（felix-local，launchd 週期）
 
-> **一句話**：**`origin/prod`** 一前進（只由 release wrapper 的 deploy 路徑推進，且含 backend 變更）就自動把 wordnexus.lol 收斂到最新版，免人工 SSH。GitHub `origin/main` 是合併後產品主幹，reconciler **不直接追 main**。上面的 §標準部署流程仍是手動路徑；本段是它的自動化包裝，兩者**共用同一把 deploy 鎖**互斥。main、production ref 與 rollback 邊界見 [`docs/sop/release.md`](release.md)。
+> **一句話**：**`origin/prod`** 一前進（只由 `ops/release.sh promote backend` 推進（FF-only、含守衛））就自動把 wordnexus.lol 收斂到最新版，免人工 SSH。GitHub `origin/main` 是合併後產品主幹，reconciler **不直接追 main**。上面的 §標準部署流程仍是手動路徑；本段是它的自動化包裝，兩者**共用同一把 deploy 鎖**互斥。main、production ref 與 rollback 邊界見 [`docs/sop/release.md`](release.md)。
 
 - **腳本**：`ops/kg_reconcile.sh`（`--once`／`--dry-run`／`--help`）。它**跑在 felix 本機的專用生產 clone `~/kg-prod`**（由 launchd `KG_RECON_REPO` 指定；`~/project/kg` 為 dev/resume-only，reconciler 絕不碰）。不走 SSH，git/docker/curl 全本機；一輪冪等 tick 跑完即退。
 - **驅動**：`ops/launchd/com.kg.reconcile.plist`（`StartInterval=90` 秒輪詢、`RunAtLoad`、**不 KeepAlive**、`ThrottleInterval=60`；生產切換後 ProgramArguments 與 `KG_RECON_REPO` 皆指向 `~/kg-prod`）。log → `~/Library/Logs/kg_reconcile.{out,err}.log`。
@@ -119,7 +119,7 @@ DEPLOY 前捕捉 `ROLLBACK_SHA=deployed_sha`。健康 gate = localhost `/api/sys
 
 ### 首次啟用 origin/prod
 
-> **首次啟用是一次性拓樸遷移**（建生產 clone `~/kg-prod`、seed `origin/prod`、原地 recreate 容器、換 plist 指向 `~/kg-prod`），權威 step-by-step（P0–P5 + GO GATE + rollback）在 [`docs/sop/release.md`](release.md) §felix 生產切換。本段不重抄。
+> **首次啟用是一次性拓樸遷移**（建生產 clone `~/kg-prod`、seed `origin/prod`、原地 recreate 容器、換 plist 指向 `~/kg-prod`），已完成，拓樸見 [`host_topology.md`](../reference/host_topology.md)。**日常推進 `origin/prod` 只走** `./ops/release.sh promote backend <sha>`，前置守衛、驗證與 rollback 見 [`docs/sop/release.md`](release.md) §felix 生產切換。本段不重抄。
 
 已啟用後的日常 dry-run / 掛載 / 停用（在 `~/kg-prod`；務必先 dry-run，絕不 mutate）：
 ```bash
