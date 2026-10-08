@@ -24,7 +24,9 @@ def _ws(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def test_audio_qa_non_findings_exit_not_reported_as_fail_findings(tmp_path, monkeypatch):
+def test_audio_qa_non_findings_exit_not_reported_as_fail_findings(
+    tmp_path, monkeypatch
+):
     monkeypatch.setattr(pipeline, "_run_tool_stage", lambda *a, **k: 2)
     log = _Log()
     assert pipeline.stage_audio_qa(_ws(tmp_path), log) is False
