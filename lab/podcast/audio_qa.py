@@ -23,6 +23,7 @@ Usage:
 Exit codes:
     0 — all checks PASS
     1 — at least one episode has WARN or FAIL findings (CI-friendly)
+    2 — target missing or no audio files found
 """
 
 from __future__ import annotations
@@ -45,12 +46,13 @@ from tts_config import (
 # Speech rate: ~150 wpm conversational, 130-200 acceptable. Outside = suspect.
 WPM_MIN = 110
 WPM_MAX = 220
-SILENCE_MAX_MS = 4000          # any single gap > 4s is suspect
+SILENCE_MAX_MS = 4000  # any single gap > 4s is suspect
 SILENCE_THRESH_DBFS = -40
-PEAK_CLIP_DBFS = -0.5          # >= -0.5 dBFS = clipping risk
-LOUDNESS_MIN_DBFS = -30        # avg below this = near-silent render
+PEAK_CLIP_DBFS = -0.5  # >= -0.5 dBFS = clipping risk
+LOUDNESS_MIN_DBFS = -30  # avg below this = near-silent render
 
 _LOGGER = logging.getLogger(__name__)
+
 
 # `[^:*]+` (not `\w+`) to stay in sync with synthesize.py and subtitle.py —
 def script_word_count(script_path: Path) -> int:
@@ -76,7 +78,7 @@ def find_script(audio_path: Path) -> Path | None:
 
 def analyze(audio_path: Path) -> dict:
     """Return findings dict for one audio file."""
-    findings: list[tuple[str, str]] = []   # (level, message)
+    findings: list[tuple[str, str]] = []  # (level, message)
 
     try:
         seg = AudioSegment.from_file(str(audio_path))
@@ -109,15 +111,24 @@ def analyze(audio_path: Path) -> dict:
 
     # 1. Duration sanity
     if duration_s < 30:
-        findings.append(("FAIL", f"duration {duration_s:.1f}s — render likely truncated"))
+        findings.append(
+            ("FAIL", f"duration {duration_s:.1f}s — render likely truncated")
+        )
 
     # 2. wpm sanity (catches dropped lines / hallucinated audio)
     if word_count == 0:
         findings.append(("WARN", "no matching script found — wpm check skipped"))
     elif wpm > WPM_MAX:
-        findings.append(("WARN", f"wpm {wpm:.0f} > {WPM_MAX} — TTS may have dropped content"))
+        findings.append(
+            ("WARN", f"wpm {wpm:.0f} > {WPM_MAX} — TTS may have dropped content")
+        )
     elif wpm < WPM_MIN:
-        findings.append(("WARN", f"wpm {wpm:.0f} < {WPM_MIN} — TTS may have hallucinated extra audio or excessive pauses"))
+        findings.append(
+            (
+                "WARN",
+                f"wpm {wpm:.0f} < {WPM_MIN} — TTS may have hallucinated extra audio or excessive pauses",
+            )
+        )
 
     # 3. Long silence detection — seek_step=500ms is 500x faster than default 1ms
     # and plenty accurate for >4s gaps (we're not trying to find millisecond pops).
@@ -127,18 +138,29 @@ def analyze(audio_path: Path) -> dict:
         silence_thresh=SILENCE_THRESH_DBFS,
         seek_step=500,
     )
-    long_gaps = [(s / 1000.0, e / 1000.0) for s, e in silences if (e - s) >= SILENCE_MAX_MS]
+    long_gaps = [
+        (s / 1000.0, e / 1000.0) for s, e in silences if (e - s) >= SILENCE_MAX_MS
+    ]
     if long_gaps:
         peek = ", ".join(f"{s:.1f}-{e:.1f}s" for s, e in long_gaps[:3])
-        findings.append(("WARN", f"{len(long_gaps)} long silences (>{SILENCE_MAX_MS}ms): {peek}"))
+        findings.append(
+            ("WARN", f"{len(long_gaps)} long silences (>{SILENCE_MAX_MS}ms): {peek}")
+        )
 
     # 4. Clipping
     if peak_dbfs >= PEAK_CLIP_DBFS:
-        findings.append(("WARN", f"peak {peak_dbfs:.2f} dBFS — clipping risk (mastering may have failed)"))
+        findings.append(
+            (
+                "WARN",
+                f"peak {peak_dbfs:.2f} dBFS — clipping risk (mastering may have failed)",
+            )
+        )
 
     # 5. Near-silent render
     if avg_dbfs < LOUDNESS_MIN_DBFS:
-        findings.append(("FAIL", f"avg loudness {avg_dbfs:.1f} dBFS — render appears near-silent"))
+        findings.append(
+            ("FAIL", f"avg loudness {avg_dbfs:.1f} dBFS — render appears near-silent")
+        )
 
     return {
         "file": audio_path.name,
@@ -149,8 +171,9 @@ def analyze(audio_path: Path) -> dict:
         "avg_dbfs": round(avg_dbfs, 1),
         "long_silence_count": len(long_gaps),
         "findings": findings,
-        "verdict": "FAIL" if any(l == "FAIL" for l, _ in findings)
-                   else ("WARN" if findings else "PASS"),
+        "verdict": "FAIL"
+        if any(l == "FAIL" for l, _ in findings)
+        else ("WARN" if findings else "PASS"),
     }
 
 
@@ -162,28 +185,37 @@ def resolve_targets(target: Path) -> list[Path]:
         return [target]
     if target.is_dir():
         files = sorted(
-            list(target.glob("*_pro.mp3")) + list(target.glob("*_flash.mp3"))
-            + list(target.glob("*_pro.m4a")) + list(target.glob("*_flash.m4a"))
+            list(target.glob("*_pro.mp3"))
+            + list(target.glob("*_flash.mp3"))
+            + list(target.glob("*_pro.m4a"))
+            + list(target.glob("*_flash.m4a"))
         )
         if not files:
-            files = (sorted(target.glob("*.mp3")) + sorted(target.glob("*.wav"))
-                     + sorted(target.glob("*.m4a")))
+            files = (
+                sorted(target.glob("*.mp3"))
+                + sorted(target.glob("*.wav"))
+                + sorted(target.glob("*.m4a"))
+            )
         return files
     print(f"ERROR: {target} not found")
     sys.exit(2)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Audio QA for synthesized podcast episodes")
+    parser = argparse.ArgumentParser(
+        description="Audio QA for synthesized podcast episodes"
+    )
     parser.add_argument("target", help="Audio file or directory")
     parser.add_argument("--report", help="Write JSON report to this path")
-    parser.add_argument("--strict", action="store_true", help="Treat WARN as failure (exit 1)")
+    parser.add_argument(
+        "--strict", action="store_true", help="Treat WARN as failure (exit 1)"
+    )
     args = parser.parse_args()
 
     files = resolve_targets(Path(args.target))
     if not files:
-        print("[audio_qa] No audio files found")
-        sys.exit(0)
+        print("[audio_qa] No audio files found", file=sys.stderr)
+        sys.exit(2)
 
     print(f"[audio_qa] Checking {len(files)} file(s)")
     results = []
@@ -193,22 +225,34 @@ def main():
         verdict = r["verdict"]
         wpm_str = f"{r['wpm']:.0f} wpm" if r["word_count"] else "no script"
         print(f"\n  {f.name} — {verdict}")
-        print(f"    {r['duration_s']:.0f}s, {r['word_count']} words, {wpm_str}, "
-              f"peak {r['peak_dbfs']} dBFS, avg {r['avg_dbfs']} dBFS, "
-              f"{r['long_silence_count']} long silences")
+        print(
+            f"    {r['duration_s']:.0f}s, {r['word_count']} words, {wpm_str}, "
+            f"peak {r['peak_dbfs']} dBFS, avg {r['avg_dbfs']} dBFS, "
+            f"{r['long_silence_count']} long silences"
+        )
         for level, msg in r["findings"]:
             print(f"    [{level}] {msg}")
 
     fails = [r for r in results if r["verdict"] == "FAIL"]
     warns = [r for r in results if r["verdict"] == "WARN"]
     passes = [r for r in results if r["verdict"] == "PASS"]
-    print(f"\n[audio_qa] Summary: {len(passes)} PASS, {len(warns)} WARN, {len(fails)} FAIL")
+    print(
+        f"\n[audio_qa] Summary: {len(passes)} PASS, {len(warns)} WARN, {len(fails)} FAIL"
+    )
 
     if args.report:
         Path(args.report).write_text(
-            json.dumps({"results": results, "summary": {
-                "pass": len(passes), "warn": len(warns), "fail": len(fails),
-            }}, indent=2)
+            json.dumps(
+                {
+                    "results": results,
+                    "summary": {
+                        "pass": len(passes),
+                        "warn": len(warns),
+                        "fail": len(fails),
+                    },
+                },
+                indent=2,
+            )
         )
         print(f"[audio_qa] Report → {args.report}")
 
