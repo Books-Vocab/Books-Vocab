@@ -382,7 +382,7 @@ App Store / TestFlight 出 `.ipa`。用 App Store Connect API key 的簽章基�
 | 已上架後新版本：加功能不破壞 | minor（第二位+1，如 2.0.0→2.1.0） | +1 | 同上 |
 | 已上架後新版本：大改版/破壞性/里程碑（如 podcast 正式放出） | major（第一位+1，如 2.0.0→3.0.0） | +1 | 同上 |
 
-- semver 判斷**看改動語意、不看 commit 數**（`release.sh status` 的「建議版號」是數量啟發式，僅參考——2.0.0 該輪工具建議 minor、實際是 major）。
+- semver 判斷**看改動語意、不看 commit 數**（`release.sh status` 的「建議版號」是數量啟發式，僅參考——2.0.0 該輪工具建議 minor、實際是 major）。版號與 changelog 由執行 release 的 agent 自行決定、不需使用者確認，並在回報與 PR 寫明選定版本與一行理由。
 - **判斷「同版重送」還是「新版本」的唯一準則 = 上一個 marketing 版號有沒有真的上架**（這條準則沒變，變的是怎麼落實它）。PREPARE_FOR_SUBMISSION / REJECTED / 審查中 = 還沒上架 → 走「同版重送」列，`resubmit ios`，不動 marketing。**這個判斷現在由工具做，不由 operator 打字背書**：上架事實靠 `release.sh shipped ios --yes` 從 ASC 查證後物化成 `ios/<x.y.z>`，`release ios` 的 guard 再讀它。所以**上架後第一件事就是補跑 `shipped ios --yes`**——沒補，下一版會被 guard 正確地擋下來。
 - **每顆 build 都要留封版紀錄**。`ios/<x.y.z>+<build>` 記的是「這顆 (version, build) 由哪顆 merged-main commit 封版」，而 **Apple 不保留 source commit**（ASC 只有一筆 version 記錄、`versionString` 可變、build number 每版重新計數），所以它必須在 exact ASC proof 後捕捉。`resubmit ios` 先以 `./ops/asc.sh builds` 讀 TestFlight latest，計畫 build 固定為 `max(CURRENT_PROJECT_VERSION, ASC latest)+1`，只建立 dedicated-lane candidate；查詢失敗或非數字會在 candidate 前硬停。merge 後若已有 candidate，使用 `resume` 或 `finalize`，不要重跑 release 產生新 build。歷史後果見 `docs/sop/release.md`「機制上線前的舊 tag」。
 

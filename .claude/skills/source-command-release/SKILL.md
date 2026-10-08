@@ -15,7 +15,7 @@ description: "把已合併到 main 的 backend／iOS 變更路由到 ops/release
 ./ops/release.sh status
 ```
 
-版本號、changelog、外部上傳或生產部署都不能由 agent 自行猜測。需要改版時先跑 dry-run，將計畫交給使用者確認：
+版本號與 changelog 由執行 release 的 agent 自行決定，不需交給使用者確認：依上一個已上架 tag 之後的實際變更語意判 semver（新功能 = minor；只有修正 = patch；破壞性 API／資料變更 = major；`status` 的「建議版號」只是數量啟發式，僅供參考），changelog 由 agent 依 `changelog` 輸出撰寫，並在回報與 PR 寫明選定版本與一行理由。dry-run 是 agent 自己的驗證，不是使用者確認關卡。外部上傳與生產部署的邊界不變，不能由 agent 擅自觸發：
 
 ```bash
 ./ops/release.sh bump <api|ios> <x.y.z>
@@ -31,7 +31,7 @@ description: "把已合併到 main 的 backend／iOS 變更路由到 ops/release
 - `finalize ios <version> <build> --pr <n> --merged-source <sha>`：tag 補救；重查 exact ASC 證據並封版，不 archive、不 upload。
 - `shipped ios`：只在 ASC 確認 App Store 已上架後建立上架標記；查不到唯一事實就拒絕猜測。
 
-所有有外部副作用的命令先 dry-run，只有使用者明確確認後才加 `--yes`。不可把文件、dry-run、本地 archive 或猜測當成部署／TestFlight／App Store 成功證據。
+所有有外部副作用的命令（upload、deploy、tag push、App Store submit）先 dry-run，只有在 owner 明確要求發版（或使用者明確確認）後才加 `--yes`；版本與 changelog 的決定不受此限，歸 agent。不可把文件、dry-run、本地 archive 或猜測當成部署／TestFlight／App Store 成功證據。
 
 ## iOS hard stops
 
