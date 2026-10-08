@@ -228,32 +228,40 @@ final class VocabularySyncEngine: VocabularySyncExecuting {
             }
 
             emit(.stepProgress("pull", current: 0, total: 0, detail: L10n.string("正在下載單字...")))
-            var pipelinePending = try await service.pullCardsToLocal(
-                container: modelContext.container,
-                progress: { detail, current, total in
-                    emit(.stepProgress("pull", current: current, total: total, detail: detail))
-                },
-                notebookId: nil
-            ).pipelinePending
-
-            var retryCount = 0
-            while pipelinePending && retryCount < syncPipelinePendingBackoffSeconds.count {
-                retryCount += 1
-                emit(.stepProgress(
-                    "pull", current: 0, total: 0,
-                    detail: L10n.format(
-                        "等待 AI 處理完成（%@/%@）...",
-                        "\(retryCount)", "\(syncPipelinePendingBackoffSeconds.count)"
-                    )
-                ))
-                try await Task.sleep(for: .seconds(syncPipelinePendingBackoffSeconds[retryCount - 1]))
-                if Task.isCancelled { return cancelledResult(since: start) }
-                pipelinePending = try await service.pullCardsToLocal(
-                    container: modelContext.container, progress: nil, notebookId: nil
+            do {
+                var pipelinePending = try await service.pullCardsToLocal(
+                    container: modelContext.container,
+                    progress: { detail, current, total in
+                        emit(.stepProgress("pull", current: current, total: total, detail: detail))
+                    },
+                    notebookId: nil
                 ).pipelinePending
+
+                var retryCount = 0
+                while pipelinePending && retryCount < syncPipelinePendingBackoffSeconds.count {
+                    retryCount += 1
+                    emit(.stepProgress(
+                        "pull", current: 0, total: 0,
+                        detail: L10n.format(
+                            "等待 AI 處理完成（%@/3）...",
+                            "\(min(retryCount, 3))"
+                        )
+                    ))
+                    try await Task.sleep(for: .seconds(syncPipelinePendingBackoffSeconds[retryCount - 1]))
+                    if Task.isCancelled { return cancelledResult(since: start) }
+                    pipelinePending = try await service.pullCardsToLocal(
+                        container: modelContext.container, progress: nil, notebookId: nil
+                    ).pipelinePending
+                }
+
+                try await service.pullReviewEvents(container: modelContext.container)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                emit(.stepFinished("pull", status: .error, detail: SyncFailurePresentation.reason(for: error)))
+                throw error
             }
 
-            try await service.pullReviewEvents(container: modelContext.container)
             emit(.stepFinished("pull", status: .done, detail: L10n.string("本地單字已建立完成")))
             let outcome = syncTerminalOutcome(
                 wasCancelled: Task.isCancelled,

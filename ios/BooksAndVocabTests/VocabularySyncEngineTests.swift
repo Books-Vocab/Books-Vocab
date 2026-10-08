@@ -35,6 +35,29 @@ struct VocabularySyncEngineTests {
         #expect(service.calls == ["add", "trigger", "pushStates", "pushEvents", "pull", "pullReviewEvents"])
     }
 
+    @Test("a failing pull emits an error step instead of leaving it running")
+    func failingPullEmitsErrorStep() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let service = FakeVocabularySyncService()
+        service.pullError = TestError.expected
+        var events: [VocabularySyncEvent] = []
+
+        let result = await VocabularySyncEngine().execute(
+            pendingEntries: [],
+            modelContext: context,
+            service: service,
+            emit: { events.append($0) }
+        )
+
+        #expect(result.terminalOutcome == .fullFailure)
+        let errored = events.contains {
+            if case .stepFinished("pull", status: .error, _) = $0 { return true }
+            return false
+        }
+        #expect(errored)
+    }
+
     @Test("a pending or failed edit remains uploadable")
     func editedEntriesRemainUploadable() {
         let entry = makePendingEdit()
@@ -314,6 +337,7 @@ private final class FakeVocabularySyncService: VocabularySyncEngineServing {
     var triggerError: Error?
     var batchDeleteError: Error?
     var editError: Error?
+    var pullError: Error?
     var blockAdd = false
     var blockEdit = false
     private(set) var calls: [String] = []
@@ -383,6 +407,7 @@ private final class FakeVocabularySyncService: VocabularySyncEngineServing {
         notebookId: String?
     ) async throws -> KGPullOutcome {
         calls.append("pull")
+        if let pullError { throw pullError }
         return .unchanged
     }
 
