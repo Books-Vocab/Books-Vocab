@@ -118,3 +118,25 @@ class TestHeadAndCrawlerRoutes:
         c = self._client()
         assert c.get("/favicon.ico").status_code == 200
         assert c.head("/favicon.ico").status_code == 200
+
+
+class TestShareMetadata:
+    """Public pages need absolute og:image and a canonical URL for scrapers/SEO."""
+
+    PAGES = {
+        "index.html": "https://wordnexus.lol/",
+        "guide.html": "https://wordnexus.lol/guide.html",
+        "privacy.html": "https://wordnexus.lol/privacy.html",
+        "support.html": "https://wordnexus.lol/support.html",
+        "terms.html": "https://wordnexus.lol/terms.html",
+    }
+
+    def test_pages_have_canonical_and_absolute_images(self):
+        root = Path(__file__).resolve().parents[1]
+        img = "https://wordnexus.lol/static/img/og-image.png"
+        for name, url in self.PAGES.items():
+            html = (root / name).read_text(encoding="utf-8")
+            assert f'<link rel="canonical" href="{url}">' in html, name
+            assert f'<meta property="og:url" content="{url}">' in html, name
+            assert f'<meta property="og:image" content="{img}">' in html, name
+            assert f'<meta name="twitter:image" content="{img}">' in html, name
