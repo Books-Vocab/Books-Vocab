@@ -368,6 +368,27 @@ struct StatsPresenterTests {
         #expect(ReviewActivityLog.reviewedToday(records: records, clock: clock) == 1)
     }
 
+    @Test func dayKeyOverloads_matchRecordOverloads() {
+        let anchor = day(-400)
+        let clock = ReviewCalendarClock(
+            now: anchor,
+            timeZone: Self.canonicalClock.timeZone,
+            provenance: "test.explicit"
+        )
+        let records = [0, -1, -1, -2, -5].map {
+            ReviewRecord(word: "x", entryID: nil, feedback: 1, reviewedAt: Calendar.current.date(byAdding: .day, value: $0, to: anchor) ?? anchor)
+        }
+        let keys = records.map { clock.dayKey($0.reviewedAt) }
+
+        #expect(ReviewActivityLog.activity(for: 180, dayKeys: keys, clock: clock)
+            == ReviewActivityLog.activity(for: 180, records: records, clock: clock))
+        #expect(ReviewActivityLog.reviewedToday(dayKeys: keys, clock: clock)
+            == ReviewActivityLog.reviewedToday(records: records, clock: clock))
+        let a = ReviewActivityLog.streaks(dayKeys: keys, clock: clock)
+        let b = ReviewActivityLog.streaks(records: records, clock: clock)
+        #expect(a.current == b.current && a.longest == b.longest)
+    }
+
     @Test func streaks_currentStreakAnchorsOnInjectedClock() {
         let anchor = day(-400)
         let clock = ReviewCalendarClock(

@@ -227,9 +227,10 @@ enum StatsPresentation {
             forecast.append(ForecastBucket(id: key, label: label, count: forecastMap[key] ?? 0))
         }
 
+        let dayKeys = inputs.reviewRecords.map { inputs.clock.dayKey($0.reviewedAt) }
         let activity = ReviewActivityLog.activity(
             for: 180,
-            records: inputs.reviewRecords,
+            dayKeys: dayKeys,
             clock: inputs.clock
         )
 
@@ -246,14 +247,14 @@ enum StatsPresentation {
         }
 
         let streakResult = ReviewActivityLog.streaks(
-            records: inputs.reviewRecords,
+            dayKeys: dayKeys,
             clock: inputs.clock
         )
 
         return Summary(
             totalCards: synced.count,
             reviewedToday: ReviewActivityLog.reviewedToday(
-                records: inputs.reviewRecords,
+                dayKeys: dayKeys,
                 clock: inputs.clock
             ),
             dueToday: forecastMap[todayKey] ?? 0,

@@ -9,25 +9,6 @@ import Foundation
 import SwiftData
 
 enum ReviewActivityLog {
-    // MARK: - Record
-
-    @MainActor
-    static func recordReview(
-        word: String,
-        entryID: UUID?,
-        feedback: ReviewFeedback,
-        context: ModelContext,
-        notebookId: String = "default"
-    ) {
-        let record = ReviewRecord(
-            word: word,
-            entryID: entryID,
-            feedback: feedback == .remembered ? 1 : 0
-        )
-        record.notebookId = notebookId
-        context.insert(record)
-    }
-
     // MARK: - Queries (from SwiftData)
 
     /// `now` 可注入（catalog / 測試凍結時鐘）；預設牆鐘。
@@ -41,12 +22,19 @@ enum ReviewActivityLog {
         records: [ReviewRecord],
         clock: StatsProjectionClock
     ) -> [String: Int] {
+        activity(for: days, dayKeys: records.map { clock.dayKey($0.reviewedAt) }, clock: clock)
+    }
+
+    /// Same as the record-based overload, over day keys computed once by the caller.
+    static func activity(
+        for days: Int = 180,
+        dayKeys: [String],
+        clock: StatsProjectionClock
+    ) -> [String: Int] {
         let cutoff = clock.date(byAdding: .day, value: -days, to: clock.now) ?? clock.now
         let cutoffKey = clock.dayKey(cutoff)
         var result: [String: Int] = [:]
-        for record in records {
-            let key = clock.dayKey(record.reviewedAt)
-            guard key >= cutoffKey else { continue }
+        for key in dayKeys where key >= cutoffKey {
             result[key, default: 0] += 1
         }
         return result
@@ -63,7 +51,14 @@ enum ReviewActivityLog {
         records: [ReviewRecord],
         clock: StatsProjectionClock
     ) -> (current: Int, longest: Int) {
-        let grouped = groupByDay(records, clock: clock)
+        streaks(dayKeys: records.map { clock.dayKey($0.reviewedAt) }, clock: clock)
+    }
+
+    static func streaks(
+        dayKeys: [String],
+        clock: StatsProjectionClock
+    ) -> (current: Int, longest: Int) {
+        let grouped = groupByDay(dayKeys)
         return (
             current: computeCurrentStreak(grouped: grouped, clock: clock),
             longest: computeLongestStreak(grouped: grouped, clock: clock)
@@ -119,8 +114,12 @@ enum ReviewActivityLog {
     }
 
     static func reviewedToday(records: [ReviewRecord], clock: StatsProjectionClock) -> Int {
+        reviewedToday(dayKeys: records.map { clock.dayKey($0.reviewedAt) }, clock: clock)
+    }
+
+    static func reviewedToday(dayKeys: [String], clock: StatsProjectionClock) -> Int {
         let todayKey = clock.dayKey(clock.now)
-        return records.filter { clock.dayKey($0.reviewedAt) == todayKey }.count
+        return dayKeys.filter { $0 == todayKey }.count
     }
 
     static func recordsForDay(_ dayKey: String, from records: [ReviewRecord]) -> [ReviewRecord] {
@@ -139,10 +138,10 @@ enum ReviewActivityLog {
 
     // MARK: - Helpers
 
-    private static func groupByDay(_ records: [ReviewRecord], clock: StatsProjectionClock) -> [String: Int] {
+    private static func groupByDay(_ dayKeys: [String]) -> [String: Int] {
         var result: [String: Int] = [:]
-        for record in records {
-            result[clock.dayKey(record.reviewedAt), default: 0] += 1
+        for key in dayKeys {
+            result[key, default: 0] += 1
         }
         return result
     }
