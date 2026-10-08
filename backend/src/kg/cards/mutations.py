@@ -182,28 +182,6 @@ class CardMutationMixin:
             session.refresh(card)
         return card, True
 
-    def hard_delete_by_notebook(self, notebook_id: str) -> int:
-        """Physically delete every card in a notebook. Compensation-only (a
-        failed copy must leave no partial rows); ordinary deletes are soft.
-        Returns the number of rows removed."""
-        if not notebook_id:
-            return 0
-        with Session(self.engine) as session:
-            card_ids = [
-                row[0]
-                for row in session.connection()
-                .exec_driver_sql("SELECT id FROM card WHERE notebook_id = ?", (notebook_id,))
-                .fetchall()
-            ]
-            if not card_ids:
-                return 0
-            placeholders = ", ".join("?" for _ in card_ids)
-            params = tuple(card_ids)
-            session.connection().exec_driver_sql(f"DELETE FROM card WHERE id IN ({placeholders})", params)
-            count = len(card_ids)
-            session.commit()
-            return count
-
     def deduplicate(self, notebook_id: str | None = None) -> int:
         """Remove duplicate active cards (same content, case-insensitive).
 
@@ -275,6 +253,27 @@ class CardMutationMixin:
             for card in cards:
                 card.is_deleted = True
                 card.updated_at = now
+                session.add(card)
+            session.commit()
+            return len(cards)
+
+    def restamp_by_notebook(self, notebook_id: str, start: datetime) -> int:
+        """Re-stamp ``updated_at`` of a notebook's active cards to
+        ``start + i ms`` in their existing ``(updated_at, id)`` order. Used when
+        a staged copy is revealed: the cards were hidden from global pulls, so a
+        device whose incremental boundary fell inside the copy window would
+        otherwise never see them (their old timestamps predate its boundary).
+        Returns the number of cards re-stamped."""
+        if not notebook_id:
+            raise ValueError("notebook_id required")
+        with Session(self.engine) as session:
+            cards = session.exec(
+                select(Card)
+                .where(Card.notebook_id == notebook_id, Card.is_deleted.is_(False))
+                .order_by(Card.updated_at, Card.id)
+            ).all()
+            for i, card in enumerate(cards):
+                card.updated_at = start + timedelta(milliseconds=i)
                 session.add(card)
             session.commit()
             return len(cards)

@@ -6,6 +6,7 @@ import base64
 import binascii
 import json
 import logging
+from collections.abc import Collection
 from datetime import UTC, datetime
 from typing import Any, NamedTuple, Protocol
 
@@ -242,6 +243,7 @@ def list_vocab_cards(
     notebook_id: str | None = None,
     limit: int = 5000,
     after: tuple[datetime, str] | VocabCursor | None = None,
+    exclude_notebook_ids: Collection[str] = (),
 ) -> tuple[list[CardResponse], tuple[datetime, str] | None]:
     """List vocab cards as ``(responses, next_cursor)``.
 
@@ -250,7 +252,12 @@ def list_vocab_cards(
     ``after`` is the previous page's cursor; ``next_cursor`` is non-None only
     when a full page was returned (more rows may remain). Cards are returned in
     ascending ``(updated_at, id)`` order so the cursor advances monotonically.
+    ``exclude_notebook_ids`` (global pull only) hides cards of those notebooks,
+    e.g. staged copy-in-progress notebooks.
     """
+    store_filter: dict[str, Any] = {}
+    if notebook_id is None and exclude_notebook_ids:
+        store_filter["exclude_notebook_ids"] = tuple(exclude_notebook_ids)
     request_scope: tuple[str | None, str | None] = (notebook_id, None)
     if since is not None:
         parsed_since = _parse_since_timestamp(since)
@@ -267,7 +274,7 @@ def list_vocab_cards(
     if since is not None:
         # Incremental: fetch the modified set (already bounded), then order and
         # slice it by the same cursor so since + full-sync paginate identically.
-        modified = cards_store.get_modified_since(naive_since, notebook_id=notebook_id)
+        modified = cards_store.get_modified_since(naive_since, notebook_id=notebook_id, **store_filter)
         modified = sorted(modified, key=lambda c: (_utc_instant(c.updated_at), c.id))
         if after_position is not None:
             after_instant = _utc_instant(after_position[0])
@@ -280,6 +287,7 @@ def list_vocab_cards(
             after=after_position,
             include_deleted=True,
             notebook_id=notebook_id,
+            **store_filter,
         )
 
     cards_by_id = _resolve_with_neighbours(cards, graph, cards_store)

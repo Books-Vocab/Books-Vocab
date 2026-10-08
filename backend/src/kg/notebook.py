@@ -190,6 +190,22 @@ class NotebookStore:
             session.commit()
             return True
 
+    def staged_ids(self) -> list[str]:
+        """Ids of every staged (copy-in-progress) notebook."""
+        with Session(self.engine) as session:
+            return [row[0] for row in session.execute(text("SELECT id FROM notebook WHERE is_staged = 1")).all()]
+
+    def staged_older_than(self, cutoff: datetime) -> list[str]:
+        """Ids of staged notebooks created before ``cutoff`` (UTC instant)."""
+        cutoff = cutoff if cutoff.tzinfo else cutoff.replace(tzinfo=UTC)
+        with Session(self.engine) as session:
+            rows = session.exec(select(Notebook).where(Notebook.is_staged.is_(True))).all()
+        return [
+            nb.id
+            for nb in rows
+            if (nb.created_at if nb.created_at.tzinfo else nb.created_at.replace(tzinfo=UTC)) < cutoff
+        ]
+
     def hard_delete(self, notebook_id: str) -> bool:
         """Physically remove a notebook row. Compensation-only — ordinary
         deletes are soft (:meth:`delete`); this exists so a failed copy leaves no

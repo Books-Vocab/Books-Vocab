@@ -56,6 +56,10 @@ def list_vocab_response(
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
     )
+    # Staged (copy-in-progress) notebooks' cards must not reach a global pull.
+    staged_ids: list[str] = []
+    if notebook_id is None and notebook_store_factory is not None:
+        staged_ids = notebook_store_factory(user["dir"]).staged_ids()
     cards, next_cursor = list_vocab_cards(
         since=since,
         cards_store=stores.cards,
@@ -64,6 +68,7 @@ def list_vocab_response(
         notebook_id=notebook_id,
         limit=limit,
         after=after,
+        exclude_notebook_ids=staged_ids,
     )
     return cards, encode_cursor(next_cursor)
 

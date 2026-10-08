@@ -6,7 +6,7 @@ without changing the public API or method semantics.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Collection, Iterator
 from datetime import UTC, datetime
 
 from sqlalchemy import BigInteger, String, case, cast, func, text, tuple_
@@ -132,6 +132,7 @@ class CardQueryMixin:
         after: tuple[datetime, str] | None,
         include_deleted: bool,
         notebook_id: str | None,
+        exclude_notebook_ids: Collection[str] = (),
     ) -> list[Card]:
         """Return at most ``limit`` cards ordered by the composite cursor
         ``(updated_at, id)`` using a UTC-normalized row-value comparison.
@@ -153,6 +154,9 @@ class CardQueryMixin:
                 statement = statement.where(Card.is_deleted.is_(False))
             if notebook_id is not None:
                 statement = statement.where(Card.notebook_id == notebook_id)
+            elif exclude_notebook_ids:
+                # Global pull: hide e.g. staged (copy-in-progress) notebooks.
+                statement = statement.where(Card.notebook_id.not_in(list(exclude_notebook_ids)))
             updated_at_key = _stored_timestamp_key(Card.updated_at)
             if after is not None:
                 statement = statement.where(
@@ -165,6 +169,7 @@ class CardQueryMixin:
         self,
         since: datetime,
         notebook_id: str | None = None,
+        exclude_notebook_ids: Collection[str] = (),
     ) -> list[Card]:
         """Fetch all cards modified after ``since`` as a UTC-instant comparison.
 
@@ -180,6 +185,12 @@ class CardQueryMixin:
             if notebook_id is not None:
                 conditions.append("notebook_id = :notebook_id")
                 params["notebook_id"] = notebook_id
+            elif exclude_notebook_ids:
+                names = []
+                for i, excluded in enumerate(exclude_notebook_ids):
+                    params[f"ex{i}"] = excluded
+                    names.append(f":ex{i}")
+                conditions.append(f"notebook_id NOT IN ({', '.join(names)})")
             raw_query = "SELECT id, updated_at FROM card"
             if conditions:
                 raw_query += " WHERE " + " AND ".join(conditions)

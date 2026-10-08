@@ -29,6 +29,8 @@ class AppLifespanDependencies:
     release_worker_lock_fn: Callable[[], None]
     reset_clients_fn: Callable[[], None]
     reset_async_clients_fn: Callable[[], Awaitable[None]]
+    # Optional: compensates orphaned staged shared-deck copies (#2269).
+    reap_stale_staged_copies_fn: Callable[[Path], int] | None = None
 
 
 def build_app_lifespan_from_dependencies(
@@ -58,6 +60,11 @@ def build_app_lifespan_from_dependencies(
         try:
             reaped = dependencies.reap_orphaned_runs_fn(data_root)
             reaped_operations = dependencies.reap_interrupted_add_link_operations_fn(data_root)
+            reaped_staged = (
+                dependencies.reap_stale_staged_copies_fn(data_root)
+                if dependencies.reap_stale_staged_copies_fn is not None
+                else 0
+            )
         except BaseException:
             dependencies.release_worker_lock_fn()
             worker_lock_path.unlink(missing_ok=True)
@@ -72,6 +79,8 @@ def build_app_lifespan_from_dependencies(
                 "Reaped %d orphaned add-link operation(s) → interrupted",
                 reaped_operations,
             )
+        if reaped_staged:
+            dependencies.logger.info("Reaped %d orphaned staged shared-deck copy(ies)", reaped_staged)
         dependencies.bind_runtime_data_root_fn(data_root)
         # Teardown also runs when the server aborts instead of sending a clean
         # shutdown: a leaked binding would keep redirecting every runtime store

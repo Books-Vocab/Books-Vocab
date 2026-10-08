@@ -17,10 +17,17 @@ here so the router stays a thin adapter:
 * **materialization barrier + compensating rollback**: cards.db / notebooks.db
   have no cross-file transaction, so the notebook is staged HIDDEN and revealed
   only after the idempotency log commits. Any pre-commit failure compensates
-  (hard-deletes the partial notebook + cards) and re-raises. The copy_log is the
-  point of no return: written BEFORE reveal, so a crash in the reveal window
-  self-heals — the retry finds the log and _replay reveals the still-hidden
-  notebook, never minting a duplicate.
+  (tombstones the partial cards, removes the graph file, and only then the
+  notebook row — the staged flag is the marker that keeps half-cleaned cards out
+  of global pulls and lets a later sweep retry) and re-raises. The copy_log is
+  the point of no return: written BEFORE reveal, so a crash in the reveal window
+  self-heals — the retry finds the log and _replay finishes the reveal, never
+  minting a duplicate.
+* **reveal = flip + restamp + mark** (:func:`_reveal`): once the notebook is
+  visible its cards are re-stamped (hidden-window pullers would otherwise skip
+  them), then ``download_counted`` is committed. The marker is the durable
+  "reveal complete" bit, so a crash at any point inside the reveal is redone
+  whole by the retry, and a settled deck is never touched again.
 * **count-equality**: copied distinct cards == source snapshot, else fail-loud
   (a NOCASE/NFC collapse under the card table's per-notebook uniqueness — e.g. a
   homograph pair distinct only by pos/meaning — must not silently drop a card).
@@ -138,27 +145,68 @@ def _remap_graph_links(
         (user_dir / f"graph_{notebook_id}.json").write_text(json.dumps(remapped, ensure_ascii=False), encoding="utf-8")
 
 
-def _compensate(
+def compensate_staged_copy(
     card_store: CardStore,
     notebook_store: NotebookStore,
     user_dir: Path,
     notebook_id: str,
-) -> None:
+) -> bool:
     """Best-effort teardown of a partially-materialized copy. Runs on any failure
-    before the copy_log is committed; swallows secondary errors so the original
-    fault propagates."""
+    before the copy_log is committed; secondary errors are logged, not raised, so
+    the original fault propagates. Returns ``True`` only when everything was
+    cleaned up.
+
+    Cards are TOMBSTONED (soft-deleted, ``updated_at`` bumped), not erased: a
+    client may already have pulled them, and only a tombstone propagates the
+    deletion on incremental sync. The notebook row goes LAST: while it stays
+    ``is_staged`` its cards are hidden from global pulls, so a failed step leaves
+    the staged marker in place (cards still hidden, nothing leaked) and returns
+    ``False`` for a later sweep to retry. Every step is idempotent."""
     try:
-        card_store.hard_delete_by_notebook(notebook_id)
+        card_store.soft_delete_by_notebook(notebook_id)
     except Exception:  # noqa: BLE001 — compensation must not mask the root fault
         _LOGGER.warning("copy compensation: card cleanup failed for %s", notebook_id, exc_info=True)
-    try:
-        notebook_store.hard_delete(notebook_id)
-    except Exception:  # noqa: BLE001
-        _LOGGER.warning("copy compensation: notebook cleanup failed for %s", notebook_id, exc_info=True)
+        return False
     try:
         (user_dir / f"graph_{notebook_id}.json").unlink(missing_ok=True)
     except OSError:
         _LOGGER.warning("copy compensation: graph cleanup failed for %s", notebook_id, exc_info=True)
+        return False
+    try:
+        notebook_store.hard_delete(notebook_id)
+    except Exception:  # noqa: BLE001
+        _LOGGER.warning("copy compensation: notebook cleanup failed for %s", notebook_id, exc_info=True)
+        return False
+    return True
+
+
+def _reveal(
+    shared_store: SharedDeckStore,
+    card_store: CardStore,
+    notebook_store: NotebookStore,
+    *,
+    copier_id: str,
+    idempotency_key: str,
+    notebook_id: str,
+    deck_id: str,
+) -> None:
+    """Complete a committed copy: flip the notebook visible, re-stamp its cards,
+    then commit the ``download_counted`` marker.
+
+    The cards were hidden from global pulls while staged, so an incremental
+    puller whose boundary fell inside the copy window already skipped them and
+    would never re-fetch (their ``updated_at`` predates its boundary). Re-stamping
+    AFTER the flip guarantees every such boundary is older than the new stamps
+    (re-stamping before it would let a pull advance past them while still hidden).
+
+    Every step is idempotent and the marker is written strictly last, so callers
+    run this whenever the marker is unset: a crash or raise between the flip and
+    the restamp is redone whole by the retry (``materialize`` alone would report
+    "already visible" and skip the restamp forever). A settled copy is never
+    re-stamped — its marker is set."""
+    notebook_store.materialize(notebook_id)
+    card_store.restamp_by_notebook(notebook_id, datetime.now(UTC))
+    shared_store.finalize_copy_download(copier_id, idempotency_key, deck_id)
 
 
 def _replay(
@@ -171,13 +219,20 @@ def _replay(
     if log.source_shared_deck_id != deck_id:
         raise ConflictError("idempotency key already belongs to another deck")
 
-    # Defensive re-materialize: if a prior copy crashed in the window between
-    # record_copy (committed) and materialize, the notebook is still hidden. The
-    # retry that lands here reveals it — self-healing, and a no-op once visible.
-    notebook_store.materialize(log.result_notebook_id)
-    # The log marker makes this safe for both the original request and every
-    # replay, including a crash after materialize but before finalization.
-    shared_store.finalize_copy_download(log.copier_id, log.idempotency_key, deck_id)
+    # Finish a reveal the original request did not complete: it may have crashed
+    # before the flip, between the flip and the restamp, or before the marker
+    # commit. ``download_counted`` is written last, so unset means "redo it all";
+    # set means the copy is settled and a replay is a pure read.
+    if not log.download_counted:
+        _reveal(
+            shared_store,
+            card_store,
+            notebook_store,
+            copier_id=log.copier_id,
+            idempotency_key=log.idempotency_key,
+            notebook_id=log.result_notebook_id,
+            deck_id=deck_id,
+        )
     nb = notebook_store.get(log.result_notebook_id)
     return CopyOutcome(
         notebook_id=log.result_notebook_id,
@@ -321,7 +376,7 @@ def _copy_locked(
     except Exception:
         # Everything above is pre-commit: no copy_log points at this notebook yet,
         # so compensation can safely erase the whole partial copy.
-        _compensate(card_store, notebook_store, user_dir, nb.id)
+        compensate_staged_copy(card_store, notebook_store, user_dir, nb.id)
         raise
 
     # ── point of no return ─────────────────────────────────────────
@@ -339,10 +394,10 @@ def _copy_locked(
         # fault (e.g. OperationalError: database is locked) escapes. The staged
         # notebook + cards were written before this log row, so compensate before
         # re-raising — otherwise they leak as invisible orphan rows forever.
-        _compensate(card_store, notebook_store, user_dir, nb.id)
+        compensate_staged_copy(card_store, notebook_store, user_dir, nb.id)
         raise
     if not recorded:
-        _compensate(card_store, notebook_store, user_dir, nb.id)
+        compensate_staged_copy(card_store, notebook_store, user_dir, nb.id)
         winner = shared_store.get_copy_log(copier_id, idempotency_key)
         if winner is not None:
             return _replay(shared_store, notebook_store, card_store, winner, deck.id)
@@ -352,9 +407,16 @@ def _copy_locked(
 
     # Post-commit finalizers — best-effort, never compensated (rolling back after
     # the idempotency log is committed would strand its pointer). A crash here is
-    # recovered by the next retry via _replay.
-    notebook_store.materialize(nb.id)
-    shared_store.finalize_copy_download(copier_id, idempotency_key, deck.id)
+    # recovered by the next retry via _replay (the marker is still unset).
+    _reveal(
+        shared_store,
+        card_store,
+        notebook_store,
+        copier_id=copier_id,
+        idempotency_key=idempotency_key,
+        notebook_id=nb.id,
+        deck_id=deck.id,
+    )
     return CopyOutcome(
         notebook_id=nb.id,
         notebook_name=unique_name,

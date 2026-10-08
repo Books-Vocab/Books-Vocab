@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import atexit
 import logging
+from functools import partial
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -68,6 +69,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     from . import runtime_data_root
     from .pipeline_log import reap_orphaned_runs
     from .service_factories import reset_async_clients, reset_clients
+    from .shared_decks.reaper import reap_stale_staged_copies
     from .vocab_add_link_operation import reap_interrupted_operations
     from .worker_guard import assert_single_worker, release_worker_lock
 
@@ -86,6 +88,9 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
                 release_worker_lock_fn=release_worker_lock,
                 reset_clients_fn=reset_clients,
                 reset_async_clients_fn=reset_async_clients,
+                reap_stale_staged_copies_fn=partial(
+                    reap_stale_staged_copies, shared_decks_path=settings.shared_decks_path
+                ),
             )
         ),
     )

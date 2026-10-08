@@ -401,6 +401,16 @@ class SharedDeckStore:
         with Session(self.engine) as session:
             return session.get(SharedDeckCopyLog, (copier_id, idempotency_key))
 
+    def has_copy_log_for_notebook(self, notebook_id: str) -> bool:
+        """True when a copy_log row points at ``notebook_id`` (copy is committed)."""
+        with Session(self.engine) as session:
+            return (
+                session.exec(
+                    select(SharedDeckCopyLog.copier_id).where(SharedDeckCopyLog.result_notebook_id == notebook_id)
+                ).first()
+                is not None
+            )
+
     def record_copy(
         self,
         copier_id: str,
