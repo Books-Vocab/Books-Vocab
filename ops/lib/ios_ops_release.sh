@@ -375,7 +375,7 @@ doctor_readiness() {
   fi
 
   if [[ -f "$ROOT/ios/BooksAndVocab/Products.storekit" ]] \
-     && rg -q 'Products\.storekit' "$ROOT/ios/BooksAndVocab.xcodeproj/xcshareddata/xcschemes/BooksAndVocab.xcscheme" 2>/dev/null; then
+     && grep -q 'Products\.storekit' "$ROOT/ios/BooksAndVocab.xcodeproj/xcshareddata/xcschemes/BooksAndVocab.xcscheme" 2>/dev/null; then
     "$emitter" "$out" "storekit" "ok" "scheme_reference=Products.storekit file=present"
   else
     "$emitter" "$out" "storekit" "warn" "scheme_reference_or_file=missing"
