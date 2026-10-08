@@ -117,6 +117,7 @@ verified_against: 51ce9228ce64c1897850b8fcab672364b17f8731
 | `Scenes/SelectionModeState.swift` | 列表多選模式狀態 |
 | `Scenes/OverviewTab.swift` | `struct OverviewTab: View`，Vocab 入口 overview tab |
 | `Scenes/AddLinkSheet.swift` | `struct AddLinkSheet: View`，KG 手動加連線 sheet；搜尋同 Notebook 的既有詞條並把流程狀態委派 `AddLinkCoordinator`，本地無此字時（即使有部分符合候選）提供建立並連結入口，已連結的精確符合顯示「已連結」；連結中的列顯示 `addLink.row.linking.<cardId>` 並鎖定所有列；只有完全成功自動關閉，警告需按完成；送出的 context 是 A 的 sense clue，不是 B 的例句。開啟即 focus 搜尋框；每次 render 只算一次候選（`AddLinkSearchSnapshot`），lookup marker／列表／選列共用 |
+| `Scenes/AddLinkSearchIndex.swift` | `AddLinkSearchIndex`，sheet 持有的逐詞條搜尋鍵快取（locale-folded word／translation、正規化 word）；以原始字串比對失效，locale 變更即清空；`localCandidates` 預設用拋棄式 index，行為等同未快取（#2406） |
 | `Scenes/AddLinkSearchSnapshot.swift` | 一次 query 的衍生值：trimmed query、`localCandidates`、`exactTargetState`（有輸入即算，部分符合候選旁也要能判「建立」）；純值，與逐處重算結果相同 |
 | `Scenes/AddLinkStepCopy.swift` | `enum AddLinkStep`：後端六個 step id（順序即後端回報順序）→ 描述該步實際動作的 `addLink.step.*` 文案；`AddLinkCreationCoordinator.initialSteps()` 只從這裡取標籤 |
 | `Scenes/AddLinkCreateCopy.swift` | `enum AddLinkCreateCopy`（#2037）：建立入口的純文案——完整動作句 `addLink.create.title`（新字＋來源字，超過 20 字元截斷、折疊空白、字內引號換成 `'`）與副行 `addLink.create.notebook`（單字本名稱由 `ReviewCardNotebookBadgeResolver` 解析，永不顯示 id）。舊 key `建立` 不改義 |

@@ -15,6 +15,8 @@ struct AddLinkSheet: View {
     var onLinked: () -> Void = {}
 
     @State private var searchText = ""
+    /// Folded search keys live as long as the sheet, so a keystroke does not re-fold the store (#2406).
+    @State private var searchIndex = AddLinkSearchIndex()
     @State private var coordinator = AddLinkCoordinator()
     // Made by the hub, which keeps a running creation alive after this sheet closes.
     @State private var creationCoordinator: AddLinkCreationCoordinator
@@ -75,7 +77,8 @@ struct AddLinkSheet: View {
         let snapshot = AddLinkSearchSnapshot.make(
             query: searchText,
             sourceEntry: sourceEntry,
-            allEntries: allEntries
+            allEntries: allEntries,
+            index: searchIndex
         )
         let lookup = lookupState(snapshot)
         let returnBehavior = AddLinkReturnBehavior.resolve(snapshot)
