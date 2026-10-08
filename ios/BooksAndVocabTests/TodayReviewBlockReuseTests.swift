@@ -53,13 +53,12 @@ struct TodayReviewBlockReuseTests {
     ///     precondition under which positional reuse would strand the previous card's
     ///     measured height / CoreText layout. If this ever stops diverging the residue
     ///     hazard is moot, but so is the value of the guard, so we assert it explicitly.
-    @Test func adjacentCardsHaveDivergentBackBlockStructure() async throws {
+    @Test func adjacentCardsHaveDivergentBackBlockStructure() throws {
         let rich = makeRichEntry()
         let minimal = makeMinimalEntry()
         let entries = [rich, minimal]
 
         let state = TodayReviewState(entries: entries, allEntries: entries, currentUserID: nil)
-        try await Task.sleep(for: .milliseconds(120))
 
         let current = try #require(state.currentCardForTesting)
         let next = try #require(state.nextCardForTesting)
@@ -75,13 +74,12 @@ struct TodayReviewBlockReuseTests {
 
     /// (b) Per-advance reset contract: after goNext() the reveal collapses to .front and
     ///     the current card's content is the new card (value-flow swapped the content).
-    @Test func advancingResetsRevealAndSwapsContent() async throws {
+    @Test func advancingResetsRevealAndSwapsContent() throws {
         let rich = makeRichEntry()
         let minimal = makeMinimalEntry()
         let entries = [rich, minimal]
 
         let state = TodayReviewState(entries: entries, allEntries: entries, currentUserID: nil)
-        try await Task.sleep(for: .milliseconds(120))
 
         let firstWord = try #require(state.currentCardForTesting?.card.word)
         #expect(firstWord == "ephemeral")
@@ -91,7 +89,6 @@ struct TodayReviewBlockReuseTests {
         #expect(state.revealStage != .front)
 
         state.goNext()
-        try await Task.sleep(for: .milliseconds(20))
 
         #expect(state.revealStage == .front)
         let secondWord = try #require(state.currentCardForTesting?.card.word)
@@ -102,13 +99,12 @@ struct TodayReviewBlockReuseTests {
     /// (c) Composite-key diff semantics: the key changes on exactly the offsets where the
     ///     caseTag changes — proving the new ForEach key forces delete-old + insert-new
     ///     (no in-place case morph) at every divergent slot.
-    @Test func compositeKeyChangesWhereCaseTagChanges() async throws {
+    @Test func compositeKeyChangesWhereCaseTagChanges() throws {
         let rich = makeRichEntry()
         let minimal = makeMinimalEntry()
         let entries = [rich, minimal]
 
         let state = TodayReviewState(entries: entries, allEntries: entries, currentUserID: nil)
-        try await Task.sleep(for: .milliseconds(120))
 
         let richDoc = try #require(state.currentCardForTesting).backDocument
         let minimalDoc = try #require(state.nextCardForTesting).backDocument
