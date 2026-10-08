@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from sqlalchemy import event as sa_event
 
 from kg.api_models import ReviewEventEntry
+from kg.exceptions import BadRequestError
 from kg.review_events import ReviewEventStore, pull_review_events, push_review_events
 
 
@@ -245,3 +246,14 @@ def test_same_ingested_at_ties_order_by_event_id(tmp_path):
         assert [e.event_id for e in store.get_since(since)] == ["a", "b", "c"]
     finally:
         store.close()
+
+
+def test_out_of_range_timestamps_are_bad_request_not_overflow():
+    import pytest
+
+    from kg.review_events import _parse_iso8601_timestamp, _parse_required_timestamp
+
+    with pytest.raises(BadRequestError):
+        _parse_required_timestamp("9999-12-31T23:59:59-05:00", "reviewed_at")
+    with pytest.raises(BadRequestError):
+        _parse_iso8601_timestamp("0001-01-01T00:00:00+02:00")

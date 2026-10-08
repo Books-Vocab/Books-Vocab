@@ -309,7 +309,10 @@ def _parse_iso8601_timestamp(raw: str) -> datetime:
         raise BadRequestError("Invalid since timestamp format. Expected ISO 8601.") from None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
+    try:
+        return parsed.astimezone(UTC)
+    except OverflowError:
+        raise BadRequestError("Invalid since timestamp format. Expected ISO 8601.") from None
 
 
 def _parse_required_timestamp(raw: str, field_name: str) -> datetime:
@@ -321,7 +324,10 @@ def _parse_required_timestamp(raw: str, field_name: str) -> datetime:
         raise BadRequestError(f"Invalid {field_name} timestamp format. Expected ISO 8601.") from None
     if parsed.tzinfo is None:
         raise BadRequestError(f"Invalid {field_name} timestamp format. Expected ISO 8601.")
-    return parsed.astimezone(UTC)
+    try:
+        return parsed.astimezone(UTC)
+    except OverflowError:
+        raise BadRequestError(f"Invalid {field_name} timestamp format. Expected ISO 8601.") from None
 
 
 def _format_timestamp(value: datetime) -> str:
