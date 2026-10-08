@@ -295,6 +295,15 @@ def test_create_notebook_appears_in_list(isolated_api):
 # ---------------------------------------------------------------------------
 
 
+def test_patch_notebook_sort_order_out_of_range_is_422(isolated_api):
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "SO", "color": "#111111"}, headers=h).json()["id"]
+
+    r = client.patch(f"/api/notebooks/{nb_id}", json={"sort_order": 10**20}, headers=h)
+    assert r.status_code == 422, r.text
+
+
 def test_patch_notebook_name(isolated_api):
     client = isolated_api.client
     h = isolated_api.headers
