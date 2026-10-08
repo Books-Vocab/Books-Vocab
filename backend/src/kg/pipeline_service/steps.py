@@ -207,9 +207,11 @@ async def _step_embed_and_judge(
         loop = asyncio.get_running_loop()
         try:
             await loop.run_in_executor(None, embeddings.add_batch, items)
-            newly_embedded = [card.id for card in missing if embeddings.has(card.id)]
         except (OpenAIError, OSError, ValueError) as exc:
             logger.warning("[%s] Batch embedding failed: %s", uid, exc)
+        # add_batch persists chunk by chunk, so a mid-batch failure still
+        # leaves the earlier chunks embedded (#2264): report those too.
+        newly_embedded = [card.id for card in missing if embeddings.has(card.id)]
 
         if newly_embedded:
             logger.info("[%s] Embedded %d cards, queued for judge", uid, len(newly_embedded))

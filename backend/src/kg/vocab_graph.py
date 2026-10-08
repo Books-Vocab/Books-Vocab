@@ -43,8 +43,9 @@ def embed_and_link_new_cards(
     if not batch_items:
         return
 
-    # Single API call for all embeddings. Cards are already durable here, so a
-    # provider failure (incl. the bounded client timeout) degrades exactly like
+    # add_batch chunks to the provider's request limit and persists per chunk
+    # (#2264), so the has() filter below keeps partial progress. Cards are
+    # already durable here, so a provider failure (incl. the bounded client timeout) degrades exactly like
     # the pipeline embed step: warn and let the next pipeline run backfill.
     try:
         embeddings.add_batch(batch_items)

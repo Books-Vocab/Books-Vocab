@@ -506,3 +506,62 @@ def test_pipeline_phase1_backfill_of_250_cards_chunks_and_queues_all(tmp_path: P
     assert client.calls == [100, 100, 50]
     assert store.count() == 250
     assert graph.pending == all_ids
+
+
+def test_pipeline_phase1_partial_failure_reports_persisted_chunks(tmp_path: Path):
+    import asyncio
+
+    from kg.pipeline_service import _step_embed_and_judge
+
+    all_ids = _chunk_ids(_chunk_items(250))
+    client = _CappedEmbedClient(fail_on_call=2)
+    store = _chunk_store(tmp_path)
+    graph = _RecordingGraph()
+    user = {"id": "u_2264", "dir": tmp_path, "config": {"auto_link": {"enabled": False}}}
+    logger = MagicMock()
+
+    asyncio.run(
+        _step_embed_and_judge(
+            "u_2264",
+            user,
+            card_store_factory=lambda d: _PipelineCards(all_ids),
+            graph_store_factory=lambda d, notebook_id="default": graph,
+            embedding_store_factory=lambda d, llm=None, notebook_id="default": store.bind(client),
+            client_factory=lambda provider: None,
+            logger=logger,
+            link_kind_enum=lambda v: v,
+        )
+    )
+
+    assert store.count() == 100
+    # The 100 cards from the persisted chunk are reported, not dropped.
+    assert any(
+        c.args[0].endswith("Embedded %d cards, queued for judge") and c.args[2] == 100
+        for c in logger.info.call_args_list
+    )
+
+
+def test_vocab_embed_and_link_150_cards_makes_two_calls(tmp_path: Path):
+    from kg.vocab_graph import embed_and_link_new_cards
+
+    ids = _chunk_ids(_chunk_items(150))
+    cards_by_id = {cid: SimpleNamespace(id=cid, embed_text=lambda k=int(cid[1:]): f"text:{k}") for cid in ids}
+    cards = SimpleNamespace(get=cards_by_id.get)
+    client = _CappedEmbedClient()
+    store = _chunk_store(tmp_path).bind(client)
+    graph = _RecordingGraph()
+    entries = [SimpleNamespace(word=f"w{i}") for i in range(150)]
+    card_ids = {f"w{i}": ids[i] for i in range(150)}
+
+    embed_and_link_new_cards(
+        cards=cards,
+        embeddings=store,
+        graph=graph,
+        card_ids=card_ids,
+        entries=entries,
+        logger=logging.getLogger("test.2264"),
+    )
+
+    assert client.calls == [100, 50]
+    assert store.count() == 150
+    assert graph.pending == ids
