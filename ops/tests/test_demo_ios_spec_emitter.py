@@ -814,10 +814,21 @@ def _backend_cli_ready() -> bool:
     return probe.returncode == 0
 
 
+def _skip_or_fail_backend_unavailable() -> None:
+    """Skip the e2e when backend deps are absent, unless KG_REQUIRE_BACKEND_E2E=1
+    (set by the demo-data arm of ops/test_ops.sh): then a missing backend is a
+    real failure so a green arm can never mean 'e2e silently skipped'."""
+    if _backend_cli_ready():
+        return
+    message = ("backend deps unavailable to sys.executable (sandbox pytest run) "
+               "— run with `uv run --project backend python -m pytest` for the e2e")
+    if os.environ.get("KG_REQUIRE_BACKEND_E2E") == "1":
+        pytest.fail(message)
+    pytest.skip(message)
+
+
 def test_spec_mode_end_to_end_from_world_export(tmp_path):
-    if not _backend_cli_ready():
-        pytest.skip("backend deps unavailable to sys.executable (sandbox pytest run) "
-                    "— run with `uv run --project backend --with pytest` for the e2e")
+    _skip_or_fail_backend_unavailable()
     identity = sot.load_identity()
     uid = identity["user_id"]
     with tempfile.TemporaryDirectory(prefix="kg-spec-e2e-") as sandbox:
@@ -1169,3 +1180,23 @@ def test_build_demo_cli_plan_freezes_review_clock(tmp_path, capsys):
     payload2 = json.loads(capsys.readouterr().out)
     assert rc2 == 1
     assert "requires --spec" in payload2["error"]
+
+
+def test_backend_unavailable_gate_fails_when_e2e_required(monkeypatch):
+    monkeypatch.setattr(sys.modules[__name__], "_backend_cli_ready", lambda: False)
+    monkeypatch.setenv("KG_REQUIRE_BACKEND_E2E", "1")
+    with pytest.raises(pytest.fail.Exception):
+        _skip_or_fail_backend_unavailable()
+
+
+def test_backend_unavailable_gate_skips_without_flag(monkeypatch):
+    monkeypatch.setattr(sys.modules[__name__], "_backend_cli_ready", lambda: False)
+    monkeypatch.delenv("KG_REQUIRE_BACKEND_E2E", raising=False)
+    with pytest.raises(pytest.skip.Exception):
+        _skip_or_fail_backend_unavailable()
+
+
+def test_backend_available_gate_is_noop(monkeypatch):
+    monkeypatch.setattr(sys.modules[__name__], "_backend_cli_ready", lambda: True)
+    monkeypatch.setenv("KG_REQUIRE_BACKEND_E2E", "1")
+    _skip_or_fail_backend_unavailable()
