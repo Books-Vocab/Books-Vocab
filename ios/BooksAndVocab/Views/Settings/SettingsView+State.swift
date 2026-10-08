@@ -37,7 +37,7 @@ extension SettingsView {
         if !kgService.isConnected { return "離線".localized }
         var parts: [String] = ["已連線".localized]
         if displayCardCount > 0 {
-            parts.append(L10n.format("%@ 張", "\(displayCardCount)"))
+            parts.append(L10n.format("card_count_plural", Int64(displayCardCount)))
         }
         return parts.joined(separator: " · ")
     }
