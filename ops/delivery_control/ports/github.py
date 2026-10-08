@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
@@ -15,6 +16,19 @@ from ..domain.observations import (
     PullRequestInventory,
     PullRequestSnapshot,
 )
+
+
+@dataclass(frozen=True)
+class RequiredTriggerOutcome:
+    """One `trigger-required` decision; empty ``command`` means nothing mutated."""
+
+    command: tuple[str, ...]
+    action: str
+    reason: str
+
+    @property
+    def dispatched(self) -> bool:
+        return bool(self.command)
 
 
 @runtime_checkable
@@ -86,7 +100,7 @@ class GitHubWorkflowCommandPort(Protocol):
         branch: str,
         base_sha: str,
         head_sha: str,
-    ) -> tuple[str, ...]: ...
+    ) -> RequiredTriggerOutcome: ...
 
 
 @runtime_checkable

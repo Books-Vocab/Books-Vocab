@@ -20,6 +20,7 @@ from ..domain.observations import (
     PullRequestInventory,
     PullRequestSnapshot,
 )
+from ..ports.github import RequiredTriggerOutcome
 from ..ports.process import CommandRunnerPort
 from .errors import AdapterCommandError, AdapterPayloadError
 from .github_checks import GitHubChecks
@@ -235,7 +236,7 @@ class GitHubCliAdapter:
         branch: str,
         base_sha: str,
         head_sha: str,
-    ) -> tuple[str, ...]:
+    ) -> RequiredTriggerOutcome:
         return self._commands.trigger_required(
             number=number,
             branch=branch,

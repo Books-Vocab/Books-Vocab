@@ -11,6 +11,7 @@ OPS = Path(__file__).resolve().parents[1]
 ROOT = OPS.parent
 sys.path.insert(0, str(OPS))
 
+from delivery_control.cli import _jsonable
 from delivery_control.domain.errors import PolicyViolation
 from delivery_control.domain.models import CheckStatus, HandbackReceipt, Scope
 from delivery_control.domain.observations import (
@@ -21,6 +22,7 @@ from delivery_control.domain.observations import (
     RegistrySnapshot,
 )
 from delivery_control.domain.states import HoldKind
+from delivery_control.ports.github import RequiredTriggerOutcome
 from delivery_control.services.pr_contract import render_pull_request_body
 from delivery_control.services.required_repair import RequiredRepairService
 
@@ -107,6 +109,9 @@ class FakeGitHub:
         self.paths = changed_paths
         self.mapping = (pull_request,)
         self.dispatches: list[tuple[int, str, str, str]] = []
+        self.outcome = RequiredTriggerOutcome(
+            ("gh", "workflow", "run", "pr-gate.yml"), "dispatch", "fake dispatch"
+        )
         self.get_reads = 0
         self.drift_after_first_read: PullRequestSnapshot | None = None
 
@@ -137,9 +142,9 @@ class FakeGitHub:
 
     def trigger_required(
         self, *, number: int, branch: str, base_sha: str, head_sha: str
-    ) -> tuple[str, ...]:
+    ) -> RequiredTriggerOutcome:
         self.dispatches.append((number, branch, base_sha, head_sha))
-        return ("gh", "workflow", "run", "pr-gate.yml")
+        return self.outcome
 
 
 def _service(
@@ -169,6 +174,34 @@ def test_required_repair_dispatches_only_repairable_statuses(
     assert result.merge_eligibility_assessed is False
     assert registry.reads >= 2
     assert github.get_reads >= 2
+
+
+def test_required_repair_reports_wait_decision_without_dispatch_claim() -> None:
+    service, _, github = _service(CheckStatus.ABSENT)
+    github.outcome = RequiredTriggerOutcome(
+        (), "wait", "run 7 is queued for 20m; legitimate runner wait"
+    )
+
+    result = service.trigger(17)
+
+    assert result.dispatched is False
+    assert result.dispatch_command == ()
+    payload = _jsonable(result)
+    assert payload["dispatched"] is False
+    assert payload["dispatch_action"] == "wait"
+    assert (
+        payload["dispatch_reason"] == "run 7 is queued for 20m; legitimate runner wait"
+    )
+
+
+def test_required_repair_reports_dispatch_decision_reason() -> None:
+    service, _, github = _service(CheckStatus.FAILURE)
+
+    payload = _jsonable(service.trigger(17))
+
+    assert payload["dispatched"] is True
+    assert payload["dispatch_action"] == "dispatch"
+    assert payload["dispatch_reason"] == "fake dispatch"
 
 
 def test_required_repair_accepts_recorded_published_target_base() -> None:

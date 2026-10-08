@@ -35,6 +35,21 @@ class StaticRunner:
         return self.responses.pop(0)
 
 
+JOBS_COMMAND = ("gh", "run", "view", "12345", "--json", "jobs")
+ZERO_JOBS = json.dumps(
+    {
+        "jobs": [
+            {
+                "name": "queued-job",
+                "status": "queued",
+                "conclusion": None,
+                "startedAt": "0001-01-01T00:00:00Z",
+            }
+        ]
+    }
+)
+
+
 def _pr_payload() -> dict[str, object]:
     return {
         "id": "PR_kwDOexample",
@@ -1080,9 +1095,9 @@ def test_github_adapter_reruns_exact_pull_request_workflow_run() -> None:
         "--limit",
         "20",
         "--json",
-        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt,startedAt,updatedAt",
     )
-    rerun_command = ("gh", "run", "rerun", "12345")
+    rerun_command = ("gh", "run", "rerun", "--failed", "12345")
     runner = StaticRunner(
         [
             CommandResult(
@@ -1115,7 +1130,8 @@ def test_github_adapter_reruns_exact_pull_request_workflow_run() -> None:
         head_sha=head_sha,
     )
 
-    assert command == rerun_command
+    assert command.command == rerun_command
+    assert command.action == "rerun_failed_jobs"
     assert runner.calls == [list_command, rerun_command]
 
 
@@ -1136,9 +1152,9 @@ def test_github_adapter_selects_latest_exact_pull_request_run() -> None:
         "--limit",
         "20",
         "--json",
-        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt,startedAt,updatedAt",
     )
-    rerun_command = ("gh", "run", "rerun", "12346")
+    rerun_command = ("gh", "run", "rerun", "--failed", "12346")
     runner = StaticRunner(
         [
             CommandResult(
@@ -1188,7 +1204,8 @@ def test_github_adapter_selects_latest_exact_pull_request_run() -> None:
         head_sha=head_sha,
     )
 
-    assert command == rerun_command
+    assert command.command == rerun_command
+    assert command.action == "rerun_failed_jobs"
     assert runner.calls == [list_command, rerun_command]
 
 
@@ -1209,7 +1226,7 @@ def test_github_adapter_refuses_required_rerun_without_exact_pull_request_run() 
         "--limit",
         "20",
         "--json",
-        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt,startedAt,updatedAt",
     )
     runner = StaticRunner(
         [
@@ -1245,7 +1262,7 @@ def test_github_adapter_refuses_required_rerun_without_exact_pull_request_run() 
     assert runner.calls == [list_command]
 
 
-def test_github_adapter_refuses_duplicate_required_rerun_while_run_is_active() -> None:
+def test_github_adapter_waits_without_duplicate_rerun_while_run_is_active() -> None:
     head_sha = "b" * 40
     list_command = (
         "gh",
@@ -1262,7 +1279,7 @@ def test_github_adapter_refuses_duplicate_required_rerun_while_run_is_active() -
         "--limit",
         "20",
         "--json",
-        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt,startedAt,updatedAt",
     )
     runner = StaticRunner(
         [
@@ -1287,13 +1304,16 @@ def test_github_adapter_refuses_duplicate_required_rerun_while_run_is_active() -
         ]
     )
 
-    with pytest.raises(AdapterPayloadError, match="still active"):
-        GitHubCliAdapter(runner=runner).trigger_required(
-            number=12,
-            branch="feat/one",
-            base_sha="a" * 40,
-            head_sha=head_sha,
-        )
+    outcome = GitHubCliAdapter(runner=runner).trigger_required(
+        number=12,
+        branch="feat/one",
+        base_sha="a" * 40,
+        head_sha=head_sha,
+    )
+
+    assert outcome.dispatched is False
+    assert outcome.action == "wait"
+    assert outcome.reason
 
     assert runner.calls == [list_command]
 
@@ -1315,7 +1335,7 @@ def test_github_adapter_recovers_stale_queued_exact_run() -> None:
         "--limit",
         "20",
         "--json",
-        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt,startedAt,updatedAt",
     )
     cancel_command = ("gh", "run", "cancel", "--force", "12345")
     rerun_command = ("gh", "run", "rerun", "12345")
@@ -1339,6 +1359,7 @@ def test_github_adapter_recovers_stale_queued_exact_run() -> None:
                 ),
                 "",
             ),
+            CommandResult(JOBS_COMMAND, 0, ZERO_JOBS, ""),
             CommandResult(cancel_command, 0, "", ""),
             CommandResult(
                 list_command,
@@ -1369,8 +1390,15 @@ def test_github_adapter_recovers_stale_queued_exact_run() -> None:
         head_sha=head_sha,
     )
 
-    assert command == rerun_command
-    assert runner.calls == [list_command, cancel_command, list_command, rerun_command]
+    assert command.command == rerun_command
+    assert command.action == "recover_wedged_run"
+    assert runner.calls == [
+        list_command,
+        JOBS_COMMAND,
+        cancel_command,
+        list_command,
+        rerun_command,
+    ]
 
 
 def test_github_adapter_retries_cancel_race_until_exact_run_is_terminal(
@@ -1392,7 +1420,7 @@ def test_github_adapter_retries_cancel_race_until_exact_run_is_terminal(
         "--limit",
         "20",
         "--json",
-        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt,startedAt,updatedAt",
     )
     cancel_command = ("gh", "run", "cancel", "--force", "12345")
     rerun_command = ("gh", "run", "rerun", "12345")
@@ -1425,6 +1453,7 @@ def test_github_adapter_retries_cancel_race_until_exact_run_is_terminal(
     runner = StaticRunner(
         [
             CommandResult(list_command, 0, queued_payload, ""),
+            CommandResult(JOBS_COMMAND, 0, ZERO_JOBS, ""),
             CommandResult(
                 cancel_command,
                 1,
@@ -1445,9 +1474,11 @@ def test_github_adapter_retries_cancel_race_until_exact_run_is_terminal(
         head_sha=head_sha,
     )
 
-    assert command == rerun_command
+    assert command.command == rerun_command
+    assert command.action == "recover_wedged_run"
     assert runner.calls == [
         list_command,
+        JOBS_COMMAND,
         cancel_command,
         list_command,
         list_command,
@@ -1474,7 +1505,7 @@ def test_github_adapter_reads_exact_run_view_after_stale_cancel_race(
         "--limit",
         "20",
         "--json",
-        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt,startedAt,updatedAt",
     )
     cancel_command = ("gh", "run", "cancel", "--force", "12345")
     view_command = (
@@ -1513,6 +1544,7 @@ def test_github_adapter_reads_exact_run_view_after_stale_cancel_race(
     runner = StaticRunner(
         [
             CommandResult(list_command, 0, queued_payload, ""),
+            CommandResult(JOBS_COMMAND, 0, ZERO_JOBS, ""),
             CommandResult(
                 cancel_command,
                 1,
@@ -1535,9 +1567,11 @@ def test_github_adapter_reads_exact_run_view_after_stale_cancel_race(
         head_sha=head_sha,
     )
 
-    assert command == rerun_command
+    assert command.command == rerun_command
+    assert command.action == "recover_wedged_run"
     assert runner.calls == [
         list_command,
+        JOBS_COMMAND,
         cancel_command,
         list_command,
         list_command,
@@ -1566,7 +1600,7 @@ def test_github_adapter_keeps_cancel_race_fail_closed_if_run_view_stays_active(
         "--limit",
         "20",
         "--json",
-        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt,startedAt,updatedAt",
     )
     cancel_command = ("gh", "run", "cancel", "--force", "12345")
     view_command = (
@@ -1596,6 +1630,7 @@ def test_github_adapter_keeps_cancel_race_fail_closed_if_run_view_stays_active(
                 json.dumps([json.loads(queued_payload)]),
                 "",
             ),
+            CommandResult(JOBS_COMMAND, 0, ZERO_JOBS, ""),
             CommandResult(
                 cancel_command,
                 1,
@@ -1639,6 +1674,7 @@ def test_github_adapter_keeps_cancel_race_fail_closed_if_run_view_stays_active(
 
     assert runner.calls == [
         list_command,
+        JOBS_COMMAND,
         cancel_command,
         list_command,
         list_command,
@@ -1666,7 +1702,7 @@ def test_github_adapter_does_not_cancel_recent_queued_exact_run() -> None:
         "--limit",
         "20",
         "--json",
-        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt,startedAt,updatedAt",
     )
     runner = StaticRunner(
         [
@@ -1691,13 +1727,16 @@ def test_github_adapter_does_not_cancel_recent_queued_exact_run() -> None:
         ]
     )
 
-    with pytest.raises(AdapterPayloadError, match="still active"):
-        GitHubCliAdapter(runner=runner).trigger_required(
-            number=12,
-            branch="feat/one",
-            base_sha="a" * 40,
-            head_sha=head_sha,
-        )
+    outcome = GitHubCliAdapter(runner=runner).trigger_required(
+        number=12,
+        branch="feat/one",
+        base_sha="a" * 40,
+        head_sha=head_sha,
+    )
+
+    assert outcome.dispatched is False
+    assert outcome.action == "wait"
+    assert outcome.reason
 
     assert runner.calls == [list_command]
 
@@ -1719,7 +1758,7 @@ def test_github_adapter_keeps_stale_run_fail_closed_if_cancel_does_not_finish() 
         "--limit",
         "20",
         "--json",
-        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt,startedAt,updatedAt",
     )
     cancel_command = ("gh", "run", "cancel", "--force", "12345")
     queued_payload = json.dumps(
@@ -1738,6 +1777,7 @@ def test_github_adapter_keeps_stale_run_fail_closed_if_cancel_does_not_finish() 
     runner = StaticRunner(
         [
             CommandResult(list_command, 0, queued_payload, ""),
+            CommandResult(JOBS_COMMAND, 0, ZERO_JOBS, ""),
             CommandResult(cancel_command, 0, "", ""),
             CommandResult(list_command, 0, queued_payload, ""),
         ]
@@ -1751,7 +1791,7 @@ def test_github_adapter_keeps_stale_run_fail_closed_if_cancel_does_not_finish() 
             head_sha=head_sha,
         )
 
-    assert runner.calls == [list_command, cancel_command, list_command]
+    assert runner.calls == [list_command, JOBS_COMMAND, cancel_command, list_command]
 
 
 def test_github_adapter_refuses_duplicate_rerun_after_exact_success() -> None:
@@ -1771,7 +1811,7 @@ def test_github_adapter_refuses_duplicate_rerun_after_exact_success() -> None:
         "--limit",
         "20",
         "--json",
-        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt,startedAt,updatedAt",
     )
     runner = StaticRunner(
         [
@@ -1849,7 +1889,7 @@ def test_github_adapter_reports_required_workflow_rerun_failure() -> None:
         "--limit",
         "20",
         "--json",
-        "databaseId,headBranch,headSha,event,status,conclusion,createdAt",
+        "databaseId,headBranch,headSha,event,status,conclusion,createdAt,startedAt,updatedAt",
     )
     rerun_command = ("gh", "run", "rerun", "12345")
     runner = StaticRunner(
