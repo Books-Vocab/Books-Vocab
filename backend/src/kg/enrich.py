@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from collections.abc import AsyncIterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 
@@ -136,53 +137,84 @@ async def enrich_cards_stream(
     batches = [cards[i : i + batch_size] for i in range(0, len(cards), batch_size)]
     total_cards = len(cards)
     completed_cards = 0
+    # Set when the generator exits for any reason (exhausted, raised, aclose()d,
+    # cancelled, GC'd). From then on nothing drains the queue and the loop may
+    # be closed, so workers and loop callbacks must stop touching either.
+    closed = threading.Event()
 
     def _process_batch_with_retry(batch: list[Card], loop: asyncio.AbstractEventLoop, queue: asyncio.Queue):
         """Worker function that handles retries and pushes progress to the async queue.
 
-        Contract: this worker MUST enqueue exactly one terminal message
-        ("success" or "error") for its batch, no matter what happens. The
-        consumer decrements tasks_remaining on each terminal message and only
-        unblocks once all batches are accounted for. A single escaped
-        exception (or a dropped terminal message) leaves tasks_remaining > 0
-        forever → the consumer's `await queue.get()` blocks and the
-        ThreadPoolExecutor never releases. So the whole body is wrapped, and
-        terminal delivery is guaranteed (see _put_terminal).
+        Contract: while the stream is open, this worker MUST enqueue exactly
+        one terminal message ("success" or "error") for its batch, no matter
+        what happens. The consumer decrements tasks_remaining on each terminal
+        message and only unblocks once all batches are accounted for. A single
+        escaped exception (or a dropped terminal message) leaves
+        tasks_remaining > 0 forever → the consumer's `await queue.get()`
+        blocks. So the whole body is wrapped, and terminal delivery is
+        guaranteed (see _put_terminal). After the stream closes there is no
+        consumer to deliver to, so delivery is intentionally skipped: a batch
+        that has not started returns at once, and an in-flight batch finishes
+        its LLM call and discards the result.
         """
+        if closed.is_set():
+            # Dequeued by a pool thread just before shutdown(cancel_futures=True).
+            return
+
+        def _call_on_loop(callback, *args) -> None:
+            """Schedule ``callback`` on the loop thread while the stream is open.
+
+            Once the stream has closed, the loop may be closed too, and then
+            call_soon_threadsafe raises RuntimeError; delivery is moot then.
+            """
+            if closed.is_set():
+                return
+            try:
+                loop.call_soon_threadsafe(callback, *args)
+            except RuntimeError:
+                if closed.is_set():
+                    return
+                raise
 
         def _put_terminal(msg: dict) -> None:
-            """Deliver a terminal message, guaranteeing it is never dropped.
+            """Deliver a terminal message, never dropping it while the stream is open.
 
-            Plain put_nowait (used for non-terminal 'retry' hints) raises
-            QueueFull when the bounded queue is full; inside a
-            call_soon_threadsafe callback that exception is swallowed by
+            Plain put_nowait raises QueueFull when the bounded queue is full;
+            inside a call_soon_threadsafe callback that exception is swallowed by
             asyncio's default handler, silently losing the message and
             deadlocking the consumer. Terminal messages are delivery-critical,
             so we schedule a loop callback that retries put_nowait via
-            call_later until it lands. This stays on the loop thread (no
-            cross-thread coroutine-future wait, which would itself deadlock the
-            worker against the loop), and a transiently full queue only delays
-            the terminal rather than losing it."""
+            call_later until it lands or the stream closes. This stays on the
+            loop thread (no cross-thread coroutine-future wait, which would
+            itself deadlock the worker against the loop), and a transiently
+            full queue only delays the terminal rather than losing it."""
 
             def _try_put() -> None:
+                if closed.is_set():
+                    # No consumer left: stop re-arming instead of polling forever.
+                    return
                 try:
                     queue.put_nowait(msg)
                 except asyncio.QueueFull:
                     # Consumer is draining concurrently; re-attempt shortly.
                     loop.call_later(0.01, _try_put)
 
-            loop.call_soon_threadsafe(_try_put)
+            _call_on_loop(_try_put)
+
+        def _put_hint(msg: dict) -> None:
+            """Enqueue a non-terminal progress hint on the loop thread.
+
+            Hints are droppable: a full queue or a closed stream discards them."""
+            if closed.is_set():
+                return
+            try:
+                queue.put_nowait(msg)
+            except asyncio.QueueFull:
+                pass
 
         def _delay_fn(attempt: int, exc: BaseException) -> float | None:
             wait_time = 2 ** (attempt + 1)
-            # Non-terminal progress hint: safe to drop if the queue is full.
-            loop.call_soon_threadsafe(
-                queue.put_nowait,
-                {
-                    "type": "retry",
-                    "detail": _retry_detail(wait_time),
-                },
-            )
+            _call_on_loop(_put_hint, {"type": "retry", "detail": _retry_detail(wait_time)})
             return float(wait_time)
 
         try:
@@ -229,7 +261,12 @@ async def enrich_cards_stream(
     queue: asyncio.Queue = asyncio.Queue(maxsize=100)
     loop = asyncio.get_running_loop()
 
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+    # Explicit shutdown instead of `with`: ThreadPoolExecutor.__exit__ is
+    # shutdown(wait=True), which on an early exit (consumer raised, aclose(),
+    # cancellation, the quota abort below) would block the event loop until
+    # every queued batch had run and been billed, with its result discarded.
+    executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="kg-enrich")
+    try:
         # Submit all batches
         [loop.run_in_executor(executor, _process_batch_with_retry, batch, loop, queue) for batch in batches]
 
@@ -269,3 +306,8 @@ async def enrich_cards_stream(
                 # Optional: We could break here, but allowing other batches to finish is more robust
             elif msg["type"] == "quota_exhausted":
                 raise QuotaExceededError(msg["reset_seconds"], headers=msg.get("headers"))
+    finally:
+        closed.set()
+        # Never blocks the loop: batches not yet started are cancelled, and
+        # in-flight ones finish on their own threads without delivering.
+        executor.shutdown(wait=False, cancel_futures=True)
