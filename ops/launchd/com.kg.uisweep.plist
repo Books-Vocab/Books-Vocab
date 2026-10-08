@@ -14,7 +14,7 @@
   先解 flaky-vs-real 分流 —— 那正是當初 UI suite 被排除的理由，本 job 不推翻它。
 
   ── 跑在哪台（與 com.kg.reconcile / com.kg.backup 不同，別照抄）──────────────
-  跑在 **oscar（主力筆電 MacBook-Air-7）**，不是常駐機 felix：felix 沒裝 Xcode，
+  跑在 **oscar（主力筆電；hostname 別名 MacBook-Air-7/43，角色以 butler-machine-role 為準）**，不是常駐機 felix：felix 沒裝 Xcode，
   沒有 iOS toolchain。路徑因此指向 oscar 的 ~/project/kg（開發 clone）。
   它掃的是該 clone 當下 checkout 的內容 —— 也就是本地 main。
 
