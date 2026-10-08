@@ -134,7 +134,14 @@ def verified_transaction_snapshot(
         # verified /sync or /reconcile beat an older notification watermark.
         # decode_notification_payload overrides it with the envelope signedDate.
         "signed_date": normalize_ms_timestamp(payload.get("signedDate"), parse_datetime_fn),
+        # Account binding for /sync and /reconcile ownership checks; deliberately
+        # not in _SNAPSHOT_FIELDS, so it is never persisted.
+        "app_account_token": _str_or_none(payload.get("appAccountToken")),
     }
+
+
+def _str_or_none(value: Any) -> str | None:
+    return value if isinstance(value, str) and value else None
 
 
 def decode_signed_transaction_info(
