@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .ops_shared import data_dir
+from . import runtime_data_root
 from .sqlite_lifecycle import SQLiteLifecycle
 
 _lifecycle = SQLiteLifecycle()
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 def _db_path() -> Path:
-    return data_dir() / "admin_audit.db"
+    return runtime_data_root.current() / "admin_audit.db"
 
 
 def _get_conn() -> sqlite3.Connection:
@@ -53,7 +53,7 @@ def _initialize_schema(conn: sqlite3.Connection) -> None:
 
 
 def _reset() -> None:
-    """Test helper: close + drop the singleton so a new ``KG_DATA_DIR`` is honored."""
+    """Test helper: close + drop the singleton so a newly resolved data root is honored."""
     reset()
 
 

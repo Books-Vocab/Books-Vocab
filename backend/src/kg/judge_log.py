@@ -6,6 +6,7 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
+from . import runtime_data_root
 from .ops_shared import data_dir
 from .sqlite_lifecycle import SQLiteLifecycle
 
@@ -74,7 +75,7 @@ def _initialize_schema(conn: sqlite3.Connection) -> None:
 
 
 def _db_path() -> Path:
-    return DB_PATH if DB_PATH != _INITIAL_DB_PATH else data_dir() / "judge_log.db"
+    return DB_PATH if DB_PATH != _INITIAL_DB_PATH else runtime_data_root.current() / "judge_log.db"
 
 
 def _get_conn() -> sqlite3.Connection:

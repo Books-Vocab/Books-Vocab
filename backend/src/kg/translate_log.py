@@ -7,7 +7,7 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from .ops_shared import data_dir
+from . import runtime_data_root
 from .sqlite_lifecycle import SQLiteLifecycle
 
 CACHE_TTL_DAYS_DEFAULT = 30
@@ -43,7 +43,7 @@ def _cache_ttl_days() -> int:
 
 
 def _db_path() -> Path:
-    return data_dir() / "translate_log.db"
+    return runtime_data_root.current() / "translate_log.db"
 
 
 def _initialize_schema(conn: sqlite3.Connection) -> None:

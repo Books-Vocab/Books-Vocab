@@ -86,7 +86,7 @@ def _judge_rejects_by_day(cutoff_iso: str) -> dict[str, int]:
     """Count auto-judge rejections per UTC date (treated as errors)."""
     from . import judge_log as jl
 
-    if not jl.DB_PATH.exists():
+    if not jl._db_path().exists():
         return {}
     return _count_by_day(
         jl,

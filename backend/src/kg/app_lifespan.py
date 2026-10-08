@@ -69,11 +69,16 @@ def build_app_lifespan_from_dependencies(
                 reaped_operations,
             )
         dependencies.bind_runtime_data_root_fn(data_root)
-        yield
-        dependencies.logger.info("KG API shutting down")
-        dependencies.release_runtime_data_root_fn(data_root)
-        dependencies.release_worker_lock_fn()
-        dependencies.reset_clients_fn()
-        await dependencies.reset_async_clients_fn()
+        # Teardown also runs when the server aborts instead of sending a clean
+        # shutdown: a leaked binding would keep redirecting every runtime store
+        # (quota ledger included) to a root this process no longer locks.
+        try:
+            yield
+        finally:
+            dependencies.logger.info("KG API shutting down")
+            dependencies.release_runtime_data_root_fn(data_root)
+            dependencies.release_worker_lock_fn()
+            dependencies.reset_clients_fn()
+            await dependencies.reset_async_clients_fn()
 
     return lifespan

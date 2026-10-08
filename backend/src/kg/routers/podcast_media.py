@@ -65,12 +65,8 @@ class StaticHeadersBuilder(Protocol):
     def __call__(self, obj: dict[str, Any], base_headers: dict[str, str] | None = None) -> dict[str, str]: ...
 
 
-def _podcasts_dir(request: Request | None = None) -> Path:
-    if request is not None:
-        return request.app.state.kg_settings.podcasts_dir
-    from ..settings import load_settings
-
-    return load_settings().podcasts_dir
+def _podcasts_dir(request: Request) -> Path:
+    return request.app.state.kg_settings.podcasts_dir
 
 
 def _settings(request: Request) -> KGSettings:

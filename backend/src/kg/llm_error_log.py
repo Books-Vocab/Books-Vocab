@@ -14,6 +14,7 @@ import re
 import sqlite3
 from datetime import UTC, datetime, timedelta
 
+from . import runtime_data_root
 from .ops_shared import data_dir
 from .sqlite_lifecycle import SQLiteLifecycle
 
@@ -50,7 +51,7 @@ def _get_conn() -> sqlite3.Connection:
     global _conn
     if _conn is None and _lifecycle.connection is not None:
         _lifecycle.reset()
-    db_path = DB_PATH if DB_PATH != _INITIAL_DB_PATH else data_dir() / "llm_errors.db"
+    db_path = DB_PATH if DB_PATH != _INITIAL_DB_PATH else runtime_data_root.current() / "llm_errors.db"
     _conn = _lifecycle.get_connection(db_path, _initialize_schema)
     return _conn
 

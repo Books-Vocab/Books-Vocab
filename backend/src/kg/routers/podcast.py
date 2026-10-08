@@ -84,7 +84,7 @@ def _validate_series_id(series_id: str) -> None:
 router.include_router(build_podcast_progress_router(validate_series_id=_validate_series_id))
 
 
-def _podcasts_dir(request: Request | None = None) -> Path:
+def _podcasts_dir(request: Request) -> Path:
     return _podcast_media._podcasts_dir(request)
 
 

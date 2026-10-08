@@ -15,8 +15,9 @@ Schema:
   cross-device drift is resolved on wall-clock comparison just like
   ``PodcastProgress.updatedAt`` on the client.
 
-The DB lives at ``$KG_DATA_DIR/podcast_progress.db``. First-time access
-auto-creates the table; no manual migration needed.
+The DB lives at ``podcast_progress.db`` under the :func:`set_data_dir`
+override, else under the runtime data root (:func:`kg.runtime_data_root.current`).
+First-time access auto-creates the table; no manual migration needed.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .ops_shared import data_dir
+from . import runtime_data_root
 from .sqlite_lifecycle import SQLiteLifecycle
 
 _lifecycle = SQLiteLifecycle()
@@ -40,8 +41,8 @@ def set_data_dir(path: Path | None) -> None:
 
     Called from ``api.create_app`` so that the progress DB lives next to the
     same per-instance ``data_dir`` as the rest of the singletons honored via
-    ``app.state.kg_settings``. Passing ``None`` reverts to the
-    env-var/default resolution path (used by tests after swap-back).
+    ``app.state.kg_settings``. Passing ``None`` reverts to
+    :func:`kg.runtime_data_root.current` (used by tests after swap-back).
     """
     global _override_data_dir, _conn
     with _lock:
@@ -53,7 +54,7 @@ def set_data_dir(path: Path | None) -> None:
 def _resolve_data_dir() -> Path:
     if _override_data_dir is not None:
         return _override_data_dir
-    return data_dir()
+    return runtime_data_root.current()
 
 
 def _get_conn() -> sqlite3.Connection:
